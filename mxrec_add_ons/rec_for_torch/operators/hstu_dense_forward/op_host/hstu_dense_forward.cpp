@@ -155,6 +155,7 @@ public:
         this->Attr("silu_scale").Float();
         this->Attr("layout").AttrType(OPTIONAL).String("normal");
         this->Attr("target_group_size").AttrType(OPTIONAL).Int(0);
+        this->Attr("is_delta_qk").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

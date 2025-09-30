@@ -54,7 +54,9 @@ struct JaggedTaskArgs {
     uint32_t headId = 0;          // 该基本块所属的head
     uint32_t qSeqId = 0;          // 该基本块所属Query 输入的第几个seq block 一个block是256条seq
     uint32_t kSeqId = 0;          // 该基本块所属Key 输入的第几个seq block 一个block是256条seq
-    uint32_t actualSeqLen = 0;    // 该基本块实际的序列长度
+    uint32_t actualSeqLen = 0;    // Q序列的基本块实际的序列长度
+    uint32_t actualSeqLenK = 0;    // K序列的基本块实际的序列长度
+    uint32_t qSeqNum = 0;         // 该Batch下Qblock数
     uint32_t kSeqNum = 0;         // 该基本块在K轴需要乘多少次
     uint32_t transTaskId = 0;     // 该基本块转置任务的id
     uint32_t computeASeqLen = 0;  // 该基本块matmul计算左矩阵的序列长度
@@ -64,9 +66,11 @@ struct JaggedTaskArgs {
     int64_t numTarget = 0;        // 该基本块所属序列的numTarget
     int64_t seqGlobalOffset = 0;  // 该基本块的全局序列偏移
     int64_t batchOffset = 0;      // 该基本块的batch偏移
+    int64_t batchOffsetK = 0;      // K序列的基本块的batch偏移
     int64_t headSeqLimit = 0;     // 该基本块的head offset最大长度, 超过则需要考虑切换head_id
     int64_t kvOffset = 0;         // 该基本块的key value计算偏移
     int64_t ioOffset = 0;         // 该基本块的query attnOutput计算偏移
+    int32_t deltaQK = 0;         // QK序列长度差
 };
 
 template <typename qType, typename oType>
@@ -108,7 +112,8 @@ private:
     BlockMaskParams maskTaskInfo[COMPUTE_PIPE_NUM];
     JaggedTaskArgs computeTaskInfo[COMPUTE_PIPE_NUM];
     JaggedTaskArgs transTaskInfo[TRANS_PIPE_NUM];
-    GlobalTensor<oType> seqOffsetsGt;
+    GlobalTensor<oType> seqOffsetsQGt;
+    GlobalTensor<oType> seqOffsetsKGt;
     GlobalTensor<oType> numContextGt;
     GlobalTensor<oType> numTargetGt;
 };
@@ -146,9 +151,9 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType>::ComputeQkMatm
 template <typename qType, typename oType>
 __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType>::ComputeVecScore(uint32_t taskId)
 {
-    int64_t biasOffset = computeTaskInfo[taskId].batchId * this->headNum * this->maxSeqLen * this->maxSeqLen +
-                         computeTaskInfo[taskId].headId * this->maxSeqLen * this->maxSeqLen +
-                         computeTaskInfo[taskId].qSeqId * this->maxSeqLen * this->blockHeight +
+    int64_t biasOffset = computeTaskInfo[taskId].batchId * this->headNum * this->maxSeqLenQ * this->maxSeqLenK +
+                         computeTaskInfo[taskId].headId * this->maxSeqLenQ * this->maxSeqLenK +
+                         computeTaskInfo[taskId].qSeqId * this->maxSeqLenK * this->blockHeight +
                          computeTaskInfo[taskId].kSeqId * this->blockHeight;
 
     int64_t maskOffset = biasOffset;
@@ -176,25 +181,36 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType>::ComputeAllBlo
     uint32_t preTaskId = 0;
     uint32_t prePreTaskId = 0;
     uint32_t nextTaskId = 0;
+    uint32_t nblk = 0;
 
     for (auto blkId = sBlkId; blkId < eBlkId; blkId++) {
         auto kSeqNum = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
+        auto deltaQK = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].deltaQK;
+        nblk = deltaQK / this->blockHeight;
+        bool isDeltaQK = deltaQK % this->blockHeight != 0;
+        int64_t maskOffset1 = deltaQK % this -> blockHeight;
+        int64_t maskOffset2 = deltaQK % this -> blockHeight - this -> blockHeight;
+
         for (auto kSeqId = 0; kSeqId < kSeqNum; kSeqId++) {
             auto taskinfo = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
             BlockMaskParams maskinfo = {
                 taskinfo.qSeqId,
-                static_cast<uint32_t>(kSeqId),
+                static_cast<uint32_t> (kSeqId),
                 taskinfo.actualSeqLen,
                 this->blockHeight,
                 taskinfo.numContext,
                 taskinfo.numTarget,
                 this->targetGroupSize,
-                taskinfo.scale
+                taskinfo.scale,
+                maskOffset1,
+                maskOffset2,
+                nblk,
+                isDeltaQK
             };
+            // 在下三角下跳过运算
             if (maskinfo.NoComputation(this->maskType)) {
                 break;
             }
-
             currentTaskId = taskId % COMPUTE_PIPE_NUM;
             preTaskId = (taskId - 1) % COMPUTE_PIPE_NUM;
             prePreTaskId = (taskId - 2) % COMPUTE_PIPE_NUM;
@@ -204,13 +220,12 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType>::ComputeAllBlo
             this->computeTaskInfo[currentTaskId].transTaskId = transtaskId % TRANS_PIPE_NUM;
             this->computeTaskInfo[currentTaskId].kSeqId = kSeqId;
             this->computeTaskInfo[currentTaskId].computeBSeqLen =
-                (kSeqId != (kSeqNum - 1))
-                    ? (this->blockHeight)
-                    : (this->computeTaskInfo[currentTaskId].actualSeqLen - kSeqId * this->blockHeight);
+                   (kSeqId != (kSeqNum - 1)) ? (this->blockHeight) :
+                   (this->computeTaskInfo[currentTaskId].actualSeqLenK - kSeqId * this->blockHeight);
             this->computeTaskInfo[currentTaskId].kvOffset =
-                this->computeTaskInfo[currentTaskId].batchOffset * this->headDim * this->headNum +
-                this->computeTaskInfo[currentTaskId].kSeqId * this->blockHeight * this->headNum * this->headDim +
-                this->computeTaskInfo[currentTaskId].headId * this->headDim;
+                    this->computeTaskInfo[currentTaskId].batchOffsetK * this->headDim * this->headNum +
+                    this->computeTaskInfo[currentTaskId].kSeqId * this->blockHeight * this->headNum * this->headDim +
+                    this->computeTaskInfo[currentTaskId].headId * this->headDim;
 
             // matmul qk
             this->ComputeQkMatmul(currentTaskId);
@@ -300,27 +315,37 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType>::FillTaskInfo(
 
     taskId = taskId % COMPUTE_PIPE_NUM;
 
-    auto nextBatchSeqOffset = this->seqOffsetsGt.GetValue(batchId + 1);
-    auto currentBatchSeqOffset = this->seqOffsetsGt.GetValue(batchId);
+    auto nextBatchSeqOffset = this->seqOffsetsQGt.GetValue(batchId + 1);
+    auto currentBatchSeqOffset = this->seqOffsetsQGt.GetValue(batchId);
+
+    auto nextBatchSeqOffsetK = this->seqOffsetsKGt.GetValue(batchId + 1);
+    auto currentBatchSeqOffsetK = this->seqOffsetsKGt.GetValue(batchId);
+
     auto numContext = this->numContextGt.GetValue(batchId);
     auto numTarget = this->numTargetGt.GetValue(batchId);
 
     computeTaskInfo[taskId].seqGlobalOffset = seqGlobalOffset;
     computeTaskInfo[taskId].batchId = batchId;
     computeTaskInfo[taskId].actualSeqLen = nextBatchSeqOffset - currentBatchSeqOffset;
+    computeTaskInfo[taskId].actualSeqLenK = nextBatchSeqOffsetK - currentBatchSeqOffsetK;
+    computeTaskInfo[taskId].deltaQK = computeTaskInfo[taskId].actualSeqLenK - computeTaskInfo[taskId].actualSeqLen;
+
     computeTaskInfo[taskId].scale = this->siluScale;
     computeTaskInfo[taskId].numTarget = numTarget;
     computeTaskInfo[taskId].numContext = numContext;
     computeTaskInfo[taskId].batchOffset = currentBatchSeqOffset;
+    computeTaskInfo[taskId].batchOffsetK = currentBatchSeqOffsetK;
+    // 每个注意力头在序列维度上的处理边界
     computeTaskInfo[taskId].headSeqLimit =
         computeTaskInfo[taskId].batchOffset * this->headNum + computeTaskInfo[taskId].actualSeqLen * (headId + 1);
-
     auto batchInnerOffset = seqGlobalOffset - (computeTaskInfo[taskId].batchOffset * this->headNum);
     computeTaskInfo[taskId].headId = headId;
     computeTaskInfo[taskId].qSeqId =
         (batchInnerOffset - computeTaskInfo[taskId].headId * computeTaskInfo[taskId].actualSeqLen) / this->blockHeight;
     computeTaskInfo[taskId].kSeqNum =
-        (computeTaskInfo[taskId].actualSeqLen + this->blockHeight - 1) / this->blockHeight;
+            (computeTaskInfo[taskId].actualSeqLenK + this->blockHeight - 1) / this->blockHeight;
+    computeTaskInfo[taskId].qSeqNum =
+            (computeTaskInfo[taskId].actualSeqLen + this->blockHeight - 1) / this->blockHeight;
 
     computeTaskInfo[taskId].ioOffset =
         computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum +
@@ -388,7 +413,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType>::GetTaskInfo(u
         uint32_t batchId = index / this->headNum;
         uint32_t headId = index % this->headNum;
 
-        uint32_t batchSeqSize = this->seqOffsetsGt.GetValue(batchId + 1) - this->seqOffsetsGt.GetValue(batchId);
+        uint32_t batchSeqSize = this->seqOffsetsQGt.GetValue(batchId + 1) - this->seqOffsetsQGt.GetValue(batchId);
         uint32_t batchBlkSize = (batchSeqSize + this->blockHeight - 1) / this->blockHeight;
 
         if (sBlkId < (offsetOfBlk + batchBlkSize)) {
@@ -407,8 +432,10 @@ template <typename qType, typename oType>
 __aicore__ inline int HstuDenseForwardJaggedKernel<qType, oType>::PreInit(
     const HstuDenseForwardTilingData* __restrict tilingDataPtr)
 {
-    seqOffsetsGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetQ), this->xDim0 + 1);
-    auto validBatchSize = GetBatchSizeFromJaggedOffset(seqOffsetsGt, this->xDim0 + 1);
+    seqOffsetsQGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetQ), this->xDim0 + 1);
+    seqOffsetsKGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetK), this->batchSize + 1);
+    seqOffsetsQGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetQ), this->xDim0 + 1);
+    auto validBatchSize = GetBatchSizeFromJaggedOffset(seqOffsetsQGt, this->xDim0 + 1);
     ASCENDC_ASSERT((validBatchSize > 0 && validBatchSize <= MAX_BATCH_SIZE), "batchSize exceed limit of (0, 20480]\n");
 
     const int blockId = GetBlockIdx();
@@ -417,7 +444,6 @@ __aicore__ inline int HstuDenseForwardJaggedKernel<qType, oType>::PreInit(
     this->seqLen = this->xDim1;
     this->headNum = this->xDim2;
     this->headDim = this->xDim3;
-    this->maxSeqLen = tilingDataPtr->maxSeqLen;
 
     numContextGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numContext), this->batchSize);
     numTargetGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numTarget), this->batchSize);
@@ -425,7 +451,7 @@ __aicore__ inline int HstuDenseForwardJaggedKernel<qType, oType>::PreInit(
     int blocks[2] = {0}; // start block id, end block id
     auto taskAssigner =
         BlockTaskAssign(this->maskType, coreNum, this->blockHeight, this->batchSize, this->headNum,
-                        this->targetGroupSize, seqOffsetsGt, numContextGt, numTargetGt);
+                        this->targetGroupSize, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt);
     taskAssigner.Compute(blocks, blockId);
 
     this->sBlkId = blocks[0];

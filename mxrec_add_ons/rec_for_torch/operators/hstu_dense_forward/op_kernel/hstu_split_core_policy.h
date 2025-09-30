@@ -38,10 +38,11 @@ __aicore__ inline T CeilDiv(T dividend, T divisor)
 
 class SeqTask {
 public:
-    __aicore__ inline SeqTask(int64_t seqLen, int64_t numCtx, int64_t numTg, int64_t blockLen)
+    __aicore__ inline SeqTask(int64_t seqLenQ, int64_t seqLenK, int64_t numCtx, int64_t numTg, int64_t blockLen)
     {
-        this->seqLen_ = seqLen;
-        this->numBlk_ = CeilDiv(seqLen, blockLen);
+        this->seqLenQ = seqLenQ;
+        this->seqLenK = seqLenK;
+        this->numBlk_ = CeilDiv(seqLenQ, blockLen);
         this->numCtx_ = numCtx;
         this->numTg_ = numTg;
         this->blockLen_ = blockLen;
@@ -56,20 +57,23 @@ public:
 
     template <typename oType>
     __aicore__ inline static SeqTask Create(int64_t seqId,
-                                            GlobalTensor<oType>& seqOffsetsGt,
+                                            GlobalTensor<oType>& seqOffsetsQGt,
+                                            GlobalTensor<oType>& seqOffsetsKGt,
                                             GlobalTensor<oType>& numContextGt,
                                             GlobalTensor<oType>& numTargetGt,
                                             int64_t blockLen)
     {
-        int64_t seqLen = seqOffsetsGt.GetValue(seqId + 1) - seqOffsetsGt.GetValue(seqId);
+        int64_t seqLenQ = seqOffsetsQGt.GetValue(seqId + 1) - seqOffsetsQGt.GetValue(seqId);
+        int64_t seqLenK = seqOffsetsKGt.GetValue(seqId + 1) - seqOffsetsKGt.GetValue(seqId);
         int64_t numCtx = numContextGt.GetValue(seqId);
         int64_t numTg = numTargetGt.GetValue(seqId);
 
-        return SeqTask(seqLen, numCtx, numTg, blockLen);
+        return SeqTask(seqLenQ, seqLenK, numCtx, numTg, blockLen);
     }
 
 private:
-    int64_t seqLen_;
+    int64_t seqLenQ;
+    int64_t seqLenK;
     int64_t numBlk_;
     int64_t numCtx_;
     int64_t numTg_;
@@ -82,14 +86,14 @@ private:
     __aicore__ inline uint32_t Get1st(CausalMaskT maskType)
     {
         if (maskType != CausalMaskT::MASK_TRIL) {
-            uint32_t taskNum = CeilDiv(seqLen_, blockLen_);
+            uint32_t taskNum = CeilDiv(seqLenK, blockLen_);
             return taskNum;
         }
 
-        uint32_t taskNum = 1;
+        uint32_t taskNum = CeilDiv(seqLenK - seqLenQ, blockLen_);
         if (numCtx_ > 0) {
             // context mask特殊处理
-            taskNum = CeilDiv(seqLen_ - numTg_, blockLen_);
+            taskNum = CeilDiv(seqLenQ - numTg_, blockLen_);
         }
         return taskNum;
     }
@@ -101,7 +105,7 @@ private:
         }
         if (blockQCount_ == INIT_BLOCK_Q_COUNT + 1) {
             // 去除context mask的特殊处理，回到causal mask的正常逻辑
-            this->taskNum_ = 1;
+            this->taskNum_ = CeilDiv(seqLenK - seqLenQ, blockLen_) + 1;
         }
         this->taskNum_++;
         return this->taskNum_;
@@ -117,7 +121,8 @@ public:
                                       int64_t batchSize,
                                       int64_t headNum,
                                       int64_t tgsize,
-                                      GlobalTensor<oType>& seqOffsetsGt,
+                                      GlobalTensor<oType>& seqOffsetsQGt,
+                                      GlobalTensor<oType>& seqOffsetsKGt,
                                       GlobalTensor<oType>& numContextGt,
                                       GlobalTensor<oType>& numTargetGt)
     {
@@ -127,7 +132,8 @@ public:
         this->batchSize = batchSize;
         this->headNum = headNum;
         this->tgsize = tgsize;
-        this->seqOffsetsGt = seqOffsetsGt;
+        this->seqOffsetsQGt = seqOffsetsQGt;
+        this->seqOffsetsKGt = seqOffsetsKGt;
         this->numContextGt = numContextGt;
         this->numTargetGt = numTargetGt;
 
@@ -139,16 +145,20 @@ public:
         // 计算总任务量
         uint32_t totalTaskNum = 0;
         for (auto batchId = 0; batchId < batchSize; batchId++) {
-            int64_t seqlen = seqOffsetsGt.GetValue(batchId + 1) - seqOffsetsGt.GetValue(batchId);
-            int64_t numBlk = CeilDiv(seqlen, blockLen);
+            int64_t seqlenQ = seqOffsetsQGt.GetValue(batchId + 1) - seqOffsetsQGt.GetValue(batchId);
+            int64_t numBlkQ = CeilDiv(seqlenQ, blockLen);
+            int64_t seqlenK = seqOffsetsKGt.GetValue(batchId + 1) - seqOffsetsKGt.GetValue(batchId);
+            int64_t numBlkK = CeilDiv(seqlenK, blockLen);
             int64_t numCtx = numContextGt.GetValue(batchId);
             int64_t numTg = numTargetGt.GetValue(batchId);
+            int64_t DeltaQK = seqlenK - seqlenQ;
+            bool isDeltaQK = DeltaQK % this->blockLen != 0;
 
-            uint32_t seqTaskNum = ComputeSeqTaskNum(seqlen, numBlk, numCtx, numTg);
+            uint32_t seqTaskNum = ComputeSeqTaskNum(isDeltaQK, seqlenQ, numBlkQ, numBlkK, numCtx, numTg);
             totalTaskNum += headNum * seqTaskNum;
 
             for (auto headId = 0; headId < headNum; headId++) {
-                blockNumber_[batchId * headNum + headId] = numBlk;
+                blockNumber_[batchId * headNum + headId] = numBlkQ;
             }
         }
         int64_t eachCoreTaskNumLimit = CeilDiv(totalTaskNum, this->coreNum);
@@ -157,7 +167,8 @@ public:
         uint32_t batchId = 0;
         uint32_t processedBlocks = 0;
         
-        SeqTask seqTask = SeqTask::Create(batchId / headNum, seqOffsetsGt, numContextGt, numTargetGt, blockLen);
+        SeqTask seqTask = SeqTask::Create(batchId / headNum, seqOffsetsQGt, seqOffsetsKGt, numContextGt,
+                                          numTargetGt, blockLen);
         for (int core = 0; core < coreId && batchId < bxn; core++) {
             processedBlocks += AssignQBlocksToCore(batchId, seqTask, eachCoreTaskNumLimit);
         }
@@ -190,22 +201,28 @@ private:
             if (blockNumber_[batchId] == 0) {
                 // 移动到下一个batch
                 batchId++;
-                seqTask = SeqTask::Create(batchId / headNum, seqOffsetsGt, numContextGt, numTargetGt, blockLen);
+                seqTask = SeqTask::Create(batchId / headNum, seqOffsetsQGt, seqOffsetsKGt, numContextGt,
+                                          numTargetGt, blockLen);
             }
         }
         return assignedQBlocks;
     }
 
-    __aicore__ inline uint32_t ComputeSeqTaskNum(int64_t seqLen, int64_t numBlk, int64_t numCtx, int64_t numTg)
+    __aicore__ inline uint32_t ComputeSeqTaskNum(bool isDeltaQK, int64_t seqlenQ, int64_t numBlkQ, int64_t numBlkK,
+                                                 int64_t numCtx, int64_t numTg)
     {
         uint32_t seqTaskNum;
         if (maskType == CausalMaskT::MASK_TRIL) {
-            seqTaskNum = numBlk * (numBlk + 1) / 2;
+            if (isDeltaQK) {
+                seqTaskNum = numBlkQ * (2 * numBlkK - numBlkQ + 1) / 2 + numBlkQ - 1;
+            } else {
+                seqTaskNum = numBlkQ * (2 * numBlkK - numBlkQ + 1) / 2;
+            }
             if (numCtx > 0) {
-                seqTaskNum += CeilDiv(seqLen - numTg, blockLen) - 1;  // -1避免重复计算
+                seqTaskNum += CeilDiv(seqlenQ - numTg, blockLen) - 1;  // -1避免重复计算
             }
         } else {
-            seqTaskNum = numBlk * numBlk;
+            seqTaskNum = numBlkQ * numBlkK;
         }
         return seqTaskNum;
     }
@@ -218,7 +235,8 @@ private:
     int64_t tgsize;
     uint32_t bxn;  // 总序列数
 
-    GlobalTensor<oType> seqOffsetsGt;
+    GlobalTensor<oType> seqOffsetsQGt;
+    GlobalTensor<oType> seqOffsetsKGt;
     GlobalTensor<oType> numContextGt;
     GlobalTensor<oType> numTargetGt;
     uint8_t blockNumber_[MAX_BATCH_SIZE * MAX_HEAD_NUM] = {0};

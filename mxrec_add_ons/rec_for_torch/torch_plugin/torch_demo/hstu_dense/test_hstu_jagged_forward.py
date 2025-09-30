@@ -87,7 +87,7 @@ class TestHstuJaggedDemo:
         seq_offset = seq_offset.to("npu")
         num_context = num_context.to("npu")
         num_target = num_target.to("npu")
-
+        # 函数重载：hstu_jagged -> hstu_jagged.equal
         output = torch.ops.mxrec.hstu_jagged(
             q_npu, k_npu, v_npu, mask_npu, bias_npu, mask_type, max_seq_len, silu_scale, seq_offset,
             num_context, num_target, target_group_size

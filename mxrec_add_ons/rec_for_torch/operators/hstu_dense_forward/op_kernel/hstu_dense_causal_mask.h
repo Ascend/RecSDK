@@ -46,11 +46,16 @@ struct BlockMaskParams {
     int64_t numTarget;        // target 掩码长度
     int64_t targetGroupSize;  // target 掩码group size
     float value;              // 掩码值
+    int64_t maskOffset1;      // causal mask第一个块内偏移
+    int64_t maskOffset2;      // causal mask第二个块内偏移
+    uint32_t nblk;            // DeltaQK/blockHeight
+    bool isDeltaQK;           // 是否存在块内偏移
 
     __aicore__ inline BlockMaskParams() {}
 
     __aicore__ inline BlockMaskParams(uint32_t qSeq, uint32_t kSeq, uint32_t len, int64_t bHeight, int64_t nContext,
-                                      int64_t nTarget, int64_t groupSize, float val)
+                                      int64_t nTarget, int64_t groupSize, float val, int64_t maskOffset1,
+                                      int64_t maskOffset2, uint32_t nblk, bool isDeltaQK)
         : qSeqId(qSeq),
           kSeqId(kSeq),
           seqlen(len),
@@ -58,14 +63,18 @@ struct BlockMaskParams {
           numContext(nContext),
           numTarget(nTarget),
           targetGroupSize(groupSize),
-          value(val) {}
+          value(val),
+          maskOffset1(maskOffset1),
+          maskOffset2(maskOffset2),
+          nblk(nblk),
+          isDeltaQK(isDeltaQK) {}
 
     __aicore__ inline bool NoComputation(CausalMaskT maskType)
     {
         if (maskType != CausalMaskT::MASK_TRIL) {
             return false;
         }
-        bool noCausal = (kSeqId > qSeqId);
+        bool noCausal = (kSeqId > qSeqId + nblk + (isDeltaQK ? 1 : 0));
         bool noContext = (numContext <= 0) ||
                         (qSeqId > numContext / blockHeight) ||
                         (kSeqId > (seqlen - numTarget) / blockHeight);
@@ -85,6 +94,9 @@ public:
         numTarget = params.numTarget;
         targetGroupSize = params.targetGroupSize;
         value = params.value;
+        nblk = params.nblk;
+        maskOffset1 = params.maskOffset1;
+        maskOffset2 = params.maskOffset2;
         contextMask = NeedContextMask();
         causalMask = NeedCausalMask();
         targetMask = NeedTargetMask();
@@ -96,9 +108,15 @@ public:
                (kSeqId <= (seqlen - numTarget) / blockHeight);
     }
 
-    __aicore__ inline bool NeedCausalMask()
+    __aicore__ inline int NeedCausalMask()
     {
-        return (qSeqId == kSeqId);
+        if (kSeqId == qSeqId + nblk) {
+            return DIAGONAL_MASK_LEFT;
+        }
+        if (kSeqId == qSeqId + nblk + 1) {
+            return DIAGONAL_MASK_RIGHT;
+        }
+        return NO_CAUSAL_MASK;
     }
 
     __aicore__ inline bool NeedTargetMask()
@@ -125,8 +143,14 @@ public:
         if (contextMask) {
             GenContextMask(inMaskLt, line, height, width);
         }
-        if (causalMask) {
-            GenCausalMask(inMaskLt, line, height, width);
+        
+        // 对角线左侧梯形因果掩码
+        if (causalMask == DIAGONAL_MASK_LEFT) {
+            GenCausalMask(inMaskLt, line + maskOffset1, height, width);
+        }
+        // 对角线右侧三角因果掩码
+        if (causalMask == DIAGONAL_MASK_RIGHT) {
+            GenCausalMask(inMaskLt, line + maskOffset2, height, width);
         }
         if (targetMask) {
             if (!causalMask) {
@@ -141,15 +165,22 @@ private:
     uint32_t qSeqId;
     uint32_t kSeqId;
     uint32_t seqlen;
+    uint32_t nblk;
     int64_t blockHeight;
     int64_t numContext;
     int64_t numTarget;
     int64_t targetGroupSize;
+    int64_t maskOffset1;
+    int64_t maskOffset2;
+    int64_t causalMask;
     float value;
 
     bool contextMask;
-    bool causalMask;
     bool targetMask;
+
+    static constexpr int NO_CAUSAL_MASK = 0;      // 不需要因果掩码
+    static constexpr int DIAGONAL_MASK_LEFT = 1;  // 对角线左侧梯形因果掩码
+    static constexpr int DIAGONAL_MASK_RIGHT = 2; // 对角线右侧三角因果掩码
 
     __aicore__ inline void GenContextMask(LocalTensor<float>& inMaskLt, int64_t line, int64_t height, int64_t width)
     {
@@ -168,9 +199,14 @@ private:
 
     __aicore__ inline void GenCausalMask(LocalTensor<float>& inMaskLt, int64_t line, int64_t height, int64_t width)
     {
-        for (int i = 0; i < height; i++) {
+        auto startLine = line > 0 ? 0 : -line;
+        for (int i = startLine; i < height; i++) {
             int64_t thisIndexMask = line + i + 1;
-            Duplicate<float>(inMaskLt[i * width], value, thisIndexMask);
+            if (thisIndexMask > width) {
+                Duplicate<float>(inMaskLt[i * width], value, width);
+            } else {
+                Duplicate<float>(inMaskLt[i * width], value, thisIndexMask);
+            }
         }
     }
 

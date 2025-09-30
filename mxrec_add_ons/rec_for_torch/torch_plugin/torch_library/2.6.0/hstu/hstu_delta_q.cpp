@@ -53,11 +53,12 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
     const auto _pageOffsets = at::Tensor();
     const auto _pageIds = at::Tensor();
     const auto _lastPageLen = at::Tensor();
-    const auto _numContext = at::Tensor();
-    const auto _numTarget = at::Tensor();
+    const auto _numContext = at::zeros_like(acSeqOffset);
+    const auto _numTarget = at::zeros_like(acSeqOffset);
     const auto _actTargetGroupSize = int();
 
     const char *layout = "jagged";
+    const int64_t isDeltaQK = 1;
     EXEC_NPU_CMD(aclnnHstuDenseForward,
                  denseQ,
                  denseK,
@@ -79,6 +80,7 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
                  realSiluScale,
                  layout,
                  _actTargetGroupSize,
+                 isDeltaQK,
                  attnOutput);
     return attnOutput;
 }

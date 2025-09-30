@@ -40,9 +40,14 @@ REGISTER_POLICY(LAYOUT_TYPE::JAGGED, std::make_shared<TilingPolicyJagged>());
 bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
 {
     int64_t batchSize;
-    int64_t headNum;
-    int64_t headDIM;
-    int64_t seqLens;
+    int64_t seqLensQ;
+    int64_t headNumQ;
+    int64_t headDimQ;
+    int64_t maxSeqLensQ;
+    int64_t seqLensK;
+    int64_t headNumK;
+    int64_t headDimK;
+    int64_t maxSeqLensK;
 
     auto seqOffsetQShape = context->GetOptionalInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
     batchSize = seqOffsetQShape.GetDim(0) - 1;
@@ -56,23 +61,35 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
 
     OPS_CHECK(qShape.GetDimNum() != JAGGED_DIM_NUM,
               OPS_LOG_E("", "Jagged QKV should have 3 dimensions, but get %d", qShape.GetDimNum()), return false);
-    OPS_CHECK(!(qShape == kShape && qShape == vShape), OPS_LOG_E("", "Q, K, V shape mismatch"), return false);
 
     // Q: [bs, n, d]
-    headNum = qShape.GetDim(1);
-    headDIM = qShape.GetDim(2);
-    seqLens = tiling.get_maxSeqLen();
+    seqLensQ = qShape.GetDim(0);
+    headNumQ = qShape.GetDim(1);
+    headDimQ = qShape.GetDim(2);
+    maxSeqLensQ = tiling.get_maxSeqLenq();
+    // K: [bs, n, d]
+    seqLensK = kShape.GetDim(0);
+    headNumK = kShape.GetDim(1);
+    headDimK = kShape.GetDim(2);
+    maxSeqLensK = tiling.get_maxSeqLenk();
 
     tiling.set_batchSize(batchSize);
-    tiling.set_headNum(headNum);
-    tiling.set_dim(headDIM);
-    tiling.set_seqLen(seqLens);
+    tiling.set_headNum(headNumQ);
+    tiling.set_dim(headDimQ);
+    tiling.set_seqLen(maxSeqLensQ);
 
-    OPS_CHECK(!GeneralShapeCheck(batchSize, seqLens, headNum, headDIM),
-              OPS_LOG_E("", "Jagged Shape Check failed"), return false);
+    OPS_CHECK(kShape != vShape, OPS_LOG_E("", "K, V shape mismatch"), return false);
+    OPS_CHECK(seqLensQ > seqLensK, OPS_LOG_E("", "Q, K, V seqlen mismatch"), return false);
+    OPS_CHECK(headNumQ != headNumK, OPS_LOG_E("", "Q, K, V headNum Shape Check failed"), return false);
+    OPS_CHECK(headDimQ != headDimK, OPS_LOG_E("", "Q, K, V headDIM Shape Check failed"), return false);
+    OPS_CHECK(!GeneralShapeCheck(batchSize, maxSeqLensQ, headNumQ, headDimQ),
+              OPS_LOG_E("", "Q Jagged Shape Check failed"), return false);
+    OPS_CHECK(!GeneralShapeCheck(batchSize, maxSeqLensK, headNumK, headDimK),
+              OPS_LOG_E("", "K Jagged Shape Check failed"), return false);
 
     uint32_t masktype = tiling.get_maskType();
-    if (masktype == 0) {
+    auto *isDeltaQK = context->GetAttrs()->GetAttrPointer<uint32_t>(ATTR_INDEX_T::IS_DELTA_QK_INDEX);
+    if (masktype == 0 && !*isDeltaQK) {
         auto numCtxShape = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX)->GetStorageShape();
         auto numTargetShape = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_TARGET_INDEX)->GetStorageShape();
         int64_t batchSizeCtx = numCtxShape.GetDim(0);
@@ -80,6 +97,9 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
                   OPS_LOG_E("", "The length of num_context expect %lld, but get %lld", batchSize, batchSizeCtx),
                   return false);
         OPS_CHECK(numCtxShape != numTargetShape, OPS_LOG_E("", "num_context, num_target shape mismatch"), return false);
+        OPS_CHECK(numCtxShape.GetDimNum() != CONTEXT_DIM_NUM,
+                  OPS_LOG_E("", "numCtx and numTarget should have %d dimensions, but get %d", CONTEXT_DIM_NUM,
+                  numCtxShape.GetDimNum()), return false);
     }
 
     return true;
