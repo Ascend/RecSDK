@@ -281,6 +281,64 @@ public:
         }
     }
 
+    __aicore__ inline void DoQKMatmulImpl(int64_t left, int64_t right, int64_t out)
+    {
+        this->qkMatmul.SetTensorA(this->q[left]);
+        this->qkMatmul.SetTensorB(this->k[right], true);
+
+        this->qkMatmul.template IterateAll<false>(this->qkTemp[out], 0, false, true);
+    }
+
+    __aicore__ inline void DoGVMatmulImpl(int64_t left, int64_t right, int64_t out)
+    {
+        this->qkMatmul.SetTensorA(this->grad[left]);
+        this->qkMatmul.SetTensorB(this->v[right], true);
+
+        this->qkMatmul.template IterateAll<false>(this->gvTemp[out], 0, false, true);
+    }
+
+    __aicore__ inline void DoQGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
+    {
+        if (this->isNormal || this->enableBias) {
+            this->qGradMatmul.SetTensorA(this->attnBiasGrad[left]);
+            this->qGradMatmul.SetTensorB(this->k[right]);
+            uint8_t enAtomic = isNew ? 0 : 1;
+            this->qGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], enAtomic, false, true);
+        } else {
+            this->qGradMatmul.SetTensorA(this->biasGradTemp[left]);
+            this->qGradMatmul.SetTensorB(this->k[right]);
+            uint8_t enAtomic = 1;
+            this->qGradMatmul.template IterateAll<false>(this->qGradAccumTemp[out], enAtomic, false, true);
+        }
+    }
+
+    __aicore__ inline void DoKGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
+    {
+        if (this->isNormal || this->enableBias) {
+            this->kGradMatmul.SetTensorA(this->attnBiasGrad[left], true);
+        } else {
+            this->kGradMatmul.SetTensorA(this->biasGradTemp[left], true);
+        }
+        
+        this->kGradMatmul.SetTensorB(this->q[right]);
+        if (isNew) {
+            this->kGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], 0, false, true);
+        } else {
+            this->kGradMatmul.template IterateAll<false>(this->kGradAccumTemp[out], 1, false, true);
+        }
+    }
+
+    __aicore__ inline void DoVGradMatmulImpl(int64_t left, int64_t right, int64_t out, bool isNew)
+    {
+        this->vGradMatmul.SetTensorA(this->scoreTemp[left], true);
+        this->vGradMatmul.SetTensorB(this->grad[right]);
+        if (isNew) {
+            this->vGradMatmul.template IterateAll<false>(this->vGradAccumTemp[out], 0, false, true);
+        } else {
+            this->vGradMatmul.template IterateAll<false>(this->vGradAccumTemp[out], 1, false, true);
+        }
+    }
+
     GM_ADDR curAICWorkspace;
 
     // Shape
