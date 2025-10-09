@@ -22,12 +22,10 @@ from test_common_utils import get_chip, allclose, MaskType
 
 
 def generate_tensor(batch_size, max_seq_len, num_heads, attention_dim, data_type, mask_type):
-    total_num = batch_size * max_seq_len * num_heads * attention_dim
-
-    q = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim)
-    k = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim)
-    v = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim)
-    rel_attn_bias = torch.rand(batch_size, num_heads, max_seq_len, max_seq_len)
+    q = torch.rand(batch_size, max_seq_len, num_heads, attention_dim).uniform_(-1, 1)
+    k = torch.rand(batch_size, max_seq_len, num_heads, attention_dim).uniform_(-1, 1)
+    v = torch.rand(batch_size, max_seq_len, num_heads, attention_dim).uniform_(-1, 1)
+    rel_attn_bias = torch.rand(batch_size, num_heads, max_seq_len, max_seq_len).uniform_(-1, 1)
     if get_chip():
         invalid_attn_mask = torch.randint(0, 2, (max_seq_len, max_seq_len))
         invalid_attn_mask = torch.tril(invalid_attn_mask)
@@ -36,8 +34,11 @@ def generate_tensor(batch_size, max_seq_len, num_heads, attention_dim, data_type
         invalid_attn_mask = 1 - torch.triu(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len), diagonal=1)
     else:
         invalid_attn_mask = torch.randint(0, 2, size=(batch_size, num_heads, max_seq_len, max_seq_len))
-    return q.to(data_type).to("npu"), k.to(data_type).to("npu"), v.to(data_type).to("npu"), rel_attn_bias.to(
-        data_type).to("npu"), invalid_attn_mask.to(data_type).to("npu")
+    return (q.to(data_type).to("npu"),
+            k.to(data_type).to("npu"),
+            v.to(data_type).to("npu"),
+            rel_attn_bias.to(data_type).to("npu"),
+            invalid_attn_mask.to(data_type).to("npu"))
 
 
 class TestHstuDenseDemo:
@@ -96,9 +97,9 @@ class TestHstuDenseDemo:
         torch.npu.synchronize()
 
         if data_type == torch.bfloat16:
-            res = allclose(output, golden, 1e-2, 1e-2)
-        elif data_type == torch.float16:
             res = allclose(output, golden, 1e-3, 1e-3)
+        elif data_type == torch.float16:
+            res = allclose(output, golden, 5e-3, 5e-3)
         else:
             res = allclose(output, golden, 1e-4, 1e-4)
         assert res
