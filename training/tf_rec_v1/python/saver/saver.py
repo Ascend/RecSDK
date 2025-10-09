@@ -175,13 +175,7 @@ class Saver(object):
         directory, base_name = os.path.split(save_path)
         save_path_prefix = SAVE_SPARSE_PATH_PREFIX if not save_delta else SAVE_DELTA_SPARSE_PATH_PREFIX
 
-        if global_step:
-            if not isinstance(global_step, compat.integral_types):
-                global_step = int(sess.run(global_step))
-            ckpt_name = f"{save_path_prefix}-{base_name}-{global_step}"
-        else:
-            ckpt_name = f"{save_path_prefix}-{base_name}"
-
+        ckpt_name = self._build_checkpoint_name(save_path_prefix, base_name, global_step, sess)
         saving_path = os.path.join(directory, ckpt_name)
         self.config_instance.train_params_config.sparse_dir = saving_path
 
@@ -289,6 +283,14 @@ class Saver(object):
             dump_optimizer_data_dict = dump_data_dict.get("optimizer")
             for optimizer_name, dump_optimizer_data in dump_optimizer_data_dict.items():
                 save_optimizer_state_data(root_dir, table_name, optimizer_name, dump_optimizer_data, self.rank_id)
+
+    def _build_checkpoint_name(self, save_path_prefix, base_name, global_step, sess):
+        if not global_step:
+            return f"{save_path_prefix}-{base_name}"
+            
+        if not isinstance(global_step, compat.integral_types):
+            global_step = int(sess.run(global_step))
+        return f"{save_path_prefix}-{base_name}-{global_step}"
 
     def merge_sparse_file(self, root_dir: str, table_name: str):
         """
