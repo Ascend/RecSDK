@@ -72,6 +72,7 @@ num_server=1 # 训练节点数
 num_process=$((${num_server} * ${local_rank_size})) # 训练总的进程数，等于使用的NPU卡的总数
 
 export HCCL_CONNECT_TIMEOUT=1200 # HCCL集合通信 建链超时时间，取值范围[120,7200]
+export HCCL_OP_RETRY_ENABLE="L0:0, L1:0, L2:0"
 export PYTHONPATH=${so_path}:${common_so_path}:$PYTHONPATH # 环境python安装路径
 export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6 # GNU OpenMP动态库路径. 不应该使用LD_PRELOAD这种方式加载！预加载GNU C++标准库规避TLS段错误问题
 export LD_LIBRARY_PATH=${so_path}:${common_so_path}:/usr/local/lib:$LD_LIBRARY_PATH
