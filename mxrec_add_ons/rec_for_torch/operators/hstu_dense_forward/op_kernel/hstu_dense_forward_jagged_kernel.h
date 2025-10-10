@@ -29,7 +29,7 @@ __aicore__ inline int64_t GetBatchSizeFromJaggedOffset(GlobalTensor<oType>& seqO
     if (seqOffsetLens <= 0) {
         return 0;
     }
-    
+
     // 二分法找出有效batch
     int64_t maxValue = seqOffsetData.GetValue(seqOffsetLens - 1);
     int32_t left = 0;
