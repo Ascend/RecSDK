@@ -42,6 +42,7 @@ export USE_DP=0                 # 0：关闭DP；1：开启DP
 echo "CACHE_MODE:${CACHE_MODE}"
 
 export HCCL_CONNECT_TIMEOUT=1200
+export HCCL_OP_RETRY_ENABLE="L0:0, L1:0, L2:0"
 export DLRM_CRITEO_DATA_PATH=${dlrm_criteo_data_path}
 export PYTHONPATH=${rec_package_path}:${so_path}:${common_so_path}:${project_root}:$PYTHONPATH
 if [ "$(uname -m)" == "aarch64" ]; then
