@@ -120,10 +120,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
 
     at::Tensor attnBiasGradOutput;
     if (denseAttnBias.defined()) {
-        attnBiasGradOutput = at::empty_like(denseAttnBias);
+        attnBiasGradOutput = at::zeros_like(denseAttnBias);
     } else {
         auto biasGradSeqLen = (seqLen + 256 - 1) / 256 * 256;  // get 256 bit aligned biasGrad space
-        attnBiasGradOutput = at::empty({batchSize, headNum, biasGradSeqLen, biasGradSeqLen},
+        attnBiasGradOutput = at::zeros({batchSize, headNum, biasGradSeqLen, biasGradSeqLen},
                                        at::device(denseGrad.device()).dtype(denseGrad.dtype()));
     }
     auto _acSeqOffset = at::Tensor();
