@@ -101,10 +101,10 @@ def generate_jagged_tensor(batch_size, max_seq_len, num_heads, attention_dim):
     return jagged_tensor, seq_offsets, total_sequences
 
 
-@pytest.mark.parametrize("batch_size", [2, 4])
-@pytest.mark.parametrize("max_seq_len", [128, 256])
-@pytest.mark.parametrize("num_heads", [2, 8])
-@pytest.mark.parametrize("attention_dim", [32])
+@pytest.mark.parametrize("batch_size", [2, 4, 1000])
+@pytest.mark.parametrize("max_seq_len", [128, 256, 1024])
+@pytest.mark.parametrize("num_heads", [2, 8, 24])
+@pytest.mark.parametrize("attention_dim", [32, 64])
 @pytest.mark.parametrize("use_list_max_lengths", [True, False])
 @pytest.mark.parametrize("is_mxrec", [True, False])
 def test_jagged_to_padded_dense(batch_size,
