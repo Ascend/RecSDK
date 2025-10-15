@@ -161,7 +161,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
 
     at::Tensor attnBiasGradOutput;
     if (denseAttnBias.defined()) {
-        attnBiasGradOutput = at::empty_like(denseAttnBias);
+        attnBiasGradOutput = at::zeros_like(denseAttnBias);
     } else {
         attnBiasGradOutput = at::Tensor();
     }
