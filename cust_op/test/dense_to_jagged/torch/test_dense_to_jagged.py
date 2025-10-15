@@ -28,9 +28,9 @@ DEVICE = "npu:0"
 logging.getLogger().setLevel(logging.INFO)
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
-DENSE_DIM0 = [128, 40] # 测试不同batch大小
-DENSE_DIM1 = [210]     # 固定特征维度1
-DENSE_DIM2 = [1, 8]    # 固定特征维度2
+DENSE_DIM0 = [128, 40, 1000] # 测试不同batch大小
+DENSE_DIM1 = [210, 1024]     # 固定特征维度1
+DENSE_DIM2 = [1, 8, 1536]    # 固定特征维度2
 DIM_LIST = list(itertools.product(DENSE_DIM0, DENSE_DIM1, DENSE_DIM2))
 
 DENSE_DATATYPE = [torch.float32, torch.int64] # 测试不同数据类型
