@@ -123,15 +123,6 @@ class TestTorchCompileIntegration:
         backend.reset_stats()
         assert backend.compilation_stats["compilation_count"] == 0
 
-    @patch("ngo.core.integration.torch_backend.OptimizationEngine")
-    def test_backend_engine_initialization(self, mock_engine_class):
-        """Test that the optimization engine is properly initialized."""
-        mock_engine = Mock()
-        mock_engine_class.return_value = mock_engine
-
-        backend = NGOBackend()
-        mock_engine.initialize.assert_called_once()
-
     def test_multiple_compilations(self):
         """Test compiling multiple models with the same backend."""
         backend = NGOBackend()

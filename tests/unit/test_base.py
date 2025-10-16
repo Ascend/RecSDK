@@ -13,11 +13,13 @@
 # limitations under the License.
 
 """
-基础优化组件的单元测试。
+Unit tests for base optimization components.
 
-测试 OptimizerComponent 抽象基类和 OptimizationContext 类。
+Tests the OptimizerComponent abstract base class and OptimizationContext class.
 """
 
+import logging
+import time
 from unittest.mock import Mock, patch
 
 import pytest
@@ -32,7 +34,7 @@ from ngo.core.base import (
 
 
 class MockOptimizerComponent(OptimizerComponent):
-    """用于测试的 OptimizerComponent 模拟实现。"""
+    """Mock implementation of OptimizerComponent for testing."""
 
     def __init__(self, metadata: ComponentMetadata):
         super().__init__(metadata)
@@ -40,18 +42,18 @@ class MockOptimizerComponent(OptimizerComponent):
         self.executed = False
 
     def initialize(self) -> None:
-        """初始化模拟组件。"""
+        """Initialize the mock component."""
         super().initialize()
         self.initialized = True
 
     def execute(self, context: OptimizationContext) -> str:
-        """执行模拟组件。"""
+        """Execute the mock component."""
         return super().execute(context)
 
     def _execute_impl(self, context: OptimizationContext) -> str:
-        """执行模拟组件。"""
+        """Execute the mock component."""
         self.executed = True
-        return f"模拟执行结果：{self.metadata.name}"
+        return f"Mock execution result for {self.metadata.name}"
 
 
 class TestComponentMetadata:

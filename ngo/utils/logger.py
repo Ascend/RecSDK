@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""NGO统一日志模块."""
+"""
+NGO统一日志模块 - 并发安全版本。
+"""
 
 import inspect
 import logging
 import logging.handlers
 import sys
 import threading
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -60,12 +63,16 @@ class NGOFormatter(logging.Formatter):
 
 
 class NGOLogger:
-    """NGO统一日志管理器."""
+    """NGO统一日志管理器 - 并发安全版本."""
 
     _instance: Optional["NGOLogger"] = None
     _lock = threading.Lock()
+    _initialized = False
+    _config_lock = threading.RLock()
     _loggers: Dict[str, logging.Logger] = {}
-    _loggers_lock = threading.RLock()  # 使用可重入锁，因为可能嵌套调用
+    _loggers_lock = threading.RLock()
+    _handlers: Dict[str, logging.Handler] = {}
+    _handlers_lock = threading.RLock()
 
     def __new__(cls) -> "NGOLogger":
         """线程安全的单例模式."""
@@ -79,9 +86,9 @@ class NGOLogger:
     def __init__(self):
         """初始化日志管理器."""
         # 使用锁确保初始化只执行一次
-        if not hasattr(self, "_initialized"):
+        if not self._initialized:
             with self._lock:
-                if not hasattr(self, "_initialized"):
+                if not self._initialized:
                     self._initialized = True
                     self._config = {}
                     self._load_config()
@@ -89,7 +96,7 @@ class NGOLogger:
 
     def _load_config(self):
         """加载日志配置."""
-        # 从环境变量加载配置
+        # 从配置字典加载配置
         self.log_level = self._config.get("level", "INFO")
         self.log_file = self._config.get("file", "ngo.log")
         self.max_file_size = self._config.get("max_file_size", 10 * 1024 * 1024)  # 10MB
@@ -115,6 +122,8 @@ class NGOLogger:
             console_handler.setLevel(getattr(logging, self.log_level.upper()))
             console_handler.setFormatter(formatter)
             root_logger.addHandler(console_handler)
+            with self._handlers_lock:
+                self._handlers["console"] = console_handler
 
         # 文件处理器
         if self.enable_file:
@@ -132,9 +141,15 @@ class NGOLogger:
             file_handler.setLevel(getattr(logging, self.log_level.upper()))
             file_handler.setFormatter(formatter)
             root_logger.addHandler(file_handler)
+            with self._handlers_lock:
+                self._handlers["file"] = file_handler
+
+        # 禁止向上传播
+        root_logger.propagate = False
 
         # 存储根日志记录器
-        self._loggers["ngo"] = root_logger
+        with self._loggers_lock:
+            self._loggers["ngo"] = root_logger
 
     def get_logger(self, name: str) -> logging.Logger:
         """获取指定名称的日志记录器.
@@ -155,10 +170,31 @@ class NGOLogger:
                 logger = logging.getLogger(full_name)
                 logger.setLevel(getattr(logging, self.log_level.upper()))
 
-                # 继承根日志记录器的处理器
+                # 为每个日志器创建独立的处理器副本
                 logger.handlers = []
-                for handler in self._loggers["ngo"].handlers:
-                    logger.addHandler(handler)
+
+                with self._handlers_lock:
+                    for handler_name, handler in self._handlers.items():
+                        # 创建处理器的深拷贝
+                        try:
+                            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.handlers.RotatingFileHandler):
+                                new_handler = logging.StreamHandler(sys.stdout)
+                            elif isinstance(handler, logging.handlers.RotatingFileHandler):
+                                new_handler = logging.handlers.RotatingFileHandler(
+                                    handler.baseFilename,
+                                    maxBytes=handler.maxBytes,
+                                    backupCount=handler.backupCount,
+                                    encoding=handler.encoding,
+                                )
+                            else:
+                                logging.warning(f"Unsupported handler type: {type(handler)}")
+                                continue
+                            # 设置处理器属性
+                            new_handler.setLevel(handler.level)
+                            new_handler.setFormatter(handler.formatter)
+                            logger.addHandler(new_handler)
+                        except Exception as e:
+                            logging.error(f"Failed to create handler: {e}")
 
                 # 禁止向上传播
                 logger.propagate = False
@@ -174,24 +210,47 @@ class NGOLogger:
             config: 新的配置字典
         """
         # 使用锁保护配置更新操作
-        with self._loggers_lock:
+        with self._config_lock:
             # 更新配置
-            self._config = config
+            self._config.update(config)
 
             # 重新加载配置
             self._load_config()
+
+            # 清理现有处理器
+            with self._handlers_lock:
+                for handler in self._handlers.values():
+                    handler.close()
+                self._handlers.clear()
 
             # 重新设置根日志记录器
             self._setup_root_logger()
 
             # 更新所有已创建的日志记录器
-            for name, logger in self._loggers.items():
-                if name != "ngo":  # 跳过根日志记录器
-                    logger.setLevel(getattr(logging, self.log_level.upper()))
-                    # 更新处理器
-                    logger.handlers.clear()
-                    for handler in self._loggers["ngo"].handlers:
-                        logger.addHandler(handler)
+            with self._loggers_lock:
+                for name, logger in self._loggers.items():
+                    if name != "ngo":  # 跳过根日志记录器
+                        logger.setLevel(getattr(logging, self.log_level.upper()))
+                        # 更新处理器
+                        logger.handlers.clear()
+                        with self._handlers_lock:
+                            for handler_name, handler in self._handlers.items():
+                                # 创建处理器的深拷贝
+                                if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.handlers.RotatingFileHandler):
+                                    new_handler = logging.StreamHandler(sys.stdout)
+                                elif isinstance(handler, logging.handlers.RotatingFileHandler):
+                                    new_handler = logging.handlers.RotatingFileHandler(
+                                        handler.baseFilename,
+                                        maxBytes=handler.maxBytes,
+                                        backupCount=handler.backupCount,
+                                        encoding=handler.encoding,
+                                    )
+                                else:
+                                    continue
+
+                                new_handler.setLevel(handler.level)
+                                new_handler.setFormatter(handler.formatter)
+                                logger.addHandler(new_handler)
 
     def get_current_logger(self) -> logging.Logger:
         """获取当前调用者的日志记录器.
@@ -204,6 +263,7 @@ class NGOLogger:
         if frame is None:
             return self.get_logger("unknown")
 
+        # 跳过几个调用栈
         caller_frame = frame.f_back
         if caller_frame is None:
             return self.get_logger("unknown")
@@ -212,7 +272,7 @@ class NGOLogger:
         if caller_frame is None:
             return self.get_logger("unknown")
 
-        caller_frame = caller_frame.f_back  # 跳过几个调用栈
+        caller_frame = caller_frame.f_back
         if caller_frame is None:
             return self.get_logger("unknown")
 
@@ -228,7 +288,6 @@ class NGOLogger:
             return self.get_logger(module_name)
         else:
             return self.get_logger("unknown")
-
 
 # 全局日志管理器实例
 _logger_manager = NGOLogger()
