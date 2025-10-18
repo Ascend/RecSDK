@@ -240,6 +240,8 @@ class PatternManager:
                 pattern_info.failure_count += 1
                 self._logger.warning(f"Pattern {pattern_id} execution had failures")
 
+            # Reset state back to INITIALIZED after successful execution
+            self._state = PatternManagerState.INITIALIZED
             return results
 
         except Exception as e:
@@ -250,6 +252,9 @@ class PatternManager:
             pattern_info.last_execution_time = execution_time
 
             self._logger.error(f"Pattern {pattern_id} execution failed: {e}")
+
+            # Reset state back to INITIALIZED even after exception
+            self._state = PatternManagerState.INITIALIZED
             raise RuntimeError(f"Pattern execution failed: {e}") from e
 
     def execute_all_patterns(self, graph_module: GraphModule) -> Dict[str, List[StrategyExecutionResult]]:

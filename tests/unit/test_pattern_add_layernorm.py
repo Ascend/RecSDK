@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import operator
 from torch.fx import symbolic_trace, GraphModule
 
 from ngo.patterns.add_layernorm import AddLayerNormPattern, AddLayerNormStrategy
@@ -50,6 +51,24 @@ class SimpleModelWithAddLayerNorm(nn.Module):
         x = F.relu(x)
         x = x + residual  # Add operation
         x = self.layer_norm(x)  # LayerNorm operation
+        return x
+
+
+class SimpleModelWithFunctionalLayerNorm(nn.Module):
+    """使用功能性LayerNorm的测试模型，用于测试融合方法。"""
+
+    def __init__(self):
+        super().__init__()
+        self.linear = nn.Linear(10, 5)
+
+    def forward(self, x):
+        x = self.linear(x)
+        # Add + LayerNorm 模式
+        residual = x
+        x = F.relu(x)
+        x = x + residual  # Add operation
+        # 使用位置参数格式以匹配源代码期望
+        x = F.layer_norm(x, (5,), None, None, 1e-5)  # (input, normalized_shape, weight, bias, eps)
         return x
 
 
@@ -441,6 +460,255 @@ class TestAddLayerNormIntegration(unittest.TestCase):
             self.assertIsInstance(result, StrategyExecutionResult)
         except Exception:
             pass  # 对于无效输入，异常是可接受的
+
+
+class TestAddLayerNormEdgeCases(unittest.TestCase):
+    """测试 AddLayerNorm 的边界情况和复杂场景。"""
+
+    def setUp(self):
+        """设置测试夹具。"""
+        self.pattern = AddLayerNormPattern()
+        self.strategy = AddLayerNormStrategy()
+
+    def test_pattern_with_multiple_users(self):
+        """测试具有多个用户的Add节点。"""
+        model = SimpleModelWithAddLayerNorm()
+        graph_module = symbolic_trace(model)
+
+        # 查找add节点
+        add_node = None
+        for node in graph_module.graph.nodes:
+            if node.op == "call_function" and (node.target == torch.add or
+                                               node.target == torch.Tensor.__add__ or
+                                               'add' in str(node.target)):
+                add_node = node
+                break
+
+        self.assertIsNotNone(add_node)
+
+        # 模拟add节点有多个用户
+        original_users = add_node.users
+        mock_user1 = Mock()
+        mock_user1.op = "call_function"
+        mock_user1.target = torch.relu
+        mock_user2 = Mock()
+        mock_user2.op = "call_module"
+        mock_user2.target = "test_module"
+
+        # 临时修改users属性
+        add_node.users = [mock_user1, mock_user2]
+
+        try:
+            # 查找layernorm节点
+            layernorm_node = None
+            for node in graph_module.graph.nodes:
+                if node.op == "call_module" and "layer_norm" in str(node.target):
+                    layernorm_node = node
+                    break
+
+            if layernorm_node:
+                result = self.pattern._is_safe_to_fuse(add_node, layernorm_node, graph_module)
+                self.assertIsInstance(result, bool)
+        finally:
+            # 恢复原始users
+            add_node.users = original_users
+
+    def test_pattern_with_built_in_add(self):
+        """测试使用内置add函数的模式。"""
+        class ModelWithBuiltInAdd(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = nn.Linear(10, 5)
+                self.layer_norm = nn.LayerNorm(5)
+
+            def forward(self, x):
+                x = self.linear(x)
+                # 使用内置add函数
+                x = operator.add(x, x)
+                x = self.layer_norm(x)
+                return x
+
+        model = ModelWithBuiltInAdd()
+        graph_module = symbolic_trace(model)
+
+        result = self.pattern.match(graph_module)
+        self.assertIsInstance(result, PatternMatchResult)
+
+    def test_pattern_with_module_add(self):
+        """测试使用模块add操作的模式。"""
+        # 这个测试简化处理，因为实际的add模块很少见
+        # 只验证match方法能正常处理各种输入
+        model = SimpleModelWithAddLayerNorm()
+        graph_module = symbolic_trace(model)
+
+        result = self.pattern.match(graph_module)
+        self.assertIsInstance(result, PatternMatchResult)
+
+    def test_strategy_with_missing_add_node(self):
+        """测试策略处理缺失add节点的情况。"""
+        model = SimpleModelWithAddLayerNorm()
+        graph_module = symbolic_trace(model)
+
+        # 查找layernorm节点
+        layernorm_node = None
+        for node in graph_module.graph.nodes:
+            if node.op == "call_module" and "layer_norm" in str(node.target):
+                layernorm_node = node
+                break
+
+        self.assertIsNotNone(layernorm_node)
+
+        # 测试找不到add节点的情况 - 使用正确的logger属性路径
+        with patch.object(self.strategy, '_find_add_node', return_value=None):
+            with patch.object(self.strategy, '_logger') as mock_logger:
+                result = self.strategy.execute(graph_module, PatternMatchResult(
+                    matched=True, matched_nodes=[layernorm_node]
+                ))
+                self.assertIsInstance(result, StrategyExecutionResult)
+                # 验证警告日志被调用
+                mock_logger.warning.assert_called()
+
+    def test_strategy_fusion_with_unavailable_npu(self):
+        """测试NPU不可用时的融合处理。"""
+        # 由于FX图结构的复杂性，我们使用更简单的方法测试警告逻辑
+        # 创建具有正确参数结构的模拟节点
+        from unittest.mock import Mock
+
+        # 模拟具有正确参数结构的节点
+        mock_add_node = Mock()
+        mock_add_node.args = [Mock(), Mock()]  # input, other
+        mock_add_node.op = "call_function"
+
+        mock_layernorm_node = Mock()
+        mock_layernorm_node.args = [Mock(), Mock(), Mock(), Mock(), Mock(), Mock()]  # input, normalized_shape, weight, bias, eps
+        mock_layernorm_node.op = "call_function"
+
+        mock_graph_module = Mock()
+
+        # 模拟NPU不可用
+        with patch('ngo.patterns.add_layernorm.has_torch_npu', return_value=False):
+            with patch.object(self.strategy, '_logger') as mock_logger:
+                result = self.strategy._fuse_add_layernorm(mock_add_node, mock_layernorm_node, mock_graph_module)
+                self.assertFalse(result)
+                # 验证警告日志被调用
+                mock_logger.warning.assert_called_with(
+                    "torch_npu.npu_add_layer_norm not available, skipping fusion"
+                )
+
+    def test_strategy_fusion_with_missing_npu_function(self):
+        """测试torch_npu缺少npu_add_layer_norm函数时的处理。"""
+        # 由于FX图结构的复杂性，我们使用更简单的方法测试警告逻辑
+        # 创建具有正确参数结构的模拟节点
+        from unittest.mock import Mock
+
+        # 模拟具有正确参数结构的节点
+        mock_add_node = Mock()
+        mock_add_node.args = [Mock(), Mock()]  # input, other
+        mock_add_node.op = "call_function"
+
+        mock_layernorm_node = Mock()
+        mock_layernorm_node.args = [Mock(), Mock(), Mock(), Mock(), Mock()]  # input, normalized_shape, weight, bias, eps
+        mock_layernorm_node.op = "call_function"
+
+        mock_graph_module = Mock()
+
+        # 模拟torch_npu可用但缺少npu_add_layer_norm函数
+        # 使用一个简单的对象，确保没有npu_add_layer_norm属性
+        class MockTorchNPU:
+            pass
+
+        mock_torch_npu = MockTorchNPU()
+        # 确保没有npu_add_layer_norm属性
+        self.assertFalse(hasattr(mock_torch_npu, 'npu_add_layer_norm'))
+
+        # 使用更直接的patch方式
+        with patch('ngo.patterns.add_layernorm.has_torch_npu', return_value=True):
+            with patch('ngo.patterns.add_layernorm.torch_npu', mock_torch_npu):
+                with patch.object(self.strategy, '_logger') as mock_logger:
+                    result = self.strategy._fuse_add_layernorm(mock_add_node, mock_layernorm_node, mock_graph_module)
+                    self.assertFalse(result)
+                    # 验证警告日志被调用
+                    mock_logger.warning.assert_called_with(
+                        "torch_npu.npu_add_layer_norm not available, skipping fusion"
+                    )
+
+    def test_is_layernorm_operation_with_functional(self):
+        """测试功能性LayerNorm操作检测。"""
+        class ModelWithFunctionalLayerNorm(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = nn.Linear(10, 5)
+
+            def forward(self, x):
+                x = self.linear(x)
+                # 使用功能性LayerNorm
+                x = F.layer_norm(x, normalized_shape=(5,))
+                return x
+
+        model = ModelWithFunctionalLayerNorm()
+        graph_module = symbolic_trace(model)
+
+        # 查找LayerNorm节点
+        layernorm_node = None
+        for node in graph_module.graph.nodes:
+            if node.op == "call_function" and node.target == F.layer_norm:
+                layernorm_node = node
+                break
+
+        self.assertIsNotNone(layernorm_node)
+        self.assertTrue(self.pattern._is_layernorm_operation(layernorm_node, graph_module))
+
+    def test_is_layernorm_operation_with_module(self):
+        """测试模块LayerNorm操作检测。"""
+        model = SimpleModelWithAddLayerNorm()
+        graph_module = symbolic_trace(model)
+
+        # 查找LayerNorm节点
+        layernorm_node = None
+        for node in graph_module.graph.nodes:
+            if node.op == "call_module" and "layer_norm" in str(node.target):
+                layernorm_node = node
+                break
+
+        if layernorm_node:
+            result = self.pattern._is_layernorm_operation(layernorm_node, graph_module)
+            self.assertIsInstance(result, bool)
+
+    def test_pattern_with_complex_safe_to_fuse(self):
+        """测试复杂的安全融合检查。"""
+        model = ComplexModelWithMultiplePatterns()
+        graph_module = symbolic_trace(model)
+
+        # 查找add和layernorm节点
+        add_node = None
+        layernorm_node = None
+
+        for node in graph_module.graph.nodes:
+            if node.op == "call_function" and (node.target == torch.add or
+                                               node.target == torch.Tensor.__add__ or
+                                               'add' in str(node.target)):
+                add_node = node
+            elif node.op == "call_module" and "layer_norm" in str(node.target):
+                layernorm_node = node
+                break
+
+        if add_node and layernorm_node:
+            result = self.pattern._is_safe_to_fuse(add_node, layernorm_node, graph_module)
+            self.assertIsInstance(result, bool)
+
+    def test_pattern_availability_edge_cases(self):
+        """测试模式可用性的边界情况。"""
+        # 测试torch_npu为None的情况
+        with patch('ngo.utils.optional_deps.has_torch_npu', return_value=True):
+            with patch('ngo.utils.optional_deps.torch_npu', None):
+                result = self.pattern._is_available()
+                self.assertIsInstance(result, bool)
+
+        # 测试torch_npu为非对象的情况
+        with patch('ngo.utils.optional_deps.has_torch_npu', return_value=True):
+            with patch('ngo.utils.optional_deps.torch_npu', "not_a_module"):
+                result = self.pattern._is_available()
+                self.assertIsInstance(result, bool)
 
 
 if __name__ == "__main__":

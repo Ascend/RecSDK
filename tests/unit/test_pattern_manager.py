@@ -269,6 +269,311 @@ class TestPatternManager(unittest.TestCase):
         self.assertIn("PatternManager", repr_repr)
         self.assertIn("state='initialized'", repr_repr)
 
+    # 以下测试用例用于提高覆盖率
+
+    def test_initialize_already_initialized(self):
+        """测试重复初始化 PatternManager。"""
+        self.manager.initialize()
+        with self.assertRaises(RuntimeError) as context:
+            self.manager.initialize()
+        self.assertIn("already initialized", str(context.exception))
+
+    def test_initialize_failure(self):
+        """测试初始化失败的情况。"""
+        # 模拟 OptimizationContext 创建失败
+        with patch('ngo.patterns.manager.OptimizationContext') as mock_context:
+            mock_context.side_effect = Exception("Context creation failed")
+
+            with self.assertRaises(RuntimeError) as context:
+                self.manager.initialize()
+            self.assertIn("Initialization failed", str(context.exception))
+            self.assertEqual(self.manager._state, PatternManagerState.ERROR)
+
+    def test_enable_pattern_success(self):
+        """测试成功启用Pattern。"""
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_registration = Mock()
+            mock_registration.enabled = False
+            mock_get_reg.return_value = mock_registration
+
+            result = self.manager.enable_pattern("test_pattern")
+
+            self.assertTrue(result)
+            self.assertTrue(mock_registration.enabled)
+
+    def test_enable_pattern_already_enabled(self):
+        """测试启用已启用的Pattern。"""
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_registration = Mock()
+            mock_registration.enabled = True  # 已经启用
+            mock_get_reg.return_value = mock_registration
+
+            result = self.manager.enable_pattern("test_pattern")
+
+            self.assertTrue(result)
+            # 应该保持启用状态
+            self.assertTrue(mock_registration.enabled)
+
+    def test_enable_pattern_not_found(self):
+        """测试启用不存在的Pattern。"""
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_get_reg.return_value = None  # 未找到
+
+            result = self.manager.enable_pattern("nonexistent_pattern")
+
+            self.assertFalse(result)
+
+    def test_disable_pattern_success(self):
+        """测试成功禁用Pattern。"""
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_registration = Mock()
+            mock_registration.enabled = True
+            mock_get_reg.return_value = mock_registration
+
+            result = self.manager.disable_pattern("test_pattern")
+
+            self.assertTrue(result)
+            self.assertFalse(mock_registration.enabled)
+
+    def test_disable_pattern_already_disabled(self):
+        """测试禁用已禁用的Pattern。"""
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_registration = Mock()
+            mock_registration.enabled = False  # 已经禁用
+            mock_get_reg.return_value = mock_registration
+
+            result = self.manager.disable_pattern("test_pattern")
+
+            self.assertTrue(result)
+            # 应该保持禁用状态
+            self.assertFalse(mock_registration.enabled)
+
+    def test_disable_pattern_not_found(self):
+        """测试禁用不存在的Pattern。"""
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_get_reg.return_value = None  # 未找到
+
+            result = self.manager.disable_pattern("nonexistent_pattern")
+
+            self.assertFalse(result)
+
+    def test_execute_pattern_disabled(self):
+        """测试执行已禁用的Pattern。"""
+        self.manager.initialize()
+
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_registration = Mock()
+            mock_registration.enabled = False  # 已禁用
+            mock_get_reg.return_value = mock_registration
+
+            with patch('ngo.core.unified_registry.create_instance') as mock_create:
+                mock_pattern = Mock()
+                mock_create.return_value = mock_pattern
+
+                result = self.manager.execute_pattern("disabled_pattern", self.graph_module)
+
+                # 应该返回空结果
+                self.assertEqual(len(result), 0)
+
+    def test_execute_pattern_instance_creation_failure(self):
+        """测试Pattern实例创建失败的情况。"""
+        self.manager.initialize()
+
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_registration = Mock()
+            mock_registration.enabled = True
+            mock_get_reg.return_value = mock_registration
+
+            with patch('ngo.core.unified_registry.create_instance') as mock_create:
+                mock_create.return_value = None  # 实例创建失败
+
+                # 应该抛出RuntimeError
+                with self.assertRaises(RuntimeError) as context:
+                    self.manager.execute_pattern("create_fail_pattern", self.graph_module)
+
+                self.assertIn("Failed to create pattern instance: create_fail_pattern", str(context.exception))
+
+    def test_execute_pattern_matching_failure(self):
+        """测试Pattern匹配失败的情况。"""
+        self.manager.initialize()
+
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_registration = Mock()
+            mock_registration.enabled = True
+            mock_get_reg.return_value = mock_registration
+
+            with patch('ngo.core.unified_registry.create_instance') as mock_create:
+                mock_pattern = Mock()
+                mock_pattern.match.return_value = PatternMatchResult(matched=False)  # 匹配失败
+                mock_pattern.initialize.return_value = True
+                mock_create.return_value = mock_pattern
+
+                result = self.manager.execute_pattern("match_fail_pattern", self.graph_module)
+
+                # 应该返回空结果
+                self.assertEqual(len(result), 0)
+
+    def test_execute_pattern_execution_exception(self):
+        """测试Pattern执行时发生异常的情况。"""
+        self.manager.initialize()
+
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_registration = Mock()
+            mock_registration.enabled = True
+            mock_get_reg.return_value = mock_registration
+
+            with patch('ngo.core.unified_registry.create_instance') as mock_create:
+                mock_pattern = Mock()
+                mock_pattern.match.return_value = PatternMatchResult(matched=True)
+                mock_pattern.initialize.return_value = True
+                mock_pattern.execute_strategies.side_effect = Exception("Pattern execution failed")
+                mock_create.return_value = mock_pattern
+
+                # 异常应该被重新抛出
+                with self.assertRaises(RuntimeError) as context:
+                    self.manager.execute_pattern("exception_pattern", self.graph_module)
+
+                self.assertIn("Pattern execution failed: Pattern execution failed", str(context.exception))
+
+    def test_execute_all_patterns_with_failures(self):
+        """测试执行所有 Pattern 时处理失败情况。"""
+        self.manager.initialize()
+
+        # 模拟 list_patterns 返回两个 pattern
+        with patch.object(self.manager, 'list_patterns', return_value=["pattern1", "pattern2"]):
+            # 模拟第一个 pattern 成功，第二个失败
+            with patch.object(self.manager, 'execute_pattern') as mock_execute:
+                mock_execute.side_effect = [
+                    [StrategyExecutionResult(success=True)],  # pattern1 成功
+                    RuntimeError("Pattern2 failed")  # pattern2 失败
+                ]
+
+                results = self.manager.execute_all_patterns(self.graph_module)
+
+                # 应该包含两个结果
+                self.assertEqual(len(results), 2)
+                self.assertIn("pattern1", results)
+                self.assertIn("pattern2", results)
+                self.assertEqual(len(results["pattern1"]), 1)  # pattern1 有结果
+                self.assertEqual(len(results["pattern2"]), 0)  # pattern2 为空
+
+    def test_execute_all_patterns_not_ready(self):
+        """测试在未准备好的状态下执行所有 Pattern。"""
+        # 不初始化 manager，状态应该为 CREATED
+        with self.assertRaises(RuntimeError) as context:
+            self.manager.execute_all_patterns(self.graph_module)
+
+        self.assertIn("not ready for execution", str(context.exception))
+
+    def test_get_pattern_info_existing(self):
+        """测试获取已存在 Pattern 的信息。"""
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_registration = Mock()
+            mock_registration.enabled = True
+            mock_get_reg.return_value = mock_registration
+
+            with patch('ngo.core.unified_registry.create_instance') as mock_create:
+                mock_pattern = Mock()
+                mock_pattern.metadata = Mock()
+                mock_pattern.metadata.name = "existing_pattern"
+                mock_pattern.match.return_value = PatternMatchResult(matched=True)
+                mock_pattern.initialize.return_value = True
+                mock_pattern.execute_strategies.return_value = [StrategyExecutionResult(success=True)]
+                mock_create.return_value = mock_pattern
+
+                # 先执行一次，创建执行信息
+                self.manager.initialize()
+                self.manager.execute_pattern("existing_pattern", self.graph_module)
+
+                info = self.manager.get_pattern_info("existing_pattern")
+                self.assertIsNotNone(info)
+                self.assertEqual(info.pattern_name, "existing_pattern")
+
+    def test_get_pattern_info_new_pattern(self):
+        """测试获取新 Pattern 的信息（需要创建新的执行信息）。"""
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_registration = Mock()
+            mock_registration.enabled = True
+            mock_get_reg.return_value = mock_registration
+
+            with patch('ngo.core.unified_registry.create_instance') as mock_create:
+                mock_pattern = Mock()
+                mock_pattern.metadata = Mock()
+                mock_pattern.metadata.name = "new_pattern"
+                mock_pattern.match.return_value = PatternMatchResult(matched=True)
+                mock_pattern.initialize.return_value = True
+                mock_pattern.execute_strategies.return_value = [StrategyExecutionResult(success=True)]
+                mock_create.return_value = mock_pattern
+
+                self.manager.initialize()
+
+                info = self.manager.get_pattern_info("new_pattern")
+                self.assertIsNotNone(info)
+                self.assertEqual(info.pattern_name, "new_pattern")
+                self.assertEqual(info.execution_count, 0)
+
+    def test_get_manager_statistics_with_executions(self):
+        """测试有执行记录时的管理器统计信息。"""
+        self.manager.initialize()
+
+        # 直接在 _pattern_info 中添加一些执行记录
+        from ngo.patterns.manager import PatternExecutionInfo
+        self.manager._pattern_info["test_pattern"] = PatternExecutionInfo(
+            pattern_name="test_pattern",
+            execution_count=5,
+            success_count=3,
+            failure_count=2,  # 明确设置failure_count
+            total_execution_time=1.5
+        )
+
+        stats = self.manager.get_manager_statistics()
+
+        # 验证统计信息包含我们的执行记录
+        self.assertEqual(stats["total_executions"], 5)
+        self.assertEqual(stats["total_successes"], 3)
+        self.assertEqual(stats["total_failures"], 2)  # 应该等于failure_count
+        self.assertEqual(stats["average_execution_time"], 1.5 / 5)
+
+    def test_pattern_execution_info_success_rate(self):
+        """测试 PatternExecutionInfo 的成功率计算。"""
+        from ngo.patterns.manager import PatternExecutionInfo
+
+        # 测试零执行次数的情况
+        info1 = PatternExecutionInfo(pattern_name="test1")
+        self.assertEqual(info1.success_rate, 0.0)
+
+        # 测试有执行记录的情况
+        info2 = PatternExecutionInfo(pattern_name="test2", execution_count=10, success_count=7)
+        self.assertEqual(info2.success_rate, 0.7)
+
+        # 测试全部成功的情况
+        info3 = PatternExecutionInfo(pattern_name="test3", execution_count=5, success_count=5)
+        self.assertEqual(info3.success_rate, 1.0)
+
+    def test_execute_pattern_state_transition(self):
+        """测试 Pattern 执行期间的状态转换。"""
+        with patch('ngo.core.unified_registry.get_registration') as mock_get_reg:
+            mock_registration = Mock()
+            mock_registration.enabled = True
+            mock_get_reg.return_value = mock_registration
+
+            with patch('ngo.core.unified_registry.create_instance') as mock_create:
+                mock_pattern = Mock()
+                mock_pattern.match.return_value = PatternMatchResult(matched=True)
+                mock_pattern.initialize.return_value = True
+                mock_pattern.execute_strategies.return_value = [StrategyExecutionResult(success=True)]
+                mock_create.return_value = mock_pattern
+
+                self.manager.initialize()
+
+                # 执行Pattern并验证状态转换
+                initial_state = self.manager._state
+                self.manager.execute_pattern("state_test_pattern", self.graph_module)
+
+                # 验证状态转换完成，没有异常抛出
+                # 状态应该回到INITIALIZED（从RUNNING转换回来）
+                self.assertEqual(self.manager._state, PatternManagerState.INITIALIZED)
+
 
 class TestPatternRefactor(unittest.TestCase):
     """测试模式系统重构。"""

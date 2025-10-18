@@ -367,6 +367,334 @@ class TestCommonSubexpressionEliminationFX(unittest.TestCase):
         # 重要的是 pass 能够无错误地运行
         self.assertTrue(True)
 
+    # 以下测试用例用于覆盖未覆盖的代码行
+
+    def test_has_side_effects_with_store_operation(self):
+        """测试 _has_side_effects 方法对存储操作的检测。"""
+        # 创建一个模拟的存储节点
+        mock_node = Mock()
+        mock_node.op = 'store'
+
+        result = self.pass_instance._has_side_effects(mock_node)
+        self.assertTrue(result)  # 覆盖第 290-291 行
+
+    def test_has_side_effects_with_side_effect_targets(self):
+        """测试 _has_side_effects 方法对副作用目标函数的检测。"""
+        # 测试具有副作用的操作目标
+        side_effect_targets = ['print', 'open', 'write', 'read', 'close', 'store_function']
+
+        for target_name in side_effect_targets:
+            with self.subTest(target=target_name):
+                mock_node = Mock()
+                mock_node.op = 'call_function'
+                mock_node.target = target_name
+
+                result = self.pass_instance._has_side_effects(mock_node)
+                self.assertTrue(result)  # 覆盖第 295-296 行
+
+    def test_has_side_effects_without_side_effects(self):
+        """测试 _has_side_effects 方法对无副作用操作的检测。"""
+        mock_node = Mock()
+        mock_node.op = 'call_function'
+        mock_node.target = 'add'  # add 操作通常没有副作用
+
+        result = self.pass_instance._has_side_effects(mock_node)
+        self.assertFalse(result)  # 覆盖第 298 行
+
+    def test_has_side_effects_exception_handling(self):
+        """测试 _has_side_effects 方法的异常处理。"""
+        # 直接使用Mock来创建会在hasattr时引发异常的对象
+        class ProblematicNode:
+            def __getattribute__(self, name):
+                if name == 'op':
+                    raise Exception("测试异常")
+                return super().__getattribute__(name)
+
+        mock_node = ProblematicNode()
+
+        result = self.pass_instance._has_side_effects(mock_node)
+        self.assertTrue(result)  # 覆盖第 300-301 行的保守处理
+
+    def test_create_expression_key_exception_handling(self):
+        """测试 _create_expression_key 方法的异常处理。"""
+        # 创建一个会引发异常的节点
+        mock_node = Mock()
+        mock_node.target = Mock(side_effect=Exception("测试异常"))
+
+        result = self.pass_instance._create_expression_key(mock_node)
+        # 应该返回节点的ID作为fallback
+        self.assertIsInstance(result, str)  # 覆盖第 329-330 行
+
+    def test_create_expression_key_no_target(self):
+        """测试 _create_expression_key 方法对无目标节点的处理。"""
+        mock_node = Mock()
+        mock_node.target = None
+
+        result = self.pass_instance._create_expression_key(mock_node)
+        self.assertIsInstance(result, str)
+        # 应该返回节点的ID
+        self.assertEqual(result, str(id(mock_node)))
+
+    def test_create_expression_key_with_complex_args(self):
+        """测试 _create_expression_key 方法对复杂参数的处理。"""
+        # 创建占位符参数
+        mock_placeholder = Mock()
+        mock_placeholder.op = 'placeholder'
+        mock_placeholder.name = 'x'
+
+        # 创建获取属性参数
+        mock_get_attr = Mock()
+        mock_get_attr.op = 'get_attr'
+        mock_get_attr.name = 'weight'
+
+        # 创建其他操作节点
+        mock_other_node = Mock()
+        mock_other_node.op = 'call_function'
+        mock_other_node.name = 'intermediate'
+
+        # 创建自定义对象参数
+        class CustomArg:
+            pass
+
+        mock_node = Mock()
+        mock_node.target = 'test_function'
+        mock_node.args = [
+            42,  # int
+            3.14,  # float
+            True,  # bool
+            "test",  # str
+            mock_placeholder,
+            mock_get_attr,
+            mock_other_node,
+            CustomArg(),
+        ]
+
+        result = self.pass_instance._create_expression_key(mock_node)
+        self.assertIsInstance(result, str)
+        self.assertIn('test_function', result)
+        self.assertIn('42', result)
+        self.assertIn('3.14', result)
+        self.assertIn('True', result)
+        self.assertIn('test', result)
+        self.assertIn('placeholder_x', result)
+        self.assertIn('get_attr_weight', result)
+        self.assertIn('node_intermediate', result)
+        self.assertIn('CustomArg', result)  # 覆盖第 325 行
+
+    def test_replace_node_uses_success(self):
+        """测试 _replace_node_uses 方法的成功情况。"""
+        # 创建模拟的图模块和节点
+        mock_graph_module = Mock()
+        mock_graph = Mock()
+        mock_graph_module.graph = mock_graph
+
+        old_node = Mock()
+        new_node = Mock()
+        old_node.users = []  # 没有用户
+
+        # 模拟 replace_all_uses_with 方法
+        old_node.replace_all_uses_with = Mock()
+
+        result = self.pass_instance._replace_node_uses(mock_graph_module, old_node, new_node)
+        self.assertTrue(result)
+
+        # 验证方法被调用
+        old_node.replace_all_uses_with.assert_called_once_with(new_node)
+        mock_graph.erase_node.assert_called_once_with(old_node)
+
+    def test_replace_node_uses_with_users(self):
+        """测试 _replace_node_uses 方法处理仍有用户的情况。"""
+        mock_graph_module = Mock()
+        mock_graph = Mock()
+        mock_graph_module.graph = mock_graph
+
+        old_node = Mock()
+        new_node = Mock()
+        # 模拟仍有用户
+        old_node.users = [Mock()]
+        old_node.replace_all_uses_with = Mock()
+
+        result = self.pass_instance._replace_node_uses(mock_graph_module, old_node, new_node)
+        self.assertTrue(result)
+
+        # 验证 erase_node 没有被调用
+        mock_graph.erase_node.assert_not_called()
+
+    def test_replace_node_uses_exception_handling(self):
+        """测试 _replace_node_uses 方法的异常处理。"""
+        mock_graph_module = Mock()
+        old_node = Mock()
+        new_node = Mock()
+
+        # 模拟异常
+        old_node.replace_all_uses_with = Mock(side_effect=Exception("测试异常"))
+
+        result = self.pass_instance._replace_node_uses(mock_graph_module, old_node, new_node)
+        self.assertFalse(result)  # 覆盖异常处理分支
+
+    def test_remove_node_from_graph_success(self):
+        """测试 _remove_node_from_graph 方法的成功情况。"""
+        mock_graph_module = Mock()
+        mock_graph = Mock()
+        mock_graph_module.graph = mock_graph
+
+        node = Mock()
+        node.users = []  # 没有用户
+
+        result = self.pass_instance._remove_node_from_graph(mock_graph_module, node)
+        self.assertTrue(result)
+        mock_graph.erase_node.assert_called_once_with(node)
+
+    def test_remove_node_from_graph_with_users(self):
+        """测试 _remove_node_from_graph 方法处理仍有用户的情况。"""
+        mock_graph_module = Mock()
+        node = Mock()
+        node.users = [Mock()]  # 仍有用户
+
+        result = self.pass_instance._remove_node_from_graph(mock_graph_module, node)
+        self.assertFalse(result)
+
+    def test_remove_node_from_graph_exception_handling(self):
+        """测试 _remove_node_from_graph 方法的异常处理。"""
+        mock_graph_module = Mock()
+        mock_graph = Mock()
+        mock_graph_module.graph = mock_graph
+
+        node = Mock()
+        node.users = []
+        # 模拟异常
+        mock_graph.erase_node = Mock(side_effect=Exception("测试异常"))
+
+        result = self.pass_instance._remove_node_from_graph(mock_graph_module, node)
+        self.assertFalse(result)
+
+    def test_transform_without_analysis_cache_failure(self):
+        """测试 transform 方法在没有分析缓存且分析失败的情况。"""
+        # 创建一个失败的分析结果
+        failed_analysis = Mock()
+        failed_analysis.should_proceed = False
+
+        # 模拟分析结果为空（没有analysis_cache）
+        empty_analysis = Mock()
+        empty_analysis.analysis_cache = None
+
+        # 先设置 analyze 方法返回失败结果
+        with unittest.mock.patch.object(self.pass_instance, 'analyze', return_value=failed_analysis):
+            # 传入没有analysis_cache的结果
+            result = self.pass_instance.transform(self.context, empty_analysis)
+
+        self.assertTrue(result.success)
+        self.assertFalse(result.modified_graph)
+
+    def test_transform_no_graph_module(self):
+        """测试 transform 方法在没有图模块的情况。"""
+        # 创建一个没有图模块的上下文
+        empty_context = Mock()
+        empty_context.set_component_result = Mock()
+        empty_context.get_component_result = Mock(return_value=None)
+
+        # 模拟 _get_graph_from_context 返回 None
+        with unittest.mock.patch.object(self.pass_instance, '_get_graph_from_context', return_value=None):
+            result = self.pass_instance.transform(empty_context, Mock())
+
+        self.assertFalse(result.success)
+        self.assertIn("No GraphModule found", result.error_message)
+
+    def test_verify_graph_integrity_failure(self):
+        """测试图完整性验证失败的情况。"""
+        # 创建一个模拟图模块
+        mock_graph_module = Mock()
+        self.context.graph_module = mock_graph_module
+
+        # 创建分析结果，包含优化的表达式
+        mock_analysis = Mock()
+        mock_analysis.analysis_cache = {
+            'optimizable_expressions': {'test': {'nodes': [Mock(), Mock()]}},
+            'total_nodes': 2
+        }
+
+        # 模拟图完整性检查失败
+        with unittest.mock.patch.object(self.pass_instance, '_verify_graph_integrity', return_value=False):
+            with unittest.mock.patch.object(self.pass_instance, '_get_graph_from_context', return_value=mock_graph_module):
+                result = self.pass_instance.transform(self.context, mock_analysis)
+
+        self.assertFalse(result.success)
+        self.assertIn("Graph integrity check failed", result.error_message)
+
+    def test_verify_no_graph(self):
+        """测试 verify 方法在没有图的情况。"""
+        mock_transform_result = Mock()
+        mock_transform_result.modified_graph = True
+
+        # 模拟 _get_graph_from_context 返回 None
+        with unittest.mock.patch.object(self.pass_instance, '_get_graph_from_context', return_value=None):
+            result = self.pass_instance.verify(self.context, mock_transform_result)
+
+        self.assertFalse(result.success)
+        self.assertIn("No graph found", result.error_message)
+
+    def test_verify_no_output_nodes(self):
+        """测试 verify 方法在没有输出节点的情况。"""
+        mock_graph = Mock()
+        mock_transform_result = Mock()
+        mock_transform_result.modified_graph = True
+
+        # 模拟没有输出节点
+        with unittest.mock.patch.object(self.pass_instance, '_get_graph_from_context', return_value=mock_graph):
+            with unittest.mock.patch.object(self.pass_instance, '_find_output_nodes', return_value=[]):
+                result = self.pass_instance.verify(self.context, mock_transform_result)
+
+        self.assertFalse(result.success)
+        self.assertIn("No output nodes found", result.error_message)
+
+    def test_verify_node_not_reachable(self):
+        """测试 verify 方法在节点不可达的情况。"""
+        mock_graph = Mock()
+        mock_transform_result = Mock()
+        mock_transform_result.modified_graph = True
+
+        mock_output_node = Mock()
+        mock_input_node = Mock()
+
+        # 模拟输出节点不可达
+        with unittest.mock.patch.object(self.pass_instance, '_get_graph_from_context', return_value=mock_graph):
+            with unittest.mock.patch.object(self.pass_instance, '_find_output_nodes', return_value=[mock_output_node]):
+                with unittest.mock.patch.object(self.pass_instance, '_find_input_nodes', return_value=[mock_input_node]):
+                    with unittest.mock.patch.object(self.pass_instance, '_is_reachable_from_inputs', return_value=False):
+                        result = self.pass_instance.verify(self.context, mock_transform_result)
+
+        self.assertFalse(result.success)
+        self.assertIn("not reachable from inputs", result.error_message)
+
+    def test_verify_exception_handling(self):
+        """测试 verify 方法的异常处理。"""
+        mock_transform_result = Mock()
+        mock_transform_result.modified_graph = True
+
+        # 创建一个会在检查可达性时引发异常的模拟图
+        mock_graph = Mock()
+        mock_output_node = Mock()
+        mock_input_node = Mock()
+
+        # 模拟 _is_reachable_from_inputs 引发异常
+        with unittest.mock.patch.object(self.pass_instance, '_get_graph_from_context', return_value=mock_graph):
+            with unittest.mock.patch.object(self.pass_instance, '_find_output_nodes', return_value=[mock_output_node]):
+                with unittest.mock.patch.object(self.pass_instance, '_find_input_nodes', return_value=[mock_input_node]):
+                    with unittest.mock.patch.object(self.pass_instance, '_is_reachable_from_inputs', side_effect=Exception("测试异常")):
+                        result = self.pass_instance.verify(self.context, mock_transform_result)
+
+        self.assertFalse(result.success)
+        self.assertIn("Verification failed", result.error_message)
+
+    def test_find_candidate_expressions_exception_handling(self):
+        """测试 _find_candidate_expressions 方法的异常处理。"""
+        mock_graph = Mock()
+        # 模拟迭代节点时引发异常
+        mock_graph.nodes = Mock(side_effect=Exception("测试异常"))
+
+        result = self.pass_instance._find_candidate_expressions(mock_graph)
+        self.assertEqual(result, [])  # 应该返回空列表
+
 
 if __name__ == '__main__':
     unittest.main()

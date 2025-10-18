@@ -20,41 +20,40 @@ Tests the simplified ConfigManager and related components.
 
 import os
 import tempfile
-from pathlib import Path
-from unittest.mock import Mock, patch
+import unittest
+from unittest.mock import patch
 
 import toml
 
 from ngo.core.config import (
-    ConfigError, ConfigManager, ConfigValidationError
+    ConfigError, ConfigManager, ConfigSecurityError
 )
 
 
-class TestConfigManager:
+class TestConfigManager(unittest.TestCase):
     """Test cases for ConfigManager."""
 
     def test_create_manager(self):
         """Test creating ConfigManager."""
         manager = ConfigManager()
-        assert manager.config is not None
-        # ConfigManager starts with empty config, loads config from file
-        assert isinstance(manager.config, dict)
+        self.assertIsNotNone(manager.config)
+        self.assertIsInstance(manager.config, dict)
 
     def test_get_set_values(self):
         """Test getting and setting configuration values."""
         manager = ConfigManager()
 
         # Test getting nonexistent values
-        assert manager.get("nonexistent.key") is None
-        assert manager.get("nonexistent.key", "default") == "default"
+        self.assertIsNone(manager.get("nonexistent.key"))
+        self.assertEqual(manager.get("nonexistent.key", "default"), "default")
 
         # Test setting values
         manager.set("core.log_level", "DEBUG")
-        assert manager.get("core.log_level") == "DEBUG"
+        self.assertEqual(manager.get("core.log_level"), "DEBUG")
 
         # Test setting nested values
         manager.set("new.section.value", 42)
-        assert manager.get("new.section.value") == 42
+        self.assertEqual(manager.get("new.section.value"), 42)
 
     def test_load_save_file(self):
         """Test loading and saving configuration files."""
@@ -71,9 +70,9 @@ class TestConfigManager:
         try:
             # Test loading file
             manager.load_file(temp_file)
-            assert manager.get("core.log_level") == "DEBUG"
-            assert manager.get("core.max_workers") == 8
-            assert manager.get("test.value") == 42
+            self.assertEqual(manager.get("core.log_level"), "DEBUG")
+            self.assertEqual(manager.get("core.max_workers"), 8)
+            self.assertEqual(manager.get("test.value"), 42)
 
             # Test saving file
             manager.set("test.new_value", "hello")
@@ -85,11 +84,81 @@ class TestConfigManager:
             manager.save_file(save_file)
 
             # Verify saved content
-            with open(save_file, "r", encoding='utf-8') as f:
+            with open(save_file, "r", encoding="utf-8") as f:
                 saved_config = toml.load(f)
-            assert saved_config["test"]["new_value"] == "hello"
+            self.assertEqual(saved_config["test"]["new_value"], "hello")
 
             os.unlink(save_file)
 
         finally:
             os.unlink(temp_file)
+
+    def test_from_dict(self):
+        """Test loading configuration from dictionary."""
+        manager = ConfigManager()
+
+        test_config = {
+            "core": {"log_level": "DEBUG", "max_workers": 8},
+            "test": {"value": 42},
+        }
+
+        manager.from_dict(test_config)
+
+        self.assertEqual(manager.get("core.log_level"), "DEBUG")
+        self.assertEqual(manager.get("core.max_workers"), 8)
+        self.assertEqual(manager.get("test.value"), 42)
+
+    def test_security_validation_file_not_found(self):
+        """Test security validation for non-existent file."""
+        manager = ConfigManager()
+
+        with self.assertRaises(ConfigSecurityError):
+            manager.load_file("/nonexistent/path/config.toml")
+
+    def test_invalid_toml_format(self):
+        """Test handling of invalid TOML format."""
+        manager = ConfigManager()
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("invalid toml content [unclosed bracket")
+            temp_file = f.name
+
+        try:
+            with self.assertRaises(ConfigError):
+                manager.load_file(temp_file)
+        finally:
+            os.unlink(temp_file)
+
+    def test_save_file_no_path(self):
+        """Test save file with no path specified."""
+        manager = ConfigManager()
+
+        with self.assertRaises(ConfigError):
+            manager.save_file()
+
+    def test_set_value_no_change(self):
+        """Test setting value that hasn't changed."""
+        manager = ConfigManager()
+
+        manager.set("test.key", "value")
+        # Set same value again - should not error and should skip processing
+        manager.set("test.key", "value")
+
+        self.assertEqual(manager.get("test.key"), "value")
+
+    def test_get_nested_keys(self):
+        """Test getting nested configuration keys."""
+        manager = ConfigManager()
+
+        # Set nested values
+        manager.set("a.b.c.d", "deep_value")
+        manager.set("a.b.x", "sibling_value")
+
+        self.assertEqual(manager.get("a.b.c.d"), "deep_value")
+        self.assertEqual(manager.get("a.b.x"), "sibling_value")
+        self.assertIsNone(manager.get("a.b.nonexistent"))
+        self.assertEqual(manager.get("a.b.nonexistent", "default"), "default")
+
+
+if __name__ == "__main__":
+    unittest.main()
