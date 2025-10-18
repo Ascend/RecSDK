@@ -80,7 +80,7 @@ class OptimizationConfigManager:
     def _auto_sync_with_registry(self) -> None:
         """自动同步注册表信息到配置文件"""
         try:
-            from ..unified_registry import get_registry
+            from ngo.core.unified_registry import get_registry
 
             registry = get_registry()
 
@@ -486,7 +486,6 @@ def sync_config_with_registry(
     """
     if registry is None:
         from ngo.core.unified_registry import get_registry
-
         registry = get_registry()
 
     config_manager = get_global_optimization_config_manager(config_dir)

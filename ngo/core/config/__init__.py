@@ -18,7 +18,7 @@ NGO的配置管理模块。
 该模块提供简化的配置管理功能，包括TOML文件支持和动态更新。
 """
 
-from .manager import ConfigError, ConfigManager, ConfigValidationError
+from .manager import ConfigError, ConfigManager, ConfigValidationError, ConfigSecurityError
 from .optimization_config import (
     OptimizationConfigManager,
     PassConfigEntry,
@@ -30,6 +30,7 @@ __all__ = [
     "ConfigManager",
     "ConfigError",
     "ConfigValidationError",
+    "ConfigSecurityError",
     "OptimizationConfigManager",
     "PassConfigEntry",
     "PatternConfigEntry",
