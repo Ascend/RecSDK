@@ -24,7 +24,7 @@ namespace HstuDenseForward {
 
 REGISTER_POLICY(LAYOUT_TYPE::NORMAL, std::make_shared<TilingPolicyNormal>());
 
-bool TilingPolicyNormal::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicyNormal::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     auto qShape = context->GetInputShape(INPUT_INDEX_T::Q_INDEX)->GetStorageShape();
     auto kShape = context->GetInputShape(INPUT_INDEX_T::K_INDEX)->GetStorageShape();
@@ -49,7 +49,7 @@ bool TilingPolicyNormal::TilingShape(gert::TilingContext* context, optiling::Hst
     return true;
 }
 
-bool TilingPolicyNormal::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicyNormal::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     context->SetTilingKey(NORMAL_TILING_KEY);
     return true;

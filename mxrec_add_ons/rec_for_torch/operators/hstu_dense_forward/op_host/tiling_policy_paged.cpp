@@ -13,31 +13,37 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-
-#include <cstdint>
-#include <vector>
-#include <cmath>
-#include <algorithm>
-#include <numeric>
-#include <functional>
-#include <cassert>
-
-#include "../../../common/common_host.h"
 #include "register/op_def_registry.h"
 #include "tiling_policy_factory.h"
-#include "tiling_policy_jagged.h"
+#include "tiling_policy_paged.h"
 
-constexpr bool JAGGED_TASK_ASSIGN_DEBUG = false;
-
-#if JAGGED_TASK_ASSIGN_DEBUG
-#include <chrono>
-#endif
+constexpr uint32_t DIM_2 = 2;
 
 namespace HstuDenseForward {
 
-REGISTER_POLICY(LAYOUT_TYPE::JAGGED, std::make_shared<TilingPolicyJagged>());
+REGISTER_POLICY(LAYOUT_TYPE::PAGED, std::make_shared<TilingPolicyPaged>());
 
-bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+bool TilingPolicyPaged::TilingWorkSpace(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+{
+    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    OPS_CHECK_PTR_NULL(currentWorkspace, return false);
+    size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
+    size_t coreNum = ascendPlatform.GetCoreNumAic();
+
+    int64_t oneBlockMidElem = BLOCK_HEIGHT * BLOCK_HEIGHT * COMPUTE_PIPE_NUM;
+    int64_t oneCoreMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
+
+    int64_t oneBlockMidTransElem = BLOCK_HEIGHT * tiling.get_dim() * TRANS_PIPE_NUM;
+    int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
+    int64_t blockNumberSize = tiling.get_batchSize() * tiling.get_headNum();
+    // 3: midk midv attnscore
+    int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem * 3 + blockNumberSize) * sizeof(float);
+    currentWorkspace[0] = workspaceSize + systemWorkspacesSize;
+    return true;
+}
+
+bool TilingPolicyPaged::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     int64_t batchSize;
     int64_t seqLensQ;
@@ -102,23 +108,48 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
                   numCtxShape.GetDimNum()), return false);
     }
 
-    return true;
+    return TilingShapePaged(context, tiling);
 }
 
-bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+bool TilingPolicyPaged::TilingShapePaged(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
-    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    size_t coreNum = ascendPlatform.GetCoreNumAiv();
+    // paged_ids、page_offsets、为空
+    auto pagedIds = context->GetOptionalInputTensor(INPUT_INDEX_T::PAGE_IDS_INDEX);
+    auto pagedOffset = context->GetOptionalInputTensor(INPUT_INDEX_T::PAGE_OFFSETS_INDEX);
+    auto lastPageLen = context->GetOptionalInputTensor(INPUT_INDEX_T::LAST_PAGE_LEN_INDEX);
+    OPS_CHECK(pagedIds == nullptr || pagedOffset == nullptr || lastPageLen == nullptr,
+        OPS_LOG_E("Tiling Debug", "pagedIds, pagedOffset and lastPageLen should not be nullptr."),
+        return false);
+    
+    auto kvCache = context->GetOptionalInputTensor(INPUT_INDEX_T::KV_CACHE_INDEX);
+    OPS_CHECK(kvCache == nullptr,
+        OPS_LOG_E("Tiling Debug", "kvCache should not be nullptr."),
+        return false);
+    
+    OPS_LOG_E_IF_NULL("kvCache shape", context->GetInputShape(INPUT_INDEX_T::KV_CACHE_INDEX), return false);
+    OPS_LOG_E_IF_NULL("q_offsets shape", context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX), return false);
+    OPS_LOG_E_IF_NULL("k_offsets shape", context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_K_INDEX), return false);
+    OPS_LOG_E_IF_NULL("t_offsets shape", context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_T_INDEX), return false);
 
-    size_t aicCoreNum = ascendPlatform.GetCoreNumAic();
-    context->SetBlockDim(aicCoreNum);
+    // [page_num, 2, paged_size, num_head, head_dim]
+    auto pageSize = context->GetInputShape(INPUT_INDEX_T::KV_CACHE_INDEX)->GetStorageShape().GetDim(DIM_2);
+    auto offsetsLenQ = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape().GetDim(0);
+    auto offsetsLenK = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_K_INDEX)->GetStorageShape().GetDim(0);
+    auto offsetsLenT = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_T_INDEX)->GetStorageShape().GetDim(0);
 
+    OPS_CHECK(offsetsLenQ != offsetsLenK || offsetsLenQ != offsetsLenT,
+        OPS_LOG_E("Tiling Debug", "offsetsLenQ, offsetsLenK and offsetsLenT should have the same shape."),
+        return false);
+    // pageSize [32, 64, 128, 256]
+    OPS_CHECK(BLOCK_HEIGHT % pageSize != 0 || pageSize < MIN_PAGE_SIZE,
+        OPS_LOG_E("Tiling Debug", "PageSize should be 32, 64, 128 or 256."),
+        return false);
+    tiling.set_pageSize(pageSize);
     return true;
 }
-
-bool TilingPolicyJagged::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+bool TilingPolicyPaged::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
-    context->SetTilingKey(JAGGED_TILING_KEY);
+    context->SetTilingKey(PAGED_TILING_KEY);
     return true;
 }
-}  // namespace HstuDenseForward
+}

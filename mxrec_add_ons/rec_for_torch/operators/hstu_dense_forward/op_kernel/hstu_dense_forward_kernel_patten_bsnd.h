@@ -40,14 +40,15 @@ constexpr int ALIGN_16 = 16;
 constexpr int VCORE_NUM_IN_ONE_AIC = 2;
 constexpr int COMPUTE_PIPE_NUM = 3;
 constexpr int TRANS_PIPE_NUM = 4;
+constexpr int INT_ALIGN_NUM = 8;
 
 struct Args {
     // hstu normal
     GM_ADDR q;
     GM_ADDR k;
     GM_ADDR v;
-    GM_ADDR attnBias;
     GM_ADDR mask;
+    GM_ADDR attnBias;
     // jagged
     GM_ADDR seqOffsetQ;
     GM_ADDR seqOffsetK;
@@ -65,7 +66,6 @@ struct Args {
     GM_ADDR workspace;
     GM_ADDR tiling;
 };
-
 
 template <typename qType>
 __aicore__ inline void CopyQKA1(const LocalTensor<int8_t>& aMatrix, const __gm__ void* gm, int row, int col, int useM,
@@ -99,7 +99,7 @@ __aicore__ inline void CopyQKB1(const LocalTensor<int8_t>& bMatrix, const __gm__
 
     HstuDenseForwardTilingData* tilingP = reinterpret_cast<HstuDenseForwardTilingData*>(tilingPtr);
     int64_t dim = tilingP->dim;
-    int64_t headNum = tilingP->headNum;
+    int32_t headNum = static_cast<int32_t>(dataPtr);
     int32_t baseN = tilingP->qkMatmul.baseN;
     int32_t baseK = tilingP->qkMatmul.baseK;
 
@@ -121,7 +121,7 @@ __aicore__ inline void CopySVB1(const LocalTensor<int8_t>& bMatrix, const __gm__
 
     HstuDenseForwardTilingData* tilingP = reinterpret_cast<HstuDenseForwardTilingData*>(tilingPtr);
     int64_t dim = tilingP->dim;
-    int64_t headNum = tilingP->headNum;
+    int32_t headNum = static_cast<int32_t>(dataPtr);
     int32_t baseN = tilingP->svMatmul.baseN;
     int32_t baseK = tilingP->svMatmul.baseK;
     auto alignOfK = AlignUp(useK, ALIGN_16);
@@ -138,10 +138,15 @@ template <typename qType, int ElementOfBlock = DATA_ALIGN_BYTES / sizeof(qType)>
 class HstuDenseForwardKernelPattenBsnd {
 public:
     __aicore__ inline HstuDenseForwardKernelPattenBsnd() {}
-    __aicore__ inline void Init(const Args &args, const HstuDenseForwardTilingData *__restrict tilingDataPtr,
-                                TPipe *pipePtr)
+    __aicore__ inline void Init(const Args& args, const HstuDenseForwardTilingData* __restrict tilingDataPtr,
+                                TPipe* pipePtr)
     {
-        pipe = pipePtr;
+        InitArgs(args, tilingDataPtr);
+        InitPipe(pipePtr);
+    }
+
+    __aicore__ inline void InitArgs(const Args& args, const HstuDenseForwardTilingData* __restrict tilingDataPtr)
+    {
         q = args.q;
         k = args.k;
         v = args.v;
@@ -169,25 +174,24 @@ public:
         // Tiling
         blockHeight = tilingDataPtr->blockHeight;
 
-        // Ub
-        vectorScoreUbBlockElem = VEC_PER_PROCESS * blockHeight / USE_QUEUE_NUM;
-
         // attr
         siluScale = tilingDataPtr->siluScale;
         targetGroupSize = tilingDataPtr->targetGroupSize;
         maskType = static_cast<CausalMaskT>(tilingDataPtr->maskType);
         enableBias = (tilingDataPtr->enableBias == 1);
 
+        // copyKV
+        copyHeadNum = xDim2;
+    }
+
+    __aicore__ inline void InitPipe(TPipe* pipePtr)
+    {
+        pipe = pipePtr;
+
         // Gt
         qGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(q));
         kGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(k));
         vGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(v));
-
-        int64_t oneBlockMidElem = blockHeight * blockHeight * COMPUTE_PIPE_NUM;
-        int64_t oneCoreMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
-
-        int64_t oneBlockMidTransElem = blockHeight * xDim3 * TRANS_PIPE_NUM;
-        int64_t oneCoreTransMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
 
         if (enableBias) {
             attnBiasGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(attnBias));
@@ -199,10 +203,19 @@ public:
 
         attnOutputGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(attnOutput));
 
+        int64_t oneBlockMidElem = blockHeight * blockHeight * COMPUTE_PIPE_NUM;
+        int64_t oneCoreMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
+
+        int64_t oneBlockMidTransElem = blockHeight * xDim3 * TRANS_PIPE_NUM;
+        int64_t oneCoreTransMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
+        int64_t kvOffset = oneCoreMidElem + oneCoreTransMidElem * 3; // svResultGt midkGt midvGt
+
         attnScoreGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(workspace) + GetBlockIdx() * oneBlockMidElem);
         svResultGt.SetGlobalBuffer(
             reinterpret_cast<__gm__ float*>(workspace) + oneCoreMidElem + GetBlockIdx() * oneBlockMidTransElem,
-            oneCoreTransMidElem);
+            oneBlockMidTransElem);
+        // Ub
+        vectorScoreUbBlockElem = VEC_PER_PROCESS * blockHeight / USE_QUEUE_NUM;
 
         // Init pipe total 32K * 5 = 160K
         pipe->InitBuffer(queIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
@@ -283,7 +296,6 @@ public:
             auto newBiasLt = biasLt.template ReinterpretCast<float>();
             CastQtype2Float(newBiasLt, biasLt, tmpLt, thisLen);
             Add<float>(newInLt, newInLt, newBiasLt, thisLen);
-
             biasIn.FreeTensor(biasLt);
         }
     }
@@ -524,6 +536,21 @@ public:
         qkMatmul.SetTensorA(qGt[qOffset]);
         qkMatmul.SetTensorB(kGt[kOffset], true);
         qkMatmul.SetTail(m, n, k);
+        qkMatmul.SetSelfDefineData(copyHeadNum); // 设置CopyQK的自定义headNum数据
+
+        qkMatmul.template IterateAll<false>(attnScoreGt[outOffset], 0, false, true);
+    }
+
+    __aicore__ inline void DoQkMatmulImpl(int64_t qOffset, int64_t kOffset, uint32_t taskId, uint32_t m, uint32_t n,
+                                          uint32_t k, const GlobalTensor<qType>& midkGt)
+    {
+        int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
+        int64_t outOffset = midResultIdx * blockHeight * blockHeight;
+
+        qkMatmul.SetTensorA(qGt[qOffset]);
+        qkMatmul.SetTensorB(midkGt[kOffset], true);
+        qkMatmul.SetTail(m, n, k);
+        qkMatmul.SetSelfDefineData(copyHeadNum); // 设置CopyQK的自定义headNum数据
 
         qkMatmul.template IterateAll<false>(attnScoreGt[outOffset], 0, false, true);
     }
@@ -539,6 +566,29 @@ public:
         svMatmul.SetTensorA(attnScoreGt[sOffset]);
         svMatmul.SetTensorB(vGt[vOffset]);
         svMatmul.SetTail(m, n, k);
+        svMatmul.SetSelfDefineData(copyHeadNum); // 设置CopyQK的自定义headNum数据
+
+        if (isAtomicAdd == 0) {
+            // Override
+            svMatmul.template IterateAll<false>(svResultGt[outOffset], 0, false, true);
+        } else {
+            // Automic Add
+            svMatmul.template IterateAll<false>(svResultGt[outOffset], 1, false, true);
+        }
+    }
+
+    __aicore__ inline void DoSvMatmulImpl(int64_t vOffset, uint32_t taskId, uint32_t transTaskId, int isAtomicAdd,
+                                          uint32_t m, uint32_t n, uint32_t k, const GlobalTensor<qType>& midvGt)
+    {
+        int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
+        int64_t outMidIndex = transTaskId % TRANS_PIPE_NUM;
+        int64_t outOffset = outMidIndex * blockHeight * xDim3;
+        int64_t sOffset = midResultIdx * blockHeight * blockHeight;
+
+        svMatmul.SetTensorA(attnScoreGt[sOffset]);
+        svMatmul.SetTensorB(midvGt[vOffset]);
+        svMatmul.SetTail(m, n, k);
+        svMatmul.SetSelfDefineData(copyHeadNum); // 设置拷贝v矩阵的自定义headNum数据
 
         if (isAtomicAdd == 0) {
             // Override
@@ -636,6 +686,9 @@ public:
     CausalMaskT maskType;
     bool enableBias;
     int64_t targetGroupSize;
+
+    // copyQKV
+    uint64_t copyHeadNum;
 
     // Tpipe
     TPipe *pipe;

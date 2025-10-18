@@ -65,6 +65,7 @@ namespace ATTR_INDEX_T {
 
 constexpr int NORMAL_TILING_KEY = 0;
 constexpr int JAGGED_TILING_KEY = 1;
+constexpr int PAGED_TILING_KEY = 2;
 
 constexpr int NORMAL_DIM_NUM = 4;
 constexpr int JAGGED_DIM_NUM = 3;
@@ -84,6 +85,8 @@ constexpr int TRANS_TASK_NUM = 3;
 
 constexpr int MAX_NUM_CONTEXT = BLOCK_HEIGHT;
 constexpr int MAX_NUM_TARGET = 512;
+
+constexpr int MIN_PAGE_SIZE = 32;
 }
 
 #endif

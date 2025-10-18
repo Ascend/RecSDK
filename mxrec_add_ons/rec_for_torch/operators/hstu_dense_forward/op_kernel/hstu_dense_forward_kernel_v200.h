@@ -24,7 +24,7 @@ class HstuDenseForwardKernelv200 : public HstuDenseForwardKernel<qType> {
 public:
     __aicore__ inline HstuDenseForwardKernelv200() {}
 
-    __aicore__ inline void PreInit(const HstuDenseForwardTilingData *__restrict tilingDataPtr)
+    __aicore__ inline void PreInit(const HstuDenseForwardTilingData* __restrict tilingDataPtr)
     {
         seqBlockNumQk = this->xDim1 / this->blockHeight;
         qkTotalBlock = this->xDim0 * this->xDim2 * seqBlockNumQk;
