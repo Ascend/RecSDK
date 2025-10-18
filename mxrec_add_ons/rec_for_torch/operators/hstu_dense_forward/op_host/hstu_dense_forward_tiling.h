@@ -40,6 +40,8 @@ namespace optiling {
 
 #ifdef SUPPORT_V200
     TILING_DATA_FIELD_DEF(int32_t, tmpUbSize);
+#else
+    TILING_DATA_FIELD_DEF(int64_t, pageSize);
 #endif
 
     TILING_DATA_FIELD_DEF(uint32_t, enableBias);

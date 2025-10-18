@@ -20,7 +20,7 @@ See the License for the specific language governing permissions and
 
 namespace HstuDenseForward {
 
-ShapeRange::ShapeRange(int64_t lbound, int64_t ubound, int64_t mutiple, const char *name)
+ShapeRange::ShapeRange(int64_t lbound, int64_t ubound, int64_t mutiple, const char* name)
 {
     this->lbound = lbound;
     this->ubound = ubound;
@@ -37,7 +37,7 @@ bool ShapeRange::Check(int64_t val) const
     return true;
 }
 
-ge::graphStatus TilingPolicy::InferShape(gert::InferShapeContext *context)
+ge::graphStatus TilingPolicy::InferShape(gert::InferShapeContext* context)
 {
     const gert::Shape *queryShape = context->GetInputShape(INDEX_T::INDEX_0);
     OPS_CHECK_PTR_NULL(queryShape, return ge::GRAPH_FAILED);
@@ -49,7 +49,7 @@ ge::graphStatus TilingPolicy::InferShape(gert::InferShapeContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPolicy::InferDtype(gert::InferDataTypeContext *context)
+ge::graphStatus TilingPolicy::InferDtype(gert::InferDataTypeContext* context)
 {
     context->SetOutputDataType(0, context->GetInputDataType(0));
     context->SetOutputDataType(1, context->GetInputDataType(0));
@@ -57,7 +57,7 @@ ge::graphStatus TilingPolicy::InferDtype(gert::InferDataTypeContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPolicy::TilingProcess(gert::TilingContext *context)
+ge::graphStatus TilingPolicy::TilingProcess(gert::TilingContext* context)
 {
     OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
 
@@ -86,23 +86,26 @@ ge::graphStatus TilingPolicy::TilingProcess(gert::TilingContext *context)
     // step6: tiling save to buffer
     OPS_CHECK(!TilingSaveToBuffer(context, tiling), OPS_LOG_E("", "TilingSaveToBuffer is failed.\n"),
               return ge::GRAPH_FAILED);
+    // step7: set workspace
+    OPS_CHECK(!TilingWorkSpace(context, tiling), OPS_LOG_E("", "Set workspace size is failed.\n"),
+    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-bool TilingPolicy::TilingSaveToBuffer(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingSaveToBuffer(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
     return true;
 }
 
-bool TilingPolicy::CheckIsSupport(gert::TilingContext *context)
+bool TilingPolicy::CheckIsSupport(gert::TilingContext* context)
 {
     return true;
 }
 
-bool TilingPolicy::TilingShape(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     // base unrealized
     return false;
@@ -134,7 +137,7 @@ bool TilingPolicy::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t 
     return true;
 }
 
-bool TilingPolicy::TilingAttribute(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingAttribute(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OPS_CHECK_PTR_NULL(attrs, return false);
@@ -170,7 +173,27 @@ bool TilingPolicy::TilingAttribute(gert::TilingContext *context, optiling::HstuD
     return true;
 }
 
-bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingWorkSpace(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+{
+    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    OPS_CHECK_PTR_NULL(currentWorkspace, return false);
+    
+    size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
+    size_t coreNum = ascendPlatform.GetCoreNumAic();
+
+    int64_t oneBlockMidElem = BLOCK_HEIGHT * BLOCK_HEIGHT * COMPUTE_PIPE_NUM;
+    int64_t oneCoreMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
+
+    int64_t oneBlockMidTransElem = BLOCK_HEIGHT * tiling.get_dim() * TRANS_PIPE_NUM;
+    int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
+    int64_t blockNumberSize = tiling.get_batchSize() * tiling.get_headNum() * sizeof(int64_t);
+    int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float) + blockNumberSize;
+    currentWorkspace[0] = workspaceSize + systemWorkspacesSize;
+    return true;
+}
+
+bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     int64_t dim = tiling.get_dim();
 
@@ -183,19 +206,7 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext *context, optiling::H
     } else {
         dataType = matmul_tiling::DataType::DT_BFLOAT16;
     }
-
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
-    size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
-    size_t coreNum = ascendPlatform.GetCoreNumAic();
-
-    int64_t oneBlockMidElem = BLOCK_HEIGHT * BLOCK_HEIGHT * COMPUTE_PIPE_NUM;
-    int64_t oneCoreMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
-
-    int64_t oneBlockMidTransElem = BLOCK_HEIGHT * dim * TRANS_PIPE_NUM;
-    int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
-    int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float);
-    currentWorkspace[0] = workspaceSize + systemWorkspacesSize;
 
     // apply qk
     matmul_tiling::MatmulApiTiling qkMatmul(ascendPlatform);
@@ -235,7 +246,7 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext *context, optiling::H
     return true;
 }
 
-bool TilingPolicy::TilingCore(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingCore(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAic();
@@ -243,13 +254,13 @@ bool TilingPolicy::TilingCore(gert::TilingContext *context, optiling::HstuDenseF
     return true;
 }
 
-bool TilingPolicy::TilingKeySet(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     // base unrealized
     return false;
 }
 
-void TilingPolicy::DumpTiling(optiling::HstuDenseForwardTilingData &tiling)
+void TilingPolicy::DumpTiling(optiling::HstuDenseForwardTilingData& tiling)
 {
     OPS_LOG_D("batchSize = %ld\n", tiling.get_batchSize());
     OPS_LOG_D("seqLen = %ld\n", tiling.get_seqLen());

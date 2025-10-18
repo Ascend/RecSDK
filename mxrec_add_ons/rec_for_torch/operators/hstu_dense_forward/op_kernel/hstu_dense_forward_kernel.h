@@ -65,7 +65,7 @@ class HstuDenseForwardKernel : public HstuDenseForwardKernelPattenBsnd<qType> {
 public:
     __aicore__ inline HstuDenseForwardKernel() {}
 
-    __aicore__ inline void PreInit(const HstuDenseForwardTilingData *__restrict tilingDataPtr)
+    __aicore__ inline void PreInit(const HstuDenseForwardTilingData* __restrict tilingDataPtr)
     {
         seqBlockNumQk = DivCeil(this->xDim1, this->blockHeight); // 不满足一个block的按照一个block进行计算
         qkTotalBlock = this->xDim0 * this->xDim2 * seqBlockNumQk;

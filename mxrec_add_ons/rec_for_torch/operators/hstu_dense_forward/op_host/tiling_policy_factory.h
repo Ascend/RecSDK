@@ -21,22 +21,23 @@ See the License for the specific language governing permissions and
 
 namespace HstuDenseForward {
 
-const int TYPE_NUM = 3;
+const int TYPE_NUM = 4;
 
 enum class LAYOUT_TYPE {
     NORMAL = 0,
     NORMALV200 = 1,
     JAGGED = 2,
-    INVALID = 3
+    PAGED = 3,
+    INVALID = 4
 };
 
 class TilingPolicyFactory {
 public:
-    static std::shared_ptr<TilingPolicy> CreatePolicy(const char *layOutCStr);
+    static std::shared_ptr<TilingPolicy> CreatePolicy(const char* layOutCStr);
     static void TilingPolicyRegister(LAYOUT_TYPE policyKey, std::shared_ptr<TilingPolicy> policy);
-    static TilingPolicyFactory &GetInstance();
+    static TilingPolicyFactory& GetInstance();
 private:
-    static LAYOUT_TYPE ParseLayout(const char *layOutCStr);
+    static LAYOUT_TYPE ParseLayout(const char* layOutCStr);
     static std::vector<std::shared_ptr<TilingPolicy>> m_policyMap;
 };
 

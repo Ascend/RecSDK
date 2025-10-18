@@ -56,6 +56,8 @@ struct JaggedTaskArgs {
     uint32_t kSeqId = 0;          // 该基本块所属Key 输入的第几个seq block 一个block是256条seq
     uint32_t actualSeqLen = 0;    // Q序列的基本块实际的序列长度
     uint32_t actualSeqLenK = 0;    // K序列的基本块实际的序列长度
+    uint32_t actualHistLen = 0;    // KV序列的历史序列长度
+    uint32_t actualNewHistLen = 0; // Q序列的历史序列长度
     uint32_t qSeqNum = 0;         // 该Batch下Qblock数
     uint32_t kSeqNum = 0;         // 该基本块在K轴需要乘多少次
     uint32_t transTaskId = 0;     // 该基本块转置任务的id
@@ -71,6 +73,7 @@ struct JaggedTaskArgs {
     int64_t kvOffset = 0;         // 该基本块的key value计算偏移
     int64_t ioOffset = 0;         // 该基本块的query attnOutput计算偏移
     int32_t deltaQK = 0;         // QK序列长度差
+    int64_t pageNum = 0;          // 该基本块存在kvcache中的page个数
 };
 
 template <typename qType, typename oType>
@@ -82,7 +85,6 @@ public:
 
     __aicore__ inline void ComputeAllBlock();
 
-private:
     __aicore__ inline int PreInit(const HstuDenseForwardTilingData* __restrict tilingDataPtr);
 
     __aicore__ inline void GetTaskInfo(uint32_t sBlkId);
@@ -432,15 +434,15 @@ template <typename qType, typename oType>
 __aicore__ inline int HstuDenseForwardJaggedKernel<qType, oType>::PreInit(
     const HstuDenseForwardTilingData* __restrict tilingDataPtr)
 {
-    seqOffsetsQGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetQ), this->xDim0 + 1);
+    seqOffsetsQGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetQ), this->batchSize + 1);
     seqOffsetsKGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetK), this->batchSize + 1);
-    seqOffsetsQGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetQ), this->xDim0 + 1);
     auto validBatchSize = GetBatchSizeFromJaggedOffset(seqOffsetsQGt, this->xDim0 + 1);
     ASCENDC_ASSERT((validBatchSize > 0 && validBatchSize <= MAX_BATCH_SIZE), "batchSize exceed limit of (0, 20480]\n");
 
     const int blockId = GetBlockIdx();
     const uint32_t coreNum = GetBlockNum() * GetTaskRation();
     this->batchSize = validBatchSize;
+    this->xDim0 = validBatchSize;
     this->seqLen = this->xDim1;
     this->headNum = this->xDim2;
     this->headDim = this->xDim3;

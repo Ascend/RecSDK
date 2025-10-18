@@ -49,7 +49,7 @@ bool TilingPolicyNormalv200::GeneralShapeCheck(int64_t batchSize, int64_t seqLen
 }
 
 bool TilingPolicyNormalv200::TilingHeighLevelApi(gert::TilingContext* context,
-                                                 optiling::HstuDenseForwardTilingData &tiling)
+                                                 optiling::HstuDenseForwardTilingData& tiling)
 {
     int64_t dim = tiling.get_dim();
 
@@ -117,7 +117,7 @@ bool TilingPolicyNormalv200::TilingHeighLevelApi(gert::TilingContext* context,
     return true;
 }
 
-bool TilingPolicyNormalv200::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicyNormalv200::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT16) {

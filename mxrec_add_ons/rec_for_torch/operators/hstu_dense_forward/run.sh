@@ -44,6 +44,7 @@ if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
   cp -rf op_host/tiling_policy_normal_v200.cpp hstu_dense_forward/op_host/
 else
   cp -rf op_host/tiling_policy_jagged.cpp hstu_dense_forward/op_host/
+  cp -rf op_host/tiling_policy_paged.cpp hstu_dense_forward/op_host/
 fi
 
 #onnx适配层

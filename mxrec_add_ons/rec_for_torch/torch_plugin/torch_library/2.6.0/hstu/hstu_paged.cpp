@@ -58,10 +58,11 @@ at::Tensor hstu_paged_forward_impl_npu(
     auto attnOutput = at::empty_like(denseQ);
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
-    const auto _numContext = at::Tensor();
+    const auto _numContext = at::zeros_like(numTarget);
     const auto _actargetGroupSize = int();
 
     const char *layout = "paged";
+    const int64_t isDeltaQK = 1;
     EXEC_NPU_CMD(aclnnHstuDenseForward,
                  denseQ,
                  denseK,
@@ -83,6 +84,7 @@ at::Tensor hstu_paged_forward_impl_npu(
                  realSiluScale,
                  layout,
                  _actargetGroupSize,
+                 isDeltaQK,
                  attnOutput);
     return attnOutput;
 }

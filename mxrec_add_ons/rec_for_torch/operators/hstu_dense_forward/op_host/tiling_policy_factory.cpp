@@ -32,13 +32,13 @@ void TilingPolicyFactory::TilingPolicyRegister(LAYOUT_TYPE layOutType, std::shar
     return;
 }
 
-TilingPolicyFactory &TilingPolicyFactory::GetInstance()
+TilingPolicyFactory& TilingPolicyFactory::GetInstance()
 {
     static TilingPolicyFactory instance;
     return instance;
 }
 
-std::shared_ptr<TilingPolicy> TilingPolicyFactory::CreatePolicy(const char *layOutCStr)
+std::shared_ptr<TilingPolicy> TilingPolicyFactory::CreatePolicy(const char* layOutCStr)
 {
     OPS_CHECK_PTR_NULL(layOutCStr, return nullptr);
 
@@ -46,13 +46,13 @@ std::shared_ptr<TilingPolicy> TilingPolicyFactory::CreatePolicy(const char *layO
     if (layout < LAYOUT_TYPE::INVALID && layout >= LAYOUT_TYPE::NORMAL) {
         return m_policyMap[static_cast<int>(layout)];
     } else {
-        OPS_LOG_D("the input Layout should be normal/jagged, but got %s.", layOutCStr);
+        OPS_LOG_D("the input Layout should be normal/jagged/paged, but got %s.", layOutCStr);
         // TilingPolicy wiil tiling failed inside
         return std::make_shared<TilingPolicy>();
     }
 }
 
-LAYOUT_TYPE TilingPolicyFactory::ParseLayout(const char *layOutCStr)
+LAYOUT_TYPE TilingPolicyFactory::ParseLayout(const char* layOutCStr)
 {
     std::string layoutStr = std::string(layOutCStr);
 
@@ -68,6 +68,8 @@ LAYOUT_TYPE TilingPolicyFactory::ParseLayout(const char *layOutCStr)
         layout = LAYOUT_TYPE::NORMALV200;
     } else if (layoutStr == "jagged") {
         layout = LAYOUT_TYPE::JAGGED;
+    } else if (layoutStr == "paged") {
+        layout = LAYOUT_TYPE::PAGED;
     } else {
         layout = LAYOUT_TYPE::INVALID;
     }

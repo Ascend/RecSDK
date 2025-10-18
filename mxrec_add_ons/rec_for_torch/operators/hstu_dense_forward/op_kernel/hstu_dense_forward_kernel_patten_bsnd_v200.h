@@ -71,9 +71,9 @@ template <typename qType>
 class HstuDenseForwardKernelPattenBsnd {
 public:
     __aicore__ inline HstuDenseForwardKernelPattenBsnd() {}
-    __aicore__ inline void Init(const Args &args,
-                                const HstuDenseForwardTilingData *__restrict tilingDataPtr,
-                                TPipe *pipePtr)
+    __aicore__ inline void Init(const Args& args,
+                                const HstuDenseForwardTilingData* __restrict tilingDataPtr,
+                                TPipe* pipePtr)
     {
         pipe = pipePtr;
         q = args.q;
