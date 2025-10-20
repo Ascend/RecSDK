@@ -58,8 +58,7 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
             full_graph = tf.compat.v1.get_default_graph()
         self._full_graph = full_graph
 
-        if not os.path.exists(info_dir):
-            os.makedirs(info_dir)
+        os.makedirs(info_dir, exist_ok=True)
         self._info_dir = info_dir
 
     @staticmethod
