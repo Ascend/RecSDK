@@ -21,9 +21,6 @@ from hybrid_torchrec.distributed.embedding_types import kjt_list_to_device
 from hybrid_torchrec.distributed.sharding.hybrid_rw_sharding import (
     HybridRwPooledEmbeddingSharding,
 )
-from hybrid_torchrec.distributed.sharding.hybrid_tw_sharding import (
-    HybridTwPooledEmbeddingSharding,
-)
 from hybrid_torchrec.distributed.sharding.post_input_dist import EMPTY_POST_INPUT_DIST, PostInputKJTListAwaitable
 from torchrec.distributed.embedding_sharding import (
     EmbeddingSharding,
@@ -369,13 +366,7 @@ class HybridShardedEmbeddingBagCollection(
         if device is not None and device.type == "meta":
             replace_placement_with_meta_device(sharding_infos)
         if sharding_type == ShardingType.TABLE_WISE.value:
-            return HybridTwPooledEmbeddingSharding(
-                sharding_infos,
-                env,
-                host_env,
-                device,
-                qcomm_codecs_registry=qcomm_codecs_registry,
-            )
+            raise NotImplementedError("sharding table by table wise is not implemented")
         elif sharding_type == ShardingType.ROW_WISE.value:
             return HybridRwPooledEmbeddingSharding(
                 sharding_infos,
