@@ -11,9 +11,9 @@ import sys
 import unittest
 from unittest.mock import patch, MagicMock
 import pytest
+import torch
 sys.modules['torch_npu'] = MagicMock
 
-import torch
 from torch.utils.data import DataLoader
 from torch.optim import Adagrad, Adam, SGD
 import torch.distributed as dist
@@ -124,10 +124,10 @@ class TestHybridTrainPipelineSparseDist(unittest.TestCase):
     @patch("torchrec.tensor_types.check", return_value=None)
     @patch("torchrec.distributed.model_parallel.check", return_value=None)
     @patch("torchrec.distributed.planner.types.check", return_value=None)
-    @patch("hybrid_torchrec.distributed.hybrid_train_pipeline.HybridTrainPipelineSparseDist.param_check", \
-            return_value=None)
-    @patch("hybrid_torchrec.distributed.hybrid_train_pipeline.HybridTrainPipelineSparseDist._copy_to_npu", \
-            side_effect=mock_copy_to_npu)
+    @patch("hybrid_torchrec.distributed.hybrid_train_pipeline.HybridTrainPipelineSparseDist.param_check",
+           return_value=None)
+    @patch("hybrid_torchrec.distributed.hybrid_train_pipeline.HybridTrainPipelineSparseDist._copy_to_npu",
+           side_effect=mock_copy_to_npu)
     def test_hybrid_train_pipeline_init_success(self, *mocks):
         host_gp = dist.new_group(backend="gloo")
         host_env = ShardingEnv(world_size=self.world_size, rank=self.rank, pg=host_gp)
@@ -138,15 +138,15 @@ class TestHybridTrainPipelineSparseDist(unittest.TestCase):
             optimizer_kwargs=OPTIMIZER_PARAM[Adagrad],
         )
         # Shard    
-        constrans = {
+        constraints = {
             f"table{i}": ParameterConstraints(
-                sharding_types=["table_wise"], compute_kernels=["fused"]
+                sharding_types=["row_wise"], compute_kernels=["fused"]
             )
             for i in range(2)
         }
         planner = EmbeddingShardingPlanner(
             topology=Topology(world_size=self.world_size, compute_device="cpu"),
-            constraints=constrans,
+            constraints=constraints,
         )
         plan = planner.collective_plan(
             self.model, get_default_hybrid_sharders(host_env), dist.GroupMember.WORLD

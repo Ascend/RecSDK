@@ -117,8 +117,8 @@ class TestHybridOps(unittest.TestCase):
             host=torch.zeros_like(self.args.dev_weights),
             offsets=torch.tensor([0], dtype=torch.long),
             placements=torch.tensor([0], dtype=torch.long),
-            dev=torch.device('cpu:0'),  # 明确指定计算设备
-            uvm=False  # 禁用统一虚拟内存
+            dev=torch.empty(0),
+            uvm=torch.empty(0)
         )
         return optimizer_args, momentum1
 
@@ -139,15 +139,18 @@ class TestHybridOps(unittest.TestCase):
     def test_invoke(self):
         # 测试CPU路径
         optimizer_args, momentum1 = self.create_optimizer_args()
+        # CPU分支正常执行
         output = invoke(self.args, optimizer_args, momentum1)
         self.assertEqual(output.shape, (3, 10))
 
         # 测试npu分支
         new_args2 = self.args._replace(host_weights=torch.empty(0))
 
-        # 执行被测试代码会抛出异常
-        with pytest.raises(AttributeError, match=f"object has no attribute"):
-            output2 = invoke(new_args2, optimizer_args, momentum1)
+        # 抛出异常: 走到NPU分支, 执行报错
+        #   在有NPU的环境，调用到NPU算子，抛出RuntimeError
+        #   无NPU环境，无fbgemm接口，抛出AttributeError
+        with pytest.raises((AttributeError, RuntimeError)):
+            _ = invoke(new_args2, optimizer_args, momentum1)
 
     def test_invoke_with_vbe_failed(self):
         optimizer_args, momentum1 = self.create_optimizer_args()
@@ -164,4 +167,4 @@ class TestHybridOps(unittest.TestCase):
 
         # 执行被测试代码会抛出异常
         with pytest.raises(ValueError):
-            output2 = invoke(new_args, optimizer_args, momentum1)
+            _ = invoke(new_args, optimizer_args, momentum1)

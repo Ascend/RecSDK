@@ -14,9 +14,6 @@ from hybrid_torchrec.distributed.embeddingbag import HybridShardedEmbeddingBagCo
 from hybrid_torchrec.distributed.sharding.hybrid_rw_sharding import (
     HybridHashRwPooledEmbeddingSharding,
 )
-from hybrid_torchrec.distributed.sharding.hybrid_tw_sharding import (
-    HybridHashTwPooledEmbeddingSharding,
-)
 from hybrid_torchrec.modules.hash_embeddingbag import HashEmbeddingBagCollection
 from hybrid_torchrec.modules.ids_process import HashMapBase
 from torchrec.distributed.embedding_sharding import (
@@ -81,14 +78,7 @@ class HybridShardedHashEmbeddingBagCollection(HybridShardedEmbeddingBagCollectio
         if device is not None and device.type == "meta":
             replace_placement_with_meta_device(sharding_infos)
         if sharding_type == ShardingType.TABLE_WISE.value:
-            return HybridHashTwPooledEmbeddingSharding(
-                sharding_infos,
-                self.table2hashmap,
-                env,
-                host_env,
-                device,
-                qcomm_codecs_registry=qcomm_codecs_registry,
-            )
+            raise NotImplementedError("sharding table by table wise is not implemented")
         elif sharding_type == ShardingType.ROW_WISE.value:
             return HybridHashRwPooledEmbeddingSharding(
                 sharding_infos,
@@ -151,6 +141,14 @@ class HybridHashEmbeddingBagCollectionSharder(
             qcomm_codecs_registry=self.qcomm_codecs_registry,
             module_fqn=module_fqn,
         )
+
+    def sharding_types(self, compute_device_type: str) -> List[str]:
+        types = []
+        if compute_device_type in {"npu", "cpu"}:
+            types += [
+                ShardingType.ROW_WISE.value,
+            ]
+        return types
 
     def shardable_parameters(
         self, module: EmbeddingBagCollection
