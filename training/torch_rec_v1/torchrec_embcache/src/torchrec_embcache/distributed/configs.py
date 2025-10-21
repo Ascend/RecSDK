@@ -8,10 +8,17 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Optional, List, Type
+import torch
 
 from torchrec import EmbeddingConfig, EmbeddingBagConfig
-from hybrid_torchrec.constants import EMBEDDINGS_DIM_ALIGNMENT, MAX_EMBEDDINGS_DIM, MAX_NUM_EMBEDDINGS
+from hybrid_torchrec.constants import (
+    EMBEDDINGS_DIM_ALIGNMENT,
+    MAX_EMBEDDINGS_DIM,
+    MAX_NUM_EMBEDDINGS,
+    MAX_MULTI_HOT_SIZE,
+    MAX_NUM_TABLES
+)
 
 
 _DEFAULT_ADMIT_THRESHOLD: int = -1
@@ -57,6 +64,30 @@ class InitializerType(str, Enum):
     UNIFORM = "uniform"
 
 
+def check_valid_value(is_valid: bool, message: str):
+    if not is_valid:
+        raise ValueError(message)
+
+
+def check_embedding_optimizer(optimizer: Type[torch.optim.Optimizer], configs: List[EmbeddingBagConfig]):
+    if optimizer not in [torch.optim.Adagrad, torch.optim.Adam, torch.optim.SGD]:
+        raise ValueError(f"The optimizer should be one of [torch.optim.Adagrad, torch.optim.Adam, torch.optim.SGD]")
+
+
+def check_multi_hot_sizes(multi_hot_sizes: List[int], configs: List[EmbeddingBagConfig]):
+    if not isinstance(multi_hot_sizes, list):
+        raise ValueError(f"The multi_hot_sizes should be a list")
+    if len(configs) > MAX_NUM_TABLES:
+        raise ValueError(f"The number of configs should be less than {MAX_NUM_TABLES}")
+    if len(multi_hot_sizes) != len(configs):
+        raise ValueError(f"The multi_hot_sizes length should be equal to the number of configs")
+    for hot_size in multi_hot_sizes:
+        if not isinstance(hot_size, int):
+            raise ValueError(f"The multi_hot_sizes should be a list of int")
+        if not (1 <= hot_size <= MAX_MULTI_HOT_SIZE):
+            raise ValueError(f"The multi_hot_sizes should be in [1, {MAX_MULTI_HOT_SIZE}]")
+
+
 def check_embedding_config(config: EmbeddingConfig):
     if config.num_embeddings < 1 or config.num_embeddings > MAX_NUM_EMBEDDINGS:
         raise ValueError(
@@ -85,7 +116,7 @@ def check_embedding_config(config: EmbeddingConfig):
             f"The weight_init_min should be less than weight_init_max, "
             f"but is {config.weight_init_min} >= {config.weight_init_max}"
         )
-    
+
 
 @dataclass
 class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):

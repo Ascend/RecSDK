@@ -26,6 +26,7 @@ from hybrid_torchrec.distributed.embeddingbag import (
     _create_mean_pooling_divisor,
     MeanPoolingConfig,
 )
+from hybrid_torchrec.constants import MAX_WORLD_SIZE, MAX_BATCH_SIZE, MAX_CACHINE_MEM_SIZE
 from hybrid_torchrec.modules.ids_process import IdsMapper
 from hybrid_torchrec.modules.ids_process import HashMapBase
 from hybrid_torchrec.distributed.sharding.post_input_dist import (
@@ -35,7 +36,13 @@ from hybrid_torchrec.distributed.sharding.post_input_dist import (
 from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
     KeyedJaggedTensorWithLookHelper,
 )
-from torchrec_embcache.distributed.configs import EmbCacheEmbeddingBagConfig, check_embedding_config
+from torchrec_embcache.distributed.configs import (
+    EmbCacheEmbeddingBagConfig,
+    check_embedding_config,
+    check_embedding_optimizer,
+    check_multi_hot_sizes,
+    check_valid_value
+)
 from torchrec_embcache.distributed.sharding.rw_sharding import (
     EmbCacheRwPooledEmbeddingSharding,
 )
@@ -230,6 +237,19 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         for config in tables:
             check_embedding_config(config)
 
+        check_embedding_optimizer(embedding_optimizer_cls, tables)
+        check_multi_hot_sizes(multi_hot_sizes, tables)
+        check_valid_value(
+            world_size > 0 and world_size <= MAX_WORLD_SIZE,
+            "world_size must be greater than 0 and less than or equal to MAX_WORLD_SIZE",
+        )
+        check_valid_value(
+            batch_size > 0 and batch_size <= MAX_BATCH_SIZE,
+            "batch_size must be greater than 0 and less than or equal to MAX_BATCH_SIZE",
+        )
+        check_valid_value(multi_hot_sizes is not None, "multi_hot_sizes must be not None")
+        check_valid_value(not is_weighted, "is_weighted must be False")
+
         super().__init__(tables, is_weighted, device)
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
         self._is_weighted = is_weighted
@@ -245,7 +265,13 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         logger.debug("======  _optim_num: %s", self._optim_num)
 
         # 16GB -> 16*1024*1024*1024 -> 17179869184
-        embcache_size_on_device_mem = int(os.getenv("EMBCACHE_SIZE_ON_DEVICE_MEM", "17179869184"))
+        try:
+            embcache_size_on_device_mem = int(os.getenv("EMBCACHE_SIZE_ON_DEVICE_MEM", "17179869184"))
+        except ValueError as err:
+            logger.error("environ EMBCACHE_SIZE_ON_DEVICE_MEM must be int: %s", err)
+            raise err
+        if embcache_size_on_device_mem > MAX_CACHINE_MEM_SIZE:
+            raise ValueError(f"EMBCACHE_SIZE_ON_DEVICE_MEM is greater than MAX_CACHINE_MEM_SIZE {MAX_CACHINE_MEM_SIZE}")
         logger.debug("======  embcache_size_on_device_mem: %s", embcache_size_on_device_mem)
 
         cache_num_embeddings = self._calculate_caches(
