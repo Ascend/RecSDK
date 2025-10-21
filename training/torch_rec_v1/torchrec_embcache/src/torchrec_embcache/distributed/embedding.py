@@ -31,6 +31,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
     SplitTableBatchedEmbeddingBagsCodegen,
 )
 
+from hybrid_torchrec.constants import MAX_WORLD_SIZE, MAX_BATCH_SIZE, MAX_CACHINE_MEM_SIZE
 from hybrid_torchrec.modules.ids_process import IdsMapper
 from hybrid_torchrec.modules.ids_process import HashMapBase
 from hybrid_torchrec.distributed.sharding.post_input_dist import (
@@ -46,7 +47,10 @@ from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
 
 from torchrec_embcache.distributed.configs import (
     EmbCacheEmbeddingConfig,
-    check_embedding_config
+    check_embedding_config,
+    check_multi_hot_sizes,
+    check_embedding_optimizer,
+    check_valid_value
 )
 from torchrec_embcache.distributed.sharding.rw_sequence_sharding import (
     EmbCacheRwSequenceEmbeddingSharding,
@@ -111,7 +115,6 @@ from torchrec.distributed.embedding import (
     pad_vbe_kjt_lengths,
     get_ec_index_dedup,
 )
-
 
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -194,6 +197,18 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
         for config in tables:
             check_embedding_config(config)
 
+        check_embedding_optimizer(embedding_optimizer_cls, tables)
+        check_multi_hot_sizes(multi_hot_sizes, tables)
+        check_valid_value(
+            world_size > 0 and world_size <= MAX_WORLD_SIZE,
+            "world_size must be greater than 0 and less than or equal to MAX_WORLD_SIZE",
+        )
+        check_valid_value(
+            batch_size > 0 and batch_size <= MAX_BATCH_SIZE,
+            "batch_size must be greater than 0 and less than or equal to MAX_BATCH_SIZE",
+        )
+        check_valid_value(multi_hot_sizes is not None, "multi_hot_sizes must be not None")
+        
         super().__init__(tables, device, need_indices)
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
         self.embeddings: nn.ModuleDict = nn.ModuleDict()
@@ -220,7 +235,8 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
         except ValueError as err:
             logger.error("environ EMBCACHE_SIZE_ON_DEVICE_MEM must be int: %s", err)
             raise err
-
+        if embcache_size_on_device_mem > MAX_CACHINE_MEM_SIZE:
+            raise ValueError(f"EMBCACHE_SIZE_ON_DEVICE_MEM is greater than MAX_CACHINE_MEM_SIZE {MAX_CACHINE_MEM_SIZE}")
         logger.debug("======  embcache_size_on_device_mem: %s", embcache_size_on_device_mem)
 
         cache_num_embeddings = self._calculate_caches(
