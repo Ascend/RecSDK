@@ -36,12 +36,10 @@ namespace Embcache {
             output = std::stoi(envVariablePtr);
             return true;
         } catch (std::invalid_argument const& ex) {
-            LOG_ERROR("Parse environment variable to int error, env variable is invalid, env variable name:{}.",
-                      envNameStr);
+            LOG_ERROR("Parse environment variable to int error, env variable is invalid");
             throw std::runtime_error("Parse environment variable error.");
         } catch (std::out_of_range const& ex) {
-            LOG_ERROR("Parse environment variable to int error, env variable is out of range, env variable name:{}.",
-                      envNameStr);
+            LOG_ERROR("Parse environment variable to int error, env variable is out of range");
             throw std::runtime_error("Parse environment variable error.");
         }
         return false;

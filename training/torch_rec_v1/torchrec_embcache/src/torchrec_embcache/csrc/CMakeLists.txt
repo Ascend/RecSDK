@@ -32,8 +32,6 @@ pybind11_add_module(embcache_pybind ${SOURCES})
 
 # 链接 PyTorch 库
 find_library(TORCH_PYTHON_LIBRARY torch_python PATH "${TORCH_INSTALL_PREFIX}/lib")
-message("TORCH_LIBRARIES:${TORCH_LIBRARIES})")
-message("TORCH_PYTHON_LIBRARY:${TORCH_PYTHON_LIBRARY}")
 
 target_link_libraries(embcache_pybind PRIVATE
         pybind11::module
