@@ -74,10 +74,12 @@ __aicore__ inline void CopyQKA1(const LocalTensor<int8_t>& aMatrix, const __gm__
 
     auto alignOfM = AlignUp(useM, ALIGN_16);
     Nd2NzParams param = {
-        1, (uint16_t)useM, (uint16_t)useK, 0, static_cast<uint16_t>(dim * headNum), (uint16_t)alignOfM, 1, 0
+        1, static_cast<uint16_t>(useM), static_cast<uint16_t>(useK), 0,
+        static_cast<uint16_t>(dim * headNum), static_cast<uint16_t>(alignOfM), 1, 0
     };
 
-    int64_t offsetOfGt = row * dim * headNum * baseM + col * baseK;
+    int64_t offsetOfGt = static_cast<int64_t>(row) * dim * headNum * static_cast<int64_t>(baseM) +
+                         static_cast<int64_t>(col) * static_cast<int64_t>(baseK);
     DataCopy(aMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
 };
 
@@ -96,10 +98,12 @@ __aicore__ inline void CopyQKB1(const LocalTensor<int8_t>& bMatrix, const __gm__
 
     auto alignOfN = AlignUp(useN, ALIGN_16);
     Nd2NzParams param = {
-        1, (uint16_t)useN, (uint16_t)useK, 0, static_cast<uint16_t>(dim * headNum), (uint16_t)alignOfN, 1, 0
+        1, static_cast<uint16_t>(useN), static_cast<uint16_t>(useK), 0,
+        static_cast<uint16_t>(dim * headNum), static_cast<uint16_t>(alignOfN), 1, 0
     };
 
-    int64_t offsetOfGt = col * dim * headNum * baseN + row * baseK;
+    int64_t offsetOfGt = static_cast<int64_t>(col) * dim * headNum * static_cast<int64_t>(baseN) +
+                         static_cast<int64_t>(row) * static_cast<int64_t>(baseK);
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
 };
 
@@ -118,10 +122,12 @@ __aicore__ inline void CopySVB1(const LocalTensor<int8_t>& bMatrix, const __gm__
     auto alignOfK = AlignUp(useK, ALIGN_16);
 
     Nd2NzParams param = {
-        1, (uint16_t)useK, (uint16_t)useN, 0, static_cast<uint16_t>(dim * headNum), (uint16_t)alignOfK, 1, 0
+        1, static_cast<uint16_t>(useK), static_cast<uint16_t>(useN), 0,
+        static_cast<uint16_t>(dim * headNum), static_cast<uint16_t>(alignOfK), 1, 0
     };
 
-    int64_t offsetOfGt = row * dim * headNum * baseK + col * baseN;
+    int64_t offsetOfGt = static_cast<int64_t>(row) * dim * headNum * static_cast<int64_t>(baseK) +
+                         static_cast<int64_t>(col) * static_cast<int64_t>(baseN);
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
 };
 
