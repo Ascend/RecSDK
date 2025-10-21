@@ -30,6 +30,7 @@ inline void check_tensor_non_empty(const at::Tensor& tensor, const std::string& 
 {
     TORCH_CHECK(tensor.defined(), name, " tensor must be defined");
     TORCH_CHECK(tensor.numel() > 0, name, " tensor must be non-empty");
+    TORCH_CHECK(tensor.dim() > 0, name, " tensor must have non-zero dimensions");
 }
 
 /**

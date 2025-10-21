@@ -127,7 +127,7 @@ public:
         auto values = saved[0];
         auto offsets_tensor = saved[1];
         tensor_list offsets = {offsets_tensor};
-
+        check_tensor_non_empty(values, "values");
         int64_t totalL = values.size(0);
         auto grad_input = jagged_to_padded_dense_backward_npu(grad_output, offsets, totalL);
         return {grad_input, Variable(), Variable(), Variable()};
@@ -156,7 +156,7 @@ public:
         auto values = saved[0];
         auto offsets_tensor = saved[1];
         tensor_list offsets = {offsets_tensor};
-
+        check_tensor_non_empty(values, "values");
         int64_t totalL = values.size(0);
         auto grad_input = jagged_to_padded_dense_backward_npu(grad_output, offsets, totalL);
         return {grad_input, Variable(), Variable(), Variable()};

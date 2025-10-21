@@ -43,6 +43,7 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
     const c10::optional<int64_t> &permuted_lengths_sum)
 {
     validate_permute2d_sparse_data_inputs(permute, lengths, values);
+    check_tensor_dim(lengths, EXPECTED_DIM_2D, "lengths");
     auto permuteConti = permute.contiguous();
     auto lengthsConti = lengths.contiguous();
     auto valuesConti = values.contiguous();

@@ -111,6 +111,9 @@ public:
                                                   double beta2 = 0,
                                                   int64_t iter = 0)
     {
+        check_tensor_non_empty(weights_offsets, "weights_offsets");
+        check_tensor_non_empty(offsets, "offsets");
+        check_tensor_non_empty(D_offsets, "D_offsets");
         const auto T = weights_offsets.size(0);
         TORCH_CHECK(T > 0, "Weights_offsets size must be great than 0.");
         const auto max_B_ = offsets.size(0) / T;
