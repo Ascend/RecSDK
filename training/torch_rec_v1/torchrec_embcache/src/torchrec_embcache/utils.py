@@ -52,22 +52,22 @@ def check_path(value: str, need_exist: bool = False, is_dir: bool = False, **kwa
 
     check_str_type(value)
     if os.path.abspath(value) != os.path.realpath(value):
-        raise ValueError(f"soft link or relative path can't be a path param, got:{value}")
+        raise ValueError(f"soft link or relative path can't be a path param")
     if not Path(value).is_absolute():
         check_str_type_and_len(value, 0, _FILE_NAME_MAX_LEN)
     check_str_type_and_len(os.path.abspath(value), _ABS_PATH_MIN_LEN, _ABS_PATH_MAX_LEN)
     if need_exist and not os.path.exists(os.path.realpath(value)):
-        raise ValueError(f"expected path exist, but got:{value}")
+        raise ValueError(f"expected path exist")
 
     black_dirs = black_dirs or _DEFAULT_BLACK_DIRS
     is_start_with_black_dirs = any([os.path.realpath(value).startswith(item) for item in black_dirs])
     if is_start_with_black_dirs:
-        raise ValueError(f"path can't start with black dirs, but got:{value}")
+        raise ValueError(f"path can't start with black dirs")
 
     sensitive_words = sensitive_words or _DEFAULT_SENSITIVE_WORDS
     contains_sensitive_word = any([item in value for item in sensitive_words])
     if contains_sensitive_word:
-        raise ValueError(f"path can't contains sensitive words, but got:{value}")
+        raise ValueError(f"path can't contains sensitive words")
 
     _check_path_permission(value)
     file_exist = os.path.exists(os.path.realpath(value))
@@ -92,7 +92,7 @@ def _check_path_permission(file_path: str):
             last_exist_parent = ancestor.absolute()
             break
     if not last_exist_parent:
-        raise ValueError(f"check path permission error, there is not exist at least one parent path for: {realpath}")
+        raise ValueError(f"check path permission error, there is not exist at least one parent")
 
     # 检查权限
     process_uid = os.geteuid()
@@ -101,4 +101,4 @@ def _check_path_permission(file_path: str):
     file_uid = stat_info.st_uid
     file_gid = stat_info.st_gid
     if not (process_uid == file_uid or process_gid == file_gid):
-        raise ValueError(f"current user don't have access permission for the path:{last_exist_parent}")
+        raise ValueError(f"current user don't have access permission for the path")

@@ -59,7 +59,7 @@ class Saver:
         path = Path(path)
         dirs = [d for d in path.iterdir() if d.is_dir() and Saver.is_timestamp_format(d.name)]
         if not dirs:
-            raise ValueError(f"expect a timestamp directory but empty in path:{path}")
+            raise ValueError(f"expect a timestamp directory but empty in path")
         latest_dir = max(d.name for d in dirs)
         return os.path.join(os.path.realpath(path), latest_dir)
 
