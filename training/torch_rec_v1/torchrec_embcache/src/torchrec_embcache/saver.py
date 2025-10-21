@@ -22,6 +22,8 @@ SAVE_PATH_MAX_LEN = 1024
 TIMESTAMP_FORMAT = "%Y%m%d%H%M%S"
 _SAVE_PATH_MIN_LEN = 1
 _DIR_MODE = 0o750
+_MAX_RECURSIZE_TIMES = 500
+_MAX_LOOP_TIMES = 500
 
 
 class Saver:
@@ -106,12 +108,16 @@ class Saver:
         for mod in self.cache_module:
             mod.embcache_mgr.load(path, self.rank)
 
-    def _find_all_embed_cache_instance(self, module):
-        for _, child in module.named_children():
+    def _find_all_embed_cache_instance(self, module: EmbCacheShardedEmbeddingBagCollection, this_recur_step: int = 0):
+        if this_recur_step >= _MAX_RECURSIZE_TIMES:
+            raise RuntimeError(f"Recursion depth not greater than {_MAX_RECURSIZE_TIMES}")
+        for ind, (_, child) in enumerate(module.named_children()):
+            if ind >= _MAX_LOOP_TIMES:
+                raise RuntimeError(f"Len of module children should not be greater than {_MAX_LOOP_TIMES}")
             if (isinstance(child, EmbCacheShardedEmbeddingBagCollection)
                     or isinstance(child, EmbCacheShardedEmbeddingCollection)):
                 self.cache_module.append(child)
-            self._find_all_embed_cache_instance(child)
+            self._find_all_embed_cache_instance(child, this_recur_step + 1)
 
     def _check_emb_cache_instance_len(self):
         if len(self.cache_module) == 0:
