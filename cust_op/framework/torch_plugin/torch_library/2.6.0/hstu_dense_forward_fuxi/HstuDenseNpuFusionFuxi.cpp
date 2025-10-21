@@ -171,7 +171,7 @@ at::Tensor hstu_dense_forward_impl_npu(
     const std::string layout,
     c10::optional<at::IntArrayRef> seqOffset)
 {
-    TORCH_CHECK(layout == "normal" || layout == "jagged", "The layout should be normal or jagged but got ", layout);
+    TORCH_CHECK(layout == "normal" || layout == "jagged", "The layout should be normal or jagged");
 
     check_tensor_non_empty(q, "q");
     check_tensor_non_empty(k, "k");

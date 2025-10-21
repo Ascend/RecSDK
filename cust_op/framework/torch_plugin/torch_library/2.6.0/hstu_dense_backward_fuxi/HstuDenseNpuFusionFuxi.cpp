@@ -159,7 +159,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
     const double siluScale,
     c10::optional<at::IntArrayRef> seqOffset)
 {
-    TORCH_CHECK(layout == "jagged", "The layout should be jagged but got ", layout);
+    TORCH_CHECK(layout == "jagged", "The layout should be jagged");
     check_tensor_non_empty(grad, "grad");
     check_tensor_non_empty(q, "q");
     check_tensor_non_empty(k, "k");

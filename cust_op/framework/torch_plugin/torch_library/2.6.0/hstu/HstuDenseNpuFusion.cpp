@@ -167,8 +167,7 @@ at::Tensor hstu_dense_forward_impl_npu(
     const std::string layout,
     c10::optional<at::IntArrayRef> seqOffset)
 {
-    TORCH_CHECK(layout == "normal" || layout == "jagged",
-        "The layout should be normal/jagged but got ", layout);
+    TORCH_CHECK(layout == "normal" || layout == "jagged", "The layout should be normal/jagged");
 
     check_tensor_non_empty(q, "q");
     check_tensor_non_empty(k, "k");
@@ -334,8 +333,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
     const double siluScale,
     c10::optional<at::IntArrayRef> seqOffset)
 {
-    TORCH_CHECK(layout == "normal" || layout == "jagged",
-        "The layout should be normal/jagged but got ", layout);
+    TORCH_CHECK(layout == "normal" || layout == "jagged", "The layout should be normal/jagged");
     
     check_tensor_non_empty(grad, "grad");
     check_tensor_non_empty(q, "q");
