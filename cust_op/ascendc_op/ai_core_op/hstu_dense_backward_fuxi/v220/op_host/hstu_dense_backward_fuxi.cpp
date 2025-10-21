@@ -169,6 +169,7 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
 namespace optiling {
 ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     const gert::RuntimeAttrs* attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
 
@@ -192,6 +193,7 @@ ge::graphStatus TilingFunc(gert::TilingContext* context)
 namespace ge {
 static ge::graphStatus InferShape(gert::InferShapeContext *context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
 
@@ -210,6 +212,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext *context)
 
 static ge::graphStatus InferDtype(gert::InferDataTypeContext *context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     // q dataType
     auto dataType = context->GetInputDataType(INDEX_T::INDEX_1);
 

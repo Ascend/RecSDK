@@ -207,9 +207,10 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
-    OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED)
+    OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
     BackwardCodegenAdagradUnweightedExactTilingData tiling;
 
+    OPS_LOG_E_IF_NULL("GetAttrs()", context->GetAttrs(), return ge::GRAPH_FAILED);
     int64_t total_hash_size_bits = *context->GetAttrs()->GetInt(TOTAL_HASH_SIZE_BITS);
 
     // Shape and dType
@@ -266,6 +267,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 namespace ge {
 static ge::graphStatus InferShape(gert::InferShapeContext* context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     const gert::Shape* x1_shape = context->GetInputShape(0);
     gert::Shape* y_shape = context->GetOutputShape(0);
     *y_shape = *x1_shape;

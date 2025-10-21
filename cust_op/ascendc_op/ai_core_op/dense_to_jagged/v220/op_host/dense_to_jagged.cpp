@@ -144,6 +144,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
 }
 static ge::graphStatus InferDtype(gert::InferDataTypeContext* context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     context->SetOutputDataType(OUTPUT_JAGGED_INDEX,
                                context->GetInputDataType(INPUT_DENSE_INDEX));
     return GRAPH_SUCCESS;
