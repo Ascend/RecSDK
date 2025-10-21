@@ -52,8 +52,11 @@ public:
         Tensor momentum1_uvm, Tensor momentum1_placements, Tensor momentum1_offsets, double eps = 0,
         double learning_rate = 0)
     {
+        check_tensor_non_empty(weights_offsets, "weights_offsets");
+        check_tensor_non_empty(offsets, "offsets");
+        check_tensor_non_empty(D_offsets, "D_offsets");
         const auto T = weights_offsets.size(0);
-        TORCH_CHECK(T > 0, "Weights_offsets size must be great than 0.");
+        TORCH_CHECK(T > 0, "Weights_offsets size must be greater than 0.");
         const auto max_B_ = offsets.size(0) / T;
         // NOTE: The `local_uvm_cache_stats` variable held by the nn.Module has dtype int32_t
         const auto uvm_cache_stats_ = uvm_cache_stats.value_or(at::empty({0}, uvm_weights.options().dtype(at::kInt)));

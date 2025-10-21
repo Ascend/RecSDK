@@ -37,8 +37,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> IdsMapper::FindOrInsertHighPrecis
 {
     at::Tensor hashIndices = at::empty_like(globalIds);
 
-    int64_t* hashIndicesPtr = hashIndices.data_ptr<int64_t>();
-    int64_t* globalIdsPtr = globalIds.data_ptr<int64_t>();
+    int64_t* hashIndicesPtr = GetSafeDataPtr<int64_t>(hashIndices, "hashIndices");
+    int64_t* globalIdsPtr = GetSafeDataPtr<int64_t>(globalIds, "globalIds");
     for (int64_t i = 0; i < globalIds.numel(); i++) {
         int64_t key = globalIdsPtr[i];
         TORCH_CHECK(key >= 0, " Invalid key value: ", key);
@@ -179,6 +179,7 @@ size_t IdsMapper::ProcessIds2Indices(IdsMapper& mapper, std::vector<int64_t>& un
 {
     auto fullMap = mapper.AllocFullHashMap();
     int64_t* bitmap = fullMap->data();
+    TORCH_CHECK(end - start >= 0 && end - start <= MAX_INDEX_LEN, "length is too large: ", end - start);
     uniqVec.reserve(end - start);
 
     for (int64_t i = start; i < end; ++i) {
@@ -234,13 +235,13 @@ void IdsMapper::ParallelUniqueHashOut(
     const torch::Tensor& uniqueInverse,
     const torch::Tensor& uniqueOffset)
 {
-    auto gIdsPtr = globalIds.data_ptr<int64_t>();
-    auto offPtr = offsets.data_ptr<int64_t>();
-    auto hashIdxPtr = hashIndices.data_ptr<int64_t>();
-    auto uniquePtr = unique.data_ptr<int64_t>();
-    auto uniqueIdsPtr = uniqueIds.data_ptr<int64_t>();
-    auto uniqueInvPtr = uniqueInverse.data_ptr<int64_t>();
-    auto uniqOffPtr = uniqueOffset.data_ptr<int64_t>();
+    auto gIdsPtr = GetSafeDataPtr<int64_t>(globalIds, "globalIds");
+    auto offPtr = GetSafeDataPtr<int64_t>(offsets, "offsets");
+    auto hashIdxPtr = GetSafeDataPtr<int64_t>(hashIndices, "hashIndices");
+    auto uniquePtr = GetSafeDataPtr<int64_t>(unique, "unique");
+    auto uniqueIdsPtr = GetSafeDataPtr<int64_t>(uniqueIds, "uniqueIds");
+    auto uniqueInvPtr = GetSafeDataPtr<int64_t>(uniqueInverse, "uniqueInverse");
+    auto uniqOffPtr = GetSafeDataPtr<int64_t>(uniqueOffset, "uniqueOffset");
 
     const int64_t nTables = mappers.size();
     std::vector<int64_t> uniqueCnt(nTables);

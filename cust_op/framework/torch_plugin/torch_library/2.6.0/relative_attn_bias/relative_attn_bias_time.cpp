@@ -27,11 +27,15 @@ std::tuple<at::Tensor, at::Tensor> relative_attn_bias_time_impl(const Tensor& ti
     auto timestampsWeightsConti = timestampsWeights.contiguous();
     check_tensor_non_empty(timestampsConti, "timestampsConti");
     check_tensor_non_empty(timestampsWeightsConti, "timestampsWeightsConti");
+    check_tensor_dim(timestampsWeightsConti, 2, "timestampsWeightsConti");
+    check_tensor_dim(timestampsConti, 2, "timestampsConti");
 
-    const int numLayers = timestampsWeights.size(0);
-    const int bs = timestampsConti.size(0);
-    const int s = timestampsConti.size(1);
-    const int sx2 = s * 2;
+    const int64_t numLayers = timestampsWeights.size(0);
+    const int64_t bs = timestampsConti.size(0);
+    const int64_t s = timestampsConti.size(1);
+    constexpr int64_t MAX_S = 4300; // 算子约束最大4300
+    TORCH_CHECK(s > 0 && s <= MAX_S, "timestamps size must be between 1 and %d", MAX_S);
+    const int64_t sx2 = s * 2;
 
     at::Tensor rabTimeOut = at::zeros({numLayers, bs, s, 1, s, 1}, timestampsWeightsConti.options());
     at::Tensor bucketTsOut = at::zeros({bs, s, s}, timestampsConti.options());
@@ -46,11 +50,13 @@ Tensor relative_attn_bias_time_backward_impl(const Tensor& rabTimeGrad, const Te
 {
     check_tensor_non_empty(rabTimeGrad, "rabTimeGrad");
     check_tensor_non_empty(bucketTimestamps, "bucketTimestamps");
+    constexpr int CONST_DIM_4 = 4;
+    check_tensor_dim(rabTimeGrad, CONST_DIM_4, "rabTimeGrad");
 
-    const int numLayers = rabTimeGrad.size(0);  // rabTimeGrad(n, b, 2s, 2s)
-    const int batchsize = rabTimeGrad.size(1);  // rabTimeGrad(n, b, 2s, 2s)
-    const int sx2 = rabTimeGrad.size(2);        // rabTimeGrad(n, b, 2s, 2s)
-    const int s = sx2 / 2;
+    const int64_t numLayers = rabTimeGrad.size(0);  // rabTimeGrad(n, b, 2s, 2s)
+    const int64_t batchsize = rabTimeGrad.size(1);  // rabTimeGrad(n, b, 2s, 2s)
+    const int64_t sx2 = rabTimeGrad.size(2);        // rabTimeGrad(n, b, 2s, 2s)
+    const int64_t s = sx2 / 2;
 
     auto rabTimeGradConti = rabTimeGrad.contiguous();
     auto bucketTimestampsConti = bucketTimestamps.contiguous();  // (n, b, s, s)

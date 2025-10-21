@@ -28,8 +28,8 @@ Tensor relative_attn_bias_pos_forward(const Tensor& relPosBias, const Tensor& id
     check_tensor_non_empty(relPosBias, "relPosBias");
     check_tensor_non_empty(identity, "identity");
 
-    const int bs = pastValidLens.size();
-    const int sx2 = relPosBias.size(0);  // relPosBias(2s, 2s)
+    const int64_t bs = pastValidLens.size();
+    const int64_t sx2 = relPosBias.size(0);  // relPosBias(2s, 2s)
 
     at::Tensor rabPosOut = at::zeros({bs, sx2, sx2}, relPosBiasConti.options());
 
