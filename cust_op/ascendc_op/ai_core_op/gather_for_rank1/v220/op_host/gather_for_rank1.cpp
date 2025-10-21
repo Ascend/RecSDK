@@ -87,6 +87,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
 
 static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetDynamicInputDataType(0, 0);
     context->SetOutputDataType(0, inputDataType);
     return ge::GRAPH_SUCCESS;
