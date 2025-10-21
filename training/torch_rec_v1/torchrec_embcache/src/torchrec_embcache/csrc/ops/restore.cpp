@@ -27,6 +27,8 @@ void Restore(const at::Tensor& uniqueIndices, const at::Tensor& uniqueInverse, c
                 "tensor device mismatch");
 
     TORCH_CHECK(hashIndices.numel() == uniqueInverse.numel(), "hashIndices length must equal uniqueInverse length");
+    TORCH_CHECK(uniqueOffset.numel() == offsetsPerTable.size(),
+                "uniqueOffset length must equal offsetsPerTable length");
 
     const int64_t nTables = static_cast<int64_t>(offsetsPerTable.size()) - 1;
 
