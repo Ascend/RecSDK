@@ -265,20 +265,26 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         apply_jit, 
         execute_all_batches
     ):
+        if not isinstance(pipe_n_batch, int):
+            raise ValueError(f"pipe_n_batch must be an int but got type: {type(pipe_n_batch)}")
+
         if pipe_n_batch <= 0 or pipe_n_batch > MAX_PIPE_N_BATCH:
-            raise ValueError(f"pipe_n_batch must be in range in [1, {MAX_PIPE_N_BATCH}], \
-                             but pipe_n_batch is {pipe_n_batch}")
+            raise ValueError(f"pipe_n_batch must be in range in [1, {MAX_PIPE_N_BATCH}], "
+                             f"but pipe_n_batch is {pipe_n_batch}")
 
         if not isinstance(model, torch.nn.Module):
-            raise TypeError(f"model expected to be an instance of torch.nn.Module, \
-                            but got {type(model)} instead.")
+            raise TypeError(f"model expected to be an instance of torch.nn.Module, "
+                            f"but got {type(model)} instead.")
 
         if not isinstance(device, torch.device):
-            raise TypeError(f"device expected to be an instance of torch.device, \
-                            but got {type(device)} instead.")
+            raise TypeError(f"device expected to be an instance of torch.device, "
+                            f"but got {type(device)} instead.")
 
         if device.type != "npu":
             raise ValueError(f"device type only support npu, but got {device.type}.")
+
+        if model.device is None or not isinstance(model.device, torch.device):
+            raise ValueError(f"model.device must be not None and type is torch.device, but got {type(model.device)}.")
 
         if model.device != device:
             raise ValueError(f"model device is {model.device}, but input device is {device}.")
