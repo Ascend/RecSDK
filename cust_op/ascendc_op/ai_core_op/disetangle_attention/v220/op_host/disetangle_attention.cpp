@@ -25,6 +25,7 @@ namespace optiling {
 
 static ge::graphStatus TilingShape(gert::TilingContext *context, DisetangleAttentionTilingData &tiling)
 {
+    OPS_LOG_E_IF_NULL("context->GetInputShape(0)", context->GetInputShape(0), return ge::GRAPH_FAILED);
     auto query_shape = context->GetInputShape(0)->GetStorageShape();
 
     tiling.set_batchSize(query_shape.GetDim(0)); // 0 means tensor dim 0
@@ -147,6 +148,7 @@ static ge::graphStatus TilingSoftmax(gert::TilingContext *context, DisetangleAtt
 
 static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     DisetangleAttentionTilingData tiling;
     if (ge::GRAPH_SUCCESS != TilingShape(context, tiling)) {
         return ge::GRAPH_FAILED;
@@ -172,6 +174,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
+    OPS_LOG_E_IF_NULL("context->GetRawTilingData()", context->GetRawTilingData(), return ge::GRAPH_FAILED);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
@@ -238,6 +241,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext *context)
 
 static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
 {
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     auto data_type = context->GetInputDataType(0);
     if (ge::GRAPH_SUCCESS != context->SetOutputDataType(0, data_type)) { // 0 means tensor 0 dim
         return ge::GRAPH_FAILED;

@@ -20,7 +20,8 @@ constexpr uint32_t UB_BUFFER_SIZE = UB_LOOP_PROC_N * KBYTES;
 struct TaskArgs {
     __aicore__ inline TaskArgs(uint32_t acc_s_offset, uint32_t batch_size, uint32_t head_num, uint32_t acc_s)
     {
-        ASCENDC_ASSERT((acc_s == 0), "acc_s cant be zeros");
+        ASCENDC_ASSERT((acc_s != 0), "acc_s can't be zeros");
+        ASCENDC_ASSERT((head_num != 0), "head_num can't be zeros");
         this->acc_s_offset = acc_s_offset;
         this->b_idx = acc_s_offset / (head_num * acc_s);
         this->n_idx = (acc_s_offset - (this->b_idx * head_num * acc_s)) / acc_s;

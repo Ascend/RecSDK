@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 #include "sgd_tiling.h"
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "ops_log.h"
 
 namespace {
 uint64_t AlignUp(uint32_t value, uint64_t alignment)
@@ -182,6 +183,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     if (CheckTilingDataValid(tilingData) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    OPS_LOG_E_IF_NULL("context->GetRawTilingData()", context->GetRawTilingData(), return ge::GRAPH_FAILED);
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;
