@@ -27,13 +27,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.training.optimizer import _TensorProcessor
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.communication.hccl.hccl_info import get_rank_size
 from rec_sdk_common.util.tf_adapter import hccl_ops, npu_ops
 from mx_rec.core.asc.swap_args import SwapArgs
 from mx_rec.constants.constants import ASCAnchorAttr
 from mx_rec.util.initialize import ConfigInitializer
-from mx_rec.core.asc import get_restore_vector_second, get_unique_keys
+from mx_rec.core.asc.build_graph import get_restore_vector_second, get_unique_keys
 
 
 def _get_padding_keys_offset_mask(table_name: str, max_lookup_vec_size: int) -> tf.Tensor:

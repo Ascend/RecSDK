@@ -19,7 +19,7 @@ import time
 
 import tensorflow as tf
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.constants.constants import ValidatorParams
 from rec_sdk_common.util.tf_adapter import npu_ops
 from rec_sdk_common.validator.validator import para_checker_decorator, ClassValidator, \

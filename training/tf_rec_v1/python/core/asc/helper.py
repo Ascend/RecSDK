@@ -20,7 +20,7 @@ from typing import Union, List, Tuple, Dict
 
 import tensorflow as tf
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.constants.constants import ValidatorParams
 from rec_sdk_common.validator.validator import (
     para_checker_decorator,

@@ -20,7 +20,7 @@ from typing import Dict, List
 import tensorflow as tf
 from tensorflow import Operation, Tensor
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.constants.constants import DeviceType
 from mx_rec.constants.constants import MAX_WHILE_SIZE, ASCEND_TABLE_NAME_MUST_CONTAIN
 from mx_rec.util.global_env_conf import global_env

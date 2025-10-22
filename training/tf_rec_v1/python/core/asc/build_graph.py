@@ -21,7 +21,7 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 from tensorflow.python.training.training_util import get_global_step
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.util.tf_adapter import npu_ops
 import mxrec_pybind
 from mx_rec.constants.constants import ASCAnchorAttr, TRAIN_CHANNEL_ID

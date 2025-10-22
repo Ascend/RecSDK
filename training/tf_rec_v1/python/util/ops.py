@@ -20,7 +20,7 @@ from types import ModuleType
 
 import tensorflow as tf
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.validator.validator import para_checker_decorator, StringValidator
 from mx_rec.constants.constants import LIBREC_TF_NPU_OPS_SO
 

@@ -14,7 +14,3 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-__all__ = ["bind_cpu"]
-
-from rec_sdk_common.perf_factory.bind_cpu import bind_cpu

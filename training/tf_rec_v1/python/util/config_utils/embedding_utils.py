@@ -6,7 +6,7 @@ from typing import Optional, Any
 from tensorflow.python.framework import ops
 from tensorflow import Variable
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 
 
 class SparseEmbedConfig:

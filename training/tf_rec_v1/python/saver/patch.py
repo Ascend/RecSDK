@@ -50,7 +50,7 @@ from tensorflow.core.util.event_pb2 import SessionLog
 import numpy as np
 from mpi4py import MPI
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.communication.hccl.hccl_info import get_rank_id
 from rec_sdk_common.constants.constants import ValidatorParams
 from rec_sdk_common.validator.validator import para_checker_decorator, ClassValidator, StringValidator, OptionalIntValidator, \

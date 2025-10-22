@@ -15,10 +15,6 @@
 # limitations under the License.
 # ==============================================================================
 
-__all__ = ["hccl_ops",
-            "npu_ops",
-            "NPUCheckpointSaverHook",
-            "NPULossScaleOptimizer"]
+__all__ = ["hccl_ops"]
 
-from rec_sdk_common.util.tf_adapter import hccl_ops, npu_ops, NPUCheckpointSaverHook, \
-        NPULossScaleOptimizer
+from rec_sdk_common.util.tf_adapter import hccl_ops

@@ -9,7 +9,7 @@ from typing import Callable, Optional, Union
 import tensorflow as tf
 from tensorflow.python.framework import ops
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from mx_rec.core.asc.feature_spec import FeatureSpec
 from mx_rec.core.emb.base_sparse_embedding import BaseSparseEmbedding
 

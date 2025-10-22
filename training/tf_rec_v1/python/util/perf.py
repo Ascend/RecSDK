@@ -17,7 +17,7 @@
 
 import time
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 
 
 def performance(method_name):

@@ -29,7 +29,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.util import compat
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.communication.hccl.hccl_info import (
     get_rank_id,
     get_rank_size,
