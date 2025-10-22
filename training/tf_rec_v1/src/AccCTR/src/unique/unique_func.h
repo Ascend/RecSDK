@@ -78,6 +78,9 @@ class BucketStrategies {
 public:
     static int SimpleGroupFun(const uint64_t &val, const int &groupCount)
     {
+        if (groupCount == 0) {
+            throw std::invalid_argument("groupCount cannot be zero.");
+        }
         return val % groupCount;
     }
 };
