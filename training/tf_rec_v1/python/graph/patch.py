@@ -123,6 +123,8 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
         this_channel_id = -1
         graph_def = self.graph_def
         cut_graph_input = tf.compat.v1.graph_util.extract_sub_graph(graph_def, input_tensors)
+        if cut_graph_input is None:
+            raise RuntimeError("extract sub graph failed.")
         node_list_input = cut_graph_input.node
         for node in node_list_input:
             if "d2h_notify_hybridmgmt_" in node.name:
