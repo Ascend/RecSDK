@@ -19,7 +19,10 @@ import os
 
 import tensorflow as tf
 from tensorflow import Tensor
-from rec_sdk_common.util.tf_adapter import npu_ops
+if tf.__version__.startswith("1"):
+    from npu_bridge.estimator import npu_ops
+else:
+    from npu_device.compat.v1.estimator import npu_ops
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.core.embedding import create_table, sparse_lookup
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
