@@ -20,9 +20,11 @@ __all__ = [
     "LookupSubgraphSlicerHook",
     "OrphanLookupKeySlicerHook",
     "modify_graph_and_start_emb_cache",
-    "do_merge_lookup"
+    "do_merge_lookup",
+    "run"
 ]
 
 from mx_rec.graph.modifier import GraphModifierHook, modify_graph_and_start_emb_cache
 from mx_rec.graph.hooks import LookupSubgraphSlicerHook, OrphanLookupKeySlicerHook
 from mx_rec.graph.merge_lookup import do_merge_lookup
+from mx_rec.graph.patch import run
