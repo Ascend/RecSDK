@@ -21,12 +21,17 @@ docker run \
 --name "${container_name}" \
 -e ASCEND_VISIBLE_DEVICES=0-7 \
 --shm-size="300g" \
+-m 300g \
 -v /etc/localtime:/etc/localtime:ro \
 -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
 -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
 "${image_name}" \
 /bin/bash
 ```
+部分参数说明：
+- -m 300g：设置容器内使用内存大小，可根据实际情况进行配置。
+- -e ASCEND_VISIBLE_DEVICES=0-7：将服务器上编号为device0-device7的NPU设备挂载到容器内，可根据实际情况进行配置。
+
 执行如下命令新建容器：
 ```shell
 bash run_docker.sh 容器名 {镜像名称}:{版本名称}
@@ -42,35 +47,36 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ## 安装依赖
 说明：容器中已经安装好torchrec,hybrid_torchrec,torchrec_embcache及算子等依赖。如需重新安装依赖需确保网络通畅。
 
-### 1.安装训练框架相关包
-#### 方式1：获取安装包安装
+### 1. 安装TorchRec昇腾注册包
+TorchRec昇腾注册包为基于torchrec开源代码固定分支，进行NPU设备适配后的包，支持源码编译安装。
+
+参考：https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_npu/README.md
+
+### 2. 安装Rec SDK Torch训练框架包
+提供通过安装包安装、源码编译安装两种方式，选择其一即可。
+
+#### 2.1 通过安装包安装
+获取安装包：Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
 
 获取地址：https://gitcode.com/Ascend/RecSDK/releases
+
 ```shell
 # 如果已经安装,请先卸载
-pip3 uninstall -y hybrid_torchrec torchrec torchrec_embcache
-# 安装torchrec
-tar -zxvf Ascend-mindxsdk-torchrec-1.1.0-npu-*.tar.gz
-pip3 install torchrec-1.1.0+npu-*.whl
-pip3 install -r requirements.txt
-
+pip3 uninstall -y hybrid_torchrec torchrec_embcache
 # 安装hybrid_torchrec和torchrec_embcache
 tar -zxvf Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
 pip3 install hybrid_torchrec-1.1.0-*.whl
 pip3 install torchrec_embcache-1.1.0-*.whl
 ```
 
-#### 方式2：源码编译安装
-（1）编译安装torchrec
-参考：[Torchrec NPU适配说明](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_npu/README.md)
+#### 2.2 源码编译安装
+通过源码编译方式安装Rec SDK Torch训练框架包。
 
-（2）编译安装hybrid_torchrec
-参考：[Hybrid-torchrec NPU适配说明](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/hybrid_torchrec/README.MD)
+参考：https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/hybrid_torchrec/README.md
 
-（3）编译安装torchrec_embcache
-参考：[Torchrec-embcachec NPU适配说明](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_embcache/README.MD)
+参考README编译完成后，会在编译脚本build_whl.sh的同层级目录下生成tar.gz包。其中同时包含hybrid_torchrec、torchrec_embcache的whl包，解压安装即可。
 
-### 2.安装自定义算子和算子适配层
+### 3. 安装自定义算子和算子适配层
 源码编译Ascend-recsdk-npu-ops*.tar.gz软件包，参考：[算子编译安装说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)
 
 ```
