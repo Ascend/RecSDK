@@ -44,7 +44,8 @@ def find_trans_dataset(graph: Graph, get_next: Operation) -> Operation:
 
     if get_next.type != AnchorIteratorOp.ITERATOR_GET_NEXT.value:
         raise TypeError(f"operation '{get_next}' must be one instance of 'IteratorGetNext'.")
-
+    if not get_next.outputs:
+        raise RuntimeError("get_next outputs are none.")
     make_iter = find_make_iterator_op(graph, get_next.outputs[0])
 
     trans_dataset = None
@@ -211,7 +212,11 @@ def record_control_to_replace(graph: Graph, src_op: Operation) -> DefaultDict[Te
 def replace_control_anchor(
     replacement_specs: DefaultDict[Tensor, List[Tuple[int, Operation]]], new_tensor_list: List[Tensor]
 ):
-
+    if len(replacement_specs) > len(new_tensor_list):
+        raise ValueError(
+            f"The length of replacement_specs must be ≤ the length of new_tensor_list. "
+            f"replacement_specs: {replacement_specs}, new_tensor_list: {new_tensor_list}"
+        )
     for tensor_idx, (old_tensor, items) in enumerate(replacement_specs.items()):
         for _, operator in items:
             try:
