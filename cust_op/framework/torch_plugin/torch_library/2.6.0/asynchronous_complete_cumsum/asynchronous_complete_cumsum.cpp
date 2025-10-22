@@ -19,6 +19,12 @@ at::Tensor asynchronous_complete_cumsum_npu(const at::Tensor &offset)
 {
     const at::OptionalDeviceGuard guard(device_of(offset));
     check_tensor_non_empty(offset, "offset");
+    
+    // 检查NPU设备（单个张量）
+    std::vector<at::Tensor> tensors = {offset};
+    std::vector<std::string> names = {"offset"};
+    check_tensor_npu_device(tensors, names);
+    
     auto offset_contin = offset.contiguous();
     int64_t offset_size = offset.size(0);
     TORCH_CHECK(offset_size > 0 && offset_size < std::numeric_limits<int64_t>::max(),
