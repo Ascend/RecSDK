@@ -59,11 +59,5 @@ docker run \
 bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 ```
 
-进入容器后，执行：
-```shell
-sudo su
-```
-切换为root用户
-
 ## 安装RecSDK相关的包
 参考RecSDK/README_TORCH.md进行源码的编译和安装
