@@ -7,10 +7,3 @@
 from hybrid_torchrec.sparse.jagged_tensor_with_count import JaggedTensorWithCount, KeyedJaggedTensorWithCount
 from hybrid_torchrec.sparse.extended_jagged_tensor import ExtendedJaggedTensor, KeyedExtendedJaggedTensor
 
-
-__all__ = [
-    "JaggedTensorWithCount",
-    "KeyedJaggedTensorWithCount",
-    "ExtendedJaggedTensor",
-    "KeyedExtendedJaggedTensor",
-]
