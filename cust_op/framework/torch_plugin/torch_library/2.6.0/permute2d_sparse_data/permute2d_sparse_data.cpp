@@ -33,6 +33,11 @@ void validate_permute2d_sparse_data_inputs(
     check_tensor_non_empty(permute, "permute");
     check_tensor_non_empty(lengths, "lengths");
     check_tensor_non_empty(values, "values");
+    
+    // ============= NPU设备检查 =============
+    std::vector<Tensor> tensors = {permute, lengths, values};
+    std::vector<std::string> names = {"permute", "lengths", "values"};
+    check_tensor_npu_device(tensors, names);
 }
 
 tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(

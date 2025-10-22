@@ -23,6 +23,11 @@ at::Tensor gather_for_rank1_impl_npu(const at::Tensor& x, const at::Tensor& inde
 {
     check_tensor_non_empty(x, "x");
     check_tensor_non_empty(index, "index");
+    
+    // 检查NPU设备且设备ID一致
+    std::vector<at::Tensor> tensors = {x, index};
+    std::vector<std::string> names = {"x", "index"};
+    check_tensor_npu_device(tensors, names);
 
     TORCH_CHECK(x.dim() == 1, "The x should be 1D");
     TORCH_CHECK(index.dim() == 1, "The index should be 1D");
@@ -42,6 +47,11 @@ tensor_list gather_for_rank1_backward_impl_npu(
     check_tensor_non_empty(grady, "grady");
     check_tensor_non_empty(x, "x");
     check_tensor_non_empty(index, "index");
+    
+    // 检查NPU设备且设备ID一致
+    std::vector<at::Tensor> tensors = {grady, x, index};
+    std::vector<std::string> names = {"grady", "x", "index"};
+    check_tensor_npu_device(tensors, names);
 
     auto grady_conti = grady.contiguous();
     auto index_conti = index.contiguous();

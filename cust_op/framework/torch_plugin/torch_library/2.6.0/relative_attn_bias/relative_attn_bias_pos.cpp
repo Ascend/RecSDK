@@ -28,6 +28,11 @@ Tensor relative_attn_bias_pos_forward(const Tensor& relPosBias, const Tensor& id
     check_tensor_non_empty(relPosBias, "relPosBias");
     check_tensor_non_empty(identity, "identity");
 
+    // 检查NPU设备且设备ID一致
+    std::vector<Tensor> tensors = {relPosBias, identity};
+    std::vector<std::string> names = {"relPosBias", "identity"};
+    check_tensor_npu_device(tensors, names);
+
     const int64_t bs = pastValidLens.size();
     const int64_t sx2 = relPosBias.size(0);  // relPosBias(2s, 2s)
 

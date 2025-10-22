@@ -45,4 +45,35 @@ inline void check_tensor_dim(const at::Tensor& tensor, int64_t expectedDim, cons
     TORCH_CHECK(tensor.dim() == expectedDim, name, " must be ", expectedDim, "D");
 }
 
+/**
+ * 检查张量设备是否为NPU且设备ID一致
+ * @param tensors 张量列表
+ * @param names 张量名称列表(用于错误信息)
+ * @throw torch::library::Exception 如果deviceType不是NPU，或deviceId不一致
+ */
+inline void check_tensor_npu_device(const std::vector<at::Tensor>& tensors,
+                                    const std::vector<std::string>& names)
+{
+    // 检查所有张量是否都在NPU设备上
+    for (size_t i = 0; i < tensors.size(); ++i) {
+        TORCH_CHECK(tensors[i].device().type() == at::kPrivateUse1,
+                    names[i], " tensor must be on NPU device, but got device type: ",
+                    static_cast<int>(tensors[i].device().type()));
+    }
+    
+    // 如果只有一个张量，不需要检查设备ID一致性
+    if (tensors.size() < 2) {
+        return;
+    }
+    // 获取第一个张量的设备ID作为参考
+    int64_t expected_device_id = tensors[0].device().index();
+    
+    // 检查所有张量的设备ID是否一致
+    for (size_t i = 1; i < tensors.size(); ++i) {
+        int64_t current_device_id = tensors[i].device().index();
+        TORCH_CHECK(current_device_id == expected_device_id,
+                    names[i], " device ID (", current_device_id,
+                    ") must match ", names[0], " device ID (", expected_device_id, ")");
+    }
+}
 #endif // COMMON_UTILS_H

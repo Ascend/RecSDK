@@ -6,6 +6,7 @@
 #include <torch/library.h>
 
 #include "../common/pytorch_npu_helper.hpp"
+#include "../common/common_utils.h"
 using torch::autograd::AutogradContext;
 using torch::autograd::Function;
 using tensor_list = std::vector<at::Tensor>;
@@ -114,6 +115,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> DisetangleAttentionPTA(
     const at::Tensor& pos_key_layer, const at::Tensor& pos_query_layer, const at::Tensor& relative_pos,
     const at::Tensor& attn_mask, const std::string pos_attr_type, const double score_scale)
 {
+    // NPU设备校验
+    std::vector<at::Tensor> tensors = {query_layer, key_layer, value_layer, pos_key_layer,
+                                       pos_query_layer, relative_pos, attn_mask};
+    std::vector<std::string> names = {"query_layer", "key_layer", "value_layer", "pos_key_layer",
+                                      "pos_query_layer", "relative_pos", "attn_mask"};
+    check_tensor_npu_device(tensors, names);
+
     auto query_layer_conti = query_layer.contiguous();
     auto key_layer_conti = key_layer.contiguous();
     auto value_layer_conti = value_layer.contiguous();

@@ -180,6 +180,25 @@ at::Tensor hstu_dense_forward_impl_npu(
     TORCH_CHECK(q.scalar_type() == at::kHalf || q.scalar_type() == at::kFloat || q.scalar_type() == at::kBFloat16,
         "float16, float32 or bfloat16 tensor expected but got a tensor with dtype: ", q.scalar_type());
 
+    // NPU设备校验
+    std::vector<at::Tensor> tensors = {q, k, v};
+    std::vector<std::string> names = {"q", "k", "v"};
+    
+    if (timestampBias.has_value()) {
+        tensors.push_back(timestampBias.value());
+        names.push_back("timestampBias");
+    }
+    if (positionBias.has_value()) {
+        tensors.push_back(positionBias.value());
+        names.push_back("positionBias");
+    }
+    if (mask.has_value()) {
+        tensors.push_back(mask.value());
+        names.push_back("mask");
+    }
+    
+    check_tensor_npu_device(tensors, names);
+  
     if (layout == "normal") {
         return hstu_dense_normal_forward_impl_npu(q, k, v, timestampBias, positionBias, mask, maskType, maxSeqLen,
             siluScale, seqOffset);

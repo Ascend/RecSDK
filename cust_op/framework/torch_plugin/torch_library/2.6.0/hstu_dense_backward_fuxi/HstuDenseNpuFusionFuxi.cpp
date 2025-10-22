@@ -167,6 +167,25 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
 
     TORCH_CHECK(q.scalar_type() == at::kHalf || q.scalar_type() == at::kFloat || q.scalar_type() == at::kBFloat16,
                 "float16, float32 or bfloat16 tensor expected but got a tensor with dtype: ", q.scalar_type());
+    
+    // NPU设备校验
+    std::vector<at::Tensor> tensors = {grad, q, k, v};
+    std::vector<std::string> names = {"grad", "q", "k", "v"};
+    
+    if (mask.has_value()) {
+        tensors.push_back(mask.value());
+        names.push_back("mask");
+    }
+    if (biasPosition.has_value()) {
+        tensors.push_back(biasPosition.value());
+        names.push_back("biasPosition");
+    }
+    if (biasTimestamp.has_value()) {
+        tensors.push_back(biasTimestamp.value());
+        names.push_back("biasTimestamp");
+    }
+     
+    check_tensor_npu_device(tensors, names);
 
     return hstu_dense_jagged_backward_impl_npu(
         grad, q, k, v, mask, biasPosition, biasTimestamp,

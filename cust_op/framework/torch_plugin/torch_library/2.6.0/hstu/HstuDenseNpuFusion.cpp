@@ -175,6 +175,20 @@ at::Tensor hstu_dense_forward_impl_npu(
 
     TORCH_CHECK(q.scalar_type() == at::kHalf || q.scalar_type() == at::kFloat || q.scalar_type() == at::kBFloat16,
                 "float16, float32 or bfloat16 tensor expected but got a tensor with dtype: ", q.scalar_type());
+    
+    // NPU设备校验
+    std::vector<at::Tensor> tensors = {q, k, v};
+    std::vector<std::string> names = {"q", "k", "v"};
+    
+    if (mask.has_value()) {
+        tensors.push_back(mask.value());
+        names.push_back("mask");
+    }
+    if (attnBias.has_value()) {
+        tensors.push_back(attnBias.value());
+        names.push_back("attnBias");
+    }
+    check_tensor_npu_device(tensors, names);
 
     if (layout == "normal") {
         return hstu_dense_normal_forward_impl_npu(q, k, v, mask, attnBias, maskType, maxSeqLen, siluScale, seqOffset);
@@ -308,7 +322,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_jagged_bac
     } else {
         attnBiasGradOutput = at::Tensor();
     }
-    
+
     const char *layout = "jagged";
     EXEC_NPU_CMD(aclnnHstuDenseBackward, denseGrad, denseQ, denseK, denseV, denseMask, denseAttnBias, layout, maskType,
         maxSeqLen, realSiluScale, acSeqOffset, qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
@@ -342,6 +356,21 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
 
     TORCH_CHECK(q.scalar_type() == at::kHalf || q.scalar_type() == at::kFloat || q.scalar_type() == at::kBFloat16,
                 "float16, float32 or bfloat16 tensor expected but got a tensor with dtype: ", q.scalar_type());
+    
+    // NPU设备校验
+    std::vector<at::Tensor> tensors = {q, k, v};
+    std::vector<std::string> names = {"q", "k", "v"};
+    
+    if (mask.has_value()) {
+        tensors.push_back(mask.value());
+        names.push_back("mask");
+    }
+    if (attnBias.has_value()) {
+        tensors.push_back(attnBias.value());
+        names.push_back("attnBias");
+    }
+    
+    check_tensor_npu_device(tensors, names);
 
     if (layout == "normal") {
         return hstu_dense_normal_backward_impl_npu(grad, q, k, v, mask, attnBias, maskType, maxSeqLen, siluScale,

@@ -30,6 +30,11 @@ std::tuple<at::Tensor, at::Tensor> relative_attn_bias_time_impl(const Tensor& ti
     check_tensor_dim(timestampsWeightsConti, 2, "timestampsWeightsConti");
     check_tensor_dim(timestampsConti, 2, "timestampsConti");
 
+    // 检查NPU设备且设备ID一致
+    std::vector<Tensor> tensors = {timestamps, timestampsWeights};
+    std::vector<std::string> names = {"timestamps", "timestampsWeights"};
+    check_tensor_npu_device(tensors, names);
+
     const int64_t numLayers = timestampsWeights.size(0);
     const int64_t bs = timestampsConti.size(0);
     const int64_t s = timestampsConti.size(1);

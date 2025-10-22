@@ -39,6 +39,20 @@ void validate_permute1d_sparse_data_inputs(
     check_tensor_dim(permute, EXPECTED_DIM_1D, "permute");
     check_tensor_dim(lengths, EXPECTED_DIM_1D, "lengths");
     check_tensor_dim(values, EXPECTED_DIM_1D, "values");
+    
+    // ============= NPU设备检查 =============
+    std::vector<Tensor> tensors = {permute, lengths, values};
+    std::vector<std::string> names = {"permute", "lengths", "values"};
+    
+    // 如果有权重张量，也加入检查
+    if (weights.has_value()) {
+        check_tensor_non_empty(weights.value(), "weights");
+        check_tensor_dim(weights.value(), EXPECTED_DIM_1D, "weights");
+        tensors.push_back(weights.value());
+        names.push_back("weights");
+    }
+    
+    check_tensor_npu_device(tensors, names);
 
     // ============= 长度一致性检查 =============
     const auto permute_len = permute.size(0);

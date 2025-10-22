@@ -34,6 +34,12 @@ at::Tensor jagged_to_padded_dense_forward_npu(const at::Tensor& values,
     const auto& offset_tensor = offsets[0];
     check_tensor_non_empty(offset_tensor, "offset_tensor");
     check_tensor_dim(offset_tensor, EXPECTED_DIM_1D, "offset_tensor");
+    
+    // 检查NPU设备且设备ID一致
+    std::vector<at::Tensor> tensors = {values, offset_tensor};
+    std::vector<std::string> names = {"values", "offset_tensor"};
+    check_tensor_npu_device(tensors, names);
+    
     TORCH_CHECK(max_lengths > 0, "max_lengths must be positive, but got ", max_lengths);
 
     const at::OptionalDeviceGuard guard(device_of(values));
@@ -53,6 +59,13 @@ at::Tensor dense_to_jagged_forward_npu(const at::Tensor& dense,
     check_tensor_dim(dense, EXPECTED_DIM_3D, "dense");
     TORCH_CHECK(offsets.size() == 1,
         "Only single-dimension jagged tensors supported (offsets.size() must be 1)");
+
+    const auto& offset_tensor = offsets[0];
+    
+    // 检查NPU设备且设备ID一致
+    std::vector<at::Tensor> tensors = {dense, offset_tensor};
+    std::vector<std::string> names = {"dense", "offset_tensor"};
+    check_tensor_npu_device(tensors, names);
 
     const at::OptionalDeviceGuard guard(device_of(dense));
     auto D = dense.size(-1);
