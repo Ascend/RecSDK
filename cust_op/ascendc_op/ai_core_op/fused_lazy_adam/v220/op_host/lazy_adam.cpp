@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include "lazy_adam_tiling.h"
 #include "register/op_def_registry.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "ops_log.h"
 
-#include <cmath>
 
 namespace optiling {
 constexpr int BLOCK_SIZE = 32;
@@ -122,7 +123,7 @@ static ge::graphStatus LazyAdamTilingFunc(gert::TilingContext* context)
     tiling.set_loopCountTail(loopCountTail);  // 最后一个核，核内循环次数
     tiling.set_rowLeftTail(rowLeftTail);      // 最后一个核，核内循环loopCountTail次后，剩余数据量
     tiling.set_coreNum(coreNum);
-
+    OPS_LOG_E_IF_NULL("context->GetRawTilingData()", context->GetRawTilingData(), return ge::GRAPH_FAILED);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
