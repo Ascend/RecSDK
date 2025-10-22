@@ -14,7 +14,3 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-__all__ = ["logger"]
-
-from rec_sdk_common.log.log import LoggingProxy as logger

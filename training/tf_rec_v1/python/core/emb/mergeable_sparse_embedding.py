@@ -17,7 +17,7 @@
 
 from typing import Dict, Any, List
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from mx_rec.core.emb.dynamic_sparse_embedding import DynamicSparseEmbedding
 
 

@@ -17,7 +17,7 @@
 
 import re
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 
 
 def fix_invalid_table_name(name):

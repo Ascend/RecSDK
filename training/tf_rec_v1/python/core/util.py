@@ -20,7 +20,7 @@ from typing import Tuple
 import tensorflow as tf
 from tensorflow import Tensor
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from mx_rec.constants import constants
 from mx_rec.graph.constants import AnchorIteratorOp
 from mx_rec.util.initialize import ConfigInitializer

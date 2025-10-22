@@ -26,7 +26,7 @@ from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 from tensorflow.python.framework.errors_impl import InvalidArgumentError
 from tensorflow.python.ops import control_flow_ops
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from mx_rec.graph.constants import AnchorDatasetOp, AnchorIteratorOp
 from mx_rec.constants.constants import ASCAnchorAttr, SAVE_DIR_MODE
 from mx_rec.core.embedding import BaseSparseEmbedding

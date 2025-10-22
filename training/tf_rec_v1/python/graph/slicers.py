@@ -24,7 +24,7 @@ import tensorflow as tf
 from tensorflow import Operation, Tensor, SparseTensor, Graph, variant, resource
 from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.validator.validator import ClassValidator, para_checker_decorator
 from mx_rec.graph import utils
 from mx_rec.constants.constants import (

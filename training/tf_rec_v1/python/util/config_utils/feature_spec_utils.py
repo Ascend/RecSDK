@@ -3,7 +3,7 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2023. All rights reserved.
 from typing import Optional
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 
 
 class FeatureSpecConfig:

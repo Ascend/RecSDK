@@ -7,7 +7,7 @@ from typing import Union, Callable
 
 import tensorflow as tf
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from mx_rec.constants.constants import ASCEND_TABLE_NAME_MUST_CONTAIN, ASCEND_SPARSE_LOOKUP_LOCAL_EMB, \
      ASCEND_SPARSE_LOOKUP_ID_OFFSET, ASCAnchorAttr
 from mx_rec.core.asc.feature_spec import FeatureSpec

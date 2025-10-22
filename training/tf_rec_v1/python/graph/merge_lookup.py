@@ -17,7 +17,7 @@
 
 import tensorflow as tf
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.validator.validator import para_checker_decorator, ClassValidator
 from mx_rec.constants.constants import ASCAnchorAttr, ASCEND_SPARSE_LOOKUP_ENTRANCE
 from mx_rec.graph.utils import check_cutting_points, replace_anchor_vec

@@ -12,7 +12,7 @@ from tensorflow import Tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.framework import ops
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.communication.hccl.hccl_info import get_device_id, get_rank_id, get_rank_size, get_rank_to_device_dict
 from rec_sdk_common.util.tf_adapter import hccl_ops
 from mx_rec.constants.constants import ASCEND_SPARSE_LOOKUP_ENTRANCE, All2allGradientsOp, ASCAnchorAttr

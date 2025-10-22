@@ -19,7 +19,7 @@ import os
 import shutil
 import pytest
 
-from rec_sdk_common.validator import (
+from rec_sdk_common.validator.safe_checker import (
     str_safe_check,
     int_safe_check,
     class_safe_check,

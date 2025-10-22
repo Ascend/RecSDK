@@ -36,7 +36,7 @@ from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.training.optimizer import Optimizer
 from tensorflow.python.client.session import BaseSession
 
-from rec_sdk_common.log import logger
+from rec_sdk_common.log.log import LoggingProxy as logger
 from rec_sdk_common.validator.validator import para_checker_decorator, ClassValidator
 from mx_rec.constants import constants
 from mx_rec.util.initialize import ConfigInitializer
