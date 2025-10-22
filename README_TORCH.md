@@ -22,11 +22,11 @@
 
 ### 编译环境
 
-参考: RecSDK/docs/build_torch_rec_images/README.md
+容器环境编译，参考[README](docs/build_torch_rec_images/README.md)
 
 ### 编译Ascend-mindxsdk-torchrec-1.1.0-npu-*.tar.gz
 
-参考: RecSDK/training/torch_rec_v1/torchrec_npu/README.md
+参考[README](training/torch_rec_v1/torchrec_npu/README.md)
 
 生成的tar包在 RecSDK/training/torch_rec_v1/torchrec_npu/torchrec/Ascend-mindxsdk-torchrec-1.1.0-npu-*.tar.gz
 
@@ -39,7 +39,7 @@ pip3 install torchrec-1.1.0+npu-py3-none-linux_*.whl
 
 ### 编译Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
 
-参考 RecSDK/training/torch_rec_v1/hybrid_torchrec/README.md
+参考[README](training/torch_rec_v1/hybrid_torchrec/README.md)
 
 生成的tar包在 RecSDK/training/torch_rec_v1/hybrid_torchrec/Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
 
@@ -53,7 +53,7 @@ pip3 install torchrec_embcache-1.1.0-py3-none-linux_*.whl
 
 ### 编译Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz
 
-方法见 RecSDK/cust_op/ascendc_op/build/README.md
+方法见[README](cust_op/ascendc_op/build/README.md)
 
 ### 编译libfbgemm_npu_api.so
 

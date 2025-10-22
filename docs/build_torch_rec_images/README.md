@@ -42,13 +42,18 @@ docker run \
 -it \
 --name "${container_name}" \
 --shm-size="300g" \
--v /etc/localtime:/etc/localtime:ro \
+-m 300g  \
 -e ASCEND_VISIBLE_DEVICES=0-7 \
+-v /etc/localtime:/etc/localtime:ro \
 -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
 -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
 "${image_name}" \
 /bin/bash
 ```
+部分参数说明：
+- -m 300g：设置容器内使用内存大小，可根据实际情况进行配置。
+- -e ASCEND_VISIBLE_DEVICES=0-7：将服务器上编号为device0-device7的NPU设备挂载到容器内，可根据实际情况进行配置。
+
 执行如下命令新建容器：
 ```shell
 bash run_docker.sh 容器名 {镜像名称}:{版本名称}

@@ -12,10 +12,19 @@
 
 参考 [Rec SDK文档](https://www.hiascend.com/document/detail/zh/mindsdk/71rc1/rec/recug/mxrectorch_0014.html) 的“安装 Rec SDK Torch”章节。
 
-2.下载whl包并安装
+2.通过安装包安装
+获取安装包：Ascend-mindxsdk-hybrid-torchrec-*.tar.gz
+
+获取地址：https://gitcode.com/Ascend/RecSDK/releases
 
 ```shell
-pip3 install hybrid_torchrec-1.1.0+npu-*.whl
+# 如果已经安装,请先卸载
+pip3 uninstall -y hybrid_torchrec torchrec_embcache
+# 安装hybrid_torchrec和torchrec_embcache
+tar -zxvf Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
+pip3 install hybrid_torchrec-1.1.0-*.whl
+pip3 install torchrec_embcache-1.1.0-*.whl
+
 pip3 install fbgemm_gpu==1.1.0+cpu -i https://download.pytorch.org/whl/cpu
 pip3 install -r requirements.txt
 ```
