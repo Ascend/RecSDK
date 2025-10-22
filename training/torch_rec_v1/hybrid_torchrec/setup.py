@@ -41,7 +41,7 @@ def _export_version(version, sha):
 
 
 def main() -> None:
-    with open(os.path.join(ROOT_DIR, "README.MD"), encoding="utf8") as f:
+    with open(os.path.join(ROOT_DIR, "README.md"), encoding="utf8") as f:
         readme = f.read()
     with open(os.path.join(ROOT_DIR, "install-requirements.txt"), encoding="utf8",) as f:
         reqs = f.read()
