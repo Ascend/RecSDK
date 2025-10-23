@@ -27,6 +27,7 @@ import stat
 import sys
 import time
 from datetime import datetime
+from dataclasses import dataclass
 
 import h5py
 import numpy as np
@@ -140,6 +141,7 @@ class DFFMModel(nn.Module):
                 self.params.embedding_size * self.params.internal_size)
             nn.init.normal_(self.target_dfub_weights[target_key].weight, std=STD_DEV)
 
+        self.meta_dnn_hidden_units = [16, 16]
         self.meta_dnn_hidden_units = [self.params.embedding_size] + self.meta_dnn_hidden_units
         self.domain_map_mlp = nn.Sequential(
             nn.Linear(params.embedding_size, sum([self.meta_dnn_hidden_units[i] *
@@ -372,7 +374,7 @@ def train(model, train_loader, eval_loader, device, args):
         export_type=[
             torch_npu.profiler.ExportType.Text,
             torch_npu.profiler.ExportType.Db],
-        profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
+        profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
         msprof_tx=False,
         aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
         l2_cache=False,
@@ -390,7 +392,7 @@ def train(model, train_loader, eval_loader, device, args):
             torch_npu.profiler.ProfilerActivity.NPU],
         schedule=torch_npu.profiler.schedule(wait=0, warmup=warmup_step_num, active=exec_step_num, repeat=1),
         on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(prof_output_dir),
-        record_shapes=False,
+        record_shapes=True,
         profile_memory=False,
         with_stack=False,
         with_modules=False,
@@ -581,6 +583,7 @@ def main(args):
         device_type = "cuda"
     elif not (torch.npu.is_available() or torch.cuda.is_available()):
         device_type = "cpu"
+    device = torch.device(device_type)
     model = DFFMModel(spec, args, device)
     model.to(device)
     if args.task_type == "train":
