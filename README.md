@@ -22,11 +22,11 @@ Rec SDK作为面向互联网市场搜索推荐广告的应用使能SDK产品，�
 
 | 软件              | 版本              | 下载链接                                                                                                                      |
 |-------------------|------------------|-------------------------------------------------------------------------------------------------------------------------------|
-| Rec SDK           | 7.1.RC1          | https://gitee.com/ascend/RecSDK/releases/tag/7.1.RC1                                                                          |
+| Rec SDK           | 7.1.RC1          | https://gitcode.com/Ascend/RecSDK/releases/7.1.RC1                                                                          |
 | CANN              | 8.2.RC1.alpha003 | https://www.hiascend.com/developer/download/community/result?module=cann                                                      |
-| TensorFlowAdapter | 8.1.RC1          | https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.36_8.1.RC1                                                          |
-| Driver            | 25.0.RC1         | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.1.RC1.beta1&driver=Ascend+HDK+25.0.RC1 |
-| Firmware          | 25.0.RC1         | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.1.RC1.beta1&driver=Ascend+HDK+25.0.RC1 |
+| TensorFlowAdapter（tfplugin） | 8.1.RC1          | https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.36_8.1.RC1                                                          |
+| Driver            | 25.0.RC1         | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.2.RC1.alpha003&driver=Ascend+HDK+25.0.RC1 |
+| Firmware          | 25.0.RC1         | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.2.RC1.alpha003&driver=Ascend+HDK+25.0.RC1 |
 
 ## 支持的产品型号
 - Atlas 200T A2 Box16
@@ -56,7 +56,7 @@ HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 pip3.7 install horovod --no-cache-d
 ### 二进制包安装
 
 
-从昇腾开源社区直接获取编译打包后的产品包。解压后包含tf1和tf2两个版本的whl安装包，使用pip命令安装whl包（请根据实际需求，选取对应TensorFlow版本匹配的Wheel包）：
+从[昇腾开源社区](https://gitcode.com/Ascend/RecSDK/releases/7.1.RC1)直接获取编译打包后的产品包（Ascend-mindxsdk-mxrec_7.1.RC1_linux-*.tar.gz）。解压后包含tf1和tf2两个版本的whl安装包，使用pip命令安装whl包（请根据实际需求，选取对应TensorFlow版本匹配的Wheel包）：
 ```shell
 pip3 install mx_rec-{version}-py3-none-linux_{arch}.whl
 ```
@@ -103,6 +103,27 @@ whl包安装参考前文二进制包安装。
 ```shell
 bash run.sh
 ```
+## 目录结构
+
+	mxrec/											#项目根目录
+    |-- build/										#构建脚本、生成的wheel包等
+    |
+    |-- cust_op/
+    |    |-- ascendc_op								#Ascend C编写，编译后在AI Core执行的算子和其编译脚本
+    |    |-- framework								#算子适配层
+    |    |-- test								    #算子测试用例
+    |    |-- tf_cpu_op								#CPU算子
+    |
+    |-- docs/								        #项目镜像构建脚本、公网和邮箱地址及通信矩阵文档
+    |
+    |-- training
+         |-- common									#公共组件
+         |-- tf_rec_v1								#基于TensorFlow，适配NPU设备的稀疏推荐框架
+         |-- torch_rec_v1					        #基于PyTorch、torchrec开源软件，适配NPU设备的稀疏推荐框架
+              |-- hybrid_torchrec					#适配NPU纯显存模式（Device Memory）的推荐训练框架
+              |-- torchrec_embcache					#适配NPU多级缓存模式（Device Memory + Host DDR）的推荐训练框架
+              |-- torchrec_npu						#基于torchrec开源组件的NPU适配pacth
+
 
 ## 测试用例
 > 运行测试用例前需先设置CANN相关环境变量，参考前文`安装方式`章节。
