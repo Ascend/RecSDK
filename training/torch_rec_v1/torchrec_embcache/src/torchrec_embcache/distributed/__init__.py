@@ -17,6 +17,10 @@ from torchrec_embcache.distributed.embedding_bag import EmbCacheEmbeddingBagColl
 from torchrec_embcache.distributed.embedding import EmbCacheEmbeddingCollection
 from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
 
+from torchrec_embcache.distributed.sharding.embedding_sharder import (
+    EmbCacheEmbeddingBagCollectionSharder,
+    EmbCacheEmbeddingCollectionSharder,
+)
 
 __all__ = [
     "EmbCacheEmbeddingBagConfig",
@@ -25,5 +29,7 @@ __all__ = [
     "InitializerType",
     "EmbCacheEmbeddingBagCollection",
     "EmbCacheEmbeddingCollection",
-    "EmbCacheTrainPipelineSparseDist"
+    "EmbCacheTrainPipelineSparseDist",
+    "EmbCacheEmbeddingBagCollectionSharder",
+    "EmbCacheEmbeddingCollectionSharder"
 ]
