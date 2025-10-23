@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 rm -rf build
 rm -rf hybrid_torchrec.egg-info
 rm -rf Ascend-mindxsdk-*
