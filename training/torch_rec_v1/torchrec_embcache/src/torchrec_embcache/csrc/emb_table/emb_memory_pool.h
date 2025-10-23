@@ -20,6 +20,7 @@
 
 namespace Embcache {
 
+constexpr uint32_t MAX_EMB_MEMORY_POOL_SIZE = 200000;
 using EmExpandMemUint = struct EmExpandMemoryUint {
     uint64_t address = 0;
     uint64_t capacity = 0;
@@ -47,8 +48,9 @@ public:
                 LOG_ERROR("env EMB_MEMORY_POOL_SIZE is not a valid number");
                 throw std::runtime_error("env EMB_MEMORY_POOL_SIZE is not a valid number");
             }
-            if (embMemoryPoolSize_ == 0) {
-                LOG_ERROR("env EMB_MEMORY_POOL_SIZE = 0, it is invalid");
+            if (embMemoryPoolSize_ == 0 || embMemoryPoolSize_ > MAX_EMB_MEMORY_POOL_SIZE) {
+                LOG_ERROR("env EMB_MEMORY_POOL_SIZE {} should be in range (0, {}]",
+                          embMemoryPoolSize_, MAX_EMB_MEMORY_POOL_SIZE);
                 throw std::runtime_error("env EMB_MEMORY_POOL_SIZE is invalid");
             }
         }

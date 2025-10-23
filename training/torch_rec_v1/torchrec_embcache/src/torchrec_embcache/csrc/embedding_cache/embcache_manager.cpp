@@ -29,6 +29,8 @@ EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool 
     ConfigGlobalEnv();
     Logger::SetLevel(GlobalEnv::glogStderrthreshold);
     LogGlobalEnv();
+    TORCH_CHECK(embConfigs.size() <= MAX_EMB_TABLE_NUM,
+                "The number of embedding tables <= {}", MAX_EMB_TABLE_NUM);
     for (const auto& config : embConfigs) {
         auto length = config.tableName.size();
         if (config.tableName.size() > TABLE_NAME_LENGTH) {
@@ -54,6 +56,7 @@ EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool 
         } else {
             embeddingTables_.emplace_back(std::make_unique<EmbTableUnorderedMap>(embConfigs[i]));
         }
+        TORCH_CHECK(embeddingTables_.back() != nullptr, "embeddingTables_.back() should not be nullptr");
 
         if (embConfigs[i].admitAndEvictConfig.IsFeatureFilterEnabled()) {
             const auto& aaeConfig = embConfigs[i].admitAndEvictConfig;
@@ -97,6 +100,8 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
     TORCH_CHECK(batchKeys.is_contiguous(), "batchKeys must be contiguous")
     TORCH_CHECK(batchKeys.dtype() == torch::kInt64, "batchKeys must be of type int64_t")
     const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
+    TORCH_CHECK(curTableIndices.size() == embTableIndies_.size(),
+                "tableIndices size must be equal to embTableIndies_ size");
     TORCH_CHECK(curTableIndices.size() + 1 == offsetPerKey.size(),
                 "tableIndices size+1 must be equal to offsetPerKey size");
 
@@ -112,17 +117,20 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
     for (int64_t i = 0; i < curTableIndices.size(); i++) {
         int64_t idx = curTableIndices[i];
         TORCH_CHECK(idx >= 0 && idx < embNum_, "table index {} is out of range [0, {})", idx, embNum_);
+        auto startIndex = offsetPerKey[i];
+        auto endIndex = offsetPerKey[i + 1];
+        TORCH_CHECK(startIndex >= 0 && endIndex <= keyNum && startIndex <= endIndex,
+                    "Invalid offsetPerKey[{}]: {}, offsetPerKey[{}]: {}, keyNum: {}", i, startIndex, i + 1,
+                    endIndex, keyNum);
 
         if (embConfigs_[idx].admitAndEvictConfig.IsAdmitEnabled()) {
             if (featureFilters_[idx]) {
-                featureFilters_[idx]->CountFilter(keyPtr, offsetPerKey[i], offsetPerKey[i + 1]);
+                featureFilters_[idx]->CountFilter(keyPtr, startIndex, endIndex);
             }
         }
 
         // 取出每个表的 key
-        TORCH_CHECK(offsetPerKey[i] <= keyNum, "offsetPerKey[{}] is greater than keyNum", i);
-        TORCH_CHECK(offsetPerKey[i + 1] <= keyNum, "offsetPerKey[{}] is greater than keyNum", i + 1);
-        std::vector<int64_t> batchKeysVec(keyPtr + offsetPerKey[i], keyPtr + offsetPerKey[i + 1]);
+        std::vector<int64_t> batchKeysVec(keyPtr + startIndex, keyPtr + endIndex);
         auto tp = swapManagers_[idx].ComputeSwapInfo(batchKeysVec);
 
         std::vector<int64_t>& swapoutKeysi = std::get<SWAP_INFO_TUPLE_INDEX0>(tp);
@@ -200,6 +208,7 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
                                               const std::vector<int32_t>& tableIndices)
 {
     TimeCost embeddingLookupTC;
+    TORCH_CHECK(swapinKeys.size() == embTableIndies_.size(), "swapinKeys size must be equal to embTableIndies_ size");
 
     auto floatPinnedOpt = at::TensorOptions().dtype(at::kFloat).device(at::kCPU).pinned_memory(true);
     auto longPinnedOpt = at::TensorOptions().dtype(at::kLong).device(at::kCPU).pinned_memory(true);
@@ -229,6 +238,8 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
         }
 
         int32_t idx = curTableIndices[i];
+        TORCH_CHECK(idx >= 0 && idx < embeddingTables_.size(),
+                    "table index {} is out of range [0, {})", idx, embeddingTables_.size());
         embeddingTables_[idx]->FindOrInsert(swapinKeys[i], swapinTensor.swapinEmbs.data_ptr<float>() + jaggedOffsPtr[i],
                                             swapinOptimsPtr);
     }
@@ -260,6 +271,8 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
     TORCH_CHECK(swapoutEmbs.dtype() == torch::kFloat32)
 
     const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
+    TORCH_CHECK(swapoutKeys.size() == embTableIndies_.size(),
+                "swapoutKeys size must be equal to embTableIndies_ size");
     TORCH_CHECK(curTableIndices.size() == swapoutKeys.size(),
                 "tableIndices size must be equal to swapoutKeys size");
 
@@ -272,6 +285,8 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
         }
 
         int32_t idx = curTableIndices[i];
+        TORCH_CHECK(idx >= 0 && idx < embeddingTables_.size(),
+                    "table index {} is out of range [0, {})", idx, embeddingTables_.size());
         embeddingTables_[idx]->InsertOrAssign(swapoutKeys[i], swapoutEmbsPtr + jaggedOff, swapoutOptimPtrs);
         jaggedOff += swapoutKeys[i].size() * embConfigs_[idx].embDim;
     }
@@ -286,6 +301,8 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
 
 void EmbcacheManager::Embedding2Host(const at::Tensor& weightsDev, const std::vector<at::Tensor>& momentumDevs)
 {
+    TORCH_CHECK(momentumDevs.size() <= MAX_MOMENTUM_NUM,
+                "momentumDevs size should not be <= {}", MAX_MOMENTUM_NUM);
     for (auto& momentumDev : momentumDevs) {
         TORCH_CHECK(weightsDev.numel() == momentumDev.numel())
         TORCH_CHECK(momentumDev.dtype() == torch::kFloat32)
@@ -462,6 +479,8 @@ void EmbcacheManager::WriteAttributeFile(int32_t tableIndex, const std::string& 
 void EmbcacheManager::Load(const std::string& path, int rank)
 {
     auto fileSystemPtr = GetFileSystem(path);
+    TORCH_CHECK(fileSystemPtr != nullptr, "fileSystemPtr should not be nullptr");
+
     for (int32_t i = 0; i < embNum_; i++) {
         std::string tableName = embConfigs_[i].tableName;
         LOG_INFO("Start load, rank:{}, table:{}.", rank, tableName);
@@ -539,13 +558,9 @@ void EmbcacheManager::RecordLoadDebugInfo(const vector<int64_t>& keys, const vec
     if (Logger::GetLevel() > Logger::TRACE) {
         return;
     }
-    std::vector<float> emptyList = {};
     for (size_t j = 0; j < keys.size(); ++j) {
-        std::vector<float> m1 = momentum1.empty() ? emptyList : momentum1[j];
-        std::vector<float> m2 = momentum2.empty() ? emptyList : momentum2[j];
-        LOG_TRACE("In load, rank:{}, table:{}, current key:{}, embedding:{}, momentum1:{}, momentum2:{}.",
-                  tableParams.rank, tableParams.tableName, keys[j], StringTools::ToString(embeddings[j]),
-                  StringTools::ToString(m1), StringTools::ToString(m2));
+        LOG_TRACE("In load, rank:{}, table:{}, current key:{}.",
+                  tableParams.rank, tableParams.tableName, keys[j]);
     }
 }
 
@@ -559,7 +574,7 @@ void EmbcacheManager::ReadAttributeData(const std::shared_ptr<FileSystem>& fileS
     if (readBytes != static_cast<ssize_t>(attrBytes)) {
         auto errMsg =
             Logger::Format("Read key attribute file error, expect read bytes:{}, actual read bytes:{}, file:{}",
-                           filePath, attrBytes, readBytes);
+                           attrBytes, readBytes, filePath);
         throw std::runtime_error(errMsg);
     }
 }
@@ -590,7 +605,7 @@ void EmbcacheManager::ReadKeysData(const std::shared_ptr<FileSystem>& fileSystem
     auto readBytes = fileSystemPtr->Read(keyDataFile, reinterpret_cast<char*>(keys.data()), keyFileBytes);
     if (readBytes != static_cast<ssize_t>(keyFileBytes)) {
         auto errMsg = Logger::Format("Read key data file error, expect read bytes:{}, actual read bytes:{}, file:{}",
-            keyDataFile, keyFileBytes, readBytes);
+            keyFileBytes, readBytes, keyDataFile);
         throw std::runtime_error(errMsg);
     }
 }
@@ -673,16 +688,24 @@ void EmbcacheManager::RecordTimestamp(const at::Tensor& batchKeys, const std::ve
     TORCH_CHECK(keyPtr != nullptr, "keyPtr should not be nullptr");
     TORCH_CHECK(timestampsPtr != nullptr, "timestampsPtr should not be nullptr");
     const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
+    TORCH_CHECK(curTableIndices.size() == embTableIndies_.size(),
+                "tableIndices size must be equal to embTableIndies_ size");
     TORCH_CHECK(curTableIndices.size() + 1 == offsetPerKey.size(),
                 "tableIndices size+1 must be equal to offsetPerKey size");
 
-    for (int64_t i = 0; i < embNum_; ++i) {
+    for (int64_t i = 0; i < curTableIndices.size(); ++i) {
         int32_t idx = curTableIndices[i];
         TORCH_CHECK(idx >= 0 && idx < embNum_, "table index {} is out of range [0, {})", idx, embNum_);
 
         if (embConfigs_[idx].admitAndEvictConfig.IsEvictEnabled()) {
             if (featureFilters_[idx]) {
-                featureFilters_[idx]->RecordTimestamp(keyPtr, offsetPerKey[i], offsetPerKey[i + 1], timestampsPtr);
+                auto startIndex = offsetPerKey[i];
+                auto endIndex = offsetPerKey[i + 1];
+                TORCH_CHECK(startIndex >= 0, "startIndex should >= 0");
+                TORCH_CHECK(endIndex >= startIndex, "endIndex should >= startIndex");
+                TORCH_CHECK(endIndex <= batchKeys.numel(), "endIndex should <= batchKeys.numel()");
+                TORCH_CHECK(endIndex <= timestamps.numel(), "endIndex should <= timestamps.numel()");
+                featureFilters_[idx]->RecordTimestamp(keyPtr, startIndex, endIndex, timestampsPtr);
             }
         }
     }
@@ -814,7 +837,10 @@ void EmbcacheManager::StatisticsKeyCount(const at::Tensor& batchKeys, const torc
     }
     int64_t start = offsetDataPtr[tableIndex];
     int64_t end = offsetDataPtr[tableIndex + 1];
-    TORCH_CHECK(end <= batchKeys.numel())
+    TORCH_CHECK(start >= 0 && end >= start && end <= batchKeys.numel(),
+                "param error, start and end should meet 0 <= start <= end <= batchKeys.numel(), "
+                "but got start: {}, end: {}, batchKeys.numel(): {}.",
+                start, end, batchKeys.numel());
 
     if (!featureFilters_[tableIndex]) {
         return;
