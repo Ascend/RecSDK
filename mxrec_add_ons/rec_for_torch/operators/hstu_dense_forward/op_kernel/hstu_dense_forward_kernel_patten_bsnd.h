@@ -176,6 +176,7 @@ public:
 
         // attr
         siluScale = tilingDataPtr->siluScale;
+        alpha = tilingDataPtr->alpha;
         targetGroupSize = tilingDataPtr->targetGroupSize;
         maskType = static_cast<CausalMaskT>(tilingDataPtr->maskType);
         enableBias = (tilingDataPtr->enableBias == 1);
@@ -317,8 +318,8 @@ public:
             queIn.FreeTensor(inLt);
 
             auto biasLtFp32 = biasLt.template ReinterpretCast<float>();
+            Muls<float>(tmpLtFp32, tmpLtFp32, alpha, thisLen);
             Silu<float>(biasLtFp32, tmpLtFp32, thisLen);
-
             DoMaskOptional(inMaskLt, inMaskLtFp32, tmpLt, biasLtFp32, thisLen, needMask, scale);
 
             auto outLt = queOut.AllocTensor<qType>();
@@ -328,6 +329,7 @@ public:
             queIn.DeQue();
 
             auto outLt = queOut.AllocTensor<qType>();
+            Muls<float>(inLt, inLt, alpha, thisLen);
             Silu<float>(outLt, inLt, thisLen);
             queIn.FreeTensor(inLt);
 
@@ -354,6 +356,7 @@ public:
 
         auto outLt = queOut.AllocTensor<qType>();
         auto newOutLt = outLt.template ReinterpretCast<float>();
+        Muls<float>(newInLt, newInLt, alpha, thisLen);
         Silu<float>(newOutLt, newInLt, thisLen);
 
         queIn.FreeTensor(inLt);
@@ -683,6 +686,7 @@ public:
 
     // Attr
     float siluScale;
+    float alpha;
     CausalMaskT maskType;
     bool enableBias;
     int64_t targetGroupSize;

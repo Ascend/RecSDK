@@ -85,3 +85,41 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
             npu2cpu(real_attn_bias.grad), invalid_attn_mask
 
 ```
+
+# HSTU Paged
+
+## 概述
+
+`hstu_paged` 是一个高性能的分页注意力机制实现。该接口实现了基于分页内存管理的hstu Attention计算。
+
+## 参数说明
+
+| 参数名 | 类型 | 默认值 | 描述 |
+|--------|------|--------|------|
+| `q` | Tensor| | Query张量，3D张量 [batch_size, seq_len, head_dim] |
+| `k` | Tensor| | Key张量，3D张量 [batch_size, seq_len, head_dim] |
+| `v` | Tensor| | Value张量，3D张量 [batch_size, seq_len, head_dim] |
+| `kv_cache` | Tensor | None | KV缓存张量，用于存储历史Key-Value对 |
+| `mask` | Tensor | None | 注意力掩码张量 |
+| `attn_bias` | Tensor | None | 注意力偏置张量 |
+| `mask_type` | int | 0 | 掩码类型：0=下三角，1=上三角，3=自定义 |
+| `max_seq_len` | int64 | 0 | 最大序列长度，范围[1, 20480] |
+| `max_seq_len_k` | int64 | 0 | Key最大序列长度，范围[1, 20480] |
+| `silu_scale` | float | 0.0 | SiLU激活函数的缩放因子 |
+| `seq_offset` | Tensor | None | 序列偏移量张量 |
+| `seq_offset_k` | Tensor | None | Key序列偏移量张量 |
+| `seq_offset_t` | Tensor | None | 目标序列偏移量张量 |
+| `page_offsets` | Tensor | None | 页面偏移量张量 |
+| `page_ids` | Tensor | None | 页面ID张量 |
+| `last_page_len` | Tensor | None | 最后一页长度张量 |
+| `num_target` | Tensor | None | 目标数量张量 |
+| `target_group_size` | int | 0 | 目标组大小，当num_target定义时必须>0 |
+| `alpha` | float| 1.0 | Alpha缩放参数 |
+
+
+## 约束条件
+* 支持的型号：Atlas A2系列产品;
+* 支持的CANN版本：8.0.RC3及之后版本;
+* 支持的输入数据类型：q、k、v、kv_cache支持fp32、fp16、bfp16;
+* page_size支持: [32, 64, 128, 256]
+* target_group_size：当num_target定义时必须>0

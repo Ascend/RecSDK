@@ -72,6 +72,7 @@ at::Tensor hstu_jagged_forward_impl_npu(
 
     const char *layout = "jagged";
     const int64_t isDeltaQK = 0;
+    double realAlpha = 1.0;
     EXEC_NPU_CMD(aclnnHstuDenseForward,
                  denseQ,
                  denseK,
@@ -94,6 +95,7 @@ at::Tensor hstu_jagged_forward_impl_npu(
                  layout,
                  acTargetGroupSize,
                  isDeltaQK,
+                 realAlpha,
                  attnOutput);
     return attnOutput;
 }

@@ -51,6 +51,7 @@ namespace optiling {
     TILING_DATA_FIELD_DEF(int64_t, maxSeqLenq);
     TILING_DATA_FIELD_DEF(int64_t, maxSeqLenk);
     TILING_DATA_FIELD_DEF(int64_t, targetGroupSize);
+    TILING_DATA_FIELD_DEF(float, alpha);
 
     END_TILING_DATA_DEF;
     REGISTER_TILING_DATA_CLASS(HstuDenseForward, HstuDenseForwardTilingData)

@@ -33,7 +33,9 @@ at::Tensor hstu_paged_forward_impl_npu(
     const at::Tensor& pageOffsets,
     const at::Tensor& pageIds,
     const at::Tensor& lastPageLen,
-    const at::Tensor& numTarget)
+    const at::Tensor& numTarget,
+    const int64_t targetGroupSize,
+    const c10::optional<double>& alpha)
 {
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
@@ -54,12 +56,14 @@ at::Tensor hstu_paged_forward_impl_npu(
     TORCH_CHECK(MaxSeqLenCheck(maxSeqLen), "maxSeqLen check failed");
     TORCH_CHECK(MaxSeqLenCheck(maxSeqLenK), "maxSeqLenK check failed");
     TORCH_CHECK(MaskCheck(maskType, maskNpu.defined()), "maskType check failed");
+    TORCH_CHECK(!numTarget.defined() || targetGroupSize > 0,
+                "targetGroupSize must be greater than 0 when numTarget is defined");
 
     auto attnOutput = at::empty_like(denseQ);
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
+    double realAlpha = alpha.value_or(1.0);
 
     const auto _numContext = at::zeros_like(numTarget);
-    const auto _actargetGroupSize = int();
 
     const char *layout = "paged";
     const int64_t isDeltaQK = 1;
@@ -83,8 +87,9 @@ at::Tensor hstu_paged_forward_impl_npu(
                  maxSeqLenK,
                  realSiluScale,
                  layout,
-                 _actargetGroupSize,
+                 targetGroupSize,
                  isDeltaQK,
+                 realAlpha,
                  attnOutput);
     return attnOutput;
 }
@@ -107,7 +112,9 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
           "           Tensor page_offsets=None, "
           "           Tensor page_ids=None, "
           "           Tensor last_page_len=None, "
-          "           Tensor num_target=None) -> Tensor");
+          "           Tensor num_target=None, "
+          "           int target_group_size=0, "
+          "           float? alpha=1.0) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
