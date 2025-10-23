@@ -156,6 +156,7 @@ public:
         this->Attr("layout").AttrType(OPTIONAL).String("normal");
         this->Attr("target_group_size").AttrType(OPTIONAL).Int(0);
         this->Attr("is_delta_qk").AttrType(OPTIONAL).Int(0);
+        this->Attr("alpha").Float();
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

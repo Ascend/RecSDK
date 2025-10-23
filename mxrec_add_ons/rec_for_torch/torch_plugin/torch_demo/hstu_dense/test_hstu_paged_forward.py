@@ -90,12 +90,36 @@ def unpad_input_delta_q(padded_input, cu_seqlen_q, cu_seqlen_k, batch, seqlen):
     return torch.cat(output, dim=0)
 
 
-def generate_attn_mask(batch_size, num_heads, max_seq_len, max_seq_len_k, dtype):
-    # 暂时随机生成，内置mask待适配
-    mask = torch.randint(
-            0, 2, (batch_size, num_heads, max_seq_len, max_seq_len_k),
-            dtype=dtype
+def generate_attn_mask(batch_size, num_heads, max_seq_len, max_seq_len_k, dtype,
+                       seqlen, kv_raw_metadata, kvcache_page_size, num_candidates):
+    mask = torch.zeros(
+            (batch_size, num_heads, max_seq_len, max_seq_len_k),
+            dtype=dtype,
+            device=torch.npu.current_device(),
         )
+    for seq_idx in range(batch_size):
+        qlen = seqlen[seq_idx].item()
+        cachelen = (
+            kv_raw_metadata[1][seq_idx + 1] - kv_raw_metadata[1][seq_idx] - 1
+        ) * kvcache_page_size + kv_raw_metadata[2][seq_idx] # (pageNum - 1) * pageSize + lastPageLen
+        num_cand = num_candidates[seq_idx].item()
+        seq_mask = torch.cat(
+            [
+                torch.tril(
+                    torch.ones((qlen, cachelen), dtype=torch.int32),
+                    diagonal=cachelen + num_cand - qlen,
+                ),
+                torch.cat(
+                    [
+                        torch.zeros((qlen - num_cand, num_cand), dtype=torch.int32),
+                        torch.eye(num_cand, dtype=torch.int32),
+                    ],
+                    dim=0,
+                ),
+            ],
+            dim=1,
+        )
+        mask[seq_idx, :, :qlen, : cachelen + num_cand].copy_(seq_mask.type(dtype))
     return mask
 
 
@@ -114,6 +138,7 @@ def _hstu_attention_maybe_from_cache(
     invalid_attn_mask: torch.Tensor,
     upcast: bool = True,
     is_delta_q: bool = False,
+    alpha: float = 1.0,
 ):
     B: int = q_offsets.size(0) - 1
     if is_delta_q:
@@ -151,8 +176,10 @@ def _hstu_attention_maybe_from_cache(
         masked_qk_attn = qk_attn + rab
     else:
         masked_qk_attn = qk_attn
+    masked_qk_attn = masked_qk_attn * alpha
     masked_qk_attn = F.silu(masked_qk_attn)
     masked_qk_attn = masked_qk_attn / seqlen_q
+    
     if invalid_attn_mask is not None:
         if invalid_attn_mask.ndim == 2:
             invalid_attn_mask = invalid_attn_mask.unsqueeze(0).unsqueeze(0)
@@ -200,6 +227,7 @@ def _hstu_paged_kv_attention(
     page_offsets: torch.Tensor = None,
     page_ids: torch.Tensor = None,
     last_page_lens: torch.Tensor = None,
+    alpha: float = 1.0,
 ):
     k_con = torch.empty((0, num_heads, attention_dim), device=k.device, dtype=k.dtype)
     v_con = torch.empty((0, num_heads, attention_dim), device=v.device, dtype=v.dtype)
@@ -254,6 +282,7 @@ def _hstu_paged_kv_attention(
         invalid_attn_mask=invalid_attn_mask,
         upcast=upcast,
         is_delta_q=False,
+        alpha=alpha,
     )
 
 
@@ -424,7 +453,8 @@ def test_paged_hstu_attn_kernel(
     max_seq_len_q = seqlen.max()
     max_seq_len_k = seqlen_k.max()
     # generate attn mask
-    mask = generate_attn_mask(batch_size, num_heads, max_seq_len_q, max_seq_len_k, dtype)
+    mask = generate_attn_mask(batch_size, num_heads, max_seq_len_q, max_seq_len_k, dtype,
+                              seqlen, kv_raw_metadata, page_size, num_candidates)
 
     attn_out_golden = _hstu_paged_kv_attention(
         num_heads=num_heads,
@@ -448,6 +478,7 @@ def test_paged_hstu_attn_kernel(
         last_page_lens=torch.tensor(
             kv_raw_metadata[2], dtype=torch.int32, device=device
         ),
+        alpha=1.0 / (head_dim ** 0.5),
     )
     torch.npu.synchronize()
     attn_out_golden = attn_out_golden.view(-1, num_heads, head_dim)
@@ -461,6 +492,8 @@ def test_paged_hstu_attn_kernel(
                                                  max_seq_len=max_seq_len_q,
                                                  max_seq_len_k=max_seq_len_k,
                                                  silu_scale=1.0 / max_seq_len_q,
+                                                 alpha=1.0 / (head_dim ** 0.5),
+                                                 target_group_size=1,
                                                  seq_offset=seqlen_offsets.npu().to(torch.int64),
                                                  seq_offset_k=seqlen_offsets_k.npu().to(torch.int64),
                                                  seq_offset_t=num_candidates_offsets.npu().to(torch.int64),

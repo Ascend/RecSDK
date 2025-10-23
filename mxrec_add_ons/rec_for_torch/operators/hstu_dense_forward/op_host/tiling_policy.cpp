@@ -154,6 +154,9 @@ bool TilingPolicy::TilingAttribute(gert::TilingContext* context, optiling::HstuD
     const float *siluScale = attrs->GetAttrPointer<float>(ATTR_INDEX_T::SILU_SCALE_INDEX);
     OPS_CHECK_PTR_NULL(siluScale, return false);
 
+    const float *alpha = attrs->GetAttrPointer<float>(ATTR_INDEX_T::ALPHA_INDEX);
+    OPS_CHECK_PTR_NULL(alpha, return false);
+
     const uint32_t *targetGroupSize = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::TARGET_GROUP_SIZE_INDEX);
     OPS_CHECK_PTR_NULL(targetGroupSize, return false);
 
@@ -166,6 +169,7 @@ bool TilingPolicy::TilingAttribute(gert::TilingContext* context, optiling::HstuD
 
     tiling.set_maskType(*maskType);
     tiling.set_siluScale(*siluScale);
+    tiling.set_alpha(*alpha);
     tiling.set_maxSeqLen(*maxSeqLen);
     tiling.set_maxSeqLenq(*maxSeqLen);
     tiling.set_maxSeqLenk(*maxSeqLenk);
@@ -271,6 +275,7 @@ void TilingPolicy::DumpTiling(optiling::HstuDenseForwardTilingData& tiling)
     OPS_LOG_D("maskType = %d\n", tiling.get_maskType());
     OPS_LOG_D("maxSeqLen = %d\n", tiling.get_maxSeqLen());
     OPS_LOG_D("siluScale = %f\n", tiling.get_siluScale());
+    OPS_LOG_D("alpha = %f\n", tiling.get_alpha());
 }
 
 }
