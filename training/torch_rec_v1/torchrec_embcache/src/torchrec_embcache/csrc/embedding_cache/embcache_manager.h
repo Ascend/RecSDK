@@ -35,8 +35,10 @@ constexpr int SWAP_INFO_TUPLE_INDEX2 = 2;
 constexpr int SWAP_INFO_TUPLE_INDEX3 = 3;
 constexpr int SWAP_INFO_TUPLE_INDEX4 = 4;
 constexpr int READ_FILE_FAILED = -1;
+constexpr size_t MAX_EMB_TABLE_NUM = 10000;
 constexpr size_t TABLE_NAME_LENGTH = 100;
 constexpr size_t READ_AND_WRITE_SIZE_PEER_TIME = 32768;
+constexpr size_t MAX_MOMENTUM_NUM = 1024;
 
 const std::string RANK_STR_PATH = "/rank";
 const std::string EMBEDDING_STR_PATH = "/embedding";

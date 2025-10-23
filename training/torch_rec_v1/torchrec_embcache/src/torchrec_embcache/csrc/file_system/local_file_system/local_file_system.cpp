@@ -101,6 +101,11 @@ size_t LocalFileSystem::GetFileSize(const string& filePath)
 
 ssize_t LocalFileSystem::Write(const string& filePath, const char* fileContent, size_t dataSize)
 {
+    if (fileContent == nullptr) {
+        auto errMsg = Logger::Format("fileContent is nullptr");
+        LOG_ERROR(errMsg);
+        throw std::runtime_error(errMsg);
+    }
     int fd = open(filePath.c_str(), O_RDWR | O_CREAT | O_APPEND, fileMode);
     CheckOpenFile4Write(filePath, fd);
 
@@ -155,6 +160,9 @@ ssize_t LocalFileSystem::Write(const string& filePath, vector<vector<float>>& fi
             close(fd);
             return res;
         }
+        if (res == 0) {
+            break;
+        }
         writeBytesRemain -= res;
         idx += res;
         writeBytesNum += res;
@@ -167,6 +175,11 @@ ssize_t LocalFileSystem::Write(const string& filePath, vector<vector<float>>& fi
 
 ssize_t LocalFileSystem::Read(const string& filePath, char* fileContent, size_t datasetSize)
 {
+    if (fileContent == nullptr) {
+        auto errMsg = Logger::Format("fileContent is nullptr");
+        LOG_ERROR(errMsg);
+        throw std::runtime_error(errMsg);
+    }
     int fd = open(filePath.c_str(), O_RDONLY);
     if (fd == -1) {
         auto errMsg = Logger::Format("Failed to open read file, please check whether the file exists, file:{}.",
@@ -231,6 +244,15 @@ ssize_t LocalFileSystem::Read(const string& filePath, vector<vector<float>>& fil
         if (res != 0) {
             fclose(fp);
             auto errMsg = Logger::Format("Failed to seek file path: {}.", filePath);
+            LOG_ERROR(errMsg);
+            throw std::runtime_error(errMsg);
+        }
+        if (fileContent.size() <= embeddingCount ||
+            fileContent[embeddingCount].size() < contentOffset * embeddingSize + embeddingSize) {
+            fclose(fp);
+            auto errMsg = Logger::Format(
+                "fileContent size {} should be > embeddingCount {} and fileContent[{}].size() should be >= {}.",
+                fileContent.size(), embeddingCount, embeddingCount, contentOffset * embeddingSize + embeddingSize);
             LOG_ERROR(errMsg);
             throw std::runtime_error(errMsg);
         }
