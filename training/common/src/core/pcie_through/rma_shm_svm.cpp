@@ -257,7 +257,6 @@ void FreeShmAddr(uint32_t deviceId)
     g_shmSvmMap.clear();
     if (g_aclInit[deviceId]) {
         aclrtResetDevice(deviceId);
-        aclFinalize();
         g_aclInit[deviceId] = false;
         LOG_INFO("Device {} free acl device.", deviceId);
     }
