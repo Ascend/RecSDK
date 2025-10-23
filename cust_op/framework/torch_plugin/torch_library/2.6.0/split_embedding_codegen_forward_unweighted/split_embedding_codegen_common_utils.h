@@ -30,6 +30,13 @@ namespace fbgemm_npu_lookups {
         const at::Tensor& hash_indices,
         const at::Tensor& offset_per_key)
     {
+        // NPU设备校验 - 收集所有张量进行批量检查
+        std::vector<at::Tensor> tensors = {
+            dev_weights, weights_offsets, D_offsets, indices, offsets
+        };
+        std::vector<std::string> names = {
+            "dev_weights", "weights_offsets", "D_offsets", "indices", "offsets"
+        };
         check_tensor_non_empty(dev_weights, "dev_weights");
         check_tensor_non_empty(weights_offsets, "weights_offsets");
         check_tensor_non_empty(D_offsets, "D_offsets");
@@ -38,7 +45,10 @@ namespace fbgemm_npu_lookups {
         check_tensor_non_empty(offset_per_key, "offset_per_key");
         if (hash_indices.defined()) {
             check_tensor_non_empty(hash_indices, "hash_indices");
+            tensors.push_back(hash_indices);
+            names.push_back("hash_indices");
         }
+        check_tensor_npu_device(tensors, names);
     }
 
     inline void validate_backward_data_inputs(
@@ -58,6 +68,13 @@ namespace fbgemm_npu_lookups {
         const at::Tensor& offset_per_key,
         int optim_num = 0)
     {
+        // NPU设备校验 - 收集所有张量进行批量检查
+        std::vector<at::Tensor> tensors = {
+            grad_output, dev_weights, weights_offsets, D_offsets, indices, offsets, offset_per_key
+        };
+        std::vector<std::string> names = {
+            "grad_output", "dev_weights", "weights_offsets", "D_offsets", "indices", "offsets", "offset_per_key"
+        };
         check_tensor_non_empty(grad_output, "grad_output");
         check_tensor_non_empty(dev_weights, "dev_weights");
         check_tensor_non_empty(weights_offsets, "weights_offsets");
@@ -68,17 +85,29 @@ namespace fbgemm_npu_lookups {
 
         if (hash_indices.defined()) {
             check_tensor_non_empty(hash_indices, "hash_indices");
+            tensors.push_back(hash_indices);
+            names.push_back("hash_indices");
         }
         if (unique_ids.defined()) {
             check_tensor_non_empty(unique_ids, "unique_ids");
             check_tensor_non_empty(unique_offsets, "unique_offsets");
             check_tensor_non_empty(unique_inverse, "unique_inverse");
+            tensors.push_back(unique_ids);
+            names.push_back("unique_ids");
+            tensors.push_back(unique_offsets);
+            names.push_back("unique_offsets");
+            tensors.push_back(unique_inverse);
+            names.push_back("unique_inverse");
         }
         if (optim_num >= ADAGRAD_OPTIM_NUM) {
             check_tensor_non_empty(momentum1_dev, "momentum1_dev");
+            tensors.push_back(momentum1_dev);
+            names.push_back("momentum1_dev");
         }
         if (optim_num >= ADAM_OPTIM_NUM) {
             check_tensor_non_empty(momentum2_dev, "momentum2_dev");
+            tensors.push_back(momentum2_dev);
+            names.push_back("momentum2_dev");
         }
     }
     

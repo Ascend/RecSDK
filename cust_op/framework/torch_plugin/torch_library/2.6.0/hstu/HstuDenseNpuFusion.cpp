@@ -180,11 +180,11 @@ at::Tensor hstu_dense_forward_impl_npu(
     std::vector<at::Tensor> tensors = {q, k, v};
     std::vector<std::string> names = {"q", "k", "v"};
     
-    if (mask.has_value()) {
+    if (mask.has_value() && mask.value().defined()) {
         tensors.push_back(mask.value());
         names.push_back("mask");
     }
-    if (attnBias.has_value()) {
+    if (attnBias.has_value() && attnBias.value().defined()) {
         tensors.push_back(attnBias.value());
         names.push_back("attnBias");
     }
@@ -361,11 +361,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
     std::vector<at::Tensor> tensors = {q, k, v};
     std::vector<std::string> names = {"q", "k", "v"};
     
-    if (mask.has_value()) {
+    if (mask.has_value() && mask.value().defined()) {
         tensors.push_back(mask.value());
         names.push_back("mask");
     }
-    if (attnBias.has_value()) {
+    if (attnBias.has_value() && attnBias.value().defined()) {
         tensors.push_back(attnBias.value());
         names.push_back("attnBias");
     }

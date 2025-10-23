@@ -42,16 +42,6 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
                                                           const Tensor& hash_indices,
                                                           const at::Tensor& offset_per_key)
 {
-    // NPU设备校验 - 收集所有张量进行批量检查
-    std::vector<at::Tensor> tensors = {
-        dev_weights, weights_offsets, D_offsets, indices, offsets, hash_indices, offset_per_key
-    };
-    std::vector<std::string> names = {
-        "dev_weights", "weights_offsets", "D_offsets", "indices", "offsets", "hash_indices", "offset_per_key"
-    };
-    
-    check_tensor_npu_device(tensors, names);
-
     const int64_t totalD = total_D.guard_int(__FILE__, __LINE__);
     const int64_t maxD = max_D.guard_int(__FILE__, __LINE__);
 
