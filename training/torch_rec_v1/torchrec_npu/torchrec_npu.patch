@@ -210,18 +210,18 @@ index 43eeda32..e1575133 100644
                      EmbeddingComputeKernel.FUSED_UVM.value,
                      EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
 diff --git a/torchrec/distributed/model_parallel.py b/torchrec/distributed/model_parallel.py
-index 5cbd2429..109f7a25 100644
+index 5cbd2429..e9eb375d 100644
 --- a/torchrec/distributed/model_parallel.py
 +++ b/torchrec/distributed/model_parallel.py
 @@ -48,6 +48,7 @@ from torchrec.distributed.utils import (
  )
  from torchrec.optim.fused import FusedOptimizerModule
  from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizer
-+from torchrec.tensor_types import check
++from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
  
  try:
      torch.ops.load_library("//deeplearning/fbgemm/fbgemm_gpu:sparse_ops")
-@@ -233,6 +234,18 @@ class DistributedModelParallel(nn.Module, FusedOptimizerModule):
+@@ -233,6 +234,19 @@ class DistributedModelParallel(nn.Module, FusedOptimizerModule):
          init_parameters: bool = True,
          data_parallel_wrapper: Optional[DataParallelWrapper] = None,
      ) -> None:
@@ -229,6 +229,7 @@ index 5cbd2429..109f7a25 100644
 +        check(device.type == "npu", "device should be npu")
 +        check(plan is not None and isinstance(plan, ShardingPlan), "device should be npu")
 +        check(sharders is not None and isinstance(sharders, List), "sharders should be List")
++        check(len(sharders) <= MAX_MODULE_LOOP_TIMES, "sharders should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
 +        for sharder in sharders:
 +            check(isinstance(sharder, ModuleSharder), "shard should be ModuleSharder")
 +
@@ -379,14 +380,14 @@ index 52909970..fad9df2d 100644
      )
  
 diff --git a/torchrec/distributed/planner/types.py b/torchrec/distributed/planner/types.py
-index 4bb0a4f4..6d7d4ef8 100644
+index 4bb0a4f4..d662b720 100644
 --- a/torchrec/distributed/planner/types.py
 +++ b/torchrec/distributed/planner/types.py
 @@ -38,8 +38,10 @@ from torchrec.distributed.types import (
  from torchrec.modules.embedding_configs import DataType
  from torchrec.modules.embedding_modules import EmbeddingCollectionInterface
  from torchrec.modules.mc_embedding_modules import ManagedCollisionEmbeddingCollection
-+from torchrec.tensor_types import check
++from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
  
  # ---- Perf ---- #
 +MAX_WORLD_SIZE = 8
@@ -429,13 +430,15 @@ index 4bb0a4f4..6d7d4ef8 100644
              hbm_per_device = [hbm_cap if hbm_cap else HBM_CAP] * world_size
          ddr_cap_per_rank = [ddr_cap if ddr_cap else DDR_CAP] * world_size
  
-@@ -616,6 +629,28 @@ class ParameterConstraints:
+@@ -616,6 +629,30 @@ class ParameterConstraints:
      device_group: Optional[str] = None
      key_value_params: Optional[KeyValueParams] = None
  
 +    def __post_init__(self):
 +        check(self.sharding_types is not None and isinstance(self.sharding_types, List), "sharding_types should be List")
 +        check(self.compute_kernels is not None and isinstance(self.compute_kernels, List), "compute_kernels should be List")
++        check(len(self.sharding_types) <= MAX_MODULE_LOOP_TIMES, "sharding_types should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
++        check(len(self.compute_kernels) <= MAX_MODULE_LOOP_TIMES, "compute_kernels should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
 +        for sharding_type in self.sharding_types:
 +            if sharding_type != "row_wise":
 +                raise ValueError(f"sharing_type only support row_wise, but got {sharding_type}")
@@ -628,18 +631,18 @@ index 99ba72df..423cabd7 100644
          optimizer_class=optimizer_class,
          params=params,
 diff --git a/torchrec/optim/keyed.py b/torchrec/optim/keyed.py
-index 2f6b75d5..b17aa44d 100644
+index 2f6b75d5..9ef25f69 100644
 --- a/torchrec/optim/keyed.py
 +++ b/torchrec/optim/keyed.py
 @@ -28,6 +28,7 @@ import torch
  from torch import optim
  from torch.distributed._shard.sharded_tensor import ShardedTensor
  from torch.distributed.tensor import DTensor
-+from torchrec.tensor_types import check
++from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
  
  OptimizerFactory = Callable[[List[Union[torch.Tensor, ShardedTensor]]], optim.Optimizer]
  
-@@ -315,8 +316,13 @@ class CombinedOptimizer(KeyedOptimizer):
+@@ -315,8 +316,15 @@ class CombinedOptimizer(KeyedOptimizer):
      """
  
      def __init__(
@@ -647,6 +650,8 @@ index 2f6b75d5..b17aa44d 100644
 +        self, optims: List[KeyedOptimizer]
      ) -> None:
 +        check(optims is not None and isinstance(optims, List) and len(optims) != 0, "optims should be List")
++        check(len(optims) <= MAX_MODULE_LOOP_TIMES, "optims should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
++
 +        for key_value in optims:
 +            check_optim = isinstance(key_value, KeyedOptimizer)
 +            check_optim_tuple = isinstance(key_value, Tuple) and len(key_value) == 2 and isinstance(key_value[1], KeyedOptimizer)
@@ -654,7 +659,7 @@ index 2f6b75d5..b17aa44d 100644
          self.defaults: Dict[str, Any] = {}
          # Append empty optimizer key if not passed.
          self._optims: List[Tuple[str, KeyedOptimizer]] = []
-@@ -432,7 +438,10 @@ class KeyedOptimizerWrapper(KeyedOptimizer):
+@@ -432,7 +440,10 @@ class KeyedOptimizerWrapper(KeyedOptimizer):
          params: Mapping[str, Union[torch.Tensor, ShardedTensor]],
          optim_factory: OptimizerFactory,
      ) -> None:
@@ -687,14 +692,14 @@ index 10ffcdb2..3e199497 100644
          if hasattr(param, "_in_backward_optimizers") == include:
              yield fqn, param
 diff --git a/torchrec/sparse/jagged_tensor.py b/torchrec/sparse/jagged_tensor.py
-index 33665883..3fa8f2a6 100644
+index 33665883..e9d7b75e 100644
 --- a/torchrec/sparse/jagged_tensor.py
 +++ b/torchrec/sparse/jagged_tensor.py
 @@ -28,6 +28,7 @@ from torchrec.pt2.checks import (
      pt2_guard_size_oblivious,
  )
  from torchrec.streamable import Pipelineable
-+from torchrec.tensor_types import check
++from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
  
  try:
      torch.ops.load_library("//deeplearning/fbgemm/fbgemm_gpu:sparse_ops")
@@ -750,12 +755,13 @@ index 33665883..3fa8f2a6 100644
  
      @staticmethod
      def empty(
-@@ -2002,6 +2025,11 @@ class KeyedJaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
+@@ -2002,6 +2025,12 @@ class KeyedJaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
          Returns:
              KeyedJaggedTensor: constructed KeyedJaggedTensor.
          """
 +        check(jt_dict is not None and Dict, "jt_dict should be Dict")
 +        check(len(jt_dict) != 0, "jt_dict should not be empty")
++        check(len(jt_dict) <= MAX_MODULE_LOOP_TIMES, "jt_dict should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
 +        for k in jt_dict:
 +            check(isinstance(jt_dict[k], JaggedTensor), "value in jt_dict should be JaggedTensor")
 +
@@ -763,10 +769,20 @@ index 33665883..3fa8f2a6 100644
          kjt_vals_list: List[torch.Tensor] = []
          kjt_lens_list: List[torch.Tensor] = []
 diff --git a/torchrec/tensor_types.py b/torchrec/tensor_types.py
-index 6b88703d..2b331780 100644
+index 6b88703d..5fa44cfb 100644
 --- a/torchrec/tensor_types.py
 +++ b/torchrec/tensor_types.py
-@@ -175,3 +175,8 @@ class UInt2Tensor(UIntXTensor):
+@@ -17,6 +17,9 @@ import torch
+ import torch._prims_common as utils
+ 
+ 
++MAX_MODULE_LOOP_TIMES = 10000
++
++
+ def down_size(N: int, size: torch.Size) -> Tuple[int, int]:
+     assert size[-1] % N == 0, f"{size} last dim not divisible by {N}"
+     return (*size[:-1], size[-1] // N)
+@@ -175,3 +178,8 @@ class UInt2Tensor(UIntXTensor):
  
      def __init__(self, elem: torch.Tensor) -> None:
          super().__init__(UInt2Tensor.N, elem)
@@ -776,7 +792,7 @@ index 6b88703d..2b331780 100644
 +    if not discriminant:
 +        raise ValueError(error_msg)
 diff --git a/version.txt b/version.txt
-index 9084fa2f..637502ca 100644
+index 9084fa2f..35d511d0 100644
 --- a/version.txt
 +++ b/version.txt
 @@ -1 +1 @@
