@@ -199,6 +199,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType>::ComputeAllBlo
                 taskinfo.qSeqId,
                 static_cast<uint32_t> (kSeqId),
                 taskinfo.actualSeqLen,
+                taskinfo.actualSeqLenK,
                 this->blockHeight,
                 taskinfo.numContext,
                 taskinfo.numTarget,

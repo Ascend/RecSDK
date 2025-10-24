@@ -311,6 +311,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::ComputeAllBloc
                 taskinfo.qSeqId,
                 static_cast<uint32_t> (kSeqId),
                 taskinfo.actualSeqLen,
+                taskinfo.actualSeqLenK,
                 this->blockHeight,
                 taskinfo.numContext,
                 taskinfo.numTarget,
