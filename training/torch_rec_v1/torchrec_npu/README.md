@@ -13,10 +13,13 @@
 git clone -b release/v1.1.0 https://github.com/pytorch/torchrec.git
 cd torchrec && git checkout 2c5f6ee && cd ..
 bash build_whl.sh
+# 若已安装torchrec，需先卸载
+pip3 uninstall torchrec -y
 # 安装
 cd torchrec/dist
 pip3 install torchrec-1.1.0+npu-*.whl
-pip3 install -r requirements.txt
+# 安装torchrec依赖。若提示安装expecttest失败，可忽略，该包仅测试场景使用
+pip3 install -r requirements.txt 
 ```
 
 若环境无网络，采用“手动下载torchrec源码并上传到目标环境”的方式获取源码时，需注意：
