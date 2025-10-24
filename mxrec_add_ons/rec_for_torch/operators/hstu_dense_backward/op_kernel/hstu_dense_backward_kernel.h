@@ -74,6 +74,7 @@ public:
         biasGradSeqLen = tilingData.biasGradSeqLen;
         siluScale = tilingData.siluScale;
         targetGroupSize = tilingData.targetGroupSize;
+        alpha = tilingData.alpha;
 
         blockHeight = tilingData.blockHeight;
 
@@ -442,7 +443,7 @@ public:
             Add<float>(inputQK, inputQK, inputBias, thisLen);
         }
 
-        // score = F.silu(qkb) * siluScale * mask
+        Muls<float>(inputQK, inputQK, alpha, thisLen);
         Silu<float>(inputBias, inputQK, thisLen);
         Muls<float>(inputBias, inputBias, siluScale, thisLen);
         if (useMask) {
@@ -474,6 +475,8 @@ public:
 
         //  (F.sigmoid(qkb) * (1 + qkb * (1 - F.sigmoid(qkb)))) * score_grad
         Mul<float>(inputQK, inputQK, inputGV, thisLen);
+        Muls<float>(inputQK, inputQK, alpha, thisLen);
+
         queueVecScoreGV.FreeTensor(inputGV);
 
         LocalTensor<qType> outputScore = queueOutputScore.AllocTensor<qType>();
@@ -1009,6 +1012,7 @@ public:
 
     // MaskType
     int64_t targetGroupSize;
+    float alpha;
     BlockMaskParams blockMaskParams[COMPUTE_PIPE_NUM];
 
     // Tpipe

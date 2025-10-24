@@ -45,6 +45,7 @@ TILING_DATA_FIELD_DEF(int32_t, maxSeqLen);
 TILING_DATA_FIELD_DEF(int32_t, biasGradSeqLen);
 TILING_DATA_FIELD_DEF(float, siluScale);
 TILING_DATA_FIELD_DEF(int32_t, targetGroupSize);
+TILING_DATA_FIELD_DEF(float, alpha);
 TILING_DATA_FIELD_DEF(int32_t, isNormal);
 TILING_DATA_FIELD_DEF(uint32_t, aivNum);
 

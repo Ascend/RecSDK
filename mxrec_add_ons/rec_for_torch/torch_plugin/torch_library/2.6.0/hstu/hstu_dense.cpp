@@ -132,6 +132,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
     auto _denseNumContext = at::Tensor();
     auto _denseNumTarget = at::Tensor();
     auto _acTargetGroupSize = int();
+    double realAlpha = 1.0;
 
     const char *layout = "normal";
     EXEC_NPU_CMD(aclnnHstuDenseBackward,
@@ -149,6 +150,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
                  maxSeqLen,
                  realSiluScale,
                  _acTargetGroupSize,
+                 realAlpha,
                  qGradOutput,
                  kGradOutput,
                  vGradOutput,

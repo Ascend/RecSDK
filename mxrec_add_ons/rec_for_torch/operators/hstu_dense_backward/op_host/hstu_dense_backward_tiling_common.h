@@ -93,6 +93,7 @@ constexpr int MASK_TYPE_INDEX = 1;
 constexpr int MAX_SEQ_LEN_INDEX = 2;
 constexpr int SILU_SCALE_INDEX = 3;
 constexpr int TARGET_GROUP_SIZE_INDEX = 4;
+constexpr int REAL_ALPHA_INDEX = 5;
 } // namespace ATTR_INDEX_T
 
 struct ShapeRange {

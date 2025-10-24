@@ -33,11 +33,18 @@ ge::graphStatus GetNormalAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBac
     OPS_CHECK_PTR_NULL(siluScale, return ge::GRAPH_FAILED);
     tiling.set_siluScale(*siluScale);
 
-    const auto targetGroupSizePtr = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_5);
+    const auto targetGroupSizePtr = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_4);
     if (targetGroupSizePtr != nullptr)
         tiling.set_targetGroupSize(*targetGroupSizePtr);
     else
         tiling.set_targetGroupSize(0);
+
+    const float *alpha = attrs->GetAttrPointer<float>(INDEX_T::INDEX_5);
+    if (alpha != nullptr) {
+        tiling.set_alpha(*alpha);
+    } else {
+        tiling.set_alpha(1.0);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
