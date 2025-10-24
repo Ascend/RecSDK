@@ -171,6 +171,7 @@ class TestHstuJaggedDemo:
         num_context,
         num_target,
         target_group_size,
+        alpha,
     ):
         batch_size = len(seq_offset) - 1
         grad_npu = grad.to(f"npu:{device_id}")
@@ -203,6 +204,7 @@ class TestHstuJaggedDemo:
                 num_context,
                 num_target,
                 target_group_size,
+                alpha,
             )
         else:
             q_grad, k_grad, v_grad, bias_grad = torch.ops.mxrec.hstu_jagged_backward(
@@ -219,6 +221,7 @@ class TestHstuJaggedDemo:
                 num_context,
                 num_target,
                 target_group_size,
+                alpha,
             )
 
         torch.npu.synchronize()
@@ -240,6 +243,7 @@ class TestHstuJaggedDemo:
         silu_scale,
         enable_bias,
         data_type,
+        alpha
     ):
         head_nums = grad.shape[1]
         head_dim = grad.shape[2]
@@ -273,7 +277,7 @@ class TestHstuJaggedDemo:
             qkb = qk + bias
         else:
             qkb = qk
-
+        qkb = qkb * alpha
         real_silu_scale = 1 / max_seq_len if silu_scale == 0.0 else silu_scale
 
         if mask_type == 0 or mask_type == 3:
@@ -288,7 +292,7 @@ class TestHstuJaggedDemo:
             bias_grad = gv * real_silu_scale * mask * F.sigmoid(qkb) * (1 + qkb * (1 - F.sigmoid(qkb)))
         else:
             bias_grad = gv * real_silu_scale * F.sigmoid(qkb) * (1 + qkb * (1 - F.sigmoid(qkb)))
-
+        bias_grad = bias_grad * alpha
         bias_grad = bias_grad.to(data_type)
         k_grad_dens = torch.matmul(bias_grad.permute(0, 1, 3, 2), q_dens.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
         q_grad_dens = torch.matmul(bias_grad, k_dens.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
@@ -318,6 +322,7 @@ class TestHstuJaggedDemo:
         num_context=None,
         num_target=None,
         target_group_size=None,
+        alpha=1.0,
     ):
         grad, q, k, v, bias, mask, max_seq_len, seq_offset = jagged_data_gen(
             batch_size,
@@ -347,6 +352,7 @@ class TestHstuJaggedDemo:
             num_context,
             num_target,
             target_group_size,
+            alpha,
         )
 
         q_grad_golden, k_grad_golden, v_grad_golden, attn_bias_grad_golden = self.golden_op_exec(
@@ -362,6 +368,7 @@ class TestHstuJaggedDemo:
             silu_scale,
             enable_bias,
             data_type,
+            alpha,
         )
 
         loss = 1e-4
@@ -388,6 +395,7 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("num_context", [None])
     @pytest.mark.parametrize("num_target", [None])
     @pytest.mark.parametrize("target_group_size", [None])
+    @pytest.mark.parametrize("alpha", [0.5])
     def test_hstu_dens_jagged(
         self,
         batch_size,
@@ -401,6 +409,7 @@ class TestHstuJaggedDemo:
         num_context,
         num_target,
         target_group_size,
+        alpha,
     ):
         self.execute(
             batch_size,
@@ -414,4 +423,5 @@ class TestHstuJaggedDemo:
             num_context,
             num_target,
             target_group_size,
+            alpha
         )

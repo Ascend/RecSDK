@@ -293,6 +293,7 @@ public:
         this->Attr("max_seq_len").Int();
         this->Attr("silu_scale").Float();
         this->Attr("target_group_size").AttrType(OPTIONAL).Int(0);
+        this->Attr("alpha").AttrType(OPTIONAL).Float(1.0);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

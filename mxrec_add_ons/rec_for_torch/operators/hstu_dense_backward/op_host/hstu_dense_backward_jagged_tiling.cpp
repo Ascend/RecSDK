@@ -41,6 +41,13 @@ ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBac
         tiling.set_targetGroupSize(0);
     }
 
+    const float *alpha = attrs->GetAttrPointer<float>(ATTR_INDEX_T::REAL_ALPHA_INDEX);
+    if (alpha != nullptr) {
+        tiling.set_alpha(*alpha);
+    } else {
+        tiling.set_alpha(1.0);
+    }
+
     tiling.set_maskType(*maskType);
     tiling.set_maxSeqLen(*maxSeqLen);
     tiling.set_siluScale(*siluScale);
