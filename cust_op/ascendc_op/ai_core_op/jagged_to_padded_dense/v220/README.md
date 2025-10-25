@@ -11,36 +11,6 @@
 └── run.sh     # jagged_to_padded_dense算子安装脚本
 ```
 
-## Ascend C参考设计
-
-更多详情可以参考CANN官方的Ascend
-C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/80RC2/developmentguide/opdevg/Ascendcopdevg/atlas_ascendc_10_0001.html)。
-
-## jagged_to_padded_dense算子使用
-
-1. 上传jagged_to_padded_dense文件夹到目标环境，并进入当前目录，执行指令对jagged_to_padded_dense算子进行编译和部署
-
-默认编译安装Atlas A2训练系列产品AI Core类型：
-```shell
-bash run.sh
-```
-
-指定 AI Core 类型编译：
-
-```shell
-bash run.sh ai_core-<soc_version>
-```
-> AI处理器的型号<soc_version>请通过如下方式获取:
-> - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
->
-> 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
-
-注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
-
-```shell
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-```
-
 ## jagged_to_padded_dense算子介绍
 
 1. 算子分析
@@ -81,3 +51,6 @@ offsets = np.insert(offsets, 0, 0)
 result = jagged_to_padded_dense(value=value, offsets=offsets, max_length=[211], padding_value=0)
 
 ```
+
+## 算子使用说明
+请参考:[RecSDK-Torch 自定义算子说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)

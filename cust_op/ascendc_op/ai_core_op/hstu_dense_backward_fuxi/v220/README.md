@@ -92,24 +92,8 @@ seq_offset = torch.concat((torch.zeros((1, ), dtype=torch.int64), \
         torch.cumsum(torch.from_numpy(seq_lens), axis=0))).to(torch.int64).numpy()
 ```
 
-## 使用方式
-
-### 编译和安装算子
-上传hstu_dense_backward_fuxi文件夹到目标环境，并进入当前目录，执行指令对算子进行编译和部署
-
-```shell
-bash run.sh
-```
-
-注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
-
-```shell
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-```
-### 编译torch适配层SO
-将RecSDK/cust_op/framework/torch_plugin/torch_library目录上传至目标环境；<br>
-进入torch_library/2.6.0/common目录；<br>
-执行`bash build_ops.sh`命令完成torch适配层编译；<br>
+## 算子使用说明
+请参考:[RecSDK-Torch 自定义算子说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)
 
 ### 执行样例
 
