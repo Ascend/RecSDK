@@ -14,7 +14,6 @@ from hybrid_torchrec import (
 )
 from hybrid_torchrec.distributed.embeddingbag import HybridShardedEmbeddingBagCollection
 from hybrid_torchrec.distributed.embedding import HybridShardedEmbeddingCollection
-from hybrid_torchrec.modules.little_embedding import HashEmbeddingModuleCollection
 from torchrec import (
     EmbeddingBagCollection,
     EmbeddingCollection,
@@ -46,19 +45,6 @@ def permute_values_ec(result: Dict, feature_num) -> torch.Tensor:
     return values
 
 
-# ec和ebc查询结果返回数据类型不一样
-def permute_values_little_emb(result: Dict, feature_num) -> torch.Tensor:
-    result = result[0]
-    keys_nums = feature_num
-    values = []
-    for k in range(keys_nums):
-        k = f"feat{k}"
-        embed = result[k].wait()
-        values.append(torch.concat(embed))
-    values = torch.concat(values, dim=1)
-    return values
-
-
 class Model(torch.nn.Module):
     def __init__(self, module, feature_num):
         super().__init__()
@@ -77,13 +63,10 @@ class Model(torch.nn.Module):
             HashEmbeddingCollection,
             HybridShardedEmbeddingCollection,
         )
-        little_embed_types = (HashEmbeddingModuleCollection,)
         if isinstance(self._module, ebc_types):
             return "ebc"
         if isinstance(self._module, ec_types):
             return "ec"
-        if isinstance(self._module, little_embed_types):
-            return "permute_values_little_emb"
         raise ValueError(
             "Module must be one of the supported types: EmbeddingCollection or EmbeddingBagCollection"
         )

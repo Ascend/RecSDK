@@ -241,7 +241,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     tiling.set_eps(eps);
     tiling.set_learningRate(learningRate);
-    bool useOptimize = static_cast<bool>(*attrs->GetInt(USE_OPTIMIZE_INDEX));
+    bool useOptimize = *attrs->GetBool(USE_OPTIMIZE_INDEX);
     tiling.set_useOptimize(useOptimize);
 
     context->SetBlockDim(coreNum);

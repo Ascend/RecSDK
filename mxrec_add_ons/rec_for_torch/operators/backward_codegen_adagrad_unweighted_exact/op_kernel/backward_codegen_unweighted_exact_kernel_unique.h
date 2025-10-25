@@ -150,8 +150,14 @@ public:
     __aicore__ inline void GetTableSize(int *tables)
     {
         int batches = (this->offsetsDim0 - 1) / this->weightsOffsetsDim0;
-        for (size_t i = 0; i <= this->weightsOffsetsDim0; i++) {
-            tables[i] = tableIndicesOffsetsGT.GetValue(i);
+        if ((__gm__ int64_t*)table_indices_offsets != nullptr) {
+            for (size_t i = 0; i <= this->weightsOffsetsDim0; i++) {
+                tables[i] = tableIndicesOffsetsGT.GetValue(i);
+            }
+        } else {
+            for (size_t i = 0; i <= this->weightsOffsetsDim0; i++) {
+                tables[i] = offsetsGT.GetValue(batches * i);
+            }
         }
     }
 
