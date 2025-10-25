@@ -2,8 +2,6 @@
 
 ## 扩容算子文件结构
 ```shell
-├── aclnn_lookup_test  # lookup单算子测试用例
-├── aclnn_update_test  # update单算子测试用例
 ├── emb_custom.json    # 算子配置
 ├── op_host    # 扩容算子Host侧实现
 ├── op_kernel  # 扩容算子Kernel测实现
@@ -68,7 +66,7 @@ f) KernelEimtable::Process函数实现算子的搬运和计算，最终输出结
 
 单算子调用分为两种方式：单算子API执行和模型执行。Rec SDK提供单算子API执行供参考。
 
-单算子测试用例在目录cust_op_by_addr/aclnn_lookup_test和cust_op_by_addr/aclnn_update_test下，其中：
+单算子测试用例在目录cust_op/test/aclnn_cust_op_by_addr_test下，其中：
 * inc是头文件目录
 * scripts存放生成数据和验证数据的python脚本
 * input是存放算子入参的bin文件

@@ -99,6 +99,10 @@ namespace optiling {
         }
 
         int32_t updateType = *(attrPointer);
+        if (updateType != 0 && updateType != 1) {
+            printf("Attr update_type is not 0 or 1\n");
+            return ge::GRAPH_FAILED;
+        }
         ge::DataType inputDatatype = inputTensor1->GetDataType();
         int32_t embeddingType;
         if (inputDatatype == ge::DT_FLOAT16) {
@@ -139,6 +143,10 @@ namespace optiling {
         tiling.set_input_dim_aligned(inputDimAligned);
 
         context->SetBlockDim(BLOCK_DIM);
+        if (CheckPointer(context->GetRawTilingData(), "GetRawTilingData RawTilingData") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+
         tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
         context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 

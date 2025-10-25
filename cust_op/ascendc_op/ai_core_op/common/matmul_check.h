@@ -21,6 +21,14 @@ See the License for the specific language governing permissions and
 #include "ops_log.h"
 
 namespace MatmulTilingCheck {
+    inline bool SafeCheckMultiply(int a, int b)
+    {
+        constexpr int INT_MAX = std::numeric_limits<int>::max();
+        if (a <= 0 || b <= 0) {
+            return false;
+        }
+        return a <= INT_MAX / b;
+    }
 
     inline bool CheckBaseMNK(optiling::TCubeTiling& tiling, int inputDataType, int outputDataType)
     {
@@ -31,6 +39,12 @@ namespace MatmulTilingCheck {
         int N = tiling.get_N();
         int Ka = tiling.get_Ka();
         int Kb = tiling.get_Kb();
+        OPS_CHECK(SafeCheckMultiply(baseM, baseK), OPS_LOG_E("", "baseM * baseK out_of_range"), return false);
+        OPS_CHECK(SafeCheckMultiply(M, Ka), OPS_LOG_E("", "M * Ka out_of_range"), return false);
+        OPS_CHECK(SafeCheckMultiply(baseN, baseK), OPS_LOG_E("", "baseN * baseK out_of_range"), return false);
+        OPS_CHECK(SafeCheckMultiply(N, Kb), OPS_LOG_E("", "N * Kb out_of_range"), return false);
+        OPS_CHECK(SafeCheckMultiply(baseM, baseN), OPS_LOG_E("", "baseM * baseN out_of_range"), return false);
+        OPS_CHECK(SafeCheckMultiply(M, N), OPS_LOG_E("", "M * N out_of_range"), return false);
         OPS_CHECK(baseM * baseK > M * Ka, OPS_LOG_E("", "baseM * baseK out_of_range"), return false);
         OPS_CHECK(baseN * baseK > N * Kb, OPS_LOG_E("", "baseN * baseK out_of_range"), return false);
         OPS_CHECK(baseM * baseN > M * N, OPS_LOG_E("", "baseM * baseN out_of_range"), return false);
