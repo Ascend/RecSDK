@@ -15,13 +15,11 @@ import torch.nn
 
 from torchrec_embcache.distributed.embedding_bag import EmbCacheShardedEmbeddingBagCollection
 from torchrec_embcache.distributed.embedding import EmbCacheShardedEmbeddingCollection
-from torchrec_embcache.utils import check_path
+from torchrec_embcache.utils import check_path, safe_makedirs
 
 
 SAVE_PATH_MAX_LEN = 1024
 TIMESTAMP_FORMAT = "%Y%m%d%H%M%S"
-_SAVE_PATH_MIN_LEN = 1
-_DIR_MODE = 0o750
 _MAX_RECURSIZE_TIMES = 500
 _MAX_LOOP_TIMES = 500
 
@@ -87,8 +85,7 @@ class Saver:
         self.cache_module.clear()
         self._find_all_embed_cache_instance(module)
         self._check_emb_cache_instance_len()
-        if not os.path.exists(path):
-            os.makedirs(path, _DIR_MODE, exist_ok=True)
+        safe_makedirs(path)
         logging.info("In save scene, path:%s, cache_module info:%s", path, self.cache_module)
         for mod in self.cache_module:
             logging.info("In save scene, embcache_mgr info:%s", mod.embcache_mgr)
