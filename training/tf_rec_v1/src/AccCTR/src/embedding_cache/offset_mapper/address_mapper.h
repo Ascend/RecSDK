@@ -306,6 +306,9 @@ private:
     void FreeExpandedMemory()
     {
         for (auto& memUint : emExpendMemInfoPtr->expandedMemory) {
+            if (memUint.address == 0) {
+                continue;
+            }
             free(reinterpret_cast<float*>(memUint.address));
         }
     }

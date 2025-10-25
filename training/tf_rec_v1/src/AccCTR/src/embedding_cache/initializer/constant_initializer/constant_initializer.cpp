@@ -49,6 +49,10 @@ ConstantInitializer::ConstantInitializer(uint32_t start, uint32_t len, float val
 
 void ConstantInitializer::GenerateData(float* emb, int embSize)
 {
+    if (emb == nullptr) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "emb is nullptr.");
+        return;
+    }
     if (len == 0) {
         return;
     }

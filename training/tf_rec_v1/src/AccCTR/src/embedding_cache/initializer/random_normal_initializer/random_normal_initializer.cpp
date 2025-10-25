@@ -65,6 +65,10 @@ RandomNormalInitializer::RandomNormalInitializer(uint32_t start, uint32_t len, N
 
 void RandomNormalInitializer::GenerateData(float* emb, int embSize)
 {
+    if (emb == nullptr) {
+        ExternalLogger::PrintLog(LogLevel::ERROR, "emb is nullptr.");
+        return;
+    }
     if (len == 0) {
         return;
     }
