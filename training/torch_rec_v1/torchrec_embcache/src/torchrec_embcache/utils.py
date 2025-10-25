@@ -11,6 +11,9 @@ from typing import List
 _ABS_PATH_MIN_LEN = 1
 _ABS_PATH_MAX_LEN = 1024
 _FILE_NAME_MAX_LEN = 200  # max file name size is 255 bytes, reserve some bytes
+_DIR_MODE = 0o750
+_MAX_PATH_LOOP_TIMES = 500
+_MAX_SINGLE_DIR_NAME_LEN = 255
 
 _DEFAULT_BLACK_DIRS = ["/usr/bin", "/usr/bin", "/usr/sbin", "/etc", "/usr/lib", "/usr/lib64", "/usr/local"]
 _DEFAULT_SENSITIVE_WORDS = ["Key", "password", "privatekey"]
@@ -26,6 +29,12 @@ def check_str_type_and_len(string_value: str, min_length: int, max_length: int) 
     if len(string_value) < min_length or len(string_value) > max_length:
         raise ValueError(f"string param length is invalid, got param length:{len(string_value)},"
                          f" length limit:[{min_length}, {max_length}]")
+
+
+def check_path_deep(value: str) -> None:
+    path = Path(value).expanduser().resolve()
+    if len(path.parts) > _MAX_PATH_LOOP_TIMES:
+        raise ValueError(f"Path has too many components: {len(path.parts)} > {_MAX_PATH_LOOP_TIMES}. ")
 
 
 def check_path(value: str, need_exist: bool = False, is_dir: bool = False, **kwargs) -> None:
@@ -56,6 +65,7 @@ def check_path(value: str, need_exist: bool = False, is_dir: bool = False, **kwa
     if not Path(value).is_absolute():
         check_str_type_and_len(value, 0, _FILE_NAME_MAX_LEN)
     check_str_type_and_len(os.path.abspath(value), _ABS_PATH_MIN_LEN, _ABS_PATH_MAX_LEN)
+    check_path_deep(value)
     if need_exist and not os.path.exists(os.path.realpath(value)):
         raise ValueError(f"expected path exist")
 
@@ -84,14 +94,13 @@ def check_path(value: str, need_exist: bool = False, is_dir: bool = False, **kwa
 
 
 def _check_path_permission(file_path: str):
-    realpath = os.path.realpath(file_path)
     original_path = Path(file_path)
 
     # 检查是否为软链接
     if original_path.is_symlink():
         raise ValueError("Path is a symbolic link, not allowed")
 
-    path = Path(realpath)
+    path = Path(original_path)
     last_exist_parent = ""
     # 查找最近的已存在父目录并检查每个祖先目录是否为软链接
     for ancestor in sorted(path.parents, key=lambda x: len(x.parts)): 
@@ -109,7 +118,7 @@ def _check_path_permission(file_path: str):
     if not os.access(last_exist_parent, os.W_OK):
         raise ValueError("Current user does not have write permission for the path")
 
-    # 检查权限是否 >= 750
+    # 检查权限是否 > 750
     stat_info = os.stat(last_exist_parent)
     file_mode = stat_info.st_mode & 0o777  # 获取权限位
     if file_mode > 0o750:
@@ -126,3 +135,17 @@ def _check_path_permission(file_path: str):
     file_gid = stat_info.st_gid
     if not (process_uid == file_uid or process_gid == file_gid):
         raise ValueError(f"current user don't have access permission for the path")
+    
+
+def safe_makedirs(path: str):
+    path = Path(path).expanduser().resolve()
+
+    current = Path("/") if path.is_absolute() else Path.cwd()
+
+    for part in path.parts[1:] if path.is_absolute() else path.parts:
+        if len(part) > _MAX_SINGLE_DIR_NAME_LEN:
+            raise ValueError(f"Directory name too long: {len(part)} > {_MAX_SINGLE_DIR_NAME_LEN}. ")
+
+        current = current / part
+        if not current.exists():
+            os.makedirs(current, mode=_DIR_MODE, exist_ok=True)

@@ -30,6 +30,7 @@ from torchrec_embcache.distributed.sharding.embedding_sharder import (
 )
 from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
 from torchrec_embcache.saver import Saver
+from torchrec_embcache.utils import safe_makedirs
 import torchrec
 from torchrec import EmbeddingBagConfig, EmbeddingBagCollection
 import torchrec.distributed
@@ -221,8 +222,10 @@ class TestModel:
         if training and os.path.exists(save_dir):
             shutil.rmtree(save_dir, ignore_errors=True)
         if training:
-            os.makedirs(save_dir, exist_ok=True)
+            safe_makedirs(save_dir)
+
         saver = Saver(rank=rank)
+
         if training:
             for _ in range(LOOP_TIMES):
                 _, _ = pipe.progress(iter_)
