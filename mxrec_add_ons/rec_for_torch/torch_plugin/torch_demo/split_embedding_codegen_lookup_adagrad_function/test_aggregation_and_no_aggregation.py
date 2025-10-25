@@ -229,7 +229,7 @@ def verify_grad_aggregation(lookup_params):
 
 params = {
     "tables": [[(10, 8), (5, 8), (4, 8)]],
-    "mutile_hots": [[1, 1, 1]],
+    "mutile_hots": [[1, 1, 1], [2, 4, 8]],
     "batch_size": [4],
     "pooling_model": [PoolingType.NONE],
     "unique": [True],

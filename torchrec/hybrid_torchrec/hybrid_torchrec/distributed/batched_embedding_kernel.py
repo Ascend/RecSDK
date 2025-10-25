@@ -187,16 +187,15 @@ class GradientAccumulator(nn.Module):
 
     def do_table_offsets(self, last_step, offsets):
         table_offsets = [0]
-        tmp = 0
         if last_step:
+            tmp = 0
             for i, table_indices in enumerate(self.indice_multi_step):
                 tmp += len(table_indices)
                 table_offsets.append(tmp)
         else:
-            b = int(offsets[-1] / len(self.buffer_names))
+            b = int((len(offsets) - 1) / len(self.buffer_names))
             for i in range(len(self.buffer_names)):
-                tmp += b
-                table_offsets.append(tmp)
+                table_offsets.append(offsets[(i + 1) * b])
         return torch.Tensor(table_offsets)
 
 
@@ -264,7 +263,7 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         )
         # Print input stats if enable (for debugging purpose only)
         self._debug_print_input_stats(indices, offsets, per_sample_weights)
-        if self.use_accumulate:
+        if self.use_accumulate and self.training:
             self.grad_accum.current_accumulate_step += 1
             split_values = self.grad_accum.get_split_lookup_input(unique_indices, unique_offset)
 
@@ -316,7 +315,6 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
 
         if not self.iter.is_cpu:
             self.iter = self.iter.cpu()
-        self.iter[0] += 1
 
         momentum2 = invokers.lookup_args.Momentum(
             dev=self.momentum2_dev,
@@ -326,7 +324,7 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             placements=self.momentum2_placements,
         )
 
-        if self.use_accumulate:
+        if self.use_accumulate and self.training:
             self.grad_accum.total_index_size_pre = torch.tensor(self.grad_accum.total_index_size)
             self.grad_accum.updata_total_index_size(unique_offset, self.dims)
             table_shapes = self.grad_accum.total_index_size
@@ -335,10 +333,14 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             grad_accumulate = self.grad_accum.get_buffer()
             grad_accumulate_offsets = self.grad_accum.total_index_size_pre
             use_optimize = False
+            if self.grad_accum.current_accumulate_step == self.accumulate_step:
+                self.iter[0] += 1
         else:
             grad_accumulate = [torch.tensor([0]).to('npu')]
             grad_accumulate_offsets = torch.tensor([0])
             use_optimize = True
+            if self.training:
+                self.iter[0] += 1
 
         common_args = invokers.lookup_args.HybridCommonArgs(
             placeholder_autograd_tensor=self.placeholder_autograd_tensor,
@@ -473,16 +475,174 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
                 result)
 
         elif self.optimizer == OptimType.ADAM:
-            return self._report_io_size_count(
-                "fwd_output",
-                invokers.lookup_adam.invoke(
-                    common_args,
+            if self.use_accumulate and self.grad_accum.current_accumulate_step == self.accumulate_step:
+
+                indices_multi_step = torch.cat(self.grad_accum.indice_multi_step)
+                offsets_multi_step = torch.arange(indices_multi_step.shape[0] + 1).to('npu')
+
+                unique_multi_step, unique_inverse_multi_step, unique_offset_multi_step = (
+                    self.grad_accum.do_multi_step_unique()
+                )
+                unique_offset_multi_step = unique_offset_multi_step.to('npu')
+                table_offsets_multi = self.grad_accum.do_table_offsets(True, offsets)
+                table_offsets_multi = table_offsets_multi.to('npu').to(torch.int64)
+                common_args_multi_step = invokers.lookup_args.HybridCommonArgs_aggregation(
+                    placeholder_autograd_tensor=self.placeholder_autograd_tensor,
+                    dev_weights=self.weights_dev,
+                    host_weights=self.weights_host,
+                    uvm_weights=self.weights_uvm,
+                    lxu_cache_weights=self.lxu_cache_weights,
+                    weights_placements=self.weights_placements,
+                    weights_offsets=self.weights_offsets,
+                    D_offsets=self.D_offsets,
+                    total_D=self.total_D,
+                    max_D=self.max_D,
+                    hash_size_cumsum=self.hash_size_cumsum,
+                    total_hash_size_bits=self.total_hash_size_bits,
+                    indices=indices,
+                    offsets=offsets,
+                    hash_indices=hash_indices,
+                    unique_indices=unique_indices,
+                    unique_offset=unique_offset,
+                    unique_inverse=unique_inverse,
+                    hash_indices2address=None,
+                    pooling_mode=self.pooling_mode,
+                    indice_weights=per_sample_weights,
+                    feature_requires_grad=feature_requires_grad,
+                    lxu_cache_locations=self.lxu_cache_locations,
+                    uvm_cache_stats=(
+                        self.local_uvm_cache_stats
+                        if (
+                                self.gather_uvm_cache_stats
+                                # Unique conflict misses are only collected when using CacheAlgorithm.LRU
+                                and self.cache_algorithm == CacheAlgorithm.LRU
+                        )
+                        else None
+                    ),
+                    output_dtype=self.output_dtype,
+                    vbe_metadata=vbe_metadata,
+                    is_experimental=self.is_experimental,
+                    use_uniq_cache_locations_bwd=self.use_uniq_cache_locations_bwd,
+                    use_homogeneous_placements=self.use_homogeneous_placements,
+                    indices_multi_step=indices_multi_step,
+                    offsets_multi_step=offsets_multi_step,
+                    unique_multi_step=unique_multi_step,
+                    unique_offset_multi_step=unique_offset_multi_step,
+                    unique_inverse_multi_step=unique_inverse_multi_step,
+                    table_offsets=table_offsets,
+                    table_offsets_multi=table_offsets_multi,
+                    grad_accumulate=self.grad_accum.get_buffer(),
+                    grad_accumulate_offsets=self.grad_accum.total_index_size_pre,
+                    use_optimize=False
+                )
+                self.grad_accum.current_accumulate_step = 0
+
+                result = invokers.lookup_adam.invoke_grad_aggregation(
+                    common_args_multi_step,
                     self.optimizer_args,
                     momentum1,
                     momentum2,
-                    self.iter.item(),
-                ),
-            )
+                    iteration=self.iter[0],
+                )
+                if result.requires_grad:
+                    result.register_hook(self.clear_after_accumulate)
+
+                return self._report_io_size_count(
+                    "fwd_output",
+                    result)
+            else:
+                return self._report_io_size_count(
+                    "fwd_output",
+                    invokers.lookup_adam.invoke(
+                        common_args,
+                        self.optimizer_args,
+                        momentum1,
+                        momentum2,
+                        iteration=self.iter[0],
+                    ),
+                )
+        elif self.optimizer == OptimType.EXACT_SGD:
+            if self.use_accumulate and self.grad_accum.current_accumulate_step == self.accumulate_step:
+                indices_multi_step = torch.cat(self.grad_accum.indice_multi_step)
+                offsets_multi_step = torch.arange(indices_multi_step.shape[0] + 1).to('npu')
+
+                unique_multi_step, unique_inverse_multi_step, unique_offset_multi_step = (
+                    self.grad_accum.do_multi_step_unique()
+                )
+                unique_offset_multi_step = unique_offset_multi_step.to('npu')
+                table_offsets_multi = self.grad_accum.do_table_offsets(True, offsets)
+                table_offsets_multi = table_offsets_multi.to('npu').to(torch.int64)
+                common_args_multi_step = invokers.lookup_args.HybridCommonArgs_aggregation(
+                    placeholder_autograd_tensor=self.placeholder_autograd_tensor,
+                    dev_weights=self.weights_dev,
+                    host_weights=self.weights_host,
+                    uvm_weights=self.weights_uvm,
+                    lxu_cache_weights=self.lxu_cache_weights,
+                    weights_placements=self.weights_placements,
+                    weights_offsets=self.weights_offsets,
+                    D_offsets=self.D_offsets,
+                    total_D=self.total_D,
+                    max_D=self.max_D,
+                    hash_size_cumsum=self.hash_size_cumsum,
+                    total_hash_size_bits=self.total_hash_size_bits,
+                    indices=indices,
+                    offsets=offsets,
+                    hash_indices=hash_indices,
+                    unique_indices=unique_indices,
+                    unique_offset=unique_offset,
+                    unique_inverse=unique_inverse,
+                    hash_indices2address=None,
+                    pooling_mode=self.pooling_mode,
+                    indice_weights=per_sample_weights,
+                    feature_requires_grad=feature_requires_grad,
+                    lxu_cache_locations=self.lxu_cache_locations,
+                    uvm_cache_stats=(
+                        self.local_uvm_cache_stats
+                        if (
+                                self.gather_uvm_cache_stats
+                                # Unique conflict misses are only collected when using CacheAlgorithm.LRU
+                                and self.cache_algorithm == CacheAlgorithm.LRU
+                        )
+                        else None
+                    ),
+                    output_dtype=self.output_dtype,
+                    vbe_metadata=vbe_metadata,
+                    is_experimental=self.is_experimental,
+                    use_uniq_cache_locations_bwd=self.use_uniq_cache_locations_bwd,
+                    use_homogeneous_placements=self.use_homogeneous_placements,
+                    indices_multi_step=indices_multi_step,
+                    offsets_multi_step=offsets_multi_step,
+                    unique_multi_step=unique_multi_step,
+                    unique_offset_multi_step=unique_offset_multi_step,
+                    unique_inverse_multi_step=unique_inverse_multi_step,
+                    table_offsets=table_offsets,
+                    table_offsets_multi=table_offsets_multi,
+                    grad_accumulate=self.grad_accum.get_buffer(),
+                    grad_accumulate_offsets=self.grad_accum.total_index_size_pre,
+                    use_optimize=False
+                )
+                self.grad_accum.current_accumulate_step = 0
+
+                result = invokers.lookup_sgd.invoke_grad_aggregation(
+                    common_args_multi_step,
+                    self.optimizer_args,
+                    iteration=self.iter[0],
+                )
+                if result.requires_grad:
+                    result.register_hook(self.clear_after_accumulate)
+                return self._report_io_size_count(
+                    "fwd_output",
+                    result)
+
+            else:
+                return self._report_io_size_count(
+                    "fwd_output",
+                    invokers.lookup_sgd.invoke(
+                        common_args,
+                        self.optimizer_args,
+                        iteration=self.iter[0],
+                    ),
+                )
         else:
             return NotImplemented
 

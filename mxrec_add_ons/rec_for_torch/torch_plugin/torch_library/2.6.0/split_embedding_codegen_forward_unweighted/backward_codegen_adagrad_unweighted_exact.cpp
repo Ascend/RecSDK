@@ -52,7 +52,9 @@ public:
         std::optional<Tensor> uvm_cache_stats, const bool gradient_clipping, const double max_gradient,
         const bool stochastic_rounding, const bool is_experimental, const bool use_uniq_cache_locations_bwd,
         const bool use_homogeneous_placements, Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements,
-        Tensor momentum1_offsets, const tensor_list& grad_accumulate, const Tensor& grad_accumulate_offsets,
+        Tensor momentum1_offsets,
+        const std::optional<tensor_list>& grad_accumulate = std::nullopt,
+        const std::optional<at::Tensor>& grad_accumulate_offsets =  std::nullopt,
         double eps = 0, double learning_rate = 0, bool is_dynamic = false, const int64_t iteration = 0,
         bool use_optimize = true)
     {
@@ -90,13 +92,14 @@ public:
         saved_tensors.push_back(unique_offsets.has_value() ? unique_offsets.value() : at::Tensor());
         saved_tensors.push_back(unique_inverse.has_value() ? unique_inverse.value() : at::Tensor());
         saved_tensors.push_back(table_offsets.has_value() ? table_offsets.value() : at::Tensor());
-        saved_tensors.push_back(grad_accumulate_offsets);
-        saved_tensors.insert(
-            saved_tensors.end(),
-            grad_accumulate.begin(),
-            grad_accumulate.end()
-        );
-
+        saved_tensors.push_back(grad_accumulate_offsets.has_value() ? grad_accumulate_offsets.value() : at::Tensor());
+        if (grad_accumulate.has_value()) {
+            saved_tensors.insert(
+                saved_tensors.end(),
+                grad_accumulate.value().begin(),
+                grad_accumulate.value().end()
+                );
+        }
         ctx->save_for_backward(saved_tensors);
         ctx->saved_data["max_D"] = max_D;
         ctx->saved_data["pooling_mode"] = pooling_mode;
@@ -247,7 +250,9 @@ Tensor split_embedding_codegen_lookup_adagrad_function(
     const std::optional<Tensor>& indice_weights, const std::optional<Tensor>& feature_requires_grad,
     const Tensor& lxu_cache_locations, const bool gradient_clipping, const double max_gradient,
     const bool stochastic_rounding, Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements,
-    Tensor momentum1_offsets, const tensor_list& grad_accumulate, const Tensor& grad_accumulate_offsets,
+    Tensor momentum1_offsets,
+    const c10::optional<tensor_list>& grad_accumulate = std::nullopt,
+    const c10::optional<at::Tensor>& grad_accumulate_offsets = std::nullopt,
     const c10::optional<Tensor>& hash_indices = c10::optional<Tensor>(),
     const c10::optional<at::Tensor>& unique_ids = c10::optional<at::Tensor>(),
     const c10::optional<at::Tensor>& unique_offsets = c10::optional<at::Tensor>(),
@@ -346,8 +351,8 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    bool stochastic_rounding, "
           "    Tensor momentum1_dev, Tensor momentum1_uvm, Tensor momentum1_placements, "
           "    Tensor momentum1_offsets, "
-          "    Tensor[] grad_accumulate, "
-          "    Tensor grad_accumulate_offsets, "
+          "    Tensor[]? grad_accumulate = None, "
+          "    Tensor? grad_accumulate_offsets = None, "
           "    Tensor? hash_indices = None, "
           "    Tensor? unique_ids = None, "
           "    Tensor? unique_offsets = None, "
