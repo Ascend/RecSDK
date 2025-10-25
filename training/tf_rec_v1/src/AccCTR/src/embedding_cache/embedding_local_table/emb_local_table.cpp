@@ -462,6 +462,10 @@ bool EmbLocalTable::LoadEmbTableInfos(const std::vector<uint64_t>& keys,
             return false;
         }
         auto* addr = reinterpret_cast<float*>(value);
+        if (addr == nullptr) {
+            ExternalLogger::PrintLog(LogLevel::ERROR, "addr is nullptr.");
+            return false;
+        }
         auto rc = memcpy_s(addr, embeddingSize * sizeof(float), embeddings[i].data(), embeddingSize * sizeof(float));
         if (rc != 0) {
             ExternalLogger::PrintLog(LogLevel::ERROR, "embedding memcpy_s failed... ");
