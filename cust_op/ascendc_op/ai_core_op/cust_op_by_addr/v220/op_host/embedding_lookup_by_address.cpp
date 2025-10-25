@@ -112,6 +112,9 @@ namespace optiling {
         tiling.set_type_size(typeSize);
         tiling.set_emb_dim_aligned(embeddingDimAligned);
 
+        if (CheckNullPointer(context->GetRawTilingData(), "RawTilingData") != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
         // 和tiling set 区别开， BlockDim就是BlockNum，可以理解为卡的核数
         context->SetBlockDim(BLOCK_DIM);
         tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());

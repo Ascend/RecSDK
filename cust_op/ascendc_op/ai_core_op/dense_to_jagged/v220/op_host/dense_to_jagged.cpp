@@ -83,10 +83,11 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     OPS_LOG_E_IF_NULL("attrs", context->GetAttrs(), return ge::GRAPH_FAILED);
     const int32_t* outDim0 = context->GetAttrs()->GetAttrPointer<int32_t>(JAGGED_DIM0_INDEX);
+    OPS_LOG_E_IF_NULL("outDim0", outDim0, return ge::GRAPH_FAILED);
     int outDim1 = denseShape.GetDim(DIM2);
     int64_t jaggedTotal = *outDim0 * outDim1;
     int64_t denseTotal = denseShape.GetDim(DIM0) * denseShape.GetDim(DIM1) * denseShape.GetDim(DIM2);
-    
+
     OPS_CHECK(coreNum == 0, OPS_LOG_E("[ERROR]", "aiv core num == 0"), return ge::GRAPH_FAILED);
     int singleCoreBatch = (offsetShape.GetDim(DIM0) - 1) / coreNum;
     int left = (offsetShape.GetDim(DIM0) - 1) % coreNum;
@@ -136,6 +137,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
 
     const int32_t* jaggedDim0 = context->GetAttrs()
                                        ->GetAttrPointer<int32_t>(JAGGED_DIM0_INDEX);
+    OPS_LOG_E_IF_NULL("jaggedDim0", jaggedDim0, return ge::GRAPH_FAILED);
     jaggedShape->SetDimNum(DIM2);
     jaggedShape->SetDim(DIM0, *jaggedDim0);
     jaggedShape->SetDim(DIM1, denseShape->GetDim(DIM2));
