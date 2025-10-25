@@ -25,9 +25,11 @@ static int g_blockDim = 32;
 namespace optiling {
     static ge::graphStatus TilingFunc(gert::TilingContext* context)
     {
+        OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
         LcclGatherAllTilingData tiling;
 
         auto* attrs = context->GetAttrs();
+        OPS_CHECK_PTR_NULL(attrs, return ge::GRAPH_FAILED);
         const auto* dim_ = attrs->GetAttrPointer<int64_t>(2);
         const auto* rank_ = attrs->GetAttrPointer<int64_t>(0);
         const auto* rank_Size_ = attrs->GetAttrPointer<int64_t>(1);
@@ -52,6 +54,8 @@ namespace optiling {
             rank, rankSize),
             return ge::GRAPH_FAILED
         )
+        OPS_LOG_E_IF(dim == 0, context, return ge::GRAPH_FAILED, "dim cannot be zero");
+        
         tiling.set_rank(rank);
         tiling.set_dim(dim);
         tiling.set_rankSize(rankSize);
@@ -62,8 +66,10 @@ namespace optiling {
 
         uint32_t sysWorkspaceSize = 16 * 1024 * 1024;
         size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+        OPS_CHECK_PTR_NULL(currentWorkspace, return ge::GRAPH_FAILED);
         currentWorkspace[0] = sysWorkspaceSize;
 
+        OPS_CHECK_PTR_NULL(context->GetRawTilingData(), return ge::GRAPH_FAILED);
         tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
         context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
@@ -75,6 +81,7 @@ namespace optiling {
 namespace ge {
     static ge::graphStatus InferShape(gert::InferShapeContext* context)
     {
+        OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
         gert::Shape* y_shape = context->GetOutputShape(0);
         const gert::Shape* rev_shape = context->GetInputShape(3);
         const gert::Shape* table_shape = context->GetInputShape(0);
@@ -91,6 +98,7 @@ namespace ge {
 
     static ge::graphStatus InferDataType(gert::InferDataTypeContext* context)
     {
+        OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
         const auto inputDataType = context->GetInputDataType(0);
         context->SetOutputDataType(0, inputDataType);
         return ge::GRAPH_SUCCESS;

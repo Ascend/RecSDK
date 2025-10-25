@@ -26,12 +26,17 @@ static int g_blockDim = 32;
 namespace optiling {
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
+    OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
     LcclAllUssTilingData tiling;
 
     auto* attrs = context->GetAttrs();
+    OPS_CHECK_PTR_NULL(attrs, return ge::GRAPH_FAILED);
     const auto* dim_ = attrs->GetAttrPointer<int64_t>(2);
+    OPS_CHECK_PTR_NULL(dim_, return ge::GRAPH_FAILED);
     const auto* rank_ = attrs->GetAttrPointer<int64_t>(0);
+    OPS_CHECK_PTR_NULL(rank_, return ge::GRAPH_FAILED);
     const auto* rank_Size_ = attrs->GetAttrPointer<int64_t>(1);
+    OPS_CHECK_PTR_NULL(rank_Size_, return ge::GRAPH_FAILED);
     int dim = static_cast<int>(*dim_);
     int rank = static_cast<int>(*rank_);
     int rankSize = static_cast<int>(*rank_Size_);
@@ -50,11 +55,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         rank, rankSize),
         return ge::GRAPH_FAILED
     )
+    OPS_LOG_E_IF(dim == 0, context, return ge::GRAPH_FAILED, "dim cannot be zero");
 
     tiling.set_rank(rank);
     tiling.set_dim(dim);
     tiling.set_rankSize(rankSize);
 
+    OPS_CHECK_PTR_NULL(context->GetInputShape(2), return ge::GRAPH_FAILED);
     auto outShape = context->GetInputShape(2)->GetStorageShape();
     tiling.set_outShape(outShape.GetDim(0));
 
@@ -80,8 +87,10 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     uint32_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    OPS_CHECK_PTR_NULL(currentWorkspace, return ge::GRAPH_FAILED);
     currentWorkspace[0] = sysWorkspaceSize;
 
+    OPS_CHECK_PTR_NULL(context->GetRawTilingData(), return ge::GRAPH_FAILED);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
@@ -92,9 +101,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 namespace ge {
 static ge::graphStatus InferShape(gert::InferShapeContext* context)
 {
+    OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
     gert::Shape* y_shape = context->GetOutputShape(0);
+    OPS_CHECK_PTR_NULL(y_shape, return ge::GRAPH_FAILED);
     const gert::Shape* rev_shape = context->GetInputShape(2);
+    OPS_CHECK_PTR_NULL(rev_shape, return ge::GRAPH_FAILED);
     const gert::Shape* table_shape = context->GetInputShape(0);
+    OPS_CHECK_PTR_NULL(table_shape, return ge::GRAPH_FAILED);
 
     y_shape->SetDim(0, rev_shape->GetDim(0));
     y_shape->SetDim(1, table_shape->GetDim(1));
@@ -105,6 +118,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
 
 static ge::graphStatus InferDataType(gert::InferDataTypeContext* context)
 {
+    OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(0);
     context->SetOutputDataType(0, inputDataType);
     return ge::GRAPH_SUCCESS;

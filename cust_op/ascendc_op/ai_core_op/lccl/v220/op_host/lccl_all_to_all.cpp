@@ -25,12 +25,17 @@ static int g_blockDim = 32;
 namespace optiling {
     static ge::graphStatus TilingFunc(gert::TilingContext* context)
     {
+        OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
         LcclAllToAllTilingData tiling;
 
         auto sendBuff = context->GetInputTensor(0);
+        OPS_CHECK_PTR_NULL(sendBuff, return ge::GRAPH_FAILED);
         auto* attrs = context->GetAttrs();
+        OPS_CHECK_PTR_NULL(attrs, return ge::GRAPH_FAILED);
         const auto* rank_ = attrs->GetAttrPointer<int64_t>(0);
+        OPS_CHECK_PTR_NULL(rank_, return ge::GRAPH_FAILED);
         const auto* rankSize_ = attrs->GetAttrPointer<int64_t>(1);
+        OPS_CHECK_PTR_NULL(rankSize_, return ge::GRAPH_FAILED);
         int rank = static_cast<int>(*rank_);
         int rankSize = static_cast<int>(*rankSize_);
 
@@ -57,8 +62,10 @@ namespace optiling {
         // 参考官网默认值 设置workSpace大小
         uint32_t sysWorkspaceSize = 16 * 1024 * 1024;
         size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+        OPS_CHECK_PTR_NULL(currentWorkspace, return ge::GRAPH_FAILED);
         currentWorkspace[0] = sysWorkspaceSize;
 
+        OPS_CHECK_PTR_NULL(context->GetRawTilingData(), return ge::GRAPH_FAILED);
         tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
         context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
@@ -70,9 +77,13 @@ namespace optiling {
 namespace ge {
     static ge::graphStatus InferShape(gert::InferShapeContext* context)
     {
+        OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
         const gert::Shape* x1_shape = context->GetInputShape(0);
+        OPS_CHECK_PTR_NULL(x1_shape, return ge::GRAPH_FAILED);
         const gert::Shape* x3_shape = context->GetInputShape(2);
+        OPS_CHECK_PTR_NULL(x3_shape, return ge::GRAPH_FAILED);
         gert::Shape* y_shape = context->GetOutputShape(0);
+        OPS_CHECK_PTR_NULL(y_shape, return ge::GRAPH_FAILED);
 
         y_shape->SetDim(0, x3_shape->GetDim(0));
         y_shape->SetDim(1, x1_shape->GetDim(1));
@@ -83,6 +94,7 @@ namespace ge {
 
     static ge::graphStatus InferDataType(gert::InferDataTypeContext* context)
     {
+        OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
         const auto inputDataType = context->GetInputDataType(0);
         context->SetOutputDataType(0, inputDataType);
         return ge::GRAPH_SUCCESS;
