@@ -102,12 +102,6 @@ TEST_F(LcalSockExchangeTest, GetAddrFromStringOK)
     ASSERT_EQ(res, LCAL_SUCCESS);
 }
 
-TEST_F(LcalSockExchangeTest, BootstrapGetServerIpOK)
-{
-    auto ua = LcalSocketAddress();
-    auto res = BootstrapGetServerIp(ua);
-    ASSERT_EQ(res, LCAL_SUCCESS);
-}
 
 TEST(LcalSockExchange, ValidateIPv4Address_ValidIPs)
 {

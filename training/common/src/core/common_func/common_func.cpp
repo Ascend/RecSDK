@@ -29,15 +29,18 @@ namespace MxRec {
         uint32_t count;
         aclError ec = aclrtGetDeviceCount(&count);
         if (ec != 0) {
-            throw std::runtime_error("The failed to get device count.");
+            throw std::runtime_error("Failed to get device count, error code: " + std::to_string(ec));
+        }
+        if (count == 0) {
+            throw std::runtime_error("No available devices found");
         }
         return count;
     }
 
     std::string GetChipName(uint32_t devID)
     {
-        if (devID < 0 || devID > (GetDeviceCount() - 1)) {
-            throw std::runtime_error("The failed to get chip name.");
+        if (devID > (GetDeviceCount() - 1)) {
+            throw std::runtime_error("Failed to get chip name for device ID: " + std::to_string(devID));
         }
         int ret = 0;
         struct dsmi_chip_info_stru info = {{ 0 },

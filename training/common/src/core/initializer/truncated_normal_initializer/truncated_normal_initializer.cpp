@@ -52,9 +52,14 @@ TruncatedNormalInitializer::TruncatedNormalInitializer(int start, int len, Norma
 
 void TruncatedNormalInitializer::GenerateData(float* const emb, const int embSize)
 {
-    if (len == 0) {
-        return;
+    if (!RangeValidate(start, len)) {
+        throw runtime_error("input params is illegal");
     }
+
+    if (emb == nullptr) {
+        throw runtime_error("Input emb address is null!. ");
+    }
+    
     if (embSize < (start + len)) {
         LOG_WARN("InitializeInfo start {} + len {} is larger than embedding size {}.", start, len, embSize);
         return;

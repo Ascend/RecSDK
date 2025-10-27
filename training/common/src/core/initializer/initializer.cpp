@@ -16,7 +16,7 @@ See the License for the specific language governing permissions and
 #include "initializer.h"
 
 #include <string>
-
+#include "log/logger.h"
 #include "constant_initializer/constant_initializer.h"
 #include "random_normal_initializer/random_normal_initializer.h"
 #include "truncated_normal_initializer/truncated_normal_initializer.h"
@@ -56,4 +56,25 @@ InitializeInfo::InitializeInfo(string &name, int start, int len, NormalInitializ
     } else {
         throw invalid_argument("Invalid Initializer Type.");
     }
+}
+
+bool Initializer::RangeValidate(int begin, int lens)
+{
+    if (begin < 0) { // 新增：检查start非负
+        LOG_ERROR("Start index cannot be negative: {}", begin);
+        return false;
+    }
+    
+    if (lens <= 0) { // 新增：检查len > 0
+        LOG_ERROR("Length must be positive: {}", lens);
+        return false;
+    }
+
+    // 检查start + len是否会整数溢出
+    if (begin > std::numeric_limits<int>::max() - lens) {
+        LOG_ERROR("Integer overflow detected: start {} + len {} exceeds maximum int value.", begin, lens);
+        return false;
+    }
+
+    return true;
 }
