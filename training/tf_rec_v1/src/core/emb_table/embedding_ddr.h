@@ -89,29 +89,19 @@ public:
 
 GTEST_PRIVATE:
 
-    void EvictDeleteEmb(const vector<emb_key_t>& keys);
-
     void EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, float* deviceDataPtr);
 
     void BatchSynchronization(int pythonBatchId, vector<uint64_t>& swapOutKeys);
    
-    size_t maxOffsetOld { 0 };
-    std::vector<size_t> evictPosChange;
-    std::vector<size_t> evictDevPosChange;
-    std::vector<std::pair<int, emb_key_t>> devOffset2KeyOld;
-    std::vector<std::pair<emb_key_t, emb_key_t>> oldSwap; // (old on dev, old on host)
+    std::string optimName_;
+    std::vector<std::string> optimParams_;
 
-    vector<float *> embContent;
+    vector<int64_t> hostLoadOffset_;
 
-    std::string optimName;
-    std::vector<std::string> optimParams;
-
-    vector<int64_t> hostLoadOffset;
-
-    HDTransfer *hdTransfer = nullptr;
-    ock::ctr::EmbCacheManagerPtr embCache = nullptr;
-    int deviceId = -1;
-    bool isSyncFinish = true;
+    HDTransfer *hdTransfer_ = nullptr;
+    ock::ctr::EmbCacheManagerPtr embCache_ = nullptr;
+    int deviceId_ = -1;
+    bool isSyncFinish_ = true;
     static constexpr int MAX_WAIT_LOOP = 1800;
 };
 
