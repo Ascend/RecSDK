@@ -17,11 +17,8 @@ See the License for the specific language governing permissions and
 #define MXREC_FEAT_ADMIT_N_EVICT_CKPT_H
 
 #include "ckpt_data_handler/ckpt_data_handler.h"
-#include "utils/config.h"
 
 namespace MxRec {
-    using namespace std;
-
     class FeatAdmitNEvictCkpt : public CkptDataHandler {
     public:
         FeatAdmitNEvictCkpt() = default;
@@ -30,17 +27,17 @@ namespace MxRec {
         void SetProcessData(CkptData& processData) override;
         void GetProcessData(CkptData& processData) override;
 
-        vector<CkptDataType> GetDataTypes() override;
+        std::vector<CkptDataType> GetDataTypes() override;
 
-        vector<string> GetDirNames() override;
-        vector<string> GetEmbNames() override;
-        CkptTransData GetDataset(CkptDataType dataType, string embName) override;
+        std::vector<std::string> GetDirNames() override;
+        std::vector<std::string> GetEmbNames() override;
+        CkptTransData GetDataset(CkptDataType dataType, std::string embName) override;
 
-        void SetDataset(CkptDataType dataType, string embName, CkptTransData& loadedData) override;
+        void SetDataset(CkptDataType dataType, std::string embName, CkptTransData& loadedData) override;
 
     private:
-        const vector<string> fileDirNames { "HashTable", "FEAT_INFO" };
-        const vector<CkptDataType> saveDataTypes { CkptDataType::TABLE_2_THRESH, CkptDataType::HIST_REC };
+        const std::vector<std::string> fileDirNames { "HashTable", "FEAT_INFO" };
+        const std::vector<CkptDataType> saveDataTypes { CkptDataType::TABLE_2_THRESH, CkptDataType::HIST_REC };
 
         const int featItemInfoSaveNum { 3 };
         const int threshValSaveNum { 3 };
@@ -63,14 +60,14 @@ namespace MxRec {
 
         void ClearData();
 
-        void SetTable2ThreshTrans(string embName);
-        void SetHistRecTrans(string embName);
+        void SetTable2ThreshTrans(std::string embName);
+        void SetHistRecTrans(std::string embName);
 
-        void SetTable2Thresh(string embName);
-        void SetHistRec(string embName);
+        void SetTable2Thresh(std::string embName);
+        void SetHistRec(std::string embName);
 
         int GetTable2ThreshSize();
-        size_t GetHistRecSize(string embName);
+        size_t GetHistRecSize(std::string embName);
     };
 }
 

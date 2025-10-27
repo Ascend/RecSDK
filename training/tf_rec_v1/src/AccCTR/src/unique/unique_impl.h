@@ -33,9 +33,9 @@ public:
 
 private:
     int CheckInput(UniqueIn &uniqueIn, UniqueOut &uniqueOut);
-    bool CheckInputNull(void *ptr, const std::string &name);
-    bool CheckInputZero(int64_t in, const std::string &name);
-    bool IsInitialized();
+    bool CheckInputNull(void *ptr, const std::string &name) const;
+    bool CheckInputZero(int64_t in, const std::string &name) const;
+    bool IsInitialized() const;
     int CheckConf(const UniqueConf &conf);
     int CheckInput(UniqueIn &uniqueIn, EnhancedUniqueOut &uniqueOut);
     int CheckNormalConf(const UniqueConf &conf);

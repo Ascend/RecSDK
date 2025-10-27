@@ -229,8 +229,10 @@ int UniqueImpl::CheckEnhancedUniqueConf(const UniqueConf &conf)
             return H_NUM_SMALL;
         }
         if (conf.performance) {
+            // 判断是不是2的N次幂
             bool isExponentOfTwo =
-                (conf.shardingNum > 0) && ((conf.shardingNum & (conf.shardingNum - 1)) == 0); // 判断是不是2的N次幂
+                (conf.shardingNum > 0) &&
+                ((static_cast<unsigned int>(conf.shardingNum) & static_cast<unsigned int>(conf.shardingNum - 1)) == 0);
             if (!isExponentOfTwo) {
                 ExternalLogger::PrintLog(LogLevel::ERROR, "if performance is true, shardingNum must be 2^N");
                 return H_ERROR;
@@ -287,7 +289,7 @@ int UniqueImpl::CheckInput(UniqueIn &uniqueIn, UniqueOut &uniqueOut)
     return H_OK;
 }
 
-bool UniqueImpl::CheckInputNull(void *ptr, const std::string &name)
+bool UniqueImpl::CheckInputNull(void *ptr, const std::string &name) const
 {
     if (ptr == nullptr) {
         std::stringstream sm;
@@ -298,7 +300,7 @@ bool UniqueImpl::CheckInputNull(void *ptr, const std::string &name)
     return false;
 }
 
-bool UniqueImpl::CheckInputZero(int64_t in, const std::string &name)
+bool UniqueImpl::CheckInputZero(int64_t in, const std::string &name) const
 {
     if (in <= 0) {
         std::stringstream sm;
@@ -309,7 +311,7 @@ bool UniqueImpl::CheckInputZero(int64_t in, const std::string &name)
     return false;
 }
 
-bool UniqueImpl::IsInitialized()
+bool UniqueImpl::IsInitialized() const
 {
     if (unique == nullptr) {
         ExternalLogger::PrintLog(LogLevel::ERROR, "please call Initialize before DoUnique");
