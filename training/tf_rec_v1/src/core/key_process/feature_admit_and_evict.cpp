@@ -353,6 +353,7 @@ bool FeatureAdmitAndEvict::ParseThresholdCfg(const std::vector<ThresholdValue>& 
                                StringFormat("Table:%s, faae_coefficient should equal or greater than 1.",
                                             value.tableName.c_str()));
             LOG_ERROR(error.ToString());
+            return false;
         }
         if (value.countThreshold != -1 && value.timeThreshold != -1) {
             m_embStatus[value.tableName] = SingleEmbTableStatus::SETS_BOTH;
