@@ -25,7 +25,7 @@ namespace {
 namespace EmbCache {
 
 FkvState NetHashBucket::PutTrySlot(uint64_t key, uint64_t &value, std::atomic<uint64_t> &keySlot,
-    uint64_t &valueSlot, const std::function<BeforePutFuncState()> &beforePutFunc)
+    uint64_t &valueSlot, const std::function<BeforePutFuncState()> &beforePutFunc) const
 {
     uint64_t oldKey = 0;
     if (keySlot.load(std::memory_order_relaxed) == 0 && keySlot.compare_exchange_strong(oldKey, key)) {
@@ -382,7 +382,6 @@ FkvState MapperBase::Put(uint64_t key, uint64_t value)
 
     /* get bucket */
     auto buck = &(mSubMaps[key % gSubMapCount][key % mBucketCount]);
-
     // Execute `Put` operation on the first bucket when not find.
     // `Put` from the first bucket to reuse the previously removed location.
     /* try 8192 times */
@@ -637,7 +636,8 @@ FkvState MapperBase::PutKeyValue(uint64_t key, uint64_t& value, EmbCache::NetHas
     return FkvState::FKV_FAIL;
 }
 
-void MapperBase::ExtractKeyValInBuck(EmbCache::NetHashBucket *buck, std::vector<std::pair<uint64_t, uint64_t>>& kvVec)
+void MapperBase::ExtractKeyValInBuck(EmbCache::NetHashBucket *buck,
+                                     std::vector<std::pair<uint64_t, uint64_t>>& kvVec) const
 {
     while (buck) {
         for (size_t k = 0; k < K_KVNUMINBUCKET; k++) {

@@ -18,8 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <bitset>
-#include <cstdlib>
-#include <cstring>
 #include <future>
 #include <iostream>
 #include <mutex>
@@ -38,7 +36,7 @@ class OffsetMapper : public MapperBase {
 public:
     OffsetMapper() = default;
 
-    ~OffsetMapper() = default;
+    ~OffsetMapper() override = default;
 
     OffsetMapper(const OffsetMapper& other)
         : maxCacheSize(other.maxCacheSize),
@@ -127,7 +125,7 @@ public:
         return koVec;
     }
 
-    uint64_t GetFreeLength()
+    uint64_t GetFreeLength() const
     {
         return maxCacheSize - useLength + evictSize;
     }
@@ -170,7 +168,7 @@ public:
         return ock::ctr::H_OK;
     }
 
-    uint64_t GetUsage()
+    uint64_t GetUsage() const
     {
         return useLength - evictSize;
     }

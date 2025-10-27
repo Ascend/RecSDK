@@ -39,12 +39,12 @@ constexpr size_t K_KVNUMINBUCKET = 3;
 
 class NetHeapAllocator {
 public:
-    void *Allocate(uint64_t size)
+    void *Allocate(uint64_t size) const
     {
         return calloc(1, size);
     }
 
-    void Free(void *p)
+    void Free(void *p) const
     {
         if (HM_LIKELY(p != nullptr)) {
             free(p);
@@ -103,7 +103,7 @@ struct alignas(K_ALIGNMENT)NetHashBucket {
     FkvState Remove(uint64_t key, const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc);
 
     FkvState PutTrySlot(uint64_t key, uint64_t &value, std::atomic<uint64_t> &keySlot,
-        uint64_t &valueSlot, const std::function<BeforePutFuncState()> &beforePutFunc);
+        uint64_t &valueSlot, const std::function<BeforePutFuncState()> &beforePutFunc) const;
 };
 
 
@@ -123,7 +123,7 @@ public:
     FkvState FindAndPutIfNotFound(uint64_t key, uint64_t &value,
         const std::function<BeforePutFuncState()> &beforePutFunc);
 
-    FkvState Remove(uint64_t key);
+    virtual FkvState Remove(uint64_t key);
 
     FkvState Remove(uint64_t key, const std::function<BeforeRemoveFuncState(uint64_t)> &beforeRemoveFunc);
 
@@ -226,7 +226,7 @@ private:
     FkvState PutKeyValue(uint64_t key, uint64_t& value, EmbCache::NetHashBucket *buck,
         const std::function<BeforePutFuncState()>& beforePutFunc);
 
-    void ExtractKeyValInBuck(EmbCache::NetHashBucket *buck, std::vector<std::pair<uint64_t, uint64_t>>& kvVec);
+    void ExtractKeyValInBuck(EmbCache::NetHashBucket *buck, std::vector<std::pair<uint64_t, uint64_t>>& kvVec) const;
 };
 }
 #endif // MXREC_MAPPER_BASE_H
