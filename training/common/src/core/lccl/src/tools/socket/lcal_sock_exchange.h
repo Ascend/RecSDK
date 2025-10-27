@@ -112,8 +112,6 @@ int ParseIpAndPort(const char* input, std::string& ip, uint16_t& port);
 
 int GetAddrFromString(LcalSocketAddress* ua, const char* ipPortPair);
 
-int BootstrapGetServerIp(LcalSocketAddress& handle);
-
 }  // namespace Lcal
 
 #endif

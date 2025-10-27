@@ -31,6 +31,8 @@ namespace MxRec {
         int start;
         int len;
         float initParam = 1.0;
+
+        bool RangeValidate(int begin, int lens);
     };
 
     enum class InitializerType {

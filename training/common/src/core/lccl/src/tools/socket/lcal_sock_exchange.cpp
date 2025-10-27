@@ -467,36 +467,4 @@ int GetAddrFromString(LcalSocketAddress* ua, const char* ipPortPair)
     return LCAL_SUCCESS;
 }
 
-int BootstrapGetServerIp(LcalSocketAddress& handle)
-{
-    char hostname[256];
-
-    // 获取主机名
-    if (gethostname(hostname, sizeof(hostname)) < 0) {
-        ASD_LOG(ERROR) << "ERROR: Failed to get hostname.";
-        return LCAL_ERROR_INTERNAL;
-    }
-
-    // 通过主机名获取主机信息
-    struct hostent *hostEntry = gethostbyname(hostname);
-    if (hostEntry == nullptr) {
-        ASD_LOG(ERROR) << "ERROR: Failed to get host entry." ;
-        return LCAL_ERROR_INTERNAL;
-    }
-
-    // 获取主机的IP地址（仅支持IPv4）
-    const char* ip = inet_ntoa(*reinterpret_cast<struct in_addr*>(hostEntry->h_addr_list[0]));
-    if (ip == nullptr) {
-        ASD_LOG(ERROR) << "ERROR: Failed to convert IP address.";
-        return LCAL_ERROR_INTERNAL;
-    }
-
-    // 填充 sockaddr_in 结构体
-    memset_s(&handle, sizeof(handle), 0, sizeof(handle));
-    handle.sin.sin_family = AF_INET;
-    handle.sin.sin_addr.s_addr = inet_addr(ip); // 将IP地址填入sockaddr_in
-    handle.sin.sin_port = 0;
-
-    return LCAL_SUCCESS;
-}
 } // namespace Lcal
