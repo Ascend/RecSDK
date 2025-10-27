@@ -424,6 +424,7 @@ void EmbeddingDDR::SaveOptimizerSlot(const string& savePath, vector<vector<float
         MakeDir(ss.str());
         ss << "slice_" << rankId_ << ".data";
 
+        CheckFileSystemPtr();
         vector<vector<float>> slotData;
         for (const auto &data: optimizerSlots) {
             vector<float> tmp(data.cbegin() + slotIdx * embSize_, data.cbegin() + (slotIdx + 1) * embSize_);
