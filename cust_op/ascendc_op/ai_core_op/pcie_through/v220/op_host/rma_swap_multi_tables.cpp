@@ -22,12 +22,27 @@
 #include <stdexcept>
 
 constexpr int32_t BLOCK_DIM = 48;
+constexpr std::uint64_t kUserBottom = (sizeof(void*) == 8) ? 0x10000 : 0x1000;
+constexpr std::uint64_t kUserTop = (sizeof(void*) == 8) ? ((1ULL << 47) - 1) : 0xFFFFFFFF;
 
 namespace {
     int32_t* ValidateAndConvertGmemAttr(const std::string &gmemAttr)
     {
         try {
-            int32_t* shmSwap = reinterpret_cast<int32_t*>(std::stoul(gmemAttr));
+            // 4-byte alignment check
+            std::uint64_t addr = std::stoull(gmemAttr, nullptr, 16);
+            if (addr % alignof(int32_t) != 0) {
+                LOG_ERROR("gmemAttr not 4-byte aligned");
+                return nullptr;
+            }
+
+            // address range check
+            if (addr < kUserBottom || addr > kUserTop) {
+                LOG_ERROR("gmemAttr address not in user space range");
+                return nullptr;
+            }
+
+            int32_t* shmSwap = reinterpret_cast<int32_t*>(static_cast<std::uintptr_t>(addr));
             return shmSwap;
         } catch (std::invalid_argument const& ex) {
             LOG_ERROR("Validate gmemAttr invalid");

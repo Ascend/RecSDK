@@ -149,6 +149,17 @@ class WideDeep:
 设置环境变量export HUGE_TLB_ENABLE=1
 ./run.sh
 ```
+
+单算子测试：  
+测试脚本目录：cust_op/test/pcie_through_op_test/tf
+```shell
+bash build.sh # 编译算子适配层
+cd ./test
+bash tdt_swap_test.sh
+export HUGE_TLB_ENABLE=1
+bash rma_swap_test.sh # 确认服务器开启大页内存后后再运行该脚本
+```
+
 主要日志：
 ```shell
 # 创建pcie_through数据交换通道
