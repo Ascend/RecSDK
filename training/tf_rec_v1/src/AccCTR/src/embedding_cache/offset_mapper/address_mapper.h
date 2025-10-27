@@ -168,7 +168,7 @@ private:
         if (HM_UNLIKELY(currentMemoryUint.leftCapacity <= 0)) {
             /* need to expand memory */
             uint64_t maxSize = std::min(maxExpandSize, totalLeftVocabSize * itemSize);
-            uint64_t newSize = currentMemoryUint.capacity
+            uint64_t newSize = (currentMemoryUint.capacity != 0)
                                    ? std::min(currentMemoryUint.capacity * dynamicExpandRatio, maxSize)
                                    : itemSize;
             if (newSize == 0) {
@@ -177,7 +177,7 @@ private:
                 }
                 return false;
             }
-            auto newAddress = (uint64_t)malloc(newSize);
+            auto newAddress = reinterpret_cast<uint64_t>(malloc(newSize));
             if (newAddress == 0) {
                 ock::ExternalLogger::PrintLog(ock::LogLevel::WARN, "Refill thread allocate memory failed!");
                 return false;
@@ -250,7 +250,7 @@ public:
         MapperBase::UnInitialize();
     }
 
-    FkvState Remove(uint64_t key)
+    FkvState Remove(uint64_t key) override
     {
         return MapperBase::Remove(key, [&](uint64_t value) {
             emExpendMemInfoPtr->GetValueToBeRecycled(value);
