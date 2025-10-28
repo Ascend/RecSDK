@@ -76,6 +76,14 @@ public:
 
     bool Initialize(uint64_t reserve, uint64_t maxSize = 0)
     {
+        if (validPos != nullptr) {
+            delete validPos;
+            validPos = nullptr;
+        }
+        if (evictPos != nullptr) {
+            delete evictPos;
+            evictPos = nullptr;
+        }
         maxCacheSize = maxSize;
         useLength = 0;
         pos2Key.resize(maxSize);
