@@ -211,11 +211,6 @@ private:
     }
 };
 
-FORCE_INLINE_AICORE int64_t GetDataCount(const int64_t dataLen, const int64_t useBlockNum)
-{
-    return dataLen / useBlockNum;
-}
-
 // CeilDiv
 template <typename T1, typename T2>
 FORCE_INLINE_AICORE T1 CeilDiv(T1 a, T2 b)
