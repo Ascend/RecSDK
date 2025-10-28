@@ -30,18 +30,18 @@ public:
     
     EmbeddingDDR& operator=(const EmbeddingDDR&) = delete;
 
-    ~EmbeddingDDR();
+    ~EmbeddingDDR() override;
 
-    virtual void Key2Offset(std::vector<emb_key_t>& splitKey, int channel);
+    virtual void Key2Offset(std::vector<emb_key_t>& splitKey, int channel) override;
 
     virtual void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel);
 
-    virtual int64_t capacity() const;
+    virtual int64_t capacity() const override;
 
     virtual void EvictKeys(const vector<emb_key_t>& keys);
 
     void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
-              const vector<string>& warmStartTables);
+              const vector<string>& warmStartTables) override;
 
     void LoadKey(const string& savePath, vector<emb_cache_key_t>& keys);
 
@@ -59,15 +59,15 @@ public:
 
     void SaveOptimizerSlot(const string& savePath, vector<vector<float>>& optimizerSlots, size_t keySize);
 
-    vector<int64_t> GetDeviceOffset();
+    vector<int64_t> GetDeviceOffset() override;
 
-    void SetOptimizerInfo(OptimizerInfo& optimizerInfo);
+    void SetOptimizerInfo(OptimizerInfo& optimizerInfo) override;
 
     void SetCacheManager(CacheManager *cm);
 
-    TableInfo GetTableInfo();
+    TableInfo GetTableInfo() override;
 
-    void SetHDTransfer(HDTransfer* hdTransfer);
+    void SetHDTransfer(HDTransfer* hdTransfer) override;
 
     void LoadKey(const string& savePath);
 
@@ -81,7 +81,7 @@ public:
 
     void SaveEmbAndOptim(const string& savePath);
 
-    void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache);
+    void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache) override;
 
     void BackUpTrainStatus();
 

@@ -58,7 +58,6 @@ EmbeddingDynamic::~EmbeddingDynamic()
 
 void EmbeddingDynamic::Key2Offset(std::vector<emb_key_t>& keys, int channel)
 {
-    constexpr emb_key_t INVALID_DYNAMIC_EXPANSION_ADDR = 0; // 动态扩容算子中的无效地址是0
     std::unique_lock<std::shared_mutex> lock(keyOffsetMutex_); // lock for PROCESS_THREAD
     for (emb_key_t& key : keys) {
         if (key == INVALID_KEY_VALUE) {
@@ -379,7 +378,7 @@ void EmbeddingDynamic::LoadKey(const string& savePath)
     firstAddress = address;
     for (const auto& key : deviceKey) {
         keyOffsetMap[key] = address;
-        address = address + extEmbSize_*sizeof(float);
+        address = address + extEmbSize_ * sizeof(float);
     }
 
     maxOffset = keyOffsetMap.size();

@@ -37,18 +37,19 @@ public:
     EmbeddingDynamic(const EmbeddingDynamic&) = delete;
     EmbeddingDynamic& operator=(const EmbeddingDynamic&) = delete;
 
-    ~EmbeddingDynamic();
+    ~EmbeddingDynamic() override;
 
-    virtual void Key2Offset(std::vector<emb_key_t>& keys, int channel);
+    virtual void Key2Offset(std::vector<emb_key_t>& keys, int channel) override;
 
     virtual void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel);
 
-    virtual int64_t capacity() const;
+    virtual int64_t capacity() const override;
 
     void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
               const vector<string>& warmStartTables);
 
-    void Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
+    void Save(const string& savePath, const int pythonBatchId, bool saveDelta,
+            const map<emb_key_t, KeyInfo>& keyInfo) override;
 
 GTEST_PRIVATE:
     constexpr static int BLOCK_EMB_NUM = 100000; // 每次扩容分配10w条
@@ -57,13 +58,13 @@ GTEST_PRIVATE:
 
     virtual int64_t GetEmptyEmbeddingAddress();
 
-    virtual void MallocEmbeddingBlock(int embNum);
+    void MallocEmbeddingBlock(int embNum);
 
     virtual void SaveKey(const string& savePath, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
 
     virtual void SaveEmbAndOptim(const string& savePath);
 
-    virtual void SetOptimizerInfo(OptimizerInfo& optimizerInfo);
+    virtual void SetOptimizerInfo(OptimizerInfo& optimizerInfo) override;
 
     virtual void LoadKey(const string& savePath);
 
