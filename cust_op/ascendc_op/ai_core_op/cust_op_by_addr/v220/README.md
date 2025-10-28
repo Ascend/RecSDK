@@ -10,7 +10,7 @@
 ```
 
 ## Ascend C参考设计
-更多详情可以参考CANN官方的Ascend C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0001.html)。
+更多详情可以参考CANN官方的Ascend C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
 针对Rec SDK，用于动态扩容功能的Ascend C算子有两个：**查询算子embedding_lookup_by_addr**和**更新算子embedding_update_by_addr**，
 以下以embedding_lookup_by_addr算子为例对扩容算子做详细说明，embedding_update_by_addr算子同理。
@@ -60,9 +60,30 @@ e) KernelEimtable::Init函数中，针对非对齐shape算子，使用Init_param
 
 f) KernelEimtable::Process函数实现算子的搬运和计算，最终输出结果到dstDataGm，即GM_ADDR y
 
+## 单算子编译说明
+上传cust_op_by_addr文件夹到目标环境，并进入当前目录，执行指令对动态扩容算子进行编译和部署。默认编译安装Atlas A2训练系列产品AI Core类型。
+```shell
+bash run.sh
+```
+若指定 AI Core 类型编译：
+
+```shell
+bash run.sh ai_core-<soc_version>
+```
+> AI处理器的型号<soc_version>请通过如下方式获取:
+> - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
+>
+> 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
+
+注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
+
+```shell
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+```
+
 ## AclNN单算子测试参考设计
 
-更多详情可以参考CANN官方的[Ascend C单算子调用概述](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0036.html)。
+更多详情可以参考CANN官方的[Ascend C单算子调用概述](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0070.html)。
 
 单算子调用分为两种方式：单算子API执行和模型执行。Rec SDK提供单算子API执行供参考。
 
@@ -80,10 +101,10 @@ bash run.sh
 
 ### 前置条件
 
-1. 参考[基于msopgen工具创建算子工程](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0023.html)完成算子工程的创建，
-参考[kernel侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0024.html)完成kernel侧实现的相关准备，
-参考[host侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0026.html)完成host侧实现相关准备。
-2. 参考[算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0031.html)完成算子的编译部署，编译部署时需要开启算子的二进制编译功能：修改算子工程中的编译配置项文件CMakePresets.json，将
+1. 参考[基于msopgen工具创建算子工程](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0060.html)完成算子工程的创建，
+参考[kernel侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0063.html)完成kernel侧实现的相关准备，
+参考[host侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0064.html)完成host侧实现相关准备。
+2. 参考[算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0068.html)完成算子的编译部署，编译部署时需要开启算子的二进制编译功能：修改算子工程中的编译配置项文件CMakePresets.json，将
 ENABLE_BINARY_PACKAGE设置为True。编译部署时可将算子的二进制部署到当前环境，便于后续算子的调用。
 3. 检查API执行需要的头文件和库文件是否自动生成，针对Rec SDK，检查cust_op/ascendc_op/ai_core_op/cust_op_by_addr/v220/cust_op_by_addr/build_out/autogen目录下，是否有
 aclnn_embedding_lookup_by_address.cpp和aclnn_embedding_lookup_by_address.h等。

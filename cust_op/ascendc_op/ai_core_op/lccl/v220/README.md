@@ -12,31 +12,18 @@ LCAL（Low Latency Collective Acceleration Library）
 
 ```shell
 
-├──cust_op
-├────lccl
-├────── tf_test              # 单算子测试用例
+├──lccl
+├────v220
 ├────── emb_custom.json      # 算子原型配置
 ├────── op_host              # LCCL算子Host侧实现
 ├────── op_kernel            # LCCL算子Kernel侧实现
 ├────── README.md            # LCCL算子说明文档
-├────── run.sh               # LCCL算子安装脚本
-├──src
-├────lccl                    # 共享内存申请、元信息同步库
-├────── include
-├────── src
-├────── CMakeLists.txt
-├────ops_tf                  # tf算子注册
-├────── tf_ops.h
-├────── hybrid_dataset_ops.cpp
-├────── CMakeLists.txt
-├────pybind                  # 共享内存申请的python接口绑定（GetPeerMem接口）
-├────── CMakeLists.txt
-└────── module_main.cpp
+└────── run.sh               # LCCL算子安装脚本
 ```
 
 ## 使用约束
 
-硬件：A2单机
+硬件：Atlas A2训练系列产品
 
 软件：
 
@@ -69,11 +56,21 @@ LCAL（Low Latency Collective Acceleration Library）
 
 ## 使用方法（基于Rec SDK）
 
-1. 上传lccl文件夹到目标环境，并进入当前目录，执行指令对LCCL算子进行编译和部署
+1. 上传lccl文件夹到目标环境，并进入当前目录，执行指令对LCCL算子进行编译和部署。默认编译安装Atlas A2训练系列产品AI Core类型。
 
 ```shell
 bash run.sh
 ```
+
+若指定 AI Core 类型编译：
+
+```shell
+bash run.sh ai_core-<soc_version>
+```
+> AI处理器的型号<soc_version>请通过如下方式获取:
+> - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
+>
+> 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
 
 注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
 
@@ -94,11 +91,11 @@ init(use_lccl=True, ...)
 
 算子的主要功能是利用aicore mte直接访问对端片上内存的能力，使用内存语义进行集合通信，大幅减少传输启动开销，使用内存同步，提升性能。
 
-算子依赖LCAL库申请片上共享内存（源码位于src/lccl）。
+算子依赖LCAL库申请片上共享内存（源码位于training/common/src/core/lccl）。
 
 ### 申请片上共享内存
 
-参考src/lccl中的LCAL源码和mxRec::GetPeerMem接口，各进程基于acl接口申请片上共享内存后，通过训练任务的主进程进行元信息交换，各进程获取所有rank的共享内存地址。
+参考training/common/src/core/lccl中的LCAL源码和mxRec::GetPeerMem接口，各进程基于acl接口申请片上共享内存后，通过训练任务的主进程进行元信息交换，各进程获取所有rank的共享内存地址。
 
 在进行通信时，需给算子传入共享内存地址。
 
@@ -122,7 +119,7 @@ init(use_lccl=True, ...)
 
 #### Host侧算子实现
 
-Host侧算子实现在目录 lccl/op_host下，其中包括：lccl_all_to_all.cpp和lccl_all_to_all_tiling.h。
+Host侧算子实现在目录 lccl/v220/op_host下，其中包括：lccl_all_to_all.cpp和lccl_all_to_all_tiling.h。
 
 ##### Tiling实现
 
@@ -144,7 +141,7 @@ namespace ops域中的LcclAllToAll类定义了算子原型，并将算子注册�
 
 #### Kernel侧算子实现
 
-Kernel侧算子实现在目录lccl/op_kernel下，其中包括：all2all.h、lccl_all_to_all.cpp。
+Kernel侧算子实现在目录lccl/v220/op_kernel下，其中包括：all2all.h、lccl_all_to_all.cpp。
 
 * 核函数的入口：extern "C" __global__ __aicore__ void lccl_all_to_all
 
@@ -175,7 +172,7 @@ Kernel侧算子实现在目录lccl/op_kernel下，其中包括：all2all.h、lcc
 
 #### Host侧算子实现
 
-Host侧算子实现在目录 lccl/op_host下，其中包括：lccl_all_uss.cpp和lccl_all_uss_tiling.h。
+Host侧算子实现在目录 lccl/v220/op_host下，其中包括：lccl_all_uss.cpp和lccl_all_uss_tiling.h。
 
 ##### Tiling实现
 
@@ -197,7 +194,7 @@ namespace ops域中的LcclAllUss类定义了算子原型，并将算子注册到
 
 #### Kernel侧算子实现
 
-Kernel侧算子实现在目录lccl/op_kernel下，其中包括：all2all_uss.h、all_uss_deterministic.h、lccl_all_uss.cpp。
+Kernel侧算子实现在目录lccl/v220/op_kernel下，其中包括：all2all_uss.h、all_uss_deterministic.h、lccl_all_uss.cpp。
 
 * 核函数的入口：extern "C" __global__ __aicore__ void lccl_all_uss，根据环境变量LCCL_DETERMINISTIC决定使用AllUss或AllUssDeterministic。
 * 解析tiling参数：GET_TILING_DATA(tilingData, tiling)从TilingData中获取host侧传入的数据。
@@ -225,7 +222,7 @@ Kernel侧算子实现在目录lccl/op_kernel下，其中包括：all2all_uss.h�
 
 #### Host侧算子实现
 
-Host侧算子实现在目录 lccl/op_host下，其中包括：lccl_gather_all.cpp和lccl_gather_all_tiling.h。
+Host侧算子实现在目录 lccl/v220/op_host下，其中包括：lccl_gather_all.cpp和lccl_gather_all_tiling.h。
 
 ##### Tiling实现
 
@@ -247,7 +244,7 @@ namespace ops域中的LcclGatherAll类定义了算子原型，并将算子注册
 
 #### Kernel侧算子实现
 
-Kernel侧算子实现在目录lccl/op_kernel下，其中包括：gather_all.h、lccl_gather_all.cpp。
+Kernel侧算子实现在目录lccl/v220/op_kernel下，其中包括：gather_all.h、lccl_gather_all.cpp。
 
 * 核函数的入口：extern "C" __global__ __aicore__ void lccl_gather_all
 * 解析tiling参数：GET_TILING_DATA(tilingData, tiling)从TilingData中获取host侧传入的数据
@@ -263,7 +260,7 @@ Kernel侧算子实现在目录lccl/op_kernel下，其中包括：gather_all.h、
 
    * 使用本目录下的run.sh直接编译安装
 
-   * [算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/800/developmentguide/opdevg/Ascendcopdevg/atlas_ascendc_10_0068.html)
+   * [算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0068.html)
 
 2. 编译并安装Rec SDK
 
