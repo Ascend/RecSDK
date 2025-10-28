@@ -89,19 +89,35 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
 
     uint32_t masktype = tiling.get_maskType();
     auto *isDeltaQK = context->GetAttrs()->GetAttrPointer<uint32_t>(ATTR_INDEX_T::IS_DELTA_QK_INDEX);
-    if (masktype == 0 && !*isDeltaQK) {
-        auto numCtxShape = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX)->GetStorageShape();
-        auto numTargetShape = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_TARGET_INDEX)->GetStorageShape();
+    if (!*isDeltaQK) {
+        OPS_CHECK(kShape != qShape, OPS_LOG_E("", "Q, K shape mismatch"), return false);
+    }
+
+    auto numContext = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX);
+    if (numContext != nullptr) {
+        auto numCtxShape = numContext->GetStorageShape();
+        int64_t numCtxDim = numCtxShape.GetDimNum();
+        OPS_CHECK(numCtxDim != CONTEXT_DIM_NUM,
+                  OPS_LOG_E("", "num_context should have %d dimension, but get %d", CONTEXT_DIM_NUM, numCtxDim),
+                  return false);
         int64_t batchSizeCtx = numCtxShape.GetDim(0);
         OPS_CHECK(batchSizeCtx != batchSize,
                   OPS_LOG_E("", "The length of num_context expect %lld, but get %lld", batchSize, batchSizeCtx),
                   return false);
-        OPS_CHECK(numCtxShape != numTargetShape, OPS_LOG_E("", "num_context, num_target shape mismatch"), return false);
-        OPS_CHECK(numCtxShape.GetDimNum() != CONTEXT_DIM_NUM,
-                  OPS_LOG_E("", "numCtx and numTarget should have %d dimensions, but get %d", CONTEXT_DIM_NUM,
-                  numCtxShape.GetDimNum()), return false);
     }
 
+    auto numTarget = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_TARGET_INDEX);
+    if (numTarget != nullptr) {
+        auto numTarShape = numTarget->GetStorageShape();
+        int64_t numTarDim = numTarShape.GetDimNum();
+        OPS_CHECK(numTarDim != CONTEXT_DIM_NUM,
+                  OPS_LOG_E("", "num_target should have %d dimension, but get %d", CONTEXT_DIM_NUM, numTarDim),
+                  return false);
+        int64_t batchSizeTar = numTarShape.GetDim(0);
+        OPS_CHECK(batchSizeTar != batchSize,
+                  OPS_LOG_E("", "The length of num_target expect %lld, but get %lld", batchSize, batchSizeTar),
+                  return false);
+    }
     return true;
 }
 
