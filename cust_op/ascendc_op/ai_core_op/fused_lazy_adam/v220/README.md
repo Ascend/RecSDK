@@ -3,7 +3,6 @@
 ## LazyAdam融合算子文件结构
 
 ```shell
-├── aclnn_lazy_adam_test  # 单算子测试用例
 ├── lazy_adam.json    # 算子原型配置
 ├── op_host    # LazyAdam融合算子Host侧实现
 ├── op_kernel  # LazyAdam融合算子Kernel侧实现
@@ -14,15 +13,25 @@
 ## Ascend C参考设计
 
 更多详情可以参考CANN官方的Ascend
-C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0001.html)。
+C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
 ## LazyAdam融合算子使用
 
-1. 上传fused_lazy_adam文件夹到目标环境，并进入当前目录，执行指令对lazy_adam融合算子进行编译和部署
+1. 上传fused_lazy_adam文件夹到目标环境，并进入当前目录，执行指令对lazy_adam融合算子进行编译和部署。默认编译安装Atlas A2训练系列产品AI Core类型。
 
 ```shell
 bash run.sh
 ```
+
+若指定 AI Core 类型编译：
+
+```shell
+bash run.sh ai_core-<soc_version>
+```
+> AI处理器的型号<soc_version>请通过如下方式获取:
+> - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
+>
+> 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
 
 注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
 
@@ -66,7 +75,7 @@ c) 算子约束说明：
 
 2. Host侧算子实现
 
-Host侧算子实现在目录 fused_lazy_adam/op_host下，其中包括：lazy_adam.cpp和
+Host侧算子实现在目录 fused_lazy_adam/v220/op_host下，其中包括：lazy_adam.cpp和
 lazy_adam_tiling.h。
 
 a) Tiling实现
@@ -97,11 +106,11 @@ d) Process方法，进行数据搬入和计算，并且计算完成后将计算�
 
 ## AclNN单算子测试参考设计
 
-更多详情可以参考CANN官方的[Ascend C单算子调用概述](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0036.html)。
+更多详情可以参考CANN官方的[Ascend C单算子调用概述](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0070.html)。
 
 单算子调用分为两种方式：单算子API执行和模型执行。Rec SDK提供单算子API执行供参考。
 
-单算子测试用例在目录fused_lazy_adam/aclnn_lazy_adam_test下，其中：
+单算子测试用例在目录cust_op/test/aclnn_lazy_adam_test/tf下，其中：
 
 * inc是头文件目录
 * scripts存放生成数据和验证数据的python脚本
@@ -119,16 +128,16 @@ bash run.sh
 
 1.
 
-参考[基于msopgen工具创建算子工程](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0023.html)
+参考[基于msopgen工具创建算子工程](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0060.html)
 完成算子工程的创建，
-参考[kernel侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0024.html)
+参考[kernel侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0063.html)
 完成kernel侧实现的相关准备，
-参考[host侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0026.html)
+参考[host侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0064.html)
 完成host侧实现相关准备。
 
 2.
 
-参考[算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/70RC1/operatordev/Ascendcopdevg/atlas_ascendc_10_0031.html)
+参考[算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0068.html)
 完成算子的编译部署，编译部署时需要开启算子的二进制编译功能：修改算子工程中的编译配置项文件CMakePresets.json，将
 ENABLE_BINARY_PACKAGE设置为True。编译部署时可将算子的二进制部署到当前环境，便于后续算子的调用。
 
