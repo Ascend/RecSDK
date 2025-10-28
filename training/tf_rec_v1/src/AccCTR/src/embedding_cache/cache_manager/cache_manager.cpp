@@ -18,12 +18,20 @@ limitations under the License.
 #include <unordered_set>
 
 #include "external_logger.h"
+#include "error_code.h"
 
 using namespace EmbCache;
 using namespace ock;
 using namespace ock::ctr;
 
-int64_t EmbCache::INVALID_KEY = -1;
+namespace {
+    int64_t g_invalid_key = -1;
+}
+
+int64_t EmbCache::GetInvalidKey()
+{
+    return g_invalid_key;
+}
 
 int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
                                              const std::vector<InitializerInfo>& initializerInfos, int64_t invalidKey,
@@ -83,7 +91,7 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
     }
 
     embCacheInfos.insert({embCacheInfo.tableName, embCacheInfo});
-    INVALID_KEY = invalidKey;
+    g_invalid_key = invalidKey;
     return H_OK;
 }
 
@@ -168,7 +176,7 @@ int EmbCacheManagerImpl::RemoveEmbsByKeys(const std::string& tableName, const st
     const auto& om = offsetMappers.find(tableName);
     const auto& embTable = embTables.find(tableName);
     for (auto key : keys) {
-        if (key == static_cast<uint64_t>(INVALID_KEY)) {
+        if (key == static_cast<uint64_t>(GetInvalidKey())) {
             ExternalLogger::PrintLog(LogLevel::WARN, "Try to evict invalid key");
             continue;
         }
@@ -336,7 +344,7 @@ void EmbCacheManagerImpl::Destroy()
     embTables.clear();
 }
 
-int EmbCacheManagerImpl::CheckValidTableName(const std::string& tableName)
+int EmbCacheManagerImpl::CheckValidTableName(const std::string& tableName) const
 {
     if (tableName.size() > TABLE_NAME_MAX_SIZE) {
         ExternalLogger::PrintLog(LogLevel::ERROR,
@@ -352,7 +360,7 @@ int EmbCacheManagerImpl::CheckValidTableName(const std::string& tableName)
     return H_OK;
 }
 
-bool EmbCacheManagerImpl::CheckInitializer(uint32_t extEmbSize, std::vector<InitializerInfo> initializerInfos)
+bool EmbCacheManagerImpl::CheckInitializer(uint32_t extEmbSize, std::vector<InitializerInfo> initializerInfos) const
 {
     std::sort(initializerInfos.begin(), initializerInfos.end(),
               [](const auto& u, const auto& v) { return u.start < v.start; });
@@ -376,7 +384,7 @@ bool EmbCacheManagerImpl::CheckInitializer(uint32_t extEmbSize, std::vector<Init
     return true;
 }
 
-bool EmbCacheManagerImpl::CheckValidThreadNum(uint32_t threadNum)
+bool EmbCacheManagerImpl::CheckValidThreadNum(uint32_t threadNum) const
 {
     uint32_t processCoreNum = std::thread::hardware_concurrency();
     if (threadNum > processCoreNum) {
@@ -392,7 +400,7 @@ bool EmbCacheManagerImpl::CheckValidThreadNum(uint32_t threadNum)
 }
 
 int EmbCacheManagerImpl::CheckGetSwapPairsAndKey2Offset(const std::string& tableName, const KeyOffsetPair& swapInKoPair,
-                                                        const KeyOffsetPair& swapOutKoPair)
+                                                        const KeyOffsetPair& swapOutKoPair) const
 {
     if (!swapInKoPair.first.empty() || !swapInKoPair.second.empty() || !swapOutKoPair.first.empty() ||
         !swapOutKoPair.second.empty()) {
@@ -408,7 +416,7 @@ int EmbCacheManagerImpl::CheckGetSwapPairsAndKey2Offset(const std::string& table
     return H_OK;
 }
 
-int EmbCacheManagerImpl::CheckCreateTableName(const std::string& tableName)
+int EmbCacheManagerImpl::CheckCreateTableName(const std::string& tableName) const
 {
     if (tableName.empty()) {
         ExternalLogger::PrintLog(LogLevel::ERROR, "tableName can not be empty");

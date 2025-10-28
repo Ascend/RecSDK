@@ -12,8 +12,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
  ==============================================================================*/
 
-#ifndef ACCCTR_COMMON_EXECPTION_H
-#define ACCCTR_COMMON_EXECPTION_H
+#ifndef ACCCTR_COMMON_EXCEPTION_H
+#define ACCCTR_COMMON_EXCEPTION_H
 
 namespace ock {
 namespace ctr {
@@ -23,4 +23,4 @@ class NullptrError : public std::exception {};
 }
 }
 
-#endif // ACCCTR_COMMON_EXECPTION_H
+#endif // ACCCTR_COMMON_EXCEPTION_H

@@ -341,13 +341,13 @@ vector<pair<uint64_t, uint64_t>> EmbLocalTable::ExportVec()
 }
 
 template <class T>
-void EmbLocalTable::insertData(vector<char>& buffer, T& data)
+void EmbLocalTable::insertData(vector<char>& buffer, T& data) const
 {
     buffer.insert(buffer.end(), (char*)&data, (char*)&data + sizeof(data));
 }
 
 template <class T>
-bool EmbLocalTable::getData(const vector<char>& buffer, T& data, uint64_t& i)
+bool EmbLocalTable::getData(const vector<char>& buffer, T& data, uint64_t& i) const
 {
     if (i + sizeof(T) > buffer.size()) {
         return false;

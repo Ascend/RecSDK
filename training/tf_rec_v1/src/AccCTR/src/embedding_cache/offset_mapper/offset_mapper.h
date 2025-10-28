@@ -26,6 +26,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "common/util/error_code.h"
 #include "embedding_cache.h"
 #include "mapper_base.h"
 
@@ -78,7 +79,7 @@ public:
         maxCacheSize = maxSize;
         useLength = 0;
         pos2Key.resize(maxSize);
-        std::fill(pos2Key.begin(), pos2Key.end(), INVALID_KEY);
+        std::fill(pos2Key.begin(), pos2Key.end(), GetInvalidKey());
         try {
             validPos = new LimitedSet(maxSize);
             evictPos = new LimitedSet(maxSize);
@@ -149,7 +150,7 @@ public:
 
         // 上个batch中的pos可被换出，加入validPos中
         for (uint64_t pos : lastBatchPos) {
-            if (HM_UNLIKELY(pos == static_cast<uint64_t>(INVALID_KEY))) {
+            if (HM_UNLIKELY(pos == static_cast<uint64_t>(GetInvalidKey()))) {
                 continue;
             }
             validPos->insert(pos);
@@ -157,7 +158,7 @@ public:
 
         // 这里keys都已被替换成offset，这个batch使用的pos在下个batch不能被换出，移出validPos
         for (uint64_t pos : keys) {
-            if (HM_UNLIKELY(pos == static_cast<uint64_t>(INVALID_KEY))) {
+            if (HM_UNLIKELY(pos == static_cast<uint64_t>(GetInvalidKey()))) {
                 continue;
             }
             validPos->remove(pos);
@@ -276,7 +277,7 @@ public:
         std::vector<uint64_t> swapInKeysID;
         for (uint64_t i = 0; i < keys.size(); i++) {
             // Invalid key 不考虑
-            if (HM_UNLIKELY(keys[i] == static_cast<uint64_t>(INVALID_KEY))) {
+            if (HM_UNLIKELY(keys[i] == static_cast<uint64_t>(GetInvalidKey()))) {
                 continue;
             }
             // 在HBM中的key, 原地替换为pos后从validPos中移除

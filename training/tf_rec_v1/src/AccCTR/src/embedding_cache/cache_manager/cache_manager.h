@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef EMBEDDING_CACHE_MANAGER_H
 #define EMBEDDING_CACHE_MANAGER_H
 
-#include <cstring>
 #include <map>
 #include <set>
 #include <utility>
@@ -23,7 +22,6 @@ limitations under the License.
 
 #include "embedding_cache.h"
 #include "embedding_local_table/emb_local_table.h"
-#include "error_code.h"
 #include "offset_mapper/offset_mapper.h"
 
 namespace EmbCache {
@@ -85,16 +83,16 @@ private:
     std::map<std::string, EmbLocalTable> embTables;
     std::map<std::string, std::vector<std::pair<uint64_t, uint64_t>>> kvVecsBackUp;
 
-    int CheckValidTableName(const std::string& tableName);
+    int CheckValidTableName(const std::string& tableName) const;
 
-    bool CheckInitializer(uint32_t extEmbSize, std::vector<InitializerInfo> initializerInfos);
+    bool CheckInitializer(uint32_t extEmbSize, std::vector<InitializerInfo> initializerInfos) const;
 
-    bool CheckValidThreadNum(uint32_t threadNum);
+    bool CheckValidThreadNum(uint32_t threadNum) const;
 
     int CheckGetSwapPairsAndKey2Offset(const std::string& tableName, const KeyOffsetPair& swapInKoPair,
-                                       const KeyOffsetPair& swapOutKoPair);
+                                       const KeyOffsetPair& swapOutKoPair) const;
 
-    int CheckCreateTableName(const std::string& tableName);
+    int CheckCreateTableName(const std::string& tableName) const;
 };
 }  // namespace EmbCache
 #endif  // EMBEDDING_CACHE_MANAGER_H

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef OCK_DEFINES_H
 #define OCK_DEFINES_H
 
+#include <cstdint>
+
 namespace ock {
 namespace ctr {
 using HResult = int32_t;

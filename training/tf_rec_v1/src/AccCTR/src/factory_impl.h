@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef OCK_FACTORY_IMPL_H
 #define OCK_FACTORY_IMPL_H
 
+#include "common/util/lock.h"
 #include "include/factory.h"
 #include "unique/unique_impl.h"
 #include "embedding_cache/cache_manager/cache_manager.h"

@@ -49,7 +49,7 @@ enum class BeforeRemoveFuncState {
     BEFORE_FAIL,
 };
 
-extern int64_t INVALID_KEY;
+int64_t GetInvalidKey();
 constexpr uint64_t TABLE_NAME_MAX_SIZE = 1024;
 const uint32_t VOCAB_CACHE_RATIO = 15;
 constexpr float NORMAL_MEAN_MAX = 1e9;
