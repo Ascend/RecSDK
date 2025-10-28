@@ -13,6 +13,7 @@ limitations under the License.
  ==============================================================================*/
 
 #include <thread>
+#include "common/util/time_cost.h"
 #include "unique_impl.h"
 
 namespace ock {

@@ -33,7 +33,13 @@ limitations under the License.
 #include <unistd.h>
 
 #include "securec.h"
-#include "common_includes.h"
+
+#include "common/util/error_code.h"
+#include "common/util/external_threader.h"
+#include "common_exception.h"
+#include "defines.h"
+#include "external_logger.h"
+#include "spinlock.h"
 #include "factory.h"
 
 namespace ock {

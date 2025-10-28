@@ -48,7 +48,7 @@ public:
 
     int GatherAddrs(const std::vector<uint64_t>& keys, std::vector<float*>& addrs, uint32_t threadNum);
 
-    int Scatter(uint64_t startAddr, const std::vector<uint64_t>& keys, uint32_t threadNum);
+    int Scatter(const uint64_t startAddr, const std::vector<uint64_t>& keys, uint32_t threadNum);
 
     int OneThreadHandle(uint64_t startAddr, const std::vector<uint64_t>& keys, bool isGather);
 
@@ -76,10 +76,10 @@ private:
     std::string name;
 
     template <class T>
-    void insertData(std::vector<char>& buffer, T& data);
+    void insertData(std::vector<char>& buffer, T& data) const;
 
     template <class T>
-    bool getData(const std::vector<char>& buffer, T& data, uint64_t& i);
+    bool getData(const std::vector<char>& buffer, T& data, uint64_t& i) const;
 };
 }  // namespace EmbCache
 #endif  // EMB_LOCAL_TABLE_H
