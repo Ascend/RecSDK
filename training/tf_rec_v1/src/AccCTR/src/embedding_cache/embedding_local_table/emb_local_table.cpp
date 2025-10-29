@@ -343,7 +343,7 @@ vector<pair<uint64_t, uint64_t>> EmbLocalTable::ExportVec()
 template <class T>
 void EmbLocalTable::insertData(vector<char>& buffer, T& data) const
 {
-    buffer.insert(buffer.end(), (char*)&data, (char*)&data + sizeof(data));
+    buffer.insert(buffer.end(), reinterpret_cast<char*>(&data), reinterpret_cast<char*>(&data) + sizeof(data));
 }
 
 template <class T>
