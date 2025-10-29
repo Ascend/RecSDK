@@ -8,14 +8,13 @@
 ├── emb_custom.json    # 算子原型配置
 ├── op_host    # pcie_through算子Host侧实现
 ├── op_kernel  # pcie_through算子Kernel侧实现
-├── tf-test    # 单算子测试代码
 ├── README.md  # pcie_through算子说明文档
 └── run.sh     # pcie_through算子安装脚本
 ```
 
 ## 使用约束
 
-硬件：A2
+硬件：Atlas A2训练系列产品
 
 软件：
 
@@ -29,11 +28,20 @@
 
 ## 使用方法（基于Rec SDK）
 
-1. 上传pcie_through算子文件夹到目标环境，并进入当前目录，执行指令对pcie_through算子进行编译和部署
+1. 上传pcie_through算子文件夹到目标环境，并进入当前目录，执行指令对pcie_through算子进行编译和部署。默认编译安装Atlas A2训练系列产品AI Core类型。
 
 ```shell
 bash run.sh
 ```
+若指定 AI Core 类型编译：
+
+```shell
+bash run.sh ai_core-<soc_version>
+```
+> AI处理器的型号<soc_version>请通过如下方式获取:
+> - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
+>
+> 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
 
 注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
 
@@ -45,7 +53,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 算子的主要功能是利用pcie_through, 在host和device交换数据量较大的场景，提升换入换出的性能。
 
-算子依赖host侧处理（源码位于src/core/hd_transfer）。
+算子依赖host侧处理（源码位于training/tf_rec_v1/src/core/hd_transfer）。
 
 ### host处理共享队列
 
@@ -70,7 +78,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 #### Host侧算子实现
 
-Host侧算子实现在目录 pcie_through/op_host下，其中包括：rma_swap_multi_tables.cpp和rma_swap_multi_tables_tiling.h。
+Host侧算子实现在目录 pcie_through/v220/op_host下，其中包括：rma_swap_multi_tables.cpp和rma_swap_multi_tables_tiling.h。
 
 ##### Tiling实现
 
@@ -90,7 +98,7 @@ namespace ops域中的RmaSwapMultiTables类定义了算子原型，并将算子�
 
 #### Kernel侧算子实现
 
-Kernel侧算子实现在目录pcie_through/op_kernel下。
+Kernel侧算子实现在目录pcie_through/v220/op_kernel下。
 
 * 核函数的入口：extern "C" __global__ __aicore__ void rma_swap_multi_tables。
 
@@ -109,7 +117,7 @@ Kernel侧算子实现在目录pcie_through/op_kernel下。
 
    * 使用本目录下的run.sh直接编译安装。
 
-   * [算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/800/developmentguide/opdevg/Ascendcopdevg/atlas_ascendc_10_0068.html)。
+   * [算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0068.html)。
 
 2. 编译并安装Rec SDK。
 
