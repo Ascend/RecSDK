@@ -27,14 +27,14 @@ public:
     EmbeddingDDR(const EmbInfo& info, const RankInfo& rankInfo, int inSeed);
 
     EmbeddingDDR(const EmbeddingDDR&) = delete;
-    
+
     EmbeddingDDR& operator=(const EmbeddingDDR&) = delete;
 
     ~EmbeddingDDR() override;
 
     virtual void Key2Offset(std::vector<emb_key_t>& splitKey, int channel) override;
 
-    virtual void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel);
+    virtual void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel) override;
 
     virtual int64_t capacity() const override;
 
@@ -49,9 +49,10 @@ public:
 
     void LoadOptimizerSlot(const string& savePath, vector<vector<float>>& optimizerSlots);
 
-    void Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
+    void Save(const string& savePath, const int pythonBatchId, bool saveDelta,
+              const map<emb_key_t, KeyInfo>& keyInfo) override;
 
-    void SyncLatestEmbedding(const int pythonBatchId);
+    void SyncLatestEmbedding(const int pythonBatchId) override;
 
     void SaveKey(const string& savePath, vector<emb_cache_key_t>& keys);
 
@@ -63,7 +64,7 @@ public:
 
     void SetOptimizerInfo(OptimizerInfo& optimizerInfo) override;
 
-    void SetCacheManager(CacheManager *cm);
+    void SetCacheManager(CacheManager* cm) override;
 
     TableInfo GetTableInfo() override;
 
@@ -75,7 +76,7 @@ public:
 
     void SaveKey(const string& savePath);
 
-    void SaveEmbData(const string &savePath);
+    void SaveEmbData(const string& savePath);
 
     void SaveOptimData(const string& savePath);
 
@@ -83,28 +84,28 @@ public:
 
     void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache) override;
 
-    void BackUpTrainStatus();
+    void BackUpTrainStatus() override;
 
-    void RecoverTrainStatus();
+    void RecoverTrainStatus() override;
 
 GTEST_PRIVATE:
 
     void EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, float* deviceDataPtr);
 
     void BatchSynchronization(int pythonBatchId, vector<uint64_t>& swapOutKeys);
-   
+
     std::string optimName_;
     std::vector<std::string> optimParams_;
 
     vector<int64_t> hostLoadOffset_;
 
-    HDTransfer *hdTransfer_ = nullptr;
+    HDTransfer* hdTransfer_ = nullptr;
     ock::ctr::EmbCacheManagerPtr embCache_ = nullptr;
     int deviceId_ = -1;
     bool isSyncFinish_ = true;
     static constexpr int MAX_WAIT_LOOP = 1800;
 };
 
-}
+}  // namespace MxRec
 
-#endif // MX_REC_EMBEDDING_DDR_H
+#endif  // MX_REC_EMBEDDING_DDR_H
