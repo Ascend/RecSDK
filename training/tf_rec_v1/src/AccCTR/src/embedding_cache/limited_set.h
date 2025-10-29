@@ -20,17 +20,15 @@ limitations under the License.
 
 namespace EmbCache {
 
-static constexpr int64_t NODE_DEFAULT_VALUE = -1;
-
 class LimitedSet {
 public:
     struct Node {
         uint64_t value;
         Node *prev, *next;
-        Node(uint64_t val = NODE_DEFAULT_VALUE) : value(val), prev(nullptr), next(nullptr) {}
+        explicit Node(uint64_t val = NODE_DEFAULT_VALUE) : value(val), prev(nullptr), next(nullptr) {}
     };
 
-    LimitedSet(uint64_t maxRange) : head(new Node(NODE_DEFAULT_VALUE)), tail(new Node(NODE_DEFAULT_VALUE))
+    explicit LimitedSet(uint64_t maxRange) : head(new Node(NODE_DEFAULT_VALUE)), tail(new Node(NODE_DEFAULT_VALUE))
     {
         nodes.resize(maxRange);
         for (auto &node : nodes) {
@@ -72,6 +70,37 @@ public:
         }
     }
 
+    LimitedSet& operator=(const LimitedSet& other)
+    {
+        if (this == &other) {
+            return *this;
+        }
+
+        if (head != nullptr) {
+            delete head;
+            head = nullptr;
+        }
+        if (tail != nullptr) {
+            delete tail;
+            tail = nullptr;
+        }
+        for (auto &node : nodes) {
+            if (node != nullptr) {
+                delete node;
+            }
+        }
+
+        nodes.clear();
+
+        LimitedSet temp(other);
+
+        std::swap(head, temp.head);
+        std::swap(tail, temp.tail);
+        std::swap(nodes, temp.nodes);
+
+        return *this;
+    }
+
     void insert(uint64_t value)
     {
         if (nodes[value]->value == value) {
@@ -104,7 +133,7 @@ public:
 
     class Iterator {
     public:
-        Iterator(Node *node) : current(node) {}
+        explicit Iterator(Node *node) : current(node) {}
         bool operator != (const Iterator &other) const
         {
             return current != other.current;
@@ -123,20 +152,21 @@ public:
         Node *current;
     };
 
-    Iterator begin()
+    Iterator begin() const
     {
-        return { head->next };
+        return Iterator(head->next);
     }
 
-    Iterator end()
+    Iterator end() const
     {
-        return { tail };
+        return Iterator(tail);
     }
 
 private:
     Node *head;
     Node *tail;
     std::vector<Node *> nodes;
+    static constexpr int64_t NODE_DEFAULT_VALUE = -1;
 };
 
 }

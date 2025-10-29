@@ -234,7 +234,7 @@ class AddressMapper : public MapperBase {
 public:
     AddressMapper() = default;
 
-    ~AddressMapper() = default;
+    ~AddressMapper() override = default;
 
     bool Initialize(uint64_t reserve, uint64_t vocabSize, std::shared_ptr<AutoRefillEmbeddingMemoryPool> expendInfoPtr)
     {
