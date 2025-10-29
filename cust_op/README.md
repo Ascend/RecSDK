@@ -19,10 +19,18 @@
 
 更多详情可以参考CANN官方的Ascend C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/80RC2/developmentguide/opdevg/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
+## 版本配套说明
+样例基于python3.11,torch支持2.6.0版本。调用算子前需完成配套软件的安装和所需算子的安装。目前支持的torch版本配套关系如下：
+
+| torch版本      | 配套关系                                                                                          |
+|--------------|-----------------------------------------------------------------------------------------------|
+| torch==2.6.0 | torch_npu==2.6.0<br/>fbgemm+gpu==1.1.0+cpu<br/>torchrec==1.1.0+npu<br/>hybrid_torchrec==1.1.0 |
+
 ## 单算子使用说明
-1.算子编译
+### 算子编译
 
 进入指定算子的功能实现目录(ascendc_op/ai_core_op/目录下)，执行指令对算子进行编译和部署，默认编译安装Atlas A2训练系列产品AI Core类型。
+
 ```shell
 bash run.sh
 ```
@@ -32,6 +40,7 @@ bash run.sh
 ```shell
 bash run.sh ai_core-<soc_version>
 ```
+
 > AI处理器的型号<soc_version>请通过如下方式获取:
 > - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
 >
@@ -42,19 +51,50 @@ bash run.sh ai_core-<soc_version>
 ```shell
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```
-2.算子适配层编译
+
+### 算子适配层编译
+
+
+#### 单算子编译
 
 进入算子适配层(framework/torch_plugin/torch_library/2.6.0/目录下)，并进入到指定的算子目录。执行算子适配层编译。
+
 ```shell
 bash build_ops.sh
 ```
+
 执行完在当前build目录生成 xxx.so文件,调用算子时执行以下命令进行加载。
-```shell
+
+```python
 import torch
 torch.ops.load_library("path/to/build/xxx.so")  #.so文件的绝对路径
 ```
-说明：多个算子一起使用的情况请参考ascendc_op/build目录下readme说明进行算子编译，同时参考framework/torch_plugin/2.6.0/common目录下的readme说明，将版本目录的所有算子适配层编译成一个.so文件
 
+#### 多算子编译
+
+进入算子适配层目录`RecSDK/cust_op/framework/torch_plugin/torch_library/2.6.0/common`下，执行如下命令编译。
+```shell
+bash build_ops.sh
+```
+
+编译完成后，会在common/build目录下生成`libfbgemm_npu_api.so`，并同时在python默认的site-packages路径下存放编译好的`libfbgemm_npu_api.so`。<br>
+该so包含`RecSDK/cust_op/framework/torch_plugin/torch_library/2.6.0`目录下所有算子的适配层。
+
+> 若编译时报错：`Could NOT find Python3 (missing: Python3_INCLUDE_DIRS Python3_LIBARIES)`
+>
+> 需注释`recsdk-npu-ops/torch_plugin/torch_library/2.6.0/common/CMakeLists.txt`中如下两行内容重新编译
+>
+> ```
+> #find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+> #include_directories(${Python3_INCLUDE_DIRS})
+> ```
+
+加载so：
+```python
+import sysconfig
+import torch
+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
+```
 
 ## 算子介绍
 各算子实现的详细介绍见具体算子目录中readme说明。

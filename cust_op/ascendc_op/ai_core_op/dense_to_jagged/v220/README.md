@@ -1,51 +1,65 @@
-# dense_to_jagged算子及样例说明
-本算子仅支持NPU调用
+**说明**
 
-## dense_to_jagged算子文件结构
+本算子仅支持NPU调用。
 
+# 产品支持情况
+| 硬件型号              | 是否支持                  |
+| -------------------- | ------------------------ |
+| Atlas A2训练系列产品  | √  |
+| Atlas A3训练系列产品  | √  |
+| Atlas 推理系列产品    | √  |
+
+# dense_to_jagged算子目录层级
 ```shell
-├── dense_to_jagged.json    # 算子原型配置
-├── op_host    # dense_to_jagged算子Host侧实现
-├── op_kernel  # dense_to_jagged算子Kernel侧实现
-├── README.md  # dense_to_jagged算子说明文档
-└── run.sh     # dense_to_jagged算子安装脚本
+-- dense_to_jagged
+   |-- v220
+      |-- op_host                 # 算子host侧实现
+      |-- op_kernel               # 算子kernel侧实现
+      |-- dense_to_jagged.json    # 算子原型配置
+      |-- dense_to_jagged.png     # 算子实现原理图
+      |-- README.md               # 算子说明文档
+      |-- run.sh                  # 算子编译部署脚本
 ```
 
-## dense_to_jagged算子介绍
+# 功能
 
-1. 算子分析
+将密集三维张量(dense Tensor)转换为锯齿状二维张量(jagged Tensor)，用于处理变长序列数据。
 
-a) 算子的主要功能是实现fbgemm的dense_to_jagged, 实现了将padded dense转为jagged tensor的功能
-b) 算子参数说明：
+# 算子实现原理
 
-* dense: 输入的padded dense tensor；
-* offset: padded dense tensor中有效数据的偏移；
-* jagged_dim0: jagged tensor的第一维长度，该参数为可选参数；
-* jagged_dense: 输出值;
+![alt text](dense_to_jagged.png)
 
-c) 算子约束说明：
+输入:
+```python
+dense = [
+ [[1, 2], [0, 0], [0, 0], [0, 0]],
+ [[3, 4], [5, 6], [7, 8], [0, 0]],
+ [[9, 10], [11, 12], [0, 0], [0, 0]],
+ [[13, 14], [0, 0], [0, 0], [0, 0]],
+ [[15, 16], [17, 18], [19,20], [21, 22]]
+]
 
-* 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.2.RC1.alpha001及之后版本；
-* 支持的输入数据类型：dense: float32/int64, offset: int64/int32；
-* dense为3维tensor；
-* offset为1维tensor，offset的长度必须为dense第一维长度加1，offset必须满足从0开始依次递增；
-* jagged_dim0的值，需与offset最后一个值相等
-* 算子参数均会在NPU显存中存放，请根据显存大小合理设置参数长度。
+offset = [0, 1, 4, 6, 7, 11]
 
-## 算子逻辑
-```
-import numpy as np
-def dense_to_jagged(dense, offset, jagged_dim0):
-    jagged_dense = torch.zeros(jagged_dim0, dense.shape[2]， dtype=dense.dtype)
-
-    for i in range(offset.shape[0] - 1):
-        copyLen = offset[i + 1] - offset[i]
-        jagged_dense[offset[i]:offset[i + 1], :] = dense[i][0:copyLen, :]
-
-    return jagged_dense
-
+jagged_dim0 = 11
 ```
 
-## 算子使用说明
-请参考:[RecSDK-Torch 自定义算子说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)
+输出：
+```python
+jagged_dense = 
+[[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], [13, 14], [15, 16], [17, 18], [19, 20], [21, 22]]
+```
+
+# 算子输入与输出
+|  名称  |  输入/输出  |  数据类型  |  数据格式  |  范围  |  说明  |
+|  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |
+|  dense | 输入 | float32/int64 | [dim0, dim1, dim2] | dim0 <= std::numeric_limits<int>::max() - 1 | 仅支持三维 |
+|  offset | 输入 | int32/int64 | [dim0 + 1] | dim0 + 1 <= std::numeric_limits<int>::max()<br>数值必须从0开始依次递增 | 仅支持一维<br>offset内元素需用户自行保证合法性，否则可能导致算子执行失败 |
+|  jagged_dim0 | 输入(属性) | int | NA | 必须等于offset[-1] | NA |
+|  jagged_dense | 输出 | float32/int64 | [jagged_dim0, dim2] | NA | NA |
+
+# 算子编译部署
+
+算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"1.算子编译"章节。
+
+注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/2.6.0/dense_to_jagged/README.md)
