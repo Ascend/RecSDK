@@ -49,7 +49,7 @@ ge::graphStatus GetNormalBasicShapeInfo(gert::TilingContext *context, HstuDenseB
     int64_t seqLen = gradShape.GetDim(INDEX_T::INDEX_1);
     int64_t headNum = gradShape.GetDim(INDEX_T::INDEX_2);
     int64_t headDim = gradShape.GetDim(INDEX_T::INDEX_3);
-    int32_t biasGradSeqLen = attnBiasGradShape.GetDim(INDEX_T::INDEX_2);
+    int64_t biasGradSeqLen = attnBiasGradShape.GetDim(INDEX_T::INDEX_2);
 
     OPS_CHECK(biasGradSeqLen < maxSeqLen,
                 OPS_LOG_E("", "attnBiasGrad get seqLen less than maxSeqLen\n"),

@@ -343,7 +343,7 @@ ge::graphStatus JaggedInferShape(gert::InferShapeContext *context)
     OPS_CHECK_PTR_NULL(seqOffset, return ge::GRAPH_FAILED);
 
     auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
-    int seqOffsetLens = seqOffset->GetSize();
+    size_t seqOffsetLens = seqOffset->GetSize();
     int64_t batchSize = GetBatchSizeFromJaggedOffset(seqOffsetData, seqOffsetLens);
     OPS_CHECK((batchSize == 0 || batchSize > MAX_BATCH_SIZE),
         OPS_LOG_E("", "batchSize limit (0, %d], but get %lld\n", MAX_BATCH_SIZE, batchSize), return ge::GRAPH_FAILED);

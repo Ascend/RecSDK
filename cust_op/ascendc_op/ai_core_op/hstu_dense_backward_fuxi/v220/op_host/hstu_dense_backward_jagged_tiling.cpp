@@ -159,7 +159,7 @@ ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBac
     OPS_LOG_E_IF_NULL("seqOffset", seqOffset, return ge::GRAPH_FAILED);
 
     auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
-    int seqOffsetLens = seqOffset->GetSize();
+    size_t seqOffsetLens = seqOffset->GetSize();
     if (seqOffsetLens > (MAX_BATCH_SIZE + 1)) {
         OPS_LOG_E("GetJaggedAttrsInfo", "seqOffsetLens exceed limit %d", MAX_BATCH_SIZE + 1);
         return ge::GRAPH_FAILED;
@@ -360,7 +360,7 @@ ge::graphStatus JaggedInferShape(gert::InferShapeContext *context)
     OPS_LOG_E_IF_NULL("seqOffset", seqOffset, return ge::GRAPH_FAILED);
 
     auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
-    int seqOffsetLens = seqOffset->GetSize();
+    size_t seqOffsetLens = seqOffset->GetSize();
     if (seqOffsetLens > MAX_BATCH_SIZE + 1) {
         OPS_LOG_E("JaggedInferShape", "seqOffsetLens exceed limit %d", MAX_BATCH_SIZE + 1);
         return ge::GRAPH_FAILED;

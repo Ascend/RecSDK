@@ -44,10 +44,10 @@ static ge::graphStatus TimeTilingFunc(RelativeAttnBiasTimeTilingData& tilingData
     auto tsShape = context->GetInputShape(TIMESTAMPS_INDEX)->GetStorageShape();           // (b, s)
     auto tswShape = context->GetInputShape(TIMESTAMPS_WEIGHTS_INDEX)->GetStorageShape();  // (num_layer, num_buckets)
 
-    int batchsize = tsShape.GetDim(DIM0);    // (b, s)
-    int s = tsShape.GetDim(DIM1);            // (b, s)
-    int numLayer = tswShape.GetDim(DIM0);    // (num_layer, num_buckets)
-    int numBuckets = tswShape.GetDim(DIM1);  // (num_layer, num_buckets)
+    int64_t batchsize = tsShape.GetDim(DIM0);    // (b, s)
+    int64_t s = tsShape.GetDim(DIM1);            // (b, s)
+    int64_t numLayer = tswShape.GetDim(DIM0);    // (num_layer, num_buckets)
+    int64_t numBuckets = tswShape.GetDim(DIM1);  // (num_layer, num_buckets)
     float divs = *context->GetAttrs()->GetFloat(BUCKET_DIV_INDEX);
     float clampMax = exp((numBuckets - 1) * divs);
 
@@ -137,9 +137,9 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
     const gert::Shape* tsShape = context->GetInputShape(TIMESTAMPS_INDEX);
     const gert::Shape* tswShape = context->GetInputShape(TIMESTAMPS_WEIGHTS_INDEX);
     gert::Shape* rabTimeOutShape = context->GetOutputShape(RAB_TIME_INDEX);
-    int bs = tsShape->GetDim(DIM0);
-    int s = tsShape->GetDim(DIM1);
-    int numLayers = tswShape->GetDim(DIM1);
+    int64_t bs = tsShape->GetDim(DIM0);
+    int64_t s = tsShape->GetDim(DIM1);
+    int64_t numLayers = tswShape->GetDim(DIM1);
 
     rabTimeOutShape->SetDimNum(RAB_TIME_OUT_DIM);
     rabTimeOutShape->SetDim(DIM0, numLayers);

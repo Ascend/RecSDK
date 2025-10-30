@@ -32,8 +32,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("indexShape", context->GetInputShape(1), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("x", context->GetInputTensor(0), return ge::GRAPH_FAILED);
 
-    int32_t xDim0 = context->GetInputShape(0)->GetStorageShape().GetShapeSize();
-    int32_t indexDim0 = context->GetInputShape(1)->GetStorageShape().GetShapeSize();
+    int64_t xDim0 = context->GetInputShape(0)->GetStorageShape().GetShapeSize();
+    int64_t indexDim0 = context->GetInputShape(1)->GetStorageShape().GetShapeSize();
     ge::DataType xType = context->GetInputTensor(0)->GetDataType();
     int dataTypeTilingKey = xType;
 
@@ -48,7 +48,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     ubCanUsed = ubCanUsed - RESERVER_UB_SIZE;
 
     if (xDim0 > MAX_DIM) {
-        printf("[ERROR] Invalid shape of xDim0, it should be less than %d, but it's %d!", MAX_DIM, xDim0);
+        OPS_LOG_E("[ERROR]", "Invalid shape of xDim0, it should be less than %d, but it's %lld!", MAX_DIM, xDim0);
         return ge::GRAPH_FAILED;
     }
 
@@ -61,7 +61,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     context->SetBlockDim(coreNum);
 
     if (context->GetRawTilingData() == nullptr) {
-        printf("[ERROR] GetRawTilingData Failed!");
+        OPS_LOG_E("[ERROR]", "GetRawTilingData Failed!");
         return ge::GRAPH_FAILED;
     }
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());

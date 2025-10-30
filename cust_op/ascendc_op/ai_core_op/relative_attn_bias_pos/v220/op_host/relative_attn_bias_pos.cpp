@@ -30,6 +30,7 @@ constexpr int RAB_POS_OUT_DIM = 3;
 constexpr int DIM0 = 0;
 constexpr int DIM1 = 1;
 constexpr int DIM2 = 2;
+constexpr int64_t DOUBLE_MAX_S = 8600;
 
 namespace optiling {
 static ge::graphStatus PosTilingFunc(RelativeAttnBiasPosTilingData& tilingData, gert::TilingContext* context)
@@ -53,10 +54,10 @@ static ge::graphStatus PosTilingFunc(RelativeAttnBiasPosTilingData& tilingData, 
     auto biasShape = context->GetInputShape(REL_POS_BIAS_INDEX)->GetStorageShape();  // (2s, 2s)
     auto identityShape = context->GetInputShape(IDENTITY_INDEX)->GetStorageShape();  // (2s, 2s)
 
-    int biasSeqLen = biasShape.GetDim(DIM0);
-    int biasSeqLen2 = biasShape.GetDim(DIM1);
-    int idSeqLen = identityShape.GetDim(DIM0);
-    int idSeqLen2 = identityShape.GetDim(DIM1);
+    int64_t biasSeqLen = biasShape.GetDim(DIM0);
+    int64_t biasSeqLen2 = biasShape.GetDim(DIM1);
+    int64_t idSeqLen = identityShape.GetDim(DIM0);
+    int64_t idSeqLen2 = identityShape.GetDim(DIM1);
 
     OPS_CHECK(biasShape.GetDimNum() != REL_POS_BIAS_DIM,
               OPS_LOG_E("Tiling Debug", "Invalid rel_pos_bias shape."),
@@ -66,6 +67,9 @@ static ge::graphStatus PosTilingFunc(RelativeAttnBiasPosTilingData& tilingData, 
               return ge::GRAPH_FAILED);
     OPS_CHECK(biasSeqLen != biasSeqLen2 || biasSeqLen != idSeqLen || biasSeqLen != idSeqLen2,
               OPS_LOG_E("Tiling Debug", "Mismatch sequence len of rel_pos_bias and identity."),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(biasSeqLen <= 0 || biasSeqLen > DOUBLE_MAX_S,
+              OPS_LOG_E("Tiling Debug", "Invalid sequence len of rel_pos_bias."),
               return ge::GRAPH_FAILED);
     tilingData.set_s(biasSeqLen / SEQ_EXPAND);
 
@@ -138,9 +142,9 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
 
     const gert::RuntimeAttrs* attrs = context->GetAttrs();
     const auto pastValidLensPtr = attrs->GetAttrPointer<gert::ContinuousVector>(PAST_VALID_LENS_INDEX);
-    int bs = pastValidLensPtr->GetSize();
+    int64_t bs = pastValidLensPtr->GetSize();
     const gert::Shape* identityShape = context->GetInputShape(IDENTITY_INDEX);
-    int s = identityShape->GetDim(DIM0);  // identityShape(2s, 2s)
+    int64_t s = identityShape->GetDim(DIM0);  // identityShape(2s, 2s)
 
     rabPosOutShape->SetDimNum(RAB_POS_OUT_DIM);
     rabPosOutShape->SetDim(DIM0, bs);

@@ -38,11 +38,15 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("inputTensor", context->GetInputTensor(0), return ge::GRAPH_FAILED);
 
     // 获取输入信息
-    uint32_t inputLength = context->GetInputShape(0)->GetOriginShape().GetShapeSize();
+    int64_t inputLength = context->GetInputShape(0)->GetOriginShape().GetShapeSize();
+    OPS_CHECK(inputLength <= 0 || inputLength >= std::numeric_limits<int32_t>::max(),
+        OPS_LOG_E("[ERROR]", "inputLength limit (0, %d), but get %lld\n",
+            std::numeric_limits<int32_t>::max(), inputLength),
+        return ge::GRAPH_FAILED);
     auto inputTensor = context->GetInputTensor(0);
     ge::DataType inputDataType = inputTensor->GetDataType();
 
-    uint32_t dimNum = context->GetInputShape(0)->GetOriginShape().GetDimNum();
+    auto dimNum = context->GetInputShape(0)->GetOriginShape().GetDimNum();
     OPS_LOG_E_IF(dimNum != 1, context, return ge::GRAPH_FAILED,
                  "[ERROR]AsynchronousCompleteCumsum required the dim of input-0 is 1");
 
