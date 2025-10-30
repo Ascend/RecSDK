@@ -98,7 +98,7 @@ TEST_F(LcalSockExchangeTest, GetAddrFromStringOK)
     auto ua = LcalSocketAddress();
     auto ipPortPair = "127.0.0.1:8080";
 
-    auto res = GetAddrFromString(&ua, ipPortPair);
+    auto res = GetAddrFromString(ua, ipPortPair);
     ASSERT_EQ(res, LCAL_SUCCESS);
 }
 

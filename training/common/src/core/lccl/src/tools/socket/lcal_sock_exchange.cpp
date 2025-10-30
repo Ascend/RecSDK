@@ -252,11 +252,12 @@ int LcalSockExchange::AcceptConnection(int fd, sockaddr_in& clientAddr, socklen_
     do {
         clientFd = accept(fd, clientAddrPtr, sinSize);
         if (clientFd < 0) {
-            if (!CheckErrno(errno)) {
-                ASD_LOG(ERROR) << "Server side accept failed" << strerror(errno);
+            int errnoLocal = errno;
+            if (!CheckErrno(errnoLocal)) {
+                ASD_LOG(ERROR) << "Server side accept failed" << strerror(errnoLocal);
                 return -1;
             }
-            ASD_LOG(DEBUG) << "accept failed: " << strerror(errno);
+            ASD_LOG(DEBUG) << "accept failed: " << strerror(errnoLocal);
             continue;
         }
         break;
@@ -295,38 +296,40 @@ int LcalSockExchange::Accept()
     return LCAL_SUCCESS;
 }
 
-int LcalSockExchange::Send(int fd, const void* sendBuf, size_t sendSize, int flag)
+int LcalSockExchange::Send(int fd, const void* sendBuf, size_t sendSize, int flag) const
 {
     do {
         auto ret = send(fd, sendBuf, sendSize, flag);
         if (ret < 0) {
-            if (CheckErrno(errno)) {
-                ASD_LOG(ERROR) << "send failed: " << strerror(errno);
+            int errnoLocal = errno;
+            if (CheckErrno(errnoLocal)) {
+                ASD_LOG(ERROR) << "send failed: " << strerror(errnoLocal);
                 continue;
             }
-            ASD_LOG(DEBUG) << "Send failed: " << strerror(errno);
+            ASD_LOG(DEBUG) << "Send failed: " << strerror(errnoLocal);
         }
         return ret;
     } while (true);
 }
 
 template<typename T>
-int LcalSockExchange::Recv(int fd, T* recvBuf, size_t recvSize, int flag)
+int LcalSockExchange::Recv(int fd, T* recvBuf, size_t recvSize, int flag) const
 {
     do {
         auto ret = recv(fd, recvBuf, recvSize, flag);
         if (ret < 0) {
-            if (CheckErrno(errno)) {
-                ASD_LOG(ERROR) << "recv failed: " << strerror(errno);
+            int errnoLocal = errno;
+            if (CheckErrno(errnoLocal)) {
+                ASD_LOG(ERROR) << "recv failed: " << strerror(errnoLocal);
                 continue;
             }
-            ASD_LOG(DEBUG) << "recv failed: " << strerror(errno);
+            ASD_LOG(DEBUG) << "recv failed: " << strerror(errnoLocal);
         }
         return ret;
     } while (true);
 }
 
-void LcalSockExchange::Close(int &fd)
+void LcalSockExchange::Close(int &fd) const
 {
     if (fd == -1) {
         return;
@@ -430,7 +433,7 @@ int LcalSockExchange::ServerRecvSend(const T* sendBuf, size_t sendSize, T* recvB
     return LCAL_SUCCESS;
 }
 
-bool LcalSockExchange::IsServer()
+bool LcalSockExchange::IsServer() const
 {
     return rank_ == 0;
 }
@@ -452,7 +455,7 @@ void LcalSockExchange::Cleanup()
     }
 }
 
-int GetAddrFromString(LcalSocketAddress* ua, const char* ipPortPair)
+int GetAddrFromString(LcalSocketAddress& ua, const char* ipPortPair)
 {
     std::string ip;
     uint16_t port;
@@ -461,9 +464,9 @@ int GetAddrFromString(LcalSocketAddress* ua, const char* ipPortPair)
         ASD_LOG(ERROR) << "lcal ParseIpAndPort failed!";
         return LCAL_ERROR_INTERNAL;
     }
-    ua->sin.sin_family = AF_INET;
-    ua->sin.sin_addr.s_addr = inet_addr(ip.c_str());
-    ua->sin.sin_port = htons(port);
+    ua.sin.sin_family = AF_INET;
+    ua.sin.sin_addr.s_addr = inet_addr(ip.c_str());
+    ua.sin.sin_port = htons(port);
     return LCAL_SUCCESS;
 }
 

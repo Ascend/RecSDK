@@ -18,8 +18,10 @@
 
 #ifdef GTEST
 #define GTEST_PRIVATE public
+#define TEST_VIRTUAL virtual
 #else
 #define GTEST_PRIVATE private
+#define TEST_VIRTUAL
 #endif
 
 #include <vector>
@@ -81,8 +83,8 @@ GTEST_PRIVATE:
     virtual int EnablePeerAccess();
     virtual int InitCommMem();
     virtual int InitCommon();
-    virtual void CloseIpcMem();
-    virtual void FreePeerMem(int8_t*& mem);
+    TEST_VIRTUAL void CloseIpcMem();
+    TEST_VIRTUAL void FreePeerMem(int8_t*& mem);
     virtual int InitMem();
     virtual int GetSidId(int64_t sdids[LCAL_MAX_RANK_SIZE]);
     virtual int GetPid(uint32_t pids[LCAL_MAX_RANK_SIZE]);
