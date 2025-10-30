@@ -41,14 +41,14 @@ static ge::graphStatus TimeTilingFunc(RelativeAttnBiasBackwardTilingData& tiling
     auto indexShape = context->GetInputShape(BUCKET_TIMESTAMPS_INDEX)->GetStorageShape();       // grad(b, 2s, 2s)
 
     int numBuckets = *context->GetAttrs()->GetInt(NUM_BUCKET_INDEX);
-    int numLayer = gradShape.GetDim(DIM0);
-    int batchsize = gradShape.GetDim(DIM1);
-    int s = gradShape.GetDim(DIM2);
-    int s2 = gradShape.GetDim(DIM3);
+    int64_t numLayer = gradShape.GetDim(DIM0);
+    int64_t batchsize = gradShape.GetDim(DIM1);
+    int64_t s = gradShape.GetDim(DIM2);
+    int64_t s2 = gradShape.GetDim(DIM3);
 
-    int indexBatchsize = indexShape.GetDim(DIM0);
-    int indexS1 = indexShape.GetDim(DIM1);
-    int indexS2 = indexShape.GetDim(DIM2);
+    int64_t indexBatchsize = indexShape.GetDim(DIM0);
+    int64_t indexS1 = indexShape.GetDim(DIM1);
+    int64_t indexS2 = indexShape.GetDim(DIM2);
 
     OPS_CHECK(gradShape.GetDimNum() != RAB_TIME_GRAD_DIM, OPS_LOG_E("Tiling Debug", "Grad shape is invalid."),
               return ge::GRAPH_FAILED);
@@ -128,7 +128,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
 
     gert::Shape* tswGradOutShape = context->GetOutputShape(TIMESTAMPS_WEIGHTS_GRAD_INDEX);
     const gert::Shape* tsGradShape = context->GetInputShape(INPUT_GRAD_INDEX);  // (n, b, 2s, 2s)
-    int n = tsGradShape->GetDim(DIM0);
+    int64_t n = tsGradShape->GetDim(DIM0);
     int numBuckets = *context->GetAttrs()->GetInt(NUM_BUCKET_INDEX);
 
     tswGradOutShape->SetDimNum(TSW_GRAD_OUT_DIM);

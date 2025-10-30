@@ -238,8 +238,8 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
     OPS_LOG_E_IF_NULL("seqOffsetData", seqOffsetData, return false);
 
-    int64_t seqOffsetLens = seqOffset->GetSize();
-    int64_t batchSize = seqOffsetLens - 1;
+    size_t seqOffsetLens = seqOffset->GetSize();
+    int64_t batchSize = static_cast<int64_t>(seqOffsetLens - 1);
     OPS_LOG_E_IF(batchSize > MAX_BATCH_SIZE, context, return false,
         "batch size is over limit %d", MAX_BATCH_SIZE);
 
@@ -289,7 +289,7 @@ bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::Hstu
     OPS_LOG_E_IF_NULL("seqOffset", seqOffset, return false);
 
     auto *seqOffsetData = const_cast<int64_t *>(reinterpret_cast<const int64_t *>(seqOffset->GetData()));
-    int seq_offset_lens = seqOffset->GetSize();
+    size_t seq_offset_lens = seqOffset->GetSize();
     if (seq_offset_lens > (MAX_BATCH_SIZE + 1)) {
         OPS_LOG_E(context, "seq_offset_lens exceed limit %d\n", MAX_BATCH_SIZE + 1);
         return false;

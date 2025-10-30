@@ -16,8 +16,10 @@ See the License for the specific language governing permissions and
 #define COMMON_HOST_H
 
 #include <cstdint>
+#include <cstddef>
+#include <limits>
 
-int64_t GetBatchSizeFromJaggedOffset(const int64_t *seqOffsetData, int32_t seqOffsetLens)
+int64_t GetBatchSizeFromJaggedOffset(const int64_t *seqOffsetData, size_t seqOffsetLens)
 {
     if (seqOffsetData == nullptr || seqOffsetLens <= 0) {
         return 0;
@@ -25,17 +27,21 @@ int64_t GetBatchSizeFromJaggedOffset(const int64_t *seqOffsetData, int32_t seqOf
     
     // 二分法找出有效batch
     int64_t maxValue = seqOffsetData[seqOffsetLens - 1];
-    int32_t left = 0;
-    int32_t right = seqOffsetLens - 1;
-    int32_t firstMaxIdx = seqOffsetLens - 1;
+    size_t left = 0;
+    size_t right = seqOffsetLens - 1;
+    size_t firstMaxIdx = seqOffsetLens - 1;
     while (left <= right) {
-        int32_t mid = left + (right - left) / 2;  // 二分法除以2找到剩余中间位置
+        size_t mid = left + (right - left) / 2;  // 二分法除以2找到剩余中间位置
         if (seqOffsetData[mid] == maxValue) {
             firstMaxIdx = mid;
             right = mid - 1;
         } else if (seqOffsetData[mid] < maxValue) {
             left = mid + 1;
         }
+    }
+
+    if (firstMaxIdx >= static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+        return 0;
     }
 
     int64_t batchSize = static_cast<int64_t>(firstMaxIdx);
