@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 import torch.nn
 from torchrec_embcache.saver import Saver, SAVE_PATH_MAX_LEN, TIMESTAMP_FORMAT
+from torchrec_embcache.utils import safe_makedirs
 
 
 class TestSaver:
@@ -90,7 +91,7 @@ class TestSaver:
         dir_path = os.path.dirname(os.path.realpath(__file__))
         temp_dir = datetime.now(tz=timezone.utc).strftime(TIMESTAMP_FORMAT) + str(random.randint(0, 100000))
         temp_dir = os.path.join(dir_path, temp_dir)
-        os.makedirs(temp_dir, exist_ok=True)
+        safe_makedirs(temp_dir)
         with pytest.raises(ValueError):
             module = torch.nn.Module()
             saver.load(module, temp_dir)
