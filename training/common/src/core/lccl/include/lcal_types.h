@@ -16,7 +16,6 @@
 #ifndef LCAL_TYPES_H
 #define LCAL_TYPES_H
 
-#include <hccl_types.h>
 #include <map>
 #include <string>
 #include <set>

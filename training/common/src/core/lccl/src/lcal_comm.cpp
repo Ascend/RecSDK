@@ -22,7 +22,6 @@
 #include <set>
 #include <thread>
 
-#include <hccl/hccl.h>
 #include "asdops/utils/log/log.h"
 #include "tools/socket/lcal_sock_exchange.h"
 
@@ -145,7 +144,7 @@ int LcalComm::SyncCommArgs()
     commArgs_.rankSize = rankSize_;
     commArgs_.localRankSize = (localRankSize_ == -1) ? rankSize_ : localRankSize_;
     commArgs_.SetBuff(peerMem_);
-    int ret = aclrtMalloc((void **)(&commArgsPtr_), sizeof(commArgs_), ACL_MEM_MALLOC_HUGE_FIRST);
+    int ret = aclrtMalloc(reinterpret_cast<void **>(&commArgsPtr_), sizeof(commArgs_), ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {
         ASD_LOG(ERROR) << "aclrtMalloc err " << __LINE__ << " " << ret;
         return LCAL_ERROR_INTERNAL;
@@ -410,7 +409,7 @@ int LcalComm::InitMem()
     ASD_LOG(DEBUG) << "maxBuffSize " << LCAL_BUFF_BYTES;
     int memRank = (GetChipName() < ChipName::CHIP_910_9391) ? localRank_ : rank_;
     aclError ret = aclrtMalloc(
-        (void **)&peerMem_[memRank], LCAL_BUFF_BYTES,
+        reinterpret_cast<void **>(&peerMem_[memRank]), LCAL_BUFF_BYTES,
         (GetChipName() == ChipName::CHIP_310P3) ? ACL_MEM_MALLOC_HUGE_FIRST_P2P : ACL_MEM_MALLOC_HUGE_FIRST);
     if (ret != ACL_SUCCESS) {
         ASD_LOG(ERROR) << "allocate device mem error " << __FILE__ << ":" << __LINE__ << " " << ret;

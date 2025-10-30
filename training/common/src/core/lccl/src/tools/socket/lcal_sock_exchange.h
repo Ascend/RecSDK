@@ -80,10 +80,10 @@ GTEST_PRIVATE:
     virtual int Prepare();
     int Listen();
     int Accept();
-    int Send(int fd, const void* sendBuf, size_t sendSize, int flag);
+    int Send(int fd, const void* sendBuf, size_t sendSize, int flag) const;
     template <typename T>
-    int Recv(int fd, T* recvBuf, size_t recvSize, int flag);
-    void Close(int& fd);
+    int Recv(int fd, T* recvBuf, size_t recvSize, int flag) const;
+    void Close(int& fd) const;
     int Connect();
     virtual int AcceptConnection(int fd, sockaddr_in& clientAddr, socklen_t* sinSize);
 
@@ -93,7 +93,7 @@ GTEST_PRIVATE:
     int ServerRecvSend(const T* sendBuf, size_t sendSize, T* recvBuf);
     void Cleanup();
 
-    bool IsServer();
+    bool IsServer() const;
 
     int rank_ = 0;
     int rankSize_ = 0;
@@ -110,7 +110,7 @@ int ValidateIPv4Address(const std::string &ip);
 
 int ParseIpAndPort(const char* input, std::string& ip, uint16_t& port);
 
-int GetAddrFromString(LcalSocketAddress* ua, const char* ipPortPair);
+int GetAddrFromString(LcalSocketAddress& ua, const char* ipPortPair);
 
 }  // namespace Lcal
 
