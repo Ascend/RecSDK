@@ -20,7 +20,7 @@ from torchrec_embcache.utils import check_path, safe_makedirs
 
 SAVE_PATH_MAX_LEN = 1024
 TIMESTAMP_FORMAT = "%Y%m%d%H%M%S"
-_MAX_RECURSIZE_TIMES = 500
+_MAX_RECURSIVE_TIMES = 500
 _MAX_LOOP_TIMES = 500
 
 
@@ -106,8 +106,8 @@ class Saver:
             mod.embcache_mgr.load(path, self.rank)
 
     def _find_all_embed_cache_instance(self, module: EmbCacheShardedEmbeddingBagCollection, this_recur_step: int = 0):
-        if this_recur_step >= _MAX_RECURSIZE_TIMES:
-            raise RuntimeError(f"Recursion depth not greater than {_MAX_RECURSIZE_TIMES}")
+        if this_recur_step >= _MAX_RECURSIVE_TIMES:
+            raise RuntimeError(f"Recursion depth not greater than {_MAX_RECURSIVE_TIMES}")
         for ind, (_, child) in enumerate(module.named_children()):
             if ind >= _MAX_LOOP_TIMES:
                 raise RuntimeError(f"Len of module children should not be greater than {_MAX_LOOP_TIMES}")

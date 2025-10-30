@@ -14,14 +14,13 @@ import torch
 from hybrid_torchrec.constants import (
     MAX_EMBEDDINGS_DIM,
     MAX_NUM_EMBEDDINGS,
-    EMBEDDINGS_DIM_ALIGNMENT,
+    MAX_NUM_TABLES
 )
 from hybrid_torchrec.modules.hash_embeddingbag import (
     reorder_inverse_indices,
     process_pooled_embeddings,
     is_valid_feat_name,
     check_embedding_config_valid,
-    HybridHashTable,
     HashEmbeddingBag,
     HashEmbeddingBagConfig,
     HashEmbeddingBagCollection
@@ -252,6 +251,18 @@ class TestEmbeddingConfigValid:
             )
             check_embedding_config_valid(config)
 
+    @staticmethod
+    def test_need_pos_validation():
+        """测试need_pos参数检查"""
+        with pytest.raises(ValueError, match="only support False"):
+            config = HashEmbeddingBagConfig(
+                embedding_dim=8,
+                num_embeddings=100,
+                feature_names=["feat"],
+                need_pos=True,  # 不支持False参数场景
+            )
+            check_embedding_config_valid(config)
+
 
 class TestHashEmbeddingBagCollection:
     # 测试用例
@@ -313,17 +324,64 @@ class TestHashEmbeddingBagCollection:
 
         # 表名相同
         with pytest.raises(ValueError, match="Duplicate table name"):
-            model = HashEmbeddingBagCollection(
+            _ = HashEmbeddingBagCollection(
                 tables=[config1, config3],
                 is_weighted=False,
                 device="cpu"
             )
-        # device不支持
-        with pytest.raises(NotImplementedError, match="not implemented"):
-            model = HashEmbeddingBagCollection(
-                tables=[config1, config2],
+
+    @staticmethod
+    def test_invalid_emb_config_params():
+        """测试HashEmbeddingBagCollection参数检查"""
+        def _create_table_configs(table_num: int):
+            return [HashEmbeddingBagConfig(
+                name=f"table{i}",
+                embedding_dim=8,
+                num_embeddings=400,
+                feature_names=["feature1"],
+                data_type=DataType.FP32,
+                pooling=PoolingType.SUM
+            ) for i in range(table_num)]
+
+        with pytest.raises(ValueError, match=f"{MAX_NUM_TABLES}"):
+            invalid_config_num = MAX_NUM_TABLES + 1
+            # tables列表长度超过上限
+            _ = HashEmbeddingBagCollection(
+                tables=_create_table_configs(invalid_config_num),
                 is_weighted=False,
-                device="dpu"
+                device="cpu"
+            )
+        with pytest.raises(ValueError, match="must be False"):
+            _ = HashEmbeddingBagCollection(
+                tables=_create_table_configs(1),
+                is_weighted=True,  # 不支持True
+                device="cpu"
+            )
+        with pytest.raises(ValueError, match="must be a list"):
+            _ = HashEmbeddingBagCollection(
+                tables="param is not list object",  # 参数类型错误
+                is_weighted=False,
+                device="cpu"
+            )
+        with pytest.raises(ValueError, match="HashEmbeddingBagConfig"):
+            tables = _create_table_configs(1)
+            tables.append("str")
+            _ = HashEmbeddingBagCollection(
+                tables=tables,  # 列表中不支持的元素类型
+                is_weighted=False,
+                device="cpu"
+            )
+        with pytest.raises(ValueError, match="device type or value is invalid"):
+            _ = HashEmbeddingBagCollection(
+                tables=_create_table_configs(1),
+                is_weighted=False,
+                device="cpu2"  # 不支持的值
+            )
+        with pytest.raises(ValueError, match="device type or value is invalid"):
+            _ = HashEmbeddingBagCollection(
+                tables=_create_table_configs(1),
+                is_weighted=False,
+                device=0  # 不支持的参数类型
             )
 
     @staticmethod

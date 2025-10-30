@@ -7,7 +7,7 @@
 # LICENSE file in the root directory of this source tree.
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -18,7 +18,9 @@ from hybrid_torchrec.constants import (
     MAX_EMBEDDINGS_DIM,
     MAX_NUM_EMBEDDINGS,
     EMBEDDINGS_DIM_ALIGNMENT,
+    MAX_NUM_TABLES,
 )
+from hybrid_torchrec.utils import check
 from torchrec.modules.embedding_configs import (
     DataType,
     EmbeddingBagConfig,
@@ -96,9 +98,10 @@ def is_valid_feat_name(feat_name):
 
 
 def check_embedding_config_valid(config: HashEmbeddingBagConfig):
+    check(config.need_pos is False, "the attribute 'need_pos' of embedding config only support False value.")
     if config.embedding_dim % EMBEDDINGS_DIM_ALIGNMENT != 0:
         raise ValueError(
-            f"The embedding dim should be a multiple of 8, but is {config.embedding_dim}"
+            f"The embedding dim should be a multiple of {EMBEDDINGS_DIM_ALIGNMENT}, but is {config.embedding_dim}"
         )
     if (
         config.embedding_dim < EMBEDDINGS_DIM_ALIGNMENT
@@ -196,13 +199,28 @@ class HybridHashTable(torch.nn.Module):
         return values
 
 
+def _check_create_table_params(device, is_weighted, tables):
+    check(isinstance(is_weighted, bool) and is_weighted is False,
+          "param 'is_weighted' must be boolean and value must be False")
+    check(isinstance(tables, list), "param 'tables' must be a list of HashEmbeddingBagConfig objects")
+    check(len(tables) <= MAX_NUM_TABLES,
+          f"length of 'tables' must be less than or equal to {MAX_NUM_TABLES}, but got:{len(tables)}")
+    check(all([isinstance(item, (HashEmbeddingBagConfig, EmbeddingBagConfig)) for item in tables]),
+          "all elements in param 'tables' must be a HashEmbeddingBagConfig or EmbeddingBagConfig object")
+    check(device is None or (isinstance(device, str) and device in HYBRID_SUPPORT_DEVICE)
+          or (isinstance(device, torch.device) and device.type in HYBRID_SUPPORT_DEVICE),
+          f"device type or value is invalid, the value or torch.device.type muse be in:"
+          f" {HYBRID_SUPPORT_DEVICE} when device is not None")
+
+
 class HashEmbeddingBagCollection(EmbeddingBagCollectionInterface):
     def __init__(
         self,
         tables: List[HashEmbeddingBagConfig],
         is_weighted: bool = False,
-        device: Optional[torch.device] = None,
+        device: Optional[Union[str, torch.device]] = None,
     ) -> None:
+        _check_create_table_params(device, is_weighted, tables)
         super().__init__()
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
         self._is_weighted = is_weighted
@@ -212,7 +230,6 @@ class HashEmbeddingBagCollection(EmbeddingBagCollectionInterface):
         self._device: torch.device = (
             device if device is not None else torch.device("cpu")
         )
-
         table_names = set()
         for embedding_config in tables:
             check_embedding_config_valid(embedding_config)
@@ -220,23 +237,10 @@ class HashEmbeddingBagCollection(EmbeddingBagCollectionInterface):
             if embedding_config.name in table_names:
                 raise ValueError(f"Duplicate table name {embedding_config.name}")
             table_names.add(embedding_config.name)
-            dtype = (
-                torch.float32
-                if embedding_config.data_type == DataType.FP32
-                else torch.float16
+            self.embedding_bags[embedding_config.name] = HybridHashTable(
+                config=embedding_config,
+                device=self._device,
             )
-            is_hybrid_device = (
-                isinstance(device, str) and device in HYBRID_SUPPORT_DEVICE
-            ) or (hasattr(device, "type") and device.type in HYBRID_SUPPORT_DEVICE)
-            if is_hybrid_device:
-                self.embedding_bags[embedding_config.name] = HybridHashTable(
-                    config=embedding_config,
-                    device=self._device,
-                )
-            else:
-                raise NotImplementedError(
-                    f"HashEmbeddingBagCollection for {device} is not implemented, the device is {device}"
-                )
 
             if not embedding_config.feature_names:
                 embedding_config.feature_names = [embedding_config.name]
