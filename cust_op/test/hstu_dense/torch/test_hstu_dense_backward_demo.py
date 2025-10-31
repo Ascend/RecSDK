@@ -225,7 +225,7 @@ class TestHstuJaggedDemo:
 
 
     def execute(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type,
-                repeat_offset):
+                repeat_offset=False):
         grad, q, k, v, bias, mask, max_seq_len, seq_offset = jagged_data_gen(
             batch_size, max_seq_len, head_num, head_dim, mask_type, data_type, repeat_offset)
 
