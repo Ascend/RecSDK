@@ -26,7 +26,7 @@ from hybrid_torchrec.distributed.embeddingbag import (
     _create_mean_pooling_divisor,
     MeanPoolingConfig,
 )
-from hybrid_torchrec.constants import MAX_WORLD_SIZE, MAX_BATCH_SIZE, MAX_CACHINE_MEM_SIZE
+from hybrid_torchrec.constants import MAX_CACHINE_MEM_SIZE
 from hybrid_torchrec.modules.ids_process import IdsMapper
 from hybrid_torchrec.modules.ids_process import HashMapBase
 from hybrid_torchrec.distributed.sharding.post_input_dist import (
@@ -36,12 +36,12 @@ from hybrid_torchrec.distributed.sharding.post_input_dist import (
 from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
     KeyedJaggedTensorWithLookHelper,
 )
+from hybrid_torchrec.utils import check
 from torchrec_embcache.distributed.configs import (
     EmbCacheEmbeddingBagConfig,
-    check_embedding_config,
-    check_embedding_optimizer,
-    check_multi_hot_sizes,
-    check_valid_value
+    check_valid_value,
+    check_create_table_params,
+    check_multi_hot_sizes
 )
 from torchrec_embcache.distributed.sharding.rw_sharding import (
     EmbCacheRwPooledEmbeddingSharding,
@@ -60,7 +60,6 @@ from torchrec.modules.embedding_modules import EmbeddingBagCollection
 from torchrec.distributed.model_parallel import (
     DistributedDataParallel,
 )
-from torchrec.modules.embedding_configs import EmbeddingBagConfig
 from torchrec.sparse.jagged_tensor import KeyedTensor, KeyedJaggedTensor
 from torchrec.distributed.embedding_types import (
     ShardingType,
@@ -160,7 +159,7 @@ class EmbCacheHashTable(torch.nn.Module):
     ):
         raw_device = input_feat.device
         ids_host = input_feat.cpu()
-        index_of_ids, _, _ = self.ids2slot_dict(ids_host, high_precison=True)
+        index_of_ids, _, _ = self.ids2slot_dict(ids_host)
         index_of_ids = index_of_ids.to(raw_device)
         values = self.vector_table(index_of_ids, offsets)
         return values
@@ -225,7 +224,7 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
 
     def __init__(
         self,
-        tables: List[EmbeddingBagConfig],
+        tables: List[EmbCacheEmbeddingBagConfig | EmbeddingBagConfig],
         world_size: int,
         batch_size: int,
         multi_hot_sizes: List[int], 
@@ -234,21 +233,11 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         device: Optional[torch.device] = None,
         embedding_optimizer_cls: Type[torch.optim.Optimizer] = torch.optim.Adagrad,
     ) -> None:
-        for config in tables:
-            check_embedding_config(config)
-
-        check_embedding_optimizer(embedding_optimizer_cls, tables)
         check_multi_hot_sizes(multi_hot_sizes, tables)
-        check_valid_value(
-            world_size > 0 and world_size <= MAX_WORLD_SIZE,
-            "world_size must be greater than 0 and less than or equal to MAX_WORLD_SIZE",
-        )
-        check_valid_value(
-            batch_size > 0 and batch_size <= MAX_BATCH_SIZE,
-            "batch_size must be greater than 0 and less than or equal to MAX_BATCH_SIZE",
-        )
-        check_valid_value(multi_hot_sizes is not None, "multi_hot_sizes must be not None")
-        check_valid_value(not is_weighted, "is_weighted must be False")
+        check(all([isinstance(item, (EmbCacheEmbeddingBagConfig, EmbeddingBagConfig)) for item in tables]),
+              "all element type in 'tables' must be EmbCacheEmbeddingBagConfig or EmbeddingBagConfig object")
+        check_create_table_params(batch_size, embedding_optimizer_cls, multi_hot_sizes, tables, world_size)
+        check_valid_value(isinstance(is_weighted, bool) and not is_weighted, "is_weighted must be False")
 
         super().__init__(tables, is_weighted, device)
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
@@ -287,12 +276,6 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
             if embedding_config.name in table_names:
                 raise ValueError(f"Duplicate table name {embedding_config.name}")
             table_names.add(embedding_config.name)
-            dtype = (
-                torch.float32
-                if embedding_config.data_type == DataType.FP32
-                else torch.float16
-            )
-
             self.embedding_bags[embedding_config.name] = EmbCacheHashTable(
                 config=embedding_config, device=self._device
             )

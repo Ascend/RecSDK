@@ -17,7 +17,9 @@ from hybrid_torchrec.constants import (
     MAX_EMBEDDINGS_DIM,
     MAX_NUM_EMBEDDINGS,
     MAX_MULTI_HOT_SIZE,
-    MAX_NUM_TABLES
+    MAX_NUM_TABLES,
+    MAX_WORLD_SIZE,
+    MAX_BATCH_SIZE
 )
 
 
@@ -69,23 +71,25 @@ def check_valid_value(is_valid: bool, message: str):
         raise ValueError(message)
 
 
-def check_embedding_optimizer(optimizer: Type[torch.optim.Optimizer], configs: List[EmbeddingBagConfig]):
+def check_embedding_optimizer(optimizer: Type[torch.optim.Optimizer]):
     if optimizer not in [torch.optim.Adagrad, torch.optim.Adam, torch.optim.SGD]:
         raise ValueError(f"The optimizer should be one of [torch.optim.Adagrad, torch.optim.Adam, torch.optim.SGD]")
 
 
-def check_multi_hot_sizes(multi_hot_sizes: List[int], configs: List[EmbeddingBagConfig]):
+def check_multi_hot_sizes(multi_hot_sizes: List[int], tables: List[EmbeddingBagConfig | EmbeddingConfig]):
     if not isinstance(multi_hot_sizes, list):
-        raise ValueError(f"The multi_hot_sizes should be a list")
-    if len(configs) > MAX_NUM_TABLES:
-        raise ValueError(f"The number of configs should be less than {MAX_NUM_TABLES}")
-    if len(multi_hot_sizes) != len(configs):
-        raise ValueError(f"The multi_hot_sizes length should be equal to the number of configs")
+        raise ValueError(f"The 'multi_hot_sizes' should be a list")
+    if not isinstance(tables, list):
+        raise ValueError(f"The 'tables' should be a list")
+    if len(tables) <= 0 or len(tables) > MAX_NUM_TABLES:
+        raise ValueError(f"The length of tables should be in range: [1, {MAX_NUM_TABLES}]")
+    if len(multi_hot_sizes) != len(tables):
+        raise ValueError(f"The multi_hot_sizes length should be equal to the length of tables")
     for hot_size in multi_hot_sizes:
-        if not isinstance(hot_size, int):
+        if not type(hot_size) is int:
             raise ValueError(f"The multi_hot_sizes should be a list of int")
         if not (1 <= hot_size <= MAX_MULTI_HOT_SIZE):
-            raise ValueError(f"The multi_hot_sizes should be in [1, {MAX_MULTI_HOT_SIZE}]")
+            raise ValueError(f"The multi_hot_sizes element value should be in [1, {MAX_MULTI_HOT_SIZE}]")
 
 
 def check_embedding_config(config: EmbeddingConfig):
@@ -116,6 +120,21 @@ def check_embedding_config(config: EmbeddingConfig):
             f"The weight_init_min should be less than weight_init_max, "
             f"but is {config.weight_init_min} >= {config.weight_init_max}"
         )
+
+
+def check_create_table_params(batch_size, embedding_optimizer_cls, multi_hot_sizes, tables, world_size):
+    for config in tables:
+        check_embedding_config(config)
+    check_embedding_optimizer(embedding_optimizer_cls)
+    check_valid_value(
+        type(world_size) is int and 0 < world_size <= MAX_WORLD_SIZE,
+        f"world_size must be greater than 0 and less than or equal to {MAX_WORLD_SIZE}",
+    )
+    check_valid_value(
+        type(batch_size) is int and 0 < batch_size <= MAX_BATCH_SIZE,
+        f"batch_size must be greater than 0 and less than or equal to {MAX_BATCH_SIZE}",
+    )
+    check_valid_value(multi_hot_sizes is not None, "multi_hot_sizes must be not None")
 
 
 @dataclass

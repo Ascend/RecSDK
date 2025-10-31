@@ -342,7 +342,12 @@ class TestHashEmbeddingBagCollection:
                 data_type=DataType.FP32,
                 pooling=PoolingType.SUM
             ) for i in range(table_num)]
-
+        with pytest.raises(ValueError, match=f"{MAX_NUM_TABLES}"):
+            _ = HashEmbeddingBagCollection(
+                tables=[],  # tables列表长度为0
+                is_weighted=False,
+                device="cpu"
+            )
         with pytest.raises(ValueError, match=f"{MAX_NUM_TABLES}"):
             invalid_config_num = MAX_NUM_TABLES + 1
             # tables列表长度超过上限
