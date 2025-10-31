@@ -203,8 +203,8 @@ def _check_create_table_params(device, is_weighted, tables):
     check(isinstance(is_weighted, bool) and is_weighted is False,
           "param 'is_weighted' must be boolean and value must be False")
     check(isinstance(tables, list), "param 'tables' must be a list of HashEmbeddingBagConfig objects")
-    check(len(tables) <= MAX_NUM_TABLES,
-          f"length of 'tables' must be less than or equal to {MAX_NUM_TABLES}, but got:{len(tables)}")
+    check(0 < len(tables) <= MAX_NUM_TABLES,
+          f"length of 'tables' must be in range:[1, {MAX_NUM_TABLES}], but got:{len(tables)}")
     check(all([isinstance(item, (HashEmbeddingBagConfig, EmbeddingBagConfig)) for item in tables]),
           "all elements in param 'tables' must be a HashEmbeddingBagConfig or EmbeddingBagConfig object")
     check(device is None or (isinstance(device, str) and device in HYBRID_SUPPORT_DEVICE)
@@ -216,7 +216,7 @@ def _check_create_table_params(device, is_weighted, tables):
 class HashEmbeddingBagCollection(EmbeddingBagCollectionInterface):
     def __init__(
         self,
-        tables: List[HashEmbeddingBagConfig],
+        tables: Union[List[HashEmbeddingBagConfig], List[EmbeddingBagConfig]],
         is_weighted: bool = False,
         device: Optional[Union[str, torch.device]] = None,
     ) -> None:

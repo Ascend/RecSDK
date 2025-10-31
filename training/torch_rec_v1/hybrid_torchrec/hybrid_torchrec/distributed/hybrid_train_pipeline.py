@@ -265,7 +265,7 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         apply_jit, 
         execute_all_batches
     ):
-        if not isinstance(pipe_n_batch, int):
+        if not type(pipe_n_batch) is int:
             raise ValueError(f"pipe_n_batch must be an int but got type: {type(pipe_n_batch)}")
 
         if pipe_n_batch <= 0 or pipe_n_batch > MAX_PIPE_N_BATCH:

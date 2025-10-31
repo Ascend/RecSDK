@@ -31,7 +31,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
     SplitTableBatchedEmbeddingBagsCodegen,
 )
 
-from hybrid_torchrec.constants import MAX_WORLD_SIZE, MAX_BATCH_SIZE, MAX_CACHINE_MEM_SIZE
+from hybrid_torchrec.constants import MAX_CACHINE_MEM_SIZE
 from hybrid_torchrec.modules.ids_process import IdsMapper
 from hybrid_torchrec.modules.ids_process import HashMapBase
 from hybrid_torchrec.distributed.sharding.post_input_dist import (
@@ -44,13 +44,11 @@ from hybrid_torchrec.distributed.sharding.sequence_sharding import (
 from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
     KeyedJaggedTensorWithLookHelper,
 )
-
+from hybrid_torchrec.utils import check
 from torchrec_embcache.distributed.configs import (
     EmbCacheEmbeddingConfig,
-    check_embedding_config,
     check_multi_hot_sizes,
-    check_embedding_optimizer,
-    check_valid_value
+    check_create_table_params
 )
 from torchrec_embcache.distributed.sharding.rw_sequence_sharding import (
     EmbCacheRwSequenceEmbeddingSharding,
@@ -194,20 +192,10 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
         device: Optional[torch.device] = None,
         embedding_optimizer_cls: Type[torch.optim.Optimizer] = torch.optim.Adagrad,
     ) -> None:
-        for config in tables:
-            check_embedding_config(config)
-
-        check_embedding_optimizer(embedding_optimizer_cls, tables)
         check_multi_hot_sizes(multi_hot_sizes, tables)
-        check_valid_value(
-            world_size > 0 and world_size <= MAX_WORLD_SIZE,
-            "world_size must be greater than 0 and less than or equal to MAX_WORLD_SIZE",
-        )
-        check_valid_value(
-            batch_size > 0 and batch_size <= MAX_BATCH_SIZE,
-            "batch_size must be greater than 0 and less than or equal to MAX_BATCH_SIZE",
-        )
-        check_valid_value(multi_hot_sizes is not None, "multi_hot_sizes must be not None")
+        check(all([isinstance(item, (EmbCacheEmbeddingConfig, EmbeddingConfig)) for item in tables]),
+              "all element type in 'tables' must be EmbCacheEmbeddingConfig or EmbeddingConfig object")
+        check_create_table_params(batch_size, embedding_optimizer_cls, multi_hot_sizes, tables, world_size)
         
         super().__init__(tables, device, need_indices)
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
