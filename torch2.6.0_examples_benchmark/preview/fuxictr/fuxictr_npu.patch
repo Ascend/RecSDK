@@ -1,5 +1,5 @@
 diff --git a/fuxictr/pytorch/models/rank_model.py b/fuxictr/pytorch/models/rank_model.py
-index 1ce33aa..1e3cb89 100644
+index 1ce33aa..ef95d20 100644
 --- a/fuxictr/pytorch/models/rank_model.py
 +++ b/fuxictr/pytorch/models/rank_model.py
 @@ -19,6 +19,7 @@
@@ -10,55 +10,57 @@ index 1ce33aa..1e3cb89 100644
  import os, sys
  import logging
  from fuxictr.pytorch.layers import FeatureEmbeddingDict
-@@ -155,13 +156,42 @@ class BaseModel(nn.Module):
+@@ -254,9 +255,42 @@ class BaseModel(nn.Module):
+             y_pred = []
+             if self._verbose > 0:
+                 data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+-            for batch_data in data_generator:
+-                return_dict = self.forward(batch_data)
+-                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
++            #prof code
++            experimental_config = torch_npu.profiler._ExperimentalConfig(
++                export_type=[
++                    torch_npu.profiler.ExportType.Text,
++                    torch_npu.profiler.ExportType.Db
++                ],
++                profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++                msprof_tx=False,
++                aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++                l2_cache=False,
++                op_attr=False,
++                data_simplification=False,
++                record_op_args=False,
++                gc_detect_threshold=None
++            )
++
++            steps = 10
++            with torch_npu.profiler.profile(
++                activities=[
++                            torch_npu.profiler.ProfilerActivity.CPU,
++                            torch_npu.profiler.ProfilerActivity.NPU
++                            ],
++                schedule=torch_npu.profiler.schedule(wait=3, warmup=3, active=1, repeat=1),
++                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
++                    record_shapes=True,
++                    profile_memory=False,
++                    with_stack=False,
++                    with_modules=False,
++                    with_flops=False,
++                experimental_config=experimental_config) as prof:
++                print("profiling start...")
++            for step in range(steps):
++                for batch_data in data_generator:
++                    return_dict = self.forward(batch_data)
++                    y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
++                    prof.step()
+             y_pred = np.array(y_pred, np.float64)
+             return y_pred
  
-         logging.info("Start training: {} batches/epoch".format(self._steps_per_epoch))
-         logging.info("************ Epoch=1 start ************")
-+        experimental_config = torch_npu.profiler._ExperimentalConfig(
-+            export_type=[
-+                torch_npu.profiler.ExportType.Text,
-+                torch_npu.profiler.ExportType.Db
-+            ],
-+            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
-+            msprof_tx=False,
-+            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
-+            l2_cache=False,
-+            op_attr=False,
-+            data_simplification=False,
-+            record_op_args=False
-+        )
-+        prof = torch_npu.profiler.profile(
-+            activities=[
-+                        torch_npu.profiler.ProfilerActivity.CPU,
-+                        torch_npu.profiler.ProfilerActivity.NPU
-+                        ],
-+            schedule=torch_npu.profiler.schedule(wait=1, warmup=1, active=7, repeat=1),
-+            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
-+                record_shapes=False,
-+                profile_memory=False,
-+                with_stack=False,
-+                with_modules=False,
-+                with_flops=False,
-+            experimental_config=experimental_config)
-+        prof.start()
-         for epoch in range(epochs):
-             self._epoch_index = epoch
-             self.train_epoch(data_generator)
-+            prof.step()
-             if self._stop_training:
-                 break
-             else:
-                 logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
-+        prof.stop()
-         logging.info("Training finished.")
-         logging.info("Load best model: {}".format(self.checkpoint))
-         self.load_weights(self.checkpoint)
 diff --git a/fuxictr/pytorch/torch_utils.py b/fuxictr/pytorch/torch_utils.py
-index 4b220ce..4066fe5 100644
+index 4b220ce..181c332 100644
 --- a/fuxictr/pytorch/torch_utils.py
 +++ b/fuxictr/pytorch/torch_utils.py
-@@ -20,6 +20,7 @@
- import sys
+@@ -20,6 +20,7 @@ import sys
  import os
  import numpy as np
  import torch
@@ -69,11 +71,11 @@ index 4b220ce..4066fe5 100644
 @@ -35,8 +36,8 @@ def seed_everything(seed=1029):
      torch.backends.cudnn.deterministic = True
  
- def get_device(npu=-1):
+ def get_device(gpu=-1):
 -    if gpu >= 0 and torch.cuda.is_available():
 -        device = torch.device("cuda:" + str(gpu))
-+    if npu >= 0 and torch.npu.is_available():
++    if gpu >= 0:
 +        device = torch.device("npu")
      else:
-         device = torch.device("cpu")
+         device = torch.device("cpu")   
      return device
