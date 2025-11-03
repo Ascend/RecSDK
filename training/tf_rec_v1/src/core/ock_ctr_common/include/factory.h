@@ -56,7 +56,7 @@ public:
         int result = 0;
         uintptr_t factory = 0;
         /* dynamic load function */
-        if ((result = OckCtrCommonDef::CreateFactory(&factory)) == 0) {
+        if ((result = OckCtrCommonDef::CreateFactory(factory)) == 0) {
             out.reset(reinterpret_cast<Factory*>(factory));
         }
         return result;
