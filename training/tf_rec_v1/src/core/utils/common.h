@@ -45,7 +45,7 @@ namespace MxRec {
 #define MGMT_CPY_THREADS 4
 #define PROFILING
 using namespace tensorflow;
-extern ock::ctr::FactoryPtr factory;
+ock::ctr::FactoryPtr& GetFactory();
 constexpr int TRAIN_CHANNEL_ID = 0;
 constexpr int EVAL_CHANNEL_ID = 1;
 
