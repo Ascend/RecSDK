@@ -92,7 +92,7 @@ bool HybridMgmt::Initialize(RankInfo rankInfo, const vector<EmbInfo>& embInfos, 
     }
 
     // create factory for fastUnique and embeddingCache
-    int result = ock::ctr::Factory::Create(factory);
+    int result = ock::ctr::Factory::Create(GetFactory());
     if (result != 0) {
         auto error = Error(ModuleName::M_OCK_CTR, ErrorType::CONSTRUCT_ERROR,
                            StringFormat("Create fast factory failed, error code: %d.", result));
@@ -1521,8 +1521,8 @@ void HybridMgmt::InitDataPipelineForL3Storage(const string& embName, int extEmbe
 
 void HybridMgmt::InitEmbeddingCache(const vector<EmbInfo>& embInfos)
 {
-    factory->SetExternalLogFuncInner(CTRLog);
-    factory->CreateEmbCacheManager(embCache);
+    GetFactory()->SetExternalLogFuncInner(CTRLog);
+    GetFactory()->CreateEmbCacheManager(embCache);
     EmbeddingMgmt::Instance()->SetEmbCacheForEmbTable(embCache);
     EmbeddingMgmt::Instance()->SetHDTransferForEmbTable(hdTransfer);
 

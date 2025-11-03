@@ -93,10 +93,10 @@ TEST_F(EmbeddingDDRTest, TestSaveShouldCreateFileWhenSaveDeltaIsFalse)
 {
     const string tableName = "test1";
     shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
-    int result = ock::ctr::Factory::Create(factory);
+    int result = ock::ctr::Factory::Create(GetFactory());
     EXPECT_EQ(result, 0);
     auto embCache = std::shared_ptr<EmbCache::EmbCacheManager>();
-    factory->CreateEmbCacheManager(embCache);
+    GetFactory()->CreateEmbCacheManager(embCache);
     table->SetEmbCache(embCache);
 
     stringstream savePathTwo;
@@ -118,7 +118,7 @@ TEST_F(EmbeddingDDRTest, TestSaveShouldCreateFileWhenSaveDeltaIsTrue)
 {
     const string tableName = "test1";
     shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
-    factory->CreateEmbCacheManager(table->embCache_);
+    GetFactory()->CreateEmbCacheManager(table->embCache_);
 
     stringstream savePathOne;
     savePathOne << "test_ddr/SaveDeltaTrue" << rankInfo_.rankId;
@@ -139,7 +139,7 @@ TEST_F(EmbeddingDDRTest, TestLoadShouldThrowOckErrorWhenEmbCacheNoData)
 {
     const string tableName = "test1";
     shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
-    factory->CreateEmbCacheManager(table->embCache_);
+    GetFactory()->CreateEmbCacheManager(table->embCache_);
     stringstream savePathTwo;
     savePathTwo << "test_ddr/SaveDeltaFalse" << rankInfo_.rankId;
 
@@ -377,7 +377,7 @@ TEST_F(EmbeddingDDRTest, TestCapacity)
 TEST_F(EmbeddingDDRTest, TestSyncLatestEmbeddingShouldThrowOckErrorWhenEmbCacheNoData)
 {
     shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
-    factory->CreateEmbCacheManager(table->embCache_);
+    GetFactory()->CreateEmbCacheManager(table->embCache_);
     shared_ptr<HDTransfer> hdTransfer = std::make_shared<HDTransfer>();
     table->SetHDTransfer(hdTransfer.get());
     EXPECT_THROW(table->SyncLatestEmbedding(1), std::invalid_argument);
@@ -387,14 +387,14 @@ TEST_F(EmbeddingDDRTest, TestSyncLatestEmbeddingShouldThrowOckErrorWhenEmbCacheN
 TEST_F(EmbeddingDDRTest, TestBackUpTrainStatusShouldThrowError)
 {
     shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
-    factory->CreateEmbCacheManager(table->embCache_);
+    GetFactory()->CreateEmbCacheManager(table->embCache_);
     EXPECT_THROW(table->BackUpTrainStatus(), std::runtime_error);
 }
 
 TEST_F(EmbeddingDDRTest, TestRecoverTrainStatusShouldThrowError)
 {
     shared_ptr<EmbeddingDDR> table = std::make_shared<EmbeddingDDR>(embInfo_, rankInfo_, 0);
-    factory->CreateEmbCacheManager(table->embCache_);
+    GetFactory()->CreateEmbCacheManager(table->embCache_);
     EXPECT_THROW(table->RecoverTrainStatus(), std::runtime_error);
 }
 

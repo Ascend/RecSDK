@@ -30,43 +30,43 @@ namespace MxRec {
 
     class SSDEngine : public L3Storage {
     public:
-        bool IsTableExist(const string &tableName);
+        bool IsTableExist(const string &tableName) override;
 
-        bool IsKeyExist(const string &tableName, emb_cache_key_t key);
+        bool IsKeyExist(const string &tableName, emb_cache_key_t key) override;
 
-        void CreateTable(const string &tableName, vector<string> savePaths, uint64_t maxTableSize);
+        void CreateTable(const string &tableName, vector<string> savePaths, uint64_t maxTableSize) override;
 
-        int64_t GetTableAvailableSpace(const string &tableName);
+        int64_t GetTableAvailableSpace(const string &tableName) override;
 
         void InsertEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys,
                               vector<vector<float>> &embeddings);
 
-        void DeleteEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys);
+        void DeleteEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys) override;
 
-        vector<vector<float>> FetchEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys);
+        vector<vector<float>> FetchEmbeddings(const string &tableName, vector<emb_cache_key_t> &keys) override;
 
-        void Save(int step, const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap);
+        void Save(int step, const map<string, map<emb_key_t, KeyInfo>>& keyInfoMap) override;
 
-        void Save(int step);
+        void Save(int step) override;
 
-        void Load(const string &tableName, vector<string> savePaths, uint64_t maxTableSize, int step);
+        void Load(const string &tableName, vector<string> savePaths, uint64_t maxTableSize, int step) override;
 
         void Start() override;
 
-        void Stop();
+        void Stop() override;
 
         void SetCompactPeriod(chrono::seconds seconds);
 
         void SetCompactThreshold(double threshold);
 
-        int64_t GetTableUsage(const string& tableName);
+        int64_t GetTableUsage(const string& tableName) override;
 
         void InsertEmbeddingsByAddr(const string &tableName, vector<emb_cache_key_t> &keys,
-                                    vector<float*> &embeddingsAddr, uint64_t extEmbeddingSize);
+                                    vector<float*> &embeddingsAddr, uint64_t extEmbeddingSize) override;
 
         static void CheckTableExist(bool isThrowError, const string& tableName);
 
-        vector<std::pair<string, vector<emb_cache_key_t>>> ExportTableKey();
+        vector<std::pair<string, vector<emb_cache_key_t>>> ExportTableKey() override;
 
     private:
         void CheckSSDEngineIsRunning() const;

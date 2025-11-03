@@ -452,7 +452,7 @@ void Table::Compact(bool fullCompact, const map<emb_key_t, KeyInfo>& keyInfo)
         vector<emb_cache_key_t> deltaValidKeys;
         vector<vector<float>> deltaValidEmbs;
         for (size_t i = 0; i < validKeys.size(); ++i) {
-            if (keyInfo.count(validKeys.at(i))) {
+            if (keyInfo.count(validKeys.at(i)) != 0) {
                 deltaValidKeys.emplace_back(validKeys.at(i));
                 deltaValidEmbs.emplace_back(validEmbs.at(i));
             }

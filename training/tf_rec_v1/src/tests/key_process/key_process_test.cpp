@@ -341,7 +341,7 @@ TEST_F(KeyProcessTest, Initialize)
         ASSERT_NE(process.embInfos.find(info.name), process.embInfos.end());
     }
 
-    ock::ctr::Factory::Create(factory);
+    ock::ctr::Factory::Create(GetFactory());
 }
 
 TEST_F(KeyProcessTest, AttributeGetAndSetTest)
@@ -965,9 +965,9 @@ TEST_F(KeyProcessTest, GetUniqueConfig)
 
 TEST_F(KeyProcessTest, InitializeUnique)
 {
-    ASSERT_EQ(ock::ctr::Factory::Create(factory), -1);
+    ASSERT_EQ(ock::ctr::Factory::Create(GetFactory()), -1);
     ock::ctr::UniquePtr unique;
-    ASSERT_EQ(factory->CreateUnique(unique), 0);
+    ASSERT_EQ(GetFactory()->CreateUnique(unique), 0);
 
     PrepareBatch();
 
@@ -1013,7 +1013,7 @@ TEST_F(KeyProcessTest, ProcessBatchWithFastUnique)
         UniqueInfo uniqueInfo;
         batch = process.GetBatchData(channel, id); // get batch data from SingletonQueue<EmbBatchT>
 
-        ASSERT_EQ(factory->CreateUnique(unique), ock::ctr::H_OK);
+        ASSERT_EQ(GetFactory()->CreateUnique(unique), ock::ctr::H_OK);
         ock::ctr::UniqueConf uniqueConf;
         size_t preBatchSize = 0;
         bool uniqueInitialize = false;

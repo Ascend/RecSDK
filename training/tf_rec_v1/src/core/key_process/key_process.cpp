@@ -244,7 +244,7 @@ void KeyProcess::KeyProcessTaskWithFastUnique(int channel, int threadId)
     size_t preBatchSize = 0;
     bool uniqueInitialize = false;
 
-    int ret = factory->CreateUnique(unique);
+    int ret = GetFactory()->CreateUnique(unique);
     if (ret != ock::ctr::H_OK) {
         throw runtime_error(Logger::Format("create fast unique failed, error code:{}", ret));
     }
