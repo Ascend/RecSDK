@@ -57,7 +57,7 @@ struct RmaShmData {
     uint64_t readyLen = 0;         // data length(B) has been written to queue
 };
 
-int64_t GetShmAddr(std::string& name, int rankId, int capacity);
+int64_t GetShmAddr(std::string& name, int deviceId, int capacity);
 void *GetHostAddr(std::string& name);
 void FreeShmAddr(uint32_t deviceId);
 RmaShmData *ShmDequeuePre(RmaShmHeader* queHeader);

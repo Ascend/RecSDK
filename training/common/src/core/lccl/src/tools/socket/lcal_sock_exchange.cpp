@@ -142,11 +142,13 @@ int LcalSockExchange::GetNodeNum()
     int nodeNum;
     if (IsServer()) {
         for (int i = 1; i < rankSize_; ++i) {
-            if (Recv(clientFds_[i], const_cast<__caddr_t>(uuid.data()), uuid.size(), 0) <= 0) {
+            std::string tmpUuid;
+            tmpUuid.resize(uuid.size());
+            if (Recv(clientFds_[i], tmpUuid.data(), tmpUuid.size(), 0) <= 0) {
                 ASD_LOG(ERROR) << "Server side recv rank " << i << " buffer failed";
                 return LCAL_ERROR_INTERNAL;
             }
-            uuidSet.insert(uuid);
+            uuidSet.insert(tmpUuid);
         }
         nodeNum = static_cast<int>(uuidSet.size());
         for (int i = 1; i < rankSize_; ++i) {
