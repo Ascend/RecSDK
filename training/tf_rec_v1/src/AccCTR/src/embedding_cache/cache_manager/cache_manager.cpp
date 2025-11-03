@@ -24,14 +24,8 @@ using namespace EmbCache;
 using namespace ock;
 using namespace ock::ctr;
 
-namespace {
-    int64_t g_invalid_key = -1;
-}
-
-int64_t EmbCache::GetInvalidKey()
-{
-    return g_invalid_key;
-}
+// Calling a global function to obtain a global variable can lead to performance issues.
+int64_t EmbCache::INVALID_KEY = -1;
 
 int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
                                              const std::vector<InitializerInfo>& initializerInfos, int64_t invalidKey,
@@ -91,7 +85,7 @@ int EmbCacheManagerImpl::CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
     }
 
     embCacheInfos.insert({embCacheInfo.tableName, embCacheInfo});
-    g_invalid_key = invalidKey;
+    INVALID_KEY = invalidKey;
     return H_OK;
 }
 
@@ -176,7 +170,7 @@ int EmbCacheManagerImpl::RemoveEmbsByKeys(const std::string& tableName, const st
     const auto& om = offsetMappers.find(tableName);
     const auto& embTable = embTables.find(tableName);
     for (auto key : keys) {
-        if (key == static_cast<uint64_t>(GetInvalidKey())) {
+        if (key == static_cast<uint64_t>(INVALID_KEY)) {
             ExternalLogger::PrintLog(LogLevel::WARN, "Try to evict invalid key");
             continue;
         }
