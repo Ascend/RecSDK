@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include "hstu_common.h"
+#include "torch/types.h"
 
 namespace hstu {
 at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
@@ -53,8 +54,7 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
     const auto _pageOffsets = at::Tensor();
     const auto _pageIds = at::Tensor();
     const auto _lastPageLen = at::Tensor();
-    const auto _numContext = at::zeros_like(acSeqOffset);
-    const auto _numTarget = at::zeros_like(acSeqOffset);
+    const auto _zerosCtxTar = at::zeros({acSeqOffset.size(0) - 1}, acSeqOffset.options());
     const auto _actTargetGroupSize = int();
 
     const char *layout = "jagged";
@@ -73,8 +73,8 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
                  _pageOffsets,
                  _pageIds,
                  _lastPageLen,
-                 _numContext,
-                 _numTarget,
+                 _zerosCtxTar,
+                 _zerosCtxTar,
                  maskType,
                  maxSeqLen,
                  maxSeqLenK,
