@@ -94,5 +94,17 @@ if [ -z "${arch}" ]; then
     exit 1
 fi
 
+# 只允许字母/数字/点/下划线/连字符（覆盖常见 os_id 与 arch）
+SAFE_REGEX='^[A-Za-z0-9._-]+$'
+if ! [[ "$os_id" =~ $SAFE_REGEX ]]; then
+    echo "ERROR: invalid os_id: $os_id" >&2
+    exit 1
+fi
+if ! [[ "$arch" =~ $SAFE_REGEX ]]; then
+    echo "ERROR: invalid arch: $arch" >&2
+    exit 1
+fi
+
 # 安装编译成功的算子包
-bash ./build_out/custom_opp_${os_id}_${arch}.run
+installer="./build_out/custom_opp_${os_id}_${arch}.run"
+bash -- "$installer"
