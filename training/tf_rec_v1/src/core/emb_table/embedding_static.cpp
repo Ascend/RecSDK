@@ -256,7 +256,7 @@ void EmbeddingStatic::BackUpTrainStatus()
 
 void EmbeddingStatic::RecoverTrainStatus()
 {
-    if (keyOffsetMapBackUp.size()!=0) {
+    if (keyOffsetMapBackUp.size() != 0) {
         keyOffsetMap = keyOffsetMapBackUp;
         keyOffsetMapBackUp.clear();
     }

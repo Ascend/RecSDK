@@ -39,14 +39,14 @@ public:
 
     ~EmbeddingDynamic() override;
 
-    virtual void Key2Offset(std::vector<emb_key_t>& keys, int channel) override;
+    void Key2Offset(std::vector<emb_key_t>& keys, int channel) override;
 
-    virtual void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel);
+    void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel) override;
 
-    virtual int64_t capacity() const override;
+    int64_t capacity() const override;
 
     void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
-              const vector<string>& warmStartTables);
+              const vector<string>& warmStartTables) override;
 
     void Save(const string& savePath, const int pythonBatchId, bool saveDelta,
             const map<emb_key_t, KeyInfo>& keyInfo) override;
