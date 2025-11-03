@@ -139,8 +139,8 @@ void HdfsFileSystem::WriteEmbedding(const string& filePath, const int& embedding
             throw std::runtime_error(error.ToString());
         }
 
-        tSize res = hdfs->Write(fs, file, row.data(), embeddingSize * sizeof(float));
-        if (res == -1) {
+        tSize writeResult = hdfs->Write(fs, file, row.data(), embeddingSize * sizeof(float));
+        if (writeResult == -1) {
             hdfs->CloseFile(fs, file);
             auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::HDFS_ERROR,
                                StringFormat("Error: An error occurred while writing file: %s.", filePath.c_str()));
@@ -148,10 +148,10 @@ void HdfsFileSystem::WriteEmbedding(const string& filePath, const int& embedding
             throw std::runtime_error(error.ToString());
         }
 
-        if (res != embeddingSize * sizeof(float)) {
+        if (writeResult != embeddingSize * sizeof(float)) {
             hdfs->CloseFile(fs, file);
             string errMsg = StringFormat("Error: Expected to write %d bytes, but actually write %d bytes to file %s.",
-                                         embeddingSize * sizeof(float), res, filePath.c_str());
+                                         embeddingSize * sizeof(float), writeResult, filePath.c_str());
             auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::HDFS_ERROR, errMsg);
             LOG_ERROR(error.ToString());
             throw std::runtime_error(error.ToString());
@@ -244,8 +244,8 @@ void HdfsFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& em
             throw std::runtime_error(error.ToString());
         }
 
-        tSize res = hdfs->Read(fs, file, row.data(), embedSizeInfo.embeddingSize * sizeof(float));
-        CheckHdfsReadRet(file, res, embedSizeInfo.embeddingSize * sizeof(float), filePath);
+        tSize readResult = hdfs->Read(fs, file, row.data(), embedSizeInfo.embeddingSize * sizeof(float));
+        CheckHdfsReadRet(file, readResult, embedSizeInfo.embeddingSize * sizeof(float), filePath);
 
         aclError ret = aclrtMemcpy(floatPtr + i * embedSizeInfo.extendEmbSize,
                                    embedSizeInfo.embeddingSize * sizeof(float),

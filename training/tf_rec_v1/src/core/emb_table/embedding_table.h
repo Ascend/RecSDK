@@ -68,7 +68,7 @@ public:
 
     virtual void EvictInitDeviceEmb();
 
-    size_t GetMaxOffset();
+    size_t GetMaxOffset() const;
 
     virtual int64_t capacity() const;
 
