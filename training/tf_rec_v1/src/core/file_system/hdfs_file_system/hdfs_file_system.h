@@ -29,7 +29,7 @@ namespace MxRec {
         HdfsFileSystem(const HdfsFileSystem&) = delete;
         HdfsFileSystem& operator=(const HdfsFileSystem&) = delete;
 
-        ~HdfsFileSystem()
+        ~HdfsFileSystem() override
         {
             hdfs->Disconnect(fs);
         }
@@ -46,7 +46,7 @@ namespace MxRec {
         ssize_t Read(const string& filePath, char* fileContent, size_t datasetSize) override;
         ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, int64_t contentOffset,
                      vector<int64_t> offsetArr, const size_t& embeddingSize) override;
-        void ReadEmbedding(const string& filePath, EmbeddingSizeInfo& embedSizeInfo, int64_t addressArr, int deviceId,
+        void ReadEmbedding(const string& filePath, EmbeddingSizeInfo& embedSizeInfo, int64_t firstAddress, int deviceId,
                            vector <int64_t> offsetArr) override;
 
         hdfsFS ConnectHdfs();

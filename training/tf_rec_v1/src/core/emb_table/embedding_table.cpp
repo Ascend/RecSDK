@@ -48,7 +48,7 @@ void EmbeddingTable::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
 {
 }
 
-size_t EmbeddingTable::GetMaxOffset()
+size_t EmbeddingTable::GetMaxOffset() const
 {
     return maxOffset;
 }
@@ -141,12 +141,12 @@ vector<int64_t> EmbeddingTable::GetLoadOffset()
     return loadOffset;
 }
 
-void EmbeddingTable::Load(const string& filePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
+void EmbeddingTable::Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
                           const vector<string>& warmStartTables)
 {
 }
 
-void EmbeddingTable::Save(const string& filePath, const int pythonBatchId, bool saveDelta,
+void EmbeddingTable::Save(const string& savePath, const int pythonBatchId, bool saveDelta,
                           const map<emb_key_t, KeyInfo>& keyInfo)
 {
 }
@@ -165,7 +165,7 @@ void EmbeddingTable::MakeDir(const string& dirName)
     fileSystemPtr_->CreateDir(dirName);
 }
 
-void EmbeddingTable::SetCacheManager(CacheManager *cm)
+void EmbeddingTable::SetCacheManager(CacheManager *cacheManager)
 {
 }
 
