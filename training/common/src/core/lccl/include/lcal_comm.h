@@ -28,8 +28,6 @@
 #include <string>
 #include <unordered_map>
 
-#include <hccl.h>
-
 #include "lcal_types.h"
 #include "comm_args.h"
 #include "lcal_api.h"

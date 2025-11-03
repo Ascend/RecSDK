@@ -21,8 +21,6 @@ See the License for the specific language governing permissions and
 #include "common_func.h"
 
 namespace MxRec {
-    const int GLOG_MAX_BUF_SIZE = 1024;
-    const char* HUGE_TLB_ENABLE = "HUGE_TLB_ENABLE";
 
     uint32_t GetDeviceCount()
     {

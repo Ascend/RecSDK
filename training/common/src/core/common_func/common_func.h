@@ -21,8 +21,8 @@ See the License for the specific language governing permissions and
 #include "securec.h"
 
 namespace MxRec {
-    extern const int GLOG_MAX_BUF_SIZE;
-    extern const char* HUGE_TLB_ENABLE;
+    constexpr int GLOG_MAX_BUF_SIZE = 1024;
+    constexpr const char* HUGE_TLB_ENABLE = "HUGE_TLB_ENABLE";
 
     template <typename... Args>
     std::string StringFormat(const std::string& format, Args... args)
