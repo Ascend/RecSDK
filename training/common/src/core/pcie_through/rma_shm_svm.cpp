@@ -119,7 +119,7 @@ void* ShmMemSet(std::string& shmName, uint64_t memSize)
 {
     void* memory = nullptr;
     if (g_rmaDevModel == RmaDevModel::SVM_MAP_DEV) {
-        if (aclrtMallocHost((void **)&memory, memSize) != ACL_ERROR_NONE) {
+        if (aclrtMallocHost(reinterpret_cast<void **>(&memory), memSize) != ACL_ERROR_NONE) {
             auto error = Error(ModuleName::M_RMA_SHM_SVM, ErrorType::UNKNOWN,
                                StringFormat("Malloc host memory failed."));
             LOG_ERROR(error.ToString());

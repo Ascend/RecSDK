@@ -50,8 +50,7 @@ public:
             return -1;
         }
 
-        fun(factory);
-        return 0;
+        return fun(factory);
     }
 
 private:
