@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 #include "mxrec_tf_plugin.h"
 
 namespace tensorflow {
+    using shape_inference::ShapeHandle;
     REGISTER_OP("EmbeddingLookupByAddress")
         .Input("address: int64")
         .Attr("embedding_dim: int")
