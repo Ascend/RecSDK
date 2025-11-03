@@ -1,37 +1,32 @@
-# relative_attn_bias_pos优化器融合算子及样例说明
+# 说明
 本算子仅支持NPU调用
 
-## relative_attn_bias_pos融合算子文件结构
+# 产品支持情况
+| 硬件型号           | 是否支持 |
+|----------------|------|
+| Atlas A2训练系列产品 | ✓    |
+| Atlas A3训练系列产品 | ✓    |
 
+# relative_attn_bias_pos算子目录层级
 ```shell
-├── relative_attn_bias_pos.json    # 算子原型配置
-├── op_host    # relative_attn_bias_pos融合算子Host侧实现
-├── op_kernel  # relative_attn_bias_pos融合算子Kernel侧实现
-├── README.md  # relative_attn_bias_pos融合算子说明文档
-└── run.sh     # relative_attn_bias_pos融合算子安装脚本
+-- relative_attn_bias_pos
+   |-- v220
+      |-- op_host                 # 算子host侧实现
+      |-- op_kernel               # 算子kernel侧实现
+      |-- rab_pos_fwd.png         # 算子实现原理图
+      |-- relative_attn_bias_pos.json    # 算子原型配置
+      |-- README.md               # 算子说明文档
+      |-- run.sh                  # 算子编译部署脚本
 ```
+# 功能
 
-## relative_attn_bias_pos融合算子介绍
+针对hstu模型rab的pos部分计算。
 
-1. 算子分析
+# 算子实现原理
 
-a) 算子参数说明：
+![rab_pos_fwd.png](rab_pos_fwd.png)
 
-| 算子参数              | 输入/输出 | dtype     | shape       |
-|-------------------|-------|-----------|-------------|
-| rel_pos_bias      | 输入    | FP16,FP32 | (2s, 2s)    |
-| identity          | 输入    | FP16,FP32 | (2s, 2s)    |
-| past_valid_lens   | 输入    | List[int] | (b,)        |
-| rab_pos           | 输出    | FP16,FP32 | (b, 2s, 2s) |
-
-
-b) 算子约束说明：
-
-* 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.2.RC1.alpha001及之后版本；
-
-## 算子逻辑
-
+仿真代码：
 ```python
 import torch
 
@@ -57,5 +52,17 @@ def rab_pos_golden(rel_pos_bias: torch.Tensor, identity: torch.Tensor, past_vali
     return rel_pos_bias_list
 ```
 
-## 算子使用说明
-请参考:[RecSDK-Torch 自定义算子说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)
+# 算子输入与输出
+
+| 算子参数            | 输入/输出  | 数据类型      | 数据格式        | 范围            | 说明 |
+|-----------------|--------|-----------|-------------|---------------|----|
+| rel_pos_bias    | 输入     | FP16,FP32 | (2s, 2s)    | 0 < s <= 4300 |    |
+| identity        | 输入     | FP16,FP32 | (2s, 2s)    |               |    |
+| past_valid_lens | 输入(属性) | List[int] | (b,)        | 0 < b <= 512  |    |
+| rab_pos         | 输出     | FP16,FP32 | (b, 2s, 2s) |               |    |
+
+# 算子编译部署
+
+算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"1.算子编译"章节。
+
+注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/2.6.0/dense_to_jagged/README.md)

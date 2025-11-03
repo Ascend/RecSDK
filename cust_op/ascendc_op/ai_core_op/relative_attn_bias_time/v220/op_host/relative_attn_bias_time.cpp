@@ -36,7 +36,9 @@ constexpr int DIM3 = 3;
 constexpr int DIM4 = 4;
 constexpr int DIM5 = 5;
 // constrain of params
-constexpr int MAX_S = 4300;
+constexpr int MAX_NUM_LAYER = 20;
+constexpr int MAX_NUM_BUCKET = 128;
+constexpr int MAX_SEQ_LEN = 4300;
 
 namespace optiling {
 static ge::graphStatus TimeTilingFunc(RelativeAttnBiasTimeTilingData& tilingData, gert::TilingContext* context)
@@ -51,13 +53,36 @@ static ge::graphStatus TimeTilingFunc(RelativeAttnBiasTimeTilingData& tilingData
     float divs = *context->GetAttrs()->GetFloat(BUCKET_DIV_INDEX);
     float clampMax = exp((numBuckets - 1) * divs);
 
-    OPS_CHECK(tsShape.GetDimNum() != TIMESTAMPS_DIM, OPS_LOG_E("Tiling Debug", "Invalid timestamps shape."),
+    OPS_CHECK(tsShape.GetDimNum() != TIMESTAMPS_DIM,
+              OPS_LOG_E("Tiling Debug",
+                        "Expected dim for timestamps is %d, but the actual dim is %d.",
+                        TIMESTAMPS_DIM, tsShape.GetDimNum()),
               return ge::GRAPH_FAILED);
     OPS_CHECK(tswShape.GetDimNum() != TIMESTAMPS_WEIGHTS_DIM,
-              OPS_LOG_E("Tiling Debug", "Invalid timestamps_weights shape."), return ge::GRAPH_FAILED);
-    OPS_CHECK(s > MAX_S, OPS_LOG_E("Tiling Debug", "Len of timestamps sequence larger than limit."),
+              OPS_LOG_E("Tiling Debug",
+                        "Expected dim for timestamps_weights is %d, but the actual dim is %d.",
+                        TIMESTAMPS_WEIGHTS_DIM, tswShape.GetDimNum()),
               return ge::GRAPH_FAILED);
-    OPS_CHECK(batchsize <= 0, OPS_LOG_E("Tiling Debug", "Invalid batchsize of timestamps."), return ge::GRAPH_FAILED);
+    OPS_CHECK(s <= 0 || s > MAX_SEQ_LEN,
+              OPS_LOG_E("Tiling Debug",
+                        "Sequence len expects a value in the range [1, %d], but the actual value is %lld.",
+                        MAX_SEQ_LEN, s),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(batchsize <= 0 || batchsize > MAX_BATCH_SIZE,
+              OPS_LOG_E("Tiling Debug",
+                        "Batchsize expects a value in the range [1, %d], but the actual value is %lld.",
+                        MAX_BATCH_SIZE, batchsize),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(numLayer <= 0 || numLayer > MAX_NUM_LAYER,
+              OPS_LOG_E("Tiling Debug",
+                        "num_layer expects a value in the range [1, %d], but the actual value is %lld.",
+                        MAX_NUM_LAYER, numLayer),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(numBuckets <= 0 || numBuckets > MAX_NUM_BUCKET + 1,
+              OPS_LOG_E("Tiling Debug",
+                        "num_buckets expects a value in the range [1, %d], but the actual value is %lld.",
+                        MAX_NUM_BUCKET + 1, numBuckets),
+              return ge::GRAPH_FAILED);
 
     tilingData.set_bs(batchsize);
     tilingData.set_s(s);
@@ -105,7 +130,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("timestampShape", context->GetInputShape(TIMESTAMPS_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("timestampShape", context->GetInputTensor(TIMESTAMPS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("tswShape", context->GetInputShape(TIMESTAMPS_WEIGHTS_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("tswShape", context->GetInputTensor(TIMESTAMPS_WEIGHTS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("attrs", context->GetAttrs(), return ge::GRAPH_FAILED);
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -188,7 +215,6 @@ public:
             .ExtendCfgInfo("prebuildPattern.value", "Opaque");
 
         this->AICore().SetTiling(optiling::TilingFunc);
-        this->AICore().AddConfig("ascend910", aicore_config);
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend310p", aicore_config);
