@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 #include "mxrec_tf_plugin.h"
 
 namespace tensorflow {
+    using shape_inference::ShapeHandle;
     REGISTER_OP("LcclAllToAll")
         .Input("send_data: float")
         .Input("send_count_matrix: int64")

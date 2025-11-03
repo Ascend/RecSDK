@@ -121,8 +121,8 @@ return oss.str();
             ops::utils::LogBase::GetStr(ops::utils::LogBase::GetOpInfo(OPS_DESC)), ##__VA_ARGS__)
 
 #define OPS_LOG_STUB_IF(COND, LOG_FUNC, EXPR)                                                                         \
-static_assert(std::is_same<bool, std::decay<decltype(COND)>::type>::value, "condition should be bool");            \
 do {                                                                                                               \
+    static_assert(std::is_same<bool, std::decay<decltype(COND)>::type>::value, "condition should be bool");        \
     if (__builtin_expect((COND), 0)) {                                                                             \
         LOG_FUNC;                                                                                                  \
         EXPR;                                                                                                      \

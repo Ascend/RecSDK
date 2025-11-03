@@ -20,20 +20,13 @@ See the License for the specific language governing permissions and
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
-using namespace tensorflow;
-using namespace std;
-using namespace chrono;
-
-using shape_inference::InferenceContext;
-using shape_inference::ShapeHandle;
-
-using OpKernelConstructionPtr = OpKernelConstruction*;
-using OpKernelContextPtr = OpKernelContext*;
+using OpKernelConstructionPtr = tensorflow::OpKernelConstruction*;
+using OpKernelContextPtr = tensorflow::OpKernelContext*;
 
 namespace MxRecTfPlugin {
-    class CustOps : public OpKernel {
+    class CustOps : public tensorflow::OpKernel {
     public:
-        explicit CustOps(OpKernelConstructionPtr context) : OpKernel(context)
+        explicit CustOps(OpKernelConstructionPtr context) : tensorflow::OpKernel(context)
         {
         }
 

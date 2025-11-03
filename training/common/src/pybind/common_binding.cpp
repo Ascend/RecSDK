@@ -16,10 +16,12 @@
 
 #include <dsmi_common_interface.h>
 #include <driver/ascend_hal_define.h>
+#include <limits>
 
 #include "pybind11/cast.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+#include "log/logger.h"
 #include "common_func/common_func.h"
 
 namespace py = pybind11;
@@ -30,9 +32,14 @@ namespace {
         uint32_t logicId;
         int32_t ret = dsmi_get_logicid_from_phyid(phyid, &logicId);
         if (ret != 0) {
-            return ret;
+            LOG_ERROR("dsmi_get_logicid_from_phyid get logicId failed, ret:{}", ret);
+            return -1;
         }
-        return logicId;
+        if (logicId > static_cast<uint32_t>(std::numeric_limits<int32_t>::max())) {
+            LOG_ERROR("dsmi_get_logicid_from_phyid logicId invalid, logicId:{}", logicId);
+            return -1;
+        }
+        return static_cast<int32_t>(logicId);
     }
 
     PYBIND11_MODULE(common_binding, m)
