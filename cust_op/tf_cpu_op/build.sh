@@ -40,7 +40,7 @@ if [ 0 != $? ];then
     exit 1
 fi
 make clean; make -j 4; make install;
-if [ 0 !=$? ];then
+if [ 0 != $? ];then
     echo "Failed to build_src"
     exit 1
 fi
