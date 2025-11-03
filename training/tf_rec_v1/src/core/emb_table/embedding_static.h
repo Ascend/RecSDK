@@ -30,24 +30,25 @@ public:
 
     EmbeddingStatic(const EmbInfo& info, const RankInfo& rankInfo, int inSeed);
 
-    ~EmbeddingStatic();
+    ~EmbeddingStatic() override;
 
-    virtual void Key2Offset(std::vector<emb_key_t>& keys, int channel);
+    void Key2Offset(std::vector<emb_key_t>& keys, int channel) override;
 
-    virtual void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel);
+    void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel) override;
 
-    virtual int64_t capacity() const;
+    int64_t capacity() const override;
 
     void Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
-              const vector<string>& warmStartTables);
+              const vector<string>& warmStartTables) override;
 
-    void Save(const string& savePath, const int pythonBatchId, bool saveDelta, const map<emb_key_t, KeyInfo>& keyInfo);
+    void Save(const string& savePath, const int pythonBatchId, bool saveDelta,
+              const map<emb_key_t, KeyInfo>& keyInfo) override;
 
-    void BackUpTrainStatus();
+    void BackUpTrainStatus() override;
 
-    void RecoverTrainStatus();
+    void RecoverTrainStatus() override;
 
-    vector<int64_t> GetDeviceOffset();
+    vector<int64_t> GetDeviceOffset() override;
 
     std::vector<size_t> FindKeyOffset(std::vector<emb_key_t>& keys);
 
