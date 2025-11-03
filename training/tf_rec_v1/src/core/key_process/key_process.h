@@ -104,7 +104,7 @@ public:
 
     void LoadSaveUnlock();
 
-    void EvictKeys(const string& embName, const vector<emb_cache_key_t>& keys);
+    void EvictKeys(const string& embName, const vector<emb_cache_key_t>& keys) const;
 
     void SetupHotEmbUpdateStep();
 
@@ -350,7 +350,7 @@ GTEST_PRIVATE :
 
     string DumpSplitKeys(vector<vector<emb_key_t>>& splitKeys) const;
 
-    void SendEosTensor(const std::string& embName, int channel);
+    void SendEosTensor(const std::string& embName, int channel) const;
 };
 
 #define KEY_PROCESS_INSTANCE Singleton<KeyProcess>::GetInstance()
