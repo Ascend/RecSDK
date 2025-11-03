@@ -39,8 +39,9 @@ static ge::graphStatus PosTilingFunc(RelativeAttnBiasPosTilingData& tilingData, 
     const gert::RuntimeAttrs* attrs = context->GetAttrs();
     const auto pastValidLensPtr = attrs->GetAttrPointer<gert::ContinuousVector>(PAST_VALID_LENS_INDEX);
     int batchsize = pastValidLensPtr->GetSize();
-    OPS_CHECK(batchsize <= 0,
-              OPS_LOG_E("Tiling Debug", "mismatch batchsize of past_valid_len and timestamps."),
+    OPS_CHECK(batchsize <= 0 || batchsize > MAX_BATCH_SIZE,
+              OPS_LOG_E("Tiling Debug", "batchsize of past_valid_lens is expected in [1, %d], but got %d",
+                        MAX_BATCH_SIZE, batchsize),
               return ge::GRAPH_FAILED);
     tilingData.set_bs(batchsize);
 
@@ -101,7 +102,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("relPosBiasShape", context->GetInputShape(REL_POS_BIAS_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("relPosBiasShape", context->GetInputTensor(REL_POS_BIAS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("identityShape", context->GetInputShape(IDENTITY_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("identityShape", context->GetInputTensor(IDENTITY_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("attrs", context->GetAttrs(), return ge::GRAPH_FAILED);
 
     const gert::RuntimeAttrs* attrs = context->GetAttrs();
@@ -186,7 +189,6 @@ public:
                 .ExtendCfgInfo("prebuildPattern.value", "Opaque");
 
         this->AICore().SetTiling(optiling::TilingFunc);
-        this->AICore().AddConfig("ascend910", aicore_config);
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend310p", aicore_config);

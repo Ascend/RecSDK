@@ -1,55 +1,60 @@
-# relative_attn_bias_time_backward优化器融合算子及样例说明
+# 说明
 本算子仅支持NPU调用
 
-## relative_attn_bias_time_backward融合算子文件结构
+# 产品支持情况
+| 硬件型号           | 是否支持 |
+|----------------|------|
+| Atlas A2训练系列产品 | ✓    |
+| Atlas A3训练系列产品 | ✓    |
 
+# relative_attn_bias_backward算子目录层级
 ```shell
-├── relative_attn_bias_time_backward.json    # 算子原型配置
-├── op_host    # relative_attn_bias_time_backward融合算子Host侧实现
-├── op_kernel  # relative_attn_bias_time_backward融合算子Kernel侧实现
-├── README.md  # relative_attn_bias_time_backward融合算子说明文档
-└── run.sh     # relative_attn_bias_time_backward融合算子安装脚本
+-- relative_attn_bias_backward
+   |-- v220
+      |-- op_host                 # 算子host侧实现
+      |-- op_kernel               # 算子kernel侧实现
+      |-- rab_time_bwd.png        # 算子实现原理图
+      |-- relative_attn_bias_backward.json    # 算子原型配置
+      |-- README.md               # 算子说明文档
+      |-- run.sh                  # 算子编译部署脚本
 ```
 
-## relative_attn_bias_time_backward融合算子介绍
+# 功能
 
-1. 算子分析
+针对hstu模型rab的time部分，计算时间戳参数反向传播中的梯度值。
 
-a) 算子参数说明：
+# 算子实现原理
 
-| 算子参数                    | 输入/输出 | dtype     | shape            |
-|-------------------------|-------|-----------|------------------|
-| rab_time_grad           | 输入    | FP16,FP32 | (n, b, 2s, 2s)   |
-| bucket_timestamps       | 输入    | int32     | (2s, 2s)         |
-| num_buckets             | 输入    | int       |                  |
-| timestamps_weights_grad | 输出    | FP16,FP32 | (n, num_buckets) |
+![rab_time_backward.png](rab_time_bwd.png)
 
-
-b) 算子约束说明：
-
-* 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.2.RC1.alpha001及之后版本；
-
-## 算子逻辑
+仿真代码：
 
 ```python
 import torch
-NUM_BUCKETS = 128 + 1
 
-def rab_time_backward_golden(rab_time_grad: torch.Tensor, bucket_timestamps: torch.Tensor):
-    num_layers, b, s, _ = rab_time_grad.shape
-    tsw_grad = torch.zeros(num_layers, NUM_BUCKETS, dtype=torch.float32).to(rab_time_grad.device)
 
-    bucket_timestamps_expand = (bucket_timestamps.reshape(b, s // 2, 1, s // 2, 1)
-                                .repeat(1, 1, 2, 1, 2)
-                                .reshape(b, s, s)
-                                .to(torch.int64))
-    for n, grad in enumerate(rab_time_grad.to(torch.float32)):
-        tsw_grad[n], _ = torch.ops.mxrec.index_select_for_rank1_backward(grad.view(-1),
-                                                                         tsw_grad[n],
-                                                                         bucket_timestamps_expand.view(-1))
-    return tsw_grad
+def rab_time_backward(timestamps_weights_grad: torch.Tensor,
+                      rab_time_grad: torch.Tensor,
+                      bucket_timestamps: torch.Tensor,
+                      num_buckets: int):
+    for i, layer_grad in enumerate(rab_time_grad):
+        layer_grad_out = torch.zeros(num_buckets + 1)
+        for (index, grad) in zip(bucket_timestamps.view(-1), layer_grad.view(-1)):
+            layer_grad_out[index] += grad
+        timestamps_weights_grad[i].copy_(layer_grad_out)
 ```
 
-## 算子使用说明
-请参考:[RecSDK-Torch 自定义算子说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)
+# 算子输入与输出
+
+| 算子参数                    | 输入/输出  | 数据类型      | 数据格式                 | 范围                                             | 说明 |
+|-------------------------|--------|-----------|----------------------|------------------------------------------------|----|
+| rab_time_grad           | 输入     | FP16,FP32 | (n, b, 2s, 2s)       | 0 < n <= 20<br/>0 < b <= 512<br/>0 < s <= 4300 |    |
+| bucket_timestamps       | 输入     | int32     | (b, 2s, 2s)          |                                                |    |
+| num_buckets             | 输入(属性) | int       |                      | 0 < num_buckets <= 128                         |    |
+| timestamps_weights_grad | 输出     | FP16,FP32 | (n, num_buckets + 1) |                                                |    |
+
+# 算子编译部署
+
+算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"1.算子编译"章节。
+
+注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/2.6.0/dense_to_jagged/README.md)

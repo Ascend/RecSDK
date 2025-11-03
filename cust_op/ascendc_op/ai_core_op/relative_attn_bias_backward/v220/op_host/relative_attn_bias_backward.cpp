@@ -15,6 +15,10 @@
 constexpr int32_t RESERVER_UB_SIZE = (20 * 1024);
 constexpr int32_t DATA_ALIGN_BYTES = 32;
 constexpr uint8_t NUM_BUFFER = 2;
+constexpr int MAX_NUM_LAYER = 20;
+constexpr int MAX_NUM_BUCKET = 128;
+constexpr int MAX_BATCH_SIZE = 512;
+constexpr int MAX_SEQ_LEN = 4300;
 
 // input index
 constexpr int INPUT_GRAD_INDEX = 0;
@@ -34,9 +38,67 @@ constexpr int DIM2 = 2;
 constexpr int DIM3 = 3;
 
 namespace optiling {
+static bool CheckInputShape(gert::TilingContext* context)
+{
+    auto gradShape = context->GetInputShape(TIMESTAMPS_WEIGHTS_GRAD_INDEX)->GetStorageShape();  // grad(n, b, 2s, 2s)
+    auto indexShape = context->GetInputShape(BUCKET_TIMESTAMPS_INDEX)->GetStorageShape();       // grad(b, 2s, 2s)
+    int numBuckets = *context->GetAttrs()->GetInt(NUM_BUCKET_INDEX);
+
+    int64_t numLayer = gradShape.GetDim(DIM0);
+    int64_t batchsize = gradShape.GetDim(DIM1);
+    int64_t s = gradShape.GetDim(DIM2);
+    int64_t s2 = gradShape.GetDim(DIM3);
+
+    int64_t indexBatchsize = indexShape.GetDim(DIM0);
+    int64_t indexS1 = indexShape.GetDim(DIM1);
+    int64_t indexS2 = indexShape.GetDim(DIM2);
+
+    OPS_CHECK(gradShape.GetDimNum() != RAB_TIME_GRAD_DIM,
+              OPS_LOG_E("Tiling Debug",
+                        "Expected dim for timestamps_weights_grad is %d, but the actual dim is %d.",
+                        RAB_TIME_GRAD_DIM, gradShape.GetDimNum()),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(indexShape.GetDimNum() != BUCKET_TIMESTAMPS_DIM,
+              OPS_LOG_E("Tiling Debug",
+                        "Expected dim for bucket_timestamps is %d, but the actual dim is %d.",
+                        BUCKET_TIMESTAMPS_DIM, indexShape.GetDimNum()),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(numLayer <= 0 || numLayer > MAX_NUM_LAYER,
+              OPS_LOG_E("Tiling Debug",
+                        "num_layer expects a value in the range [1, %d], but the actual value is %lld.",
+                        MAX_NUM_LAYER, numLayer),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(numBuckets <= 0 || numBuckets > MAX_NUM_BUCKET + 1,
+              OPS_LOG_E("Tiling Debug",
+                        "num_buckets expects a value in the range [1, %d], but the actual value is %lld.",
+                        MAX_NUM_BUCKET + 1, numBuckets),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(batchsize != indexBatchsize,
+              OPS_LOG_E("Tiling Debug",
+                        "Batchsize mismatch between grad(_, %d, _, _) and bucket_timestamps(%d, _, _).",
+                        batchsize, indexBatchsize),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(batchsize <= 0 || batchsize > MAX_BATCH_SIZE,
+              OPS_LOG_E("Tiling Debug",
+                        "Batchsize expects a value in the range [1, %d], but the actual value is %lld.",
+                        MAX_BATCH_SIZE, batchsize),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(s != s2 || s != indexS1 || s != indexS2,
+              OPS_LOG_E("Tiling Debug",
+                        "Sequence len mismatch between grad(_, _, %d, %d) and bucket_timestamps(_, %d, %d).",
+                        s, s2, indexS1, indexS2),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(s <= 0 || s > MAX_SEQ_LEN,
+              OPS_LOG_E("Tiling Debug",
+                        "Sequence len expects a value in the range [1, %d], but the actual value is %lld.",
+                        MAX_SEQ_LEN, s),
+              return ge::GRAPH_FAILED);
+}
+
 static ge::graphStatus TimeTilingFunc(RelativeAttnBiasBackwardTilingData& tilingData, gert::TilingContext* context)
 {
     // 获取、校验必要shape数据
+    CheckInputShape(context);
     auto gradShape = context->GetInputShape(TIMESTAMPS_WEIGHTS_GRAD_INDEX)->GetStorageShape();  // grad(n, b, 2s, 2s)
     auto indexShape = context->GetInputShape(BUCKET_TIMESTAMPS_INDEX)->GetStorageShape();       // grad(b, 2s, 2s)
 
@@ -49,17 +111,6 @@ static ge::graphStatus TimeTilingFunc(RelativeAttnBiasBackwardTilingData& tiling
     int64_t indexBatchsize = indexShape.GetDim(DIM0);
     int64_t indexS1 = indexShape.GetDim(DIM1);
     int64_t indexS2 = indexShape.GetDim(DIM2);
-
-    OPS_CHECK(gradShape.GetDimNum() != RAB_TIME_GRAD_DIM, OPS_LOG_E("Tiling Debug", "Grad shape is invalid."),
-              return ge::GRAPH_FAILED);
-    OPS_CHECK(indexShape.GetDimNum() != BUCKET_TIMESTAMPS_DIM,
-              OPS_LOG_E("Tiling Debug", "bucket_timestamps shape is invalid."), return ge::GRAPH_FAILED);
-    OPS_CHECK(numBuckets <= 0, OPS_LOG_E("Tiling Debug", "NumBuckets is invalid."), return ge::GRAPH_FAILED);
-    OPS_CHECK(numLayer <= 0, OPS_LOG_E("Tiling Debug", "Numlayer is invalid."), return ge::GRAPH_FAILED);
-    OPS_CHECK(batchsize <= 0 || batchsize != indexBatchsize, OPS_LOG_E("Tiling Debug", "Batchsize is invalid."),
-              return ge::GRAPH_FAILED);
-    OPS_CHECK(s <= 0 || s != s2 || s != indexS1 || s != indexS2, OPS_LOG_E("Tiling Debug", "Sequence len is invalid."),
-              return ge::GRAPH_FAILED);
 
     tilingData.set_numBuckets(numBuckets);
     tilingData.set_numLayer(numLayer);
@@ -98,6 +149,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("rabTimeGrad", context->GetInputShape(TIMESTAMPS_WEIGHTS_GRAD_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("bucketTimestamps", context->GetInputShape(BUCKET_TIMESTAMPS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("attrs", context->GetAttrs(), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("rabTimeGrad", context->GetInputTensor(TIMESTAMPS_WEIGHTS_GRAD_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("bucketTimestamps", context->GetInputTensor(BUCKET_TIMESTAMPS_INDEX), return ge::GRAPH_FAILED);
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
@@ -169,7 +222,6 @@ public:
             .ExtendCfgInfo("prebuildPattern.value", "Opaque");
 
         this->AICore().SetTiling(optiling::TilingFunc);
-        this->AICore().AddConfig("ascend910", aicore_config);
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
     }

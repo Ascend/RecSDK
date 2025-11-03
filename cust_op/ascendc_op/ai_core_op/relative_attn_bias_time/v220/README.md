@@ -1,40 +1,35 @@
-# relative_attn_bias_time优化器融合算子及样例说明
+# 说明
 本算子仅支持NPU调用
+
+# 产品支持情况
+| 硬件型号           | 是否支持 |
+|----------------|------|
+| Atlas A2训练系列产品 | ✓    |
+| Atlas A3训练系列产品 | ✓    |
+| Atlas 推理系列产品   | ✓    |
 
 ## relative_attn_bias_time融合算子文件结构
 
 ```shell
-├── relative_attn_bias_time.json    # 算子原型配置
-├── op_host    # relative_attn_bias_time融合算子Host侧实现
-├── op_kernel  # relative_attn_bias_time融合算子Kernel侧实现
-├── README.md  # relative_attn_bias_time融合算子说明文档
-└── run.sh     # relative_attn_bias_time融合算子安装脚本
+-- relative_attn_bias_time
+   |-- v220
+      |-- op_host                 # 算子host侧实现
+      |-- op_kernel               # 算子kernel侧实现
+      |-- rab_time_fwd.png        # 算子实现原理图
+      |-- relative_attn_bias_time.json    # 算子原型配置
+      |-- README.md               # 算子说明文档
+      |-- run.sh                  # 算子编译部署脚本
 ```
 
+# 功能
 
-## relative_attn_bias_time融合算子介绍
+针对hstu模型rab的time部分计算。
 
-1. 算子分析
+# 算子实现原理
 
-a) 算子参数说明：
+![rab_time_forward.png](rab_time_fwd.png)
 
-| 算子参数               | 输入/输出 | dtype     | shape                       |
-|--------------------|-------|-----------|-----------------------------|
-| timestamps         | 输入    | int32     | (b, s)                      |
-| timestamps_weights | 输入    | FP16,FP32 | (num_layers, num_buckets+1) |
-| bucket_divisor     | 输入    | float     |                             |
-| rab_time           | 输出    | FP16,FP32 | (num_layers, b, s, 1, s, 1) |
-| bucket_timestamps  | 输出    | int32     | (b, s, s)                   |
-> 注：rab_time期望返回为(num_layers, b, 2s, 2s)  
-> ONNX调用时需进行rab_time.repeat(1, 1, 1, 2, 1, 2).reshape(num_layers, b, 2s, 2s)操作。  
-> pytorch调用无需额外操作，已经在pytorch适配层完成该操作。
-
-b) 算子约束说明：
-
-* 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.2.RC1.alpha001及之后版本；
-
-## 算子逻辑
+仿真代码：
 
 ```python
 import torch
@@ -74,5 +69,21 @@ def rab_time_golden(timestamps_weights: torch.Tensor,
     return rab_time_out, bucket_timestamps
 ```
 
-## 算子使用说明
-请参考:[RecSDK-Torch 自定义算子说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)
+# 算子输入与输出
+
+| 算子参数               | 输入/输出 | 数据类型      | 数据格式                        | 范围                                              | 说明 |
+|--------------------|-------|-----------|-----------------------------|-------------------------------------------------|----|
+| timestamps         | 输入    | int32     | (b, s)                      | 0 < b <= 512<br/>0 < s <= 4300                  |    |
+| timestamps_weights | 输入    | FP16,FP32 | (num_layers, num_buckets+1) | 0 < num_layers <= 20<br/>0 < num_buckets <= 128 |    |
+| bucket_divisor     | 输入    | float     |                             |                                                 |    |
+| rab_time           | 输出    | FP16,FP32 | (num_layers, b, s, 1, s, 1) |                                                 |    |
+| bucket_timestamps  | 输出    | int32     | (b, s, s)                   |                                                 |    |
+> 注：rab_time期望返回为(num_layers, b, 2s, 2s)  
+> ONNX调用时需进行rab_time.repeat(1, 1, 1, 2, 1, 2).reshape(num_layers, b, 2s, 2s)操作。  
+> pytorch调用无需额外操作，已经在pytorch适配层完成该操作。
+
+# 算子编译部署
+
+算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"1.算子编译"章节。
+
+注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/2.6.0/dense_to_jagged/README.md)
