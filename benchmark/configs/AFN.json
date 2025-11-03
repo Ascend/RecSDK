@@ -1,0 +1,19 @@
+{
+    "name": "AFN",
+    "url": "https://github.com/franckLRH/DeepCTR-Torch",
+    "commit_id": "f6854257b1fc29caab655ce72c6b5528b7432574",
+    "patch_path": "patches/deepctr_npu.patch",
+    "mode": "infer",
+    "epoch": 10,
+    "profiling_flag": true,
+    "compile_flag": false,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "pytest",
+        "tests/models/AFN_test.py"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": "pip install tensorflow==2.20.0 --no-deps"
+}
