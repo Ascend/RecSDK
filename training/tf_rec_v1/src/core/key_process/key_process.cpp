@@ -597,7 +597,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
             keyCountVec.push_back(it.first);
             keyCountVec.push_back(it.second);
         }
-        LOG_INFO("Current batch: {}, emb table:{} , key count size is: {}, key count: {}.", batch->batchId+1,
+        LOG_INFO("Current batch: {}, emb table:{} , key count size is: {}, key count: {}.", batch->batchId + 1,
                  batch->name, tmpKeyCountMap.size(), VectorToString(keyCountVec));
     }
     std::lock_guard<std::mutex> lock(loadSaveMut[channel][threadId]);
@@ -1715,7 +1715,7 @@ int KeyProcess::GetMaxStep(int channelId) const
     return rankInfo.ctrlSteps.at(channelId);
 }
 
-void KeyProcess::EvictKeys(const string& embName, const vector<emb_cache_key_t>& keys)  // hbm
+void KeyProcess::EvictKeys(const string& embName, const vector<emb_cache_key_t>& keys) const
 {
     LOG_INFO(KEY_PROCESS "hbm funEvictCall: [{}]! keySize:{}", embName, keys.size());
     EmbeddingMgmt::Instance()->EvictKeys(embName, keys);
@@ -1777,7 +1777,7 @@ void KeyProcess::EnqueueEosBatch(int64_t batchNum, int channelId)
     }
 }
 
-void KeyProcess::SendEosTensor(const std::string& embName, int channel)
+void KeyProcess::SendEosTensor(const std::string& embName, int channel) const
 {
 #ifndef GTEST
     auto trans = Singleton<HDTransfer>::GetInstance();

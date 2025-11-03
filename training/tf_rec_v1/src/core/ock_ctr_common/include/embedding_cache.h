@@ -20,6 +20,8 @@ See the License for the specific language governing permissions and
 #include <random>
 #include <string>
 #include <vector>
+#include <utility>
+#include <unordered_set>
 
 namespace EmbCache {
 using KeyOffsetPair = std::pair<std::vector<uint64_t>, std::vector<uint64_t>>;

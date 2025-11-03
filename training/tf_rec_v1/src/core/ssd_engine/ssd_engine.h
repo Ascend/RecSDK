@@ -51,7 +51,7 @@ namespace MxRec {
 
         void Load(const string &tableName, vector<string> savePaths, uint64_t maxTableSize, int step);
 
-        void Start();
+        void Start() override;
 
         void Stop();
 

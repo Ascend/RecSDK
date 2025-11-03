@@ -368,7 +368,8 @@ void CacheManager::RecoverTrainStatus()
 
 void CacheManager::GetSwapInAndSwapOutKeys(vector<emb_cache_key_t>& ssdKeysBeforeEval,
                                            vector<emb_cache_key_t>& ssdKeysAfterEval,
-                                           vector<emb_cache_key_t>& swapInKeys, vector<emb_cache_key_t>& swapOutKeys)
+                                           vector<emb_cache_key_t>& swapInKeys,
+                                           vector<emb_cache_key_t>& swapOutKeys) const
 {
     std::sort(ssdKeysBeforeEval.begin(), ssdKeysBeforeEval.end());
     std::sort(ssdKeysAfterEval.begin(), ssdKeysAfterEval.end());

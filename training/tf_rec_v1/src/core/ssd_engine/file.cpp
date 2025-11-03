@@ -237,7 +237,7 @@ void File::Save(const string& saveDir, int step, const map<emb_key_t, KeyInfo>& 
 
     // write current meta into meta file
     for (auto [key, offset] : keyToOffset) {
-        if (keyInfo.count(key)) {
+        if (keyInfo.count(key) != 0) {
             localFileMeta.write(reinterpret_cast<char const*>(&key), sizeof(key));
             localFileMeta.write(reinterpret_cast<char const*>(&offset), sizeof(offset));
         }

@@ -99,7 +99,7 @@ namespace MxRec {
 
         void UpdateL3StorageEmb(string tableName, float* embPtr, uint32_t extEmbeddingSize,\
                                 vector<emb_cache_key_t>& keys,
-                                const vector<uint64_t>& swapOutL3StorageAddrOffs);
+                                const vector<uint64_t>& swapOutL3StorageOffs);
 
         void TransferDDR2L3Storage(string tableName, uint32_t extEmbeddingSize, vector<emb_cache_key_t>& keys,
                                    vector<float*>& addrs);
@@ -115,7 +115,7 @@ namespace MxRec {
 
         void GetSwapInAndSwapOutKeys(vector<emb_cache_key_t>& ssdKeysBeforeEval,
                                      vector<emb_cache_key_t>& ssdKeysAfterEval,
-                                     vector<emb_cache_key_t>& swapInKeys, vector<emb_cache_key_t>& swapOutKeys);
+                                     vector<emb_cache_key_t>& swapInKeys, vector<emb_cache_key_t>& swapOutKeys) const;
 
         static void CheckEmbCacheReturnCode(const string& funcName, int retCode);
 
