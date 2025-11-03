@@ -94,7 +94,7 @@ public:
 
 class GroupMethod {
 public:
-    inline int GroupCount()
+    inline int GroupCount() const
     {
         return groupCount_;
     }
@@ -175,6 +175,9 @@ public:
 
     template <DataType T> uint32_t UniqueRaw(void *output, uint32_t priorTotal)
     {
+        if (output == nullptr) {
+            throw std::invalid_argument("Dedup::UniqueRaw get nullptr");
+        }
         uint32_t total = priorTotal;
         uint32_t replaceOffset = priorTotal;
         auto out = TypeTrans<T>(output);
@@ -338,7 +341,7 @@ public:
     }
 
 private:
-    template <typename T> T CacheLineAlign(T size)
+    template <typename T> T CacheLineAlign(T size) const
     {
         return (((size) + 63uL) & ~63uL);
     }
@@ -352,7 +355,7 @@ private:
     void GetIndexAndStart(const int32_t *uniqueSizeInBucket, bool usePadding, int shardingNumber, int &start,
         int &index);
 
-    int PrintMemCpyLog(int rc, const uint32_t dstSize, const std::string &logMsg);
+    int PrintMemCpyLog(int rc, const uint32_t dstSize, const std::string &logMsg) const;
 
     int HandleIdCountFill(std::vector<std::atomic<int32_t>> &idCount, UniqueOutSelf &uniqueOut);
 
@@ -437,8 +440,9 @@ private:
 
             if (conf.useIdCount && conf.usePadding) {
                 memSize = uniqueSizeInBucket[i] * sizeof(int32_t);
-                rc = memcpy_s(uniqueOut.idCnt + index, memSize, (int32_t *)(idCount.data()) + start,
-                    memSize); // 填充idCount
+                rc = memcpy_s(
+                    uniqueOut.idCnt + index, memSize,
+                    static_cast<std::atomic<int32_t>*>(idCount.data()) + start, memSize); // 填充idCount
                 ret = PrintMemCpyLog(rc, memSize, "[TileAndFill/idCnt]");
             }
 
@@ -494,7 +498,7 @@ private:
                     }
 
                     if (conf.performance) {
-                        dedupShards_[value & (conf.shardingNum - 1)]->Insert(value);
+                        dedupShards_[static_cast<int>(value) & (conf.shardingNum - 1)]->Insert(value);
                     } else {
                         auto group = groupMethod_.GroupId(value);
                         dedupShards_[group]->Insert(value);
@@ -548,7 +552,7 @@ private:
                     int32_t fillOffset;
                     if (conf.performance) {
                         fillOffset = GetFillOffset(totalUniqueSize, val[ptr - beginPtr],
-                            val[ptr - beginPtr] & (conf.shardingNum - 1));
+                            static_cast<int>(val[ptr - beginPtr]) & (conf.shardingNum - 1));
                     } else {
                         auto group = groupMethod_.GroupId(val[ptr - beginPtr]);
                         fillOffset = GetFillOffset(totalUniqueSize, val[ptr - beginPtr], group);

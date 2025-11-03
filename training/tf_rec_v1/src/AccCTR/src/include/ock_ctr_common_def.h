@@ -19,13 +19,13 @@ limitations under the License.
 #include <iostream>
 #include <mutex>
 
-using CTR_CREATE_FACTORY_FUNCTION = int (*)(uintptr_t *);
+using CTR_CREATE_FACTORY_FUNCTION = int (*)(uintptr_t&);
 
 namespace ock {
 namespace ctr {
 class OckCtrCommonDef {
 public:
-    static int CreateFactory(uintptr_t *factory)
+    static int CreateFactory(uintptr_t& factory)
     {
         static void *handle = nullptr;
         static std::mutex m;

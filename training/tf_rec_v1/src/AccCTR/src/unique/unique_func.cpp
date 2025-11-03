@@ -171,7 +171,7 @@ void ShardedDedup::GetIndexAndStart(const int32_t *uniqueSizeInBucket, bool useP
     }
 }
 
-int ShardedDedup::PrintMemCpyLog(int rc, const uint32_t dstSize, const std::string &logMsg)
+int ShardedDedup::PrintMemCpyLog(int rc, const uint32_t dstSize, const std::string &logMsg) const
 {
     if (rc != 0) {
         std::stringstream ssm;
@@ -187,7 +187,7 @@ int ShardedDedup::HandleIdCountFill(std::vector<std::atomic<int32_t>> &idCount, 
 {
     if (conf.usePadding) {
         uint32_t memSize = idCount.size() * sizeof(int32_t);
-        auto rc = memcpy_s(uniqueOut.idCntFill, memSize, (int32_t *)(idCount.data()), memSize);
+        auto rc = memcpy_s(uniqueOut.idCntFill, memSize, idCount.data(), memSize);
         if (rc != 0) {
             return rc;
         }
@@ -197,7 +197,7 @@ int ShardedDedup::HandleIdCountFill(std::vector<std::atomic<int32_t>> &idCount, 
         }
     } else {
         uint32_t memSize = idCount.size() * sizeof(int32_t);
-        auto rc = memcpy_s(uniqueOut.idCnt, memSize, (int32_t *)(idCount.data()), memSize);
+        auto rc = memcpy_s(uniqueOut.idCnt, memSize, idCount.data(), memSize);
         if (rc != 0) {
             return rc;
         }

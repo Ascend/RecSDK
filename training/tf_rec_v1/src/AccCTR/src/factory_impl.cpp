@@ -23,7 +23,7 @@ Lock FactoryImpl::gLock;
 extern "C" {
 #endif
 
-int CTR_CreateFactory(uintptr_t *outFactory)
+int CTR_CreateFactory(uintptr_t& outFactory)
 {
     if (FactoryImpl::gGlobalFactory == nullptr) {
         Locker<Lock> locker(&FactoryImpl::gLock);
@@ -36,7 +36,7 @@ int CTR_CreateFactory(uintptr_t *outFactory)
             FactoryImpl::gGlobalFactory = tmp;
         }
     }
-    *outFactory = reinterpret_cast<uintptr_t>(FactoryImpl::gGlobalFactory);
+    outFactory = reinterpret_cast<uintptr_t>(FactoryImpl::gGlobalFactory);
     return H_OK;
 }
 #ifdef __cplusplus
