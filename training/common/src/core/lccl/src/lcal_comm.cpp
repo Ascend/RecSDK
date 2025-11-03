@@ -22,6 +22,8 @@
 #include <set>
 #include <thread>
 
+#include <hccl.h>
+
 #include "asdops/utils/log/log.h"
 #include "tools/socket/lcal_sock_exchange.h"
 

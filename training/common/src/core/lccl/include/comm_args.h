@@ -17,6 +17,8 @@
 #ifndef LCCL_COMM_ARGS_H
 #define LCCL_COMM_ARGS_H
 #include <cstdint>
+#include <stdexcept>
+#include <string>
 
 #if !defined(__DAV_C220_VEC__) && !defined(__DAV_C310__)
 #define GM_ADDR int8_t*
@@ -38,13 +40,6 @@ constexpr int64_t UB_SINGLE_DMA_SIZE_MAX = 190 * 1024;
 constexpr int64_t SMALL_DATA_SIZE = 1 * 1024 * 1024;  // distinguish different op according to data volumn
 constexpr int64_t UB_SINGLE_PING_PONG_ADD_SIZE_MAX = UB_SINGLE_DMA_SIZE_MAX / 2;
 constexpr int UB_ALIGN_SIZE = 32;
-enum Op {
-    COPYONLY = -1,
-    ADD = 0,
-    MUL = 1,
-    MAX = 2,
-    MIN = 3
-};
 
 struct CommArgs {
     void SetBuff(int8_t* b[LCAL_MAX_RANK_SIZE])

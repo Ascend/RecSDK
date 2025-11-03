@@ -24,6 +24,8 @@
 #include <runtime/dev.h>
 #include <runtime/mem.h>
 
+#include <hccl.h>
+
 #include "lccl/include/lcal_comm.h"
 #include "lccl/include/comm_args.h"
 #include "lccl/include/lcal_api.h"

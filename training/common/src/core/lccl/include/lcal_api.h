@@ -16,7 +16,7 @@
 #ifndef LCCL_LCAL_API_H
 #define LCCL_LCAL_API_H
 
-#include <hccl.h>
+#include <cstdint>
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
