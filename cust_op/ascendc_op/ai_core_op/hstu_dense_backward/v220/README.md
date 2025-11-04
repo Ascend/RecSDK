@@ -1,40 +1,31 @@
-# hstu_dense_backward算子及样例说明
-本算子仅支持NPU调用
+**说明**
 
-## hstu_dense_backward算子文件结构
+本算子仅支持NPU调用。
+
+# 产品支持情况
+
+| 硬件型号           | 是否支持 |
+|----------------|------|
+| Atlas A2训练系列产品 | 是    |
+| Atlas A3训练系列产品 | 是    |
+
+## hstu_dense_backward算子目录层级
 
 ```shell
-├── hstu_dense_backward.json    # 算子原型配置
-├── op_host    # hstu_dense_backward算子Host侧实现
-├── op_kernel  # hstu_dense_backward算子Kernel侧实现
-├── README.md  # hstu_dense_backward算子说明文档
-└── run.sh     # hstu_dense_backward算子安装脚本
+├── v220
+    ├── hstu_dense_backward.json    # 算子原型配置
+    ├── op_host    # hstu_dense_backward算子Host侧实现
+    ├── op_kernel  # hstu_dense_backward算子Kernel侧实现
+    ├── README.md  # hstu_dense_backward算子说明文档
+    └── run.sh     # hstu_dense_backward算子安装脚本
 ```
 
 
-## hstu_dense_backward算子介绍
+# 功能
+算子的主要功能是实现HSTU融合算子的反向hstu_dense_backward
 
-1. 算子分析
-
-a) 算子的主要功能是实现fbgemm的hstu_dense_backward, 实现embedding bag的查询功能
-b) 算子参数说明：
-* grad;
-* q: shape[batch_size, seq_len, num_head, d_qk]；
-* k:  shape[batch_size, seq_len, num_head, d_qk]；
-* v: shape[batch_size, seq_len, num_head, d_qk]；
-* attn_bias: qk^T后加的bias参数， shape[batch_size,num_head, seq_len, seq_len];
-
-c) 算子约束说明：
-
-* 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.0.RC3及之后版本；
-* 支持的输入数据类型：q、k、v支持fp32、fp16、bfp16;
-* seq_len须为256的倍数，范围：[256,4096];
-* d_qk须为16的倍数， 范围：[16,512]
-
-
-## 算子逻辑
-```
+# 算子实现原理
+```python
 q_trans = q.permute(0, 2, 1, 3)
 k_trans = k.permute(0, 2, 1, 3)
 v_trans = v.permute(0, 2, 1, 3)
@@ -58,5 +49,31 @@ q_grad = torch.matmul(qk_attn_grad, k_trans)
 k_grad = torch.matmul(qk_attn_grad.permute(0, 1, 3, 2), q_trans)
 ```
 
-## 算子使用说明
-请参考:[RecSDK-Torch 自定义算子说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)
+
+b) 算子参数说明：
+# 算子输入与输出
+| 名称            | 输入/输出   | 参数类型      | 数据类型          | 数据格式                                  | 范围           | 说明                                                                     |
+|---------------|---------|-----------|---------------|---------------------------------------|--------------|------------------------------------------------------------------------|
+| grad        | 输入      | Tensor    | float32/bf16/fp16 | [B_S, Head, Dim] 或者 [B, S, Head, Dim]                          |         参数范围参考前向hstu_dense_forward算子      |                                                           前向输出out反向求导            |
+| q       | 输入      | Tensor  | float32/bf16/fp16   | [B_S, Head, Dim] 或者 [B, S, Head, Dim]                                      | 参数范围参考前向hstu_dense_forward算子 | Q，Jagged模式下传入第一种shape，Normal模式先传入第二种 |
+| k       | 输入      | Tensor  | float32/bf16/fp16   | [B_S, Head, Dim]   或者 [B, S, Head, Dim]                                    | 参数范围参考前向hstu_dense_forward算子 | K，Shape和类型与Q一致 |
+| v       | 输入      | Tensor  | float32/bf16/fp16   | [B_S, Head, Dim]  或者 [B, S, Head, Dim]                                     | 参数范围参考前向hstu_dense_forward算子 | V，Shape和类型与Q一致 |
+| mask       | 输入      | Tensor  | float32/bf16/fp16   | [B, Head , S, S]                                      | 参数范围参考前向hstu_dense_forward算子 | mask 使用内置mask或者不需要mask则为None，类型与Q一致 |
+| attn_bias       | 输入      | Tensor  | float32/bf16/fp16   | [B, Head , S, S]   | 参数范围参考前向hstu_dense_forward算子 | attn_bias，类型与Q一致 |
+| layout       | 输入      | str  | str   | -                                      | ["jagged", "normal"] | QKV内存布局即HSTU的两种模式 |
+| mask_type       | 输入      | int  | int   | -                                      | [0, 2, 3] | 使用的mask方式，0表示上三角 2表示不用mask 3表示使用传入的自定义mask |
+| max_seq_len       | 输入      | int  | int   | -                                      | 参数范围参考前向hstu_dense_forward算子 | 最大长度 |
+| silu_scale       | 输入      | float  | float   | -| - | silu前的scale化 |  
+| seq_offsets       | 输入      | List  | int   | [BatchSize+1 ]   | 	参数范围参考前向hstu_dense_forward算子 | Batch中的每一个样本的实际长度 |
+| q_grad       | 输入      | Tensor  | float32/bf16/fp16   | [B_S, Head, Dim] 或者 [B, S, Head, Dim]  |与Q保持一致 | Q的梯度 |
+| k_grad       | 输入      | Tensor  | float32/bf16/fp16   | [B_S, Head, Dim] 或者 [B, S, Head, Dim]  |与K一致 | k的梯度 |
+| v_grad       | 输入      | Tensor  | float32/bf16/fp16   | [B_S, Head, Dim] 或者 [B, S, Head, Dim]  |与attn_bias保持一致 | v的梯度 |
+| attn_bias_grad       | 输入      | Tensor  | float32/bf16/fp16   | [B, Head , S, S] | - | attn_bias的反向梯度|
+
+备注： B表示Batch的大小 B_S表示样本的实际长度之和，Head表示Head Num，S表示样本序列长度，Dim表示Attention Dim。参数范围参考前向hstu_dense_forward算子。
+
+# 算子编译部署
+
+算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"1.算子编译"章节。
+
+注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/2.6.0/hstu/README.md)
