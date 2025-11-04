@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 #include <fstream>
 
 #include "utils/common.h"
+#include "utils/config.h"
 #include "utils/time_cost.h"
 
 using namespace MxRec;
@@ -231,7 +232,7 @@ void HDTransfer::Send(TransferChannel channel, const vector<Tensor>& tensors, in
 #endif
 }
 
-size_t HDTransfer::RecvByShm(RmaShmHeader* queueHeader, float*& ptr, int64_t& dim0, bool& emptyFlag)
+size_t HDTransfer::RecvByShm(RmaShmHeader* queueHeader, float*& ptr, int64_t& dim0, bool& emptyFlag) const
 {
     if ((queueHeader->seqIn - queueHeader->seqOut) == 0) {
         emptyFlag = true;
@@ -284,7 +285,7 @@ size_t HDTransfer::RecvMteShm(string& name, float*& ptr, int64_t& dim0, int batc
     return ret;
 }
 
-void HDTransfer::DequeueShm(TransferChannel channel, int channelId, const string& embName)
+void HDTransfer::DequeueShm(TransferChannel channel, int channelId, const string& embName) const
 {
     string recvName = StringFormat("%s_%s_%d_%d", embName.c_str(), TransferChannel2Str(channel).c_str(),
                                    channelId, localDeviceId);

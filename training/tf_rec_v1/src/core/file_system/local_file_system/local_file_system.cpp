@@ -287,7 +287,7 @@ ssize_t LocalFileSystem::Read(const string& filePath, vector<vector<float>>& fil
         }
         size_t elementsRead =
             fread(fileContent[embeddingCount].data() + contentOffset * embeddingSize, sizeof(float), embeddingSize, fp);
-        if (elementsRead < embeddingSize && ferror(fp)) {
+        if ((elementsRead < embeddingSize) && (ferror(fp) != 0)) {
             fclose(fp);
             auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::IO_ERROR,
                                StringFormat("Failed to read file path: %s.", filePath.c_str()));
@@ -314,7 +314,7 @@ ssize_t LocalFileSystem::Read(const string& filePath, vector<vector<float>>& fil
 /// \param addressArr 存放embedding的地址vector
 /// \param deviceId 运行的卡的id
 /// \return
-void LocalFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& embedSizeInfo, int64_t firstAddress,
+void LocalFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& embedSizeInfo, int64_t addressArr,
                                     int deviceId, vector<int64_t> offsetArr)
 {
 #ifndef GTEST
@@ -338,7 +338,7 @@ void LocalFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& e
         throw std::runtime_error(error.ToString());
     }
 
-    float* floatPtr = reinterpret_cast<float*>(firstAddress);
+    float* floatPtr = reinterpret_cast<float*>(addressArr);
     auto i = 0;
     for (const auto& offset: offsetArr) {
         vector<float> row(embedSizeInfo.embeddingSize);
@@ -350,7 +350,7 @@ void LocalFileSystem::ReadEmbedding(const string& filePath, EmbeddingSizeInfo& e
             throw std::runtime_error(error.ToString());
         }
         size_t elementsRead = fread(row.data(), sizeof(float), embedSizeInfo.embeddingSize, fp);
-        if (elementsRead < embedSizeInfo.embeddingSize && ferror(fp)) {
+        if ((elementsRead < embedSizeInfo.embeddingSize) && (ferror(fp) != 0)) {
             fclose(fp);
             auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::IO_ERROR,
                                StringFormat("Failed to read file path: %s.", filePath.c_str()));
@@ -389,7 +389,7 @@ void LocalFileSystem::CheckOpenFile4Write(const string& filePath, int openRetCod
     throw std::runtime_error(error.ToString());
 }
 
-void LocalFileSystem::CheckOpenFileRet(FILE* fp, const string& filePath)
+void LocalFileSystem::CheckOpenFileRet(FILE* fp, const string& filePath) const
 {
     if (fp == nullptr) {
         auto error = Error(ModuleName::M_FILE_SYSTEM, ErrorType::IO_ERROR,

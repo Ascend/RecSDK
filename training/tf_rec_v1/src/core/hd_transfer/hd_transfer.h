@@ -24,7 +24,6 @@ See the License for the specific language governing permissions and
 #include "acl/acl_tdt_queue.h"
 #include "acl_channel.h"
 #include "utils/common.h"
-#include "utils/config.h"
 #include "rma_shm_svm.h"
 
 #ifndef TDT_CREATE_CHANNEL
@@ -106,7 +105,7 @@ public:
     size_t RecvOffsetsAcl(TransferChannel channel, int channelId, const string& embName);
 
     size_t RecvMteShm(string& name, float*& ptr, int64_t& dim0, int batchId);
-    void DequeueShm(TransferChannel channel, int channelId, const string& embName);
+    void DequeueShm(TransferChannel channel, int channelId, const string& embName) const;
 
     void Destroy();
 
@@ -120,7 +119,7 @@ private:
     void CreateChannel(const uint32_t localRankId, const string& embName, const int channelNum);
     void CreateChannelForIncrementalCkpt(const uint32_t localRankId, const string& embName, const int channelNum);
     void RecordTrainingChannelStr(TransferChannel channel, const int channelId);
-    size_t RecvByShm(RmaShmHeader* queueHeader, float*& ptr, int64_t& dim0, bool& emptyFlag);
+    size_t RecvByShm(RmaShmHeader* queueHeader, float*& ptr, int64_t& dim0, bool& emptyFlag) const;
 
     std::unordered_map<std::string, acltdtChannelHandle*> transferChannels;
     std::unordered_map<int, std::set<std::string>> usedChannelsNames;  // The key indicates channels 0 and 1.
