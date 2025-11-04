@@ -42,7 +42,7 @@ namespace MxRec {
         void ReadEmbedding(const string& filePath, EmbeddingSizeInfo& embedSizeInfo, int64_t addressArr, int deviceId,
                            vector <int64_t> offsetArr) override;
 
-        void CheckOpenFileRet(FILE* fp, const string& filePath);
+        void CheckOpenFileRet(FILE* fp, const string& filePath) const;
 
         static void CheckOpenFile4Write(const string& filePath, int openRetCode);
     private:
