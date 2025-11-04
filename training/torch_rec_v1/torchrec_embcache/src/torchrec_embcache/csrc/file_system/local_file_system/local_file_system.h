@@ -37,7 +37,6 @@ public:
     size_t GetFileSize(const string& filePath) override;
 
     ssize_t Write(const string& filePath, const char* fileContent, size_t dataSize) override;
-    ssize_t Write(const string& filePath, vector<vector<float>>& fileContent, size_t dataSize) override;
 
     ssize_t Read(const string& filePath, char* fileContent, size_t datasetSize) override;
     ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, int64_t contentOffset,
@@ -54,8 +53,6 @@ private:
     const string currDir;
     const string prevDir;
 };
-
-bool CheckFilePermission(const string& filePath);
 
 void ValidateReadFile(const string& dataDir, size_t datasetSize);
 

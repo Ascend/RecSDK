@@ -10,7 +10,6 @@ COPY ./Ascend-cann-toolkit_*.run ./
 COPY ./Ascend-cann-kernels-*.run ./
 
 # 1.安装编译环境
-# wget -O /etc/yum.repos.d/CentOS-Base.repo https://mirrors.huaweicloud.com/repository/conf/CentOS-7-anon.repo
 RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.bak && \
     cp -f ./CentOS-Base.repo /etc/yum.repos.d/ && \
     yum makecache && \

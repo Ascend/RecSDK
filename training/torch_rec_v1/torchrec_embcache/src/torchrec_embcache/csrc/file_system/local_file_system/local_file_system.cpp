@@ -133,46 +133,6 @@ ssize_t LocalFileSystem::Write(const string& filePath, const char* fileContent, 
     return writeBytesNum;
 }
 
-ssize_t LocalFileSystem::Write(const string& filePath, vector<vector<float>>& fileContent, size_t dataSize)
-{
-    int fd = open(filePath.c_str(), O_RDWR | O_CREAT | O_TRUNC, fileMode);
-    CheckOpenFile4Write(filePath, fd);
-
-    vector<float> flattenContent;
-    for (auto& vec : fileContent) {
-        flattenContent.insert(flattenContent.cend(), vec.cbegin(), vec.cend());
-    }
-
-    size_t writeBytesRemain = flattenContent.size() * sizeof(float);
-    size_t writeSize = 0;
-    size_t idx = 0;
-    ssize_t writeBytesNum = 0;
-    auto dumpPtr = reinterpret_cast<const char*>(flattenContent.data());
-
-    while (writeBytesRemain != 0) {
-        if (writeBytesRemain > oneTimeReadWriteLen) {
-            writeSize = oneTimeReadWriteLen;
-        } else {
-            writeSize = writeBytesRemain;
-        }
-        ssize_t res = write(fd, dumpPtr + idx, writeSize);
-        if (res == -1) {
-            close(fd);
-            return res;
-        }
-        if (res == 0) {
-            break;
-        }
-        writeBytesRemain -= res;
-        idx += res;
-        writeBytesNum += res;
-    }
-
-    close(fd);
-
-    return writeBytesNum;
-}
-
 ssize_t LocalFileSystem::Read(const string& filePath, char* fileContent, size_t datasetSize)
 {
     if (fileContent == nullptr) {
@@ -323,32 +283,6 @@ void LocalFileSystem::Valid4WriteDir(const string& fileDirPath)
         auto errMsg = Logger::Format("Permission error, don't have write permission for directory:{}.", fileDirPath);
         throw std::runtime_error(errMsg);
     }
-}
-
-bool MxRec::CheckFilePermission(const string& filePath)
-{
-    struct stat fileInfo;
-    int ret = stat(filePath.c_str(), &fileInfo);
-    if (ret != 0) {
-        LOG_ERROR("Get stat info failed, file:{}, error:{}.", filePath, ret);
-        return false;
-    }
-
-    mode_t mask = 0700;
-    mode_t maxMode = 0640;
-    const int perPermWidth = 3;
-    vector<string> permMsg = { "Other group permission", "Owner group permission", "Owner permission" };
-    for (int i = perPermWidth; i > 0; i--) {
-        int curPerm = (fileInfo.st_mode & mask) >> ((i - 1) * perPermWidth);
-        int maxPerm = (maxMode & mask) >> ((i - 1) * perPermWidth);
-        mask = mask >> perPermWidth;
-        if (curPerm > maxPerm) {
-            LOG_ERROR("File permission wrong, file:{}, type:{}, current permission:{}, required no greater than:{}.",
-                      filePath, permMsg[i - 1], curPerm, maxPerm);
-            return false;
-        }
-    }
-    return true;
 }
 
 void MxRec::ValidateReadFile(const string& dataDir, size_t datasetSize)
