@@ -42,7 +42,6 @@ public:
     virtual size_t GetFileSize(const string& filePath) = 0;
 
     virtual ssize_t Write(const string& filePath, const char* fileContent, size_t dataSize) = 0;
-    virtual ssize_t Write(const string& filePath, vector<vector<float>>& fileContent, size_t dataSize) = 0;
 
     virtual ssize_t Read(const string& filePath, char* fileContent, size_t datasetSize) = 0;
     virtual ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, int64_t contentOffset,
