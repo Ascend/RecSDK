@@ -1,5 +1,5 @@
 /*
- * Copyright (c) huawei Platforms, Inc. and affiliates.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
  * All rights reserved.
  *
  * Threc_embcachehis source code is licensed under the BSD-style license found in the
