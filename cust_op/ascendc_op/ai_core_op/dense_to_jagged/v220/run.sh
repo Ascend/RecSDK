@@ -41,7 +41,6 @@ validate_ai_core() {
     done
     echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
     exit 1
-    return 1
 }
 
 ai_core="ai_core-Ascend910B1"
