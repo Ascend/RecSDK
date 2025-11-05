@@ -1,54 +1,29 @@
-# split_embedding_codegen_forward_unweighted算子及样例说明
-本算子仅支持NPU调用
+**说明**
 
-## split_embedding_codegen_forward_unweighted算子文件结构
+本算子仅支持NPU调用。
 
+# 产品支持情况
+| 硬件型号              | 是否支持                  |
+| -------------------- | ------------------------ |
+| Atlas A2训练系列产品  | 是  |
+| Atlas A3训练系列产品  | 是  |
+
+# # split_embedding_codegen_forward_unweighted算子目录层级
 ```shell
-├── split_embedding_codegen_forward_unweighted.json    # 算子原型配置
-├── op_host    # split_embedding_codegen_forward_unweighted算子Host侧实现
-├── op_kernel  # split_embedding_codegen_forward_unweighted算子Kernel侧实现
-├── README.md  # split_embedding_codegen_forward_unweighted算子说明文档
-└── run.sh     # split_embedding_codegen_forward_unweighted算子安装脚本
+-- split_embedding_codegen_forward_unweighted
+   |-- v220
+      |-- op_host                                            # 算子host侧实现
+      |-- op_kernel                                          # 算子kernel侧实现
+      |-- split_embedding_codegen_forward_unweighted.json    # 算子原型配置
+      |-- README.md                                          # 算子说明文档
+      |-- run.sh                                             # 算子编译部署脚本
 ```
 
+# 功能
+算子的主要功能是实现多表查询。
 
-## split_embedding_codegen_forward_unweighted算子介绍
+# 算子实现原理
 
-1. 算子分析
-
-a) 算子的主要功能是实现fbgemm的split_embedding_codegen_forward_unweighted, 实现embedding bag的查询功能
-
-b) 算子参数说明：
-
-* dev_weights: 表的权重；
-* uvm_weight: 预留参数不支持配置；
-* lxu_cache_weight: 预留参数不支持配置；
-* weights_pacements: 预留参数不支持配置;
-* weights_offsets: 每张表的偏移量;
-* D_offsets: 每张表embedding dim的累加和偏移量;
-* indices: 查询表的索引;
-* hash_indices: 稀疏表查表的索引，可选参数;
-* offsets: 查表索引对应的偏移;
-* lxu_cache_locations: 预留参数不支持配置;
-* out: 查询的向量；
-* total_D: 输出的embedding dim之和;
-* max_D: 表中最大的embedding dim;;
-* pooling_mode: pooling的方式Sum或者Mean或None;
-* output_dtype: 预留参数不支持配置;
-* is_experimental: 预留参数不支持配置;
-
-c) 算子约束说明：
-
-* 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.2.RC1.alpha001及之后版本；
-* 支持的输入数据类型：dev_weights为float32类型，weights_offsets、indices、hash_indices、offsets为int64，D_offsets为int32。
-* 支持的输入shape： dev_weights的dim为所有表的[embed_dim * embed_size]之和，embed_dim长度需为8的倍数, pooling_mode为None时所有表的embed_dim需要保持一致。  
-                   weights_offsets的dim为[ feat_cnt ]。  
-                   D_offsets的dim为[ feat_cnt + 1 ]。  
-                   offsets的dim为[batchsize * feat_cnt + 1]，请注意：offsets中的元素大小超过10000时，可能出现累加误差。  
-                   indices的dim与offset最后一个元素大小相同。  
-
-## 算子逻辑
 ```
 # with bag sum or mean
 def split_embedding_codegen_forword_unweighted(dev_weights, weights_offsets, D_offsets, indices, offsets, total_D, pool_mode):
@@ -92,8 +67,30 @@ def split_embedding_nobag_codegen_forword_unweighted(dev_weights, weights_offset
             results[result_indx] = this_embed
             result_indx += 1
     return result.astype(np.float32)
-
 ```
 
-## 算子使用说明
-请参考:[RecSDK-Torch 自定义算子说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)
+# 算子输入与输出
+|  名称  |  输入/输出  |  数据类型  |  数据格式  |  范围  |  说明  |
+|  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |
+|  dev_weights | 输入 | float32 | [total_table_size] | NA | 一维数组,所有表的权重，表的embedding_dim必须为8的整数倍 |
+|  uvm_weight | 输入 | float32 | NA | NA  | 保留参数|
+|  lxu_cache_weight | 输入 | float32 | NA | NA | 保留参数 |
+|  weights_pacements | 输入 | int32 | NA | NA | 保留参数 |
+|  weights_offsets | 输入 | int64 | [feat_cnt] | feat_cnt >= table_num, | 一维数组 |
+|  D_offsets | 输入 | int64 | [feat_cnt + 1] | 数值必须从0开始依次递增 | 每个特征的embedding_dim的累加和 |
+|  indices | 输入 | int64 | NA | len(indices) = offset[-1], 每张表的索引的大小[0, num_embedding] | 查表索引，需用户自行保证合法性，否则可能导致算子执行失败 |
+|  hash_indices | 输入 | int64 | NA | len(indices) = offset[-1], 每张表的索引的大小[0, num_embedding] | 查表索引，需用户自行保证合法性，否则可能导致算子执行失败 |
+|  offsets | 输入 | float32/int64 | [ [feat_cnt * batch_size + 1]] | 数值必须从0开始依次递增 | 查表索引对应的偏移 |
+|  lxu_cache_locations | 输入 | int32 | NA | NA |保留参数 |
+|  total_D | 属性 | int64 |  NA | NA | 所有特征的embedding_dim之和 |
+|  max_D | 属性 | int64 | NA | NA | 最大的embedding_dim |
+|  pooling_mode | 属性 | int64 | NA  | NA | poolingSum:0, poolingMean:1, poolingNone:2 |
+|  output_dtype | 属性 | int64 | NA | NA |保留参数 |
+|  is_experimental | 属性 | bool |  NA | NA | 保留参数 |
+|  out | 输出 | float32 |poolingSum/poolingMean: [batch_size, total_D] poolingNone:[len(indices), maxD] | NA | NA |
+
+# 算子编译部署
+
+算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"1.算子编译"章节。
+
+注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/2.6.0/split_embedding_codegen_forward_unweighted/README.md)
