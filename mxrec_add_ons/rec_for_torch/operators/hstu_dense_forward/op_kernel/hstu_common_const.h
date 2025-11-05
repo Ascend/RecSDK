@@ -17,6 +17,8 @@ constexpr int DATA_ALIGN_BYTES = 32;
 constexpr int MAX_INDICS_ONE_BLOCK = 100;
 
 constexpr int INVALID_TASK_ID = -1;
+constexpr int BLOCK_M = 256;
+constexpr int BLOCK_MN = 256 * 256;
 
 }  // namespace HstuDenseForward
 

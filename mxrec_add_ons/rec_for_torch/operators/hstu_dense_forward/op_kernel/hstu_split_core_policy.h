@@ -124,7 +124,8 @@ public:
                                       GlobalTensor<oType>& seqOffsetsQGt,
                                       GlobalTensor<oType>& seqOffsetsKGt,
                                       GlobalTensor<oType>& numContextGt,
-                                      GlobalTensor<oType>& numTargetGt)
+                                      GlobalTensor<oType>& numTargetGt,
+                                      bool fastMode)
     {
         this->maskType = maskType;
         this->coreNum = coreNum;
@@ -138,11 +139,32 @@ public:
         this->numTargetGt = numTargetGt;
 
         this->bxn = batchSize * headNum;
+        this->fastMode = fastMode;
+    }
+    
+    __aicore__ inline void SplitCoreFast(int (&result)[2], int coreId)
+    {
+        uint32_t totalTaskNum = this->bxn;
+        uint32_t usedCoreNum = (this->coreNum > totalTaskNum) ? totalTaskNum : this->coreNum;
+
+        uint32_t splitNextCoreProcNum = totalTaskNum / usedCoreNum;
+        uint32_t splitPrevCoreProcNum = splitNextCoreProcNum + 1;
+        uint32_t splitCoreIdx = totalTaskNum % usedCoreNum;
+        if (coreId < splitCoreIdx) {
+            result[0] = coreId * splitPrevCoreProcNum;
+            result[1] = result[0] + splitPrevCoreProcNum;
+        } else if (coreId < usedCoreNum) {
+            result[0] = splitCoreIdx * splitPrevCoreProcNum + (coreId - splitCoreIdx) * splitNextCoreProcNum;
+            result[1] = result[0] + splitNextCoreProcNum;
+        } else {
+            result[0] = 0;
+            result[1] = 0;
+        }
     }
 
-    __aicore__ inline void Compute(int (&result)[2], int coreId)
+    __aicore__ inline void SplitCoreSlow(int (&result)[2], int coreId)
     {
-        // 计算总任务量
+         // 计算总任务量
         uint32_t totalTaskNum = 0;
         for (auto batchId = 0; batchId < batchSize; batchId++) {
             int64_t seqlenQ = seqOffsetsQGt.GetValue(batchId + 1) - seqOffsetsQGt.GetValue(batchId);
@@ -180,6 +202,15 @@ public:
         processedBlocks += AssignQBlocksToCore(batchId, seqTask, eachCoreTaskNumLimit);
         
         result[1] = processedBlocks;
+    }
+
+    __aicore__ inline void Compute(int (&result)[2], int coreId)
+    {
+        if (this->fastMode) {
+            SplitCoreFast(result, coreId);
+        } else {
+            SplitCoreSlow(result, coreId);
+        }
     }
 
 private:
@@ -234,6 +265,7 @@ private:
     int64_t headNum;
     int64_t tgsize;
     uint32_t bxn;  // 总序列数
+    bool fastMode;
 
     GlobalTensor<oType> seqOffsetsQGt;
     GlobalTensor<oType> seqOffsetsKGt;

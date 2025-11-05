@@ -451,10 +451,14 @@ __aicore__ inline int HstuDenseForwardJaggedKernel<qType, oType>::PreInit(
     numContextGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numContext), this->batchSize);
     numTargetGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numTarget), this->batchSize);
 
+    bool fastMode = false;
+    if (this->maxSeqLenK <= BLOCK_M && this->maxSeqLenQ * this->maxSeqLenK <= BLOCK_MN) {
+        fastMode = true;
+    }
     int blocks[2] = {0}; // start block id, end block id
     auto taskAssigner =
         BlockTaskAssign(this->maskType, coreNum, this->blockHeight, this->batchSize, this->headNum,
-                        this->targetGroupSize, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt);
+                        this->targetGroupSize, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, fastMode);
     taskAssigner.Compute(blocks, blockId);
 
     this->sBlkId = blocks[0];
