@@ -1,0 +1,6 @@
+# test tools
+pytest==7.4.4
+pytest-cov==4.1.0
+pytest-html==4.1.1
+pytest-xdist==3.3.1
+toml==0.10.2
