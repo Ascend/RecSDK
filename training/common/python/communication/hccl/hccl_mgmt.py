@@ -26,36 +26,44 @@ from rec_sdk_common.validator.safe_checker import class_safe_check, int_safe_che
 def _get_chip_name():
     import common_binding
     chipName = common_binding.get_chip_name(0)
-    if "910B" in chipName:
-        return ChipName.ASCEND_910B
-    return ChipName.NONE
+    return chipName
 
 
-def _get_rank_info_with_ranktable() -> Dict[int, int]:
-    """
-    Used for rank table file configured training situation.
-    :return: rank_id to logic_id mapping dictionary.
-    """
-    rank_table_path = os.getenv(RankTableInfo.RANK_TABLE_FILE.value, "")
-    with open(rank_table_path, "r", encoding="utf-8") as file:
-        try:
-            ranktable_info = json.load(file)
-        except FileNotFoundError as e:
-            raise ValueError("rank table file not found") from e
-        except json.JSONDecodeError as e:
-            raise ValueError("rank table file is unable to parse as json") from e
-        class_safe_check("ranktable_info", ranktable_info, (dict,))
+def _determine_ranktable_format() -> bool:
+    chip_name = _get_chip_name()
+    is_new_chip = chip_name.startswith("910_95")
+    return is_new_chip
 
-        if RankTableInfo.SERVER_LIST.value not in ranktable_info:
-            raise AttributeError(f"Lack of attribute server_list.")
-        if not ranktable_info.get(RankTableInfo.SERVER_LIST.value):
-            raise ValueError(f"Server_list is empty.")
-        if RankTableInfo.DEVICE.value not in ranktable_info.get(RankTableInfo.SERVER_LIST.value)[0]:
-            raise AttributeError(f"Lack of attribute device.")
 
-    rank_to_device_dict = dict()
-    for server_list in ranktable_info.get(RankTableInfo.SERVER_LIST.value):
-        devices = server_list.get(RankTableInfo.DEVICE.value)
+def _parse_new_ranktable_format(rank_list: list) -> Dict[int, int]:
+    rank_to_device_dict = {}
+    for infos in rank_list:
+        if RankTableInfo.DEVICE_ID.value not in infos:
+            raise AttributeError("lack of attribute device_id")
+        device_id = infos.get(RankTableInfo.DEVICE_ID.value)
+        int_safe_check("device_id", device_id, min_value=0, max_value=CommParams.MAX_DEVICE_ID.value)
+
+        if RankTableInfo.RANK_ID.value not in infos:
+            raise AttributeError("lack of attribute rank_id")
+        rank_id = infos.get(RankTableInfo.RANK_ID.value)
+        int_safe_check("rank_id", rank_id, min_value=0, max_value=CommParams.MAX_RANK_ID.value)
+
+        rank_to_device_dict[rank_id] = device_id
+
+    return rank_to_device_dict
+
+
+def _parse_ranktable_format(ranktable_info: dict) -> Dict[int, int]:
+    if RankTableInfo.SERVER_LIST.value not in ranktable_info:
+        raise AttributeError("Lack of attribute server_list.")
+    if not ranktable_info.get(RankTableInfo.SERVER_LIST.value):
+        raise ValueError("Server_list is empty.")
+    if RankTableInfo.DEVICE.value not in ranktable_info.get(RankTableInfo.SERVER_LIST.value)[0]:
+        raise AttributeError(f"Lack of attribute device.")
+
+    rank_to_device_dict = {}
+    for server in ranktable_info.get(RankTableInfo.SERVER_LIST.value):
+        devices = server.get(RankTableInfo.DEVICE.value)
         if devices is None:
             raise ValueError("device is empty")
 
@@ -66,10 +74,41 @@ def _get_rank_info_with_ranktable() -> Dict[int, int]:
             int_safe_check("rank_id", rank_id, min_value=0, max_value=CommParams.MAX_RANK_ID.value)
             if RankTableInfo.DEVICE_ID.value not in device or not device.get(RankTableInfo.DEVICE_ID.value).isdigit():
                 raise ValueError(f"hccl_json device_id wrong.")
+
             import common_binding
             logic_id = common_binding.get_logic_id(int(device.get(RankTableInfo.DEVICE_ID.value)))
             int_safe_check("logic_id", logic_id, min_value=0, max_value=CommParams.MAX_LOGIC_ID.value)
             rank_to_device_dict[rank_id] = logic_id
+
+    return rank_to_device_dict
+
+
+def _get_rank_info_with_ranktable() -> Dict[int, int]:
+    rank_table_path = os.getenv(RankTableInfo.RANK_TABLE_FILE.value, "")
+
+    try:
+        with open(rank_table_path, "r", encoding="utf-8") as file:
+            ranktable_info = json.load(file)
+    except FileNotFoundError as e:
+        raise ValueError("ranktable file not found, please export RANK_TABLE_FILE first") from e
+    except json.JSONDecodeError as e:
+        raise ValueError("ranktable file is unable to parse as json") from e
+    class_safe_check("ranktable_info", ranktable_info, (dict,))
+
+    use_new_format = _determine_ranktable_format()
+
+    if use_new_format:
+        if RankTableInfo.RANK_LIST.value not in ranktable_info:
+            raise AttributeError("lack of attribute rank_list")
+        rank_list = ranktable_info.get(RankTableInfo.RANK_LIST.value)
+        if not rank_list:
+            raise ValueError("rank_list is empty")
+        class_safe_check("rank_list", rank_list, (list,))
+
+        rank_to_device_dict = _parse_new_ranktable_format(rank_list)
+    else:
+        rank_to_device_dict = _parse_ranktable_format(ranktable_info)
+
     return rank_to_device_dict
 
 
