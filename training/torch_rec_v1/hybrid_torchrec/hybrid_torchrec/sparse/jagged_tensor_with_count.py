@@ -72,7 +72,11 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
         index_per_key: Optional[Dict[str, int]] = None,
         jt_dict: Optional[Dict[str, JaggedTensor]] = None,
         inverse_indices: Optional[Tuple[List[str], torch.Tensor]] = None,
+        extra: Optional[torch.Tensor] = None,
     ) -> None:
+        if extra is not None and counts is None:
+            counts = extra
+            
         super().__init__(
             keys=keys,
             values=values,
@@ -135,7 +139,7 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
     def to(
         self, device: torch.device, non_blocking: bool = False
     ) -> "KeyedJaggedTensorWithCount":
-        return super().to(device, non_blocking, KeyedJaggedTensorWithCount)
+        return self.to_base(device, non_blocking, KeyedJaggedTensorWithCount)
 
     @torch.jit.unused
     def record_stream(self, stream: torch.cuda.streams.Stream) -> None:

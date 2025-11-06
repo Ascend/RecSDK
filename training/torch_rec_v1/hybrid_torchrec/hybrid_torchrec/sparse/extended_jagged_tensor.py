@@ -114,6 +114,56 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
     def extra(self) -> Optional[torch.Tensor]:
         return self._extra
 
+    def to_base(
+        self, device: torch.device, non_blocking, constructor: Callable[..., KT]
+    ) -> "KeyedExtendedJaggedTensor":
+        weights = self._weights
+        lengths = self._lengths
+        offsets = self._offsets
+        stride, stride_per_key_per_rank = (
+            (None, self._stride_per_key_per_rank)
+            if self.variable_stride_per_key()
+            else (self._stride, None)
+        )
+        length_per_key = self._length_per_key
+        offset_per_key = self._offset_per_key
+        index_per_key = self._index_per_key
+        jt_dict = self._jt_dict
+
+        return constructor(
+            keys=self._keys,
+            values=self._values.to(device, non_blocking=non_blocking),
+            extra=(
+                self._extra.to(device, non_blocking=non_blocking)
+                if self._extra is not None
+                else None
+            ),
+            weights=(
+                weights.to(device, non_blocking=non_blocking)
+                if weights is not None
+                else None
+            ),
+            lengths=(
+                lengths.to(device, non_blocking=non_blocking)
+                if lengths is not None
+                else None
+            ),
+            offsets=(
+                offsets.to(device, non_blocking=non_blocking)
+                if offsets is not None
+                else None
+            ),
+            stride=stride,
+            stride_per_key_per_rank=stride_per_key_per_rank,
+            length_per_key=length_per_key,
+            offset_per_key=offset_per_key,
+            index_per_key=index_per_key,
+            jt_dict=jt_dict,
+        )
+
+    def to(self, device: torch.device, non_blocking: bool = False) -> "ExtendedJaggedTensor":
+        return self.to_base(device, non_blocking, ExtendedJaggedTensor)
+
     def split_extend(self, segments: List[int], constructor: Callable[..., KT]) -> List[KT]:
         """通用的split方法，子类需要提供构造函数"""
         split_list: List[KT] = []
