@@ -56,6 +56,13 @@ constexpr int COMPUTE_PIPE_NUM = 3;
 constexpr int TRANS_PIPE_NUM = 4;
 constexpr int TRANS_TASK_NUM = 3;
 
+enum class MASK_TYPE {
+    MASK_TRIL = 0,
+    MATRIX_TRIU = 1,
+    MATRIX_NONE = 2,
+    MATRIX_CUSTOM = 3,
+};
+
 }
 
 #endif

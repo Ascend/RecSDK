@@ -16,7 +16,7 @@ torch.ops.mxrec.dense_to_jagged_backward(Tensor values, Tensor[] offsets, int ma
 ```
 
 注：dense_to_jagged_forward、dense_to_jagged接口均为dense_to_jagged算子调用接口。<br>
-dense_to_jagged_backward接口为dense_to_jagged算子的反向算子jagged_to_padded_dense接口，具体调用请参考`jagged_to_padded_dense`算子调用。
+dense_to_jagged_backward接口为dense_to_jagged算子的反向算子jagged_to_padded_dense接口，具体调用请参考[`jagged_to_padded_dense`](../jagged_to_padded_dense/README.md)算子调用。
 
 #### 参数说明
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
@@ -39,6 +39,7 @@ dense_to_jagged_backward接口为dense_to_jagged算子的反向算子jagged_to_p
 Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
 #### 算子调用示例,以下以pytest方式调用为例
+
 ```python
 import itertools
 import logging
