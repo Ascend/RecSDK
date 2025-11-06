@@ -4,10 +4,11 @@
 # 产品支持情况
 | 硬件型号           | 是否支持 |
 |----------------|------|
-| Atlas A2训练系列产品 | ✓    |
-| Atlas A3训练系列产品 | ✓    |
+| Atlas A2训练系列产品 | 是    |
+| Atlas A3训练系列产品 | 是    |
 
 # relative_attn_bias_pos算子目录层级
+
 ```shell
 -- relative_attn_bias_pos
    |-- v220
@@ -18,6 +19,7 @@
       |-- README.md               # 算子说明文档
       |-- run.sh                  # 算子编译部署脚本
 ```
+
 # 功能
 
 针对hstu模型rab的pos部分计算。
@@ -27,6 +29,7 @@
 ![rab_pos_fwd.png](rab_pos_fwd.png)
 
 仿真代码：
+
 ```python
 import torch
 
