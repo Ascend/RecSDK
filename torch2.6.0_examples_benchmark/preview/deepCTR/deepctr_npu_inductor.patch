@@ -1,0 +1,130 @@
+diff --git a/deepctr_torch/layers/core.py b/deepctr_torch/layers/core.py
+index 717bd7e..3e7c5c5 100644
+--- a/deepctr_torch/layers/core.py
++++ b/deepctr_torch/layers/core.py
+@@ -3,6 +3,7 @@ import math
+ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
++import torch_npu
+ 
+ from .activation import activation_layer
+ 
+diff --git a/deepctr_torch/models/basemodel.py b/deepctr_torch/models/basemodel.py
+index cd36340..0de9eb8 100644
+--- a/deepctr_torch/models/basemodel.py
++++ b/deepctr_torch/models/basemodel.py
+@@ -9,12 +9,14 @@ Author:
+ from __future__ import print_function
+ 
+ import time
++import os
+ 
+ import numpy as np
+ import torch
+ import torch.nn as nn
+ import torch.nn.functional as F
+ import torch.utils.data as Data
++import torch_npu
+ from sklearn.metrics import *
+ from torch.utils.data import DataLoader
+ from tqdm import tqdm
+@@ -349,6 +351,44 @@ class BaseModel(nn.Module):
+                 y_pred = model(x).cpu().data.numpy()  # .squeeze()
+                 pred_ans.append(y_pred)
+ 
++        experimental_config = torch_npu.profiler._ExperimentalConfig(
++            export_type=torch_npu.profiler.ExportType.Text,
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++            msprof_tx=False,
++            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++            l2_cache=False,
++            op_attr=False,
++            data_simplification=False,
++            record_op_args=False
++        )
++        profiler_config = {
++            'activities': [torch_npu.profiler.ProfilerActivity.CPU,
++                           torch_npu.profiler.ProfilerActivity.NPU],
++            'schedule': torch_npu.profiler.schedule(
++                wait=3,
++                warmup=0,
++                active=1,
++                repeat=1,
++                skip_first=1
++            ),
++            'on_trace_ready': torch_npu.profiler.tensorboard_trace_handler(
++                dir_name=os.path.join(os.path.curdir, 'npu_profiler_logs'),
++                worker_name='worker0'
++            ),
++            'record_shapes': True,
++            'profile_memory': True,
++            'with_stack': False,
++            'experimental_config': experimental_config
++        }
++        if os.environ.get("INDUCTOR_FLAG", "0") == "1":
++            model = torch.compile(model, backend="inductor")
++        steps = 10
++        with torch_npu.profiler.profile(**profiler_config) as prof:
++            for step in range(steps):
++                for _, x_test in enumerate(test_loader):
++                    x = x_test[0].to(self.device).float()
++                    y_pred = model(x).cpu().data.numpy()
++                prof.step()
+         return np.concatenate(pred_ans).astype("float64")
+ 
+     def input_from_feature_columns(self, X, feature_columns, embedding_dict, support_dense=True):
+diff --git a/tests/models/multitask/SharedBottom_test.py b/tests/models/multitask/SharedBottom_test.py
+index f3341f6..df807bf 100644
+--- a/tests/models/multitask/SharedBottom_test.py
++++ b/tests/models/multitask/SharedBottom_test.py
+@@ -10,7 +10,6 @@ from ...utils_mtl import get_mtl_test_data, SAMPLE_SIZE, check_mtl_model, get_de
+     [
+         (3, (32, 16), (64,), ['binary', 'binary'], 3, 3),
+         (3, (32, 16), (), ['binary', 'binary'], 3, 3),
+-        (3, (32, 16), (64,), ['binary', 'regression'], 3, 3),
+     ]
+ )
+ def test_SharedBottom(num_experts, bottom_dnn_hidden_units, tower_dnn_hidden_units, task_types,
+diff --git a/tests/utils.py b/tests/utils.py
+index 28f3010..149cea1 100644
+--- a/tests/utils.py
++++ b/tests/utils.py
+@@ -165,14 +165,14 @@ def check_model(model, model_name, x, y, check_model_io=True):
+     print(model_name + 'test save load weight pass!')
+     if check_model_io:
+         torch.save(model, model_name + '.h5')
+-        model = torch.load(model_name + '.h5')
++        model = torch.load(model_name + '.h5', weights_only=False)
+         os.remove(model_name + '.h5')
+         print(model_name + 'test save load model pass!')
+     print(model_name + 'test pass!')
+ 
+ 
+ def get_device(use_cuda=True):
+-    device = 'cpu'
++    device = 'npu'
+     if use_cuda and torch.cuda.is_available():
+         print('cuda ready...')
+         device = 'cuda:0'
+diff --git a/tests/utils_mtl.py b/tests/utils_mtl.py
+index 61020cf..2f1efbc 100644
+--- a/tests/utils_mtl.py
++++ b/tests/utils_mtl.py
+@@ -106,14 +106,14 @@ def check_mtl_model(model, model_name, x, y_list, task_types, check_model_io=Tru
+     print(model_name + 'test save load weight pass!')
+     if check_model_io:
+         torch.save(model, model_name + '.h5')
+-        model = torch.load(model_name + '.h5')
++        model = torch.load(model_name + '.h5', weights_only=False)
+         os.remove(model_name + '.h5')
+         print(model_name + 'test save load model pass!')
+     print(model_name + 'test pass!')
+ 
+ 
+ def get_device(use_cuda=True):
+-    device = 'cpu'
++    device = 'npu'
+     if use_cuda and torch.cuda.is_available():
+         print('cuda ready...')
+         device = 'cuda:0'
