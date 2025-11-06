@@ -1,0 +1,414 @@
+diff --git a/requirements/runtime.txt b/requirements/runtime.txt
+index e3d404f..1e44b46 100644
+--- a/requirements/runtime.txt
++++ b/requirements/runtime.txt
+@@ -1,20 +1,14 @@
+ alibabacloud_credentials==0.3.6
+ anytree
+ common_io @ https://tzrec.oss-accelerate.aliyuncs.com/third_party/common_io-0.4.1%2Btunnel-py2.py3-none-any.whl 
+-fbgemm-gpu==1.3.0
+-graphlearn @ https://tzrec.oss-cn-beijing.aliyuncs.com/third_party/graphlearn-1.3.7-cp312-cp312-linux_x86_64.whl  ; python_version=="3.12"
++fbgemm-gpu==1.2.0
+ graphlearn @ https://tzrec.oss-accelerate.aliyuncs.com/third_party/graphlearn-1.3.7-cp311-cp311-linux_x86_64.whl  ; python_version=="3.11"
+-graphlearn @ https://tzrec.oss-accelerate.aliyuncs.com/third_party/graphlearn-1.3.7-cp310-cp310-linux_x86_64.whl  ; python_version=="3.10"
+ grpcio-tools<1.63.0
+ numpy<2
+ pandas
+ psutil
+-pyfg @ https://tzrec.oss-accelerate.aliyuncs.com/third_party/pyfg-0.7.3-cp312-cp312-linux_x86_64.whl  ; python_version=="3.12"
+ pyfg @ https://tzrec.oss-accelerate.aliyuncs.com/third_party/pyfg-0.7.3-cp311-cp311-linux_x86_64.whl  ; python_version=="3.11"
+-pyfg @ https://tzrec.oss-accelerate.aliyuncs.com/third_party/pyfg-0.7.3-cp310-cp310-linux_x86_64.whl  ; python_version=="3.10"
+ pyodps>=0.12.4
+ scikit-learn
+ tensorboard
+-torch==2.8.0
+ torchmetrics==1.0.3
+-torchrec==1.3.0
+diff --git a/tzrec/datasets/parquet_dataset.py b/tzrec/datasets/parquet_dataset.py
+index 4b636fd..2f38c33 100644
+--- a/tzrec/datasets/parquet_dataset.py
++++ b/tzrec/datasets/parquet_dataset.py
+@@ -185,6 +185,9 @@ class ParquetReader(BaseReader):
+             self._schema = parquet_file.schema_arrow
+         parquet_file.close()
+ 
++        # os.environ["WORLD_SIZE"] = "1"
++        # os.environ["RANK"] = "0"
++        # os.environ["LOCAL_RANK"] = "1"
+         rank = int(os.environ.get("RANK", 0))
+         world_size = int(os.environ.get("WORLD_SIZE", 1))
+ 
+diff --git a/tzrec/main.py b/tzrec/main.py
+index 355fac0..9966d89 100644
+--- a/tzrec/main.py
++++ b/tzrec/main.py
+@@ -12,6 +12,7 @@
+ import copy
+ import itertools
+ import json
++import logging
+ import os
+ import shutil
+ from collections import OrderedDict
+@@ -86,6 +87,18 @@ from tzrec.utils.state_dict_util import fix_mch_state, init_parameters
+ from tzrec.version import __version__ as tzrec_version
+ 
+ 
++import torch_npu
++
++
++lib_fbgemm_npu_api_so_path = os.getenv("LIB_FBGEMM_NPU_API_SO_PATH")
++
++try:
++    torch.ops.load_library(lib_fbgemm_npu_api_so_path)
++except FileNotFoundError as e:
++    logging.error(f"libfbgemm_npu_api.so is not exist")
++except Exception as e:
++    logging.error(f"libfbgemm_npu_api.so failed to load: {e}")
++
+ def init_process_group() -> Tuple[torch.device, str]:
+     """Init process_group, device, rank, backend."""
+     rank = int(os.environ.get("LOCAL_RANK", 0))
+@@ -93,6 +106,10 @@ def init_process_group() -> Tuple[torch.device, str]:
+         device: torch.device = torch.device(f"cuda:{rank}")
+         backend = "nccl"
+         torch.cuda.set_device(device)
++    elif torch_npu.npu.is_available():
++        device: torch.device = torch.device(f"npu")
++        backend = "hccl"
++        torch_npu.npu.set_device(device)
+     else:
+         device: torch.device = torch.device("cpu")
+         backend = "gloo"
+@@ -188,7 +205,6 @@ def _get_dataloader(
+ 
+         kwargs["num_workers"] = num_workers
+         kwargs["persistent_workers"] = True
+-
+     if mode == Mode.TRAIN:
+         # When in train_and_eval mode, use 2x worker in gl cluster
+         # for train_dataloader and eval_dataloader
+@@ -284,6 +300,39 @@ def _evaluate(
+     iterator = iter(eval_dataloader)
+     step_iter = range(eval_config.num_steps) if use_step else itertools.count(0)
+ 
++    print(f"debug step_iter:{step_iter}; os.path.dirname(eval_result_filename):{os.path.dirname(eval_result_filename)}")
++    model_name = os.path.basename(os.path.dirname(eval_result_filename))
++    ###############################################
++    experimental_config = torch_npu.profiler._ExperimentalConfig(
++            export_type=[
++                torch_npu.profiler.ExportType.Text,
++                torch_npu.profiler.ExportType.Db
++                ],
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++            msprof_tx=False,
++            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++            l2_cache=False,
++            op_attr=False,
++            data_simplification=False,
++            record_op_args=False,
++            gc_detect_threshold=None
++        )
++    prof = torch_npu.profiler.profile(
++            activities=[
++                torch_npu.profiler.ProfilerActivity.CPU,
++                torch_npu.profiler.ProfilerActivity.NPU
++                ],
++            schedule=torch_npu.profiler.schedule(wait=1, warmup=1, active=1, repeat=1),
++            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(os.path.dirname(eval_result_filename)),
++            record_shapes=False,
++            profile_memory=False,
++            with_stack=False,
++            with_modules=False,
++            with_flops=False,
++            experimental_config=experimental_config)
++
++    prof.start()
++    #####################################################
+     desc_suffix = ""
+     if global_epoch is not None:
+         desc_suffix += f" Epoch-{global_epoch}"
+@@ -294,13 +343,13 @@ def _evaluate(
+     plogger = None
+     if is_local_rank_zero:
+         plogger = ProgressLogger(desc=f"Evaluating{desc_suffix}")
+-
++    inductor_flag = 'inductor' if os.environ.get('INDUCTOR_FLAG') == '1' else 'eager'
+     with torch.no_grad():
+         i_step = 0
+         for i_step in step_iter:
+             try:
+                 losses, predictions, batch = pipeline.progress(iterator)
+-                _model.update_metric(predictions, batch, losses)
++                torch.save(predictions["logits"], f"./save_results/{model_name}/predictions_{model_name}_{inductor_flag}_{i_step}.pt")
+                 if (
+                     plogger is not None
+                     and i_step % eval_config.log_step_count_steps == 0
+@@ -308,22 +357,12 @@ def _evaluate(
+                     plogger.log(i_step)
+             except StopIteration:
+                 break
++            prof.step()
+         if plogger is not None:
+             plogger.log(i_step)
+ 
+-    metric_result = _model.compute_metric()
+-
+-    if is_rank_zero:
+-        metric_str = " ".join([f"{k}:{v:0.6f}" for k, v in metric_result.items()])
+-        logger.info(f"Eval Result{desc_suffix}: {metric_str}")
+-        metric_result = {k: v.item() for k, v in metric_result.items()}
+-        if eval_result_filename:
+-            with open(eval_result_filename, "w") as f:
+-                json.dump(metric_result, f, indent=4)
+-        if eval_summary_writer:
+-            for k, v in metric_result.items():
+-                eval_summary_writer.add_scalar(f"metric/{k}", v, global_step or 0)
+-    return metric_result
++    prof.stop()
++    return None
+ 
+ 
+ def _log_train(
+@@ -792,6 +831,9 @@ def evaluate(
+     eval_input_path: Optional[str] = None,
+     eval_result_filename: str = "eval_result.txt",
+ ) -> None:
++    os.environ["WORLD_SIZE"] = "1"
++    os.environ["RANK"] = "0"
++    os.environ["LOCAL_RANK"] = "0"
+     """Evaluate a EasyRec model.
+ 
+     Args:
+@@ -844,6 +886,8 @@ def evaluate(
+         else None,
+         model=model,
+     )
++
++
+     sharders = get_default_sharders()
+     plan = planner.collective_plan(model, sharders, dist.GroupMember.WORLD)
+     if is_rank_zero:
+@@ -852,16 +896,49 @@ def evaluate(
+     model = DistributedModelParallel(
+         module=model, sharders=sharders, device=device, plan=plan
+     )
+-
++    INDUCTOR_FLAG = os.getenv("INDUCTOR_FLAG", "0")
++    if INDUCTOR_FLAG == "0":
++        print("go to eager!!")
++        print("debug save weights start...")
++        state_dict = model.state_dict()
++        # 将 ShardedTensor 转为普通 Tensor（自动合并）
++        # 注意：这会把所有分片合并到当前设备（NPU）
++        for key in state_dict:
++            try:
++                from torch.distributed._shard.sharded_tensor import ShardedTensor
++            except Exception:
++                ShardedTensor = ()
++
++            if hasattr(state_dict[key], 'shard') or isinstance(state_dict[key], ShardedTensor):
++                print(f"Converting ShardedTensor for key: {key}")
++                # 使用 .local_tensor() 或 .to_local() 获取本地张量
++                # 注意：ShardedTensor 有 .local_tensor() 方法，但可能需要先同步
++                try:
++                    state_dict[key] = state_dict[key].local_tensor()  # 常用方式
++                except:
++                    # 兼容旧版
++                    state_dict[key] = state_dict[key].to_local()
++        # 现在可以安全保存
++        import torch
++        torch.save(state_dict, "./save_weights/random_init_weights.pth")
++        print("debug save weights end...")
++    model.to(device)
++    if INDUCTOR_FLAG == "1":
++        print("go to inductor!!")
++        # 加载权重
++        import torch
++        state_dict = torch.load("./save_weights/random_init_weights.pth", map_location=device)
++        model.load_state_dict(state_dict)
++
++        print("--------------inductor-----------------------")
++        import torch._dynamo
++        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.split_embedding_codegen_lookup_sgd_function_pt2)
++        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.permute_2D_sparse_data_input1D)
++        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.block_bucketize_sparse_features)
++        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.get_infos_metadata)
++        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.jagged_to_padded_dense)
++        model = torch.compile(model, backend="inductor")
+     global_step = None
+-    if not checkpoint_path:
+-        checkpoint_path, global_step = checkpoint_util.latest_checkpoint(
+-            pipeline_config.model_dir
+-        )
+-    if checkpoint_path:
+-        checkpoint_util.restore_model(checkpoint_path, model)
+-    else:
+-        raise ValueError("Eval checkpoint path should be specified.")
+ 
+     summary_writer = None
+     if is_rank_zero:
+diff --git a/tzrec/metrics/grouped_auc.py b/tzrec/metrics/grouped_auc.py
+index a84b9e4..ad4322d 100644
+--- a/tzrec/metrics/grouped_auc.py
++++ b/tzrec/metrics/grouped_auc.py
+@@ -121,6 +121,7 @@ class GroupedAUC(Metric):
+         sum_gauc = torch.sum(torch.Tensor(aucs))
+ 
+         # gather metric data across processes
++        breakpoint()
+         if dist.is_initialized() and dist.get_world_size() > 1:
+             group_cnt = len(aucs)
+             gather_metric_list = [
+diff --git a/tzrec/metrics/grouped_xauc.py b/tzrec/metrics/grouped_xauc.py
+index dad1da7..0812743 100644
+--- a/tzrec/metrics/grouped_xauc.py
++++ b/tzrec/metrics/grouped_xauc.py
+@@ -133,6 +133,7 @@ class GroupedXAUC(Metric):
+         weigted_sum_gxauc = torch.sum(torch.Tensor(xaucs) * group_weight)
+ 
+         # gather metric data across processes
++        breakpoint()
+         if dist.is_initialized() and dist.get_world_size() > 1:
+             # group_cnt = len(xaucs)
+             gather_metric_list = [
+diff --git a/tzrec/models/deepfm.py b/tzrec/models/deepfm.py
+index 395ad80..a177e6a 100644
+--- a/tzrec/models/deepfm.py
++++ b/tzrec/models/deepfm.py
+@@ -86,6 +86,7 @@ class DeepFM(RankModel):
+ 
+         # Deep
+         deep_feat = grouped_features["deep"]
++        print(f"{deep_feat.shape=}")
+         y_deep = self.deep_mlp(deep_feat)
+ 
+         # FM
+diff --git a/tzrec/utils/dist_util.py b/tzrec/utils/dist_util.py
+index 59b0b51..deee469 100644
+--- a/tzrec/utils/dist_util.py
++++ b/tzrec/utils/dist_util.py
+@@ -53,6 +53,7 @@ def get_dist_object_pg(world_size: Optional[int] = None) -> Optional[dist.Proces
+     world_size = world_size or int(os.environ.get("WORLD_SIZE", 1))
+     if world_size > 1:
+         # pyre-ignore [16]
++        breakpoint()
+         if dist.is_initialized() and dist.GroupMember.WORLD.size() == world_size:
+             pg = dist.GroupMember.WORLD
+         else:
+@@ -133,8 +134,8 @@ def DistributedModelParallel(
+     device: Optional[torch.device] = None,
+     plan: Optional[ShardingPlan] = None,
+     sharders: Optional[List[ModuleSharder[torch.nn.Module]]] = None,
+-    init_data_parallel: bool = True,
+-    init_parameters: bool = True,
++    init_data_parallel: bool = False,
++    init_parameters: bool = False,
+     data_parallel_wrapper: Optional[DataParallelWrapper] = None,
+ ) -> _DistributedModelParallel:
+     """Entry point to model parallelism.
+@@ -214,11 +215,15 @@ def create_train_pipeline(
+             for child in m.children():
+                 q.put(child)
+ 
++    print(f"lrh_debug model.device = {model.device}")
++    return TrainPipelineBase(model, optimizer, model.device)
+     if not has_sparse_module:
+         # use TrainPipelineBase when model do not have sparse parameters.
+         # pyre-ignore [6]
++        print("lrh_debug TrainPipelineBase")
+         return TrainPipelineBase(model, optimizer, model.device)
+     else:
++        print("lrh_debug TrainPipelineSparseDist")
+         return TrainPipelineSparseDist(
+             model,
+             # pyre-ignore [6]
+diff --git a/tzrec/utils/plan_util.py b/tzrec/utils/plan_util.py
+index 63c3c6c..6855b2a 100644
+--- a/tzrec/utils/plan_util.py
++++ b/tzrec/utils/plan_util.py
+@@ -64,7 +64,7 @@ from torchrec.modules.embedding_configs import DataType
+ from tzrec.protos import feature_pb2
+ from tzrec.utils.dynamicemb_util import has_dynamicemb
+ from tzrec.utils.logging_util import logger
+-
++import torch_npu
+ 
+ def _bytes_to_float_bin(num_bytes: Union[float, int], bin_size: float) -> float:
+     return float(num_bytes) / bin_size
+@@ -78,7 +78,6 @@ def create_planner(
+     model: Optional[nn.Module] = None,
+ ) -> EmbeddingShardingPlanner:
+     """Create EmbeddingShardingPlanner."""
+-    local_world_size = get_local_size()
+     is_rank_zero = int(os.environ.get("RANK", 0)) == 0
+ 
+     # build topo
+@@ -86,15 +85,15 @@ def create_planner(
+     if torch.cuda.is_available():
+         topo_kwargs["hbm_cap"] = torch.cuda.get_device_properties(device).total_memory
+ 
+-    ddr_cap_per_rank = int(float(psutil.virtual_memory().total) / local_world_size)
+-    topo_kwargs["ddr_cap"] = ddr_cap_per_rank
++    # ddr_cap_per_rank = int(float(psutil.virtual_memory().total) / local_world_size)
++    # topo_kwargs["ddr_cap"] = ddr_cap_per_rank
+     if "INTRA_NODE_BANDWIDTH" in os.environ:
+         topo_kwargs["intra_host_bw"] = float(os.environ["INTRA_NODE_BANDWIDTH"])
+     if "CROSS_NODE_BANDWIDTH" in os.environ:
+         topo_kwargs["inter_host_bw"] = float(os.environ["CROSS_NODE_BANDWIDTH"])
+     topology = Topology(
+-        local_world_size=local_world_size,
+-        world_size=dist.get_world_size(),
++        # local_world_size=local_world_size,
++        world_size=1,
+         compute_device=device.type,
+         **topo_kwargs,
+     )
+@@ -146,24 +145,28 @@ def create_planner(
+         global_constraints = ParameterConstraints(
+             sharding_types=list(global_constraints_cfg.sharding_types)
+             if len(global_constraints_cfg.sharding_types) > 0
+-            else None,
++            else [],
+             compute_kernels=list(global_constraints_cfg.compute_kernels)
+             if len(global_constraints_cfg.compute_kernels) > 0
+-            else None,
++            else [],
+         )
+ 
++    # row_wise
++    constraints = {
++        f"{feature_name}_emb": ParameterConstraints(
++            sharding_types=["row_wise"],
++            compute_kernels=["fused"]
++        )
++        for feature_name in ["user_id", "cms_segid", "cms_group_id", "final_gender_code", "age_level",
++                             "pvalue_level", "shopping_level", "occupation", "new_user_class_level", "adgroup_id",
++                             "cate_id", "campaign_id", "customer", "brand", "price", "pid"
++                             ]
++    }
+     # build planner
+     planner = EmbeddingShardingPlanner(
+         topology=topology,
+         batch_size=batch_size,
+-        enumerator=EmbeddingEnumerator(
+-            topology=topology,
+-            batch_size=batch_size,
+-            fqn_constraints=fqn_constraints,
+-            global_constraints=global_constraints,
+-        ),
+-        storage_reservation=storage_reservation,
+-        proposer=[DynamicProgrammingProposer(), UniformProposer()],
++        constraints=constraints,
+         debug=True,
+     )
+     return planner
+@@ -188,6 +191,8 @@ def get_default_sharders() -> List[ModuleSharder[nn.Module]]:
+                 ]
+             )
+         return sharders
++    elif torch_npu.npu.is_available():
++        return _get_default_sharders()
+     else:
+         # ShardedEmbeddingCollection is not supported yet.
+         sharders = []
