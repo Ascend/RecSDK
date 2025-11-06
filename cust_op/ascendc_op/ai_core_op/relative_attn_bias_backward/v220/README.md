@@ -4,10 +4,11 @@
 # 产品支持情况
 | 硬件型号           | 是否支持 |
 |----------------|------|
-| Atlas A2训练系列产品 | ✓    |
-| Atlas A3训练系列产品 | ✓    |
+| Atlas A2训练系列产品 | 是    |
+| Atlas A3训练系列产品 | 是    |
 
 # relative_attn_bias_backward算子目录层级
+
 ```shell
 -- relative_attn_bias_backward
    |-- v220

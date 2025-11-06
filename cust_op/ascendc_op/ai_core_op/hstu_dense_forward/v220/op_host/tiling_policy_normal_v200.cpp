@@ -145,4 +145,35 @@ bool TilingPolicyNormalv200::TilingKeySet(gert::TilingContext* context, optiling
 
     return true;
 }
+
+bool TilingPolicyNormalv200::TilingAttribute(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OPS_CHECK_PTR_NULL(attrs, return false);
+
+    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(INDEX_T::INDEX_0);
+    OPS_CHECK_PTR_NULL(maskType, return false);
+    if (*maskType != static_cast<uint32_t>(MASK_TYPE::MASK_CUSTOM)) {
+        OPS_LOG_E("", "maskType is only support MASK_CUSTOM\n");
+        return false;
+    }
+
+    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(INDEX_T::INDEX_1);
+    OPS_CHECK_PTR_NULL(maxSeqLen, return false);
+
+    const float *siluScale = attrs->GetAttrPointer<float>(INDEX_T::INDEX_2);
+    OPS_CHECK_PTR_NULL(siluScale, return false);
+
+    auto biasTensor = context->GetOptionalInputTensor(INDEX_T::INDEX_4);
+    if (biasTensor == nullptr) {
+        tiling.set_enableBias(0);
+    } else {
+        tiling.set_enableBias(1);
+    }
+
+    tiling.set_maskType(*maskType);
+    tiling.set_siluScale(*siluScale);
+    tiling.set_maxSeqLen(*maxSeqLen);
+    return true;
+}
 }

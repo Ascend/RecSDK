@@ -17,7 +17,7 @@ torch.ops.fbgemm.jagged_to_padded_dense_forward(Tensor values, Tensor[] offsets,
 
 > 注：<br>
 > jagged_to_padded_dense_forward, jagged_to_padded_dense_backward为早期版本，未注册自动求导，不建议使用。<br>
-> jagged_to_padded_dense和dense_to_jagged互为前反向算子，dense_to_jagged具体调用请参考`dense_to_jagged`算子介绍。
+> jagged_to_padded_dense和dense_to_jagged互为前反向算子，dense_to_jagged具体调用请参考[`dense_to_jagged`](../dense_to_jagged/README.md)算子介绍。
 
 # 参数说明
 
