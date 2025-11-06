@@ -41,7 +41,11 @@ class HCCLMGMTTest(unittest.TestCase):
         """
         os.environ[RankTableInfo.RANK_TABLE_FILE.value] = self.rank_table_file
 
-    def test_get_rank_info_with_ranktable_when_attribute_error(self):
+    @mock.patch(
+        "rec_sdk_common.communication.hccl.hccl_mgmt._determine_ranktable_format",
+        return_value=False
+    )
+    def test_get_rank_info_with_ranktable_when_attribute_error(self, mock_determine):
         with patch(
             "builtins.open",
             mock_open(
@@ -72,8 +76,12 @@ class HCCLMGMTTest(unittest.TestCase):
         ) as mock_file:
             with self.assertRaises(AttributeError):
                 rank_to_device_dict, local_rank_size = _get_rank_info_with_ranktable()
-
-    def test_get_rank_info_with_ranktable_when_value_error(self):
+                
+    @mock.patch(
+        "rec_sdk_common.communication.hccl.hccl_mgmt._determine_ranktable_format",
+        return_value=False
+    )
+    def test_get_rank_info_with_ranktable_when_value_error(self, mock_determine):
         with patch(
             "builtins.open",
             mock_open(
