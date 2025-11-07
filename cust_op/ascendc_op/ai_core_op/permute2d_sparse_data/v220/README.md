@@ -1,47 +1,72 @@
-# permute2d_sparse_data算子及样例说明
-本算子仅支持NPU调用
+**说明**
 
-## permute2d_sparse_data算子文件结构
+本算子仅支持NPU调用。
 
+# 产品支持情况
+| 硬件型号              | 是否支持 |
+| -------------------- |------|
+| Atlas A2训练系列产品  | 是    |
+| Atlas A3训练系列产品  | 是    |
+
+# permute2d_sparse_data算子文件结构
 ```shell
-├── permute2d_sparse_data.json    # 算子原型配置
-├── op_host    # permute2d_sparse_data算子Host侧实现
-├── op_kernel  # permute2d_sparse_data算子Kernel侧实现
-├── README.md  # permute2d_sparse_data算子说明文档
-└── run.sh     # permute2d_sparse_data算子安装脚本
+-- permute2d_sparse_data
+   |-- v220
+      |-- op_host                       # 算子host侧实现
+      |-- op_kernel                     # 算子kernel侧实现
+      |-- permute2d_sparse_data.json    # 算子原型配置
+      |-- README.md                     # 算子说明文档
+      |-- run.sh                        # 算子编译部署脚本
 ```
 
-## permute2d_sparse_data算子介绍
+# 功能
 
-1. 算子分析
+同fbgemm的permute2d_sparse_data方法, 实现了对二维稀疏数据进行重排。
 
-a) 算子的主要功能是实现fbgemm的permute2d_sparse_data, 实现了对二维稀疏数据进行重排。
-b) 算子参数说明：
+# 算子实现原理
 
-* permute: 重排的顺序参数tensor;
-* lengths: 待重排长度参数;
-* values: 待重排序的1D-tensor;
-* weights: 可选入参，待重排序的1D-tensor。与values执行相同操作;
-* permuted_lengths_sum: 可选入参，values/weights有效长度;
-* permuted_lengths: 输出， 重排后长度tensor;
-* permuted_values: 输出，重排后的values;
-* permuted_weights: 输出，重排后的weights;
+输入:
+```python
+permute = [0, 2]
+lengths = [[1, 1],
+           [1, 1],
+           [1, 2],
+           [0, 1]]
+values = [0, 1, 2, 3, 4, 5, 6, 7]
+weights = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7]
+permuted_lengths_sum = 5
+```
 
-c) 算子约束说明：
+输出：
+```python
+permuted_lengths = [[1, 1],
+                    [1, 2]]                     # 获取lengths[permute]
+permuted_values = [0, 1, 4, 5, 6]
+permuted_weights = [1.0, 1.1, 1.4, 1.5, 1.6]
+```
+说明：
 
-* 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.2.RC1.alpha001及之后版本;
-* 支持的输入数据类型：
-  * permute: int32;
-  * lengths: int64/int32;
-  * values: int64/int32/fp32;
-  * weights: fp32;
-  * permuted_lengths_sum: int(标量);
-* permute为1维tensor，lengths为二维tensor，permute中的每个值均满足: >= 0 且 < `lengths.shape[0]`;
-* 指定permuted_lengths_sum时，permuted_values/permuted_weights长度为permuted_lengths_sum，请用户自行保证数值正确;
-* 未指定permuted_lengths_sum时，算子将计算得到permuted_lengths_sum;
-* weights和values长度相同，均等于`lengths.sum()`;
-* 算子参数均会在NPU显存中存放，请根据显存大小合理设置参数长度。
+1.permute入参为[0, 2],分别获取lengths[0]的值为[1, 1]表示两个元素,对应values中的[0，1]; lengths[2]的值为[1, 2]表示三个元素,对应values中的[4, 5, 6]。
+再将[0，1]和[4, 5, 6]拼接成最终的permuted_values结果。其中lengths[1]中的[1, 1]对应values的两个元素为[2, 3]在例子中未获取。
+
+2.permuted_weights的处理方式与permuted_values一致。
+
+# 算子输入与输出
+|  名称  | 输入/输出  | 参数类型    | 数据类型       | 数据格式                                          | 范围                  |
+|  ---- |--------|---------|------------|-----------------------------------------------|---------------------|
+|  permute | 输入     | Tensor  | int32      | [indices]                                     | permute中的每个值均满足: >= 0 且 < `lengths.shape[0]` |
+|  lengths | 输入     | Tensor  | int32/int64 | [ [lengths], [lengths],... ]                  |           
+|  values | 输入     | Tensor  | int32/int64/fp32 | [values]                                      | values的长度等于`lengths.sum()` | 
+|  weights | 输入(可选) | Tensor  | fp32       | [weights]                                     | weight的长度等于`lengths.sum()` |
+|  permuted_lengths_sum | 输入(可选) | SymInt  | int        | NA                                            |        (0, std::numeric_limits<int>::max()]      |
+|  permuted_lengths | 输出     | Tensor  | int32/int64   | [permuted_lengths], [permuted_lengths], ... ] |                     |
+|  permuted_values | 输出     | Tensor  | int32/int64/fp32   | [permuted_values]                             |                     |
+|  permuted_weights | 输出     | Tensor  |  fp32  | [permuted_weights]                            |       |
+
+
+说明：指定permuted_lengths_sum时，permuted_values/permuted_weights长度为permuted_lengths_sum，请用户自行保证数值正确;
+未指定permuted_lengths_sum时，算子将计算得到permuted_lengths_sum
+
 
 ## 算子逻辑
 ```
@@ -56,5 +81,8 @@ def permute2d_sparse_data(permute, lengths, values, weights, permuted_lengths_su
 
 ```
 
-## 算子使用说明
-请参考:[RecSDK-Torch 自定义算子说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)
+# 算子编译部署
+
+算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"1.算子编译"章节。
+
+注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/2.6.0/permute2d_sparse_data/README.md)
