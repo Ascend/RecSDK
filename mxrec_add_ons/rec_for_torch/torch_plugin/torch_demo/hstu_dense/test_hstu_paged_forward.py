@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
-#
+# Copyright c) 2025 NVIDIA CORPORATION AFFILIATES. All rights reserved.
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -388,6 +388,7 @@ def setup_kvcache_testcase(
 @pytest.mark.parametrize(
     "max_new_history_seqlen,max_num_candidates",
     [
+        (100, 0),
         (200, 25),
         (750, 80),
         (2048, 300),
