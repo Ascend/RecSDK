@@ -233,10 +233,11 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::FetchKvMayFrom
     auto computeLen = this->computeTaskInfo[taskId].computeBSeqLen;
     auto seqLenStart = this->computeTaskInfo[taskId].kSeqId * this->blockHeight;
     auto seqLenEnd = seqLenStart + computeLen;
-    uint32_t pageNum = this->blockHeight / pageSize;
+   
     if (seqLenEnd <= this->computeTaskInfo[taskId].actualHistLen) { // 当前计算结尾小于历史序列
+        uint32_t kvPageNum = (computeLen + pageSize - 1) / pageSize;
         int32_t pageSid = seqLenStart / pageSize + pageOffsetGt.GetValue(batchId);
-        CopyFromKvCache(pageSid, this->blockHeight / pageSize, taskId);
+        CopyFromKvCache(pageSid, kvPageNum, taskId);
     } else if (seqLenStart >= this->computeTaskInfo[taskId].actualHistLen) {
         // 从inputkv里拷贝
         uint32_t taskOffset = taskId * this->blockHeight * this->headDim;
