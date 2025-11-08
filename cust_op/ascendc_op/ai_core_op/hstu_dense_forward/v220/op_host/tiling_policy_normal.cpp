@@ -48,7 +48,7 @@ bool TilingPolicyNormal::TilingShape(gert::TilingContext* context, optiling::Hst
 
 bool TilingPolicyNormal::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
 {
-    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return false);
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT) {
         context->SetTilingKey(FLOAT_TILING_KEY);
