@@ -88,8 +88,15 @@ index 355fac0..9966d89 100644
      if mode == Mode.TRAIN:
          # When in train_and_eval mode, use 2x worker in gl cluster
          # for train_dataloader and eval_dataloader
-@@ -284,6 +300,39 @@ def _evaluate(
+@@ -282,8 +298,46 @@ def _evaluate(
+ 
+     use_step = eval_config.num_steps and eval_config.num_steps > 0
      iterator = iter(eval_dataloader)
++
++    with torch.no_grad():
++        for i_step in range(5):
++            losses, predictions, batch = pipeline.progress(iterator)
++    print("finish warmup")
      step_iter = range(eval_config.num_steps) if use_step else itertools.count(0)
  
 +    print(f"debug step_iter:{step_iter}; os.path.dirname(eval_result_filename):{os.path.dirname(eval_result_filename)}")
@@ -128,18 +135,20 @@ index 355fac0..9966d89 100644
      desc_suffix = ""
      if global_epoch is not None:
          desc_suffix += f" Epoch-{global_epoch}"
-@@ -294,13 +343,18 @@ def _evaluate(
+@@ -294,13 +348,19 @@ def _evaluate(
      plogger = None
      if is_local_rank_zero:
          plogger = ProgressLogger(desc=f"Evaluating{desc_suffix}")
 -
++    iterator1 = iter(eval_dataloader)
 +    inductor_flag = 'inductor' if os.environ.get('INDUCTOR_FLAG') == '1' else 'eager'
      with torch.no_grad():
          i_step = 0
          for i_step in step_iter:
              try:
-                 losses, predictions, batch = pipeline.progress(iterator)
+-                losses, predictions, batch = pipeline.progress(iterator)
 -                _model.update_metric(predictions, batch, losses)
++                losses, predictions, batch = pipeline.progress(iterator1)
 +                if predictions.get("logits") is not None:
 +                    torch.save(predictions["logits"], f"./save_results/{model_name}/predictions_{model_name}_{inductor_flag}_{i_step}.pt")
 +                elif predictions.get("similarity") is not None:
@@ -149,7 +158,7 @@ index 355fac0..9966d89 100644
                  if (
                      plogger is not None
                      and i_step % eval_config.log_step_count_steps == 0
-@@ -308,22 +361,12 @@ def _evaluate(
+@@ -308,22 +368,12 @@ def _evaluate(
                      plogger.log(i_step)
              except StopIteration:
                  break
@@ -175,7 +184,7 @@ index 355fac0..9966d89 100644
  
  
  def _log_train(
-@@ -792,6 +835,9 @@ def evaluate(
+@@ -792,6 +842,9 @@ def evaluate(
      eval_input_path: Optional[str] = None,
      eval_result_filename: str = "eval_result.txt",
  ) -> None:
@@ -185,7 +194,7 @@ index 355fac0..9966d89 100644
      """Evaluate a EasyRec model.
  
      Args:
-@@ -844,6 +890,8 @@ def evaluate(
+@@ -844,6 +897,8 @@ def evaluate(
          else None,
          model=model,
      )
@@ -194,7 +203,7 @@ index 355fac0..9966d89 100644
      sharders = get_default_sharders()
      plan = planner.collective_plan(model, sharders, dist.GroupMember.WORLD)
      if is_rank_zero:
-@@ -852,16 +900,49 @@ def evaluate(
+@@ -852,16 +907,49 @@ def evaluate(
      model = DistributedModelParallel(
          module=model, sharders=sharders, device=device, plan=plan
      )
@@ -253,6 +262,24 @@ index 355fac0..9966d89 100644
  
      summary_writer = None
      if is_rank_zero:
+@@ -1339,3 +1427,17 @@ def predict(
+         prof.stop()
+     if is_local_rank_zero:
+         logger.info("Predict Finished.")
++
++import numpy as np
++import random
++def extend_seed_all(seed=1234):
++    os.environ['HCCL_DETERMINISTIC'] = 'True'
++    os.environ['CLOSE_MATMUL_K_SHIFT'] = "1"
++    os.environ['PYTHONHASHSEED'] = str(seed)
++    torch.use_deterministic_algorithms(True)
++    torch_npu.npu.manual_seed_all(seed)
++    torch_npu.npu.manual_seed(seed)
++    torch.manual_seed(seed)
++    random.seed(seed)
++    np.random.seed(seed)
++extend_seed_all()
 diff --git a/tzrec/metrics/grouped_auc.py b/tzrec/metrics/grouped_auc.py
 index a84b9e4..ad4322d 100644
 --- a/tzrec/metrics/grouped_auc.py
