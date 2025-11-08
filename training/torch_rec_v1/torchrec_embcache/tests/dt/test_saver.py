@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 import torch.nn
 from torchrec_embcache.saver import Saver, SAVE_PATH_MAX_LEN, TIMESTAMP_FORMAT
-from torchrec_embcache.utils import safe_makedirs
+from hybrid_torchrec.utils import safe_makedirs
 
 
 class TestSaver:

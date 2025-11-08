@@ -6,16 +6,15 @@
 # LICENSE file in the root directory of this source tree.
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 import torch.distributed as dist
 import torch.nn
 
+from hybrid_torchrec.utils import check_path, safe_makedirs
 from torchrec_embcache.distributed.embedding_bag import EmbCacheShardedEmbeddingBagCollection
 from torchrec_embcache.distributed.embedding import EmbCacheShardedEmbeddingCollection
-from torchrec_embcache.utils import check_path, safe_makedirs
 
 
 SAVE_PATH_MAX_LEN = 1024

@@ -5,7 +5,6 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-import re
 from dataclasses import dataclass
 import itertools
 import logging
@@ -29,7 +28,7 @@ from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSp
 from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingCollectionSharder
 from torchrec_embcache.sparse.jagged_tensor_with_timestamp import KeyedJaggedTensorWithTimestamp
 from torchrec_embcache.saver import Saver
-from torchrec_embcache.utils import safe_makedirs
+from hybrid_torchrec.utils import safe_makedirs
 import torchrec
 import torchrec.distributed
 from torchrec import EmbeddingCollection

@@ -21,6 +21,7 @@
 #include <queue>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace hybrid {
@@ -69,6 +70,10 @@ public:
         fullHashMapQue.push(std::move(oneMap));
     }
 
+    torch::Tensor ExportIdsAndIndices() const;
+
+    void LoadOriginalIds(torch::Tensor originalIds);
+
     static size_t ProcessIds2Indices(IdsMapper& mapper, std::vector<int64_t>& uniqVec,
                                                 const int64_t start, const int64_t end, const int64_t* gIdsPtr,
                                                 int64_t* hashIdxPtr, int64_t* uniqueInvPtr);
@@ -94,8 +99,8 @@ private:
 
     int numThread;
     std::queue<std::unique_ptr<std::vector<int64_t>>> fullHashMapQue;
-
-    int64_t maxIndex = 0;
+    int64_t memStartIndex = 0;
+    int64_t maxIndex = memStartIndex;
     int64_t initMaxIndex;
     bool onlyDeviceMem = true;  // 是否仅使用device memory
 

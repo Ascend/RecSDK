@@ -10,7 +10,7 @@ import logging
 import pytz
 
 
-def setup_logging(rank):
+def setup_logging(rank, level=logging.DEBUG):
     from datetime import datetime
 
     this_time = str(
@@ -28,4 +28,4 @@ def setup_logging(rank):
     )
     file_handler.setFormatter(log_format)
     logger.addHandler(file_handler)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(level)
