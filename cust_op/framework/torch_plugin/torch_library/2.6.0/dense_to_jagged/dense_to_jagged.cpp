@@ -71,6 +71,7 @@ at::Tensor dense_to_jagged_forward_npu(const at::Tensor& dense,
     auto D = dense.size(-1);
     auto dense_contin = dense.contiguous();
 
+    check_tensor_non_empty(offsets.back(), "offsets.back()");
     // 从offsets计算预期的total_L
     int64_t expected_total_L = offsets.back()[-1].item<int64_t>();
 

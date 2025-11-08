@@ -19,7 +19,7 @@ JSON_FILE=$SCRIPT_DIR/json.hpp
 
 function get_nlohmann()
 {
-    cd $SCRIPT_DIR
+    cd "$SCRIPT_DIR"
     if [ ! -e "v3.9.1.tar.gz" ]; then
         echo "The required component 'v3.9.1.tar.gz' for the ONNX plugin does not exist."
     else
