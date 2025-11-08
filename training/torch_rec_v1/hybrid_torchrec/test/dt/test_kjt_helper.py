@@ -18,9 +18,14 @@ TEST_NUM = 100
 IDS_RANGE_TIMES = 10
 
 
-@pytest.mark.parametrize("table_num", [3])
-@pytest.mark.parametrize("feature_names", [[2, 3, 4]])
-@pytest.mark.parametrize("input_size", [1000])
+@pytest.mark.parametrize(
+    "table_num, feature_names, input_size", 
+    [
+        (1, [2], 1000),
+        (2, [2, 3], 50),
+        (3, [2, 3, 4], 500),
+    ]
+)
 def test_unique_split(table_num, feature_names, input_size):
     """Test ids2indices with sequential numbers"""
     keys = [f"feat{str(i)}" for i in range(sum(feature_names))]
@@ -64,7 +69,9 @@ def test_unique_split(table_num, feature_names, input_size):
         kjt: KeyedJaggedTensorWithLookHelper
         unique_results = []
         gloden = kjt.values()
-        for ind, unique_offset in enumerate(kjt.unique_offset):
+        
+        kjt_unique_offset = kjt.unique_offset[:-1] if table_num == 1 else kjt.unique_offset
+        for ind, unique_offset in enumerate(kjt_unique_offset):
             unique = kjt.unique_indices[unique_offset:]
             unique_inverse = kjt.unique_inverse[
                              kjt.offsets()[ind]: kjt.offsets()[ind + 1]
