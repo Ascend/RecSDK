@@ -108,6 +108,7 @@ ge::graphStatus TilingPolicy::TilingProcess(gert::TilingContext *context)
 
 bool TilingPolicy::TilingSaveToBuffer(gert::TilingContext* context, optiling::HstuDenseForwardFuxiTilingData &tiling)
 {
+    OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return false);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
     return true;
@@ -172,7 +173,7 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext* context, optiling::H
     int64_t dim = tiling.get_dim();
 
     matmul_tiling::DataType dataType;
-    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return false);
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT) {
         dataType = matmul_tiling::DataType::DT_FLOAT;
@@ -184,7 +185,7 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext* context, optiling::H
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
-    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return false);
 
     size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
     size_t coreNum = ascendPlatform.GetCoreNumAic();
@@ -230,14 +231,14 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext* context, optiling::H
     auto findResult = matmul_tiling::DTYPE_BYTE_TAB.find(dataType);
     if (findResult == matmul_tiling::DTYPE_BYTE_TAB.end()) {
         OPS_LOG_E("", "dataType not in DTYPE_BYTE_TAB");
-        return ge::GRAPH_FAILED;
+        return false;
     }
     int dataTypeLength = findResult->second;
     if (!CheckBaseMNK(tiling.qkMatmul, dataTypeLength, sizeof(float)) ||
         !CheckBaseMNK(tiling.svMatmul, dataTypeLength, sizeof(float)) ||
         !CheckBaseMNK(tiling.pvMatmul, dataTypeLength, sizeof(float)) ||
         !CheckBaseMNK(tiling.tvMatmul, dataTypeLength, sizeof(float))) {
-        return ge::GRAPH_FAILED;
+        return false;
     }
 
     tiling.set_qkBaseM(tiling.qkMatmul.get_baseM());
