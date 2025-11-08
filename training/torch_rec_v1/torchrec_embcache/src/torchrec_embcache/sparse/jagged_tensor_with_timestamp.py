@@ -134,3 +134,8 @@ class KeyedJaggedTensorWithTimestamp(KeyedExtendedJaggedTensor[JaggedTensorWithT
 
     def pin_memory(self) -> "KeyedJaggedTensorWithTimestamp":
         return self.pin_memory_extend(KeyedJaggedTensorWithTimestamp)
+
+    def to(
+        self, device: torch.device, non_blocking: bool = False
+    ) -> "KeyedJaggedTensorWithTimestamp":
+        return self.to_base(device, non_blocking, KeyedJaggedTensorWithTimestamp)
