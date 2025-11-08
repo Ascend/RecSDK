@@ -9,7 +9,7 @@
 
 import os
 import logging
-from typing import List
+from typing import List, Tuple
 from dataclasses import dataclass, asdict
 
 import torch
@@ -89,6 +89,12 @@ class IdsMapper(HashMapBase):
         self.ids_mapper.ids2indices_unique_out(
             ids, hash_indices, offset, unique, unique_ids, unique_inverse, unique_offset, table_id
         )
+
+    def export_ids_and_indices(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self.ids_mapper.export_ids_and_indices()
+
+    def load_original_ids(self, original_ids: torch.Tensor) -> None:
+        self.ids_mapper.load_original_ids(original_ids)
 
 
 def block_bucketize_sparse_features_cpu(bucket_params: BucketParams):

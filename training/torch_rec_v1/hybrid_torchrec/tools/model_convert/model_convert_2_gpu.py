@@ -65,7 +65,7 @@ def read_binary_data(reading_path: str) -> tuple[list[Any], list[Any]]:
     data_file = os.path.join(reading_path, data_file)
     attribute_file = os.path.join(reading_path, attribute_file)
     if not os.path.exists(attribute_file):
-        raise FileExistsError(f"attribute file:{attribute_file} does not exist when reading.")
+        raise FileNotFoundError(f"attribute file:{attribute_file} does not exist when reading.")
 
     attributes = read_attribute_file(attribute_file)
     attributes = list(attributes)
@@ -73,7 +73,7 @@ def read_binary_data(reading_path: str) -> tuple[list[Any], list[Any]]:
         return attributes, []
 
     if not os.path.exists(data_file):
-        raise FileExistsError(f"data file {data_file} does not exist when reading.")
+        raise FileNotFoundError(f"data file {data_file} does not exist when reading.")
     data_to_restore = read_data_file(data_file)
     return attributes, data_to_restore
 

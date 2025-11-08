@@ -20,7 +20,6 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from dataset import RandomRecDataset, Batch
 from model import Model
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchrec_embcache.distributed.embedding_bag import (
     EmbCacheEmbeddingBagCollection,
@@ -30,9 +29,9 @@ from torchrec_embcache.distributed.sharding.embedding_sharder import (
 )
 from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
 from torchrec_embcache.saver import Saver
-from torchrec_embcache.utils import safe_makedirs
+from hybrid_torchrec.utils import safe_makedirs
 import torchrec
-from torchrec import EmbeddingBagConfig, EmbeddingBagCollection
+from torchrec import EmbeddingBagConfig
 import torchrec.distributed
 from torchrec.distributed.types import ShardingEnv
 from torchrec.distributed.planner import (

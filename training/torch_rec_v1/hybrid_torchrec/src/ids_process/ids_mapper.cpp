@@ -225,6 +225,35 @@ size_t IdsMapper::ProcessIds2Indices(IdsMapper& mapper, std::vector<int64_t>& un
     return uniqVec.size();
 }
 
+torch::Tensor IdsMapper::ExportIdsAndIndices() const
+{
+    at::TensorOptions options = at::TensorOptions().dtype(at::kLong).device(at::kCPU);
+    torch::Tensor originalIds = at::empty({static_cast<int64_t>(indice2id.size())}, options);
+    auto* originalIdsPtr = GetSafeDataPtr<int64_t>(originalIds, "originalIds");
+    int64_t index = 0;
+    for (auto& originalId : indice2id) {
+        originalIdsPtr[index] = originalId;
+        index++;
+    }
+    return originalIds;
+}
+
+void IdsMapper::LoadOriginalIds(const torch::Tensor originalIds)
+{
+    TORCH_CHECK(originalIds.dim() == 1, "originalIds dimension must be 1D.")
+    auto dataSize = originalIds.numel();
+    const auto* dataPtr = GetSafeDataPtr<int64_t>(originalIds, "originalIds");
+    if (memStartIndex > 0) {
+        for (auto i = 0; i < memStartIndex; ++i) {
+            indice2id.emplace_back(0);
+        }
+    }
+    for (int64_t i = 0; i < dataSize; ++i) {
+        ids2indicesMap.emplace(dataPtr[i], maxIndex++);
+        indice2id.emplace_back(dataPtr[i]);
+    }
+}
+
 void IdsMapper::ParallelUniqueHashOut(
     const c10::List<c10::intrusive_ptr<IdsMapper>>& mappers,
     const torch::Tensor& globalIds,

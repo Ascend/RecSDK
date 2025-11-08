@@ -12,6 +12,7 @@ from typing import Any, cast, Dict, List, Mapping, Optional, Type, Union, TypeVa
 
 import torch
 from fbgemm_gpu.permute_pooled_embedding_modules import PermutePooledEmbeddings
+from fbgemm_gpu.split_table_batched_embeddings_ops_training import SplitTableBatchedEmbeddingBagsCodegen
 from torch import distributed as dist, nn
 from torch.autograd.profiler import record_function
 from torch.distributed._tensor import DTensor
@@ -235,6 +236,12 @@ class HybridShardedEmbeddingBagCollection(
     def fused_optimizer(self) -> KeyedOptimizer:
         return self._optim
 
+    def get_device(self):
+        return self._device
+
+    def get_embedding_bag_configs(self):
+        return self._embedding_bag_configs
+
     @staticmethod
     def _pre_state_dict_hook(
         self: "HybridShardedEmbeddingBagCollection",
@@ -380,6 +387,15 @@ class HybridShardedEmbeddingBagCollection(
                 f"Unsupported sharding type: {sharding_type}. "
                 f"Valid options: {', '.join(ShardingType.get_values())}"
             )
+
+    def get_batched_embedding_kernels(self) -> List[List[SplitTableBatchedEmbeddingBagsCodegen]]:
+        batched_embedding_kernels = []
+        for lookup in self._lookups:
+            modules = []
+            for emb_module in lookup._emb_modules:
+                modules.append(emb_module._emb_module)
+            batched_embedding_kernels.append(modules)
+        return batched_embedding_kernels
 
     def forward(self, *input_tensor, **kwargs) -> LazyAwaitable[Out]:
         if len(input_tensor) < 1:
