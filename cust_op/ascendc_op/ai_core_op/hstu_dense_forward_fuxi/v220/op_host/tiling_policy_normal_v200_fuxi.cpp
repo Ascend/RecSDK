@@ -162,14 +162,14 @@ bool TilingPolicyNormalv200Fuxi::TilingMatmul(gert::TilingContext* context,
     auto findResult = matmul_tiling::DTYPE_BYTE_TAB.find(dataType);
     if (findResult == matmul_tiling::DTYPE_BYTE_TAB.end()) {
         OPS_LOG_E("", "dataType not in DTYPE_BYTE_TAB");
-        return ge::GRAPH_FAILED;
+        return false;
     }
     int dataTypeLength = findResult->second;
     if (!CheckBaseMNK(tiling.qkMatmul, dataTypeLength, sizeof(float)) ||
         !CheckBaseMNK(tiling.svMatmul, dataTypeLength, sizeof(float)) ||
         !CheckBaseMNK(tiling.pvMatmul, dataTypeLength, sizeof(float)) ||
         !CheckBaseMNK(tiling.tvMatmul, dataTypeLength, sizeof(float))) {
-        return ge::GRAPH_FAILED;
+        return false;
     }
 
     return true;
@@ -181,7 +181,7 @@ bool TilingPolicyNormalv200Fuxi::TilingHeighLevelApi(gert::TilingContext* contex
     int64_t dim = tiling.get_dim();
 
     matmul_tiling::DataType dataType;
-    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return false);
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT16) {
         dataType = matmul_tiling::DataType::DT_FLOAT16;
@@ -189,7 +189,7 @@ bool TilingPolicyNormalv200Fuxi::TilingHeighLevelApi(gert::TilingContext* contex
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
-    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return false);
 
     size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
     size_t coreNum = ascendPlatform.GetCoreNumAic();
@@ -228,7 +228,7 @@ bool TilingPolicyNormalv200Fuxi::TilingHeighLevelApi(gert::TilingContext* contex
 bool TilingPolicyNormalv200Fuxi::TilingKeySet(gert::TilingContext* context,
     optiling::HstuDenseForwardFuxiTilingData &tiling)
 {
-    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return false);
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT16) {
         context->SetTilingKey(FLOAT16_TILING_KEY);
