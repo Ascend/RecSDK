@@ -1,0 +1,16 @@
+[mxrec]
+log_level = "INFO"
+# If use_ranktable is true, the environment variable "RANK_TABLE_FILE" will be read; if it is false, the configuration
+# of "mxrec.cm-node-info" in the toml file will be read.
+use_ranktable = true
+use_fusion_op = false
+use_lccl_all2all_op = false
+fusion_op_type = ""     #  choose 1 from  ["all2all_v_c_uss_fm" | "all2all_v_c_uss_cf" | "all2all_v_c_uss"] 
+all2all_op_type = ""    #  choose 1 from  ["all2all_v_c_fm" | "all2all_v_c_cf" | "all2all_v_c"] 
+
+[mxrec.cm-node-info]
+cm_chief_ip = "127.0.0.1"
+cm_chief_port = 60001
+cm_chief_device = 0
+cm_worker_ip = "127.0.0.1"
+cm_worker_size = 1

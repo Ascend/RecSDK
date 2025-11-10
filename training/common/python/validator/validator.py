@@ -14,16 +14,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 from typing import List, Tuple, Any, Callable, Dict, Optional, Union, Type
 import re
-
 import os
 import inspect
 import functools
 import stat
 
+import tensorflow as tf
+
 from rec_sdk_common.constants.constants import EnvOptionCommon, LogLevel, FileParams, RankTableParams, ValidatorParams
 from rec_sdk_common.log.log import LoggingProxy
+
+
+_MAX_FILE_PATH_LEN = 4096
 
 
 class Validator:
@@ -711,4 +716,54 @@ class DirectoryValidator(StringValidator):
         if words is None:
             words = ["Key", "password", "privatekey"]
         self.register_checker(lambda: DirectoryValidator.__check_with_sensitive_words(self.value, words), msg)
+        return self
+
+
+class FileValidator(StringValidator):
+    """Check if file is valid."""
+
+    def __init__(self, name: str, value: str, max_len: int = _MAX_FILE_PATH_LEN, min_len: int = 1):
+        super(FileValidator, self).__init__(name, value, max_len=max_len, min_len=min_len)
+        self.register_checker(
+            lambda: isinstance(self.value, str), "parameter value type is not str"
+        )
+
+    def check_file_size(
+        self,
+        min_size=ValidatorParams.FILE_MIN_SIZE.value,
+        max_size=ValidatorParams.FILE_MAX_SIZE.value,
+    ):
+        file_stat = tf.io.gfile.stat(self.value)
+        self.register_checker(
+            lambda: min_size <= file_stat.length <= max_size,
+            f"file size {file_stat.length} is invalid, not in [{min_size}, {max_size}]",
+        )
+        return self
+
+    def check_not_soft_link(self):
+        self.register_checker(
+            lambda: os.path.abspath(self.value) == os.path.realpath(self.value),
+            f"soft link or relative path {self.value} should not be in the path parameter",
+        )
+        return self
+
+    def check_user_group(self):
+        process_uid = os.geteuid()
+        process_gid = os.getegid()
+        stat_info = os.stat(self.value)
+        file_uid = stat_info.st_uid
+        file_gid = stat_info.st_gid
+        self.register_checker(
+            lambda: process_uid == file_uid or process_gid == file_gid,
+            "invalid log file user or group.",
+        )
+        return self
+
+    def check_file_mode(self, unsupported_mode: int = 0o022):
+        stat_info = os.stat(self.value)
+        mode = stat.S_IMODE(stat_info.st_mode)
+        self.register_checker(
+            lambda: mode & unsupported_mode == 0,
+            f"current file mode {oct(mode)} is unsupported",
+        )
         return self

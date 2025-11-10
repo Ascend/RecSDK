@@ -25,6 +25,7 @@ from rec_sdk_common.validator.safe_checker import (
     class_safe_check,
     dir_safe_check,
     float_safe_check,
+    file_safe_check,
 )
 from rec_sdk_common.constants.constants import NumCheckValueMethod
 from rec_sdk_common.communication.hccl import get_rank_id
@@ -130,6 +131,35 @@ class TestDirSafeCheck:
         except Exception as e:
             pytest.fail(f"unexpected exception raised: {e}")
         shutil.rmtree(path)
+
+
+class TestFileSafeCheck:
+    """Test for 'rec_sdk_common.validator.safe_checker.file_safe_check'."""
+
+    @staticmethod
+    def _create_test_file(file_path: str, content: str):
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+    @staticmethod
+    def _delete_file(file_path: str):
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+    @staticmethod
+    def test_ok():
+        test_file_name = "test_file.txt"
+        test_content = """This is test file.
+        Hello, World!
+        """
+        test_file_path = os.path.join(os.getcwd(), test_file_name)
+        TestFileSafeCheck._create_test_file(test_file_path, test_content)
+        try:
+            file_safe_check("test file", test_file_path)
+        except Exception as e:
+            pytest.fail(f"unexpected exception raised: {e}")
+        TestFileSafeCheck._delete_file(test_file_path)
 
 
 class TestFloatSafeCheck:

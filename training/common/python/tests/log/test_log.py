@@ -29,13 +29,6 @@ class TestLoggingProxy:
         LoggingProxy._instance = None
 
     @staticmethod
-    def test_twice_init_err():
-        with pytest.raises(RuntimeError) as excinfo:
-            LoggingProxy.set_instance(LogLevel.INFO.value)
-            LoggingProxy.set_instance(LogLevel.INFO.value)
-        assert "LoggingProxy has been initialized once, twice initialization was forbidden" in str(excinfo.value)
-
-    @staticmethod
     def test_info_log_ok():
         LoggingProxy.set_instance(LogLevel.INFO.value)
         try:

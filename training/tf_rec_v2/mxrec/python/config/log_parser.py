@@ -15,12 +15,26 @@
 # limitations under the License.
 # ==============================================================================
 
-__version__ = "6.0.T200"
-__all__ = ["init"]
+from rec_sdk_common.validator.safe_checker import str_safe_check
+from mxrec.python.constants.constants import LogParams
+from mxrec.python.config.parser import TomlParser, parse_env_field
 
 
-from mxrec.python.initializer.initializer import init
+def parse_log_level() -> str:
+    config = TomlParser.get_instance().config
+    log_level = parse_env_field(config, LogParams.LOG_LEVEL.value)
+    str_safe_check("log_level", log_level)
 
+    level_list = (
+        LogParams.DEBUG.value,
+        LogParams.INFO.value,
+        LogParams.WARNING.value,
+        LogParams.ERROR.value,
+        LogParams.CRITICAL.value,
+    )
+    if log_level not in level_list:
+        raise ValueError(
+            f"log level is invalid, only {level_list} are allowed, but got {log_level}"
+        )
 
-def version():
-    return __version__
+    return log_level

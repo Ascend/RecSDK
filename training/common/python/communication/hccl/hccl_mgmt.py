@@ -25,8 +25,8 @@ from rec_sdk_common.validator.safe_checker import class_safe_check, int_safe_che
 
 def _get_chip_name():
     import common_binding
-    chipName = common_binding.get_chip_name(0)
-    return chipName
+    chip_name = common_binding.get_chip_name(0)
+    return chip_name
 
 
 def _determine_ranktable_format() -> bool:

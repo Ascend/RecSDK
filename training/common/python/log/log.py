@@ -26,9 +26,6 @@ class LoggingProxy:
 
     @classmethod
     def set_instance(cls, log_level: str):
-        if cls._instance is not None:
-            raise RuntimeError("LoggingProxy has been initialized once, twice initialization was forbidden")
-
         cls._instance = _get_logger(log_level)
 
     @classmethod
