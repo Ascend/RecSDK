@@ -14,23 +14,3 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-__version__ = "6.0.T200"
-__all__ = [
-    "init",
-    "get_embedding_table",
-    "get_existing_tables",
-    "get_init_hashtable_op",
-]
-
-
-from mxrec.python.initializer.initializer import init
-from mxrec.python.embedding.embedding import (
-    get_embedding_table,
-    get_existing_tables,
-    get_init_hashtable_op,
-)
-
-
-def version():
-    return __version__
