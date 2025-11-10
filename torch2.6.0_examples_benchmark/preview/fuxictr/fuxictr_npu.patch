@@ -48,11 +48,11 @@ index 1ce33aa..ef95d20 100644
 +                    with_flops=False,
 +                experimental_config=experimental_config) as prof:
 +                print("profiling start...")
-+            for step in range(steps):
-+                for batch_data in data_generator:
-+                    return_dict = self.forward(batch_data)
-+                    y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
-+                    prof.step()
++                for step in range(steps):
++                    for batch_data in data_generator:
++                        return_dict = self.forward(batch_data)
++                        y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
++                        prof.step()
              y_pred = np.array(y_pred, np.float64)
              return y_pred
  

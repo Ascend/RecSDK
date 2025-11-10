@@ -26,7 +26,8 @@ python run.py  xxx.json
         "0"
     ],
     "pip_install_self": true,
-    "pip_install_requirements": true
+    "pip_install_requirements": true,
+    "extra_cmd": ["pip install Scikit-learn<1.5"]
 }
 ```
 + name:模型名字
@@ -42,4 +43,5 @@ python run.py  xxx.json
 + run_cmd: 模型的运行命令
 + pip_install_self: 是否依赖安装开源仓自己
 + pip_install_requirements: 开源仓是否要安装起根目录下的requirements.txt依赖包
++ extra_cmd: 适配npu需要额外执行的命令
 

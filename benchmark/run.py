@@ -109,11 +109,6 @@ def get_args():
 
 def install_depend(config: dict, taget_dir: Path) -> bool:
     try:
-        if config.get("pip_install_self"):
-            logger.info("Installing current directory dependencies...")
-            subprocess.run(
-                ["pip", "install", "-e", "."], cwd=str(taget_dir), check=True
-            )
         if config.get("pip_install_requirements"):
             logger.info("Installing requirements.txt dependencies...")
             subprocess.run(
@@ -121,10 +116,16 @@ def install_depend(config: dict, taget_dir: Path) -> bool:
                 cwd=str(taget_dir),
                 check=True,
             )
+        if config.get("pip_install_self"):
+            logger.info("Installing current directory dependencies...")
+            subprocess.run(
+                ["pip", "install", "-e", "."], cwd=str(taget_dir), check=True
+            )
         if config.get("extra_cmd"):
-            cmd = config.get("extra_cmd")
-            logger.info(f"Executing extra command: {cmd}")
-            subprocess.run(cmd.split(" "), cwd=str(taget_dir), check=True)
+            cmds = config.get("extra_cmd")
+            for cmd in cmds:
+                logger.info(f"Executing extra command: {cmd}")
+                subprocess.run(cmd.split(" "), cwd=str(taget_dir), check=True)
     except subprocess.CalledProcessError as e:
         logger.error(f"pip failed, error message:\n{e.stderr}")
         return False
