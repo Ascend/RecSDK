@@ -130,6 +130,15 @@ const int ASCEND910_PRO_A = 262144;
 const int ASCEND910_B = 262144;
 const int ASCEND910_A = 262144;
 const int ASCEND910_B2C = 196608;
+const int ASCEND910_9589 = 253952;
+const int ASCEND910_9579 = 253952;
+const int ASCEND910_950Z = 253952;
+const int ASCEND910_957B = 253952;
+const int ASCEND910_957D = 253952;
+const int ASCEND910_9581 = 253952;
+const int ASCEND910_958A = 253952;
+const int ASCEND910_958B = 253952;
+const int ASCEND910_9599 = 253952;
 };  // namespace UBSize
 
 int GetUBSize(int devID);
