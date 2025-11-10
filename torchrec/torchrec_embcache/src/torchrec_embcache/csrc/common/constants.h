@@ -28,6 +28,8 @@ constexpr int64_t INVALID_KEY = -1;
 
 const size_t MEMSET_S_MAX_SIZE = 2LL * 1024 * 1024 * 1024 - 1;
 
+constexpr int64_t EVAL_MODE_NEW_KEY_PADDING_ID = -1000;
+
 struct EmbMemPoolConfigConstants {
     static constexpr uint64_t bufferSize = 1024;
     // 512 * 1024 * 1024 * 128 (emb_dim) * 4 (fp32) = 256 GB

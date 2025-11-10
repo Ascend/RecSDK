@@ -111,7 +111,12 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
 
         // 取出每个表的 key
         std::vector<int64_t> batchKeysVec(keyPtr + offsetPerKey[i], keyPtr + offsetPerKey[i + 1]);
-        auto tp = swapManagers[idx].ComputeSwapInfo(batchKeysVec);
+        ComputeSwapRet tp;
+        if (newKeyReturn0_) {
+            tp = swapManagers[idx].ComputeSwapInfo<true>(batchKeysVec);
+        } else {
+            tp = swapManagers[idx].ComputeSwapInfo<false>(batchKeysVec);
+        }
 
         std::vector<int64_t>& swapoutKeysi = std::get<SWAP_INFO_TUPLE_INDEX0>(tp);
         std::vector<int64_t>& swapoutOffsi = std::get<SWAP_INFO_TUPLE_INDEX1>(tp);
@@ -912,4 +917,11 @@ std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<float>>>
         });
     }
     return embedMap;
+}
+
+void EmbcacheManager::SetEvalMode(bool newKeyReturn0)
+{
+    LOG(INFO) << "SetEvalMode, newKeyReturn0:" << newKeyReturn0;
+    newKeyReturn0_ = newKeyReturn0;
+    evalMode_ = true;
 }
