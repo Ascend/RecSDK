@@ -153,6 +153,8 @@ public:
 
     std::unordered_map<std::string, std::unordered_map<int64_t, std::vector<float>>> GetTable();
 
+    void SetEvalMode(bool newKeyReturn0 = false);
+
 private:
     SwapInfo ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
                              const std::vector<int32_t>& tableIndices);
@@ -195,6 +197,10 @@ private:
 
     // 计算换入换出offset时是否要累加表外偏移. 逻辑上作为一个大表处理时设置为true，否则false
     bool needAccumulateOffset = true;
+    
+    // 评估模式下，新key返回0
+    bool newKeyReturn0_ = false;
+    bool evalMode_ = false;
 };
 }  // namespace Embcache
 #endif  // EMBEDDING_CACHE_EMBEDDING_MANAGER_H

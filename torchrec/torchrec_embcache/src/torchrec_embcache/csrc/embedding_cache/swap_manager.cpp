@@ -29,6 +29,7 @@ SwapManager::SwapManager(int64_t cacheSize, int64_t memStartOffset) : cacheSize(
     key2off.reserve(cacheSize);
 }
 
+template<bool NewKeyReturn0>
 ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
 {
     std::vector<int64_t> swapoutKeys;
@@ -84,7 +85,10 @@ ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
             batchOffs[i] = it->second;
             continue;
         }
-
+        if constexpr (NewKeyReturn0) {
+            batchOffs[i] = EVAL_MODE_NEW_KEY_PADDING_ID;
+            continue;
+        }
         int64_t off;
         // cache 未满，直接在cache中新增
         if (occupiedNum < cacheSize) {
@@ -167,3 +171,7 @@ int64_t SwapManager::GetMemStartOffset() const
 {
     return memStartOffset;
 }
+
+// 显式模板实例化，确保链接时能找到对应的符号
+template ComputeSwapRet SwapManager::ComputeSwapInfo<true>(const std::vector<int64_t>& keys);
+template ComputeSwapRet SwapManager::ComputeSwapInfo<false>(const std::vector<int64_t>& keys);

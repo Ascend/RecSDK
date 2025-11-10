@@ -28,6 +28,7 @@ class SwapManager {
 public:
     explicit SwapManager(int64_t cacheSize, int64_t memStartOffset = 0);
 
+    template<bool NewKeyReturn0>
     ComputeSwapRet ComputeSwapInfo(const std::vector<int64_t>& keys);
 
     int64_t GetKey(int64_t off);
