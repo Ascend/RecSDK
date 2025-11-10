@@ -76,7 +76,7 @@ class HCCLMGMTTest(unittest.TestCase):
         ) as mock_file:
             with self.assertRaises(AttributeError):
                 rank_to_device_dict, local_rank_size = _get_rank_info_with_ranktable()
-                
+
     @mock.patch(
         "rec_sdk_common.communication.hccl.hccl_mgmt._determine_ranktable_format",
         return_value=False

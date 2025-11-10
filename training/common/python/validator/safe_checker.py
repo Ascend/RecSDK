@@ -24,6 +24,7 @@ from rec_sdk_common.validator.validator import (
     FloatValidator,
     ClassValidator,
     DirectoryValidator,
+    FileValidator,
 )
 from rec_sdk_common.log.log import LoggingProxy
 
@@ -88,3 +89,16 @@ def dir_safe_check(name: str, directory: str) -> None:
     validator.check_is_not_none().path_should_exist(
         is_file=False
     ).check_not_soft_link().should_not_contains_sensitive_words().check_string_length().check()
+
+
+def file_safe_check(
+    name: str,
+    path: str,
+    unsupported_mode: int = 0o022,
+    min_size: int = ValidatorParams.FILE_MIN_SIZE.value,
+    max_size: int = ValidatorParams.FILE_MAX_SIZE.value,
+):
+    validator = FileValidator(name, path)
+    validator.check_string_length().check_not_soft_link().check_file_size(min_size, max_size).check_file_mode(
+        unsupported_mode
+    ).check_user_group().check()

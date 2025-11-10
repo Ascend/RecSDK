@@ -15,12 +15,23 @@
 # limitations under the License.
 # ==============================================================================
 
-__version__ = "6.0.T200"
-__all__ = ["init"]
+import tensorflow as tf
+from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 
 
-from mxrec.python.initializer.initializer import init
+def mock_get_device_id():
+    return 0
 
 
-def version():
-    return __version__
+def npu_session_config() -> tf.compat.v1.ConfigProto:
+    config = tf.compat.v1.ConfigProto()
+    custom_op = config.graph_options.rewrite_options.custom_optimizers.add()
+    custom_op.name = "NpuOptimizer"
+    config.graph_options.rewrite_options.remapping = RewriterConfig.OFF
+    config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF
+
+    return config
+
+
+test_graph = tf.compat.v1.Graph()
+sess = tf.compat.v1.Session(graph=test_graph, config=npu_session_config())
