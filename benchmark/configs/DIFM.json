@@ -15,5 +15,5 @@
     ],
     "pip_install_self": false,
     "pip_install_requirements": false,
-    "extra_cmd": "pip install tensorflow==2.20.0 --no-deps"
+    "extra_cmd": ["pip install tensorflow==2.20.0 --no-deps"]
 }

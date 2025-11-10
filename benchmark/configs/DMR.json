@@ -1,0 +1,23 @@
+{
+    "name": "DMR",
+    "url": "https://github.com/reczoo/FuxiCTR",
+    "commit_id": "b7dff736885fdb8f59387d82d08219ad2e4cae50",
+    "patch_path": "patches/fuxictr_npu.patch",
+    "mode": "infer",
+    "epoch": 10,
+    "profiling_flag": true,
+    "compile_flag": false,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "python",
+        "model_zoo/DMR/run_expid.py",
+        "--expid",
+        "DMR_test",
+        "--gpu",
+        "0"
+    ],
+    "pip_install_self": true,
+    "pip_install_requirements": true,
+    "extra_cmd": ["pip install Scikit-learn<1.5"]
+}

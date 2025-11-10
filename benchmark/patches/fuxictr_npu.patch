@@ -1,0 +1,221 @@
+diff --git a/fuxictr/pytorch/models/rank_model.py b/fuxictr/pytorch/models/rank_model.py
+index 1ce33aa..4dfda08 100644
+--- a/fuxictr/pytorch/models/rank_model.py
++++ b/fuxictr/pytorch/models/rank_model.py
+@@ -19,6 +19,7 @@
+ import torch.nn as nn
+ import numpy as np
+ import torch
++import torch_npu
+ import os, sys
+ import logging
+ from fuxictr.pytorch.layers import FeatureEmbeddingDict
+@@ -254,9 +255,42 @@ class BaseModel(nn.Module):
+             y_pred = []
+             if self._verbose > 0:
+                 data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
+-            for batch_data in data_generator:
+-                return_dict = self.forward(batch_data)
+-                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
++            #prof code
++            experimental_config = torch_npu.profiler._ExperimentalConfig(
++                export_type=[
++                    torch_npu.profiler.ExportType.Text,
++                    torch_npu.profiler.ExportType.Db
++                ],
++                profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++                msprof_tx=False,
++                aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++                l2_cache=False,
++                op_attr=False,
++                data_simplification=False,
++                record_op_args=False,
++                gc_detect_threshold=None
++            )
++
++            steps = 10
++            with torch_npu.profiler.profile(
++                activities=[
++                            torch_npu.profiler.ProfilerActivity.CPU,
++                            torch_npu.profiler.ProfilerActivity.NPU
++                            ],
++                schedule=torch_npu.profiler.schedule(wait=3, warmup=3, active=1, repeat=1),
++                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
++                    record_shapes=True,
++                    profile_memory=False,
++                    with_stack=False,
++                    with_modules=False,
++                    with_flops=False,
++                experimental_config=experimental_config) as prof:
++                print("profiling start...")
++                for step in range(steps):
++                    for batch_data in data_generator:
++                        return_dict = self.forward(batch_data)
++                        y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
++                        prof.step()
+             y_pred = np.array(y_pred, np.float64)
+             return y_pred
+ 
+diff --git a/fuxictr/pytorch/torch_utils.py b/fuxictr/pytorch/torch_utils.py
+index 4b220ce..181c332 100644
+--- a/fuxictr/pytorch/torch_utils.py
++++ b/fuxictr/pytorch/torch_utils.py
+@@ -20,6 +20,7 @@ import sys
+ import os
+ import numpy as np
+ import torch
++import torch_npu
+ from torch import nn
+ import random
+ from functools import partial
+@@ -35,8 +36,8 @@ def seed_everything(seed=1029):
+     torch.backends.cudnn.deterministic = True
+ 
+ def get_device(gpu=-1):
+-    if gpu >= 0 and torch.cuda.is_available():
+-        device = torch.device("cuda:" + str(gpu))
++    if gpu >= 0:
++        device = torch.device("npu")
+     else:
+         device = torch.device("cpu")   
+     return device
+diff --git a/model_zoo/AutoInt/run_expid.py b/model_zoo/AutoInt/run_expid.py
+index 19adc38..0121133 100644
+--- a/model_zoo/AutoInt/run_expid.py
++++ b/model_zoo/AutoInt/run_expid.py
+@@ -66,22 +66,4 @@ if __name__ == '__main__':
+     model.count_parameters() # print number of parameters used in model
+ 
+     train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
+-    model.fit(train_gen, validation_data=valid_gen, **params)
+-
+-    logging.info('****** Validation evaluation ******')
+-    valid_result = model.evaluate(valid_gen)
+-    del train_gen, valid_gen
+-    gc.collect()
+-    
+-    test_result = {}
+-    if params["test_data"]:
+-        logging.info('******** Test evaluation ********')
+-        test_gen = RankDataLoader(feature_map, stage='test', **params).make_iterator()
+-        test_result = model.evaluate(test_gen)
+-    
+-    result_filename = Path(args['config']).name.replace(".yaml", "") + '.csv'
+-    with open(result_filename, 'a+') as fw:
+-        fw.write(' {},[command] python {},[exp_id] {},[dataset_id] {},[train] {},[val] {},[test] {}\n' \
+-            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
+-                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
+-                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
++    model.predict(valid_gen)
+diff --git a/model_zoo/DIEN/run_expid.py b/model_zoo/DIEN/run_expid.py
+index 19adc38..0121133 100644
+--- a/model_zoo/DIEN/run_expid.py
++++ b/model_zoo/DIEN/run_expid.py
+@@ -66,22 +66,4 @@ if __name__ == '__main__':
+     model.count_parameters() # print number of parameters used in model
+ 
+     train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
+-    model.fit(train_gen, validation_data=valid_gen, **params)
+-
+-    logging.info('****** Validation evaluation ******')
+-    valid_result = model.evaluate(valid_gen)
+-    del train_gen, valid_gen
+-    gc.collect()
+-    
+-    test_result = {}
+-    if params["test_data"]:
+-        logging.info('******** Test evaluation ********')
+-        test_gen = RankDataLoader(feature_map, stage='test', **params).make_iterator()
+-        test_result = model.evaluate(test_gen)
+-    
+-    result_filename = Path(args['config']).name.replace(".yaml", "") + '.csv'
+-    with open(result_filename, 'a+') as fw:
+-        fw.write(' {},[command] python {},[exp_id] {},[dataset_id] {},[train] {},[val] {},[test] {}\n' \
+-            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
+-                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
+-                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
++    model.predict(valid_gen)
+diff --git a/model_zoo/DMR/run_expid.py b/model_zoo/DMR/run_expid.py
+index 19adc38..0121133 100644
+--- a/model_zoo/DMR/run_expid.py
++++ b/model_zoo/DMR/run_expid.py
+@@ -66,22 +66,4 @@ if __name__ == '__main__':
+     model.count_parameters() # print number of parameters used in model
+ 
+     train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
+-    model.fit(train_gen, validation_data=valid_gen, **params)
+-
+-    logging.info('****** Validation evaluation ******')
+-    valid_result = model.evaluate(valid_gen)
+-    del train_gen, valid_gen
+-    gc.collect()
+-    
+-    test_result = {}
+-    if params["test_data"]:
+-        logging.info('******** Test evaluation ********')
+-        test_gen = RankDataLoader(feature_map, stage='test', **params).make_iterator()
+-        test_result = model.evaluate(test_gen)
+-    
+-    result_filename = Path(args['config']).name.replace(".yaml", "") + '.csv'
+-    with open(result_filename, 'a+') as fw:
+-        fw.write(' {},[command] python {},[exp_id] {},[dataset_id] {},[train] {},[val] {},[test] {}\n' \
+-            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
+-                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
+-                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
++    model.predict(valid_gen)
+diff --git a/model_zoo/EDCN/run_expid.py b/model_zoo/EDCN/run_expid.py
+index 19adc38..0121133 100644
+--- a/model_zoo/EDCN/run_expid.py
++++ b/model_zoo/EDCN/run_expid.py
+@@ -66,22 +66,4 @@ if __name__ == '__main__':
+     model.count_parameters() # print number of parameters used in model
+ 
+     train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
+-    model.fit(train_gen, validation_data=valid_gen, **params)
+-
+-    logging.info('****** Validation evaluation ******')
+-    valid_result = model.evaluate(valid_gen)
+-    del train_gen, valid_gen
+-    gc.collect()
+-    
+-    test_result = {}
+-    if params["test_data"]:
+-        logging.info('******** Test evaluation ********')
+-        test_gen = RankDataLoader(feature_map, stage='test', **params).make_iterator()
+-        test_result = model.evaluate(test_gen)
+-    
+-    result_filename = Path(args['config']).name.replace(".yaml", "") + '.csv'
+-    with open(result_filename, 'a+') as fw:
+-        fw.write(' {},[command] python {},[exp_id] {},[dataset_id] {},[train] {},[val] {},[test] {}\n' \
+-            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
+-                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
+-                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
++    model.predict(valid_gen)
+diff --git a/model_zoo/EulerNet/run_expid.py b/model_zoo/EulerNet/run_expid.py
+index effe553..7bf1997 100644
+--- a/model_zoo/EulerNet/run_expid.py
++++ b/model_zoo/EulerNet/run_expid.py
+@@ -66,22 +66,4 @@ if __name__ == '__main__':
+     model.count_parameters() # print number of parameters used in model
+ 
+     train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
+-    model.fit(train_gen, validation_data=valid_gen, **params)
+-
+-    logging.info('****** Validation evaluation ******')
+-    valid_result = model.evaluate(valid_gen)
+-    del train_gen, valid_gen
+-    gc.collect()
+-    
+-    test_result = {}
+-    if params["test_data"]:
+-        logging.info('******** Test evaluation ********')
+-        test_gen = RankDataLoader(feature_map, stage='test', **params).make_iterator()
+-        test_result = model.evaluate(test_gen)
+-    
+-    result_filename = Path(args['config']).name.replace(".yaml", "") + '.csv'
+-    with open(result_filename, 'a+') as fw:
+-        fw.write(' {},[command] python {},[exp_id] {},[dataset_id] {},[train] {},[val] {},[test] {}\n' \
+-            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
+-                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
+-                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
++    model.predict(valid_gen)
