@@ -1,5 +1,5 @@
 [mxrec]
-log_level = "INFO"
+log_level = "ERROR"
 # If use_ranktable is true, the environment variable "RANK_TABLE_FILE" will be read; if it is false, the configuration
 # of "mxrec.cm-node-info" in the toml file will be read.
 use_ranktable = true
