@@ -347,3 +347,104 @@ class TestGetExistingTables:
         tables = mxrec.get_existing_tables()
         assert len(tables) != 0
         assert isinstance(tables[0], (StaticEmbTable,))
+
+
+class TestEmbeddingLookup:
+    """Test for 'mxrec.python.embedding.embedding.embedding_lookup'."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, monkeypatch):
+        monkeypatch.setattr("mxrec.python.initializer.initializer.get_device_id", mock_get_device_id)
+        mxrec.init("./ut_test.toml")
+
+    @staticmethod
+    def teardown_method():
+        tf.compat.v1.reset_default_graph()
+        TomlParser._instance = None
+
+    @staticmethod
+    def test_params_type_err():
+        ids = tf.constant([[1, 2, 4, 1], [1, 3, 10, 2]], dtype=tf.int64)
+        with pytest.raises(ValueError) as excinfo:
+            mxrec.embedding_lookup("XXX", ids)
+        assert "Invalid parameter type" in str(excinfo.value)
+
+    @staticmethod
+    def test_ids_type_err():
+        table = mxrec.get_embedding_table(
+            name="test_name",
+            dimension=8,
+            device_vocabulary_size=100,
+            initializer=tf.compat.v1.truncated_normal_initializer(),
+            key_dtype=tf.int64,
+            value_dtype=tf.float32,
+        )
+        with pytest.raises(ValueError) as excinfo:
+            mxrec.embedding_lookup(table, "1")
+        assert "Invalid parameter type" in str(excinfo.value)
+
+    @staticmethod
+    def test_mp_lookup_with_1p_ok():
+        with test_graph.as_default():
+            table = mxrec.get_embedding_table(
+                name="test_name",
+                dimension=8,
+                device_vocabulary_size=100,
+                initializer=tf.compat.v1.truncated_normal_initializer(),
+                key_dtype=tf.int64,
+                value_dtype=tf.float32,
+            )
+            ids = tf.constant([[1, 2, 4, 1], [1, 3, 10, 2]], dtype=tf.int64)
+            lookup_res = mxrec.embedding_lookup(table, ids)
+            # The shape must be [bs, seq_len, emb_dim].
+            assert lookup_res.shape == (2, 4, 8)
+
+    @staticmethod
+    def test_mp_lookup_with_2p_ok(monkeypatch):
+        def _mock_get_rank_size():
+            return 2
+
+        monkeypatch.setattr("mxrec.python.embedding.lookup.base_lookup.get_rank_size", _mock_get_rank_size)
+        with test_graph.as_default():
+            table = mxrec.get_embedding_table(
+                name="test_name",
+                dimension=8,
+                device_vocabulary_size=100,
+                initializer=tf.compat.v1.truncated_normal_initializer(),
+                key_dtype=tf.int64,
+                value_dtype=tf.float32,
+            )
+            ids = tf.constant([[1, 2, 4, 1], [1, 3, 10, 2]], dtype=tf.int64)
+            lookup_res = mxrec.embedding_lookup(table, ids)
+            # The shape must be [bs, seq_len, emb_dim].
+            assert lookup_res.shape == (2, 4, 8)
+
+
+class TestGetSparseEmbedding:
+    """Test for 'mxrec.python.embedding.embedding.get_sparse_embedding'."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, monkeypatch):
+        monkeypatch.setattr("mxrec.python.initializer.initializer.get_device_id", mock_get_device_id)
+        mxrec.init("./ut_test.toml")
+
+    @staticmethod
+    def teardown_method():
+        tf.compat.v1.reset_default_graph()
+        TomlParser._instance = None
+
+    @staticmethod
+    def test_get_sparse_embedding_ok():
+        with test_graph.as_default():
+            table = mxrec.get_embedding_table(
+                name="test_name",
+                dimension=8,
+                device_vocabulary_size=100,
+                initializer=tf.compat.v1.truncated_normal_initializer(),
+                key_dtype=tf.int64,
+                value_dtype=tf.float32,
+            )
+            ids = tf.constant([[1, 2, 4, 1], [1, 3, 10, 2]], dtype=tf.int64)
+            mxrec.embedding_lookup(table, ids)
+
+            assert len(mxrec.get_sparse_embedding()) > 0
