@@ -38,14 +38,21 @@ void Restore(const at::Tensor& uniqueIndices, const at::Tensor& uniqueInverse, c
     const int64_t* uniqueInversePtr = uniqueInverse.data_ptr<int64_t>();
     int64_t* hashIndicesPtr = hashIndices.data_ptr<int64_t>();
 
+    const int64_t uniqueInverseLen = uniqueInverse.numel();
+    const int64_t uniqueIndicesLen = uniqueIndices.numel();
+
     at::parallel_for(0, nTables, 0, [&](int64_t begin, int64_t end) {
         for (int64_t i = begin; i < end; ++i) {
             const int64_t shift = uniqueOffsetPtr[i];
             const int64_t rStart = offsetsPtr[i];
             const int64_t rEnd = offsetsPtr[i + 1];
 
+            TORCH_CHECK(rStart >= 0 && rEnd <= uniqueInverseLen,
+                        "invalid offsetsPerTable[", rStart, ", ", rEnd, ") for table[", uniqueInverseLen, "]");
             for (int64_t r = rStart; r < rEnd; ++r) {
                 const int64_t globalIdx = uniqueInversePtr[r] + shift;
+                TORCH_CHECK(globalIdx >= 0 && globalIdx < uniqueIndicesLen,
+                            "invalid globalIdx ", globalIdx, " for uniqueIndices[0, ", uniqueIndicesLen, ")");
                 hashIndicesPtr[r] = uniqueIndicesPtr[globalIdx];
             }
         }
