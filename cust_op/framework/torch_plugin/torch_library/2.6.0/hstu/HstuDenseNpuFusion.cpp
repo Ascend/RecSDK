@@ -317,7 +317,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_jagged_bac
     
     at::Tensor attnBiasGradOutput;
     if (denseAttnBias.defined()) {
-        attnBiasGradOutput = at::empty_like(denseAttnBias);
+        attnBiasGradOutput = at::zeros_like(denseAttnBias);
         check_tensor_non_empty(denseAttnBias, "denseAttnBias");
     } else {
         attnBiasGradOutput = at::Tensor();

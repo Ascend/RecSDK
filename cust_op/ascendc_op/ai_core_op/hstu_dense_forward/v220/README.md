@@ -89,7 +89,7 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 
 |  名称  |  输入/输出  |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |
-|  q | 输入 | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[2, 8]且是2的倍数<br>D∈[16, 512]且是16的倍数 | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度<br>s_b为jagged格式下各batch的实际序列长度之和 |
+|  q | 输入 | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[1, 16]<br>D∈[16, 512]且是16的倍数 | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度<br>s_b为jagged格式下各batch的实际序列长度之和 |
 |  k | 输入 | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q |
 |  v | 输入 | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q |
 |  mask | 输入(可选) | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致 |
