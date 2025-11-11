@@ -96,13 +96,13 @@ def check_path(value: str, need_exist: bool = False, is_dir: bool = False, **kwa
 def _check_path_permission(file_path: str):
     original_path = Path(file_path)
 
-    # 检查是否为软链接
+    # check if the path itself is a symlink
     if original_path.is_symlink():
         raise ValueError("Path is a symbolic link, not allowed")
 
     path = Path(original_path)
     last_exist_parent = ""
-    # 查找最近的已存在父目录并检查每个祖先目录是否为软链接
+    # check if any ancestor directories are symlinks and find the last existing parent
     for ancestor in sorted(path.parents, key=lambda x: len(x.parts)): 
         if ancestor.exists():
             if ancestor.is_symlink():
@@ -114,20 +114,26 @@ def _check_path_permission(file_path: str):
     if not last_exist_parent:
         raise ValueError("check path permission error, there is not exist at least one parent")
 
-    # 检查当前进程是否有写权限
+    # check write permission
     if not os.access(last_exist_parent, os.W_OK):
         raise ValueError("Current user does not have write permission for the path")
 
-    # 检查权限是否 > 750
     stat_info = os.stat(last_exist_parent)
-    file_mode = stat_info.st_mode & 0o777  # 获取权限位
-    if file_mode > 0o750:
+
+    file_mode = stat_info.st_mode & 0o777
+
+    owner_perm = (file_mode >> 6) & 0o7
+    group_perm = (file_mode >> 3) & 0o7
+    other_perm = file_mode & 0o7
+
+    # check file permission(owener<=7, group<=5, other==0)
+    if group_perm > 0o5 or other_perm > 0o0:
         raise ValueError(
             f"Path permissions are too permissive: {oct(file_mode)}, "
-            "must be no more than 0o750 (e.g., 750, 740, 700, etc.)"
+            "must satisfy: group <= 5 and other == 0 (e.g., 750, 740, 700, 640, etc.)"
         )
 
-    # 检查 UID/GID
+    # check UID/GID
     process_uid = os.geteuid()
     process_gid = os.getegid()
     stat_info = os.stat(last_exist_parent)
