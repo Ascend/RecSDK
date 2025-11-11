@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,18 +17,13 @@
 set -e
 
 # 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
+msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")
 export PATH=$parent_dir:$PATH
 
 
 VALID_AI_CORES=(
-    "ai_core-Ascend910B1"
-    "ai_core-Ascend910B2"
-    "ai_core-Ascend910B3"
-    "ai_core-Ascend910B4"
-    "ai_core-Ascend910_93"
-    "ai_core-Ascend310P3"
+    "ai_core-Ascend910_95"
 )
 
 validate_ai_core() {
@@ -44,7 +39,7 @@ validate_ai_core() {
     return 1
 }
 
-ai_core="ai_core-Ascend910B1"
+ai_core="ai_core-Ascend910_95"
 if [ "$#" -eq 1 ]; then
   ai_core="$1"
   validate_ai_core $ai_core
@@ -52,15 +47,18 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./jagged_to_padded_dense
-python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i jagged_to_padded_dense.json -f tf -c ${ai_core} -lan cpp -out ./jagged_to_padded_dense -m 0 -op JaggedToPaddedDense
+python3 $msopgen_path gen -i ../v220/jagged_to_padded_dense.json -f tf -c ${ai_core} -lan cpp -out ./jagged_to_padded_dense -m 0 -op JaggedToPaddedDense
 rm -rf jagged_to_padded_dense/op_kernel/*.h
 rm -rf jagged_to_padded_dense/op_kernel/*.cpp
 rm -rf jagged_to_padded_dense/host/*.h
 rm -rf jagged_to_padded_dense/host/*.cpp
-cp -rf op_kernel jagged_to_padded_dense/
-cp -rf op_host jagged_to_padded_dense/
+cp -rf ../v220/op_kernel jagged_to_padded_dense/
+cp -rf ../v220/op_host jagged_to_padded_dense/
 
 cd jagged_to_padded_dense
+
+# 修改jagged_to_padded_dense_kernel.h
+sed -i 's/SetAtomicAdd<uint16_t>();/SetAtomicAdd<int16_t>();/g' op_kernel/jagged_to_padded_dense_kernel.h
 
 # 判断当前目录下是否存在CMakePresets.json文件
 if [ ! -f "CMakePresets.json" ]; then
@@ -72,7 +70,9 @@ fi
 sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
-sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
+    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+fi
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
@@ -81,9 +81,6 @@ sed -i 's:"customize":"jagged_to_padded_dense":g' CMakePresets.json
 if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
     sed -i "1i #define SUPPORT_V200" ./op_kernel/jagged_to_padded_dense_kernel.h
 fi
-
-# 老平台Duplicate接口不支持int64_t, int64_t类型使用copy接口对UB Padding段进行填充
-sed -i "1i #define INT64_TYPE_USED_COPY_PADDING_UB" ./op_kernel/jagged_to_padded_dense_kernel.h
 
 line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`

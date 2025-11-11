@@ -22,6 +22,10 @@ using namespace AscendC;
 extern "C" __global__ __aicore__ void jagged_to_padded_dense(GM_ADDR values, GM_ADDR offsets, GM_ADDR out,
                                                              GM_ADDR workspace, GM_ADDR tiling)
 {
+#ifdef KERNEL_TASK_TYPE_DEFAULT
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+#endif
+
     JaggedToPaddedDense::Args args{values, offsets, out, workspace, tiling};
     JaggedToPaddedDense::JaggedToPaddedDenseKernel kernel(args);
     kernel.Compute();
