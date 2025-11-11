@@ -22,7 +22,13 @@ import torch
 import pytest
 import fbgemm_gpu
 
-logging.getLogger().setLevel(logging.INFO)
+# 确保日志配置使用英文输出
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(filename)s:%(lineno)d in %(funcName)s] %(levelname)s: %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 DEVICE_ID = "npu:0"
 
 # 加载NPU库
@@ -273,7 +279,7 @@ def test_dense_embedding_codegen_lookup_function_forward(
     )
 
     logging.info(
-        f"测试参数: num_embeddings={num_embeddings}, embedding_dim={embedding_dim}, "
+        f"Test parameters: num_embeddings={num_embeddings}, embedding_dim={embedding_dim}, "
         f"batch_size={batch_size}, max_seq_len={max_seq_len}, num_tables={num_tables}"
     )
 
@@ -285,10 +291,10 @@ def test_dense_embedding_codegen_lookup_function_forward(
 
     # 验证输出形状一致
     if cpu_output.shape != npu_output.shape:
-        raise AssertionError(f"输出形状不匹配: CPU {cpu_output.shape} vs NPU {npu_output.shape}")
+        raise AssertionError(f"Output shape mismatch: CPU {cpu_output.shape} vs NPU {npu_output.shape}")
 
     # 验证输出结果一致
     if not torch.allclose(cpu_output, npu_output, rtol=1e-4, atol=1e-4):
-        raise AssertionError("CPU和NPU输出不一致")
+        raise AssertionError("CPU and NPU outputs are inconsistent")
 
-    logging.info("✓ 参数化测试通过")
+    logging.info("✓ Parameterized test passed")
