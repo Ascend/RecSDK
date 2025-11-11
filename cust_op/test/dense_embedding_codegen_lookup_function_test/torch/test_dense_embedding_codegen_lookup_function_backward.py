@@ -94,14 +94,14 @@ def backward_cpu(params):
                 idx = indices[j]
                 actual_idx = int(idx.item()) + weight_offset if hasattr(idx, "item") else int(idx) + weight_offset
 
-                # 检查索引是否超出总权重范围
+                # Check if index exceeds total weight range
                 if actual_idx >= weights.size(0):
-                    logging.warning(f"索引 {actual_idx} 超出权重张量范围 {weights.size(0)}")
+                    logging.warning(f"Index {actual_idx} exceeds weight tensor range {weights.size(0)}")
 
-                # 检查索引是否超出当前表范围
+                # Check if index exceeds current table range
                 raw_idx = int(idx.item()) if hasattr(idx, "item") else int(idx)
                 if raw_idx >= table_size:
-                    logging.warning(f"索引 {raw_idx} 超出表 {i} 的范围 {table_size}")
+                    logging.warning(f"Index {raw_idx} exceeds table {i} range {table_size}")
 
                 # 将grad_output的梯度累加到对应位置的grad_weights中
                 if actual_idx < weights.size(0):
@@ -117,7 +117,7 @@ def backward_npu(params):
     Args:
         params: BackwardParams命名元组，包含以下字段:
             weights: dev_weights tensor [num_embeddings, embedding_dim]
-            weights_offsets: weights_offsets tensor [num_tables] 或 None（单表）
+            weights_offsets: weights_offsets tensor [num_tables] or None (single table)
             indices: indices tensor [total_indices]
             offsets: offsets tensor [num_tables * batch_size + 1]
             max_d: maximum embedding dimension
@@ -274,38 +274,33 @@ def test_dense_embedding_codegen_lookup_function_backward(
 
     # 打印测试信息
     logger.info(
-        f"测试参数: num_embeddings={num_embeddings}, embedding_dim={embedding_dim}, "
+        f"Test parameters: num_embeddings={num_embeddings}, embedding_dim={embedding_dim}, "
         f"batch_size={batch_size}, max_seq_len={max_seq_len}, num_tables={num_tables}"
     )
 
-    try:
-        # 使用具名元组封装参数
-        cpu_params = BackwardParams(
-            weights=weights,
-            weights_offsets=weights_offsets,
-            indices=indices,
-            offsets=offsets,
-            max_d=max_d,
-            grad_output=grad_output
-        )
-        
-        # 调用CPU版本
-        cpu_grad = backward_cpu(cpu_params)
+    cpu_params = BackwardParams(
+        weights=weights,
+        weights_offsets=weights_offsets,
+        indices=indices,
+        offsets=offsets,
+        max_d=max_d,
+        grad_output=grad_output
+    )
+    
+    # 调用CPU版本
+    cpu_grad = backward_cpu(cpu_params)
 
-        # 调用NPU版本
-        npu_grad = backward_npu(cpu_params)
+    # 调用NPU版本
+    npu_grad = backward_npu(cpu_params)
 
-        # 验证输出形状一致
-        if cpu_grad.shape != npu_grad.shape:
-            logger.error(f"输出形状不匹配: CPU {cpu_grad.shape} vs NPU {npu_grad.shape}")
-            raise AssertionError(f"输出形状不匹配: CPU {cpu_grad.shape} vs NPU {npu_grad.shape}")
+    # 验证输出形状一致
+    if cpu_grad.shape != npu_grad.shape:
+        logger.error(f"Output shapes do not match: CPU {cpu_grad.shape} vs NPU {npu_grad.shape}")
+        raise AssertionError(f"Output shapes do not match: CPU {cpu_grad.shape} vs NPU {npu_grad.shape}")
 
-        # 验证输出结果一致
-        if not torch.allclose(cpu_grad, npu_grad, rtol=1e-4, atol=1e-4):
-            logger.error("CPU和NPU输出不一致")
-            raise AssertionError("CPU和NPU输出不一致")
+    # 验证输出结果一致
+    if not torch.allclose(cpu_grad, npu_grad, rtol=1e-4, atol=1e-4):
+        logger.error("CPU and NPU outputs do not match")
+        raise AssertionError("CPU and NPU outputs do not match")
 
-        logger.info("✓ 参数化测试通过")
-    except Exception as e:
-        # 保存失败的测试数据
-        raise e
+    logger.info("✓ Parameterized test passed")

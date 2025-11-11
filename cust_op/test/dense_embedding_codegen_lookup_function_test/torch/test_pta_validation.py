@@ -53,7 +53,7 @@ def call_dense_embedding_lookup(params):
         weightsOffsets=params.weightsOffsets,
         dOffsets=params.dOffsets,
         totalD=4,
-        maxD=2,
+        maxD=8,
         hashSizeCumsum=params.hashSizeCumsum,
         totalHashSizeBits=2,
         indices=params.indices,
@@ -109,7 +109,7 @@ def test_standard_inputs():
     assert result is not None
     assert len(result.shape) == 2
     assert result.shape[0] == params.indices.shape[0]  # 输出行数应该等于indices长度
-    assert result.shape[1] == 2  # 输出列数应该等于maxD
+    assert result.shape[1] == 8  # 输出列数应该等于maxD
     logger.info("Standard inputs test passed")
 
 
@@ -205,3 +205,38 @@ def test_offset_indices_mismatch_validation():
         call_dense_embedding_lookup(wrong_params)
 
     logger.info("Offset-indices mismatch validation test passed")
+
+
+# 新增测试用例：校验maxD是否为8的倍数
+def test_maxd_alignment_validation():
+    """
+    Test maxD alignment validation - must be a multiple of ALIGNMENT_SIZE (8)
+    """
+    ALIGNMENT_SIZE = 8
+    params = create_test_data()
+    # 非法的maxD值 (非8的倍数)
+    invalid_maxD = ALIGNMENT_SIZE + 1
+    with pytest.raises(RuntimeError, match="maxD must be a multiple of 8"):
+        torch.ops.mxrec.dense_embedding_codegen_lookup_function(
+            devWeights=params.devWeights,
+            weightsOffsets=params.weightsOffsets,
+            dOffsets=params.dOffsets,
+            totalD=4,
+            maxD=invalid_maxD,
+            hashSizeCumsum=params.hashSizeCumsum,
+            totalHashSizeBits=2,
+            indices=params.indices,
+            offsets=params.offsets,
+            poolingMode=0,
+            indiceWeightsOptional=None,
+            featureRequiresGrad=None,
+            outputDtypeOptional=0,
+            bOffsetOptional=None,
+            vbeOutputOffsetsFeatureRankOptional=None,
+            vbeBOffsetsRankPerFeatureOptional=None,
+            maxB=0,
+            maxBFeatureRank=0,
+            vbeOutputSize=0,
+        )
+
+    logger.info("MaxD alignment validation with invalid value passed")

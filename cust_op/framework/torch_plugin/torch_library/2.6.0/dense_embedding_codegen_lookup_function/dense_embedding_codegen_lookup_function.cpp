@@ -24,6 +24,7 @@ using namespace at;
 
 
 constexpr int32_t MAX_WEIGHTS_OFFSETS_SIZE = 1024;
+constexpr int32_t ALIGNMENT_SIZE = 8;
 
 void validate_common_inputs(
     const at::Tensor &devWeights,
@@ -31,7 +32,8 @@ void validate_common_inputs(
     const at::Tensor &dOffsets,
     const at::Tensor &hashSizeCumsum,
     const at::Tensor &indices,
-    const at::Tensor &offsets)
+    const at::Tensor &offsets,
+    const int64_t maxD)
 {
     check_tensor_non_empty(devWeights, "devWeights");
     check_tensor_non_empty(weightsOffsets, "weightsOffsets");
@@ -68,6 +70,8 @@ void validate_common_inputs(
     check_tensor_npu_device(
         {devWeights, weightsOffsets, dOffsets, hashSizeCumsum, indices, offsets},
         {"devWeights", "weightsOffsets", "dOffsets", "hashSizeCumsum", "indices", "offsets"});
+
+    TORCH_CHECK(maxD % ALIGNMENT_SIZE == 0, "maxD must be a multiple of ", ALIGNMENT_SIZE);
 }
 
 void validate_dense_embedding_codegen_lookup_function_inputs(
@@ -78,9 +82,10 @@ void validate_dense_embedding_codegen_lookup_function_inputs(
     const at::Tensor &indices,
     const at::Tensor &offsets,
     const c10::optional<at::Tensor> &indiceWeights,
-    const c10::optional<at::Tensor> &featureRequiresGrad)
+    const c10::optional<at::Tensor> &featureRequiresGrad,
+    const int64_t maxD)
 {
-    validate_common_inputs(devWeights, weightsOffsets, dOffsets, hashSizeCumsum, indices, offsets);
+    validate_common_inputs(devWeights, weightsOffsets, dOffsets, hashSizeCumsum, indices, offsets, maxD);
 
     TORCH_CHECK(devWeights.dtype() == at::kFloat, "devWeights must be float type");
     if (indiceWeights.has_value()) {
@@ -104,9 +109,10 @@ void validate_dense_embedding_codegen_lookup_function_grad_inputs(
     const at::Tensor &dOffsets,
     const at::Tensor &hashSizeCumsum,
     const at::Tensor &indices,
-    const at::Tensor &offsets)
+    const at::Tensor &offsets,
+    const int64_t maxD)
 {
-    validate_common_inputs(devWeights, weightsOffsets, dOffsets, hashSizeCumsum, indices, offsets);
+    validate_common_inputs(devWeights, weightsOffsets, dOffsets, hashSizeCumsum, indices, offsets, maxD);
 
     check_tensor_non_empty(weightsGrad, "weightsGrad");
     check_tensor_dim(weightsGrad, 2, "weightsGrad");
@@ -146,7 +152,7 @@ at::Tensor dense_embedding_codegen_lookup_function_impl_npu(
 {
     validate_dense_embedding_codegen_lookup_function_inputs(
         devWeights, weightsOffsets, dOffsets, hashSizeCumsum,
-        indices, offsets, indiceWeightsOptional, featureRequiresGrad);
+        indices, offsets, indiceWeightsOptional, featureRequiresGrad, maxD);
 
     auto devWeightsCon = devWeights.contiguous();
     auto weightsOffsetsCon = weightsOffsets.contiguous();
@@ -194,7 +200,7 @@ std::vector<at::Tensor> dense_embedding_codegen_lookup_function_grad_impl_npu(
     const int64_t vbeOutputSize)
 {
     validate_dense_embedding_codegen_lookup_function_grad_inputs(
-        devWeights, weightsGrad, weightsOffsets, dOffsets, hashSizeCumsum, indices, offsets);
+        devWeights, weightsGrad, weightsOffsets, dOffsets, hashSizeCumsum, indices, offsets, maxD);
 
     auto devWeightsCon = devWeights.contiguous();
     auto weightsGradCon = weightsGrad.contiguous();
