@@ -1,0 +1,197 @@
+[
+    {
+        "op": "DenseEmbeddingCodegenLookupFunction",
+        "input_desc": [
+            {
+                "name": "dev_weights",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp32"
+                ]
+            },
+            {
+                "name": "weights_offsets",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int32",
+                    "int64"
+                ]
+            },            
+            {
+                "name": "D_offsets",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int32",
+                    "int64"
+                ]
+            },
+            {
+                "name": "hash_size_cumsum",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int32",
+                    "int64"
+                ]
+            },   
+            {
+                "name": "indices",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int32",
+                    "int64"
+                ]
+            },
+            {
+                "name": "offsets",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int32",
+                    "int64"
+                ]
+            },
+            {
+                "name": "indice_weights",
+                "param_type": "optional",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int32",
+                    "int64"
+                ]
+            },
+            {
+                "name": "B_offset",
+                "param_type": "optional",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int32",
+                    "int64"
+                ]
+            },
+            {
+                "name": "vbe_output_offsets_feature_rank",
+                "param_type": "optional",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int32",
+                    "int64"
+                ]
+            },
+            {
+                "name": "vbe_B_offsets_rank_per_feature",
+                "param_type": "optional",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int32",
+                    "int64"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "out",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp32"
+                ]
+            }
+        ],
+        "attr": [
+            {
+              "name": "total_D",
+			  "param_type": "required",
+              "type": "int",
+              "default_value": 0
+            },
+            {
+                "name": "max_D",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "total_hash_size_bits",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "pooling_mode",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "feature_requires_grad",
+                "param_type": "optional",
+                "type":"bool",
+                "default_value": true
+            },
+            {
+                "name": "output_dtype",
+                "param_type": "optional",
+                "type":"string",
+                "default_value": "float32"
+            },
+            {
+                "name": "max_B",
+                "param_type": "optional",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "max_B_feature_rank",
+                "param_type": "optional",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "vbe_output_size",
+                "param_type": "optional",
+                "type":"int",
+                "default_value": 0
+            }          
+        ]
+    }
+]
