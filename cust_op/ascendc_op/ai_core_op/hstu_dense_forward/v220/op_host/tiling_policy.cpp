@@ -133,7 +133,7 @@ bool TilingPolicy::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t 
     static const ShapeRange SEQ_RANGE(1, 20480, 1, "seq size");
     static const ShapeRange BATCH_RANGE(1, MAX_BATCH_SIZE, 1, "batch size");
     static const ShapeRange DIM_RANGE(16, 512, 16, "dim size");
-    static const ShapeRange HEAD_RANGE(2, 8, 2, "head num");
+    static const ShapeRange HEAD_RANGE(1, 16, 1, "head num");
 
     if (!SEQ_RANGE.Check(seqLen)) {
         return false;
