@@ -262,6 +262,20 @@ class TestHstuJaggedDemo:
         self.execute(batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type,
                      repeat_offset)
 
+    @pytest.mark.parametrize("batch_size", [2, 4])
+    @pytest.mark.parametrize("max_seq_len", [256, 257])
+    @pytest.mark.parametrize("head_num", [1, 7, 16])
+    @pytest.mark.parametrize("head_dim", [16, 32])
+    @pytest.mark.parametrize("mask_type", [0, 2, 3])
+    @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
+    @pytest.mark.parametrize("enable_bias", [True, False])
+    @pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
+    @pytest.mark.parametrize("repeat_offset", [False, True])
+    def test_hstu_dens_jagged(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias,
+                              data_type, repeat_offset):
+        self.execute(batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type,
+                     repeat_offset)
+
     @pytest.mark.parametrize("max_seq_len", [16])
     @pytest.mark.parametrize("head_num", [2])
     @pytest.mark.parametrize("head_dim", [256])
@@ -380,6 +394,18 @@ class TestHstuNormalDemo:
     @pytest.mark.parametrize("max_seq_len", [256, 257, 512, 1234])
     @pytest.mark.parametrize("head_num", [2, 4])
     @pytest.mark.parametrize("head_dim", [32, 64])
+    @pytest.mark.parametrize("mask_type", [0, 2, 3])
+    @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
+    @pytest.mark.parametrize("enable_bias", [True, False])
+    @pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
+    def test_hstu_dens_normal(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias,
+                              data_type):
+        self.execute(batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type)
+
+    @pytest.mark.parametrize("batch_size", [2, 4])
+    @pytest.mark.parametrize("max_seq_len", [256, 257, 512])
+    @pytest.mark.parametrize("head_num", [1, 7, 16])
+    @pytest.mark.parametrize("head_dim", [16, 32])
     @pytest.mark.parametrize("mask_type", [0, 2, 3])
     @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
     @pytest.mark.parametrize("enable_bias", [True, False])
