@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ from mxrec.python.constants.constants import (
 )
 from mxrec.python.embedding.table.base_emb_table import BaseEmbTable
 from mxrec.python.embedding.table.static_emb_table import StaticEmbTable
+from mxrec.python.embedding.lookup.mp_lookup import MPLookup
 
 
 _MAX_TABLE_NAME_LEN = 128
@@ -158,6 +159,77 @@ def get_embedding_table(
     logger.info("The embedding table %s has been created.", table_ins)
 
     return table_ins
+
+
+def embedding_lookup(
+    emb_table: Union[StaticEmbTable],
+    ids: tf.Tensor,
+) -> tf.Tensor:
+    """Looks up `ids` in a list of embedding tensors.
+
+    Args:
+        emb_table: An embedding table instance to be looked up.
+        ids: A tensor with type `tf.int64` containing the dis to be looked up in `emb_table`.
+
+    Returns:
+        A tensor(the results of lookup) with the same type as the tensors in `emb_table`.
+
+    ```python
+    import mxrec
+    import tensorflow as tf
+
+    # Mxrec init.
+    mxrec.init("toml_path")
+
+    # Create an embedding table.
+    table = mxrec.get_embedding_table(
+        name="example_name",
+        dimension=8,
+        device_vocabulary_size=10000,
+    )
+
+    # Embedding lookup.
+    ids = tf.convert_to_tensor([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=tf.int64)
+    embedding = mxrec.embedding_lookup(table, ids)
+    ```
+    """
+    class_safe_check("emb_table", emb_table, (StaticEmbTable,))
+    class_safe_check("ids", ids, tf.Tensor)
+    logger.info("The table name for this embedding lookup is %s, and the ids is %s.", emb_table.name, ids)
+
+    # Currently, the embedding lookup only support MP(model parallelism).
+    return MPLookup(emb_table, ids).lookup()
+
+
+def get_sparse_embedding() -> List[tf.Tensor]:
+    """Retrieves a list of sparse embedding from the TensorFlow collection.
+
+    Returns:
+        List[tf.Tensor]: A list of tf.Tensor that are part of the LOCAL_EMBEDDING_COLLECTION.
+
+    ```python
+    import mxrec
+    import tensorflow as tf
+
+    # MxRec init.
+    mxrec.init("toml_path")
+
+    # Create an embedding table.
+    table = mxrec.get_embedding_table(
+        name="example_name",
+        dimension=8,
+        device_vocabulary_size=10000,
+    )
+    init_hashtable_op = mxrec.get_init_hashtable_op()
+    # The model's loss.
+    loss = ...
+    sparse_optimizer = mxrec.AdamWOptimizer(learning_rate=0.01)
+    sparse_embeddings = mxrec.get_sparse_embedding()
+    sparse_grads = tf.gradients(loss, sparse_embeddings)
+    train_ops = sparse_optimizer.apply_gradients(zip(sparse_grads, sparse_embeddings))
+    ```
+    """
+    return tf.compat.v1.get_collection(LOCAL_EMBEDDING_COLLECTION)
 
 
 def get_init_hashtable_op() -> List[tf.Operation]:

@@ -14,37 +14,3 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-__version__ = "6.0.T200"
-__all__ = [
-    "init",
-    "get_embedding_table",
-    "get_existing_tables",
-    "get_init_hashtable_op",
-    "embedding_lookup",
-    "get_sparse_embedding",
-    "AdamWOptimizer",
-]
-
-
-from mxrec.python.initializer.initializer import init
-from mxrec.python.embedding.embedding import (
-    get_embedding_table,
-    get_existing_tables,
-    get_init_hashtable_op,
-    embedding_lookup,
-    get_sparse_embedding,
-)
-from mxrec.python.optimizer.adam_w import AdamWOptimizer
-from mxrec.python.optimizer.utils import patch_for_update_op
-
-
-def version():
-    return __version__
-
-
-def _patch_for_mxrec():
-    patch_for_update_op()
-
-
-_patch_for_mxrec()
