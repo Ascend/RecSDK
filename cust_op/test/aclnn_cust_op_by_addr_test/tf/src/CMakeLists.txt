@@ -26,7 +26,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "../output")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "../output")
 
 set(INC_PATH $ENV{DDK_PATH})
-set(AUTO_GEN_PATH "../../../../ascendc_op/ai_core_op/cust_op_by_addr/v220/cust_op_by_addr/build_out/autogen")
+set(AUTO_GEN_PATH "../../../../ascendc_op/ai_core_op/cust_op_by_addr/${AICORE}/cust_op_by_addr/build_out/autogen")
 
 if (NOT DEFINED ENV{DDK_PATH})
     set(INC_PATH "/usr/local/Ascend/ascend-toolkit/latest")
