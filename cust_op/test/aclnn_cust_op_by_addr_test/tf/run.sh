@@ -25,8 +25,8 @@ CURRENT_DIR=$(
 cd $CURRENT_DIR
 
 # 导出环境变量
-SHORT=v:,
-LONG=dtype:,
+SHORT=v:,a:
+LONG=dtype:,aicore:
 OPTS=$(getopt -a --options $SHORT --longoptions $LONG -- "$@")
 eval set -- "$OPTS"
 while :
@@ -36,6 +36,13 @@ do
         (-v | --dtype)
             DTYPE="$2"
             shift 2;;
+        (-a | --aicore)
+            AICORE="$2"
+            case "$AICORE" in
+                (v220|c310) ;;
+                (*) echo "[ERROR] aicore must be v220 or c310" >&2; exit 1 ;;
+            esac
+            shift 2 ;;
         (--)
             shift;
             break;;
@@ -44,6 +51,9 @@ do
             break;;
     esac
 done
+
+: "${AICORE:=v220}"
+echo "aicore is: $AICORE"
 
 if [ ! "$ASCEND_HOME_DIR" ]; then
     if [ -d "$HOME/Ascend/ascend-toolkit/latest" ]; then
@@ -81,7 +91,7 @@ main()
 
     # 3. 编译acl可执行文件
     cd $CURRENT_DIR; rm -rf build; mkdir -p build; cd build
-    cmake -DCMAKE_BUILD_TYPE=Debug ../src
+    cmake -DCMAKE_BUILD_TYPE=Debug -DAICORE=$AICORE ../src
     if [ $? -ne 0 ]; then
         echo "ERROR: cmake failed!"
         return 1
