@@ -20,11 +20,14 @@
 更多详情可以参考CANN官方的Ascend C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/80RC2/developmentguide/opdevg/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
 ## 版本配套说明
-样例基于python3.11,torch支持2.6.0版本。调用算子前需完成配套软件的安装和所需算子的安装。目前支持的torch版本配套关系如下：
+当前支持两种软件版本配套：PyTorch 2.6.0和PyTorch2.7.1。调用算子前需完成配套软件的安装和所需算子的安装。详细配套关系如下：
 
-| torch版本      | 配套关系                                                                                          |
-|--------------|-----------------------------------------------------------------------------------------------|
-| torch==2.6.0 | torch_npu==2.6.0<br/>fbgemm+gpu==1.1.0+cpu<br/>torchrec==1.1.0+npu<br/>hybrid_torchrec==1.1.0 |
+| 配套版本  | PyTorch | torch-npu | torchrec  | fbgemm_gpu | hybrid_torchrec |
+|-------|---------|-----------|-----------|------------|-----------------|
+| 配套版本1 | 2.6.0   | 2.6.0     | 1.1.0+npu | 1.1.0      | 1.1.0           |
+| 配套版本2 | 2.7.1   | 2.7.1     | 1.2.0+npu | 1.2.0      | 1.2.0           |
+
+**后续说明以PyTorch 2.6.0配套版本为例进行说明。**
 
 ## 单算子使用说明
 ### 算子编译
@@ -57,7 +60,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 #### 单算子编译
 
-进入算子适配层(framework/torch_plugin/torch_library/2.6.0/目录下)，并进入到指定的算子目录。执行算子适配层编译。
+进入算子适配层(framework/torch_plugin/torch_library/目录下)，并进入到指定的算子目录。执行算子适配层编译。
 
 ```shell
 bash build_ops.sh
@@ -72,17 +75,17 @@ torch.ops.load_library("path/to/build/xxx.so")  #.so文件的绝对路径
 
 #### 多算子编译
 
-进入算子适配层目录`RecSDK/cust_op/framework/torch_plugin/torch_library/2.6.0/common`下，执行如下命令编译。
+进入算子适配层目录`RecSDK/cust_op/framework/torch_plugin/torch_library/common`下，执行如下命令编译。
 ```shell
 bash build_ops.sh
 ```
 
 编译完成后，会在common/build目录下生成`libfbgemm_npu_api.so`，并同时在python默认的site-packages路径下存放编译好的`libfbgemm_npu_api.so`。<br>
-该so包含`RecSDK/cust_op/framework/torch_plugin/torch_library/2.6.0`目录下所有算子的适配层。
+该so包含`RecSDK/cust_op/framework/torch_plugin/torch_library/`目录下所有算子的适配层。
 
 > 若编译时报错：`Could NOT find Python3 (missing: Python3_INCLUDE_DIRS Python3_LIBARIES)`
 >
-> 需注释`recsdk-npu-ops/torch_plugin/torch_library/2.6.0/common/CMakeLists.txt`中如下两行内容重新编译
+> 需注释`recsdk-npu-ops/torch_plugin/torch_library/common/CMakeLists.txt`中如下两行内容重新编译
 >
 > ```
 > #find_package(Python3 COMPONENTS Interpreter Development REQUIRED)

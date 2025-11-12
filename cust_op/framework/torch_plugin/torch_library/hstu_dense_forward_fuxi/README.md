@@ -51,11 +51,11 @@ torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=No
 
 #### 算子编译与部署
 
-算子编译部署请参考[RecSDK\cust_op\README.md](../../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译部署请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 #### Pytorch编译
 
-Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
+Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
 #### 算子调用示例,以下以pytest方式调用为例
 
@@ -159,4 +159,4 @@ class TestHstuJaggedFuxi:
 
 ```
 
-注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense_forward_fuxi/torch/test_hstu_forward_jagged_fuxi.py](../../../../../test/hstu_dense_forward_fuxi/torch/test_hstu_forward_jagged_fuxi.py)
+注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense_forward_fuxi/torch/test_hstu_forward_jagged_fuxi.py](../../../../test/hstu_dense_forward_fuxi/torch/test_hstu_forward_jagged_fuxi.py)
