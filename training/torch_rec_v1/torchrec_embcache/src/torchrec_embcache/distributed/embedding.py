@@ -7,6 +7,7 @@
 # LICENSE file in the root directory of this source tree.
 from __future__ import annotations
 
+import copy
 import os
 from dataclasses import dataclass
 from typing import (
@@ -31,6 +32,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
     SplitTableBatchedEmbeddingBagsCodegen,
 )
 
+from hybrid_torchrec import IS_TORCH_REC_120
 from hybrid_torchrec.constants import MAX_CACHINE_MEM_SIZE
 from hybrid_torchrec.modules.ids_process import IdsMapper
 from hybrid_torchrec.modules.ids_process import HashMapBase
@@ -68,7 +70,26 @@ from torchrec_embcache.embcache_pybind import (
     SwapInfo,
     restore_async,
 )
-
+from torchrec.distributed.embedding import (
+    ShardedEmbeddingCollection,
+    EmbeddingCollectionContext,
+    EmbeddingCollectionAwaitable,
+    pad_vbe_kjt_lengths,
+    get_ec_index_dedup,
+)
+if not IS_TORCH_REC_120:
+    from torchrec.distributed.embedding import create_sharding_infos_by_sharding
+from torchrec.distributed.embedding_sharding import (
+    EmbeddingSharding,
+    EmbeddingShardingInfo,
+    EmbeddingShardingContext,
+    KJTListSplitsAwaitable,
+)
+from torchrec.distributed.model_parallel import (
+    DistributedDataParallel,
+)
+from torchrec.distributed.sharding.dp_sequence_sharding import DpSequenceEmbeddingSharding
+from torchrec.distributed.sharding.sequence_sharding import SequenceShardingContext
 from torchrec.distributed.types import (
     Awaitable,
     LazyAwaitable,
@@ -79,39 +100,30 @@ from torchrec.distributed.types import (
     ShardedTensor,
     ParameterSharding,
 )
-from torchrec.distributed.embedding_sharding import (
-    EmbeddingSharding,
-    EmbeddingShardingInfo,
-    EmbeddingShardingContext,
-    KJTListSplitsAwaitable,
+from torchrec.distributed.utils import (
+    add_params_from_parameter_sharding,
+    convert_to_fbgemm_types,
+    merge_fused_params,
+    optimizer_type_to_emb_opt_type
 )
-from torchrec.distributed.sharding.sequence_sharding import SequenceShardingContext
-from torchrec.distributed.sharding.dp_sequence_sharding import (
-    DpSequenceEmbeddingSharding,
+from torchrec.modules.embedding_modules import (
+    EmbeddingCollection,
+    EmbeddingCollectionInterface,
+    get_embedding_names_by_table
 )
-from torchrec.modules.embedding_modules import EmbeddingCollection
-from torchrec.distributed.model_parallel import (
-    DistributedDataParallel,
-)
+from torchrec.optim.fused import FusedOptimizerModule
+from torchrec.optim.keyed import CombinedOptimizer
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor, JaggedTensor
 from torchrec.distributed.embedding_types import (
-    ShardingType,
-    KJTList
+    EmbeddingComputeKernel,
+    KJTList,
+    ShardingType
 )
 from torchrec.modules.embedding_configs import (
     DataType,
     EmbeddingConfig,
-)
-from torchrec.optim.fused import FusedOptimizerModule
-from torchrec.optim.keyed import CombinedOptimizer
-from torchrec.modules.embedding_modules import get_embedding_names_by_table
-from torchrec.distributed.embedding import (
-    ShardedEmbeddingCollection,
-    EmbeddingCollectionContext,
-    EmbeddingCollectionAwaitable,
-    create_sharding_infos_by_sharding,
-    pad_vbe_kjt_lengths,
-    get_ec_index_dedup,
+    EmbeddingTableConfig,
+    PoolingType
 )
 
 
@@ -354,12 +366,12 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         )
         self._env = npu_env
         self._use_index_dedup: bool = use_index_dedup or get_ec_index_dedup()
-
-        self.sharding_type_to_sharding_infos = create_sharding_infos_by_sharding(
-            module,
-            table_name_to_parameter_sharding,
-            fused_params,
-        )
+        create_sharding_params = (module, table_name_to_parameter_sharding, fused_params)
+        if IS_TORCH_REC_120:
+            self.sharding_type_to_sharding_infos = self.create_grouped_sharding_infos(*create_sharding_params)
+        else:
+            # adapt for torchrec 1.1.0
+            self.sharding_type_to_sharding_infos = create_sharding_infos_by_sharding(*create_sharding_params)
         self.table2hashmap: Dict[str, HashMapBase] = self.create_table2hashmap(module)
         self._enable_admit = any(
             hasattr(emb_config, "admit_and_evict_config")
@@ -461,6 +473,93 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         self._set_cache_mgr_for_ids_mapper()
         self._has_uninitialized_post_input_dist: bool = True
         self._post_input_dists: List[nn.Module] = []
+
+    @classmethod
+    def create_grouped_sharding_infos(
+            cls,
+            module: EmbeddingCollectionInterface,
+            table_name_to_parameter_sharding: Dict[str, ParameterSharding],
+            fused_params: Optional[Dict[str, Any]],
+    ) -> Dict[str, List[EmbeddingShardingInfo]]:
+        """
+        convert ParameterSharding (table_name_to_parameter_sharding: Dict[str, ParameterSharding]) to
+        EmbeddingShardingInfo that are grouped by sharding_type, and propagate the configs/parameters
+        """
+        if fused_params is None:
+            fused_params = {}
+
+        sharding_type_to_sharding_infos: Dict[str, List[EmbeddingShardingInfo]] = {}
+        # state_dict returns parameter.Tensor, which loses parameter level attributes
+        parameter_by_name = dict(module.named_parameters())
+        # QuantEBC registers weights as buffers (since they are INT8), and so we need to grab it there
+        state_dict = module.state_dict()
+
+        for (
+                config,
+                embedding_names,
+        ) in zip(module.embedding_configs(), module.embedding_names_by_table()):
+            table_name = config.name
+            check(
+                table_name in table_name_to_parameter_sharding,
+                f"{table_name} not in table_name_to_parameter_sharding"
+            )
+
+            parameter_sharding = table_name_to_parameter_sharding[table_name]
+            if parameter_sharding.compute_kernel not in [
+                kernel.value for kernel in EmbeddingComputeKernel
+            ]:
+                raise ValueError(
+                    f"Compute kernel not supported {parameter_sharding.compute_kernel}"
+                )
+
+            param_name = "embeddings." + config.name + ".weight"
+            check(param_name in parameter_by_name or param_name in state_dict, "param_name is invalid")
+            param = parameter_by_name.get(param_name, state_dict[param_name])
+
+            if parameter_sharding.sharding_type not in sharding_type_to_sharding_infos:
+                sharding_type_to_sharding_infos[parameter_sharding.sharding_type] = []
+
+            optimizer_params = getattr(param, "_optimizer_kwargs", [{}])
+            optimizer_classes = getattr(param, "_optimizer_classes", [None])
+
+            check(len(optimizer_classes) == 1 and len(optimizer_params) == 1,
+                  f"Only support 1 optimizer, given {len(optimizer_classes)}")
+            optimizer_class = optimizer_classes[0]
+            optimizer_params = optimizer_params[0]
+            if optimizer_class:
+                optimizer_params["optimizer"] = optimizer_type_to_emb_opt_type(
+                    optimizer_class
+                )
+
+            per_table_fused_params = merge_fused_params(fused_params, optimizer_params)
+            per_table_fused_params = add_params_from_parameter_sharding(
+                per_table_fused_params, parameter_sharding
+            )
+            per_table_fused_params = convert_to_fbgemm_types(per_table_fused_params)
+
+            sharding_type_to_sharding_infos[parameter_sharding.sharding_type].append(
+                (
+                    EmbeddingShardingInfo(
+                        embedding_config=EmbeddingTableConfig(
+                            num_embeddings=config.num_embeddings,
+                            embedding_dim=config.embedding_dim,
+                            name=config.name,
+                            data_type=config.data_type,
+                            feature_names=copy.deepcopy(config.feature_names),
+                            pooling=PoolingType.NONE,
+                            is_weighted=False,
+                            has_feature_processor=False,
+                            embedding_names=embedding_names,
+                            weight_init_max=config.weight_init_max,
+                            weight_init_min=config.weight_init_min,
+                        ),
+                        param_sharding=parameter_sharding,
+                        param=param,
+                        fused_params=per_table_fused_params,
+                    )
+                )
+            )
+        return sharding_type_to_sharding_infos
 
     @property
     def embcache_mgr(self):

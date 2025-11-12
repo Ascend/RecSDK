@@ -13,6 +13,7 @@ from fbgemm_gpu.split_embedding_codegen_lookup_invokers.lookup_adagrad import (
     Momentum,
 )
 
+from hybrid_torchrec import IS_TORCH_REC_120
 from hybrid_torchrec.hybrid_lookup_invoke.hybrid_lookup_args import HybridCommonArgs
 
 
@@ -57,7 +58,7 @@ def invoke(
         gradient_clipping=optimizer_args.gradient_clipping,
         max_gradient=optimizer_args.max_gradient,
         stochastic_rounding=optimizer_args.stochastic_rounding,  # if optimizer == none
-        learning_rate=optimizer_args.learning_rate,
+        learning_rate=common_args.learning_rate if IS_TORCH_REC_120 else optimizer_args.learning_rate,
         # prev_iter
         prev_iter_dev=prev_iter_dev,
         # iter
