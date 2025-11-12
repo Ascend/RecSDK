@@ -61,4 +61,7 @@ def invoke(
         use_uniq_cache_locations_bwd=common_args.use_uniq_cache_locations_bwd,
         use_homogeneous_placements=common_args.use_homogeneous_placements, apply_global_weight_decay=False,
         gwd_lower_bound=0.0,
+        use_optimize=common_args.use_optimize,
+        # grad_accumulate
+        table_grad_accumulate_offsets=common_args.table_grad_accumulate_offsets
     )

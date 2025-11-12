@@ -69,4 +69,7 @@ def invoke(
         use_homogeneous_placements=common_args.use_homogeneous_placements,
         apply_global_weight_decay=apply_global_weight_decay,
         gwd_lower_bound=gwd_lower_bound,
+        use_optimize=common_args.use_optimize,
+        # grad_accumulate
+        table_grad_accumulate_offsets=common_args.table_grad_accumulate_offsets
     )
