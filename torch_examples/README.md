@@ -1,14 +1,21 @@
 # RecSDK-Torch 模型样例运行环境说明
 
 ## 版本配套说明
-本模型迁移依赖特定版本的CANN、PyTorch、驱动和固件,源码编译需使用指定版本的Python、GCC、CMake等工具,仅支持昇腾平台（Atlas 800T A2）,基于软件环境以RecSDK-Torch提供的基础镜像环境为准，主要的配套依赖如下表所示：
+本模型迁移依赖特定版本的CANN、PyTorch、驱动和固件,源码编译需使用指定版本的Python、GCC、CMake等工具,仅支持昇腾平台（Atlas 800T A2）,软件环境以Rec SDK Torch提供的基础镜像环境为准。
 
-| Python版本   | 主要配套依赖                                                                                                         |
-|------------|----------------------------------------------------------------------------------------------------------------|
-| Python3.11 | torch==2.6.0<br/>torch_npu==2.6.0<br/>fbgemm_gpu==1.1.0+cpu<br/>torchrec==1.1.0+npu<br/>hybrid_torchrec==1.1.0 |
+基于PyTorch开源软件版本，支持两种软件版本配套，可根据需要自行选择。
+
+| 配套版本  | PyTorch | torch-npu | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
+|-------|---------|-----------|-----------|------------|-----------------|-------------------|
+| 配套版本1 | 2.6.0   | 2.6.0     | 1.1.0+npu | 1.1.0      | 1.1.0           | 1.1.0             |
+| 配套版本2 | 2.7.1   | 2.7.1     | 1.2.0+npu | 1.2.0      | 1.2.0           | 1.2.0             |
 
 ## 基础镜像
 下载基础镜像地址为：https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5
+
+注：该链接中镜像环境为基于PyTorch 2.6.0版本配套。（不包含hybrid_torchrec和torchrec_embcache）
+
+如需要使用PyTorch 2.7.1配套，可参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/build_torch_rec_images/README.md)中"版本配套说明"章节，下载对应软件重新安装。
 
 ## 启动容器
 说明：以下启动命令仅作参考，按需挂载目录。
@@ -21,7 +28,7 @@ docker run \
 --name "${container_name}" \
 -e ASCEND_VISIBLE_DEVICES=0-7 \
 --shm-size="300g" \
--m 300g  \
+-m 300g \
 -v /etc/localtime:/etc/localtime:ro \
 -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
 -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
@@ -45,7 +52,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```
 
 ## 安装依赖
-说明：容器中已经安装好torchrec,hybrid_torchrec等依赖。如需重新安装依赖需确保网络通畅。
+说明：容器中已经安装好torchrec,hybrid_torchrec,torchrec_embcache及算子等依赖。如需重新安装依赖需确保网络通畅。
 
 ### 1. 安装TorchRec昇腾注册包
 TorchRec昇腾注册包为基于torchrec开源代码固定分支，进行NPU设备适配后的包，支持源码编译安装。
@@ -56,17 +63,18 @@ TorchRec昇腾注册包为基于torchrec开源代码固定分支，进行NPU设�
 提供通过安装包安装、源码编译安装两种方式，选择其一即可。
 
 #### 2.1 通过安装包安装
-获取安装包：Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
+从[RecSDK release版本](https://gitcode.com/Ascend/RecSDK/releases)，选择最新版本，下载Ascend-mindxsdk-hybrid-torchrec-*.tar.gz软件包。
 
-获取地址：https://gitcode.com/Ascend/RecSDK/releases
+说明：hybrid_torchrec软件包在7.x.x版本同时支持torch 2.6.0和torch 2.7.1两种配套版本。之前的版本包仅支持torch 2.6.0配套。
 
 ```shell
-# 如果已经安装,请先卸载
+tar zxvf Ascend-mindxsdk-hybrid-torchrec*.tar.gz
+# 如果已安装，请先卸载
 pip3 uninstall -y hybrid_torchrec torchrec_embcache
-# 安装hybrid_torchrec和torchrec_embcache
-tar -zxvf Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
-pip3 install hybrid_torchrec-1.1.0-*.whl
-pip3 install torchrec_embcache-1.1.0-*.whl
+# 安装软件包
+pip3 install hybrid_torchrec-*-py3-none-linux*.whl
+pip3 install -r requirements.txt
+pip3 install torchrec_embcache-*-py3-none-linux*.whl
 ```
 
 #### 2.2 源码编译安装
@@ -77,7 +85,7 @@ pip3 install torchrec_embcache-1.1.0-*.whl
 参考README编译完成后，会在编译脚本build_whl.sh的同层级目录下生成tar.gz包。其中同时包含hybrid_torchrec、torchrec_embcache的whl包，解压安装即可。
 
 ### 3. 安装自定义算子和算子适配层
-源码编译Ascend-recsdk-npu-ops*.tar.gz软件包，参考：https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md
+源码编译Ascend-recsdk-npu-ops*.tar.gz软件包，参考：[算子编译安装说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)
 
 ```
 # 安装所需算子
@@ -97,7 +105,7 @@ bash mxrec_opp_hstu_dense_backward.run
 
 # 编译算子适配文件
 cd ../../
-cd recsdk-npu-ops/torch_plugin/torch_library/2.6.0/common
+cd recsdk-npu-ops/torch_plugin/torch_library/common
 bash build_ops.sh
 ```
 注意：执行完"编译算子适配文件"步骤后，融合算子的依赖包libfbgemm_npu_api.so会生成在同目录下的build文件夹下，同时也会生成在python默认安装的site-package路径中，也可以将该so包拷贝到指定的目录下，在后续模型运行时会配置该文件的路径 。
