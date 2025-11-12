@@ -20,52 +20,53 @@
 ```
 
 # 算子输入与输出
-|  名称  |  输入/输出  |  数据类型  |  数据格式  |  范围  |  说明  |
-|  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |
-|  grad_output | 输入 | float32 | poolingSum/poolingMean: [batch_size, total_D] poolingNone:[len(indices), maxD] | NA |查询向量的反向的梯度 |
-|  dev_weights | 输入 | float32 | [total_table_size] | NA | 一维数组,所有表的权重，表的embedding_dim必须为8的整数倍 |
-|  uvm_weights | 输入 | float32 | NA | NA | 预留参数不支持配置 |
-|  lxu_cache_weights | 输入 | float32 | NA | NA | 预留参数不支持配置 |
-|  weights_placements | 输入 | int32 | NA | NA | 一维数组, 每个特征对应的表偏移起始 |
-|  weights_offsets | 输入 | int64 | [feat_cnt] | feat_cnt >= table_num | 一维数组, 每个特征对应的表偏移起始 |
-|  D_offsets | 输入 | int32 | [feat_cnt + 1] | 数值必须从0开始依次递增 | 每个特征的embedding_dim的累加和 |
-|  hash_size_cumsum | 输入 | int64 | [feat_cnt] | 数值必须从0开始依次递增 | 每个特征的num_embedding累加和 |
-|  indices | 输入 | int64 | NA | 每张表的索引[0, num_embedding] | 查表索引,一维数组 len(indices) = offset[-1], 由用户保证输入数据正确性 |
-|  offsets | 输入 | int64 | [feat_cnt * batch_size + 1] | 数值必须从0开始依次递增 | 查表索引对应的偏移, 由用户保证输入数据正确性 |
-|  lxu_cache_weights | 输入 | int32 | NA | NA | 预留参数不支持配置 |
-|  momentum1_dev | 输入 | float32 | [total_table_size] | NA |一阶动量，用于adagrad和adam优化器 |
-|  momentum1_uvm | 输入 | float32 | [total_table_size] | NA |保留参数 |
-|  momentum1_placements | 输入 | int32 | NA | NA |保留参数 |
-|  momentum1_offsets | 输入 | int64 | NA | NA |保留参数 |
-|  momentum2_dev | 输入 | float32 | NA | NA |二阶动量，用于adam优化器 |
-|  momentum2_uvm | 输入 | float32 | NA | NA |保留参数 |
-|  momentum2_placements | 输入 | int32 | NA | NA |保留参数 |
-|  momentum2_offsets | 输入 | int32 | NA | NA |保留参数 |
-|  hash_indices | 可选输入 | int64 | NA | [0, num_embedding] | 映射后的查表索引, 一维数组 len(indices) = offset[-1] |
-|  unique_id | 可选输入 | float32 | NA | [0, num_embedding] | 去重后查表索引, 一维数组 len(unique_id) = offset[-1] |
-|  unique_hash_size | 可选输入 | int64 | NA | NA | 查表索引对应的偏移 |
-|  unique_inverse | 可选输入 | int64 | NA | [0, num_embedding] | 去重后的索引和原始索引的对应关系 |
-|  table_indice_offsets | 可选输入 | float32 | [feat_cnt + 1] | NA | 每个特征的查表下标数累加和 |
-|  max_D | 属性 | int64 | NA | NA | 最大的embedding_dim |
-|  total_hash_size_bits | 属性 | bool | NA | NA | hash表size和的int值用多少位bit表示 |
-|  pooling_mode | 属性 | int64 | NA | NA | poolingSum:0, poolingMean:1, poolingNone:2 |
-|  BT_block_size | 属性 | int64 | NA | NA | 保留参数 |
-|  max_segment_length_per_warp | 属性 | int64 | NA | NA | 保留参数 |
-|  stochastic_rounding | 属性 | int64 | NA | NA | 保留参数 |
-|  info_B_num_bits | 属性 | int64 | NA | NA | 保留参数 |
-|  info_B_mask_int64 | 属性 | int64 | NA | NA | 保留参数 |
-|  use_uniq_cache_locations | 属性 | int64 | NA | NA | 保留参数 |
-|  use_homogeneous_placements | 属性 | int64 | NA | NA | 保留参数 |
-|  optim_type | 属性 | int64 | NA | NA | 优化器类型，adagrad:1, adam:2, sgd:3 |
-|  eps | 属性 | float32 | NA | NA | 一个非常小的常数，防止分母为0，用于adam和adagrad优化器 |
-|  learning_rate | 属性 | float32 | NA | NA | 学习率 |
-|  beta1 | 属性 | float32 | NA | NA | 衰减率，通常为0.9 |
-|  beta2 | 属性 | float32 | NA | NA | 衰减率，通常为0.999 |
-|  iter | 属性 | float32 | NA | NA | 迭代次数用于adam优化器 |
-|  out | 输出 | float32 | [len(unique_id), maxD] | NA | 查表索引的梯度累加和 |
-|  momentum1_dev_out | 输出 | float32 | [total_table_size] | NA | 更新后的一阶动量 |
-|  momentum2_dev_out | 输出 | float32 | [total_table_size] | NA | 更新后的二阶动量 |
-|  weights_dev_out | 输出 | float32 | [total_table_size] | NA | 更新后的表的权重 |
+| 名称                          |  输入/输出  | 数据类型    |  数据格式  | 范围                       | 说明                                                |
+|-----------------------------|  ---- |---------|  ----  |--------------------------|---------------------------------------------------|
+| grad_output                 | 输入 | float32 | poolingSum/poolingMean: [batch_size, total_D] poolingNone:[len(indices), maxD] | NA                       | 查询向量的反向的梯度                                        |
+| dev_weights                 | 输入 | float32 | [total_table_size] | NA                       | 一维数组,所有表的权重，表的embedding_dim必须为8的整数倍               |
+| uvm_weights                 | 输入 | float32 | NA | NA                       | 预留参数不支持配置                                         |
+| lxu_cache_weights           | 输入 | float32 | NA | NA                       | 预留参数不支持配置                                         |
+| weights_placements          | 输入 | int32   | NA | NA                       | 一维数组, 每个特征对应的表偏移起始                                |
+| weights_offsets             | 输入 | int64   | [feat_cnt] | feat_cnt >= table_num    | 一维数组, 每个特征对应的表偏移起始                                |
+| D_offsets                   | 输入 | int32   | [feat_cnt + 1] | 数值必须从0开始依次递增             | 每个特征的embedding_dim的累加和                            |
+| hash_size_cumsum            | 输入 | int64   | [feat_cnt] | 数值必须从0开始依次递增             | 每个特征的num_embedding累加和                             |
+| indices                     | 输入 | int64   | NA | 每张表的索引[0, num_embedding] | 查表索引,一维数组 len(indices) = offset[-1], 由用户保证输入数据正确性 |
+| offsets                     | 输入 | int64   | [feat_cnt * batch_size + 1] | 数值必须从0开始依次递增             | 查表索引对应的偏移, 由用户保证输入数据正确性                           |
+| lxu_cache_weights           | 输入 | int32   | NA | NA                       | 预留参数不支持配置                                         |
+| momentum1_dev               | 输入 | float32 | [total_table_size] | NA                       | 一阶动量，用于adagrad和adam优化器                            |
+| momentum1_uvm               | 输入 | float32 | [total_table_size] | NA                       | 保留参数                                              |
+| momentum1_placements        | 输入 | int32   | NA | NA                       | 保留参数                                              |
+| momentum1_offsets           | 输入 | int64   | NA | NA                       | 保留参数                                              |
+| momentum2_dev               | 输入 | float32 | NA | NA                       | 二阶动量，用于adam优化器                                    |
+| momentum2_uvm               | 输入 | float32 | NA | NA                       | 保留参数                                              |
+| momentum2_placements        | 输入 | int32   | NA | NA                       | 保留参数                                              |
+| momentum2_offsets           | 输入 | int32   | NA | NA                       | 保留参数                                              |
+| hash_indices                | 可选输入 | int64   | NA | [0, num_embedding]       | 映射后的查表索引, 一维数组 len(indices) = offset[-1]          |
+| unique_id                   | 可选输入 | float32 | NA | [0, num_embedding]       | 去重后查表索引, 一维数组 len(unique_id) = offset[-1]         |
+| unique_hash_size            | 可选输入 | int64   | NA | NA                       | 查表索引对应的偏移                                         |
+| unique_inverse              | 可选输入 | int64   | NA | [0, num_embedding]       | 去重后的索引和原始索引的对应关系                                  |
+| table_indice_offsets        | 可选输入 | float32 | [feat_cnt + 1] | NA                       | 每个特征的查表下标数累加和                                     |
+| max_D                       | 属性 | int64   | NA | NA                       | 最大的embedding_dim                                  |
+| total_hash_size_bits        | 属性 | bool    | NA | NA                       | hash表size和的int值用多少位bit表示                          |
+| pooling_mode                | 属性 | int64   | NA | NA                       | poolingSum:0, poolingMean:1, poolingNone:2        |
+| BT_block_size               | 属性 | int64   | NA | NA                       | 保留参数                                              |
+| max_segment_length_per_warp | 属性 | int64   | NA | NA                       | 保留参数                                              |
+| stochastic_rounding         | 属性 | int64   | NA | NA                       | 保留参数                                              |
+| info_B_num_bits             | 属性 | int64   | NA | NA                       | 保留参数                                              |
+| info_B_mask_int64           | 属性 | int64   | NA | NA                       | 保留参数                                              |
+| use_uniq_cache_locations    | 属性 | int64   | NA | NA                       | 保留参数                                              |
+| use_homogeneous_placements  | 属性 | int64   | NA | NA                       | 保留参数                                              |
+| optim_type                  | 属性 | int64   | NA | NA                       | 优化器类型，adagrad:1, adam:2, sgd:3                    |
+| eps                         | 属性 | float32 | NA | NA                       | 一个非常小的常数，防止分母为0，用于adam和adagrad优化器                 |
+| learning_rate               | 属性 | float32 | NA | NA                       | 学习率                                               |
+| beta1                       | 属性 | float32 | NA | NA                       | 衰减率，通常为0.9                                        |
+| beta2                       | 属性 | float32 | NA | NA                       | 衰减率，通常为0.999                                      |
+| iter                        | 属性 | float32 | NA | NA                       | 迭代次数用于adam优化器                                     |
+| use_optimize                | 属性 | bool    | NA | true or false            | 是否更新参数，默认true                                     |
+| out                         | 输出 | float32 | [len(unique_id), maxD] | NA                       | 查表索引的梯度累加和                                        |
+| momentum1_dev_out           | 输出 | float32 | [total_table_size] | NA                       | 更新后的一阶动量                                          |
+| momentum2_dev_out           | 输出 | float32 | [total_table_size] | NA                       | 更新后的二阶动量                                          |
+| weights_dev_out             | 输出 | float32 | [total_table_size] | NA                       | 更新后的表的权重                                          |
 
 # 算子实现原理
 ## backward_codegen_adagrad_unweighted_exact实现原理
