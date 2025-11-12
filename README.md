@@ -4,7 +4,7 @@
 
 本代码仓库中包含多个开发分支，这些分支可能包含未完成、实验性或未测试的功能。在正式发布之前，这些分支不应被用于任何生产环境或依赖关键业务的项目中。请务必仅使用我们的正式发行版本，以确保代码的稳定性和安全性。
 使用开发分支所导致的任何问题、损失或数据损坏，本项目及其贡献者概不负责。
-正式版本请参考Rec SDK正式release版本 https://gitee.com/ascend/mxrec/releases
+正式版本请参考Rec SDK正式release版本 https://gitcode.com/Ascend/RecSDK/releases
 
 ## 产品背景
 
@@ -22,11 +22,11 @@ Rec SDK作为面向互联网市场搜索推荐广告的应用使能SDK产品，�
 
 | 软件              | 版本              | 下载链接                                                                                                                      |
 |-------------------|------------------|-------------------------------------------------------------------------------------------------------------------------------|
-| Rec SDK           | 7.1.RC1          | https://gitcode.com/Ascend/RecSDK/releases/7.1.RC1                                                                          |
-| CANN              | 8.2.RC1.alpha003 | https://www.hiascend.com/developer/download/community/result?module=cann                                                      |
-| TensorFlowAdapter（tfplugin） | 8.1.RC1          | https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.36_8.1.RC1                                                          |
-| Driver            | 25.0.RC1         | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.2.RC1.alpha003&driver=Ascend+HDK+25.0.RC1 |
-| Firmware          | 25.0.RC1         | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.2.RC1.alpha003&driver=Ascend+HDK+25.0.RC1 |
+| Rec SDK           | 7.2.RC1          | https://gitcode.com/Ascend/RecSDK/releases/7.2.RC1                                                                          |
+| CANN              | 8.3.RC1 | https://www.hiascend.com/developer/download/community/result?module=tf+cann&tf=8.3.RC1&cann=8.3.RC1                                                      |
+| TensorFlowAdapter（tfplugin） | 8.3.RC1          | https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.44_8.3.RC1                                                          |
+| Driver            | 25.3.RC1         | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.3.RC1&driver=Ascend+HDK+25.3.RC1 |
+| Firmware          | 25.3.RC1         | https://www.hiascend.com/hardware/firmware-drivers/community?product=4&model=26&cann=8.3.RC1&driver=Ascend+HDK+25.3.RC1 |
 
 ## 支持的产品型号
 - Atlas 200T A2 Box16
@@ -35,7 +35,7 @@ Rec SDK作为面向互联网市场搜索推荐广告的应用使能SDK产品，�
 
 ## 安装方式
 
-安装前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/82RC1alpha003/softwareinst/instg/instg_0001.html?Mode=PmIns&OS=Ubuntu&Software=cannToolKit)安装CANN开发套件软件包和TensorFlow适配昇腾插件。
+安装前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/83RC1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu&Software=cannToolKit)安装CANN开发套件软件包和TensorFlow适配昇腾插件。
 
 CANN软件提供进程级环境变量设置脚本，供用户在进程中引用，以自动完成环境变量设置。用户进程结束后自动失效。可在程序启动的Shell脚本中使用如下命令设置CANN的相关环境变量，也可通过命令行执行如下命令（以root用户默认安装路径“/usr/local/Ascend”为例）：
 ```shell
@@ -56,7 +56,7 @@ HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 pip3.7 install horovod --no-cache-d
 ### 二进制包安装
 
 
-从[昇腾开源社区](https://gitcode.com/Ascend/RecSDK/releases/7.1.RC1)直接获取编译打包后的产品包（Ascend-mindxsdk-mxrec_7.1.RC1_linux-*.tar.gz）。解压后包含tf1和tf2两个版本的whl安装包，使用pip命令安装whl包（请根据实际需求，选取对应TensorFlow版本匹配的Wheel包）：
+从[昇腾开源社区](https://gitcode.com/Ascend/RecSDK/releases/7.2.RC1)直接获取编译打包后的产品包（Ascend-mindxsdk-mxrec_7.2.RC1_linux-*.tar.gz）。解压后包含tf1和tf2两个版本的whl安装包，使用pip命令安装whl包（请根据实际需求，选取对应TensorFlow版本匹配的Wheel包）：
 ```shell
 pip3 install mx_rec-{version}-py3-none-linux_{arch}.whl
 ```
@@ -173,7 +173,7 @@ bash test_ut.sh tf2
 
 ## 使用指导
 
-Rec SDK所支持的使用环境、功能特性、API接口与使用样例请参考[Rec SDK用户指南](https://www.hiascend.com/document/detail/zh/mind-sdk/600/mxRec/mxrecug/mxrecug_0004.html)。
+Rec SDK所支持的使用环境、功能特性、API接口与使用样例请参考[Rec SDK用户指南](https://www.hiascend.com/document/detail/zh/mindsdk/72rc1/rec/recug/mxrecug_0006.html)。
 
 ## 样例
 
