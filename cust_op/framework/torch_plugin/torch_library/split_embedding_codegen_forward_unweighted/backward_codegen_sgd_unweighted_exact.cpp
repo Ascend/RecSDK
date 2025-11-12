@@ -9,9 +9,12 @@
  */
 #include <torch/csrc/autograd/custom_function.h>
 #include <torch/library.h>
-#include "torch/extension.h"
+#include <torch/extension.h>
+
+#include "backward_constant.h"
 #include "split_embedding_codegen_forward_unweighted.h"
 #include "split_embedding_codegen_common_utils.h"
+#include "../common/common_utils.h"
 #include "../common/pytorch_npu_helper.hpp"
 
 using torch::autograd::Function;
@@ -20,6 +23,7 @@ using torch::autograd::variable_list;
 using tensor_list = std::vector<at::Tensor>;
 using Tensor = at::Tensor;
 using namespace at;
+using namespace optim_param_idx_fbgemm_120;
 
 namespace fbgemm_npu_lookups {
 
@@ -348,8 +352,66 @@ at::Tensor split_embedding_backward_codegen_sgd_unweighted_exact_npu(const Tenso
     return at::Tensor();
 }
 
+Tensor split_embedding_codegen_lookup_sgd_function_pt2(
+    const Tensor& placeholder_autograd_tensor, const TensorList weights, const Tensor& D_offsets,
+    const c10::SymInt total_D, const c10::SymInt max_D,
+    const Tensor& hash_size_cumsum,
+    const int64_t total_hash_size_bits,
+    const Tensor& indices, const Tensor& offsets,
+    const int64_t pooling_mode,
+    const std::optional<Tensor>& indice_weights, const std::optional<Tensor>& feature_requires_grad,
+    const int64_t output_dtype,
+    const std::vector<std::optional<Tensor>>& aux_tensor, const std::vector<int64_t>& aux_int,
+    const std::vector<double>& aux_float, c10::List<bool> aux_bool,
+    Tensor learning_rate_tensor,
+    const c10::SymInt max_B = -1, const c10::SymInt max_B_feature_rank = -1,
+    const c10::SymInt vbe_output_size = -1)
+{
+    check_param_len(weights.size(), WEIGHTS_SIZE, "weights");
+    // weights data: dev_weights uvm_weights weights_placements weights_offsets lxu_cache_weights
+    auto& dev_weights = weights[DEV_WEIGHTS_INDEX];
+    auto& uvm_weights = weights[UVM_WEIGHTS_INDEX];
+    auto& weights_placements = weights[WEIGHTS_PLACEMENTS_INDEX];
+    auto& weights_offsets = weights[WEIGHTS_OFFSETS_INDEX];
+    auto& lxu_cache_weights = weights[LXU_CACHE_WEIGHTS_INDEX];
+
+    // fake tensor
+    std::optional<at::Tensor> hash_indices;
+    std::optional<at::Tensor> unique_ids;
+    std::optional<at::Tensor> unique_offsets;
+    std::optional<at::Tensor> unique_inverse;
+    std::optional<at::Tensor> table_grad_accumulate_offsets;
+
+    check_param_len(aux_tensor.size(), AUX_TENSOR_SIZE, "aux_tensor");
+    auto lxu_cache_locations = aux_tensor[LXU_CACHE_LOCATIONS_INDEX].value_or(
+        at::empty({0}, dev_weights.options().dtype(at::kInt)));
+    auto uvm_cache_stats = aux_tensor[UVM_CACHE_STATS_INDEX].value_or(
+        at::empty({0}, dev_weights.options().dtype(at::kInt)));
+
+    check_param_len(aux_bool.size(), AUX_BOOL_SIZE, "aux_bool");
+    bool is_experimental_tbe = aux_bool[IS_EXPERIMENTAL_TBE_INDEX];  // there is a diff with original cuda
+    bool use_uniq_cache_locations_bwd = aux_bool[USE_UNIQ_CACHE_LOCATIONS_BWD_INDEX];
+    bool use_homogeneous_placements = aux_bool[USE_HOMOGENEOUS_PLACEMENTS_INDEX];
+    bool gradient_clipping = aux_bool[GRADIENT_CLIPPING_INDEX];
+    bool stochastic_rounding = aux_bool[STOCHASTIC_ROUNDING_INDEX];
+
+    check_param_len(aux_float.size(), AUX_FLOAT_SIZE, "aux_float");
+    double max_gradient = aux_float[MAX_GRADIENT_INDEX];
+
+    check_param_len(learning_rate_tensor.numel(), 1, "learning_rate_tensor");
+    double learning_rate = static_cast<double>(learning_rate_tensor.data_ptr<float>()[0]);
+    bool use_optimize = true;  // true表示直接更新，不做梯度累积
+    return SplitLookupSGD::apply(
+        placeholder_autograd_tensor, output_dtype, dev_weights, uvm_weights, lxu_cache_weights, weights_placements,
+        weights_offsets, D_offsets, total_D, max_D, hash_size_cumsum, total_hash_size_bits, indices, hash_indices,
+        unique_ids, unique_offsets, unique_inverse, table_grad_accumulate_offsets,
+        offsets, pooling_mode, indice_weights, feature_requires_grad,
+        lxu_cache_locations, uvm_cache_stats, gradient_clipping, max_gradient, stochastic_rounding, is_experimental_tbe,
+        use_uniq_cache_locations_bwd, use_homogeneous_placements, learning_rate, use_optimize)[0];
+}
 }; // namespace fbgemm_npu_lookups
 
+// dispatch for FBGEMM 1.1.0 interface to NPU op
 TORCH_LIBRARY_FRAGMENT(fbgemm, m)
 {
     m.def("split_embedding_codegen_lookup_sgd_function("
@@ -442,4 +504,15 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
     m.impl("split_embedding_backward_codegen_sgd_unweighted_exact_cuda",
            torch::dispatch(c10::DispatchKey::PrivateUse1,
                            TORCH_FN(fbgemm_npu_lookups::split_embedding_backward_codegen_sgd_unweighted_exact_npu)));
+}
+
+// dispatch for FBGEMM 1.2.0 interface to NPU op
+TORCH_LIBRARY_FRAGMENT(fbgemm, m)
+{
+    m.impl("split_embedding_codegen_lookup_sgd_function_pt2",
+           torch::dispatch(c10::DispatchKey::Autograd,
+                           TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_sgd_function_pt2)));
+    m.impl("split_embedding_codegen_lookup_sgd_function_pt2",
+           torch::dispatch(c10::DispatchKey::PrivateUse1,
+                           TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_sgd_function_pt2)));
 }

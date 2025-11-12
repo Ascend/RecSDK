@@ -13,42 +13,42 @@
 
 需要编译的源码包
 
-| 名称                                             | 说明              |
-|------------------------------------------------|-----------------|
-| Ascend-mindxsdk-torchrec-1.1.0-npu-*.tar.gz    | torchrec昇腾适配包   |
-| Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz | RecSDK-Torch软件包 |
-| Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz       | 算子包             |
-| libfbgemm_npu_api.so                           | 算子适配层           |
+| 名称                                       | 说明              |
+|------------------------------------------|-----------------|
+| Ascend-mindxsdk-torchrec-*-npu-*.tar.gz  | torchrec昇腾适配包   |
+| Ascend-mindxsdk-hybrid-torchrec-*.tar.gz | RecSDK-Torch软件包 |
+| Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz | 算子包             |
+| libfbgemm_npu_api.so                     | 算子适配层           |
 
 ### 编译环境
 
 容器环境编译，参考[README](docs/build_torch_rec_images/README.md)
 
-### 编译Ascend-mindxsdk-torchrec-1.1.0-npu-*.tar.gz
+### 编译Ascend-mindxsdk-torchrec-\*-npu-\*.tar.gz
 
 参考[README](training/torch_rec_v1/torchrec_npu/README.md)
 
-生成的tar包在 RecSDK/training/torch_rec_v1/torchrec_npu/torchrec/Ascend-mindxsdk-torchrec-1.1.0-npu-*.tar.gz
+生成的tar包在 RecSDK/training/torch_rec_v1/torchrec_npu/torchrec/Ascend-mindxsdk-torchrec-*-npu-*.tar.gz
 
 **安装方法**
 
 ```
-tar zxvf Ascend-mindxsdk-torchrec-1.1.0-npu-*.tar.gz
-pip3 install torchrec-1.1.0+npu-py3-none-linux_*.whl
+tar zxvf Ascend-mindxsdk-torchrec-*-npu-*.tar.gz
+pip3 install torchrec-*+npu-py3-none-linux_*.whl
 ```
 
-### 编译Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
+### 编译Ascend-mindxsdk-hybrid-torchrec-\*.tar.gz
 
 参考[README](training/torch_rec_v1/hybrid_torchrec/README.md)
 
-生成的tar包在 RecSDK/training/torch_rec_v1/hybrid_torchrec/Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
+生成的tar包在 RecSDK/training/torch_rec_v1/hybrid_torchrec/Ascend-mindxsdk-hybrid-torchrec-*.tar.gz
 
 **安装方法**
 
 ```
-tar zxvf Ascend-mindxsdk-hybrid-torchrec-1.1.0-*.tar.gz
-pip3 install hybrid_torchrec-1.1.0-py3-none-linux_*.whl
-pip3 install torchrec_embcache-1.1.0-py3-none-linux_*.whl
+tar zxvf Ascend-mindxsdk-hybrid-torchrec-*.tar.gz
+pip3 install hybrid_torchrec-*-py3-none-linux_*.whl
+pip3 install torchrec_embcache-*-py3-none-linux_*.whl
 ```
 
 ### 编译Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz
@@ -58,10 +58,10 @@ pip3 install torchrec_embcache-1.1.0-py3-none-linux_*.whl
 ### 编译libfbgemm_npu_api.so
 
 ```
-cd RecSDK/cust_op/framework/torch_plugin/torch_library/2.6.0/common/
+cd RecSDK/cust_op/framework/torch_plugin/torch_library/common/
 ```
 
-生成的so包在RecSDK/cust_op/framework/torch_plugin/torch_library/2.6.0/common/build下
+生成的so包在RecSDK/cust_op/framework/torch_plugin/torch_library/common/build下
 
 **安装方法**
 

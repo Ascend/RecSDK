@@ -13,9 +13,9 @@ package_name="Ascend-mindxsdk-torchrec-"${VERSION}"-linux-"${ARCH}".tar.gz"
 # git clone -b release/v1.1.0 https://github.com/pytorch/torchrec.git
 cd torchrec
 # patch
-cp ../torchrec_npu.patch ./ && dos2unix torchrec_npu.patch
+cp ../torchrec1.1.0_npu.patch ./ && dos2unix torchrec1.1.0_npu.patch
 git init
-git apply torchrec_npu.patch
+git apply torchrec1.1.0_npu.patch
 
 # 编译安装包
 if [ -f "${package_name}" ]; then
