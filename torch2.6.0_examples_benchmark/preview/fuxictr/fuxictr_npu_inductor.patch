@@ -63,7 +63,7 @@ index 1ce33aa..519d9da 100644
 +            }
 +            steps = 10
 +            if os.environ.get('INDUCTOR_FLAG', "0") == "1":
-+                model = torch.compile(model, backend="inductor")
++                model = torch.compile(model, dynamic=False, backend="inductor")
 +            with torch_npu.profiler.profile(**profiler_config) as prof:
 +                for step in range(steps):
 +                    for batch_data in data_generator:
