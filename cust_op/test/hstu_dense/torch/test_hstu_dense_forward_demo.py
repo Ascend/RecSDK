@@ -182,7 +182,7 @@ class TestHstuJaggedDemo:
         return atten_output.to(data_type).reshape(-1)
 
     def execute(self, batch_size, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type,
-                repeat_offset):
+                repeat_offset=False):
         q, k, v, seq_offset, bias, mask, max_seq_len = jagged_data_gen(batch_size, max_seq_len, head_num, head_dim,
                                                                        data_type, mask_type, repeat_offset)
 
@@ -260,7 +260,7 @@ class TestHstuJaggedDemo:
                                         data_type):
         with pytest.raises(RuntimeError) as e_info:
             self.execute(20, max_seq_len, head_num, head_dim, enable_bias, mask_type, silu_scale, data_type)
-        assert "head num must meet range[2 8] and mutiple of [2]. but get value 255" in str(e_info.value)
+        assert "head num must meet range[1 16] and mutiple of [1]. but get value 255" in str(e_info.value)
     
     @pytest.mark.parametrize("head_num", [2])
     @pytest.mark.parametrize("max_seq_len", [16])
