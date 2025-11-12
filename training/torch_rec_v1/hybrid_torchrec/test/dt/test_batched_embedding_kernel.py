@@ -70,7 +70,7 @@ class TestHybridSplitTableBatchedEmbeddingBagsCodegen(unittest.TestCase):
             self.embedding_specs,
             optimizer=TORCH_OPTIMIZER_TO_FBGEMM[Adam],
             pooling_mode=PoolingMode.SUM,
-            device=torch.device("meta")
+            device=torch.device("cpu")
         )
     
     @parameterized.expand([
@@ -85,7 +85,7 @@ class TestHybridSplitTableBatchedEmbeddingBagsCodegen(unittest.TestCase):
                 self.embedding_specs,
                 optimizer=TORCH_OPTIMIZER_TO_FBGEMM[optim],
                 pooling_mode=PoolingMode.SUM,
-                device=torch.device("meta")
+                device=torch.device("cpu")
             )
             mock_result = torch.Tensor([1, 2, 3]).to(torch.float)
             tbe.iter = torch.Tensor([0]) # device为meta类型需要对使用的tensor进行初始化
@@ -112,7 +112,7 @@ class TestHybridSplitTableBatchedEmbeddingBagsCodegen(unittest.TestCase):
             self.embedding_specs,
             optimizer=EmbOptimType.EXACT_ROWWISE_ADAGRAD,
             pooling_mode=PoolingMode.SUM,
-            device=torch.device("meta")
+            device=torch.device("cpu")
         )
         tbe.iter = torch.Tensor([0])
         assert tbe(self.indices,
@@ -129,7 +129,7 @@ class TestHybridSplitTableBatchedEmbeddingBagsCodegen(unittest.TestCase):
                 self.embedding_specs,
                 optimizer=EmbOptimType.EXACT_SGD,
                 pooling_mode=PoolingMode.SUM,
-                device=torch.device("meta")
+                device=torch.device("cpu")
             )
             tbe.iter = torch.Tensor([0])
             batch_size_per_feature_per_rank = [[2]]

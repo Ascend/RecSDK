@@ -11,12 +11,16 @@ import os
 import sysconfig
 
 import torch
+import torchrec
 
 from hybrid_torchrec.modules.hash_embeddingbag import (
     HashEmbeddingBagCollection,
     HashEmbeddingBagConfig,
     HybridHashTable,
 )
+
+# check if is torchrec 1.2.0 version
+IS_TORCH_REC_120 = str(torchrec.__version__).startswith("1.2.0")
 
 __all__ = ["HashEmbeddingBagCollection", "HashEmbeddingBagConfig"]
 
