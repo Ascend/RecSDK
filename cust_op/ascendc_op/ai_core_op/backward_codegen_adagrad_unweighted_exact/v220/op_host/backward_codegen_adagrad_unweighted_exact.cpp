@@ -54,6 +54,7 @@ constexpr int LEARNING_RATE_INDEX = 12;
 constexpr int BETA1_INDEX = 13;
 constexpr int BETA2_INDEX = 14;
 constexpr int ITER_INDEX = 15;
+constexpr int USE_OPTIMIZE_INDEX = 16;
 
 // tilling key index
 constexpr int NORMAL_ADAGRAD = 1;
@@ -253,6 +254,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     tiling.set_eps(eps);
     tiling.set_learningRate(learningRate);
+    bool useOptimize = *context->GetAttrs()->GetBool(USE_OPTIMIZE_INDEX);
+    tiling.set_useOptimize(useOptimize);
 
     context->SetBlockDim(coreNum);
 
@@ -436,6 +439,7 @@ public:
         this->Attr("beta1").Float();
         this->Attr("beta2").Float();
         this->Attr("iter").Int();
+        this->Attr("use_optimize").Bool();
 
         this->SetInferShape(ge::InferShape);
 

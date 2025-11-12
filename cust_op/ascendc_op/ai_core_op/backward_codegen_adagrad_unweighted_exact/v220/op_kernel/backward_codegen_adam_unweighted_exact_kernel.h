@@ -212,8 +212,6 @@ public:
         ComputeGrad();
         pipe_barrier(PIPE_ALL);
         SyncAll();
-
-        UpdateEmbedAdam(args);
     }
 
 private:

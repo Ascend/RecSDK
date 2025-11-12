@@ -154,8 +154,6 @@ public:
         ComputeGrad();
         pipe_barrier(PIPE_ALL);
         SyncAll();
-
-        UpdateEmbedAda();
     }
 };
 }  // namespace BackwardCodegenAdagradUnweightedExact

@@ -52,21 +52,46 @@ extern "C" __global__ __aicore__ void backward_codegen_adagrad_unweighted_exact(
     BackwardCodegenUnweightedExact::Args args{
         gradOutput, devWeights,      weightsPlacements, weightsOffsets, dOffsets,  hashSizeCumsum, indices,
         offsets,    momentum1Dev,    momentum2Dev,      hashIndices,    uniqueId,  uniqueHashSize, uniqueInverse,
-        indiceSizeCumsum, out,        momentum1DevOut, momentum2DevOut,   weightsDevOut,  workspace, tiling};
+        indiceSizeCumsum, out,       momentum1DevOut, momentum2DevOut,   weightsDevOut,  workspace, tiling};
     if (TILING_KEY_IS(1)) {  // NORMAL_ADAGRAD
         BackwardCodegenAdagradUnweightedExact::BackwardCodegenAdagradUnweightedExactKernel kernel;
-        kernel.Compute(args);
+        if (tiling_data.useOptimize) {
+            kernel.Compute(args);
+            kernel.UpdateEmbedAda();
+        } else {
+            kernel.Compute(args);
+        }
     } else if (TILING_KEY_IS(2)) {  // NORMAL_ADAM
         BackwardCodegenAdamUnweightedExact::BackwardCodegenAdamUnweightedExactKernel kernel;
-        kernel.Compute(args);
+        if (tiling_data.useOptimize) {
+            kernel.Compute(args);
+            kernel.UpdateEmbedAdam(args);
+        } else {
+            kernel.Compute(args);
+        }
     } else if (TILING_KEY_IS(3)) {  // NORMAL_SGD
         BackwardCodegenSgdUnweightedExact::BackwardCodegenSgdUnweightedExactKernel kernel;
-        kernel.Compute(args);
+        if (tiling_data.useOptimize) {
+            kernel.Compute(args);
+            kernel.UpdateEmbedSgd(args);
+        } else {
+            kernel.Compute(args);
+        }
     } else if (TILING_KEY_IS(4)) {
         BackwardCodegenUnweightedExactAdagradUnique::BackwardCodegenAdagradUnweightedExactKernelUnique kernel;
-        kernel.Compute(args);
+        if (tiling_data.useOptimize) {
+            kernel.Compute(args);
+            kernel.AdagradScheduler();
+        } else {
+            kernel.Compute(args);
+        }
     } else if (TILING_KEY_IS(5)) {
         BackwardCodegenUnweightedAdamExactUnique::BackwardCodegenAdamUnweightedExactKernelUnique kernel;
-        kernel.Compute(args);
+        if (tiling_data.useOptimize) {
+            kernel.Compute(args);
+            kernel.AdamScheduler();
+        } else {
+            kernel.Compute(args);
+        }
     }
 }
