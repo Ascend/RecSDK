@@ -5,7 +5,8 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-from typing import NamedTuple, Optional
+from dataclasses import dataclass
+from typing import Optional, List
 
 import torch
 from fbgemm_gpu.split_embedding_codegen_lookup_invokers.lookup_adagrad import (
@@ -16,7 +17,8 @@ from fbgemm_gpu.split_embedding_codegen_lookup_invokers.lookup_adagrad import (
 )
 
 
-class HybridCommonArgs(NamedTuple):
+@dataclass
+class HybridCommonArgs:
     placeholder_autograd_tensor: torch.Tensor
     dev_weights: torch.Tensor
     host_weights: torch.Tensor
@@ -49,3 +51,18 @@ class HybridCommonArgs(NamedTuple):
     # Attribute `learning_rate` to adapt for torchrec 1.2.0 version.
     # In torchrec 1.1.0 version, this field has been stored in optimizer_args.
     learning_rate: float
+    table_grad_accumulate_offsets: torch.Tensor
+    grad_accumulate: List[torch.Tensor]
+    grad_accumulate_offsets: Optional[torch.Tensor]
+    use_optimize: bool
+
+
+@dataclass
+class HybridCommonArgsAggregation(HybridCommonArgs):
+    table_offsets_multi: torch.Tensor
+    indices_multi_step: torch.Tensor
+    offsets_multi_step: torch.Tensor
+    unique_multi_step: torch.Tensor
+    unique_offset_multi_step: torch.Tensor
+    unique_inverse_multi_step: torch.Tensor
+
