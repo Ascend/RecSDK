@@ -28,6 +28,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_training_common import is_tor
 from torch import nn, Tensor
 
 import hybrid_torchrec.hybrid_lookup_invoke as invokers
+from hybrid_torchrec import IS_TORCH_REC_120
 from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
     KeyedJaggedTensorWithLookHelper,
 )
@@ -215,6 +216,7 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             is_experimental=self.is_experimental,
             use_uniq_cache_locations_bwd=self.use_uniq_cache_locations_bwd,
             use_homogeneous_placements=self.use_homogeneous_placements,
+            learning_rate=self.get_learning_rate() if IS_TORCH_REC_120 else 0.0,
         )
         return common_args
 
