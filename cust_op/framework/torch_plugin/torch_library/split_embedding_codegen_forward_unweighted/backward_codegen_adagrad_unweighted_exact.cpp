@@ -9,8 +9,11 @@
  */
 #include <torch/csrc/autograd/custom_function.h>
 #include <torch/library.h>
-#include "torch/extension.h"
+#include <torch/extension.h>
+
+#include "backward_constant.h"
 #include "split_embedding_codegen_forward_unweighted.h"
+#include "../common/common_utils.h"
 #include "../common/pytorch_npu_helper.hpp"
 #include "split_embedding_codegen_common_utils.h"
 
@@ -20,8 +23,10 @@ using torch::autograd::variable_list;
 using tensor_list = std::vector<at::Tensor>;
 using Tensor = at::Tensor;
 using namespace at;
+using namespace optim_param_idx_fbgemm_120;
 
 namespace fbgemm_npu_lookups {
+
 Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_cuda(
     const Tensor& grad_output, const Tensor& dev_weights, const Tensor& uvm_weights, const Tensor& lxu_cache_weights,
     const Tensor& weights_placements, const Tensor& weights_offsets, const Tensor& D_offsets, const c10::SymInt max_D,
@@ -279,8 +284,73 @@ at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu(
 
     return at::Tensor();
 }
+
+Tensor split_embedding_codegen_lookup_adagrad_function_pt2(
+    const Tensor& placeholder_autograd_tensor, TensorList weights,
+    const Tensor& D_offsets, const c10::SymInt total_D, const c10::SymInt max_D, const Tensor& hash_size_cumsum,
+    const int64_t total_hash_size_bits, const Tensor& indices, const Tensor& offsets, const int64_t pooling_mode,
+    const std::optional<Tensor>& indice_weights, const std::optional<Tensor>& feature_requires_grad,
+    const int64_t output_dtype, const std::vector<std::optional<Tensor>>& aux_tensor,
+    const std::vector<int64_t>& aux_int, const std::vector<double>& aux_float, c10::List<bool> aux_bool,
+    TensorList momentum1, Tensor learning_rate_tensor, std::vector<double> optim_float, const c10::SymInt max_B = -1,
+    const c10::SymInt max_B_feature_rank = -1, const c10::SymInt vbe_output_size = -1)
+{
+    // unpacking from weights: dev_weights uvm_weights weights_placements weights_offsets lxu_cache_weights
+    check_param_len(weights.size(), WEIGHTS_SIZE, "weights");
+    auto& dev_weights = weights[DEV_WEIGHTS_INDEX];
+    auto& uvm_weights = weights[UVM_WEIGHTS_INDEX];
+    auto& weights_placements = weights[WEIGHTS_PLACEMENTS_INDEX];
+    auto& weights_offsets = weights[WEIGHTS_OFFSETS_INDEX];
+    auto& lxu_cache_weights = weights[LXU_CACHE_WEIGHTS_INDEX];
+
+    // fake tensor
+    std::optional<at::Tensor> hash_indices;
+    std::optional<at::Tensor> unique_ids;
+    std::optional<at::Tensor> unique_offsets;
+    std::optional<at::Tensor> unique_inverse;
+
+    // unpacking from aux_tensor
+    check_param_len(aux_tensor.size(), AUX_TENSOR_SIZE, "aux_tensor");
+    auto lxu_cache_locations = aux_tensor[LXU_CACHE_LOCATIONS_INDEX].value_or(
+        at::empty({0}, dev_weights.options().dtype(at::kInt)));
+    auto uvm_cache_stats = aux_tensor[UVM_CACHE_STATS_INDEX].value_or(
+        at::empty({0}, dev_weights.options().dtype(at::kInt)));
+
+    // unpacking from aux_bool
+    check_param_len(aux_bool.size(), AUX_BOOL_SIZE, "aux_bool");
+    bool is_experimental_tbe = aux_bool[IS_EXPERIMENTAL_TBE_INDEX];  // there is a diff with original cuda
+    bool use_uniq_cache_locations_bwd = aux_bool[USE_UNIQ_CACHE_LOCATIONS_BWD_INDEX];
+    bool use_homogeneous_placements = aux_bool[USE_HOMOGENEOUS_PLACEMENTS_INDEX];
+    bool gradient_clipping = aux_bool[GRADIENT_CLIPPING_INDEX];
+    bool stochastic_rounding = aux_bool[STOCHASTIC_ROUNDING_INDEX];
+
+    check_param_len(aux_float.size(), AUX_FLOAT_SIZE, "aux_float");
+    double max_gradient = aux_float[MAX_GRADIENT_INDEX];
+
+    // unpacking from momentum1
+    check_param_len(momentum1.size(), MOMENTUM1_SIZE, "momentum1");
+    auto& momentum1_dev = momentum1[MOMENTUM1_DEV_INDEX];
+    auto& momentum1_uvm = momentum1[MOMENTUM1_UVM_INDEX];
+    auto& momentum1_placements = momentum1[MOMENTUM1_PLACEMENTS_INDEX];
+    auto& momentum1_offsets = momentum1[MOMENTUM1_OFFSETS_INDEX];
+
+    check_param_len(optim_float.size(), 1, "optim_float");
+    double eps = optim_float[0];
+    check_param_len(learning_rate_tensor.numel(), 1, "learning_rate_tensor");
+    double learning_rate = static_cast<double>(learning_rate_tensor.data_ptr<float>()[0]);
+
+    return SplitLookupAdagrad::apply(
+        placeholder_autograd_tensor, output_dtype, dev_weights, uvm_weights, lxu_cache_weights, weights_placements,
+        weights_offsets, D_offsets, total_D, max_D, hash_size_cumsum, total_hash_size_bits, indices,
+        hash_indices, unique_ids, unique_offsets, unique_inverse,
+        offsets, pooling_mode, indice_weights, feature_requires_grad,
+        lxu_cache_locations, uvm_cache_stats, gradient_clipping, max_gradient, stochastic_rounding, is_experimental_tbe,
+        use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev, momentum1_uvm, momentum1_placements,
+        momentum1_offsets, eps, learning_rate)[0];
+}
 };  // namespace fbgemm_npu_lookups
 
+// dispatch FBGEMM 1.1.0 interface to NPU op
 TORCH_LIBRARY_FRAGMENT(fbgemm, m)
 {
     m.def("split_embedding_codegen_lookup_adagrad_function("
@@ -372,4 +442,16 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
         "split_embedding_backward_codegen_adagrad_unweighted_exact_cuda",
         torch::dispatch(c10::DispatchKey::PrivateUse1,
                         TORCH_FN(fbgemm_npu_lookups::split_embedding_backward_codegen_adagrad_unweighted_exact_npu)));
+}
+
+// dispatch FBGEMM 1.2.0 interface to NPU op
+TORCH_LIBRARY_FRAGMENT(fbgemm, m)
+{
+    m.impl("split_embedding_codegen_lookup_adagrad_function_pt2",
+           torch::dispatch(c10::DispatchKey::Autograd,
+                           TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_adagrad_function_pt2)));
+
+    m.impl("split_embedding_codegen_lookup_adagrad_function_pt2",
+           torch::dispatch(c10::DispatchKey::PrivateUse1,
+                           TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_adagrad_function_pt2)));
 }

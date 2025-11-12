@@ -33,11 +33,11 @@ torch.ops.fbgemm.jagged_to_padded_dense_forward(Tensor values, Tensor[] offsets,
 
 ## 算子编译与部署
 
-算子编译部署请参考[RecSDK\cust_op\README.md](../../../../../README.md)中"单算子使用说明" - "算子编译"章节。
+算子编译部署请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明" - "算子编译"章节。
 
 ## Pytorch编译
 
-Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../../README.md)中"单算子使用说明" - "算子适配层编译"章节。
+Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明" - "算子适配层编译"章节。
 
 ## 算子调用示例
 
@@ -73,4 +73,4 @@ result = torch.ops.fbgemm.jagged_to_padded_dense(values=input_values, offsets=[i
 print("result shape:", result.shape, ", result data:", result)  # result shape[5, 10, 40]
 ```
 
-注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例[test_dense_to_jagged.py](../../../../../test/jagged_to_padded_dense_test/torch/test_jagged_to_padded_dense.py)。
+注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例[test_dense_to_jagged.py](../../../../test/jagged_to_padded_dense_test/torch/test_jagged_to_padded_dense.py)。

@@ -76,4 +76,16 @@ inline void check_tensor_npu_device(const std::vector<at::Tensor>& tensors,
                     ") must match ", names[0], " device ID (", expected_device_id, ")");
     }
 }
+
+/**
+ * 检查参数列表长度是否符合预期
+ * @param list_size 列表长度
+ * @param expect_size 期望长度
+ * @param msg 列表名称/描述
+ * @throw torch::library::Exception 长度不符合预期时抛出异常
+ */
+inline void check_param_len(size_t list_size, size_t expect_size, const std::string& msg)
+{
+    TORCH_CHECK(list_size == expect_size, " size of param:", msg, " must be ", expect_size, ", but got ", list_size)
+}
 #endif // COMMON_UTILS_H

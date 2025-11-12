@@ -50,6 +50,9 @@ function check_ret_fn()
 
 function build_with_cmake_func()
 {
+    if [ -e "${SCRIPT_PATH}/src/cmake_build" ]; then
+        rm -rf ${SCRIPT_PATH}/src/cmake_build
+    fi
     mkdir -p ${SCRIPT_PATH}/src/cmake_build
     cd ${SCRIPT_PATH}/src/cmake_build
     torch_path=`python3 -c 'import torch;print(torch.utils.cmake_prefix_path)'`
