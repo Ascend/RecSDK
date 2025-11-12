@@ -24,7 +24,7 @@ import numpy as np
 torch.npu.config.allow_internal_format = False
 CURR_DIR = Path(__file__).resolve().parent
 torch.ops.load_library(str(CURR_DIR.parent.parent.parent /
-    "framework/torch_plugin/torch_library/2.6.0/gather_for_rank1/build/libgather_for_rank1.so"))
+    "framework/torch_plugin/torch_library/gather_for_rank1/build/libgather_for_rank1.so"))
 
 
 def get_golden(x, index):

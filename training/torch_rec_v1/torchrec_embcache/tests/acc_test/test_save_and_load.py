@@ -17,6 +17,7 @@ import pytest
 import torch
 import torch_npu
 import torch.distributed as dist
+import torch.distributed.checkpoint as dcp
 import torch.multiprocessing as mp
 from dataset import RandomRecDataset, Batch
 from model import Model
@@ -34,6 +35,10 @@ from torchrec_embcache.utils import safe_makedirs
 import torchrec
 from torchrec import EmbeddingBagConfig, EmbeddingBagCollection
 import torchrec.distributed
+from torch.distributed.fsdp import (
+    FullyShardedDataParallel as FDSP,
+    StateDictType
+)
 from torchrec.distributed.types import ShardingEnv
 from torchrec.distributed.planner import (
     EmbeddingShardingPlanner,
@@ -225,7 +230,10 @@ class TestModel:
             safe_makedirs(save_dir)
 
         saver = Saver(rank=rank)
-
+        state_dict = {
+            "model": ddp_model.state_dict(),
+            "optimizer": optimizer.state_dict()
+        }
         if training:
             for _ in range(LOOP_TIMES):
                 _, _ = pipe.progress(iter_)
@@ -236,22 +244,23 @@ class TestModel:
                 results.append(loss.detach().cpu())
                 results.append(out.detach().cpu())
             logging.info("ddp_model.state_dict %s", ddp_model.state_dict())
-            # dense-保存
-            torch.save(ddp_model.state_dict(), f"save_dir/model_{rank}.pt")
-            torch.save(optimizer.state_dict(), f"save_dir/optimizer_{rank}.pt")
-
+            # save dense
+            dcp.save(
+                state_dict=state_dict,
+                checkpoint_id="save_dir/dense"
+            )
+            # save sparse
             saver.save(ddp_model, "save_dir/sparse")
 
         else:
-            ddp_state_dict = torch.load(f"save_dir/model_{rank}.pt", weights_only=False)
-            logging.info("ddp_state_dict %s", ddp_state_dict)
-            ddp_model.load_state_dict(ddp_state_dict)
-            optimizer.load_state_dict(
-                torch.load(f"save_dir/optimizer_{rank}.pt", weights_only=False)
+            # load dense
+            dcp.load(
+                state_dict=state_dict,
+                checkpoint_id="save_dir/dense"
             )
-
-            # sparse-加载
+            # load sparse
             saver.load(ddp_model, "save_dir/sparse")
+
             ddp_model.eval()
             for _ in range(LOOP_TIMES):
                 _, _ = pipe.progress(iter_)

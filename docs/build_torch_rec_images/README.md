@@ -8,8 +8,22 @@
   - openeuler: arm架构: `wget https://mirrors.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/docker_img/aarch64/openEuler-docker.aarch64.tar.xz && docker load -i openEuler-docker.aarch64.tar.xz`<br>
   - centos: x86架构: `docker pull --platform=amd64 swr.cn-south-1.myhuaweicloud.com/ascendhub/centos:7.6.1810`<br>
 
+## 版本配套说明
 
-### 构建步骤
+当前Rec SDK Torch支持两种版本配套：
+
+| 配套版本  | PyTorch | torch-npu | fbgemm_gpu |
+|-------|---------|-----------|------------|
+| 配套版本1 | 2.6.0   | 2.6.0     | 1.1.0      |
+| 配套版本2 | 2.7.1   | 2.7.1     | 1.2.0      |
+
+在dockerfile文件中，会下载PyTorch软件包和fbgemm_gpu软件包。（torchrec-npu软件包为源码编译，不在dockerfile安装范围内）
+
+当前dockerfile中默认配置下载PyTorch 2.6.0和fbgemm_gpu 1.1.0+cpu版本的软件包。
+
+若需制作PyTorch 2.7.1版本配套的镜像，可参考后续[制作PyTorch 2.7.1镜像环境](##制作PyTorch 2.7.1镜像环境)章节。
+
+## 构建步骤
 Step1：新建`build_images`目录。
 
 Step2：在`build_images`目录下准备CANN包。用户可以从[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=pt+cann&product=4&model=26)下载**8.2.RC1**版本的[toolkit](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.2.RC1)包与[kernels](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.2.RC1)包。用户也可根据实际情况选择其他CANN包。
@@ -61,3 +75,41 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 
 ## 安装RecSDK相关的包
 参考RecSDK/README_TORCH.md进行源码的编译和安装
+
+## 制作PyTorch 2.7.1镜像环境
+可参考以下两种方式制作PyTorch 2.7.1版本的镜像环境。
+
+### 方式一：修改dockerfile后重新制作镜像
+基于当前已有的dockerfile, 修改部分内容后编译镜像。
+1. 修改PyTorch、fbgemm_gpu软件的下载链接。下载链接如下：
+
+| 软件版本                   | 基于Python版本 | 下载链接                                                                                               |
+|------------------------|------------|----------------------------------------------------------------------------------------------------|
+| PyTorch 2.7.1 (X86)    | 3.11       | https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl       |
+| PyTorch 2.7.1 (ARM)    | 3.11       | https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl      |
+| fbgemm_gpu 1.2.0 (X86) | 3.11       | https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl  |
+| fbgemm_gpu 1.2.0 (ARM) | 3.11       | https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl |
+
+2. 修改安装PyTorch、fbgemm_gpu、torch-npu包安装时的包名
+
+| 修改前                        | 修改后                        |
+|----------------------------|----------------------------|
+| torch-2.6.0+cpu-*.whl      | torch-2.7.1+cpu-*.whl      |
+| fbgemm_gpu-1.1.0+cpu-*.whl | fbgemm_gpu-1.2.0+cpu-*.whl |
+| torch-npu==2.6.0           | torch-npu==2.7.1           |
+
+3. 参考[构建步骤](##构建步骤)章节制作镜像
+
+### 方式二：升级已有镜像中的软件版本
+1. 升级PyTorch版本
+```shell
+pip3 install torch==2.7.1+cpu -i https://download.pytorch.org/whl/cpu
+```
+2. 升级fbgemm_gpu版本
+```shell
+pip3 install fbgemm_gpu==1.2.0+cpu -i https://download.pytorch.org/whl/cpu
+```
+3. 升级torch-npu版本
+```shell
+pip3 install -y torch-npu==2.7.1
+```
