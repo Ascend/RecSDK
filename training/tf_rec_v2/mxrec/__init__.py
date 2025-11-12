@@ -24,6 +24,7 @@ __all__ = [
     "embedding_lookup",
     "get_sparse_embedding",
     "AdamWOptimizer",
+    "EmbeddingTableSaver",
 ]
 
 
@@ -36,6 +37,7 @@ from mxrec.python.embedding.embedding import (
     get_sparse_embedding,
 )
 from mxrec.python.optimizer.adam_w import AdamWOptimizer
+from mxrec.python.training.saver import EmbeddingTableSaver
 from mxrec.python.optimizer.utils import patch_for_update_op
 
 
