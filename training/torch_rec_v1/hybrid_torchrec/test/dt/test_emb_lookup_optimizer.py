@@ -12,6 +12,7 @@ import pytest
 
 import torch
 
+import hybrid_torchrec
 from hybrid_torchrec.hybrid_lookup_invoke.hybrid_lookup_args import HybridCommonArgs
 
 from hybrid_torchrec.hybrid_lookup_invoke.hybrid_lookup_adagrad import (
@@ -83,36 +84,43 @@ class TestHybridOps(unittest.TestCase):
             vbe_metadata=self.vbe_metadata,
             is_experimental=False,
             use_uniq_cache_locations_bwd=False,
-            use_homogeneous_placements=True
+            use_homogeneous_placements=True,
+            learning_rate=0.02
         )
 
     def create_optimizer_args(self):
-        optimizer_args = OptimizerArgs(
-            gradient_clipping=False,
-            max_gradient=1.0,
-            stochastic_rounding=False,
-            learning_rate=0.01,
-            eps=1e-8,
+        kw_args = {
+            "gradient_clipping": False,
+            "max_gradient": 1.0,
+            "stochastic_rounding": False,
+            "eps": 1e-8,
             # 必填参数默认值
-            max_norm=None,
-            beta1=0.9,
-            beta2=0.999,
-            weight_decay=0.0,
-            weight_decay_mode="l2",
-            eta=0.0,
-            momentum=0.0,
-            counter_halflife=None,
-            adjustment_iter=0,
-            adjustment_ub=None,
-            learning_rate_mode="fixed",
-            grad_sum_decay=0.99,
-            tail_id_threshold=0,
-            is_tail_id_thresh_ratio=False,
-            total_hash_size=None,
-            weight_norm_coefficient=0.0,
-            lower_bound=None,
-            regularization_mode="l2"
-        )
+            "max_norm": None,
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "weight_decay": 0.0,
+            "weight_decay_mode": "l2",
+            "eta": 0.0,
+            "momentum": 0.0,
+            "counter_halflife": None,
+            "adjustment_iter": 0,
+            "adjustment_ub": None,
+            "learning_rate_mode": "fixed",
+            "grad_sum_decay": 0.99,
+            "tail_id_threshold": 0,
+            "is_tail_id_thresh_ratio": False,
+            "total_hash_size": None,
+            "weight_norm_coefficient": 0.0,
+            "lower_bound": None,
+            "regularization_mode": "l2"
+        }
+        # fbgemm 1.1.0版本和fbgemm 1.2.0版本参数差异处理
+        if hybrid_torchrec.IS_TORCH_REC_120:
+            kw_args["use_rowwise_bias_correction"] = False
+        else:
+            kw_args["learning_rate"] = 0.01
+
+        optimizer_args = OptimizerArgs(**kw_args)
         momentum1 = Momentum(
             host=torch.zeros_like(self.args.dev_weights),
             offsets=torch.tensor([0], dtype=torch.long),

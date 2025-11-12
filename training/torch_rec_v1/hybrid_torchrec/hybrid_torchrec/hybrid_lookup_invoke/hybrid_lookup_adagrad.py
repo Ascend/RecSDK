@@ -13,6 +13,7 @@ from fbgemm_gpu.split_embedding_codegen_lookup_invokers.lookup_adagrad import (
     Momentum,
 )
 
+from hybrid_torchrec import IS_TORCH_REC_120
 from hybrid_torchrec.hybrid_lookup_invoke.hybrid_lookup_args import HybridCommonArgs
 
 
@@ -84,7 +85,8 @@ def invoke(
             feature_requires_grad=common_args.feature_requires_grad,
             # optimizer_args
             gradient_clipping=optimizer_args.gradient_clipping, max_gradient=optimizer_args.max_gradient,
-            stochastic_rounding=optimizer_args.stochastic_rounding, learning_rate=optimizer_args.learning_rate,
+            stochastic_rounding=optimizer_args.stochastic_rounding,
+            learning_rate=_get_lr_param(common_args, optimizer_args),
             eps=optimizer_args.eps,
             # momentum1
             momentum1_host=momentum1.host, momentum1_offsets=momentum1.offsets,
@@ -130,7 +132,7 @@ def invoke(
         gradient_clipping=optimizer_args.gradient_clipping,
         max_gradient=optimizer_args.max_gradient,
         stochastic_rounding=optimizer_args.stochastic_rounding,  # if optimizer == none
-        learning_rate=optimizer_args.learning_rate,
+        learning_rate=_get_lr_param(common_args, optimizer_args),
         eps=optimizer_args.eps,
         # momentum1
         momentum1_dev=momentum1.dev,
@@ -148,6 +150,10 @@ def invoke(
         apply_global_weight_decay=apply_global_weight_decay,
         gwd_lower_bound=gwd_lower_bound,
     )
+
+
+def _get_lr_param(common_args, optimizer_args):
+    return common_args.learning_rate if IS_TORCH_REC_120 else optimizer_args.learning_rate
 
 
 def parse_vbe_output_offset(common_args, num_offsets, output, vbe_metadata):

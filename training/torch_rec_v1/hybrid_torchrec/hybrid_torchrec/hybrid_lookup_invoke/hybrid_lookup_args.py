@@ -46,3 +46,6 @@ class HybridCommonArgs(NamedTuple):
     is_experimental: bool
     use_uniq_cache_locations_bwd: bool
     use_homogeneous_placements: bool
+    # Attribute `learning_rate` to adapt for torchrec 1.2.0 version.
+    # In torchrec 1.1.0 version, this field has been stored in optimizer_args.
+    learning_rate: float
