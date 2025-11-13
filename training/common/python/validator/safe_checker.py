@@ -26,7 +26,6 @@ from rec_sdk_common.validator.validator import (
     DirectoryValidator,
     FileValidator,
 )
-from rec_sdk_common.log.log import LoggingProxy
 
 
 def str_safe_check(
@@ -36,8 +35,6 @@ def str_safe_check(
         max_len: int = ValidatorParams.STR_MAX_LENGTH.value,
         black_element: Optional[str] = None,
 ):
-    if black_element is None:
-        LoggingProxy.warning("str_safe_check has black_element == None")
     validator = StringValidator(name, value, max_len, min_len, black_element)
     validator.check_whitelist().check_not_contain_black_element().check_string_length().check()
 
