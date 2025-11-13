@@ -41,9 +41,73 @@ fi
 cd "${PROJECT_ROOT_DIR}"
 rm -rf "${PROJECT_ROOT_DIR}"/build/lib/*
 
+MxRec_DIR="${PROJECT_ROOT_DIR}"/../../
+common_src_path="${MxRec_DIR}"/training/common/src
+common_python_path="${MxRec_DIR}"/training/common/python
+opensource_path="${MxRec_DIR}"/../opensource
 code_path="${PROJECT_ROOT_DIR}"/mxrec/
-function collect_files() {
+
+function prepare_pybind(){
+  cd "${opensource_path}"
+  if [ ! -d pybind11 ]; then
+    unzip pybind11-2.10.3.zip
+    mv pybind11-2.10.3 pybind11
+  fi
+}
+
+function prepare_securec(){
+  cd "${opensource_path}"
+  if [ ! -d securec ]; then
+    unzip huaweicloud-sdk-c-obs-3.23.9.zip
+    mv huaweicloud-sdk-c-obs-3.23.9/platform/huaweisecurec securec
+    rm -rf huaweicloud-sdk-c-obs-3.23.9
+    rm -rf securec/lib/*
+  fi
+}
+
+# 准备pybind11和securec
+echo "opensource path:${opensource_path}"
+prepare_pybind
+prepare_securec
+
+function compile_securec()
+{
+    if [[ ! -d "${opensource_path}"/securec ]]; then
+      echo "securec is not exist"
+      exit 1
+    fi
+
+    if [[ ! -f "${opensource_path}"/securec/lib/libsecurec.so ]]; then
+      cd "${opensource_path}"/securec/src
+      make -j4
+    fi
+}
+
+function compile_common_so_file()
+{
+    cd "${common_src_path}"
+    chmod u+x build.sh
+    ./build.sh "${MxRec_DIR}" "YES"
+}
+
+function collect_common_so_file()
+{
+  cd "${common_src_path}"
+  rm -rf "${common_src_path}"/lib
+  mkdir -p "${common_src_path}"/lib
+  chmod u+x lib
+  cp "${common_src_path}"/build/pybind/*.so ./lib
+  cp "${common_src_path}"/build/core/*.so ./lib
+  cp "${opensource_path}"/securec/lib/libsecurec.so ./lib
+  rm -rf "${common_python_path}"/lib
+  mv "${common_src_path}"/lib "${common_python_path}"
+  touch "${common_python_path}"/lib/__init__.py
+  chmod 640 "${common_python_path}"/lib/__init__.py
+}
+
+function collect_tf_rec_v2_files() {
   echo "collecting mxrec files"
+  bash $SCRIPT_DIR/build_core.sh "$python_home" "1"
   rm -rf "${code_path}"/librec
   mkdir -p "${code_path}"/librec
   cd "${code_path}"
@@ -52,12 +116,14 @@ function collect_files() {
   touch "${code_path}"/librec/__init__.py
   chmod 640 "${code_path}"/librec/__init__.py
   cp "${PROJECT_ROOT_DIR}"/build/mxrec/core/host/*.so "${code_path}"/librec || echo "Warning: No files in mxrec directory"
-  cp "${PROJECT_ROOT_DIR}"/build/mxrec/core/device/framework/*.so "${code_path}"/librec || echo "Warning: No files in dir"
 }
 
 
 echo "----------------        moving files to new structure   ----------------"
-collect_files
+compile_securec
+compile_common_so_file
+collect_common_so_file
+collect_tf_rec_v2_files
 
 echo "----------------        compile MxRec success!!!!        ----------------"
 echo "New package structure created at: ${PROJECT_ROOT_DIR}/build/mxrec-for-lingqu2.0"
