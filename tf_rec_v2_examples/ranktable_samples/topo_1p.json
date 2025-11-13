@@ -1,0 +1,31 @@
+{
+  "version": "2.0",
+  "peer_count": 2,
+  "peer_list": [
+    {
+      "local_id": 0
+    },
+    {
+      "local_id": 1
+    }
+  ],
+  "edge_count": 1,
+  "edge_list": [
+    {
+      "net_layer": 0,
+      "link_type": "PEER2PEER",
+      "protocols": [
+        "UB_CTP"
+      ],
+      "local_b": 0,
+      "local_b_ports": [
+        "0/0"
+      ],
+      "local_a": 1,
+      "local_a_ports": [
+        "0/1"
+      ],
+      "position": "DEVICE"
+    }
+  ]
+}
