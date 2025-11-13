@@ -57,10 +57,8 @@ bool TilingPolicyNormalv200::TilingHeighLevelApi(gert::TilingContext* context,
     matmul_tiling::DataType dataType;
     OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return false);
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
-    if (qTypeGe == ge::DataType::DT_FLOAT16) {
-        dataType = matmul_tiling::DataType::DT_FLOAT16;
-    }
-
+    OPS_CHECK(qTypeGe != ge::DataType::DT_FLOAT16, OPS_LOG_E("[ERROR]", "Datatype only support fp16.\n"), return false);
+    dataType = matmul_tiling::DataType::DT_FLOAT16;
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return false);
