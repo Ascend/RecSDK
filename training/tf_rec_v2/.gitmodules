@@ -1,0 +1,15 @@
+[submodule "third_party/googletest"]
+	path = third_party/googletest
+	url = https://github.com/google/googletest
+	branch = v1.13.0
+[submodule "third_party/pybind11"]
+	path = third_party/pybind11
+	url = https://github.com/pybind/pybind11
+	branch = v2.13.1
+[submodule "third_party/spdlog"]
+	path = third_party/spdlog
+	url = https://github.com/gabime/spdlog.git
+	branch = v1.12.0
+[submodule "third_party/emock"]
+	path = third_party/emock
+	url = https://github.com/ez8-co/emock.git

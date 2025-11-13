@@ -20,6 +20,8 @@ import tensorflow as tf
 from rec_sdk_common.util.tf_adapter import gen_npu_cpu_ops
 from mxrec.python.constants.constants import StaticEmbTableConfig
 from mxrec.python.embedding.table.base_emb_table import BaseEmbTable
+from mxrec.python.embedding.feature.filter import CountFilter
+from mxrec.python.embedding.feature.evictor import TimeEvictor
 
 
 class StaticEmbTable(BaseEmbTable):
@@ -28,15 +30,15 @@ class StaticEmbTable(BaseEmbTable):
     def __init__(self, et_config: StaticEmbTableConfig):
         super(StaticEmbTable, self).__init__(et_config)
 
-        self._count_filter = None
-        self._time_evictor = None
+        self._count_filter = CountFilter(et_config.name, et_config.min_used_times) if et_config.min_used_times else None
+        self._time_evictor = TimeEvictor(et_config.name, et_config.max_cold_secs) if et_config.max_cold_secs else None
 
     @property
-    def count_filter(self):
+    def count_filter(self) -> CountFilter:
         return self._count_filter
 
     @property
-    def time_evictor(self):
+    def time_evictor(self) -> TimeEvictor:
         return self._time_evictor
 
     def _create_hashtable(self) -> tf.Tensor:

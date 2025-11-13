@@ -19,6 +19,36 @@ import tensorflow as tf
 from tensorflow.core.protobuf.rewriter_config_pb2 import RewriterConfig
 
 
+class MockRuntimeManager:
+    @staticmethod
+    def start_time_evictor(*args, **kwargs):
+        pass
+
+    @staticmethod
+    def start_count_filter(*args, **kwargs):
+        pass
+
+    @staticmethod
+    def save_count_filter(*args, **kwargs):
+        pass
+
+    @staticmethod
+    def save_time_evictor(*args, **kwargs):
+        pass
+
+    @staticmethod
+    def load_count_filter(*args, **kwargs):
+        pass
+
+    @staticmethod
+    def load_time_evictor(*args, **kwargs):
+        pass
+
+    @staticmethod
+    def get_evicted_keys(*args, **kwargs):
+        return [1, 2, 3]
+
+
 def mock_get_device_id():
     return 0
 
