@@ -38,17 +38,23 @@
         ],
         "attr": [
             {
-              "name": "max_length",
-			  "param_type": "required",
-              "type": "int",
-              "default_value": 0
+                "name": "max_length",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
             },
             {
-                "name": "padding_value",
+                "name": "padding_value_fp32",
                 "param_type": "required",
                 "type":"float",
                 "default_value": 0
-            }       
+            },
+            {
+                "name": "padding_value_int64",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            }
         ]
     }
 ]

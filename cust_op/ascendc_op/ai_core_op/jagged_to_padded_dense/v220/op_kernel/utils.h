@@ -31,6 +31,12 @@ __aicore__ inline T1 CeilDiv(T1 a, T2 b)
     return (a + b - 1) / b;
 }
 
+template <typename T1, typename T2>
+__aicore__ inline T1 AlignUp(T1 value, T2 align)
+{
+    return CeilDiv<T1, T2>(value, align) * align;
+}
+
 #ifdef __CCE_KT_TEST__
 
 #define LOG(X...) Log(X)
