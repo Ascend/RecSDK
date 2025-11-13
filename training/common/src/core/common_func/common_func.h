@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 #ifndef RECSDK_REFACTORING_COMMON_FUNC_H
 #define RECSDK_REFACTORING_COMMON_FUNC_H
 
+#include <stdexcept>
 #include <cstring>
 #include <memory>
 #include "securec.h"
