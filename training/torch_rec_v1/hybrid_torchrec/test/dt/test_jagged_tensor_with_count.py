@@ -13,15 +13,12 @@
 # limitations under the License.
 
 import unittest
-from unittest.mock import patch
 
 import pytest
 import torch
 
-from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 from hybrid_torchrec.sparse.jagged_tensor_with_count import (
     KeyedJaggedTensorWithCount,
-    unpack_tensors,
     JaggedTensorWithCount,
 )
 
@@ -264,7 +261,6 @@ def test_unpack_tensors_function():
     from hybrid_torchrec.sparse.jagged_tensor_with_count import unpack_tensors as unpack_tensors_func
 
     test_cases = [
-        # (tensors, variable_stride_per_key, expected_lengths, expected_values, expected_stride, expected_weights)
         (
             [torch.tensor([1, 2]), torch.tensor([1, 2, 3])],
             False,

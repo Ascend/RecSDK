@@ -248,7 +248,7 @@ class TestKeyedExtendedJaggedTensor:
         )
         
         # Test that variable stride is properly set
-        assert kejt_variable.variable_stride_per_key() == True
+        assert kejt_variable.variable_stride_per_key()
         assert kejt_variable.stride_per_key_per_rank() == stride_per_key_per_rank
         
         # Test permute with variable stride
@@ -258,7 +258,7 @@ class TestKeyedExtendedJaggedTensor:
             indices, indices_tensor, KeyedExtendedJaggedTensor
         )
         assert permuted_kejt.keys() == ["feature2", "feature1"]
-        assert permuted_kejt.variable_stride_per_key() == True
+        assert permuted_kejt.variable_stride_per_key()
 
     @staticmethod
     def construct_from_jt_dict(kejt_basic, jt_dict):
