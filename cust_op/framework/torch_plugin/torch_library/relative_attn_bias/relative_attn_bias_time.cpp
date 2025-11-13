@@ -39,7 +39,7 @@ std::tuple<at::Tensor, at::Tensor> relative_attn_bias_time_impl(const Tensor& ti
     const int64_t bs = timestampsConti.size(0);
     const int64_t s = timestampsConti.size(1);
     constexpr int64_t MAX_S = 4300; // 算子约束最大4300
-    TORCH_CHECK(s > 0 && s <= MAX_S, "timestamps size must be between 1 and %d", MAX_S);
+    TORCH_CHECK(s > 0 && s <= MAX_S, "timestamps size must be between 1 and ", MAX_S);
     const int64_t sx2 = s * 2;
 
     at::Tensor rabTimeOut = at::zeros({numLayers, bs, s, 1, s, 1}, timestampsWeightsConti.options());
