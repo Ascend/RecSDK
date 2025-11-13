@@ -668,14 +668,14 @@ index 10ffcdb..3e19949 100644
          if hasattr(param, "_in_backward_optimizers") == include:
              yield fqn, param
 diff --git a/torchrec/sparse/jagged_tensor.py b/torchrec/sparse/jagged_tensor.py
-index 2bbe091..8a79c2d 100644
+index 2bbe091..44a7910 100644
 --- a/torchrec/sparse/jagged_tensor.py
 +++ b/torchrec/sparse/jagged_tensor.py
 @@ -28,6 +28,7 @@ from torchrec.pt2.checks import (
      pt2_guard_size_oblivious,
  )
  from torchrec.streamable import Pipelineable
-+from torchrec.tensor_types import check
++from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
  
  try:
      torch.ops.load_library("//deeplearning/fbgemm/fbgemm_gpu:sparse_ops")
