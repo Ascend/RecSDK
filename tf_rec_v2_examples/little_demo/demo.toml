@@ -1,0 +1,30 @@
+[mxrec]
+log_level = "INFO"
+# If use_ranktable is true, the environment variable "RANK_TABLE_FILE" will be read; if it is false, the configuration
+# of "mxrec.cm-node-info" in the toml file will be read.
+use_ranktable = true
+
+[mxrec.cm-node-info]
+cm_chief_ip = "127.0.0.1"
+cm_chief_port = 60001
+cm_chief_device = 0
+cm_worker_ip = "127.0.0.1"
+cm_worker_size = 1
+
+[model]
+
+# Support "train_and_evaluate", "load_and_train", "predict".
+mode = "train_and_evaluate"
+# Set to true for precision alignment mode.
+deterministic = false
+
+saved_path = "saved_model"
+train_steps = 200
+train_interval = 100
+eval_steps = 10
+batch_number = 200
+
+[model.distribution]
+interface = "lo"
+local_rank_size = 1
+num_server = 1
