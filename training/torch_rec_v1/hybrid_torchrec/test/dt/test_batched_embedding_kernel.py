@@ -183,7 +183,7 @@ class TestHybridSplitTableBatchedEmbeddingBagsCodegen(unittest.TestCase):
                    torch.tensor([0.3, 0.4], dtype=torch.float).repeat(16)]  # 构造dim32
         # 默认参数不支持
         with self.assertRaises(ValueError) as cm:
-            _ = self.base_model.scatter_update_momentum(indices, updates)
+            self.base_model.scatter_update_momentum(indices, updates)
         self.assertIn("Mixed dimensions are not supported", str(cm.exception))
         # 修改默认参数,验证动量是否更新
         self.base_model.is_mixed_dim = False
