@@ -16,6 +16,9 @@
 # ==============================================================================
 
 import sysconfig
+import itertools
+from dataclasses import dataclass
+
 import pytest
 import fbgemm_gpu
 import numpy as np
@@ -67,7 +70,7 @@ class JaggedToPaddedDense(torch.autograd.Function):
         return grad_values, None, None, None, None
 
 
-def generate_jagged_tensor(batch_size, max_seq_len, num_heads, attention_dim):
+def generate_jagged_tensor(batch_size, max_seq_len, num_heads, attention_dim, dtype=torch.float32):
     """
     生成不规则(Jagged)张量测试数据
     Args:
@@ -75,6 +78,7 @@ def generate_jagged_tensor(batch_size, max_seq_len, num_heads, attention_dim):
         max_seq_len: 单个样本最大序列长度
         num_heads: 注意力头数量
         attention_dim: 每个注意力头的维度
+        dtype: 数据类型，支持torch.float32或torch.int64
 
     Returns:
         jagged_tensor: 不规则数据张量，形状为(total_sequences, num_heads, attention_dim)
@@ -92,13 +96,74 @@ def generate_jagged_tensor(batch_size, max_seq_len, num_heads, attention_dim):
 
     total_sequences = np.sum(seq_lens)
 
-    # 生成随机数据(-1到1均匀分布)
-    jagged_tensor = torch.rand(
-        total_sequences, num_heads, attention_dim,
-        dtype=torch.float32
-    ).uniform_(-1, 1)
+    # 根据数据类型生成随机数据
+    if dtype == torch.float32:
+        # 生成随机数据(-1到1均匀分布)
+        jagged_tensor = torch.rand(
+            total_sequences, num_heads, attention_dim,
+            dtype=dtype
+        ).uniform_(-1, 1)
+    elif dtype == torch.int64:
+        # 生成随机整数数据
+        jagged_tensor = torch.randint(
+            -1000, 1000,
+            (total_sequences, num_heads, attention_dim),
+            dtype=dtype
+        )
+    else:
+        raise ValueError(f"Unsupported dtype: {dtype}")
 
     return jagged_tensor, seq_offsets, total_sequences
+
+
+def run_case(params):
+    dtype = params.get("dtype", torch.float32)
+    batch_size = params["batch_size"]
+    max_seq_len = params["max_seq_len"]
+    num_heads = params.get("num_heads", 2)
+    attention_dim = params.get("attention_dim", 16)
+    padding_value = float(params.get("padding_value", 0.0))
+    case_tag = params.get("case_tag", "case")
+
+    jagged_tensor, seq_offsets, _ = generate_jagged_tensor(
+        batch_size, max_seq_len, num_heads, attention_dim, dtype=dtype)
+    input_flat = jagged_tensor.reshape(jagged_tensor.shape[0], -1)
+    offsets_tensor = torch.from_numpy(seq_offsets)
+
+    reference_dense = torch.ops.fbgemm.jagged_to_padded_dense(
+        input_flat,
+        [offsets_tensor],
+        [max_seq_len],
+        padding_value
+    )
+    npu_dense = torch.ops.mxrec.jagged_to_padded_dense(
+        input_flat.to(DEVICE),
+        [offsets_tensor.to(DEVICE)],
+        [max_seq_len],
+        padding_value
+    )
+    npu_cpu = npu_dense.cpu()
+
+    assert torch.equal(reference_dense, npu_cpu), f"{case_tag}: NPU 结果与期望结果不匹配"
+
+
+@dataclass(frozen=True)
+class Scenario:
+    scenario_id: str
+    base: dict
+    sweep: dict
+
+    def expand(self):
+        if not self.sweep:
+            return [self.base.copy()]
+        keys = list(self.sweep.keys())
+        runs = []
+        for values in itertools.product(*(self.sweep[key] for key in keys)):
+            run = self.base.copy()
+            for key, value in zip(keys, values):
+                run[key] = value
+            runs.append(run)
+        return runs
 
 
 @pytest.mark.parametrize("batch_size", [2, 4, 1000])
@@ -211,3 +276,100 @@ def test_jagged_to_padded_dense(batch_size,
         atol=1e-4,
         rtol=1e-4
     ), f"NPU python梯度与NPU梯度不匹配\nNPU python梯度:\n{npu_py_grad_input.cpu()}\nNPU梯度:\n{npu_grad_input.cpu()}"
+
+
+SCENARIOS = [
+    # 浮点常规 padding 值：覆盖多组 batch / max_seq_len / padding 组合
+    Scenario(
+        scenario_id="fp32_padding_values",
+        base={"dtype": torch.float32, "num_heads": 2, "attention_dim": 16},
+        sweep={
+            "batch_size": [2, 4],
+            "max_seq_len": [64, 128],
+            "padding_value": [0.0, -1.0, 1.0, -0.5, 0.5, 1e-6, -1e-6, 100.0, -100.0],
+        },
+    ),
+    # 浮点边界场景：小/大 batch 与极端 padding
+    Scenario(
+        scenario_id="fp32_edge_cases",
+        base={"dtype": torch.float32, "padding_value": -999.99, "num_heads": 2, "attention_dim": 16},
+        sweep={"batch_size": [1, 8, 16], "max_seq_len": [1, 512, 1024]},
+    ),
+    # 浮点精度场景：极小/极大 padding，验证容差设置
+    Scenario(
+        scenario_id="fp32_precision",
+        base={"dtype": torch.float32, "batch_size": 2, "max_seq_len": 32, "num_heads": 2, "attention_dim": 16},
+        sweep={"padding_value": [1e-10, -1e-10, 1e10, -1e10, 9007199254740991.0, -9007199254740991.0,
+            9007199254740992.0, -9007199254740992.0]},
+    ),
+    # 浮点维度覆盖：多种 num_heads / attention_dim 组合
+    Scenario(
+        scenario_id="fp32_dimension_coverage",
+        base={"dtype": torch.float32, "batch_size": 2, "max_seq_len": 64},
+        sweep={
+            "num_heads": [1, 16, 32],
+            "attention_dim": [1, 64, 128],
+            "padding_value": [0.0, -1.0, 1.0],
+        },
+    ),
+    # int64 基线：padding=0，覆盖多种 batch / seq / head 组合
+    Scenario(
+        scenario_id="int64_baseline",
+        base={"dtype": torch.int64, "padding_value": 0},
+        sweep={
+            "batch_size": [2, 4],
+            "max_seq_len": [64, 128],
+            "num_heads": [2, 4],
+            "attention_dim": [16, 32],
+        },
+    ),
+    # int64 不同 padding 值：验证整型填充范围
+    Scenario(
+        scenario_id="int64_padding_values",
+        base={"dtype": torch.int64},
+        sweep={
+            "batch_size": [2],
+            "max_seq_len": [32, 64],
+            "num_heads": [2],
+            "attention_dim": [16],
+            "padding_value": [0, -1, 1, -100, 100, -2147483648, 2147483647, 9223372036854775807, -9223372036854775808],
+        },
+    ),
+    # float→int64 截断：确保 padding 区域写入截断值
+    Scenario(
+        scenario_id="int64_padding_truncation",
+        base={
+            "dtype": torch.int64,
+            "batch_size": 2,
+            "max_seq_len": 64,
+            "num_heads": 2,
+            "attention_dim": 16
+        },
+        sweep={"padding_value": [3.9, -2.7]},
+    ),
+
+    # 超大shape测试
+    Scenario(
+        scenario_id="large_shape_test",
+        base={
+            "num_heads": 16,
+            "attention_dim": 32,
+            "max_seq_len": 4096,
+            "batch_size": 511,
+        },
+        sweep={
+            "padding_value": [0.0, 1024.0],
+            "dtype": [torch.int64, torch.float32],
+        },
+    ),
+]
+
+ALL_SCENARIO_CASES = [{"id": sc.scenario_id, "runs": sc.expand()} for sc in SCENARIOS]
+
+
+@pytest.mark.parametrize("case", ALL_SCENARIO_CASES, ids=lambda c: c["id"])
+def test_jagged_to_padded_dense_scenarios(case):
+    for idx, run in enumerate(case["runs"]):
+        run = dict(run)
+        run.setdefault("case_tag", f"{case['id']}_run{idx}")
+        run_case(run)
