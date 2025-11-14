@@ -8,6 +8,8 @@
 
 
 import unittest
+from dataclasses import replace
+
 import pytest
 
 import torch
@@ -48,6 +50,9 @@ class TestHybridOps(unittest.TestCase):
         self.unique_offset = torch.tensor([0, len(self.unique_indices)], dtype=torch.long)
         self.hash_indices2address = torch.zeros_like(self.hash_indices)
         self.lxu_cache_locations = torch.randint(0, 5, (10,), dtype=torch.long)
+        self.table_grad_accumulate_offsets = torch.tensor([0, 1024], dtype=torch.long)
+        self.grad_accumulate = [torch.tensor([0, 1, 2], dtype=torch.long) for _ in range(2)]
+        self.grad_accumulate_offsets = torch.tensor([0, 1, 2, 3, 4, 5, 6], dtype=torch.long)
 
         self.vbe_metadata = VBEMetadata(
             B_offsets=None,
@@ -85,7 +90,11 @@ class TestHybridOps(unittest.TestCase):
             is_experimental=False,
             use_uniq_cache_locations_bwd=False,
             use_homogeneous_placements=True,
-            learning_rate=0.02
+            learning_rate=0.02,
+            table_grad_accumulate_offsets=self.table_grad_accumulate_offsets,
+            grad_accumulate=self.grad_accumulate,
+            grad_accumulate_offsets=self.grad_accumulate_offsets,
+            use_optimize=True,
         )
 
     def create_optimizer_args(self):
@@ -141,7 +150,7 @@ class TestHybridOps(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             check_unique_valid(self.args)
         # 验证分支
-        new_args = self.args._replace(hash_indices=None)
+        new_args = replace(self.args, hash_indices=None)
         assert check_unique_valid(new_args) is None
 
     def test_invoke(self):
@@ -152,7 +161,7 @@ class TestHybridOps(unittest.TestCase):
         self.assertEqual(output.shape, (3, 10))
 
         # 测试npu分支
-        new_args2 = self.args._replace(host_weights=torch.empty(0))
+        new_args2 = replace(self.args, host_weights=torch.empty(0))
 
         # 抛出异常: 走到NPU分支, 执行报错
         #   在有NPU的环境，调用到NPU算子，抛出RuntimeError
@@ -171,7 +180,7 @@ class TestHybridOps(unittest.TestCase):
         )
 
         # 测试vbe分支
-        new_args = self.args._replace(vbe_metadata=vbe_metadata)
+        new_args = replace(self.args, vbe_metadata=vbe_metadata)
 
         # 执行被测试代码会抛出异常
         with pytest.raises(ValueError):

@@ -58,6 +58,14 @@ from torchrec.optim.fused import (
 )
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 
+INIT_BUFFER = 100  # 初始buffer为table大小的100分之1
+RESET_BUFFER = 10  # 扩大开始的10倍
+
+if hasattr(torch, 'npu') and torch.npu.is_available():
+    DEVICE = 'npu'
+else:
+    DEVICE = 'cpu'
+
 
 @dataclass
 class CommonArgsInput:
@@ -70,6 +78,158 @@ class CommonArgsInput:
     unique_indices: torch.Tensor = None
     unique_inverse: torch.Tensor = None
     unique_offset: torch.Tensor = None
+    table_grad_accumulate_offsets: torch.Tensor = None
+    grad_accumulate: List[torch.Tensor] = None
+    grad_accumulate_offsets: torch.Tensor = None
+    use_optimize: bool = True
+
+
+@dataclass
+class CommonArgsAggregationInput:
+    indices: Tensor
+    offsets: Tensor
+    vbe_metadata: Any
+    feature_requires_grad: Optional[Tensor] = None
+    hash_indices: torch.Tensor = None
+    per_sample_weights: Optional[Tensor] = None
+    unique_indices: torch.Tensor = None
+    unique_inverse: torch.Tensor = None
+    unique_offset: torch.Tensor = None
+    table_grad_accumulate_offsets: torch.Tensor = None
+    grad_accumulate: List[torch.Tensor] = None
+    grad_accumulate_offsets: torch.Tensor = None
+    use_optimize: bool = True
+    table_offsets_multi: torch.Tensor = None
+    indices_multi_step: torch.Tensor = None
+    offsets_multi_step: torch.Tensor = None
+    unique_multi_step: torch.Tensor = None
+    unique_offset_multi_step: torch.Tensor = None
+    unique_inverse_multi_step: torch.Tensor = None
+
+
+class GradientAccumulator(nn.Module):
+    def __init__(self, table_shapes, device):
+        super().__init__()
+        self.buffers = nn.ModuleDict()
+        self.buffer_names = []
+        self.device = device
+        self.current_accumulate_step = 0
+
+        # 为每个参数创建显存缓冲区
+        for i, shape in enumerate(table_shapes):
+            buffer_name = f"grad_acc_{i}"
+            self.buffer_names.append(buffer_name)
+
+            self.register_buffer(
+                buffer_name,
+                torch.zeros(shape, device=device, dtype=torch.float32),
+                persistent=False  # 不保存到状态字典
+            )
+        self.total_index_size = [0 for _ in self.buffer_names]
+        self.total_index_size_pre = [0 for _ in self.buffer_names]
+        self.indice_multi_step = [None for _ in self.buffer_names]
+        self.unique_indice_multi_step = 0
+        self.unique_inverse_multi_step = 0
+
+    def get_buffer(self):
+        """返回所有缓冲区的指针和元数据"""
+        handles = []
+        for name, buf in self.named_buffers():
+            handles.append(buf)
+        return handles
+
+    def updata_total_index_size(self, size_list, table_dims):
+        for i in range(len(size_list) - 1):
+            self.total_index_size[i] += int(size_list[i + 1] - size_list[i]) * table_dims[i]
+
+    def zero_grad(self):
+        """重置所有梯度缓冲区"""
+        with torch.no_grad():
+            for buffer_name, buffer in self.named_buffers():
+                self.register_buffer(
+                    buffer_name,
+                    torch.zeros(buffer.numel(), device=self.device, dtype=torch.float32),
+                    persistent=False
+                ) # 需同时重置累积步数计数器
+
+    def zero_parameters(self):
+        self.total_index_size = [0 for _ in self.buffer_names]
+        self.total_index_size_pre = [0 for _ in self.buffer_names]
+        self.indice_multi_step = [None for _ in self.buffer_names]
+        self.unique_indice_multi_step = 0
+        self.unique_inverse_multi_step = 0
+        self.current_accumulate_step = 0
+
+    def get_buffer_size(self, buffer_name):
+        """获取单个缓冲区的显存大小（字节）"""
+        if not hasattr(self, buffer_name):
+            raise ValueError(f"Buffer {buffer_name} not found")
+
+        buffer = getattr(self, buffer_name)
+        # 计算显存占用：元素数量 × 每个元素字节大小
+        return buffer.numel() * buffer.element_size()
+
+    def resize_buffer(self, new_shape):
+        for name, buf in self.named_buffers():
+            current_buffer_size = self.get_buffer_size(name)
+            new_buffer_size = new_shape[name] * buf.element_size()
+            if new_buffer_size > current_buffer_size:
+                new_buffer = torch.zeros(
+                    new_shape[name] * RESET_BUFFER,
+                    device=self.device,
+                    dtype=torch.float32
+                )
+                new_buffer[:buf.numel()].copy_(buf)
+                self.register_buffer(name, new_buffer, persistent=False)
+
+    def store_buffer_shape(self, table_shapes):
+        table_shape_dict = {}
+        for i, shape in enumerate(table_shapes):
+            table_shape_dict[self.buffer_names[i]] = shape
+        return table_shape_dict
+
+    def get_split_lookup_input(self, values: torch.Tensor, offset_per_key: torch.Tensor, ):
+        len_per_key = (offset_per_key[1:] - offset_per_key[:-1]).tolist()
+        split_values = torch.split(values.long(), len_per_key)
+        return split_values
+
+    def concat_multi_step(self, values):
+        for i, value in enumerate(values):
+            if self.indice_multi_step[i] is None:
+                cur = value
+            else:
+                cur = torch.cat((self.indice_multi_step[i], value))
+            self.indice_multi_step[i] = cur
+
+    def do_multi_step_unique(self, ):
+        unique_values_list = []
+        inverse_indices_list = []
+        counts_list = [0]
+        for i, table_indices in enumerate(self.indice_multi_step):
+            unique_values, inverse_indices = torch.unique(
+                table_indices,
+                return_inverse=True
+            )
+            unique_values_list.append(unique_values)
+            inverse_indices_list.append(inverse_indices)
+            counts_list.append(unique_values.shape[0] + counts_list[-1])
+        unique = torch.cat(unique_values_list)
+        unique_inverse = torch.cat(inverse_indices_list)
+        unique_offset = torch.tensor(counts_list)
+        return unique, unique_inverse, unique_offset
+
+    def do_table_offsets(self, last_step, offsets):
+        table_offsets = [0]
+        if last_step:
+            tmp = 0
+            for i, table_indices in enumerate(self.indice_multi_step):
+                tmp += len(table_indices)
+                table_offsets.append(tmp)
+        else:
+            b = int((len(offsets) - 1) / len(self.buffer_names))
+            for i in range(len(self.buffer_names)):
+                table_offsets.append(offsets[(i + 1) * b])
+        return torch.Tensor(table_offsets)
 
 
 class HybridSplitTableBatchedEmbeddingBagsCodegen(
@@ -80,6 +240,8 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         embedding_specs: List[
             Tuple[int, int, EmbeddingLocation, ComputeDevice]
         ],
+        use_accumulate=False,
+        accumulate_step=1,
         **kwargs
     ) -> None:
         super().__init__(embedding_specs, **kwargs)
@@ -100,6 +262,20 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         else:
             self._optim_num = 0
 
+        table_shapes = []
+        for tid in embedding_specs:
+            table_shapes.append(int(tid[0] * tid[1] / INIT_BUFFER))
+        self.grad_accum = GradientAccumulator(table_shapes, self.current_device)
+        self.use_accumulate = use_accumulate
+        self.accumulate_step = accumulate_step
+
+    def clear_after_accumulate(self, grad):
+        # 这里可以调用您的自定义函数
+        self.grad_accum.zero_grad()
+        self.grad_accum.zero_parameters()
+        # 注意：钩子函数需要返回梯度（可以是修改后的或原始的）
+        return grad
+
     def forward(
         self,
         indices: Tensor,
@@ -118,9 +294,38 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         self._debug_print_input_stats(indices, offsets, per_sample_weights)
 
         self.check_preprocess(indices, offsets, vbe_metadata)
+
+
+        table_grad_accumulate_offsets = self.grad_accum.do_table_offsets(False, offsets)
+        table_grad_accumulate_offsets = table_grad_accumulate_offsets.to(DEVICE).to(torch.int64)
+
+        if self.use_accumulate and self.training:
+            self.grad_accum.current_accumulate_step += 1
+            split_values = self.grad_accum.get_split_lookup_input(unique_indices, unique_offset)
+            # 将当前step拼接到每个表的多step索引中并存储
+            self.grad_accum.concat_multi_step(split_values)
+
+            self.grad_accum.total_index_size_pre = torch.tensor(self.grad_accum.total_index_size)
+            self.grad_accum.updata_total_index_size(unique_offset, self.dims)
+            table_shapes = self.grad_accum.total_index_size
+            table_dict = self.grad_accum.store_buffer_shape(table_shapes)
+            self.grad_accum.resize_buffer(table_dict)
+            grad_accumulate = self.grad_accum.get_buffer()
+            grad_accumulate_offsets = self.grad_accum.total_index_size_pre
+            use_optimize = False
+            if self.grad_accum.current_accumulate_step == self.accumulate_step:
+                self.iter[0] += 1
+        else:
+            grad_accumulate = [torch.tensor([0]).to(DEVICE)]
+            grad_accumulate_offsets = torch.tensor([0])
+            use_optimize = True
+            if self.training:
+                self.iter[0] += 1
+
         common_args = self.create_common_args(
             CommonArgsInput(indices, offsets, vbe_metadata, feature_requires_grad, hash_indices, per_sample_weights,
-                            unique_indices, unique_inverse, unique_offset))
+                            unique_indices, unique_inverse, unique_offset, table_grad_accumulate_offsets,
+                            grad_accumulate, grad_accumulate_offsets, use_optimize))
 
         if not isinstance(self.optimizer, OptimType):
             raise ValueError(f"Invalid OptimType: {self.optimizer}")
@@ -128,12 +333,45 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         momentum1, momentum2 = self.create_momentum()
 
         if self.optimizer == OptimType.EXACT_ADAGRAD:
-            return self._report_io_size_count(
-                "fwd_output",
-                invokers.lookup_adagrad.invoke(
-                    common_args, self.optimizer_args, momentum1
-                ),
-            )
+            if self.use_accumulate and self.grad_accum.current_accumulate_step == self.accumulate_step:
+                indices_multi_step = torch.cat(self.grad_accum.indice_multi_step)
+                offsets_multi_step = torch.arange(indices_multi_step.shape[0] + 1).to(DEVICE)
+
+                unique_multi_step, unique_inverse_multi_step, unique_offset_multi_step = (
+                    self.grad_accum.do_multi_step_unique()
+                )
+                unique_offset_multi_step = unique_offset_multi_step.to(DEVICE)
+                table_offsets_multi = self.grad_accum.do_table_offsets(True, offsets)
+                table_offsets_multi = table_offsets_multi.to(DEVICE).to(torch.int64)
+
+                common_args_multi_step = self.create_common_args_aggregation(
+                    CommonArgsAggregationInput(indices, offsets, vbe_metadata, feature_requires_grad, hash_indices,
+                                               per_sample_weights, unique_indices, unique_inverse, unique_offset,
+                                               table_grad_accumulate_offsets, grad_accumulate, grad_accumulate_offsets,
+                                               use_optimize, table_offsets_multi, indices_multi_step,
+                                               offsets_multi_step, unique_multi_step, unique_offset_multi_step,
+                                               unique_inverse_multi_step)
+                )
+                self.grad_accum.current_accumulate_step = 0
+
+                result = invokers.lookup_adagrad.invoke_grad_aggregation(
+                    common_args_multi_step,
+                    self.optimizer_args,
+                    momentum1,
+                    iteration=self.iter[0],
+                )
+                if result.requires_grad:
+                    result.register_hook(self.clear_after_accumulate)
+                return self._report_io_size_count(
+                        "fwd_output",
+                        result)
+            else:
+                return self._report_io_size_count(
+                    "fwd_output",
+                    invokers.lookup_adagrad.invoke(
+                        common_args, self.optimizer_args, momentum1
+                    ),
+                )
         elif self.optimizer == OptimType.ADAM:
             return self._report_io_size_count(
                 "fwd_output",
@@ -167,7 +405,6 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         )
         if not self.iter.is_cpu:
             self.iter = self.iter.cpu()
-        self.iter[0] += 1
         momentum2 = invokers.lookup_args.Momentum(
             dev=self.momentum2_dev,
             host=self.momentum2_host,
@@ -217,8 +454,67 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             use_uniq_cache_locations_bwd=self.use_uniq_cache_locations_bwd,
             use_homogeneous_placements=self.use_homogeneous_placements,
             learning_rate=self.get_learning_rate() if IS_TORCH_REC_120 else 0.0,
+            table_grad_accumulate_offsets=args_input.table_grad_accumulate_offsets,
+            grad_accumulate=args_input.grad_accumulate,
+            grad_accumulate_offsets=args_input.grad_accumulate_offsets,
+            use_optimize=args_input.use_optimize,
         )
         return common_args
+
+
+    def create_common_args_aggregation(self, args_input: CommonArgsAggregationInput):
+        common_args = invokers.lookup_args.HybridCommonArgsAggregation(
+            placeholder_autograd_tensor=self.placeholder_autograd_tensor,
+            dev_weights=self.weights_dev,
+            host_weights=self.weights_host,
+            uvm_weights=self.weights_uvm,
+            lxu_cache_weights=self.lxu_cache_weights,
+            weights_placements=self.weights_placements,
+            weights_offsets=self.weights_offsets,
+            D_offsets=self.D_offsets,
+            total_D=self.total_D,
+            max_D=self.max_D,
+            hash_size_cumsum=self.hash_size_cumsum,
+            total_hash_size_bits=self.total_hash_size_bits,
+            indices=args_input.indices,
+            offsets=args_input.offsets,
+            hash_indices=args_input.hash_indices,
+            unique_indices=args_input.unique_indices,
+            unique_offset=args_input.unique_offset,
+            unique_inverse=args_input.unique_inverse,
+            hash_indices2address=None,
+            pooling_mode=self.pooling_mode,
+            indice_weights=args_input.per_sample_weights,
+            feature_requires_grad=args_input.feature_requires_grad,
+            lxu_cache_locations=self.lxu_cache_locations,
+            uvm_cache_stats=(
+                self.local_uvm_cache_stats
+                if (
+                        self.gather_uvm_cache_stats
+                        # Unique conflict misses are only collected when using CacheAlgorithm.LRU
+                        and self.cache_algorithm == CacheAlgorithm.LRU
+                )
+                else None
+            ),
+            output_dtype=self.output_dtype,
+            vbe_metadata=args_input.vbe_metadata,
+            is_experimental=self.is_experimental,
+            use_uniq_cache_locations_bwd=self.use_uniq_cache_locations_bwd,
+            use_homogeneous_placements=self.use_homogeneous_placements,
+            learning_rate=self.get_learning_rate() if IS_TORCH_REC_120 else 0.0,
+            table_grad_accumulate_offsets=args_input.table_grad_accumulate_offsets,
+            grad_accumulate=args_input.grad_accumulate,
+            grad_accumulate_offsets=args_input.grad_accumulate_offsets,
+            use_optimize=args_input.use_optimize,
+            table_offsets_multi=args_input.table_offsets_multi,
+            indices_multi_step=args_input.indices_multi_step,
+            offsets_multi_step=args_input.offsets_multi_step,
+            unique_multi_step=args_input.unique_multi_step,
+            unique_offset_multi_step=args_input.unique_offset_multi_step,
+            unique_inverse_multi_step=args_input.unique_inverse_multi_step
+        )
+        return common_args
+
 
     def check_preprocess(self, indices, offsets, vbe_metadata):
         if not is_torchdynamo_compiling():
