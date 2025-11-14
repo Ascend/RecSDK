@@ -33,6 +33,19 @@ ge::graphStatus GetNormalAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBac
     OPS_CHECK_PTR_NULL(siluScale, return ge::GRAPH_FAILED);
     tiling.set_siluScale(*siluScale);
 
+    const auto targetGroupSizePtr = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_4);
+    if (targetGroupSizePtr != nullptr) {
+        tiling.set_targetGroupSize(*targetGroupSizePtr);
+    } else {
+        tiling.set_targetGroupSize(0);
+    }
+
+    const float *alpha = attrs->GetAttrPointer<float>(INDEX_T::INDEX_5);
+    if (alpha != nullptr) {
+        tiling.set_alpha(*alpha);
+    } else {
+        tiling.set_alpha(1.0);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -49,7 +62,7 @@ ge::graphStatus GetNormalBasicShapeInfo(gert::TilingContext *context, HstuDenseB
     int64_t seqLen = gradShape.GetDim(INDEX_T::INDEX_1);
     int64_t headNum = gradShape.GetDim(INDEX_T::INDEX_2);
     int64_t headDim = gradShape.GetDim(INDEX_T::INDEX_3);
-    int64_t biasGradSeqLen = attnBiasGradShape.GetDim(INDEX_T::INDEX_2);
+    int32_t biasGradSeqLen = attnBiasGradShape.GetDim(INDEX_T::INDEX_2);
 
     OPS_CHECK(biasGradSeqLen < maxSeqLen,
                 OPS_LOG_E("", "attnBiasGrad get seqLen less than maxSeqLen\n"),
@@ -60,7 +73,6 @@ ge::graphStatus GetNormalBasicShapeInfo(gert::TilingContext *context, HstuDenseB
     tiling.set_headNum(headNum);
     tiling.set_headDim(headDim);
     tiling.set_biasGradSeqLen(biasGradSeqLen);
-
     tiling.set_isNormal(1);
 
     OPS_CHECK(!BasicShapeCheck(batchSize, seqLen, headNum, headDim),
@@ -77,26 +89,40 @@ ge::graphStatus CheckMaskTypeAndBias(gert::TilingContext *context,
     auto maxSeqLen = tiling.get_maxSeqLen();
     auto maskType = tiling.get_maskType();
 
-    auto attnBias = context->GetOptionalInputTensor(INDEX_T::INDEX_5);
+    auto attnBias = context->GetOptionalInputTensor(INPUT_INDEX_T::ATTN_BIAS_INDEX);
     if (attnBias == nullptr) {
         tiling.set_enableBias(0);
     } else {
         tiling.set_enableBias(1);
 
-        auto attnBiasGradShape = context->GetOutputShape(INDEX_T::INDEX_3)->GetStorageShape();
-        auto attnBiasShape = context->GetInputShape(INDEX_T::INDEX_5)->GetStorageShape();
+        auto attnBiasGradShape = context->GetOutputShape(OUTPUT_INDEX_T::ATTN_BIAS_GRAD_INDEX)->GetStorageShape();
+        auto attnBiasShape = context->GetInputShape(INPUT_INDEX_T::ATTN_BIAS_INDEX)->GetStorageShape();
         OPS_CHECK(!IsSameShape(attnBiasShape, attnBiasGradShape, BIAS_DIM_NUM),
                     OPS_LOG_E("", "attnBias shape not equal with attnBiasGrad\n"),
                     return ge::GRAPH_FAILED);
     }
 
+    auto contextMask = context->GetOptionalInputTensor(INPUT_INDEX_T::NUM_CONTEXT_INDEX);
+    if (contextMask == nullptr) {
+        tiling.set_enableContextMask(0);
+    } else {
+        tiling.set_enableContextMask(1);
+    }
+
+    auto targetMask = context->GetOptionalInputTensor(INPUT_INDEX_T::NUM_TARGET_INDEX);
+    if (targetMask == nullptr) {
+        tiling.set_enableTargetMask(0);
+    } else {
+        tiling.set_enableTargetMask(1);
+    }
+
     if (IfMask(maskType, MaskType::MASK_CUSTOM)) {
-        auto mask = context->GetOptionalInputTensor(INDEX_T::INDEX_4);
+        auto mask = context->GetOptionalInputTensor(INPUT_INDEX_T::MASK_INDEX);
         OPS_CHECK(mask == nullptr,
                     OPS_LOG_E("", "mask can't be none when maskType is MASK_CUSTOM\n"),
                     return ge::GRAPH_FAILED);
 
-        auto maskShape = context->GetInputShape(INDEX_T::INDEX_4)->GetStorageShape();
+        auto maskShape = context->GetInputShape(INPUT_INDEX_T::MASK_INDEX)->GetStorageShape();
         OPS_CHECK(maskShape.GetDimNum() != MASK_DIM_NUM,
                     OPS_LOG_E("", "mask dim num is not %d\n", MASK_DIM_NUM),
                     return ge::GRAPH_FAILED);
@@ -124,7 +150,7 @@ ge::graphStatus CheckMaskTypeAndBias(gert::TilingContext *context,
 ge::graphStatus InitNormalTilingKey(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
 {
     int64_t dataTypeLength = 0;
-    ge::DataType gradType = context->GetInputTensor(INDEX_T::INDEX_0)->GetDataType();
+    ge::DataType gradType = context->GetInputTensor(INPUT_INDEX_T::GRAD_INDEX)->GetDataType();
     if (gradType == ge::DataType::DT_FLOAT) {
         dataTypeLength = DATA_TYPE_LENGTH_FLOAT;
         context->SetTilingKey(FLOAT_TILING_KEY);
@@ -167,19 +193,19 @@ ge::graphStatus TilingNormalFunc(gert::TilingContext *context,
 
 ge::graphStatus NormalInferShape(gert::InferShapeContext *context)
 {
-    const gert::Shape *qShape = context->GetInputShape(INDEX_T::INDEX_1);
+    const gert::Shape *qShape = context->GetInputShape(INPUT_INDEX_T::Q_INDEX);
     OPS_CHECK_PTR_NULL(qShape, return ge::GRAPH_FAILED);
 
     // q_grad、k_grad、v_grad的shape与q一致
-    gert::Shape *qGradShape = context->GetOutputShape(INDEX_T::INDEX_0);
+    gert::Shape *qGradShape = context->GetOutputShape(OUTPUT_INDEX_T::Q_GRAD_INDEX);
     OPS_CHECK_PTR_NULL(qGradShape, return ge::GRAPH_FAILED);
     qGradShape->SetDimNum(qShape->GetDimNum());
 
-    gert::Shape *kGradShape = context->GetOutputShape(INDEX_T::INDEX_1);
+    gert::Shape *kGradShape = context->GetOutputShape(OUTPUT_INDEX_T::K_GRAD_INDEX);
     OPS_CHECK_PTR_NULL(kGradShape, return ge::GRAPH_FAILED);
     kGradShape->SetDimNum(qShape->GetDimNum());
 
-    gert::Shape *vGradShape = context->GetOutputShape(INDEX_T::INDEX_2);
+    gert::Shape *vGradShape = context->GetOutputShape(OUTPUT_INDEX_T::V_GRAD_INDEX);
     OPS_CHECK_PTR_NULL(vGradShape, return ge::GRAPH_FAILED);
     vGradShape->SetDimNum(qShape->GetDimNum());
 
@@ -189,7 +215,7 @@ ge::graphStatus NormalInferShape(gert::InferShapeContext *context)
         vGradShape->SetDim(i, qShape->GetDim(i));
     }
 
-    gert::Shape *attnBiasGradShape = context->GetOutputShape(INDEX_T::INDEX_3);
+    gert::Shape *attnBiasGradShape = context->GetOutputShape(OUTPUT_INDEX_T::ATTN_BIAS_GRAD_INDEX);
     OPS_CHECK_PTR_NULL(attnBiasGradShape, return ge::GRAPH_FAILED);
     attnBiasGradShape->SetDimNum(BIAS_DIM_NUM);
     attnBiasGradShape->SetDim(INDEX_T::INDEX_0, qShape->GetDim(INDEX_T::INDEX_0));
