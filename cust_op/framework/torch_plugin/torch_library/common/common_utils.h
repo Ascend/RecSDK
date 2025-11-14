@@ -13,7 +13,8 @@
 
 #include <ATen/ATen.h>
 #include <string>
-
+#include <vector>
+#include <algorithm>
 /**
  * @file common_utils.h
  * @brief 常用张量检查工具函数
@@ -76,6 +77,36 @@ inline void check_tensor_npu_device(const std::vector<at::Tensor>& tensors,
                     ") must match ", names[0], " device ID (", expected_device_id, ")");
     }
 }
+
+class ShapeRange {
+public:
+    int64_t lbound{0};
+    int64_t ubound{0};
+    int64_t mutiple{0};
+    const char* name{nullptr};
+    ShapeRange(int64_t lbound, int64_t ubound, int64_t mutiple, const char* name)
+    {
+        this->lbound = lbound;
+        this->ubound = ubound;
+        this->mutiple = mutiple;
+        this->name = name;
+    }
+
+    bool Check(int64_t val) const
+    {
+        if (val < lbound || val > ubound || val % mutiple != 0) {
+            return false;
+        }
+        return true;
+    }
+};
+
+
+inline bool CheckInList(int64_t val, const std::vector<int64_t>& validValues)
+{
+    return std::find(validValues.begin(), validValues.end(), val) != validValues.end();
+}
+
 
 /**
  * 检查参数列表长度是否符合预期
