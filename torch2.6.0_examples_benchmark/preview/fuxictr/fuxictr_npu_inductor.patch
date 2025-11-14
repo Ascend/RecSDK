@@ -1,5 +1,5 @@
 diff --git a/fuxictr/pytorch/models/rank_model.py b/fuxictr/pytorch/models/rank_model.py
-index 1ce33aa..519d9da 100644
+index 1ce33aa..ab355ab 100644
 --- a/fuxictr/pytorch/models/rank_model.py
 +++ b/fuxictr/pytorch/models/rank_model.py
 @@ -19,6 +19,7 @@
@@ -129,6 +129,34 @@ diff --git a/model_zoo/EDCN/run_expid.py b/model_zoo/EDCN/run_expid.py
 index 19adc38..0121133 100644
 --- a/model_zoo/EDCN/run_expid.py
 +++ b/model_zoo/EDCN/run_expid.py
+@@ -66,22 +66,4 @@ if __name__ == '__main__':
+     model.count_parameters() # print number of parameters used in model
+ 
+     train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
+-    model.fit(train_gen, validation_data=valid_gen, **params)
+-
+-    logging.info('****** Validation evaluation ******')
+-    valid_result = model.evaluate(valid_gen)
+-    del train_gen, valid_gen
+-    gc.collect()
+-    
+-    test_result = {}
+-    if params["test_data"]:
+-        logging.info('******** Test evaluation ********')
+-        test_gen = RankDataLoader(feature_map, stage='test', **params).make_iterator()
+-        test_result = model.evaluate(test_gen)
+-    
+-    result_filename = Path(args['config']).name.replace(".yaml", "") + '.csv'
+-    with open(result_filename, 'a+') as fw:
+-        fw.write(' {},[command] python {},[exp_id] {},[dataset_id] {},[train] {},[val] {},[test] {}\n' \
+-            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
+-                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
+-                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
++    model.predict(valid_gen)
+diff --git a/model_zoo/EulerNet/run_expid.py b/model_zoo/EulerNet/run_expid.py
+index effe553..7bf1997 100644
+--- a/model_zoo/EulerNet/run_expid.py
++++ b/model_zoo/EulerNet/run_expid.py
 @@ -66,22 +66,4 @@ if __name__ == '__main__':
      model.count_parameters() # print number of parameters used in model
  
