@@ -16,21 +16,15 @@
 
 set -e
 
+
 # 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
+msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")
-onnx_path=$(dirname "$(readlink -f "$0")")/../../../build/scripts/onnx_plugin
-json_file=$onnx_path/json.hpp
 export PATH=$parent_dir:$PATH
 
 
 VALID_AI_CORES=(
-    "ai_core-Ascend910B1"
-    "ai_core-Ascend910B2"
-    "ai_core-Ascend910B3"
-    "ai_core-Ascend910B4"
-    "ai_core-Ascend910_93"
-    "ai_core-Ascend310P3"
+    "ai_core-Ascend910_95"
 )
 
 validate_ai_core() {
@@ -45,31 +39,23 @@ validate_ai_core() {
     exit 1
 }
 
-ai_core="ai_core-Ascend910B1"
+ai_core="ai_core-Ascend910_95"
 if [ "$#" -eq 1 ]; then
   ai_core="$1"
   validate_ai_core $ai_core
 fi
 
 # 利用msopgen生成可编译文件
-rm -rf ./gather_for_rank1
-python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i gather_for_rank1.json -f tf -c ${ai_core} -lan cpp -out ./gather_for_rank1 -m 0 -op GatherForRank1
-rm -rf gather_for_rank1/op_kernel/*.h
-rm -rf gather_for_rank1/op_kernel/*.cpp
-rm -rf gather_for_rank1/op_host/*.h
-rm -rf gather_for_rank1/op_host/*.cpp
-cp -rf op_kernel gather_for_rank1/
-cp -rf op_host gather_for_rank1/
+rm -rf ./index_select_for_rank1_backward
+python3 $msopgen_path gen -i ../v220/index_select_for_rank1_backward.json -f tf -c ${ai_core} -lan cpp -out ./index_select_for_rank1_backward -m 0 -op IndexSelectForRank1Backward
+rm -rf index_select_for_rank1_backward/op_kernel/*.h
+rm -rf index_select_for_rank1_backward/op_kernel/*.cpp
+rm -rf index_select_for_rank1_backward/op_host/*.h
+rm -rf index_select_for_rank1_backward/op_host/*.cpp
+cp -rf ../v220/op_kernel/* index_select_for_rank1_backward/op_kernel/
+cp -rf ../v220/op_host index_select_for_rank1_backward/
 
-#onnx适配层
-if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-  bash $onnx_path/build_onnx.sh
-  mkdir -p gather_for_rank1/framework/onnx_plugin
-  cp -rf $json_file gather_for_rank1/framework/onnx_plugin
-  cp -rf ../onnx_plugin/* gather_for_rank1/framework/onnx_plugin
-fi
-
-cd gather_for_rank1
+cd index_select_for_rank1_backward
 
 # 判断当前目录下是否存在CMakePresets.json文件
 if [ ! -f "CMakePresets.json" ]; then
@@ -87,19 +73,11 @@ fi
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
-sed -i 's:"customize":"gather_for_rank1":g' CMakePresets.json
+sed -i 's:"customize":"index_select_for_rank1_backward":g' CMakePresets.json
 
 line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`
 sed -i "${line}s/True/False/g" CMakePresets.json
-
-if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-  sed -i "1i #define SUPPORT_V200" ./op_host/gather_for_rank1.cpp
-  sed -i "1i #define SUPPORT_V200" ./op_kernel/gather_for_rank1_kernel.h
-  
-  add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../gather_for_rank1.json DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${vendor_name}_impl/dynamic)"
-  sed -i '$a\'"$add_cmake_line" ./op_kernel/CMakeLists.txt
-fi
 
 # 增加LOG_CPP编译选项支持错误日志打印
 sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
