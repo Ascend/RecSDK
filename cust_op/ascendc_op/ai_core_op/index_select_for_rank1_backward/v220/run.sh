@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,7 +42,6 @@ validate_ai_core() {
     done
     echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
     exit 1
-    return 1
 }
 
 ai_core="ai_core-Ascend910B1"
@@ -56,8 +55,8 @@ rm -rf ./index_select_for_rank1_backward
 python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i index_select_for_rank1_backward.json -f tf -c ${ai_core} -lan cpp -out ./index_select_for_rank1_backward -m 0 -op IndexSelectForRank1Backward
 rm -rf index_select_for_rank1_backward/op_kernel/*.h
 rm -rf index_select_for_rank1_backward/op_kernel/*.cpp
-rm -rf index_select_for_rank1_backward/host/*.h
-rm -rf index_select_for_rank1_backward/host/*.cpp
+rm -rf index_select_for_rank1_backward/op_host/*.h
+rm -rf index_select_for_rank1_backward/op_host/*.cpp
 cp -rf op_kernel index_select_for_rank1_backward/
 cp -rf op_host index_select_for_rank1_backward/
 
@@ -73,7 +72,9 @@ fi
 sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
-sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
+    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+fi
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
