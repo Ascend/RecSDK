@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
-
 #include <cstdint>
 #include "c10/core/ScalarType.h"
 #include "hstu_common.h"
@@ -103,11 +102,20 @@ at::Tensor hstu_jagged_forward_impl_npu(
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_impl_npu(
-    const at::Tensor& grad, const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
-    const c10::optional<at::Tensor> mask, const c10::optional<at::Tensor> attnBias, const int64_t maskType,
-    const int64_t maxSeqLen, const double siluScale, const at::Tensor& seqOffset,
-    const c10::optional<at::Tensor>& numContext, const c10::optional<at::Tensor>& numTarget,
-    const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha)
+    const at::Tensor& grad,
+    const at::Tensor& q,
+    const at::Tensor& k,
+    const at::Tensor& v,
+    const c10::optional<at::Tensor> mask,
+    const c10::optional<at::Tensor> attnBias,
+    const int64_t maskType,
+    const int64_t maxSeqLen,
+    const double siluScale,
+    const at::Tensor& seqOffset,
+    const c10::optional<at::Tensor>& numContext,
+    const c10::optional<at::Tensor>& numTarget,
+    const c10::optional<int64_t>& targetGroupSize,
+    const c10::optional<double>& alpha)
 {
     TORCH_CHECK(grad.dim() == CONST_3, "The grad should be 3D in jagged layout");
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
@@ -236,9 +244,26 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
 
     const char* layout = "jagged";
 
-    EXEC_NPU_CMD(aclnnHstuDenseBackward, denseGrad, denseQ, denseK, denseV, denseMask, denseAttnBias, acSeqOffset,
-                 denseNumContext, denseNumTarget, layout, maskType, maxSeqLen, realSiluScale, acTargetGroupSize,
-                 realAlpha, qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
+    EXEC_NPU_CMD(aclnnHstuDenseBackward,
+                 denseGrad,
+                 denseQ,
+                 denseK,
+                 denseV,
+                 denseMask,
+                 denseAttnBias,
+                 acSeqOffset,
+                 denseNumContext,
+                 denseNumTarget,
+                 layout,
+                 maskType,
+                 maxSeqLen,
+                 realSiluScale,
+                 acTargetGroupSize,
+                 realAlpha,
+                 qGradOutput,
+                 kGradOutput,
+                 vGradOutput,
+                 attnBiasGradOutput);
 
     if (denseAttnBias.defined()) {
         return std::make_tuple(qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
