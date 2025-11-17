@@ -50,10 +50,11 @@ bool TilingPolicyNormalv200::GeneralShapeCheck(int64_t batchSize, int64_t seqLen
     return true;
 }
 
-bool TilingPolicyNormalv200::TilingHeighLevelApi(gert::TilingContext* context,
-                                                 optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicyNormalv200::TilingHighLevelApi(gert::TilingContext* context,
+                                                optiling::HstuDenseForwardTilingData& tiling)
 {
     int64_t dim = tiling.get_dim();
+
     matmul_tiling::DataType dataType;
     OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return false);
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
@@ -130,12 +131,11 @@ bool TilingPolicyNormalv200::TilingHeighLevelApi(gert::TilingContext* context,
     return true;
 }
 
-bool TilingPolicyNormalv200::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicyNormalv200::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
-    OPS_LOG_E_IF_NULL("QShape", context->GetInputTensor(0), return false);
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT16) {
-        context->SetTilingKey(FLOAT16_TILING_KEY);
+        context->SetTilingKey(NORMAL_TILING_KEY);
     } else {
         OPS_LOG_E("", "invalid datatype, only support fp16.\n");
         return false;
@@ -149,20 +149,20 @@ bool TilingPolicyNormalv200::TilingAttribute(gert::TilingContext* context, optil
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OPS_CHECK_PTR_NULL(attrs, return false);
 
-    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(INDEX_T::INDEX_0);
+    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MASKTYPE_INDEX);
     OPS_CHECK_PTR_NULL(maskType, return false);
     if (*maskType != static_cast<uint32_t>(MASK_TYPE::MASK_CUSTOM)) {
         OPS_LOG_E("", "maskType is only support MASK_CUSTOM\n");
         return false;
     }
 
-    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(INDEX_T::INDEX_1);
+    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MAX_SEQ_Q_INDEX);
     OPS_CHECK_PTR_NULL(maxSeqLen, return false);
 
-    const float *siluScale = attrs->GetAttrPointer<float>(INDEX_T::INDEX_2);
+    const float *siluScale = attrs->GetAttrPointer<float>(ATTR_INDEX_T::SILU_SCALE_INDEX);
     OPS_CHECK_PTR_NULL(siluScale, return false);
 
-    auto biasTensor = context->GetOptionalInputTensor(INDEX_T::INDEX_4);
+    auto biasTensor = context->GetOptionalInputTensor(INPUT_INDEX_T::ATTN_BIAS_INDEX);
     if (biasTensor == nullptr) {
         tiling.set_enableBias(0);
     } else {
@@ -174,4 +174,4 @@ bool TilingPolicyNormalv200::TilingAttribute(gert::TilingContext* context, optil
     tiling.set_maxSeqLen(*maxSeqLen);
     return true;
 }
-}
+} // namespace HstuDenseForward

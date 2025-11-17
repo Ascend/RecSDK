@@ -14,22 +14,24 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 
-#ifndef TILING_POLICY_JAGGED_H
-#define TILING_POLICY_JAGGED_H
+#ifndef TILING_POLICY_PAGED_H
+#define TILING_POLICY_PAGED_H
 
 #include "tiling_policy.h"
+#include "tiling_policy_jagged.h"
 
 namespace HstuDenseForward {
     
-class TilingPolicyJagged : public TilingPolicy {
-private:
+class TilingPolicyPaged : public TilingPolicyJagged {
+public:
+    bool TilingWorkSpace(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
     bool TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
-
-    bool TilingCore(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
-
     bool TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
+    
+private:
+    bool TilingShapePaged(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling);
 };
 
 }
 
-#endif
+#endif // TILING_POLICY_PAGED_H

@@ -41,15 +41,19 @@ TILING_DATA_FIELD_DEF(int32_t, svBaseN);
 #ifdef SUPPORT_V200
     TILING_DATA_FIELD_DEF(int32_t, tmpUbSize);
 #else
-    TILING_DATA_FIELD_DEF_ARR(uint32_t, (HstuDenseForward::MAX_BATCH_SIZE + 1), seqOffset);
-    TILING_DATA_FIELD_DEF_ARR(uint32_t, HstuDenseForward::MAX_AIV_NUM, eachCoreStartBlockId);
-    TILING_DATA_FIELD_DEF_ARR(uint32_t, HstuDenseForward::MAX_AIV_NUM, eachCoreEndBlockId);
+    TILING_DATA_FIELD_DEF(int64_t, pageSize);
 #endif
 
 TILING_DATA_FIELD_DEF(uint32_t, enableBias);
 TILING_DATA_FIELD_DEF(uint32_t, maskType);
 TILING_DATA_FIELD_DEF(int64_t, maxSeqLen);
 TILING_DATA_FIELD_DEF(float, siluScale);
+TILING_DATA_FIELD_DEF(int64_t, maxSeqLenq);
+TILING_DATA_FIELD_DEF(int64_t, maxSeqLenk);
+TILING_DATA_FIELD_DEF(bool, enableNumContext);
+TILING_DATA_FIELD_DEF(bool, enableNumTarget);
+TILING_DATA_FIELD_DEF(int64_t, targetGroupSize);
+TILING_DATA_FIELD_DEF(float, alpha);
 
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(HstuDenseForward, HstuDenseForwardTilingData)
