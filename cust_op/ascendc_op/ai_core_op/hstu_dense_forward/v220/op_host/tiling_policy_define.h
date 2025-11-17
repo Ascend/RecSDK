@@ -35,14 +35,41 @@ namespace INDEX_T {
     constexpr int INDEX_5 = 5;
 }
 
-constexpr int FLOAT_TILING_KEY = 2;
-constexpr int BF16_TILING_KEY = 1;
-constexpr int FLOAT16_TILING_KEY = 0;
+namespace INPUT_INDEX_T {
+    constexpr int Q_INDEX = 0;
+    constexpr int K_INDEX = 1;
+    constexpr int V_INDEX = 2;
+    constexpr int MASK_INDEX = 3;
+    constexpr int ATTN_BIAS_INDEX = 4;
+    constexpr int SEQ_OFFSET_Q_INDEX = 5;
+    constexpr int SEQ_OFFSET_K_INDEX = 6;
+    constexpr int SEQ_OFFSET_T_INDEX = 7;
+    constexpr int KV_CACHE_INDEX = 8;
+    constexpr int PAGE_OFFSETS_INDEX = 9;
+    constexpr int PAGE_IDS_INDEX = 10;
+    constexpr int LAST_PAGE_LEN_INDEX = 11;
+    constexpr int NUM_CONTEXT_INDEX = 12;
+    constexpr int NUM_TARGET_INDEX = 13;
+}
 
-constexpr int JAGGED_TILING_KEY_OFFSET = 3;
-constexpr int JAGGED_FLOAT16_TILING_KEY = FLOAT16_TILING_KEY + JAGGED_TILING_KEY_OFFSET;
-constexpr int JAGGED_FLOAT_TILING_KEY = FLOAT_TILING_KEY + JAGGED_TILING_KEY_OFFSET;
-constexpr int JAGGED_BF16_TILING_KEY = BF16_TILING_KEY + JAGGED_TILING_KEY_OFFSET;
+namespace ATTR_INDEX_T {
+    constexpr int MASKTYPE_INDEX = 0;
+    constexpr int MAX_SEQ_Q_INDEX = 1;
+    constexpr int MAX_SEQ_K_INDEX = 2;
+    constexpr int SILU_SCALE_INDEX = 3;
+    constexpr int LAYOUT_INDEX = 4;
+    constexpr int TARGET_GROUP_SIZE_INDEX = 5;
+    constexpr int IS_DELTA_QK_INDEX = 6;
+    constexpr int ALPHA_INDEX = 7;
+}
+
+constexpr int NORMAL_TILING_KEY = 0;
+constexpr int JAGGED_TILING_KEY = 1;
+constexpr int PAGED_TILING_KEY = 2;
+
+constexpr int NORMAL_DIM_NUM = 4;
+constexpr int JAGGED_DIM_NUM = 3;
+constexpr int CONTEXT_DIM_NUM = 1;
 
 constexpr int MAX_AIV_NUM = 48;
 constexpr int MAX_BATCH_SIZE = 2048;
@@ -56,13 +83,17 @@ constexpr int COMPUTE_PIPE_NUM = 3;
 constexpr int TRANS_PIPE_NUM = 4;
 constexpr int TRANS_TASK_NUM = 3;
 
+constexpr int MAX_NUM_CONTEXT = BLOCK_HEIGHT;
+constexpr int MAX_NUM_TARGET = 512;
+
+constexpr int MIN_PAGE_SIZE = 32;
+
 enum class MASK_TYPE {
     MASK_TRIL = 0,
     MATRIX_TRIU = 1,
     MATRIX_NONE = 2,
     MATRIX_CUSTOM = 3,
 };
-
 }
 
 #endif
