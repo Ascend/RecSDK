@@ -24,23 +24,10 @@ class HstuDenseForwardKernelv200 : public HstuDenseForwardKernel<qType> {
 public:
     __aicore__ inline HstuDenseForwardKernelv200() {}
 
-    __aicore__ inline void PreInit(const HstuDenseForwardTilingData *__restrict tilingDataPtr,
-        int64_t& lenOfThisCore, int64_t& offsetOfThisCore)
+    __aicore__ inline void PreInit(const HstuDenseForwardTilingData* __restrict tilingDataPtr)
     {
         seqBlockNumQk = this->xDim1 / this->blockHeight;
         qkTotalBlock = this->xDim0 * this->xDim2 * seqBlockNumQk;
-
-        int64_t cubeCoreLen = qkTotalBlock / GetBlockNum();
-        int64_t cubeCoreSplitId = qkTotalBlock % GetBlockNum();
-        if (GetBlockIdx() / SPLIT_CORE >= cubeCoreSplitId) {
-            lenOfThisCore = cubeCoreLen;
-            offsetOfThisCore =
-                cubeCoreSplitId * (cubeCoreLen + 1) + (GetBlockIdx() / SPLIT_CORE - cubeCoreSplitId) * cubeCoreLen;
-            return;
-        }
-
-        lenOfThisCore = cubeCoreLen + 1;
-        offsetOfThisCore = GetBlockIdx() / SPLIT_CORE * (cubeCoreLen + 1);
     }
 
     __aicore__ inline void DoQkMatmul(QkMatmulArgs& qkPosArgs)
@@ -65,16 +52,28 @@ public:
 
     __aicore__ inline void Compute(const HstuDenseForwardTilingData *__restrict tilingDataPtr)
     {
-        int64_t lenOfThisCore;
-        int64_t offsetOfThisCore;
-        PreInit(tilingDataPtr, lenOfThisCore, offsetOfThisCore);
-
+        PreInit(tilingDataPtr);
         int64_t taskId = 0;
         int64_t transTaskId = 0;
 
+        int64_t cubeCoreLen = qkTotalBlock / GetBlockNum();
+        int64_t cubeCoreSplitId = qkTotalBlock % GetBlockNum();
+
         int64_t blockNumOfOneBatch = this->xDim2 * seqBlockNumQk;
         int64_t blockNumOfOneHead = seqBlockNumQk;
-        
+
+        int64_t lenOfThisCore;
+        int64_t offsetOfThisCore;
+
+        if (GetBlockIdx() / SPLIT_CORE >= cubeCoreSplitId) {
+            lenOfThisCore = cubeCoreLen;
+            offsetOfThisCore =
+                cubeCoreSplitId * (cubeCoreLen + 1) + (GetBlockIdx() / SPLIT_CORE - cubeCoreSplitId) * cubeCoreLen;
+        } else {
+            lenOfThisCore = cubeCoreLen + 1;
+            offsetOfThisCore = GetBlockIdx() / SPLIT_CORE * (cubeCoreLen + 1);
+        }
+
         SVTransArgs lastSvTrans;
         SVTransArgs lastLastSvTrans;
 
