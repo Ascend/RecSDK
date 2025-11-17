@@ -636,6 +636,6 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
            torch::dispatch(c10::DispatchKey::Autograd,
                            TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_adam_function_pt2)));
     m.impl("split_embedding_codegen_lookup_adam_function_pt2",
-           torch::dispatch(c10::DispatchKey::Autograd,
+           torch::dispatch(c10::DispatchKey::PrivateUse1,
                            TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_adam_function_pt2)));
 }
