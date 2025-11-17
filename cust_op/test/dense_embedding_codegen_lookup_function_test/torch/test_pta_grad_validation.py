@@ -71,6 +71,7 @@ def call_dense_embedding_lookup_grad(params):
         maxB=0,
         maxBFeatureRank=0,
         vbeOutputSize=0,
+        mixed_D=False,
     )
     return result
 
@@ -244,6 +245,7 @@ def test_maxd_alignment_validation():
             maxB=0,
             maxBFeatureRank=0,
             vbeOutputSize=0,
+            mixed_D=False,
         )
 
     logger.info("MaxD alignment validation with invalid value passed")
