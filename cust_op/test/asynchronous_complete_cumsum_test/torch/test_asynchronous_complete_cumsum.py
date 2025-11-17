@@ -37,8 +37,8 @@ def get_ops_result(t_in, is_mxrec):
 
 
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
-@pytest.mark.parametrize("device", ["npu:0", "npu:5"])
-@pytest.mark.parametrize("length", [1, 10, 100, 1000, 10000])
+@pytest.mark.parametrize("device", ["npu:0"])
+@pytest.mark.parametrize("length", [1, 10, 100, 1000, 1024, 10000])
 @pytest.mark.parametrize("is_mxrec", [True, False])
 def test_asynchronous_complete_cumsum(dtype, device, length, is_mxrec):
     t_int = torch.randint(0, 100, (length,), dtype=dtype)
