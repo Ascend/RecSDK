@@ -57,32 +57,157 @@ index 29258f6f..07f37d41 100644
 +
 +split_table_batched_embeddings_ops_training.ComputeDevice = ComputeDevice
 diff --git a/torchrec/distributed/batched_embedding_kernel.py b/torchrec/distributed/batched_embedding_kernel.py
-index c24b912d..883a353d 100644
+index c24b912d..880154c6 100644
 --- a/torchrec/distributed/batched_embedding_kernel.py
 +++ b/torchrec/distributed/batched_embedding_kernel.py
-@@ -15,6 +15,7 @@ import logging
+@@ -14,7 +14,10 @@ import itertools
+ import logging
  import tempfile
  from collections import OrderedDict
++from itertools import accumulate
++from math import log2
  from dataclasses import dataclass
 +import enum
  from typing import (
      Any,
      cast,
-@@ -81,6 +82,13 @@ from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
+@@ -80,6 +83,135 @@ from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
+ 
  logger: logging.Logger = logging.getLogger(__name__)
  
- 
++def custom_init(
++        self,
++        embedding_specs: List[Tuple[int, int]],  # tuple of (rows, dims)
++        feature_table_map: Optional[List[int]] = None,  # [T]
++        weights_precision: SparseType = SparseType.FP32,
++        pooling_mode: PoolingMode = PoolingMode.SUM,
++        use_cpu: bool = False,
++        output_dtype: SparseType = SparseType.FP32,
++        use_mtia: bool = False,
++    ) -> None:  # noqa C901  # tuple of (rows, dims,)
++        super(DenseTableBatchedEmbeddingBagsCodegen, self).__init__()
++
++        self.pooling_mode = pooling_mode
++        self.weights_precision = weights_precision
++        self.output_dtype: int = output_dtype.as_int()
++        table_embedding_dtype = weights_precision.as_dtype()
++
++        self.use_cpu: bool = use_cpu
++        self.use_mtia: bool = use_mtia
++
++        assert not (use_cpu and use_mtia), "Cannot use CPU and MTIA at the same time"
++
++        if self.use_cpu or self.pooling_mode == PoolingMode.NONE:
++            assert output_dtype in [
++                SparseType.FP32,
++                SparseType.FP16,
++                SparseType.BF16,
++            ], "Fused pooled embedding quantization only supported for cuda."
++
++        # pyre-fixme[8]: Attribute has type `device`; used as `Union[int, device]`.
++        self.current_device: torch.device = (
++            torch.device("cpu")
++            if self.use_cpu
++            else (
++                torch.device(f"mtia:{torch.mtia.current_device()}")
++                if self.use_mtia
++                else (torch.npu.current_device() if torch.npu.is_available else torch.cuda.current_device())
++            )
++        )
++
++        self.embedding_specs = embedding_specs
++        (rows, dims) = zip(*embedding_specs)
++        T_ = len(self.embedding_specs)
++        assert T_ > 0
++
++        feature_table_map = (
++            feature_table_map if feature_table_map is not None else list(range(T_))
++        )
++        T = len(feature_table_map)
++        assert T_ <= T
++
++        feature_dims = [dims[t] for t in feature_table_map]
++        D_offsets = [0] + list(accumulate(feature_dims))
++        self.total_D = D_offsets[-1]
++        self.max_D = max(dims)
++        self.register_buffer(
++            "D_offsets",
++            torch.tensor(D_offsets, device=self.current_device, dtype=torch.int32),
++        )
++        assert self.D_offsets.numel() == T + 1
++
++        # Required for VBE
++        self.register_buffer(
++            "feature_dims",
++            torch.tensor(feature_dims, device="cpu", dtype=torch.int64),
++        )
++
++        hash_size_cumsum = [0] + list(accumulate(rows))
++        if hash_size_cumsum[-1] == 0:
++            self.total_hash_size_bits: int = 0
++        else:
++            self.total_hash_size_bits: int = int(log2(float(hash_size_cumsum[-1])) + 1)
++        # The last element is to easily access # of rows of each table by
++        # hash_size_cumsum[t + 1] - hash_size_cumsum[t]
++        hash_size_cumsum = [hash_size_cumsum[t] for t in feature_table_map] + [
++            hash_size_cumsum[-1]
++        ]
++        self.register_buffer(
++            "hash_size_cumsum",
++            torch.tensor(
++                hash_size_cumsum, device=self.current_device, dtype=torch.int64
++            ),
++        )
++        weights_offsets = [0] + list(
++            accumulate([row * dim for (row, dim) in embedding_specs])
++        )
++        self.weights = nn.Parameter(
++            torch.randn(
++                weights_offsets[-1],
++                device=self.current_device,
++                dtype=table_embedding_dtype,
++            )
++        )
++        for feature in range(T):
++            t = feature_table_map[feature]
++            row, dim = embedding_specs[t]
++            if (
++                self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()
++                != row * dim
++            ):
++                logging.info(
++                    f"row {row} dim {dim} feature {feature} t {t} {self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()}"
++                )
++            assert (
++                self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()
++                == row * dim
++            )
++            assert self.hash_size_cumsum[feature] == sum(
++                row for (row, _) in embedding_specs[:t]
++            )
++
++        self.weights_physical_offsets: List[int] = weights_offsets
++        weights_offsets = [weights_offsets[t] for t in feature_table_map]
++        self.register_buffer(
++            "weights_offsets",
++            torch.tensor(
++                weights_offsets, device=self.current_device, dtype=torch.int64
++            ),
++        )
++
++
++DenseTableBatchedEmbeddingBagsCodegen.__init__ = custom_init
++
 +class ComputeDevice(enum.IntEnum):
 +    CPU = 0
 +    CUDA = 1
 +    MTIA = 2
 +    NPU = 3
 +
-+
+ 
  def _populate_ssd_tbe_params(config: GroupedEmbeddingConfig) -> Dict[str, Any]:
      """
-     Construct SSD TBE params dict from config and fused params dict.
-@@ -1051,6 +1059,11 @@ class BatchedFusedEmbedding(BaseBatchedEmbedding[torch.Tensor], FusedOptimizerMo
+@@ -1051,6 +1183,11 @@ class BatchedFusedEmbedding(BaseBatchedEmbedding[torch.Tensor], FusedOptimizerMo
                  # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
                  # But the tensor will still be created on MTIA with device type "mtia".
                  managed.append(EmbeddingLocation.HOST)
@@ -94,7 +219,7 @@ index c24b912d..883a353d 100644
              else:
                  compute_devices.append(ComputeDevice.CPU)
                  managed.append(EmbeddingLocation.HOST)
-@@ -1537,6 +1550,11 @@ class BatchedFusedEmbeddingBag(
+@@ -1537,6 +1674,11 @@ class BatchedFusedEmbeddingBag(
                  # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
                  # But the tensor will still be created on MTIA with device type "mtia".
                  managed.append(EmbeddingLocation.HOST)
@@ -106,6 +231,15 @@ index c24b912d..883a353d 100644
              else:
                  compute_devices.append(ComputeDevice.CPU)
                  managed.append(EmbeddingLocation.HOST)
+@@ -1629,7 +1771,7 @@ class BatchedDenseEmbeddingBag(BaseBatchedEmbeddingBag[torch.Tensor]):
+         use_cpu: bool = (
+             device is None
+             or device.type == "cpu"
+-            or (not (torch.cuda.is_available() or torch.mtia.is_available()))
++            or (not (torch.cuda.is_available() or torch.mtia.is_available() or torch.npu.is_available()))
+         )
+         self._emb_module: DenseTableBatchedEmbeddingBagsCodegen = (
+             DenseTableBatchedEmbeddingBagsCodegen(
 diff --git a/torchrec/distributed/embedding_types.py b/torchrec/distributed/embedding_types.py
 index a4bdc11b..e40f6c70 100644
 --- a/torchrec/distributed/embedding_types.py
@@ -380,7 +514,7 @@ index 52909970..fad9df2d 100644
      )
  
 diff --git a/torchrec/distributed/planner/types.py b/torchrec/distributed/planner/types.py
-index 4bb0a4f4..d662b720 100644
+index 4bb0a4f4..de32722a 100644
 --- a/torchrec/distributed/planner/types.py
 +++ b/torchrec/distributed/planner/types.py
 @@ -38,8 +38,10 @@ from torchrec.distributed.types import (
@@ -440,11 +574,11 @@ index 4bb0a4f4..d662b720 100644
 +        check(len(self.sharding_types) <= MAX_MODULE_LOOP_TIMES, "sharding_types should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
 +        check(len(self.compute_kernels) <= MAX_MODULE_LOOP_TIMES, "compute_kernels should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
 +        for sharding_type in self.sharding_types:
-+            if sharding_type != "row_wise":
-+                raise ValueError(f"sharing_type only support row_wise, but got {sharding_type}")
++            if sharding_type not in ("row_wise", "data_parallel"):
++                raise ValueError(f"sharing_type only support row_wise, data_parallel, but got {sharding_type}")
 +        for compute_kernel in self.compute_kernels:
-+            if compute_kernel != "fused":
-+                raise ValueError(f"compute_kernel only support fused, but got {compute_kernel}")
++            if compute_kernel not in ("fused", "dense"):
++                raise ValueError(f"compute_kernel only support fused, dense, but got {compute_kernel}")
 +        check(self.min_partition is None , "min_partition should be None")
 +        check(self.pooling_factors == [POOLING_FACTOR] , f"pooling_factors should be [{POOLING_FACTOR}]")
 +        check(self.num_poolings == None , "num_poolings should be None")
@@ -555,7 +689,7 @@ index 69edabf9..bddd7c1c 100644
          )
  
 diff --git a/torchrec/distributed/types.py b/torchrec/distributed/types.py
-index 8085c415..e55a7d03 100644
+index 8085c415..24cdde9b 100644
 --- a/torchrec/distributed/types.py
 +++ b/torchrec/distributed/types.py
 @@ -78,6 +78,7 @@ from torch.distributed._shard.sharding_spec import (  # noqa
@@ -570,7 +704,7 @@ index 8085c415..e55a7d03 100644
          pg: Optional[dist.ProcessGroup] = None,
          output_dtensor: bool = False,
      ) -> None:
-+        
++
 +        if world_size < 1 or world_size > MAX_WORLD_SIZE:
 +            raise ValueError(f"world_size must be in range [1, {MAX_WORLD_SIZE}], but got {world_size}")
 +        if rank < 0 or rank >= world_size:
@@ -581,11 +715,10 @@ index 8085c415..e55a7d03 100644
          self.world_size = world_size
          self.rank = rank
          self.process_group: Optional[dist.ProcessGroup] = pg
-@@ -831,6 +840,8 @@ class ShardingEnv:
+@@ -831,6 +840,7 @@ class ShardingEnv:
          )
          self.output_dtensor: bool = output_dtensor
  
-+        
 +
      @classmethod
      def from_process_group(cls, pg: dist.ProcessGroup) -> "ShardingEnv":
@@ -601,6 +734,19 @@ index 9e19a736..8add180f 100644
 -    return size, (size[1], 1) if size else (torch.Size([0, 0]), (0, 1))
 +    return size, (size[1], 1) if size else (torch.Size([0, 0]), (0, 1))
 \ No newline at end of file
+diff --git a/torchrec/modules/embedding_configs.py b/torchrec/modules/embedding_configs.py
+index 0c41220e..06aca353 100644
+--- a/torchrec/modules/embedding_configs.py
++++ b/torchrec/modules/embedding_configs.py
+@@ -116,6 +116,8 @@ def pooling_type_to_str(pooling_type: PoolingType) -> str:
+         return "sum"
+     elif pooling_type.value == PoolingType.MEAN.value:
+         return "mean"
++    elif pooling_type.value == PoolingType.NONE.value:
++        return "none"
+     else:
+         raise ValueError(f"Unsupported pooling type {pooling_type}")
+ 
 diff --git a/torchrec/optim/apply_optimizer_in_backward.py b/torchrec/optim/apply_optimizer_in_backward.py
 index 99ba72df..423cabd7 100644
 --- a/torchrec/optim/apply_optimizer_in_backward.py
@@ -631,7 +777,7 @@ index 99ba72df..423cabd7 100644
          optimizer_class=optimizer_class,
          params=params,
 diff --git a/torchrec/optim/keyed.py b/torchrec/optim/keyed.py
-index 2f6b75d5..9ef25f69 100644
+index 2f6b75d5..5f970321 100644
 --- a/torchrec/optim/keyed.py
 +++ b/torchrec/optim/keyed.py
 @@ -28,6 +28,7 @@ import torch
@@ -649,7 +795,7 @@ index 2f6b75d5..9ef25f69 100644
 -        self, optims: List[Union[KeyedOptimizer, Tuple[str, KeyedOptimizer]]]
 +        self, optims: List[KeyedOptimizer]
      ) -> None:
-+        check(optims is not None and isinstance(optims, List) and len(optims) != 0, "optims should be List")
++        check(isinstance(optims, List), "optims should be List")
 +        check(len(optims) <= MAX_MODULE_LOOP_TIMES, "optims should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
 +
 +        for key_value in optims:

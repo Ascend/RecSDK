@@ -34,7 +34,10 @@ class Model(torch.nn.Module):
         return self._ebc
     
     def forward(self, batch: Batch):
-        result = self._ebc(batch.sparse_features)
-        result = permute_values(result, self.feature_num)
+        if isinstance(self._ebc, torch.nn.Embedding):
+            result = self._ebc(batch.sparse_features.values())
+        else:
+            result = self._ebc(batch.sparse_features)
+            result = permute_values(result, self.feature_num)
         loss = result.sum()
         return loss, result
