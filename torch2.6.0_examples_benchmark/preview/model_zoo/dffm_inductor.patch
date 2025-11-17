@@ -1,0 +1,155 @@
+diff --git a/torch2.6.0_examples_benchmark/preview/model_zoo/dffm.py b/torch2.6.0_examples_benchmark/preview/model_zoo/dffm.py
+index b305b2a1..4eaed2dc 100644
+--- a/torch2.6.0_examples_benchmark/preview/model_zoo/dffm.py
++++ b/torch2.6.0_examples_benchmark/preview/model_zoo/dffm.py
+@@ -370,36 +370,6 @@ def train(model, train_loader, eval_loader, device, args):
+     logger.info(f"Device: {device}")
+     logger.info(f"Trainning config: {json.dumps(vars(args), indent=2)}")
+ 
+-    prof_config = torch_npu.profiler._ExperimentalConfig(
+-        export_type=[
+-            torch_npu.profiler.ExportType.Text,
+-            torch_npu.profiler.ExportType.Db],
+-        profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
+-        msprof_tx=False,
+-        aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
+-        l2_cache=False,
+-        op_attr=False,
+-        data_simplification=False,
+-        record_op_args=False,
+-        gc_detect_threshold=None)
+-
+-    warmup_step_num = 1
+-    exec_step_num = 6
+-    prof_output_dir = os.path.join('./dffm.prof')
+-    prof = torch_npu.profiler.profile(
+-        activities=[
+-            torch_npu.profiler.ProfilerActivity.CPU,
+-            torch_npu.profiler.ProfilerActivity.NPU],
+-        schedule=torch_npu.profiler.schedule(wait=0, warmup=warmup_step_num, active=exec_step_num, repeat=1),
+-        on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(prof_output_dir),
+-        record_shapes=True,
+-        profile_memory=False,
+-        with_stack=False,
+-        with_modules=False,
+-        with_flops=False,
+-        experimental_config=prof_config)
+-
+-    prof.start()
+     for epoch in range(args.epoch_num):
+         model.train()
+         train_loss = 0.0
+@@ -415,7 +385,6 @@ def train(model, train_loader, eval_loader, device, args):
+             loss = model.build_loss(pred=logits, labels=labels)
+             loss.backward()
+             optimizer.step()
+-            prof.step()
+             train_loss += loss.item()
+             logging.info("Epoch %s - Batch %s - Loss %s", epoch, batch_idx, loss.item())
+             if args.train_batch_num & (batch_idx + 1) == args.train_batch_num:
+@@ -429,7 +398,7 @@ def train(model, train_loader, eval_loader, device, args):
+         logging.info("Epoch %s - Loss %s - Total avg Loss %s", epoch, loss.item(), train_loss / re_train_nums)
+ 
+         # evaluate
+-        eval_metrics = evaluate(model, eval_loader, device, prof)
++        eval_metrics = evaluate(model, eval_loader, device)
+         eval_metrics_loss = eval_metrics['loss']
+         logging.info("Eval Avg Loss %s", eval_metrics_loss)
+         logging.info("Eval Avg AUC %s", eval_metrics['auc'])
+@@ -444,7 +413,39 @@ def train(model, train_loader, eval_loader, device, args):
+                         f"Best Eval Loss: {best_eval_loss:.4f}")
+             if no_improve_epochs > args.early_stop_patience:
+                 logger.info(f"Early stop at epoch {epoch}")
+-    prof.stop()
++
++
++def get_profiler_config():
++    experimental_config = torch_npu.profiler._ExperimentalConfig(
++        export_type=torch_npu.profiler.ExportType.Text,
++        profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++        msprof_tx=False,
++        aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++        l2_cache=False,
++        op_attr=False,
++        data_simplification=False,
++        record_op_args=False
++    )
++    profiler_config = {
++        'activities': [torch_npu.profiler.ProfilerActivity.CPU,
++                       torch_npu.profiler.ProfilerActivity.NPU],
++        'schedule': torch_npu.profiler.schedule(
++            wait=0,
++            warmup=1,
++            active=6,
++            repeat=1,
++        ),
++        'on_trace_ready': torch_npu.profiler.tensorboard_trace_handler(
++            dir_name=os.path.join(os.path.curdir, 'npu_profiler_logs'),
++            worker_name='worker0'
++        ),
++        'record_shapes': True,
++        'profile_memory':True,
++        'with_stack': False,
++        'experimental_config': experimental_config
++    }
++
++    return profiler_config
+ 
+ 
+ def evaluate(model, dataloader, device, prof=None):
+@@ -453,7 +454,9 @@ def evaluate(model, dataloader, device, prof=None):
+     all_labels = []
+     all_probs = []
+     all_logits = []
+-
++    prof_config = get_profiler_config()
++    prof = torch_npu.profiler.profile(**prof_config)
++    prof.start()
+     with torch.no_grad():
+         for batch_idx, (features, targets) in enumerate(dataloader):
+             features = {k: v.to(device) for k, v in features.items()}
+@@ -475,7 +478,7 @@ def evaluate(model, dataloader, device, prof=None):
+ 
+             if args.test_batch_num & (batch_idx + 1) == args.test_batch_num:
+                 break
+-
++    prof.stop()
+     # calculate the indicators
+     all_labels = np.concatenate(all_labels)
+     all_probs = np.concatenate(all_probs)
+@@ -579,6 +582,7 @@ def main(args):
+     spec = json_file_load("spec", os.path.join(args.data_dir, "spec.json"))
+ 
+     device_type = 'npu'
++    INDUCTOR_FLAG = os.getenv("INDUCTOR_FLAG", "0")
+     if not torch.npu.is_available() and torch.cuda.is_available():
+         device_type = "cuda"
+     elif not (torch.npu.is_available() or torch.cuda.is_available()):
+@@ -589,7 +593,7 @@ def main(args):
+     if args.task_type == "train":
+         logger.info("start train and evaluate")
+         train(model, train_loader, eval_loader, device, args)
+-        torch.save(model.load_state_dict, "dffm.pth")
++        torch.save(model.state_dict(), "dffm.pth")
+         logger.info(f"\n{'='*30}")
+         logger.info("early stopped, start evaluating....")
+         test_dataset = TorchDataSet(test_files)
+@@ -600,6 +604,18 @@ def main(args):
+                                  prefetch_factor=100,
+                                  num_workers=10)
+         evaluate(model, test_loader, device)
++    elif args.task_type == "eval":
++        model.load_state_dict(torch.load("dffm.pth"))
++        if INDUCTOR_FLAG == "1":
++            model = torch.compile(model, backend="inductor")
++        test_dataset = TorchDataSet(test_files)
++        test_loader = DataLoader(dataset=test_dataset,
++                                 batch_size=args.batch_size,
++                                 shuffle=True,
++                                 collate_fn=collate_fn,
++                                 prefetch_factor=100,
++                                 num_workers=10)
++        evaluate(model, test_loader, device)
+     else:
+         raise ValueError("Unsupported task type: {}".format(args.task_type))
+ 

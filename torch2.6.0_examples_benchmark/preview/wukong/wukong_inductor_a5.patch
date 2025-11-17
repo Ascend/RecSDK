@@ -1,0 +1,22 @@
+diff --git a/torch2.6.0_examples_benchmark/preview/wukong/run.py b/torch2.6.0_examples_benchmark/preview/wukong/run.py
+index b4322972..0bf7ece1 100644
+--- a/torch2.6.0_examples_benchmark/preview/wukong/run.py
++++ b/torch2.6.0_examples_benchmark/preview/wukong/run.py
+@@ -16,6 +16,7 @@
+ # ==============================================================================
+ 
+ 
++import os
+ import torch
+ import torch_npu
+ from model.pytorch import WukongTorch
+@@ -64,6 +65,9 @@ experimental_config = torch_npu.profiler._ExperimentalConfig(
+     record_op_args=False,
+     gc_detect_threshold=None,
+ )
++INDUCTOR_FLAG = os.getenv("INDUCTOR_FLAG", "0")
++if INDUCTOR_FLAG == "1":
++    model = torch.compile(model, backend="inductor")
+ 
+ steps = 10
+ with torch_npu.profiler.profile(
