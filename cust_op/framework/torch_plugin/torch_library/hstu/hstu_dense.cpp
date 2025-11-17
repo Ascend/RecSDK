@@ -84,9 +84,15 @@ at::Tensor hstu_dense_forward_impl_npu(
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_impl_npu(
-    const at::Tensor& grad, const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
-    const c10::optional<at::Tensor> mask, const c10::optional<at::Tensor> attnBias, const int64_t maskType,
-    const int64_t maxSeqLen, const double siluScale)
+    const at::Tensor& grad,
+    const at::Tensor& q,
+    const at::Tensor& k,
+    const at::Tensor& v,
+    const c10::optional<at::Tensor> mask,
+    const c10::optional<at::Tensor> attnBias,
+    const int64_t maskType,
+    const int64_t maxSeqLen,
+    const double siluScale)
 {
     constexpr int dim = 4;
 
@@ -187,10 +193,27 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
     auto _acTargetGroupSize = int();
     double realAlpha = 1.0;
 
-    const char* layout = "normal";
-    EXEC_NPU_CMD(aclnnHstuDenseBackward, denseGrad, denseQ, denseK, denseV, denseMask, denseAttnBias, _acSeqOffset,
-                 _denseNumContext, _denseNumTarget, layout, maskType, maxSeqLen, realSiluScale, _acTargetGroupSize,
-                 realAlpha, qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
+    const char *layout = "normal";
+    EXEC_NPU_CMD(aclnnHstuDenseBackward,
+                 denseGrad,
+                 denseQ,
+                 denseK,
+                 denseV,
+                 denseMask,
+                 denseAttnBias,
+                 _acSeqOffset,
+                 _denseNumContext,
+                 _denseNumTarget,
+                 layout,
+                 maskType,
+                 maxSeqLen,
+                 realSiluScale,
+                 _acTargetGroupSize,
+                 realAlpha,
+                 qGradOutput,
+                 kGradOutput,
+                 vGradOutput,
+                 attnBiasGradOutput);
 
     return std::make_tuple(qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
 }
