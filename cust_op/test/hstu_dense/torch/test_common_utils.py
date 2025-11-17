@@ -85,6 +85,8 @@ class QKVShapeInfo:
 @dataclasses.dataclass
 class MaskGenInfo:
     mask_type: int | MaskType
+    target_group_size: int
     max_num_context: int
     max_num_target: int
-    target_group_size: int
+    min_num_context: int = 0
+    min_num_target: int = 0

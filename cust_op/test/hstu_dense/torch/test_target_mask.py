@@ -40,6 +40,14 @@ def _check_param_valid(seq_len, num_target, num_context, target_group_size) -> b
     return True
 
 
+def _check_int_valid(num: int):
+    if not isinstance(num, int):
+        return False
+    if num <= 0:
+        return False
+    return True
+
+
 class GPUSmit:
     @staticmethod
     def is_this_point_in_context(row_on_score, num_context, col_on_score, num_history):
@@ -57,7 +65,7 @@ class GPUSmit:
     def is_this_point_in_target_mask(
         row_on_score, col_on_score, num_history, target_group_size
     ):
-        if row_on_score >= num_history and col_on_score >= num_history:
+        if row_on_score >= num_history and col_on_score >= num_history and target_group_size > 0:
             target_index = (row_on_score - num_history) // target_group_size
             target_col_limit_left = num_history + target_index * target_group_size
             if col_on_score < target_col_limit_left:
@@ -143,14 +151,14 @@ def _compute_target_mask_one_block_npu(
     for row_id_on_block in range(block_param.block_h):
         row_on_score = row_id_on_block + block_param.block_id_q * block_param.block_h
         block_mask_this_line = block_mask[row_id_on_block, :]
-        if param.num_context is not None and _is_this_line_on_context(row_on_score, param):
+        if _check_int_valid(param.num_context) and _is_this_line_on_context(row_on_score, param):
             _process_line_on_context(block_mask_this_line, col_on_score_range, param)
         else:
             # 滿足causul的条件一定不满足在context
             _process_line_with_causal(
                 block_mask_this_line, row_on_score, col_on_score_range, param
             )
-    if param.num_target is not None:
+    if _check_int_valid(param.num_target) and _check_int_valid(param.target_group_size):
         process_one_block_of_target_mask(block_mask, block_param, param)
     return block_mask
 
