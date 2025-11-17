@@ -180,6 +180,7 @@ def lookup_npu(weights, weights_offsets, indices, offsets, max_d):
         0,
         0,
         0,
+        False,
     )
 
     return output.detach().cpu()

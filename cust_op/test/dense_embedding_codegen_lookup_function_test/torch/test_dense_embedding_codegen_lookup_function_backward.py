@@ -168,6 +168,7 @@ def backward_npu(params):
         maxB=0,
         maxBFeatureRank=0,
         vbeOutputSize=0,
+        mixed_D=False,
     )
 
     # 返回梯度，需要恢复为原始形状

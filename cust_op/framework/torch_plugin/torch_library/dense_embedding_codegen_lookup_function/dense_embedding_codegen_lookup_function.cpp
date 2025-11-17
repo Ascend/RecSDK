@@ -148,7 +148,7 @@ at::Tensor dense_embedding_codegen_lookup_function_impl_npu(
     const std::optional<at::Tensor> &vbeBOffsetsRankPerFeatureOptional,
     const int64_t maxB,
     const int64_t maxBFeatureRank,
-    const int64_t vbeOutputSize)
+    const int64_t vbeOutputSize, const bool mixed_D)
 {
     validate_dense_embedding_codegen_lookup_function_inputs(
         devWeights, weightsOffsets, dOffsets, hashSizeCumsum,
@@ -197,7 +197,7 @@ std::vector<at::Tensor> dense_embedding_codegen_lookup_function_grad_impl_npu(
     const std::optional<at::Tensor> &vbeBOffsetsRankPerFeatureOptional,
     const int64_t maxB,
     const int64_t maxBFeatureRank,
-    const int64_t vbeOutputSize)
+    const int64_t vbeOutputSize, const bool mixed_D)
 {
     validate_dense_embedding_codegen_lookup_function_grad_inputs(
         devWeights, weightsGrad, weightsOffsets, dOffsets, hashSizeCumsum, indices, offsets, maxD);
@@ -239,7 +239,7 @@ public:
         const std::optional<at::Tensor> &bOffsetOptional,
         const std::optional<at::Tensor> &vbeOutputOffsetsFeatureRankOptional,
         const std::optional<at::Tensor> &vbeBOffsetsRankPerFeatureOptional, const int64_t maxB,
-        const int64_t maxBFeatureRank, const int64_t vbeOutputSize)
+        const int64_t maxBFeatureRank, const int64_t vbeOutputSize, const bool mixed_D)
     {
         at::AutoDispatchBelowADInplaceOrView guard;
         ctx->save_for_backward({ devWeights, weightsOffsets, dOffsets, hashSizeCumsum, indices, offsets,
@@ -254,10 +254,11 @@ public:
         ctx->saved_data["maxB"] = maxB;
         ctx->saved_data["maxBFeatureRank"] = maxBFeatureRank;
         ctx->saved_data["vbeOutputSize"] = vbeOutputSize;
+        ctx->saved_data["mixed_D"] = mixed_D;
         return dense_embedding_codegen_lookup_function_impl_npu(devWeights, weightsOffsets, dOffsets, totalD, maxD,
             hashSizeCumsum, totalHashSizeBits, indices, offsets, poolingMode, indiceWeightsOptional,
             featureRequiresGrad, outputDtypeOptional, bOffsetOptional, vbeOutputOffsetsFeatureRankOptional,
-            vbeBOffsetsRankPerFeatureOptional, maxB, maxBFeatureRank, vbeOutputSize);
+            vbeBOffsetsRankPerFeatureOptional, maxB, maxBFeatureRank, vbeOutputSize, mixed_D);
     }
 
     static tensor_list backward(AutogradContext *ctx, tensor_list grad_outputs)
@@ -284,11 +285,11 @@ public:
         auto maxB = ctx->saved_data["maxB"].toInt();
         auto maxBFeatureRank = ctx->saved_data["maxBFeatureRank"].toInt();
         auto vbeOutputSize = ctx->saved_data["vbeOutputSize"].toInt();
-
+        auto mixed_D = ctx->saved_data["mixed_D"].toBool();
         return dense_embedding_codegen_lookup_function_grad_impl_npu(devWeights, weightsGrad, weightsOffsets, dOffsets,
             totalD, maxD, hashSizeCumsum, totalHashSizeBits, indices, offsets, poolingMode, indiceWeightsOptional,
             featureRequiresGrad, outputDtypeOptional, bOffsetOptional, vbeOutputOffsetsFeatureRankOptional,
-            vbeBOffsetsRankPerFeatureOptional, maxB, maxBFeatureRank, vbeOutputSize);
+            vbeBOffsetsRankPerFeatureOptional, maxB, maxBFeatureRank, vbeOutputSize, mixed_D);
     }
 };
 
@@ -303,12 +304,12 @@ at::Tensor dense_embedding_codegen_lookup_function_impl_autograd(const at::Tenso
     const std::optional<at::Tensor> &vbeBOffsetsRankPerFeatureOptional,
     const int64_t maxB,
     const int64_t maxBFeatureRank,
-    const int64_t vbeOutputSize)
+    const int64_t vbeOutputSize, const bool mixed_D)
 {
     return DenseEmbeddingCodegenLookupFunction::apply(devWeights, weightsOffsets, dOffsets, totalD, maxD,
         hashSizeCumsum, totalHashSizeBits, indices, offsets, poolingMode, indiceWeightsOptional, featureRequiresGrad,
         outputDtypeOptional, bOffsetOptional, vbeOutputOffsetsFeatureRankOptional, vbeBOffsetsRankPerFeatureOptional,
-        maxB, maxBFeatureRank, vbeOutputSize);
+        maxB, maxBFeatureRank, vbeOutputSize, mixed_D);
 }
 
 // 在npu命名空间里注册dense_embedding_codegen_lookup_function_impl_npu
@@ -324,7 +325,7 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
         "Tensor? vbeOutputOffsetsFeatureRankOptional, "
         "Tensor? vbeBOffsetsRankPerFeatureOptional, "
         "int maxB, int maxBFeatureRank, "
-        "int vbeOutputSize) -> Tensor");
+        "int vbeOutputSize, bool mixed_D) -> Tensor");
 
     m.def("dense_embedding_codegen_lookup_function_grad("
         "Tensor devWeights, Tensor grad, Tensor weightsOffsets, "
@@ -335,7 +336,7 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
         "Tensor? vbeOutputOffsetsFeatureRankOptional, "
         "Tensor? vbeBOffsetsRankPerFeatureOptional, "
         "int maxB, int maxBFeatureRank, "
-        "int vbeOutputSize) -> Tensor[]");
+        "int vbeOutputSize, bool mixed_D) -> Tensor[]");
 }
 
 // 为NPU设备注册前反向实现，适用于require_grad = false的情况，前反向单独调用
