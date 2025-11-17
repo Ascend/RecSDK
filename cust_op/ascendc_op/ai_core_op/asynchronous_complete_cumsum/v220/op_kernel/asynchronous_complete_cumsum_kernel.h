@@ -55,10 +55,10 @@ public:
         remainderBlocks = tilingData.remainderBlocks;
         coreNum = tilingData.coreNum;
         paddedBlocks = tilingData.paddedBlocks;
-        
+
         static_assert(sizeof(T) == sizeof(int32_t) || sizeof(T) == sizeof(int64_t), "T must be 4 or 8 bytes");
         cache_align = CACHE_LINE_SIZE / static_cast<int32_t>(sizeof(T));
-        
+
         // 根据负载均衡策略计算每个core的工作分配
         coreId = GetBlockIdx();
         if (coreId < remainderBlocks) {
@@ -163,10 +163,14 @@ private:
             prefixOffset += sharedMem(0);
         }
 
-        CombineResults(prefixOffset);
+        if constexpr (int64_input) {
+            CombineResultsInt64(prefixOffset);
+        } else {
+            CombineResultsInt32(prefixOffset);
+        }
     }
 
-    __aicore__ inline void CombineResults(T prefixOffset)
+    __aicore__ inline void CombineResultsInt64(T prefixOffset)
     {
         for (int32_t i = 0; i < myBlocksCount; i++) {
             int32_t blockIdx = myStartBlock + i;
@@ -186,6 +190,59 @@ private:
 
             if (blockIdx == totalBlocks - 1) {
                 outputGT(blockStart + actualSize) += prefixOffset;
+            }
+
+            prefixOffset += sharedMem(blockIdx * cache_align);
+        }
+    }
+
+    __aicore__ inline void CombineResultsInt32(T prefixOffset)
+    {
+        AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::ENTIRE_DATA_CACHE,
+                                          AscendC::DcciDst::CACHELINE_OUT>(sharedMem);
+
+        for (int32_t i = 0; i < myBlocksCount; ++i) {
+            int32_t blockIdx = myStartBlock + i;
+
+            if (blockIdx == 0) {
+                continue;
+            }
+
+            int32_t blockStart = blockIdx * BLOCK_SIZE;
+            int32_t blockEnd = (blockStart + BLOCK_SIZE < inputLength) ? (blockStart + BLOCK_SIZE) : inputLength;
+            int32_t actualSize = blockEnd - blockStart;
+            int32_t leftSize = 0;
+
+            if (blockIdx == totalBlocks - 1) {
+                int32_t totalSize = actualSize;
+                int32_t alignBytes = totalSize * sizeof(T) / CACHE_LINE_SIZE * CACHE_LINE_SIZE;
+                actualSize = alignBytes / sizeof(T);  // 对齐部分的元素个数
+
+                int32_t unalignBytes = totalSize * sizeof(T) - alignBytes;
+                leftSize = unalignBytes / sizeof(T);  // 非对齐部分的元素个数
+            }
+
+            GlobalTensor<T> outputSlice = outputGT[blockStart];
+            LocalTensor<T> localIn = inputQueue.AllocTensor<T>();
+            CopyGm2Local(localIn, outputSlice, actualSize);
+
+            inputQueue.EnQue(localIn);
+            LocalTensor<T> localInCopy = inputQueue.DeQue<T>();
+            LocalTensor<T> finalResults = outputQueue.AllocTensor<T>();
+
+            Adds(finalResults, localInCopy, prefixOffset, actualSize);
+
+            outputQueue.EnQue(finalResults);
+            LocalTensor<T> finalResultsCopy = outputQueue.DeQue<T>();
+            CopyLocal2Gm(outputSlice, finalResultsCopy, actualSize);
+
+            outputQueue.FreeTensor(finalResultsCopy);
+            inputQueue.FreeTensor(localInCopy);
+
+            if (blockIdx == totalBlocks - 1) {
+                for (int32_t j = 0; j <= leftSize; ++j) {
+                    outputGT(blockStart + actualSize + j) += prefixOffset;
+                }
             }
 
             prefixOffset += sharedMem(blockIdx * cache_align);
