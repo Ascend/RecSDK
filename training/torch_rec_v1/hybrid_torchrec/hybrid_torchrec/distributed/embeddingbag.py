@@ -182,7 +182,7 @@ class HybridShardedEmbeddingBagCollection(
                     module=lookup,
                     device_ids=(
                         [device]
-                        if self._device and (self._device.type in {"cuda", "mtia"})
+                        if self._device and (self._device.type in {"cuda", "npu", "mtia"})
                         else None
                     ),
                     process_group=env.process_group,

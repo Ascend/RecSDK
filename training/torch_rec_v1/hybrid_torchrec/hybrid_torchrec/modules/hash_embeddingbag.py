@@ -145,9 +145,11 @@ def check_embedding_config_valid(config: HashEmbeddingBagConfig):
     if config.pooling is not None and config.pooling not in [
         PoolingType.SUM,
         PoolingType.MEAN,
+        PoolingType.NONE,
     ]:
         raise ValueError(
-            f"The config.pooling should be in [PoolingType.SUM, PoolingType.MEAN], but is {config.pooling}"
+            f"The config.pooling should be in [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE], "
+            f"but is {config.pooling}"
         )
 
 
