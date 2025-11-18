@@ -845,7 +845,7 @@ index 2bbe0914..8a79c2d7 100644
      pt2_guard_size_oblivious,
  )
  from torchrec.streamable import Pipelineable
-+from torchrec.tensor_types import check
++from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
  
  try:
      torch.ops.load_library("//deeplearning/fbgemm/fbgemm_gpu:sparse_ops")
