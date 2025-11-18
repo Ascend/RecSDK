@@ -7,6 +7,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import sys
+from asyncio import gather
 from typing import List
 import unittest
 from unittest.mock import patch, MagicMock
@@ -27,6 +28,8 @@ from hybrid_torchrec.distributed.batched_embedding_kernel import (
     HybridSplitTableBatchedEmbeddingBagsCodegen,
     HybridBatchedFusedEmbeddingBag,
     HybridBatchedFusedEmbedding,
+    GradientAccumulator,
+    RESET_BUFFER,
 )
 from hybrid_torchrec.distributed.embedding_lookup import (
     HybridGroupedEmbeddingsLookup,
@@ -50,6 +53,90 @@ TORCH_OPTIMIZER_TO_FBGEMM = {
     Adagrad: EmbOptimType.EXACT_ADAGRAD,
     SGD: EmbOptimType.EXACT_SGD
 }
+
+
+class TestGradientAccumulator(unittest.TestCase):
+
+    def setUp(self):
+        # 初始化测试环境
+        self.device = torch.device("cpu")
+        self.table_shapes = [10, 20, 30] # 假设有三个表，形状分别为10，20,30
+        self.grad_accumulator = GradientAccumulator(self.table_shapes, self.device)
+
+    def test_get_buffer(self):
+        # 测试缓冲区的方法
+        buffers = self.grad_accumulator.get_buffer()
+        self.assertEqual(len(buffers), len(self.table_shapes))
+        for buf in buffers:
+            self.assertIsInstance(buf, torch.Tensor)
+
+    def test_zero_grad(self):
+        # 测试重置缓冲区方法
+        for i, shape in enumerate(self.table_shapes):
+            buffer_name = f"grad_acc_{i}"
+            getattr(self.grad_accumulator, buffer_name).fill_(1.0)
+        # 调用zero_grad方法
+        self.grad_accumulator.zero_grad()
+        # 检查缓冲区是否被重置
+        for i, shape in enumerate(self.table_shapes):
+            buffer_name = f"grad_acc_{i}"
+            self.assertTrue(torch.allclose(getattr(self.grad_accumulator, buffer_name),
+                                           torch.zeros(shape, device=self.device, dtype=torch.float32)))
+
+    def test_zero_parameters(self):
+        # 测试重置参数方法
+        self.grad_accumulator.total_index_size = [1, 2, 3]
+        self.grad_accumulator.total_index_size_pre = [4, 5, 6]
+        self.grad_accumulator.indice_multi_step = [torch.tensor([1, 2, 3]),
+                                                   torch.tensor([4, 5, 6]),
+                                                   torch.tensor([7, 8, 9])]
+        self.grad_accumulator.unique_indice_multi_step = torch.tensor([1, 2, 3])
+        self.grad_accumulator.unique_inverse_multi_step = torch.tensor([4, 5, 6])
+        self.grad_accumulator.current_accumulate_step = 10
+        # 调用zero_parameters方法
+        self.grad_accumulator.zero_parameters()
+        # 检查参数是否被重置
+        self.assertEqual(self.grad_accumulator.total_index_size, [0, 0, 0])
+        self.assertEqual(self.grad_accumulator.total_index_size_pre, [0, 0, 0])
+        self.assertEqual(self.grad_accumulator.indice_multi_step, [None, None, None])
+        self.assertEqual(self.grad_accumulator.unique_indice_multi_step, 0)
+        self.assertEqual(self.grad_accumulator.unique_inverse_multi_step, 0)
+        self.assertEqual(self.grad_accumulator.current_accumulate_step, 0)
+
+    def test_get_buffer_size(self):
+        # 测试获取缓冲区大小方法
+        for i, shape in enumerate(self.table_shapes):
+            buffer_name = f"grad_acc_{i}"
+            buffer_size = self.grad_accumulator.get_buffer_size(buffer_name)
+            expected_size = shape * torch.zeros(1, device=self.device, dtype=torch.float32).element_size()
+            self.assertEqual(buffer_size, expected_size)
+
+    def test_resize_buffer(self):
+        # 测试调整缓冲区大小方法
+        new_shapes = [15, 25, 35] # 新的形状
+        new_shape_dict = {f"grad_acc_{i}": shape for i, shape in enumerate(new_shapes)}
+        self.grad_accumulator.resize_buffer(new_shape_dict)
+        # 检查缓冲区是否被正确调整
+        for i, shape in enumerate(new_shapes):
+            buffer_name = f"grad_acc_{i}"
+            # 为原来的10倍
+            self.assertEqual(getattr(self.grad_accumulator, buffer_name).shape[0], shape * RESET_BUFFER)
+
+    def test_do_multi_step_unique(self):
+        # 测试多步唯一值处理的方法
+        values = [torch.tensor([1, 2, 3]), torch.tensor([4, 5, 6]), torch.tensor([7, 8, 9])]
+        self.grad_accumulator.concat_multi_step(values)
+        unique, unique_inverse, unique_offset = self.grad_accumulator.do_multi_step_unique()
+        self.assertIsInstance(unique, torch.Tensor)
+        self.assertIsInstance(unique_inverse, torch.Tensor)
+        self.assertIsInstance(unique_offset, torch.Tensor)
+
+        # 测试表偏移量计算方法
+        offsets = torch.tensor([0, 3, 6, 9])
+        last_step = True
+        table_offsets = self.grad_accumulator.do_table_offsets(last_step, offsets)
+        self.assertIsInstance(table_offsets, torch.Tensor)
+        self.assertEqual(table_offsets.shape[0], len(self.table_shapes) + 1)
 
 
 class TestHybridSplitTableBatchedEmbeddingBagsCodegen(unittest.TestCase):
