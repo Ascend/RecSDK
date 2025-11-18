@@ -914,7 +914,8 @@ public:
     {
         int64_t totalLen = curSeqLen * headDim;
         int64_t remain = totalLen;
-        int64_t thisLen = vecOnceDataNum;
+        int64_t copyLenEachLoopAlignHeadDim = vecOnceDataNum / headDim * headDim;
+        int64_t thisLen = copyLenEachLoopAlignHeadDim;
         while (remain > 0) {
             if (thisLen > remain) {
                 thisLen = remain;
