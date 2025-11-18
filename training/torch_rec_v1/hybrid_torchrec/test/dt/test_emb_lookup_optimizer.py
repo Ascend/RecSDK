@@ -72,6 +72,7 @@ class TestHybridOps(unittest.TestCase):
             total_D=10,
             max_D=5,
             hash_size_cumsum=self.hash_size_cumsum,
+            rows_per_table=None,
             total_hash_size_bits=7,
             indices=self.indices,
             offsets=self.offsets,

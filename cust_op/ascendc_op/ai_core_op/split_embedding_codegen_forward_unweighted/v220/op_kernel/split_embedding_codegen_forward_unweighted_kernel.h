@@ -18,48 +18,19 @@ See the License for the specific language governing permissions and
 
 #include <cstdint>
 
+#include "common.h"
 #include "kernel_operator.h"
 
 using namespace AscendC;
 
 namespace SplitEmbeddingCodegenForwardUnweighted {
 
-constexpr int USE_QUEUE_NUM = 2;
-constexpr int DATA_ALIGN_BYTES = 32;
-constexpr int DATA_TYPE_INT64 = 1;
-constexpr int FLOAT_ALIGNMENT = 8;
-constexpr int DATA_TYPE_FLOAT32 = 0;
-constexpr int SUM_POOL = 0;
-constexpr int MEAN_POOL = 1;
-constexpr int NONE_POOL = 2;
-constexpr int MAX_INDICS_ONE_BLOCK = 1024;
-
-struct Args {
-    GM_ADDR devWeights;
-    GM_ADDR weightsPlacements;
-    GM_ADDR weightsOffsets;
-    GM_ADDR dOffsets;
-    GM_ADDR indices;
-    GM_ADDR offsets;
-    GM_ADDR hashIndices;
-    GM_ADDR offsetPerKey;
-    GM_ADDR out;
-    GM_ADDR tiling;
-    GM_ADDR workspace;
-};
-
-struct ComputeArgs {
-    int64_t offsetIndex;
-    int64_t embedDim;
-    int64_t indWeightOffset;
-    int64_t outOffset;
-};
-
 class SplitEmbeddingCodegenForwardUnweightedKernel {
 public:
-    __aicore__ inline SplitEmbeddingCodegenForwardUnweightedKernel(Args args)
+    __aicore__ inline SplitEmbeddingCodegenForwardUnweightedKernel(Args& args, TPipe* pipeIn)
     {
         GET_TILING_DATA(tilingData, args.tiling);
+        pipe = pipeIn;
         InitAddr(args);
 
         // Shape
@@ -94,7 +65,7 @@ public:
             offsetOfThisCore = GetBlockIdx() * (splitBaseLen + 1);
         }
         // Ub
-        ubCanUsed = tilingData.ubCanUsed - offsetDataType * MAX_INDICS_ONE_BLOCK;
+        ubCanUsed = tilingData.ubCanUsed - offsetDataType * MAX_INDICES_ONE_BLOCK;
         blockLen = ubCanUsed / USE_QUEUE_NUM / bytesOfDataType;
         blockLen = blockLen / FLOAT_ALIGNMENT * FLOAT_ALIGNMENT;
         
@@ -112,13 +83,12 @@ public:
 
         outGT.SetGlobalBuffer((__gm__ float*)out, outDim0 * outDim1);
 
-        assert(offsetGT.GetValue(offsetsDim0 - 1) == indicesDim0,
-               "The last element in offsets %d must be equal to indices size %d",
-               offsetGT.GetValue(offsetsDim0 - 1), indicesDim0);
+        ASCENDC_ASSERT(offsetGT.GetValue(offsetsDim0 - 1) == indicesDim0,
+                       "The last element in offsets must be equal to indices size");
         // Init pipe
-        pipe.InitBuffer(queIn, 1, blockLen * sizeof(float));
-        pipe.InitBuffer(queOut, 1, blockLen * sizeof(float));
-        pipe.InitBuffer(queIndices, 1, MAX_INDICS_ONE_BLOCK * sizeof(int64_t));
+        pipe->InitBuffer(queIn, 1, blockLen * sizeof(float));
+        pipe->InitBuffer(queOut, 1, blockLen * sizeof(float));
+        pipe->InitBuffer(queIndices, 1, MAX_INDICES_ONE_BLOCK * sizeof(int64_t));
     }
 
     __aicore__ inline void InitAddr(const Args &args)
@@ -186,10 +156,10 @@ public:
 
         int64_t allLen = thisLen * maxD;
         DataCopy(outLt, inputLt, allLen);
-    
+
         queOut.EnQue(outLt);
         outLt = queOut.DeQue<float>();
-    
+
         CpLocal2Gm(outGT[startIndices * maxD], outLt, allLen);
 
         queIn.FreeTensor(inputLt);
@@ -206,7 +176,7 @@ public:
 
         queOut.EnQue(outLt);
         outLt = queOut.DeQue<float>();
-    
+
         for (int i = 0; i < thisLen; i++) {
             CpLocal2Gm(outGT[(startIndices + i) * maxD], outLt[i * alignMaxD], maxD);
         }
@@ -233,7 +203,7 @@ public:
             Add(outLt, outLt, inputLt[i * alignMaxD], embedDim);
         }
 
-        if (poolMode == MEAN_POOL) {
+        if (poolMode == static_cast<int64_t>(PoolingMode::MEAN)) {
             Muls<float>(outLt, outLt, meanLen, embedDim);
         }
         queIn.FreeTensor(inputLt);
@@ -241,7 +211,7 @@ public:
     }
 
     __aicore__ inline void ProcessWithPooling(int64_t remain, int64_t startIndices, int64_t embedDim,
-                                      int64_t thisWeightOffset, int64_t outOffset)
+                                              int64_t thisWeightOffset, int64_t outOffset)
     {
         float meanLen = static_cast<float>(1) / static_cast<float>(remain);
         int64_t thisLen = remain;
@@ -318,7 +288,7 @@ public:
         if (lenOfThisCore == 0) {
             return;
         }
-        
+
         for (int64_t loop = 0; loop < lenOfThisCore; loop++) {
             int64_t i = (offsetOfThisCore + loop) / weightsOffsetsDim0;
             int64_t j = (offsetOfThisCore + loop) % weightsOffsetsDim0;
@@ -346,10 +316,10 @@ public:
     __aicore__ inline void Compute()
     {
         indicesNumOneBlock = blockLen / alignMaxD;
-        if (indicesNumOneBlock >= MAX_INDICS_ONE_BLOCK) {
-            indicesNumOneBlock = MAX_INDICS_ONE_BLOCK;
+        if (indicesNumOneBlock >= MAX_INDICES_ONE_BLOCK) {
+            indicesNumOneBlock = MAX_INDICES_ONE_BLOCK;
         }
-        if (poolMode == NONE_POOL) {
+        if (poolMode == static_cast<int64_t>(PoolingMode::NONE)) {
             ComputeNoPooling();
         } else {
             ComputeWithPooling();
@@ -408,7 +378,7 @@ private:
     bool isDynamic;
 
     // Tpipe
-    TPipe pipe;
+    TPipe* pipe;
     TQue<TPosition::VECIN, 1> queIn;
     TQue<TPosition::VECOUT, 1> queOut;
     TQue<TPosition::VECIN, 1> queIndices;

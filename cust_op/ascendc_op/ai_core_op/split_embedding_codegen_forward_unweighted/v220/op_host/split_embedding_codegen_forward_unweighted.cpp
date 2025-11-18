@@ -30,6 +30,9 @@ constexpr int DATA_TYPE_INT64 = 1;
 constexpr int RESERVER_UB_SIZE = 20 * 1024;
 constexpr int UB_ALIGN = 32;
 constexpr int NUM_QUEUE = 32;
+
+constexpr int POOL_MODE_MEAN = 0;
+constexpr int POOL_MODE_SUM = 1;
 constexpr int POOL_MODE_NOBAG = 2;
 
 constexpr int DEV_WEIGHTS_INDEX = 0;
@@ -42,6 +45,7 @@ constexpr int INDICES_INDEX = 6;
 constexpr int OFFSETS_INDEX = 7;
 constexpr int LXU_CACHE_LOCATIONS_INDEX = 8;
 constexpr int HASH_INDICES_INDEX = 9;
+constexpr int ROWS_PER_TABLE_INDEX = 11;
 constexpr int POOL_MODE_INDEX = 2;
 constexpr int MAX_D_INDEX = 1;
 constexpr int EC_KEY = 1;
@@ -54,7 +58,6 @@ static ge::graphStatus ShapeTilingCheckFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("dOffsets shape", context->GetInputShape(D_OFFSETS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("indices shape", context->GetInputShape(INDICES_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("offsets shape", context->GetInputShape(OFFSETS_INDEX), return ge::GRAPH_FAILED);
-  
     return ge::GRAPH_SUCCESS;
 }
 
@@ -74,13 +77,26 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     auto attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
 
-    if (weightsOffsetsDim0 == 0) {
-        printf("[ERROR] Invalid weightsOffsets shape!\n");
-        return ge::GRAPH_FAILED;
-    }
-    if (dOffsetsDim0 <= 1) {
-        printf("[ERROR] Invalid dOffsets shape!\n");
-        return ge::GRAPH_FAILED;
+    OPS_CHECK(weightsOffsetsDim0 < 1,
+              OPS_LOG_E("", "The length of D_offsets must be at least 1, but the actual value is %d.",
+                        weightsOffsetsDim0),
+              return ge::GRAPH_FAILED);
+    OPS_CHECK(dOffsetsDim0 <= 1,
+              OPS_LOG_E("", "The length of D_offsets must be at least 2, but the actual value is %d.",
+                        dOffsetsDim0),
+              return ge::GRAPH_FAILED);
+
+    auto rowsPerTable = context->GetOptionalInputTensor(ROWS_PER_TABLE_INDEX);
+    if (rowsPerTable == nullptr) {
+        tilingData.set_enableRowsPerTable(0);
+    } else {
+        tilingData.set_enableRowsPerTable(1);
+        OPS_LOG_E_IF_NULL("rowsPerTable shape", context->GetInputShape(ROWS_PER_TABLE_INDEX), return ge::GRAPH_FAILED);
+        int64_t rowsPerTableDim0 = context->GetInputShape(ROWS_PER_TABLE_INDEX)->GetStorageShape().GetDim(0);
+        OPS_CHECK(rowsPerTableDim0 != weightsOffsetsDim0,
+                  OPS_LOG_E("", "Len mismatch between rows_per_table(%d) and weights_offsets(%d).",
+                            rowsPerTableDim0, weightsOffsetsDim0),
+                  return ge::GRAPH_FAILED);
     }
 
     auto hashIndices = context->GetOptionalInputTensor(HASH_INDICES_INDEX);
@@ -91,8 +107,11 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
         OPS_LOG_E_IF_NULL("hashIndices shape", context->GetInputShape(HASH_INDICES_INDEX), return ge::GRAPH_FAILED);
         indicesDim0 = context->GetInputShape(HASH_INDICES_INDEX)->GetStorageShape().GetDim(0);
     }
-    
+
     int64_t poolMode = *attrs->GetInt(POOL_MODE_INDEX);
+    OPS_CHECK(poolMode < POOL_MODE_MEAN || poolMode > POOL_MODE_NOBAG,
+              OPS_LOG_E("", "Invalid pooling mode %d: supported modes are MEAN(0), SUM(1), NONE(2)", poolMode),
+              return ge::GRAPH_FAILED);
     // bag output shape[batchsize, totalD]
     int64_t outDim0 = (offsetsDim0 - 1) / weightsOffsetsDim0;
     int64_t outDim1 = *attrs->GetInt(0);
@@ -101,6 +120,7 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
         outDim0 = indicesDim0;
         outDim1 = *attrs->GetInt(MAX_D_INDEX);
     }
+    context->SetTilingKey(poolMode);
 
     int64_t bytesOfDataType = sizeof(float);
     int64_t offsetDataType = DATA_TYPE_INT64;
@@ -137,10 +157,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     // Tiling
     size_t coreNum = ascnedPlatform.GetCoreNumAiv();
-    if (coreNum == 0) {
-        printf("[ERROR] Core num is 0!\n");
-        return ge::GRAPH_FAILED;
-    }
+    OPS_CHECK(coreNum == 0, OPS_LOG_E("", "Core num is 0."), return ge::GRAPH_FAILED);
 
     int64_t splitBaseLen = (tiling.get_offsetsDim0() - 1) / coreNum;
     int64_t tailSplitIndex = (tiling.get_offsetsDim0() - 1) % coreNum;
@@ -216,6 +233,9 @@ public:
             .ParamType(OPTIONAL).DataType({ge::DT_INT64})
             .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("offset_per_key")
+            .ParamType(OPTIONAL).DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
+        this->Input("rows_per_table")
             .ParamType(OPTIONAL).DataType({ge::DT_INT64})
             .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("out")
