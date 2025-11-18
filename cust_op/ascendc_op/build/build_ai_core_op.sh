@@ -79,7 +79,13 @@ function compile_ops() {
         cd "$ops_path"
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
-            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" || "$dir_name" == "hstu_dense_forward" ]]; then
+            # Skip dense_embedding_codegen_lookup_function and dense_embedding_codegen_lookup_function_grad
+            if [[ "$dir_name" == "dense_embedding_codegen_lookup_function" || 
+                "$dir_name" == "dense_embedding_codegen_lookup_function_grad" ]]; then
+                echo "Skipping $dir_name"
+                continue
+            fi
+            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
                 continue
             fi
             cur_ver_op_dir=${dir_name}/${BUILD_VER}
