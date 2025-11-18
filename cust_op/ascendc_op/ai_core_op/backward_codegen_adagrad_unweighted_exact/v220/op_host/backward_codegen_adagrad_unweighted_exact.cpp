@@ -62,6 +62,7 @@ constexpr int UNIQUE_ADAGRAD = 4;
 constexpr int NORMAL_ADAM = 2;
 constexpr int UNIQUE_ADAM = 5;
 constexpr int NORMAL_SGD = 3;
+constexpr int UNIQUE_SGD = 6;
 // optimize type
 constexpr int ADAGRAD = 1;
 constexpr int ADAM = 2;
@@ -117,6 +118,8 @@ static ge::graphStatus UniqueTilingKey(gert::TilingContext* context, const int &
         context->SetTilingKey(UNIQUE_ADAM);
     } else if (optimType == ADAGRAD) {
         context->SetTilingKey(UNIQUE_ADAGRAD);
+    } else if (optimType == SGD) {
+        context->SetTilingKey(UNIQUE_SGD);
     } else {
         OPS_LOG_E("Tiling Debug", "Unsupported optimtype!");
         return ge::GRAPH_FAILED;
