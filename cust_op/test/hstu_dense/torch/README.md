@@ -30,7 +30,7 @@
     样例执行过程中会自动生成测试数据，然后运行pytorch样例，最后打印运行结果。详见hstu_dense_forward_demo.py
     ```bash
     cd ../../
-    python3 test_hstu_dense_forward_demo.py
+    python3 test_hstu_dense_forward.py
     ```
 ## 更新说明
 | 时间         | 更新事项     |
