@@ -17,7 +17,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_common import (
 )
 from fbgemm_gpu.split_table_batched_embeddings_ops_training import SplitTableBatchedEmbeddingBagsCodegen
 from hybrid_torchrec.distributed.batched_embedding_kernel import HybridSplitTableBatchedEmbeddingBagsCodegen
-from torch.optim import Adam, Adagrad, SGD
+from torch.optim import Adam, Adagrad, SGD, SparseAdam
 
 import torchrec
 from torchrec import JaggedTensor, KeyedJaggedTensor, PoolingType, ComputeDevice
@@ -45,12 +45,12 @@ TORCH_POOLING_MODE_TO_FBGEMM = {
     PoolingType.NONE: PoolingMode.NONE,
 }
 TORCH_OPTIMIZER_TO_FBGEMM = {
-    Adam: EmbOptimType.ADAM,
+    SparseAdam: EmbOptimType.ADAM,
     Adagrad: EmbOptimType.EXACT_ADAGRAD,
     SGD: EmbOptimType.EXACT_SGD
 }
 OPTIMIZER_PARAM = {
-    Adam: dict(lr=0.01),
+    SparseAdam: dict(lr=0.01),
     Adagrad: dict(lr=0.01, eps=1.0e-8),
     SGD: dict(lr=0.01),
 }
@@ -233,7 +233,7 @@ params = {
     "batch_size": [4],
     "pooling_model": [PoolingType.NONE],               # ec
     "unique": [True],                                  # must True
-    "optim": [Adagrad],
+    "optim": [Adagrad, SparseAdam, SGD],
     "feature_map": [[0, 1, 2]]
 }
 

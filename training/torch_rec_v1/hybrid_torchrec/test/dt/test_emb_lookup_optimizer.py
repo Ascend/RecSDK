@@ -13,11 +13,12 @@ import pytest
 import torch
 
 import hybrid_torchrec
-from hybrid_torchrec.hybrid_lookup_invoke.hybrid_lookup_args import HybridCommonArgs
+from hybrid_torchrec.hybrid_lookup_invoke.hybrid_lookup_args import HybridCommonArgs, HybridCommonArgsAggregation
 
 from hybrid_torchrec.hybrid_lookup_invoke.hybrid_lookup_adagrad import (
     check_unique_valid,
     invoke,
+    invoke_grad_aggregation,
 )
 from fbgemm_gpu.split_embedding_codegen_lookup_invokers.lookup_adagrad import (
     CommonArgs,
@@ -31,6 +32,7 @@ class TestHybridOps(unittest.TestCase):
     def setUp(self):
         """生成测试所需的各种Tensor"""
         self.device = "cpu"
+        self.test_tensor = torch.tensor([1.0])
         self.placeholder = torch.randn(1, requires_grad=True)
         self.dev_weights = torch.randn(10, device=self.device)
         self.host_weights = torch.randn(10)
@@ -93,6 +95,48 @@ class TestHybridOps(unittest.TestCase):
             grad_accumulate_offsets=None,
             use_optimize=True,
             learning_rate=0.02
+        )
+        self.args_aggregation = HybridCommonArgsAggregation(
+            placeholder_autograd_tensor=self.placeholder,
+            dev_weights=self.dev_weights,
+            host_weights=self.host_weights,
+            uvm_weights=self.uvm_weights,
+            lxu_cache_weights=self.lxu_cache_weights,
+            weights_placements=self.weights_placements,
+            weights_offsets=self.weights_offsets,
+            D_offsets=self.D_offsets,
+            total_D=10,
+            max_D=5,
+            hash_size_cumsum=self.hash_size_cumsum,
+            total_hash_size_bits=7,
+            indices=self.indices,
+            offsets=self.offsets,
+            hash_indices=self.hash_indices,
+            unique_indices=self.unique_indices,
+            unique_offset=self.unique_offset,
+            unique_inverse=self.unique_inverse,
+            hash_indices2address=self.hash_indices2address,
+            pooling_mode=0,
+            indice_weights=None,
+            feature_requires_grad=None,
+            lxu_cache_locations=self.lxu_cache_locations,
+            uvm_cache_stats=None,
+            output_dtype=torch.float32,
+            vbe_metadata=self.vbe_metadata,
+            is_experimental=False,
+            use_uniq_cache_locations_bwd=False,
+            use_homogeneous_placements=True,
+            table_grad_accumulate_offsets=None,
+            grad_accumulate=None,
+            grad_accumulate_offsets=None,
+            use_optimize=True,
+            learning_rate=0.02,
+            table_offsets_multi=self.test_tensor,
+            indices_multi_step=self.test_tensor,
+            offsets_multi_step=self.test_tensor,
+            unique_multi_step=self.test_tensor,
+            unique_offset_multi_step=self.test_tensor,
+            unique_inverse_multi_step=self.test_tensor,
         )
 
     def create_optimizer_args(self):
@@ -166,6 +210,21 @@ class TestHybridOps(unittest.TestCase):
         #   无NPU环境，无fbgemm接口，抛出AttributeError
         with pytest.raises((AttributeError, RuntimeError)):
             _ = invoke(new_args2, optimizer_args, momentum1)
+
+    def test_invoke_grad_aggregation(self):
+        # 测试CPU路径
+        optimizer_args, momentum1 = self.create_optimizer_args()
+        # CPU分支正常执行
+        output = invoke_grad_aggregation(self.args_aggregation, optimizer_args, momentum1)
+        self.assertEqual(output.shape, (3, 10))
+
+        # 测试npu分支
+        new_args2 = replace(self.args_aggregation, host_weights=torch.empty(0))
+
+        # 抛出异常: 走到NPU分支,执行报错。在有NPU的环境，调用到NPU算子,抛出RuntimeError;无NPU环境,无fbgemm接口，抛出AttributeError
+        with pytest.raises((AttributeError, RuntimeError)):
+            _ = invoke_grad_aggregation(new_args2, optimizer_args, momentum1)
+
 
     def test_invoke_with_vbe_failed(self):
         optimizer_args, momentum1 = self.create_optimizer_args()

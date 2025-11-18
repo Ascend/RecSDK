@@ -67,9 +67,9 @@ class LookupParams:
     tables: list[list[int]]
     mutile_hots: list[int]
     batch_size: int
+    optim: torch.optim
     pooling_mode: PoolingType = PoolingType.NONE
     unique: bool = True
-    optim: torch.optim = Adagrad
     feature_map: list[int] = None
 
 
@@ -292,8 +292,6 @@ def generate_unique(jt_lst, feature_map):
 
 
 def execute(params):
-    if params.unique and (params.optim == SGD):
-        return  # 暂未适配SGD unique算子
     if params.feature_map is None:
         params.feature_map = list(range(len(params.tables)))
     indices_test, offsets_test, weights_test, jt_lst = create_data(params)
@@ -326,14 +324,16 @@ def execute(params):
 @pytest.mark.parametrize("tables", [[(10240, 1024)], [(1234, 1536)], [(1, 8)]])
 @pytest.mark.parametrize("mutile_hots", [[1], [4], [11], [69]])
 @pytest.mark.parametrize("batch_size", [2341, 1])
-def test_lookup_backward_one_table(tables, mutile_hots, batch_size):
-    params = LookupParams(tables, mutile_hots, batch_size)
+@pytest.mark.parametrize("optim", [Adagrad, SparseAdam, SGD])
+def test_lookup_backward_one_table(tables, mutile_hots, batch_size, optim):
+    params = LookupParams(tables, mutile_hots, batch_size, optim)
     execute(params)
 
 
-def test_lookup_multi_tables():
+@pytest.mark.parametrize("optim", [Adagrad, SparseAdam, SGD])
+def test_lookup_multi_tables(optim):
     # 随机测试多表
     for i in range(10):
         tables, mutile_hots, batch_size = generate_tables(pooling_model=PoolingType.NONE)
-        params = LookupParams(tables, mutile_hots, batch_size)
+        params = LookupParams(tables, mutile_hots, batch_size, optim)
         execute(params)
