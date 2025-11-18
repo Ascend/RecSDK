@@ -287,7 +287,7 @@ def invoke_grad_aggregation(
         gradient_clipping=optimizer_args.gradient_clipping,
         max_gradient=optimizer_args.max_gradient,
         stochastic_rounding=optimizer_args.stochastic_rounding,  # if optimizer == none
-        learning_rate=optimizer_args.learning_rate,
+        learning_rate=_get_lr_param(common_args, optimizer_args),
         eps=optimizer_args.eps,
         # momentum1
         momentum1_dev=momentum1.dev,

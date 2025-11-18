@@ -392,10 +392,6 @@ at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu_grad_ag
         grad_accumulate,
         unique_offsets_size,
         grad_accumulate_offsets_size); // 将数据从new_tensor_device_ptr拷贝至grad_accumulate
-    for (size_t i = 0; i < grad_accumulate.size(); ++i) {
-        auto pre_grad_ptr = grad_accumulate[i].data_ptr();
-        at::Tensor cpu_tensor = grad_accumulate[i].cpu().contiguous();
-    }
 
     std::vector<torch::Tensor> reshaped_tensors;
     Tensor unique_offset_slice = unique_offsets * t_max_D;
@@ -549,5 +545,6 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
             TORCH_FN(
             fbgemm_npu_lookups::split_embedding_backward_codegen_adagrad_unweighted_exact_npu_grad_aggregation
             )
-        ));
+        )
+    );
 }
