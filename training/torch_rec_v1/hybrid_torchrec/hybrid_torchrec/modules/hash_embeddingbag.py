@@ -7,6 +7,7 @@
 # LICENSE file in the root directory of this source tree.
 from dataclasses import dataclass
 from enum import Enum
+import re
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
@@ -24,6 +25,7 @@ from hybrid_torchrec.utils import check
 from torchrec.modules.embedding_configs import (
     DataType,
     EmbeddingBagConfig,
+    EmbeddingConfig,
     pooling_type_to_str,
     PoolingType,
 )
@@ -90,15 +92,27 @@ class HashEmbeddingBagConfig(EmbeddingBagConfig):
     pass
 
 
-def is_valid_feat_name(feat_name):
-    for char in feat_name:
-        if not (char.isalnum() or char == "_"):
-            return False
-    return True
+def _check_name_format(name: str, field_name: str = "name") -> None:
+    pattern = r"^[a-zA-Z0-9_.]+$"
+    if not re.match(pattern, name):
+        raise ValueError(
+            f"The {field_name} should only contain alphanumeric characters, "
+            f"underscore and dots, but is '{name}'"
+        )
 
 
-def check_embedding_config_valid(config: HashEmbeddingBagConfig):
-    check(config.need_pos is False, "the attribute 'need_pos' of embedding config only support False value.")
+def check_embedding_config_valid(config: Union[EmbeddingBagConfig, EmbeddingConfig]):
+    # 校验config是否为HashEmbeddingBagConfig或EmbeddingConfig的实例或子类
+    if not isinstance(config, (EmbeddingBagConfig, EmbeddingConfig)):
+        raise TypeError(
+            f"config must be an instance of EmbeddingBagConfig or EmbeddingConfig, "
+            f"but got {type(config)}"
+        )
+        
+    check(
+        config.need_pos is False,
+        "the attribute 'need_pos' of embedding config only support False value.",
+    )
     if config.embedding_dim % EMBEDDINGS_DIM_ALIGNMENT != 0:
         raise ValueError(
             f"The embedding dim should be a multiple of {EMBEDDINGS_DIM_ALIGNMENT}, but is {config.embedding_dim}"
@@ -121,19 +135,27 @@ def check_embedding_config_valid(config: HashEmbeddingBagConfig):
         raise ValueError(
             f"The feature_names should not be empty, but is {config.feature_names}"
         )
-    for feat_name in config.feature_names:
-        if not is_valid_feat_name(feat_name):
-            raise ValueError(
-                f"The feature_name should contain a-Z, 0-9, _, but is {feat_name}"
-            )
-    if config.weight_init_max is not None:
+
+    for name in config.name:
+        _check_name_format(name, "config.name")
+
+    for name in config.feature_names:
+        _check_name_format(name, "feature_names")
+
+    if config.weight_init_min is None or config.weight_init_min == 0.0:
+        config.weight_init_min = 0.0
+    else:
         raise ValueError(
-            f"The config.weight_init_max should be None, but is {config.weight_init_max}"
+            f"The config.weight_init_min should be None or 0.0, but is {config.weight_init_min}"
         )
-    if config.weight_init_min is not None:
+
+    if config.weight_init_max is None or config.weight_init_max == 1.0:
+        config.weight_init_max = 1.0
+    else:
         raise ValueError(
-            f"The config.weight_init_min should be None, but is {config.weight_init_min}"
+            f"The config.weight_init_max should be None or 1.0, but is {config.weight_init_max}"
         )
+
     if config.num_embeddings_post_pruning is not None:
         raise ValueError(
             f"The config.num_embeddings_post_pruning should be None, but is {config.num_embeddings_post_pruning}"
@@ -142,7 +164,7 @@ def check_embedding_config_valid(config: HashEmbeddingBagConfig):
         raise ValueError(
             f"The config.init_fn should be callable, but is {config.init_fn}"
         )
-    if config.pooling is not None and config.pooling not in [
+    if hasattr(config, "pooling") and config.pooling not in [
         PoolingType.SUM,
         PoolingType.MEAN,
         PoolingType.NONE,
@@ -202,17 +224,34 @@ class HybridHashTable(torch.nn.Module):
 
 
 def _check_create_table_params(device, is_weighted, tables):
-    check(isinstance(is_weighted, bool) and is_weighted is False,
-          "param 'is_weighted' must be boolean and value must be False")
-    check(isinstance(tables, list), "param 'tables' must be a list of HashEmbeddingBagConfig objects")
-    check(0 < len(tables) <= MAX_NUM_TABLES,
-          f"length of 'tables' must be in range:[1, {MAX_NUM_TABLES}], but got:{len(tables)}")
-    check(all([isinstance(item, (HashEmbeddingBagConfig, EmbeddingBagConfig)) for item in tables]),
-          "all elements in param 'tables' must be a HashEmbeddingBagConfig or EmbeddingBagConfig object")
-    check(device is None or (isinstance(device, str) and device in HYBRID_SUPPORT_DEVICE)
-          or (isinstance(device, torch.device) and device.type in HYBRID_SUPPORT_DEVICE),
-          f"device type or value is invalid, the value or torch.device.type muse be in:"
-          f" {HYBRID_SUPPORT_DEVICE} when device is not None")
+    check(
+        isinstance(is_weighted, bool) and is_weighted is False,
+        "param 'is_weighted' must be boolean and value must be False",
+    )
+    check(
+        isinstance(tables, list),
+        "param 'tables' must be a list of HashEmbeddingBagConfig objects",
+    )
+    check(
+        0 < len(tables) <= MAX_NUM_TABLES,
+        f"length of 'tables' must be in range:[1, {MAX_NUM_TABLES}], but got:{len(tables)}",
+    )
+    check(
+        all(
+            [
+                isinstance(item, (HashEmbeddingBagConfig, EmbeddingBagConfig))
+                for item in tables
+            ]
+        ),
+        "all elements in param 'tables' must be a HashEmbeddingBagConfig or EmbeddingBagConfig object",
+    )
+    check(
+        device is None
+        or (isinstance(device, str) and device in HYBRID_SUPPORT_DEVICE)
+        or (isinstance(device, torch.device) and device.type in HYBRID_SUPPORT_DEVICE),
+        f"device type or value is invalid, the value or torch.device.type muse be in:"
+        f" {HYBRID_SUPPORT_DEVICE} when device is not None",
+    )
 
 
 class HashEmbeddingBagCollection(EmbeddingBagCollectionInterface):

@@ -23,48 +23,51 @@ from torchrec import EmbeddingBagConfig, EmbeddingConfig
     "kwargs, err_pattern",
     [
         (
-            {"name": "t", "embedding_dim": EMBEDDINGS_DIM_ALIGNMENT, "num_embeddings": 0},
+            {"name": "t", "feature_names": ["f"], "embedding_dim": EMBEDDINGS_DIM_ALIGNMENT, "num_embeddings": 0},
             r"The num_embeddings should be in",
         ),
         (
             {
-                "name": "t",
+                "name": "t", 
+                "feature_names": ["f"],
                 "embedding_dim": EMBEDDINGS_DIM_ALIGNMENT,
                 "num_embeddings": MAX_NUM_EMBEDDINGS + 1,
             },
             r"The num_embeddings should be in",
         ),
         (
-            {"name": "t", "embedding_dim": EMBEDDINGS_DIM_ALIGNMENT - 1, "num_embeddings": 8},
-            r"The embedding dim should be in",
+            {"name": "t", "feature_names": ["f"], "embedding_dim": EMBEDDINGS_DIM_ALIGNMENT - 1, "num_embeddings": 8},
+            fr"The embedding dim should be a multiple of {EMBEDDINGS_DIM_ALIGNMENT},",
         ),
         (
-            {"name": "t", "embedding_dim": MAX_EMBEDDINGS_DIM + 1, "num_embeddings": 8},
-            r"The embedding dim should be in",
+            {"name": "t", "feature_names": ["f"], "embedding_dim": MAX_EMBEDDINGS_DIM + 1, "num_embeddings": 8},
+            fr"The embedding dim should be a multiple of {EMBEDDINGS_DIM_ALIGNMENT},",
         ),
         (
-            {"name": "t", "embedding_dim": EMBEDDINGS_DIM_ALIGNMENT + 4, "num_embeddings": 8},
+            {"name": "t", "feature_names": ["f"], "embedding_dim": EMBEDDINGS_DIM_ALIGNMENT + 4, "num_embeddings": 8},
             fr"The embedding dim should be a multiple of {EMBEDDINGS_DIM_ALIGNMENT}," 
         ),
         (
             {
                 "name": "t",
+                "feature_names": ["f"],
                 "embedding_dim": EMBEDDINGS_DIM_ALIGNMENT,
                 "num_embeddings": 8,
                 "weight_init_min": 1.0,
                 "weight_init_max": 1.0,
             },
-            r"The weight_init_min should be less than weight_init_max"
+            r"The config.weight_init_min should be None or 0.0"
         ),
         (
             {
                 "name": "t",
+                "feature_names": ["f"],
                 "embedding_dim": EMBEDDINGS_DIM_ALIGNMENT,
                 "num_embeddings": 8,
-                "weight_init_min": 2.0,
-                "weight_init_max": 1.0,
+                "weight_init_min": 0.0,
+                "weight_init_max": 1.5,
             },
-            r"The weight_init_min should be less than weight_init_max"
+            r"The config.weight_init_max should be None or 1.0"
         ),
     ],
 )

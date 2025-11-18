@@ -700,7 +700,7 @@ index 8085c415..24cdde9b 100644
  
  def _tabulate(
      table: List[List[Union[str, int]]], headers: Optional[List[str]] = None
-@@ -818,6 +819,14 @@ class ShardingEnv:
+@@ -818,6 +819,15 @@ class ShardingEnv:
          pg: Optional[dist.ProcessGroup] = None,
          output_dtensor: bool = False,
      ) -> None:
@@ -709,9 +709,10 @@ index 8085c415..24cdde9b 100644
 +            raise ValueError(f"world_size must be in range [1, {MAX_WORLD_SIZE}], but got {world_size}")
 +        if rank < 0 or rank >= world_size:
 +            raise ValueError(f"rank must be in range [0, {world_size} - 1]")
-+        if pg._get_backend_name() not in ["gloo", "custom"]:
++        if not (isinstance(pg, dist.ProcessGroup) and pg._get_backend_name() in ["gloo", "custom"]):
 +            raise ValueError(f"ProcessGroup backend only support [gloo, hccl], but got {pg._get_backend_name()}")
-+
++        if output_dtensor:
++             raise ValueError("output_dtensor is not supported yet")
          self.world_size = world_size
          self.rank = rank
          self.process_group: Optional[dist.ProcessGroup] = pg
