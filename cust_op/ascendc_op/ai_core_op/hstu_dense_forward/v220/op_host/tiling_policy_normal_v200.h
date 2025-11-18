@@ -25,9 +25,9 @@ class TilingPolicyNormalv200 : public TilingPolicyNormal {
 public:
     bool GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim) override;
 private:
-    bool TilingHeighLevelApi(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling) override;
-    bool TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling) override;
-    bool TilingAttribute(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling) override;
+    bool TilingHeighLevelApi(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
+    bool TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
+    bool TilingAttribute(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
 };
 }
 

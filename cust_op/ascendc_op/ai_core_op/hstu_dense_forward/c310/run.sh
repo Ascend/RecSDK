@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,20 +17,14 @@
 set -e
 
 # 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
+msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")
 onnx_path=$(dirname "$(readlink -f "$0")")/../../../build/scripts/onnx_plugin
-json_file=$onnx_path/json.hpp
 
 export PATH=$parent_dir:$PATH
 
 VALID_AI_CORES=(
-    "ai_core-Ascend910B1"
-    "ai_core-Ascend910B2"
-    "ai_core-Ascend910B3"
-    "ai_core-Ascend910B4"
-    "ai_core-Ascend910_93"
-    "ai_core-Ascend310P3"
+    "ai_core-Ascend910_95"
 )
 
 validate_ai_core() {
@@ -43,10 +37,9 @@ validate_ai_core() {
     done
     echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
     exit 1
-    return 1
 }
 
-ai_core="ai_core-Ascend910B1"
+ai_core="ai_core-Ascend910_95"
 if [ "$#" -eq 1 ]; then
   ai_core="$1"
   validate_ai_core $ai_core
@@ -54,31 +47,16 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./hstu_dense_forward
-python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i hstu_dense_forward.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward -m 0 -op HstuDenseForward
-rm -rf hstu_dense_forward/op_kernel/*.h
-rm -rf hstu_dense_forward/op_kernel/*.cpp
-rm -rf hstu_dense_forward/host/*.h
-rm -rf hstu_dense_forward/host/*.cpp
-cp -rf op_kernel hstu_dense_forward/
-cp -rf op_host/*.h hstu_dense_forward/op_host/
-cp -rf op_host/hstu_*.cpp hstu_dense_forward/op_host/
-cp -rf op_host/tiling_policy.cpp hstu_dense_forward/op_host/
-cp -rf op_host/tiling_policy_factory.cpp hstu_dense_forward/op_host/
-cp -rf op_host/tiling_policy_normal.cpp hstu_dense_forward/op_host/
-if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-  cp -rf op_host/tiling_policy_normal_v200.cpp hstu_dense_forward/op_host/
-else
-  cp -rf op_host/tiling_policy_jagged.cpp hstu_dense_forward/op_host/
-  cp -rf op_host/tiling_policy_paged.cpp hstu_dense_forward/op_host/
-fi
+python3 $msopgen_path gen -i ../v220/hstu_dense_forward.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward -m 0 -op HstuDenseForward
+cp -rf ../v220/op_kernel hstu_dense_forward/
+cp -rf ../v220/op_host/*.h hstu_dense_forward/op_host/
+cp -rf ../v220/op_host/hstu_*.cpp hstu_dense_forward/op_host/
+cp -rf ../v220/op_host/tiling_policy.cpp hstu_dense_forward/op_host/
+cp -rf ../v220/op_host/tiling_policy_factory.cpp hstu_dense_forward/op_host/
+cp -rf ../v220/op_host/tiling_policy_normal.cpp hstu_dense_forward/op_host/
+cp -rf ../v220/op_host/tiling_policy_jagged.cpp hstu_dense_forward/op_host/
+cp -rf ../v220/op_host/tiling_policy_paged.cpp hstu_dense_forward/op_host/
 
-#onnx适配层
-if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-  bash $onnx_path/build_onnx.sh
-  mkdir -p hstu_dense_forward/framework/onnx_plugin
-  cp -rf $json_file hstu_dense_forward/framework/onnx_plugin
-  cp -rf ../onnx_plugin/* hstu_dense_forward/framework/onnx_plugin
-fi
 cd hstu_dense_forward
 
 # 判断当前目录下是否存在CMakePresets.json文件
@@ -91,7 +69,9 @@ fi
 sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
-sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
+    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+fi
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
@@ -108,7 +88,7 @@ if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
   sed -i "1i #define SUPPORT_V200" ./op_kernel/hstu_dense_forward.cpp
 fi
 
-add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../hstu_dense_forward.json DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${vendor_name}_impl/dynamic)"
+add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../../v220/hstu_dense_forward.json DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${vendor_name}_impl/dynamic)"
 sed -i '$a\'"$add_cmake_line" ./op_kernel/CMakeLists.txt
 sed -i '1i\add_ops_compile_options(ALL OPTIONS --cce-long-call=true)' ./op_kernel/CMakeLists.txt
 
@@ -137,17 +117,5 @@ if [ -z "${arch}" ]; then
     exit 1
 fi
 
-# 只允许字母/数字/点/下划线/连字符（覆盖常见 os_id 与 arch）
-SAFE_REGEX='^[A-Za-z0-9._-]+$'
-if ! [[ "$os_id" =~ $SAFE_REGEX ]]; then
-    echo "ERROR: invalid os_id: $os_id" >&2
-    exit 1
-fi
-if ! [[ "$arch" =~ $SAFE_REGEX ]]; then
-    echo "ERROR: invalid arch: $arch" >&2
-    exit 1
-fi
-
 # 安装编译成功的算子包
-installer="./build_out/custom_opp_${os_id}_${arch}.run"
-bash -- "$installer"
+bash ./build_out/custom_opp_${os_id}_${arch}.run
