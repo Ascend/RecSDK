@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,22 +21,23 @@ See the License for the specific language governing permissions and
 
 namespace HstuDenseForward {
 
-const int TYPE_NUM = 3;
+const int TYPE_NUM = 4;
 
 enum class LAYOUT_TYPE {
     NORMAL = 0,
     NORMALV200 = 1,
     JAGGED = 2,
-    INVALID = 3
+    PAGED = 3,
+    INVALID = 4
 };
 
 class TilingPolicyFactory {
 public:
-    static std::shared_ptr<TilingPolicy> CreatePolicy(const char *layOutCStr);
+    static std::shared_ptr<TilingPolicy> CreatePolicy(const char* layOutCStr);
     static void TilingPolicyRegister(LAYOUT_TYPE policyKey, std::shared_ptr<TilingPolicy> policy);
-    static TilingPolicyFactory &GetInstance();
+    static TilingPolicyFactory& GetInstance();
 private:
-    static LAYOUT_TYPE ParseLayout(const char *layOutCStr);
+    static LAYOUT_TYPE ParseLayout(const char* layOutCStr);
     static std::vector<std::shared_ptr<TilingPolicy>> m_policyMap;
 };
 

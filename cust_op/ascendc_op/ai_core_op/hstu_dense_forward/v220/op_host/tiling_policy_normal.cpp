@@ -20,48 +20,38 @@ See the License for the specific language governing permissions and
 #include "tiling_policy_factory.h"
 #include "tiling_policy_normal.h"
 
-constexpr int QKV_DIM = 4;
-
 namespace HstuDenseForward {
 
 REGISTER_POLICY(LAYOUT_TYPE::NORMAL, std::make_shared<TilingPolicyNormal>());
 
-bool TilingPolicyNormal::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicyNormal::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
-    auto qShape = context->GetInputShape(0)->GetStorageShape();
+    auto qShape = context->GetInputShape(INPUT_INDEX_T::Q_INDEX)->GetStorageShape();
+    auto kShape = context->GetInputShape(INPUT_INDEX_T::K_INDEX)->GetStorageShape();
+    auto vShape = context->GetInputShape(INPUT_INDEX_T::V_INDEX)->GetStorageShape();
 
+    OPS_CHECK(qShape.GetDimNum() != NORMAL_DIM_NUM,
+              OPS_LOG_E("", "Normal QKV should have 4 dimensions, but get %d", qShape.GetDimNum()), return false);
+    OPS_CHECK(!(qShape == kShape && kShape == vShape), OPS_LOG_E("", "Q, K, V shape mismatch"), return false);
+    
+    // Q: [b, s, n, d]
     int64_t batchSize = qShape.GetDim(0);
     tiling.set_batchSize(batchSize);
     int64_t seqLen = qShape.GetDim(1);
+    tiling.set_maxSeqLenk(seqLen);
     tiling.set_seqLen(seqLen);
     int64_t headNum = qShape.GetDim(2);
     tiling.set_headNum(headNum);
     int64_t dim = qShape.GetDim(3);
     tiling.set_dim(dim);
 
-    if (!QKVShapeCheck(context, QKV_DIM)) {
-        return false;
-    }
     OPS_CHECK(!GeneralShapeCheck(batchSize, seqLen, headNum, dim), OPS_LOG_E("", "Shape Check failed"), return false);
     return true;
 }
 
-bool TilingPolicyNormal::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicyNormal::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
-    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return false);
-    ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
-    if (qTypeGe == ge::DataType::DT_FLOAT) {
-        context->SetTilingKey(FLOAT_TILING_KEY);
-    } else if (qTypeGe == ge::DataType::DT_FLOAT16) {
-        context->SetTilingKey(FLOAT16_TILING_KEY);
-    } else if (qTypeGe == ge::DataType::DT_BF16) {
-        context->SetTilingKey(BF16_TILING_KEY);
-    } else {
-        OPS_LOG_E("", "invalid datatype, only support fp32, fp16, bf16.\n");
-        return false;
-    }
-
+    context->SetTilingKey(NORMAL_TILING_KEY);
     return true;
 }
-
-}
+}  // namespace HstuDenseForward

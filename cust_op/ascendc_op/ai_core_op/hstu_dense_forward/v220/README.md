@@ -13,6 +13,8 @@
 
 ```shell
 -- hstu_dense_forward
+   |-- c310   
+      |-- run.sh    # hstu_dense_forward算子A5安装脚本
    |-- onnx_plugin   # hstu_dense_forward支持onnx模型转换
    |-- v220
       |-- op_host    # hstu_dense_forward算子Host侧实现
@@ -20,7 +22,7 @@
       |-- pic        # 算子实现原理图
       |-- hstu_dense_forward.json    # 算子原型配置
       |-- README.md  # hstu_dense_forward算子说明文档
-      |-- run.sh     # hstu_dense_forward算子安装脚本
+      |-- run.sh     # hstu_dense_forward算子A2安装脚本
 ```
 
 # 功能
@@ -87,34 +89,59 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 
 ## Atlas A2/A3训练产品
 
-|  名称  |  输入/输出  |  数据类型  |  数据格式  |  范围  |  说明  |
-|  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |
-|  q | 输入 | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[1, 16]<br>D∈[16, 512]且是16的倍数 | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度<br>s_b为jagged格式下各batch的实际序列长度之和 |
-|  k | 输入 | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q |
-|  v | 输入 | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q |
-|  mask | 输入(可选) | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致 |
-|  attn_bias | 输入(可选) | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致 |
-|  maskType | 输入(属性) | int | NA | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA |
-|  max_seq_len | 输入(属性) | int | NA | [1, 20480] | 表示模型最大序列长度 |
-|  silu_scale | 输入(属性) | float | NA | NA | 支持用户传入自定义，不传入时默认为1/max_seq_len |
-|  layout | 输入(属性) | string | NA | "normal":代表q,k,v数据格式为[B, S, N, D]<br>"jagged":代表q,k,v数据格式为[s_b, N, D] | NA |
-|  seq_offsets | 输入(属性, 可选) | list[int64] | NA | NA | 表示每个batch的实际序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效 |
-|  attn_output | 输出 | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q |
+| 名称            |  输入/输出 | 数据类型     |  数据格式  |  范围  | 说明                                                                                                              |
+|---------------|  - |----------|  ----  |  ----  |-----------------------------------------------------------------------------------------------------------------|
+| q             | 输入 | Tensor[float32/float16/bfloat16] | [B, S, N, D]/<br>[s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[1, 16]<br>D∈[16, 512]且是16的倍数 | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度<br>s_b为jagged格式下各batch的实际序列长度之和 |
+| k             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q                                                                                                              |
+| v             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q                                                                                                              |
+| mask          | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致                                                                 |
+| attn_bias     | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致                                                            |
+| seq_offsets_q | 输入 | Tensor   | NA | NA | 表示每个batch的实际Q序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
+| seq_offsets_k | 输入 | Tensor   | NA | NA | 表示每个batch的实际K序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
+| seq_offsets_t | 输入 | Tensor   | NA | NA | 目标序列偏移量张量                                                                                                       |
+| kv_cache | 输入 | Tensor   | NA | NA | KV缓存张量，用于存储历史Key-Value对                                                                                         |
+| page_offsets | 输入 | Tensor   | NA | NA | 页面偏移量张量                                                                                                         |
+| page_ids | 输入 | Tensor   | NA | NA | 页面ID张量                                                                                                          |
+| last_page_len | 输入 | Tensor   | NA | NA | 最后一页长度张量                                                                                                        |
+| num_context | 输入 | Tensor   | NA | NA | 上下文数量张量                                                                                                         |
+| num_target | 输入 | Tensor   | NA | NA | 目标数量张量                                                                                                          |
+| mask_type      | 输入 | int      | NA | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA                                                                                                              |
+| max_seq_len_q | 输入 | int      | NA | [1, 20480] | 表示模型Q序列最大长度                                                                                                     |
+| max_seq_len_k | 输入 | int      | NA | [1, 20480] | 表示模型K序列最大长度                                                                                                     |
+| silu_scale    | 输入 | float    | NA | NA | 支持用户传入自定义，不传入时默认为1/max_seq_len                                                                                  |
+| layout        | 输入 | string   | NA | "normal":代表q,k,v数据格式为[B, S, N, D]<br>"jagged":代表q,k,v数据格式为[s_b, N, D] | NA                                                                                                              |
+| target_group_size | 输入 | int      | NA | NA | 创建内置target mask时使用，target_group_size为0时不创建target mask                                                                      |
+| is_delta_qk | 输入 | int      | NA | NA | QK序列是否等长：0=等长，1=不等长                                                                                             |
+| alpha | 输入 | float      | NA | NA | Alpha缩放参数                                                                                                       |
+| attn_output   | 输出 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q                                                                                                              |
 
 ## Atlas 推理系列产品
-|  名称  |  输入/输出  |  数据类型  |  数据格式  |  范围  |  说明  |
-|  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |
-|  q | 输入 | float16 | [B, S, N, D] | B∈[1, 2048]<br>S∈[128, 4096]且是128的倍数<br>N∈[1, 8]<br>D∈[16, 128]且是16的倍数 | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度 |
-|  k | 输入 | float16 | [B, S, N, D] | 同q | 同q |
-|  v | 输入 | float16 | [B, S, N, D] | 同q | 同q |
-|  mask | 输入 | float16 | [B, 1, S, S] | NA | S为模型最大序列长度max_seq_len，mask为基于下三角的自定义，需要用户基于下三角自定义传入 |
-|  attn_bias | 输入(可选) | float16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None |
-|  maskType | 输入(属性) | int | NA | 3：使用自定义mask，此时mask需要用户定义并传入 | NA |
-|  max_seq_len | 输入(属性) | int | NA | [128, 4096]且为128的倍数 | 表示模型最大序列长度 |
-|  silu_scale | 输入(属性) | float | NA | NA | 支持用户传入自定义，不传入时默认为1/max_seq_len |
-|  layout | 输入(属性) | string | NA | "normal":代表q,k,v数据格式为[B, S, N, D] | NA |
-|  seq_offsets | 输入(属性, 可选) | list[int64] | NA | NA | 不支持使用 |
-|  attn_output | 输出 | float16 | [B, S, N, D] | 同q | 同q |
+
+| 名称            |  输入/输出 | 数据类型     |  数据格式  |  范围  | 说明                                                                                                              |
+|---------------|  - |----------|  ----  |  ----  |-----------------------------------------------------------------------------------------------------------------|
+| q             | 输入 | Tensor[float32/float16/bfloat16] | [B, S, N, D]/<br>[s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[1, 16]<br>D∈[16, 512]且是16的倍数 | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度<br>s_b为jagged格式下各batch的实际序列长度之和 |
+| k             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q                                                                                                              |
+| v             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q                                                                                                              |
+| mask          | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致                                                                 |
+| attn_bias     | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致                                                            |
+| seq_offsets_q | 输入 | Tensor   | NA | NA | 表示每个batch的实际Q序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
+| seq_offsets_k | 输入 | Tensor   | NA | NA | 表示每个batch的实际K序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
+| seq_offsets_t | 输入 | Tensor   | NA | NA | 目标序列偏移量张量                                                                                                       |
+| kv_cache | 输入 | Tensor   | NA | NA | KV缓存张量，用于存储历史Key-Value对                                                                                         |
+| page_offsets | 输入 | Tensor   | NA | NA | 页面偏移量张量                                                                                                         |
+| page_ids | 输入 | Tensor   | NA | NA | 页面ID张量                                                                                                          |
+| last_page_len | 输入 | Tensor   | NA | NA | 最后一页长度张量                                                                                                        |
+| num_context | 输入 | Tensor   | NA | NA | 上下文数量张量                                                                                                         |
+| num_target | 输入 | Tensor   | NA | NA | 目标数量张量                                                                                                          |
+| mask_type      | 输入 | int      | NA | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA                                                                                                              |
+| max_seq_len_q | 输入 | int      | NA | [1, 20480] | 表示模型Q序列最大长度                                                                                                     |
+| max_seq_len_k | 输入 | int      | NA | [1, 20480] | 表示模型K序列最大长度                                                                                                     |
+| silu_scale    | 输入 | float    | NA | NA | 支持用户传入自定义，不传入时默认为1/max_seq_len                                                                                  |
+| layout        | 输入 | string   | NA | "normal":代表q,k,v数据格式为[B, S, N, D]<br>"jagged":代表q,k,v数据格式为[s_b, N, D] | NA                                                                                                              |
+| target_group_size | 输入 | int      | NA | NA | 创建内置target mask时使用，target_group_size为0时不创建target mask                                                                      |
+| is_delta_qk | 输入 | int      | NA | NA | QK序列是否等长：0=等长，1=不等长                                                                                             |
+| alpha | 输入 | float      | NA | NA | Alpha缩放参数                                                                                                       |
+| attn_output   | 输出 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q                                                                                                              |
 
 注：
 * B,S,N,D四个维度数据均不能为0，为0时算子输入为空数据，不会执行算子计算。
