@@ -21,9 +21,9 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
-BUILD_VER=${1,,} # To lowercase
+BUILD_VER=${1}
 
-if [ "${BUILD_VER}" == "v220" ]; then
+if [ "${BUILD_VER}" == "v220" ] || [ "${BUILD_VER}" == "A5" ]; then
     echo "BUILD_VER: ${BUILD_VER}"
 else
     echo "ERROR: Unknown BUILD_VER:${BUILD_VER}"
@@ -73,7 +73,7 @@ function make_output_dir() {
     mkdir -p "${opp_output_path}"
 }
 
-function compile_ops() {
+function compile_ops_v220() {
     echo "OP Path: $ops_path"
     for dir in "$ops_path"/*; do
         cd "$ops_path"
@@ -120,6 +120,38 @@ function compile_ops() {
             mv "${new_op_name}" "${opp_output_path}"
         fi
     done
+}
+
+function compile_ops_A5() {
+    echo "OP Path: $ops_path"
+    for dir in "$ops_path"/*; do
+        cd "$ops_path"
+        if [ -d "$dir" ]; then
+            dir_name=$(basename "$dir")
+            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
+                continue
+            fi
+
+            cur_ver_op_dir=${dir_name}/c310
+            if [ -d "$cur_ver_op_dir" ]; then
+                echo "Entering directory: $dir_name, DIR: $dir"
+                cd "$cur_ver_op_dir"
+                bash ./run.sh ai_core-Ascend910_95
+                new_op_name=mxrec_opp_"${dir_name}".run
+                cd "$dir_name"
+                cp ./build_out/custom_opp*.run  "${new_op_name}"
+                mv "${new_op_name}" "${opp_output_path}"
+            fi
+        fi
+    done
+}
+
+function compile_ops() {
+    if [ "${BUILD_VER}" == "v220" ]; then
+        compile_ops_v220
+    elif [ "${BUILD_VER}" == "A5" ]; then
+        compile_ops_A5
+    fi
 }
 
 function get_tar_pkg() {
