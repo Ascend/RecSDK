@@ -21,6 +21,7 @@ from torchrec.distributed.embedding_sharding import (
     EmbeddingShardingContext,
     EmbeddingShardingInfo,
 )
+from torchrec.distributed.sharding.dp_sharding import DpPooledEmbeddingSharding
 from torchrec.distributed.embedding_types import BaseEmbeddingSharder
 from torchrec.distributed.embeddingbag import replace_placement_with_meta_device
 from torchrec.distributed.types import (
@@ -88,6 +89,8 @@ class HybridShardedHashEmbeddingBagCollection(HybridShardedEmbeddingBagCollectio
                 device,
                 qcomm_codecs_registry=qcomm_codecs_registry,
             )
+        elif sharding_type == ShardingType.DATA_PARALLEL.value:
+            return DpPooledEmbeddingSharding(sharding_infos, env, device)
         else:
             raise ValueError(
                 f"Sharding type not supported {sharding_type} for hybrid mode"
@@ -147,6 +150,7 @@ class HybridHashEmbeddingBagCollectionSharder(
         if compute_device_type in {"npu", "cpu"}:
             types += [
                 ShardingType.ROW_WISE.value,
+                ShardingType.DATA_PARALLEL.value,
             ]
         return types
 

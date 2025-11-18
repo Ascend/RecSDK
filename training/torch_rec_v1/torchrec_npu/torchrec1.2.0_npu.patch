@@ -1,5 +1,5 @@
 diff --git a/setup.py b/setup.py
-index b0e3b24..7ec85a2 100644
+index b0e3b247..7ec85a2b 100644
 --- a/setup.py
 +++ b/setup.py
 @@ -29,8 +29,6 @@ def _get_version():
@@ -30,7 +30,7 @@ index b0e3b24..7ec85a2 100644
          keywords=[
              "pytorch",
 diff --git a/torchrec/__init__.py b/torchrec/__init__.py
-index 29258f6..b67bdb5 100644
+index 29258f6f..b67bdb54 100644
 --- a/torchrec/__init__.py
 +++ b/torchrec/__init__.py
 @@ -6,7 +6,8 @@
@@ -58,21 +58,169 @@ index 29258f6..b67bdb5 100644
 +split_table_batched_embeddings_ops_training.ComputeDevice = ComputeDevice
 \ No newline at end of file
 diff --git a/torchrec/distributed/batched_embedding_kernel.py b/torchrec/distributed/batched_embedding_kernel.py
-index 119c304..b5b01f0 100644
+index 119c304c..b287dab9 100644
 --- a/torchrec/distributed/batched_embedding_kernel.py
 +++ b/torchrec/distributed/batched_embedding_kernel.py
-@@ -9,6 +9,7 @@
+@@ -9,6 +9,8 @@
  
  import abc
  import copy
 +import enum
++
  import inspect
  import itertools
  import logging
-@@ -80,6 +81,13 @@ from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
+@@ -26,6 +28,9 @@ from typing import (
+     TypeVar,
+     Union,
+ )
++import uuid
++from itertools import accumulate
++from math import log2
+ 
+ import torch
+ import torch.distributed as dist
+@@ -44,6 +49,8 @@ from fbgemm_gpu.tbe.ssd import ASSOC, SSDTableBatchedEmbeddingBags
+ from fbgemm_gpu.tbe.ssd.utils.partially_materialized_tensor import (
+     PartiallyMaterializedTensor,
+ )
++from fbgemm_gpu.config import FeatureGate, FeatureGateName
++
+ from torch import nn
+ from torch.distributed._tensor import DTensor, Replicate, Shard as DTensorShard
+ from torchrec.distributed.comm import get_local_rank, get_node_group_size
+@@ -80,6 +87,141 @@ from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
  logger: logging.Logger = logging.getLogger(__name__)
  
  
++def custom_init(
++    self,
++    embedding_specs: List[Tuple[int, int]],  # tuple of (rows, dims)
++    feature_table_map: Optional[List[int]] = None,  # [T]
++    weights_precision: SparseType = SparseType.FP32,
++    pooling_mode: PoolingMode = PoolingMode.SUM,
++    use_cpu: bool = False,
++    output_dtype: SparseType = SparseType.FP32,
++    use_mtia: bool = False,
++) -> None:  # noqa C901  # tuple of (rows, dims,)
++    super(DenseTableBatchedEmbeddingBagsCodegen, self).__init__()
++    self.uuid = str(uuid.uuid4())
++
++    self.log(
++        f"Feature Gates: {[(feature.name, feature.is_enabled()) for feature in FeatureGateName]}"
++    )
++
++    self.pooling_mode = pooling_mode
++    self.weights_precision = weights_precision
++    self.output_dtype: int = output_dtype.as_int()
++    table_embedding_dtype = weights_precision.as_dtype()
++
++    self.use_cpu: bool = use_cpu
++    self.use_mtia: bool = use_mtia
++
++    assert not (use_cpu and use_mtia), "Cannot use CPU and MTIA at the same time"
++
++    if self.use_cpu or self.pooling_mode == PoolingMode.NONE:
++        assert output_dtype in [
++            SparseType.FP32,
++            SparseType.FP16,
++            SparseType.BF16,
++        ], "Fused pooled embedding quantization only supported for cuda."
++
++    # pyre-fixme[8]: Attribute has type `device`; used as `Union[int, device]`.
++    self.current_device: torch.device = (
++        torch.device("cpu")
++        if self.use_cpu
++        else (
++            torch.device(f"mtia:{torch.mtia.current_device()}")
++            if self.use_mtia
++            else (torch.npu.current_device() if torch.npu.is_available else torch.cuda.current_device())
++        )
++    )
++
++    self.embedding_specs = embedding_specs
++    (rows, dims) = zip(*embedding_specs)
++    T_ = len(self.embedding_specs)
++    assert T_ > 0
++
++    feature_table_map = (
++        feature_table_map if feature_table_map is not None else list(range(T_))
++    )
++    T = len(feature_table_map)
++    assert T_ <= T
++
++    feature_dims = [dims[t] for t in feature_table_map]
++    D_offsets = [0] + list(accumulate(feature_dims))
++    self.total_D = D_offsets[-1]
++    self.max_D = max(dims)
++    self.register_buffer(
++        "D_offsets",
++        torch.tensor(D_offsets, device=self.current_device, dtype=torch.int32),
++    )
++    assert self.D_offsets.numel() == T + 1
++
++    # Required for VBE
++    self.register_buffer(
++        "feature_dims",
++        torch.tensor(feature_dims, device="cpu", dtype=torch.int64),
++    )
++
++    hash_size_cumsum = [0] + list(accumulate(rows))
++    if hash_size_cumsum[-1] == 0:
++        self.total_hash_size_bits: int = 0
++    else:
++        self.total_hash_size_bits: int = int(log2(float(hash_size_cumsum[-1])) + 1)
++    # The last element is to easily access # of rows of each table by
++    # hash_size_cumsum[t + 1] - hash_size_cumsum[t]
++    hash_size_cumsum = [hash_size_cumsum[t] for t in feature_table_map] + [
++        hash_size_cumsum[-1]
++    ]
++    self.register_buffer(
++        "hash_size_cumsum",
++        torch.tensor(
++            hash_size_cumsum, device=self.current_device, dtype=torch.int64
++        ),
++    )
++    weights_offsets = [0] + list(
++        accumulate([row * dim for (row, dim) in embedding_specs])
++    )
++    self.weights = nn.Parameter(
++        torch.randn(
++            weights_offsets[-1],
++            device=self.current_device,
++            dtype=table_embedding_dtype,
++        )
++    )
++    for feature in range(T):
++        t = feature_table_map[feature]
++        row, dim = embedding_specs[t]
++        if (
++            self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()
++            != row * dim
++        ):
++            self.log(
++                f"row {row} dim {dim} feature {feature} t {t} {self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()}"
++            )
++        assert (
++            self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()
++            == row * dim
++        )
++        assert self.hash_size_cumsum[feature] == sum(
++            row for (row, _) in embedding_specs[:t]
++        )
++
++    self.weights_physical_offsets: List[int] = weights_offsets
++    weights_offsets = [weights_offsets[t] for t in feature_table_map]
++    self.register_buffer(
++        "weights_offsets",
++        torch.tensor(
++            weights_offsets, device=self.current_device, dtype=torch.int64
++        ),
++    )    
++
++
++DenseTableBatchedEmbeddingBagsCodegen.__init__ = custom_init
++
 +class ComputeDevice(enum.IntEnum):
 +    CPU = 0
 +    CUDA = 1
@@ -83,7 +231,7 @@ index 119c304..b5b01f0 100644
  def _populate_ssd_tbe_params(config: GroupedEmbeddingConfig) -> Dict[str, Any]:
      """
      Construct SSD TBE params dict from config and fused params dict.
-@@ -1060,6 +1068,11 @@ class BatchedFusedEmbedding(BaseBatchedEmbedding[torch.Tensor], FusedOptimizerMo
+@@ -1060,6 +1202,11 @@ class BatchedFusedEmbedding(BaseBatchedEmbedding[torch.Tensor], FusedOptimizerMo
                  # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
                  # But the tensor will still be created on MTIA with device type "mtia".
                  managed.append(EmbeddingLocation.HOST)
@@ -95,7 +243,7 @@ index 119c304..b5b01f0 100644
              else:
                  compute_devices.append(ComputeDevice.CPU)
                  managed.append(EmbeddingLocation.HOST)
-@@ -1546,6 +1559,11 @@ class BatchedFusedEmbeddingBag(
+@@ -1546,6 +1693,11 @@ class BatchedFusedEmbeddingBag(
                  # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
                  # But the tensor will still be created on MTIA with device type "mtia".
                  managed.append(EmbeddingLocation.HOST)
@@ -107,8 +255,17 @@ index 119c304..b5b01f0 100644
              else:
                  compute_devices.append(ComputeDevice.CPU)
                  managed.append(EmbeddingLocation.HOST)
+@@ -1638,7 +1790,7 @@ class BatchedDenseEmbeddingBag(BaseBatchedEmbeddingBag[torch.Tensor]):
+         use_cpu: bool = (
+             device is None
+             or device.type == "cpu"
+-            or (not (torch.cuda.is_available() or torch.mtia.is_available()))
++            or (not (torch.cuda.is_available() or torch.mtia.is_available() or torch.npu.is_available()))
+         )
+         self._emb_module: DenseTableBatchedEmbeddingBagsCodegen = (
+             DenseTableBatchedEmbeddingBagsCodegen(
 diff --git a/torchrec/distributed/embedding_types.py b/torchrec/distributed/embedding_types.py
-index 3b2b127..d7eec7e 100644
+index 3b2b127a..d7eec7ed 100644
 --- a/torchrec/distributed/embedding_types.py
 +++ b/torchrec/distributed/embedding_types.py
 @@ -432,7 +432,7 @@ class BaseEmbeddingSharder(ModuleSharder[M]):
@@ -176,7 +333,7 @@ index 3b2b127..d7eec7e 100644
              }
              return {storage_map[compute_device_type].value: tensor_bytes}
 diff --git a/torchrec/distributed/fused_embedding.py b/torchrec/distributed/fused_embedding.py
-index 1968e7f..f9b3565 100644
+index 1968e7fa..f9b35653 100644
 --- a/torchrec/distributed/fused_embedding.py
 +++ b/torchrec/distributed/fused_embedding.py
 @@ -135,7 +135,7 @@ class FusedEmbeddingCollectionSharder(BaseEmbeddingSharder[FusedEmbeddingCollect
@@ -189,7 +346,7 @@ index 1968e7f..f9b3565 100644
                      EmbeddingComputeKernel.FUSED_UVM.value,
                      EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
 diff --git a/torchrec/distributed/fused_embeddingbag.py b/torchrec/distributed/fused_embeddingbag.py
-index 43eeda3..e157513 100644
+index 43eeda32..e1575133 100644
 --- a/torchrec/distributed/fused_embeddingbag.py
 +++ b/torchrec/distributed/fused_embeddingbag.py
 @@ -128,7 +128,7 @@ class FusedEmbeddingBagCollectionSharder(
@@ -211,7 +368,7 @@ index 43eeda3..e157513 100644
                      EmbeddingComputeKernel.FUSED_UVM.value,
                      EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
 diff --git a/torchrec/distributed/model_parallel.py b/torchrec/distributed/model_parallel.py
-index 23ce016..fe598cd 100644
+index 23ce0165..fe598cd9 100644
 --- a/torchrec/distributed/model_parallel.py
 +++ b/torchrec/distributed/model_parallel.py
 @@ -49,6 +49,7 @@ from torchrec.distributed.utils import (
@@ -244,7 +401,7 @@ index 23ce016..fe598cd 100644
          torch._C._log_api_usage_once(f"torchrec.distributed.{self.__class__.__name__}")
  
 diff --git a/torchrec/distributed/planner/constants.py b/torchrec/distributed/planner/constants.py
-index 7dd86b0..57ee8d1 100644
+index 7dd86b06..57ee8d1d 100644
 --- a/torchrec/distributed/planner/constants.py
 +++ b/torchrec/distributed/planner/constants.py
 @@ -22,7 +22,7 @@ NUM_POOLINGS: float = 1.0
@@ -287,7 +444,7 @@ index 7dd86b0..57ee8d1 100644
  
      return lookup.get((compute_device, compute_kernel))
 diff --git a/torchrec/distributed/planner/planners.py b/torchrec/distributed/planner/planners.py
-index a7cd847..676bce9 100644
+index a7cd8479..676bce96 100644
 --- a/torchrec/distributed/planner/planners.py
 +++ b/torchrec/distributed/planner/planners.py
 @@ -67,6 +67,8 @@ from torchrec.distributed.types import (
@@ -332,7 +489,7 @@ index a7cd847..676bce9 100644
              assert dist.is_initialized(), (
                  "The default process group is not yet initialized. "
 diff --git a/torchrec/distributed/planner/shard_estimators.py b/torchrec/distributed/planner/shard_estimators.py
-index 97a5eb1..334e632 100644
+index 97a5eb10..334e6327 100644
 --- a/torchrec/distributed/planner/shard_estimators.py
 +++ b/torchrec/distributed/planner/shard_estimators.py
 @@ -1188,7 +1188,7 @@ def calculate_shard_storages(
@@ -345,7 +502,7 @@ index 97a5eb1..334e632 100644
          )
          for input_size, output_size, hbm_specific_size in zip(
 diff --git a/torchrec/distributed/planner/stats.py b/torchrec/distributed/planner/stats.py
-index 430e5c9..79d7d75 100644
+index 430e5c91..79d7d750 100644
 --- a/torchrec/distributed/planner/stats.py
 +++ b/torchrec/distributed/planner/stats.py
 @@ -691,7 +691,7 @@ class EmbeddingStats(Stats):
@@ -358,7 +515,7 @@ index 430e5c9..79d7d75 100644
                  else 0
              )
 diff --git a/torchrec/distributed/planner/storage_reservations.py b/torchrec/distributed/planner/storage_reservations.py
-index 5290997..fad9df2 100644
+index 52909970..fad9df2d 100644
 --- a/torchrec/distributed/planner/storage_reservations.py
 +++ b/torchrec/distributed/planner/storage_reservations.py
 @@ -73,7 +73,7 @@ def _reserve_dense_storage(
@@ -380,7 +537,7 @@ index 5290997..fad9df2 100644
      )
  
 diff --git a/torchrec/distributed/planner/types.py b/torchrec/distributed/planner/types.py
-index b2a7250..273d706 100644
+index b2a72503..40074341 100644
 --- a/torchrec/distributed/planner/types.py
 +++ b/torchrec/distributed/planner/types.py
 @@ -38,8 +38,9 @@ from torchrec.distributed.types import (
@@ -444,11 +601,11 @@ index b2a7250..273d706 100644
 +        check(len(self.compute_kernels) <= MAX_MODULE_LOOP_TIMES,
 +              "compute_kernels should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
 +        for sharding_type in self.sharding_types:
-+            if sharding_type != "row_wise":
-+                raise ValueError(f"sharing_type only support row_wise, but got {sharding_type}")
++            if sharding_type not in ("row_wise", "data_parallel"):
++                raise ValueError(f"sharing_type only support row_wise, data_parallel, but got {sharding_type}")
 +        for compute_kernel in self.compute_kernels:
-+            if compute_kernel != "fused":
-+                raise ValueError(f"compute_kernel only support fused, but got {compute_kernel}")
++            if compute_kernel not in ("fused", "dense"):
++                raise ValueError(f"compute_kernel only support fused, dense, but got {compute_kernel}")
 +        check(self.min_partition is None , "min_partition should be None")
 +        check(self.pooling_factors == [POOLING_FACTOR] , f"pooling_factors should be [{POOLING_FACTOR}]")
 +        check(self.num_poolings == None , "num_poolings should be None")
@@ -467,7 +624,7 @@ index b2a7250..273d706 100644
  class PlannerErrorType(Enum):
      """
 diff --git a/torchrec/distributed/planner/utils.py b/torchrec/distributed/planner/utils.py
-index 5d0a03a..de17984 100644
+index 5d0a03a2..de179849 100644
 --- a/torchrec/distributed/planner/utils.py
 +++ b/torchrec/distributed/planner/utils.py
 @@ -48,7 +48,7 @@ def placement(
@@ -480,7 +637,7 @@ index 5d0a03a..de17984 100644
      return f"rank:{rank}/{param_device}"
  
 diff --git a/torchrec/distributed/sharding_plan.py b/torchrec/distributed/sharding_plan.py
-index 27b0113..e8b506d 100644
+index 27b01130..e8b506db 100644
 --- a/torchrec/distributed/sharding_plan.py
 +++ b/torchrec/distributed/sharding_plan.py
 @@ -75,7 +75,7 @@ def placement(
@@ -502,7 +659,7 @@ index 27b0113..e8b506d 100644
              EmbeddingComputeKernel.FUSED_UVM.value,
              EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
 diff --git a/torchrec/distributed/train_pipeline/train_pipelines.py b/torchrec/distributed/train_pipeline/train_pipelines.py
-index 679950c..f81c1a6 100644
+index 679950c1..f81c1a6a 100644
 --- a/torchrec/distributed/train_pipeline/train_pipelines.py
 +++ b/torchrec/distributed/train_pipeline/train_pipelines.py
 @@ -127,14 +127,14 @@ class TrainPipelineBase(TrainPipeline[In, Out]):
@@ -553,7 +710,7 @@ index 679950c..f81c1a6 100644
          )
  
 diff --git a/torchrec/distributed/types.py b/torchrec/distributed/types.py
-index 45300f7..b76348a 100644
+index 45300f73..b76348a6 100644
 --- a/torchrec/distributed/types.py
 +++ b/torchrec/distributed/types.py
 @@ -77,6 +77,7 @@ from torch.distributed._shard.sharding_spec import (  # noqa
@@ -578,8 +735,21 @@ index 45300f7..b76348a 100644
          self.world_size = world_size
          self.rank = rank
          self.process_group: Optional[dist.ProcessGroup] = pg
+diff --git a/torchrec/modules/embedding_configs.py b/torchrec/modules/embedding_configs.py
+index b665257a..d56dbacc 100644
+--- a/torchrec/modules/embedding_configs.py
++++ b/torchrec/modules/embedding_configs.py
+@@ -116,6 +116,8 @@ def pooling_type_to_str(pooling_type: PoolingType) -> str:
+         return "sum"
+     elif pooling_type.value == PoolingType.MEAN.value:
+         return "mean"
++    elif pooling_type.value == PoolingType.NONE.value:
++        return "none"
+     else:
+         raise ValueError(f"Unsupported pooling type {pooling_type}")
+ 
 diff --git a/torchrec/optim/apply_optimizer_in_backward.py b/torchrec/optim/apply_optimizer_in_backward.py
-index 99ba72d..4d50cec 100644
+index 99ba72df..4d50cecb 100644
 --- a/torchrec/optim/apply_optimizer_in_backward.py
 +++ b/torchrec/optim/apply_optimizer_in_backward.py
 @@ -12,6 +12,12 @@ from warnings import warn
@@ -608,7 +778,7 @@ index 99ba72d..4d50cec 100644
          optimizer_class=optimizer_class,
          params=params,
 diff --git a/torchrec/optim/keyed.py b/torchrec/optim/keyed.py
-index 2f6b75d..05cb2f0 100644
+index 2f6b75d5..ec6b2ff1 100644
 --- a/torchrec/optim/keyed.py
 +++ b/torchrec/optim/keyed.py
 @@ -28,6 +28,7 @@ import torch
@@ -623,7 +793,7 @@ index 2f6b75d..05cb2f0 100644
      def __init__(
          self, optims: List[Union[KeyedOptimizer, Tuple[str, KeyedOptimizer]]]
      ) -> None:
-+        check(optims is not None and isinstance(optims, List) and len(optims) != 0, "optims should be List")
++        check(isinstance(optims, List), "optims should be List")
 +        check(len(optims) <= MAX_MODULE_LOOP_TIMES, "optims should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
 +        for key_value in optims:
 +            check_optim = isinstance(key_value, KeyedOptimizer)
@@ -647,14 +817,14 @@ index 2f6b75d..05cb2f0 100644
  
      def zero_grad(self, set_to_none: bool = False) -> None:
 diff --git a/torchrec/optim/optimizers.py b/torchrec/optim/optimizers.py
-index 10ffcdb..3e19949 100644
+index 10ffcdb2..3e199497 100644
 --- a/torchrec/optim/optimizers.py
 +++ b/torchrec/optim/optimizers.py
 @@ -15,6 +15,7 @@ import torch
  from torch import nn
  
  from torch.optim.optimizer import Optimizer
-+from torchrec.tensor_types import check
++from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
  
  
  def in_backward_optimizer_filter(
@@ -668,7 +838,7 @@ index 10ffcdb..3e19949 100644
          if hasattr(param, "_in_backward_optimizers") == include:
              yield fqn, param
 diff --git a/torchrec/sparse/jagged_tensor.py b/torchrec/sparse/jagged_tensor.py
-index 2bbe091..8a79c2d 100644
+index 2bbe0914..8a79c2d7 100644
 --- a/torchrec/sparse/jagged_tensor.py
 +++ b/torchrec/sparse/jagged_tensor.py
 @@ -28,6 +28,7 @@ from torchrec.pt2.checks import (
@@ -745,7 +915,7 @@ index 2bbe091..8a79c2d 100644
          kjt_vals_list: List[torch.Tensor] = []
          kjt_lens_list: List[torch.Tensor] = []
 diff --git a/torchrec/tensor_types.py b/torchrec/tensor_types.py
-index 6b88703..5fa44cf 100644
+index 6b88703d..5fa44cfb 100644
 --- a/torchrec/tensor_types.py
 +++ b/torchrec/tensor_types.py
 @@ -17,6 +17,9 @@ import torch
@@ -768,7 +938,7 @@ index 6b88703..5fa44cf 100644
 +    if not discriminant:
 +        raise ValueError(error_msg)
 diff --git a/version.txt b/version.txt
-index 26aaba0..d370c8e 100644
+index 26aaba0e..d370c8ed 100644
 --- a/version.txt
 +++ b/version.txt
 @@ -1 +1 @@
