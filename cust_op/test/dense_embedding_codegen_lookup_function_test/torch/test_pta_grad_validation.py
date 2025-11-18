@@ -56,7 +56,7 @@ def call_dense_embedding_lookup_grad(params):
         weightsOffsets=params.weightsOffsets,
         dOffsets=params.dOffsets,
         totalD=4,
-        maxD=2,
+        maxD=8,
         hashSizeCumsum=params.hashSizeCumsum,
         totalHashSizeBits=2,
         indices=params.indices,
@@ -71,6 +71,7 @@ def call_dense_embedding_lookup_grad(params):
         maxB=0,
         maxBFeatureRank=0,
         vbeOutputSize=0,
+        mixed_D=False,
     )
     return result
 
@@ -211,3 +212,40 @@ def test_offset_indices_mismatch_grad_validation():
         call_dense_embedding_lookup_grad(wrong_params)
 
     logger.info("Offset-indices mismatch grad validation test passed")
+
+
+# 新增测试用例：校验maxD是否为8的倍数
+def test_maxd_alignment_validation():
+    """
+    Test maxD alignment validation - must be a multiple of ALIGNMENT_SIZE (8)
+    """
+    ALIGNMENT_SIZE = 8
+    params = create_test_data()
+    # 非法的maxD值 (非8的倍数)
+    invalid_maxD = ALIGNMENT_SIZE + 1
+    with pytest.raises(RuntimeError, match="maxD must be a multiple of 8"):
+        torch.ops.mxrec.dense_embedding_codegen_lookup_function_grad(
+            devWeights=params.devWeights,
+            grad=params.grad,
+            weightsOffsets=params.weightsOffsets,
+            dOffsets=params.dOffsets,
+            totalD=4,
+            maxD=invalid_maxD,
+            hashSizeCumsum=params.hashSizeCumsum,
+            totalHashSizeBits=2,
+            indices=params.indices,
+            offsets=params.offsets,
+            poolingMode=0,
+            indiceWeightsOptional=None,
+            featureRequiresGrad=None,
+            outputDtypeOptional=0,
+            bOffsetOptional=None,
+            vbeOutputOffsetsFeatureRankOptional=None,
+            vbeBOffsetsRankPerFeatureOptional=None,
+            maxB=0,
+            maxBFeatureRank=0,
+            vbeOutputSize=0,
+            mixed_D=False,
+        )
+
+    logger.info("MaxD alignment validation with invalid value passed")
