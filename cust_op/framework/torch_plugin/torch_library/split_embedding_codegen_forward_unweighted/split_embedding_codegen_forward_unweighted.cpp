@@ -11,7 +11,6 @@
 #include <torch/library.h>
 #include "torch/extension.h"
 #include "../common/pytorch_npu_helper.hpp"
-#include "../common/common_utils.h"
 #include "split_embedding_codegen_common_utils.h"
 #include "split_embedding_codegen_forward_unweighted.h"
 
@@ -95,8 +94,9 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
                                                           const at::Tensor& uvm_cache_stats,
                                                           const int64_t output_dtype,
                                                           const bool is_experimental,
-                                                          const Tensor& hash_indices,
-                                                          const at::Tensor& offset_per_key)
+                                                          const at::Tensor& hash_indices,
+                                                          const at::Tensor& offset_per_key,
+                                                          const at::Tensor& rows_per_table)
 {
     const int64_t totalD = total_D.guard_int(__FILE__, __LINE__);
     const int64_t maxD = max_D.guard_int(__FILE__, __LINE__);
@@ -104,7 +104,7 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
 
     validate_forward_data_inputs(dev_weights, weights_offsets, D_offsets, indices,
-                                 offsets, hash_indices, offset_per_key);
+                                 offsets, hash_indices, offset_per_key, rows_per_table);
 
     int64_t featCnt = weights_offsets.size(0);
     int32_t totalLen = indices.numel();
@@ -124,9 +124,9 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
     }
 
     int64_t experimental = static_cast<int64_t>(is_experimental);
-    EXEC_NPU_CMD(aclnnSplitEmbeddingCodegenForwardUnweighted, dev_weights, uvm_weights,         lxu_cache_weights,
+    EXEC_NPU_CMD(aclnnSplitEmbeddingCodegenForwardUnweighted, dev_weights, uvm_weights, lxu_cache_weights,
                  weights_placements, weights_offsets, D_offsets, indices, offsets, lxu_cache_locations, hash_indices,
-                 offset_per_key, totalD, maxD, pooling_mode, output_dtype, experimental, output);
+                 offset_per_key, rows_per_table, totalD, maxD, pooling_mode, output_dtype, experimental, output);
     return output;
 }
 
@@ -151,7 +151,8 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    int output_dtype, "
           "    bool is_experimental, "
           "    Tensor hash_indices = None, "
-          "    Tensor offset_per_key = None "
+          "    Tensor offset_per_key = None, "
+          "    Tensor rows_per_table = None "
           ") -> Tensor");
 
     m.impl("split_embedding_codegen_forward_unweighted_cuda",

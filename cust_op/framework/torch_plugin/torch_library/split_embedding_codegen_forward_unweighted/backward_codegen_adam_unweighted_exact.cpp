@@ -85,6 +85,7 @@ public:
                                                   const c10::SymInt total_D,
                                                   const c10::SymInt max_D,
                                                   const Tensor& hash_size_cumsum,
+                                                  const c10::optional<Tensor>& rows_per_table,
                                                   const int64_t total_hash_size_bits,
                                                   const Tensor& indices,
                                                   const c10::optional<Tensor>& hash_indices,
@@ -174,7 +175,7 @@ public:
         return {embedding_codegen_forward_op.call(
             flatten_dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets, D_offsets,
             total_D, max_D, indices, offsets, pooling_mode, lxu_cache_locations, uvm_cache_stats_, output_dtype,
-            is_experimental, hash_indices.value_or(Tensor()), offset_per_key)};
+            is_experimental, hash_indices.value_or(Tensor()), offset_per_key, rows_per_table.value_or(Tensor()))};
     }
 
     static torch::autograd::variable_list backward(torch::autograd::AutogradContext* ctx,
@@ -258,6 +259,7 @@ public:
             Variable(),       // total_D
             Variable(),       // max_D
             Variable(),       // hash_size_cumsum
+            Variable(),       // rows_per_table
             Variable(),       // total_hash_size_bits
             Variable(),       // indices
             Variable(),       // offsets
@@ -351,15 +353,16 @@ Tensor split_embedding_codegen_lookup_adam_function(
     const std::optional<Tensor>& prev_iter_dev = c10::nullopt,
     const bool apply_global_weight_decay = false,
     const double gwd_lower_bound = 0,
-    bool use_optimize = true)
+    bool use_optimize = true,
+    const std::optional<Tensor>& rows_per_table = c10::optional<Tensor>())
 {
     // Set to experimental if either the feature is enabled in JK, or the user specifies to use TBEv2
     const auto is_experimental = is_experimental_tbe;
 
     return SplitLookupAdam::apply(
         placeholder_autograd_tensor, output_dtype, dev_weights, uvm_weights, lxu_cache_weights, weights_placements,
-        weights_offsets, D_offsets, total_D, max_D, hash_size_cumsum, total_hash_size_bits, indices, hash_indices,
-        unique_ids, unique_offsets, unique_inverse, table_grad_accumulate_offsets, offsets, pooling_mode,
+        weights_offsets, D_offsets, total_D, max_D, hash_size_cumsum, rows_per_table, total_hash_size_bits, indices,
+        hash_indices, unique_ids, unique_offsets, unique_inverse, table_grad_accumulate_offsets, offsets, pooling_mode,
         indice_weights, feature_requires_grad, lxu_cache_locations, uvm_cache_stats, gradient_clipping, max_gradient,
         stochastic_rounding, is_experimental, use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev,
         momentum1_uvm, momentum1_placements, momentum1_offsets, momentum2_dev, momentum2_uvm, momentum2_placements,
@@ -491,6 +494,7 @@ Tensor split_embedding_codegen_lookup_adam_function_pt2(
     std::optional<at::Tensor> unique_offsets;
     std::optional<at::Tensor> unique_inverse;
     std::optional<at::Tensor> table_grad_accumulate_offsets;
+    std::optional<at::Tensor> rows_per_table;
 
     // unpacking from momentum
     check_param_len(momentum1.size(), MOMENTUM1_SIZE, "momentum1");
@@ -517,7 +521,7 @@ Tensor split_embedding_codegen_lookup_adam_function_pt2(
 
     return SplitLookupAdam::apply(
         placeholder_autograd_tensor, output_dtype, dev_weights, uvm_weights, lxu_cache_weights, weights_placements,
-        weights_offsets, D_offsets, total_D, max_D, hash_size_cumsum, total_hash_size_bits, indices,
+        weights_offsets, D_offsets, total_D, max_D, hash_size_cumsum, rows_per_table, total_hash_size_bits, indices,
         hash_indices, unique_ids, unique_offsets, unique_inverse, table_grad_accumulate_offsets,
         offsets, pooling_mode, indice_weights, feature_requires_grad,
         lxu_cache_locations, uvm_cache_stats, gradient_clipping, max_gradient, stochastic_rounding, is_experimental_tbe,
@@ -572,7 +576,8 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor? prev_iter_dev=None, "
           "    bool apply_global_weight_decay=False, "
           "    float gwd_lower_bound=0, "
-          "    bool use_optimize = True"
+          "    bool use_optimize = True, "
+          "    Tensor? rows_per_table=None "
           ") -> Tensor");
 
     m.impl("split_embedding_codegen_lookup_adam_function",

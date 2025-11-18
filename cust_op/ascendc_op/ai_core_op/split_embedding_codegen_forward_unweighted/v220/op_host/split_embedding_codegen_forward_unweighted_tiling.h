@@ -33,6 +33,7 @@ TILING_DATA_FIELD_DEF(int64_t, ubCanUsed);
 TILING_DATA_FIELD_DEF(int64_t, poolMode);
 TILING_DATA_FIELD_DEF(int64_t, maxD);
 TILING_DATA_FIELD_DEF(bool, enableHash);
+TILING_DATA_FIELD_DEF(bool, enableRowsPerTable);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(SplitEmbeddingCodegenForwardUnweighted,
