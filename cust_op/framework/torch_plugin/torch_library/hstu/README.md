@@ -70,11 +70,11 @@ torch.ops.mxrec.hstu_dense_backward(Tensor grad, Tensor q, Tensor k, Tensor v, T
 
 #### 算子编译与部署
 
-算子编译部署请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译部署请参考[RecSDK\cust_op\README.md](../../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 #### Pytorch编译
 
-Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
+Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
 #### 算子调用示例,以下以pytest方式调用为例
 
@@ -156,7 +156,7 @@ class TestHstuNormalDemo:
 
 ```
 
-注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense/torch/test_hstu_dense_forward_demo.py](../../../../test/hstu_dense/torch/test_hstu_dense_forward_demo.py)
+注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense/torch/test_hstu_dense_forward_demo.py](../../../../../test/hstu_dense/torch/test_hstu_dense_forward_demo.py)
 
 
 ##### hstu_dense_backward接口
@@ -248,4 +248,4 @@ class TestHstuNormalDemo:
 
 ```
 
-注：注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense/torch/test_hstu_dense_backward_demo.py](../../../../test/hstu_dense/torch/test_hstu_dense_backward_demo.py)
+注：注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense/torch/test_hstu_dense_backward_demo.py](../../../../../test/hstu_dense/torch/test_hstu_dense_backward_demo.py)
