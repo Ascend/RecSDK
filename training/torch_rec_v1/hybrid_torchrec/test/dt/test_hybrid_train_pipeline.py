@@ -97,7 +97,7 @@ class TestHybridTrainPipelineSparseDist(unittest.TestCase):
                 self.model,
                 optimizer=Adagrad,
                 device=torch.device("cpu"),
-                return_loss=True    
+                return_loss=True
             )
     
     def test_pipeline_with_invalid_pipe_n_batch(self):

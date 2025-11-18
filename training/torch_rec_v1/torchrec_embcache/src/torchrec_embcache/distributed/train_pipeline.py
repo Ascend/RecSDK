@@ -31,6 +31,7 @@ from torch.autograd.profiler import record_function
 from hybrid_torchrec.distributed.sharding.sequence_sharding import (
     HybridSequenceShardingContext,
 )
+from hybrid_torchrec.constants import MAX_LOCAL_UNIQUE_PARALLEL_BATCH_NUM
 
 from torchrec_embcache import embcache_pybind
 from torchrec_embcache.distributed.sharding.rw_sharding import (
@@ -286,6 +287,13 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                 f"but got {local_unique_parallel_batch_num}."
             )
         self.local_unique_parallel_batch_num = int(local_unique_parallel_batch_num)
+        if self.local_unique_parallel_batch_num < 1 or \
+                self.local_unique_parallel_batch_num > MAX_LOCAL_UNIQUE_PARALLEL_BATCH_NUM:
+            raise ValueError(
+                f"Param error: LOCAL_UNIQUE_PARALLEL_BATCH_NUM must be in [1, {MAX_LOCAL_UNIQUE_PARALLEL_BATCH_NUM}], "
+                f"but got {self.local_unique_parallel_batch_num}."
+            )
+        
         self._zero_grad = self._optimizer.zero_grad if custom_model_zero_grad is None else custom_model_zero_grad
         self._custom_model_bwd = custom_model_bwd
 

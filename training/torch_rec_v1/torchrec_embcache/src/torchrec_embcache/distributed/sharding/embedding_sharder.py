@@ -12,6 +12,7 @@ from typing import (
     List,
     Optional,
     Type,
+    NamedTuple,
 )
 
 import torch
@@ -34,6 +35,38 @@ from torchrec.distributed.embeddingbag import EmbeddingBagCollectionSharder
 from torchrec.distributed.embedding import EmbeddingCollectionSharder
 
 
+class SharderParams(NamedTuple):
+    """Sharder参数封装"""
+    cpu_device: torch.device
+    cpu_env: ShardingEnv
+    npu_device: torch.device
+    npu_env: ShardingEnv
+    fused_params: Optional[Dict[str, Any]] = None
+    qcomm_codecs_registry: Optional[Dict[str, QuantizedCommCodecs]] = None
+
+
+def _validate_sharder_params(params: SharderParams) -> None:
+    """校验sharder参数类型"""
+    if not isinstance(params.cpu_device, torch.device):
+        raise TypeError(f"cpu_device must be torch.device, but got {type(params.cpu_device)}")
+    if not isinstance(params.cpu_env, ShardingEnv):
+        raise TypeError(f"cpu_env must be ShardingEnv, but got {type(params.cpu_env)}")
+    if not isinstance(params.npu_device, torch.device):
+        raise TypeError(f"npu_device must be torch.device, but got {type(params.npu_device)}")
+    if not isinstance(params.npu_env, ShardingEnv):
+        raise TypeError(f"npu_env must be ShardingEnv, but got {type(params.npu_env)}")
+    if params.fused_params is not None and not isinstance(params.fused_params, dict):
+        raise TypeError(
+            f"fused_params must be dict or None, but got {type(params.fused_params)}"
+        )
+    if params.qcomm_codecs_registry is not None and not isinstance(
+        params.qcomm_codecs_registry, dict
+    ):
+        raise TypeError(
+            f"qcomm_codecs_registry must be dict or None, but got {type(params.qcomm_codecs_registry)}"
+        )
+
+
 class EmbCacheEmbeddingBagCollectionSharder(EmbeddingBagCollectionSharder):
     """
     This implementation uses non-fused `EmbCacheEmbeddingBagCollection`
@@ -48,6 +81,17 @@ class EmbCacheEmbeddingBagCollectionSharder(EmbeddingBagCollectionSharder):
         fused_params: Optional[Dict[str, Any]] = None,
         qcomm_codecs_registry: Optional[Dict[str, QuantizedCommCodecs]] = None,
     ) -> None:
+        # 类型校验
+        params = SharderParams(
+            cpu_device=cpu_device,
+            cpu_env=cpu_env,
+            npu_device=npu_device,
+            npu_env=npu_env,
+            fused_params=fused_params,
+            qcomm_codecs_registry=qcomm_codecs_registry,
+        )
+        _validate_sharder_params(params)
+
         super().__init__(
             fused_params=fused_params,
             qcomm_codecs_registry=qcomm_codecs_registry,
@@ -101,6 +145,17 @@ class EmbCacheEmbeddingCollectionSharder(EmbeddingCollectionSharder):
         fused_params: Optional[Dict[str, Any]] = None,
         qcomm_codecs_registry: Optional[Dict[str, QuantizedCommCodecs]] = None,
     ) -> None:
+        # 类型校验
+        params = SharderParams(
+            cpu_device=cpu_device,
+            cpu_env=cpu_env,
+            npu_device=npu_device,
+            npu_env=npu_env,
+            fused_params=fused_params,
+            qcomm_codecs_registry=qcomm_codecs_registry,
+        )
+        _validate_sharder_params(params)
+
         super().__init__(
             fused_params=fused_params,
             qcomm_codecs_registry=qcomm_codecs_registry,

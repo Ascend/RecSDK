@@ -24,7 +24,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_common import (
 
 sys.modules['torch_npu'] = MagicMock
 
-from hybrid_torchrec.distributed.batched_embedding_kernel import ( 
+from hybrid_torchrec.distributed.batched_embedding_kernel import (
     HybridSplitTableBatchedEmbeddingBagsCodegen,
     HybridBatchedFusedEmbeddingBag,
     HybridBatchedFusedEmbedding,

@@ -13,14 +13,12 @@ import torch
 
 from torchrec import EmbeddingConfig, EmbeddingBagConfig
 from hybrid_torchrec.constants import (
-    EMBEDDINGS_DIM_ALIGNMENT,
-    MAX_EMBEDDINGS_DIM,
-    MAX_NUM_EMBEDDINGS,
     MAX_MULTI_HOT_SIZE,
     MAX_NUM_TABLES,
     MAX_WORLD_SIZE,
     MAX_BATCH_SIZE
 )
+from hybrid_torchrec.modules.hash_embeddingbag import check_embedding_config_valid
 
 
 _DEFAULT_ADMIT_THRESHOLD: int = -1
@@ -50,6 +48,48 @@ class AdmitAndEvictConfig:
     evict_threshold: Optional[int] = _DEFAULT_EVICT_THRESHOLD  # unit: seconds
     evict_step_interval: Optional[int] = 0
 
+    def __post_init__(self):
+        """后置校验函数，确保参数类型和值的正确性"""
+        # 校验admit_threshold类型和值
+        if self.admit_threshold is not None:
+            if not isinstance(self.admit_threshold, int):
+                raise TypeError(
+                    f"admit_threshold must be int or None, but got {type(self.admit_threshold)}"
+                )
+            if self.admit_threshold < -1:
+                raise ValueError(
+                    f"admit_threshold must be >= -1, but got {self.admit_threshold}"
+                )
+
+        # 校验not_admitted_default_value类型和值
+        if self.not_admitted_default_value is not None:
+            if not isinstance(self.not_admitted_default_value, float):
+                raise TypeError(
+                    f"not_admitted_default_value must be float or None, but got {type(self.not_admitted_default_value)}"
+                )
+
+        # 校验evict_threshold类型和值
+        if self.evict_threshold is not None:
+            if not isinstance(self.evict_threshold, int):
+                raise TypeError(
+                    f"evict_threshold must be int or None, but got {type(self.evict_threshold)}"
+                )
+            if self.evict_threshold < 0:
+                raise ValueError(
+                    f"evict_threshold must be >= 0, but got {self.evict_threshold}"
+                )
+
+        # 校验evict_step_interval类型和值
+        if self.evict_step_interval is not None:
+            if not isinstance(self.evict_step_interval, int):
+                raise TypeError(
+                    f"evict_step_interval must be int or None, but got {type(self.evict_step_interval)}"
+                )
+            if self.evict_step_interval < 0:
+                raise ValueError(
+                    f"evict_step_interval must be >= 0, but got {self.evict_step_interval}"
+                )
+
     def is_feature_admit_enabled(self) -> bool:
         return self.admit_threshold != _DEFAULT_ADMIT_THRESHOLD
 
@@ -73,7 +113,9 @@ def check_valid_value(is_valid: bool, message: str):
 
 def check_embedding_optimizer(optimizer: Type[torch.optim.Optimizer]):
     if optimizer not in [torch.optim.Adagrad, torch.optim.Adam, torch.optim.SGD]:
-        raise ValueError(f"The optimizer should be one of [torch.optim.Adagrad, torch.optim.Adam, torch.optim.SGD]")
+        raise ValueError(
+            f"The optimizer should be one of [torch.optim.Adagrad, torch.optim.Adam, torch.optim.SGD]"
+        )
 
 
 def check_multi_hot_sizes(multi_hot_sizes: List[int], tables: List[EmbeddingBagConfig | EmbeddingConfig]):
@@ -82,54 +124,40 @@ def check_multi_hot_sizes(multi_hot_sizes: List[int], tables: List[EmbeddingBagC
     if not isinstance(tables, list):
         raise ValueError(f"The 'tables' should be a list")
     if len(tables) <= 0 or len(tables) > MAX_NUM_TABLES:
-        raise ValueError(f"The length of tables should be in range: [1, {MAX_NUM_TABLES}]")
+        raise ValueError(
+            f"The length of tables should be in range: [1, {MAX_NUM_TABLES}]"
+        )
     if len(multi_hot_sizes) != len(tables):
-        raise ValueError(f"The multi_hot_sizes length should be equal to the length of tables")
+        raise ValueError(
+            f"The multi_hot_sizes length should be equal to the length of tables"
+        )
     for hot_size in multi_hot_sizes:
         if not type(hot_size) is int:
             raise ValueError(f"The multi_hot_sizes should be a list of int")
         if not (1 <= hot_size <= MAX_MULTI_HOT_SIZE):
-            raise ValueError(f"The multi_hot_sizes element value should be in [1, {MAX_MULTI_HOT_SIZE}]")
+            raise ValueError(
+                f"The multi_hot_sizes element value should be in [1, {MAX_MULTI_HOT_SIZE}]"
+            )
 
 
-def check_embedding_config(config: EmbeddingConfig):
-    if config.num_embeddings < 1 or config.num_embeddings > MAX_NUM_EMBEDDINGS:
-        raise ValueError(
-            f"The num_embeddings should be in [1, {MAX_NUM_EMBEDDINGS}], but is {config.num_embeddings}"
-        )
 
-    if config.embedding_dim < EMBEDDINGS_DIM_ALIGNMENT or config.embedding_dim > MAX_EMBEDDINGS_DIM:
-        raise ValueError(
-            f"The embedding dim should be in [{EMBEDDINGS_DIM_ALIGNMENT}, {MAX_EMBEDDINGS_DIM}], "
-            f"but is {config.embedding_dim}"
-        )
-    
-    if config.embedding_dim % EMBEDDINGS_DIM_ALIGNMENT != 0:
-        raise ValueError(
-            f"The embedding dim should be a multiple of {EMBEDDINGS_DIM_ALIGNMENT}, but is {config.embedding_dim}"
-        )
-    
-    if config.weight_init_min is None:
-        config.weight_init_min = 0.0
-    
-    if config.weight_init_max is None:
-        config.weight_init_max = 1.0
-    
-    if config.weight_init_min >= config.weight_init_max:
-        raise ValueError(
-            f"The weight_init_min should be less than weight_init_max, "
-            f"but is {config.weight_init_min} >= {config.weight_init_max}"
-        )
 
 
 def check_create_table_params(batch_size, embedding_optimizer_cls, multi_hot_sizes, tables, world_size):
-    for config in tables:
-        check_embedding_config(config)
-    check_embedding_optimizer(embedding_optimizer_cls)
     check_valid_value(
         type(world_size) is int and 0 < world_size <= MAX_WORLD_SIZE,
         f"world_size must be greater than 0 and less than or equal to {MAX_WORLD_SIZE}",
     )
+    
+    for config in tables:
+        check_embedding_config_valid(config)
+        if config.num_embeddings < world_size:
+            raise ValueError(
+                f"The num_embeddings should be greater than world_size, "
+                f"but is {config.num_embeddings} < {world_size}"
+            )
+    check_embedding_optimizer(embedding_optimizer_cls)
+    
     check_valid_value(
         type(batch_size) is int and 0 < batch_size <= MAX_BATCH_SIZE,
         f"batch_size must be greater than 0 and less than or equal to {MAX_BATCH_SIZE}",
@@ -147,7 +175,7 @@ class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
     )
 
     def __post_init__(self):
-        check_embedding_config(self)
+        check_embedding_config_valid(self)
         super().__post_init__()
 
 
@@ -161,5 +189,5 @@ class EmbCacheEmbeddingConfig(EmbeddingConfig):
     )
 
     def __post_init__(self):
-        check_embedding_config(self)
+        check_embedding_config_valid(self)
         super().__post_init__()
