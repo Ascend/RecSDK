@@ -680,7 +680,8 @@ public:
                                        int64_t toOffset, int64_t total = 0)
     {
         int64_t remain = total;
-        int64_t thisLen = vecOnceDataNum;
+        int64_t copyLenEachLoopAlignHeadDim = vecOnceDataNum / headDim * headDim;
+        int64_t thisLen = copyLenEachLoopAlignHeadDim;
         while (remain > 0) {
             if (thisLen > remain) {
                 thisLen = remain;
