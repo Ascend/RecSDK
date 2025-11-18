@@ -19,7 +19,7 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
-from torch.optim import Adam, Adagrad, SGD
+from torch.optim import Adam, Adagrad, SGD, SparseAdam
 
 from hybrid_torchrec import HashEmbeddingBagCollection, HashEmbeddingBagConfig
 from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
@@ -28,7 +28,7 @@ from hybrid_torchrec.distributed.hybrid_train_pipeline import (
 )
 
 import torchrec
-from torchrec import EmbeddingBagConfig
+from torchrec import EmbeddingBagConfig, EmbeddingBagCollection
 import torchrec.distributed
 from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
 from torchrec.distributed.planner import (
@@ -42,9 +42,12 @@ from torchrec.optim.keyed import CombinedOptimizer
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 OPTIMIZER_PARAM = {
+    # 注: Rec SDK Torch中Adam优化器融合算子使用的更新算法为sparse 更新，和SparseAdam算法对应
+    #   和torch原生Adam优化器更新算法有差异
     Adam: dict(lr=0.02),
     Adagrad: dict(lr=0.02, eps=1.0e-8),
     SGD: dict(lr=0.02),
+    SparseAdam: dict(lr=0.02),
 }
 
 WORLD_SIZE = 2
@@ -66,11 +69,11 @@ def execute(
 ):
     setup_logging(rank)
     logging.info("this test %s", os.path.basename(__file__))
-    # , batch_num, lookup_lens, num_embeddings, table_num
-    dataset_gloden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
+    # batch_num, lookup_lens, num_embeddings, table_num
+    dataset_golden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
     dataset = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
-    dataset_loader_gloden = DataLoader(
-        dataset_gloden,
+    dataset_loader_golden = DataLoader(
+        dataset_golden,
         batch_size=None,
         batch_sampler=None,
         pin_memory=True,
@@ -83,7 +86,7 @@ def execute(
         pin_memory_device="npu",
         num_workers=1,
     )
-    embeding_config = []
+    embedding_configs = []
     for i in range(table_num):
         ebc_config = HashEmbeddingBagConfig(
             name=f"table{i}",
@@ -93,19 +96,19 @@ def execute(
             pooling=pool_type,
             init_fn=weight_init,
         )
-        embeding_config.append(ebc_config)
+        embedding_configs.append(ebc_config)
 
     test_model = TestModel(rank, world_size, device)
-    gloden_results = test_model.cpu_gloden_loss(embeding_config, dataset_loader_gloden, optim)
-    test_results = test_model.test_loss(embeding_config, data_loader, sharding_type, optim)
-    for gloden, result in zip(gloden_results, test_results):
+    golden_results = test_model.cpu_golden_loss(embedding_configs, dataset_loader_golden, optim)
+    test_results = test_model.test_loss(embedding_configs, data_loader, sharding_type, optim)
+    for golden, result in zip(golden_results, test_results):
         logging.debug("")
         logging.debug("===========================")
-        logging.debug("result test %s", gloden)
-        logging.debug("gloden test %s", result)
+        logging.debug("result test %s", golden)
+        logging.debug("golden test %s", result)
         assert torch.allclose(
-            gloden, result, rtol=1e-04, atol=1e-04
-        ), "gloden and result is not closed"
+            golden, result, rtol=1e-04, atol=1e-04
+        ), "golden and result is not closed"
 
 
 def weight_init(param: torch.nn.Parameter):
@@ -127,14 +130,24 @@ class TestModel:
         self.setup(rank=rank, world_size=world_size)
 
     @staticmethod
-    def cpu_gloden_loss(
-        embeding_config: List[EmbeddingBagConfig], dataloader: DataLoader[Batch], optim
+    def cpu_golden_loss(
+        embedding_configs: List[EmbeddingBagConfig], dataloader: DataLoader[Batch], optim
     ):
         pg = dist.new_group(backend="gloo")
-        table_num = len(embeding_config)
-        ebc = HashEmbeddingBagCollection(device="cpu", tables=embeding_config)
+        table_num = len(embedding_configs)
+        if optim == Adam:
+            ebc = EmbeddingBagCollection(device="cpu", tables=embedding_configs)
+        else:
+            ebc = HashEmbeddingBagCollection(device="cpu", tables=embedding_configs)
 
-        num_features = sum([c.num_features() for c in embeding_config])
+        if optim == Adam:
+            # 注: Rec SDK Torch中Adam优化器融合算子使用的更新算法和SparseAdam算法对应，和torch原生Adam更新算法有差异
+            # 因此cpu侧需使用SparseAdam优化器进行更新,需将torch.nn.Embedding对象的sparse字段更新为True
+            optim = SparseAdam
+            for config in embedding_configs:
+                ebc.embedding_bags[config.name].sparse = True
+
+        num_features = sum([c.num_features() for c in embedding_configs])
         ebc = Model(ebc, num_features)
         model = DDP(ebc, device_ids=None, process_group=pg)
 
@@ -178,7 +191,7 @@ class TestModel:
         host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
 
         table_num = len(embeding_config)
-        ebc = HashEmbeddingBagCollection(device=self.device, tables=embeding_config)
+        ebc = HashEmbeddingBagCollection(device="meta", tables=embeding_config)
         num_features = sum([c.num_features() for c in embeding_config])
         ebc = Model(ebc, num_features)
         apply_optimizer_in_backward(
@@ -187,7 +200,7 @@ class TestModel:
             optimizer_kwargs=OPTIMIZER_PARAM[optim],
         )
         # Shard
-        constrans = {
+        constrains = {
             f"table{i}": ParameterConstraints(
                 sharding_types=[sharding_type], compute_kernels=["fused"]
             )
@@ -195,7 +208,7 @@ class TestModel:
         }
         planner = EmbeddingShardingPlanner(
             topology=Topology(world_size=self.world_size, compute_device=self.device),
-            constraints=constrans,
+            constraints=constrains,
         )
         plan = planner.collective_plan(
             ebc, get_default_hybrid_sharders(host_env), dist.GroupMember.WORLD
@@ -242,7 +255,7 @@ class TestModel:
 @pytest.mark.parametrize("sharding_type", ["row_wise"])
 @pytest.mark.parametrize("lookup_len", [1024])
 @pytest.mark.parametrize("device", ["npu"])
-@pytest.mark.parametrize("optim", [Adagrad, SGD])
+@pytest.mark.parametrize("optim", [Adam, Adagrad, SGD])
 def test_hybrid_pipeline_hash_embedding_bag(
     table_num,
     embedding_dims,
