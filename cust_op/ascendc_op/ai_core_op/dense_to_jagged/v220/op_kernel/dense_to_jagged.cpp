@@ -103,7 +103,8 @@ private:
             int copyRows = jaggedPosNext - jaggedPos;
 
             // Get jagged Global tensor with offset
-            GlobalTensor<uint8_t> jaggedDenseCopyGb = jaggedDenseGb[jaggedPos * args->denseDim2 * align];
+            int64_t jaggedPosOffset = static_cast<int64_t>(jaggedPos) * args->denseDim2 * align;
+            GlobalTensor<uint8_t> jaggedDenseCopyGb = jaggedDenseGb[jaggedPosOffset];
             int64_t densePos = static_cast<int64_t>(offsetStartPos + i) * args->denseDim2 * args->denseDim1 * align;
             GlobalTensor<uint8_t> denseCopyGb = denseGb[densePos];
 
