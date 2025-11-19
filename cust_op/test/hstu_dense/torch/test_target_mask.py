@@ -243,7 +243,7 @@ def cached_create_causal_mask(param: ScoreShapeParam) -> torch.Tensor:
     if os.path.exists(cached_file):
         mask = torch.tril(torch.ones(param.seq_len, param.seq_len))
         mask[:param.num_context, :param.seq_len - param.num_target] = 1
-        if param.num_target > 0:
+        if param.num_target > 0 and param.target_group_size > 0:
             target_mask = torch.load(cached_file)
             mask[-param.num_target:, -param.num_target:] = target_mask[:param.num_target, :param.num_target]
         return mask
