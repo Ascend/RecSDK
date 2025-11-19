@@ -112,7 +112,9 @@ protected:
     __aicore__ inline void CopyOut(int64_t outOffset, int64_t tableDim)
     {
         auto outLt = queOut.DeQue<float>();
+        SetAtomicAdd<float>();
         CpLocal2Gm(outGT[outOffset], outLt, tableDim);
+        SetAtomicNone();
         queOut.FreeTensor(outLt);
     }
 
