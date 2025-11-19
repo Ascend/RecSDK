@@ -39,7 +39,7 @@ TYPE_LIST = list(itertools.product(PERMUTE_TYPE, LENGTHS_TYPE, VALUES_TYPE, WEIG
 # permute shape为[BASE_T]
 # lengths shape为[1 ~ (2T - 1)]
 # extra_t用于测试permute和lengths不等长的情况，lengths[BASE_T + extra_T]
-BASE_T = np.random.randint(2, 30, 4)       # 随机生成4个介于2到30之间的整数，代表稀疏数据的原始维度
+BASE_T = np.random.randint(2, 500, 5)       # 随机生成5个介于2到500之间的整数，代表稀疏数据的原始维度
 EXTRA_T = [1, 0, -1]
 SHAPE_LIST = list(itertools.product(BASE_T, EXTRA_T))
 
@@ -62,36 +62,6 @@ def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
     return [x.cpu() if isinstance(x, torch.Tensor) else x for x in results]
 
 
-@pytest.mark.parametrize("is_mxrec", [True, False])
-def test_very_large_input(is_mxrec):
-    """
-    测试非常大的输入情况
-    """
-    t = 300000  # 大尺寸
-    permute = np.arange(t, dtype=np.int32)
-    np.random.shuffle(permute)
-    lengths = np.random.randint(1, 8192, size=t, dtype=np.int32)
-    total_length = lengths.sum()
-    values = np.arange(total_length, dtype=np.int32)
-    weights = np.random.rand(total_length).astype(np.float32)
-
-    params = {
-        'permute': permute,
-        'lengths': lengths,
-        'values': values,
-        'weights': weights,
-        'permuted_lengths_sum': None
-    }
-
-    golden = get_result(params)
-    result = get_result(params, DEVICE, is_mxrec)
-
-    for gt, pred in zip(golden, result):
-        assert type(gt) is type(pred)
-        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
-            assert torch.allclose(gt, pred, atol=1e-4)
-
-
 @pytest.mark.parametrize("types", TYPE_LIST)
 @pytest.mark.parametrize("shapes", SHAPE_LIST)
 @pytest.mark.parametrize("enable_permuted_sum", [True, False])
@@ -112,11 +82,72 @@ def test_permute1d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec):
     extra_t = random.randint(1, t - 1) * extra_t
 
     permute = np.random.choice(t + extra_t, t).astype(dtype=np.int32)
-    lengths = np.ones(t + extra_t, dtype=ltype) # 创建全1的lengths，简化
-    values = np.arange(0, t + extra_t, dtype=vtype)  # 注意总长度为lengths.sum(),此处特殊，为len(lengths)
-    weights = np.arange(0, t + extra_t, dtype=wtype) if wtype else None
-    permuted_lengths_sum = t if enable_permuted_sum else None
+    lengths = np.random.randint(200, 2000, size=t + extra_t, dtype=ltype)
+    total_length = int(lengths.sum())
+    values = np.arange(0, total_length, dtype=vtype)
+    weights = np.arange(0, total_length, dtype=wtype) if wtype else None
+    permuted_lengths_sum = lengths[permute].sum() if enable_permuted_sum else None
 
+    params = {
+        'permute': permute,
+        'lengths': lengths,
+        'values': values,
+        'weights': weights,
+        'permuted_lengths_sum': permuted_lengths_sum
+    }
+
+    golden = get_result(params)
+    result = get_result(params, DEVICE, is_mxrec)
+
+    for gt, pred in zip(golden, result):
+        assert type(gt) is type(pred)
+        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
+            assert torch.allclose(gt, pred, atol=1e-4)
+
+
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_small_permuted_dim_large_values_length(is_mxrec):
+    """
+    测试permutedim小,values长度大场景
+    """
+    t = 8
+
+    permute = np.random.choice(t, t).astype(dtype=np.int32)
+    lengths = np.random.randint(30000, 500000, size=t, dtype=np.int64)
+    total_length = int(lengths.sum())
+    values = np.arange(0, total_length, dtype=np.int32)
+    weights = np.arange(0, total_length, dtype=np.float32)
+    permuted_lengths_sum = lengths[permute].sum()
+    params = {
+        'permute': permute,
+        'lengths': lengths,
+        'values': values,
+        'weights': weights,
+        'permuted_lengths_sum': permuted_lengths_sum
+    }
+
+    golden = get_result(params)
+    result = get_result(params, DEVICE, is_mxrec)
+
+    for gt, pred in zip(golden, result):
+        assert type(gt) is type(pred)
+        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
+            assert torch.allclose(gt, pred, atol=1e-4)
+
+
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_large_permuted_dim_small_values_length(is_mxrec):
+    """
+    测试permutedim大,values长度小场景
+    """
+    t = 872
+
+    permute = np.random.choice(t, t).astype(dtype=np.int32)
+    lengths = np.random.randint(10, 15000, size=t, dtype=np.int64)
+    total_length = int(lengths.sum())
+    values = np.arange(0, total_length, dtype=np.int32)
+    weights = np.arange(0, total_length, dtype=np.float32)
+    permuted_lengths_sum = lengths[permute].sum()
     params = {
         'permute': permute,
         'lengths': lengths,

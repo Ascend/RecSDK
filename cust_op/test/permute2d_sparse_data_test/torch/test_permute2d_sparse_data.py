@@ -24,7 +24,7 @@ import torch_npu
 import fbgemm_gpu
 import numpy as np
 
-DEVICE = "npu:7"
+DEVICE = "npu:0"
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 PTYPE = [np.int32]
@@ -35,9 +35,9 @@ TYPE_LIST = list(itertools.product(PTYPE, LTYPE, VTYPE, WTYPE))
 
 # lengths shape为[1 ~ (2T - 1), B]
 # extra_t用于测试permute和lengths不等长的情况，lengths[T + extra_T, B]
-T = np.random.randint(2, 30, 4)
+T = np.random.randint(2, 500, 5)
 EXTRA_T = [1, 0, -1]
-B = [2048, 20480, 204800]
+B = [128, 1024, 2048, 20480]
 SHAPE_LIST = list(itertools.product(T, EXTRA_T, B))
 
 
@@ -73,9 +73,10 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec):
     extra_t = random.randint(1, t - 1) * extra_t
 
     permute = np.random.choice(t + extra_t, t).astype(dtype=np.int32)
-    lengths = np.ones((t + extra_t, b), dtype=ltype)
-    values = np.arange(0, (t + extra_t) * b, dtype=vtype)
-    weights = np.arange(0, (t + extra_t) * b, dtype=wtype) if wtype else None
+    lengths = np.random.randint(1, 10, size=(t + extra_t, b), dtype=ltype)
+    total_length = int(lengths.sum())
+    values = np.arange(0, total_length, dtype=vtype)
+    weights = np.arange(0, total_length, dtype=wtype) if wtype else None
     permuted_lengths_sum = lengths[permute].sum() if enable_permuted_sum else None
     params = {
         'permute': permute,
@@ -87,6 +88,70 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec):
 
     golden = get_result(params)
     result = get_result(params, DEVICE, is_mxrec)
+
+    for gt, pred in zip(golden, result):
+        assert type(gt) is type(pred)
+        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
+            assert torch.allclose(gt, pred, atol=1e-5)
+
+
+@pytest.mark.parametrize("types", TYPE_LIST)
+def test_small_permuted_dim_large_values_length(types):
+    """
+        测试permutedim小,values长度大场景
+    """
+    ptype, ltype, vtype, wtype = types
+    t = 32
+    b = 128
+
+    permute = np.random.choice(t, t).astype(dtype=np.int32)
+    lengths = np.random.randint(10000, 30000, size=(t, b), dtype=ltype)
+    total_length = int(lengths.sum())
+    values = np.arange(0, total_length, dtype=vtype)
+    weights = np.arange(0, total_length, dtype=wtype) if wtype else None
+    permuted_lengths_sum = lengths[permute].sum()
+    params = {
+        'permute': permute,
+        'lengths': lengths,
+        'values': values,
+        'weights': weights,
+        'permuted_lengths_sum': permuted_lengths_sum
+    }
+
+    golden = get_result(params)
+    result = get_result(params, DEVICE)
+
+    for gt, pred in zip(golden, result):
+        assert type(gt) is type(pred)
+        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
+            assert torch.allclose(gt, pred, atol=1e-5)
+
+
+@pytest.mark.parametrize("types", TYPE_LIST)
+def test_large_permuted_dim_small_values_length(types):
+    """
+        测试permutedim大,values长度小场景
+    """
+    ptype, ltype, vtype, wtype = types
+    t = 872
+    b = 32
+
+    permute = np.random.choice(t, t).astype(dtype=np.int32)
+    lengths = np.random.randint(10, 800, size=(t, b), dtype=ltype)
+    total_length = int(lengths.sum())
+    values = np.arange(0, total_length, dtype=vtype)
+    weights = np.arange(0, total_length, dtype=wtype) if wtype else None
+    permuted_lengths_sum = lengths[permute].sum()
+    params = {
+        'permute': permute,
+        'lengths': lengths,
+        'values': values,
+        'weights': weights,
+        'permuted_lengths_sum': permuted_lengths_sum
+    }
+
+    golden = get_result(params)
+    result = get_result(params, DEVICE)
 
     for gt, pred in zip(golden, result):
         assert type(gt) is type(pred)
