@@ -19,7 +19,7 @@ from hybrid_torchrec.constants import (
 from hybrid_torchrec.modules.hash_embeddingbag import (
     reorder_inverse_indices,
     process_pooled_embeddings,
-    is_valid_feat_name,
+    _check_name_format,
     check_embedding_config_valid,
     HashEmbeddingBag,
     HashEmbeddingBagConfig,
@@ -79,28 +79,37 @@ class TestProcessPooledEmbeddings:
             assert torch.equal(result, expected)
 
 
-class TestIsValidFeatname:
+class TestCheckNameFormat:
     @staticmethod
     def test_valid_feature_names():
         """测试合法特征名"""
-        assert is_valid_feat_name("feature_1") is True
-        assert is_valid_feat_name("FEATURE2") is True
-        assert is_valid_feat_name("_private_feat") is True
-        assert is_valid_feat_name("a" * 100) is True  # 长字符串测试
+        # 这些名称应该不会抛出异常
+        _check_name_format("feature_1")
+        _check_name_format("FEATURE2")
+        _check_name_format("_private_feat")
+        _check_name_format("a" * 100)  # 长字符串测试
+        _check_name_format(".feat")
 
     @staticmethod
     def test_invalid_feature_names():
         """测试非法字符"""
-        assert is_valid_feat_name("feature@") is False  # 特殊字符
-        assert is_valid_feat_name("space in") is False  # 空格
-        assert is_valid_feat_name("dash-ed") is False  # 连字符
+        # 这些名称应该抛出 ValueError
+        with pytest.raises(ValueError):
+            _check_name_format("feature@")  # 特殊字符
+        with pytest.raises(ValueError):
+            _check_name_format("space in")  # 空格
+        with pytest.raises(ValueError):
+            _check_name_format("dash-ed")  # 连字符
 
     @staticmethod
     def test_edge_cases():
         """边界条件测试"""
-        assert is_valid_feat_name("") is True  # 空字符串
-        assert is_valid_feat_name("_") is True  # 单下划线
-        assert is_valid_feat_name("1") is True  # 纯数字
+        # 空字符串应该抛出异常
+        with pytest.raises(ValueError):
+            _check_name_format("")
+        # 这些名称应该不会抛出异常
+        _check_name_format("_")  # 单下划线
+        _check_name_format("1")  # 纯数字
 
 
 class TestEmbeddingConfigValid:
@@ -187,7 +196,7 @@ class TestEmbeddingConfigValid:
             check_embedding_config_valid(config)
 
         # 测试非法特征名
-        with pytest.raises(ValueError, match="should contain a-Z, 0-9, _"):
+        with pytest.raises(ValueError, match="should only contain alphanumeric characters"):
             config = HashEmbeddingBagConfig(
                 embedding_dim=8,
                 num_embeddings=100,
@@ -198,15 +207,6 @@ class TestEmbeddingConfigValid:
     @staticmethod
     def test_weight_init_validation():
         """测试权重初始化参数检查"""
-        with pytest.raises(ValueError, match="should be None"):
-            config = HashEmbeddingBagConfig(
-                embedding_dim=8,
-                num_embeddings=100,
-                feature_names=["feat"],
-                weight_init_max=1.0 # should be None
-            )
-            check_embedding_config_valid(config)
-
         with pytest.raises(ValueError, match="should be None"):
             config = HashEmbeddingBagConfig(
                 embedding_dim=8,

@@ -308,8 +308,11 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         for i, ori_config in enumerate(tables):
             if isinstance(ori_config, EmbCacheEmbeddingBagConfig):
                 continue
-            emb_cache_config = EmbCacheEmbeddingBagConfig(embedding_dim=ori_config.embedding_dim,
-                                                          num_embeddings=ori_config.num_embeddings)
+            emb_cache_config = EmbCacheEmbeddingBagConfig(
+                embedding_dim=ori_config.embedding_dim,
+                num_embeddings=ori_config.num_embeddings,
+                feature_names=ori_config.feature_names,
+            )
             emb_cache_config.__dict__.update(ori_config.__dict__)
             tables[i] = emb_cache_config
 
