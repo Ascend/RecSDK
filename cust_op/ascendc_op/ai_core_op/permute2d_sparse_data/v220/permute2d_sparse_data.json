@@ -43,6 +43,39 @@
                     "fp32", "fp32", "fp32", "fp32"
                 ],
                 "default_value": "None"
+            },
+            {
+                "name": "totalOffset",
+                "param_type": "optional",
+                "format": [
+                    "ND","ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int32", "int64", "int32"
+                ],
+                "default_value": "None"
+            },
+            {
+                "name": "lengthsOffset",
+                "param_type": "optional",
+                "format": [
+                    "ND","ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int32", "int64", "int32"
+                ],
+                "default_value": "None"
+            },
+            {
+                "name": "permutedLengthsOffset",
+                "param_type": "optional",
+                "format": [
+                    "ND","ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int32", "int64", "int32"
+                ],
+                "default_value": "None"
             }
         ],
         "output_desc": [

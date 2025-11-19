@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,11 +19,16 @@ See the License for the specific language governing permissions and
 using namespace AscendC;
 
 extern "C" __global__ __aicore__ void permute2d_sparse_data(GM_ADDR permute, GM_ADDR lengths, GM_ADDR values,
-        GM_ADDR weights, GM_ADDR out_lengths, GM_ADDR out_indices, GM_ADDR out_weights, GM_ADDR workspace,
-        GM_ADDR tiling)
+        GM_ADDR weights, GM_ADDR totalOffset, GM_ADDR lengthsOffset, GM_ADDR permutedLengthsOffset,
+        GM_ADDR outLengths, GM_ADDR outValues, GM_ADDR outWeights, GM_ADDR workspace, GM_ADDR tiling)
 {
-    Permute2dSparseData::Args args{permute, lengths, values, weights, out_lengths,
-        out_indices, out_weights, workspace, tiling};
-    Permute2dSparseData::Permute2dSparseDataKernel<DTYPE_LENGTHS, DTYPE_VALUES> kernel(args);
-    kernel.Compute();
+    TPipe pipe;
+    Permute2dSparseData::Args args{permute, lengths, values, weights, totalOffset, lengthsOffset,
+                                   permutedLengthsOffset, outLengths, outValues, outWeights, workspace, tiling};
+    Permute2dSparseData::Permute2dSparseDataKernel<DTYPE_LENGTHS, DTYPE_VALUES> kernel(args, &pipe);
+    if (TILING_KEY_IS(1)) {
+        kernel.ComputeAll();
+    } else if (TILING_KEY_IS(2)) {
+        kernel.ComputeData();
+    }
 }

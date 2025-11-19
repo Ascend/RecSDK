@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,6 +29,9 @@ namespace optiling {
     TILING_DATA_FIELD_DEF(int64_t, valuesDim);
     TILING_DATA_FIELD_DEF(int64_t, valuesOutDim);
     TILING_DATA_FIELD_DEF(bool, enableWeights);
+
+    // 判断是否传入totalOffset, 传入totalOffset时，采用行内分核方案
+    TILING_DATA_FIELD_DEF(bool, enableTotalOffset);
 
     TILING_DATA_FIELD_DEF(int64_t, totalBatch);
     TILING_DATA_FIELD_DEF(int64_t, baseBatchLen);

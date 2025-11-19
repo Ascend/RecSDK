@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,9 +22,6 @@ namespace optiling {
 
     constexpr int GM_ALIGN = 64;
     constexpr int RESERVER_UB_SIZE = 20 * 1024;
-    constexpr int DATA_TYPE_INT64 = 8;
-    constexpr int DATA_TYPE_INT32 = 4;
-    constexpr int DATA_TYPE_FLOAT32 = 4;
     constexpr int NUM_QUEUE = 4;
     constexpr int UB_ALIGN = 32;
     constexpr int SUPPORT_EMBEDDING_DIM_NUM = 2;
@@ -32,6 +29,9 @@ namespace optiling {
     constexpr int LENGTH_INDEX = 1;
     constexpr int VALUES_INDEX = 2;
     constexpr int WEIGHTS_INDEX = 3;
+    constexpr int TOTAL_OFFSET_INDEX = 4;
+    constexpr int LENGTHS_OFFSET_INDEX = 5;
+    constexpr int PERMUTED_LENGTHS_OFFSET_INDEX = 6;
 
     static ge::graphStatus TilingFunc(gert::TilingContext* context)
     {
@@ -41,12 +41,23 @@ namespace optiling {
 
         bool enableWeights = (context->GetOptionalInputTensor(WEIGHTS_INDEX) != nullptr);
         tiling.set_enableWeights(enableWeights);
+        bool enableTotalOffset = (context->GetOptionalInputTensor(TOTAL_OFFSET_INDEX) != nullptr);
+        tiling.set_enableTotalOffset(enableTotalOffset);
 
         OPS_LOG_E_IF_NULL("permuteShape", context->GetInputShape(PERMUTE_INDEX), return ge::GRAPH_FAILED);
         OPS_LOG_E_IF_NULL("lengthsShape", context->GetInputShape(LENGTH_INDEX), return ge::GRAPH_FAILED);
         OPS_LOG_E_IF_NULL("valuesShape", context->GetInputShape(VALUES_INDEX), return ge::GRAPH_FAILED);
+        
         if (enableWeights) {
             OPS_LOG_E_IF_NULL("weightsShape", context->GetInputShape(WEIGHTS_INDEX), return ge::GRAPH_FAILED);
+        }
+        if (enableTotalOffset) {
+            OPS_LOG_E_IF_NULL("totalOffsetShape", context->GetInputShape(TOTAL_OFFSET_INDEX), return ge::GRAPH_FAILED);
+        } else {
+            OPS_LOG_E_IF_NULL("lengthsOffsetShape", context->GetInputShape(LENGTHS_OFFSET_INDEX),
+                              return ge::GRAPH_FAILED);
+            OPS_LOG_E_IF_NULL("permutedLengthsOffsetShape", context->GetInputShape(PERMUTED_LENGTHS_OFFSET_INDEX),
+                              return ge::GRAPH_FAILED);
         }
 
         auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -55,8 +66,17 @@ namespace optiling {
         gert::Shape lengthsShape = context->GetInputShape(LENGTH_INDEX)->GetStorageShape();
         gert::Shape valuesShape = context->GetInputShape(VALUES_INDEX)->GetStorageShape();
         gert::Shape weightsShape;
+        gert::Shape totalOffsetShape;
+        gert::Shape lengthsOffsetShape;
+        gert::Shape permutedLengthsOffsetShape;
         if (enableWeights) {
             weightsShape = context->GetInputShape(WEIGHTS_INDEX)->GetStorageShape();
+        }
+        if (enableTotalOffset) {
+            totalOffsetShape = context->GetInputShape(TOTAL_OFFSET_INDEX)->GetStorageShape();
+        } else {
+            lengthsOffsetShape = context->GetInputShape(LENGTHS_OFFSET_INDEX)->GetStorageShape();
+            permutedLengthsOffsetShape = context->GetInputShape(PERMUTED_LENGTHS_OFFSET_INDEX)->GetStorageShape();
         }
 
         // shape check
@@ -67,6 +87,12 @@ namespace optiling {
         if (enableWeights && (valuesShape != weightsShape || valuesShape.GetDimNum() != 1)) {
             OPS_LOG_E("", "[ERROR]values shape or weights shape is error. values.size() = %d, weights.size() = %d\n",
                       valuesShape.GetDim(0), weightsShape.GetDim(0));
+            return ge::GRAPH_FAILED;
+        }
+        bool totalOffsetDimValid = (totalOffsetShape.GetDim(0) == (lengthsShape.GetDim(0) + 1));
+        if (enableTotalOffset && (!totalOffsetDimValid || totalOffsetShape.GetDimNum() != 1)) {
+            OPS_LOG_E("", "[ERROR]totalOffsetShape length(%d) must match lengthsShape dim0(%d)\n",
+                      totalOffsetShape.GetDim(0), lengthsShape.GetDim(0));
             return ge::GRAPH_FAILED;
         }
 
@@ -89,7 +115,7 @@ namespace optiling {
         }
         tiling.set_coreNum(coreNum);
 
-        // tiling core
+        // set totalBatch, baseBatchLen, tailSplitIndex
         int64_t totalBatch = permuteDim0;
         tiling.set_totalBatch(totalBatch);
         int64_t baseBatchLen = permuteDim0 / coreNum;
@@ -107,19 +133,18 @@ namespace optiling {
         size_t* currentWorkspace = context->GetWorkspaceSizes(1);
         size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
         OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
-
-        // 使用workspace共享lengths.sum(dim=1) + 各core计算的offsets结果
-        // 为保证workspace同步成功需要保证首地址的32位对齐,因此乘以64
-        size_t userWorkspacesSize = (lengthsT + 1) * GM_ALIGN * (coreNum + 1);
-        currentWorkspace[0] = systemWorkspacesSize + userWorkspacesSize;
+        currentWorkspace[0] = systemWorkspacesSize;
 
         context->SetBlockDim(coreNum);
 
         OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return ge::GRAPH_FAILED);
-
         tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
         context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
-
+        if (enableTotalOffset) {
+            context->SetTilingKey(1);  // 传入totalOffset，采用行内分核方案
+        } else {
+            context->SetTilingKey(2);  // 传入lengthsOffset和permutedLengthsOffset，采用行间分核方案
+        }
         return ge::GRAPH_SUCCESS;
     }
 }  // namespace optiling
@@ -174,6 +199,18 @@ public:
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
+        this->Input("totalOffset")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("lengthsOffset")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("permutedLengthsOffset")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
         this->Output("permuted_lengths")
             .ParamType(REQUIRED)
             .Follow("lengths", FollowType::DTYPE)
@@ -192,8 +229,10 @@ public:
         this->SetInferShape(ge::InferShape);
 
         this->AICore().SetTiling(optiling::TilingFunc);
+        this->AICore().AddConfig("ascend910");
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend910_95");
     }
 };
 
