@@ -1,7 +1,7 @@
 /**
  * @file backward_codegen_adagrad_unweighted_exact.cpp
  *
- * Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -539,5 +539,6 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
             TORCH_FN(
             fbgemm_npu_lookups::split_embedding_backward_codegen_adagrad_unweighted_exact_npu_grad_aggregation
             )
-        ));
+        )
+    );
 }
