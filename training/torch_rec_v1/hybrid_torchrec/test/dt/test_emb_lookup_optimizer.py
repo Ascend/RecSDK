@@ -109,6 +109,7 @@ class TestHybridOps(unittest.TestCase):
             total_D=10,
             max_D=5,
             hash_size_cumsum=self.hash_size_cumsum,
+            rows_per_table=None,
             total_hash_size_bits=7,
             indices=self.indices,
             offsets=self.offsets,
@@ -236,7 +237,6 @@ class TestHybridOps(unittest.TestCase):
             max_B=4,
             output_size=6
         )
-
         # 测试vbe分支
         new_args = replace(self.args, vbe_metadata=vbe_metadata)
 
