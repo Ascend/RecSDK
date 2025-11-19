@@ -29,9 +29,8 @@ def jagged_data_gen(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo, enable
     batch_size = qkv_shape_info.batch_size
     max_num_context, max_num_target = mask_info.max_num_context, mask_info.max_num_target
     min_num_context, min_num_target = mask_info.max_num_context, mask_info.max_num_target
-    num_context = torch.randint(min_num_context, max_num_context + 1, (batch_size + int(repeat_offset),),
-                                dtype=int_type)
-    num_target = torch.randint(min_num_target, max_num_target + 1, (batch_size + int(repeat_offset),), dtype=int_type)
+    num_context = torch.randint(min_num_context, max_num_context + 1, (batch_size,), dtype=int_type)
+    num_target = torch.randint(min_num_target, max_num_target + 1, (batch_size,), dtype=int_type)
 
     float_type = qkv_shape_info.float_type
     min_seq_len, max_seq_len = qkv_shape_info.min_seq_len, qkv_shape_info.max_seq_len
@@ -41,7 +40,9 @@ def jagged_data_gen(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo, enable
         seq_lens += num_context + num_target
     seq_offset = torch.concat((torch.zeros((1,)), torch.cumsum(seq_lens, dim=0))).to(int_type)
     if repeat_offset:
-        seq_offset = torch.cat((seq_offset, seq_offset[-1]), dim=0)
+        seq_offset = torch.cat((seq_offset, seq_offset[-1:]), dim=0)
+        num_context = torch.cat((num_context, num_context[-1:]), dim=0)
+        num_target = torch.cat((num_target, num_target[-1:]), dim=0)
     max_seq_len, total_seqs = max(seq_lens.tolist()), sum(seq_lens.tolist())
 
     num_heads, attention_dim = qkv_shape_info.num_heads, qkv_shape_info.attention_dim
@@ -101,12 +102,12 @@ class TestHstuJaggedDemo:
         return output.cpu()
 
     @staticmethod
-    def golden_op_exec(qkv_tensors, mask_tensors, rel_attn_bias, silu_scale, max_seq_len):
+    def golden_op_exec(qkv_tensors, mask_tensors, rel_attn_bias, silu_scale, max_seq_len, repeat_offset):
         q, k, v, seq_offset = qkv_tensors
         mask_type, mask, _, _, _ = mask_tensors
 
         (_, head_nums, head_dim), data_type = q.shape, q.dtype
-        batch_size = seq_offset.shape[0] - 1
+        batch_size = seq_offset.shape[0] - 1 - int(repeat_offset)
 
         seq_lens = np.zeros((batch_size,)).astype(np.int64)
         for batch_id in range(batch_size):
@@ -147,7 +148,7 @@ class TestHstuJaggedDemo:
                                                                                 repeat_offset)
 
         output = self.custom_op_exec(qkv_tensors, mask_tensors, rel_attn_bias, silu_scale, max_seq_len)
-        golden = self.golden_op_exec(qkv_tensors, mask_tensors, rel_attn_bias, silu_scale, max_seq_len)
+        golden = self.golden_op_exec(qkv_tensors, mask_tensors, rel_attn_bias, silu_scale, max_seq_len, repeat_offset)
 
         data_type = qkv_shape_info.float_type
         if data_type == torch.bfloat16:
