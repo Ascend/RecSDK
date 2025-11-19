@@ -15,23 +15,14 @@
 # limitations under the License.
 # ==============================================================================
 
-import sysconfig
 from typing import Optional
 
 import pytest
 import torch
 import torch.nn.functional as F
-import torch_npu
 from einops import rearrange
 
 from test_common_utils import allclose, MaskType
-
-torch.npu.config.allow_internal_format = False
-
-torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-
-DEVICEID = "npu:1"
-torch.npu.set_device(DEVICEID)
 
 
 def pad_input(unpadded_input, cu_seqlen, batch, seqlen):

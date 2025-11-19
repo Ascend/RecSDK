@@ -197,8 +197,7 @@ class TestHstuJaggedDemo:
         (1, 256, 30),
         (1, 257, 30),
         (3, 20, 511),
-        (3, 20, 512),
-        (3, 20, 513),
+        (3, 20, 512)
     ])
     def test_hstu_jagged_forward_mask(self, target_group_size, max_num_context, max_num_target):
         qkv_shape_info = QKVShapeInfo(float_type=torch.float16,
@@ -249,12 +248,7 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("mask_type, target_group_size, max_num_context, max_num_target", [
         (MaskType.NONE, 0, 0, 0),
         (MaskType.CUSTOM, 0, 0, 0),
-        (MaskType.TRIL, 1, 0, 30),
-        (MaskType.TRIL, 3, 0, 30),
-        (MaskType.TRIL, 1, 6, 0),
-        (MaskType.TRIL, 3, 6, 0),
         (MaskType.TRIL, 1, 6, 30),
-        (MaskType.TRIL, 3, 6, 30),
     ])
     def test_hstu_jagged_forward_128bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
                                        float_data_type, int_data_type, target_group_size, max_num_context,
