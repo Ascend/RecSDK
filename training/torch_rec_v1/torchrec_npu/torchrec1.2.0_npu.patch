@@ -710,7 +710,7 @@ index 679950c1..f81c1a6a 100644
          )
  
 diff --git a/torchrec/distributed/types.py b/torchrec/distributed/types.py
-index 45300f73..b76348a6 100644
+index 45300f73..5d5b2eb9 100644
 --- a/torchrec/distributed/types.py
 +++ b/torchrec/distributed/types.py
 @@ -77,6 +77,7 @@ from torch.distributed._shard.sharding_spec import (  # noqa
@@ -721,7 +721,7 @@ index 45300f73..b76348a6 100644
  
  
  def _tabulate(
-@@ -823,6 +824,13 @@ class ShardingEnv:
+@@ -823,6 +824,15 @@ class ShardingEnv:
          pg: Optional[dist.ProcessGroup] = None,
          output_dtensor: bool = False,
      ) -> None:
@@ -729,8 +729,10 @@ index 45300f73..b76348a6 100644
 +            raise ValueError(f"world_size must be in range [1, {MAX_WORLD_SIZE}], but got {world_size}")
 +        if rank < 0 or rank >= world_size:
 +            raise ValueError(f"rank must be in range [0, {world_size} - 1]")
-+        if pg._get_backend_name() not in ["gloo", "custom"]:
++        if not (isinstance(pg, dist.ProcessGroup) and pg._get_backend_name() in ["gloo", "custom"]):
 +            raise ValueError(f"ProcessGroup backend only support [gloo, hccl], but got {pg._get_backend_name()}")
++        if output_dtensor:
++            raise ValueError("output_dtensor is not supported yet")
 +
          self.world_size = world_size
          self.rank = rank
@@ -824,7 +826,7 @@ index 10ffcdb2..3e199497 100644
  from torch import nn
  
  from torch.optim.optimizer import Optimizer
-+from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
++from torchrec.tensor_types import check
  
  
  def in_backward_optimizer_filter(
@@ -838,14 +840,14 @@ index 10ffcdb2..3e199497 100644
          if hasattr(param, "_in_backward_optimizers") == include:
              yield fqn, param
 diff --git a/torchrec/sparse/jagged_tensor.py b/torchrec/sparse/jagged_tensor.py
-index 2bbe0914..8a79c2d7 100644
+index 2bbe0914..44a79102 100644
 --- a/torchrec/sparse/jagged_tensor.py
 +++ b/torchrec/sparse/jagged_tensor.py
 @@ -28,6 +28,7 @@ from torchrec.pt2.checks import (
      pt2_guard_size_oblivious,
  )
  from torchrec.streamable import Pipelineable
-+from torchrec.tensor_types import check
++from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
  
  try:
      torch.ops.load_library("//deeplearning/fbgemm/fbgemm_gpu:sparse_ops")
