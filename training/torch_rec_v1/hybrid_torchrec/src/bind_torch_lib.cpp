@@ -16,6 +16,7 @@ TORCH_LIBRARY(hybrid, m)
         .def("ids2indices_unique_out", &hybrid::IdsMapper::UniqueAndLookupOut)
         .def("export_ids_and_indices", &hybrid::IdsMapper::ExportIdsAndIndices)
         .def("load_original_ids", &hybrid::IdsMapper::LoadOriginalIds)
+        .def("set_max_index", &hybrid::IdsMapper::SetMaxIndex)
         .def_static("parallel_ids2indices_unique_out", &hybrid::IdsMapper::ParallelUniqueHashOut);
         
     m.def("block_bucketize_sparse_features_cpu", &hybrid::BlockBucketizeSparseFeaturesCpu);

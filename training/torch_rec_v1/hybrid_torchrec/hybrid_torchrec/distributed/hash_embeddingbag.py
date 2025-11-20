@@ -63,6 +63,11 @@ class HybridShardedHashEmbeddingBagCollection(HybridShardedEmbeddingBagCollectio
             device,
             qcomm_codecs_registry=qcomm_codecs_registry,
         )
+        # 分表后重新设置ids_mapper的表大小
+        for table_config in self._embedding_bag_configs:
+            table_name = table_config.name
+            slice_num_embeddings = self.embedding_bags[table_config.name].weight.data.shape[0]
+            self.table2hashmap[table_name].set_max_index(slice_num_embeddings)
 
     def create_hybrid_embedding_bag_sharding(
         self,

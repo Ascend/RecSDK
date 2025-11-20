@@ -62,6 +62,9 @@ class IdsMapper(HashMapBase):
     def set_cache_mgr(self, cache_mgr):
         self._cache_mgr = cache_mgr
 
+    def set_max_index(self, slice_max_index):
+        self.ids_mapper.set_max_index(slice_max_index)
+
     def statistic_key_count(self, ids: torch.Tensor, offset: torch.Tensor, counts: torch.Tensor, table_i: int):
         # cache manager内会判断表是否开启准入，开启时才记录count数据
         self._cache_mgr.statistics_key_count(

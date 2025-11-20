@@ -446,3 +446,14 @@ def test_block_bucketize_sparse_features_cpu_invalid_block_size(input_size, muti
             _,
             counts,
         ) = block_bucketize_sparse_features_cpu(params_in)
+
+
+def test_ids_mapper_set_max_index():
+    max_index = 100
+    ids_mapper = IdsMapper(max_index)
+    # 设置错误值
+    with pytest.raises(RuntimeError):
+        ids_mapper.set_max_index(-100)
+
+    # 该字段未暴露到python侧，因此调用不报错即可
+    ids_mapper.set_max_index(max_index // 2)
