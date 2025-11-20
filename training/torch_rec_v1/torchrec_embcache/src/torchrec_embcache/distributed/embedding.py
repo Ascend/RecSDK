@@ -679,6 +679,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                         weight_init_mean=emb_original_config.weight_init_mean,
                         weight_init_stddev=emb_original_config.weight_init_stddev,
                         admit_and_evict_config=self._build_admit_and_evict_config(emb_original_config),
+                        num_features=emb_original_config.num_features(),
                     )
                 )
         return EmbcacheManager(emb_configs, need_accumulate_offset)

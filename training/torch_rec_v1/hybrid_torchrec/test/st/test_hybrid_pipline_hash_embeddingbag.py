@@ -63,12 +63,13 @@ def execute(
     lookup_len,
     device,
     optim,
+    keys_per_table,
 ):
     setup_logging(rank)
     logging.info("this test %s", os.path.basename(__file__))
-    # , batch_num, lookup_lens, num_embeddings, table_num
-    dataset_gloden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
-    dataset = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
+    # batch_num, lookup_lens, num_embeddings, table_num
+    dataset_gloden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num, keys_per_table=keys_per_table)
+    dataset = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num, keys_per_table=keys_per_table)
     dataset_loader_gloden = DataLoader(
         dataset_gloden,
         batch_size=None,
@@ -83,29 +84,34 @@ def execute(
         pin_memory_device="npu",
         num_workers=1,
     )
-    embeding_config = []
+    feature_names_all_table = []
+    embedding_configs = []
     for i in range(table_num):
+        feature_names = [f"feat{i}_key{j}" for j in range(keys_per_table[i])]
         ebc_config = HashEmbeddingBagConfig(
             name=f"table{i}",
             embedding_dim=embedding_dims[i],
             num_embeddings=num_embeddings[i],
-            feature_names=[f"feat{i}"],
+            feature_names=feature_names,
             pooling=pool_type,
             init_fn=weight_init,
         )
-        embeding_config.append(ebc_config)
+        embedding_configs.append(ebc_config)
+        feature_names_all_table.extend(feature_names)
 
-    test_model = TestModel(rank, world_size, device)
-    gloden_results = test_model.cpu_gloden_loss(embeding_config, dataset_loader_gloden, optim)
-    test_results = test_model.test_loss(embeding_config, data_loader, sharding_type, optim)
-    for gloden, result in zip(gloden_results, test_results):
-        logging.debug("")
-        logging.debug("===========================")
-        logging.debug("result test %s", gloden)
-        logging.debug("gloden test %s", result)
+    test_model = TestModel(rank, world_size, device, feature_names_all_table)
+    golden_results = test_model.cpu_golden_loss(embedding_configs, dataset_loader_gloden, optim)
+    test_results = test_model.test_loss(embedding_configs, data_loader, sharding_type, optim)
+    count = 0
+    for golden, result in zip(golden_results, test_results):
+        batch_id = count // 2
+        logging.debug("=============rank:%d, batch_id:%d==============", rank, batch_id)
+        logging.debug("rank:%d, batch_id:%d, golden test %s", rank, batch_id, golden)
+        logging.debug("rank:%d, batch_id:%d, result test %s", rank, batch_id, result)
         assert torch.allclose(
-            gloden, result, rtol=1e-04, atol=1e-04
-        ), "gloden and result is not closed"
+            golden, result, rtol=1e-04, atol=1e-04
+        ), f"rank:{rank}, batch_id:{batch_id}, golden and result is not closed"
+        count += 1
 
 
 def weight_init(param: torch.nn.Parameter):
@@ -117,7 +123,7 @@ def weight_init(param: torch.nn.Parameter):
 
 
 class TestModel:
-    def __init__(self, rank, world_size, device):
+    def __init__(self, rank, world_size, device, feature_names_all_table):
         self.rank = rank
         self.world_size = world_size
         self.device = device
@@ -125,17 +131,17 @@ class TestModel:
         if device == "npu":
             torch_npu.npu.set_device(rank)
         self.setup(rank=rank, world_size=world_size)
+        self.feature_names_all_table = feature_names_all_table
 
-    @staticmethod
-    def cpu_gloden_loss(
-        embeding_config: List[EmbeddingBagConfig], dataloader: DataLoader[Batch], optim
+    def cpu_golden_loss(
+        self, embedding_configs: List[EmbeddingBagConfig], dataloader: DataLoader[Batch], optim
     ):
         pg = dist.new_group(backend="gloo")
-        table_num = len(embeding_config)
-        ebc = HashEmbeddingBagCollection(device="cpu", tables=embeding_config)
+        table_num = len(embedding_configs)
+        ebc = HashEmbeddingBagCollection(device="cpu", tables=embedding_configs)
 
-        num_features = sum([c.num_features() for c in embeding_config])
-        ebc = Model(ebc, num_features)
+        num_features = sum([c.num_features() for c in embedding_configs])
+        ebc = Model(ebc, num_features, feature_names_all_table=self.feature_names_all_table)
         model = DDP(ebc, device_ids=None, process_group=pg)
 
         opt = optim(ebc.parameters(), **OPTIMIZER_PARAM[optim])
@@ -168,7 +174,7 @@ class TestModel:
 
     def test_loss(
         self,
-        embeding_config: List[EmbeddingBagConfig],
+        embedding_configs: List[EmbeddingBagConfig],
         dataloader: DataLoader[Batch],
         sharding_type: str,
         optim,
@@ -177,10 +183,10 @@ class TestModel:
         host_gp = dist.new_group(backend="gloo")
         host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
 
-        table_num = len(embeding_config)
-        ebc = HashEmbeddingBagCollection(device=self.device, tables=embeding_config)
-        num_features = sum([c.num_features() for c in embeding_config])
-        ebc = Model(ebc, num_features)
+        table_num = len(embedding_configs)
+        ebc = HashEmbeddingBagCollection(device=self.device, tables=embedding_configs)
+        num_features = sum([c.num_features() for c in embedding_configs])
+        ebc = Model(ebc, num_features, feature_names_all_table=self.feature_names_all_table)
         apply_optimizer_in_backward(
             optimizer_class=optim,
             params=ebc.parameters(),
@@ -236,13 +242,14 @@ class TestModel:
 
 
 @pytest.mark.parametrize("table_num", [2])
-@pytest.mark.parametrize("embedding_dims", [[32, 64, 128]])
-@pytest.mark.parametrize("num_embeddings", [[400, 4000, 400]])
+@pytest.mark.parametrize("embedding_dims", [[32, 64]])
+@pytest.mark.parametrize("num_embeddings", [[400, 4000]])
 @pytest.mark.parametrize("pool_type", [torchrec.PoolingType.MEAN])
 @pytest.mark.parametrize("sharding_type", ["row_wise"])
 @pytest.mark.parametrize("lookup_len", [1024])
 @pytest.mark.parametrize("device", ["npu"])
 @pytest.mark.parametrize("optim", [Adagrad, SGD])
+@pytest.mark.parametrize("keys_per_table", [[1, 1], [2, 1]])  # 每个table对应几个feat key
 def test_hybrid_pipeline_hash_embedding_bag(
     table_num,
     embedding_dims,
@@ -252,6 +259,7 @@ def test_hybrid_pipeline_hash_embedding_bag(
     lookup_len,
     device,
     optim,
+    keys_per_table,
 ):
     mp.spawn(
         execute,
@@ -265,6 +273,7 @@ def test_hybrid_pipeline_hash_embedding_bag(
             lookup_len,
             device,
             optim,
+            keys_per_table,
         ),
         nprocs=WORLD_SIZE,
         join=True,
