@@ -119,4 +119,9 @@ inline void check_param_len(size_t list_size, size_t expect_size, const std::str
 {
     TORCH_CHECK(list_size == expect_size, " size of param:", msg, " must be ", expect_size, ", but got ", list_size)
 }
+
+inline bool CheckOptionalTensorIsNotNone(const c10::optional<at::Tensor>& tensor)
+{
+    return tensor.has_value() && tensor.value().defined();
+}
 #endif // COMMON_UTILS_H

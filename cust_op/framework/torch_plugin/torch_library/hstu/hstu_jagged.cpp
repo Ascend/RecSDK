@@ -155,10 +155,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
     TORCH_CHECK(headDimRange.Check(headDim), "headDim expect in [16, 512], but value is ", headDim);
 
     TORCH_CHECK(MaxSeqLenCheck(maxSeqLen), "maxSeqLen check failed");
-    TORCH_CHECK(MaskCheck(maskType, mask.has_value()), "maskType check failed");
+    TORCH_CHECK(MaskCheck(maskType, CheckOptionalTensorIsNotNone(mask)), "maskType check failed");
 
     if (static_cast<uint32_t>(maskType) == MASK_TYPE_CUSTOM) {
-        TORCH_CHECK(mask.has_value(), "mask is required when maskType is MASK_TYPE_CUSTOM");
+        TORCH_CHECK(CheckOptionalTensorIsNotNone(mask), "mask is required when maskType is MASK_TYPE_CUSTOM");
         TORCH_CHECK(mask.value().dim() == CONST_4, "The mask should be 4D in normal layout");
         TORCH_CHECK(mask.value().size(0) == batchSize, "The mask batch size should be equal to the grad batch size");
         TORCH_CHECK(mask.value().size(1) == headNum, "The mask seqLen should be equal to the grad seqLen");
@@ -169,7 +169,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
                     " and grad: ", grad.scalar_type());
     }
 
-    if (attnBias.has_value()) {
+    if (CheckOptionalTensorIsNotNone(attnBias)) {
         TORCH_CHECK(attnBias.value().dim() == CONST_4, "The attnBias should be 4D in normal layout");
         TORCH_CHECK(attnBias.value().size(0) == batchSize,
                     "The attnBias batch size should be equal to the grad batch size");
@@ -181,18 +181,16 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
                     attnBias.value().scalar_type(), " and grad: ", grad.scalar_type());
     }
 
-    if (numContext.has_value() || numTarget.has_value() || targetGroupSize.has_value()) {
+    if (CheckOptionalTensorIsNotNone(numContext) || CheckOptionalTensorIsNotNone(numTarget)) {
         TORCH_CHECK(numContext.has_value(), "numContext is required when numTarget or targetGroupSize is not None");
         TORCH_CHECK(numTarget.has_value(), "numTarget is required when numContext or targetGroupSize is not None");
-        TORCH_CHECK(targetGroupSize.has_value(),
-                    "targetGroupSize is required when numContext or numTarget is not None");
         TORCH_CHECK(numContext.value().dim() == CONST_1, "The numContext should be 1D in normal layout");
         TORCH_CHECK(numTarget.value().dim() == CONST_1, "The numTarget should be 1D in normal layout");
         TORCH_CHECK(numContext.value().size(0) == batchSize,
                     "The numContext batch size should be equal to the grad batch size");
         TORCH_CHECK(numTarget.value().size(0) == batchSize,
                     "The numTarget batch size should be equal to the grad batch size");
-        TORCH_CHECK(CheckInList(targetGroupSize.value(), {1, 3}), "The targetGroupSize should be in [1, 3]");
+        TORCH_CHECK(CheckInList(targetGroupSize.value_or(0), {1, 3}), "The targetGroupSize should be in [1, 3]");
     }
 
     auto acSeqOffset = seqOffset;
