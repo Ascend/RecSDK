@@ -498,7 +498,8 @@ private:
                     }
 
                     if (conf.performance) {
-                        dedupShards_[static_cast<int>(value) & (conf.shardingNum - 1)]->Insert(value);
+                        dedupShards_[static_cast<uint32_t>(value) &
+                                    (static_cast<uint32_t>(conf.shardingNum) - 1)]->Insert(value);
                     } else {
                         auto group = groupMethod_.GroupId(value);
                         dedupShards_[group]->Insert(value);
@@ -551,8 +552,9 @@ private:
                 for (uint32_t *ptr = partBeginPtr; ptr < partEndPtr; ++ptr) {
                     int32_t fillOffset;
                     if (conf.performance) {
+                        uint32_t shardingNumUnsigned = static_cast<uint32_t>(conf.shardingNum);
                         fillOffset = GetFillOffset(totalUniqueSize, val[ptr - beginPtr],
-                            static_cast<int>(val[ptr - beginPtr]) & (conf.shardingNum - 1));
+                            static_cast<uint32_t>(val[ptr - beginPtr]) & (shardingNumUnsigned - 1));
                     } else {
                         auto group = groupMethod_.GroupId(val[ptr - beginPtr]);
                         fillOffset = GetFillOffset(totalUniqueSize, val[ptr - beginPtr], group);
