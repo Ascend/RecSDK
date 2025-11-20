@@ -1,0 +1,153 @@
+[
+    {
+        "op": "SplitEmbeddingCodegenForwardUnweighted",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "dev_weights",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            },
+            {
+                "name": "uvm_weights",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            },
+            {
+                "name": "lxu_cache_weights",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            },
+            {
+                "name": "weights_placements",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int32"
+                ]
+            },
+            {
+                "name": "weights_offsets",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
+            },            
+            {
+                "name": "D_offsets",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int32"
+                ]
+            },            
+            {
+                "name": "indices",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
+            },            
+            {
+                "name": "hash_indices",
+                "param_type": "optional",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
+            },
+            {
+                "name": "offsets",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
+            },
+            {
+                "name": "lxu_cache_locations",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int32"
+                ]
+            }
+
+        ],
+        "output_desc": [
+            {
+                "name": "out",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            }
+        ],
+        "attr": [
+            {
+              "name": "total_D",
+			  "param_type": "required",
+              "type": "int",
+              "default_value": 0
+            },
+            {
+                "name": "max_D",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "pool_mode",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "output_dtype",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "is_experimental",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            }               
+        ]
+    }
+]
