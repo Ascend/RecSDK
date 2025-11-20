@@ -45,7 +45,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> IdsMapper::FindOrInsertHighPrecis
         auto findResult = ids2indicesMap.find(key);
         if (findResult == ids2indicesMap.end()) {
             int64_t r = maxIndex++;
-            TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
+            TORCH_CHECK(r < initMaxIndex, "Ids map reached the upper limit of table size, maxIndex = ",
                 initMaxIndex, " please reallocate a larger buffer.");
             ids2indicesMap.insert_or_assign(key, r);
             hashIndicesPtr[i] = r;
@@ -94,7 +94,7 @@ void IdsMapper::UniqueAndLookupOut(const torch::Tensor& globalIds, const torch::
                 int64_t r = maxIndex++;
                 // When `onlyDeviceMem` is true, `initMaxIndex` indicates a complete table size, else only a cache size.
                 if (onlyDeviceMem) {
-                    TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
+                    TORCH_CHECK(r < initMaxIndex, "Ids map reached the upper limit of table size, maxIndex = ",
                                 initMaxIndex, " please reallocate a larger buffer.");
                 }
                 ids2indicesMap.insert_or_assign(key, r);
@@ -236,6 +236,14 @@ torch::Tensor IdsMapper::ExportIdsAndIndices() const
         index++;
     }
     return originalIds;
+}
+
+void IdsMapper::SetMaxIndex(int64_t newMaxIndex)
+{
+    TORCH_CHECK(newMaxIndex >= 0,
+                "newMaxIndex:", newMaxIndex, " must be grater or equal to 0")
+    // sharder 分表后需重新设置表initMaxIndex大小，否则hash映射时使用分表前的表大小作判断
+    initMaxIndex = memStartIndex + newMaxIndex;
 }
 
 void IdsMapper::LoadOriginalIds(const torch::Tensor originalIds)

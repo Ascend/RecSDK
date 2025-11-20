@@ -130,7 +130,7 @@ class TestModel:
         host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
 
         table_num = len(embeding_config)
-        ebc = HashEmbeddingBagCollection(device=self.device, tables=embeding_config)
+        ebc = HashEmbeddingBagCollection(device="meta", tables=embeding_config)
         num_features = sum([c.num_features() for c in embeding_config])
         ebc = Model(ebc, num_features)
         apply_optimizer_in_backward(

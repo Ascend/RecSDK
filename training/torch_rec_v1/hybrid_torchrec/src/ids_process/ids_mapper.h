@@ -74,6 +74,8 @@ public:
 
     void LoadOriginalIds(torch::Tensor originalIds);
 
+    void SetMaxIndex(int64_t newMaxIndex);
+
     static size_t ProcessIds2Indices(IdsMapper& mapper, std::vector<int64_t>& uniqVec,
                                                 const int64_t start, const int64_t end, const int64_t* gIdsPtr,
                                                 int64_t* hashIdxPtr, int64_t* uniqueInvPtr);
