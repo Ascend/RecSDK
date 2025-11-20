@@ -92,6 +92,36 @@ bool EmbcacheManager::EnableFastHashMap()
     return false;
 }
 
+/**
+ * 根据已有的offsetPerKey获取新的offsetPerKey 处理多个feature name对应一个表的场景
+ * @param offsetPerKey 当前的offsetPerKey
+ * @param curTableIndices 当前的表索引
+ * @return newOffsetPerKey
+*/
+std::vector<int64_t> EmbcacheManager::GetNewOffsetPerKey(const std::vector<int64_t>& offsetPerKey,
+                                                         const std::vector<int32_t> curTableIndices) const
+{
+    if (curTableIndices.size() + 1 == offsetPerKey.size()) {
+        std::vector<int64_t> newOffsetPerKey(offsetPerKey.cbegin(), offsetPerKey.cend());
+        return newOffsetPerKey;
+    }
+
+    std::vector<int64_t> newOffsetPerKey(embTableIndies_.size() + 1, 0);
+    std::vector<int64_t> featureSplitByTable(embTableIndies_.size(), 0);
+    for (size_t i = 0; i < featureSplitByTable.size(); ++i) {
+        auto tableIndex = curTableIndices[i];
+        featureSplitByTable[i] = embConfigs_[tableIndex].num_features;
+    }
+    int64_t start = 0;
+    for (size_t i = 0; i < featureSplitByTable.size(); ++i) {
+        int64_t end = start + featureSplitByTable[i];
+        TORCH_CHECK(end < offsetPerKey.size(), "end must less than offsetPerKey size");
+        newOffsetPerKey[i + 1] = offsetPerKey[end];
+        start = end;
+    }
+    return newOffsetPerKey;
+}
+
 SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
                                           const std::vector<int32_t>& tableIndices)
 {
@@ -102,8 +132,9 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
     const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() == embTableIndies_.size(),
                 "tableIndices size must be equal to embTableIndies_ size");
-    TORCH_CHECK(curTableIndices.size() + 1 == offsetPerKey.size(),
-                "tableIndices size+1 must be equal to offsetPerKey size");
+    auto newOffsetPerKey = GetNewOffsetPerKey(offsetPerKey, curTableIndices);
+    TORCH_CHECK(curTableIndices.size() + 1 == newOffsetPerKey.size(),
+                "tableIndices size+1 must be equal to newOffsetPerKey size");
 
     auto* keyPtr = batchKeys.data_ptr<int64_t>();
     TORCH_CHECK(keyPtr != nullptr, "keyPtr should not be nullptr");
@@ -117,8 +148,8 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
     for (int64_t i = 0; i < curTableIndices.size(); i++) {
         int64_t idx = curTableIndices[i];
         TORCH_CHECK(idx >= 0 && idx < embNum_, "table index {} is out of range [0, {})", idx, embNum_);
-        auto startIndex = offsetPerKey[i];
-        auto endIndex = offsetPerKey[i + 1];
+        auto startIndex = newOffsetPerKey[i];
+        auto endIndex = newOffsetPerKey[i + 1];
         TORCH_CHECK(startIndex >= 0 && endIndex <= keyNum && startIndex <= endIndex,
                     "Invalid offsetPerKey[{}]: {}, offsetPerKey[{}]: {}, keyNum: {}", i, startIndex, i + 1,
                     endIndex, keyNum);
@@ -690,7 +721,8 @@ void EmbcacheManager::RecordTimestamp(const at::Tensor& batchKeys, const std::ve
     const std::vector<int32_t>& curTableIndices = tableIndices.empty() ? embTableIndies_ : tableIndices;
     TORCH_CHECK(curTableIndices.size() == embTableIndies_.size(),
                 "tableIndices size must be equal to embTableIndies_ size");
-    TORCH_CHECK(curTableIndices.size() + 1 == offsetPerKey.size(),
+    auto newOffsetPerKey = GetNewOffsetPerKey(offsetPerKey, curTableIndices);
+    TORCH_CHECK(curTableIndices.size() + 1 == newOffsetPerKey.size(),
                 "tableIndices size+1 must be equal to offsetPerKey size");
 
     for (int64_t i = 0; i < curTableIndices.size(); ++i) {
@@ -699,8 +731,8 @@ void EmbcacheManager::RecordTimestamp(const at::Tensor& batchKeys, const std::ve
 
         if (embConfigs_[idx].admitAndEvictConfig.IsEvictEnabled()) {
             if (featureFilters_[idx]) {
-                auto startIndex = offsetPerKey[i];
-                auto endIndex = offsetPerKey[i + 1];
+                auto startIndex = newOffsetPerKey[i];
+                auto endIndex = newOffsetPerKey[i + 1];
                 TORCH_CHECK(startIndex >= 0, "startIndex should >= 0");
                 TORCH_CHECK(endIndex >= startIndex, "endIndex should >= startIndex");
                 TORCH_CHECK(endIndex <= batchKeys.numel(), "endIndex should <= batchKeys.numel()");

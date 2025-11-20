@@ -8,7 +8,7 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Iterator, Optional
+from typing import Iterator, Optional, List, Union
 
 import numpy as np
 import torch
@@ -46,13 +46,14 @@ class Batch(Pipelineable):
 
 
 class RandomRecDataset(IterableDataset[Batch]):
-    def __init__(self, batch_num, lookup_lens, num_embeddings, table_num):
+    def __init__(self, batch_num, lookup_lens, num_embeddings, table_num, keys_per_table: Union[int, List[int]] = 1):
         super().__init__()
         self.index = 0
         self.lookup_lens = lookup_lens
         self.num_embeddings = num_embeddings
         self.table_num = table_num
         self.batch_num = batch_num
+        self.keys_per_table = keys_per_table
         torch.manual_seed(1)
         self.data = [self.generate_one_batch() for _ in range(batch_num)]
 
@@ -65,12 +66,21 @@ class RandomRecDataset(IterableDataset[Batch]):
     def generate_one_batch(self) -> Batch:
         input_dict = {}
         feature_len = len(self.num_embeddings)
-        for ind in range(feature_len):
-            name = f"feat{ind}"
-            id_range = self.num_embeddings[ind]
-            ids = torch.randint(0, id_range, (self.lookup_lens,))
-            lengths = torch.ones(self.lookup_lens).long()
-            input_dict[name] = JaggedTensor(values=ids, lengths=lengths)
+        if isinstance(self.keys_per_table, list) and len(self.keys_per_table) == len(self.num_embeddings):
+            for ind in range(feature_len):
+                for j in range(self.keys_per_table[ind]):
+                    name = f"feat{ind}_key{j}"  # 此处name需要和创建EmbeddingConfig时对应
+                    id_range = self.num_embeddings[ind]
+                    ids = torch.randint(0, id_range, (self.lookup_lens,))
+                    lengths = torch.ones(self.lookup_lens).long()
+                    input_dict[name] = JaggedTensor(values=ids, lengths=lengths)
+        else:
+            for ind in range(feature_len):
+                name = f"feat{ind}"
+                id_range = self.num_embeddings[ind]
+                ids = torch.randint(0, id_range, (self.lookup_lens,))
+                lengths = torch.ones(self.lookup_lens).long()
+                input_dict[name] = JaggedTensor(values=ids, lengths=lengths)
         kjt_tensor = KeyedJaggedTensor.from_jt_dict(input_dict)
         label = torch.randint(0, 2, (self.lookup_lens,))
         return Batch(kjt_tensor, label)

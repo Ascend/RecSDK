@@ -26,13 +26,17 @@ def permute_values(kjt: KeyedJaggedTensor, feature_num) -> torch.Tensor:
 
 
 # ec和ebc查询结果返回数据类型不一样,不同的处理方式
-def permute_values_ec(result: Dict, feature_num) -> torch.Tensor:
+def permute_values_ec(result: Dict, feature_num, feature_names_all_table) -> torch.Tensor:
     keys_nums = feature_num
     values = []
-    for k in range(keys_nums):
-        k = f"feat{k}"
-        jt = result[k].values()
-        values.append(jt)
+    if feature_names_all_table:
+        for feature_name in feature_names_all_table:
+            values.append(result[feature_name].values())
+    else:
+        for k in range(keys_nums):
+            k = f"feat{k}"
+            jt = result[k].values()
+            values.append(jt)
     values = torch.concat(values, dim=1)
     return values
 
@@ -55,10 +59,11 @@ class Model(torch.nn.Module):
 
 
 class ModelEc(torch.nn.Module):
-    def __init__(self, ec, feature_num):
+    def __init__(self, ec, feature_num, feature_names_all_table=None):
         super().__init__()
         self._ec = ec
         self.feature_num = feature_num
+        self.feature_names_all_table = feature_names_all_table
 
     @property
     def ec(self):
@@ -66,6 +71,6 @@ class ModelEc(torch.nn.Module):
 
     def forward(self, batch: Batch):
         result = self._ec(batch.sparse_features)
-        result = permute_values_ec(result, self.feature_num)
+        result = permute_values_ec(result, self.feature_num, self.feature_names_all_table)
         loss = result.sum()
         return loss, result
