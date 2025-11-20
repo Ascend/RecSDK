@@ -1,0 +1,266 @@
+[
+    {
+        "op": "BackwardCodegenAdagradUnweightedExact",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "grad_output",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            },
+            {
+                "name": "dev_weights",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            },
+            {
+                "name": "uvm_weights",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            },
+            {
+                "name": "lxu_cache_weights",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            },
+            {
+                "name": "weights_placements",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int32"
+                ]
+            },            
+            {
+                "name": "weights_offsets",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
+            },            
+            {
+                "name": "D_offsets",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int32"
+                ]
+            },
+            {
+                "name": "hash_size_cumsum",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
+            },
+            {
+                "name": "indices",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
+            },
+            {
+                "name": "offsets",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
+            },
+            {
+                "name": "lxu_cache_locations",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int32"
+                ]
+            },
+            {
+                "name": "momentum1_dev",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            },
+            {
+                "name": "momentum1_uvm",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            },
+            {
+                "name": "momentum1_placements",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int32"
+                ]
+            },
+            {
+                "name": "momentum1_offsets",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
+            }
+            
+        ],
+        "output_desc": [
+            {
+                "name": "out",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            }, 
+            {
+                "name": "momentum1_dev_out",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            },
+            {
+                "name": "weights_dev_out",
+                "param_type": "required",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "fp32"
+                ]
+            }
+        ],
+        "attr": [
+            {
+              "name": "max_D",
+			  "param_type": "required",
+              "type": "int",
+              "default_value": 0
+            },
+            {
+                "name": "total_hash_size_bits",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "pool_mode",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "BT_block_size",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "max_segment_length_per_warp",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            },
+            {
+                "name": "stochastic_rounding",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            } ,
+            {
+                "name": "info_B_num_bits",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            } ,
+            {
+                "name": "info_B_mask_int64",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            } ,
+            {
+                "name": "use_uniq_cache_locations",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            } ,
+            {
+                "name": "use_homogeneous_placements",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            } ,
+            {
+                "name": "eps",
+                "param_type": "required",
+                "type":"float",
+                "default_value": 0
+            },
+            {
+                "name": "learning_rate",
+                "param_type": "required",
+                "type":"float",
+                "default_value": 0
+            } 
+                            
+        ]
+    }
+]
