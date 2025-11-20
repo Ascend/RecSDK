@@ -134,10 +134,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
 
     TORCH_CHECK(MaxSeqLenCheck(maxSeqLen), "maxSeqLen check failed");
 
-    TORCH_CHECK(MaskCheck(maskType, mask.has_value()), "maskType check failed");
+    TORCH_CHECK(MaskCheck(maskType, CheckOptionalTensorIsNotNone(mask)), "maskType check failed");
 
     if (maskType == MASK_TYPE_CUSTOM) {
-        TORCH_CHECK(mask.has_value(), "mask is required when maskType is MASK_TYPE_CUSTOM");
+        TORCH_CHECK(CheckOptionalTensorIsNotNone(mask), "mask is required when maskType is MASK_TYPE_CUSTOM");
         TORCH_CHECK(mask.value().dim() == CONST_4, "The mask should be 4D in normal layout");
         TORCH_CHECK(mask.value().size(0) == batchSize, "The mask batch size should be equal to the grad batch size");
         TORCH_CHECK(mask.value().size(1) == headNum, "The mask seqLen should be equal to the grad seqLen");
@@ -148,7 +148,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
                     " and grad: ", grad.scalar_type());
     }
 
-    if (attnBias.has_value()) {
+    if (CheckOptionalTensorIsNotNone(attnBias)) {
         TORCH_CHECK(attnBias.value().dim() == CONST_4, "The attnBias should be 4D in normal layout");
         TORCH_CHECK(attnBias.value().size(0) == batchSize,
                     "The attnBias batch size should be equal to the grad batch size");
