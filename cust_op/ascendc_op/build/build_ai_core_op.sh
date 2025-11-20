@@ -79,7 +79,9 @@ function compile_ops_v220() {
         cd "$ops_path"
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
-            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
+            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ||
+            "$dir_name" == "backward_codegen_adagrad_unweighted_exact" ||
+            "$dir_name" == "split_embedding_codegen_forward_unweighted" ]]; then
                 continue
             fi
             cur_ver_op_dir=${dir_name}/${BUILD_VER}
