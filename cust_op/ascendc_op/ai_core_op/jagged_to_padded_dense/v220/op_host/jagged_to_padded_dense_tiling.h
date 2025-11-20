@@ -31,8 +31,6 @@ namespace optiling {
     TILING_DATA_FIELD_DEF(int64_t, outDim1);
 
     TILING_DATA_FIELD_DEF(int64_t, ubCanUsed);
-    TILING_DATA_FIELD_DEF(int64_t, bytesOfDataType);
-    TILING_DATA_FIELD_DEF(int64_t, offsetDataType);
 
     TILING_DATA_FIELD_DEF(float, paddingValueFp32);
     TILING_DATA_FIELD_DEF(int64_t, paddingValueInt64);

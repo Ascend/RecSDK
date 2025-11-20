@@ -28,10 +28,6 @@ constexpr int32_t RESERVER_UB_SIZE = (20 * 1024); // 20KB
 constexpr int32_t DIM0 = 0;
 constexpr int32_t DIM1 = 1;
 constexpr int32_t DIM2 = 2;
-constexpr int32_t TYPE_FLOAT = 0;
-constexpr int32_t TYPE_INT64 = 9;
-constexpr int32_t SIZEOF_FLOAT = 4;
-constexpr int32_t SIZEOF_INT64 = 8;
 
 constexpr int32_t JAGGED_DIM0_INDEX = 0;
 constexpr int32_t INPUT_DENSE_INDEX = 0;
@@ -160,15 +156,15 @@ public:
     {
         this->Input("dense")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_INT64, ge::DT_INT64})
+            .DataTypeList({ge::DT_FLOAT, ge::DT_INT64, ge::DT_INT32, ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND});
         this->Input("offset")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64, ge::DT_INT32, ge::DT_INT32, ge::DT_INT64})
+            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Output("jagged_dense")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_INT64, ge::DT_INT64})
+            .Follow("dense", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
 
         this->Attr("jagged_dim0").Int();
