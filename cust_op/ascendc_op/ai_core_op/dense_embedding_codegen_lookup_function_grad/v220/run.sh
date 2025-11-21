@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,6 @@ VALID_AI_CORES=(
     "ai_core-Ascend910B3"
     "ai_core-Ascend910B4"
     "ai_core-Ascend910_93"
-    "ai_core-Ascend310P3"
 )
 
 validate_ai_core() {
@@ -70,16 +69,13 @@ fi
 sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
-sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
+    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+fi
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
 sed -i 's:"customize":"dense_embedding_codegen_lookup_function_grad":g' CMakePresets.json
-
-if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-    sed -i "1i #define SUPPORT_V200" ./op_kernel/dense_embedding_codegen_lookup_function_grad.cpp
-    sed -i "1i #define SUPPORT_V200" ./op_host/dense_embedding_codegen_lookup_function_grad.cpp
-fi
 
 line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`

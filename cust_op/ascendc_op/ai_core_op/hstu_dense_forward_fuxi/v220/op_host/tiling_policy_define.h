@@ -34,7 +34,11 @@ namespace INDEX_T {
 
 constexpr int FLOAT16_TILING_KEY = 0;
 constexpr int TRANS_TASK_NUM = 3;
-constexpr int MAX_AIV_NUM = 48;
+#if defined(__DAV_C310_VEC__)
+    constexpr int MAX_AIV_NUM = 64;
+#else
+    constexpr int MAX_AIV_NUM = 48;
+#endif
 
 #ifdef SUPPORT_V200
     constexpr int OUTPUT_DIM_NUM = 3;
