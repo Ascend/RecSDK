@@ -12,8 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
+#include "torch/types.h"
 
 #include "hstu_common.h"
+#include "../common/common_utils.h"
 
 namespace hstu {
 at::Tensor hstu_paged_forward_impl_npu(
