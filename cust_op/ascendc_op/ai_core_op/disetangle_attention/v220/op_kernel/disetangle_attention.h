@@ -16,6 +16,8 @@ constexpr uint32_t UB_LOOP_PROC_N = 48 / UB_BUFFER_NUM;
 constexpr uint32_t UB_REV_PROC_N = 28 / UB_BUFFER_NUM;
 constexpr uint32_t KBYTES = 1024;
 constexpr uint32_t UB_BUFFER_SIZE = UB_LOOP_PROC_N * KBYTES;
+constexpr uint32_t UB_IN_B_QUE_BUFFER_SIZE = UB_BUFFER_SIZE + 4096;
+
 
 struct TaskArgs {
     __aicore__ inline TaskArgs(uint32_t acc_s_offset, uint32_t batch_size, uint32_t head_num, uint32_t acc_s)
@@ -123,7 +125,7 @@ public:
     __aicore__ inline void init_ub_buffer()
     {
         pipe->InitBuffer(this->ub_in_a_que, UB_BUFFER_NUM, UB_BUFFER_SIZE);  // 48K
-        pipe->InitBuffer(this->ub_in_b_que, UB_BUFFER_NUM, UB_BUFFER_SIZE);  // 48K
+        pipe->InitBuffer(this->ub_in_b_que, UB_BUFFER_NUM, UB_IN_B_QUE_BUFFER_SIZE);  // 48K + 4096
         pipe->InitBuffer(this->ub_out_que, UB_BUFFER_NUM, UB_BUFFER_SIZE);   // 48K
         pipe->InitBuffer(this->ub_tmp_que, UB_BUFFER_NUM, UB_REV_PROC_N * KBYTES / UB_BUFFER_NUM);
     }
