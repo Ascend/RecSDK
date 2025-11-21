@@ -46,6 +46,7 @@ struct Args {
     GM_ADDR tiling;
 };
 
+template <typename VALUE_TYPE, typename OFFSET_TYPE>
 class JaggedToPaddedDenseKernel {
 public:
     __aicore__ inline JaggedToPaddedDenseKernel(Args args)
@@ -59,8 +60,8 @@ public:
         offsetDim0 = tilingData.offsetDim0;
         outDim1 = tilingData.outDim1;
         ubCanUsed = tilingData.ubCanUsed;
-        bytesOfDataType = tilingData.bytesOfDataType;
-        offsetDataType = tilingData.offsetDataType;
+        bytesOfDataType = sizeof(VALUE_TYPE);
+        offsetDataType = sizeof(OFFSET_TYPE);
         paddingValueFp32 = tilingData.paddingValueFp32;
         paddingValueInt64 = tilingData.paddingValueInt64;
 

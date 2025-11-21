@@ -6,21 +6,21 @@
             {
                 "name": "dense",
                 "param_type": "required",
-                "format": [
-                    "ND", "ND", "ND", "ND"
+                "format_list": [
+                    "ND"
                 ],
-                "type": [
-                    "fp32", "fp32", "int64", "int64"
+                "data_type_list": [
+                    "fp32", "int64", "int32", "bf16", "fp16"
                 ]
             },
             {
                 "name": "offset",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND", "ND", "ND"
+                    "ND"
                 ],
                 "type": [
-                    "int64", "int32", "int32", "int64"
+                    "int64", "int32"
                 ]
             }
         ],
@@ -28,20 +28,20 @@
             {
                 "name": "jagged_dense",
                 "param_type": "required",
-                "format": [
-                    "ND", "ND", "ND", "ND"
+                "format_list": [
+                    "ND"
                 ],
-                "type": [
-                    "fp32", "fp32", "int64", "int64"
+                "data_type_list": [
+                    "fp32", "int64", "int32", "bf16", "fp16"
                 ]
             }
         ],
         "attr": [
             {
-              "name": "jagged_dim",
-			  "param_type": "optional",
-              "type": "int",
-              "default_value": 0
+                "name": "jagged_dim",
+                "param_type": "optional",
+                "type": "int",
+                "default_value": 0
             }
         ]
     }
