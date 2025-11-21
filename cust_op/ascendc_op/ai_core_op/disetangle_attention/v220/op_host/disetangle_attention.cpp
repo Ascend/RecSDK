@@ -139,9 +139,7 @@ static ge::graphStatus TilingSoftmax(gert::TilingContext *context, DisetangleAtt
 
     uint32_t min_value = AscendC::GetSoftMaxMinTmpSize(src_shape, sizeof(int16_t), false);
 
-    OPS_LOG_E_IF(min_value > local_workspace_byte_size, context, return ge::GRAPH_FAILED, "softmax need more ub size");
-
-    AscendC::SoftMaxTilingFunc(src_shape, sizeof(int16_t), local_workspace_byte_size, tiling.SFT);
+    AscendC::SoftMaxTilingFunc(src_shape, sizeof(int16_t), min_value, tiling.SFT);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -321,6 +319,7 @@ public:
         this->AICore().SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend910_95");
     }
 };
 

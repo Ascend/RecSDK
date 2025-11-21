@@ -33,7 +33,13 @@ constexpr int JAGGED_FLOAT16_TILING_KEY = 3;
 constexpr int FLOAT_TILING_KEY = 2;
 constexpr int BF16_TILING_KEY = 1;
 constexpr int FLOAT16_TILING_KEY = 0;
+
+#if defined(__DAV_C310_VEC__)
+/* A5规格编译兼容 */
+constexpr int MAX_AIV_NUM = 64;
+#else
 constexpr int MAX_AIV_NUM = 48;
+#endif
 
 constexpr int GRAD_DIM_NUM = 4;
 constexpr int JAGGED_GRAD_DIM_NUM = 3;

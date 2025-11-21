@@ -112,12 +112,12 @@ def create_score_scale(pos_att_type: str, d: int):
 
 
 def create_test_data(args: DataArgs, npu_device):
-    query_layer = torch.rand(args.b, args.n, args.s, args.d, dtype=torch.float16)
-    key_layer = torch.rand(args.b, args.n, args.s, args.d, dtype=torch.float16)
-    value_layer = torch.rand(args.b, args.n, args.s, args.d, dtype=torch.float16)
+    query_layer = torch.rand(args.b, args.n, args.s, args.d, dtype=torch.float16).uniform_(-1, 1)
+    key_layer = torch.rand(args.b, args.n, args.s, args.d, dtype=torch.float16).uniform_(-1, 1)
+    value_layer = torch.rand(args.b, args.n, args.s, args.d, dtype=torch.float16).uniform_(-1, 1)
 
-    pos_key_layer = torch.rand(2 * args.s, args.n, args.d, dtype=torch.float16)
-    pos_query_layer = torch.rand(2 * args.s, args.n, args.d, dtype=torch.float16)
+    pos_key_layer = torch.rand(2 * args.s, args.n, args.d, dtype=torch.float16).uniform_(-1, 1)
+    pos_query_layer = torch.rand(2 * args.s, args.n, args.d, dtype=torch.float16).uniform_(-1, 1)
 
     relative_position = build_relative_position(
         args.s, args.s, args.bucket_size, args.max_position, query_layer.device
