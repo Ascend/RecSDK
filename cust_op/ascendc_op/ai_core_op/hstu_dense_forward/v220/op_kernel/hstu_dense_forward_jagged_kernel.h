@@ -223,10 +223,11 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType>::ComputeAllBlo
             this->computeTaskInfo[currentTaskId].computeBSeqLen =
                    (kSeqId != (kSeqNum - 1)) ? (this->blockHeight) :
                    (this->computeTaskInfo[currentTaskId].actualSeqLenK - kSeqId * this->blockHeight);
+            uint64_t kvHeadId = this->computeTaskInfo[currentTaskId].headId / this->headRatio;
             this->computeTaskInfo[currentTaskId].kvOffset =
-                    this->computeTaskInfo[currentTaskId].batchOffsetK * this->headDim * this->headNum +
-                    this->computeTaskInfo[currentTaskId].kSeqId * this->blockHeight * this->headNum * this->headDim +
-                    this->computeTaskInfo[currentTaskId].headId * this->headDim;
+                this->computeTaskInfo[currentTaskId].batchOffsetK * this->headDim * this->headNumK +
+                this->computeTaskInfo[currentTaskId].kSeqId * this->blockHeight * this->headNumK * this->headDim +
+                kvHeadId * this->headDim;
 
             // matmul qk
             this->ComputeQkMatmul(currentTaskId);

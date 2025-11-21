@@ -85,17 +85,23 @@ bool TilingPolicyPaged::TilingShape(gert::TilingContext* context, optiling::Hstu
 
     OPS_CHECK(kShape != vShape, OPS_LOG_E("", "K, V shape mismatch"), return false);
     OPS_CHECK(seqLensQ > seqLensK, OPS_LOG_E("", "Q, K, V seqlen mismatch"), return false);
-    OPS_CHECK(headNumQ != headNumK, OPS_LOG_E("", "Q, K, V headNum Shape Check failed"), return false);
     OPS_CHECK(headDimQ != headDimK, OPS_LOG_E("", "Q, K, V headDIM Shape Check failed"), return false);
     OPS_CHECK(!GeneralShapeCheck(batchSize, maxSeqLensQ, headNumQ, headDimQ),
               OPS_LOG_E("", "Q Jagged Shape Check failed"), return false);
     OPS_CHECK(!GeneralShapeCheck(batchSize, maxSeqLensK, headNumK, headDimK),
               OPS_LOG_E("", "K Jagged Shape Check failed"), return false);
+    if (headNumQ != headNumK) {
+        OPS_CHECK((headNumQ % headNumK != 0), OPS_LOG_E("", "For GQA, headNumQ must be divisible by headNumK"),
+                  return false);
+    }
+
+    tiling.set_headRatio(headNumQ / headNumK);
+    tiling.set_headNumK(headNumK);
 
     uint32_t masktype = tiling.get_maskType();
     auto *isDeltaQK = context->GetAttrs()->GetAttrPointer<uint32_t>(ATTR_INDEX_T::IS_DELTA_QK_INDEX);
     if (!*isDeltaQK) {
-        OPS_CHECK(kShape != qShape, OPS_LOG_E("", "Q, K shape mismatch"), return false);
+        OPS_CHECK(seqLensQ != seqLensK, OPS_LOG_E("", "Q, K seqLens mismatch"), return false);
     }
 
     auto numContext = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX);

@@ -101,17 +101,17 @@ __aicore__ inline void CopyQKB1(const LocalTensor<int8_t>& bMatrix, const __gm__
 
     HstuDenseForwardTilingData* tilingP = reinterpret_cast<HstuDenseForwardTilingData*>(tilingPtr);
     int64_t dim = tilingP->dim;
-    int32_t headNum = static_cast<int32_t>(dataPtr);
+    int32_t headNumK = static_cast<int32_t>(dataPtr);
     int32_t baseN = tilingP->qkMatmul.baseN;
     int32_t baseK = tilingP->qkMatmul.baseK;
 
     auto alignOfN = AlignUp(useN, ALIGN_16);
     Nd2NzParams param = {
         1, static_cast<uint16_t>(useN), static_cast<uint16_t>(useK), 0,
-        static_cast<uint16_t>(dim * headNum), static_cast<uint16_t>(alignOfN), 1, 0
+        static_cast<uint16_t>(dim * headNumK), static_cast<uint16_t>(alignOfN), 1, 0
     };
 
-    int64_t offsetOfGt = static_cast<int64_t>(col) * dim * headNum * static_cast<int64_t>(baseN) +
+    int64_t offsetOfGt = static_cast<int64_t>(col) * dim * headNumK * static_cast<int64_t>(baseN) +
                          static_cast<int64_t>(row) * static_cast<int64_t>(baseK);
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
 };
@@ -125,17 +125,17 @@ __aicore__ inline void CopySVB1(const LocalTensor<int8_t>& bMatrix, const __gm__
 
     HstuDenseForwardTilingData* tilingP = reinterpret_cast<HstuDenseForwardTilingData*>(tilingPtr);
     int64_t dim = tilingP->dim;
-    int32_t headNum = static_cast<int32_t>(dataPtr);
+    int32_t headNumK = static_cast<int32_t>(dataPtr);
     int32_t baseN = tilingP->svMatmul.baseN;
     int32_t baseK = tilingP->svMatmul.baseK;
     auto alignOfK = AlignUp(useK, ALIGN_16);
 
     Nd2NzParams param = {
         1, static_cast<uint16_t>(useK), static_cast<uint16_t>(useN), 0,
-        static_cast<uint16_t>(dim * headNum), static_cast<uint16_t>(alignOfK), 1, 0
+        static_cast<uint16_t>(dim * headNumK), static_cast<uint16_t>(alignOfK), 1, 0
     };
 
-    int64_t offsetOfGt = static_cast<int64_t>(row) * dim * headNum * static_cast<int64_t>(baseK) +
+    int64_t offsetOfGt = static_cast<int64_t>(row) * dim * headNumK * static_cast<int64_t>(baseK) +
                          static_cast<int64_t>(col) * static_cast<int64_t>(baseN);
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
 };
@@ -190,7 +190,11 @@ public:
         enableNumTarget = tilingDataPtr->enableNumTarget;
 
         // copyKV
-        copyHeadNum = xDim2;
+        copyHeadNum = tilingDataPtr->headNumK;
+
+        // GQA
+        headNumK = tilingDataPtr->headNumK;
+        headRatio = tilingDataPtr->headRatio;
     }
 
     __aicore__ inline void InitPipe(TPipe* pipePtr)
@@ -703,6 +707,10 @@ public:
 
     // copyQKV
     uint64_t copyHeadNum;
+
+    // GQA
+    uint64_t headNumK;
+    uint64_t headRatio;
 
     // Tpipe
     TPipe *pipe;

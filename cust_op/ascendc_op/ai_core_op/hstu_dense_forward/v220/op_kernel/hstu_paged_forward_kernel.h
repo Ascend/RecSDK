@@ -150,17 +150,18 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::CopyFromKvCach
     int64_t totalPageNum = this->computeTaskInfo[taskId].pageNum;
     int64_t lastPageIdx = pageOffsetGt.GetValue(batchId + 1) - 1;
     int64_t lastPageLen = lastPageLenGt.GetValue(batchId);
+    uint64_t kvHeadId = headId / this->headRatio;
 
     for (uint32_t i = 0; i < pageNum; i++) {
         int64_t pageIdx = pageIdsGt.GetValue(pageSid + i); // [page_num, 2, pageSize, num_head, head_dim]
         // [pageIdx, 0, pageSize, headId, head_dim]
-        int64_t offsetK = pageIdx * CONST_2 * pageSize * this->xDim2 * this->xDim3 + \
-                          headId * this->xDim3;
+        int64_t offsetK = pageIdx * CONST_2 * pageSize * this->headNumK * this->xDim3 + \
+                          kvHeadId * this->xDim3;
         
         // [pageIdx, 1, pageSize, headId, head_dim]
-        int64_t offsetV = pageIdx * CONST_2 * pageSize * this->xDim2 * this->xDim3 + \
-                          pageSize * this->xDim2 * this->xDim3 + \
-                          headId * this->xDim3;
+        int64_t offsetV = pageIdx * CONST_2 * pageSize * this->headNumK * this->xDim3 + \
+                          pageSize * this->headNumK * this->xDim3 + \
+                          kvHeadId * this->xDim3;
         int64_t dstOffset = taskOffset + pageSize * i * this->xDim3;
 
         if (lastPageLen > 0 && (i + pageSid) == lastPageIdx) {
@@ -182,7 +183,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::CopySeqFromGT(
 {
     uint16_t blockLen = this->xDim3 * sizeof(qType) / DATA_ALIGN_BYTES;
     // 前一个数据尾和后一个数据头的间隔 (num_head - 1) * head_dim
-    uint16_t srcGap = (this->xDim2 - 1) * this->xDim3 * sizeof(qType) / DATA_ALIGN_BYTES;
+    uint16_t srcGap = (this->headNumK - 1) * this->xDim3 * sizeof(qType) / DATA_ALIGN_BYTES;
     uint16_t totalBlockCnt = seqLen;
     uint16_t maxBlockCnt = kvLtUbSize / this->xDim3 / sizeof(qType);
     uint16_t dstGap = (this->blockHeight - pageSize) * sizeof(qType) / DATA_ALIGN_BYTES;
@@ -193,7 +194,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::CopySeqFromGT(
         uint16_t blockCnt = totalBlockCnt > maxBlockCnt ? maxBlockCnt : totalBlockCnt;
         DataCopyParams copyInK(blockCnt, blockLen, srcGap, 0);
 
-        DataCopy(kvLt, srcGt[copyedCnt * this->xDim2 * this->xDim3], copyInK);
+        DataCopy(kvLt, srcGt[copyedCnt * this->headNumK * this->xDim3], copyInK);
         queKv.EnQue(kvLt);
         auto newKvLt = queKv.DeQue<qType>();
 
@@ -217,9 +218,10 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::CopyFromKvInpu
     int64_t taskOffset = taskId * this->blockHeight * this->xDim3;
     CopyFromKvCache(pageSid, pageNum, taskId);
     // copy kv from input 偏移newhistorylen
-    int64_t offset = this->computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum + \
-                     this->computeTaskInfo[taskId].actualNewHistLen * this->headNum * this->headDim + \
-                     this->computeTaskInfo[taskId].headId * this->headDim;
+    uint64_t kvHeadId = this->computeTaskInfo[taskId].headId / this->headRatio;
+    int64_t offset = this->computeTaskInfo[taskId].batchOffset * this->headDim * this->headNumK + \
+                     this->computeTaskInfo[taskId].actualNewHistLen * this->headNumK * this->headDim + \
+                     kvHeadId * this->headDim;
     CopySeqFromGT(midkGt[taskOffset + cacheLen * this->xDim3], this->kGt[offset], candLen);
     CopySeqFromGT(midvGt[taskOffset + cacheLen * this->xDim3], this->vGt[offset], candLen);
 
@@ -242,9 +244,10 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::FetchKvMayFrom
         uint32_t taskOffset = taskId * this->blockHeight * this->headDim;
         auto diffHistLen = this->computeTaskInfo[taskId].actualHistLen - this->computeTaskInfo[taskId].actualNewHistLen;
         auto inputkvStart = seqLenStart - diffHistLen;
-        int64_t offset = this->computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum + \
-                          inputkvStart * this->headNum * this->headDim + \
-                          this->computeTaskInfo[taskId].headId * this->headDim;
+        uint64_t kvHeadId = this->computeTaskInfo[taskId].headId / this->headRatio;
+        int64_t offset = this->computeTaskInfo[taskId].batchOffset * this->headDim * this->headNumK + \
+                         inputkvStart * this->headNumK * this->headDim + \
+                         kvHeadId * this->headDim;
         CopySeqFromGT(midkGt[taskOffset], this->kGt[offset], computeLen);
         CopySeqFromGT(midvGt[taskOffset], this->vGt[offset], computeLen);
         this->computeTaskInfo[taskId].kvOffset = taskOffset;

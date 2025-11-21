@@ -29,6 +29,7 @@
 
 推荐场景下，使用Hstu融合算子实现推荐场景中注意力机制。
 
+**GQA支持**：本算子支持Grouped Query Attention (GQA)，允许K/V的头数小于Q的头数，多个Q头可以共享同一个K/V头，从而减少KV缓存内存占用并提升推理性能。
 
 # 算子实现原理
 
@@ -89,41 +90,41 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 
 ## Atlas A2/A3训练产品
 
-| 名称            |  输入/输出 | 数据类型     |  数据格式  |  范围  | 说明                                                                                                              |
-|---------------|  - |----------|  ----  |  ----  |-----------------------------------------------------------------------------------------------------------------|
-| q             | 输入 | Tensor[float32/float16/bfloat16] | [B, S, N, D]/<br>[s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[1, 16]<br>D∈[16, 512]且是16的倍数 | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度<br>s_b为jagged格式下各batch的实际序列长度之和 |
-| k             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q                                                                                                              |
-| v             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q                                                                                                              |
-| mask          | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致                                                                 |
-| attn_bias     | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致                                                            |
-| seq_offsets_q | 输入 | Tensor   | NA | NA | 表示每个batch的实际Q序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
-| seq_offsets_k | 输入 | Tensor   | NA | NA | 表示每个batch的实际K序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
-| seq_offsets_t | 输入 | Tensor   | NA | NA | 目标序列偏移量张量                                                                                                       |
-| kv_cache | 输入 | Tensor   | NA | NA | KV缓存张量，用于存储历史Key-Value对                                                                                         |
-| page_offsets | 输入 | Tensor   | NA | NA | 页面偏移量张量                                                                                                         |
-| page_ids | 输入 | Tensor   | NA | NA | 页面ID张量                                                                                                          |
-| last_page_len | 输入 | Tensor   | NA | NA | 最后一页长度张量                                                                                                        |
-| num_context | 输入 | Tensor   | NA | NA | 上下文数量张量                                                                                                         |
-| num_target | 输入 | Tensor   | NA | NA | 目标数量张量                                                                                                          |
-| mask_type      | 输入 | int      | NA | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA                                                                                                              |
-| max_seq_len_q | 输入 | int      | NA | [1, 20480] | 表示模型Q序列最大长度                                                                                                     |
-| max_seq_len_k | 输入 | int      | NA | [1, 20480] | 表示模型K序列最大长度                                                                                                     |
-| silu_scale    | 输入 | float    | NA | NA | 支持用户传入自定义，不传入时默认为1/max_seq_len                                                                                  |
-| layout        | 输入 | string   | NA | "normal":代表q,k,v数据格式为[B, S, N, D]<br>"jagged":代表q,k,v数据格式为[s_b, N, D] | NA                                                                                                              |
-| target_group_size | 输入 | int      | NA | NA | 创建内置target mask时使用，target_group_size为0时不创建target mask                                                                      |
-| is_delta_qk | 输入 | int      | NA | NA | QK序列是否等长：0=等长，1=不等长                                                                                             |
-| alpha | 输入 | float      | NA | NA | Alpha缩放参数                                                                                                       |
-| attn_output   | 输出 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q                                                                                                              |
+| 名称            |  输入/输出 | 数据类型     | 数据格式                          |  范围  | 说明                                                                                                              |
+|---------------|  - |----------|-------------------------------|  ----  |-----------------------------------------------------------------------------------------------------------------|
+| q             | 输入 | Tensor[float32/float16/bfloat16] | [B, S, N_q, D]/<br>[s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N_q∈[1, 16]<br>D∈[16, 512]且是16的倍数 | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度<br>s_b为jagged格式下各batch的实际序列长度之和 |
+| k             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N_k, D]/<br>[s_b, N, D] | 同q | **GQA支持**：K的头数可以小于Q的头数，但必须满足N_q能被N_k整除                                                                          |
+| v             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N_k, D]/<br>[s_b, N, D] | 同q | 同k                                                                                                              |
+| mask          | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S]                  | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致<br>N与q保持一致                                                      |
+| attn_bias     | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S]                  | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致 <br>N与q保持一致                                                           |
+| seq_offsets_q | 输入 | Tensor   | NA                            | NA | 表示每个batch的实际Q序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
+| seq_offsets_k | 输入 | Tensor   | NA                            | NA | 表示每个batch的实际K序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
+| seq_offsets_t | 输入 | Tensor   | NA                            | NA | 目标序列偏移量张量                                                                                                       |
+| kv_cache | 输入 | Tensor   | NA                            | NA | KV缓存张量，用于存储历史Key-Value对                                                                                         |
+| page_offsets | 输入 | Tensor   | NA                            | NA | 页面偏移量张量                                                                                                         |
+| page_ids | 输入 | Tensor   | NA                            | NA | 页面ID张量                                                                                                          |
+| last_page_len | 输入 | Tensor   | NA                            | NA | 最后一页长度张量                                                                                                        |
+| num_context | 输入 | Tensor   | NA                            | NA | 上下文数量张量                                                                                                         |
+| num_target | 输入 | Tensor   | NA                            | NA | 目标数量张量                                                                                                          |
+| mask_type      | 输入 | int      | NA                            | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA                                                                                                              |
+| max_seq_len_q | 输入 | int      | NA                            | [1, 20480] | 表示模型Q序列最大长度                                                                                                     |
+| max_seq_len_k | 输入 | int      | NA                            | [1, 20480] | 表示模型K序列最大长度                                                                                                     |
+| silu_scale    | 输入 | float    | NA                            | NA | 支持用户传入自定义，不传入时默认为1/max_seq_len                                                                                  |
+| layout        | 输入 | string   | NA                            | "normal":代表q,k,v数据格式为[B, S, N, D]<br>"jagged":代表q,k,v数据格式为[s_b, N, D] | NA                                                                                                              |
+| target_group_size | 输入 | int      | NA                            | NA | 创建内置target mask时使用，target_group_size为0时不创建target mask                                                           |
+| is_delta_qk | 输入 | int      | NA                            | NA | QK序列是否等长：0=等长，1=不等长                                                                                             |
+| alpha | 输入 | float      | NA                            | NA | Alpha缩放参数                                                                                                       |
+| attn_output   | 输出 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D]  | 同q | 同q                                                                                                              |
 
 ## Atlas 推理系列产品
 
 | 名称            |  输入/输出 | 数据类型     |  数据格式  |  范围  | 说明                                                                                                              |
 |---------------|  - |----------|  ----  |  ----  |-----------------------------------------------------------------------------------------------------------------|
-| q             | 输入 | Tensor[float32/float16/bfloat16] | [B, S, N, D]/<br>[s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[1, 16]<br>D∈[16, 512]且是16的倍数 | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度<br>s_b为jagged格式下各batch的实际序列长度之和 |
-| k             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q                                                                                                              |
-| v             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q                                                                                                              |
-| mask          | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致                                                                 |
-| attn_bias     | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致                                                            |
+| q             | 输入 | Tensor[float32/float16/bfloat16] | [B, S, N_q, D]/<br>[s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N_q∈[1, 16]<br>D∈[16, 512]且是16的倍数 | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度<br>s_b为jagged格式下各batch的实际序列长度之和 |
+| k             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N_k, D]/<br>[s_b, N, D] | 同q | **GQA支持**：K的头数可以小于Q的头数，但必须满足N_q能被N_k整除                                                                          |
+| v             | 输入 | Tensor[float32/float16/bfloat16]   | [B, S, N_k, D]/<br>[s_b, N, D] | 同q | 同k                                                                                                              |
+| mask          | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S]                  | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致<br>N与q保持一致                                                      |
+| attn_bias     | 输入 | Tensor[float32/float16/bfloat16]   | [B, N, S, S]                  | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致 <br>N与q保持一致                                                           |
 | seq_offsets_q | 输入 | Tensor   | NA | NA | 表示每个batch的实际Q序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
 | seq_offsets_k | 输入 | Tensor   | NA | NA | 表示每个batch的实际K序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
 | seq_offsets_t | 输入 | Tensor   | NA | NA | 目标序列偏移量张量                                                                                                       |
@@ -152,3 +153,64 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"1.算子编译"章节。
 
 注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/hstu/README.md)
+
+# GQA (Grouped Query Attention) 支持说明
+
+## GQA概述
+
+Grouped Query Attention (GQA) 是一种注意力机制优化技术，允许K/V的头数小于Q的头数，多个Q头共享同一个K/V头，从而在保持模型质量的同时，显著减少KV缓存内存占用并提升推理性能。
+
+## GQA配置示例
+
+| 配置名称 | N_q | N_k | h_h_k_ratio | 说明 |
+|---------|-----|-----|-------------|------|
+| **标准MHA** | 8 | 8 | 1 | 每个Q头有独立的K/V头 |
+| **GQA-4** | 8 | 2 | 4 | 每4个Q头共享1个K/V头 |
+| **GQA-2** | 8 | 4 | 2 | 每2个Q头共享1个K/V头 |
+| **MQA** | 8 | 1 | 8 | 所有Q头共享1个K/V头 |
+
+## GQA使用示例
+
+```python
+import torch
+import torch_npu
+
+# GQA配置：8个Q头，2个K/V头
+batch_size = 2
+seq_len = 256
+num_heads_q = 8    # Q的头数
+num_heads_k = 2    # K/V的头数（GQA模式）
+head_dim = 64
+
+# 生成数据
+q = torch.randn(batch_size * seq_len, num_heads_q, head_dim, dtype=torch.float16).npu()
+k = torch.randn(batch_size * seq_len, num_heads_k, head_dim, dtype=torch.float16).npu()  # K头数小于Q
+v = torch.randn(batch_size * seq_len, num_heads_k, head_dim, dtype=torch.float16).npu()  # V头数等于K
+
+# 调用算子（jagged格式）
+seq_offsets_q = torch.tensor([0, 128, 256], dtype=torch.int64).npu()
+seq_offsets_k = torch.tensor([0, 128, 256], dtype=torch.int64).npu()
+
+output = torch.ops.mxrec.hstu_jagged(
+    q=q,
+    k=k,
+    v=v,
+    mask=None,
+    bias=None,
+    mask_type=0,  # 下三角mask
+    max_seq_len=256,
+    max_seq_len_k=256,
+    silu_scale=1.0/256,
+    seq_offset=seq_offsets_q,
+    seq_offset_k=seq_offsets_k
+)
+
+# 输出形状：[batch_size * seq_len, num_heads_q, head_dim]
+print(output.shape)  # torch.Size([512, 8, 64])
+```
+
+## GQA约束条件
+
+1. **整除约束**：`N_q % N_k == 0`（Q头数必须能被K/V头数整除）
+2. **头数约束**：`N_k = N_v`（K和V的头数必须相同）
+3. **头数范围**：`N_k >= 1, N_q >= N_k`（K/V头数至少为1，Q头数不小于K/V头数）
