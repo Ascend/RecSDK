@@ -30,6 +30,8 @@ TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, svMatmul);
 TILING_DATA_FIELD_DEF(int64_t, batchSize);
 TILING_DATA_FIELD_DEF(int64_t, seqLen);
 TILING_DATA_FIELD_DEF(int64_t, headNum);
+TILING_DATA_FIELD_DEF(int64_t, headNumK);
+TILING_DATA_FIELD_DEF(int64_t, headRatio);
 TILING_DATA_FIELD_DEF(int64_t, dim);
 TILING_DATA_FIELD_DEF(int64_t, blockHeight);
 

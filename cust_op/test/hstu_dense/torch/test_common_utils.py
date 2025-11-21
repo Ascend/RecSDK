@@ -76,7 +76,8 @@ class QKVShapeInfo:
     float_type: torch.dtype
     int_type: torch.dtype
     batch_size: int
-    num_heads: int
+    num_heads_q: int
+    num_heads_k: int
     attention_dim: int
     max_seq_len: int
     min_seq_len: int = 1

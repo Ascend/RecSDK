@@ -44,19 +44,20 @@ def jagged_data_gen(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo, enable
         num_target = torch.cat((num_target, num_target[-1:]), dim=0)
     max_seq_len, total_seqs = max(seq_lens.tolist()), sum(seq_lens.tolist())
 
-    num_heads, attention_dim = qkv_shape_info.num_heads, qkv_shape_info.attention_dim
-    q = torch.rand(total_seqs, num_heads, attention_dim).to(float_type)
+    num_heads_q, num_heads_k, attention_dim = (qkv_shape_info.num_heads_q, qkv_shape_info.num_heads_k,
+                                               qkv_shape_info.attention_dim)
+    q = torch.rand(total_seqs, num_heads_q, attention_dim).to(float_type)
     q = q.uniform_(-1, 1)
-    k = torch.rand(total_seqs, num_heads, attention_dim).to(float_type)
+    k = torch.rand(total_seqs, num_heads_k, attention_dim).to(float_type)
     k = k.uniform_(-1, 1)
-    v = torch.rand(total_seqs, num_heads, attention_dim).to(float_type)
+    v = torch.rand(total_seqs, num_heads_k, attention_dim).to(float_type)
     v = v.uniform_(-1, 1)
 
-    rel_attn_bias = torch.rand(batch_size, num_heads, max_seq_len, max_seq_len).to(float_type) \
+    rel_attn_bias = torch.rand(batch_size, num_heads_q, max_seq_len, max_seq_len).to(float_type) \
         if enable_bias else None
 
     if mask_info.mask_type == MaskType.TRIL:
-        mask = torch.zeros(batch_size, num_heads, max_seq_len, max_seq_len)
+        mask = torch.zeros(batch_size, num_heads_q, max_seq_len, max_seq_len)
         for batch_id, seq_len in enumerate(seq_lens.tolist()):
             score_shape_param = ScoreShapeParam(
                 seq_len=seq_len,
@@ -68,7 +69,7 @@ def jagged_data_gen(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo, enable
             mask[batch_id, :, :seq_len, :seq_len] = cached_create_causal_mask(score_shape_param)
         mask = mask.cpu().to(float_type)
     elif mask_info.mask_type == MaskType.CUSTOM:
-        mask = torch.randint(0, 2, size=(batch_size, num_heads, max_seq_len, max_seq_len))
+        mask = torch.randint(0, 2, size=(batch_size, num_heads_q, max_seq_len, max_seq_len))
         mask = mask.cpu().to(float_type)
     else:
         mask = None
@@ -105,8 +106,14 @@ class TestHstuJaggedDemo:
         q, k, v, seq_offset = qkv_tensors
         mask_type, mask, _, _, _ = mask_tensors
 
-        (_, head_nums, head_dim), data_type = q.shape, q.dtype
+        (_, head_nums_q, head_dim), data_type = q.shape, q.dtype
+        (_, head_nums_k, head_dim) = k.shape
         batch_size = seq_offset.shape[0] - 1 - int(repeat_offset)
+
+        if head_nums_q != head_nums_k:
+            assert head_nums_q % head_nums_k == 0, (f"head_nums_q ({head_nums_q}) must be divisible by "
+                                                    f"head_nums_k({head_nums_k}) ")
+        h_qk_ratio = head_nums_q // head_nums_k
 
         seq_lens = np.zeros((batch_size,)).astype(np.int64)
         for batch_id in range(batch_size):
@@ -114,12 +121,15 @@ class TestHstuJaggedDemo:
 
         silu_scale = 1 / max_seq_len if silu_scale == 0 else silu_scale
 
-        q_dens = jagged_to_dense(q, seq_lens, head_nums, head_dim).to(data_type).to("npu")
-        k_dens = jagged_to_dense(k, seq_lens, head_nums, head_dim).to(data_type).to("npu")
-        v_dens = jagged_to_dense(v, seq_lens, head_nums, head_dim).to(data_type).to("npu")
+        q_dens = jagged_to_dense(q, seq_lens, head_nums_q, head_dim).to(data_type).to("npu")
+        k_dens = jagged_to_dense(k, seq_lens, head_nums_k, head_dim).to(data_type).to("npu")
+        v_dens = jagged_to_dense(v, seq_lens, head_nums_k, head_dim).to(data_type).to("npu")
+
+        k_dens_expanded = k_dens.repeat_interleave(h_qk_ratio, dim=2)
+        v_dens_expanded = v_dens.repeat_interleave(h_qk_ratio, dim=2)
 
         q_dens = q_dens.permute(0, 2, 1, 3)
-        k_dens = k_dens.permute(0, 2, 3, 1)
+        k_dens = k_dens_expanded.permute(0, 2, 3, 1)
         qk_attn = torch.matmul(q_dens, k_dens).to(torch.float32)
 
         if rel_attn_bias is not None:
@@ -132,7 +142,7 @@ class TestHstuJaggedDemo:
             mask = mask.to(torch.float32).to("npu")
             qk_attn = qk_attn * mask
 
-        v_dens = v_dens.permute(0, 2, 1, 3)
+        v_dens = v_dens_expanded.permute(0, 2, 1, 3)
 
         qk_attn = qk_attn.to(data_type)
         attn_output = torch.matmul(qk_attn, v_dens)
@@ -159,7 +169,10 @@ class TestHstuJaggedDemo:
         assert res
 
     @pytest.mark.parametrize("batch_size", [1, 16])
-    @pytest.mark.parametrize("head_num", [2, 4])
+    @pytest.mark.parametrize("head_num_q, head_num_k", [
+        (2, 2),
+        (4, 4),
+    ])
     @pytest.mark.parametrize("max_seq_len", [15, 1024])
     @pytest.mark.parametrize("head_dim", [16, 128])
     @pytest.mark.parametrize("enable_bias", [True, False])
@@ -176,13 +189,15 @@ class TestHstuJaggedDemo:
         (MaskType.TRIL, 1, 6, 30),
         (MaskType.TRIL, 3, 6, 30),
     ])
-    def test_hstu_jagged_forward(self, batch_size, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
-                                 float_data_type, int_data_type, target_group_size, max_num_context, max_num_target):
+    def test_hstu_jagged_forward(self, batch_size, head_num_q, head_num_k, max_seq_len, head_dim, enable_bias,
+                                 mask_type, silu_scale, float_data_type, int_data_type, target_group_size,
+                                 max_num_context, max_num_target):
         qkv_shape_info = QKVShapeInfo(float_type=float_data_type,
                                       int_type=int_data_type,
                                       batch_size=batch_size,
                                       max_seq_len=max_seq_len,
-                                      num_heads=head_num,
+                                      num_heads_q=head_num_q,
+                                      num_heads_k=head_num_k,
                                       attention_dim=head_dim)
         mask_info = MaskGenInfo(mask_type=mask_type,
                                 max_num_context=max_num_context,
@@ -191,7 +206,11 @@ class TestHstuJaggedDemo:
         self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)
 
     @pytest.mark.parametrize("batch_size", [1, 2])
-    @pytest.mark.parametrize("head_num", [1, 7, 16])
+    @pytest.mark.parametrize("head_num_q, head_num_k", [
+        (1, 1),
+        (7, 7),
+        (16, 16),
+    ])
     @pytest.mark.parametrize("max_seq_len", [15, 256])
     @pytest.mark.parametrize("head_dim", [16, 32])
     @pytest.mark.parametrize("enable_bias", [True, False])
@@ -200,13 +219,14 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("float_data_type", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("int_data_type", [torch.int64])
     @pytest.mark.parametrize("repeat_offset", [False, True])
-    def test_hstu_jagged_forward_head16(self, batch_size, head_num, max_seq_len, head_dim, enable_bias, mask_type,
-                                        silu_scale, float_data_type, int_data_type, repeat_offset):
+    def test_hstu_jagged_forward_head16(self, batch_size, head_num_q, head_num_k, max_seq_len, head_dim, enable_bias,
+                                        mask_type, silu_scale, float_data_type, int_data_type, repeat_offset):
         qkv_shape_info = QKVShapeInfo(float_type=float_data_type,
                                       int_type=int_data_type,
                                       batch_size=batch_size,
                                       max_seq_len=max_seq_len,
-                                      num_heads=head_num,
+                                      num_heads_q=head_num_q,
+                                      num_heads_k=head_num_k,
                                       attention_dim=head_dim)
         mask_info = MaskGenInfo(mask_type=mask_type,
                                 max_num_context=0,
@@ -214,7 +234,7 @@ class TestHstuJaggedDemo:
                                 target_group_size=0)
         self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale, repeat_offset)
 
-    @pytest.mark.parametrize("head_num", [2])
+    @pytest.mark.parametrize("head_num_q, head_num_k", [(2, 2)])
     @pytest.mark.parametrize("max_seq_len", [2570])
     @pytest.mark.parametrize("head_dim", [256])
     @pytest.mark.parametrize("enable_bias", [True, False])
@@ -231,14 +251,15 @@ class TestHstuJaggedDemo:
         (MaskType.TRIL, 1, 6, 30),
         (MaskType.TRIL, 3, 6, 30),
     ])
-    def test_hstu_jagged_forward_128bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
-                                       float_data_type, int_data_type, target_group_size, max_num_context,
+    def test_hstu_jagged_forward_128bs(self, head_num_q, head_num_k, max_seq_len, head_dim, enable_bias, mask_type,
+                                       silu_scale, float_data_type, int_data_type, target_group_size, max_num_context,
                                        max_num_target):
         qkv_shape_info = QKVShapeInfo(float_type=float_data_type,
                                       int_type=int_data_type,
                                       batch_size=128,
                                       max_seq_len=max_seq_len,
-                                      num_heads=head_num,
+                                      num_heads_q=head_num_q,
+                                      num_heads_k=head_num_k,
                                       attention_dim=head_dim)
         mask_info = MaskGenInfo(mask_type=mask_type,
                                 max_num_context=max_num_context,
@@ -246,7 +267,7 @@ class TestHstuJaggedDemo:
                                 target_group_size=target_group_size)
         self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)
 
-    @pytest.mark.parametrize("head_num", [2])
+    @pytest.mark.parametrize("head_num_q, head_num_k", [(2, 2)])
     @pytest.mark.parametrize("max_seq_len", [16])
     @pytest.mark.parametrize("head_dim", [256])
     @pytest.mark.parametrize("enable_bias", [True, False])
@@ -257,15 +278,114 @@ class TestHstuJaggedDemo:
         (MaskType.TRIL, 3, 6, 30),
     ])
     @pytest.mark.parametrize("float_data_type", [torch.float32, torch.float16, torch.bfloat16])
-    def test_hstu_jagged_forward_2048bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
-                                        float_data_type, target_group_size, max_num_context,
+    def test_hstu_jagged_forward_2048bs(self, head_num_q, head_num_k, max_seq_len, head_dim, enable_bias, mask_type,
+                                        silu_scale, float_data_type, target_group_size, max_num_context,
                                         max_num_target):
         qkv_shape_info = QKVShapeInfo(float_type=float_data_type,
                                       int_type=torch.int64,
                                       batch_size=2048,
                                       max_seq_len=max_seq_len,
-                                      num_heads=head_num,
+                                      num_heads_q=head_num_q,
+                                      num_heads_k=head_num_k,
                                       attention_dim=head_dim)
+        mask_info = MaskGenInfo(mask_type=mask_type,
+                                max_num_context=max_num_context,
+                                max_num_target=max_num_target,
+                                target_group_size=target_group_size)
+        self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)
+
+    ## GQA测试
+    @pytest.mark.parametrize("batch_size", [4])
+    @pytest.mark.parametrize("head_num_q", [8])
+    @pytest.mark.parametrize("head_num_k", [8, 4, 2, 1])
+    @pytest.mark.parametrize("max_seq_len", [15, 1024])
+    @pytest.mark.parametrize("head_dim", [16, 128])
+    @pytest.mark.parametrize("enable_bias", [True, False])
+    @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
+    @pytest.mark.parametrize("float_data_type", [torch.float32, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("int_data_type", [torch.int64])
+    @pytest.mark.parametrize("mask_type, target_group_size, max_num_context, max_num_target", [
+        (MaskType.NONE, 0, 0, 0),
+        (MaskType.CUSTOM, 0, 0, 0),
+        (MaskType.TRIL, 1, 0, 30),
+        (MaskType.TRIL, 3, 0, 30),
+        (MaskType.TRIL, 1, 6, 0),
+        (MaskType.TRIL, 3, 6, 0),
+        (MaskType.TRIL, 1, 6, 30),
+        (MaskType.TRIL, 3, 6, 30),
+    ])
+    def test_hstu_jagged_forward_GQA(self, batch_size, head_num_q, head_num_k, max_seq_len, head_dim, enable_bias,
+                                     mask_type, silu_scale, float_data_type, int_data_type, target_group_size,
+                                     max_num_context, max_num_target):
+        qkv_shape_info = QKVShapeInfo(float_type=float_data_type,
+                                          int_type=int_data_type,
+                                          batch_size=batch_size,
+                                          max_seq_len=max_seq_len,
+                                          num_heads_q=head_num_q,
+                                          num_heads_k=head_num_k,
+                                          attention_dim=head_dim)
+        mask_info = MaskGenInfo(mask_type=mask_type,
+                                max_num_context=max_num_context,
+                                max_num_target=max_num_target,
+                                target_group_size=target_group_size)
+        self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)
+
+    @pytest.mark.parametrize("head_num_q", [2])
+    @pytest.mark.parametrize("head_num_K", [2, 1])
+    @pytest.mark.parametrize("max_seq_len", [2570])
+    @pytest.mark.parametrize("head_dim", [256])
+    @pytest.mark.parametrize("enable_bias", [True, False])
+    @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
+    @pytest.mark.parametrize("float_data_type", [torch.float32, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("int_data_type", [torch.int64])
+    @pytest.mark.parametrize("mask_type, target_group_size, max_num_context, max_num_target", [
+        (MaskType.NONE, 0, 0, 0),
+        (MaskType.CUSTOM, 0, 0, 0),
+        (MaskType.TRIL, 1, 0, 30),
+        (MaskType.TRIL, 3, 0, 30),
+        (MaskType.TRIL, 1, 6, 0),
+        (MaskType.TRIL, 3, 6, 0),
+        (MaskType.TRIL, 1, 6, 30),
+        (MaskType.TRIL, 3, 6, 30),
+    ])
+    def test_hstu_jagged_forward_128bs_GQA(self, head_num_q, head_num_k, max_seq_len, head_dim, enable_bias, mask_type,
+                                           silu_scale, float_data_type, int_data_type, target_group_size,
+                                           max_num_context, max_num_target):
+        qkv_shape_info = QKVShapeInfo(float_type=float_data_type,
+                                      int_type=int_data_type,
+                                      batch_size=128,
+                                      max_seq_len=max_seq_len,
+                                      num_heads_q=head_num_q,
+                                      num_heads_k=head_num_k,
+                                      attention_dim=head_dim)
+        mask_info = MaskGenInfo(mask_type=mask_type,
+                                max_num_context=max_num_context,
+                                max_num_target=max_num_target,
+                                target_group_size=target_group_size)
+        self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)
+
+    @pytest.mark.parametrize("head_num_q", [4])
+    @pytest.mark.parametrize("head_num_k", [4, 2, 1])
+    @pytest.mark.parametrize("max_seq_len", [16])
+    @pytest.mark.parametrize("head_dim", [256])
+    @pytest.mark.parametrize("enable_bias", [True, False])
+    @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
+    @pytest.mark.parametrize("mask_type, target_group_size, max_num_context, max_num_target", [
+        (MaskType.NONE, 0, 0, 0),
+        (MaskType.CUSTOM, 0, 0, 0),
+        (MaskType.TRIL, 3, 6, 30),
+    ])
+    @pytest.mark.parametrize("float_data_type", [torch.float32, torch.float16, torch.bfloat16])
+    def test_hstu_jagged_forward_2048bs_GQA(self, head_num_q, head_num_k, max_seq_len, head_dim, enable_bias, mask_type,
+                                            silu_scale, float_data_type, target_group_size, max_num_context,
+                                            max_num_target):
+        qkv_shape_info = QKVShapeInfo(float_type=float_data_type,
+                                          int_type=torch.int64,
+                                          batch_size=2048,
+                                          max_seq_len=max_seq_len,
+                                          num_heads_q=head_num_q,
+                                          num_heads_k=head_num_k,
+                                          attention_dim=head_dim)
         mask_info = MaskGenInfo(mask_type=mask_type,
                                 max_num_context=max_num_context,
                                 max_num_target=max_num_target,
