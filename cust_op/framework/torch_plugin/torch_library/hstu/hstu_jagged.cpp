@@ -37,7 +37,7 @@ at::Tensor hstu_jagged_forward_impl_npu(
 {
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
-    auto acSeqOffset = seqOffset;
+    auto acSeqOffset = seqOffset.to(torch::kInt64);
     auto batchsize = acSeqOffset.size(0) - 1;
     TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
 
@@ -193,7 +193,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
         TORCH_CHECK(CheckInList(targetGroupSize.value_or(0), {1, 3}), "The targetGroupSize should be in [1, 3]");
     }
 
-    auto acSeqOffset = seqOffset;
+    auto acSeqOffset = seqOffset.to(torch::kInt64);
     TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
 
     auto acAttnBias = attnBias.value_or(at::Tensor());
