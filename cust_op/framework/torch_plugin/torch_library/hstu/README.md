@@ -426,4 +426,4 @@ class TestHstuNormalDemo:
 
 ```
 
-注：注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense/torch/test_hstu_dense_backward_demo.py](../../../../test/hstu_dense/torch/test_hstu_dense_backward_demo.py)
+注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense/torch/test_hstu_dense_backward_demo.py](../../../../test/hstu_dense/torch/test_hstu_dense_backward_demo.py)
