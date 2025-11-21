@@ -17,20 +17,12 @@
 set -e
 
 # 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
+msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")
-onnx_path=$(dirname "$(readlink -f "$0")")/../../../build/scripts/onnx_plugin
-json_file=$onnx_path/json.hpp
-
 export PATH=$parent_dir:$PATH
 
 VALID_AI_CORES=(
-    "ai_core-Ascend910B1"
-    "ai_core-Ascend910B2"
-    "ai_core-Ascend910B3"
-    "ai_core-Ascend910B4"
-    "ai_core-Ascend910_93"
-    "ai_core-Ascend310P3"
+    "ai_core-Ascend910_95"
 )
 
 validate_ai_core() {
@@ -45,39 +37,23 @@ validate_ai_core() {
     exit 1
 }
 
-ai_core="ai_core-Ascend910B1"
+ai_core="ai_core-Ascend910_95"
 if [ "$#" -eq 1 ]; then
   ai_core="$1"
   validate_ai_core $ai_core
 fi
 
 # 利用msopgen生成可编译文件
-rm -rf ./hstu_dense_forward_fuxi
-python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i hstu_dense_forward_fuxi.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward_fuxi -m 0 -op HstuDenseForwardFuxi
-rm -rf hstu_dense_forward_fuxi/op_kernel/*.h
-rm -rf hstu_dense_forward_fuxi/op_kernel/*.cpp
-rm -rf hstu_dense_forward_fuxi/op_host/*.h
-rm -rf hstu_dense_forward_fuxi/op_host/*.cpp
-cp -rf op_kernel hstu_dense_forward_fuxi/
-cp -rf op_host/*.h hstu_dense_forward_fuxi/op_host/
-cp -rf op_host/hstu_*.cpp hstu_dense_forward_fuxi/op_host/
-cp -rf op_host/tiling_policy.cpp hstu_dense_forward_fuxi/op_host/
-cp -rf op_host/tiling_policy_factory.cpp hstu_dense_forward_fuxi/op_host/
-if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-  cp -rf op_host/tiling_policy_normal_v200_fuxi.cpp hstu_dense_forward_fuxi/op_host/
-else
-  cp -rf op_host/tiling_policy_jagged.cpp hstu_dense_forward_fuxi/op_host/
-fi
+rm -rf ./dense_embedding_codegen_lookup_function
+python3 $msopgen_path gen -i ../v220/dense_embedding_codegen_lookup_function.json -f tf -c ${ai_core} -lan cpp -out ./dense_embedding_codegen_lookup_function -m 0 -op DenseEmbeddingCodegenLookupFunction
+rm -rf dense_embedding_codegen_lookup_function/op_kernel/*.h
+rm -rf dense_embedding_codegen_lookup_function/op_kernel/*.cpp
+rm -rf dense_embedding_codegen_lookup_function/op_host/*.h
+rm -rf dense_embedding_codegen_lookup_function/op_host/*.cpp
+cp -rf ../v220/op_kernel dense_embedding_codegen_lookup_function/
+cp -rf ../v220/op_host dense_embedding_codegen_lookup_function/
 
-#onnx适配层
-if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-  bash $onnx_path/build_onnx.sh
-  mkdir -p hstu_dense_forward_fuxi/framework/onnx_plugin
-  cp -rf $json_file hstu_dense_forward_fuxi/framework/onnx_plugin
-  cp -rf ../onnx_plugin/* hstu_dense_forward_fuxi/framework/onnx_plugin
-fi
-
-cd hstu_dense_forward_fuxi
+cd dense_embedding_codegen_lookup_function
 
 # 判断当前目录下是否存在CMakePresets.json文件
 if [ ! -f "CMakePresets.json" ]; then
@@ -86,7 +62,7 @@ if [ ! -f "CMakePresets.json" ]; then
 fi
 
 # 禁止生成CRC校验和
-sed -i 's/--nomd5/--nomd5 --nocrc --notemp/g' ./cmake/makeself.cmake
+sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
 if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
@@ -95,20 +71,11 @@ fi
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
-sed -i 's:"customize":"hstu_dense_forward_fuxi":g' CMakePresets.json
+sed -i 's:"customize":"dense_embedding_codegen_lookup_function":g' CMakePresets.json
 
 line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`
 sed -i "${line}s/True/False/g" CMakePresets.json
-
-if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-  sed -i "1i #define SUPPORT_V200" ./op_host/hstu_dense_forward_fuxi_tiling.h
-  sed -i "1i #define SUPPORT_V200" ./op_host/tiling_policy_define.h
-  sed -i "1i #define SUPPORT_V200" ./op_kernel/hstu_dense_forward_fuxi.cpp
-fi
-
-add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../hstu_dense_forward_fuxi.json DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${vendor_name}_impl/dynamic)"
-sed -i '$a\'"$add_cmake_line" ./op_kernel/CMakeLists.txt
 
 # 增加LOG_CPP编译选项支持错误日志打印
 sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
