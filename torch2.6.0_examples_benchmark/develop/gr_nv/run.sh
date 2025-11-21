@@ -14,7 +14,10 @@
 # limitations under the License.
 # ==============================================================================
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
-export LD_PRELOAD=/usr/lib64/libgomp.so.1
+if [[ $(uname -m) =~ "aarch64" ]];then
+    export LD_PRELOAD=/usr/lib64/libgomp.so.1
+fi
+
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 
@@ -86,14 +89,20 @@ export ENABLE_PROF=1
 rm -rf ./profiler
 
 #---------------------------------------------
+# glog related
+#---------------------------------------------
+#  -2: TRACE, -1: DEBUG, 0: INFO, 1: WARNING, 2: ERROR, 3: FATAL, 默认为INFO
+export GLOG_stderrthreshold=0
+
+#---------------------------------------------
 # train job related
 #---------------------------------------------
 py_file=pretrain_gr_ranking.py
-config_file=movielen_ranking.gin
+config_file=kuairand_pure_ranking.gin
 
 # 根据实际情况修改
 export WORLD_SIZE=4
-export ASCEND_RT_VISIBLE_DEVICE=4,5,6,7
+export ASCEND_RT_VISIBLE_DEVICES=4,5,6,7
 
 MICRO_BATCH_SIZE=8
 GLOBAL_BATCH_SIZE=$((MICRO_BATCH_SIZE * WORLD_SIZE))
