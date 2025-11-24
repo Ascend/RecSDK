@@ -623,9 +623,9 @@ public:
         int64_t remain = total;
         uint16_t copyLen = xDim3 * sizeof(qType) / DATA_ALIGN_BYTES;
         uint16_t distStride = (xDim2 * xDim3 - xDim3) * sizeof(qType) / DATA_ALIGN_BYTES;
-
+        int64_t copyLenEachLoopAlignHeadDim = vectorScoreUbBlockElem / xDim3 * xDim3;
         while (remain > 0) {
-            int64_t thisLen = vectorScoreUbBlockElem;
+            int64_t thisLen = copyLenEachLoopAlignHeadDim;
             if (remain < thisLen) {
                 thisLen = remain;
             }
