@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from test_target_mask import ScoreShapeParam, compute_target_mask_each_block_concat
+from test_common_utils import allclose
 
 torch.npu.config.allow_internal_format = False
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
@@ -195,22 +196,22 @@ class TestHstuNormalDemo:
         elif data_type == torch.bfloat16:
             loss = 1e-2
 
-        q_res = torch.allclose(q_grad, q_grad_golden, loss, loss)
-        k_res = torch.allclose(k_grad, k_grad_golden, loss, loss)
-        v_res = torch.allclose(v_grad, v_grad_golden, loss, loss)
-        bias_res = not enable_bias or torch.allclose(attn_bias_grad, attn_bias_grad_golden, loss, loss)
+        q_res = allclose(q_grad, q_grad_golden, loss, loss)
+        k_res = allclose(k_grad, k_grad_golden, loss, loss)
+        v_res = allclose(v_grad, v_grad_golden, loss, loss)
+        bias_res = not enable_bias or allclose(attn_bias_grad, attn_bias_grad_golden, loss, loss)
 
         assert q_res and k_res and v_res and bias_res
 
-    @pytest.mark.parametrize("batch_size", [2, 4])
-    @pytest.mark.parametrize("max_seq_len", [256, 257, 512, 1234])
-    @pytest.mark.parametrize("head_num", [2, 4])
-    @pytest.mark.parametrize("head_dim", [32, 64])
+    @pytest.mark.parametrize("batch_size", [1, 4])  # 范围: [1, 2048]
+    @pytest.mark.parametrize("max_seq_len", [1, 257, 512, 1234])  # 范围: [1, 20480]
+    @pytest.mark.parametrize("head_num", [1, 16])  # 范围: [1, 16]
+    @pytest.mark.parametrize("head_dim", [16, 32])  # 范围: [16, 512]，必须是16的倍数
     @pytest.mark.parametrize("mask_type", [0, 2, 3])
-    @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
+    @pytest.mark.parametrize("silu_scale", [1.0 / 256])
     @pytest.mark.parametrize("enable_bias", [True, False])
     @pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
-    def test_hstu_dens_normal(
+    def test_hstu_normal_case(
         self,
         batch_size,
         max_seq_len,

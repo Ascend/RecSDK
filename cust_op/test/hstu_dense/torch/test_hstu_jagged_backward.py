@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from test_target_mask import ScoreShapeParam, compute_target_mask_each_block_concat
+from test_common_utils import allclose, MaskType
 
 torch.npu.config.allow_internal_format = False
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
@@ -81,7 +82,7 @@ def jagged_data_gen(
 
     bias = torch.empty(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type).uniform_(-1, 1)
 
-    if mask_type == 0:
+    if mask_type == MaskType.TRIL:
         if num_context is None and num_target is None:
             mask = torch.tril(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len))
         else:
@@ -99,9 +100,9 @@ def jagged_data_gen(
                 mask_tensor = cached_create_causal_mask(parm)
                 mask[sample_id, :, :seq_len, :seq_len] = mask_tensor
             mask = mask.to(data_type)
-    elif mask_type == 1:
+    elif mask_type == MaskType.TRIU:
         mask = torch.triu(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type))
-    elif mask_type == 2:
+    elif mask_type == MaskType.NONE:
         mask = None
     else:
         mask = torch.empty(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type).uniform_(-1, 1)
@@ -143,7 +144,7 @@ class TestHstuJaggedDemo:
             seq_lens[i] = seq_offset[i + 1] - seq_offset[i]
 
         for batch, seq_len in enumerate(seq_lens):
-            equal = torch.allclose(
+            equal = allclose(
                 bias_grad[batch, :, :seq_len, :seq_len],
                 bias_grad_golden[batch, :, :seq_len, :seq_len],
                 loss,
@@ -377,35 +378,38 @@ class TestHstuJaggedDemo:
         elif data_type == torch.bfloat16:
             loss = 1e-2
 
-        q_res = torch.allclose(q_grad, q_grad_golden, loss, loss)
-        k_res = torch.allclose(k_grad, k_grad_golden, loss, loss)
-        v_res = torch.allclose(v_grad, v_grad_golden, loss, loss)
+        q_res = allclose(q_grad, q_grad_golden, loss, loss)
+        k_res = allclose(k_grad, k_grad_golden, loss, loss)
+        v_res = allclose(v_grad, v_grad_golden, loss, loss)
         bias_res = not enable_bias or self.compare_jagged_bias(attn_bias_grad, attn_bias_grad_golden, seq_offset, loss)
 
         assert q_res and k_res and v_res and bias_res
 
-    @pytest.mark.parametrize("batch_size", [2, 4])
-    @pytest.mark.parametrize("max_seq_len", [256, 257, 1024, 1234])
-    @pytest.mark.parametrize("head_num", [2, 4])
-    @pytest.mark.parametrize("head_dim", [32, 128])
+    @pytest.mark.parametrize("batch_size", [1, 4])  # 范围: [1, 2048]
+    @pytest.mark.parametrize("head_num", [1, 16])  # 范围: [1, 16]
+    @pytest.mark.parametrize("head_dim", [16, 32])  # 范围: [16, 512]，必须是16的倍数
     @pytest.mark.parametrize("mask_type", [0, 2, 3])
     @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
     @pytest.mark.parametrize("enable_bias", [True, False])
     @pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("num_context", [None])
-    @pytest.mark.parametrize("num_target", [None])
-    @pytest.mark.parametrize("target_group_size", [None])
+    @pytest.mark.parametrize("max_seq_len,num_context,num_target,target_group_size", [
+        (1, None, None, None),
+        (257, 1, 1, 1),
+        (512, 128, 0, 1),
+        (1234, 0, 512, 3),
+        (1234, 128, 512, 3)
+    ])
     @pytest.mark.parametrize("alpha", [0.5])
     def test_hstu_dens_jagged(
         self,
         batch_size,
-        max_seq_len,
         head_num,
         head_dim,
         mask_type,
         silu_scale,
         enable_bias,
         data_type,
+        max_seq_len,
         num_context,
         num_target,
         target_group_size,
