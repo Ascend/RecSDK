@@ -118,16 +118,8 @@ def process_one_block_of_target_mask(
     )
     if col_on_score_range[1] <= param.num_history:
         return
-    mask_start_in_block = (
-        0
-        if col_on_score_range[0] > param.num_history
-        else param.num_history - col_on_score_range[0]
-    )
-    mask_col_start_in_score = (
-        col_on_score_range[0]
-        if col_on_score_range[0] > param.num_history
-        else param.num_history
-    )
+    mask_start_in_block = max(0, param.num_history - col_on_score_range[0])
+    mask_col_start_in_score = max(col_on_score_range[0], param.num_history)
 
     for row_id_on_block in range(block_param.block_h):
         row_on_score = row_id_on_block + block_param.block_id_q * block_param.block_h
@@ -251,7 +243,7 @@ def cached_create_causal_mask(param: ScoreShapeParam) -> torch.Tensor:
     if os.path.exists(cached_file):
         mask = torch.tril(torch.ones(param.seq_len, param.seq_len))
         mask[:param.num_context, :param.seq_len - param.num_target] = 1
-        if param.num_target > 0:
+        if param.num_target > 0 and param.target_group_size > 0:
             target_mask = torch.load(cached_file)
             mask[-param.num_target:, -param.num_target:] = target_mask[:param.num_target, :param.num_target]
         return mask

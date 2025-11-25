@@ -27,19 +27,36 @@ using torch::autograd::Function;
 using tensor_list = std::vector<at::Tensor>;
 using namespace at;
 
+constexpr size_t MIN_BATCH_SIZE = 1;
+constexpr size_t MAX_BATCH_SIZE = 2048;
+constexpr size_t MULTIPLE_BATCH_SIZE_TIMES = 1;
+
 constexpr size_t MIN_SEQ_LEN = 1;
 constexpr size_t MAX_SEQ_LEN = 20480;
+constexpr size_t MULTIPLE_SEQ_LEN_TIMES = 1;
+
+constexpr size_t MIN_HEAD_NUM = 1;
+constexpr size_t MAX_HEAD_NUM = 16;
+constexpr size_t MULTIPLE_HEAD_NUM_TIMES = 1;
+
+constexpr size_t MIN_HEAD_DIM = 16;
+constexpr size_t MAX_HEAD_DIM = 512;
+constexpr size_t MULTIPLE_HEAD_DIM_TIMES = 16;
+
 constexpr uint32_t MASK_TYPE_TRIL = 0;
 constexpr uint32_t MASK_TYPE_TRIU = 1;
 constexpr uint32_t MASK_TYPE_CUSTOM = 3;
+
 constexpr uint32_t CONST_4 = 4;
 constexpr uint32_t CONST_3 = 3;
 constexpr uint32_t CONST_2 = 2;
+constexpr uint32_t CONST_1 = 1;
 
 namespace hstu {
 inline bool MaskCheck(int64_t maskType, uint32_t maskIsDefine)
 {
-    TORCH_CHECK(MASK_TYPE_TRIL <= maskType <= MASK_TYPE_CUSTOM, "maskType expect in [0, 3], but value is ", maskType);
+    TORCH_CHECK(MASK_TYPE_TRIL <= maskType && maskType <= MASK_TYPE_CUSTOM, "maskType expect in [0, 3], but value is ",
+                maskType);
     TORCH_CHECK(maskType != MASK_TYPE_TRIU, "maskType current not support triu now, pls use custome mask");
     TORCH_CHECK(!(maskType == MASK_TYPE_CUSTOM && !maskIsDefine), "use custome mask must have valide mask tensor");
     return true;

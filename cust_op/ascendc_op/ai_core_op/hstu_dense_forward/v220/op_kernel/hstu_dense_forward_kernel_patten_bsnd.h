@@ -210,7 +210,7 @@ public:
             attnBiasGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(attnBias));
         }
 
-        if (maskType == CausalMaskT::MASK_CUSTOME) {
+        if (maskType == CausalMaskT::MASK_CUSTOM) {
             attnMaskGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(mask));
         }
 
@@ -282,7 +282,7 @@ public:
         }
 
         if (needMask) {
-            if (maskType == CausalMaskT::MASK_CUSTOME) {
+            if (maskType == CausalMaskT::MASK_CUSTOM) {
                 inMaskLtFp32 = inMaskLt.template ReinterpretCast<float>();
                 CastQtype2Float(inMaskLtFp32, inMaskLt, tmpLt, thisLen);
                 Muls<float>(inMaskLtFp32, inMaskLtFp32, scale, thisLen);
@@ -447,7 +447,7 @@ public:
             }
 
             queMaskIn.EnQue(inMaskLtFp32);
-        } else if (maskType == CausalMaskT::MASK_CUSTOME) {
+        } else if (maskType == CausalMaskT::MASK_CUSTOM) {
             int64_t thisMaskOffset = maskOffset + blockOffset * maxSeqLenK;
             inMaskLt = queMaskIn.AllocTensor<qType>();
             DataCopyMayPad(inMaskLt, attnMaskGt,

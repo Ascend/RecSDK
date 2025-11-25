@@ -27,11 +27,6 @@ import numpy as np
 from test_target_mask import ScoreShapeParam, compute_target_mask_each_block_concat
 from test_common_utils import allclose
 
-torch.npu.config.allow_internal_format = False
-torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-
-device_id: int = 0
-
 
 def generate_tensor(batch_size, max_seq_len, num_heads, attention_dim, mask_type, data_type):
     grad = torch.empty(batch_size, max_seq_len, num_heads, attention_dim, dtype=data_type).uniform_(-1, 1)
@@ -51,9 +46,6 @@ def generate_tensor(batch_size, max_seq_len, num_heads, attention_dim, mask_type
         mask = torch.empty(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type).uniform_(-1, 1)
 
     return grad, q, k, v, bias, mask
-
-
-torch.npu.set_device(device_id)
 
 
 class TestHstuNormalDemo:
@@ -149,16 +141,16 @@ class TestHstuNormalDemo:
     ):
         grad, q, k, v, bias, mask = generate_tensor(batch_size, max_seq_len, head_num, head_dim, mask_type, data_type)
 
-        grad_npu = grad.to(f"npu:{device_id}")
-        q_npu = q.to(f"npu:{device_id}")
-        k_npu = k.to(f"npu:{device_id}")
-        v_npu = v.to(f"npu:{device_id}")
+        grad_npu = grad.to("npu")
+        q_npu = q.to("npu")
+        k_npu = k.to("npu")
+        v_npu = v.to("npu")
         bias_npu = None
         if enable_bias:
-            bias_npu = bias.to(f"npu:{device_id}")
+            bias_npu = bias.to("npu")
         mask_npu = None
         if mask_type == 0 or mask_type == 3:
-            mask_npu = mask.to(f"npu:{device_id}")
+            mask_npu = mask.to("npu")
 
         q_grad, k_grad, v_grad, attn_bias_grad = self.custom_op_exec(
             grad_npu,

@@ -28,9 +28,9 @@ class ShapeRange {
 public:
     int64_t lbound {0}; // shape下限
     int64_t ubound {0}; // shape上限
-    int64_t mutiple {0}; // 倍数
+    int64_t multiple {0}; // 倍数
     const char* name {nullptr};
-    ShapeRange(int64_t lbound, int64_t ubound, int64_t mutiple, const char* name);
+    ShapeRange(int64_t lbound, int64_t ubound, int64_t multiple, const char* name);
     bool Check(int64_t val) const;
 };
 

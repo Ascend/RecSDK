@@ -25,13 +25,7 @@ import torch.nn.functional as F
 import numpy as np
 
 from test_target_mask import ScoreShapeParam, compute_target_mask_each_block_concat
-from test_common_utils import allclose, MaskType
-
-torch.npu.config.allow_internal_format = False
-torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-
-MAX_NUM_TARGET = 512
-device_id: int = 0
+from test_common_utils import allclose, MaskType, MAX_NUM_TARGET
 
 
 def cached_create_causal_mask(param: ScoreShapeParam) -> torch.Tensor:
@@ -110,9 +104,6 @@ def jagged_data_gen(
     return grad, q, k, v, bias, mask, max_seq_len, seq_offset
 
 
-torch.npu.set_device(device_id)
-
-
 class TestHstuJaggedDemo:
     @staticmethod
     def jagged_to_dense(jagged_tensor, seq_lens, max_seq_len, head_num, head_dim):
@@ -175,20 +166,20 @@ class TestHstuJaggedDemo:
         alpha,
     ):
         batch_size = len(seq_offset) - 1
-        grad_npu = grad.to(f"npu:{device_id}")
-        q_npu = q.to(f"npu:{device_id}")
-        k_npu = k.to(f"npu:{device_id}")
-        v_npu = v.to(f"npu:{device_id}")
-        seq_offset = torch.LongTensor(seq_offset).to(f"npu:{device_id}")
+        grad_npu = grad.to("npu")
+        q_npu = q.to("npu")
+        k_npu = k.to("npu")
+        v_npu = v.to("npu")
+        seq_offset = torch.LongTensor(seq_offset).to("npu")
         if (num_context is not None):
-            num_context = torch.LongTensor([num_context for _ in range(batch_size)]).to(f"npu:{device_id}")
+            num_context = torch.LongTensor([num_context for _ in range(batch_size)]).to("npu")
         if (num_target is not None):
-            num_target = torch.LongTensor([num_target for _ in range(batch_size)]).to(f"npu:{device_id}")
-        bias_npu = bias.to(f"npu:{device_id}")
+            num_target = torch.LongTensor([num_target for _ in range(batch_size)]).to("npu")
+        bias_npu = bias.to("npu")
 
         mask_npu = None
         if mask_type == 3:
-            mask_npu = mask.to(f"npu:{device_id}")
+            mask_npu = mask.to("npu")
 
         if enable_bias:
             q_grad, k_grad, v_grad, bias_grad = torch.ops.mxrec.hstu_jagged_backward(
@@ -254,11 +245,11 @@ class TestHstuJaggedDemo:
         for batch_id in range(batch_size):
             seq_lens[batch_id] = seq_offset[batch_id + 1] - seq_offset[batch_id]
 
-        grad_dens = self.jagged_to_dense(grad, seq_lens, max_seq_len, head_nums, head_dim).to(f"npu:{device_id}")
-        q_dens = self.jagged_to_dense(q, seq_lens, max_seq_len, head_nums, head_dim).to(f"npu:{device_id}")
-        k_dens = self.jagged_to_dense(k, seq_lens, max_seq_len, head_nums, head_dim).to(f"npu:{device_id}")
-        v_dens = self.jagged_to_dense(v, seq_lens, max_seq_len, head_nums, head_dim).to(f"npu:{device_id}")
-        actual_seq_lens = torch.from_numpy(seq_lens).reshape(batch_size, 1, 1, 1).to(f"npu:{device_id}")
+        grad_dens = self.jagged_to_dense(grad, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
+        q_dens = self.jagged_to_dense(q, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
+        k_dens = self.jagged_to_dense(k, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
+        v_dens = self.jagged_to_dense(v, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
+        actual_seq_lens = torch.from_numpy(seq_lens).reshape(batch_size, 1, 1, 1).to("npu")
         actual_seq_lens = torch.broadcast_to(actual_seq_lens, bias.shape)
 
         qk = torch.matmul(q_dens.permute(0, 2, 1, 3), k_dens.permute(0, 2, 3, 1))
@@ -269,11 +260,11 @@ class TestHstuJaggedDemo:
         bias = bias.float()
 
         if mask_type == 0 or mask_type == 3:
-            mask = mask.to(f"npu:{device_id}")
+            mask = mask.to("npu")
             mask = mask.float()
 
         if enable_bias:
-            bias = bias.to(f"npu:{device_id}")
+            bias = bias.to("npu")
             bias = bias.float()
             qkb = qk + bias
         else:
