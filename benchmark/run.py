@@ -108,7 +108,12 @@ def get_args():
 
 
 def install_depend(config: dict, taget_dir: Path) -> bool:
-    try:
+    try:        
+        if config.get("pre_cmd"):
+            cmds = config.get("pre_cmd")
+            for cmd in cmds:
+                logger.info(f"Executing pre command: {cmd}")
+                subprocess.run(cmd.split(" "), cwd=str(taget_dir), check=True)
         if config.get("pip_install_requirements"):
             logger.info("Installing requirements.txt dependencies...")
             subprocess.run(
