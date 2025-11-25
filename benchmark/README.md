@@ -45,3 +45,7 @@ python run.py  xxx.json
 + pip_install_requirements: 开源仓是否要安装起根目录下的requirements.txt依赖包
 + extra_cmd: 适配npu需要额外执行的命令
 
+# yolov5 模型需要手动下载权重文件
+
+https://gitcode.com/open-source-toolkit/6e474/blob/main/yolov5%20%E5%AE%98%E6%96%B9%E6%9D%83%E9%87%8D%E6%96%87%E4%BB%B6.zip
+从链接里下载并解压，把yolov5s.pt放在ckpt文件夹下再运行

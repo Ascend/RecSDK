@@ -1,0 +1,26 @@
+{
+    "name": "Yolov5",
+    "url": "https://github.com/ultralytics/yolov5",
+    "commit_id": "0d25ae7c1a2848005c997889533abd8f00ea6baf",
+    "patch_path": "patches/yolov5_npu.patch",
+    "mode": "infer",
+    "epoch": 10,
+    "profiling_flag": 1,
+    "compile_flag": 0,
+    "aclgraph_flag": 0,
+    "data_type": "",
+    "run_cmd": [
+        "python",
+        "detect.py",
+        "--weights",
+        "yolov5s.pt",
+        "--source",
+        "data/images/bs",
+        "--batch-size",
+        "1"
+    ],
+    "pre_cmd": ["pip install ultralytics"],
+    "pip_install_self": false,
+    "pip_install_requirements": true,
+    "extra_cmd": ["cp -r ../../dataset/bs ./data/images/","cp ../../ckpt/yolov5s.pt ."]
+}
