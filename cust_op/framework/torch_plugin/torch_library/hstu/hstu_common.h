@@ -62,6 +62,7 @@ inline bool MaskCheck(int64_t maskType, uint32_t maskIsDefine)
     return true;
 }
 
+
 inline bool MaxSeqLenCheck(int64_t maxSeqLen)
 {
     TORCH_CHECK(maxSeqLen >= MIN_SEQ_LEN && maxSeqLen <= MAX_SEQ_LEN,

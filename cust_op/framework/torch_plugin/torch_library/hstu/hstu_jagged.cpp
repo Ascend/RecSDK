@@ -144,10 +144,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
     uint32_t headNum = grad.size(1);
     uint32_t headDim = grad.size(2);
 
-    ShapeRange batchSizeRange(MIN_BATCH_SIZE, MAX_BATCH_SIZE, MUTIPLE_BATCH_SIZE_TIMES, "batchSize");
-    ShapeRange seqLenRange(MIN_SEQ_LEN, MAX_SEQ_LEN, MUTIPLE_SEQ_LEN_TIMES, "seqLen");
-    ShapeRange headNumRange(MIN_HEAD_NUM, MAX_HEAD_NUM, MUTIPLE_HEAD_NUM_TIMES, "headNum");
-    ShapeRange headDimRange(MIN_HEAD_DIM, MAX_HEAD_DIM, MUTIPLE_HEAD_DIM_TIMES, "headDim");
+    ShapeRange batchSizeRange(MIN_BATCH_SIZE, MAX_BATCH_SIZE, MULTIPLE_BATCH_SIZE_TIMES, "batchSize");
+    ShapeRange seqLenRange(MIN_SEQ_LEN, MAX_SEQ_LEN, MULTIPLE_SEQ_LEN_TIMES, "seqLen");
+    ShapeRange headNumRange(MIN_HEAD_NUM, MAX_HEAD_NUM, MULTIPLE_HEAD_NUM_TIMES, "headNum");
+    ShapeRange headDimRange(MIN_HEAD_DIM, MAX_HEAD_DIM, MULTIPLE_HEAD_DIM_TIMES, "headDim");
 
     TORCH_CHECK(batchSizeRange.Check(batchSize), "batchSize expect in [1, 2048], but value is ", batchSize);
     TORCH_CHECK(seqLenRange.Check(seqLen), "seqLen expect in [1, 20480], but value is ", seqLen);
