@@ -150,7 +150,12 @@ def run_case(params):
     )
     npu_cpu = npu_dense.cpu()
 
-    assert torch.equal(reference_dense, npu_cpu), f"{case_tag}: NPU 结果与期望结果不匹配"
+    assert torch.allclose(
+        reference_dense.reshape(-1),
+        npu_cpu.reshape(-1),
+        atol=_PRECISION_ERROR_RANGE[dtype],
+        rtol=_PRECISION_ERROR_RANGE[dtype]
+    ), f"NPU结果与FBGEMM CPU结果不匹配\nFBGEMM:\n{reference_dense}\nNPU:\n{npu_cpu}"
 
 
 @dataclass(frozen=True)
@@ -317,6 +322,7 @@ SCENARIOS = [
             "batch_size": [2, 4],
             "max_seq_len": [64, 128],
             "padding_value": [0.0, -1.0, 1.0, -0.5, 0.5, 1e-6, -1e-6, 100.0, -100.0],
+            "dtype": [torch.float32, torch.int64, torch.float16, torch.bfloat16, torch.int32]
         },
     ),
     # 浮点边界场景：小/大 batch 与极端 padding

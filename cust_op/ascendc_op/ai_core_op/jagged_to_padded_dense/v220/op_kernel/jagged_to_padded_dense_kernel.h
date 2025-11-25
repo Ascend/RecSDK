@@ -244,17 +244,23 @@ public:
      */
     __aicore__ inline void InitializePaddingBuffer(const LocalTensor<uint8_t>& paddingFull)
     {
-        if (bytesOfDataType == sizeof(float)) {
-            InitializeFloatPadding();
-        } else {
+        if constexpr (std::is_same<VALUE_TYPE, int64_t>::value) {
             InitializeInt64Padding(paddingFull);
+        } else {
+            InitializeFloatPadding();
         }
     }
 
     __aicore__ inline void InitializeFloatPadding()
     {
-        LocalTensor<float> padF = paddingBufLt.ReinterpretCast<float>();
-        Duplicate<float>(padF, paddingValueFp32, padChunkBytes / sizeof(float));
+        LocalTensor<VALUE_TYPE> padF = paddingBufLt.ReinterpretCast<VALUE_TYPE>();
+        VALUE_TYPE padValue;
+        if constexpr (std::is_same<VALUE_TYPE, bfloat16_t>::value) {
+            padValue = ToBfloat16(paddingValueFp32);
+        } else {
+            padValue = static_cast<VALUE_TYPE>(paddingValueFp32);
+        }
+        Duplicate<VALUE_TYPE>(padF, padValue, padChunkBytes / sizeof(VALUE_TYPE));
     }
 
     __aicore__ inline void InitializeInt64Padding(const LocalTensor<uint8_t>& paddingFull)
