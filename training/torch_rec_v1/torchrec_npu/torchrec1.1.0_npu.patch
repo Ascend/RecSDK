@@ -514,7 +514,7 @@ index 52909970..fad9df2d 100644
      )
  
 diff --git a/torchrec/distributed/planner/types.py b/torchrec/distributed/planner/types.py
-index 4bb0a4f4..de32722a 100644
+index 4bb0a4f4..62ed06ec 100644
 --- a/torchrec/distributed/planner/types.py
 +++ b/torchrec/distributed/planner/types.py
 @@ -38,8 +38,10 @@ from torchrec.distributed.types import (
@@ -564,21 +564,29 @@ index 4bb0a4f4..de32722a 100644
              hbm_per_device = [hbm_cap if hbm_cap else HBM_CAP] * world_size
          ddr_cap_per_rank = [ddr_cap if ddr_cap else DDR_CAP] * world_size
  
-@@ -616,6 +629,30 @@ class ParameterConstraints:
+@@ -616,6 +629,38 @@ class ParameterConstraints:
      device_group: Optional[str] = None
      key_value_params: Optional[KeyValueParams] = None
  
 +    def __post_init__(self):
-+        check(self.sharding_types is not None and isinstance(self.sharding_types, List), "sharding_types should be List")
-+        check(self.compute_kernels is not None and isinstance(self.compute_kernels, List), "compute_kernels should be List")
-+        check(len(self.sharding_types) <= MAX_MODULE_LOOP_TIMES, "sharding_types should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
-+        check(len(self.compute_kernels) <= MAX_MODULE_LOOP_TIMES, "compute_kernels should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
-+        for sharding_type in self.sharding_types:
-+            if sharding_type not in ("row_wise", "data_parallel"):
-+                raise ValueError(f"sharing_type only support row_wise, data_parallel, but got {sharding_type}")
-+        for compute_kernel in self.compute_kernels:
-+            if compute_kernel not in ("fused", "dense"):
-+                raise ValueError(f"compute_kernel only support fused, dense, but got {compute_kernel}")
++        check(self.sharding_types is not None and isinstance(self.sharding_types, List), 
++              "sharding_types should be List")
++        check(self.compute_kernels is not None and isinstance(self.compute_kernels, List), 
++              "compute_kernels should be List")
++        check(len(self.sharding_types) <= MAX_MODULE_LOOP_TIMES,
++              "sharding_types should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
++        check(len(self.compute_kernels) <= MAX_MODULE_LOOP_TIMES,
++              "compute_kernels should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
++        sharding_types = set(self.sharding_types)
++        check(len(sharding_types) == 1, "sharding_types should be unique")
++        compute_kernels = set(self.compute_kernels)
++        check(len(compute_kernels) == 1, "compute_kernels should be unique")
++        sharding_type = next(iter(sharding_types))
++        compute_kernel = next(iter(compute_kernels))
++        supported = (("row_wise", "fused"), ("data_parallel", "dense"))
++        if (sharding_type, compute_kernel) not in supported:
++            raise ValueError(f"sharding_type {sharding_type} and compute_kernel {compute_kernel} are not supported, "
++                             f"(sharding_type, compute_kernel) supported are {supported}")
 +        check(self.min_partition is None , "min_partition should be None")
 +        check(self.pooling_factors == [POOLING_FACTOR] , f"pooling_factors should be [{POOLING_FACTOR}]")
 +        check(self.num_poolings == None , "num_poolings should be None")
@@ -689,7 +697,7 @@ index 69edabf9..bddd7c1c 100644
          )
  
 diff --git a/torchrec/distributed/types.py b/torchrec/distributed/types.py
-index 8085c415..24cdde9b 100644
+index 8085c415..3a1e915a 100644
 --- a/torchrec/distributed/types.py
 +++ b/torchrec/distributed/types.py
 @@ -78,6 +78,7 @@ from torch.distributed._shard.sharding_spec import (  # noqa
@@ -716,7 +724,7 @@ index 8085c415..24cdde9b 100644
          self.world_size = world_size
          self.rank = rank
          self.process_group: Optional[dist.ProcessGroup] = pg
-@@ -831,6 +840,7 @@ class ShardingEnv:
+@@ -831,6 +841,7 @@ class ShardingEnv:
          )
          self.output_dtensor: bool = output_dtensor
  
