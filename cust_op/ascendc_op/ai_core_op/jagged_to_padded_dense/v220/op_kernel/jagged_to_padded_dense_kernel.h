@@ -244,7 +244,7 @@ public:
      */
     __aicore__ inline void InitializePaddingBuffer(const LocalTensor<uint8_t>& paddingFull)
     {
-        if constexpr (std::is_same_v<VALUE_TYPE, int64_t>) {
+        if constexpr (std::is_same<VALUE_TYPE, int64_t>::value) {
             InitializeInt64Padding(paddingFull);
         } else {
             InitializeFloatPadding();
@@ -255,7 +255,7 @@ public:
     {
         LocalTensor<VALUE_TYPE> padF = paddingBufLt.ReinterpretCast<VALUE_TYPE>();
         VALUE_TYPE padValue;
-        if constexpr (std::is_same_v<VALUE_TYPE, bfloat16_t>) {
+        if constexpr (std::is_same<VALUE_TYPE, bfloat16_t>::value) {
             padValue = ToBfloat16(paddingValueFp32);
         } else {
             padValue = static_cast<VALUE_TYPE>(paddingValueFp32);
