@@ -28,7 +28,7 @@ get_version() {
       VERSION=${VERSION%.*}
     fi
   else
-    VERSION="6.0.T200"
+    VERSION="7.3.T50"
   fi
 }
 

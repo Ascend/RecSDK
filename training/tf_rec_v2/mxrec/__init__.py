@@ -15,7 +15,7 @@
 # limitations under the License.
 # ==============================================================================
 
-__version__ = "6.0.T200"
+__version__ = "7.3.T50"
 __all__ = [
     "init",
     "get_embedding_table",
