@@ -55,7 +55,7 @@ class ExecuteConfig:
     lookup_len: int
     device: str
     admit_threshold: float
-    keys_per_table: List[int] = None
+    keys_per_table: List[int]
     err_pattern: str = ''
 
 
@@ -292,7 +292,8 @@ params_invalid_num_embeddings = {
     "sharding_type": ["row_wise"],
     "lookup_len": [128],  # batchsize
     "device": ["npu"],
-    "admit_threshold": [-1], 
+    "admit_threshold": [-1],
+    "keys_per_table": [[1, 1]],
     "err_pattern": ["The num_embeddings should be in"],
 }
 

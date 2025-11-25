@@ -10,8 +10,7 @@ import logging
 import os
 from dataclasses import dataclass
 from types import MethodType
-from typing import List
-
+from typing import List, Union
 
 import pytest
 import torch
@@ -44,7 +43,7 @@ from torchrec.optim.keyed import CombinedOptimizer
 
 WORLD_SIZE = 2
 LOOP_TIMES = 200
-BATCH_NUM = 1000
+BATCH_NUM = 200
 
 
 @dataclass
@@ -57,6 +56,7 @@ class ExecuteConfig:
     sharding_type: str
     lookup_len: int
     device: str
+    keys_per_table: List[int]
     err_pattern: str = ''
 
 
@@ -68,26 +68,30 @@ def execute(rank: int, config: ExecuteConfig):
     pool_type = config.pool_type
     sharding_type = config.sharding_type
     lookup_len = config.lookup_len
+    keys_per_table = config.keys_per_table
     device = config.device
     setup_logging(rank)
     logging.info("this test %s", os.path.basename(__file__))
 
     embedding_configs = []
+    feature_names_all_table = []
     for i in range(table_num):
+        feature_names = [f"feat{i}_key{j}" for j in range(keys_per_table[i])]
         ebc_config = EmbCacheEmbeddingBagConfig(
             name=f"table{i}",
             embedding_dim=embedding_dims[i],
             num_embeddings=num_embeddings[i],
-            feature_names=[f"feat{i}"],
+            feature_names=feature_names,
             pooling=pool_type,
             weight_init_min=0.0,
             weight_init_max=1.0,
         )
         embedding_configs.append(ebc_config)
         ebc_config.init_fn = MethodType(weight_init, ebc_config)
+        feature_names_all_table.extend(feature_names)
 
-    dataset_golden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
-    dataset = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
+    dataset_golden = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num, keys_per_table=keys_per_table)
+    dataset = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num, keys_per_table=keys_per_table)
     dataset_loader_golden = DataLoader(
         dataset_golden,
         batch_size=None,
@@ -103,7 +107,7 @@ def execute(rank: int, config: ExecuteConfig):
         num_workers=1,
     )
 
-    test_model = TestModel(rank, world_size, device)
+    test_model = TestModel(rank, world_size, device, feature_names_all_table)
     golden_results = test_model.cpu_golden_loss(embedding_configs, dataset_loader_golden)
     test_results = test_model.test_loss(embedding_configs, data_loader, sharding_type)
     i = 0
@@ -129,25 +133,25 @@ def weight_init(self, param: torch.nn.Parameter):
 
 
 class TestModel:
-    def __init__(self, rank, world_size, device):
+    def __init__(self, rank, world_size, device, feature_names_all_table=None):
         self.rank = rank
         self.world_size = world_size
         self.device = device
+        self.feature_names_all_table = feature_names_all_table
         self.pg_method = "hccl" if device == "npu" else "gloo"
         if device == "npu":
             torch_npu.npu.set_device(rank)
         self.setup(rank=rank, world_size=world_size)
 
-    @staticmethod
     def cpu_golden_loss(
-        embeding_config: List[EmbeddingBagConfig], dataloader: DataLoader[Batch]
+        self, embedding_configs: List[EmbeddingBagConfig], dataloader: DataLoader[Batch]
     ):
         pg = dist.new_group(backend="gloo")
-        table_num = len(embeding_config)
-        ebc = EmbeddingBagCollection(device=torch.device("cpu"), tables=embeding_config)
+        table_num = len(embedding_configs)
+        ebc = EmbeddingBagCollection(device=torch.device("cpu"), tables=embedding_configs)
 
-        num_features = sum([c.num_features() for c in embeding_config])
-        ebc = Model(ebc, num_features)
+        num_features = sum([c.num_features() for c in embedding_configs])
+        ebc = Model(ebc, num_features, feature_names_all_table=self.feature_names_all_table)
         model = DDP(ebc, device_ids=None, process_group=pg)
 
         opt = torch.optim.Adagrad(model.parameters(), lr=0.02, eps=1e-8)
@@ -196,7 +200,7 @@ class TestModel:
                                          batch_size=2, multi_hot_sizes=[1] * table_num,
                                          world_size=dist.get_world_size())
         num_features = sum([c.num_features() for c in embeding_config])
-        ebc = Model(ebc, num_features)
+        ebc = Model(ebc, num_features, feature_names_all_table=self.feature_names_all_table)
         apply_optimizer_in_backward(
             optimizer_class=torch.optim.Adagrad,
             params=ebc.parameters(),
@@ -272,6 +276,7 @@ params = {
     "sharding_type": ["row_wise"],
     "lookup_len": [128],  # batchsize
     "device": ["npu"],
+    "keys_per_table": [[1, 1], [2, 1]]
 }
 
 
@@ -298,6 +303,7 @@ params_invalid_num_embeddings = {
     "sharding_type": ["row_wise"],
     "lookup_len": [128],  # batchsize
     "device": ["npu"],
+    "keys_per_table": [[1, 1]],
     "err_pattern": ["The num_embeddings should be in"],
 }
 
@@ -312,6 +318,7 @@ params_invalid_embedding_dim = {
     "sharding_type": ["row_wise"],
     "lookup_len": [128],  # batchsize
     "device": ["npu"],
+    "keys_per_table": [[1, 1]],
     "err_pattern": ["The embedding dim should be a multiple of"],
 }
 
