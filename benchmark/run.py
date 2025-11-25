@@ -136,13 +136,14 @@ def install_depend(config: dict, taget_dir: Path) -> bool:
 
 
 def set_env(config: dict):
-    os.environ["DEEPCTR_MODE"] = config.get("mode")
-    os.environ["DEEPCTR_EPOCH"] = str(config.get("epoch"))
-    os.environ["DEEPCTR_PROFILING_FLAG"] = str(config.get("profiling_flag"))
-    os.environ["DEEPCTR_COMPILE_FLAG"] = str(config.get("compile_flag"))
-    os.environ["DEEPCTR_ACLGRAPH_FLAG"] = str(config.get("aclgraph_flag"))
-    os.environ["DEEPCTR_DATA_TYPE"] = config.get("data_type")
-    os.environ["DEEPCTR_NAME"] = config.get("name")
+    os.environ["MODEL_MODE"] = config.get("mode")
+    os.environ["MODEL_EPOCH"] = str(config.get("epoch"))
+    os.environ["MODEL_PROFILING_FLAG"] = str(config.get("profiling_flag"))
+    os.environ["MODEL_COMPILE_FLAG"] = str(config.get("compile_flag"))
+    os.environ["MODEL_ACLGRAPH_FLAG"] = str(config.get("aclgraph_flag"))
+    os.environ["MODEL_DATA_TYPE"] = config.get("data_type")
+    os.environ["MODEL_NAME"] = config.get("name")
+    os.environ["MODEL_E2E_FLAG"] = str(config.get("e2e_flag"))
 
 
 def run_model(config: dict, taget_dir: Path) -> bool:
