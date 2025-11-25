@@ -15,23 +15,14 @@
 # limitations under the License.
 # ==============================================================================
 
-import sysconfig
 from typing import Optional
 
 import pytest
 import torch
 import torch.nn.functional as F
-import torch_npu
 from einops import rearrange
 
 from test_common_utils import allclose, MaskType
-
-torch.npu.config.allow_internal_format = False
-
-torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-
-DEVICEID = "npu:0"
-torch.npu.set_device(DEVICEID)
 
 
 def pad_input(unpadded_input, cu_seqlen, batch, seqlen):
@@ -91,40 +82,45 @@ def unpad_input_delta_q(padded_input, cu_seqlen_q, cu_seqlen_k, batch, seqlen):
 
 
 def generate_attn_mask(batch_size, num_heads, max_seq_len, max_seq_len_k, dtype,
-                       seqlen, kv_raw_metadata, kvcache_page_size, num_candidates):
+                       seqlen, kv_raw_metadata, kvcache_page_size, num_candidates, mask_type):
+    if mask_type == MaskType.NONE:
+        return None
     mask = torch.zeros(
-            (batch_size, num_heads, max_seq_len, max_seq_len_k),
-            dtype=dtype,
-            device=torch.npu.current_device(),
-        )
+        (batch_size, num_heads, max_seq_len, max_seq_len_k),
+        dtype=dtype,
+        device=torch.npu.current_device(),
+    )
     for seq_idx in range(batch_size):
         qlen = seqlen[seq_idx].item()
-        cachelen = (
-            kv_raw_metadata[1][seq_idx + 1] - kv_raw_metadata[1][seq_idx] - 1
-        ) * kvcache_page_size + kv_raw_metadata[2][seq_idx] # (pageNum - 1) * pageSize + lastPageLen
+        cachelen = ((kv_raw_metadata[1][seq_idx + 1] - kv_raw_metadata[1][seq_idx] - 1) * kvcache_page_size +
+                    kv_raw_metadata[2][seq_idx]) # (pageNum - 1) * pageSize + lastPageLen
         num_cand = num_candidates[seq_idx].item()
-        seq_mask = torch.cat(
-            [
-                torch.tril(
-                    torch.ones((qlen, cachelen), dtype=torch.int32),
-                    diagonal=cachelen + num_cand - qlen,
-                ),
-                torch.cat(
-                    [
-                        torch.zeros((qlen - num_cand, num_cand), dtype=torch.int32),
-                        torch.eye(num_cand, dtype=torch.int32),
-                    ],
-                    dim=0,
-                ),
-            ],
-            dim=1,
-        )
+        if mask_type == MaskType.TRIL:
+            seq_mask = torch.cat(
+                [
+                    torch.tril(
+                        torch.ones((qlen, cachelen), dtype=torch.int32),
+                        diagonal=cachelen + num_cand - qlen,
+                    ),
+                    torch.cat(
+                        [
+                            torch.zeros((qlen - num_cand, num_cand), dtype=torch.int32),
+                            torch.eye(num_cand, dtype=torch.int32),
+                        ],
+                        dim=0,
+                    ),
+                ],
+                dim=1,
+            )
+        else:
+            seq_mask = torch.randint(0, 2, (qlen, cachelen + num_cand), dtype=torch.int32)
         mask[seq_idx, :, :qlen, : cachelen + num_cand].copy_(seq_mask.type(dtype))
     return mask
 
 
 def _hstu_attention_maybe_from_cache(
-    num_heads: int,
+    num_heads_q: int,
+    num_heads_k: int,
     attention_dim: int,
     linear_dim: int,
     seqlen_q: int,
@@ -148,9 +144,17 @@ def _hstu_attention_maybe_from_cache(
     padded_k = pad_input(k, k_offsets, B, seqlen_k)
     padded_v = pad_input(v, k_offsets, B, seqlen_k)
 
-    padded_q = padded_q.view(B, seqlen_q, num_heads, attention_dim)
-    padded_k = padded_k.view(B, seqlen_k, num_heads, attention_dim)
-    padded_v = padded_v.view(B, seqlen_k, num_heads, linear_dim)
+    padded_q = padded_q.view(B, seqlen_q, num_heads_q, attention_dim)
+    padded_k = padded_k.view(B, seqlen_k, num_heads_k, attention_dim)
+    padded_v = padded_v.view(B, seqlen_k, num_heads_k, linear_dim)
+
+    if num_heads_q != num_heads_k:
+        assert num_heads_q % num_heads_k == 0, (f"head_num_q ({num_heads_q}) must be divisible by "
+                                                f"head_num_k({num_heads_k}) ")
+    h_qk_ratio = num_heads_q // num_heads_k
+    padded_k = padded_k.repeat_interleave(h_qk_ratio, dim=2)
+    padded_v = padded_v.repeat_interleave(h_qk_ratio, dim=2)
+
     if upcast:
         padded_q, padded_k, padded_v = (
             padded_q.float(),
@@ -179,7 +183,7 @@ def _hstu_attention_maybe_from_cache(
     masked_qk_attn = masked_qk_attn * alpha
     masked_qk_attn = F.silu(masked_qk_attn)
     masked_qk_attn = masked_qk_attn / seqlen_q
-    
+
     if invalid_attn_mask is not None:
         if invalid_attn_mask.ndim == 2:
             invalid_attn_mask = invalid_attn_mask.unsqueeze(0).unsqueeze(0)
@@ -197,20 +201,21 @@ def _hstu_attention_maybe_from_cache(
         padded_v,
     )
 
-    attn_output = attn_output.reshape(B, seqlen_q, num_heads * linear_dim)
+    attn_output = attn_output.reshape(B, seqlen_q, num_heads_q * linear_dim)
     if is_delta_q:
         attn_output = unpad_input_delta_q(
             attn_output, q_offsets, k_offsets, B, seqlen_k
         )
     else:
         attn_output = unpad_input(attn_output, q_offsets)
-    attn_output = attn_output.reshape(-1, num_heads * linear_dim)
+    attn_output = attn_output.reshape(-1, num_heads_q * linear_dim)
 
     return attn_output
 
 
 def _hstu_paged_kv_attention(
-    num_heads: int,
+    num_heads_q: int,
+    num_heads_k: int,
     attention_dim: int,
     linear_dim: int,
     seqlen_q: int,
@@ -229,8 +234,8 @@ def _hstu_paged_kv_attention(
     last_page_lens: torch.Tensor = None,
     alpha: float = 1.0,
 ):
-    k_con = torch.empty((0, num_heads, attention_dim), device=k.device, dtype=k.dtype)
-    v_con = torch.empty((0, num_heads, attention_dim), device=v.device, dtype=v.dtype)
+    k_con = torch.empty((0, num_heads_k, attention_dim), device=k.device, dtype=k.dtype)
+    v_con = torch.empty((0, num_heads_k, attention_dim), device=v.device, dtype=v.dtype)
 
     for i, last_page_len in enumerate(last_page_lens):
         page_num = page_offsets[i + 1] - page_offsets[i]
@@ -268,7 +273,8 @@ def _hstu_paged_kv_attention(
         )
 
     return _hstu_attention_maybe_from_cache(
-        num_heads=num_heads,
+        num_heads_q=num_heads_q,
+        num_heads_k=num_heads_k,
         attention_dim=attention_dim,
         linear_dim=linear_dim,
         seqlen_q=seqlen_q,
@@ -295,19 +301,19 @@ def get_offsets_from_lengths(lengths):
 
 
 def generate_kvdata_testcase(
-    max_seq_len: int, batch_size: int, num_heads: int, head_dim: int, is_prev_hist: bool = False
+    max_seq_len: int, batch_size: int, num_heads_q: int, num_heads_k: int, head_dim: int, is_prev_hist: bool = False
 ):
     new_hist_lens = torch.randint(
         max_seq_len // 2, max_seq_len + 1, (batch_size,), dtype=torch.int32
     )
     prev_lengths = torch.randint(
-            1, max_seq_len + 1, (batch_size,), dtype=torch.int32
-        ) * int(is_prev_hist)
+        1, max_seq_len + 1, (batch_size,), dtype=torch.int32
+    ) * int(is_prev_hist)
 
     lengths = new_hist_lens + prev_lengths
     num_tokens = torch.sum(lengths).item()
     values = torch.randn(
-        (2, num_tokens, num_heads, head_dim),
+        (2, num_tokens, num_heads_k, head_dim),
         dtype=torch.bfloat16,
         device=torch.npu.current_device(),
     ).uniform_(-1, 1)
@@ -343,12 +349,12 @@ def setup_kvcache_testcase(
         new_history_length = new_history_kv_lengths[seq_idx].item()
 
         user_kv_data = new_history_kv_data[
-            :,
-            new_history_kv_length_offsets[seq_idx]: new_history_kv_length_offsets[
-                seq_idx + 1
-            ],
-            ...,
-        ]
+                       :,
+                       new_history_kv_length_offsets[seq_idx]: new_history_kv_length_offsets[
+                           seq_idx + 1
+                           ],
+                       ...,
+                       ]
 
         # Allocation
         num_pages = (new_history_length + page_size - 1) // page_size
@@ -383,30 +389,17 @@ def setup_kvcache_testcase(
     return kvcache_table, (kv_page_indices, kv_page_indptr, kv_last_page_len)
 
 
-@pytest.mark.parametrize("batch_size", [1, 32])
-@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32, torch.float16])
-@pytest.mark.parametrize(
-    "max_new_history_seqlen,max_num_candidates",
-    [
-        (100, 0),
-        (200, 25),
-        (750, 80),
-        (2048, 300),
-    ],
-)
-@pytest.mark.parametrize("num_heads", [4, 8])
-@pytest.mark.parametrize("head_dim", [32, 128])
-@pytest.mark.parametrize("page_size", [32, 128, 256])
-@pytest.mark.parametrize("is_prev_hist", [True, False])
-def test_paged_hstu_attn_kernel(
-    batch_size,
-    dtype,
-    max_new_history_seqlen,
-    max_num_candidates,
-    num_heads,
-    head_dim,
-    page_size,
-    is_prev_hist
+def paged_hstu_attn_kernel(
+        batch_size,
+        dtype,
+        max_new_history_seqlen,
+        max_num_candidates,
+        num_heads_q,
+        num_heads_k,
+        head_dim,
+        page_size,
+        is_prev_hist,
+        mask_type
 ):
     device = torch.npu.current_device()
 
@@ -415,12 +408,12 @@ def test_paged_hstu_attn_kernel(
 
     # (values, new_hist_lens, lengths)
     kv_data, new_hist_lens, kvdata_seqlen = generate_kvdata_testcase(
-        max_kvcache_history_seqlen, batch_size, num_heads, head_dim, is_prev_hist=is_prev_hist
+        max_kvcache_history_seqlen, batch_size, num_heads_q, num_heads_k, head_dim, is_prev_hist=is_prev_hist
     )
     # kvcache_table[total_page_num, 2, page_size, num_head, head_dims]
     # kv_raw_metadata tuple(kv_page_indices, kv_page_num, kv_last_page_len)
     kvcache_table, kv_raw_metadata = setup_kvcache_testcase(
-        page_size, num_heads, head_dim, dtype, kv_data, kvdata_seqlen, None
+        page_size, num_heads_k, head_dim, dtype, kv_data, kvdata_seqlen, None
     )
 
     if max_num_candidates > 0:
@@ -437,13 +430,13 @@ def test_paged_hstu_attn_kernel(
     num_tokens = seqlen_offsets[-1].item()
 
     query = torch.randn(
-        (num_tokens, num_heads, head_dim), dtype=dtype, device=device
+        (num_tokens, num_heads_q, head_dim), dtype=dtype, device=device
     ).uniform_(-1, 1)
     key = torch.randn(
-        (num_tokens, num_heads, head_dim), dtype=dtype, device=device
+        (num_tokens, num_heads_k, head_dim), dtype=dtype, device=device
     ).uniform_(-1, 1)
     value = torch.randn(
-        (num_tokens, num_heads, head_dim), dtype=dtype, device=device
+        (num_tokens, num_heads_k, head_dim), dtype=dtype, device=device
     ).uniform_(-1, 1)
 
     max_kvdata_len = kvdata_seqlen.max().item()
@@ -454,11 +447,13 @@ def test_paged_hstu_attn_kernel(
     max_seq_len_q = seqlen.max()
     max_seq_len_k = seqlen_k.max()
     # generate attn mask
-    mask = generate_attn_mask(batch_size, num_heads, max_seq_len_q, max_seq_len_k, dtype,
-                              seqlen, kv_raw_metadata, page_size, num_candidates)
-
+    mask = generate_attn_mask(batch_size, num_heads_q, max_seq_len_q, max_seq_len_k, dtype,
+                              seqlen, kv_raw_metadata, page_size, num_candidates, mask_type)
+    if mask is not None:
+        mask = mask.npu()
     attn_out_golden = _hstu_paged_kv_attention(
-        num_heads=num_heads,
+        num_heads_q=num_heads_q,
+        num_heads_k=num_heads_k,
         attention_dim=head_dim,
         linear_dim=head_dim,
         seqlen_q=max_seq_len_q,
@@ -469,7 +464,7 @@ def test_paged_hstu_attn_kernel(
         q_offsets=seqlen_offsets.npu(),
         k_offsets=seqlen_offsets_k.npu(),
         num_targets=num_candidates.npu(),
-        invalid_attn_mask=mask.npu(),
+        invalid_attn_mask=mask,
         upcast=False,
         kv_cache=kvcache_table,
         page_offsets=torch.tensor(
@@ -482,14 +477,14 @@ def test_paged_hstu_attn_kernel(
         alpha=1.0 / (head_dim ** 0.5),
     )
     torch.npu.synchronize()
-    attn_out_golden = attn_out_golden.view(-1, num_heads, head_dim)
+    attn_out_golden = attn_out_golden.view(-1, num_heads_q, head_dim)
     attn_out_custom = torch.ops.mxrec.hstu_paged(q=query,
                                                  k=key,
                                                  v=value,
                                                  kv_cache=kvcache_table.npu(),
-                                                 mask=mask.npu(),
+                                                 mask=mask,
                                                  attn_bias=None,
-                                                 mask_type=MaskType.CUSTOM,
+                                                 mask_type=mask_type,
                                                  max_seq_len=max_seq_len_q,
                                                  max_seq_len_k=max_seq_len_k,
                                                  silu_scale=1.0 / max_seq_len_q,
@@ -513,12 +508,95 @@ def test_paged_hstu_attn_kernel(
         res = allclose(output, golden, 1e-4, 1e-4)
     assert res
 
+
+@pytest.mark.parametrize("batch_size", [1, 32])
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32, torch.float16])
+@pytest.mark.parametrize(
+    "max_new_history_seqlen,max_num_candidates",
+    [
+        (100, 0),
+        (200, 25),
+        (750, 80),
+        (2048, 300),
+    ],
+)
+@pytest.mark.parametrize("num_heads", [4, 8])
+@pytest.mark.parametrize("head_dim", [32, 128])
+@pytest.mark.parametrize("page_size", [32, 128, 256])
+@pytest.mark.parametrize("is_prev_hist", [True, False])
+def test_paged_hstu(
+        batch_size,
+        dtype,
+        max_new_history_seqlen,
+        max_num_candidates,
+        num_heads,
+        head_dim,
+        page_size,
+        is_prev_hist
+):
+    paged_hstu_attn_kernel(
+        batch_size,
+        dtype,
+        max_new_history_seqlen,
+        max_num_candidates,
+        num_heads,
+        num_heads,
+        head_dim,
+        page_size,
+        is_prev_hist,
+        MaskType.CUSTOM
+    )
+
+
+@pytest.mark.parametrize("batch_size", [1, 32])
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.parametrize(
+    "max_new_history_seqlen,max_num_candidates",
+    [
+        (100, 0),
+        (200, 25),
+        (750, 80),
+        (2048, 300),
+    ],
+)
+@pytest.mark.parametrize("num_heads_q", [8])
+@pytest.mark.parametrize("num_heads_k", [8, 4, 2, 1])
+@pytest.mark.parametrize("head_dim", [32])
+@pytest.mark.parametrize("page_size", [32])
+@pytest.mark.parametrize("is_prev_hist", [True, False])   # qk不等长
+@pytest.mark.parametrize("mask_type", [MaskType.TRIL, MaskType.NONE, MaskType.CUSTOM])
+def test_paged_hstu_gqa(
+        batch_size,
+        dtype,
+        max_new_history_seqlen,
+        max_num_candidates,
+        num_heads_q,
+        num_heads_k,
+        head_dim,
+        page_size,
+        is_prev_hist,
+        mask_type
+):
+    paged_hstu_attn_kernel(
+        batch_size,
+        dtype,
+        max_new_history_seqlen,
+        max_num_candidates,
+        num_heads_q,
+        num_heads_k,
+        head_dim,
+        page_size,
+        is_prev_hist,
+        mask_type
+    )
+
+
 if __name__ == "__main__":
-    test_paged_hstu_attn_kernel(batch_size=1,
-                                dtype=torch.float16,
-                                max_new_history_seqlen=32,
-                                max_num_candidates=1,
-                                num_heads=1,
-                                head_dim=16,
-                                page_size=32,
-                                is_prev_hist=True)
+    test_paged_hstu(batch_size=1,
+                    dtype=torch.float16,
+                    max_new_history_seqlen=32,
+                    max_num_candidates=1,
+                    num_heads=1,
+                    head_dim=16,
+                    page_size=32,
+                    is_prev_hist=True)

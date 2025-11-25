@@ -22,19 +22,19 @@ using namespace MatmulTilingCheck;
 
 namespace HstuDenseForward {
 
-ShapeRange::ShapeRange(int64_t lbound, int64_t ubound, int64_t mutiple, const char* name)
+ShapeRange::ShapeRange(int64_t lbound, int64_t ubound, int64_t multiple, const char* name)
 {
     this->lbound = lbound;
     this->ubound = ubound;
-    this->mutiple = mutiple;
+    this->multiple = multiple;
     this->name = name;
 }
 
 bool ShapeRange::Check(int64_t val) const
 {
-    OPS_CHECK((val < lbound || val > ubound || val % mutiple != 0),
-              OPS_LOG_E("", "%s must meet range[%lld %lld] and mutiple of [%lld]. but get value %lld\n", name, lbound,
-                        ubound, mutiple, val),
+    OPS_CHECK((val < lbound || val > ubound || val % multiple != 0),
+              OPS_LOG_E("", "%s must meet range[%lld %lld] and multiple of [%lld]. but get value %lld\n", name, lbound,
+                        ubound, multiple, val),
               return false);
     return true;
 }

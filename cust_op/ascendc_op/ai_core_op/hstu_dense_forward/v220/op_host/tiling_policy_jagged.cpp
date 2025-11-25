@@ -40,11 +40,11 @@ REGISTER_POLICY(LAYOUT_TYPE::JAGGED, std::make_shared<TilingPolicyJagged>());
 bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     int64_t batchSize;
-    int64_t seqLensQ;
+    int64_t seqlenBatchSumQ;
     int64_t headNumQ;
     int64_t headDimQ;
     int64_t maxSeqLensQ;
-    int64_t seqLensK;
+    int64_t seqlenBatchSumK;
     int64_t headNumK;
     int64_t headDimK;
     int64_t maxSeqLensK;
@@ -65,12 +65,12 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
               OPS_LOG_E("", "Jagged QKV should have 3 dimensions, but get %d", qShape.GetDimNum()), return false);
 
     // Q: [bs, n, d]
-    seqLensQ = qShape.GetDim(0);
+    seqlenBatchSumQ = qShape.GetDim(0);
     headNumQ = qShape.GetDim(1);
     headDimQ = qShape.GetDim(2);
     maxSeqLensQ = tiling.get_maxSeqLenq();
     // K: [bs, n, d]
-    seqLensK = kShape.GetDim(0);
+    seqlenBatchSumK = kShape.GetDim(0);
     headNumK = kShape.GetDim(1);
     headDimK = kShape.GetDim(2);
     maxSeqLensK = tiling.get_maxSeqLenk();
@@ -97,7 +97,7 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     uint32_t masktype = tiling.get_maskType();
     auto *isDeltaQK = context->GetAttrs()->GetAttrPointer<uint32_t>(ATTR_INDEX_T::IS_DELTA_QK_INDEX);
     if (!*isDeltaQK) {
-        OPS_CHECK(seqLensQ != seqLensK, OPS_LOG_E("", "Q, K seqLens mismatch"), return false);
+        OPS_CHECK(seqlenBatchSumQ != seqlenBatchSumK, OPS_LOG_E("", "Q, K seqLens mismatch"), return false);
     }
 
     auto numContext = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX);
@@ -150,4 +150,3 @@ bool TilingPolicyJagged::TilingKeySet(gert::TilingContext* context, optiling::Hs
     return true;
 }
 }  // namespace HstuDenseForward
-

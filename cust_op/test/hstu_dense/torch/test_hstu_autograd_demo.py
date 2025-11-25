@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,30 +14,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import sysconfig
-
 import numpy as np
 import pytest
 import torch
 import torch.nn.functional as F
-from test_common_utils import MaskType
+from test_common_utils import MaskType, allclose
 
-torch.npu.config.allow_internal_format = False
-
-
-torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-
-device_id: int = 0
-torch.npu.set_device(device_id)
+bfloat16_pre: float = 5e-3
+float16_pre: float = 1e-3
+float32_pre: float = 1e-4
 
 
 def generate_tensor(batch_size, max_seq_len, num_heads, attention_dim, data_type, mask_type):
     total_num = batch_size * max_seq_len * num_heads * attention_dim
 
-    q = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(data_type)
-    k = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(data_type)
-    v = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(data_type)
-    rel_attn_bias = torch.rand(batch_size, num_heads, max_seq_len, max_seq_len).to(data_type)
+    q = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(data_type).uniform_(-1, 1)
+    k = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(data_type).uniform_(-1, 1)
+    v = torch.rand(total_num).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(data_type).uniform_(-1, 1)
+    rel_attn_bias = torch.rand(batch_size, num_heads, max_seq_len, max_seq_len).to(data_type).uniform_(-1, 1)
 
     if mask_type == MaskType.TRIL:
         mask = 1 - torch.triu(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len), \
@@ -60,7 +54,7 @@ def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, mask_type
     k = torch.rand(total_seqs, num_heads, attention_dim).to(torch.float32).uniform_(-1, 1)
     v = torch.rand(total_seqs, num_heads, attention_dim).to(torch.float32).uniform_(-1, 1)
 
-    rel_attn_bias = torch.zeros(batch_size, num_heads, max_seq_len, max_seq_len).to(torch.float32)
+    rel_attn_bias = torch.zeros(batch_size, num_heads, max_seq_len, max_seq_len).to(torch.float32).uniform_(-1, 1)
     for batch_id in range(batch_size):
         seq_len = seq_lens[batch_id]
         rel_attn_bias[batch_id, :, 0:seq_len, 0:seq_len] = torch.rand(seq_len, seq_len).to(torch.float32)
@@ -119,13 +113,13 @@ class TestHstuAutogradNormal:
     def custom_op_exec(q, k, v, bias, mask, batch_size, max_seq_len, num_heads, attention_dim, enable_bias, \
                        mask_type, silu_scale, data_type):
         q = torch.nn.Parameter(torch.Tensor(q).reshape(batch_size, max_seq_len, num_heads, attention_dim), \
-                               requires_grad=True).to(f"npu:{device_id}")
+                               requires_grad=True).to("npu")
         k = torch.nn.Parameter(torch.Tensor(k).reshape(batch_size, max_seq_len, num_heads, attention_dim), \
-                               requires_grad=True).to(f"npu:{device_id}")
+                               requires_grad=True).to("npu")
         v = torch.nn.Parameter(torch.Tensor(v).reshape(batch_size, max_seq_len, num_heads, attention_dim), \
-                               requires_grad=True).to(f"npu:{device_id}")
-        bias = torch.nn.Parameter(torch.Tensor(bias), requires_grad=True).to(f"npu:{device_id}")
-        mask = torch.Tensor(mask).to(f"npu:{device_id}")
+                               requires_grad=True).to("npu")
+        bias = torch.nn.Parameter(torch.Tensor(bias), requires_grad=True).to("npu")
+        mask = torch.Tensor(mask).to("npu")
 
         q.retain_grad()
         k.retain_grad()
@@ -162,17 +156,17 @@ class TestHstuAutogradNormal:
                                                                         mask_type, silu_scale, data_type)
 
         if data_type == torch.bfloat16:
-            res = torch.allclose(output, golden, 1e-2, 1e-2)
+            res = allclose(output, golden, bfloat16_pre, bfloat16_pre)
         elif data_type == torch.float16:
-            res = torch.allclose(output, golden, 1e-3, 1e-3)
+            res = allclose(output, golden, float16_pre, float16_pre)
         else:
-            res = torch.allclose(output, golden, 1e-4, 1e-4)
+            res = allclose(output, golden, float32_pre, float32_pre)
         assert res
-        assert torch.allclose(q_grad, q_grad_op, 1e-4, 1e-4)
-        assert torch.allclose(k_grad, k_grad_op, 1e-4, 1e-4)
-        assert torch.allclose(v_grad, v_grad_op, 1e-4, 1e-4)
+        assert allclose(q_grad, q_grad_op, float32_pre, float32_pre)
+        assert allclose(k_grad, k_grad_op, float32_pre, float32_pre)
+        assert allclose(v_grad, v_grad_op, float32_pre, float32_pre)
         if enable_bias:
-            assert torch.allclose(bias_grad.to(torch.float32), bias_grad_op.to(torch.float32), 1e-4, 1e-4)
+            assert allclose(bias_grad.to(torch.float32), bias_grad_op.to(torch.float32), float32_pre, float32_pre)
         else:
             assert bias_grad is None
             assert bias_grad_op is None
@@ -223,9 +217,9 @@ class TestHstuAutogradJagged:
             seq_lens[i] = seq_offset[i + 1] - seq_offset[i]
 
         for batch, seq_len in enumerate(seq_lens):
-            equal = torch.allclose(bias_grad[batch, :, :seq_len, :seq_len],
-                                   bias_grad_golden[batch, :, :seq_len, :seq_len],
-                                   loss, loss)
+            equal = allclose(bias_grad[batch, :, :seq_len, :seq_len],
+                             bias_grad_golden[batch, :, :seq_len, :seq_len],
+                             loss, loss)
             if not equal:
                 return False
 
@@ -235,14 +229,14 @@ class TestHstuAutogradJagged:
     def custom_op_exec(q, k, v, seq_offset, bias, mask, total_seqs, max_seq_len, num_heads, attention_dim, \
                        enable_bias, mask_type, silu_scale, data_type):
         q = torch.nn.Parameter(torch.Tensor(q).reshape(total_seqs, num_heads, attention_dim), \
-                               requires_grad=True).to(f"npu:{device_id}").to(data_type)
+                               requires_grad=True).to("npu").to(data_type)
         k = torch.nn.Parameter(torch.Tensor(k).reshape(total_seqs, num_heads, attention_dim), \
-                               requires_grad=True).to(f"npu:{device_id}").to(data_type)
+                               requires_grad=True).to("npu").to(data_type)
         v = torch.nn.Parameter(torch.Tensor(v).reshape(total_seqs, num_heads, attention_dim), \
-                               requires_grad=True).to(f"npu:{device_id}").to(data_type)
-        seq_offset = torch.LongTensor(seq_offset).to(f"npu:{device_id}")
-        bias = torch.nn.Parameter(torch.Tensor(bias), requires_grad=True).to(f"npu:{device_id}").to(data_type)
-        mask = torch.Tensor(mask).to(f"npu:{device_id}").to(data_type)
+                               requires_grad=True).to("npu").to(data_type)
+        seq_offset = torch.LongTensor(seq_offset).to("npu")
+        bias = torch.nn.Parameter(torch.Tensor(bias), requires_grad=True).to("npu").to(data_type)
+        mask = torch.Tensor(mask).to("npu").to(data_type)
 
         q.retain_grad()
         k.retain_grad()
@@ -325,15 +319,15 @@ class TestHstuAutogradJagged:
                                                                         max_seq_len, num_heads, attention_dim,
                                                                         enable_bias, mask_type, silu_scale, data_type)
 
-        loss = 1e-4
+        loss = float32_pre
         if data_type == torch.bfloat16:
-            loss = 1e-2
+            loss = bfloat16_pre
         elif data_type == torch.float16:
-            loss = 1e-3
-        output_res = torch.allclose(output, golden, loss, loss)
-        q_grad_res = torch.allclose(q_grad_op, q_grad, loss, loss)
-        k_grad_res = torch.allclose(k_grad_op, k_grad, loss, loss)
-        v_grad_res = torch.allclose(v_grad_op, v_grad, loss, loss)
+            loss = float16_pre
+        output_res = allclose(output, golden, loss, loss)
+        q_grad_res = allclose(q_grad_op, q_grad, loss, loss)
+        k_grad_res = allclose(k_grad_op, k_grad, loss, loss)
+        v_grad_res = allclose(v_grad_op, v_grad, loss, loss)
 
         bias_grad_res = False
         if enable_bias:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,10 +15,13 @@
 # limitations under the License.
 # ==============================================================================
 import dataclasses
+import random
 import sysconfig
 from enum import Enum
 
+import numpy as np
 import torch
+import torch_npu
 
 BLOCK_HEIGHT: int = 256
 MAX_NUM_TARGET: int = 512
@@ -39,6 +42,15 @@ class MaskType(int, Enum):
 
 def get_chip():
     return False
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch_npu.npu.manual_seed_all(seed)  # 如果使用多GPU
+    torch.backends.cudnn.deterministic = True   # 确保CuDNN使用确定性算法
+    torch.backends.cudnn.benchmark = False      # 关闭CuDNN自动优化
 
 
 def allclose(tensor: torch.Tensor, other: torch.Tensor, atol: float, ratio: float) -> bool:
@@ -85,7 +97,9 @@ class QKVShapeInfo:
 
 @dataclasses.dataclass
 class MaskGenInfo:
-    mask_type: int | MaskType
-    max_num_context: int
-    max_num_target: int
-    target_group_size: int
+    mask_type: int | MaskType = MaskType.TRIL
+    target_group_size: int = 0
+    max_num_context: int = 0
+    max_num_target: int = 0
+    min_num_context: int = 0
+    min_num_target: int = 0

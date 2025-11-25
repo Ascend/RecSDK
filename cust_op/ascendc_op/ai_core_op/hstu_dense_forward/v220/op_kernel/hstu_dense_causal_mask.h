@@ -34,7 +34,7 @@ enum class CausalMaskT {
     MASK_TRIL = 0,  // 下三角
     MASK_TRIU,      // 上三角
     MASK_NONE,      // 不使能mask
-    MASK_CUSTOME,   // 用户自定义mask
+    MASK_CUSTOM,   // 用户自定义mask
 };
 
 struct BlockMaskParams {
@@ -117,7 +117,7 @@ public:
 
     __aicore__ inline bool NeedContextMask()
     {
-        if (numContext <= 0) {
+        if (numContext <= 0 || kSeqId < qSeqId) {
             return false;
         }
         int64_t qBlks = CeilDiv(numContext, blockHeight);
@@ -144,9 +144,9 @@ public:
     }
 
     /**
-     * (Hblcok x Hblock)中[line, line+height]行mask生成
+     * (Hblock x Hblock)中[line, line+height]行mask生成
      * @param inMaskLt mask写入的local tensor
-     * @param line (Hblcok x Hblock)中的第几行
+     * @param line (Hblock x Hblock)中的第几行
      * @param height
      * @param width
      */
@@ -203,15 +203,18 @@ private:
 
     __aicore__ inline void GenContextMask(LocalTensor<float>& inMaskLt, int64_t line, int64_t height, int64_t width)
     {
+        auto lineInScore = line + qSeqId * blockHeight;
+        if (lineInScore >= numContext) {
+            return;
+        }
         int cmaskWidth = (kSeqLen - numTarget);
         int validWidth = cmaskWidth - kSeqId * blockHeight;
         if (validWidth > blockHeight) {
             validWidth = blockHeight;
         }
-        for (int i = 0; i < height; i++) {
-            if ((line + i) >= numContext) {
-                break;
-            }
+        int heightLeft = numContext - lineInScore;
+        int validHeight = (height > heightLeft) ? heightLeft : height;
+        for (int i = 0; i < validHeight; i++) {
             Duplicate<float>(inMaskLt[i * width], value, validWidth);
         }
     }
@@ -237,7 +240,6 @@ private:
         int blkLeft = kSeqId * blockHeight;
         int blkRight = (kSeqId + 1) * blockHeight;
         int blkTop = qSeqId * blockHeight;
-        int blkBottom = (qSeqId + 1) * blockHeight;
 
         for (int i = 0; i < height; i++) {
             // 1.找最近的小三角形
