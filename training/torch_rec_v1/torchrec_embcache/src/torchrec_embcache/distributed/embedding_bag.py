@@ -745,6 +745,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                         weight_init_max=embedding_config.get_weight_init_max(),
                         weight_init_mean=emb_original_config.weight_init_mean,
                         weight_init_stddev=emb_original_config.weight_init_stddev,
+                        num_features=emb_original_config.num_features(),
                     )
                 )
         return EmbcacheManager(emb_configs, need_accumulate_offset)
