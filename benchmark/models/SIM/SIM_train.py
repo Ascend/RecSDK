@@ -88,6 +88,85 @@ def evaluate_model(model, test_loader, criterion, device):
             user_feats = user_feats.to(device)
             targets = targets.to(device)
             
+            #compile
+            if os.environ.get('MODEL_COMPILE_FLAG', "0") == "1":
+                model = torch.compile(model, dynamic=False, backend="inductor")
+                print("Inductor MODE YES")
+
+            #profiling
+            if os.environ.get('MODEL_PROFILING_FLAG', "0") == "1":
+                experimental_config = torch_npu.profiler._ExperimentalConfig(
+                    export_type=[
+                        torch_npu.profiler.ExportType.Text,
+                        torch_npu.profiler.ExportType.Db
+                        ],
+                    profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
+                    msprof_tx=False,
+                    aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
+                    l2_cache=False,
+                    op_attr=False,
+                    data_simplification=False,
+                    record_op_args=False,
+                    gc_detect_threshold=None
+                    )
+                steps = 10
+                torch_npu.npu.synchronize()
+                with torch_npu.profiler.profile(
+                    activities=[
+                        torch_npu.profiler.ProfilerActivity.CPU,
+                        torch_npu.profiler.ProfilerActivity.NPU
+                        ],
+                    schedule=torch_npu.profiler.schedule(wait=6, warmup=0, active=1, repeat=1),
+                    on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
+                    record_shapes=False,
+                    profile_memory=False,
+                    with_stack=False,
+                    with_modules=False,
+                    with_flops=False,
+                    experimental_config=experimental_config) as prof:
+                    print("profiling start...")
+                    for step in range(steps):
+                        print(f"profiling steps == {step}")
+                        # 前向传播
+                        ctr_predictions, _, _ = model(
+                            user_behavior_seq=user_behaviors,
+                            target_item_emb=target_items,
+                            user_features=user_feats,
+                            behavior_categories=behavior_cats,
+                            time_intervals=time_ints
+                        )
+                        # 计算损失
+                        loss = criterion(ctr_predictions, targets)
+                        torch_npu.npu.synchronize()
+                        prof.step()
+                        total_loss += loss.item()
+
+            #E2E耗时
+            if os.environ.get('MODEL_E2E_FLAG', "0") == "1":
+                total_time = 0.0
+                count = 0
+                with torch.no_grad():
+                    for i in range(100):
+                        start_time = time.time()
+                        # 前向传播
+                        ctr_predictions, _, _ = model(
+                            user_behavior_seq=user_behaviors,
+                            target_item_emb=target_items,
+                            user_features=user_feats,
+                            behavior_categories=behavior_cats,
+                            time_intervals=time_ints
+                        )
+                        # 计算损失
+                        loss = criterion(ctr_predictions, targets)
+                        end_time = time.time()
+                        times = end_time - start_time
+                        if i >= 50:
+                            total_time += times
+                            count += 1
+                        total_loss += loss.item()
+                avg_time = total_time / count * 1000
+                print(f"E2E时间 = {avg_time:.4f}")
+
             # 前向传播
             ctr_predictions, _, _ = model(
                 user_behavior_seq=user_behaviors,
@@ -164,64 +243,6 @@ def main():
     # 评估模型
         test_loss, test_accuracy = evaluate_model(model, test_loader, criterion, device)
         print(f'测试集损失: {test_loss:.4f}, 准确率: {test_accuracy:.4f}')
-    
-    #profiling
-    if os.environ.get('MODEL_PROFILING_FLAG', "0") == "1":
-        experimental_config = torch_npu.profiler._ExperimentalConfig(
-            export_type=[
-                torch_npu.profiler.ExportType.Text,
-                torch_npu.profiler.ExportType.Db
-                ],
-            profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
-            msprof_tx=False,
-            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
-            l2_cache=False,
-            op_attr=False,
-            data_simplification=False,
-            record_op_args=False,
-            gc_detect_threshold=None
-            )
-        if os.environ.get('MODEL_COMPILE_FLAG', "0") == "1":
-            model = torch.compile(model, dynamic=False, backend="inductor")
-            print("Inductor MODE YES")
-        steps = 10
-        with torch_npu.profiler.profile(
-            activities=[
-                torch_npu.profiler.ProfilerActivity.CPU,
-                torch_npu.profiler.ProfilerActivity.NPU
-                ],
-            schedule=torch_npu.profiler.schedule(wait=6, warmup=0, active=1, repeat=1),
-            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
-            record_shapes=False,
-            profile_memory=False,
-            with_stack=False,
-            with_modules=False,
-            with_flops=False,
-            experimental_config=experimental_config) as prof:
-            print("profiling start...")
-            for step in range(steps):
-                print(f"profiling steps == {step}")
-                test_loss, test_accuracy = evaluate_model(model, test_loader, criterion, device)
-                prof.step()
-
-    #E2E耗时
-    if os.environ.get('MODEL_E2E_FLAG', "0") == "1":
-        total_time = 0.0
-        count = 0
-        with torch.no_grad():
-            if os.environ.get('MODEL_COMPILE_FLAG', "0") == "1":
-                model = torch.compile(model, dynamic=False, backend="inductor")
-                print("Inductor MODE YES")
-            for i in range(100):
-                start_time = time.time()
-                test_loss, test_accuracy = evaluate_model(model, test_loader, criterion, device)
-                end_time = time.time()
-                times = end_time - start_time
-                if i >= 50:
-                    total_time += times
-                    count += 1
-        avg_time = total_time / count * 1000
-        print(f"E2E时间 = {avg_time:.4f}")
 
 if __name__ == "__main__":
     main()
