@@ -7,20 +7,20 @@
                 "name": "values",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
-                    "fp32", "int64", "fp32", "int64"
+                    "fp32", "int64", "fp32", "int64", "fp16", "fp16", "bf16", "bf16", "int32", "int32"
                 ]
             },
             {
                 "name": "offsets",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
-                    "int64", "int64", "int32", "int32"
+                    "int64", "int64", "int32", "int32", "int32", "int64", "int32", "int64", "int32", "int64"
                 ]
             }
         ],
@@ -29,26 +29,32 @@
                 "name": "out",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
-                    "fp32", "int64", "fp32", "int64"
+                    "fp32", "int64", "fp32", "int64", "fp16", "fp16", "bf16", "bf16", "int32", "int32"
                 ]
             }
         ],
         "attr": [
             {
-              "name": "max_length",
-			  "param_type": "required",
-              "type": "int",
-              "default_value": 0
+                "name": "max_length",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
             },
             {
                 "name": "padding_value",
                 "param_type": "required",
                 "type":"float",
                 "default_value": 0
-            }       
+            },
+            {
+                "name": "padding_value_int64",
+                "param_type": "required",
+                "type":"int",
+                "default_value": 0
+            }
         ]
     }
 ]

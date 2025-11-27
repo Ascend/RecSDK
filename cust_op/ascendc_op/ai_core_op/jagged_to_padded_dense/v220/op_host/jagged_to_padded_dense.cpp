@@ -21,33 +21,16 @@ namespace optiling {
 
 constexpr int GM_ALIGN = 64;
 constexpr int RESERVER_UB_SIZE = 20 * 1024;
+constexpr int MIN_UB_USED_SIZE = 12 * 1024;
 constexpr int DATA_TYPE_INT64 = 8;
 constexpr int DATA_TYPE_INT32 = 4;
 constexpr int DATA_TYPE_FLOAT32 = 4;
 constexpr int NUM_QUEUE = 4;
 constexpr int UB_ALIGN = 32;
-constexpr int SUPORT_EMBEDDING_DIM_NUM = 2;
-
-static void SetTypeTiling(gert::TilingContext* context, JaggedToPaddedDenseTilingData& tiling)
-{
-    int64_t bytesOfDataType = 0;
-    ge::DataType dataType = context->GetInputTensor(0)->GetDataType();
-    if (dataType == ge::DataType::DT_FLOAT) {
-        bytesOfDataType = DATA_TYPE_FLOAT32;
-    } else {
-        bytesOfDataType = DATA_TYPE_INT64;
-    }
-
-    int64_t offsetDataType = 0;
-    ge::DataType offsetDataTypeGe = context->GetInputTensor(1)->GetDataType();
-    if (offsetDataTypeGe == ge::DataType::DT_INT64) {
-        offsetDataType = DATA_TYPE_INT64;
-    } else {
-        offsetDataType = DATA_TYPE_INT32;
-    }
-    tiling.set_bytesOfDataType(bytesOfDataType);
-    tiling.set_offsetDataType(offsetDataType);
-}
+constexpr int SUPPORT_EMBEDDING_DIM_NUM = 2;
+constexpr size_t MAX_LENGTH_ATTR_IDX = 0;
+constexpr size_t PADDING_VALUE_FP32_ATTR_IDX = 1;
+constexpr size_t PADDING_VALUE_INT64_ATTR_IDX = 2;
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
@@ -60,6 +43,12 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("valuesTensor", context->GetInputTensor(0), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("offsetsShape", context->GetInputShape(1), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("offsetsTensor", context->GetInputTensor(1), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("attrs", context->GetAttrs(), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("max_length", context->GetAttrs()->GetInt(MAX_LENGTH_ATTR_IDX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("padding_value_fp32", context->GetAttrs()->GetInt(PADDING_VALUE_FP32_ATTR_IDX),
+        return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("padding_value_int64", context->GetAttrs()->GetInt(PADDING_VALUE_INT64_ATTR_IDX),
+        return ge::GRAPH_FAILED);
 
     auto valuesShape = context->GetInputShape(0)->GetStorageShape();
     auto offsetsShape = context->GetInputShape(1)->GetStorageShape();
@@ -67,11 +56,17 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     uint64_t ubCanUsed;
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
     ubCanUsed = ubCanUsed - RESERVER_UB_SIZE;
+    if (ubCanUsed < MIN_UB_USED_SIZE) {
+        OPS_LOG_E("jagged_to_padded_dense",
+            "ubCanUsed is less than MIN_UB_USED_SIZE, ubCanUsed: %ld, MIN_UB_USED_SIZE: %ld",
+            ubCanUsed, MIN_UB_USED_SIZE);
+        return ge::GRAPH_FAILED;
+    }
     ubCanUsed = ubCanUsed / UB_ALIGN / NUM_QUEUE * UB_ALIGN * NUM_QUEUE;
     tiling.set_ubCanUsed(ubCanUsed);
 
-    if (valuesShape.GetDimNum() != SUPORT_EMBEDDING_DIM_NUM or offsetsShape.GetDimNum() != 1) {
-        printf("[ERROR]jagged_to_padded_dense_tiling is only used for values with rank-3 and offset rank-1");
+    if (valuesShape.GetDimNum() != SUPPORT_EMBEDDING_DIM_NUM or offsetsShape.GetDimNum() != 1) {
+        printf("[ERROR]jagged_to_padded_dense_tiling is only used for values with rank-2 and offset rank-1");
         return ge::GRAPH_FAILED;
     }
 
@@ -88,10 +83,14 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     // tiling core
     
     int64_t totalBatch = offsetsShape.GetDim(0) - 1;
+    if (totalBatch <= 0) {
+        OPS_LOG_E("jagged_to_padded_dense", "invalid offsetsShape: %ld", offsetsShape.GetDim(0));
+        return ge::GRAPH_FAILED;
+    }
     tiling.set_totalBatch(totalBatch);
-    int64_t baseBatchLen = (offsetsShape.GetDim(0) - 1) / coreNum;
+    int64_t baseBatchLen = totalBatch / coreNum;
     tiling.set_baseBatchLen(baseBatchLen);
-    int64_t tailSplitIndex = (offsetsShape.GetDim(0) - 1) % coreNum;
+    int64_t tailSplitIndex = totalBatch % coreNum;
     tiling.set_tailSplitIndex(tailSplitIndex);
     int64_t valuesDim0 = valuesShape.GetDim(0);
     tiling.set_valuesDim0(valuesDim0);
@@ -99,11 +98,15 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_valuesDim1(valuesDim1);
     int64_t offsetDim0 = offsetsShape.GetDim(0);
     tiling.set_offsetDim0(offsetDim0);
-    int64_t outDim1 = *context->GetAttrs()->GetInt(0);
+    int64_t outDim1 = *context->GetAttrs()->GetInt(MAX_LENGTH_ATTR_IDX);
     tiling.set_outDim1(outDim1);
-    SetTypeTiling(context, tiling);
+    float padValFp32 = *context->GetAttrs()->GetFloat(PADDING_VALUE_FP32_ATTR_IDX);
+    tiling.set_paddingValueFp32(padValFp32);
+    int64_t padValInt64 = *context->GetAttrs()->GetInt(PADDING_VALUE_INT64_ATTR_IDX);
+    tiling.set_paddingValueInt64(padValInt64);
 
-    context->SetBlockDim(coreNum);
+    size_t blockDim = (totalBatch < coreNum) ? totalBatch : coreNum;
+    context->SetBlockDim(blockDim);
 
     OPS_LOG_E_IF_NULL("context->GetRawTilingData(0)", context->GetRawTilingData(), return ge::GRAPH_FAILED);
     
@@ -146,18 +149,19 @@ public:
     {
         this->Input("values")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT, ge::DT_INT64})
+            .DataTypeList({ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Input("offsets")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT32, ge::DT_INT32})
+            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Output("out")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT, ge::DT_INT64})
+            .Follow("values", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Attr("max_length").Int();
-        this->Attr("padding_value").Float();
+        this->Attr("padding_value_fp32").Float();
+        this->Attr("padding_value_int64").Int();
 
         this->SetInferShape(ge::InferShape);
 
@@ -165,6 +169,7 @@ public:
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
         this->AICore().AddConfig("ascend310p");
+        this->AICore().AddConfig("ascend910_95");
     }
 };
 

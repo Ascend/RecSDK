@@ -46,8 +46,10 @@ at::Tensor jagged_to_padded_dense_forward_npu(const at::Tensor& values,
     auto values_contin = values.contiguous();
     auto D = values.size(-1);
     auto output =
-        at::full({offsets[0].size(0) - 1, max_lengths, values.size(1)}, padding_value, values.options());
-    EXEC_NPU_CMD(aclnnJaggedToPaddedDense, values_contin, offsets[0], max_lengths, padding_value, output);
+        at::empty({offsets[0].size(0) - 1, max_lengths, values.size(1)}, values.options());
+    int64_t padding_value_int64 = static_cast<int64_t>(padding_value);
+    EXEC_NPU_CMD(aclnnJaggedToPaddedDense, values_contin, offsets[0], max_lengths,
+        padding_value, padding_value_int64, output);
     return output;
 };
 
@@ -71,6 +73,7 @@ at::Tensor dense_to_jagged_forward_npu(const at::Tensor& dense,
     auto D = dense.size(-1);
     auto dense_contin = dense.contiguous();
 
+    check_tensor_non_empty(offsets.back(), "offsets.back()");
     // 从offsets计算预期的total_L
     int64_t expected_total_L = offsets.back()[-1].item<int64_t>();
 
