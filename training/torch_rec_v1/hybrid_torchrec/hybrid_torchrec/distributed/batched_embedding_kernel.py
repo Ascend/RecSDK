@@ -265,8 +265,12 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             self._optim_num = 0
 
         table_shapes = []
-        for tid in embedding_specs:
-            table_shapes.append(int(tid[0] * tid[1] / INIT_BUFFER))
+        self.feature_map_dims = []
+        for table_index in self.feature_table_map:
+            table_shape = embedding_specs[table_index]
+            table_shapes.append(int(table_shape[0] * table_shape[1] / INIT_BUFFER))
+            self.feature_map_dims.append(table_shape[1])
+
         self.grad_accum = GradientAccumulator(table_shapes, self.current_device)
         self.use_accumulate = use_accumulate
         self.accumulate_step = accumulate_step
@@ -308,7 +312,7 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             self.grad_accum.concat_multi_step(split_values)
 
             self.grad_accum.total_index_size_pre = torch.tensor(self.grad_accum.total_index_size)
-            self.grad_accum.updata_total_index_size(unique_offset, self.dims)
+            self.grad_accum.updata_total_index_size(unique_offset, self.feature_map_dims)
             table_shapes = self.grad_accum.total_index_size
             table_dict = self.grad_accum.store_buffer_shape(table_shapes)
             self.grad_accum.resize_buffer(table_dict)

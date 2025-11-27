@@ -744,6 +744,8 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                     optim_num = 1
                 elif sharding_info.fused_params["optimizer"] == EmbOptimType.ADAM:
                     optim_num = 2
+                elif sharding_info.fused_params["optimizer"] == EmbOptimType.EXACT_SGD:
+                    optim_num = 0
                 else:
                     raise NotImplementedError(
                         f"Getting optimizer states is not supported for {sharding_info.fused_params['optimizer']}"

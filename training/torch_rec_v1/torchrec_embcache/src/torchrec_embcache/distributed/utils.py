@@ -12,6 +12,7 @@ import torch
 
 def get_embedding_optim_num(optimizer_class: Type[torch.optim.Optimizer]) -> int:
     optim_cls_2_optim_num = {
+        torch.optim.SGD: 0,
         torch.optim.Adagrad: 1, 
         torch.optim.Adam: 2,
     }
