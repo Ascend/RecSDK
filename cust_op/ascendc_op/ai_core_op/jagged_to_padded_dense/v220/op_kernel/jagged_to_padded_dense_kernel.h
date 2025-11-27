@@ -27,6 +27,17 @@ namespace JaggedToPaddedDense {
 
 constexpr int USE_QUEUE_NUM = 2;
 
+/*
+ PAD_UB_SIZE:
+    The copy interface caps repeatTimes at 255, so PAD_UB_SIZE must stay within 256 * 255 = 63.75 KB.
+    Keep it aligned with VECTOR_REG_WIDTH
+    Ensure that PAD_UB_SIZE < MIN_UB_USED_SIZE
+*/
+constexpr int PAD_UB_SIZE = 8 * 1024;
+constexpr int VECTOR_REG_WIDTH = 256;
+constexpr int UB_BLOCK_SIZE = 32;
+constexpr int COPY_TILE_DST_REPEAT_SIZE = (VECTOR_REG_WIDTH / UB_BLOCK_SIZE);
+
 struct Args {
     GM_ADDR values;
     GM_ADDR offsets;
@@ -35,6 +46,7 @@ struct Args {
     GM_ADDR tiling;
 };
 
+template <typename VALUE_TYPE, typename OFFSET_TYPE>
 class JaggedToPaddedDenseKernel {
 public:
     __aicore__ inline JaggedToPaddedDenseKernel(Args args)
@@ -48,8 +60,10 @@ public:
         offsetDim0 = tilingData.offsetDim0;
         outDim1 = tilingData.outDim1;
         ubCanUsed = tilingData.ubCanUsed;
-        bytesOfDataType = tilingData.bytesOfDataType;
-        offsetDataType = tilingData.offsetDataType;
+        bytesOfDataType = sizeof(VALUE_TYPE);
+        offsetDataType = sizeof(OFFSET_TYPE);
+        paddingValueFp32 = tilingData.paddingValueFp32;
+        paddingValueInt64 = tilingData.paddingValueInt64;
 
         values = args.values;
         offsets = args.offsets;
@@ -68,9 +82,21 @@ public:
         valuesGT.SetGlobalBuffer(values, valuesDim0 * valuesDim1 * bytesOfDataType);
         outGT.SetGlobalBuffer(out, offsetDim0 * outDim1 * valuesDim1 * bytesOfDataType);
 
-        // Init pipe
-        pipe.InitBuffer(inQueueX, USE_QUEUE_NUM, ubCanUsed / USE_QUEUE_NUM);
-        blockLen = ubCanUsed / USE_QUEUE_NUM;
+        int64_t rowBytes = outDim1 * valuesDim1 * bytesOfDataType;
+        int64_t alignRowBytes = AlignUp<int64_t, int64_t>(rowBytes, VECTOR_REG_WIDTH);
+        padChunkBytes = alignRowBytes > PAD_UB_SIZE ? PAD_UB_SIZE : alignRowBytes;
+
+        // Use a single contiguous chunk of memory for the tile padding region.
+        int64_t totalPadFullByte = AlignUp<int64_t, int64_t>(padChunkBytes + UB_BLOCK_SIZE, DATA_ALIGN_BYTES);
+
+        int64_t avail_for_queue = ubCanUsed - totalPadFullByte;
+        blockLen = (avail_for_queue / USE_QUEUE_NUM / DATA_ALIGN_BYTES) * DATA_ALIGN_BYTES;
+        pipe.InitBuffer(inQueueX, USE_QUEUE_NUM, blockLen);
+
+        pipe.InitBuffer(paddingTbuf, totalPadFullByte);
+        LocalTensor<uint8_t> paddingFull = paddingTbuf.AllocTensor<uint8_t>();
+        paddingBufLt = paddingFull[UB_BLOCK_SIZE];
+        InitializePaddingBuffer(paddingFull);
     }
 
     template <typename T>
@@ -191,6 +217,86 @@ public:
                 inQueueX.FreeTensor(outPutTensor);
                 remainLen = remainLen - thisLen;
             }
+
+            FillPaddingRegion(outStartIndex, outEndIndex);
+        }
+    }
+
+    /**
+     * Use the pre-initialized padding buffer to fill the remaining output region.
+     */
+    __aicore__ inline void FillPaddingRegion(int64_t& outStartIndex, int64_t outEndIndex)
+    {
+        int64_t outRemain = outEndIndex - outStartIndex;
+        while (outRemain > 0) {
+            int64_t thisPad = padChunkBytes;
+            if (outRemain < padChunkBytes) {
+                thisPad = outRemain;
+            }
+            CpLocal2Gm(outGT[outStartIndex], paddingBufLt, thisPad);
+            outStartIndex += thisPad;
+            outRemain -= thisPad;
+        }
+    }
+
+    /**
+     * Initialize the padding buffer and choose routines based on the data type.
+     */
+    __aicore__ inline void InitializePaddingBuffer(const LocalTensor<uint8_t>& paddingFull)
+    {
+        if constexpr (std::is_same<VALUE_TYPE, int64_t>::value) {
+            InitializeInt64Padding(paddingFull);
+        } else {
+            InitializeFloatPadding();
+        }
+    }
+
+    __aicore__ inline void InitializeFloatPadding()
+    {
+        LocalTensor<VALUE_TYPE> padF = paddingBufLt.ReinterpretCast<VALUE_TYPE>();
+        VALUE_TYPE padValue;
+        if constexpr (std::is_same<VALUE_TYPE, bfloat16_t>::value) {
+            padValue = ToBfloat16(paddingValueFp32);
+        } else {
+            padValue = static_cast<VALUE_TYPE>(paddingValueFp32);
+        }
+        Duplicate<VALUE_TYPE>(padF, padValue, padChunkBytes / sizeof(VALUE_TYPE));
+    }
+
+    __aicore__ inline void InitializeInt64Padding(const LocalTensor<uint8_t>& paddingFull)
+    {
+#ifdef INT64_TYPE_USED_COPY_PADDING_UB
+        InitializeInt64PaddingWithCopy(paddingFull);
+#else
+        LocalTensor<int64_t> dstInt64 = paddingBufLt.ReinterpretCast<int64_t>();
+        Duplicate<int64_t>(dstInt64, paddingValueInt64, padChunkBytes / sizeof(int64_t));
+#endif
+    }
+
+    /**
+     * Initialize the int64 padding buffer via the Copy path.
+     * Used when Duplicate does not support int64: build a 32B tile and then broadcast with Copy.
+     * paddingFull provides the UB buffer that holds the temporary tile.
+     */
+    __aicore__ inline void InitializeInt64PaddingWithCopy(const LocalTensor<uint8_t>& paddingFull)
+    {
+        LocalTensor<uint32_t> dst32 = paddingBufLt.ReinterpretCast<uint32_t>();
+
+        if (paddingValueInt64 == 0) {
+            Duplicate<uint32_t>(dst32, 0, padChunkBytes / sizeof(uint32_t));
+            return;
+        }
+
+        LocalTensor<int64_t> tile64 = paddingFull.ReinterpretCast<int64_t>();
+        for (int32_t i = 0; i < (UB_BLOCK_SIZE / sizeof(int64_t)); i++) {
+            tile64.SetValue(i, paddingValueInt64);
+        }
+
+        LocalTensor<uint32_t> tile32 = paddingFull.ReinterpretCast<uint32_t>();
+        uint8_t reps = padChunkBytes / VECTOR_REG_WIDTH;
+        if (reps != 0) {
+            Copy<uint32_t>(dst32, tile32, VECTOR_REG_WIDTH / sizeof(uint32_t),
+                reps, {1, 0, COPY_TILE_DST_REPEAT_SIZE, 0});
         }
     }
 
@@ -219,6 +325,9 @@ private:
     // Ub
     int64_t ubCanUsed;
     int64_t blockLen;
+    float paddingValueFp32;
+    int64_t paddingValueInt64;
+    int64_t padChunkBytes;
 
     // ThisCoreLen
     int64_t lenOfThisCore;
@@ -227,10 +336,12 @@ private:
     // Tpipe
     TPipe pipe;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, USE_QUEUE_NUM> inQueueX;
+    TBuf<TPosition::VECOUT> paddingTbuf;
 
     // ThisCoreAddr
     GlobalTensor<uint8_t> valuesGT;
     GlobalTensor<uint8_t> outGT;
+    LocalTensor<uint8_t> paddingBufLt;
 };
 }  // namespace JaggedToPaddedDense
 #endif

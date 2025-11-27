@@ -82,6 +82,9 @@ if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
     sed -i "1i #define SUPPORT_V200" ./op_kernel/jagged_to_padded_dense_kernel.h
 fi
 
+# 老平台Duplicate接口不支持int64_t, int64_t类型使用copy接口对UB Padding段进行填充
+sed -i "1i #define INT64_TYPE_USED_COPY_PADDING_UB" ./op_kernel/jagged_to_padded_dense_kernel.h
+
 line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`
 sed -i "${line}s/True/False/g" CMakePresets.json
