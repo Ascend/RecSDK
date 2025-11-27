@@ -48,6 +48,9 @@ public:
 
     virtual bool TilingWorkSpace(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling);
 
+    virtual bool TilingKeySetImpl(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling,
+        uint32_t typeTilingKey);
+
 private:
     virtual bool CheckIsSupport(gert::TilingContext* context);
 

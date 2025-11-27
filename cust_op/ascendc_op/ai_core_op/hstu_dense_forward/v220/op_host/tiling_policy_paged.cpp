@@ -34,7 +34,7 @@ bool TilingPolicyPaged::TilingWorkSpace(gert::TilingContext* context, optiling::
     int64_t oneBlockMidElem = BLOCK_HEIGHT * BLOCK_HEIGHT * COMPUTE_PIPE_NUM;
     int64_t oneCoreMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
 
-    int64_t oneBlockMidTransElem = BLOCK_HEIGHT * tiling.get_dim() * TRANS_PIPE_NUM;
+    int64_t oneBlockMidTransElem = BLOCK_HEIGHT * MAX_DIM * TRANS_PIPE_NUM;
     int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
     // 3: midk midv attnscore
     int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem * 3) * sizeof(float);
@@ -167,7 +167,7 @@ bool TilingPolicyPaged::TilingShapePaged(gert::TilingContext* context, optiling:
 
 bool TilingPolicyPaged::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
-    context->SetTilingKey(PAGED_TILING_KEY);
-    return true;
+    uint32_t typeTilingKey = PAGED_TILING_KEY & 0x3;
+    return TilingKeySetImpl(context, tiling, typeTilingKey);
 }
 }

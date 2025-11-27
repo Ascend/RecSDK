@@ -60,8 +60,8 @@ struct SVTransArgs {
     int64_t qSeqId;
 };
 
-template <typename qType>
-class HstuDenseForwardKernel : public HstuDenseForwardKernelPattenBsnd<qType> {
+template <typename qType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+class HstuDenseForwardKernel : public HstuDenseForwardKernelPattenBsnd<qType, enableBias, isQkUseUb, maskType> {
 public:
     __aicore__ inline HstuDenseForwardKernel() {}
 
@@ -89,7 +89,7 @@ public:
                      scoreArgs.kSeqId * this->blockHeight;
 #endif
         uint32_t causalMask = ((scoreArgs.qSeqId == scoreArgs.kSeqId) &&
-            (this->maskType == CausalMaskT::MASK_TRIL)) ? 1 : 0;
+            (maskType == CausalMaskT::MASK_TRIL)) ? 1 : 0;
 
         int64_t m = (scoreArgs.qSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
                                                                 (this->xDim1 - scoreArgs.qSeqId * this->blockHeight);
@@ -204,7 +204,7 @@ public:
                 continue;
             }
             for (int64_t kSeqId = 0; kSeqId < this->seqBlockNumQk; kSeqId++) {
-                if ((this->maskType == CausalMaskT::MASK_TRIL) and (kSeqId > qSeqId)) {
+                if ((maskType == CausalMaskT::MASK_TRIL) and (kSeqId > qSeqId)) {
                     continue;
                 }
 

@@ -24,8 +24,8 @@ using namespace AscendC;
 namespace HstuDenseForward {
 constexpr int KVUBSIZE = 16384; // 176KB-160KB
 constexpr int64_t CONST_2 = 2;
-template <typename qType, typename oType>
-class HstuDenseForwardPagedKernel : public HstuDenseForwardJaggedKernel<qType, oType> {
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+class HstuDenseForwardPagedKernel : public HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQkUseUb, maskType> {
 public:
     __aicore__ inline HstuDenseForwardPagedKernel() {}
     __aicore__ inline void Compute(const HstuDenseForwardTilingData* __restrict tilingDataPtr);
@@ -78,8 +78,8 @@ private:
     uint32_t kvLtUbSize = KVUBSIZE;
 };
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::Compute(
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::Compute(
     const HstuDenseForwardTilingData* __restrict tilingDataPtr)
 {
     int ret = this->PreInit(tilingDataPtr);
@@ -90,8 +90,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::Compute(
 }
 
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::Init(
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::Init(
     const Args& args,
     const HstuDenseForwardTilingData* __restrict tilingDataPtr,
     TPipe* pipePtr)
@@ -101,8 +101,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::Init(
     InitPagedArgs(args, tilingDataPtr, pipePtr);
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::InitPagedArgs(
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::InitPagedArgs(
     const Args& args,
     const HstuDenseForwardTilingData* __restrict tilingDataPtr,
     TPipe* pipePtr)
@@ -116,7 +116,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::InitPagedArgs(
     int64_t oneBlockMidElem = this->blockHeight * this->blockHeight * COMPUTE_PIPE_NUM;
     int64_t oneCoreMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
 
-    int64_t oneBlockMidTransElem = this->blockHeight * this->xDim3 * TRANS_PIPE_NUM;
+    int64_t oneBlockMidTransElem = this->blockHeight * MAX_BLOCK_DIM * TRANS_PIPE_NUM;
     int64_t oneCoreTransMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
 
     int64_t kOffset = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float) / sizeof(qType);
@@ -137,10 +137,9 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::InitPagedArgs(
     this->copyHeadNum = 1;
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::CopyFromKvCache(uint32_t pageSid,
-                                                                                  uint32_t pageNum,
-                                                                                  uint32_t taskId)
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::CopyFromKvCache(
+    uint32_t pageSid, uint32_t pageNum, uint32_t taskId)
 {
     // datacopy pageSid
     int64_t headId = static_cast<int64_t>(this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].headId);
@@ -175,8 +174,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::CopyFromKvCach
     this->computeTaskInfo[taskId].kvOffset = taskOffset;
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::CopySeqFromGT(
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::CopySeqFromGT(
     const GlobalTensor<qType>& dstGt,
     const GlobalTensor<qType>& srcGt,
     uint32_t seqLen)
@@ -207,12 +206,9 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::CopySeqFromGT(
     }
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::CopyFromKvInputCache(uint32_t taskId,
-                                                                                       uint32_t pageSid,
-                                                                                       uint32_t pageNum,
-                                                                                       uint32_t cacheLen,
-                                                                                       uint32_t candLen)
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::CopyFromKvInputCache(
+    uint32_t taskId, uint32_t pageSid, uint32_t pageNum, uint32_t cacheLen, uint32_t candLen)
 {
     // copy kv from kv cache
     int64_t taskOffset = taskId * this->blockHeight * this->xDim3;
@@ -228,8 +224,9 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::CopyFromKvInpu
     this->computeTaskInfo[taskId].kvOffset = taskOffset;
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::FetchKvMayFromCache(uint32_t taskId)
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::FetchKvMayFromCache(
+    uint32_t taskId)
 {
     auto batchId = this->computeTaskInfo[taskId].batchId; // 当前seqlen计算的长度
     auto computeLen = this->computeTaskInfo[taskId].computeBSeqLen;
@@ -265,8 +262,9 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::FetchKvMayFrom
     }
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::ComputeSvMatmul(uint32_t taskId)
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::ComputeSvMatmul(
+    uint32_t taskId)
 {
     int isAtomic = 1;
     if (this->computeTaskInfo[taskId].kSeqId == 0) {
@@ -278,16 +276,17 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::ComputeSvMatmu
                          this->computeTaskInfo[taskId].computeBSeqLen, this->midvGt);
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::ComputeQkMatmul(uint32_t taskId)
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::ComputeQkMatmul(
+    uint32_t taskId)
 {
     this->DoQkMatmulImpl(this->computeTaskInfo[taskId].ioOffset, this->computeTaskInfo[taskId].kvOffset, taskId,
                          this->computeTaskInfo[taskId].computeASeqLen, this->computeTaskInfo[taskId].computeBSeqLen,
                          this->headDim, this->midkGt);
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::ComputeAllBlock()
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::ComputeAllBlock()
 {
     GetTaskInfo(this->sBlkId);
 
@@ -326,7 +325,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::ComputeAllBloc
                 isDeltaQK
             };
             // 在下三角下跳过运算
-            if (maskinfo.NoComputation(this->maskType)) {
+            if (maskinfo.NoComputation(maskType)) {
                 break;
             }
             currentTaskId = taskId % COMPUTE_PIPE_NUM;
@@ -382,11 +381,9 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::ComputeAllBloc
     ComputeTailBlock(taskId, currentTaskId, preTaskId, transtaskId);
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::ComputeTailBlock(uint32_t taskId,
-                                                                                   uint32_t currentTaskId,
-                                                                                   uint32_t preTaskId,
-                                                                                   uint32_t transtaskId)
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::ComputeTailBlock(
+    uint32_t taskId, uint32_t currentTaskId, uint32_t preTaskId, uint32_t transtaskId)
 {
     if (taskId == 0) {
         return;
@@ -429,9 +426,9 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::ComputeTailBlo
     this->TransResult((transtaskId - 1) % TRANS_PIPE_NUM);
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::FillTaskInfoPaged(uint32_t batchId,
-                                                                                    uint32_t taskId)
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::FillTaskInfoPaged(
+    uint32_t batchId, uint32_t taskId)
 {
     if (batchId >= this->batchSize) {
         return;
@@ -445,8 +442,9 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::FillTaskInfoPa
     this->computeTaskInfo[taskId].pageNum = pageOffsetGt.GetValue(batchId + 1) - pageOffsetGt.GetValue(batchId);
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::UpdateTaskInfo(uint32_t taskId)
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::UpdateTaskInfo(
+    uint32_t taskId)
 {
     auto batchId = this->computeTaskInfo[taskId].batchId;
     auto headId = this->computeTaskInfo[taskId].headId;
@@ -491,8 +489,9 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::UpdateTaskInfo
     }
 }
 
-template <typename qType, typename oType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType>::GetTaskInfo(uint32_t sBlkId)
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::GetTaskInfo(
+    uint32_t sBlkId)
 {
     uint32_t offsetOfBlk = 0;
     int64_t offsetOfSeq = 0;
