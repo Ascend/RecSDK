@@ -24,8 +24,6 @@ See the License for the specific language governing permissions and
 namespace optiling {
 BEGIN_TILING_DATA_DEF(HstuDenseForwardTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, size);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, qkMatmul);
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, svMatmul);
 
 TILING_DATA_FIELD_DEF(int64_t, batchSize);
 TILING_DATA_FIELD_DEF(int64_t, seqLen);
@@ -34,11 +32,6 @@ TILING_DATA_FIELD_DEF(int64_t, headNumK);
 TILING_DATA_FIELD_DEF(int64_t, headRatio);
 TILING_DATA_FIELD_DEF(int64_t, dim);
 TILING_DATA_FIELD_DEF(int64_t, blockHeight);
-
-TILING_DATA_FIELD_DEF(int32_t, qkBaseM);
-TILING_DATA_FIELD_DEF(int32_t, qkBaseN);
-TILING_DATA_FIELD_DEF(int32_t, svBaseM);
-TILING_DATA_FIELD_DEF(int32_t, svBaseN);
 
 #ifdef SUPPORT_V200
     TILING_DATA_FIELD_DEF(int32_t, tmpUbSize);

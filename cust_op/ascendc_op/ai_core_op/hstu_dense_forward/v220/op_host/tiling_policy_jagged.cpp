@@ -146,7 +146,7 @@ bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::Hstu
 
 bool TilingPolicyJagged::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
-    context->SetTilingKey(JAGGED_TILING_KEY);
-    return true;
+    uint32_t typeTilingKey = JAGGED_TILING_KEY & 0x3;
+    return TilingKeySetImpl(context, tiling, typeTilingKey);
 }
 }  // namespace HstuDenseForward

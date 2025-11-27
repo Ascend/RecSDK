@@ -26,6 +26,7 @@ See the License for the specific language governing permissions and
 
 #include "hstu_dense_causal_mask.h"
 #include "hstu_common_const.h"
+#include "matmul_constexpr.h"
 
 using namespace AscendC;
 
@@ -78,8 +79,8 @@ __aicore__ inline void CopyQKA1(const LocalTensor<int8_t>& aMatrix, const __gm__
     HstuDenseForwardTilingData* tilingP = reinterpret_cast<HstuDenseForwardTilingData*>(tilingPtr);
     int64_t dim = tilingP->dim;
     int64_t headNum = tilingP->headNum;
-    int32_t baseM = tilingP->qkMatmul.baseM;
-    int32_t baseK = tilingP->qkMatmul.baseK;
+    int32_t baseM = std::is_same<qType, float>::value ? mmStaticConfigQKFp32.basicM : mmStaticConfigQKFp16.basicM;
+    int32_t baseK = std::is_same<qType, float>::value ? mmStaticConfigQKFp32.basicK : mmStaticConfigQKFp16.basicK;
 
     auto alignOfM = AlignUp(useM, ALIGN_16);
     Nd2NzParams param = {
@@ -102,8 +103,8 @@ __aicore__ inline void CopyQKB1(const LocalTensor<int8_t>& bMatrix, const __gm__
     HstuDenseForwardTilingData* tilingP = reinterpret_cast<HstuDenseForwardTilingData*>(tilingPtr);
     int64_t dim = tilingP->dim;
     int32_t headNumK = static_cast<int32_t>(dataPtr);
-    int32_t baseN = tilingP->qkMatmul.baseN;
-    int32_t baseK = tilingP->qkMatmul.baseK;
+    int32_t baseN = std::is_same<qType, float>::value ? mmStaticConfigQKFp32.basicN : mmStaticConfigQKFp16.basicN;
+    int32_t baseK = std::is_same<qType, float>::value ? mmStaticConfigQKFp32.basicK : mmStaticConfigQKFp16.basicK;
 
     auto alignOfN = AlignUp(useN, ALIGN_16);
     Nd2NzParams param = {
@@ -126,8 +127,8 @@ __aicore__ inline void CopySVB1(const LocalTensor<int8_t>& bMatrix, const __gm__
     HstuDenseForwardTilingData* tilingP = reinterpret_cast<HstuDenseForwardTilingData*>(tilingPtr);
     int64_t dim = tilingP->dim;
     int32_t headNumK = static_cast<int32_t>(dataPtr);
-    int32_t baseN = tilingP->svMatmul.baseN;
-    int32_t baseK = tilingP->svMatmul.baseK;
+    int32_t baseN = std::is_same<qType, float>::value ? mmStaticConfigSVFp32.basicN : mmStaticConfigSVFp16.basicN;
+    int32_t baseK = std::is_same<qType, float>::value ? mmStaticConfigSVFp32.basicK : mmStaticConfigSVFp16.basicK;
     auto alignOfK = AlignUp(useK, ALIGN_16);
 
     Nd2NzParams param = {
@@ -140,9 +141,19 @@ __aicore__ inline void CopySVB1(const LocalTensor<int8_t>& bMatrix, const __gm__
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
 };
 
-template <typename qType, int ElementOfBlock = DATA_ALIGN_BYTES / sizeof(qType)>
+template <typename qType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
 class HstuDenseForwardKernelPattenBsnd {
 public:
+    static constexpr int ElementOfBlock = DATA_ALIGN_BYTES / sizeof(qType);
+    static constexpr int blockHeight = isQkUseUb ? BLOCK_HEIGHT_128 : BLOCK_HEIGHT_256;
+    static constexpr int vectorScoreUbBlockElem =
+        (isQkUseUb ? (blockHeight * blockHeight) : (VEC_PER_PROCESS * blockHeight)) / USE_QUEUE_NUM;
+    static constexpr auto qkMMCPos = isQkUseUb ? TPosition::VECIN : TPosition::GM;
+    static constexpr MatmulConfig qkMMConfig = std::is_same<qType, float>::value ?
+        mmStaticConfigQKFp32 : mmStaticConfigQKFp16;
+    static constexpr MatmulConfig svMMConfig = std::is_same<qType, float>::value ?
+        mmStaticConfigSVFp32 : mmStaticConfigSVFp16;
+
     __aicore__ inline HstuDenseForwardKernelPattenBsnd() {}
     __aicore__ inline void Init(const Args& args, const HstuDenseForwardTilingData* __restrict tilingDataPtr,
                                 TPipe* pipePtr)
@@ -177,15 +188,10 @@ public:
         // Embedding Dim
         xDim3 = tilingDataPtr->dim;
 
-        // Tiling
-        blockHeight = tilingDataPtr->blockHeight;
-
         // attr
         siluScale = tilingDataPtr->siluScale;
         alpha = tilingDataPtr->alpha;
         targetGroupSize = tilingDataPtr->targetGroupSize;
-        maskType = static_cast<CausalMaskT>(tilingDataPtr->maskType);
-        enableBias = (tilingDataPtr->enableBias == 1);
         enableNumContext = tilingDataPtr->enableNumContext;
         enableNumTarget = tilingDataPtr->enableNumTarget;
 
@@ -206,11 +212,11 @@ public:
         kGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(k));
         vGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(v));
 
-        if (enableBias) {
+        if constexpr (enableBias) {
             attnBiasGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(attnBias));
         }
 
-        if (maskType == CausalMaskT::MASK_CUSTOM) {
+        if constexpr (maskType == CausalMaskT::MASK_CUSTOM) {
             attnMaskGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(mask));
         }
 
@@ -219,7 +225,7 @@ public:
         int64_t oneBlockMidElem = blockHeight * blockHeight * COMPUTE_PIPE_NUM;
         int64_t oneCoreMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
 
-        int64_t oneBlockMidTransElem = blockHeight * xDim3 * TRANS_PIPE_NUM;
+        int64_t oneBlockMidTransElem = blockHeight * MAX_BLOCK_DIM * TRANS_PIPE_NUM;
         int64_t oneCoreTransMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
         int64_t kvOffset = oneCoreMidElem + oneCoreTransMidElem * 3; // svResultGt midkGt midvGt
 
@@ -227,15 +233,25 @@ public:
         svResultGt.SetGlobalBuffer(
             reinterpret_cast<__gm__ float*>(workspace) + oneCoreMidElem + GetBlockIdx() * oneBlockMidTransElem,
             oneBlockMidTransElem);
-        // Ub
-        vectorScoreUbBlockElem = VEC_PER_PROCESS * blockHeight / USE_QUEUE_NUM;
 
-        // Init pipe total 32K * 5 = 160K
-        pipe->InitBuffer(queIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
-        pipe->InitBuffer(tmpBuff, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
-        pipe->InitBuffer(biasIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
-        pipe->InitBuffer(queOut, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
-        pipe->InitBuffer(queMaskIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+        if constexpr (!isQkUseUb) {
+            // Init pipe total 32K * 5 = 160K
+            transUbBlockElem = vectorScoreUbBlockElem;
+            pipe->InitBuffer(queIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+            pipe->InitBuffer(queOut, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+            pipe->InitBuffer(tmpBuff, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+            pipe->InitBuffer(biasIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+            pipe->InitBuffer(queMaskIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+        } else {
+            transUbBlockElem = vectorScoreUbBlockElem / 2;
+            pipe->InitBuffer(queIn, USE_QUEUE_NUM, transUbBlockElem * sizeof(float));
+            pipe->InitBuffer(queOut, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+            pipe->InitBuffer(tmpBuff, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+            pipe->InitBuffer(biasIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+            pipe->InitBuffer(queMaskIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+            pipe->InitBuffer(qkQueInA, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+            pipe->InitBuffer(qkQueInB, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+        }
     }
 
     __aicore__ inline void CastQtype2Float(LocalTensor<float> distTensor, LocalTensor<qType> srcTensor,
@@ -253,6 +269,22 @@ public:
         if constexpr (!std::is_same<qType, float>::value) {
             DataCopy<float>(midTensor, srcTensor, len);
             Cast(distTensor, midTensor, RoundMode::CAST_RINT, len);
+        }
+    }
+
+    __aicore__ inline void AllocQkUbTensor()
+    {
+        if constexpr (isQkUseUb) {
+            this->qkUbA = this->qkQueInA.template AllocTensor<qType>();
+            this->qkUbB = this->qkQueInB.template AllocTensor<qType>();
+        }
+    }
+
+    __aicore__ inline void FreeQkUbTensor()
+    {
+        if constexpr (isQkUseUb) {
+            this->qkQueInA.template FreeTensor<qType>(this->qkUbA);
+            this->qkQueInB.template FreeTensor<qType>(this->qkUbB);
         }
     }
 
@@ -277,12 +309,12 @@ public:
         bool needMask,
         float scale)
     {
-        if (maskType != CausalMaskT::MASK_NONE) {
+        if constexpr (maskType != CausalMaskT::MASK_NONE) {
             queMaskIn.DeQue();
         }
 
         if (needMask) {
-            if (maskType == CausalMaskT::MASK_CUSTOM) {
+            if constexpr (maskType == CausalMaskT::MASK_CUSTOM) {
                 inMaskLtFp32 = inMaskLt.template ReinterpretCast<float>();
                 CastQtype2Float(inMaskLtFp32, inMaskLt, tmpLt, thisLen);
                 Muls<float>(inMaskLtFp32, inMaskLtFp32, scale, thisLen);
@@ -292,7 +324,7 @@ public:
             Muls<float>(newOutLt, newOutLt, scale, thisLen);
         }
 
-        if (maskType != CausalMaskT::MASK_NONE) {
+        if constexpr (maskType != CausalMaskT::MASK_NONE) {
             queMaskIn.FreeTensor(inMaskLtFp32);
         }
     }
@@ -304,7 +336,7 @@ public:
         int64_t thisLen
     )
     {
-        if (enableBias) {
+        if constexpr (enableBias) {
             biasIn.DeQue();
             auto newBiasLt = biasLt.template ReinterpretCast<float>();
             CastQtype2Float(newBiasLt, biasLt, tmpLt, thisLen);
@@ -429,7 +461,7 @@ public:
         uint32_t n)
     {
         bool needMask = false;
-        if (maskType == CausalMaskT::MASK_TRIL) {
+        if constexpr (maskType == CausalMaskT::MASK_TRIL) {
             inMaskLtFp32 = queMaskIn.AllocTensor<float>();
             if constexpr (std::is_same<MaskInfoType, uint32_t>::value) {
                 // 处理 uint32_t 类型
@@ -447,7 +479,7 @@ public:
             }
 
             queMaskIn.EnQue(inMaskLtFp32);
-        } else if (maskType == CausalMaskT::MASK_CUSTOM) {
+        } else if constexpr (maskType == CausalMaskT::MASK_CUSTOM) {
             int64_t thisMaskOffset = maskOffset + blockOffset * maxSeqLenK;
             inMaskLt = queMaskIn.AllocTensor<qType>();
             DataCopyMayPad(inMaskLt, attnMaskGt,
@@ -467,7 +499,7 @@ public:
         int64_t blockOffset,
         uint32_t n)
     {
-        if (enableBias) {
+        if constexpr (enableBias) {
             int64_t thisBiasOffset = biasOffset + blockOffset * maxSeqLenK;
             biasLt = biasIn.AllocTensor<qType>();
             DataCopyMayPad(biasLt, attnBiasGt,
@@ -496,7 +528,7 @@ public:
         LocalTensor<qType> inMaskLt;
         LocalTensor<float> inMaskLtFp32;
 
-        if (!enableBias) {
+        if constexpr (!enableBias) {
             biasLt = biasIn.AllocTensor<qType>();
         }
 
@@ -520,7 +552,7 @@ public:
             bool needMask =
                 DoMaskInitOptional(inMaskLt, inMaskLtFp32, maskinfo, maskOffset, thisLen, blockOffset, scale, n);
 
-            if (enableBias) {
+            if constexpr (enableBias) {
                 CalcuScoreWithFloat32(inLt, biasLt, inMaskLt, inMaskLtFp32, tmpLt, tmpLtFp32,
                     needMask, thisLen, scale);
             } else {
@@ -535,7 +567,7 @@ public:
             remain = remain - thisLen;
         }
 
-        if (!enableBias) {
+        if constexpr (!enableBias) {
             biasIn.FreeTensor(biasLt);
         }
 
@@ -575,7 +607,7 @@ public:
     {
         int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
         int64_t outMidIndex = transTaskId % TRANS_PIPE_NUM;
-        int64_t outOffset = outMidIndex * blockHeight * xDim3;
+        int64_t outOffset = outMidIndex * blockHeight * MAX_BLOCK_DIM;
         int64_t sOffset = midResultIdx * blockHeight * blockHeight;
 
         svMatmul.SetTensorA(attnScoreGt[sOffset]);
@@ -597,7 +629,7 @@ public:
     {
         int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
         int64_t outMidIndex = transTaskId % TRANS_PIPE_NUM;
-        int64_t outOffset = outMidIndex * blockHeight * xDim3;
+        int64_t outOffset = outMidIndex * blockHeight * MAX_BLOCK_DIM;
         int64_t sOffset = midResultIdx * blockHeight * blockHeight;
 
         svMatmul.SetTensorA(attnScoreGt[sOffset]);
@@ -617,28 +649,39 @@ public:
     __aicore__ inline void DoTransSvImpl(int64_t transTaskId, int64_t outStartOffset, uint32_t m)
     {
         int64_t outMidIndex = transTaskId % TRANS_PIPE_NUM;
-        int64_t inOffset = outMidIndex * blockHeight * xDim3;
+        int64_t inOffset = outMidIndex * blockHeight * MAX_BLOCK_DIM;
 
         int64_t total = m * xDim3;
         int64_t remain = total;
-        uint16_t copyLen = xDim3 * sizeof(qType) / DATA_ALIGN_BYTES;
-        uint16_t distStride = (xDim2 * xDim3 - xDim3) * sizeof(qType) / DATA_ALIGN_BYTES;
-        int64_t copyLenEachLoopAlignHeadDim = vectorScoreUbBlockElem / xDim3 * xDim3;
+        
+        DataCopyParams srcCopyParams;
+        srcCopyParams.blockLen = xDim3 * sizeof(float) / DATA_ALIGN_BYTES;
+        srcCopyParams.srcStride = (MAX_BLOCK_DIM - xDim3) * sizeof(float) / DATA_ALIGN_BYTES;
+        srcCopyParams.dstStride = 0;
+
+        DataCopyParams dstCopyParams;
+        dstCopyParams.blockLen = xDim3 * sizeof(qType) / DATA_ALIGN_BYTES;
+        dstCopyParams.srcStride = 0;
+        dstCopyParams.dstStride = (xDim2 * xDim3 - xDim3) * sizeof(qType) / DATA_ALIGN_BYTES;
+
+        int64_t copyLenEachLoopAlignHeadDim = transUbBlockElem / xDim3 * xDim3;
+
         while (remain > 0) {
             int64_t thisLen = copyLenEachLoopAlignHeadDim;
             if (remain < thisLen) {
                 thisLen = remain;
             }
-            int64_t kThisOffset = inOffset + (total - remain);
+            int64_t kThisOffset = inOffset + (total - remain) / xDim3 * MAX_BLOCK_DIM;
 
+            srcCopyParams.blockCount = static_cast<uint16_t>(thisLen / xDim3);
             LocalTensor<float> inLt = queIn.AllocTensor<float>();
-            DataCopy(inLt, svResultGt[kThisOffset], thisLen);
+            DataCopy(inLt, svResultGt[kThisOffset], srcCopyParams);
 
             queIn.EnQue(inLt);
 
             LocalTensor<float> newInLt = queIn.DeQue<float>();
             LocalTensor<qType> outLt = queOut.AllocTensor<qType>();
-            if (std::is_same<qType, float>::value) {
+            if constexpr (std::is_same<qType, float>::value) {
                 DataCopy(outLt.template ReinterpretCast<float>(), newInLt, thisLen);
             } else {
                 Cast(outLt, newInLt, RoundMode::CAST_RINT, thisLen);
@@ -649,10 +692,10 @@ public:
 
             LocalTensor<qType> newOutLt = queOut.DeQue<qType>();
 
-            DataCopyParams copyParms = {(uint16_t)(thisLen / xDim3), copyLen, 0, distStride};
+            dstCopyParams.blockCount = static_cast<uint16_t>(thisLen / xDim3);
             int64_t thisLineOffset = (total - remain) / xDim3;
             int64_t outOffset = outStartOffset + thisLineOffset * xDim2 * xDim3;
-            DataCopy(attnOutputGt[outOffset], newOutLt, copyParms);
+            DataCopy(attnOutputGt[outOffset], newOutLt, dstCopyParams);
 
             queOut.FreeTensor(newOutLt);
             remain = remain - thisLen;
@@ -686,14 +729,13 @@ public:
     bool enableNumTarget;
 
     // Tiling
-    int64_t blockHeight;
     int64_t seqBlockNumQk;
 
     // Tiling-QK
     int64_t qkTotalBlock;
 
     // Ub
-    int64_t vectorScoreUbBlockElem;
+    int64_t transUbBlockElem;
 
     // split
     int64_t blockSplitNum;
@@ -701,8 +743,6 @@ public:
     // Attr
     float siluScale;
     float alpha;
-    CausalMaskT maskType;
-    bool enableBias;
     int64_t targetGroupSize;
 
     // copyQKV
@@ -719,6 +759,8 @@ public:
     TQue<TPosition::VECIN, USE_QUEUE_NUM> queMaskIn;
     TQue<TPosition::VECCALC, USE_QUEUE_NUM> tmpBuff;
     TQue<TPosition::VECOUT, USE_QUEUE_NUM> queOut;
+    TQue<TPosition::VECIN, USE_QUEUE_NUM> qkQueInA;
+    TQue<TPosition::VECIN, USE_QUEUE_NUM> qkQueInB;
 
     // Gt
     GlobalTensor<qType> qGt;
@@ -730,20 +772,29 @@ public:
     GlobalTensor<qType> attnMaskGt;
     GlobalTensor<float> svResultGt;
 
-    // Matmul
-    matmul::Matmul<matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
-                   matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true>,
-                   matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
-                   matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>, CFG_NORM,
-                   matmul::MatmulCallBackFunc<nullptr, CopyQKA1<qType>, CopyQKB1<qType>>>
-        qkMatmul;
+    LocalTensor<qType> qkUbA;
+    LocalTensor<qType> qkUbB;
 
-    matmul::Matmul<matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
-                   matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
-                   matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
-                   matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>, CFG_NORM,
-                   matmul::MatmulCallBackFunc<nullptr, nullptr, CopySVB1<qType>>>
-        svMatmul;
+    // Matmul
+    using QK_MM_A_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>;
+    using QK_MM_B_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true>;
+    using QK_MM_C_T = matmul::MatmulType<qkMMCPos, CubeFormat::ND, qType, false>;
+    using QK_MM_BIAS_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>;
+    using QK_MM_CB_T = matmul::MatmulCallBackFunc<nullptr, CopyQKA1<qType>, CopyQKB1<qType>>;
+
+    static constexpr auto staticQkTilingCfg = GetMatmulApiTiling<QK_MM_A_T, QK_MM_B_T, QK_MM_C_T, QK_MM_BIAS_T>(
+        qkMMConfig, MATMUL_L1_SIZE);
+    matmul::Matmul<QK_MM_A_T, QK_MM_B_T, QK_MM_C_T, QK_MM_BIAS_T, staticQkTilingCfg, QK_MM_CB_T> qkMatmul;
+
+    using SV_MM_A_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>;
+    using SV_MM_B_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>;
+    using SV_MM_C_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>;
+    using SV_MM_BIAS_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>;
+    using SV_MM_CB_T = matmul::MatmulCallBackFunc<nullptr, nullptr, CopySVB1<qType>>;
+
+    static constexpr auto staticSvTilingCfg = GetMatmulApiTiling<SV_MM_A_T, SV_MM_B_T, SV_MM_C_T, SV_MM_BIAS_T>(
+        svMMConfig, MATMUL_L1_SIZE);
+    matmul::Matmul<SV_MM_A_T, SV_MM_B_T, SV_MM_C_T, SV_MM_BIAS_T, staticSvTilingCfg, SV_MM_CB_T> svMatmul;
 };
 }  // namespace HstuDenseForward
 #endif

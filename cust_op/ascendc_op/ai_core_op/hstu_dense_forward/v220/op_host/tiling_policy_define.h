@@ -88,6 +88,8 @@ constexpr int MAX_NUM_TARGET = 512;
 
 constexpr int MIN_PAGE_SIZE = 32;
 
+constexpr int MAX_DIM = 512;
+
 enum class MASK_TYPE {
     MASK_TRIL = 0,
     MATRIX_TRIU = 1,

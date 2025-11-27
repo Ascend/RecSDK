@@ -81,12 +81,7 @@ line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`
 sed -i "${line}s/True/False/g" CMakePresets.json
 
-if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-  sed -i "1i #define SUPPORT_V200" ./op_host/hstu_dense_forward_tiling.h
-  sed -i "1i #define SUPPORT_V200" ./op_host/tiling_policy_define.h
-  sed -i "1i #define SUPPORT_V200" ./op_kernel/hstu_dense_forward_kernel.h
-  sed -i "1i #define SUPPORT_V200" ./op_kernel/hstu_dense_forward.cpp
-fi
+sed -i "1i #define SUPPORT_910_95" ./op_kernel/constexpr/matmul_constexpr.h
 
 add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../../v220/hstu_dense_forward.json DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${vendor_name}_impl/dynamic)"
 sed -i '$a\'"$add_cmake_line" ./op_kernel/CMakeLists.txt

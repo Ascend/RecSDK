@@ -192,7 +192,7 @@ bool TilingPolicy::TilingWorkSpace(gert::TilingContext* context, optiling::HstuD
     int64_t oneBlockMidElem = BLOCK_HEIGHT * BLOCK_HEIGHT * COMPUTE_PIPE_NUM;
     int64_t oneCoreMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
 
-    int64_t oneBlockMidTransElem = BLOCK_HEIGHT * tiling.get_dim() * TRANS_PIPE_NUM;
+    int64_t oneBlockMidTransElem = BLOCK_HEIGHT * MAX_DIM * TRANS_PIPE_NUM;
     int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
 
     int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float);
@@ -202,7 +202,7 @@ bool TilingPolicy::TilingWorkSpace(gert::TilingContext* context, optiling::HstuD
 
 bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
-    int64_t dim = tiling.get_dim();
+    tiling.set_blockHeight(BLOCK_HEIGHT);
 
     matmul_tiling::DataType dataType;
     OPS_LOG_E_IF_NULL("query", context->GetInputTensor(INPUT_INDEX_T::Q_INDEX), return false);
@@ -214,54 +214,6 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext* context, optiling::H
     } else {
         dataType = matmul_tiling::DataType::DT_BFLOAT16;
     }
-
-    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-
-    // apply qk
-    matmul_tiling::MatmulApiTiling qkMatmul(ascendPlatform);
-    qkMatmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    qkMatmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    qkMatmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    qkMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-
-    tiling.set_blockHeight(BLOCK_HEIGHT);
-
-    qkMatmul.SetOrgShape(BLOCK_HEIGHT, BLOCK_HEIGHT, dim);
-    qkMatmul.SetShape(BLOCK_HEIGHT, BLOCK_HEIGHT, dim);
-    qkMatmul.SetBias(false);
-    qkMatmul.SetBufferSpace(-1, -1, -1);
-
-    matmul_tiling::MatmulApiTiling svMatmul(ascendPlatform);
-    svMatmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    svMatmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    svMatmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
-    svMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-
-    svMatmul.SetOrgShape(BLOCK_HEIGHT, dim, BLOCK_HEIGHT);
-    svMatmul.SetShape(BLOCK_HEIGHT, dim, BLOCK_HEIGHT);
-    svMatmul.SetBias(false);
-    svMatmul.SetBufferSpace(-1, -1, -1);
-
-    if (qkMatmul.GetTiling(tiling.qkMatmul) == -1 || svMatmul.GetTiling(tiling.svMatmul) == -1) {
-        return false;
-    }
-
-    auto findResult = matmul_tiling::DTYPE_BYTE_TAB.find(dataType);
-    if (findResult == matmul_tiling::DTYPE_BYTE_TAB.end()) {
-        OPS_LOG_E("", "dataType not in DTYPE_BYTE_TAB");
-        return false;
-    }
-    int dataTypeLength = findResult->second;
-    if (!CheckBaseMNK(tiling.qkMatmul, dataTypeLength, dataTypeLength) ||
-        !CheckBaseMNK(tiling.svMatmul, dataTypeLength, sizeof(float))) {
-        return false;
-    }
-
-    tiling.set_qkBaseM(tiling.qkMatmul.get_baseM());
-    tiling.set_qkBaseN(tiling.qkMatmul.get_baseN());
-
-    tiling.set_svBaseM(tiling.svMatmul.get_baseM());
-    tiling.set_svBaseN(tiling.svMatmul.get_baseN());
 
     return true;
 }
@@ -278,6 +230,20 @@ bool TilingPolicy::TilingKeySet(gert::TilingContext* context, optiling::HstuDens
 {
     // base unrealized
     return false;
+}
+
+bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling,
+    uint32_t typeTilingKey)
+{
+    // A2/A3默认为false，在A5上可以选择qk结果是否使用ub，通过(tiling.get_blockHeight() == BLOCK_HEIGHT)判断
+    bool isQkUseUb = false;
+    bool enableBias = tiling.get_enableBias();
+    uint32_t maskType = tiling.get_maskType();
+    uint32_t maskedType = maskType & 0x3;
+    // 组合tiling key：
+    auto key = (maskedType << 4) | (enableBias << 3) | (isQkUseUb << 2) | typeTilingKey;
+    context->SetTilingKey(key);
+    return true;
 }
 
 void TilingPolicy::DumpTiling(optiling::HstuDenseForwardTilingData& tiling)

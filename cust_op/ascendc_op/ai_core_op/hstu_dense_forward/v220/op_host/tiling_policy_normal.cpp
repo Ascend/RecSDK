@@ -53,7 +53,7 @@ bool TilingPolicyNormal::TilingShape(gert::TilingContext* context, optiling::Hst
 
 bool TilingPolicyNormal::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
-    context->SetTilingKey(NORMAL_TILING_KEY);
-    return true;
+    uint32_t typeTilingKey = NORMAL_TILING_KEY & 0x3;
+    return TilingKeySetImpl(context, tiling, typeTilingKey);
 }
 }  // namespace HstuDenseForward
