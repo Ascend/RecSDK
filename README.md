@@ -188,3 +188,33 @@ Rec SDK框架基础镜像，基于TensorFlow 1.15.0、tensorflow2.6.5制作的�
 ### 模型、工具
 
 位于develop_examples_and_tools分支，包含模型样例、工具。该分支仅供参考，不作为对外交付特性。
+
+# Roadmap（2025Q4）
+## TensorFlow
+1. 例行镜像、配套表更新。
+## TorchRec
+1. 算子性能优化，涉及：
+   1. asynchronous_complete_cumsum
+   2. jagged_to_padded_dense
+   3. dense_to_jagged
+   4. permute2d_sparse_data
+2. 支持梯度累积，涉及优化器：
+   1. adagrad
+   2. adam
+   3. sgd
+3. 适配PyTorch 2.7的版本配套，涉及TorchRec 1.2、FBGEMM 1.2。
+4. HSTU算子优化：
+   1. 支持Q、KV不等长。
+   2. head num扩展到16。
+   3. 支持自定义mask。
+   4. 支持pagedHSTU。
+5. 支持DataParallel训练。
+6. 适配Python 3.12
+
+# 如何提交贡献
+贡献前，请先签署[开放项目贡献者许可协议（CLA）](https://clasign.osinfra.cn/sign/gitee_ascend-1611222220829317930)。
+通常，RecSDK一年会有4个正式release版本。
+如果您遇到bug，请[提交issue](https://gitcode.com/Ascend/RecSDK/issues)。
+如果您计划贡献bug-fixes，请提交Pull Requests，参见[具体要求](https://gitcode.com/Ascend/RecSDK/blob/develop/contributing.md#PullRequest)。
+如果您计划贡献新特性、功能，请先创建issue与我们讨论。写明需求背景/目的，如何设计，对现有API等的影响。未经讨论提交PR可能会导致请求被拒绝，因为项目演进方向可能与您的想法存在偏差。
+更详细的贡献流程，请参考[贡献指南](https://gitcode.com/Ascend/RecSDK/blob/develop/contributing.md)。
