@@ -740,12 +740,12 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                 embedding_config = sharding_info.embedding_config
                 emb_original_config = self._table_name_to_config[embedding_config.name]
                 cpp_initializer_type = getattr(CppInitType, emb_original_config.initializer_type.name)
-                if sharding_info.fused_params["optimizer"] == EmbOptimType.EXACT_SGD:
-                    optim_num = 0
-                elif sharding_info.fused_params["optimizer"] == EmbOptimType.EXACT_ADAGRAD:
+                if sharding_info.fused_params["optimizer"] == EmbOptimType.EXACT_ADAGRAD:
                     optim_num = 1
                 elif sharding_info.fused_params["optimizer"] == EmbOptimType.ADAM:
                     optim_num = 2
+                elif sharding_info.fused_params["optimizer"] == EmbOptimType.EXACT_SGD:
+                    optim_num = 0
                 else:
                     raise NotImplementedError(
                         f"Getting optimizer states is not supported for {sharding_info.fused_params['optimizer']}"
