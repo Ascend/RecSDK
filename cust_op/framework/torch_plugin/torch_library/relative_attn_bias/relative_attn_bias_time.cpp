@@ -68,9 +68,9 @@ Tensor relative_attn_bias_time_backward_impl(const Tensor& rabTimeGrad, const Te
     bucketTimestampsConti =
         bucketTimestampsConti.view({batchsize, s, 1, s, 1}).repeat({1, 1, 2, 1, 2}).reshape({batchsize, sx2, sx2});
 
-    at::Tensor rabTimeGradOut = at::zeros({numLayers, numBuckets}, rabTimeGrad.options());
+    at::Tensor rabTimeGradOut = at::zeros({numLayers, numBuckets}, rabTimeGrad.options().dtype(at::kFloat));
     EXEC_NPU_CMD(aclnnRelativeAttnBiasBackward, rabTimeGradConti, bucketTimestampsConti, numBuckets, rabTimeGradOut);
-    return rabTimeGradOut;
+    return rabTimeGrad.dtype() == at::kFloat ? rabTimeGradOut : rabTimeGradOut.to(rabTimeGrad.dtype());
 }
 }  // namespace
 

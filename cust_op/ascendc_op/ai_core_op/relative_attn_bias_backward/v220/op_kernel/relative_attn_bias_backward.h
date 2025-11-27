@@ -20,7 +20,7 @@ public:
     {
         tsGradGT.SetGlobalBuffer((__gm__ FloatType*)args.rabTimeGrad, numLayer * bs * s * s);
         bucketTimestampsGT.SetGlobalBuffer((__gm__ int32_t*)args.bucketTimestamps, bs * s * s);
-        tswGradOutGT.SetGlobalBuffer((__gm__ FloatType*)args.timestampsWeightsGrad, tswTableSize);
+        tswGradOutGT.SetGlobalBuffer((__gm__ float*)args.timestampsWeightsGrad, tswTableSize);
 
         pipe.InitBuffer(inQueTsGrad, 1, AlignTo32(stride * sizeof(float)));
         pipe.InitBuffer(inQueBucketTimestamps, 1, AlignTo32(stride * sizeof(int32_t)));
@@ -117,27 +117,12 @@ public:
     __aicore__ inline void DataCopyOut(LocalTensor<float>& gradOut)
     {
         // 同步计算结果
-        uint32_t alignTswTableSize = AlignTo32(tswTableSize * sizeof(FloatType)) / sizeof(FloatType);
+        uint32_t alignSize = AlignTo32(tswTableSize * sizeof(float)) / sizeof(float);
         outQueTswGradOut.EnQue(gradOut);
-
-        if (std::is_same<FloatType, half>::value) {
-            LocalTensor<float> gradOutFP32 = outQueTswGradOut.DeQue<float>();
-            LocalTensor<FloatType> gradOutFP16 = tmpQue.AllocTensor<FloatType>();
-            Cast(gradOutFP16, gradOutFP32, RoundMode::CAST_ROUND, tswTableSize);
-            tmpQue.EnQue(gradOutFP16);
-            gradOutFP16 = tmpQue.DeQue<FloatType>();
-
-            SetAtomicAdd<FloatType>();
-            DataCopy(tswGradOutGT, gradOutFP16, alignTswTableSize);
-            SetAtomicNone();
-
-            tmpQue.FreeTensor(gradOutFP16);
-        } else if (std::is_same<FloatType, float>::value) {
-            LocalTensor<FloatType> gradOutFP32 = outQueTswGradOut.DeQue<FloatType>();
-            SetAtomicAdd<FloatType>();
-            DataCopy(tswGradOutGT, gradOutFP32, alignTswTableSize);
-            SetAtomicNone();
-        }
+        LocalTensor<float> gradOutFP32 = outQueTswGradOut.DeQue<float>();
+        SetAtomicAdd<float>();
+        DataCopy(tswGradOutGT, gradOutFP32, alignSize);
+        SetAtomicNone();
     }
 
     __aicore__ inline void Compute(Args args)
@@ -173,7 +158,7 @@ public:
 private:
     GlobalTensor<FloatType> tsGradGT;
     GlobalTensor<int32_t> bucketTimestampsGT;
-    GlobalTensor<FloatType> tswGradOutGT;
+    GlobalTensor<float> tswGradOutGT;
 
     TPipe pipe;
     TQue<TPosition::VECIN, 1> tmpQue;
