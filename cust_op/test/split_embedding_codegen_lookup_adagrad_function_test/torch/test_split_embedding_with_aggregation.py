@@ -203,7 +203,7 @@ def verify_grad_aggregation(lookup_params):
         all_idx = concat_tensors_by_category(all_idx)
 
         all_offsets = concat_tensors_by_category(all_offsets)
-        for index in range(len(lookup_params.tables)):
+        for index in range(len(lookup_params.feature_map)):
             all_jt_lst.append(JaggedTensor(values=all_idx[index], lengths=all_offsets[index]))
 
         all_idx = torch.cat(all_idx)
@@ -238,8 +238,26 @@ params = {
 }
 
 
+params_features = {
+    "tables": [[(4000, 128), (40000, 128), (3000, 128)]], # the same dim
+    "mutile_hots": [[1, 1, 1, 1], [1, 3, 6, 9]],
+    "batch_size": [8],
+    "pooling_model": [PoolingType.NONE],                  # ec
+    "unique": [True],                                     # must True
+    "optim": [Adagrad, SparseAdam, SGD],
+    "feature_map": [[0, 1, 1, 2], [0, 0, 1, 2], [0, 1, 2, 2]]  # 一表多feature
+}
+
+
 @pytest.mark.parametrize("config", [
     LookupParams(*v) for v in itertools.product(*params.values())
 ])
 def test_verify_grad_aggregation(config: LookupParams):
+    verify_grad_aggregation(config)
+
+
+@pytest.mark.parametrize("config", [
+    LookupParams(*v) for v in itertools.product(*params_features.values())
+])
+def test_verify_grad_aggregation_freature_map(config: LookupParams):
     verify_grad_aggregation(config)

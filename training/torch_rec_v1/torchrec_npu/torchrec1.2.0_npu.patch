@@ -30,7 +30,7 @@ index b0e3b247..7ec85a2b 100644
          keywords=[
              "pytorch",
 diff --git a/torchrec/__init__.py b/torchrec/__init__.py
-index 29258f6f..b67bdb54 100644
+index 29258f6f..01bd33a0 100644
 --- a/torchrec/__init__.py
 +++ b/torchrec/__init__.py
 @@ -6,7 +6,8 @@
@@ -743,6 +743,20 @@ index 45300f73..7567215d 100644
          self.world_size = world_size
          self.rank = rank
          self.process_group: Optional[dist.ProcessGroup] = pg
+diff --git a/torchrec/distributed/utils.py b/torchrec/distributed/utils.py
+index bd687760..67390a40 100644
+--- a/torchrec/distributed/utils.py
++++ b/torchrec/distributed/utils.py
+@@ -320,6 +320,9 @@ def optimizer_type_to_emb_opt_type(
+         trec_optim.PartialRowWiseAdam: EmbOptimType.PARTIAL_ROWWISE_ADAM,
+         trec_optim.Adagrad: EmbOptimType.EXACT_ADAGRAD,
+         trec_optim.RowWiseAdagrad: EmbOptimType.EXACT_ROWWISE_ADAGRAD,
++        trec_optim.AccumulateAdagrad: EmbOptimType.EXACT_ADAGRAD,
++        trec_optim.AccumulateAdam: EmbOptimType.ADAM,
++        trec_optim.AccumulateSGD: EmbOptimType.EXACT_SGD,
+     }
+     if optimizer_class not in lookup:
+         raise ValueError(f"Cannot cast {optimizer_class} to an EmbOptimType")
 diff --git a/torchrec/modules/embedding_configs.py b/torchrec/modules/embedding_configs.py
 index b665257a..d56dbacc 100644
 --- a/torchrec/modules/embedding_configs.py
@@ -756,30 +770,52 @@ index b665257a..d56dbacc 100644
      else:
          raise ValueError(f"Unsupported pooling type {pooling_type}")
  
+diff --git a/torchrec/optim/__init__.py b/torchrec/optim/__init__.py
+index 2b09f525..2db5d65f 100644
+--- a/torchrec/optim/__init__.py
++++ b/torchrec/optim/__init__.py
+@@ -36,6 +36,9 @@ from torchrec.optim.optimizers import (  # noqa
+     PartialRowWiseAdam,
+     PartialRowWiseLAMB,
+     SGD,
++    AccumulateAdagrad,
++    AccumulateSGD,
++    AccumulateAdam,
+ )
+ from torchrec.optim.rowwise_adagrad import RowWiseAdagrad  # noqa
+ from torchrec.optim.warmup import WarmupOptimizer, WarmupPolicy, WarmupStage  # noqa
 diff --git a/torchrec/optim/apply_optimizer_in_backward.py b/torchrec/optim/apply_optimizer_in_backward.py
-index 99ba72df..4d50cecb 100644
+index 99ba72df..d2f30b36 100644
 --- a/torchrec/optim/apply_optimizer_in_backward.py
 +++ b/torchrec/optim/apply_optimizer_in_backward.py
-@@ -12,6 +12,12 @@ from warnings import warn
+@@ -12,6 +12,18 @@ from warnings import warn
  
  import torch
  
 +from torchrec.tensor_types import check
-+from torchrec.optim.optimizers import SGD, Adam, Adagrad
++from torchrec.optim.optimizers import (
++    SGD, Adam, Adagrad,
++    AccumulateAdagrad,
++    AccumulateSGD,
++    AccumulateAdam,
++)
 +
 +
-+SUPPORT_OPTIM_TYPE_LIST = [torch.optim.SGD, torch.optim.Adam, torch.optim.Adagrad, SGD, Adam, Adagrad]
++SUPPORT_OPTIM_TYPE_LIST = [torch.optim.SGD, torch.optim.Adam, torch.optim.Adagrad, SGD, Adam, Adagrad,
++                           AccumulateAdagrad, AccumulateSGD, AccumulateAdam]
 +
  
  def apply_optimizer_in_backward(
      optimizer_class: Type[torch.optim.Optimizer],
-@@ -52,6 +58,11 @@ def apply_optimizer_in_backward(
+@@ -52,6 +64,13 @@ def apply_optimizer_in_backward(
          "This API is deprecated. Please use Pytorch Distributed's _apply_optimizer_in_backward API instead.",
          DeprecationWarning,
      )
 +    if optimizer_class not in SUPPORT_OPTIM_TYPE_LIST:
-+        raise ValueError(f"Expected optimizer_class in [torch.optim.SGD, torch.optim.Adam, torch.optim.Adagrad \
++        raise ValueError(f"Expected optimizer_class in [torch.optim.SGD, torch.optim.Adam, torch.optim.Adagrad, \
 +                        torchrec.optim.optimizers.SGD, torchrec.optim.optimizers.Adam, torchrec.optim.optimizers.Adagrad],\
++                        torchrec.optim.optimizers.AccumulateAdagrad, torchrec.optim.optimizers.AccumulateSGD, \
++                        torchrec.optim.optimizers.AccumulateAdam],\
 +                        but got {optimizer_class}")
 +    check(optimizer_kwargs is not None and isinstance(optimizer_kwargs, Dict), "optimizer_kwargs should be Dict")
      _apply_optimizer_in_backward(
@@ -825,7 +861,7 @@ index 2f6b75d5..ec6b2ff1 100644
  
      def zero_grad(self, set_to_none: bool = False) -> None:
 diff --git a/torchrec/optim/optimizers.py b/torchrec/optim/optimizers.py
-index 10ffcdb2..3e199497 100644
+index 10ffcdb2..a2db69b3 100644
 --- a/torchrec/optim/optimizers.py
 +++ b/torchrec/optim/optimizers.py
 @@ -15,6 +15,7 @@ import torch
@@ -845,6 +881,40 @@ index 10ffcdb2..3e199497 100644
      for fqn, param in named_parameters:
          if hasattr(param, "_in_backward_optimizers") == include:
              yield fqn, param
+@@ -180,3 +183,33 @@ class Adagrad(Optimizer):
+     # pyre-ignore
+     def step(self, closure=None) -> torch.Tensor:
+         raise NotImplementedError
++
++
++class AccumulateOptimizer:
++    def __init__(self, use_accumulate=False, accumulate_step=1):
++        # check
++        if not isinstance(accumulate_step, int) or accumulate_step <= 0:
++            raise ValueError("accumulate_step must be positive integer")
++        if not isinstance(use_accumulate, bool):
++            raise TypeError("use_accumulate must be bool")
++        # add accumulate flag and step
++        self.use_accumulate = use_accumulate
++        self.accumulate_step = accumulate_step
++
++
++class AccumulateAdagrad(Adagrad, AccumulateOptimizer):
++    def __init__(self, params, use_accumulate=False, accumulate_step=1, **kwargs):
++        AccumulateOptimizer.__init__(self, use_accumulate=use_accumulate, accumulate_step=accumulate_step)
++        Adagrad.__init__(self, params, **kwargs)
++
++
++class AccumulateSGD(SGD, AccumulateOptimizer):
++    def __init__(self, params, use_accumulate=False, accumulate_step=1, **kwargs):
++        AccumulateOptimizer.__init__(self, use_accumulate=use_accumulate, accumulate_step=accumulate_step)
++        SGD.__init__(self, params, **kwargs)
++
++
++class AccumulateAdam(Adam, AccumulateOptimizer):
++    def __init__(self, params, use_accumulate=False, accumulate_step=1, **kwargs):
++        AccumulateOptimizer.__init__(self, use_accumulate=use_accumulate, accumulate_step=accumulate_step)
++        Adam.__init__(self, params, **kwargs)
 diff --git a/torchrec/sparse/jagged_tensor.py b/torchrec/sparse/jagged_tensor.py
 index 2bbe0914..44a79102 100644
 --- a/torchrec/sparse/jagged_tensor.py

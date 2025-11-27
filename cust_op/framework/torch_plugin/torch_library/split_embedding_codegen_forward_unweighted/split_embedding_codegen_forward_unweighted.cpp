@@ -51,7 +51,7 @@ aclError copy_gm_to_gm(void* source_memory_ptr, // output
         void* tensor_ptr = target_tensor.data_ptr();
         if (tensor_ptr == nullptr) {
             AT_ERROR("Tensor data pointer is null for tensor ", i);
-            continue;
+            return ACL_ERROR_INVALID_PARAM;
         }
 
         auto offset = size[i].item<int64_t>();
@@ -60,6 +60,9 @@ aclError copy_gm_to_gm(void* source_memory_ptr, // output
         // 检查指针越界
         if (grad_accumulate_offset < 0 || size_bytes < 0) {
             AT_ERROR("Invalid offset or size for tensor ", i);
+            return ACL_ERROR_INVALID_PARAM;
+        }
+        if (size_bytes == 0) {
             continue;
         }
 
