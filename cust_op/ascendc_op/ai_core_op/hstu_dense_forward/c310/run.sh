@@ -81,7 +81,7 @@ line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`
 sed -i "${line}s/True/False/g" CMakePresets.json
 
-sed -i "1i #define SUPPORT_910_95" ./op_kernel/constexpr/matmul_constexpr.h
+sed -i "1i #define SUPPORT_910_95" ./op_kernel/matmul_constexpr.h
 
 add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../../v220/hstu_dense_forward.json DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${vendor_name}_impl/dynamic)"
 sed -i '$a\'"$add_cmake_line" ./op_kernel/CMakeLists.txt
