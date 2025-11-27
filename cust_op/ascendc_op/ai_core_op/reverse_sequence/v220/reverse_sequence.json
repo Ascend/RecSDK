@@ -1,0 +1,40 @@
+[
+    {
+        "op": "ReverseSequence",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "input",
+                "param_type": "required",
+                "format_list": [
+                    "ND"
+                ],
+                "data_type_list": [
+                    "fp32", "bf16", "fp16"
+                ]
+            },
+            {
+                "name": "seq_lengths",
+                "param_type": "required",
+                "format_list": [
+                    "ND"
+                ],
+                "data_type_list": [
+                    "int64", "int32"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "output",
+                "param_type": "required",
+                "format_list": [
+                    "ND"
+                ],
+                "data_type_list": [
+                    "fp32", "bf16", "fp16"
+                ]
+            }
+        ]
+    }
+]
