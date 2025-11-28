@@ -28,6 +28,7 @@ class HybridCommonArgs(NamedTuple):
     total_D: int
     max_D: int
     hash_size_cumsum: torch.Tensor
+    rows_per_table: Optional[torch.Tensor]
     total_hash_size_bits: int
     indices: torch.Tensor
     offsets: torch.Tensor
@@ -64,6 +65,7 @@ class HybridCommonArgs_aggregation(NamedTuple):
     total_D: int
     max_D: int
     hash_size_cumsum: torch.Tensor
+    rows_per_table: Optional[torch.Tensor]
     total_hash_size_bits: int
     indices: torch.Tensor
     offsets: torch.Tensor

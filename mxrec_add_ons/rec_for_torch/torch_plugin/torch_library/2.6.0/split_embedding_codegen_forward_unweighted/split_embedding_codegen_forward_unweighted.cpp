@@ -26,7 +26,7 @@ void copy_gm_to_gm(void* source_memory_ptr, // output
 { // grad_accumulate_offsets_size
     size_t target_tensors_size = target_tensors.size();
     if (target_tensors_size == 0) {
-    return;
+        return;
     }
 
     for (size_t i = 0; i < target_tensors.size(); ++i) {
@@ -77,8 +77,10 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
                                                           const at::Tensor& uvm_cache_stats,
                                                           const int64_t output_dtype,
                                                           const bool is_experimental,
-                                                          const Tensor& hash_indices,
-                                                          const Tensor& unique_inverse,
+                                                          const at::Tensor& hash_indices,
+                                                          const at::Tensor& unique_inverse,
+                                                          const at::Tensor& offset_per_key,
+                                                          const at::Tensor& rows_per_table,
                                                           const bool is_dynamic)
 {
     const int64_t totalD = total_D.guard_int(__FILE__, __LINE__);
@@ -86,29 +88,30 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
 
-    int64_t featCnt = weights_placements.size(0);
+    int64_t featCnt = weights_offsets.size(0);
     int32_t totalLen = indices.numel();
-    if (featCnt == 0) {
-        return at::Tensor();
-    }
+
+    TORCH_CHECK(featCnt > 0, "weights_offsets size must be great than 0.");
+    TORCH_CHECK(totalLen > 0, "indices can not be empty tensor.");
+    TORCH_CHECK(offsets.size(0) > 1, "offsets dim_0 must be great than 1.");
 
     int64_t batchSizeRes = (offsets.size(0) - 1) % featCnt;
-    TORCH_CHECK(batchSizeRes == 0, "offset size = ", offsets.size(0),
-                " is incorrect for feature count = ", featCnt)
+    TORCH_CHECK(batchSizeRes == 0, "offset size = ", offsets.size(0), " is incorrect for feature count = ", featCnt);
     int64_t batchSize = (offsets.size(0) - 1) / featCnt;
     at::Tensor output;
     if (static_cast<PoolingMode>(pooling_mode) == PoolingMode::NONE) {
-        output = at::empty({totalLen, maxD}, dev_weights.options());
+        output = at::zeros({totalLen, maxD}, dev_weights.options());
     } else {
-        output = at::full({batchSize, totalD}, 0.0, dev_weights.options());
+        output = at::zeros({batchSize, totalD}, dev_weights.options());
     }
     if (totalLen == 0) {
         return output;
     }
     int64_t experimental = static_cast<int64_t>(is_experimental);
-    EXEC_NPU_CMD(aclnnSplitEmbeddingCodegenForwardUnweighted, dev_weights, uvm_weights,         lxu_cache_weights,
+    EXEC_NPU_CMD(aclnnSplitEmbeddingCodegenForwardUnweighted, dev_weights, uvm_weights, lxu_cache_weights,
                  weights_placements, weights_offsets, D_offsets, indices, offsets, lxu_cache_locations, hash_indices,
-                 unique_inverse, totalD, maxD, pooling_mode, output_dtype, experimental, is_dynamic, output);
+                 unique_inverse, offset_per_key, rows_per_table, totalD, maxD, pooling_mode, output_dtype, experimental,
+                 is_dynamic, output);
     return output;
 }
 
@@ -134,6 +137,8 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    bool is_experimental, "
           "    Tensor hash_indices = None, "
           "    Tensor unique_inverse = None, "
+          "    Tensor offset_per_key = None, "
+          "    Tensor rows_per_table = None, "
           "    bool is_dynamic = False "
           ") -> Tensor");
 

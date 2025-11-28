@@ -195,7 +195,7 @@ def lookup_npu(indices, offsets, weights, jt_lst, params):
         kwargs = dict()
 
     tbe = ebc_class(
-        embedding_specs,
+        embedding_specs=embedding_specs,
         optimizer=TORCH_OPTIMIZER_TO_FBGEMM[params.optim],
         device=torch.device(DEVICEID),
         pooling_mode=TORCH_POOLING_MODE_TO_FBGEMM[params.pooling_mode],
