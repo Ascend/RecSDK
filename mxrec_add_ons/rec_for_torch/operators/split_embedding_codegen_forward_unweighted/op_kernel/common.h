@@ -44,7 +44,7 @@ struct Args {
     GM_ADDR indices;
     GM_ADDR offsets;
     GM_ADDR hashIndices;
-    GM_ADDR rowsPerTable;
+    GM_ADDR offsetPerKey;
     GM_ADDR rowsPerTable;
     GM_ADDR out;
     GM_ADDR tiling;
