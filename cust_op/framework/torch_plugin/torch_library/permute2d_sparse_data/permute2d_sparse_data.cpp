@@ -135,14 +135,21 @@ TORCH_LIBRARY(mxrec, m)
           "                       Tensor values, "
           "                       Tensor? weights=None, "
           "                       SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)");
+    m.def("permute_sparse_data(Tensor permute, "
+          "                       Tensor lengths, "
+          "                       Tensor values, "
+          "                       Tensor? weights=None, "
+          "                       SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 {
     m.impl("permute_2D_sparse_data", &permute2d_sparse_data_impl_npu);
+    m.impl("permute_sparse_data", &permute2d_sparse_data_impl_npu);
 }
 
 TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m)
 {
     m.impl("permute_2D_sparse_data", &permute2d_sparse_data_impl_npu);
+    m.impl("permute_sparse_data", &permute2d_sparse_data_impl_npu);
 }
