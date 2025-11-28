@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,9 +21,33 @@ msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")
 export PATH=$parent_dir:$PATH
 
+
+VALID_AI_CORES=(
+    "ai_core-Ascend910B1"
+    "ai_core-Ascend910B2"
+    "ai_core-Ascend910B3"
+    "ai_core-Ascend910B4"
+    "ai_core-Ascend910_93"
+    "ai_core-Ascend310P3"
+)
+
+validate_ai_core() {
+    local input_core="$1"
+    for valid_core in "${VALID_AI_CORES[@]}"; do
+        if [ "$input_core" = "$valid_core" ]; then
+            echo "ai_core $input_core"
+            return 0
+        fi
+    done
+    echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
+    exit 1
+    return 1
+}
+
 ai_core="ai_core-Ascend910B1"
 if [ "$#" -eq 1 ]; then
-    ai_core=$1
+  ai_core="$1"
+  validate_ai_core $ai_core
 fi
 
 # 利用msopgen生成可编译文件
@@ -69,5 +93,31 @@ sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
 
 bash build.sh
 
-# # 安装编译成功的算子包
-bash ./build_out/custom_opp*.run
+# 获取系统ID
+os_id=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
+if [ -z "${os_id}" ]; then
+    echo "ERROR: get os_id failed"
+    exit 1
+fi
+
+# 获取架构
+arch=$(uname -m)
+if [ -z "${arch}" ]; then
+    echo "ERROR: get arch failed"
+    exit 1
+fi
+
+# 只允许字母/数字/点/下划线/连字符（覆盖常见 os_id 与 arch）
+SAFE_REGEX='^[A-Za-z0-9._-]+$'
+if ! [[ "$os_id" =~ $SAFE_REGEX ]]; then
+    echo "ERROR: invalid os_id: $os_id" >&2
+    exit 1
+fi
+if ! [[ "$arch" =~ $SAFE_REGEX ]]; then
+    echo "ERROR: invalid arch: $arch" >&2
+    exit 1
+fi
+
+# 安装编译成功的算子包
+installer="./build_out/custom_opp_${os_id}_${arch}.run"
+bash -- "$installer"

@@ -92,8 +92,27 @@
                 "type": [
                     "int32"
                 ]
+            },
+            {
+                "name": "offset_per_key",
+                "param_type": "optional",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
+            },
+            {
+                "name": "rows_per_table",
+                "param_type": "optional",
+                "format": [
+                    "ND"
+                ],
+                "type": [
+                    "int64"
+                ]
             }
-
         ],
         "output_desc": [
             {

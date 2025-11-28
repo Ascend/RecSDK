@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ TILING_DATA_FIELD_DEF(int64_t, ubCanUsed);
 TILING_DATA_FIELD_DEF(int64_t, poolMode);
 TILING_DATA_FIELD_DEF(int64_t, maxD);
 TILING_DATA_FIELD_DEF(bool, enableHash);
+TILING_DATA_FIELD_DEF(bool, enableRowsPerTable);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(SplitEmbeddingCodegenForwardUnweighted,

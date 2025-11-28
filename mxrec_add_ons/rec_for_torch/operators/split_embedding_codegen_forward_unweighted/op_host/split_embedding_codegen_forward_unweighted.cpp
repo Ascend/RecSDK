@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ See the License for the specific language governing permissions and
 #include "split_embedding_codegen_forward_unweighted_tiling.h"
 #include "tiling/platform/platform_ascendc.h"
 
-#include "../../../common/ops_log.h"
+#include "ops_log.h"
 
 namespace optiling {
 
@@ -30,8 +30,11 @@ constexpr int DATA_TYPE_INT64 = 1;
 constexpr int RESERVER_UB_SIZE = 20 * 1024;
 constexpr int UB_ALIGN = 32;
 constexpr int NUM_QUEUE = 32;
-constexpr int POOL_MODE_NOBAG = 2;
 
+constexpr int POOL_MODE_MEAN = 0;
+constexpr int POOL_MODE_SUM = 1;
+constexpr int POOL_MODE_NOBAG = 2;
+// input
 constexpr int DEV_WEIGHTS_INDEX = 0;
 constexpr int UVM_WEIGHTS_INDEX = 1;
 constexpr int LXU_CACHE_WEIGHTS_INDEX = 2;
@@ -42,13 +45,11 @@ constexpr int INDICES_INDEX = 6;
 constexpr int OFFSETS_INDEX = 7;
 constexpr int LXU_CACHE_LOCATIONS_INDEX = 8;
 constexpr int HASH_INDICES_INDEX = 9;
-constexpr int POOL_MODE_INDEX = 2;
+constexpr int ROWS_PER_TABLE_INDEX = 12;
+// attr
 constexpr int MAX_D_INDEX = 1;
+constexpr int POOL_MODE_INDEX = 2;
 constexpr int IS_DYNAMIC_INDEX = 5;
-constexpr int BLOCK_NUM_INDEX = 6;
-
-constexpr int NORMAL_KEY = 1;
-constexpr int DYNAMIC_KEY = 2;
 
 static ge::graphStatus ShapeTilingCheckFunc(gert::TilingContext* context)
 {
@@ -66,7 +67,7 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     if (ShapeTilingCheckFunc(context) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-
+  
     int64_t devWeightsDim0 = context->GetInputShape(DEV_WEIGHTS_INDEX)->GetStorageShape().GetDim(0);
     int64_t weightsOffsetsDim0 = context->GetInputShape(WEIGHTS_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
     int64_t dOffsetsDim0 = context->GetInputShape(D_OFFSETS_INDEX)->GetStorageShape().GetDim(0);
@@ -76,12 +77,27 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     auto attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
 
-    OPS_CHECK(weightsOffsetsDim0 == 0,
-              OPS_LOG_E("Tiling Debug", "weightsOffsets shape is invalid."),
+    OPS_CHECK(weightsOffsetsDim0 < 1,
+              OPS_LOG_E("", "The length of D_offsets must be at least 1, but the actual value is %d.",
+                        weightsOffsetsDim0),
               return ge::GRAPH_FAILED);
     OPS_CHECK(dOffsetsDim0 <= 1,
-              OPS_LOG_E("Tiling Debug", "dOffsets shape is invalid."),
+              OPS_LOG_E("", "The length of D_offsets must be at least 2, but the actual value is %d.",
+                        dOffsetsDim0),
               return ge::GRAPH_FAILED);
+
+    auto rowsPerTable = context->GetOptionalInputTensor(ROWS_PER_TABLE_INDEX);
+    if (rowsPerTable == nullptr) {
+        tilingData.set_enableRowsPerTable(0);
+    } else {
+        tilingData.set_enableRowsPerTable(1);
+        OPS_LOG_E_IF_NULL("rowsPerTable shape", context->GetInputShape(ROWS_PER_TABLE_INDEX), return ge::GRAPH_FAILED);
+        int64_t rowsPerTableDim0 = context->GetInputShape(ROWS_PER_TABLE_INDEX)->GetStorageShape().GetDim(0);
+        OPS_CHECK(rowsPerTableDim0 != weightsOffsetsDim0,
+                  OPS_LOG_E("", "Len mismatch between rows_per_table(%d) and weights_offsets(%d).",
+                            rowsPerTableDim0, weightsOffsetsDim0),
+                  return ge::GRAPH_FAILED);
+    }
 
     auto hashIndices = context->GetOptionalInputTensor(HASH_INDICES_INDEX);
     if (hashIndices == nullptr) {
@@ -91,20 +107,21 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
         OPS_LOG_E_IF_NULL("hashIndices shape", context->GetInputShape(HASH_INDICES_INDEX), return ge::GRAPH_FAILED);
         indicesDim0 = context->GetInputShape(HASH_INDICES_INDEX)->GetStorageShape().GetDim(0);
     }
-    
+
     int64_t poolMode = *attrs->GetInt(POOL_MODE_INDEX);
+    OPS_CHECK(poolMode < POOL_MODE_MEAN || poolMode > POOL_MODE_NOBAG,
+              OPS_LOG_E("", "Invalid pooling mode %d: supported modes are MEAN(0), SUM(1), NONE(2)", poolMode),
+              return ge::GRAPH_FAILED);
     // bag output shape[batchsize, totalD]
     int64_t outDim0 = (offsetsDim0 - 1) / weightsOffsetsDim0;
     int64_t outDim1 = *attrs->GetInt(0);
     // no bag output shape [indicesNum, maxD]
     if (poolMode == POOL_MODE_NOBAG) {
         outDim0 = indicesDim0;
-        outDim1 = *context->GetAttrs()->GetInt(MAX_D_INDEX);
+        outDim1 = *attrs->GetInt(MAX_D_INDEX);
     }
+    context->SetTilingKey(poolMode);
 
-    // dynamic
-    bool is_dynamic = *context->GetAttrs()->GetBool(IS_DYNAMIC_INDEX);
-    ge::DataType weightsDtype = context ->GetInputTensor(DEV_WEIGHTS_INDEX)->GetDataType();
     int64_t bytesOfDataType = sizeof(float);
     int64_t offsetDataType = DATA_TYPE_INT64;
     int64_t maxD = *attrs->GetInt(MAX_D_INDEX);
@@ -140,9 +157,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     // Tiling
     size_t coreNum = ascnedPlatform.GetCoreNumAiv();
-    OPS_CHECK(coreNum == 0,
-              OPS_LOG_E("Tiling Debug", "Core num is 0."),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(coreNum == 0, OPS_LOG_E("", "Core num is 0."), return ge::GRAPH_FAILED);
+
     int64_t splitBaseLen = (tiling.get_offsetsDim0() - 1) / coreNum;
     int64_t tailSplitIndex = (tiling.get_offsetsDim0() - 1) % coreNum;
 
@@ -186,66 +202,48 @@ class SplitEmbeddingCodegenForwardUnweighted : public OpDef {
 public:
     explicit SplitEmbeddingCodegenForwardUnweighted(const char* name) : OpDef(name)
     {
-        this->Input("dev_weights") // dynamic int64
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+        this->Input("dev_weights")
+            .ParamType(REQUIRED).DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("uvm_weights")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(REQUIRED).DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("lxu_cache_weights")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(REQUIRED).DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("weights_placements")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(REQUIRED).DataType({ge::DT_INT32})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("weights_offsets")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(REQUIRED).DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("D_offsets")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(REQUIRED).DataType({ge::DT_INT32})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("indices")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(REQUIRED).DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("offsets")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(REQUIRED).DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("lxu_cache_locations")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT32})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(REQUIRED).DataType({ge::DT_INT32})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("hash_indices")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(OPTIONAL).DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("unique_inverse")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(OPTIONAL).DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
+        this->Input("offset_per_key")
+            .ParamType(OPTIONAL).DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
+        this->Input("rows_per_table")
+            .ParamType(OPTIONAL).DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("out")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(REQUIRED).DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND}).UnknownShapeFormat({ge::FORMAT_ND});
         this->Attr("total_D").Int();
         this->Attr("max_D").Int();
         this->Attr("pool_mode").Int();
@@ -256,7 +254,6 @@ public:
         this->SetInferShape(ge::InferShape);
 
         this->AICore().SetTiling(optiling::TilingFunc);
-        this->AICore().AddConfig("ascend910");
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
     }
