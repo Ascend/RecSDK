@@ -49,6 +49,10 @@ dense_to_jagged
 hstu_dense_forward_fuxi
 hstu_dense_backward_fuxi
 disetangle_attention
+dense_embedding_codegen_lookup_function
+dense_embedding_codegen_lookup_function_grad
+hstu_dense_forward
+hstu_dense_backward
 "
 support_310p_list="gather_for_rank1
 hstu_dense_forward_fuxi
