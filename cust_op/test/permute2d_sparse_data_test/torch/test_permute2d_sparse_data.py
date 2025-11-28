@@ -41,7 +41,7 @@ B = [128, 1024, 2048, 20480]
 SHAPE_LIST = list(itertools.product(T, EXTRA_T, B))
 
 
-def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
+def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False, d2: bool = False):
     tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
 
     if device and device.startswith('npu'):
@@ -49,9 +49,15 @@ def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
         tensors = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in tensors.items()}
 
     if is_mxrec:
-        results = torch.ops.mxrec.permute_2D_sparse_data(**tensors)
+        if d2:
+            results = torch.ops.mxrec.permute_2D_sparse_data(**tensors)
+        else:
+            results = torch.ops.mxrec.permute_sparse_data(**tensors)
     else:
-        results = torch.ops.fbgemm.permute_2D_sparse_data(**tensors)
+        if d2:
+            results = torch.ops.fbgemm.permute_2D_sparse_data(**tensors)
+        else:
+            results = torch.ops.fbgemm.permute_sparse_data(**tensors)
     return [x.cpu() if isinstance(x, torch.Tensor) else x for x in results]
 
 
@@ -59,7 +65,8 @@ def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
 @pytest.mark.parametrize("shapes", SHAPE_LIST)
 @pytest.mark.parametrize("enable_permuted_sum", [True, False])
 @pytest.mark.parametrize("is_mxrec", [True, False])
-def test_permute2d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec):
+@pytest.mark.parametrize("d2", [True, False])
+def test_permute2d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec, d2):
     """
     Params:
         permute: (T) dtype=int32
@@ -86,8 +93,8 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec):
         'permuted_lengths_sum': permuted_lengths_sum
     }
 
-    golden = get_result(params)
-    result = get_result(params, DEVICE, is_mxrec)
+    golden = get_result(params, d2=d2)
+    result = get_result(params, DEVICE, is_mxrec, d2=d2)
 
     for gt, pred in zip(golden, result):
         assert type(gt) is type(pred)

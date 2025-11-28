@@ -1,4 +1,4 @@
-**使用pytorch框架调用方式调用permute2d_sparse_data算子**
+**使用pytorch框架调用方式调用permute_2D_sparse_data/permute_sparse_data算子**
 
 该样例基于Pytorch2.6.0、python3.11.0运行
 
