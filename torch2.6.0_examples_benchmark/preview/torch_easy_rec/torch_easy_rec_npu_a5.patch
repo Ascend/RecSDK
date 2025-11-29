@@ -249,7 +249,7 @@ index 355fac0..9966d89 100644
 +        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.block_bucketize_sparse_features)
 +        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.get_infos_metadata)
 +        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.jagged_to_padded_dense)
-+        model = torch.compile(model, backend="inductor")
++        model = torch.compile(model, dynamic=False, backend="inductor")
      global_step = None
 -    if not checkpoint_path:
 -        checkpoint_path, global_step = checkpoint_util.latest_checkpoint(

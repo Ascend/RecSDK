@@ -11,7 +11,7 @@ index 717bd7e..3e7c5c5 100644
  from .activation import activation_layer
  
 diff --git a/deepctr_torch/models/basemodel.py b/deepctr_torch/models/basemodel.py
-index cd36340..0de9eb8 100644
+index cd36340..d2494d9 100644
 --- a/deepctr_torch/models/basemodel.py
 +++ b/deepctr_torch/models/basemodel.py
 @@ -9,12 +9,14 @@ Author:
@@ -29,7 +29,21 @@ index cd36340..0de9eb8 100644
  from sklearn.metrics import *
  from torch.utils.data import DataLoader
  from tqdm import tqdm
-@@ -349,6 +351,44 @@ class BaseModel(nn.Module):
+@@ -322,6 +324,13 @@ class BaseModel(nn.Module):
+             eval_result[name] = metric_fun(y, pred_ans)
+         return eval_result
+ 
++    def compare(self, eager_tensor, inductor_tensor, step):
++        try:
++            torch.testing.assert_close(eager_tensor, inductor_tensor, rtol=1e-4, atol=1e-4, equal_nan=True)
++            print(f"[OK] Tensor is matched in step:{step}.")
++        except AssertionError as e:
++            print(f"[Failed] Tensor dismatched in step {step}, error msg: {str(e)}")
++
+     def predict(self, x, batch_size=256):
+         """
+ 
+@@ -349,6 +358,52 @@ class BaseModel(nn.Module):
                  y_pred = model(x).cpu().data.numpy()  # .squeeze()
                  pred_ans.append(y_pred)
  
@@ -62,14 +76,22 @@ index cd36340..0de9eb8 100644
 +            'with_stack': False,
 +            'experimental_config': experimental_config
 +        }
-+        if os.environ.get("INDUCTOR_FLAG", "0") == "1":
-+            model = torch.compile(model, backend="inductor")
++        INDUCTOR_FLAG = os.environ.get("INDUCTOR_FLAG", "0")
++        if INDUCTOR_FLAG == "1":
++            model = torch.compile(model, dynamic=False, backend="inductor")
++        elif INDUCTOR_FLAG == "2":
++            model_accuracy = torch.compile(model, dynamic=False, backend="inductor")
 +        steps = 10
 +        with torch_npu.profiler.profile(**profiler_config) as prof:
 +            for step in range(steps):
-+                for _, x_test in enumerate(test_loader):
-+                    x = x_test[0].to(self.device).float()
-+                    y_pred = model(x).cpu().data.numpy()
++                with torch.no_grad():
++                    for i, x_test in enumerate(test_loader):
++                        x = x_test[0].to(self.device).float()
++                        x_c = x.clone()
++                        y_pred = model(x)
++                        if INDUCTOR_FLAG == "2":
++                            y_pred_accuracy = model_accuracy(x_c)
++                            self.compare(y_pred, y_pred_accuracy, i)
 +                prof.step()
          return np.concatenate(pred_ans).astype("float64")
  
