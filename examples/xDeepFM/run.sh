@@ -58,6 +58,7 @@ num_server=1 # 训练节点数
 num_process=$((${num_server} * ${local_rank_size})) # 训练总的进程数，等于使用的NPU卡的总数
 project_root=$(cd "$cur_path/../.." && pwd)
 
+export IGNORE_INFER_ERROR=1 # 忽略SparseTensorDenseMatMul算子shape验证
 export HCCL_CONNECT_TIMEOUT=1200 # HCCL集合通信 建链超时时间，取值范围[120,7200]
 export HCCL_OP_RETRY_ENABLE="L0:0, L1:0, L2:0"
 export PYTHONPATH=${so_path}:${project_root}:${common_so_path}:$PYTHONPATH # 环境python安装路径
