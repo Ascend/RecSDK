@@ -1,12 +1,14 @@
 diff --git a/detect.py b/detect.py
-index 535e196f..4293fe07 100644
+index 535e196f..756f41ad 100644
 --- a/detect.py
 +++ b/detect.py
-@@ -34,9 +34,10 @@ import os
+@@ -33,10 +33,13 @@ import csv
+ import os
  import platform
  import sys
++import time
  from pathlib import Path
--
+ 
  import torch
 +import torch_npu
  
@@ -14,7 +16,7 @@ index 535e196f..4293fe07 100644
  FILE = Path(__file__).resolve()
  ROOT = FILE.parents[0]  # YOLOv5 root directory
  if str(ROOT) not in sys.path:
-@@ -68,6 +69,7 @@ from utils.torch_utils import select_device, smart_inference_mode
+@@ -68,6 +71,7 @@ from utils.torch_utils import select_device, smart_inference_mode
  
  @smart_inference_mode()
  def run(
@@ -22,16 +24,16 @@ index 535e196f..4293fe07 100644
      weights=ROOT / "yolov5s.pt",  # model path or triton URL
      source=ROOT / "data/images",  # file/dir/URL/glob/screen/0(webcam)
      data=ROOT / "data/coco128.yaml",  # dataset.yaml path
-@@ -75,7 +77,7 @@ def run(
+@@ -75,7 +79,7 @@ def run(
      conf_thres=0.25,  # confidence threshold
      iou_thres=0.45,  # NMS IOU threshold
      max_det=1000,  # maximum detections per image
 -    device="",  # cuda device, i.e. 0 or 0,1,2,3 or cpu
-+    device="npu",  # cuda device, i.e. 0 or 0,1,2,3 or cpu
++    device="npu",  # npu device, i.e. 0 or 0,1,2,3 or cpu
      view_img=False,  # show results
      save_txt=False,  # save results to *.txt
      save_format=0,  # save boxes coordinates in YOLO format or Pascal-VOC format (0 for YOLO and 1 for Pascal-VOC)
-@@ -167,7 +169,6 @@ def run(
+@@ -167,7 +171,6 @@ def run(
      imgsz = check_img_size(imgsz, s=stride)  # check image size
  
      # Dataloader
@@ -39,7 +41,7 @@ index 535e196f..4293fe07 100644
      if webcam:
          view_img = check_imshow(warn=True)
          dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
-@@ -176,24 +177,42 @@ def run(
+@@ -176,14 +179,18 @@ def run(
          dataset = LoadScreenshots(source, img_size=imgsz, stride=stride, auto=pt)
      else:
          dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
@@ -49,42 +51,35 @@ index 535e196f..4293fe07 100644
      # Run inference
      model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
      seen, windows, dt = 0, [], (Profile(device=device), Profile(device=device), Profile(device=device))
-+
 +    batch_im, batch_path, batch_im0s, batch_vid_caps, batch_s = [], [], [], [], []
-+
      for path, im, im0s, vid_cap, s in dataset:
          with dt[0]:
 -            im = torch.from_numpy(im).to(model.device)
-+
 +            device = next(model.parameters()).device if hasattr(model, 'parameters') else torch.device(
 +                'npu' if torch.npu.is_available() else 'cpu')
-+
 +            im = torch.from_numpy(im).to(device)
              im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
              im /= 255  # 0 - 255 to 0.0 - 1.0
              if len(im.shape) == 3:
-                 im = im[None]  # expand for batch dim
+@@ -191,6 +198,17 @@ def run(
              if model.xml and im.shape[0] > 1:
                  ims = torch.chunk(im, im.shape[0], 0)
--
+ 
 +            batch_im.append(im)
 +            batch_path.append(path)
 +            batch_im0s.append(im0s)
 +            batch_vid_caps.append(vid_cap)
 +            batch_s.append(s)
-+            if len(batch_im) < bs and dataset.count < len(dataset):
++            is_last_batch = dataset.count == len(dataset)
++            is_full_batch = len(batch_im) == bs
++            if not is_full_batch and not is_last_batch:
 +                continue
-+            im_batch = torch.cat(batch_im, 0).contiguous()  # 将列表堆叠为 Tensor (B, C, H, W)
-+
++            im_batch = torch.cat(batch_im, 0).contiguous()
 +            batch_im, batch_path, batch_im0s, batch_vid_caps, batch_s = [], [], [], [], []
          # Inference
          with dt[1]:
              visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
-+
-             if model.xml and im.shape[0] > 1:
-                 pred = None
-                 for image in ims:
-@@ -203,121 +222,45 @@ def run(
+@@ -203,121 +221,62 @@ def run(
                          pred = torch.cat((pred, model(image, augment=augment, visualize=visualize).unsqueeze(0)), dim=0)
                  pred = [pred, None]
              else:
@@ -216,36 +211,53 @@ index 535e196f..4293fe07 100644
 +                data_simplification=False,
 +                record_op_args=False,
 +                gc_detect_threshold=None
-+            )
++                )
 +
-+            if os.environ.get('MODEL_INDUCTOR_FLAG', "0") == "1" and not hasattr(model, '_compiled'):
-+                model = torch.compile(model, dynamic=False, backend="inductor")
-+                model._compiled = True
-+                print("Inductor MODE YES")
++                if os.environ.get('MODEL_COMPILE_FLAG', "0") == "1" and not hasattr(model, '_compiled'):
++                    model = torch.compile(model, dynamic=False, backend="inductor")
++                    model._compiled = True
++                    print("Inductor MODE YES")
 +
-+            steps = 10
-+            with torch_npu.profiler.profile(
-+                activities=[
-+                    torch_npu.profiler.ProfilerActivity.CPU,
-+                    torch_npu.profiler.ProfilerActivity.NPU
-+                    ],
-+                schedule=torch_npu.profiler.schedule(wait=1, warmup=0, active=1, repeat=1, skip_first=1),
-+                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
-+                record_shapes=False,
-+                profile_memory=False,
-+                with_stack=False,
-+                with_modules=False,
-+                with_flops=False,
-+                experimental_config=experimental_config) as prof:
-+                LOGGER.info("profiling start...")
-+                for step in range(steps):
-+                    LOGGER.info(f"profiling steps == {step}")
-+                    pred = model(im_batch, augment=augment, visualize=visualize)
-+                    prof.step()
++                # profiling
++                if os.environ.get('MODEL_PROFILING_FLAG', "0") == "1":
++                    steps = 10
++                    with torch_npu.profiler.profile(
++                        activities=[
++                            torch_npu.profiler.ProfilerActivity.CPU,
++                            torch_npu.profiler.ProfilerActivity.NPU
++                        ],
++                        schedule=torch_npu.profiler.schedule(wait=1, warmup=0, active=1, repeat=1, skip_first=1),
++                        on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
++                        record_shapes=False,
++                        profile_memory=False,
++                        with_stack=False,
++                        with_modules=False,
++                        with_flops=False,
++                        experimental_config=experimental_config) as prof:
++                        LOGGER.info("profiling start...")
++                        for step in range(steps):
++                            LOGGER.info(f"profiling steps == {step}")
++                            pred = model(im_batch, augment=augment, visualize=visualize)
++                            prof.step()
++
++                # E2E
++                if os.environ.get('MODEL_E2E_FLAG', "0") == "1":
++                    total_time = 0.0
++                    count = 0
++                    for i in range(100):
++                        start_time = time.time()
++                        pred = model(im_batch, augment=augment, visualize=visualize)
++                        end_time = time.time()
++                        times = end_time - start_time
++                        if i >= 50:
++                            total_time += times
++                            count += 1
++                    avg_time = total_time / count * 1000
++                    print(f"E2E time = {avg_time:.4f}")
  
  
  def parse_opt():
-@@ -365,6 +308,7 @@ def parse_opt():
+@@ -365,6 +324,7 @@ def parse_opt():
          ```
      """
      parser = argparse.ArgumentParser()
@@ -253,17 +265,17 @@ index 535e196f..4293fe07 100644
      parser.add_argument("--weights", nargs="+", type=str, default=ROOT / "yolov5s.pt", help="model path or triton URL")
      parser.add_argument("--source", type=str, default=ROOT / "data/images", help="file/dir/URL/glob/screen/0(webcam)")
      parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="(optional) dataset.yaml path")
-@@ -372,7 +316,7 @@ def parse_opt():
+@@ -372,7 +332,7 @@ def parse_opt():
      parser.add_argument("--conf-thres", type=float, default=0.25, help="confidence threshold")
      parser.add_argument("--iou-thres", type=float, default=0.45, help="NMS IoU threshold")
      parser.add_argument("--max-det", type=int, default=1000, help="maximum detections per image")
 -    parser.add_argument("--device", default="", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
-+    parser.add_argument("--device", default="npu", help="cuda device, i.e. 0 or 0,1,2,3 or cpu")
++    parser.add_argument("--device", default="npu", help="npu device, i.e. 0 or 0,1,2,3 or cpu")
      parser.add_argument("--view-img", action="store_true", help="show results")
      parser.add_argument("--save-txt", action="store_true", help="save results to *.txt")
      parser.add_argument(
 diff --git a/utils/torch_utils.py b/utils/torch_utils.py
-index 1640f8a6..788ab732 100644
+index 1640f8a6..36db3657 100644
 --- a/utils/torch_utils.py
 +++ b/utils/torch_utils.py
 @@ -12,6 +12,7 @@ from copy import deepcopy
@@ -274,7 +286,7 @@ index 1640f8a6..788ab732 100644
  import torch.distributed as dist
  import torch.nn as nn
  import torch.nn.functional as F
-@@ -109,37 +110,14 @@ def device_count():
+@@ -109,37 +110,15 @@ def device_count():
          return 0
  
  
@@ -310,23 +322,24 @@ index 1640f8a6..788ab732 100644
 -        s += "CPU\n"
 -        arg = "cpu"
 -
++    
 +    device = "npu"
 +    arg = "npu"
      if not newline:
          s = s.rstrip()
      LOGGER.info(s)
-@@ -148,8 +126,8 @@ def select_device(device="", batch_size=0, newline=True):
+@@ -148,8 +127,8 @@ def select_device(device="", batch_size=0, newline=True):
  
  def time_sync():
      """Synchronizes PyTorch for accurate timing, leveraging CUDA if available, and returns the current time."""
 -    if torch.cuda.is_available():
 -        torch.cuda.synchronize()
 +    if torch_npu.npu.is_available():
-+        torch_npu.npu.synchronize()
++        torch_npu.npu.synchronize()       
      return time.time()
  
  
-@@ -195,7 +173,7 @@ def profile(input, ops, n=10, device=None):
+@@ -195,7 +174,7 @@ def profile(input, ops, n=10, device=None):
                          t[2] = float("nan")
                      tf += (t[1] - t[0]) * 1000 / n  # ms per op forward
                      tb += (t[2] - t[1]) * 1000 / n  # ms per op backward
@@ -335,7 +348,7 @@ index 1640f8a6..788ab732 100644
                  s_in, s_out = (tuple(x.shape) if isinstance(x, torch.Tensor) else "list" for x in (x, y))  # shapes
                  p = sum(x.numel() for x in m.parameters()) if isinstance(m, nn.Module) else 0  # parameters
                  print(f"{p:12}{flops:12.4g}{mem:>14.3f}{tf:14.4g}{tb:14.4g}{s_in!s:>24s}{s_out!s:>24s}")
-@@ -203,7 +181,7 @@ def profile(input, ops, n=10, device=None):
+@@ -203,7 +182,7 @@ def profile(input, ops, n=10, device=None):
              except Exception as e:
                  print(e)
                  results.append(None)
