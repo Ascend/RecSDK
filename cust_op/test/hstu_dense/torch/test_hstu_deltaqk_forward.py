@@ -48,13 +48,13 @@ def deltaqk_data_gen(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo, enabl
     total_seqs_k = np.sum(seq_lens_k)
 
     float_type = qkv_shape_info.float_type
-    head_num_q, head_num_k, attention_dim = (qkv_shape_info.num_heads_q, qkv_shape_info.num_heads_k,
-                                               qkv_shape_info.attention_dim)
-    q = torch.rand(total_seqs_q, head_num_q, attention_dim).to(float_type)
+    head_num_q, head_num_k, head_dim_qk, head_dim_v = (qkv_shape_info.num_heads_q, qkv_shape_info.num_heads_k,
+                                               qkv_shape_info.head_dim_qk, qkv_shape_info.head_dim_v)
+    q = torch.rand(total_seqs_q, head_num_q, head_dim_qk).to(float_type)
     q = q.uniform_(-1, 1)
-    k = torch.rand(total_seqs_k, head_num_k, attention_dim).to(float_type)
+    k = torch.rand(total_seqs_k, head_num_k, head_dim_qk).to(float_type)
     k = k.uniform_(-1, 1)
-    v = torch.rand(total_seqs_k, head_num_k, attention_dim).to(float_type)
+    v = torch.rand(total_seqs_k, head_num_k, head_dim_v).to(float_type)
     v = v.uniform_(-1, 1)
 
     bias = torch.rand(batch_size, head_num_q, max_seq_len, max_seq_len_k).to(float_type) \
@@ -106,6 +106,7 @@ class TestHstuDeltaqkDemo:
         mask_type, mask = mask_tensors
         (_, head_nums_q, head_dim), data_type = q.shape, q.dtype
         head_nums_k = k.shape[1]
+        head_dim_v = v.shape[2]
         batch_size = seq_offset.shape[0] - 1
 
         if head_nums_q != head_nums_k:
@@ -123,7 +124,7 @@ class TestHstuDeltaqkDemo:
 
         q_dens = jagged_to_dense(q, seq_lens, head_nums_q, head_dim).to(data_type).to("npu")
         k_dens = jagged_to_dense(k, seq_lens_k, head_nums_k, head_dim).to(data_type).to("npu")
-        v_dens = jagged_to_dense(v, seq_lens_k, head_nums_k, head_dim).to(data_type).to("npu")
+        v_dens = jagged_to_dense(v, seq_lens_k, head_nums_k, head_dim_v).to(data_type).to("npu")
         mask = mask.to(data_type).to("npu") if isinstance(mask, torch.Tensor) else None
         bias = bias.to(data_type).to("npu") if isinstance(bias, torch.Tensor) else None
 
@@ -185,7 +186,8 @@ class TestHstuDeltaqkDemo:
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num,
                                       num_heads_k=head_num,
-                                      attention_dim=head_dim)
+                                      head_dim_qk=head_dim,
+                                      head_dim_v=head_dim)
         mask_info = MaskGenInfo(mask_type=mask_type,
                                 max_num_context=0,
                                 max_num_target=0,
@@ -208,7 +210,8 @@ class TestHstuDeltaqkDemo:
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num,
                                       num_heads_k=head_num,
-                                      attention_dim=head_dim)
+                                      head_dim_qk=head_dim,
+                                      head_dim_v=head_dim)
         mask_info = MaskGenInfo(mask_type=mask_type,
                                 max_num_context=0,
                                 max_num_target=0,
@@ -231,7 +234,8 @@ class TestHstuDeltaqkDemo:
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num,
                                       num_heads_k=head_num,
-                                      attention_dim=head_dim)
+                                      head_dim_qk=head_dim,
+                                      head_dim_v=head_dim)
         mask_info = MaskGenInfo(mask_type=mask_type,
                                 max_num_context=0,
                                 max_num_target=0,
@@ -258,7 +262,8 @@ class TestHstuDeltaqkDemo:
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num_q,
                                       num_heads_k=head_num_k,
-                                      attention_dim=head_dim)
+                                      head_dim_qk=head_dim,
+                                      head_dim_v=head_dim)
         mask_info = MaskGenInfo(mask_type=mask_type,
                                 max_num_context=0,
                                 max_num_target=0,
@@ -284,10 +289,43 @@ class TestHstuDeltaqkDemo:
                                       batch_size=batch_size,
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num_q,
-                                      num_heads_k=head_num_k,
-                                      attention_dim=head_dim)
+                                      head_dim_qk=head_dim,
+                                      head_dim_v=head_dim)
         mask_info = MaskGenInfo(mask_type=mask_type,
                                 max_num_context=0,
                                 max_num_target=0,
                                 target_group_size=0)
         self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)
+
+    # qk_dim != v_dim
+    @pytest.mark.parametrize("batch_size", [4, 32, 128, 1024])
+    @pytest.mark.parametrize("head_num_q, head_num_k", [
+        (4, 2),
+        (4, 1),
+        (6, 3),
+        (8, 4),
+    ])
+    @pytest.mark.parametrize("max_seq_len", [15, 128, 2570])
+    @pytest.mark.parametrize("head_dim_qk", [64, 96, 128])
+    @pytest.mark.parametrize("head_dim_v", [80, 64, 48, 32, 16])
+    @pytest.mark.parametrize("enable_bias", [True, False])
+    @pytest.mark.parametrize("mask_type", [MaskType.NONE, MaskType.CUSTOM, MaskType.TRIL])
+    @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
+    @pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
+    @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
+    def test_hstu_varlen_forward(self, batch_size, head_num_q, head_num_k, max_seq_len, head_dim_qk, head_dim_v,
+                                 enable_bias, mask_type, silu_scale, data_type):
+        qkv_shape_info = QKVShapeInfo(float_type=data_type,
+                                      int_type=torch.int64,
+                                      batch_size=batch_size,
+                                      max_seq_len=max_seq_len,
+                                      num_heads_q=head_num_q,
+                                      num_heads_k=head_num_k,
+                                      head_dim_qk=head_dim_qk,
+                                      head_dim_v=head_dim_v)
+        mask_info = MaskGenInfo(mask_type=mask_type,
+                                max_num_context=0,
+                                max_num_target=0,
+                                target_group_size=0)
+        self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)
+

@@ -125,7 +125,7 @@ __aicore__ inline void CopySVB1(const LocalTensor<int8_t>& bMatrix, const __gm__
     globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useN * useK);
 
     HstuDenseForwardTilingData* tilingP = reinterpret_cast<HstuDenseForwardTilingData*>(tilingPtr);
-    int64_t dim = tilingP->dim;
+    int64_t dim = tilingP->vDim;
     int32_t headNumK = static_cast<int32_t>(dataPtr);
     int32_t baseN = std::is_same<qType, float>::value ? mmStaticConfigSVFp32.basicN : mmStaticConfigSVFp16.basicN;
     int32_t baseK = std::is_same<qType, float>::value ? mmStaticConfigSVFp32.basicK : mmStaticConfigSVFp16.basicK;
@@ -187,6 +187,7 @@ public:
         xDim2 = tilingDataPtr->headNum;
         // Embedding Dim
         xDim3 = tilingDataPtr->dim;
+        vDim = tilingDataPtr->vDim;
 
         // attr
         siluScale = tilingDataPtr->siluScale;
@@ -651,29 +652,29 @@ public:
         int64_t outMidIndex = transTaskId % TRANS_PIPE_NUM;
         int64_t inOffset = outMidIndex * blockHeight * MAX_BLOCK_DIM;
 
-        int64_t total = m * xDim3;
+        int64_t total = m * vDim;
         int64_t remain = total;
         
         DataCopyParams srcCopyParams;
-        srcCopyParams.blockLen = xDim3 * sizeof(float) / DATA_ALIGN_BYTES;
-        srcCopyParams.srcStride = (MAX_BLOCK_DIM - xDim3) * sizeof(float) / DATA_ALIGN_BYTES;
+        srcCopyParams.blockLen = vDim * sizeof(float) / DATA_ALIGN_BYTES;
+        srcCopyParams.srcStride = (MAX_BLOCK_DIM - vDim) * sizeof(float) / DATA_ALIGN_BYTES;
         srcCopyParams.dstStride = 0;
 
         DataCopyParams dstCopyParams;
-        dstCopyParams.blockLen = xDim3 * sizeof(qType) / DATA_ALIGN_BYTES;
+        dstCopyParams.blockLen = vDim * sizeof(qType) / DATA_ALIGN_BYTES;
         dstCopyParams.srcStride = 0;
-        dstCopyParams.dstStride = (xDim2 * xDim3 - xDim3) * sizeof(qType) / DATA_ALIGN_BYTES;
+        dstCopyParams.dstStride = (xDim2 * vDim - vDim) * sizeof(qType) / DATA_ALIGN_BYTES;
 
-        int64_t copyLenEachLoopAlignHeadDim = transUbBlockElem / xDim3 * xDim3;
+        int64_t copyLenEachLoopAlignHeadDim = transUbBlockElem / vDim * vDim;
 
         while (remain > 0) {
             int64_t thisLen = copyLenEachLoopAlignHeadDim;
             if (remain < thisLen) {
                 thisLen = remain;
             }
-            int64_t kThisOffset = inOffset + (total - remain) / xDim3 * MAX_BLOCK_DIM;
+            int64_t kThisOffset = inOffset + (total - remain) / vDim * MAX_BLOCK_DIM;
 
-            srcCopyParams.blockCount = static_cast<uint16_t>(thisLen / xDim3);
+            srcCopyParams.blockCount = static_cast<uint16_t>(thisLen / vDim);
             LocalTensor<float> inLt = queIn.AllocTensor<float>();
             DataCopy(inLt, svResultGt[kThisOffset], srcCopyParams);
 
@@ -692,9 +693,9 @@ public:
 
             LocalTensor<qType> newOutLt = queOut.DeQue<qType>();
 
-            dstCopyParams.blockCount = static_cast<uint16_t>(thisLen / xDim3);
-            int64_t thisLineOffset = (total - remain) / xDim3;
-            int64_t outOffset = outStartOffset + thisLineOffset * xDim2 * xDim3;
+            dstCopyParams.blockCount = static_cast<uint16_t>(thisLen / vDim);
+            int64_t thisLineOffset = (total - remain) / vDim;
+            int64_t outOffset = outStartOffset + thisLineOffset * xDim2 * vDim;
             DataCopy(attnOutputGt[outOffset], newOutLt, dstCopyParams);
 
             queOut.FreeTensor(newOutLt);
@@ -723,6 +724,7 @@ public:
     int64_t xDim1;
     int64_t xDim2;
     int64_t xDim3;
+    int64_t vDim;
     int64_t maxSeqLenQ;
     int64_t maxSeqLenK;
     bool enableNumContext;

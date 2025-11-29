@@ -52,6 +52,7 @@ bool TilingPolicyPaged::TilingShape(gert::TilingContext* context, optiling::Hstu
     int64_t seqLensK;
     int64_t headNumK;
     int64_t headDimK;
+    int64_t headDimV;
     int64_t maxSeqLensK;
 
     auto seqOffsetQShape = context->GetOptionalInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
@@ -82,6 +83,9 @@ bool TilingPolicyPaged::TilingShape(gert::TilingContext* context, optiling::Hstu
     tiling.set_headNum(headNumQ);
     tiling.set_dim(headDimQ);
     tiling.set_seqLen(maxSeqLensQ);
+
+    headDimV = vShape.GetDim(2);
+    tiling.set_vDim(headDimV);
 
     OPS_CHECK(kShape != vShape, OPS_LOG_E("", "K, V shape mismatch"), return false);
     OPS_CHECK(seqLensQ > seqLensK, OPS_LOG_E("", "Q, K, V seqlen mismatch"), return false);

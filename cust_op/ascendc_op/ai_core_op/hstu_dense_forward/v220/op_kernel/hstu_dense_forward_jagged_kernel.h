@@ -71,7 +71,11 @@ struct JaggedTaskArgs {
     int64_t batchOffsetK = 0;      // K序列的基本块的batch偏移
     int64_t headSeqLimit = 0;     // 该基本块的head offset最大长度, 超过则需要考虑切换head_id
     int64_t kvOffset = 0;         // 该基本块的key value计算偏移
+    int64_t kOffset = 0;         // 该基本块的key计算偏移
+    int64_t vOffset = 0;         // 该基本块的value计算偏移
     int64_t ioOffset = 0;         // 该基本块的query attnOutput计算偏移
+    int64_t iOffset = 0;         // 该基本块的query计算偏移
+    int64_t oOffset = 0;         // 该基本块的attnOutput计算偏移
     int32_t deltaQK = 0;         // QK序列长度差
     int64_t pageNum = 0;          // 该基本块存在kvcache中的page个数
 };
@@ -108,6 +112,7 @@ public:
     uint32_t seqLen{0};
     uint32_t headNum{0};
     uint32_t headDim{0};
+    uint32_t headDimV{0};
 
     BlockMaskParams maskTaskInfo[COMPUTE_PIPE_NUM];
     JaggedTaskArgs computeTaskInfo[COMPUTE_PIPE_NUM];
@@ -138,15 +143,16 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
         isAtomic = 0;
     }
 
-    this->DoSvMatmulImpl(computeTaskInfo[taskId].kvOffset, taskId, computeTaskInfo[taskId].transTaskId, isAtomic,
-                         computeTaskInfo[taskId].computeASeqLen, this->headDim, computeTaskInfo[taskId].computeBSeqLen);
+    this->DoSvMatmulImpl(computeTaskInfo[taskId].vOffset, taskId, computeTaskInfo[taskId].transTaskId, isAtomic,
+                         computeTaskInfo[taskId].computeASeqLen,
+                         this->headDimV, computeTaskInfo[taskId].computeBSeqLen);
 }
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
 __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQkUseUb, maskType>::ComputeQkMatmul(
     uint32_t taskId)
 {
-    this->DoQkMatmulImpl(computeTaskInfo[taskId].ioOffset, computeTaskInfo[taskId].kvOffset, taskId,
+    this->DoQkMatmulImpl(computeTaskInfo[taskId].iOffset, computeTaskInfo[taskId].kOffset, taskId,
                          computeTaskInfo[taskId].computeASeqLen, computeTaskInfo[taskId].computeBSeqLen, this->headDim);
 }
 
@@ -170,7 +176,7 @@ template <typename qType, typename oType, bool enableBias, bool isQkUseUb, Causa
 __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQkUseUb, maskType>::TransResult(
     uint32_t transtaskId)
 {
-    this->DoTransSvImpl(transtaskId, transTaskInfo[transtaskId].ioOffset, transTaskInfo[transtaskId].computeASeqLen);
+    this->DoTransSvImpl(transtaskId, transTaskInfo[transtaskId].oOffset, transTaskInfo[transtaskId].computeASeqLen);
 }
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
@@ -230,10 +236,14 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
                    (kSeqId != (kSeqNum - 1)) ? (this->blockHeight) :
                    (this->computeTaskInfo[currentTaskId].actualSeqLenK - kSeqId * this->blockHeight);
             uint64_t kvHeadId = this->computeTaskInfo[currentTaskId].headId / this->headRatio;
-            this->computeTaskInfo[currentTaskId].kvOffset =
-                this->computeTaskInfo[currentTaskId].batchOffsetK * this->headDim * this->headNumK +
-                this->computeTaskInfo[currentTaskId].kSeqId * this->blockHeight * this->headNumK * this->headDim +
-                kvHeadId * this->headDim;
+            this->computeTaskInfo[currentTaskId].kOffset =
+                    this->computeTaskInfo[currentTaskId].batchOffsetK * this->headDim * this->headNumK +
+                    this->computeTaskInfo[currentTaskId].kSeqId * this->blockHeight * this->headNumK * this->headDim +
+                    kvHeadId * this->headDim;
+            this->computeTaskInfo[currentTaskId].vOffset =
+                    this->computeTaskInfo[currentTaskId].batchOffsetK * this->headDimV * this->headNumK +
+                    this->computeTaskInfo[currentTaskId].kSeqId * this->blockHeight * this->headNumK * this->headDimV +
+                    kvHeadId * this->headDimV;
 
             // matmul qk
             this->ComputeQkMatmul(currentTaskId);
@@ -357,10 +367,14 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
     computeTaskInfo[taskId].qSeqNum = CeilDiv(computeTaskInfo[taskId].actualSeqLen,
                                               static_cast<uint32_t> (this->blockHeight));
 
-    computeTaskInfo[taskId].ioOffset =
-        computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum +
-        computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDim +
-        computeTaskInfo[taskId].headId * this->headDim;
+    computeTaskInfo[taskId].iOffset =
+            computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum +
+            computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDim +
+            computeTaskInfo[taskId].headId * this->headDim;
+    computeTaskInfo[taskId].oOffset =
+            computeTaskInfo[taskId].batchOffset * this->headDimV * this->headNum +
+            computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDimV +
+            computeTaskInfo[taskId].headId * this->headDimV;
 
     if ((computeTaskInfo[taskId].headSeqLimit - seqGlobalOffset) >= this->blockHeight) {
         computeTaskInfo[taskId].computeASeqLen = this->blockHeight;
@@ -405,10 +419,14 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
         computeTaskInfo[taskId].qSeqId =
             (batchInnerOffset - computeTaskInfo[taskId].headId * computeTaskInfo[taskId].actualSeqLen) /
             this->blockHeight;
-        computeTaskInfo[taskId].ioOffset =
-            computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum +
-            computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDim +
-            computeTaskInfo[taskId].headId * this->headDim;
+        computeTaskInfo[taskId].iOffset =
+                computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum +
+                computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDim +
+                computeTaskInfo[taskId].headId * this->headDim;
+        computeTaskInfo[taskId].oOffset =
+                computeTaskInfo[taskId].batchOffset * this->headDimV * this->headNum +
+                computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDimV +
+                computeTaskInfo[taskId].headId * this->headDimV;
         computeTaskInfo[taskId].computeASeqLen = computeASeqLen;
     }
 }
@@ -456,6 +474,7 @@ __aicore__ inline int HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQ
     this->seqLen = this->xDim1;
     this->headNum = this->xDim2;
     this->headDim = this->xDim3;
+    this->headDimV = this->vDim;
 
     numContextGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numContext), this->batchSize);
     numTargetGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numTarget), this->batchSize);
