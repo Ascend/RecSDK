@@ -1,5 +1,5 @@
 diff --git a/fuxictr/pytorch/models/rank_model.py b/fuxictr/pytorch/models/rank_model.py
-index 1ce33aa..ab355ab 100644
+index 1ce33aa..ad38fc9 100644
 --- a/fuxictr/pytorch/models/rank_model.py
 +++ b/fuxictr/pytorch/models/rank_model.py
 @@ -19,6 +19,7 @@
@@ -19,7 +19,7 @@ index 1ce33aa..ab355ab 100644
          return X_dict
  
      def get_labels(self, inputs):
-@@ -249,14 +250,50 @@ class BaseModel(nn.Module):
+@@ -249,15 +250,77 @@ class BaseModel(nn.Module):
              return val_logs
  
      def predict(self, data_generator):
@@ -32,7 +32,7 @@ index 1ce33aa..ab355ab 100644
 -            for batch_data in data_generator:
 -                return_dict = self.forward(batch_data)
 -                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
-+            experimental_config = torch_npu.profiler._ExperimentalConfig(
++                experimental_config = torch_npu.profiler._ExperimentalConfig(
 +                export_type=torch_npu.profiler.ExportType.Text,
 +                profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
 +                msprof_tx=False,
@@ -62,8 +62,33 @@ index 1ce33aa..ab355ab 100644
 +                'experimental_config': experimental_config
 +            }
 +            steps = 10
-+            if os.environ.get('INDUCTOR_FLAG', "0") == "1":
++            INDUCTOR_FLAG = os.getenv("INDUCTOR_FLAG", "0")
++            os.makedirs("./saved_weights/", exist_ok=True)
++            save_path = "./saved_weights/" + self.model_id + "_weights.pth"
++            if INDUCTOR_FLAG == "0":
++                print("go to eager!")
++                print("debug save weights start...")
++                state_dict = model.state_dict()
++                for key in state_dict:
++                    try:
++                        from torch.distributed._sharded_tensor import ShardedTensor
++                    except Exception:
++                        ShardedTensor = ()
++                    if hasattr(state_dict[key], "shard") or isinstance(state_dict[key], ShardedTensor):
++                        print(f"Converting ShardedTensor for key: {key}")
++                        try:
++                            state_dict[key] = state_dict[key].local_tensor()
++                        except:
++                            state_dict[key] = state_dict[key].to_local()
++                torch.save(state_dict, save_path)
++                print("debug saved weights end...")
++                np_path = "./saved_result/eager.npy"
++                os.makedirs("./saved_result", exist_ok=True)
++            if INDUCTOR_FLAG == "1":
++                state_dict = torch.load(save_path, map_location=self.device)
++                model.load_state_dict(state_dict)
 +                model = torch.compile(model, dynamic=False, backend="inductor")
++                np_path = "./saved_result/inductor.npy"
 +            with torch_npu.profiler.profile(**profiler_config) as prof:
 +                for step in range(steps):
 +                    for batch_data in data_generator:
@@ -72,8 +97,33 @@ index 1ce33aa..ab355ab 100644
 +                        prof.step()
 +
              y_pred = np.array(y_pred, np.float64)
++            np.save(np_path, y_pred)
              return y_pred
  
+     def evaluate_metrics(self, y_true, y_pred, metrics, group_id=None):
+@@ -265,7 +328,7 @@ class BaseModel(nn.Module):
+ 
+     def save_weights(self, checkpoint):
+         torch.save(self.state_dict(), checkpoint)
+-    
++
+     def load_weights(self, checkpoint):
+         self.to(self.device)
+         state_dict = torch.load(checkpoint, map_location="cpu")
+@@ -281,10 +344,9 @@ class BaseModel(nn.Module):
+ 
+     def count_parameters(self, count_embedding=True):
+         total_params = 0
+-        for name, param in self.named_parameters(): 
++        for name, param in self.named_parameters():
+             if not count_embedding and "embedding" in name:
+                 continue
+             if param.requires_grad:
+                 total_params += param.numel()
+-        logging.info("Total number of parameters: {}.".format(total_params))
+-
++        logging.info("Total number of parameters: {}.".format(total_params))
+\ No newline at end of file
 diff --git a/fuxictr/pytorch/torch_utils.py b/fuxictr/pytorch/torch_utils.py
 index 4b220ce..181c332 100644
 --- a/fuxictr/pytorch/torch_utils.py

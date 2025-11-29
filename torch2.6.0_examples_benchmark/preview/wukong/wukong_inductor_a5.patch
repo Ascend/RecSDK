@@ -1,5 +1,5 @@
 diff --git a/torch2.6.0_examples_benchmark/preview/wukong/run.py b/torch2.6.0_examples_benchmark/preview/wukong/run.py
-index b4322972..0bf7ece1 100644
+index b4322972..475819ef 100644
 --- a/torch2.6.0_examples_benchmark/preview/wukong/run.py
 +++ b/torch2.6.0_examples_benchmark/preview/wukong/run.py
 @@ -16,6 +16,7 @@
@@ -10,13 +10,37 @@ index b4322972..0bf7ece1 100644
  import torch
  import torch_npu
  from model.pytorch import WukongTorch
-@@ -64,6 +65,9 @@ experimental_config = torch_npu.profiler._ExperimentalConfig(
+@@ -35,6 +36,12 @@ sparse_inputs = torch.multinomial(
+ ).to(device)
+ dense_inputs = torch.rand(BATCH_SIZE, NUM_DENSE_FEATURES).to(device)
+ 
++def compare(eager_tensor, inductor_tensor, step):
++    try:
++        torch.testing.assert_close(eager_tensor, inductor_tensor, rtol=1e-4, atol=1e-4, equal_nan=True)
++        print(f"[OK] Tensor is matched in step:{step}.")
++    except AssertionError as e:
++        print(f"[Failed] Tensor dismatched in step {step}, error msg: {str(e)}")
+ # takes hyperparameters from the paper
+ model = WukongTorch(
+     num_layers=3,
+@@ -64,6 +71,11 @@ experimental_config = torch_npu.profiler._ExperimentalConfig(
      record_op_args=False,
      gc_detect_threshold=None,
  )
 +INDUCTOR_FLAG = os.getenv("INDUCTOR_FLAG", "0")
 +if INDUCTOR_FLAG == "1":
-+    model = torch.compile(model, backend="inductor")
++    model = torch.compile(model, dynamic=False, backend="inductor")
++if INDUCTOR_FLAG == "2":
++    model_accuracy = torch.compile(model, dynamic=False, backend="inductor")
  
  steps = 10
  with torch_npu.profiler.profile(
+@@ -84,4 +96,8 @@ with torch_npu.profiler.profile(
+ ) as prof:
+     for step in range(steps):
+         outputs = model(sparse_inputs, dense_inputs)
++        if INDUCTOR_FLAG == "2":
++            outputs_accuracy = model_accuracy(sparse_inputs, dense_inputs)
++            compare(outputs, outputs_accuracy, step)
++
+         prof.step()
