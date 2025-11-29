@@ -23,5 +23,7 @@
     "pre_cmd": ["pip install ultralytics"],
     "pip_install_self": false,
     "pip_install_requirements": true,
-    "extra_cmd": ["cp -r ../../dataset/bs ./data/images/","cp ../../ckpt/yolov5s.pt ."]
+    "extra_cmd": ["cp -r ../../dataset/bs ./data/images/","cp ../../ckpt/yolov5s.pt .",
+                  "pip install https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl --no-deps"
+    ]
 }
