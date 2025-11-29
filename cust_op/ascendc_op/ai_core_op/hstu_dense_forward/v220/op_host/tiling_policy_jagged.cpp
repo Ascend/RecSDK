@@ -48,6 +48,9 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     int64_t headNumK;
     int64_t headDimK;
     int64_t maxSeqLensK;
+    int64_t seqlenBatchSumV;
+    int64_t headNumV;
+    int64_t headDimV;
 
     auto seqOffsetQShape = context->GetOptionalInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
     batchSize = seqOffsetQShape.GetDim(0) - 1;
@@ -74,18 +77,26 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     headNumK = kShape.GetDim(1);
     headDimK = kShape.GetDim(2);
     maxSeqLensK = tiling.get_maxSeqLenk();
+    // V: [bs, n, d]
+    seqlenBatchSumV = vShape.GetDim(0);
+    headNumV = vShape.GetDim(1);
+    headDimV = vShape.GetDim(2);
 
     tiling.set_batchSize(batchSize);
     tiling.set_headNum(headNumQ);
     tiling.set_dim(headDimQ);
+    tiling.set_vDim(headDimV);
     tiling.set_seqLen(maxSeqLensQ);
 
-    OPS_CHECK(kShape != vShape, OPS_LOG_E("", "K, V shape mismatch"), return false);
+    OPS_CHECK(seqlenBatchSumK != seqlenBatchSumV, OPS_LOG_E("", "K, V seqLens mismatch"), return false);
+    OPS_CHECK(headNumK != headNumV, OPS_LOG_E("", "K, V headNum mismatch"), return false);
     OPS_CHECK(headDimQ != headDimK, OPS_LOG_E("", "Q, K, V headDIM Shape Check failed"), return false);
     OPS_CHECK(!GeneralShapeCheck(batchSize, maxSeqLensQ, headNumQ, headDimQ),
               OPS_LOG_E("", "Q Jagged Shape Check failed"), return false);
     OPS_CHECK(!GeneralShapeCheck(batchSize, maxSeqLensK, headNumK, headDimK),
               OPS_LOG_E("", "K Jagged Shape Check failed"), return false);
+    OPS_CHECK(!GeneralShapeCheck(batchSize, maxSeqLensK, headNumK, headDimV),
+              OPS_LOG_E("", "V Jagged Shape Check failed"), return false);
     if (headNumQ != headNumK) {
         OPS_CHECK((headNumQ % headNumK) != 0, OPS_LOG_E("", "For GQA, headNumQ must be divisible by headNumK"),
                   return false);

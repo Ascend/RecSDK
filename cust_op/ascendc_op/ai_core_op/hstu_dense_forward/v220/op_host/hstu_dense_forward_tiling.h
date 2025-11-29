@@ -31,6 +31,7 @@ TILING_DATA_FIELD_DEF(int64_t, headNum);
 TILING_DATA_FIELD_DEF(int64_t, headNumK);
 TILING_DATA_FIELD_DEF(int64_t, headRatio);
 TILING_DATA_FIELD_DEF(int64_t, dim);
+TILING_DATA_FIELD_DEF(int64_t, vDim);
 TILING_DATA_FIELD_DEF(int64_t, blockHeight);
 
 #ifdef SUPPORT_V200

@@ -73,7 +73,9 @@ def jagged_to_dense(jagged_tensor, seq_lens, head_nums, attn_dim):
 
 
 def dense_to_jagged(q, dense_tensor, seq_lens):
-    tensor = torch.zeros_like(q).cpu()
+    dense_dim = dense_tensor.shape[3]
+    # tensor: [b_s, n, d]
+    tensor = torch.zeros(q.shape[0], q.shape[1], dense_dim).cpu()
 
     offset = 0
     for batch_id, seq_len in enumerate(seq_lens):
@@ -90,7 +92,8 @@ class QKVShapeInfo:
     batch_size: int
     num_heads_q: int
     num_heads_k: int
-    attention_dim: int
+    head_dim_qk: int
+    head_dim_v: int
     max_seq_len: int
     min_seq_len: int = 1
 

@@ -280,7 +280,7 @@ template <typename qType, typename oType, bool enableBias, bool isQkUseUb, Causa
 __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::ComputeQkMatmul(
     uint32_t taskId)
 {
-    this->DoQkMatmulImpl(this->computeTaskInfo[taskId].ioOffset, this->computeTaskInfo[taskId].kvOffset, taskId,
+    this->DoQkMatmulImpl(this->computeTaskInfo[taskId].iOffset, this->computeTaskInfo[taskId].kvOffset, taskId,
                          this->computeTaskInfo[taskId].computeASeqLen, this->computeTaskInfo[taskId].computeBSeqLen,
                          this->headDim, this->midkGt);
 }
@@ -481,10 +481,14 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
         this->computeTaskInfo[taskId].qSeqId =
             (batchInnerOffset - this->computeTaskInfo[taskId].headId * this->computeTaskInfo[taskId].actualSeqLen) /
             this->blockHeight;
-        this->computeTaskInfo[taskId].ioOffset =
+        this->computeTaskInfo[taskId].iOffset =
             this->computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum + \
             this->computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDim + \
             this->computeTaskInfo[taskId].headId * this->headDim;
+        this->computeTaskInfo[taskId].oOffset =
+            this->computeTaskInfo[taskId].batchOffset * this->headDimV * this->headNum + \
+            this->computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDimV + \
+            this->computeTaskInfo[taskId].headId * this->headDimV;
         this->computeTaskInfo[taskId].computeASeqLen = computeASeqLen;
     }
 }

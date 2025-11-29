@@ -45,7 +45,7 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
     TORCH_CHECK(MaxSeqLenCheck(maxSeqLenK), "maxSeqLenK check failed");
     TORCH_CHECK(MaskCheck(maskType, maskNpu.defined()), "maskType check failed");
 
-    auto attnOutput = at::empty_like(denseQ);
+    auto attnOutput = at::empty({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options());
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
     const auto _acSeqOffsetT = at::Tensor();
