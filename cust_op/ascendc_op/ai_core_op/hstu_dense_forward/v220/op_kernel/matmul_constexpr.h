@@ -59,7 +59,7 @@ constexpr MatmulConfigMode configMode = MatmulConfigMode::CONFIG_NORM;
 
     constexpr MatmulShapeParams svShapeFp16Params = {
         BLOCK_HEIGHT_256, MAX_BLOCK_DIM, BLOCK_HEIGHT_256,
-        BLOCK_HEIGHT_128, MAX_BLOCK_DIM, BLOCK_HEIGHT_128
+        BLOCK_HEIGHT_128, BLOCK_HEIGHT_256, BASIC_K_64
     };
 
     // FP32
@@ -70,7 +70,7 @@ constexpr MatmulConfigMode configMode = MatmulConfigMode::CONFIG_NORM;
 
     constexpr MatmulShapeParams svShapeFp32Params = {
         BLOCK_HEIGHT_256, MAX_BLOCK_DIM, BLOCK_HEIGHT_256,
-        BLOCK_HEIGHT_128, MAX_BLOCK_DIM, BASIC_K_32
+        BLOCK_HEIGHT_128, BLOCK_HEIGHT_256, BASIC_K_32
     };
 #endif
 
