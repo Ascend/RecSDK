@@ -1,0 +1,60 @@
+[
+  {
+    "op": "LnMul",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "inputXGm",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "fp32"
+        ]
+      },
+      {
+        "name": "inputUGm",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "fp32"
+        ]
+      },
+      {
+        "name": "gammaGm",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "fp32"
+        ]
+      },
+      {
+        "name": "betaGm",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "fp32"
+        ]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "outputGm",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "fp32"
+        ]
+      }
+    ]
+  }
+]
