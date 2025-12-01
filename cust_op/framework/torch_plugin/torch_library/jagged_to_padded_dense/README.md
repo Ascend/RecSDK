@@ -23,11 +23,11 @@ torch.ops.fbgemm.jagged_to_padded_dense_forward(Tensor values, Tensor[] offsets,
 
 | 名称            | 输入/输出   | 参数类型      | 数据类型          | 数据格式                                 | 范围           | 说明                                                                     |
 |---------------|---------|-----------|---------------|--------------------------------------|--------------|------------------------------------------------------------------------|
-| values        | 输入      | Tensor    | float32/int64 | [dim0, dim1]                         |              |                                                                        |
+| values        | 输入      | Tensor    | float32/float16/bfloat16/int32/int64 | [dim0, dim1]                         |              |                                                                        |
 | offsets       | 输入      | Tensor[]  | int32/int64   |                                      | 数值必须从0开始依次递增 | list中tensor个数只能为1, 且tensor仅支持一维<br>  offsets内元素需用户自行保证合法性，否则可能导致算子执行失败 |
 | max_lengths   | 输入(属性)  | int/int[] | int           |                                      |              | max_length的元素值需大于0。类型为数组时，长度只能为1                                       |
 | padding_value | 输入(属性)  | float     | float         |                                      |              |
-| jagged_dense  | 输出(返回值) | Tensor    | float32/int64 | [len(offsets) - 1, max_length, dim1] |              |                                                                        |
+| jagged_dense  | 输出(返回值) | Tensor    | float32/float16/bfloat16/int32/int64 | [len(offsets) - 1, max_length, dim1] |              |                                                                        |
 
 # 运行算子样例
 
