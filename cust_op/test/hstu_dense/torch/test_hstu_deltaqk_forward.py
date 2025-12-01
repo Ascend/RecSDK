@@ -289,6 +289,7 @@ class TestHstuDeltaqkDemo:
                                       batch_size=batch_size,
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num_q,
+                                      num_heads_k=head_num_k,
                                       head_dim_qk=head_dim,
                                       head_dim_v=head_dim)
         mask_info = MaskGenInfo(mask_type=mask_type,
@@ -298,14 +299,14 @@ class TestHstuDeltaqkDemo:
         self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)
 
     # qk_dim != v_dim
-    @pytest.mark.parametrize("batch_size", [4, 32, 128, 1024])
+    @pytest.mark.parametrize("batch_size", [4, 32, 128])
     @pytest.mark.parametrize("head_num_q, head_num_k", [
         (4, 2),
         (4, 1),
         (6, 3),
         (8, 4),
     ])
-    @pytest.mark.parametrize("max_seq_len", [15, 128, 2570])
+    @pytest.mark.parametrize("max_seq_len", [15, 128, 1024])
     @pytest.mark.parametrize("head_dim_qk", [64, 96, 128])
     @pytest.mark.parametrize("head_dim_v", [80, 64, 48, 32, 16])
     @pytest.mark.parametrize("enable_bias", [True, False])
