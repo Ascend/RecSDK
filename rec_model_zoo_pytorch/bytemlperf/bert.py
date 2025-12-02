@@ -27,6 +27,7 @@ from transformers import BertModel
 
 from easydict import EasyDict as edict
 from datasets.fake_data import TestFakeDataHandler
+from datasets.squad import load_data
 from utils.handler import ModelHandler, get_params, get_opts, set_all_seed
 from utils.logger import logger
 
@@ -72,6 +73,6 @@ if __name__ == "__main__":
     model = BertHandler(params).to(params.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=params.learning_rate)
     handler = ModelHandler(
-        params, model, optimizer, None, TestFakeDataHandler(params)
+        params, model, optimizer, load_data, TestFakeDataHandler(params)
     )
     handler.run()

@@ -20,13 +20,14 @@ root_path = os.path.sep.join(root_path.split(os.path.sep)[:-2])
 sys.path.append(root_path)
 
 from deepctr_torch.models import DIEN
+from deepctr_torch.models.dien import *
 from deepctr_torch.inputs import DenseFeat, SparseFeat, VarLenSparseFeat
 from easydict import EasyDict as edict
 import torch
 import torch.nn as nn
 
-from datasets.aliccp import load_data
-from utils.handler import ModelHandler, get_params, get_opts
+from datasets.aliccp import load_data, TestAliccpHandler, get_spec
+from utils.handler import ModelHandler, get_params, get_opts, set_all_seed
 from utils.logger import logger
 from utils.self_gru import MyExtractor, MyInterestEvolving
 
@@ -106,28 +107,29 @@ class DIENHandler(nn.Module):
         cur_mode = params.mode
         if cur_mode == 'eval':
             cur_mode = 'val'
-        elif cur_mode == 'infer':
+        elif 'test' in cur_mode:
+            cur_mode = 'test'
+        else:
             cur_mode = 'test'
         for key in self.spec['one_hot_fields']:
             feat = SparseFeat(key, vocabulary_size=self.spec['vocab_length'][key] + 1,
-                              embedding_dim=params.embedding_size)
+                embedding_dim=params.embedding_size)
             self.feature_columns.append(feat)
         for key in self.spec['multi_hot_fields']:
             if MULTIHOT_MAP.get(key, None):
                 feat = SparseFeat(f'hist_{MULTIHOT_MAP[key]}', vocabulary_size=spec['vocab_length'][key] + 1,
-                                  embedding_dim=params.embedding_size)
+                embedding_dim=params.embedding_size)
             else:
                 feat = SparseFeat(f'hist_{key}', vocabulary_size=spec['vocab_length'][key] + 1,
-                                  embedding_dim=params.embedding_size)
+                embedding_dim=params.embedding_size)
             feat = VarLenSparseFeat(feat, maxlen=spec[f'{cur_mode}_max_length'][key], length_name='seq_length')
             self.feature_columns.append(feat)
         for key in self.spec['special_fields']:
             feat = SparseFeat(key, vocabulary_size=self.spec['vocab_length'][key] + 1,
-                              embedding_dim=params.embedding_size)
+            embedding_dim=params.embedding_size)
             feat = VarLenSparseFeat(feat, maxlen=spec[f'{cur_mode}_max_length'][key], length_name='seq_length')
             self.feature_columns.append(feat)
         self.emb_weights = {}
-
         self.model = MyDIEN(dnn_feature_columns=self.feature_columns,
                             history_feature_list=['206', '207', '216'],
                             dnn_hidden_units=params.dnn_hidden_size,
@@ -137,7 +139,6 @@ class DIENHandler(nn.Module):
     def forward(self, features, mode='train'):
         embeddings = []
         for key in self.spec['one_hot_fields']:
-            # tmp_emb = self.emb_weights.get(key)
             feature = features.get(key).to(params.device)
             feature = torch.where(feature == -1, torch.zeros_like(feature), feature)
             embeddings.append(feature[:, None])
@@ -173,28 +174,66 @@ class DIENHandler(nn.Module):
         return ctr_loss
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     params = get_params()
     params.update(
-        edict({
-            'reuse_hash': True,
-            'hash_bits': 32,
-
-            'dnn_hidden_size': [256, 128],
-            'att_hidden_size': [64, 16],
-
-            'extra_fields': 300,
-            'model': 'dien',
-        }))
+        edict(
+            {
+                "reuse_hash": True,
+                "hash_bits": 32,
+                "dnn_hidden_size": [
+                    1024,
+                    1024,
+                    1024,
+                    1024,
+                    256,
+                    256,
+                    256,
+                    256,
+                    128,
+                    128,
+                    128,
+                    128,
+                    ],
+                "att_hidden_size": [
+                    1024,
+                    1024,
+                    1024,
+                    1024,
+                    256,
+                    256,
+                    256,
+                    256,
+                    128,
+                    128,
+                    128,
+                    128,
+                    64,
+                    64,
+                    64,
+                    64,
+                    16,
+                    16,
+                    16,
+                    16,
+                    ],
+            "extra_fields": 100,
+            "model": "dien",
+            }
+            )
+    )
     params = get_opts(sys.argv, params)
+    set_all_seed(params)
+    params.dnn_hidden_size = [val * 2 for val in params.dnn_hidden_size]
+    params.att_hidden_size = [val * 2 for val in params.att_hidden_size]
     logger.info(params)
 
     # 加载数据
-    train_loader, test_loader, val_loader, spec = load_data(params)
-
+    spec = get_spec(params)
     model = DIENHandler(params, spec).to(params.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=params.learning_rate)
 
-    handler = ModelHandler(params, model, optimizer,
-                           train_loader, test_loader, val_loader)
+    handler = ModelHandler(
+        params, model, optimizer, load_data, TestAliccpHandler(params, spec)
+    )
     handler.run()
