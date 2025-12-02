@@ -57,7 +57,7 @@ def get_result(permute, device):
 @pytest.mark.parametrize("length", [i for i in range(5, 1025, 16)])
 @pytest.mark.parametrize("device", ["npu:0"])
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
-def test_invert_permute(length, device, dtype):
+def test_invert_permute_small(length, device, dtype):
     permute = generate_data(length, dtype)
     result_cpu = get_result(permute, "cpu")
     result_npu = get_result(permute, device)
@@ -67,7 +67,7 @@ def test_invert_permute(length, device, dtype):
 @pytest.mark.parametrize("length", [i for i in range(1031, 16385, 256)])
 @pytest.mark.parametrize("device", ["npu:0"])
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
-def test_invert_permute(length, device, dtype):
+def test_invert_permute_middle(length, device, dtype):
     permute = generate_data(length, dtype)
     result_cpu = get_result(permute, "cpu")
     result_npu = get_result(permute, device)
@@ -77,7 +77,7 @@ def test_invert_permute(length, device, dtype):
 @pytest.mark.parametrize("length", [i for i in range(16964, 1048577, 8192)])
 @pytest.mark.parametrize("device", ["npu:0"])
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
-def test_invert_permute(length, device, dtype):
+def test_invert_permute_large(length, device, dtype):
     permute = generate_data(length, dtype)
     result_cpu = get_result(permute, "cpu")
     result_npu = get_result(permute, device)
