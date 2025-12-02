@@ -87,35 +87,37 @@ function compile_ops_v220() {
                 continue
             fi
             cur_ver_op_dir=${dir_name}/${BUILD_VER}
-            echo "Entering directory: $dir_name, DIR: $dir"
-            cd "$cur_ver_op_dir"
-            for item in $support_310p_list; do
-                if [ "$item" == "$dir_name" ]; then
-                    bash ./run.sh ai_core-Ascend310P3
-                    new_op_name=mxrec_opp_"${dir_name}_310p".run
-                    cd "$dir_name"
-                    cp ./build_out/custom_opp*.run  "${new_op_name}"
-                    mv "${new_op_name}" "${opp_output_path}"
-                fi
-            done
-            cd "$ops_path"
-            cd "$cur_ver_op_dir"
-            for item in $support_A3_list; do
-                if [ "$item" == "$dir_name" ]; then
-                    bash ./run.sh ai_core-Ascend910_93
-                    new_op_name=mxrec_opp_"${dir_name}_A3".run
-                    cd "$dir_name"
-                    cp ./build_out/custom_opp*.run  "${new_op_name}"
-                    mv "${new_op_name}" "${opp_output_path}"
-                fi
-            done
-            cd "$ops_path"
-            cd "$cur_ver_op_dir"
-            bash ./run.sh ai_core-Ascend910B1
-            new_op_name=mxrec_opp_"${dir_name}".run
-            cd "$dir_name"
-            cp ./build_out/custom_opp*.run  "${new_op_name}"
-            mv "${new_op_name}" "${opp_output_path}"
+            if [ -d "$cur_ver_op_dir" ]; then
+                echo "Entering directory: $dir_name, DIR: $dir"
+                cd "$cur_ver_op_dir"
+                for item in $support_310p_list; do
+                    if [ "$item" == "$dir_name" ]; then
+                        bash ./run.sh ai_core-Ascend310P3
+                        new_op_name=mxrec_opp_"${dir_name}_310p".run
+                        cd "$dir_name"
+                        cp ./build_out/custom_opp*.run  "${new_op_name}"
+                        mv "${new_op_name}" "${opp_output_path}"
+                    fi
+                done
+                cd "$ops_path"
+                cd "$cur_ver_op_dir"
+                for item in $support_A3_list; do
+                    if [ "$item" == "$dir_name" ]; then
+                        bash ./run.sh ai_core-Ascend910_93
+                        new_op_name=mxrec_opp_"${dir_name}_A3".run
+                        cd "$dir_name"
+                        cp ./build_out/custom_opp*.run  "${new_op_name}"
+                        mv "${new_op_name}" "${opp_output_path}"
+                    fi
+                done
+                cd "$ops_path"
+                cd "$cur_ver_op_dir"
+                bash ./run.sh ai_core-Ascend910B1
+                new_op_name=mxrec_opp_"${dir_name}".run
+                cd "$dir_name"
+                cp ./build_out/custom_opp*.run  "${new_op_name}"
+                mv "${new_op_name}" "${opp_output_path}"
+            fi
         fi
     done
 }
