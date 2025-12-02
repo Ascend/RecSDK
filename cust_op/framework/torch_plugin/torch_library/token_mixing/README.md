@@ -13,14 +13,12 @@ torch.ops.mxrec.token_mixing(Tensor x, Tensor gamma, Tensor beta, float epsilon 
 ### 参数说明
 
 | 名称      | 输入/输出 | 参数类型 | 数据类型         | 数据格式       | 范围         | 说明                                  |
-|---------|--------|------|--------------|------------|------------|----------------------------------------|
-| x       | 输入     | Tensor | float16/float32/bfloat16 | [B, S, H] | `[]` | 仅支持三维张量S,H维度一致                |
-| gamma   | 输入     | Tensor | float16/float32/bfloat16 | [H] | `[]` | 仅支持一维张量              |
-| beta    | 输入     | Tensor | float16/float32/bfloat16 | [H] | `[]` | 仅支持一维张量              |
-| epsilon | 输入(属性)  | float | float   |           |          | 小整数，防止除零，默认值为1e-7    |
-| y (返回值) | 输出     | Tensor | float16/float32/bfloat16 | `[B, S, H]` | NA         | 返回融合算子归一化结果张量           |
-| mean (返回值) | 输出     | Tensor | float16/float32/bfloat16 | `[B, S]` | NA         | 返回融合算子归一化均值结果张量       |
-| rstd (返回值) | 输出     | Tensor | float16/float32/bfloat16 | `[B, S]` | NA         | 返回融合算子归一化标准差结果张量     |
+|---------|------------|------|--------------|------------|------------|----------------------------------------|
+| x       | 输入       | Tensor | float32 | [B, S, H] | `[]` | 仅支持三维张量S,H维度一致                |
+| gamma   | 输入       | Tensor | float32 | [H] | `[]` | 仅支持一维张量              |
+| beta    | 输入       | Tensor | float32 | [H] | `[]` | 仅支持一维张量              |
+| epsilon | 输入(属性)  | float | float   |           |          | 极小数，防止除零，默认值为1e-7    |
+| y (返回值) | 输出     | Tensor | float32 | [B, S, H] NA         | 返回融合算子归一化结果张量           |
 
 ### 算子调用示例
 
