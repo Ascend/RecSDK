@@ -27,7 +27,7 @@ import torch.nn.functional as F
 import numpy as np
 from easydict import EasyDict as edict
 
-from datasets.ml_1m import load_data, data_partition
+from datasets.ml_1m import load_data, data_partition, TestML1MHandler, get_item_num
 from utils.handler import ModelHandler, get_params, get_opts
 from utils.logger import logger
 
@@ -44,30 +44,19 @@ class PointWiseFeedForward(torch.nn.Module):
 
     def forward(self, inputs):
         outputs = self.dropout2(self.conv2(self.relu(self.dropout1(self.conv1(inputs.transpose(-1, -2))))))
-        outputs = outputs.transpose(-1, -2)  # as Conv1D requires (N, C, Length)
+        outputs = outputs.transpose(-1, -2)  
         return outputs
 
 
-# pls use the following self-made multihead attention layer
-# in case your pytorch version is below 1.16 or for other reasons
-# https://github.com/pmixer/TiSASRec.pytorch/blob/master/model.py
-
-
 class SASRec(torch.nn.Module):
-    def __init__(self, params, spec):
+    def __init__(self, params):
         super(SASRec, self).__init__()
         self.params = params
-        self.spec = spec
-        user_num = spec["user_num"]
-        item_num = spec["item_num"]
 
-        self.user_num = user_num
-        self.item_num = item_num
         self.dev = params.device
         self.norm_first = params.norm_first
 
-        # https://stackoverflow.com/questions/42704283/adding-l1-l2-regularization-in-pytorch
-        self.item_emb = torch.nn.Embedding(self.item_num + 1, params.embedding_size, padding_idx=0)
+        self.item_emb = torch.nn.Embedding(params.item_num + 1, params.embedding_size, padding_idx=0)
         self.pos_emb = torch.nn.Embedding(params.maxlen + 1, params.embedding_size, padding_idx=0)
         self.emb_dropout = torch.nn.Dropout(p=params.dropout_rate)
 
@@ -82,7 +71,8 @@ class SASRec(torch.nn.Module):
             new_attn_layernorm = torch.nn.LayerNorm(params.embedding_size, eps=1e-8)
             self.attention_layernorms.append(new_attn_layernorm)
 
-            new_attn_layer = torch.nn.MultiheadAttention(params.embedding_size, params.num_heads, params.dropout_rate)
+            new_attn_layer = torch.nn.MultiheadAttention(
+                params.embedding_size, params.num_heads, params.dropout_rate)
             self.attention_layers.append(new_attn_layer)
 
             new_fwd_layernorm = torch.nn.LayerNorm(params.embedding_size, eps=1e-8)
@@ -96,61 +86,68 @@ class SASRec(torch.nn.Module):
         self.bce = nn.BCEWithLogitsLoss()
 
     def log2feats(self, log_seqs): 
-        seqs = self.item_emb(torch.tensor(log_seqs, dtype=torch.long).to(self.dev))
+        seqs = self.item_emb(log_seqs)
         seqs *= self.item_emb.embedding_dim**0.5
-        poss = np.tile(np.arange(1, log_seqs.shape[1] + 1), [log_seqs.shape[0], 1])
+        poss = torch.arange(1, log_seqs.shape[1] + 1, device=self.dev).repeat(log_seqs.shape[0], 1)
         poss *= log_seqs != 0
-        seqs += self.pos_emb(torch.tensor(poss).to(self.dev))
+        seqs += self.pos_emb(poss)
         seqs = self.emb_dropout(seqs)
 
         tl = seqs.shape[1]  # time dim len for enforce causality
         attention_mask = ~torch.tril(torch.ones((tl, tl), dtype=torch.bool, device=self.dev))
 
-        layers_length = len(self.attention_layers)
-        for i in range(layers_length):
+        for x,_ in enumerate(self.attention_layers):
             seqs = torch.transpose(seqs, 0, 1)
             if self.norm_first:
-                x = self.attention_layernorms[i](seqs)
-                mha_outputs, _ = self.attention_layers[i](x, x, x, attn_mask=attention_mask)
+                out = self.attention_layernorms[x](seqs)
+                mha_outputs, _ = self.attention_layers[x](out, out, out, attn_mask=attention_mask)
                 seqs = seqs + mha_outputs
                 seqs = torch.transpose(seqs, 0, 1)
-                seqs = seqs + self.forward_layers[i](self.forward_layernorms[i](seqs))
+                seqs = seqs + self.forward_layers[x](self.forward_layernorms[x](seqs))
             else:
-                mha_outputs, _ = self.attention_layers[i](seqs, seqs, seqs, attn_mask=attention_mask)
-                seqs = self.attention_layernorms[i](seqs + mha_outputs)
+                mha_outputs, _ = self.attention_layers[x](seqs, seqs, seqs, attn_mask=attention_mask)
+                seqs = self.attention_layernorms[x](seqs + mha_outputs)
                 seqs = torch.transpose(seqs, 0, 1)
-                seqs = self.forward_layernorms[i](seqs + self.forward_layers[i](seqs))
+                seqs = self.forward_layernorms[x](seqs + self.forward_layers[x](seqs))
 
         log_feats = self.last_layernorm(seqs)  # (U, T, C) -> (U, -1, C)
 
         return log_feats
 
     def forward(self, features, mode="train"):  # for training
+        if "user_ids" in features.keys():
+            return self.predict(
+                features["user_ids"], features["seq"], features["item_ids"]
+            )
         log_seqs = features["seq"]
         pos_seqs = features["pos"]
         neg_seqs = features["neg"]
-        log_feats = self.log2feats(log_seqs)  # user_ids hasn't been used yet
+        if not torch.is_tensor(log_seqs):
+            log_seqs = torch.tensor(log_seqs, dtype=torch.long).to(self.dev)
+            pos_seqs = torch.tensor(pos_seqs).to(self.dev)
+            neg_seqs = torch.tensor(neg_seqs).to(self.dev)
 
-        pos_embs = self.item_emb(torch.tensor(pos_seqs).to(self.dev))
-        neg_embs = self.item_emb(torch.tensor(neg_seqs).to(self.dev))
+        log_feats = self.log2feats(log_seqs)  # user_ids hasn't been used yet
+        pos_embs = self.item_emb(pos_seqs)
+        neg_embs = self.item_emb(neg_seqs)
 
         pos_logits = (log_feats * pos_embs).sum(dim=-1)
         neg_logits = (log_feats * neg_embs).sum(dim=-1)
 
-        return [F.sigmoid(pos_logits), F.sigmoid(neg_logits)]
+        return {"ctr": [F.sigmoid(pos_logits), F.sigmoid(neg_logits)]}
 
     def predict(self, user_ids, log_seqs, item_indices):  # for inference
         log_feats = self.log2feats(log_seqs)  # user_ids hasn't been used yet
 
         final_feat = log_feats[:, -1, :]  # only use last QKV classifier, a waste
 
-        item_embs = self.item_emb(torch.LongTensor(item_indices).to(self.dev))  # (U, I, C)
+        item_embs = self.item_emb(item_indices)  # (U, I, C)
 
         logits = item_embs.matmul(final_feat.unsqueeze(-1)).squeeze(-1)
 
         preds = self.pos_sigmoid(logits)  # rank same item list for different users
 
-        return preds  # (U, I)
+        return {"ctr": preds}  # (U, I)
 
     def loss(self, outputs, labels):
         total_loss = self.bce(outputs[0], torch.ones(outputs[0].shape, device=outputs[0].device))
@@ -159,8 +156,18 @@ class SASRec(torch.nn.Module):
 
 
 class SASRecHandler(ModelHandler):
-    def __init__(self, params, model, optimizer, train_loader, test_loader, val_loader):
-        super().__init__(params, model, optimizer, train_loader, test_loader, val_loader)
+    def __init__(self, 
+                params, 
+                model, 
+                optimizer, 
+                load_data_func,
+                test_handler=None):
+        super().__init__(
+            params, 
+            model, 
+            optimizer, 
+            load_data_func,
+            test_handler=test_handler)
 
     def train(self):
         self.model.train()
@@ -171,6 +178,7 @@ class SASRecHandler(ModelHandler):
 
         for epoch in range(self.params.num_epochs):
             # 训练阶段
+            self.model.train()
             running_loss = 0.0
 
             running_loss = self.run_train_one_epoch(epoch)
@@ -195,12 +203,12 @@ class SASRecHandler(ModelHandler):
             logger.info("-" * 50)
 
     def eval(self, epoch=0):
-        self.model.eval()
+        model.eval()
         dataset = data_partition(self.params.dataset)
         [train, valid, test, usernum, itemnum] = copy.deepcopy(dataset)
 
-        NDCG = 0.0
-        HT = 0.0
+        ndcg = 0.0
+        ht = 0.0
         valid_user = 0.0
 
         if usernum > 10000:
@@ -208,48 +216,45 @@ class SASRecHandler(ModelHandler):
         else:
             users = range(1, usernum + 1)
         
-        profiler = self.get_profiler()
-        with profiler as prof:
-            for user in users:
+        for user in users:
 
-                if len(train[user]) < 1 or len(test[user]) < 1:
-                    continue
+            if len(train[user]) < 1 or len(test[user]) < 1:
+                continue
 
-                seq = np.zeros([params.maxlen], dtype=np.int32)
-                idx = self.params.maxlen - 1
-                seq[idx] = valid[user][0]
+            seq = np.zeros([params.maxlen], dtype=np.int32)
+            idx = self.params.maxlen - 1
+            seq[idx] = valid[user][0]
+            idx -= 1
+            for i in reversed(train[user]):
+                seq[idx] = i
                 idx -= 1
-                for i in reversed(train[user]):
-                    seq[idx] = i
-                    idx -= 1
-                    if idx == -1:
-                        break
-                rated = set(train[user])
-                rated.add(0)
-                item_idx = [test[user][0]]
-                for _ in range(100):
+                if idx == -1:
+                    break
+            rated = set(train[user])
+            rated.add(0)
+            item_idx = [test[user][0]]
+            for _ in range(100):
+                t = np.random.randint(1, itemnum + 1)
+                while t in rated:
                     t = np.random.randint(1, itemnum + 1)
-                    while t in rated:
-                        t = np.random.randint(1, itemnum + 1)
-                    item_idx.append(t)
+                item_idx.append(t)
 
-                predictions = -self.model.predict(*[np.array(it) for it in [[user], [seq], item_idx]])
-                predictions = predictions[0]  # - for 1st argsort DESC
-                rank = predictions.argsort().argsort()[0].item()
+            predictions = model.predict(*[np.array(it) for it in [[user], [seq], item_idx]])
+            predictions = predictions[0]  # - for 1st argsort DESC
+            rank = predictions.argsort().argsort()[0].item()
 
-                valid_user += 1
+            valid_user += 1
 
-                if rank < 10:
-                    NDCG += 1 / np.log2(rank + 2)
-                    HT += 1
-                if valid_user % 100 == 0:
-                    sys.stdout.flush()
-                if ("cuda" in self.params.device or "npu" in self.params.device) and self.params.profiling_mode:
-                    prof.step()
-        NDCG_10 = NDCG / valid_user
-        HR_10 = HT / valid_user
-        logger.info("test (NDCG@10: %.4f, HR@10: %.4f)" % (NDCG_10, HR_10))
-        return NDCG_10
+            if rank < 10:
+                ndcg += 1 / np.log2(rank + 2)
+                ht += 1
+            if valid_user % 100 == 0:
+                logger.info(".",end="")
+                sys.stdout.flush()
+        ndcg_10 = ndcg / valid_user
+        hr_10 = ht / valid_user
+        logger.info("test (NDCG@10: %.4f, HR@10: %.4f)" % (ndcg_10, hr_10))
+        return ndcg_10
 
     def test(self, epoch=0):
         return self.eval(epoch)
@@ -260,15 +265,12 @@ if __name__ == "__main__":
     params.update(
         edict(
             {
-                "maxlen": 50,
-                "attention_dim": 16,
-                "num_heads": 1,
+                "maxlen": 150,
+                "num_heads": 4,
                 "dropout_rate": 0.2,
                 "batch_size": 128,
                 "norm_first": False,
-                "num_blocks": 2,
-                # 'field_size': 50,
-                "field_size": 50,
+                "num_blocks": 16,
                 "embedding_size": 32,
                 "model": "sasrec",
                 "dataset": "ml-1m",
@@ -276,12 +278,13 @@ if __name__ == "__main__":
         )
     )
     params = get_opts(sys.argv, params)
+    logger.info(params)
 
     # 加载数据
-    train_loader, test_loader, val_loader, spec = load_data(params)
+    params.item_num = get_item_num(params.dataset)
 
-    model = SASRec(params, spec).to(params.device)
+    model = SASRec(params).to(params.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=params.learning_rate)
 
-    handler = SASRecHandler(params, model, optimizer, train_loader, test_loader, val_loader)
+    handler = SASRecHandler(params, model, optimizer, load_data, TestML1MHandler(params))
     handler.run()

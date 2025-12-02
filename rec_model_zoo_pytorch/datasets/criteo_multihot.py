@@ -25,12 +25,27 @@ import torch
 import pandas as pd
 
 from utils.logger import logger
-from utils.common import Profiler, save_json
+from utils.common import get_loop_element
 from utils.handler import TestHandler
 from sklearn.metrics import roc_auc_score
 
-CRITEO_NUM = {"train": 33003326, "val": 8250124, "test": 4587176}
+CAT_FEATURE_COUNT = 26
+NUM_EMBEDDINGS_PER_FEATURE = [
+    1000000,39060,17295,7424,20265,
+    3,7122,1543,63,1000000,
+    3067956,405282,10,2209,11938,
+    155,4,976,14,1000000,
+    1000000,1000000,590152,12973,108,36
+]
+MULTI_HOT_SIZES = [
+    3,2,1,2,6,
+    1,1,1,1,7,
+    3,8,1,6,9,
+    5,1,1,1,12,
+    100,27,10,3,1,1
+]
 
+CRITEO_NUM = {"train": 33003326, "val": 8250124, "test": 4587176}
 
 class CriteoDataset(Dataset):
     def __init__(self, params, filepath, mode, shuffle=False):
@@ -114,27 +129,21 @@ def load_data(params):
     val_loader = generate_dataloader(val_dataset)
     return train_loader, test_loader, val_loader
 
-class TestCriteoHandler(TestHandler):
+class TestCriteoMultihotHandler(TestHandler):
     def __init__(self, params):
         super().__init__(params)
-
+        
+    
     def generate_data(self, batch_size):
         features = {}
         device = self.params.device
-        seq_len = self.params.field_size
-        if 0 not in self.params.random_seqlen:
-            seq_len = random.randint(self.params.random_seqlen[0], self.params.random_seqlen[1])
-        features["feat_ids"] = torch.randint(
-            0, 32, (batch_size, seq_len)
-        ).to(device)
-        features["feat_vals"] = torch.rand((batch_size, seq_len)).to(
-            device
-        )
-        if 0 not in self.params.random_seqlen:
-            valid_lengths = torch.randint(low=1, high=seq_len + 1, size=(batch_size, 1))
-            mask = torch.arange(seq_len) < valid_lengths
-            mask = mask.to(device)
-            features["feat_ids"] = features["feat_ids"] * mask
-            features["feat_vals"] = features["feat_vals"] * mask
+        feat_ids = []
+        for i in range(self.params.multi_fields_count):             
+            dim = get_loop_element(NUM_EMBEDDINGS_PER_FEATURE, i)            
+            length = get_loop_element(MULTI_HOT_SIZES, i)             
+            feat_ids.append(torch.randint(0, dim ,(batch_size, length)))
+        features["feat_ids"] = torch.concat(feat_ids,dim=-1).to(device)
+        features["feat_vals"] = torch.rand((batch_size, 13)).to(device)
         return features
+
 

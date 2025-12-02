@@ -28,9 +28,10 @@ from easydict import EasyDict as edict
 from torch.fx import symbolic_trace
 import pandas as pd
 
-from utils.common import evaluate_model, savSe_json, Profiler
+from utils.common import evaluate_model, save_json, Profiler
 from utils.logger import logger
 from utils.capturing_interpreter import CapturingInterpreter, to_clean_cpu_tensor
+from utils.compare_result import compare_captured_data
 
 
 def get_params():
@@ -114,6 +115,18 @@ def get_fun_argument(parser):
         default="false",
         choices=["true", "false"],
         help="是否启用动态batch_size输入，会忽略test_batch_size设置每个step采用大小batch_size输入",
+    )
+    parser.add_argument(
+        "--check_mode",
+        type=str,
+        default="model",
+        choices=["model", "layer"],
+        help="对比精度的等级，支持模型整体对比与每层对比",
+    )
+    parser.add_argument(
+        "--gpu_data_path",
+        type=str,
+        help="gpu数据路径",
     )
     parser.add_argument("--seed", type=int, default=2025, help="随机数种子")
     parser.add_argument('--random_seqlen', nargs='+', type=int, default=[0],
@@ -318,7 +331,8 @@ class TestHandler:
                     new_batch["static_output"] = model(new_batch["static_input"])
             else:
                 for _ in range(3):
-                    _ = model(new_batch["static_input"])
+                    with torch.no_grad():
+                        _ = model(new_batch["static_input"])
                 torch.cuda.synchronize()
 
                 with torch.cuda.graph(new_batch["graph"]):
@@ -777,76 +791,99 @@ class ModelHandler:
                     torch.nn.init.constant_(m.bias, 0)
                     logger.debug(f"Initialized bias of {m.__class__.__name__} to 0")
 
-    def get_layer_output_with_hook(self):
-        self.model.eval()
+    def get_layer_output_with_hook(self, input):
         captured_data = collections.OrderedDict()
         # 注册hook
         register_forward_output_hook(self.model, captured_data)
-        # 获取1批次数据
-        loader_iterator = iter(self.test_loader)
-        inputs, labels = next(loader_iterator)
-        logger.info(f"input: {inputs}")
-
         logger.info("\nrunning model...")
-        with torch.no_grad():
-            output = self.model(inputs)
-        return captured_data, output
-
-    def get_layer_result(self):
-        # 保存初始权重
-        saved_path = os.path.join(self.saved_dir, "init_val.pth")
-        logger.info(f"saving init checkpoint to {saved_path}!")
-        torch.save(self.model.state_dict(), saved_path)
         self.model.eval()  # 设置为评估模式
-        loader_iterator = iter(self.test_loader)
-        inputs, labels = next(loader_iterator)
-        logger.info(f"input: {inputs}")
-        layer_result = None
-        if self.params.graph or self.params.compile:
-            logger.info(f"graph: {self.params.graph}, compile: {self.params.compile}, get total data only.")
-            output = (
+        with torch.no_grad():
+            self.model(input)
+        return captured_data
+
+    def save_infer_result(self, data, filename):
+        infer_result_dir = self.params.get("infer_result_dir", "./infer_result/")
+        os.makedirs(infer_result_dir, exist_ok=True)
+        file_path = os.path.join(infer_result_dir, filename)
+        torch.save(data, file_path)
+        logger.info(f"\n--- data saved to: {file_path} ---")
+
+    def get_total_result(self, inputs):
+        self.model.eval()  # 设置为评估模式
+        with torch.no_grad():
+            outputs = (
                 self.run_manual_graph(inputs, "val")
                 if self.manual_graph
                 else self.model(inputs, "val")
             )
-        else:
-            try:
-                # 尝试使用torch.fx对模型进行符号化追踪
-                logger.info("try to trace model")
-                traced_model = symbolic_trace(self.model)
-                logger.info("model trace success!")
-                # 使用Interpreter运行模型
-                capture_interpreter = CapturingInterpreter(traced_model)
-                logger.info("\nrunning model with interpreter...")
-                with torch.no_grad():
-                    output = capture_interpreter.run(inputs)
-                layer_result = capture_interpreter.captured_data
-            except Exception as e:
-                logger.info(f"model trace failed: {e}, capture data with hook")
-                layer_result, output = self.get_layer_output_with_hook()
-
-        logger.info(f"output: {output}")
         total_result = {
             self.params.model: {
                 "type": "total_model",
                 "input": to_clean_cpu_tensor(inputs),
-                "output": to_clean_cpu_tensor(output),
+                "output": to_clean_cpu_tensor(outputs),
             }
         }
+        return total_result
 
-        logger.info(f"\n--- saving data... ---")
-        layer_result_dir = "./infer_result/"
-        os.makedirs(layer_result_dir, exist_ok=True)
-        result_filename = self.params.device + "_" + self.params.model
-        result_path = os.path.join(layer_result_dir, result_filename)
-        torch.save(total_result, result_path)
-        logger.info(f"\n--- total data saved to: {result_path} ---")
+    def check_precision_with_gpu(self):
+        # 准备参数配置
+        set_all_seed(self.params)
+        gpu_data_path = self.params.get("gpu_data_path", f"./infer_result/cuda:0_{self.params.model}_total_result")
+        check_mode = self.params.check_mode
 
-        if layer_result is not None:
-            layer_result_filename = result_filename + "_layer"
-            layer_result_path = os.path.join(layer_result_dir, layer_result_filename)
-            torch.save(layer_result, layer_result_path)
-            logger.info(f"\n--- layer data saved to:{layer_result_path} ---")
+        # 保存初始权重
+        saved_path = os.path.join(self.saved_dir, "init_val.pth")
+        torch.save(self.model.state_dict(), saved_path)
+        logger.info(f"save init checkpoint to {saved_path}!")
+
+        # 设置精度对比模式
+        if self.params.graph or self.params.compile:
+            logger.info(f"graph: {self.params.graph}, compile: {self.params.compile}, change check mode to: model.")
+            check_mode = "model"
+
+        # 加载gpu数据
+        try:
+            gpu_data = torch.load(gpu_data_path, map_location=self.params.device, weights_only=False)
+            logger.info(f"load gpu data from file: {gpu_data_path} success! will run infer and check precision")
+        except Exception as e:
+            gpu_data = None
+            logger.info(f"load gpu data from file: {gpu_data_path} failed! - {e}, will save data only")
+        logger.info("generate input randomly")
+        inputs = self.test_handler.generate_data(self.params.batch_size)
+
+        # 获取输出
+        if check_mode == "model":
+            logger.info(f"check mode: model, run infer and get total data")
+            total_result = self.get_total_result(inputs)
+            filename = f"{self.params.device}_{self.params.model}_total_result.pt"
+            self.save_infer_result(total_result, filename)
+            if gpu_data:
+                logger.info("compare model result")
+                compare_captured_data(
+                    gpu_data,
+                    total_result,
+                    output_excel_path=f"./infer_result/{self.params.model}_check_precision_model.xlsx",
+                    rel_error_threshold=2e-3,  # 相对误差阈值
+                    abs_error_threshold=2e-3,  # 绝对误差阈值 (可根据需要调整)
+                    print_result=True
+                )
+        elif check_mode == "layer":
+            logger.info(f"check mode: layer, capture layer data with hook")
+            layer_result = self.get_layer_output_with_hook(inputs)
+            filename = f"{self.params.device}_{self.params.model}_layer_result.pt"
+            self.save_infer_result(layer_result, filename)
+            if gpu_data:
+                logger.info("compare layer result")
+                compare_captured_data(
+                    gpu_data,
+                    layer_result,
+                    output_excel_path=f"./infer_result/{self.params.model}_check_precision_layer.xlsx",
+                    rel_error_threshold=2e-3,  # 相对误差阈值
+                    abs_error_threshold=2e-3  # 绝对误差阈值 (可根据需要调整)
+                )
+        else:
+            logger.error(f"invalid params check_mode: {check_mode}")
+            return
 
     def run(self):
         if self.params["mode"] == "train":
@@ -858,14 +895,14 @@ class ModelHandler:
         elif self.params["mode"] == "test_qps":
             self.test_handler.test_qps(self.model)
         elif self.params["mode"] == "get_layer_result":
-            self.get_layer_result()
+            self.check_precision_with_gpu()
 
 
 def get_hook(name, captured_data, module):
     def hook(model, inputs, output):
         layer_name = f"{name} ({module.__class__.__name__})"
         captured_data[layer_name] = {
-            "type": "named_module",
+            "type": module.__class__.__name__,
             "input": to_clean_cpu_tensor(inputs),
             "output": to_clean_cpu_tensor(output),
             "parameter": to_clean_cpu_tensor(module.state_dict()),
@@ -882,3 +919,4 @@ def register_forward_output_hook(model, captured_data):
             logger.info(
                 f"Registered hook for layer: {name} ({layer.__class__.__name__})"
             )
+            

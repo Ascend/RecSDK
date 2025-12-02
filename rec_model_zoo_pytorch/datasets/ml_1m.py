@@ -13,14 +13,16 @@
 # limitations under the License.
 # ==============================================================================
 import os
-from multiprocessing import Process, Queue
 from collections import defaultdict
+from multiprocessing import Process, Queue
 
 import numpy as np
+import torch
+import tensorflow as tf
 
 from torch.utils.data import Dataset, DataLoader
-
-np.random.seed(2024)
+from utils.handler import TestHandler
+from utils.logger import logger
 
 
 class Ml1mDataset(Dataset):
@@ -36,7 +38,9 @@ class Ml1mDataset(Dataset):
         return self.length
 
     def __getitem__(self, idx):
-        batch_features = process_one_batch_data(self.params, self.dataset, self.usernum, self.itemnum)
+        batch_features = process_one_batch_data(
+            self.params, self.dataset, self.usernum, self.itemnum
+        )
         return batch_features, None
 
 
@@ -55,12 +59,18 @@ def load_data(params):
     train_loader = generate_dataloader(train_dataset)
     test_loader = generate_dataloader(test_dataset)
     val_loader = generate_dataloader(val_dataset)
-    spec = {"user_num": user_num, "item_num": item_num}
-    return train_loader, user_valid, user_test, spec
+    return train_loader, test_loader, val_loader
 
 
 def process_one_batch_data(args, raw_data, usernum, itemnum):
-    sampler = WarpSampler(raw_data, usernum, itemnum, batch_size=args.batch_size, maxlen=args.maxlen, n_workers=10)
+    sampler = WarpSampler(
+        raw_data,
+        usernum,
+        itemnum,
+        batch_size=args.batch_size,
+        maxlen=args.maxlen,
+        n_workers=10,
+    )
     u, seq, pos, neg = sampler.next_batch()  # tuples to ndarray
     u, seq, pos, neg = np.array(u), np.array(seq), np.array(pos), np.array(neg)
     features = {"seq": seq, "pos": pos, "neg": neg}
@@ -68,69 +78,70 @@ def process_one_batch_data(args, raw_data, usernum, itemnum):
 
 
 # sampler for batch generation
-def random_neq(left, right, sequence):
-    tgt = np.random.randint(left, right)
-    while tgt in sequence:
-        tgt = np.random.randint(left, right)
-    return tgt
+def random_neq(l, r, s):
+    t = np.random.randint(l, r)
+    while t in s:
+        t = np.random.randint(l, r)
+    return t
 
 
-class ML1MSampler:
-    def __init__(self, user_train, user_num, item_num, batch_size, maxlen):
-        self.user_train = user_train
-        self.user_num = user_num
-        self.item_num = item_num
-        self.batch_size = batch_size
-        self.maxlen = maxlen
+def sample_function(
+    user_train, usernum, itemnum, batch_size, maxlen, result_queue, seed_number
+):
+    def sample(uid):
 
-    def sample_function(self, result_queue):
-        def sample(uid):
+        while len(user_train[uid]) <= 1:
+            uid = np.random.randint(1, usernum + 1)
 
-            # uid = np.random.randint(1, usernum + 1)
-            while len(self.user_train[uid]) <= 1:
-                uid = np.random.randint(1, self.user_num + 1)
+        seq = np.zeros([maxlen], dtype=np.int32)
+        pos = np.zeros([maxlen], dtype=np.int32)
+        neg = np.zeros([maxlen], dtype=np.int32)
+        nxt = user_train[uid][-1]
+        idx = maxlen - 1
 
-            seq = np.zeros([self.maxlen], dtype=np.int32)
-            pos = np.zeros([self.maxlen], dtype=np.int32)
-            neg = np.zeros([self.maxlen], dtype=np.int32)
-            nxt = self.user_train[uid][-1]
-            idx = self.maxlen - 1
+        ts = set(user_train[uid])
+        for i in reversed(user_train[uid][:-1]):
+            seq[idx] = i
+            pos[idx] = nxt
+            if nxt != 0:
+                neg[idx] = random_neq(1, itemnum + 1, ts)
+            nxt = i
+            idx -= 1
+            if idx == -1:
+                break
 
-            ts = set(self.user_train[uid])
-            for i in reversed(self.user_train[uid][:-1]):
-                seq[idx] = i
-                pos[idx] = nxt
-                if nxt != 0:
-                    neg[idx] = random_neq(1, self.item_num + 1, ts)
-                nxt = i
-                idx -= 1
-                if idx == -1:
-                    break
+        return (uid, seq, pos, neg)
 
-            return (uid, seq, pos, neg)
-
-        uids = np.arange(1, self.user_num + 1, dtype=np.int32)
-        counter = 0
-        while True:
-            if counter % self.user_num == 0:
-                np.random.shuffle(uids)
-            one_batch = []
-            for i in range(self.batch_size):
-                one_batch.append(sample(uids[counter % self.user_num]))
-                counter += 1
-            result_queue.put(zip(*one_batch))
+    np.random.seed(seed_number)
+    uids = np.arange(1, usernum + 1, dtype=np.int32)
+    counter = 0
+    while True:
+        if counter % usernum == 0:
+            np.random.shuffle(uids)
+        one_batch = []
+        for _ in range(batch_size):
+            one_batch.append(sample(uids[counter % usernum]))
+            counter += 1
+        result_queue.put(zip(*one_batch))
 
 
 class WarpSampler(object):
-    def __init__(self, User, usernum, itemnum, batch_size=64, maxlen=10, n_workers=1):
+    def __init__(self, user, usernum, itemnum, batch_size=64, maxlen=10, n_workers=1):
         self.result_queue = Queue(maxsize=n_workers * 10)
         self.processors = []
-        sampler = ML1MSampler(User, usernum, itemnum, batch_size, maxlen)
-        for i in range(n_workers):
+        for _ in range(n_workers):
             self.processors.append(
                 Process(
-                    target=sampler.sample_function,
-                    args=(self.result_queue, ),
+                    target=sample_function,
+                    args=(
+                        user,
+                        usernum,
+                        itemnum,
+                        batch_size,
+                        maxlen,
+                        self.result_queue,
+                        np.random.randint(2e9),
+                    ),
                 )
             )
             self.processors[-1].daemon = True
@@ -144,35 +155,78 @@ class WarpSampler(object):
             p.terminate()
             p.join()
 
+def get_item_num(fname):
+    itemnum = 0
+    root_path = os.path.abspath(__file__)
+    
+    # assume user/item index starting from 1
+    with open(
+        os.path.join(
+            os.path.sep.join((root_path.split(os.path.sep)[:-1])), fname, f"{fname}.txt"
+        )
+    ) as f:
+        for line in f:
+            _, i = line.rstrip().split(" ")
+            i = int(i)
+            itemnum = max(i, itemnum)
+    return itemnum
 
 # train/val/test data generation
 def data_partition(fname):
     usernum = 0
     itemnum = 0
-    User = defaultdict(list)
+    user = defaultdict(list)
     user_train = {}
     user_valid = {}
     user_test = {}
     root_path = os.path.abspath(__file__)
-    with open(os.path.join(os.path.sep.join((root_path.split(os.path.sep)[:-1])), fname, f"{fname}.txt")) as f:
+    
+    # assume user/item index starting from 1
+    with open(
+        os.path.join(
+            os.path.sep.join((root_path.split(os.path.sep)[:-1])), fname, f"{fname}.txt"
+        )
+    ) as f:
         for line in f:
             u, i = line.rstrip().split(" ")
             u = int(u)
             i = int(i)
             usernum = max(u, usernum)
             itemnum = max(i, itemnum)
-            User[u].append(i)
+            user[u].append(i)
 
-    for user in User:
-        nfeedback = len(User[user])
+    for u in user:
+        nfeedback = len(user[u])
         if nfeedback < 3:
-            user_train[user] = User[user]
-            user_valid[user] = []
-            user_test[user] = []
+            user_train[u] = user[u]
+            user_valid[u] = []
+            user_test[u] = []
         else:
-            user_train[user] = User[user][:-2]
-            user_valid[user] = []
-            user_valid[user].append(User[user][-2])
-            user_test[user] = []
-            user_test[user].append(User[user][-1])
+            user_train[u] = user[u][:-2]
+            user_valid[u] = []
+            user_valid[u].append(user[u][-2])
+            user_test[u] = []
+            user_test[u].append(user[u][-1])
     return [user_train, user_valid, user_test, usernum, itemnum]
+
+
+class TestML1MHandler(TestHandler):
+    def __init__(self, params):
+        super().__init__(params)
+
+    def generate_data(self, batch_size):
+        features = {}
+        device = self.params.device
+        features["seq"] = torch.tensor(
+            np.random.randint(0, 3416, (batch_size, self.params.maxlen)), 
+            dtype=torch.long
+        ).to(device)
+        features["user_ids"] = torch.tensor(
+            np.random.randint(0, 3416, (batch_size, self.params.maxlen))
+        ).to(device)
+        features["item_ids"] = torch.tensor(
+            np.random.randint(0, 3416, (batch_size, 101))
+        ).to(device)
+
+        return features
+    
