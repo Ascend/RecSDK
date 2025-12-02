@@ -1,0 +1,791 @@
+Subject: [PATCH] GPU_
+---
+Index: examples/hstu/modules/utils.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/examples/hstu/modules/utils.py b/examples/hstu/modules/utils.py
+--- a/examples/hstu/modules/utils.py	(revision 062659385e5fffc249a89a9f1abd814dc23f9abb)
++++ b/examples/hstu/modules/utils.py	(date 1764319253538)
+@@ -14,6 +14,7 @@
+ # limitations under the License.
+ import itertools
+ from typing import Dict, Optional
++import os
+ 
+ import torch
+ from dataset.utils import RankingBatch
+@@ -238,9 +239,16 @@
+         seqlen_offsets = seqlen_offsets // 2
+         max_seqlen = max_seqlen // 2
+ 
+-    sequence_embeddings = sequence_embeddings / torch.linalg.norm(
+-        sequence_embeddings, ord=2, dim=-1, keepdim=True
+-    ).clamp(min=1e-6)
++
++    if int(os.getenv("USE_FLOAT16", "0")) == 1:
++        sequence_embeddings = sequence_embeddings /10   # float16容易溢出，这里打个补丁缩放
++        sequence_embeddings = sequence_embeddings / torch.linalg.norm(
++            sequence_embeddings, ord=2, dim=-1, keepdim=True
++        ).clamp(min=1e-6) * 10
++    else:
++        sequence_embeddings = sequence_embeddings / torch.linalg.norm(
++            sequence_embeddings, ord=2, dim=-1, keepdim=True
++        ).clamp(min=1e-6)
+ 
+     return JaggedData(
+         values=sequence_embeddings,
+Index: examples/hstu/run_random_2k.sh
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k.sh
+--- a/examples/hstu/run_random_2k.sh	(revision a6e98391e38492370896a402f92474d47b82bc18)
++++ b/examples/hstu/run_random_2k.sh	(date 1764328008592)
+@@ -8,7 +8,17 @@
+ export RUN_NUM=10
+ 
+ # 模型路径
+-export MODEL_PATH="hstu.bin"
++export MODEL_PATH="hstu3B.bin"
++export USE_MOE=0     #  USE_FFN 和 USE_MOE 不能同时开启
++export LAYER_NUM=7
++export MOE_EXPERT_TOTAL_NUM=4
++export MOE_EXPERT_ACT_NUM=2
++export USE_FFN=1     #  USE_FFN 和 USE_MOE 不能同时开启
++export USE_FFN_NUMBER=2
++
++export ENABLE_MATMUL_FP8=0
++
++export USE_FLOAT16=0
+ 
+ # prof路径
+ export PROF_SAVE_PATH="prof_result_2k"
+Index: examples/hstu/modules/hstu_block_inference.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modules/hstu_block_inference.py
+--- a/examples/hstu/modules/hstu_block_inference.py	(revision fb0c0c92f484ab895bc5c4daace24bf9095a0c3b)
++++ b/examples/hstu/modules/hstu_block_inference.py	(date 1764319555172)
+@@ -26,8 +26,8 @@
+     """
+ 
+     def __init__(
+-        self,
+-        config: InferenceHSTUConfig,
++            self,
++            config: InferenceHSTUConfig,
+     ):
+         super().__init__()
+         self.config = config
+@@ -48,14 +48,14 @@
+             )
+         self._attention_layers = torch.nn.ModuleList(
+             [
+-                PagedHSTUInferLayer(config,layer_idx)
++                PagedHSTUInferLayer(config, layer_idx)
+                 for layer_idx in range(self.config.num_layers)
+             ]
+         )
+         self._hstu_graph: Optional[Dict[int, Any]] = None  # type: ignore
+ 
+     def hstu_preprocess(
+-        self, embeddings: Dict[str, JaggedTensor], batch: Batch
++            self, embeddings: Dict[str, JaggedTensor], batch: Batch
+     ) -> JaggedData:
+         """
+         Preprocesses the embeddings for use in the HSTU architecture.
+@@ -110,9 +110,9 @@
+         return hstu_postprocess_embeddings(jd, is_inference=True)
+ 
+     def forward(
+-        self,
+-        embeddings: Dict[str, JaggedTensor],
+-        batch: Batch,
++            self,
++            embeddings: Dict[str, JaggedTensor],
++            batch: Batch,
+     ) -> JaggedData:
+         """
+         Forward pass of the HSTUBlock.
+@@ -130,12 +130,12 @@
+         return self.hstu_postprocess(jd)
+ 
+     def predict(
+-        self,
+-        batch_size: int,
+-        num_tokens: int,
+-        hidden_states: torch.Tensor,
+-        jd: JaggedData,
+-        use_cudagraph: bool = True,
++            self,
++            batch_size: int,
++            num_tokens: int,
++            hidden_states: torch.Tensor,
++            jd: JaggedData,
++            use_cudagraph: bool = True,
+     ) -> torch.Tensor:
+         if self._hstu_graph is None or not use_cudagraph:
+             hidden_data = hidden_states
+@@ -152,11 +152,11 @@
+             )
+
+     def predict_naive(
+-        self,
+-        batch_size: int,
+-        num_tokens: int,
+-        hidden_states: torch.Tensor,
+-        jd: JaggedData,
++            self,
++            batch_size: int,
++            num_tokens: int,
++            hidden_states: torch.Tensor,
++            jd: JaggedData,
+     ) -> torch.Tensor:
+         with torch.inference_mode():
+             jagged_metadata = JaggedData(
+@@ -180,7 +180,7 @@
+                     hidden_data,
+                     jagged_metadata,
+                 )
+-                hidden_data = hstu_layer.forward_output(       #   YZ: 每一层都被执行一次
++                hidden_data = hstu_layer.forward_output(  # YZ: 每一层都被执行一次
+                     batch_size,
+                     num_tokens,
+                     hidden_data,
+@@ -189,24 +189,30 @@
+             return hidden_data
+ 
+     def predict_cudagraph(
+-        self,
+-        batch_size: int,
+-        num_tokens: int,
+-        hidden_states: torch.Tensor,
+-        ) -> torch.Tensor:
++            self,
++            batch_size: int,
++            num_tokens: int,
++            hidden_states: torch.Tensor,
++    ) -> torch.Tensor:
+         with torch.inference_mode():
+             # breakpoint()
+             batch_size = 2 ** math.ceil(math.log2(batch_size))
+             if num_tokens not in self._hstu_graph[batch_size]:  # type: ignore
+                 num_tokens_pow2 = max(32, 2 ** math.ceil(math.log2(num_tokens)))
+             else:
+-                num_tokens_pow2 = num_tokens          ## YZ: 如果和图的num_tokens匹配 this line is executed
++                num_tokens_pow2 = num_tokens  ## YZ: 如果和图的num_tokens匹配 this line is executed
+ 
+-            print('predict_cudagraph: batch_size = ', batch_size, ', num_tokens_pow2 = ', num_tokens_pow2)   ## YZ: 成图时不执行，推理时执行
++            print('predict_cudagraph: batch_size = ', batch_size, ', num_tokens_pow2 = ',
++                  num_tokens_pow2)  ## YZ: 成图时不执行，推理时执行
+ 
+             self._hstu_graph[batch_size][num_tokens_pow2][0].replay()  # type: ignore
+-            for idx in range(1, self.config.num_layers + 1):
++            self._attention_layers[0].forward_moe(num_tokens, hidden_states)
++
++            for idx in range(1, self.config.num_layers):
+                 self._hstu_graph[batch_size][num_tokens_pow2][idx].replay()  # type: ignore
++                self._attention_layers[idx].forward_moe(num_tokens,
++                                                        self._attention_layers[idx - 1].output_buffer_[:num_tokens,
++                                                        ...])
+ 
+             hstu_output = torch.zeros_like(hidden_states[:num_tokens, ...])
+             hstu_output.copy_(
+@@ -216,12 +222,12 @@
+             return hstu_output
+ 
+     def set_cudagraph(
+-        self,
+-        max_batch_size,
+-        max_seq_len,
+-        static_hidden_states,
+-        static_jagged_metadata,
+-        cudagraph_configs=None,
++            self,
++            max_batch_size,
++            max_seq_len,
++            static_hidden_states,
++            static_jagged_metadata,
++            cudagraph_configs=None,
+     ):
+         print("Setting up cuda graphs ...")
+         if self._hstu_graph is None:
+@@ -230,9 +236,9 @@
+ 
+             torch.cuda.mem_get_info()[0]
+ 
+-            max_num_tokens = max_batch_size * max_seq_len    # YZ: 16 * 8192 = 131072
++            max_num_tokens = max_batch_size * max_seq_len  # YZ: 16 * 8192 = 131072
+             # breakpoint()                            ## YZ: check this
+-            graph_max = self.capture_graph(       ## YZ: 这个图是支持最大batch_size=16, 最大seq_len = 8192 的最大图
++            graph_max = self.capture_graph(  ## YZ: 这个图是支持最大batch_size=16, 最大seq_len = 8192 的最大图
+                 max_batch_size,
+                 max_num_tokens,
+                 static_hidden_states,
+@@ -241,12 +247,14 @@
+             )
+             self._hstu_graph[max_batch_size][max_num_tokens] = graph_max
+ 
+-            bs_list = [2**i for i in range(math.ceil(math.log2(max_batch_size)) + 1)]  ## [1,2,4,8,16]       YZ: 这是分档操作吗？
++            bs_list = [2 ** i for i in
++                       range(math.ceil(math.log2(max_batch_size)) + 1)]  ## [1,2,4,8,16]       YZ: 这是分档操作吗？
+             seqlen_list = [
+-                2**i for i in range(5, math.ceil(math.log2(max_seq_len)) + 1)   ## [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
++                2 ** i for i in range(5, math.ceil(math.log2(max_seq_len)) + 1)
++                ## [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+             ]
+             if cudagraph_configs is not None:
+-                bs_list = cudagraph_configs["batch_size"]        ## YZ: 如果cudagraph有config，就用外边的值替换；否则就用上面默认生成的值
++                bs_list = cudagraph_configs["batch_size"]  ## YZ: 如果cudagraph有config，就用外边的值替换；否则就用上面默认生成的值
+                 seqlen_list = cudagraph_configs["length_per_sequence"]
+             print("Cudagraph setup configs:")
+             print("  Batch size:", bs_list)
+@@ -261,7 +269,8 @@
+                     num_tokens = seq_len * batch_size
+                     if num_tokens in self._hstu_graph[batch_size]:
+                         continue
+-                    self._hstu_graph[batch_size][num_tokens] = self.capture_graph(  # 对于每个batch_size, 每个sequence_len值，都生成一张图
++                    self._hstu_graph[batch_size][num_tokens] = self.capture_graph(
++                        # 对于每个batch_size, 每个sequence_len值，都生成一张图
+                         batch_size,
+                         num_tokens,
+                         static_hidden_states,
+@@ -280,8 +289,17 @@
+         for layer_idx in range(self.config.num_layers):
+             layer = self._attention_layers[layer_idx]
+ 
++            if hasattr(layer, 'sparse_moe_linear') and not hasattr(layer,
++                                                                   f'_sparse_moe_linear_compiled_{batch_size}_{num_tokens}'):
++                layer.sparse_moe_linear.forward = torch.compile(
++                    layer.sparse_moe_linear.forward,
++                    backend=backend,
++                    dynamic=False
++                )
++
+             # 编译 forward_input 方法
+-            if hasattr(layer, 'forward_input') and not hasattr(layer, f'_forward_input_compiled_{batch_size}_{num_tokens}'):
++            if hasattr(layer, 'forward_input') and not hasattr(layer,
++                                                               f'_forward_input_compiled_{batch_size}_{num_tokens}'):
+                 layer.forward_input = torch.compile(
+                     layer.forward_input,
+                     backend=backend,
+@@ -290,7 +308,8 @@
+                 setattr(layer, f'_forward_input_compiled_{batch_size}_{num_tokens}', True)
+ 
+             # 编译 forward_output 方法
+-            if hasattr(layer, 'forward_output') and not hasattr(layer, f'_forward_output_compiled_{batch_size}_{num_tokens}'):
++            if hasattr(layer, 'forward_output') and not hasattr(layer,
++                                                                f'_forward_output_compiled_{batch_size}_{num_tokens}'):
+                 layer.forward_output = torch.compile(
+                     layer.forward_output,
+                     backend=backend,
+@@ -298,14 +317,13 @@
+                 )
+                 setattr(layer, f'_forward_output_compiled_{batch_size}_{num_tokens}', True)
+ 
+-
+     def capture_graph(
+-        self,
+-        batch_size,
+-        num_tokens,
+-        static_hidden_states,
+-        static_jagged_metadata,
+-        memory_pool=None,
++            self,
++            batch_size,
++            num_tokens,
++            static_hidden_states,
++            static_jagged_metadata,
++            memory_pool=None,
+     ):
+         torch.cuda.mem_get_info()[0]
+ 
+@@ -341,7 +359,7 @@
+         # Warmup
+         with torch.cuda.stream(graph_capture_warmup_stream):
+             for _ in range(3):
+-                static_output = self.predict_naive(           # 3*8 = 24， 运行24次 forward_output()
++                static_output = self.predict_naive(  # 3*8 = 24， 运行24次 forward_output()
+                     batch_size,
+                     num_tokens,
+                     static_hidden_states,
+@@ -358,81 +376,53 @@
+         ]
+ 
+         if os.getenv("USE_COMPILE", "0") == "1":
++
+             self._compile_methods(batch_size, num_tokens)
+-
+-            # 在抓图时无法进行inductor编译，所以在此编译
+-            # >>>>> 预热，进行inductor编译
+-            static_uvqk = self._attention_layers[0].forward_input(
+-                batch_size,
+-                num_tokens,
+-                static_hidden_states,
+-                static_jagged_metadata,
+-            )
+-
+-            for layer_idx in range(0, num_layers - 1):
+-                cross_layer_method_name = f'_cross_layer_{layer_idx}_{layer_idx+1}'
+-                if hasattr(self, cross_layer_method_name):
+-                    # 执行跨层组合计算
+-                    static_uvqk = getattr(self, cross_layer_method_name)(
+-                        batch_size,
+-                        num_tokens,
+-                        input_buffer[layer_idx],
+-                        static_jagged_metadata,
+-                    )
+-                else:
+-                    static_output = self._attention_layers[layer_idx].forward_output(
+-                        batch_size,
+-                        num_tokens,
+-                        input_buffer[layer_idx],
+-                        static_jagged_metadata,
+-                    )
+-                    static_uvqk = self._attention_layers[layer_idx + 1].forward_input(
+-                        batch_size,
+-                        num_tokens,
+-                        static_output,
+-                        static_jagged_metadata,
+-                    )
++            for layer_idx in range(0, num_layers):
++                static_uvqk = self._attention_layers[layer_idx].forward_input(
++                    batch_size,
++                    num_tokens,
++                    input_buffer[layer_idx],
++                    static_jagged_metadata,
++                )
++                static_output = self._attention_layers[layer_idx].forward_output(
++                    batch_size,
++                    num_tokens,
++                    input_buffer[layer_idx],
++                    static_jagged_metadata,
++                )
+ 
+-            static_output = self._attention_layers[-1].forward_output(
++        with torch.cuda.graph(graph[0], pool=memory_pool):
++            static_uvqk = self._attention_layers[0].forward_input(
+                 batch_size,
+                 num_tokens,
+-                input_buffer[num_layers - 1],
++                input_buffer[0],
+                 static_jagged_metadata,
+             )
+-            # <<<<< 预热，进行inductor编译
+-        with torch.cuda.graph(graph[0], pool=memory_pool):
+-            static_uvqk = self._attention_layers[0].forward_input(
++            static_output = self._attention_layers[0].forward_output(
+                 batch_size,
+                 num_tokens,
+-                static_hidden_states,
++                input_buffer[0],
+                 static_jagged_metadata,
+             )
+ 
+         if memory_pool is None:
+             memory_pool = graph[0].pool()
+ 
+-        for layer_idx in range(0, num_layers - 1):
+-            with torch.cuda.graph(graph[layer_idx + 1], pool=memory_pool):
+-                static_output = self._attention_layers[layer_idx].forward_output(   # 运行 8 次 forward_output()
++        for layer_idx in range(1, num_layers):
++            with torch.cuda.graph(graph[layer_idx], pool=memory_pool):
++                static_uvqk = self._attention_layers[layer_idx].forward_input(
+                     batch_size,
+                     num_tokens,
+                     input_buffer[layer_idx],
+                     static_jagged_metadata,
+                 )
+-                static_uvqk = self._attention_layers[layer_idx + 1].forward_input(
++                static_output = self._attention_layers[layer_idx].forward_output(
+                     batch_size,
+                     num_tokens,
+-                    static_output,
++                    input_buffer[layer_idx],
+                     static_jagged_metadata,
+                 )
+-
+-        with torch.cuda.graph(graph[num_layers], pool=memory_pool):
+-            static_output = self._attention_layers[-1].forward_output(
+-                batch_size,
+-                num_tokens,
+-                input_buffer[num_layers - 1],
+-                static_jagged_metadata,
+-            )
+ 
+         torch.cuda.mem_get_info()[0]
+ 
+Index: examples/hstu/modules/paged_hstu_infer_layer.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/modules/paged_hstu_infer_layer.py
+--- a/examples/hstu/modules/paged_hstu_infer_layer.py	(revision fb0c0c92f484ab895bc5c4daace24bf9095a0c3b)
++++ b/examples/hstu/modules/paged_hstu_infer_layer.py	(date 1764319555199)
+@@ -22,6 +22,107 @@
+ from modules.jagged_data import JaggedData
+
+ 
++def float8_matmul(input,line,bias_enable=False):
++    bias = None
++    if bias_enable:
++        bias = line.bias
++
++    scale_a = (1.0 / input.abs().max()).float()
++    scale_b = (1.0 / line.weight.abs().max()).float()
++    x1_fp8 = (input * scale_a).to(dtype=torch.float8_e4m3fn)
++    x2_fp8 = (line.weight * scale_b).to(dtype=torch.float8_e4m3fn)  # todo weight的量化移动到函数初始化中
++
++    return torch._scaled_mm(
++        x1_fp8,
++        x2_fp8.t(),
++        scale_a=scale_a,
++        scale_b=scale_b,
++        bias=bias,
++        out_dtype=torch.bfloat16,  # 输出数据类型
++        use_fast_accum=True     # 启用快速累加
++    ).contiguous() / scale_a / scale_b
++
++
++class SparseMOE(torch.nn.Module):
++    def __init__(
++            self,
++            emb_dim,
++            expert_number,
++            top_k,
++            dtype
++        ):
++        super().__init__()
++
++        self.expert_number = expert_number
++        self.experts = torch.nn.ModuleList([
++                FFN_npu_swiglu(emb_dim, emb_dim * 4, dtype) for _ in range(expert_number)])
++        self.router = MOERouter(emb_dim, expert_number, top_k, dtype)
++
++    def forward(self, x):
++        # x shape is (b, s, hidden_dim)
++        seq_len, hidden_dim = x.size()
++        hidden_states = x.view(-1, hidden_dim)  # shape is (b * s, hidden_dim)
++
++        router_weights, expert_mask = self.router(hidden_states)
++
++        final_hidden_states = torch.zeros(
++            (seq_len, hidden_dim),
++            dtype=hidden_states.dtype,
++            device=hidden_states.device
++        )
++
++        for expert_idx in range(self.expert_number):
++            expert_layer = self.experts[expert_idx]
++            idx, top_x = torch.where(expert_mask[expert_idx])
++            current_state = hidden_states.unsqueeze(0)[:, top_x, :].reshape(-1, hidden_dim)  # token选取专家
++            current_hidden_states = expert_layer(current_state) * router_weights[top_x, idx].unsqueeze(-1)  # 专家运算
++            final_hidden_states.index_add_(dim=0, index=top_x, source=current_hidden_states)  # 专家权重相加
++
++        return final_hidden_states
++
++
++class MOERouter(torch.nn.Module):
++    def __init__(self, emb_dim, expert_number, top_k_number, dtype):
++        super().__init__()
++        self.gate = torch.nn.Linear(emb_dim, expert_number, dtype=dtype)
++        self.expert_number = expert_number
++        self.top_k = top_k_number
++
++    def forward(self, hidden_states):
++        # 计算路由logits
++        router_logits = F.softmax(self.gate(hidden_states), dim=-1)   # shape is (b * s, dim)
++
++        # 计算topk的专家的输出
++        router_weights, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)  # shape都是 (b * s, top_k)
++
++        # 专家权重归一化
++        router_weights = router_weights / router_weights.sum(dim=-1, keepdim=True)
++
++        # 生成专家掩码
++        expert_mask = F.one_hot(selected_experts,num_classes=self.expert_number).to(torch.int32)  # shape是 (b * s, top_k, expert_number)
++        expert_mask = expert_mask.permute(2, 1, 0)  # (expert_number, top_k, b * s)
++
++        return router_weights,  expert_mask
++
++# 专家ffn
++class FFN_npu_swiglu(torch.nn.Module):
++    def __init__(self, dim: int, hidden_dim: int, dtype=torch.bfloat16, dropout: float=0):
++        super().__init__()
++        self.w1 = torch.nn.Linear(dim, hidden_dim, bias=False, dtype=dtype)
++        self.w2 = torch.nn.Linear(hidden_dim, dim, bias=False, dtype=dtype)
++        self.w3 = torch.nn.Linear(dim, hidden_dim, bias=False, dtype=dtype)
++
++        self.use_matmul_fp8 = int(os.getenv("ENABLE_MATMUL_FP8")) == 1
++
++        self.dropout = torch.nn.Dropout(dropout)
++
++    def forward(self, x):
++        if self.use_matmul_fp8:  # =========fp8 adapter============
++            return self.dropout(float8_matmul(F.silu(float8_matmul(x,self.w1)) * float8_matmul(x,self.w3),self.w2))
++        else:
++            return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
++
++
+ class PagedHSTUInferLayer(torch.nn.Module):
+     """
+     x = ln(x)
+@@ -143,6 +244,25 @@
+             requires_grad=False,
+         )
+ 
++        self.use_ffn = int(os.getenv("USE_FFN")) == 1
++        self.use_moe = int(os.getenv("USE_MOE")) == 1
++        self.use_matmul_fp8 = int(os.getenv("ENABLE_MATMUL_FP8")) == 1
++
++        if self.use_ffn:
++            if self.use_ffn:
++                self.ffn_number = int(os.getenv("USE_FFN_NUMBER"))
++                self.feed_forward = torch.nn.ModuleList([
++                    FFN_npu_swiglu(self._embedding_dim, self._embedding_dim * 4, dtype) for _ in
++                    range(self.ffn_number)])
++        if self.use_moe:
++            self.sparse_moe_linear = SparseMOE(
++                emb_dim=self._embedding_dim,
++                expert_number=int(os.getenv("MOE_EXPERT_TOTAL_NUM")),
++                top_k=int(os.getenv("MOE_EXPERT_ACT_NUM")),
++                dtype=dtype
++            )
++
++
+     def layer_output(self, num_tokens):
+         return self.output_buffer_[:num_tokens, ...]
+ 
+@@ -167,7 +287,13 @@
+             eps=self._eps,
+         )
+ 
+-        mixed_uvqk = F.silu(self._linear_uvqk(normed_input))
++        if self.use_matmul_fp8:  # =========fp8 adapter============
++            mixed_uvqk = F.silu(float8_matmul(normed_input, self._linear_uvqk,True))
++        else:
++            mixed_uvqk = F.silu(self._linear_uvqk(normed_input))
++
++    #    print("mixed_uvqk",mixed_uvqk)
++
+         (user, value, query, key) = torch.split(
+             mixed_uvqk,
+             self._split_arg_list,
+@@ -199,6 +325,7 @@
+         jagged_attn_output = jagged_attn_output.view(
+             -1, self._num_heads * self._linear_dim_per_head
+         )
++
+         parallel_input = user * F.layer_norm(
+             jagged_attn_output,
+             normalized_shape=[self._num_heads * self._linear_dim_per_head],
+@@ -207,10 +334,26 @@
+             eps=self._eps,
+         )
+ 
+-        layer_output = self._linear_proj(parallel_input)
++        if self.use_matmul_fp8:  # =========fp8 adapter============
++            layer_output = float8_matmul(parallel_input, self._linear_proj)
++        else:
++            layer_output = self._linear_proj(parallel_input)
++
++
++        if self.use_moe:
++            layer_output = self.sparse_moe_linear.forward(layer_output)
++
++
++        if self.use_ffn:  # 适用于专家数和选择数相等，简化
++            res = torch.zeros_like(layer_output)
++            for i in range(self.ffn_number):
++                torch.add(res, self.feed_forward[i].forward(layer_output), out=res)
++            layer_output = res
++
+         if self._residual:
+             torch.add(layer_output, layer_input, out=layer_output)
+ 
++
+         return layer_output
+ 
+     @torch.inference_mode()
+@@ -230,7 +373,11 @@
+             eps=self._eps,
+         )
+ 
+-        self.uvqk_buffer_[:num_tokens, ...] = F.silu(self._linear_uvqk(normed_input))
++        if self.use_matmul_fp8:  # =========fp8 adapter============
++            self.uvqk_buffer_[:num_tokens, ...] = F.silu(float8_matmul(normed_input,self._linear_uvqk, True))
++        else:
++            self.uvqk_buffer_[:num_tokens, ...] = F.silu(self._linear_uvqk(normed_input))
++
+         (user, value, query, key) = torch.split(
+             self.uvqk_buffer_[:num_tokens, ...],
+             self._split_arg_list,
+@@ -286,13 +433,47 @@
+             eps=self._eps,
+         )
+ 
+-        if self._residual:
+-            torch.add(
+-                self._linear_proj(parallel_input),
+-                input_buffer[:num_tokens, ...],
++        if self.use_matmul_fp8:  # =========fp8 adapter============
++            layer_output = float8_matmul(parallel_input, self._linear_proj)
++        else:
++            layer_output = self._linear_proj(parallel_input)
++
++        self.output_buffer_[:num_tokens, ...] = layer_output
++
++        if not self.use_moe:  # MOE的残差不入图
++            if self.use_ffn:  # 适用于专家数和选择数相等，简化
++                res = torch.zeros_like(layer_output)
++                for i in range(self.ffn_number):
++                    torch.add(res, self.feed_forward[i].forward(layer_output), out=res)
++                layer_output = res
++
++            if self._residual:
++                torch.add(
++                    layer_output,
++                    input_buffer[:num_tokens, ...],
++                    out=self.output_buffer_[:num_tokens, ...],
++                )
++
++        return self.output_buffer_[:num_tokens, ...]
++
++    @torch.inference_mode()
++    def forward_moe(
++            self,
++            num_tokens: int,
++            layer_input: torch.Tensor,
++    ) -> torch.Tensor:
++        if not self.use_moe:
++            return
++        layer_input = layer_input[:num_tokens, ...]
++        layer_out = self.output_buffer_[:num_tokens, ...]
++
++        layer_out = self.sparse_moe_linear.forward(layer_out)
++
++        if self._residual:
++            torch.add(
++                layer_out,
++                layer_input,
+                 out=self.output_buffer_[:num_tokens, ...],
+             )
+-        else:
+-            self.output_buffer_[:num_tokens, ...] = self._linear_proj(parallel_input)
+ 
+-        return self.output_buffer_[:num_tokens, ...]
++        return  self.output_buffer_[:num_tokens, ...]
+Index: examples/hstu/benchmark/inference_benchmark_random_2k.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples/hstu/benchmark/inference_benchmark_random_2k.py
+--- a/examples/hstu/benchmark/inference_benchmark_random_2k.py	(revision fb0c0c92f484ab895bc5c4daace24bf9095a0c3b)
++++ b/examples/hstu/benchmark/inference_benchmark_random_2k.py	(date 1764320160909)
+@@ -50,7 +50,8 @@
+ is_save_input_and_output = int(os.getenv("SAVE_INPUT_AND_PUTPUT")) == 1
+ is_use_npu_input = int(os.getenv("USE_NPU_INPUT")) == 1
+ batch_size = int(os.getenv("BATCH_SIZE", "1"))
+-
++layer_num = int(os.getenv("LAYER_NUM", "1"))
++use_float16 = int(os.getenv("USE_FLOAT16", "0")) == 1
+ 
+ def run_ranking_gr_inference():
+     max_batch_size = batch_size
+@@ -77,8 +78,8 @@
+     hidden_dim_size = 4096
+     num_heads = 16
+     head_dim = 256
+-    num_layers = 24
+-    inference_dtype = torch.bfloat16
++    num_layers = layer_num
++    inference_dtype = torch.float16  if use_float16 else torch.bfloat16
+     hstu_cudagraph_configs = {
+         "batch_size": [2**i for i in range(math.ceil(math.log2(max_batch_size)) + 1)],
+         "length_per_sequence": [i * 256 for i in range(8, 9)],
+@@ -128,6 +129,8 @@
+ 
+         cpu_state_dict = torch.load(model_path, map_location='cpu')
+         model_predict.load_state_dict(cpu_state_dict)
++   #     for param in model_predict.parameters():
++    #        torch.nn.init.uniform_(param, a=-0.5, b=0.5)
+         model_predict.to(torch.cuda.current_device())
+ 
+         total_params = sum(param.numel() for name, param in model_predict.named_parameters()
+@@ -136,7 +139,11 @@
+             print(f"{name}: 形状={param.shape}, 参数数量={param.numel()} type = {param.dtype}")
+         print("====== 模型参数(不包含embdding) is  ", total_params, "  STRUCT IS ======", model_predict)
+ 
+-        model_predict.bfloat16()
++        if use_float16:
++            model_predict.half()
++        else:
++            model_predict.bfloat16()
++
+         model_predict.eval()
+ 
+         data_generator = RandomInferenceDataGenerator(
+@@ -152,14 +159,14 @@
+             full_mode=True,
+         )
+ 
+-        print("动态bs测试开始")
++        print("动态bs测试开始，接下来将初始N组随机seq_len和bs进行测试")
+         for bs in range(1,max_batch_size+1):
+             uids = torch.tensor([bs*10 for i in range(bs)], dtype=torch.int64)
+             batch = data_generator.get_random_inference_batch(uids, torch.tensor([-1] * bs, dtype=torch.int32))
+             print("[model input shape is]", batch.features.values().shape)
+             result = model_predict.forward(batch, uids)
+ 
+-        print("预热开始！")
++        print("性能测试-预热开始！")
+         num_warmup_batches = 1
+         infer_list = []
+         for idx in range(num_warmup_batches):
+@@ -180,23 +187,29 @@
+             if is_save_input_and_output:
+                 torch.save(result.cpu(), "input_output/gpu_output.pt")
+ 
+-        print("性能分析开始！")
++        print("性能测试-运行开始！")
+         time_arr = []
+         with torch.profiler.profile(
+                 activities=[ProfilerActivity.CUDA, ProfilerActivity.CPU],  # 同时分析 CPU 和 CUDA
+                 record_shapes=True,  # 记录张量形状
+         ) as prof:
+             with torch.no_grad():
++                torch.cuda.synchronize()
+                 for item in infer_list * run_num:
++                    model_predict.forward(item[0], item[1])  # 推理
+                     torch.cuda.synchronize()
+-                    start_time = time.perf_counter()
+-                    model_predict.forward(item[0], item[1])  # 推理
+-                    torch.cuda.synchronize()
+-                    duration = (time.perf_counter() - start_time) * 1_000_000
+-                    time_arr.append(duration)
+-                    print(f"[E2E] time: {duration:.2f} us")
+-
+-        print("收集端到端时间")
++                    prof.step()
++
++        print("收集端到端时间")
++        with torch.no_grad():
++            for item in infer_list * run_num:
++                torch.cuda.synchronize()
++                start_time = time.perf_counter()
++                model_predict.forward(item[0], item[1])  # 推理
++                torch.cuda.synchronize()
++                duration = (time.perf_counter() - start_time) * 1_000_000
++                time_arr.append(duration)
++                print(f"[E2E] time: {duration:.2f} us")
+         report = {'Batch_size': max_batch_size,
+                   'model_name': "GR"}
+
+            
