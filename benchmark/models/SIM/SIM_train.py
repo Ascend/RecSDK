@@ -1,6 +1,7 @@
 import os
 import time
 import torch
+import argparse
 import torch_npu
 import torch.nn as nn
 import torch.optim as optim
@@ -9,6 +10,10 @@ import numpy as np
 from SIM import SIMModel, SIMLoss
 
 torch_npu.npu.matmul.allow_hf32=True
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--batch-size', type=int, default=32, help='batch size')
+args = parser.parse_args()
 
 def generate_training_data(num_samples=1000, seq_len=1000, embedding_dim=64, num_categories=100):
     """生成训练数据"""
@@ -214,8 +219,8 @@ def main():
     test_size = len(dataset) - train_size
     train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
     
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
     
     # 创建模型实例
     model = SIMModel(

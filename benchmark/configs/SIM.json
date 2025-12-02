@@ -10,7 +10,9 @@
     "data_type": "",
     "run_cmd": [
         "python",
-        "SIM_train.py"
+        "SIM_train.py",
+        "--batch-size",
+        "32"
     ],
     "extra_cmd": []
 }
