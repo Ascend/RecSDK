@@ -1,5 +1,5 @@
 diff --git a/detect.py b/detect.py
-index 535e196f..756f41ad 100644
+index 535e196f..c869edf9 100644
 --- a/detect.py
 +++ b/detect.py
 @@ -33,10 +33,13 @@ import csv
@@ -41,10 +41,12 @@ index 535e196f..756f41ad 100644
      if webcam:
          view_img = check_imshow(warn=True)
          dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
-@@ -176,14 +179,18 @@ def run(
+@@ -175,15 +178,19 @@ def run(
+     elif screenshot:
          dataset = LoadScreenshots(source, img_size=imgsz, stride=stride, auto=pt)
      else:
-         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
+-        dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
++        dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=False, vid_stride=vid_stride)
 +        bs = batch_size
      vid_path, vid_writer = [None] * bs, [None] * bs
  
@@ -79,7 +81,7 @@ index 535e196f..756f41ad 100644
          # Inference
          with dt[1]:
              visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
-@@ -203,121 +221,62 @@ def run(
+@@ -203,121 +221,82 @@ def run(
                          pred = torch.cat((pred, model(image, augment=augment, visualize=visualize).unsqueeze(0)), dim=0)
                  pred = [pred, None]
              else:
@@ -203,7 +205,7 @@ index 535e196f..756f41ad 100644
 +                    torch_npu.profiler.ExportType.Text,
 +                    torch_npu.profiler.ExportType.Db
 +                    ],
-+                profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++                profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
 +                msprof_tx=False,
 +                aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
 +                l2_cache=False,
@@ -244,20 +246,40 @@ index 535e196f..756f41ad 100644
 +                if os.environ.get('MODEL_E2E_FLAG', "0") == "1":
 +                    total_time = 0.0
 +                    count = 0
-+                    for i in range(100):
++                    latency_list = []
++                    warmup_steps = 50
++                    total_steps = 100
++                    for i in range(total_steps):
 +                        start_time = time.time()
 +                        pred = model(im_batch, augment=augment, visualize=visualize)
 +                        end_time = time.time()
-+                        times = end_time - start_time
++                        latency = (end_time - start_time) * 1000
 +                        if i >= 50:
-+                            total_time += times
++                            total_time += latency
 +                            count += 1
-+                    avg_time = total_time / count * 1000
-+                    print(f"E2E time = {avg_time:.4f}")
++                            latency_list.append(latency)
++                    avg_time = total_time / count
++                    
++                    latency_list.sort()
++                    p90 = 0.0
++                    p99 = 0.0
++
++                    if len(latency_list) > 0:
++                        p90_index = int(len(latency_list) * 0.9)
++                        p90_index = min(p90_index, len(latency_list) - 1)
++                        p90 = latency_list[p90_index]
++
++                        p99_index = int(len(latency_list) * 0.99)
++                        p99_index = min(p99_index, len(latency_list) - 1)
++                        p99 = latency_list[p99_index]
++                    print(f"E2E time = {avg_time:.4f} ms")
++                    print(f"P90 latency = {p90:.4f} ms")
++                    print(f"P99 latency = {p99:.4f} ms")
++
  
  
  def parse_opt():
-@@ -365,6 +324,7 @@ def parse_opt():
+@@ -365,6 +344,7 @@ def parse_opt():
          ```
      """
      parser = argparse.ArgumentParser()
@@ -265,7 +287,7 @@ index 535e196f..756f41ad 100644
      parser.add_argument("--weights", nargs="+", type=str, default=ROOT / "yolov5s.pt", help="model path or triton URL")
      parser.add_argument("--source", type=str, default=ROOT / "data/images", help="file/dir/URL/glob/screen/0(webcam)")
      parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="(optional) dataset.yaml path")
-@@ -372,7 +332,7 @@ def parse_opt():
+@@ -372,7 +352,7 @@ def parse_opt():
      parser.add_argument("--conf-thres", type=float, default=0.25, help="confidence threshold")
      parser.add_argument("--iou-thres", type=float, default=0.45, help="NMS IoU threshold")
      parser.add_argument("--max-det", type=int, default=1000, help="maximum detections per image")
@@ -275,7 +297,7 @@ index 535e196f..756f41ad 100644
      parser.add_argument("--save-txt", action="store_true", help="save results to *.txt")
      parser.add_argument(
 diff --git a/utils/torch_utils.py b/utils/torch_utils.py
-index 1640f8a6..36db3657 100644
+index 1640f8a6..0ff3145c 100644
 --- a/utils/torch_utils.py
 +++ b/utils/torch_utils.py
 @@ -12,6 +12,7 @@ from copy import deepcopy
@@ -321,8 +343,7 @@ index 1640f8a6..36db3657 100644
 -    else:  # revert to CPU
 -        s += "CPU\n"
 -        arg = "cpu"
--
-+    
+ 
 +    device = "npu"
 +    arg = "npu"
      if not newline:
@@ -335,7 +356,7 @@ index 1640f8a6..36db3657 100644
 -    if torch.cuda.is_available():
 -        torch.cuda.synchronize()
 +    if torch_npu.npu.is_available():
-+        torch_npu.npu.synchronize()       
++        torch_npu.npu.synchronize()
      return time.time()
  
  
