@@ -34,6 +34,11 @@ struct ReverseSequenceArgs {
     int64_t handleNumOneTime;
     int64_t left;
     int64_t handleTotalCount;
+
+    uint32_t alignLen;
+    uint32_t unAlignLen;
+    uint32_t alignNumberCount;
+    uint32_t overAlignNumberCount;
 };
 
 template <typename dType, typename tType>
@@ -69,12 +74,12 @@ public:
         for (int i = 0; i < args->handleTotalCount; ++i) {
             int64_t currentDataIndex = offsetStartPos + i;  // 当前是第多少条数据
             LocalTensor<dType> localIn = inQueue.AllocTensor<dType>();
-            DataCopy(localIn, intputGM[currentDataIndex * args->dataDim], args->dataDim);
+            CpGm2Local(localIn, intputGM[currentDataIndex * args->dataDim], args->dataDim);
             inQueue.EnQue(localIn);
 
             LocalTensor<dType> localOut = outQueue.AllocTensor<dType>();
             LocalTensor<dType> localInCopy = inQueue.DeQue<dType>();
-            DataCopy(localOut, localInCopy, args->dataDim);
+            DataCopy(localOut, localInCopy, args->overAlignNumberCount);
             outQueue.EnQue(localOut);
             LocalTensor<dType> localOutCopy = outQueue.DeQue<dType>();
 
@@ -85,10 +90,33 @@ public:
                 // 执行逆序拷贝
                 int64_t maxSeqLenReverseIndex = seqLenValue - maxSeqLenIndex - 1;
                 int64_t globalTargetIndex = bsIndex * args->maxSeqLen + maxSeqLenReverseIndex;  // 拷贝到该条数据对应位置
-                DataCopy(outputGM[globalTargetIndex * args->dataDim], localOutCopy, args->dataDim);
+                CpLocal2Gm(outputGM[globalTargetIndex * args->dataDim], localOutCopy, args->dataDim);
             }
             inQueue.FreeTensor(localInCopy);
             outQueue.FreeTensor(localOutCopy);
+        }
+    }
+
+private:
+    template <typename T>
+    __aicore__ inline void CpGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T>& gt, int64_t len)
+    {
+        DataCopy(lt, gt, args->alignNumberCount);
+        if (args->unAlignLen != 0) {
+            const DataCopyExtParams dataCopyExtParams{1, args->unAlignLen, 0, 0, 0};
+            const DataCopyPadExtParams<T> dataCopyPadExtParams{false, 0, 0, 0};
+            DataCopyPad(lt[args->alignNumberCount], gt[args->alignNumberCount],
+               dataCopyExtParams, dataCopyPadExtParams);
+        }
+    }
+
+    template <typename T>
+    __aicore__ inline void CpLocal2Gm(const GlobalTensor<T>& gt, const LocalTensor<T>& lt, int64_t len)
+    {
+        DataCopy(gt, lt, args->alignNumberCount);
+        if (args->unAlignLen != 0) {
+            const DataCopyExtParams dataCopyExtParams{1, args->unAlignLen, 0, 0, 0};
+            DataCopyPad(gt[args->alignNumberCount], lt[args->alignNumberCount], dataCopyExtParams);
         }
     }
 
@@ -123,7 +151,11 @@ extern "C" __global__ __aicore__ void reverse_sequence(GM_ADDR input, GM_ADDR se
                                                      tiling_data.dataDim,
                                                      tiling_data.handleNumOneTime,
                                                      tiling_data.left,
-                                                     tiling_data.handleTotalCount};
+                                                     tiling_data.handleTotalCount,
+                                                     tiling_data.alignBytes,
+                                                     tiling_data.unAlignBytes,
+                                                     tiling_data.alignNumberCount,
+                                                     tiling_data.overAlignNumberCount};
 
     TPipe pipe;
     ReverseSequence_Kernel::ReverseSequence<DTYPE_INPUT, DTYPE_SEQ_LENGTHS> kernel;

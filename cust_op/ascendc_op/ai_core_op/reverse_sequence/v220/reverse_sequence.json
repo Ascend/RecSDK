@@ -10,7 +10,7 @@
                     "ND"
                 ],
                 "data_type_list": [
-                    "fp32", "bf16", "fp16"
+                    "fp32", "bf16", "fp16", "int64"
                 ]
             },
             {

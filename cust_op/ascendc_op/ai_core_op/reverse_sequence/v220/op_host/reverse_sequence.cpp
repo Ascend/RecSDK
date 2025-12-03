@@ -39,6 +39,7 @@ constexpr int64_t LOCAL_TENSOR_COUNT = 2; // 输入输出各占一份
 constexpr int64_t DATA_BYTE_FP32 = 4;
 constexpr int64_t DATA_BYTE_FP16 = 2;
 constexpr int64_t DATA_BYTE_BF16 = 2;
+constexpr int64_t DATA_BYTE_INT64 = 8;
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
@@ -80,8 +81,10 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         dataBytes = DATA_BYTE_FP16;
     } else if (inputDataType == ge::DataType::DT_BF16) {
         dataBytes = DATA_BYTE_BF16;
+    } else if (inputDataType == ge::DataType::DT_INT64) {
+        dataBytes = DATA_BYTE_INT64;
     } else {
-        OPS_LOG_E("", "invalid datatype, only support float/fp16/bf16\n");
+        OPS_LOG_E("", "invalid datatype, only support float/fp16/bf16/int64\n");
         return ge::GRAPH_FAILED;
     }
     int64_t blockLen = (ubSize - RESERVER_UB_SIZE) / LOCAL_TENSOR_COUNT / dataBytes;
@@ -94,14 +97,25 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     int handleTotalCount = totalDataNum / coreNum;
     int left = totalDataNum % coreNum;  // 前left个ai core处理 handleTotalCount + 1 条数据
 
+    auto dataDim = inputShape.GetDim(DIM2);
+    auto oneDataBytes = dataBytes * dataDim;
+    uint32_t alignBytes = oneDataBytes / ALIGN_32 * ALIGN_32;
+    uint32_t unAlignBytes = oneDataBytes - alignBytes;
+    uint32_t alignNumberCount = alignBytes / dataBytes;
+    uint32_t overAlignNumberCount = (oneDataBytes + ALIGN_32 - 1) / ALIGN_32 * ALIGN_32;
+
     // 设置分片数据
     ReverseSequenceTilling tilingData;
     tilingData.set_batchSize(inputShape.GetDim(DIM0));
     tilingData.set_maxSeqLen(inputShape.GetDim(DIM1));
-    tilingData.set_dataDim(inputShape.GetDim(DIM2));
+    tilingData.set_dataDim(dataDim);
     tilingData.set_handleNumOneTime(handleNumOneTime);
     tilingData.set_handleTotalCount(handleTotalCount);
     tilingData.set_left(left);
+    tilingData.set_alignBytes(alignBytes);
+    tilingData.set_unAlignBytes(unAlignBytes);
+    tilingData.set_alignNumberCount(alignNumberCount);
+    tilingData.set_overAlignNumberCount(overAlignNumberCount);
 
     // 保存分片数据
     OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return ge::GRAPH_FAILED);
@@ -149,7 +163,7 @@ public:
     {
         this->Input("input")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16})
+            .DataTypeList({ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("seq_lengths")
             .ParamType(REQUIRED)
