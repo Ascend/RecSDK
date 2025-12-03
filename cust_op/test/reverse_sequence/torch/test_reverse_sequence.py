@@ -30,13 +30,14 @@ torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 BATCH_SIZE_DIM = [40, 78, 128]  # bs维度
 MAX_SEQ_LEN_DIM = [123, 500, 4000]  # max_seq_len维度
-DATA_DIM = [16, 32]  # data_dim 维度
+DATA_DIM = [1, 2, 16, 32]  # data_dim 维度, 包含16的倍数和非16的倍数
 DIM_LIST = list(itertools.product(BATCH_SIZE_DIM, MAX_SEQ_LEN_DIM, DATA_DIM))
 
 _PRECISION_ERROR_RANGE = {
     torch.float32: 1e-4,
     torch.float16: 1e-3,
     torch.bfloat16: 5e-3,
+    torch.int64: 1e-4,
 }
 INPUT_DATA_TYPE = _PRECISION_ERROR_RANGE.keys()
 SEQ_LEN_DATA_TYPE = [torch.int64, torch.int32]
@@ -50,13 +51,13 @@ EDGE_CASE_DIMS = [
     (1, 102400, 16),   # 最大的 max_seq_len
     (51, 23, 1024),   # 最大的 data_dim
     (100, 10000, 512),   # 较大的batch和特征维度
+    (123, 234, 3),   # 非对齐的data_dim维度
 ]
 
 # 边界测试用例 - 超出范围
 OUT_OF_RANGE_CASE_DIMS = [
     (10241, 1, 16),  # bs维度超出范围
     (5, 102401, 16),  # max_seq_len维度超出范围
-    (10, 10, 15),  # data_dim维度不是16的整数倍
     (10, 10, 1025),  # data_dim维度超出范围
 ]
 
@@ -155,6 +156,10 @@ def test_reverse_sequence(dims, types):
     input_data, seq_lengths = generate_test_data(bs, max_seq_len, data_dim)
     run_test_and_compare(input_data, seq_lengths, types)
 
+    if types[0] == torch.int64:
+        # torch.int64只调用前向
+        return
+
     # 反向传播
     input_dt, sql_len_dt = types
     input_data = torch.tensor(input_data, dtype=input_dt, device=torch.device(DEVICE))
@@ -198,7 +203,7 @@ def test_invalid_range_cases(dims):
 
 
 @pytest.mark.parametrize("dims", [[10, 10, 16]])
-@pytest.mark.parametrize("input_dtype", [torch.int64, torch.int32])
+@pytest.mark.parametrize("input_dtype", [torch.int8, torch.int32])
 @pytest.mark.parametrize("seq_len_dtype", [torch.int8])
 def test_invalid_data_type_cases(dims, input_dtype, seq_len_dtype):
     bs, max_seq_len, data_dim = dims

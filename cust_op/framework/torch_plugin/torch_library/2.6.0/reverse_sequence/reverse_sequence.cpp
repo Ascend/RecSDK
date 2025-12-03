@@ -27,7 +27,7 @@ namespace npu_reverse_sequence {
 
 constexpr int64_t INPUT_DIM = 3;
 constexpr int64_t SEQ_LENGTHS_DIM = 1;
-constexpr int64_t EMB_DIM_MIN = 16;
+constexpr int64_t EMB_DIM_MIN = 1;
 constexpr int64_t EMB_DIM_MAX = 1024;
 
 constexpr int64_t MAX_SEQ_LENGTH_DIM_INDEX = 1;
@@ -72,7 +72,7 @@ Tensor npu_reverse_sequence_impl(const Tensor& input, const Tensor& seq_lengths)
     TORCH_CHECK(input.size(MAX_SEQ_LENGTH_DIM_INDEX) <= MAX_SEQ_LENGTH_MAX,
                 "input dim[0] is batch_size, must be less or equal to 10240, but got ", input.size(1));
     int64_t emb_dim = input.size(EMB_DIM_INDEX);
-    TORCH_CHECK(emb_dim >= EMB_DIM_MIN && emb_dim <= EMB_DIM_MAX && emb_dim % EMB_DIM_MIN == 0,
+    TORCH_CHECK(emb_dim >= EMB_DIM_MIN && emb_dim <= EMB_DIM_MAX,
                 "emb_dim must be in range:[", EMB_DIM_MIN, ", ", EMB_DIM_MAX, "] and is multiple of ", EMB_DIM_MIN,
                 ", but got ", emb_dim);
     auto input_conti = input.contiguous();
