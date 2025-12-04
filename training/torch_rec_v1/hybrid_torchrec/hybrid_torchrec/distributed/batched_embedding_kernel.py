@@ -423,12 +423,45 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
                     ),
                 )
         elif self.optimizer == OptimType.EXACT_SGD:
-            return self._report_io_size_count(
-                "fwd_output",
-                invokers.lookup_sgd.invoke(
-                    common_args, self.optimizer_args
-                ),
-            )
+            if self.use_accumulate and self.grad_accum.current_accumulate_step == self.accumulate_step:
+                indices_multi_step = torch.cat(self.grad_accum.indice_multi_step)
+                offsets_multi_step = torch.arange(indices_multi_step.shape[0] + 1).to(DEVICE)
+
+                unique_multi_step, unique_inverse_multi_step, unique_offset_multi_step = (
+                    self.grad_accum.do_multi_step_unique()
+                )
+                unique_offset_multi_step = unique_offset_multi_step.to(DEVICE)
+                table_offsets_multi = self.grad_accum.do_table_offsets(True, offsets)
+                table_offsets_multi = table_offsets_multi.to(DEVICE).to(torch.int64)
+
+                common_args_multi_step = self.create_common_args_aggregation(
+                    CommonArgsAggregationInput(indices, offsets, vbe_metadata, feature_requires_grad, hash_indices,
+                                               per_sample_weights, unique_indices, unique_inverse, unique_offset,
+                                               table_grad_accumulate_offsets, grad_accumulate, grad_accumulate_offsets,
+                                               use_optimize, table_offsets_multi, indices_multi_step,
+                                               offsets_multi_step, unique_multi_step, unique_offset_multi_step,
+                                               unique_inverse_multi_step)
+                )
+                self.grad_accum.current_accumulate_step = 0
+
+                result = invokers.lookup_sgd.invoke_grad_aggregation(
+                    common_args_multi_step,
+                    self.optimizer_args,
+                    iteration=self.iter[0],
+                )
+                if result.requires_grad:
+                    result.register_hook(self.clear_after_accumulate)
+
+                return self._report_io_size_count("fwd_output", result)
+            else:
+                return self._report_io_size_count(
+                    "fwd_output",
+                    invokers.lookup_sgd.invoke(
+                        common_args,
+                        self.optimizer_args,
+                        iteration=self.iter[0],
+                    ),
+                )
         else:
             return NotImplemented
 
