@@ -2,6 +2,7 @@ import os
 import time
 import torch
 import argparse
+import logging
 import torch_npu
 import torch.nn as nn
 import torch.optim as optim
@@ -15,9 +16,16 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--batch-size', type=int, default=32, help='batch size')
 args = parser.parse_args()
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+)
+logger = logging.getLogger(__name__)
+
+
 def generate_training_data(num_samples=1000, seq_len=1000, embedding_dim=64, num_categories=100):
     """生成训练数据"""
-    print("生成训练数据...")
+    logger.info("生成训练数据...")
     user_behavior_sequences = torch.randn(num_samples, seq_len, embedding_dim)
     target_item_embeddings = torch.randn(num_samples, embedding_dim)
     behavior_categories = torch.randint(0, num_categories, (num_samples, seq_len))
@@ -71,7 +79,7 @@ def train_model(model, train_loader, optimizer, criterion, device, epoch):
         
         # 每隔 10 个 batch 输出一次训练进度
         if batch_idx % 10 == 0:
-            print(f'训练进度: {epoch}轮 [{batch_idx * len(user_behaviors)}/{len(train_loader.dataset)} '
+            logger.info(f'训练进度: {epoch}轮 [{batch_idx * len(user_behaviors)}/{len(train_loader.dataset)} '
                   f'({100. * batch_idx / len(train_loader):.0f}%)]\t损失: {loss.item():.6f}')
     
     avg_loss = total_loss / num_batches
@@ -96,7 +104,7 @@ def evaluate_model(model, test_loader, criterion, device):
             #compile
             if os.environ.get('MODEL_COMPILE_FLAG', "0") == "1":
                 model = torch.compile(model, dynamic=False, backend="inductor")
-                print("Inductor MODE YES")
+                logger.info("Inductor MODE YES")
 
             #profiling
             if os.environ.get('MODEL_PROFILING_FLAG', "0") == "1":
@@ -129,9 +137,9 @@ def evaluate_model(model, test_loader, criterion, device):
                     with_modules=False,
                     with_flops=False,
                     experimental_config=experimental_config) as prof:
-                    print("profiling start...")
+                    logger.info("profiling start...")
                     for step in range(steps):
-                        print(f"profiling steps == {step}")
+                        logger.info(f"profiling steps == {step}")
                         # 前向传播
                         ctr_predictions, _, _ = model(
                             user_behavior_seq=user_behaviors,
@@ -150,8 +158,11 @@ def evaluate_model(model, test_loader, criterion, device):
             if os.environ.get('MODEL_E2E_FLAG', "0") == "1":
                 total_time = 0.0
                 count = 0
+                latency_list = []
+                warmup_steps = 50
+                total_steps = 100
                 with torch.no_grad():
-                    for i in range(100):
+                    for i in range(total_steps):
                         start_time = time.time()
                         # 前向传播
                         ctr_predictions, _, _ = model(
@@ -164,13 +175,38 @@ def evaluate_model(model, test_loader, criterion, device):
                         # 计算损失
                         loss = criterion(ctr_predictions, targets)
                         end_time = time.time()
-                        times = end_time - start_time
-                        if i >= 50:
-                            total_time += times
+                        latency = (end_time - start_time) * 1000
+                        if i >= warmup_steps:
+                            total_time += latency
                             count += 1
+                            latency_list.append(latency)
                         total_loss += loss.item()
-                avg_time = total_time / count * 1000
-                print(f"E2E时间 = {avg_time:.4f}")
+                avg_time = round(total_time / count, 6)
+
+                latency_list.sort()
+                p90 = 0.0
+                p99 = 0.0
+
+                if len(latency_list) > 0:
+                    p90_index = int(len(latency_list) * 0.9)
+                    p90_index = min(p90_index, len(latency_list) - 1)
+                    p90 = round(latency_list[p90_index], 6)
+
+                    p99_index = int(len(latency_list) * 0.99)
+                    p99_index = min(p99_index, len(latency_list) - 1)
+                    p99 = round(latency_list[p99_index], 6)
+
+                QPS = int(args.batch_size / avg_time * 1000)
+                
+                E2E_RESULT = {
+                    "Batch_size": args.batch_size,
+                    "model_name": "SIM",
+                    "QPS": QPS,
+                    "AVG Latency": avg_time,
+                    "P99 Latency": p99,
+                    "P90 Latency": p90
+                }
+                logger.info(E2E_RESULT)
 
             # 前向传播
             ctr_predictions, _, _ = model(
@@ -199,7 +235,7 @@ def main():
     """主训练函数"""
     # 设置设备
     device = torch.device('npu' if torch.npu.is_available() else 'cpu')
-    print(f"使用设备: {device}")
+    logger.info(f"使用设备: {device}")
     
     # 生成训练数据
     data = generate_training_data(num_samples=2000, seq_len=1000, embedding_dim=64, num_categories=100)
@@ -215,8 +251,8 @@ def main():
     )
     
     # 分割训练和测试数据
-    train_size = int(0.8 * len(dataset))
-    test_size = len(dataset) - train_size
+    train_size = int(len(dataset) - args.batch_size)
+    test_size = args.batch_size
     train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
     
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
@@ -240,14 +276,14 @@ def main():
     # 训练参数
     num_epochs = 1
     
-    print("开始训练...")
+    logger.info("开始训练...")
     for epoch in range(1, num_epochs + 1):
         train_loss = train_model(model, train_loader, optimizer, criterion, device, epoch)
-        print(f'第{epoch}轮训练完成，损失: {train_loss:.4f}')
+        logger.info(f'第{epoch}轮训练完成，损失: {train_loss:.4f}')
 
     # 评估模型
         test_loss, test_accuracy = evaluate_model(model, test_loader, criterion, device)
-        print(f'测试集损失: {test_loss:.4f}, 准确率: {test_accuracy:.4f}')
+        logger.info(f'测试集损失: {test_loss:.4f}, 准确率: {test_accuracy:.4f}')
 
 if __name__ == "__main__":
     main()
