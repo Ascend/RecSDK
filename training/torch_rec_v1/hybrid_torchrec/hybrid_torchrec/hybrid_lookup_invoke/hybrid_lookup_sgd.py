@@ -43,6 +43,10 @@ def invoke(
         total_hash_size_bits=common_args.total_hash_size_bits,
         indices=common_args.indices,
         offsets=common_args.offsets,
+        hash_indices=common_args.hash_indices,
+        unique_ids=common_args.unique_indices,
+        unique_offsets=common_args.unique_offset,
+        unique_inverse=common_args.unique_inverse,
         pooling_mode=common_args.pooling_mode,
         indice_weights=common_args.indice_weights,
         feature_requires_grad=common_args.feature_requires_grad,
@@ -72,5 +76,77 @@ def invoke(
         gwd_lower_bound=gwd_lower_bound,
         use_optimize=common_args.use_optimize,
         # grad_accumulate
+        grad_accumulate=common_args.grad_accumulate,
+        grad_accumulate_offsets=common_args.grad_accumulate_offsets,
         table_grad_accumulate_offsets=common_args.table_grad_accumulate_offsets
+    )
+
+
+def invoke_grad_aggregation(
+    common_args: HybridCommonArgs,
+    optimizer_args: OptimizerArgs,
+    iteration: int = 0,
+    apply_global_weight_decay: bool = False,
+    prev_iter_dev: Optional[torch.Tensor] = None,
+    gwd_lower_bound: float = 0.0
+) -> torch.Tensor:
+    vbe_metadata = common_args.vbe_metadata
+
+    return torch.ops.fbgemm.split_embedding_codegen_lookup_sgd_function_grad_aggregation(
+        # common_args
+        placeholder_autograd_tensor=common_args.placeholder_autograd_tensor,
+        dev_weights=common_args.dev_weights,
+        uvm_weights=common_args.uvm_weights,
+        lxu_cache_weights=common_args.lxu_cache_weights,
+        weights_placements=common_args.weights_placements,
+        weights_offsets=common_args.weights_offsets,
+        D_offsets=common_args.D_offsets,
+        total_D=common_args.total_D,
+        max_D=common_args.max_D,
+        hash_size_cumsum=common_args.hash_size_cumsum,
+        total_hash_size_bits=common_args.total_hash_size_bits,
+        indices=common_args.indices,
+        offsets=common_args.offsets,
+        indices_multi_step=common_args.indices_multi_step,
+        offsets_multi_step=common_args.offsets_multi_step,
+        hash_indices=common_args.hash_indices,
+        unique_ids=common_args.unique_indices,
+        unique_offsets=common_args.unique_offset,
+        unique_inverse=common_args.unique_inverse,
+        unique_multi_step=common_args.unique_multi_step,
+        unique_offset_multi_step=common_args.unique_offset_multi_step,
+        unique_inverse_multi_step=common_args.unique_inverse_multi_step,
+        pooling_mode=common_args.pooling_mode,
+        indice_weights=common_args.indice_weights,
+        feature_requires_grad=common_args.feature_requires_grad,
+        lxu_cache_locations=common_args.lxu_cache_locations,
+        uvm_cache_stats=common_args.uvm_cache_stats,
+        # VBE metadata
+        B_offsets=vbe_metadata.B_offsets,
+        vbe_output_offsets_feature_rank=vbe_metadata.output_offsets_feature_rank,
+        vbe_B_offsets_rank_per_feature=vbe_metadata.B_offsets_rank_per_feature,
+        max_B=vbe_metadata.max_B,
+        max_B_feature_rank=vbe_metadata.max_B_feature_rank,
+        vbe_output_size=vbe_metadata.output_size,
+        # optimizer_args
+        gradient_clipping=optimizer_args.gradient_clipping,
+        max_gradient=optimizer_args.max_gradient,
+        stochastic_rounding=optimizer_args.stochastic_rounding,  # if optimizer == none
+        learning_rate=common_args.learning_rate if IS_TORCH_REC_120 else optimizer_args.learning_rate,
+        # prev_iter
+        prev_iter_dev=prev_iter_dev,
+        # iter
+        iter=iteration,
+        output_dtype=common_args.output_dtype,
+        is_experimental=common_args.is_experimental,
+        use_uniq_cache_locations_bwd=common_args.use_uniq_cache_locations_bwd,
+        use_homogeneous_placements=common_args.use_homogeneous_placements,
+        apply_global_weight_decay=apply_global_weight_decay,
+        gwd_lower_bound=gwd_lower_bound,
+        use_optimize=common_args.use_optimize,
+        # grad_accumulate
+        grad_accumulate=common_args.grad_accumulate,
+        grad_accumulate_offsets=common_args.grad_accumulate_offsets,
+        table_grad_accumulate_offsets=common_args.table_grad_accumulate_offsets,
+        table_offsets_multi=common_args.table_offsets_multi
     )
