@@ -14,6 +14,7 @@
 # ==============================================================================
 import sys
 import os
+import functools
 
 root_path = os.path.abspath(__file__)
 root_path = os.path.sep.join(root_path.split(os.path.sep)[:-2])
@@ -22,9 +23,14 @@ sys.path.append(root_path)
 import torch
 import torch.nn as nn
 from easydict import EasyDict as edict
+import torch._inductor.fx_passes.fuse_attention as fuse_attention
+@functools.lru_cache(None)
+def new_sfdp_init():
+    return
+fuse_attention._sfdp_init = new_sfdp_init
 
 from datasets.criteo import load_data, TestCriteoHandler
-from utils.autoint_handler import ModelHandler, get_params, get_opts
+from utils.handler import ModelHandler, get_params, get_opts
 
 
 class AutoInt(nn.Module):

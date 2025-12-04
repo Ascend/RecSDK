@@ -62,15 +62,28 @@ sasrec模型数据集从[该路径](https://github.com/pmixer/SASRec.pytorch/blo
    cd behaviour_and_multi_task/
    bash launch.sh
    ```
-3. 对于 **ByteMLPerf** 模型:
+3. 对于 **ByteMLPerf** 路径下的模型:
    需要在Huggingface下载原始模型配置文件：
-   ｜ 模型 ｜ 路径 ｜
-   ｜ Resnet50 ｜ https://huggingface.co/google-bert/bert-base-uncased ｜
-   ｜ Bert | https://huggingface.co/microsoft/resnet-50 |
 
-修改MODEL_PATH为下载的模型路径：
+| 模型 | 路径 |
+| ---- | ---- |
+| Resnet50 | https://huggingface.co/google-bert/bert-base-uncased |
+| Bert | https://huggingface.co/microsoft/resnet-50 |
 
-    ``shell     cd bytemlperf/     bash launch.sh     ``
+然后进入bytemlperf文件夹并修改launch.sh脚本中`MODEL_PATH`为模型路径，模型路径结构如下：
+```
+├── bert-torch
+│   ├── config.json
+│   ├── pytorch_model.bin
+│   ├── tokenizer_config.json
+│   ├── tokenizer.json
+│   └── vocab.txt
+└── resnet50-torch-fp32
+    ├── config.json
+    ├── preprocessor_config.json
+    └── pytorch_model.bin
+```
+最后执行`bash launch.sh`进行推理。
 
 ## Profiling
 
@@ -84,4 +97,4 @@ sasrec模型数据集从[该路径](https://github.com/pmixer/SASRec.pytorch/blo
    cd feature_interaction/src/
    bash launch.sh
    ```
-3. 直接在PROFILING_PATH路径下将输出的*.json文件拖入chrome://tracing页面即可查看运行时详细信息
+3. 将`PROFILING_PATH`路径下将输出的trace*.json文件拖入chrome://tracing页面即可查看运行时详细信息

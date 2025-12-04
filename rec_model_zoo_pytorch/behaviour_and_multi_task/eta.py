@@ -35,7 +35,7 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, params):
         super().__init__()
         self.num_heads = params.num_heads
-        self.attention_dim = params.embedding_size
+        self.attention_dim = params.embedding_size[-1]
 
         self.q_linear = nn.Linear(self.attention_dim, self.attention_dim, bias=False)
         self.k_linear = nn.Linear(self.attention_dim, self.attention_dim, bias=False)
@@ -76,7 +76,7 @@ class LoneAttention(nn.Module):
         self.params = params
         self.attention = MultiHeadAttention(params)
         if self.params.reuse_hash:
-            self.reuse_hash = torch.randn((self.params.embedding_size, self.params.hash_bits)).to(self.params.device)
+            self.reuse_hash = torch.randn((self.params.embedding_size[-1], self.params.hash_bits)).to(self.params.device)
 
         self.relu = nn.ReLU()
 
