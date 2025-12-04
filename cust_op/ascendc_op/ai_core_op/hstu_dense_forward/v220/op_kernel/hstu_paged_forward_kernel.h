@@ -267,7 +267,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     uint32_t taskId)
 {
     int isAtomic = 1;
-    if (this->computeTaskInfo[taskId].kSeqId == 0) {
+    if (this->computeTaskInfo[taskId].needClear) {
         isAtomic = 0;
     }
 
@@ -297,17 +297,19 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     uint32_t preTaskId = 0;
     uint32_t prePreTaskId = 0;
     uint32_t nextTaskId = 0;
-    uint32_t nblk = 0;
+    uint32_t kSeqId = this->skSeqBlkId;
+    uint32_t kSeqNum = 0;
 
-    for (auto blkId = this->sBlkId; blkId < this->eBlkId; blkId++) {
-        auto kSeqNum = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
+    for (auto blkId = this->sBlkId; blkId <= this->eBlkId; blkId++) {
+        kSeqNum = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
         auto deltaQK = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].deltaQK;
-        nblk = deltaQK / this->blockHeight;
+        auto nblk = deltaQK / this->blockHeight;
         bool isDeltaQK = deltaQK % this->blockHeight != 0;
         int64_t maskOffset1 = deltaQK % this -> blockHeight;
         int64_t maskOffset2 = deltaQK % this -> blockHeight - this -> blockHeight;
 
-        for (auto kSeqId = 0; kSeqId < kSeqNum; kSeqId++) {
+        auto limit = (blkId == this->eBlkId) ? this->ekSeqBlkId : kSeqNum;
+        for (; kSeqId < limit; kSeqId++) {
             auto taskinfo = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
             BlockMaskParams maskinfo = {
                 taskinfo.qSeqId,
@@ -366,10 +368,13 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
             }
 
             this->computeTaskInfo[nextTaskId] = this->computeTaskInfo[currentTaskId];
+            this->computeTaskInfo[nextTaskId].needClear = 0;
             this->maskTaskInfo[nextTaskId] = this->maskTaskInfo[currentTaskId];
             taskId++;
         }
-
+        if (blkId == this->eBlkId && this->ekSeqBlkId == 0) {
+            break;
+        }
         this->transTaskInfo[transtaskId % TRANS_PIPE_NUM] = this->computeTaskInfo[currentTaskId];
         if (transtaskId > 1) {
             this->TransResult((transtaskId - 2) % TRANS_PIPE_NUM);
@@ -377,6 +382,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
         transtaskId++;
 
         this->UpdateTaskInfo(taskId % COMPUTE_PIPE_NUM);
+        kSeqId = 0;
     }
     ComputeTailBlock(taskId, currentTaskId, preTaskId, transtaskId);
 }
@@ -491,6 +497,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
             this->computeTaskInfo[taskId].headId * this->headDimV;
         this->computeTaskInfo[taskId].computeASeqLen = computeASeqLen;
     }
+    this->computeTaskInfo[taskId].needClear = 1;
 }
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>

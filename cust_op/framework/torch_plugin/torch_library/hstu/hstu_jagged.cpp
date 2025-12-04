@@ -60,7 +60,7 @@ at::Tensor hstu_jagged_forward_impl_npu(
         TORCH_CHECK(maskNpu.size(2) == maxSeqLen, "mask size 2 should be equal to maxSeqLen\n");
     }
 
-    auto attnOutput = at::empty({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options());
+    auto attnOutput = at::zeros({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options());
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
     const auto acSeqOffsetK = acSeqOffset;

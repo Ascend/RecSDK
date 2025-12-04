@@ -29,6 +29,11 @@ constexpr int INVALID_TASK_ID = -1;
 constexpr int BLOCK_M = 256;
 constexpr int BLOCK_MN = 256 * 256;
 
+constexpr int DEFAULT_SPLIT = 0;
+constexpr int FAST_SPLIT = 1;
+constexpr int FAST_SPLIT_SINGLE = 2;
+constexpr int STREAM_K = 3;
+
 template <typename T>
 __aicore__ inline T CeilDiv(T dividend, T divisor)
 {
