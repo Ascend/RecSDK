@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -18,6 +18,8 @@ using torch::autograd::Function;
 using tensor_list = std::vector<at::Tensor>;
 using namespace at;
 using namespace std;
+
+constexpr int EXPECTED_DIM_1D = 1;
 constexpr int EXPECTED_DIM_2D = 2;
 constexpr int threshold_mean_lengths = 30000;
 constexpr int threshold_mean_lengths_large = 750000;
@@ -128,6 +130,24 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
     }
 }
 
+tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_input1D_impl_npu(
+    const Tensor &permute,
+    const Tensor &lengths,
+    const Tensor &values,
+    const int64_t &stride,
+    const c10::optional<Tensor> &weights,
+    const c10::optional<int64_t> &permuted_lengths_sum)
+{
+    check_tensor_dim(lengths, EXPECTED_DIM_1D, "lengths");
+    auto [outLengths, outValues, outWeights] =
+        permute2d_sparse_data_impl_npu(permute,
+                                       lengths.view({-1, stride}),
+                                       values,
+                                       weights,
+                                       permuted_lengths_sum);
+    return make_tuple(outLengths.view({-1}), outValues, outWeights);
+}
+
 TORCH_LIBRARY(mxrec, m)
 {
     m.def("permute_2D_sparse_data(Tensor permute, "
@@ -140,16 +160,24 @@ TORCH_LIBRARY(mxrec, m)
           "                       Tensor values, "
           "                       Tensor? weights=None, "
           "                       SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)");
+    m.def("permute_2D_sparse_data_input1D(Tensor permute, "
+          "                       Tensor lengths, "
+          "                       Tensor values, "
+          "                       int stride, "
+          "                       Tensor? weights=None, "
+          "                       SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 {
     m.impl("permute_2D_sparse_data", &permute2d_sparse_data_impl_npu);
     m.impl("permute_sparse_data", &permute2d_sparse_data_impl_npu);
+    m.impl("permute_2D_sparse_data_input1D", &permute2d_sparse_data_input1D_impl_npu);
 }
 
 TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m)
 {
     m.impl("permute_2D_sparse_data", &permute2d_sparse_data_impl_npu);
     m.impl("permute_sparse_data", &permute2d_sparse_data_impl_npu);
+    m.impl("permute_2D_sparse_data_input1D", &permute2d_sparse_data_input1D_impl_npu);
 }

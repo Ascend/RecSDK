@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -246,7 +246,7 @@ public:
             
             // 将数据长度转换为字节数
             int64_t valuesStartIndex = startIndex * datasize;
-            int64_t outValueStartIndex = *(permutedLengthsOffsetPtr + i) * datasize;
+            int64_t outValueStartIndex = static_cast<int64_t>(*(permutedLengthsOffsetPtr + i)) * datasize;
             int64_t remainLen = tLen * datasize;
 
             // 分块拷贝数据（因为数据可能大于UB空间）
