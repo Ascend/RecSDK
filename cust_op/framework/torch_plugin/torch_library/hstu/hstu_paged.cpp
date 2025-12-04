@@ -68,7 +68,7 @@ at::Tensor hstu_paged_forward_impl_npu(
     TORCH_CHECK(!numTarget.defined() || targetGroupSize > 0,
                 "targetGroupSize must be greater than 0 when numTarget is defined");
 
-    auto attnOutput = at::empty_like(denseQ);
+    auto attnOutput = at::zeros_like(denseQ);
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
     double realAlpha = alpha.value_or(1.0);
 

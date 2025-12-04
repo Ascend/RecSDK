@@ -667,6 +667,7 @@ public:
 
         int64_t copyLenEachLoopAlignHeadDim = transUbBlockElem / vDim * vDim;
 
+        AscendC::SetAtomicNone();
         while (remain > 0) {
             int64_t thisLen = copyLenEachLoopAlignHeadDim;
             if (remain < thisLen) {
@@ -696,7 +697,10 @@ public:
             dstCopyParams.blockCount = static_cast<uint16_t>(thisLen / vDim);
             int64_t thisLineOffset = (total - remain) / vDim;
             int64_t outOffset = outStartOffset + thisLineOffset * xDim2 * vDim;
+            AscendC::SetAtomicAdd<qType>();
+            AscendC::SetAtomicType<qType>();
             DataCopy(attnOutputGt[outOffset], newOutLt, dstCopyParams);
+            AscendC::SetAtomicNone();
 
             queOut.FreeTensor(newOutLt);
             remain = remain - thisLen;

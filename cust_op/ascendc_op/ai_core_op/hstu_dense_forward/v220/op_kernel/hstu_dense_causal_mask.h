@@ -180,11 +180,11 @@ public:
     }
 
 private:
-    int64_t qSeqId;
-    int64_t kSeqId;
-    int64_t qSeqLen;
-    int64_t kSeqLen;
-    int64_t nblk;
+    uint32_t qSeqId;
+    uint32_t kSeqId;
+    uint32_t qSeqLen;
+    uint32_t kSeqLen;
+    uint32_t nblk;
     int64_t blockHeight;
     int64_t numContext;
     int64_t numTarget;
