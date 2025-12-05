@@ -168,7 +168,7 @@ b) 算子参数说明：
 | mask_type         | Attr            | int      | -        | [0, 2, 3]            | mask类型：0表示使用内置下三角mask（TRIL），2表示不使用mask，3表示使用自定义mask（CUSTOM）<br>注意：1（TRIU）当前不支持 |
 | max_seq_len       | Attr            | int      | -        | [1, 20480]           | 模型最大序列长度<br>**反向传播特殊约束**: Normal模式下seqLen必须等于max_seq_len，Jagged模式下必须与mask和attn_bias的shape中S相等 |
 | silu_scale        | Attr            | float    | 0.0      | 任意值               | SiLU激活函数前的缩放因子，如果为0.0则自动计算为1.0/max_seq_len |
-| target_group_size | Attr (OPTIONAL) | int      | 0        | {1, 3}               | Target分组大小，当提供时值必须在{1, 3}中，且必须与num_context和num_target一起提供 |
+| target_group_size | Attr (OPTIONAL) | int      | None        | {1, 3}               | Target分组大小，当提供时值必须在{1, 3}中，且必须与num_context和num_target一起提供 |
 | alpha             | Attr (OPTIONAL) | float    | 1.0      | 任意值               | 缩放因子，默认值为1.0                                        |
 
 ## 输出参数

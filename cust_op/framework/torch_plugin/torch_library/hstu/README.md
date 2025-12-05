@@ -173,7 +173,7 @@ torch.ops.mxrec.hstu_jagged_backward(Tensor grad, Tensor q, Tensor k, Tensor v, 
 | **maskType** | int | [0, 3] | 同hstu_dense接口<br>当 `maskType = 3` 时，mask的第2维必须等于 `maxSeqLen` |
 | **siluScale** | float | 任意值 | 默认值: 0.0<br>如果为0.0，则自动计算为 `1.0 / maxSeqLen` |
 | **seqOffset** | Tensor | 1D张量，至少2个元素 | **必须提供**<br>表示每个batch的序列长度偏移<br>`batchSize = seqOffset.size(0) - 1` |
-| **targetGroupSize** | int | {1, 3} | 可选，默认值: 0<br>当提供时，值必须在 {1, 3} 中 |
+| **targetGroupSize** | int | {1, 3} | 可选，默认值: None<br>当提供时，值必须在 {1, 3} 中 |
 | **alpha** | float | 任意值 | 可选，默认值: 1.0 |
 
 #### 可选张量参数限制
