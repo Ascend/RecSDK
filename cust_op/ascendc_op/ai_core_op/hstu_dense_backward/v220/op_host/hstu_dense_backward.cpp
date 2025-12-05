@@ -142,7 +142,7 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
         return ge::GRAPH_FAILED;
     }
 
-    if (gradType == ge::DataType::DT_BF16) {
+    if (gradType == ge::DataType::DT_BF16 && headDim <= BFLOAT16_DEPTH_MAX_DIM) {
         // matmul计算时，左矩阵一次拷入L1中的大小为depthA1*baseM*baseK，右矩阵一次拷入L1中的大小为depthB1*baseN*baseK
         // 理论上在调用matmul.GetTiling时，matmul内部会自动算出最优depth值，但不能使所有场景性能最优
         // 所以这里通过设置depth大小，调整一次拷入L1的数据多少，达到优化目的
