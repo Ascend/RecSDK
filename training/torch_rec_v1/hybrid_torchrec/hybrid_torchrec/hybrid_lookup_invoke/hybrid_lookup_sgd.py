@@ -104,6 +104,7 @@ def invoke_grad_aggregation(
         total_D=common_args.total_D,
         max_D=common_args.max_D,
         hash_size_cumsum=common_args.hash_size_cumsum,
+        rows_per_table=common_args.rows_per_table,
         total_hash_size_bits=common_args.total_hash_size_bits,
         indices=common_args.indices,
         offsets=common_args.offsets,
