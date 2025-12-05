@@ -48,6 +48,7 @@ constexpr int DATA_TYPE_LENGTH_FLOAT16 = 2;
 
 constexpr int BLOCK_128 = 128;
 constexpr int BLOCK_256 = 256;
+constexpr int BFLOAT16_DEPTH_MAX_DIM = 128;
 
 constexpr int VCORE_NUM_IN_ONE_AIC = 2;
 
