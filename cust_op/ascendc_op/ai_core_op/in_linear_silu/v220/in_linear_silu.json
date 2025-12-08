@@ -1,0 +1,115 @@
+[
+    {
+        "op": "InLinearSilu",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "x",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp16",
+                    "fp32",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "weight",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp16",
+                    "fp32",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "bias",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp32",
+                    "fp32"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "user",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp16",
+                    "fp32",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "value",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp16",
+                    "fp32",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "query",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp16",
+                    "fp32",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "key",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp16",
+                    "fp32",
+                    "bf16"
+                ]
+            }
+        ],
+        "attr": [
+            {
+                "name": "split_arg_list",
+                "param_type": "optional",
+                "type": "list_int"
+            }
+        ]
+    }
+]
