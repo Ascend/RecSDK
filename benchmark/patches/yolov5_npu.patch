@@ -1,5 +1,5 @@
 diff --git a/detect.py b/detect.py
-index 535e196f..7f0c1f01 100644
+index 535e196f..fb387e11 100644
 --- a/detect.py
 +++ b/detect.py
 @@ -33,10 +33,16 @@ import csv
@@ -44,12 +44,10 @@ index 535e196f..7f0c1f01 100644
      if webcam:
          view_img = check_imshow(warn=True)
          dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
-@@ -175,15 +181,19 @@ def run(
-     elif screenshot:
+@@ -176,14 +182,18 @@ def run(
          dataset = LoadScreenshots(source, img_size=imgsz, stride=stride, auto=pt)
      else:
--        dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
-+        dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=False, vid_stride=vid_stride)
+         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
 +        bs = batch_size
      vid_path, vid_writer = [None] * bs, [None] * bs
  
@@ -261,7 +259,7 @@ index 535e196f..7f0c1f01 100644
 +                        pred = model(im_batch, augment=augment, visualize=visualize)
 +                        end_time = time.time()
 +                        latency = (end_time - start_time) * 1000
-+                        if i >= 50:
++                        if i >= warmup_steps:
 +                            total_time += latency
 +                            count += 1
 +                            latency_list.append(latency)
@@ -280,12 +278,12 @@ index 535e196f..7f0c1f01 100644
 +                        p99_index = min(p99_index, len(latency_list) - 1)
 +                        p99 = latency_list[p99_index]
 +
-+                    QPS = batch_size / avg_time * 1000
++                    QPS = int(batch_size / avg_time * 1000)
 +
 +                    output_log = {
-+                            "Batch Size": im_batch.shape[0],
++                            "Batch_size": im_batch.shape[0],
 +                            "model_name": "Yolov5",
-+                            "QPS": float(f"{QPS:.6f}"),
++                            "QPS": QPS,
 +                            "AVG Latency": float(f"{avg_time:.6f}"),
 +                            "P99 Latency": float(f"{p99:.6f}"),
 +                            "P90 Latency": float(f"{p90:.6f}")
