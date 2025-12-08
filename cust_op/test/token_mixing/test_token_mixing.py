@@ -50,8 +50,8 @@ def get_fused_loss_op(x, gamma, beta, device):
     return result.cpu().detach().numpy()
 
 
-@pytest.mark.parametrize("B", [1, 256, 512, 1024])
-@pytest.mark.parametrize("S", [128, 256, 512, 1024])
+@pytest.mark.parametrize("B", [1, 45, 256, 512, 1024])
+@pytest.mark.parametrize("S", [128, 256, 338, 507, 512, 1024])
 @pytest.mark.parametrize("device", ["npu:0"])
 def test_token_mixing(B, S, device):
     tensor = np.random.randn(B, S, S).astype(np.float32)
