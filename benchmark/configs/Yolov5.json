@@ -18,7 +18,9 @@
         "--source",
         "data/images/bs",
         "--batch-size",
-        "1"
+        "1",
+        "--device",
+        "npu"
     ],
     "pre_cmd": ["pip install ultralytics"],
     "pip_install_self": false,
