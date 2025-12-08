@@ -20,7 +20,7 @@
         "--batch-size",
         "1",
         "--device",
-        "npu"
+        "0"
     ],
     "pre_cmd": ["pip install ultralytics"],
     "pip_install_self": false,
