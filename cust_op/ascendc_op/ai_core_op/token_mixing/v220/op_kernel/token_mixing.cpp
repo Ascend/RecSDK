@@ -146,18 +146,24 @@ private:
         uint32_t copyLen = rowCount * args->xDim2;
 
         LocalTensor<T> xLocal = inQueue.AllocTensor<T>();
+        Duplicate(xLocal, 0.0f, bshLength_);
         LocalTensor<T> xTLocal = inTQueue.AllocTensor<T>();
+        Duplicate(xTLocal, 0.0f, bshLength_);
         LocalTensor<T> gammaLocal = inQueueGamma.AllocTensor<T>();
         LocalTensor<T> betaLocal = inQueueBeta.AllocTensor<T>();
+        PipeBarrier<PIPE_ALL>();
 
         if (args->xDim2 == args->xDim2WithPadding) {
             CpGm2Local(xLocal, xGT[offsetInCore], copyLen);
             CpGm2Local(xTLocal, xTGT[offsetInCore], copyLen);
         } else {
-            // 对齐的单位为H,在H后会补齐32字节
+            uint32_t xDataLen = args->xDim2 * sizeof(float);
+            DataCopyExtParams params{1, xDataLen, 0, 0, 0};
+            DataCopyPadExtParams<float> padParams{true, 0, 0, 0};
             for (uint32_t i = 0; i < rowCount; ++i) {
-                CpGm2Local(xLocal[i * args->xDim2WithPadding], xGT[offsetInCore + i * args->xDim2], args->xDim2);
-                CpGm2Local(xTLocal[i * args->xDim2WithPadding], xTGT[offsetInCore + i * args->xDim2], args->xDim2);
+                DataCopyPad(xLocal[i * args->xDim2WithPadding], xGT[offsetInCore + i * args->xDim2], params, padParams);
+                DataCopyPad(xTLocal[i * args->xDim2WithPadding], xTGT[offsetInCore + i * args->xDim2], params,
+                            padParams);
             }
         }
         CpGm2Local(gammaLocal, gammaGT, args->xDim2);
@@ -185,21 +191,34 @@ private:
         Add(addTmpLocal, xLocal, xTLocal, bshLength_);
         // shape
         uint32_t meanShape[2] = {rowCount, 1};
+#ifdef SUPPORT_C310
+        uint32_t shape[2] = {rowCount, args->xDim2WithPadding};
+#else
         uint32_t shape[2] = {rowCount, args->xDim2};
+#endif
 
         // layerNorm拆分
         // 计算Reduce
-        ReduceSum<float, Pattern::Reduce::AR, false>(meanLocal, addTmpLocal, shape, false);
+        ReduceSum<float, Pattern::Reduce::AR, false>(meanLocal, addTmpLocal, shape, true);
+        PipeBarrier<PIPE_V>();
         // 计算平均值mean
         Muls(meanLocal, meanLocal, 1.0f / args->xDim2, rowCount);
         // broadcast mean[rowCount] -> [rowCount, xDim2WithPadding]
         uint32_t trueShape[2] = {rowCount, args->xDim2WithPadding};
         Broadcast<float, 2, 1>(tmpLocal, meanLocal, trueShape, meanShape);
+        if (args->xDim2 < args->xDim2WithPadding) {
+            for (uint32_t i = 0; i < rowCount; ++i) {
+                for (uint32_t j = args->xDim2; j < args->xDim2WithPadding; ++j) {
+                    tmpLocal.SetValue(i * args->xDim2WithPadding + j, 0.0f);
+                }
+            }
+        }
         // (x-mean) * (x-mean)
         Sub(tmpLocal, addTmpLocal, tmpLocal, rowCount * args->xDim2WithPadding);
         Mul(yLocal, tmpLocal, tmpLocal, rowCount * args->xDim2WithPadding);
         // 计算var
-        ReduceSum<float, Pattern::Reduce::AR, false>(rstdLocal, yLocal, shape, false);
+        ReduceSum<float, Pattern::Reduce::AR, false>(rstdLocal, yLocal, shape, true);
+        PipeBarrier<PIPE_V>();
         Muls(rstdLocal, rstdLocal, 1.0f / args->xDim2, rowCount);
         // 计算rstd=1/sqrt(var+epsilon)
         Adds(rstdLocal, rstdLocal, args->epsilon, rowCount);
