@@ -54,7 +54,8 @@ def get_op(x: torch.Tensor, u: torch.Tensor, gamma: torch.Tensor, beta: torch.Te
 
 
 @pytest.mark.parametrize("dtype", [torch.float32])
-@pytest.mark.parametrize("a,r", [(4, 4), (1, 128), (7, 256), (32, 576), (128, 1024), (43, 100), (16, 1), (338, 338)])
+@pytest.mark.parametrize("a", [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048])
+@pytest.mark.parametrize("r", [1, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048])
 def test_ln_mul(dtype, a, r):
     torch.npu.set_device(0)
     # 构造随机输入
