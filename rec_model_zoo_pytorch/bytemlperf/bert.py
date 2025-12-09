@@ -31,6 +31,10 @@ from datasets.squad import load_data
 from utils.handler import ModelHandler, get_params, get_opts, set_all_seed
 from utils.logger import logger
 
+# 禁用flash-attention大算子，会影响gpu融合性能
+torch.backends.cuda.enable_flash_sdp(False)
+torch.backends.cuda.enable_mem_efficient_sdp(False)
+torch.backends.cuda.enable_math_sdp(True)  # 强制使用数学模式
 
 class BertHandler(nn.Module):
     def __init__(self, params: edict):

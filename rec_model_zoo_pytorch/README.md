@@ -67,8 +67,8 @@ sasrec模型数据集从[该路径](https://github.com/pmixer/SASRec.pytorch/blo
 
 | 模型 | 路径 |
 | ---- | ---- |
-| Resnet50 | https://huggingface.co/google-bert/bert-base-uncased |
-| Bert | https://huggingface.co/microsoft/resnet-50 |
+| Resnet50 | https://huggingface.co/microsoft/resnet-50 |
+| Bert | https://huggingface.co/google-bert/bert-base-uncased |
 
 然后进入bytemlperf文件夹并修改launch.sh脚本中`MODEL_PATH`为模型路径，模型路径结构如下：
 ```
