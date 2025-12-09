@@ -21,19 +21,19 @@ See the License for the specific language governing permissions and
 
 namespace optiling {
 BEGIN_TILING_DATA_DEF(TokenMixingTilingData)
-TILING_DATA_FIELD_DEF(uint32_t, xDim0);
-TILING_DATA_FIELD_DEF(uint32_t, xDim1);
-TILING_DATA_FIELD_DEF(uint32_t, xDim2);
-TILING_DATA_FIELD_DEF(uint32_t, xDim2WithPadding);
+TILING_DATA_FIELD_DEF(uint64_t, xDim0);
+TILING_DATA_FIELD_DEF(uint64_t, xDim1);
+TILING_DATA_FIELD_DEF(uint64_t, xDim2);
+TILING_DATA_FIELD_DEF(uint64_t, xDim2WithPadding);
 TILING_DATA_FIELD_DEF(float, epsilon);
 TILING_DATA_FIELD_DEF(uint32_t, coreNum);
-TILING_DATA_FIELD_DEF(uint32_t, perCoreComputeRows);
-TILING_DATA_FIELD_DEF(uint32_t, formerCoreRows);
-TILING_DATA_FIELD_DEF(uint32_t, formerLoopCount);
-TILING_DATA_FIELD_DEF(uint32_t, formerRemainRows);
-TILING_DATA_FIELD_DEF(uint32_t, tailCoreRows);
-TILING_DATA_FIELD_DEF(uint32_t, tailLoopCount);
-TILING_DATA_FIELD_DEF(uint32_t, tailRemainRows);
+TILING_DATA_FIELD_DEF(uint64_t, perCoreComputeRows);
+TILING_DATA_FIELD_DEF(uint64_t, formerCoreRows);
+TILING_DATA_FIELD_DEF(uint64_t, formerLoopCount);
+TILING_DATA_FIELD_DEF(uint64_t, formerRemainRows);
+TILING_DATA_FIELD_DEF(uint64_t, tailCoreRows);
+TILING_DATA_FIELD_DEF(uint64_t, tailLoopCount);
+TILING_DATA_FIELD_DEF(uint64_t, tailRemainRows);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(TokenMixing, TokenMixingTilingData)

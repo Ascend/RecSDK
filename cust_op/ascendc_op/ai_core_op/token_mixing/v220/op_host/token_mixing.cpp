@@ -32,6 +32,8 @@ constexpr uint32_t DIM3 = 3;
 constexpr int32_t EPSILON_INDEX = 0;
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr int32_t RESERVERD_UB_SIZE = 20 * 1024;  // UB保留空间
+constexpr uint64_t MEM_XDIM2_SIZE = 7;
+constexpr uint64_t MEM_ONE_SIZE = 3;
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
@@ -60,8 +62,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     }
     context->SetTilingKey(dtype2TilingKey.at(inputDataType));
 
-    uint32_t alignment = BLOCK_SIZE / sizeof(float);
-    uint32_t xDim2WithPadding = (xShape[DIM2] + alignment - 1) / alignment * alignment;
+    uint64_t alignment = BLOCK_SIZE / sizeof(float);
+    uint64_t xDim2WithPadding = (xShape[DIM2] + alignment - 1) / alignment * alignment;
 
     OPS_LOG_E_IF_NULL("attrs", context->GetAttrs(), return ge::GRAPH_FAILED);
     const float* epsilon = context->GetAttrs()->GetAttrPointer<float>(EPSILON_INDEX);
@@ -80,10 +82,11 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
     ubCanUsed -= RESERVERD_UB_SIZE;
 
-    // 计算每行结果需要的字节数, x(H) + transpose(H) + add(H) + gamma(H) + beta(H) + tmp(H) + mean(1) + rstd(1) + one(1) + output(H)
-    auto perRowMemory = (7 * xDim2WithPadding + 3) * sizeof(float);
+    // 计算每行结果需要的字节数, x(H) + transpose(H) + add(H) + gamma(H) + beta(H) + tmp(H) + mean(1) + rstd(1) + one(1)
+    // + output(H)
+    uint64_t perRowMemory = (MEM_XDIM2_SIZE * xDim2WithPadding + MEM_ONE_SIZE) * sizeof(float);
     // 每个core每次可以处理的Row
-    auto perCoreComputeRows = ubCanUsed / perRowMemory;
+    uint64_t perCoreComputeRows = ubCanUsed / perRowMemory;
     // ub剩余的空间不足以执行一次循环
     OPS_LOG_E_IF(perCoreComputeRows == 0, context, return ge::GRAPH_FAILED,
                  "[ERROR]TokenMixing insufficient space in ub.");
@@ -100,7 +103,11 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     uint64_t tailCoreRows = xShape[DIM0] * xShape[DIM1] - formerCoreRows * (coreNum - 1);
     uint64_t tailLoopCount = tailCoreRows / perCoreComputeRows;
     uint64_t tailRemainRows = tailCoreRows - perCoreComputeRows * tailLoopCount;
-
+    // 校验数据是否回绕, 最大偏移地址为xShape[DIM0] * xShape[DIM1] * xDim2WithPadding, xShape[DIM1] *
+    // xDim2WithPadding 不会超过uint32最大值
+    OPS_LOG_E_IF((std::numeric_limits<uint64_t>::max() / xShape[DIM0] <= xShape[DIM1] * xDim2WithPadding) ||
+                 (std::numeric_limits<uint64_t>::max() / perCoreComputeRows <= xDim2WithPadding),
+                 context, return ge::GRAPH_FAILED, "[ERROR] TokenMixing shape out of range");
     // 设置分片数据
     TokenMixingTilingData tilingData;
     tilingData.set_xDim0(xShape[DIM0]);
