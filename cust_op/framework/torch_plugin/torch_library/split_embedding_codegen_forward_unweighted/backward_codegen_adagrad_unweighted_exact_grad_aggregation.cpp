@@ -76,10 +76,7 @@ public:
         auto info_B_num_bits = max_B_;
         auto info_B_mask = T;
         
-        // EC查表，计算每张表的indices个数
-        int64_t batchs = (offsets.numel() - 1) / weights_offsets.numel();
-        at::Tensor table_offsets = torch::arange(D_offsets.size(0), offsets.device()) * batchs;
-        at::Tensor offset_per_key = offsets.index_select(0, table_offsets.to(at::kLong));
+        at::Tensor offset_per_key = compute_offset_per_key(offsets, weights_offsets, D_offsets);
 
         std::vector<at::Tensor> saved_tensors;
         saved_tensors.push_back(dev_weights);

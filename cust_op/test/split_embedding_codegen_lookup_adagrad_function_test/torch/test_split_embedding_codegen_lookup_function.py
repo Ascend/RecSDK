@@ -19,6 +19,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_common import (
 from fbgemm_gpu.split_table_batched_embeddings_ops_training import SplitTableBatchedEmbeddingBagsCodegen
 from hybrid_torchrec.distributed.batched_embedding_kernel import HybridSplitTableBatchedEmbeddingBagsCodegen
 from torch.optim import Adam, Adagrad, SGD, SparseAdam
+from torchrec.optim.rowwise_adagrad import RowWiseAdagrad
 
 import torchrec
 from torchrec import JaggedTensor, KeyedJaggedTensor, PoolingType, ComputeDevice
@@ -43,12 +44,14 @@ TORCH_POOLING_MODE_TO_NN = {
 TORCH_OPTIMIZER_TO_FBGEMM = {
     SparseAdam: EmbOptimType.ADAM,
     Adagrad: EmbOptimType.EXACT_ADAGRAD,
-    SGD: EmbOptimType.EXACT_SGD
+    SGD: EmbOptimType.EXACT_SGD,
+    RowWiseAdagrad: EmbOptimType.EXACT_ROWWISE_ADAGRAD,
 }
 OPTIMIZER_PARAM = {
     SparseAdam: dict(lr=0.01),
     Adagrad: dict(lr=0.01, eps=1.0e-8),
     SGD: dict(lr=0.01),
+    RowWiseAdagrad: dict(lr=0.01),
 }
 
 
@@ -156,7 +159,8 @@ def lookup_cpu(jt_lst, weights, params):
     for i in range(EPOCH):
         # forward
         output = model(jt_lst[i])
-
+        if params.optim == RowWiseAdagrad:
+            continue
         # 将多个表的查询结果合并
         loss = torch.sum(output ** 2 / 2)
 
@@ -205,6 +209,8 @@ def lookup_npu(indices, offsets, weights, jt_lst, params):
             unique_offset = torch.Tensor(unique_offset).to(DEVICEID).to(torch.int64)
             kwargs = dict(unique_indices=unique_indices, unique_offset=unique_offset, unique_inverse=unique_inverse)
         output = tbe(indice, offset, **kwargs)
+        if params.optim == RowWiseAdagrad:
+            continue
         loss = torch.sum(output ** 2 / 2)
         loss.backward()
     return output, tbe.weights_dev
@@ -287,7 +293,7 @@ def generate_unique(jt_lst, feature_map):
 
 
 def execute(params):
-    if params.unique and (params.optim == SGD):
+    if params.unique and (params.optim in (SGD, RowWiseAdagrad)):
         return  # 暂未适配SGD unique算子
     if params.feature_map is None:
         params.feature_map = list(range(len(params.tables)))
@@ -306,6 +312,9 @@ def execute(params):
     logging.info((~lookup_compare).sum())
     logging.info(lookup_npu_result[~lookup_compare])
     logging.info(lookup_golden[~lookup_compare])
+    assert (~lookup_compare).sum() / total_size < 1e-4
+    if params.optim == RowWiseAdagrad:
+        return
 
     logging.info("====== backward ===========")
     weights_compare = torch.isclose(weights_golden, weights_npu_result, 1e-4, 1e-4)
@@ -313,8 +322,6 @@ def execute(params):
     logging.info(torch.arange(total_size)[~weights_compare])
     logging.info(weights_npu_result[~weights_compare])
     logging.info(weights_golden[~weights_compare])
-
-    assert (~lookup_compare).sum() / total_size < 1e-4
     assert (~weights_compare).sum() / total_size < 1e-4
 
 
@@ -324,7 +331,7 @@ def execute(params):
 @pytest.mark.parametrize("unique", [False, True])
 @pytest.mark.parametrize("feature_map", [[0, 0, 1], [0, 1, 1]])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [SGD, Adagrad, SparseAdam])
+@pytest.mark.parametrize("optim", [SGD, Adagrad, SparseAdam, RowWiseAdagrad])
 def test_lookup_two_tables(tables, mutile_hots, batch_size, pooling_model, unique, optim, feature_map):
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, feature_map)
     execute(params)
@@ -335,7 +342,7 @@ def test_lookup_two_tables(tables, mutile_hots, batch_size, pooling_model, uniqu
 @pytest.mark.parametrize("batch_size", [2341, 1])
 @pytest.mark.parametrize("unique", [False, True])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [SGD, Adagrad, SparseAdam])
+@pytest.mark.parametrize("optim", [SGD, Adagrad, SparseAdam, RowWiseAdagrad])
 def test_lookup_backward_one_table(tables, mutile_hots, batch_size, pooling_model, unique, optim):
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, None)
     execute(params)
@@ -343,7 +350,7 @@ def test_lookup_backward_one_table(tables, mutile_hots, batch_size, pooling_mode
 
 @pytest.mark.parametrize("unique", [False, True])
 @pytest.mark.parametrize("pooling_model", [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE])
-@pytest.mark.parametrize("optim", [SGD, Adagrad, SparseAdam])
+@pytest.mark.parametrize("optim", [SGD, Adagrad, SparseAdam, RowWiseAdagrad])
 def test_lookup_multi_tables(pooling_model, unique, optim):
     tables, mutile_hots, batch_size = generate_tables(pooling_model)
     params = LookupParams(tables, mutile_hots, batch_size, pooling_model, unique, optim, None)
