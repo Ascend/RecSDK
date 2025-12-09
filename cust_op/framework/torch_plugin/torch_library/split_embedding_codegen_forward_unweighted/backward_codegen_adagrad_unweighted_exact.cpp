@@ -75,9 +75,7 @@ public:
         auto info_B_mask = T;
         
         // EC查表，计算每张表的indices个数
-        int64_t batchs = (offsets.numel() - 1) / weights_offsets.numel();
-        at::Tensor table_offsets = torch::arange(D_offsets.size(0), offsets.device()) * batchs;
-        at::Tensor offset_per_key = offsets.index_select(0, table_offsets.to(at::kLong));
+        at::Tensor offset_per_key = compute_offset_per_key(offsets, weights_offsets, D_offsets);
 
         std::vector<at::Tensor> saved_tensors;
         saved_tensors.push_back(dev_weights);
@@ -425,6 +423,8 @@ Tensor split_embedding_codegen_lookup_adagrad_function_pt2(
     check_param_len(learning_rate_tensor.numel(), 1, "learning_rate_tensor");
     double learning_rate = static_cast<double>(learning_rate_tensor.data_ptr<float>()[0]);
     bool use_optimize = true; // true表示直接更新，不做梯度累积
+
+    at::Tensor offset_per_key = compute_offset_per_key(offsets, weights_offsets, D_offsets);
 
     return SplitLookupAdagrad::apply(
         placeholder_autograd_tensor, output_dtype, dev_weights, uvm_weights, lxu_cache_weights, weights_placements,

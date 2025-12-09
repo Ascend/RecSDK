@@ -21,6 +21,17 @@ const int ADAM_OPTIM_NUM = 2;
 
 
 namespace fbgemm_npu_lookups {
+    inline at::Tensor compute_offset_per_key(
+        const at::Tensor& offsets,
+        const at::Tensor& weights_offsets,
+        const at::Tensor& D_offsets)
+    {
+        // 计算每张表的indices个数
+        int64_t batchs = (offsets.numel() - 1) / weights_offsets.numel();
+        at::Tensor table_offsets = torch::arange(D_offsets.size(0), offsets.device()) * batchs;
+        return offsets.index_select(0, table_offsets.to(at::kLong));
+    }
+
     inline void validate_forward_data_inputs(
         const at::Tensor& dev_weights,
         const at::Tensor& weights_offsets,
