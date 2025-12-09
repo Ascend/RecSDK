@@ -185,16 +185,25 @@ private:
         AscendC::LocalTensor<float> inputULocal = inQueueU.AllocTensor<float>();
         AscendC::LocalTensor<float> gammaLocal = inQueueGamma.AllocTensor<float>();
         AscendC::LocalTensor<float> betaLocal = inQueueBeta.AllocTensor<float>();
+        uint32_t offset = startRow * rLength + iterIdx * perCoreComputeRows * rLength;
+        AscendC::Duplicate(inputXLocal, 0.0f, arLength);
+        AscendC::Duplicate(inputULocal, 0.0f, arLength);
+        AscendC::PipeBarrier<PIPE_MTE2>();
 
         if (rLength == rLengthWithPadding) {
-            CpGm2Local(inputXLocal, inputXGlobal[startRow * rLength + iterIdx * perCoreComputeRows * rLength], copyLen);
-            CpGm2Local(inputULocal, inputUGlobal[startRow * rLength + iterIdx * perCoreComputeRows * rLength], copyLen);
+            CpGm2Local(inputXLocal, inputXGlobal[offset], copyLen);
+            CpGm2Local(inputULocal, inputUGlobal[offset], copyLen);
         } else {
+            uint32_t xDataLen = rLength * sizeof(float);
+            // 连续传输数据块个数；len:连续传输数据块长度，Byte，非对齐搬运；0, 0, 0:源目标数据块间隔，保留字段
+            AscendC::DataCopyExtParams params{1, xDataLen, 0, 0, 0};
+            // 搬运填充参数
+            AscendC::DataCopyPadExtParams<float> padParams{true, 0, 0, 0};
             for (int i = 0; i < rowCount; ++i) {
-                CpGm2Local(inputXLocal[i * rLengthWithPadding],
-                           inputXGlobal[(startRow + iterIdx * perCoreComputeRows + i) * rLength], rLength);
-                CpGm2Local(inputULocal[i * rLengthWithPadding],
-                           inputUGlobal[(startRow + iterIdx * perCoreComputeRows + i) * rLength], rLength);
+                AscendC::DataCopyPad(inputXLocal[i * rLengthWithPadding], inputXGlobal[offset + i * rLength], params,
+                                     padParams);
+                AscendC::DataCopyPad(inputULocal[i * rLengthWithPadding], inputUGlobal[offset + i * rLength], params,
+                                     padParams);
             }
         }
         CpGm2Local(gammaLocal, gammGlobal, rLength);
@@ -223,18 +232,28 @@ private:
         uint32_t meanShape[2] = {rowCount, 1};
         uint32_t shape[2] = {rowCount, rLength};
         // 计算reducesum, isReuseSource=false不能设置为true，否则会修改inputXLocal
-        AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR, false>(meanLocal, inputXLocal, shape, false);
+        AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR, false>(meanLocal, inputXLocal, shape, true);
+        AscendC::PipeBarrier<PIPE_V>();
         // 计算平均值mean
         AscendC::Muls(meanLocal, meanLocal, 1.0f / rLength, rowCount);
         // broadcast mean [rowCount] -> [rowCount, rLengthWithPadding]
         uint32_t trueShape[2] = {rowCount, rLengthWithPadding};
         AscendC::Broadcast<float, 2, 1>(tmpLocal, meanLocal, trueShape, meanShape);
+        // 将每一行后面rLengthWithPadding - rLength设置为0
+        if (rLength < rLengthWithPadding) {
+            for (uint32_t i = 0; i < rowCount; ++i) {
+                for (uint32_t j = rLength; j < rLengthWithPadding; ++j) {
+                    tmpLocal.SetValue(i * rLengthWithPadding + j, 0.0f);
+                }
+            }
+        }
         // 计算tmpLocal=x-mean
         AscendC::Sub(tmpLocal, inputXLocal, tmpLocal, rowCount * rLengthWithPadding);
         // 计算(x-mean) * (x-mean)
         AscendC::Mul(outputLocal, tmpLocal, tmpLocal, rowCount * rLengthWithPadding);
         // 计算var
-        AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR, false>(rstdLocal, outputLocal, shape, false);
+        AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR, false>(rstdLocal, outputLocal, shape, true);
+        AscendC::PipeBarrier<PIPE_V>();
         AscendC::Muls(rstdLocal, rstdLocal, 1.0f / rLength, rowCount);
         // 计算rstd=1/sqrt(var+epsilon)
         AscendC::Adds(rstdLocal, rstdLocal, epsilon, rowCount);
