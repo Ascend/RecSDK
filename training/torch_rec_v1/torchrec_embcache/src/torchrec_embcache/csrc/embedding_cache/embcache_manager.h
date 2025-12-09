@@ -177,6 +177,8 @@ private:
     void Check4Write(const std::shared_ptr<FileSystem>& fileSystemPtr, const std::string& filePath, int rank);
     void WriteData(const std::shared_ptr<FileSystem>& fileSystemPtr, const std::string& filePath, const char* dataAddr,
                    size_t dataSize);
+    void WriteData(const std::shared_ptr<FileSystem>& fileSystemPtr, const std::string& filePath, const char* dataAddr,
+                   size_t dataSize, int fd);
     static std::shared_ptr<FileSystem> GetFileSystem(const std::string& path);
 
     template <class T>

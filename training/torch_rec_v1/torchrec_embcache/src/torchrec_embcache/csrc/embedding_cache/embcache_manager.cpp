@@ -221,7 +221,7 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
 
     swapCount_++;
 
-    LOG_INFO("The getSwapInfoTC(ms): {}", getSwapInfoTC.ElapsedMS());
+    LOG_DEBUG("The getSwapInfoTC(ms): {}", getSwapInfoTC.ElapsedMS());
 
     return swapInfo;
 }
@@ -275,7 +275,7 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
                                             swapinOptimsPtr);
     }
 
-    LOG_INFO("The embeddingLookupTC(ms): {}", embeddingLookupTC.ElapsedMS());
+    LOG_DEBUG("The embeddingLookupTC(ms): {}", embeddingLookupTC.ElapsedMS());
     return swapinTensor;
 }
 
@@ -322,7 +322,7 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
         jaggedOff += swapoutKeys[i].size() * embConfigs_[idx].embDim;
     }
 
-    LOG_INFO("The embeddingUpdateTC(ms): {}", embeddingUpdateTC.ElapsedMS());
+    LOG_DEBUG("The embeddingUpdateTC(ms): {}", embeddingUpdateTC.ElapsedMS());
     embUpdateCount_++;
 
     if (NeedEvictEmbeddingTable()) {
@@ -392,6 +392,7 @@ void EmbcacheManager::CreateMomentumDir(const std::string& pathPrefix,
 
 void EmbcacheManager::Save(const std::string& path, const int rank)
 {
+    LOG_INFO("open file once for a table");
     auto fileSystemPtr = GetFileSystem(path);
     Check4Write(fileSystemPtr, path, rank);
     for (int32_t i = 0; i < embNum_; i++) {
@@ -403,6 +404,28 @@ void EmbcacheManager::Save(const std::string& path, const int rank)
         fileSystemPtr->CreateFileDir(keyDataFile);
         CreateMomentumDir(pathPrefix, fileSystemPtr);
 
+        auto keyFd = open(keyDataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640);
+        auto embFd = open(embDataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640);
+        if (embFd == -1) {
+            throw std::runtime_error("Failed to open embedding file.");
+        }
+        std::string momentum1DataFile = pathPrefix + MOMENTUM1_STR_PATH + SLICE_DATA_PATH;
+        int m1Fd = 0;
+        if (optimNum_ > 0) {
+            m1Fd = open(momentum1DataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640);
+            if (m1Fd == -1) {
+                throw std::runtime_error("Failed to open momentum1 file.");
+            }
+        }
+        std::string momentum2DataFile = pathPrefix + MOMENTUM2_STR_PATH + SLICE_DATA_PATH;
+        int m2Fd = 0;
+        if (optimNum_ > 1) {
+            m2Fd = open(momentum2DataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640);
+            if (m2Fd == -1) {
+                throw std::runtime_error("Failed to open momentum2 file.");
+            }
+        }
+
         size_t count = 0;
         std::vector<int64_t> saveKeys;
         LOG_INFO("Start save table:{}.", tableName);
@@ -410,24 +433,22 @@ void EmbcacheManager::Save(const std::string& path, const int rank)
         embeddingTables_[i]->ForEachKey([&](const int64_t key, const float* value) {
             ++count;
             // 1. write key
-            WriteData(fileSystemPtr, keyDataFile, reinterpret_cast<const char*>(&key), sizeof(int64_t));
+            WriteData(fileSystemPtr, keyDataFile, reinterpret_cast<const char*>(&key), sizeof(int64_t), keyFd);
             if (embConfigs_[i].admitAndEvictConfig.IsAdmitEnabled()) {
                 saveKeys.emplace_back(key);
             }
             // 2. write embedding
-            WriteData(fileSystemPtr, embDataFile, reinterpret_cast<const char*>(value), embDim * sizeof(float));
+            WriteData(fileSystemPtr, embDataFile, reinterpret_cast<const char*>(value), embDim * sizeof(float), embFd);
             LOG_TRACE("In save, table:{}, key:{}, embedding.dim:{}.", tableName, key, embDim);
 
             // 3. write momentum
             if (optimNum_ > 0) {
-                std::string momentum1DataFile = pathPrefix + MOMENTUM1_STR_PATH + SLICE_DATA_PATH;
                 WriteData(fileSystemPtr, momentum1DataFile, reinterpret_cast<const char*>(value + embDim),
-                          embDim * sizeof(float));
+                          embDim * sizeof(float), m1Fd);
             }
             if (optimNum_ > 1) {
-                std::string momentum2DataFile = pathPrefix + MOMENTUM2_STR_PATH + SLICE_DATA_PATH;
                 WriteData(fileSystemPtr, momentum2DataFile, reinterpret_cast<const char*>(value + optimNum_ * embDim),
-                          embDim * sizeof(float));
+                          embDim * sizeof(float), m2Fd);
             }
         });
         WriteAttributeFile(i, pathPrefix, count, fileSystemPtr);
@@ -460,6 +481,20 @@ void EmbcacheManager::WriteData(const std::shared_ptr<FileSystem>& fileSystemPtr
                                 const char* dataAddr, size_t dataSize)
 {
     auto writeBytes = fileSystemPtr->Write(filePath, dataAddr, dataSize);
+    if (writeBytes != static_cast<ssize_t>(dataSize)) {
+        auto errMsg = Logger::Format(
+            "Write data to file error, expect write bytes:{}, actual write bytes:{}, file:{}."
+            " Please check whether the available disk space is sufficient.",
+            dataSize, writeBytes, filePath);
+        LOG_ERROR(errMsg);
+        throw std::runtime_error(errMsg);
+    }
+}
+
+void EmbcacheManager::WriteData(const std::shared_ptr<FileSystem>& fileSystemPtr, const std::string& filePath,
+                                const char* dataAddr, size_t dataSize, int fd)
+{
+    auto writeBytes = fileSystemPtr->Write(filePath, dataAddr, dataSize, fd);
     if (writeBytes != static_cast<ssize_t>(dataSize)) {
         auto errMsg = Logger::Format(
             "Write data to file error, expect write bytes:{}, actual write bytes:{}, file:{}."

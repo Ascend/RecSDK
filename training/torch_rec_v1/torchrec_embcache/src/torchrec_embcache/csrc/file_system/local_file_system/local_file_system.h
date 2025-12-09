@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 #ifndef MX_REC_LOCAL_FILE_SYSTEM_H
 #define MX_REC_LOCAL_FILE_SYSTEM_H
 
+#include <fcntl.h>
 #include <filesystem>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -37,6 +38,7 @@ public:
     size_t GetFileSize(const string& filePath) override;
 
     ssize_t Write(const string& filePath, const char* fileContent, size_t dataSize) override;
+    ssize_t Write(const string& filePath, const char* fileContent, size_t dataSize, int fd) override;
 
     ssize_t Read(const string& filePath, char* fileContent, size_t datasetSize) override;
     ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, int64_t contentOffset,
