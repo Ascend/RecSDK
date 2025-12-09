@@ -27,24 +27,24 @@ struct TokenMixingArgs {
     GM_ADDR y;
     float epsilon;
     uint32_t coreNum;
-    uint32_t xDim0;
-    uint32_t xDim1;
-    uint32_t xDim2;
-    uint32_t xDim2WithPadding;
-    uint32_t perCoreComputeRows;
-    uint32_t formerCoreRows;
-    uint32_t formerLoopCount;
-    uint32_t formerRemainRows;
-    uint32_t tailCoreRows;
-    uint32_t tailLoopCount;
-    uint32_t tailRemainRows;
+    uint64_t xDim0;
+    uint64_t xDim1;
+    uint64_t xDim2;
+    uint64_t xDim2WithPadding;
+    uint64_t perCoreComputeRows;
+    uint64_t formerCoreRows;
+    uint64_t formerLoopCount;
+    uint64_t formerRemainRows;
+    uint64_t tailCoreRows;
+    uint64_t tailLoopCount;
+    uint64_t tailRemainRows;
 };
 
 template <typename T>
-__aicore__ inline void CpGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T>& gt, int64_t len)
+__aicore__ inline void CpGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T>& gt, uint64_t len)
 {
-    uint32_t alignLen = len * sizeof(T) / ALIGN_32 * ALIGN_32;
-    uint32_t unAlignLen = len * sizeof(T) - alignLen;
+    uint64_t alignLen = len * sizeof(T) / ALIGN_32 * ALIGN_32;
+    uint64_t unAlignLen = len * sizeof(T) - alignLen;
 
     GlobalTensor<uint16_t> uint16Gt;
     uint16Gt.SetGlobalBuffer((__gm__ uint16_t*)gt.GetPhyAddr(), len * sizeof(T) / 2);
@@ -54,17 +54,17 @@ __aicore__ inline void CpGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T
         DataCopy(uint16Lt, uint16Gt, alignLen / 2);
     }
     if (unAlignLen != 0) {
-        const DataCopyExtParams dataCopyExtParams{1, unAlignLen, 0, 0, 0};
+        const DataCopyExtParams dataCopyExtParams{1, static_cast<uint32_t>(unAlignLen), 0, 0, 0};
         const DataCopyPadExtParams<uint16_t> dataCopyPadExtParams{false, 0, 0, 0};
         DataCopyPad(uint16Lt[alignLen / 2], uint16Gt[alignLen / 2], dataCopyExtParams, dataCopyPadExtParams);
     }
 }
 
 template <typename T>
-__aicore__ inline void CpLocal2Gm(const GlobalTensor<T>& gt, const LocalTensor<T>& lt, int64_t len)
+__aicore__ inline void CpLocal2Gm(const GlobalTensor<T>& gt, const LocalTensor<T>& lt, uint64_t len)
 {
-    uint32_t alignLen = len * sizeof(T) / ALIGN_32 * ALIGN_32;
-    uint32_t unAlignLen = len * sizeof(T) - alignLen;
+    uint64_t alignLen = len * sizeof(T) / ALIGN_32 * ALIGN_32;
+    uint64_t unAlignLen = len * sizeof(T) - alignLen;
 
     GlobalTensor<uint16_t> uint16Gt;
     uint16Gt.SetGlobalBuffer((__gm__ uint16_t*)gt.GetPhyAddr(), len * sizeof(T) / 2);
@@ -74,7 +74,7 @@ __aicore__ inline void CpLocal2Gm(const GlobalTensor<T>& gt, const LocalTensor<T
         DataCopy(uint16Gt, uint16Lt, alignLen / 2);
     }
     if (unAlignLen != 0) {
-        const DataCopyExtParams dataCopyExtParams{1, unAlignLen, 0, 0, 0};
+        const DataCopyExtParams dataCopyExtParams{1, static_cast<uint32_t>(unAlignLen), 0, 0, 0};
         const DataCopyPadExtParams<uint16_t> dataCopyPadExtParams{false, 0, 0, 0};
         DataCopyPad(uint16Gt[alignLen / 2], uint16Lt[alignLen / 2], dataCopyExtParams);
     }
@@ -125,7 +125,7 @@ public:
         if (coreRows_ == 0) {
             return;
         }
-        for (uint32_t i = 0; i < loopCount_; ++i) {
+        for (uint64_t i = 0; i < loopCount_; ++i) {
             CopyIn(i, args->perCoreComputeRows);
             Compute(args->perCoreComputeRows);
             CopyOut(i, args->perCoreComputeRows);
@@ -139,11 +139,11 @@ public:
     }
 
 private:
-    __aicore__ inline void CopyIn(uint32_t iterIdx, uint32_t rowCount)
+    __aicore__ inline void CopyIn(uint64_t iterIdx, uint64_t rowCount)
     {
         // 核内偏移
-        uint32_t offsetInCore = startRow_ * args->xDim2 + iterIdx * args->perCoreComputeRows * args->xDim2;
-        uint32_t copyLen = rowCount * args->xDim2;
+        uint64_t offsetInCore = startRow_ * args->xDim2 + iterIdx * args->perCoreComputeRows * args->xDim2;
+        uint64_t copyLen = rowCount * args->xDim2;
 
         LocalTensor<T> xLocal = inQueue.AllocTensor<T>();
         Duplicate(xLocal, 0.0f, bshLength_);
@@ -157,10 +157,10 @@ private:
             CpGm2Local(xLocal, xGT[offsetInCore], copyLen);
             CpGm2Local(xTLocal, xTGT[offsetInCore], copyLen);
         } else {
-            uint32_t xDataLen = args->xDim2 * sizeof(float);
-            DataCopyExtParams params{1, xDataLen, 0, 0, 0};
+            uint64_t xDataLen = args->xDim2 * sizeof(float);
+            DataCopyExtParams params{1, static_cast<uint32_t>(xDataLen), 0, 0, 0};
             DataCopyPadExtParams<float> padParams{true, 0, 0, 0};
-            for (uint32_t i = 0; i < rowCount; ++i) {
+            for (uint64_t i = 0; i < rowCount; ++i) {
                 DataCopyPad(xLocal[i * args->xDim2WithPadding], xGT[offsetInCore + i * args->xDim2], params, padParams);
                 DataCopyPad(xTLocal[i * args->xDim2WithPadding], xTGT[offsetInCore + i * args->xDim2], params,
                             padParams);
@@ -174,7 +174,7 @@ private:
         inQueueBeta.EnQue(betaLocal);
     }
 
-    __aicore__ inline void Compute(uint32_t rowCount)
+    __aicore__ inline void Compute(uint64_t rowCount)
     {
         LocalTensor<T> xLocal = inQueue.DeQue<T>();
         LocalTensor<T> xTLocal = inTQueue.DeQue<T>();
@@ -190,11 +190,11 @@ private:
 
         Add(addTmpLocal, xLocal, xTLocal, bshLength_);
         // shape
-        uint32_t meanShape[2] = {rowCount, 1};
+        uint32_t meanShape[2] = {static_cast<uint32_t>(rowCount), 1};
 #ifdef SUPPORT_C310
-        uint32_t shape[2] = {rowCount, args->xDim2WithPadding};
+        uint32_t shape[2] = {static_cast<uint32_t>(rowCount), static_cast<uint32_t>(args->xDim2WithPadding)};
 #else
-        uint32_t shape[2] = {rowCount, args->xDim2};
+        uint32_t shape[2] = {static_cast<uint32_t>(rowCount), static_cast<uint32_t>(args->xDim2)};
 #endif
 
         // layerNorm拆分
@@ -204,11 +204,11 @@ private:
         // 计算平均值mean
         Muls(meanLocal, meanLocal, 1.0f / args->xDim2, rowCount);
         // broadcast mean[rowCount] -> [rowCount, xDim2WithPadding]
-        uint32_t trueShape[2] = {rowCount, args->xDim2WithPadding};
+        uint32_t trueShape[2] = {static_cast<uint32_t>(rowCount), static_cast<uint32_t>(args->xDim2WithPadding)};
         Broadcast<float, 2, 1>(tmpLocal, meanLocal, trueShape, meanShape);
         if (args->xDim2 < args->xDim2WithPadding) {
-            for (uint32_t i = 0; i < rowCount; ++i) {
-                for (uint32_t j = args->xDim2; j < args->xDim2WithPadding; ++j) {
+            for (uint64_t i = 0; i < rowCount; ++i) {
+                for (uint64_t j = args->xDim2; j < args->xDim2WithPadding; ++j) {
                     tmpLocal.SetValue(i * args->xDim2WithPadding + j, 0.0f);
                 }
             }
@@ -227,7 +227,7 @@ private:
         Broadcast<float, 2, 1>(yLocal, rstdLocal, trueShape, meanShape);
         // 计算layernorm=(rstd*(x-mean))*gamma+beta
         Mul(yLocal, yLocal, tmpLocal, rowCount * args->xDim2WithPadding);
-        uint32_t gammaShape[2] = {1, args->xDim2WithPadding};
+        uint32_t gammaShape[2] = {1, static_cast<uint32_t>(args->xDim2WithPadding)};
         Broadcast<float, 2, 0>(tmpLocal, gammaLocal, trueShape, gammaShape);
         Mul(yLocal, yLocal, tmpLocal, rowCount * args->xDim2WithPadding);
         Broadcast<float, 2, 0>(tmpLocal, betaLocal, trueShape, gammaShape);
@@ -246,11 +246,11 @@ private:
         outQueueRstd.FreeTensor(rstdLocal);
     }
 
-    __aicore__ inline void CopyOut(uint32_t iterIdx, uint32_t rowCount)
+    __aicore__ inline void CopyOut(uint64_t iterIdx, uint64_t rowCount)
     {
         // 核内偏移
-        uint32_t offsetInCore = startRow_ * args->xDim2 + iterIdx * args->perCoreComputeRows * args->xDim2;
-        uint32_t copyLen = rowCount * args->xDim2;
+        uint64_t offsetInCore = startRow_ * args->xDim2 + iterIdx * args->perCoreComputeRows * args->xDim2;
+        uint64_t copyLen = rowCount * args->xDim2;
         LocalTensor<T> yLocal = outQueue.DeQue<T>();
         if (args->xDim2 == args->xDim2WithPadding) {
             CpLocal2Gm(yGT[offsetInCore], yLocal, copyLen);
@@ -278,12 +278,12 @@ private:
     TQue<TPosition::VECCALC, 1> oneQueue;
 
     TokenMixingArgs* args;
-    uint32_t bshLength_;
-    uint32_t bsLength_;
-    uint32_t coreRows_;
-    uint32_t loopCount_;
-    uint32_t remainRows_;
-    uint32_t startRow_;
+    uint64_t bshLength_;
+    uint64_t bsLength_;
+    uint64_t coreRows_;
+    uint64_t loopCount_;
+    uint64_t remainRows_;
+    uint64_t startRow_;
 };
 }  // namespace TokenMixing_Kernel
 
