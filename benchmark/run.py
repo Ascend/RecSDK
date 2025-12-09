@@ -149,7 +149,8 @@ def set_env(config: dict):
     os.environ["MODEL_DATA_TYPE"] = config.get("data_type")
     os.environ["MODEL_NAME"] = config.get("name")
     os.environ["MODEL_E2E_FLAG"] = str(config.get("e2e_flag"))
-
+    os.environ["COMPARE_ACCURACY_FLAG"] = str(config.get("compare_accuracy_flag"))
+    os.environ["SAVE_TENSOR_FLAG"] = str(config.get("save_tensor_flag"))
 
 def run_model(config: dict, taget_dir: Path) -> bool:
     set_env(config)
