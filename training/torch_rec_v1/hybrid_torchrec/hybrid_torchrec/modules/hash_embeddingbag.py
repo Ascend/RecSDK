@@ -101,18 +101,17 @@ def _check_name_format(name: str, field_name: str = "name") -> None:
         )
 
 
-def check_embedding_config_valid(config: Union[EmbeddingBagConfig, EmbeddingConfig]):
-    # 校验config是否为HashEmbeddingBagConfig或EmbeddingConfig的实例或子类
+def _check_config_type(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
+    """校验config是否为HashEmbeddingBagConfig或EmbeddingConfig的实例或子类"""
     if not isinstance(config, (EmbeddingBagConfig, EmbeddingConfig)):
         raise TypeError(
             f"config must be an instance of EmbeddingBagConfig or EmbeddingConfig, "
             f"but got {type(config)}"
         )
-        
-    check(
-        config.need_pos is False,
-        "the attribute 'need_pos' of embedding config only support False value.",
-    )
+
+
+def _check_embedding_dim(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
+    """检查embedding维度相关配置"""
     if config.embedding_dim % EMBEDDINGS_DIM_ALIGNMENT != 0:
         raise ValueError(
             f"The embedding dim should be a multiple of {EMBEDDINGS_DIM_ALIGNMENT}, but is {config.embedding_dim}"
@@ -125,23 +124,41 @@ def check_embedding_config_valid(config: Union[EmbeddingBagConfig, EmbeddingConf
             f"The embedding dim should be in [{EMBEDDINGS_DIM_ALIGNMENT}, "
             f"{MAX_EMBEDDINGS_DIM}], but is {config.embedding_dim}"
         )
+
+
+def _check_num_embeddings(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
+    """检查num_embeddings配置"""
     if config.num_embeddings < 1 or config.num_embeddings > MAX_NUM_EMBEDDINGS:
         raise ValueError(
             f"The num_embeddings should be in [1, {MAX_NUM_EMBEDDINGS}], but is {config.num_embeddings}"
         )
+
+
+def _check_data_type(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
+    """检查数据类型配置"""
     if config.data_type != DataType.FP32:
         raise ValueError(f"The data_type should be FP32, but is {config.data_type}")
+
+
+def _check_feature_names(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
+    """检查特征名称配置"""
     if config.feature_names is None or len(config.feature_names) == 0:
         raise ValueError(
             f"The feature_names should not be empty, but is {config.feature_names}"
         )
 
+
+def _check_name_formats(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
+    """检查名称格式"""
     for name in config.name:
         _check_name_format(name, "config.name")
 
     for name in config.feature_names:
         _check_name_format(name, "feature_names")
 
+
+def _check_weight_init(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
+    """检查权重初始化配置"""
     if config.weight_init_min is None or config.weight_init_min == 0.0:
         config.weight_init_min = 0.0
     else:
@@ -156,6 +173,9 @@ def check_embedding_config_valid(config: Union[EmbeddingBagConfig, EmbeddingConf
             f"The config.weight_init_max should be None or 1.0, but is {config.weight_init_max}"
         )
 
+
+def _check_other_configs(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
+    """检查其他配置项"""
     if config.num_embeddings_post_pruning is not None:
         raise ValueError(
             f"The config.num_embeddings_post_pruning should be None, but is {config.num_embeddings_post_pruning}"
@@ -164,6 +184,10 @@ def check_embedding_config_valid(config: Union[EmbeddingBagConfig, EmbeddingConf
         raise ValueError(
             f"The config.init_fn should be callable, but is {config.init_fn}"
         )
+
+
+def _check_pooling_type(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
+    """检查pooling类型配置"""
     if hasattr(config, "pooling") and config.pooling not in [
         PoolingType.SUM,
         PoolingType.MEAN,
@@ -173,6 +197,24 @@ def check_embedding_config_valid(config: Union[EmbeddingBagConfig, EmbeddingConf
             f"The config.pooling should be in [PoolingType.SUM, PoolingType.MEAN, PoolingType.NONE], "
             f"but is {config.pooling}"
         )
+
+
+def check_embedding_config_valid(config: Union[EmbeddingBagConfig, EmbeddingConfig]):
+    # 校验config是否为HashEmbeddingBagConfig或EmbeddingConfig的实例或子类
+    _check_config_type(config)
+        
+    check(
+        config.need_pos is False,
+        "the attribute 'need_pos' of embedding config only support False value.",
+    )
+    _check_embedding_dim(config)
+    _check_num_embeddings(config)
+    _check_data_type(config)
+    _check_feature_names(config)
+    _check_name_formats(config)
+    _check_weight_init(config)
+    _check_other_configs(config)
+    _check_pooling_type(config)
 
 
 class HashEmbeddingBag(torch.nn.Module):

@@ -22,6 +22,18 @@ T = TypeVar('T', bound='ExtendedJaggedTensor')
 KT = TypeVar('KT', bound='KeyedExtendedJaggedTensor')
 
 
+def _validate_tensor_param(param: Optional[torch.Tensor], param_name: str) -> None:
+    """验证torch.Tensor类型的参数"""
+    if param is not None and not isinstance(param, torch.Tensor):
+        raise TypeError(f"{param_name} must be torch.Tensor or None, but got {type(param)}")
+
+
+def _validate_values(values: torch.Tensor) -> None:
+    """验证values参数"""
+    if not isinstance(values, torch.Tensor):
+        raise TypeError(f"values must be torch.Tensor, but got {type(values)}")
+
+
 class ExtendedJaggedTensor(JaggedTensor):
     """扩展的JaggedTensor基类，用于处理带有额外字段的JaggedTensor"""
     
@@ -36,6 +48,12 @@ class ExtendedJaggedTensor(JaggedTensor):
         lengths: Optional[torch.Tensor] = None,
         offsets: Optional[torch.Tensor] = None,
     ) -> None:
+        # 参数类型校验
+        _validate_values(values)
+        _validate_tensor_param(weights, "weights")
+        _validate_tensor_param(lengths, "lengths")
+        _validate_tensor_param(offsets, "offsets")
+        
         super().__init__(values, weights, lengths, offsets)
         self._extra = extra
         
@@ -53,6 +71,86 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
 
     # 子类需要定义_fields属性，例如_fields = "_counts"
     _fields: str = ""
+
+    def _validate_keys(self, keys: List[str]) -> None:
+        """验证keys参数"""
+        if not isinstance(keys, list):
+            raise TypeError(f"keys must be List[str], but got {type(keys)}")
+        if not all(isinstance(key, str) for key in keys):
+            raise TypeError("All elements in keys must be strings")
+
+    def _validate_stride(self, stride: Optional[int]) -> None:
+        """验证stride参数"""
+        if stride is not None and not isinstance(stride, int):
+            raise TypeError(f"stride must be int or None, but got {type(stride)}")
+
+    def _validate_stride_per_key_per_rank(
+        self, stride_per_key_per_rank: Optional[List[List[int]]]
+    ) -> None:
+        """验证stride_per_key_per_rank参数"""
+        if stride_per_key_per_rank is not None:
+            if not isinstance(stride_per_key_per_rank, list):
+                raise TypeError(
+                    f"stride_per_key_per_rank must be List[List[int]] or None, "
+                    f"but got {type(stride_per_key_per_rank)}"
+                )
+            if not all(isinstance(inner_list, list) for inner_list in stride_per_key_per_rank):
+                raise TypeError("All elements in stride_per_key_per_rank must be lists")
+            if not all(
+                isinstance(item, int) 
+                for inner_list in stride_per_key_per_rank 
+                for item in inner_list
+            ):
+                raise TypeError("All elements in inner lists must be integers")
+
+    def _validate_index_per_key(self, index_per_key: Optional[Dict[str, int]]) -> None:
+        """验证index_per_key参数"""
+        if index_per_key is not None:
+            if not isinstance(index_per_key, dict):
+                raise TypeError(
+                    f"index_per_key must be Dict[str, int] or None, but got {type(index_per_key)}"
+                )
+            if not all(isinstance(k, str) and isinstance(v, int) for k, v in index_per_key.items()):
+                raise TypeError("All keys must be strings and all values must be integers in index_per_key")
+
+    def _validate_jt_dict(self, jt_dict: Optional[Dict[str, JaggedTensor]]) -> None:
+        """验证jt_dict参数"""
+        if jt_dict is not None:
+            if not isinstance(jt_dict, dict):
+                raise TypeError(
+                    f"jt_dict must be Dict[str, JaggedTensor] or None, but got {type(jt_dict)}"
+                )
+            if not all(isinstance(k, str) and isinstance(v, JaggedTensor) for k, v in jt_dict.items()):
+                raise TypeError(
+                    "All keys must be strings and all values must be JaggedTensor instances in jt_dict"
+                )
+
+    def _validate_inverse_indices(self, inverse_indices: Optional[Tuple[List[str], torch.Tensor]]) -> None:
+        """验证inverse_indices参数"""
+        if inverse_indices is not None:
+            if not isinstance(inverse_indices, tuple):
+                raise TypeError(
+                    f"inverse_indices must be tuple or None, but got {type(inverse_indices)}"
+                )
+            if len(inverse_indices) != 2:
+                raise ValueError("inverse_indices must be a tuple of length 2")
+            if not isinstance(inverse_indices[0], list) or not all(
+                isinstance(item, str) for item in inverse_indices[0]
+            ):
+                raise TypeError("First element of inverse_indices must be List[str]")
+            if not isinstance(inverse_indices[1], torch.Tensor):
+                raise TypeError("Second element of inverse_indices must be torch.Tensor")
+
+    def _validate_extra(self, extra: Optional[torch.Tensor]) -> None:
+        """验证extra参数"""
+        if extra is not None and not isinstance(extra, torch.Tensor):
+            raise TypeError(f"extra must be torch.Tensor or None, but got {type(extra)}")
+
+    def _validate_int_list(self, key_list, param_name: str = "stride_per_key"):
+        if key_list is not None and not isinstance(key_list, list):
+            raise TypeError(f"{param_name} must be List[int] or None, but got {type(key_list)}")
+        if key_list is not None and not all(isinstance(item, int) for item in key_list):
+            raise TypeError(f"All elements in {param_name} must be integers")
 
     def __init__(
         self,
@@ -74,6 +172,25 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         inverse_indices: Optional[Tuple[List[str], torch.Tensor]] = None,
         field_tensors: Optional[Dict[str, torch.Tensor]] = None
     ) -> None:
+        # 参数类型校验
+        self._validate_keys(keys)
+        _validate_values(values)
+        _validate_tensor_param(weights, "weights")
+        _validate_tensor_param(lengths, "lengths")
+        _validate_tensor_param(offsets, "offsets")
+        self._validate_stride(stride)
+        self._validate_stride_per_key_per_rank(stride_per_key_per_rank)
+        
+        self._validate_int_list(stride_per_key, "stride_per_key")
+        self._validate_int_list(length_per_key, "length_per_key")
+        self._validate_int_list(lengths_offset_per_key, "lengths_offset_per_key")
+        self._validate_int_list(offset_per_key, "offset_per_key")
+        
+        self._validate_index_per_key(index_per_key)
+        self._validate_jt_dict(jt_dict)
+        self._validate_inverse_indices(inverse_indices)
+        self._validate_extra(extra)
+
         super().__init__(
             keys,
             values,
