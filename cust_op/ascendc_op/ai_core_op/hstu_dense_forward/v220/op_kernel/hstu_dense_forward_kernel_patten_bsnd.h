@@ -223,17 +223,23 @@ public:
 
         attnOutputGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(attnOutput));
 
+        const uint32_t coreNum = GetBlockNum() * VCORE_NUM_IN_ONE_AIC;
+
         int64_t oneBlockMidElem = blockHeight * blockHeight * COMPUTE_PIPE_NUM;
-        int64_t oneCoreMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
+        int64_t oneCoreMidElem = coreNum * oneBlockMidElem;
 
         int64_t oneBlockMidTransElem = blockHeight * MAX_BLOCK_DIM * TRANS_PIPE_NUM;
-        int64_t oneCoreTransMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
+        int64_t oneCoreTransMidElem = coreNum * oneBlockMidTransElem;
         int64_t kvOffset = oneCoreMidElem + oneCoreTransMidElem * 3; // svResultGt midkGt midvGt
 
         attnScoreGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(workspace) + GetBlockIdx() * oneBlockMidElem);
         svResultGt.SetGlobalBuffer(
             reinterpret_cast<__gm__ float*>(workspace) + oneCoreMidElem + GetBlockIdx() * oneBlockMidTransElem,
             oneBlockMidTransElem);
+        syncGm.SetGlobalBuffer(
+            reinterpret_cast<__gm__ int32_t*>(workspace) + oneCoreMidElem + coreNum * oneBlockMidTransElem);
+        
+        pipe->InitBuffer(vecIn, 1, 8 * sizeof(int32_t));
 
         if constexpr (!isQkUseUb) {
             // Init pipe total 32K * 5 = 160K
@@ -253,6 +259,14 @@ public:
             pipe->InitBuffer(qkQueInA, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
             pipe->InitBuffer(qkQueInB, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
         }
+
+        AscendC::SyncAll<true>();
+        auto zeroBuff = tmpBuff.template AllocTensor<int32_t>();
+        Duplicate<int32_t>(zeroBuff, 0, coreNum * coreNum * DATA_ALIGN_BYTES / sizeof(int32_t));
+        DataCopy(syncGm, zeroBuff, coreNum * coreNum * DATA_ALIGN_BYTES / sizeof(int32_t));
+        AscendC::SyncAll<true>();
+
+        tmpBuff.template FreeTensor<int32_t>(zeroBuff);
     }
 
     __aicore__ inline void CastQtype2Float(LocalTensor<float> distTensor, LocalTensor<qType> srcTensor,
@@ -647,6 +661,7 @@ public:
         }
     }
 
+    template <bool needAtomic = false>
     __aicore__ inline void DoTransSvImpl(int64_t transTaskId, int64_t outStartOffset, uint32_t m)
     {
         int64_t outMidIndex = transTaskId % TRANS_PIPE_NUM;
@@ -666,8 +681,11 @@ public:
         dstCopyParams.dstStride = (xDim2 * vDim - vDim) * sizeof(qType) / DATA_ALIGN_BYTES;
 
         int64_t copyLenEachLoopAlignHeadDim = transUbBlockElem / vDim * vDim;
-
-        AscendC::SetAtomicNone();
+        
+        if constexpr (needAtomic == true) {
+            AscendC::SetAtomicNone();
+        }
+        
         while (remain > 0) {
             int64_t thisLen = copyLenEachLoopAlignHeadDim;
             if (remain < thisLen) {
@@ -697,11 +715,15 @@ public:
             dstCopyParams.blockCount = static_cast<uint16_t>(thisLen / vDim);
             int64_t thisLineOffset = (total - remain) / vDim;
             int64_t outOffset = outStartOffset + thisLineOffset * xDim2 * vDim;
-            AscendC::SetAtomicAdd<qType>();
-            AscendC::SetAtomicType<qType>();
-            DataCopy(attnOutputGt[outOffset], newOutLt, dstCopyParams);
-            AscendC::SetAtomicNone();
-
+            if constexpr (needAtomic ==true) {
+                AscendC::SetAtomicAdd<qType>();
+                AscendC::SetAtomicType<qType>();
+                DataCopy(attnOutputGt[outOffset], newOutLt, dstCopyParams);
+                AscendC::SetAtomicNone();
+            }
+            else {
+                DataCopy(attnOutputGt[outOffset], newOutLt, dstCopyParams);
+            }
             queOut.FreeTensor(newOutLt);
             remain = remain - thisLen;
         }
@@ -767,6 +789,7 @@ public:
     TQue<TPosition::VECOUT, USE_QUEUE_NUM> queOut;
     TQue<TPosition::VECIN, USE_QUEUE_NUM> qkQueInA;
     TQue<TPosition::VECIN, USE_QUEUE_NUM> qkQueInB;
+    TQue<TPosition::VECIN, 1> vecIn;
 
     // Gt
     GlobalTensor<qType> qGt;
@@ -777,6 +800,7 @@ public:
     GlobalTensor<qType> attnBiasGt;
     GlobalTensor<qType> attnMaskGt;
     GlobalTensor<float> svResultGt;
+    GlobalTensor<int32_t> syncGm;
 
     LocalTensor<qType> qkUbA;
     LocalTensor<qType> qkUbB;

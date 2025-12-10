@@ -87,6 +87,7 @@ constexpr int MAX_NUM_CONTEXT = BLOCK_HEIGHT;
 constexpr int MAX_NUM_TARGET = 512;
 
 constexpr int MIN_PAGE_SIZE = 32;
+constexpr int DATA_ALIGN_BYTES = 32;
 
 constexpr int MAX_DIM = 512;
 

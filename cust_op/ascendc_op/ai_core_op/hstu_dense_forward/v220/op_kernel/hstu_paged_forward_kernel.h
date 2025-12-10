@@ -309,6 +309,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
         int64_t maskOffset2 = deltaQK % this -> blockHeight - this -> blockHeight;
 
         auto limit = (blkId == this->eBlkId) ? this->ekSeqBlkId : kSeqNum;
+        uint32_t isStartFromZero = (kSeqId == 0);
+        uint32_t isEndToTail = false;
         for (; kSeqId < limit; kSeqId++) {
             auto taskinfo = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
             BlockMaskParams maskinfo = {
@@ -376,8 +378,10 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
             break;
         }
         this->transTaskInfo[transtaskId % TRANS_PIPE_NUM] = this->computeTaskInfo[currentTaskId];
+        this->transTaskInfo[transtaskId % TRANS_PIPE_NUM].isStartFromZero = isStartFromZero;
+        this->transTaskInfo[transtaskId % TRANS_PIPE_NUM].isEndToTail = isEndToTail | (kSeqId == kSeqNum);
         if (transtaskId > 1) {
-            this->TransResult((transtaskId - 2) % TRANS_PIPE_NUM);
+            this->TransResult(transtaskId - 2);
         }
         transtaskId++;
 
@@ -401,8 +405,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
 
         this->ComputeSvMatmul(currentTaskId);
         this->WaitSvMatmul();
-
-        this->TransResult((transtaskId - 1) % TRANS_PIPE_NUM);
+        this->WaitNextBlock(transtaskId - 1);
+        this->TransResult(transtaskId - 1);
         return;
     }
 
@@ -415,7 +419,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
 
         this->ComputeSvMatmul(currentTaskId);
         this->WaitSvMatmul();
-        this->TransResult((transtaskId - 1) % TRANS_PIPE_NUM);
+        this->WaitNextBlock(transtaskId - 1);
+        this->TransResult(transtaskId - 1);
         return;
     }
 
@@ -428,8 +433,9 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     this->ComputeSvMatmul(currentTaskId);
     this->WaitSvMatmul();
 
-    this->TransResult((transtaskId - 2) % TRANS_PIPE_NUM);
-    this->TransResult((transtaskId - 1) % TRANS_PIPE_NUM);
+    this->TransResult(transtaskId - 2);
+    this->WaitNextBlock(transtaskId - 1);
+    this->TransResult(transtaskId - 1);
 }
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>

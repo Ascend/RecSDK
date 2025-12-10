@@ -79,6 +79,8 @@ struct JaggedTaskArgs {
     int32_t deltaQK = 0;         // QK序列长度差
     int64_t pageNum = 0;          // 该基本块存在kvcache中的page个数
     uint32_t needClear = 1;        // 该基本块的sv matmul是否需要清空流水对应空间
+    uint32_t isStartFromZero = 1;        // 该基本块所在q行在本核心中的是否从0开始
+    uint32_t isEndToTail = 1;        // 该基本块所在q行在本核心中的是否到最后结束
 };
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
@@ -106,6 +108,10 @@ public:
 
     __aicore__ inline void TransResult(uint32_t transtaskId);
 
+    __aicore__ inline void NotifypreBlock();
+
+    __aicore__ inline void WaitNextBlock(uint32_t transtaskId);
+
     uint32_t sBlkId{0};
     uint32_t eBlkId{0};
     uint32_t skSeqBlkId{0};
@@ -130,6 +136,7 @@ template <typename qType, typename oType, bool enableBias, bool isQkUseUb, Causa
 __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQkUseUb, maskType>::Compute(
     const HstuDenseForwardTilingData* __restrict tilingDataPtr)
 {
+    int blockIdx = GetBlockIdx();
     int ret = PreInit(tilingDataPtr);
     if (ret == -1) {
         return; // no task
@@ -156,7 +163,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
     uint32_t taskId)
 {
     this->DoQkMatmulImpl(computeTaskInfo[taskId].iOffset, computeTaskInfo[taskId].kOffset, taskId,
-                         computeTaskInfo[taskId].computeASeqLen, computeTaskInfo[taskId].computeBSeqLen, this->headDim);
+                        computeTaskInfo[taskId].computeASeqLen, computeTaskInfo[taskId].computeBSeqLen, this->headDim);
 }
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
@@ -179,9 +186,42 @@ template <typename qType, typename oType, bool enableBias, bool isQkUseUb, Causa
 __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQkUseUb, maskType>::TransResult(
     uint32_t transtaskId)
 {
-    this->DoTransSvImpl(transtaskId, transTaskInfo[transtaskId].oOffset, transTaskInfo[transtaskId].computeASeqLen);
+    uint32_t transtaskIdModed = transtaskId % TRANS_PIPE_NUM;
+    if (transTaskInfo[transtaskIdModed].isEndToTail) {
+        this->template DoTransSvImpl<false>(transtaskId, transTaskInfo[transtaskIdModed].oOffset,
+            transTaskInfo[transtaskIdModed].computeASeqLen);
+    } else {
+        this->template DoTransSvImpl<true>(transtaskId, transTaskInfo[transtaskIdModed].oOffset,
+            transTaskInfo[transtaskIdModed].computeASeqLen);
+    }
+    if (transtaskId == 0) {
+        NotifypreBlock();
+    }
 }
 
+
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQkUseUb, maskType>::NotifypreBlock()
+{
+    if (GetBlockIdx() > 0 && transTaskInfo[0].isStartFromZero == 0) {
+        auto syncBuf = this->vecIn.template AllocTensor<int32_t>();
+        AscendC::IBSet<false>(this->syncGm, syncBuf, GetBlockIdx(), GetBlockIdx());
+        this->vecIn.FreeTensor(syncBuf);
+    }
+}
+
+
+template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+__aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQkUseUb, maskType>::WaitNextBlock(
+    uint32_t transtaskId)
+{
+    if (GetBlockIdx() + 1 < GetBlockNum() * GetTaskRation() &&
+        transTaskInfo[transtaskId % TRANS_PIPE_NUM].isEndToTail == 0) {
+        auto syncBuf = this->vecIn.template AllocTensor<int32_t>();
+        AscendC::IBWait<false>(this->syncGm, syncBuf, GetBlockIdx() + 1, GetBlockIdx() + 1);
+        this->vecIn.FreeTensor(syncBuf);
+    }
+}
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
 __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQkUseUb, maskType>::ComputeAllBlock()
 {
@@ -206,6 +246,8 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
         int64_t maskOffset1 = deltaQK % this -> blockHeight;
         int64_t maskOffset2 = deltaQK % this -> blockHeight - this -> blockHeight;
         auto limit = (blkId == this->eBlkId) ? this->ekSeqBlkId : kSeqNum;
+        uint32_t isStartFromZero = (kSeqId == 0);
+        uint32_t isEndToTail = false;
         for (; kSeqId < limit; kSeqId++) {
             auto taskinfo = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
             BlockMaskParams maskinfo = {
@@ -223,10 +265,14 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
                 nblk,
                 isDeltaQK
             };
-            // 在下三角下跳过运算
-            if (maskinfo.NoComputation(maskType)) {
-                break;
+            if constexpr (maskType == CausalMaskT::MASK_TRIL) {
+                // 在下三角下跳过运算
+                if (maskinfo.NoComputation(maskType)) {
+                    isEndToTail = true;
+                    break;
+                }
             }
+            
             currentTaskId = taskId % COMPUTE_PIPE_NUM;
             preTaskId = (taskId + COMPUTE_PIPE_NUM - 1) % COMPUTE_PIPE_NUM;
             prePreTaskId = (taskId + COMPUTE_PIPE_NUM - 2) % COMPUTE_PIPE_NUM;
@@ -279,8 +325,10 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
         }
 
         this->transTaskInfo[transtaskId % TRANS_PIPE_NUM] = this->computeTaskInfo[currentTaskId];
+        this->transTaskInfo[transtaskId % TRANS_PIPE_NUM].isStartFromZero = isStartFromZero;
+        this->transTaskInfo[transtaskId % TRANS_PIPE_NUM].isEndToTail = isEndToTail | (kSeqId == kSeqNum);
         if (transtaskId > 1) {
-            this->TransResult((transtaskId - 2) % TRANS_PIPE_NUM);
+            this->TransResult(transtaskId - 2);
         }
         transtaskId++;
 
@@ -299,8 +347,8 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
 
         this->ComputeSvMatmul(currentTaskId);
         this->WaitSvMatmul();
-
-        this->TransResult((transtaskId - 1) % TRANS_PIPE_NUM);
+        WaitNextBlock(transtaskId - 1);
+        this->TransResult(transtaskId - 1);
         this->FreeQkUbTensor();
         return;
     }
@@ -314,7 +362,8 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
 
         this->ComputeSvMatmul(currentTaskId);
         this->WaitSvMatmul();
-        this->TransResult((transtaskId - 1) % TRANS_PIPE_NUM);
+        WaitNextBlock(transtaskId - 1);
+        this->TransResult(transtaskId - 1);
         this->FreeQkUbTensor();
         return;
     }
@@ -328,8 +377,9 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
     this->ComputeSvMatmul(currentTaskId);
     this->WaitSvMatmul();
 
-    this->TransResult((transtaskId - 2) % TRANS_PIPE_NUM);
-    this->TransResult((transtaskId - 1) % TRANS_PIPE_NUM);
+    this->TransResult(transtaskId - 2);
+    WaitNextBlock(transtaskId - 1);
+    this->TransResult(transtaskId - 1);
     this->FreeQkUbTensor();
 }
 
