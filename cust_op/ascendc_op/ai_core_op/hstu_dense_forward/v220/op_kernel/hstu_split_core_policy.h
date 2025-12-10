@@ -103,7 +103,7 @@ public:
             int64_t numCtx = numContextGt.GetValue(batchId);
             int64_t numTg = numTargetGt.GetValue(batchId);
             int64_t DeltaQK = seqLenK - seqLenQ;
-            bool isDeltaQK = DeltaQK % this->blockLen != 0;
+            bool isDeltaQK = DeltaQK != 0;
 
             uint32_t seqTaskNum = ComputeSeqTaskNum(isDeltaQK, seqLenQ, seqLenK, numBlkQ, numBlkK, numCtx, numTg);
             totalTaskNum += headNum * seqTaskNum;
@@ -138,7 +138,7 @@ public:
             int64_t numCtx = numContextGt.GetValue(batchId);
             int64_t numTg = numTargetGt.GetValue(batchId);
             int64_t DeltaQK = seqLenK - seqLenQ;
-            bool isDeltaQK = DeltaQK % this->blockLen != 0;
+            bool isDeltaQK = DeltaQK != 0;
             uint32_t innerSeqTaskNum = ComputeSeqTaskNum(isDeltaQK, seqLenQ, seqLenK, numBlkQ, numBlkK, numCtx, numTg);
             if (signSBlk && totalTaskNum + innerSeqTaskNum * headNum >= result[0]) {
                 LocateQKseqId(result[2], result[0], isDeltaQK, seqLenQ, seqLenK,
