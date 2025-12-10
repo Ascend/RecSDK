@@ -1,0 +1,44 @@
+{
+    "name": "MIND",
+    "url": "https://github.com/alibaba/TorchEasyRec.git",
+    "commit_id": "9ffe1f09d336d3a5cdb5bb6970aa8cc8bc648b2e",
+    "patch_path": "patches/torch_easy_rec_npu.patch",
+    "commit_id_for_A5": "7c047076ee1e21d6b1fff319cb276a78b1075c40",
+    "patch_path_for_A5": "patches/torch_easy_rec_npu_a5.patch",
+    "A5_flag": true,
+    "cpu_only": true,
+    "mode": "eval",
+    "epoch": 10,
+    "profiling_flag": true,
+    "compile_flag": false,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "torchrun",
+        "--master_addr=localhost",
+        "--master_port=32555",
+        "--nnodes=1",
+        "--nproc-per-node=1",
+        "--node_rank=0",
+        "-m",
+        "tzrec.eval",
+        "--pipeline_config_path",
+        "model_configs/mind_taobao.config",
+        "--train_input_path",
+        "data/taobao_data_train/part-*.parquet",
+        "--eval_input_path",
+        "data/taobao_data_eval/part-*.parquet",
+        "--model_dir",
+        "experiments/mind_local"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "protoc --proto_path=./ --python_out=./ tzrec/protos/*.proto",
+        "protoc --proto_path=./ --python_out=./ tzrec/protos/models/*.proto"
+    ],
+    "lib_fbgemm_npu_api_so_path" : "/usr/local/python3.11.13/lib/python3.11/site-packages/libfbgemm_npu_api.so" ,
+    "model_config_set" : [
+        "cp models/mind/mind_taobao.config models/TorchEasyRec/model_configs/mind_taobao.config"
+    ]
+}
