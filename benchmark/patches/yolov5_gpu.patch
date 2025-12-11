@@ -1,5 +1,5 @@
 diff --git a/detect.py b/detect.py
-index 535e196f..f4a8682b 100644
+index 535e196f..388f9355 100644
 --- a/detect.py
 +++ b/detect.py
 @@ -33,10 +33,16 @@ import csv
@@ -86,7 +86,7 @@ index 535e196f..f4a8682b 100644
          # Inference
          with dt[1]:
              visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
-@@ -203,122 +227,100 @@ def run(
+@@ -203,122 +227,101 @@ def run(
                          pred = torch.cat((pred, model(image, augment=augment, visualize=visualize).unsqueeze(0)), dim=0)
                  pred = [pred, None]
              else:
@@ -223,6 +223,7 @@ index 535e196f..f4a8682b 100644
 +                if os.environ.get('MODEL_PROFILING_FLAG', "0") == "1" and not PROFILING_RAN:
 +                    PROFILING_RAN = True
 +                    steps = 10
++                    torch.cuda.synchronize()
 +                    with torch.profiler.profile(
 +                        activities=[
 +                            torch.profiler.ProfilerActivity.CPU,
@@ -238,7 +239,6 @@ index 535e196f..f4a8682b 100644
 +                        ) as prof:
 +                        LOGGER.info("profiling start...")
 +                        for step in range(steps):
-+                            torch.cuda.synchronize()
 +                            LOGGER.info(f"profiling steps == {step}")
 +                            pred = model(im_batch, augment=augment, visualize=visualize)
 +                            torch.cuda.synchronize()
@@ -256,6 +256,7 @@ index 535e196f..f4a8682b 100644
 +                    for i in range(total_steps):
 +                        start_time = time.time()
 +                        pred = model(im_batch, augment=augment, visualize=visualize)
++                        torch.cuda.synchronize()
 +                        end_time = time.time()
 +                        latency = (end_time - start_time) * 1000
 +                        if i >= warmup_steps:
@@ -303,7 +304,7 @@ index 535e196f..f4a8682b 100644
  
  def parse_opt():
      """Parse command-line arguments for YOLOv5 detection, allowing custom inference options and model configurations.
-@@ -365,6 +367,7 @@ def parse_opt():
+@@ -365,6 +368,7 @@ def parse_opt():
          ```
      """
      parser = argparse.ArgumentParser()
@@ -311,7 +312,7 @@ index 535e196f..f4a8682b 100644
      parser.add_argument("--weights", nargs="+", type=str, default=ROOT / "yolov5s.pt", help="model path or triton URL")
      parser.add_argument("--source", type=str, default=ROOT / "data/images", help="file/dir/URL/glob/screen/0(webcam)")
      parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="(optional) dataset.yaml path")
-@@ -404,6 +407,64 @@ def parse_opt():
+@@ -404,6 +408,64 @@ def parse_opt():
      print_args(vars(opt))
      return opt
  
@@ -376,7 +377,7 @@ index 535e196f..f4a8682b 100644
  
  def main(opt):
      """Executes YOLOv5 model inference based on provided command-line arguments, validating dependencies before running.
-@@ -429,7 +490,11 @@ def main(opt):
+@@ -429,7 +491,11 @@ def main(opt):
      """
      check_requirements(ROOT / "requirements.txt", exclude=("tensorboard", "thop"))
      run(**vars(opt))
