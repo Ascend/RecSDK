@@ -1,3 +1,21 @@
+# 代码结构
+```shell
+|-- benchmark/
+    |-- configs/     # 框架相关配置文件目录
+    |-- models/      # 存放模型代码、模型规格配置文件的目录
+    |-- patches/     # 模型迁移适配patch文件目录
+    |-- README.md    # 模型迁移说明文档
+    |-- run.py       # 模型运行脚本
+```
+
+# 运行环境准备
+参考[RecSDK-Torch 模型样例运行环境说明](../torch2.6.0_examples_benchmark/develop/README.md)
+
+# 必要依赖安装
+```shell
+apt-get install protobuf-compiler
+```
+
 # quick start
 xxx.json替換为为configs目录下的配置文件名；
 ```shell
@@ -16,7 +34,7 @@ python run.py  xxx.json
     "profiling_flag": true,
     "compile_flag": true,
     "aclgraph_flag": false,
-    "data_type": "fp32",
+    "data_type": "float32",
     "run_cmd": [
         "python",
         "model_zoo/DMR/run_expid.py",
@@ -34,12 +52,12 @@ python run.py  xxx.json
 + url:模型代码仓下载路径
 + commit_id:本示例适配的commit节点
 + patch_path:适配的patch目录
-+ type：推理还是训练模式
++ type：推理还是训练模式(infer/train/train_evaluate)
 + epoch: 训练步数或者推理循环次数
 + profiling_flag: 是否抓取profiling
 + compile_flag: 是否需要使能图编译
 + aclgraph_flag: 是否需要使能图下沉
-+ data_type: 模型的input数据类型
++ data_type: 模型的input数据类型(float32/float16/bfloat16)
 + run_cmd: 模型的运行命令
 + pip_install_self: 是否依赖安装开源仓自己
 + pip_install_requirements: 开源仓是否要安装起根目录下的requirements.txt依赖包

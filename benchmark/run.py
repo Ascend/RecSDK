@@ -14,8 +14,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ================== Path Configuration ==================
-CONFIG_FILE = "config.json"
 MODELS_DIR = Path("models")
+MODELS_CONFIGS_DIR= MODELS_DIR / "configs"
 
 MODELS_DIR.mkdir(exist_ok=True)
 
@@ -127,10 +127,21 @@ def install_depend(config: dict, taget_dir: Path) -> bool:
                 ["pip", "install", "-e", "."], cwd=str(taget_dir), check=True
             )
         if config.get("extra_cmd"):
-            cmds = config.get("extra_cmd")
-            for cmd in cmds:
-                logger.info(f"Executing extra command: {cmd}")
-                subprocess.run(cmd.split(" "), cwd=str(taget_dir), check=True)
+            if "TorchEasyRec" in str(taget_dir):
+                import glob
+                proto_files = glob.glob("models/TorchEasyRec/tzrec/protos/*.proto")
+                cmd = ["protoc", "--proto_path=models/TorchEasyRec/", "--python_out=models/TorchEasyRec/"] + proto_files
+                print("Running:", " ".join(cmd))
+                subprocess.run(cmd, check=True)
+                proto_files = glob.glob("models/TorchEasyRec/tzrec/protos/models/*.proto")
+                cmd = ["protoc", "--proto_path=models/TorchEasyRec/", "--python_out=models/TorchEasyRec/"] + proto_files
+                print("Running:", " ".join(cmd))
+                subprocess.run(cmd, check=True)
+            else:
+                cmds = config.get("extra_cmd")
+                for cmd in cmds:
+                    logger.info(f"Executing extra command: {cmd}")
+                    subprocess.run(cmd.split(" "), cwd=str(taget_dir), check=True)
     except subprocess.CalledProcessError as e:
         logger.error(f"pip failed, error message:\n{e.stderr}")
         return False
@@ -149,6 +160,12 @@ def set_env(config: dict):
     os.environ["MODEL_DATA_TYPE"] = config.get("data_type")
     os.environ["MODEL_NAME"] = config.get("name")
     os.environ["MODEL_E2E_FLAG"] = str(config.get("e2e_flag"))
+    os.environ["MODEL_CPU_ONLY"] = str(config.get("cpu_only"))
+    lib_fbgemm_npu_api_so_path = config.get("lib_fbgemm_npu_api_so_path")
+    if lib_fbgemm_npu_api_so_path:
+        logger.info(f"LIB_FBGEMM_NPU_API_SO_PATH: {lib_fbgemm_npu_api_so_path}")
+        os.environ["LIB_FBGEMM_NPU_API_SO_PATH"] = config.get("lib_fbgemm_npu_api_so_path")
+
     os.environ["COMPARE_ACCURACY_FLAG"] = str(config.get("compare_accuracy_flag"))
     os.environ["SAVE_TENSOR_FLAG"] = str(config.get("save_tensor_flag"))
 
@@ -166,6 +183,109 @@ def run_model(config: dict, taget_dir: Path) -> bool:
         return False
     return True
 
+def download_file(url: str, destination: str, taget_dir: Path) -> bool:
+    try:
+        cmd = [
+            'wget',
+            '--no-check-certificate',
+            '-O',
+            destination,
+            url
+        ]
+        print(" ".join(cmd))
+        subprocess.run(cmd, cwd=str(taget_dir), check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"downlaod data, error message:\n{e.stderr}")
+        return False
+    except Exception as e:
+        logger.error(f"Unknown error: {e}")
+        return False
+    return True
+
+def extract_tar(tar_file: Path, extract_dir: Path) -> bool: 
+    import tarfile
+    """解压tar.gz文件"""
+    logger.info(f"解压文件: {tar_file} -> {extract_dir}")
+    try:
+        with tarfile.open(tar_file, 'r:gz') as tar:
+            tar.extractall(path=extract_dir)
+        logger.info(f"解压完成: {extract_dir}")
+        return True
+    except Exception as e:
+        logger.error(f"解压失败: {e}")
+        return False
+
+def download_data_file(target_dir: Path) -> bool:
+    data_config = read_config(Path.absolute(Path("data") / "TorchEasyRecData.json"))
+    if not data_config:
+        logger.error("数据配置文件不存在")
+        return False
+    data_path = Path(target_dir) / "data"
+    data_path.mkdir(parents=True, exist_ok=True)
+
+    for key, url in data_config['data_files'].items():
+        tar_file = Path(target_dir) / f"{key}.tar.gz"
+        if not tar_file.exists():
+            logger.info(f"开始下载文件: {url} -> {tar_file}")
+            if not download_file(url, f"{key}.tar.gz", target_dir):
+                logger.error(f"下载文件失败: {url}")
+                return False
+            if not extract_tar(tar_file, data_path):
+                logger.error(f"解压文件失败: {tar_file}")
+                return False
+    return True
+
+
+def build_initial_tree(target_dir: Path) -> bool:
+    tree_dir = target_dir / "data/init_tree"
+    if tree_dir.exists():
+        logger.info(f"初始树已存在: {tree_dir}")
+        return True
+
+    logger.info("开始创建初始树")
+    cmd = (
+        "python -m tzrec.tools.tdm.init_tree "
+        "--item_input_path data/taobao_ad_feature_transformed_fill/*.parquet "
+        "--item_id_field adgroup_id "
+        "--cate_id_field cate_id "
+        "--attr_fields cate_id,campaign_id,customer,brand,price "
+        "--node_edge_output_file data/init_tree "
+        "--tree_output_dir data/init_tree"
+    )
+
+    try:
+        subprocess.run(cmd, cwd=str(target_dir), shell=True, check=True)
+        logger.info("创建初始树成功")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"创建初始树失败, error message:\n{e.stderr}")
+
+        return False
+    except Exception as e:
+        logger.error(f"Unknown error: {e}")
+        return False
+    return True
+
+
+def load_config(config: dict, target_dir: Path) -> bool:
+    config_path = target_dir / "model_configs"
+    os.makedirs(str(config_path),  exist_ok=True)
+    config_file_name = config.get("name").lower() + "_taobao.config"
+    config_path = config_path / config_file_name
+    if config_path.exists():
+        return True
+    try:
+        if config.get("model_config_set"):
+            cmds = config.get("model_config_set")
+            for cmd in cmds:
+                logger.info(f"Executing extra command: {cmd.split(' ')}")
+                subprocess.run(cmd, shell=True, check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"modify config file failed, error message:\n{e.stderr}")
+        return False
+    except Exception as e:
+        logger.error(f"Unknown error: {e}")
+        return False
+    return True
 
 def main():
     args = get_args()
@@ -176,8 +296,12 @@ def main():
     logger.info(f"Successfully read configuration file: {args.config}")
 
     repo_url = config.get("url")
-    patch_path = config.get("patch_path")
-    commit_id = config.get("commit_id", "")
+    if config.get("A5_flag"):
+        commit_id = config.get("commit_id_for_A5")
+        patch_path = config.get("patch_path_for_A5")
+    else:
+        commit_id = config.get("commit_id")
+        patch_path = config.get("patch_path")
     if not repo_url:
         logger.error("Configuration missing 'url' field")
         raise ValueError("Configuration missing 'url' field")
@@ -187,7 +311,17 @@ def main():
     # 2. Execute git clone and apply patch
     if not download_and_install(config, repo_url, target_dir, commit_id, patch_path):
         logger.error("Clone failed, process terminated.")
-        return
+        return False
+    if "TorchEasyRec" in repo_url:
+        if not download_data_file(target_dir):
+            logger.error("Download data file failed, process terminated.")
+            return
+        if not build_initial_tree(target_dir):
+            logger.error("Build initial tree failed, process terminated.")
+            return
+        if not load_config(config, target_dir):
+            logger.error("Load config failed, process terminated.")
+            return
 
     # 3. Run model
     if not run_model(config, target_dir):

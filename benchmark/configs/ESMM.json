@@ -1,8 +1,9 @@
 {
     "name": "ESMM",
-    "url": "https://github.com/franckLRH/DeepCTR-Torch",
+    "url": "https://github.com/shenweichen/DeepCTR-Torch.git",
     "commit_id": "f6854257b1fc29caab655ce72c6b5528b7432574",
     "patch_path": "patches/deepctr_npu.patch",
+    "cpu_only": false,
     "mode": "infer",
     "epoch": 10,
     "profiling_flag": true,
