@@ -24,7 +24,7 @@ import shutil
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", default="7.2.RC1")
+    parser.add_argument("--version", default="7.3.0")
     parser.add_argument("--description", default="")
 
     paras, unknown = parser.parse_known_args()
