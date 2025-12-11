@@ -18,7 +18,11 @@ set -e
 
 
 # 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
+if [ -d "/usr/local/Ascend/ascend-toolkit" ]; then
+    msopgen_path=$(find /usr/local/Ascend/ascend-toolkit/latest -name msopgen | grep bin)
+else
+    msopgen_path=$(find /usr/local -name msopgen | grep bin)
+fi
 parent_dir=$(dirname "$msopgen_path")
 export PATH=$parent_dir:$PATH
 
