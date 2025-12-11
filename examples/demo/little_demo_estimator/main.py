@@ -65,6 +65,7 @@ def main(params, config: Config):
         session_config=mg_session_config,
         log_step_count_steps=1000,  # tf.logging运行周期
         precision_mode='allow_mix_precision',
+        modify_mixlist='./ops_info.json',  # 修改算子使用的混合精度黑白灰名单
         enable_data_pre_proc=True,
         iterations_per_loop=1,
         op_precision_mode='./op_precision.ini',  # high performance
