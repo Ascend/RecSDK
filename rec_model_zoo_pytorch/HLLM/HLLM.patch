@@ -1,0 +1,2099 @@
+Subject: [PATCH] NPU适配
+---
+Index: code/HLLM/HLLM.yaml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/HLLM/HLLM.yaml b/code/HLLM/HLLM.yaml
+--- a/code/HLLM/HLLM.yaml	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/HLLM/HLLM.yaml	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -3,4 +3,8 @@
+ item_llm_init: True
+ user_pretrain_dir: user_pretrain_dir
+ user_llm_init: True
+-use_ft_flash_attn: True
+\ No newline at end of file
++use_ft_flash_attn: False
++device_type: cuda
++
++# npu
++allow_hf32: True
+\ No newline at end of file
+Index: code/REC/model/HLLM/baichuan/modeling_baichuan.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/model/HLLM/baichuan/modeling_baichuan.py b/code/REC/model/HLLM/baichuan/modeling_baichuan.py
+--- a/code/REC/model/HLLM/baichuan/modeling_baichuan.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/model/HLLM/baichuan/modeling_baichuan.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -66,7 +66,7 @@
+     xformers_swiglu = None
+ 
+ try:
+-    from ..flash_self_attn import compute_flash_attention
++    from ..import_flash_attn import compute_flash_attention
+ except ImportError as e:
+     compute_flash_attention = None
+ 
+Index: code/REC/model/HLLM/flash_self_attn.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/model/HLLM/flash_self_attn.py b/code/REC/model/HLLM/flash_self_attn.py
+--- a/code/REC/model/HLLM/flash_self_attn.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/model/HLLM/flash_self_attn.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -20,7 +20,15 @@
+     flash_attn_qkvpacked_func,
+     flash_attn_varlen_qkvpacked_func,
+ )
++import torch._dynamo as dynamo
+ 
++
++@dynamo.disable
++def _to_int(x):
++    if isinstance(x, torch.Tensor):
++        return int(x.item())
++    else:
++        return int(x)
+ 
+ def flash_self_attention(
+     qkv: torch.Tensor,
+@@ -48,7 +56,7 @@
+         out: (total, H, D) if cu_seqlens is not None and max_seqlen is not None,
+             else (B, S, H, D).
+     """
+-    assert qkv.dtype in [torch.float16, torch.bfloat16]
++    assert qkv.dtype in (torch.float16, torch.bfloat16)
+     assert qkv.is_cuda
+     unpadded = cu_seqlens is not None
+     if unpadded:
+@@ -85,6 +93,10 @@
+     """Modified from https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/models/patching_utils.py"""
+     # q, k, v: [bs, seq_len, num_attention_heads, attn_head_size]
+     # attention_mask (float): [bs, seq_len]
++    if q.dtype not in (torch.float16, torch.bfloat16):
++        q = q.to(torch.bfloat16)
++        k = k.to(torch.bfloat16)
++        v = v.to(torch.bfloat16)
+     batch_size, max_len = q.size(0), q.size(1)
+ 
+     qkv = torch.stack([q, k, v], dim=2)  # [bs, seq_len, 3, num_attention_heads, attn_head_size]
+@@ -92,7 +104,7 @@
+     if cu_input_lens is not None:
+         qkv.squeeze_(0)
+         cu_seqlens = F.pad(cu_input_lens.cumsum(dim=0, dtype=torch.int32), (1, 0))
+-        max_seqlen = cu_input_lens.max().item()
++        max_seqlen = _to_int(cu_input_lens.max())
+         out = flash_self_attention(
+             qkv,
+             causal=causal,
+@@ -115,10 +127,10 @@
+ 
+         # qkv = torch.cat([qkv[i, starts[i] : ends[i]] for i in range(batch_size)], dim=0)
+         qkv = qkv.view(batch_size*max_len, *qkv.size()[2:])
+-        cur_mask = cur_mask.flatten().nonzero().squeeze()
+-        qkv = qkv[cur_mask]
++        cur_mask_idx = cur_mask.flatten().nonzero().squeeze()
++        qkv = qkv[cur_mask_idx]
+         cu_seqlens = F.pad(seqlens.cumsum(dim=0, dtype=torch.int32), (1, 0))
+-        max_seqlen = seqlens.max().item()
++        max_seqlen = _to_int(seqlens.max())
+ 
+         out = flash_self_attention(
+             qkv,
+@@ -126,7 +138,7 @@
+             cu_seqlens=cu_seqlens,
+             max_seqlen=max_seqlen,
+             training=training,
+-            attention_dropout=attention_dropout
++            attention_dropout=attention_dropout,
+         )
+         # out: [num_unmasked_tokens, num_attention_heads, attn_head_size]
+ 
+Index: code/REC/model/HLLM/flash_self_attn_npu.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/model/HLLM/flash_self_attn_npu.py b/code/REC/model/HLLM/flash_self_attn_npu.py
+new file mode 100644
+--- /dev/null	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
++++ b/code/REC/model/HLLM/flash_self_attn_npu.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -0,0 +1,121 @@
++from typing import Optional
++
++import torch
++import torch_npu
++import torch._dynamo as dynamo
++
++
++@dynamo.disable
++def compute_flash_attention(
++    q: torch.Tensor,
++    k: torch.Tensor,
++    v: torch.Tensor,
++    attention_mask: Optional[torch.Tensor] = None,
++    cu_input_lens: Optional[torch.Tensor] = None,
++    causal: bool = True,
++    training: bool = False,
++    attention_dropout: float = 0.0,
++):
++    """Modified from https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/models/patching_utils.py"""
++    # q, k, v: [bs, seq_len, num_attention_heads, attn_head_size]
++    # attention_mask (float): [bs, seq_len]
++    if q.dtype not in (torch.float16, torch.bfloat16):
++        q = q.to(torch.bfloat16)
++        k = k.to(torch.bfloat16)
++        v = v.to(torch.bfloat16)
++    batch_size, max_len = q.size(0), q.size(1)
++
++    qkv = torch.stack([q, k, v], dim=2)  # [bs, seq_len, 3, num_attention_heads, attn_head_size]
++
++    if cu_input_lens is not None:
++        qkv.squeeze_(0)
++        cu_seqlens = cu_input_lens.cumsum(dim=0, dtype=torch.int32)
++
++        S = cu_input_lens.max().item()
++        N = q.shape[1]
++        causal_mask = torch.triu(torch.ones(S, S, device=q.device, dtype=torch.bool), diagonal=1) if causal else None
++        cu_seqlens_array = cu_seqlens.cpu().numpy().tolist()
++        softmax_scale = 1 / (q.shape[-1] ** 0.5)
++
++        return torch_npu.npu_fused_infer_attention_score(
++            query=q,
++            key=k,
++            value=v,
++            input_layout="TND",
++            num_heads=N,
++            num_key_value_heads=N,
++            scale=softmax_scale,
++            actual_seq_lengths=cu_seqlens_array,
++            actual_seq_lengths_kv=cu_seqlens_array,
++            sparse_mode=0,
++            atten_mask=causal_mask,
++            pre_tokens=S,
++            next_tokens=0,
++        )[0]
++    elif attention_mask is None:
++        S = q.shape[1]
++        N = q.shape[2]
++        causal_mask = torch.triu(torch.ones(S, S, device=q.device, dtype=torch.bool), diagonal=1) if causal else None
++        softmax_scale = 1 / (q.shape[-1] ** 0.5)
++        return torch_npu.npu_fused_infer_attention_score(
++            query=q,
++            key=k,
++            value=v,
++            input_layout="TND",
++            num_heads=N,
++            scale=softmax_scale,
++            sparse_mode=0,
++            atten_mask=causal_mask,
++            pre_tokens=S,
++            next_tokens=0,
++        )[0]
++    else:
++        # Limitation: non-contiguous attention mask will not be handled correctly
++        # model will be able to pay attention between the first and last non-masked token, i.e. left- and right-side padding is supported.
++        cur_mask = attention_mask >= 0
++        csums = cur_mask.cumsum(dim=1, dtype=torch.int32)
++        ends = csums.argmax(dim=1) + 1
++        starts = ends - csums.max(dim=1).values
++        seqlens = ends - starts
++
++        # qkv = torch.cat([qkv[i, starts[i] : ends[i]] for i in range(batch_size)], dim=0)
++        qkv = qkv.view(batch_size*max_len, *qkv.size()[2:])
++        cur_mask_idx = cur_mask.flatten().nonzero().squeeze()
++        qkv = torch.index_select(qkv, dim=0, index=cur_mask_idx)
++        cu_seqlens = seqlens.cumsum(dim=0, dtype=torch.int32)
++
++        S = torch.max(seqlens).item()
++        N = qkv.shape[-2]
++        cu_seqlens_array = cu_seqlens.cpu().numpy().tolist()
++        softmax_scale = 1 / (q.shape[-1] ** 0.5)
++        causal_tri = torch.triu(
++            torch.ones(2048, 2048, device=q.device, dtype=torch.bool), diagonal=1) if causal else None
++        out = torch_npu.npu_fused_infer_attention_score(
++            query=qkv[:, 0, :, :],
++            key=qkv[:, 1, :, :],
++            value=qkv[:, 2, :, :],
++            input_layout="TND",
++            num_heads=N,
++            num_key_value_heads=N,
++            scale=softmax_scale,
++            actual_seq_lengths=cu_seqlens_array,
++            actual_seq_lengths_kv=cu_seqlens_array,
++            sparse_mode=3,
++            atten_mask=causal_tri,
++            pre_tokens=S,
++            next_tokens=0,
++        )[0]
++        D = out.shape[-1]
++        seqlens = ends - starts
++        batch_indices = torch.repeat_interleave(torch.arange(batch_size, device=out.device), seqlens)
++        start_offsets = torch.repeat_interleave(starts, seqlens)
++        base_offsets = torch.arange(seqlens.sum().item(), device=out.device)
++        offsets = base_offsets - torch.repeat_interleave(
++            torch.cat([torch.tensor([0], device=out.device), seqlens.cumsum(0)[:-1]]),
++            seqlens
++        )
++        seq_indices = start_offsets + offsets
++        out_rebuilt = torch.zeros((batch_size * S, N * D), device=out.device, dtype=out.dtype)
++        out_rebuilt.index_put_([batch_indices * S + seq_indices], out.view(-1, N * D))
++
++        return out_rebuilt.view(batch_size, S, N, D)
+Index: code/REC/model/HLLM/hllm.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
+--- a/code/REC/model/HLLM/hllm.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/model/HLLM/hllm.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -34,7 +34,7 @@
+     def __init__(self, config, dataload):
+         super(HLLM, self).__init__()
+         self.logger = getLogger()
+-
++        self.device = config['device']
+         self.item_pretrain_dir = config['item_pretrain_dir']
+         self.user_pretrain_dir = config['user_pretrain_dir']
+         self.gradient_checkpointing = config['gradient_checkpointing']
+@@ -91,7 +91,7 @@
+             if init:
+                 return LlamaForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return LlamaForCausalLM(config=hf_config).cuda()
++                return LlamaForCausalLM(config=hf_config).to(self.device)
+         elif isinstance(hf_config, transformers.MistralConfig):
+             hf_config.use_ft_flash_attn = self.use_ft_flash_attn
+             self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for mistral')
+@@ -99,7 +99,7 @@
+             if init:
+                 return MistralForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return MistralForCausalLM(config=hf_config).cuda()
++                return MistralForCausalLM(config=hf_config).to(self.device)
+         elif isinstance(hf_config, transformers.BertConfig):
+             hf_config.use_ft_flash_attn = self.use_ft_flash_attn
+             self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for bert')
+@@ -107,7 +107,7 @@
+             if init:
+                 return BertModel.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return BertModel(config=hf_config).cuda()
++                return BertModel(config=hf_config).to(self.device)
+         elif getattr(hf_config, "model_type", None) == "baichuan":
+             hf_config.use_ft_flash_attn = self.use_ft_flash_attn
+             self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for baichuan')
+@@ -115,7 +115,7 @@
+             if init:
+                 return BaichuanForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return BaichuanForCausalLM(config=hf_config).cuda()
++                return BaichuanForCausalLM(config=hf_config).to(self.device)
+         else:
+             return AutoModelForCausalLM.from_pretrained(
+                 self.local_dir, config=hf_config
+@@ -155,7 +155,7 @@
+         inputs_embeds = llm.get_input_embeddings()(input_ids)
+         emb_pos = cu_input_lens.cumsum(dim=0, dtype=torch.int32)
+         if emb_token_n > 0:
+-            inputs_embeds[emb_pos - 1] = emb_tokens
++            inputs_embeds[emb_pos - 1] = emb_tokens.to(self.device)
+         model_out = llm(inputs_embeds=inputs_embeds.unsqueeze(0), cu_input_lens=cu_input_lens, position_ids=position_ids.unsqueeze(0))
+         model_out = model_out.hidden_states[-1].squeeze(0)
+ 
+@@ -209,16 +209,26 @@
+             model_out[f"nce_top{k}_acc"] = labels.view(-1, 1).eq(indices).any(dim=1).float().mean()
+         return model_out
+ 
++    def get_seq_output(self, pos_embedding, attention_mask):
++        # 通过LLM模型获取最后一层的隐藏状态
++        user_embedding = self.user_llm(inputs_embeds=pos_embedding, attention_mask=attention_mask).hidden_states[-1]
++        # 提取序列最后一个时间步的输出
++        seq_output = user_embedding[:, -1]
++        return seq_output
++
++    def normalize_vectors(self, vectors):
++        vectors = vectors / vectors.norm(dim=-1, keepdim=True)
++        return vectors
++
+     @torch.no_grad()
+     def predict(self, item_seq, time_seq, item_feature):
+         attention_mask = (item_seq > 0).int()
+ 
+         pos_embedding = item_feature[item_seq]
+ 
+-        user_embedding = self.user_llm(inputs_embeds=pos_embedding, attention_mask=attention_mask).hidden_states[-1]
+-        seq_output = user_embedding[:, -1]
++        seq_output = self.get_seq_output(pos_embedding, attention_mask)
+         seq_output = seq_output / seq_output.norm(dim=-1, keepdim=True)
+-        item_feature = item_feature / item_feature.norm(dim=-1, keepdim=True)
++        item_feature = self.normalize_vectors(item_feature)
+ 
+         return torch.matmul(seq_output, item_feature.t())
+ 
+Index: code/REC/model/HLLM/hllm_creator.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/model/HLLM/hllm_creator.py b/code/REC/model/HLLM/hllm_creator.py
+--- a/code/REC/model/HLLM/hllm_creator.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/model/HLLM/hllm_creator.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -37,7 +37,7 @@
+         self.logger = getLogger()
+         self.config = config
+         self.user_emb_type = config['user_emb_type']
+-
++        self.device = config['device']
+         self.gradient_checkpointing = config['gradient_checkpointing']
+         self.use_ft_flash_attn = config['use_ft_flash_attn']
+ 
+@@ -173,7 +173,7 @@
+             if init:
+                 return LlamaForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return LlamaForCausalLM(config=hf_config).cuda()
++                return LlamaForCausalLM(config=hf_config).to(self.device)
+         elif isinstance(hf_config, transformers.MistralConfig):
+             hf_config.use_ft_flash_attn = self.use_ft_flash_attn
+             self.logger.info(
+@@ -185,7 +185,7 @@
+                     pretrain_dir, config=hf_config
+                 )
+             else:
+-                return MistralForCausalLM(config=hf_config).cuda()
++                return MistralForCausalLM(config=hf_config).to(self.device)
+         elif isinstance(hf_config, transformers.BertConfig):
+             hf_config.use_ft_flash_attn = self.use_ft_flash_attn
+             self.logger.info(
+@@ -195,7 +195,7 @@
+             if init:
+                 return BertModel.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return BertModel(config=hf_config).cuda()
++                return BertModel(config=hf_config).to(self.device)
+         elif getattr(hf_config, "model_type", None) == "baichuan":
+             hf_config.use_ft_flash_attn = self.use_ft_flash_attn
+             self.logger.info(
+@@ -207,7 +207,7 @@
+                     pretrain_dir, config=hf_config
+                 )
+             else:
+-                return BaichuanForCausalLM(config=hf_config).cuda()
++                return BaichuanForCausalLM(config=hf_config).to(self.device)
+         else:
+             return AutoModelForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
+ 
+Index: code/REC/model/HLLM/import_flash_attn.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/model/HLLM/import_flash_attn.py b/code/REC/model/HLLM/import_flash_attn.py
+new file mode 100644
+--- /dev/null	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
++++ b/code/REC/model/HLLM/import_flash_attn.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -0,0 +1,18 @@
++import os
++
++def _load_flash_attention():
++    device_type = os.getenv('DEVICE_TYPE', 'cpu')
++    try:
++        if device_type == 'npu':
++            print("DEVICE_TYPE type is npu, try import flash_self_attn_npu")
++            from .flash_self_attn_npu import compute_flash_attention
++            return compute_flash_attention
++        else:
++            print(f"DEVICE_TYPE type is {device_type}, import flash_self_attn")
++            from .flash_self_attn import compute_flash_attention
++            return compute_flash_attention
++    except ImportError as e:
++        print(f"DEVICE_TYPE type is {device_type}, import flash_self_attn error: {e}")
++        return None
++
++compute_flash_attention = _load_flash_attention()
+Index: code/REC/model/HLLM/modeling_bert.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/model/HLLM/modeling_bert.py b/code/REC/model/HLLM/modeling_bert.py
+--- a/code/REC/model/HLLM/modeling_bert.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/model/HLLM/modeling_bert.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -54,7 +54,7 @@
+ from transformers.configuration_utils import PretrainedConfig
+ 
+ try:
+-    from .flash_self_attn import compute_flash_attention
++    from .import_flash_attn import compute_flash_attention
+ except ImportError as e:
+     compute_flash_attention = None
+ 
+Index: code/REC/model/HLLM/modeling_llama.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/model/HLLM/modeling_llama.py b/code/REC/model/HLLM/modeling_llama.py
+--- a/code/REC/model/HLLM/modeling_llama.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/model/HLLM/modeling_llama.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -47,7 +47,7 @@
+ )
+ 
+ try:
+-    from .flash_self_attn import compute_flash_attention
++    from .import_flash_attn import compute_flash_attention
+ except ImportError as e:
+     compute_flash_attention = None
+ 
+@@ -345,12 +345,13 @@
+ 
+     def forward(self, x, seq_len=None):
+         # x: [bs, num_attention_heads, seq_len, head_size]
+-        if seq_len > self.max_seq_len_cached:
+-            self._set_cos_sin_cache(seq_len=seq_len, device=x.device)
+-
+-        return (
+-            self.cos_cached[:, :, :seq_len, ...], self.sin_cached[:, :, :seq_len, ...]
+-        )
++        # if seq_len > self.max_seq_len_cached:
++        #     self._set_cos_sin_cache(seq_len=seq_len, device=x.device)
++        #
++        # return (
++        #     self.cos_cached[:, :, :seq_len, ...], self.sin_cached[:, :, :seq_len, ...]
++        # )
++        return self.cos_cached, self.sin_cached
+ 
+ 
+ class LlamaLinearScalingRotaryEmbedding(LlamaRotaryEmbedding):
+@@ -632,7 +633,7 @@
+         kv_seq_len = key_states.shape[-2]
+         if past_key_value is not None:
+             kv_seq_len += past_key_value[0].shape[-2]
+-        cos, sin = self.rotary_emb(value_states, seq_len=position_ids.max().item()+1)
++        cos, sin = self.rotary_emb(value_states)
+         query_states, key_states = apply_rotary_pos_emb(
+             query_states, key_states, cos, sin, position_ids
+         )
+Index: code/REC/model/HLLM/modeling_mistral.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/model/HLLM/modeling_mistral.py b/code/REC/model/HLLM/modeling_mistral.py
+--- a/code/REC/model/HLLM/modeling_mistral.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/model/HLLM/modeling_mistral.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -42,10 +42,9 @@
+     replace_return_docstrings,
+ )
+ from transformers.configuration_utils import PretrainedConfig
+-from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa
+ 
+ try:
+-    from .flash_self_attn import compute_flash_attention
++    from .import_flash_attn import compute_flash_attention
+ except ImportError as e:
+     compute_flash_attention = None
+ 
+Index: code/REC/model/IDNet/llmidrec.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/model/IDNet/llmidrec.py b/code/REC/model/IDNet/llmidrec.py
+--- a/code/REC/model/IDNet/llmidrec.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/model/IDNet/llmidrec.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -32,7 +32,7 @@
+     def __init__(self, config, dataload):
+         super(LLMIDRec, self).__init__()
+         self.logger = getLogger()
+-
++        self.device = config['device']
+         self.user_pretrain_dir = config['user_pretrain_dir']
+         self.gradient_checkpointing = config['gradient_checkpointing']
+         self.use_ft_flash_attn = config['use_ft_flash_attn']
+@@ -74,7 +74,7 @@
+             if init:
+                 return LlamaForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return LlamaForCausalLM(config=hf_config).bfloat16()
++                return LlamaForCausalLM(config=hf_config).bfloat16().to(self.device)
+         elif isinstance(hf_config, transformers.BertConfig):
+             hf_config.use_ft_flash_attn = self.use_ft_flash_attn
+             self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for bert')
+@@ -82,7 +82,7 @@
+             if init:
+                 return BertModel.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return BertModel(config=hf_config).bfloat16()
++                return BertModel(config=hf_config).bfloat16().to(self.device)
+         else:
+             return AutoModelForCausalLM.from_pretrained(
+                 self.local_dir, config=hf_config
+Index: code/REC/trainer/trainer.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
+--- a/code/REC/trainer/trainer.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/trainer/trainer.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -16,31 +16,58 @@
+ import numpy as np
+ import torch
+ import torch.optim as optim
+-import torch.distributed as dist
+ from tqdm import tqdm
+-import deepspeed
++
++import torch.profiler
++import pickle
++import hashlib
++import pandas as pd
+ 
+ from REC.data.dataset import BatchTextDataset
+ from REC.data.dataset.collate_fn import customize_rmpad_collate
+ from torch.utils.data import DataLoader
+ from REC.evaluator import Evaluator, Collector
+-from REC.utils import ensure_dir, get_local_time, early_stopping, calculate_valid_score, dict2str, \
+-    get_tensorboard, set_color, get_gpu_usage, WandbLogger
++from REC.utils import ensure_dir, early_stopping, calculate_valid_score, dict2str, \
++    get_tensorboard, set_color, get_gpu_usage, WandbLogger, to_clean_cpu_tensor, get_unique_path
+ from REC.utils.lr_scheduler import *
+ 
+-import lightning as L
+-from lightning.fabric.strategies import DeepSpeedStrategy, DDPStrategy
+ 
++def patch_manual_graph(model):
++    model.graph = torch.cuda.CUDAGraph()
++    model.graph_prepared = False
++    model.static_pos_embedding = None
++    model.static_attention_mask = None
++    model.static_outputs = None
++    orig_func = model.get_seq_output
+ 
++    def get_seq_output_graph(pos_embedding, attention_mask):
++        if not model.graph_prepared:
++            model.static_pos_embedding = pos_embedding.clone()
++            model.static_attention_mask = attention_mask.clone()
++            # warmup
++            for _ in range(3):
++                with torch.no_grad():
++                    _ = orig_func(model.static_pos_embedding, model.static_attention_mask)
++            torch.cuda.synchronize()
++            model.graph_prepared = True
++            with torch.cuda.graph(model.graph):
++                model.static_outputs = orig_func(model.static_pos_embedding, model.static_attention_mask)
++        else:
++            model.static_pos_embedding.copy_(pos_embedding)
++            model.static_attention_mask.copy_(attention_mask)
++        model.graph.replay()
++        torch.cuda.synchronize()
++        return model.static_outputs
++    model.get_seq_output = get_seq_output_graph
+ class Trainer(object):
+     def __init__(self, config, model):
+         super(Trainer, self).__init__()
+         self.config = config
+         self.model = model
+         self.logger = getLogger()
+-
++        self.manual_graph = False
++        self.graph_prepared = False
+         self.wandblogger = WandbLogger(config)
+-
+         self.optim_args = config['optim_args']
+         self.epochs = config['epochs']
+         self.eval_step = min(config['eval_step'], self.epochs)
+@@ -51,9 +78,7 @@
+         self.test_batch_size = config['eval_batch_size']
+         self.gpu_available = torch.cuda.is_available() and config['use_gpu']
+         self.device = config['device']
+-
+-        self.rank = torch.distributed.get_rank()
+-
++        self.rank = 0
+         if self.rank == 0:
+             self.tensorboard = get_tensorboard(self.logger)
+ 
+@@ -84,7 +109,7 @@
+             self._freeze_params(freeze_prefix)
+ 
+         for n, p in self.model.named_parameters():
+-            self.logger.info(f"{n} {p.size()} {p.requires_grad}")
++            self.logger.debug(f"{n} {p.size()} {p.requires_grad}")
+ 
+         self.eval_collector = Collector(config)
+         self.evaluator = Evaluator(config)
+@@ -164,9 +189,10 @@
+             optimizer = optim.AdamW([normal_params_dict, high_lr_params_dict])
+         elif self.config['optimizer_kwargs']:
+             params = self.model.parameters()
+-            self.config['optimizer_kwargs']['optimizer']['params']['lr'] = self.optim_args['learning_rate']
+-            self.config['optimizer_kwargs']['optimizer']['params']['weight_decay'] = self.optim_args['weight_decay']
+-            optimizer = deepspeed.ops.adam.cpu_adam.DeepSpeedCPUAdam(params, **self.config['optimizer_kwargs']['optimizer']['params'])
++            lr = self.optim_args['learning_rate']
++            weight_decay = self.optim_args['weight_decay']
++            optimizer = optim.AdamW(params, lr=lr, weight_decay=weight_decay)
++            self.logger.info(f'Use optimizer {optimizer} with lr {lr}, weight_decay {weight_decay}')
+         else:
+             params = self.model.parameters()
+             optimizer = optim.AdamW(params, lr=self.optim_args['learning_rate'], weight_decay=self.optim_args['weight_decay'])
+@@ -195,7 +221,7 @@
+                 losses = model_out.pop('loss')
+             self._check_nan(losses)
+             total_loss = total_loss + losses.item()
+-            self.lite.backward(losses)
++            losses.backward()
+             grad_norm = self.optimizer.step()
+             bwd_time = t.time()
+             if self.scheduler_config:
+@@ -243,7 +269,7 @@
+             'cuda_rng_state': torch.cuda.get_rng_state()
+         }
+ 
+-        self.lite.save(os.path.join(self.checkpoint_dir, self.saved_model_name), state=state)
++        torch.save(state, os.path.join(self.checkpoint_dir, self.saved_model_name))
+         if self.rank == 0 and verbose:
+             self.logger.info(set_color('Saving current', 'blue') + f': {self.saved_model_file}')
+ 
+@@ -316,19 +342,7 @@
+             warmup_steps = tot_steps * warmup_rate
+             self.lr_scheduler = self._build_scheduler(warmup_steps=warmup_steps, tot_steps=tot_steps)
+ 
+-        world_size, local_world_size = int(os.environ['WORLD_SIZE']), int(os.environ['LOCAL_WORLD_SIZE'])
+-        nnodes = world_size // local_world_size
+-        precision = self.config['precision'] if self.config['precision'] else '32'
+-        if self.config['strategy'] == 'deepspeed':
+-            self.logger.info(f"Use deepspeed strategy")
+-            strategy = DeepSpeedStrategy(stage=self.config["stage"], precision=precision)
+-            self.lite = L.Fabric(accelerator='gpu', strategy=strategy, precision=precision, num_nodes=nnodes)
+-        else:
+-            self.logger.info(f"Use DDP strategy")
+-            strategy = DDPStrategy(find_unused_parameters=True)
+-            self.lite = L.Fabric(accelerator='gpu', strategy=strategy, precision=precision, num_nodes=nnodes)
+-        self.lite.launch()
+-        self.model, self.optimizer = self.lite.setup(self.model, self.optimizer)
++        self.model = self.model.to(self.device)
+ 
+         if self.config['auto_resume']:
+             raise NotImplementedError
+@@ -404,20 +418,103 @@
+         interaction = self.to_device(user)
+         time_seq = self.to_device(time_seq)
+         if self.config['model'] == 'HLLM':
++            if self.manual_graph and not self.graph_prepared:
++                patch_manual_graph(self.model)
++                self.graph_prepared = True
+             if self.config['stage'] == 3:
+-                scores = self.model.module.predict(interaction, time_seq, self.item_feature)
++                scores = self.model.predict(interaction, time_seq, self.item_feature)
+             else:
+                 scores = self.model((interaction, time_seq, self.item_feature), mode='predict')
+         else:
+-            scores = self.model.module.predict(interaction, time_seq, self.item_feature)
++            scores = self.model.predict(interaction, time_seq, self.item_feature)
+         scores = scores.view(-1, self.tot_item_num)
+         scores[:, 0] = -np.inf
+         if history_index is not None:
+             scores[history_index] = -np.inf
+         return scores, positive_u, positive_i
+ 
++    def _generate_cache_key(self, config, data):
++        # 生成基于模型状态和数据集的缓存键
++        model_state = {}
++        for name, param in self.model.named_parameters():
++            if 'item' in name.lower() or 'llm' in name.lower():  # 只考虑与item相关的参数
++                # 处理BFloat16等不支持的数据类型
++                param_data = param.data.cpu()
++                if param_data.dtype == torch.bfloat16:
++                    param_data = param_data.float()
++                    self.logger.warning(f"Don't support bfloat16 for {name}, trans dtype to: {param_data.dtype}")
++                model_state[name] = param_data.numpy().tobytes()
++
++        cache_info = {
++            'model_state': model_state,
++            'item_num': data.item_num,
++            'use_text': self.use_text,
++            'stage': config.get('stage', None),
++            'model_name': config.get('model', ''),
++        }
++
++        cache_str = str(sorted(cache_info.items()))
++        cache_key = hashlib.md5(cache_str.encode()).hexdigest()
++        return cache_key
++
++    def _get_cache_path(self, cache_key):
++        # 获取缓存文件路径
++        cache_dir = os.path.join(self.checkpoint_dir, 'item_feature_cache')
++        os.makedirs(cache_dir, exist_ok=True)
++        return os.path.join(cache_dir, f'item_features_{cache_key}.pkl')
++
++    def _save_item_feature_cache(self, cache_path, item_feature):
++            try:
++                cache_data = {
++                    'item_feature': item_feature,
++                    'device': str(self.device),
++                    'timestamp': time()
++                }
++                with open(cache_path, 'wb') as f:
++                    pickle.dump(cache_data, f)
++                self.logger.info(f"Saved item feature to {cache_path}")
++            except Exception as e:
++                self.logger.warning(f"Failed to save item feature to {cache_path}: {e}")
++
++    def _load_item_feature_cache(self, cache_path):
++        try:
++            with open(cache_path, 'rb') as f:
++                cache_data = pickle.load(f)
++            item_feature = cache_data['item_feature']
++            if isinstance(item_feature, tuple):
++                item_feature = tuple(feat.to(self.device) for feat in item_feature)
++            else:
++                item_feature = item_feature.to(self.device)
++            self.logger.info(f"Loaded item feature from {cache_path}")
++            return item_feature
++        except Exception as e:
++            self.logger.warning(f"Failed to load item feature from {cache_path}: {e}")
++            return None
++
++    def _load_any_item_feature_cache(self):
++        cache_dir = os.path.join(self.checkpoint_dir, 'item_feature_cache')
++        if not os.path.exists(cache_dir):
++            return None
++        cache_files = [f for f in os.listdir(cache_dir) if f.endswith('.pkl')]
++        if not cache_files:
++            return None
++        cache_file = cache_files[0]
++        cache_path = os.path.join(cache_dir, cache_file)
++        return self._load_item_feature_cache(cache_path)
++
++
+     @torch.no_grad()
+     def compute_item_feature(self, config, data):
++        use_cache = config.get('use_item_cache', True)
++        if use_cache:
++            cached_features = self._load_any_item_feature_cache()
++            if cached_features is not None:
++                if isinstance(cached_features, tuple):
++                    self.item_feature = tuple(feat.to(self.device) for feat in cached_features)
++                else:
++                    self.item_feature = cached_features.to(self.device)
++                return
++        self.logger.info(f"Compute item features...")
+         if self.use_text:
+             item_data = BatchTextDataset(config, data)
+             item_batch_size = config['MAX_ITEM_LIST_LENGTH'] * config['train_batch_size']
+@@ -437,39 +534,31 @@
+                     self.item_feature = self.item_feature.bfloat16()
+         else:
+             with torch.no_grad():
+-                self.item_feature = self.model.module.compute_item_all()
++                self.item_feature = self.model.compute_item_all()
++        # 保存item_cache
++        if use_cache:
++            cache_key = self._generate_cache_key(config, data)
++            cache_path = self._get_cache_path(cache_key)
++            self._save_item_feature_cache(cache_path, self.item_feature)
++            self.logger.info(f"Item features computed and cached with key: {cache_key}")
+ 
+     def distributed_concat(self, tensor, num_total_examples):
+-        output_tensors = [tensor.clone() for _ in range(torch.distributed.get_world_size())]
+-        torch.distributed.all_gather(output_tensors, tensor)
+-        concat = torch.cat(output_tensors, dim=0)
+-        return concat.sum() / num_total_examples
++        return tensor
+ 
+     def evaluate(self, eval_data, load_best_model=True, model_file=None, show_progress=False, init_model=False):
+         if not eval_data:
+             return
+-        if init_model:
+-            world_size, local_world_size = int(os.environ['WORLD_SIZE']), int(os.environ['LOCAL_WORLD_SIZE'])
+-            nnodes = world_size // local_world_size
+-            if self.config['strategy'] == 'deepspeed':
+-                self.logger.info(f"Use deepspeed strategy")
+-                precision = self.config['precision'] if self.config['precision'] else '32'
+-                strategy = DeepSpeedStrategy(stage=self.config['stage'], precision=precision)
+-                self.lite = L.Fabric(accelerator='gpu', strategy=strategy, precision=precision, num_nodes=nnodes)
+-                self.lite.launch()
+-                self.model, self.optimizer = self.lite.setup(self.model, self.optimizer)
+-            else:
+-                self.logger.info(f"Use DDP strategy")
+-                precision = self.config['precision'] if self.config['precision'] else '32'
+-                strategy = DDPStrategy(find_unused_parameters=True)
+-                self.lite = L.Fabric(accelerator='gpu', strategy=strategy, precision=precision, num_nodes=nnodes)
+-                self.lite.launch()
+-                self.model = self.lite.setup(self.model)
+-
++        self.model = self.model.to(self.device)
+         if load_best_model:
+             checkpoint_file = model_file or self.saved_model_file
+-            state = {"model": self.model}
+-            self.lite.load(checkpoint_file, state)
++            checkpoint = torch.load(checkpoint_file, map_location=self.device)
++            if 'model' in checkpoint:
++                if hasattr(checkpoint['model'], 'state_dict'):
++                    self.model.load_state_dict(checkpoint['model'].state_dict())
++                else:
++                    self.model.load_state_dict(checkpoint['model'])
++            else:
++                self.model.load_state_dict(checkpoint)
+             message_output = 'Loading model structure and parameters from {}'.format(checkpoint_file)
+             self.logger.info(message_output)
+ 
+@@ -488,16 +577,132 @@
+                     file=sys.stdout
+                 ) if show_progress and self.rank == 0 else eval_data
+             )
+-            fwd_time = t.time()
+-            for batch_idx, batched_data in enumerate(iter_data):
+-                start_time = fwd_time
+-                data_time = t.time()
+-                scores, positive_u, positive_i = eval_func(batched_data)
+-                fwd_time = t.time()
++
++            # 处理compile和cudagraph
++            enable_compile = self.config.get('enable_compile', False)
++            enable_cudagraph = self.config.get('enable_cudagraph', False)
++            if enable_compile and enable_cudagraph:
++                try:
++                    self.model.get_seq_output = torch.compile(
++                        self.model.get_seq_output, backend="inductor", dynamic=False, mode="reduce-overhead"
++                    )
++                    self.model.normalize_vectors = torch.compile(self.model.normalize_vectors, backend="inductor")
++                    self.logger.info("Model compiled with cudagraph")
++                except Exception as e:
++                    self.logger.warning(f"Failed to compile model and running cuda graph: {e}")
++            elif enable_compile:
++                try:
++                    eval_func = torch.compile(eval_func, backend="inductor", dynamic=False)
++                    self.logger.info("Model compiled with inductor")
++                except Exception as e:
++                    self.logger.warning(f"Failed to compile model: {e}")
++            elif enable_cudagraph:
++                self.manual_graph = True
++                self.logger.info("Model running manual graph")
++            else:
++                self.logger.info("Model running eager")
++
++            # 初始化profiler
++            profiler = None
++            enable_profiler = self.config.get('enable_profiler', False)
++            profiler_batch_count = self.config.get('profiler_batch_count', 3)
++            wait_steps = self.config.get('wait_steps', 1)
++            warmup_steps = self.config.get('warmup_steps', 1)
++            if enable_profiler:
++                try:
++                    profiler_config = {
++                        'activities': [
++                            torch.profiler.ProfilerActivity.CPU,
++                            torch.profiler.ProfilerActivity.CUDA,
++                        ],
++                        'schedule': torch.profiler.schedule(
++                            wait=wait_steps,
++                            warmup=warmup_steps,
++                            active=profiler_batch_count,
++                            repeat=1
++                        ),
++                        'on_trace_ready': torch.profiler.tensorboard_trace_handler(
++                            dir_name=os.path.join(self.checkpoint_dir, 'gpu_profiler_logs'),
++                            worker_name='worker0'
++                        ),
++                        'record_shapes': True,
++                        'profile_memory': True,
++                        'with_stack': False,
++                    }
++                    profiler = torch.profiler.profile(**profiler_config)
++                    self.logger.info(
++                        f"Profiler enabled. Output dir: {os.path.join(self.checkpoint_dir, 'gpu_profiler_logs')}")
++                except Exception as e:
++                    self.logger.warning(f"Failed to enable profiler: {e}")
++                    profiler = None
++
++            check_precision_with_gpu = self.config.get('check_precision_with_gpu', False)
++            gpu_data_path = self.config.get('gpu_data_path', None)
++            # Profiling and evaluate loop
++            with profiler if profiler else torch.autograd.profiler.profile(enabled=False) as prof:
++                total_steps = wait_steps + warmup_steps + profiler_batch_count + 1 + 100
++                fwd_time = t.time()
++                e2e_records = []
++                for batch_idx, batched_data in enumerate(iter_data):
++                    if gpu_data_path:
++                        data = torch.load(gpu_data_path, map_location=self.device, weights_only=False)
++                        batched_data = data["HLLM"]["input"]
++                        self.logger.info(f"Load input from {gpu_data_path} successfully!")
++                    start_time = fwd_time
++                    data_time = t.time()
++                    scores, positive_u, positive_i = eval_func(batched_data)
++                    fwd_time = t.time()
+ 
+-                if show_progress and self.rank == 0:
+-                    iter_data.set_postfix_str(f"data: {data_time-start_time:.3f} fwd: {fwd_time-data_time:.3f}", refresh=False)
+-                self.eval_collector.eval_batch_collect(scores, positive_u, positive_i)
++                    if check_precision_with_gpu:
++                        self.save_input_output(batched_data, scores)
++
++                    if show_progress and self.rank == 0:
++                        iter_data.set_postfix_str(f"data: {data_time - start_time:.3f} fwd: {fwd_time - data_time:.3f}",
++                                                  refresh=False)
++                        iter_data.set_postfix_str(set_color('GPU RAM: ' + get_gpu_usage(self.device), 'yellow'),
++                                                  refresh=False)
++                    self.eval_collector.eval_batch_collect(scores, positive_u, positive_i)
++                    e2e_time = fwd_time - start_time
++                    self.logger.info(f"E2E time for batch-{batch_idx}: {e2e_time:.3f}")
++                    if profiler:
++                        prof.step()
++                    if wait_steps + warmup_steps + profiler_batch_count + 1 <= batch_idx <= total_steps - 1:
++                        e2e_records.append({
++                            "batch_idx": batch_idx,
++                            "e2e_time": e2e_time,
++                        })
++                    if profiler and batch_idx >= total_steps - 1:
++                        self.logger.info("Profiler finished, stop evaluating early")
++                        break
++                    if check_precision_with_gpu:
++                        self.logger.info("Check precision mode, stop evaluating early")
++                        break
++                df = pd.DataFrame(e2e_records)
++                csv_path = os.path.join(self.checkpoint_dir, 'e2e_records.csv')
++                df.to_csv(csv_path, index=False)
++                self.logger.info(f"E2E records written to {csv_path}")
++                try:
++                    lat_ms = df['e2e_time'].to_numpy(dtype=float) * 1000.0
++                    p99_latency = float(np.percentile(lat_ms, 99))
++                    p90_latency = float(np.percentile(lat_ms, 90))
++                    avg_latency = float(lat_ms.mean())
++                    batch_size = self.config.get('eval_batch_size', 128)
++                    qps = (1000.0 * batch_size) / avg_latency if avg_latency > 0 else 0.0
++                    summary = {
++                        "count": int(lat_ms.shape[0]),
++                        "batch_size": int(batch_size),
++                        "p99_latency_ms": round(p99_latency, 6),
++                        "p90_latency_ms": round(p90_latency, 6),
++                        "avg_latency_ms": round(avg_latency, 6),
++                        "qps": round(qps, 3),
++                    }
++                    summary_path = os.path.join(self.checkpoint_dir, 'e2e_latency_summary.csv')
++                    pd.DataFrame([summary]).to_csv(summary_path, index=False)
++                    self.logger.info(f"E2E Latency summary written to {summary_path}")
++                    self.logger.info(f"E2E latency metrics: {summary}")
++                except Exception as e:
++                    self.logger.warning(f"Failed to write e2e latency metrics: {e}")
++
+             num_total_examples = len(eval_data.sampler.dataset)
+             struct = self.eval_collector.get_data_struct()
+             result = self.evaluator.evaluate(struct)
+@@ -509,3 +714,20 @@
+             self.wandblogger.log_eval_metrics(result, head='eval')
+ 
+             return result
++
++    def save_input_output(self, input, output, dir="./precision", filename="input_output.pt"):
++        os.makedirs(dir, exist_ok=True)
++        file_path = os.path.join(dir, filename)
++        file_path = get_unique_path(file_path)
++        data = {
++            "HLLM": {
++                "type": "model",
++                "input": to_clean_cpu_tensor(input),
++                "output": to_clean_cpu_tensor(output),
++            }
++        }
++        self.logger.info(f"Saving input and output...")
++        torch.save(data, file_path)
++        self.logger.info(f"Saved input and output to {file_path}")
++
++
+Index: code/REC/trainer/trainer_npu.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/trainer/trainer_npu.py b/code/REC/trainer/trainer_npu.py
+new file mode 100644
+--- /dev/null	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
++++ b/code/REC/trainer/trainer_npu.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -0,0 +1,757 @@
++# Copyright (c) 2024 westlake-repl
++# Copyright (c) 2024 Bytedance Ltd. and/or its affiliate
++# SPDX-License-Identifier: MIT
++# This file has been modified by Junyi Chen.
++#
++# Original file was released under MIT, with the full license text
++# available at https://choosealicense.com/licenses/mit/.
++#
++# This modified file is released under the same license.
++
++import os
++import sys
++from logging import getLogger
++from time import time
++import time as t
++import numpy as np
++import torch
++import torch.optim as optim
++from tqdm import tqdm
++
++try:
++    import torch_npu
++    from torch_npu.profiler import profile as npu_profiler
++    NPU_PROFILING_AVAILABLE = True
++except ImportError:
++    NPU_PROFILING_AVAILABLE = False
++
++import pickle
++import hashlib
++import pandas as pd
++
++from REC.data.dataset import BatchTextDataset
++from REC.data.dataset.collate_fn import customize_rmpad_collate
++from torch.utils.data import DataLoader
++from REC.evaluator import Evaluator, Collector
++from REC.utils import ensure_dir, early_stopping, calculate_valid_score, dict2str, \
++    get_tensorboard, set_color, get_gpu_usage, WandbLogger, to_clean_cpu_tensor, get_unique_path
++from REC.utils.lr_scheduler import *
++
++def patch_manual_graph(model):
++    model.stream = torch.npu.Stream()
++    model.graph = torch.npu.NPUGraph()
++    model.graph_prepared = False
++    model.static_pos_embedding = None
++    model.static_attention_mask = None
++    model.static_outputs = None
++    orig_func = model.get_seq_output
++
++    def get_seq_output_graph(pos_embedding, attention_mask):
++        if not model.graph_prepared:
++            model.static_pos_embedding = pos_embedding.clone()
++            model.static_attention_mask = attention_mask.clone()
++            model.graph_prepared = True
++            with torch.npu.graph(model.graph, None, model.stream):
++                model.static_outputs = orig_func(model.static_pos_embedding, model.static_attention_mask)
++        else:
++            model.static_pos_embedding.copy_(pos_embedding)
++            model.static_attention_mask.copy_(attention_mask)
++        model.graph.replay()
++        torch.npu.synchronize()
++        return model.static_outputs
++    model.get_seq_output = get_seq_output_graph
++class TrainerNPU(object):
++    def __init__(self, config, model):
++        super(TrainerNPU, self).__init__()
++        self.config = config
++        self.model = model
++        self.logger = getLogger()
++        self.manual_graph = False
++        self.graph_prepared = False
++
++        self.wandblogger = WandbLogger(config)
++
++        self.optim_args = config['optim_args']
++        self.epochs = config['epochs']
++        self.eval_step = min(config['eval_step'], self.epochs)
++        self.stopping_step = config['stopping_step']
++        self.clip_grad_norm = config.get('clip_grad_norm', 1.0)
++        self.valid_metric = config['valid_metric'].lower()
++        self.valid_metric_bigger = config['valid_metric_bigger']
++        self.test_batch_size = config['eval_batch_size']
++        self.gpu_available = torch.cuda.is_available() and config['use_gpu']
++        self.device = config['device']
++        self.rank = 0
++        self.checkpoint_dir = config['checkpoint_dir']
++        if self.rank == 0:
++            ensure_dir(self.checkpoint_dir)
++
++        self.saved_model_name = '{}-{}.pth'.format(self.config['model'], 0)
++        self.saved_model_file = os.path.join(self.checkpoint_dir, self.saved_model_name)
++
++        self.use_text = config['use_text']
++
++        self.start_epoch = 0
++        self.cur_step = 0
++        self.best_valid_score = -np.inf if self.valid_metric_bigger else np.inf
++        self.best_valid_result = None
++        self.train_loss_dict = dict()
++        self.optimizer = self._build_optimizer()
++        self.update_interval = config['update_interval'] if config['update_interval'] else 20
++        self.scheduler_config = config['scheduler_args']
++        if config['freeze_prefix'] or config['freeze_ad']:
++            freeze_prefix = config['freeze_prefix'] if config['freeze_prefix'] else []
++            if config['freeze_ad']:
++                freeze_prefix.extend(['item_llm', 'item_emb_tokens'])
++            if not config['ft_item']:
++                freeze_prefix.extend(['item_embedding'])
++
++            self._freeze_params(freeze_prefix)
++
++        for n, p in self.model.named_parameters():
++            self.logger.debug(f"{n} {p.size()} {p.requires_grad}")
++
++        self.eval_collector = Collector(config)
++        self.evaluator = Evaluator(config)
++        self.item_feature = None
++        self.tot_item_num = None
++
++    def _freeze_params(self, freeze_prefix):
++        for name, param in self.model.named_parameters():
++            for prefix in freeze_prefix:
++                if name.startswith(prefix):
++                    self.logger.info(f"freeze_params: {name}")
++                    param.requires_grad = False
++
++    def _build_scheduler(self, warmup_steps=None, tot_steps=None):
++        if self.scheduler_config['type'] == 'cosine':
++            self.logger.info(f"Use consine scheduler with {warmup_steps} warmup {tot_steps} total steps")
++            return get_cosine_schedule_with_warmup(self.optimizer, warmup_steps, tot_steps)
++        elif self.scheduler_config['type'] == 'liner':
++            self.logger.info(f"Use linear scheduler with {warmup_steps} warmup {tot_steps} total steps")
++            return get_linear_schedule_with_warmup(self.optimizer, warmup_steps, tot_steps)
++        else:
++            self.logger.info(f"Use constant scheduler")
++            return get_constant_schedule(self.optimizer)
++
++    def _build_optimizer(self):
++        if len(self.optim_args) == 4:
++            params = self.model.named_parameters()
++            modal_params = []
++            recsys_params = []
++            modal_decay_params = []
++            recsys_decay_params = []
++            decay_check_name = self.config['decay_check_name']
++            for index, (name, param) in enumerate(params):
++                if param.requires_grad:
++                    if 'visual_encoder' in name:
++                        modal_params.append(param)
++                    else:
++                        recsys_params.append(param)
++                    if decay_check_name:
++                        if decay_check_name in name:
++                            modal_decay_params.append(param)
++                        else:
++                            recsys_decay_params.append(param)
++            if decay_check_name:
++                optimizer = optim.AdamW([
++                    {'params': modal_decay_params, 'lr': self.optim_args['modal_lr'], 'weight_decay': self.optim_args['modal_decay']},
++                    {'params': recsys_decay_params, 'lr': self.optim_args['rec_lr'], 'weight_decay': self.optim_args['rec_decay']}
++                ])
++                optim_output = set_color(f'recsys_decay_params_len: {len(recsys_decay_params)}  modal_params_decay_len: {len(modal_decay_params)}', 'blue')
++                self.logger.info(optim_output)
++            else:
++                optimizer = optim.AdamW([
++                    {'params': modal_params, 'lr': self.optim_args['modal_lr'], 'weight_decay': self.optim_args['modal_decay']},
++                    {'params': recsys_params, 'lr': self.optim_args['rec_lr'], 'weight_decay': self.optim_args['rec_decay']}
++                ])
++                optim_output = set_color(f'recsys_lr_params_len: {len(recsys_params)}  modal_lr_params_len: {len(modal_params)}', 'blue')
++                self.logger.info(optim_output)
++        elif self.config['lr_mult_prefix'] and self.config['lr_mult_rate']:
++            normal_params_dict = {
++                "params": [],
++                "lr": self.optim_args['learning_rate'],
++                "weight_decay": self.optim_args['weight_decay']
++            }
++            high_lr_params_dict = {
++                "params": [],
++                "lr": self.optim_args['learning_rate'] * self.config['lr_mult_rate'],
++                "weight_decay": self.optim_args['weight_decay']
++            }
++            self.logger.info(f'Use higher lr rate {self.config["lr_mult_rate"]} x {self.optim_args["learning_rate"]} for prefix {self.config["lr_mult_prefix"]}')
++
++            for n, p in self.model.named_parameters():
++                if any(n.startswith(x) for x in self.config['lr_mult_prefix']):
++                    self.logger.info(f"high lr param: {n} {self.optim_args['learning_rate'] * self.config['lr_mult_rate']}")
++                    high_lr_params_dict["params"].append(p)
++                else:
++                    normal_params_dict["params"].append(p)
++            optimizer = optim.AdamW([normal_params_dict, high_lr_params_dict])
++        elif self.config['optimizer_kwargs']:
++            params = self.model.parameters()
++            lr = self.optim_args['learning_rate']
++            weight_decay = self.optim_args['weight_decay']
++            optimizer = optim.AdamW(params, lr=lr, weight_decay=weight_decay)
++            self.logger.info(f'Use optimizer {optimizer} with lr {lr}, weight_decay {weight_decay}')
++        else:
++            params = self.model.parameters()
++            optimizer = optim.AdamW(params, lr=self.optim_args['learning_rate'], weight_decay=self.optim_args['weight_decay'])
++        return optimizer
++
++    def _train_epoch(self, train_data, epoch_idx, show_progress=False):
++        self.model.train()
++        total_loss = 0
++        if self.rank == 0:
++            pbar = tqdm(
++                total=len(train_data),
++                miniters=self.update_interval,
++                desc=set_color(f"Train [{epoch_idx:>3}/{self.epochs:>3}]", 'pink'),
++                file=sys.stdout
++            )
++        bwd_time = t.time()
++        for batch_idx, data in enumerate(train_data):
++            start_time = bwd_time
++            self.optimizer.zero_grad()
++            data = self.to_device(data)
++            data_time = t.time()
++            losses = self.model(data)
++            fwd_time = t.time()
++            if self.config['loss'] and self.config['loss'] == 'nce':
++                model_out = losses
++                losses = model_out.pop('loss')
++            self._check_nan(losses)
++            total_loss = total_loss + losses.item()
++            losses.backward()
++            grad_norm = None
++            if self.clip_grad_norm:
++                grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
++            self.optimizer.step()
++            bwd_time = t.time()
++            if self.scheduler_config:
++                self.lr_scheduler.step()
++            if show_progress and self.rank == 0 and batch_idx % self.update_interval == 0:
++                msg = f"loss: {losses:.4f} data: {data_time-start_time:.3f} fwd: {fwd_time-data_time:.3f} bwd: {bwd_time-fwd_time:.3f}"
++                if self.scheduler_config:
++                    msg = f"lr: {self.lr_scheduler.get_lr()[0]:.7f} " + msg
++                if self.config['loss'] and self.config['loss'] == 'nce':
++                    for k, v in model_out.items():
++                        if k.endswith('loss'):
++                            msg += f" {k}: {v:.3f}"
++                if grad_norm is not None:
++                    msg = msg + f" grad_norm: {grad_norm:.4f}"
++                pbar.set_postfix_str(msg, refresh=False)
++                pbar.update(self.update_interval)
++                self.logger.info("\n" + "-"*50)
++            if self.config['debug'] and batch_idx >= 10:
++                break
++
++        return total_loss
++
++    def _valid_epoch(self, valid_data, show_progress=False):
++        valid_result = self.evaluate(valid_data, load_best_model=False, show_progress=show_progress)
++        valid_score = calculate_valid_score(valid_result, self.valid_metric)
++        return valid_score, valid_result
++
++    def _save_checkpoint(self, epoch, verbose=True):
++        r"""Store the model parameters information and training information.
++
++        Args:
++            epoch (int): the current epoch id
++
++        """
++        state = {
++            "model": self.model.state_dict(),
++            "optimizer": self.optimizer.state_dict(),
++            'config': self.config,
++            'epoch': epoch,
++            'cur_step': self.cur_step,
++            'best_valid_score': self.best_valid_score,
++            'rng_state': torch.get_rng_state()
++        }
++        if hasattr(torch, 'npu') and torch.npu.is_available():
++            state['npu_rng_state'] = torch.npu.get_rng_state()
++        torch.save(state, os.path.join(self.checkpoint_dir, self.saved_model_name))
++        if self.rank == 0 and verbose:
++            self.logger.info(set_color('Saving current', 'blue') + f': {self.saved_model_file}')
++
++    def _check_nan(self, loss):
++        if torch.isnan(loss):
++            raise ValueError('Training loss is nan')
++
++    def _generate_train_loss_output(self, epoch_idx, s_time, e_time, losses):
++        des = self.config['loss_decimal_place'] or 4
++        train_loss_output = (set_color('epoch %d training', 'green') + ' [' + set_color('time', 'blue') +
++                             ': %.2fs, ') % (epoch_idx, e_time - s_time)
++        if isinstance(losses, tuple):
++            des = (set_color('train_loss%d', 'blue') + ': %.' + str(des) + 'f')
++            train_loss_output += ', '.join(des % (idx + 1, loss) for idx, loss in enumerate(losses))
++        else:
++            des = '%.' + str(des) + 'f'
++            train_loss_output += set_color('train loss', 'blue') + ': ' + des % losses
++        return train_loss_output + ']'
++
++    def _add_train_loss_to_tensorboard(self, epoch_idx, losses, tag='Loss/Train'):
++        if isinstance(losses, tuple):
++            for idx, loss in enumerate(losses):
++                self.tensorboard.add_scalar(tag + str(idx), loss, epoch_idx)
++        else:
++            self.tensorboard.add_scalar(tag, losses, epoch_idx)
++
++    def _add_hparam_to_tensorboard(self, best_valid_result):
++        # base hparam
++        hparam_dict = {
++            'learning_rate': self.config['learning_rate'],
++            'weight_decay': self.config['weight_decay'],
++            'train_batch_size': self.config['train_batch_size']
++        }
++        # unrecorded parameter
++        unrecorded_parameter = {
++            parameter
++            for parameters in self.config.parameters.values() for parameter in parameters
++        }.union({'model', 'dataset', 'config_files', 'device'})
++        # other model-specific hparam
++        hparam_dict.update({
++            para: val
++            for para, val in self.config.final_config_dict.items() if para not in unrecorded_parameter
++        })
++        for k in hparam_dict:
++            k = k.replace('@', '_')
++            if hparam_dict[k] is not None and not isinstance(hparam_dict[k], (bool, str, float, int)):
++                hparam_dict[k] = str(hparam_dict[k])
++
++        self.tensorboard.add_hparams(hparam_dict, {'hparam/best_valid_result': best_valid_result})
++
++    def to_device(self, data):
++        device = self.device
++        if isinstance(data, tuple) or isinstance(data, list):
++            tdata = ()
++            for d in data:
++                d = d.to(device)
++                tdata += (d,)
++            return tdata
++        elif isinstance(data, dict):
++            for k, v in data.items():
++                data[k] = v.to(device)
++            return data
++        else:
++            return data.to(device)
++
++    def fit(self, train_data, valid_data=None, verbose=True, saved=True, show_progress=False, callback_fn=None):
++        if self.scheduler_config:
++            warmup_rate = self.scheduler_config.get('warmup', 0.001)
++            tot_steps = len(train_data) * self.epochs
++            warmup_steps = tot_steps * warmup_rate
++            self.lr_scheduler = self._build_scheduler(warmup_steps=warmup_steps, tot_steps=tot_steps)
++
++        self.model = self.model.to(self.device)
++
++        if self.config['auto_resume']:
++            raise NotImplementedError
++
++        valid_step = 0
++
++        for epoch_idx in range(self.start_epoch, self.epochs):
++            # train
++            if self.config['need_training'] == None or self.config['need_training']:
++                training_start_time = time()
++                train_loss = self._train_epoch(train_data, epoch_idx, show_progress=show_progress)
++                self.train_loss_dict[epoch_idx] = sum(train_loss) if isinstance(train_loss, tuple) else train_loss
++                training_end_time = time()
++                train_loss_output = \
++                    self._generate_train_loss_output(epoch_idx, training_start_time, training_end_time, train_loss)
++                if verbose:
++                    self.logger.info(train_loss_output)
++                if self.rank == 0:
++                    self._add_train_loss_to_tensorboard(epoch_idx, train_loss)
++                self.wandblogger.log_metrics({'epoch': epoch_idx, 'train_loss': train_loss, 'train_step': epoch_idx}, head='train')
++
++            if self.eval_step <= 0 or not valid_data:
++                if saved:
++                    self._save_checkpoint(epoch_idx, verbose=verbose)
++                continue
++            if (epoch_idx + 1) % self.eval_step == 0:
++                valid_start_time = time()
++                valid_score, valid_result = self._valid_epoch(valid_data, show_progress=show_progress)
++                self.best_valid_score, self.cur_step, stop_flag, update_flag = early_stopping(
++                    valid_score,
++                    self.best_valid_score,
++                    self.cur_step,
++                    max_step=self.stopping_step,
++                    bigger=self.valid_metric_bigger
++                )
++                valid_end_time = time()
++                valid_score_output = (set_color("epoch %d evaluating", 'green') + " [" + set_color("time", 'blue')
++                                      + ": %.2fs, " + set_color("valid_score", 'blue') + ": %f]") % \
++                    (epoch_idx, valid_end_time - valid_start_time, valid_score)
++                valid_result_output = set_color('valid result', 'blue') + ': \n' + dict2str(valid_result)
++                if verbose:
++                    self.logger.info(valid_score_output)
++                    self.logger.info(valid_result_output)
++                if self.rank == 0:
++                    self.tensorboard.add_scalar('Vaild_score', valid_score, epoch_idx)
++                    for name, value in valid_result.items():
++                        self.tensorboard.add_scalar(name.replace('@', '_'), value, epoch_idx)
++                self.wandblogger.log_metrics({**valid_result, 'valid_step': valid_step}, head='valid')
++
++                if update_flag:
++                    if saved:
++                        self._save_checkpoint(epoch_idx, verbose=verbose)
++                    self.best_valid_result = valid_result
++
++                if callback_fn:
++                    callback_fn(epoch_idx, valid_score)
++
++                if stop_flag:
++                    stop_output = 'Finished training, best eval result in epoch %d' % \
++                        (epoch_idx - self.cur_step * self.eval_step)
++                    if verbose:
++                        self.logger.info(stop_output)
++                    break
++
++                valid_step += 1
++
++        return self.best_valid_score, self.best_valid_result
++
++    @torch.no_grad()
++    def _full_sort_batch_eval(self, batched_data):
++        user, time_seq, history_index, positive_u, positive_i = batched_data
++        interaction = self.to_device(user)
++        time_seq = self.to_device(time_seq)
++        item_feature = self.to_device(self.item_feature)
++        if self.config['model'] == 'HLLM':
++            if self.manual_graph and not self.graph_prepared:
++                patch_manual_graph(self.model)
++                self.graph_prepared = True
++            if self.config['stage'] == 3:
++                scores = self.model.predict(interaction, time_seq, item_feature)
++            else:
++                scores = self.model((interaction, time_seq, item_feature), mode='predict')
++        else:
++            scores = self.model.predict(interaction, time_seq, item_feature)
++        scores = scores.view(-1, self.tot_item_num)
++        scores[:, 0] = -np.inf
++        if history_index is not None:
++            scores[history_index] = -np.inf
++        return scores, positive_u, positive_i
++
++    def _generate_cache_key(self, config, data):
++        # 生成基于模型状态和数据集的缓存键
++        model_state = {}
++        for name, param in self.model.named_parameters():
++            if 'item' in name.lower() or 'llm' in name.lower():  # 只考虑与item相关的参数
++                # 处理BFloat16等不支持的数据类型
++                param_data = param.data.cpu()
++                if param_data.dtype == torch.bfloat16:
++                    param_data = param_data.float()
++                    self.logger.warning(f"Don't support bfloat16 for {name}, trans dtype to: {param_data.dtype}")
++                model_state[name] = param_data.numpy().tobytes()
++
++        cache_info = {
++            'model_state': model_state,
++            'item_num': data.item_num,
++            'use_text': self.use_text,
++            'stage': config.get('stage', None),
++            'model_name': config.get('model', ''),
++        }
++
++        cache_str = str(sorted(cache_info.items()))
++        cache_key = hashlib.md5(cache_str.encode()).hexdigest()
++        return cache_key
++
++    def _get_cache_path(self, cache_key):
++        # 获取缓存文件路径
++        cache_dir = os.path.join(self.checkpoint_dir, 'item_feature_cache')
++        os.makedirs(cache_dir, exist_ok=True)
++        return os.path.join(cache_dir, f'item_features_{cache_key}.pkl')
++
++    def _save_item_feature_cache(self, cache_path, item_feature):
++            try:
++                cache_data = {
++                    'item_feature': item_feature,
++                    'device': str(self.device),
++                    'timestamp': time()
++                }
++                with open(cache_path, 'wb') as f:
++                    pickle.dump(cache_data, f)
++                self.logger.info(f"Saved item feature to {cache_path}")
++            except Exception as e:
++                self.logger.warning(f"Failed to save item feature to {cache_path}: {e}")
++
++    def _load_item_feature_cache(self, cache_path):
++        try:
++            with open(cache_path, 'rb') as f:
++                cache_data = pickle.load(f)
++            item_feature = cache_data['item_feature']
++            if isinstance(item_feature, tuple):
++                item_feature = tuple(feat.to(self.device) for feat in item_feature)
++            else:
++                item_feature = item_feature.to(self.device)
++            self.logger.info(f"Loaded item feature from {cache_path}")
++            return item_feature
++        except Exception as e:
++            self.logger.warning(f"Failed to load item feature from {cache_path}: {e}")
++            return None
++
++    def _load_any_item_feature_cache(self):
++        cache_dir = os.path.join(self.checkpoint_dir, 'item_feature_cache')
++        if not os.path.exists(cache_dir):
++            return None
++        cache_files = [f for f in os.listdir(cache_dir) if f.endswith('.pkl')]
++        if not cache_files:
++            return None
++        cache_file = cache_files[0]
++        cache_path = os.path.join(cache_dir, cache_file)
++        return self._load_item_feature_cache(cache_path)
++
++
++    @torch.no_grad()
++    def compute_item_feature(self, config, data):
++        use_cache = config.get('use_item_cache', True)
++        if use_cache:
++            cached_features = self._load_any_item_feature_cache()
++            if cached_features is not None:
++                if isinstance(cached_features, tuple):
++                    self.item_feature = tuple(feat.to(self.device) for feat in cached_features)
++                else:
++                    self.item_feature = cached_features.to(self.device)
++                return
++        self.logger.info(f"Compute item features...")
++        if self.use_text:
++            item_data = BatchTextDataset(config, data)
++            item_batch_size = config['MAX_ITEM_LIST_LENGTH'] * config['train_batch_size']
++            item_loader = DataLoader(item_data, batch_size=item_batch_size, num_workers=0, shuffle=False, pin_memory=False, collate_fn=customize_rmpad_collate)
++            self.logger.info(f"Inference item_data with {item_batch_size = } {len(item_loader) = }")
++            self.item_feature = []
++            with torch.no_grad():
++                for idx, items in tqdm(enumerate(item_loader), total=len(item_loader)):
++                    items = self.to_device(items)
++                    items = self.model(items, mode='compute_item')
++                    self.item_feature.append(items)
++                if isinstance(items, tuple):
++                    self.item_feature = torch.cat([x[0] for x in self.item_feature]), torch.cat([x[1] for x in self.item_feature])
++                else:
++                    self.item_feature = torch.cat(self.item_feature)
++                if self.config['stage'] == 3:
++                    self.item_feature = self.item_feature.bfloat16()
++                self.item_feature = self.to_device(self.item_feature)
++        else:
++            with torch.no_grad():
++                self.item_feature = self.model.compute_item_all()
++                self.item_feature = self.to_device(self.item_feature)
++        # 保存item_cache
++        if use_cache:
++            cache_key = self._generate_cache_key(config, data)
++            cache_path = self._get_cache_path(cache_key)
++            self._save_item_feature_cache(cache_path, self.item_feature)
++            self.logger.info(f"Item features computed and cached with key: {cache_key}")
++
++    def distributed_concat(self, tensor, num_total_examples):
++        return tensor
++
++    def evaluate(self, eval_data, load_best_model=True, model_file=None, show_progress=False, init_model=False):
++        if not eval_data:
++            return
++        self.model = self.model.to(self.device)
++        if load_best_model:
++            checkpoint_file = model_file or self.saved_model_file
++            checkpoint = torch.load(checkpoint_file, map_location=self.device)
++            if 'model' in checkpoint:
++                if hasattr(checkpoint['model'], 'state_dict'):
++                    self.model.load_state_dict(checkpoint['model'].state_dict())
++                else:
++                    self.model.load_state_dict(checkpoint['model'])
++            else:
++                self.model.load_state_dict(checkpoint)
++            message_output = 'Loading model structure and parameters from {}'.format(checkpoint_file)
++            self.logger.info(message_output)
++
++        with torch.no_grad():
++            self.model.eval()
++            eval_func = self._full_sort_batch_eval
++
++            self.tot_item_num = eval_data.dataset.dataload.item_num
++            self.compute_item_feature(self.config, eval_data.dataset.dataload)
++            iter_data = (
++                tqdm(
++                    eval_data,
++                    total=len(eval_data),
++                    ncols=150,
++                    desc=set_color(f"Evaluate   ", 'pink'),
++                    file=sys.stdout
++                ) if show_progress and self.rank == 0 else eval_data
++            )
++
++            # 处理compile和cudagraph
++            enable_compile = self.config.get('enable_compile', False)
++            enable_aclgraph = self.config.get('enable_aclgraph', False)
++            if enable_compile and enable_aclgraph:
++                try:
++                    self.model.get_seq_output = torch.compile(
++                        self.model.get_seq_output, backend="inductor", dynamic=False, mode="reduce-overhead"
++                    )
++                    self.model.normalize_vectors = torch.compile(self.model.normalize_vectors, backend="inductor")
++                    self.logger.info("Model compiled with cudagraph")
++                except Exception as e:
++                    self.logger.warning(f"Failed to compile model and running aclgraph: {e}")
++            elif enable_compile:
++                try:
++                    eval_func = torch.compile(eval_func, backend="inductor", dynamic=False)
++                    self.logger.info("Model compiled with inductor")
++                except Exception as e:
++                    self.logger.warning(f"Failed to compile model: {e}")
++            elif enable_aclgraph:
++                self.manual_graph = True
++                self.logger.info("Model running manual graph")
++            else:
++                self.logger.info("Model running eager")
++
++            # 初始化profiler
++            profiler = None
++            enable_profiler = self.config.get('enable_profiler', False)
++            profiler_batch_count = self.config.get('profiler_batch_count', 3)
++            wait_steps = self.config.get('wait_steps', 1)
++            warmup_steps = self.config.get('warmup_steps', 1)
++            if enable_profiler and NPU_PROFILING_AVAILABLE:
++                try:
++                    experimental_config = torch_npu.profiler._ExperimentalConfig(
++                        export_type=torch_npu.profiler.ExportType.Text,
++                        profiler_level=torch_npu.profiler.ProfilerLevel.Level2,
++                        msprof_tx=False,
++                        aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++                        l2_cache=False,
++                        op_attr=False,
++                        data_simplification=False,
++                        record_op_args=False
++                    )
++                    profiler_config = {
++                        'activities': [
++                            torch_npu.profiler.ProfilerActivity.CPU,
++                            torch_npu.profiler.ProfilerActivity.NPU
++                        ],
++                        'schedule': torch_npu.profiler.schedule(
++                            wait=wait_steps,
++                            warmup=warmup_steps,
++                            active=profiler_batch_count,
++                            repeat=1
++                        ),
++                        'on_trace_ready': torch_npu.profiler.tensorboard_trace_handler(
++                            dir_name=os.path.join(self.checkpoint_dir, 'npu_profiler_logs'),
++                            worker_name='worker0'
++                        ),
++                        'record_shapes': True,
++                        'profile_memory': True,
++                        'with_stack': False,
++                        'experimental_config': experimental_config
++                    }
++                    profiler = npu_profiler(**profiler_config)
++                    self.logger.info(
++                        f"Profiler enabled. Output dir: {os.path.join(self.checkpoint_dir, 'npu_profiler_logs')}")
++                except Exception as e:
++                    self.logger.warning(f"Failed to enable profiler: {e}")
++                    profiler = None
++
++            check_precision_with_gpu = self.config.get('check_precision_with_gpu', False)
++            gpu_data_path = self.config.get('gpu_data_path', None)
++            # Profiling and evaluate loop
++            with profiler if profiler else torch.autograd.profiler.profile(enabled=False) as prof:
++                total_steps = wait_steps + warmup_steps + profiler_batch_count + 1 + 100
++                fwd_time = t.time()
++                e2e_records = []
++                for batch_idx, batched_data in enumerate(iter_data):
++                    if gpu_data_path:
++                        data = torch.load(gpu_data_path, map_location=self.device, weights_only=False)
++                        batched_data = data["HLLM"]["input"]
++                        self.logger.info(f"Load input from {gpu_data_path} successfully!")
++                    start_time = fwd_time
++                    data_time = t.time()
++                    scores, positive_u, positive_i = eval_func(batched_data)
++                    fwd_time = t.time()
++
++                    if check_precision_with_gpu:
++                        self.save_input_output(batched_data, scores)
++
++                    if show_progress and self.rank == 0:
++                        iter_data.set_postfix_str(f"data: {data_time - start_time:.3f} fwd: {fwd_time - data_time:.3f}",
++                                                  refresh=False)
++                        iter_data.set_postfix_str(set_color('NPU RAM: ' + get_gpu_usage(self.device), 'yellow'),
++                                                  refresh=False)
++                    self.eval_collector.eval_batch_collect(scores, positive_u, positive_i)
++                    e2e_time = fwd_time - start_time
++                    self.logger.info(f"E2E time for batch-{batch_idx}: {e2e_time:.3f}")
++                    if profiler:
++                        prof.step()
++                    if wait_steps + warmup_steps + profiler_batch_count + 1 <= batch_idx <= total_steps - 1:
++                        e2e_records.append({
++                            "batch_idx": batch_idx,
++                            "e2e_time": e2e_time,
++                        })
++
++                    # Save precision
++                    check_precision = os.getenv('CHECK_PRECISION', False)
++                    precision_path = os.getenv('PRECISION_PATH', '/tmp')
++                    if check_precision:
++                        self.logger.info(f"Checking precision for batch-{batch_idx}")
++                        torch.save(scores, os.path.join(precision_path, f"scores-{batch_idx}.pt"))
++                        torch.save(positive_u, os.path.join(precision_path, f"positive_u-{batch_idx}.pt"))
++                        torch.save(positive_i, os.path.join(precision_path, f"positive_i-{batch_idx}.pt"))
++
++                    if profiler and batch_idx >= total_steps - 1:
++                        self.logger.info("Profiler finished, stop evaluating early")
++                        break
++                    if check_precision_with_gpu:
++                        self.logger.info("Check precision mode, stop evaluating early")
++                        break
++
++                # E2E time
++                df = pd.DataFrame(e2e_records)
++                csv_path = os.path.join(self.checkpoint_dir, 'e2e_records.csv')
++                df.to_csv(csv_path, index=False)
++                self.logger.info(f"E2E records written to {csv_path}")
++                try:
++                    lat_ms = df['e2e_time'].to_numpy(dtype=float) * 1000.0
++                    p99_latency = float(np.percentile(lat_ms, 99))
++                    p90_latency = float(np.percentile(lat_ms, 90))
++                    avg_latency = float(lat_ms.mean())
++                    batch_size = self.config.get('eval_batch_size', 128)
++                    qps = (1000.0 * batch_size) / avg_latency if avg_latency > 0 else 0.0
++                    summary = {
++                        "count": int(lat_ms.shape[0]),
++                        "batch_size": int(batch_size),
++                        "p99_latency_ms": round(p99_latency, 6),
++                        "p90_latency_ms": round(p90_latency, 6),
++                        "avg_latency_ms": round(avg_latency, 6),
++                        "qps": round(qps, 3),
++                    }
++                    summary_path = os.path.join(self.checkpoint_dir, 'e2e_latency_summary.csv')
++                    pd.DataFrame([summary]).to_csv(summary_path, index=False)
++                    self.logger.info(f"E2E Latency summary written to {summary_path}")
++                    self.logger.info(f"E2E latency metrics: {summary}")
++                except Exception as e:
++                    self.logger.warning(f"Failed to write e2e latency metrics: {e}")
++
++            num_total_examples = len(eval_data.sampler.dataset)
++            struct = self.eval_collector.get_data_struct()
++            result = self.evaluator.evaluate(struct)
++
++            metric_decimal_place = 5 if self.config['metric_decimal_place'] == None else self.config['metric_decimal_place']
++            for k, v in result.items():
++                result_cpu = self.distributed_concat(torch.tensor([v]).to(self.device), num_total_examples).cpu()
++                result[k] = round(result_cpu.item(), metric_decimal_place)
++            self.wandblogger.log_eval_metrics(result, head='eval')
++
++            return result
++
++    def save_input_output(self, input, output, dir="./precision", filename="input_output.pt"):
++        os.makedirs(dir, exist_ok=True)
++        file_path = os.path.join(dir, filename)
++        file_path = get_unique_path(file_path)
++        data = {
++            "HLLM": {
++                "type": "model",
++                "input": to_clean_cpu_tensor(input),
++                "output": to_clean_cpu_tensor(output),
++            }
++        }
++        self.logger.info(f"Saving input and output...")
++        torch.save(data, file_path)
++        self.logger.info(f"Saved input and output to {file_path}")
+Index: code/REC/utils/__init__.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/utils/__init__.py b/code/REC/utils/__init__.py
+--- a/code/REC/utils/__init__.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/utils/__init__.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -1,6 +1,7 @@
+ from .logger import init_logger, set_color
+ from .utils import get_local_time, ensure_dir, get_model, \
+-    early_stopping, calculate_valid_score, dict2str, init_seed, get_tensorboard, get_gpu_usage
++    early_stopping, calculate_valid_score, dict2str, init_seed, get_tensorboard, get_gpu_usage, to_clean_cpu_tensor, \
++    get_unique_path
+ 
+ from .enum_type import *
+ from .argument_list import *
+@@ -10,5 +11,6 @@
+     'init_logger', 'get_local_time', 'ensure_dir', 'get_model', 'early_stopping',
+     'calculate_valid_score', 'dict2str', 'Enum',  'EvaluatorType', 'InputType',
+     'init_seed', 'general_arguments', 'training_arguments', 'evaluation_arguments',
+-    'dataset_arguments', 'get_tensorboard', 'set_color', 'get_gpu_usage', 'WandbLogger'
++    'dataset_arguments', 'get_tensorboard', 'set_color', 'get_gpu_usage', 'WandbLogger',
++    'to_clean_cpu_tensor', 'get_unique_path'
+ ]
+Index: code/REC/utils/logger.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/utils/logger.py b/code/REC/utils/logger.py
+--- a/code/REC/utils/logger.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/utils/logger.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -65,7 +65,13 @@
+         ensure_dir(dir_name)
+         model_name = os.path.join(dir_name, config['model'])
+         ensure_dir(model_name)
+-    torch.distributed.barrier()
++    try:
++        import torch.distributed as dist
++        if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1:
++            dist.barrier()
++    except Exception as e:
++        print(f"[WARNING] logger barrier skipped: {e}")
++
+     logfilename = '{}/{}.log'.format(config['model'], get_local_time())
+ 
+     logfilepath = os.path.join(LOGROOT, logfilename)
+Index: code/REC/utils/utils.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/REC/utils/utils.py b/code/REC/utils/utils.py
+--- a/code/REC/utils/utils.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/REC/utils/utils.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -5,10 +5,41 @@
+ import importlib
+ import os
+ import random
++from pathlib import Path
+ 
+ import numpy as np
+ import torch
+ from tensorboardX import SummaryWriter
++import torch.distributed as dist
++
++
++def get_unique_path(path):
++    path = Path(path)
++    if not(path.exists()):
++        return path
++    stem = path.stem
++    suffix = path.suffix
++    parent = path.parent
++    counter = 1
++    while True:
++        new_name = f"{stem}_{counter}{suffix}"
++        new_path = parent / new_name
++        if not new_path.exists():
++            return new_path
++        counter += 1
++
++
++def to_clean_cpu_tensor(data):
++    if isinstance(data, torch.Tensor):
++        return data.detach().cpu()
++    elif isinstance(data, (list, tuple)):
++        return type(data)(to_clean_cpu_tensor(item) for item in data)
++    elif isinstance(data, dict):
++        return {key: to_clean_cpu_tensor(value) for key, value in data.items()}
++    elif isinstance(data, (int, float, bool, str, bytes, type(None))):
++        return data
++    else:
++        return str(data)
+ 
+ 
+ def get_local_time():
+@@ -17,7 +48,12 @@
+     Returns:
+         str: current time
+     """
+-    torch.distributed.barrier()
++    if dist.is_available() and dist.is_initialized():
++        try:
++            if dist.get_world_size() > 1:
++                dist.barrier()
++        except Exception as e:
++            print(f'Exception when barriing: {e}')
+     cur = datetime.datetime.now()
+     cur = cur.strftime('%b-%d-%Y_%H-%M-%S')
+ 
+@@ -186,8 +222,14 @@
+     Returns:
+         str: it contains the info about reserved memory and total memory of given device.
+     """
+-
+-    reserved = torch.cuda.max_memory_reserved(device) / 1024 ** 3
+-    total = torch.cuda.get_device_properties(device).total_memory / 1024 ** 3
++    if hasattr(torch, 'npu') and torch.npu.is_available():
++        try:
++            reserved = torch.npu.max_memory_reserved(device) / 1024 ** 3
++            total = torch.npu.get_device_properties(device).total_memory / 1024 ** 3
++        except AttributeError:
++            return 'NPU memory not available'
++    else:
++        reserved = torch.cuda.max_memory_reserved(device) / 1024 ** 3
++        total = torch.cuda.get_device_properties(device).total_memory / 1024 ** 3
+ 
+     return '{:.2f} G/{:.2f} G'.format(reserved, total)
+Index: code/launch_gpu.sh
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/launch_gpu.sh b/code/launch_gpu.sh
+new file mode 100644
+--- /dev/null	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
++++ b/code/launch_gpu.sh	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -0,0 +1,25 @@
++# 设置设备
++export DEVICE_TYPE="cuda"
++DEVICE_ID=0
++export CUDA_VISIBLE_DEVICES=${DEVICE_ID}
++
++torchrun run.py \
++--config_file overall/LLM_deepspeed.yaml HLLM/HLLM.yaml \
++--device_type cuda  \
++--dataset amazon_books  \
++--MAX_ITEM_LIST_LENGTH 50 \
++--MAX_TEXT_LENGTH 256 \
++--checkpoint_dir /hllm_data/saved_path  \
++--item_pretrain_dir /hllm_data/data \
++--user_pretrain_dir /hllm_data/data \
++--text_path /hllm_data/information  \
++--data_path /hllm_data/dataset  \
++--text_keys '["title", "description"]'  \
++--val_only True \
++--user_item_cache True  \
++--enable_profiler True  \
++--enable_compile True \
++--enable_cudagraph True \
++--check_precision_with_gpu False  \
++--profiler_batch_count 5  \
++--eval_batch_size 128
+Index: code/launch_npu.sh
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/launch_npu.sh b/code/launch_npu.sh
+new file mode 100644
+--- /dev/null	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
++++ b/code/launch_npu.sh	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -0,0 +1,32 @@
++# 设置设备
++export DEVICE_TYPE="npu"
++DEVICE_ID=0
++export ASCEND_VISIBLE_DEVICES=${DEVICE_ID}
++export ASCEND_RT_VISIBLE_DEVICES=${DEVICE_ID}
++
++# TRITON
++export TRITON_DISABLE_FFTS=1
++
++# 图模式
++export ENABLE_ACLGRAPH=1
++
++torchrun run.py \
++--config_file overall/LLM_deepspeed.yaml HLLM/HLLM.yaml \
++--device_type npu  \
++--dataset amazon_books  \
++--MAX_ITEM_LIST_LENGTH 50 \
++--MAX_TEXT_LENGTH 256 \
++--checkpoint_dir /hllm_data/saved_path  \
++--item_pretrain_dir /hllm_data/data \
++--user_pretrain_dir /hllm_data/data \
++--text_path /hllm_data/information  \
++--data_path /hllm_data/dataset  \
++--text_keys '["title", "description"]'  \
++--val_only True \
++--user_item_cache True  \
++--enable_profiler True  \
++--enable_compile True \
++--enable_cudagraph True \
++--check_precision_with_gpu False  \
++--profiler_batch_count 5  \
++--eval_batch_size 128
+Index: code/overall/LLM_deepspeed.yaml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/overall/LLM_deepspeed.yaml b/code/overall/LLM_deepspeed.yaml
+--- a/code/overall/LLM_deepspeed.yaml	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/overall/LLM_deepspeed.yaml	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -35,7 +35,7 @@
+ }
+ 
+ # eval settings
+-eval_batch_size: 256
++eval_batch_size: 128
+ topk: [5,10,50,200]
+ metrics: ['Recall', 'NDCG']
+ valid_metric: NDCG@200
+Index: code/run.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/code/run.py b/code/run.py
+--- a/code/run.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
++++ b/code/run.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+@@ -15,7 +15,6 @@
+ from REC.data import *
+ from REC.config import Config
+ from REC.utils import init_logger, get_model, init_seed, set_color
+-from REC.trainer import Trainer
+ import torch.distributed as dist
+ 
+ import os
+@@ -24,23 +23,10 @@
+ import torch.distributed as dist
+ import torch
+ 
+-def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
+-
+-    # configurations initialization
+-    config = Config(config_file_list=config_file)
+-
+-    device = torch.device("cuda", local_rank)
+-    config['device'] = device
+-    config.parse_extra_args(extra_args)
+-
+-    init_seed(config['seed'], config['reproducibility'])
+-
++def run_loop(config, saved=True):
+     # logger initialization
+     init_logger(config)
+     logger = getLogger()
+-    if 'text_path' in config:
+-        config['text_path'] = os.path.join(config['text_path'], config['dataset'] + '.csv')
+-        logger.info(f"Update text_path to {config['text_path']}")
+ 
+     # get model and data
+     dataload = load_data(config)
+@@ -51,7 +37,12 @@
+     # model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
+ 
+     world_size = torch.distributed.get_world_size()
+-    trainer = Trainer(config, model)
++    if config['device_type'] == 'npu':
++        from REC.trainer.trainer_npu import TrainerNPU
++        trainer = TrainerNPU(config, model)
++    else:
++        from REC.trainer import Trainer
++        trainer = Trainer(config, model)
+ 
+     logger.info(set_color('\nWorld_Size', 'pink') + f' = {world_size} \n')
+     logger.info(config)
+@@ -88,14 +79,36 @@
+         }
+ 
+ 
+-if __name__ == '__main__':
++def get_config():
+     parser = argparse.ArgumentParser()
+     parser.add_argument("--config_file", nargs='+', type=str)
+     args, extra_args = parser.parse_known_args()
+-    local_rank = int(os.environ['LOCAL_RANK'])
+     config_file = args.config_file
++    config = Config(config_file_list=config_file)
++    config.parse_extra_args(extra_args)
++    if 'text_path' in config:
++        config['text_path'] = os.path.join(config['text_path'], config['dataset'] + '.csv')
++    return config
+ 
+-    torch.cuda.set_device(local_rank)
+-    dist.init_process_group(backend='nccl')
++
++def set_device(config):
++    local_rank = int(os.environ['LOCAL_RANK'], 0)
++    config['device'] = torch.device(config['device_type'], local_rank)
++    if config['device_type'] == 'cuda':
++        torch.cuda.set_device(local_rank)
++        dist.init_process_group(backend='nccl')
++    elif config['device_type'] == 'npu':
++        import torch_npu
++        torch_npu.npu.aclnn.allow_hf32 = config['allow_hf32']
++        torch_npu.npu.conv.allow_hf32 = config['allow_hf32']
++        torch_npu.npu.matmul.allow_hf32 = config['allow_hf32']
++        torch_npu.npu.set_device(local_rank)
++        backend = config.get('distributed_backend', 'hccl')
++        dist.init_process_group(backend)
+ 
+-    run_loop(local_rank=local_rank, config_file=config_file, extra_args=extra_args)
++
++if __name__ == '__main__':
++    config = get_config()
++    set_device(config)
++    init_seed(config['seed'], config['reproducibility'])
++    run_loop(config=config)
