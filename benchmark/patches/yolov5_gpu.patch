@@ -1,5 +1,5 @@
 diff --git a/detect.py b/detect.py
-index 535e196f..5f11ce9d 100644
+index 535e196f..f4a8682b 100644
 --- a/detect.py
 +++ b/detect.py
 @@ -33,10 +33,16 @@ import csv
@@ -311,7 +311,7 @@ index 535e196f..5f11ce9d 100644
      parser.add_argument("--weights", nargs="+", type=str, default=ROOT / "yolov5s.pt", help="model path or triton URL")
      parser.add_argument("--source", type=str, default=ROOT / "data/images", help="file/dir/URL/glob/screen/0(webcam)")
      parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="(optional) dataset.yaml path")
-@@ -404,6 +407,98 @@ def parse_opt():
+@@ -404,6 +407,64 @@ def parse_opt():
      print_args(vars(opt))
      return opt
  
@@ -329,58 +329,24 @@ index 535e196f..5f11ce9d 100644
 +    # 计算各种误差指标
 +    results = {}
 +
-+    # 绝对误差
++    # 平均绝对误差
 +    abs_error = torch.abs(npu_output - gpu_output)
-+    results['max_abs_error'] = abs_error.max().item()
 +    results['mean_abs_error'] = abs_error.mean().item()
-+    results['median_abs_error'] = torch.median(abs_error).item()
 +
-+    # 相对误差
++    # 平均相对误差
 +    eps = 1e-8
 +    rel_error = abs_error / (torch.abs(npu_output) + eps)
-+    results['max_rel_error'] = rel_error.max().item()
 +    results['mean_rel_error'] = rel_error.mean().item()
 +
 +    # 均方误差
 +    mse = torch.mean((npu_output - gpu_output) ** 2)
 +    rmse = torch.sqrt(mse)
-+    results['mse'] = mse.item()
 +    results['rmse'] = rmse.item()
 +
-+    # 余弦相似度
-+    cos_sim = torch.nn.functional.cosine_similarity(
-+        npu_output.flatten(),
-+        gpu_output.flatten(),
-+        dim=0
-+    )
-+    results['cosine_similarity'] = cos_sim.item()
-+
-+    # 分位数统计
-+    quantiles = [0, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 1.0]
-+    abs_error_flat = abs_error.flatten()
-+    quantile_values = torch.quantile(abs_error_flat, torch.tensor(quantiles))
-+    results['error_quantiles'] = {q: v.item() for q, v in zip(quantiles, quantile_values)}
-+
-+    # 检查是否在容忍范围内
-+    within_tolerance = (abs_error < tolerance).all()
-+    results['within_tolerance'] = within_tolerance.item() if isinstance(within_tolerance, torch.Tensor) else within_tolerance
-+
-+    if not within_tolerance:
-+        exceed_count = (abs_error >= tolerance).sum().item()
-+        results['exceed_count'] = exceed_count
-+        results['total_elements'] = abs_error.numel()
-+
 +    if verbose:
-+        logger.info("Tensor精度对比详情:")
-+        logger.info(f"最大绝对误差: {results['max_abs_error']:.6e}")
 +        logger.info(f"平均绝对误差: {results['mean_abs_error']:.6e}")
-+        logger.info(f"最大相对误差: {results['max_rel_error']:.6e}")
++        logger.info(f"平均相对误差: {results['mean_rel_error']:.6e}")
 +        logger.info(f"均方根误差(RMSE): {results['rmse']:.6e}")
-+        logger.info(f"余弦相似度: {results['cosine_similarity']:.10f}")
-+        logger.info(f"是否在{tolerance}误差范围内: {results['within_tolerance']}")
-+
-+        if not results['within_tolerance']:
-+            logger.info(f"超出容忍度的元素: {results['exceed_count']}/{results['total_elements']}")
 +
 +    return results
 +
@@ -410,7 +376,7 @@ index 535e196f..5f11ce9d 100644
  
  def main(opt):
      """Executes YOLOv5 model inference based on provided command-line arguments, validating dependencies before running.
-@@ -429,7 +524,11 @@ def main(opt):
+@@ -429,7 +490,11 @@ def main(opt):
      """
      check_requirements(ROOT / "requirements.txt", exclude=("tensorboard", "thop"))
      run(**vars(opt))
