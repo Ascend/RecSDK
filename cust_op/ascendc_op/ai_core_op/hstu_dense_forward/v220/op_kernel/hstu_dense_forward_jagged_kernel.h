@@ -50,37 +50,37 @@ __aicore__ inline int64_t GetBatchSizeFromJaggedOffset(GlobalTensor<oType>& seqO
 }
 
 struct JaggedTaskArgs {
-    uint32_t batchId = 0;         // 该基本块所属的batch
-    uint32_t headId = 0;          // 该基本块所属的head
-    uint32_t qSeqId = 0;          // 该基本块所属Query 输入的第几个seq block 一个block是256条seq
-    uint32_t kSeqId = 0;          // 该基本块所属Key 输入的第几个seq block 一个block是256条seq
-    uint32_t actualSeqLen = 0;    // Q序列的基本块实际的序列长度
-    uint32_t actualSeqLenK = 0;    // K序列的基本块实际的序列长度
-    uint32_t actualHistLen = 0;    // KV序列的历史序列长度
-    uint32_t actualNewHistLen = 0; // Q序列的历史序列长度
-    uint32_t qSeqNum = 0;         // 该Batch下Qblock数
-    uint32_t kSeqNum = 0;         // 该基本块在K轴需要乘多少次
-    uint32_t transTaskId = 0;     // 该基本块转置任务的id
-    uint32_t computeASeqLen = 0;  // 该基本块matmul计算左矩阵的序列长度
-    uint32_t computeBSeqLen = 0;  // 该基本块matmul计算右矩阵的序列长度
-    float scale = 0.0f;           // 该基本块的siluScale
-    int64_t numContext = 0;       // 该基本块所属序列的numContext
-    int64_t numTarget = 0;        // 该基本块所属序列的numTarget
-    int64_t seqGlobalOffset = 0;  // 该基本块的全局序列偏移
-    int64_t batchOffset = 0;      // 该基本块的batch偏移
-    int64_t batchOffsetK = 0;      // K序列的基本块的batch偏移
-    int64_t headSeqLimit = 0;     // 该基本块的head offset最大长度, 超过则需要考虑切换head_id
-    int64_t kvOffset = 0;         // 该基本块的key value计算偏移
-    int64_t kOffset = 0;         // 该基本块的key计算偏移
-    int64_t vOffset = 0;         // 该基本块的value计算偏移
-    int64_t ioOffset = 0;         // 该基本块的query attnOutput计算偏移
-    int64_t iOffset = 0;         // 该基本块的query计算偏移
-    int64_t oOffset = 0;         // 该基本块的attnOutput计算偏移
-    int32_t deltaQK = 0;         // QK序列长度差
-    int64_t pageNum = 0;          // 该基本块存在kvcache中的page个数
-    uint32_t needClear = 1;        // 该基本块的sv matmul是否需要清空流水对应空间
-    uint32_t isStartFromZero = 1;        // 该基本块所在q行在本核心中的是否从0开始
-    uint32_t isEndToTail = 1;        // 该基本块所在q行在本核心中的是否到最后结束
+    uint32_t batchId = 0;           // 该基本块所属的batch
+    uint32_t headId = 0;            // 该基本块所属的head
+    uint32_t qSeqId = 0;            // 该基本块所属Query 输入的第几个seq block 一个block是256条seq
+    uint32_t kSeqId = 0;            // 该基本块所属Key 输入的第几个seq block 一个block是256条seq
+    uint32_t actualSeqLen = 0;      // Q序列的基本块实际的序列长度
+    uint32_t actualSeqLenK = 0;     // K序列的基本块实际的序列长度
+    uint32_t actualHistLen = 0;     // KV序列的历史序列长度
+    uint32_t actualNewHistLen = 0;  // Q序列的历史序列长度
+    uint32_t qSeqNum = 0;           // 该Batch下Qblock数
+    uint32_t kSeqNum = 0;           // 该基本块在K轴需要乘多少次
+    uint32_t transTaskId = 0;       // 该基本块转置任务的id
+    uint32_t computeASeqLen = 0;    // 该基本块matmul计算左矩阵的序列长度
+    uint32_t computeBSeqLen = 0;    // 该基本块matmul计算右矩阵的序列长度
+    float scale = 0.0f;             // 该基本块的siluScale
+    int64_t numContext = 0;         // 该基本块所属序列的numContext
+    int64_t numTarget = 0;          // 该基本块所属序列的numTarget
+    int64_t seqGlobalOffset = 0;    // 该基本块的全局序列偏移
+    int64_t batchOffset = 0;        // 该基本块的batch偏移
+    int64_t batchOffsetK = 0;       // K序列的基本块的batch偏移
+    int64_t headSeqLimit = 0;       // 该基本块的head offset最大长度, 超过则需要考虑切换head_id
+    int64_t kvOffset = 0;           // 该基本块的key value计算偏移
+    int64_t kOffset = 0;            // 该基本块的key计算偏移
+    int64_t vOffset = 0;            // 该基本块的value计算偏移
+    int64_t ioOffset = 0;           // 该基本块的query attnOutput计算偏移
+    int64_t iOffset = 0;            // 该基本块的query计算偏移
+    int64_t oOffset = 0;            // 该基本块的attnOutput计算偏移
+    int32_t deltaQK = 0;            // QK序列长度差
+    int64_t pageNum = 0;            // 该基本块存在kvcache中的page个数
+    uint32_t needClear = 1;         // 该基本块的sv matmul是否需要清空流水对应空间
+    uint32_t isStartFromZero = 1;   // 该基本块所在q行在本核心中的是否从0开始
+    uint32_t isEndToTail = 1;       // 该基本块所在q行在本核心中的是否到最后结束
 };
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
@@ -139,7 +139,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
     int blockIdx = GetBlockIdx();
     int ret = PreInit(tilingDataPtr);
     if (ret == -1) {
-        return; // no task
+        return;  // no task
     }
     ComputeAllBlock();
 }
@@ -154,8 +154,8 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
     }
 
     this->DoSvMatmulImpl(computeTaskInfo[taskId].vOffset, taskId, computeTaskInfo[taskId].transTaskId, isAtomic,
-                         computeTaskInfo[taskId].computeASeqLen,
-                         this->headDimV, computeTaskInfo[taskId].computeBSeqLen);
+                         computeTaskInfo[taskId].computeASeqLen, this->headDimV,
+                         computeTaskInfo[taskId].computeBSeqLen);
 }
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
@@ -163,7 +163,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
     uint32_t taskId)
 {
     this->DoQkMatmulImpl(computeTaskInfo[taskId].iOffset, computeTaskInfo[taskId].kOffset, taskId,
-                        computeTaskInfo[taskId].computeASeqLen, computeTaskInfo[taskId].computeBSeqLen, this->headDim);
+                         computeTaskInfo[taskId].computeASeqLen, computeTaskInfo[taskId].computeBSeqLen, this->headDim);
 }
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
@@ -189,16 +189,15 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
     uint32_t transtaskIdModed = transtaskId % TRANS_PIPE_NUM;
     if (transTaskInfo[transtaskIdModed].isEndToTail) {
         this->template DoTransSvImpl<false>(transtaskId, transTaskInfo[transtaskIdModed].oOffset,
-            transTaskInfo[transtaskIdModed].computeASeqLen);
+                                            transTaskInfo[transtaskIdModed].computeASeqLen);
     } else {
         this->template DoTransSvImpl<true>(transtaskId, transTaskInfo[transtaskIdModed].oOffset,
-            transTaskInfo[transtaskIdModed].computeASeqLen);
+                                           transTaskInfo[transtaskIdModed].computeASeqLen);
     }
     if (transtaskId == 0) {
         NotifypreBlock();
     }
 }
-
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
 __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQkUseUb, maskType>::NotifypreBlock()
@@ -209,7 +208,6 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
         this->vecIn.FreeTensor(syncBuf);
     }
 }
-
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
 __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQkUseUb, maskType>::WaitNextBlock(
@@ -243,28 +241,26 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
         auto deltaQK = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].deltaQK;
         auto nblk = deltaQK / this->blockHeight;
         bool isDeltaQK = deltaQK % this->blockHeight != 0;
-        int64_t maskOffset1 = deltaQK % this -> blockHeight;
-        int64_t maskOffset2 = deltaQK % this -> blockHeight - this -> blockHeight;
+        int64_t maskOffset1 = deltaQK % this->blockHeight;
+        int64_t maskOffset2 = deltaQK % this->blockHeight - this->blockHeight;
         auto limit = (blkId == this->eBlkId) ? this->ekSeqBlkId : kSeqNum;
         uint32_t isStartFromZero = (kSeqId == 0);
         uint32_t isEndToTail = false;
         for (; kSeqId < limit; kSeqId++) {
             auto taskinfo = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
-            BlockMaskParams maskinfo = {
-                taskinfo.qSeqId,
-                kSeqId,
-                taskinfo.actualSeqLen,
-                taskinfo.actualSeqLenK,
-                this->blockHeight,
-                taskinfo.numContext,
-                taskinfo.numTarget,
-                this->targetGroupSize,
-                taskinfo.scale,
-                maskOffset1,
-                maskOffset2,
-                nblk,
-                isDeltaQK
-            };
+            BlockMaskParams maskinfo = {taskinfo.qSeqId,
+                                        kSeqId,
+                                        taskinfo.actualSeqLen,
+                                        taskinfo.actualSeqLenK,
+                                        this->blockHeight,
+                                        taskinfo.numContext,
+                                        taskinfo.numTarget,
+                                        this->targetGroupSize,
+                                        taskinfo.scale,
+                                        maskOffset1,
+                                        maskOffset2,
+                                        nblk,
+                                        isDeltaQK};
             if constexpr (maskType == CausalMaskT::MASK_TRIL) {
                 // 在下三角下跳过运算
                 if (maskinfo.NoComputation(maskType)) {
@@ -272,7 +268,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
                     break;
                 }
             }
-            
+
             currentTaskId = taskId % COMPUTE_PIPE_NUM;
             preTaskId = (taskId + COMPUTE_PIPE_NUM - 1) % COMPUTE_PIPE_NUM;
             prePreTaskId = (taskId + COMPUTE_PIPE_NUM - 2) % COMPUTE_PIPE_NUM;
@@ -282,17 +278,18 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
             this->computeTaskInfo[currentTaskId].transTaskId = transtaskId % TRANS_PIPE_NUM;
             this->computeTaskInfo[currentTaskId].kSeqId = kSeqId;
             this->computeTaskInfo[currentTaskId].computeBSeqLen =
-                   (kSeqId != (kSeqNum - 1)) ? (this->blockHeight) :
-                   (this->computeTaskInfo[currentTaskId].actualSeqLenK - kSeqId * this->blockHeight);
+                (kSeqId != (kSeqNum - 1))
+                    ? (this->blockHeight)
+                    : (this->computeTaskInfo[currentTaskId].actualSeqLenK - kSeqId * this->blockHeight);
             uint64_t kvHeadId = this->computeTaskInfo[currentTaskId].headId / this->headRatio;
             this->computeTaskInfo[currentTaskId].kOffset =
-                    this->computeTaskInfo[currentTaskId].batchOffsetK * this->headDim * this->headNumK +
-                    this->computeTaskInfo[currentTaskId].kSeqId * this->blockHeight * this->headNumK * this->headDim +
-                    kvHeadId * this->headDim;
+                this->computeTaskInfo[currentTaskId].batchOffsetK * this->headDim * this->headNumK +
+                this->computeTaskInfo[currentTaskId].kSeqId * this->blockHeight * this->headNumK * this->headDim +
+                kvHeadId * this->headDim;
             this->computeTaskInfo[currentTaskId].vOffset =
-                    this->computeTaskInfo[currentTaskId].batchOffsetK * this->headDimV * this->headNumK +
-                    this->computeTaskInfo[currentTaskId].kSeqId * this->blockHeight * this->headNumK * this->headDimV +
-                    kvHeadId * this->headDimV;
+                this->computeTaskInfo[currentTaskId].batchOffsetK * this->headDimV * this->headNumK +
+                this->computeTaskInfo[currentTaskId].kSeqId * this->blockHeight * this->headNumK * this->headDimV +
+                kvHeadId * this->headDimV;
 
             // matmul qk
             this->ComputeQkMatmul(currentTaskId);
@@ -420,19 +417,19 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
     computeTaskInfo[taskId].headId = headId;
     computeTaskInfo[taskId].qSeqId =
         (batchInnerOffset - computeTaskInfo[taskId].headId * computeTaskInfo[taskId].actualSeqLen) / this->blockHeight;
-    computeTaskInfo[taskId].kSeqNum = CeilDiv(computeTaskInfo[taskId].actualSeqLenK,
-                                              static_cast<uint32_t> (this->blockHeight));
-    computeTaskInfo[taskId].qSeqNum = CeilDiv(computeTaskInfo[taskId].actualSeqLen,
-                                              static_cast<uint32_t> (this->blockHeight));
+    computeTaskInfo[taskId].kSeqNum =
+        CeilDiv(computeTaskInfo[taskId].actualSeqLenK, static_cast<uint32_t>(this->blockHeight));
+    computeTaskInfo[taskId].qSeqNum =
+        CeilDiv(computeTaskInfo[taskId].actualSeqLen, static_cast<uint32_t>(this->blockHeight));
 
     computeTaskInfo[taskId].iOffset =
-            computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum +
-            computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDim +
-            computeTaskInfo[taskId].headId * this->headDim;
+        computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum +
+        computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDim +
+        computeTaskInfo[taskId].headId * this->headDim;
     computeTaskInfo[taskId].oOffset =
-            computeTaskInfo[taskId].batchOffset * this->headDimV * this->headNum +
-            computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDimV +
-            computeTaskInfo[taskId].headId * this->headDimV;
+        computeTaskInfo[taskId].batchOffset * this->headDimV * this->headNum +
+        computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDimV +
+        computeTaskInfo[taskId].headId * this->headDimV;
 
     if ((computeTaskInfo[taskId].headSeqLimit - seqGlobalOffset) >= this->blockHeight) {
         computeTaskInfo[taskId].computeASeqLen = this->blockHeight;
@@ -478,13 +475,13 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<qType, oType, enableBias, is
             (batchInnerOffset - computeTaskInfo[taskId].headId * computeTaskInfo[taskId].actualSeqLen) /
             this->blockHeight;
         computeTaskInfo[taskId].iOffset =
-                computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum +
-                computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDim +
-                computeTaskInfo[taskId].headId * this->headDim;
+            computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum +
+            computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDim +
+            computeTaskInfo[taskId].headId * this->headDim;
         computeTaskInfo[taskId].oOffset =
-                computeTaskInfo[taskId].batchOffset * this->headDimV * this->headNum +
-                computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDimV +
-                computeTaskInfo[taskId].headId * this->headDimV;
+            computeTaskInfo[taskId].batchOffset * this->headDimV * this->headNum +
+            computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDimV +
+            computeTaskInfo[taskId].headId * this->headDimV;
         computeTaskInfo[taskId].computeASeqLen = computeASeqLen;
     }
     computeTaskInfo[taskId].needClear = 1;
@@ -537,39 +534,34 @@ __aicore__ inline int HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQ
     numTargetGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numTarget), this->batchSize);
 
     this->splitMode = STREAM_K;
-    if (this->maxSeqLenK <= BLOCK_M && this->maxSeqLenQ * this->maxSeqLenK <= BLOCK_MN) {
+    if (this->maxSeqLenQ <= BLOCK_N && this->maxSeqLenK <= BLOCK_M && this->maxSeqLenQ * this->maxSeqLenK <= BLOCK_MN) {
         this->splitMode = FAST_SPLIT_SINGLE;
     }
 
-    int blocks[4] = {0}; // start block id, end block id
+    int blocks[4] = {0};  // start block id, end block id
     if constexpr (maskType == CausalMaskT::MASK_TRIL) {
-        auto taskAssigner =
-        BlockTaskAssign<oType, CausalMaskT::MASK_TRIL>(coreNum, this->blockHeight, this->batchSize, this->headNum,
-                        this->targetGroupSize, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt,
-                        this->splitMode);
+        auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_TRIL>(
+            coreNum, this->blockHeight, this->batchSize, this->headNum, this->targetGroupSize, seqOffsetsQGt,
+            seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
+        taskAssigner.Compute(blocks, blockId);
+    } else if constexpr (maskType == CausalMaskT::MASK_CUSTOM) {
+        auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_CUSTOM>(
+            coreNum, this->blockHeight, this->batchSize, this->headNum, this->targetGroupSize, seqOffsetsQGt,
+            seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
+        taskAssigner.Compute(blocks, blockId);
+    } else {
+        auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_NONE>(
+            coreNum, this->blockHeight, this->batchSize, this->headNum, this->targetGroupSize, seqOffsetsQGt,
+            seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
         taskAssigner.Compute(blocks, blockId);
     }
-    else if constexpr(maskType == CausalMaskT::MASK_CUSTOM) {
-        auto taskAssigner =
-        BlockTaskAssign<oType, CausalMaskT::MASK_CUSTOM>(coreNum, this->blockHeight, this->batchSize, this->headNum,
-                        this->targetGroupSize, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt,
-                        this->splitMode);
-        taskAssigner.Compute(blocks, blockId);
-    }
-    else {
-        auto taskAssigner =
-        BlockTaskAssign<oType, CausalMaskT::MASK_NONE>(coreNum, this->blockHeight, this->batchSize, this->headNum,
-                        this->targetGroupSize, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt,
-                        this->splitMode);
-        taskAssigner.Compute(blocks, blockId);
-    }
-    
+
     this->skSeqBlkId = blocks[0];
     this->ekSeqBlkId = blocks[1];
     this->sBlkId = blocks[2];
     this->eBlkId = blocks[3];
-    if (this->skSeqBlkId == this->ekSeqBlkId && this->sBlkId == this->eBlkId &&
-        this->sBlkId == 0 && this->skSeqBlkId == 0) {
+    if (this->skSeqBlkId == this->ekSeqBlkId && this->sBlkId == this->eBlkId && this->sBlkId == 0 &&
+        this->skSeqBlkId == 0) {
         return -1;
     }
     return 0;
