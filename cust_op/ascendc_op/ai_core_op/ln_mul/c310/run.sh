@@ -72,6 +72,10 @@ fi
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
 sed -i 's:"customize":"ln_mul":g' CMakePresets.json
 
+if [ "$ai_core" = "ai_core-Ascend910_95" ]; then
+    sed -i "1i #define SUPPORT_910_95" ./op_kernel/ln_mul_kernel.h
+fi
+
 # 增加LOG_CPP编译选项支持错误日志打印
 sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
 
@@ -82,3 +86,32 @@ line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{pri
 sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
 
 bash build.sh
+
+# 获取系统ID
+os_id=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
+if [ -z "${os_id}" ]; then
+    echo "ERROR: get os_id failed"
+    exit 1
+fi
+
+# 获取架构
+arch=$(uname -m)
+if [ -z "${arch}" ]; then
+    echo "ERROR: get arch failed"
+    exit 1
+fi
+
+# 只允许字母/数字/点/下划线/连字符（覆盖常见 os_id 与 arch）
+SAFE_REGEX='^[A-Za-z0-9._-]+$'
+if ! [[ "$os_id" =~ $SAFE_REGEX ]]; then
+    echo "ERROR: invalid os_id: $os_id" >&2
+    exit 1
+fi
+if ! [[ "$arch" =~ $SAFE_REGEX ]]; then
+    echo "ERROR: invalid arch: $arch" >&2
+    exit 1
+fi
+
+# 安装编译成功的算子包
+installer="./build_out/custom_opp_${os_id}_${arch}.run"
+bash -- "$installer"

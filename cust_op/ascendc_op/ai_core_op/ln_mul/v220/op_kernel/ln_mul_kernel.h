@@ -188,7 +188,7 @@ private:
         uint32_t offset = startRow * rLength + iterIdx * perCoreComputeRows * rLength;
         AscendC::Duplicate(inputXLocal, 0.0f, arLength);
         AscendC::Duplicate(inputULocal, 0.0f, arLength);
-        AscendC::PipeBarrier<PIPE_MTE2>();
+        AscendC::PipeBarrier<PIPE_ALL>();
 
         if (rLength == rLengthWithPadding) {
             CpGm2Local(inputXLocal, inputXGlobal[offset], copyLen);
@@ -230,7 +230,11 @@ private:
 
         // shape
         uint32_t meanShape[2] = {rowCount, 1};
+#ifdef SUPPORT_910_95
+        uint32_t shape[2] = {rowCount, rLengthWithPadding};
+#else
         uint32_t shape[2] = {rowCount, rLength};
+#endif
         // 计算reducesum, isReuseSource=false不能设置为true，否则会修改inputXLocal
         AscendC::ReduceSum<float, AscendC::Pattern::Reduce::AR, false>(meanLocal, inputXLocal, shape, true);
         AscendC::PipeBarrier<PIPE_V>();
