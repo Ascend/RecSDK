@@ -344,27 +344,27 @@ void EmbcacheManager::Embedding2Host(const at::Tensor& weightsDev, const std::ve
     auto* weightsDevPtr = weightsDev.data_ptr<float>();
     int64_t jaggedOff = 0;
 
-    for (int32_t embIndex = 0; embIndex < embNum_; embIndex++) {
+    for (int32_t tableIndex = 0; tableIndex < embNum_; tableIndex++) {
         // cache中可能预留了offset 0位置，因此拷贝回host时，需先加上偏移
-        auto start = swapManagers_[embIndex].GetMemStartOffset();
-        int64_t currentTableOffset = jaggedOff + start * embConfigs_[embIndex].embDim;
-        auto end = swapManagers_[embIndex].GetOccupiedNum();
+        auto start = swapManagers_[tableIndex].GetMemStartOffset();
+        int64_t currentTableOffset = jaggedOff + start * embConfigs_[tableIndex].embDim;
+        auto end = swapManagers_[tableIndex].GetOccupiedNum();
         std::vector<int64_t> keys;
         keys.reserve(end - start);
         for (int64_t off = start; off < end; off++) {
-            keys.emplace_back(swapManagers_[embIndex].GetKey(off));
+            keys.emplace_back(swapManagers_[tableIndex].GetKey(off));
         }
         std::vector<float*> momentumDataPtrs(momentumDevs.size());
         for (size_t i = 0; i < momentumDevs.size(); i++) {
             momentumDataPtrs[i] = momentumDevs[i].data_ptr<float>() + currentTableOffset;
         }
-        embeddingTables_[embIndex]->InsertOrAssign(keys, weightsDevPtr + currentTableOffset, momentumDataPtrs);
+        embeddingTables_[tableIndex]->InsertOrAssign(keys, weightsDevPtr + currentTableOffset, momentumDataPtrs);
 
-        // Here, GetOccupiedNum is less than embConfigs_[embIndex].cacheSize = weightsDev.shape[0],
+        // Here, GetOccupiedNum is less than embConfigs_[tableIndex].cacheSize = weightsDev.shape[0],
         // and we need to skip the unnecessary weight indices.
-        jaggedOff += embConfigs_[embIndex].cacheSize * embConfigs_[embIndex].embDim;
-        LOG_INFO("Embedding2Host, embIndex:{}, update key size:{}, jaggedOff:{}, currentTableOffset:{}.", embIndex,
-                 keys.size(), jaggedOff, currentTableOffset);
+        jaggedOff += embConfigs_[tableIndex].cacheSize * embConfigs_[tableIndex].embDim;
+        LOG_INFO("Embedding2Host, table:{}, update key size:{}, jaggedOff:{}, currentTableOffset:{}.",
+                 embConfigs_[tableIndex].tableName, keys.size(), jaggedOff, currentTableOffset);
     }
 }
 
@@ -657,6 +657,13 @@ void EmbcacheManager::ReadKeysData(const std::shared_ptr<FileSystem>& fileSystem
             Logger::Format("Read key attribute file error, keys count is invalid:{}, file:{}.",
                            keyAttrVec[1], keyAttrFile);
         throw std::runtime_error(errMsg);
+    }
+
+    // 极端场景，存在表的key数量为0，此时slice.data文件为空，不进行加载，提前返回
+    if (keyAttrVec[KEY_ATTRIBUTE_NUM_IND] == 0) {
+        LOG_WARN("When read keys data, the length of keys is 0, will skip to read related files, "
+            "file name:{}", keyAttrFile);
+        return;
     }
 
     // key data
@@ -1013,22 +1020,29 @@ void EmbcacheManager::LoadFeatureAdmitAndEvictInfo(const std::shared_ptr<FileSys
                                                    int32_t tableIndex, const std::string& filePrefix,
                                                    const std::vector<int64_t>& saveKeys)
 {
-    TimeCost loadFeatureFilterDataTC;
-    if (embConfigs_[tableIndex].admitAndEvictConfig.IsAdmitEnabled()) {
+    if (embConfigs_[tableIndex].admitAndEvictConfig.IsAdmitEnabled() && !saveKeys.empty()) {
+        TimeCost loadCountDataTC;
         // read key count data
         std::vector<uint64_t> keyCountVec;
         std::string keyAttrFile = filePrefix + ADMIT_STR_PATH + SLICE_ATTR_PATH;
         std::string keysDataFile = filePrefix + ADMIT_STR_PATH + SLICE_DATA_PATH;
         ReadKeysData(fileSystemPtr, keyCountVec, keyAttrFile, keysDataFile);
         featureFilters_[tableIndex]->LoadFeatureRecords(saveKeys, keyCountVec);
+        LOG_INFO("The loadCountDataTC(ms):{}.", loadCountDataTC.ElapsedMS());
     }
     if (embConfigs_[tableIndex].admitAndEvictConfig.IsEvictEnabled()) {
+        TimeCost loadTsDataTC;
         // 时间戳数据 key数量和当前卡的key不一样；需要分别读取 evict key， evict timestamp 信息
         // read key
         std::vector<int64_t> keysVec;
         std::string keyAttrFile = filePrefix + EVICT_STR_PATH + SLICE_ATTR_PATH;
         std::string keysDataFile = filePrefix + EVICT_STR_PATH + SLICE_EVICT_KEY_DATA_PATH;
         ReadKeysData(fileSystemPtr, keysVec, keyAttrFile, keysDataFile);
+        if (keysVec[KEY_ATTRIBUTE_NUM_IND] == 0) {
+            LOG_WARN("When read timestamp data, the length of keys is 0, will skip to read file, "
+                "file name:{}", keyAttrFile);
+            return;
+        }
 
         // read timestamp
         std::vector<int64_t> keyTimestampVec;
@@ -1037,6 +1051,6 @@ void EmbcacheManager::LoadFeatureAdmitAndEvictInfo(const std::shared_ptr<FileSys
 
         // data load
         featureFilters_[tableIndex]->LoadTimestampRecords(keysVec, keyTimestampVec);
+        LOG_INFO("The loadTsDataTC(ms):{}.", loadTsDataTC.ElapsedMS());
     }
-    LOG_INFO("The loadFeatureFilterDataTC(ms):{}.", loadFeatureFilterDataTC.ElapsedMS());
 }

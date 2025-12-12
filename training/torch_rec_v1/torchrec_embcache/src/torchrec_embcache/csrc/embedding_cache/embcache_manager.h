@@ -53,6 +53,7 @@ const std::string SLICE_EVICT_KEY_DATA_PATH = "/slice_evict_key.data";
 const std::string SLICE_EVICT_TS_DATA_PATH = "/slice_evict_ts.data";
 
 constexpr int KEY_ATTRIBUTE_DATA_LEN = 2;
+constexpr int KEY_ATTRIBUTE_NUM_IND = 1;
 constexpr int EMB_ATTRIBUTE_DATA_LEN = 3;
 constexpr int64_t ATTR_VEC_INIT_VALUE = -1;
 constexpr long long KEY_SIZE_MAX = 1e9L;
