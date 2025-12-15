@@ -29,7 +29,7 @@ target_link_directories(recsdk_tf_npu_ops
 )
 
 target_link_libraries(recsdk_tf_npu_ops PUBLIC ascendcl msprofiler ge_executor gert runtime ge_common register graph ascend_protobuf
-    profapi opt_feature error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host)
+    profapi error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host)
 
 target_link_libraries(recsdk_tf_npu_ops PUBLIC
         -l:_tf_adapter.so
