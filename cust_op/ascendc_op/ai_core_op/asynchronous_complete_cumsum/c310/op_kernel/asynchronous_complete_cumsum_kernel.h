@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,36 +45,29 @@ __aicore__ inline T WarpPrefixSum(T val)
     return val;
 }
 
-// SIMT VF函数 - 小数据模式第一阶段
+// 小数据模式中与Warp聚合相关的公共逻辑
 template<typename T>
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
-    inline void SimtSmallDataCompute(__gm__ T* input, __gm__ T* output,
-                                     __gm__ T* blockSums, __ubuf__ T* sharedMemory, int32_t totalLength)
+__aicore__ inline bool PrepareWarpAggregates(__gm__ T* input, __ubuf__ T* sharedMemory,
+                                             int32_t totalLength, int32_t blockIdx,
+                                             int32_t blockDim, int32_t threadIdx,
+                                             int32_t warpId, int32_t laneId, int32_t globalIdx,
+                                             int32_t& activeWarpCount, T& currentSum,
+                                             T& warpPrefixSum)
 {
-    // 线程信息计算
-    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockIdx = AscendC::Simt::GetBlockIdx();
-    int32_t blockDim = AscendC::Simt::GetThreadNum<0>();
-    int32_t globalIdx = blockIdx * blockDim + threadIdx;
-    int32_t warpId = threadIdx / WARP_SIZE;
-    int32_t laneId = threadIdx % WARP_SIZE;
-
     if (globalIdx > totalLength) {
-        return;
+        return false;
     }
 
-    constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
     int32_t blockStart = blockIdx * blockDim;
     int32_t elementsRemaining = totalLength - blockStart;
     elementsRemaining = elementsRemaining < 0 ? 0 : elementsRemaining;
     int32_t elementsThisBlock = (elementsRemaining < blockDim) ? elementsRemaining : blockDim;
-    int32_t activeWarpCount = (elementsThisBlock + WARP_SIZE - 1) / WARP_SIZE;
+    activeWarpCount = (elementsThisBlock + WARP_SIZE - 1) / WARP_SIZE;
 
     // 1. 读取输入数据
-    T currentSum = (globalIdx < totalLength) ? input[globalIdx] : static_cast<T>(0);
-
+    currentSum = (globalIdx < totalLength) ? input[globalIdx] : static_cast<T>(0);
     // 2. Warp级前缀和计算
-    T warpPrefixSum = WarpPrefixSum(currentSum);
+    warpPrefixSum = WarpPrefixSum(currentSum);
 
     // 3. Block级同步
     int32_t elementsInThisWarp = (warpId < activeWarpCount - 1) ? WARP_SIZE :
@@ -91,6 +84,32 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
         sharedMemory[threadIdx] = warpSumPrefix;
     }
     AscendC::Simt::ThreadBarrier();
+
+    return true;
+}
+
+// SIMT VF函数 - 小数据模式第一阶段
+template<typename T>
+__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
+    inline void SimtSmallDataCompute(__gm__ T* input, __gm__ T* output,
+                                     __gm__ T* blockSums, __ubuf__ T* sharedMemory, int32_t totalLength)
+{
+    // 线程信息计算
+    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
+    int32_t blockIdx = AscendC::Simt::GetBlockIdx();
+    int32_t blockDim = AscendC::Simt::GetThreadNum<0>();
+    int32_t globalIdx = blockIdx * blockDim + threadIdx;
+    int32_t warpId = threadIdx / WARP_SIZE;
+    int32_t laneId = threadIdx % WARP_SIZE;
+
+    constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
+    int32_t activeWarpCount = 0;
+    T currentSum = static_cast<T>(0);
+    T warpPrefixSum = static_cast<T>(0);
+    if (!PrepareWarpAggregates(input, sharedMemory, totalLength, blockIdx, blockDim, threadIdx,
+                               warpId, laneId, globalIdx, activeWarpCount, currentSum, warpPrefixSum)) {
+        return;
+    }
 
     // 5. 计算最终前缀和
     T blockOffset = static_cast<T>(0);
@@ -166,6 +185,57 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
     }
 }
 
+template<typename T>
+__aicore__ inline void FinalizeLargeDataBlock(__gm__ T* output, __gm__ T* blockSums,
+                                              __ubuf__ T* sharedMemory, int32_t totalLength,
+                                              int32_t globalBlockIdx, int32_t threadElementBase,
+                                              int32_t elementsForThread, int32_t threadIdx,
+                                              int32_t warpId, int32_t laneId,
+                                              int32_t activeWarpCount, int32_t threadsInWarp,
+                                              T warpPrefixSum, T threadSum, T* prefixSums,
+                                              int32_t stride)
+{
+    if (threadsInWarp > 0 && warpId < activeWarpCount && warpId < MAX_WARPS &&
+        laneId == (threadsInWarp - 1)) {
+        sharedMemory[warpId] = warpPrefixSum;
+    }
+    AscendC::Simt::ThreadBarrier();
+
+    if (threadIdx < activeWarpCount && threadIdx < MAX_WARPS) {
+        T warpSumValue = sharedMemory[threadIdx];
+        T warpSumPrefix = WarpPrefixSum(warpSumValue);
+        sharedMemory[threadIdx] = warpSumPrefix;
+    }
+    AscendC::Simt::ThreadBarrier();
+
+    T blockOffset = static_cast<T>(0);
+    if (warpId > 0 && warpId < activeWarpCount && (warpId - 1) < MAX_WARPS) {
+        blockOffset = sharedMemory[warpId - 1];
+    }
+
+    T finalOffset = blockOffset + warpPrefixSum - threadSum;
+
+#pragma unroll
+    for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; ++i) {
+        if (i < elementsForThread) {
+            int32_t globalIdx = threadElementBase + i;
+            if (globalIdx < totalLength) {
+                output[globalIdx] = finalOffset + prefixSums[i];
+            }
+        }
+    }
+
+    AscendC::Simt::ThreadBarrier();
+    if (threadIdx == 0) {
+        T blockSum = static_cast<T>(0);
+        if (activeWarpCount > 0) {
+            blockSum = sharedMemory[activeWarpCount - 1];
+        }
+        blockSums[globalBlockIdx * stride] = blockSum;
+    }
+    AscendC::Simt::ThreadBarrier();
+}
+
 // SIMT VF函数 - 大数据模式第一阶段
 template<typename T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
@@ -222,52 +292,16 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
 
         T warpPrefixSum = WarpPrefixSum(threadSum);
 
-        int32_t activeThreads = (elementsThisBlock + MAX_ELEMENTS_PER_THREAD - 1) /
-                                MAX_ELEMENTS_PER_THREAD;
+        int32_t activeThreads = (elementsThisBlock + MAX_ELEMENTS_PER_THREAD - 1) / MAX_ELEMENTS_PER_THREAD;
         int32_t activeWarpCount = (activeThreads + WARP_SIZE - 1) / WARP_SIZE;
         int32_t threadsInWarp = activeThreads - warpId * WARP_SIZE;
         threadsInWarp = (threadsInWarp > WARP_SIZE) ? WARP_SIZE : threadsInWarp;
         threadsInWarp = (threadsInWarp < 0) ? 0 : threadsInWarp;
 
-        if (threadsInWarp > 0 && warpId < activeWarpCount && warpId < MAX_WARPS &&
-            laneId == (threadsInWarp - 1)) {
-            sharedMemory[warpId] = warpPrefixSum;
-        }
-        AscendC::Simt::ThreadBarrier();
-
-        if (threadIdx < activeWarpCount && threadIdx < MAX_WARPS) {
-            T warpSumValue = sharedMemory[threadIdx];
-            T warpSumPrefix = WarpPrefixSum(warpSumValue);
-            sharedMemory[threadIdx] = warpSumPrefix;
-        }
-        AscendC::Simt::ThreadBarrier();
-
-        T blockOffset = static_cast<T>(0);
-        if (warpId > 0 && warpId < activeWarpCount && (warpId - 1) < MAX_WARPS) {
-            blockOffset = sharedMemory[warpId - 1];
-        }
-
-        T finalOffset = blockOffset + warpPrefixSum - threadSum;
-
-#pragma unroll
-        for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; ++i) {
-            if (i < elementsForThread) {
-                int32_t globalIdx = threadElementBase + i;
-                if (globalIdx < totalLength) {
-                    output[globalIdx] = finalOffset + prefixSums[i];
-                }
-            }
-        }
-
-        AscendC::Simt::ThreadBarrier();
-        if (threadIdx == 0) {
-            T blockSum = static_cast<T>(0);
-            if (activeWarpCount > 0) {
-                blockSum = sharedMemory[activeWarpCount - 1];
-            }
-            blockSums[globalBlockIdx * stride] = blockSum;
-        }
-        AscendC::Simt::ThreadBarrier();
+        FinalizeLargeDataBlock(output, blockSums, sharedMemory, totalLength,
+                               globalBlockIdx, threadElementBase, elementsForThread,
+                               threadIdx, warpId, laneId, activeWarpCount, threadsInWarp,
+                               warpPrefixSum, threadSum, prefixSums, stride);
     }
 }
 
@@ -319,13 +353,10 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
             elementsForThread = MAX_ELEMENTS_PER_THREAD;
         }
 
-#pragma unroll
-        for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; ++i) {
-            if (i < elementsForThread) {
-                int32_t globalIdx = threadElementBase + i;
-                if (globalIdx < totalLength) {
-                    output[globalIdx] += blockPrefix;
-                }
+        for (int32_t i = 0; i < elementsForThread; ++i) {
+            int32_t globalIdx = threadElementBase + i;
+            if (globalIdx < totalLength) {
+                output[globalIdx] += blockPrefix;
             }
         }
 

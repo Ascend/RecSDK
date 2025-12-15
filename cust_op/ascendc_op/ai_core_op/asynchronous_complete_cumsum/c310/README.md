@@ -13,8 +13,7 @@
 
 ## Ascend C参考设计
 
-更多详情可以参考CANN官方的Ascend
-C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/80RC2/developmentguide/opdevg/Ascendcopdevg/atlas_ascendc_10_0001.html)。
+更多详情可以参考CANN官方的Ascend C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/80RC2/developmentguide/opdevg/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
 ## AsynchronousCompleteCumsum算子使用
 
@@ -171,3 +170,4 @@ b) **并行计算优化**：
    - 多级并行：Warp级、Block级、Core级三级并行
    - 负载均衡：智能分配Block到不同AI Core，避免负载不均
    - 异步执行：支持多Block异步并行执行
+   

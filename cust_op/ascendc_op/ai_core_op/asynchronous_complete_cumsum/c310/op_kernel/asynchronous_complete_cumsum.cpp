@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ extern "C" __global__ __aicore__ void asynchronous_complete_cumsum(
     int32_t totalBlocks = tilingData.totalBlocks;
     int32_t blocksPerCore = tilingData.blocksPerCore;
     int32_t remainderBlocks = tilingData.remainderBlocks;
-    int32_t coreId = AscendC::GetBlockIdx();
+    int32_t coreId = GetBlockIdx();
 
     bool isInt32 = tilingData.isInt32;
     bool isSmall = tilingData.isSmall;
@@ -50,34 +50,34 @@ extern "C" __global__ __aicore__ void asynchronous_complete_cumsum(
         __gm__ DTYPE_X* output = reinterpret_cast<__gm__ DTYPE_X*>(y);
         __gm__ DTYPE_X* ws = reinterpret_cast<__gm__ DTYPE_X*>(user_workspace);
 
-        AscendC::TPipe pipe;
-        AscendC::TBuf<AscendC::TPosition::VECCALC> sharedMem;
+        TPipe pipe;
+        TBuf<TPosition::VECCALC> sharedMem;
         pipe.InitBuffer(sharedMem, MAX_WARPS * sizeof(DTYPE_X));
-        AscendC::LocalTensor<DTYPE_X> sharedTensor = sharedMem.Get<DTYPE_X>();
+        LocalTensor<DTYPE_X> sharedTensor = sharedMem.Get<DTYPE_X>();
         __ubuf__ DTYPE_X* sharedMemory =  reinterpret_cast<__ubuf__ DTYPE_X*>(sharedTensor.GetPhyAddr());
 
         if (isSmall) {
-            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtSmallDataCompute<DTYPE_X>>(
-                AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1},
+            Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtSmallDataCompute<DTYPE_X>>(
+                Simt::Dim3{BLOCK_THREADS, 1, 1},
                 input, output, ws, sharedMemory, totalLength);
 
             if (totalBlocks > 1) {
-                AscendC::SyncAll();
-                AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtSmallDataUpdate<DTYPE_X>>(
-                    AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1},
+                SyncAll();
+                Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtSmallDataUpdate<DTYPE_X>>(
+                    Simt::Dim3{BLOCK_THREADS, 1, 1},
                     output, ws, totalLength);
             }
         } else {
             int32_t curBlocksCount = (coreId < remainderBlocks) ? (blocksPerCore + 1) : blocksPerCore;
             int32_t blockStartIdx = coreId * blocksPerCore + ((coreId < remainderBlocks) ? coreId : remainderBlocks);
 
-            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtLargeDataCompute<DTYPE_X>>(
-                AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1},
+            Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtLargeDataCompute<DTYPE_X>>(
+                Simt::Dim3{BLOCK_THREADS, 1, 1},
                 input, output, ws, sharedMemory, totalLength, totalBlocks, blockStartIdx, curBlocksCount);
 
-            AscendC::SyncAll();
-            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtLargeDataUpdate<DTYPE_X>>(
-                AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1},
+            SyncAll();
+            Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtLargeDataUpdate<DTYPE_X>>(
+                Simt::Dim3{BLOCK_THREADS, 1, 1},
                 output, ws, totalLength, totalBlocks, blockStartIdx, curBlocksCount);
         }
     });
