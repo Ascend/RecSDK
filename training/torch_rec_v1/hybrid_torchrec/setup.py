@@ -74,7 +74,7 @@ def main() -> None:
         url="",
         license="BSD-3",
         keywords=["pytorch", "recommendation systems", "sharding"],
-        python_requires=">=3.11",
+        python_requires=">=3.10",
         install_requires=install_requires,
         packages=packages,
         package_data={'': ['*.so*']},
