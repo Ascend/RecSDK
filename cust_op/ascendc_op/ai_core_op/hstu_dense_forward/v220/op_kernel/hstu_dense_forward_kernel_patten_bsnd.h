@@ -238,7 +238,7 @@ public:
             oneBlockMidTransElem);
         syncGm.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t*>(workspace) + oneCoreMidElem + coreNum * oneBlockMidTransElem);
-        
+
         pipe->InitBuffer(vecIn, 1, 8 * sizeof(int32_t));
 
         if constexpr (!isQkUseUb) {
@@ -574,7 +574,7 @@ public:
                 CalcuScoreWithFloat32NoRab(inLt, biasLt, inMaskLt, inMaskLtFp32, tmpLt, tmpLtFp32,
                     needMask, thisLen, scale);
             }
-            
+
             auto outLt = queOut.DeQue<qType>();
             DataCopy(attnScoreGt[thisOffset], outLt, thisLen);
             queOut.FreeTensor(outLt);
@@ -669,7 +669,7 @@ public:
 
         int64_t total = m * vDim;
         int64_t remain = total;
-        
+
         DataCopyParams srcCopyParams;
         srcCopyParams.blockLen = vDim * sizeof(float) / DATA_ALIGN_BYTES;
         srcCopyParams.srcStride = (MAX_BLOCK_DIM - vDim) * sizeof(float) / DATA_ALIGN_BYTES;
@@ -681,11 +681,11 @@ public:
         dstCopyParams.dstStride = (xDim2 * vDim - vDim) * sizeof(qType) / DATA_ALIGN_BYTES;
 
         int64_t copyLenEachLoopAlignHeadDim = transUbBlockElem / vDim * vDim;
-        
+
         if constexpr (needAtomic == true) {
             AscendC::SetAtomicNone();
         }
-        
+
         while (remain > 0) {
             int64_t thisLen = copyLenEachLoopAlignHeadDim;
             if (remain < thisLen) {
@@ -816,7 +816,8 @@ public:
         qkMMConfig, MATMUL_L1_SIZE);
     matmul::Matmul<QK_MM_A_T, QK_MM_B_T, QK_MM_C_T, QK_MM_BIAS_T, staticQkTilingCfg, QK_MM_CB_T> qkMatmul;
 
-    using SV_MM_A_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>;
+    using SV_MM_A_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false, LayoutMode::NONE, false,
+                                         TPosition::VECOUT>;
     using SV_MM_B_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>;
     using SV_MM_C_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>;
     using SV_MM_BIAS_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>;
