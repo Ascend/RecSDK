@@ -38,7 +38,8 @@ bool TilingPolicyPaged::TilingWorkSpace(gert::TilingContext* context, optiling::
     int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
     // 3: midk midv attnscore
     int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem * 3) * sizeof(float);
-    currentWorkspace[0] = workspaceSize + systemWorkspacesSize;
+    int64_t syncSize = coreNum * VCORE_NUM_IN_ONE_AIC * DATA_ALIGN_BYTES;
+    currentWorkspace[0] = workspaceSize + systemWorkspacesSize + syncSize;
     return true;
 }
 

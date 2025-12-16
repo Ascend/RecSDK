@@ -259,14 +259,19 @@ public:
             pipe->InitBuffer(qkQueInA, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
             pipe->InitBuffer(qkQueInB, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
         }
-
+        
         AscendC::SyncAll<true>();
-        auto zeroBuff = tmpBuff.template AllocTensor<int32_t>();
-        Duplicate<int32_t>(zeroBuff, 0, coreNum * coreNum * DATA_ALIGN_BYTES / sizeof(int32_t));
-        DataCopy(syncGm, zeroBuff, coreNum * coreNum * DATA_ALIGN_BYTES / sizeof(int32_t));
+        if (GetBlockIdx() == 0) {
+            uint32_t zeroNumber = coreNum * DATA_ALIGN_BYTES / sizeof(int32_t);
+            auto zeroBuff = queOut.template AllocTensor<int32_t>();
+            Duplicate<int32_t>(zeroBuff, 0, zeroNumber);
+            queOut.EnQue(zeroBuff);
+            auto overBuff = queOut.DeQue<int32_t>();
+            pipe_barrier(PIPE_ALL);
+            DataCopy(syncGm, overBuff, zeroNumber);
+            queOut.template FreeTensor<int32_t>(overBuff);
+        }
         AscendC::SyncAll<true>();
-
-        tmpBuff.template FreeTensor<int32_t>(zeroBuff);
     }
 
     __aicore__ inline void CastQtype2Float(LocalTensor<float> distTensor, LocalTensor<qType> srcTensor,
@@ -725,6 +730,7 @@ public:
                 DataCopy(attnOutputGt[outOffset], newOutLt, dstCopyParams);
             }
             queOut.FreeTensor(newOutLt);
+
             remain = remain - thisLen;
         }
     }

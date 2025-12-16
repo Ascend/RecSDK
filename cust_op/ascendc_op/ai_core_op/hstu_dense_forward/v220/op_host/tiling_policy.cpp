@@ -196,7 +196,7 @@ bool TilingPolicy::TilingWorkSpace(gert::TilingContext* context, optiling::HstuD
     int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
 
     int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float);
-    int64_t syncSize = coreNum * VCORE_NUM_IN_ONE_AIC * coreNum * VCORE_NUM_IN_ONE_AIC * DATA_ALIGN_BYTES;
+    int64_t syncSize = coreNum * VCORE_NUM_IN_ONE_AIC * DATA_ALIGN_BYTES;
     currentWorkspace[0] = workspaceSize + systemWorkspacesSize + syncSize;
     return true;
 }
