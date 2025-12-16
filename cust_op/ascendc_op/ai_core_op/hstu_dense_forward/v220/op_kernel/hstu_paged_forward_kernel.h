@@ -119,7 +119,9 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     int64_t oneBlockMidTransElem = this->blockHeight * MAX_BLOCK_DIM * TRANS_PIPE_NUM;
     int64_t oneCoreTransMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
 
-    int64_t kOffset = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float) / sizeof(qType);
+    int64_t syncOffset = sizeof(uint32_t) / sizeof(qType) * GetBlockNum() *
+                         VCORE_NUM_IN_ONE_AIC * DATA_ALIGN_BYTES / sizeof(int32_t);
+    int64_t kOffset = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float) / sizeof(qType) + syncOffset;
     int64_t vOffset = kOffset + oneCoreTransMidElem;
 
     midkGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(this->workspace) + kOffset + \
@@ -330,6 +332,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
             };
             // 在下三角下跳过运算
             if (maskinfo.NoComputation(maskType)) {
+                isEndToTail = true;
                 break;
             }
             currentTaskId = taskId % COMPUTE_PIPE_NUM;
