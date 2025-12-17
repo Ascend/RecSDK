@@ -58,7 +58,7 @@ target_link_directories(COMMON_ASC
 )
 
 target_link_libraries(COMMON_ASC PUBLIC ascendcl ge_executor gert runtime ge_common register graph ascend_protobuf
-     opt_feature error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host profapi c_sec)
+     error_manager exe_graph acl_tdt_channel acl_tdt_queue securec drvdsmi_host profapi c_sec)
 target_link_libraries(COMMON_ASC PUBLIC
         ${PYTHON_LIBRARY}
 )
