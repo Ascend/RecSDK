@@ -148,7 +148,7 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_input1D_impl_
     return make_tuple(outLengths.view({-1}), outValues, outWeights);
 }
 
-TORCH_LIBRARY(mxrec, m)
+TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
     m.def("permute_2D_sparse_data(Tensor permute, "
           "                       Tensor lengths, "
