@@ -1077,7 +1077,8 @@ public:
                    matmul::MatmulCallBackFunc<nullptr, CopyKGradA1<qType>, CopyVGradB1<qType>>>
         kGradMatmul;
 
-    matmul::Matmul<matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true>,
+    matmul::Matmul<matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true,
+                   LayoutMode::NONE, false, TPosition::VECOUT>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>, CFG_NORM,

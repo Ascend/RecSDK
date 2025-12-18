@@ -84,6 +84,7 @@ add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../hstu_dense_back
 sed -i '$a\'"$add_cmake_line" ./op_kernel/CMakeLists.txt
 
 sed -i "1i #define __DAV_C310_VEC__" ./op_host/hstu_dense_backward_tiling_common.h
+sed -i '1i\add_ops_compile_options(ALL OPTIONS --cce-long-call=true -DENABLE_CV_COMM_VIA_SSBUF=true)' ./op_kernel/CMakeLists.txt
 
 # 增加LOG_CPP编译选项支持错误日志打印
 sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
