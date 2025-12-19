@@ -7,7 +7,7 @@ COPY ./CentOS-Base.repo ./
 COPY ./version.info ./
 COPY ./ascend_install.info ./
 COPY ./Ascend-cann-toolkit_*.run ./
-COPY ./Ascend-cann-kernels-*.run ./
+COPY ./Ascend-cann-*-ops*.run ./
 
 # 1.安装编译环境
 RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.bak && \
@@ -126,7 +126,7 @@ ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$
 # 7.安装ascend-toolkit与kernels算子包
 # CANN相关参数
 ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
-ARG KERNEL_PKG=Ascend-cann-kernels*.run
+ARG KERNEL_PKG=Ascend-cann-*-ops*.run
 
 RUN rm -rf $ASCEND_BASE/ascend-toolkit && \
     umask 0027 && \
