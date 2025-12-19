@@ -112,7 +112,7 @@ RUN pip3.11 install usort
 RUN pip3.11 install parameterized
 
 COPY ./Ascend-cann-toolkit_*.run ./
-COPY ./Ascend-cann-kernels-*.run ./
+COPY ./Ascend-cann-*-ops*.run ./
 
 ENV PATH=/usr/local/gcc11.2.0/bin:/usr/local/python3.11.0/bin:$PATH \
     LD_LIBRARY_PATH=/usr/local/gcc11.2.0/lib64:/usr/local/python3.11.0/lib:$LD_LIBRARY_PATH
@@ -122,7 +122,7 @@ ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ASCEND_BASE/driver/lib64/common
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ASCEND_BASE/driver/lib64/driver
 
 ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
-ARG KERNEL_PKG=Ascend-cann-kernels*.run
+ARG KERNEL_PKG=Ascend-cann-*-ops*.run
 # 删除旧的CANN
 RUN rm -rf $ASCEND_BASE/ascend-toolkit
 

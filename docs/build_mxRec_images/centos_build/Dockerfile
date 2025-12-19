@@ -13,7 +13,7 @@ COPY ./hdf5-1.10.5.tar.gz ./
 COPY ./version.info ./
 COPY ./ascend_install.info ./
 COPY ./Ascend-cann-toolkit_*.run ./
-COPY ./Ascend-cann-kernels-*.run ./
+COPY ./Ascend-cann-*-ops*.run ./
 COPY ./npu_bridge-1.15.0-*.whl ./
 COPY ./npu_device-2.6.5-*.whl ./
 COPY ./Ascend-recsdk-npu-ops*.tar.gz ./
@@ -148,7 +148,7 @@ ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$
 
 # 10.CANN相关参数
 ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
-ARG KERNEL_PKG=Ascend-cann-kernels*.run
+ARG KERNEL_PKG=Ascend-cann-*-ops*.run
 
 # 11.安装ascend-toolkit和kernels算子包
 RUN umask 0027 && \
