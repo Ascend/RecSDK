@@ -18,12 +18,12 @@ See the License for the specific language governing permissions and
 #include "hstu_dense_forward_kernel_v200.h"
 
 template <typename T>
-__aicore__ inline void InvokeHstuOpImpl(const HstuDenseForward::Args &args)
+__aicore__ inline void InvokeHstuOpImpl(const HstuDenseForward::Args& args)
 {
     TPipe tPipe;
     T op;
     GET_TILING_DATA(tilingData, args.tiling);
-    const HstuDenseForwardTilingData *__restrict tilingDataPtr = &tilingData;
+    const HstuDenseForwardTilingData* __restrict tilingDataPtr = &tilingData;
     REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.qkMatmul, &tilingDataPtr->qkMatmul, op.svMatmul,
                       &tilingDataPtr->svMatmul);
     op.Init(args, tilingDataPtr, &tPipe);
@@ -32,17 +32,18 @@ __aicore__ inline void InvokeHstuOpImpl(const HstuDenseForward::Args &args)
 
 #else
 #include "hstu_dense_forward_jagged_kernel.h"
+#include "hstu_paged_forward_kernel.h"
 #include "hstu_dense_forward_kernel.h"
 
 template <typename T>
-__aicore__ inline void InvokeHstuOpImpl(const HstuDenseForward::Args &args)
+__aicore__ inline void InvokeHstuOpImpl(const HstuDenseForward::Args& args)
 {
     TPipe tPipe;
     T op;
     GET_TILING_DATA(tilingData, args.tiling);
-    const HstuDenseForwardTilingData *__restrict tilingDataPtr = &tilingData;
-    REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.qkMatmul, &tilingDataPtr->qkMatmul, op.svMatmul,
-                      &tilingDataPtr->svMatmul);
+    const HstuDenseForwardTilingData* __restrict tilingDataPtr = &tilingData;
+    REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), op.qkMatmul, (TCubeTiling*)nullptr, op.svMatmul,
+        (TCubeTiling*)nullptr);
     uint64_t tilingPtr = reinterpret_cast<uint64_t>(args.tiling);
     op.qkMatmul.SetUserDefInfo(tilingPtr);
     op.svMatmul.SetUserDefInfo(tilingPtr);
@@ -54,28 +55,86 @@ __aicore__ inline void InvokeHstuOpImpl(const HstuDenseForward::Args &args)
 
 #include "kernel_operator.h"
 
-extern "C" __global__ __aicore__ void hstu_dense_forward(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask,
-                                                         GM_ADDR attnBias, GM_ADDR attnOutput, GM_ADDR workspace,
+extern "C" __global__ __aicore__ void hstu_dense_forward(GM_ADDR q,
+                                                         GM_ADDR k,
+                                                         GM_ADDR v,
+                                                         GM_ADDR mask,
+                                                         GM_ADDR attnBias,
+                                                         GM_ADDR seq_offset_q,
+                                                         GM_ADDR seq_offset_k,
+                                                         GM_ADDR seq_offset_t,
+                                                         GM_ADDR kv_cache,
+                                                         GM_ADDR page_offsets,
+                                                         GM_ADDR page_ids,
+                                                         GM_ADDR last_page_len,
+                                                         GM_ADDR num_context,
+                                                         GM_ADDR num_target,
+                                                         GM_ADDR attnOutput,
+                                                         GM_ADDR workspace,
                                                          GM_ADDR tiling)
 {
-    HstuDenseForward::Args args{q, k, v, attnBias, mask, attnOutput, workspace, tiling};
+    HstuDenseForward::Args args{q, k, v, mask, attnBias, seq_offset_q, seq_offset_k,
+                                seq_offset_t, kv_cache, page_offsets, page_ids, last_page_len,
+                                num_context, num_target, attnOutput, workspace, tiling};
 #ifdef SUPPORT_V200
     if (TILING_KEY_IS(0)) {
         InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernelv200<half>>(args);
     }
 #else
-    if (TILING_KEY_IS(0)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<half>>(args);
-    } else if (TILING_KEY_IS(1)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<bfloat16_t>>(args);
-    } else if (TILING_KEY_IS(2)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<float>>(args);
-    } else if (TILING_KEY_IS(3)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<half>>(args);
-    } else if (TILING_KEY_IS(4)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<bfloat16_t>>(args);
-    } else if (TILING_KEY_IS(5)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<float>>(args);
+    if (TILING_KEY_IS(NORMAL_QK_WS_NO_BIAS_CAUSAL_MASK)) {  // normal
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
+            DTYPE_Q, false, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
+    } else if (TILING_KEY_IS(NORMAL_QK_WS_BIAS_CAUSAL_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
+            DTYPE_Q, true, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
+    } else if (TILING_KEY_IS(NORMAL_QK_WS_NO_BIAS_NO_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
+            DTYPE_Q, false, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
+    } else if (TILING_KEY_IS(NORMAL_QK_WS_BIAS_NO_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
+            DTYPE_Q, true, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
+    } else if (TILING_KEY_IS(NORMAL_QK_WS_NO_BIAS_CUSTOM_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
+            DTYPE_Q, false, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
+    } else if (TILING_KEY_IS(NORMAL_QK_WS_BIAS_CUSTOM_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
+            DTYPE_Q, true, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
+    } else if (TILING_KEY_IS(JAGGED_QK_WS_NO_BIAS_CAUSAL_MASK)) {  // jagged
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
+    } else if (TILING_KEY_IS(JAGGED_QK_WS_BIAS_CAUSAL_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
+    } else if (TILING_KEY_IS(JAGGED_QK_WS_NO_BIAS_NO_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
+    } else if (TILING_KEY_IS(JAGGED_QK_WS_BIAS_NO_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
+    } else if (TILING_KEY_IS(JAGGED_QK_WS_NO_BIAS_CUSTOM_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
+    } else if (TILING_KEY_IS(JAGGED_QK_WS_BIAS_CUSTOM_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
+    } else if (TILING_KEY_IS(PAGED_QK_WS_NO_BIAS_CAUSAL_MASK)) {  // paged
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
+    } else if (TILING_KEY_IS(PAGED_QK_WS_BIAS_CAUSAL_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
+    } else if (TILING_KEY_IS(PAGED_QK_WS_NO_BIAS_NO_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
+    } else if (TILING_KEY_IS(PAGED_QK_WS_BIAS_NO_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
+    } else if (TILING_KEY_IS(PAGED_QK_WS_NO_BIAS_CUSTOM_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
+    } else if (TILING_KEY_IS(PAGED_QK_WS_BIAS_CUSTOM_MASK)) {
+        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
     }
 #endif
 }

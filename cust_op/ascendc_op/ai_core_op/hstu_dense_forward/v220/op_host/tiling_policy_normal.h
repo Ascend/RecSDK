@@ -23,9 +23,9 @@ namespace HstuDenseForward {
 
 class TilingPolicyNormal : public TilingPolicy {
 private:
-    bool TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling) override;
+    bool TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
 
-    bool TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling) override;
+    bool TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
 };
 
 }

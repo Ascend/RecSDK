@@ -56,7 +56,7 @@ ge::graphStatus GetInputLayout(const gert::RuntimeAttrs *attrs, InputLayout &lay
     } else if (inputLayoutStr == "jagged") {
         layout = InputLayout::JAGGED;
     } else {
-        OPS_LOG_E("InputLayout", "the input layout should be normal/jagged.\n");
+        OPS_LOG_E("", "the input layout should be normal/jagged");
         return ge::GRAPH_FAILED;
     }
 
@@ -87,7 +87,7 @@ bool BasicShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t
 {
     static const ShapeRange batchRange(1, MAX_BATCH_SIZE, 1, "batch size");
     static const ShapeRange seqRange(1, 20480, 1, "seq size");
-    static const ShapeRange headRange(2, 8, 2, "head num");
+    static const ShapeRange headRange(1, 16, 1, "head num");
     static const ShapeRange dimRange(16, 512, 16, "dim size");
 
     if (!batchRange.Check(batchSize)) {
