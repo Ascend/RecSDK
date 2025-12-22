@@ -78,8 +78,6 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
     }
 
     size_t *currentWorkspace = context->GetWorkspaceSizes(INDEX_T::INDEX_1);
-    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
-
     size_t systemWorkspaceSize = ascendPlatform.GetLibApiWorkSpaceSize();
     currentWorkspace[0] = workspaceSize + systemWorkspaceSize;
 
@@ -144,6 +142,37 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
         return ge::GRAPH_FAILED;
     }
 
+    if (gradType == ge::DataType::DT_BF16 && headDim <= BFLOAT16_DEPTH_MAX_DIM) {
+        // matmul计算时，左矩阵一次拷入L1中的大小为depthA1*baseM*baseK，右矩阵一次拷入L1中的大小为depthB1*baseN*baseK
+        // 理论上在调用matmul.GetTiling时，matmul内部会自动算出最优depth值，但不能使所有场景性能最优
+        // 所以这里通过设置depth大小，调整一次拷入L1的数据多少，达到优化目的
+        // 经测试，depth=4时已有shape性能最佳，并不适用所有shape场景。后续有其他shape可通过该值调整获得最优性能。
+        int64_t depth = 4;
+
+        OPS_CHECK(depth * (qkMatmul.GetBaseM() * qkMatmul.GetBaseK() + qkMatmul.GetBaseK() * qkMatmul.GetBaseN()) >
+            L1_BUFFER_SIZE, OPS_LOG_E("", "The qkMatmul depth is set too high\n"), return ge::GRAPH_FAILED);
+        tiling.qkMatmul.set_depthA1(depth);
+        tiling.qkMatmul.set_depthB1(depth);
+
+        OPS_CHECK(depth * (qGradMatmul.GetBaseM() * qGradMatmul.GetBaseK() +
+            qGradMatmul.GetBaseK() * qGradMatmul.GetBaseN()) > L1_BUFFER_SIZE,
+            OPS_LOG_E("", "The qGradMatmul depth is set too high\n"), return ge::GRAPH_FAILED);
+        tiling.qGradMatmul.set_depthA1(depth);
+        tiling.qGradMatmul.set_depthB1(depth);
+
+        OPS_CHECK(depth * (kGradMatmul.GetBaseM() * kGradMatmul.GetBaseK() +
+            kGradMatmul.GetBaseK() * kGradMatmul.GetBaseN()) > L1_BUFFER_SIZE,
+            OPS_LOG_E("", "The kGradMatmul depth is set too high\n"), return ge::GRAPH_FAILED);
+        tiling.kGradMatmul.set_depthA1(depth);
+        tiling.kGradMatmul.set_depthB1(depth);
+
+        OPS_CHECK(depth * (vGradMatmul.GetBaseM() * vGradMatmul.GetBaseK() +
+            vGradMatmul.GetBaseK() * vGradMatmul.GetBaseN()) > L1_BUFFER_SIZE,
+            OPS_LOG_E("", "The vGradMatmul depth is set too high\n"), return ge::GRAPH_FAILED);
+        tiling.vGradMatmul.set_depthA1(depth);
+        tiling.vGradMatmul.set_depthB1(depth);
+    }
+
     context->SetBlockDim(coreNum);
     tiling.set_aivNum(vecCoreNum);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
@@ -199,7 +228,6 @@ static ge::graphStatus InferShape(gert::InferShapeContext *context)
 
 static ge::graphStatus InferDtype(gert::InferDataTypeContext *context)
 {
-    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     // q dataType
     auto dataType = context->GetInputDataType(INDEX_T::INDEX_1);
 
@@ -219,61 +247,64 @@ public:
     {
         this->Input("grad")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .FormatList({ge::FORMAT_ND});
         this->Input("q")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Input("k")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Input("v")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Input("mask")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Input("attn_bias")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
+        this->Input("seq_offset_q")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("num_context")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("num_target")
+            .ParamType(OPTIONAL)
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16})
+            .FormatList({ge::FORMAT_ND});
 
         this->Output("q_grad")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(OPTIONAL)
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Output("k_grad")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(OPTIONAL)
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Output("v_grad")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .ParamType(OPTIONAL)
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Output("attn_bias_grad")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("grad", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
 
         this->Attr("layout").String("normal");
         this->Attr("mask_type").Int();
         this->Attr("max_seq_len").Int();
         this->Attr("silu_scale").Float();
-        this->Attr("seq_offsets").AttrType(OPTIONAL).ListInt();
+        this->Attr("target_group_size").AttrType(OPTIONAL).Int(0);
+        this->Attr("alpha").AttrType(OPTIONAL).Float(1.0);
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
@@ -287,6 +318,7 @@ public:
         this->AICore().SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
+        this->AICore().AddConfig("ascend910_95", aicore_config);
     }
 };
 

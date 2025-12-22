@@ -35,6 +35,16 @@
                 ]
             },
             {
+                "name": "mask",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp16", "bf16"
+                ]
+            },
+            {
                 "name": "attn_bias",
                 "param_type": "optional",
                 "format": [
@@ -45,7 +55,37 @@
                 ]
             },
             {
-                "name": "mask",
+                "name": "seq_offset_q",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int64", "int64"
+                ]
+            },
+            {
+                "name": "seq_offset_k",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int64", "int64"
+                ]
+            },
+            {
+                "name": "seq_offset_t",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int64", "int64"
+                ]
+            },
+            {
+                "name": "kv_cache",
                 "param_type": "optional",
                 "format": [
                     "ND", "ND", "ND"
@@ -53,8 +93,57 @@
                 "type": [
                     "fp32", "fp16", "bf16"
                 ]
+            },
+            {
+                "name": "page_offsets",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int64", "int64"
+                ]
+            },
+            {
+                "name": "page_ids",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int64", "int64"
+                ]
+            },
+            {
+                "name": "last_page_len",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int64", "int64"
+                ]
+            },
+            {
+                "name": "num_context",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int64", "int64"
+                ]
+            },
+            {
+                "name": "num_target",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int64", "int64"
+                ]
             }
-
         ],
         "output_desc": [
             {
@@ -76,7 +165,13 @@
               "default_value": 1
             },
             {
-                "name": "max_seq_len",
+                "name": "max_seq_q",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "max_seq_k",
                 "param_type": "required",
                 "type": "int",
                 "default_value": 0
@@ -94,9 +189,22 @@
                 "default_value": "normal"
             },
             {
-                "name": "seq_offsets",
+                "name": "target_group_size",
                 "param_type": "optional",
-                "type": "list_int"
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "is_delta_qk",
+                "param_type": "optional",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "alpha",
+                "param_type": "required",
+                "type":"float",
+                "default_value": 1.0
             }
         ]
     }

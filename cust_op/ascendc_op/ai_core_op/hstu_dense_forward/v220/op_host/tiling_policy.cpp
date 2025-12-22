@@ -22,41 +22,24 @@ using namespace MatmulTilingCheck;
 
 namespace HstuDenseForward {
 
-ShapeRange::ShapeRange(int64_t lbound, int64_t ubound, int64_t mutiple, const char *name)
+ShapeRange::ShapeRange(int64_t lbound, int64_t ubound, int64_t multiple, const char* name)
 {
     this->lbound = lbound;
     this->ubound = ubound;
-    this->mutiple = mutiple;
+    this->multiple = multiple;
     this->name = name;
 }
 
 bool ShapeRange::Check(int64_t val) const
 {
-    OPS_CHECK((val < lbound || val > ubound || val % mutiple != 0),
-              OPS_LOG_E("", "%s must meet range[%lld %lld] and mutiple of [%lld]. but get value %lld\n", name, lbound,
-                        ubound, mutiple, val),
+    OPS_CHECK((val < lbound || val > ubound || val % multiple != 0),
+              OPS_LOG_E("", "%s must meet range[%lld %lld] and multiple of [%lld]. but get value %lld\n", name, lbound,
+                        ubound, multiple, val),
               return false);
     return true;
 }
 
-bool QKVShapeCheck(gert::TilingContext* context, int qkvDim)
-{
-    OPS_LOG_E_IF_NULL("QShape", context->GetInputShape(INDEX_T::INDEX_0), return false);
-    OPS_LOG_E_IF_NULL("KShape", context->GetInputShape(INDEX_T::INDEX_1), return false);
-    OPS_LOG_E_IF_NULL("VShape", context->GetInputShape(INDEX_T::INDEX_2), return false);
-
-    auto QShape = context->GetInputShape(INDEX_T::INDEX_0)->GetStorageShape();
-    auto KShape = context->GetInputShape(INDEX_T::INDEX_1)->GetStorageShape();
-    auto VShape = context->GetInputShape(INDEX_T::INDEX_2)->GetStorageShape();
-    int dim = QShape.GetDimNum();
-    bool sameShape = (QShape == KShape && KShape == VShape);
-
-    OPS_CHECK(!sameShape, OPS_LOG_E("", "QKV shape not same."), return false);
-    OPS_CHECK(dim != qkvDim, OPS_LOG_E("", "Jagged QKV dim should be %d, but got %d", qkvDim, dim), return false);
-    return true;
-}
-
-ge::graphStatus TilingPolicy::InferShape(gert::InferShapeContext *context)
+ge::graphStatus TilingPolicy::InferShape(gert::InferShapeContext* context)
 {
     const gert::Shape *queryShape = context->GetInputShape(INDEX_T::INDEX_0);
     OPS_CHECK_PTR_NULL(queryShape, return ge::GRAPH_FAILED);
@@ -68,7 +51,7 @@ ge::graphStatus TilingPolicy::InferShape(gert::InferShapeContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPolicy::InferDtype(gert::InferDataTypeContext *context)
+ge::graphStatus TilingPolicy::InferDtype(gert::InferDataTypeContext* context)
 {
     context->SetOutputDataType(0, context->GetInputDataType(0));
     context->SetOutputDataType(1, context->GetInputDataType(0));
@@ -76,7 +59,7 @@ ge::graphStatus TilingPolicy::InferDtype(gert::InferDataTypeContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPolicy::TilingProcess(gert::TilingContext *context)
+ge::graphStatus TilingPolicy::TilingProcess(gert::TilingContext* context)
 {
     OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
 
@@ -105,23 +88,27 @@ ge::graphStatus TilingPolicy::TilingProcess(gert::TilingContext *context)
     // step6: tiling save to buffer
     OPS_CHECK(!TilingSaveToBuffer(context, tiling), OPS_LOG_E("", "TilingSaveToBuffer is failed.\n"),
               return ge::GRAPH_FAILED);
+    // step7: set workspace
+    OPS_CHECK(!TilingWorkSpace(context, tiling), OPS_LOG_E("", "Set workspace size is failed.\n"),
+    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-bool TilingPolicy::TilingSaveToBuffer(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingSaveToBuffer(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
+    OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return false);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
     return true;
 }
 
-bool TilingPolicy::CheckIsSupport(gert::TilingContext *context)
+bool TilingPolicy::CheckIsSupport(gert::TilingContext* context)
 {
     return true;
 }
 
-bool TilingPolicy::TilingShape(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     // base unrealized
     return false;
@@ -132,7 +119,7 @@ bool TilingPolicy::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t 
     static const ShapeRange SEQ_RANGE(1, 20480, 1, "seq size");
     static const ShapeRange BATCH_RANGE(1, MAX_BATCH_SIZE, 1, "batch size");
     static const ShapeRange DIM_RANGE(16, 512, 16, "dim size");
-    static const ShapeRange HEAD_RANGE(2, 8, 2, "head num");
+    static const ShapeRange HEAD_RANGE(1, 16, 1, "head num");
 
     if (!SEQ_RANGE.Check(seqLen)) {
         return false;
@@ -153,21 +140,30 @@ bool TilingPolicy::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t 
     return true;
 }
 
-bool TilingPolicy::TilingAttribute(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingAttribute(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OPS_CHECK_PTR_NULL(attrs, return false);
 
-    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(INDEX_T::INDEX_0);
+    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MASKTYPE_INDEX);
     OPS_CHECK_PTR_NULL(maskType, return false);
 
-    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(INDEX_T::INDEX_1);
+    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MAX_SEQ_Q_INDEX);
     OPS_CHECK_PTR_NULL(maxSeqLen, return false);
 
-    const float *siluScale = attrs->GetAttrPointer<float>(INDEX_T::INDEX_2);
+    const uint32_t *maxSeqLenk = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MAX_SEQ_K_INDEX);
+    OPS_CHECK_PTR_NULL(maxSeqLenk, return false);
+
+    const float *siluScale = attrs->GetAttrPointer<float>(ATTR_INDEX_T::SILU_SCALE_INDEX);
     OPS_CHECK_PTR_NULL(siluScale, return false);
 
-    auto biasTensor = context->GetOptionalInputTensor(INDEX_T::INDEX_4);
+    const float *alpha = attrs->GetAttrPointer<float>(ATTR_INDEX_T::ALPHA_INDEX);
+    OPS_CHECK_PTR_NULL(alpha, return false);
+
+    const uint32_t *targetGroupSize = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::TARGET_GROUP_SIZE_INDEX);
+    OPS_CHECK_PTR_NULL(targetGroupSize, return false);
+
+    auto biasTensor = context->GetOptionalInputTensor(INPUT_INDEX_T::ATTN_BIAS_INDEX);
     if (biasTensor == nullptr) {
         tiling.set_enableBias(0);
     } else {
@@ -176,17 +172,42 @@ bool TilingPolicy::TilingAttribute(gert::TilingContext *context, optiling::HstuD
 
     tiling.set_maskType(*maskType);
     tiling.set_siluScale(*siluScale);
+    tiling.set_alpha(*alpha);
     tiling.set_maxSeqLen(*maxSeqLen);
+    tiling.set_maxSeqLenq(*maxSeqLen);
+    tiling.set_maxSeqLenk(*maxSeqLenk);
+    tiling.set_targetGroupSize(*targetGroupSize);
     return true;
 }
 
-bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingWorkSpace(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
-    int64_t dim = tiling.get_dim();
+    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return false);
+
+    size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
+    size_t coreNum = ascendPlatform.GetCoreNumAic();
+
+    int64_t oneBlockMidElem = BLOCK_HEIGHT * BLOCK_HEIGHT * COMPUTE_PIPE_NUM;
+    int64_t oneCoreMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
+
+    int64_t oneBlockMidTransElem = BLOCK_HEIGHT * MAX_DIM * TRANS_PIPE_NUM;
+    int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
+
+    int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float);
+    int64_t syncSize = coreNum * VCORE_NUM_IN_ONE_AIC * DATA_ALIGN_BYTES;
+    currentWorkspace[0] = workspaceSize + systemWorkspacesSize + syncSize;
+    return true;
+}
+
+bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+{
+    tiling.set_blockHeight(BLOCK_HEIGHT);
 
     matmul_tiling::DataType dataType;
-    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(0), return ge::GRAPH_FAILED);
-    ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
+    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(INPUT_INDEX_T::Q_INDEX), return false);
+    ge::DataType qTypeGe = context->GetInputTensor(INPUT_INDEX_T::Q_INDEX)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT) {
         dataType = matmul_tiling::DataType::DT_FLOAT;
     } else if (qTypeGe == ge::DataType::DT_FLOAT16) {
@@ -195,72 +216,10 @@ bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext *context, optiling::H
         dataType = matmul_tiling::DataType::DT_BFLOAT16;
     }
 
-    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
-    OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
-
-    size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
-    size_t coreNum = ascendPlatform.GetCoreNumAic();
-
-    int64_t oneBlockMidElem = BLOCK_HEIGHT * BLOCK_HEIGHT * COMPUTE_PIPE_NUM;
-    int64_t oneCoreMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
-
-    int64_t oneBlockMidTransElem = BLOCK_HEIGHT * dim * TRANS_PIPE_NUM;
-    int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
-
-    int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float);
-    currentWorkspace[0] = workspaceSize + systemWorkspacesSize;
-
-    // apply qk
-    matmul_tiling::MatmulApiTiling qkMatmul(ascendPlatform);
-    qkMatmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    qkMatmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    qkMatmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    qkMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-
-    tiling.set_blockHeight(BLOCK_HEIGHT);
-
-    qkMatmul.SetOrgShape(BLOCK_HEIGHT, BLOCK_HEIGHT, dim);
-    qkMatmul.SetShape(BLOCK_HEIGHT, BLOCK_HEIGHT, dim);
-    qkMatmul.SetBias(false);
-    qkMatmul.SetBufferSpace(-1, -1, -1);
-
-    matmul_tiling::MatmulApiTiling svMatmul(ascendPlatform);
-    svMatmul.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    svMatmul.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-    svMatmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);
-    svMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
-
-    svMatmul.SetOrgShape(BLOCK_HEIGHT, dim, BLOCK_HEIGHT);
-    svMatmul.SetShape(BLOCK_HEIGHT, dim, BLOCK_HEIGHT);
-    svMatmul.SetBias(false);
-    svMatmul.SetBufferSpace(-1, -1, -1);
-
-    if (qkMatmul.GetTiling(tiling.qkMatmul) == -1 || svMatmul.GetTiling(tiling.svMatmul) == -1) {
-        return false;
-    }
-
-    auto findResult = matmul_tiling::DTYPE_BYTE_TAB.find(dataType);
-    if (findResult == matmul_tiling::DTYPE_BYTE_TAB.end()) {
-        OPS_LOG_E("", "dataType not in DTYPE_BYTE_TAB");
-        return ge::GRAPH_FAILED;
-    }
-    int dataTypeLength = findResult->second;
-    if (!CheckBaseMNK(tiling.qkMatmul, dataTypeLength, dataTypeLength) ||
-        !CheckBaseMNK(tiling.svMatmul, dataTypeLength, sizeof(float))) {
-        return ge::GRAPH_FAILED;
-    }
-
-    tiling.set_qkBaseM(tiling.qkMatmul.get_baseM());
-    tiling.set_qkBaseN(tiling.qkMatmul.get_baseN());
-
-    tiling.set_svBaseM(tiling.svMatmul.get_baseM());
-    tiling.set_svBaseN(tiling.svMatmul.get_baseN());
-
     return true;
 }
 
-bool TilingPolicy::TilingCore(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingCore(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAic();
@@ -268,13 +227,27 @@ bool TilingPolicy::TilingCore(gert::TilingContext *context, optiling::HstuDenseF
     return true;
 }
 
-bool TilingPolicy::TilingKeySet(gert::TilingContext *context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
     // base unrealized
     return false;
 }
 
-void TilingPolicy::DumpTiling(optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling,
+    uint32_t typeTilingKey)
+{
+    // A2/A3默认为false，在A5上可以选择qk结果是否使用ub，通过(tiling.get_blockHeight() == BLOCK_HEIGHT)判断
+    bool isQkUseUb = false;
+    bool enableBias = tiling.get_enableBias();
+    uint32_t maskType = tiling.get_maskType();
+    uint32_t maskedType = maskType & 0x3;
+    // 组合tiling key：
+    auto key = (maskedType << 4) | (enableBias << 3) | (isQkUseUb << 2) | typeTilingKey;
+    context->SetTilingKey(key);
+    return true;
+}
+
+void TilingPolicy::DumpTiling(optiling::HstuDenseForwardTilingData& tiling)
 {
     OPS_LOG_D("batchSize = %ld\n", tiling.get_batchSize());
     OPS_LOG_D("seqLen = %ld\n", tiling.get_seqLen());
@@ -285,6 +258,7 @@ void TilingPolicy::DumpTiling(optiling::HstuDenseForwardTilingData &tiling)
     OPS_LOG_D("maskType = %d\n", tiling.get_maskType());
     OPS_LOG_D("maxSeqLen = %d\n", tiling.get_maxSeqLen());
     OPS_LOG_D("siluScale = %f\n", tiling.get_siluScale());
+    OPS_LOG_D("alpha = %f\n", tiling.get_alpha());
 }
 
 }

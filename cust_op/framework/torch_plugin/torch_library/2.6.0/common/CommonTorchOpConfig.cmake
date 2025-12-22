@@ -24,11 +24,23 @@ link_directories(${PYTORCH_INSTALL_PATH}/lib)
 link_directories(${PYTORCH_NPU_INSTALL_PATH}/lib)
 link_directories(${ASCEND_DRIVER_PATH}/lib64/common)
 
+# 获取pytorch版本
+execute_process(
+    COMMAND python3 -c "import torch; print(torch.__version__)"
+    OUTPUT_VARIABLE PYTORCH_VERSION_STR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+set(PYTORCH_271 "2.7.1")
+string(FIND "${PYTORCH_VERSION_STR}" "${PYTORCH_271}" PYTORCH_271_FIND_RET)
+
 # ABI 宏
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm")
     set(GLIBCXX_ABI 1)
+elseif(PYTORCH_271_FIND_RET GREATER -1)
+        # pytorch 2.7.1版本在x86环境时需要设置ABI=1
+        set(GLIBCXX_ABI 1)
 else()
-    set(GLIBCXX_ABI 0)
+        set(GLIBCXX_ABI 0)
 endif()
 
 # 通用include

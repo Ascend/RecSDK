@@ -20,6 +20,7 @@ See the License for the specific language governing permissions and
 #else
     #include "hstu_dense_forward_kernel_patten_bsnd.h"
 #endif
+#include "hstu_dense_causal_mask.h"
 namespace HstuDenseForward {
 
 struct QkMatmulArgs {
@@ -59,12 +60,12 @@ struct SVTransArgs {
     int64_t qSeqId;
 };
 
-template <typename qType>
-class HstuDenseForwardKernel : public HstuDenseForwardKernelPattenBsnd<qType> {
+template <typename qType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+class HstuDenseForwardKernel : public HstuDenseForwardKernelPattenBsnd<qType, enableBias, isQkUseUb, maskType> {
 public:
     __aicore__ inline HstuDenseForwardKernel() {}
 
-    __aicore__ inline void PreInit(const HstuDenseForwardTilingData *__restrict tilingDataPtr)
+    __aicore__ inline void PreInit(const HstuDenseForwardTilingData* __restrict tilingDataPtr)
     {
         seqBlockNumQk = DivCeil(this->xDim1, this->blockHeight); // 不满足一个block的按照一个block进行计算
         qkTotalBlock = this->xDim0 * this->xDim2 * seqBlockNumQk;
@@ -87,15 +88,16 @@ public:
                      scoreArgs.qSeqId * this->blockHeight * this->xDim1 + \
                      scoreArgs.kSeqId * this->blockHeight;
 #endif
-        int causalMask = ((scoreArgs.qSeqId == scoreArgs.kSeqId) &&
-            (this->maskType == CausalMaskT::MASK_TRIL)) ? 1 : 0;
+        uint32_t causalMask = ((scoreArgs.qSeqId == scoreArgs.kSeqId) &&
+            (maskType == CausalMaskT::MASK_TRIL)) ? 1 : 0;
 
         int64_t m = (scoreArgs.qSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
                                                                 (this->xDim1 - scoreArgs.qSeqId * this->blockHeight);
         int64_t n = (scoreArgs.kSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
                                                                 (this->xDim1 - scoreArgs.kSeqId * this->blockHeight);
 
-        this->VecScoreImpl(scoreArgs.taskId, attnBiasOffset, maskOffset, this->siluScale, causalMask, m, n);
+        this->template VecScoreImpl<uint32_t>(scoreArgs.taskId, attnBiasOffset, maskOffset, this->siluScale,
+                                              causalMask, m, n);
     }
 
     __aicore__ inline void DoQkMatmul(QkMatmulArgs& qkPosArgs)
@@ -202,7 +204,7 @@ public:
                 continue;
             }
             for (int64_t kSeqId = 0; kSeqId < this->seqBlockNumQk; kSeqId++) {
-                if ((this->maskType == CausalMaskT::MASK_TRIL) and (kSeqId > qSeqId)) {
+                if ((maskType == CausalMaskT::MASK_TRIL) and (kSeqId > qSeqId)) {
                     continue;
                 }
 

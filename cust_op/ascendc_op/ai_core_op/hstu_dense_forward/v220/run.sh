@@ -69,6 +69,7 @@ if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
   cp -rf op_host/tiling_policy_normal_v200.cpp hstu_dense_forward/op_host/
 else
   cp -rf op_host/tiling_policy_jagged.cpp hstu_dense_forward/op_host/
+  cp -rf op_host/tiling_policy_paged.cpp hstu_dense_forward/op_host/
 fi
 
 #onnx适配层
@@ -114,10 +115,10 @@ sed -i '1i\add_ops_compile_options(ALL OPTIONS --cce-long-call=true)' ./op_kerne
 # 增加LOG_CPP编译选项支持错误日志打印
 sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
 
-line1=`awk '/tartet_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt`
+line1=`awk '/target_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt`
 sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
 
-line2=`awk '/tartet_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
+line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
 sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
 
 bash build.sh
