@@ -137,7 +137,7 @@ public:
     TPipe* pipe_;
     using XType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
     using WeightType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, true>;
-    using OutType = matmul::MatmulType<TPosition::VECIN, CubeFormat::ND, CT>;
+    using OutType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, CT>;
     using BiasType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, float>;
     using MatmulObj = matmul::Matmul<XType, WeightType, OutType, BiasType>;
     MatmulObj mm;
