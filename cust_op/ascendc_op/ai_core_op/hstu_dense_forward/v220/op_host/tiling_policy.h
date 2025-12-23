@@ -42,7 +42,8 @@ public:
 
     virtual ge::graphStatus TilingProcess(gert::TilingContext* context);
 
-    virtual bool GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim);
+    virtual bool GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim,
+        bool dimAlign = false);
 
     virtual void DumpTiling(optiling::HstuDenseForwardTilingData& tiling);
 

@@ -49,7 +49,10 @@ bool TilingPolicyNormal::TilingShape(gert::TilingContext* context, optiling::Hst
     int64_t vDim = vShape.GetDim(3);
     tiling.set_vDim(vDim);
 
-    OPS_CHECK(!GeneralShapeCheck(batchSize, seqLen, headNum, dim), OPS_LOG_E("", "Shape Check failed"), return false);
+    OPS_CHECK(!GeneralShapeCheck(batchSize, seqLen, headNum, dim),
+        OPS_LOG_E("", "QK Shape Check failed"), return false);
+    OPS_CHECK(!GeneralShapeCheck(batchSize, seqLen, headNum, vDim, true),
+        OPS_LOG_E("", "V Shape Check failed"), return false);
     return true;
 }
 
