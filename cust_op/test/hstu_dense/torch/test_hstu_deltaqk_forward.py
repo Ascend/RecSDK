@@ -330,3 +330,28 @@ class TestHstuDeltaqkDemo:
                                 target_group_size=0)
         self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)
 
+    @pytest.mark.parametrize("batch_size", [4])
+    @pytest.mark.parametrize("head_num", [4])
+    @pytest.mark.parametrize("max_seq_len", [512])
+    @pytest.mark.parametrize("head_dim_qk", [72])
+    @pytest.mark.parametrize("head_dim_v", [64, 80])
+    @pytest.mark.parametrize("enable_bias", [False])
+    @pytest.mark.parametrize("mask_type", [MaskType.NONE])
+    @pytest.mark.parametrize("silu_scale", [1 / 1024])
+    @pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
+    @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
+    def test_hstu_deltaqk_forward(self, batch_size, head_num, max_seq_len, head_dim_qk, head_dim_v, enable_bias,
+                                  mask_type, silu_scale, data_type):
+        qkv_shape_info = QKVShapeInfo(float_type=data_type,
+                                      int_type=torch.int64,
+                                      batch_size=batch_size,
+                                      max_seq_len=max_seq_len,
+                                      num_heads_q=head_num,
+                                      num_heads_k=head_num,
+                                      head_dim_qk=head_dim_qk,
+                                      head_dim_v=head_dim_v)
+        mask_info = MaskGenInfo(mask_type=mask_type,
+                                max_num_context=0,
+                                max_num_target=0,
+                                target_group_size=0)
+        self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)

@@ -95,7 +95,7 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
               OPS_LOG_E("", "Q Jagged Shape Check failed"), return false);
     OPS_CHECK(!GeneralShapeCheck(batchSize, maxSeqLensK, headNumK, headDimK),
               OPS_LOG_E("", "K Jagged Shape Check failed"), return false);
-    OPS_CHECK(!GeneralShapeCheck(batchSize, maxSeqLensK, headNumK, headDimV),
+    OPS_CHECK(!GeneralShapeCheck(batchSize, maxSeqLensK, headNumK, headDimV, true),
               OPS_LOG_E("", "V Jagged Shape Check failed"), return false);
     if (headNumQ != headNumK) {
         OPS_CHECK((headNumQ % headNumK) != 0, OPS_LOG_E("", "For GQA, headNumQ must be divisible by headNumK"),
