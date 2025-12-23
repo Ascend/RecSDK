@@ -51,6 +51,7 @@ fi
 # 利用msopgen生成可编译文件
 rm -rf ./hstu_dense_backward
 python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i hstu_dense_backward.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_backward -m 0 -op HstuDenseBackward
+# python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i hstu_dense_backward.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_backward -m 1 -op HstuJaggedBackward
 rm -rf hstu_dense_backward/op_kernel/*.h
 rm -rf hstu_dense_backward/op_kernel/*.cpp
 rm -rf hstu_dense_backward/host/*.h

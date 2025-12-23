@@ -18,13 +18,12 @@ See the License for the specific language governing permissions and
 
 #include "register/op_def_registry.h"
 
-#include "hstu_dense_backward_normal_tiling.h"
 #include "hstu_dense_backward_jagged_tiling.h"
 
 #include "matmul_check.h"
 using namespace MatmulTilingCheck;
 namespace optiling {
-static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
+static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
 {
     int64_t batchSize = tiling.get_batchSize();
     int64_t headNum = tiling.get_headNum();
@@ -183,7 +182,7 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
 } // namespace optiling
 
 namespace optiling {
-ge::graphStatus TilingFuncDense(gert::TilingContext *context)
+ge::graphStatus TilingFuncJagged(gert::TilingContext *context)
 {
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
@@ -196,14 +195,14 @@ ge::graphStatus TilingFuncDense(gert::TilingContext *context)
 
     HstuDenseBackwardTilingData tiling;
 
-    TilingNormalFunc(context, attrs, tiling);
+    TilingJaggedFunc(context, attrs, tiling);
 
-    return TilingCommonFunc(context, tiling);
+    return TilingCommonFuncJagged(context, tiling);
 }
 } // namespace optiling
 
 namespace ge {
-static ge::graphStatus InferShapeDense(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeJagged(gert::InferShapeContext *context)
 {
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
@@ -222,7 +221,7 @@ static ge::graphStatus InferShapeDense(gert::InferShapeContext *context)
     return result;
 }
 
-static ge::graphStatus InferDtypeDense(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDtypeJagged(gert::InferDataTypeContext *context)
 {
     // q dataType
     auto dataType = context->GetInputDataType(INDEX_T::INDEX_1);
@@ -237,9 +236,9 @@ static ge::graphStatus InferDtypeDense(gert::InferDataTypeContext *context)
 }
 
 namespace ops {
-class HstuDenseBackward : public OpDef {
+class HstuJaggedBackward : public OpDef {
 public:
-    explicit HstuDenseBackward(const char *name) : OpDef(name)
+    explicit HstuJaggedBackward(const char *name) : OpDef(name)
     {
         this->Input("grad")
             .ParamType(REQUIRED)
@@ -308,15 +307,15 @@ public:
             .ExtendCfgInfo("coreType.value", "AiCore")
             .ExtendCfgInfo("prebuildPattern.value", "Opaque");
 
-        this->SetInferShape(ge::InferShapeDense);
-        this->SetInferDataType(ge::InferDtypeDense);
+        this->SetInferShape(ge::InferShapeJagged);
+        this->SetInferDataType(ge::InferDtypeJagged);
 
-        this->AICore().SetTiling(optiling::TilingFuncDense);
+        this->AICore().SetTiling(optiling::TilingFuncJagged);
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend910_95", aicore_config);
     }
 };
 
-OP_ADD(HstuDenseBackward);
+OP_ADD(HstuJaggedBackward);
 } // namespace ops

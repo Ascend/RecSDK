@@ -243,7 +243,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
 
     const char* layout = "jagged";
 
-    EXEC_NPU_CMD(aclnnHstuDenseBackward,
+    EXEC_NPU_CMD(aclnnHstuJaggedBackward,
                  denseGrad,
                  denseQ,
                  denseK,
