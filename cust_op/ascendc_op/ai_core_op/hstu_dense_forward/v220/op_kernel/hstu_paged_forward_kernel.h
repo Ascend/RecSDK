@@ -269,7 +269,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     uint32_t taskId)
 {
     int isAtomic = 1;
-    if (this->computeTaskInfo[taskId].needClear) {
+    if (this->computeTaskInfo[taskId].isFirstSeqBlk) {
         isAtomic = 0;
     }
 
@@ -282,14 +282,23 @@ template <typename qType, typename oType, bool enableBias, bool isQkUseUb, Causa
 __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::ComputeQkMatmul(
     uint32_t taskId)
 {
-    this->DoQkMatmulImpl(this->computeTaskInfo[taskId].iOffset, this->computeTaskInfo[taskId].kvOffset, taskId,
-                         this->computeTaskInfo[taskId].computeASeqLen, this->computeTaskInfo[taskId].computeBSeqLen,
-                         this->headDim, this->midkGt);
+    if (this->computeTaskInfo[taskId].isStartFromZero) {
+        this->template DoQkMatmulImpl<true>(this->computeTaskInfo[taskId].iOffset,
+                            this->computeTaskInfo[taskId].kvOffset, taskId,
+                            this->computeTaskInfo[taskId].computeASeqLen, this->computeTaskInfo[taskId].computeBSeqLen,
+                            this->headDim, this->midkGt);
+    } else {
+        this->template DoQkMatmulImpl<false>(this->computeTaskInfo[taskId].iOffset,
+                            this->computeTaskInfo[taskId].kvOffset, taskId,
+                            this->computeTaskInfo[taskId].computeASeqLen, this->computeTaskInfo[taskId].computeBSeqLen,
+                            this->headDim, this->midkGt);
+    }
 }
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
 __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb, maskType>::ComputeAllBlock()
 {
+    this->scmQKTensor = this->scm.template AllocTensor<qType>();
     GetTaskInfo(this->sBlkId);
 
     uint32_t taskId = 0;
@@ -302,6 +311,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     uint32_t kSeqId = this->skSeqBlkId;
     uint32_t kSeqNum = 0;
 
+    this->scmQKTensor =  this->scm.template AllocTensor<qType>();
     for (auto blkId = this->sBlkId; blkId <= this->eBlkId; blkId++) {
         kSeqNum = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
         auto deltaQK = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].deltaQK;
@@ -373,7 +383,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
             }
 
             this->computeTaskInfo[nextTaskId] = this->computeTaskInfo[currentTaskId];
-            this->computeTaskInfo[nextTaskId].needClear = 0;
+            this->computeTaskInfo[nextTaskId].isFirstSeqBlk = 0;
             this->maskTaskInfo[nextTaskId] = this->maskTaskInfo[currentTaskId];
             taskId++;
         }
@@ -391,6 +401,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
         this->UpdateTaskInfo(taskId % COMPUTE_PIPE_NUM);
         kSeqId = 0;
     }
+    this->scm.FreeTensor(this->scmQKTensor);
     ComputeTailBlock(taskId, currentTaskId, preTaskId, transtaskId);
 }
 
@@ -399,6 +410,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     uint32_t taskId, uint32_t currentTaskId, uint32_t preTaskId, uint32_t transtaskId)
 {
     if (taskId == 0) {
+        this->scm.template FreeTensor<qType>(this->scmQKTensor);
         return;
     }
 
@@ -506,7 +518,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
             this->computeTaskInfo[taskId].headId * this->headDimV;
         this->computeTaskInfo[taskId].computeASeqLen = computeASeqLen;
     }
-    this->computeTaskInfo[taskId].needClear = 1;
+    this->computeTaskInfo[taskId].isFirstSeqBlk = 1;
 }
 
 template <typename qType, typename oType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>

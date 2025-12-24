@@ -118,7 +118,7 @@ public:
         int64_t n = (qkPosArgs.kSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
                                                                 (this->xDim1 - qkPosArgs.kSeqId * this->blockHeight);
 
-        this->DoQkMatmulImpl(qOffset, kOffset, qkPosArgs.taskId, m, n, this->xDim3);
+        this->template DoQkMatmulImpl<false>(qOffset, kOffset, qkPosArgs.taskId, m, n, this->xDim3);
     }
 
     __aicore__ inline void DoSvMatmul(SvMatmulArgs& svArgs)
