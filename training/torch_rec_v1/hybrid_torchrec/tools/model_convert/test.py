@@ -10,7 +10,7 @@ import itertools
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Iterator
+from typing import List, Iterator, Optional
 import logging
 import pytz
 import pytest
@@ -19,7 +19,7 @@ import torch
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.utils.data import DataLoader, IterableDataset
-from torch.optim import Adam, Adagrad, SGD, SparseAdam
+from torch.optim import Optimizer, Adam, Adagrad, SGD, SparseAdam
 import torchrec
 from torchrec import EmbeddingBagConfig, EmbeddingBagCollection, KeyedJaggedTensor, Pipelineable, JaggedTensor
 import torchrec.distributed
@@ -168,6 +168,7 @@ class ExecuteConfig:
     lookup_len: int
     device: str
     optim: torch.optim.Optimizer
+    load_paths: List[str]
 
 
 def execute_lookup(
@@ -183,6 +184,7 @@ def execute_lookup(
     lookup_lens = config.lookup_len
     device = config.device
     optim = config.optim
+    load_paths = config.load_paths
     setup_logging(rank, level=logging.INFO)
     logging.info("this test %s", os.path.basename(__file__))
     # generate dateset
@@ -192,8 +194,17 @@ def execute_lookup(
     )
 
     test_model = TestModel(rank, world_size, device)
-    golden_results = test_model.test_save_load(embedding_configs, dataset_loader_golden, sharding_type, optim)
-    test_results = test_model.test_save_load(embedding_configs, data_loader, sharding_type, optim, training=False)
+    test_config = TestConfig(
+        embedding_config=embedding_configs,
+        sharding_type=sharding_type,
+        optim=optim,
+    )
+    golden_results = test_model.test_save_load(
+        test_config, dataset_loader_golden, training=True, load_paths=load_paths
+    )
+    test_results = test_model.test_save_load(
+        test_config, data_loader, training=False, load_paths=load_paths
+    )
     batch_id = 0
     for golden, result in zip(golden_results, test_results):
         logging.info(f"============rank:{rank}, batch_id:{batch_id}===============")
@@ -246,6 +257,13 @@ def weight_init(param: torch.nn.Parameter):
     param.data.copy_(result)
 
 
+@dataclass
+class TestConfig:
+    embedding_config: List[EmbeddingBagConfig]
+    sharding_type: str
+    optim: Optimizer
+
+
 class TestModel:
     def __init__(self, rank, world_size, device):
         self.rank = rank
@@ -263,13 +281,14 @@ class TestModel:
 
     def test_save_load(
         self,
-        embedding_config: List[EmbeddingBagConfig],
+        config: TestConfig,
         dataloader: DataLoader[Batch],
-        sharding_type: str,
-        optim,
-        training: bool = True
+        training: bool = True,
+        load_paths: Optional[List[str]] = None,
     ):
-        dmp_model = self.get_dmp_model(embedding_config, optim, sharding_type)
+        if load_paths is None:
+            load_paths = ["save_dir/sparse"]
+        dmp_model = self.get_dmp_model(config)
         logging.debug(dmp_model)
         optimizer = CombinedOptimizer([dmp_model.fused_optimizer])
         results = []
@@ -294,7 +313,8 @@ class TestModel:
             # 加载数据
             model_converter = ModelConverter(rank)
             # 调用load接口，会直接将NPU保存的稀疏表数据（embedding, optimizer）加载到dmp_model中
-            model_converter.load(dmp_model, "save_dir/sparse", optim)
+            for load_path in load_paths:
+                model_converter.load(dmp_model, load_path, config.optim)
 
             # 重新查表
             dmp_model.eval()
@@ -306,7 +326,10 @@ class TestModel:
 
         return results
 
-    def get_dmp_model(self, embedding_configs, optim, sharding_type):
+    def get_dmp_model(self, config: TestConfig):
+        embedding_configs = config.embedding_config
+        sharding_type = config.sharding_type
+        optim = config.optim
         table_num = len(embedding_configs)
         ebc = EmbeddingBagCollection(device="meta", tables=embedding_configs)
         num_features = sum([c.num_features() for c in embedding_configs])
@@ -353,6 +376,7 @@ params = {
     "lookup_len": [200],
     "device": ["cpu"],
     "optim": [Adagrad],
+    "load_paths": [["save_dir/sparse"]],
 }
 
 

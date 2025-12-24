@@ -137,7 +137,7 @@ class Saver:
         """
         保存纯显存模式稀疏表数据接口
         保存数据格式为：
-            {path}/timestamp/{table_name}/rank{rank_id}/
+            {path}/{table_name}/rank{rank_id}/
                 |--key
                     |--slice.attribute  # 详细数据为：[data_type_bytes, key_shape], 如：[8, 20000]
                     |--slice.data  # id list
@@ -166,13 +166,6 @@ class Saver:
         if not dist.is_initialized():
             raise ValueError("when save, the status of torch.distributed.is_initialized() must be True, but got False.")
         path = os.path.realpath(path)
-        dist.barrier()
-        timestamp_data = int(Saver._get_format_path()) if self.rank == 0 else 0
-        timestamp_tensor = torch.tensor([timestamp_data], device="npu")
-        dist.broadcast(timestamp_tensor, src=0)
-        timestamp_str = str(timestamp_tensor[0].item())
-        logging.info("Rank:%d, after broadcast, get current timestamp: %s", self.rank, timestamp_str)
-        path = os.path.join(path, timestamp_str)
 
         self.modules.clear()
         self._find_all_sharded_module_instance(module)
@@ -202,7 +195,6 @@ class Saver:
         self._find_all_sharded_module_instance(module)
         self._check_module_instance_len()
         path = os.path.realpath(path)
-        path = self.get_latest_load_path(path)
         check_path(path)
         for mod in self.modules:
             self._load_emb_and_optimizer(path, mod)

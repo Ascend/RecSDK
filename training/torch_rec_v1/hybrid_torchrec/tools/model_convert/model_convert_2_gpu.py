@@ -8,7 +8,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import List, Any, Union, LiteralString, Type
+from typing import List, Any, Union, LiteralString, Type, Optional
 
 import numpy as np
 import torch.nn
@@ -132,8 +132,8 @@ class ModelConverter:
     def load(
             self,
             model: torch.nn.Module,
-            path: str,
-            optimizer_type: Union[Type[Adam], Type[Adagrad], Type[SGD]]
+            path: List[str] | str,
+            optimizer_type: Union[Type[Adam], Type[Adagrad], Type[SGD]],
     ):
         """
         读取NPU已保存的模型数据，直接更新到传入的分片后的模型中
@@ -142,21 +142,23 @@ class ModelConverter:
             model (torch.nn.Module): DistributedModelParallel或者ShardedEmbeddingBagCollection
             path (str): NPU sparse Embedding保存路径. 相对路径和绝对路径均可
             optimizer_type (Union[Adam, Adagrad, SGD]): 稀疏表使用的优化器类型 class
-
         """
+        if isinstance(path, str):
+            paths = [path]
         self.modules.clear()
         self._find_all_sharded_module_instance(model)
         self._check_module_instance_len()
-        path = os.path.realpath(path)
-        path = self.get_latest_load_path(path)
+        
         if optimizer_type not in _OPTIMIZER_NUM_DICT.keys():
             raise ValueError(f"current optimizer type: {optimizer_type} is not supported,"
                              f" it must be in: {_OPTIMIZER_NUM_DICT.keys()}")
         self.optimizer_num = _OPTIMIZER_NUM_DICT[optimizer_type]
 
         # 加载数据
-        for mod in self.modules:
-            self._load_emb_and_optimizer(mod, path)
+        for path in paths:
+            path = os.path.realpath(path)
+            for mod in self.modules:
+                self._load_emb_and_optimizer(mod, path)
 
     def _load_emb_and_optimizer(self, mod: ShardedEmbeddingBagCollection, path: str):
         for table_index, table_config in enumerate(mod._embedding_bag_configs):

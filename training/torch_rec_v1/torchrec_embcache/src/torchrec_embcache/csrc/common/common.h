@@ -96,6 +96,7 @@ struct EmbConfig {
     int32_t initializerRandomPoolSize;
     int32_t seed;
     int64_t num_features;  // 每个表对应的feature name个数
+    bool isIncremental; // 是否增量存储
 };
 
 }  // namespace Embcache

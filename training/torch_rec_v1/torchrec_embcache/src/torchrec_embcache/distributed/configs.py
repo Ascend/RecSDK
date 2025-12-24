@@ -145,6 +145,7 @@ class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
     admit_and_evict_config: Optional[AdmitAndEvictConfig] = field(
         default_factory=lambda: AdmitAndEvictConfig()
     )
+    is_incremental: bool = False
 
     def __post_init__(self):
         check_embedding_config(self)
@@ -159,6 +160,8 @@ class EmbCacheEmbeddingConfig(EmbeddingConfig):
     admit_and_evict_config: Optional[AdmitAndEvictConfig] = field(
         default_factory=lambda: AdmitAndEvictConfig()
     )
+    is_incremental: bool = False
+
 
     def __post_init__(self):
         check_embedding_config(self)

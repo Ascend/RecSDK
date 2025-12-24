@@ -91,6 +91,16 @@ const std::unordered_map<int64_t, std::time_t>& FeatureFilter::GetFeatureTimesta
     return timestampRecordMap_;
 }
 
+void FeatureFilter::ClearFeatureCountMap()
+{
+    featureRecordMap_.clear();
+}
+
+void FeatureFilter::ClearFeatureTimestampMap()
+{
+    timestampRecordMap_.clear();
+}
+
 void FeatureFilter::LoadFeatureRecords(const std::vector<int64_t>& keys, std::vector<uint64_t>& counts)
 {
     if (keys.size() != counts.size()) {
