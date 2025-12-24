@@ -270,8 +270,8 @@ public:
             .Follow("grad", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Input("seq_offset_q")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64})
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("num_context")
             .ParamType(OPTIONAL)
@@ -279,9 +279,8 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("num_target")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16})
+            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
-
         this->Output("q_grad")
             .ParamType(OPTIONAL)
             .Follow("grad", FollowType::DTYPE)

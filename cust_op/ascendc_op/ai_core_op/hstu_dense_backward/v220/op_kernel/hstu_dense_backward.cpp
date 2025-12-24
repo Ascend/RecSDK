@@ -40,13 +40,13 @@ extern "C" __global__ __aicore__ void hstu_dense_backward(GM_ADDR grad, GM_ADDR 
         HstuDenseBackward::HstuDenseBackwardJaggedKernel<half, DTYPE_SEQ_OFFSET_Q> kernel;
         kernel.Compute(args);
     } else if (TILING_KEY_IS(2)) {
-        HstuDenseBackward::HstuDenseBackwardKernel<float> kernel;
+        HstuDenseBackward::HstuDenseBackwardKernel<float, DTYPE_SEQ_OFFSET_Q> kernel;
         kernel.Compute(args);
     } else if (TILING_KEY_IS(1)) {
-        HstuDenseBackward::HstuDenseBackwardKernel<bfloat16_t> kernel;
+        HstuDenseBackward::HstuDenseBackwardKernel<bfloat16_t, DTYPE_SEQ_OFFSET_Q> kernel;
         kernel.Compute(args);
     } else if (TILING_KEY_IS(0)) {
-        HstuDenseBackward::HstuDenseBackwardKernel<half> kernel;
+        HstuDenseBackward::HstuDenseBackwardKernel<half, DTYPE_SEQ_OFFSET_Q> kernel;
         kernel.Compute(args);
     }
 }

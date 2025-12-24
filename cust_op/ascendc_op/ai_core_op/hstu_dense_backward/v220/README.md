@@ -156,9 +156,9 @@ b) 算子参数说明：
 | v            | 输入      | Tensor (REQUIRED) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [s_b, N, D] | 同grad                                                       | V张量，Shape和类型与Q一致                                    |
 | mask         | 输入      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | [B, N, S, S]                                | 同grad                                                       | mask张量，当mask_type=3时必须提供，类型与grad一致            |
 | attn_bias    | 输入      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | [B, N, S, S]                                | 同grad                                                       | attn_bias张量，类型与grad一致                                |
-| seq_offset_q | 输入      | Tensor (OPTIONAL) | int64                                  | [BatchSize+1]                               | BatchSize∈[1, 2048]                                          | Jagged模式下必须提供，表示每个batch的序列长度偏移，至少包含2个元素 |
-| num_context  | 输入      | Tensor (OPTIONAL) | int32/int64                            | [B]                                         | B∈[1, 2048]                                                  | Context掩码长度，当提供时必须与num_target和target_group_size一起提供，且其中的值范围[1, 128] |
-| num_target   | 输入      | Tensor (OPTIONAL) | int32/int64                            | [B]                                         | B∈[1, 2048]                                                  | Target掩码长度，当提供时必须与num_context和target_group_size一起提供, 且其中的值范围[1, 512] |
+| seq_offset_q | 输入      | Tensor (OPTIONAL) | int32/int64                           | [BatchSize+1]                               | BatchSize∈[1, 2048]                                          | Jagged模式下必须提供，表示每个batch的序列长度偏移，至少包含2个元素 |
+| num_context  | 输入      | Tensor (OPTIONAL) | int32/int64                           | [B]                                         | B∈[1, 2048]                                                  | Context掩码长度，当提供时必须与num_target和target_group_size一起提供，且其中的值范围[1, 128] |
+| num_target   | 输入      | Tensor (OPTIONAL) | int32/int64                           | [B]                                         | B∈[1, 2048]                                                  | Target掩码长度，当提供时必须与num_context和target_group_size一起提供, 且其中的值范围[1, 512] |
 
 ## 属性参数
 

@@ -114,8 +114,8 @@ class TestHstuDeltaqkDemo:
                                                     f"head_num_k({head_nums_k}) ")
         h_qk_ratio = head_nums_q // head_nums_k
 
-        seq_lens = np.zeros((batch_size,)).astype(np.int64)
-        seq_lens_k = np.zeros((batch_size,)).astype(np.int64)
+        seq_lens = np.zeros((batch_size,)).astype(np.int32)
+        seq_lens_k = np.zeros((batch_size,)).astype(np.int32)
         for batch_id in range(batch_size):
             seq_lens[batch_id] = seq_offset[batch_id + 1] - seq_offset[batch_id]
             seq_lens_k[batch_id] = seq_offset_k[batch_id + 1] - seq_offset_k[batch_id]
@@ -181,7 +181,7 @@ class TestHstuDeltaqkDemo:
     def test_hstu_deltaqk_forward(self, batch_size, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
                                   data_type):
         qkv_shape_info = QKVShapeInfo(float_type=data_type,
-                                      int_type=torch.int64,
+                                      int_type=torch.int32,
                                       batch_size=batch_size,
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num,
@@ -205,7 +205,7 @@ class TestHstuDeltaqkDemo:
     def test_hstu_deltaqk_forward_128bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
                                         data_type):
         qkv_shape_info = QKVShapeInfo(float_type=data_type,
-                                      int_type=torch.int64,
+                                      int_type=torch.int32,
                                       batch_size=128,
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num,
@@ -229,7 +229,7 @@ class TestHstuDeltaqkDemo:
     def test_hstu_deltaqk_forward_2048bs(self, head_num, max_seq_len, head_dim, enable_bias, mask_type, silu_scale,
                                          data_type):
         qkv_shape_info = QKVShapeInfo(float_type=data_type,
-                                      int_type=torch.int64,
+                                      int_type=torch.int32,
                                       batch_size=2048,
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num,
@@ -257,7 +257,7 @@ class TestHstuDeltaqkDemo:
                                       mask_type, silu_scale, data_type):
         set_seed(1234)
         qkv_shape_info = QKVShapeInfo(float_type=data_type,
-                                      int_type=torch.int64,
+                                      int_type=torch.int32,
                                       batch_size=batch_size,
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num_q,
@@ -285,7 +285,7 @@ class TestHstuDeltaqkDemo:
                                             enable_bias, mask_type, silu_scale, data_type):
         set_seed(1234)
         qkv_shape_info = QKVShapeInfo(float_type=data_type,
-                                      int_type=torch.int64,
+                                      int_type=torch.int32,
                                       batch_size=batch_size,
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num_q,
@@ -317,7 +317,7 @@ class TestHstuDeltaqkDemo:
     def test_hstu_varlen_forward(self, batch_size, head_num_q, head_num_k, max_seq_len, head_dim_qk, head_dim_v,
                                  enable_bias, mask_type, silu_scale, data_type):
         qkv_shape_info = QKVShapeInfo(float_type=data_type,
-                                      int_type=torch.int64,
+                                      int_type=torch.int32,
                                       batch_size=batch_size,
                                       max_seq_len=max_seq_len,
                                       num_heads_q=head_num_q,

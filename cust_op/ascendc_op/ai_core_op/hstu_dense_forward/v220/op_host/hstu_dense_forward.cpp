@@ -109,17 +109,17 @@ public:
             .ParamType(OPTIONAL)
             .Follow("q", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
-        this->Input("seq_offset_q")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64})
+        this->Input("seq_offset_q") // 规避optional类型无法正常生成json文件的问题
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("seq_offset_k")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64})
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("seq_offset_t")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64})
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("kv_cache")
             .ParamType(OPTIONAL)
@@ -127,23 +127,23 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("page_offsets")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64})
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("page_ids")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64})
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("last_page_len")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64})
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("num_context")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64})
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("num_target")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT64})
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Output("attn_output")
             .ParamType(REQUIRED)

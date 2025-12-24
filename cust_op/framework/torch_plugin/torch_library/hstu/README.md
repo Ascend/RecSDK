@@ -172,10 +172,10 @@ torch.ops.mxrec.hstu_jagged_backward(Tensor grad, Tensor q, Tensor k, Tensor v, 
 | **maxSeqLen**       | int           | [1, 20480]  | 模型最大序列长度                                                            |
 | **maskType**        | int           | [0, 3]      | 同hstu_dense接口<br>当 `maskType = 3` 时，mask的第2维必须等于 `maxSeqLen`        |
 | **siluScale**       | float         | 任意值         | 默认值: 0.0<br>如果为0.0，则自动计算为 `1.0 / maxSeqLen`                         |
-| **seqOffset**       | Tensor[int64] | 1D张量，至少2个元素 | **必须提供**<br>表示每个batch的序列长度偏移<br>`batchSize = seqOffset.size(0) - 1` |
+| **seqOffset**       | Tensor[int64/int32] | 1D张量，至少2个元素 | **必须提供**<br>表示每个batch的序列长度偏移<br>`batchSize = seqOffset.size(0) - 1` |
 | **targetGroupSize** | int           | {1, 3}      | 可选，默认值: None<br>当提供时，值必须在 {1, 3} 中                                     |
-| **numContext**      | Tensor[int64] | [0, 256]    | 可选，用于控制创建context mask                                               |
-| **numTarget**       | Tensor[int64] | [0, 512]    | 可选，用于控制创建target mask                                                |
+| **numContext**      | Tensor[int64/int32] | [0, 256]    | 可选，用于控制创建context mask                                               |
+| **numTarget**       | Tensor[int64/int32] | [0, 512]    | 可选，用于控制创建target mask                                                |
 | **alpha**           | float         | 任意值         | 可选，默认值: 1.0                                                         |
 
 

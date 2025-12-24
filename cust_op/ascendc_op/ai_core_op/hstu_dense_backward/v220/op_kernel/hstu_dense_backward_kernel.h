@@ -37,7 +37,7 @@ struct BlockInfo {
     int64_t colLine;
 };
 
-template <typename qType>
+template <typename qType, typename oType>
 class HstuDenseBackwardKernel {
 public:
     __aicore__ inline HstuDenseBackwardKernel() {}
@@ -102,10 +102,10 @@ public:
             attnBias.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.attnBias), totalElementOfAttnBias);
         }
         if (enableContextMask) {
-            numContextGt.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(args.numContext), batchSize);
+            numContextGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(args.numContext), batchSize);
         }
         if (enableTargetMask) {
-            numTargetGt.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(args.numTarget), batchSize);
+            numTargetGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(args.numTarget), batchSize);
         }
         if (IfMask(maskType, MaskType::MASK_CUSTOM)) {
             mask.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.mask), totalElementOfAttnBias);
@@ -908,7 +908,6 @@ public:
         }
     }
 
-    template <typename oType>
     __aicore__ inline void DoCopyBlockQGrad(int64_t thisBatchIdx, int64_t headIdx, int64_t curSeqLen,
                                             GlobalTensor<oType>& seqOffsets)
     {
@@ -953,7 +952,6 @@ public:
         }
     }
 
-    template <typename oType>
     __aicore__ inline void DoCopyQGrad(GlobalTensor<oType>& seqOffsets)
     {
         int64_t batchIdx = GetBlockIdx();
@@ -1038,8 +1036,8 @@ public:
     GlobalTensor<qType> v;
     GlobalTensor<qType> attnBias;
     GlobalTensor<qType> mask;
-    GlobalTensor<int64_t> numContextGt;
-    GlobalTensor<int64_t> numTargetGt;
+    GlobalTensor<oType> numContextGt;
+    GlobalTensor<oType> numTargetGt;
 
     GlobalTensor<qType> qGrad;
     GlobalTensor<qType> kGrad;

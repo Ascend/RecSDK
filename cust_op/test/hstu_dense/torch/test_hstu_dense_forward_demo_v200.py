@@ -49,8 +49,8 @@ def skip_seq_len(seq_len):
 def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, data_type, mask_type):
     seq_lens = np.random.randint(1, max_seq_len + 1, batch_size)
 
-    seq_offset = torch.concat((torch.zeros((1,), dtype=torch.int64), \
-                               torch.cumsum(torch.from_numpy(seq_lens), axis=0))).to(torch.int64).numpy()
+    seq_offset = torch.concat((torch.zeros((1,), dtype=torch.int32), \
+                               torch.cumsum(torch.from_numpy(seq_lens), axis=0))).to(torch.int32).numpy()
 
     max_seq_len = np.max(seq_lens)
     total_seqs = np.sum(seq_lens)
@@ -149,7 +149,7 @@ class TestHstuJaggedDemo:
         head_dim = q.shape[2]
         batch_size = bias.shape[0]
 
-        seq_lens = np.zeros((batch_size,)).astype(np.int64)
+        seq_lens = np.zeros((batch_size,)).astype(np.int32)
         for batch_id in range(batch_size):
             seq_lens[batch_id] = seq_offset[batch_id + 1] - seq_offset[batch_id]
 
