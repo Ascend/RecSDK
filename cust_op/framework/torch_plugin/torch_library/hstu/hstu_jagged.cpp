@@ -37,7 +37,7 @@ at::Tensor hstu_jagged_forward_impl_npu(
 {
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
-    auto acSeqOffset = seqOffset.to(torch::kInt64);
+    auto acSeqOffset = seqOffset;
     auto batchsize = acSeqOffset.size(0) - 1;
     TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
 
@@ -48,8 +48,8 @@ at::Tensor hstu_jagged_forward_impl_npu(
     auto maskNpu = c10::value_or_else(mask, [] {return at::Tensor(); });
 
     auto _zeros = at::zeros({batchsize}, acSeqOffset.options());
-    auto acNumContext = numContext.value_or(_zeros).to(torch::kInt64);
-    auto acNumTarget = numTarget.value_or(_zeros).to(torch::kInt64);
+    auto acNumContext = numContext.value_or(_zeros);
+    auto acNumTarget = numTarget.value_or(_zeros);
     auto acTargetGroupSize = targetGroupSize.value_or(0);
     double realAlpha = alpha.value_or(1.0);
 
@@ -194,19 +194,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
         TORCH_CHECK(CheckInList(targetGroupSize.value_or(0), {1, 3}), "The targetGroupSize should be in [1, 3]");
     }
 
-    auto acSeqOffset = seqOffset.to(torch::kInt64);
+    auto acSeqOffset = seqOffset;
     TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
 
     auto acAttnBias = attnBias.value_or(at::Tensor());
     auto acMask = mask.value_or(at::Tensor());
     auto acNumContext = numContext.value_or(at::Tensor());
-    if (acNumContext.defined()) {
-        acNumContext = acNumContext.to(torch::kInt64);
-    }
     auto acNumTarget = numTarget.value_or(at::Tensor());
-    if (acNumTarget.defined()) {
-        acNumTarget = acNumTarget.to(torch::kInt64);
-    }
 
     auto acTargetGroupSize = targetGroupSize.value_or(0);
     double realAlpha = alpha.value_or(1.0);

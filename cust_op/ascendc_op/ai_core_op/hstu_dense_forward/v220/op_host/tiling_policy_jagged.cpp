@@ -52,7 +52,7 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     int64_t headNumV;
     int64_t headDimV;
 
-    auto seqOffsetQShape = context->GetOptionalInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
+    auto seqOffsetQShape = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
     batchSize = seqOffsetQShape.GetDim(0) - 1;
 
     OPS_CHECK((batchSize == 0 || batchSize > MAX_BATCH_SIZE),

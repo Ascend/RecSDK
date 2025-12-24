@@ -45,8 +45,8 @@ def generate_tensor(batch_size, max_seq_len, num_heads, attention_dim, data_type
 def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, mask_type):
     seq_lens = np.random.randint(1, max_seq_len + 1, (batch_size))
 
-    seq_offset = torch.concat((torch.zeros((1,), dtype=torch.int64), \
-                               torch.cumsum(torch.from_numpy(seq_lens), axis=0))).to(torch.int64).numpy()
+    seq_offset = torch.concat((torch.zeros((1,), dtype=torch.int32), \
+                               torch.cumsum(torch.from_numpy(seq_lens), axis=0))).to(torch.int32).numpy()
 
     total_seqs = np.sum(seq_lens)
 
@@ -212,7 +212,7 @@ class TestHstuAutogradJagged:
 
     @staticmethod
     def compare_jagged_bias(bias_grad, bias_grad_golden, seq_offset, loss):
-        seq_lens = torch.zeros(bias_grad.shape[0], dtype=torch.int64)
+        seq_lens = torch.zeros(bias_grad.shape[0], dtype=torch.int32)
         for i in range(seq_lens.shape[0]):
             seq_lens[i] = seq_offset[i + 1] - seq_offset[i]
 
@@ -234,7 +234,7 @@ class TestHstuAutogradJagged:
                                requires_grad=True).to("npu").to(data_type)
         v = torch.nn.Parameter(torch.Tensor(v).reshape(total_seqs, num_heads, attention_dim), \
                                requires_grad=True).to("npu").to(data_type)
-        seq_offset = torch.LongTensor(seq_offset).to("npu")
+        seq_offset = torch.Tensor(seq_offset).to("npu").to(torch.int32)
         bias = torch.nn.Parameter(torch.Tensor(bias), requires_grad=True).to("npu").to(data_type)
         mask = torch.Tensor(mask).to("npu").to(data_type)
 
@@ -263,7 +263,7 @@ class TestHstuAutogradJagged:
 
     def golden_op_exec(self, q, k, v, seq_offset, bias, mask, batch_size, max_seq_len, num_heads, attention_dim, \
                        enable_bias, mask_type, silu_scale, data_type):
-        seq_lens = np.zeros((batch_size,)).astype(np.int64)
+        seq_lens = np.zeros((batch_size,)).astype(np.int32)
         for batch_id in range(batch_size):
             seq_lens[batch_id] = seq_offset[batch_id + 1] - seq_offset[batch_id]
 

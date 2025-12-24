@@ -41,7 +41,7 @@ at::Tensor hstu_dense_forward_impl_npu(
     auto attnOutput = at::empty_like(denseQ);
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
-    const auto _acSeqOffset = at::Tensor();
+    const auto _acSeqOffset = at::empty(1, at::kInt);
     const auto _acSeqOffsetK = at::Tensor();
     const auto _acSeqOffsetT = at::Tensor();
     const auto _kvCacheNpu = at::Tensor();
@@ -187,7 +187,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
         attnBiasGradOutput = at::zeros({batchSize, headNum, biasGradSeqLen, biasGradSeqLen},
                                        at::device(denseGrad.device()).dtype(denseGrad.dtype()));
     }
-    auto _acSeqOffset = at::Tensor();
+    auto _acSeqOffset = at::empty(1, at::kInt);
     auto _denseNumContext = at::Tensor();
     auto _denseNumTarget = at::Tensor();
     auto _acTargetGroupSize = int();

@@ -490,13 +490,13 @@ def paged_hstu_attn_kernel(
                                                  silu_scale=1.0 / max_seq_len_q,
                                                  alpha=1.0 / (head_dim ** 0.5),
                                                  target_group_size=1,
-                                                 seq_offset=seqlen_offsets.npu().to(torch.int64),
-                                                 seq_offset_k=seqlen_offsets_k.npu().to(torch.int64),
-                                                 seq_offset_t=num_candidates_offsets.npu().to(torch.int64),
-                                                 page_offsets=torch.tensor(kv_raw_metadata[1]).npu().to(torch.int64),
-                                                 page_ids=torch.tensor(kv_raw_metadata[0]).npu().to(torch.int64),
-                                                 last_page_len=torch.tensor(kv_raw_metadata[2]).npu().to(torch.int64),
-                                                 num_target=num_candidates.npu().to(torch.int64))
+                                                 seq_offset=seqlen_offsets.npu().to(torch.int32),
+                                                 seq_offset_k=seqlen_offsets_k.npu().to(torch.int32),
+                                                 seq_offset_t=num_candidates_offsets.npu().to(torch.int32),
+                                                 page_offsets=torch.tensor(kv_raw_metadata[1]).npu().to(torch.int32),
+                                                 page_ids=torch.tensor(kv_raw_metadata[0]).npu().to(torch.int32),
+                                                 last_page_len=torch.tensor(kv_raw_metadata[2]).npu().to(torch.int32),
+                                                 num_target=num_candidates.npu().to(torch.int32))
     torch.npu.synchronize()
     output = attn_out_custom.cpu()
     golden = attn_out_golden.cpu()
