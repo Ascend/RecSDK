@@ -43,6 +43,8 @@ public:
     virtual void InsertOrAssign(const std::vector<int64_t>& keys, float* inEmbs, std::vector<float*> inOptims) = 0;
     virtual void RemoveEmbedding(const std::vector<int64_t>& keys) = 0;
     virtual void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) = 0;
+    virtual void ForEachIncrementalKey(const std::function<void(const int64_t, const float*)>& callback,
+                            const std::unordered_set<int64_t>* incrementalKeys = nullptr) = 0;
 
 protected:
     EmbConfig config_;
@@ -168,7 +170,8 @@ public:
         }
     }
 
-    void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) override
+    void ForEachKey(
+        const std::function<void(const int64_t, const float*)>& callback) override
     {
         std::lock_guard<std::mutex> lk(mtx_);
         if (this->table_.size() > EMB_SIZE_MAX) {
@@ -177,6 +180,29 @@ public:
         }
         for (const auto& [key, vec] : this->table_) {
             callback(key, vec.data());
+        }
+    }
+
+    void ForEachIncrementalKey(
+        const std::function<void(const int64_t, const float*)>& callback,
+        const std::unordered_set<int64_t>* incrementalKeys = nullptr) override
+    {
+        std::lock_guard<std::mutex> lk(mtx_);
+        if (this->table_.size() > EMB_SIZE_MAX) {
+            auto errMsg = Logger::Format("Emb size exceed limit, table:{}, max:{}.", config_.tableName, EMB_SIZE_MAX);
+            throw std::runtime_error(errMsg);
+        }
+        if (incrementalKeys == nullptr) {
+            auto errMsg = Logger::Format("Incremental keys is nullptr for table {}", config_.tableName);
+            throw std::runtime_error(errMsg);
+        }
+        for (int64_t key : *incrementalKeys) {
+            auto it = this->table_.find(key);
+            if (it == this->table_.end()) {
+                auto errMsg = Logger::Format("Key {} not found in table {}", key, config_.tableName);
+                throw std::runtime_error(errMsg);
+            }
+            callback(it->first, it->second.data());
         }
     }
 
@@ -353,15 +379,51 @@ public:
         }
     }
 
-    void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) override
+    void ForEachKey(
+        const std::function<void(const int64_t, const float*)>& callback) override
     {
+        // 全量模式：导出所有 key-value
         auto keyEmbList = this->fastHashMapPtr_->Export();
         if (keyEmbList.size() > EMB_SIZE_MAX) {
             auto errMsg = Logger::Format("Emb size exceed limit, table:{}, max:{}.", config_.tableName, EMB_SIZE_MAX);
             throw std::runtime_error(errMsg);
         }
-        for (auto key : keyEmbList) {
-            callback(key.first, (float*)key.second);
+        for (const auto& kv : keyEmbList) {
+            callback(kv.first, reinterpret_cast<const float*>(kv.second));
+        }
+    }
+
+    void ForEachIncrementalKey(
+        const std::function<void(const int64_t, const float*)>& callback,
+        const std::unordered_set<int64_t>* incrementalKeys = nullptr) override
+    {
+        // 增量模式：只遍历 incrementalKeys 中存在的 key
+        if (incrementalKeys == nullptr) {
+            auto errMsg = Logger::Format("Incremental keys is nullptr for table {}", config_.tableName);
+            throw std::runtime_error(errMsg);
+        }
+        for (int64_t key : *incrementalKeys) {
+            uint64_t addrValue = 0;
+
+            FkvState ret = fastHashMapPtr_->FindOrInsert(key, addrValue, [&]() {
+                const uint64_t currentSize = fastHashMapPtr_->GetCurrentSize();
+                if (HM_UNLIKELY(currentSize >= hostVocabSize_)) {
+                    LOG_ERROR("No enough space at host, currentSize: {}, hostVocabSize: {}", currentSize,
+                              hostVocabSize_);
+                    return BeforePutFuncState::BEFORE_NO_SPACE;
+                }
+                return memPoolPtr_->GetNewValueToBeInserted(addrValue);
+            });
+            if (ret == FkvState::FKV_FAIL) {
+                LOG_ERROR("fastHashMapPtr->FindOrInsert failed!");
+                throw std::runtime_error("fastHashMapPtr->FindOrInsert failed!");
+            }
+            if (ret == FkvState::FKV_BEFORE_PUT_FUNC_FAIL) {
+                LOG_ERROR("memory alloc failed!");
+                throw std::runtime_error("memory alloc failed!");
+            }
+
+            callback(key, reinterpret_cast<const float*>(addrValue));
         }
     }
 
