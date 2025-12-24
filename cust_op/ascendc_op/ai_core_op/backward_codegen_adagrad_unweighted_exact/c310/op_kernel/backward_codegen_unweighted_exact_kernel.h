@@ -259,23 +259,22 @@ public:
         int64_t total = outLenThisCore;
         int64_t remain = total;
         int thisAlignment = DATA_ALIGN_BYTES / sizeof(T);
+        LocalTensor<T> outLt = queOut.AllocTensor<T>();
+        LocalTensor<int32_t> clearLt = outLt.template ReinterpretCast<int32_t>();
+        Duplicate<int32_t>(clearLt, (int32_t)0, blockLen);
+        queOut.EnQue(outLt);
+        LocalTensor<T> newOutLt = queOut.DeQue<T>();
         while (remain > 0) {
             int64_t thisLen = blockLen;
             if (remain < thisLen) {
-                thisLen = (remain + thisAlignment - 1) / thisAlignment * thisAlignment;
+                thisLen = (remain + thisAlignment - 1);
             }
-
-            LocalTensor<T> outLt = queOut.AllocTensor<T>();
-            LocalTensor<int32_t> clearLt = outLt.template ReinterpretCast<int32_t>();
-            Duplicate<int32_t>(clearLt, (int32_t)0, thisLen);
-            queOut.EnQue(outLt);
-
+            thisLen = thisLen / thisAlignment * thisAlignment;
             int thisOffset = total - remain;
-            LocalTensor<T> newOutLt = queOut.DeQue<T>();
             DataCopy(clearGt[outOffset + thisOffset], newOutLt, thisLen);
-            queOut.FreeTensor(newOutLt);
             remain = remain - thisLen;
         }
+        queOut.FreeTensor(newOutLt);
     }
 
     __aicore__ inline void ClearGrad()
