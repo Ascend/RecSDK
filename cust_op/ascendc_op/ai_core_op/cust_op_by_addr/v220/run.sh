@@ -43,7 +43,6 @@ validate_ai_core() {
     done
     echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
     exit 1
-    return 1
 }
 
 ai_core="ai_core-Ascend910B1"
@@ -72,8 +71,9 @@ fi
 sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
-sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
-
+if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
+    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+fi
 cd cmake
 
 # 判断当前目录下是否存在config.cmake文件

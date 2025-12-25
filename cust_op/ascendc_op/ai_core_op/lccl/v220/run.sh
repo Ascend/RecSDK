@@ -40,7 +40,6 @@ validate_ai_core() {
     done
     echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
     exit 1
-    return 1
 }
 
 ai_core="ai_core-Ascend910B1"
@@ -65,16 +64,18 @@ if [ ! -f "CMakePresets.json" ]; then
 fi
 
 sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
-sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
+    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+fi
 sed -i 's:"customize":"lccl":g' CMakePresets.json
 
 if [ -f "op_host/CMakeLists.txt" ]; then
     sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
 
-    line1=$(awk '/tartet_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt)
+    line1=$(awk '/target_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt)
     sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
     
-    line2=$(awk '/tartet_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt)
+    line2=$(awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt)
     sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
 fi
 
