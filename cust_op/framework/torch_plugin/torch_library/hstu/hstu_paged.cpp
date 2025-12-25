@@ -37,7 +37,8 @@ at::Tensor hstu_paged_forward_impl_npu(
     const at::Tensor& lastPageLen,
     const at::Tensor& numTarget,
     const int64_t targetGroupSize,
-    const c10::optional<double>& alpha)
+    const c10::optional<double>& alpha,
+    const bool deterministic = false)
 {
     check_tensor_non_empty(kvCache, "kv_cache");
     check_tensor_non_empty(pageIds, "page_ids");
@@ -68,7 +69,7 @@ at::Tensor hstu_paged_forward_impl_npu(
     TORCH_CHECK(!numTarget.defined() || targetGroupSize > 0,
                 "targetGroupSize must be greater than 0 when numTarget is defined");
 
-    auto attnOutput = at::zeros_like(denseQ);
+    auto attnOutput = deterministic ? at::empty_like(denseQ) : at::zeros_like(denseQ);
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
     double realAlpha = alpha.value_or(1.0);
 
@@ -100,6 +101,7 @@ at::Tensor hstu_paged_forward_impl_npu(
                  targetGroupSize,
                  isDeltaQK,
                  realAlpha,
+                 deterministic,
                  attnOutput);
     return attnOutput;
 }
@@ -124,10 +126,12 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
           "           Tensor last_page_len=None, "
           "           Tensor num_target=None, "
           "           int target_group_size=0, "
-          "           float? alpha=1.0) -> Tensor");
+          "           float? alpha=1.0, "
+          "           bool deterministic=False) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
+
 {
     m.impl("hstu_paged", TORCH_FN(hstu_paged_forward_impl_npu));
 }

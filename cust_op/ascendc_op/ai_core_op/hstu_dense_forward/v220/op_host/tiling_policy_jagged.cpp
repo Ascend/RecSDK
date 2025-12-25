@@ -111,6 +111,10 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
         OPS_CHECK(seqlenBatchSumQ != seqlenBatchSumK, OPS_LOG_E("", "Q, K seqLens mismatch"), return false);
     }
 
+    const bool *deterministic = context->GetAttrs()->GetAttrPointer<bool>(ATTR_INDEX_T::DETERMINISTIC_INDEX);
+    OPS_CHECK_PTR_NULL(deterministic, return false);
+    tiling.set_deterministic(*deterministic);
+
     auto numContext = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX);
     bool enableNumContext = (numContext != nullptr);
     tiling.set_enableNumContext(enableNumContext);

@@ -399,7 +399,8 @@ def paged_hstu_attn_kernel(
         head_dim,
         page_size,
         is_prev_hist,
-        mask_type
+        mask_type,
+        deterministic=False
 ):
     device = torch.npu.current_device()
 
@@ -496,7 +497,8 @@ def paged_hstu_attn_kernel(
                                                  page_offsets=torch.tensor(kv_raw_metadata[1]).npu().to(torch.int32),
                                                  page_ids=torch.tensor(kv_raw_metadata[0]).npu().to(torch.int32),
                                                  last_page_len=torch.tensor(kv_raw_metadata[2]).npu().to(torch.int32),
-                                                 num_target=num_candidates.npu().to(torch.int32))
+                                                 num_target=num_candidates.npu().to(torch.int32),
+                                                 deterministic=deterministic)
     torch.npu.synchronize()
     output = attn_out_custom.cpu()
     golden = attn_out_golden.cpu()
@@ -524,6 +526,7 @@ def paged_hstu_attn_kernel(
 @pytest.mark.parametrize("head_dim", [32, 128])
 @pytest.mark.parametrize("page_size", [32, 128, 256])
 @pytest.mark.parametrize("is_prev_hist", [True, False])
+@pytest.mark.parametrize("deterministic", [True, False])
 def test_paged_hstu(
         batch_size,
         dtype,
@@ -532,7 +535,8 @@ def test_paged_hstu(
         num_heads,
         head_dim,
         page_size,
-        is_prev_hist
+        is_prev_hist,
+        deterministic
 ):
     paged_hstu_attn_kernel(
         batch_size,
@@ -544,7 +548,8 @@ def test_paged_hstu(
         head_dim,
         page_size,
         is_prev_hist,
-        MaskType.CUSTOM
+        MaskType.CUSTOM,
+        deterministic
     )
 
 
@@ -565,6 +570,7 @@ def test_paged_hstu(
 @pytest.mark.parametrize("page_size", [32])
 @pytest.mark.parametrize("is_prev_hist", [True, False])   # qk不等长
 @pytest.mark.parametrize("mask_type", [MaskType.TRIL, MaskType.NONE, MaskType.CUSTOM])
+@pytest.mark.parametrize("deterministic", [True, False])
 def test_paged_hstu_gqa(
         batch_size,
         dtype,
@@ -575,7 +581,8 @@ def test_paged_hstu_gqa(
         head_dim,
         page_size,
         is_prev_hist,
-        mask_type
+        mask_type,
+        deterministic
 ):
     paged_hstu_attn_kernel(
         batch_size,
@@ -587,7 +594,8 @@ def test_paged_hstu_gqa(
         head_dim,
         page_size,
         is_prev_hist,
-        mask_type
+        mask_type,
+        deterministic
     )
 
 

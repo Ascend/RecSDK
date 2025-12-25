@@ -54,87 +54,47 @@ __aicore__ inline void InvokeHstuOpImpl(const HstuDenseForward::Args& args)
 #endif
 
 #include "kernel_operator.h"
+#include "hstu_kernel_tiling_key.h"
 
-extern "C" __global__ __aicore__ void hstu_dense_forward(GM_ADDR q,
-                                                         GM_ADDR k,
-                                                         GM_ADDR v,
-                                                         GM_ADDR mask,
-                                                         GM_ADDR attnBias,
-                                                         GM_ADDR seq_offset_q,
-                                                         GM_ADDR seq_offset_k,
-                                                         GM_ADDR seq_offset_t,
-                                                         GM_ADDR kv_cache,
-                                                         GM_ADDR page_offsets,
-                                                         GM_ADDR page_ids,
-                                                         GM_ADDR last_page_len,
-                                                         GM_ADDR num_context,
-                                                         GM_ADDR num_target,
-                                                         GM_ADDR attnOutput,
-                                                         GM_ADDR workspace,
-                                                         GM_ADDR tiling)
+template<int maskedType, bool enableBias, bool isQkUseUb, int typeTilingKey, bool deterministic>
+__global__ __aicore__ void hstu_dense_forward(GM_ADDR q,
+                                              GM_ADDR k,
+                                              GM_ADDR v,
+                                              GM_ADDR mask,
+                                              GM_ADDR attnBias,
+                                              GM_ADDR seq_offset_q,
+                                              GM_ADDR seq_offset_k,
+                                              GM_ADDR seq_offset_t,
+                                              GM_ADDR kv_cache,
+                                              GM_ADDR page_offsets,
+                                              GM_ADDR page_ids,
+                                              GM_ADDR last_page_len,
+                                              GM_ADDR num_context,
+                                              GM_ADDR num_target,
+                                              GM_ADDR attnOutput,
+                                              GM_ADDR workspace,
+                                              GM_ADDR tiling)
 {
+    GET_TILING_DATA(tiling_data, tiling);
     HstuDenseForward::Args args{q, k, v, mask, attnBias, seq_offset_q, seq_offset_k,
                                 seq_offset_t, kv_cache, page_offsets, page_ids, last_page_len,
                                 num_context, num_target, attnOutput, workspace, tiling};
 #ifdef SUPPORT_V200
-    if (TILING_KEY_IS(0)) {
+    if constexpr (typeTilingKey == HstuDenseForward::NORMAL_TILING_KEY) {
         InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernelv200<half>>(args);
     }
 #else
-    if (TILING_KEY_IS(NORMAL_QK_WS_NO_BIAS_CAUSAL_MASK)) {  // normal
+    if constexpr (typeTilingKey == HstuDenseForward::NORMAL_TILING_KEY) {
         InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
-            DTYPE_Q, false, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
-    } else if (TILING_KEY_IS(NORMAL_QK_WS_BIAS_CAUSAL_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
-            DTYPE_Q, true, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
-    } else if (TILING_KEY_IS(NORMAL_QK_WS_NO_BIAS_NO_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
-            DTYPE_Q, false, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
-    } else if (TILING_KEY_IS(NORMAL_QK_WS_BIAS_NO_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
-            DTYPE_Q, true, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
-    } else if (TILING_KEY_IS(NORMAL_QK_WS_NO_BIAS_CUSTOM_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
-            DTYPE_Q, false, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
-    } else if (TILING_KEY_IS(NORMAL_QK_WS_BIAS_CUSTOM_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
-            DTYPE_Q, true, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
-    } else if (TILING_KEY_IS(JAGGED_QK_WS_NO_BIAS_CAUSAL_MASK)) {  // jagged
+            DTYPE_Q, enableBias, isQkUseUb, static_cast<HstuDenseForward::CausalMaskT>(maskedType)>>(args);
+    } else if constexpr (typeTilingKey == HstuDenseForward::JAGGED_TILING_KEY) {
         InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
-    } else if (TILING_KEY_IS(JAGGED_QK_WS_BIAS_CAUSAL_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
-    } else if (TILING_KEY_IS(JAGGED_QK_WS_NO_BIAS_NO_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
-    } else if (TILING_KEY_IS(JAGGED_QK_WS_BIAS_NO_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
-    } else if (TILING_KEY_IS(JAGGED_QK_WS_NO_BIAS_CUSTOM_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
-    } else if (TILING_KEY_IS(JAGGED_QK_WS_BIAS_CUSTOM_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
-    } else if (TILING_KEY_IS(PAGED_QK_WS_NO_BIAS_CAUSAL_MASK)) {  // paged
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, enableBias, isQkUseUb, deterministic,
+            static_cast<HstuDenseForward::CausalMaskT>(maskedType)>>(args);
+    } else if constexpr (typeTilingKey == HstuDenseForward::PAGED_TILING_KEY) {
         InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
-    } else if (TILING_KEY_IS(PAGED_QK_WS_BIAS_CAUSAL_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_TRIL>>(args);
-    } else if (TILING_KEY_IS(PAGED_QK_WS_NO_BIAS_NO_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
-    } else if (TILING_KEY_IS(PAGED_QK_WS_BIAS_NO_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_NONE>>(args);
-    } else if (TILING_KEY_IS(PAGED_QK_WS_NO_BIAS_CUSTOM_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, false, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
-    } else if (TILING_KEY_IS(PAGED_QK_WS_BIAS_CUSTOM_MASK)) {
-        InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, true, false, HstuDenseForward::CausalMaskT::MASK_CUSTOM>>(args);
+            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, enableBias, isQkUseUb, deterministic,
+            static_cast<HstuDenseForward::CausalMaskT>(maskedType)>>(args);
     }
 #endif
 }
