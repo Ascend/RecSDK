@@ -71,7 +71,9 @@ fi
 sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
-sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
+    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+fi
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
@@ -89,10 +91,10 @@ sed -i "${line}s/True/False/g" CMakePresets.json
 # 增加LOG_CPP编译选项支持错误日志打印
 sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
 
-line1=`awk '/tartet_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt`
+line1=`awk '/target_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt`
 sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
 
-line2=`awk '/tartet_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
+line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
 sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
 
 bash build.sh

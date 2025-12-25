@@ -21,9 +21,27 @@ msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
 parent_dir=$(dirname "$msopgen_path")
 export PATH=$parent_dir:$PATH
 
+
+VALID_AI_CORES=(
+    "ai_core-Ascend910_95"
+)
+
+validate_ai_core() {
+    local input_core="$1"
+    for valid_core in "${VALID_AI_CORES[@]}"; do
+        if [ "$input_core" = "$valid_core" ]; then
+            echo "ai_core $input_core"
+            return 0
+        fi
+    done
+    echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
+    exit 1
+}
+
 ai_core="ai_core-Ascend910_95"
 if [ "$#" -eq 1 ]; then
     ai_core="$1"
+    validate_ai_core $ai_core
 fi
 
 # 利用msopgen生成可编译文件
@@ -48,7 +66,9 @@ fi
 sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
-sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
+    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+fi
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误

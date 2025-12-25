@@ -43,7 +43,6 @@ validate_ai_core() {
     done
     echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
     exit 1
-    return 1
 }
 
 ai_core="ai_core-Ascend910B1"
@@ -71,7 +70,9 @@ fi
 sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
-sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
+    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+fi
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
