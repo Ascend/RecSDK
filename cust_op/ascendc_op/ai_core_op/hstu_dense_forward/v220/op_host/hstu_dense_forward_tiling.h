@@ -50,6 +50,7 @@ TILING_DATA_FIELD_DEF(bool, enableNumContext);
 TILING_DATA_FIELD_DEF(bool, enableNumTarget);
 TILING_DATA_FIELD_DEF(int64_t, targetGroupSize);
 TILING_DATA_FIELD_DEF(float, alpha);
+TILING_DATA_FIELD_DEF(bool, deterministic);
 
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(HstuDenseForward, HstuDenseForwardTilingData)

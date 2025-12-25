@@ -82,7 +82,7 @@ def jagged_data_gen(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo, enable
 
 class TestHstuJaggedDemo:
     @staticmethod
-    def custom_op_exec(qkv_tensors, mask_tensors, rel_attn_bias, silu_scale, max_seq_len):
+    def custom_op_exec(qkv_tensors, mask_tensors, rel_attn_bias, silu_scale, max_seq_len, deterministic=False):
         q, k, v, seq_offset = qkv_tensors
         mask_type, mask, num_context, num_target, target_group_size = mask_tensors
 
@@ -97,7 +97,7 @@ class TestHstuJaggedDemo:
         # 函数重载：hstu_jagged -> hstu_jagged.equal
         output = torch.ops.mxrec.hstu_jagged(
             q_npu, k_npu, v_npu, mask_npu, bias_npu, mask_type, max_seq_len, silu_scale, seq_offset,
-            num_context, num_target, target_group_size
+            num_context, num_target, target_group_size, deterministic=deterministic
         )
         torch.npu.synchronize()
         return output.cpu()
@@ -154,11 +154,11 @@ class TestHstuJaggedDemo:
         torch.npu.synchronize()
         return attn_output.to(data_type)
 
-    def execute(self, qkv_shape_info, mask_info, enable_bias, silu_scale, repeat_offset=False):
+    def execute(self, qkv_shape_info, mask_info, enable_bias, silu_scale, repeat_offset=False, deterministic=False):
         qkv_tensors, mask_tensors, rel_attn_bias, max_seq_len = jagged_data_gen(qkv_shape_info, mask_info, enable_bias,
                                                                                 repeat_offset)
 
-        output = self.custom_op_exec(qkv_tensors, mask_tensors, rel_attn_bias, silu_scale, max_seq_len)
+        output = self.custom_op_exec(qkv_tensors, mask_tensors, rel_attn_bias, silu_scale, max_seq_len, deterministic)
         golden = self.golden_op_exec(qkv_tensors, mask_tensors, rel_attn_bias, silu_scale, max_seq_len, repeat_offset)
 
         data_type = qkv_shape_info.float_type
@@ -479,3 +479,38 @@ class TestHstuJaggedDemo:
                                 max_num_target=max_num_target,
                                 target_group_size=target_group_size)
         self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)
+
+    @pytest.mark.parametrize("batch_size", [1, 16])
+    @pytest.mark.parametrize("head_num", [2, 4])
+    @pytest.mark.parametrize("max_seq_len", [15, 1024])
+    @pytest.mark.parametrize("head_dim", [16, 128])
+    @pytest.mark.parametrize("enable_bias", [True, False])
+    @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
+    @pytest.mark.parametrize("float_data_type", [torch.float32, torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("int_data_type", [torch.int64])
+    @pytest.mark.parametrize("mask_type, target_group_size, max_num_context, max_num_target", [
+        (MaskType.NONE, 0, 0, 0),
+        (MaskType.CUSTOM, 0, 0, 0),
+        (MaskType.TRIL, 1, 0, 30),
+        (MaskType.TRIL, 3, 0, 30),
+        (MaskType.TRIL, 1, 6, 0),
+        (MaskType.TRIL, 3, 6, 0),
+        (MaskType.TRIL, 1, 6, 30),
+        (MaskType.TRIL, 3, 6, 30),
+    ])
+    def test_hstu_jagged_deterministic_forward(self, batch_size, head_num, max_seq_len, head_dim, enable_bias,
+                                 mask_type, silu_scale, float_data_type, int_data_type, target_group_size,
+                                 max_num_context, max_num_target):
+        qkv_shape_info = QKVShapeInfo(float_type=float_data_type,
+                                      int_type=int_data_type,
+                                      batch_size=batch_size,
+                                      max_seq_len=max_seq_len,
+                                      num_heads_q=head_num,
+                                      num_heads_k=head_num,
+                                      head_dim_qk=head_dim,
+                                      head_dim_v=head_dim)
+        mask_info = MaskGenInfo(mask_type=mask_type,
+                                max_num_context=max_num_context,
+                                max_num_target=max_num_target,
+                                target_group_size=target_group_size)
+        self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale, deterministic=True)

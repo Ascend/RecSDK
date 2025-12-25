@@ -141,7 +141,7 @@ __aicore__ inline void CopySVB1(const LocalTensor<int8_t>& bMatrix, const __gm__
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
 };
 
-template <typename qType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
+template <typename qType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
 class HstuDenseForwardKernelPattenBsnd {
 public:
     static constexpr int ElementOfBlock = DATA_ALIGN_BYTES / sizeof(qType);
@@ -262,18 +262,20 @@ public:
             pipe->InitBuffer(qkQueInB, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
         }
         
-        AscendC::SyncAll<true>();
-        if (GetBlockIdx() == 0) {
-            uint32_t zeroNumber = coreNum * DATA_ALIGN_BYTES / sizeof(int32_t);
-            auto zeroBuff = queOut.template AllocTensor<int32_t>();
-            Duplicate<int32_t>(zeroBuff, 0, zeroNumber);
-            queOut.EnQue(zeroBuff);
-            auto overBuff = queOut.DeQue<int32_t>();
-            pipe_barrier(PIPE_ALL);
-            DataCopy(syncGm, overBuff, zeroNumber);
-            queOut.template FreeTensor<int32_t>(overBuff);
+        if constexpr (deterministic) {
+            SyncAll<true>();
+            if (GetBlockIdx() == 0) {
+                uint32_t zeroNumber = coreNum * DATA_ALIGN_BYTES / sizeof(int32_t);
+                auto zeroBuff = queOut.template AllocTensor<int32_t>();
+                Duplicate<int32_t>(zeroBuff, 0, zeroNumber);
+                queOut.EnQue(zeroBuff);
+                auto overBuff = queOut.DeQue<int32_t>();
+                pipe_barrier(PIPE_ALL);
+                DataCopy(syncGm, overBuff, zeroNumber);
+                queOut.template FreeTensor<int32_t>(overBuff);
+            }
+            SyncAll<true>();
         }
-        AscendC::SyncAll<true>();
     }
 
     __aicore__ inline void CastQtype2Float(LocalTensor<float> distTensor, LocalTensor<qType> srcTensor,
@@ -794,7 +796,7 @@ public:
             dstCopyParams.blockCount = static_cast<uint16_t>(thisLen / vDim);
             int64_t thisLineOffset = (total - remain) / vDim;
             int64_t outOffset = outStartOffset + thisLineOffset * xDim2 * vDim;
-            if constexpr (needAtomic ==true) {
+            if constexpr (needAtomic) {
                 AscendC::SetAtomicAdd<qType>();
                 AscendC::SetAtomicType<qType>();
                 DataCopy(attnOutputGt[outOffset], newOutLt, dstCopyParams);

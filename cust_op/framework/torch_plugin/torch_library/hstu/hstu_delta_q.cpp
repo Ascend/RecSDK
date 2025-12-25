@@ -26,7 +26,8 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
                                         const int64_t maxSeqLenK,
                                         const double siluScale,
                                         const at::Tensor& seqOffset,
-                                        const at::Tensor& seqOffsetK)
+                                        const at::Tensor& seqOffsetK,
+                                        const bool deterministic = false)
 {
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
@@ -45,7 +46,8 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
     TORCH_CHECK(MaxSeqLenCheck(maxSeqLenK), "maxSeqLenK check failed");
     TORCH_CHECK(MaskCheck(maskType, maskNpu.defined()), "maskType check failed");
 
-    auto attnOutput = at::empty({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options());
+    auto attnOutput = deterministic ? at::empty({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options()) :
+                                      at::zeros({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options());
 
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
@@ -83,6 +85,7 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
                  _actTargetGroupSize,
                  isDeltaQK,
                  realAlpha,
+                 deterministic,
                  attnOutput);
     return attnOutput;
 }
@@ -99,7 +102,8 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
           "                  int max_seq_len_k=0, "
           "                  float silu_scale=0.0, "
           "                  Tensor seq_offset=None, "
-          "                  Tensor seq_offset_k=None) -> Tensor");
+          "                  Tensor seq_offset_k=None, "
+          "                  bool deterministic=False) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)

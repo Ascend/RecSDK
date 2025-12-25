@@ -17,7 +17,10 @@ See the License for the specific language governing permissions and
 #include <cstdint>
 #include "register/op_def_registry.h"
 #include "matmul_check.h"
+#include "../op_kernel/hstu_kernel_tiling_key.h"
 #include "tiling_policy.h"
+
+
 using namespace MatmulTilingCheck;
 
 namespace HstuDenseForward {
@@ -161,6 +164,9 @@ bool TilingPolicy::TilingAttribute(gert::TilingContext* context, optiling::HstuD
     const float *alpha = attrs->GetAttrPointer<float>(ATTR_INDEX_T::ALPHA_INDEX);
     OPS_CHECK_PTR_NULL(alpha, return false);
 
+    const bool *deterministic = attrs->GetAttrPointer<bool>(ATTR_INDEX_T::DETERMINISTIC_INDEX);
+    OPS_CHECK_PTR_NULL(deterministic, return false);
+
     const uint32_t *targetGroupSize = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::TARGET_GROUP_SIZE_INDEX);
     OPS_CHECK_PTR_NULL(targetGroupSize, return false);
 
@@ -178,6 +184,7 @@ bool TilingPolicy::TilingAttribute(gert::TilingContext* context, optiling::HstuD
     tiling.set_maxSeqLenq(*maxSeqLen);
     tiling.set_maxSeqLenk(*maxSeqLenk);
     tiling.set_targetGroupSize(*targetGroupSize);
+    tiling.set_deterministic(*deterministic);
     return true;
 }
 
@@ -240,11 +247,15 @@ bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, optiling::Hstu
     // A2/A3默认为false，在A5上可以选择qk结果是否使用ub，通过(tiling.get_blockHeight() == BLOCK_HEIGHT)判断
     bool isQkUseUb = false;
     bool enableBias = tiling.get_enableBias();
+    bool enableDeteministic = tiling.get_deterministic();
     uint32_t maskType = tiling.get_maskType();
     uint32_t maskedType = maskType & 0x3;
     // 组合tiling key：
-    auto key = (maskedType << 4) | (enableBias << 3) | (isQkUseUb << 2) | typeTilingKey;
-    context->SetTilingKey(key);
+    
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias, isQkUseUb,
+                                                  typeTilingKey, enableDeteministic);
+    context->SetTilingKey(tilingKey);
+
     return true;
 }
 
@@ -260,6 +271,7 @@ void TilingPolicy::DumpTiling(optiling::HstuDenseForwardTilingData& tiling)
     OPS_LOG_D("maxSeqLen = %d\n", tiling.get_maxSeqLen());
     OPS_LOG_D("siluScale = %f\n", tiling.get_siluScale());
     OPS_LOG_D("alpha = %f\n", tiling.get_alpha());
+    OPS_LOG_D("deterministic = %f\n", tiling.get_deterministic());
 }
 
 }

@@ -205,6 +205,12 @@
                 "param_type": "required",
                 "type":"float",
                 "default_value": 1.0
+            },
+            {
+                "name": "deterministic",
+                "param_type": "optional",
+                "type":"bool",
+                "default_value": false
             }
         ]
     }

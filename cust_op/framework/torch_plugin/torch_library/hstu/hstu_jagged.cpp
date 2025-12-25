@@ -33,7 +33,8 @@ at::Tensor hstu_jagged_forward_impl_npu(
     const c10::optional<at::Tensor>& numContext,
     const c10::optional<at::Tensor>& numTarget,
     const c10::optional<int64_t>& targetGroupSize,
-    const c10::optional<double>& alpha)
+    const c10::optional<double>& alpha,
+    const bool deterministic = false)
 {
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
@@ -60,7 +61,8 @@ at::Tensor hstu_jagged_forward_impl_npu(
         TORCH_CHECK(maskNpu.size(2) == maxSeqLen, "mask size 2 should be equal to maxSeqLen\n");
     }
 
-    auto attnOutput = at::empty({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options());
+    auto attnOutput = deterministic ? at::empty({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options()):
+                                      at::zeros({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options());
 
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
@@ -98,6 +100,7 @@ at::Tensor hstu_jagged_forward_impl_npu(
                  acTargetGroupSize,
                  isDeltaQK,
                  realAlpha,
+                 deterministic,
                  attnOutput);
     return attnOutput;
 }
@@ -278,8 +281,9 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
           "                  Tensor seq_offset=None, "
           "                  Tensor? num_context=None, "
           "                  Tensor? num_target=None, "
-          "                  int? target_group_size=0,"
-          "                  float? alpha=1.0) -> Tensor");
+          "                  int? target_group_size=0, "
+          "                  float? alpha=1.0, "
+          "                  bool deterministic=False) -> Tensor");
     m.def("hstu_jagged_backward.equal(Tensor grad, "
           "                           Tensor q, "
           "                           Tensor k, "
@@ -382,7 +386,8 @@ at::Tensor hstu_jagged_autograd(const at::Tensor& q,
                                 const c10::optional<at::Tensor>& numContext,
                                 const c10::optional<at::Tensor>& numTarget,
                                 const c10::optional<int64_t>& targetGroupSize,
-                                const c10::optional<double>& alpha)
+                                const c10::optional<double>& alpha,
+                                const bool deterministic = false)
 {
     return HstuJaggedNpuFusion::apply(q, k, v, mask, attnBias, maskType,
                                       maxSeqLen, siluScale, seqOffset,

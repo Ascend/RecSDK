@@ -111,6 +111,10 @@ bool TilingPolicyPaged::TilingShape(gert::TilingContext* context, optiling::Hstu
         OPS_CHECK(seqLensQ != seqLensK, OPS_LOG_E("", "Q, K seqLens mismatch"), return false);
     }
 
+    const bool *deterministic = context->GetAttrs()->GetAttrPointer<bool>(ATTR_INDEX_T::DETERMINISTIC_INDEX);
+    OPS_CHECK_PTR_NULL(deterministic, return false);
+    tiling.set_deterministic(*deterministic);
+
     auto numContext = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX);
     if (numContext != nullptr) {
         auto numCtxShape = numContext->GetStorageShape();

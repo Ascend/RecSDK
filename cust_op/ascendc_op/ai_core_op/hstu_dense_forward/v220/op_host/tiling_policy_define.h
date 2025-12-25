@@ -61,6 +61,7 @@ namespace ATTR_INDEX_T {
     constexpr int TARGET_GROUP_SIZE_INDEX = 5;
     constexpr int IS_DELTA_QK_INDEX = 6;
     constexpr int ALPHA_INDEX = 7;
+    constexpr int DETERMINISTIC_INDEX = 8;
 }
 
 constexpr int NORMAL_TILING_KEY = 0;

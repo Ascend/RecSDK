@@ -56,6 +56,7 @@ at::Tensor hstu_dense_forward_impl_npu(
     const char *layout = "normal";
     const int64_t isDeltaQK = 0;
     double realAlpha = 1.0;
+    bool deterministic = false;
     EXEC_NPU_CMD(aclnnHstuDenseForward,
                  denseQ,
                  denseK,
@@ -79,6 +80,7 @@ at::Tensor hstu_dense_forward_impl_npu(
                  _acTargetGroupSize,
                  isDeltaQK,
                  realAlpha,
+                 deterministic,
                  attnOutput);
     return attnOutput;
 }

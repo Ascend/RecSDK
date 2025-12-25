@@ -79,7 +79,7 @@ def deltaqk_data_gen(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo, enabl
 
 class TestHstuDeltaqkDemo:
     @staticmethod
-    def custom_op_exec(qkv_tensors, mask_tensors, bias, silu_scale, max_seq_lens):
+    def custom_op_exec(qkv_tensors, mask_tensors, bias, silu_scale, max_seq_lens, deterministic):
         q, k, v, seq_offset, seq_offset_k = qkv_tensors
         max_seq_len_q, max_seq_len_k = max_seq_lens
         mask_type, invalid_attn_mask = mask_tensors
@@ -94,7 +94,7 @@ class TestHstuDeltaqkDemo:
 
         output = torch.ops.mxrec.hstu_jagged(
             q_npu, k_npu, v_npu, mask_npu, bias_npu, mask_type, max_seq_len_q, max_seq_len_k, silu_scale,
-            seq_offset, seq_offset_k
+            seq_offset, seq_offset_k, deterministic=deterministic
         )
         torch.npu.synchronize()
         return output.cpu().reshape(-1)
@@ -156,9 +156,9 @@ class TestHstuDeltaqkDemo:
         torch.npu.synchronize()
         return attn_output.to(data_type).reshape(-1)
 
-    def execute(self, qkv_shape_info, mask_info, enable_bias, silu_scale):
+    def execute(self, qkv_shape_info, mask_info, enable_bias, silu_scale, deterministic=False):
         qkv_tensors, mask_tensors, bias, max_seq_lens = deltaqk_data_gen(qkv_shape_info, mask_info, enable_bias)
-        output = self.custom_op_exec(qkv_tensors, mask_tensors, bias, silu_scale, max_seq_lens)
+        output = self.custom_op_exec(qkv_tensors, mask_tensors, bias, silu_scale, max_seq_lens, deterministic)
         golden = self.golden_op_exec(qkv_tensors, mask_tensors, bias, silu_scale, max_seq_lens)
 
         if qkv_shape_info.float_type == torch.bfloat16:
@@ -330,6 +330,33 @@ class TestHstuDeltaqkDemo:
                                 target_group_size=0)
         self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)
 
+
+    @pytest.mark.parametrize("batch_size", [1, 16])
+    @pytest.mark.parametrize("head_num", [2, 4])
+    @pytest.mark.parametrize("max_seq_len", [15, 1024])
+    @pytest.mark.parametrize("head_dim", [16, 128])
+    @pytest.mark.parametrize("enable_bias", [True, False])
+    @pytest.mark.parametrize("mask_type", [MaskType.TRIL, MaskType.NONE, MaskType.CUSTOM])
+    @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
+    @pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
+    @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
+    def test_hstu_deltaqk_deterministic_forward(self, batch_size, head_num, max_seq_len, head_dim, enable_bias,
+                                  mask_type, silu_scale, data_type):
+        qkv_shape_info = QKVShapeInfo(float_type=data_type,
+                                      int_type=torch.int64,
+                                      batch_size=batch_size,
+                                      max_seq_len=max_seq_len,
+                                      num_heads_q=head_num,
+                                      num_heads_k=head_num,
+                                      head_dim_qk=head_dim,
+                                      head_dim_v=head_dim)
+        mask_info = MaskGenInfo(mask_type=mask_type,
+                                max_num_context=0,
+                                max_num_target=0,
+                                target_group_size=0)
+        self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale, deterministic=True)
+
+
     @pytest.mark.parametrize("batch_size", [4])
     @pytest.mark.parametrize("head_num", [4])
     @pytest.mark.parametrize("max_seq_len", [512])
@@ -354,4 +381,5 @@ class TestHstuDeltaqkDemo:
                                 max_num_context=0,
                                 max_num_target=0,
                                 target_group_size=0)
+        
         self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)

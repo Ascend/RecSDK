@@ -135,7 +135,16 @@ bool TilingPolicyNormalv200::TilingKeySet(gert::TilingContext* context, optiling
 {
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT16) {
-        context->SetTilingKey(NORMAL_TILING_KEY);
+        bool isQkUseUb = false;
+        bool enableBias = tiling.get_enableBias();
+        bool enableDeteministic = tiling.get_deterministic();
+        uint32_t maskType = tiling.get_maskType();
+        uint32_t maskedType = maskType & 0x3;
+        // 组合tiling key：
+        
+        const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias, isQkUseUb,
+                                                      typeTilingKey, enableDeteministic);
+        context->SetTilingKey(tilingKey);
     } else {
         OPS_LOG_E("", "invalid datatype, only support fp16.\n");
         return false;

@@ -61,7 +61,7 @@ struct SVTransArgs {
 };
 
 template <typename qType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
-class HstuDenseForwardKernel : public HstuDenseForwardKernelPattenBsnd<qType, enableBias, isQkUseUb, maskType> {
+class HstuDenseForwardKernel : public HstuDenseForwardKernelPattenBsnd<qType, enableBias, false, isQkUseUb, maskType> {
 public:
     __aicore__ inline HstuDenseForwardKernel() {}
 
