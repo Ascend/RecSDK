@@ -1,0 +1,762 @@
+Subject: [PATCH] rab_module
+---
+Index: examples/hstu/modules/jagged_data.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/examples/hstu/modules/jagged_data.py b/examples/hstu/modules/jagged_data.py
+--- a/examples/hstu/modules/jagged_data.py	(revision 0b6025d31aef182acd925192d0e8e735c91a195c)
++++ b/examples/hstu/modules/jagged_data.py	(date 1765849160436)
+@@ -18,6 +18,7 @@
+ 
+ import fbgemm_gpu  # pylint: disable-unused-import
+ import torch
++import os
+ 
+ 
+ @dataclasses.dataclass
+@@ -53,8 +54,11 @@
+     contextual_seqlen_offsets: Optional[torch.Tensor] = None
+ 
+     has_interleaved_action: bool = False
++    timestamp : Optional[torch.Tensor] = None
+ 
+     def __post_init__(self):
++        self.timestamp: Optional[torch.Tensor] = torch.arange(start=200001010000, end=200001010000 + int(os.getenv("SEQ_LEN")) * self.seqlen.size(0),
++            dtype=torch.int64, device = self.seqlen.device).view(self.seqlen.size(0),-1)
+         if self.max_num_candidates == 0:
+             assert self.num_candidates is None
+             assert self.num_candidates_offsets is None
+@@ -233,4 +237,5 @@
+             if self.contextual_seqlen_offsets is not None
+             else self.contextual_seqlen_offsets,
+             has_interleaved_action=self.has_interleaved_action,
++            timestamp=self.timestamp.to(device=device),
+         )
+Index: examples/hstu/benchmark/inference_benchmark_random_2k.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples/hstu/benchmark/inference_benchmark_random_2k.py
+--- a/examples/hstu/benchmark/inference_benchmark_random_2k.py	(revision 0b6025d31aef182acd925192d0e8e735c91a195c)
++++ b/examples/hstu/benchmark/inference_benchmark_random_2k.py	(date 1766024041387)
+@@ -51,12 +51,24 @@
+ is_use_npu_input = int(os.getenv("USE_NPU_INPUT")) == 1
+ batch_size = int(os.getenv("BATCH_SIZE", "1"))
+ layer_num = int(os.getenv("LAYER_NUM", "1"))
++hidden_dim = int(os.getenv("HIDDEN_DIM", "1"))
++head_num = int(os.getenv("HEAD_NUM", "1"))
++head_dims = int(os.getenv("HEAD_DIM", "1"))
++seq_len = int(os.getenv("SEQ_LEN", "1"))
++candidate_len = int(os.getenv("CANDIDATE_LEN", "1"))
+ use_float16 = int(os.getenv("USE_FLOAT16", "0")) == 1
++use_float32 = int(os.getenv("USE_FLOAT32", "0")) == 1
++use_random_parm=int(os.getenv("USE_RANDOM_PARM", "0")) == 1
++parm_value=float(os.getenv("PARM_MAX_VALUE", "0.5"))
++
++torch.backends.cuda.matmul.allow_tf32 = True
++torch.backends.cudnn.allow_tf32 = True
++
+ 
+ def run_ranking_gr_inference():
+     max_batch_size = batch_size
+-    max_seqlen = 2048
+-    max_num_candidates = 100
++    max_seqlen = seq_len
++    max_num_candidates = candidate_len
+     max_incremental_seqlen = (max_seqlen - max_num_candidates) // 2
+ 
+     # context_emb_size = 1000
+@@ -75,14 +87,19 @@
+         [fc.max_sequence_length * len(fc.feature_names) for fc in feature_configs]
+     )
+ 
+-    hidden_dim_size = 4096
+-    num_heads = 16
+-    head_dim = 256
++    hidden_dim_size = hidden_dim
++    num_heads = head_num
++    head_dim = head_dims
+     num_layers = layer_num
+-    inference_dtype = torch.float16  if use_float16 else torch.bfloat16
++    if use_float16:
++        inference_dtype = torch.float16
++    elif use_float32:
++        inference_dtype = torch.float32
++    else:
++        inference_dtype = torch.bfloat16
+     hstu_cudagraph_configs = {
+         "batch_size": [2**i for i in range(math.ceil(math.log2(max_batch_size)) + 1)],
+-        "length_per_sequence": [i * 256 for i in range(8, 9)],
++        "length_per_sequence": [max_seqlen],
+     }
+ 
+ 
+@@ -92,7 +109,7 @@
+         num_attention_heads=num_heads,
+         head_dim=head_dim,
+         dtype=inference_dtype,
+-        max_seq_len=total_max_seqlen,
++        max_seq_len=max_seqlen,
+         max_batch_size=max_batch_size,
+     )
+ 
+@@ -127,10 +144,15 @@
+             cudagraph_configs=hstu_cudagraph_configs,
+         )
+ 
+-        cpu_state_dict = torch.load(model_path, map_location='cpu')
+-        model_predict.load_state_dict(cpu_state_dict)
+-   #     for param in model_predict.parameters():
+-    #        torch.nn.init.uniform_(param, a=-0.5, b=0.5)
++        if use_random_parm:
++            for param in model_predict.parameters():
++                torch.nn.init.uniform_(param, a=-parm_value, b=parm_value)
++            if is_save_input_and_output:
++                cpu_state_dict = {k: v.cpu() for k, v in model_predict.state_dict().items()}
++                torch.save(cpu_state_dict, model_path)  # 保存模型权重
++        else:
++            cpu_state_dict = torch.load(model_path, map_location='cpu')
++            model_predict.load_state_dict(cpu_state_dict)
+         model_predict.to(torch.cuda.current_device())
+ 
+         total_params = sum(param.numel() for name, param in model_predict.named_parameters()
+@@ -141,10 +163,14 @@
+ 
+         if use_float16:
+             model_predict.half()
++        elif use_float32:
++            pass
+         else:
+             model_predict.bfloat16()
+ 
+         model_predict.eval()
++        for layer in  model_predict._hstu_block._attention_layers:
++            layer.post_init()
+ 
+         data_generator = RandomInferenceDataGenerator(
+             feature_configs=feature_configs,
+Index: examples/hstu/modules/paged_hstu_infer_layer.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/modules/paged_hstu_infer_layer.py
+--- a/examples/hstu/modules/paged_hstu_infer_layer.py	(revision 0b6025d31aef182acd925192d0e8e735c91a195c)
++++ b/examples/hstu/modules/paged_hstu_infer_layer.py	(date 1765974446395)
+@@ -13,6 +13,7 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ import os
++from typing import Callable, Dict, List, Optional, Tuple, Union
+ 
+ import hstu_attn
+ import paged_kvcache_ops
+@@ -20,7 +21,7 @@
+ import torch.nn.functional as F
+ from configs import InferenceHSTUConfig, KVCacheConfig
+ from modules.jagged_data import JaggedData
+-
++from grouped_gemm import ops  # gpu依赖
+ 
+ def float8_matmul(input,line,bias_enable=False):
+     bias = None
+@@ -43,6 +44,7 @@
+     ).contiguous() / scale_a / scale_b
+ 
+ 
++
+ class SparseMOE(torch.nn.Module):
+     def __init__(
+             self,
+@@ -52,18 +54,66 @@
+             dtype
+         ):
+         super().__init__()
+-
+         self.expert_number = expert_number
+         self.experts = torch.nn.ModuleList([
+                 FFN_npu_swiglu(emb_dim, emb_dim * 4, dtype) for _ in range(expert_number)])
++
+         self.router = MOERouter(emb_dim, expert_number, top_k, dtype)
++        self.w1,self.w2,self.w3 = self.create_expert_weights(self.experts)
++
++    def load_parm_post_init(self):
++        self.w1, self.w2, self.w3 = self.create_expert_weights(self.experts)
++
++    def create_expert_weights(self,experts):
++        """创建多个专家的权重"""
++        w1_list = []
++        w2_list = []
++        w3_list = []
++
++        for item in experts:
++            w1 = item.w1.weight.unsqueeze(0)  # 不要转置，会带来内存不连续
++            w2 = item.w2.weight.unsqueeze(0)
++            w3 = item.w3.weight.unsqueeze(0)
++
++            w1_list.append(w1)
++            w2_list.append(w2)
++            w3_list.append(w3)
++
++        return torch.concat(w1_list), torch.concat(w2_list), torch.concat(w3_list)
++
++
++    def compute_ffn_with_grouped_matmul(self, expanded_x, w1_list, w2_list, w3_list, group_list):
++        w1_out = ops.gmm(expanded_x, w1_list, group_list,trans_b=True)
++        w3_out = ops.gmm(expanded_x, w3_list, group_list,trans_b=True)
++        gate = F.silu(w1_out)
++        combined = gate * w3_out
++        w2_out = ops.gmm(combined, w2_list, group_list,trans_b=True)
++
++        return w2_out
++
+ 
+     def forward(self, x):
++
++        # x shape is (b, s, hidden_dim)
++        seq_len, hidden_dim = x.size()
++        hidden_states = x.view(-1, hidden_dim)  # shape is (b * s, hidden_dim)
++
++        router_weights, expert_mask, selected_experts, group_list = self.router(hidden_states)
++        group_list = group_list.cpu()  # 注意这里这个参数只支持CPU，可能入不了图
++        selected_experts = selected_experts.to(torch.int32) # ops recommend
++        router_weights = router_weights.to(torch.float32)  # ops recommend
++
++        expend_x, idx = ops.permute(x, selected_experts)
++
++        expanded_permuted_rows = self.compute_ffn_with_grouped_matmul(expend_x, self.w1, self.w2, self.w3, group_list)
++
++        return ops.unpermute(expanded_permuted_rows, idx, router_weights)
++    def forward_naive(self, x):
+         # x shape is (b, s, hidden_dim)
+         seq_len, hidden_dim = x.size()
+         hidden_states = x.view(-1, hidden_dim)  # shape is (b * s, hidden_dim)
+ 
+-        router_weights, expert_mask = self.router(hidden_states)
++        router_weights, expert_mask,selected_experts, group_list = self.router(hidden_states)
+ 
+         final_hidden_states = torch.zeros(
+             (seq_len, hidden_dim),
+@@ -90,27 +140,30 @@
+ 
+     def forward(self, hidden_states):
+         # 计算路由logits
+-        router_logits = F.softmax(self.gate(hidden_states), dim=-1)   # shape is (b * s, dim)
++        router_logits = F.softmax(self.gate(hidden_states),dim=-1)  # shape is (b * s, dim)
+ 
+         # 计算topk的专家的输出
+         router_weights, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)  # shape都是 (b * s, top_k)
+ 
+         # 专家权重归一化
+-        router_weights = router_weights / router_weights.sum(dim=-1, keepdim=True)
++        router_weights = torch.softmax(router_weights, dim=-1)
+ 
+         # 生成专家掩码
+         expert_mask = F.one_hot(selected_experts,num_classes=self.expert_number).to(torch.int32)  # shape是 (b * s, top_k, expert_number)
++        group_list = expert_mask.sum(dim=1)
++        group_list = group_list.permute(1, 0)
++        group_list = group_list.sum(dim=1)
+         expert_mask = expert_mask.permute(2, 1, 0)  # (expert_number, top_k, b * s)
+ 
+-        return router_weights,  expert_mask
++        return router_weights,  expert_mask, selected_experts, group_list
+ 
+ # 专家ffn
+ class FFN_npu_swiglu(torch.nn.Module):
+     def __init__(self, dim: int, hidden_dim: int, dtype=torch.bfloat16, dropout: float=0):
+         super().__init__()
+-        self.w1 = torch.nn.Linear(dim, hidden_dim, bias=False, dtype=dtype)
+-        self.w2 = torch.nn.Linear(hidden_dim, dim, bias=False, dtype=dtype)
+-        self.w3 = torch.nn.Linear(dim, hidden_dim, bias=False, dtype=dtype)
++        self.w1 = torch.nn.Linear(dim, hidden_dim, bias=False, dtype=dtype).cuda()
++        self.w2 = torch.nn.Linear(hidden_dim, dim, bias=False, dtype=dtype).cuda()
++        self.w3 = torch.nn.Linear(dim, hidden_dim, bias=False, dtype=dtype).cuda()
+ 
+         self.use_matmul_fp8 = int(os.getenv("ENABLE_MATMUL_FP8")) == 1
+ 
+@@ -123,6 +176,163 @@
+             return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
+ 
+ 
++
++class RelativeBucketedTimeAndPositionBasedBias(torch.nn.Module):
++    """
++    Bucketizes timespans based on ts(next-item) - ts(current-item).
++    """
++
++    def __init__(
++        self,
++        max_seq_len: int,
++        num_buckets: int,
++        device,
++        dtype,
++        bucketization_fn: Callable[[torch.Tensor], torch.Tensor] = None,
++    ) -> None:
++        super().__init__()
++
++        self._max_seq_len: int = max_seq_len
++        self._ts_w = torch.nn.Parameter(
++            torch.empty(num_buckets + 1,device=device, dtype=dtype).normal_(mean=0, std=0.02),)
++        self._pos_w = torch.nn.Parameter(
++            torch.empty(2 * max_seq_len - 1, device=device,dtype=dtype).normal_(mean=0, std=0.02),)
++        self._num_buckets: int = num_buckets
++        self._bucketization_fn = bucketization_fn if bucketization_fn is not None else lambda x: (torch.log(
++            torch.abs(x).clamp(min=1.0)) / 0.301 / 1.).clamp(min=0).long()
++
++
++        # 构建位置偏置矩阵,初始化时构建
++        # 对位置权重进行填充和重复以构建相对位置偏置
++        position_weights_padded = F.pad(self._pos_w[:2 * max_seq_len - 1], [0, max_seq_len])  # [2*N-1 + N]
++        position_weights_tiled = position_weights_padded.repeat(max_seq_len)  # [N*(2*N-1+N)]
++        position_weights_trimmed = position_weights_tiled[..., :-max_seq_len]  # [N*(2*N-1+N)-N]
++        self.position_bias_matrix = position_weights_trimmed.reshape(1, max_seq_len, 3 * max_seq_len - 2)  # [1, N, 3*N-2]
++
++    def load_parm_post_init(self):  # 在模型加载，参数随机初始化后，_pos_w会改变，需要重新加载一次
++        position_weights_padded = F.pad(self._pos_w[:2 * self._max_seq_len - 1], [0, self._max_seq_len])  # [2*N-1 + N]
++        position_weights_tiled = position_weights_padded.repeat(self._max_seq_len)  # [N*(2*N-1+N)]
++        position_weights_trimmed = position_weights_tiled[..., :-self._max_seq_len]  # [N*(2*N-1+N)-N]
++        self.position_bias_matrix = position_weights_trimmed.reshape(1, self._max_seq_len,
++                                                                     3 * self._max_seq_len - 2)  # [1, N, 3*N-2]
++
++
++
++    def compute_relative_bucketed_time_and_position_bias(
++        self,
++        all_timestamps: torch.Tensor,
++        target_item_lengths: torch.Tensor,
++        history_lengths: torch.Tensor,
++        ts_w: torch.Tensor,
++        pos_w: torch.Tensor,
++        max_seq_len: int,
++        num_buckets: int,
++        bucketization_fn: Callable[[torch.Tensor], torch.Tensor],
++    ) -> torch.Tensor:
++        """
++        计算相对位置和时间的注意力偏置
++
++        Args:
++            all_timestamps: 时间戳张量 (batch_size, max_seq_len)
++            target_item_lengths: 目标项长度 (batch_size,)
++            history_lengths: 历史长度 (batch_size,)
++            ts_w: 时间权重张量 (num_buckets + 1,)
++            pos_w: 位置权重张量 (2 * max_seq_len - 1,)
++            max_seq_len: 最大序列长度
++            num_buckets: 时间桶数量
++            bucketization_fn: 桶化函数
++
++        Returns:
++            torch.Tensor: 相对注意力偏置矩阵 (batch_size, max_seq_len, max_seq_len)
++        """
++        batch_size = all_timestamps.size(0)
++
++
++
++        # 计算相对位置偏置的中心索引
++
++        # 使用原始时间戳（不需要扩展）
++        timestamps = all_timestamps
++        # 计算时间差并进行桶化（离散化）
++        # 使用因果掩码：计算每对位置之间的时间差
++        time_diff_matrix = timestamps.unsqueeze(2) - timestamps.unsqueeze(1)
++        bucketed_timestamps = torch.clamp(
++            bucketization_fn(time_diff_matrix),
++            min=0,
++            max=num_buckets,
++        ).detach()
++
++        # 提取相对位置偏置
++        center_index = (2 * max_seq_len - 1) // 2
++        if batch_size > 1:
++            relative_position_bias = self.position_bias_matrix.repeat(batch_size, 1, 1)[:, :, center_index:-center_index]  # [B, N, 3*N-2]
++        else:
++            relative_position_bias = self.position_bias_matrix[:, :,center_index:-center_index]  # [B, N, 3*N-2]
++
++
++
++        # 处理多目标场景：确保目标项具有相同的位置偏置
++        for batch_idx in range(batch_size):
++            target_length = target_item_lengths[batch_idx]
++            history_length = history_lengths[batch_idx]
++            # 获取当前批次的位置偏置矩阵
++            current_pos_bias = relative_position_bias[batch_idx]  # [max_seq_len, max_seq_len]
++
++
++            # 边赋值
++            current_pos_bias[history_length+1 : history_length+target_length, :] = \
++                current_pos_bias[history_length:history_length+1, :].repeat(target_length-1, 1)
++
++            #对角线赋值（核心：掩码*目标值 + 原矩阵*(1-掩码)，仅替换对角线） 替换arrange
++            sub_matrix = current_pos_bias[history_length:history_length + target_length, history_length:history_length + target_length]
++            diag_value = current_pos_bias[history_length, history_length]
++            identity_mask = torch.eye(target_length, dtype=sub_matrix.dtype, device=sub_matrix.device)
++            sub_matrix = sub_matrix * (1 - identity_mask) + diag_value * identity_mask
++
++
++            relative_position_bias[batch_idx] = current_pos_bias
++
++        # 计算时间偏置
++        relative_time_bias = torch.index_select(ts_w, dim=0, index=bucketed_timestamps.view(-1)).view(
++            batch_size, max_seq_len, max_seq_len)
++
++        # 返回位置偏置和时间偏置的和
++        # print("torch time_bias", relative_time_bias)
++        # return relative_time_bias
++        # print("torch relative_position_bias:", relative_position_bias)
++        # return relative_position_bias
++        return relative_position_bias + relative_time_bias
++
++    def forward(
++        self,
++        all_timestamps: torch.Tensor,
++        target_item_lengths: torch.Tensor,
++        history_lengths: torch.Tensor,
++    ) -> torch.Tensor:
++        """
++        计算相对位置和时间的注意力偏置
++
++        Args:
++            all_timestamps: 时间戳张量 (batch_size, max_seq_len)
++            target_item_lengths: 目标项长度 (batch_size,)
++            history_lengths: 历史长度 (batch_size,)
++
++        Returns:
++            torch.Tensor: 相对注意力偏置矩阵 (batch_size, max_seq_len, max_seq_len)
++        """
++        return self.compute_relative_bucketed_time_and_position_bias(
++            all_timestamps=all_timestamps,
++            target_item_lengths=target_item_lengths,
++            history_lengths=history_lengths,
++            ts_w=self._ts_w,
++            pos_w=self._pos_w,
++            max_seq_len=self._max_seq_len,
++            num_buckets=self._num_buckets,
++            bucketization_fn=self._bucketization_fn,
++        )
++
++
++
+ class PagedHSTUInferLayer(torch.nn.Module):
+     """
+     x = ln(x)
+@@ -246,7 +456,19 @@
+ 
+         self.use_ffn = int(os.getenv("USE_FFN")) == 1
+         self.use_moe = int(os.getenv("USE_MOE")) == 1
++        self.use_moe_op = int(os.getenv("USE_MOE_OP")) == 1
++        self.use_rab = int(os.getenv("USE_RAB"))
+         self.use_matmul_fp8 = int(os.getenv("ENABLE_MATMUL_FP8")) == 1
++        self.use_hstu_op = int(os.getenv("USE_HSTU_OP")) == 1
++        self.user_seq_len = int(os.getenv("SEQ_LEN"))
++        self.user_candidate_len = int(os.getenv("CANDIDATE_LEN"))
++        self.history_len = self.user_seq_len - self.user_candidate_len
++
++        #创建下三角矩阵
++        self.mask = torch.tril(torch.ones((1,1,self.user_seq_len,self.user_seq_len),dtype=dtype,device=device))
++        self.mask[:, :, :, self.history_len:] = 0
++        diag_idx = torch.arange(self.user_seq_len)
++        self.mask[:, :, diag_idx, diag_idx] = 1
+ 
+         if self.use_ffn:
+             if self.use_ffn:
+@@ -262,6 +484,19 @@
+                 dtype=dtype
+             )
+ 
++        if self.use_rab:
++            self.relative_bias = RelativeBucketedTimeAndPositionBasedBias(
++                max_seq_len= self._max_seqlen,
++                num_buckets=128,
++                device=device,
++                dtype=dtype,
++            )
++
++    def post_init(self):
++        if self.use_moe:
++            self.sparse_moe_linear.load_parm_post_init()
++        if self.use_rab:
++            self.relative_bias.load_parm_post_init()
+ 
+     def layer_output(self, num_tokens):
+         return self.output_buffer_[:num_tokens, ...]
+@@ -300,31 +535,40 @@
+             dim=-1,
+         )
+ 
+-        value = value.view(-1, self._num_heads, self._linear_dim_per_head)
+-        query = query.view(-1, self._num_heads, self._attention_dim_per_head)
+-        key = key.view(-1, self._num_heads, self._attention_dim_per_head)
++        rab = None
++        if self.use_rab:
++            bs = jd.seqlen_offsets.size(0) - 1
++            rab = self.relative_bias(jd.timestamp, [self.user_candidate_len] * bs, [self.history_len] * bs).unsqueeze(1)
++
++        if self.use_hstu_op :
++            value = value.view(-1, self._num_heads, self._linear_dim_per_head)
++            query = query.view(-1, self._num_heads, self._attention_dim_per_head)
++            key = key.view(-1, self._num_heads, self._attention_dim_per_head)
+ 
+-        jagged_attn_output = hstu_attn.hstu_attn_varlen_func(
+-            q=query,
+-            k=key,
+-            v=value,
+-            seq_offsets_q=jd.seqlen_offsets,
+-            seq_offsets_k=jd.seqlen_offsets,
+-            max_seqlen_q=self._max_seqlen,
+-            max_seqlen_k=self._max_seqlen,
+-            num_contexts= None,
+-            num_targets= None,
+-            target_group_size=1,
+-            window_size=(-1, 0),
+-            alpha=self._alpha*self._max_seqlen,
+-            rab= None,
+-            has_drab=False,
+-            is_delta_q=False,
+-        )
++            jagged_attn_output = hstu_attn.hstu_attn_varlen_func(
++                q=query,
++                k=key,
++                v=value,
++                seq_offsets_q=jd.seqlen_offsets,
++                seq_offsets_k=jd.seqlen_offsets,
++                max_seqlen_q=self._max_seqlen,
++                max_seqlen_k=self._max_seqlen,
++                num_contexts= None,
++                num_targets= None,
++                target_group_size=1,
++                window_size=(-1, 0),
++                alpha=self._alpha*self._max_seqlen,
++                rab= rab,
++                has_drab=False,
++                is_delta_q=False,
++            )
+ 
+-        jagged_attn_output = jagged_attn_output.view(
+-            -1, self._num_heads * self._linear_dim_per_head
+-        )
++            jagged_attn_output = jagged_attn_output.view(
++                -1, self._num_heads * self._linear_dim_per_head
++            )
++        else:
++            jagged_attn_output = self.hstu_golden_op(query,key,value, self.mask, rab, self.user_seq_len, query.shape[0], self._alpha, jd,self._num_heads)
++
+ 
+         parallel_input = user * F.layer_norm(
+             jagged_attn_output,
+@@ -340,8 +584,9 @@
+             layer_output = self._linear_proj(parallel_input)
+ 
+ 
+-        if self.use_moe:
+-            layer_output = self.sparse_moe_linear.forward(layer_output)
++        if self.use_moe :
++            layer_output = self.sparse_moe_linear.forward(layer_output) if self.use_moe_op else self.sparse_moe_linear.forward_naive(layer_output)
++
+ 
+ 
+         if self.use_ffn:  # 适用于专家数和选择数相等，简化
+@@ -400,31 +645,42 @@
+             dim=-1,
+         )
+ 
+-        value = value.view(-1, self._num_heads, self._linear_dim_per_head)
+-        query = query.view(-1, self._num_heads, self._attention_dim_per_head)
+-        key = key.view(-1, self._num_heads, self._attention_dim_per_head)
++        rab = None
++        if self.use_rab:
++            bs = jd.seqlen_offsets.size(0) - 1
++            rab = self.relative_bias(jd.timestamp, [self.user_candidate_len]* bs, [self.history_len] * bs).unsqueeze(1)
++
++        if self.use_hstu_op :
++            value = value.view(-1, self._num_heads, self._linear_dim_per_head)
++            query = query.view(-1, self._num_heads, self._attention_dim_per_head)
++            key = key.view(-1, self._num_heads, self._attention_dim_per_head)
+ 
+-        jagged_attn_output = hstu_attn.hstu_attn_varlen_func(
+-            q=query,
+-            k=key,
+-            v=value,
+-            seq_offsets_q=jd.seqlen_offsets,
+-            seq_offsets_k=jd.seqlen_offsets,
+-            max_seqlen_q=self._max_seqlen,
+-            max_seqlen_k=self._max_seqlen,
+-            num_contexts= None,
+-            num_targets= None,
+-            target_group_size=1,
+-            window_size=(-1, 0),
+-            alpha=self._alpha*self._max_seqlen,
+-            rab= None,
+-            has_drab=False,
+-            is_delta_q=False,
+-        )
++
++            jagged_attn_output = hstu_attn.hstu_attn_varlen_func(
++                q=query,
++                k=key,
++                v=value,
++                seq_offsets_q=jd.seqlen_offsets,
++                seq_offsets_k=jd.seqlen_offsets,
++                max_seqlen_q=self._max_seqlen,
++                max_seqlen_k=self._max_seqlen,
++                num_contexts= None,
++                num_targets= None,
++                target_group_size=1,
++                window_size=(-1, 0),
++                alpha=self._alpha*self._max_seqlen,
++                rab= rab,
++                has_drab=False,
++                is_delta_q=False,
++            )
+ 
+-        jagged_attn_output = jagged_attn_output.view(
+-            -1, self._num_heads * self._linear_dim_per_head
+-        )
++            jagged_attn_output = jagged_attn_output.view(
++                -1, self._num_heads * self._linear_dim_per_head
++            )
++        else:
++            jagged_attn_output = self.hstu_golden_op(query,key,value, self.mask, rab, self.user_seq_len, num_tokens, self._alpha, jd,self._num_heads)
++
++
+         parallel_input = user * F.layer_norm(
+             jagged_attn_output,
+             normalized_shape=[self._num_heads * self._linear_dim_per_head],
+@@ -467,7 +723,9 @@
+         layer_input = layer_input[:num_tokens, ...]
+         layer_out = self.output_buffer_[:num_tokens, ...]
+ 
+-        layer_out = self.sparse_moe_linear.forward(layer_out)
++
++        layer_out = self.sparse_moe_linear.forward(layer_out) if self.use_moe_op else self.sparse_moe_linear.forward_naive(layer_out)
++
+ 
+         if self._residual:
+             torch.add(
+@@ -477,3 +735,59 @@
+             )
+ 
+         return  self.output_buffer_[:num_tokens, ...]
++
++
++    def hstu_golden_op(self, q,k,v, init_mask, attn_bias, max_seq_len, actual_len, silu_scale, jaggedData, num_heads):
++
++        batchsize = jaggedData.seqlen_offsets.size(0) - 1
++        total_max_seq_len = max_seq_len * batchsize
++
++        q_dens = tensor_jagged_to_padded_dense(q, batchsize, jaggedData.seqlen_offsets, total_max_seq_len, max_seq_len, actual_len)
++        k_dens = tensor_jagged_to_padded_dense(k, batchsize, jaggedData.seqlen_offsets, total_max_seq_len, max_seq_len, actual_len)
++        v_dens = tensor_jagged_to_padded_dense(v, batchsize, jaggedData.seqlen_offsets, total_max_seq_len, max_seq_len, actual_len)
++
++        qk_attn = torch.einsum(
++            "bnhd,bmhd->bhnm",
++            q_dens.view(batchsize, max_seq_len, num_heads, -1),
++            k_dens.view(batchsize, max_seq_len, num_heads, -1),
++        )
++
++        if self.use_rab:
++            qk_attn = qk_attn + attn_bias
++
++        qk_attn = F.silu(qk_attn) * silu_scale
++        qk_attn = qk_attn * process_jagged_mask(init_mask,batchsize, jaggedData.seqlen_offsets, total_max_seq_len, actual_len, self.user_candidate_len)
++
++        attn_out = torch.einsum(
++                "bhnm,bmhd->bnhd",
++                qk_attn,
++                v_dens.view(batchsize, max_seq_len, num_heads, -1),
++        ).reshape(batchsize, max_seq_len, -1)
++
++        attn_output = tensor_dense_to_jagged(attn_out, batchsize, jaggedData.seqlen_offsets, total_max_seq_len, max_seq_len, actual_len)
++
++        return attn_output
++
++
++def process_jagged_mask(mask,  batchsize, seq_offset, total_max_seq_len, actual_len, user_candidate_len):
++    if actual_len == total_max_seq_len:
++        return mask
++    mask = mask.repeat(batchsize, 1, 1, 1)
++    history_len = total_max_seq_len // batchsize - user_candidate_len
++    for i in range(batchsize):
++        start = seq_offset[i] - user_candidate_len
++        mask[i, :, start:history_len, :] = 0
++        mask[i, :, :, start:history_len] = 0
++
++    return mask
++
++def tensor_jagged_to_padded_dense(x, batchsize, seq_offset, total_max_seq_len, max_seq_len, actual_len):
++    if actual_len == total_max_seq_len:
++        return x.reshape(batchsize, max_seq_len, -1)
++    return torch.ops.fbgemm.jagged_to_padded_dense(x, [seq_offset], [max_seq_len], 0.0)
++
++
++def tensor_dense_to_jagged(x,  batchsize, seq_offset, total_max_seq_len, max_seq_len, actual_len):
++    if actual_len == total_max_seq_len:
++        return x.reshape(batchsize * max_seq_len, -1)
++    return torch.ops.fbgemm.dense_to_jagged(x,[seq_offset],actual_len)[0]
+Index: examples/hstu/modules/hstu_block_inference.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modules/hstu_block_inference.py
+--- a/examples/hstu/modules/hstu_block_inference.py	(revision 0b6025d31aef182acd925192d0e8e735c91a195c)
++++ b/examples/hstu/modules/hstu_block_inference.py	(date 1766026067689)
+@@ -31,6 +31,7 @@
+     ):
+         super().__init__()
+         self.config = config
++        self._dtype = torch.float32
+         if self.config.bf16:
+             self._dtype = torch.bfloat16
+         if self.config.fp16:
+Index: examples/hstu/run_random_2k.sh
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k.sh
+--- a/examples/hstu/run_random_2k.sh	(revision 0b6025d31aef182acd925192d0e8e735c91a195c)
++++ b/examples/hstu/run_random_2k.sh	(date 1766026067693)
+@@ -7,7 +7,7 @@
+ # 运行轮数(运行多少轮采集性能数据)
+ export RUN_NUM=10
+ 
+-# 模型路径
++# 模型参数
+ export MODEL_PATH="hstu3B.bin"
+ export USE_MOE=0     #  USE_FFN 和 USE_MOE 不能同时开启
+ export LAYER_NUM=7
+@@ -15,10 +15,22 @@
+ export MOE_EXPERT_ACT_NUM=2
+ export USE_FFN=1     #  USE_FFN 和 USE_MOE 不能同时开启
+ export USE_FFN_NUMBER=2
++# 不比较精度，可以使用随机初始化参数的模型
++export USE_RANDOM_PARM=1
++export PARM_MAX_VALUE="0.5"
++
++export SEQ_LEN=2048
++export CANDIDATE_LEN=100
++export HIDDEN_DIM=4096
++export HEAD_NUM=16
++export HEAD_DIM=256
+ 
+ export ENABLE_MATMUL_FP8=0
+ 
+ export USE_FLOAT16=0
++export USE_FLOAT32=0
++export USE_HSTU_OP=1
++export USE_RAB=0
+ 
+ # prof路径
+ export PROF_SAVE_PATH="prof_result_2k"
+@@ -32,5 +44,8 @@
+ #是否保存输入和输出tensor, 和NPU对比精度
+ export SAVE_INPUT_AND_PUTPUT=1
+ 
++export USE_MOE_OP=1
++
++
+ #执行
+ python3  benchmark/inference_benchmark_random_2k.py
+\ No newline at end of file
