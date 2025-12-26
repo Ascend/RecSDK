@@ -17,8 +17,10 @@
 # limitations under the License.
 # ==============================================================================
 
+import os
 import argparse
 import warnings
+import shutil
 from typing import Union, Tuple
 
 import numpy as np
@@ -26,12 +28,15 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.optim import Adam, AdamW
+from torch.serialization import add_safe_globals
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
+from dynamic_emb.distributed.dump_load import DynamicEmbDump, DynamicEmbLoad
 
 from dataset import collate_fn, MovieLensDataset
 from model import create_model
 from logger import logger
+
 
 # Filter FBGEMM warning, make notebook clean
 warnings.filterwarnings(
@@ -49,6 +54,8 @@ device = torch.device(f"npu:{local_rank}")
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="TorchRec MovieLens with dynamicemb")
     parser.add_argument("--train", action="store_true")
+    parser.add_argument("--load", action="store_true")
+    parser.add_argument("--dump", action="store_true")
 
     parser.add_argument(
         "--data_path",
@@ -76,6 +83,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--seed", type=int, default=2025, help="random seed used for initialization"
+    )
+    parser.add_argument(
+        "--save_dir",
+        type=str,
+        default="./model_checkpoints",
+        help="path to save the model",
     )
     return parser.parse_args()
 
@@ -182,6 +195,95 @@ def train(args: argparse.Namespace) -> None:
         test_one_epoch(model, test_loader, criterion, (epoch, args.epochs))
 
 
+def dump(args):
+    os.makedirs(args.save_dir, exist_ok=True)
+    train_dataset = MovieLensDataset(args.data_path, split="train")
+    # Use global rank for proper data distribution across all processes
+    train_sampler = DistributedSampler(
+        train_dataset, num_replicas=world_size, rank=dist.get_rank(), shuffle=True
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        collate_fn=collate_fn,
+        num_workers=4,
+        sampler=train_sampler,
+    )
+
+    model = create_model(args, device)
+    model.to(device)
+
+    optimizer = create_optimizer(args, model)
+    criterion = nn.MSELoss()
+
+    for epoch in range(args.epochs):
+        train_sampler.set_epoch(epoch)
+        train_one_epoch(model, train_loader, optimizer, criterion, (epoch, args.epochs))
+
+        # ShardedDynamicEmbeddingCollection.state_dict() will return a dummy tensor.
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+            },
+            os.path.join(
+                args.save_dir, f"model_epoch_{epoch+1}_rank{dist.get_rank()}.pt"
+            ),
+        )
+    DynamicEmbDump(os.path.join(args.save_dir, "dynamicemb"), model, optim=True)
+
+
+def load(args):
+    os.makedirs(args.save_dir, exist_ok=True)
+    test_dataset = MovieLensDataset(args.data_path, split="test")
+    # Use global rank for proper data distribution across all processes
+    test_sampler = DistributedSampler(
+        test_dataset, num_replicas=world_size, rank=dist.get_rank(), shuffle=False
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        collate_fn=collate_fn,
+        num_workers=4,
+        sampler=test_sampler,
+    )
+
+    model = create_model(args, device)
+    model.to(device)
+
+    optimizer = create_optimizer(args, model)
+    criterion = nn.MSELoss()
+
+    # load
+    add_safe_globals([getattr])
+    checkpoint = torch.load(
+        os.path.join(
+            args.save_dir, f"model_epoch_{args.epochs}_rank{dist.get_rank()}.pt"
+        ),
+        weights_only=True,
+    )
+    # Must set strict to False, as there is no embedding's weight in model.state_dict()
+    model.load_state_dict(checkpoint["model_state_dict"], strict=False)
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+    DynamicEmbLoad(os.path.join(args.save_dir, "dynamicemb"), model, optim=True)
+
+    test_one_epoch(model, test_loader, criterion, (0, 1))
+
+    dist.barrier(device_ids=[local_rank])
+    # Only global rank 0 should clean up, not local rank 0 on each node
+    if dist.get_rank() == 0:
+        try:
+            shutil.rmtree(args.save_dir)
+        except Exception as e:
+            logger.warning(f"Failed to remove {args.save_dir}: {e}")
+    dist.barrier(device_ids=[local_rank])
+
+
 def main():
     args = parse_args()
     torch.manual_seed(args.seed)
@@ -189,6 +291,10 @@ def main():
     dist.barrier(device_ids=[local_rank])
     if args.train:
         train(args)
+    if args.dump:
+        dump(args)
+    if args.load:
+        load(args)   
     logger.info("Demo done.")
 
 
