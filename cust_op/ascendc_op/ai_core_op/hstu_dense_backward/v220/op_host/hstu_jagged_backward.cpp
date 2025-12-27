@@ -213,11 +213,7 @@ static ge::graphStatus InferShapeJagged(gert::InferShapeContext *context)
                 OPS_LOG_E("", "GetInputLayout failed\n"),
                 return ge::GRAPH_FAILED);
     ge::graphStatus result = ge::GRAPH_SUCCESS;
-    if (layout == InputLayout::JAGGED) {
-        result = optiling::JaggedInferShape(context);
-    } else {
-        result = optiling::NormalInferShape(context);
-    }
+    result = optiling::JaggedInferShape(context);
     return result;
 }
 

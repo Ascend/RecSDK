@@ -60,6 +60,24 @@ struct Args {
     GM_ADDR tiling;
 };
 
+struct AddrArgs {
+    GM_ADDR grad;
+    GM_ADDR q;
+    GM_ADDR k;
+    GM_ADDR v;
+    GM_ADDR qGrad;
+    GM_ADDR kGrad;
+    GM_ADDR vGrad;
+    GM_ADDR workspace;
+};
+
+struct BaseShapeArgs {
+    int64_t batchSize;
+    int64_t headNum;
+    int64_t headDim;
+    int64_t maxSeqLen;
+};
+
 __aicore__ inline bool IfMask(const int32_t &maskType, MaskType maskTypeEnum)
 {
     return static_cast<int32_t>(maskTypeEnum) == maskType;
