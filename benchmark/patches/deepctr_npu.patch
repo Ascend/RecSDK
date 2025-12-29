@@ -1,29 +1,52 @@
 diff --git a/deepctr_torch/layers/core.py b/deepctr_torch/layers/core.py
-index 717bd7e..3e7c5c5 100644
+index 717bd7e..275022f 100644
 --- a/deepctr_torch/layers/core.py
 +++ b/deepctr_torch/layers/core.py
-@@ -3,6 +3,7 @@ import math
+@@ -1,9 +1,17 @@
+ import math
++import os
+ 
  import torch
  import torch.nn as nn
  import torch.nn.functional as F
-+import torch_npu
  
++CPU_ENABLE = os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE"
++GPU_ENABLE = torch.cuda.is_available() and not CPU_ENABLE
++NPU_ENABLE = not GPU_ENABLE and not CPU_ENABLE
++
++if NPU_ENABLE:
++    import torch_npu
++
  from .activation import activation_layer
  
+ 
 diff --git a/deepctr_torch/models/basemodel.py b/deepctr_torch/models/basemodel.py
-index cd36340..c9734ea 100644
+index cd36340..8ca645b 100644
 --- a/deepctr_torch/models/basemodel.py
 +++ b/deepctr_torch/models/basemodel.py
-@@ -15,6 +15,8 @@ import torch
+@@ -15,6 +15,7 @@ import torch
  import torch.nn as nn
  import torch.nn.functional as F
  import torch.utils.data as Data
-+import torch_npu
 +import os
  from sklearn.metrics import *
  from torch.utils.data import DataLoader
  from tqdm import tqdm
-@@ -227,6 +229,7 @@ class BaseModel(nn.Module):
+@@ -30,6 +31,13 @@ from ..layers import PredictionLayer
+ from ..layers.utils import slice_arrays
+ from ..callbacks import History
+ 
++CPU_ENABLE = os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE"
++GPU_ENABLE = torch.cuda.is_available() and not CPU_ENABLE
++NPU_ENABLE = not GPU_ENABLE and not CPU_ENABLE
++
++if NPU_ENABLE:
++    import torch_npu
++
+ 
+ class Linear(nn.Module):
+     def __init__(self, feature_columns, feature_index, init_std=0.0001, device='cpu'):
+@@ -227,6 +235,7 @@ class BaseModel(nn.Module):
          callbacks.model.stop_training = False
  
          # Train
@@ -31,7 +54,7 @@ index cd36340..c9734ea 100644
          print("Train on {0} samples, validate on {1} samples, {2} steps per epoch".format(
              len(train_tensor_data), len(val_y), steps_per_epoch))
          for epoch in range(initial_epoch, epochs):
-@@ -239,8 +242,17 @@ class BaseModel(nn.Module):
+@@ -239,8 +248,17 @@ class BaseModel(nn.Module):
              try:
                  with tqdm(enumerate(train_loader), disable=verbose != 1) as t:
                      for _, (x_train, y_train) in t:
@@ -50,23 +73,21 @@ index cd36340..c9734ea 100644
  
                          y_pred = model(x).squeeze()
  
-@@ -299,6 +311,11 @@ class BaseModel(nn.Module):
+@@ -299,7 +317,6 @@ class BaseModel(nn.Module):
                      for name in self.metrics:
                          eval_str += " - " + "val_" + name + \
                                      ": {0: .4f}".format(epoch_logs["val_" + name])
-+                run_mode = "NPU" if os.environ.get("MODEL_CPU_ONLY", "False").upper() == "FALSE" else "CPU"
-+                print_prefix = "benchmark: " + run_mode + "_" + os.environ.get("MODEL_NAME", "default")
-+                eval_str = print_prefix + "_" + eval_str
-+                with open("benchmark_result.txt", "a", encoding="utf-8") as f:
-+                    f.write(eval_str + "\n")
-                 print(eval_str)
+-                print(eval_str)
              callbacks.on_epoch_end(epoch, epoch_logs)
              if self.stop_training:
-@@ -344,11 +361,57 @@ class BaseModel(nn.Module):
+                 break
+@@ -343,12 +360,135 @@ class BaseModel(nn.Module):
+ 
          pred_ans = []
          with torch.no_grad():
-             for _, x_test in enumerate(test_loader):
+-            for _, x_test in enumerate(test_loader):
 -                x = x_test[0].to(self.device).float()
++            for idx, x_test in enumerate(test_loader):
 +                x = x_test[0].to(self.device)
 +                dtype = os.environ.get("MODEL_DATA_TYPE", "float32")
 +                if dtype == "float32":
@@ -78,45 +99,123 @@ index cd36340..c9734ea 100644
 +                else:
 +                    raise ValueError(f"Unsupported dtype:{dtype}")
  
-                 y_pred = model(x).cpu().data.numpy()  # .squeeze()
+-                y_pred = model(x).cpu().data.numpy()  # .squeeze()
++                output = model(x)
++                y_pred = output.cpu().data.numpy()
                  pred_ans.append(y_pred)
  
-+        if (os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE" and
-+            os.environ.get("MODEL_CPU_ONLY", "False").upper() == "FALSE"):
-+            experimental_config = torch_npu.profiler._ExperimentalConfig(
-+                export_type=[
-+                    torch_npu.profiler.ExportType.Text,
-+                    torch_npu.profiler.ExportType.Db
-+                    ],
-+                profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
-+                msprof_tx=False,
-+                aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
-+                l2_cache=False,
-+                op_attr=False,
-+                data_simplification=False,
-+                record_op_args=False,
-+                gc_detect_threshold=None
-+            )
++                inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
++                model_name = os.environ.get("MODEL_NAME", "default_name")
++                device_name = self.device.split(":")[0]
++                os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
++                torch.save(output, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_{idx}.pt")
 +
-+            steps = 10
-+            with torch_npu.profiler.profile(
++                if CPU_ENABLE:
++                    continue
++                latency_list = []
++                with torch.no_grad():
++                    for _ in range(10):
++                        start_time = time.time()
++                        output = model(x)
++                        end_time = time.time()
++                        latency = end_time - start_time
++                        latency_list.append(latency)
++                        print(f"{model_name} time cost: {latency}")
++
++                latency_list = latency_list[2:]
++                avg_time = sum(latency_list) / len(latency_list)
++                print(f"{model_name} avg time cost: {avg_time}")
++
++                latency_list.sort()
++                p90 = 0.0
++                p99 = 0.0
++
++                if len(latency_list) > 0:
++                    p90_index = int(len(latency_list) * 0.9)
++                    p90_index = min(p90_index, len(latency_list) - 1)
++                    p90 = round(latency_list[p90_index], 6)
++
++                    p99_index = int(len(latency_list) * 0.99)
++                    p99_index = min(p99_index, len(latency_list) - 1)
++                    p99 = round(latency_list[p99_index], 6)
++
++                QPS = int(1 / avg_time)
++                e2e_result = {
++                    "Batch_size": batch_size,
++                    "model_name": model_name,
++                    "QPS": QPS,
++                    "AVG Latency": avg_time,
++                    "P99 Latency": p99,
++                    "P90 Latency": p90
++                }
++
++                print_prefix = "performance: " + device_name + "_" + model_name
++                eval_str = print_prefix + "_" + str(e2e_result)
++                os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++                with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
++                    f.write(eval_str + "\n")
++
++        prof_flat = (
++            True
++            if (os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE")
++            and not CPU_ENABLE
++            else False
++        )
++        if prof_flat:
++            if NPU_ENABLE:
++                experimental_config = torch_npu.profiler._ExperimentalConfig(
++                    export_type=[
++                        torch_npu.profiler.ExportType.Text,
++                        ],
++                    profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++                    msprof_tx=False,
++                    aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++                    l2_cache=False,
++                    op_attr=False,
++                    data_simplification=False,
++                    record_op_args=False,
++                    gc_detect_threshold=None
++                )
++
++                prof = torch_npu.profiler.profile(
 +                activities=[
 +                    torch_npu.profiler.ProfilerActivity.CPU,
 +                    torch_npu.profiler.ProfilerActivity.NPU
 +                    ],
-+                schedule=torch_npu.profiler.schedule(wait=3, warmup=0, active=1, repeat=1, skip_first=1),
-+                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(os.path.join("./profiling", os.environ.get("MODEL_NAME", "default"))),
++                schedule=torch_npu.profiler.schedule(wait=1, warmup=1, active=1, repeat=1),
++                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(os.path.join("../profiling", model_name)),
 +                record_shapes=False,
 +                profile_memory=False,
 +                with_stack=False,
 +                with_modules=False,
 +                with_flops=False,
-+                experimental_config=experimental_config) as prof:
-+                for step in range(steps):
-+                    for _, x_test in enumerate(test_loader):
-+                        x = x_test[0].to(self.device).float()
-+                        y_pred = model(x).cpu().data.numpy()
-+                    prof.step()
++                experimental_config=experimental_config)
++                prof.start()
++            else:
++                # GPU profiling configuration
++                prof = torch.profiler.profile(
++                    activities=[
++                        torch.profiler.ProfilerActivity.CPU,
++                        torch.profiler.ProfilerActivity.CUDA
++                    ],
++                    schedule=torch.profiler.schedule(
++                        wait=1,
++                        warmup=1,
++                        active=1,
++                        repeat=1
++                    ),
++                    on_trace_ready=torch.profiler.tensorboard_trace_handler(os.path.join("../profiling", model_name)),
++                    record_shapes=False,
++                    profile_memory=False,
++                    with_stack=False
++                )
++                prof.start()
++            steps = 10
++            for _ in range(steps):
++                for _, x_test in enumerate(test_loader):
++                    x = x_test[0].to(self.device).float()
++                    y_pred = model(x).cpu().data.numpy()
++                prof.step()
 +
          return np.concatenate(pred_ans).astype("float64")
  
@@ -177,11 +276,207 @@ index b7f9ef0..3f79274 100644
  
  if __name__ == '__main__':
      pass
+diff --git a/tests/models/AutoInt_test.py b/tests/models/AutoInt_test.py
+index 92a3aff..f74723a 100644
+--- a/tests/models/AutoInt_test.py
++++ b/tests/models/AutoInt_test.py
+@@ -2,7 +2,7 @@
+ import pytest
+ 
+ from deepctr_torch.models import AutoInt
+-from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device
++from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device, extend_seed_all
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -12,6 +12,7 @@ from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device
+ def test_AutoInt(att_layer_num, dnn_hidden_units, sparse_feature_num):
+     # if version.parse(torch.__version__) >= version.parse("1.1.0") and len(dnn_hidden_units)==0:#todo check version
+     #     return
++    extend_seed_all(2025)
+     model_name = "AutoInt"
+     sample_size = SAMPLE_SIZE
+     x, y, feature_columns = get_test_data(
+diff --git a/tests/models/DIEN_test.py b/tests/models/DIEN_test.py
+index ef5882b..04d9e54 100644
+--- a/tests/models/DIEN_test.py
++++ b/tests/models/DIEN_test.py
+@@ -4,7 +4,7 @@ import torch
+ 
+ from deepctr_torch.inputs import SparseFeat, DenseFeat, VarLenSparseFeat, get_feature_names
+ from deepctr_torch.models.dien import InterestEvolving, DIEN
+-from ..utils import check_model, get_device
++from ..utils import check_model, get_device, extend_seed_all
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -12,6 +12,7 @@ from ..utils import check_model, get_device
+     ["AIGRU", "AUGRU", "AGRU", "GRU"]
+ )
+ def test_InterestEvolving(gru_type):
++    extend_seed_all(2025)
+     interest_evolution = InterestEvolving(
+         input_size=3,
+         gru_type=gru_type,
+diff --git a/tests/models/DIFM_test.py b/tests/models/DIFM_test.py
+index 0960232..8d38630 100644
+--- a/tests/models/DIFM_test.py
++++ b/tests/models/DIFM_test.py
+@@ -2,7 +2,7 @@
+ import pytest
+ 
+ from deepctr_torch.models import DIFM
+-from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device
++from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device, extend_seed_all
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -10,6 +10,7 @@ from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device
+     [(1, (4,), 2), (2, (4, 4,), 2), (1, (4,), 1)]
+ )
+ def test_DIFM(att_head_num, dnn_hidden_units, sparse_feature_num):
++    extend_seed_all(2025)
+     model_name = "DIFM"
+     sample_size = SAMPLE_SIZE
+     x, y, feature_columns = get_test_data(
+diff --git a/tests/models/FiBiNET_test.py b/tests/models/FiBiNET_test.py
+index 5f25bdf..591e4ee 100644
+--- a/tests/models/FiBiNET_test.py
++++ b/tests/models/FiBiNET_test.py
+@@ -2,7 +2,7 @@
+ import pytest
+ 
+ from deepctr_torch.models import FiBiNET
+-from ..utils import check_model, SAMPLE_SIZE, get_test_data, get_device
++from ..utils import check_model, SAMPLE_SIZE, get_test_data, get_device, extend_seed_all
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -11,6 +11,7 @@ from ..utils import check_model, SAMPLE_SIZE, get_test_data, get_device
+      "interaction", "all"]
+ )
+ def test_FiBiNET(bilinear_type):
++    extend_seed_all(2025)
+     model_name = "FiBiNET"
+     sample_size = SAMPLE_SIZE
+     x, y, feature_columns = get_test_data(sample_size, sparse_feature_num=3, dense_feature_num=3)
+diff --git a/tests/models/IFM_test.py b/tests/models/IFM_test.py
+index 44dd9d8..5a090ee 100644
+--- a/tests/models/IFM_test.py
++++ b/tests/models/IFM_test.py
+@@ -2,7 +2,7 @@
+ import pytest
+ 
+ from deepctr_torch.models import IFM
+-from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device
++from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device, extend_seed_all
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -12,6 +12,7 @@ from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device
+      ]
+ )
+ def test_IFM(hidden_size, sparse_feature_num):
++    extend_seed_all(2025)
+     model_name = "IFM"
+     sample_size = SAMPLE_SIZE
+     x, y, feature_columns = get_test_data(
+diff --git a/tests/models/NFM_test.py b/tests/models/NFM_test.py
+index 3073ed8..95f7ce0 100644
+--- a/tests/models/NFM_test.py
++++ b/tests/models/NFM_test.py
+@@ -2,7 +2,7 @@
+ import pytest
+ 
+ from deepctr_torch.models import NFM
+-from ..utils import check_model, get_test_data, SAMPLE_SIZE, get_device
++from ..utils import check_model, get_test_data, SAMPLE_SIZE, get_device, extend_seed_all
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -10,6 +10,7 @@ from ..utils import check_model, get_test_data, SAMPLE_SIZE, get_device
+     [((8,), 2), ((8, 8,), 2), ((8,), 1)]
+ )
+ def test_NFM(hidden_size, sparse_feature_num):
++    extend_seed_all(2025)
+     model_name = "NFM"
+ 
+     sample_size = SAMPLE_SIZE
+diff --git a/tests/models/ONN_test.py b/tests/models/ONN_test.py
+index 11e4432..527d0bf 100644
+--- a/tests/models/ONN_test.py
++++ b/tests/models/ONN_test.py
+@@ -1,7 +1,7 @@
+ import pytest
+ 
+ from deepctr_torch.models import ONN
+-from ..utils import check_model, get_test_data, SAMPLE_SIZE, get_device
++from ..utils import check_model, get_test_data, SAMPLE_SIZE, get_device, extend_seed_all
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -9,6 +9,7 @@ from ..utils import check_model, get_test_data, SAMPLE_SIZE, get_device
+     [((8,), 2)]
+ )
+ def test_ONN(hidden_size, sparse_feature_num):
++    extend_seed_all(2025)
+     model_name = "ONN"
+ 
+     sample_size = SAMPLE_SIZE
+diff --git a/tests/models/PNN_test.py b/tests/models/PNN_test.py
+index 8afc9ef..81d368d 100644
+--- a/tests/models/PNN_test.py
++++ b/tests/models/PNN_test.py
+@@ -1,7 +1,7 @@
+ import pytest
+ 
+ from deepctr_torch.models import PNN
+-from ..utils import check_model, get_test_data, SAMPLE_SIZE, get_device
++from ..utils import check_model, get_test_data, SAMPLE_SIZE, get_device, extend_seed_all
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -11,6 +11,7 @@ from ..utils import check_model, get_test_data, SAMPLE_SIZE, get_device
+      ]
+ )
+ def test_PNN(use_inner, use_outter, kernel_type, sparse_feature_num):
++    extend_seed_all(2025)
+     model_name = "PNN"
+     sample_size = SAMPLE_SIZE
+     x, y, feature_columns = get_test_data(sample_size, sparse_feature_num=sparse_feature_num,
+diff --git a/tests/models/multitask/ESMM_test.py b/tests/models/multitask/ESMM_test.py
+index a091f79..bb34025 100644
+--- a/tests/models/multitask/ESMM_test.py
++++ b/tests/models/multitask/ESMM_test.py
+@@ -3,6 +3,7 @@ import pytest
+ 
+ from deepctr_torch.models import ESMM
+ from ...utils_mtl import get_mtl_test_data, SAMPLE_SIZE, check_mtl_model, get_device
++from ...utils import extend_seed_all
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -13,6 +14,7 @@ from ...utils_mtl import get_mtl_test_data, SAMPLE_SIZE, check_mtl_model, get_de
+ )
+ def test_ESMM(num_experts, tower_dnn_hidden_units, task_types,
+               sparse_feature_num, dense_feature_num):
++    extend_seed_all(2025)
+     model_name = "ESMM"
+     sample_size = SAMPLE_SIZE
+     x, y_list, feature_columns = get_mtl_test_data(
 diff --git a/tests/models/multitask/SharedBottom_test.py b/tests/models/multitask/SharedBottom_test.py
-index f3341f6..df807bf 100644
+index f3341f6..dc4b1fd 100644
 --- a/tests/models/multitask/SharedBottom_test.py
 +++ b/tests/models/multitask/SharedBottom_test.py
-@@ -10,7 +10,6 @@ from ...utils_mtl import get_mtl_test_data, SAMPLE_SIZE, check_mtl_model, get_de
+@@ -3,6 +3,7 @@ import pytest
+ 
+ from deepctr_torch.models import SharedBottom
+ from ...utils_mtl import get_mtl_test_data, SAMPLE_SIZE, check_mtl_model, get_device
++from ...utils import extend_seed_all
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -10,11 +11,11 @@ from ...utils_mtl import get_mtl_test_data, SAMPLE_SIZE, check_mtl_model, get_de
      [
          (3, (32, 16), (64,), ['binary', 'binary'], 3, 3),
          (3, (32, 16), (), ['binary', 'binary'], 3, 3),
@@ -189,8 +484,13 @@ index f3341f6..df807bf 100644
      ]
  )
  def test_SharedBottom(num_experts, bottom_dnn_hidden_units, tower_dnn_hidden_units, task_types,
+                       sparse_feature_num, dense_feature_num):
++    extend_seed_all(2025)
+     model_name = "SharedBottom"
+     sample_size = SAMPLE_SIZE
+     x, y_list, feature_columns = get_mtl_test_data(
 diff --git a/tests/utils.py b/tests/utils.py
-index 28f3010..10c49b2 100644
+index 28f3010..b955592 100644
 --- a/tests/utils.py
 +++ b/tests/utils.py
 @@ -2,10 +2,12 @@
@@ -206,7 +506,7 @@ index 28f3010..10c49b2 100644
  
  SAMPLE_SIZE = 64
  
-@@ -139,6 +141,18 @@ def layer_test(layer_cls, kwargs={}, input_shape=None,
+@@ -139,6 +141,17 @@ def layer_test(layer_cls, kwargs={}, input_shape=None,
      return output
  
  
@@ -214,7 +514,6 @@ index 28f3010..10c49b2 100644
 +    os.environ['HCCL_DETERMINISTIC'] = 'True'
 +    os.environ['CLOSE_MATMUL_K_SHIFT'] = '1'
 +    os.environ['PYTHONHASHSEED'] = str(seed)
-+    torch.use_deterministic_algorithms(True)
 +    torch.cuda.manual_seed_all(seed)
 +    torch.cuda.manual_seed(seed)
 +    torch.manual_seed(seed)
@@ -225,7 +524,7 @@ index 28f3010..10c49b2 100644
  def check_model(model, model_name, x, y, check_model_io=True):
      '''
      compile model,train and evaluate it,then save/load weight and model file.
-@@ -156,6 +170,10 @@ def check_model(model, model_name, x, y, check_model_io=True):
+@@ -156,6 +169,10 @@ def check_model(model, model_name, x, y, check_model_io=True):
  
      model.compile('adam', 'binary_crossentropy',
                    metrics=['binary_crossentropy', 'acc'])
@@ -236,7 +535,7 @@ index 28f3010..10c49b2 100644
      model.fit(x, y, batch_size=100, epochs=1, validation_split=0.5, callbacks=[early_stopping, model_checkpoint])
  
      print(model_name + 'test, train valid pass!')
-@@ -165,15 +183,18 @@ def check_model(model, model_name, x, y, check_model_io=True):
+@@ -165,15 +182,17 @@ def check_model(model, model_name, x, y, check_model_io=True):
      print(model_name + 'test save load weight pass!')
      if check_model_io:
          torch.save(model, model_name + '.h5')
@@ -248,20 +547,20 @@ index 28f3010..10c49b2 100644
  
 -
  def get_device(use_cuda=True):
-+    import torch_npu
-     device = 'cpu'
+-    device = 'cpu'
++    device = 'npu'
      if use_cuda and torch.cuda.is_available():
          print('cuda ready...')
          device = 'cuda:0'
-+    if torch.npu.is_available() and os.environ.get("MODEL_CPU_ONLY", "False") == "False":
-+        print('npu ready...')
-+        device = 'npu'
++    if os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE":
++        device = 'cpu'
++    print(f"run on {device}")
      return device
 diff --git a/tests/utils_mtl.py b/tests/utils_mtl.py
-index 61020cf..6f70f79 100644
+index 61020cf..6ffcc5d 100644
 --- a/tests/utils_mtl.py
 +++ b/tests/utils_mtl.py
-@@ -106,15 +106,19 @@ def check_mtl_model(model, model_name, x, y_list, task_types, check_model_io=Tru
+@@ -106,15 +106,18 @@ def check_mtl_model(model, model_name, x, y_list, task_types, check_model_io=Tru
      print(model_name + 'test save load weight pass!')
      if check_model_io:
          torch.save(model, model_name + '.h5')
@@ -273,12 +572,12 @@ index 61020cf..6f70f79 100644
  
  
  def get_device(use_cuda=True):
-+    import torch_npu
-     device = 'cpu'
+-    device = 'cpu'
++    device = 'npu'
      if use_cuda and torch.cuda.is_available():
          print('cuda ready...')
          device = 'cuda:0'
-+    if torch.npu.is_available() and os.environ.get("MODEL_CPU_ONLY", "False") == "False":
-+        print('npu ready...')
-+        device = 'npu'
++    if os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE":
++        device = 'cpu'
++    print(f"run on {device}")
      return device

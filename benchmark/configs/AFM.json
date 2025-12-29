@@ -12,7 +12,6 @@
     "data_type": "float32",
     "run_cmd": [
         "pytest",
-        "-s",
         "tests/models/AFM_test.py"
     ],
     "pip_install_self": false,
