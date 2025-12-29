@@ -117,6 +117,7 @@ public:
         pipe->InitBuffer(outQueueRstd, 1, bsLength_ * sizeof(float));
         pipe->InitBuffer(addTmpQueue, 1, bshLength_ * sizeof(T));
         pipe->InitBuffer(tmpQueue, 1, bshLength_ * sizeof(T));
+        pipe->InitBuffer(tmpMulQueue, 1, bshLength_ * sizeof(T));
         pipe->InitBuffer(oneQueue, 1, bsLength_ * sizeof(T));
     }
 
@@ -185,6 +186,7 @@ private:
         LocalTensor<float> rstdLocal = outQueueRstd.AllocTensor<float>();
         LocalTensor<T> addTmpLocal = addTmpQueue.AllocTensor<T>();
         LocalTensor<T> tmpLocal = tmpQueue.AllocTensor<T>();
+        LocalTensor<T> tmpMulLocal = tmpMulQueue.AllocTensor<T>();
         LocalTensor<T> oneLocal = oneQueue.AllocTensor<T>();
         Duplicate(oneLocal, 1.0f, rowCount);
 
@@ -196,13 +198,12 @@ private:
 #else
         uint32_t shape[2] = {static_cast<uint32_t>(rowCount), static_cast<uint32_t>(args->xDim2)};
 #endif
-
         // layerNorm拆分
-        // 计算Reduce
-        ReduceSum<float, Pattern::Reduce::AR, false>(meanLocal, addTmpLocal, shape, true);
-        PipeBarrier<PIPE_V>();
         // 计算平均值mean
-        Muls(meanLocal, meanLocal, 1.0f / args->xDim2, rowCount);
+        Muls(tmpMulLocal, addTmpLocal, 1.0f / args->xDim2, bshLength_);
+        PipeBarrier<PIPE_V>();
+        ReduceSum<float, Pattern::Reduce::AR, false>(meanLocal, tmpMulLocal, shape, true);
+        PipeBarrier<PIPE_V>();
         // broadcast mean[rowCount] -> [rowCount, xDim2WithPadding]
         uint32_t trueShape[2] = {static_cast<uint32_t>(rowCount), static_cast<uint32_t>(args->xDim2WithPadding)};
         Broadcast<float, 2, 1>(tmpLocal, meanLocal, trueShape, meanShape);
@@ -217,9 +218,9 @@ private:
         Sub(tmpLocal, addTmpLocal, tmpLocal, rowCount * args->xDim2WithPadding);
         Mul(yLocal, tmpLocal, tmpLocal, rowCount * args->xDim2WithPadding);
         // 计算var
+        Muls(yLocal, yLocal, 1.0f / args->xDim2, bshLength_);
         ReduceSum<float, Pattern::Reduce::AR, false>(rstdLocal, yLocal, shape, true);
         PipeBarrier<PIPE_V>();
-        Muls(rstdLocal, rstdLocal, 1.0f / args->xDim2, rowCount);
         // 计算rstd=1/sqrt(var+epsilon)
         Adds(rstdLocal, rstdLocal, args->epsilon, rowCount);
         Sqrt(rstdLocal, rstdLocal, rowCount);
@@ -240,6 +241,7 @@ private:
         inQueueGamma.FreeTensor(gammaLocal);
         inQueueBeta.FreeTensor(betaLocal);
         addTmpQueue.FreeTensor(addTmpLocal);
+        tmpMulQueue.FreeTensor(tmpMulLocal);
         tmpQueue.FreeTensor(tmpLocal);
         oneQueue.FreeTensor(oneLocal);
         outQueueMean.FreeTensor(meanLocal);
@@ -275,6 +277,7 @@ private:
     TQue<TPosition::VECCALC, 1> outQueueRstd;
     TQue<TPosition::VECCALC, 1> addTmpQueue;
     TQue<TPosition::VECCALC, 1> tmpQueue;
+    TQue<TPosition::VECCALC, 1> tmpMulQueue;
     TQue<TPosition::VECCALC, 1> oneQueue;
 
     TokenMixingArgs* args;
