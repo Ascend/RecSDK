@@ -103,31 +103,37 @@ def apply_patch(patch_path: Path, target_dir: Path) -> bool:
 def get_args():
     parser = argparse.ArgumentParser(description="Script for cloning repositories and applying patches")
     parser.add_argument("config", type=str, help="Configuration file")
+    parser.add_argument(
+        "--cpu",
+        action="store_true",
+        default=None,
+        help="Force use CPU only (overrides config file setting)"
+    )
     args = parser.parse_args()
     return args
 
 
-def install_depend(config: dict, taget_dir: Path) -> bool:
+def install_depend(config: dict, target_dir: Path) -> bool:
     try:        
         if config.get("pre_cmd"):
             cmds = config.get("pre_cmd")
             for cmd in cmds:
                 logger.info(f"Executing pre command: {cmd}")
-                subprocess.run(cmd.split(" "), cwd=str(taget_dir), check=True)
+                subprocess.run(cmd.split(" "), cwd=str(target_dir), check=True)
         if config.get("pip_install_requirements"):
             logger.info("Installing requirements.txt dependencies...")
             subprocess.run(
                 ["pip", "install", "-r", "requirements.txt"],
-                cwd=str(taget_dir),
+                cwd=str(target_dir),
                 check=True,
             )
         if config.get("pip_install_self"):
             logger.info("Installing current directory dependencies...")
             subprocess.run(
-                ["pip", "install", "-e", "."], cwd=str(taget_dir), check=True
+                ["pip", "install", "-e", "."], cwd=str(target_dir), check=True
             )
         if config.get("extra_cmd"):
-            if "TorchEasyRec" in str(taget_dir):
+            if "TorchEasyRec" in str(target_dir):
                 import glob
                 proto_files = glob.glob("models/TorchEasyRec/tzrec/protos/*.proto")
                 cmd = ["protoc", "--proto_path=models/TorchEasyRec/", "--python_out=models/TorchEasyRec/"] + proto_files
@@ -140,8 +146,10 @@ def install_depend(config: dict, taget_dir: Path) -> bool:
             else:
                 cmds = config.get("extra_cmd")
                 for cmd in cmds:
+                    if cmd == "":
+                        continue
                     logger.info(f"Executing extra command: {cmd}")
-                    subprocess.run(cmd.split(" "), cwd=str(taget_dir), check=True)
+                    subprocess.run(cmd.split(" "), cwd=str(target_dir), check=True)
     except subprocess.CalledProcessError as e:
         logger.error(f"pip failed, error message:\n{e.stderr}")
         return False
@@ -151,7 +159,7 @@ def install_depend(config: dict, taget_dir: Path) -> bool:
     return True
 
 
-def set_env(config: dict):
+def set_env(config: dict, cpu_only: bool):
     os.environ["MODEL_MODE"] = config.get("mode")
     os.environ["MODEL_EPOCH"] = str(config.get("epoch"))
     os.environ["MODEL_PROFILING_FLAG"] = str(config.get("profiling_flag"))
@@ -160,7 +168,7 @@ def set_env(config: dict):
     os.environ["MODEL_DATA_TYPE"] = config.get("data_type")
     os.environ["MODEL_NAME"] = config.get("name")
     os.environ["MODEL_E2E_FLAG"] = str(config.get("e2e_flag"))
-    os.environ["MODEL_CPU_ONLY"] = str(config.get("cpu_only"))
+    os.environ["MODEL_CPU_ONLY"] = str(cpu_only)
     lib_fbgemm_npu_api_so_path = config.get("lib_fbgemm_npu_api_so_path")
     if lib_fbgemm_npu_api_so_path:
         logger.info(f"LIB_FBGEMM_NPU_API_SO_PATH: {lib_fbgemm_npu_api_so_path}")
@@ -169,11 +177,11 @@ def set_env(config: dict):
     os.environ["COMPARE_ACCURACY_FLAG"] = str(config.get("compare_accuracy_flag"))
     os.environ["SAVE_TENSOR_FLAG"] = str(config.get("save_tensor_flag"))
 
-def run_model(config: dict, taget_dir: Path) -> bool:
-    set_env(config)
+def run_model(config: dict, target_dir: Path, cpu_only: bool) -> bool:
+    set_env(config, cpu_only)
     logger.info(f"Running model command: {config.get('run_cmd')}")
     try:
-        subprocess.run(config.get("run_cmd"), cwd=str(taget_dir), check=True)
+        subprocess.run(config.get("run_cmd"), cwd=str(target_dir), check=True)
         logger.info("Model run successful!")
     except subprocess.CalledProcessError as e:
         logger.error(f"Model run failed, error message:\n{e.stderr}")
@@ -183,7 +191,7 @@ def run_model(config: dict, taget_dir: Path) -> bool:
         return False
     return True
 
-def download_file(url: str, destination: str, taget_dir: Path) -> bool:
+def download_file(url: str, destination: str, target_dir: Path) -> bool:
     try:
         cmd = [
             'wget',
@@ -193,7 +201,7 @@ def download_file(url: str, destination: str, taget_dir: Path) -> bool:
             url
         ]
         print(" ".join(cmd))
-        subprocess.run(cmd, cwd=str(taget_dir), check=True)
+        subprocess.run(cmd, cwd=str(target_dir), check=True)
     except subprocess.CalledProcessError as e:
         logger.error(f"downlaod data, error message:\n{e.stderr}")
         return False
@@ -324,7 +332,7 @@ def main():
             return
 
     # 3. Run model
-    if not run_model(config, target_dir):
+    if not run_model(config, target_dir, args.cpu):
         logger.error("Model run failed, process terminated.")
         return
 

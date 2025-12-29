@@ -12,9 +12,13 @@
 参考[RecSDK-Torch 模型样例运行环境说明](../torch2.6.0_examples_benchmark/develop/README.md)
 
 # 必要依赖安装
+
 ```shell
 apt-get install protobuf-compiler
+pip install tensorflow
+pip install pytest
 ```
+
 
 # quick start
 xxx.json替換为为configs目录下的配置文件名；

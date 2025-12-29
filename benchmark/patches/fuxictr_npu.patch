@@ -1,52 +1,146 @@
 diff --git a/fuxictr/pytorch/models/rank_model.py b/fuxictr/pytorch/models/rank_model.py
-index 1ce33aa..4dfda08 100644
+index 1ce33aa..4272476 100644
 --- a/fuxictr/pytorch/models/rank_model.py
 +++ b/fuxictr/pytorch/models/rank_model.py
-@@ -19,6 +19,7 @@
- import torch.nn as nn
- import numpy as np
- import torch
-+import torch_npu
- import os, sys
- import logging
- from fuxictr.pytorch.layers import FeatureEmbeddingDict
-@@ -254,9 +255,42 @@ class BaseModel(nn.Module):
+@@ -27,6 +27,12 @@ from fuxictr.pytorch.torch_utils import get_device, get_optimizer, get_loss, get
+ from fuxictr.utils import Monitor, not_in_whitelist
+ from tqdm import tqdm
+ 
++CPU_ENABLE = os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE"
++GPU_ENABLE = torch.cuda.is_available() and not CPU_ENABLE
++NPU_ENABLE = not GPU_ENABLE and not CPU_ENABLE
++
++if NPU_ENABLE:
++    import torch_npu
+ 
+ class BaseModel(nn.Module):
+     def __init__(self, 
+@@ -250,13 +256,132 @@ class BaseModel(nn.Module):
+ 
+     def predict(self, data_generator):
+         self.eval()  # set to evaluation mode
++        batch_size = data_generator.batch_size
+         with torch.no_grad():
              y_pred = []
              if self._verbose > 0:
                  data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
 -            for batch_data in data_generator:
--                return_dict = self.forward(batch_data)
--                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
-+            #prof code
-+            experimental_config = torch_npu.profiler._ExperimentalConfig(
-+                export_type=[
-+                    torch_npu.profiler.ExportType.Text,
-+                    torch_npu.profiler.ExportType.Db
-+                ],
-+                profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
-+                msprof_tx=False,
-+                aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
-+                l2_cache=False,
-+                op_attr=False,
-+                data_simplification=False,
-+                record_op_args=False,
-+                gc_detect_threshold=None
-+            )
 +
-+            steps = 10
-+            with torch_npu.profiler.profile(
-+                activities=[
-+                            torch_npu.profiler.ProfilerActivity.CPU,
-+                            torch_npu.profiler.ProfilerActivity.NPU
++            device_name = str(self.device).split(":")[0]
++            # 精度数据落盘
++            for idx, batch_data in enumerate(data_generator):
+                 return_dict = self.forward(batch_data)
+-                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
++                inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
++                model_name = os.environ.get("MODEL_NAME", "default_name")
++                os.makedirs(f"../../../save_results_{device_name}/{model_name}", exist_ok=True)
++                torch.save(return_dict, f"../../../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_{idx}.pt")
++            if CPU_ENABLE:
++                return None
++            # E2E耗时统计
++            latency_list = []
++            with torch.no_grad():
++                import time
++                for _ in range(10):
++                    for batch_data in data_generator:
++                        start_time = time.time()
++                        return_dict = self.forward(batch_data)
++                        end_time = time.time()
++                        latency = end_time - start_time
++                        latency_list.append(latency)
++                        print(f"{model_name} time cost: {latency}")
++
++            latency_list = latency_list[2:]
++            avg_time = sum(latency_list) / len(latency_list)
++            print(f"{model_name} avg time cost: {avg_time}")
++
++            latency_list.sort()
++            p90 = 0.0
++            p99 = 0.0
++
++            if len(latency_list) > 0:
++                p90_index = int(len(latency_list) * 0.9)
++                p90_index = min(p90_index, len(latency_list) - 1)
++                p90 = round(latency_list[p90_index], 6)
++
++                p99_index = int(len(latency_list) * 0.99)
++                p99_index = min(p99_index, len(latency_list) - 1)
++                p99 = round(latency_list[p99_index], 6)
++
++            QPS = int(1 / avg_time)
++            e2e_result = {
++                "Batch_size": batch_size,
++                "model_name": model_name,
++                "QPS": QPS,
++                "AVG Latency": avg_time,
++                "P99 Latency": p99,
++                "P90 Latency": p90
++            }
++
++            print_prefix = "performance: " + device_name + "_" + model_name
++            eval_str = print_prefix + "_" + str(e2e_result)
++            os.makedirs(f"../../../save_results_{device_name}/", exist_ok=True)
++            with open(f"../../../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
++                f.write(eval_str + "\n")
++
++            # 性能数据采集
++            prof_flat = (
++                True
++                if (os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE")
++                and not CPU_ENABLE
++                else False
++            )
++            if prof_flat:
++                if NPU_ENABLE:
++                    experimental_config = torch_npu.profiler._ExperimentalConfig(
++                        export_type=[
++                            torch_npu.profiler.ExportType.Text,
 +                            ],
-+                schedule=torch_npu.profiler.schedule(wait=3, warmup=3, active=1, repeat=1),
-+                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
-+                    record_shapes=True,
++                        profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++                        msprof_tx=False,
++                        aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++                        l2_cache=False,
++                        op_attr=False,
++                        data_simplification=False,
++                        record_op_args=False,
++                        gc_detect_threshold=None
++                    )
++
++                    prof = torch_npu.profiler.profile(
++                    activities=[
++                        torch_npu.profiler.ProfilerActivity.CPU,
++                        torch_npu.profiler.ProfilerActivity.NPU
++                        ],
++                    schedule=torch_npu.profiler.schedule(wait=1, warmup=1, active=1, repeat=1),
++                    on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(os.path.join("../../../profiling", model_name)),
++                    record_shapes=False,
 +                    profile_memory=False,
 +                    with_stack=False,
 +                    with_modules=False,
 +                    with_flops=False,
-+                experimental_config=experimental_config) as prof:
++                    experimental_config=experimental_config)
++                    prof.start()
++                else:
++                    # GPU profiling configuration
++                    prof = torch.profiler.profile(
++                        activities=[
++                            torch.profiler.ProfilerActivity.CPU,
++                            torch.profiler.ProfilerActivity.CUDA
++                        ],
++                        schedule=torch.profiler.schedule(
++                            wait=1,
++                            warmup=1,
++                            active=1,
++                            repeat=1
++                        ),
++                        on_trace_ready=torch.profiler.tensorboard_trace_handler(os.path.join("../../../profiling", model_name)),
++                        record_shapes=False,
++                        profile_memory=False,
++                        with_stack=False
++                    )
++                    prof.start()
++
++                steps = 30
 +                print("profiling start...")
 +                for step in range(steps):
 +                    for batch_data in data_generator:
@@ -57,28 +151,38 @@ index 1ce33aa..4dfda08 100644
              return y_pred
  
 diff --git a/fuxictr/pytorch/torch_utils.py b/fuxictr/pytorch/torch_utils.py
-index 4b220ce..181c332 100644
+index 4b220ce..f789f1f 100644
 --- a/fuxictr/pytorch/torch_utils.py
 +++ b/fuxictr/pytorch/torch_utils.py
-@@ -20,6 +20,7 @@ import sys
- import os
- import numpy as np
- import torch
-+import torch_npu
- from torch import nn
- import random
+@@ -25,6 +25,12 @@ import random
  from functools import partial
-@@ -35,8 +36,8 @@ def seed_everything(seed=1029):
+ import re
+ 
++CPU_ENABLE = os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE"
++GPU_ENABLE = torch.cuda.is_available() and not CPU_ENABLE
++NPU_ENABLE = not GPU_ENABLE and not CPU_ENABLE
++
++if NPU_ENABLE:
++    import torch_npu
+ 
+ def seed_everything(seed=1029):
+     random.seed(seed)
+@@ -35,10 +41,12 @@ def seed_everything(seed=1029):
      torch.backends.cudnn.deterministic = True
  
  def get_device(gpu=-1):
 -    if gpu >= 0 and torch.cuda.is_available():
 -        device = torch.device("cuda:" + str(gpu))
-+    if gpu >= 0:
++    if CPU_ENABLE:
++        device = torch.device("cpu")
++    elif NPU_ENABLE:
 +        device = torch.device("npu")
      else:
-         device = torch.device("cpu")   
+-        device = torch.device("cpu")   
++        device = torch.device("cuda:{}".format(gpu))
      return device
+ 
+ def get_optimizer(optimizer, params, lr):
 diff --git a/model_zoo/AutoInt/run_expid.py b/model_zoo/AutoInt/run_expid.py
 index 19adc38..0121133 100644
 --- a/model_zoo/AutoInt/run_expid.py
