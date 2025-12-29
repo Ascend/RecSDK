@@ -32,7 +32,7 @@ constexpr uint32_t DIM3 = 3;
 constexpr int32_t EPSILON_INDEX = 0;
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr int32_t RESERVERD_UB_SIZE = 20 * 1024;  // UB保留空间
-constexpr uint64_t MEM_XDIM2_SIZE = 7;
+constexpr uint64_t MEM_XDIM2_SIZE = 8;
 constexpr uint64_t MEM_ONE_SIZE = 3;
 
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
@@ -82,7 +82,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
     ubCanUsed -= RESERVERD_UB_SIZE;
 
-    // 计算每行结果需要的字节数, x(H) + transpose(H) + add(H) + gamma(H) + beta(H) + tmp(H) + mean(1) + rstd(1) + one(1)
+    // 计算每行结果需要的字节数, x(H) + transpose(H) + add(H) + Mul(H) + gamma(H) + beta(H) + tmp(H) + mean(1) + rstd(1) + one(1)
     // + output(H)
     uint64_t perRowMemory = (MEM_XDIM2_SIZE * xDim2WithPadding + MEM_ONE_SIZE) * sizeof(float);
     // 每个core每次可以处理的Row
