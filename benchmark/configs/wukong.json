@@ -1,0 +1,20 @@
+{
+    "name": "wukong",
+    "url": "https://github.com/clabrugere/wukong-recommendation",
+    "commit_id": "4a2cbc8adbdb4565d854a9977ee7b53175c0bc7c",
+    "patch_path": "",
+    "cpu_only": false,
+    "mode": "infer",
+    "epoch": 10,
+    "profiling_flag": true,
+    "compile_flag": false,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "python",
+        "../../tests/test_wukong.py"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [""]
+}
