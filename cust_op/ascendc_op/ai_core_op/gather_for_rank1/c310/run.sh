@@ -16,13 +16,8 @@
 
 set -e
 
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
 onnx_path=$(dirname "$(readlink -f "$0")")/../../../build/scripts/onnx_plugin
 json_file=$onnx_path/json.hpp
-export PATH=$parent_dir:$PATH
-
 
 VALID_AI_CORES=(
     "ai_core-Ascend910_95"
@@ -48,7 +43,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./gather_for_rank1
-python3 $msopgen_path gen -i ../v220/gather_for_rank1.json -f tf -c ${ai_core} -lan cpp -out ./gather_for_rank1 -m 0 -op GatherForRank1
+msopgen gen -i ../v220/gather_for_rank1.json -f tf -c ${ai_core} -lan cpp -out ./gather_for_rank1 -m 0 -op GatherForRank1
 rm -rf gather_for_rank1/op_kernel/*.h
 rm -rf gather_for_rank1/op_kernel/*.cpp
 rm -rf gather_for_rank1/op_host/*.h

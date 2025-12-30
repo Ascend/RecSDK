@@ -17,12 +17,6 @@
 set -e
 source /etc/profile
 
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
-export PATH=$parent_dir:$PATH
-
-
 VALID_AI_CORES=(
     "ai_core-Ascend910"
     "ai_core-Ascend910B1"

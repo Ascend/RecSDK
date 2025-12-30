@@ -16,12 +16,6 @@
 
 set -e
 
-
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
-export PATH=$parent_dir:$PATH
-
 VALID_AI_CORES=(
     "ai_core-Ascend910_95"
 )
@@ -46,7 +40,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./token_mixing
-python3 $msopgen_path gen -i ../v220/token_mixing.json -f tf -c ${ai_core} -lan cpp -out ./token_mixing -m 0 -op TokenMixing
+msopgen gen -i ../v220/token_mixing.json -f tf -c ${ai_core} -lan cpp -out ./token_mixing -m 0 -op TokenMixing
 rm -rf token_mixing/op_kernel/*.h
 rm -rf token_mixing/op_kernel/*.cpp
 rm -rf token_mixing/op_host/*.h

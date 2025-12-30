@@ -16,16 +16,6 @@
 
 set -e
 
-
-# 查找msopgen的路径，加入到环境变量PATH中
-if [ -d "/usr/local/Ascend/ascend-toolkit" ]; then
-    msopgen_path=$(find /usr/local/Ascend/ascend-toolkit/latest -name msopgen | grep bin)
-else
-    msopgen_path=$(find /usr/local -name msopgen | grep bin)
-fi
-parent_dir=$(dirname "$msopgen_path")
-export PATH=$parent_dir:$PATH
-
 VALID_AI_CORES=(
     "ai_core-Ascend910_95"
 )
@@ -50,7 +40,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./fused_lazy_adam
-python3 $msopgen_path gen -i ../v220/lazy_adam.json -f tf -c ${ai_core} -lan cpp -out ./fused_lazy_adam -m 0 -op LazyAdam
+msopgen gen -i ../v220/lazy_adam.json -f tf -c ${ai_core} -lan cpp -out ./fused_lazy_adam -m 0 -op LazyAdam
 rm -rf fused_lazy_adam/op_kernel/*.h
 rm -rf fused_lazy_adam/op_kernel/*.cpp
 rm -rf fused_lazy_adam/host/*.h

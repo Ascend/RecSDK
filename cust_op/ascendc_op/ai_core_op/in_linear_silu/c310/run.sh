@@ -16,12 +16,6 @@
 
 set -e
 
-
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
-export PATH=$parent_dir:$PATH
-
 VALID_AI_CORES=(
     "ai_core-Ascend910_95"
 )
@@ -46,7 +40,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./in_linear_silu
-python3 $msopgen_path gen -i ../v220/in_linear_silu.json -f tf -c ${ai_core} -lan cpp -out ./in_linear_silu -m 0 -op InLinearSilu
+msopgen gen -i ../v220/in_linear_silu.json -f tf -c ${ai_core} -lan cpp -out ./in_linear_silu -m 0 -op InLinearSilu
 rm -rf in_linear_silu/op_kernel/*.h
 rm -rf in_linear_silu/op_kernel/*.cpp
 rm -rf in_linear_silu/op_host/*.h

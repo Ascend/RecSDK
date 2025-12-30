@@ -16,11 +16,6 @@
 
 set -e
 
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
-export PATH=$parent_dir:$PATH
-
 VALID_AI_CORES=(
     "ai_core-Ascend910_95"
 )
@@ -45,7 +40,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./asynchronous_complete_cumsum
-python3 $msopgen_path gen -i asynchronous_complete_cumsum.json -f tf -c ${ai_core} -lan cpp -out ./asynchronous_complete_cumsum -m 0 -op AsynchronousCompleteCumsum
+msopgen gen -i asynchronous_complete_cumsum.json -f tf -c ${ai_core} -lan cpp -out ./asynchronous_complete_cumsum -m 0 -op AsynchronousCompleteCumsum
 cp -rf op_kernel asynchronous_complete_cumsum/
 cp -rf op_host asynchronous_complete_cumsum/
 cd asynchronous_complete_cumsum

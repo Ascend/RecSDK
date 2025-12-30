@@ -16,12 +16,6 @@
 
 set -e
 
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
-export PATH=$parent_dir:$PATH
-
-
 VALID_AI_CORES=(
     "ai_core-Ascend910B1"
     "ai_core-Ascend910B2"
@@ -51,7 +45,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./permute2d_sparse_data
-python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i permute2d_sparse_data.json -f tf -c ${ai_core} -lan cpp -out ./permute2d_sparse_data -m 0 -op Permute2dSparseData
+msopgen gen -i permute2d_sparse_data.json -f tf -c ${ai_core} -lan cpp -out ./permute2d_sparse_data -m 0 -op Permute2dSparseData
 rm -rf permute2d_sparse_data/op_kernel/*.h
 rm -rf permute2d_sparse_data/op_kernel/*.cpp
 rm -rf permute2d_sparse_data/host/*.h

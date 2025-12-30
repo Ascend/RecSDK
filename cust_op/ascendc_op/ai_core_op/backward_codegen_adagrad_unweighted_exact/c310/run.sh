@@ -16,12 +16,6 @@
 
 set -e
 
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
-export PATH=$parent_dir:$PATH
-
-
 VALID_AI_CORES=(
     "ai_core-Ascend910_95"
 )
@@ -46,7 +40,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./backward_codegen_adagrad_unweighted_exact
-python3 $msopgen_path gen -i backward_codegen_adagrad_unweighted_exact.json -f tf -c ${ai_core} -lan cpp -out ./backward_codegen_adagrad_unweighted_exact -m 0 -op BackwardCodegenAdagradUnweightedExact
+msopgen gen -i backward_codegen_adagrad_unweighted_exact.json -f tf -c ${ai_core} -lan cpp -out ./backward_codegen_adagrad_unweighted_exact -m 0 -op BackwardCodegenAdagradUnweightedExact
 cp -rf op_kernel backward_codegen_adagrad_unweighted_exact/
 cp -rf op_host backward_codegen_adagrad_unweighted_exact/
 
