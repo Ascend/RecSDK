@@ -16,13 +16,6 @@
 
 set -e
 
-
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
-export PATH=$parent_dir:$PATH
-
-
 VALID_AI_CORES=(
     "ai_core-Ascend910B1"
     "ai_core-Ascend910B2"
@@ -52,7 +45,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./index_select_for_rank1_backward
-python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i index_select_for_rank1_backward.json -f tf -c ${ai_core} -lan cpp -out ./index_select_for_rank1_backward -m 0 -op IndexSelectForRank1Backward
+msopgen gen -i index_select_for_rank1_backward.json -f tf -c ${ai_core} -lan cpp -out ./index_select_for_rank1_backward -m 0 -op IndexSelectForRank1Backward
 rm -rf index_select_for_rank1_backward/op_kernel/*.h
 rm -rf index_select_for_rank1_backward/op_kernel/*.cpp
 rm -rf index_select_for_rank1_backward/op_host/*.h

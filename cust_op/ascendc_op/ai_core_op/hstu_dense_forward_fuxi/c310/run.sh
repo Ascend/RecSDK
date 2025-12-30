@@ -16,13 +16,8 @@
 
 set -e
 
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
 onnx_path=$(dirname "$(readlink -f "$0")")/../../../build/scripts/onnx_plugin
 json_file=$onnx_path/json.hpp
-
-export PATH=$parent_dir:$PATH
 
 VALID_AI_CORES=(
     "ai_core-Ascend910_95"
@@ -50,7 +45,7 @@ cp -rf ../v220/hstu_dense_forward_fuxi.json ./
 
 # 利用msopgen生成可编译文件
 rm -rf ./hstu_dense_forward_fuxi
-python3 $msopgen_path gen -i hstu_dense_forward_fuxi.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward_fuxi -m 0 -op HstuDenseForwardFuxi
+msopgen gen -i hstu_dense_forward_fuxi.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward_fuxi -m 0 -op HstuDenseForwardFuxi
 rm -rf hstu_dense_forward_fuxi/op_kernel/*.h
 rm -rf hstu_dense_forward_fuxi/op_kernel/*.cpp
 rm -rf hstu_dense_forward_fuxi/op_host/*.h

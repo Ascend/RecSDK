@@ -16,12 +16,6 @@
 
 set -e
 
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
-export PATH=$parent_dir:$PATH
-
-
 VALID_AI_CORES=(
     "ai_core-Ascend910_95"
 )
@@ -46,7 +40,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./split_embedding_codegen_forward_unweighted
-python3 $msopgen_path gen -i split_embedding_codegen_forward_unweighted.json -f tf -c ${ai_core} -lan cpp -out ./split_embedding_codegen_forward_unweighted -m 0 -op SplitEmbeddingCodegenForwardUnweighted
+msopgen gen -i split_embedding_codegen_forward_unweighted.json -f tf -c ${ai_core} -lan cpp -out ./split_embedding_codegen_forward_unweighted -m 0 -op SplitEmbeddingCodegenForwardUnweighted
 cp -rf op_kernel split_embedding_codegen_forward_unweighted/
 cp -rf op_host split_embedding_codegen_forward_unweighted/
 

@@ -16,13 +16,8 @@
 
 set -e
 
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
 onnx_path=$(dirname "$(readlink -f "$0")")/../../../build/scripts/onnx_plugin
 json_file=$onnx_path/json.hpp
-
-export PATH=$parent_dir:$PATH
 
 VALID_AI_CORES=(
     "ai_core-Ascend910B1"
@@ -53,7 +48,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./hstu_dense_forward
-python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i hstu_dense_forward.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward -m 0 -op HstuDenseForward
+msopgen gen -i hstu_dense_forward.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward -m 0 -op HstuDenseForward
 rm -rf hstu_dense_forward/op_kernel/*.h
 rm -rf hstu_dense_forward/op_kernel/*.cpp
 rm -rf hstu_dense_forward/host/*.h

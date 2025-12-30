@@ -16,12 +16,6 @@
 
 set -e
 
-# 查找msopgen的路径，加入到环境变量PATH中
-msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin)
-parent_dir=$(dirname "$msopgen_path")
-export PATH=$parent_dir:$PATH
-
-
 VALID_AI_CORES=(
     "ai_core-Ascend910B1"
     "ai_core-Ascend910B2"
@@ -51,7 +45,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./relative_attn_bias_pos
-python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i relative_attn_bias_pos.json -f tf -c ${ai_core} -lan cpp -out ./relative_attn_bias_pos -m 0 -op RelativeAttnBiasPos
+msopgen gen -i relative_attn_bias_pos.json -f tf -c ${ai_core} -lan cpp -out ./relative_attn_bias_pos -m 0 -op RelativeAttnBiasPos
 rm -rf relative_attn_bias_pos/op_kernel/*.h
 rm -rf relative_attn_bias_pos/op_kernel/*.cpp
 rm -rf relative_attn_bias_pos/host/*.h
