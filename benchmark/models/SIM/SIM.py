@@ -1,10 +1,8 @@
 import torch
-import torch_npu
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-torch_npu.npu.matmul.allow_hf32=True
 
 class GeneralSearchUnit(nn.Module):
     """
