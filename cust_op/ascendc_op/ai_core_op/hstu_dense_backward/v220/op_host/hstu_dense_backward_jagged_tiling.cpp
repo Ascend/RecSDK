@@ -122,8 +122,8 @@ ge::graphStatus InitJaggedTilingKey(gert::TilingContext *context, HstuDenseBackw
         OPS_LOG_E("", "invalid datatype, only support float/fp16/bf16");
         return ge::GRAPH_FAILED;
     }
-    tiling.set_dataTypeLength(dataTypeLength);
-
+    tiling.set_dataTypeLength(dataTypeLength); 
+ 
     return ge::GRAPH_SUCCESS;
 }
 
