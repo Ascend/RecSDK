@@ -58,6 +58,8 @@ struct Args {
 
     GM_ADDR workspace;
     GM_ADDR tiling;
+
+    const HstuDenseBackwardTilingData* __restrict tilingDataPtr = nullptr;
 };
 
 struct AddrArgs {
