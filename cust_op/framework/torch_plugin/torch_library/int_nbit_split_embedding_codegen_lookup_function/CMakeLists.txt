@@ -1,0 +1,14 @@
+cmake_minimum_required(VERSION 3.10)
+
+project(int_nbit_split_embedding_codegen_lookup_function)
+
+include("${CMAKE_CURRENT_LIST_DIR}/../common/CommonTorchOpConfig.cmake")
+
+include_directories(${Python3_INCLUDE_DIRS})
+
+add_library(int_nbit_split_embedding_codegen_lookup_function SHARED int_nbit_split_embedding_codegen_lookup_function.cpp)
+
+target_compile_features(int_nbit_split_embedding_codegen_lookup_function PRIVATE cxx_std_17)
+target_compile_options(int_nbit_split_embedding_codegen_lookup_function PRIVATE -D_GLIBCXX_USE_CXX11_ABI=${GLIBCXX_ABI})
+
+target_link_libraries(int_nbit_split_embedding_codegen_lookup_function PUBLIC c10 torch torch_cpu torch_npu c_sec)
