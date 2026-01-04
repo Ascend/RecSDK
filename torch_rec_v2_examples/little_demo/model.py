@@ -171,6 +171,8 @@ def get_planner(
 def get_optimizer_type(opt: str) -> EmbOptimType:
     if opt == "adam":
         return EmbOptimType.ADAM
+    elif opt == "adamW":
+        return EmbOptimType.ADAMW
     else:
         raise ValueError(f"Unknown optimizer type: {opt}")
 
