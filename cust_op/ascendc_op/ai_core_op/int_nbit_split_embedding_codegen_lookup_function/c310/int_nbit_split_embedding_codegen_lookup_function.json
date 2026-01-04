@@ -1,0 +1,220 @@
+[
+    {
+        "op": "IntNbitSplitEmbeddingCodegenLookupFunction",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "dev_weights",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "uint8", "uint8"
+                ]
+            },
+            {
+                "name": "uvm_weights",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "uint8", "uint8"
+                ]
+            },
+            {
+                "name": "lxu_cache_weights",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "uint8", "uint8"
+                ]
+            },
+            {
+                "name": "weights_placements",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int32", "int32"
+                ]
+            },
+            {
+                "name": "weights_offsets",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int64", "int64"
+                ]
+            },
+            {
+                "name": "weights_tys",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "uint8", "uint8"
+                ]
+            },
+            {
+                "name": "D_offsets",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int32", "int32"
+                ]
+            },
+            {
+                "name": "indices",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int32", "int64"
+                ]
+            },
+            {
+                "name": "offsets",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int32", "int64"
+                ]
+            },
+            {
+                "name": "lxu_cache_locations",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int32", "int32"
+                ]
+            },
+            {
+                "name": "offset_per_key",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int32", "int64"
+                ]
+            },
+            {
+                "name": "indice_weights",
+                "param_type": "optional",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp32"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "out",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp32"
+                ]
+            }
+        ],
+        "attr": [
+            {
+                "name": "total_D",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "max_D",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "max_int2_D",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "max_int4_D",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "max_int8_D",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "max_float16_D",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "max_float32_D",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "max_float8_D",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "pooling_mode",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "output_dtype",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 0
+            },
+            {
+                "name": "row_alignment",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 16
+            },
+            {
+                "name": "fp8_exponent_bits",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 4
+            },
+            {
+                "name": "fp8_exponent_bias",
+                "param_type": "required",
+                "type": "int",
+                "default_value": 15
+            }
+        ]
+    }
+]
