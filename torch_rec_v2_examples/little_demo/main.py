@@ -64,7 +64,10 @@ def parse_args() -> argparse.Namespace:
         help="path to dataset MovieLens，and will download if non-existed",
     )
     parser.add_argument(
-        "--optimizer", type=str, default="adam", help="training optimizer"
+        "--optimizer",
+        type=str,
+        default="adam",
+        help="training optimizer, support adam and adamW",
     )
     parser.add_argument("--epochs", type=int, default=2, help="training epochs")
     parser.add_argument("--batch_size", type=int, default=1024, help="batch size")
@@ -151,6 +154,8 @@ def test_one_epoch(
 def create_optimizer(args: argparse.Namespace, model: nn.Module) -> Union[Adam, AdamW]:
     if args.optimizer == "adam":
         return torch.optim.Adam(model.parameters(), lr=args.lr)
+    elif args.optimizer == "adamW":
+        return torch.optim.AdamW(model.parameters(), lr=args.lr)
     else:
         raise ValueError(f"Unknown optimizer: {args.optimizer}")
 
@@ -294,7 +299,7 @@ def main():
     if args.dump:
         dump(args)
     if args.load:
-        load(args)   
+        load(args)
     logger.info("Demo done.")
 
 
