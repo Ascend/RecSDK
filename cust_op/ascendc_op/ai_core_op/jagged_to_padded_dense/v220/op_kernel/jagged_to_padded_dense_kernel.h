@@ -249,6 +249,7 @@ public:
         } else {
             InitializeFloatPadding();
         }
+        AscendC::PipeBarrier<PIPE_ALL>();
     }
 
     __aicore__ inline void InitializeFloatPadding()
