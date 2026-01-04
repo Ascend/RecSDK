@@ -18,7 +18,7 @@
 
 const int ADAGRAD_OPTIM_NUM = 1;
 const int ADAM_OPTIM_NUM = 2;
-
+const int ROWWISE_ADAGRAD_OPTIM_NUM = 1;
 
 namespace fbgemm_npu_lookups {
     inline at::Tensor compute_offset_per_key(

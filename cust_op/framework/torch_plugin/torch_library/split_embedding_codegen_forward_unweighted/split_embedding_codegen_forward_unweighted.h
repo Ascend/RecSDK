@@ -18,7 +18,8 @@
 enum class OptimizerType {
     ADAGRAD = 1,
     ADAM = 2,
-    SGD = 3
+    SGD = 3,
+    ROWWISE_ADAGRAD = 7
 };
 
 enum class SparseType {

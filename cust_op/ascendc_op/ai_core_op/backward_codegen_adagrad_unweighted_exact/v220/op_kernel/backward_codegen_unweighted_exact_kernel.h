@@ -74,6 +74,7 @@ struct UpdateArgs {
     int64_t inputOffset;
     int64_t embedDim;
     int64_t thisOutOffset;
+    int64_t thisMomentumOffset;
 };
 
 __aicore__ inline int64_t GetOffset(GM_ADDR offsetAddr, int64_t index)
@@ -141,6 +142,7 @@ public:
         outDim0 = tilingData.outDim0;
         maxD = tilingData.maxD;
         enableHash = tilingData.enableHash;
+        momentumDim0 = tilingData.momentumDim0;
     }
 
     __aicore__ inline void InitDataType()
@@ -176,10 +178,10 @@ public:
         // tensor
         gradOutputGT.SetGlobalBuffer((__gm__ float*)gradOutput, gradOutputDim0 * gradOutputDim1);
         devWeightsGT.SetGlobalBuffer((__gm__ float*)devWeights, devWeightsDim0);
-        momentum1DevGT.SetGlobalBuffer((__gm__ float*)momentum1Dev, outDim0);
+        momentum1DevGT.SetGlobalBuffer((__gm__ float*)momentum1Dev, momentumDim0);
 
         outGT.SetGlobalBuffer((__gm__ float*)out, outDim0);  // InitGlobalMemory
-        momentum1DevOutGT.SetGlobalBuffer((__gm__ float*)momentum1DevOut, outDim0);
+        momentum1DevOutGT.SetGlobalBuffer((__gm__ float*)momentum1DevOut, momentumDim0);
         weightsDevOutGT.SetGlobalBuffer((__gm__ float*)weightsDevOut, outDim0);
         hashSizeCumsumGT.SetGlobalBuffer((__gm__ int64_t*)hashSizeCumsum, weightsOffsetsDim0 + 1);
 
@@ -205,8 +207,6 @@ public:
         // Init pipe
         pipe.InitBuffer(queIn, 1, blockLen * sizeof(float));
         pipe.InitBuffer(queOut, 1, blockLen * sizeof(float));
-
-        pipe.InitBuffer(queFlagIn, 1, DATA_ALIGN_BYTES);
         pipe.InitBuffer(queFlagOut, 1, DATA_ALIGN_BYTES);
     }
 
@@ -221,22 +221,6 @@ public:
         InitOffset();
         InitTensor();
         InitPipe();
-    }
-
-    __aicore__ inline void SetTheFlag(const GlobalTensor<int8_t>& IndexGt, int8_t flagValue)
-    {
-        LocalTensor<int8_t> flagOutLt = queFlagOut.AllocTensor<int8_t>();
-        LocalTensor<int32_t> clearLt = flagOutLt.ReinterpretCast<int32_t>();
-        Duplicate<int32_t>(clearLt, (int32_t)0, FLAG_LEN);
-        flagOutLt.SetValue(0, flagValue);
-
-        queFlagOut.EnQue(flagOutLt);
-        LocalTensor<int8_t> newFlagOutLt = queFlagOut.DeQue<int8_t>();
-
-        SetAtomicMax<int8_t>();
-        DataCopy(IndexGt, newFlagOutLt, FLAG_LEN);
-        SetAtomicNone();
-        queFlagOut.FreeTensor(newFlagOutLt);
     }
 
     template <typename T>
@@ -258,23 +242,22 @@ public:
         int64_t total = outLenThisCore;
         int64_t remain = total;
         int thisAlignment = DATA_ALIGN_BYTES / sizeof(T);
+        LocalTensor<T> outLt = queOut.AllocTensor<T>();
+        LocalTensor<int32_t> clearLt = outLt.template ReinterpretCast<int32_t>();
+        Duplicate<int32_t>(clearLt, (int32_t)0, blockLen);
+        queOut.EnQue(outLt);
+        LocalTensor<T> newOutLt = queOut.DeQue<T>();
         while (remain > 0) {
             int64_t thisLen = blockLen;
             if (remain < thisLen) {
-                thisLen = (remain + thisAlignment - 1) / thisAlignment * thisAlignment;
+                thisLen = (remain + thisAlignment - 1);
             }
-
-            LocalTensor<T> outLt = queOut.AllocTensor<T>();
-            LocalTensor<int32_t> clearLt = outLt.template ReinterpretCast<int32_t>();
-            Duplicate<int32_t>(clearLt, (int32_t)0, thisLen);
-            queOut.EnQue(outLt);
-
+            thisLen = thisLen / thisAlignment * thisAlignment;
             int thisOffset = total - remain;
-            LocalTensor<T> newOutLt = queOut.DeQue<T>();
             DataCopy(clearGt[outOffset + thisOffset], newOutLt, thisLen);
-            queOut.FreeTensor(newOutLt);
             remain = remain - thisLen;
         }
+        queOut.FreeTensor(newOutLt);
     }
 
     __aicore__ inline void ClearGrad()
@@ -355,6 +338,13 @@ public:
             indicesNumOneBlock = MAX_ARGS_PIPE_LEN;
         }
         ComputeArgs argsArry[MAX_ARGS_PIPE_LEN];
+        LocalTensor<int8_t> flagOutLt = queFlagOut.AllocTensor<int8_t>();
+        LocalTensor<int32_t> clearLt = flagOutLt.ReinterpretCast<int32_t>();
+        Duplicate<int32_t>(clearLt, (int32_t)0, FLAG_LEN / sizeof(int32_t));
+        flagOutLt.SetValue(0, NEED_UPDATE);
+
+        queFlagOut.EnQue(flagOutLt);
+        LocalTensor<int8_t> newFlagOutLt = queFlagOut.DeQue<int8_t>();
         while (remain > 0) {
             int64_t thisLen = 0;
             while (thisLen < indicesNumOneBlock && remain > 0) {
@@ -376,7 +366,9 @@ public:
                     thisIndForThisTable = GetOffset(indices, indicesInd);
                 }
                 int64_t thisIndForTotalTable = hashSizeCumsumGT.GetValue(tableIndex) + thisIndForThisTable;
-                SetTheFlag(workspaceGT[thisIndForTotalTable], NEED_UPDATE);
+                SetAtomicMax<int8_t>();
+                DataCopy(workspaceGT[thisIndForTotalTable], newFlagOutLt, FLAG_LEN);
+                SetAtomicNone();
                 // Out offset
                 int64_t thisOutOffset = thisWeightOffset + thisIndForThisTable * embedDim;
 
@@ -460,6 +452,7 @@ public:
     int64_t offsetsDim0;
     int64_t outDim0;
     int64_t totalHashSize;
+    int64_t momentumDim0;
 
     // DataType
     int64_t bytesOfDataType;
@@ -488,7 +481,6 @@ public:
     TQue<TPosition::VECIN, 1> queIn;
     TQue<TPosition::VECOUT, 1> queOut;
 
-    TQue<TPosition::VECIN, 1> queFlagIn;
     TQue<TPosition::VECOUT, 1> queFlagOut;
 
     // ThisCoreAddr
