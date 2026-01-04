@@ -95,7 +95,7 @@ class TestModel(torch.nn.Module):
             self.name2table[config.name] = collection(
                 num_embeddings=config.num_embeddings,
                 embedding_dim=config.embedding_dim,
-                sparse=False if params.optim == SGD else True,
+                sparse=False if params.optim in (SGD, RowWiseAdagrad) else True,
                 device=torch.device("cpu"),
                 **kwargs
             )
@@ -159,8 +159,6 @@ def lookup_cpu(jt_lst, weights, params):
     for i in range(EPOCH):
         # forward
         output = model(jt_lst[i])
-        if params.optim == RowWiseAdagrad:
-            continue
         # 将多个表的查询结果合并
         loss = torch.sum(output ** 2 / 2)
 
@@ -209,8 +207,6 @@ def lookup_npu(indices, offsets, weights, jt_lst, params):
             unique_offset = torch.Tensor(unique_offset).to(DEVICEID).to(torch.int64)
             kwargs = dict(unique_indices=unique_indices, unique_offset=unique_offset, unique_inverse=unique_inverse)
         output = tbe(indice, offset, **kwargs)
-        if params.optim == RowWiseAdagrad:
-            continue
         loss = torch.sum(output ** 2 / 2)
         loss.backward()
     return output, tbe.weights_dev
@@ -313,8 +309,6 @@ def execute(params):
     logging.info(lookup_npu_result[~lookup_compare])
     logging.info(lookup_golden[~lookup_compare])
     assert (~lookup_compare).sum() / total_size < 1e-4
-    if params.optim == RowWiseAdagrad:
-        return
 
     logging.info("====== backward ===========")
     weights_compare = torch.isclose(weights_golden, weights_npu_result, 1e-4, 1e-4)

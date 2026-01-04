@@ -46,6 +46,7 @@ TILING_DATA_FIELD_DEF(float, beta2pow);
 TILING_DATA_FIELD_DEF(float, beta2sqrt);
 TILING_DATA_FIELD_DEF(int64_t, iter);
 TILING_DATA_FIELD_DEF(bool, useOptimize); // where to use optimizer update
+TILING_DATA_FIELD_DEF(int64_t, momentumDim0);
 
 END_TILING_DATA_DEF;
 

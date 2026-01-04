@@ -39,6 +39,7 @@ constexpr int D_OFFSETS_INDEX = 6;
 constexpr int INDICES_INDEX = 8;
 constexpr int OFFSETS_INDEX = 9;
 constexpr int LXU_CACHE_LOCATIONS_INDEX = 10;
+constexpr int MOMENTUM1_DEV_INDEX = 11;
 constexpr int HASH_INDICES_INDEX = 19;
 constexpr int UNIQUE_ID_INDEX = 20;
 constexpr int UNIQUE_HASH_SIZE_INDEX = 21;
@@ -62,10 +63,13 @@ constexpr int UNIQUE_ADAGRAD = 4;
 constexpr int NORMAL_ADAM = 2;
 constexpr int UNIQUE_ADAM = 5;
 constexpr int NORMAL_SGD = 3;
+constexpr int UNIQUE_SGD = 6;
+constexpr int NORMAL_ROWWISE_ADAGRAD = 7;
 // optimize type
 constexpr int ADAGRAD = 1;
 constexpr int ADAM = 2;
 constexpr int SGD = 3;
+constexpr int ROWWISE_ADAGRAD = 7;
 
 static ge::graphStatus UniqueTilingFunc(gert::TilingContext* context,
                                         BackwardCodegenAdagradUnweightedExactTilingData& tilingData)
@@ -132,6 +136,8 @@ static ge::graphStatus NormalTilingKey(gert::TilingContext* context, const int &
         context->SetTilingKey(NORMAL_ADAGRAD);
     } else if (optimType == SGD) {
         context->SetTilingKey(NORMAL_SGD);
+    } else if (optimType == ROWWISE_ADAGRAD) {
+        context->SetTilingKey(NORMAL_ROWWISE_ADAGRAD);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -184,6 +190,14 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
         useRegBase = false;
     }
 
+    if (optimType == ROWWISE_ADAGRAD) {
+        OPS_LOG_E_IF_NULL("momentum1DevIndexShape",
+            context->GetInputShape(MOMENTUM1_DEV_INDEX), return ge::GRAPH_FAILED);
+        int64_t momentumDim0 = context->GetInputShape(MOMENTUM1_DEV_INDEX)->GetStorageShape().GetDim(0);
+        tilingData.set_momentumDim0(momentumDim0);
+    } else {
+        tilingData.set_momentumDim0(outDim0);
+    }
     tilingData.set_useRegBase(useRegBase);
     tilingData.set_gradOutputDim0(gradOutputDim0);
     tilingData.set_gradOutputDim1(gradOutputDim1);
