@@ -59,22 +59,22 @@ class Topology:
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|类型|可选/必选|说明|
-|--|--|--|--|
-|world_size|int|必选|使用的卡数。取值范围：[1，8]|
-|compute_device|str|必选|设备名称。取值范围为"npu"，即npu设备。|
-|hbm_cap|int|可选|仅支持默认值为None，不支持用户自定义。|
-|ddr_cap|int|可选|仅支持默认值为None，不支持用户自定义。|
-|local_world_size|int|可选|仅支持默认值为None，不支持用户自定义。|
-|hbm_mem_bw|float|可选|仅支持默认值为(897 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。|
-|ddr_mem_bw|float|可选|仅支持默认值为(51 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。|
-|hbm_to_ddr_mem_bw|float|可选|仅支持默认值为(32 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。|
-|intra_host_bw|float|可选|仅支持默认值为(600 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。|
-|inter_host_bw|float|可选|仅支持默认值为(12.5 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。|
-|bwd_compute_multiplier|float|可选|仅支持默认值为2，不支持用户自定义。|
-|custom_topology_data|torchrec.distribute.planner.types.CustomTopologyData|可选|仅支持默认值为None，不支持用户自定义。|
-|weighted_feature_bwd_compute_multiplier|float|可选|仅支持默认值为1，不支持用户自定义。|
-|uneven_sharding_perf_multiplier|float|可选|仅支持默认值为1，不支持用户自定义。|
+|参数名|类型|可选/必选| 说明                                                |
+|--|--|--|---------------------------------------------------|
+|world_size|int|必选| 使用的卡数。取值范围：[1，8]                                  |
+|compute_device|str|必选| 设备名称。当使用NPU设备时取值为"npu"，即npu设备。                    |
+|hbm_cap|int|可选| 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                             |
+|ddr_cap|int|可选| 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                             |
+|local_world_size|int|可选| 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                             |
+|hbm_mem_bw|float|可选| 当使用NPU设备时仅支持默认值为(897 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。 |
+|ddr_mem_bw|float|可选| 当使用NPU设备时仅支持默认值为(51 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。 |
+|hbm_to_ddr_mem_bw|float|可选| 当使用NPU设备时仅支持默认值为(32 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。 |
+|intra_host_bw|float|可选| 当使用NPU设备时仅支持默认值为(600 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。 |
+|inter_host_bw|float|可选| 当使用NPU设备时仅支持默认值为(12.5 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。 |
+|bwd_compute_multiplier|float|可选| 当使用NPU设备时仅支持默认值为2，不支持用户自定义。                                |
+|custom_topology_data|torchrec.distribute.planner.types.CustomTopologyData|可选| 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                             |
+|weighted_feature_bwd_compute_multiplier|float|可选| 当使用NPU设备时仅支持默认值为1，不支持用户自定义。                                |
+|uneven_sharding_perf_multiplier|float|可选| 当使用NPU设备时仅支持默认值为1，不支持用户自定义。                                |
 
 
 **使用示例<a name="section193151694205"></a>**
@@ -107,23 +107,23 @@ class ParameterConstraints:
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|类型|可选/必选|说明|
-|--|--|--|--|
-|sharding_type|List[str]|必选|分表的类型。取值范围：<li>"row_wise"：按照行号进行分表。</li><li>"data_parallel"：每个rank保留一个表副本。</li><div class="note"><span class="notetitle">说明</span><div class="notebody">不支持混合使用不同的分表类型。</div></div>|
-|compute_kernels|List[str]|必选|计算的kernel类型。取值范围：<li>"fused"：采用合表的方式查询。该方式仅在sharding_type为"row_wise"时使用。</li><li>"dense"：采用分表的方式查询。该方式仅在sharding_type为"data_parallel"时使用。</li>|
-|min_partition|List[int]|可选|仅支持默认值为None，不支持用户自定义。|
-|pooling_factors|List[float]|可选|仅支持默认值为POOLING_FACTOR，不支持用户自定义。|
-|num_poolings|List[float]|可选|仅支持默认值为None，不支持用户自定义。|
-|batch_sizes|List[int]|可选|仅支持默认值为None，不支持用户自定义。|
-|is_weighted|bool|可选|仅支持默认值为False，不支持用户自定义。|
-|cache_params|torchrec.distributed.types.CacheParams|可选|仅支持默认值为None，不支持用户自定义。|
-|enforce_hbm|bool|可选|仅支持默认值为None，不支持用户自定义。|
-|stochastic_rounding|bool|可选|仅支持默认值为None，不支持用户自定义。|
-|bounds_check_mode|enum.IntEnum|可选|仅支持默认值为None，不支持用户自定义。|
-|feature_names|List[str]|可选|仅支持默认值为None，不支持用户自定义。|
-|output_dtype|Enum|可选|仅支持默认值为None，不支持用户自定义。|
-|device_group|str|可选|仅支持默认值为None，不支持用户自定义。|
-|key_value_params|torchrec.distributed.types.KeyValueParams|可选|仅支持默认值为None，不支持用户自定义。|
+|参数名|类型| 可选/必选 | 说明                                                                                                                                                                                                 |
+|--|--|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|sharding_type|List[str]| 可选    | 分表的类型。当使用NPU设备时为必选参数，取值范围：<li>"row_wise"：按照行号进行分表。</li><li>"data_parallel"：每个rank保留一个表副本。</li><div class="note"><span class="notetitle">说明</span><div class="notebody">不支持混合使用不同的分表类型。</div></div> |
+|compute_kernels|List[str]| 可选    | 计算的kernel类型。当使用NPU设备时为必选参数，取值范围：<li>"fused"：采用合表的方式查询。该方式仅在sharding_type为"row_wise"时使用。</li><li>"dense"：采用分表的方式查询。该方式仅在sharding_type为"data_parallel"时使用。</li>                                      |
+|min_partition|List[int]| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
+|pooling_factors|List[float]| 可选    | 当使用NPU设备时仅支持默认值为POOLING_FACTOR，不支持用户自定义。                                                                                                                                                                    |
+|num_poolings|List[float]| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
+|batch_sizes|List[int]| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
+|is_weighted|bool| 可选    | 当使用NPU设备时仅支持默认值为False，不支持用户自定义。                                                                                                                                                                             |
+|cache_params|torchrec.distributed.types.CacheParams| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
+|enforce_hbm|bool| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
+|stochastic_rounding|bool| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
+|bounds_check_mode|enum.IntEnum| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
+|feature_names|List[str]| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
+|output_dtype|Enum| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
+|device_group|str| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
+|key_value_params|torchrec.distributed.types.KeyValueParams| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
 
 
 **使用示例<a name="section193151694205"></a>**
@@ -196,19 +196,19 @@ class EmbeddingShardingPlanner:
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|类型|可选/必选|说明|
-|--|--|--|--|
-|topology|Topology|必选|参考Topology（TorchRec）的取值范围。|
-|constraints|Dict[str, ParameterConstraints]|必选|参考的取值范围。|
-|batch_size|int|可选|取值范围：[1, 1000000]。|
-|enumerator|torchrec.distributed.planner.types.Enumerator|可选|仅支持默认值为None，不支持用户自定义。|
-|storage_reservation|torchrec.distributed.planner.types.StorageReservation|可选|仅支持默认值为None，不支持用户自定义。|
-|proposer|torchrec.distributed.planner.types.Proposer|可选|仅支持默认值为None，不支持用户自定义。|
-|partitioner|torchrec.distributed.planner.types.Partitioner|可选|仅支持默认值为None，不支持用户自定义。|
-|performance_model|torchrec.distributed.planner.types.PerfModel|可选|仅支持默认值为None，不支持用户自定义。|
-|stats|torchrec.distributed.planner.types.Stats|可选|仅支持默认值为None，不支持用户自定义。|
-|debug|bool|可选|仅支持默认值为True，不支持用户自定义。|
-|callbacks|List[Callable]|可选|仅支持默认值为None，不支持用户自定义。|
+|参数名|类型| 可选/必选 | 说明                                                    |
+|--|--|-------|-------------------------------------------------------|
+|topology|Topology| 可选    | 参考Topology（TorchRec）的取值范围。当使用NPU设备时参数为必传。                            |
+|constraints|Dict[str, ParameterConstraints]| 可选    | 参考ParameterConstraints（TorchRec）的取值范围。当使用NPU设备时参数为必传。 |
+|batch_size|int| 可选    | 取值范围：[1, 1000000]。                                    |
+|enumerator|torchrec.distributed.planner.types.Enumerator| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                 |
+|storage_reservation|torchrec.distributed.planner.types.StorageReservation| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                 |
+|proposer|torchrec.distributed.planner.types.Proposer| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                 |
+|partitioner|torchrec.distributed.planner.types.Partitioner| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                 |
+|performance_model|torchrec.distributed.planner.types.PerfModel| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                 |
+|stats|torchrec.distributed.planner.types.Stats| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                 |
+|debug|bool| 可选    | 当使用NPU设备时仅支持默认值为True，不支持用户自定义。                                 |
+|callbacks|List[Callable]| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                 |
 
 
 **使用示例<a name="section193151694205"></a>**
@@ -247,11 +247,11 @@ def collective_plan(
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|类型|可选/必选|说明|
-|--|--|--|--|
-|module|nn.Module|必选|包含HashEmbeddingBagCollection的module列表。|
-|sharders|List[ModuleSharder[nn.Module]]|必选|Sharder的列表。仅支持传入get_default_hybrid_sharders()的结果。|
-|pg|dist.ProcessGroup|必选|传入dist.GroupMember.WORLD。|
+|参数名|类型| 可选/必选 | 说明                                                  |
+|--|--|-------|-----------------------------------------------------|
+|module|nn.Module| 可选    | 当使用NPU设备时必须传入包含HashEmbeddingBagCollection的module列表。 |
+|sharders|List[ModuleSharder[nn.Module]]| 可选    | Sharder的列表。当使用NPU设备时仅支持传入get_default_hybrid_sharders()的结果。   |
+|pg|dist.ProcessGroup| 可选    | 当使用NPU设备时传入dist.GroupMember.WORLD。                           |
 
 
 **使用示例<a name="section193151694205"></a>**
@@ -288,16 +288,16 @@ class DistributedModelParallel:
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|类型|可选/必选|说明|
-|--|--|--|--|
-|module|nn.Module|必选|需要并行的模型。包含HashEmbeddingBagCollection的module列表。|
-|device|torch.device|必选|设备。取值范围为torch.device("npu")，即npu设备。|
-|plan|ShardingPlan|必选|分表计划。用户需保证传入的必须是EmbeddingShardingPlanner.collective_plan返回的结果。|
-|sharders|List[ModuleSharder[nn.Module]]|必选|Sharder的列表。仅支持传入get_default_hybrid_sharders()|
-|env|ShardingEnv|可选|仅支持默认值为None，不支持用户自定义。|
-|init_data_parallel|bool|可选|仅支持默认值为True，不支持用户自定义。|
-|init_parameters|bool|可选|仅支持默认值为True，不支持用户自定义。|
-|data_parallel_wrapper|torchrec.distributed.DataParallelWrapper|可选|仅支持默认值为None，不支持用户自定义。|
+|参数名|类型| 可选/必选 | 说明                                                             |
+|--|--|-------|----------------------------------------------------------------|
+|module|nn.Module| 必选    | 需要并行的模型。包含HashEmbeddingBagCollection的module列表。                 |
+|device|torch.device| 可选    | 设备。使用NPU时取值为torch.device("npu")，即npu设备，默认为torch.device("cpu")  |
+|plan|ShardingPlan| 可选    | 分表计划。用户需保证传入的必须是EmbeddingShardingPlanner.collective_plan返回的结果。 |
+|sharders|List[ModuleSharder[nn.Module]]| 可选    | Sharder的列表。使用NPU时仅支持传入get_default_hybrid_sharders()            |
+|env|ShardingEnv| 可选    | device为torch.device("npu")时仅支持默认值为None，不支持用户自定义。               |
+|init_data_parallel|bool| 可选    | device为torch.device("npu")时仅支持默认值为True，不支持用户自定义。                                          |
+|init_parameters|bool| 可选    | device为torch.device("npu")时仅支持默认值为True，不支持用户自定义。                                          |
+|data_parallel_wrapper|torchrec.distributed.DataParallelWrapper| 可选    | device为torch.device("npu")时仅支持默认值为None，不支持用户自定义。                                          |
 
 
 **使用示例<a name="section193151694205"></a>**

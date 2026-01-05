@@ -140,9 +140,6 @@ def check_multi_hot_sizes(multi_hot_sizes: List[int], tables: List[EmbeddingBagC
             )
 
 
-
-
-
 def check_create_table_params(batch_size, embedding_optimizer_cls, multi_hot_sizes, tables, world_size):
     check_valid_value(
         type(world_size) is int and 0 < world_size <= MAX_WORLD_SIZE,
@@ -151,11 +148,11 @@ def check_create_table_params(batch_size, embedding_optimizer_cls, multi_hot_siz
     
     for config in tables:
         check_embedding_config_valid(config)
-        if config.num_embeddings < world_size:
-            raise ValueError(
-                f"The num_embeddings should be greater than world_size, "
-                f"but is {config.num_embeddings} < {world_size}"
-            )
+    if not any(config.num_embeddings >= world_size for config in tables):
+        raise ValueError(
+            f"The max num_embeddings should be greater than world_size, "
+            f"but all configs have num_embeddings < {world_size}"
+        )
     check_embedding_optimizer(embedding_optimizer_cls)
     
     check_valid_value(
