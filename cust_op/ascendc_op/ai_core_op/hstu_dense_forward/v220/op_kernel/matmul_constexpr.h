@@ -50,6 +50,17 @@ constexpr MatmulConfigMode configMode = MatmulConfigMode::CONFIG_NORM;
         BLOCK_HEIGHT_256, MAX_BLOCK_DIM, BLOCK_HEIGHT_256,
         BLOCK_HEIGHT_128, MAX_BLOCK_DIM, BASIC_K_32
     };
+
+    // FP8
+    constexpr MatmulShapeParams qkShapeFp8Params = {
+        BLOCK_HEIGHT_256, BLOCK_HEIGHT_256, MAX_BLOCK_DIM,
+        BLOCK_HEIGHT_256, BLOCK_HEIGHT_256, 128
+    };
+
+    constexpr MatmulShapeParams svShapeFp8Params = {
+        BLOCK_HEIGHT_256, MAX_BLOCK_DIM, BLOCK_HEIGHT_256,
+        BLOCK_HEIGHT_256, BLOCK_HEIGHT_256, 32
+    };
 #else
     // FP16/BFP16
     constexpr MatmulShapeParams qkShapeFp16Params = {
@@ -72,13 +83,27 @@ constexpr MatmulConfigMode configMode = MatmulConfigMode::CONFIG_NORM;
         BLOCK_HEIGHT_256, MAX_BLOCK_DIM, BLOCK_HEIGHT_256,
         BLOCK_HEIGHT_128, BLOCK_HEIGHT_256, BASIC_K_32
     };
-#endif
+    // FP8
+    constexpr MatmulShapeParams qkShapeFp8Params = {
+        BLOCK_HEIGHT_256, BLOCK_HEIGHT_256, MAX_BLOCK_DIM,
+        BLOCK_HEIGHT_256, BLOCK_HEIGHT_256, 128
+    };
 
+    constexpr MatmulShapeParams svShapeFp8Params = {
+        BLOCK_HEIGHT_256, MAX_BLOCK_DIM, BLOCK_HEIGHT_256,
+        BLOCK_HEIGHT_256, BLOCK_HEIGHT_256, 32
+    };
+#endif
 
 constexpr MatmulQuantParams quantParams = {false, false};
 constexpr MatmulBatchParams batchParams = {false, BatchMode::NONE};
 constexpr MatmulFuncParams qkFuncParams = {false, false};
 constexpr MatmulFuncParams svFuncParams = {false, false};
+
+constexpr MatmulConfig mmStaticConfigQKFp8 =
+    GetMMConfig<configMode>(qkShapeFp8Params, quantParams, batchParams, qkFuncParams);
+constexpr MatmulConfig mmStaticConfigSVFp8 =
+    GetMMConfig<configMode>(svShapeFp8Params, quantParams, batchParams, svFuncParams);
 
 constexpr MatmulConfig mmStaticConfigQKFp16 =
     GetMMConfig<configMode>(qkShapeFp16Params, quantParams, batchParams, qkFuncParams);

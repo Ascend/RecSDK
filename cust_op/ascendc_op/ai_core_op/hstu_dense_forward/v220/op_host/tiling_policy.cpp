@@ -204,6 +204,11 @@ bool TilingPolicy::TilingWorkSpace(gert::TilingContext* context, optiling::HstuD
     int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
 
     int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float);
+    auto socVersion = ascendPlatform.GetSocVersion();
+    // A5平台需要额外的FP8 workspace
+    if (socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
+        workspaceSize += oneCoreMidElem * 1;
+    }
     int64_t syncSize = coreNum * VCORE_NUM_IN_ONE_AIC * DATA_ALIGN_BYTES;
     currentWorkspace[0] = workspaceSize + systemWorkspacesSize + syncSize;
     return true;
