@@ -30,7 +30,7 @@ index b0e3b247..7ec85a2b 100644
          keywords=[
              "pytorch",
 diff --git a/torchrec/__init__.py b/torchrec/__init__.py
-index 29258f6f..01bd33a0 100644
+index 29258f6f..b67bdb54 100644
 --- a/torchrec/__init__.py
 +++ b/torchrec/__init__.py
 @@ -6,7 +6,8 @@
@@ -368,7 +368,7 @@ index 43eeda32..e1575133 100644
                      EmbeddingComputeKernel.FUSED_UVM.value,
                      EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
 diff --git a/torchrec/distributed/model_parallel.py b/torchrec/distributed/model_parallel.py
-index 23ce0165..fe598cd9 100644
+index 23ce0165..97e3d08e 100644
 --- a/torchrec/distributed/model_parallel.py
 +++ b/torchrec/distributed/model_parallel.py
 @@ -49,6 +49,7 @@ from torchrec.distributed.utils import (
@@ -384,18 +384,18 @@ index 23ce0165..fe598cd9 100644
          data_parallel_wrapper: Optional[DataParallelWrapper] = None,
      ) -> None:
 +        check(module is not None and isinstance(module, nn.Module), "module should be nn.Module")
-+        check(device.type == "npu", "device should be npu")
-+        check(plan is not None and isinstance(plan, ShardingPlan), "device should be npu")
-+        check(sharders is not None and isinstance(sharders, List), "sharders should be List")
-+        check(len(sharders) <= MAX_MODULE_LOOP_TIMES,
-+              "sharders should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
-+        for sharder in sharders:
-+            check(isinstance(sharder, ModuleSharder), "shard should be ModuleSharder")
-+
-+        check(env is None, "env should be None")
-+        check(init_data_parallel == True, "init_data_parallel should be True")
-+        check(init_parameters == True, "init_parameters should be True")
-+        check(data_parallel_wrapper is None, "data_parallel_wrapper should be None")
++        check(device is None or isinstance(device, torch.device), "device should be torch.device")
++        check(plan is None or isinstance(plan, ShardingPlan), "plan should be ShardingPlan")
++        check(sharders is None or isinstance(sharders, List), "sharders should be List")
++        if sharders is not None:
++            check(len(sharders) <= MAX_MODULE_LOOP_TIMES, "sharders should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
++            for sharder in sharders:
++                check(isinstance(sharder, ModuleSharder), "shard should be ModuleSharder")
++        check(env is None or isinstance(env, ShardingEnv), "env should be ShardingEnv")
++        check(isinstance(init_data_parallel, bool), "init_data_parallel should be bool")
++        check(isinstance(init_parameters, bool), "init_parameters should be bool")
++        check(data_parallel_wrapper is None or isinstance(data_parallel_wrapper, DataParallelWrapper),
++              "data_parallel_wrapper should be None")
 +
          super().__init__()
          torch._C._log_api_usage_once(f"torchrec.distributed.{self.__class__.__name__}")
@@ -444,47 +444,50 @@ index 7dd86b06..57ee8d1d 100644
  
      return lookup.get((compute_device, compute_kernel))
 diff --git a/torchrec/distributed/planner/planners.py b/torchrec/distributed/planner/planners.py
-index a7cd8479..676bce96 100644
+index a7cd8479..de2ccdaa 100644
 --- a/torchrec/distributed/planner/planners.py
 +++ b/torchrec/distributed/planner/planners.py
 @@ -67,6 +67,8 @@ from torchrec.distributed.types import (
      ShardMetadata,
  )
  from torchrec.distributed.utils import none_throws
-+from torchrec.tensor_types import check
++from torchrec.tensor_types import check, validate_list_type
 +
  
  logger: logging.Logger = logging.getLogger(__name__)
  
-@@ -187,6 +189,18 @@ class EmbeddingShardingPlanner(ShardingPlanner):
+@@ -187,6 +189,21 @@ class EmbeddingShardingPlanner(ShardingPlanner):
          ] = None,
          timeout_seconds: Optional[int] = None,
      ) -> None:
-+        check(topology is not None, "topology should be not None")
-+        check(constraints is not None, "constraints should be not None")
++        check(topology is None or isinstance(topology, Topology), "topology should be Topology")
++        check(constraints is None or isinstance(constraints, Dict), "constraints should be Dict")
 +        check(batch_size is None or 0 <= batch_size <= 1000000, "batch_size shold in [1, 1000000]")
-+        check(enumerator is None, "enumerator should be None")
-+        check(storage_reservation is None, "storage_reservation should be None")
-+        check(proposer is None, "proposer should be None")
-+        check(partitioner is None, "partitioner should be None")
-+        check(performance_model is None, "performance_model should be None")
-+        check(stats is None, "stats should be None")
-+        check(debug is True, "debug should be True")
-+        check(callbacks is None, "callbacks should be None")
++        check(enumerator is None or isinstance(enumerator, Enumerator), "enumerator should be Enumerator")
++        check(storage_reservation is None or isinstance(storage_reservation, StorageReservation),
++              "storage_reservation should be StorageReservation")
++        check(proposer is None or isinstance(proposer, Proposer) or validate_list_type(proposer, Proposer),
++              "proposer should be Proposer or List[Proposer]")
++        check(partitioner is None or isinstance(partitioner, Partitioner), "partitioner should be Partitioner")
 +
++        check(performance_model is None or isinstance(performance_model, PerfModel), "performance_model should be None")
++        check(stats is None or isinstance(stats, Stats) or validate_list_type(stats, Stats),
++              "stats should be Stats or List[Stats]")
++        check(isinstance(debug, bool), "debug should be bool")
++        check(callbacks is None or isinstance(callbacks, List), "callbacks should be List")
          if topology is None:
              topology = Topology(
                  local_world_size=get_local_size(),
-@@ -261,6 +275,12 @@ class EmbeddingShardingPlanner(ShardingPlanner):
+@@ -261,6 +278,12 @@ class EmbeddingShardingPlanner(ShardingPlanner):
          Returns:
              ShardingPlan: the sharding plan for the module.
          """
 +        check(module is not None, "module can not be None")
-+        check(pg is not None and isinstance(pg, dist.ProcessGroup), "pg can be dist.ProcessGroup")
-+        check(sharders is not None and isinstance(sharders, List), "sharders should be List")
-+        for sharder in sharders:
-+            check(isinstance(sharder, ModuleSharder), "shard should be ModuleSharder")
-+
++        check(pg is None or isinstance(pg, dist.ProcessGroup), "pg can be dist.ProcessGroup")
++        check(sharders is None or isinstance(sharders, List), "sharders should be List")
++        if sharders is not None:
++            for sharder in sharders:
++                check(isinstance(sharder, ModuleSharder), "shard should be ModuleSharder")
          if pg is None:
              assert dist.is_initialized(), (
                  "The default process group is not yet initialized. "
@@ -537,7 +540,7 @@ index 52909970..fad9df2d 100644
      )
  
 diff --git a/torchrec/distributed/planner/types.py b/torchrec/distributed/planner/types.py
-index b2a72503..8fbe577d 100644
+index b2a72503..33ea6d5d 100644
 --- a/torchrec/distributed/planner/types.py
 +++ b/torchrec/distributed/planner/types.py
 @@ -38,8 +38,9 @@ from torchrec.distributed.types import (
@@ -545,34 +548,33 @@ index b2a72503..8fbe577d 100644
  from torchrec.modules.embedding_modules import EmbeddingCollectionInterface
  from torchrec.modules.mc_embedding_modules import ManagedCollisionEmbeddingCollection
 -
-+from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
++from torchrec.tensor_types import check, validate_list_type, MAX_MODULE_LOOP_TIMES
  # ---- Perf ---- #
-+MAX_WORLD_SIZE = 83
++MAX_WORLD_SIZE = 8
  
  
  @dataclass(repr=True, eq=True)
-@@ -196,18 +197,36 @@ class Topology:
-         """
+@@ -197,17 +198,35 @@ class Topology:
          Representation of a network of devices in a cluster.
          """
+         # validate input
++        check(isinstance(world_size, int), "world_size should be int")
 +        if world_size < 1 or world_size > MAX_WORLD_SIZE:
 +            raise ValueError(f"world_size must be in range [0, {MAX_WORLD_SIZE}], but got {world_size}")
-+        check(compute_device == "npu", "compute_device should be npu")
-+        check(hbm_cap is None, "hbm_cap should be None")
-+        check(ddr_cap is None, "hbm_cap should be None")
-+        check(local_world_size is None, "hbm_cap should be None")
-+        check(hbm_mem_bw == HBM_MEM_BW, f"hbm_cap should be {HBM_MEM_BW}")
-+        check(ddr_mem_bw == DDR_MEM_BW, f"hbm_cap should be {DDR_MEM_BW}")
-+        check(hbm_to_ddr_mem_bw == HBM_TO_DDR_MEM_BW, f"hbm_cap should be {HBM_TO_DDR_MEM_BW}")
-+        check(intra_host_bw == INTRA_NODE_BANDWIDTH, f"hbm_cap should be {INTRA_NODE_BANDWIDTH}")
-+        check(inter_host_bw == CROSS_NODE_BANDWIDTH, f"hbm_cap should be {CROSS_NODE_BANDWIDTH}")
-+        check(bwd_compute_multiplier == BWD_COMPUTE_MULTIPLIER, f"hbm_cap should be {BWD_COMPUTE_MULTIPLIER}")
-+        check(custom_topology_data is None, "hbm_cap should be None")
-+        check(weighted_feature_bwd_compute_multiplier == WEIGHTED_FEATURE_BWD_COMPUTE_MULTIPLIER,
-+              f"weighted_feature_bwd_compute_multiplier should be {WEIGHTED_FEATURE_BWD_COMPUTE_MULTIPLIER}")
-+        check(uneven_sharding_perf_multiplier == 1.0, "uneven_sharding_perf_multiplier should be 1.0")
-+
-         # validate input
++        check(isinstance(compute_device, str), "compute_device should be str")
++        check(hbm_cap is None or isinstance(hbm_cap, int), "hbm_cap should be int")
++        check(ddr_cap is None or isinstance(ddr_cap, int), "ddr_cap should be int")
++        check(local_world_size is None or isinstance(local_world_size, int), "local_world_size should be int")
++        check(isinstance(hbm_mem_bw, (int, float)), "hbm_mem_bw should be float")
++        check(isinstance(ddr_mem_bw, (int, float)), "ddr_mem_bw should be float")
++        check(isinstance(hbm_to_ddr_mem_bw, (int, float)), "ddr_mem_bw should be float")
++        check(isinstance(intra_host_bw, (int, float)), "intra_host_bw should be float")
++        check(isinstance(inter_host_bw, (int, float)), "inter_host_bw should be float")
++        check(isinstance(bwd_compute_multiplier, (int, float)), "bwd_compute_multiplier should be float")
++        check(custom_topology_data is None or isinstance(custom_topology_data, CustomTopologyData),
++              "custom_topology_data should be CustomTopologyData")
++        check(isinstance(weighted_feature_bwd_compute_multiplier, (int, float)), "weighted_feature_bwd_compute_multiplier should be float")
++        check(isinstance(uneven_sharding_perf_multiplier, (int, float)), "uneven_sharding_perf_multiplier should be float")
          assert compute_device in [
              "cpu",
              "cuda",
@@ -589,42 +591,49 @@ index b2a72503..8fbe577d 100644
              hbm_per_device = [hbm_cap if hbm_cap else HBM_CAP] * world_size
          ddr_cap_per_rank = [ddr_cap if ddr_cap else DDR_CAP] * world_size
  
-@@ -616,6 +635,39 @@ class ParameterConstraints:
+@@ -616,6 +635,46 @@ class ParameterConstraints:
      device_group: Optional[str] = None
      key_value_params: Optional[KeyValueParams] = None
  
 +    def __post_init__(self):
-+        check(self.sharding_types is not None and isinstance(self.sharding_types, List), 
++        check(self.sharding_types is None or isinstance(self.sharding_types, List),
 +              "sharding_types should be List")
-+        check(self.compute_kernels is not None and isinstance(self.compute_kernels, List), 
++        check(self.compute_kernels is None or isinstance(self.compute_kernels, List),
 +              "compute_kernels should be List")
-+        check(len(self.sharding_types) <= MAX_MODULE_LOOP_TIMES,
-+              "sharding_types should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
-+        check(len(self.compute_kernels) <= MAX_MODULE_LOOP_TIMES,
-+              "compute_kernels should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
-+        sharding_types = set(self.sharding_types)
-+        check(len(sharding_types) == 1, "sharding_types should be unique")
-+        compute_kernels = set(self.compute_kernels)
-+        check(len(compute_kernels) == 1, "compute_kernels should be unique")
-+        sharding_type = next(iter(sharding_types))
-+        compute_kernel = next(iter(compute_kernels))
-+        supported = (("row_wise", "fused"), ("data_parallel", "dense"))
-+        if (sharding_type, compute_kernel) not in supported:
-+            raise ValueError(f"sharding_type {sharding_type} and compute_kernel {compute_kernel} are not supported, "
-+                             f"(sharding_type, compute_kernel) supported are {supported}")
-+        check(self.min_partition is None , "min_partition should be None")
-+        check(self.pooling_factors == [POOLING_FACTOR] , f"pooling_factors should be [{POOLING_FACTOR}]")
-+        check(self.num_poolings == None , "num_poolings should be None")
-+        check(self.batch_sizes == None , "batch_sizes should be None")
-+        check(self.is_weighted == False , "is_weighted should be False")
-+        check(self.cache_params == None , "cache_params should be None")
-+        check(self.enforce_hbm == None , "enforce_hbm should be None")
-+        check(self.stochastic_rounding == None , "stochastic_rounding should be None")
-+        check(self.bounds_check_mode == None , "bounds_check_mode should be None")
-+        check(self.feature_names == None , "feature_names should be None")
-+        check(self.output_dtype == None , "output_dtype should be None")
-+        check(self.device_group == None , "device_group should be None")
-+        check(self.key_value_params == None , "key_value_params should be None")
++        if self.sharding_types is not None:
++            check(len(self.sharding_types) <= MAX_MODULE_LOOP_TIMES,
++                  "sharding_types should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
++            sharding_types = set(self.sharding_types)
++            check(len(sharding_types) == 1, "sharding_types should be unique")
++        if self.compute_kernels is not None:
++            check(len(self.compute_kernels) <= MAX_MODULE_LOOP_TIMES,
++                  "compute_kernels should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
++            compute_kernels = set(self.compute_kernels)
++            check(len(compute_kernels) == 1, "compute_kernels should be unique")
++        if self.sharding_types and self.compute_kernels:
++            sharding_type = next(iter(sharding_types))
++            compute_kernel = next(iter(compute_kernels))
++            supported = (("row_wise", "fused"), ("data_parallel", "dense"))
++            if (sharding_type, compute_kernel) not in supported:
++                raise ValueError(f"sharding_type {sharding_type} and compute_kernel {compute_kernel} are not supported,"
++                                 f"(sharding_type, compute_kernel) supported are {supported}")
++        check(self.min_partition is None or isinstance(self.min_partition, int), "min_partition should be int")
++        check(validate_list_type(self.pooling_factors, float), f"pooling_factors should be List[float]")
++        check(self.num_poolings is None or validate_list_type(self.num_poolings, float),
++              "num_poolings should be List[float]")
++        check(self.batch_sizes is None or validate_list_type(self.batch_sizes, int), "batch_sizes should be List[int]")
++        check(isinstance(self.is_weighted, bool), "is_weighted should be bool")
++        check(self.cache_params is None or isinstance(self.cache_params, CacheParams), "cache_params should be CacheParams")
++        check(self.enforce_hbm is None or isinstance(self.enforce_hbm, bool), "enforce_hbm should be bool")
++        check(self.stochastic_rounding is None or isinstance(self.stochastic_rounding, bool),
++              "stochastic_rounding should be bool")
++        check(self.bounds_check_mode is None or isinstance(self.bounds_check_mode, BoundsCheckMode),
++              "bounds_check_mode should be BoundsCheckMode")
++        check(self.feature_names is None or validate_list_type(self.feature_names, str), "feature_names should be str")
++        check(self.output_dtype is None or isinstance(self.output_dtype, DataType) , "output_dtype should be DataType")
++        check(self.device_group is None or isinstance(self.device_group, str) , "device_group should be str")
++        check(self.key_value_params is None or isinstance(self.key_value_params, KeyValueParams),
++              "key_value_params should be KeyValueParams")
 +
  
  class PlannerErrorType(Enum):
@@ -916,7 +925,7 @@ index 10ffcdb2..a2db69b3 100644
 +        AccumulateOptimizer.__init__(self, use_accumulate=use_accumulate, accumulate_step=accumulate_step)
 +        Adam.__init__(self, params, **kwargs)
 diff --git a/torchrec/sparse/jagged_tensor.py b/torchrec/sparse/jagged_tensor.py
-index 2bbe0914..44a79102 100644
+index 2bbe0914..fff05ae1 100644
 --- a/torchrec/sparse/jagged_tensor.py
 +++ b/torchrec/sparse/jagged_tensor.py
 @@ -28,6 +28,7 @@ from torchrec.pt2.checks import (
@@ -947,53 +956,33 @@ index 2bbe0914..44a79102 100644
  
  @torch.jit.script_if_tracing
  def _batched_lengths_to_offsets(lengths: torch.Tensor) -> torch.Tensor:
-@@ -594,6 +601,16 @@ class JaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
+@@ -594,6 +601,10 @@ class JaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
          lengths: Optional[torch.Tensor] = None,
          offsets: Optional[torch.Tensor] = None,
      ) -> None:
 +        check(isinstance(values, torch.Tensor), "values should be torch.Tensor")
-+        check(isinstance(lengths, torch.Tensor), "lengths should be torch.Tensor")
-+
-+        check(values is not None and (values.is_floating_point() or not is_out_range(values, 0, 2**31)), "values should be int64 type in range [0, 2^31)")
-+        check(lengths is not None and not is_out_range(lengths, 0, MAX_LENGTH), f"value should be [0, {MAX_LENGTH}]")
-+        check(weights is None, "weights should be None")
-+        if offsets is not None:
-+            check(isinstance(offsets, torch.Tensor), "offsets should be torch.Tensor")
-+            check(offsets[0] == 0, "offsets[0] should be 0")
-+            check((offsets[1:] == lengths.cumsum(0)).all(), "offsets[1:] should be equal with lengths.cumsum()")
++        check(lengths is None or isinstance(lengths, torch.Tensor), "lengths should be torch.Tensor")
++        check(weights is None or isinstance(weights, torch.Tensor), "weights should be torch.Tensor")
++        check(offsets is None or isinstance(offsets, torch.Tensor), "offsets should be torch.Tensor")
  
          self._values: torch.Tensor = values
          self._weights: Optional[torch.Tensor] = weights
-@@ -604,6 +621,13 @@ class JaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
-             _assert_tensor_has_no_elements_or_has_integers(lengths, "lengths")
-         self._lengths: Optional[torch.Tensor] = lengths
-         self._offsets: Optional[torch.Tensor] = offsets
-+        self.param_check()
-+
-+    def param_check(self):
-+        if not self._values.is_floating_point() and is_out_range(self._values, 0, 2 ** 31):
-+            raise ValueError(f"Element in value Tensor must be in range[0, {MAX_VALUE}]")
-+        if is_out_range(self._lengths, 0, MAX_LENGTH):
-+            raise ValueError(f"Element in value Tensor must be in range[0, {MAX_LENGTH}]")
- 
-     @staticmethod
-     def empty(
-@@ -2008,6 +2032,13 @@ class KeyedJaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
+@@ -2008,6 +2019,13 @@ class KeyedJaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
          Returns:
              KeyedJaggedTensor: constructed KeyedJaggedTensor.
          """
-+        check(jt_dict is not None and Dict, "jt_dict should be Dict")
++        check(isinstance(jt_dict, Dict), "jt_dict should be Dict")
 +        check(len(jt_dict) != 0, "jt_dict should not be empty")
 +        check(len(jt_dict) <= MAX_MODULE_LOOP_TIMES,
 +              "jt_dict should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
-+        for k in jt_dict:
-+            check(isinstance(jt_dict[k], JaggedTensor), "value in jt_dict should be JaggedTensor")
++        for key, jt in jt_dict.items():
++            check(isinstance(jt, JaggedTensor), "value in jt_dict should be JaggedTensor")
 +
          kjt_keys = list(jt_dict.keys())
          kjt_vals_list: List[torch.Tensor] = []
          kjt_lens_list: List[torch.Tensor] = []
 diff --git a/torchrec/tensor_types.py b/torchrec/tensor_types.py
-index 6b88703d..5fa44cfb 100644
+index 6b88703d..e516f4ad 100644
 --- a/torchrec/tensor_types.py
 +++ b/torchrec/tensor_types.py
 @@ -17,6 +17,9 @@ import torch
@@ -1006,7 +995,7 @@ index 6b88703d..5fa44cfb 100644
  def down_size(N: int, size: torch.Size) -> Tuple[int, int]:
      assert size[-1] % N == 0, f"{size} last dim not divisible by {N}"
      return (*size[:-1], size[-1] // N)
-@@ -175,3 +178,8 @@ class UInt2Tensor(UIntXTensor):
+@@ -175,3 +178,15 @@ class UInt2Tensor(UIntXTensor):
  
      def __init__(self, elem: torch.Tensor) -> None:
          super().__init__(UInt2Tensor.N, elem)
@@ -1015,6 +1004,13 @@ index 6b88703d..5fa44cfb 100644
 +def check(discriminant, error_msg):
 +    if not discriminant:
 +        raise ValueError(error_msg)
++
++
++def validate_list_type(param, types):
++    if isinstance(param, list):
++        if all(isinstance(p, types) for p in param):
++            return True
++    return False
 diff --git a/version.txt b/version.txt
 index 26aaba0e..d370c8ed 100644
 --- a/version.txt

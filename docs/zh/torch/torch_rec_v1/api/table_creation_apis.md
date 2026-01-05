@@ -84,23 +84,23 @@ class EmbCacheEmbeddingBagConfig:
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|类型|可选/必选|说明|
-|--|--|--|--|
-|num_embeddings|int|必选|稀疏表的行数。取值范围：[1, 10亿]。其中最小值需要满足：≥使用的卡数。|
-|embedding_dim|int|必选|稀疏表的列数。取值范围：[8, 4096]。取值需要为8的倍数。|
-|name|str|必选|稀疏表的名称。只能包含数字、字母和下划线。|
-|data_type|torchrec.types.DataType|可选|稀疏表的数据类型。仅支持默认值为DataType.FP32。|
-|feature_names|List[str]|必选|稀疏表查询的特征名称。只能包含数字、字母和下划线。|
-|weight_init_max|float|可选|仅支持默认值为None或1.0，不支持用户自定义。|
-|weight_init_min|float|可选|仅支持默认值为None或0.0，不支持用户自定义。|
-|num_embeddings_post_pruning|int|可选|仅支持默认值为None，不支持用户自定义。|
-|init_fn|Callable|可选|支持传入nn.Parameter类型的函数。用户需自行保证该函数的正确性。默认值为None。|
-|need_pos|bool|可选|仅支持默认值为False，不支持用户自定义。|
-|pooling|torchrec.modules.embedding_configs.PoolType|可选|pool操作的类型。取值范围：<li>SUM：求和。</li><li>MEAN：取平均。</li>默认为SUM。|
-|weight_init_mean|float|可选|权重初始化均值，用于UNIFORM初始化类型，默认值0.0。|
-|weight_init_stddev|float|可选|权重初始化标准差，用于UNIFORM初始化类型，默认值0.05。|
-|initializer_type|InitializerType|可选|权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。|
-|admit_and_evict_config|AdmitAndEvictConfig|可选|特征准入和淘汰配置，默认不启用准入和淘汰功能。预留参数，当前暂不支持。|
+|参数名|类型|可选/必选| 说明                                                       |
+|--|--|--|----------------------------------------------------------|
+|num_embeddings|int|必选| 稀疏表的行数。取值范围：[1, 10亿]。使用row_wise时至少一张稀疏表的行数≥使用的卡数。        |
+|embedding_dim|int|必选| 稀疏表的列数。取值范围：[8, 4096]。取值需要为8的倍数。                         |
+|name|str|必选| 稀疏表的名称。只能包含数字、字母和下划线。                                    |
+|data_type|torchrec.types.DataType|可选| 稀疏表的数据类型。仅支持默认值为DataType.FP32。                           |
+|feature_names|List[str]|必选| 稀疏表查询的特征名称。只能包含数字、字母和下划线。                                |
+|weight_init_max|float|可选| 仅支持默认值为None或1.0，不支持用户自定义。                                |
+|weight_init_min|float|可选| 仅支持默认值为None或0.0，不支持用户自定义。                                |
+|num_embeddings_post_pruning|int|可选| 仅支持默认值为None，不支持用户自定义。                                    |
+|init_fn|Callable|可选| 支持传入nn.Parameter类型的函数。用户需自行保证该函数的正确性。默认值为None。           |
+|need_pos|bool|可选| 仅支持默认值为False，不支持用户自定义。                                   |
+|pooling|torchrec.modules.embedding_configs.PoolType|可选| pool操作的类型。取值范围：<li>SUM：求和。</li><li>MEAN：取平均。</li>默认为SUM。 |
+|weight_init_mean|float|可选| 权重初始化均值，用于UNIFORM初始化类型，默认值0.0。                           |
+|weight_init_stddev|float|可选| 权重初始化标准差，用于UNIFORM初始化类型，默认值0.05。                         |
+|initializer_type|InitializerType|可选| 权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。     |
+|admit_and_evict_config|AdmitAndEvictConfig|可选| 特征准入和淘汰配置，默认不启用准入和淘汰功能。预留参数，当前暂不支持。                      |
 
 
 **返回值说明<a name="section651195312311"></a>**
@@ -159,7 +159,7 @@ class EmbCacheEmbeddingConfig:
 
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
-|num_embeddings|int|必选|稀疏表的行数。取值范围：[1, 10亿]。其中最小值需要满足：≥使用的卡数。|
+|num_embeddings|int|必选|稀疏表的行数。取值范围：[1, 10亿]。使用row_wise时至少一张稀疏表的行数≥使用的卡数。|
 |embedding_dim|int|必选|稀疏表的列数。取值范围：[8, 4096]。取值需要为8的倍数。|
 |name|str|必选|稀疏表的名称。只能包含数字、字母和下划线。|
 |data_type|torchrec.types.DataType|可选|稀疏表的数据类型。仅支持默认值为DataType.FP32。|

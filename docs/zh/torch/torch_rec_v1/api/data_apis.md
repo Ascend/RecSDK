@@ -18,12 +18,12 @@ class JaggedTensor:
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|类型|可选/必选|说明|
-|--|--|--|--|
-|values|torch.Tensor[int64]|必选|稀疏表查表ID。取值范围：[0，2^31]。|
-|weights|torch.Tensor|可选|仅支持默认值为None，不支持用户自定义。|
-|lengths|torch.Tensor[int64]|必选|每一个样本中的特征序列的长度。取值范围：[1，10000]。需保证lengths的总和与values的长度相等。Rec SDK Torch目前不支持可变batchsize，一个训练任务中的所有JaggedTensor的lengths的长度必须一致。|
-|offsets|torch.Tensor[int64]|可选|offsets是lengths累加的结果。offsets的第一位为0，后续位数为lengths的累加。默认值为None。offsets的合法性由用户自行保证。|
+|参数名|类型| 可选/必选 | 说明                                                                                                                                        |
+|--|--|------|-------------------------------------------------------------------------------------------------------------------------------------------|
+|values|torch.Tensor[int64]| 必选   | 稀疏表查表ID。                                                                                                                                  |
+|weights|torch.Tensor| 可选   | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                            |
+|lengths|torch.Tensor[int64]| 可选   | 每一个样本中的特征序列的长度。当使用NPU设备时为必选，取值范围：[1，10000]。需保证lengths的总和与values的长度相等。Rec SDK Torch目前不支持可变batchsize，一个训练任务中的所有JaggedTensor的lengths的长度必须一致。 |
+|offsets|torch.Tensor[int64]| 可选   | offsets是lengths累加的结果。offsets的第一位为0，后续位数为lengths的累加。默认值为None。offsets的合法性由用户自行保证。                                                           |
 
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
