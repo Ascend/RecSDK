@@ -461,13 +461,13 @@ public:
     }
 
     __aicore__ inline bool GenMask(
-        LocalTensor<float>& inMaskLt, int causalMask, int64_t maskLen, int64_t maskOffset, float sclae)
+        LocalTensor<float>& inMaskLt, int causalMask, int64_t maskLen, int64_t maskOffset, float scale)
     {
         bool needMask = false;
         if (causalMask == 1) {
             DoCausalMask<float, CausalMaskT::MASK_TRIL>(inMaskLt, maskOffset, maskLen, this->blockHeight,
                                                 
-                maskLen / this->blockHeight, sclae);
+                maskLen / this->blockHeight, scale);
             needMask = true;
         }
 
@@ -599,74 +599,6 @@ public:
         tmpBuff.FreeTensor(tmpLt);
     }
 
-#ifdef SUPPORT_910_95
-    template<bool isFirst = true>
-    __aicore__ inline void DoQkMatmulImpl(int64_t qOffset, int64_t kOffset, uint32_t taskId, uint32_t m, uint32_t n,
-                                          uint32_t k)
-    {
-        if constexpr (isFirst && !std::is_same<qType, float>::value) {
-            this->scm.FreeTensor(this->scmQKTensor);
-            int64_t dim = xDim3;
-            int64_t headNum = xDim2;
-            auto alignOfM = AlignUp(m, ALIGN_16);
-            Nd2NzParams param = {
-                1, static_cast<uint16_t>(m), static_cast<uint16_t>(k), 0,
-                static_cast<uint16_t>(dim * headNum), static_cast<uint16_t>(alignOfM), 1, 0
-                };
-            LocalTensor<qType> scmLocal = scm.AllocTensor<qType>();
-            DataCopy(scmLocal, qGt[qOffset], param);
-            scm.EnQue(scmLocal);
-            scmQKTensor = scm.DeQue<qType>();
-        }
-        
-        int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
-        int64_t outOffset = midResultIdx * blockHeight * blockHeight;
-        if constexpr (std::is_same<qType, float>::value) {
-            qkMatmul.SetTensorA(qGt[qOffset]);
-        } else {
-            qkMatmul.SetTensorA(scmQKTensor);
-        }
-        qkMatmul.SetTensorB(kGt[kOffset], true);
-        qkMatmul.SetTail(m, n, k);
-        qkMatmul.SetSelfDefineData(copyHeadNum); // 设置CopyQK的自定义headNum数据
-
-        qkMatmul.template IterateAll<false>(attnScoreGt[outOffset], 0, false, true);
-    }
-
-    template<bool isFirst = true>
-    __aicore__ inline void DoQkMatmulImpl(int64_t qOffset, int64_t kOffset, uint32_t taskId, uint32_t m, uint32_t n,
-                                          uint32_t k, const GlobalTensor<qType>& midkGt)
-    {
-        if constexpr (isFirst && !std::is_same<qType, float>::value) {
-            this->scm.FreeTensor(this->scmQKTensor);
-            int64_t dim = xDim3;
-            int64_t headNum = xDim2;
-            auto alignOfM = AlignUp(m, ALIGN_16);
-            Nd2NzParams param = {
-                1, static_cast<uint16_t>(m), static_cast<uint16_t>(k), 0,
-                static_cast<uint16_t>(dim * headNum), static_cast<uint16_t>(alignOfM), 1, 0
-                };
-            LocalTensor<qType> scmLocal = scm.AllocTensor<qType>();
-            DataCopy(scmLocal, qGt[qOffset], param);
-            scm.EnQue(scmLocal);
-            scmQKTensor = scm.DeQue<qType>();
-        }
-
-        int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
-        int64_t outOffset = midResultIdx * blockHeight * blockHeight;
-
-        if constexpr (std::is_same<qType, float>::value) {
-            qkMatmul.SetTensorA(qGt[qOffset]);
-        } else {
-            qkMatmul.SetTensorA(scmQKTensor);
-        }
-        qkMatmul.SetTensorB(midkGt[kOffset], true);
-        qkMatmul.SetTail(m, n, k);
-        qkMatmul.SetSelfDefineData(copyHeadNum); // 设置CopyQK的自定义headNum数据
-
-        qkMatmul.template IterateAll<false>(attnScoreGt[outOffset], 0, false, true);
-    }
-#else
     template<bool isFirst = true>
     __aicore__ inline void DoQkMatmulImpl(int64_t qOffset, int64_t kOffset, uint32_t taskId, uint32_t m, uint32_t n,
                                           uint32_t k)
@@ -696,7 +628,6 @@ public:
 
         qkMatmul.template IterateAll<false>(attnScoreGt[outOffset], 0, false, true);
     }
-#endif
 
     __aicore__ inline void DoSvMatmulImpl(int64_t vOffset, uint32_t taskId, uint32_t transTaskId, int isAtomicAdd,
                                           uint32_t m, uint32_t n, uint32_t k)
@@ -889,22 +820,8 @@ public:
     LocalTensor<qType> qkUbB;
     LocalTensor<qType> scmQKTensor;
 
-#ifdef SUPPORT_910_95
-    // Matmul
-    using QK_MM_A_T = std::conditional_t<
-        std::is_same_v<qType, float>,
-        matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
-        matmul::MatmulType<TPosition::TSCM, CubeFormat::NZ, qType, false>
-    >;
-    using QK_MM_CB_T = std::conditional_t<
-        std::is_same_v<qType, float>,
-        matmul::MatmulCallBackFunc<nullptr, CopyQKA1<qType>, CopyQKB1<qType>>,
-        matmul::MatmulCallBackFunc<nullptr, nullptr, CopyQKB1<qType>>
-    >;
-#else
     using QK_MM_A_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>;
     using QK_MM_CB_T = matmul::MatmulCallBackFunc<nullptr, CopyQKA1<qType>, CopyQKB1<qType>>;
-#endif
     using QK_MM_B_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true>;
     using QK_MM_C_T = matmul::MatmulType<qkMMCPos, CubeFormat::ND, qType, false>;
     using QK_MM_BIAS_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>;

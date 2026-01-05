@@ -46,13 +46,16 @@ def jagged_data_gen(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo, enable
     max_seq_len, total_seqs = max(seq_lens.tolist()), sum(seq_lens.tolist())
 
     num_heads_q, num_heads_k, head_dim_qk, head_dim_v = (qkv_shape_info.num_heads_q, qkv_shape_info.num_heads_k,
-                                               qkv_shape_info.head_dim_qk, qkv_shape_info.head_dim_v)
-    q = torch.rand(total_seqs, num_heads_q, head_dim_qk).to(float_type)
-    q = q.uniform_(-1, 1)
-    k = torch.rand(total_seqs, num_heads_k, head_dim_qk).to(float_type)
-    k = k.uniform_(-1, 1)
-    v = torch.rand(total_seqs, num_heads_k, head_dim_v).to(float_type)
-    v = v.uniform_(-1, 1)
+                                                         qkv_shape_info.head_dim_qk, qkv_shape_info.head_dim_v)
+
+    if float_type == torch.float8_e4m3fn:
+        data_type = torch.float16
+    else:
+        data_type = float_type
+
+    q = torch.rand(total_seqs, num_heads_q, head_dim_qk, dtype=data_type).uniform_(-1, 1)
+    k = torch.rand(total_seqs, num_heads_k, head_dim_qk, dtype=data_type).uniform_(-1, 1)
+    v = torch.rand(total_seqs, num_heads_k, head_dim_v, dtype=data_type).uniform_(-1, 1)
 
     rel_attn_bias = torch.rand(batch_size, num_heads_q, max_seq_len, max_seq_len).to(float_type) \
         if enable_bias else None
@@ -74,6 +77,11 @@ def jagged_data_gen(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo, enable
         mask = mask.cpu().to(float_type)
     else:
         mask = None
+
+    if float_type == torch.float8_e4m3fn:
+        q = q.to(torch.float8_e4m3fn)
+        k = k.to(torch.float8_e4m3fn)
+        v = v.to(torch.float8_e4m3fn)
 
     qkv_tensors = (q, k, v, seq_offset)
     mask_tensors = (mask_info.mask_type, mask, num_context, num_target, mask_info.target_group_size)
@@ -123,9 +131,15 @@ class TestHstuJaggedDemo:
 
         silu_scale = 1 / max_seq_len if silu_scale == 0 else silu_scale
 
-        q_dens = jagged_to_dense(q, seq_lens, head_nums_q, head_dim).to(data_type).to("npu")
-        k_dens = jagged_to_dense(k, seq_lens, head_nums_k, head_dim).to(data_type).to("npu")
-        v_dens = jagged_to_dense(v, seq_lens, head_nums_k, head_dim_v).to(data_type).to("npu")
+        use_float8 = (data_type == torch.float8_e4m3fn)
+        if use_float8:
+            q_dens = jagged_to_dense(q, seq_lens, head_nums_q, head_dim).to(torch.float32).to("npu")
+            k_dens = jagged_to_dense(k, seq_lens, head_nums_k, head_dim).to(torch.float32).to("npu")
+            v_dens = jagged_to_dense(v, seq_lens, head_nums_k, head_dim_v).to(torch.float32).to("npu")
+        else:
+            q_dens = jagged_to_dense(q, seq_lens, head_nums_q, head_dim).to(data_type).to("npu")
+            k_dens = jagged_to_dense(k, seq_lens, head_nums_k, head_dim).to(data_type).to("npu")
+            v_dens = jagged_to_dense(v, seq_lens, head_nums_k, head_dim_v).to(data_type).to("npu")
 
         k_dens_expanded = k_dens.repeat_interleave(h_qk_ratio, dim=2)
         v_dens_expanded = v_dens.repeat_interleave(h_qk_ratio, dim=2)
@@ -146,13 +160,21 @@ class TestHstuJaggedDemo:
 
         v_dens = v_dens_expanded.permute(0, 2, 1, 3)
 
-        qk_attn = qk_attn.to(data_type)
+        if use_float8:
+            qk_attn = qk_attn.to(torch.float8_e4m3fn)
+            qk_attn = qk_attn.to(torch.float32)
+        else:
+            qk_attn = qk_attn.to(data_type)
+
         attn_output = torch.matmul(qk_attn, v_dens)
         attn_output = attn_output.permute(0, 2, 1, 3).cpu()
         attn_output = dense_to_jagged(q, attn_output, seq_lens)
 
+        if use_float8:
+            attn_output = attn_output.to(torch.float16)
+
         torch.npu.synchronize()
-        return attn_output.to(data_type)
+        return attn_output.to(torch.float16) if use_float8 else attn_output.to(data_type)
 
     def execute(self, qkv_shape_info, mask_info, enable_bias, silu_scale, repeat_offset=False, deterministic=False):
         qkv_tensors, mask_tensors, rel_attn_bias, max_seq_len = jagged_data_gen(qkv_shape_info, mask_info, enable_bias,
@@ -164,6 +186,8 @@ class TestHstuJaggedDemo:
         data_type = qkv_shape_info.float_type
         if data_type == torch.bfloat16:
             res = allclose(output, golden, 1e-2, 1e-2)
+        elif data_type == torch.float8_e4m3fn:
+            res = allclose(output, golden, 1e-3, 1e-3)
         elif data_type == torch.float16:
             res = allclose(output, golden, 1e-3, 1e-3)
         else:
@@ -514,3 +538,44 @@ class TestHstuJaggedDemo:
                                 max_num_target=max_num_target,
                                 target_group_size=target_group_size)
         self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale, deterministic=True)
+
+    # fp8
+    is_a5 = False
+    if is_a5:
+        @pytest.mark.parametrize("batch_size", [4, 128, 256])
+        @pytest.mark.parametrize("head_num_q", [8])
+        @pytest.mark.parametrize("head_num_k", [8, 4, 2, 1])
+        @pytest.mark.parametrize("max_seq_len", [15, 256])
+        @pytest.mark.parametrize("head_dim_qk", [64, 96, 128])
+        @pytest.mark.parametrize("head_dim_v", [16, 32, 48, 64, 80])
+        @pytest.mark.parametrize("enable_bias", [True, False])
+        @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
+        @pytest.mark.parametrize("float_data_type", [torch.float8_e4m3fn])
+        @pytest.mark.parametrize("int_data_type", [torch.int32])
+        @pytest.mark.parametrize("mask_type, target_group_size, max_num_context, max_num_target", [
+            (MaskType.NONE, 0, 0, 0),
+            (MaskType.CUSTOM, 0, 0, 0),
+            (MaskType.TRIL, 1, 0, 30),
+            (MaskType.TRIL, 3, 0, 30),
+            (MaskType.TRIL, 1, 6, 0),
+            (MaskType.TRIL, 3, 6, 0),
+            (MaskType.TRIL, 1, 6, 30),
+            (MaskType.TRIL, 3, 6, 30),
+        ])
+        def test_hstu_jagged_forward_fp8(self, batch_size, head_num_q, head_num_k, max_seq_len, head_dim_qk, head_dim_v,
+                                         enable_bias, mask_type, silu_scale, float_data_type, int_data_type,
+                                         target_group_size, max_num_context, max_num_target):
+            qkv_shape_info = QKVShapeInfo(float_type=float_data_type,
+                                          int_type=int_data_type,
+                                          batch_size=batch_size,
+                                          max_seq_len=max_seq_len,
+                                          num_heads_q=head_num_q,
+                                          num_heads_k=head_num_k,
+                                          head_dim_qk=head_dim_qk,
+                                          head_dim_v=head_dim_v)
+            mask_info = MaskGenInfo(mask_type=mask_type,
+                                    max_num_context=max_num_context,
+                                    max_num_target=max_num_target,
+                                    target_group_size=target_group_size)
+
+            self.execute(qkv_shape_info, mask_info, enable_bias, silu_scale)

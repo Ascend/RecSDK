@@ -46,8 +46,13 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
     TORCH_CHECK(MaxSeqLenCheck(maxSeqLenK), "maxSeqLenK check failed");
     TORCH_CHECK(MaskCheck(maskType, maskNpu.defined()), "maskType check failed");
 
-    auto attnOutput = deterministic ? at::empty({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options()) :
-                                      at::zeros({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options());
+    bool use_fp8 = (q.scalar_type() == at::kFloat8_e4m3fn);
+    at::ScalarType output_dtype = use_fp8 ? at::kHalf : denseQ.scalar_type();
+
+    auto attnOutput =
+        deterministic
+            ? at::empty({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options().dtype(output_dtype))
+            : at::zeros({denseQ.size(0), denseQ.size(1), denseV.size(2)}, denseQ.options().dtype(output_dtype));
 
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
