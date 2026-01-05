@@ -50,3 +50,13 @@ include_directories(${PYTORCH_INSTALL_PATH}/include)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/distributed)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/api/include)
 include_directories(${ASCEND_DRIVER_PATH}/kernel/libc_sec/include) 
+
+# 根据 BUILD_VER 判断是否为 A5 芯片，并定义预处理器宏
+if(BUILD_VER STREQUAL "c310")
+    add_definitions(-DNPU_CHIP_A5=1)
+    message(STATUS "BUILD_VER is c310, defining NPU_CHIP_A5=1")
+else()
+    # v220 或其他版本都是非 A5
+    add_definitions(-DNPU_CHIP_A5=0)
+    message(STATUS "BUILD_VER is ${BUILD_VER}, defining NPU_CHIP_A5=0")
+endif()

@@ -10,29 +10,8 @@
 #ifndef PYTORCH_NPU_HELPER_HPP_
 #define PYTORCH_NPU_HELPER_HPP_
 
+#include <iostream>
 #include "pytorch_npu_const.h"
-
-#define AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(_)                                                                    \
-    _(at::ScalarType::Byte, ACL_UINT8)                                                                                 \
-    _(at::ScalarType::Char, ACL_INT8)                                                                                  \
-    _(at::ScalarType::Short, ACL_INT16)                                                                                \
-    _(at::ScalarType::Int, ACL_INT32)                                                                                  \
-    _(at::ScalarType::Long, ACL_INT64)                                                                                 \
-    _(at::ScalarType::Half, ACL_FLOAT16)                                                                               \
-    _(at::ScalarType::Float, ACL_FLOAT)                                                                                \
-    _(at::ScalarType::Double, ACL_DOUBLE)                                                                              \
-    _(at::ScalarType::ComplexHalf, ACL_DT_UNDEFINED)                                                                   \
-    _(at::ScalarType::ComplexFloat, ACL_COMPLEX64)                                                                     \
-    _(at::ScalarType::ComplexDouble, ACL_COMPLEX128)                                                                   \
-    _(at::ScalarType::Bool, ACL_BOOL)                                                                                  \
-    _(at::ScalarType::QInt8, ACL_DT_UNDEFINED)                                                                         \
-    _(at::ScalarType::QUInt8, ACL_DT_UNDEFINED)                                                                        \
-    _(at::ScalarType::QInt32, ACL_DT_UNDEFINED)                                                                        \
-    _(at::ScalarType::BFloat16, ACL_BF16)                                                                              \
-    _(at::ScalarType::QUInt4x2, ACL_DT_UNDEFINED)                                                                      \
-    _(at::ScalarType::QUInt2x4, ACL_DT_UNDEFINED)                                                                      \
-    _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)                                                                     \
-    _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
 constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::NumOptions) + 1] = {
 #define DEFINE_ENUM(_1, n) n,
