@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ set -e
 source /etc/profile
 
 VALID_AI_CORES=(
-    "ai_core-Ascend910"
     "ai_core-Ascend910B1"
     "ai_core-Ascend910B2"
     "ai_core-Ascend910B3"
@@ -37,6 +36,7 @@ validate_ai_core() {
     done
     echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
     exit 1
+    return 1
 }
 
 ai_core="ai_core-Ascend910B1"
@@ -65,9 +65,8 @@ fi
 sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
-if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
-    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
-fi
+sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
+
 cd cmake
 
 # 判断当前目录下是否存在config.cmake文件

@@ -16,9 +16,6 @@
 
 set -e
 
-onnx_path=$(dirname "$(readlink -f "$0")")/../../../build/scripts/onnx_plugin
-json_file=$onnx_path/json.hpp
-
 VALID_AI_CORES=(
     "ai_core-Ascend910B1"
     "ai_core-Ascend910B2"
@@ -48,7 +45,7 @@ fi
 # 利用msopgen生成可编译文件
 rm -rf ./token_mixing
 msopgen gen -i token_mixing.json -f tf -c ${ai_core} -lan cpp -out ./token_mixing -m 0 -op TokenMixing
-rm -rf token_mixining/op_kernel/*.h
+rm -rf token_mixing/op_kernel/*.h
 rm -rf token_mixing/op_kernel/*.cpp
 rm -rf token_mixing/op_host/*.h
 rm -rf token_mixing/op_host/*.cpp
@@ -87,6 +84,10 @@ sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.tx
 
 line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
 sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
+
+sed -i '/\${ASCEND_CANN_PACKAGE_PATH}\/include/a\
+\${ASCEND_CANN_PACKAGE_PATH}\/pkg_inc
+' ./cmake/*.cmake
 
 bash build.sh
 

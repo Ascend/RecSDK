@@ -6,6 +6,8 @@ function(opbuild)
   execute_process(COMMAND ${CMAKE_COMPILE} -g -fPIC -shared -std=c++11 ${OPBUILD_OPS_SRC}                   
                   -D_GLIBCXX_USE_CXX11_ABI=0 -DLOG_CPP
                   -I ${ASCEND_CANN_PACKAGE_PATH}/include
+                  -I ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
+                  -I ${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel
                   -I ${CMAKE_FUNC_DIR}/../common
                   -L ${ASCEND_CANN_PACKAGE_PATH}/lib64 -lexe_graph -lregister -ltiling_api
                   -o ${OPBUILD_OUT_DIR}/libascend_all_ops.so
