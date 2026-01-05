@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./disetangle_attention
-python3 /usr/local/Ascend/ascend-toolkit/latest/python/site-packages/bin/msopgen gen -i disetangle_attention.json -f tf -c ${ai_core} -lan cpp -out ./disetangle_attention -m 0 -op DisetangleAttention
+msopgen gen -i disetangle_attention.json -f tf -c ${ai_core} -lan cpp -out ./disetangle_attention -m 0 -op DisetangleAttention
 rm -rf disetangle_attention/op_kernel/*.h
 rm -rf disetangle_attention/op_kernel/*.cpp
 rm -rf disetangle_attention/op_host/*.h
@@ -85,6 +85,10 @@ sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.tx
 
 line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
 sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
+
+sed -i '/\${ASCEND_CANN_PACKAGE_PATH}\/include/a\
+\${ASCEND_CANN_PACKAGE_PATH}\/pkg_inc
+' ./cmake/*.cmake
 
 bash build.sh
 

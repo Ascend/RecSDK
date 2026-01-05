@@ -65,7 +65,7 @@ fi
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
-sed -i 's:"customize":"cust_op_by_addr":g' CMakePresets.json
+sed -i 's:"customize":"token_mixing":g' CMakePresets.json
 
 # 添加C310编译选项
 sed -i "1i #define SUPPORT_C310" ./op_kernel/token_mixing.cpp
@@ -78,6 +78,10 @@ sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.tx
 
 line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
 sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
+
+sed -i '/\${ASCEND_CANN_PACKAGE_PATH}\/include/a\
+\${ASCEND_CANN_PACKAGE_PATH}\/pkg_inc
+' ./cmake/*.cmake
 
 bash build.sh
 
