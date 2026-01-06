@@ -49,8 +49,8 @@ at::Tensor hstu_jagged_forward_impl_npu(
     auto maskNpu = c10::value_or_else(mask, [] {return at::Tensor(); });
 
     auto _zeros = at::zeros({batchsize}, acSeqOffset.options());
-    auto acNumContext = numContext.value_or(_zeros);
-    auto acNumTarget = numTarget.value_or(_zeros);
+    auto acNumContext = numContext.has_value() ? numContext.value().to(acSeqOffset.scalar_type()) : _zeros;
+    auto acNumTarget = numTarget.has_value() ? numTarget.value().to(acSeqOffset.scalar_type()) : _zeros;
     auto acTargetGroupSize = targetGroupSize.value_or(0);
     double realAlpha = alpha.value_or(1.0);
 

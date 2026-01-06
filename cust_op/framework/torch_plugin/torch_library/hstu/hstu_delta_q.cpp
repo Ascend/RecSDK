@@ -32,7 +32,7 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
     auto acSeqOffset = seqOffset;
-    auto acSeqOffsetK = seqOffsetK;
+    auto acSeqOffsetK = seqOffsetK.to(acSeqOffset.scalar_type());
     TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
     TORCH_CHECK(acSeqOffsetK.size(0) >= CONST_2, "acSeqOffsetK params error should have at least two element.");
 
