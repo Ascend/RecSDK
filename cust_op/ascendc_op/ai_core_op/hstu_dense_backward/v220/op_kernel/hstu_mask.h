@@ -185,6 +185,11 @@ public:
         return needMask;
     }
 
+    __aicore__ inline bool NeedMask()
+    {
+        return contextMask || causalMask || targetMask;
+    }
+    
 private:
     uint32_t qSeqId;
     uint32_t kSeqId;
