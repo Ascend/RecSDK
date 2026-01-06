@@ -43,15 +43,15 @@ at::Tensor hstu_paged_forward_impl_npu(
     check_tensor_non_empty(kvCache, "kv_cache");
     check_tensor_non_empty(pageIds, "page_ids");
     check_tensor_non_empty(lastPageLen, "last_page_len");
-    auto acPageOffsets = pageOffsets;
-    auto acPageIds = pageIds;
-    auto acLastPageLen = lastPageLen;
+    auto acPageOffsets = pageOffsets.to(seqOffset.scalar_type());
+    auto acPageIds = pageIds.to(seqOffset.scalar_type());
+    auto acLastPageLen = lastPageLen.to(seqOffset.scalar_type());
 
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
     auto acSeqOffset = seqOffset;
-    auto acSeqOffsetK = seqOffsetK;
-    auto acSeqOffsetT = seqOffsetT;
+    auto acSeqOffsetK = seqOffsetK.to(seqOffset.scalar_type());
+    auto acSeqOffsetT = seqOffsetT.to(seqOffset.scalar_type());
     TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffsetq params error should have at least two element.");
     TORCH_CHECK(acSeqOffsetK.size(0) >= CONST_2, "acSeqOffsetK params error should have at least two element.");
     TORCH_CHECK(acSeqOffsetT.size(0) >= CONST_2, "acSeqOffsetT params error should have at least two element.");
@@ -74,7 +74,7 @@ at::Tensor hstu_paged_forward_impl_npu(
     double realAlpha = alpha.value_or(1.0);
 
     const auto _numContext = at::zeros_like(numTarget);
-    const auto acNumTarget = numTarget;
+    const auto acNumTarget = numTarget.to(seqOffset.scalar_type());
 
     const char *layout = "paged";
     const int64_t isDeltaQK = 1;
