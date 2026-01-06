@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-
 #ifndef HSTU_DENSE_BACKWARD_KERNEL_COMMON_H
 #define HSTU_DENSE_BACKWARD_KERNEL_COMMON_H
 
@@ -23,78 +22,26 @@ See the License for the specific language governing permissions and
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
+#include "hstu_common_const.h"
 
 using namespace AscendC;
 
 namespace HstuDenseBackward {
-constexpr int MAX_BATCH_SIZE = 2048;
-constexpr int COMPUTE_PIPE_NUM = 3;
-constexpr int ALIGN_16 = 16;
 
-constexpr int DATA_ALIGN_BYTES = 32;
-constexpr int VCORE_NUM_IN_ONE_AIC = 2;
-
-constexpr int MID_USE_TIMES = 2;
-constexpr int USE_BUFFER_NUM = 2;
-constexpr int TWO = 2;
-
-enum class MaskType { MASK_TRIL = 0, MASK_TRIU = 1, MASK_NONE = 2, MASK_CUSTOM = 3 };
-
-struct Args {
-    GM_ADDR grad;
-    GM_ADDR q;
-    GM_ADDR k;
-    GM_ADDR v;
-    GM_ADDR mask;
-    GM_ADDR attnBias;
-    GM_ADDR seqOffset;
-    GM_ADDR numContext;
-    GM_ADDR numTarget;
-
-    GM_ADDR qGrad;
-    GM_ADDR kGrad;
-    GM_ADDR vGrad;
-    GM_ADDR attnBiasGrad;
-
-    GM_ADDR workspace;
-    GM_ADDR tiling;
-
-    const HstuDenseBackwardTilingData* __restrict tilingDataPtr = nullptr;
-};
-
-struct AddrArgs {
-    GM_ADDR grad;
-    GM_ADDR q;
-    GM_ADDR k;
-    GM_ADDR v;
-    GM_ADDR qGrad;
-    GM_ADDR kGrad;
-    GM_ADDR vGrad;
-    GM_ADDR workspace;
-};
-
-struct BaseShapeArgs {
-    int64_t batchSize;
-    int64_t headNum;
-    int64_t headDim;
-    int64_t maxSeqLen;
-};
-
-__aicore__ inline bool IfMask(const int32_t &maskType, MaskType maskTypeEnum)
+__aicore__ inline bool IfMask(const int32_t& maskType, MaskType maskTypeEnum)
 {
     return static_cast<int32_t>(maskTypeEnum) == maskType;
 }
 
 // For QK and GV
 template <typename qType>
-__aicore__ inline void CopyQKA1(const LocalTensor<int8_t> &aMatrix, const __gm__ void *gm,
-                                int row, int col, int useM, int useK,
-                                const uint64_t tilingPtr, const uint64_t dataPtr)
+__aicore__ inline void CopyQKA1(const LocalTensor<int8_t>& aMatrix, const __gm__ void* gm, int row, int col, int useM,
+                                int useK, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
     GlobalTensor<qType> globalGt;
-    globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(const_cast<__gm__ void *>(gm)), useM * useK);
+    globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useM * useK);
 
-    HstuDenseBackwardTilingData *tilingP = reinterpret_cast<HstuDenseBackwardTilingData *>(tilingPtr);
+    HstuDenseBackwardTilingData* tilingP = reinterpret_cast<HstuDenseBackwardTilingData*>(tilingPtr);
     int64_t headNum = tilingP->headNum;
     int64_t headDim = tilingP->headDim;
 
@@ -112,14 +59,13 @@ __aicore__ inline void CopyQKA1(const LocalTensor<int8_t> &aMatrix, const __gm__
 
 // For QK and GV
 template <typename qType>
-__aicore__ inline void CopyQKB1(const LocalTensor<int8_t> &bMatrix, const __gm__ void *gm,
-                                int row, int col, int useK, int useN,
-                                const uint64_t tilingPtr, const uint64_t dataPtr)
+__aicore__ inline void CopyQKB1(const LocalTensor<int8_t>& bMatrix, const __gm__ void* gm, int row, int col, int useK,
+                                int useN, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
     GlobalTensor<qType> globalGt;
-    globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(const_cast<__gm__ void *>(gm)), useN * useK);
+    globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useN * useK);
 
-    HstuDenseBackwardTilingData *tilingP = reinterpret_cast<HstuDenseBackwardTilingData *>(tilingPtr);
+    HstuDenseBackwardTilingData* tilingP = reinterpret_cast<HstuDenseBackwardTilingData*>(tilingPtr);
     int64_t headNum = tilingP->headNum;
     int64_t headDim = tilingP->headDim;
 
@@ -137,14 +83,13 @@ __aicore__ inline void CopyQKB1(const LocalTensor<int8_t> &bMatrix, const __gm__
 
 // For q_grad
 template <typename qType>
-__aicore__ inline void CopyQGradA1(const LocalTensor<int8_t> &aMatrix, const __gm__ void *gm,
-                                   int row, int col, int useM, int useK,
-                                   const uint64_t tilingPtr, const uint64_t dataPtr)
+__aicore__ inline void CopyQGradA1(const LocalTensor<int8_t>& aMatrix, const __gm__ void* gm, int row, int col,
+                                   int useM, int useK, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
     GlobalTensor<qType> globalGt;
-    globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(const_cast<__gm__ void *>(gm)), useM * useK);
+    globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useM * useK);
 
-    HstuDenseBackwardTilingData *tilingP = reinterpret_cast<HstuDenseBackwardTilingData *>(tilingPtr);
+    HstuDenseBackwardTilingData* tilingP = reinterpret_cast<HstuDenseBackwardTilingData*>(tilingPtr);
     int32_t isNormal = tilingP->isNormal;
     int32_t enableBias = tilingP->enableBias;
     int64_t copyBlockLen = (isNormal || enableBias) ? tilingP->biasGradSeqLen : tilingP->blockHeight;
@@ -163,14 +108,13 @@ __aicore__ inline void CopyQGradA1(const LocalTensor<int8_t> &aMatrix, const __g
 
 // For k_grad
 template <typename qType>
-__aicore__ inline void CopyKGradA1(const LocalTensor<int8_t> &aMatrix, const __gm__ void *gm,
-                                   int row, int col, int useM, int useK,
-                                   const uint64_t tilingPtr, const uint64_t dataPtr)
+__aicore__ inline void CopyKGradA1(const LocalTensor<int8_t>& aMatrix, const __gm__ void* gm, int row, int col,
+                                   int useM, int useK, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
     GlobalTensor<qType> globalGt;
-    globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(const_cast<__gm__ void *>(gm)), useK * useM);
+    globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useK * useM);
 
-    HstuDenseBackwardTilingData *tilingP = reinterpret_cast<HstuDenseBackwardTilingData *>(tilingPtr);
+    HstuDenseBackwardTilingData* tilingP = reinterpret_cast<HstuDenseBackwardTilingData*>(tilingPtr);
     int32_t isNormal = tilingP->isNormal;
     int32_t enableBias = tilingP->enableBias;
     int64_t copyBlockLen = (isNormal || enableBias) ? tilingP->biasGradSeqLen : tilingP->blockHeight;
@@ -188,14 +132,13 @@ __aicore__ inline void CopyKGradA1(const LocalTensor<int8_t> &aMatrix, const __g
 };
 
 template <typename qType>
-__aicore__ inline void CopyVGradB1(const LocalTensor<int8_t> &bMatrix, const __gm__ void *gm,
-                                   int row, int col, int useK, int useN,
-                                   const uint64_t tilingPtr, const uint64_t dataPtr)
+__aicore__ inline void CopyVGradB1(const LocalTensor<int8_t>& bMatrix, const __gm__ void* gm, int row, int col,
+                                   int useK, int useN, const uint64_t tilingPtr, const uint64_t dataPtr)
 {
     GlobalTensor<qType> globalGt;
-    globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(const_cast<__gm__ void *>(gm)), useN * useK);
+    globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useN * useK);
 
-    HstuDenseBackwardTilingData *tilingP = reinterpret_cast<HstuDenseBackwardTilingData *>(tilingPtr);
+    HstuDenseBackwardTilingData* tilingP = reinterpret_cast<HstuDenseBackwardTilingData*>(tilingPtr);
     int64_t headNum = tilingP->headNum;
     int64_t headDim = tilingP->headDim;
 
@@ -210,6 +153,6 @@ __aicore__ inline void CopyVGradB1(const LocalTensor<int8_t> &bMatrix, const __g
     int64_t startIdx = row * baseK * headNum * headDim + col * baseN;
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[startIdx], param);
 };
-} // namespace HstuDenseBackward
+}  // namespace HstuDenseBackward
 
 #endif

@@ -17,15 +17,105 @@ See the License for the specific language governing permissions and
 #define MXREC_HSTU_COMMON_CONST_H
 
 #include <cstdint>
-namespace HstuDenseForward {
+#include "kernel_operator.h"
+using namespace AscendC;
 
+namespace HstuDenseBackward {
+enum class MaskType {
+    MASK_TRIL = 0,
+    MASK_TRIU = 1,
+    MASK_NONE = 2,
+    MASK_CUSTOM = 3
+};
 constexpr uint32_t MAX_BATCH_SIZE = 2048;
 constexpr int USE_QUEUE_NUM = 1;
 constexpr int DATA_ALIGN_BYTES = 32;
 constexpr int MAX_INDICS_ONE_BLOCK = 100;
-
+constexpr int VCORE_NUM_IN_ONE_AIC = 2;
 constexpr int INVALID_TASK_ID = -1;
+constexpr int COMPUTE_PIPE_NUM = 3;
+constexpr int ALIGN_16 = 16;
+constexpr int UB_SIZE = 170 * 1024;
 
-}  // namespace HstuDenseForward
+constexpr int MID_USE_TIMES = 2;
+constexpr int USE_BUFFER_NUM = 2;
+constexpr int TWO = 2;
+constexpr int AIV_NUM_IN_ONE_CORE = 2;
+
+struct Args {
+    GM_ADDR grad;
+    GM_ADDR q;
+    GM_ADDR k;
+    GM_ADDR v;
+    GM_ADDR mask;
+    GM_ADDR attnBias;
+    GM_ADDR seqOffset;
+    GM_ADDR numContext;
+    GM_ADDR numTarget;
+
+    GM_ADDR qGrad;
+    GM_ADDR kGrad;
+    GM_ADDR vGrad;
+    GM_ADDR attnBiasGrad;
+
+    GM_ADDR workspace;
+    GM_ADDR tiling;
+
+    const HstuDenseBackwardTilingData* __restrict tilingDataPtr = nullptr;
+};
+
+struct AddrArgs {
+    GM_ADDR grad;
+    GM_ADDR q;
+    GM_ADDR k;
+    GM_ADDR v;
+    GM_ADDR qGrad;
+    GM_ADDR kGrad;
+    GM_ADDR vGrad;
+    GM_ADDR workspace;
+};
+
+struct BaseShapeArgs {
+    int64_t batchSize;
+    int64_t headNum;
+    int64_t headDim;
+    int64_t maxSeqLen;
+};
+
+__aicore__ inline void DoVWhenMte2Finish(TPipe* pipePtr)
+{
+    int32_t eventMTE2ToV = static_cast<int32_t>(pipePtr->FetchEventID(HardEvent::MTE2_V));
+    SetFlag<HardEvent::MTE2_V>(eventMTE2ToV);
+    WaitFlag<HardEvent::MTE2_V>(eventMTE2ToV);
+}
+
+__aicore__ inline void DoVWhenMte3Finish(TPipe* pipePtr)
+{
+    int32_t eventMTE3ToV = static_cast<int32_t>(pipePtr->FetchEventID(HardEvent::MTE3_V));
+    SetFlag<HardEvent::MTE3_V>(eventMTE3ToV);
+    WaitFlag<HardEvent::MTE3_V>(eventMTE3ToV);
+}
+
+__aicore__ inline void DoSWhenMte3Finish(TPipe* pipePtr)
+{
+    int32_t eventMTE3ToS = static_cast<int32_t>(pipePtr->FetchEventID(HardEvent::MTE3_S));
+    SetFlag<HardEvent::MTE3_S>(eventMTE3ToS);
+    WaitFlag<HardEvent::MTE3_S>(eventMTE3ToS);
+}
+
+__aicore__ inline void DoMte2WhenVFinish(TPipe* pipePtr)
+{
+    int32_t eventVToMTE2 = static_cast<int32_t>(pipePtr->FetchEventID(HardEvent::V_MTE2));
+    SetFlag<HardEvent::V_MTE2>(eventVToMTE2);
+    WaitFlag<HardEvent::V_MTE2>(eventVToMTE2);
+}
+
+__aicore__ inline void DoMte3WhenVFinish(TPipe* pipePtr)
+{
+    int32_t eventVToMTE3 = static_cast<int32_t>(pipePtr->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(eventVToMTE3);
+    WaitFlag<HardEvent::V_MTE3>(eventVToMTE3);
+}
+}  // namespace HstuDenseBackward
 
 #endif  // MXREC_HSTU_COMMON_CONST_H
