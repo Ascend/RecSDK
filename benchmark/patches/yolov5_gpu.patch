@@ -1,5 +1,5 @@
 diff --git a/detect.py b/detect.py
-index 535e196f..52723b36 100644
+index 535e196f..cf83bfba 100644
 --- a/detect.py
 +++ b/detect.py
 @@ -33,10 +33,16 @@ import csv
@@ -207,20 +207,20 @@ index 535e196f..52723b36 100644
 -        strip_optimizer(weights[0])  # update model (to fix SourceChangeWarning)
 -
 +                # compile
-+                if os.environ.get('MODEL_COMPILE_FLAG', "0") == "1":
++                if os.environ.get('MODEL_COMPILE_FLAG', "False").upper() == "TRUE":
 +                    model = torch.compile(model, dynamic=False, backend="inductor")
 +                    logger.info("Inductor MODE YES")
 +
 +                # save tensor
 +                global SAVE_TENSOR
-+                if os.environ.get("SAVE_TENSOR_FLAG", "0") == "1" and not SAVE_TENSOR:
++                if os.environ.get("SAVE_TENSOR_FLAG", "False").upper() == "TRUE" and not SAVE_TENSOR:
 +                    SAVE_TENSOR = True
 +                    pred = model(im, augment=augment, visualize=visualize)
 +                    process_predictions(pred)
 +
 +                # profiling
 +                global PROFILING_RAN
-+                if os.environ.get('MODEL_PROFILING_FLAG', "0") == "1" and not PROFILING_RAN:
++                if os.environ.get('MODEL_PROFILING_FLAG', "False").upper() == "TRUE" and not PROFILING_RAN:
 +                    PROFILING_RAN = True
 +                    steps = 10
 +                    torch.cuda.synchronize()
@@ -246,7 +246,7 @@ index 535e196f..52723b36 100644
 +
 +                # E2E
 +                global E2E_RAN
-+                if os.environ.get('MODEL_E2E_FLAG', "0") == "1" and not E2E_RAN:
++                if os.environ.get('MODEL_E2E_FLAG', "False").upper() == "TRUE" and not E2E_RAN:
 +                    E2E_RAN = True
 +                    total_time = 0.0
 +                    count = 0
@@ -297,7 +297,7 @@ index 535e196f..52723b36 100644
 +            tensor_to_save = det.detach().cpu()
 +            print(f"save tensor type: {type(tensor_to_save)}")
 +
-+        if os.environ.get('MODEL_COMPILE_FLAG', "0") == "1":
++        if os.environ.get('MODEL_COMPILE_FLAG', "False").upper() == "TRUE":
 +            torch.save(tensor_to_save, f"det_gpu_inductor.pth")
 +        else:
 +            torch.save(tensor_to_save, f"det_gpu.pt")
@@ -382,8 +382,8 @@ index 535e196f..52723b36 100644
      check_requirements(ROOT / "requirements.txt", exclude=("tensorboard", "thop"))
      run(**vars(opt))
 -
-+    if os.environ.get("COMPARE_ACCURACY_FLAG", "0") == "1":
-+        if os.environ.get('MODEL_COMPILE_FLAG', "0") == "1":
++    if os.environ.get("COMPARE_ACCURACY_FLAG", "False").upper() == "TRUE":
++        if os.environ.get('MODEL_COMPILE_FLAG', "False").upper() == "TRUE":
 +            compare_result(tensor1 = "det_gpu.pth", tensor2 = "det_gpu_inductor.pth")
 +        else:
 +            compare_result(tensor1 = "det_npu.pt", tensor2 = "det_gpu.pt")
