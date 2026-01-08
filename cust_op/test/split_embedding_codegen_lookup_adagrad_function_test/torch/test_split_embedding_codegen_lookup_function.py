@@ -26,7 +26,7 @@ from torchrec import JaggedTensor, KeyedJaggedTensor, PoolingType, ComputeDevice
 
 logging.getLogger().setLevel(logging.INFO)
 DEVICEID = "npu:0"
-EPOCH = 4
+EPOCH = 1
 
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
