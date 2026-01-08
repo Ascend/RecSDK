@@ -303,8 +303,9 @@ def get_offsets_from_lengths(lengths):
 def generate_kvdata_testcase(
     max_seq_len: int, batch_size: int, num_heads_q: int, num_heads_k: int, head_dim: int, is_prev_hist: bool = False
 ):
+    min_seq_len = min(1, max_seq_len // 2)
     new_hist_lens = torch.randint(
-        max_seq_len // 2, max_seq_len + 1, (batch_size,), dtype=torch.int32
+        min_seq_len, max_seq_len + 1, (batch_size,), dtype=torch.int32
     )
     prev_lengths = torch.randint(
         1, max_seq_len + 1, (batch_size,), dtype=torch.int32
