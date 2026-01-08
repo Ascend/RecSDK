@@ -1,5 +1,5 @@
 diff --git a/detect.py b/detect.py
-index 535e196f..1b37a1b8 100644
+index 535e196f..7e6e773d 100644
 --- a/detect.py
 +++ b/detect.py
 @@ -33,10 +33,16 @@ import csv
@@ -86,7 +86,7 @@ index 535e196f..1b37a1b8 100644
          # Inference
          with dt[1]:
              visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
-@@ -203,122 +227,101 @@ def run(
+@@ -203,122 +227,102 @@ def run(
                          pred = torch.cat((pred, model(image, augment=augment, visualize=visualize).unsqueeze(0)), dim=0)
                  pred = [pred, None]
              else:
@@ -209,6 +209,7 @@ index 535e196f..1b37a1b8 100644
 +                # compile
 +                if os.environ.get('MODEL_COMPILE_FLAG', "False").upper() == "TRUE" and not hasattr(model, '_compiled'):
 +                    model = torch.compile(model, dynamic=False, backend="inductor")
++                    model._compiled = True
 +                    logger.info("Inductor MODE YES")
 +
 +                # save tensor
@@ -304,7 +305,7 @@ index 535e196f..1b37a1b8 100644
  
  def parse_opt():
      """Parse command-line arguments for YOLOv5 detection, allowing custom inference options and model configurations.
-@@ -365,6 +368,7 @@ def parse_opt():
+@@ -365,6 +369,7 @@ def parse_opt():
          ```
      """
      parser = argparse.ArgumentParser()
@@ -312,7 +313,7 @@ index 535e196f..1b37a1b8 100644
      parser.add_argument("--weights", nargs="+", type=str, default=ROOT / "yolov5s.pt", help="model path or triton URL")
      parser.add_argument("--source", type=str, default=ROOT / "data/images", help="file/dir/URL/glob/screen/0(webcam)")
      parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="(optional) dataset.yaml path")
-@@ -404,6 +408,64 @@ def parse_opt():
+@@ -404,6 +409,64 @@ def parse_opt():
      print_args(vars(opt))
      return opt
  
@@ -377,7 +378,7 @@ index 535e196f..1b37a1b8 100644
  
  def main(opt):
      """Executes YOLOv5 model inference based on provided command-line arguments, validating dependencies before running.
-@@ -429,7 +491,11 @@ def main(opt):
+@@ -429,7 +492,11 @@ def main(opt):
      """
      check_requirements(ROOT / "requirements.txt", exclude=("tensorboard", "thop"))
      run(**vars(opt))
