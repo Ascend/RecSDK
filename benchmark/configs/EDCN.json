@@ -3,7 +3,6 @@
     "url": "https://github.com/reczoo/FuxiCTR",
     "commit_id": "b7dff736885fdb8f59387d82d08219ad2e4cae50",
     "patch_path": "patches/fuxictr_npu.patch",
-    "cpu_only": false,
     "mode": "infer",
     "epoch": 10,
     "profiling_flag": true,

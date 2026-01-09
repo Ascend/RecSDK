@@ -38,7 +38,7 @@ index 4b636fd..af5d74c 100644
              raise RuntimeError(f"No parquet files exist in {self._input_path}.")
  
 diff --git a/tzrec/main.py b/tzrec/main.py
-index 355fac0..f451428 100644
+index 355fac0..1bc8c7c 100644
 --- a/tzrec/main.py
 +++ b/tzrec/main.py
 @@ -12,14 +12,18 @@
@@ -60,7 +60,7 @@ index 355fac0..f451428 100644
  import pyarrow as pa
  import torch
  from torch import distributed as dist
-@@ -85,14 +89,32 @@ from tzrec.utils.plan_util import create_planner, get_default_sharders
+@@ -85,14 +89,37 @@ from tzrec.utils.plan_util import create_planner, get_default_sharders
  from tzrec.utils.state_dict_util import fix_mch_state, init_parameters
  from tzrec.version import __version__ as tzrec_version
  
@@ -72,12 +72,17 @@ index 355fac0..f451428 100644
 +    import torch_npu
 +    lib_fbgemm_npu_api_so_path = os.getenv("LIB_FBGEMM_NPU_API_SO_PATH")
 +    torch_npu.npu.matmul.allow_hf32 = True
++    torch_npu.npu.conv.allow_hf32 = True
 +    try:
 +        torch.ops.load_library(lib_fbgemm_npu_api_so_path)
 +    except FileNotFoundError as e:
 +        logging.error(f"libfbgemm_npu_api.so is not exist")
 +    except Exception as e:
 +        logging.error(f"libfbgemm_npu_api.so failed to load: {e}")
++
++if GPU_ENABLE:
++    torch.backends.cuda.matmul.allow_tf32 = True
++    torch.backends.cudnn.allow_tf32 = True
  
  def init_process_group() -> Tuple[torch.device, str]:
      """Init process_group, device, rank, backend."""
@@ -94,7 +99,7 @@ index 355fac0..f451428 100644
      else:
          device: torch.device = torch.device("cpu")
          backend = "gloo"
-@@ -279,10 +301,112 @@ def _evaluate(
+@@ -279,10 +306,112 @@ def _evaluate(
      is_local_rank_zero = int(os.environ.get("LOCAL_RANK", 0)) == 0
      model.eval()
      pipeline = create_train_pipeline(model)
@@ -207,7 +212,7 @@ index 355fac0..f451428 100644
  
      desc_suffix = ""
      if global_epoch is not None:
-@@ -294,13 +418,22 @@ def _evaluate(
+@@ -294,13 +423,22 @@ def _evaluate(
      plogger = None
      if is_local_rank_zero:
          plogger = ProgressLogger(desc=f"Evaluating{desc_suffix}")
@@ -233,7 +238,7 @@ index 355fac0..f451428 100644
                  if (
                      plogger is not None
                      and i_step % eval_config.log_step_count_steps == 0
-@@ -308,22 +441,14 @@ def _evaluate(
+@@ -308,22 +446,14 @@ def _evaluate(
                      plogger.log(i_step)
              except StopIteration:
                  break
@@ -261,7 +266,7 @@ index 355fac0..f451428 100644
  
  
  def _log_train(
-@@ -852,17 +977,50 @@ def evaluate(
+@@ -852,17 +982,52 @@ def evaluate(
      model = DistributedModelParallel(
          module=model, sharders=sharders, device=device, plan=plan
      )
@@ -274,12 +279,14 @@ index 355fac0..f451428 100644
 -    if checkpoint_path:
 -        checkpoint_util.restore_model(checkpoint_path, model)
 +    INDUCTOR_FLAG = os.getenv("MODEL_COMPILE_FLAG", "False").upper() == "TRUE"
++    if CPU_ENABLE:
++        init_parameters(model, device)
 +    model.to(device)
 +    if not INDUCTOR_FLAG:
 +        import torch
 +        print("save weights start...")
 +        # NPU需要加载GPU那边保存下来的权重，用于保证精度对比结果可靠
-+        if NPU_ENABLE or os.path.exists(f"./save_weights/{pipeline_config.model_dir}/random_init_weights.pth"):
++        if os.path.exists(f"./save_weights/{pipeline_config.model_dir}/random_init_weights.pth"):
 +            state_dict = torch.load(f"./save_weights/{pipeline_config.model_dir}/random_init_weights.pth", map_location=device)
 +            model.load_state_dict(state_dict)
 +        else:
@@ -321,7 +328,7 @@ index 355fac0..f451428 100644
      summary_writer = None
      if is_rank_zero:
          summary_writer = SummaryWriter(os.path.join(pipeline_config.model_dir, "eval"))
-@@ -1339,3 +1497,17 @@ def predict(
+@@ -1339,3 +1504,17 @@ def predict(
          prof.stop()
      if is_local_rank_zero:
          logger.info("Predict Finished.")

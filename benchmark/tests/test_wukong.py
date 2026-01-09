@@ -38,8 +38,12 @@ if CPU_ENABLE:
 elif NPU_ENABLE:
     import torch_npu
     device = torch.device("npu")
+    torch_npu.npu.matmul.allow_hf32 = True
+    torch_npu.npu.conv.allow_hf32 = True
 else:
     device = torch.device("cuda:0")
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
 
 print(f"Running on {device}")
 
@@ -88,7 +92,7 @@ model = WukongTorch(
 inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
 model_name = os.environ.get("MODEL_NAME", "default_name")
 
-if NPU_ENABLE or CPU_ENABLE or os.path.exists(f"./save_weights/{model_name}/random_init_weights.pth"):
+if os.path.exists(f"./save_weights/{model_name}/random_init_weights.pth"):
     state_dict = torch.load(f"./save_weights/{model_name}/random_init_weights.pth", map_location=device)
     model.load_state_dict(state_dict)
 else:

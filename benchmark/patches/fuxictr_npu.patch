@@ -1,8 +1,8 @@
 diff --git a/fuxictr/pytorch/models/rank_model.py b/fuxictr/pytorch/models/rank_model.py
-index 1ce33aa..4272476 100644
+index 1ce33aa..5ccff5f 100644
 --- a/fuxictr/pytorch/models/rank_model.py
 +++ b/fuxictr/pytorch/models/rank_model.py
-@@ -27,6 +27,12 @@ from fuxictr.pytorch.torch_utils import get_device, get_optimizer, get_loss, get
+@@ -27,6 +27,17 @@ from fuxictr.pytorch.torch_utils import get_device, get_optimizer, get_loss, get
  from fuxictr.utils import Monitor, not_in_whitelist
  from tqdm import tqdm
  
@@ -12,10 +12,15 @@ index 1ce33aa..4272476 100644
 +
 +if NPU_ENABLE:
 +    import torch_npu
++    torch_npu.npu.matmul.allow_hf32 = True
++    torch_npu.npu.conv.allow_hf32 = True
++if GPU_ENABLE:
++    torch.backends.cudnn.allow_tf32 = True
++    torch.backends.cudnn.benchmark = True
  
  class BaseModel(nn.Module):
      def __init__(self, 
-@@ -250,13 +256,132 @@ class BaseModel(nn.Module):
+@@ -250,13 +261,132 @@ class BaseModel(nn.Module):
  
      def predict(self, data_generator):
          self.eval()  # set to evaluation mode
