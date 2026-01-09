@@ -1,4 +1,4 @@
-**使用pytorch框架调用方式调用permute_2D_sparse_data/permute_sparse_data算子**
+**使用pytorch框架调用方式调用permute_2D_sparse_data/permute_sparse_data/permute_2D_sparse_data_input1d算子**
 
 该样例基于Pytorch2.6.0、python3.11.0运行
 
@@ -11,11 +11,37 @@ torch.ops.fbgemm.permute_2D_sparse_data(Tensor permute,
                                         Tensor? weights=None,
                                         SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)
 
+torch.ops.fbgemm.permute_sparse_data(Tensor permute, 
+                                     Tensor lengths, 
+                                     Tensor values,
+                                     Tensor? weights=None,
+                                     SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)
+                               
+torch.ops.fbgemm.permute_2D_sparse_data_input1d(Tensor permute, 
+                                                Tensor lengths, 
+                                                Tensor values,
+                                                int stride,
+                                                Tensor? weights=None,
+                                                SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)
+
 torch.ops.mxrec.permute_2D_sparse_data(Tensor permute,
-                                        Tensor lengths, 
-                                        Tensor values,
-                                        Tensor? weights=None,
-                                        SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)
+                                       Tensor lengths, 
+                                       Tensor values,
+                                       Tensor? weights=None,
+                                       SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)
+
+torch.ops.mxrec.permute_sparse_data(Tensor permute,
+                                    Tensor lengths, 
+                                    Tensor values,
+                                    Tensor? weights=None,
+                                    SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)
+
+torch.ops.mxrec.permute_2D_sparse_data_input1d(Tensor permute,
+                                               Tensor lengths, 
+                                               Tensor values,
+                                               int stride,
+                                               Tensor? weights=None,
+                                               SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)
 ```
 
 #### 参数说明
@@ -24,6 +50,7 @@ torch.ops.mxrec.permute_2D_sparse_data(Tensor permute,
 |  permute | 输入     | Tensor  | int32      | [indices]                                       | permute中的每个值均满足: >= 0 且 < `lengths.shape[0]` |
 |  lengths | 输入     | Tensor  | int32/int64 | [ [lengths], [lengths],... ]                    |           
 |  values | 输入     | Tensor  | int32/int64/fp32 | [values]                                        | values的长度等于`lengths.sum()` | 
+|  stride | 输入(当调用permute_2D_sparse_data_input1d需传入) | Scalar  | int64       | stride                                       | stride > 0 |
 |  weights | 输入(可选) | Tensor  | fp32       | [weights]                                       | weight的长度等于`lengths.sum()` |
 |  permuted_lengths_sum | 输入(可选) | SymInt  | int        | NA                                              |        (0, std::numeric_limits<int>::max()]      |
 |  permuted_lengths | 输出     | Tensor  | int32/int64   | [ [permuted_lengths], [permuted_lengths], ... ] |                     |
@@ -33,6 +60,8 @@ torch.ops.mxrec.permute_2D_sparse_data(Tensor permute,
 
 说明：指定permuted_lengths_sum时，permuted_values/permuted_weights长度为permuted_lengths_sum，请用户自行保证数值正确;
 未指定permuted_lengths_sum时，算子将计算得到permuted_lengths_sum
+
+当调用permute_2D_sparse_data_input1d算子时，需传入stride参数，且满足lengths.numel()能被stride整除。
 
 ### 运行算子样例
 
@@ -45,6 +74,7 @@ torch.ops.mxrec.permute_2D_sparse_data(Tensor permute,
 Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
 #### 算子调用示例,以下以pytest方式调用为例
+调用permute2d_sparse_data算子示例
 ```python
 import itertools
 import random
@@ -113,6 +143,52 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec):
         'permute': permute,
         'lengths': lengths,
         'values': values,
+        'weights': weights,
+        'permuted_lengths_sum': permuted_lengths_sum
+    }
+
+    golden = get_result(params)
+    result = get_result(params, DEVICE, is_mxrec)
+
+    for gt, pred in zip(golden, result):
+        assert type(gt) is type(pred)
+        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
+            assert torch.allclose(gt, pred, atol=1e-5)
+```
+
+调用permute2d_sparse_data_input1d示例
+```python
+@pytest.mark.parametrize("types", TYPE_LIST)
+@pytest.mark.parametrize("shapes", SHAPE_LIST)
+@pytest.mark.parametrize("enable_permuted_sum", [True, False])
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_permute2d_sparse_data_input1d(types, shapes, enable_permuted_sum, is_mxrec):
+    """
+    Params:
+        permute: (T) dtype=int32
+        lengths: (T * B) dtype=ltype (1D flattened tensor)
+                 L = lengths.sum()
+        values: (L) dtype=vtype
+        weights: (L) dtype=fp32
+        stride: int64_t = B (batch size, used to reshape 1D lengths to 2D [T, B] for internal 2D permutation;
+                must divide lengths.size(0) evenly, e.g., lengths.size(0) % stride == 0)
+    """
+    ptype, ltype, vtype, wtype = types
+    t, extra_t, b = shapes
+    extra_t = random.randint(1, t - 1) * extra_t if extra_t > 0 else extra_t  # Consistent randomization
+
+    permute = np.random.choice(t + extra_t, t).astype(dtype=np.int32)
+    lengths_2d = np.random.randint(1, 10, size=(t + extra_t, b), dtype=ltype)
+    lengths = lengths_2d.flatten()
+    total_length = int(lengths.sum())
+    values = np.arange(0, total_length, dtype=vtype)
+    weights = np.arange(0, total_length, dtype=wtype) if wtype else None
+    permuted_lengths_sum = lengths_2d[permute].sum() if enable_permuted_sum else None
+    params = {
+        'permute': permute,
+        'lengths': lengths,
+        'values': values,
+        'stride': b,
         'weights': weights,
         'permuted_lengths_sum': permuted_lengths_sum
     }
