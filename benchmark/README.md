@@ -1,9 +1,13 @@
 # 代码结构
 ```shell
 |-- benchmark/
+    |-- ckpt/        # 权重文件目录
     |-- configs/     # 框架相关配置文件目录
+    |-- data/        # 数据集目录
     |-- models/      # 存放模型代码、模型规格配置文件的目录
     |-- patches/     # 模型迁移适配patch文件目录
+    |-- test/        # 模型测试脚本目录
+    |-- tools/       # 工具类脚本目录
     |-- README.md    # 模型迁移说明文档
     |-- run.py       # 模型运行脚本
 ```
@@ -23,8 +27,23 @@ pip install pytest
 # quick start
 xxx.json替換为为configs目录下的配置文件名；
 ```shell
-python run.py  xxx.json
+python run.py xxx.json
 ```
+
+# 性能指标
+模型正常运行后，会在models目录下生成性能相关文件，目录为./models/save_results_{device_name}/performance_result.txt,其中{device_name}为运行设备名称，如npu、cuda、cpu,文件内容为模型的性能指标，如推理时间、qps等。
+如config中开启了profiling_flag，会在./models/profiling/{model_name}生成profiling结果文件。其中{model_name}为模型名字。
+
+# 精度指标
+模型正常运行后，会在models目录下生成落盘输出文件，目录为save_results_{device_name}/{model_name},其中device_name为运行设备名称，如npu、cuda、cpu,{model_name}为模型名字。
+
+使用tools目录下的脚本对两份数据进行对比，cpu的数据作为标杆，对比npu数据与cpu数据的差异。
+对比脚本为tools/accuracy_compare.py，使用方法为：
+```shell
+python accuracy_compare.py --actual_output ./models/save_results_npu --expected_output ./models/save_results_cpu  --rtol 1e-4 --atol 1e-4
+```
+其中--actual_output为npu数据目录，--expected_output为cpu数据目录，--rtol为相对误差容忍度，--atol为绝对误差容忍度。
+
 
 # config文件示例
 ```json

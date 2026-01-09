@@ -6,7 +6,6 @@
     "commit_id_for_A5": "7c047076ee1e21d6b1fff319cb276a78b1075c40",
     "patch_path_for_A5": "patches/torch_easy_rec_npu_a5.patch",
     "A5_flag": true,
-    "cpu_only": true,
     "mode": "eval",
     "epoch": 10,
     "profiling_flag": true,

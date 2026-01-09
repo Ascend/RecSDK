@@ -3,7 +3,6 @@
     "url": "https://github.com/clabrugere/wukong-recommendation",
     "commit_id": "4a2cbc8adbdb4565d854a9977ee7b53175c0bc7c",
     "patch_path": "",
-    "cpu_only": false,
     "mode": "infer",
     "epoch": 10,
     "profiling_flag": true,
