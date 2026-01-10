@@ -309,7 +309,6 @@ template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool 
 __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
                                                    deterministic, maskType>::ComputeAllBlock()
 {
-    this->scmQKTensor = this->scm.template AllocTensor<qType>();
     GetTaskInfo(this->sBlkId);
 
     uint32_t taskId = 0;
