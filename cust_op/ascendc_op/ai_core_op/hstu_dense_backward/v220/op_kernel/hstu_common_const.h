@@ -42,6 +42,17 @@ constexpr int USE_BUFFER_NUM = 2;
 constexpr int TWO = 2;
 constexpr int AIV_NUM_IN_ONE_CORE = 2;
 
+using TNDShape = Shape<uint32_t, uint32_t, uint32_t>;
+using TNDStride = Stride<uint32_t, uint32_t, uint32_t>;
+using TNDLayout = Layout<TNDShape, TNDStride>;
+using PipeBlockShape = Shape<uint32_t, uint32_t, uint32_t>;
+using PipeBlockStride = Stride<uint32_t, uint32_t, uint32_t>;
+using PipeBlockLayout = Layout<PipeBlockShape, PipeBlockStride>;
+
+using BNSSShape = Shape<uint32_t, uint32_t, uint32_t, uint32_t>;
+using BNSSStride = Stride<uint32_t, uint32_t, uint32_t, uint32_t>;
+using BNSSLayout = Layout<BNSSShape, BNSSStride>;
+
 struct Args {
     GM_ADDR grad;
     GM_ADDR q;
@@ -76,10 +87,11 @@ struct AddrArgs {
 };
 
 struct BaseShapeArgs {
-    int64_t batchSize;
-    int64_t headNum;
-    int64_t headDim;
-    int64_t maxSeqLen;
+    uint32_t totalBatchSize;
+    uint32_t batchSize;
+    uint32_t headNum;
+    uint32_t headDim;
+    uint32_t maxSeqLen;
 };
 
 __aicore__ inline void DoVWhenMte2Finish(TPipe* pipePtr)

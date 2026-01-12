@@ -17,19 +17,22 @@ See the License for the specific language governing permissions and
 #define HSTU_JAGGED_F16_R0_KERNEL_H
 
 #include <cstdint>
-#include <cstdio>
-#include "hstu_dense_backward_kernel_common.h"
+#include "hstu_common_const.h"
 #include "hstu_mask.h"
 #include "hstu_split_core_policy.h"
 #include "matmul_mgmt_j_f16_r0.h"
+#include "q_accum.h"
+#include "trans.h"
+#include "vector_score.h"
 
 using HstuDenseBackward::BlockMaskGenerator;
 using HstuDenseBackward::BlockMaskParams;
 
 namespace HstuDenseBackward {
 
-template <typename oType>
-__aicore__ inline int64_t GetBatchSizeFromJaggedOffsetThis(GlobalTensor<oType>& seqOffsetData, int32_t seqOffsetLens)
+template <typename seqOffsetType>
+__aicore__ inline int64_t GetBatchSizeFromJaggedOffsetThis(GlobalTensor<seqOffsetType>& seqOffsetData,
+                                                           int32_t seqOffsetLens)
 {
     if (seqOffsetLens <= 0) {
         return 0;
@@ -129,31 +132,36 @@ struct JaggedFp8R0TaskInfo {
     }
 };
 
-template <typename qType, typename oType, uint32_t blockHeightQ, uint32_t blockHeightK, uint32_t headNum,
-          uint32_t headDim>
+template <typename qType, typename seqOffsetType, uint32_t blockHeightQ, uint32_t blockHeightK, uint32_t headDimPadding,
+          class MatmulMgmtType, class VectorScoreType>
 class HstuJaggedF16R0Kernel {
 public:
+    using MmInterface =
+        HstuMatmulMgmtInterface<qType, blockHeightQ, blockHeightK, HstuDenseBackwardTilingData, MatmulMgmtType>;
+    using VsInterface = VectorScoreInterface<qType, VectorScoreType>;
     __aicore__ inline HstuJaggedF16R0Kernel() {}
 
-    __aicore__ inline void Compute(Args& args)
+    __aicore__ inline void Compute(Args& args, MmInterface* mmInterface, VsInterface* vectorScoreInterface)
+
     {
-        REGIST_MATMUL_OBJ(&pipe, GetSysWorkSpacePtr(), mm_mgmt_.qkOrGvMatmul_, (TCubeTiling*)nullptr,
-                          mm_mgmt_.vGradMatmul_, (TCubeTiling*)nullptr, mm_mgmt_.qGradMatmul_, (TCubeTiling*)nullptr,
-                          mm_mgmt_.kGradMatmul_, (TCubeTiling*)nullptr);
-
+        mm_mgmt_ = mmInterface;
+        vectorScoreInterface_ = vectorScoreInterface;
         backwardTilingData_ = args.tilingDataPtr;
-
         this->Init(args);
         this->PreInit(args);
 
         this->ComputeJaggedFirst();
-        this->CopyQGradToOutput();
+        SyncAll();
+        qAccumKernel_.DoCopyQGrad();
     }
 
     __aicore__ inline void Init(Args& args)
     {
         batchSize_ = backwardTilingData_->batchSize;
         maxSeqLen_ = backwardTilingData_->maxSeqLen;
+        headDim_ = backwardTilingData_->headDim;
+        headNum_ = backwardTilingData_->headNum;
+        uint32_t totalBatchSize = backwardTilingData_->seqLen;
 
         biasGradSeqLen_ = backwardTilingData_->biasGradSeqLen;
         siluScale_ = backwardTilingData_->siluScale;
@@ -162,39 +170,54 @@ public:
         aivNum_ = GetBlockNum() * VCORE_NUM_IN_ONE_AIC;
 
         AddrArgs addrArgs = {args.grad, args.q, args.k, args.v, args.qGrad, args.kGrad, args.vGrad, args.workspace};
-        BaseShapeArgs baseShape = {batchSize_, headNum, headDim, maxSeqLen_};
-        mm_mgmt_.Init(&addrArgs, &baseShape);
+        BaseShapeArgs baseShape = {totalBatchSize, batchSize_, headNum_, headDim_, maxSeqLen_};
+        mm_mgmt_->Init(&addrArgs, &baseShape);
 
         enableTargetMask_ = backwardTilingData_->enableTargetMask == 1;
         enableContextMask_ = backwardTilingData_->enableContextMask == 1;
+        enableBias_ = backwardTilingData_->enableBias == 1;
+        maskType_ = MaskType(backwardTilingData_->maskType);
         numContextGt_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(args.numContext), batchSize_);
         numTargetGt_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(args.numTarget), batchSize_);
 
+        seqOffsetsGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.seqOffset), this->batchSize_ + 1);
         // 20通过ub的大小计算得到
-        vecOnceDataNum_ = blockHeightQ * 20;
+        int64_t totalElementOfAttnBias = batchSize_ * maxSeqLen_ * headNum_ * headDim_;
+        baisGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.attnBias), totalElementOfAttnBias);
+        maskGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.mask),
+                                totalElementOfAttnBias * totalElementOfAttnBias);
+        biasGradGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.attnBiasGrad), totalElementOfAttnBias);
 
-        pipe.InitBuffer(queueVecScoreQK_, 1, vecOnceDataNum_ * sizeof(float));
-        pipe.InitBuffer(queueVecScoreGV_, 1, vecOnceDataNum_ * sizeof(float));
-        pipe.InitBuffer(queueVecScoreMask_, 1, vecOnceDataNum_ * sizeof(float));
-        pipe.InitBuffer(queueVecScoreBias_, 1, vecOnceDataNum_ * sizeof(float));
-        pipe.InitBuffer(tbufMid_, vecOnceDataNum_ * sizeof(float));
-        pipe.InitBuffer(tbufMidQk_, vecOnceDataNum_ * sizeof(float));
-        pipe.InitBuffer(tbufMidGV_, vecOnceDataNum_ * sizeof(float));
+        uint32_t lastDimStride1 = 1;
+        qLayout_ = TNDLayout(MakeShape(totalBatchSize, headNum_, headDim_),
+                             MakeStride(headNum_ * headDim_, headDim_, lastDimStride1));
+        kLayout_ = TNDLayout(MakeShape(totalBatchSize, headNum_, headDim_),
+                             MakeStride(headNum_ * headDim_, headDim_, lastDimStride1));
+        pipeBlockLayout_ = PipeBlockLayout(MakeShape(blockHeightQ, blockHeightK, headDim_),
+                                           MakeStride(blockHeightK * headDim_, headDim_, lastDimStride1));
+        bnssLayout_ = BNSSLayout(
+            MakeShape(batchSize_, headNum_, maxSeqLen_, maxSeqLen_),
+            MakeStride(headNum_ * maxSeqLen_ * maxSeqLen_, maxSeqLen_ * maxSeqLen_, maxSeqLen_, lastDimStride1));
 
-        pipe.InitBuffer(queueOutputScore_, 1, vecOnceDataNum_ * sizeof(qType));
-        pipe.InitBuffer(queueOutputBias_, 1, vecOnceDataNum_ * sizeof(qType));
+        qAccumKernel_.Init(&pipe, &baseShape, mm_mgmt_->qGradAccumTemp_, mm_mgmt_->qGrad_, seqOffsetsGt_,
+                           GetBlockNum() * VCORE_NUM_IN_ONE_AIC);
+        transKernel_.Init(&pipe, headNum_, headDim_);
+
+        VectorScoreAttrs vectorScoreAttrs = {siluScale_, alpha_, enableBias_, maskType_};
+        VectorScoreGtInfo<qType> vectorScoreGtInfo = {mm_mgmt_->qkTemp_, mm_mgmt_->gvTemp_, maskGt_, baisGt_,
+                                                      biasGradGt_};
+        vectorScoreInterface_->Init(&pipe, bnssLayout_, &vectorScoreAttrs, &vectorScoreGtInfo);
     }
 
     __aicore__ inline void PreInit(Args& args)
     {
         const int blockId = GetBlockIdx();
-        seqOffsetsGt_.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(args.seqOffset), this->batchSize_ + 1);
         this->batchSize_ = GetBatchSizeFromJaggedOffsetThis(seqOffsetsGt_, this->batchSize_ + 1);
 
-        int64_t bxn = this->batchSize_ * headNum;
+        int64_t bxn = this->batchSize_ * headNum_;
         auto coreNum = backwardTilingData_->aivNum;
 
-        auto taskAssigner = BlockTaskAssign(seqOffsetsGt_, coreNum, blockHeightQ, batchSize_, headNum);
+        auto taskAssigner = BlockTaskAssign(seqOffsetsGt_, coreNum, blockHeightQ, batchSize_, headNum_);
         int colBlock[2] = {0};
         int rowBlock[2] = {0};
 
@@ -218,7 +241,7 @@ public:
 
         while (batchId < MAX_BATCH_SIZE) {
             curSeqLen = seqOffsetsGt_.GetValue(batchId + 1) - seqOffsetsGt_.GetValue(batchId);
-            auto curBatchBlock = headNum * ((curSeqLen + blockHeightQ - 1) / blockHeightQ);
+            auto curBatchBlock = headNum_ * ((curSeqLen + blockHeightQ - 1) / blockHeightQ);
             if (curBatchStartBlock + curBatchBlock > startBlock) {
                 break;
             }
@@ -254,7 +277,7 @@ public:
             headId += 1;
         }
 
-        if (headId == headNum) {
+        if (headId == headNum_) {
             headId = 0;
             batchId += 1;
 
@@ -279,14 +302,12 @@ public:
         computeTaskInfo_[curTaskId].taskId = taskId;
         computeTaskInfo_[curTaskId].rowId = rowId;
         computeTaskInfo_[curTaskId].colBlockPtr = &colInfo;
+        uint32_t totalBatchSizeId = seqOffsetsGt_.GetValue(colInfo.batchId);
 
-        computeTaskInfo_[curTaskId].qOrGoffset = seqOffsetsGt_.GetValue(colInfo.batchId) * headNum * headDim +
-                                                 rowId * blockHeightQ * headNum * headDim + colInfo.headId * headDim;
-
-        computeTaskInfo_[curTaskId].kOrVOffset = seqOffsetsGt_.GetValue(colInfo.batchId) * headNum * headDim +
-                                                 colInfo.colId * blockHeightQ * headNum * headDim +
-                                                 colInfo.headId * headDim;
-
+        computeTaskInfo_[curTaskId].qOrGoffset =
+            qLayout_(MakeCoord(totalBatchSizeId + rowId * blockHeightQ, colInfo.headId, 0));
+        computeTaskInfo_[curTaskId].kOrVOffset =
+            kLayout_(MakeCoord(totalBatchSizeId + colInfo.colId * blockHeightK, colInfo.headId, 0));
         computeTaskInfo_[curTaskId].rowLine = colInfo.curSeqLen - computeTaskInfo_[curTaskId].rowId * blockHeightQ;
         computeTaskInfo_[curTaskId].rowLine =
             computeTaskInfo_[curTaskId].rowLine > blockHeightQ ? blockHeightQ : computeTaskInfo_[curTaskId].rowLine;
@@ -296,18 +317,18 @@ public:
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midScoreOffset = (taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
-        mm_mgmt_.DoQkMatmul(midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
-                            computeTaskInfo_[curTaskId].kOrVOffset, computeTaskInfo_[curTaskId].rowLine,
-                            computeTaskInfo_[curTaskId].GetColLine());
+        mm_mgmt_->DoQkMatmul(midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
+                             computeTaskInfo_[curTaskId].kOrVOffset, computeTaskInfo_[curTaskId].rowLine,
+                             computeTaskInfo_[curTaskId].GetColLine());
     }
 
     __aicore__ inline void DoJaggedGVMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midScoreOffset = (taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
-        mm_mgmt_.DoGvMatmul(midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
-                            computeTaskInfo_[curTaskId].kOrVOffset, computeTaskInfo_[curTaskId].rowLine,
-                            computeTaskInfo_[curTaskId].GetColLine());
+        mm_mgmt_->DoGvMatmul(midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
+                             computeTaskInfo_[curTaskId].kOrVOffset, computeTaskInfo_[curTaskId].rowLine,
+                             computeTaskInfo_[curTaskId].GetColLine());
     }
 
     __aicore__ inline void DoJaggedQGradMatmul(int64_t taskId)
@@ -316,221 +337,52 @@ public:
         int64_t midScoreOffset = (taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
 
         int64_t qGradOutOffset =
-            seqOffsetsGt_.GetValue(computeTaskInfo_[curTaskId].GetBatchId()) * headNum * headDim +
-            computeTaskInfo_[curTaskId].GetHeadId() * computeTaskInfo_[curTaskId].GetCurSeqLen() * headDim +
-            computeTaskInfo_[curTaskId].rowId * blockHeightQ * headDim;
+            seqOffsetsGt_.GetValue(computeTaskInfo_[curTaskId].GetBatchId()) * headNum_ * headDim_ +
+            computeTaskInfo_[curTaskId].GetHeadId() * computeTaskInfo_[curTaskId].GetCurSeqLen() * headDim_ +
+            computeTaskInfo_[curTaskId].rowId * blockHeightQ * headDim_;
 
-        mm_mgmt_.DoQGradMatmul(qGradOutOffset, midScoreOffset, computeTaskInfo_[curTaskId].kOrVOffset,
-                               computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine());
+        mm_mgmt_->DoQGradMatmul(qGradOutOffset, midScoreOffset, computeTaskInfo_[curTaskId].kOrVOffset,
+                                computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine());
     }
 
     __aicore__ inline void DoJaggedKGradMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midScoreOffset = (computeTaskInfo_[curTaskId].taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
-        int64_t kAccumOffset = (computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES) * blockHeightK * headDim;
-        bool isFirstBlock = blockMaskParams_[curTaskId].IsFirstBlockNeedOverride();
-        mm_mgmt_.DoKGradMatmul(kAccumOffset, midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
-                               computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine(),
-                               isFirstBlock);
+        int64_t kAccumOffset = (computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES) * blockHeightK * headDim_;
+        bool isFirstBlock = maskType_ == MaskType::MASK_TRIL ? blockMaskParams_[curTaskId].IsFirstBlockNeedOverride()
+                                                             : computeTaskInfo_[curTaskId].GetRowId() == 0;
+        mm_mgmt_->DoKGradMatmul(kAccumOffset, midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
+                                computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine(),
+                                isFirstBlock);
     }
 
     __aicore__ inline void DoJaggedVGradMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midScoreOffset = (computeTaskInfo_[curTaskId].taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
-        int64_t vAccumOffset = (computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES) * blockHeightK * headDim;
-        bool isFirstBlock = blockMaskParams_[curTaskId].IsFirstBlockNeedOverride();
-        mm_mgmt_.DoVGradMatmul(vAccumOffset, midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
-                               computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine(),
-                               isFirstBlock);
+        int64_t vAccumOffset = (computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES) * blockHeightK * headDim_;
+        bool isFirstBlock = maskType_ == MaskType::MASK_TRIL ? blockMaskParams_[curTaskId].IsFirstBlockNeedOverride()
+                                                             : computeTaskInfo_[curTaskId].GetRowId() == 0;
+        mm_mgmt_->DoVGradMatmul(vAccumOffset, midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
+                                computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine(),
+                                isFirstBlock);
     }
 
     __aicore__ inline void VecScoreJagged(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
-        int64_t attnBiasOffset =
-            computeTaskInfo_[curTaskId].GetBatchId() * headNum * biasGradSeqLen_ * biasGradSeqLen_ +
-            computeTaskInfo_[curTaskId].GetHeadId() * biasGradSeqLen_ * biasGradSeqLen_ +
-            computeTaskInfo_[curTaskId].rowId * blockHeightQ * biasGradSeqLen_ +
-            computeTaskInfo_[curTaskId].GetColId() * blockHeightQ;
-        int64_t attnBiasDiagonalOffset =
-            computeTaskInfo_[curTaskId].GetBatchId() * headNum * biasGradSeqLen_ * biasGradSeqLen_ +
-            computeTaskInfo_[curTaskId].GetHeadId() * biasGradSeqLen_ * biasGradSeqLen_ +
-            computeTaskInfo_[curTaskId].GetColId() * blockHeightQ * biasGradSeqLen_ +
-            computeTaskInfo_[curTaskId].rowId * blockHeightQ;
-
         int64_t maskOffset = 0;
 
         bool useMask = false;
         useMask = blockMaskParams_[curTaskId].NeedMask();
-
-        this->VecScoreImpl(taskId, attnBiasOffset, attnBiasDiagonalOffset, maskOffset,
-                           computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine(), useMask);
-    }
-
-    __aicore__ inline void CopyInPadding(LocalTensor<qType> dstTensor, GlobalTensor<qType> srcTensor, int64_t rowNum,
-                                         int64_t colNum, int64_t seqLen)
-    {
-        uint16_t blockCount = rowNum;
-        uint32_t blockLen = colNum * sizeof(qType);
-        uint32_t srcStride = (seqLen - colNum) * sizeof(qType);
-        uint32_t dstStride = (blockHeightQ - colNum) / (DATA_ALIGN_BYTES / sizeof(qType));
-        uint8_t rightPadding = (blockHeightQ - colNum) % (DATA_ALIGN_BYTES / sizeof(qType));
-
-        DataCopyExtParams copyParams{blockCount, blockLen, srcStride, dstStride, 0};
-        DataCopyPadExtParams<qType> padParams{true, 0, rightPadding, 0};
-        DataCopyPad(dstTensor, srcTensor, copyParams, padParams);
-    }
-
-    __aicore__ inline void CopyOutPadding(GlobalTensor<qType> dstTensor, LocalTensor<qType> srcTensor, int64_t rowNum,
-                                          int64_t colNum, int64_t seqLen)
-    {
-        uint16_t blockCount = rowNum;
-        uint32_t blockLen = colNum * sizeof(qType);
-        uint32_t srcStride = (blockHeightQ - colNum) / (DATA_ALIGN_BYTES / sizeof(qType));
-        uint32_t dstStride = (seqLen - colNum) * sizeof(qType);
-
-        DataCopyExtParams copyParams{blockCount, blockLen, srcStride, dstStride, 0};
-        DataCopyPad(dstTensor, srcTensor, copyParams);
-    }
-
-    __aicore__ inline void VecScoreImpl(int64_t taskId, int64_t attnBiasOffset, int64_t attnBiasDiagonalOffset,
-                                        int64_t maskOffset, int64_t totalRowNum, int64_t totalColNum, bool useMask)
-    {
-        int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
-        int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
-
-        int64_t total = blockHeightQ * blockHeightQ;
-        int64_t remain = total;
-        int64_t thisLen = vecOnceDataNum_;
-        BlockMaskGenerator generator(&blockMaskParams_[curTaskId]);
-        while (remain > 0) {
-            if (remain < thisLen) {
-                thisLen = remain;
-            }
-
-            int64_t baseOffset = total - remain;
-
-            int64_t startRowNum = baseOffset / blockHeightQ;
-            int64_t thisRowNum = thisLen / blockHeightQ;
-            int64_t validRowNum = totalRowNum - startRowNum;
-            validRowNum = validRowNum > thisRowNum ? thisRowNum : validRowNum;
-            validRowNum = validRowNum < 0 ? 0 : validRowNum;
-
-            int64_t qkOffset = midResultIdx * blockHeightQ * blockHeightQ + baseOffset;
-            int64_t curAttnBiasOffset = attnBiasOffset + startRowNum * biasGradSeqLen_;
-            int64_t curBiasGradOutOffset = midResultIdx * blockHeightQ * blockHeightQ + startRowNum * blockHeightQ;
-            int64_t curMaskOffset = 0;
-            curMaskOffset = maskOffset + baseOffset;
-
-            if (validRowNum > 0) {
-                ValidVecScore(thisLen, validRowNum, totalColNum, qkOffset, curMaskOffset, curAttnBiasOffset,
-                              curBiasGradOutOffset, useMask, generator, startRowNum);
-            }
-
-            remain = remain - thisLen;
-        }
-    }
-    __aicore__ inline void CastQType2Float(LocalTensor<float> dstTensor, LocalTensor<qType> srcTensor,
-                                           LocalTensor<qType> midTensor, int64_t len)
-    {
-        DataCopy<qType>(midTensor, srcTensor, len);
-        Cast(dstTensor, midTensor, RoundMode::CAST_NONE, len);
-    }
-
-    __aicore__ inline void CastInputData(LocalTensor<float>& inputQK, LocalTensor<float>& inputGV,
-                                         LocalTensor<float>& inputMask, LocalTensor<float>& inputBias, int64_t thisLen,
-                                         bool useMask)
-    {
-        LocalTensor<qType> outputMidTemp = tbufMid_.Get<qType>();
-        if (!std::is_same<qType, float>::value) {
-            CastQType2Float(inputQK, inputQK.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
-            CastQType2Float(inputGV, inputGV.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
-        }
-    }
-
-    __aicore__ inline void CalcuScoreWithFloat32(int64_t thisLen, bool useMask)
-    {
-        LocalTensor<float> inputQK = queueVecScoreQK_.template DeQue<float>();
-        LocalTensor<float> inputGV = queueVecScoreGV_.template DeQue<float>();
-
-        LocalTensor<float> midQK = tbufMidQk_.Get<float>();
-        LocalTensor<float> midGV = tbufMidGV_.Get<float>();
-        Cast(midQK, inputQK.template ReinterpretCast<qType>(), RoundMode::CAST_NONE, thisLen);
-        Cast(midGV, inputGV.template ReinterpretCast<qType>(), RoundMode::CAST_NONE, thisLen);
-        queueVecScoreGV_.FreeTensor(inputGV);
-        queueVecScoreQK_.FreeTensor(inputQK);
-        LocalTensor<float> inputMask =
-            useMask ? queueVecScoreMask_.DeQue<float>() : queueVecScoreMask_.AllocTensor<float>();
-        LocalTensor<float> inputBias = queueVecScoreBias_.AllocTensor<float>();
-        // CastInputData(inputQK, inputGV, inputMask, inputBias, thisLen, useMask);
-        LocalTensor<float> dsiluTemp = tbufMid_.Get<float>();
-        // 变量 inputQK inputGV inputMask inputBias
-        // v = qk_input * alpha
-        Muls<float>(midQK, midQK, alpha_, thisLen);
-        // inputBias = sigmoid_fast(v);   sigmoid_v = sigmoid_fast(v);
-        Sigmoid<float>(inputBias, midQK, thisLen);
-        // inputBias = inputBias * inputMask; sigmoid_v = sigmoid_v * mask
-        if (useMask) {
-            Mul<float>(inputBias, inputBias, inputMask, thisLen);
-        }
-        // silu_out =  inputBias * inputQK  silu_out = v * sigmoid_v
-        Mul<float>(inputMask, inputBias, midQK, thisLen);
-
-        // dsilu_temp = sigmoid_v * (1 + v * (1 - sigmoid_v))
-        // dsilu_temp = v - v*sigmoid_v
-        Sub<float>(dsiluTemp, midQK, inputMask, thisLen);
-        // dsilu_temp = 1 + dsilu_temp
-        Adds<float>(dsiluTemp, dsiluTemp, 1, thisLen);
-        // dsilu_temp = sigmoid_v * dsilu_temp
-        Mul<float>(dsiluTemp, dsiluTemp, inputBias, thisLen);
-        // scoreTemp = silu_out * silu_scale
-        Muls(inputMask, inputMask, siluScale_, thisLen);
-
-        // scoreGradTemp = gv_input * silu_scale * dsilu_temp * alpha
-        Muls<float>(midGV, midGV, siluScale_ * alpha_, thisLen);
-        Mul<float>(inputBias, midGV, dsiluTemp, thisLen);
-        // Muls<float>(inputGV, inputGV, alpha_, thisLen);
-
-        LocalTensor<qType> outputScore = queueOutputScore_.AllocTensor<qType>();
-        LocalTensor<qType> outputBias = queueOutputBias_.AllocTensor<qType>();
-        Cast(outputScore, inputMask, RoundMode::CAST_RINT, thisLen);
-        Cast(outputBias, inputBias, RoundMode::CAST_RINT, thisLen);
-        queueVecScoreMask_.FreeTensor(inputMask);
-        queueVecScoreBias_.FreeTensor(inputBias);
-        queueOutputScore_.EnQue(outputScore);
-        queueOutputBias_.EnQue(outputBias);
-    }
-
-    __aicore__ inline void ValidVecScore(int64_t thisLen, int64_t validRowNum, int64_t totalColNum, int64_t qkOffset,
-                                         int64_t curMaskOffset, int64_t curAttnBiasOffset, int64_t curBiasGradOutOffset,
-                                         bool useMask, BlockMaskGenerator& generator, int64_t rowInBlock)
-    {
-        int64_t gvOffset = qkOffset;
-        int64_t scoreTempOffset = qkOffset;
-        LocalTensor<float> inputQK = queueVecScoreQK_.AllocTensor<float>();
-        DataCopy<qType>(inputQK.template ReinterpretCast<qType>(), mm_mgmt_.qkTemp_[qkOffset], thisLen);
-        queueVecScoreQK_.EnQue(inputQK);
-
-        LocalTensor<float> inputGV = queueVecScoreGV_.AllocTensor<float>();
-        DataCopy<qType>(inputGV.template ReinterpretCast<qType>(), mm_mgmt_.gvTemp_[gvOffset], thisLen);
-        queueVecScoreGV_.EnQue(inputGV);
-        if (useMask) {
-            LocalTensor<float> inputMask = queueVecScoreMask_.AllocTensor<float>();
-            generator.GenMask(inputMask, rowInBlock, thisLen / blockHeightQ, blockHeightQ);
-            queueVecScoreMask_.EnQue(inputMask);
-        }
-
-        CalcuScoreWithFloat32(thisLen, useMask);
-
-        LocalTensor<qType> outputScore = queueOutputScore_.DeQue<qType>();
-        LocalTensor<qType> outputBias = queueOutputBias_.DeQue<qType>();
-        DataCopy<qType>(mm_mgmt_.qkTemp_[scoreTempOffset], outputScore, thisLen);
-        DataCopy<qType>(mm_mgmt_.gvTemp_[scoreTempOffset], outputBias, thisLen);
-
-        queueOutputScore_.FreeTensor(outputScore);
-        queueOutputBias_.FreeTensor(outputBias);
+        int64_t batchId = computeTaskInfo_[curTaskId].GetBatchId();
+        int64_t headId = computeTaskInfo_[curTaskId].GetHeadId();
+        int64_t rowId = computeTaskInfo_[curTaskId].GetRowId();
+        int64_t colId = computeTaskInfo_[curTaskId].GetColId();
+        vectorScoreInterface_->VecScoreJagged(curTaskId * blockHeightQ * blockHeightK, batchId, headId, rowId, colId,
+                                              computeTaskInfo_[curTaskId].rowLine,
+                                              computeTaskInfo_[curTaskId].GetColLine(), blockMaskParams_[curTaskId]);
     }
 
     __aicore__ inline void DoTransJagged(int64_t taskId, GlobalTensor<float> from, GlobalTensor<qType> to,
@@ -538,58 +390,18 @@ public:
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midResultIdx = computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES;
-        int64_t fromOffset = midResultIdx * blockHeightQ * headDim;
+        int64_t fromOffset = midResultIdx * blockHeightQ * headDim_;
         int64_t toOffset = 0;
         int64_t total = 0;
         if (isCol) {
             toOffset = computeTaskInfo_[curTaskId].kOrVOffset;
-            total = computeTaskInfo_[curTaskId].GetColLine() * headDim;
+            total = computeTaskInfo_[curTaskId].GetColLine() * headDim_;
         } else {
             toOffset = computeTaskInfo_[curTaskId].qOrGoffset;
-            total = computeTaskInfo_[curTaskId].rowLine * headDim;
+            total = computeTaskInfo_[curTaskId].rowLine * headDim_;
         }
 
-        this->DoTransImpl(from, to, fromOffset, toOffset, total);
-    }
-
-    __aicore__ inline void DoTransImpl(GlobalTensor<float> from, GlobalTensor<qType> to, int64_t fromOffset,
-                                       int64_t toOffset, int64_t total = 0)
-    {
-        int64_t remain = total;
-        int64_t copyLenEachLoopAlignHeadDim = vecOnceDataNum_ / headDim * headDim;
-        int64_t thisLen = copyLenEachLoopAlignHeadDim;
-        while (remain > 0) {
-            if (thisLen > remain) {
-                thisLen = remain;
-            }
-
-            int64_t curFromOffset = total - remain;
-            int64_t curToOffset = curFromOffset * headNum;
-
-            LocalTensor<float> input = queueVecScoreQK_.AllocTensor<float>();
-            DataCopy(input, from[fromOffset + curFromOffset], thisLen);
-            queueVecScoreQK_.EnQue(input);
-
-            LocalTensor<float> newInput = queueVecScoreQK_.DeQue<float>();
-            LocalTensor<qType> output = queueOutputScore_.AllocTensor<qType>();
-            if (std::is_same<qType, float>::value) {
-                DataCopy(output.template ReinterpretCast<float>(), newInput, thisLen);
-            } else {
-                Cast(output, newInput, RoundMode::CAST_RINT, thisLen);
-            }
-            queueOutputScore_.EnQue(output);
-            queueVecScoreQK_.FreeTensor(newInput);
-
-            LocalTensor<qType> newOutput = queueOutputScore_.DeQue<qType>();
-            uint16_t blockCount = thisLen / headDim;
-            uint16_t blockLen = headDim * sizeof(qType) / DATA_ALIGN_BYTES;
-            uint16_t dstStride = (headNum * headDim - headDim) * sizeof(qType) / DATA_ALIGN_BYTES;
-            DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
-            DataCopy(to[toOffset + curToOffset], newOutput, copyParams);
-            queueOutputScore_.FreeTensor(newOutput);
-
-            remain = remain - thisLen;
-        }
+        transKernel_.DoTransOfStrideHeadDim(from, to, fromOffset, toOffset, total);
     }
 
     __aicore__ inline void FirstJaggedStagePipeline(int64_t taskId)
@@ -604,16 +416,16 @@ public:
         if (taskId > 0) {
             VecScoreJagged(taskId - 1);
         }
-        mm_mgmt_.QkOrGvMatmulWait();
-        mm_mgmt_.QkOrGvMatmulWait();
+        mm_mgmt_->QkOrGvMatmulWait();
+        mm_mgmt_->QkOrGvMatmulWait();
         if (taskId > 1) {
-            mm_mgmt_.vGradMatmulWait();
-            mm_mgmt_.kGradMatmulWait();
-            mm_mgmt_.qGradMatmulWait();
+            mm_mgmt_->vGradMatmulWait();
+            mm_mgmt_->kGradMatmulWait();
+            mm_mgmt_->qGradMatmulWait();
             if (computeTaskInfo_[(taskId - TWO) % COMPUTE_PIPE_NUM].GetAccumId() !=
                 computeTaskInfo_[(taskId - 1) % COMPUTE_PIPE_NUM].GetAccumId()) {
-                DoTransJagged(taskId - TWO, mm_mgmt_.vGradAccumTemp_, mm_mgmt_.vGrad_);
-                DoTransJagged(taskId - TWO, mm_mgmt_.kGradAccumTemp_, mm_mgmt_.kGrad_);
+                DoTransJagged(taskId - TWO, mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGrad_);
+                DoTransJagged(taskId - TWO, mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGrad_);
             }
         }
     }
@@ -625,24 +437,24 @@ public:
             DoJaggedKGradMatmul(taskId - TWO);
             DoJaggedQGradMatmul(taskId - TWO);
             VecScoreJagged(taskId - 1);
-            mm_mgmt_.vGradMatmulWait();
-            mm_mgmt_.kGradMatmulWait();
-            mm_mgmt_.qGradMatmulWait();
+            mm_mgmt_->vGradMatmulWait();
+            mm_mgmt_->kGradMatmulWait();
+            mm_mgmt_->qGradMatmulWait();
             if (computeTaskInfo_[(taskId - TWO) % COMPUTE_PIPE_NUM].GetAccumId() !=
                 computeTaskInfo_[(taskId - 1) % COMPUTE_PIPE_NUM].GetAccumId()) {
-                DoTransJagged(taskId - TWO, mm_mgmt_.vGradAccumTemp_, mm_mgmt_.vGrad_);
-                DoTransJagged(taskId - TWO, mm_mgmt_.kGradAccumTemp_, mm_mgmt_.kGrad_);
+                DoTransJagged(taskId - TWO, mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGrad_);
+                DoTransJagged(taskId - TWO, mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGrad_);
             }
 
             DoJaggedVGradMatmul(taskId - 1);
             DoJaggedKGradMatmul(taskId - 1);
             DoJaggedQGradMatmul(taskId - 1);
 
-            mm_mgmt_.vGradMatmulWait();
-            mm_mgmt_.kGradMatmulWait();
-            mm_mgmt_.qGradMatmulWait();
-            DoTransJagged(taskId - 1, mm_mgmt_.vGradAccumTemp_, mm_mgmt_.vGrad_);
-            DoTransJagged(taskId - 1, mm_mgmt_.kGradAccumTemp_, mm_mgmt_.kGrad_);
+            mm_mgmt_->vGradMatmulWait();
+            mm_mgmt_->kGradMatmulWait();
+            mm_mgmt_->qGradMatmulWait();
+            DoTransJagged(taskId - 1, mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGrad_);
+            DoTransJagged(taskId - 1, mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGrad_);
         }
 
         if (taskId == 1) {
@@ -650,11 +462,11 @@ public:
             DoJaggedVGradMatmul(taskId - 1);
             DoJaggedKGradMatmul(taskId - 1);
             DoJaggedQGradMatmul(taskId - 1);
-            mm_mgmt_.vGradMatmulWait();
-            mm_mgmt_.kGradMatmulWait();
-            mm_mgmt_.qGradMatmulWait();
-            DoTransJagged(taskId - 1, mm_mgmt_.vGradAccumTemp_, mm_mgmt_.vGrad_);
-            DoTransJagged(taskId - 1, mm_mgmt_.kGradAccumTemp_, mm_mgmt_.kGrad_);
+            mm_mgmt_->vGradMatmulWait();
+            mm_mgmt_->kGradMatmulWait();
+            mm_mgmt_->qGradMatmulWait();
+            DoTransJagged(taskId - 1, mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGrad_);
+            DoTransJagged(taskId - 1, mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGrad_);
         }
     }
     __aicore__ inline int64_t GetNumContext(int64_t batchId)
@@ -705,7 +517,7 @@ public:
                                                                      1};
 
                 BlockMaskParams& maskinfo = this->blockMaskParams_[taskId % COMPUTE_PIPE_NUM];
-                if (maskinfo.NoComputation()) {
+                if (maskType_ == MaskType::MASK_TRIL && maskinfo.NoComputation()) {
                     continue;
                 }
 
@@ -725,90 +537,24 @@ public:
         FirstJaggedStageEnding(taskId);
     }
 
-    __aicore__ inline void DoCopyQGrad(GlobalTensor<oType>& seqOffsets)
-    {
-        int64_t batchIdx = GetBlockIdx();
-        int64_t taskNum = batchSize_ * headNum;
-        int64_t coreTask = taskNum / aivNum_;
-        int64_t coreSplitId = taskNum % aivNum_;
-
-        int64_t taskNumOfThisCore = 0;
-        int64_t offsetOfThisCore = 0;
-        if (batchIdx >= coreSplitId) {
-            taskNumOfThisCore = coreTask;
-            offsetOfThisCore = coreSplitId * (coreTask + 1) + (batchIdx - coreSplitId) * coreTask;
-        } else {
-            taskNumOfThisCore = coreTask + 1;
-            offsetOfThisCore = batchIdx * (coreTask + 1);
-        }
-
-        for (int64_t taskId = 0; taskId < taskNumOfThisCore; taskId++) {
-            int64_t thisBatchIdx = (offsetOfThisCore + taskId) / headNum;
-            int64_t headIdx = (offsetOfThisCore + taskId) % headNum;
-
-            int64_t curSeqLen =
-                static_cast<int64_t>(seqOffsets.GetValue(thisBatchIdx + 1) - seqOffsets.GetValue(thisBatchIdx));
-            DoCopyBlockQGrad(thisBatchIdx, headIdx, curSeqLen, seqOffsets);
-        }
-    }
-
-    __aicore__ inline void DoCopyBlockQGrad(int64_t thisBatchIdx, int64_t headIdx, int64_t curSeqLen,
-                                            GlobalTensor<oType>& seqOffsets)
-    {
-        int64_t totalLen = curSeqLen * headDim;
-        int64_t remain = totalLen;
-        int64_t copyLenEachLoopAlignHeadDim = vecOnceDataNum_ / headDim * headDim;
-        int64_t thisLen = copyLenEachLoopAlignHeadDim;
-        while (remain > 0) {
-            if (thisLen > remain) {
-                thisLen = remain;
-            }
-
-            int64_t curOffset =
-                (headNum * seqOffsets.GetValue(thisBatchIdx) * headDim) + (headIdx * totalLen) + (totalLen - remain);
-            LocalTensor<float> input = queueVecScoreQK_.AllocTensor<float>();
-            DataCopy<float>(input, mm_mgmt_.qGradAccumTemp_[curOffset], thisLen);
-            queueVecScoreQK_.EnQue(input);
-
-            LocalTensor<float> newInput = queueVecScoreQK_.DeQue<float>();
-            LocalTensor<qType> output = queueOutputScore_.AllocTensor<qType>();
-            if (std::is_same<qType, float>::value) {
-                DataCopy(output.template ReinterpretCast<float>(), newInput, thisLen);
-            } else {
-                Cast(output, newInput, RoundMode::CAST_RINT, thisLen);
-            }
-            queueOutputScore_.EnQue(output);
-            queueVecScoreQK_.FreeTensor(newInput);
-
-            LocalTensor<qType> newOutput = queueOutputScore_.DeQue<qType>();
-
-            uint16_t blockCount = thisLen / headDim;
-            uint16_t blockLen = headDim * sizeof(qType) / DATA_ALIGN_BYTES;
-            uint16_t dstStride = (headNum - 1) * headDim * sizeof(qType) / DATA_ALIGN_BYTES;
-            DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
-
-            int64_t curOutOffset = seqOffsetsGt_.GetValue(thisBatchIdx) * headNum * headDim + headIdx * headDim +
-                                   (totalLen - remain) * headNum;
-            DataCopy<qType>(mm_mgmt_.qGrad_[curOutOffset], newOutput, copyParams);
-            queueOutputScore_.FreeTensor(newOutput);
-
-            remain = remain - thisLen;
-        }
-    }
-
-    __aicore__ inline void CopyQGradToOutput()
-    {
-        SyncAll();
-        this->DoCopyQGrad(seqOffsetsGt_);
-    }
+    // Mode
+    bool enableBias_ = false;
+    MaskType maskType_ = MaskType::MASK_NONE;
     // targetMask
     bool enableTargetMask_ = false;   // 初始化在Init中: enableTargetMask_ = backwardTilingData_->enableTargetMask;
     bool enableContextMask_ = false;  // 初始化在Init中: enableContextMask_ = backwardTilingData_->enableContextMask;
 
     // Shape
-    int64_t batchSize_ = 0;       // 初始化在Init中: batchSize_ = backwardTilingData_->batchSize;
-    int64_t maxSeqLen_ = 0;       // 初始化在Init中: maxSeqLen_ = backwardTilingData_->maxSeqLen;
-    int64_t biasGradSeqLen_ = 0;  // 初始化在Init中: biasGradSeqLen_ = backwardTilingData_->biasGradSeqLen;
+    TNDLayout qLayout_;
+    TNDLayout kLayout_;
+    PipeBlockLayout pipeBlockLayout_;
+    BNSSLayout bnssLayout_;
+
+    uint32_t batchSize_ = 0;
+    uint32_t maxSeqLen_ = 0;
+    uint32_t biasGradSeqLen_ = 0;
+    uint32_t headDim_ = 0;
+    uint32_t headNum_ = 0;
 
     // Attr
     float siluScale_ = 1.0f;  // 初始化在Init中: siluScale_ = backwardTilingData_->siluScale;
@@ -825,25 +571,28 @@ public:
     // Tpipe
     TPipe pipe;  // pipe.InitBuffer等初始化
 
-    // vec score
-    int64_t vecOnceDataNum_ = 0;                   // Init中初始化: vecOnceDataNum_ = ...
-    TQue<TPosition::VECIN, 1> queueVecScoreQK_;    // Init中 pipe.InitBuffer
-    TQue<TPosition::VECIN, 1> queueVecScoreGV_;    // Init中 pipe.InitBuffer
-    TQue<TPosition::VECIN, 1> queueVecScoreMask_;  // Init中 pipe.InitBuffer
-    TQue<TPosition::VECIN, 1> queueVecScoreBias_;  // Init中 pipe.InitBuffer
-
-    TQue<TPosition::VECOUT, 1> queueOutputScore_;  // Init中 pipe.InitBuffer
-    TQue<TPosition::VECOUT, 1> queueOutputBias_;   // Init中 pipe.InitBuffer
-    TBuf<TPosition::VECCALC> tbufMid_;             // Init中 pipe.InitBuffer
-    TBuf<TPosition::VECCALC> tbufMidQk_;           // Init中 pipe.InitBuffer
-    TBuf<TPosition::VECCALC> tbufMidGV_;           // Init中 pipe.InitBuffer
-
     // Gt
     GlobalTensor<int64_t> numContextGt_;  // PreInit中SetGlobalBuffer赋指针和长度
     GlobalTensor<int64_t> numTargetGt_;   // PreInit中SetGlobalBuffer赋指针和长度
 
+    GlobalTensor<qType> baisGt_;      // PreInit中SetGlobalBuffer赋指针和长度
+    GlobalTensor<qType> maskGt_;      // PreInit中SetGlobalBuffer赋指针和长度
+    GlobalTensor<qType> biasGradGt_;  // PreInit中SetGlobalBuffer赋指针和长度
+
+    using MgmtCommon = MmMgmtCommon<qType, blockHeightQ, blockHeightK, headDimPadding, HstuDenseBackwardTilingData>;
+
     // Matmul
-    MmMgmtFp16R0Jagged<qType, blockHeightQ, blockHeightK, headNum, headDim> mm_mgmt_;  // Init中Init方法传入指针和shape
+    // MmMgmtCommon<qType, blockHeightQ, blockHeightK, headDimPadding, HstuDenseBackwardTilingData>
+    //     mm_mgmt_;  // Init中Init方法传入指针和shape
+    HstuMatmulMgmtInterface<qType, blockHeightQ, blockHeightK, HstuDenseBackwardTilingData, MgmtCommon>* mm_mgmt_;
+
+    // QAccum
+    qBlockAccumKernel<float, qType, seqOffsetType> qAccumKernel_;
+    // Trans
+    TransStrideHdDKernel<float, qType> transKernel_;
+    // VectorScore
+    HstuVectorScoreCommon<qType, blockHeightQ, blockHeightK> vectorScoreKernel_;
+    VectorScoreInterface<qType, VectorScoreType>* vectorScoreInterface_;
 
 protected:
     uint32_t startColBlock_ = 0;                                  // PreInit中startColBlock_ = colBlock[0];
@@ -852,8 +601,8 @@ protected:
     uint32_t endRowBlock_ = 0;                                    // PreInit中endRowBlock_ = rowBlock[1];
     JaggedFp8R0TaskInfo computeTaskInfo_[COMPUTE_PIPE_NUM] = {};  // 局部循环/函数内赋值, 默认初始化
     const HstuDenseBackwardTilingData* __restrict backwardTilingData_{
-        nullptr};                       // Compute()赋值: backwardTilingData_ = args.tilingDataPtr
-    GlobalTensor<oType> seqOffsetsGt_;  // PreInit中SetGlobalBuffer
+        nullptr};                               // Compute()赋值: backwardTilingData_ = args.tilingDataPtr
+    GlobalTensor<seqOffsetType> seqOffsetsGt_;  // PreInit中SetGlobalBuffer
 };
 }  // namespace HstuDenseBackward
 #endif
