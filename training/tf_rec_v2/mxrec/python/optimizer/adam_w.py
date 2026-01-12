@@ -48,7 +48,7 @@ class AdamWOptimizer(optimizer.Optimizer):
         weight_decay: Union[float, tf.Tensor] = 0.004,
         beta_1: Union[float, tf.Tensor] = 0.9,
         beta_2: Union[float, tf.Tensor] = 0.999,
-        epsilon: Union[float, tf.Tensor] = 1e-6,
+        epsilon: Union[float, tf.Tensor] = 1e-8,
         name: str = "AdamWOptimizer",
     ):
         super(AdamWOptimizer, self).__init__(False, name)
@@ -83,8 +83,8 @@ class AdamWOptimizer(optimizer.Optimizer):
         self._amsgrad = False
         self._maximize = False
 
-        self._beta1_power = tf.compat.v1.Variable(initial_value=0.9, name="beta1_power")
-        self._beta2_power = tf.compat.v1.Variable(initial_value=0.9, name="beta2_power")
+        self._beta1_power = tf.compat.v1.Variable(initial_value=1.0, name="beta1_power")
+        self._beta2_power = tf.compat.v1.Variable(initial_value=1.0, name="beta2_power")
         self._lr_t = None
         self._weight_decay_t = None
         self._beta1_t = None
@@ -114,15 +114,15 @@ class AdamWOptimizer(optimizer.Optimizer):
         table_ins = get_table_ins_by_local_embedding(var)
         # Create slot.
         _m = tf.compat.v1.Variable(
-            tf.compat.v1.random_uniform([table_ins.slice_dev_vocab_size, table_ins.dim], minval=1.0, maxval=1.0),
+            tf.zeros(shape=[table_ins.slice_dev_vocab_size, table_ins.dim], dtype=var.dtype.base_dtype),
             name="m",
         )
         _v = tf.compat.v1.Variable(
-            tf.compat.v1.random_uniform([table_ins.slice_dev_vocab_size, table_ins.dim], minval=1.0, maxval=1.0),
+            tf.zeros(shape=[table_ins.slice_dev_vocab_size, table_ins.dim], dtype=var.dtype.base_dtype),
             name="v",
         )
         _max_grad_norm = tf.compat.v1.Variable(
-            tf.compat.v1.random_uniform([table_ins.slice_dev_vocab_size, table_ins.dim], minval=1.0, maxval=1.0),
+            tf.zeros(shape=[table_ins.slice_dev_vocab_size, table_ins.dim], dtype=var.dtype.base_dtype),
             name="max_grad_norm",
         )
         # Get table handle.
