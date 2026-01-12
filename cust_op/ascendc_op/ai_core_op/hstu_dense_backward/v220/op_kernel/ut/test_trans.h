@@ -22,6 +22,7 @@ See the License for the specific language governing permissions and
 
 constexpr int seqLen = 64;
 constexpr int64_t headNum = 16;
+constexpr uint32_t headDimPadding = 16;
 constexpr int64_t headDim = 16;
 constexpr int64_t blockHeightQ = 256;
 constexpr int64_t blockHeightK = 256;
@@ -104,7 +105,7 @@ __aicore__ inline void TransTest(GM_ADDR baseAddr)
     int64_t endOffset = (blockHeightQ - 1) * headDim * headNum + headDim;
     float resultE0 = GetValueFromQueue<half>(tempLt, qGradGt, endOffset - 1);
     float resultEheadDim = GetValueFromQueue<half>(tempLt, qGradGt, endOffset);
-    printf("result00: %f, result0headDim: %f, resultE0: %f, resultEheadDim: %f\n", result00, result0headDim, resultE0,
+    PRINTF("result00: %f, result0headDim: %f, resultE0: %f, resultEheadDim: %f\n", result00, result0headDim, resultE0,
            resultEheadDim);
     assert(AbsScalar(result00, 0.0f) < loss, "Result00 ERROR \n");
     assert(AbsScalar(result0headDim, 2.0f) < loss, "Result0headDim ERROR \n");

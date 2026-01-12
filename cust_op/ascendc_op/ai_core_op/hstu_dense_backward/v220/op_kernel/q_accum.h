@@ -38,7 +38,7 @@ public:
         headDim_ = baseShapeArgs->headDim;
         vecOnceDataNum_ = UB_SIZE / (sizeof(fromType) + sizeof(toType));
         vecOnceDataNum_ = vecOnceDataNum_ / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
-        vecOnceDataNum_ = vecOnceDataNum_ * headDim_ / headDim_;
+        vecOnceDataNum_ = vecOnceDataNum_ / headDim_ * headDim_;
 
         const uint32_t inputUbLen = vecOnceDataNum_ * sizeof(fromType);
         const uint32_t outputUbLen = vecOnceDataNum_ * sizeof(toType);

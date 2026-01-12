@@ -37,7 +37,7 @@ public:
         headDim_ = headDim;
         vecOnceDataNum_ = UB_SIZE / (sizeof(fromType) + sizeof(toType));
         vecOnceDataNum_ = vecOnceDataNum_ / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
-        vecOnceDataNum_ = vecOnceDataNum_ * headDim / headDim;
+        vecOnceDataNum_ = vecOnceDataNum_ / headDim * headDim;
 
         const uint32_t inputUbLen = vecOnceDataNum_ * sizeof(fromType);
         const uint32_t outputUbLen = vecOnceDataNum_ * sizeof(toType);
@@ -52,6 +52,7 @@ public:
         int64_t remain = total;
         int64_t copyLenEachLoopAlignHeadDim = vecOnceDataNum_ / headDim_ * headDim_;
         int64_t thisLen = copyLenEachLoopAlignHeadDim;
+        PipeBarrier<PIPE_ALL>();
         while (remain > 0) {
             if (thisLen > remain) {
                 thisLen = remain;
@@ -89,7 +90,7 @@ public:
             remain = remain - thisLen;
         }
         // 5.Trans需要等待MTE3完成
-        DoSWhenMte3Finish(pipe_);
+        PipeBarrier<PIPE_ALL>();
     }
 
     uint32_t headNum_ = 0;

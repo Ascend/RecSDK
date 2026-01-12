@@ -15,3 +15,15 @@
         constexpr static int64_t CONST_NAME = 128; \
         __VA_ARGS__;                               \
     }
+
+#define HEAD_DIM_PADDING_SWITCH(COND, CONST_NAME, ...)     \
+    if (COND >= 16 && COND <= 64) {                              \
+        constexpr static int64_t CONST_NAME = 64;  \
+        __VA_ARGS__;                               \
+    } else if (COND >64 && COND <= 128) {                      \
+        constexpr static int64_t CONST_NAME = 128; \
+        __VA_ARGS__;                               \
+    } else {                      \
+        constexpr static int64_t CONST_NAME = 256; \
+        __VA_ARGS__;                               \
+    } 

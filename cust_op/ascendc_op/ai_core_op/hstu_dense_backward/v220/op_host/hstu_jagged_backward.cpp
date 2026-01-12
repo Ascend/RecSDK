@@ -50,31 +50,27 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAic();
     size_t vecCoreNum = ascendPlatform.GetCoreNumAiv();
+    uint32_t pipeMidScore3 = 3;
+    uint32_t pipeAccuNum2 = 2;
 
-    int64_t qkMatmulTempSpace = blockHeight * blockHeight;
-    int64_t gvMatmulTempSpace = blockHeight * blockHeight;
+    int64_t qkMatmulTempSpace = blockHeight * blockHeight * pipeMidScore3;
+    int64_t gvMatmulTempSpace = blockHeight * blockHeight * pipeMidScore3;
 
-    int64_t scoreTempSpace = blockHeight * blockHeight;
-
-    int64_t vGradAccumTempSpace = blockHeight * headDim;
-    int64_t kGradAccumTempSpace = blockHeight * headDim;
+    int64_t vGradAccumTempSpace = blockHeight * headDim * pipeAccuNum2;
+    int64_t kGradAccumTempSpace = blockHeight * headDim * pipeAccuNum2;
 
     int64_t maskTempSpace = blockHeight * blockHeight;
 
     int64_t totalTempSpaceForOneVec =
-        MID_USE_TIMES *
             ((vGradAccumTempSpace + kGradAccumTempSpace) * sizeof(float) +
-             (qkMatmulTempSpace + gvMatmulTempSpace + scoreTempSpace) * dataTypeLength) +
-        maskTempSpace * dataTypeLength;
+             (qkMatmulTempSpace + gvMatmulTempSpace) * dataTypeLength);
 
     int64_t workspaceSize = vecCoreNum * totalTempSpaceForOneVec;
 
-    if (!isNormal && !enableBias) {
-        int64_t biasGradTempSpace = blockHeight * blockHeight;
-        int64_t qGradAccumTempSpace = batchSize * headNum * maxSeqLen * headDim;
-        workspaceSize += biasGradTempSpace * dataTypeLength * MID_USE_TIMES * vecCoreNum +
-            qGradAccumTempSpace * sizeof(float);
-    }
+    int64_t biasGradTempSpace = blockHeight * blockHeight;
+    int64_t qGradAccumTempSpace = batchSize * headNum * maxSeqLen * headDim;
+    workspaceSize += qGradAccumTempSpace * sizeof(float);
+    workspaceSize = (workspaceSize + BLOCK_256 - 1) / BLOCK_256 * BLOCK_256;
 
     size_t *currentWorkspace = context->GetWorkspaceSizes(INDEX_T::INDEX_1);
     size_t systemWorkspaceSize = ascendPlatform.GetLibApiWorkSpaceSize();

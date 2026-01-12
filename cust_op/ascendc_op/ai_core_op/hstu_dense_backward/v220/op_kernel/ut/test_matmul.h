@@ -29,7 +29,6 @@ constexpr int64_t blockHeightK = 256;
 constexpr int64_t ubSize = 160 * 1024;
 constexpr float valueScale = 100.0f;
 constexpr float loss = 0.00001f;
-using MMT = MatmulJF16R0Const<half, blockHeightQ, blockHeightK, headNum, headDim>;
 using namespace AscendC;
 using namespace HstuDenseBackward;
 
@@ -91,16 +90,22 @@ __aicore__ inline T AbsScalar(T a, T b)
     }
 }
 
+struct TestTilingData {
+    uint16_t headNum;
+    uint16_t headDim;
+};
+
 __aicore__ inline void MmMgmtTest(GM_ADDR baseAddr)
 {
-    GM_ADDR gradAddr = baseAddr;
-    GM_ADDR qAddr = baseAddr + seqLen * headNum * headDim * sizeof(half);
-    GM_ADDR kAddr = baseAddr + 2 * seqLen * headNum * headDim * sizeof(half);
-    GM_ADDR vAddr = baseAddr + 3 * seqLen * headNum * headDim * sizeof(half);
-    GM_ADDR qGradAddr = baseAddr + 4 * seqLen * headNum * headDim * sizeof(half);
-    GM_ADDR kGradAddr = baseAddr + 5 * seqLen * headNum * headDim * sizeof(half);
-    GM_ADDR vGradAddr = baseAddr + 6 * seqLen * headNum * headDim * sizeof(half);
-    GM_ADDR workspaceAddr = baseAddr + 7 * seqLen * headNum * headDim * sizeof(half);
+    GM_ADDR tilingAddr = baseAddr;
+    GM_ADDR gradAddr = baseAddr + sizeof(TestTilingData)*headNum*headDim;
+    GM_ADDR qAddr = gradAddr + seqLen * headNum * headDim * sizeof(half);
+    GM_ADDR kAddr = qAddr + seqLen * headNum * headDim * sizeof(half);
+    GM_ADDR vAddr = kAddr + seqLen * headNum * headDim * sizeof(half);
+    GM_ADDR qGradAddr = vAddr + seqLen * headNum * headDim * sizeof(half);
+    GM_ADDR kGradAddr = qGradAddr + seqLen * headNum * headDim * sizeof(half);
+    GM_ADDR vGradAddr = kGradAddr + seqLen * headNum * headDim * sizeof(half);
+    GM_ADDR workspaceAddr = vGradAddr + seqLen * headNum * headDim * sizeof(half);
 
     int64_t blockSize = blockHeightQ * blockHeightK;
     int64_t tensorSize = seqLen * headNum * headDim;
@@ -111,7 +116,7 @@ __aicore__ inline void MmMgmtTest(GM_ADDR baseAddr)
 
     const AddrArgs addrArgs = {gradAddr, qAddr, kAddr, vAddr, qGradAddr, kGradAddr, vGradAddr, workspaceAddr};
     const BaseShapeArgs baseShape = {1, headNum, headDim, seqLen};
-    MmMgmtFp16R0Jagged<half, blockHeightQ, blockHeightK, headNum, headDim> mgmt;
+    MmMgmtFp16R0Jagged<half, blockHeightQ, blockHeightK, headDim, TestTilingData> mgmt;
     mgmt.Init(&addrArgs, &baseShape);
 
     InitWorkSpace(queueTemp, mgmt.q_, seqLen, headNum, headDim, valueScale);
@@ -122,10 +127,19 @@ __aicore__ inline void MmMgmtTest(GM_ADDR baseAddr)
     InitWorkSpace(queueTemp, mgmt.vGrad_, seqLen, headNum, headDim, valueScale);
     InitWorkSpace(queueTemp, mgmt.grad_, seqLen, headNum, headDim, valueScale);
     SyncAll();
+    __gm__ TestTilingData* tilingData = reinterpret_cast<__gm__ TestTilingData*>(tilingAddr);
+    tilingData->headNum = headNum;
+    tilingData->headDim = headDim;
 
     REGIST_MATMUL_OBJ(&tPipe, GetSysWorkSpacePtr(), mgmt.qkOrGvMatmul_, (TCubeTiling*)nullptr, mgmt.vGradMatmul_,
                       (TCubeTiling*)nullptr, mgmt.qGradMatmul_, (TCubeTiling*)nullptr, mgmt.kGradMatmul_,
                       (TCubeTiling*)nullptr);
+    uint64_t tilingPtr = reinterpret_cast<uint64_t>(tilingAddr);
+    mgmt.qkOrGvMatmul_.SetUserDefInfo(tilingPtr);
+    mgmt.vGradMatmul_.SetUserDefInfo(tilingPtr);
+    mgmt.qGradMatmul_.SetUserDefInfo(tilingPtr);
+    mgmt.kGradMatmul_.SetUserDefInfo(tilingPtr);
+
     if (GetBlockIdx() != 0) {
         return;
     }
@@ -141,12 +155,12 @@ __aicore__ inline void MmMgmtTest(GM_ADDR baseAddr)
 
     float result = GetValueFromQueue<half>(queueTemp, mgmt.qkTemp_, 0);
     float golden = 0.0016f;
-    printf("QkMatmulTest result 0: %f, golden: %f\n", result, golden);
+    PRINTF("QkMatmulTest result 0: %f, golden: %f\n", result, golden);
     assert(AbsScalar(result, golden) < loss, "QkMatmulTest result 0 ERROR \n");
 
     result = GetValueFromQueue<half>(queueTemp, mgmt.gvTemp_, 0);
     golden = 0.0016f;
-    printf("GvMatmulTest result 0: %f, golden: %f\n", result, golden);
+    PRINTF("GvMatmulTest result 0: %f, golden: %f\n", result, golden);
     assert(AbsScalar(result, golden) < loss, "GvMatmulTest result 0 ERROR \n");
 
     mgmt.DoKGradMatmul(0, 0, 0, seqLen, seqLen, true);
@@ -164,17 +178,17 @@ __aicore__ inline void MmMgmtTest(GM_ADDR baseAddr)
 
     result = GetValueFromQueue<float>(queueTemp, mgmt.kGradAccumTemp_, 0);
     golden = 0.001024f;
-    printf("KGradMatmulTest result 0: %f, golden: %f\n", result, golden);
+    PRINTF("KGradMatmulTest result 0: %f, golden: %f\n", result, golden);
     assert(AbsScalar(result, golden) < loss, "KGradMatmulTest result ERROR \n");
 
     result = GetValueFromQueue<float>(queueTemp, mgmt.qGradAccumTemp_, 0);
     golden = 0.001024f;
-    printf("QGradMatmulTest result 0: %f, golden: %f\n", result, golden);
+    PRINTF("QGradMatmulTest result 0: %f, golden: %f\n", result, golden);
     assert(AbsScalar(result, golden) < loss, "QGradMatmulTest result ERROR \n");
 
     result = GetValueFromQueue<float>(queueTemp, mgmt.vGradAccumTemp_, 0);
     golden = 0.001024f;
-    printf("VGradMatmulTest result 0: %f, golden: %f\n", result, golden);
+    PRINTF("VGradMatmulTest result 0: %f, golden: %f\n", result, golden);
     assert(AbsScalar(result, golden) < loss, "VGradMatmulTest result ERROR \n");
 
     mgmt.QkOrGvMatmulWait();
@@ -182,12 +196,12 @@ __aicore__ inline void MmMgmtTest(GM_ADDR baseAddr)
 
     result = GetValueFromQueue<half>(queueTemp, mgmt.qkTemp_[scoreTempOffset], 0);
     golden = 0.0064f;
-    printf("QkMatmulTest result 1: %f, golden: %f\n", result, golden);
+    PRINTF("QkMatmulTest result 1: %f, golden: %f\n", result, golden);
     assert(AbsScalar(result, golden) < loss, "QkMatmulTest result 0 ERROR \n");
 
     result = GetValueFromQueue<half>(queueTemp, mgmt.gvTemp_[scoreTempOffset], 0);
     golden = 0.0064f;
-    printf("GvMatmulTest result 1: %f, golden: %f\n", result, golden);
+    PRINTF("GvMatmulTest result 1: %f, golden: %f\n", result, golden);
     assert(AbsScalar(result, golden) < loss, "GvMatmulTest result 0 ERROR \n");
 
     mgmt.DoKGradMatmul(kGradTempOffset, blockSize, headDim, seqLen, seqLen, false);
@@ -200,17 +214,17 @@ __aicore__ inline void MmMgmtTest(GM_ADDR baseAddr)
 
     result = GetValueFromQueue<float>(queueTemp, mgmt.kGradAccumTemp_[kGradTempOffset], 0);
     golden = 0.0081920f;
-    printf("KGradMatmulTest result 1: %f, golden: %f\n", result, golden);
+    PRINTF("KGradMatmulTest result 1: %f, golden: %f\n", result, golden);
     assert(AbsScalar(result, golden) < loss, "KGradMatmulTest result ERROR \n");
 
     result = GetValueFromQueue<float>(queueTemp, mgmt.qGradAccumTemp_[qGradTempOffset], 0);
     golden = 0.0081920f;
-    printf("QGradMatmulTest result 1: %f, golden: %f\n", result, golden);
+    PRINTF("QGradMatmulTest result 1: %f, golden: %f\n", result, golden);
     assert(AbsScalar(result, golden) < loss, "QGradMatmulTest result ERROR \n");
 
     result = GetValueFromQueue<float>(queueTemp, mgmt.vGradAccumTemp_[vGradTempOffset], 0);
     golden = 0.0081920f;
-    printf("VGradMatmulTest result 1: %f, golden: %f\n", result, golden);
+    PRINTF("VGradMatmulTest result 1: %f, golden: %f\n", result, golden);
     assert(AbsScalar(result, golden) < loss, "VGradMatmulTest result ERROR \n");
 }
 #endif

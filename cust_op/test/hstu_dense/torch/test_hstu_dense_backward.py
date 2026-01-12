@@ -43,7 +43,7 @@ def generate_tensor(batch_size, max_seq_len, num_heads, attention_dim, mask_type
     elif mask_type == 2:
         mask = None
     else:
-        mask = torch.empty(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type).uniform_(-1, 1)
+        mask = torch.randint(0, 2, size=(batch_size, num_heads, max_seq_len, max_seq_len)).to(data_type)
 
     return grad, q, k, v, bias, mask
 

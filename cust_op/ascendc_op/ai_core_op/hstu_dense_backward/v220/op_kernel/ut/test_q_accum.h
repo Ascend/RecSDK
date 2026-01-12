@@ -17,7 +17,7 @@ See the License for the specific language governing permissions and
 #define TRANS_TEST_H
 
 #include <cstdint>
-#include "qAccum.h"
+#include "q_accum.h"
 #include "kernel_operator.h"
 
 constexpr int seqLen = 64;
@@ -107,7 +107,7 @@ __aicore__ inline void QAccumTest(GM_ADDR baseAddr)
     int64_t endOffset = (seqLen - 1) * headDim * headNum + headDim;
     float resultE0 = GetValueFromQueue<half>(tempLt, qGradGt, endOffset - 1);
     float resultEheadDim = GetValueFromQueue<half>(tempLt, qGradGt, endOffset);
-    printf("result00: %f, result0headDim: %f, resultE0: %f, resultEheadDim: %f\n", result00, result0headDim, resultE0,
+    PRINTF("result00: %f, result0headDim: %f, resultE0: %f, resultEheadDim: %f\n", result00, result0headDim, resultE0,
            resultEheadDim);
     assert(AbsScalar(result00, 1.0f) < loss, "Result00 ERROR \n");
     assert(AbsScalar(result0headDim, 2.0f) < loss, "Result0headDim ERROR \n");
