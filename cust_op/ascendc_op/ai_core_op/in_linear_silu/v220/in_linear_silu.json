@@ -12,8 +12,8 @@
                     "ND"
                 ],
                 "type": [
-                    "fp16",
                     "fp32",
+                    "fp16",
                     "bf16"
                 ]
             },
@@ -26,8 +26,8 @@
                     "ND"
                 ],
                 "type": [
-                    "fp16",
                     "fp32",
+                    "fp16",
                     "bf16"
                 ]
             },
@@ -56,8 +56,8 @@
                     "ND"
                 ],
                 "type": [
-                    "fp16",
                     "fp32",
+                    "fp16",
                     "bf16"
                 ]
             },
@@ -70,8 +70,8 @@
                     "ND"
                 ],
                 "type": [
-                    "fp16",
                     "fp32",
+                    "fp16",
                     "bf16"
                 ]
             },
@@ -84,8 +84,8 @@
                     "ND"
                 ],
                 "type": [
-                    "fp16",
                     "fp32",
+                    "fp16",
                     "bf16"
                 ]
             },
@@ -98,8 +98,22 @@
                     "ND"
                 ],
                 "type": [
-                    "fp16",
                     "fp32",
+                    "fp16",
+                    "bf16"
+                ]
+            },
+            {
+                "name": "linear_output",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp32",
+                    "fp16",
                     "bf16"
                 ]
             }
@@ -107,8 +121,14 @@
         "attr": [
             {
                 "name": "split_arg_list",
-                "param_type": "optional",
+                "param_type": "required",
                 "type": "list_int"
+            },
+            {
+                "name": "requires_grad",
+                "param_type": "required",
+                "type": "bool",
+                "default_value": true
             }
         ]
     }

@@ -16,6 +16,29 @@
 
 set -e
 
+if [[ "x${CATLASS_HOME}x" == "xx" ]]; then
+  if [[ -d ${CMAKE_SOURCE_DIR}/third_party/catlass ]]; then
+    CATLASS_HOME=${CMAKE_SOURCE_DIR}/third_party/catlass
+  else
+    if [[ -d ${CMAKE_SOURCE_DIR}/catlass ]]; then
+      CATLASS_HOME=${CMAKE_SOURCE_DIR}/catlass
+    fi
+  fi
+fi
+
+if [[ "x${CATLASS_HOME}x" == "xx" ]]; then
+  echo "[ERROR] CATLASS_HOME not specified" >&2
+  echo "Pls download CATLASS_HOME v1.3.0 from https://raw.gitcode.com/cann/catlass/archive/refs/heads/v1.3.0.zip"
+  exit 1
+fi
+
+if [[ ! -d ${CATLASS_HOME} ]]; then
+  echo "[ERROR] CATLASS_HOME directory does not exist: ${CATLASS_HOME}" >&2
+  exit 1
+fi
+
+catlass_include_dir=${CATLASS_HOME}/include
+
 VALID_AI_CORES=(
     "ai_core-Ascend910_95"
 )
@@ -40,7 +63,7 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./in_linear_silu
-msopgen gen -i ../v220/in_linear_silu.json -f tf -c ${ai_core} -lan cpp -out ./in_linear_silu -m 0 -op InLinearSilu
+msopgen gen -i ../v220/in_linear_silu.json -c ${ai_core} -lan cpp -out ./in_linear_silu -m 0 -op InLinearSilu
 rm -rf in_linear_silu/op_kernel/*.h
 rm -rf in_linear_silu/op_kernel/*.cpp
 rm -rf in_linear_silu/op_host/*.h
@@ -67,11 +90,10 @@ fi
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
 sed -i 's:"customize":"in_linear_silu":g' CMakePresets.json
 
+sed -i "1i\add_ops_compile_options(ALL OPTIONS -DCATLASS_BISHENG_ARCH=a5 -DIS_A5=1 -DENABLE_CV_COMM_VIA_SSBUF=true -DCATLASS_HOME=${CATLASS_HOME} -I${catlass_include_dir})" ./op_kernel/CMakeLists.txt
+
 # 增加LOG_CPP编译选项支持错误日志打印
 sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
-
-# 增加编译选项
-sed -i "1 i add_ops_compile_options(ALL OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true)" ./op_kernel/CMakeLists.txt
 
 line1=`awk '/target_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt`
 sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
