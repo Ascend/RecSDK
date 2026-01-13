@@ -1,6 +1,6 @@
 {
     "name": "SIM",
-    "url": "SIM",
+    "url": "https://fake_url/SIM",
     "mode": "infer",
     "epoch": 10,
     "profiling_flag": false,
