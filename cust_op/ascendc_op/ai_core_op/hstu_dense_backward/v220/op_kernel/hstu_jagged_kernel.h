@@ -20,7 +20,7 @@ See the License for the specific language governing permissions and
 #include "hstu_common_const.h"
 #include "hstu_mask.h"
 #include "hstu_split_core_policy.h"
-#include "matmul_mgmt_j_f16_r0.h"
+#include "matmul_mgmt.h"
 #include "q_accum.h"
 #include "trans.h"
 #include "vector_score.h"
@@ -67,7 +67,7 @@ struct ColLineBaseInfo {
     uint32_t curSeqLen;
 };
 
-struct JaggedFp8R0TaskInfo {
+struct JaggedTaskInfoColMajor {
     uint32_t taskId;  // 基本块任务id，参与临时存储块的偏移计算
     ColLineBaseInfo* colBlockPtr;
     uint32_t rowId;
@@ -134,82 +134,100 @@ struct JaggedFp8R0TaskInfo {
 
 template <typename qType, typename seqOffsetType, uint32_t blockHeightQ, uint32_t blockHeightK, uint32_t headDimPadding,
           class MatmulMgmtType, class VectorScoreType>
-class HstuJaggedF16R0Kernel {
+class HstuJaggedKernel {
 public:
     using MmInterface =
         HstuMatmulMgmtInterface<qType, blockHeightQ, blockHeightK, HstuDenseBackwardTilingData, MatmulMgmtType>;
     using VsInterface = VectorScoreInterface<qType, VectorScoreType>;
-    __aicore__ inline HstuJaggedF16R0Kernel() {}
+    __aicore__ inline HstuJaggedKernel() {}
 
     __aicore__ inline void Compute(Args& args, MmInterface* mmInterface, VsInterface* vectorScoreInterface)
 
     {
         mm_mgmt_ = mmInterface;
         vectorScoreInterface_ = vectorScoreInterface;
-        backwardTilingData_ = args.tilingDataPtr;
-        this->Init(args);
-        this->PreInit(args);
+        Init(args);
+        InitBlockSplit(args);
 
-        this->ComputeJaggedFirst();
+        ComputeJaggedFirst();
         SyncAll();
         qAccumKernel_.DoCopyQGrad();
     }
-
-    __aicore__ inline void Init(Args& args)
+    // 初始化
+    __aicore__ inline void InitShapeInfo(Args& args)
     {
+        // 基础信息初始化
+        totalBatchSize_ = backwardTilingData_->seqLen;
         batchSize_ = backwardTilingData_->batchSize;
         maxSeqLen_ = backwardTilingData_->maxSeqLen;
         headDim_ = backwardTilingData_->headDim;
         headNum_ = backwardTilingData_->headNum;
-        uint32_t totalBatchSize = backwardTilingData_->seqLen;
-
         biasGradSeqLen_ = backwardTilingData_->biasGradSeqLen;
+    }
+
+    __aicore__ inline void InitAttrInfo(Args& args)
+    {
         siluScale_ = backwardTilingData_->siluScale;
         targetGroupSize_ = backwardTilingData_->targetGroupSize;
         alpha_ = backwardTilingData_->alpha;
         aivNum_ = GetBlockNum() * VCORE_NUM_IN_ONE_AIC;
-
-        AddrArgs addrArgs = {args.grad, args.q, args.k, args.v, args.qGrad, args.kGrad, args.vGrad, args.workspace};
-        BaseShapeArgs baseShape = {totalBatchSize, batchSize_, headNum_, headDim_, maxSeqLen_};
-        mm_mgmt_->Init(&addrArgs, &baseShape);
-
         enableTargetMask_ = backwardTilingData_->enableTargetMask == 1;
         enableContextMask_ = backwardTilingData_->enableContextMask == 1;
         enableBias_ = backwardTilingData_->enableBias == 1;
         maskType_ = MaskType(backwardTilingData_->maskType);
+    }
+    __aicore__ inline void InitGtInfo(Args& args)
+    {
         numContextGt_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(args.numContext), batchSize_);
         numTargetGt_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(args.numTarget), batchSize_);
-
         seqOffsetsGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.seqOffset), this->batchSize_ + 1);
-        // 20通过ub的大小计算得到
         int64_t totalElementOfAttnBias = batchSize_ * maxSeqLen_ * headNum_ * headDim_;
         baisGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.attnBias), totalElementOfAttnBias);
         maskGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.mask),
                                 totalElementOfAttnBias * totalElementOfAttnBias);
         biasGradGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.attnBiasGrad), totalElementOfAttnBias);
+    }
 
+    __aicore__ inline void InitLayoutInfo(Args& args)
+    {
+        // Layout初始化
         uint32_t lastDimStride1 = 1;
-        qLayout_ = TNDLayout(MakeShape(totalBatchSize, headNum_, headDim_),
+        qLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDim_),
                              MakeStride(headNum_ * headDim_, headDim_, lastDimStride1));
-        kLayout_ = TNDLayout(MakeShape(totalBatchSize, headNum_, headDim_),
+        kLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDim_),
                              MakeStride(headNum_ * headDim_, headDim_, lastDimStride1));
         pipeBlockLayout_ = PipeBlockLayout(MakeShape(blockHeightQ, blockHeightK, headDim_),
                                            MakeStride(blockHeightK * headDim_, headDim_, lastDimStride1));
         bnssLayout_ = BNSSLayout(
             MakeShape(batchSize_, headNum_, maxSeqLen_, maxSeqLen_),
             MakeStride(headNum_ * maxSeqLen_ * maxSeqLen_, maxSeqLen_ * maxSeqLen_, maxSeqLen_, lastDimStride1));
+    }
 
+    __aicore__ inline void Init(Args& args)
+    {
+        backwardTilingData_ = args.tilingDataPtr;
+        InitShapeInfo(args);
+        InitAttrInfo(args);
+        InitGtInfo(args);
+        InitLayoutInfo(args);
+        // Matmul 初始化
+        AddrArgs addrArgs = {args.grad, args.q, args.k, args.v, args.qGrad, args.kGrad, args.vGrad, args.workspace};
+        BaseShapeArgs baseShape = {totalBatchSize_, batchSize_, headNum_, headDim_, maxSeqLen_};
+        mm_mgmt_->Init(&addrArgs, &baseShape);
+
+        // QAccum初始化
         qAccumKernel_.Init(&pipe, &baseShape, mm_mgmt_->qGradAccumTemp_, mm_mgmt_->qGrad_, seqOffsetsGt_,
                            GetBlockNum() * VCORE_NUM_IN_ONE_AIC);
+        // Trans初始化
         transKernel_.Init(&pipe, headNum_, headDim_);
-
+        // VectorScore初始化
         VectorScoreAttrs vectorScoreAttrs = {siluScale_, alpha_, enableBias_, maskType_};
         VectorScoreGtInfo<qType> vectorScoreGtInfo = {mm_mgmt_->qkTemp_, mm_mgmt_->gvTemp_, maskGt_, baisGt_,
                                                       biasGradGt_};
         vectorScoreInterface_->Init(&pipe, bnssLayout_, &vectorScoreAttrs, &vectorScoreGtInfo);
     }
 
-    __aicore__ inline void PreInit(Args& args)
+    __aicore__ inline void InitBlockSplit(Args& args)
     {
         const int blockId = GetBlockIdx();
         this->batchSize_ = GetBatchSizeFromJaggedOffsetThis(seqOffsetsGt_, this->batchSize_ + 1);
@@ -226,8 +244,6 @@ public:
 
         startColBlock_ = colBlock[0];
         endColBlock_ = colBlock[1];
-        startRowBlock_ = rowBlock[0];
-        endRowBlock_ = rowBlock[1];
     }
 
     __aicore__ inline ColLineBaseInfo GenerateFirstTask(bool isCol = true)
@@ -503,7 +519,7 @@ public:
             const int64_t rowLimit = thisColLineInfo.blockLimit;
 
             for (int64_t rowId = 0; rowId < rowLimit; rowId++) {
-                JaggedFp8R0TaskInfo& args = this->computeTaskInfo_[taskId % COMPUTE_PIPE_NUM];
+                JaggedTaskInfoColMajor& args = this->computeTaskInfo_[taskId % COMPUTE_PIPE_NUM];
                 args.taskId = taskId;
                 args.colBlockPtr = &thisColLineInfo;
 
@@ -541,8 +557,8 @@ public:
     bool enableBias_ = false;
     MaskType maskType_ = MaskType::MASK_NONE;
     // targetMask
-    bool enableTargetMask_ = false;   // 初始化在Init中: enableTargetMask_ = backwardTilingData_->enableTargetMask;
-    bool enableContextMask_ = false;  // 初始化在Init中: enableContextMask_ = backwardTilingData_->enableContextMask;
+    bool enableTargetMask_ = false;
+    bool enableContextMask_ = false;
 
     // Shape
     TNDLayout qLayout_;
@@ -555,36 +571,33 @@ public:
     uint32_t biasGradSeqLen_ = 0;
     uint32_t headDim_ = 0;
     uint32_t headNum_ = 0;
+    uint32_t totalBatchSize_ = 0;
 
     // Attr
-    float siluScale_ = 1.0f;  // 初始化在Init中: siluScale_ = backwardTilingData_->siluScale;
-    uint32_t aivNum_ = 1;     // 没有在Init看到明确赋值（通常由调度脚本/tiling时传入）
+    float siluScale_ = 1.0f;
+    uint32_t aivNum_ = 1;
 
     // task
-    BlockInfo taskInfo_[COMPUTE_PIPE_NUM];  // 没有看到构造初始化（结构体数组默认构造）
+    BlockInfo taskInfo_[COMPUTE_PIPE_NUM];
 
     // MaskType
-    int64_t targetGroupSize_ = 0;  // 初始化在Init中: targetGroupSize_ = backwardTilingData_->targetGroupSize;
-    float alpha_ = 1.0f;           // 初始化在Init中: alpha_ = backwardTilingData_->alpha;
-    BlockMaskParams blockMaskParams_[COMPUTE_PIPE_NUM] = {};  // 局部赋值, 结构体数组，默认初始化
+    int64_t targetGroupSize_ = 0;
+    float alpha_ = 1.0f;
+    BlockMaskParams blockMaskParams_[COMPUTE_PIPE_NUM] = {};
 
     // Tpipe
     TPipe pipe;  // pipe.InitBuffer等初始化
 
     // Gt
-    GlobalTensor<int64_t> numContextGt_;  // PreInit中SetGlobalBuffer赋指针和长度
-    GlobalTensor<int64_t> numTargetGt_;   // PreInit中SetGlobalBuffer赋指针和长度
+    GlobalTensor<int64_t> numContextGt_;
+    GlobalTensor<int64_t> numTargetGt_;
 
-    GlobalTensor<qType> baisGt_;      // PreInit中SetGlobalBuffer赋指针和长度
-    GlobalTensor<qType> maskGt_;      // PreInit中SetGlobalBuffer赋指针和长度
-    GlobalTensor<qType> biasGradGt_;  // PreInit中SetGlobalBuffer赋指针和长度
-
-    using MgmtCommon = MmMgmtCommon<qType, blockHeightQ, blockHeightK, headDimPadding, HstuDenseBackwardTilingData>;
+    GlobalTensor<qType> baisGt_;
+    GlobalTensor<qType> maskGt_;
+    GlobalTensor<qType> biasGradGt_;
 
     // Matmul
-    // MmMgmtCommon<qType, blockHeightQ, blockHeightK, headDimPadding, HstuDenseBackwardTilingData>
-    //     mm_mgmt_;  // Init中Init方法传入指针和shape
-    HstuMatmulMgmtInterface<qType, blockHeightQ, blockHeightK, HstuDenseBackwardTilingData, MgmtCommon>* mm_mgmt_;
+    HstuMatmulMgmtInterface<qType, blockHeightQ, blockHeightK, HstuDenseBackwardTilingData, MatmulMgmtType>* mm_mgmt_;
 
     // QAccum
     qBlockAccumKernel<float, qType, seqOffsetType> qAccumKernel_;
@@ -595,11 +608,9 @@ public:
     VectorScoreInterface<qType, VectorScoreType>* vectorScoreInterface_;
 
 protected:
-    uint32_t startColBlock_ = 0;                                  // PreInit中startColBlock_ = colBlock[0];
-    uint32_t endColBlock_ = 0;                                    // PreInit中endColBlock_ = colBlock[1];
-    uint32_t startRowBlock_ = 0;                                  // PreInit中startRowBlock_ = rowBlock[0];
-    uint32_t endRowBlock_ = 0;                                    // PreInit中endRowBlock_ = rowBlock[1];
-    JaggedFp8R0TaskInfo computeTaskInfo_[COMPUTE_PIPE_NUM] = {};  // 局部循环/函数内赋值, 默认初始化
+    uint32_t startColBlock_ = 0;
+    uint32_t endColBlock_ = 0;
+    JaggedTaskInfoColMajor computeTaskInfo_[COMPUTE_PIPE_NUM] = {};  // 局部循环/函数内赋值, 默认初始化
     const HstuDenseBackwardTilingData* __restrict backwardTilingData_{
         nullptr};                               // Compute()赋值: backwardTilingData_ = args.tilingDataPtr
     GlobalTensor<seqOffsetType> seqOffsetsGt_;  // PreInit中SetGlobalBuffer

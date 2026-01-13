@@ -88,7 +88,7 @@ __aicore__ inline void VectorScoreTest(GM_ADDR baseAddr)
     LocalTensor<half> tempLt = {TPosition::VECIN, 0, blockHeightK};
     VectorScoreAttrs attrs = {1.0f, 1.0f};
     VectorScoreGtInfo gtInfo = {qkTempAddr, gvTempAddr, maskTempAddr, biasTempAddr};
-    HstuF16R0VectorScore<half, blockHeightQ, blockHeightK, headDim> vectorScore;
+    HstuM0R0VectorScore<half, blockHeightQ, blockHeightK, headDim> vectorScore;
     vectorScore.Init(&pipe, &attrs, &gtInfo);
 
     InitWorkSpace<half>(tempLt, vectorScore.qkTemp_, blockHeightQ, blockHeightK, valueScale);

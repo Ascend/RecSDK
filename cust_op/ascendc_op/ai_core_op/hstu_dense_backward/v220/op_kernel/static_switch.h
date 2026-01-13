@@ -1,29 +1,18 @@
-#define HEAD_NUM_SWITCH(COND, CONST_NAME, ...)   \
-    if (COND == 4) {                             \
-        constexpr static int64_t CONST_NAME = 4; \
-        __VA_ARGS__;                             \
-    } else if (COND == 8) {                      \
-        constexpr static int64_t CONST_NAME = 8; \
-        __VA_ARGS__;                             \
-    }
-
-#define HEAD_DIM_SWITCH(COND, CONST_NAME, ...)     \
-    if (COND == 64) {                              \
-        constexpr static int64_t CONST_NAME = 64;  \
+#define HEAD_DIM_SWITCH(PRECOND, COND, CONST_NAME, CONST_RESULT, ...)     \
+    if (PRECOND && COND == 64) {                              \
+        constexpr int64_t CONST_NAME = 64;  \
+        constexpr bool CONST_RESULT = true; \
         __VA_ARGS__;                               \
-    } else if (COND == 128) {                      \
-        constexpr static int64_t CONST_NAME = 128; \
+    } else if (PRECOND && COND == 128) {                      \
+        constexpr int64_t CONST_NAME = 128; \
+        constexpr bool CONST_RESULT = true; \
         __VA_ARGS__;                               \
-    }
-
-#define HEAD_DIM_PADDING_SWITCH(COND, CONST_NAME, ...)     \
-    if (COND >= 16 && COND <= 64) {                              \
-        constexpr static int64_t CONST_NAME = 64;  \
-        __VA_ARGS__;                               \
-    } else if (COND >64 && COND <= 128) {                      \
-        constexpr static int64_t CONST_NAME = 128; \
+    } else if (PRECOND && COND == 256) {                      \
+        constexpr int64_t CONST_NAME = 128; \
+        constexpr bool CONST_RESULT = true; \
         __VA_ARGS__;                               \
     } else {                      \
-        constexpr static int64_t CONST_NAME = 256; \
+        constexpr int64_t CONST_NAME = 256; \
+        constexpr bool CONST_RESULT = false; \
         __VA_ARGS__;                               \
     } 

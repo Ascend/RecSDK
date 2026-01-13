@@ -17,8 +17,8 @@ See the License for the specific language governing permissions and
 #define MATMUL_TEST_H
 
 #include <cstdint>
-#include "matmul_j_f16_r0_const.h"
-#include "matmul_mgmt_j_f16_r0.h"
+#include "matmul_const.h"
+#include "matmul_mgmt.h"
 #include "kernel_operator.h"
 
 constexpr int seqLen = 64;
