@@ -83,7 +83,7 @@ function compile_ops_v220() {
         cd "$ops_path"
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
-            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
+            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" || "$dir_name" == "in_linear_silu" ]]; then
                 continue
             fi
             cur_ver_op_dir=${dir_name}/${BUILD_VER}
@@ -128,7 +128,7 @@ function compile_ops_A5() {
         cd "$ops_path"
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
-            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
+            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" || "$dir_name" == "in_linear_silu" ]]; then
                 continue
             fi
 
