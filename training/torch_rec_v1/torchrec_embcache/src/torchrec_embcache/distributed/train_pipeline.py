@@ -774,7 +774,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
             self.swap_out(self.contexts[1])
         self.wait_host_update(self.contexts[0])
 
-        if self._need_record_batch_keys:
+        if self._need_record_batch_keys and self._model.training:
             self.wait_record_batch_keys(self.contexts[0])
 
         self.dequeue_batch()

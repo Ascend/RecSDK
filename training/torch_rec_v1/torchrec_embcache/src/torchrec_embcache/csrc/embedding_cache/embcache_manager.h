@@ -53,11 +53,13 @@ const std::string SLICE_EVICT_KEY_DATA_PATH = "/slice_evict_key.data";
 const std::string SLICE_EVICT_TS_DATA_PATH = "/slice_evict_ts.data";
 
 constexpr int KEY_ATTRIBUTE_DATA_LEN = 2;
+constexpr int KEY_ATTRIBUTE_DATA_SIZE_IND = 0;
 constexpr int KEY_ATTRIBUTE_NUM_IND = 1;
 constexpr int EMB_ATTRIBUTE_DATA_LEN = 3;
 constexpr int64_t ATTR_VEC_INIT_VALUE = -1;
 constexpr long long KEY_SIZE_MAX = 1e9L;
 constexpr int32_t MAX_EMB_DIM = 4096;
+const size_t BUFFER_SIZE = 64 * 1024; // 64KB buffer size for merge file
 // load embedding count for one loop; about 5GB in size when use Adam: 100000*4096*4*3/(1024**3) = 4.58GB
 constexpr int32_t ONE_TIME_LOAD_DIM_4096 = 100000;
 const std::string ATTR_SUFFIX = "attribute";
@@ -118,6 +120,25 @@ struct TableRankParam {
     int64_t loadEmbeddingOffset = 0;
 };
 
+struct TableFileHandles {
+    int embFd = -1;
+    int keyFd = -1;
+    int m1Fd = -1;
+    int m2Fd = -1;
+    int admitFd = -1;
+    int evictKeyFd = -1;
+    int evictTsFd = -1;
+
+    std::string embDataFile;
+    std::string keyDataFile;
+    std::string momentum1DataFile;
+    std::string momentum2DataFile;
+
+    std::string admitDataFile;
+    std::string evictKeyDataFile;
+    std::string evictTsDataFile;
+};
+
 class EmbcacheManager {
 public:
     explicit EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool needAccumulateOffset = true);
@@ -156,9 +177,45 @@ public:
 
     void Save(const std::string& path, int rank, bool incremental);
 
+    void MergeFiles(const std::string& path, int worldSize);
+
+    void MergeSingleFile(const std::shared_ptr<FileSystem>& fileSystemPtr, const std::string& srcFilePath,
+                         int srcFd, int dstFd, const std::string& dstFilePath);
+
     void Embedding2Host(const at::Tensor& weightsDev, const std::vector<at::Tensor>& momentumDev);
 
-    void Load(const std::string& path, int rank, bool incremental);
+    void Load(const std::string& path, int rank, int worldSize, bool incremental);
+
+    struct KeyWithOffset {
+        int64_t key;
+        int64_t offset; // global file row index
+    };
+
+    struct EmbeddingTableWriteContext {
+        std::shared_ptr<FileSystem> fileSystem;
+        std::string tableName;
+        int embDim = 0;
+        int optimNum = 0;
+        bool admitEnabled = false;
+
+        std::string keyDataFile;
+        std::string embDataFile;
+        std::string momentum1DataFile;
+        std::string momentum2DataFile;
+        std::string admitDataFile;
+        std::string evictKeyDataFile;
+        std::string evictTsDataFile;
+
+        int keyFd = -1;
+        int embFd = -1;
+        int m1Fd = -1;
+        int m2Fd = -1;
+        int admitFd = -1;
+        int evictKeyFd = -1;
+        int evictTsFd = -1;
+
+        std::vector<int64_t>* saveKeys = nullptr;
+    };
 
 private:
     SwapInfo ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
@@ -193,22 +250,23 @@ private:
     void CheckEmbeddingDim(const std::shared_ptr<FileSystem>& fileSystemPtr, const string& dataFilePath,
                            const TableRankParam& tableParams);
     void ReadEmbeddings(const std::shared_ptr<FileSystem>& fileSystemPtr, std::vector<std::vector<float>>& embeddings,
-                        const string& filePath, size_t vectorSize, const TableRankParam& tableParams);
+                        const string& filePath, const std::vector<int64_t>& offsets, const TableRankParam& tableParams);
     static void RecordLoadDebugInfo(const vector<int64_t>& keys, const vector<std::vector<float>>& embeddings,
                                     const vector<std::vector<float>>& momentum1,
                                     const vector<std::vector<float>>& momentum2, const TableRankParam& tableParams);
     static std::string GetDevWeightsShape(const at::Tensor& weightsDev);
 
-    void SaveFeatureAdmitAndEvictInfo(const std::shared_ptr<FileSystem>& fileSystemPtr,
-                                      int32_t tableIndex, const std::string& filePrefix,
-                                      const std::vector<int64_t>& saveKeys);
-    void SaveFeatureCount(const std::shared_ptr<FileSystem>& fileSystemPtr,
-                          int32_t tableIndex, const std::string& filePrefix, const std::vector<int64_t>& saveKeys);
-    void SaveFeatureTimestamp(const std::shared_ptr<FileSystem>& fileSystemPtr,
-                              int32_t tableIndex, const std::string& filePrefix);
+    void SaveFeatureAdmitAndEvictInfo(int32_t tableIndex, const std::string& pathPrefix,
+                                      const std::vector<int64_t>& saveKeys,
+                                      const EmbeddingTableWriteContext& ctx);
+    void SaveFeatureCount(int32_t tableIndex, const std::string& filePrefix,
+                          const std::vector<int64_t>& saveKeys,
+                          const EmbeddingTableWriteContext& ctx);
+    void SaveFeatureTimestamp(int32_t tableIndex, const std::string& filePrefix,
+                              const EmbeddingTableWriteContext& ctx);
     void LoadFeatureAdmitAndEvictInfo(const std::shared_ptr<FileSystem>& fileSystemPtr,
                                       int32_t tableIndex, const std::string& filePrefix,
-                                      const std::vector<int64_t>& saveKeys,
+                                      const std::vector<KeyWithOffset>& keysWithOffsets,
                                       bool incremental);
     void RecordBatchKeys(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
                          const std::vector<int32_t>& tableIndices);
@@ -216,27 +274,10 @@ private:
                                             const std::vector<int32_t> curTableIndices) const;
     static int32_t GetOneTimeLoadCount(int32_t embDim);
 
-    struct EmbeddingTableWriteContext {
-        std::shared_ptr<FileSystem> fileSystem;
-        std::string tableName;
-        int embDim = 0;
-        int optimNum = 0;
-        bool admitEnabled = false;
-
-        std::string keyDataFile;
-        std::string embDataFile;
-        std::string momentum1DataFile;
-        std::string momentum2DataFile;
-
-        int keyFd = -1;
-        int embFd = -1;
-        int m1Fd = -1;
-        int m2Fd = -1;
-
-        std::vector<int64_t>* saveKeys = nullptr;
-    };
-
     void WriteEmbeddingEntry(int64_t key, const float* value, const EmbeddingTableWriteContext& ctx);
+    TableFileHandles OpenTableFiles(const std::string& prefixPath, int32_t tableIndex);
+    void CloseTableFiles(TableFileHandles& handles);
+    int OpenOrThrow(const std::string& filePath, int flags, mode_t mode, const std::string& fileType);
 
 private:
     int32_t embNum_;
@@ -256,7 +297,7 @@ private:
     // 计算换入换出offset时是否要累加表外偏移. 逻辑上作为一个大表处理时设置为true，否则false
     bool needAccumulateOffset_ = true;
     void LoadEmbeddingAndOptimizer(const shared_ptr<FileSystem>& fileSystemPtr, int32_t tableIndex,
-                                   const string& filePrefix, const vector<int64_t>& keys,
+                                   const string& filePrefix, const vector<KeyWithOffset>& keysWithOffsets,
                                    const TableRankParam& tableParams);
 };
 }  // namespace Embcache
