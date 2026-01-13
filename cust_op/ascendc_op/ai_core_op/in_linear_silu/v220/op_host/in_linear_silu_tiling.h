@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,27 +20,15 @@ See the License for the specific language governing permissions and
 #include "tiling/tiling_api.h"
 
 namespace optiling {
+constexpr size_t MAX_SPLIT_NUM = 4;
+
 BEGIN_TILING_DATA_DEF(InLinearSiluTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, cubeTiling);
-TILING_DATA_FIELD_DEF(uint32_t, mShape);
-TILING_DATA_FIELD_DEF(uint32_t, kShape);
-TILING_DATA_FIELD_DEF(uint32_t, nShape);
-TILING_DATA_FIELD_DEF(uint32_t, uLength);
-TILING_DATA_FIELD_DEF(uint32_t, vLength);
-TILING_DATA_FIELD_DEF(uint32_t, qLength);
-TILING_DATA_FIELD_DEF(uint32_t, kLength);
-TILING_DATA_FIELD_DEF(uint32_t, formerNum);
-TILING_DATA_FIELD_DEF(uint32_t, tailNum);
-TILING_DATA_FIELD_DEF(uint32_t, formerSingleLen);
-TILING_DATA_FIELD_DEF(uint32_t, tailSingleLen);
-TILING_DATA_FIELD_DEF(uint32_t, formerLoop);
-TILING_DATA_FIELD_DEF(uint32_t, tailLoop);
-TILING_DATA_FIELD_DEF(uint32_t, formerPerLoopLen);
-TILING_DATA_FIELD_DEF(uint32_t, tailPerLoopLen);
-TILING_DATA_FIELD_DEF(uint32_t, formerRemain);
-TILING_DATA_FIELD_DEF(uint32_t, tailRemain);
-TILING_DATA_FIELD_DEF(uint32_t, blockDim);
-TILING_DATA_FIELD_DEF(uint32_t, bufferSize);
+TILING_DATA_FIELD_DEF(uint32_t, m);
+TILING_DATA_FIELD_DEF(uint32_t, n);
+TILING_DATA_FIELD_DEF(uint32_t, k);
+TILING_DATA_FIELD_DEF(bool, transB);
+TILING_DATA_FIELD_DEF(bool, requiresGrad);
+TILING_DATA_FIELD_DEF_ARR(int64_t, MAX_SPLIT_NUM, splitList);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(InLinearSilu, InLinearSiluTilingData)
