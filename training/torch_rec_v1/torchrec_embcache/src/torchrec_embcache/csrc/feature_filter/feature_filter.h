@@ -41,7 +41,8 @@ public:
     const std::unordered_map<int64_t, std::time_t>& GetFeatureTimestampMap();
 
     void LoadFeatureRecords(const std::vector<int64_t>& keys, std::vector<uint64_t>& counts);
-    void LoadTimestampRecords(const std::vector<int64_t>& keys, std::vector<int64_t>& timestamps);
+    void LoadTimestampRecords(const std::vector<int64_t>& keys, std::vector<int64_t>& timestamps,
+                              std::vector<int64_t>& offsets);
 
     // 清空准入统计、淘汰统计信息
     void ClearFeatureCountMap();

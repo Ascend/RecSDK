@@ -468,7 +468,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
     
     @property
     def config_list(self):
-        return self._embedding_bag_configs
+        return self._embedding_configs
 
     def _set_cache_mgr_for_ids_mapper(self):
         for ids_mapper in self.table2hashmap.values():

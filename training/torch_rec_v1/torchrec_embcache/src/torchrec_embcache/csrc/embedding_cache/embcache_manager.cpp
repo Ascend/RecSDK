@@ -258,7 +258,16 @@ void EmbcacheManager::RecordBatchKeys(const at::Tensor& batchKeys, const std::ve
         // 保存每个表查询的key到增量key集合中
         if (embConfigs_[idx].isIncremental) {
             auto& incrementalKeySet = incrementalKeySets_[idx];
-            incrementalKeySet.insert(batchKeysVec.begin(), batchKeysVec.end());
+            if (embConfigs_[idx].admitAndEvictConfig.IsAdmitEnabled()) {
+                for (const auto& key : batchKeysVec) {
+                    // 准入时会过滤掉无效key，无需再插入
+                    if (key != INVALID_KEY) {
+                        incrementalKeySet.insert(key);
+                    }
+                }
+            } else {
+                incrementalKeySet.insert(batchKeysVec.cbegin(), batchKeysVec.cend());
+            }
         }
     }
 }
@@ -436,41 +445,124 @@ void EmbcacheManager::CreateMomentumDir(const std::string& pathPrefix,
     }
 }
 
+int EmbcacheManager::OpenOrThrow(const std::string& filePath, int flags, mode_t mode, const std::string& fileType)
+{
+    int fd = open(filePath.c_str(), flags, mode);
+    if (fd == -1) {
+        throw std::runtime_error("Failed to open " + fileType + " file: " + filePath);
+    }
+    return fd;
+}
+
+TableFileHandles EmbcacheManager::OpenTableFiles(const std::string& prefix, int32_t tableIndex)
+{
+    TableFileHandles handles;
+    auto fileSystemPtr = GetFileSystem(prefix); // 使用 prefix 推导 filesystem
+
+    // === 原有路径 ===
+    handles.embDataFile = prefix + EMBEDDING_STR_PATH + SLICE_DATA_PATH;
+    handles.keyDataFile = prefix + KEY_STR_PATH + SLICE_DATA_PATH;
+    handles.momentum1DataFile = prefix + MOMENTUM1_STR_PATH + SLICE_DATA_PATH;
+    handles.momentum2DataFile = prefix + MOMENTUM2_STR_PATH + SLICE_DATA_PATH;
+
+    // === Admit (FeatureCount) 路径 ===
+    handles.admitDataFile = prefix + ADMIT_STR_PATH + SLICE_DATA_PATH;
+
+    // === evict 路径 ===
+    handles.evictKeyDataFile = prefix + EVICT_STR_PATH + SLICE_EVICT_KEY_DATA_PATH;
+    handles.evictTsDataFile = prefix + EVICT_STR_PATH + SLICE_EVICT_TS_DATA_PATH;
+
+    // === 创建目录 ===
+    fileSystemPtr->CreateFileDir(handles.embDataFile);
+    fileSystemPtr->CreateFileDir(handles.keyDataFile);
+    CreateMomentumDir(prefix, fileSystemPtr);
+
+    // 创建 admit 目录
+    if (embConfigs_[tableIndex].admitAndEvictConfig.IsAdmitEnabled()) {
+        fileSystemPtr->CreateFileDir(handles.admitDataFile);
+    }
+
+    // 创建 evict 目录
+    if (embConfigs_[tableIndex].admitAndEvictConfig.IsEvictEnabled()) {
+        fileSystemPtr->CreateFileDir(handles.evictKeyDataFile);
+        fileSystemPtr->CreateFileDir(handles.evictTsDataFile);
+    }
+
+    // === 打开文件描述符（O_APPEND 模式用于 merge 写入）===
+    handles.keyFd = OpenOrThrow(handles.keyDataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640, "key");
+    handles.embFd = OpenOrThrow(handles.embDataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640, "embedding");
+
+    // Momentum files
+    if (optimNum_ > 0) {
+        handles.m1Fd = OpenOrThrow(handles.momentum1DataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640, "momentum1");
+    }
+    if (optimNum_ > 1) {
+        handles.m2Fd = OpenOrThrow(handles.momentum2DataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640, "momentum2");
+    }
+
+    // === 打开 admit data 文件 ===
+    handles.admitFd = -1; // 初始化
+    if (embConfigs_[tableIndex].admitAndEvictConfig.IsAdmitEnabled()) {
+        handles.admitFd = OpenOrThrow(handles.admitDataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640, "admit data");
+    }
+
+    // === 打开 evict data 文件 ===
+    handles.evictKeyFd = -1;
+    handles.evictTsFd = -1;
+    if (embConfigs_[tableIndex].admitAndEvictConfig.IsEvictEnabled()) {
+        handles.evictKeyFd = OpenOrThrow(handles.evictKeyDataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640,
+                                         "evict key data");
+        handles.evictTsFd = OpenOrThrow(handles.evictTsDataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640,
+                                        "evict timestamp data");
+    }
+
+    return handles;
+}
+
+void EmbcacheManager::CloseTableFiles(TableFileHandles& handles)
+{
+    if (handles.keyFd != -1) {
+        close(handles.keyFd);
+        handles.keyFd = -1;
+    }
+    if (handles.embFd != -1) {
+        close(handles.embFd);
+        handles.embFd = -1;
+    }
+    if (handles.m1Fd != -1) {
+        close(handles.m1Fd);
+        handles.m1Fd = -1;
+    }
+    if (handles.m2Fd != -1) {
+        close(handles.m2Fd);
+        handles.m2Fd = -1;
+    }
+    if (handles.admitFd != -1) {
+        close(handles.admitFd);
+        handles.admitFd = -1;
+    }
+    if (handles.evictKeyFd != -1) {
+        close(handles.evictKeyFd);
+        handles.evictKeyFd = -1;
+    }
+    if (handles.evictTsFd != -1) {
+        close(handles.evictTsFd);
+        handles.evictTsFd = -1;
+    }
+}
+
 void EmbcacheManager::Save(const std::string& path, int rank, bool incremental)
 {
-    LOG_INFO("open file once for a table");
+    LOG_INFO("Start saving...");
     auto fileSystemPtr = GetFileSystem(path);
     Check4Write(fileSystemPtr, path, rank);
+
     for (int32_t i = 0; i < embNum_; i++) {
         std::string tableName = embConfigs_[i].tableName;
-        std::string pathPrefix = path + "/" + tableName + RANK_STR_PATH + std::to_string(rank);
-        std::string embDataFile = pathPrefix + EMBEDDING_STR_PATH + SLICE_DATA_PATH;
-        fileSystemPtr->CreateFileDir(embDataFile);
-        std::string keyDataFile = pathPrefix + KEY_STR_PATH + SLICE_DATA_PATH;
-        fileSystemPtr->CreateFileDir(keyDataFile);
-        CreateMomentumDir(pathPrefix, fileSystemPtr);
 
-        auto keyFd = open(keyDataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640);
-        auto embFd = open(embDataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640);
-        if (embFd == -1) {
-            throw std::runtime_error("Failed to open embedding file.");
-        }
-        std::string momentum1DataFile = pathPrefix + MOMENTUM1_STR_PATH + SLICE_DATA_PATH;
-        int m1Fd = 0;
-        if (optimNum_ > 0) {
-            m1Fd = open(momentum1DataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640);
-            if (m1Fd == -1) {
-                throw std::runtime_error("Failed to open momentum1 file.");
-            }
-        }
-        std::string momentum2DataFile = pathPrefix + MOMENTUM2_STR_PATH + SLICE_DATA_PATH;
-        int m2Fd = 0;
-        if (optimNum_ > 1) {
-            m2Fd = open(momentum2DataFile.c_str(), O_RDWR | O_CREAT | O_APPEND, 0640);
-            if (m2Fd == -1) {
-                throw std::runtime_error("Failed to open momentum2 file.");
-            }
-        }
+        std::string pathPrefix = path + "/" + tableName + RANK_STR_PATH + std::to_string(rank);
+
+        auto handles = OpenTableFiles(pathPrefix, i);
 
         size_t count = 0;
         std::vector<int64_t> saveKeys;
@@ -488,15 +580,21 @@ void EmbcacheManager::Save(const std::string& path, int rank, bool incremental)
         ctx.optimNum = embConfigs_[i].optimNum;
         ctx.admitEnabled = embConfigs_[i].admitAndEvictConfig.IsAdmitEnabled();
 
-        ctx.keyDataFile = keyDataFile;
-        ctx.embDataFile = embDataFile;
-        ctx.momentum1DataFile = momentum1DataFile;
-        ctx.momentum2DataFile = momentum2DataFile;
+        ctx.keyDataFile = handles.keyDataFile;
+        ctx.embDataFile = handles.embDataFile;
+        ctx.momentum1DataFile = handles.momentum1DataFile;
+        ctx.momentum2DataFile = handles.momentum2DataFile;
+        ctx.admitDataFile = handles.admitDataFile;
+        ctx.evictKeyDataFile = handles.evictKeyDataFile;
+        ctx.evictTsDataFile = handles.evictTsDataFile;
 
-        ctx.keyFd = keyFd;
-        ctx.embFd = embFd;
-        ctx.m1Fd = m1Fd;
-        ctx.m2Fd = m2Fd;
+        ctx.keyFd = handles.keyFd;
+        ctx.embFd = handles.embFd;
+        ctx.m1Fd = handles.m1Fd;
+        ctx.m2Fd = handles.m2Fd;
+        ctx.admitFd = handles.admitFd;
+        ctx.evictKeyFd = handles.evictKeyFd;
+        ctx.evictTsFd = handles.evictTsFd;
 
         ctx.saveKeys = embConfigs_[i].admitAndEvictConfig.IsAdmitEnabled() ? &saveKeys : nullptr;
 
@@ -518,15 +616,199 @@ void EmbcacheManager::Save(const std::string& path, int rank, bool incremental)
         WriteAttributeFile(i, pathPrefix, count, fileSystemPtr);
 
         // save feature filter related data
-        SaveFeatureAdmitAndEvictInfo(fileSystemPtr, i, pathPrefix, saveKeys);
+        SaveFeatureAdmitAndEvictInfo(i, pathPrefix, saveKeys, ctx);
+        CloseTableFiles(handles);
         LOG_INFO("In save, table:{}, save data shape: [{}, {}].", tableName, count, embDim);
         }
 }
 
-void EmbcacheManager::WriteEmbeddingEntry(
-    int64_t key,
-    const float* value,
-    const EmbeddingTableWriteContext& ctx)
+void EmbcacheManager::MergeFiles(const std::string& path, int worldSize)
+{
+    LOG_INFO("Start merging files for the whole world size: {}", worldSize);
+    
+    auto fileSystemPtr = GetFileSystem(path);
+    Check4Write(fileSystemPtr, path, 0);
+
+    for (int32_t i = 0; i < embNum_; i++) {
+        std::string tableName = embConfigs_[i].tableName;
+        std::string dstPathPrefix = path + "/" + tableName;
+        
+        auto dstHandles = OpenTableFiles(dstPathPrefix, i);
+
+        size_t totalCount = 0; // 用于累加所有 rank 的 key 数量
+
+        size_t totalAdmitCount = 0; // 用于累加所有 rank 的 admit key 数量
+
+        size_t totalEvictCount = 0; // 用于累加所有 rank 的 evict key 数量
+
+        // 遍历每个 rank
+        for (int rankId = 0; rankId < worldSize; rankId++) {
+            std::string srcPathPrefix = path + "/" + tableName + RANK_STR_PATH + std::to_string(rankId);
+            std::string srcKeyAttrFile = srcPathPrefix + KEY_STR_PATH + SLICE_ATTR_PATH;
+
+            std::vector<int64_t> attr(KEY_ATTRIBUTE_DATA_LEN);
+            auto readBytes = fileSystemPtr->Read(srcKeyAttrFile, reinterpret_cast<char*>(attr.data()),
+                                                 sizeof(int64_t) * KEY_ATTRIBUTE_DATA_LEN);
+            if (readBytes != static_cast<ssize_t>(sizeof(int64_t) * KEY_ATTRIBUTE_DATA_LEN)) {
+                throw std::runtime_error("Failed to read attribute file: " + srcKeyAttrFile);
+            }
+            totalCount += static_cast<size_t>(attr[KEY_ATTRIBUTE_NUM_IND]);
+
+            std::vector<int64_t> admitAttr(KEY_ATTRIBUTE_DATA_LEN);
+            if (embConfigs_[i].admitAndEvictConfig.IsAdmitEnabled()) {
+                std::string srcAdmitAttrFile = srcPathPrefix + ADMIT_STR_PATH + SLICE_ATTR_PATH;
+
+                auto readAdmitBytes = fileSystemPtr->Read(srcAdmitAttrFile, reinterpret_cast<char*>(admitAttr.data()),
+                                                          sizeof(int64_t) * KEY_ATTRIBUTE_DATA_LEN);
+                if (readAdmitBytes != static_cast<ssize_t>(sizeof(int64_t) * KEY_ATTRIBUTE_DATA_LEN)) {
+                    throw std::runtime_error("Failed to read admit attribute file: " + srcAdmitAttrFile);
+                }
+                totalAdmitCount += static_cast<size_t>(admitAttr[KEY_ATTRIBUTE_NUM_IND]);
+            }
+            
+            std::vector<int64_t> evictAttr(KEY_ATTRIBUTE_DATA_LEN);
+            if (embConfigs_[i].admitAndEvictConfig.IsEvictEnabled()) {
+                std::string srcEvictAttrFile = srcPathPrefix + EVICT_STR_PATH + SLICE_ATTR_PATH;
+
+                auto readTimestampBytes = fileSystemPtr->Read(srcEvictAttrFile,
+                                                              reinterpret_cast<char*>(evictAttr.data()),
+                                                              sizeof(int64_t) * KEY_ATTRIBUTE_DATA_LEN);
+                if (readTimestampBytes != static_cast<ssize_t>(sizeof(int64_t) * KEY_ATTRIBUTE_DATA_LEN)) {
+                    throw std::runtime_error("Failed to read timestamp attribute file: " + srcEvictAttrFile);
+                }
+                totalEvictCount += static_cast<size_t>(evictAttr[KEY_ATTRIBUTE_NUM_IND]);
+            }
+
+            // 2. 打开源文件并合并
+            auto srcHandles = OpenTableFiles(srcPathPrefix, i);
+
+            try {
+                MergeSingleFile(fileSystemPtr, srcHandles.keyDataFile, srcHandles.keyFd,
+                                dstHandles.keyFd, dstHandles.keyDataFile);
+
+                MergeSingleFile(fileSystemPtr, srcHandles.embDataFile, srcHandles.embFd,
+                                dstHandles.embFd, dstHandles.embDataFile);
+
+                if (optimNum_ > 0) {
+                    MergeSingleFile(fileSystemPtr, srcHandles.momentum1DataFile, srcHandles.m1Fd,
+                                    dstHandles.m1Fd, dstHandles.momentum1DataFile);
+                }
+                if (optimNum_ > 1) {
+                    MergeSingleFile(fileSystemPtr, srcHandles.momentum2DataFile, srcHandles.m2Fd,
+                                    dstHandles.m2Fd, dstHandles.momentum2DataFile);
+                }
+                if (embConfigs_[i].admitAndEvictConfig.IsAdmitEnabled()) {
+                    MergeSingleFile(fileSystemPtr, srcHandles.admitDataFile, srcHandles.admitFd,
+                                    dstHandles.admitFd, dstHandles.admitDataFile);
+                }
+                if (embConfigs_[i].admitAndEvictConfig.IsEvictEnabled()) {
+                    MergeSingleFile(fileSystemPtr, srcHandles.evictKeyDataFile, srcHandles.evictKeyFd,
+                                    dstHandles.evictKeyFd, dstHandles.evictKeyDataFile);
+                    MergeSingleFile(fileSystemPtr, srcHandles.evictTsDataFile, srcHandles.evictTsFd,
+                                    dstHandles.evictTsFd, dstHandles.evictTsDataFile);
+                }
+
+                CloseTableFiles(srcHandles);
+            } catch (const std::exception& e) {
+                LOG_ERROR("Error merging rank %d for table %s: %s", rankId, tableName.c_str(), e.what());
+                CloseTableFiles(srcHandles);
+                throw std::runtime_error("Failed merging files");
+            }
+        }
+
+        // 3. 合并完成后，写入新的 attribute 文件（使用 totalCount）
+        WriteAttributeFile(i, dstPathPrefix, totalCount, fileSystemPtr);
+
+        // write attribute file for admit count
+        if (embConfigs_[i].admitAndEvictConfig.IsAdmitEnabled()) {
+            std::string admitAttributeFile = dstPathPrefix + ADMIT_STR_PATH + SLICE_ATTR_PATH;
+            fileSystemPtr->CreateFileDir(admitAttributeFile);
+            std::vector<int64_t> admitAttrVec = {sizeof(int64_t), static_cast<long>(totalAdmitCount)};
+            WriteData(fileSystemPtr, admitAttributeFile, reinterpret_cast<const char*>(admitAttrVec.data()),
+                      admitAttrVec.size() * sizeof(int64_t));
+        }
+        // write attribute file for evict count
+        if (embConfigs_[i].admitAndEvictConfig.IsEvictEnabled()) {
+            std::string evictAttributeFile = dstPathPrefix + EVICT_STR_PATH + SLICE_ATTR_PATH;
+            fileSystemPtr->CreateFileDir(evictAttributeFile);
+            std::vector<int64_t> evictAttrVec = {sizeof(int64_t), static_cast<long>(totalEvictCount)};
+            WriteData(fileSystemPtr, evictAttributeFile, reinterpret_cast<const char*>(evictAttrVec.data()),
+                      evictAttrVec.size() * sizeof(int64_t));
+        }
+
+        CloseTableFiles(dstHandles);
+        LOG_INFO("Finished merging table: %s, total keys: %zu", tableName.c_str(), totalCount);
+    }
+}
+
+/**
+ * @brief 合并单个文件内容（低级接口）
+ *
+ * @param srcFd 源文件描述符，必须由调用者通过 OpenTableFiles 打开，
+ *              且在本函数调用期间保持有效。**本函数不会关闭此描述符**。
+ * @param dstFd 目标文件描述符，必须由调用者通过 OpenTableFiles 打开，
+ *              且在本函数调用期间保持有效。**本函数不会关闭此描述符**。
+ *
+ * @note 警告：此为底层接口，直接暴露文件描述符。调用者必须确保：
+ *       - 描述符有效且可读/写
+ *       - 不在本函数执行期间关闭描述符
+ *       - 在 MergeFiles 或 CloseTableFiles 中统一管理生命周期
+ *
+ * @warning 未来版本可能弃用此接口，请优先使用基于 TableFileHandles 的高层接口。
+ */
+void EmbcacheManager::MergeSingleFile(const std::shared_ptr<FileSystem>& fsPtr, const std::string& srcFilePath,
+                                      int srcFd, int dstFd, const std::string& dstFilePath)
+{
+    if (srcFd == -1) {
+        throw std::runtime_error("Failed to open source file: " + srcFilePath);
+    }
+    if (dstFd == -1) {
+        throw std::runtime_error("Invalid destination file descriptor for: " + dstFilePath);
+    }
+
+    struct stat st;
+    if (fstat(srcFd, &st) != 0) {
+        throw std::runtime_error("fstat failed on source file: " + srcFilePath + ", errno=" + std::to_string(errno));
+    }
+    int64_t fileSize = static_cast<int64_t>(st.st_size);
+
+    if (fileSize <= 0) {
+        LOG_WARN("Source file is empty: %s", srcFilePath.c_str());
+        return;
+    }
+
+    std::vector<char> buffer(BUFFER_SIZE);
+
+    int64_t totalBytesRead = 0;
+    while (totalBytesRead < fileSize) {
+        size_t toRead = static_cast<size_t>(
+            std::min(static_cast<int64_t>(BUFFER_SIZE), fileSize - totalBytesRead)
+        );
+
+        ssize_t bytesRead = read(srcFd, buffer.data(), toRead);
+        if (bytesRead <= 0) {
+            if (bytesRead == 0) {
+                throw std::runtime_error("Unexpected EOF while reading: " + srcFilePath);
+            } else {
+                int saved_errno = errno;
+                throw std::runtime_error("Read error on source file: " + srcFilePath +
+                                         ", error: " + strerror(saved_errno));
+            }
+        }
+
+        // 使用你现有的 WriteData 函数写入目标文件
+        WriteData(fsPtr, dstFilePath, buffer.data(), static_cast<size_t>(bytesRead), dstFd);
+
+        totalBytesRead += bytesRead;
+    }
+
+    LOG_INFO("Merged %lld bytes from %s to %s",
+             static_cast<long long>(totalBytesRead),
+             srcFilePath.c_str(),
+             dstFilePath.c_str());
+}
+
+void EmbcacheManager::WriteEmbeddingEntry(int64_t key, const float* value, const EmbeddingTableWriteContext& ctx)
 {
     WriteData(ctx.fileSystem, ctx.keyDataFile,
         reinterpret_cast<const char*>(&key), sizeof(int64_t), ctx.keyFd);
@@ -635,18 +917,21 @@ void EmbcacheManager::WriteAttributeFile(int32_t tableIndex, const std::string& 
     }
 }
 
-void EmbcacheManager::Load(const std::string& path, int rank, bool incremental)
+void EmbcacheManager::Load(const std::string& path, int rank, int world_size, bool incremental)
 {
     auto fileSystemPtr = GetFileSystem(path);
     TORCH_CHECK(fileSystemPtr != nullptr, "fileSystemPtr should not be nullptr");
+    TORCH_CHECK(world_size > 0, "world_size must be positive");
+    TORCH_CHECK(rank >= 0 && rank < world_size, "rank must be in [0, world_size)");
 
     for (int32_t i = 0; i < embNum_; i++) {
         std::string tableName = embConfigs_[i].tableName;
         LOG_INFO("Start load, rank:{}, table:{}.", rank, tableName);
         TableRankParam tableParams(embConfigs_[i].tableName, i, embConfigs_[i].embDim, rank);
-        std::string filePrefix = path + "/" + tableName + "/rank" + std::to_string(rank);
 
-        // if not incremental load, reset tables firset
+        std::string filePrefix = path + "/" + tableName;
+
+        // Reset table if not incremental
         if (!incremental) {
             embeddingTables_[i].reset();
             if (enableFastHashMap_) {
@@ -655,31 +940,59 @@ void EmbcacheManager::Load(const std::string& path, int rank, bool incremental)
                 embeddingTables_[i] = std::make_unique<EmbTableUnorderedMap>(embConfigs_[i]);
             }
         }
-        // load key
-        std::vector<int64_t> keys;
+
+        // Load all keys from key/slice.data
+        std::vector<int64_t> allKeys;
         std::string keyAttrFile = filePrefix + "/key/slice.attribute";
         std::string keysDataFile = filePrefix + "/key/slice.data";
-        ReadKeysData(fileSystemPtr, keys, keyAttrFile, keysDataFile);
+        ReadKeysData(fileSystemPtr, allKeys, keyAttrFile, keysDataFile);
 
-        // if incremental load, remove swapmanager keys first, else clear incremental key set
+        std::vector<int64_t> localKeys;
+        std::vector<int64_t> localOffsets;
+
+        for (size_t idx = 0; idx < allKeys.size(); ++idx) {
+            if (allKeys[idx] % world_size == rank) {
+                localKeys.push_back(allKeys[idx]);
+                localOffsets.push_back(static_cast<int64_t>(idx));
+            }
+        }
+        LOG_INFO("Global load: total keys={}, local keys={}.", allKeys.size(), localKeys.size());
+
+        // Handle incremental logic
         if (incremental) {
-            swapManagers_[i].RemoveKeys(keys);
+            swapManagers_[i].RemoveKeys(localKeys);
         } else {
             incrementalKeySets_[i].clear();
         }
 
-        // load embedding and optimizer
-        auto loadCountOneTime = GetOneTimeLoadCount(embConfigs_[i].embDim);
-        for (size_t j = 0; j < keys.size(); j += loadCountOneTime) {
-            auto start = keys.begin() + static_cast<int64_t>(j);
-            auto end = keys.begin() + std::min(j + loadCountOneTime, keys.size());
-            std::vector<int64_t> sliceKeys(start, end);
-            tableParams.loadEmbeddingOffset = static_cast<int64_t>(j);
-            LoadEmbeddingAndOptimizer(fileSystemPtr, i, filePrefix, sliceKeys, tableParams);
+        if (localKeys.empty()) {
+            LOG_INFO("No keys for rank {} in table {}, skip.", rank, tableName);
+            continue;
+        }
+
+        // keys with offsets
+        std::vector<KeyWithOffset> keysWithOffsets;
+        keysWithOffsets.reserve(localKeys.size());
+
+        // Batch load
+        auto loadCount = GetOneTimeLoadCount(embConfigs_[i].embDim);
+        for (size_t j = 0; j < localKeys.size(); j += loadCount) {
+            size_t end = std::min(j + loadCount, localKeys.size());
+            
+            // Build batch of KeyWithOffset
+            std::vector<KeyWithOffset> batch;
+            batch.reserve(end - j);
+            for (size_t idx = j; idx < end; ++idx) {
+                batch.push_back({localKeys[idx], localOffsets[idx]});
+                keysWithOffsets.push_back({localKeys[idx], localOffsets[idx]});
+            }
+
+            // Unified call!
+            LoadEmbeddingAndOptimizer(fileSystemPtr, i, filePrefix, batch, tableParams);
         }
 
         // load feature filter related data
-        LoadFeatureAdmitAndEvictInfo(fileSystemPtr, i, filePrefix, keys, incremental);
+        LoadFeatureAdmitAndEvictInfo(fileSystemPtr, i, filePrefix, keysWithOffsets, incremental);
     }
 }
 
@@ -692,35 +1005,47 @@ int32_t EmbcacheManager::GetOneTimeLoadCount(int32_t embDim)
 }
 
 void EmbcacheManager::LoadEmbeddingAndOptimizer(const shared_ptr<FileSystem>& fileSystemPtr, int32_t tableIndex,
-                                                const string& filePrefix, const vector<int64_t>& keys,
+                                                const string& filePrefix, const vector<KeyWithOffset>& keysWithOffsets,
                                                 const TableRankParam& tableParams)
 {
-    vector<vector<float>> embeddings;
-    string embFilePath = filePrefix + "/embedding/slice.data";
-    ReadEmbeddings(fileSystemPtr, embeddings, embFilePath, keys.size(), tableParams);
+    if (keysWithOffsets.empty()) {
+        return;
+    }
 
-    // load optimizer parameter
-    vector<vector<float>> momentum1;
+    // 分离 keys 和 offsets
+    std::vector<int64_t> keys;
+    std::vector<int64_t> offsets;
+    keys.reserve(keysWithOffsets.size());
+    offsets.reserve(keysWithOffsets.size());
+    for (const auto& ko : keysWithOffsets) {
+        keys.push_back(ko.key);
+        offsets.push_back(ko.offset);
+    }
+
+    // Load embedding
+    std::vector<std::vector<float>> embeddings;
+    ReadEmbeddings(fileSystemPtr, embeddings, filePrefix + "/embedding/slice.data", offsets, tableParams);
+
+    // Load momentum1 if needed
+    std::vector<std::vector<float>> momentum1;
     if (optimNum_ > 0) {
-        string momentum1FilePath = filePrefix + "/momentum1/slice.data";
-        ReadEmbeddings(fileSystemPtr, momentum1, momentum1FilePath, keys.size(), tableParams);
+        ReadEmbeddings(fileSystemPtr, momentum1, filePrefix + "/momentum1/slice.data", offsets, tableParams);
     }
-    vector<vector<float>> momentum2;
+
+    // Load momentum2 if needed
+    std::vector<std::vector<float>> momentum2;
     if (optimNum_ > 1) {
-            string momentum2FilePath = filePrefix + "/momentum2/slice.data";
-            ReadEmbeddings(fileSystemPtr, momentum2, momentum2FilePath, keys.size(), tableParams);
+        ReadEmbeddings(fileSystemPtr, momentum2, filePrefix + "/momentum2/slice.data", offsets, tableParams);
     }
+
     RecordLoadDebugInfo(keys, embeddings, momentum1, momentum2, tableParams);
 
-    for (size_t k = 0; k < keys.size(); k++) {
-        vector<int64_t> insertKey = {keys[k]};
-        vector<float*> momentum = {};
-        if (optimNum_ > 0) {
-            momentum.emplace_back(momentum1[k].data());
-        }
-        if (optimNum_ > 1) {
-            momentum.emplace_back(momentum2[k].data());
-        }
+    // Insert into table
+    for (size_t k = 0; k < keys.size(); ++k) {
+        std::vector<int64_t> insertKey = {keys[k]};
+        std::vector<float*> momentum;
+        if (optimNum_ > 0) momentum.push_back(momentum1[k].data());
+        if (optimNum_ > 1) momentum.push_back(momentum2[k].data());
         embeddingTables_[tableIndex]->InsertOrAssign(insertKey, embeddings[k].data(), momentum);
     }
 }
@@ -813,27 +1138,36 @@ void EmbcacheManager::CheckEmbeddingDim(const std::shared_ptr<FileSystem>& fileS
 
 void EmbcacheManager::ReadEmbeddings(const std::shared_ptr<FileSystem>& fileSystemPtr,
                                      std::vector<std::vector<float>>& embeddings, const string& filePath,
-                                     size_t vectorSize, const TableRankParam& tableParams)
+                                     const std::vector<int64_t>& offsets, const TableRankParam& tableParams)
 {
-    LOG_INFO("In load, rank:{}, table:{}, start load file data:{}.", tableParams.rank, tableParams.tableName, filePath);
+    if (offsets.empty()) {
+        embeddings.clear();
+        return;
+    }
+
+    LOG_INFO("In load, rank:{}, table:{}, start load file data:{} for {} rows.",
+             tableParams.rank, tableParams.tableName, filePath, offsets.size());
+
     int32_t embDim = tableParams.embDim;
     CheckEmbeddingDim(fileSystemPtr, filePath, tableParams);
-    for (size_t i = 0; i < vectorSize; ++i) {
-        std::vector<float> tmp(embDim);
-        embeddings.emplace_back(tmp);
+
+    // Pre-allocate embeddings
+    embeddings.clear();
+    embeddings.reserve(offsets.size());
+    for (size_t i = 0; i < offsets.size(); ++i) {
+        embeddings.emplace_back(embDim);
     }
-    std::vector<int64_t> offsetVec(vectorSize);
-    std::iota(offsetVec.begin(), offsetVec.end(), tableParams.loadEmbeddingOffset);
+
     ssize_t readBytes;
     try {
-        readBytes = fileSystemPtr->Read(filePath, embeddings, 0, offsetVec, embDim);
+        readBytes = fileSystemPtr->Read(filePath, embeddings, 0, offsets, embDim);
     } catch (std::runtime_error& e) {
         auto errMsg = Logger::Format("In load, rank:{}, table:{}, load file error: {}.", tableParams.rank,
             tableParams.tableName, filePath);
         LOG_ERROR(errMsg);
         throw std::runtime_error(errMsg);
     }
-    auto expectReadBytes = static_cast<ssize_t>(embeddings.size() * embDim * sizeof(float));
+    auto expectReadBytes = static_cast<ssize_t>(offsets.size() * embDim * sizeof(float));
     if (readBytes != expectReadBytes) {
         auto errMsg = Logger::Format("Read data to file error, expect read bytes:{}, actual read bytes:{}, file:{}",
             filePath, expectReadBytes, readBytes);
@@ -1032,41 +1366,37 @@ void EmbcacheManager::StatisticsKeyCount(const at::Tensor& batchKeys, const torc
     featureFilters_[tableIndex]->StatisticsKeyCount(featureDataPtr, countDataPtr, start, end, isCountDataEmpty);
 }
 
-void EmbcacheManager::SaveFeatureAdmitAndEvictInfo(const std::shared_ptr<FileSystem>& fileSystemPtr,
-                                                   int32_t tableIndex, const std::string& filePrefix,
-                                                   const std::vector<int64_t>& saveKeys)
+void EmbcacheManager::SaveFeatureAdmitAndEvictInfo(int32_t tableIndex, const std::string& pathPrefix,
+                                                   const std::vector<int64_t>& saveKeys,
+                                                   const EmbeddingTableWriteContext& ctx)
 {
     TimeCost saveFeatureFilterDataTC;
     if (embConfigs_[tableIndex].admitAndEvictConfig.IsAdmitEnabled()) {
-        SaveFeatureCount(fileSystemPtr, tableIndex, filePrefix, saveKeys);
+        SaveFeatureCount(tableIndex, pathPrefix, saveKeys, ctx);
     }
     if (embConfigs_[tableIndex].admitAndEvictConfig.IsEvictEnabled()) {
-        SaveFeatureTimestamp(fileSystemPtr, tableIndex, filePrefix);
+        SaveFeatureTimestamp(tableIndex, pathPrefix, ctx);
     }
-    LOG_INFO("saveFeatureFilterDataTC(ms):", saveFeatureFilterDataTC.ElapsedMS());
+    LOG_INFO("saveFeatureFilterDataTC(ms): {}", saveFeatureFilterDataTC.ElapsedMS());
 }
 
-void EmbcacheManager::SaveFeatureTimestamp(const std::shared_ptr<FileSystem>& fileSystemPtr,
-                                           int32_t tableIndex, const std::string& filePrefix)
+void EmbcacheManager::SaveFeatureTimestamp(int32_t tableIndex, const std::string& filePrefix,
+                                           const EmbeddingTableWriteContext& ctx)
 {
     // 时间戳数据 key数量和当前卡的key不一样；需要单独保存key数据
     auto& featureTimestampMap = featureFilters_[tableIndex]->GetFeatureTimestampMap();
 
     // write attribute
     std::string attributeFile = filePrefix + EVICT_STR_PATH + SLICE_ATTR_PATH;
-    fileSystemPtr->CreateFileDir(attributeFile);
+    ctx.fileSystem->CreateFileDir(attributeFile);
     std::vector<int64_t> attrVec = {sizeof(int64_t), static_cast<long>(featureTimestampMap.size())};
-    WriteData(fileSystemPtr, attributeFile, reinterpret_cast<const char*>(attrVec.data()),
+    WriteData(ctx.fileSystem, attributeFile, reinterpret_cast<const char*>(attrVec.data()),
               attrVec.size() * sizeof(int64_t));
 
     // write evict record key
-    std::string evictKeyFile = filePrefix + EVICT_STR_PATH + SLICE_EVICT_KEY_DATA_PATH;
-    fileSystemPtr->CreateFileDir(evictKeyFile);
     std::vector<int64_t> evictRecordKeys;
     evictRecordKeys.reserve(ONE_TIME_IO_WRITE);
     // write evict record timestamp
-    std::string evictTsFile = filePrefix + EVICT_STR_PATH + SLICE_EVICT_TS_DATA_PATH;
-    fileSystemPtr->CreateFileDir(evictTsFile);
     std::vector<int64_t> evictRecordTs;
     evictRecordTs.reserve(ONE_TIME_IO_WRITE);
 
@@ -1075,31 +1405,29 @@ void EmbcacheManager::SaveFeatureTimestamp(const std::shared_ptr<FileSystem>& fi
         evictRecordKeys.emplace_back(iter.first);
         evictRecordTs.emplace_back(static_cast<int64_t>(iter.second));
         if (loopCount > 0 && (loopCount % ONE_TIME_IO_WRITE == 0 || loopCount == (featureTimestampMap.size() - 1))) {
-            WriteData(fileSystemPtr, evictKeyFile, reinterpret_cast<const char*>(evictRecordKeys.data()),
-                      evictRecordKeys.size() * sizeof(int64_t));
+            WriteData(ctx.fileSystem, ctx.evictKeyDataFile, reinterpret_cast<const char*>(evictRecordKeys.data()),
+                      evictRecordKeys.size() * sizeof(int64_t), ctx.evictKeyFd);
             evictRecordKeys.clear();
-            WriteData(fileSystemPtr, evictTsFile, reinterpret_cast<const char*>(evictRecordTs.data()),
-                      evictRecordTs.size() * sizeof(int64_t));
+            WriteData(ctx.fileSystem, ctx.evictTsDataFile, reinterpret_cast<const char*>(evictRecordTs.data()),
+                      evictRecordTs.size() * sizeof(int64_t), ctx.evictTsFd);
             evictRecordTs.clear();
         }
         loopCount++;
     }
 }
 
-void EmbcacheManager::SaveFeatureCount(const std::shared_ptr<FileSystem>& fileSystemPtr,
-                                       int32_t tableIndex, const std::string& filePrefix,
-                                       const std::vector<int64_t>& saveKeys)
+void EmbcacheManager::SaveFeatureCount(int32_t tableIndex, const std::string& filePrefix,
+                                       const std::vector<int64_t>& saveKeys,
+                                       const EmbeddingTableWriteContext& ctx)
 {
     // write attribute
     std::string attributeFile = filePrefix + ADMIT_STR_PATH + SLICE_ATTR_PATH;
-    fileSystemPtr->CreateFileDir(attributeFile);
+    ctx.fileSystem->CreateFileDir(attributeFile);
     std::vector<int64_t> attrVec = {sizeof(int64_t), static_cast<long>(saveKeys.size())};
-    WriteData(fileSystemPtr, attributeFile, reinterpret_cast<const char*>(attrVec.data()),
+    WriteData(ctx.fileSystem, attributeFile, reinterpret_cast<const char*>(attrVec.data()),
               attrVec.size() * sizeof(int64_t));
 
     // write key count data.
-    std::string dataFile = filePrefix + ADMIT_STR_PATH + SLICE_DATA_PATH;
-    fileSystemPtr->CreateFileDir(dataFile);
     const auto& featureCountMap = featureFilters_[tableIndex]->GetFeatureCountMap();
     std::vector<int64_t> keyCountVec;
     keyCountVec.reserve(ONE_TIME_IO_WRITE);
@@ -1115,8 +1443,8 @@ void EmbcacheManager::SaveFeatureCount(const std::shared_ptr<FileSystem>& fileSy
         LOG_TRACE("In save key count, tableIndex:{}, key:{}, count:{}.", tableIndex, key, keyCountVec[i]);
 
         if (i > 0 && (i % ONE_TIME_IO_WRITE == 0 || i == (saveKeys.size() - 1))) {
-            WriteData(fileSystemPtr, dataFile, reinterpret_cast<const char*>(keyCountVec.data()),
-                      keyCountVec.size() * sizeof(int64_t));
+            WriteData(ctx.fileSystem, ctx.admitDataFile, reinterpret_cast<const char*>(keyCountVec.data()),
+                      keyCountVec.size() * sizeof(int64_t), ctx.admitFd);
             count += keyCountVec.size();
             keyCountVec.clear();
         }
@@ -1127,20 +1455,40 @@ void EmbcacheManager::SaveFeatureCount(const std::shared_ptr<FileSystem>& fileSy
 
 void EmbcacheManager::LoadFeatureAdmitAndEvictInfo(const std::shared_ptr<FileSystem>& fileSystemPtr,
                                                    int32_t tableIndex, const std::string& filePrefix,
-                                                   const std::vector<int64_t>& saveKeys, bool incremental)
+                                                   const std::vector<KeyWithOffset>& keysWithOffsets,
+                                                   bool incremental)
 {
-    if (embConfigs_[tableIndex].admitAndEvictConfig.IsAdmitEnabled() && !saveKeys.empty()) {
+    std::vector<int64_t> keys;
+    std::vector<int64_t> offsets;
+    keys.reserve(keysWithOffsets.size());
+    offsets.reserve(keysWithOffsets.size());
+    for (const auto& ko : keysWithOffsets) {
+        keys.push_back(ko.key);
+        offsets.push_back(ko.offset);
+    }
+    if (embConfigs_[tableIndex].admitAndEvictConfig.IsAdmitEnabled() && !keysWithOffsets.empty()) {
         TimeCost loadCountDataTC;
         // read key count data
         std::vector<uint64_t> keyCountVec;
         std::string keyAttrFile = filePrefix + ADMIT_STR_PATH + SLICE_ATTR_PATH;
         std::string keysDataFile = filePrefix + ADMIT_STR_PATH + SLICE_DATA_PATH;
         ReadKeysData(fileSystemPtr, keyCountVec, keyAttrFile, keysDataFile);
+        // 需要根据offsets筛选出当前卡的key count数据
+        std::vector<uint64_t> filteredKeyCountVec;
+        filteredKeyCountVec.reserve(keys.size());
+        for (size_t i = 0; i < offsets.size(); ++i) {
+            auto offset = offsets[i];
+            TORCH_CHECK(offset >= 0 && offset < static_cast<int64_t>(keyCountVec.size()),
+                        "Offset value {} is out of range [0, {}).", offset, keyCountVec.size());
+            filteredKeyCountVec.push_back(keyCountVec[offset]);
+            LOG_TRACE("In load key count, tableIndex:{}, key:{}, count:{}.", tableIndex, keys[i],
+                      filteredKeyCountVec[i]);
+        }
         // if not incremental load, need clear feature count map first
         if (!incremental) {
             featureFilters_[tableIndex]->ClearFeatureCountMap();
         }
-        featureFilters_[tableIndex]->LoadFeatureRecords(saveKeys, keyCountVec);
+        featureFilters_[tableIndex]->LoadFeatureRecords(keys, filteredKeyCountVec);
         LOG_INFO("The loadCountDataTC(ms):{}.", loadCountDataTC.ElapsedMS());
     }
     if (embConfigs_[tableIndex].admitAndEvictConfig.IsEvictEnabled()) {
@@ -1157,6 +1505,15 @@ void EmbcacheManager::LoadFeatureAdmitAndEvictInfo(const std::shared_ptr<FileSys
             return;
         }
 
+        // 根据keys筛选出当前卡的key对应的offset
+        std::unordered_set<int64_t> keySet(keys.begin(), keys.end());
+        std::vector<int64_t> eventOffsets;
+        for (size_t i = 0; i < keysVec.size(); ++i) {
+            if (keySet.find(keysVec[i]) != keySet.end()) {
+                eventOffsets.push_back(static_cast<int64_t>(i));
+            }
+        }
+
         // read timestamp
         std::vector<int64_t> keyTimestampVec;
         std::string evictTsDataFile = filePrefix + EVICT_STR_PATH + SLICE_EVICT_TS_DATA_PATH;
@@ -1168,7 +1525,7 @@ void EmbcacheManager::LoadFeatureAdmitAndEvictInfo(const std::shared_ptr<FileSys
         }
 
         // data load
-        featureFilters_[tableIndex]->LoadTimestampRecords(keysVec, keyTimestampVec);
+        featureFilters_[tableIndex]->LoadTimestampRecords(keysVec, keyTimestampVec, eventOffsets);
         LOG_INFO("The loadTsDataTC(ms):{}.", loadTsDataTC.ElapsedMS());
     }
 }

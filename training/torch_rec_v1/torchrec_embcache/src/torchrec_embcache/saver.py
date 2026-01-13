@@ -8,6 +8,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+import shutil
 
 import torch.distributed as dist
 import torch.nn
@@ -30,6 +31,7 @@ class Saver:
         if rank is None:
             if dist.is_initialized():
                 rank = dist.get_rank()
+                world_size = torch.distributed.get_world_size()
                 logging.warning("Param rank id is None and distributed model has been initialized,"
                                 " get rank by dist.get_rank() is:%d", rank)
             else:
@@ -43,6 +45,7 @@ class Saver:
                     raise ValueError(f"param `rank` must less than torch distribution world_size:{world_size},"
                                      f" but got rank {rank}")
         self.rank: int = rank
+        self.world_size: int = world_size
         self.cache_module = []
 
     @staticmethod
@@ -91,6 +94,14 @@ class Saver:
             momentum_list = [momentum.detach().to("cpu") for momentum in codegen.get_momentum()] 
             mod.embcache_mgr.embedding_to_host(codegen.weights_dev.detach().to("cpu"), momentum_list)
             mod.embcache_mgr.save(path, self.rank, incremental=incremental)
+            dist.barrier()
+            if self.rank == 0:
+                mod.embcache_mgr.merge_files(path, self.world_size)
+            dist.barrier()
+            table_dirs = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+            for table_dir in table_dirs:
+                rank_path = os.path.join(path, table_dir, f"rank{self.rank}")
+                shutil.rmtree(rank_path)
 
     def load(self, module: torch.nn.Module, path: str, incremental=False) -> None:
         check_path(path, need_exist=True, is_dir=True)
@@ -100,7 +111,7 @@ class Saver:
         path = os.path.realpath(path)
         check_path(path)
         for mod in self.cache_module:
-            mod.embcache_mgr.load(path, self.rank, incremental)
+            mod.embcache_mgr.load(path, self.rank, self.world_size, incremental)
 
     def _find_all_embed_cache_instance(self, module: EmbCacheShardedEmbeddingBagCollection, this_recur_step: int = 0):
         if this_recur_step >= _MAX_RECURSIVE_TIMES:
