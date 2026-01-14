@@ -104,6 +104,9 @@ class EmbCacheTrainPipelineContext(TrainPipelineContext):
     swap_info_future: Dict[str, embcache_pybind.AsyncSwapInfo] = field(
         default_factory=dict
     )
+    record_batch_keys_future: Dict[str, Any] = field(
+        default_factory=dict
+    )
     swap_info: Dict[str, embcache_pybind.SwapInfo] = field(default_factory=dict)
     swapout_embs: Dict[str, torch.Tensor] = field(default_factory=dict)
     swapout_optims: Dict[str, torch.Tensor] = field(default_factory=dict)
@@ -296,6 +299,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         
         self._zero_grad = self._optimizer.zero_grad if custom_model_zero_grad is None else custom_model_zero_grad
         self._custom_model_bwd = custom_model_bwd
+        self._need_record_batch_keys = False
 
     def _init_pipelined_modules(
         self,
@@ -335,6 +339,11 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         _fuse_input_dist_splits(context)
         self._original_kjt_dist_forwards = _override_input_dist_forwards(
             self._pipelined_modules
+        )
+        self._need_record_batch_keys = any(
+            config.is_incremental
+            for module in self._pipelined_modules
+            for config in module.config_list
         )
 
     def start_sparse_data_dist(
@@ -399,6 +408,14 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                 context.swap_info_future[module_name] = module.compute_swap_info_async(
                     sparse_features
                 )
+
+    def _record_batch_keys_async(self, context: EmbCacheTrainPipelineContext) -> None:
+        for module in self._pipelined_modules:
+            module_name = module.forward.name
+            sparse_features = context.sparse_features_after_post_dist[module_name]
+            context.record_batch_keys_future[module_name] = module.record_batch_keys_async(
+                sparse_features
+            )
 
     def do_post_input_dist(self, context: EmbCacheTrainPipelineContext):
         with record_function("## _post_input_dist ##"):
@@ -583,6 +600,15 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                 )
                 self._compute_swap_info_async(context)
 
+    def wait_record_batch_keys(self, context: EmbCacheTrainPipelineContext):
+        for module in self._pipelined_modules:
+            module_name = module.forward.name
+            record_batch_keys_future = context.record_batch_keys_future.pop(module_name)
+            if record_batch_keys_future is None:
+                continue
+
+            record_batch_keys_future.get()
+
     def attach(self, model: Optional[torch.nn.Module] = None) -> None:
         if model:
             self._model = model
@@ -710,6 +736,10 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         self.swapin_tensors_to_npu(self.contexts[0])
         self.wait_and_swapin(self.contexts[0])
 
+        # 更新host侧的 batchkeys 记录
+        if self._need_record_batch_keys:
+            self._record_batch_keys_async(self.contexts[0])
+
         # forward
         with record_function("## forward ##"):
             losses, output = self._model_fwd(self.batches[0])
@@ -751,6 +781,9 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         if len(self.batches) >= 2:
             self.swap_out(self.contexts[1])
         self.wait_host_update(self.contexts[0])
+
+        if self._need_record_batch_keys:
+            self.wait_record_batch_keys(self.contexts[0])
 
         self.dequeue_batch()
         return (output, losses) if self._return_loss else output

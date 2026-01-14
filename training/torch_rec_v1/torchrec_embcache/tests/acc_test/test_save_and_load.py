@@ -33,7 +33,7 @@ from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSp
 from torchrec_embcache.saver import Saver
 from torchrec_embcache.utils import safe_makedirs
 import torchrec
-from torchrec import EmbeddingBagConfig, EmbeddingBagCollection
+from torchrec_embcache.distributed.configs import EmbCacheEmbeddingBagConfig
 import torchrec.distributed
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FDSP,
@@ -51,7 +51,11 @@ from torchrec.optim.keyed import CombinedOptimizer
 from util import setup_logging
 
 WORLD_SIZE = 2
-LOOP_TIMES = 500
+SAVE_BASE_TIMES = 2
+SAVE_DELTA_TIMES = 2
+SAVE_TIMES = SAVE_BASE_TIMES * (SAVE_DELTA_TIMES + 1)
+SAVE_STEPS = 100
+LOOP_TIMES = SAVE_TIMES * SAVE_STEPS
 BATCH_NUM = LOOP_TIMES * 2  # will execute LOOP_TIMES*2 times lookup when save load
 
 
@@ -65,6 +69,7 @@ class ExecuteConfig:
     sharding_type: str
     lookup_len: int
     device: str
+    incremental: bool
 
 
 def execute(rank: int, config: ExecuteConfig):
@@ -76,6 +81,7 @@ def execute(rank: int, config: ExecuteConfig):
     sharding_type = config.sharding_type
     lookup_len = config.lookup_len
     device = config.device
+    incremental = config.incremental
     setup_logging(rank)
     logging.info("this test %s", os.path.basename(__file__))
     dataset = RandomRecDataset(BATCH_NUM, lookup_len, num_embeddings, table_num)
@@ -97,7 +103,7 @@ def execute(rank: int, config: ExecuteConfig):
     )
     embedding_config = []
     for i in range(table_num):
-        ebc_config = EmbeddingBagConfig(
+        ebc_config = EmbCacheEmbeddingBagConfig(
             name=f"table{i}",
             embedding_dim=embedding_dims[i],
             num_embeddings=num_embeddings[i],
@@ -106,16 +112,13 @@ def execute(rank: int, config: ExecuteConfig):
             init_fn=weight_init,
             weight_init_min=0.0,
             weight_init_max=1.0,
+            is_incremental=incremental,
         )
         embedding_config.append(ebc_config)
 
     test_model = TestModel(rank, world_size, device)
-    golden_results, _ = test_model.test_loss(
-        embedding_config, dataset_loader_golden, sharding_type, training=True
-    )
-    test_results, _ = test_model.test_loss(
-        embedding_config, data_loader, sharding_type, training=False
-    )
+    golden_results, _ = test_model.test_loss(embedding_config, dataset_loader_golden, sharding_type, training=True)
+    test_results, _ = test_model.test_loss(embedding_config, data_loader, sharding_type, training=False)
     i = 0
     for golden, result in zip(golden_results, test_results):
         logging.debug("==============batch %d================", i // 2)
@@ -157,7 +160,7 @@ class TestModel:
 
     def test_loss(
         self,
-        embedding_config: List[EmbeddingBagConfig],
+        embedding_config: List[EmbCacheEmbeddingBagConfig],
         dataloader: DataLoader[Batch],
         sharding_type: str,
         training: bool,
@@ -235,8 +238,19 @@ class TestModel:
             "optimizer": optimizer.state_dict()
         }
         if training:
-            for _ in range(LOOP_TIMES):
-                _, _ = pipe.progress(iter_)
+            if embedding_config[0].is_incremental:
+                for base_time in range(SAVE_BASE_TIMES):
+                    for _ in range(SAVE_STEPS):
+                        _, _ = pipe.progress(iter_)
+                    saver.save(ddp_model, f"save_dir/sparse/base_{base_time+1}")
+                    for delta_time in range(SAVE_DELTA_TIMES):
+                        for _ in range(SAVE_STEPS):
+                            _, _ = pipe.progress(iter_)
+                        saver.save(ddp_model, f"save_dir/sparse/base_{base_time+1}_delta_{delta_time+1}", 
+                                   incremental=True)
+            else:
+                for _ in range(LOOP_TIMES):
+                    _, _ = pipe.progress(iter_)
 
             ddp_model.eval()
             for _ in range(LOOP_TIMES):
@@ -250,7 +264,8 @@ class TestModel:
                 checkpoint_id="save_dir/dense"
             )
             # save sparse
-            saver.save(ddp_model, "save_dir/sparse")
+            if not embedding_config[0].is_incremental:
+                saver.save(ddp_model, "save_dir/sparse")
 
         else:
             # load dense
@@ -258,9 +273,15 @@ class TestModel:
                 state_dict=state_dict,
                 checkpoint_id="save_dir/dense"
             )
-            # load sparse
-            saver.load(ddp_model, "save_dir/sparse")
 
+            # sparse-加载
+            if embedding_config[0].is_incremental:
+                saver.load(ddp_model, f"save_dir/sparse/base_{SAVE_BASE_TIMES}")
+                for delta_time in range(SAVE_DELTA_TIMES):
+                    saver.load(ddp_model, f"save_dir/sparse/base_{SAVE_BASE_TIMES}_delta_{delta_time+1}",
+                               incremental=True)
+            else:
+                saver.load(ddp_model, "save_dir/sparse")
             ddp_model.eval()
             for _ in range(LOOP_TIMES):
                 _, _ = pipe.progress(iter_)
@@ -283,6 +304,7 @@ params = {
     "sharding_type": ["row_wise"],
     "lookup_len": [128],  # batchsize
     "device": ["npu"],
+    "incremental": [False, True],
 }
 
 
@@ -309,4 +331,5 @@ if __name__ == "__main__":
         sharding_type="row_wise",
         lookup_len=128,
         device="npu",
+        incremental=False
     ))
