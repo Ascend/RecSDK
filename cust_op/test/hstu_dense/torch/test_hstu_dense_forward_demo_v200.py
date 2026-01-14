@@ -197,7 +197,7 @@ class TestHstuJaggedDemo:
                                      data_type)
 
         if data_type == torch.bfloat16:
-            res = torch.allclose(output, gloden, 1e-2, 1e-2)
+            res = torch.allclose(output, gloden, 5e-3, 5e-3)
         elif data_type == torch.float16:
             res = torch.allclose(output, gloden, 1e-3, 1e-3)
         else:

@@ -97,9 +97,9 @@ class TestHstuDenseDemo:
         torch.npu.synchronize()
 
         if data_type == torch.bfloat16:
-            res = allclose(output, golden, 1e-3, 1e-3)
-        elif data_type == torch.float16:
             res = allclose(output, golden, 5e-3, 5e-3)
+        elif data_type == torch.float16:
+            res = allclose(output, golden, 1e-3, 1e-3)
         else:
             res = allclose(output, golden, 1e-4, 1e-4)
         assert res

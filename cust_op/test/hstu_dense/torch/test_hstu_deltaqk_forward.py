@@ -187,7 +187,7 @@ class TestHstuDeltaqkDemo:
         golden = self.golden_op_exec(qkv_tensors, mask_tensors, bias, silu_scale, max_seq_lens)
 
         if qkv_shape_info.float_type == torch.bfloat16:
-            res = allclose(output, golden, 1e-2, 1e-2)
+            res = allclose(output, golden, 5e-3, 5e-3)
         elif qkv_shape_info.float_type == torch.float8_e4m3fn:
             res = allclose(output, golden, 1e-3, 1e-3)
         elif qkv_shape_info.float_type == torch.float16:
