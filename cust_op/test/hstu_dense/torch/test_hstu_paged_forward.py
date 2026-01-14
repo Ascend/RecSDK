@@ -504,7 +504,7 @@ def paged_hstu_attn_kernel(
     output = attn_out_custom.cpu()
     golden = attn_out_golden.cpu()
     if dtype == torch.bfloat16:
-        res = allclose(output, golden, 1e-2, 1e-2)
+        res = allclose(output, golden, 5e-3, 5e-3)
     elif dtype == torch.float16:
         res = allclose(output, golden, 1e-3, 1e-3)
     else:

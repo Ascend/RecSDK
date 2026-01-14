@@ -185,7 +185,7 @@ class TestHstuJaggedDemo:
 
         data_type = qkv_shape_info.float_type
         if data_type == torch.bfloat16:
-            res = allclose(output, golden, 1e-2, 1e-2)
+            res = allclose(output, golden, 5e-3, 5e-3)
         elif data_type == torch.float8_e4m3fn:
             res = allclose(output, golden, 1e-3, 1e-3)
         elif data_type == torch.float16:

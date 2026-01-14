@@ -186,7 +186,7 @@ class TestHstuNormalDemo:
         if data_type == torch.float16:
             loss = 1e-3
         elif data_type == torch.bfloat16:
-            loss = 1e-2
+            loss = 5e-3
 
         q_res = allclose(q_grad, q_grad_golden, loss, loss)
         k_res = allclose(k_grad, k_grad_golden, loss, loss)
