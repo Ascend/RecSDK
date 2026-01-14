@@ -872,3 +872,264 @@ graphStatus RelinkOutput(GraphPtr& graph, GNode& src_node, GNode& new_node, int3
     }
     return ret;
 }
+
+EinSumPassStatus EinSumSplitProcess(GraphPtr& graph, CustomPassContext& custom_context, GNode& einsum_node,
+                                    int32_t& affect_count)
+{
+    ge::AscendString name;
+    einsum_node.GetName(name);
+    std::string einsum_node_name(name.GetString());
+    // 获取节点输入、输出、equation信息
+    ge::AscendString attr_name_equation(kAttrEquation);
+    ge::AscendString attr_value_equation;
+    if (einsum_node.GetAttr(attr_name_equation, attr_value_equation) != GRAPH_SUCCESS) {
+        std::cout << "Get attr equation failed." << std::endl;
+        return EinSumPassStatus::ERROR;
+    }
+
+    std::string equation = attr_value_equation.GetString();
+    size_t num_ops = einsum_node.GetInputsSize();
+    size_t output_num = einsum_node.GetOutputsSize();
+
+    // 切分equation
+    std::vector<std::vector<uint8_t>> op_labels(num_ops);
+    std::vector<std::vector<uint8_t>> out_label_list(output_num);
+    std::vector<uint8_t> label_used(TOTAL_LABELS, 0);
+
+    EinSumPassStatus ret = SplitEquation(num_ops, output_num, equation, op_labels, out_label_list, label_used);
+    if (ret != EinSumPassStatus::SUCCESS) {
+        std::cout << "process split equation failed." << std::endl;
+        return ret;
+    }
+
+    if (op_labels.size() != 2 || out_label_list.size() != 1) {
+        std::cout << "only support 2 input and 1 output." << std::endl;
+        return EinSumPassStatus::NOT_SUPPORT;
+    }
+
+    // 省略号替换处理
+    std::vector<GNode> bmm_input_nodes;
+    std::vector<int32_t> ori_input_out_indexs;
+    std::vector<uint8_t> out_labels = out_label_list[0];
+    for (size_t i = 0; i < op_labels.size(); ++i) {
+        auto [node_input, out_index] = einsum_node.GetInDataNodesAndPortIndexs(i);
+        bmm_input_nodes.push_back(*node_input);
+        ori_input_out_indexs.push_back(out_index);
+    }
+
+    GNode bmm_output_node;
+    bool swap_input = false;
+    TensorDesc op_desc_0;
+    TensorDesc op_desc_1;
+    if (einsum_node.GetInputDesc(0, op_desc_0) != GRAPH_SUCCESS) {
+        std::cout << "get einsum_node input_desc 0 failed." << std::endl;
+        return EinSumPassStatus::ERROR;
+    }
+
+    if (einsum_node.GetInputDesc(1, op_desc_1) != GRAPH_SUCCESS) {
+        std::cout << "get einsum_node input_desc 1 failed." << std::endl;
+        return EinSumPassStatus::ERROR;
+    }
+    std::vector<TensorDesc> op_descs;
+    op_descs.push_back(op_desc_0);
+    op_descs.push_back(op_desc_1);
+
+    ret = EllipsisReplace(op_descs, op_labels, out_labels, label_used);
+    if (ret != EinSumPassStatus::SUCCESS) {
+        std::cout << "ellipsis replace failed." << std::endl;
+        return ret;
+    }
+
+    // 获取label和index原始映射关系
+    std::vector<std::map<uint8_t, int>> input_label_index;
+    input_label_index.resize(op_labels.size());
+    std::map<uint8_t, int> out_label_index;
+    LabelIndexMap(op_labels, input_label_index);
+
+    // 检测是否有重复label，有的话表示取对角线操作，暂不支持，跳过
+    for (size_t i = 0; i < op_labels.size(); ++i) {
+        std::vector<uint8_t> labels = op_labels[i];
+        std::set<uint8_t> labels_set(labels.begin(), labels.end());
+        if (labels_set.size() != labels.size()) {
+            std::cout << "Duplicate labels are not supported." << std::endl;
+            return EinSumPassStatus::NOT_SUPPORT;
+        }
+    }
+    std::set<uint8_t> out_labels_set(out_labels.begin(), out_labels.end());
+    if (out_labels_set.size() != out_labels.size()) {
+        std::cout << "output can't have Duplicate labels." << std::endl;
+        return EinSumPassStatus::ERROR;
+    }
+    // 统计label出现次数
+    std::vector<uint8_t> label_count(TOTAL_LABELS, 0);
+    LabelCountMap(op_labels, label_count);
+    // 判断label类型
+    std::map<uint8_t, EinsumDimensionType> dims_type_map;
+    GetDimsType(label_count, out_labels, dims_type_map);
+
+    // batch校验拆分
+    ret = BatchRevise(dims_type_map, op_labels, op_descs, label_used);
+    if (ret != EinSumPassStatus::SUCCESS) {
+        std::cout << "batchRevise failed." << std::endl;
+        return ret;
+    }
+
+    // 收集每个input的label类型
+    std::vector<std::map<EinsumDimensionType, LabelInfo>> input_label_infos;
+    input_label_infos.resize(op_labels.size());
+    std::vector<int64_t> reshape_i0_size;
+    std::vector<int64_t> reshape_i1_size;
+    std::vector<int64_t> reshape_o_size;
+    std::vector<int64_t> transpose_i0_index;
+    std::vector<int64_t> transpose_i1_index;
+    std::vector<int64_t> transpose_i2_index;
+    std::vector<uint8_t> batch_output_labels;
+    // 输入的batch轴顺序和输出保持一致，transpose
+    bool find_free = false;
+    for (auto& label : out_labels) {
+        if (dims_type_map[label] == EinsumDimensionType::BATCH) {
+            batch_output_labels.push_back(label);
+        } else if (dims_type_map[label] == EinsumDimensionType::FREE) {
+            if (!find_free) {
+                // 找下这个轴是否来自右输入
+                auto dim_find = find(op_labels[1].begin(), op_labels[1].end(), label);
+                if (dim_find != op_labels[1].end()) {
+                    swap_input = true;
+                }
+                find_free = true;
+            }
+        }
+    }
+
+    std::vector<std::vector<uint8_t>> op_labels_after_reshape;
+    op_labels_after_reshape.resize(op_labels.size());
+    std::vector<std::vector<uint8_t>> op_labels_after_trans;
+    op_labels_after_trans.resize(op_labels.size());
+    std::vector<bool> unlink_input_flag(op_labels.size(), false);
+    std::vector<TensorDesc> bmm_input_descs;
+    // 校验两个输入的dim支不支持
+    CollectDimensionType(op_labels, dims_type_map, input_label_infos);
+    ret = CheckDimType(op_labels, bmm_input_nodes, ori_input_out_indexs, input_label_infos, dims_type_map,
+                       op_labels_after_reshape, label_used);
+    if (ret != EinSumPassStatus::SUCCESS) {
+        std::cout << "dim type check failed, not support." << std::endl;
+        return ret;
+    }
+    //  遍历输入，执行reshape和transpose
+    for (size_t idx = 0; idx < op_labels.size(); ++idx) {
+        std::vector<int32_t> input_reshape_size;
+        std::vector<int32_t> input_perm_index;
+        // 判断是否执行reshape
+        auto [reshape, transpose] =
+            GetInputProcessParams(op_labels[idx], op_labels_after_reshape[idx], op_labels_after_trans[idx],
+                                  op_descs[idx], batch_output_labels, input_reshape_size, input_perm_index);
+        if (graph->RemoveEdge(bmm_input_nodes[idx], ori_input_out_indexs[idx], einsum_node, idx) != GRAPH_SUCCESS) {
+            std::cout << "remove input edge failed." << std::endl;
+            return EinSumPassStatus::ERROR;
+        }
+        if (reshape) {
+            GNode node_reshape;
+            std::string reshape_node_name = einsum_node_name + "/input_" + to_string(idx) + "/" + std::string(kReshape);
+            if (CreateReshapeNode(graph, node_reshape, reshape_node_name, bmm_input_nodes[idx],
+                                  ori_input_out_indexs[idx], input_reshape_size) != GRAPH_SUCCESS) {
+                std::cout << "create input reshape node failed." << std::endl;
+                return EinSumPassStatus::ERROR;
+            }
+            bmm_input_nodes[idx] = node_reshape;
+            ori_input_out_indexs[idx] = 0;
+            op_labels[idx] = op_labels_after_reshape[idx];
+        }
+        if (transpose) {
+            // 执行transpose
+            GNode node_transpose;
+            std::string transpose_node_name =
+                einsum_node_name + "/input_" + to_string(idx) + "/" + std::string(kTranspose);
+            if (CreateTransposeNode(graph, node_transpose, transpose_node_name, bmm_input_nodes[idx],
+                                    ori_input_out_indexs[idx], input_perm_index) != GRAPH_SUCCESS) {
+                std::cout << "create input transpose node failed." << std::endl;
+                return EinSumPassStatus::ERROR;
+            }
+            op_labels[idx] = op_labels_after_trans[idx];
+            bmm_input_nodes[idx] = node_transpose;
+            ori_input_out_indexs[idx] = 0;
+        }
+        TensorDesc bmm_input_desc;
+        if (bmm_input_nodes[idx].GetOutputDesc(ori_input_out_indexs[idx], bmm_input_desc) != GRAPH_SUCCESS) {
+            std::cout << "get bmm_input_desc failed." << std::endl;
+            return EinSumPassStatus::ERROR;
+        }
+        bmm_input_descs.push_back(bmm_input_desc);
+    }
+
+    bool bmm_flag = batch_output_labels.size() != 0;
+    // 生成matmul相关参数
+    std::vector<int32_t> bmm_out_size;
+    std::vector<int32_t> out_reshape_size;
+    std::vector<int32_t> out_perm_index;
+    GNode node_bmm;
+
+    auto [out_trans, out_reshape, transpose_x1, transpose_x2] =
+        GetBmmParams(swap_input, op_labels, dims_type_map, bmm_input_descs, input_label_index, out_labels,
+                     batch_output_labels, bmm_out_size, out_reshape_size, out_perm_index);
+
+    if (BmmInput(graph, node_bmm, swap_input, bmm_input_nodes, ori_input_out_indexs, bmm_out_size, einsum_node,
+                 einsum_node_name, transpose_x1, transpose_x2, bmm_flag) != GRAPH_SUCCESS) {
+        std::cout << "create bmm node failed." << std::endl;
+        return EinSumPassStatus::ERROR;
+    }
+
+    bmm_output_node = node_bmm;
+
+    if (out_trans) {
+        GNode node_trans_out;
+        std::string node_name = einsum_node_name + "/output" + "/" + std::string(kTranspose);
+        if (CreateTransposeNode(graph, node_trans_out, node_name, bmm_output_node, 0, out_perm_index) !=
+            GRAPH_SUCCESS) {
+            std::cout << "create output transpose node failed." << std::endl;
+            return EinSumPassStatus::ERROR;
+        }
+        bmm_output_node = node_trans_out;
+    }
+    if (out_reshape) {
+        GNode node_reshape_out;
+        std::string node_name = einsum_node_name + "/output" + "/" + std::string(kReshape);
+        if (CreateReshapeNode(graph, node_reshape_out, node_name, bmm_output_node, 0, out_reshape_size) !=
+            GRAPH_SUCCESS) {
+            std::cout << "create output transpose node failed." << std::endl;
+            return EinSumPassStatus::ERROR;
+        }
+        bmm_output_node = node_reshape_out;
+    }
+
+    if (RelinkOutput(graph, einsum_node, bmm_output_node, 0) != GRAPH_SUCCESS) {
+        std::cout << "relink output edge failed." << std::endl;
+        return EinSumPassStatus::ERROR;
+    }
+    if (graph->RemoveNode(einsum_node) != GRAPH_SUCCESS) {
+        std::cout << "remove einsum node failed." << std::endl;
+        return EinSumPassStatus::ERROR;
+    }
+
+    affect_count++;
+    return EinSumPassStatus::SUCCESS;
+}
+
+graphStatus EinSumSplitPass(GraphPtr& graph, CustomPassContext& custom_context)
+{
+    std::cout << "----------start on EinsumPass----------" << std::endl;
+    int32_t affect_count = 0;
+    // 找到EinSum节点
+    std::vector<GNode> nodes = graph->GetAllNodes();
+    for (GNode& node : nodes) {
+        if (CheckNodeType(node, kEinSum)) {
+            auto einsum_ret = EinSumSplitProcess(graph, custom_context, node, affect_count);
+            if (einsum_ret == EinSumPassStatus::ERROR) {
+                return GRAPH_FAILED;
+            }
+        }
+    }
+    std::cout << "end on EinsumPass, affect_count is: " << affect_count << std::endl;
+    return GRAPH_SUCCESS;
+}
+
+REGISTER_CUSTOM_PASS("EinSumSplitPass").CustomPassFn(EinSumSplitPass).Stage(CustomPassStage::kAfterInferShape);
