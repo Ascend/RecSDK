@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "kernel_operator.h"
 #include "user_item_flash_attention.h"
+
+#include "kernel_operator.h"
 
 extern "C" __global__ __aicore__ void user_item_flash_attention(GM_ADDR query, GM_ADDR key_user, GM_ADDR value_user,
                                                                 GM_ADDR mask_len, GM_ADDR key_item, GM_ADDR value_item,
