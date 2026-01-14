@@ -111,13 +111,24 @@ void FeatureFilter::LoadFeatureRecords(const std::vector<int64_t>& keys, std::ve
     }
 }
 
-void FeatureFilter::LoadTimestampRecords(const std::vector<int64_t>& keys, std::vector<int64_t>& timestamps)
+void FeatureFilter::LoadTimestampRecords(const std::vector<int64_t>& keys, std::vector<int64_t>& timestamps,
+                                         std::vector<int64_t>& offsets)
 {
     if (keys.size() != timestamps.size()) {
         throw std::runtime_error("Failed to load timestamp info, vector size is not same between keys and timestamps.");
     }
-    for (size_t i = 0; i < keys.size(); ++i) {
-        timestampRecordMap_[keys[i]] = static_cast<std::time_t>(timestamps[i]);
+    for (size_t i = 0; i < offsets.size(); ++i) {
+        auto offset = offsets[i];
+        if (offset < 0 || offset >= static_cast<int64_t>(keys.size())) {
+            throw std::runtime_error("Offset value " + std::to_string(offset) +
+                                     " is out of range [0, " + std::to_string(keys.size()) + ").");
+        }
+        auto key = keys[offset];
+        auto timestamp = static_cast<std::time_t>(timestamps[offset]);
+        auto& currentTimestamp = timestampRecordMap_[key];
+        if (timestamp > currentTimestamp) {
+            timestampRecordMap_[key] = timestamp;
+        }
     }
 }
 

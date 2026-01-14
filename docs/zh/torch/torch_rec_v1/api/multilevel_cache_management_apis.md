@@ -57,6 +57,7 @@ class Saver:
 6.  增量保存加载不支持准入淘汰功能
 7.  增量保存加载仅支持pipeline模式下的训练产生的增量数据的保存和加载
 8.  增量保存加载功能需要创建表时在EmbCacheEmbeddingBagConfig/EmbCacheEmbeddingConfig添加is_incremental参数，详见[创表接口](table_creation_apis.md)
+9.  差异卡加载功能不支持准入淘汰
 
 **参数说明<a name="section888634319218"></a>**
 
