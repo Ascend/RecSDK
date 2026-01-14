@@ -1,0 +1,53 @@
+[
+    {
+        "op":"DefaultGather",
+        "input_desc":[
+            {
+                "name":"id",
+                "param_type":"required",
+                "format":[
+                    "ND",
+                    "ND"
+                ],
+                "type":[
+                    "int32",
+                    "int64"
+                ]
+            },
+            {
+                "name":"table",
+                "param_type":"required",
+                "format":[
+                    "ND",
+                    "ND"
+                ],
+                "type":[
+                    "float32",
+                    "float32"
+                ]
+            }
+        ],
+        "output_desc":[
+            {
+                "name":"output",
+                "param_type":"required",
+                "format":[
+                    "ND",
+                    "ND"
+                ],
+                "type":[
+                    "float32",
+                    "float32"
+                ]
+            }
+        ],
+        "attr":[
+            {
+                "name": "cast",
+                "param_type": "optional",
+                "type": "int",
+                "default_value": 0
+            }
+        ]
+    }
+]
