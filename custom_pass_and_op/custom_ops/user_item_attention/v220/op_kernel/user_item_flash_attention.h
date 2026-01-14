@@ -20,7 +20,6 @@ limitations under the License.
 
 namespace kernels {
 
-#define BUFFER_NUM 2
 constexpr uint32_t UB_BLOCK_BYTES = 32;
 constexpr uint32_t ELM_NUM_PER_BLOCK_FLOAT = 8;
 constexpr uint32_t ELM_NUM_PER_BLOCK_FP16 = 16;
@@ -116,7 +115,6 @@ public:
             value_item_gm_.SetGlobalBuffer(reinterpret_cast<__gm__ InputT*>(value_item));
         }
 
-        key_item_gm_.SetGlobalBuffer(reinterpret_cast<__gm__ InputT*>(key_item));
         attn_out_gm_.SetGlobalBuffer(reinterpret_cast<__gm__ InputT*>(attn_out));
         uint32_t per_core_workspace_size =
             tiling_.gemm_qk_res_size * 2 + tiling_.gemm_pv_res_size * 2 + tiling_.gemm_aggr_res_size;
@@ -198,8 +196,8 @@ public:
 
             for (int32_t kv_loop = 0; kv_loop < total_kv_loop_cnt; kv_loop++) {
                 uint32_t idx_0 = loop_cnt % 3;
-                uint32_t idx_1 = (loop_cnt - 1) % 3;
-                uint32_t idx_2 = (loop_cnt - 2) % 3;
+                uint32_t idx_1 = (loop_cnt + 2) % 3;
+                uint32_t idx_2 = (loop_cnt + 1) % 3;
                 flipPingPong(loop_cnt);
                 item_batch_idx_que[idx_0] = item_batch_idx;
                 head_num_idx_que[idx_0] = head_num_idx;
@@ -368,9 +366,6 @@ private:
         softmax_in_ub = comm_in_que_.DeQue<CalcT>();
         LocalTensor<CalcT> vec_cal_ub = vec_tmp_buf_.Get<CalcT>();
         Muls(vec_cal_ub, softmax_in_ub, static_cast<CalcT>(tiling_.score_scale), item_batch_size);
-        auto event_v_s = static_cast<int32_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_S));
-        SetFlag<AscendC::HardEvent::V_S>(event_v_s);
-        WaitFlag<AscendC::HardEvent::V_S>(event_v_s);
         for (int32_t i = 0; i < item_batch_size; i++) {
             Duplicate(max_ub[i * ELM_NUM_PER_BLOCK_FLOAT], vec_cal_ub.GetValue(i), ELM_NUM_PER_BLOCK_FLOAT);
         }
@@ -408,7 +403,6 @@ private:
         uint32_t loop_times = DivCeil(item_q_block_size, vec_q_block_size);
         uint32_t align_kv_block_size = user_kv_block_size;
         LocalTensor<CalcT> vec_cal_ub = vec_tmp_buf_.Get<CalcT>();
-        LocalTensor<uint8_t> softmax_tmp_ub = softmax_tmp_buf_.Get<uint8_t>();
         if (user_kv_block_size < tiling_.user_kv_seq_block) {
             align_kv_block_size = DivCeil(user_kv_block_size, vec_element_num) * vec_element_num;
         }
