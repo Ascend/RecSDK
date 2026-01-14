@@ -84,8 +84,8 @@ def _check_admit_key_count(data_loader_golden, embedding_configs: List[EmbCacheE
 
     # 2 读取保存目录下的key count
     
-    key_file_saved = os.path.join(_SAVE_PATH, "table{}", "rank{}".format(rank), "key", "slice.data")
-    count_file_saved = os.path.join(_SAVE_PATH, "table{}", "rank{}".format(rank), "admit_count", "slice.data")
+    key_file_saved = os.path.join(_SAVE_PATH, "table{}", "key", "slice.data")
+    count_file_saved = os.path.join(_SAVE_PATH, "table{}", "admit_count", "slice.data")
     table_key_count_saved = [{} for _ in range(len(embedding_configs))]
     for i in range(len(embedding_configs)):
         if not os.path.exists(key_file_saved.format(i)):
@@ -96,8 +96,9 @@ def _check_admit_key_count(data_loader_golden, embedding_configs: List[EmbCacheE
         count_data = np.fromfile(count_file_saved.format(i), dtype=np.int64).reshape(-1)
         for index in range(key_data.shape[0]):
             ids = key_data[index]
-            count = count_data[index]
-            table_key_count_saved[i][ids] = count
+            if ids % WORLD_SIZE == rank:
+                count = count_data[index]
+                table_key_count_saved[i][ids] = count
 
     logging.info("rankId:" + str(rank) + ", table_key_count:%s", table_key_count)
     logging.info("rankId:" + str(rank) + ", table_key_count_saved:%s", table_key_count_saved)

@@ -38,7 +38,10 @@ void AddEmbCacheManager(pybind11::module_& m)
              py::arg("jagged_offs"), py::arg("table_indices") = std::vector<int32_t>{})
         .def("embedding_to_host", &EmbcacheManager::Embedding2Host, py::arg("weights_dev"), py::arg("momentum_devs"))
         .def("save", &EmbcacheManager::Save, py::arg("path"), py::arg("rank"), py::arg("incremental"))
-        .def("load", &EmbcacheManager::Load, py::arg("path"), py::arg("rank"), py::arg("incremental"));
+        .def("merge_files", &EmbcacheManager::MergeFiles, py::arg("path"), py::arg("world_size"))
+        .def("load",
+             static_cast<void(EmbcacheManager::*)(const std::string&, int, int, bool)>(&EmbcacheManager::Load),
+             py::arg("path"), py::arg("rank"), py::arg("world_size"), py::arg("incremental"));
 }
 
 void AddInitializerType(pybind11::module_& m)
