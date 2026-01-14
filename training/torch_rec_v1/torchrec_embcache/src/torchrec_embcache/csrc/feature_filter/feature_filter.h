@@ -43,6 +43,10 @@ public:
     void LoadFeatureRecords(const std::vector<int64_t>& keys, std::vector<uint64_t>& counts);
     void LoadTimestampRecords(const std::vector<int64_t>& keys, std::vector<int64_t>& timestamps);
 
+    // 清空准入统计、淘汰统计信息
+    void ClearFeatureCountMap();
+    void ClearFeatureTimestampMap();
+
 private:
     std::string tableName_;
 

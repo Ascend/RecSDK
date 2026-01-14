@@ -42,9 +42,9 @@ class InitializerType(Enum):
 class Saver:
     def __init__(self, rank: int = None):
     ...
-    def save(self, module: torch.nn.Module, path: str) -> None:
+    def save(self, module: torch.nn.Module, path: str, incremental: bool = False) -> None:
     ...
-    def load(self, module: torch.nn.Module, path: str) -> None:
+    def load(self, module: torch.nn.Module, path: str, incremental: bool = False) -> None:
 ```
 
 **使用约束<a name="section72467171850"></a>**
@@ -54,6 +54,9 @@ class Saver:
 3.  不支持纯显存模式下稀疏表保存/加载。
 4.  保存/加载接口不支持训练过程中调用/并发调用/异步调用，仅支持未执行训练/评估时调用接口。
 5.  保存/加载接口仅支持保存/加载本地文件系统。
+6.  增量保存加载不支持准入淘汰功能
+7.  增量保存加载仅支持pipeline模式下的训练产生的增量数据的保存和加载
+8.  增量保存加载功能需要创建表时在EmbCacheEmbeddingBagConfig/EmbCacheEmbeddingConfig添加is_incremental参数，详见[创表接口](table_creation_apis.md)
 
 **参数说明<a name="section888634319218"></a>**
 

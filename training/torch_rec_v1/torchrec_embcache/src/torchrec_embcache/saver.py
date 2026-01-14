@@ -22,6 +22,8 @@ SAVE_PATH_MAX_LEN = 1024
 TIMESTAMP_FORMAT = "%Y%m%d%H%M%S"
 _MAX_RECURSIVE_TIMES = 500
 _MAX_LOOP_TIMES = 500
+_OPEN_FILE_MODE = 0o640
+_OPEN_FILE_FLAGS = os.O_CREAT | os.O_WRONLY | os.O_TRUNC
 
 
 class Saver:
@@ -65,7 +67,7 @@ class Saver:
     def _get_format_path():
         return datetime.now(tz=timezone.utc).strftime(TIMESTAMP_FORMAT)
 
-    def save(self, module: torch.nn.Module, path: str) -> None:
+    def save(self, module: torch.nn.Module, path: str, incremental: bool = False) -> None:
         check_path(path)
         if not isinstance(module, torch.nn.Module):
             raise ValueError(f"param `module` must an instance of torch.nn.Module, but got:{type(module)}")
@@ -74,36 +76,32 @@ class Saver:
             raise ValueError("when save, the status of torch.distributed.is_initialized() must be True, but got False.")
 
         path = os.path.realpath(path)
-        dist.barrier()
-        timestamp_data = int(Saver._get_format_path()) if self.rank == 0 else 0
-        timestamp_tensor = torch.tensor([timestamp_data], device="npu")
-        dist.broadcast(timestamp_tensor, src=0)
-        timestamp_str = str(timestamp_tensor[0].item())
-        logging.info("rank:%d, after broadcast, get current timestamp: %s", self.rank, timestamp_str)
-        path = os.path.join(path, timestamp_str)
 
         self.cache_module.clear()
         self._find_all_embed_cache_instance(module)
         self._check_emb_cache_instance_len()
         safe_makedirs(path)
+        if self.rank == 0:
+            meta_path = os.path.join(path, "meta.ini")
+            with os.fdopen(os.open(meta_path, _OPEN_FILE_FLAGS, _OPEN_FILE_MODE), "w") as f:
+                f.write(f"incremental={incremental}\n")
         logging.info("In save scene, path:%s, cache_module info:%s", path, self.cache_module)
         for mod in self.cache_module:
             logging.info("In save scene, embcache_mgr info:%s", mod.embcache_mgr)
             codegen = mod.get_batched_embedding_kernels()[0][0]
             momentum_list = [momentum.detach().to("cpu") for momentum in codegen.get_momentum()] 
             mod.embcache_mgr.embedding_to_host(codegen.weights_dev.detach().to("cpu"), momentum_list)
-            mod.embcache_mgr.save(path, self.rank)
+            mod.embcache_mgr.save(path, self.rank, incremental=incremental)
 
-    def load(self, module: torch.nn.Module, path: str) -> None:
+    def load(self, module: torch.nn.Module, path: str, incremental=False) -> None:
         check_path(path, need_exist=True, is_dir=True)
         self.cache_module.clear()
         self._find_all_embed_cache_instance(module)
         self._check_emb_cache_instance_len()
         path = os.path.realpath(path)
-        path = self.get_latest_load_path(path)
         check_path(path)
         for mod in self.cache_module:
-            mod.embcache_mgr.load(path, self.rank)
+            mod.embcache_mgr.load(path, self.rank, incremental)
 
     def _find_all_embed_cache_instance(self, module: EmbCacheShardedEmbeddingBagCollection, this_recur_step: int = 0):
         if this_recur_step >= _MAX_RECURSIVE_TIMES:

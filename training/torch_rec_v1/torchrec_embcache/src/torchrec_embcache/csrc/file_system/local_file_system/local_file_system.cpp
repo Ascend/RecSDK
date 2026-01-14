@@ -18,7 +18,6 @@ See the License for the specific language governing permissions and
 #include <iostream>
 #include <dirent.h>
 #include <sys/stat.h>
-#include <fcntl.h>
 #include <fstream>
 #include <filesystem>
 #include <unistd.h>
@@ -130,6 +129,32 @@ ssize_t LocalFileSystem::Write(const string& filePath, const char* fileContent, 
         writeBytesNum += res;
     }
     close(fd);
+    return writeBytesNum;
+}
+
+ssize_t LocalFileSystem::Write(const string& filePath, const char* fileContent, size_t dataSize, int fd)
+{
+    // 文件描述符fd由外部传入，由调用函数进行生命周期管理
+    size_t dataCol = dataSize;
+    size_t writeSize = 0;
+    size_t idx = 0;
+    ssize_t writeBytesNum = 0;
+
+    while (dataCol != 0) {
+        if (dataCol > oneTimeReadWriteLen) {
+            writeSize = oneTimeReadWriteLen;
+        } else {
+            writeSize = dataCol;
+        }
+        ssize_t res = write(fd, fileContent + idx, writeSize);
+        if (res == -1) {
+            close(fd);
+            return res;
+        }
+        dataCol -= writeSize;
+        idx += writeSize;
+        writeBytesNum += res;
+    }
     return writeBytesNum;
 }
 

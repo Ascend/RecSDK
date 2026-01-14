@@ -101,6 +101,7 @@ class EmbCacheEmbeddingBagConfig:
 |weight_init_stddev|float|可选| 权重初始化标准差，用于UNIFORM初始化类型，默认值0.05。                         |
 |initializer_type|InitializerType|可选| 权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。     |
 |admit_and_evict_config|AdmitAndEvictConfig|可选| 特征准入和淘汰配置，默认不启用准入和淘汰功能。预留参数，当前暂不支持。                      |
+|is_incremental|bool|可选| 开启增量保存和加载功能                      |
 
 
 **返回值说明<a name="section651195312311"></a>**
@@ -173,6 +174,7 @@ class EmbCacheEmbeddingConfig:
 |weight_init_stddev|float|可选|权重初始化标准差，用于UNIFORM初始化类型，默认值0.05。|
 |initializer_type|InitializerType|可选|权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。|
 |admit_and_evict_config|AdmitAndEvictConfig|可选|特征准入和淘汰配置，默认不启用准入和淘汰功能。|
+|is_incremental|bool|可选| 开启增量保存和加载功能                      |
 
 
 **返回值说明<a name="section651195312311"></a>**

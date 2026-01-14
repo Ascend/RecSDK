@@ -83,11 +83,9 @@ def _check_admit_key_count(data_loader_golden, embedding_configs: List[EmbCacheE
                     table_key_count[i][ids] = 1
 
     # 2 读取保存目录下的key count
-    # 获取最新的时间戳目录
-    latest_timestamp_dir = Saver.get_latest_load_path(_SAVE_PATH)
     
-    key_file_saved = os.path.join(latest_timestamp_dir, "table{}", "rank{}".format(rank), "key", "slice.data")
-    count_file_saved = os.path.join(latest_timestamp_dir, "table{}", "rank{}".format(rank), "admit_count", "slice.data")
+    key_file_saved = os.path.join(_SAVE_PATH, "table{}", "rank{}".format(rank), "key", "slice.data")
+    count_file_saved = os.path.join(_SAVE_PATH, "table{}", "rank{}".format(rank), "admit_count", "slice.data")
     table_key_count_saved = [{} for _ in range(len(embedding_configs))]
     for i in range(len(embedding_configs)):
         if not os.path.exists(key_file_saved.format(i)):

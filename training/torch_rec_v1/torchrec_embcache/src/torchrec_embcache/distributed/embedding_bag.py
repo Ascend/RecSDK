@@ -628,6 +628,10 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
     def embcache_mgr(self):
         return self._embcache_mgr
     
+    @property
+    def config_list(self):
+        return self._embedding_bag_configs
+    
     def _init_mean_pooling_callback(
         self,
         input_feature_names: List[str],
@@ -788,6 +792,20 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                 sparse_features_after_dist[0].values(),
                 sparse_features_after_dist[0].offset_per_key(),
             )
+        
+    def record_batch_keys_async(
+        self, sparse_features_after_dist: KJTList
+    ) -> None:
+        if isinstance(sparse_features_after_dist[0], KeyedJaggedTensorWithLookHelper):
+            return self._embcache_mgr.record_batch_keys_async(
+                sparse_features_after_dist[0]._unique_ids,
+                sparse_features_after_dist[0]._unique_offset_list_single,
+            )
+        else:
+            return self._embcache_mgr.record_batch_keys_async(
+                sparse_features_after_dist[0].values(),
+                sparse_features_after_dist[0].offset_per_key(),
+            )
 
     def host_embedding_update_async(
         self,
@@ -868,6 +886,8 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                         weight_init_max=embedding_config.get_weight_init_max(),
                         weight_init_mean=emb_original_config.weight_init_mean,
                         weight_init_stddev=emb_original_config.weight_init_stddev,
+                        num_features=emb_original_config.num_features(),
+                        is_incremental=emb_original_config.is_incremental
                     )
                 )
         return EmbcacheManager(emb_configs, need_accumulate_offset)

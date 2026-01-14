@@ -134,6 +134,9 @@ public:
     AsyncTask<SwapInfo> ComputeSwapInfoAsync(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
                                              const std::vector<int32_t>& tableIndices);
 
+    AsyncTask<void> RecordBatchKeysAsync(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
+                                             const std::vector<int32_t>& tableIndices);
+
     AsyncTask<SwapinTensor> EmbeddingLookupAsync(const SwapInfo& swapInfo, const std::vector<int32_t>& tableIndices);
 
     AsyncTask<void> EmbeddingUpdateAsync(const SwapInfo& swapInfo, const at::Tensor& swapoutEmbs,
@@ -150,11 +153,11 @@ public:
 
     void RecordEmbeddingUpdateTimes();
 
-    void Save(const std::string& path, const int rank);
+    void Save(const std::string& path, int rank, bool incremental);
 
     void Embedding2Host(const at::Tensor& weightsDev, const std::vector<at::Tensor>& momentumDev);
 
-    void Load(const std::string& path, int rank);
+    void Load(const std::string& path, int rank, bool incremental);
 
 private:
     SwapInfo ComputeSwapInfo(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
@@ -177,6 +180,8 @@ private:
     void Check4Write(const std::shared_ptr<FileSystem>& fileSystemPtr, const std::string& filePath, int rank);
     void WriteData(const std::shared_ptr<FileSystem>& fileSystemPtr, const std::string& filePath, const char* dataAddr,
                    size_t dataSize);
+    void WriteData(const std::shared_ptr<FileSystem>& fileSystemPtr, const std::string& filePath, const char* dataAddr,
+                   size_t dataSize, int fd);
     static std::shared_ptr<FileSystem> GetFileSystem(const std::string& path);
 
     template <class T>
@@ -202,8 +207,36 @@ private:
                               int32_t tableIndex, const std::string& filePrefix);
     void LoadFeatureAdmitAndEvictInfo(const std::shared_ptr<FileSystem>& fileSystemPtr,
                                       int32_t tableIndex, const std::string& filePrefix,
-                                      const std::vector<int64_t>& saveKeys);
+                                      const std::vector<int64_t>& saveKeys,
+                                      bool incremental);
+    void RecordBatchKeys(const at::Tensor& batchKeys, const std::vector<int64_t>& offsetPerKey,
+                         const std::vector<int32_t>& tableIndices);
+    std::vector<int64_t> GetNewOffsetPerKey(const std::vector<int64_t>& offsetPerKey,
+                                            const std::vector<int32_t> curTableIndices) const;
     static int32_t GetOneTimeLoadCount(int32_t embDim);
+
+    struct EmbeddingTableWriteContext {
+        std::shared_ptr<FileSystem> fileSystem;
+        std::string tableName;
+        int embDim = 0;
+        int optimNum = 0;
+        bool admitEnabled = false;
+
+        std::string keyDataFile;
+        std::string embDataFile;
+        std::string momentum1DataFile;
+        std::string momentum2DataFile;
+
+        int keyFd = -1;
+        int embFd = -1;
+        int m1Fd = -1;
+        int m2Fd = -1;
+
+        std::vector<int64_t>* saveKeys = nullptr;
+    };
+
+    void WriteEmbeddingEntry(int64_t key, const float* value, const EmbeddingTableWriteContext& ctx);
+
 private:
     int32_t embNum_;
     std::vector<int32_t> embTableIndies_;
@@ -211,6 +244,7 @@ private:
     std::vector<SwapManager> swapManagers_;
     std::vector<std::unique_ptr<EmbTable>> embeddingTables_;
     std::vector<std::unique_ptr<FeatureFilter>> featureFilters_;  // 索引直接对应表索引，未启用的为nullptr
+    std::vector<std::unordered_set<int64_t>> incrementalKeySets_;
 
     uint64_t swapCount_ = 0;       // ComputeSwapInfo 执行次数
     uint64_t embUpdateCount_ = 0;  // EmbeddingUpdate 执行次数
