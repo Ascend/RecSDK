@@ -120,10 +120,10 @@ bool TilingPolicy::TilingShape(gert::TilingContext* context, optiling::HstuDense
 bool TilingPolicy::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim, bool dimAlign)
 {
     auto dimStep = dimAlign ? 16 : 1; // 16 means align to C0_size 1 means not align
-    static const ShapeRange SEQ_RANGE(1, 20480, 1, "seq size");
-    static const ShapeRange BATCH_RANGE(1, MAX_BATCH_SIZE, 1, "batch size");
-    static const ShapeRange DIM_RANGE(16, 512, dimStep, "dim size");
-    static const ShapeRange HEAD_RANGE(1, 16, 1, "head num");
+    const ShapeRange SEQ_RANGE(1, 20480, 1, "seq size");
+    const ShapeRange BATCH_RANGE(1, MAX_BATCH_SIZE, 1, "batch size");
+    const ShapeRange DIM_RANGE(dimStep, 512, dimStep, "dim size"); // 非对齐情况下dim范围[1,512]
+    const ShapeRange HEAD_RANGE(1, 16, 1, "head num");
 
     if (!SEQ_RANGE.Check(seqLen)) {
         return false;
