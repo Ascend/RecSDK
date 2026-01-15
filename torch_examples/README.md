@@ -23,10 +23,17 @@
 #!/bin/bash
 container_name=$1
 image_name=$2
+free_devices=$(npu-smi info | grep 'No running processes found in NPU' | grep -o '[0-9]\+' | paste -sd ',' -)
+
+if [ -z "${free_devices}" ]; then
+    echo "No free devices! Stop docker running."
+    exit 1
+fi
+
 docker run \
 -it \
 --name "${container_name}" \
--e ASCEND_VISIBLE_DEVICES=0-7 \
+-e ASCEND_VISIBLE_DEVICES="${free_devices}" \
 --shm-size="300g" \
 -m 300g \
 -v /etc/localtime:/etc/localtime:ro \
@@ -36,8 +43,9 @@ docker run \
 /bin/bash
 ```
 部分参数说明：
+- free_devices：检测当前空闲NPU卡号
 - -m 300g：设置容器内使用内存大小，可根据实际情况进行配置。
-- -e ASCEND_VISIBLE_DEVICES=0-7：将服务器上编号为device0-device7的NPU设备挂载到容器内，可根据实际情况进行配置。
+- -e ASCEND_VISIBLE_DEVICES="${free_devices}"：将服务器上空闲的NPU设备挂载到容器内，可根据实际情况进行配置。
 
 执行如下命令新建容器：
 ```shell
