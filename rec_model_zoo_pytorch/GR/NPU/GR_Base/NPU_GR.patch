@@ -2022,22 +2022,26 @@ diff --git a/examples/hstu/rank.py b/examples/hstu/rank.py
 new file mode 100644
 --- /dev/null	(date 1761639257832)
 +++ b/examples/hstu/rank.py	(date 1761639257832)
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,41 @@
 +import torch
 +import torch_npu
 +
++input_tensor=[]
 +out_dict = {}
 +for i, file_name in enumerate(["eager_out.pt", "inductor_out.pt"]):
 +    eager_res = torch.load(file_name)
-+    sorted_values, sorted_indices = torch.sort(eager_res, dim=0)
++    sorted_values, sorted_indices = torch.sort(eager_res[0:100], dim=0)
 +
 +    # 将索引和值从张量转换为列表
 +    indices_list = sorted_indices.squeeze().tolist()
 +    values_list = sorted_values.squeeze().tolist()
++    input_tensor.append(values_list[-10:])
 +    out_dict[i] = indices_list
 +    # 打印结果
-+    print("rank10 idx:", indices_list[-10:])
-+    print("rank10 value:", values_list[-10:])
++    print(file_name+"rank10 idx:", indices_list[-10:][::-1])
++    print(file_name+"rank10 value:", values_list[-10:][::-1])
++
++
 +
 +l1 = out_dict[0]
 +l2 = out_dict[1]
@@ -2050,6 +2054,16 @@ new file mode 100644
 +    print("percise correct")
 +else:
 +    print(f"percise Error diff_list:{diff_list}")
++
++
++t1_abs = torch.abs(torch.tensor(input_tensor[0]))
++t2_abs = torch.abs(torch.tensor(input_tensor[1]))
++
++absolute_errors = torch.abs(t1_abs - t2_abs)
++relative_errors = absolute_errors / torch.abs(t1_abs)
++average_error = torch.mean(relative_errors)  # 计算平均相对误差
++
++print("inductor/eager结果 绝对相对误差是", absolute_errors.sum()/10)
 Index: examples/hstu/configs/inference_config.py
 IDEA additional info:
 Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP

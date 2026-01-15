@@ -42,7 +42,7 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples/hstu/benchmark/inference_benchmark_random_2k.py
 --- a/examples/hstu/benchmark/inference_benchmark_random_2k.py	(revision 0b6025d31aef182acd925192d0e8e735c91a195c)
 +++ b/examples/hstu/benchmark/inference_benchmark_random_2k.py	(date 1766024041387)
-@@ -51,12 +51,24 @@
+@@ -51,12 +51,25 @@
  is_use_npu_input = int(os.getenv("USE_NPU_INPUT")) == 1
  batch_size = int(os.getenv("BATCH_SIZE", "1"))
  layer_num = int(os.getenv("LAYER_NUM", "1"))
@@ -53,8 +53,9 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples
 +candidate_len = int(os.getenv("CANDIDATE_LEN", "1"))
  use_float16 = int(os.getenv("USE_FLOAT16", "0")) == 1
 +use_float32 = int(os.getenv("USE_FLOAT32", "0")) == 1
-+use_random_parm=int(os.getenv("USE_RANDOM_PARM", "0")) == 1
-+parm_value=float(os.getenv("PARM_MAX_VALUE", "0.5"))
++use_random_parm = int(os.getenv("USE_RANDOM_PARM", "0")) == 1
++parm_value = float(os.getenv("PARM_MAX_VALUE", "0.5"))
++test_dynamic = int(os.getenv("TEST_DYNAMIC", "0")) == 1
 +
 +torch.backends.cuda.matmul.allow_tf32 = True
 +torch.backends.cudnn.allow_tf32 = True
@@ -69,7 +70,7 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples
      max_incremental_seqlen = (max_seqlen - max_num_candidates) // 2
  
      # context_emb_size = 1000
-@@ -75,14 +87,19 @@
+@@ -75,14 +88,21 @@
          [fc.max_sequence_length * len(fc.feature_names) for fc in feature_configs]
      )
  
@@ -87,14 +88,17 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples
 +        inference_dtype = torch.float32
 +    else:
 +        inference_dtype = torch.bfloat16
++
++    bs_list = [max_batch_size] if not test_dynamic else [2**i for i in range(math.ceil(math.log2(max_batch_size)) + 1)]
      hstu_cudagraph_configs = {
-         "batch_size": [2**i for i in range(math.ceil(math.log2(max_batch_size)) + 1)],
+-        "batch_size": [2**i for i in range(math.ceil(math.log2(max_batch_size)) + 1)],
 -        "length_per_sequence": [i * 256 for i in range(8, 9)],
++        "batch_size": bs_list,
 +        "length_per_sequence": [max_seqlen],
      }
  
  
-@@ -92,7 +109,7 @@
+@@ -92,7 +112,7 @@
          num_attention_heads=num_heads,
          head_dim=head_dim,
          dtype=inference_dtype,
@@ -103,7 +107,7 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples
          max_batch_size=max_batch_size,
      )
  
-@@ -127,10 +144,15 @@
+@@ -127,10 +147,15 @@
              cudagraph_configs=hstu_cudagraph_configs,
          )
  
@@ -123,7 +127,7 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples
          model_predict.to(torch.cuda.current_device())
  
          total_params = sum(param.numel() for name, param in model_predict.named_parameters()
-@@ -141,10 +163,14 @@
+@@ -141,10 +166,14 @@
  
          if use_float16:
              model_predict.half()
@@ -138,6 +142,26 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples
  
          data_generator = RandomInferenceDataGenerator(
              feature_configs=feature_configs,
+@@ -159,12 +188,13 @@
+             full_mode=True,
+         )
+ 
+-        print("动态bs测试开始，接下来将初始N组随机seq_len和bs进行测试")
+-        for bs in range(1,max_batch_size+1):
+-            uids = torch.tensor([bs*10 for i in range(bs)], dtype=torch.int64)
+-            batch = data_generator.get_random_inference_batch(uids, torch.tensor([-1] * bs, dtype=torch.int32))
+-            print("[model input shape is]", batch.features.values().shape)
+-            result = model_predict.forward(batch, uids)
++        if test_dynamic:
++            print("动态bs测试开始，接下来将初始N组随机seq_len和bs进行测试")
++            for bs in range(1,max_batch_size+1):
++                uids = torch.tensor([bs*10 for i in range(bs)], dtype=torch.int64)
++                batch = data_generator.get_random_inference_batch(uids, torch.tensor([-1] * bs, dtype=torch.int32))
++                print("[model input shape is]", batch.features.values().shape)
++                result = model_predict.forward(batch, uids)
+ 
+         print("性能测试-预热开始！")
+         num_warmup_batches = 1
 Index: examples/hstu/modules/paged_hstu_infer_layer.py
 IDEA additional info:
 Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
@@ -755,7 +779,7 @@ diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k.sh
  export SAVE_INPUT_AND_PUTPUT=1
  
 +export USE_MOE_OP=1
-+
++export TEST_DYNAMIC=0
 +
  #执行
  python3  benchmark/inference_benchmark_random_2k.py
