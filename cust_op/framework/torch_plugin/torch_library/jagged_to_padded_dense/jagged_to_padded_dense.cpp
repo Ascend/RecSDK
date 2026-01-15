@@ -124,6 +124,15 @@ at::Tensor jagged_to_padded_dense_backward_npu(const at::Tensor& grad_output,
     return dense_to_jagged_forward_npu(grad_output, offsets, total_L);
 };
 
+at::Tensor jagged_2d_to_dense_npu(at::Tensor values,
+                                  at::Tensor offsets,
+                                  c10::SymInt max_sequence_length)
+{
+    const int64_t max_L = max_sequence_length.guard_int(__FILE__, __LINE__);
+    return jagged_to_padded_dense_forward_npu_v1(values, {offsets}, max_L, 0.0);
+}
+
+
 // 自动求导Function类
 class JaggedToPaddedDenseV1 : public torch::autograd::Function<JaggedToPaddedDenseV1> {
 public:
@@ -200,6 +209,16 @@ at::Tensor jagged_to_padded_dense_npu_v2_autograd(const at::Tensor& values,
     return JaggedToPaddedDenseV2::apply(values, offsets, max_lengths, padding_value);
 }
 
+at::Tensor jagged_2d_to_dense_npu_autograd(at::Tensor values,
+                                           at::Tensor offsets,
+                                           c10::SymInt max_sequence_length)
+{
+    const int64_t max_L = max_sequence_length.guard_int(__FILE__, __LINE__);
+    tensor_list offsets_list = {offsets};
+    return JaggedToPaddedDenseV1::apply(values, offsets_list, max_L, 0.0);
+}
+
+
 }  // namespace fbgemm_npu
 
 TORCH_LIBRARY_FRAGMENT(mxrec, m)
@@ -227,6 +246,9 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
     m.def("jagged_to_padded_dense_backward(Tensor grad, "
           "                                Tensor[] offsets, "
           "                                int total_L) -> Tensor");
+    m.def("jagged_2d_to_dense(Tensor values, "
+          "                   Tensor offsets, "
+          "                   SymInt max_sequence_length) -> Tensor");
 }
 
 TORCH_LIBRARY_FRAGMENT(fbgemm, m)
@@ -257,6 +279,9 @@ TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
         torch::dispatch(c10::DispatchKey::PrivateUse1,
                       TORCH_FN(fbgemm_npu::jagged_to_padded_dense_forward_npu_v2)));
     m.impl("jagged_to_padded_dense_backward", &fbgemm_npu::jagged_to_padded_dense_backward_npu);
+    m.impl("jagged_2d_to_dense",
+        torch::dispatch(c10::DispatchKey::PrivateUse1,
+                      TORCH_FN(fbgemm_npu::jagged_2d_to_dense_npu)));
 }
 
 TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m)
@@ -274,6 +299,9 @@ TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m)
         torch::dispatch(c10::DispatchKey::PrivateUse1,
                       TORCH_FN(fbgemm_npu::jagged_to_padded_dense_forward_npu_v2)));
     m.impl("jagged_to_padded_dense_backward", &fbgemm_npu::jagged_to_padded_dense_backward_npu);
+    m.impl("jagged_2d_to_dense",
+        torch::dispatch(c10::DispatchKey::PrivateUse1,
+                      TORCH_FN(fbgemm_npu::jagged_2d_to_dense_npu)));
 }
 
 // 注册自动求导实现
@@ -281,10 +309,12 @@ TORCH_LIBRARY_IMPL(mxrec, AutogradPrivateUse1, m)
 {
     m.impl("jagged_to_padded_dense.v1", TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v1_autograd));
     m.impl("jagged_to_padded_dense.v2", TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v2_autograd));
+    m.impl("jagged_2d_to_dense", TORCH_FN(fbgemm_npu::jagged_2d_to_dense_npu_autograd));
 }
 
 TORCH_LIBRARY_IMPL(fbgemm, AutogradPrivateUse1, m)
 {
     m.impl("jagged_to_padded_dense.v1", TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v1_autograd));
     m.impl("jagged_to_padded_dense", TORCH_FN(fbgemm_npu::jagged_to_padded_dense_npu_v2_autograd));
+    m.impl("jagged_2d_to_dense", TORCH_FN(fbgemm_npu::jagged_2d_to_dense_npu_autograd));
 }

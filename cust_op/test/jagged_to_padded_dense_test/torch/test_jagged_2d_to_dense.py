@@ -26,40 +26,38 @@ import torch_npu
 from test_comm_utils import (
     ExecuteConfig,
     Scenario,
-    PRECISION_ERROR_RANGE,
     VALUES_DATA_TYPES,
     generate_jagged_tensor,
 )
 
-# 加载NPU自定义算子库
-torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-# 设置用的卡号
 DEVICE = "npu:0"
+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 
-def jagged_to_padded_dense_wrapper(values, offsets, max_lengths, padding_value, is_mxrec):
-    return JaggedToPaddedDense.apply(values, offsets, max_lengths, padding_value, is_mxrec)
+def jagged_2d_to_dense_wrapper(values, offsets, max_lengths, is_mxrec):
+    return Jagged2DToDense.apply(values, offsets, max_lengths, is_mxrec)
 
 
-class JaggedToPaddedDense(torch.autograd.Function):
+class Jagged2DToDense(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, values, offsets, max_lengths, padding_value, is_mxrec):
-        ctx.save_for_backward(*offsets)
+    def forward(ctx, values, offsets, max_lengths, is_mxrec):
+        offsets_tensor = offsets[0] if isinstance(offsets, (list, tuple)) else offsets
+        ctx.save_for_backward(offsets_tensor)
         ctx.total_L = values.shape[0]
         ctx.is_mxrec = is_mxrec
+        max_sequence_length = max(max_lengths)
+
         if is_mxrec:
-            return torch.ops.mxrec.jagged_to_padded_dense_forward(
+            return torch.ops.mxrec.jagged_2d_to_dense(
                 values=values.to(DEVICE),
-                offsets=offsets,
-                max_lengths=max(max_lengths),
-                padding_value=padding_value,
+                offsets=offsets_tensor.to(DEVICE),
+                max_sequence_length=max_sequence_length,
             )
         else:
-            return torch.ops.fbgemm.jagged_to_padded_dense_forward(
+            return torch.ops.fbgemm.jagged_2d_to_dense(
                 values=values.to(DEVICE),
-                offsets=offsets,
-                max_lengths=max(max_lengths),
-                padding_value=padding_value,
+                offsets=offsets_tensor.to(DEVICE),
+                max_sequence_length=max_sequence_length,
             )
 
     @staticmethod
@@ -70,9 +68,17 @@ class JaggedToPaddedDense(torch.autograd.Function):
         if total_L is None:
             total_L = offsets[0][-1].item()
         if is_mxrec:
-            grad_values = torch.ops.mxrec.jagged_to_padded_dense_backward(grad_output.to(DEVICE), offsets, total_L)
+            grad_values = torch.ops.mxrec.jagged_to_padded_dense_backward(
+                grad_output.to(DEVICE),
+                [offsets[0].to(DEVICE)],
+                total_L
+            )
         else:
-            grad_values = torch.ops.fbgemm.jagged_to_padded_dense_backward(grad_output.to(DEVICE), offsets, total_L)
+            grad_values = torch.ops.fbgemm.jagged_to_padded_dense_backward(
+                grad_output.to(DEVICE),
+                [offsets[0].to(DEVICE)],
+                total_L
+            )
         return grad_values, None, None, None, None
 
 
@@ -82,33 +88,27 @@ def run_case(params):
     max_seq_len = params["max_seq_len"]
     num_heads = params.get("num_heads", 2)
     attention_dim = params.get("attention_dim", 16)
-    padding_value = float(params.get("padding_value", 0.0))
-    case_tag = params.get("case_tag", "case")
     data_types = (dtype, torch.int64)
     jagged_tensor, seq_offsets, _ = generate_jagged_tensor(
         batch_size, max_seq_len, num_heads, attention_dim, data_types=data_types)
     input_flat = jagged_tensor.reshape(jagged_tensor.shape[0], -1)
     offsets_tensor = torch.from_numpy(seq_offsets)
 
-    reference_dense = torch.ops.fbgemm.jagged_to_padded_dense(
+    reference_dense = torch.ops.fbgemm.jagged_2d_to_dense(
         input_flat,
-        [offsets_tensor],
-        [max_seq_len],
-        padding_value
+        offsets_tensor,
+        max_seq_len
     )
-    npu_dense = torch.ops.mxrec.jagged_to_padded_dense(
+    npu_dense = torch.ops.mxrec.jagged_2d_to_dense(
         input_flat.to(DEVICE),
-        [offsets_tensor.to(DEVICE)],
-        [max_seq_len],
-        padding_value
+        offsets_tensor.to(DEVICE),
+        max_seq_len
     )
     npu_cpu = npu_dense.cpu()
 
-    assert torch.allclose(
+    assert torch.equal(
         reference_dense.reshape(-1),
         npu_cpu.reshape(-1),
-        atol=PRECISION_ERROR_RANGE[dtype],
-        rtol=PRECISION_ERROR_RANGE[dtype]
     ), f"NPU结果与FBGEMM CPU结果不匹配\nFBGEMM:\n{reference_dense}\nNPU:\n{npu_cpu}"
 
 
@@ -117,7 +117,7 @@ test_params = {
     "max_seq_len": [128, 256],
     "num_heads": [2, 8],
     "attention_dim": [32],
-    "use_list_max_lengths": [True, False],
+    "use_list_max_lengths": [False],
     "values_data_type": VALUES_DATA_TYPES,
     "offsets_data_type": [torch.int32, torch.int64],
 }
@@ -127,7 +127,7 @@ test_params = {
     ExecuteConfig(*v) for v in itertools.product(*test_params.values())
 ])
 @pytest.mark.parametrize("is_mxrec", [True, False])
-def test_jagged_to_padded_dense(config: ExecuteConfig, is_mxrec: bool):
+def test_jagged_2d_to_dense(config: ExecuteConfig, is_mxrec: bool):
     """
     测试不规则张量到填充密集张量的转换算子
     测试逻辑:
@@ -141,7 +141,6 @@ def test_jagged_to_padded_dense(config: ExecuteConfig, is_mxrec: bool):
     max_seq_len = config.max_seq_len
     num_heads = config.num_heads
     attention_dim = config.attention_dim
-    use_list_max_lengths = config.use_list_max_lengths
     values_data_type = config.values_data_type
     offsets_data_type = config.offsets_data_type
 
@@ -156,35 +155,30 @@ def test_jagged_to_padded_dense(config: ExecuteConfig, is_mxrec: bool):
 
     # ===== 前向传播验证 =====
     # 3. 调用FBGEMM CPU实现
-    fbgemm_dense = torch.ops.fbgemm.jagged_to_padded_dense(
+    fbgemm_dense = torch.ops.fbgemm.jagged_2d_to_dense(
         input_flat,
-        [fbgemm_offsets],
-        [max_seq_len],
-        0.0  # 填充值
+        fbgemm_offsets,
+        max_seq_len
     )
 
     # 4. 调用NPU算子
     if is_mxrec:
-        npu_dense = torch.ops.mxrec.jagged_to_padded_dense(
+        npu_dense = torch.ops.mxrec.jagged_2d_to_dense(
             input_flat.to(DEVICE),
-            [fbgemm_offsets.to(DEVICE)],
-            [max_seq_len] if use_list_max_lengths else max_seq_len,
-            0.0
+            fbgemm_offsets.to(DEVICE),
+            max_seq_len
         )
     else:
-        npu_dense = torch.ops.fbgemm.jagged_to_padded_dense(
+        npu_dense = torch.ops.fbgemm.jagged_2d_to_dense(
             input_flat.to(DEVICE),
-            [fbgemm_offsets.to(DEVICE)],
-            [max_seq_len] if use_list_max_lengths else max_seq_len,
-            0.0
+            fbgemm_offsets.to(DEVICE),
+            max_seq_len
         )
 
     # 5. 前向传播结果比对
-    assert torch.allclose(
+    assert torch.equal(
         fbgemm_dense.reshape(-1),
         npu_dense.cpu().reshape(-1),
-        atol=PRECISION_ERROR_RANGE[values_data_type],
-        rtol=PRECISION_ERROR_RANGE[values_data_type]
     ), f"NPU结果与FBGEMM CPU结果不匹配\nFBGEMM:\n{fbgemm_dense}\nNPU:\n{npu_dense.cpu()}"
 
     # ===== 反向传播验证 =====
@@ -194,26 +188,23 @@ def test_jagged_to_padded_dense(config: ExecuteConfig, is_mxrec: bool):
 
     # 7. 计算NPU前向传播
     if is_mxrec:
-        npu_dense_for_grad = torch.ops.mxrec.jagged_to_padded_dense(
+        npu_dense_for_grad = torch.ops.mxrec.jagged_2d_to_dense(
             input_flat_npu,
-            [fbgemm_offsets.to(DEVICE)],
-            [max_seq_len] if use_list_max_lengths else max_seq_len,
-            0.0
+            fbgemm_offsets.to(DEVICE),
+            max_seq_len
         )
     else:
-        npu_dense_for_grad = torch.ops.fbgemm.jagged_to_padded_dense(
+        npu_dense_for_grad = torch.ops.fbgemm.jagged_2d_to_dense(
             input_flat_npu,
-            [fbgemm_offsets.to(DEVICE)],
-            [max_seq_len] if use_list_max_lengths else max_seq_len,
-            0.0
+            fbgemm_offsets.to(DEVICE),
+            max_seq_len
         )
 
     # 8. 计算NPU python实现前向传播
-    npu_py_dense_for_grad = jagged_to_padded_dense_wrapper(
+    npu_py_dense_for_grad = jagged_2d_to_dense_wrapper(
         input_flat_npu_py,
         [fbgemm_offsets.to(DEVICE)],
         [max_seq_len],
-        0.0,
         is_mxrec
     )
 
@@ -229,38 +220,34 @@ def test_jagged_to_padded_dense(config: ExecuteConfig, is_mxrec: bool):
     npu_py_grad_input = input_flat_npu_py.grad
 
     # 12. 梯度比对
-    assert torch.allclose(
+    assert torch.equal(
         npu_py_grad_input.cpu(),
         npu_grad_input.cpu(),
-        atol=PRECISION_ERROR_RANGE[values_data_type],
-        rtol=PRECISION_ERROR_RANGE[values_data_type]
     ), f"NPU python梯度与NPU梯度不匹配\nNPU python梯度:\n{npu_py_grad_input.cpu()}\nNPU梯度:\n{npu_grad_input.cpu()}"
 
 
 SCENARIOS = [
-    # 浮点常规 padding 值：覆盖多组 batch / max_seq_len / padding 组合
+    # 浮点常规场景：覆盖多组 batch / max_seq_len / dtype 组合
     Scenario(
         scenario_id="fp32_padding_values",
         base={"dtype": torch.float32, "num_heads": 2, "attention_dim": 16},
         sweep={
             "batch_size": [2, 4],
             "max_seq_len": [64, 128],
-            "padding_value": [0.0, -1.0, 1.0, -0.5, 0.5, 1e-6, -1e-6, 100.0, -100.0],
             "dtype": [torch.float32, torch.int64, torch.float16, torch.bfloat16, torch.int32]
         },
     ),
-    # 浮点边界场景：小/大 batch 与极端 padding
+    # 浮点边界场景：小/大 batch 与极端 max_seq_len
     Scenario(
         scenario_id="fp32_edge_cases",
-        base={"dtype": torch.float32, "padding_value": -999.99, "num_heads": 2, "attention_dim": 16},
+        base={"dtype": torch.float32, "num_heads": 2, "attention_dim": 16},
         sweep={"batch_size": [1, 8, 16], "max_seq_len": [1, 512, 1024]},
     ),
-    # 浮点精度场景：极小/极大 padding，验证容差设置
+    # 浮点精度场景：极小/极大维度覆盖
     Scenario(
         scenario_id="fp32_precision",
         base={"dtype": torch.float32, "batch_size": 2, "max_seq_len": 32, "num_heads": 2, "attention_dim": 16},
-        sweep={"padding_value": [1e-10, -1e-10, 1e10, -1e10, 9007199254740991.0, -9007199254740991.0,
-            9007199254740992.0, -9007199254740992.0]},
+        sweep={},
     ),
     # 浮点维度覆盖：多种 num_heads / attention_dim 组合
     Scenario(
@@ -269,13 +256,12 @@ SCENARIOS = [
         sweep={
             "num_heads": [1, 16, 32],
             "attention_dim": [1, 64, 128],
-            "padding_value": [0.0, -1.0, 1.0],
         },
     ),
-    # int64 基线：padding=0，覆盖多种 batch / seq / head 组合
+    # int64 基线：覆盖多种 batch / seq / head 组合
     Scenario(
         scenario_id="int64_baseline",
-        base={"dtype": torch.int64, "padding_value": 0},
+        base={"dtype": torch.int64},
         sweep={
             "batch_size": [2, 4],
             "max_seq_len": [64, 128],
@@ -283,31 +269,6 @@ SCENARIOS = [
             "attention_dim": [16, 32],
         },
     ),
-    # int64 不同 padding 值：验证整型填充范围
-    Scenario(
-        scenario_id="int64_padding_values",
-        base={"dtype": torch.int64},
-        sweep={
-            "batch_size": [2],
-            "max_seq_len": [32, 64],
-            "num_heads": [2],
-            "attention_dim": [16],
-            "padding_value": [0, -1, 1, -100, 100, -2147483648, 2147483647, 9223372036854775807, -9223372036854775808],
-        },
-    ),
-    # float→int64 截断：确保 padding 区域写入截断值
-    Scenario(
-        scenario_id="int64_padding_truncation",
-        base={
-            "dtype": torch.int64,
-            "batch_size": 2,
-            "max_seq_len": 64,
-            "num_heads": 2,
-            "attention_dim": 16
-        },
-        sweep={"padding_value": [3.9, -2.7]},
-    ),
-
     # 超大shape测试
     Scenario(
         scenario_id="large_shape_test",
@@ -318,7 +279,6 @@ SCENARIOS = [
             "batch_size": 511,
         },
         sweep={
-            "padding_value": [0.0, 1024.0],
             "dtype": [torch.int64, torch.float32],
         },
     ),
@@ -328,8 +288,9 @@ ALL_SCENARIO_CASES = [{"id": sc.scenario_id, "runs": sc.expand()} for sc in SCEN
 
 
 @pytest.mark.parametrize("case", ALL_SCENARIO_CASES, ids=lambda c: c["id"])
-def test_jagged_to_padded_dense_scenarios(case):
+def test_jagged_2d_to_dense_scenarios(case):
     for idx, run in enumerate(case["runs"]):
         run = dict(run)
         run.setdefault("case_tag", f"{case['id']}_run{idx}")
         run_case(run)
+
