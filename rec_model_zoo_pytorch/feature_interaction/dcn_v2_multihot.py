@@ -25,7 +25,7 @@ from easydict import EasyDict as edict
 
 from datasets.criteo_multihot import *
 from utils.common import get_loop_element
-from utils.handler import ModelHandler, get_params, get_opts
+from utils.handler import ModelHandler, get_params, get_opts, set_all_seed
 
 
 class Cross(nn.Module):
@@ -48,6 +48,7 @@ class DCNV2MultiHot(nn.Module):
         super().__init__()
         self.params = params
         self.feature_embedding = []
+        self.check_precision = params.get("check_precision", False)
         
         idx = 0
         total_dims = 0
@@ -61,6 +62,8 @@ class DCNV2MultiHot(nn.Module):
             feat_table = nn.Embedding.from_pretrained(
                 torch.normal(mean=0, std=0.1, size=(num_embeddings, dim),generator=generator)
             ).to(params.device)
+            if self.check_precision:
+                torch.nn.init.uniform_(feat_table.weight, a=-1.0,b=1.0)
             self.feature_embedding.append(feat_table)
         
         self.deep_layers = []
@@ -151,6 +154,7 @@ if __name__ == "__main__":
         )
     )
     params = get_opts(sys.argv, params)
+    set_all_seed(params)
     params.deep_layers= [val * 2 for val in params.deep_layers]
     params.predict_layers= [val * 2 for val in params.predict_layers]
     params.embedding_size = [8, 16, 32, 64, 128]
