@@ -18,7 +18,6 @@ See the License for the specific language governing permissions and
 
 #include "kernel_operator.h"
 
-#include "hstu_dense_backward_jagged_kernel.h"
 #include "hstu_dense_backward_kernel.h"
 
 extern "C" __global__ __aicore__ void hstu_dense_backward(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask,
@@ -30,16 +29,7 @@ extern "C" __global__ __aicore__ void hstu_dense_backward(GM_ADDR grad, GM_ADDR 
     HstuDenseBackward::Args args{grad,      q,     k,     v,     mask,         attnBias,  seqOffset, numContext,
                                  numTarget, qGrad, kGrad, vGrad, attnBiasGrad, workspace, tiling};
 
-    if (TILING_KEY_IS(5)) {
-        HstuDenseBackward::HstuDenseBackwardJaggedKernel<float, DTYPE_SEQ_OFFSET_Q> kernel;
-        kernel.Compute(args);
-    } else if (TILING_KEY_IS(4)) {
-        HstuDenseBackward::HstuDenseBackwardJaggedKernel<bfloat16_t, DTYPE_SEQ_OFFSET_Q> kernel;
-        kernel.Compute(args);
-    } else if (TILING_KEY_IS(3)) {
-        HstuDenseBackward::HstuDenseBackwardJaggedKernel<half, DTYPE_SEQ_OFFSET_Q> kernel;
-        kernel.Compute(args);
-    } else if (TILING_KEY_IS(2)) {
+    if (TILING_KEY_IS(2)) {
         HstuDenseBackward::HstuDenseBackwardKernel<float, DTYPE_SEQ_OFFSET_Q> kernel;
         kernel.Compute(args);
     } else if (TILING_KEY_IS(1)) {

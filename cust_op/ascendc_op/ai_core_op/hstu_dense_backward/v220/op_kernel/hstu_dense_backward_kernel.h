@@ -37,6 +37,28 @@ struct BlockInfo {
     int64_t colLine;
 };
 
+struct Args {
+    GM_ADDR grad;
+    GM_ADDR q;
+    GM_ADDR k;
+    GM_ADDR v;
+    GM_ADDR mask;
+    GM_ADDR attnBias;
+    GM_ADDR seqOffset;
+    GM_ADDR numContext;
+    GM_ADDR numTarget;
+
+    GM_ADDR qGrad;
+    GM_ADDR kGrad;
+    GM_ADDR vGrad;
+    GM_ADDR attnBiasGrad;
+
+    GM_ADDR workspace;
+    GM_ADDR tiling;
+
+    const HstuDenseBackwardTilingData* __restrict tilingDataPtr = nullptr;
+};
+
 template <typename qType, typename oType>
 class HstuDenseBackwardKernel {
 public:

@@ -17,13 +17,13 @@ See the License for the specific language governing permissions and
 #include <vector>
 #include <numeric>
 
+#include "check_util.h"
 #include "common_host.h"
 #include "register/op_def_registry.h"
 #include "hstu_dense_backward_jagged_tiling.h"
 
-
 namespace optiling {
-ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBackwardTilingData &tiling)
+ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuJaggedBackwardTilingData &tiling)
 {
     const int32_t *maskType = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MASK_TYPE_INDEX);
     OPS_CHECK_PTR_NULL(maskType, return ge::GRAPH_FAILED);
@@ -55,7 +55,7 @@ ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBac
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
+ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuJaggedBackwardTilingData &tiling)
 {
     int64_t maxSeqLen = tiling.get_maxSeqLen();
 
@@ -102,21 +102,18 @@ ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuDenseB
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus InitJaggedTilingKey(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
+ge::graphStatus InitJaggedTilingKey(gert::TilingContext *context, HstuJaggedBackwardTilingData &tiling)
 {
     int64_t dataTypeLength = 0;
     ge::DataType gradType = context->GetInputTensor(INPUT_INDEX_T::GRAD_INDEX)->GetDataType();
     if (gradType == ge::DataType::DT_FLOAT) {
         dataTypeLength = DATA_TYPE_LENGTH_FLOAT;
-        context->SetTilingKey(JAGGED_FLOAT_TILING_KEY);
         tiling.set_blockHeight(BLOCK_128);
     } else if (gradType == ge::DataType::DT_FLOAT16) {
         dataTypeLength = DATA_TYPE_LENGTH_FLOAT16;
-        context->SetTilingKey(JAGGED_FLOAT16_TILING_KEY);
         tiling.set_blockHeight(BLOCK_256);
     } else if (gradType == ge::DataType::DT_BF16) {
         dataTypeLength = DATA_TYPE_LENGTH_FLOAT16;
-        context->SetTilingKey(JAGGED_BF16_TILING_KEY);
         tiling.set_blockHeight(BLOCK_256);
     } else {
         OPS_LOG_E("", "invalid datatype, only support float/fp16/bf16");
@@ -128,14 +125,14 @@ ge::graphStatus InitJaggedTilingKey(gert::TilingContext *context, HstuDenseBackw
 }
 
 ge::graphStatus TilingCore(gert::TilingContext *context,
-                           HstuDenseBackwardTilingData &tiling)
+                           HstuJaggedBackwardTilingData &tiling)
 {
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus TilingJaggedFunc(gert::TilingContext *context,
                                  const gert::RuntimeAttrs *attrs,
-                                 HstuDenseBackwardTilingData &tiling)
+                                 HstuJaggedBackwardTilingData &tiling)
 {
     OPS_CHECK(GetJaggedAttrsInfo(attrs, tiling) == ge::GRAPH_FAILED,
                 OPS_LOG_E("", "JaggedTiling GetJaggedAttrsInfo failed\n"), return ge::GRAPH_FAILED);
@@ -143,7 +140,7 @@ ge::graphStatus TilingJaggedFunc(gert::TilingContext *context,
     OPS_CHECK(GetJaggedBasicShapeInfo(context, tiling) == ge::GRAPH_FAILED,
                 OPS_LOG_E("", "JaggedTiling GetJaggedBasicShapeInfo failed\n"), return ge::GRAPH_FAILED);
 
-    OPS_CHECK(CheckMaskTypeAndBias(context, tiling) == ge::GRAPH_FAILED,
+    OPS_CHECK(CheckMaskTypeAndBias<HstuJaggedBackwardTilingData>(context, tiling) == ge::GRAPH_FAILED,
                 OPS_LOG_E("", "JaggedTiling CheckMaskTypeAndBias failed\n"), return ge::GRAPH_FAILED);
 
     OPS_CHECK(InitJaggedTilingKey(context, tiling) == ge::GRAPH_FAILED,

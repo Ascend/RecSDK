@@ -19,13 +19,14 @@ See the License for the specific language governing permissions and
 #include <cstdint>
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
+#include "hstu_common_const.h"
 /* fp16 rab 0的版本，qk和gv的shape是256x256x512,
  qgrad和kgrad的shape是256x512x128, vgrad的shape是256x512x128 */
 
 using namespace AscendC;
 using namespace matmul;
-static constexpr int ALIGN_16 = 16;
 
+namespace HstuDenseBackward {
 template <typename qType, class TilingDataType>
 class MatmulStriCopyFun {
 public:
@@ -212,7 +213,8 @@ public:
         matmul::Matmul<KG_MM_A_T, KG_MM_B_T, KG_MM_C_T, KG_MM_BIAS_T, staticKGradTilingCfg, KG_MM_CB_T>;
 
     // VGradMatmul
-    using VG_MM_A_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true>;
+    using VG_MM_A_T =
+        matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true, LayoutMode::NONE, false, TPosition::VECOUT>;
     using VG_MM_B_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>;
     using VG_MM_C_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>;
     using VG_MM_BIAS_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>;
@@ -235,4 +237,5 @@ public:
     using Q_GRAD_MATMUL =
         matmul::Matmul<QG_MM_A_T, QG_MM_B_T, QG_MM_C_T, QG_MM_BIAS_T, staticQGradTilingCfg, QG_MM_CB_T>;
 };
+}  // namespace HstuDenseBackward
 #endif

@@ -29,7 +29,27 @@ using HstuDenseBackward::BlockMaskGenerator;
 using HstuDenseBackward::BlockMaskParams;
 
 namespace HstuDenseBackward {
+struct Args {
+    GM_ADDR grad;
+    GM_ADDR q;
+    GM_ADDR k;
+    GM_ADDR v;
+    GM_ADDR mask;
+    GM_ADDR attnBias;
+    GM_ADDR seqOffset;
+    GM_ADDR numContext;
+    GM_ADDR numTarget;
 
+    GM_ADDR qGrad;
+    GM_ADDR kGrad;
+    GM_ADDR vGrad;
+    GM_ADDR attnBiasGrad;
+
+    GM_ADDR workspace;
+    GM_ADDR tiling;
+
+    const HstuJaggedBackwardTilingData* __restrict tilingDataPtr = nullptr;
+};
 template <typename seqOffsetType>
 __aicore__ inline int64_t GetBatchSizeFromJaggedOffsetThis(GlobalTensor<seqOffsetType>& seqOffsetData,
                                                            int32_t seqOffsetLens)
@@ -137,7 +157,7 @@ template <typename qType, typename seqOffsetType, uint32_t blockHeightQ, uint32_
 class HstuJaggedKernel {
 public:
     using MmInterface =
-        HstuMatmulMgmtInterface<qType, blockHeightQ, blockHeightK, HstuDenseBackwardTilingData, MatmulMgmtType>;
+        HstuMatmulMgmtInterface<qType, blockHeightQ, blockHeightK, HstuJaggedBackwardTilingData, MatmulMgmtType>;
     using VsInterface = VectorScoreInterface<qType, VectorScoreType>;
     __aicore__ inline HstuJaggedKernel() {}
 
@@ -213,7 +233,7 @@ public:
         // Matmul 初始化
         AddrArgs addrArgs = {args.grad, args.q, args.k, args.v, args.qGrad, args.kGrad, args.vGrad, args.workspace};
         BaseShapeArgs baseShape = {totalBatchSize_, batchSize_, headNum_, headDim_, maxSeqLen_};
-        mm_mgmt_->Init(&addrArgs, &baseShape);
+        mm_mgmt_->Init(addrArgs, baseShape);
 
         // QAccum初始化
         qAccumKernel_.Init(&pipe, &baseShape, mm_mgmt_->qGradAccumTemp_, mm_mgmt_->qGrad_, seqOffsetsGt_,
@@ -224,7 +244,7 @@ public:
         VectorScoreAttrs vectorScoreAttrs = {siluScale_, alpha_, enableBias_, maskType_};
         VectorScoreGtInfo<qType> vectorScoreGtInfo = {mm_mgmt_->qkTemp_, mm_mgmt_->gvTemp_, maskGt_, baisGt_,
                                                       biasGradGt_};
-        vectorScoreInterface_->Init(&pipe, bnssLayout_, &vectorScoreAttrs, &vectorScoreGtInfo);
+        vectorScoreInterface_->Init(&pipe, bnssLayout_, vectorScoreAttrs, vectorScoreGtInfo);
     }
 
     __aicore__ inline void InitBlockSplit(Args& args)
@@ -597,7 +617,7 @@ public:
     GlobalTensor<qType> biasGradGt_;
 
     // Matmul
-    HstuMatmulMgmtInterface<qType, blockHeightQ, blockHeightK, HstuDenseBackwardTilingData, MatmulMgmtType>* mm_mgmt_;
+    HstuMatmulMgmtInterface<qType, blockHeightQ, blockHeightK, HstuJaggedBackwardTilingData, MatmulMgmtType>* mm_mgmt_;
 
     // QAccum
     qBlockAccumKernel<float, qType, seqOffsetType> qAccumKernel_;
@@ -611,7 +631,7 @@ protected:
     uint32_t startColBlock_ = 0;
     uint32_t endColBlock_ = 0;
     JaggedTaskInfoColMajor computeTaskInfo_[COMPUTE_PIPE_NUM] = {};  // 局部循环/函数内赋值, 默认初始化
-    const HstuDenseBackwardTilingData* __restrict backwardTilingData_{
+    const HstuJaggedBackwardTilingData* __restrict backwardTilingData_{
         nullptr};                               // Compute()赋值: backwardTilingData_ = args.tilingDataPtr
     GlobalTensor<seqOffsetType> seqOffsetsGt_;  // PreInit中SetGlobalBuffer
 };

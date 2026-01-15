@@ -18,12 +18,12 @@ See the License for the specific language governing permissions and
 
 #include "register/op_def_registry.h"
 
-#include "hstu_dense_backward_normal_tiling.h"
+#include "hstu_dense_backward_jagged_tiling.h"
 
 #include "matmul_check.h"
 using namespace MatmulTilingCheck;
 namespace optiling {
-static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
+static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, HstuJaggedBackwardTilingData &tiling)
 {
     int64_t batchSize = tiling.get_batchSize();
     int64_t headNum = tiling.get_headNum();
@@ -50,31 +50,27 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAic();
     size_t vecCoreNum = ascendPlatform.GetCoreNumAiv();
+    uint32_t pipeMidScore3 = 3;
+    uint32_t pipeAccuNum2 = 2;
 
-    int64_t qkMatmulTempSpace = blockHeight * blockHeight;
-    int64_t gvMatmulTempSpace = blockHeight * blockHeight;
+    int64_t qkMatmulTempSpace = blockHeight * blockHeight * pipeMidScore3;
+    int64_t gvMatmulTempSpace = blockHeight * blockHeight * pipeMidScore3;
 
-    int64_t scoreTempSpace = blockHeight * blockHeight;
-
-    int64_t vGradAccumTempSpace = blockHeight * headDim;
-    int64_t kGradAccumTempSpace = blockHeight * headDim;
+    int64_t vGradAccumTempSpace = blockHeight * headDim * pipeAccuNum2;
+    int64_t kGradAccumTempSpace = blockHeight * headDim * pipeAccuNum2;
 
     int64_t maskTempSpace = blockHeight * blockHeight;
 
     int64_t totalTempSpaceForOneVec =
-        MID_USE_TIMES *
             ((vGradAccumTempSpace + kGradAccumTempSpace) * sizeof(float) +
-             (qkMatmulTempSpace + gvMatmulTempSpace + scoreTempSpace) * dataTypeLength) +
-        maskTempSpace * dataTypeLength;
+             (qkMatmulTempSpace + gvMatmulTempSpace) * dataTypeLength);
 
     int64_t workspaceSize = vecCoreNum * totalTempSpaceForOneVec;
 
-    if (!isNormal && !enableBias) {
-        int64_t biasGradTempSpace = blockHeight * blockHeight;
-        int64_t qGradAccumTempSpace = batchSize * headNum * maxSeqLen * headDim;
-        workspaceSize += biasGradTempSpace * dataTypeLength * MID_USE_TIMES * vecCoreNum +
-            qGradAccumTempSpace * sizeof(float);
-    }
+    int64_t biasGradTempSpace = blockHeight * blockHeight;
+    int64_t qGradAccumTempSpace = batchSize * headNum * maxSeqLen * headDim;
+    workspaceSize += qGradAccumTempSpace * sizeof(float);
+    workspaceSize = (workspaceSize + BLOCK_256 - 1) / BLOCK_256 * BLOCK_256;
 
     size_t *currentWorkspace = context->GetWorkspaceSizes(INDEX_T::INDEX_1);
     size_t systemWorkspaceSize = ascendPlatform.GetLibApiWorkSpaceSize();
@@ -182,7 +178,7 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
 } // namespace optiling
 
 namespace optiling {
-ge::graphStatus TilingFunc(gert::TilingContext *context)
+ge::graphStatus TilingFuncJagged(gert::TilingContext *context)
 {
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
@@ -193,15 +189,16 @@ ge::graphStatus TilingFunc(gert::TilingContext *context)
                 OPS_LOG_E("", "GetInputLayout failed\n"),
                 return ge::GRAPH_FAILED);
 
-    HstuDenseBackwardTilingData tiling;
-    TilingNormalFunc(context, attrs, tiling);
+    HstuJaggedBackwardTilingData tiling;
 
-    return TilingCommonFunc(context, tiling);
+    TilingJaggedFunc(context, attrs, tiling);
+
+    return TilingCommonFuncJagged(context, tiling);
 }
 } // namespace optiling
 
 namespace ge {
-static ge::graphStatus InferShape(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeJagged(gert::InferShapeContext *context)
 {
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
@@ -212,11 +209,11 @@ static ge::graphStatus InferShape(gert::InferShapeContext *context)
                 OPS_LOG_E("", "GetInputLayout failed\n"),
                 return ge::GRAPH_FAILED);
     ge::graphStatus result = ge::GRAPH_SUCCESS;
-    result = optiling::NormalInferShape(context);
+    result = optiling::JaggedInferShape(context);
     return result;
 }
 
-static ge::graphStatus InferDtype(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDtypeJagged(gert::InferDataTypeContext *context)
 {
     // q dataType
     auto dataType = context->GetInputDataType(INDEX_T::INDEX_1);
@@ -231,9 +228,9 @@ static ge::graphStatus InferDtype(gert::InferDataTypeContext *context)
 }
 
 namespace ops {
-class HstuDenseBackward : public OpDef {
+class HstuJaggedBackward : public OpDef {
 public:
-    explicit HstuDenseBackward(const char *name) : OpDef(name)
+    explicit HstuJaggedBackward(const char *name) : OpDef(name)
     {
         this->Input("grad")
             .ParamType(REQUIRED)
@@ -301,15 +298,15 @@ public:
             .ExtendCfgInfo("coreType.value", "AiCore")
             .ExtendCfgInfo("prebuildPattern.value", "Opaque");
 
-        this->SetInferShape(ge::InferShape);
-        this->SetInferDataType(ge::InferDtype);
+        this->SetInferShape(ge::InferShapeJagged);
+        this->SetInferDataType(ge::InferDtypeJagged);
 
-        this->AICore().SetTiling(optiling::TilingFunc);
+        this->AICore().SetTiling(optiling::TilingFuncJagged);
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend910_95", aicore_config);
     }
 };
 
-OP_ADD(HstuDenseBackward);
+OP_ADD(HstuJaggedBackward);
 } // namespace ops
