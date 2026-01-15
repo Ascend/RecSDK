@@ -21,7 +21,7 @@ See the License for the specific language governing permissions and
 #include "hstu_common_const.h"
 
 using BNSSShape = Shape<uint32_t, uint32_t, uint32_t, uint32_t>;
-using BNSSStride = Stride<uint32_t, uint32_t, uint32_t, uint32_t>;
+using BNSSStride = AscendC::Stride<uint32_t, uint32_t, uint32_t, uint32_t>;
 using BNSSLayout = Layout<BNSSShape, BNSSStride>;
 
 using HstuDenseBackward::BlockMaskGenerator;
@@ -51,8 +51,8 @@ class VectorScoreInterface {
 public:
     __aicore__ inline VectorScoreInterface() {}
 
-    __aicore__ inline void Init(TPipe* pipePtr, BNSSLayout bnssLayout, VectorScoreAttrs* attrs,
-                                VectorScoreGtInfo<qType>* gtInfo)
+    __aicore__ inline void Init(TPipe* pipePtr, BNSSLayout bnssLayout, VectorScoreAttrs& attrs,
+                                VectorScoreGtInfo<qType>& gtInfo)
     {
         static_cast<VectorScoreStrategy*>(this)->Init(pipePtr, bnssLayout, attrs, gtInfo);
     }
@@ -72,15 +72,15 @@ class HstuF16R0VectorScore
 public:
     __aicore__ inline HstuF16R0VectorScore() {}
 
-    __aicore__ inline void Init(TPipe* pipePtr, BNSSLayout bnssLayout, VectorScoreAttrs* attrs,
-                                VectorScoreGtInfo<qType>* gtInfo)
+    __aicore__ inline void Init(TPipe* pipePtr, BNSSLayout bnssLayout, VectorScoreAttrs& attrs,
+                                VectorScoreGtInfo<qType>& gtInfo)
     {
         pipePtr_ = pipePtr;
-        siluScale_ = attrs->siluScale;
-        alpha_ = attrs->alpha;
+        siluScale_ = attrs.siluScale;
+        alpha_ = attrs.alpha;
         aivNum_ = GetBlockNum() * VCORE_NUM_IN_ONE_AIC;
-        qkTemp_ = gtInfo->qkTemp;
-        gvTemp_ = gtInfo->gvTemp;
+        qkTemp_ = gtInfo.qkTemp;
+        gvTemp_ = gtInfo.gvTemp;
         // 20通过ub的大小计算得到
         vecOnceDataNum_ = blockHeightQ * 20;
 
@@ -240,21 +240,21 @@ class HstuVectorScoreCommon
 public:
     __aicore__ inline HstuVectorScoreCommon() {}
 
-    __aicore__ inline void Init(TPipe* pipePtr, BNSSLayout bnssLayout, VectorScoreAttrs* attrs,
-                                VectorScoreGtInfo<qType>* gtInfo)
+    __aicore__ inline void Init(TPipe* pipePtr, BNSSLayout bnssLayout, VectorScoreAttrs& attrs,
+                                VectorScoreGtInfo<qType>& gtInfo)
     {
         pipePtr_ = pipePtr;
-        siluScale_ = attrs->siluScale;
-        alpha_ = attrs->alpha;
-        enableBias_ = attrs->enableBias;
-        maskType_ = attrs->maskType;
+        siluScale_ = attrs.siluScale;
+        alpha_ = attrs.alpha;
+        enableBias_ = attrs.enableBias;
+        maskType_ = attrs.maskType;
 
         aivNum_ = GetBlockNum() * VCORE_NUM_IN_ONE_AIC;
-        qkTemp_ = gtInfo->qkTemp;
-        gvTemp_ = gtInfo->gvTemp;
-        maskGt_ = gtInfo->maskGt;
-        biasGt_ = gtInfo->biasGt;
-        biasGradGt_ = gtInfo->biasGradGt;
+        qkTemp_ = gtInfo.qkTemp;
+        gvTemp_ = gtInfo.gvTemp;
+        maskGt_ = gtInfo.maskGt;
+        biasGt_ = gtInfo.biasGt;
+        biasGradGt_ = gtInfo.biasGradGt;
         bnssLayout_ = bnssLayout;
         maxSeqLen_ = AscendC::Std::get<2>(bnssLayout.GetShape());
         // 20通过ub的大小计算得到

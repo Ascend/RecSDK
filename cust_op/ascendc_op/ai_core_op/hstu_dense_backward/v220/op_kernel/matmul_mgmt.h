@@ -16,7 +16,6 @@ See the License for the specific language governing permissions and
 #ifndef GT_JAGGED_FP16_R0_KERNEL_H
 #define GT_JAGGED_FP16_R0_KERNEL_H
 #include <cstdint>
-#include "hstu_dense_backward_kernel_common.h"
 #include "matmul_const.h"
 
 struct MatmulArgs {
@@ -42,17 +41,17 @@ public:
         static_cast<HstuMatmulMgmtStrategy*>(this)->RegisterMatmul(pipe, tilingPtr, tiling);
     }
 
-    __aicore__ inline void InitGt(const AddrArgs* addrArgs)
+    __aicore__ inline void InitGt(const AddrArgs& addrArgs)
     {
         int64_t qSize = totalBatchSize_ * headNum_ * headDim_;
-        grad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs->grad), qSize);
-        q_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs->q), qSize);
-        k_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs->k), qSize);
-        v_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs->v), qSize);
+        grad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.grad), qSize);
+        q_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.q), qSize);
+        k_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.k), qSize);
+        v_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.v), qSize);
 
-        qGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs->qGrad), qSize);
-        kGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs->kGrad), qSize);
-        vGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs->vGrad), qSize);
+        qGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.qGrad), qSize);
+        kGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.kGrad), qSize);
+        vGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.vGrad), qSize);
     }
 
     __aicore__ inline void InitTempSpace(GM_ADDR workspace, int64_t& totalTempSpaceForOneVec)
@@ -123,15 +122,15 @@ public:
         SyncAll();
     }
 
-    __aicore__ inline void Init(const AddrArgs* addrArgs, const BaseShapeArgs* baseShape)
+    __aicore__ inline void Init(const AddrArgs& addrArgs, const BaseShapeArgs& baseShape)
     {
         // Shape Init
-        GM_ADDR workspace = addrArgs->workspace;
-        totalBatchSize_ = baseShape->totalBatchSize;
-        batchSize_ = baseShape->batchSize;
-        maxSeqLen_ = baseShape->maxSeqLen;
-        headDim_ = baseShape->headDim;
-        headNum_ = baseShape->headNum;
+        GM_ADDR workspace = addrArgs.workspace;
+        totalBatchSize_ = baseShape.totalBatchSize;
+        batchSize_ = baseShape.batchSize;
+        maxSeqLen_ = baseShape.maxSeqLen;
+        headDim_ = baseShape.headDim;
+        headNum_ = baseShape.headNum;
         aivNum_ = GetBlockNum() * VCORE_NUM_IN_ONE_AIC;
 
         InitGt(addrArgs);
