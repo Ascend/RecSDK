@@ -165,7 +165,7 @@ ${image_name} \
         cd cust_op/ascendc_op/build
         # 注：部分算子编译依赖外部组件，请参考build文件夹下README文件下载依赖，否则会编译失败。
         # 编译算子包（编译时会自动安装，若仅安装部分，可在其他容器内编译，再拷贝到当前环境安装）
-        bash build_ai_core_op.sh v220
+        bash build_ai_core_op.sh A2
          
         # 可选：安装指定算子包
         #   方式1：批量安装算子包。如下指令表示安装非"310p.run/A3.run"结尾的所有算子包，可根据设备环境修改匹配关键字。

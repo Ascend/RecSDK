@@ -6,7 +6,7 @@
 cd RecSDK/cust_op/ascendc_op/build
 bash build_ai_core_op.sh [ver]
 
-e.g. 'bash build_ai_core_op.sh v220'
+e.g. 'bash build_ai_core_op.sh A2'
 ```
 
 生成的tar包在 RecSDK/cust_op/ascendc_op/output 下
