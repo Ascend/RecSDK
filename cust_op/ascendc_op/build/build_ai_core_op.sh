@@ -17,13 +17,13 @@
 set -e
 
 if [ "$#" -ne 1 ]; then
-    echo "ERROR: Please specify the version to compile. e.g. 'bash $0 v220'"
+    echo "ERROR: Please specify the version to compile. e.g. 'bash $0 A2'"
     exit 1
 fi
 
 BUILD_VER=${1}
 
-if [ "${BUILD_VER}" == "v220" ] || [ "${BUILD_VER}" == "A5" ]; then
+if [[ "${BUILD_VER}" =~ ^(A2|A3|A5|310P)$ ]]; then
     echo "BUILD_VER: ${BUILD_VER}"
 else
     echo "ERROR: Unknown BUILD_VER:${BUILD_VER}"
@@ -35,6 +35,7 @@ CUR_DIR=$(dirname "$(readlink -f "$0")")
 ASCENDC_OP_DIR=$(dirname "${CUR_DIR}")
 torch_plugin_path="${ASCENDC_OP_DIR}"/../framework/torch_plugin
 ops_path="${ASCENDC_OP_DIR}"/ai_core_op
+base_op_dir="v220"
 
 source /etc/profile
 
@@ -42,10 +43,11 @@ source /etc/profile
 support_A3_list="asynchronous_complete_cumsum
 gather_for_rank1
 index_select_for_rank1_backward
+dense_to_jagged
 jagged_to_padded_dense
 permute2d_sparse_data
 split_embedding_codegen_forward_unweighted
-dense_to_jagged
+backward_codegen_adagrad_unweighted_exact
 hstu_dense_forward_fuxi
 hstu_dense_backward_fuxi
 disetangle_attention
@@ -86,37 +88,37 @@ function compile_ops_v220() {
             if [[ "$dir_name" == "cmake" || "$dir_name" == "common" || "$dir_name" == "in_linear_silu" ]]; then
                 continue
             fi
-            cur_ver_op_dir=${dir_name}/${BUILD_VER}
+            cur_ver_op_dir=${dir_name}/${base_op_dir}
             if [ -d "$cur_ver_op_dir" ]; then
                 echo "Entering directory: $dir_name, DIR: $dir"
                 cd "$cur_ver_op_dir"
-                for item in $support_310p_list; do
-                    if [ "$item" == "$dir_name" ]; then
-                        bash ./run.sh ai_core-Ascend310P3
-                        new_op_name=mxrec_opp_"${dir_name}_310p".run
-                        cd "$dir_name"
-                        cp ./build_out/custom_opp*.run  "${new_op_name}"
-                        mv "${new_op_name}" "${opp_output_path}"
-                    fi
-                done
-                cd "$ops_path"
-                cd "$cur_ver_op_dir"
-                for item in $support_A3_list; do
-                    if [ "$item" == "$dir_name" ]; then
-                        bash ./run.sh ai_core-Ascend910_93
-                        new_op_name=mxrec_opp_"${dir_name}_A3".run
-                        cd "$dir_name"
-                        cp ./build_out/custom_opp*.run  "${new_op_name}"
-                        mv "${new_op_name}" "${opp_output_path}"
-                    fi
-                done
-                cd "$ops_path"
-                cd "$cur_ver_op_dir"
-                bash ./run.sh ai_core-Ascend910B1
-                new_op_name=mxrec_opp_"${dir_name}".run
-                cd "$dir_name"
-                cp ./build_out/custom_opp*.run  "${new_op_name}"
-                mv "${new_op_name}" "${opp_output_path}"
+                if [ "${BUILD_VER}" == "310P" ]; then
+                    for item in $support_310p_list; do
+                        if [ "$item" == "$dir_name" ]; then
+                            bash ./run.sh ai_core-Ascend310P3
+                            new_op_name=mxrec_opp_"${dir_name}_310p".run
+                            cd "$dir_name"
+                            cp ./build_out/custom_opp*.run  "${new_op_name}"
+                            mv "${new_op_name}" "${opp_output_path}"
+                        fi
+                    done
+                elif [ "${BUILD_VER}" == "A3" ]; then
+                    for item in $support_A3_list; do
+                        if [ "$item" == "$dir_name" ]; then
+                            bash ./run.sh ai_core-Ascend910_93
+                            new_op_name=mxrec_opp_"${dir_name}_A3".run
+                            cd "$dir_name"
+                            cp ./build_out/custom_opp*.run  "${new_op_name}"
+                            mv "${new_op_name}" "${opp_output_path}"
+                        fi
+                    done
+                elif [ "${BUILD_VER}" == "A2" ]; then
+                  bash ./run.sh ai_core-Ascend910B1
+                  new_op_name=mxrec_opp_"${dir_name}".run
+                  cd "$dir_name"
+                  cp ./build_out/custom_opp*.run  "${new_op_name}"
+                  mv "${new_op_name}" "${opp_output_path}"
+                fi
             fi
         fi
     done
@@ -131,7 +133,6 @@ function compile_ops_A5() {
             if [[ "$dir_name" == "cmake" || "$dir_name" == "common" || "$dir_name" == "in_linear_silu" ]]; then
                 continue
             fi
-
             cur_ver_op_dir=${dir_name}/c310
             if [ -d "$cur_ver_op_dir" ]; then
                 echo "Entering directory: $dir_name, DIR: $dir"
@@ -147,11 +148,11 @@ function compile_ops_A5() {
 }
 
 function compile_ops() {
-    if [ "${BUILD_VER}" == "v220" ]; then
-        compile_ops_v220
-    elif [ "${BUILD_VER}" == "A5" ]; then
-        compile_ops_A5
-    fi
+  if [ "${BUILD_VER}" == "A5" ]; then
+      compile_ops_A5
+  else
+      compile_ops_v220
+  fi
 }
 
 function get_tar_pkg() {
