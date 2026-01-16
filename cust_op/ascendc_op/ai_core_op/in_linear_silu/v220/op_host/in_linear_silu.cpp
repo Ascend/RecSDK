@@ -43,8 +43,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_n(weightShape.GetDim(0));
     const auto attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
-    auto requiresGrad = attrs->GetBool(ATTR_INDEX_REQUIRES_GRAD);
-    tiling.set_requiresGrad(requiresGrad);
 
     auto splitArgList = attrs->GetListInt(ATTR_INDEX_SPLIT_LIST)->GetData();
     OPS_LOG_E_IF_NULL("splitArgList", splitArgList, return ge::GRAPH_FAILED);
@@ -157,7 +155,6 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("split_arg_list").ListInt();
-        this->Attr("requires_grad").Bool();
         this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
 
         this->AICore().SetTiling(optiling::TilingFunc);

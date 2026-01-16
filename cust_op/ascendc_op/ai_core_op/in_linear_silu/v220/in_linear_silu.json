@@ -123,12 +123,6 @@
                 "name": "split_arg_list",
                 "param_type": "required",
                 "type": "list_int"
-            },
-            {
-                "name": "requires_grad",
-                "param_type": "required",
-                "type": "bool",
-                "default_value": true
             }
         ]
     }
