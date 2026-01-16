@@ -67,17 +67,14 @@ public:
         int64_t splitList[SPLIT_NUM];
         int64_t splitOffsets[SPLIT_NUM + 1];
         LayoutD layoutUVQK[SPLIT_NUM];
-        bool requiresGrad;
 
         CATLASS_HOST_DEVICE
         Params() {}
 
         CATLASS_HOST_DEVICE
-        Params(GM_ADDR ptrLinear_, GM_ADDR* ptrUVQK_, LayoutD const& layoutD_, const int64_t* splitList_,
-               bool requiresGrad_)
+        Params(GM_ADDR ptrLinear_, GM_ADDR* ptrUVQK_, LayoutD const& layoutD_, const int64_t* splitList_)
             : ptrLinear(ptrLinear_),
-              layoutD(layoutD_),
-              requiresGrad(requiresGrad_)
+              layoutD(layoutD_)
         {
             splitOffsets[0] = 0;
             auto m = layoutD_.shape(0);

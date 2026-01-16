@@ -27,8 +27,7 @@ using torch::autograd::Function;
 using namespace at;
 
 torch::autograd::variable_list RunInLinearSiluForwardInter(const at::Tensor& x, const at::Tensor& weight,
-                                                           const at::Tensor& bias, at::IntArrayRef splitList,
-                                                           bool requiresGrad)
+                                                           const at::Tensor& bias, at::IntArrayRef splitList)
 {
     at::TensorOptions options = x.options();
     auto m = x.size(0);
@@ -43,7 +42,7 @@ torch::autograd::variable_list RunInLinearSiluForwardInter(const at::Tensor& x, 
     auto weightCont = weight.contiguous();
     auto biasCont = bias.contiguous();
 
-    EXEC_NPU_CMD(aclnnInLinearSilu, xCont, weightCont, biasCont, splitList, requiresGrad, userOut, valueOut, queryOut,
+    EXEC_NPU_CMD(aclnnInLinearSilu, xCont, weightCont, biasCont, splitList, userOut, valueOut, queryOut,
                  keyOut, linearOutputOut);
     return {userOut, valueOut, queryOut, keyOut, linearOutputOut};
 }
@@ -55,7 +54,7 @@ torch::autograd::variable_list RunInLinearSiluForward(const at::Tensor& x, const
     if (x.requires_grad() || weight.requires_grad() || bias.requires_grad()) {
         requiresGrad = true;
     }
-    return RunInLinearSiluForwardInter(x, weight, bias, splitList, requiresGrad);
+    return RunInLinearSiluForwardInter(x, weight, bias, splitList);
 }
 
 torch::autograd::variable_list RunInLinearSiluBackward(const at::Tensor& gradUser, const at::Tensor& gradValue,
@@ -108,7 +107,7 @@ public:
         }
         ctx->saved_data["requiresGrad"] = requiresGrad;
 
-        auto output = RunInLinearSiluForwardInter(x, weight, bias, splitList, requiresGrad);
+        auto output = RunInLinearSiluForwardInter(x, weight, bias, splitList);
         if (requiresGrad) {
             ctx->save_for_backward({x, weight, bias, output[4]});
         }

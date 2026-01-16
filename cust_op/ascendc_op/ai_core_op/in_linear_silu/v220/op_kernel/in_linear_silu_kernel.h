@@ -148,12 +148,12 @@ CATLASS_DEVICE void InLinearSiluImpl(GemmCoord problemShape, GM_ADDR x, GM_ADDR 
         auto layoutB = tla::MakeLayout<ElementB, LayoutTagB>(problemShape.k(), problemShape.n());
         auto layoutC = tla::MakeLayout<ElementC, LayoutTagC>(problemShape.m(), problemShape.n());
         LayoutC layoutC0{problemShape.m(), problemShape.n()};
-        EpilogueParams epilogueParams(linearOutput, (GM_ADDR*)outputAddr, layoutC0, splitList, true);
+        EpilogueParams epilogueParams(linearOutput, (GM_ADDR*)outputAddr, layoutC0, splitList);
 #else
         LayoutA layoutA{problemShape.m(), problemShape.k()};
         LayoutB layoutB{problemShape.k(), problemShape.n()};
         LayoutC layoutC{problemShape.m(), problemShape.n()};
-        EpilogueParams epilogueParams(linearOutput, (GM_ADDR*)outputAddr, layoutC, splitList, true);
+        EpilogueParams epilogueParams(linearOutput, (GM_ADDR*)outputAddr, layoutC, splitList);
 #endif
 
         typename MatmulKernel::Params params(problemShape, x, layoutA, weight, layoutB, linearOutput, layoutC, bias,
@@ -177,12 +177,12 @@ CATLASS_DEVICE void InLinearSiluImpl(GemmCoord problemShape, GM_ADDR x, GM_ADDR 
         auto layoutB = tla::MakeLayout<ElementB, LayoutTagB>(problemShape.k(), problemShape.n());
         auto layoutC = tla::MakeLayout<ElementC, LayoutTagC>(problemShape.m(), problemShape.n());
         LayoutC layoutC0{problemShape.m(), problemShape.n()};
-        EpilogueParams epilogueParams(linearOutput, (GM_ADDR*)outputAddr, layoutC0, splitList, true);
+        EpilogueParams epilogueParams(linearOutput, (GM_ADDR*)outputAddr, layoutC0, splitList);
 #else
         LayoutA layoutA{problemShape.m(), problemShape.k()};
         LayoutB layoutB{problemShape.k(), problemShape.n()};
         LayoutC layoutC{problemShape.m(), problemShape.n()};
-        EpilogueParams epilogueParams(linearOutput, (GM_ADDR*)outputAddr, layoutC, splitList, true);
+        EpilogueParams epilogueParams(linearOutput, (GM_ADDR*)outputAddr, layoutC, splitList);
 #endif
 
         typename MatmulKernel::Params params(problemShape, x, layoutA, weight, layoutB, linearOutput, layoutC, bias,
