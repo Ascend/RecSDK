@@ -58,8 +58,13 @@ torch.ops.mxrec.permute_2D_sparse_data_input1d(Tensor permute,
 |  permuted_weights | 输出     | Tensor  |  fp32  | [permuted_weights]                              |       |
 
 
-说明：指定permuted_lengths_sum时，permuted_values/permuted_weights长度为permuted_lengths_sum，请用户自行保证数值正确;
-未指定permuted_lengths_sum时，算子将计算得到permuted_lengths_sum
+说明：
+1. 指定permuted_lengths_sum时，permuted_values/permuted_weights长度为permuted_lengths_sum，请用户自行保证数值正确; 未指定permuted_lengths_sum时，算子将计算得到permuted_lengths_sum
+
+2. 当调用permute_2D_sparse_data_input1d算子时，需传入stride参数，且满足lengths.numel()能被stride整除。
+
+3. 该算子实现依赖asynchronous_complete_cumsum算子，需先安装asynchronous_complete_cumsum算子
+
 
 当调用permute_2D_sparse_data_input1d算子时，需传入stride参数，且满足lengths.numel()能被stride整除。
 
