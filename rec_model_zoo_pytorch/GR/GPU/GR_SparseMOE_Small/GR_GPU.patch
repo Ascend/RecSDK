@@ -1,0 +1,393 @@
+diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples/hstu/benchmark/inference_benchmark_random_2k.py
+index d0fbbae..99172ed 100644
+--- a/examples/hstu/benchmark/inference_benchmark_random_2k.py
++++ b/examples/hstu/benchmark/inference_benchmark_random_2k.py
+@@ -48,6 +48,7 @@ dataset_path = os.getenv("DATASET_PATH")
+ model_path = os.getenv("MODEL_PATH")
+ folder_name = os.getenv("PROF_SAVE_PATH")
+ is_save_input_and_output = int(os.getenv("SAVE_INPUT_AND_PUTPUT")) == 1
++is_save_model = int(os.getenv("SAVE_MODEL")) == 1
+ is_use_npu_input = int(os.getenv("USE_NPU_INPUT")) == 1
+ batch_size = int(os.getenv("BATCH_SIZE", "1"))
+ layer_num = int(os.getenv("LAYER_NUM", "1"))
+@@ -146,8 +147,8 @@ def run_ranking_gr_inference():
+ 
+         if use_random_parm:
+             for param in model_predict.parameters():
+-                torch.nn.init.uniform_(param, a=-parm_value, b=parm_value)
+-            if is_save_input_and_output:
++                torch.nn.init.normal_(param,mean=0, std=parm_value)
++            if is_save_model:
+                 cpu_state_dict = {k: v.cpu() for k, v in model_predict.state_dict().items()}
+                 torch.save(cpu_state_dict, model_path)  # 保存模型权重
+         else:
+@@ -227,15 +228,18 @@ def run_ranking_gr_inference():
+                     prof.step()
+ 
+         print("收集端到端时间")
++        cnt = 0
+         with torch.no_grad():
+-            for item in infer_list * run_num:
++            for item in infer_list * run_num * 2:
+                 torch.cuda.synchronize()
+                 start_time = time.perf_counter()
+                 model_predict.forward(item[0], item[1])  # 推理
+                 torch.cuda.synchronize()
+                 duration = (time.perf_counter() - start_time) * 1_000_000
+-                time_arr.append(duration)
+-                print(f"[E2E] time: {duration:.2f} us")
++                if cnt > run_num:
++                    time_arr.append(duration)
++                    print(f"[E2E] time: {duration:.2f} us")
++                cnt += 1
+         report = {'Batch_size': max_batch_size,
+                   'model_name': "GR"}
+ 
+@@ -249,7 +253,6 @@ def run_ranking_gr_inference():
+         report["AVG Latency"] = avg_latency
+         report["P99 Latency"] = tail_latency
+         report["P90 Latency"] = p90_latency
+-        print(report)
+         time_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+ 
+         if not os.path.exists(folder_name):
+@@ -266,7 +269,6 @@ def run_ranking_gr_inference():
+         print("性能分析完成！")
+         print("-" * 30)
+ 
+-        print(prof.key_averages())
+         output_trace_path = os.path.join(folder_name, f'{time_str}_trace.json')
+         prof.export_chrome_trace(output_trace_path)
+ 
+diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modules/hstu_block_inference.py
+index 74ec9c2..c79c713 100644
+--- a/examples/hstu/modules/hstu_block_inference.py
++++ b/examples/hstu/modules/hstu_block_inference.py
+@@ -54,6 +54,7 @@ class HSTUBlockInference(torch.nn.Module):
+             ]
+         )
+         self._hstu_graph: Optional[Dict[int, Any]] = None  # type: ignore
++        self._compile_predict = None
+ 
+     def hstu_preprocess(
+             self, embeddings: Dict[str, JaggedTensor], batch: Batch
+@@ -139,19 +140,31 @@ class HSTUBlockInference(torch.nn.Module):
+             use_cudagraph: bool = True,
+     ) -> torch.Tensor:
+         if self._hstu_graph is None or not use_cudagraph:
+-            hidden_data = hidden_states
+-            for hstu_layer in self._attention_layers:
+-                hidden_data = hstu_layer.forward_naive(
+-                    batch_size, num_tokens, hidden_data, jd
++            if os.getenv("USE_COMPILE", "0") == "1" and self._compile_predict is None:
++                self._compile_predict = torch.compile(
++                    self.predict_nograph, backend="inductor", dynamic=False
+                 )
+-            return hidden_data
++            predict_func = self.predict_nograph if self._compile_predict is None else self._compile_predict
++            return predict_func(batch_size, num_tokens, hidden_states, jd)
+         else:
+-
+-            # OK了吗print(' YZ: we are inside the hstu_block_inference.py ')
+             return self.predict_cudagraph(
+                 batch_size, num_tokens, hidden_states
+             )
+ 
++    def predict_nograph(
++        self,
++        batch_size: int,
++        num_tokens: int,
++        hidden_states: torch.Tensor,
++        jd: JaggedData,
++    )-> torch.Tensor:
++        hidden_data = hidden_states
++        for hstu_layer in self._attention_layers:
++            hidden_data = hstu_layer.forward_naive(
++                batch_size, num_tokens, hidden_data, jd
++            )
++        return hidden_data
++
+     def predict_naive(
+             self,
+             batch_size: int,
+diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/modules/paged_hstu_infer_layer.py
+index b7b740e..daf9939 100644
+--- a/examples/hstu/modules/paged_hstu_infer_layer.py
++++ b/examples/hstu/modules/paged_hstu_infer_layer.py
+@@ -51,12 +51,13 @@ class SparseMOE(torch.nn.Module):
+             emb_dim,
+             expert_number,
+             top_k,
++            hidden_size,
+             dtype
+         ):
+         super().__init__()
+         self.expert_number = expert_number
+         self.experts = torch.nn.ModuleList([
+-                FFN_npu_swiglu(emb_dim, emb_dim * 4, dtype) for _ in range(expert_number)])
++                FFN_npu_swiglu(emb_dim, hidden_size, dtype) for _ in range(expert_number)])
+ 
+         self.router = MOERouter(emb_dim, expert_number, top_k, dtype)
+         self.w1,self.w2,self.w3 = self.create_expert_weights(self.experts)
+@@ -476,11 +477,12 @@ class PagedHSTUInferLayer(torch.nn.Module):
+                 self.feed_forward = torch.nn.ModuleList([
+                     FFN_npu_swiglu(self._embedding_dim, self._embedding_dim * 4, dtype) for _ in
+                     range(self.ffn_number)])
+-        if self.use_moe:
++        if self.use_moe and self.layer_idx > 1:
+             self.sparse_moe_linear = SparseMOE(
+                 emb_dim=self._embedding_dim,
+                 expert_number=int(os.getenv("MOE_EXPERT_TOTAL_NUM")),
+                 top_k=int(os.getenv("MOE_EXPERT_ACT_NUM")),
++                hidden_size=int(os.getenv("MOE_HIDDEN_SIZE")),
+                 dtype=dtype
+             )
+ 
+@@ -493,7 +495,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+             )
+ 
+     def post_init(self):
+-        if self.use_moe:
++        if self.use_moe and self.layer_idx > 1:
+             self.sparse_moe_linear.load_parm_post_init()
+         if self.use_rab:
+             self.relative_bias.load_parm_post_init()
+@@ -554,11 +556,11 @@ class PagedHSTUInferLayer(torch.nn.Module):
+                 max_seqlen_q=self._max_seqlen,
+                 max_seqlen_k=self._max_seqlen,
+                 num_contexts= None,
+-                num_targets= None,
++                num_targets=jd.num_candidates,
+                 target_group_size=1,
+                 window_size=(-1, 0),
+-                alpha=self._alpha*self._max_seqlen,
+-                rab= rab,
++                alpha=self._alpha,
++                rab=rab,
+                 has_drab=False,
+                 is_delta_q=False,
+             )
+@@ -584,7 +586,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+             layer_output = self._linear_proj(parallel_input)
+ 
+ 
+-        if self.use_moe :
++        if self.use_moe and self.layer_idx > 1:
+             layer_output = self.sparse_moe_linear.forward(layer_output) if self.use_moe_op else self.sparse_moe_linear.forward_naive(layer_output)
+ 
+ 
+@@ -665,11 +667,11 @@ class PagedHSTUInferLayer(torch.nn.Module):
+                 max_seqlen_q=self._max_seqlen,
+                 max_seqlen_k=self._max_seqlen,
+                 num_contexts= None,
+-                num_targets= None,
++                num_targets=jd.num_candidates,
+                 target_group_size=1,
+                 window_size=(-1, 0),
+-                alpha=self._alpha*self._max_seqlen,
+-                rab= rab,
++                alpha=self._alpha,
++                rab=rab,
+                 has_drab=False,
+                 is_delta_q=False,
+             )
+@@ -718,7 +720,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+             num_tokens: int,
+             layer_input: torch.Tensor,
+     ) -> torch.Tensor:
+-        if not self.use_moe:
++        if not self.use_moe or self.layer_idx <= 1:
+             return
+         layer_input = layer_input[:num_tokens, ...]
+         layer_out = self.output_buffer_[:num_tokens, ...]
+diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k_05B.sh
+similarity index 68%
+rename from examples/hstu/run_random_2k.sh
+rename to examples/hstu/run_random_2k_05B.sh
+index 400e2ce..bd31693 100644
+--- a/examples/hstu/run_random_2k.sh
++++ b/examples/hstu/run_random_2k_05B.sh
+@@ -2,38 +2,37 @@
+ export USE_COMPILE=0
+ 
+ #开启cudagraph
+-export USR_CUDA_GRAPH=1
++export USR_CUDA_GRAPH=0
+ 
+ # 运行轮数(运行多少轮采集性能数据)
+ export RUN_NUM=10
+ 
+ # 模型参数
+-export MODEL_PATH="hstu3B.bin"
++export MODEL_PATH="hstu_05B.pth"
+ export USE_MOE=0     #  USE_FFN 和 USE_MOE 不能同时开启
+-export LAYER_NUM=7
++export LAYER_NUM=15
+ export MOE_EXPERT_TOTAL_NUM=4
+ export MOE_EXPERT_ACT_NUM=2
+-export USE_FFN=1     #  USE_FFN 和 USE_MOE 不能同时开启
++export USE_FFN=0     #  USE_FFN 和 USE_MOE 不能同时开启
+ export USE_FFN_NUMBER=2
+ # 不比较精度，可以使用随机初始化参数的模型
+ export USE_RANDOM_PARM=1
+-export PARM_MAX_VALUE="0.5"
+-
++export PARM_MAX_VALUE="0.1"
++# 模型参数
+ export SEQ_LEN=2048
+ export CANDIDATE_LEN=100
+-export HIDDEN_DIM=4096
+-export HEAD_NUM=16
++export HIDDEN_DIM=768
++export HEAD_NUM=3
+ export HEAD_DIM=256
+-
++# 数据类型0
+ export ENABLE_MATMUL_FP8=0
+-
+ export USE_FLOAT16=0
+ export USE_FLOAT32=0
+ export USE_HSTU_OP=1
+ export USE_RAB=0
+ 
+ # prof路径
+-export PROF_SAVE_PATH="prof_result_2k"
++export PROF_SAVE_PATH="prof_result_2k_05B"
+ 
+ #batchsize 目前L20只支持1 2 4, 超过会超显存
+ export BATCH_SIZE=1
+@@ -44,8 +43,10 @@ export USE_NPU_INPUT=0
+ #是否保存输入和输出tensor, 和NPU对比精度
+ export SAVE_INPUT_AND_PUTPUT=1
+ 
+-export USE_MOE_OP=1
++#是否保存模型
++export SAVE_MODEL=1
+ 
++export USE_MOE_OP=1
+ 
+ #执行
+ python3  benchmark/inference_benchmark_random_2k.py
+\ No newline at end of file
+diff --git a/examples/hstu/run_random_2k_1B.sh b/examples/hstu/run_random_2k_1B.sh
+new file mode 100644
+index 0000000..30931b5
+--- /dev/null
++++ b/examples/hstu/run_random_2k_1B.sh
+@@ -0,0 +1,54 @@
++#开启编译
++export USE_COMPILE=0
++
++#开启cudagraph
++export USR_CUDA_GRAPH=0
++
++# 运行轮数(运行多少轮采集性能数据)
++export RUN_NUM=10
++
++# 模型参数
++export MODEL_PATH="hstu_05B.pth"
++export USE_MOE=1     #  USE_FFN 和 USE_MOE 不能同时开启
++export LAYER_NUM=15
++export MOE_EXPERT_TOTAL_NUM=16
++export MOE_EXPERT_ACT_NUM=16
++export MOE_HIDDEN_SIZE=2048
++export USE_FFN=0     #  USE_FFN 和 USE_MOE 不能同时开启
++export USE_FFN_NUMBER=2
++# 不比较精度，可以使用随机初始化参数的模型
++export USE_RANDOM_PARM=1
++export PARM_MAX_VALUE="0.1"
++
++export SEQ_LEN=2048
++export CANDIDATE_LEN=100
++export HIDDEN_DIM=768
++export HEAD_NUM=3
++export HEAD_DIM=256
++
++export ENABLE_MATMUL_FP8=0
++
++export USE_FLOAT16=0
++export USE_FLOAT32=0
++export USE_HSTU_OP=1
++export USE_RAB=0
++
++# prof路径
++export PROF_SAVE_PATH="prof_result_2k_1B"
++
++#batchsize 目前L20只支持1 2 4, 超过会超显存
++export BATCH_SIZE=1
++
++#是否加载NPU输入,维持和NPU输入一致
++export USE_NPU_INPUT=0
++
++#是否保存输入和输出tensor, 和NPU对比精度
++export SAVE_INPUT_AND_PUTPUT=1
++
++#是否保存模型
++export SAVE_MODEL=1
++
++export USE_MOE_OP=1
++
++#执行
++python3  benchmark/inference_benchmark_random_2k.py
+\ No newline at end of file
+diff --git a/examples/hstu/run_random_2k_2B.sh b/examples/hstu/run_random_2k_2B.sh
+new file mode 100644
+index 0000000..4797f32
+--- /dev/null
++++ b/examples/hstu/run_random_2k_2B.sh
+@@ -0,0 +1,54 @@
++#开启编译
++export USE_COMPILE=0
++
++#开启cudagraph
++export USR_CUDA_GRAPH=0
++
++# 运行轮数(运行多少轮采集性能数据)
++export RUN_NUM=10
++
++# 模型参数
++export MODEL_PATH="hstu_05B.pth"
++export USE_MOE=1     #  USE_FFN 和 USE_MOE 不能同时开启
++export LAYER_NUM=15
++export MOE_EXPERT_TOTAL_NUM=16
++export MOE_EXPERT_ACT_NUM=16
++export MOE_HIDDEN_SIZE=4096
++export USE_FFN=0     #  USE_FFN 和 USE_MOE 不能同时开启
++export USE_FFN_NUMBER=2
++# 不比较精度，可以使用随机初始化参数的模型
++export USE_RANDOM_PARM=1
++export PARM_MAX_VALUE="0.1"
++
++export SEQ_LEN=2048
++export CANDIDATE_LEN=100
++export HIDDEN_DIM=768
++export HEAD_NUM=3
++export HEAD_DIM=256
++
++export ENABLE_MATMUL_FP8=0
++
++export USE_FLOAT16=0
++export USE_FLOAT32=0
++export USE_HSTU_OP=1
++export USE_RAB=0
++
++# prof路径
++export PROF_SAVE_PATH="prof_result_2k_2B"
++
++#batchsize 目前L20只支持1 2 4, 超过会超显存
++export BATCH_SIZE=1
++
++#是否加载NPU输入,维持和NPU输入一致
++export USE_NPU_INPUT=0
++
++#是否保存输入和输出tensor, 和NPU对比精度
++export SAVE_INPUT_AND_PUTPUT=1
++
++#是否保存模型
++export SAVE_MODEL=1
++
++export USE_MOE_OP=1
++
++#执行
++python3  benchmark/inference_benchmark_random_2k.py
+\ No newline at end of file
