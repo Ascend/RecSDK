@@ -5,6 +5,7 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
+#include "asynchronous_complete_cumsum.h"
 #include <torch/csrc/autograd/custom_function.h>
 #include <torch/library.h>
 

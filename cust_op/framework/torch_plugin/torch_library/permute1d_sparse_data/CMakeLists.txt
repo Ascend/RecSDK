@@ -4,7 +4,7 @@ project(permute1d_sparse_data)
 
 include("${CMAKE_CURRENT_LIST_DIR}/../common/CommonTorchOpConfig.cmake")
 
-add_library(permute1d_sparse_data SHARED permute1d_sparse_data.cpp)
+add_library(permute1d_sparse_data SHARED permute1d_sparse_data.cpp ${CMAKE_CURRENT_LIST_DIR}/../asynchronous_complete_cumsum/asynchronous_complete_cumsum.cpp)
 
 target_compile_features(permute1d_sparse_data PRIVATE cxx_std_17)
 target_compile_options(permute1d_sparse_data PRIVATE -D_GLIBCXX_USE_CXX11_ABI=${GLIBCXX_ABI})
