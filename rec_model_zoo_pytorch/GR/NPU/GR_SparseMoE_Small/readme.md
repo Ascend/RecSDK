@@ -1,7 +1,9 @@
 # RecModelZoo(pytorch版本)
 
 本样例的适配对象为 recsys-gr 模型
+
 模型参考的开源链接为 https://github.com/NVIDIA/recsys-examples/tree/main/examples
+
 该文档介绍如何在NPU进行GR - MOE模型的推理适用于(0.05B/1B/2B等参数GR)。
 
 ## 主要依赖
@@ -46,4 +48,13 @@ bash run_random_2k_05k.sh
 3. 将输出的*trace.json文件拖入chrome://tracing页面即可查看运行时详细信息
     
 
+## 精度验证
+
+| 参数名称 | 参数说明   |参数取值                           |
+|-|-----------------------------------|------|
+| USE_RANDOM_PARM | 是否随机生成参数| 0            |
+| MODEL_PATH | 模型参数加载路径      | 模型保存路径 |
+| SAVE_INPUT_AND_OUTPUT | 保存计算结果  | 1 |
+| USE_GPU_INPUT | 使用GPU的输入  | 1 |
+| PERCISE_VALIDATE | 精度验证模式，打开确定性开关，对比inductor和eager模式  | 1 |
 

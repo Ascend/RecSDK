@@ -14,9 +14,9 @@ dos2unix  rab_module.patch
 git apply GPU_GR_SparseMOE.patch
 git apply rab_module.patch
 
-cp ../GR_GPU.patch ./
-dos2unix  GR_GPU.patch
-git apply GR_GPU.patch
+cp ../GR_SparseMOE_Small.patch ./
+dos2unix  GR_SparseMOE_Small.patch
+git apply GR_SparseMOE_Small.patch
 
 echo "补丁加载成功，可进入recsys-examples/hstu目录,执行run_random_2k_xx.sh脚本"
 
