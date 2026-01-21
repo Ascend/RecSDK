@@ -1,5 +1,5 @@
 diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples/hstu/benchmark/inference_benchmark_2b_random.py
-index 8a74a62..099be02 100644
+index 8a74a62..7776690 100644
 --- a/examples/hstu/benchmark/inference_benchmark_2b_random.py
 +++ b/examples/hstu/benchmark/inference_benchmark_2b_random.py
 @@ -40,8 +40,8 @@ from inference_ranking_gr import InferenceRankingGR
@@ -13,10 +13,12 @@ index 8a74a62..099be02 100644
  
  from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
  from pt_jagged_dense_convert import dense_to_jagged_wrapper
-@@ -59,6 +59,7 @@ porf_path = os.getenv("PROF_SAVE_PATH")
+@@ -58,7 +58,8 @@ RUN_NUM = 1 if PERCISE_FLAG else int(os.getenv("RUN_NUM"))
+ porf_path = os.getenv("PROF_SAVE_PATH")
  USE_GRAPH = int(os.getenv("USE_GRAPH")) == 1
  is_use_gpu_input = int(os.getenv("USE_GPU_INPUT")) == 1
- is_save_input_and_output = int(os.getenv("SAVE_INPUT_AND_PUTPUT")) == 1
+-is_save_input_and_output = int(os.getenv("SAVE_INPUT_AND_PUTPUT")) == 1
++is_save_input_and_output = int(os.getenv("SAVE_INPUT_AND_OUTPUT")) == 1
 +is_save_model = int(os.getenv("SAVE_MODEL", "0")) == 1
  batch_size = int(os.getenv("BATCH_SIZE", "1"))
  layer_num = int(os.getenv("LAYER_NUM", "1"))
@@ -414,11 +416,64 @@ index 20e386c..f93b525 100644
          qk_attn = F.silu(qk_attn) * silu_scale
          qk_attn = qk_attn * process_jagged_mask(init_mask,batchsize, jaggedData.seqlen_offsets, total_max_seq_len, actual_len, self.user_candidate_len)
  
+diff --git a/examples/hstu/out_compare.py b/examples/hstu/out_compare.py
+index 528e938..d35eb95 100644
+--- a/examples/hstu/out_compare.py
++++ b/examples/hstu/out_compare.py
+@@ -1,5 +1,30 @@
+ import torch
+ 
++def compare_all():
++    print("")
++    out_dict = []
++    input_tensor = []
++    dirs = "input_output/"
++    for item in ["gpu_output.pt", "npu_output.pt"]:
++        try:
++            logistic_out = torch.load(dirs + item)
++            print("")
++            print(item," tensor加载成功 ",item, "的dtype是 ", logistic_out.dtype)
++        except FileNotFoundError:
++            print(item + "未找到，跳过精度验证。")
++            return
++        input_tensor.append(logistic_out)
++
++    t1_abs = torch.abs(torch.tensor(input_tensor[0]))
++    t2_abs = torch.abs(torch.tensor(input_tensor[1]))
++
++    absolute_errors = torch.abs(t1_abs - t2_abs)
++    relative_errors = absolute_errors / torch.abs(t1_abs)
++    average_error = torch.mean(relative_errors)  # 计算平均相对误差
++
++    print("gpu和npu结果 平均相对误差是", torch.mean(average_error))
++    print("gpu和npu结果 平均绝对误差是", torch.mean(absolute_errors))
++
+ def compare_npu_and_gpu_out():
+     print("")
+     out_dict = []
+@@ -14,7 +39,7 @@ def compare_npu_and_gpu_out():
+             print(item + "未找到，跳过精度验证。")
+             return
+ 
+-        sorted_values, sorted_indices = torch.sort(logistic_out[0:100], dim=0)
++        sorted_values, sorted_indices = torch.sort(logistic_out[0:10], dim=0)
+         # 将索引和值从张量转换为列表
+         indices_list = sorted_indices.squeeze().tolist()
+         values_list = sorted_values.squeeze().tolist()
+@@ -43,5 +68,8 @@ def compare_npu_and_gpu_out():
+ 
+     print("gpu和npuTop10结果 平均绝对误差是", absolute_errors.sum()/10)
+ 
++if __name__ == "__main__":
++    compare_all()
++
+ 
+ 
 diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k_05B.sh
-similarity index 87%
+similarity index 86%
 rename from examples/hstu/run_random_2k.sh
 rename to examples/hstu/run_random_2k_05B.sh
-index e71c2fe..835e78d 100644
+index e71c2fe..d1027ed 100644
 --- a/examples/hstu/run_random_2k.sh
 +++ b/examples/hstu/run_random_2k_05B.sh
 @@ -4,7 +4,7 @@ rm -rf /tmp/torchinductor_*
@@ -430,15 +485,17 @@ index e71c2fe..835e78d 100644
  
  # 运行轮数(运行多少轮采集性能数据)
  export RUN_NUM=10
-@@ -20,34 +20,31 @@ export USE_GPU_INPUT=0
+@@ -19,35 +19,32 @@ export USE_PROFILING=1
+ export USE_GPU_INPUT=0
  
  #是否保存输入和输出tensor, 和GPU对比精度
- export SAVE_INPUT_AND_PUTPUT=0
+-export SAVE_INPUT_AND_PUTPUT=0
++export SAVE_INPUT_AND_OUTPUT=0
 +export SAVE_MODEL=0
  
  # 模型参数-
 -export MODEL_PATH="hstu3B.bin"
-+export MODEL_PATH="GR_05B.pth"
++export MODEL_PATH="hstu_05B.pth"
  export USE_MOE=0     #  USE_FFN 和 USE_MOE 不能同时开启
 -export LAYER_NUM=7
 +export LAYER_NUM=15
@@ -493,7 +550,7 @@ index e71c2fe..835e78d 100644
  
 diff --git a/examples/hstu/run_random_2k_1B.sh b/examples/hstu/run_random_2k_1B.sh
 new file mode 100644
-index 0000000..5def609
+index 0000000..a87f5f2
 --- /dev/null
 +++ b/examples/hstu/run_random_2k_1B.sh
 @@ -0,0 +1,113 @@
@@ -518,11 +575,11 @@ index 0000000..5def609
 +export USE_GPU_INPUT=0
 +
 +#是否保存输入和输出tensor, 和GPU对比精度
-+export SAVE_INPUT_AND_PUTPUT=0
++export SAVE_INPUT_AND_OUTPUT=0
 +export SAVE_MODEL=0
 +
 +# 模型参数-
-+export MODEL_PATH="MTGR_1B.pth"
++export MODEL_PATH="hstu_1B.pth"
 +export USE_MOE=1     #  USE_FFN 和 USE_MOE 不能同时开启
 +export LAYER_NUM=15
 +export MOE_EXPERT_TOTAL_NUM=16
@@ -612,7 +669,7 @@ index 0000000..5def609
 +fi
 diff --git a/examples/hstu/run_random_2k_2B.sh b/examples/hstu/run_random_2k_2B.sh
 new file mode 100644
-index 0000000..8d16e9e
+index 0000000..ec004d6
 --- /dev/null
 +++ b/examples/hstu/run_random_2k_2B.sh
 @@ -0,0 +1,113 @@
@@ -637,11 +694,11 @@ index 0000000..8d16e9e
 +export USE_GPU_INPUT=0
 +
 +#是否保存输入和输出tensor, 和GPU对比精度
-+export SAVE_INPUT_AND_PUTPUT=0
++export SAVE_INPUT_AND_OUTPUT=0
 +export SAVE_MODEL=0
 +
 +# 模型参数-
-+export MODEL_PATH="MTGR_2B.pth"
++export MODEL_PATH="hstu_2B.pth"
 +export USE_MOE=1     #  USE_FFN 和 USE_MOE 不能同时开启
 +export LAYER_NUM=15
 +export MOE_EXPERT_TOTAL_NUM=16

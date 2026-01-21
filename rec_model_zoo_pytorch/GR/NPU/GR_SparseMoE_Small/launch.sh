@@ -14,9 +14,9 @@ dos2unix  rab_module.patch
 git apply NPU_GR_SparseMOE.patch
 git apply rab_module.patch
 
-cp ../GR_NPU.patch ./
-dos2unix  GR_NPU.patch  
-git apply GR_NPU.patch
+cp ../GR_SparseMOE_Small.patch ./
+dos2unix  GR_SparseMOE_Small.patch  
+git apply GR_SparseMOE_Small.patch
 
 echo "补丁加载成功，可进入examples/hstu执行run_random_2k_xx.sh脚本"
 

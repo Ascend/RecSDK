@@ -44,4 +44,11 @@ bash run_random_2k.sh
 3. 将输出的*trace.json文件拖入chrome://tracing页面即可查看运行时详细信息
     
 
+## 精度验证
+设置以下参数，如果无模型参数，可以先设置USE_RANDOM_PARM=1，SAVE_MODEL=1随机生成一份模型参数
+| 参数名称 | 参数说明   |参数取值                           |
+|-|-----------------------------------|------|
+| USE_RANDOM_PARM | 是否随机生成参数| 0            |
+| MODEL_PATH | 模型参数加载路径      | 模型保存路径 |
+| SAVE_INPUT_AND_OUTPUT | 保存计算结果  | 1 |
 

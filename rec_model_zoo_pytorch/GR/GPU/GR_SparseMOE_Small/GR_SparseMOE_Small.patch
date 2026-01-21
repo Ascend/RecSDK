@@ -1,16 +1,16 @@
 diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples/hstu/benchmark/inference_benchmark_random_2k.py
-index d0fbbae..99172ed 100644
+index 064ccb0..5442b3f 100644
 --- a/examples/hstu/benchmark/inference_benchmark_random_2k.py
 +++ b/examples/hstu/benchmark/inference_benchmark_random_2k.py
 @@ -48,6 +48,7 @@ dataset_path = os.getenv("DATASET_PATH")
  model_path = os.getenv("MODEL_PATH")
  folder_name = os.getenv("PROF_SAVE_PATH")
  is_save_input_and_output = int(os.getenv("SAVE_INPUT_AND_PUTPUT")) == 1
-+is_save_model = int(os.getenv("SAVE_MODEL")) == 1
++is_save_model = int(os.getenv("SAVE_MODEL", "0")) == 1
  is_use_npu_input = int(os.getenv("USE_NPU_INPUT")) == 1
  batch_size = int(os.getenv("BATCH_SIZE", "1"))
  layer_num = int(os.getenv("LAYER_NUM", "1"))
-@@ -146,8 +147,8 @@ def run_ranking_gr_inference():
+@@ -149,8 +150,8 @@ def run_ranking_gr_inference():
  
          if use_random_parm:
              for param in model_predict.parameters():
@@ -21,7 +21,7 @@ index d0fbbae..99172ed 100644
                  cpu_state_dict = {k: v.cpu() for k, v in model_predict.state_dict().items()}
                  torch.save(cpu_state_dict, model_path)  # 保存模型权重
          else:
-@@ -227,15 +228,18 @@ def run_ranking_gr_inference():
+@@ -231,15 +232,18 @@ def run_ranking_gr_inference():
                      prof.step()
  
          print("收集端到端时间")
@@ -43,7 +43,7 @@ index d0fbbae..99172ed 100644
          report = {'Batch_size': max_batch_size,
                    'model_name': "GR"}
  
-@@ -249,7 +253,6 @@ def run_ranking_gr_inference():
+@@ -253,7 +257,6 @@ def run_ranking_gr_inference():
          report["AVG Latency"] = avg_latency
          report["P99 Latency"] = tail_latency
          report["P90 Latency"] = p90_latency
@@ -51,7 +51,7 @@ index d0fbbae..99172ed 100644
          time_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
  
          if not os.path.exists(folder_name):
-@@ -266,7 +269,6 @@ def run_ranking_gr_inference():
+@@ -270,7 +273,6 @@ def run_ranking_gr_inference():
          print("性能分析完成！")
          print("-" * 30)
  
@@ -111,7 +111,7 @@ index 74ec9c2..c79c713 100644
              self,
              batch_size: int,
 diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/modules/paged_hstu_infer_layer.py
-index b7b740e..daf9939 100644
+index b7b740e..d92d577 100644
 --- a/examples/hstu/modules/paged_hstu_infer_layer.py
 +++ b/examples/hstu/modules/paged_hstu_infer_layer.py
 @@ -51,12 +51,13 @@ class SparseMOE(torch.nn.Module):
@@ -191,7 +191,7 @@ index b7b740e..daf9939 100644
                  has_drab=False,
                  is_delta_q=False,
              )
-@@ -718,7 +720,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+@@ -718,12 +720,11 @@ class PagedHSTUInferLayer(torch.nn.Module):
              num_tokens: int,
              layer_input: torch.Tensor,
      ) -> torch.Tensor:
@@ -200,81 +200,17 @@ index b7b740e..daf9939 100644
              return
          layer_input = layer_input[:num_tokens, ...]
          layer_out = self.output_buffer_[:num_tokens, ...]
-diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k_05B.sh
-similarity index 68%
-rename from examples/hstu/run_random_2k.sh
-rename to examples/hstu/run_random_2k_05B.sh
-index 400e2ce..bd31693 100644
---- a/examples/hstu/run_random_2k.sh
-+++ b/examples/hstu/run_random_2k_05B.sh
-@@ -2,38 +2,37 @@
- export USE_COMPILE=0
  
- #开启cudagraph
--export USR_CUDA_GRAPH=1
-+export USR_CUDA_GRAPH=0
- 
- # 运行轮数(运行多少轮采集性能数据)
- export RUN_NUM=10
- 
- # 模型参数
--export MODEL_PATH="hstu3B.bin"
-+export MODEL_PATH="hstu_05B.pth"
- export USE_MOE=0     #  USE_FFN 和 USE_MOE 不能同时开启
--export LAYER_NUM=7
-+export LAYER_NUM=15
- export MOE_EXPERT_TOTAL_NUM=4
- export MOE_EXPERT_ACT_NUM=2
--export USE_FFN=1     #  USE_FFN 和 USE_MOE 不能同时开启
-+export USE_FFN=0     #  USE_FFN 和 USE_MOE 不能同时开启
- export USE_FFN_NUMBER=2
- # 不比较精度，可以使用随机初始化参数的模型
- export USE_RANDOM_PARM=1
--export PARM_MAX_VALUE="0.5"
 -
-+export PARM_MAX_VALUE="0.1"
-+# 模型参数
- export SEQ_LEN=2048
- export CANDIDATE_LEN=100
--export HIDDEN_DIM=4096
--export HEAD_NUM=16
-+export HIDDEN_DIM=768
-+export HEAD_NUM=3
- export HEAD_DIM=256
--
-+# 数据类型0
- export ENABLE_MATMUL_FP8=0
--
- export USE_FLOAT16=0
- export USE_FLOAT32=0
- export USE_HSTU_OP=1
- export USE_RAB=0
+         layer_out = self.sparse_moe_linear.forward(layer_out) if self.use_moe_op else self.sparse_moe_linear.forward_naive(layer_out)
  
- # prof路径
--export PROF_SAVE_PATH="prof_result_2k"
-+export PROF_SAVE_PATH="prof_result_2k_05B"
  
- #batchsize 目前L20只支持1 2 4, 超过会超显存
- export BATCH_SIZE=1
-@@ -44,8 +43,10 @@ export USE_NPU_INPUT=0
- #是否保存输入和输出tensor, 和NPU对比精度
- export SAVE_INPUT_AND_PUTPUT=1
- 
--export USE_MOE_OP=1
-+#是否保存模型
-+export SAVE_MODEL=1
- 
-+export USE_MOE_OP=1
- 
- #执行
- python3  benchmark/inference_benchmark_random_2k.py
-\ No newline at end of file
-diff --git a/examples/hstu/run_random_2k_1B.sh b/examples/hstu/run_random_2k_1B.sh
+diff --git a/examples/hstu/run_random_2k_05B.sh b/examples/hstu/run_random_2k_05B.sh
 new file mode 100644
-index 0000000..30931b5
+index 0000000..97c3d29
 --- /dev/null
-+++ b/examples/hstu/run_random_2k_1B.sh
-@@ -0,0 +1,54 @@
++++ b/examples/hstu/run_random_2k_05B.sh
+@@ -0,0 +1,51 @@
 +#开启编译
 +export USE_COMPILE=0
 +
@@ -286,6 +222,64 @@ index 0000000..30931b5
 +
 +# 模型参数
 +export MODEL_PATH="hstu_05B.pth"
++export USE_MOE=0     #  USE_FFN 和 USE_MOE 不能同时开启
++export LAYER_NUM=15
++export MOE_EXPERT_TOTAL_NUM=16
++export MOE_EXPERT_ACT_NUM=16
++export USE_FFN=0     #  USE_FFN 和 USE_MOE 不能同时开启
++export USE_FFN_NUMBER=2
++# 不比较精度，可以使用随机初始化参数的模型
++export USE_RANDOM_PARM=1
++export PARM_MAX_VALUE="0.1"
++
++export SEQ_LEN=2048
++export CANDIDATE_LEN=100
++export HIDDEN_DIM=768
++export HEAD_NUM=3
++export HEAD_DIM=256
++
++export ENABLE_MATMUL_FP8=0
++
++export USE_FLOAT16=0
++export USE_FLOAT32=0
++export USE_HSTU_OP=1
++export USE_RAB=0
++
++# prof路径
++export PROF_SAVE_PATH="prof_result_2k_05B"
++
++#batchsize 目前L20只支持1 2 4, 超过会超显存
++export BATCH_SIZE=1
++
++#是否加载NPU输入,维持和NPU输入一致
++export USE_NPU_INPUT=0
++
++#是否保存输入和输出tensor, 和NPU对比精度
++export SAVE_INPUT_AND_PUTPUT=1
++
++export USE_MOE_OP=1
++export TEST_DYNAMIC=0
++
++#执行
++python3  benchmark/inference_benchmark_random_2k.py
+\ No newline at end of file
+diff --git a/examples/hstu/run_random_2k_1B.sh b/examples/hstu/run_random_2k_1B.sh
+new file mode 100644
+index 0000000..41e29e3
+--- /dev/null
++++ b/examples/hstu/run_random_2k_1B.sh
+@@ -0,0 +1,52 @@
++#开启编译
++export USE_COMPILE=0
++
++#开启cudagraph
++export USR_CUDA_GRAPH=0
++
++# 运行轮数(运行多少轮采集性能数据)
++export RUN_NUM=10
++
++# 模型参数
++export MODEL_PATH="hstu_1B.pth"
 +export USE_MOE=1     #  USE_FFN 和 USE_MOE 不能同时开启
 +export LAYER_NUM=15
 +export MOE_EXPERT_TOTAL_NUM=16
@@ -311,7 +305,7 @@ index 0000000..30931b5
 +export USE_RAB=0
 +
 +# prof路径
-+export PROF_SAVE_PATH="prof_result_2k_1B"
++export PROF_SAVE_PATH="prof_result_2k_05B"
 +
 +#batchsize 目前L20只支持1 2 4, 超过会超显存
 +export BATCH_SIZE=1
@@ -322,20 +316,18 @@ index 0000000..30931b5
 +#是否保存输入和输出tensor, 和NPU对比精度
 +export SAVE_INPUT_AND_PUTPUT=1
 +
-+#是否保存模型
-+export SAVE_MODEL=1
-+
 +export USE_MOE_OP=1
++export TEST_DYNAMIC=0
 +
 +#执行
 +python3  benchmark/inference_benchmark_random_2k.py
 \ No newline at end of file
 diff --git a/examples/hstu/run_random_2k_2B.sh b/examples/hstu/run_random_2k_2B.sh
 new file mode 100644
-index 0000000..4797f32
+index 0000000..0dfc22d
 --- /dev/null
 +++ b/examples/hstu/run_random_2k_2B.sh
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,52 @@
 +#开启编译
 +export USE_COMPILE=0
 +
@@ -346,7 +338,7 @@ index 0000000..4797f32
 +export RUN_NUM=10
 +
 +# 模型参数
-+export MODEL_PATH="hstu_05B.pth"
++export MODEL_PATH="hstu_2B.pth"
 +export USE_MOE=1     #  USE_FFN 和 USE_MOE 不能同时开启
 +export LAYER_NUM=15
 +export MOE_EXPERT_TOTAL_NUM=16
@@ -372,7 +364,7 @@ index 0000000..4797f32
 +export USE_RAB=0
 +
 +# prof路径
-+export PROF_SAVE_PATH="prof_result_2k_2B"
++export PROF_SAVE_PATH="prof_result_2k_05B"
 +
 +#batchsize 目前L20只支持1 2 4, 超过会超显存
 +export BATCH_SIZE=1
@@ -383,10 +375,8 @@ index 0000000..4797f32
 +#是否保存输入和输出tensor, 和NPU对比精度
 +export SAVE_INPUT_AND_PUTPUT=1
 +
-+#是否保存模型
-+export SAVE_MODEL=1
-+
 +export USE_MOE_OP=1
++export TEST_DYNAMIC=0
 +
 +#执行
 +python3  benchmark/inference_benchmark_random_2k.py
