@@ -1,0 +1,50 @@
+[mxrec]
+log_level = "INFO"
+# If use_ranktable is true, the environment variable "RANK_TABLE_FILE" will be read; if it is false, the configuration
+# of "mxrec.cm-node-info" in the toml file will be read.
+use_ranktable = true
+
+[mxrec.cm-node-info]
+cm_chief_ip = "127.0.0.1"
+cm_chief_port = 60001
+cm_chief_device = 0
+cm_worker_ip = "127.0.0.1"
+cm_worker_size = 1
+
+[model]
+
+train_epoch = 1
+test_epoch = 1
+batch_size = 8192
+# Simulation configuration.
+train_steps = 10000
+train_interval = 10000  # 10000
+eval_steps = 1360      # 1360
+
+dev_vocab_size = 10000000
+emb_dim = 128
+prefetch_num = 100
+line_per_sample = 1024
+
+loss_scale = 1024
+weight_decay = 0.0001
+base_lr_dense = 28.443
+base_lr_sparse = 33.71193
+warmup_steps = 152064000        # 2750 * 55296
+decay_start_step = 2726922240   # 49315 * 55296
+decay_steps = 1535680512        # 27772 * 55296
+
+bottom_stack_dnn1_shape = 512
+bottom_stack_dnn2_shape = 256
+bottom_stack_dnn3_shape = 128
+top_stack_dnn1_shape = 1024
+top_stack_dnn2_shape = 1024
+top_stack_dnn3_shape = 512
+top_stack_dnn4_shape = 256
+top_stack_dnn5_shape = 1
+l1_regularizer = 0.01
+
+[model.distribution]
+interface = "lo"
+local_rank_size = 1
+num_server = 1
