@@ -23,7 +23,7 @@ fi
 
 BUILD_VER=${1}
 
-if [[ "${BUILD_VER}" =~ ^(A2|A3|A5|310P)$ ]]; then
+if [[ "${BUILD_VER}" =~ ^(A2|A3|A5|310P|A2-TF)$ ]]; then
     echo "BUILD_VER: ${BUILD_VER}"
 else
     echo "ERROR: Unknown BUILD_VER:${BUILD_VER}"
@@ -39,7 +39,12 @@ base_op_dir="v220"
 
 source /etc/profile
 
-
+support_A2_tf_ops="cust_op_by_addr
+fused_lazy_adam
+fused_sgd
+lccl
+pcie_through
+"
 support_A3_list="asynchronous_complete_cumsum
 gather_for_rank1
 index_select_for_rank1_backward
@@ -79,6 +84,13 @@ function make_output_dir() {
     mkdir -p "${opp_output_path}"
 }
 
+function in_list() {
+    local w=$1; shift
+    for x; do [ "$x" = "$w" ] && return 0; done
+    return 1
+}
+
+
 function compile_ops_v220() {
     echo "OP Path: $ops_path"
     for dir in "$ops_path"/*; do
@@ -112,12 +124,23 @@ function compile_ops_v220() {
                             mv "${new_op_name}" "${opp_output_path}"
                         fi
                     done
+                elif [ "${BUILD_VER}" == "A2-TF" ]; then
+                    for item in $support_A2_tf_ops; do
+                        if [ "$item" == "$dir_name" ]; then
+                            bash ./run.sh ai_core-Ascend910B1
+                            new_op_name=mxrec_opp_"${dir_name}".run
+                            cd "$dir_name"
+                            cp ./build_out/custom_opp*.run  "${new_op_name}"
+                            mv "${new_op_name}" "${opp_output_path}"
+                        fi
+                    done
                 elif [ "${BUILD_VER}" == "A2" ]; then
-                  bash ./run.sh ai_core-Ascend910B1
-                  new_op_name=mxrec_opp_"${dir_name}".run
-                  cd "$dir_name"
-                  cp ./build_out/custom_opp*.run  "${new_op_name}"
-                  mv "${new_op_name}" "${opp_output_path}"
+                    in_list "$dir_name" $support_A2_tf_ops && continue
+                    bash ./run.sh ai_core-Ascend910B1
+                    new_op_name=mxrec_opp_"${dir_name}".run
+                    cd "$dir_name"
+                    cp ./build_out/custom_opp*.run  "${new_op_name}"
+                    mv "${new_op_name}" "${opp_output_path}"
                 fi
             fi
         fi
