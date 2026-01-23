@@ -205,10 +205,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
     auto acSeqOffset = seqOffset;
     TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
 
+    auto _empty = at::Tensor();
     auto acAttnBias = attnBias.value_or(at::Tensor());
     auto acMask = mask.value_or(at::Tensor());
-    auto acNumContext = numContext.value_or(at::Tensor());
-    auto acNumTarget = numTarget.value_or(at::Tensor());
+    auto acNumContext = CheckOptionalTensorIsNotNone(numContext) ? \
+                        numContext.value().to(acSeqOffset.scalar_type()) : _empty;
+    auto acNumTarget = CheckOptionalTensorIsNotNone(numTarget) ? \
+                       numTarget.value().to(acSeqOffset.scalar_type()) : _empty;
 
     auto acTargetGroupSize = targetGroupSize.value_or(0);
     double realAlpha = alpha.value_or(1.0);
@@ -399,7 +402,7 @@ at::Tensor hstu_jagged_autograd(const at::Tensor& q,
                                       numContext, numTarget, targetGroupSize, alpha);
 }
 
-TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
+TORCH_LIBRARY_IMPL(mxrec, AutogradPrivateUse1, m)
 {
     m.impl("hstu_jagged.equal", TORCH_FN(hstu_jagged_autograd));
 }
