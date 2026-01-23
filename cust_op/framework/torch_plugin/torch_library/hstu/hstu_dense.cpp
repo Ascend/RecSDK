@@ -311,7 +311,7 @@ at::Tensor hstu_dense_autograd(const at::Tensor& q,
                                      maxSeqLen, siluScale);
 }
 
-TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
+TORCH_LIBRARY_IMPL(mxrec, AutogradPrivateUse1, m)
 {
     m.impl("hstu_dense", TORCH_FN(hstu_dense_autograd));
 }
