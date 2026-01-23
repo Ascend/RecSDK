@@ -1,0 +1,57 @@
+[
+  {
+    "op": "ExpandIntoJaggedPermute",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "permute",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "int32", "int64"
+        ]
+      },
+      {
+        "name": "input_offsets",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "int32", "int64"
+        ]
+      },
+      {
+        "name": "output_offsets",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "int32", "int64"
+        ]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "output_permute",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "int32", "int64"
+        ]
+      }
+    ],
+    "attr": [
+      {
+        "name": "output_size",
+        "param_type": "required",
+        "type": "int"
+      }
+    ]
+  }
+]
