@@ -24,6 +24,7 @@ constexpr size_t ATTR_INDEX_SPLIT_LIST = 0;
 constexpr size_t ATTR_INDEX_REQUIRES_GRAD = 1;
 constexpr size_t INPUT_INDEX_X = 0;
 constexpr size_t INPUT_INDEX_WEIGHT = 1;
+constexpr size_t MAX_N = 512 * 4 * 16;
 }  // namespace
 
 namespace optiling {
@@ -38,9 +39,17 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     const ge::DataType selfDataType = context->GetInputDesc(0)->GetDataType();
     const gert::Shape xShape = context->GetInputShape(INPUT_INDEX_X)->GetStorageShape();
     const gert::Shape weightShape = context->GetInputShape(INPUT_INDEX_WEIGHT)->GetStorageShape();
-    tiling.set_m(xShape.GetDim(0));
-    tiling.set_k(xShape.GetDim(1));
-    tiling.set_n(weightShape.GetDim(0));
+    auto m = xShape.GetDim(0);
+    auto k = xShape.GetDim(1);
+    auto n = weightShape.GetDim(0);
+    tiling.set_m(m);
+    tiling.set_k(k);
+    tiling.set_n(n);
+    OPS_LOG_E_IF(k % 16 != 0, context, return ge::GRAPH_FAILED,
+                 "[ERROR]InLinearSilu weight dim k must be a multiple of 16, k: %lld.", k);
+    OPS_LOG_E_IF(!((n > k) && (n % (4 * k) == 0) && (n <= MAX_N)), context, return ge::GRAPH_FAILED,
+                 "[ERROR]InLinearSilu weight dim n must be a multiple of 4 k, Greater than k, and less than or equal "
+                 "to 512 * 4 * 16, k: %lld, n: %lld", k, n);
     const auto attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
 
