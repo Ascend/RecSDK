@@ -14,26 +14,26 @@ torch.ops.mxrec.split_2d_jagged(tensor, max_seqlens, offsetA, offsetB) -> Tensor
 ### 参数说明
 
 # concat_2d_jagged算子输入与输出
-| 名称            | 输入/输出  | 数据类型                     | 数据格式         | 范围                                                                      | 说明    |
-|---------------|--------|--------------------------|--------------|-------------------------------------------------------------------------|-------|
-| max_seqlens      | 输入     | int                      | int          | NA                                                                      | NA    |
-| tensor_a      | 输入     | bfloat16/float16/float32 | [dim0, dim1] | dim1和dtype必须与tensor_b的一致                                                | 仅支持二维 |
-| tensor_b      | 输入     | bfloat16/float16/float32 | [dim0, dim1] | dim1和dtype必须与tensor_a的一致                                                | 仅支持二维 |
-| offset_a      | 输入     | int                      | [dim0]       | dim0的长度必须与offset_b的长度相等,长度范围[2, 1024]                                   | 仅支持一维 |
-| offset_b      | 输入     | int                      | [dim0]       | dim0的长度必须与offset_a的长度相等,长度范围[2, 1024]                                                 | 仅支持一维 |
-| isReplace      | 输入(可选) | bool                     | 默认值：False    | 当前只支持默认值                                                                | NA    |
-| nPrefixFromRight   | 输入(可选) | int                      | 默认值：0        | 当前只支持默认值                                                                | NA    |
-| output_tensor | 输出     | bfloat16/float16/float32 | [dim0, dim1] | dim0的长度等于tensor_a和tensor_b的dim0之和，<br/>dim1的长度与tensor_a和tensor_b的dim1相等 | 结果为二维 |
+| 名称            | 输入/输出  | 数据类型                     | 数据格式         | 范围                                                                      | 说明                                      |
+|---------------|--------|--------------------------|--------------|-------------------------------------------------------------------------|-----------------------------------------|
+| max_seqlens      | 输入     | int                      | int          | NA                                                                      | 最大序列长度，即offset中最大偏移。预留参数与开源一致,对当前功能无影响。 |
+| tensor_a      | 输入     | bfloat16/float16/float32 | [dim0, dim1] | dim1和dtype必须与tensor_b的一致                                                | 仅支持二维                                   |
+| tensor_b      | 输入     | bfloat16/float16/float32 | [dim0, dim1] | dim1和dtype必须与tensor_a的一致                                                | 仅支持二维                                   |
+| offset_a      | 输入     | int                      | [dim0]       | dim0的长度必须与offset_b的长度相等,长度范围[2, 1024]                                   | 仅支持一维                                   |
+| offset_b      | 输入     | int                      | [dim0]       | dim0的长度必须与offset_a的长度相等,长度范围[2, 1024]                                   | 仅支持一维                                   |
+| isReplace      | 输入(可选) | bool                     | 默认值：False    | 预留参数，当前只支持默认值，传其他值不生效。                                                  | NA                                      |
+| nPrefixFromRight   | 输入(可选) | int                      | 默认值：0        | 预留参数，当前只支持默认值，传其他值不生效。                                                 | NA                                      |
+| output_tensor | 输出     | bfloat16/float16/float32 | [dim0, dim1] | dim0的长度等于tensor_a和tensor_b的dim0之和，<br/>dim1的长度与tensor_a和tensor_b的dim1相等 | 结果为二维                                   |
 
 # split_2d_jagged算子输入与输出
 | 名称             | 输入/输出  | 数据类型                     | 数据格式         | 范围                                                    | 说明    |
 |----------------|--------|--------------------------|--------------|-------------------------------------------------------|-------|
 | values         | 输入     | bfloat16/float16/float32 | [dim0, dim1] | NA                                                    | 仅支持二维 |
-| max_seqlens    | 输入     | int                      | int          | NA                                                    | NA    |
+| max_seqlens    | 输入     | int                      | int          | NA                                                    | 最大序列长度，即offset中最大偏移。预留参数与开源一致,对当前功能无影响。    |
 | offset_a       | 输入     | int                      | [dim0]       | 长度范围[2, 1024]                                         | 仅支持一维 |
 | offset_b       | 输入     | int                      | [dim0]       | 长度范围[2, 1024]                                         | 仅支持一维 |
-| dense_size     | 输入(可选) | int                      | 默认值：0    | 当前只支持默认值                                              | NA    |
-| nPrefixToRight | 输入(可选) | int                      | 默认值：0        | 当前只支持默认值                                              | NA    |
+| dense_size     | 输入(可选) | int                      | 默认值：0    | 预留参数，当前只支持默认值，传其他值不生效。                                             | NA    |
+| nPrefixToRight | 输入(可选) | int                      | 默认值：0        | 预留参数，当前只支持默认值，传其他值不生效。                                              | NA    |
 | output_tensor1 | 输出     | bfloat16/float16/float32 | [dim0, dim1] | dim0的长度等于offset_a的最后一个偏移的值，<br/>dim1的长度与values的dim1相等 | 结果为二维 |
 | output_tensor2 | 输出     | bfloat16/float16/float32 | [dim0, dim1] | dim0的长度等于offset_b的最后一个偏移的值，<br/>dim1的长度与values的dim1相等 | 结果为二维 |
 
