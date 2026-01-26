@@ -68,6 +68,7 @@ static const std::unordered_map<std::string, ChipName> chipMap = {
     {"Ascend910_9392", ChipName::CHIP_910_9392},
     {"Ascend910_9382", ChipName::CHIP_910_9382},
     {"Ascend910_9372", ChipName::CHIP_910_9372},
+    {"Ascend910_9362", ChipName::CHIP_910_9362},
     {"Ascend910_9361", ChipName::CHIP_910_9361},
 };
 
@@ -115,6 +116,7 @@ uint32_t GetCoreNum(ChipName chipName)
         case ChipName::CHIP_910B4:
         case ChipName::CHIP_910B41:
         case ChipName::CHIP_910_9372:
+        case ChipName::CHIP_910_9362:
         case ChipName::CHIP_910_9361:
             return AI_CORE_NUM_20;
         case ChipName::CHIP_310P3:

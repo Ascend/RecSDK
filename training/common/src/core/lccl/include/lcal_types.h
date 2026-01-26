@@ -46,6 +46,7 @@ enum class ChipName {
     CHIP_910_9392,
     CHIP_910_9382,
     CHIP_910_9372,
+    CHIP_910_9362,
     CHIP_910_9361,
     RESERVED,
 };
