@@ -105,7 +105,7 @@ def jagged_data_gen(
     elif mask_type == MaskType.NONE:
         mask = None
     else:
-        mask = torch.empty(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type).uniform_(-1, 1)
+        mask = torch.randint(0, 2, size=(batch_size, num_heads, max_seq_len, max_seq_len)).to(data_type)
 
     return grad, q, k, v, bias, mask, max_seq_len, seq_offset
 
