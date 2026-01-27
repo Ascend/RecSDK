@@ -415,6 +415,7 @@ at::Tensor split_embedding_backward_codegen_rowwise_adagrad_unweighted_exact_npu
     int64_t iter = 0;
 
     const auto grad_output_conti = grad_output.contiguous();
+    momentum1_dev = momentum1_dev.contiguous();
 
     EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_output_conti, dev_weights, uvm_weights,
                  lxu_cache_weights, weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
