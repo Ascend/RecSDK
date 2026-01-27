@@ -33,6 +33,7 @@
 | dense_embedding_codegen_lookup_function_grad    | 无                                                                                            | -             | 实现FBGEMM GPU库dense_embedding_nobag_codegen_forward_unweighted_cuda查表的反向梯度累计功能。 |
 | concat_2d_jagged                                | 无                                                                                            | 否             | 实现将两个tensor分别按照其对应offset偏移量,按顺序依次拼接，组成一个tensor。                         |
 | concat_2d_jagged_grad                           | 无                                                                                            | 否             | 为concat_2d_jagged的反向算子,将一个tensor，分别按照两个offset偏移量，按顺序依次拆分形成两个tensor。     |
+| ln_linear_silu                           | 无                                                                                            | 否             | 实现将输入tensor进行线性变换、silu函数激活后拆分为4个tensor的功能。    |
 
 
 
