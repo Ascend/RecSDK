@@ -26,9 +26,48 @@ using torch::autograd::AutogradContext;
 using torch::autograd::Function;
 using namespace at;
 
+const int MIN_DIM = 16;
+const int MAX_DIM = 512 * 16; // max_dim * max_num_head
+const int TENSOR_NUM = 4;
+const int DIM_2 = 2;
+const int DIM_1 = 1;
+
+void IsValidShape(const at::Tensor& x, const at::Tensor& weight,
+                  const at::Tensor& bias, at::IntArrayRef splitList)
+{
+    check_tensor_non_empty(x, "x");
+    check_tensor_non_empty(weight, "weight");
+    check_tensor_non_empty(bias, "bias");
+
+    check_tensor_dim(x, DIM_2, "x");
+    check_tensor_dim(weight, DIM_2, "weight");
+    check_tensor_dim(bias, DIM_1, "bias");
+
+    TORCH_CHECK(splitList.size() == TENSOR_NUM, "splitList must have 4 elements.");
+    int32_t totalDim = 0;
+    for (int i = 0; i < TENSOR_NUM; i++) {
+        TORCH_CHECK(splitList[i] >= MIN_DIM && splitList[i] <= MAX_DIM && splitList[i] % MIN_DIM == 0,
+            "uvqk dim must in range[16, 8192] and multiples of 16.");
+        totalDim += splitList[i];
+    }
+
+    auto k = x.size(1);
+    auto n = weight.size(0);
+    TORCH_CHECK(k >= MIN_DIM && k <= MAX_DIM && k % MIN_DIM == 0,
+        "x dim[1] must in range[16, 8192] and multiples of 16.");
+    TORCH_CHECK(n >= MIN_DIM * TENSOR_NUM && n <= MAX_DIM * TENSOR_NUM && n % MIN_DIM == 0,
+        "weight dim[0] must in range[64, 32768] and multiples of 16.");
+    TORCH_CHECK(totalDim == n, "weight_dim[0] must equal to sum(splitList).");
+    TORCH_CHECK(bias.size(0) == n, "bias dim[0] must equal to weight dim[0].");
+    TORCH_CHECK(weight.size(1) == k, "weight dim[1] must equal to x dim[1].");
+    TORCH_CHECK((n % (4 * k) == 0), "weight dim[0] must be a multiple of 4 x dim[1]");
+}
+
 torch::autograd::variable_list RunInLinearSiluForwardInter(const at::Tensor& x, const at::Tensor& weight,
                                                            const at::Tensor& bias, at::IntArrayRef splitList)
 {
+    IsValidShape(x, weight, bias, splitList);
+
     at::TensorOptions options = x.options();
     auto m = x.size(0);
     auto n = weight.size(0);

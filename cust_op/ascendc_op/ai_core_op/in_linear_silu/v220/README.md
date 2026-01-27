@@ -31,10 +31,11 @@
 1. 输入张量x ND格式，支持FLOAT16、FLOAT、BFLOAT16类型，shape = (m, k) 不可为空
 2. 输入张量weight ND格式，支持FLOAT16、FLOAT、BFLOAT16类型，shape = (n, k), 如果为(k, n)需要转置后传入 不可为空
 3. 输入张量bias ND格式，支持FLOAT类型，shape = (n,) 不可为空
-4. attr属性 splitArgList(List[int], 计算输入)： User、Value、Query、Key的长度， 4个int类型的List,如果x为FLOAT类型，则成员必须为8的倍数；如果x为FLOAT16,BFLOAT16，则成员必须为16的倍数，4个数总和为n,不可为空
+4. attr属性 splitArgList(List[int], 计算输入)： User、Value、Query、Key的长度，4个int类型的List, 成员必须为16的倍数，4个数总和为n，不可为空。
 5. 输出张量 user, value, query, key,计算输出结果
 6. 输出张量 linearOutputOut中间数据用于反向计算或者workspace使用。需要传入。类型同x。shape = (m, n) 不可为空
 7. x weight bias做mmad得到的结果做silu最后根据splitArgList将结果分为user, value, query, key。
+8. 请注意算子输入shape受显存大小限制。
 
 # 依赖
 
@@ -84,15 +85,15 @@ mixed_uvqk = torch.nn.functional.silu(mixed_uvqk)
 # 算子输入与输出
 | 名称      | 输入/输出 | 参数类型 | 数据类型         | 数据格式       | 范围         | 说明                                  |
 |---------|------------|------|--------------|------------|------------|----------------------------------------|
-| x       | 输入       | Tensor | float32/float16/bfloat16 | [b-s, H] | `[]` |                 |
-| weight   | 输入       | Tensor | float32/float16/bfloat16 | [4HH, H] | `[]` |               |
-| bias    | 输入       | Tensor | float32 | [H, ] | `[]` |               |
-| splitArgList | 输入(属性)  | ListInt | int   |           |          |     |
-| user (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H] | NA         |            |
-| value (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H] | NA         |            |
-| query (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H] | NA         |            |
-| key (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H] | NA         |            |
-| linear_output (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H] | NA         |            |
+| x       | 输入       | Tensor | float32/float16/bfloat16 | [b-s, H] | H取值范围[16, 8192] |   H为16的整数倍              |
+| weight   | 输入       | Tensor | float32/float16/bfloat16 | [4HH, H] | 4HH取值范围[64, 32768] |   4HH为16的整数倍，4HH为H的4n倍            |
+| bias    | 输入       | Tensor | float32 | [4HH] | 4HH取值范围[64, 32768] |   4HH为16的整数倍，4HH为H的4n倍            |
+| splitArgList | 输入(属性)  | ListInt | int   | [H_u, H_v, H_q, H_k]          |   sum(splitArgList)=4HH       |长度为4，不可为空     |
+| user (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_u] | H_u取值范围[16, 8192]         |  H_u为16的整数倍          |
+| value (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_v] | H_v取值范围[16, 8192]         |  H_v为16的整数倍          |
+| query (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_q] | H_q取值范围[16, 8192]         |  H_q为16的整数倍          |
+| key (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_k] | H_k取值范围[16, 8192]         |  H_v为16的整数倍          |
+| linear_output (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, 4HH] | 4HH取值范围[64, 32768] |   4HH为16的整数倍，4HH为H的4n倍            |
 
 # 算子编译部署
 
