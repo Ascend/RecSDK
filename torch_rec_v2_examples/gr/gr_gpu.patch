@@ -1,0 +1,134 @@
+diff --git a/examples/hstu/movielen_ranking.gin b/examples/hstu/movielen_ranking.gin
+index d8e8d33..2399a56 100644
+--- a/examples/hstu/movielen_ranking.gin
++++ b/examples/hstu/movielen_ranking.gin
+@@ -5,8 +5,8 @@ TrainerArgs.eval_interval = 100
+ TrainerArgs.log_interval = 100
+ TrainerArgs.seed = 1234
+ TrainerArgs.max_train_iters = 1000
+-TrainerArgs.profile = True
+-TrainerArgs.pipeline_type = "prefetch"
++TrainerArgs.profile = False
++TrainerArgs.pipeline_type = "none"
+ 
+ DatasetArgs.dataset_name = 'ml-20m'
+ DatasetArgs.max_sequence_length = 200
+diff --git a/examples/hstu/ops/fused_hstu_op.py b/examples/hstu/ops/fused_hstu_op.py
+index a30b21d..bd5d101 100644
+--- a/examples/hstu/ops/fused_hstu_op.py
++++ b/examples/hstu/ops/fused_hstu_op.py
+@@ -301,6 +301,7 @@ class FusedHSTULayerFunction(torch.autograd.Function):
+             num_targets = (
+                 num_targets.to(torch.int32) if num_targets is not None else None
+             )
++            scaling_seqlen = -1
+             jagged_attn_output, _ = cutlass_hstu_varlen_fwd(
+                 q,
+                 k,
+@@ -309,6 +310,7 @@ class FusedHSTULayerFunction(torch.autograd.Function):
+                 seq_offsets_q,
+                 max_seqlen_q,
+                 max_seqlen_q,
++                scaling_seqlen,
+                 num_contexts,
+                 num_targets,
+                 target_group_size,
+@@ -607,6 +609,7 @@ class FusedHSTULayerFunction(torch.autograd.Function):
+             sm_major_version = torch.cuda.get_device_properties(0).major
+             assert dout.dim() == 3
+             if sm_major_version == 8:
++                scaling_seqlen = -1
+                 dq, dk, dv, _ = flash_attn_cuda_ampere.varlen_bwd(
+                     dout,
+                     q,
+@@ -619,6 +622,7 @@ class FusedHSTULayerFunction(torch.autograd.Function):
+                     seq_offsets_q,
+                     max_seqlen_q,
+                     max_seqlen_q,
++                    scaling_seqlen,
+                     num_contexts,
+                     num_targets,
+                     target_group_size,
+@@ -631,6 +635,7 @@ class FusedHSTULayerFunction(torch.autograd.Function):
+                     False,  # deterministic
+                 )
+             elif sm_major_version == 9:
++                scaling_seqlen = -1
+                 fp8_args = (None,) * 11
+                 dq, dk, dv, _ = flash_attn_cuda_hopper.varlen_bwd(
+                     dout,
+@@ -647,6 +652,7 @@ class FusedHSTULayerFunction(torch.autograd.Function):
+                     seq_offsets_q,
+                     max_seqlen_q,
+                     max_seqlen_q,
++                    scaling_seqlen,
+                     num_contexts,
+                     num_targets,
+                     target_group_size,
+diff --git a/examples/hstu/preprocessor.py b/examples/hstu/preprocessor.py
+index b574514..4ddab84 100644
+--- a/examples/hstu/preprocessor.py
++++ b/examples/hstu/preprocessor.py
+@@ -316,7 +316,7 @@ class MovielensDataProcessor(DataProcessor):
+         """
+         Preprocess the raw data. The support dataset are "ml-1m" and "ml-20m".
+         """
+-        self.download()
++        # self.download()
+         users, log_df = self.load()
+ 
+         log_df["movie_id"] = log_df["movie_id"].astype(int)
+@@ -758,7 +758,9 @@ def get_common_preprocessors(dataset_path: str):
+         file_name="KuaiRand-27K.tar.gz",
+         prefix="KuaiRand-27K",
+     )
+-    return {key: locals()[f"{key}_dp".replace("-", "_")] for key in dataset_names}
++    return {"ml-1m": ml_1m_dp,
++            "ml-20m": ml_20m_dp,
++            "kuairand-27": kuairand_27k_dp,}
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/examples/hstu/training/training.py b/examples/hstu/training/training.py
+index f975842..260619a 100644
+--- a/examples/hstu/training/training.py
++++ b/examples/hstu/training/training.py
+@@ -155,6 +155,23 @@ def train_with_pipeline(
+     iter_slices = batched(train_loader_iter, n)
+     start_iter = 0
+     pipeline._model.train()
++
++    PROFILE_ENABLE = os.environ.get("GPU_PROFILE", "0").lower() in ("1", "true")
++    if PROFILE_ENABLE:
++        prof = torch.profiler.profile(
++            activities=[
++                torch.profiler.ProfilerActivity.CPU,
++                torch.profiler.ProfilerActivity.CUDA,
++                ],
++            schedule=torch.profiler.schedule(wait=10, warmup=0, active=1,repeat=1,skip_first=1),
++            on_trace_ready=torch.profiler.tensorboard_trace_handler("./result"),
++            profile_memory=False,
++            with_stack=True,
++            with_modules=True,
++            with_flops=False,
++            )
++        prof.start()
++
+     for batched_iterator in iter_slices:
+         # for one slice(every eval interval)
+         for train_iter in count(start_iter):
+@@ -184,6 +201,8 @@ def train_with_pipeline(
+                 ddp_num_contextuals.append(ddp_num_contextual.view(-1))
+                 ddp_num_candidates.append(ddp_num_candidate.view(-1))
+                 tokens_logged += reporting_loss[1]
++                if PROFILE_ENABLE:
++                    prof.step()
+                 torch.cuda.nvtx.range_pop()
+             except StopIteration:
+                 start_iter = train_iter
+@@ -217,3 +236,5 @@ def train_with_pipeline(
+                 eval_loader=eval_loader,
+             )
+             pipeline._model.train()
++    if PROFILE_ENABLE:
++        prof.stop()
