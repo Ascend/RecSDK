@@ -1,0 +1,2312 @@
+diff --git a/examples/commons/checkpoint/checkpoint.py b/examples/commons/checkpoint/checkpoint.py
+index 958bec3..8ebdfb1 100644
+--- a/examples/commons/checkpoint/checkpoint.py
++++ b/examples/commons/checkpoint/checkpoint.py
+@@ -19,8 +19,8 @@ import torch
+ import torch.distributed as dist
+ import torch.nn as nn
+ from commons.utils.logger import print_rank_0
+-from dynamicemb.dump_load import DynamicEmbDump as dynamic_emb_save
+-from dynamicemb.dump_load import DynamicEmbLoad as dynamic_emb_load
++from dynamic_emb.distributed.dump_load import DynamicEmbDump as dynamic_emb_save
++from dynamic_emb.distributed.dump_load import DynamicEmbLoad as dynamic_emb_load
+ from megatron.core.distributed import DistributedDataParallel
+ from megatron.core.optimizer import MegatronOptimizer
+ from megatron.core.transformer.module import Float16Module
+@@ -41,6 +41,10 @@ def get_unwrapped_module(module: nn.Module) -> nn.Module:
+             module = module._dmp_wrapped_module
+         else:
+             module = module.module
++    if hasattr(module, '_module'):
++        module = module._module
++    while hasattr(module, 'module'):
++        module = module.module
+     return module
+ 
+ 
+diff --git a/examples/commons/utils/distributed_utils.py b/examples/commons/utils/distributed_utils.py
+index ebaccff..c21bd02 100644
+--- a/examples/commons/utils/distributed_utils.py
++++ b/examples/commons/utils/distributed_utils.py
+@@ -15,12 +15,18 @@
+ from typing import Optional
+ 
+ import torch
++import torch_npu
+ 
+ 
+ def collective_assert(
+     flag: bool, err_msg: str = "", group: torch.distributed.ProcessGroup = None
+ ):
+-    flag_tensor = torch.tensor(flag, dtype=torch.bool).cuda()
++    if torch.cuda.is_available():
++        flag_tensor = torch.tensor(flag, dtype=torch.bool).cuda()
++    elif torch_npu.npu.is_available():
++        flag_tensor = torch.tensor(flag, dtype=torch.bool).npu()
++    else:
++        raise ValueError("No GPU or NPU available")
+     torch.distributed.all_reduce(
+         flag_tensor, op=torch.distributed.ReduceOp.MIN, group=group
+     )
+diff --git a/examples/commons/utils/initialize.py b/examples/commons/utils/initialize.py
+index 55537fb..73a3c34 100644
+--- a/examples/commons/utils/initialize.py
++++ b/examples/commons/utils/initialize.py
+@@ -16,6 +16,7 @@ import gc
+ import os
+ 
+ import torch
++import torch_npu
+ 
+ try:
+     from megatron.core import parallel_state, tensor_parallel
+@@ -30,9 +31,9 @@ def initialize_single_rank():
+         return
+     torch.set_printoptions(precision=6, sci_mode=False)
+     rank = 0
+-    device: torch.device = torch.device(f"cuda:{rank}")
+-    backend = "nccl"
+-    torch.cuda.set_device(device)
++    device: torch.device = torch.device(f"npu:{rank}")
++    backend = "hccl"
++    torch_npu.npu.set_device(device)
+     torch.distributed.init_process_group(
+         backend=backend, init_method="tcp://127.0.0.1:12345", rank=rank, world_size=1
+     )
+@@ -43,9 +44,9 @@ def initialize_distributed():
+         return
+     torch.set_printoptions(precision=6, sci_mode=False)
+     rank = int(os.environ["LOCAL_RANK"])
+-    device: torch.device = torch.device(f"cuda:{rank}")
+-    backend = "nccl"
+-    torch.cuda.set_device(device)
++    device: torch.device = torch.device(f"npu:{rank}")
++    backend = "hccl"
++    torch_npu.npu.set_device(device)
+     torch.distributed.init_process_group(backend=backend)
+ 
+ 
+@@ -55,11 +56,11 @@ def initialize_model_parallel(tensor_model_parallel_size=1):
+     parallel_state.initialize_model_parallel(
+         tensor_model_parallel_size,
+     )
+-    torch.distributed.barrier(device_ids=[torch.cuda.current_device()])
++    torch.distributed.barrier(device_ids=[torch_npu.npu.current_device()])
+ 
+ 
+ def destroy_global_state():
+-    torch.distributed.barrier(device_ids=[torch.cuda.current_device()])
++    torch.distributed.barrier(device_ids=[torch_npu.npu.current_device()])
+ 
+     # TODO, find the reason why destroying pg hit nccl error when tpsize > 1
+     if parallel_state.model_parallel_is_initialized():
+@@ -71,7 +72,7 @@ def destroy_global_state():
+                 group=parallel_state.get_data_parallel_group(with_context_parallel=True)
+             )
+         parallel_state.destroy_model_parallel()
+-    torch.cuda.empty_cache()
++    torch_npu.npu.empty_cache()
+     gc.collect()
+ 
+ 
+@@ -93,8 +94,10 @@ def set_random_seed(seed_):
+         random.seed(seed)
+         np.random.seed(seed)
+         torch.manual_seed(seed)
+-        if torch.cuda.device_count() > 0:
++        if torch_npu.npu.device_count() > 0:
+             tensor_parallel.model_parallel_cuda_manual_seed(seed)
++            torch_npu.npu.manual_seed(seed)
++            torch_npu.npu.manual_seed_all(seed)
+ 
+             # We must maintain an rng state for torchrec, because with different world size, the state evolution differ
+             # guarantee randomness across DPxTPxCPxPP for embedding-group
+diff --git a/examples/commons/utils/nvtx_op.py b/examples/commons/utils/nvtx_op.py
+index 7c3e43a..aa19e2c 100644
+--- a/examples/commons/utils/nvtx_op.py
++++ b/examples/commons/utils/nvtx_op.py
+@@ -112,12 +112,12 @@ class _NvtxRangePush(torch.autograd.Function):
+     @staticmethod
+     def forward(ctx, input, msg="None"):
+         ctx.msg = msg
+-        torch.cuda.nvtx.range_push(msg)
++        # torch.cuda.nvtx.range_push(msg)
+         return input
+ 
+     @staticmethod
+     def backward(ctx, grad_in):
+-        torch.cuda.nvtx.range_pop()
++        # torch.cuda.nvtx.range_pop()
+         return grad_in, None
+ 
+ 
+@@ -125,13 +125,13 @@ class _NvtxRangePop(torch.autograd.Function):
+     @staticmethod
+     def forward(ctx, input, msg="None"):
+         ctx.msg = msg
+-        torch.cuda.nvtx.range_pop()
++        # torch.cuda.nvtx.range_pop()
+         return input
+ 
+     @staticmethod
+     def backward(ctx, grad_in):
+         msg = ctx.msg
+-        torch.cuda.nvtx.range_push(msg)
++        # torch.cuda.nvtx.range_push(msg)
+         return grad_in, None
+ 
+ 
+diff --git a/examples/hstu/configs/hstu_config.py b/examples/hstu/configs/hstu_config.py
+index 752d4e0..b3e270a 100644
+--- a/examples/hstu/configs/hstu_config.py
++++ b/examples/hstu/configs/hstu_config.py
+@@ -53,11 +53,13 @@ class KernelBackend(Enum):
+       TRITON: Represents the TRITON backend.
+       PYTORCH: Represents the PYTORCH backend.
+       CUTLASS: Represents the CUTLASS backend.
++      NPU_FUSED: Represents the NPU_FUSED backend.
+     """
+ 
+     TRITON = "TRITON"
+     PYTORCH = "PYTORCH"
+     CUTLASS = "CUTLASS"
++    NPU_FUSED = "NPU_FUSED"
+ 
+ 
+ @dataclass
+@@ -129,6 +131,47 @@ class HSTUConfig(TransformerConfig):
+     is_inference: bool = False
+     add_uvqk_bias: bool = True
+     fuse_norm_mul_dropout: bool = True
++    moe_zero_memory_num_layers = None
++    moe_zero_memory = "disable"
++    optimizer_selection = None    
++    ema_decay = 0
++    noop_layers = None
++    use_ascend_coc = False
++    transformer_impl = None
++    use_gmm_fp8 = False
++    context_parallel_cache_interval = 0
++    use_ulysses_allgather_kv = False
++    use_fused_rotary_pos_emb = False
++    context_parallel_kv_cache_policy = False
++    use_fused_moe_token_permute_and_unpermute=False
++    op_cal_tflops=False
++    recompute_activation_function_num_layers=None
++    recompute_norm_num_layers=None
++    unaligned_linear=False
++    use_ascend_mc2=False
++    recompute_in_bubble=False
++    recompute_in_advance=False
++    pipeline_num_transformer_layers=None
++    schedules_method=None
++    gemm_gradient_accumulation_fusion=False
++    moe_tp_extend_ep=False
++    n_shared_experts=False
++    moe_allgather_overlap_comm=False
++    moe_alltoall_overlap_comm=False
++    moe_fb_overlap=False
++    moe_unperm2_mem_optim_swap=False
++    enable_fine_grained_expert_placement=False
++    virtual_optimizer=None
++    dist_train=False
++    tokenizer_name_or_path=False
++    param_and_grad_buffer_pad=False
++    reuse_fp32_param =False
++    smart_swap=False
++    compress_dense="disable"
++    use_fusion_attn_v2=False
++    alibi_fusion_attn_type=None
++    multi_head_latent_attention=False
++    auto_settings=False
+ 
+     def __post_init__(self):
+         super().__post_init__()
+diff --git a/examples/hstu/distributed/sharding.py b/examples/hstu/distributed/sharding.py
+index b564988..2c18fac 100644
+--- a/examples/hstu/distributed/sharding.py
++++ b/examples/hstu/distributed/sharding.py
+@@ -14,25 +14,16 @@
+ # limitations under the License.
+ 
+ # pyre-strict
+-from typing import Any, Dict, Tuple, Type, Union
++from typing import Any, Dict, List, Set, Tuple, Type, Union, Optional
+ 
+ import torch
++import torch_npu
+ import torch.distributed as dist
+ import torchrec
+ from configs.task_config import OptimizerParam
+ 
+ # import our own finalize model grads
+ from distributed.finalize_model_grads import finalize_model_grads
+-from dynamicemb import DynamicEmbTableOptions
+-from dynamicemb.get_planner import get_planner
+-from dynamicemb.planner import (
+-    DynamicEmbeddingShardingPlanner as DynamicEmbeddingShardingPlanner,
+-)
+-from dynamicemb.shard import (
+-    DynamicEmbeddingBagCollectionSharder,
+-    DynamicEmbeddingCollectionSharder,
+-)
+-from dynamicemb.utils import TORCHREC_TYPES
+ from fbgemm_gpu.split_embedding_configs import EmbOptimType, SparseType
+ from megatron.core import tensor_parallel
+ from megatron.core.distributed import DistributedDataParallel as DDP
+@@ -59,10 +50,106 @@ from torchrec.distributed.fbgemm_qcomm_codec import (
+ from torchrec.distributed.model_parallel import DistributedModelParallel
+ from torchrec.distributed.types import ShardedTensor, ShardingEnv
+ from torchrec.optim.optimizers import in_backward_optimizer_filter
++from torchrec.modules.embedding_modules import (
++    EmbeddingBagCollection,
++    EmbeddingCollection,
++)
++from torchrec.distributed.embedding_types import ShardingType
++from torchrec.distributed.planner import Topology
++from torchrec.distributed.types import ShardingType
++from torchrec.modules.embedding_configs import EmbeddingConfig
++from dynamic_emb import (
++    DynamicEmbeddingEnumerator, 
++    DynamicEmbParameterConstraints, 
++    DynamicEmbTableOptions,
++    DynamicEmbeddingShardingPlanner, 
++    DynamicEmbeddingCollectionSharder,
++)
+ 
+ DATA_PARALLEL_EMBEDDING_MODULE_NAME = "_data_parallel_embedding_collection"
+ from megatron.core import parallel_state
+ 
++TORCHREC_TYPES: Set[Type[Union[EmbeddingBagCollection, EmbeddingCollection]]] = {
++    EmbeddingBagCollection,
++    EmbeddingCollection,
++}
++
++_pipeline_type_to_model_parallel_allowed_compute_kernels = {
++    "prefetch": ["fused_uvm_caching"],
++    "native": ["fused", "fused_uvm"],
++    "none": [],  # none does not constrain the compute kernels
++}
++_pipeline_type_to_data_parallel_allowed_compute_kernels = {
++    "prefetch": ["dense"],
++    "native": ["dense"],
++    "none": [],
++}
++_sharding_type_to_allowed_compute_kernels = {
++    "data_parallel": _pipeline_type_to_data_parallel_allowed_compute_kernels,
++    "model_parallel": _pipeline_type_to_model_parallel_allowed_compute_kernels,
++}
++
++
++def get_planner(
++    eb_configs: List[EmbeddingConfig],
++    data_parallel_embedding_table_names: Set[str],
++    dynamicemb_options_dict: Dict[str, DynamicEmbTableOptions],
++    device: torch.device,
++    pipeline_type: str = "none",
++    ddr_cap: int = 512 * 1024 * 1024 * 1024,  # Assume a Node have 512GB memory
++    intra_host_bw: int = 450e9,  # Nvlink bandwidth
++    inter_host_bw: int = 25e9,  # NIC bandwidth
++):
++    constraints = {}
++    for config in eb_configs:
++        if config.name in data_parallel_embedding_table_names:
++            compute_kernel_type = _sharding_type_to_allowed_compute_kernels[
++                "data_parallel"
++            ][pipeline_type]
++            constraint = DynamicEmbParameterConstraints(
++                sharding_types=[
++                    ShardingType.DATA_PARALLEL.value,
++                ],
++                use_dynamicemb=False,
++                compute_kernels=compute_kernel_type,
++            )
++        elif config.name in dynamicemb_options_dict:
++            # TODO add dynamic embedding compute kernels
++            compute_kernel_type = ["fused"]
++            dynamicemb_options = dynamicemb_options_dict[config.name]
++            constraint = DynamicEmbParameterConstraints(
++                sharding_types=[ShardingType.ROW_WISE.value],
++                dynamicemb_options=dynamicemb_options,
++                compute_kernels=compute_kernel_type,
++            )
++        else:
++            compute_kernel_type = _sharding_type_to_allowed_compute_kernels[
++                "model_parallel"
++            ][pipeline_type]
++            # TODO: save and load does not support table-wise sharding, disable them for now
++            constraint = DynamicEmbParameterConstraints(
++                sharding_types=[
++                    ShardingType.ROW_WISE.value,
++                ],
++                use_dynamicemb=False,
++                compute_kernels=compute_kernel_type,
++            )
++        constraints.update({config.name: constraint})
++
++    topology = Topology(
++        world_size=dist.get_world_size(),
++        compute_device=device.type,
++    )
++    enumerator = DynamicEmbeddingEnumerator(
++        topology=topology,
++        constraints=constraints,
++    )
++    return DynamicEmbeddingShardingPlanner(
++        eb_configs=eb_configs,
++        topology=topology,
++        constraints=constraints,
++        enumerator=enumerator,
++    )
+ 
+ def apply_megatron_ddp(
+     model: Union[DistributedModelParallel, torch.nn.Module],
+@@ -260,10 +347,10 @@ def apply_dmp(
+         )
+     )
+     sharders = [
+-        DynamicEmbeddingBagCollectionSharder(
+-            qcomm_codecs_registry=qcomm_codecs_registry,
+-            fused_params=fused_params,
+-        ),
++        # DynamicEmbeddingBagCollectionSharder(
++        #     qcomm_codecs_registry=qcomm_codecs_registry,
++        #     fused_params=fused_params,
++        # ),
+         DynamicEmbeddingCollectionSharder(
+             qcomm_codecs_registry=qcomm_codecs_registry,
+             use_index_dedup=True,
+@@ -280,11 +367,10 @@ def apply_dmp(
+     with tensor_parallel.get_cuda_rng_tracker().fork("sharded-embedding-group-seed"):
+         model = DistributedModelParallel(
+             module=model,
+-            env=ShardingEnv.from_process_group(pg),
+             device=device,
+             sharders=sharders,
+             plan=plan,
+-            init_data_parallel=False,
++            init_data_parallel=True,
+         )
+ 
+     # Create keyed optimizer
+@@ -334,7 +420,7 @@ def make_optimizer_and_shard(
+     pg: torch.distributed.ProcessGroup = None,
+ ) -> Tuple[DistributedModelParallel, torch.optim.Optimizer]:
+     if device is None:
+-        device = torch.device("cuda", torch.cuda.current_device())
++        device = torch.device("npu", torch_npu.npu.current_device())
+     if pg is None:
+         pg = dist.group.WORLD
+ 
+diff --git a/examples/hstu/model/__init__.py b/examples/hstu/model/__init__.py
+index e4fba4b..c6e21f0 100644
+--- a/examples/hstu/model/__init__.py
++++ b/examples/hstu/model/__init__.py
+@@ -25,19 +25,19 @@ def get_ranking_model(
+     return RankingGR(hstu_config=hstu_config, task_config=task_config)
+ 
+ 
+-def get_retrieval_model(
+-    hstu_config: HSTUConfig,
+-    task_config: RetrievalConfig,
+-) -> RetrievalGR:
+-    """
+-    Get a retrieval model.
+-
+-    Args:
+-        hstu_config (HSTUConfig): The HSTU configuration.
+-        task_config (RetrievalConfig): The retrieval task configuration.
+-
+-    Returns:
+-        RetrievalGR: The retrieval model.
+-    """
+-    assert isinstance(task_config, RetrievalConfig), "please provide a retrieval config"
+-    return RetrievalGR(hstu_config=hstu_config, task_config=task_config)
++# def get_retrieval_model(
++#     hstu_config: HSTUConfig,
++#     task_config: RetrievalConfig,
++# ) -> RetrievalGR:
++#     """
++#     Get a retrieval model.
++
++#     Args:
++#         hstu_config (HSTUConfig): The HSTU configuration.
++#         task_config (RetrievalConfig): The retrieval task configuration.
++
++#     Returns:
++#         RetrievalGR: The retrieval model.
++#     """
++#     assert isinstance(task_config, RetrievalConfig), "please provide a retrieval config"
++#     return RetrievalGR(hstu_config=hstu_config, task_config=task_config)
+diff --git a/examples/hstu/model/ranking_gr.py b/examples/hstu/model/ranking_gr.py
+index 18f7bd4..c58d041 100644
+--- a/examples/hstu/model/ranking_gr.py
++++ b/examples/hstu/model/ranking_gr.py
+@@ -15,6 +15,7 @@
+ from typing import Any, Dict, Tuple
+ 
+ import torch
++import torch_npu
+ from configs import HSTUConfig, RankingConfig
+ from dataset.utils import RankingBatch
+ from distributed.dmp_to_tp import dmp_batch_to_tp, jt_dict_grad_scaling_and_allgather
+@@ -46,7 +47,7 @@ class RankingGR(BaseModel):
+     ):
+         super().__init__()
+         self._tp_size = parallel_state.get_tensor_model_parallel_world_size()
+-        self._device = torch.device("cuda", torch.cuda.current_device())
++        self._device = torch.device("npu", torch_npu.npu.current_device())
+         self._hstu_config = hstu_config
+         self._task_config = task_config
+ 
+diff --git a/examples/hstu/modules/embedding.py b/examples/hstu/modules/embedding.py
+index dee397b..8dc83c1 100644
+--- a/examples/hstu/modules/embedding.py
++++ b/examples/hstu/modules/embedding.py
+@@ -20,11 +20,12 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
+ 
+ import numpy as np
+ import torch
++import torch_npu
+ import torch.fx
+ import torch.nn as nn
+-from commons.utils.nvtx_op import output_nvtx_hook, register_setter_and_getter_for_nvtx
++# from commons.utils.nvtx_op import output_nvtx_hook, register_setter_and_getter_for_nvtx
+ from configs.task_config import ShardedEmbeddingConfig
+-from dynamicemb.planner import (
++from dynamic_emb import (
+     DynamicEmbeddingShardingPlanner as DynamicEmbeddingShardingPlanner,
+ )
+ from torchrec.distributed.embedding_sharding import EmbeddingShardingInfo
+@@ -295,7 +296,7 @@ class ShardedEmbedding(torch.nn.Module):
+                     )
+                     for config in configs
+                 ],
+-                device=torch.device("meta"),
++                device=torch.device("npu"),
+             )
+ 
+         model_parallel_embedding_configs = []
+@@ -318,16 +319,16 @@ class ShardedEmbedding(torch.nn.Module):
+                 if len(data_parallel_embedding_configs) > 0
+                 else None
+             )
+-            self._side_stream = torch.cuda.Stream()
++            self._side_stream = torch_npu.npu.Stream()
+         else:
+             self._data_parallel_embedding_collection = None
+             self._side_stream = None
+         self.freeze_embedding = os.environ.get("FREEZE_EMBEDDING", "0")
+         # for nvtx setting, we need to get the tensor from the output dict and set it back to the output dict
+-        register_setter_and_getter_for_nvtx(
+-            ShardedEmbedding.forward,
+-            key_or_attr_name=[embedding_configs[0].feature_names[0], "_values"],
+-        )
++        # register_setter_and_getter_for_nvtx(
++        #     ShardedEmbedding.forward,
++        #     key_or_attr_name=[embedding_configs[0].feature_names[0], "_values"],
++        # )
+ 
+     def _maybe_detach(self, embeddings):
+         """
+@@ -342,7 +343,7 @@ class ShardedEmbedding(torch.nn.Module):
+                 embedding._values = embedding._values.detach()
+         return embeddings
+ 
+-    @output_nvtx_hook(nvtx_tag="ShardedEmbedding")
++    # @output_nvtx_hook(nvtx_tag="ShardedEmbedding")
+     def forward(self, kjt: KeyedJaggedTensor) -> Dict[str, JaggedTensor]:
+         """
+         Forward pass of the sharded embedding module.
+@@ -356,9 +357,9 @@ class ShardedEmbedding(torch.nn.Module):
+         """
+         mp_embeddings_awaitables = self._model_parallel_embedding_collection(kjt)
+         if self._data_parallel_embedding_collection is not None:
+-            with torch.cuda.stream(self._side_stream):
++            with torch_npu.npu.stream(self._side_stream):
+                 dp_embeddings = self._data_parallel_embedding_collection(kjt)
+-            torch.cuda.current_stream().wait_stream(self._side_stream)
++            torch_npu.npu.current_stream().wait_stream(self._side_stream)
+             embeddings = {**mp_embeddings_awaitables.wait(), **dp_embeddings}
+         else:
+             embeddings = mp_embeddings_awaitables.wait()
+@@ -399,7 +400,7 @@ class ShardedEmbedding(torch.nn.Module):
+             rank 0: keys: (50,), values: (50, 32)
+             rank 1: keys: (50,), values: (50, 32)
+         """
+-        from dynamicemb.dump_load import get_dynamic_emb_module
++        from dynamic_emb.distributed.dump_load import get_dynamic_emb_module
+ 
+         dynamicemb_modules = get_dynamic_emb_module(
+             self._model_parallel_embedding_collection
+diff --git a/examples/hstu/modules/fused_hstu_layer.py b/examples/hstu/modules/fused_hstu_layer.py
+index 83848b9..ac0e9eb 100644
+--- a/examples/hstu/modules/fused_hstu_layer.py
++++ b/examples/hstu/modules/fused_hstu_layer.py
+@@ -13,7 +13,8 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ import torch
+-from commons.utils.nvtx_op import output_nvtx_hook, register_setter_and_getter_for_nvtx
++import torch_npu
++# from commons.utils.nvtx_op import output_nvtx_hook, register_setter_and_getter_for_nvtx
+ from configs import HSTUConfig
+ from configs.hstu_config import HSTULayerType
+ from megatron.core.transformer.module import MegatronModule
+@@ -84,7 +85,7 @@ class FusedHSTULayer(MegatronModule):
+         torch.nn.init.xavier_uniform_(self._linear_uvqk_weight)
+ 
+         self._residual = config.residual
+-        device = torch.cuda.current_device()
++        device = torch_npu.npu.current_device()
+         if config.learnable_input_layernorm:
+             self._input_layernorm_weight = torch.nn.Parameter(
+                 torch.ones(self._embedding_dim, device=device)
+@@ -116,11 +117,11 @@ class FusedHSTULayer(MegatronModule):
+         self._recompute_input_silu = config.recompute_input_silu
+         torch.nn.init.xavier_uniform_(self._linear_proj_weight)
+         # nvtx setting
+-        register_setter_and_getter_for_nvtx(
+-            FusedHSTULayer.forward, key_or_attr_name="values"
+-        )
++        # register_setter_and_getter_for_nvtx(
++        #     FusedHSTULayer.forward, key_or_attr_name="values"
++        # )
+ 
+-    @output_nvtx_hook(nvtx_tag="FusedHSTULayer")
++    # @output_nvtx_hook(nvtx_tag="FusedHSTULayer")
+     def forward(self, jd: JaggedData) -> JaggedData:
+         input = jd.values
+         output = fused_hstu_op(
+diff --git a/examples/hstu/modules/hstu_attention.py b/examples/hstu/modules/hstu_attention.py
+index d8af93b..f35a359 100644
+--- a/examples/hstu/modules/hstu_attention.py
++++ b/examples/hstu/modules/hstu_attention.py
+@@ -13,12 +13,14 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ import abc
+-from typing import Optional, Union
++from typing import Optional, Union, List
+ 
+ import torch
+-from commons.utils.nvtx_op import output_nvtx_hook
++# from commons.utils.nvtx_op import output_nvtx_hook
+ from configs import KernelBackend
+ 
++torch.npu.config.allow_internal_format = False
++
+ 
+ class HSTUAttention(torch.nn.Module):
+     """
+@@ -133,6 +135,75 @@ class TorchHSTUAttention(HSTUAttention):
+         ).view(-1, self.num_heads * self.linear_dim)
+ 
+ 
++class NpuFusedHSTUAttention(HSTUAttention):
++    """
++    Native HSTU implementation of the HSTU attention mechanism for NPU deivces.
++
++    The class implements the HSTU(Harvard Smith Tower Unit) attention module using PyTorch,
++    specifically tailored for NPU(Neural Processing Unit) devices. It processes input tensors
++    to compute the attention scores and outputs the transformed tensors.
++
++    Args:
++        num_heads (int): Number of attention heads.
++        attention_dim (int): Dimension of the attention.
++        linear_dim (int): Dimension of the linear layer.
++        is_causal (bool): Whether the attention is causal.
++    """
++    def __init__(
++            self,
++            num_heads: int,
++            attention_dim: int,
++            linear_dim: int,
++            is_causal:bool,
++    ):
++        super().__init__()
++        self.num_heads = num_heads
++        self.attention_dim = attention_dim
++        self.linear_dim = linear_dim
++        self.is_causal = is_causal
++
++    def forward(self,
++                tq: torch.Tensor,  # (T, d)
++                tk: torch.Tensor,  # (T, d)
++                tv: torch.Tensor,  # (T, d)
++                offsets: torch.Tensor,  # (batch_size, 1)
++                max_seqlen: int,
++                target_group_size: int = 1,  # target == candidates
++                num_candidates: Optional[torch.Tensor] = None,
++                num_contextuals: Optional[Union[int, torch.Tensor]] = None,
++                ) -> torch.Tensor:  # T, d
++        """
++        Forward pass of the NpuFusedHSTUAttention module.
++
++        Args:
++            tq (torch.Tensor): Query tensor of shape (T, d), where T is the total sequence length across all batches and d is the dimensionality of the query.
++            tk (torch.Tensor): Key tensor of shape (T, d), where T is the total sequence length across all batches and d is the dimensionality of the key.
++            tv (torch.Tensor): Value tensor of shape (T, d), where T is the total sequence length across all batches and d is the dimensionality of the value.
++            offsets (torch.Tensor): Offsets tensor of shape (batch_size, 1), indicating the start position of each sequence in the batch.
++            max_seqlen (int): The maximum sequence length across all batches.
++            target_group_size (int): The size of the sub-candidate group where causal attention is applied only within a sub-group (usually in the case of ranking). Defaults to 1.
++            num_candidates (torch.Tensor): Tensor containing the number of candidates for each sequence.
++            num_contextuals (int | torch.Tensor | None): The number of contextuals for each sequence, could be a single integer or a tensor of shape (batch_size,) when different sequences have different number of contextuals.
++        Returns:
++            torch.Tensor: Output tensor of shape (T, d).
++        """
++
++        return torch.ops.mxrec.hstu_jagged(tq.view(-1, self.num_heads, self.attention_dim),
++                                          tk.view(-1, self.num_heads, self.attention_dim),
++                                          tv.view(-1, self.num_heads, self.attention_dim),
++                                          None,
++                                          None,
++                                          0,  # 0默认为下三角，跟TorchHSTUAttention的mask实现不一致
++                                          max_seqlen,
++                                          1.0 / max_seqlen,
++                                          offsets.long(),
++                                          num_contextuals,
++                                          num_candidates,
++                                          target_group_size,
++                                          1.0 / (self.attention_dim**0.5),
++                                          ).view(-1, self.num_heads * self.attention_dim)
++
++
+ class TritonHSTUAttention(HSTUAttention):
+     """
+     Triton-based HUST implementation.
+@@ -239,7 +310,7 @@ class FusedHSTUAttention(HSTUAttention):
+             self.linear_dim == self.attention_dim
+         ), "only support linear_dim and attention_dim"
+ 
+-    @output_nvtx_hook(nvtx_tag="FusedHSTUAttn")
++    # @output_nvtx_hook(nvtx_tag="FusedHSTUAttn")
+     def forward(
+         self,
+         tq: torch.Tensor,  # (T, d)
+@@ -332,7 +403,7 @@ class FusedHSTUAttentionHopper(HSTUAttention):
+             self.linear_dim == self.attention_dim
+         ), "only support linear_dim and attention_dim"
+ 
+-    @output_nvtx_hook(nvtx_tag="FusedHSTUAttnHopper")
++    # @output_nvtx_hook(nvtx_tag="FusedHSTUAttnHopper")
+     def forward(
+         self,
+         tq: torch.Tensor,  # (T, d)
+@@ -416,7 +487,14 @@ def create_hstu_attention(
+     Raises:
+         ValueError: If the kernel backend is not supported.
+     """
+-    if kernel_backend == KernelBackend.CUTLASS:
++    if kernel_backend == KernelBackend.NPU_FUSED:
++        return NpuFusedHSTUAttention(
++            num_heads,
++            attention_dim,
++            linear_dim,
++            is_causal,
++        )
++    elif kernel_backend == KernelBackend.CUTLASS:
+         sm_major_version = torch.cuda.get_device_properties(0).major
+         sm_minor_version = torch.cuda.get_device_properties(0).minor
+         if sm_major_version == 9 and sm_minor_version == 0:
+diff --git a/examples/hstu/modules/hstu_block.py b/examples/hstu/modules/hstu_block.py
+index e42579e..d454176 100644
+--- a/examples/hstu/modules/hstu_block.py
++++ b/examples/hstu/modules/hstu_block.py
+@@ -37,13 +37,14 @@ class HSTUBlock(MegatronModule):
+         self._preprocessor = HSTUBlockPreprocessor(config, is_inference=False)
+         self._postprocessor = HSTUBlockPostprocessor(is_inference=False)
+ 
+-        HSTULayerImpl = (
+-            FusedHSTULayer
+-            if config.hstu_layer_type == HSTULayerType.FUSED
+-            else DebugHSTULayer
+-            if config.hstu_layer_type == HSTULayerType.DEBUG
+-            else NativeHSTULayer
+-        )
++        # HSTULayerImpl = (
++        #     FusedHSTULayer
++        #     if config.hstu_layer_type == HSTULayerType.FUSED
++        #     else DebugHSTULayer
++        #     if config.hstu_layer_type == HSTULayerType.DEBUG
++        #     else NativeHSTULayer
++        # )
++        HSTULayerImpl = NativeHSTULayer
+         self._attention_layers = torch.nn.ModuleList(
+             [HSTULayerImpl(config) for l in range(self.config.num_layers)]
+         )
+diff --git a/examples/hstu/modules/hstu_processor.py b/examples/hstu/modules/hstu_processor.py
+index 8f28c96..12aed15 100644
+--- a/examples/hstu/modules/hstu_processor.py
++++ b/examples/hstu/modules/hstu_processor.py
+@@ -16,18 +16,23 @@ import itertools
+ from typing import Dict, Optional, Union
+ 
+ import torch
+-from commons.utils.nvtx_op import output_nvtx_hook
++import torch_npu
++# from commons.utils.nvtx_op import output_nvtx_hook
+ from configs.hstu_config import HSTUConfig
+ from configs.inference_config import InferenceHSTUConfig
+ from dataset.utils import RankingBatch
+ from modules.jagged_data import JaggedData
+ from modules.mlp import MLP
+ from modules.position_encoder import HSTUPositionalEncoder
+-from ops.cuda_ops.JaggedTensorOpFunction import jagged_2D_tensor_concat
++# from ops.cuda_ops.JaggedTensorOpFunction import jagged_2D_tensor_concat
+ from ops.length_to_offsets import length_to_complete_offsets
+-from ops.triton_ops.triton_jagged import triton_split_2D_jagged
++# from ops.triton_ops.triton_jagged import triton_split_2D_jagged
+ from torchrec.sparse.jagged_tensor import JaggedTensor
+-
++from ops.jagged_tensor_op import concat_2D_jagged_tensors
++from ops.pt_ops.pt_jagged_tensors import (
++    pytorch_concat_2D_jagged,
++    pytorch_split_2D_jagged,
++)
+ 
+ def hstu_preprocess_embeddings(
+     embeddings: Dict[str, JaggedTensor],
+@@ -134,15 +139,19 @@ def hstu_preprocess_embeddings(
+         contextual_max_seqlens = [
+             batch.feature_to_max_seqlen[name] for name in batch.contextual_feature_names
+         ]
+-        contextual_jts = [embeddings[name] for name in batch.contextual_feature_names]
+-        contextual_jts_values = [jt.values().to(dtype) for jt in contextual_jts]
+-        contextual_jts_offsets = [jt.offsets() for jt in contextual_jts]
+-
+-        (contextual_sequence_embeddings, contextual_seqlen) = jagged_2D_tensor_concat(
+-            contextual_jts_values,
+-            contextual_jts_offsets,
+-            contextual_max_seqlens,
+-        )
++        # contextual_jts = [embeddings[name] for name in batch.contextual_feature_names]
++        # contextual_jts_values = [jt.values().to(dtype) for jt in contextual_jts]
++        # contextual_jts_offsets = [jt.offsets() for jt in contextual_jts]
++
++        # (contextual_sequence_embeddings, contextual_seqlen) = jagged_2D_tensor_concat(
++        #     contextual_jts_values,
++        #     contextual_jts_offsets,
++        #     contextual_max_seqlens,
++        # )
++        contextual_embeddings, contextual_seqlen = concat_2D_jagged_tensors(
++            jagged_tensors=[embeddings[name] for name in batch.contextual_feature_names],
++            max_seqlens=contextual_max_seqlens,
++        )       
+         if contextual_mlp is not None:
+             contextual_sequence_embeddings = contextual_mlp(
+                 contextual_sequence_embeddings
+@@ -153,14 +162,23 @@ def hstu_preprocess_embeddings(
+         contextual_max_seqlen = max(
+             len(batch.contextual_feature_names), sum(contextual_max_seqlens)
+         )
+-        (
+-            sequence_embeddings,
+-            sequence_embeddings_lengths,
+-        ) = jagged_2D_tensor_concat(
+-            [contextual_sequence_embeddings, sequence_embeddings],
+-            [contextual_seqlen_offsets, sequence_embeddings_lengths_offsets],
+-            [contextual_max_seqlen, sequence_max_seqlen],
++        # (
++        #     sequence_embeddings,
++        #     sequence_embeddings_lengths,
++        # ) = jagged_2D_tensor_concat(
++        #     [contextual_sequence_embeddings, sequence_embeddings],
++        #     [contextual_seqlen_offsets, sequence_embeddings_lengths_offsets],
++        #     [contextual_max_seqlen, sequence_max_seqlen],
++        # )
++        sequence_embeddings = pytorch_concat_2D_jagged(
++            values_left = contextual_embeddings,
++            values_right = sequence_embeddings,
++            max_len_left = None,
++            max_len_right = None,
++            offsets_left = contextual_seqlen_offsets,
++            offsets_right = sequence_embeddings_lengths_offsets
+         )
++        sequence_embeddings_lengths = (contextual_seqlen + sequence_embeddings_lengths)        
+ 
+         sequence_embeddings_lengths_offsets = (
+             torch.ops.fbgemm.asynchronous_complete_cumsum(sequence_embeddings_lengths)
+@@ -252,7 +270,7 @@ class HSTUBlockPreprocessor(torch.nn.Module):
+             ), "Training config should be HSTUConfig"
+             self._dropout_ratio = config.hidden_dropout
+ 
+-    @output_nvtx_hook(nvtx_tag="HSTUBlock preprocess", hook_key_or_attr_name="values")
++    # @output_nvtx_hook(nvtx_tag="HSTUBlock preprocess", hook_key_or_attr_name="values")
+     def forward(
+         self,
+         embeddings: Dict[str, JaggedTensor],
+@@ -274,7 +292,7 @@ class HSTUBlockPreprocessor(torch.nn.Module):
+         Returns:
+             JaggedData: The preprocessed jagged data, ready for further processing in the HSTU architecture.
+         """
+-        device = torch.device("cuda", torch.cuda.current_device())
++        device = torch.device("npu", torch_npu.npu.current_device())
+         batch = batch.to(device)
+         # Interleaving & concatenation
+         jd = hstu_preprocess_embeddings(
+@@ -321,7 +339,7 @@ class HSTUBlockPostprocessor(torch.nn.Module):
+         super().__init__()
+         self._is_inference = is_inference
+ 
+-    @output_nvtx_hook(nvtx_tag="HSTUBlock postprocess", hook_key_or_attr_name="values")
++    # @output_nvtx_hook(nvtx_tag="HSTUBlock postprocess", hook_key_or_attr_name="values")
+     def forward(self, jd: JaggedData) -> JaggedData:
+         """
+         Postprocess the output from the HSTU architecture.
+@@ -340,20 +358,36 @@ class HSTUBlockPostprocessor(torch.nn.Module):
+         if jd.max_num_candidates > 0:
+             seqlen_offsets = jd.num_candidates_offsets
+             max_seqlen = jd.max_num_candidates
+-            _, sequence_embeddings = triton_split_2D_jagged(
+-                jd.values,
++            # _, sequence_embeddings = triton_split_2D_jagged(
++            #     jd.values,
++            #     jd.max_seqlen,
++            #     offsets_a=jd.seqlen_offsets - jd.num_candidates_offsets,
++            #     offsets_b=seqlen_offsets,
++            # )
++            _, sequence_embeddings = pytorch_split_2D_jagged(
+                 jd.max_seqlen,
+-                offsets_a=jd.seqlen_offsets - jd.num_candidates_offsets,
+-                offsets_b=seqlen_offsets,
++                jd.values,
++                max_len_left=None,
++                max_len_right=None,
++                offsets_left=jd.seqlen_offsets - jd.num_candidates_offsets,
++                offsets_right=seqlen_offsets,
+             )
+         elif jd.contextual_max_seqlen > 0:
+             seqlen_offsets = jd.seqlen_offsets - jd.contextual_seqlen_offsets
+             max_seqlen = jd.max_seqlen - jd.contextual_max_seqlen
+-            _, sequence_embeddings = triton_split_2D_jagged(
+-                jd.values,
++            # _, sequence_embeddings = triton_split_2D_jagged(
++            #     jd.values,
++            #     jd.max_seqlen,
++            #     offsets_a=jd.contextual_seqlen_offsets,
++            #     offsets_b=seqlen_offsets,
++            # )
++            _, sequence_embeddings = pytorch_split_2D_jagged(
+                 jd.max_seqlen,
+-                offsets_a=jd.contextual_seqlen_offsets,
+-                offsets_b=seqlen_offsets,
++                jd.values,
++                max_len_left=None,
++                max_len_right=None,
++                offsets_left=jd.contextual_seqlen_offsets,
++                offsets_right=seqlen_offsets,
+             )
+         else:
+             sequence_embeddings = jd.values
+diff --git a/examples/hstu/modules/metrics/metric_modules.py b/examples/hstu/modules/metrics/metric_modules.py
+index ffe6479..597e5ef 100644
+--- a/examples/hstu/modules/metrics/metric_modules.py
++++ b/examples/hstu/modules/metrics/metric_modules.py
+@@ -23,8 +23,8 @@ from typing import Any, Dict, List, Optional, Tuple
+ import numpy as np
+ import torch
+ import torchmetrics.classification as classification_metrics
+-from commons.utils.nvtx_op import output_nvtx_hook
+-from dynamicemb.planner import (
++# from commons.utils.nvtx_op import output_nvtx_hook
++from dynamic_emb import (
+     DynamicEmbeddingShardingPlanner as DynamicEmbeddingShardingPlanner,
+ )
+ from ops.collective_ops import grouped_allgatherv_tensor_list
+@@ -196,7 +196,7 @@ class MultiClassificationTaskMetric(BaseTaskMetric):
+         self.training = False
+ 
+     # return a
+-    @output_nvtx_hook("ranking metrics", backward=False)
++    # @output_nvtx_hook("ranking metrics", backward=False)
+     def forward(self, multi_task_logits, targets):
+         """
+         Forward one eval batch, this forward returns None object.
+@@ -277,7 +277,7 @@ class RetrievalTaskMetricWithSampling(BaseTaskMetric):
+         self._cache_target_ids: List[torch.Tensor] = []
+         self._chunk_size = 512
+ 
+-    @output_nvtx_hook("retrieval metrics", backward=False)
++    # @output_nvtx_hook("retrieval metrics", backward=False)
+     def forward(
+         self,
+         query_embeddings: torch.Tensor,  # preds, dense embedding tensor
+diff --git a/examples/hstu/modules/multi_task_loss_module.py b/examples/hstu/modules/multi_task_loss_module.py
+index 6b02397..9d34f9a 100644
+--- a/examples/hstu/modules/multi_task_loss_module.py
++++ b/examples/hstu/modules/multi_task_loss_module.py
+@@ -14,7 +14,7 @@
+ # limitations under the License.
+ 
+ import torch
+-from commons.utils.nvtx_op import output_nvtx_hook
++# from commons.utils.nvtx_op import output_nvtx_hook
+ 
+ 
+ def _decode_bits(encoded_labels: torch.Tensor, bit_width: int) -> torch.Tensor:
+@@ -61,7 +61,7 @@ class MultiTaskLossModule(torch.nn.Module):
+             ), "num_tasks should be 1 for multi-class classification"
+             self._loss_modules = torch.nn.CrossEntropyLoss(reduction=reduction)
+ 
+-    @output_nvtx_hook(nvtx_tag="loss computation")
++    # @output_nvtx_hook(nvtx_tag="loss computation")
+     def forward(self, merged_logits, labels) -> torch.Tensor:
+         """
+         Forward pass of the MultiTaskLossModule.
+diff --git a/examples/hstu/modules/native_hstu_layer.py b/examples/hstu/modules/native_hstu_layer.py
+index 9c85635..9e0057e 100644
+--- a/examples/hstu/modules/native_hstu_layer.py
++++ b/examples/hstu/modules/native_hstu_layer.py
+@@ -18,24 +18,27 @@ from functools import partial
+ 
+ import nvtx
+ import torch
++import torch_npu
+ import torch.nn.functional as F
+-from commons.utils.clear_tensor_data import clear_tensor_data
+-from commons.utils.nvtx_op import output_nvtx_hook, register_setter_and_getter_for_nvtx
++# from commons.utils.clear_tensor_data import clear_tensor_data
++# from commons.utils.nvtx_op import output_nvtx_hook, register_setter_and_getter_for_nvtx
+ from configs import HSTUConfig
+ from configs.hstu_config import HSTULayerType
+ from megatron.core import parallel_state
+-from megatron.core.extensions.transformer_engine import (
+-    TEColumnParallelLinear,
+-    TERowParallelLinear,
+-)
++# from megatron.core.extensions.transformer_engine import (
++#     TEColumnParallelLinear,
++#     TERowParallelLinear,
++# )
+ from megatron.core.tensor_parallel.random import CheckpointWithoutOutput
+ from megatron.core.transformer.module import MegatronModule
+ from megatron.core.utils import divide
+ from modules.hstu_attention import create_hstu_attention
+ from modules.jagged_data import JaggedData
+-from modules.tp_layer_norm import TPLayerNormMulDropout
++# from modules.tp_layer_norm import TPLayerNormMulDropout
+ from ops.collective_ops import gather_along_last_dim
+-from ops.triton_ops.triton_layer_norm import triton_layer_norm
++# from ops.triton_ops.triton_layer_norm import triton_layer_norm
++from ops.pt_ops.pt_norm_mul_dropout import pytorch_norm_mul_dropout
++from modules.utils import init_mlp_weights_optional_bias
+ 
+ 
+ class HSTULayer(MegatronModule):
+@@ -66,11 +69,17 @@ class HSTULayer(MegatronModule):
+             raise ValueError("tp size should <= num_attention_heads")
+         self._num_heads_per_partition = divide(self._num_heads, self._tp_size)
+         # TODO, support packed qkv attention
++        # self._split_arg_list = [
++        #     self._linear_dim_per_head,
++        #     self._linear_dim_per_head,
++        #     self._attention_dim_per_head,
++        #     self._attention_dim_per_head,
++        # ]
+         self._split_arg_list = [
+-            self._linear_dim_per_head,
+-            self._linear_dim_per_head,
+-            self._attention_dim_per_head,
+-            self._attention_dim_per_head,
++            self._linear_dim_per_head * self._num_heads,
++            self._linear_dim_per_head * self._num_heads,
++            self._attention_dim_per_head * self._num_heads,
++            self._attention_dim_per_head * self._num_heads,
+         ]
+         self._recompute_input_layernorm = config.recompute_input_layernorm
+         if self._recompute_input_layernorm:
+@@ -79,7 +88,7 @@ class HSTULayer(MegatronModule):
+         if self._recompute_input_silu:
+             self.silu_checkpoint = CheckpointWithoutOutput()
+         self._residual = config.residual
+-        device = torch.cuda.current_device()
++        device = torch_npu.npu.current_device()
+         # input layernorm
+         if config.learnable_input_layernorm:
+             self._input_layernorm_weight = torch.nn.Parameter(
+@@ -91,25 +100,37 @@ class HSTULayer(MegatronModule):
+         else:
+             self._input_layernorm_weight = None
+             self._input_layernorm_bias = None
+-        self._output_ln_dropout_mul = TPLayerNormMulDropout(
+-            hidden_size=self._num_heads * self._linear_dim_per_head,
+-            eps=self._eps,
+-            trainable=True,
+-            shard_weight=False,
+-            dropout_ratio=self._dropout_ratio,
+-            fusion=config.fuse_norm_mul_dropout,
++        # self._output_ln_dropout_mul = TPLayerNormMulDropout(
++        #     hidden_size=self._num_heads * self._linear_dim_per_head,
++        #     eps=self._eps,
++        #     trainable=True,
++        #     shard_weight=False,
++        #     dropout_ratio=self._dropout_ratio,
++        #     fusion=config.fuse_norm_mul_dropout,
++        # )
++        # # [embedding_dim, 4 * num_head * head_dim]
++        # self._linear_uvqk = TEColumnParallelLinear(
++        #     input_size=self._embedding_dim,
++        #     output_size=sum(self._split_arg_list) * self._num_heads,
++        #     init_method=config.init_method,
++        #     config=config,
++        #     bias=config.add_uvqk_bias,
++        #     gather_output=False,
++        #     skip_bias_add=False,  # note: TEColumnParallelLinear does not support bias fusion!
++        #     is_expert=False,
++        # )
++        self._output_layernorm_weight = torch.nn.Parameter(
++            torch.ones(self._num_heads * self._linear_dim_per_head, device=device)
+         )
+-        # [embedding_dim, 4 * num_head * head_dim]
+-        self._linear_uvqk = TEColumnParallelLinear(
+-            input_size=self._embedding_dim,
+-            output_size=sum(self._split_arg_list) * self._num_heads,
+-            init_method=config.init_method,
+-            config=config,
+-            bias=config.add_uvqk_bias,
+-            gather_output=False,
+-            skip_bias_add=False,  # note: TEColumnParallelLinear does not support bias fusion!
+-            is_expert=False,
++        self._output_layernorm_bias = torch.nn.Parameter(
++            torch.zeros(self._num_heads * self._linear_dim_per_head, device=device)
+         )
++        self._linear_uvqk = torch.nn.Linear(
++            self._embedding_dim,
++            sum(self._split_arg_list),
++            bias=True,
++        ).apply(init_mlp_weights_optional_bias)
++
+         self._debug_shortcut_proj_linear = (
+             os.environ.get("DEBUG_SHORTCUT_PROJ_LINEAR", "0") == "1"
+         )
+@@ -121,16 +142,21 @@ class HSTULayer(MegatronModule):
+                 self._embedding_dim == self._linear_dim_per_head * self._num_heads
+             ), "when shortcut proj linear is on, embedding dim must be equal to linear dim per head * num heads"
+ 
+-        self._linear_proj = TERowParallelLinear(
+-            input_size=self._linear_dim_per_head * self._num_heads,
+-            output_size=self._embedding_dim,
+-            init_method=config.init_method,
+-            config=config,
+-            input_is_parallel=True,
++        # self._linear_proj = TERowParallelLinear(
++        #     input_size=self._linear_dim_per_head * self._num_heads,
++        #     output_size=self._embedding_dim,
++        #     init_method=config.init_method,
++        #     config=config,
++        #     input_is_parallel=True,
++        #     bias=False,
++        #     skip_bias_add=False,
++        #     is_expert=False,
++        # )
++        self._linear_proj = torch.nn.Linear(
++            self._linear_dim_per_head * self._num_heads,
++            self._embedding_dim,
+             bias=False,
+-            skip_bias_add=False,
+-            is_expert=False,
+-        )
++        ).apply(init_mlp_weights_optional_bias)
+ 
+         self._target_group_size = config.target_group_size
+ 
+@@ -141,9 +167,9 @@ class HSTULayer(MegatronModule):
+             linear_dim=self._linear_dim_per_head,
+             is_causal=config.is_causal,
+         )
+-        register_setter_and_getter_for_nvtx(
+-            HSTULayer.forward, key_or_attr_name="values"
+-        )
++        # register_setter_and_getter_for_nvtx(
++        #     HSTULayer.forward, key_or_attr_name="values"
++        # )
+ 
+     def get_user_value_query_key_tensors(self, hidden_states: torch.Tensor):
+         """
+@@ -157,38 +183,22 @@ class HSTULayer(MegatronModule):
+         """
+ 
+         # TODO: fuse linear, bias, and silu?
+-        with nvtx.annotate("hstu linear_uvqk fwd", color="RED"):
+-            mixed_uvqk, _ = self._linear_uvqk(hidden_states)
++        # with nvtx.annotate("hstu linear_uvqk fwd", color="RED"):
++        mixed_uvqk = self._linear_uvqk(hidden_states)
+ 
+-        with nvtx.annotate("hstu silu fwd", color="BLUE"):
+-            if self._recompute_input_silu:
+-                silu_uvqk = self.silu_checkpoint.checkpoint(
+-                    F.silu,
+-                    mixed_uvqk,
+-                )
+-            else:
+-                silu_uvqk = F.silu(mixed_uvqk)
+-            # silu will upcast to fp32 in register
+-            silu_uvqk = silu_uvqk.view(
+-                -1, self._num_heads_per_partition, sum(self._split_arg_list)
+-            )
+-        if self._recompute_input_layernorm:
+-            # when mixed_uvqk grad(silu) is computed, trigger the recompute of the input layernorm
+-            self.input_layernorm_checkpoint.discard_output_and_register_recompute(
+-                mixed_uvqk
+-            )
++        mixed_uvqk = F.silu(mixed_uvqk)
+ 
+-        with nvtx.annotate("hstu split fwd", color="BLUE"):
+-            (user, value, query, key) = torch.split(
+-                silu_uvqk,
+-                self._split_arg_list,
+-                dim=-1,
+-            )
++        # with nvtx.annotate("hstu split fwd", color="BLUE"):
++        (user, value, query, key) = torch.split(
++            mixed_uvqk,
++            self._split_arg_list,
++            dim=-1,
++        )
+ 
+-        clear_tensor_data(silu_uvqk)
++        # clear_tensor_data(silu_uvqk)
+         return user, value, query, key
+ 
+-    @output_nvtx_hook(nvtx_tag="HSTULayer")
++    # @output_nvtx_hook(nvtx_tag="HSTULayer")
+     def forward(self, jd: JaggedData) -> JaggedData:
+         """
+         Forward pass of the HSTULayer
+@@ -201,58 +211,45 @@ class HSTULayer(MegatronModule):
+         """
+         # input is [*, h]
+         x = jd.values
+-        with nvtx.annotate("hstu input layernorm fwd", color="RED"):
+-            if self._recompute_input_layernorm:
+-                normed_x = self.input_layernorm_checkpoint.checkpoint(
+-                    partial(triton_layer_norm, eps=self._eps),
+-                    x,
+-                    self._input_layernorm_weight,
+-                    self._input_layernorm_bias,
+-                )
+-            else:
+-                normed_x = triton_layer_norm(
+-                    x,
+-                    weight=self._input_layernorm_weight,
+-                    bias=self._input_layernorm_bias,
+-                    eps=self._eps,
+-                )
+-        with nvtx.annotate("hstu uvqk linear_silu fwd", color="BLUE"):
+-            tu, tv, tq, tk = self.get_user_value_query_key_tensors(normed_x)
++        normed_x = F.layer_norm(
++            x,
++            normalized_shape=[self._embedding_dim],
++            weight=self._input_layernorm_weight,
++            bias=self._input_layernorm_bias,
++            eps=self._eps,
++        )
++        tu, tv, tq, tk = self.get_user_value_query_key_tensors(normed_x)     
+         # TODO: remove contiguous once cutlass backend is ready
+-        with nvtx.annotate("hstu attn fwd", color="BLUE"):
+-            jagged_attn_output = self._attn_func(
+-                tq,
+-                tk,
+-                tv,
+-                jd.seqlen_offsets,
+-                num_contextuals=jd.contextual_seqlen,
+-                num_candidates=jd.num_candidates,
+-                max_seqlen=jd.max_seqlen,
+-                target_group_size=self._target_group_size,
+-            )
+-
+-        with nvtx.annotate("hstu norm mul dropout fwd", color="GREEN"):
+-            if self._debug_shortcut_output_ln_mul_dropout:
+-                parallel_input = jagged_attn_output
+-            else:
+-                parallel_input = self._output_ln_dropout_mul(jagged_attn_output, tu)
++        jagged_attn_output = self._attn_func(
++            tq,
++            tk,
++            tv,
++            jd.seqlen_offsets,
++            num_contextuals=jd.contextual_seqlen,
++            num_candidates=jd.num_candidates,
++            max_seqlen=jd.max_seqlen,
++            target_group_size=self._target_group_size,
++        )
++        jagged_attn_output = jagged_attn_output.view(-1, self._num_heads * self._linear_dim_per_head).contiguous()
++        parallel_input = pytorch_norm_mul_dropout(
++            jagged_attn_output,
++            tu,
++            self._output_layernorm_weight,
++            self._output_layernorm_bias,
++            self._eps,
++            self._dropout_ratio,
++            self.training,
++        )       
+ 
+         if self._recompute_input_silu:
+             # when output grad (gemm dgrad) is computed, trigger the recompute of the silu
+             # we discard here after tu is used
+             self.silu_checkpoint.discard_output_and_register_recompute(parallel_input)
+ 
+-        with nvtx.annotate("hstu linear_residual fwd", color="YELLOW"):
+-            # shortcut for debug
+-            if self._debug_shortcut_proj_linear:
+-                output = gather_along_last_dim(
+-                    parallel_input, parallel_state.get_tensor_model_parallel_group()
+-                )
+-            else:
+-                output, _ = self._linear_proj(parallel_input)
+-
+-            if self._residual:
+-                output = output + x
++        output = self._linear_proj(parallel_input)
++        
++        if self._residual:
++            output = output + x
+ 
+         return JaggedData(
+             values=output,
+diff --git a/examples/hstu/modules/position_encoder.py b/examples/hstu/modules/position_encoder.py
+index 52fb3b3..467e793 100644
+--- a/examples/hstu/modules/position_encoder.py
++++ b/examples/hstu/modules/position_encoder.py
+@@ -34,11 +34,11 @@ from math import sqrt
+ from typing import Optional
+ 
+ import torch
+-from commons.utils.nvtx_op import output_nvtx_hook
+-from ops.triton_ops.common import set_static_max_seq_lens, set_use_runtime_max_seq_len
+-from ops.triton_ops.triton_position import (  # type: ignore[attr-defined]
+-    triton_add_position_embeddings,
+-    triton_add_timestamp_positional_embeddings,
++# from commons.utils.nvtx_op import output_nvtx_hook
++# from ops.triton_ops.common import set_static_max_seq_lens, set_use_runtime_max_seq_len
++from ops.pt_ops.pt_position import (  # type: ignore[attr-defined]
++    pytorch_add_position_embeddings,
++    pytorch_add_timestamp_positional_embeddings,
+ )
+ from torch.fx._symbolic_trace import is_fx_tracing
+ 
+@@ -94,7 +94,7 @@ class HSTUPositionalEncoder(torch.nn.Module):
+             set_use_runtime_max_seq_len(False)
+             set_static_max_seq_lens(static_max_seq_len, static_max_seq_len)
+ 
+-    @output_nvtx_hook(nvtx_tag="HSTUPositionalEncoder")
++    # @output_nvtx_hook(nvtx_tag="HSTUPositionalEncoder")
+     def forward(
+         self,
+         max_seq_len: int,
+@@ -108,7 +108,7 @@ class HSTUPositionalEncoder(torch.nn.Module):
+         alpha = self._embedding_dim**0.5
+         if self._use_time_encoding:
+             seq_embeddings = seq_embeddings * alpha
+-            seq_embeddings = triton_add_timestamp_positional_embeddings(
++            seq_embeddings = seq_embeddings = pytorch_add_timestamp_positional_embeddings(
+                 seq_embeddings=seq_embeddings,
+                 seq_offsets=seq_offsets,
+                 pos_embeddings=self._position_embeddings_weight,
+@@ -134,7 +134,7 @@ class HSTUPositionalEncoder(torch.nn.Module):
+                 _, D2 = self._position_embeddings_weight.shape
+                 torch._assert(D2 == D, "wrong dense shape[1]")
+ 
+-            seq_embeddings = triton_add_position_embeddings(
++            seq_embeddings = pytorch_add_position_embeddings(
+                 jagged=seq_embeddings,
+                 jagged_offsets=seq_offsets,
+                 high_inds=high_inds,
+@@ -158,7 +158,7 @@ class HSTUPositionalEncoder(torch.nn.Module):
+                 )
+                 _, D2 = self._position_embeddings_weight.shape
+                 torch._assert(D2 == D, "wrong dense shape[1]")
+-            seq_embeddings = triton_add_position_embeddings(
++            seq_embeddings = pytorch_add_position_embeddings(
+                 jagged=seq_embeddings,
+                 jagged_offsets=seq_offsets,
+                 high_inds=high_inds,
+diff --git a/examples/hstu/movielen_ranking.gin b/examples/hstu/movielen_ranking.gin
+index d8e8d33..256175c 100644
+--- a/examples/hstu/movielen_ranking.gin
++++ b/examples/hstu/movielen_ranking.gin
+@@ -5,8 +5,8 @@ TrainerArgs.eval_interval = 100
+ TrainerArgs.log_interval = 100
+ TrainerArgs.seed = 1234
+ TrainerArgs.max_train_iters = 1000
+-TrainerArgs.profile = True
+-TrainerArgs.pipeline_type = "prefetch"
++TrainerArgs.profile = False
++TrainerArgs.pipeline_type = "none"
+ 
+ DatasetArgs.dataset_name = 'ml-20m'
+ DatasetArgs.max_sequence_length = 200
+@@ -19,6 +19,8 @@ NetworkArgs.num_attention_heads = 4
+ NetworkArgs.hidden_size = 128
+ NetworkArgs.kv_channels = 128
+ NetworkArgs.target_group_size = 1
++NetworkArgs.kernel_backend = 'npu_fused'
++NetworkArgs.layer_type = 'native'
+ 
+ # ratings 0-5
+ RankingArgs.prediction_head_arch = [512, 10]
+diff --git a/examples/hstu/ops/pt_ops/pt_add_position_embeddings.py b/examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
+new file mode 100644
+index 0000000..c7775ab
+--- /dev/null
++++ b/examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
+@@ -0,0 +1,31 @@
++# -*- coding: utf-8 -*-
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++import torch
++
++
++def add_position_embeddings(jagged, jagged_offsets, high_inds, max_seq_len, dense, scale=1.0):
++    L, D = jagged.shape
++    B = high_inds.shape[0]
++    out = torch.empty_like(jagged)
++    for b in range(B):
++        start = jagged_offsets[b].item()
++        end = jagged_offsets[b + 1].item()
++        seq_len = end - start
++
++        pos_ids = torch.arange(seq_len, device=jagged.device) + high_inds[b].item()
++        pos_emb = dense[pos_ids]
++        out[start:end, :] = jagged[start:end, :] + pos_emb * scale
++    return out
+diff --git a/examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py b/examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
+new file mode 100644
+index 0000000..f7865fc
+--- /dev/null
++++ b/examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
+@@ -0,0 +1,39 @@
++# -*- coding: utf-8 -*-
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++import torch
++from typing import Tuple
++
++
++def concat_2D_jagged(values_a: torch.Tensor,
++                     offsets_a: torch.Tensor,
++                     values_b: torch.Tensor,
++                     offsets_b: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
++    B = offsets_a.shape[0] - 1
++    D = values_a.shape[1]
++    out_values = []
++    out_offsets = [0]
++    for i in range(B):
++        a_start, a_end = offsets_a[i].item(), offsets_a[i + 1].item()
++        b_start, b_end = offsets_b[i].item(), offsets_b[i + 1].item()
++        a_slice = values_a[a_start:a_end]
++        b_slice = values_b[b_start:b_end]
++        out_slice = torch.cat([a_slice, b_slice], dim=0)
++        out_values.append(out_slice)
++        out_offsets.append(out_offsets[-1] + out_slice.shape[0])
++    out_values = torch.cat(out_values, dim=0)
++    out_offsets = torch.tensor(out_offsets, device=values_a.device, dtype=offsets_a.dtype)
++    return out_values, out_offsets
+diff --git a/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py b/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
+new file mode 100644
+index 0000000..2215235
+--- /dev/null
++++ b/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
+@@ -0,0 +1,72 @@
++# -*- coding: utf-8 -*-
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++import torch
++
++
++def jagged_to_padded_dense(values, offsets, max_lengths, padding_value) -> torch.Tensor:
++    return torch.ops.mxrec.jagged_to_padded_dense(
++        values=values.to(torch.float32),
++        offsets=offsets,
++        max_lengths=max(max_lengths),
++        padding_value=padding_value,
++    ).to(torch.bfloat16)
++
++
++def dense_to_jagged(dense, offsets, total_L=None):
++    if total_L is None:
++        total_L = offsets[0][-1].item()
++
++    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense.to(torch.float32), offsets, total_L)
++    return out0.to(torch.bfloat16), out1
++
++
++class JaggedToPaddedDense(torch.autograd.Function):
++    @staticmethod
++    def forward(ctx, values, offsets, max_lengths, padding_value):
++        ctx.save_for_backward(*offsets)
++        ctx.total_L = values.shape[0]
++        return jagged_to_padded_dense(values, offsets, max_lengths, padding_value)
++
++    @staticmethod
++    def backward(ctx, grad_output):
++        offsets = list(ctx.saved_tensors)
++        total_L = ctx.total_L
++        grad_values, _ = dense_to_jagged(grad_output, offsets, total_L)
++        return grad_values, None, None, None
++
++
++class DenseToJagged(torch.autograd.Function):
++    @staticmethod
++    def forward(ctx, dense, offsets, total_L=None):
++        ctx.save_for_backward(*offsets)
++        out0, out1 = dense_to_jagged(dense, offsets, total_L)
++        ctx.dense_shape = dense.shape
++        return out0, out1
++
++    @staticmethod
++    def backward(ctx, grad_out0, grad_out1):
++        offsets = list(ctx.saved_tensors)
++        max_len = ctx.dense_shape[1]
++        grad_dense = jagged_to_padded_dense(grad_out0, offsets, [max_len], 0.0)
++        return grad_dense, None, None
++
++
++def jagged_to_padded_dense_wrapper(values, offsets, max_lengths, padding_value):
++    return JaggedToPaddedDense.apply(values, offsets, max_lengths, padding_value)
++
++
++def dense_to_jagged_wrapper(dense, offsets, total_L=None):
++    return DenseToJagged.apply(dense, offsets, total_L)
+diff --git a/examples/hstu/ops/pt_ops/pt_jagged_tensors.py b/examples/hstu/ops/pt_ops/pt_jagged_tensors.py
+new file mode 100644
+index 0000000..bca95d4
+--- /dev/null
++++ b/examples/hstu/ops/pt_ops/pt_jagged_tensors.py
+@@ -0,0 +1,240 @@
++# -*- coding: utf-8 -*-
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++from typing import Optional, Tuple
++
++import torch
++
++
++@torch.fx.wrap
++def fx_arange(len: int, device: torch.device) -> torch.Tensor:
++    return torch.arange(len, device=device)
++
++def _concat_2D_jagged_jagged(
++    values_left: torch.Tensor,
++    values_right: torch.Tensor,
++    max_len_left: int,
++    max_len_right: int,
++    offsets_left: torch.Tensor,
++    offsets_right: torch.Tensor,
++) -> torch.Tensor:
++    max_seq_len = max_len_left + max_len_right
++    lengths_left = offsets_left[1:] - offsets_left[:-1]
++    lengths_right = offsets_right[1:] - offsets_right[:-1]
++    padded_left = torch.ops.fbgemm.jagged_to_padded_dense(
++        values=values_left,
++        offsets=[offsets_left],
++        max_lengths=[max_len_left],
++        padding_value=0.0,
++    )
++    padded_right = torch.ops.fbgemm.jagged_to_padded_dense(
++        values=values_right,
++        offsets=[offsets_right],
++        max_lengths=[max_len_right],
++        padding_value=0.0,
++    )
++    concatted_dense = torch.cat([padded_left, padded_right], dim=1)
++    mask = fx_arange(max_seq_len, device=offsets_left.device).view(1, -1)
++    mask = torch.logical_or(
++        mask < lengths_left.view(-1, 1),
++        torch.logical_and(
++            mask >= max_len_left,
++            mask < max_len_left + lengths_right.view(-1, 1),
++        ),
++    )
++    return concatted_dense.flatten(0, 1)[mask.view(-1), :]
++
++
++@torch.fx.wrap
++def pytorch_concat_2D_jagged(
++    values_left: torch.Tensor,
++    values_right: torch.Tensor,
++    max_len_left: Optional[int],
++    max_len_right: Optional[int],
++    offsets_left: Optional[torch.Tensor],
++    offsets_right: Optional[torch.Tensor],
++) -> torch.Tensor:
++    if offsets_left is None:
++        assert max_len_left is not None
++        B = values_left.shape[0] // max_len_left
++        offsets_left_non_optional = max_len_left * torch.arange(
++            B + 1, device=values_left.device
++        )
++    else:
++        offsets_left_non_optional = offsets_left
++    if offsets_right is None:
++        assert max_len_right is not None
++        B = values_right.shape[0] // max_len_right
++        offsets_right_non_optional = max_len_right * torch.arange(
++            B + 1, device=values_left.device
++        )
++    else:
++        offsets_right_non_optional = offsets_right
++    max_len_left = (
++        int(
++            (offsets_left_non_optional[1:] - offsets_left_non_optional[:-1])
++            .max()
++            .item()
++        )
++        if max_len_left is None
++        else max_len_left
++    )
++    max_len_right = (
++        int(
++            (offsets_right_non_optional[1:] - offsets_right_non_optional[:-1])
++            .max()
++            .item()
++        )
++        if max_len_right is None
++        else max_len_right
++    )
++    return _concat_2D_jagged_jagged(
++        values_left=values_left,
++        values_right=values_right,
++        max_len_left=max_len_left,
++        max_len_right=max_len_right,
++        offsets_left=offsets_left_non_optional,
++        offsets_right=offsets_right_non_optional,
++    )
++
++def _split_2D_jagged_jagged(
++    max_seq_len: int,
++    values: torch.Tensor,
++    offsets_left: torch.Tensor,
++    offsets_right: torch.Tensor,
++) -> Tuple[torch.Tensor, torch.Tensor]:
++    offsets = offsets_left + offsets_right
++    padded_values = torch.ops.fbgemm.jagged_to_padded_dense(
++        values=values,
++        offsets=[offsets],
++        max_lengths=[max_seq_len],
++        padding_value=0.0,
++    ).flatten(0, 1)
++    lengths_left = offsets_left[1:] - offsets_left[:-1]
++    lengths_right = offsets_right[1:] - offsets_right[:-1]
++    mask = fx_arange(max_seq_len, device=values.device).view(1, -1)
++    mask_left = mask < lengths_left.view(-1, 1)
++    mask_right = torch.logical_and(
++        mask >= lengths_left.view(-1, 1),
++        mask < (lengths_left + lengths_right).view(-1, 1),
++    )
++    return padded_values[mask_left.view(-1), :], padded_values[mask_right.view(-1), :]
++
++
++@torch.fx.wrap
++def pytorch_split_2D_jagged(
++    max_seq_len: int,
++    values: torch.Tensor,
++    max_len_left: Optional[int],
++    max_len_right: Optional[int],
++    offsets_left: Optional[torch.Tensor],
++    offsets_right: Optional[torch.Tensor],
++) -> Tuple[torch.Tensor, torch.Tensor]:
++    if offsets_left is None:
++        assert max_len_left is not None
++        assert offsets_right is not None
++        offsets_left_non_optional = max_len_left * torch.arange(
++            offsets_right.shape[0], device=values.device
++        )
++    else:
++        offsets_left_non_optional = offsets_left
++    if offsets_right is None:
++        assert max_len_right is not None
++        assert offsets_left is not None
++        offsets_right_non_optional = max_len_right * torch.arange(
++            offsets_left.shape[0], device=values.device
++        )
++    else:
++        offsets_right_non_optional = offsets_right
++    return _split_2D_jagged_jagged(
++        max_seq_len=max_seq_len,
++        values=values,
++        offsets_left=offsets_left_non_optional,
++        offsets_right=offsets_right_non_optional,
++    )
++
++
++def pytorch_hstu_split_l2_embeddings(
++    max_seq_len: int,
++    x: torch.Tensor,
++    prefix_offsets: torch.Tensor,
++    l2_offsets: torch.Tensor,
++    contextual_seq_len: int,
++) -> Tuple[torch.Tensor, torch.Tensor]:
++    x_offsets = prefix_offsets + l2_offsets
++    x_lengths = x_offsets[1:] - x_offsets[:-1]
++    padded_x = torch.ops.fbgemm.jagged_to_padded_dense(
++        values=x,
++        offsets=[x_offsets],
++        max_lengths=[max_seq_len],
++        padding_value=0.0,
++    ).flatten(0, 1)
++    prefix_lengths = prefix_offsets[1:] - prefix_offsets[:-1]
++    mask = fx_arange(max_seq_len, device=x_offsets.device).view(1, -1)
++    mask_prefix = torch.logical_and(
++        mask >= contextual_seq_len,
++        mask < prefix_lengths.view(-1, 1) + contextual_seq_len,
++    )
++    mask_l2 = torch.logical_or(
++        mask < contextual_seq_len,
++        torch.logical_and(
++            mask >= prefix_lengths.view(-1, 1) + contextual_seq_len,
++            mask < x_lengths.view(-1, 1),
++        ),
++    )
++    return padded_x[mask_prefix.view(-1), :], padded_x[mask_l2.view(-1), :]
++
++
++def pytorch_hstu_concat_l2_embeddings(
++    max_prefix_len: int,
++    prefix_x: torch.Tensor,
++    prefix_offsets: torch.Tensor,
++    max_l2_len: int,
++    l2_x: torch.Tensor,
++    l2_offsets: torch.Tensor,
++    contextual_seq_len: int,
++) -> torch.Tensor:
++    padded_prefix_x = torch.ops.fbgemm.jagged_to_padded_dense(
++        values=prefix_x,
++        offsets=[prefix_offsets],
++        max_lengths=[max_prefix_len],
++        padding_value=0.0,
++    )
++    padded_l2_x = torch.ops.fbgemm.jagged_to_padded_dense(
++        values=l2_x,
++        offsets=[l2_offsets],
++        max_lengths=[max_l2_len],
++        padding_value=0.0,
++    )
++    padded_x = torch.cat(
++        [
++            padded_l2_x[:, 0:contextual_seq_len, :],
++            padded_prefix_x,
++            padded_l2_x[:, contextual_seq_len:, :],
++        ],
++        dim=1,
++    )
++    mask = fx_arange(max_prefix_len + max_l2_len, device=prefix_x.device).view(1, -1)
++    prefix_lengths = prefix_offsets[1:] - prefix_offsets[:-1]
++    l2_lengths = l2_offsets[1:] - l2_offsets[:-1]
++    mask = torch.logical_or(
++        mask < prefix_lengths.view(-1, 1) + contextual_seq_len,
++        torch.logical_and(
++            mask >= max_prefix_len + contextual_seq_len,
++            mask < max_prefix_len + l2_lengths.view(-1, 1),
++        ),
++    )
++    return padded_x.flatten(0, 1)[mask.view(-1), :]
+diff --git a/examples/hstu/ops/pt_ops/pt_position.py b/examples/hstu/ops/pt_ops/pt_position.py
+new file mode 100644
+index 0000000..b6a89af
+--- /dev/null
++++ b/examples/hstu/ops/pt_ops/pt_position.py
+@@ -0,0 +1,152 @@
++# -*- coding: utf-8 -*-
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++from typing import Optional
++
++import torch
++
++@torch.fx.wrap
++def fx_unwrap_optional_tensor(optional: Optional[torch.Tensor]) -> torch.Tensor:
++    assert optional is not None, "Expected optional to be non-None Tensor"
++    return optional
++
++@torch.fx.wrap
++def torch_arange(end: int, device: torch.device) -> torch.Tensor:
++    return torch.arange(end, device=device)
++
++def pytorch_add_position_embeddings(
++    jagged: torch.Tensor,
++    jagged_offsets: torch.Tensor,
++    high_inds: torch.Tensor,
++    max_seq_len: int,
++    dense: torch.Tensor,
++    scale: float=1.0,
++) -> torch.Tensor:
++    jagged = jagged * scale
++    B = high_inds.size(0)
++    col_indices = torch_arange(max_seq_len, device=high_inds.device).expand(
++        B, max_seq_len
++    )
++    col_indices = torch.clamp(col_indices, max=high_inds.view(-1, 1))
++    dense_values = torch.index_select(dense, 0, col_indices.reshape(-1)).view(
++        B, max_seq_len, -1
++    )
++    padded_left = torch.ops.fbgemm.jagged_to_padded_dense(
++        values=jagged,
++        offsets=[jagged_offsets],
++        max_lengths=[max_seq_len],
++        padding_value=0.0,
++    )
++    dense_result = padded_left + dense_values
++    jagged_result = torch.ops.fbgemm.dense_to_jagged(
++        dense_result,
++        [jagged_offsets],
++    )[0]
++    return jagged_result
++
++
++@torch.fx.wrap
++def _get_col_indices(
++    max_seq_len: int,
++    max_contextual_seq_len: int,
++    max_pos_ind: int,
++    seq_lengths: torch.Tensor,
++    num_targets: Optional[torch.Tensor],
++    interleave_targets: bool,
++) -> torch.Tensor:
++    B = seq_lengths.size(0)
++    col_indices = torch.arange(max_seq_len, device=seq_lengths.device).expand(
++        B, max_seq_len
++    )
++    if num_targets is not None:
++        high_inds = seq_lengths
++        if interleave_targets:
++            high_inds = seq_lengths - fx_unwrap_optional_tensor(num_targets) * 2
++        else:
++            high_inds = seq_lengths - fx_unwrap_optional_tensor(num_targets)
++        col_indices = torch.clamp(col_indices, max=high_inds.view(-1, 1))
++        col_indices = high_inds.view(-1, 1) - col_indices
++    else:
++        col_indices = seq_lengths.view(-1, 1) - col_indices
++    col_indices = col_indices + max_contextual_seq_len
++    col_indices = torch.clamp(col_indices, max=max_pos_ind - 1)
++    if max_contextual_seq_len > 0:
++        col_indices[:, :max_contextual_seq_len] = torch.arange(
++            0,
++            max_contextual_seq_len,
++            device=col_indices.device,
++            dtype=col_indices.dtype,
++        ).view(1, -1)
++    return col_indices
++
++
++def pytorch_add_timestamp_positional_embeddings(
++    seq_embeddings: torch.Tensor,
++    seq_offsets: torch.Tensor,
++    pos_embeddings: torch.Tensor,
++    ts_embeddings: torch.Tensor,
++    timestamps: torch.Tensor,
++    max_seq_len: int,
++    max_contextual_seq_len: int,
++    seq_lengths: torch.Tensor,
++    num_targets: Optional[torch.Tensor],
++    interleave_targets: bool,
++    time_bucket_fn: str,
++) -> torch.Tensor:
++    max_pos_ind = pos_embeddings.size(0)
++    # position encoding
++    pos_inds = _get_col_indices(
++        max_seq_len=max_seq_len,
++        max_contextual_seq_len=max_contextual_seq_len,
++        max_pos_ind=max_pos_ind,
++        seq_lengths=seq_lengths,
++        num_targets=num_targets,
++        interleave_targets=interleave_targets,
++    )
++    B, _ = pos_inds.shape
++    # timestamp encoding
++    num_time_buckets = 2048
++    time_bucket_increments = 60.0
++    time_bucket_divisor = 1.0
++    time_delta = 0
++    timestamps = timestamps[:, :max_seq_len]
++    query_time = torch.gather(
++        timestamps, dim=1, index=(seq_lengths - 1).unsqueeze(1).clamp(min=0)
++    )
++    ts = query_time - timestamps
++    ts = ts + time_delta
++    ts = ts.clamp(min=1e-6) / time_bucket_increments
++    if time_bucket_fn == "log":
++        ts = torch.log(ts)
++    else:
++        ts = torch.sqrt(ts)
++    ts = (ts / time_bucket_divisor).clamp(min=0).int()
++    ts = torch.clamp(
++        ts,
++        min=0,
++        max=num_time_buckets,
++    )
++    position_embeddings = torch.index_select(
++        pos_embeddings, 0, pos_inds.reshape(-1)
++    ).view(B, max_seq_len, -1)
++    time_embeddings = torch.index_select(ts_embeddings, 0, ts.reshape(-1)).view(
++        B, max_seq_len, -1
++    )
++    return torch.ops.fbgemm.jagged_dense_elementwise_add_jagged_output(
++        seq_embeddings,
++        [seq_offsets],
++        (time_embeddings + position_embeddings).to(seq_embeddings.dtype),
++    )[0]
+diff --git a/examples/hstu/ops/pt_ops/pt_split_2d_jagged.py b/examples/hstu/ops/pt_ops/pt_split_2d_jagged.py
+new file mode 100644
+index 0000000..c978430
+--- /dev/null
++++ b/examples/hstu/ops/pt_ops/pt_split_2d_jagged.py
+@@ -0,0 +1,40 @@
++# -*- coding: utf-8 -*-
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++from typing import Tuple
++
++import torch
++
++
++def split_2D_jagged(
++        values: torch.Tensor,
++        offsets_a: torch.Tensor,
++        offsets_b: torch.Tensor
++) -> Tuple[torch.Tensor, torch.Tensor]:
++    L, D = values.shape
++    B = offsets_a.shape[0] - 1
++    values_a_list = []
++    values_b_list = []
++
++    for i in range(B):
++        a_start = offsets_a[i].item()
++        a_end = offsets_a[i + 1].item()
++        b_start = offsets_b[i].item()
++        b_end = offsets_b[i + 1].item()
++        values_a_list.append(values[a_start:a_end])
++        values_b_list.append(values[b_start:b_end])
++    values_a = torch.cat(values_a_list, dim=0) if values_a_list else torch.empty(0, D, device=values.device)
++    values_b = torch.cat(values_b_list, dim=0) if values_b_list else torch.empty(0, D, device=values.device)
++    return values_a, values_b
+diff --git a/examples/hstu/preprocessor.py b/examples/hstu/preprocessor.py
+index b574514..98ea0a7 100644
+--- a/examples/hstu/preprocessor.py
++++ b/examples/hstu/preprocessor.py
+@@ -316,7 +316,7 @@ class MovielensDataProcessor(DataProcessor):
+         """
+         Preprocess the raw data. The support dataset are "ml-1m" and "ml-20m".
+         """
+-        self.download()
++        # self.download()
+         users, log_df = self.load()
+ 
+         log_df["movie_id"] = log_df["movie_id"].astype(int)
+@@ -758,7 +758,9 @@ def get_common_preprocessors(dataset_path: str):
+         file_name="KuaiRand-27K.tar.gz",
+         prefix="KuaiRand-27K",
+     )
+-    return {key: locals()[f"{key}_dp".replace("-", "_")] for key in dataset_names}
++    return {"ml-1m": ml_1m_dp,
++            "ml-20m": ml_20m_dp,
++            "kuairand-27k": kuairand_27k_dp}
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/examples/hstu/pretrain_gr_ranking.py b/examples/hstu/pretrain_gr_ranking.py
+index 446ce12..0a2962d 100644
+--- a/examples/hstu/pretrain_gr_ranking.py
++++ b/examples/hstu/pretrain_gr_ranking.py
+@@ -13,7 +13,7 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ import warnings
+-
++import sysconfig
+ # Ignore all FutureWarnings
+ warnings.filterwarnings("ignore", category=FutureWarning)
+ warnings.filterwarnings("ignore", category=SyntaxWarning)
+@@ -25,6 +25,9 @@ from typing import List, Tuple, cast
+ import commons.utils.initialize as init
+ import gin
+ import torch  # pylint: disable-unused-import
++import torch_npu
++torch.ops.load_library(f"/usr/local/python3.11.0/lib/python3.11/site-packages/libfbgemm_npu_api.so")
++import mindspeed.megatron_adaptor
+ from commons.utils.logger import print_rank_0
+ from configs import RankingConfig
+ from distributed.sharding import make_optimizer_and_shard
+@@ -51,6 +54,10 @@ from training import (
+     maybe_load_ckpts,
+     train_with_pipeline,
+ )
++from megatron.training.arguments import parse_args, validate_args
++from megatron.training.yaml_arguments import validate_yaml
++from megatron.training.global_vars import set_global_variables
++from ops.pt_ops.pt_jagged_dense_convert import jagged_to_padded_dense_wrapper, dense_to_jagged_wrapper
+ 
+ 
+ @gin.configurable
+@@ -102,12 +109,15 @@ def create_ranking_config() -> RankingConfig:
+ 
+ 
+ def main():
++    torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
++    torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
++
+     init.initialize_distributed()
+     init.initialize_model_parallel(
+         tensor_model_parallel_size=tp_args.tensor_model_parallel_size
+     )
+     init.set_random_seed(trainer_args.seed)
+-    free_memory, total_memory = torch.cuda.mem_get_info()
++    free_memory, total_memory = torch_npu.npu.mem_get_info()
+     print_rank_0(
+         f"distributed env initialization done. Free cuda memory: {free_memory / (1024 ** 2):.2f} MB"
+     )
+@@ -146,7 +156,7 @@ def main():
+     train_dataloader, test_dataloader = get_data_loader(
+         "ranking", dataset_args, trainer_args, task_config.num_tasks
+     )
+-    free_memory, total_memory = torch.cuda.mem_get_info()
++    free_memory, total_memory = torch_npu.npu.mem_get_info()
+     print_rank_0(
+         f"model initialization done, start training. Free cuda memory: {free_memory / (1024 ** 2):.2f} MB"
+     )
+@@ -161,13 +171,13 @@ def main():
+         pipeline = pipeline_factory(
+             model_train,
+             dense_optimizer,
+-            device=torch.device("cuda", torch.cuda.current_device()),
++            device=torch.device("cuda", torch_npu.npu.current_device()),
+         )
+     else:
+         pipeline = JaggedMegatronTrainNonePipeline(
+             model_train,
+             dense_optimizer,
+-            device=torch.device("cuda", torch.cuda.current_device()),
++            device=torch.device("cuda", torch_npu.npu.current_device()),
+         )
+     train_with_pipeline(
+         pipeline,
+diff --git a/examples/hstu/training/gin_config_args.py b/examples/hstu/training/gin_config_args.py
+index d0fc57c..f1e463d 100644
+--- a/examples/hstu/training/gin_config_args.py
++++ b/examples/hstu/training/gin_config_args.py
+@@ -141,6 +141,8 @@ class NetworkArgs:
+     num_attention_heads: int
+     kv_channels: int
+ 
++    layer_type: str = "fused"
++
+     hidden_dropout: float = 0.2
+     norm_epsilon: float = 1e-5
+     is_causal: bool = True
+@@ -164,7 +166,8 @@ class NetworkArgs:
+             "float16",
+         ], "Only support bfloat16 and float16 precision for Network."
+ 
+-        assert self.kernel_backend.lower() in ["cutlass", "triton", "pytorch"]
++        assert self.kernel_backend.lower() in ["cutlass", "triton", "pytorch", "npu_fused"]
++        assert self.layer_type.lower() in ["fused", "native"]
+ 
+ 
+ @gin.configurable
+diff --git a/examples/hstu/training/training.py b/examples/hstu/training/training.py
+index f975842..669e9fa 100644
+--- a/examples/hstu/training/training.py
++++ b/examples/hstu/training/training.py
+@@ -18,6 +18,7 @@ from typing import Iterator, Optional, Union
+ 
+ import commons.checkpoint as checkpoint
+ import torch  # pylint: disable-unused-import
++import torch_npu
+ import torch.distributed as dist
+ from commons.checkpoint import get_unwrapped_module
+ from commons.utils.gpu_timer import GPUTimer
+@@ -46,7 +47,7 @@ def evaluate(
+     eval_loader: torch.utils.data.DataLoader,
+ ):
+     eval_iter = 0
+-    torch.cuda.nvtx.range_push(f"#evaluate")
++    # torch.cuda.nvtx.range_push(f"#evaluate")
+     max_eval_iters = trainer_args.max_eval_iters or len(eval_loader)
+     max_eval_iters = min(max_eval_iters, len(eval_loader))
+     # make a copy of eval_loader to avoid modifying the original loader
+@@ -76,7 +77,7 @@ def evaluate(
+         f"[eval] [eval {eval_iter * dp_size * trainer_args.eval_batch_size} users]:\n    "
+         + stringify_dict(eval_metric_dict, prefix="Metrics", sep="\n    ")
+     )
+-    torch.cuda.nvtx.range_pop()
++    # torch.cuda.nvtx.range_pop()
+ 
+ 
+ def maybe_load_ckpts(
+@@ -111,7 +112,7 @@ def save_ckpts(
+             os.makedirs(ckpt_save_dir, exist_ok=True)
+         except Exception as e:
+             raise Exception("can't build path:", ckpt_save_dir) from e
+-    dist.barrier(device_ids=[torch.cuda.current_device()])
++    dist.barrier(device_ids=[torch_npu.npu.current_device()])
+     checkpoint.save(ckpt_save_dir, model, dense_optimizer=dense_optimizer)
+     print_rank_0(f"Checkpoints saved!!")
+ 
+@@ -155,15 +156,48 @@ def train_with_pipeline(
+     iter_slices = batched(train_loader_iter, n)
+     start_iter = 0
+     pipeline._model.train()
++
++    PROFILE_ENABLE = os.environ.get("NPU_PROFILE", "0").lower() in ("1", "true")
++    if PROFILE_ENABLE:
++        experimental_config = torch_npu.profiler._ExperimentalConfig(
++            export_type=[
++                torch_npu.profiler.ExportType.Text,
++                torch_npu.profiler.ExportType.Db,
++                ],
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++            msprof_tx=False,
++            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++            l2_cache=False,
++            op_attr=False,
++            data_simplification=False,
++            record_op_args=False,
++            gc_detect_threshold=None,
++        )
++
++        prof = torch_npu.profiler.profile(
++        activities=[
++            torch_npu.profiler.ProfilerActivity.CPU,
++            torch_npu.profiler.ProfilerActivity.NPU
++            ],
++        schedule=torch_npu.profiler.schedule(wait=10, warmup=0, active=1, repeat=1, skip_first=1),
++        on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
++        record_shapes=False,
++        profile_memory=False,
++        with_stack=True,
++        with_modules=True,
++        with_flops=False,
++        experimental_config=experimental_config)
++
++        prof.start()
+     for batched_iterator in iter_slices:
+         # for one slice(every eval interval)
+         for train_iter in count(start_iter):
+             if trainer_args.profile and train_iter == trainer_args.profile_step_start:
+-                dist.barrier(device_ids=[torch.cuda.current_device()])
+-                torch.cuda.profiler.start()
++                dist.barrier(device_ids=[torch_npu.npu.current_device()])
++                # torch.cuda.profiler.start()
+             if trainer_args.profile and train_iter == trainer_args.profile_step_end:
+-                torch.cuda.profiler.stop()
+-                dist.barrier(device_ids=[torch.cuda.current_device()])
++                # torch.cuda.profiler.stop()
++                dist.barrier(device_ids=[torch_npu.npu.current_device()])
+             if (
+                 train_iter * trainer_args.ckpt_save_interval > 0
+                 and train_iter % trainer_args.ckpt_save_interval == 0
+@@ -173,7 +207,7 @@ def train_with_pipeline(
+                 )
+                 save_ckpts(save_path, pipeline._model, dense_optimizer)
+             try:
+-                torch.cuda.nvtx.range_push(f"step {train_iter}")
++                # torch.cuda.nvtx.range_push(f"step {train_iter}")
+                 reporting_loss, (
+                     local_loss,
+                     logits,
+@@ -184,10 +218,12 @@ def train_with_pipeline(
+                 ddp_num_contextuals.append(ddp_num_contextual.view(-1))
+                 ddp_num_candidates.append(ddp_num_candidate.view(-1))
+                 tokens_logged += reporting_loss[1]
+-                torch.cuda.nvtx.range_pop()
++                # torch.cuda.nvtx.range_pop()
++                if PROFILE_ENABLE:
++                    prof.step()
+             except StopIteration:
+                 start_iter = train_iter
+-                torch.cuda.nvtx.range_pop()
++                # torch.cuda.nvtx.range_pop()
+                 break
+             # log
+             if train_iter > 0 and (train_iter + 1) % trainer_args.log_interval == 0:
+@@ -217,3 +253,5 @@ def train_with_pipeline(
+                 eval_loader=eval_loader,
+             )
+             pipeline._model.train()
++    if PROFILE_ENABLE:
++        prof.stop()
+diff --git a/examples/hstu/training/utils.py b/examples/hstu/training/utils.py
+index dc4f541..e0a1a65 100644
+--- a/examples/hstu/training/utils.py
++++ b/examples/hstu/training/utils.py
+@@ -28,7 +28,7 @@ from configs import (
+     PositionEncodingConfig,
+     get_hstu_config,
+ )
+-from dynamicemb import DynamicEmbTableOptions
++from dynamic_emb import DynamicEmbTableOptions
+ from modules.embedding import ShardedEmbeddingConfig
+ from training.gin_config_args import (
+     BenchmarkDatasetArgs,
+@@ -172,15 +172,19 @@ def create_hstu_config(
+         kernel_backend = KernelBackend.TRITON
+     elif network_args.kernel_backend == "pytorch":
+         kernel_backend = KernelBackend.PYTORCH
++    elif network_args.kernel_backend == "npu_fused":
++        kernel_backend = KernelBackend.NPU_FUSED
+     else:
+         raise ValueError(
+             f"Kernel backend {network_args.kernel_backend} is not supported."
+         )
+     layer_type = None
+-    if tensor_model_parallel_args.tensor_model_parallel_size == 1:
++    if network_args.layer_type == "fused":
+         layer_type = HSTULayerType.FUSED
+-    else:
++    elif network_args.layer_type == "native":
+         layer_type = HSTULayerType.NATIVE
++    else:
++        raise ValueError(f"Layer type {network_args.layer_type} is not supported.")
+ 
+     position_encoding_config = PositionEncodingConfig(
+         num_position_buckets=network_args.num_position_buckets,
+@@ -375,12 +379,16 @@ def create_dynamic_optitons_dict(
+     dynamic_options_dict: Dict[str, DynamicEmbTableOptions] = {}
+     for embedding_args in embedding_args_list:
+         if isinstance(embedding_args, DynamicEmbeddingArgs):
+-            from dynamicemb import DynamicEmbCheckMode, DynamicEmbEvictStrategy
+-
++            from dynamic_emb.distributed.dynamicemb_config import DynamicEmbEvictStrategy
++            from dynamic_emb import DynamicEmbCheckMode, DynamicEmbInitializerArgs, DynamicEmbInitializerMode
+             embedding_args.calculate_and_reset_global_hbm_for_values(
+                 hidden_size, embedding_dim_multiplier
+             )
+             dynamic_options_dict[embedding_args.table_name] = DynamicEmbTableOptions(
++                initializer_args=DynamicEmbInitializerArgs(
++                    mode=DynamicEmbInitializerMode.UNIFORM,
++                    upper=0.1
++                ),
+                 global_hbm_for_values=embedding_args.global_hbm_for_values,
+                 evict_strategy=DynamicEmbEvictStrategy.LRU
+                 if embedding_args.evict_strategy == "lru"
+@@ -388,7 +396,7 @@ def create_dynamic_optitons_dict(
+                 safe_check_mode=DynamicEmbCheckMode.IGNORE,
+                 bucket_capacity=128,
+                 training=training,
+-                caching=embedding_args.caching,
++                caching=False,
+             )
+     return dynamic_options_dict
+ 
+@@ -405,7 +413,7 @@ def get_dataset_and_embedding_args() -> (
+         benchmark_dataset_args = BenchmarkDatasetArgs()  # type: ignore[call-arg]
+         return benchmark_dataset_args, benchmark_dataset_args.embedding_args
+     assert isinstance(dataset_args, DatasetArgs)
+-    HASH_SIZE = 10_000_000
++    HASH_SIZE = 13_107_2
+     if dataset_args.dataset_name == "kuairand-pure":
+         return dataset_args, [
+             EmbeddingArgs(
+@@ -606,25 +614,32 @@ def get_dataset_and_embedding_args() -> (
+         ]
+     elif dataset_args.dataset_name == "ml-20m":
+         return dataset_args, [
+-            EmbeddingArgs(
++            # EmbeddingArgs(
++            #     feature_names=["rating"],
++            #     table_name="action_weights",
++            #     item_vocab_size_or_capacity=11,
++            #     sharding_type="data_parallel",
++            # ),
++           DynamicEmbeddingArgs(
+                 feature_names=["rating"],
+                 table_name="action_weights",
+                 item_vocab_size_or_capacity=11,
++                item_vocab_gpu_capacity_ratio=0.5,
+                 sharding_type="data_parallel",
+-            ),
++            ),            
+             DynamicEmbeddingArgs(
+                 feature_names=["movie_id"],
+                 table_name="movie_id",
+                 item_vocab_size_or_capacity=HASH_SIZE,
+                 item_vocab_gpu_capacity_ratio=0.5,
+-                caching=True,
++                caching=False,
+             ),
+             DynamicEmbeddingArgs(
+                 feature_names=["user_id"],
+                 table_name="user_id",
+                 item_vocab_size_or_capacity=HASH_SIZE,
+                 item_vocab_gpu_capacity_ratio=0.5,
+-                caching=True,
++                caching=False,
+             ),
+         ]
+     else:
