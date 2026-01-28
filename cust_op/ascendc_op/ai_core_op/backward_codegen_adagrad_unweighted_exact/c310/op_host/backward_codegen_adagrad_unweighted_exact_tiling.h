@@ -48,7 +48,7 @@ TILING_DATA_FIELD_DEF(int64_t, iter);
 TILING_DATA_FIELD_DEF(bool, useOptimize); // where to use optimizer update
 TILING_DATA_FIELD_DEF(bool, useRegBase);
 TILING_DATA_FIELD_DEF(int64_t, momentumDim0);
-
+TILING_DATA_FIELD_DEF(int64_t, totalHashSize);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(BackwardCodegenAdagradUnweightedExact, BackwardCodegenAdagradUnweightedExactTilingData)

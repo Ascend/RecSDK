@@ -66,6 +66,9 @@ public:
 
     __aicore__ inline void UpdateEmbedAda()
     {
+        this->UniqIndices();
+        SyncAll();
+        
         __gm__ int32_t* dOffsetsPtr = (__gm__ int32_t*)dOffsets;
         __gm__ int64_t* weightsOffsetsPtr = (__gm__ int64_t*)weightsOffsets;
         __gm__ int64_t* offsetsPtr = (__gm__ int64_t*)offsets;
@@ -122,7 +125,7 @@ public:
                     weightOffsetBase = *(weightsOffsetsPtr + tableIndex);
                 }
 
-                if (workspaceGT.GetValue(thisIndForTotalTable) != NEED_UPDATE) {
+                if (workspaceGT.GetValue(thisIndForTotalTable) != static_cast<uint32_t>(UpdateState::NEED_UPDATE)) {
                     continue;
                 }
 

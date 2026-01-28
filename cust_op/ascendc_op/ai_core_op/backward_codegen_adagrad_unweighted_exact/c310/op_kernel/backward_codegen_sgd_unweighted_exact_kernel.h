@@ -86,7 +86,7 @@ public:
                 weightOffsetBase = *(weightsOffsetsPtr + tableIndex);
             }
 
-            if (workspaceGT.GetValue(thisIndForTotalTable) != NEED_UPDATE) {
+            if (workspaceGT.GetValue(thisIndForTotalTable) != static_cast<uint32_t>(UpdateState::NEED_UPDATE)) {
                 continue;
             }
 
@@ -145,6 +145,9 @@ public:
 
     __aicore__ inline void UpdateEmbedSgd(Args args)
     {
+        this->UniqIndices();
+        SyncAll();
+        
         InitSgd(args);
         Tilling();
 
