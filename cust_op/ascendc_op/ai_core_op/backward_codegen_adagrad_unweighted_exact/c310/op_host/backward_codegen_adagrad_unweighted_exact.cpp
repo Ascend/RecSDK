@@ -25,7 +25,7 @@ namespace optiling {
 constexpr int DATA_TYPE_FLOAT32 = 0;
 constexpr int DATA_TYPE_INT64 = 1;
 
-constexpr int RESERVER_UB_SIZE = 20 * 1024;
+constexpr int RESERVER_UB_SIZE = 40 * 1024;
 constexpr uint64_t UB_ALIGN = 32;
 constexpr int NUM_QUEUE = 32;
 // input index
@@ -70,6 +70,9 @@ constexpr int ADAGRAD = 1;
 constexpr int ADAM = 2;
 constexpr int SGD = 3;
 constexpr int ROWWISE_ADAGRAD = 7;
+
+/// Stride for accessing triad elements
+constexpr int64_t TRIAD_ACCESS_STRIDE = 3;
 
 static ge::graphStatus UniqueTilingFunc(gert::TilingContext* context,
                                         BackwardCodegenAdagradUnweightedExactTilingData& tilingData)
@@ -245,24 +248,35 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
 
     size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
-
-    int bitNum = 2;
-    currentWorkspace[0] = std::pow(bitNum, total_hash_size_bits) + systemWorkspacesSize;
-
-    // Tiling
+  // Tiling
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
     OPS_CHECK(coreNum == 0, OPS_LOG_E("Tiling Debug", "Core num is 0."), return ge::GRAPH_FAILED);
+    int bitNum = 2;
+
+    int64_t totalHashSize = static_cast<int64_t>(std::pow(bitNum, total_hash_size_bits));
+    size_t markerSize = totalHashSize * sizeof(uint32_t);
+    // 0, total_index, 1 weights_offset, 2 embedim
+    size_t indicesUniqSize = tiling.get_indicesDim0() * sizeof(int64_t) * TRIAD_ACCESS_STRIDE;
+    if (tiling.get_indicesDim0() < coreNum) {
+        coreNum = tiling.get_indicesDim0();
+    }
+    
+    currentWorkspace[0] = markerSize + indicesUniqSize + systemWorkspacesSize;
 
     int64_t splitBaseLen = tiling.get_indicesDim0() / coreNum;
     int64_t tailSplitIndex = tiling.get_indicesDim0() % coreNum;
 
+    tiling.set_totalHashSize(totalHashSize);
     tiling.set_splitBaseLen(splitBaseLen);
     tiling.set_tailSplitIndex(tailSplitIndex);
-
+    
     uint64_t ubCanUsed;
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
+
+    context->SetLocalMemorySize(ubCanUsed - RESERVER_UB_SIZE);
+    ubCanUsed = context->GetLocalMemorySize();
     uint64_t flagUb = UB_ALIGN * 2;  // queFlagOut标志位保留双buffer空间
-    ubCanUsed = ubCanUsed - RESERVER_UB_SIZE - flagUb;
+    ubCanUsed = ubCanUsed - flagUb;
     tiling.set_ubCanUsed(ubCanUsed);
 
     int64_t poolMode = *context->GetAttrs()->GetInt(POOL_MODE_INDEX);
