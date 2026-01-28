@@ -85,7 +85,7 @@ def test_rab_time_eval(num_layers, train_len, candidate_len, bs, dtype):
 @pytest.mark.parametrize("num_layers", [8])
 @pytest.mark.parametrize("train_len", [500, 1000, 2000, 4000])
 @pytest.mark.parametrize("candidate_len", [600])
-@pytest.mark.parametrize("bs", [1, 2, 4])
+@pytest.mark.parametrize("bs", [1, 2, 4, 32])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_rab_pos_eval(num_layers, train_len, candidate_len, bs, dtype):
     rab_pos(num_layers, train_len, candidate_len, bs, dtype)

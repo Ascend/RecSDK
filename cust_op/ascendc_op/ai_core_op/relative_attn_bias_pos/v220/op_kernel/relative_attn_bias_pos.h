@@ -92,7 +92,7 @@ public:
         return (a + b - 1) / b * b;
     }
 
-    __aicore__ inline void DataCopyOut(int offset, int cnt)
+    __aicore__ inline void DataCopyOut(int64_t offset, int cnt)
     {
         uint32_t datasize = cnt * sizeof(FloatType);
         uint32_t alignLen = datasize / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
@@ -140,7 +140,8 @@ public:
                     int valid_row = row > valid_len ? valid_len : row;
                     DataCopyIn(valid_row, offset, cnt);
                     ComputeRabBias(identityCalcUb, cnt);
-                    int padOutPtr = b * s * s + row * s + j * stride;
+                    int64_t padOutPtr = static_cast<int64_t>(b) * s * s + static_cast<int64_t>(row) * s +
+                                        static_cast<int64_t>(j) * stride;
                     DataCopyOut(padOutPtr, cnt);
                 }
                 queIdentityIn.FreeTensor(identityCalcUb);
