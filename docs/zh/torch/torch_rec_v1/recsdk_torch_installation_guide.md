@@ -41,7 +41,7 @@
 |方案二|2.7.1|2.7.1|1.2.0|
 
 
-其他软件配套版本信息请参考[基础镜像构建](https://gitcode.com/Ascend/RecSDK/tree/develop/docs/build_torch_rec_images)。
+其他软件配套版本信息请参考[基础镜像构建](../build_torch_rec_images/README.md)。
 
 **下载软件包<a name="section1852417242717"></a>**
 
@@ -79,7 +79,7 @@
 **关键步骤说明<a name="section15488921175211"></a>**
 
 1.  准备宿主机环境。请参见[安装依赖](#安装依赖)完成宿主机环境的部署。
-2.  构建基础镜像，请参见[使用Debian 12制作训练镜像](#section104919392501)。
+2.  构建基础镜像，请参见[使用Debian 12制作训练镜像](../build_torch_rec_images/README.md)。
 3.  启动容器，请参见[启动容器](#section12808621121114)。
 4.  安装Rec SDK Torch，请参见[安装Rec SDK Torch](#section182972951211)。
 
@@ -88,7 +88,7 @@
 
 **使用Debian 12制作训练镜像<a id="section104919392501"></a>**
 
-参考[基础镜像构建](https://gitcode.com/Ascend/RecSDK/tree/develop/docs/build_torch_rec_images)里的DockerFile和Readme制作镜像。
+参考[基础镜像构建](../build_torch_rec_images/README.md)里的DockerFile和Readme制作镜像。
 
 **启动容器<a id="section12808621121114"></a>**
 
