@@ -32,6 +32,7 @@ using namespace AscendC;
 
 namespace HstuDenseForward {
 
+
 constexpr int VEC_PER_PROCESS = 32;
 constexpr int UB_SIZE = 170 * 1024;  // 170KB
 constexpr int QUEUE_IN_NUM = 2;
@@ -66,6 +67,20 @@ struct Args {
     GM_ADDR attnOutput;
     GM_ADDR workspace;
     GM_ADDR tiling;
+};
+
+template <typename qTypeTemplate, typename oTypeTemplate, bool bias, bool useQK,
+          bool determin, CausalMaskT maskedType, int tilingM, int tilingN, int tilingK>
+struct TraitParams {
+    using qType = qTypeTemplate;
+    using oType = oTypeTemplate;
+    static constexpr bool enableBias = bias;
+    static constexpr bool isQkUseUb = useQK;
+    static constexpr bool deterministic = determin;
+    static constexpr CausalMaskT maskType = maskedType;
+    static constexpr int blockM = tilingM;
+    static constexpr int blockN = tilingN;
+    static constexpr int blockK = tilingK;
 };
 
 template <typename qType>
@@ -141,14 +156,17 @@ __aicore__ inline void CopySVB1(const LocalTensor<int8_t>& bMatrix, const __gm__
     DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
 };
 
-template <typename qType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
+template <typename TraitParams>
 class HstuDenseForwardKernelPattenBsnd {
 public:
+    using qType = typename TraitParams::qType;
+    using oType = typename TraitParams::oType;
     static constexpr int ElementOfBlock = DATA_ALIGN_BYTES / sizeof(qType);
-    static constexpr int blockHeight = isQkUseUb ? BLOCK_HEIGHT_128 : BLOCK_HEIGHT_256;
+    // blockHeight only used in dense_hstu_forward
+    static constexpr int blockHeight = TraitParams::isQkUseUb ? BLOCK_HEIGHT_128 : BLOCK_HEIGHT_256;
     static constexpr int vectorScoreUbBlockElem =
-        (isQkUseUb ? (blockHeight * blockHeight) : (VEC_PER_PROCESS * blockHeight)) / USE_QUEUE_NUM;
-    static constexpr auto qkMMCPos = isQkUseUb ? TPosition::VECIN : TPosition::GM;
+        (TraitParams::isQkUseUb ? (blockHeight * blockHeight) : (VEC_PER_PROCESS * blockHeight)) / USE_QUEUE_NUM;
+    static constexpr auto qkMMCPos = TraitParams::isQkUseUb ? TPosition::VECIN : TPosition::GM;
     static constexpr MatmulConfig qkMMConfig = std::is_same<qType, float>::value ?
         mmStaticConfigQKFp32 : mmStaticConfigQKFp16;
     static constexpr MatmulConfig svMMConfig = std::is_same<qType, float>::value ?
@@ -213,11 +231,11 @@ public:
         kGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(k));
         vGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(v));
 
-        if constexpr (enableBias) {
+        if constexpr (TraitParams::enableBias) {
             attnBiasGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(attnBias));
         }
 
-        if constexpr (maskType == CausalMaskT::MASK_CUSTOM) {
+        if constexpr (TraitParams::maskType == CausalMaskT::MASK_CUSTOM) {
             attnMaskGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(mask));
         }
 
@@ -241,9 +259,9 @@ public:
 
         pipe->InitBuffer(vecIn, 1, 8 * sizeof(int32_t));
 
-        pipe->InitBuffer(scm, 1, BLOCK_N * BLOCK_M * sizeof(qType));
+        pipe->InitBuffer(scm, 1, TraitParams::blockM * TraitParams::blockN * sizeof(qType));
 
-        if constexpr (!isQkUseUb) {
+        if constexpr (!TraitParams::isQkUseUb) {
             // Init pipe total 32K * 5 = 160K
             transUbBlockElem = vectorScoreUbBlockElem;
             pipe->InitBuffer(queIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
@@ -262,7 +280,7 @@ public:
             pipe->InitBuffer(qkQueInB, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
         }
         
-        if constexpr (deterministic) {
+        if constexpr (TraitParams::deterministic) {
             SyncAll<true>();
             if (GetBlockIdx() == 0) {
                 uint32_t zeroNumber = coreNum * DATA_ALIGN_BYTES / sizeof(int32_t);
@@ -298,7 +316,7 @@ public:
 
     __aicore__ inline void AllocQkUbTensor()
     {
-        if constexpr (isQkUseUb) {
+        if constexpr (TraitParams::isQkUseUb) {
             this->qkUbA = this->qkQueInA.template AllocTensor<qType>();
             this->qkUbB = this->qkQueInB.template AllocTensor<qType>();
         }
@@ -306,7 +324,7 @@ public:
 
     __aicore__ inline void FreeQkUbTensor()
     {
-        if constexpr (isQkUseUb) {
+        if constexpr (TraitParams::isQkUseUb) {
             this->qkQueInA.template FreeTensor<qType>(this->qkUbA);
             this->qkQueInB.template FreeTensor<qType>(this->qkUbB);
         }
@@ -333,12 +351,12 @@ public:
         bool needMask,
         float scale)
     {
-        if constexpr (maskType != CausalMaskT::MASK_NONE) {
+        if constexpr (TraitParams::maskType != CausalMaskT::MASK_NONE) {
             queMaskIn.DeQue();
         }
 
         if (needMask) {
-            if constexpr (maskType == CausalMaskT::MASK_CUSTOM) {
+            if constexpr (TraitParams::maskType == CausalMaskT::MASK_CUSTOM) {
                 inMaskLtFp32 = inMaskLt.template ReinterpretCast<float>();
                 CastQtype2Float(inMaskLtFp32, inMaskLt, tmpLt, thisLen);
                 Muls<float>(inMaskLtFp32, inMaskLtFp32, scale, thisLen);
@@ -348,7 +366,7 @@ public:
             Muls<float>(newOutLt, newOutLt, scale, thisLen);
         }
 
-        if constexpr (maskType != CausalMaskT::MASK_NONE) {
+        if constexpr (TraitParams::maskType != CausalMaskT::MASK_NONE) {
             queMaskIn.FreeTensor(inMaskLtFp32);
         }
     }
@@ -360,7 +378,7 @@ public:
         int64_t thisLen
     )
     {
-        if constexpr (enableBias) {
+        if constexpr (TraitParams::enableBias) {
             biasIn.DeQue();
             auto newBiasLt = biasLt.template ReinterpretCast<float>();
             CastQtype2Float(newBiasLt, biasLt, tmpLt, thisLen);
@@ -441,7 +459,7 @@ public:
         uint16_t alignOfN = AlignUp(blockLen, ElementOfBlock);
         align = (maxSeqLenK % ElementOfBlock == 0) && (alignOfN == blockLen);
 
-        uint16_t dstStride = (blockHeight - alignOfN) * sizeof(qType) / DATA_ALIGN_BYTES;
+        uint16_t dstStride = (TraitParams::blockN - alignOfN) * sizeof(qType) / DATA_ALIGN_BYTES;
 
         if (align) {
             uint16_t copyLen = alignOfN * sizeof(qType) / DATA_ALIGN_BYTES;
@@ -461,13 +479,13 @@ public:
     }
 
     __aicore__ inline bool GenMask(
-        LocalTensor<float>& inMaskLt, int causalMask, int64_t maskLen, int64_t maskOffset, float scale)
+        LocalTensor<float>& inMaskLt, int causalMask, int64_t maskLen, int64_t maskOffset, float sclae)
     {
         bool needMask = false;
         if (causalMask == 1) {
-            DoCausalMask<float, CausalMaskT::MASK_TRIL>(inMaskLt, maskOffset, maskLen, this->blockHeight,
+            DoCausalMask<float, CausalMaskT::MASK_TRIL>(inMaskLt, maskOffset, maskLen, TraitParams::blockM,
                                                 
-                maskLen / this->blockHeight, scale);
+                maskLen / TraitParams::blockM, sclae);
             needMask = true;
         }
 
@@ -486,7 +504,7 @@ public:
         uint32_t n)
     {
         bool needMask = false;
-        if constexpr (maskType == CausalMaskT::MASK_TRIL) {
+        if constexpr (TraitParams::maskType == CausalMaskT::MASK_TRIL) {
             inMaskLtFp32 = queMaskIn.AllocTensor<float>();
             if constexpr (std::is_same<MaskInfoType, uint32_t>::value) {
                 // 处理 uint32_t 类型
@@ -500,15 +518,16 @@ public:
                 // 处理 BlockMaskParams 类型
                 BlockMaskGenerator blkMaskGen(maskinfo);
                 needMask =
-                    blkMaskGen.GenMask(inMaskLtFp32, blockOffset, thisLen / this->blockHeight, this->blockHeight);
+                    blkMaskGen.GenMask(inMaskLtFp32, blockOffset, thisLen / TraitParams::blockM, TraitParams::blockM);
             }
 
             queMaskIn.EnQue(inMaskLtFp32);
-        } else if constexpr (maskType == CausalMaskT::MASK_CUSTOM) {
+        } else if constexpr (TraitParams::maskType == CausalMaskT::MASK_CUSTOM) {
             int64_t thisMaskOffset = maskOffset + blockOffset * maxSeqLenK;
+
             inMaskLt = queMaskIn.AllocTensor<qType>();
             DataCopyMayPad(inMaskLt, attnMaskGt,
-                (uint16_t)(thisLen / blockHeight), n, thisMaskOffset);
+                (uint16_t)(thisLen / TraitParams::blockM), n, thisMaskOffset);
             queMaskIn.EnQue(inMaskLt);
 
             needMask = true;
@@ -524,11 +543,11 @@ public:
         int64_t blockOffset,
         uint32_t n)
     {
-        if constexpr (enableBias) {
+        if constexpr (TraitParams::enableBias) {
             int64_t thisBiasOffset = biasOffset + blockOffset * maxSeqLenK;
             biasLt = biasIn.AllocTensor<qType>();
             DataCopyMayPad(biasLt, attnBiasGt,
-                (uint16_t)(thisLen / blockHeight), n, thisBiasOffset);
+                (uint16_t)(thisLen / TraitParams::blockM), n, thisBiasOffset);
             biasIn.EnQue(biasLt);
         }
     }
@@ -544,8 +563,8 @@ public:
         uint32_t n)
     {
         int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
-        int64_t total = m * blockHeight;
-        int64_t offset = midResultIdx * blockHeight * blockHeight;
+        int64_t total = m * TraitParams::blockM;
+        int64_t offset = midResultIdx * TraitParams::blockM * TraitParams::blockM;
 
         auto tmpLt = tmpBuff.AllocTensor<qType>();
         auto tmpLtFp32 = tmpLt.template ReinterpretCast<float>();
@@ -553,7 +572,7 @@ public:
         LocalTensor<qType> inMaskLt;
         LocalTensor<float> inMaskLtFp32;
 
-        if constexpr (!enableBias) {
+        if constexpr (!TraitParams::enableBias) {
             biasLt = biasIn.AllocTensor<qType>();
         }
 
@@ -571,13 +590,13 @@ public:
 
             queIn.EnQue(inLt);
 
-            int64_t blockOffset = (total - remain) / blockHeight;
+            int64_t blockOffset = (total - remain) / TraitParams::blockM;
             DoBiasCopyOptional(biasLt, biasOffset, thisLen, blockOffset, n);
 
             bool needMask =
                 DoMaskInitOptional(inMaskLt, inMaskLtFp32, maskinfo, maskOffset, thisLen, blockOffset, scale, n);
 
-            if constexpr (enableBias) {
+            if constexpr (TraitParams::enableBias) {
                 CalcuScoreWithFloat32(inLt, biasLt, inMaskLt, inMaskLtFp32, tmpLt, tmpLtFp32,
                     needMask, thisLen, scale);
             } else {
@@ -592,7 +611,7 @@ public:
             remain = remain - thisLen;
         }
 
-        if constexpr (!enableBias) {
+        if constexpr (!TraitParams::enableBias) {
             biasIn.FreeTensor(biasLt);
         }
 
@@ -604,7 +623,7 @@ public:
                                           uint32_t k)
     {
         int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
-        int64_t outOffset = midResultIdx * blockHeight * blockHeight;
+        int64_t outOffset = midResultIdx * TraitParams::blockM * TraitParams::blockM;
 
         qkMatmul.SetTensorA(qGt[qOffset]);
         qkMatmul.SetTensorB(kGt[kOffset], true);
@@ -619,7 +638,7 @@ public:
                                           uint32_t k, const GlobalTensor<qType>& midkGt)
     {
         int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
-        int64_t outOffset = midResultIdx * blockHeight * blockHeight;
+        int64_t outOffset = midResultIdx * TraitParams::blockM * TraitParams::blockM;
 
         qkMatmul.SetTensorA(qGt[qOffset]);
         qkMatmul.SetTensorB(midkGt[kOffset], true);
@@ -634,8 +653,8 @@ public:
     {
         int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
         int64_t outMidIndex = transTaskId % TRANS_PIPE_NUM;
-        int64_t outOffset = outMidIndex * blockHeight * MAX_BLOCK_DIM;
-        int64_t sOffset = midResultIdx * blockHeight * blockHeight;
+        int64_t outOffset = outMidIndex * TraitParams::blockM * TraitParams::blockK;
+        int64_t sOffset = midResultIdx * TraitParams::blockM * TraitParams::blockN;
 
         svMatmul.SetTensorA(attnScoreGt[sOffset]);
         svMatmul.SetTensorB(vGt[vOffset]);
@@ -656,8 +675,8 @@ public:
     {
         int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
         int64_t outMidIndex = transTaskId % TRANS_PIPE_NUM;
-        int64_t outOffset = outMidIndex * blockHeight * MAX_BLOCK_DIM;
-        int64_t sOffset = midResultIdx * blockHeight * blockHeight;
+        int64_t outOffset = outMidIndex * TraitParams::blockM * TraitParams::blockK;
+        int64_t sOffset = midResultIdx * TraitParams::blockM * TraitParams::blockN;
 
         svMatmul.SetTensorA(attnScoreGt[sOffset]);
         svMatmul.SetTensorB(midvGt[vOffset]);
@@ -677,14 +696,14 @@ public:
     __aicore__ inline void DoTransSvImpl(int64_t transTaskId, int64_t outStartOffset, uint32_t m)
     {
         int64_t outMidIndex = transTaskId % TRANS_PIPE_NUM;
-        int64_t inOffset = outMidIndex * blockHeight * MAX_BLOCK_DIM;
+        int64_t inOffset = outMidIndex * TraitParams::blockM * TraitParams::blockK;
 
         int64_t total = m * vDim;
         int64_t remain = total;
 
         DataCopyParams srcCopyParams;
         srcCopyParams.blockLen = vDim * sizeof(float) / DATA_ALIGN_BYTES;
-        srcCopyParams.srcStride = (MAX_BLOCK_DIM - vDim) * sizeof(float) / DATA_ALIGN_BYTES;
+        srcCopyParams.srcStride = (TraitParams::blockK - vDim) * sizeof(float) / DATA_ALIGN_BYTES;
         srcCopyParams.dstStride = 0;
 
         DataCopyParams dstCopyParams;

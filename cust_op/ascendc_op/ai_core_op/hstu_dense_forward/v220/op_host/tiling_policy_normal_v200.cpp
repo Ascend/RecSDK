@@ -141,9 +141,10 @@ bool TilingPolicyNormalv200::TilingKeySet(gert::TilingContext* context, optiling
         uint32_t maskType = tiling.get_maskType();
         uint32_t maskedType = maskType & 0x3;
         // 组合tiling key：
-        
         const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias, isQkUseUb,
-                                                      typeTilingKey, enableDeteministic);
+                                                      typeTilingKey, enableDeteministic,
+                                                      MAX_TILING_DIM, MAX_TILING_DIM,
+                                                      MAX_DIM);
         context->SetTilingKey(tilingKey);
     } else {
         OPS_LOG_E("", "invalid datatype, only support fp16.\n");

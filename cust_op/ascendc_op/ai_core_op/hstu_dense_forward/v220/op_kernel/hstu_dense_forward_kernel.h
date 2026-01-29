@@ -60,9 +60,12 @@ struct SVTransArgs {
     int64_t qSeqId;
 };
 
-template <typename qType, bool enableBias, bool isQkUseUb, CausalMaskT maskType>
-class HstuDenseForwardKernel : public HstuDenseForwardKernelPattenBsnd<qType, enableBias, false, isQkUseUb, maskType> {
+template <typename TraitParams>
+class HstuDenseForwardKernel : public HstuDenseForwardKernelPattenBsnd<TraitParams> {
 public:
+    using qType = typename TraitParams::qType;
+    using oType = typename TraitParams::oType;
+
     __aicore__ inline HstuDenseForwardKernel() {}
 
     __aicore__ inline void PreInit(const HstuDenseForwardTilingData* __restrict tilingDataPtr)
@@ -89,7 +92,7 @@ public:
                      scoreArgs.kSeqId * this->blockHeight;
 #endif
         uint32_t causalMask = ((scoreArgs.qSeqId == scoreArgs.kSeqId) &&
-            (maskType == CausalMaskT::MASK_TRIL)) ? 1 : 0;
+            (TraitParams::maskType == CausalMaskT::MASK_TRIL)) ? 1 : 0;
 
         int64_t m = (scoreArgs.qSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
                                                                 (this->xDim1 - scoreArgs.qSeqId * this->blockHeight);
@@ -204,7 +207,7 @@ public:
                 continue;
             }
             for (int64_t kSeqId = 0; kSeqId < this->seqBlockNumQk; kSeqId++) {
-                if ((maskType == CausalMaskT::MASK_TRIL) and (kSeqId > qSeqId)) {
+                if ((TraitParams::maskType == CausalMaskT::MASK_TRIL) and (kSeqId > qSeqId)) {
                     continue;
                 }
 

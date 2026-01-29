@@ -45,7 +45,6 @@ rm -rf ./hstu_dense_forward
 msopgen gen -i ../v220/hstu_dense_forward.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward -m 0 -op HstuDenseForward
 cp -rf ../v220/op_kernel hstu_dense_forward/
 # 用 c310 目录下的 A5 版本文件覆盖 bsnd.h
-cp -rf ../c310/op_kernel/hstu_dense_forward_kernel_patten_bsnd.h hstu_dense_forward/op_kernel/
 cp -rf ../v220/op_host/*.h hstu_dense_forward/op_host/
 cp -rf ../v220/op_host/hstu_*.cpp hstu_dense_forward/op_host/
 cp -rf ../v220/op_host/tiling_policy.cpp hstu_dense_forward/op_host/
@@ -53,6 +52,7 @@ cp -rf ../v220/op_host/tiling_policy_factory.cpp hstu_dense_forward/op_host/
 cp -rf ../v220/op_host/tiling_policy_normal.cpp hstu_dense_forward/op_host/
 cp -rf ../v220/op_host/tiling_policy_jagged.cpp hstu_dense_forward/op_host/
 cp -rf ../v220/op_host/tiling_policy_paged.cpp hstu_dense_forward/op_host/
+cp -rf ../c310/op_kernel/ hstu_dense_forward/
 
 cd hstu_dense_forward
 
@@ -80,6 +80,7 @@ sed -i "${line}s/True/False/g" CMakePresets.json
 
 sed -i "1i #define SUPPORT_910_95" ./op_kernel/matmul_constexpr.h
 sed -i "1i #define SUPPORT_910_95" ./op_host/hstu_dense_forward.cpp
+sed -i "1i #define SUPPORT_910_95" ./op_host/tiling_policy.cpp
 
 add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../../v220/hstu_dense_forward.json DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${vendor_name}_impl/dynamic)"
 sed -i '$a\'"$add_cmake_line" ./op_kernel/CMakeLists.txt

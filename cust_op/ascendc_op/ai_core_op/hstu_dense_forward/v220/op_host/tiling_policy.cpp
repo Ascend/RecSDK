@@ -246,6 +246,189 @@ bool TilingPolicy::TilingKeySet(gert::TilingContext* context, optiling::HstuDens
     return false;
 }
 
+#ifdef SUPPORT_910_95
+void Find4BytesShape(optiling::HstuDenseForwardTilingData& tiling, uint32_t &tilingM, uint32_t &tilingN)
+{
+    constexpr uint32_t tileMList[] = {32, 64, 64, 128, 128, 256, 128};
+    constexpr uint32_t tileNList[] = {32, 64, 1024, 128, 512, 256, 256};
+    int idx = NO_TILING_IDX;
+    int area = MAX_DIM * MAX_DIM;
+    auto maxSeqLenQ = tiling.get_maxSeqLenq();
+    auto maxSeqLenK = tiling.get_maxSeqLenk();
+    if (maxSeqLenQ > maxSeqLenK) {
+        idx = (maxSeqLenK >= TILING_1024) ? 5 :
+        (maxSeqLenK >= TILING_64)   ? 3 :
+        (maxSeqLenK >= TILING_32)   ? 1 : 0;
+        tilingM = tileMList[idx];
+        tilingN = tileNList[idx];
+        return;
+    }
+    
+    for (int i = 0; i < TILING_SIZE; i++) {
+        if (maxSeqLenQ <= tileMList[i] && maxSeqLenK <= tileNList[i]) {
+            if (tileMList[i] * tileNList[i] < area && maxSeqLenK > tileNList[i] / 2) {
+                idx = i;
+                area = tileMList[i] * tileNList[i];
+            }
+        }
+    }
+    if (idx != NO_TILING_IDX) {
+        tilingM = tileMList[idx];
+        tilingN = tileNList[idx];
+        return;
+    }
+
+    double ratio = (double)maxSeqLenK / maxSeqLenQ;
+    idx = 0;
+    double delta = fabs((double)tileNList[idx] / tileMList[idx] - ratio);
+    area = tileMList[idx] * tileNList[idx];
+    for (int i = 1; i < TILING_SIZE; i++) {
+        double tmp = fabs((double)tileNList[i] / tileMList[i] - ratio);
+        if (tmp < delta || (tmp == delta && area < tileMList[i] * tileNList[i])) {
+            idx = i;
+            delta = tmp;
+            area = tileMList[idx] * tileNList[idx];
+        }
+    }
+    tilingM = tileMList[idx];
+    tilingN = tileNList[idx];
+    return;
+}
+
+
+void Find2BytesShape(optiling::HstuDenseForwardTilingData& tiling, uint32_t &tilingM, uint32_t &tilingN)
+{
+    constexpr uint32_t tileMList[] = {32, 64, 64, 128, 128, 256, 128};
+    constexpr uint32_t tileNList[] = {32, 64, 1024, 128, 512, 256, 256};
+    int idx = NO_TILING_IDX;
+    int area = MAX_DIM * MAX_DIM;
+    auto maxSeqLenQ = tiling.get_maxSeqLenq();
+    auto maxSeqLenK = tiling.get_maxSeqLenk();
+    if (maxSeqLenQ > maxSeqLenK) {
+        if (maxSeqLenK > TILING_128) {
+            idx = 5;
+        } else if (maxSeqLenK > TILING_64) {
+            idx = 3;
+        } else if (maxSeqLenK > TILING_32) {
+            idx = 1;
+        } else {
+            idx = 0;
+        }
+        tilingM = tileMList[idx];
+        tilingN = tileNList[idx];
+        return;
+    }
+    for (int i = 0; i < TILING_SIZE; i++) {
+        if (maxSeqLenQ <= tileMList[i] && maxSeqLenK <= tileNList[i]) {
+            if (tileMList[i] * tileNList[i] < area && maxSeqLenK > tileNList[i] / 2) {
+                idx = i;
+                area = tileMList[i] * tileNList[i];
+            }
+        }
+    }
+    if (idx != NO_TILING_IDX) {
+        tilingM = tileMList[idx];
+        tilingN = tileNList[idx];
+        return;
+    }
+
+    for (int i = 0; i < TILING_SIZE; i++) {
+        if (maxSeqLenQ <= tileMList[i] * 4 && maxSeqLenK <= tileNList[i]) {
+            if (tileMList[i] * tileNList[i] < area) {
+                idx = i;
+                area = tileMList[i] * tileNList[i];
+            }
+        }
+    }
+    if (idx != NO_TILING_IDX) {
+        tilingM = tileMList[idx];
+        tilingN = tileNList[idx];
+        return;
+    }
+    if (maxSeqLenQ >= TILING_512 && maxSeqLenK >= TILING_1024) {
+        idx = 5;
+        tilingM = tileMList[idx];
+        tilingN = tileNList[idx];
+        return;
+    }
+    if (maxSeqLenQ >= TILING_256 && maxSeqLenK >= TILING_512) {
+        idx = 4;
+        tilingM = tileMList[idx];
+        tilingN = tileNList[idx];
+        return;
+    }
+    if (maxSeqLenK < maxSeqLenQ * 2) {
+        if (maxSeqLenK >= TILING_256) {
+            idx = 5;
+            tilingM = tileMList[idx];
+            tilingN = tileNList[idx];
+            return;
+        }
+        for (int i = 0; i < TILING_SIZE; i++) {
+            if (tileMList[i] != tileNList[i] || tileNList[i] < maxSeqLenK) {
+                continue;
+            }
+            if (tileMList[i] * tileNList[i] < area) {
+                idx = i;
+                area = tileMList[i] * tileNList[i];
+            }
+        }
+        tilingM = tileMList[idx];
+        tilingN = tileNList[idx];
+        return;
+    }
+    idx = 6;
+    tilingM = tileMList[idx];
+    tilingN = tileNList[idx];
+    return;
+}
+
+void FindMatchShape(optiling::HstuDenseForwardTilingData& tiling,
+    gert::TilingContext* context, uint32_t &tilingM, uint32_t &tilingN, uint32_t &tilingDim)
+{
+    constexpr uint32_t tileKList[] = {64, 128, 256, 512};
+
+    uint32_t vdim = tiling.get_vDim();
+    uint32_t qdim = tiling.get_dim();
+    tilingDim = *std::lower_bound(std::begin(tileKList), std::end(tileKList), std::max(qdim, vdim));
+    ge::DataType qTypeGe = context->GetInputTensor(INPUT_INDEX_T::Q_INDEX)->GetDataType();
+    if (qTypeGe == ge::DataType::DT_FLOAT) {
+        Find4BytesShape(tiling, tilingM, tilingN);
+    } else if (qTypeGe == ge::DataType::DT_FLOAT16 || qTypeGe == ge::DataType::DT_BF16) {
+        Find2BytesShape(tiling, tilingM, tilingN);
+    }
+    return;
+}
+
+bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling,
+    uint32_t typeTilingKey)
+{
+    // A2/A3默认为false，在A5上可以选择qk结果是否使用ub，通过(tiling.get_blockHeight() == BLOCK_HEIGHT)判断
+    bool isQkUseUb = false;
+    bool enableBias = tiling.get_enableBias();
+    bool enableDeteministic = tiling.get_deterministic();
+    uint32_t maskType = tiling.get_maskType();
+    uint32_t maskedType = maskType & 0x3;
+    uint32_t tilingM = 0;
+    uint32_t tilingN = 0;
+    uint32_t tilingDim = 0;
+    
+    ge::DataType qTypeGe = context->GetInputTensor(INPUT_INDEX_T::Q_INDEX)->GetDataType();
+    if ((qTypeGe == ge::DataType::DT_FLOAT8_E4M3FN) || (typeTilingKey != (JAGGED_TILING_KEY & 0x3))) {
+        tilingDim = MAX_DIM;
+        tilingM = MAX_TILING_DIM;
+        tilingN = MAX_TILING_DIM;
+    } else {
+        FindMatchShape(tiling, context, tilingM, tilingN, tilingDim);
+    }
+    
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias, isQkUseUb,
+                                                  typeTilingKey, enableDeteministic, tilingM,
+                                                  tilingN, tilingDim);
+    context->SetTilingKey(tilingKey);
+    return true;
+}
+#else
 bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling,
     uint32_t typeTilingKey)
 {
@@ -258,11 +441,13 @@ bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, optiling::Hstu
     // 组合tiling key：
     
     const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias, isQkUseUb,
-                                                  typeTilingKey, enableDeteministic);
+                                                  typeTilingKey, enableDeteministic, MAX_TILING_DIM,
+                                                  MAX_TILING_DIM, MAX_DIM);
     context->SetTilingKey(tilingKey);
 
     return true;
 }
+#endif
 
 void TilingPolicy::DumpTiling(optiling::HstuDenseForwardTilingData& tiling)
 {

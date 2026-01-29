@@ -24,10 +24,12 @@ using namespace AscendC;
 namespace HstuDenseForward {
 constexpr int KVUBSIZE = 16384; // 176KB-160KB
 constexpr int64_t CONST_2 = 2;
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-class HstuDenseForwardPagedKernel : public HstuDenseForwardJaggedKernel<qType, oType, enableBias, isQkUseUb,
-                                                                        deterministic, maskType> {
+
+template <typename TraitParams>
+class HstuDenseForwardPagedKernel : public HstuDenseForwardJaggedKernel<TraitParams> {
 public:
+    using qType = typename TraitParams::qType;
+    using oType = typename TraitParams::oType;
     __aicore__ inline HstuDenseForwardPagedKernel() {}
     __aicore__ inline void Compute(const HstuDenseForwardTilingData* __restrict tilingDataPtr);
     __aicore__ inline void Init(const Args& args,
@@ -79,9 +81,8 @@ private:
     uint32_t kvLtUbSize = KVUBSIZE;
 };
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::Compute(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::Compute(
     const HstuDenseForwardTilingData* __restrict tilingDataPtr)
 {
     int ret = this->PreInit(tilingDataPtr);
@@ -92,9 +93,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
 }
 
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::Init(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::Init(
     const Args& args,
     const HstuDenseForwardTilingData* __restrict tilingDataPtr,
     TPipe* pipePtr)
@@ -104,9 +104,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     InitPagedArgs(args, tilingDataPtr, pipePtr);
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::InitPagedArgs(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::InitPagedArgs(
     const Args& args,
     const HstuDenseForwardTilingData* __restrict tilingDataPtr,
     TPipe* pipePtr)
@@ -143,9 +142,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     this->copyHeadNum = 1;
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::CopyFromKvCache(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::CopyFromKvCache(
     uint32_t pageSid, uint32_t pageNum, uint32_t taskId)
 {
     // datacopy pageSid
@@ -181,9 +179,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     this->computeTaskInfo[taskId].kvOffset = taskOffset;
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::CopySeqFromGT(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::CopySeqFromGT(
     const GlobalTensor<qType>& dstGt,
     const GlobalTensor<qType>& srcGt,
     uint32_t seqLen)
@@ -214,9 +211,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     }
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::CopyFromKvInputCache(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::CopyFromKvInputCache(
     uint32_t taskId, uint32_t pageSid, uint32_t pageNum, uint32_t cacheLen, uint32_t candLen)
 {
     // copy kv from kv cache
@@ -233,9 +229,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     this->computeTaskInfo[taskId].kvOffset = taskOffset;
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::FetchKvMayFromCache(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::FetchKvMayFromCache(
     uint32_t taskId)
 {
     auto batchId = this->computeTaskInfo[taskId].batchId; // 当前seqlen计算的长度
@@ -272,9 +267,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     }
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::ComputeSvMatmul(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::ComputeSvMatmul(
     uint32_t taskId)
 {
     int isAtomic = 1;
@@ -287,9 +281,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
                          this->computeTaskInfo[taskId].computeBSeqLen, this->midvGt);
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::ComputeQkMatmul(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::ComputeQkMatmul(
     uint32_t taskId)
 {
     if (this->computeTaskInfo[taskId].isStartFromZero) {
@@ -305,9 +298,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     }
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::ComputeAllBlock()
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::ComputeAllBlock()
 {
     GetTaskInfo(this->sBlkId);
 
@@ -341,6 +333,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
                 taskinfo.actualSeqLen,
                 taskinfo.actualSeqLenK,
                 this->blockHeight,
+                this->blockHeight,
                 taskinfo.numContext,
                 taskinfo.numTarget,
                 this->targetGroupSize,
@@ -351,7 +344,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
                 isDeltaQK
             };
             // 在下三角下跳过运算
-            if (maskinfo.NoComputation(maskType)) {
+            if (maskinfo.NoComputation(TraitParams::maskType)) {
                 isEndToTail = true;
                 break;
             }
@@ -415,9 +408,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     ComputeTailBlock(taskId, currentTaskId, preTaskId, transtaskId);
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::ComputeTailBlock(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::ComputeTailBlock(
     uint32_t taskId, uint32_t currentTaskId, uint32_t preTaskId, uint32_t transtaskId)
 {
     if (taskId == 0) {
@@ -464,9 +456,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     this->TransResult(transtaskId - 1);
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::FillTaskInfoPaged(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::FillTaskInfoPaged(
     uint32_t batchId, uint32_t taskId)
 {
     if (batchId >= this->batchSize) {
@@ -481,9 +472,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     this->computeTaskInfo[taskId].pageNum = pageOffsetGt.GetValue(batchId + 1) - pageOffsetGt.GetValue(batchId);
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::UpdateTaskInfo(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::UpdateTaskInfo(
     uint32_t taskId)
 {
     auto batchId = this->computeTaskInfo[taskId].batchId;
@@ -534,9 +524,8 @@ __aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQ
     this->computeTaskInfo[taskId].isFirstSeqBlk = 1;
 }
 
-template <typename qType, typename oType, bool enableBias, bool isQkUseUb, bool deterministic, CausalMaskT maskType>
-__aicore__ inline void HstuDenseForwardPagedKernel<qType, oType, enableBias, isQkUseUb,
-                                                   deterministic, maskType>::GetTaskInfo(
+template <typename TraitParams>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams>::GetTaskInfo(
     uint32_t sBlkId)
 {
     uint32_t offsetOfBlk = 0;
