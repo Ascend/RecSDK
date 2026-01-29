@@ -56,7 +56,8 @@ __aicore__ inline void InvokeHstuOpImpl(const HstuDenseForward::Args& args)
 #include "kernel_operator.h"
 #include "hstu_kernel_tiling_key.h"
 
-template<int maskedType, bool enableBias, bool isQkUseUb, int typeTilingKey, bool deterministic>
+template<int maskedType, bool enableBias, bool isQkUseUb, int typeTilingKey, bool deterministic,
+         int blockM, int blockN, int blockK>
 __global__ __aicore__ void hstu_dense_forward(GM_ADDR q,
                                               GM_ADDR k,
                                               GM_ADDR v,
@@ -84,17 +85,18 @@ __global__ __aicore__ void hstu_dense_forward(GM_ADDR q,
         InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernelv200<half>>(args);
     }
 #else
+    using FastConfig = HstuDenseForward::TraitParams<DTYPE_Q, DTYPE_SEQ_OFFSET_Q, enableBias, isQkUseUb,
+        deterministic, static_cast<HstuDenseForward::CausalMaskT>(maskedType), blockM, blockN, blockK>;
+
     if constexpr (typeTilingKey == HstuDenseForward::NORMAL_TILING_KEY) {
         InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardKernel<
-            DTYPE_Q, enableBias, isQkUseUb, static_cast<HstuDenseForward::CausalMaskT>(maskedType)>>(args);
+            FastConfig>>(args);
     } else if constexpr (typeTilingKey == HstuDenseForward::JAGGED_TILING_KEY) {
         InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardJaggedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, enableBias, isQkUseUb, deterministic,
-            static_cast<HstuDenseForward::CausalMaskT>(maskedType)>>(args);
+            FastConfig>>(args);
     } else if constexpr (typeTilingKey == HstuDenseForward::PAGED_TILING_KEY) {
         InvokeHstuOpImpl<HstuDenseForward::HstuDenseForwardPagedKernel<
-            DTYPE_Q, DTYPE_SEQ_OFFSET_Q, enableBias, isQkUseUb, deterministic,
-            static_cast<HstuDenseForward::CausalMaskT>(maskedType)>>(args);
+            FastConfig>>(args);
     }
 #endif
 }

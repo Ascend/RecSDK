@@ -42,7 +42,8 @@ struct BlockMaskParams {
     int64_t kSeqId;           // 该基本块所属Key 输入的第几个seq block 一个block是256条seq
     int64_t qSeqLen;          // Q序列总长度
     int64_t kSeqLen;          // K序列总长度
-    int64_t blockHeight;      // 基本块高度
+    int64_t blockM;          // 基本块高度
+    int64_t blockN;      // 基本块宽度
     int64_t numContext;       // context 掩码长度
     int64_t numTarget;        // target 掩码长度
     int64_t targetGroupSize;  // target 掩码group size
@@ -58,7 +59,8 @@ struct BlockMaskParams {
                                       int64_t kId,
                                       int64_t qLen,
                                       int64_t kLen,
-                                      int64_t bHeight,
+                                      int64_t blockM,
+                                      int64_t blockN,
                                       int64_t nContext,
                                       int64_t nTarget,
                                       int64_t groupSize,
@@ -71,7 +73,8 @@ struct BlockMaskParams {
           kSeqId(kId),
           qSeqLen(qLen),
           kSeqLen(kLen),
-          blockHeight(bHeight),
+          blockM(blockM),
+          blockN(blockN),
           numContext(nContext),
           numTarget(nTarget),
           targetGroupSize(groupSize),
@@ -86,9 +89,11 @@ struct BlockMaskParams {
         if (maskType != CausalMaskT::MASK_TRIL) {
             return false;
         }
-        bool noCausal = (kSeqId > qSeqId + nblk + (isDeltaQK ? 1 : 0));
-        int64_t qBlks = CeilDiv(numContext, blockHeight);
-        int64_t kBlks = CeilDiv((kSeqLen - numTarget), blockHeight);
+        int64_t DeltaQK = kSeqLen - qSeqLen;
+        int64_t qTileEnd = CeilDiv(qSeqId * blockM + DeltaQK + blockM, blockN);
+        bool noCausal = (kSeqId >= qTileEnd);
+        int64_t qBlks = CeilDiv(numContext, blockM);
+        int64_t kBlks = CeilDiv((kSeqLen - numTarget), blockN);
         bool noContext = (qSeqId >= qBlks) || (kSeqId >= kBlks);
         return noCausal && noContext;
     }
@@ -102,7 +107,8 @@ public:
         kSeqId = params.kSeqId;
         qSeqLen = params.qSeqLen;
         kSeqLen = params.kSeqLen;
-        blockHeight = params.blockHeight;
+        blockM = params.blockM;
+        blockN = params.blockN;
         numContext = params.numContext;
         numTarget = params.numTarget;
         targetGroupSize = params.targetGroupSize;
@@ -117,29 +123,38 @@ public:
 
     __aicore__ inline bool NeedContextMask()
     {
-        if (numContext <= 0 || kSeqId < qSeqId) {
+        if (numContext <= 0) {
             return false;
         }
-        int64_t qBlks = CeilDiv(numContext, blockHeight);
-        int64_t kBlks = CeilDiv((kSeqLen - numTarget), blockHeight);
+        int64_t deltaBlock = qSeqId * blockM - kSeqId * blockN;
+        if (deltaBlock > blockN) {
+            return false;
+        }
+        int64_t qBlks = CeilDiv(numContext, blockM);
+        int64_t kBlks = CeilDiv((kSeqLen - numTarget), blockN);
         return (qSeqId < qBlks) && (kSeqId < kBlks);
     }
 
     __aicore__ inline int NeedCausalMask()
     {
-        if (kSeqId == qSeqId + nblk) {
-            return DIAGONAL_MASK_LEFT;
+        const int64_t edgeStart = qSeqId * blockM + kSeqLen - qSeqLen;
+        const int64_t edgeEnd = edgeStart + blockM;
+        const int64_t TileStart = kSeqId * blockN;
+        const int64_t TileEnd = kSeqId * blockN + blockN;
+
+        if (TileEnd <= edgeStart || edgeEnd <= TileStart) {
+            return NO_CAUSAL_MASK;
         }
-        if (kSeqId == qSeqId + nblk + 1) {
+        if (edgeStart < TileStart && TileStart < edgeEnd) {
             return DIAGONAL_MASK_RIGHT;
         }
-        return NO_CAUSAL_MASK;
+        return DIAGONAL_MASK_LEFT;
     }
 
     __aicore__ inline bool NeedTargetMask()
     {
-        auto tbaseQ = (qSeqLen - numTarget) / blockHeight;
-        auto tbaseK = (kSeqLen - numTarget) / blockHeight;
+        auto tbaseQ = (qSeqLen - numTarget) / blockM;
+        auto tbaseK = (kSeqLen - numTarget) / blockN;
         return (numTarget > 0) && (targetGroupSize > 0) && (tbaseQ <= qSeqId) && (tbaseK <= kSeqId);
     }
 
@@ -185,7 +200,8 @@ private:
     uint32_t qSeqLen;
     uint32_t kSeqLen;
     uint32_t nblk;
-    int64_t blockHeight;
+    int64_t blockM;
+    int64_t blockN;
     int64_t numContext;
     int64_t numTarget;
     int64_t targetGroupSize;
@@ -203,14 +219,14 @@ private:
 
     __aicore__ inline void GenContextMask(LocalTensor<float>& inMaskLt, int64_t line, int64_t height, int64_t width)
     {
-        auto lineInScore = line + qSeqId * blockHeight;
+        auto lineInScore = line + qSeqId * blockM;
         if (lineInScore >= numContext) {
             return;
         }
         int cmaskWidth = (kSeqLen - numTarget);
-        int validWidth = cmaskWidth - kSeqId * blockHeight;
-        if (validWidth > blockHeight) {
-            validWidth = blockHeight;
+        int validWidth = cmaskWidth - kSeqId * blockN;
+        if (validWidth > blockN) {
+            validWidth = blockN;
         }
         int heightLeft = numContext - lineInScore;
         int validHeight = (height > heightLeft) ? heightLeft : height;
@@ -219,7 +235,7 @@ private:
         }
     }
 
-    __aicore__ inline void GenCausalMask(LocalTensor<float>& inMaskLt, int64_t line, int64_t height, int64_t width)
+    __aicore__ inline void GenCausalMask(LocalTensor<float>& inMaskLt, int64_t line, int64_t height, int64_t width) //?
     {
         auto startLine = line > 0 ? 0 : -line;
         for (int i = startLine; i < height; i++) {
@@ -237,9 +253,9 @@ private:
         int tbaseQ = qSeqLen - numTarget;
         int tbaseK = kSeqLen - numTarget;
 
-        int blkLeft = kSeqId * blockHeight;
-        int blkRight = (kSeqId + 1) * blockHeight;
-        int blkTop = qSeqId * blockHeight;
+        int blkLeft = kSeqId * blockN;
+        int blkRight = (kSeqId + 1) * blockN;
+        int blkTop = qSeqId * blockM;
 
         for (int i = 0; i < height; i++) {
             // 1.找最近的小三角形

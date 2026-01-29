@@ -90,7 +90,18 @@ constexpr int MAX_NUM_TARGET = 512;
 constexpr int MIN_PAGE_SIZE = 32;
 constexpr int DATA_ALIGN_BYTES = 32;
 
+constexpr int MAX_TILING_DIM = 256;
 constexpr int MAX_DIM = 512;
+
+constexpr int NO_TILING_IDX = -1;
+constexpr int TILING_32 = 32;
+constexpr int TILING_64 = 64;
+constexpr int TILING_128 = 128;
+constexpr int TILING_256 = 256;
+constexpr int TILING_512 = 512;
+constexpr int TILING_1024 = 1024;
+constexpr int TILING_2048 = 2048;
+constexpr int TILING_SIZE = 7;
 
 enum class MASK_TYPE {
     MASK_TRIL = 0,
