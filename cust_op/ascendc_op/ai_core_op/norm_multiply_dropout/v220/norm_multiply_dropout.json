@@ -1,0 +1,104 @@
+[
+    {
+        "op": "NormMultiplyDropout",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "x",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16"
+                ]
+            },
+            {
+                "name": "u",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16"
+                ]
+            },
+            {
+                "name": "weight",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16"
+                ]
+            },
+            {
+                "name": "bias",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16"
+                ]
+            },
+            {
+                "name": "mask",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "uint8", "uint8"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "output",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16"
+                ]
+            },
+            {
+                "name": "mean",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16"
+                ]
+            },
+            {
+                "name": "var",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16"
+                ]
+            }
+        ],
+        "attr": [
+            {
+              "name": "eps",
+              "param_type": "required",
+              "type": "float",
+              "default_value": 1e-5
+            },
+            {
+              "name": "dropout_ratio",
+              "param_type": "required",
+              "type": "float",
+              "default_value": 0
+            }
+        ]
+    }
+]
