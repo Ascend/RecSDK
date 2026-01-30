@@ -1,0 +1,71 @@
+
+[
+    {
+        "op": "ConcatSiluGrad",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "grad1",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp16", "bf16"
+                ]
+            },
+            {
+                "name": "grad2",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                   "fp32", "fp16", "bf16"
+                ]
+            },
+            {
+                "name": "grad3",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp16", "bf16"
+                ]
+            },
+            {
+                "name": "grad4",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                   "fp32", "fp16", "bf16"
+                ]
+            },
+            {
+                "name": "silu_input",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                   "fp32", "fp16", "bf16"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "grad_silu_input",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp16", "bf16"
+                ]
+            }
+        ]
+    }
+]
