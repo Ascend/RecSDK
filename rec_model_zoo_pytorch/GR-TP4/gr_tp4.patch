@@ -1,0 +1,3927 @@
+diff --git a/model_zoo/config.json b/model_zoo/config.json
+new file mode 100644
+index 00000000..21c14eb5
+--- /dev/null
++++ b/model_zoo/config.json
+@@ -0,0 +1,93 @@
++{
++    "model_type": "hstu_inference_ranking",
++    "architectures": [
++        "HSTUInferenceForCausalLM"
++    ],
++    "num_hidden_layers": 8,
++    "use_random_model": true,
++    "max_seq_len": 2400,
++    "max_batch_size": 1,
++    "hidden_size": 1024,
++    "vocab_size": 1001024,
++    "torch_dtype": "bfloat16",
++    "hstu_config": {
++        "hidden_size": 4096,
++        "num_layers": 8,
++        "num_attention_heads": 16,
++        "head_dim": 256,
++        "norm_epsilon": 1e-05,
++        "dtype": "bfloat16",
++        "learnable_input_layernorm": true,
++        "residual": true,
++        "is_causal": true,
++        "target_group_size": 1,
++        "position_encoding_config": null,
++        "has_ffn": false,
++        "dropout_ratio": 0.2,
++        "rab": false
++    },
++    "kv_cache_config": {
++        "blocks_in_primary_pool": 10240,
++        "page_size": 32,
++        "offload_chunksize": 8192,
++        "max_batch_size": 16,
++        "max_seq_len": 2400,
++        "max_attention_window": null
++    },
++    "task_config": {
++        "embedding_configs": [
++            {
++                "feature_names": [
++                    "action_weights"
++                ],
++                "table_name": "act",
++                "vocab_size": 4096,
++                "dim": 4096,
++                "use_dynamicemb": false
++            },
++            {
++                "feature_names": [
++                    "video_id"
++                ],
++                "table_name": "item",
++                "vocab_size": 1000000,
++                "dim": 4096,
++                "use_dynamicemb": true
++            }
++        ],
++        "user_embedding_norm": "l2_norm",
++        "item_l2_norm": false,
++        "prediction_head_arch": [
++            [
++                512,
++                8,
++                1
++            ]
++        ],
++        "prediction_head_act_type": "relu",
++        "prediction_head_bias": true,
++        "num_tasks": 8,
++        "eval_metrics": [
++            "AUC"
++        ]
++    },
++    "contextual_feature_names": [],
++    "item_feature_name": "video_id",
++    "action_feature_name": "action_weights",
++    "max_num_users": 16,
++    "max_num_candidates": 200,
++    "feature_to_max_seqlen": {
++        "video_id": 8192,
++        "action_weights": 8192
++    },
++    "captured_tokens_list": [
++        32,
++        64,
++        128,
++        256,
++        512,
++        1024,
++        2048,
++        4096
++    ]
++}
+\ No newline at end of file
+diff --git a/model_zoo/fuxi_alpha_kuairand_demo.py b/model_zoo/fuxi_alpha_kuairand_demo.py
+new file mode 100644
+index 00000000..8d78bb9e
+--- /dev/null
++++ b/model_zoo/fuxi_alpha_kuairand_demo.py
+@@ -0,0 +1,559 @@
++import os
++import time
++import argparse
++import json
++import torch
++import torch_npu
++import torchair
++import random
++
++from typing import Any
++from torch.autograd.profiler import record_function
++from torch.library import Library, impl
++from torchair.ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
++from torchair.ge_concrete_graph.ge_graph import Tensor
++from torchair._ge_concrete_graph import ge_apis as ge
++from torchair.ge_concrete_graph.utils import dtype_promote
++
++from vllm import LLM
++from vllm.inputs import TokensPrompt
++from hstu_inference_ranking_utils import (
++    InferenceDataset, get_data_loader
++)
++from vllm.config import KVTransferConfig
++from vllm.sampling_params import SamplingParams
++
++
++lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
++torch.ops.load_library(lib_fbgemm_npu_api_so_path)
++
++os.environ.update({
++    "VLLM_ENABLE_V1_MULTIPROCESSING": "0",
++    "VLLM_USE_V1": "1",
++    "VLLM_WORKER_MULTIPROC_METHOD": "spawn",        # 全新进程启动方式
++    "PYTORCH_NPU_ALLOC_CONF": "expandable_segments:True",       # 内存分配配置，单进程多卡
++    "HCCL_INTRA_ROCE_ENABLE": "1",      # 使用PCIe环路进行多卡通信
++})
++
++
++import numpy as np
++import random
++def set_seed(seed):
++    torch.manual_seed(seed)
++    np.random.seed(seed)
++    random.seed(seed)
++
++FIXED_SEED = 42
++set_seed(FIXED_SEED)
++
++MODEL_PATH = os.getenv("MODEL_PATH")
++USER_2_PREFILL_PROMPT_DICT = {}
++USER_2_DECODE_PROMPT_DICT = {}
++USER_2_PD_MERGE_PROMPT_DICT = {}
++
++DELIMITER_CANDIDATE = torch.tensor([-1], dtype=torch.int64, device='npu')
++
++torch._dynamo.config.cache_size_limit = 64
++
++import torch.distributed as dist
++
++use_pd_merge = int(os.getenv("USE_PD_MERGE")) == 1
++data_path = os.getenv("DATA_PATH")
++prof_save_dir = os.getenv("PROF_SAVE_DIR")
++
++
++def parse_params_and_deal_json() -> dict:
++    parser = argparse.ArgumentParser(description="处理输入参数")
++    parser.add_argument("--embedding_dim", required=False, help="embedding维度")
++    parser.add_argument("--num_heads", required=False, help="注意力头数")
++    parser.add_argument("--dim", required=False, help="注意力维度")
++    parser.add_argument("--max_seq_len", required=True, help="最大序列长度")
++    parser.add_argument("--max_batch_size", required=True, help="批大小")
++    parser.add_argument("--use_random", required=True, help="是否使用随机数据以及模型")
++    parser.add_argument("--aclgraph", required=True, help="是否采用ACLGraph成图推理")
++    parser.add_argument("--candidate_num", required=True, help="候选集长度")
++    parser.add_argument("--has_ffn", required=True, help="是否添加FFN")
++    parser.add_argument("--max_vocab_size", required=True, help="最大词量")
++    parser.add_argument("--concat_batch", required=True, help="是否融合为一个batch")
++    parser.add_argument("--profiler", required=False, help="是否抓取profiler")
++    parser.add_argument("--max_model_len", required=True, help="最大模型长度")
++    parser.add_argument("--range", required=True, help="range范围")
++    parser.add_argument("--graph_step", required=True, help="成图最大挡位差")
++
++    args = parser.parse_args()
++    embedding_dim = int(args.embedding_dim)
++    num_heads = int(args.num_heads)
++    dim = int(args.dim)
++    batch_size = int(args.max_batch_size)
++    max_seq_len = int(args.max_seq_len)
++    use_random_model = bool(int(args.use_random))
++    aclgraph = bool(int(args.aclgraph))
++    candidate_num = int(args.candidate_num)
++    ffn = bool(int(args.has_ffn))
++    max_vocab_size = int(args.max_vocab_size)
++    concat_batch = bool(int(args.concat_batch))
++    start_profile = bool(int(args.profiler))
++    max_model_len = int(args.max_model_len)
++    range = int(args.range)
++    graph_step = int(args.graph_step)
++
++    def generate_seq_stages(max_seq, step=500):
++        stages = []
++        power = 5
++        while len(stages) < 2 or stages[-1] - stages[-2] < step:
++            val = 2**power
++            stages.append(val)
++            power += 1
++
++        stages[-1] = stages[-2] + step
++        next_val = stages[-1] + step
++
++        while next_val <= max_seq:
++            stages.append(next_val)
++            next_val += step
++
++        if stages[-1] < max_seq:
++            stages.append(max_seq)
++
++        return stages
++
++    graph_seq_stages = generate_seq_stages(max_model_len // batch_size, graph_step)
++    file_path = MODEL_PATH + '/config.json'
++
++    with open(file_path, 'r', encoding='utf-8') as file:
++        data = json.load(file)
++
++    use_random_model = bool(int(use_random_model))
++    if not use_random_model:
++        embedding_dim = 512
++        num_heads = 4
++        dim = 256
++        batch_size = 4
++        use_random_model = False
++        max_vocab_size=10000000
++        max_model_len = 4096
++
++    print("=================================")
++    print(f"updating config.json: embedding_dim = {embedding_dim}, num_heads = {num_heads}, dim = {dim}, batch_size = {batch_size}, max_model_len = {max_model_len}, \
++        max_seq_len: {max_seq_len}, use_random_model = {use_random_model}, aclgraph = {aclgraph}, max_vocab_size: {max_vocab_size}, concat_batch: {concat_batch}, start_profiler: {start_profile}, \
++        range = {range}, graph_seq_stages: {graph_seq_stages}")
++
++    data['max_seq_len'] = max_model_len
++    hstu_config = data['hstu_config']
++    # 2. 修改数据
++    hstu_config['hidden_size'] = embedding_dim
++    hstu_config['num_attention_heads'] = num_heads
++    hstu_config['head_dim'] = dim
++    hstu_config['has_ffn'] = ffn
++    data['max_batch_size'] = batch_size
++    data['kv_cache_config']['max_seq_len'] = max_model_len
++    data['use_random_model'] = use_random_model
++    data['max_num_candidates'] = candidate_num
++    data['captured_tokens_list'] = graph_seq_stages
++
++    embedding_configs = data['task_config']['embedding_configs']
++    for config in embedding_configs:
++        config['dim'] = embedding_dim
++        if not config['table_name'] == 'item':
++            config['vocab_size'] = embedding_dim
++        else:
++            config['vocab_size'] = max_vocab_size
++
++    # 3. 写回 JSON 文件（覆盖原文件）
++    with open(file_path, 'w', encoding='utf-8') as file:
++        json.dump(data, file, ensure_ascii=False, indent=4)
++
++    print("config.json update finished!")
++    print("=================================")
++    return {
++        "max_seq_len": max_seq_len,
++        "batch_size": batch_size,
++        "aclgraph": aclgraph,
++        "is_use_random": use_random_model,
++        "candidate_num": candidate_num,
++        "max_vocab_size": max_vocab_size,
++        "concat_batch": concat_batch,
++        "embedding_dim": embedding_dim,
++        "profiler": start_profile,
++        "max_model_len": max_model_len,
++        "vocab_size": max_vocab_size,
++        "range": range,
++    }
++
++
++def initialize_llm_and_dataset(params):
++    MODEL_PATH = os.getenv("MODEL_PATH")
++
++    dataset_base_path = data_path
++    seq_logs_file = os.path.join(dataset_base_path, "processed_seqs.csv")
++    batch_logs_file = os.path.join(dataset_base_path, "processed_batches.csv")
++
++    item_feature_name = "video_id"
++    action_feature_name = "action_weights"
++    contextual_feature_names = [
++        "user_id", "user_active_degree", "follow_user_num_range",
++        "fans_user_num_range", "friend_user_num_range", "register_days_range",
++    ]
++
++    llm = LLM(
++        model=MODEL_PATH,
++        skip_tokenizer_init=True,
++        enforce_eager=not params['aclgraph'],
++        max_num_batched_tokens=4096,
++        tensor_parallel_size=int(os.getenv("TP_PAR_SIZE")),
++        additional_config={
++            "graph_model_compile_config":{
++                "level": 1 if params['aclgraph'] else 0,
++                "use_aclgraph": params['aclgraph'],
++            },
++        },
++        kv_transfer_config=KVTransferConfig(
++             kv_connector="SwapKVConnector",
++             kv_role="kv_both",
++         ),
++    )
++
++    batch_size = 1
++
++    dataset = InferenceDataset(
++        seq_logs_file=seq_logs_file,
++        batch_logs_file=batch_logs_file,
++        batch_size=batch_size,
++        max_seqlen=params['max_seq_len'],
++        item_feature_name=item_feature_name,
++        contextual_feature_names=contextual_feature_names,
++        action_feature_name=action_feature_name,
++        max_num_candidates=params['candidate_num'],
++        item_vocab_size=params['max_vocab_size'],
++        userid_name="user_id",
++        date_name="date",
++        sequence_endptr_name="interval_indptr",
++        timestamp_names=["interval_end_ts"],
++    )
++
++    dataloader = get_data_loader(dataset=dataset)
++    print("DataLoader ready.")
++
++    return llm, dataset, dataloader
++
++def get_profiler():
++    torch_profiler_trace_dir = prof_save_dir
++    print("==============================================")
++    print("Profiling enabled. Traces will be saved to: ", torch_profiler_trace_dir)
++    print("==============================================")
++
++    experimental_config = torch_npu.profiler._ExperimentalConfig(
++        export_type=torch_npu.profiler.ExportType.Text,
++        profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++        msprof_tx=False,
++        aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
++        l2_cache=False,
++        op_attr=False,
++        data_simplification=False,
++        record_op_args=False,
++        gc_detect_threshold=None,
++    )
++
++    profiler = torch_npu.profiler.profile(
++        activities=[
++            torch_npu.profiler.ProfilerActivity.CPU,
++            torch_npu.profiler.ProfilerActivity.NPU,
++        ],
++        with_stack=False,
++        profile_memory=False,
++        with_modules=False,
++        experimental_config=experimental_config,
++        on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
++            torch_profiler_trace_dir))
++    return profiler
++
++
++def get_user_data(max_seq_len, dataloader_iter, user_id = None):
++    selected_dates = []
++    selected_dates_endptrs = []
++    selected_uids = []
++    uids = None
++    sum_cnt = 0
++    while (batch := next(dataloader_iter)) and (uids == batch[0] or uids is None) and sum_cnt < max_seq_len:
++        if not user_id == None and not user_id == batch[0][0]:
++            continue
++
++        uids = batch[0]
++        dates, seq_endptrs = batch[1:]
++        if dates not in selected_dates:
++            if len(selected_dates_endptrs) > 0:
++                sum_cnt += selected_dates_endptrs[-1]
++            selected_dates += dates
++            selected_dates_endptrs += seq_endptrs
++            selected_uids += uids
++            if sum_cnt + seq_endptrs[0] >= max_seq_len:
++                selected_dates.pop()
++                selected_dates_endptrs.pop()
++                selected_uids.pop()
++                break
++        else:
++            sum_cnt += seq_endptrs[0]
++            if sum_cnt >= max_seq_len:
++                break
++            sum_cnt -= seq_endptrs[0]
++            selected_dates_endptrs.pop()
++            selected_dates_endptrs += seq_endptrs
++    return selected_dates, selected_dates_endptrs, selected_uids, uids, dates, seq_endptrs
++
++def get_seq_user_data(
++    max_seq_len,
++    candidate_num,
++    dataloader_iter,
++    vocab_size,
++    with_new_his = None,
++    new_his_len = None,
++    user_id = None
++):
++    selected_dates = []
++    selected_uids = []
++    selected_video_id = []
++    selected_action_weights = []
++    candidate_item = []
++    new_his_action_weights = []
++    uids = None
++    sum_cnt = 0
++    sum_new_his_cnt = 0
++    sum_candiate_cnt = 0
++    while (batch := next(dataloader_iter)) and (uids == batch[0] or uids is None) and (sum_cnt < max_seq_len or sum_candiate_cnt < candidate_num):
++        if not user_id == None and not user_id == batch[0][0] and user_id > batch[0][0]:
++            continue
++
++        if not user_id == None and user_id < batch[0][0]:
++            print(f" - User {user_id} has no enougth data!!")
++            break
++
++        uids = batch[0]
++        dates, video_id, action_weights = batch[1:]
++        batch_len = len(video_id)
++        if sum_cnt + batch_len < max_seq_len:
++            selected_dates += dates
++            selected_uids += uids
++            selected_video_id += video_id
++            selected_action_weights += action_weights
++            sum_cnt += batch_len
++        elif sum_cnt + batch_len >= max_seq_len and sum_cnt < max_seq_len:
++            selected_dates += dates
++            selected_uids += uids
++            selected_video_id += video_id[:max_seq_len - sum_cnt]
++            selected_action_weights += action_weights[:max_seq_len - sum_cnt]
++            sum_cnt = max_seq_len
++        else:
++            start_pos = 0
++            if with_new_his:
++                if sum_new_his_cnt + batch_len < new_his_len:
++                    new_his_action_weights += action_weights
++                    candidate_item += video_id
++                    sum_new_his_cnt += batch_len
++                    continue
++                else:
++                    new_his_action_weights += action_weights[:new_his_len - sum_new_his_cnt]
++                    candidate_item += video_id[:new_his_len - sum_new_his_cnt]
++                    sum_new_his_cnt = new_his_len
++                    start_pos = new_his_len - sum_new_his_cnt
++
++            if sum_candiate_cnt + batch_len - start_pos < candidate_num:
++                candidate_item += video_id[start_pos:]
++                sum_candiate_cnt = sum_candiate_cnt + batch_len - start_pos
++            else:
++                candidate_item += video_id[start_pos : candidate_num - sum_candiate_cnt]
++                sum_candiate_cnt = candidate_num
++
++    if len(candidate_item) < candidate_num:
++        print(" - Has no candidate data! Use random data...")
++        candidate_item = torch.randint(vocab_size, (candidate_num,)).tolist()
++
++    return selected_dates, selected_uids, selected_video_id, selected_action_weights, candidate_item
++
++
++def generate_request_by_uid(dataloader, dataloader_iter, dataset, user_ids):
++    max_batches_to_process = params['batch_size']
++    batches_processed = 0
++    max_seq_len = params['max_seq_len']
++    concat_batch = params['concat_batch']
++    vocab_size = params['vocab_size']
++    is_need_mod = vocab_size < 10000000
++    max_candidate_num = params['candidate_num']
++
++    prefill_engine_prompt_list = []
++    decode_engine_prompt_list = []
++    pd_merged_prompt_list = []
++    used_uids = []
++    while batches_processed < max_batches_to_process:
++        try:
++            user_id = user_ids[batches_processed]
++            if batches_processed > 0 and user_id < used_uids[-1]:
++                dataloader_iter = iter(dataloader)
++            if USER_2_PREFILL_PROMPT_DICT.get(user_id, None) is None:
++                _, selected_uids, selected_video_id, selected_action_weights, candidate_item = get_seq_user_data(
++                                                                                                max_seq_len=max_seq_len,
++                                                                                                candidate_num=max_candidate_num,
++                                                                                                dataloader_iter=dataloader_iter,
++                                                                                                vocab_size=params['vocab_size'],
++                                                                                                with_new_his=False,
++                                                                                                new_his_len=None,
++                                                                                                user_id=user_ids[batches_processed]
++                                                                                            )
++                uid = torch.tensor([selected_uids[0]], dtype=torch.int64, device='npu')
++
++                item_ids = torch.tensor(selected_video_id, dtype=torch.int64, device='npu')
++                item_ids = item_ids % vocab_size
++                action_weights = torch.tensor(selected_action_weights, dtype=torch.int64, device='npu')
++                action_weights = action_weights + vocab_size    # 合表偏移
++                preporcessed_his = torch.stack((item_ids, action_weights))
++                preporcessed_his = preporcessed_his.transpose(0, 1)
++                preporcessed_his = preporcessed_his.flatten()
++
++                candidate_item = torch.tensor(candidate_item, dtype=torch.int64, device='npu')
++                candidate_item = candidate_item % vocab_size
++
++                prefill_prompt_token_ids = torch.cat([uid, preporcessed_his, DELIMITER_CANDIDATE], dim=0)
++                engine_prompt = TokensPrompt(prompt_token_ids=prefill_prompt_token_ids.tolist())
++                USER_2_PREFILL_PROMPT_DICT[user_id] = engine_prompt
++
++                decode_prompt_token_ids = torch.cat([uid, DELIMITER_CANDIDATE, candidate_item], dim=0)
++                decode_engine_prompt = TokensPrompt(prompt_token_ids=decode_prompt_token_ids.tolist())
++                USER_2_DECODE_PROMPT_DICT[user_id] = decode_engine_prompt
++
++                pd_merged_prompt_token_ids = torch.cat([uid, preporcessed_his, DELIMITER_CANDIDATE, candidate_item], dim=0)
++                pd_merged_prompt = TokensPrompt(prompt_token_ids=pd_merged_prompt_token_ids.tolist())
++                USER_2_PD_MERGE_PROMPT_DICT[user_id] = pd_merged_prompt
++
++            else:
++                print(f" - User {user_id} prefill prompt hit!")
++                engine_prompt = USER_2_PREFILL_PROMPT_DICT.get(user_id)
++                decode_engine_prompt = USER_2_DECODE_PROMPT_DICT.get(user_id)
++                pd_merged_prompt = USER_2_PD_MERGE_PROMPT_DICT.get(user_id)
++
++            batches_processed += 1
++            print(f" - Processing batch #{batches_processed}")
++            print(f" - User ids: {user_id}")
++
++            print(f"- Prefill batch {batches_processed} seq_len = {len(engine_prompt['prompt_token_ids'])}")
++
++            prefill_engine_prompt_list.append(engine_prompt)
++
++            print(f"- Decode batch {batches_processed} seq_len = {len(decode_engine_prompt['prompt_token_ids'])}")
++
++            decode_engine_prompt_list.append(decode_engine_prompt)
++
++            print(f"- PD merge batch {batches_processed} seq_len = {len(pd_merged_prompt['prompt_token_ids'])}")
++
++            pd_merged_prompt_list.append(pd_merged_prompt)
++
++            used_uids.append(user_id)
++
++        except StopIteration:
++            break
++    return prefill_engine_prompt_list, decode_engine_prompt_list, pd_merged_prompt_list, used_uids
++
++
++def validate_output(params):
++    torch._dynamo.config.capture_dynamic_output_shape_ops = True
++
++    llm, dataset, dataloader = initialize_llm_and_dataset(params)
++
++    dataloader_iter = iter(dataloader)
++
++    profile = params['profiler']
++
++    if profile:
++        profiler = get_profiler()
++
++    batch_size = params['batch_size']
++
++    max_user = -1
++
++    prefill_sampling_params = SamplingParams(temperature=0, max_tokens=1, prompt_logprobs=1)
++    sampling_params = SamplingParams(temperature=0, max_tokens=1, prompt_logprobs=1)
++
++    range_cnt = params['range']
++
++    user_ids = list(range(0 * batch_size, 1 * batch_size))
++    prefill_engine_prompt_list, decode_engine_prompt_list, pd_merged_engine_prompt_list, used_uids = generate_request_by_uid(dataloader, dataloader_iter, dataset, user_ids)
++
++    time_arr = []
++    with record_function("#### llm.ranking ###"):
++        for i in range(range_cnt):
++            
++            print(f" - Start to deal user = {user_ids} 's request...")
++
++            if profile and i == range_cnt - 10:
++                llm.start_profile()
++
++
++            if not use_pd_merge:
++                try:
++                    st = time.time()
++                    outputs = llm.generate(prefill_engine_prompt_list, prefill_sampling_params, use_tqdm=False)
++                    torch.npu.synchronize()
++                    print(f" - Prefill cost: {(time.time() - st) * 1000} ms")
++
++                    print(f" - Calling llm.generate() in decode with uids = {user_ids}...")
++                    with record_function("#### decode ###"):
++                        d_st = time.time()
++                        outputs = llm.generate(decode_engine_prompt_list, sampling_params, use_tqdm=False)
++                        torch.npu.synchronize()
++                    print(f" - Decode cost: {(time.time() - d_st) * 1000} ms")
++                finally:
++                    if profile and i == range_cnt - 1:
++                        llm.stop_profile()
++
++                decode_output = deal_prompt_logprobs(outputs)
++                
++            else:
++                try:
++                    start_time = time.perf_counter()
++                    pd_outputs = llm.generate(pd_merged_engine_prompt_list, sampling_params)
++                    torch.npu.synchronize()
++                    duration = (time.perf_counter() - start_time) * 1_000_000
++                    time_arr.append(duration)
++                    print(f"[E2E] time: {duration:.2f} us")
++                finally:
++                    if profile and i == range_cnt - 1:
++                        llm.stop_profile()
++                
++            report = {'Batch_size': batch_size,
++                      'model_name': "GR"}
++            time_arr.sort()
++            time_arr = time_arr[0:10]
++            print("time_list",time_arr)
++            
++            tail_latency = round(time_arr[int(len(time_arr) * 0.99)] / 1000, 6)
++            p90_latency = round(time_arr[int(len(time_arr) * 0.90)] / 1000, 6)
++            avg_latency = round(sum(time_arr) / len(time_arr) / 1000, 6)
++            qps = int(1000.0 * batch_size / avg_latency)
++
++            report["QPS"] = qps
++            report["AVG Latency"] = avg_latency
++            report["P99 Latency"] = tail_latency
++            report["P90 Latency"] = p90_latency
++            print(report)
++            with open(os.path.join(prof_save_dir, f'report_e2e_time.json'), "w", encoding="utf-8") as f:
++                json.dump(
++                    report,
++                    f,
++                    ensure_ascii=False,  # 保留非ASCII字符（如中文）
++                    indent=4  # 格式化输出，缩进4个空格，增强可读性
++                )
++
++
++def deal_prompt_logprobs(outputs):
++    logprobs_list = [
++        list(logprob_dict.values())[0].logprob
++        for logprob_dict in outputs[0].prompt_logprobs[1:]
++    ]
++
++    # 转为 PyTorch Tensor
++    logprobs_tensor = torch.tensor(logprobs_list, dtype=torch.bfloat16)
++    return logprobs_tensor
++
++if __name__ == "__main__":
++    torch.manual_seed(42)
++    random.seed(42)
++    params = parse_params_and_deal_json()
++    validate_output(params)
+diff --git a/model_zoo/hstu_inference_ranking_utils.py b/model_zoo/hstu_inference_ranking_utils.py
+new file mode 100644
+index 00000000..8a73a119
+--- /dev/null
++++ b/model_zoo/hstu_inference_ranking_utils.py
+@@ -0,0 +1,120 @@
++import os
++
++import json
++import math
++import numpy as np
++import pandas as pd
++import torch
++import torch_npu
++
++from torch.utils.data.dataset import IterableDataset
++from torch.utils.data import DataLoader
++from typing import Iterator, List, Optional
++
++lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
++torch.ops.load_library(lib_fbgemm_npu_api_so_path)
++
++
++def load_seq(x: str):
++    if isinstance(x, str):
++        y = json.loads(x)
++    else:
++        y = x
++    return y
++
++
++def get_data_loader(
++    dataset: torch.utils.data.Dataset,
++    pin_memory: bool = True,
++) -> DataLoader:
++    loader = DataLoader(
++        dataset,
++        batch_size=None,
++        batch_sampler=None,
++        pin_memory=pin_memory,
++        collate_fn=lambda x: x,
++    )
++    return loader
++
++
++class InferenceDataset(IterableDataset):
++    def __init__(
++        self,
++        seq_logs_file: str,
++        batch_logs_file: str,
++        batch_size: int,
++        max_seqlen: int,
++        item_feature_name: str,
++        contextual_feature_names: List[str],
++        action_feature_name: str,
++        max_num_candidates: int = 0,
++        *,
++        item_vocab_size: int,
++        userid_name: str,
++        date_name: str,
++        sequence_endptr_name: str,
++        timestamp_names: List[str],
++        random_seed: int = 0,
++        seq_nrows: Optional[int] = None,
++        batch_nrows: Optional[int] = None,
++    ) -> None:
++        super().__init__()
++        self._device = torch.device("cpu")
++
++        if seq_nrows is None or batch_nrows is None:
++            self._seq_logs_frame = pd.read_csv(seq_logs_file, delimiter=",")
++            self._batch_logs_frame = pd.read_csv(batch_logs_file, delimiter=",")
++        else:
++            self._seq_logs_frame = pd.read_csv(
++                seq_logs_file, delimiter=",", nrows=seq_nrows
++            )   # 加载processed_seqs.csv
++            self._batch_logs_frame = pd.read_csv(
++                batch_logs_file, delimiter=",", nrows=batch_nrows
++            ) # 加载processed_batches.csv
++
++        self._batch_logs_frame.sort_values(by=[userid_name, date_name], inplace=True)
++        self._seq_logs_frame.sort_values(by=[userid_name, date_name], inplace=True)
++        num_total_samples = len(self._batch_logs_frame)
++
++        self._num_samples = len(self._batch_logs_frame)
++        self._num_seq_samples = len(self._seq_logs_frame)
++        self._max_seqlen = max_seqlen
++
++        self._batch_size = batch_size
++        self._random_seed = random_seed
++
++        self._contextual_feature_names = contextual_feature_names
++        if self._max_seqlen <= len(self._contextual_feature_names):
++            raise ValueError(
++                f"max_seqlen is too small. should > {len(self._contextual_feature_names)}"
++            )
++        self._item_feature_name = item_feature_name
++        self._action_feature_name = action_feature_name
++        self._max_num_candidates = max_num_candidates
++        self._item_vocab_size = item_vocab_size
++        self._userid_name = userid_name
++        self._date_name = date_name
++        self._seq_end_name = sequence_endptr_name
++
++        self._sample_ids = np.arange(self._num_samples)
++        self._sample_seq_ids = np.arange(self._num_seq_samples)
++
++    # We do batching in our own
++    def __len__(self) -> int:
++        return math.ceil(self._num_samples / self._batch_size)
++
++    def __iter__(self) -> Iterator:
++        for i in range(len(self)):
++            batch_start = (i * self._batch_size)
++            batch_end = min((i + 1) * self._batch_size, len(self._sample_seq_ids),)
++            sample_ids = self._sample_seq_ids[batch_start:batch_end]
++            user_ids: List[int] = []
++            dates: List[int] = []
++            action_weights: List[int] = []
++            video_ids: List[int] = []
++            for sample_id in sample_ids:
++                user_ids.append(self._seq_logs_frame.iloc[sample_id][self._userid_name])
++                dates.append(self._seq_logs_frame.iloc[sample_id][self._date_name])
++                video_ids += (load_seq(self._seq_logs_frame.iloc[sample_id][self._item_feature_name]))
++                action_weights += (load_seq(self._seq_logs_frame.iloc[sample_id][self._action_feature_name]))
++            yield (user_ids, dates, video_ids, action_weights)
+\ No newline at end of file
+diff --git a/model_zoo/run.sh b/model_zoo/run.sh
+new file mode 100644
+index 00000000..87380737
+--- /dev/null
++++ b/model_zoo/run.sh
+@@ -0,0 +1,98 @@
++#!/bin/bash
++
++source /home/m00836041/b120/ascend-toolkit/set_env.sh
++export HCCL_SOCKET_FAMILY=AF_INET
++export HCCL_SOCKET_IFNAME==ens10f0np0,ens8f0
++export HCCL_CONNECT_TIMEOUT=120
++export HCCL_BUFFSIZE=1024
++export HCCL_TOPO_FILE_PATH=/etc/topo_card_4p.json
++
++export MODEL_PATH="/home/m00836041/omni_model"
++
++export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3
++
++export LIB_FBGEMM_NPU_API_SO_PATH=/usr/local/python3.11.13/lib/python3.11/site-packages/libfbgemm_npu_api.so
++
++export USE_PD_MERGE=1
++
++export TP_PAR_SIZE=1
++
++export PROF_SAVE_DIR="/home/m00836041/profiling-result/test-0112/aicpu2"   # prof 默认采集10轮
++
++export DATA_PATH="/home/m00836041/data"
++
++export VLLM_TORCH_PROFILER_DIR="/home/m00836041/profiling-result/test-0112/aicpu2"
++
++
++#----------------------------------------
++# model related
++#----------------------------------------
++EMBEDDING_DIM="4096"
++NUM_HEADS="16"
++DIM="256"
++MAX_SEQ_LEN="924"
++BATCH_SIZE="1"
++USE_RANDOM="1"
++ACLGRAPH="0"
++CANDIDATE_NUM="200"
++HAS_FFN="0"
++VOCAB_SIZE="1000000"
++CONCAT_BATCH="1"
++START_PROFILER="1"
++MAX_MODEL_LEN="2400"
++RANGE="15"
++GRAPH_STEP="2048"
++
++export USE_MOE=1
++export MOE_EXPERT_TOTAL_NUM=4
++export MOE_EXPERT_ACT_NUM=4
++
++#----------------------------------------
++# vllm related
++#----------------------------------------
++export VLLM_VERSION="0.10.0"
++export VLLM_ALLOW_INSECURE_SERIALIZATION=1
++
++#----------------------------------------
++# speedup related
++#----------------------------------------
++# cpu-binding
++export OMP_NUM_THREADS=12
++NPU_NUM=8
++
++CPU_CORES=$(nproc --all)
++CORES_PER_NPU=$((CPU_CORES / NPU_NUM))
++CPU_AFFINITY_CONF_TMP=1
++if [ "$NPU_NUM" -gt 0 ]; then
++    for (( i=0; i<NPU_NUM; i++ )); do
++        start_core=$(( i * CORES_PER_NPU ))
++        end_core=$(( start_core + CORES_PER_NPU - 1 ))
++        CPU_AFFINITY_CONF_TMP+=",npu${i}:${start_core}-${end_core}"
++    done
++fi
++export CPU_AFFINITY_CONF=$CPU_AFFINITY_CONF_TMP
++echo "CPU_AFFINITY_CONF="$CPU_AFFINITY_CONF
++
++# multi-threads for CPU ops
++
++export NEED_PATCH_TOKENIZER=1
++
++
++PYTHON_FILE="fuxi_alpha_kuairand_demo.py"
++
++python3 ${PYTHON_FILE}  \
++    --embedding_dim $EMBEDDING_DIM   \
++    --num_heads $NUM_HEADS    \
++    --dim "$DIM"    \
++    --max_seq_len "$MAX_SEQ_LEN"    \
++    --max_batch_size "$BATCH_SIZE"      \
++    --use_random "$USE_RANDOM"      \
++    --aclgraph "$ACLGRAPH"      \
++    --candidate_num "$CANDIDATE_NUM"    \
++    --has_ffn "$HAS_FFN"    \
++    --max_vocab_size "$VOCAB_SIZE"  \
++    --concat_batch "$CONCAT_BATCH"  \
++    --profiler "$START_PROFILER"    \
++    --max_model_len "$MAX_MODEL_LEN"  \
++    --range "$RANGE"          \
++    --graph_step  "$GRAPH_STEP"
+diff --git a/omni/accelerators/pd/__init__.py b/omni/accelerators/pd/__init__.py
+index 755f7458..c5747a82 100644
+--- a/omni/accelerators/pd/__init__.py
++++ b/omni/accelerators/pd/__init__.py
+@@ -25,4 +25,10 @@ def register():
+         "EmsConnector",
+         "omni.accelerators.pd.ems_connector",
+         "EmsConnector"
++    )
++
++    KVConnectorFactory.register_connector(
++        "SwapKVConnector",
++        "omni.accelerators.pd.swap_kv_connector",
++        "SwapKVConnector"
+     )
+\ No newline at end of file
+diff --git a/omni/accelerators/pd/swap_kv_connector.py b/omni/accelerators/pd/swap_kv_connector.py
+new file mode 100644
+index 00000000..16e84cfc
+--- /dev/null
++++ b/omni/accelerators/pd/swap_kv_connector.py
+@@ -0,0 +1,275 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++import hashlib
++import os
++from dataclasses import dataclass
++from typing import TYPE_CHECKING, Any, Optional, Union
++from concurrent.futures import ThreadPoolExecutor
++
++import safetensors
++import torch
++import torch_npu
++
++from vllm.config import VllmConfig
++from vllm.distributed.kv_transfer.kv_connector.v1.base import (
++    KVConnectorBase_V1, KVConnectorMetadata, KVConnectorRole)
++from vllm.logger import init_logger
++from vllm.v1.core.sched.output import SchedulerOutput
++from vllm.v1.utils import ConstantList
++
++if TYPE_CHECKING:
++    from vllm.attention.backends.abstract import AttentionMetadata
++    from vllm.forward_context import ForwardContext
++    from vllm.v1.core.kv_cache_manager import KVCacheBlocks
++    from vllm.v1.request import Request
++
++logger = init_logger(__name__)
++
++@dataclass
++class SwapKVReqMeta:
++    req_id: str
++    uid: int
++    token_ids: list[int]
++    slot_mapping: torch.Tensor
++    is_store: bool
++    prefill_block_offset: int
++
++    @staticmethod
++    def make_meta(token_ids: list[int], block_ids: list[int], block_size: int,
++                  is_store: bool, uid: int, req_id: str) -> "SwapKVReqMeta":
++        block_ids_tensor = torch.as_tensor(block_ids, device='cpu')
++
++        prefill_block_offset = 0
++        slot_mapping = None
++        if is_store:
++            slot_mapping = (block_ids_tensor.unsqueeze(1) * block_size + torch.arange(block_size)).view(-1)[:len(token_ids)]
++            prefill_block_offset = block_ids[0]
++        return SwapKVReqMeta(
++            token_ids=token_ids,
++            slot_mapping=slot_mapping,
++            is_store=is_store,
++            uid=uid,
++            req_id=req_id,
++            prefill_block_offset=prefill_block_offset
++        )
++
++
++@dataclass
++class SwapKVConnectorMetadata(KVConnectorMetadata):
++    requests: list[SwapKVReqMeta]
++    prefill_uids: set[int]
++
++    def __init__(self):
++        self.requests = []
++        self.prefill_uids = set()
++
++    def add_request(
++        self,
++        token_ids: list[int],
++        block_ids: list[int],
++        block_size: int,
++        is_store: bool,
++        uid: int,
++        req_id: str
++    ) -> None:
++        self.requests.append(
++            SwapKVReqMeta.make_meta(token_ids, block_ids, block_size, is_store, uid, req_id))
++
++class SwapKVConnector(KVConnectorBase_V1):
++
++    def __init__(self, vllm_config: "VllmConfig", role: KVConnectorRole):
++        super().__init__(vllm_config=vllm_config, role=role)
++
++        self._connector_metadata = SwapKVConnectorMetadata()
++        self._block_size = vllm_config.cache_config.block_size
++        self._requests_need_load: dict[str, Request] = {}
++        self._dram_tensor_cache: dict[int, dict] = {}
++        logger.info(vllm_config.kv_transfer_config)
++        self._onload_history_kv_events = [torch_npu.npu.Event() for _ in range(8)]
++        self._onload_stream = torch_npu.npu.Stream()
++
++        # offload stream
++        self._offload_history_kv_events = [torch_npu.npu.Event() for _ in range(8)]
++        self._offload_stream = torch_npu.npu.Stream()
++
++
++    def start_load_kv(self, forward_context: "ForwardContext",
++                      **kwargs) -> None:
++        return
++
++    def start_load_kv_by_layer(self, forward_context: "ForwardContext", layer_name:str,
++                      **kwargs) -> None:
++        def inject_kv_into_layer(
++            dst_kv_cache_layer: torch.Tensor,
++            src_k_cache: torch.Tensor,
++            src_v_cache: torch.Tensor,
++            slot_mapping: torch.Tensor,
++            ) -> None:
++            dst_kv_cache_layer_shape = dst_kv_cache_layer[0].shape
++            
++            num_pages = dst_kv_cache_layer_shape[0]
++            page_size = dst_kv_cache_layer_shape[1]
++
++            dst_k_cache_layer = dst_kv_cache_layer[0].reshape(num_pages * page_size, -1)
++            dst_v_cache_layer = dst_kv_cache_layer[1].reshape(num_pages * page_size, -1)
++
++            index_start = slot_mapping[0]
++            index_end = slot_mapping[-1] + 1
++
++            dst_k_cache_layer[index_start:index_end].copy_(src_k_cache, non_blocking=True)
++            dst_v_cache_layer[index_start:index_end].copy_(src_v_cache, non_blocking=True)
++            
++            dst_k_cache_layer = dst_k_cache_layer.reshape(dst_kv_cache_layer_shape)  # 分页格式
++            dst_v_cache_layer = dst_v_cache_layer.reshape(dst_kv_cache_layer_shape)
++        # Get the metadata
++        attn_metadata = forward_context.attn_metadata[layer_name]
++        metadata: KVConnectorMetadata = self._get_connector_metadata()
++        assert isinstance(metadata, SwapKVConnectorMetadata)
++        if metadata is None:
++            return
++
++        if attn_metadata is None:
++            return
++        uids = attn_metadata.additional_metadata["uids"]
++        if uids is None:
++            return
++
++        for uid in uids:
++            for request in metadata.requests:
++                if not request.is_store or uid != request.uid:
++                    continue
++
++                layer = forward_context.no_compile_layers[layer_name]
++                kv_cache_attr = getattr(layer, 'kv_cache', None)
++                if kv_cache_attr is None:
++                    continue
++
++                kv_cache_layer = kv_cache_attr[ \
++                        forward_context.virtual_engine]
++                k_cache = self._dram_tensor_cache[uid][layer_name]["k_cache"]
++                v_cache = self._dram_tensor_cache[uid][layer_name]["v_cache"]
++                slot_mapping = request.slot_mapping
++                if attn_metadata.additional_metadata["decode_table_offset"] is not None and request.prefill_block_offset != 0:
++                    slot_mapping = slot_mapping + (attn_metadata.additional_metadata["decode_table_offset"] - request.prefill_block_offset) * self._block_size
++                inject_kv_into_layer(kv_cache_layer, k_cache, v_cache, slot_mapping)
++
++    def wait_for_layer_load(self, layer_name: str) -> None:
++        return
++
++    def save_kv_layer(self, layer_name: str, kv_layer: torch.Tensor, attn_metadata: "AttentionMetadata", **kwargs) -> None:
++        def extract_kv_from_layer(
++            layer: torch.Tensor,
++            slot_mapping: torch.Tensor,
++        ) -> torch.Tensor:
++            num_pages, page_size = layer.shape[0], layer.shape[1]
++            index_start = slot_mapping[0]
++            index_end = slot_mapping[-1] + 1
++            return layer.reshape(num_pages * page_size, -1)[index_start:index_end, ...]
++
++        connector_metadata = self._get_connector_metadata()
++        assert isinstance(connector_metadata, SwapKVConnectorMetadata)
++
++        uids = attn_metadata.additional_metadata["uids"]
++        if uids is None:
++            logger.warning("uids in attn_metadata is None.")
++            return
++        for uid in uids:
++            for request in connector_metadata.requests:
++                if not request.is_store or uid != request.uid:
++                    continue
++                slot_mapping = request.slot_mapping
++                k_cache = extract_kv_from_layer(kv_layer[0], slot_mapping)
++                v_cache = extract_kv_from_layer(kv_layer[1], slot_mapping)
++
++                k_cache_pinned = k_cache.detach().to(device='cpu', non_blocking=True)
++                v_cache_pinned = v_cache.detach().to(device='cpu', non_blocking=True)
++
++                if request.uid not in self._dram_tensor_cache:
++                    self._dram_tensor_cache[request.uid] = {}
++                self._dram_tensor_cache[request.uid][layer_name] = {
++                    "k_cache": k_cache_pinned,
++                    "v_cache": v_cache_pinned
++                }
++        
++    def wait_for_save(self):
++        return
++
++    def get_num_new_matched_tokens(
++        self,
++        request: "Request",
++        num_computed_tokens: int,
++    ) -> tuple[int, bool]:
++        uid = request.prompt_token_ids[0]
++
++        # 判断是否为prefill阶段，如果是prefill阶段，不需要拉取，直接返回0
++        if request.prompt_token_ids[1] != -1:
++            return 0, False
++        
++        connector_metadata = self._get_connector_metadata()
++        for req in connector_metadata.requests:
++            if uid != req.uid or req.is_store is False:
++                continue
++            logger.info(f"User Hit in Connector. uid: {uid}")
++            
++            num_matched_token = len(req.token_ids)
++
++            request.prompt_token_ids = num_matched_token * [0] + request.prompt_token_ids
++            request._all_token_ids = num_matched_token * [0] + request._all_token_ids
++            request.all_token_ids = ConstantList(request._all_token_ids)
++
++            return num_matched_token, False
++        return 0, False
++
++    def update_state_after_alloc(self, request: "Request",
++                                 blocks: "KVCacheBlocks",
++                                 num_external_tokens: int):          
++        if num_external_tokens > 0:
++            self._requests_need_load[request.request_id] = request
++
++    def build_connector_meta(
++        self,
++        scheduler_output: SchedulerOutput,
++    ) -> KVConnectorMetadata:
++        meta = self._get_connector_metadata()
++        total_need_load = 0
++        for new_req in scheduler_output.scheduled_new_reqs:
++            if new_req.req_id in self._requests_need_load:
++                meta.add_request(token_ids=new_req.prompt_token_ids,
++                                 block_ids=new_req.block_ids[0],
++                                 block_size=self._block_size,
++                                 is_store=False,
++                                 uid=None,
++                                 req_id=new_req.req_id)
++                total_need_load += 1
++            else:
++                if new_req.prompt_token_ids[0] in meta.prefill_uids:
++                    continue
++                meta.add_request(token_ids=new_req.prompt_token_ids[1:-1],
++                                 block_ids=new_req.block_ids[0],
++                                 block_size=self._block_size,
++                                 is_store=True,
++                                 uid=new_req.prompt_token_ids[0],
++                                 req_id=new_req.req_id)
++                meta.prefill_uids.add(new_req.prompt_token_ids[0])
++
++        assert total_need_load == len(self._requests_need_load)
++        self._requests_need_load.clear()
++        return meta
++    
++    def get_finished(
++        self, finished_req_ids: set[str]
++    ) -> tuple[Optional[set[str]], Optional[set[str]]]:
++        done_sending = set()
++        done_recving = set()
++
++        connector_metadata = self._get_connector_metadata()
++        for finished_req_id in finished_req_ids:
++            for request in connector_metadata.requests:
++                if request.req_id != finished_req_id:
++                    continue
++                if request.is_store and request.uid in self._dram_tensor_cache:
++                    done_sending.add(finished_req_id)
++                elif not request.is_store:
++                    done_recving.add(finished_req_id)
++            connector_metadata.requests = [req for req in connector_metadata.requests if req.req_id not in done_recving]
++        return done_sending, done_recving
+\ No newline at end of file
+diff --git a/omni/adaptors/vllm/patches/model_patch.py b/omni/adaptors/vllm/patches/model_patch.py
+index 94adfabc..a3990ef9 100644
+--- a/omni/adaptors/vllm/patches/model_patch.py
++++ b/omni/adaptors/vllm/patches/model_patch.py
+@@ -4,6 +4,7 @@ import os
+ from omni.adaptors.vllm.patches.pangu_patch import patch_pangu
+ from omni.adaptors.vllm.patches.shm_bug_fix_patch import patch_shm_to_zmq
+ from omni.adaptors.vllm.patches.thinking_tag_bug_fix_patch import patch_thinking_bug_fix
++from omni.adaptors.vllm.patches.tokenizer_patch import patch_tokenizer
+ 
+ def patch_vllm_distributed():
+     from vllm import distributed
+@@ -71,6 +72,9 @@ def patch_all():
+     patch_sampler()
+     patch_compilation()
+     patch_pangu()
++    need_patch_tokenizer = os.getenv('NEED_PATCH_TOKENIZER', 0)
++    if need_patch_tokenizer:
++        patch_tokenizer()
+     patch_linear()
+     patch_shm_to_zmq()
+     patch_thinking_bug_fix()
+diff --git a/omni/adaptors/vllm/patches/tokenizer_patch.py b/omni/adaptors/vllm/patches/tokenizer_patch.py
+new file mode 100644
+index 00000000..6d28d1b0
+--- /dev/null
++++ b/omni/adaptors/vllm/patches/tokenizer_patch.py
+@@ -0,0 +1,381 @@
++import time
++import multiprocessing
++from concurrent.futures import ThreadPoolExecutor
++from typing import TYPE_CHECKING, Optional
++from typing import Optional, Literal, Union, Any
++from collections.abc import Mapping, Sequence
++
++import vllm.envs as envs
++
++from vllm.config import VllmConfig
++from vllm.multimodal import MULTIMODAL_REGISTRY, MultiModalRegistry
++from vllm.usage.usage_lib import UsageContext
++from vllm.transformers_utils.tokenizer_group import init_tokenizer_from_configs
++from vllm.reasoning import ReasoningParserManager
++from vllm.inputs import SingletonInputs
++from vllm.lora.request import LoRARequest
++from vllm.multimodal.processing import EncDecMultiModalProcessor
++from vllm.utils import LazyLoader
++from vllm.multimodal.utils import merge_and_sort_multimodal_metadata
++from vllm.pooling_params import PoolingParams
++from vllm.prompt_adapter.request import PromptAdapterRequest
++from vllm.sampling_params import SamplingParams
++from vllm.config import VllmConfig
++from vllm.inputs import ProcessorInputs, PromptType, SingletonInputs
++from vllm.inputs.parse import split_enc_dec_inputs
++from vllm.lora.request import LoRARequest
++from vllm.multimodal import (MULTIMODAL_REGISTRY, MultiModalKwargs,
++                             MultiModalRegistry)
++from vllm.multimodal.inputs import PlaceholderRange
++
++from vllm.v1.engine.llm_engine import LLMEngine
++from vllm.v1.structured_output import StructuredOutputManager
++from vllm.v1.engine.processor import Processor
++from vllm.v1.engine.output_processor import OutputProcessor, RequestOutputCollector, RequestState
++from vllm.v1.executor.abstract import Executor
++from vllm.v1.metrics.loggers import PrometheusStatLogger, StatLoggerBase, StatLoggerFactory
++from vllm.v1.engine.output_processor import OutputProcessor
++from vllm.v1.engine.core_client import EngineCoreClient
++from vllm.v1.structured_output.backend_types import StructuredOutputBackend
++from vllm.v1.engine import EngineCoreRequest
++from vllm.v1.engine.parallel_sampling import ParentRequest
++
++
++if TYPE_CHECKING:
++    import numpy as np
++    import numpy.typing as npt
++    import torch
++
++    from vllm.reasoning import ReasoningParser
++else:
++    torch = LazyLoader("torch", globals(), "torch")
++
++
++'''
++以下三个替换在vLLM v0.10.0都已经修改
++'''
++
++def llm_engine_init(
++    self,
++    vllm_config: VllmConfig,
++    executor_class: type[Executor],
++    log_stats: bool,
++    usage_context: UsageContext = UsageContext.ENGINE_CONTEXT,
++    stat_loggers: Optional[list[StatLoggerFactory]] = None,
++    mm_registry: MultiModalRegistry = MULTIMODAL_REGISTRY,
++    use_cached_outputs: bool = False,
++    multiprocess_mode: bool = False,
++):
++    if not envs.VLLM_USE_V1:
++        raise ValueError(
++            "Using V1 LLMEngine, but envs.VLLM_USE_V1=False. "
++            "This should not happen. As a workaround, try using "
++            "LLMEngine.from_vllm_config(...) or explicitly set "
++            "VLLM_USE_V1=0 or 1 and report this issue on Github.")
++
++    if stat_loggers is not None:
++        raise NotImplementedError(
++            "Passing StatLoggers to LLMEngine in V1 is not yet supported. "
++            "Set VLLM_USE_V1=0 and file and issue on Github.")
++
++    self.vllm_config = vllm_config
++    self.model_config = vllm_config.model_config
++    self.cache_config = vllm_config.cache_config
++
++    self.log_stats = log_stats
++    self.stat_logger: Optional[StatLoggerBase] = None
++    if self.log_stats:
++        self.stat_logger = PrometheusStatLogger(vllm_config)
++
++    # important: init dp group before init the engine_core
++    # In the decoupled engine case this is handled in EngineCoreProc.
++    parallel_config = vllm_config.parallel_config
++    if not multiprocess_mode and parallel_config.data_parallel_size > 1:
++        self.dp_group = parallel_config.stateless_init_dp_group()
++    else:
++        self.dp_group = None
++    self.should_execute_dummy_batch = False
++
++    if self.model_config.skip_tokenizer_init:
++        self.tokenizer = None
++    else:
++        # Tokenizer (+ ensure liveness if running in another process).
++        self.tokenizer = init_tokenizer_from_configs(
++            model_config=vllm_config.model_config,
++            scheduler_config=vllm_config.scheduler_config,
++            lora_config=vllm_config.lora_config)
++
++    # Processor (convert Inputs --> EngineCoreRequests)
++    self.processor = Processor(vllm_config=vllm_config,
++                                tokenizer=self.tokenizer,
++                                mm_registry=mm_registry)
++
++    # OutputProcessor (convert EngineCoreOutputs --> RequestOutput).
++    self.output_processor = OutputProcessor(self.tokenizer,
++                                            log_stats=self.log_stats)
++
++    # EngineCore (gets EngineCoreRequests and gives EngineCoreOutputs)
++    self.engine_core = EngineCoreClient.make_client(
++        multiprocess_mode=multiprocess_mode,
++        asyncio_mode=False,
++        vllm_config=vllm_config,
++        executor_class=executor_class,
++        log_stats=self.log_stats,
++    )
++
++    if not multiprocess_mode:
++        # for v0 compatibility
++        self.model_executor = self.engine_core.engine_core.model_executor  # type: ignore
++
++    # Don't keep the dummy data in memory
++    self.reset_mm_cache()
++
++
++def structured_output_init(self, vllm_config: VllmConfig):
++    self.backend: Optional[StructuredOutputBackend] = None
++    self.reasoner: Optional[ReasoningParser] = None
++    self.vllm_config = vllm_config
++
++    self._grammar_bitmask: Optional[torch.Tensor] = None
++    self._full_mask = torch.tensor(-1, dtype=torch.int32)
++
++    if self.vllm_config.model_config.skip_tokenizer_init:
++        return
++
++    max_workers = max(1, (multiprocessing.cpu_count() + 1) // 2)
++    self.executor = ThreadPoolExecutor(max_workers=max_workers)
++    self.tokenizer = init_tokenizer_from_configs(
++        model_config=self.vllm_config.model_config,
++        scheduler_config=self.vllm_config.scheduler_config,
++        lora_config=self.vllm_config.lora_config,
++    ).get_lora_tokenizer(None)
++    reasoning_backend = vllm_config.decoding_config.reasoning_backend
++    if reasoning_backend:
++        reasoner_cls = ReasoningParserManager.get_reasoning_parser(
++            reasoning_backend)
++        self.reasoner = reasoner_cls(tokenizer=self.tokenizer)
++
++
++def processor_validte_model_input(
++    self,
++    prompt_inputs: SingletonInputs,
++    lora_request: Optional[LoRARequest],
++    *,
++    prompt_type: Literal["encoder", "decoder"],
++):
++    model_config = self.model_config
++
++    prompt_ids = prompt_inputs["prompt_token_ids"]
++    if not prompt_ids:
++        if prompt_type == "encoder" and model_config.is_multimodal_model:
++            pass  # Mllama may have empty encoder inputs for text-only data
++        else:
++            raise ValueError(f"The {prompt_type} prompt cannot be empty")
++
++    if self.model_config.skip_tokenizer_init:
++        tokenizer = None
++    else:
++        tokenizer = self.tokenizer.get_lora_tokenizer(lora_request)
++        max_input_id = max(prompt_ids, default=0)
++        if max_input_id > tokenizer.max_token_id:
++            raise ValueError(f"Token id {max_input_id} is out of vocabulary")
++
++    max_prompt_len = self.model_config.max_model_len
++    if len(prompt_ids) > max_prompt_len:
++        if prompt_type == "encoder" and model_config.is_multimodal_model:
++            mm_registry = self.input_preprocessor.mm_registry
++            mm_processor = mm_registry.create_processor(
++                model_config,
++                tokenizer=tokenizer,
++            )
++            assert isinstance(mm_processor, EncDecMultiModalProcessor)
++
++            if mm_processor.pad_dummy_encoder_prompt:
++                return  # Skip encoder length check for Whisper
++
++        if model_config.is_multimodal_model:
++            suggestion = (
++                "Make sure that `max_model_len` is no smaller than the "
++                "number of text tokens plus multimodal tokens. For image "
++                "inputs, the number of image tokens depends on the number "
++                "of images, and possibly their aspect ratios as well.")
++        else:
++            suggestion = (
++                "Make sure that `max_model_len` is no smaller than the "
++                "number of text tokens.")
++
++        raise ValueError(
++            f"The {prompt_type} prompt (length {len(prompt_ids)}) is "
++            f"longer than the maximum model length of {max_prompt_len}. "
++            f"{suggestion}")
++
++        # TODO: Find out how many placeholder tokens are there so we can
++        # check that chunked prefill does not truncate them
++        # max_batch_len = self.scheduler_config.max_num_batched_tokens
++
++
++def processor_process_inputs(
++    self,
++    request_id: str,
++    prompt: PromptType,
++    params: Union[SamplingParams, PoolingParams],
++    arrival_time: Optional[float] = None,
++    lora_request: Optional[LoRARequest] = None,
++    tokenization_kwargs: Optional[dict[str, Any]] = None,
++    trace_headers: Optional[Mapping[str, str]] = None,
++    prompt_adapter_request: Optional[PromptAdapterRequest] = None,
++    priority: int = 0,
++):
++     # TODO(woosuk): Support pooling models.
++    # TODO(woosuk): Support encoder-decoder models.
++    self._validate_lora(lora_request)
++    self._validate_params(params, lora_request)
++    if priority != 0:
++        raise ValueError("V1 does not support priority yet.")
++    if trace_headers is not None:
++        raise ValueError("V1 does not support tracing yet.")
++    if prompt_adapter_request is not None:
++        raise ValueError("V1 does not support prompt_adapter_request.")
++
++    if arrival_time is None:
++        arrival_time = time.time()
++
++    # Process inputs, which includes:
++    # 1. Tokenize text prompt, with LoRA request if one exists.
++    # 2. For multimodal models with a merged preprocessor, preprocess
++    #   multimodal data and expand prompt token ids accordingly.
++    # 3. Apply prompt adapter to prompt token ids if one exists.
++    processed_inputs: ProcessorInputs = self.input_preprocessor.preprocess(
++        prompt,
++        tokenization_kwargs=tokenization_kwargs,
++        lora_request=lora_request,
++        prompt_adapter_request=prompt_adapter_request,
++        return_mm_hashes=self.use_hash,
++    )
++    from vllm.platforms import current_platform
++    current_platform.validate_request(
++        prompt=prompt,
++        params=params,
++        processed_inputs=processed_inputs,
++    )
++    eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request)
++
++    self._validate_model_inputs(processed_inputs, lora_request)
++
++    encoder_inputs, decoder_inputs = split_enc_dec_inputs(processed_inputs)
++
++    # TODO: Impl encoder-decoder
++    if encoder_inputs is not None:
++        raise NotImplementedError
++
++    assert isinstance(params, SamplingParams)
++    # TODO: can we avoid cloning here in multiproc case?
++    sampling_params = params.clone()
++    # If unset max tokens, then generate up to the max_model_len.
++    if sampling_params.max_tokens is None:
++        sampling_params.max_tokens = (
++            self.model_config.max_model_len -
++            len(decoder_inputs["prompt_token_ids"]))
++    sampling_params.update_from_generation_config(
++        self.generation_config_fields, eos_token_id)
++    if not self.tokenizer is None:
++        sampling_params.update_from_tokenizer(
++            self.tokenizer.get_lora_tokenizer(lora_request))
++
++    # Multimodal related.
++    sorted_mm_inputs: Optional[Sequence[Optional[MultiModalKwargs]]] = None
++    sorted_mm_positions: Optional[list[PlaceholderRange]] = None
++    sorted_mm_hashes: Optional[list[str]] = None
++    if decoder_inputs["type"] == "multimodal":
++        decoder_mm_inputs = decoder_inputs["mm_kwargs"]
++
++        # Merge and flatten multimodal placeholders, hashes and inputs
++        # from dictionaries to lists, and sort them by each item's position
++        # in the input sequence.
++        (
++            sorted_item_modalities,
++            sorted_mm_positions,
++            sorted_mm_hashes,
++        ) = merge_and_sort_multimodal_metadata(
++            decoder_inputs["mm_placeholders"],
++            decoder_inputs["mm_hashes"] if self.use_hash else None,
++        )
++
++        # The output of merged multi-modal processor (`decoder_mm_inputs`)
++        # is a single MultiModalKwargs for all items from all modalities.
++        # This code flattens kwargs for individual items in a list and
++        # sorts them by each item's position in the input sequence if there
++        # are multiple modalities.
++        unique_modalities = set(sorted_item_modalities)
++        if len(unique_modalities) > 1:
++            orig_sorted_mm_inputs = []
++            used_indices = {modality: 0 for modality in unique_modalities}
++
++            for modality in sorted_item_modalities:
++                items = decoder_mm_inputs.get_items(modality)
++                item = items[used_indices[modality]]
++
++                orig_sorted_mm_inputs.append(
++                    MultiModalKwargs.from_items([item]))
++                used_indices[modality] += 1
++        else:
++            orig_sorted_mm_inputs = [
++                MultiModalKwargs.from_items([item]) for item in
++                decoder_mm_inputs.get_items(sorted_item_modalities[0])
++            ]
++
++        if sorted_mm_hashes is not None:
++            sorted_mm_inputs = self.mm_input_cache_client.get_and_update_p0(
++                orig_sorted_mm_inputs, sorted_mm_hashes)
++        else:
++            sorted_mm_inputs = orig_sorted_mm_inputs
++
++    return decoder_inputs.get("prompt"), EngineCoreRequest(
++        request_id=request_id,
++        prompt_token_ids=decoder_inputs["prompt_token_ids"],
++        mm_inputs=sorted_mm_inputs,
++        mm_hashes=sorted_mm_hashes,
++        mm_placeholders=sorted_mm_positions,
++        sampling_params=sampling_params,
++        eos_token_id=eos_token_id,
++        arrival_time=arrival_time,
++        lora_request=lora_request,
++        cache_salt=decoder_inputs.get("cache_salt"),
++    )
++
++
++def output_processor_add_request(
++    self,
++    request: EngineCoreRequest,
++    prompt: Optional[str],
++    parent_req: Optional[ParentRequest] = None,
++    request_index: int = 0,
++    queue: Optional[RequestOutputCollector] = None,
++):
++    request_id = request.request_id
++    if request_id in self.request_states:
++        raise ValueError(f"Request id {request_id} already running.")
++
++    tokenizer = None if not self.tokenizer else \
++        self.tokenizer.get_lora_tokenizer(request.lora_request)
++
++    req_state = RequestState.from_new_request(tokenizer=tokenizer,
++                                                request=request,
++                                                prompt=prompt,
++                                                parent_req=parent_req,
++                                                request_index=request_index,
++                                                queue=queue,
++                                                log_stats=self.log_stats)
++    self.request_states[request_id] = req_state
++    self.lora_states.add_request(req_state)
++    if parent_req:
++        self.parent_requests[parent_req.request_id] = parent_req
++
++
++def patch_tokenizer():
++    LLMEngine.__init__ = llm_engine_init
++    StructuredOutputManager.__init__ = structured_output_init
++    Processor._validate_model_input = processor_validte_model_input
++    Processor.process_inputs = processor_process_inputs
++    OutputProcessor.add_request = output_processor_add_request
++    print("++++++++++++++++++++++patch_tokenizer++++++++++++++++++++++++++++")
+\ No newline at end of file
+diff --git a/omni/adaptors/vllm/worker/npu_model_runner.py b/omni/adaptors/vllm/worker/npu_model_runner.py
+index 82f0b82e..f8a68272 100644
+--- a/omni/adaptors/vllm/worker/npu_model_runner.py
++++ b/omni/adaptors/vllm/worker/npu_model_runner.py
+@@ -30,7 +30,7 @@ import torch_npu
+ import torch.distributed as dist
+ from vllm.config import CompilationLevel, VllmConfig
+ from vllm.distributed.parallel_state import get_pp_group, get_tensor_model_parallel_world_size, get_dp_group, get_tensor_model_parallel_rank
+-from vllm.logger import init_logger
++from vllm.logger import logger
+ from vllm.model_executor.model_loader import get_model
+ from vllm.sequence import IntermediateTensors
+ from vllm.utils import (DeviceMemoryProfiler, is_pin_memory_available,
+@@ -61,8 +61,6 @@ if TYPE_CHECKING:
+     from vllm.v1.core.sched.output import SchedulerOutput
+ else:
+     xgr = LazyLoader("xgr", globals(), "xgrammar")
+-    
+-logger = init_logger("vllm.npu_model_runner")
+ 
+ _GLOBAL_STEP = 0
+ MAX_GEAR_NUM = 6
+@@ -183,7 +181,7 @@ class NPUModelRunner(GPUModelRunner):
+             self.decode_max_num_tokens, dtype=torch.int32, device=self.device,
+         )
+         self.target_logits_indices = torch.zeros(
+-            self.decode_max_num_tokens, dtype=torch.int32, device=self.device,
++            self.max_num_reqs, dtype=torch.int32, device=self.device,
+         )
+         self.bonus_logits_indices = torch.zeros(
+             self.max_num_reqs, dtype=torch.int32, device=self.device,
+@@ -196,7 +194,7 @@ class NPUModelRunner(GPUModelRunner):
+             self.decode_max_num_tokens, dtype=torch.int32, pin_memory=is_pin_memory_available(),
+         )
+         self.target_logits_indices_cpu = torch.zeros(
+-            self.decode_max_num_tokens, dtype=torch.int32, pin_memory=is_pin_memory_available(),
++            self.max_num_reqs, dtype=torch.int32, pin_memory=is_pin_memory_available(),
+         )
+         self.bonus_logits_indices_cpu = torch.zeros(
+             self.max_num_reqs, dtype=torch.int32, pin_memory=is_pin_memory_available(),
+@@ -217,9 +215,6 @@ class NPUModelRunner(GPUModelRunner):
+         self.arange_npu = torch.arange(max(self.max_num_reqs + 1, self.max_model_len, self.max_num_tokens),
+                                        dtype=torch.int64,
+                                        device=self.device)
+-        self.arange_npu_int32 = torch.arange(max(self.max_num_reqs + 1, self.max_model_len, self.max_num_tokens),
+-                                             dtype=torch.int32,
+-                                             device=self.device)
+         
+         self.omni_cache = None
+         rank = get_tensor_model_parallel_rank()
+@@ -250,6 +245,12 @@ class NPUModelRunner(GPUModelRunner):
+             if self.decode_gear_list is None or len(self.decode_gear_list) == 0:
+                 raise RuntimeError("When enable adaptive speculative decoding, decode_gear_list must be set.")
+             self.max_batch_size = self.decode_gear_list[0]
++        
++        self.is_pd_seperate_d = self.vllm_config.kv_transfer_config is not None and self.vllm_config.kv_transfer_config.kv_role == "kv_consumer"
++        self.is_hybrid_chunked_prefill_graph_mode = self.enable_torchair_graph_mode and not self.is_pd_seperate_d and \
++            not self.vllm_config.additional_config.get("enable_hybrid_graph_mode", False) and self.vllm_config.scheduler_config.enable_chunked_prefill
++        if self.is_hybrid_chunked_prefill_graph_mode:    
++            self.max_batch_size = self.max_num_tokens
+ 
+         if self.decode_gear_list is None:
+             self.decode_gear_list = []
+@@ -454,17 +455,26 @@ class NPUModelRunner(GPUModelRunner):
+         # splitfuse
+         else:
+             attn_state = AscendAttentionState.ChunkedPrefill
++        
++        if self.is_hybrid_chunked_prefill_graph_mode and attn_state == AscendAttentionState.DecodeOnly:
++            attn_state = AscendAttentionState.ChunkedPrefill
+ 
+         self.attn_state = attn_state
+ 
+         # calculate max_batch_size and padding size
+         graph_pad_size = 0
+-        if self.enable_torchair_graph_mode and attn_state == AscendAttentionState.DecodeOnly and len(self.decode_gear_list) > 1:
+-            self.max_batch_size = self._get_max_token_num(self.vllm_config.parallel_config.data_parallel_size > 1, num_reqs)
++        if self.enable_torchair_graph_mode and len(self.decode_gear_list) > 1:
++            if attn_state == AscendAttentionState.DecodeOnly:
++                self.max_batch_size = self._get_max_token_num(self.vllm_config.parallel_config.data_parallel_size > 1, num_reqs)
++            elif self.is_hybrid_chunked_prefill_graph_mode and attn_state ==  AscendAttentionState.ChunkedPrefill:
++                self.max_batch_size = self._get_closest_gear(num_input_tokens)
++
+         if attn_state == AscendAttentionState.DecodeOnly:
+             if total_num_scheduled_tokens > self.max_batch_size:
+                 raise RuntimeError("num_reqs is bigger than max_batch_size")
+             graph_pad_size = self.max_batch_size - total_num_scheduled_tokens
++        elif attn_state == AscendAttentionState.ChunkedPrefill:
++            graph_pad_size = self.max_batch_size - total_num_scheduled_tokens
+         else:
+             # The reduce_scatter in the TP communication domain after embedding, P goes through this
+             graph_pad_size = _get_pad_size(num_input_tokens)
+@@ -557,6 +567,133 @@ class NPUModelRunner(GPUModelRunner):
+ 
+         return attn_metadata, graph_pad_size, sample_indices, positions, spec_decode_metadata
+ 
++    def deal_metadata(
++        self,
++        attn_metadata,
++        input_ids,
++        positions,
++        is_dummy = False,
++    ):
++        def deal_slots(slot_mapping, batch_lens, seq_lens):
++            
++            start_idx = 0
++            dealed_slot_mapping = []
++            for idx in range(seq_lens.shape[0]):
++                dealed_slot_mapping.append(slot_mapping[start_idx : start_idx + batch_lens[idx]])
++                start_idx = seq_lens[idx]
++
++            return torch.cat(dealed_slot_mapping, dim=0)
++
++        if attn_metadata is not None:
++            logger.info("Start to deal_metadata")
++            first_metadata = next(iter(attn_metadata.values()))
++            is_prefill = (not input_ids[1] == -1) if not is_dummy else True
++            # uid = input_ids[0].item()
++            uids = []
++            input_ids_list = []
++            if (not is_dummy) and first_metadata.attn_state == AscendAttentionState.ChunkedPrefill:
++                    num_reqs = self.input_batch.num_reqs
++                    first_metadata.query_lens = first_metadata.query_lens[:num_reqs]
++                    first_metadata.query_lens_list = first_metadata.query_lens_list[:num_reqs]
++                    first_metadata.seq_lens = first_metadata.seq_lens[:num_reqs]
++                    first_metadata.seq_lens_list = first_metadata.seq_lens_list[:num_reqs]
++                    first_metadata.slot_mapping = first_metadata.slot_mapping[:first_metadata.num_actual_tokens]
++                    first_metadata.slot_indices = first_metadata.slot_indices[:first_metadata.num_actual_tokens]
++            batch_size = first_metadata.query_lens.shape[0]
++            query_start_loc = torch.zeros(batch_size + 1, dtype=torch.int64, device=first_metadata.query_lens.device)
++            torch.cumsum(first_metadata.query_lens, dim=0, out=query_start_loc[1:])
++            query_start_list = query_start_loc.tolist()
++            is_pd_merge = False
++            
++            if not is_dummy:
++                input_ids = input_ids[: first_metadata.num_actual_tokens]
++                num_candidates_list = []
++                sep_positions = torch.where(input_ids == -1)[0].tolist()
++                for idx in range(len(query_start_list) - 1):
++                    start_idx = query_start_list[idx]
++                    end_idx = query_start_list[idx + 1]
++                    uids.append(input_ids[start_idx].item())
++                    slice_1 = input_ids[start_idx + 1 : sep_positions[idx]]
++                    slice_2 = input_ids[sep_positions[idx] + 1 : end_idx]
++                    input_ids_list.extend([slice_1, slice_2])
++                    candidate_num = end_idx - sep_positions[idx] - 1
++                    num_candidates_list.append(candidate_num)
++                    is_pd_merge = candidate_num > 0
++                input_ids = torch.cat(input_ids_list, dim=0)
++            else:
++                num_candidates_list = [0 for _ in range(first_metadata.query_lens.shape[0])]
++
++            positions = positions[:input_ids.shape[0]]
++            batch_lens = (first_metadata.query_lens - 2) if not is_dummy else first_metadata.query_lens     # CPU上
++            batch_lens_list = batch_lens.tolist()
++            max_query_len = max(batch_lens_list)
++            sum_tokens = sum(batch_lens_list)
++            batch_lens = batch_lens.npu()
++            
++            seq_lens = first_metadata.seq_lens.npu()        # 如果是decode的话，seq_lens应当是batch_lens + prec_his_len
++            if is_dummy:
++                seq_lens = seq_lens - 1
++            
++            query_start_loc = query_start_loc.npu()
++            torch.cumsum(batch_lens, dim=0, out=query_start_loc[1:])
++
++            if not is_prefill:
++                block_table = first_metadata.block_tables
++                deal_seq_lens = seq_lens - batch_lens
++                num_blocks_per_seq = torch.ceil(deal_seq_lens / self.block_size).to(torch.int64) # 向上取整
++
++                # page_offsets 就是 num_blocks_per_seq 的前缀和
++                page_offsets = torch.zeros(batch_size + 1, dtype=torch.int64, device=block_table.device)
++                torch.cumsum(num_blocks_per_seq, dim=0, out=page_offsets[1:])
++
++                last_page_len_tensor = (deal_seq_lens - 1) % self.block_size + 1
++
++                seq_offset_k = torch.zeros(seq_lens.shape[0] + 1, dtype=torch.int64, device=block_table.device)
++                torch.cumsum(seq_lens, dim=0, out=seq_offset_k[1:]) # 计算出每个请求的前缀和
++
++                max_seq_len_k = max(first_metadata.seq_lens_list) - 1 if is_dummy else max(first_metadata.seq_lens_list)
++
++                current_block_tables = block_table[:batch_size]
++
++                page_ids_list = []
++                for i in range(batch_size):
++                    num_blocks_for_req = page_offsets[i + 1] - page_offsets[i]
++                    valid_blocks = current_block_tables[i, :num_blocks_for_req]
++                    page_ids_list.append(valid_blocks)
++
++                page_ids = torch.cat(page_ids_list).to(torch.int64)
++            else:
++                num_candidates = torch.tensor(num_candidates_list, dtype=torch.int64, device=first_metadata.slot_mapping.device)
++
++            first_metadata.query_lens = batch_lens
++            first_metadata.query_lens_list = batch_lens_list
++            first_metadata.seq_lens = batch_lens
++            first_metadata.seq_lens_list = batch_lens_list
++            first_metadata.max_query_len = max_query_len
++            first_metadata.num_actual_tokens = sum_tokens
++            first_metadata.additional_metadata = {}
++            # first_metadata.additional_metadata["uid"] = uid
++            first_metadata.additional_metadata["uids"] = uids
++            first_metadata.additional_metadata["query_start"] = query_start_loc
++            if not is_prefill:
++                first_metadata.attn_state = AscendAttentionState.DecodeOnly
++                first_metadata.slot_indices = deal_slots(first_metadata.slot_indices, batch_lens, seq_lens)
++                first_metadata.additional_metadata["max_seq_len_k"] = max_seq_len_k
++                first_metadata.additional_metadata["seq_offset_k"] = seq_offset_k
++                first_metadata.additional_metadata["seq_offset_t"] = query_start_loc
++                first_metadata.additional_metadata["page_offsets"] = page_offsets
++                first_metadata.additional_metadata["page_ids"] = page_ids
++                first_metadata.additional_metadata["last_page_len"] = last_page_len_tensor
++                first_metadata.additional_metadata["decode_table_offset"] = block_table[0][0].item()
++            else:
++                first_metadata.attn_state = AscendAttentionState.PrefillNoCache
++                first_metadata.slot_mapping = deal_slots(first_metadata.slot_mapping, batch_lens, seq_lens)
++                first_metadata.additional_metadata["num_candidates"] = num_candidates
++                first_metadata.additional_metadata["is_pd_merge"] = is_pd_merge
++            
++        return attn_metadata, input_ids, positions
++
++
+     def _simple_prepare_inputs(
+         self,
+         attn_metadata,
+@@ -615,7 +752,7 @@ class NPUModelRunner(GPUModelRunner):
+             if kv_cache_group_id == 0:
+                 self.full_attn_metadata = attn_metadata_i
+ 
+-            if self.enable_torchair_graph_mode and self.attn_state == AscendAttentionState.DecodeOnly:
++            if (self.enable_torchair_graph_mode and self.attn_state == AscendAttentionState.DecodeOnly) or self.is_hybrid_chunked_prefill_graph_mode:
+                 self.attn_metadata_builders[kv_cache_group_id].mark_static_for_attn_metadata(attn_metadata_i)
+             for layer_name in kv_cache_group_spec.layer_names:
+                 attn_metadata[layer_name] = attn_metadata_i
+@@ -670,14 +807,14 @@ class NPUModelRunner(GPUModelRunner):
+                     padding_embeds = torch.zeros(graph_pad_size, inputs_embeds.size(-1), dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+                 else:
+                     vocab_size = self.model_config.get_vocab_size()
+-                    padding_embeds = torch.randint(1, vocab_size, (graph_pad_size, inputs_embeds.size(-1)), dtype=input_ids.dtype, device=input_ids.device)
++                    padding_embeds = torch.zeros(graph_pad_size, inputs_embeds.size(-1), dtype=inputs_embeds.dtype, device=inputs_embeds.device)
+ 
+                 inputs_embeds = torch.cat([inputs_embeds, padding_embeds])
+             
+             input_ids = None
+         else:
+             if graph_pad_size >= 0:
+-                if attn_state == AscendAttentionState.DecodeOnly:
++                if attn_state == AscendAttentionState.DecodeOnly or (self.is_hybrid_chunked_prefill_graph_mode and attn_state == AscendAttentionState.ChunkedPrefill):
+                     padding = torch.zeros(graph_pad_size, dtype=input_ids.dtype, device=input_ids.device)
+                 else:
+                     vocab_size = self.model_config.get_vocab_size()
+@@ -688,6 +825,14 @@ class NPUModelRunner(GPUModelRunner):
+             
+         model_kwargs["selected_indices"] = sample_indices if attn_state != AscendAttentionState.DecodeOnly else None
+ 
++        if self.model_config.hf_config.model_type == "hstu_inference_ranking":
++            from torch.autograd.profiler import record_function
++            with record_function("## deal_metadata ##"):
++                st = time.time()
++                attn_metadata, input_ids, positions = self.deal_metadata(attn_metadata, input_ids, positions)
++                end_t = time.time()
++            logger.info(f" ***** deal_metadata cost: {(end_t - st) * 1000} ms")
++
+         start_fc = time.time()
+         start_fc_exit = 0
+         # Run forward pass
+@@ -704,7 +849,8 @@ class NPUModelRunner(GPUModelRunner):
+                 self.planner.place_experts()
+                 _GLOBAL_STEP = _GLOBAL_STEP + 1 if not is_prompt else 0
+ 
+-            if self.enable_torchair_graph_mode and attn_state == AscendAttentionState.DecodeOnly:
++            if self.enable_torchair_graph_mode and attn_state == AscendAttentionState.DecodeOnly or \
++                (self.is_hybrid_chunked_prefill_graph_mode and attn_state == AscendAttentionState.ChunkedPrefill):
+                 start_debug = time.time()
+                 logger.debug("Start running compiled model.")
+                 if not self.model_mark_static:
+@@ -801,9 +947,15 @@ class NPUModelRunner(GPUModelRunner):
+ 
+     def _prepare_kv_cache(self, scheduler_output):
+         if scheduler_output.blocks_to_swap_in is not None and any(scheduler_output.blocks_to_swap_in):
++            blocks_to_swap_in = torch.tensor(scheduler_output.blocks_to_swap_in,
++                                             device="cpu",
++                                             dtype=torch.int64)
+             self.cache_engine.swap_in(scheduler_output.blocks_to_swap_in)
+ 
+         if scheduler_output.blocks_to_swap_out is not None and any(scheduler_output.blocks_to_swap_out):
++            blocks_to_swap_out = torch.tensor(scheduler_output.blocks_to_swap_out,
++                                              device="cpu",
++                                              dtype=torch.int64)
+             self.cache_engine.swap_out(scheduler_output.blocks_to_swap_out)
+ 
+     def save_tokens(
+@@ -1034,17 +1186,49 @@ class NPUModelRunner(GPUModelRunner):
+ 
+         cost_output = time.time() - start_9
+         cost = cost_upd_states + cost_proc_reqs + cost_logits + cost_bitmask + cost_sampler + cost_disc + cost_drafter + cost_device_output + cost_output
+-        logger.debug(f" ***** execute model cost:{cost:.6f}="
++        logger.info(f" ***** execute model cost:{cost:.6f}="
+                     f"{cost_upd_states:.6f}+{cost_proc_reqs:.6f}+{cost_logits:.6f}+{cost_bitmask:.6f}"
+                     f"+{cost_disc:.6f}+{cost_sampler:.6f}+{cost_drafter:.6f}+{cost_device_output:.6f}+{cost_output:.6f}")
+ 
++        prompt_logprobs_dict = {}
++        if len(scheduler_output.scheduled_new_reqs) > 0 and scheduler_output.scheduled_new_reqs[0].sampling_params.prompt_logprobs and hidden_states is not None:
++            first_metadata = next(iter(attn_metadata.values()))
++            if first_metadata.attn_state == AscendAttentionState.DecodeOnly:
++                from vllm.v1.outputs import LogprobsTensors
++                num_prompt_logprobs_dict = self.input_batch.num_prompt_logprobs
++                index = 0
++                query_start_loc = first_metadata.additional_metadata["query_start"]
++                for req_id, _ in num_prompt_logprobs_dict.items():
++                    hidden_states_req = hidden_states[query_start_loc[index] : query_start_loc[index + 1]].cpu()
++                    prompt_logprobs_dict[req_id] = LogprobsTensors(
++                        logprob_token_ids=hidden_states_req,
++                        logprobs=hidden_states_req,
++                        selected_token_ranks=positions[query_start_loc[index] : query_start_loc[index + 1]].cpu()
++                    )
++                    index = index + 1 
++            elif first_metadata.additional_metadata is not None and first_metadata.additional_metadata.get("is_pd_merge", False):
++                from vllm.v1.outputs import LogprobsTensors
++                num_prompt_logprobs_dict = self.input_batch.num_prompt_logprobs
++                start_index = 0
++                index = 0
++                num_candidates = first_metadata.additional_metadata["num_candidates"]
++                for req_id, _ in num_prompt_logprobs_dict.items():
++                    hidden_states_req = hidden_states[start_index : start_index + num_candidates[index]].cpu()
++                    prompt_logprobs_dict[req_id] = LogprobsTensors(
++                        logprob_token_ids=hidden_states_req,
++                        logprobs=hidden_states_req,
++                        selected_token_ranks=positions[start_index : start_index + num_candidates[index]].cpu()
++                    )
++                    start_index += num_candidates[index]
++                    index = index + 1
++
+         return ModelRunnerOutput(
+             req_ids=self.input_batch.req_ids,
+             req_id_to_index=self.input_batch.req_id_to_index,
+             sampled_token_ids=cached_sampled_token_ids,
+             spec_token_ids=spec_token_ids,
+             logprobs=logprobs_lists,
+-            prompt_logprobs_dict={},
++            prompt_logprobs_dict=prompt_logprobs_dict,
+             finished_sending=finished_sending,
+             finished_recving=finished_recving,
+             loading_kv_failure=loading_kv_failure,
+@@ -1114,6 +1298,9 @@ class NPUModelRunner(GPUModelRunner):
+             input_ids, positions = fake_input, fake_positions
+         self.attn_state = AscendAttentionState.DecodeOnly
+ 
++        if self.is_hybrid_chunked_prefill_graph_mode:
++            self.attn_state = AscendAttentionState.ChunkedPrefill
++
+         # Build dummy attn_metadata
+         attn_metadata = {}
+         for kv_cache_group_id, kv_cache_group_spec in enumerate(self.kv_cache_config.kv_cache_groups):
+@@ -1138,15 +1325,23 @@ class NPUModelRunner(GPUModelRunner):
+             "attn_metadata": attn_metadata,
+             "selected_indices": None
+         }
++
++        if self.model_config.hf_config.model_type == "hstu_inference_ranking":
++            attn_metadata, input_ids, positions = self.deal_metadata(attn_metadata, input_ids, positions, True)
++
+         with set_forward_context(attn_metadata, self.vllm_config):
+             use_compile = self.enable_torchair_graph_mode
+             if use_compile:
++                logger.info("Start running dummy compiled model.")
+                 if not self.dummy_model_mark_static:
+                     if isinstance(self.model, GraphCompileConfiguration):
+                         self.model.mark_static_for_graph(input_ids, positions, attn_metadata, self.kv_caches)
+                     else:
+                         mark_static_for_graph_default(input_ids, inputs_embeds, positions, self.kv_caches)
+                     self.dummy_model_mark_static = True
++            else:
++                logger.info("Start running dummy eager model.")
++                
+             forward_results = self.model(
+                 input_ids=input_ids,
+                 positions=positions,
+diff --git a/omni/adaptors/vllm/worker/npu_worker.py b/omni/adaptors/vllm/worker/npu_worker.py
+index 346c4823..6d5abc65 100644
+--- a/omni/adaptors/vllm/worker/npu_worker.py
++++ b/omni/adaptors/vllm/worker/npu_worker.py
+@@ -45,7 +45,8 @@ from vllm.lora.request import LoRARequest
+ from omni.adaptors.vllm.platform import NPUPlatform
+ from omni.adaptors.vllm.worker.npu_model_runner import NPUModelRunner
+ from omni.adaptors.vllm.utils import (
+-    check_torchair_cache_exists, check_block_num_cache_exist, read_block_num_from_file, write_block_num_to_file, delete_torchair_cache_file, clear_var
++    check_torchair_cache_exists, check_block_num_cache_exist, read_block_num_from_file, write_block_num_to_file,
++    delete_torchair_cache_file, clear_var
+ )
+ from omni.models.config_loader.loader import model_extra_config, call_config_updater
+ 
+@@ -72,9 +73,6 @@ class NPUWorker(WorkerBase):
+             # Additional parameters for compatibility with vllm
+             **kwargs):
+         """Initialize the worker for Ascend."""
+-        if envs.VLLM_LOGGING_CONFIG_PATH:
+-            from vllm.logger import _configure_vllm_root_logger
+-            _configure_vllm_root_logger()
+ 
+         if envs.VLLM_ENABLE_V1_MULTIPROCESSING:
+             if envs.VLLM_USE_RAY_SPMD_WORKER:
+@@ -274,7 +272,7 @@ class NPUWorker(WorkerBase):
+                 clear_var(cur_npu_kv_cache_bytes, all_kv_cache_bytes)
+                 last_use_kv_cache_bytes = kv_cache_bytes
+ 
+-        return last_use_kv_cache_bytes
++        return last_use_kv_cache_bytes//8
+ 
+     def _compute_kv_cache_bytes(self):
+         # Profile the memory usage of the model and get the maximum number of
+@@ -308,25 +306,25 @@ class NPUWorker(WorkerBase):
+         logger.info(
+             f"Available memory: {usable_memory_size}, total memory: {total_npu_memory}"
+         )
+-        return int(npu_kv_cache_bytes)
++        return int(npu_kv_cache_bytes)//8
+ 
++    @torch.inference_mode()
+     def execute_model(
+-        self,
+-        scheduler_output: "SchedulerOutput",
++            self,
++            scheduler_output: "SchedulerOutput",
+     ) -> Optional[ModelRunnerOutput]:
+-        if envs.VLLM_TORCH_PROFILER_DIR:
+-            if not self.profile_already_start and scheduler_output.total_num_scheduled_tokens >= self.profiler_token_threshold:
+-                self.profiler.start()
+-                self.profile_already_start = True
+-                self.profile_step = 0
+-
++        # if envs.VLLM_TORCH_PROFILER_DIR:
++        #     if not self.profile_already_start and scheduler_output.total_num_scheduled_tokens >= self.profiler_token_threshold:
++        #         self.profiler.start()
++        #         self.profile_already_start = True
++        #         self.profile_step = 0
+         output = self.model_runner.execute_model(scheduler_output)
+-        if envs.VLLM_TORCH_PROFILER_DIR:
+-            if self.profile_already_start and not self.profile_finished:
+-                self.profile_step += 1
+-            if not self.profile_finished and self.profile_step > self.profiler_stop_step:
+-                self.profiler.stop()
+-                self.profile_finished = True
++        # if envs.VLLM_TORCH_PROFILER_DIR:
++        #     if self.profile_already_start and not self.profile_finished:
++        #         self.profile_step += 1
++        #     if not self.profile_finished and self.profile_step > self.profiler_stop_step:
++        #         self.profiler.stop()
++        #         self.profile_finished = True
+         return output if self.is_driver_worker else None
+ 
+     def load_model(self) -> None:
+diff --git a/omni/layers/attention/backend/attention.py b/omni/layers/attention/backend/attention.py
+index 1e5a6823..6acc5c76 100644
+--- a/omni/layers/attention/backend/attention.py
++++ b/omni/layers/attention/backend/attention.py
+@@ -123,6 +123,7 @@ class AscendMetadata:
+     sin: Optional[torch.Tensor] = None
+     is_pd_seperate_d: bool = False
+     kv_index: Optional[torch.Tensor] = None
++    additional_metadata: Optional[Dict[str, Any]] = None
+ 
+     @staticmethod
+     def advance_step(metadata, positions, block_size, pad_mask, model_layer):
+@@ -303,6 +304,25 @@ class AscendAttentionMetadataBuilder(DummyAttentionMetadataBuilder):
+             block_table = self._get_graph_runner_block_tables(
+                 self._num_decode_tokens, block_table)
+             kv_index = None
++        elif self.runner.is_hybrid_chunked_prefill_graph_mode and self.runner.attn_state == AscendAttentionState.ChunkedPrefill:
++            kv_index = None
++            seq_lens = seq_lens.to(self.runner.device)
++            query_lens = query_lens.to(self.runner.device)
++            padding_token_num = (graph_pad_size + num_actual_tokens) - torch.sum(query_lens)
++            seq_padding_size = (self.runner.max_num_reqs + 1) - num_reqs
++            seq_padding = torch.zeros((seq_padding_size,), dtype=seq_lens.dtype, device=self.runner.device)
++            seq_lens = torch.cat([seq_lens, seq_padding], dim=0)
++            query_padding = torch.zeros((seq_padding_size,), dtype=query_lens.dtype, device=self.runner.device)
++            query_lens = torch.cat([query_lens, query_padding], dim=0)
++            query_lens[-1] = padding_token_num
++            seq_lens[-1] = padding_token_num
++            
++            block_table = self.block_table.get_device_tensor()
++            block_table_padding = torch.zeros(
++                (1,) + block_table.shape[1:],
++                dtype=block_table.dtype,
++                device=block_table.device)
++            block_table = torch.cat([block_table, block_table_padding], dim=0)
+         elif model_extra_config.operator_opt_config.use_tnd_pa:
+             kv_index = None
+             if graph_pad_size > 0:
+@@ -364,6 +384,8 @@ class AscendAttentionMetadataBuilder(DummyAttentionMetadataBuilder):
+                                    device=self.runner.device)
+         if isinstance(self.runner.graph_block_tables, np.ndarray):
+             graph_block_tables = torch.zeros((max_pad_size, self.runner.graph_block_tables.shape[1]))
++            if self.runner.is_hybrid_chunked_prefill_graph_mode:
++                graph_block_tables = torch.zeros((self.runner.max_num_reqs + 1, self.runner.graph_block_tables.shape[1]))
+         block_table = graph_block_tables.to(
+             device=self.runner.device,
+             dtype=self.runner.input_batch.block_table[0].get_device_tensor().dtype
+@@ -372,6 +394,11 @@ class AscendAttentionMetadataBuilder(DummyAttentionMetadataBuilder):
+         query_lens = torch.ones(max_pad_size, dtype=torch.long, device=self.runner.device, pin_memory=True)
+         seq_lens = query_lens * 2
+ 
++        if self.runner.is_hybrid_chunked_prefill_graph_mode:
++            query_lens = torch.zeros(self.runner.max_num_reqs + 1, dtype=torch.long, device=self.runner.device, pin_memory=True)
++            query_lens[0] = max_pad_size
++            seq_lens = query_lens + 1
++
+         slot_indices = torch.stack([slot_mapping // self.block_size, slot_mapping % self.block_size], dim=1)
+ 
+         fake_positions = torch.zeros(max_pad_size, dtype=torch.int64, device=self.device)
+@@ -464,6 +491,10 @@ class AscendAttentionBackendImpl(AttentionImpl):
+         cur_vllm_config = get_current_vllm_config()
+         self.enable_graph_mode = (cur_vllm_config.npu_compilation_config.level >  \
+                                   CompilationLevel.NO_COMPILATION and supports_dynamo())
++        
++        self.is_pd_seperate_d = cur_vllm_config.kv_transfer_config is not None and cur_vllm_config.kv_transfer_config.kv_role == "kv_consumer"
++        self.is_hybrid_chunked_prefill_graph_mode = self.enable_graph_mode and not self.is_pd_seperate_d and \
++            not cur_vllm_config.additional_config.get("enable_hybrid_graph_mode", False) and cur_vllm_config.scheduler_config.enable_chunked_prefill
+ 
+         if AscendAttentionBackendImpl.SHARE_MASK_TRIL_SPARSE is None:
+             AscendAttentionBackendImpl.SHARE_MASK_TRIL_SPARSE = ~torch.tril(
+@@ -512,6 +543,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
+         query = query.view(-1, self.num_heads, self.head_size).contiguous()
+         key = key.view(-1, self.num_kv_heads, self.head_size).contiguous()
+         value = value.view(-1, self.num_kv_heads, self.head_size).contiguous()
++        num_batch = attn_metadata.seq_lens.shape[0]
+         # value = value.contiguous()
+ 
+         # update kv cache
+@@ -526,21 +558,22 @@ class AscendAttentionBackendImpl(AttentionImpl):
+                 attn_metadata.slot_mapping
+             )
+ 
+-        if self.enable_graph_mode and attn_metadata.attn_state == AscendAttentionState.DecodeOnly:
++        if (self.enable_graph_mode and attn_metadata.attn_state == AscendAttentionState.DecodeOnly) or  \
++            (self.is_hybrid_chunked_prefill_graph_mode and attn_metadata.attn_state == AscendAttentionState.ChunkedPrefill):
+             attn_output = tng.ops.npu_fused_infer_attention_score_v2(
+-                query,
++                torch.transpose(query.view(num_batch, -1, self.num_heads, self.head_size), 1, 2),
+                 kv_cache[0].view(-1, self.num_kv_heads, self.head_size // NZ_DIM, block_size, NZ_DIM),
+                 kv_cache[1].view(-1, self.num_kv_heads, self.head_size // NZ_DIM, block_size, NZ_DIM),
+                 num_query_heads=self.num_heads,
+                 num_key_value_heads=self.num_kv_heads,
+-                input_layout="TND",
++                input_layout="BNSD",
+                 softmax_scale=self.scale,
+                 block_table=attn_metadata.block_tables,
+                 block_size=block_size,
+                 sparse_mode=3,
+                 atten_mask=AscendAttentionBackendImpl.SHARE_MASK_TRIL_SPARSE,
+-                actual_seq_qlen=attn_metadata.query_lens.cumsum(dim=0),
+                 actual_seq_kvlen=attn_metadata.seq_lens,
++                inner_precise=1
+             )[0]
+         else:
+             attn_output = torch_npu.npu_fused_infer_attention_score_v2(
+@@ -642,7 +675,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
+                         self.value_cache.view(self.value_cache.shape[0], block_size, self.num_kv_heads, self.head_size),
+                         attn_metadata.slot_mapping.int()
+                     )
+-            else:
++            elif attn_metadata.additional_metadata == None:
+                 torch_npu.scatter_update_(self.key_cache, attn_metadata.slot_indices, cast_key, -2)
+                 torch_npu.scatter_update_(self.value_cache, attn_metadata.slot_indices, cast_value, -2)
+ 
+@@ -654,7 +687,22 @@ class AscendAttentionBackendImpl(AttentionImpl):
+                 if attn_metadata is None:
+                     raise RuntimeError("attn_metadata must not be None")
+ 
+-                if len(attn_metadata.query_lens_list) == 1:
++                if attn_metadata.additional_metadata != None:
++                    attn_output = torch.ops.mxrec.hstu_jagged(
++                        q=query,
++                        k=key,
++                        v=value,
++                        mask=None,
++                        attn_bias=None,
++                        mask_type=0,
++                        max_seq_len=attn_metadata.max_query_len,
++                        silu_scale=1.0 / (self.head_size ** 0.5),
++                        seq_offset=attn_metadata.additional_metadata["query_start"],
++                        num_context=None,
++                        num_target=attn_metadata.additional_metadata["num_candidates"],
++                        target_group_size=1,
++                    ).view(-1, self.num_heads, self.head_size)
++                elif len(attn_metadata.query_lens_list) == 1:
+                     attn_output = torch_npu.npu_fused_infer_attention_score(
+                         query.unsqueeze(0),
+                         key.unsqueeze(0),
+@@ -711,40 +759,67 @@ class AscendAttentionBackendImpl(AttentionImpl):
+             if stream_for_reshape_and_cache != torch.npu.current_stream():
+                 torch.npu.current_stream().wait_stream(stream_for_reshape_and_cache)
+         elif attn_metadata.attn_state == AscendAttentionState.DecodeOnly:
+-
+-            block_num, block_size = self.key_cache.shape[0], self.key_cache.shape[1]
+-
+-            num_batch = attn_metadata.seq_lens.shape[0]
+-            query = query.view(num_batch, -1, self.num_heads * self.head_size)
+-            block_tables = attn_metadata.block_tables
+-            attn_output = None
+-            if self.enable_graph_mode:
+-                attn_output, _ = tng.ops.npu_fused_infer_attention_score(
+-                    torch.transpose(query.view(num_batch, -1, self.num_heads, self.head_size), 1, 2),
+-                    self.key_cache,
+-                    self.value_cache,
+-                    num_heads=self.num_heads,
+-                    num_key_value_heads=self.num_kv_heads,
+-                    input_layout="BNSD",
+-                    scale=self.scale,
+-                    actual_seq_lengths_kv=attn_metadata.seq_lens,
+-                    block_table=block_tables,
+-                    block_size=block_size,
+-                    inner_precise=1
++            if attn_metadata.additional_metadata != None:
++                kvbine = torch.concat([self.key_cache.view(self.key_cache.shape[0], block_size, self.num_kv_heads, self.head_size).unsqueeze(1),self.value_cache.view(self.value_cache.shape[0], block_size, self.num_kv_heads, self.head_size).unsqueeze(1)],dim=1)
++                print("kv_cache shape",kvbine.shape)
++                print("qkv shape",query.shape,key.shape,value.shape)
++                attn_output = torch.ops.mxrec.hstu_paged(
++                    q=query,        # [256, 8, 128]     [178, 8, 128]       torch.Size([578, 8, 128])
++                    k=key,
++                    v=value,
++                    kv_cache=kvbine, # 佐~H并 K, V cache [num_pages, 2, page_size, num_head, head_dim]     torch.Size([5087, 2, 128, 8, 128])
++                    #    k_cache=self.key_cache.view(self.key_cache.shape[0], block_size, self.num_kv_heads, self.head_size),
++                    #    v_cache=self.value_cache.view(self.value_cache.shape[0], block_size, self.num_kv_heads, self.head_size),
++
++                    mask=None, # 这里参考的 hstu_jagged
++                    attn_bias=None, # rab使用
++                    mask_type=2, # 这里参考的 hstu_jagged
++                    max_seq_len=attn_metadata.max_query_len,                                         # 256   178     400
++                    max_seq_len_k=attn_metadata.additional_metadata["max_seq_len_k"],                # 4248  3654    8530
++                    silu_scale=1.0 / attn_metadata.max_query_len, # 这里参考的 hstu_jagged
++                    seq_offset=attn_metadata.additional_metadata["query_start"],                     # tensor([0, 256])  tensor([0, 178])        tensor([ 0, 400, 578])   
++                    seq_offset_k=attn_metadata.additional_metadata["seq_offset_k"],                  # tensor([0, 4248]) tensor([0, 3654])    tensor([ 0,  8530, 12184])
++                    seq_offset_t=attn_metadata.additional_metadata["seq_offset_t"],                  # tensor([0. 256])  tensor([0, 178])        tensor([ 0, 400, 578], device='npu:0')
++                    page_offsets=attn_metadata.additional_metadata["page_offsets"],                  # tensor([0, 32])   tensor([0, 28])         tensor([ 0, 64, 92], device='npu:0')
++                    page_ids=attn_metadata.additional_metadata["page_ids"],                          # 33-64             95-122      82-173
++                    last_page_len=attn_metadata.additional_metadata["last_page_len"],                # tensor([24], device='npu:0')  tensor([20], device='npu:0')    tensor([66, 20], device='npu:0')
++                    num_target=attn_metadata.query_lens,                             # tensor([256], device='npu:0') tensor([178], device='npu:0')   tensor([400, 178], device='npu:0', dtype=torch.int32)
++                    target_group_size=1,
+                 )
+             else:
+-                attn_output, _ = torch_npu.npu_fused_infer_attention_score(
+-                    query,
+-                    self.key_cache,
+-                    self.value_cache,
+-                    num_heads=self.num_heads,
+-                    num_key_value_heads=self.num_kv_heads,
+-                    input_layout="BSH",
+-                    scale=self.scale,
+-                    actual_seq_lengths_kv=attn_metadata.seq_lens,
+-                    block_table=block_tables,
+-                    block_size=block_size,
+-                )
++                block_num, block_size = self.key_cache.shape[0], self.key_cache.shape[1]
++
++                num_batch = attn_metadata.seq_lens.shape[0]
++                query = query.view(num_batch, -1, self.num_heads * self.head_size)
++                block_tables = attn_metadata.block_tablescle
++                attn_output = None
++                if self.enable_graph_mode:
++                    attn_output, _ = tng.ops.npu_fused_infer_attention_score(
++                        torch.transpose(query.view(num_batch, -1, self.num_heads, self.head_size), 1, 2),
++                        self.key_cache,
++                        self.value_cache,
++                        num_heads=self.num_heads,
++                        num_key_value_heads=self.num_kv_heads,
++                        input_layout="BNSD",
++                        scale=self.scale,
++                        actual_seq_lengths_kv=attn_metadata.seq_lens,
++                        block_table=block_tables,
++                        block_size=block_size,
++                        inner_precise=1
++                    )
++                else:
++                    attn_output, _ = torch_npu.npu_fused_infer_attention_score(
++                        query,
++                        self.key_cache,
++                        self.value_cache,
++                        num_heads=self.num_heads,
++                        num_key_value_heads=self.num_kv_heads,
++                        input_layout="BSH",
++                        scale=self.scale,
++                        actual_seq_lengths_kv=attn_metadata.seq_lens,
++                        block_table=block_tables,
++                        block_size=block_size,
++                    )
+ 
+             output = output.view_as(attn_output)
+             output.copy_(attn_output)
+diff --git a/omni/layers/linear.py b/omni/layers/linear.py
+index 205b4c52..b7840d53 100644
+--- a/omni/layers/linear.py
++++ b/omni/layers/linear.py
+@@ -8,6 +8,7 @@ from vllm.platforms import current_platform
+ import torch
+ import torch_npu
+ import torch.distributed as dist
++import torch.nn.functional as F
+ from torch.nn.parameter import Parameter, UninitializedParameter
+ 
+ from vllm.model_executor.layers.linear import (LinearBase,
+@@ -920,7 +921,7 @@ class UnquantizedFlashCommLinearMethod(FlashCommLinearMethodBase):
+             if x.ndim == 3:
+                 return torch.matmul(x, layer.weight) + bias
+             # return F.linear(x, layer.weight, bias)
+-            return torch.addmm(bias, x, layer.weight)
++            return torch.matmul(x, layer.weight) + bias
+         else:
+             return torch.matmul(x, layer.weight)
+ 
+diff --git a/omni/models/__init__.py b/omni/models/__init__.py
+index 3a3e05d8..0ab1137f 100644
+--- a/omni/models/__init__.py
++++ b/omni/models/__init__.py
+@@ -3,6 +3,7 @@
+ import os
+ import torch_npu
+ from vllm import ModelRegistry
++from omni.models.config_loader.loader import model_extra_config
+ 
+ if os.getenv("PROFILING_NAMELIST", None):
+     print("<<<Profiler patch environmental variable is enabled, applying profiler patches.")
+@@ -10,17 +11,26 @@ if os.getenv("PROFILING_NAMELIST", None):
+ 
+ def register_model():
+     is_A2 = torch_npu.npu.get_device_name(0).startswith("Ascend910B")
++    all2all = model_extra_config.operator_opt_config.prefill_moe_all_to_all
+     ModelRegistry.register_model(
+         "DeepseekV2ForCausalLM",
+         "omni.models.deepseek.deepseek_v2:CustomDeepseekV2ForCausalLM")
+ 
+-    ModelRegistry.register_model(
++    if is_A2 and not all2all:
++        ModelRegistry.register_model(
++            "DeepseekV3ForCausalLM",
++            "omni.models.deepseek.deepseek_v3_a2:DeepseekV3ForCausalLM")
++        ModelRegistry.register_model(
++            "PanguUltraMoEForCausalLM",
++            "omni.models.pangu.pangu_ultra_moe_a2:PanguUltraMoEForCausalLM")
++    else:
++        ModelRegistry.register_model(
+             "DeepseekV3ForCausalLM",
+             "omni.models.deepseek.deepseek_v3:DeepseekV3ForCausalLM")
+-    ModelRegistry.register_model(
++        ModelRegistry.register_model(
+             "DeepseekV32ForCausalLM",
+             "omni.models.deepseek.deepseek_v32:DeepseekV32ForCausalLM")
+-    ModelRegistry.register_model(
++        ModelRegistry.register_model(
+             "PanguUltraMoEForCausalLM",
+             "omni.models.pangu.pangu_ultra_moe:PanguUltraMoEForCausalLM")
+ 
+@@ -109,6 +119,18 @@ def register_model():
+         "BailingMoeV2ForCausalLM",
+         "omni.models.bailing.bailing:BailingMoeV2ForCausalLM")
+ 
++    ModelRegistry.register_model(
++        "GlmForCausalLM",
++        "omni.models.glm.glm:GlmForCausalLM")
++
++    ModelRegistry.register_model(
++        "HSTUInferenceForCausalLM",
++        "omni.models.hstu.hstu:HSTUInferenceForCausalLM")
++
++    from vllm.transformers_utils.config import _CONFIG_REGISTRY
++    from omni.models.hstu.hstu_config import HSTUInferenceRankingConfig
++    _CONFIG_REGISTRY["hstu_inference_ranking"] = HSTUInferenceRankingConfig
++
+     if (
+         int(os.getenv("RANDOM_MODE", default='0')) or
+         int(os.getenv("CAPTURE_MODE", default='0')) or
+@@ -120,6 +142,10 @@ def register_model():
+         ModelRegistry.register_model(
+             "Qwen2ForCausalLM",
+             mock_model_class_factory(Qwen2ForCausalLM))
++        if is_A2 and not all2all:
++            from omni.models.deepseek.deepseek_v3_a2 import DeepseekV3ForCausalLM
++        else:
++            from omni.models.deepseek.deepseek_v3 import DeepseekV3ForCausalLM
+         from omni.models.deepseek.deepseek_v3 import DeepseekV3ForCausalLM
+         ModelRegistry.register_model(
+             "DeepseekV3ForCausalLM",
+diff --git a/omni/models/hstu/hstu.py b/omni/models/hstu/hstu.py
+new file mode 100644
+index 00000000..f48708b4
+--- /dev/null
++++ b/omni/models/hstu/hstu.py
+@@ -0,0 +1,1247 @@
++import math
++import torch
++import torch.nn.functional as F
++import torch_npu
++
++from typing import Iterable, List, Optional, Union
++from torch.autograd.profiler import record_function
++
++from vllm.compilation.decorators import support_torch_compile
++from vllm.attention import Attention
++from vllm.model_executor.layers.logits_processor import LogitsProcessor
++from vllm.model_executor.sampling_metadata import SamplingMetadata
++from vllm.config import VllmConfig
++from vllm.sequence import IntermediateTensors
++from vllm.attention.backends.abstract import AttentionMetadata
++
++from omni.layers.rotary_embedding import get_rope
++from omni.models.hstu.hstu_config import (
++    HSTUInferenceRankingConfig, InferenceEmbeddingConfig,
++    InferenceHSTUConfig, RankingConfig
++)
++from omni.layers.attention.backend.attention import AscendAttentionState, AscendMetadata
++from vllm.forward_context import ForwardContext, get_forward_context
++
++from vllm.distributed.kv_transfer import (get_kv_transfer_group,
++                                          has_kv_transfer_group,
++                                          is_v1_kv_transfer_group)
++
++
++from vllm.distributed import (get_tensor_model_parallel_rank,
++                              get_tensor_model_parallel_world_size,
++                              tensor_model_parallel_all_reduce)
++from vllm.model_executor.layers.linear import (ColumnParallelLinear,
++                                               RowParallelLinear,
++                                               QKVParallelLinear,
++                                               MergedColumnParallelLinear)
++from vllm.model_executor.layers.vocab_parallel_embedding import (
++    VocabParallelEmbedding, ParallelLMHead)
++from vllm.distributed import (
++    get_ep_group,
++    get_dp_group,
++    get_pp_group,
++    get_tensor_model_parallel_world_size,
++    tensor_model_parallel_all_gather,
++    get_tensor_model_parallel_rank,
++)
++from vllm.forward_context import set_forward_context
++import os
++
++
++from omni.layers.linear import (
++    AscendMergedColumnParallelLinear,
++    AscendRowParallelLinear,
++    AscendUnquantizedLinearMethod,
++    RowParallelFlashCommLinear,
++    ColumnParallelFlashCommLinear
++)
++
++
++def init_mlp_weights_optional_bias(
++    m: torch.nn.Module,
++) -> None:
++    if isinstance(m, torch.nn.Linear):
++        torch.nn.init.xavier_uniform_(m.weight)
++        # Always initialize bias to zero.
++        if m.bias is not None:
++            m.bias.data.fill_(0.0)
++
++
++class MLP(torch.nn.Module):  # type: ignore
++    def __init__(
++        self,
++        in_size: int,
++        layer_sizes: List[int],
++        activation: str = "relu",
++        bias: bool = True,
++        device: Optional[torch.device] = None,
++        dtype: torch.dtype = torch.float32,
++    ) -> None:
++        super().__init__()
++
++        if activation == "relu":
++            activation_fn = torch.nn.ReLU
++        elif activation == "gelu":
++            activation_fn = torch.nn.GELU
++        else:
++            raise ValueError(f"Activation function {activation} not supported")
++
++        layers = []
++        for i in range(len(layer_sizes)):
++            layers.extend(
++                [
++                    torch.nn.Linear(
++                        layer_sizes[i - 1] if i > 0 else in_size,
++                        layer_sizes[i],
++                        bias=bias,
++                        device=device,
++                        dtype=dtype,
++                    ),
++                    activation_fn()
++                    if i < len(layer_sizes) - 1
++                    else torch.nn.Identity(),
++                ]
++            )
++
++        self._mlp = torch.nn.Sequential(*layers)
++        self._mlp.apply(init_mlp_weights_optional_bias)
++        self.dtype = dtype
++
++    def forward(self, input: torch.Tensor) -> torch.Tensor:
++        assert input.dim() == 2, "Tensor must be 2-dimensional"
++        return self._mlp(input)
++
++
++class RMSNorm_npu(torch.nn.Module):
++    def __init__(self, dim: int, eps: float):
++        super().__init__()
++        self.eps = eps
++        self.weight = torch.nn.Parameter(torch.ones(dim))
++
++    def _norm(self, x):
++        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
++
++    def forward(self, x, residual: Optional[torch.Tensor]):
++        if residual is None:
++            y = torch_npu.npu_rms_norm(x, self.weight, epsilon=self.eps)[0]
++        else:
++            y, _, x = torch_npu.npu_add_rms_norm(residual, x, self.weight, self.eps)
++        return y, x
++
++class SparseMOE(torch.nn.Module):
++    def __init__(
++            self,
++            emb_dim,
++            expert_number,
++            top_k,
++            tp_size,
++            rank_local,
++            dtype
++        ):
++        super().__init__()
++
++        self.expert_number = expert_number
++        self.rank_local = rank_local
++        self.tp_size = tp_size
++        if tp_size > 1:
++            tp_expert_number = expert_number // self.tp_size
++        else:
++            tp_expert_number = expert_number
++
++        self.experts = torch.nn.ModuleList([
++                FFN_npu_swiglu(emb_dim, emb_dim * 4, dtype) for _ in range(tp_expert_number)])
++        self.cw1, self.cw2, self.cw3 = self.create_expert_weights(self.experts)
++        self.router = MOERouter(emb_dim, expert_number, top_k, dtype)    # todo 专家token blance
++        self.top_k = top_k
++        self.dtype = dtype
++
++        self.zero = torch.tensor([0], dtype=torch.int64, device=torch.npu.current_device())
++    def load_parm_post_init(self):
++        self.w1, self.w2, self.w3 = self.create_expert_weights(self.experts)
++
++    def create_expert_weights(self, experts):
++        """创建多个专家的权重"""
++        w1_list = []
++        w2_list = []
++        w3_list = []
++
++        for item in experts:
++            w1 = item.w1.weight.T
++            w2 = item.w2.weight.T
++            w3 = item.w3.weight.T
++
++            w1_list.append(w1)
++            w2_list.append(w2)
++            w3_list.append(w3)
++
++        return w1_list, w2_list, w3_list
++
++    def compute_ffn_with_grouped_matmul(self, expanded_x, w1_list, w2_list, w3_list, group_list):
++        # w1(x): 投影到隐藏维度
++        w1_out = torch_npu.npu_grouped_matmul(
++            x=[expanded_x],
++            weight=w1_list,
++            scale=None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=1,
++            group_type=0,
++            output_dtype=self.dtype,
++        )[0]
++
++        w3_out = torch_npu.npu_grouped_matmul(
++            x=[expanded_x],
++            weight=w3_list,
++            scale=None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=1,
++            group_type=0,
++            output_dtype=self.dtype,
++        )[0]
++
++        gate = F.silu(w1_out)
++        combined = gate * w3_out
++
++        w2_out = torch_npu.npu_grouped_matmul(
++            x=[combined],
++            weight=w2_list,
++            scale=None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=1,
++            group_type=0,
++            output_dtype=self.dtype,
++        )[0]
++
++        return w2_out
++
++    def forward(self, x):
++        # x shape is (b, s, hidden_dim)
++        seq_len, hidden_dim = x.size()
++        hidden_states = x.view(-1, hidden_dim)  # shape is (b * s, hidden_dim)
++
++        router_weights,expert_mask, selected_experts, group_list = self.router(hidden_states)
++
++        expend_x, idx = torch_npu.npu_moe_token_permute(
++            tokens=x,
++            indices=selected_experts,
++            num_out_tokens=seq_len*self.top_k
++        )
++
++        if self.tp_size == 1:
++            expanded_permuted_rows = self.compute_ffn_with_grouped_matmul(expend_x, self.cw1, self.cw2, self.cw3, group_list)
++            return torch_npu.npu_moe_token_unpermute(expanded_permuted_rows,idx,router_weights)
++
++        if self.expert_number == self.top_k:
++            out = torch.zeros(
++                (seq_len, hidden_dim),
++                dtype=x.dtype,
++                device=x.device
++            )
++            for expert in self.experts:
++                out += expert(x) * router_weights[:, self.rank_local].unsqueeze(-1)
++
++            return tensor_model_parallel_all_reduce(out)
++
++        cusum_group_list = torch.cumsum(group_list, dim=0)
++        # 拼接0和累积和结果
++        prefix_sum = torch.cat([self.zero, cusum_group_list], dim=0)
++
++
++        start = self.rank_local *( len(group_list) // self.tp_size)
++        end = (self.rank_local+1) * (len(group_list) // self.tp_size)
++        offset_start =  prefix_sum[start]
++        offset_end = prefix_sum[end]
++
++        expanded_permuted_rows = torch.zeros(
++            (seq_len*self.top_k, hidden_dim),
++            dtype=x.dtype,
++            device=x.device
++        )
++        if group_list[start:end].numel() == 1:  # gmm算子竟然不支持处理单batch，退化为FFN
++            expanded_permuted_rows[offset_start:offset_end] = self.experts[0](expend_x[offset_start:offset_end])
++        elif group_list[start:end].sum().item() != 0:  #还会出现专家没token?!
++            expanded_permuted_rows[offset_start:offset_end] = self.compute_ffn_with_grouped_matmul(
++                expend_x[offset_start:offset_end], self.cw1, self.cw2, self.cw3, group_list[start:end])
++
++
++        out =  torch_npu.npu_moe_token_unpermute(expanded_permuted_rows,idx,router_weights)
++        return tensor_model_parallel_all_reduce(out)
++
++    def forward_naive(self, x):
++        seq_len, hidden_dim = x.size() # x shape is (b, s, hidden_dim)
++        hidden_states = x.view(-1, hidden_dim)  # shape is (b * s, hidden_dim)
++
++        router_weights, expert_mask,selected_experts, group_list = self.router(hidden_states)
++
++        final_hidden_states = torch.zeros(
++            (seq_len, hidden_dim),
++            dtype=hidden_states.dtype,
++            device=hidden_states.device
++        )
++
++        for expert_idx in range(self.expert_number):
++            expert_layer = self.experts[expert_idx]
++            idx, top_x = torch.where(expert_mask[expert_idx])
++            current_state = hidden_states.unsqueeze(0)[:, top_x, :].reshape(-1, hidden_dim)  # token选取专家
++            current_hidden_states = expert_layer(current_state) * router_weights[top_x, idx].unsqueeze(-1)  # 专家运算
++            final_hidden_states.index_add_(dim=0, index=top_x, source=current_hidden_states)  # 专家权重相加
++
++        return final_hidden_states
++
++
++class MOERouter(torch.nn.Module):
++    def __init__(self, emb_dim, expert_number, top_k_number, dtype):
++        super().__init__()
++        self.gate = torch.nn.Linear(emb_dim, expert_number, dtype=dtype)
++        for param in self.gate.parameters():
++            param.requires_grad = False
++            param.copy_(torch.empty_like(param).uniform_(-0.5, 0.5))
++        self.expert_number = expert_number
++        self.top_k = top_k_number
++
++    def forward(self, hidden_states):
++        # 计算路由logits
++        router_logits = self.gate(hidden_states)  # shape is (b * s, dim)
++
++        # 计算topk的专家的输出
++        router_weights, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)  # shape都是 (b * s, top_k)
++
++        # 专家权重归一化
++        router_weights = torch.softmax(router_weights, dim=-1)
++
++        # 生成专家掩码
++        expert_mask = F.one_hot(selected_experts,num_classes=self.expert_number).to(torch.int32)  # shape是 (b * s, top_k, expert_number)
++        group_list = expert_mask.sum(dim=1)
++        group_list = group_list.permute(1, 0)
++        group_list = group_list.sum(dim=1)
++        expert_mask = expert_mask.permute(2, 1, 0)  # (expert_number, top_k, b * s)
++
++        return router_weights,  expert_mask, selected_experts, group_list
++
++class FFN_npu_swiglu(torch.nn.Module):
++    def __init__(self, dim: int, hidden_dim: int, dtype, dropout=0,):
++        super().__init__()
++        self.w1 = torch.nn.Linear(dim, hidden_dim, bias=False).to(dtype)
++        self.w2 = torch.nn.Linear(hidden_dim, dim, bias=False).to(dtype)
++        self.w3 = torch.nn.Linear(dim, hidden_dim, bias=False).to(dtype)
++        self.dropout = torch.nn.Dropout(dropout).to(dtype)
++        self.W_1 = torch.cat([self.w3.weight, self.w1.weight], dim = 0).transpose(0,1)
++        self.W_2 = self.w2.weight.transpose(0,1)
++
++
++    def forward(self, x):
++        return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
++
++class InferenceEmbedding(torch.nn.Module):
++    def __init__(
++        self,
++        embedding_configs: List[InferenceEmbeddingConfig],
++    ):
++        super(InferenceEmbedding, self).__init__()
++        sum_vocab_size = 0
++        embedding_table_name = []
++        for config in embedding_configs:
++            if config.table_name not in embedding_table_name:
++                sum_vocab_size += config.vocab_size
++                dim = config.dim
++                embedding_table_name.append(config.table_name)
++
++        self._embedding_layer = torch.nn.Embedding(
++            num_embeddings=sum_vocab_size,
++            embedding_dim=dim,
++        )
++
++    def to_empty(self, device: torch.device):
++        super().to_empty(device=device)
++
++        @torch.no_grad()
++        def truncated_normal_(tensor, mean=0.0, std=0.02, lower=-2.0, upper=2.0):
++            size = tensor.size()
++            tmp = tensor.new_empty(size).normal_()
++
++            # Clamp to [lower, upper] in standard normal units
++            tmp = tmp.clamp(min=lower, max=upper)
++
++            # Scale and shift to desired distribution
++            tensor.copy_(tmp)
++            tensor.mul_(std).add_(mean)
++
++
++        @torch.no_grad()
++        def init_embedding_weights(m):
++            if isinstance(m, torch.nn.Embedding):
++                truncated_normal_(m.weight, mean=0.0, std=0.02)
++
++        self.apply(init_embedding_weights)
++
++    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
++        return self._embedding_layer(input_ids)
++
++
++class HstuAttention(torch.nn.Module):
++    def __init__(
++        self,
++        vllm_config: VllmConfig,
++        config: InferenceHSTUConfig,
++        layer_idx: int,
++    ) -> None:
++        super().__init__()
++
++        self._embedding_dim: int = config.hidden_size
++        self._linear_dim_per_head: int = config.head_dim
++        self._attention_dim_per_head: int = config.head_dim
++        self._eps = config.layernorm_epsilon
++        self._num_heads: int = config.num_heads
++
++        # 获取张量并行配置
++        self.tp_size = get_tensor_model_parallel_world_size()
++        self.tp_rank = get_tensor_model_parallel_rank()
++        self._num_heads_per_partition = self._num_heads // self.tp_size
++
++        self._split_arg_list = [
++            self._linear_dim_per_head * self._num_heads,
++            self._linear_dim_per_head * self._num_heads,
++            self._attention_dim_per_head * self._num_heads,
++            self._attention_dim_per_head * self._num_heads,
++        ]
++
++        dtype = (
++            torch.bfloat16
++            if config.bf16
++            else torch.float16
++            if config.fp16
++            else torch.float32
++        )
++        device = torch_npu.npu.current_device()
++
++        total_output_size = sum(self._split_arg_list)
++
++        # linear_uvqk
++        self._linear_uvqk = ColumnParallelFlashCommLinear(
++            input_size=self._embedding_dim,
++            output_size=total_output_size,
++            output_sizes=self._split_arg_list,
++            bias=True,
++            skip_bias_add=False,
++            tp_size=self.tp_size,
++            tp_rank=self.tp_rank,
++            params_dtype=dtype,
++            quant_config=None,
++            prefix=f"model.layers.{layer_idx}.attn.linear_uvqk",
++        )
++
++
++        for param in self._linear_uvqk.parameters():
++            param.requires_grad = False
++            param.copy_(torch.empty_like(param).uniform_(-0.5, 0.5))
++        self._linear_uvqk_weight = self._linear_uvqk.weight.T.contiguous()
++
++        # input norm
++        if config.learnable_input_layernorm:
++            self._input_layernorm_weight = torch.nn.Parameter(
++                torch.ones(self._embedding_dim, dtype=dtype, device=device),
++                requires_grad=False,
++            )
++            self._input_layernorm_bias = torch.nn.Parameter(
++                torch.zeros(self._embedding_dim, dtype=dtype, device=device),
++                requires_grad=False,
++            )
++        else:
++            self._input_layernorm_weight = None
++            self._input_layernorm_bias = None
++
++        self.rotary_emb = get_rope(
++            head_size=config.head_dim,
++            rotary_dim=config.head_dim,
++            # TODO fix hard code
++            max_position=10000 + 1024,
++            base=10000,
++        )
++
++        self._layer_name = f"model.layers.{layer_idx}.attn"
++
++        self.attn = Attention(
++            num_heads=self._num_heads_per_partition,
++            head_size=config.head_dim,
++            scale=1.0 / math.sqrt(config.head_dim),
++            num_kv_heads=self._num_heads_per_partition,
++            prefix=self._layer_name,
++        )
++
++    def forward(
++        self,
++        layer_input: torch.Tensor,
++        positions: torch.Tensor,
++    ):
++        normed_input = F.layer_norm(
++            layer_input,
++            normalized_shape=[self._embedding_dim],
++            weight=self._input_layernorm_weight,
++            bias=self._input_layernorm_bias,
++            eps=self._eps,
++        )
++
++        split_sizes = [
++            self._linear_dim_per_head * self._num_heads_per_partition,  # u
++            self._linear_dim_per_head * self._num_heads_per_partition,  # v
++            self._attention_dim_per_head * self._num_heads_per_partition,  # q
++            self._attention_dim_per_head * self._num_heads_per_partition,  # k
++        ]
++
++        mixed_uvqk, _ = self._linear_uvqk(normed_input)
++        mixed_uvqk = F.silu(mixed_uvqk)
++        (user, value, query, key) = torch.split(
++            mixed_uvqk,
++            split_sizes,
++            dim=-1,
++        )
++
++        attn_output = self.attn(query, key, value)
++        return attn_output, user
++
++
++class PagedHSTUInferLayer(torch.nn.Module):
++    def __init__(
++        self,
++        vllm_config: VllmConfig,
++        config: InferenceHSTUConfig,
++        layer_idx: int,
++    ):
++        super().__init__()
++        self.layer_idx = layer_idx
++        self._embedding_dim: int = config.hidden_size
++        # per head dim;
++        self._linear_dim_per_head: int = config.head_dim
++        self._attention_dim_per_head: int = config.head_dim
++
++        self._num_heads: int = config.num_heads
++
++        # 获取张量并行配置
++        self.tp_size = get_tensor_model_parallel_world_size()
++        self.tp_rank = get_tensor_model_parallel_rank()
++        self._num_heads_per_partition = self._num_heads // self.tp_size
++
++        self._eps = config.layernorm_epsilon
++        self._is_causal = config.is_causal
++        self._target_group_size = config.target_group_size
++        self._alpha = 1.0 / (self._attention_dim_per_head ** 0.5)
++        self._residual = config.residual
++
++        dtype = (
++            torch.bfloat16
++            if config.bf16
++            else torch.float16
++            if config.fp16
++            else torch.float32
++        )
++        device = torch_npu.npu.current_device()
++
++        self.self_attn = HstuAttention(
++            vllm_config=vllm_config,
++            config=config,
++            layer_idx=layer_idx
++        )
++
++        # output norm
++        self._output_layernorm_weight = torch.nn.Parameter(
++            torch.ones(
++                self._num_heads_per_partition * self.tp_size * self._linear_dim_per_head, dtype=dtype, device=device
++            ),
++            requires_grad=False,
++        )
++        self._output_layernorm_bias = torch.nn.Parameter(
++            torch.zeros(
++                self._num_heads_per_partition * self.tp_size * self._linear_dim_per_head, dtype=dtype, device=device
++            ),
++            requires_grad=False,
++        )
++
++        self._linear_proj = RowParallelFlashCommLinear(
++            input_size=self._linear_dim_per_head * config.num_heads,
++            output_size=self._embedding_dim,
++            tp_size=self.tp_size,
++            tp_rank=self.tp_rank,
++            bias=False,
++            skip_bias_add=False,
++            params_dtype=dtype,
++            quant_config=None,
++            prefix=f"model.layers.{layer_idx}.linear_proj",
++        )
++
++        for param in self._linear_proj.parameters():
++            param.requires_grad = False
++            param.copy_(torch.randn_like(param))
++
++        # ffn
++        self.has_ffn = config.has_ffn
++        if config.has_ffn:
++            self.norm_ffn = RMSNorm_npu(self._embedding_dim, self._eps)
++            self.feed_forward = FFN_npu_swiglu(
++                dim=self._embedding_dim,
++                hidden_dim=self._embedding_dim,
++                dropout=config.dropout_ratio,
++            )
++        self.use_moe = int(os.getenv("USE_MOE")) == 1
++        self.rank_local = get_tensor_model_parallel_rank()
++        if self.use_moe:
++            self.sparse_moe_linear = SparseMOE(
++                emb_dim=self._embedding_dim,
++                expert_number=int(os.getenv("MOE_EXPERT_TOTAL_NUM")),
++                top_k=int(os.getenv("MOE_EXPERT_ACT_NUM")),
++                tp_size = self.tp_size,
++                rank_local = self.rank_local,
++                dtype=dtype
++            )
++
++        max_num_tokens = vllm_config.scheduler_config.max_num_batched_tokens
++        self._input_buffer_ = torch.zeros(
++            max_num_tokens, self._num_heads * self._linear_dim_per_head,
++            dtype=dtype,
++            device=device,
++            requires_grad=False,
++        )
++
++        self._moe_input_buffer_ = torch.zeros(
++            max_num_tokens, self._num_heads * self._linear_dim_per_head,
++            dtype=dtype,
++            device=device,
++            requires_grad=False,
++        )
++
++        self._moe_input_buffer_ = torch.zeros(
++            max_num_tokens, self._num_heads * self._linear_dim_per_head,
++            dtype=dtype,
++            device=device,
++            requires_grad=False,
++        )
++
++        self._moe_output_buffer_ = torch.zeros(
++            max_num_tokens, self._num_heads * self._linear_dim_per_head,
++            dtype=dtype,
++            device=device,
++            requires_grad=False,
++        )
++
++        self._output_buffer_ = torch.zeros(
++            max_num_tokens, self._num_heads * self._linear_dim_per_head,
++            dtype=dtype,
++            device=device,
++            requires_grad=False,
++        )
++    
++    @torch.inference_mode()
++    def forward_input(
++        self,
++        num_tokens: int,
++        input_buffer: torch.Tensor,
++        position: torch.Tensor,
++    ) -> torch.Tensor:
++        layer_input = input_buffer[:num_tokens]
++        attn_output, user = self.self_attn(layer_input, position)
++
++        attn_output = attn_output.view(
++            -1, self._num_heads_per_partition * self._linear_dim_per_head
++        )
++
++        if self.tp_size > 1:
++            attn_output = tensor_model_parallel_all_gather(attn_output)
++        offset = self._linear_dim_per_head * self._num_heads_per_partition
++
++        parallel_input = user * F.layer_norm(
++            attn_output,
++            normalized_shape=[self._num_heads * self._linear_dim_per_head],
++            weight=self._output_layernorm_weight,
++            bias=self._output_layernorm_bias,
++            eps=self._eps,
++        )[:, self.rank_local * offset : (self.rank_local + 1) * offset]
++
++        layer_output, _  = self._linear_proj(parallel_input)
++        self._output_buffer_[:num_tokens] = layer_output
++        return self._output_buffer_[:num_tokens]
++
++    @torch.inference_mode()
++    def forward_moe(
++        self,
++        num_tokens: int,
++    ):
++        layer_output = self._moe_input_buffer_[:num_tokens]
++        if self.use_moe:
++            layer_output = self.sparse_moe_linear(layer_output)
++        self._moe_output_buffer_[:num_tokens] = layer_output
++
++    @torch.inference_mode()
++    def forward_output(
++        self,
++        num_tokens: int,
++        input_buffer: torch.Tensor
++    ):
++        layer_output = input_buffer[:num_tokens]
++        layer_input = self._input_buffer_[:num_tokens]
++        if self.has_ffn:
++            ffn_input, _ = self.norm_ffn(layer_output, layer_input if self._residual else None)
++            layer_output = self.feed_forward(ffn_input) + layer_output
++        else:
++            if self._residual:
++                torch.add(layer_output, layer_input, out=layer_output)
++        self._output_buffer_[:num_tokens] = layer_output
++        return self._output_buffer_[:num_tokens]
++    @torch.inference_mode()
++    def forward(
++        self,
++        layer_input: torch.Tensor,
++        position: torch.Tensor,
++    ) -> torch.Tensor:
++        attn_output, user = self.self_attn(layer_input, position)
++
++        attn_output = attn_output.view(
++            -1, self._num_heads_per_partition * self._linear_dim_per_head
++        )
++
++        if self.tp_size > 1:
++            attn_output = tensor_model_parallel_all_gather(attn_output)
++        offset = self._linear_dim_per_head * self._num_heads_per_partition
++
++        parallel_input = user * F.layer_norm(
++            attn_output,
++            normalized_shape=[self._num_heads * self._linear_dim_per_head],
++            weight=self._output_layernorm_weight,
++            bias=self._output_layernorm_bias,
++            eps=self._eps,
++        )[:, self.rank_local * offset : (self.rank_local + 1) * offset]
++
++        layer_output, _  = self._linear_proj(parallel_input)
++        if self.use_moe:
++            layer_output = self.sparse_moe_linear(layer_output)
++
++        if self.has_ffn:
++            ffn_input, _ = self.norm_ffn(layer_output, layer_input if self._residual else None)
++            layer_output = self.feed_forward(ffn_input) + layer_output
++        else:
++            if self._residual:
++                torch.add(layer_output, layer_input, out=layer_output)
++        print("layerout",layer_output.dtype,layer_output.shape)
++        return layer_output
++
++
++class InferenceRankingGR(torch.nn.Module):
++    def __init__(
++        self,
++        vllm_config: VllmConfig,
++        hstu_config: InferenceHSTUConfig,
++        task_config: RankingConfig,
++    ):
++        super().__init__()
++        self._device = torch_npu.npu.current_device()
++        self._vllm_config = vllm_config
++        self._hstu_config = hstu_config
++        self._task_config = task_config
++        self._num_layers = hstu_config.num_layers
++        self.use_aclgraph = vllm_config.additional_config.get('graph_model_compile_config', {}).get('use_aclgraph', None)
++        self.max_batch_size = getattr(vllm_config.model_config.hf_config, "max_batch_size", vllm_config.scheduler_config.max_num_seqs)
++        self.max_num_tokens = vllm_config.scheduler_config.max_num_batched_tokens
++        self.max_seq_len = vllm_config.model_config.hf_config.max_seq_len // self.max_batch_size
++
++        self._embedding_dim = hstu_config.hidden_size
++        for ebc_config in task_config.embedding_configs:
++            assert (
++                ebc_config.dim == self._embedding_dim
++            ), "hstu layer hidden size should equal to embedding dim"
++
++        self._logit_dim_list = [
++            layer_sizes[-1] for layer_sizes in task_config.prediction_head_arch
++        ]
++
++        self._embedding_collection = InferenceEmbedding(task_config.embedding_configs)
++        # temporary using a non-sharing GPU embedding
++        self._embedding_collection.to_empty(device=torch_npu.npu.current_device())
++
++        self.layers = torch.nn.ModuleList(
++            [
++                PagedHSTUInferLayer(vllm_config, hstu_config, layer_idx)
++                for layer_idx in range(self._hstu_config.num_layers)
++            ]
++        )
++        for name, param in self.layers.named_parameters():
++            print(f"{name}: 形状={param.shape}, 参数数量={param.numel()} type = {param.dtype}")
++
++        total_params = sum(param.numel() for name, param in self.layers.named_parameters())
++        print("====== 模型参数(不包含embdding) is  ", total_params, "  STRUCT IS ======", self.layers)
++
++        self.dtype = (
++            torch.bfloat16
++            if self._hstu_config.bf16
++            else torch.float16
++            if self._hstu_config.bf16
++            else torch.float32
++        )
++
++        self._dense_module = MLP(
++            self._embedding_dim,
++            task_config.prediction_head_arch[0],
++            task_config.prediction_head_act_type,
++            task_config.prediction_head_bias,
++            device=self._device,
++            dtype=self.dtype
++        )
++
++        self.layers.npu()
++        self._dense_module = self._dense_module.npu()
++
++        self._prefill_hstu_graph: Optional[Dict[int, Any]] = None   # type: ignore
++        self._attn_metadatas: Optional[Dict[int, Any]] = None       # type: ignore
++        self._capture_done = False
++        self._is_capturing = False
++    def bfloat16(self):
++        self.layers.bfloat16()
++        self._dense_module.bfloat16()
++        return self
++
++    def half(self):
++        self.layers.half()
++        self._dense_module.half()
++        return self
++
++    def forward_aclgraph(
++        self,
++        layer_input: torch.Tensor,
++        attn_metadata: AttentionMetadata,
++    ):
++        num_tokens = layer_input.shape[0]
++        forward_context: ForwardContext = get_forward_context()
++        layer_names = list(forward_context.no_compile_layers.keys())
++        bs = attn_metadata[layer_names[0]].query_lens.shape[0]
++        if bs not in self._prefill_hstu_graph:
++            batch_size_pow2 = 2 ** math.ceil(math.log2(bs))
++        else:
++            batch_size_pow2 = bs
++
++        max_seq_len = attn_metadata[layer_names[0]].max_query_len
++        print(f" - Target bs: {bs}, seq_len: {max_seq_len}")
++        if max_seq_len not in self._prefill_hstu_graph[batch_size_pow2]:  # type: ignore
++            all_seq_lens = list(self._prefill_hstu_graph[batch_size_pow2].keys())
++
++            def binary_search(sorted_list, target):
++                left, right = 0, len(sorted_list)
++                while left < right:
++                    mid = (left + right) // 2
++                    if sorted_list[mid] < target:
++                        left = mid + 1
++                    else:
++                        right = mid
++                
++                if left < len(sorted_list):
++                    return sorted_list[left]
++                else:
++                    return None
++            
++            max_seq_len_padded = binary_search(all_seq_lens, max_seq_len)
++        else:
++            max_seq_len_padded = max_seq_len
++        num_tokens_pow2 = batch_size_pow2 * max_seq_len_padded
++
++        if max_seq_len_padded is None:
++            raise ValueError(f"forward_aclgraph max_seq_len = {max_seq_len} found None in captured max_seq_len list!")
++
++        print(f" - Select bs: {batch_size_pow2}, seq_len: {max_seq_len_padded}, num_tokens: {num_tokens_pow2}")
++        if attn_metadata[layer_names[0]].attn_state != AscendAttentionState.DecodeOnly:
++            self.layers[0]._input_buffer_[:num_tokens].copy_(layer_input)
++            self._copy_replay_data(attn_metadata[layer_names[0]], self._attn_metadatas[batch_size_pow2][max_seq_len_padded])
++            with set_forward_context(self._attn_metadatas[batch_size_pow2][max_seq_len_padded], self._vllm_config):
++                for idx in range(0, self._num_layers + 1):
++                    self._prefill_hstu_graph[batch_size_pow2][max_seq_len_padded][idx].replay()
++                    if idx < self._num_layers:
++                        layer_name = layer_names[idx]
++                        layer = forward_context.no_compile_layers[layer_name]
++                        kv_cache_attr = getattr(layer, 'kv_cache', None)
++                        if kv_cache_attr is not None:
++                            kv_cache_layer = kv_cache_attr[forward_context.virtual_engine]
++                            maybe_save_kv_by_layer_to_connector(layer_name, idx, kv_cache_layer, attn_metadata[layer_name])
++                    if idx < self._num_layers:
++                        self.layers[idx].forward_moe(batch_size_pow2 * max_seq_len_padded)
++        else:
++            self.layers[0]._input_buffer_[:num_tokens].copy_(layer_input)
++            self._copy_replay_data(attn_metadata[layer_names[0]], self._attn_metadatas[batch_size_pow2][max_seq_len_padded])
++            # replay decode graph
++            with set_forward_context(self._attn_metadatas[batch_size_pow2][max_seq_len_padded], self._vllm_config):
++                for idx in range(0, self._num_layers + 1):
++                    if idx < self._num_layers:
++                        start_load_kv_by_layer_from_connector(forward_context, layer_names[idx])
++
++                    self._decode_hstu_graph[batch_size_pow2][max_seq_len_padded][idx].replay()
++
++                    if idx < self._num_layers:
++                        self.layers[idx].forward_moe(batch_size_pow2 * max_seq_len_padded)
++
++
++        return self.layers[-1]._output_buffer_[:num_tokens]
++		
++    def forward(
++        self,
++        input_ids: torch.Tensor,
++        positions: torch.Tensor,
++        kv_caches: List[torch.Tensor],
++        attn_metadata: AttentionMetadata,
++        intermediate_tensors: Optional[IntermediateTensors],
++    ):
++        is_dummy = False
++        if attn_metadata is not None and self.use_aclgraph and not self._capture_done and not self._is_capturing:
++            print(" - First in forward with metadata, start capture_model...")
++            is_dummy = True
++            self.capture_model(attn_metadata)
++			
++        with torch.inference_mode():
++            with record_function(f"## embeddings ##"):
++                embeddings = self._embedding_collection(input_ids)
++                embeddings = embeddings.to(self.dtype)
++            with record_function(f"## hstu_block ##"):
++                input = embeddings
++                if self.use_aclgraph and not is_dummy and attn_metadata is not None:
++                    input = self.forward_aclgraph(input, attn_metadata)
++
++                else:
++                    forward_context: ForwardContext = get_forward_context()
++                    layer_names = list(forward_context.no_compile_layers.keys())
++
++                    # if attn_metadata is not None and attn_metadata[layer_names[0]].attn_state == AscendAttentionState.DecodeOnly:
++                    #     start_load_kv_by_layer_from_connector(forward_context, layer_names[0])
++
++                    for index, hstu_layer in enumerate(self.layers):
++                        # decode forward前，H2D，load kv cache by layer
++                        if attn_metadata is not None and attn_metadata[layer_names[index]].attn_state == AscendAttentionState.DecodeOnly:
++                            start_load_kv_by_layer_from_connector(forward_context, layer_names[index])
++
++                        input = hstu_layer(input, positions)
++                        # prefill forward完成后，D2H，save kv cache
++                        if attn_metadata is not None and attn_metadata[layer_names[index]].attn_state == AscendAttentionState.PrefillNoCache:
++                            layer_name = layer_names[index]
++                            layer = forward_context.no_compile_layers[layer_name]
++                            kv_cache_attr = getattr(layer, 'kv_cache', None)
++                            if kv_cache_attr is not None:
++                                kv_cache_layer = kv_cache_attr[forward_context.virtual_engine]
++                                maybe_save_kv_by_layer_to_connector(layer_name, index, kv_cache_layer, attn_metadata[layer_name])
++
++            #  L2 归一化，缩放到单位长度
++            hstu_output = input / torch.linalg.norm(
++                input, ord=2, dim=-1, keepdim=True
++            ).clamp(min=1e-6)
++
++            hstu_output = self._dense_module(hstu_output)
++            # print(f" - GR hstu_output: {hstu_output}")
++            return hstu_output
++
++    def _copy_replay_data(self, metadata, target_metadata):
++        bs = metadata.query_lens.shape[0]
++        self.query_lens[: bs].copy_(metadata.query_lens)
++        self.query_start[: bs + 1].copy_(metadata.additional_metadata["query_start"])
++
++        if metadata.attn_state == AscendAttentionState.PrefillNoCache:
++            self.num_candidates[: bs].copy_(metadata.additional_metadata["num_candidates"])
++        if metadata.attn_state == AscendAttentionState.DecodeOnly:
++            self.seq_offset_k[: bs + 1].copy_(metadata.additional_metadata["seq_offset_k"])
++            self.seq_offset_t[: bs + 1].copy_(metadata.additional_metadata["seq_offset_t"])
++            self.page_ids[: metadata.additional_metadata["page_ids"].shape[0]].copy_(metadata.additional_metadata["page_ids"])
++            self.page_offsets[: bs + 1].copy_(metadata.additional_metadata["page_offsets"])
++            self.last_page_len[: bs].copy_(metadata.additional_metadata["last_page_len"])
++
++        target_metadata.max_query_len = metadata.max_query_len
++
++        if metadata.attn_state == AscendAttentionState.DecodeOnly:
++            target_metadata.additional_metadata["max_seq_len_k"] = metadata.additional_metadata["max_seq_len_k"]
++
++
++    def _build_metadata_by_bs_and_num_token(
++        self,
++        bs,
++        num_tokens,
++        attn_state,
++    ):
++        _attn_metadata = AscendMetadata(
++            num_actual_tokens=num_tokens,
++            block_tables=self.block_tables,
++            query_lens=self.query_lens[:bs],
++            query_lens_list=None,
++            max_query_len=num_tokens,
++            seq_lens=None,
++            seq_lens_list=None,
++            slot_mapping=None,
++            slot_indices=None,
++            is_only_prefill=False,
++            attn_state=attn_state,
++            cos=self.cos,
++            sin=self.sin,
++            is_pd_seperate_d=self.is_pd_seperate_d,
++            additional_metadata={
++                "query_start": self.query_start[: bs + 1],
++                "max_seq_len_k": min(self.max_seq_len + 800, 20480),
++                "seq_offset_k": self.seq_offset_k[: bs + 1],
++                "seq_offset_t": self.seq_offset_t[: bs + 1],
++                "page_offsets": self.page_offsets[: bs + 1],
++                "page_ids": self.page_ids,
++                "last_page_len": self.last_page_len[: bs],
++                "num_candidates": self.num_candidates[: bs],
++                "model_type": "hstu_inference_ranking"
++            }
++        )
++
++        return _attn_metadata
++
++    def _capture_model(
++        self,
++        bs,
++        num_tokens,
++        max_seq_len,
++        prefill_max_graph,
++        decode_max_graph,
++    ):
++        if self._prefill_hstu_graph is None:
++            self._prefill_hstu_graph = {}
++            self._decode_hstu_graph = {}
++        if bs not in self._prefill_hstu_graph:
++            self._prefill_hstu_graph[bs] = {}
++            self._decode_hstu_graph[bs] = {}
++        if max_seq_len in self._prefill_hstu_graph[bs] and max_seq_len in self._decode_hstu_graph[bs]:
++            return self._prefill_hstu_graph[bs][max_seq_len], self._decode_hstu_graph[bs][max_seq_len]
++
++        attn_metadata = self._build_metadata_by_bs_and_num_token(bs, num_tokens, AscendAttentionState.PrefillNoCache)
++        if self._attn_metadatas is None:
++            self._attn_metadatas = {}
++        if bs not in self._attn_metadatas:
++            self._attn_metadatas[bs] = {}
++        self._attn_metadatas[bs][max_seq_len] = attn_metadata
++
++
++
++
++        # Prefill捕获
++        capture_input_buffer = [self.layers[0]._input_buffer_] + [
++            self.layers[layer_idx]._output_buffer_
++            for layer_idx in range(self._num_layers)
++        ]
++
++        prefill_graphs = [torch_npu.npu.NPUGraph() for _ in range(self._num_layers + 1)]
++        # 第0层
++        with torch_npu.npu.graph(prefill_graphs[0], pool=prefill_max_graph):
++            with set_forward_context(attn_metadata, self._vllm_config):
++                    self.layers[0].forward_input(
++                        num_tokens,
++                        capture_input_buffer[0],
++                        None,
++                    )
++
++        if prefill_max_graph is None:
++                prefill_max_graph = prefill_graphs[0].pool()
++
++        for idx in range(1, self._num_layers):
++            with torch_npu.npu.graph(prefill_graphs[idx], pool=prefill_max_graph):
++                with set_forward_context(attn_metadata, self._vllm_config):
++                    self.layers[idx - 1].forward_output(
++                        num_tokens,
++                        self.layers[idx - 1]._moe_output_buffer_,
++                    )
++                    self.layers[idx].forward_input(
++                        num_tokens,
++                        capture_input_buffer[idx],
++                        None,
++                    )
++
++        with torch_npu.npu.graph(prefill_graphs[-1], pool=prefill_max_graph):
++            with set_forward_context(attn_metadata, self._vllm_config):
++                    self.layers[-1].forward_output(
++                        num_tokens,
++                        self.layers[-1]._moe_output_buffer_,
++                    )
++            
++        self._prefill_hstu_graph[bs][max_seq_len] = prefill_graphs
++
++        decode_attn_metadata = self._build_metadata_by_bs_and_num_token(bs, num_tokens, AscendAttentionState.DecodeOnly)
++        self._attn_metadatas[bs][max_seq_len] = decode_attn_metadata
++        decode_graphs = [torch_npu.npu.NPUGraph() for _ in range(self._num_layers + 1)]
++        with torch_npu.npu.graph(decode_graphs[0], pool=decode_max_graph):
++            with set_forward_context(decode_attn_metadata, self._vllm_config):
++                    self.layers[0].forward_input(
++                        num_tokens,
++                        capture_input_buffer[0],
++                        None,
++                    )
++
++        if decode_max_graph is None:
++            decode_max_graph = decode_graphs[0].pool()
++
++        for idx in range(0, self._num_layers - 1):
++            with torch_npu.npu.graph(decode_graphs[idx + 1], pool=decode_max_graph):
++                with set_forward_context(decode_attn_metadata, self._vllm_config):
++                    self.layers[idx - 1].forward_output(
++                        num_tokens,
++                        self.layers[idx - 1]._moe_output_buffer_,
++                    )
++                    self.layers[idx].forward_input(
++                        num_tokens,
++                        capture_input_buffer[idx],
++                        None,
++                    )
++
++        with torch_npu.npu.graph(decode_graphs[-1], pool=decode_max_graph):
++            with set_forward_context(decode_attn_metadata, self._vllm_config):
++                    self.layers[-1].forward_output(
++                        num_tokens,
++                        self.layers[-1]._moe_output_buffer_,
++                    )
++
++        self._decode_hstu_graph[bs][max_seq_len] = decode_graphs
++
++
++        
++        print(
++            "Capture graphs for batch_size = {0} and max_seq_len = {1} and num_tokens = {2}".format(
++                bs, max_seq_len, num_tokens
++            )
++        )
++        
++        return prefill_graphs,decode_graphs
++
++    def capture_model(self, attn_metadata):
++        print(f" - Start to capture_model...")
++        self._is_capturing = True
++        first_metadata = next(iter(attn_metadata.values()))
++        self.block_tables = first_metadata.block_tables
++        self.query_lens = torch.ones(self.max_batch_size, dtype=torch.int64, device=self._device)
++        self.query_start = torch.arange(self.max_batch_size + 1, dtype=torch.int64, device=self._device)
++        self.seq_offset_k = torch.arange(self.max_batch_size + 1, dtype=torch.int64, device=self._device)
++        self.seq_offset_t = torch.arange(self.max_batch_size + 1, dtype=torch.int64, device=self._device)
++        self.page_offsets = torch.arange(self.max_batch_size + 1, dtype=torch.int64, device=self._device)
++        self.page_ids = torch.ones(self.max_seq_len, dtype=torch.int64, device=self._device)
++        self.last_page_len = torch.ones(self.max_batch_size, dtype=torch.int64, device=self._device)
++        self.num_candidates = torch.zeros(self.max_batch_size, dtype=torch.int64, device=self._device)
++        self.cos = first_metadata.cos
++        self.sin = first_metadata.sin
++        self.is_pd_seperate_d = first_metadata.is_pd_seperate_d
++
++        bs_list = [2 ** i for i in range((self.max_batch_size - 1).bit_length() + 1)]
++        seqlen_list = self._vllm_config.model_config.hf_config.captured_tokens_list
++
++        print("Graph setup configs:")
++        print("  Max batch size:", self.max_batch_size)
++        print("  Max num tokens:", self.max_num_tokens)
++        print("  Max seq len:", self.max_seq_len)
++        print("  Batch size:", bs_list)
++        print("  Length per sequence", seqlen_list)
++
++        pd_max,d_max = self._capture_model(
++            bs=self.max_batch_size,
++            num_tokens=self.max_batch_size * self.max_seq_len,
++            max_seq_len=self.max_seq_len,
++            prefill_max_graph=None,
++            decode_max_graph=None,
++        )
++
++        for bs in bs_list:
++            for seqlen in seqlen_list:
++                if seqlen > self.max_seq_len:
++                    break
++                num_tokens = seqlen * bs
++                if num_tokens > self.max_num_tokens:
++                    break
++                self._capture_model(
++                    bs,
++                    num_tokens,
++                    seqlen,
++                    pd_max[0].pool(),
++                    d_max[0].pool(),
++                )
++        self._capture_done = True
++        print(" - Capture finished...")
++
++
++# @support_torch_compile
++
++class HSTUInferenceForCausalLM(torch.nn.Module):
++    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
++        super().__init__()
++        self.config: HSTUInferenceRankingConfig = vllm_config.model_config.hf_config
++        self.logits_processor = LogitsProcessor(self.config.vocab_size)
++        self.model = InferenceRankingGR(
++            vllm_config=vllm_config,
++            hstu_config=self.config.hstu_config,
++            task_config=self.config.task_config,
++        )
++        for name, param in self.model.named_parameters():
++            print(f"{name}: 形状={param.shape}, 参数数量={param.numel()} type = {param.dtype}")
++
++    def forward(
++        self,
++        input_ids: torch.Tensor,
++        positions: torch.Tensor,
++        kv_caches: List[torch.Tensor] = None,
++        attn_metadata: Union[AttentionMetadata, dict] = None,
++        selected_indices: Optional[torch.Tensor] = None,
++        intermediate_tensors: Optional[IntermediateTensors] = None,
++        inputs_embeds = None,
++        **kwargs
++    ) -> Union[torch.Tensor, IntermediateTensors]:
++        # TODO input_ids经过embedding处理下升维，以及切分candidate
++        # TODO 多batch可以通过attn_metadata的seq_lens或者positions判断长度进行切分
++
++        hidden_states = self.model(input_ids, positions, kv_caches,
++                                   attn_metadata, intermediate_tensors)
++        return hidden_states
++
++    def compute_logits(
++        self,
++        hidden_states: torch.Tensor,
++        sampling_metadata: SamplingMetadata,
++    ) -> Optional[torch.Tensor]:
++        # TODO 参考vllm对于logit的计算，可以修改sampling_metadata满足生成一个token的需求
++        # return self.model._dense_module(hidden_states)
++        return hidden_states
++
++    def load_weights(
++        self,
++        weights: Iterable[tuple[str, torch.Tensor]]
++    ) -> set[str]:
++        # use random model
++        if self.config.use_random_model:
++            return None
++        # 权重加载逻辑保持不变
++        params_dict = dict(self.model.named_parameters())
++        loaded_weights = set()
++        for name, loaded_weight in weights:
++            name = name.replace("model.", "", 1)
++            if name in params_dict:
++                params_dict[name].data.copy_(loaded_weight)
++                loaded_weights.add("model." + name)
++
++        for name in params_dict:
++            if any(keyword in name for keyword in {"norm_ffn", "feed_forward"}):
++                loaded_weights.add("model." + name)
++        return loaded_weights
++
++def start_load_kv_by_layer_from_connector(forward_context, layer_name: str):
++    if not has_kv_transfer_group() or not is_v1_kv_transfer_group():
++        return
++
++    connector = get_kv_transfer_group()
++    attn_metadata = forward_context.attn_metadata
++    if attn_metadata is None:
++        return
++
++    layer_names = list(forward_context.no_compile_layers.keys())
++    layer_name_index = layer_names.index(layer_name)
++
++    with torch_npu.npu.stream(connector._onload_stream):
++        connector.start_load_kv_by_layer(forward_context, layer_name)
++        connector._onload_history_kv_events[layer_name_index].record(connector._onload_stream)
++
++    connector._onload_history_kv_events[layer_name_index].wait(torch_npu.npu.current_stream())
++
++
++def maybe_save_kv_by_layer_to_connector(layer_name: str, layer_index: int, kv_layer: torch.Tensor, attn_metadata: "AttentionMetadata"):
++    if not has_kv_transfer_group() or not is_v1_kv_transfer_group():
++        return
++
++    connector = get_kv_transfer_group()
++
++    with torch_npu.npu.stream(connector._offload_stream):
++        connector.save_kv_layer(layer_name, kv_layer, attn_metadata)
++        connector._offload_history_kv_events[layer_index].record(connector._offload_stream)
+diff --git a/omni/models/hstu/hstu_config.py b/omni/models/hstu/hstu_config.py
+new file mode 100644
+index 00000000..a0c7306f
+--- /dev/null
++++ b/omni/models/hstu/hstu_config.py
+@@ -0,0 +1,276 @@
++# SPDX-License-Identifier: Apache-2.0
++import dataclasses
++from enum import Enum, unique
++from typing import Any, Dict, Iterable, List, Optional, Union, cast, Optional, Tuple
++from dataclasses import dataclass
++import torch
++from transformers import PretrainedConfig
++
++@dataclass
++class InferenceEmbeddingConfig:
++    feature_names: List[str]
++    table_name: str
++    vocab_size: int
++    dim: int
++    use_dynamicemb: bool
++
++
++@dataclass
++class PositionEncodingConfig:
++    num_position_buckets: int
++    num_time_buckets: int
++    use_time_encoding: bool
++
++
++@dataclass
++class HSTUPreprocessingConfig:
++    item_embedding_dim: int
++    contextual_embedding_dim: int
++
++
++@unique
++class HSTULayerType(Enum):
++    FUSED = "FUSED"
++    NATIVE = "NATIVE"
++    DEBUG = "DEBUG"
++
++
++@unique
++class KernelBackend(Enum):
++    TRITON = "TRITON"
++    PYTORCH = "PYTORCH"
++    CUTLASS = "CUTLASS"
++
++
++@dataclass
++class HSTUConfig():
++
++    hstu_preprocessing_config: Optional[HSTUPreprocessingConfig] = None
++    position_encoding_config: Optional[PositionEncodingConfig] = None
++    is_causal: bool = True
++    enable_relative_attention_bias: bool = False
++
++    kernel_backend: KernelBackend = KernelBackend.CUTLASS
++    # TODO deprecate FUSED
++    hstu_layer_type: HSTULayerType = HSTULayerType.FUSED
++
++    target_group_size: int = 1
++    learnable_input_layernorm: bool = True
++    # whether to add residual connection
++    residual: bool = True
++    # whether to use async wgrad
++    async_wgrad: bool = False
++    async_wgrad_stream: Optional[torch.cuda.Stream] = None
++    async_wgrad_event: Optional[torch.cuda.Event] = None
++    # whether to recompute input layernorm
++    recompute_input_layernorm: bool = False
++    recompute_input_silu: bool = False
++    # whether is the inference mode
++    is_inference: bool = False
++    add_uvqk_bias: bool = True
++    fuse_norm_mul_dropout: bool = True
++
++    def __post_init__(self):
++        super().__post_init__()
++
++
++@dataclass
++class ShardedEmbeddingConfig:
++    feature_names: List[str]
++    table_name: str
++    vocab_size: int
++    dim: int
++    sharding_type: str
++
++    def __post_init__(self):
++        assert self.sharding_type in [
++            "data_parallel",
++            "model_parallel",
++        ], "sharding type should be data_parallel or model_parallel"
++
++
++@dataclass
++class BaseTaskConfig:
++    embedding_configs: List[InferenceEmbeddingConfig]
++
++    user_embedding_norm: str = "l2_norm"
++    item_l2_norm: bool = False
++
++    def __post_init__(self):
++        table_names = [emb_config.table_name for emb_config in self.embedding_configs]
++        assert len(set(table_names)) == len(
++            table_names
++        ), f"duplicate table_names in embedding {table_names}"
++
++
++@dataclass
++class RankingConfig(BaseTaskConfig):
++    prediction_head_arch: List[int] = cast(List[int], None)
++    prediction_head_act_type: str = "relu"
++    prediction_head_bias: bool = True
++    num_tasks: int = 1
++    eval_metrics: Tuple[str, ...] = ("AUC",)
++
++    def __post_init__(self):
++        assert (
++            self.prediction_head_arch is not None
++        ), "Please provide prediction head arch"
++        assert isinstance(
++            self.prediction_head_arch, list
++        ), "prediction_head_arch should be a list"
++        assert isinstance(
++            self.prediction_head_act_type, str
++        ), "prediction_head_act_type should be a str"
++        assert isinstance(
++            self.prediction_head_bias, bool
++        ), "prediction_head_bias should be a bool"
++
++
++@dataclass
++class InferenceHSTUConfig:
++    hidden_size: int
++    num_layers: int
++    num_heads: int
++    head_dim: int
++    layernorm_epsilon: float = 1e-5
++    bf16: bool = True
++    fp16: bool = False
++
++    learnable_input_layernorm: bool = True
++    residual: bool = True
++    is_causal: bool = True
++    target_group_size: int = 1
++    position_encoding_config: Optional[PositionEncodingConfig] = None
++    hstu_preprocessing_config: Optional[HSTUPreprocessingConfig] = None
++    has_ffn: Optional[bool] = False
++    dropout_ratio: Optional[float] = 0.0
++    rab: Optional[bool] = False
++
++    def __post_init__(self):
++        assert self.is_causal
++        assert self.target_group_size == 1
++
++def get_inference_hstu_config(
++    hidden_size: int,
++    num_layers: int,
++    num_attention_heads: int,
++    head_dim: int,
++    norm_epsilon=1e-5,
++    dtype: torch.dtype = torch.bfloat16,
++    learnable_input_layernorm: bool = True,
++    residual: bool = True,
++    is_causal: bool = True,
++    target_group_size: int = 1,
++    position_encoding_config: Optional[PositionEncodingConfig] = None,
++    has_ffn: Optional[bool] = False,
++    dropout_ratio: Optional[float] = 0.0,
++    rab: Optional[bool] = False,
++) -> InferenceHSTUConfig:
++
++    is_bf16 = dtype == torch.bfloat16
++    is_fp16 = dtype == torch.float16
++    return InferenceHSTUConfig(  # type: ignore
++        hidden_size=hidden_size,
++        num_layers=num_layers,
++        num_heads=num_attention_heads,
++        head_dim=head_dim,
++        layernorm_epsilon=norm_epsilon,
++        bf16=is_bf16,
++        fp16=is_fp16,
++        learnable_input_layernorm=learnable_input_layernorm,
++        residual=residual,
++        is_causal=is_causal,
++        target_group_size=target_group_size,
++        position_encoding_config=position_encoding_config,
++        has_ffn=has_ffn,
++        dropout_ratio=dropout_ratio,
++        rab=rab,
++    )
++
++
++class HSTUInferenceRankingConfig(PretrainedConfig):
++    model_type = "hstu_inference_ranking"
++    hstu_config: InferenceHSTUConfig
++    task_config: RankingConfig
++
++    feature_to_max_seqlen: Dict[str, int]
++    contextual_feature_names: List[str]
++    item_feature_name: str
++    action_feature_name: Optional[str]
++    max_num_candidates: int
++    use_random_model: bool
++    hidden_size: int
++    vocab_size: int
++
++    def __init__(self,
++                 hstu_config: Optional[Dict[str, Any]] = None,
++                 task_config: Optional[Dict[str, Any]] = None,
++                 feature_to_max_seqlen: Optional[Dict[str, int]] = None,
++                 contextual_feature_names: Optional[List[str]] = None,
++                 item_feature_name: Optional[str] = None,
++                 action_feature_name: Optional[str] = None,
++                 max_num_candidates: Optional[int] = None,
++                 max_num_users: Optional[int] = None,
++                 use_random_model: Optional[bool] = None,
++                 hidden_size: Optional[int] = None,
++                 vocab_size: Optional[int] = None,
++                 **kwargs):
++        super().__init__(**kwargs)
++        if hstu_config is None:
++            hstu_config_dict = {
++                "hidden_size": 1024,
++                "num_layers": 8,
++                "num_attention_heads": 4,
++                "head_dim": 256,
++            }
++        else:
++            hstu_config_dict = hstu_config
++        dtype_str = hstu_config_dict.get("dtype")
++        if dtype_str == "bfloat16":
++            hstu_config_dict["dtype"] = torch.bfloat16
++        elif dtype_str == "float16":
++            hstu_config_dict["dtype"] = torch.float16
++        elif dtype_str == "float32":
++            hstu_config_dict["dtype"] = torch.float32
++        elif dtype_str is not None:
++            raise ValueError(f"Unsupported dtype string '{dtype_str}' in config.json")
++        self.hstu_config = get_inference_hstu_config(**hstu_config_dict)
++
++        if task_config is None:
++            task_config_dict = {
++                "embedding_configs": [], # 默认可以为空列表
++                "prediction_head_arch": [[128, 1]] # 至少需要一个任务的arch
++            }
++        else:
++            task_config_dict = task_config.copy()
++        embedding_configs_objects = [
++            InferenceEmbeddingConfig(**config_dict) for config_dict in task_config_dict.get("embedding_configs", [])
++        ]
++        task_config_dict["embedding_configs"] = embedding_configs_objects
++        self.task_config = RankingConfig(**task_config_dict)
++
++        self.feature_to_max_seqlen = feature_to_max_seqlen
++        self.contextual_feature_names = contextual_feature_names
++        self.item_feature_name = item_feature_name
++        self.action_feature_name = action_feature_name
++        self.max_num_users = max_num_users
++        self.max_num_candidates = max_num_candidates
++        self.use_random_model = use_random_model
++        self.hidden_size = hidden_size
++        self.vocab_size = vocab_size
++
++    def to_dict(self) -> Dict[str, Any]:
++        output = super().to_dict()
++        output["hstu_config"] = dataclasses.asdict(self.hstu_config)
++        output["task_config"] = dataclasses.asdict(self.task_config)
++
++        if "dtype" in output["hstu_config"] and isinstance(output["hstu_config"]["dtype"], torch.dtype):
++             output["hstu_config"]["dtype"] = str(output["hstu_config"]["dtype"]).replace("torch.", "")
++
++        output["feature_to_max_seqlen"] = self.feature_to_max_seqlen
++        output["contextual_feature_names"] = self.contextual_feature_names
++        output["item_feature_name"] = self.item_feature_name
++        output["action_feature_name"] = self.action_feature_name
++        output["max_num_users"] = self.max_num_users
++        output["max_num_candidates"] = self.max_num_candidates
++        return output
+\ No newline at end of file
+diff --git a/omniinfer.patch b/omniinfer.patch
+new file mode 100644
+index 00000000..e69de29b
