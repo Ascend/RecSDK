@@ -35,7 +35,7 @@ Rec SDK软件包可以通过[Rec SDK用户指南](https://www.hiascend.com/docum
 │   └── mx_rec-{version}-py3-none-linux_x86_64.whl  # version为版本号
 └── version.info
 ```
-其中，tf1_whl和tf2_whl目录下分别是适配tf1和tf2的Rec SDK软件包，按照自己需要选择其中一个进行安装即可（用pip/pip3 install 软件包这种方式进行安装）。
+其中，tf1_whl和tf2_whl目录下分别是适配tensorflow1.15.0和tensorflow2.6.5的Rec SDK软件包，运行DCNv2模型需安装tf1目录下的软件包（用pip/pip3 install 软件包这种方式进行安装）。
 确认安装Rec SDK的目录，比如Rec SDK安装在 /usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec和rec_sdk_common目录下。
 
 ## 4.运行DCNv2模型
