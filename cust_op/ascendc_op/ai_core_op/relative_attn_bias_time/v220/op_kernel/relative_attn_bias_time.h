@@ -228,12 +228,11 @@ public:
         Init(args);
         DataCopyInTsw();
         LocalTensor<FloatType> tsw = queTimestampsWeights.DeQue<FloatType>();
-
+        SequenceParams params[MAX_SEQ_CNT];
         for (int offset = 0; offset < processRowLen; offset += stride) {
             int rowOffset = offset + startIndex;
             int rowCnt = stride > (processRowLen - offset) ? (processRowLen - offset) : stride;
 
-            SequenceParams params[MAX_SEQ_CNT];
             FillSeqParams(params, rowOffset, rowCnt);
             DataCopyIn(params, rowCnt);
             ComputeBucketTimestamps(params, rowCnt);

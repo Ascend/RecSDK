@@ -6,6 +6,7 @@
  */
 
 #include <cmath>
+#include <algorithm>
 
 #include "relative_attn_bias_time_tiling.h"
 #include "register/op_def_registry.h"
@@ -39,6 +40,7 @@ constexpr int DIM5 = 5;
 constexpr int MAX_NUM_LAYER = 20;
 constexpr int MAX_NUM_BUCKET = 128;
 constexpr int MAX_SEQ_LEN = 4300;
+constexpr int MAX_SEQ_CNT = 256;
 
 namespace optiling {
 static ge::graphStatus TimeTilingFunc(RelativeAttnBiasTimeTilingData& tilingData, gert::TilingContext* context)
@@ -123,6 +125,13 @@ static ge::graphStatus TimeTilingFunc(RelativeAttnBiasTimeTilingData& tilingData
     // 重新计算stride长度
     stride = (ub - maxBuff) / (sizeof(float) + tsSize) / alignSeqLen;
     tilingData.set_stride(stride);
+    size_t coreNum = ascendPlatform.GetCoreNumAiv();
+    int64_t rowCnt =
+        std::min(static_cast<int64_t>(stride), batchsize * s / static_cast<int64_t>(coreNum) +
+                                                   ((batchsize * s) % static_cast<int64_t>(coreNum) == 0 ? 0 : 1));
+    OPS_LOG_E_IF(rowCnt <= 0 || rowCnt > MAX_SEQ_CNT, context, return ge::GRAPH_FAILED,
+                 "[ERROR] rowCnt expects a value in the range [1, %d], but the actual value is %lld.", MAX_SEQ_CNT,
+                 rowCnt);
     return ge::GRAPH_SUCCESS;
 }
 
