@@ -31,21 +31,21 @@
 import numpy as np
 
 
-def reverse_sequence_3d_np(input, sql_lengths):
+def reverse_sequence_3d_np(input, seq_lengths):
     batch_size, max_seq_len, data_dim = input.shape
     out = input.copy()
     for b in range(batch_size):
-        len_b = sql_lengths[b]
+        len_b = seq_lengths[b]
         if len_b > 0:
             out[b, :len_b] = input[b, :len_b][::-1]  # 只翻转前 len_b 个向量
     return out
 
 
 input_data = np.random.randn(3, 5, 4).astype(np.float32)
-sql_lengths_data = np.array([3, 3, 4])
-output = reverse_sequence_3d_np(input_data, sql_lengths_data)
+seq_lengths_data = np.array([3, 3, 4])
+output = reverse_sequence_3d_np(input_data, seq_lengths_data)
 print(input_data)
-print(sql_lengths_data)
+print(seq_lengths_data)
 print(output)
 ```
 
@@ -69,7 +69,7 @@ input_data = [[[ 1.2113594  -0.560688   -1.6109774  -1.1561779 ]
   [ 0.93745583 -1.4980866   1.0589588  -1.0733755 ]
   [ 1.25606     0.52386993  1.757404   -0.3014637 ]
   [-0.21574971  0.0192219   1.9159212  -2.7253265 ]]]
-sql_lengths_data = [3 3 4]
+seq_lengths_data = [3 3 4]
 ```
 
 输出：
@@ -96,13 +96,15 @@ output = [[[-0.11920442  1.9207919  -0.46677026 -1.7571291 ]
 
 # 算子输入与输出
 
-| 名称          | 输入/输出 | 数据类型                           | 数据格式                                | 范围                                                                  | 说明                                               |
-|-------------|-------|--------------------------------|-------------------------------------|---------------------------------------------------------------------|--------------------------------------------------|
-| input       | 输入    | bfloat16/float16/float32/int64 | [batch_size, max_seq_len, data_dim] | batch_size范围:[1,10240]，max_seq_len范围：[1,102400]，data_dim范围：[1,1024] | 仅支持三维tensor。逆序是基于max_seq_len所在维度进行逆序。            |
-| seq_lengths | 输入    | int32/int64                    | [batch_size]                        | 长度需和input的batch_size维度相同                                            | 仅支持一维tensor。<br>tensor内元素需用户自行保证合法性，否则可能导致算子执行失败 |
+| 名称          | 输入/输出 | 数据类型                           | 数据格式                                | 范围                                                                  | 说明                                                                                     |
+|-------------|-------|--------------------------------|-------------------------------------|---------------------------------------------------------------------|----------------------------------------------------------------------------------------|
+| input       | 输入    | bfloat16/float16/float32/int64 | [batch_size, max_seq_len, data_dim] | batch_size范围:[1,10240]，max_seq_len范围：[1,102400]，data_dim范围：[1,1024] | 仅支持三维tensor。逆序是基于max_seq_len所在维度进行逆序。<br> 由于torch中整型数据类型不支持自动求导，因此input类型为int64时仅支持前向。 |
+| seq_lengths | 输入    | int32/int64                    | [batch_size]                        | 长度需和input的batch_size维度相同                                            | 仅支持一维tensor。<br>tensor内元素需用户自行保证合法性，否则可能导致算子执行失败                                       |
+
+> 注：由于设备显存大小限制，input输入数据shape每一维都取较大的值时可能会因内存不足而执行失败。
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"1.算子编译"章节。
+算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/reverse_sequence/README.md)

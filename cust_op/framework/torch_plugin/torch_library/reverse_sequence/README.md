@@ -7,14 +7,12 @@
 ```python
 import sysconfig
 
-import pytest
 import fbgemm_gpu
 import numpy as np
 import torch_npu
 import torch
 
 DEVICE = "npu:0"
-logging.getLogger().setLevel(logging.INFO)
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 np.random.seed(42)
 
@@ -34,9 +32,9 @@ output = torch.ops.mxrec.reverse_sequence(input_data, seq_lengths)
 ## 编译与部署
 
 算子编译与部署请参考 [RecSDK/cust_op/README.md](../../../../README.md) 中 "单算子使用说明" 章节：
-- [算子编译](../../../../README.md#1算子编译)
-- [算子适配层编译](../../../../README.md#2算子适配层编译)
+- [算子编译](../../../../README.md#算子编译)
+- [算子适配层编译](../../../../README.md#算子适配层编译)
 
 > **提示**
 > 以上示例仅展示基本用法，如需更全面的精度测试与边界用例，请参考完整测试文件：
-> - [test](../../../../test/reverse_sequence/torch/test_reverse_sequence.py)
+> - [test](../../../../test/reverse_sequence_test/torch/test_reverse_sequence.py)

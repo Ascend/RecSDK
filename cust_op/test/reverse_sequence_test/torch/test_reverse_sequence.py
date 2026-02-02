@@ -63,16 +63,16 @@ OUT_OF_RANGE_CASE_DIMS = [
 np.random.seed(42)
 
 
-def reverse_sequence_python(input_data, sql_lengths):
+def reverse_sequence_python(input_data, seq_lengths):
     """
     input_data: [bs, max_seq_len, data_dim]  输入序列
-    lengths: [bs]        每行实际长度
+    seq_lengths: [bs]        每行实际长度
     return: [bs, max_seq_len, data_dim]  翻转后序列
     """
     bs, max_seq_len, data_dim = input_data.shape
     out = input_data.clone()
     for b in range(bs):
-        len_b = sql_lengths[b].item()
+        len_b = seq_lengths[b].item()
         if len_b > 0:
             # 只翻转前 len_b 个向量，其余保持原值
             out[b, :len_b] = input_data[b, :len_b].flip(dims=[0])
@@ -81,24 +81,24 @@ def reverse_sequence_python(input_data, sql_lengths):
 
 class ReverseSequenceTorch(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input_data, sql_lengths):
-        ctx.save_for_backward(sql_lengths)
-        return reverse_sequence_python(input_data, sql_lengths)
+    def forward(ctx, input_data, seq_lengths):
+        ctx.save_for_backward(seq_lengths)
+        return reverse_sequence_python(input_data, seq_lengths)
 
     @staticmethod
     def backward(ctx, grad_input):
         saved_data = list(ctx.saved_tensors)
-        sql_lengths = saved_data[0]
-        grad_output = reverse_sequence_python(grad_input, sql_lengths)
+        seq_lengths = saved_data[0]
+        grad_output = reverse_sequence_python(grad_input, seq_lengths)
         return grad_output, None
 
 
-def reverse_sequence_torch(input_data, sql_lengths):
-    return ReverseSequenceTorch.apply(input_data, sql_lengths)
+def reverse_sequence_torch(input_data, seq_lengths):
+    return ReverseSequenceTorch.apply(input_data, seq_lengths)
 
 
-def reverse_sequence_npu(input_data, sql_lengths):
-    return torch.ops.mxrec.reverse_sequence(input_data, sql_lengths)
+def reverse_sequence_npu(input_data, seq_lengths):
+    return torch.ops.mxrec.reverse_sequence(input_data, seq_lengths)
 
 
 def get_result(device, input_data, seq_lengths, types):
@@ -152,38 +152,41 @@ def test_reverse_sequence(dims, types):
     logging.info("=== case info: dims: %s, types:%s ===", dims, types)
     # 生成数据，算子调用，比较结果
     bs, max_seq_len, data_dim = dims
-    input_data, seq_lengths = generate_test_data(bs, max_seq_len, data_dim)
-    run_test_and_compare(input_data, seq_lengths, types)
-
-    if types[0] == torch.int64:
-        # torch.int64只调用前向
-        return
-
-    # 反向传播
     input_dt, sql_len_dt = types
-    input_data = torch.tensor(input_data, dtype=input_dt, device=torch.device(DEVICE))
-    seq_lengths = torch.tensor(seq_lengths, dtype=sql_len_dt, device=torch.device(DEVICE))
+    input_data_npu = torch.rand(dims, dtype=input_dt, device=DEVICE)
+    input_data_npu_clone = input_data_npu.clone()
+    seq_lengths = torch.randint(0, max_seq_len + 1, (bs,), dtype=sql_len_dt, device=torch.device(DEVICE))
+    is_int64 = types[0] == torch.int64
+    # 融合算子实现 前向
+    if not is_int64:
+        input_data_npu.requires_grad_(True)
+        input_data_npu_clone.requires_grad_(True)
+    fused_op_ret = reverse_sequence_npu(input_data_npu, seq_lengths)
+    if not is_int64:
+        npu_op_loss = torch.sum(fused_op_ret)
+        npu_op_loss.backward()
+        npu_op_grad = input_data_npu.grad.cpu()
+        input_data_npu.grad = None
+    # pytorch 实现 前向
+    pytorch_ret = reverse_sequence_torch(input_data_npu_clone, seq_lengths)
+    if not is_int64:
+        npu_torch_loss = torch.sum(pytorch_ret)
+        npu_torch_loss.backward()
+        npu_torch_grad = input_data_npu_clone.grad.cpu()
+        input_data_npu.grad = None
+    # 比较前向结果
+    compare_results(fused_op_ret, pytorch_ret, _PRECISION_ERROR_RANGE[types[0]])
 
-    # 反向传播-reverse sequence算子
-    input_data_npu = input_data.clone().requires_grad_(True)
-    npu_op_fw_ret = reverse_sequence_npu(input_data_npu, seq_lengths)
-    npu_op_loss = torch.sum(npu_op_fw_ret)
-    npu_op_loss.backward()
-    npu_op_grad = input_data_npu.grad
-
-    # 反向传播-torch原生
-    input_data_npu_py = input_data.cpu().clone().requires_grad_(True)
-    npu_torch_fw_ret = reverse_sequence_torch(input_data_npu_py, seq_lengths.cpu())
-    npu_torch_loss = torch.sum(npu_torch_fw_ret)
-    npu_torch_loss.backward()
-    npu_torch_grad = input_data_npu_py.grad
-
+    if is_int64:
+        # torch.int64只支持前向
+        return
+    # 比较融合算子和pytorch实现的反向
     assert torch.allclose(
-        npu_op_grad.cpu(),
-        npu_torch_grad.cpu(),
+        npu_op_grad,
+        npu_torch_grad,
         atol=_PRECISION_ERROR_RANGE[types[0]],
         rtol=_PRECISION_ERROR_RANGE[types[0]]
-    ), f"golden and npu op result is not closed. CASE INFO - dims:{dims}, types:{types}"
+    ), f"golden and npu fused op result is not closed. CASE INFO - dims:{dims}, types:{types}"
 
 
 @pytest.mark.parametrize("dims", EDGE_CASE_DIMS)
