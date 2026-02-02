@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 #include "backward_codegen_sgd_unweighted_exact_kernel.h"
 #include "backward_codegen_adagrad_unweighted_exact_kernel_unique.h"
 #include "backward_codegen_adam_unweighted_exact_kernel_unique.h"
+#include "backward_codegen_sgd_unweighted_exact_kernel_unique.h"
 #include "backward_codegen_rowwise_adagrad_unweighted_exact_kernel.h"
 #include "kernel_operator.h"
 
@@ -92,6 +93,14 @@ extern "C" __global__ __aicore__ void backward_codegen_adagrad_unweighted_exact(
         if (tiling_data.useOptimize) {
             kernel.Compute(args);
             kernel.AdamScheduler();
+        } else {
+            kernel.Compute(args);
+        }
+    } else if (TILING_KEY_IS(6)) {
+        BackwardCodegenUnweightedSgdExactUnique::BackwardCodegenSgdUnweightedExactKernelUnique kernel;
+        if (tiling_data.useOptimize) {
+            kernel.Compute(args);
+            kernel.SgdScheduler();
         } else {
             kernel.Compute(args);
         }

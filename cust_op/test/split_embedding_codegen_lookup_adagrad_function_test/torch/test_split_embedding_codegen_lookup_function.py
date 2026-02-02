@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 
 import logging
 import random
@@ -289,8 +289,8 @@ def generate_unique(jt_lst, feature_map):
 
 
 def execute(params):
-    if params.unique and (params.optim in (SGD, RowWiseAdagrad)):
-        return  # 暂未适配SGD unique算子
+    if params.unique and (params.optim in [RowWiseAdagrad]):
+        return  # 暂未适配RowWiseAdagrad unique算子
     if params.feature_map is None:
         params.feature_map = list(range(len(params.tables)))
     indices_test, offsets_test, weights_test, jt_lst = create_data(params)
