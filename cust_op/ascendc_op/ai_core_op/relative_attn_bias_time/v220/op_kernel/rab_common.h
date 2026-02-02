@@ -10,7 +10,7 @@
 
 #include "kernel_operator.h"
 constexpr int DATA_ALIGN_BYTES = 32;
-constexpr int MAX_SEQ_CNT = 128;
+constexpr int MAX_SEQ_CNT = 256;
 constexpr int GATHER_PROCESS_WINDOW = 4096;
 
 enum class DataType {
