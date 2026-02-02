@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -124,6 +124,8 @@ static ge::graphStatus UniqueTilingKey(gert::TilingContext* context, const int &
         context->SetTilingKey(UNIQUE_ADAM);
     } else if (optimType == ADAGRAD) {
         context->SetTilingKey(UNIQUE_ADAGRAD);
+    } else if (optimType == SGD) {
+        context->SetTilingKey(UNIQUE_SGD);
     } else {
         OPS_LOG_E("Tiling Debug", "Unsupported optimtype!");
         return ge::GRAPH_FAILED;
