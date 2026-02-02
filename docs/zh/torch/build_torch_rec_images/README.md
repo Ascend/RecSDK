@@ -21,7 +21,7 @@
 
 当前dockerfile中默认配置下载PyTorch 2.6.0和fbgemm_gpu 1.1.0+cpu版本的软件包。
 
-若需制作PyTorch 2.7.1版本配套的镜像，可参考后续[制作PyTorch 2.7.1镜像环境](##制作PyTorch 2.7.1镜像环境)章节。
+若需制作PyTorch 2.7.1版本配套的镜像，可参考后续[制作PyTorch 2.7.1镜像环境](#制作pytorch-271镜像环境)章节。
 
 ## 构建步骤
 Step1：新建`build_images`目录。
@@ -98,7 +98,7 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 | fbgemm_gpu-1.1.0+cpu-*.whl | fbgemm_gpu-1.2.0+cpu-*.whl |
 | torch-npu==2.6.0           | torch-npu==2.7.1           |
 
-3. 参考[构建步骤](##构建步骤)章节制作镜像
+3. 参考[构建步骤](#构建步骤)章节制作镜像
 
 ### 方式二：升级已有镜像中的软件版本
 1. 升级PyTorch版本
@@ -111,5 +111,5 @@ pip3 install fbgemm_gpu==1.2.0+cpu -i https://download.pytorch.org/whl/cpu
 ```
 3. 升级torch-npu版本
 ```shell
-pip3 install -y torch-npu==2.7.1
+pip3 install torch-npu==2.7.1
 ```
