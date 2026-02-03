@@ -158,8 +158,8 @@ if not CPU_ENABLE:
         "P90 Latency": p90
     }
 
-    print_prefix = "performance: " + device_name + "_" + model_name
-    eval_str = print_prefix + "_" + str(e2e_result)
+    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
+    eval_str = "performance: " + model_detail_info + "_" + str(e2e_result)
     os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
     with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
         f.write(eval_str + "\n")
@@ -186,7 +186,10 @@ if not CPU_ENABLE:
                 torch_npu.profiler.ProfilerActivity.NPU
                 ],
             schedule=torch_npu.profiler.schedule(wait=1, warmup=1, active=1, repeat=1),
-            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(os.path.join("../profiling", model_name)),
+            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
+                os.path.join("../profiling", model_name),
+                worker_name=model_detail_info,
+            ),
             record_shapes=False,
             profile_memory=False,
             with_stack=False,
