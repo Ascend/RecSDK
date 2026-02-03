@@ -89,7 +89,7 @@ def apply_patch(patch_path: Path, target_dir: Path) -> bool:
     logger.info(f"Applying patch: {patch_path}")
     try:
         subprocess.run(
-            ["git", "apply", str(patch_path)],
+            ["git", "apply", "--ignore-space-change", str(patch_path)],
             cwd=str(target_dir),
             capture_output=True,
             text=True,
@@ -115,6 +115,11 @@ def get_args():
         "--cpu",
         action="store_true",
         help="Force use CPU only (overrides config file setting)",
+    )
+    parser.add_argument(
+        "--eager",
+        action="store_true",
+        help="Force use eager mode",
     )
     args = parser.parse_args()
     return args
@@ -190,12 +195,16 @@ def install_depend(config: dict, target_dir: Path) -> bool:
     return True
 
 
-def set_env(config: dict, cpu_only: bool):
+def set_env(config: dict, cpu_only: bool, eager: bool):
     os.environ["MODEL_MODE"] = config.get("mode")
     os.environ["MODEL_EPOCH"] = str(config.get("epoch"))
     os.environ["MODEL_PROFILING_FLAG"] = str(config.get("profiling_flag"))
-    os.environ["MODEL_COMPILE_FLAG"] = str(config.get("compile_flag"))
-    os.environ["MODEL_ACLGRAPH_FLAG"] = str(config.get("aclgraph_flag"))
+    if eager:
+        os.environ["MODEL_COMPILE_FLAG"] = "False"
+        os.environ["MODEL_ACLGRAPH_FLAG"] = "False"
+    else:
+        os.environ["MODEL_COMPILE_FLAG"] = "True"
+        os.environ["MODEL_ACLGRAPH_FLAG"] = "True"
     os.environ["MODEL_DATA_TYPE"] = config.get("data_type")
     os.environ["MODEL_NAME"] = config.get("name")
     os.environ["MODEL_E2E_FLAG"] = str(config.get("e2e_flag"))
@@ -209,8 +218,8 @@ def set_env(config: dict, cpu_only: bool):
     os.environ["SAVE_TENSOR_FLAG"] = str(config.get("save_tensor_flag"))
 
 
-def run_model(config: dict, target_dir: Path, cpu_only: bool) -> bool:
-    set_env(config, cpu_only)
+def run_model(config: dict, target_dir: Path, cpu_only: bool, eager: bool) -> bool:
+    set_env(config, cpu_only, eager)
     logger.info(f"Running model command: {config.get('run_cmd')}")
     try:
         subprocess.run(config.get("run_cmd"), cwd=str(target_dir), check=True)
@@ -381,7 +390,7 @@ def main():
             return
 
     # 3. Run model
-    if not run_model(config, target_dir, args.cpu):
+    if not run_model(config, target_dir, args.cpu, args.eager):
         logger.error("Model run failed, process terminated.")
         return
 

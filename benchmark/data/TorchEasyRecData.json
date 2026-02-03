@@ -4,6 +4,7 @@
         "eval": "https://tzrec.oss-cn-beijing.aliyuncs.com/data/quick_start/taobao_data_eval.tar.gz",
         "recall_train": "https://tzrec.oss-cn-beijing.aliyuncs.com/data/quick_start/taobao_data_recall_train_transformed.tar.gz",
         "recall_eval": "https://tzrec.oss-cn-beijing.aliyuncs.com/data/quick_start/taobao_data_recall_eval_transformed.tar.gz",
-        "ad_feature": "https://tzrec.oss-cn-beijing.aliyuncs.com/data/quick_start/taobao_ad_feature_transformed_fill.tar.gz"
+        "ad_feature": "https://tzrec.oss-cn-beijing.aliyuncs.com/data/quick_start/taobao_ad_feature_transformed_fill.tar.gz",
+        "kuairand-27k": "https://tzrec.oss-cn-beijing.aliyuncs.com/data/models/kuairand-27k.tar.gz"
     }
 }

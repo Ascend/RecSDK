@@ -21,7 +21,7 @@ index 717bd7e..275022f 100644
  
  
 diff --git a/deepctr_torch/models/basemodel.py b/deepctr_torch/models/basemodel.py
-index cd36340..4ef7df2 100644
+index cd36340..1d0d60e 100644
 --- a/deepctr_torch/models/basemodel.py
 +++ b/deepctr_torch/models/basemodel.py
 @@ -15,6 +15,7 @@ import torch
@@ -60,7 +60,21 @@ index cd36340..4ef7df2 100644
          """
  
          :param x: Numpy array of training data (if the model has a single input), or list of Numpy arrays (if the model has multiple inputs).If input layers in the model are named, you can also pass a
-@@ -227,6 +240,7 @@ class BaseModel(nn.Module):
+@@ -210,6 +223,13 @@ class BaseModel(nn.Module):
+         else:
+             print(self.device)
+ 
++        inductor_flag = os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE'
++        acl_flag = '1' if os.environ.get('MODEL_ACLGRAPH_FLAG', 'False').upper() == 'TRUE' else '0'
++        if inductor_flag:
++            print('use inductor compile!!!')
++            os.environ['ENABLE_ACLGRAPH'] = acl_flag
++            model = torch.compile(model, backend='inductor', mode='reduce-overhead')
++
+         train_loader = DataLoader(
+             dataset=train_tensor_data, shuffle=shuffle, batch_size=batch_size)
+ 
+@@ -227,6 +247,7 @@ class BaseModel(nn.Module):
          callbacks.model.stop_training = False
  
          # Train
@@ -68,7 +82,7 @@ index cd36340..4ef7df2 100644
          print("Train on {0} samples, validate on {1} samples, {2} steps per epoch".format(
              len(train_tensor_data), len(val_y), steps_per_epoch))
          for epoch in range(initial_epoch, epochs):
-@@ -239,8 +253,17 @@ class BaseModel(nn.Module):
+@@ -239,8 +260,17 @@ class BaseModel(nn.Module):
              try:
                  with tqdm(enumerate(train_loader), disable=verbose != 1) as t:
                      for _, (x_train, y_train) in t:
@@ -87,7 +101,7 @@ index cd36340..4ef7df2 100644
  
                          y_pred = model(x).squeeze()
  
-@@ -299,7 +322,6 @@ class BaseModel(nn.Module):
+@@ -299,7 +329,6 @@ class BaseModel(nn.Module):
                      for name in self.metrics:
                          eval_str += " - " + "val_" + name + \
                                      ": {0: .4f}".format(epoch_logs["val_" + name])
@@ -95,7 +109,7 @@ index cd36340..4ef7df2 100644
              callbacks.on_epoch_end(epoch, epoch_logs)
              if self.stop_training:
                  break
-@@ -343,12 +365,135 @@ class BaseModel(nn.Module):
+@@ -343,12 +372,138 @@ class BaseModel(nn.Module):
  
          pred_ans = []
          with torch.no_grad():
@@ -163,8 +177,8 @@ index cd36340..4ef7df2 100644
 +                    "P90 Latency": p90
 +                }
 +
-+                print_prefix = "performance: " + device_name + "_" + model_name
-+                eval_str = print_prefix + "_" + str(e2e_result)
++                model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++                eval_str = "performance: " + model_detail_info + "_" + str(e2e_result)
 +                os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
 +                with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
 +                    f.write(eval_str + "\n")
@@ -197,7 +211,10 @@ index cd36340..4ef7df2 100644
 +                    torch_npu.profiler.ProfilerActivity.NPU
 +                    ],
 +                schedule=torch_npu.profiler.schedule(wait=1, warmup=1, active=1, repeat=1),
-+                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(os.path.join("../profiling", model_name)),
++                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
++                    os.path.join("../profiling", model_name),
++                    worker_name=model_detail_info,
++                ),
 +                record_shapes=False,
 +                profile_memory=False,
 +                with_stack=False,

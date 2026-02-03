@@ -1,5 +1,5 @@
 diff --git a/fuxictr/pytorch/models/rank_model.py b/fuxictr/pytorch/models/rank_model.py
-index 1ce33aa..5ccff5f 100644
+index 1ce33aa..0012222 100644
 --- a/fuxictr/pytorch/models/rank_model.py
 +++ b/fuxictr/pytorch/models/rank_model.py
 @@ -27,6 +27,17 @@ from fuxictr.pytorch.torch_utils import get_device, get_optimizer, get_loss, get
@@ -20,7 +20,7 @@ index 1ce33aa..5ccff5f 100644
  
  class BaseModel(nn.Module):
      def __init__(self, 
-@@ -250,13 +261,132 @@ class BaseModel(nn.Module):
+@@ -250,13 +261,135 @@ class BaseModel(nn.Module):
  
      def predict(self, data_generator):
          self.eval()  # set to evaluation mode
@@ -82,8 +82,8 @@ index 1ce33aa..5ccff5f 100644
 +                "P90 Latency": p90
 +            }
 +
-+            print_prefix = "performance: " + device_name + "_" + model_name
-+            eval_str = print_prefix + "_" + str(e2e_result)
++            model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++            eval_str = "performance: " + model_detail_info + "_" + str(e2e_result)
 +            os.makedirs(f"../../../save_results_{device_name}/", exist_ok=True)
 +            with open(f"../../../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
 +                f.write(eval_str + "\n")
@@ -117,7 +117,10 @@ index 1ce33aa..5ccff5f 100644
 +                        torch_npu.profiler.ProfilerActivity.NPU
 +                        ],
 +                    schedule=torch_npu.profiler.schedule(wait=1, warmup=1, active=1, repeat=1),
-+                    on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(os.path.join("../../../profiling", model_name)),
++                    on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
++                        os.path.join("../../../profiling", model_name),
++                        worker_name=model_detail_info,
++                    ),
 +                    record_shapes=False,
 +                    profile_memory=False,
 +                    with_stack=False,
@@ -189,15 +192,29 @@ index 4b220ce..f789f1f 100644
  
  def get_optimizer(optimizer, params, lr):
 diff --git a/model_zoo/AutoInt/run_expid.py b/model_zoo/AutoInt/run_expid.py
-index 19adc38..0121133 100644
+index 19adc38..9e6ab16 100644
 --- a/model_zoo/AutoInt/run_expid.py
 +++ b/model_zoo/AutoInt/run_expid.py
-@@ -66,22 +66,4 @@ if __name__ == '__main__':
+@@ -19,6 +19,7 @@ import os
+ os.chdir(os.path.dirname(os.path.realpath(__file__)))
+ import sys
+ import logging
++import torch
+ import fuxictr_version
+ from fuxictr import datasets
+ from datetime import datetime
+@@ -65,23 +66,11 @@ if __name__ == '__main__':
+     model = model_class(feature_map, **params)
      model.count_parameters() # print number of parameters used in model
  
-     train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
+-    train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
 -    model.fit(train_gen, validation_data=valid_gen, **params)
--
++    inductor_flag = os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE'
++    if inductor_flag:
++        acl_flag = '1' if os.environ.get('MODEL_ACLGRAPH_FLAG', 'False').upper() == 'TRUE' else '0'
++        os.environ["ENABLE_ACLGRAPH"] = acl_flag
++        model = torch.compile(model, backend="inductor", mode="reduce-overhead")
+ 
 -    logging.info('****** Validation evaluation ******')
 -    valid_result = model.evaluate(valid_gen)
 -    del train_gen, valid_gen
@@ -215,17 +232,32 @@ index 19adc38..0121133 100644
 -            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
 -                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
 -                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
++    train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
 +    model.predict(valid_gen)
 diff --git a/model_zoo/DIEN/run_expid.py b/model_zoo/DIEN/run_expid.py
-index 19adc38..0121133 100644
+index 19adc38..9e6ab16 100644
 --- a/model_zoo/DIEN/run_expid.py
 +++ b/model_zoo/DIEN/run_expid.py
-@@ -66,22 +66,4 @@ if __name__ == '__main__':
+@@ -19,6 +19,7 @@ import os
+ os.chdir(os.path.dirname(os.path.realpath(__file__)))
+ import sys
+ import logging
++import torch
+ import fuxictr_version
+ from fuxictr import datasets
+ from datetime import datetime
+@@ -65,23 +66,11 @@ if __name__ == '__main__':
+     model = model_class(feature_map, **params)
      model.count_parameters() # print number of parameters used in model
  
-     train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
+-    train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
 -    model.fit(train_gen, validation_data=valid_gen, **params)
--
++    inductor_flag = os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE'
++    if inductor_flag:
++        acl_flag = '1' if os.environ.get('MODEL_ACLGRAPH_FLAG', 'False').upper() == 'TRUE' else '0'
++        os.environ["ENABLE_ACLGRAPH"] = acl_flag
++        model = torch.compile(model, backend="inductor", mode="reduce-overhead")
+ 
 -    logging.info('****** Validation evaluation ******')
 -    valid_result = model.evaluate(valid_gen)
 -    del train_gen, valid_gen
@@ -243,17 +275,32 @@ index 19adc38..0121133 100644
 -            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
 -                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
 -                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
++    train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
 +    model.predict(valid_gen)
 diff --git a/model_zoo/DMR/run_expid.py b/model_zoo/DMR/run_expid.py
-index 19adc38..0121133 100644
+index 19adc38..9e6ab16 100644
 --- a/model_zoo/DMR/run_expid.py
 +++ b/model_zoo/DMR/run_expid.py
-@@ -66,22 +66,4 @@ if __name__ == '__main__':
+@@ -19,6 +19,7 @@ import os
+ os.chdir(os.path.dirname(os.path.realpath(__file__)))
+ import sys
+ import logging
++import torch
+ import fuxictr_version
+ from fuxictr import datasets
+ from datetime import datetime
+@@ -65,23 +66,11 @@ if __name__ == '__main__':
+     model = model_class(feature_map, **params)
      model.count_parameters() # print number of parameters used in model
  
-     train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
+-    train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
 -    model.fit(train_gen, validation_data=valid_gen, **params)
--
++    inductor_flag = os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE'
++    if inductor_flag:
++        acl_flag = '1' if os.environ.get('MODEL_ACLGRAPH_FLAG', 'False').upper() == 'TRUE' else '0'
++        os.environ["ENABLE_ACLGRAPH"] = acl_flag
++        model = torch.compile(model, backend="inductor", mode="reduce-overhead")
+ 
 -    logging.info('****** Validation evaluation ******')
 -    valid_result = model.evaluate(valid_gen)
 -    del train_gen, valid_gen
@@ -271,17 +318,32 @@ index 19adc38..0121133 100644
 -            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
 -                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
 -                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
++    train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
 +    model.predict(valid_gen)
 diff --git a/model_zoo/EDCN/run_expid.py b/model_zoo/EDCN/run_expid.py
-index 19adc38..0121133 100644
+index 19adc38..9e6ab16 100644
 --- a/model_zoo/EDCN/run_expid.py
 +++ b/model_zoo/EDCN/run_expid.py
-@@ -66,22 +66,4 @@ if __name__ == '__main__':
+@@ -19,6 +19,7 @@ import os
+ os.chdir(os.path.dirname(os.path.realpath(__file__)))
+ import sys
+ import logging
++import torch
+ import fuxictr_version
+ from fuxictr import datasets
+ from datetime import datetime
+@@ -65,23 +66,11 @@ if __name__ == '__main__':
+     model = model_class(feature_map, **params)
      model.count_parameters() # print number of parameters used in model
  
-     train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
+-    train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
 -    model.fit(train_gen, validation_data=valid_gen, **params)
--
++    inductor_flag = os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE'
++    if inductor_flag:
++        acl_flag = '1' if os.environ.get('MODEL_ACLGRAPH_FLAG', 'False').upper() == 'TRUE' else '0'
++        os.environ["ENABLE_ACLGRAPH"] = acl_flag
++        model = torch.compile(model, backend="inductor", mode="reduce-overhead")
+ 
 -    logging.info('****** Validation evaluation ******')
 -    valid_result = model.evaluate(valid_gen)
 -    del train_gen, valid_gen
@@ -299,17 +361,32 @@ index 19adc38..0121133 100644
 -            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
 -                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
 -                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
++    train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
 +    model.predict(valid_gen)
 diff --git a/model_zoo/EulerNet/run_expid.py b/model_zoo/EulerNet/run_expid.py
-index effe553..7bf1997 100644
+index effe553..6f74a37 100644
 --- a/model_zoo/EulerNet/run_expid.py
 +++ b/model_zoo/EulerNet/run_expid.py
-@@ -66,22 +66,4 @@ if __name__ == '__main__':
+@@ -19,6 +19,7 @@ import os
+ os.chdir(os.path.dirname(os.path.realpath(__file__)))
+ import sys
+ import logging
++import torch
+ import fuxictr_version
+ from fuxictr import datasets
+ from datetime import datetime
+@@ -65,23 +66,11 @@ if __name__ == '__main__':
+     model = model_class(feature_map, **params)
      model.count_parameters() # print number of parameters used in model
  
-     train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
+-    train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
 -    model.fit(train_gen, validation_data=valid_gen, **params)
--
++    inductor_flag = os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE'
++    if inductor_flag:
++        acl_flag = '1' if os.environ.get('MODEL_ACLGRAPH_FLAG', 'False').upper() == 'TRUE' else '0'
++        os.environ["ENABLE_ACLGRAPH"] = acl_flag
++        model = torch.compile(model, backend="inductor", mode="reduce-overhead")
+ 
 -    logging.info('****** Validation evaluation ******')
 -    valid_result = model.evaluate(valid_gen)
 -    del train_gen, valid_gen
@@ -327,4 +404,5 @@ index effe553..7bf1997 100644
 -            .format(datetime.now().strftime('%Y%m%d-%H%M%S'), 
 -                    ' '.join(sys.argv), experiment_id, params['dataset_id'],
 -                    "N.A.", print_to_list(valid_result), print_to_list(test_result)))
++    train_gen, valid_gen = RankDataLoader(feature_map, stage='train', **params).make_iterator()
 +    model.predict(valid_gen)

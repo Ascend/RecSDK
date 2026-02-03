@@ -18,7 +18,7 @@
 # 必要依赖安装
 
 ```shell
-apt-get install protobuf-compiler
+apt-get install protobuf-compiler protobuf-devel
 pip install tensorflow
 pip install pytest
 ```
