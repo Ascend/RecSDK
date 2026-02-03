@@ -78,9 +78,6 @@ public:
             DataCopy(this->weightsDevOutGT[outOffset[i]], newOutLt[thisGradIndex], embedDim);
         }
         SetAtomicNone();
-        for (int64_t i = 0; i < thisLen; i++) {
-            int thisGradIndex = i * this->maxD;
-        }
         this->queOut.template FreeTensor(newOutLt);
     }
 
