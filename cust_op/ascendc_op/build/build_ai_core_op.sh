@@ -60,6 +60,7 @@ dense_embedding_codegen_lookup_function
 dense_embedding_codegen_lookup_function_grad
 hstu_dense_forward
 hstu_dense_backward
+in_linear_silu
 "
 support_310p_list="gather_for_rank1
 hstu_dense_forward_fuxi
@@ -97,7 +98,7 @@ function compile_ops_v220() {
         cd "$ops_path"
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
-            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" || "$dir_name" == "in_linear_silu" ]]; then
+            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
                 continue
             fi
             cur_ver_op_dir=${dir_name}/${base_op_dir}
