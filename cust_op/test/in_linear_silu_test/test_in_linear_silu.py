@@ -26,9 +26,7 @@ import torch_npu
 import torch
 
 torch.npu.config.allow_internal_format = False
-CURR_DIR = Path(__file__).resolve().parent
-torch.ops.load_library(str(CURR_DIR.parent.parent.parent / 
-    "cust_op/framework/torch_plugin/torch_library/in_linear_silu/build/libin_linear_silu.so"))
+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 
 def get_user_value_query_key_tensors_uniattn(x, weight, bias, split_arg_list):

@@ -41,7 +41,7 @@
 
 算子依赖CATLASS源码， 验证过的版本是[catlass v1.3.0](https://raw.gitcode.com/cann/catlass/archive/refs/heads/v1.3.0.zip)
 
-设置如下环境变量
+解压后，将catlass所在目录声明为环境变量：
 ```shell
 export CATLASS_HOME=<catlass_home>
 ```
@@ -86,14 +86,14 @@ mixed_uvqk = torch.nn.functional.silu(mixed_uvqk)
 | 名称      | 输入/输出 | 参数类型 | 数据类型         | 数据格式       | 范围         | 说明                                  |
 |---------|------------|------|--------------|------------|------------|----------------------------------------|
 | x       | 输入       | Tensor | float32/float16/bfloat16 | [b-s, H] | H取值范围[16, 8192] |   H为16的整数倍              |
-| weight   | 输入       | Tensor | float32/float16/bfloat16 | [4HH, H] | 4HH取值范围[64, 32768] |   4HH为16的整数倍，4HH为H的4n倍            |
+| weight   | 输入       | Tensor | float32/float16/bfloat16 | [4HH, H] | 4HH取值范围[64, 32768] |   4HH为16的整数倍，4HH为H的4n倍, 数据类型与x保持一致            |
 | bias    | 输入       | Tensor | float32 | [4HH] | 4HH取值范围[64, 32768] |   4HH为16的整数倍，4HH为H的4n倍            |
 | splitArgList | 输入(属性)  | ListInt | int   | [H_u, H_v, H_q, H_k]          |   sum(splitArgList)=4HH       |长度为4，不可为空     |
-| user (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_u] | H_u取值范围[16, 8192]         |  H_u为16的整数倍          |
-| value (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_v] | H_v取值范围[16, 8192]         |  H_v为16的整数倍          |
-| query (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_q] | H_q取值范围[16, 8192]         |  H_q为16的整数倍          |
-| key (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_k] | H_k取值范围[16, 8192]         |  H_v为16的整数倍          |
-| linear_output (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, 4HH] | 4HH取值范围[64, 32768] |   4HH为16的整数倍，4HH为H的4n倍            |
+| user (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_u] | H_u取值范围[16, 8192]         |  H_u为16的整数倍, 数据类型与x保持一致          |
+| value (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_v] | H_v取值范围[16, 8192]         |  H_v为16的整数倍, 数据类型与x保持一致          |
+| query (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_q] | H_q取值范围[16, 8192]         |  H_q为16的整数倍 , 数据类型与x保持一致         |
+| key (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_k] | H_k取值范围[16, 8192]         |  H_v为16的整数倍 , 数据类型与x保持一致         |
+| linear_output (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, 4HH] | 4HH取值范围[64, 32768] |   4HH为16的整数倍，4HH为H的4n倍，, 数据类型与x保持一致            |
 
 # 算子编译部署
 
