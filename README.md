@@ -111,6 +111,7 @@ bash run.sh
     |-- cust_op/
     |    |-- ascendc_op								#Ascend C编写，编译后在AI Core执行的算子和其编译脚本
     |    |-- framework								#算子适配层
+    |    |-- hkv                                    #hkv子模块代码，项目代码来自https://gitcode.com/Ascend/HierarchicalKV-ascend.git
     |    |-- test								    #算子测试用例
     |    |-- tf_cpu_op								#CPU算子
     |
