@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,8 @@ See the License for the specific language governing permissions and
 namespace optiling {
 BEGIN_TILING_DATA_DEF(InvertPermuteTilingData)
     TILING_DATA_FIELD_DEF(int32_t, xDim0);
-    TILING_DATA_FIELD_DEF(uint32_t, actualThreadsPerBlock);
+    TILING_DATA_FIELD_DEF(int32_t, elemsPerBlock);
+    TILING_DATA_FIELD_DEF(uint32_t, threadsPerBlock);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(InvertPermute, InvertPermuteTilingData)
