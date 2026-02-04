@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@ See the License for the specific language governing permissions and
 namespace {
     constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
     constexpr int32_t MIN_THREADS_PER_BLOCK = 512;
-    constexpr int32_t SMALL_DATA_LENGTH = 3072;
-    constexpr int32_t ELEMS_ADD_THREAD = 2; // 每个线程处理元素个数大于2时，单核实际线程数为1024
-    constexpr int32_t PARAS_CONTROL = 4;    // 控制参数，当总元素数超过某值时，核数增加
+    constexpr int32_t SMALL_DATA_LENGTH = 2048;
+    constexpr int32_t THREADS_PER_WARP = 32;
+    constexpr int32_t ADD_CORE_FACTOR = 4;
 }
 
 namespace optiling {
@@ -36,17 +36,25 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     int32_t coreNum = ascendPlatform.GetCoreNumAiv();
-
-    uint32_t actualThreadsPerBlock;
     int32_t blockDim;
-    if (xDim0 <= SMALL_DATA_LENGTH) {
+    uint32_t threadsPerBlock;
+
+    if (xDim0 < SMALL_DATA_LENGTH) {
+        threadsPerBlock = MIN_THREADS_PER_BLOCK;
         blockDim = 1;
     } else {
-        blockDim = std::min((xDim0 + MAX_THREADS_PER_BLOCK - MAX_THREADS_PER_BLOCK / PARAS_CONTROL) \
-                            / MAX_THREADS_PER_BLOCK, coreNum);
+        threadsPerBlock = MAX_THREADS_PER_BLOCK;
+        blockDim = std::min((xDim0 + ADD_CORE_FACTOR * THREADS_PER_WARP - 1) /
+                            (THREADS_PER_WARP * ADD_CORE_FACTOR), coreNum);
     }
-    actualThreadsPerBlock = xDim0 < blockDim * MIN_THREADS_PER_BLOCK * ELEMS_ADD_THREAD ? \
-                                    MIN_THREADS_PER_BLOCK: MAX_THREADS_PER_BLOCK;
+
+    if (blockDim == 0) {
+        OPS_LOG_E("[ERROR]Invalid value, blockDim must be a positive integer", NULL);
+        return ge::GRAPH_FAILED;
+    }
+
+    int32_t elemsPerBlock = (xDim0 + blockDim - 1) / blockDim;
+    elemsPerBlock = (elemsPerBlock + THREADS_PER_WARP - 1) / THREADS_PER_WARP * THREADS_PER_WARP;
 
     context->SetBlockDim(blockDim);
 
@@ -60,7 +68,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     }
 
     tiling.set_xDim0(xDim0);
-    tiling.set_actualThreadsPerBlock(actualThreadsPerBlock);
+    tiling.set_elemsPerBlock(elemsPerBlock);
+    tiling.set_threadsPerBlock(threadsPerBlock);
 
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
