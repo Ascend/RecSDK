@@ -95,8 +95,9 @@ extern "C" __global__ __aicore__ void hstu_jagged_backward(GM_ADDR grad, GM_ADDR
         InvokeKernelWithRegistMM<float, DTYPE_SEQ_OFFSET_Q, BLOCK_HEIGHT_128, BLOCK_HEIGHT_128, HEAD_DIM_PADDING, MMCOM,
                                  VsKernelType>(args);
     } else {
+        bool isSameDim = (tilingDataPtr->headDimQK == tilingDataPtr->headDimV);
         HEAD_DIM_SWITCH(
-            isMaskTypeTril && noBias, tilingDataPtr->headDim, HEAD_DIM, IS_M0R0_CONST_MODE,
+            isMaskTypeTril && noBias && isSameDim, tilingDataPtr->headDimQK, HEAD_DIM, IS_M0R0_CONST_MODE,
             if constexpr (IS_M0R0_CONST_MODE) {
                 using MMCOM = HstuDenseBackward::MmMgmtFp16R0Jagged<DTYPE_GRAD, BLOCK_HEIGHT_256, BLOCK_HEIGHT_256,
                                                                     HEAD_DIM, HstuJaggedBackwardTilingData>;

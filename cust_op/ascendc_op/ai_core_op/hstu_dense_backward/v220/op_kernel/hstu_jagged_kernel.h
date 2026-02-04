@@ -91,21 +91,31 @@ struct JaggedTaskInfoColMajor {
     uint32_t taskId;  // 基本块任务id，参与临时存储块的偏移计算
     ColLineBaseInfo* colBlockPtr;
     uint32_t rowId;
-    int64_t kOrVOffset;  // 基本块qk/gv乘法的左矩阵内存偏移
-    int64_t qOrGoffset;  // 基本块qk/gv乘法的右矩阵内存偏移
+    int64_t qOffset;  // 基本块qk乘法的左矩阵内存偏移
+    int64_t kOffset;  // 基本块qk乘法的右矩阵内存偏移
+    int64_t gOffset;  // 基本块gv乘法的左矩阵内存偏移
+    int64_t vOffset;  // 基本块gv乘法的右矩阵内存偏移
     uint32_t rowLine;    // 基本块需要计算的行数
 
     __aicore__ inline const uint32_t GetTaskId()
     {
         return taskId;
     }
-    __aicore__ inline const int64_t GetKOrVOffset()
+    __aicore__ inline const int64_t GetKOffset()
     {
-        return kOrVOffset;
+        return kOffset;
     }
-    __aicore__ inline const int64_t GetQOrGoffset()
+    __aicore__ inline const int64_t GetQOffset()
     {
-        return qOrGoffset;
+        return qOffset;
+    }
+    __aicore__ inline const int64_t GetGOffset()
+    {
+        return gOffset;
+    }
+    __aicore__ inline const int64_t GetVOffset()
+    {
+        return vOffset;
     }
     __aicore__ inline const uint32_t GetRowLine()
     {
@@ -180,7 +190,9 @@ public:
         totalBatchSize_ = backwardTilingData_->seqLen;
         batchSize_ = backwardTilingData_->batchSize;
         maxSeqLen_ = backwardTilingData_->maxSeqLen;
-        headDim_ = backwardTilingData_->headDim;
+        headDimQK_ = backwardTilingData_->headDimQK;
+        headDimQKAlign32_ = AlignUp(headDimQK_ * sizeof(qType), DATA_ALIGN_BYTES) / sizeof(qType);
+        headDimV_ = backwardTilingData_->headDimV;
         headNum_ = backwardTilingData_->headNum;
         biasGradSeqLen_ = backwardTilingData_->biasGradSeqLen;
     }
@@ -201,7 +213,7 @@ public:
         numContextGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.numContext), batchSize_);
         numTargetGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.numTarget), batchSize_);
         seqOffsetsGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.seqOffset), this->batchSize_ + 1);
-        int64_t totalElementOfAttnBias = batchSize_ * maxSeqLen_ * headNum_ * headDim_;
+        int64_t totalElementOfAttnBias = batchSize_ * headNum_ * biasGradSeqLen_ * biasGradSeqLen_;
         baisGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.attnBias), totalElementOfAttnBias);
         maskGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.mask),
                                 totalElementOfAttnBias * totalElementOfAttnBias);
@@ -212,12 +224,14 @@ public:
     {
         // Layout初始化
         uint32_t lastDimStride1 = 1;
-        qLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDim_),
-                             MakeStride(headNum_ * headDim_, headDim_, lastDimStride1));
-        kLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDim_),
-                             MakeStride(headNum_ * headDim_, headDim_, lastDimStride1));
-        pipeBlockLayout_ = PipeBlockLayout(MakeShape(blockHeightQ, blockHeightK, headDim_),
-                                           MakeStride(blockHeightK * headDim_, headDim_, lastDimStride1));
+        qLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDimQK_),
+                             MakeStride(headNum_ * headDimQK_, headDimQK_, lastDimStride1));
+        kLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDimQK_),
+                             MakeStride(headNum_ * headDimQK_, headDimQK_, lastDimStride1));
+        gLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDimV_),
+                             MakeStride(headNum_ * headDimV_, headDimV_, lastDimStride1));
+        vLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDimV_),
+                             MakeStride(headNum_ * headDimV_, headDimV_, lastDimStride1));
         bnssLayout_ = BNSSLayout(
             MakeShape(batchSize_, headNum_, maxSeqLen_, maxSeqLen_),
             MakeStride(headNum_ * maxSeqLen_ * maxSeqLen_, maxSeqLen_ * maxSeqLen_, maxSeqLen_, lastDimStride1));
@@ -232,14 +246,17 @@ public:
         InitLayoutInfo(args);
         // Matmul 初始化
         AddrArgs addrArgs = {args.grad, args.q, args.k, args.v, args.qGrad, args.kGrad, args.vGrad, args.workspace};
-        BaseShapeArgs baseShape = {totalBatchSize_, batchSize_, headNum_, headDim_, maxSeqLen_};
+        BaseShapeArgs baseShape = {
+            totalBatchSize_, batchSize_, headNum_, headDimQK_, headDimQKAlign32_, headDimV_, maxSeqLen_
+        };
         mm_mgmt_->Init(addrArgs, baseShape);
 
         // QAccum初始化
         qAccumKernel_.Init(&pipe, &baseShape, mm_mgmt_->qGradAccumTemp_, mm_mgmt_->qGrad_, seqOffsetsGt_,
                            GetBlockNum() * VCORE_NUM_IN_ONE_AIC);
         // Trans初始化
-        transKernel_.Init(&pipe, headNum_, headDim_);
+        transKernelK_.Init(&pipe, headNum_, headDimQK_);
+        transKernelV_.Init(&pipe, headNum_, headDimV_);
         // VectorScore初始化
         VectorScoreAttrs vectorScoreAttrs = {siluScale_, alpha_, enableBias_, maskType_};
         VectorScoreGtInfo<qType> vectorScoreGtInfo = {mm_mgmt_->qkTemp_, mm_mgmt_->gvTemp_, maskGt_, baisGt_,
@@ -340,10 +357,14 @@ public:
         computeTaskInfo_[curTaskId].colBlockPtr = &colInfo;
         uint32_t totalBatchSizeId = seqOffsetsGt_.GetValue(colInfo.batchId);
 
-        computeTaskInfo_[curTaskId].qOrGoffset =
+        computeTaskInfo_[curTaskId].qOffset =
             qLayout_(MakeCoord(totalBatchSizeId + rowId * blockHeightQ, colInfo.headId, 0));
-        computeTaskInfo_[curTaskId].kOrVOffset =
+        computeTaskInfo_[curTaskId].kOffset =
             kLayout_(MakeCoord(totalBatchSizeId + colInfo.colId * blockHeightK, colInfo.headId, 0));
+        computeTaskInfo_[curTaskId].gOffset =
+            gLayout_(MakeCoord(totalBatchSizeId + rowId * blockHeightQ, colInfo.headId, 0));
+        computeTaskInfo_[curTaskId].vOffset =
+            vLayout_(MakeCoord(totalBatchSizeId + colInfo.colId * blockHeightK, colInfo.headId, 0));
         computeTaskInfo_[curTaskId].rowLine = colInfo.curSeqLen - computeTaskInfo_[curTaskId].rowId * blockHeightQ;
         computeTaskInfo_[curTaskId].rowLine =
             computeTaskInfo_[curTaskId].rowLine > blockHeightQ ? blockHeightQ : computeTaskInfo_[curTaskId].rowLine;
@@ -353,18 +374,18 @@ public:
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midScoreOffset = (taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
-        mm_mgmt_->DoQkMatmul(midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
-                             computeTaskInfo_[curTaskId].kOrVOffset, computeTaskInfo_[curTaskId].rowLine,
-                             computeTaskInfo_[curTaskId].GetColLine());
+        mm_mgmt_->DoQkMatmul(midScoreOffset, computeTaskInfo_[curTaskId].qOffset,
+                             computeTaskInfo_[curTaskId].kOffset, computeTaskInfo_[curTaskId].rowLine,
+                             computeTaskInfo_[curTaskId].GetColLine(), headDimQK_);
     }
 
     __aicore__ inline void DoJaggedGVMatmul(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midScoreOffset = (taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
-        mm_mgmt_->DoGvMatmul(midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
-                             computeTaskInfo_[curTaskId].kOrVOffset, computeTaskInfo_[curTaskId].rowLine,
-                             computeTaskInfo_[curTaskId].GetColLine());
+        mm_mgmt_->DoGvMatmul(midScoreOffset, computeTaskInfo_[curTaskId].gOffset,
+                             computeTaskInfo_[curTaskId].vOffset, computeTaskInfo_[curTaskId].rowLine,
+                             computeTaskInfo_[curTaskId].GetColLine(), headDimV_);
     }
 
     __aicore__ inline void DoJaggedQGradMatmul(int64_t taskId)
@@ -373,11 +394,11 @@ public:
         int64_t midScoreOffset = (taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
 
         int64_t qGradOutOffset =
-            seqOffsetsGt_.GetValue(computeTaskInfo_[curTaskId].GetBatchId()) * headNum_ * headDim_ +
-            computeTaskInfo_[curTaskId].GetHeadId() * computeTaskInfo_[curTaskId].GetCurSeqLen() * headDim_ +
-            computeTaskInfo_[curTaskId].rowId * blockHeightQ * headDim_;
+            seqOffsetsGt_.GetValue(computeTaskInfo_[curTaskId].GetBatchId()) * headNum_ * headDimQKAlign32_ +
+            computeTaskInfo_[curTaskId].GetHeadId() * computeTaskInfo_[curTaskId].GetCurSeqLen() * headDimQKAlign32_ +
+            computeTaskInfo_[curTaskId].rowId * blockHeightQ * headDimQKAlign32_;
 
-        mm_mgmt_->DoQGradMatmul(qGradOutOffset, midScoreOffset, computeTaskInfo_[curTaskId].kOrVOffset,
+        mm_mgmt_->DoQGradMatmul(qGradOutOffset, midScoreOffset, computeTaskInfo_[curTaskId].kOffset,
                                 computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine());
     }
 
@@ -385,10 +406,11 @@ public:
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midScoreOffset = (computeTaskInfo_[curTaskId].taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
-        int64_t kAccumOffset = (computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES) * blockHeightK * headDim_;
+        int64_t kAccumOffset =
+            (computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES) * blockHeightK * headDimQKAlign32_;
         bool isFirstBlock = maskType_ == MaskType::MASK_TRIL ? blockMaskParams_[curTaskId].IsFirstBlockNeedOverride()
                                                              : computeTaskInfo_[curTaskId].GetRowId() == 0;
-        mm_mgmt_->DoKGradMatmul(kAccumOffset, midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
+        mm_mgmt_->DoKGradMatmul(kAccumOffset, midScoreOffset, computeTaskInfo_[curTaskId].qOffset,
                                 computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine(),
                                 isFirstBlock);
     }
@@ -397,10 +419,10 @@ public:
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midScoreOffset = (computeTaskInfo_[curTaskId].taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
-        int64_t vAccumOffset = (computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES) * blockHeightK * headDim_;
+        int64_t vAccumOffset = (computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES) * blockHeightK * headDimV_;
         bool isFirstBlock = maskType_ == MaskType::MASK_TRIL ? blockMaskParams_[curTaskId].IsFirstBlockNeedOverride()
                                                              : computeTaskInfo_[curTaskId].GetRowId() == 0;
-        mm_mgmt_->DoVGradMatmul(vAccumOffset, midScoreOffset, computeTaskInfo_[curTaskId].qOrGoffset,
+        mm_mgmt_->DoVGradMatmul(vAccumOffset, midScoreOffset, computeTaskInfo_[curTaskId].gOffset,
                                 computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine(),
                                 isFirstBlock);
     }
@@ -421,23 +443,32 @@ public:
                                               computeTaskInfo_[curTaskId].GetColLine(), blockMaskParams_[curTaskId]);
     }
 
-    __aicore__ inline void DoTransJagged(int64_t taskId, GlobalTensor<float> from, GlobalTensor<qType> to,
-                                         bool isCol = true)
+    __aicore__ inline void DoTransJaggedK(int64_t taskId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midResultIdx = computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES;
-        int64_t fromOffset = midResultIdx * blockHeightQ * headDim_;
+        int64_t fromOffset = midResultIdx * blockHeightQ * headDimQKAlign32_;
         int64_t toOffset = 0;
         int64_t total = 0;
-        if (isCol) {
-            toOffset = computeTaskInfo_[curTaskId].kOrVOffset;
-            total = computeTaskInfo_[curTaskId].GetColLine() * headDim_;
-        } else {
-            toOffset = computeTaskInfo_[curTaskId].qOrGoffset;
-            total = computeTaskInfo_[curTaskId].rowLine * headDim_;
-        }
 
-        transKernel_.DoTransOfStrideHeadDim(from, to, fromOffset, toOffset, total);
+        toOffset = computeTaskInfo_[curTaskId].kOffset;
+        total = computeTaskInfo_[curTaskId].GetColLine() * headDimQKAlign32_;
+
+        transKernelK_.DoTransOfStrideHeadDim(mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGrad_, fromOffset, toOffset, total);
+    }
+
+    __aicore__ inline void DoTransJaggedV(int64_t taskId)
+    {
+        int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
+        int64_t midResultIdx = computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES;
+        int64_t fromOffset = midResultIdx * blockHeightQ * headDimV_;
+        int64_t toOffset = 0;
+        int64_t total = 0;
+
+        toOffset = computeTaskInfo_[curTaskId].vOffset;
+        total = computeTaskInfo_[curTaskId].GetColLine() * headDimV_;
+
+        transKernelV_.DoTransOfStrideHeadDim(mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGrad_, fromOffset, toOffset, total);
     }
 
     __aicore__ inline void FirstJaggedStagePipeline(int64_t taskId)
@@ -460,8 +491,8 @@ public:
             mm_mgmt_->qGradMatmulWait();
             if (computeTaskInfo_[(taskId - TWO) % COMPUTE_PIPE_NUM].GetAccumId() !=
                 computeTaskInfo_[(taskId - 1) % COMPUTE_PIPE_NUM].GetAccumId()) {
-                DoTransJagged(taskId - TWO, mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGrad_);
-                DoTransJagged(taskId - TWO, mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGrad_);
+                DoTransJaggedV(taskId - TWO);
+                DoTransJaggedK(taskId - TWO);
             }
         }
     }
@@ -478,8 +509,8 @@ public:
             mm_mgmt_->qGradMatmulWait();
             if (computeTaskInfo_[(taskId - TWO) % COMPUTE_PIPE_NUM].GetAccumId() !=
                 computeTaskInfo_[(taskId - 1) % COMPUTE_PIPE_NUM].GetAccumId()) {
-                DoTransJagged(taskId - TWO, mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGrad_);
-                DoTransJagged(taskId - TWO, mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGrad_);
+                DoTransJaggedV(taskId - TWO);
+                DoTransJaggedK(taskId - TWO);
             }
 
             DoJaggedVGradMatmul(taskId - 1);
@@ -489,8 +520,8 @@ public:
             mm_mgmt_->vGradMatmulWait();
             mm_mgmt_->kGradMatmulWait();
             mm_mgmt_->qGradMatmulWait();
-            DoTransJagged(taskId - 1, mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGrad_);
-            DoTransJagged(taskId - 1, mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGrad_);
+            DoTransJaggedV(taskId - 1);
+            DoTransJaggedK(taskId - 1);
         }
 
         if (taskId == 1) {
@@ -501,8 +532,8 @@ public:
             mm_mgmt_->vGradMatmulWait();
             mm_mgmt_->kGradMatmulWait();
             mm_mgmt_->qGradMatmulWait();
-            DoTransJagged(taskId - 1, mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGrad_);
-            DoTransJagged(taskId - 1, mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGrad_);
+            DoTransJaggedV(taskId - 1);
+            DoTransJaggedK(taskId - 1);
         }
     }
     __aicore__ inline int64_t GetNumContext(int64_t batchId)
@@ -583,13 +614,16 @@ public:
     // Shape
     TNDLayout qLayout_;
     TNDLayout kLayout_;
-    PipeBlockLayout pipeBlockLayout_;
+    TNDLayout gLayout_;
+    TNDLayout vLayout_;
     BNSSLayout bnssLayout_;
 
     uint32_t batchSize_ = 0;
     uint32_t maxSeqLen_ = 0;
     uint32_t biasGradSeqLen_ = 0;
-    uint32_t headDim_ = 0;
+    uint32_t headDimQK_ = 0;
+    uint32_t headDimQKAlign32_ = 0;
+    uint32_t headDimV_ = 0;
     uint32_t headNum_ = 0;
     uint32_t totalBatchSize_ = 0;
 
@@ -622,7 +656,8 @@ public:
     // QAccum
     qBlockAccumKernel<float, qType, seqOffsetType> qAccumKernel_;
     // Trans
-    TransStrideHdDKernel<float, qType> transKernel_;
+    TransStrideHdDKernel<float, qType> transKernelK_;
+    TransStrideHdDKernel<float, qType> transKernelV_;
     // VectorScore
     HstuVectorScoreCommon<qType, blockHeightQ, blockHeightK> vectorScoreKernel_;
     VectorScoreInterface<qType, VectorScoreType>* vectorScoreInterface_;

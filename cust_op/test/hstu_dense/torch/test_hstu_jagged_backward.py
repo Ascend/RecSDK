@@ -52,7 +52,8 @@ def jagged_data_gen(
     batch_size,
     max_seq_len,
     num_heads,
-    attention_dim,
+    head_dim_qk,
+    head_dim_v,
     mask_type,
     data_type,
     num_context=None,
@@ -69,10 +70,10 @@ def jagged_data_gen(
 
     total_seqs = torch.sum(seq_lens)
 
-    grad = torch.empty(total_seqs, num_heads, attention_dim, dtype=data_type).uniform_(-1, 1)
-    q = torch.empty(total_seqs, num_heads, attention_dim, dtype=data_type).uniform_(-1, 1)
-    k = torch.empty(total_seqs, num_heads, attention_dim, dtype=data_type).uniform_(-1, 1)
-    v = torch.empty(total_seqs, num_heads, attention_dim, dtype=data_type).uniform_(-1, 1)
+    grad = torch.empty(total_seqs, num_heads, head_dim_v, dtype=data_type).uniform_(-1, 1)
+    q = torch.empty(total_seqs, num_heads, head_dim_qk, dtype=data_type).uniform_(-1, 1)
+    k = torch.empty(total_seqs, num_heads, head_dim_qk, dtype=data_type).uniform_(-1, 1)
+    v = torch.empty(total_seqs, num_heads, head_dim_v, dtype=data_type).uniform_(-1, 1)
 
     bias = torch.empty(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type).uniform_(-1, 1)
 
@@ -238,17 +239,18 @@ class TestHstuJaggedDemo:
         alpha
     ):
         head_nums = grad.shape[1]
-        head_dim = grad.shape[2]
+        head_dim_v = grad.shape[2]
+        head_dim_qk = q.shape[2]
         batch_size = bias.shape[0]
 
         seq_lens = np.zeros((batch_size,)).astype(np.int32)
         for batch_id in range(batch_size):
             seq_lens[batch_id] = seq_offset[batch_id + 1] - seq_offset[batch_id]
 
-        grad_dens = self.jagged_to_dense(grad, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
-        q_dens = self.jagged_to_dense(q, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
-        k_dens = self.jagged_to_dense(k, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
-        v_dens = self.jagged_to_dense(v, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
+        grad_dens = self.jagged_to_dense(grad, seq_lens, max_seq_len, head_nums, head_dim_v).to("npu")
+        q_dens = self.jagged_to_dense(q, seq_lens, max_seq_len, head_nums, head_dim_qk).to("npu")
+        k_dens = self.jagged_to_dense(k, seq_lens, max_seq_len, head_nums, head_dim_qk).to("npu")
+        v_dens = self.jagged_to_dense(v, seq_lens, max_seq_len, head_nums, head_dim_v).to("npu")
         actual_seq_lens = torch.from_numpy(seq_lens).reshape(batch_size, 1, 1, 1).to("npu")
         actual_seq_lens = torch.broadcast_to(actual_seq_lens, bias.shape)
 
@@ -306,7 +308,8 @@ class TestHstuJaggedDemo:
         batch_size,
         max_seq_len,
         head_num,
-        head_dim,
+        head_dim_qk,
+        head_dim_v,
         mask_type,
         silu_scale,
         enable_bias,
@@ -320,7 +323,8 @@ class TestHstuJaggedDemo:
             batch_size,
             max_seq_len,
             head_num,
-            head_dim,
+            head_dim_qk,
+            head_dim_v,
             mask_type,
             data_type,
             num_context,
@@ -378,7 +382,8 @@ class TestHstuJaggedDemo:
 
     @pytest.mark.parametrize("batch_size", [1, 4])  # 范围: [1, 2048]
     @pytest.mark.parametrize("head_num", [1, 16])  # 范围: [1, 16]
-    @pytest.mark.parametrize("head_dim", [16, 32])  # 范围: [16, 512]，必须是16的倍数
+    @pytest.mark.parametrize("head_dim_qk", [1, 16, 32, 72])  # 范围: [1, 512]
+    @pytest.mark.parametrize("head_dim_v", [16, 32])  # 范围: [16, 512]，必须是16的倍数
     @pytest.mark.parametrize("mask_type", [0, 2, 3])
     @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
     @pytest.mark.parametrize("enable_bias", [True, False])
@@ -395,7 +400,8 @@ class TestHstuJaggedDemo:
         self,
         batch_size,
         head_num,
-        head_dim,
+        head_dim_qk,
+        head_dim_v,
         mask_type,
         silu_scale,
         enable_bias,
@@ -410,7 +416,8 @@ class TestHstuJaggedDemo:
             batch_size,
             max_seq_len,
             head_num,
-            head_dim,
+            head_dim_qk,
+            head_dim_v,
             mask_type,
             silu_scale,
             enable_bias,

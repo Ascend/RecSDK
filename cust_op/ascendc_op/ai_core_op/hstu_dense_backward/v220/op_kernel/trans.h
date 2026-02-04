@@ -35,9 +35,10 @@ public:
         pipe_ = pipePtr;
         headNum_ = headNum;
         headDim_ = headDim;
+        headDimAlign32_ = AlignUp(headDim * sizeof(toType), DATA_ALIGN_BYTES) / sizeof(toType);
         vecOnceDataNum_ = UB_SIZE / (sizeof(fromType) + sizeof(toType));
         vecOnceDataNum_ = vecOnceDataNum_ / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
-        vecOnceDataNum_ = vecOnceDataNum_ / headDim * headDim;
+        vecOnceDataNum_ = vecOnceDataNum_ / headDimAlign32_ * headDimAlign32_;
 
         const uint32_t inputUbLen = vecOnceDataNum_ * sizeof(fromType);
         const uint32_t outputUbLen = vecOnceDataNum_ * sizeof(toType);
@@ -47,11 +48,10 @@ public:
     }
 
     __aicore__ inline void DoTransOfStrideHeadDim(GlobalTensor<fromType>& from, GlobalTensor<toType>& to,
-                                                  int64_t fromOffset, int64_t toOffset, int64_t total = 0)
+                                                  int64_t fromOffset, int64_t toOffset, int64_t total)
     {
         int64_t remain = total;
-        int64_t copyLenEachLoopAlignHeadDim = vecOnceDataNum_ / headDim_ * headDim_;
-        int64_t thisLen = copyLenEachLoopAlignHeadDim;
+        int64_t thisLen = vecOnceDataNum_;
         PipeBarrier<PIPE_ALL>();
         while (remain > 0) {
             if (thisLen > remain) {
@@ -59,7 +59,6 @@ public:
             }
 
             int64_t curFromOffset = total - remain;
-            int64_t curToOffset = curFromOffset * headNum_;
 
             DataCopy(inputLt_, from[fromOffset + curFromOffset], thisLen);
             // 1.做UB Copy需要等待次轮的MTE2完成
@@ -77,16 +76,25 @@ public:
             // 3.下一轮的MTE2需要等待当前UB Copy完成
             DoMte2WhenVFinish(pipe_);
 
-            uint16_t blockCount = thisLen / headDim_;
-            uint16_t blockLen = headDim_ * sizeof(toType) / DATA_ALIGN_BYTES;
-            uint16_t dstStride = (headNum_ * headDim_ - headDim_) * sizeof(toType) / DATA_ALIGN_BYTES;
-            DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
+            int64_t curToOffset = curFromOffset / headDimAlign32_ * headDim_ * headNum_;
+            uint16_t blockCount = thisLen / headDimAlign32_;
 
-            // 4.下一轮的MTE3需要等待当前UB Copy完成
-            DoMte3WhenVFinish(pipe_);
-
-            DataCopy(to[toOffset + curToOffset], outputLt_, copyParams);
-
+            if ((headDim_ * sizeof(toType)) % DATA_ALIGN_BYTES == 0) {
+                uint16_t blockLen = headDim_ * sizeof(toType) / DATA_ALIGN_BYTES;
+                uint16_t dstStride = (headNum_ * headDim_ - headDim_) * sizeof(toType) / DATA_ALIGN_BYTES;
+                DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
+                // 4.下一轮的MTE3需要等待当前UB Copy完成
+                DoMte3WhenVFinish(pipe_);
+                DataCopy(to[toOffset + curToOffset], outputLt_, copyParams);
+            } else {
+                uint16_t blockLen = headDim_ * sizeof(toType);
+                uint16_t dstStride = (headNum_ * headDim_ - headDim_) * sizeof(toType);
+                DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
+                // 4.下一轮的MTE3需要等待当前UB Copy完成
+                DoMte3WhenVFinish(pipe_);
+                DataCopyPad(to[toOffset + curToOffset], outputLt_, copyParams);
+            }
+            
             remain = remain - thisLen;
         }
         // 5.Trans需要等待MTE3完成
@@ -95,6 +103,7 @@ public:
 
     uint32_t headNum_ = 0;
     uint32_t headDim_ = 0;
+    uint32_t headDimAlign32_ = 0;
     uint32_t vecOnceDataNum_ = 0;
     LocalTensor<fromType> inputLt_;
     LocalTensor<toType> outputLt_;

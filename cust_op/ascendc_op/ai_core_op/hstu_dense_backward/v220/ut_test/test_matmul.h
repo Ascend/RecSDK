@@ -143,8 +143,7 @@ __aicore__ inline void MmMgmtTest(GM_ADDR baseAddr)
     if (GetBlockIdx() != 0) {
         return;
     }
-    MatmulArgs matmulArgs = {0, 0, 0, 0, seqLen, seqLen};
-    MatmulArgs matmulArgs1 = {1, 1, headDim, headDim, seqLen, seqLen};
+
     mgmt.DoQkMatmul(0, 0, 0, seqLen, seqLen);
     mgmt.DoGvMatmul(0, 0, 0, seqLen, seqLen);
     mgmt.DoQkMatmul(blockSize, headDim, headDim, seqLen, seqLen);

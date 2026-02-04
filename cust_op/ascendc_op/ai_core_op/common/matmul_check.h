@@ -45,9 +45,6 @@ namespace MatmulTilingCheck {
         OPS_CHECK(!SafeCheckMultiply(N, Kb), OPS_LOG_E("", "N * Kb out_of_range"), return false);
         OPS_CHECK(!SafeCheckMultiply(baseM, baseN), OPS_LOG_E("", "baseM * baseN out_of_range"), return false);
         OPS_CHECK(!SafeCheckMultiply(M, N), OPS_LOG_E("", "M * N out_of_range"), return false);
-        OPS_CHECK(baseM * baseK > M * Ka, OPS_LOG_E("", "baseM * baseK out_of_range"), return false);
-        OPS_CHECK(baseN * baseK > N * Kb, OPS_LOG_E("", "baseN * baseK out_of_range"), return false);
-        OPS_CHECK(baseM * baseN > M * N, OPS_LOG_E("", "baseM * baseN out_of_range"), return false);
         return true;
     }
 };

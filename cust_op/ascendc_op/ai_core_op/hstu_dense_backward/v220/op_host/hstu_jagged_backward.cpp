@@ -27,7 +27,8 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
 {
     int64_t batchSize = tiling.get_batchSize();
     int64_t headNum = tiling.get_headNum();
-    int64_t headDim = tiling.get_headDim();
+    int64_t headDimQK = tiling.get_headDimQK();
+    int64_t headDimV = tiling.get_headDimV();
     int64_t blockHeight = tiling.get_blockHeight();
     int64_t dataTypeLength = tiling.get_dataTypeLength();
     int64_t maxSeqLen = tiling.get_maxSeqLen();
@@ -47,6 +48,11 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
         return ge::GRAPH_FAILED;
     }
 
+    int dataTypeSize = ge::GetSizeByDataType(gradType);
+    OPS_CHECK(dataTypeSize == 0, OPS_LOG_E("", "dataTypeSize is 0, GetSizeByDataType failed\n"),
+        return ge::GRAPH_FAILED);
+    int64_t HeadDimQKAlign32 = AlignUp(headDimQK * dataTypeSize, DATA_ALIGN_BYTES) / dataTypeSize;
+
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAic();
     size_t vecCoreNum = ascendPlatform.GetCoreNumAiv();
@@ -56,8 +62,8 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
     int64_t qkMatmulTempSpace = blockHeight * blockHeight * pipeMidScore3;
     int64_t gvMatmulTempSpace = blockHeight * blockHeight * pipeMidScore3;
 
-    int64_t vGradAccumTempSpace = blockHeight * headDim * pipeAccuNum2;
-    int64_t kGradAccumTempSpace = blockHeight * headDim * pipeAccuNum2;
+    int64_t vGradAccumTempSpace = blockHeight * headDimV * pipeAccuNum2;
+    int64_t kGradAccumTempSpace = blockHeight * HeadDimQKAlign32 * pipeAccuNum2;
 
     int64_t maskTempSpace = blockHeight * blockHeight;
 
@@ -68,7 +74,7 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
     int64_t workspaceSize = vecCoreNum * totalTempSpaceForOneVec;
 
     int64_t biasGradTempSpace = blockHeight * blockHeight;
-    int64_t qGradAccumTempSpace = batchSize * headNum * maxSeqLen * headDim;
+    int64_t qGradAccumTempSpace = batchSize * headNum * maxSeqLen * HeadDimQKAlign32;
     workspaceSize += qGradAccumTempSpace * sizeof(float);
     workspaceSize = (workspaceSize + BLOCK_256 - 1) / BLOCK_256 * BLOCK_256;
 
@@ -82,8 +88,12 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
     qkMatmul.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
     qkMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
 
-    qkMatmul.SetOrgShape(blockHeight, blockHeight, headDim);
-    qkMatmul.SetShape(blockHeight, blockHeight, headDim);
+    // 因为QK Matmul和GV Matmul公用一个qkMatmul对象(matmul高阶API限制一个算子最后4个matmul对象，当前已有四个)，
+    // 而QK与GV的matmul计算，因为dim不同导致shape中的K值不同，K为消融轴，因此这里设置qkMatmul对象的K值为QK、GV计算的较大值，
+    // 在实际计算时再在kernel侧通过SetTail传入计算实际值，从而兼容不等场景。
+    int64_t qkMatmulDim = headDimV > headDimQK ? headDimV : headDimQK;
+    qkMatmul.SetOrgShape(blockHeight, blockHeight, qkMatmulDim);
+    qkMatmul.SetShape(blockHeight, blockHeight, qkMatmulDim);
     qkMatmul.SetBias(false);
     qkMatmul.SetBufferSpace(-1, -1, -1);
 
@@ -94,8 +104,8 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
                          matmul_tiling::DataType::DT_FLOAT);
     qGradMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
 
-    qGradMatmul.SetOrgShape(blockHeight, headDim, blockHeight);
-    qGradMatmul.SetShape(blockHeight, headDim, blockHeight);
+    qGradMatmul.SetOrgShape(blockHeight, HeadDimQKAlign32, blockHeight);
+    qGradMatmul.SetShape(blockHeight, HeadDimQKAlign32, blockHeight);
     qGradMatmul.SetBias(false);
     qGradMatmul.SetBufferSpace(-1, -1, -1);
 
@@ -106,8 +116,8 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
                          matmul_tiling::DataType::DT_FLOAT);
     kGradMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
 
-    kGradMatmul.SetOrgShape(blockHeight, headDim, blockHeight);
-    kGradMatmul.SetShape(blockHeight, headDim, blockHeight);
+    kGradMatmul.SetOrgShape(blockHeight, HeadDimQKAlign32, blockHeight);
+    kGradMatmul.SetShape(blockHeight, HeadDimQKAlign32, blockHeight);
     kGradMatmul.SetBias(false);
     kGradMatmul.SetBufferSpace(-1, -1, -1);
 
@@ -118,8 +128,8 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
                          matmul_tiling::DataType::DT_FLOAT);
     vGradMatmul.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, dataType);
 
-    vGradMatmul.SetOrgShape(blockHeight, headDim, blockHeight);
-    vGradMatmul.SetShape(blockHeight, headDim, blockHeight);
+    vGradMatmul.SetOrgShape(blockHeight, headDimV, blockHeight);
+    vGradMatmul.SetShape(blockHeight, headDimV, blockHeight);
     vGradMatmul.SetBias(false);
     vGradMatmul.SetBufferSpace(-1, -1, -1);
 
@@ -137,7 +147,8 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
         return ge::GRAPH_FAILED;
     }
 
-    if (gradType == ge::DataType::DT_BF16 && headDim <= BFLOAT16_DEPTH_MAX_DIM) {
+    if (gradType == ge::DataType::DT_BF16 && headDimQK <= BFLOAT16_DEPTH_MAX_DIM &&
+        headDimV <= BFLOAT16_DEPTH_MAX_DIM) {
         // matmul计算时，左矩阵一次拷入L1中的大小为depthA1*baseM*baseK，右矩阵一次拷入L1中的大小为depthB1*baseN*baseK
         // 理论上在调用matmul.GetTiling时，matmul内部会自动算出最优depth值，但不能使所有场景性能最优
         // 所以这里通过设置depth大小，调整一次拷入L1的数据多少，达到优化目的
