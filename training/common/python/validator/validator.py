@@ -22,8 +22,6 @@ import inspect
 import functools
 import stat
 
-import tensorflow as tf
-
 from rec_sdk_common.constants.constants import EnvOptionCommon, LogLevel, FileParams, RankTableParams, ValidatorParams
 from rec_sdk_common.log.log import LoggingProxy
 
@@ -733,6 +731,7 @@ class FileValidator(StringValidator):
         min_size=ValidatorParams.FILE_MIN_SIZE.value,
         max_size=ValidatorParams.FILE_MAX_SIZE.value,
     ):
+        import tensorflow as tf
         file_stat = tf.io.gfile.stat(self.value)
         self.register_checker(
             lambda: min_size <= file_stat.length <= max_size,
