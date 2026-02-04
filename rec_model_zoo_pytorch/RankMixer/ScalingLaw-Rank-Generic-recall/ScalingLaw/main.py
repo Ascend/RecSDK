@@ -622,6 +622,7 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
             prof = torch.profiler.profile(**profiler_config)
             prof.start()
     batch_limit = train_conf.get("batch_limit", 0)
+    e2e_average_nums = train_conf.get("e2e_average_nums", 20)
     e2e_data = {"E2E":[]}
     if FLAGS.get_infer_result:
         round_cnt = 0
@@ -733,19 +734,26 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
     #latency计算
     print("收集端到端时间")
     user_max_batch_size = train_conf["eval_batch_size"]
-    report = {'Batch_size': user_max_batch_size,
-                  'model_name': 'RankMixer'}
+    report = {
+        'Batch_size': user_max_batch_size,
+        'model_name': 'RankMixer',
+        'config_file': FLAGS.config_file,
+        }
 
-    time_arr = time_arr[-20:]
+    time_arr = time_arr[-e2e_average_nums:]
     time_arr.sort()
-    tail_latency = round(time_arr[int(len(time_arr) * 0.99)] * 1000, 6)
+    p999_latency = round(time_arr[int(len(time_arr) * 0.999)] * 1000, 6)
+    p99_latency = round(time_arr[int(len(time_arr) * 0.99)] * 1000, 6)
+    p95_latency = round(time_arr[int(len(time_arr) * 0.95)] * 1000, 6)
     p90_latency = round(time_arr[int(len(time_arr) * 0.90)] * 1000, 6)
     avg_latency = round(sum(time_arr) / len(time_arr) * 1000, 6)
     qps = int(1000.0 * user_max_batch_size / avg_latency)
 
     report["QPS"] = qps
     report["AVG Latency"] = avg_latency
-    report["P99 Latency"] = tail_latency
+    report["P999 Latency"] = p999_latency
+    report["P99 Latency"] = p99_latency
+    report["P95 Latency"] = p95_latency
     report["P90 Latency"] = p90_latency
     print(report)
 
