@@ -1,0 +1,783 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+import json
+import os
+import logging
+from typing import Any, Callable, Dict, Iterator, Optional, Tuple, IO
+from dataclasses import dataclass
+
+import numpy as np
+import torch
+import torch_npu
+import torch.distributed as dist
+
+from dynamic_emb.distributed.dynamicemb_config import (
+    DynamicEmbTableOptions,
+    create_dynamicemb_table,
+    dyn_emb_to_torch,
+    torch_to_dyn_emb,
+)
+from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import BaseDynamicEmbeddingOptimizerV2
+from dynamic_emb.distributed.types import (
+    Cache, 
+    Storage,
+    StorageOptionalFilePaths,
+    KEY_TYPE,
+    EMBEDDING_TYPE,
+    SCORE_TYPE,
+    OPT_STATE_TYPE,
+    DEFAULT_LOAD_BATCH_SIZE,
+    torch_dtype_to_np_dtype,
+)
+from dynamic_emb_extensions import (
+    DynamicEmbTable,
+    EvictStrategy,
+    find_pointers,
+    load_from_pointer,
+    device_timestamp,
+)
+
+
+@dataclass
+class LoadFilePaths:
+    emb_key_path: str
+    embedding_file_path: str
+    score_file_path: Optional[str]
+    opt_file_path: Optional[str]
+
+
+@dataclass
+class LoadFileHandles:
+    fkey: IO
+    fembedding: IO
+    fscore: Optional[IO]
+    fopt_states: Optional[IO]
+
+
+@dataclass
+class DistConfig:
+    device: torch.device
+    world_size: int
+    rank: int
+
+
+def save_to_json(data: Dict[str, Any], file_path: str) -> None:
+    try:
+        with open(file_path, "w") as json_file:
+            json.dump(data, json_file, indent=4)
+    except Exception as e:
+        raise RuntimeError(f"Error saving data to JSON file: {e}") from e
+
+
+def load_from_json(file_path: str) -> Dict[str, Any]:
+    try:
+        with open(file_path, "r") as json_file:
+            data = json.load(json_file)
+        return data
+    except Exception as e:
+        raise RuntimeError(f"Error loading data from JSON file: {e}") from e
+
+
+def batched_export_keys_values(
+    dynamic_table: DynamicEmbTable,
+    device: torch.device,
+    batch_size: int = DEFAULT_LOAD_BATCH_SIZE,
+) -> Iterator[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]]:
+    """
+    export keys, embeddings, opt_states, scores
+    """
+
+    search_capacity = dynamic_table.get_max_capacity()
+
+    offset = 0
+
+    while offset < search_capacity:
+        key_dtype = dyn_emb_to_torch(dynamic_table.get_key_type())
+        value_dtype = dyn_emb_to_torch(dynamic_table.get_value_type())
+        dim = dynamic_table.get_emb_cols()
+        optstate_dim = dynamic_table.optstate_dim()
+        total_dim = dim + optstate_dim
+
+        npu_device = torch.device(f"npu:{torch_npu.npu.current_device()}")
+        keys = torch.empty(batch_size, dtype=key_dtype, device=npu_device)
+        values = torch.empty(
+            batch_size * total_dim, dtype=value_dtype, device=npu_device
+        )
+        scores = torch.zeros(batch_size, dtype=SCORE_TYPE, device=npu_device)
+        d_counter = torch.zeros(1, dtype=torch.int64, device=npu_device).to(torch.uint64)
+
+        dynamic_table.export_batch(batch_size, offset, d_counter, keys, values, scores)
+
+        values = values.reshape(batch_size, total_dim)
+
+        embeddings = values[:, :dim].contiguous()
+        opt_states = values[:, dim:].contiguous()
+
+        d_counter = d_counter.to(dtype=torch.int64)
+        actual_length = d_counter.item()
+        if actual_length > 0:
+            yield (
+                keys[:actual_length].to(KEY_TYPE).to(device),
+                embeddings[:actual_length, :].to(EMBEDDING_TYPE).to(device),
+                opt_states[:actual_length, :].to(OPT_STATE_TYPE).to(device),
+                scores[:actual_length].to(SCORE_TYPE).to(device),
+            )
+        offset += batch_size
+
+
+def load_key_values(
+    dynamic_table: DynamicEmbTable,
+    keys: torch.Tensor,
+    embeddings: torch.Tensor,
+    scores: Optional[torch.Tensor] = None,
+    opt_states: Optional[torch.Tensor] = None,
+):
+    dim = dynamic_table.get_emb_cols()
+    optstate_dim = dynamic_table.optstate_dim()
+
+    if opt_states is None and optstate_dim > 0:
+        opt_states = (
+            torch.ones(
+                keys.numel(),
+                optstate_dim,
+                dtype=dyn_emb_to_torch(dynamic_table.get_value_type()),
+                device=embeddings.device,
+            )
+            * dynamic_table.get_initial_optstate()
+        )
+
+    values = (
+        torch.cat([embeddings.view(-1, dim), opt_states.view(-1, optstate_dim)], dim=-1)
+        if opt_states is not None
+        else embeddings
+    )
+
+    key_type = dyn_emb_to_torch(dynamic_table.get_key_type())
+    value_type = dyn_emb_to_torch(dynamic_table.get_value_type())
+
+    if scores is None:
+        if dynamic_table.get_evict_strategy() != EvictStrategy.kLru:
+            raise ValueError(
+                "scores is None for kLru evict strategy is allowed but will be deprecated in future."
+            )
+        dynamic_table.load(
+            keys.numel(), keys.to(key_type), values.to(value_type)
+        )
+        return
+
+    dynamic_table.load(
+        keys.numel(),
+        keys.to(key_type),
+        values.to(value_type),
+        scores.to(SCORE_TYPE),
+        unique_key=True,
+        ignore_evict_strategy=True,
+    )
+
+
+class KeyValueTable(
+    Cache, Storage[DynamicEmbTableOptions, BaseDynamicEmbeddingOptimizerV2]
+):
+    def __init__(
+        self,
+        options: DynamicEmbTableOptions,
+        optimizer: BaseDynamicEmbeddingOptimizerV2,
+    ):
+        super().__init__(options=options, optimizer=optimizer)
+        self.options = options
+        self.table = create_dynamicemb_table(options)
+        self._capacity = options.max_capacity
+        self.optimizer = optimizer
+        self.score: int = None
+        self._score_update = False
+        self._emb_dim = self.options.dim
+        self._emb_dtype = self.options.embedding_dtype
+        self._de_emb_dtype = torch_to_dyn_emb(self._emb_dtype)
+        self._value_dim = self._emb_dim + optimizer.get_state_dim(self._emb_dim)
+        self._initial_optim_state = optimizer.get_initial_optim_states()
+        self.device = 0
+        if torch_npu.npu.is_available():
+            device_idx = torch_npu.npu.current_device()
+            self.device = torch.device(f"npu:{device_idx}")
+        else:
+            self.device = torch.device(f"cpu:{device_idx}")
+        self._threads_in_wave = 1024
+
+        self._cache_metrics = torch.zeros(10, dtype=torch.long, device="cpu")
+        self._record_cache_metrics = False
+        self._use_score = self.table.get_evict_strategy() != EvictStrategy.kLru
+
+    def find_impl(
+        self,
+        unique_keys: torch.Tensor,
+        unique_embs: torch.Tensor,
+        founds: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if unique_keys.dtype != self.key_type():
+            unique_keys = unique_keys.to(self.key_type())
+
+        if unique_embs.dtype != self.value_type():
+            raise RuntimeError(
+                "Embedding dtype not match {} != {}".format(
+                    unique_embs.dtype, self.value_type()
+                )
+            )
+
+        batch = unique_keys.size(0)
+        if unique_embs.dim() != 2:
+            raise RuntimeError("unique_embs dims not equal 2")
+        if unique_embs.size(0) != batch:
+            raise RuntimeError("unique_embs dim0  size not equal batch size")
+
+        load_dim = unique_embs.size(1)
+
+        device = unique_keys.device
+        if founds is None:
+            founds = torch.empty(batch, dtype=torch.bool, device=device)
+        pointers = torch.empty(batch, dtype=torch.long, device=device)
+
+        if self._score_update:
+            find_pointers(self.table, batch, unique_keys, pointers, founds, self.score)
+        else:
+            find_pointers(self.table, batch, unique_keys, pointers, founds)
+
+        self.value_dim()
+        # We are verifying the logic of this section and will replace with load_from_pointer
+        if load_dim != 0 and founds.sum().item() > 0:
+            find_num = founds.sum().item()
+            pointers_new = pointers[founds]
+            tmp_embs = torch.empty((find_num, unique_embs.size(1)), dtype=unique_embs.dtype,
+                                   device=unique_embs.device)
+            load_from_pointer(pointers_new, tmp_embs)
+            unique_embs[founds, :] = tmp_embs[:, :]
+
+        missing = torch.logical_not(founds)
+        missing_keys = torch.masked_select(unique_keys, missing)
+        num_missing_0 = torch.tensor([missing_keys.numel()], dtype=torch.long, device=device)
+        missing_indices = torch.nonzero(missing, as_tuple=True)[0]
+
+        if self._record_cache_metrics:
+            self._cache_metrics[0] = batch
+            self._cache_metrics[1] = founds.sum().item()
+
+        h_num_missing = num_missing_0.cpu().item()
+        return (
+            h_num_missing,
+            missing_keys,
+            missing_indices,
+        )
+
+    def find_embeddings(
+        self,
+        unique_keys: torch.Tensor,
+        unique_embs: torch.Tensor,
+        founds: Optional[torch.Tensor] = None,
+    ) -> Tuple[int, torch.Tensor, torch.Tensor]:
+        return self.find_impl(unique_keys, unique_embs, founds)
+
+    def find_missed_keys(
+        self,
+        unique_keys: torch.Tensor,
+        founds: Optional[torch.Tensor] = None,
+    ) -> Tuple[int, torch.Tensor, torch.Tensor]:
+        # dummy tensor
+        unique_embs = torch.empty(
+            unique_keys.numel(), 0, device=unique_keys.device, dtype=self._emb_dtype
+        )
+        return self.find_impl(unique_keys, unique_embs, founds)
+
+    def find(
+        self,
+        unique_keys: torch.Tensor,
+        unique_vals: torch.Tensor,
+        founds: Optional[torch.Tensor] = None,
+    ) -> Tuple[int, torch.Tensor, torch.Tensor]:
+        return self.find_impl(unique_keys, unique_vals, founds)
+
+    def insert(
+        self,
+        unique_keys: torch.Tensor,
+        unique_values: torch.Tensor,
+        scores: Optional[torch.Tensor] = None,
+    ) -> None:
+        h_num_unique_keys = unique_keys.numel()
+        if self._use_score:
+            if scores is None:
+                scores = torch.empty(
+                    h_num_unique_keys, device=unique_keys.device, dtype=torch.int32
+                )
+                scores.fill_(self.score)
+        else:
+            scores = None
+        self.table.update(h_num_unique_keys, unique_keys, unique_values.to(self.value_type()), scores, True, False)
+
+    def update(
+        self,
+        keys: torch.Tensor,
+        grads: torch.Tensor,
+        return_missing: bool = True,
+    ) -> Tuple[Optional[int], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        if self._score_update:
+            raise RuntimeError("update is called only in backward.")
+
+        batch = keys.size(0)
+
+        device = keys.device
+        founds = torch.empty(batch, dtype=torch.bool, device=device)
+        pointers = torch.empty(batch, dtype=torch.long, device=device)
+        find_pointers(self.table, batch, keys, pointers, founds)
+
+        self.optimizer.fused_update_with_pointer(
+            grads.to(self.value_type()), pointers, self._de_emb_dtype
+        )
+
+        if return_missing:
+            missing = torch.logical_not(founds)
+            missing_keys = torch.masked_select(keys, missing)
+            num_missing_0 = torch.tensor([missing_keys.numel()], dtype=torch.long, device=device)
+            missing_indices = torch.nonzero(missing, as_tuple=True)[0]
+
+            h_num_missing = num_missing_0.cpu().item()
+            return (
+                h_num_missing,
+                missing_keys,
+                missing_indices,
+            )
+        return None, None, None
+
+    def enable_update(self) -> bool:
+        return True
+
+    def set_score(
+        self,
+        score: int,
+    ) -> None:
+        self.score = score
+
+    @property
+    def score_update(
+        self,
+    ) -> None:
+        return self._score_update
+
+    @score_update.setter
+    def score_update(self, value: bool):
+        self._score_update = value
+
+    def update_timestamp(self) -> None:
+        self._timestamp = device_timestamp()
+
+    def dump(
+        self,
+        meta_json_file_path: str,
+        emb_key_path: str,
+        embedding_file_path: str,
+        optional_files: StorageOptionalFilePaths,
+        include_optim: bool,
+        include_meta: bool,
+    ) -> None:
+        score_file_path, opt_file_path = optional_files.score_file_path, optional_files.opt_file_path
+        device = torch.device(f"npu:{torch_npu.npu.current_device()}")
+        if include_meta:
+            meta_data = {}
+            meta_data.update(self.optimizer.get_opt_args())
+            meta_data["evict_strategy"] = str(self.table.get_evict_strategy())
+            save_to_json(meta_data, meta_json_file_path)
+
+        fkey = open(emb_key_path, "wb")
+        fembedding = open(embedding_file_path, "wb")
+        fscore = open(score_file_path, "wb")
+        fopt_states = open(opt_file_path, "wb") if include_optim else None
+
+        for keys, embeddings, opt_states, scores in batched_export_keys_values(
+            self.table, device
+        ):
+            fkey.write(keys.cpu().numpy().tobytes())
+            fembedding.write(embeddings.cpu().numpy().tobytes())
+            if self.table.get_evict_strategy() == EvictStrategy.kLru:
+                scores = self._timestamp - scores
+            fscore.write(scores.cpu().numpy().tobytes())
+            if fopt_states:
+                fopt_states.write(opt_states.cpu().numpy().tobytes())
+
+        fkey.close()
+        fembedding.close()
+
+        if fscore:
+            fscore.close()
+
+        if fopt_states:
+            fopt_states.close()
+
+        return
+
+    def load(
+        self,
+        meta_json_file_path: str,
+        emb_key_path: str,
+        embedding_file_path: str,
+        include_optim: bool,
+        optional_files: Optional[StorageOptionalFilePaths] = None,
+    ) -> None:
+        opt_files = optional_files or StorageOptionalFilePaths()
+        score_file_path, opt_file_path = opt_files.score_file_path, opt_files.opt_file_path
+        meta_data, include_optim = self._load_and_validate_meta(
+            meta_json_file_path, score_file_path, opt_file_path, include_optim
+        )
+        device = torch.device(f"npu:{torch_npu.npu.current_device()}")
+
+        dim = self.table.get_emb_cols()
+        optstate_dim = self.table.optstate_dim()
+
+        if optstate_dim == 0:
+            include_optim = False
+
+        if include_optim:
+            self.optimizer.set_opt_args(meta_data)
+
+        paths = LoadFilePaths(
+            emb_key_path, embedding_file_path, score_file_path, opt_file_path
+        )
+
+        fkey = open(paths.emb_key_path, "rb")
+        fembedding = open(paths.embedding_file_path, "rb")
+        fscore = (
+            open(paths.score_file_path, "rb")
+            if paths.score_file_path and os.path.exists(paths.score_file_path)
+            else None
+        )
+        fopt_states = open(paths.opt_file_path, "rb") if include_optim else None
+
+        files = LoadFileHandles(fkey, fembedding, fscore, fopt_states)
+        
+        try:
+            num_keys = self._validate_file(
+                        paths,
+                        fscore, 
+                        fopt_states, 
+                        dim, 
+                        optstate_dim
+                    )
+            
+            world_size = dist.get_world_size() if dist.is_initialized() else 1
+            rank = dist.get_rank() if dist.is_initialized() else 0
+
+            dist_config = DistConfig(device, world_size, rank)
+
+            batch_size = DEFAULT_LOAD_BATCH_SIZE
+            for start in range(0, num_keys, batch_size):
+                num_keys_to_read = min(num_keys - start, batch_size)
+                self._process_batch(
+                    files,
+                    num_keys_to_read, 
+                    dim, 
+                    optstate_dim, 
+                    dist_config
+                )        
+        finally:
+            fkey.close()
+            fembedding.close()
+            if fscore:
+                fscore.close()
+            if fopt_states:
+                fopt_states.close()
+    
+    def _load_and_validate_meta(
+        self,
+        meta_json_file_path: str,
+        score_file_path: Optional[str],
+        opt_file_path: Optional[str],
+        include_optim: bool,
+    ) -> Tuple[Dict[str, Any], bool]:
+        meta_data = load_from_json(meta_json_file_path)
+        opt_type = meta_data.get(
+            "opt_type", None
+        )  # for compatibility with old format, which doesn't have opt_type
+        if opt_type and self.optimizer.get_opt_args().get("opt_type", None) != opt_type:
+            include_optim = False
+            logging.warning(
+                f"Optimizer type mismatch: {opt_type} != {self.optimizer.get_opt_args().get('opt_type')}. \
+                Will not load optimizer states."
+            )
+
+        evict_strategy = meta_data.get("evict_strategy", None)
+        if evict_strategy and str(self.table.get_evict_strategy()) != evict_strategy:
+            raise ValueError(
+                f"Evict strategy mismatch: {evict_strategy} != {self.table.get_evict_strategy()}"
+            )
+
+        if score_file_path is None:
+            logging.info(
+                f"Score file {score_file_path} does not exist. Will not load score states."
+            )
+
+        if not opt_file_path or not os.path.exists(opt_file_path):
+            include_optim = False
+            logging.warning(
+                f"Optimizer file {opt_file_path} does not exist. Will not load optimizer states."
+            )
+        return meta_data, include_optim
+
+    def _validate_file(
+        self,
+        paths: LoadFilePaths,
+        fscore: Optional[IO],
+        fopt_states: Optional[IO],
+        dim: int,
+        optstate_dim: int,
+    ) -> int:
+        num_keys = os.path.getsize(paths.emb_key_path) // KEY_TYPE.itemsize
+        num_embeddings = (
+            os.path.getsize(paths.embedding_file_path) // EMBEDDING_TYPE.itemsize // dim
+        )
+
+        if num_keys != num_embeddings:
+            raise ValueError(
+                f"The number of keys in {paths.emb_key_path} \
+                does not match with number of embeddings in {paths.embedding_file_path}."
+            )
+
+        if fscore:
+            num_scores = os.path.getsize(paths.score_file_path) // SCORE_TYPE.itemsize
+            if num_keys != num_scores:
+                raise ValueError(
+                    f"The number of keys in {paths.emb_key_path} does not match with number of scores in \
+                    {paths.score_file_path}."
+                )
+
+        if fopt_states:
+            num_opt_states = (
+                os.path.getsize(paths.opt_file_path)
+                // OPT_STATE_TYPE.itemsize
+                // optstate_dim
+            )
+            if num_keys != num_opt_states:
+                raise ValueError(
+                    f"The number of keys in {paths.emb_key_path} does not match with number of opt_states in \
+                    {paths.opt_file_path}."
+                )
+        return num_keys
+
+    def _process_batch(
+        self,
+        files: LoadFileHandles,
+        num_keys_to_read: int,
+        dim: int,
+        optstate_dim: int,
+        dist_config: DistConfig
+    ) -> None:
+        keys_bytes = files.fkey.read(KEY_TYPE.itemsize * num_keys_to_read)
+
+        embedding_bytes = files.fembedding.read(
+            EMBEDDING_TYPE.itemsize * dim * num_keys_to_read
+        )
+        embeddings = torch.tensor(
+            np.frombuffer(
+                embedding_bytes, dtype=torch_dtype_to_np_dtype[EMBEDDING_TYPE]
+            ),
+            dtype=EMBEDDING_TYPE,
+            device=dist_config.device,
+        ).view(-1, dim)
+
+        opt_states = None
+        if files.fopt_states:
+            opt_state_bytes = files.fopt_states.read(
+                OPT_STATE_TYPE.itemsize * optstate_dim * num_keys_to_read
+            )
+            opt_states = torch.tensor(
+                np.frombuffer(
+                    opt_state_bytes, dtype=torch_dtype_to_np_dtype[OPT_STATE_TYPE]
+                ),
+                dtype=OPT_STATE_TYPE,
+                device=dist_config.device,
+            ).view(-1, optstate_dim)
+
+        keys = torch.tensor(
+            np.frombuffer(keys_bytes, dtype=torch_dtype_to_np_dtype[KEY_TYPE]),
+            dtype=KEY_TYPE,
+            device=dist_config.device,
+        )
+
+        scores = None
+        if files.fscore:
+            score_bytes = files.fscore.read(SCORE_TYPE.itemsize * num_keys_to_read)
+            scores = torch.tensor(
+                np.frombuffer(
+                    score_bytes, dtype=torch_dtype_to_np_dtype[SCORE_TYPE]
+                ),
+                dtype=SCORE_TYPE,
+                device=dist_config.device,
+            )
+            if self.table.get_evict_strategy() == EvictStrategy.kLru:
+                scores = torch.clamp(self._timestamp - scores, min=0)
+
+        if dist_config.world_size > 1:
+            masks = keys % dist_config.world_size == dist_config.rank
+            keys = keys[masks]
+            embeddings = embeddings[masks, :]
+            if scores is not None:
+                scores = scores[masks]
+            if opt_states is not None:
+                opt_states = opt_states[masks, :]
+        load_key_values(self.table, keys, embeddings, scores, opt_states)
+
+    def embedding_dtype(
+        self,
+    ) -> torch.dtype:
+        return self._emb_dtype
+
+    def value_dim(
+        self,
+    ) -> int:
+        return self._value_dim
+
+    def embedding_dim(
+        self,
+    ) -> int:
+        return self._emb_dim
+
+    def init_optimizer_state(
+        self,
+    ) -> float:
+        return self._initial_optim_state
+
+    def flush(self, storage: Storage) -> None:
+        batch_size = self._threads_in_wave
+        for keys, embeddings, opt_states, scores in batched_export_keys_values(
+            self.table, self.device, batch_size
+        ):
+            if keys.numel() != 0:
+                values = torch.cat((embeddings, opt_states), dim=1).contiguous()
+                storage.insert(keys, values, scores)
+
+    def reset(
+        self,
+    ) -> None:
+        pass
+
+    def cache_metrics(self) -> Optional[torch.Tensor]:
+        return self._cache_metrics if self._record_cache_metrics else None
+
+    def set_record_cache_metrics(self, record: bool) -> None:
+        self._record_cache_metrics = record
+        return
+
+    def key_type(
+        self,
+    ) -> torch.dtype:
+        return dyn_emb_to_torch(self.table.get_key_type())
+
+    def value_type(
+        self,
+    ) -> torch.dtype:
+        return dyn_emb_to_torch(self.table.get_value_type())
+
+    def capacity(
+        self,
+    ) -> int:
+        return self._capacity
+
+    def evict_strategy(self) -> EvictStrategy:
+        return self.table.get_evict_strategy()
+
+    def optim_state_dim(self) -> int:
+        return self.value_dim() - self.embedding_dim()
+
+    def size(self) -> int:
+        return dyn_emb_rows(self.table)
+
+    def insert_and_evict(
+        self,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+    ) -> Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
+        num_evicted: int
+        evicted_keys: torch.Tensor
+        evicted_values: torch.Tensor
+        evicted_scores: torch.Tensor
+        return num_evicted, evicted_keys, evicted_values, evicted_scores
+
+
+class KeyValueTableFunction:
+    @staticmethod
+    def lookup(
+        storage: Storage,
+        unique_keys: torch.Tensor,
+        unique_embs: torch.Tensor,
+        initializer: Callable,
+        training: bool,
+    ) -> None:
+        if unique_keys.dim() != 1:
+            raise RuntimeError("unique_keys dim not equal 1")
+        h_num_toatl = unique_keys.numel()
+        emb_dim = storage.embedding_dim()
+        emb_dtype = storage.embedding_dtype()
+        val_dim = storage.value_dim()
+
+        if h_num_toatl == 0:
+            return
+
+        founds = torch.empty(h_num_toatl, device=unique_keys.device, dtype=torch.bool)
+        (
+            h_num_missing_in_storage,
+            missing_keys_in_storage,
+            missing_indices_in_storage,
+        ) = storage.find_embeddings(unique_keys, unique_embs, founds=founds)
+
+        # 2. initialize missing embeddings
+        if h_num_missing_in_storage == 0:
+            return
+
+        initializer(
+            unique_embs,
+            missing_indices_in_storage,
+            unique_keys)
+
+        # 3. insert missing values into table.
+        if training:
+            # insert missing values
+            missing_values_in_storage = torch.empty(
+                h_num_missing_in_storage,
+                val_dim,
+                device=unique_keys.device,
+                dtype=emb_dtype,
+            )
+            missing_values_in_storage[:, :emb_dim] = unique_embs[
+                missing_indices_in_storage, :
+            ]
+            if val_dim != emb_dim:
+                missing_values_in_storage[
+                    :, emb_dim - val_dim:
+                ] = storage.init_optimizer_state()
+            storage.insert(missing_keys_in_storage, missing_values_in_storage)
+        # ignore the storage missed in eval mode
+
+    @staticmethod
+    def update(
+        storage: Storage,
+        unique_keys: torch.Tensor,
+        unique_grads: torch.Tensor,
+        optimizer: BaseDynamicEmbeddingOptimizerV2,
+    ):
+        if storage.enable_update():
+            storage.update(unique_keys, unique_grads, return_missing=False)
+            return
+        else:
+            raise RuntimeError("KeyValueTableFunction update only support enable_update mode")
