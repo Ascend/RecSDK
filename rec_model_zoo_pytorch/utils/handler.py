@@ -426,12 +426,16 @@ class TestHandler:
         times_range.sort()
         tail_latency = round(times_range[int(len(times_range) * 0.99)] * 1000, 6)
         p90_latency = round(times_range[int(len(times_range) * 0.90)] * 1000, 6)
+        p999_latency = round(times_range[int(len(times_range) * 0.999)] * 1000, 6)
+        p95_latency = round(times_range[int(len(times_range) * 0.95)] * 1000, 6)
         avg_latency = round(sum(times_range) / len(times_range) * 1000, 6)
         qps = calculate_qps(times_range, batches_list)
 
         report["QPS"] = qps
         report["AVG Latency"] = avg_latency
         report["P99 Latency"] = tail_latency
+        report["P999 Latency"] = p999_latency
+        report["P95 Latency"] = p95_latency
         report["P90 Latency"] = p90_latency
         logger.info(report)
         if self.params.report_dir:
