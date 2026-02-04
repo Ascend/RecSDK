@@ -20,7 +20,6 @@
     └── run.sh     # hstu_dense_backward算子安装脚本
 ```
 
-
 # 功能
 
 算子的主要功能是实现HSTU融合算子的反向hstu_dense_backward
@@ -85,10 +84,10 @@ Jagged Layout 的实现原理与 Normal Layout 类似，主要区别在于：
 
 ```python
 # 1. 将 jagged 格式转换为 dense 格式
-grad_dens = jagged_to_dense(grad, seq_lens, max_seq_len, head_nums, head_dim)
-q_dens = jagged_to_dense(q, seq_lens, max_seq_len, head_nums, head_dim)
-k_dens = jagged_to_dense(k, seq_lens, max_seq_len, head_nums, head_dim)
-v_dens = jagged_to_dense(v, seq_lens, max_seq_len, head_nums, head_dim)
+grad_dens = jagged_to_dense(grad, seq_lens, max_seq_len, head_nums, head_dim_v)
+q_dens = jagged_to_dense(q, seq_lens, max_seq_len, head_nums, head_dim_qk)
+k_dens = jagged_to_dense(k, seq_lens, max_seq_len, head_nums, head_dim_qk)
+v_dens = jagged_to_dense(v, seq_lens, max_seq_len, head_nums, head_dim_v)
 
 # 2. 计算 QK 和 GV 矩阵乘法（与 Normal Layout 相同）
 qk = torch.matmul(q_dens.permute(0, 2, 1, 3), k_dens.permute(0, 2, 3, 1))
@@ -141,19 +140,16 @@ k_grad = dense_to_jagged(k, k_grad_dens, seq_lens)
 v_grad = dense_to_jagged(v, v_grad_dens, seq_lens)
 ```
 
-
-b) 算子参数说明：
-
 # 算子输入与输出
 
 ## 输入参数
 
 | 名称         | 输入/输出 | 参数类型          | 数据类型                               | 数据格式                                    | 范围                                                         | 说明                                                         |
 | ------------ | --------- | ----------------- | -------------------------------------- | ------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| grad         | 输入      | Tensor (REQUIRED) | float32/float16/bf16                   | Normal: [B, S, N, D]<br>Jagged: [s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[1, 16]<br>D∈[16, 512]且是16的倍数 | 前向输出out的反向梯度，Jagged模式下s_b为总序列长度           |
-| q            | 输入      | Tensor (REQUIRED) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [s_b, N, D] | 同grad                                                       | Q张量，Jagged模式下传入[s_b, N, D]，Normal模式下传入[B, S, N, D] |
-| k            | 输入      | Tensor (REQUIRED) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [s_b, N, D] | 同grad                                                       | K张量，Shape和类型与Q一致                                    |
-| v            | 输入      | Tensor (REQUIRED) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [s_b, N, D] | 同grad                                                       | V张量，Shape和类型与Q一致                                    |
+| grad         | 输入      | Tensor (REQUIRED) | float32/float16/bf16                   | Normal: [B, S, N, D]<br>Jagged: [T, N, D_v] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[1, 16]<br>D/D_v∈[16, 512]且是16的倍数 | 前向输出out的反向梯度，Jagged模式下T为所有batch的序列长度seq的和           |
+| q            | 输入      | Tensor (REQUIRED) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [T, N, D_qk] | B、S、N、D同grad<br>D_qk∈[1, 512]                                                       | Q张量，Jagged模式下传入[T, N, D]，Normal模式下传入[B, S, N, D] |
+| k            | 输入      | Tensor (REQUIRED) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [T, N, D_qk] | 同q                                                       | K张量，Shape和类型与Q一致                                    |
+| v            | 输入      | Tensor (REQUIRED) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [T, N, D_v] | 同grad                                                       | V张量，Shape和类型与grad一致                                    |
 | mask         | 输入      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | [B, N, S, S]                                | 同grad                                                       | mask张量，当mask_type=3时必须提供，类型与grad一致            |
 | attn_bias    | 输入      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | [B, N, S, S]                                | 同grad                                                       | attn_bias张量，类型与grad一致                                |
 | seq_offset_q | 输入      | Tensor (OPTIONAL) | int32/int64                           | [BatchSize+1]                               | BatchSize∈[1, 2048]                                          | Jagged模式下必须提供，表示每个batch的序列长度偏移，至少包含2个元素 |
@@ -164,7 +160,7 @@ b) 算子参数说明：
 
 | 名称              | 参数类型        | 数据类型 | 默认值   | 范围/取值            | 说明                                                         |
 | ----------------- | --------------- | -------- | -------- | -------------------- | ------------------------------------------------------------ |
-| layout            | Attr            | string   | "normal" | ["normal", "jagged"] | QKV内存布局，normal表示[B, S, N, D]，jagged表示[s_b, N, D]   |
+| layout            | Attr            | string   | "normal" | ["normal", "jagged"] | QKV内存布局，normal表示[B, S, N, D]，jagged表示[T, N, D]   |
 | mask_type         | Attr            | int      | -        | [0, 2, 3]            | mask类型：0表示使用内置下三角mask（TRIL），2表示不使用mask，3表示使用自定义mask（CUSTOM）<br>注意：1（TRIU）当前不支持 |
 | max_seq_len       | Attr            | int      | -        | [1, 20480]           | 模型最大序列长度<br>**反向传播特殊约束**: Normal模式下seqLen必须等于max_seq_len，Jagged模式下必须与mask和attn_bias的shape中S相等 |
 | silu_scale        | Attr            | float    | 0.0      | 任意值               | SiLU激活函数前的缩放因子，如果为0.0则自动计算为1.0/max_seq_len |
@@ -175,14 +171,14 @@ b) 算子参数说明：
 
 | 名称           | 输入/输出 | 参数类型          | 数据类型                               | 数据格式                                    | 范围            | 说明                                                 |
 | -------------- | --------- | ----------------- | -------------------------------------- | ------------------------------------------- | --------------- | ---------------------------------------------------- |
-| q_grad         | 输出      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [s_b, N, D] | 与q保持一致     | Q的梯度                                              |
-| k_grad         | 输出      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [s_b, N, D] | 与k一致         | K的梯度                                              |
-| v_grad         | 输出      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [s_b, N, D] | 与v一致         | V的梯度                                              |
+| q_grad         | 输出      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [T, N, D_qk] | 与q保持一致     | Q的梯度                                              |
+| k_grad         | 输出      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [T, N, D_qk] | 与k一致         | K的梯度                                              |
+| v_grad         | 输出      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [T, N, D_v] | 与v一致         | V的梯度                                              |
 | attn_bias_grad | 输出      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | [B, N, S, S]                                | 与attn_bias一致 | attn_bias的反向梯度，如果未提供attn_bias则返回空张量 |
 
 ## 接口范围限制说明
 
-由于反向算子通过PTA层进行调用不能直调，参数限制和范围晴参考PTA侧(../../../../framework/torch_plugin/torch_library/hstu/README.md)
+由于反向算子通过PTA层进行调用不能直调，参数限制和范围请参考PTA侧(../../../../framework/torch_plugin/torch_library/hstu/README.md)
 
 
 # 算子编译部署

@@ -23,6 +23,37 @@ See the License for the specific language governing permissions and
 #include "hstu_dense_backward_jagged_tiling.h"
 
 namespace optiling {
+bool BasicJaggedShapeCheck(int64_t batchSize, int64_t maxSeqLen, int64_t headNum, int64_t dimQK, int64_t dimV)
+{
+    static const ShapeRange batchRange(1, MAX_BATCH_SIZE, 1, "batch size");
+    static const ShapeRange maxSeqRange(1, 20480, 1, "seq size");
+    static const ShapeRange headRange(1, 16, 1, "head num");
+    static const ShapeRange dimQKRange(1, 512, 1, "dimQK size");
+    static const ShapeRange dimVRange(16, 512, 16, "dimV size");
+
+    if (!batchRange.Check(batchSize)) {
+        return false;
+    }
+
+    if (!maxSeqRange.Check(maxSeqLen)) {
+        return false;
+    }
+
+    if (!headRange.Check(headNum)) {
+        return false;
+    }
+
+    if (!dimQKRange.Check(dimQK)) {
+        return false;
+    }
+
+    if (!dimVRange.Check(dimV)) {
+        return false;
+    }
+
+    return true;
+}
+
 ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuJaggedBackwardTilingData &tiling)
 {
     const int32_t *maskType = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MASK_TYPE_INDEX);
@@ -65,6 +96,12 @@ ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuJagged
               OPS_LOG_E("", "hstu jagged backward only support input with dim %d\n", JAGGED_GRAD_DIM_NUM),
               return ge::GRAPH_FAILED);
 
+    OPS_LOG_E_IF_NULL("q", context->GetInputShape(INPUT_INDEX_T::Q_INDEX), return ge::GRAPH_FAILED);
+    auto qShape = context->GetInputShape(INPUT_INDEX_T::Q_INDEX)->GetStorageShape();
+    OPS_CHECK(qShape.GetDimNum() != JAGGED_GRAD_DIM_NUM,
+              OPS_LOG_E("", "hstu jagged backward only support input with dim %d\n", JAGGED_GRAD_DIM_NUM),
+              return ge::GRAPH_FAILED);
+
     OPS_LOG_E_IF_NULL("seqOffset", context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_INDEX), return ge::GRAPH_FAILED);
     auto seqOffsetShape = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_INDEX)->GetStorageShape();
     OPS_CHECK(seqOffsetShape.GetDimNum() != 1,
@@ -78,7 +115,8 @@ ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuJagged
     // gradShape(bs, n, d)
     int64_t seqLen = gradShape.GetDim(INDEX_T::INDEX_0);
     int64_t headNum = gradShape.GetDim(INDEX_T::INDEX_1);
-    int64_t headDim = gradShape.GetDim(INDEX_T::INDEX_2);
+    int64_t headDimQK = qShape.GetDim(INDEX_T::INDEX_2);
+    int64_t headDimV = gradShape.GetDim(INDEX_T::INDEX_2);
     int64_t biasGradSeqLen = 0;
     auto attnBiasGradShape = context->GetOutputShape(OUTPUT_INDEX_T::ATTN_BIAS_GRAD_INDEX);
     if (attnBiasGradShape != nullptr) {
@@ -92,12 +130,13 @@ ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuJagged
     tiling.set_batchSize(batchSize);
     tiling.set_seqLen(seqLen);
     tiling.set_headNum(headNum);
-    tiling.set_headDim(headDim);
+    tiling.set_headDimQK(headDimQK);
+    tiling.set_headDimV(headDimV);
     tiling.set_biasGradSeqLen(biasGradSeqLen);
     tiling.set_isNormal(0);
 
-    OPS_CHECK(!BasicShapeCheck(batchSize, maxSeqLen, headNum, headDim), OPS_LOG_E("", "jagged shape check failed\n"),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(!BasicJaggedShapeCheck(batchSize, maxSeqLen, headNum, headDimQK, headDimV),
+        OPS_LOG_E("", "jagged shape check failed\n"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -156,7 +195,7 @@ ge::graphStatus JaggedInferShape(gert::InferShapeContext *context)
     const gert::Shape *qShape = context->GetInputShape(INPUT_INDEX_T::Q_INDEX);
     OPS_CHECK_PTR_NULL(qShape, return ge::GRAPH_FAILED);
 
-    // q_grad、k_grad、v_grad的shape与q一致
+    // q_grad、k_grad的shape与q一致
     gert::Shape *qGradShape = context->GetOutputShape(OUTPUT_INDEX_T::Q_GRAD_INDEX);
     OPS_CHECK_PTR_NULL(qGradShape, return ge::GRAPH_FAILED);
     qGradShape->SetDimNum(qShape->GetDimNum());
@@ -165,14 +204,17 @@ ge::graphStatus JaggedInferShape(gert::InferShapeContext *context)
     OPS_CHECK_PTR_NULL(kGradShape, return ge::GRAPH_FAILED);
     kGradShape->SetDimNum(qShape->GetDimNum());
 
+    const gert::Shape *gradShape = context->GetInputShape(INPUT_INDEX_T::GRAD_INDEX);
+    OPS_CHECK_PTR_NULL(gradShape, return ge::GRAPH_FAILED);
+
     gert::Shape *vGradShape = context->GetOutputShape(OUTPUT_INDEX_T::V_GRAD_INDEX);
     OPS_CHECK_PTR_NULL(vGradShape, return ge::GRAPH_FAILED);
-    vGradShape->SetDimNum(qShape->GetDimNum());
+    vGradShape->SetDimNum(gradShape->GetDimNum());
 
     for (size_t i = 0; i < qShape->GetDimNum(); i++) {
         qGradShape->SetDim(i, qShape->GetDim(i));
         kGradShape->SetDim(i, qShape->GetDim(i));
-        vGradShape->SetDim(i, qShape->GetDim(i));
+        vGradShape->SetDim(i, gradShape->GetDim(i));
     }
 
     const gert::RuntimeAttrs *attrs = context->GetAttrs();

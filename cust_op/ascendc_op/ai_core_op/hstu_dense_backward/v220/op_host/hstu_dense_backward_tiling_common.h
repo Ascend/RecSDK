@@ -45,6 +45,7 @@ constexpr int DATA_TYPE_FLOAT = 32;
 constexpr int DATA_TYPE_FLOAT16 = 16;
 constexpr int DATA_TYPE_LENGTH_FLOAT = 4;
 constexpr int DATA_TYPE_LENGTH_FLOAT16 = 2;
+constexpr int64_t DATA_ALIGN_BYTES = 32;
 
 constexpr int BLOCK_128 = 128;
 constexpr int BLOCK_256 = 256;
@@ -112,8 +113,6 @@ ge::graphStatus GetInputLayout(const gert::RuntimeAttrs *attrs, InputLayout &lay
 bool IfMask(const int32_t &maskType, MaskType maskTypeEnum);
 
 bool IsSameShape(const gert::Shape &shape0, const gert::Shape &shape1, int dim);
-
-bool BasicShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim);
 
 template<typename T>
 constexpr auto AlignUp(T a, T b) -> decltype(a + b)

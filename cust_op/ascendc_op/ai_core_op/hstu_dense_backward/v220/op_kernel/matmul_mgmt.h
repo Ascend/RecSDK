@@ -18,15 +18,6 @@ See the License for the specific language governing permissions and
 #include <cstdint>
 #include "matmul_const.h"
 
-struct MatmulArgs {
-    const int64_t scoreMidPipeId;
-    const int64_t accumPipeId;
-    const int64_t QOrGOffset;  // Q和G的位置是一样的，所以可以复用
-    const int64_t KOrVOffset;  // K和V的位置是一样的，所以可以复用
-    const int64_t ActureQLen;
-    const int64_t ActureKLen;
-};
-
 namespace HstuDenseBackward {
 
 // 静态接口实现多态的办法
@@ -43,15 +34,17 @@ public:
 
     __aicore__ inline void InitGt(const AddrArgs& addrArgs)
     {
-        int64_t qSize = totalBatchSize_ * headNum_ * headDim_;
-        grad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.grad), qSize);
+        int64_t qSize = totalBatchSize_ * headNum_ * headDimQK_;
         q_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.q), qSize);
         k_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.k), qSize);
-        v_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.v), qSize);
+
+        int64_t vSize = totalBatchSize_ * headNum_ * headDimV_;
+        grad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.grad), vSize);
+        v_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.v), vSize);
 
         qGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.qGrad), qSize);
         kGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.kGrad), qSize);
-        vGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.vGrad), qSize);
+        vGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.vGrad), vSize);
     }
 
     __aicore__ inline void InitTempSpace(GM_ADDR workspace, int64_t& totalTempSpaceForOneVec)
@@ -59,13 +52,13 @@ public:
         GM_ADDR curAICWorkspace;
         const int64_t qkMatmulTempSpace = blockHeightQ * blockHeightK;
         const int64_t gvMatmulTempSpace = blockHeightQ * blockHeightK;
-        const int64_t vGradAccumTempSpace = blockHeightK * headDim_;
-        const int64_t kGradAccumTempSpace = blockHeightK * headDim_;
+        const int64_t vGradAccumTempSpace = blockHeightK * headDimV_;
+        const int64_t kGradAccumTempSpace = blockHeightK * headDimQKAlign32_;
         const int64_t scoreTempSpace = blockHeightQ * blockHeightK;
         const int64_t maskTempSpace = blockHeightQ * blockHeightK;
         const int64_t biasOrSGradTempSpace = blockHeightQ * blockHeightK;
         const int64_t qGradAccumTempSpace = static_cast<int64_t>(batchSize_) * static_cast<int64_t>(headNum_) *
-                                            static_cast<int64_t>(maxSeqLen_) * static_cast<int64_t>(headDim_);
+                                            static_cast<int64_t>(maxSeqLen_) * static_cast<int64_t>(headDimQKAlign32_);
 
         totalTempSpaceForOneVec = MID_USE_TIMES * (vGradAccumTempSpace + kGradAccumTempSpace) * sizeof(float) +
                                   (qkMatmulTempSpace + gvMatmulTempSpace) * sizeof(qType) * COMPUTE_PIPE_NUM;
@@ -102,7 +95,7 @@ public:
     __aicore__ inline void ClearQGradAccumTemp(GM_ADDR workspace, int64_t totalTempSpaceForOneVec)
     {
         int64_t qGradAccumTempSpace = static_cast<int64_t>(batchSize_) * static_cast<int64_t>(headNum_) *
-                                      static_cast<int64_t>(maxSeqLen_) * static_cast<int64_t>(headDim_);
+                                      static_cast<int64_t>(maxSeqLen_) * static_cast<int64_t>(headDimQKAlign32_);
 
         // 所有核共享一片globalMemory，且存在累加操作，每次执行需要清理内存防止上次执行结果残留数据影响本次结果
         // 多核执行后需要调用SyncAll保证多核间同步正常
@@ -129,7 +122,9 @@ public:
         totalBatchSize_ = baseShape.totalBatchSize;
         batchSize_ = baseShape.batchSize;
         maxSeqLen_ = baseShape.maxSeqLen;
-        headDim_ = baseShape.headDim;
+        headDimQK_ = baseShape.headDimQK;
+        headDimQKAlign32_ = baseShape.headDimQKAlign32;
+        headDimV_ = baseShape.headDimV;
         headNum_ = baseShape.headNum;
         aivNum_ = GetBlockNum() * VCORE_NUM_IN_ONE_AIC;
 
@@ -144,40 +139,40 @@ public:
         ClearQGradAccumTemp(workspace, totalTempSpaceForOneVec);
     }
 
-    __aicore__ inline void DoQkMatmul(const int64_t scoreMidOffset, const int64_t qOrGOffset, const int64_t kOrVOffset,
-                                      const int64_t actureQLen, const int64_t actureKLen)
+    __aicore__ inline void DoQkMatmul(const int64_t scoreMidOffset, const int64_t qOffset, const int64_t kOffset,
+                                      const int64_t actureQLen, const int64_t actureKLen, const int64_t actureDim)
     {
-        static_cast<HstuMatmulMgmtStrategy*>(this)->DoQkMatmul(scoreMidOffset, qOrGOffset, kOrVOffset, actureQLen,
-                                                               actureKLen);
+        static_cast<HstuMatmulMgmtStrategy*>(this)->DoQkMatmul(scoreMidOffset, qOffset, kOffset, actureQLen,
+                                                               actureKLen, actureDim);
     }
 
-    __aicore__ inline void DoGvMatmul(const int64_t scoreMidOffset, const int64_t qOrGOffset, const int64_t kOrVOffset,
-                                      const int64_t actureQLen, const int64_t actureKLen)
+    __aicore__ inline void DoGvMatmul(const int64_t scoreMidOffset, const int64_t gOffset, const int64_t vOffset,
+                                      const int64_t actureQLen, const int64_t actureKLen, const int64_t actureDim)
     {
-        static_cast<HstuMatmulMgmtStrategy*>(this)->DoGvMatmul(scoreMidOffset, qOrGOffset, kOrVOffset, actureQLen,
-                                                               actureKLen);
+        static_cast<HstuMatmulMgmtStrategy*>(this)->DoGvMatmul(scoreMidOffset, gOffset, vOffset, actureQLen,
+                                                               actureKLen, actureDim);
     }
 
     __aicore__ inline void DoKGradMatmul(const int64_t accumOffset, const int64_t scoreMidOffset,
-                                         const int64_t qOrGOffset, const int64_t actureQLen, const int64_t actureKLen,
+                                         const int64_t qOffset, const int64_t actureQLen, const int64_t actureKLen,
                                          const bool isFirstBlock)
     {
-        static_cast<HstuMatmulMgmtStrategy*>(this)->DoKGradMatmul(accumOffset, scoreMidOffset, qOrGOffset, actureQLen,
+        static_cast<HstuMatmulMgmtStrategy*>(this)->DoKGradMatmul(accumOffset, scoreMidOffset, qOffset, actureQLen,
                                                                   actureKLen, isFirstBlock);
     }
 
     __aicore__ inline void DoVGradMatmul(const int64_t accumOffset, const int64_t scoreMidOffset,
-                                         const int64_t qOrGOffset, const int64_t actureQLen, const int64_t actureKLen,
+                                         const int64_t gOffset, const int64_t actureQLen, const int64_t actureKLen,
                                          const bool isFirstBlock)
     {
-        static_cast<HstuMatmulMgmtStrategy*>(this)->DoVGradMatmul(accumOffset, scoreMidOffset, qOrGOffset, actureQLen,
+        static_cast<HstuMatmulMgmtStrategy*>(this)->DoVGradMatmul(accumOffset, scoreMidOffset, gOffset, actureQLen,
                                                                   actureKLen, isFirstBlock);
     }
 
     __aicore__ inline void DoQGradMatmul(const int64_t qGradOutoffset, const int64_t scoreMidOffset,
-                                         const int64_t kOrVOffset, const int64_t actureQLen, const int64_t actureKLen)
+                                         const int64_t kOffset, const int64_t actureQLen, const int64_t actureKLen)
     {
-        static_cast<HstuMatmulMgmtStrategy*>(this)->DoQGradMatmul(qGradOutoffset, scoreMidOffset, kOrVOffset,
+        static_cast<HstuMatmulMgmtStrategy*>(this)->DoQGradMatmul(qGradOutoffset, scoreMidOffset, kOffset,
                                                                   actureQLen, actureKLen);
     }
 
@@ -205,7 +200,9 @@ public:
     int64_t totalBatchSize_;
     uint32_t batchSize_;
     uint32_t maxSeqLen_;
-    uint32_t headDim_;
+    uint32_t headDimQK_;
+    uint32_t headDimQKAlign32_;
+    uint32_t headDimV_;
     uint32_t headNum_;
 
     // AIC
@@ -236,50 +233,52 @@ class MmMgmtFp16R0Jagged : public HstuMatmulMgmtInterface<
 public:
     __aicore__ inline MmMgmtFp16R0Jagged() {}
 
-    __aicore__ inline void DoQkMatmul(const int64_t scoreMidOffset, const int64_t qOrGOffset, const int64_t kOrVOffset,
-                                      const int64_t actureQLen, const int64_t actureKLen)
+    __aicore__ inline void DoQkMatmul(const int64_t scoreMidOffset, const int64_t qOffset, const int64_t kOffset,
+                                      const int64_t actureQLen, const int64_t actureKLen, const int64_t actureDim)
     {
-        qkOrGvMatmul_.SetTail(actureQLen, actureKLen, this->headDim_);
-        qkOrGvMatmul_.SetTensorA(this->q_[qOrGOffset]);
-        qkOrGvMatmul_.SetTensorB(this->k_[kOrVOffset], true);
+        qkOrGvMatmul_.SetSelfDefineData(actureDim);
+        qkOrGvMatmul_.SetTail(actureQLen, actureKLen, actureDim);
+        qkOrGvMatmul_.SetTensorA(this->q_[qOffset]);
+        qkOrGvMatmul_.SetTensorB(this->k_[kOffset], true);
         qkOrGvMatmul_.template IterateAll<false>(this->qkTemp_[scoreMidOffset], 0, false, true);
     }
 
-    __aicore__ inline void DoGvMatmul(const int64_t scoreMidOffset, const int64_t qOrGOffset, const int64_t kOrVOffset,
-                                      const int64_t actureQLen, const int64_t actureKLen)
+    __aicore__ inline void DoGvMatmul(const int64_t scoreMidOffset, const int64_t gOffset, const int64_t vOffset,
+                                      const int64_t actureQLen, const int64_t actureKLen, const int64_t actureDim)
     {
-        qkOrGvMatmul_.SetTail(actureQLen, actureKLen, this->headDim_);
-        qkOrGvMatmul_.SetTensorA(this->grad_[qOrGOffset]);
-        qkOrGvMatmul_.SetTensorB(this->v_[kOrVOffset], true);
+        qkOrGvMatmul_.SetSelfDefineData(actureDim);
+        qkOrGvMatmul_.SetTail(actureQLen, actureKLen, actureDim);
+        qkOrGvMatmul_.SetTensorA(this->grad_[gOffset]);
+        qkOrGvMatmul_.SetTensorB(this->v_[vOffset], true);
         qkOrGvMatmul_.template IterateAll<false>(this->gvTemp_[scoreMidOffset], 0, false, true);
     }
 
     __aicore__ inline void DoKGradMatmul(const int64_t accumOffset, const int64_t scoreMidOffset,
-                                         const int64_t qOrGOffset, const int64_t actureQLen, const int64_t actureKLen,
+                                         const int64_t qOffset, const int64_t actureQLen, const int64_t actureKLen,
                                          const bool isFirstBlock)
     {
-        kGradMatmul_.SetTail(actureKLen, this->headDim_, actureQLen);
+        kGradMatmul_.SetTail(actureKLen, this->headDimQK_, actureQLen);
         kGradMatmul_.SetTensorA(this->gvTemp_[scoreMidOffset], true);
-        kGradMatmul_.SetTensorB(this->q_[qOrGOffset]);
+        kGradMatmul_.SetTensorB(this->q_[qOffset]);
         kGradMatmul_.template IterateAll<false>(this->kGradAccumTemp_[accumOffset], isFirstBlock ? 0 : 1, false, true);
     }
 
     __aicore__ inline void DoVGradMatmul(const int64_t accumOffset, const int64_t scoreMidOffset,
-                                         const int64_t qOrGOffset, const int64_t actureQLen, const int64_t actureKLen,
+                                         const int64_t gOffset, const int64_t actureQLen, const int64_t actureKLen,
                                          const bool isFirstBlock)
     {
-        vGradMatmul_.SetTail(actureKLen, this->headDim_, actureQLen);
+        vGradMatmul_.SetTail(actureKLen, this->headDimV_, actureQLen);
         vGradMatmul_.SetTensorA(this->qkTemp_[scoreMidOffset], true);
-        vGradMatmul_.SetTensorB(this->grad_[qOrGOffset]);
+        vGradMatmul_.SetTensorB(this->grad_[gOffset]);
         vGradMatmul_.template IterateAll<false>(this->vGradAccumTemp_[accumOffset], isFirstBlock ? 0 : 1, false, true);
     }
 
     __aicore__ inline void DoQGradMatmul(const int64_t qGradOutoffset, const int64_t scoreMidOffset,
-                                         const int64_t kOrVOffset, const int64_t actureQLen, const int64_t actureKLen)
+                                         const int64_t kOffset, const int64_t actureQLen, const int64_t actureKLen)
     {
-        qGradMatmul_.SetTail(actureQLen, this->headDim_, actureKLen);
+        qGradMatmul_.SetTail(actureQLen, this->headDimQK_, actureKLen);
         qGradMatmul_.SetTensorA(this->gvTemp_[scoreMidOffset]);
-        qGradMatmul_.SetTensorB(this->k_[kOrVOffset]);
+        qGradMatmul_.SetTensorB(this->k_[kOffset]);
         qGradMatmul_.template IterateAll<false>(this->qGradAccumTemp_[qGradOutoffset], 1, false, true);
     }
 
@@ -324,50 +323,52 @@ class MmMgmtCommon
 public:
     __aicore__ inline MmMgmtCommon() {}
 
-    __aicore__ inline void DoQkMatmul(const int64_t scoreMidOffset, const int64_t qOrGOffset, const int64_t kOrVOffset,
-                                      const int64_t actureQLen, const int64_t actureKLen)
+    __aicore__ inline void DoQkMatmul(const int64_t scoreMidOffset, const int64_t qOffset, const int64_t kOffset,
+                                      const int64_t actureQLen, const int64_t actureKLen, const int64_t actureDim)
     {
-        qkOrGvMatmul_.SetTail(actureQLen, actureKLen, this->headDim_);
-        qkOrGvMatmul_.SetTensorA(this->q_[qOrGOffset]);
-        qkOrGvMatmul_.SetTensorB(this->k_[kOrVOffset], true);
+        qkOrGvMatmul_.SetSelfDefineData(actureDim);
+        qkOrGvMatmul_.SetTail(actureQLen, actureKLen, actureDim);
+        qkOrGvMatmul_.SetTensorA(this->q_[qOffset]);
+        qkOrGvMatmul_.SetTensorB(this->k_[kOffset], true);
         qkOrGvMatmul_.template IterateAll<false>(this->qkTemp_[scoreMidOffset], 0, false, true);
     }
 
-    __aicore__ inline void DoGvMatmul(const int64_t scoreMidOffset, const int64_t qOrGOffset, const int64_t kOrVOffset,
-                                      const int64_t actureQLen, const int64_t actureKLen)
+    __aicore__ inline void DoGvMatmul(const int64_t scoreMidOffset, const int64_t gOffset, const int64_t vOffset,
+                                      const int64_t actureQLen, const int64_t actureKLen, const int64_t actureDim)
     {
-        qkOrGvMatmul_.SetTail(actureQLen, actureKLen, this->headDim_);
-        qkOrGvMatmul_.SetTensorA(this->grad_[qOrGOffset]);
-        qkOrGvMatmul_.SetTensorB(this->v_[kOrVOffset], true);
+        qkOrGvMatmul_.SetSelfDefineData(actureDim);
+        qkOrGvMatmul_.SetTail(actureQLen, actureKLen, actureDim);
+        qkOrGvMatmul_.SetTensorA(this->grad_[gOffset]);
+        qkOrGvMatmul_.SetTensorB(this->v_[vOffset], true);
         qkOrGvMatmul_.template IterateAll<false>(this->gvTemp_[scoreMidOffset], 0, false, true);
     }
 
     __aicore__ inline void DoKGradMatmul(const int64_t accumOffset, const int64_t scoreMidOffset,
-                                         const int64_t qOrGOffset, const int64_t actureQLen, const int64_t actureKLen,
+                                         const int64_t qOffset, const int64_t actureQLen, const int64_t actureKLen,
                                          const bool isFirstBlock)
     {
-        kGradMatmul_.SetTail(actureKLen, this->headDim_, actureQLen);
+        kGradMatmul_.SetTail(actureKLen, this->headDimQKAlign32_, actureQLen);
         kGradMatmul_.SetTensorA(this->gvTemp_[scoreMidOffset], true);
-        kGradMatmul_.SetTensorB(this->q_[qOrGOffset]);
+        kGradMatmul_.SetTensorB(this->q_[qOffset]);
         kGradMatmul_.template IterateAll<false>(this->kGradAccumTemp_[accumOffset], isFirstBlock ? 0 : 1, false, true);
     }
 
     __aicore__ inline void DoVGradMatmul(const int64_t accumOffset, const int64_t scoreMidOffset,
-                                         const int64_t qOrGOffset, const int64_t actureQLen, const int64_t actureKLen,
+                                         const int64_t gOffset, const int64_t actureQLen, const int64_t actureKLen,
                                          const bool isFirstBlock)
     {
-        vGradMatmul_.SetTail(actureKLen, this->headDim_, actureQLen);
+        vGradMatmul_.SetTail(actureKLen, this->headDimV_, actureQLen);
         vGradMatmul_.SetTensorA(this->qkTemp_[scoreMidOffset], true);
-        vGradMatmul_.SetTensorB(this->grad_[qOrGOffset]);
+        vGradMatmul_.SetTensorB(this->grad_[gOffset]);
         vGradMatmul_.template IterateAll<false>(this->vGradAccumTemp_[accumOffset], isFirstBlock ? 0 : 1, false, true);
     }
 
     __aicore__ inline void DoQGradMatmul(const int64_t qGradOutoffset, const int64_t scoreMidOffset,
-                                         const int64_t kOrVOffset, const int64_t actureQLen, const int64_t actureKLen)
+                                         const int64_t kOffset, const int64_t actureQLen, const int64_t actureKLen)
     {
-        qGradMatmul_.SetTail(actureQLen, this->headDim_, actureKLen);
+        qGradMatmul_.SetTail(actureQLen, this->headDimQKAlign32_, actureKLen);
         qGradMatmul_.SetTensorA(this->gvTemp_[scoreMidOffset]);
-        qGradMatmul_.SetTensorB(this->k_[kOrVOffset]);
+        qGradMatmul_.SetTensorB(this->k_[kOffset]);
         qGradMatmul_.template IterateAll<false>(this->qGradAccumTemp_[qGradOutoffset], 1, false, true);
     }
 
@@ -408,14 +409,14 @@ public:
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>, CFG_NORM,
-                   matmul::MatmulCallBackFunc<nullptr, nullptr, CopyFun::CopyVGradB1_Strd>>
+                   matmul::MatmulCallBackFunc<nullptr, nullptr, CopyFun::CopyQKGradB1_Strd>>
         qGradMatmul_;
 
     matmul::Matmul<matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>, CFG_NORM,
-                   matmul::MatmulCallBackFunc<nullptr, nullptr, CopyFun::CopyVGradB1_Strd>>
+                   matmul::MatmulCallBackFunc<nullptr, nullptr, CopyFun::CopyQKGradB1_Strd>>
         kGradMatmul_;
 
     matmul::Matmul<

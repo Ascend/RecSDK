@@ -5,6 +5,7 @@
 ### Pytorch框架对外接口原型
 
 #### hstu_dense 接口
+
 ```python
 torch.ops.mxrec.hstu_dense(Tensor q, Tensor k, Tensor v, Tensor? mask=None, Tensor? attn_bias=None, 
                            int mask_type=0, int max_seq_len=0, float silu_scale=0.0) -> Tensor
@@ -15,11 +16,12 @@ torch.ops.mxrec.hstu_dense_backward(Tensor grad, Tensor q, Tensor k, Tensor v, T
 ```
 
 #### hstu_jagged 接口
+
 ```python
 torch.ops.mxrec.hstu_jagged.equal(Tensor q, Tensor k, Tensor v, Tensor? mask=None, Tensor? attn_bias=None,
                                   int mask_type=0, int max_seq_len=0, float silu_scale=0.0, 
                                   Tensor seq_offset=None, Tensor? num_context=None, Tensor? num_target=None,
-                                  int? target_group_size=0, float? alpha=1.0) -> Tensor
+                                  int? target_group_size=0, float? alpha=1.0, bool deterministic=False) -> Tensor
 
 torch.ops.mxrec.hstu_jagged_backward(Tensor grad, Tensor q, Tensor k, Tensor v, Tensor? mask=None,
                                            Tensor? attn_bias=None, int mask_type=0, int max_seq_len=0,
@@ -36,17 +38,15 @@ torch.ops.mxrec.hstu_jagged_backward(Tensor grad, Tensor q, Tensor k, Tensor v, 
 
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
-|  q | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[2, 8]且是2的倍数<br>D∈[16, 512]且是16的倍数 | "normal"格式下只支持四维<br>"jagged"格式下只支持三维 |
-|  k | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q |
-|  v | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q |
+|  q | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[2, 8]且是2的倍数<br>D∈[16, 512]且是16的倍数 | "normal"格式下只支持四维 |
+|  k | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | 同q | 同q |
+|  v | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | 同q | 同q |
 |  mask | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致，默认为None |
-|  attnBias | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致 |
-|  maskType | 输入(可选) | int | int | NA | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | 默认值为0 |
-|  maxSeqLen | 输入(可选) | int | int | NA | [1, 20480] | 表示模型最大序列长度,默认值为0 |
-|  siluScale | 输入(可选) | float | float | NA | NA | 支持用户传入自定义，不传入时默认为0 |
-|  layout | 输入(可选) | str | string | NA | "normal":代表q,k,v数据格式为[B, S, N, D]<br>"jagged":代表q,k,v数据格式为[s_b, N, D] | 默认值为"normal" |
-|  seqOffset | 输入(可选) | int[] | int[] | NA | NA | 表示每个batch的实际序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效，默认为None |
-|  output | 输出 | Tensor | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q |
+|  attn_bias | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致 |
+|  mask_type | 输入(可选) | int | int | NA | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | 默认值为0 |
+|  max_seqLen | 输入(可选) | int | int | NA | [1, 20480] | 表示模型最大序列长度,默认值为0 |
+|  silu_scale | 输入(可选) | float | float | NA | NA | 支持用户传入自定义，不传入时默认为0 |
+|  output | 输出 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | 同q | 同q |
 
 #### Atlas 推理系列产品
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
@@ -59,29 +59,71 @@ torch.ops.mxrec.hstu_jagged_backward(Tensor grad, Tensor q, Tensor k, Tensor v, 
 |  maskType | 输入(可选) | int | int | NA | 3：使用自定义mask，此时mask需要用户定义并传入 | 默认值为0 |
 |  maxSeqLen | 输入(可选) | int | int | NA | [128, 4096]且是128的倍数 | 表示模型最大序列长度,默认值为0 |
 |  siluScale | 输入(可选) | float | float | NA | NA | 支持用户传入自定义，不传入时默认为0 |
-|  layout | 输入(可选) | str | string | NA | 仅支持"normal":代表q,k,v数据格式为[B, S, N, D] | 默认为"normal" |
-|  seqOffset | 输入(可选) | int[] | int[] | NA | NA | 推理产品不用传入，默认为None |
 |  output | 输出 | Tensor | float16 | [B, S, N, D] | 同q | 同q |
 
 ### torch.ops.mxrec.hstu_dense_backward接口
 
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
-|  grad | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[2, 8]且是2的倍数<br>D∈[16, 512]且是16的倍数 | "normal"格式下只支持四维<br>"jagged"格式下只支持三维 |
-|  q | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同grad | 同grad |
-|  k | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同grad | 同grad |
-|  v | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同grad | 同grad |
+|  grad | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[2, 8]且是2的倍数<br>D∈[16, 512]且是16的倍数 | "normal"格式下只支持四维 |
+|  q | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | 同grad | 同grad |
+|  k | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | 同grad | 同grad |
+|  v | 输入 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | 同grad | 同grad |
 |  mask | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致，默认为None |
-|  attnBias | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致 |
-|  layout | 输入 | str | string | NA | "normal":代表q,k,v数据格式为[B, S, N, D]<br>"jagged":代表q,k,v数据格式为[s_b, N, D] | NA |
-|  maskType | 输入 | int | int | NA | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA |
-|  maxSeqLen | 输入 | int | int | NA | [1, 20480] | 表示模型最大序列长度 |
-|  siluScale | 输入(可选) | float | float | NA | NA | 支持用户传入自定义，不传入时默认为0 |
-|  seqOffset | 输入(可选) | int[] | int[] | NA | NA | 表示每个batch的实际序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效，默认为None |
-|  q_grad | 输出 | Tensor | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同q | 同q |
-|  k_grad | 输出 | Tensor | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同k | 同k |
-|  v_grad | 输出 | Tensor | float32/float16/bfloat16 | [B, S, N, D]/<br>[s_b, N, D] | 同v | 同v |
+|  attn_bias | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致 |
+|  mask_type | 输入 | int | int | NA | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA |
+|  max_seq_len | 输入 | int | int | NA | [1, 20480] | 表示模型最大序列长度 |
+|  silu_scale | 输入(可选) | float | float | NA | NA | 支持用户传入自定义，不传入时默认为0 |
+|  q_grad | 输出 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | 同q | 同q |
+|  k_grad | 输出 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | 同k | 同k |
+|  v_grad | 输出 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | 同v | 同v |
 |  attn_bias_grad | 输出 | Tensor | float32/float16/bfloat16 | [B, N, S, S] | 同attn_bias | 同attn_bias |
+
+
+### torch.ops.mxrec.hstu_jagged接口
+
+|  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
+| ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
+| q | 输入 | Tensor | float32/float16/bfloat16 | [s_b, N, D_qk] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[2, 8]且是2的倍数<br>D_qk∈[1, 512] | "jagged"格式下只支持三维 |
+| k | 输入 | Tensor | float32/float16/bfloat16 | [s_b, N, D_qk] | 同q | 同q |
+| v | 输入 | Tensor | float32/float16/bfloat16 | [s_b, N, D_v] | B、S、N同q，D_v∈[16, 512]且是16的倍数 | 同q |
+| mask | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致，默认为None |
+| attn_bias | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致 |
+| mask_type | 输入(可选) | int | int | NA | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | 默认值为0 |
+| max_seq_len | 输入(可选) | int | int | NA | [1, 20480] | 表示模型最大序列长度,默认值为0 |
+| silu_scale | 输入(可选) | float | float | NA | NA | 支持用户传入自定义，不传入时默认为0 |
+| seq_offset | 输入(可选) | Tensor | int32/int64 | NA | NA | 表示每个batch的实际序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效，默认为None |
+| num_context | 输入(可选) | Tensor | int32/int64 | [B] | 取值范围[0, 256]，其余数值未约束、未看护 | 上下文数量张量 |
+| num_target | 输入(可选) | Tensor | int32/int64 | [B] | 取值范围[0, 512]，其余数值未约束、未看护 | 目标数量张量 |
+| target_group_size | 输入(可选) | int | int | NA | 目前仅看护{0, 1, 3}, 其余数值未约束、未看护 | 创建内置target mask时使用，target_group_size为0时不创建target mask | 
+| alpha | 输入(可选) | float | float | NA | NA | Alpha缩放参数 |
+| deterministic | 输入(可选) | bool | bool | NA | 确定性计算开关，"True"代表打开确定性计算；"False"代表关闭确定性计算,默认为"False" |
+|  output | 输出 | Tensor | float32/float16/bfloat16 | [s_b, N, D_v] | 同v | 同v |
+
+
+### torch.ops.mxrec.hstu_jagged_backward接口
+
+|  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
+| ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
+| grad | 输入 | Tensor | float32/float16/bfloat16 | [s_b, N, D_v] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[2, 8]且是2的倍数<br>D_v∈[16, 512]且是16的倍数 | "jagged"格式下只支持三维 |
+| q | 输入 | Tensor | float32/float16/bfloat16 | [s_b, N, D_qk] | B、S、N同grad，D_qk∈[1, 512] | 同grad |
+| k | 输入 | Tensor | float32/float16/bfloat16 | [s_b, N, D_qk] | 同q | 同grad |
+| v | 输入 | Tensor | float32/float16/bfloat16 | [s_b, N, D_v] | 同grad | 同grad |
+| mask | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致，默认为None |
+| attn_bias | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致 |
+| mask_type | 输入 | int | int | NA | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA |
+| max_seq_len | 输入 | int | int | NA | [1, 20480] | 表示模型最大序列长度 |
+| silu_scale | 输入(可选) | float | float | NA | NA | 支持用户传入自定义，不传入时默认为0 |
+| seq_offset | 输入(可选) | Tensor | int32/int64 | NA | NA | 表示每个batch的实际序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效，默认为None |
+| num_context | 输入(可选) | Tensor | int32/int64 | [B] | 取值范围[0, 256]，其余数值未约束、未看护 | 上下文数量张量 |
+| num_target | 输入(可选) | Tensor | int32/int64 | [B] | 取值范围[0, 512]，其余数值未约束、未看护 | 目标数量张量 |
+| target_group_size | 输入(可选) | int | int | NA | 目前仅看护{0, 1, 3}, 其余数值未约束、未看护 | 创建内置target mask时使用，target_group_size为0时不创建target mask | 
+| alpha | 输入(可选) | float | float | NA | NA | Alpha缩放参数 |
+| q_grad | 输出 | Tensor | float32/float16/bfloat16 | [s_b, N, D_qk] | 同q | 同q |
+| k_grad | 输出 | Tensor | float32/float16/bfloat16 | [s_b, N, D_qk] | 同k | 同k |
+| v_grad | 输出 | Tensor | float32/float16/bfloat16 | [s_b, N, D_v] | 同v | 同v |
+| attn_bias_grad | 输出 | Tensor | float32/float16/bfloat16 | [B, N, S, S] | 同attn_bias | 同attn_bias |
+
 
 ## 接口范围限制说明
 
@@ -154,7 +196,7 @@ torch.ops.mxrec.hstu_jagged_backward(Tensor grad, Tensor q, Tensor k, Tensor v, 
 - **q, k, v, grad**: 必须是 **3D** 张量，格式为 `[s_b, N, D]`
   - `s_b`: 总序列长度（所有batch的序列拼接后的总长度）
   - `N`: head number (注意力头数)
-  - `D`: head dimension (每个头的维度)
+  - `D`: head dimension (每个头的维度), 当前支持QK和V的dim不等长。
 
 #### 形状参数范围限制
 
@@ -163,7 +205,8 @@ torch.ops.mxrec.hstu_jagged_backward(Tensor grad, Tensor q, Tensor k, Tensor v, 
 | **batchSize (B)** | [1, 2048] | 必须是 **1** 的倍数 | 从 `seqOffset.size(0) - 1` 计算得出 |
 | **seqLen (S)** | [1, 20480] | 必须是 **1** 的倍数 | 使用 `maxSeqLen` 的值 |
 | **headNum (N)** | [1, 16] | 必须是 **1** 的倍数 | 注意力头数 |
-| **headDim (D)** | [16, 512] | 必须是 **16** 的倍数 | 每个头的维度 |
+| **headDim_qk (D)** | [1, 512] | 必须是 **1** 的倍数 | Q、K每个头的维度 |
+| **headDim_v (D)** | [16, 512] | 必须是 **16** 的倍数 | V每个头的维度 |
 
 #### 其他参数限制
 
@@ -233,7 +276,7 @@ torch.ops.mxrec.hstu_jagged_backward(Tensor grad, Tensor q, Tensor k, Tensor v, 
 
 1. **维度检查失败**: 输入张量维度不符合要求
 2. **范围检查失败**: 参数超出允许范围
-3. **倍数检查失败**: headDim不是16的倍数
+3. **倍数检查失败**: headDimV不是16的倍数
 4. **形状一致性检查失败**: 相关张量的对应维度不一致
 5. **maskType检查失败**: 
    - maskType不在[0, 3]范围内

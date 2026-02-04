@@ -68,7 +68,9 @@ struct BaseShapeArgs {
     uint32_t totalBatchSize;
     uint32_t batchSize;
     uint32_t headNum;
-    uint32_t headDim;
+    uint32_t headDimQK;
+    uint32_t headDimQKAlign32;
+    uint32_t headDimV;
     uint32_t maxSeqLen;
 };
 

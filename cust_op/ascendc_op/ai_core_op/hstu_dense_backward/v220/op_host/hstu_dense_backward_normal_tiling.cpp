@@ -19,6 +19,32 @@ See the License for the specific language governing permissions and
 #include "hstu_dense_backward_normal_tiling.h"
 
 namespace optiling {
+bool BasicNormalShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim)
+{
+    static const ShapeRange batchRange(1, MAX_BATCH_SIZE, 1, "batch size");
+    static const ShapeRange seqRange(1, 20480, 1, "seq size");
+    static const ShapeRange headRange(1, 16, 1, "head num");
+    static const ShapeRange dimRange(16, 512, 16, "dim size");
+
+    if (!batchRange.Check(batchSize)) {
+        return false;
+    }
+
+    if (!seqRange.Check(seqLen)) {
+        return false;
+    }
+
+    if (!headRange.Check(headNum)) {
+        return false;
+    }
+
+    if (!dimRange.Check(dim)) {
+        return false;
+    }
+
+    return true;
+}
+
 ge::graphStatus GetNormalAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBackwardTilingData &tiling)
 {
     const int32_t *maskType = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_1);
@@ -75,7 +101,7 @@ ge::graphStatus GetNormalBasicShapeInfo(gert::TilingContext *context, HstuDenseB
     tiling.set_biasGradSeqLen(biasGradSeqLen);
     tiling.set_isNormal(1);
 
-    OPS_CHECK(!BasicShapeCheck(batchSize, seqLen, headNum, headDim),
+    OPS_CHECK(!BasicNormalShapeCheck(batchSize, seqLen, headNum, headDim),
         OPS_LOG_E("", "normal shape check failed\n"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
