@@ -401,9 +401,17 @@ def evaluate_model(model, test_loader, criterion, device):
                     p90_index = min(p90_index, len(latency_list) - 1)
                     p90 = round(latency_list[p90_index], 6)
 
+                    p95_index = int(len(latency_list) * 0.95)
+                    p95_index = min(p95_index, len(latency_list) - 1)
+                    p95 = round(latency_list[p95_index], 6)
+
                     p99_index = int(len(latency_list) * 0.99)
                     p99_index = min(p99_index, len(latency_list) - 1)
                     p99 = round(latency_list[p99_index], 6)
+
+                    p999_index = int(len(latency_list) * 0.999)
+                    p999_index = min(p999_index, len(latency_list) - 1)
+                    p999 = round(latency_list[p999_index], 6)
 
                 QPS = int(args.batch_size / e2e_avg_time * 1000)
                 
@@ -412,7 +420,9 @@ def evaluate_model(model, test_loader, criterion, device):
                     "model_name": "SIM",
                     "QPS": QPS,
                     "AVG Latency": e2e_avg_time,
+                    "P999 Latency": p999,
                     "P99 Latency": p99,
+                    "P95 Latency": p95,
                     "P90 Latency": p90
                 }
                 logger.info(E2E_RESULT)
