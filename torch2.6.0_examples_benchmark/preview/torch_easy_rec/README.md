@@ -19,7 +19,7 @@
 
 请根据机器架构、机器型号选择合适的安装包进行安装。
 
-参考：https://gitcode.com/Ascend/RecSDK/blob/develop/torch_examples/README.md
+参考：https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/hybrid_torchrec/README.md
 
 ## torchEasyRec源码适配
 
