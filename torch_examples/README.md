@@ -15,7 +15,7 @@
 
 注：该链接中镜像环境为基于PyTorch 2.6.0版本配套。（不包含hybrid_torchrec和torchrec_embcache）
 
-如需要使用PyTorch 2.7.1配套，可参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/build_torch_rec_images/README.md)中"版本配套说明"章节，下载对应软件重新安装。
+如需要使用PyTorch 2.7.1配套，可参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/torch/build_torch_rec_images/README.md)中"版本配套说明"章节，下载对应软件重新安装。
 
 ## 启动容器
 说明：以下启动命令仅作参考，按需挂载目录。
