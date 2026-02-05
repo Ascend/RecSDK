@@ -183,6 +183,9 @@ class RecallDataloader(IterableDataset):
 
         self.files = [ratings_file + '/' + f for f in files if f.endswith('.csv')]
 
+        if len(self.files) == 0:
+            raise ValueError(f'No sasrec_format.csv file found in directory: {ratings_file}')
+
         self.current_ratings_frame_len = 0
         self.current_ratings_frame_idx = 0
         self.data_idx = 0
