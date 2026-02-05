@@ -189,7 +189,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
         attnBiasGradOutput = at::zeros({batchSize, headNum, biasGradSeqLen, biasGradSeqLen},
                                        at::device(denseGrad.device()).dtype(denseGrad.dtype()));
     }
-    auto _acSeqOffset = at::empty(1, at::kInt);
+    auto _acSeqOffset = at::Tensor();
     auto _denseNumContext = at::Tensor();
     auto _denseNumTarget = at::Tensor();
     auto _acTargetGroupSize = int();
@@ -204,10 +204,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
                  denseMask,
                  denseAttnBias,
                  _acSeqOffset,
+                 _acSeqOffset,
                  _denseNumContext,
                  _denseNumTarget,
                  layout,
                  maskType,
+                 maxSeqLen,
                  maxSeqLen,
                  realSiluScale,
                  _acTargetGroupSize,

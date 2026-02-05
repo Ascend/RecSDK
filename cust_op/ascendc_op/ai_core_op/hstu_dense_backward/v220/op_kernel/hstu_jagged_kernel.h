@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,7 +36,8 @@ struct Args {
     GM_ADDR v;
     GM_ADDR mask;
     GM_ADDR attnBias;
-    GM_ADDR seqOffset;
+    GM_ADDR seqOffsetQ;
+    GM_ADDR seqOffsetK;
     GM_ADDR numContext;
     GM_ADDR numTarget;
 
@@ -83,8 +84,10 @@ struct ColLineBaseInfo {
     uint32_t colId;
     uint32_t colLine;
     uint32_t accumId;
-    uint32_t blockLimit;
-    uint32_t curSeqLen;
+    uint32_t curBlkLenQ;
+    uint32_t curBlkLenK;
+    uint32_t curSeqLenQ;
+    uint32_t curSeqLenK;
 };
 
 struct JaggedTaskInfoColMajor {
@@ -151,14 +154,24 @@ struct JaggedTaskInfoColMajor {
         return colBlockPtr->accumId;
     }
 
-    __aicore__ inline const uint32_t GetBlockLimit()
+    __aicore__ inline const uint32_t GetBlockLenQ()
     {
-        return colBlockPtr->blockLimit;
+        return colBlockPtr->curBlkLenQ;
     }
 
-    __aicore__ inline const uint32_t GetCurSeqLen()
+    __aicore__ inline const uint32_t GetBlockLenK()
     {
-        return colBlockPtr->curSeqLen;
+        return colBlockPtr->curBlkLenK;
+    }
+
+    __aicore__ inline const uint32_t GetCurSeqLenQ()
+    {
+        return colBlockPtr->curSeqLenQ;
+    }
+
+    __aicore__ inline const uint32_t GetCurSeqLenK()
+    {
+        return colBlockPtr->curSeqLenK;
     }
 };
 
@@ -187,14 +200,15 @@ public:
     __aicore__ inline void InitShapeInfo(Args& args)
     {
         // 基础信息初始化
-        totalBatchSize_ = backwardTilingData_->seqLen;
+        totalLenQ_ = backwardTilingData_->seqLenQ;
+        totalLenK_ = backwardTilingData_->seqLenK;
         batchSize_ = backwardTilingData_->batchSize;
-        maxSeqLen_ = backwardTilingData_->maxSeqLen;
+        maxSeqLenQ_ = backwardTilingData_->maxSeqLenQ;
+        maxSeqLenK_ = backwardTilingData_->maxSeqLenK;
         headDimQK_ = backwardTilingData_->headDimQK;
         headDimQKAlign32_ = AlignUp(headDimQK_ * sizeof(qType), DATA_ALIGN_BYTES) / sizeof(qType);
         headDimV_ = backwardTilingData_->headDimV;
         headNum_ = backwardTilingData_->headNum;
-        biasGradSeqLen_ = backwardTilingData_->biasGradSeqLen;
     }
 
     __aicore__ inline void InitAttrInfo(Args& args)
@@ -212,11 +226,11 @@ public:
     {
         numContextGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.numContext), batchSize_);
         numTargetGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.numTarget), batchSize_);
-        seqOffsetsGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.seqOffset), this->batchSize_ + 1);
-        int64_t totalElementOfAttnBias = batchSize_ * headNum_ * biasGradSeqLen_ * biasGradSeqLen_;
-        baisGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.attnBias), totalElementOfAttnBias);
-        maskGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.mask),
-                                totalElementOfAttnBias * totalElementOfAttnBias);
+        seqOffsetsQGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.seqOffsetQ), this->batchSize_ + 1);
+        seqOffsetsKGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.seqOffsetK), this->batchSize_ + 1);
+        int64_t totalElementOfAttnBias = batchSize_ * headNum_ * maxSeqLenQ_ * maxSeqLenK_;
+        biasGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.attnBias), totalElementOfAttnBias);
+        maskGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.mask), totalElementOfAttnBias);
         biasGradGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(args.attnBiasGrad), totalElementOfAttnBias);
     }
 
@@ -224,17 +238,17 @@ public:
     {
         // Layout初始化
         uint32_t lastDimStride1 = 1;
-        qLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDimQK_),
-                             MakeStride(headNum_ * headDimQK_, headDimQK_, lastDimStride1));
-        kLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDimQK_),
-                             MakeStride(headNum_ * headDimQK_, headDimQK_, lastDimStride1));
-        gLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDimV_),
+        gLayout_ = TNDLayout(MakeShape(totalLenQ_, headNum_, headDimV_),
                              MakeStride(headNum_ * headDimV_, headDimV_, lastDimStride1));
-        vLayout_ = TNDLayout(MakeShape(totalBatchSize_, headNum_, headDimV_),
+        qLayout_ = TNDLayout(MakeShape(totalLenQ_, headNum_, headDimQK_),
+                             MakeStride(headNum_ * headDimQK_, headDimQK_, lastDimStride1));
+        kLayout_ = TNDLayout(MakeShape(totalLenK_, headNum_, headDimQK_),
+                             MakeStride(headNum_ * headDimQK_, headDimQK_, lastDimStride1));
+        vLayout_ = TNDLayout(MakeShape(totalLenK_, headNum_, headDimV_),
                              MakeStride(headNum_ * headDimV_, headDimV_, lastDimStride1));
         bnssLayout_ = BNSSLayout(
-            MakeShape(batchSize_, headNum_, maxSeqLen_, maxSeqLen_),
-            MakeStride(headNum_ * maxSeqLen_ * maxSeqLen_, maxSeqLen_ * maxSeqLen_, maxSeqLen_, lastDimStride1));
+            MakeShape(batchSize_, headNum_, maxSeqLenQ_, maxSeqLenK_),
+            MakeStride(headNum_ * maxSeqLenQ_ * maxSeqLenK_, maxSeqLenQ_ * maxSeqLenK_, maxSeqLenK_, lastDimStride1));
     }
 
     __aicore__ inline void Init(Args& args)
@@ -246,20 +260,21 @@ public:
         InitLayoutInfo(args);
         // Matmul 初始化
         AddrArgs addrArgs = {args.grad, args.q, args.k, args.v, args.qGrad, args.kGrad, args.vGrad, args.workspace};
+        // todo: 确认BaseShapeArgs调用逻辑是否需要全部入参
         BaseShapeArgs baseShape = {
-            totalBatchSize_, batchSize_, headNum_, headDimQK_, headDimQKAlign32_, headDimV_, maxSeqLen_
+            totalLenQ_, batchSize_, headNum_, headDimQK_, headDimQKAlign32_, headDimV_, maxSeqLenQ_
         };
         mm_mgmt_->Init(addrArgs, baseShape);
 
         // QAccum初始化
-        qAccumKernel_.Init(&pipe, &baseShape, mm_mgmt_->qGradAccumTemp_, mm_mgmt_->qGrad_, seqOffsetsGt_,
+        qAccumKernel_.Init(&pipe, &baseShape, mm_mgmt_->qGradAccumTemp_, mm_mgmt_->qGrad_, seqOffsetsQGt_,
                            GetBlockNum() * VCORE_NUM_IN_ONE_AIC);
         // Trans初始化
         transKernelK_.Init(&pipe, headNum_, headDimQK_);
         transKernelV_.Init(&pipe, headNum_, headDimV_);
         // VectorScore初始化
         VectorScoreAttrs vectorScoreAttrs = {siluScale_, alpha_, enableBias_, maskType_};
-        VectorScoreGtInfo<qType> vectorScoreGtInfo = {mm_mgmt_->qkTemp_, mm_mgmt_->gvTemp_, maskGt_, baisGt_,
+        VectorScoreGtInfo<qType> vectorScoreGtInfo = {mm_mgmt_->qkTemp_, mm_mgmt_->gvTemp_, maskGt_, biasGt_,
                                                       biasGradGt_};
         vectorScoreInterface_->Init(&pipe, bnssLayout_, vectorScoreAttrs, vectorScoreGtInfo);
     }
@@ -267,17 +282,16 @@ public:
     __aicore__ inline void InitBlockSplit(Args& args)
     {
         const int blockId = GetBlockIdx();
-        this->batchSize_ = GetBatchSizeFromJaggedOffsetThis(seqOffsetsGt_, this->batchSize_ + 1);
+        this->batchSize_ = GetBatchSizeFromJaggedOffsetThis(seqOffsetsQGt_, this->batchSize_ + 1);
 
         int64_t bxn = this->batchSize_ * headNum_;
         auto coreNum = backwardTilingData_->aivNum;
 
-        auto taskAssigner = BlockTaskAssign(seqOffsetsGt_, coreNum, blockHeightQ, batchSize_, headNum_);
+        auto taskAssigner =
+            BlockTaskAssign(seqOffsetsQGt_, seqOffsetsKGt_, coreNum, blockHeightQ, batchSize_, headNum_);
         int colBlock[2] = {0};
-        int rowBlock[2] = {0};
 
         taskAssigner.ComputeCausal(colBlock, blockId, true);
-        taskAssigner.ComputeCausal(rowBlock, blockId, false);
 
         startColBlock_ = colBlock[0];
         endColBlock_ = colBlock[1];
@@ -286,15 +300,22 @@ public:
     __aicore__ inline ColLineBaseInfo GenerateFirstTask(bool isCol = true)
     {
         uint32_t batchId = 0;
-        uint32_t curSeqLen = 0;
+        uint32_t curSeqLenQ = 0;
+        uint32_t curSeqLenK = 0;
         uint32_t curBatchStartBlock = 0;
         uint32_t startBlock = 0;
 
         startBlock = startColBlock_;
-
+        uint32_t offsetQ = 0;
+        uint32_t offsetK = 0;
         while (batchId < MAX_BATCH_SIZE) {
-            curSeqLen = seqOffsetsGt_.GetValue(batchId + 1) - seqOffsetsGt_.GetValue(batchId);
-            auto curBatchBlock = headNum_ * ((curSeqLen + blockHeightQ - 1) / blockHeightQ);
+            uint32_t nextOffsetQ = seqOffsetsQGt_.GetValue(batchId + 1);
+            uint32_t nextOffsetK = seqOffsetsKGt_.GetValue(batchId + 1);
+            curSeqLenQ = nextOffsetQ - offsetQ;
+            curSeqLenK = nextOffsetK - offsetK;
+            offsetQ = nextOffsetQ;
+            offsetK = nextOffsetK;
+            auto curBatchBlock = headNum_ * CeilDiv(curSeqLenK, blockHeightK);
             if (curBatchStartBlock + curBatchBlock > startBlock) {
                 break;
             }
@@ -303,14 +324,16 @@ public:
         }
 
         uint32_t curBlockIdInBatch = startBlock - curBatchStartBlock;
-        uint32_t curHeadBlock = (curSeqLen + blockHeightQ - 1) / blockHeightQ;
+        uint32_t curBlkLenQ = CeilDiv(curSeqLenQ, blockHeightQ);
+        uint32_t curBlkLenK = CeilDiv(curSeqLenK, blockHeightK);
 
-        uint32_t headId = curBlockIdInBatch / curHeadBlock;
+        uint32_t headId = curBlockIdInBatch / curBlkLenK;
 
-        uint32_t colId = curBlockIdInBatch % curHeadBlock;
-        uint32_t colLine = curSeqLen - colId * blockHeightQ;
-        colLine = colLine > blockHeightQ ? blockHeightQ : colLine;
-        ColLineBaseInfo colBaseInfo = {batchId, headId, colId, colLine, 0, curHeadBlock, curSeqLen};
+        uint32_t colId = curBlockIdInBatch % curBlkLenK;
+        uint32_t colLine = curSeqLenK - colId * blockHeightK;
+        colLine = colLine > blockHeightK ? blockHeightK : colLine;
+        ColLineBaseInfo colBaseInfo = {batchId,    headId,     colId,      colLine,   0,
+                                       curBlkLenQ, curBlkLenK, curSeqLenQ, curSeqLenK};
         return colBaseInfo;
     }
 
@@ -320,12 +343,14 @@ public:
         uint32_t headId = lastColLineInfo.headId;
         uint32_t colId = lastColLineInfo.colId;
         uint32_t accumId = lastColLineInfo.accumId;
-        uint32_t blockLimit = lastColLineInfo.blockLimit;
-        uint32_t curSeqLen = lastColLineInfo.curSeqLen;
+        uint32_t curBlkLenQ = lastColLineInfo.curBlkLenQ;
+        uint32_t curBlkLenK = lastColLineInfo.curBlkLenK;
+        uint32_t curSeqLenQ = lastColLineInfo.curSeqLenQ;
+        uint32_t curSeqLenK = lastColLineInfo.curSeqLenK;
         uint32_t colLine;
 
         colId += 1;
-        if (colId == lastColLineInfo.blockLimit) {
+        if (colId == curBlkLenK) {
             colId = 0;
             headId += 1;
         }
@@ -334,18 +359,19 @@ public:
             headId = 0;
             batchId += 1;
 
-            curSeqLen = seqOffsetsGt_.GetValue(batchId + 1) - seqOffsetsGt_.GetValue(batchId);
-            auto curHeadBlock = (curSeqLen + blockHeightQ - 1) / blockHeightQ;
-
-            blockLimit = curHeadBlock;
+            curSeqLenQ = seqOffsetsQGt_.GetValue(batchId + 1) - seqOffsetsQGt_.GetValue(batchId);
+            curSeqLenK = seqOffsetsKGt_.GetValue(batchId + 1) - seqOffsetsKGt_.GetValue(batchId);
+            curBlkLenQ = CeilDiv(curSeqLenQ, blockHeightQ);
+            curBlkLenK = CeilDiv(curSeqLenK, blockHeightK);
         }
 
-        colLine = curSeqLen - colId * blockHeightQ;
-        colLine = colLine > blockHeightQ ? blockHeightQ : colLine;
+        colLine = curSeqLenK - colId * blockHeightK;
+        colLine = colLine > blockHeightK ? blockHeightK : colLine;
 
         accumId += 1;
 
-        const ColLineBaseInfo colBaseInfo = {batchId, headId, colId, colLine, accumId, blockLimit, curSeqLen};
+        const ColLineBaseInfo colBaseInfo = {batchId,    headId,     colId,      colLine,   accumId,
+                                             curBlkLenQ, curBlkLenK, curSeqLenQ, curSeqLenK};
         return colBaseInfo;
     }
 
@@ -355,17 +381,18 @@ public:
         computeTaskInfo_[curTaskId].taskId = taskId;
         computeTaskInfo_[curTaskId].rowId = rowId;
         computeTaskInfo_[curTaskId].colBlockPtr = &colInfo;
-        uint32_t totalBatchSizeId = seqOffsetsGt_.GetValue(colInfo.batchId);
+        uint32_t offsetQ = seqOffsetsQGt_.GetValue(colInfo.batchId);
+        uint32_t offsetK = seqOffsetsKGt_.GetValue(colInfo.batchId);
 
-        computeTaskInfo_[curTaskId].qOffset =
-            qLayout_(MakeCoord(totalBatchSizeId + rowId * blockHeightQ, colInfo.headId, 0));
-        computeTaskInfo_[curTaskId].kOffset =
-            kLayout_(MakeCoord(totalBatchSizeId + colInfo.colId * blockHeightK, colInfo.headId, 0));
         computeTaskInfo_[curTaskId].gOffset =
-            gLayout_(MakeCoord(totalBatchSizeId + rowId * blockHeightQ, colInfo.headId, 0));
+            gLayout_(MakeCoord(offsetQ + rowId * blockHeightQ, colInfo.headId, 0));
+        computeTaskInfo_[curTaskId].qOffset =
+            qLayout_(MakeCoord(offsetQ + rowId * blockHeightQ, colInfo.headId, 0));
+        computeTaskInfo_[curTaskId].kOffset =
+            kLayout_(MakeCoord(offsetK + colInfo.colId * blockHeightK, colInfo.headId, 0));
         computeTaskInfo_[curTaskId].vOffset =
-            vLayout_(MakeCoord(totalBatchSizeId + colInfo.colId * blockHeightK, colInfo.headId, 0));
-        computeTaskInfo_[curTaskId].rowLine = colInfo.curSeqLen - computeTaskInfo_[curTaskId].rowId * blockHeightQ;
+            vLayout_(MakeCoord(offsetK + colInfo.colId * blockHeightK, colInfo.headId, 0));
+        computeTaskInfo_[curTaskId].rowLine = colInfo.curSeqLenQ - computeTaskInfo_[curTaskId].rowId * blockHeightQ;
         computeTaskInfo_[curTaskId].rowLine =
             computeTaskInfo_[curTaskId].rowLine > blockHeightQ ? blockHeightQ : computeTaskInfo_[curTaskId].rowLine;
     }
@@ -394,8 +421,8 @@ public:
         int64_t midScoreOffset = (taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
 
         int64_t qGradOutOffset =
-            seqOffsetsGt_.GetValue(computeTaskInfo_[curTaskId].GetBatchId()) * headNum_ * headDimQKAlign32_ +
-            computeTaskInfo_[curTaskId].GetHeadId() * computeTaskInfo_[curTaskId].GetCurSeqLen() * headDimQKAlign32_ +
+            seqOffsetsQGt_.GetValue(computeTaskInfo_[curTaskId].GetBatchId()) * headNum_ * headDimQKAlign32_ +
+            computeTaskInfo_[curTaskId].GetHeadId() * computeTaskInfo_[curTaskId].GetCurSeqLenQ() * headDimQKAlign32_ +
             computeTaskInfo_[curTaskId].rowId * blockHeightQ * headDimQKAlign32_;
 
         mm_mgmt_->DoQGradMatmul(qGradOutOffset, midScoreOffset, computeTaskInfo_[curTaskId].kOffset,
@@ -447,7 +474,7 @@ public:
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midResultIdx = computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES;
-        int64_t fromOffset = midResultIdx * blockHeightQ * headDimQKAlign32_;
+        int64_t fromOffset = midResultIdx * blockHeightK * headDimQKAlign32_;
         int64_t toOffset = 0;
         int64_t total = 0;
 
@@ -461,7 +488,7 @@ public:
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midResultIdx = computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES;
-        int64_t fromOffset = midResultIdx * blockHeightQ * headDimV_;
+        int64_t fromOffset = midResultIdx * blockHeightK * headDimV_;
         int64_t toOffset = 0;
         int64_t total = 0;
 
@@ -476,9 +503,9 @@ public:
         DoJaggedQKMatmul(taskId);
         DoJaggedGVMatmul(taskId);
         if (taskId > 1) {
-            DoJaggedVGradMatmul(taskId - TWO);
-            DoJaggedKGradMatmul(taskId - TWO);
-            DoJaggedQGradMatmul(taskId - TWO);
+            DoJaggedVGradMatmul(taskId - 2);
+            DoJaggedKGradMatmul(taskId - 2);
+            DoJaggedQGradMatmul(taskId - 2);
         }
         if (taskId > 0) {
             VecScoreJagged(taskId - 1);
@@ -489,10 +516,10 @@ public:
             mm_mgmt_->vGradMatmulWait();
             mm_mgmt_->kGradMatmulWait();
             mm_mgmt_->qGradMatmulWait();
-            if (computeTaskInfo_[(taskId - TWO) % COMPUTE_PIPE_NUM].GetAccumId() !=
+            if (computeTaskInfo_[(taskId - 2) % COMPUTE_PIPE_NUM].GetAccumId() !=
                 computeTaskInfo_[(taskId - 1) % COMPUTE_PIPE_NUM].GetAccumId()) {
-                DoTransJaggedV(taskId - TWO);
-                DoTransJaggedK(taskId - TWO);
+                DoTransJaggedV(taskId - 2);
+                DoTransJaggedK(taskId - 2);
             }
         }
     }
@@ -500,17 +527,17 @@ public:
     __aicore__ inline void FirstJaggedStageEnding(int64_t taskId)
     {
         if (taskId > 1) {
-            DoJaggedVGradMatmul(taskId - TWO);
-            DoJaggedKGradMatmul(taskId - TWO);
-            DoJaggedQGradMatmul(taskId - TWO);
+            DoJaggedVGradMatmul(taskId - 2);
+            DoJaggedKGradMatmul(taskId - 2);
+            DoJaggedQGradMatmul(taskId - 2);
             VecScoreJagged(taskId - 1);
             mm_mgmt_->vGradMatmulWait();
             mm_mgmt_->kGradMatmulWait();
             mm_mgmt_->qGradMatmulWait();
-            if (computeTaskInfo_[(taskId - TWO) % COMPUTE_PIPE_NUM].GetAccumId() !=
+            if (computeTaskInfo_[(taskId - 2) % COMPUTE_PIPE_NUM].GetAccumId() !=
                 computeTaskInfo_[(taskId - 1) % COMPUTE_PIPE_NUM].GetAccumId()) {
-                DoTransJaggedV(taskId - TWO);
-                DoTransJaggedK(taskId - TWO);
+                DoTransJaggedV(taskId - 2);
+                DoTransJaggedK(taskId - 2);
             }
 
             DoJaggedVGradMatmul(taskId - 1);
@@ -536,6 +563,7 @@ public:
             DoTransJaggedK(taskId - 1);
         }
     }
+
     __aicore__ inline int64_t GetNumContext(int64_t batchId)
     {
         if (enableContextMask_) {
@@ -555,7 +583,6 @@ public:
     __aicore__ inline void ComputeJaggedFirst()
     {
         int64_t taskId = 0;
-
         if (startColBlock_ >= endColBlock_) {
             return;
         }
@@ -567,7 +594,7 @@ public:
             ColLineBaseInfo& thisColLineInfo = ColLineInfoGlobal[gColId % COMPUTE_PIPE_NUM];
 
             const int64_t colId = thisColLineInfo.colId;
-            const int64_t rowLimit = thisColLineInfo.blockLimit;
+            const int64_t rowLimit = thisColLineInfo.curBlkLenQ;
 
             for (int64_t rowId = 0; rowId < rowLimit; rowId++) {
                 JaggedTaskInfoColMajor& args = this->computeTaskInfo_[taskId % COMPUTE_PIPE_NUM];
@@ -576,7 +603,8 @@ public:
 
                 this->blockMaskParams_[taskId % COMPUTE_PIPE_NUM] = {static_cast<uint32_t>(rowId),
                                                                      static_cast<uint32_t>(colId),
-                                                                     static_cast<uint32_t>(thisColLineInfo.curSeqLen),
+                                                                     static_cast<uint32_t>(thisColLineInfo.curSeqLenQ),
+                                                                     static_cast<uint32_t>(thisColLineInfo.curSeqLenK),
                                                                      blockHeightQ,
                                                                      GetNumContext(thisColLineInfo.batchId),
                                                                      GetNumTarget(thisColLineInfo.batchId),
@@ -619,13 +647,14 @@ public:
     BNSSLayout bnssLayout_;
 
     uint32_t batchSize_ = 0;
-    uint32_t maxSeqLen_ = 0;
-    uint32_t biasGradSeqLen_ = 0;
+    uint32_t maxSeqLenQ_ = 0;
+    uint32_t maxSeqLenK_ = 0;
     uint32_t headDimQK_ = 0;
     uint32_t headDimQKAlign32_ = 0;
     uint32_t headDimV_ = 0;
     uint32_t headNum_ = 0;
-    uint32_t totalBatchSize_ = 0;
+    uint32_t totalLenQ_ = 0;
+    uint32_t totalLenK_ = 0;
 
     // Attr
     float siluScale_ = 1.0f;
@@ -646,7 +675,7 @@ public:
     GlobalTensor<seqOffsetType> numContextGt_;
     GlobalTensor<seqOffsetType> numTargetGt_;
 
-    GlobalTensor<qType> baisGt_;
+    GlobalTensor<qType> biasGt_;
     GlobalTensor<qType> maskGt_;
     GlobalTensor<qType> biasGradGt_;
 
@@ -667,8 +696,9 @@ protected:
     uint32_t endColBlock_ = 0;
     JaggedTaskInfoColMajor computeTaskInfo_[COMPUTE_PIPE_NUM] = {};  // 局部循环/函数内赋值, 默认初始化
     const HstuJaggedBackwardTilingData* __restrict backwardTilingData_{
-        nullptr};                               // Compute()赋值: backwardTilingData_ = args.tilingDataPtr
-    GlobalTensor<seqOffsetType> seqOffsetsGt_;  // PreInit中SetGlobalBuffer
+        nullptr};                                // Compute()赋值: backwardTilingData_ = args.tilingDataPtr
+    GlobalTensor<seqOffsetType> seqOffsetsQGt_;  // PreInit中SetGlobalBuffer
+    GlobalTensor<seqOffsetType> seqOffsetsKGt_;  // PreInit中SetGlobalBuffer
 };
 }  // namespace HstuDenseBackward
 #endif

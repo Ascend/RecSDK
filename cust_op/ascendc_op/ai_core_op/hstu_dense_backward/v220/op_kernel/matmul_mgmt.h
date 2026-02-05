@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,17 +34,14 @@ public:
 
     __aicore__ inline void InitGt(const AddrArgs& addrArgs)
     {
-        int64_t qSize = totalBatchSize_ * headNum_ * headDimQK_;
-        q_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.q), qSize);
-        k_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.k), qSize);
+        grad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.grad));
+        q_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.q));
+        k_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.k));
+        v_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.v));
 
-        int64_t vSize = totalBatchSize_ * headNum_ * headDimV_;
-        grad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.grad), vSize);
-        v_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.v), vSize);
-
-        qGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.qGrad), qSize);
-        kGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.kGrad), qSize);
-        vGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.vGrad), vSize);
+        qGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.qGrad));
+        kGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.kGrad));
+        vGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.vGrad));
     }
 
     __aicore__ inline void InitTempSpace(GM_ADDR workspace, int64_t& totalTempSpaceForOneVec)
@@ -58,7 +55,7 @@ public:
         const int64_t maskTempSpace = blockHeightQ * blockHeightK;
         const int64_t biasOrSGradTempSpace = blockHeightQ * blockHeightK;
         const int64_t qGradAccumTempSpace = static_cast<int64_t>(batchSize_) * static_cast<int64_t>(headNum_) *
-                                            static_cast<int64_t>(maxSeqLen_) * static_cast<int64_t>(headDimQKAlign32_);
+                                            static_cast<int64_t>(maxSeqLenQ_) * static_cast<int64_t>(headDimQKAlign32_);
 
         totalTempSpaceForOneVec = MID_USE_TIMES * (vGradAccumTempSpace + kGradAccumTempSpace) * sizeof(float) +
                                   (qkMatmulTempSpace + gvMatmulTempSpace) * sizeof(qType) * COMPUTE_PIPE_NUM;
@@ -95,7 +92,7 @@ public:
     __aicore__ inline void ClearQGradAccumTemp(GM_ADDR workspace, int64_t totalTempSpaceForOneVec)
     {
         int64_t qGradAccumTempSpace = static_cast<int64_t>(batchSize_) * static_cast<int64_t>(headNum_) *
-                                      static_cast<int64_t>(maxSeqLen_) * static_cast<int64_t>(headDimQKAlign32_);
+                                      static_cast<int64_t>(maxSeqLenQ_) * static_cast<int64_t>(headDimQKAlign32_);
 
         // 所有核共享一片globalMemory，且存在累加操作，每次执行需要清理内存防止上次执行结果残留数据影响本次结果
         // 多核执行后需要调用SyncAll保证多核间同步正常
@@ -119,9 +116,9 @@ public:
     {
         // Shape Init
         GM_ADDR workspace = addrArgs.workspace;
-        totalBatchSize_ = baseShape.totalBatchSize;
+        totalLenQ_ = baseShape.totalLen;
         batchSize_ = baseShape.batchSize;
-        maxSeqLen_ = baseShape.maxSeqLen;
+        maxSeqLenQ_ = baseShape.maxSeqLen;
         headDimQK_ = baseShape.headDimQK;
         headDimQKAlign32_ = baseShape.headDimQKAlign32;
         headDimV_ = baseShape.headDimV;
@@ -197,9 +194,9 @@ public:
     }
 
     // Shape
-    int64_t totalBatchSize_;
+    int64_t totalLenQ_;
     uint32_t batchSize_;
-    uint32_t maxSeqLen_;
+    uint32_t maxSeqLenQ_;
     uint32_t headDimQK_;
     uint32_t headDimQKAlign32_;
     uint32_t headDimV_;

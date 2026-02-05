@@ -132,7 +132,6 @@ public:
     {
         const bool thisBlockNeedProcessMask = generator.NeedMask();
         int64_t gvOffset = qkOffset;
-        int64_t scoreTempOffset = qkOffset;
         LocalTensor<float> inputQK = queueVecScoreQK_.AllocTensor<float>();
         DataCopy<qType>(inputQK.template ReinterpretCast<qType>(), qkTemp_[qkOffset], thisLen);
         queueVecScoreQK_.EnQue(inputQK);
@@ -150,8 +149,8 @@ public:
 
         LocalTensor<qType> outputScore = queueOutputScore_.DeQue<qType>();
         LocalTensor<qType> outputBias = queueOutputBias_.DeQue<qType>();
-        DataCopy<qType>(qkTemp_[scoreTempOffset], outputScore, thisLen);
-        DataCopy<qType>(gvTemp_[scoreTempOffset], outputBias, thisLen);
+        DataCopy<qType>(qkTemp_[qkOffset], outputScore, thisLen);
+        DataCopy<qType>(gvTemp_[gvOffset], outputBias, thisLen);
 
         queueOutputScore_.FreeTensor(outputScore);
         queueOutputBias_.FreeTensor(outputBias);
@@ -256,8 +255,9 @@ public:
         biasGt_ = gtInfo.biasGt;
         biasGradGt_ = gtInfo.biasGradGt;
         bnssLayout_ = bnssLayout;
-        maxSeqLen_ = AscendC::Std::get<2>(bnssLayout.GetShape());
-        // 20通过ub的大小计算得到
+        maxSeqLenQ_ = AscendC::Std::get<2>(bnssLayout.GetShape());
+        maxSeqLenK_ = AscendC::Std::get<3>(bnssLayout.GetShape());
+        // 15通过ub的大小计算得到
         vecOnceDataNum_ = blockHeightQ * 15;
 
         pipePtr_->InitBuffer(queueVecScoreQK_, 1, vecOnceDataNum_ * sizeof(float));
@@ -280,8 +280,8 @@ public:
         uint16_t blockCount = rowNum;
         uint32_t blockLen = colNum * sizeof(qType);
         uint32_t srcStride = (seqLen - colNum) * sizeof(qType);
-        uint32_t dstStride = (blockHeightQ - colNum) / (DATA_ALIGN_BYTES / sizeof(qType));
-        uint8_t rightPadding = (blockHeightQ - colNum) % (DATA_ALIGN_BYTES / sizeof(qType));
+        uint32_t dstStride = (blockHeightK - colNum) / (DATA_ALIGN_BYTES / sizeof(qType));
+        uint8_t rightPadding = (blockHeightK - colNum) % (DATA_ALIGN_BYTES / sizeof(qType));
 
         DataCopyExtParams copyParams{blockCount, blockLen, srcStride, dstStride, 0};
         DataCopyPadExtParams<qType> padParams{true, 0, rightPadding, 0};
@@ -293,7 +293,7 @@ public:
     {
         uint16_t blockCount = rowNum;
         uint32_t blockLen = colNum * sizeof(qType);
-        uint32_t srcStride = (blockHeightQ - colNum) / (DATA_ALIGN_BYTES / sizeof(qType));
+        uint32_t srcStride = (blockHeightK - colNum) / (DATA_ALIGN_BYTES / sizeof(qType));
         uint32_t dstStride = (seqLen - colNum) * sizeof(qType);
 
         DataCopyExtParams copyParams{blockCount, blockLen, srcStride, dstStride, 0};
@@ -310,6 +310,7 @@ public:
         BlockMaskGenerator generator(&blockMaskParam);
         uint32_t rowOffsetInSeq = rowId * blockHeightQ;
         uint32_t colOffsetInSeq = colId * blockHeightK;
+
         while (remain > 0) {
             if (remain < thisLen) {
                 thisLen = remain;
@@ -328,17 +329,6 @@ public:
                 VecScoreWithValidRowNum(thisLen, validRowNum, totalColNum, startRowNum, qkOffset, bnssOffset,
                                         generator);
             }
-            if (enableBias_ && maskType_ == MaskType::MASK_TRIL && blockMaskParam.DiagonalNoComputation()) {
-                LocalTensor<qType> outputTempTensor = queueOutputBias_.AllocTensor<qType>();
-                Duplicate<qType>(outputTempTensor, 0, thisLen);
-                queueOutputBias_.EnQue(outputTempTensor);
-                int64_t curAttnBiasDiagonalOffset =
-                    bnssLayout_(MakeCoord(batchId, headId, colOffsetInSeq + startRowNum, rowOffsetInSeq));
-                outputTempTensor = queueOutputBias_.DeQue<qType>();
-                CopyOutPadding(biasGradGt_[curAttnBiasDiagonalOffset], outputTempTensor, thisRowNum, totalRowNum,
-                               maxSeqLen_);
-                queueOutputBias_.FreeTensor(outputTempTensor);
-            }
             remain = remain - thisLen;
         }
     }
@@ -354,7 +344,6 @@ public:
             thisBlockNeedProcessMask = true;
         }
         int64_t gvOffset = qkOffset;
-        int64_t scoreTempOffset = qkOffset;
         LocalTensor<float> inputQK = queueVecScoreQK_.AllocTensor<float>();
         DataCopy<qType>(inputQK.template ReinterpretCast<qType>(), qkTemp_[qkOffset], thisLen);
         queueVecScoreQK_.EnQue(inputQK);
@@ -365,9 +354,8 @@ public:
 
         LocalTensor<float> inputMask = queueVecScoreMask_.AllocTensor<float>();
         if (maskType_ == MaskType::MASK_CUSTOM) {
-            // DataCopy<qType>(inputMask.template ReinterpretCast<qType>(), maskGt_[bnssOffset], thisLen);
             CopyInPadding(inputMask.template ReinterpretCast<qType>(), maskGt_[bnssOffset], validRowNum, totalColNum,
-                          maxSeqLen_);
+                          maxSeqLenK_);
         } else if (thisBlockNeedProcessMask) {
             generator.GenMask(inputMask, rowInBlock, thisLen / blockHeightQ, blockHeightQ);
         }
@@ -375,7 +363,7 @@ public:
         LocalTensor<float> inputBias = queueVecScoreBias_.AllocTensor<float>();
         if (enableBias_) {
             CopyInPadding(inputBias.template ReinterpretCast<qType>(), biasGt_[bnssOffset], validRowNum, totalColNum,
-                          maxSeqLen_);
+                          maxSeqLenK_);
         }
         queueVecScoreBias_.EnQue(inputBias);
 
@@ -383,10 +371,10 @@ public:
 
         LocalTensor<qType> outputScore = queueOutputScore_.DeQue<qType>();
         LocalTensor<qType> outputBias = queueOutputBias_.DeQue<qType>();
-        DataCopy<qType>(qkTemp_[scoreTempOffset], outputScore, thisLen);
-        DataCopy<qType>(gvTemp_[scoreTempOffset], outputBias, thisLen);
+        DataCopy<qType>(qkTemp_[qkOffset], outputScore, thisLen);
+        DataCopy<qType>(gvTemp_[gvOffset], outputBias, thisLen);
         if (enableBias_) {
-            CopyOutPadding(biasGradGt_[bnssOffset], outputBias, validRowNum, totalColNum, maxSeqLen_);
+            CopyOutPadding(biasGradGt_[bnssOffset], outputBias, validRowNum, totalColNum, maxSeqLenK_);
         }
 
         queueOutputScore_.FreeTensor(outputScore);
@@ -401,6 +389,7 @@ public:
             Cast(dstTensor, srcTensor.ReinterpretCast<qType>(), RoundMode::CAST_NONE, thisLen);
         }
     }
+
     __aicore__ inline void CalcuScoreWithFloat32(int64_t thisLen, bool thisBlockNeedProcessMask)
     {
         LocalTensor<float> inputQK = queueVecScoreQK_.template DeQue<float>();
@@ -480,7 +469,8 @@ public:
     float siluScale_ = 1.0f;
     float alpha_ = 1.0f;
     uint32_t aivNum_ = 0;
-    uint32_t maxSeqLen_ = 0;
+    uint32_t maxSeqLenQ_ = 0;
+    uint32_t maxSeqLenK_ = 0;
 
     // Tpipe
     TPipe* pipePtr_ = nullptr;

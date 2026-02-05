@@ -1,3 +1,18 @@
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
+
 #ifndef CHECK_UTIL_H
 #define CHECK_UTIL_H
 
@@ -6,11 +21,16 @@
 namespace optiling {
 
 template <typename TilingData>
-ge::graphStatus CheckMaskTypeAndBias(gert::TilingContext* context, TilingData& tiling)
+ge::graphStatus CheckMaskTypeAndBias(gert::TilingContext* context,
+                                     TilingData& tiling,
+                                     int32_t maxSeqLenQ,
+                                     int32_t maxSeqLenK = -1)
 {
+    if (maxSeqLenK == -1) {
+        maxSeqLenK = maxSeqLenQ;
+    }
     auto batchSize = tiling.get_batchSize();
     auto headNum = tiling.get_headNum();
-    auto maxSeqLen = tiling.get_maxSeqLen();
     auto maskType = tiling.get_maskType();
 
     auto attnBias = context->GetOptionalInputTensor(INPUT_INDEX_T::ATTN_BIAS_INDEX);
@@ -23,6 +43,11 @@ ge::graphStatus CheckMaskTypeAndBias(gert::TilingContext* context, TilingData& t
         auto attnBiasShape = context->GetInputShape(INPUT_INDEX_T::ATTN_BIAS_INDEX)->GetStorageShape();
         OPS_CHECK(!IsSameShape(attnBiasShape, attnBiasGradShape, BIAS_DIM_NUM),
                   OPS_LOG_E("", "attnBias shape not equal with attnBiasGrad\n"), return ge::GRAPH_FAILED);
+        OPS_CHECK(attnBiasShape.GetDim(INDEX_T::INDEX_0) != batchSize ||
+                      attnBiasShape.GetDim(INDEX_T::INDEX_1) != headNum ||
+                      attnBiasShape.GetDim(INDEX_T::INDEX_2) != maxSeqLenQ ||
+                      attnBiasShape.GetDim(INDEX_T::INDEX_3) != maxSeqLenK,
+              OPS_LOG_E("", "bias shape must be {batchSize, headNum, seqLenQ, seqLenK}\n"), return ge::GRAPH_FAILED);
     }
 
     auto contextMask = context->GetOptionalInputTensor(INPUT_INDEX_T::NUM_CONTEXT_INDEX);
@@ -48,10 +73,11 @@ ge::graphStatus CheckMaskTypeAndBias(gert::TilingContext* context, TilingData& t
         OPS_CHECK(maskShape.GetDimNum() != MASK_DIM_NUM, OPS_LOG_E("", "mask dim num is not %d\n", MASK_DIM_NUM),
                   return ge::GRAPH_FAILED);
 
-        OPS_CHECK(maskShape.GetDim(INDEX_T::INDEX_0) != batchSize || maskShape.GetDim(INDEX_T::INDEX_1) != headNum ||
-                      maskShape.GetDim(INDEX_T::INDEX_2) != maxSeqLen ||
-                      maskShape.GetDim(INDEX_T::INDEX_3) != maxSeqLen,
-                  OPS_LOG_E("", "mask shape must be {batchSize, headNum, seqLen, seqLen}\n"), return ge::GRAPH_FAILED);
+        OPS_CHECK(maskShape.GetDim(INDEX_T::INDEX_0) != batchSize ||
+                      maskShape.GetDim(INDEX_T::INDEX_1) != headNum ||
+                      maskShape.GetDim(INDEX_T::INDEX_2) != maxSeqLenQ ||
+                      maskShape.GetDim(INDEX_T::INDEX_3) != maxSeqLenK,
+            OPS_LOG_E("", "mask shape must be {batchSize, headNum, seqLenQ, seqLenK}\n"), return ge::GRAPH_FAILED);
     } else if (IfMask(maskType, MaskType::MASK_TRIL) || IfMask(maskType, MaskType::MASK_NONE)) {
         // do nothing
     } else if (IfMask(maskType, MaskType::MASK_TRIU)) {

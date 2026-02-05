@@ -65,7 +65,7 @@ struct AddrArgs {
 };
 
 struct BaseShapeArgs {
-    uint32_t totalBatchSize;
+    uint32_t totalLen;
     uint32_t batchSize;
     uint32_t headNum;
     uint32_t headDimQK;
@@ -107,6 +107,15 @@ __aicore__ inline void DoMte3WhenVFinish(TPipe* pipePtr)
     int32_t eventVToMTE3 = static_cast<int32_t>(pipePtr->FetchEventID(HardEvent::V_MTE3));
     SetFlag<HardEvent::V_MTE3>(eventVToMTE3);
     WaitFlag<HardEvent::V_MTE3>(eventVToMTE3);
+}
+
+template <typename T, typename U>
+__aicore__ inline T CeilDiv(T dividend, U divisor)
+{
+    if (divisor == 0) {
+        return 0;
+    }
+    return (dividend + divisor - 1) / divisor;
 }
 }  // namespace HstuDenseBackward
 

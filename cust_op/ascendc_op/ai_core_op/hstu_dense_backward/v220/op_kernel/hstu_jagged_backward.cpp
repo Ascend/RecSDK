@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -74,16 +74,17 @@ __aicore__ inline void InvokeKernelConstMM(HstuDenseBackward::Args& args)
 }
 
 extern "C" __global__ __aicore__ void hstu_jagged_backward(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask,
-                                                           GM_ADDR attnBias, GM_ADDR seqOffset, GM_ADDR numContext,
-                                                           GM_ADDR numTarget, GM_ADDR qGrad, GM_ADDR kGrad,
-                                                           GM_ADDR vGrad, GM_ADDR attnBiasGrad, GM_ADDR workspace,
-                                                           GM_ADDR tiling)
+                                                           GM_ADDR attnBias, GM_ADDR seqOffsetQ, GM_ADDR seqOffsetK,
+                                                           GM_ADDR numContext, GM_ADDR numTarget, GM_ADDR qGrad,
+                                                           GM_ADDR kGrad, GM_ADDR vGrad, GM_ADDR attnBiasGrad,
+                                                           GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA(tilingData, tiling);
     const HstuJaggedBackwardTilingData* __restrict tilingDataPtr = &tilingData;
 
-    HstuDenseBackward::Args args{grad,      q,     k,     v,     mask,         attnBias,  seqOffset, numContext,
-                                 numTarget, qGrad, kGrad, vGrad, attnBiasGrad, workspace, tiling,    tilingDataPtr};
+    HstuDenseBackward::Args args{grad,         q,         k,     v,     mask,  attnBias,     seqOffsetQ, seqOffsetK,
+                                 numContext,   numTarget, qGrad, kGrad, vGrad, attnBiasGrad, workspace,  tiling,
+                                 tilingDataPtr};
 
     bool isMaskTypeTril = (tilingDataPtr->maskType == MASK_TYPE_TRIL);
     bool noBias = (tilingDataPtr->enableBias == 0);

@@ -21,10 +21,10 @@ See the License for the specific language governing permissions and
 namespace optiling {
 bool BasicNormalShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim)
 {
-    static const ShapeRange batchRange(1, MAX_BATCH_SIZE, 1, "batch size");
-    static const ShapeRange seqRange(1, 20480, 1, "seq size");
-    static const ShapeRange headRange(1, 16, 1, "head num");
-    static const ShapeRange dimRange(16, 512, 16, "dim size");
+    static const ShapeRange batchRange(MIN_BATCH_SIZE, MAX_BATCH_SIZE, NO_INT_MULT_REQUIRE, "batch size");
+    static const ShapeRange seqRange(MIN_SEQ_LENS, MAX_SEQ_LENS, NO_INT_MULT_REQUIRE, "seq size");
+    static const ShapeRange headRange(MIN_HEAD_NUM, MAX_HEAD_NUM, NO_INT_MULT_REQUIRE, "head num");
+    static const ShapeRange dimRange(MIN_HEAD_DIM_V, MAX_HEAD_DIM, MULT_OF_16, "dim size");
 
     if (!batchRange.Check(batchSize)) {
         return false;
@@ -47,26 +47,26 @@ bool BasicNormalShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, i
 
 ge::graphStatus GetNormalAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBackwardTilingData &tiling)
 {
-    const int32_t *maskType = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_1);
+    const int32_t *maskType = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MASK_TYPE_INDEX);
     OPS_CHECK_PTR_NULL(maskType, return ge::GRAPH_FAILED);
     tiling.set_maskType(*maskType);
 
-    const int32_t *maxSeqLen = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_2);
+    const int32_t *maxSeqLen = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MAX_SEQLEN_Q_INDEX);
     OPS_CHECK_PTR_NULL(maxSeqLen, return ge::GRAPH_FAILED);
     tiling.set_maxSeqLen(*maxSeqLen);
 
-    const float *siluScale = attrs->GetAttrPointer<float>(INDEX_T::INDEX_3);
+    const float *siluScale = attrs->GetAttrPointer<float>(ATTR_INDEX_T::SILU_SCALE_INDEX);
     OPS_CHECK_PTR_NULL(siluScale, return ge::GRAPH_FAILED);
     tiling.set_siluScale(*siluScale);
 
-    const auto targetGroupSizePtr = attrs->GetAttrPointer<int32_t>(INDEX_T::INDEX_4);
+    const auto targetGroupSizePtr = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::TARGET_GROUP_SIZE_INDEX);
     if (targetGroupSizePtr != nullptr) {
         tiling.set_targetGroupSize(*targetGroupSizePtr);
     } else {
         tiling.set_targetGroupSize(0);
     }
 
-    const float *alpha = attrs->GetAttrPointer<float>(INDEX_T::INDEX_5);
+    const float *alpha = attrs->GetAttrPointer<float>(ATTR_INDEX_T::REAL_ALPHA_INDEX);
     if (alpha != nullptr) {
         tiling.set_alpha(*alpha);
     } else {
@@ -78,8 +78,8 @@ ge::graphStatus GetNormalAttrsInfo(const gert::RuntimeAttrs *attrs, HstuDenseBac
 ge::graphStatus GetNormalBasicShapeInfo(gert::TilingContext *context, HstuDenseBackwardTilingData &tiling)
 {
     int32_t maxSeqLen = tiling.get_maxSeqLen();
-    auto gradShape = context->GetInputShape(INDEX_T::INDEX_0)->GetStorageShape();
-    auto attnBiasGradShape = context->GetOutputShape(INDEX_T::INDEX_3)->GetStorageShape();
+    auto gradShape = context->GetInputShape(INPUT_INDEX_T::GRAD_INDEX)->GetStorageShape();
+    auto attnBiasGradShape = context->GetOutputShape(OUTPUT_INDEX_T::ATTN_BIAS_GRAD_INDEX)->GetStorageShape();
     OPS_CHECK(gradShape.GetDimNum() != GRAD_DIM_NUM,
                 OPS_LOG_E("", "hstu normal backward only support input with dim %d\n", GRAD_DIM_NUM),
                 return ge::GRAPH_FAILED);
@@ -143,7 +143,8 @@ ge::graphStatus TilingNormalFunc(gert::TilingContext *context,
     OPS_CHECK(GetNormalBasicShapeInfo(context, tiling) == ge::GRAPH_FAILED,
                 OPS_LOG_E("", "NormalTiling GetNormalBasicShapeInfo failed\n"), return ge::GRAPH_FAILED);
 
-    OPS_CHECK(CheckMaskTypeAndBias<HstuDenseBackwardTilingData>(context, tiling) == ge::GRAPH_FAILED,
+    auto maxSeqLen = tiling.get_maxSeqLen();
+    OPS_CHECK(CheckMaskTypeAndBias<HstuDenseBackwardTilingData>(context, tiling, maxSeqLen) == ge::GRAPH_FAILED,
                 OPS_LOG_E("", "NormalTiling CheckMaskTypeAndBias failed\n"), return ge::GRAPH_FAILED);
 
     OPS_CHECK(InitNormalTilingKey(context, tiling) == ge::GRAPH_FAILED,

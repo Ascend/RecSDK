@@ -13,23 +13,28 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-
-#include <vector>
-#include <numeric>
-
 #include "check_util.h"
-#include "common_host.h"
 #include "register/op_def_registry.h"
 #include "hstu_dense_backward_jagged_tiling.h"
 
 namespace optiling {
-bool BasicJaggedShapeCheck(int64_t batchSize, int64_t maxSeqLen, int64_t headNum, int64_t dimQK, int64_t dimV)
+template <bool V>
+bool BasicJaggedShapeCheck(int64_t batchSize, int64_t maxSeqLen, int64_t headNum, int64_t dim)
 {
-    static const ShapeRange batchRange(1, MAX_BATCH_SIZE, 1, "batch size");
-    static const ShapeRange maxSeqRange(1, 20480, 1, "seq size");
-    static const ShapeRange headRange(1, 16, 1, "head num");
-    static const ShapeRange dimQKRange(1, 512, 1, "dimQK size");
-    static const ShapeRange dimVRange(16, 512, 16, "dimV size");
+    static const ShapeRange batchRange(MIN_BATCH_SIZE, MAX_BATCH_SIZE, NO_INT_MULT_REQUIRE, "batch size");
+    static const ShapeRange maxSeqRange(MIN_SEQ_LENS, MAX_SEQ_LENS, NO_INT_MULT_REQUIRE, "seq size");
+    static const ShapeRange headRange(MIN_HEAD_NUM, MAX_HEAD_NUM, NO_INT_MULT_REQUIRE, "head num");
+
+    int64_t minDim;
+    int64_t mulDim;
+    if constexpr (V) {
+        minDim = MIN_HEAD_DIM_V;
+        mulDim = MULT_OF_16;
+    } else {
+        minDim = MIN_HEAD_DIM_QK;
+        mulDim = NO_INT_MULT_REQUIRE;
+    }
+    static const ShapeRange dimRange(minDim, MAX_HEAD_DIM, mulDim, "dim size");
 
     if (!batchRange.Check(batchSize)) {
         return false;
@@ -43,11 +48,7 @@ bool BasicJaggedShapeCheck(int64_t batchSize, int64_t maxSeqLen, int64_t headNum
         return false;
     }
 
-    if (!dimQKRange.Check(dimQK)) {
-        return false;
-    }
-
-    if (!dimVRange.Check(dimV)) {
+    if (!dimRange.Check(dim)) {
         return false;
     }
 
@@ -58,12 +59,19 @@ ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuJaggedBa
 {
     const int32_t *maskType = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MASK_TYPE_INDEX);
     OPS_CHECK_PTR_NULL(maskType, return ge::GRAPH_FAILED);
+    tiling.set_maskType(*maskType);
 
-    const int32_t *maxSeqLen = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MAX_SEQ_LEN_INDEX);
-    OPS_CHECK_PTR_NULL(maxSeqLen, return ge::GRAPH_FAILED);
+    const int32_t *maxSeqLenQ = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MAX_SEQLEN_Q_INDEX);
+    OPS_CHECK_PTR_NULL(maxSeqLenQ, return ge::GRAPH_FAILED);
+    tiling.set_maxSeqLenQ(*maxSeqLenQ);
+
+    const int32_t *maxSeqLenK = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MAX_SEQLEN_K_INDEX);
+    OPS_CHECK_PTR_NULL(maxSeqLenK, return ge::GRAPH_FAILED);
+    tiling.set_maxSeqLenK(*maxSeqLenK);
 
     const float *siluScale = attrs->GetAttrPointer<float>(ATTR_INDEX_T::SILU_SCALE_INDEX);
     OPS_CHECK_PTR_NULL(siluScale, return ge::GRAPH_FAILED);
+    tiling.set_siluScale(*siluScale);
 
     const auto targetGroupSizePtr = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::TARGET_GROUP_SIZE_INDEX);
     if (targetGroupSizePtr != nullptr) {
@@ -78,17 +86,13 @@ ge::graphStatus GetJaggedAttrsInfo(const gert::RuntimeAttrs *attrs, HstuJaggedBa
     } else {
         tiling.set_alpha(1.0);
     }
-
-    tiling.set_maskType(*maskType);
-    tiling.set_maxSeqLen(*maxSeqLen);
-    tiling.set_siluScale(*siluScale);
-
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuJaggedBackwardTilingData &tiling)
 {
-    int64_t maxSeqLen = tiling.get_maxSeqLen();
+    int64_t maxSeqLenQ = tiling.get_maxSeqLenQ();
+    int64_t maxSeqLenK = tiling.get_maxSeqLenK();
 
     OPS_LOG_E_IF_NULL("grad", context->GetInputShape(INPUT_INDEX_T::GRAD_INDEX), return ge::GRAPH_FAILED);
     auto gradShape = context->GetInputShape(INPUT_INDEX_T::GRAD_INDEX)->GetStorageShape();
@@ -96,47 +100,60 @@ ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuJagged
               OPS_LOG_E("", "hstu jagged backward only support input with dim %d\n", JAGGED_GRAD_DIM_NUM),
               return ge::GRAPH_FAILED);
 
-    OPS_LOG_E_IF_NULL("q", context->GetInputShape(INPUT_INDEX_T::Q_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("Q", context->GetInputShape(INPUT_INDEX_T::Q_INDEX), return ge::GRAPH_FAILED);
     auto qShape = context->GetInputShape(INPUT_INDEX_T::Q_INDEX)->GetStorageShape();
     OPS_CHECK(qShape.GetDimNum() != JAGGED_GRAD_DIM_NUM,
               OPS_LOG_E("", "hstu jagged backward only support input with dim %d\n", JAGGED_GRAD_DIM_NUM),
               return ge::GRAPH_FAILED);
 
-    OPS_LOG_E_IF_NULL("seqOffset", context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_INDEX), return ge::GRAPH_FAILED);
-    auto seqOffsetShape = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_INDEX)->GetStorageShape();
-    OPS_CHECK(seqOffsetShape.GetDimNum() != 1,
+    OPS_LOG_E_IF_NULL("K", context->GetInputShape(INPUT_INDEX_T::K_INDEX), return ge::GRAPH_FAILED);
+    auto kShape = context->GetInputShape(INPUT_INDEX_T::K_INDEX)->GetStorageShape();
+    OPS_CHECK(kShape.GetDimNum() != JAGGED_GRAD_DIM_NUM,
+              OPS_LOG_E("", "hstu jagged backward only support input with dim %d\n", JAGGED_GRAD_DIM_NUM),
+              return ge::GRAPH_FAILED);
+
+    OPS_LOG_E_IF_NULL("V", context->GetInputShape(INPUT_INDEX_T::V_INDEX), return ge::GRAPH_FAILED);
+    auto vShape = context->GetInputShape(INPUT_INDEX_T::V_INDEX)->GetStorageShape();
+    OPS_CHECK(vShape.GetDimNum() != JAGGED_GRAD_DIM_NUM,
+              OPS_LOG_E("", "hstu jagged backward only support input with dim %d\n", JAGGED_GRAD_DIM_NUM),
+              return ge::GRAPH_FAILED);
+
+    OPS_LOG_E_IF_NULL("seqOffsetQ", context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX), return ge::GRAPH_FAILED);
+    auto seqOffsetShapeQ = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
+    OPS_CHECK(seqOffsetShapeQ.GetDimNum() != 1,
               OPS_LOG_E("", "hstu jagged backward only support seqOffset with dim 1\n"), return ge::GRAPH_FAILED);
 
-    int64_t batchSize = seqOffsetShape.GetDim(INDEX_T::INDEX_0) - 1;
+    OPS_LOG_E_IF_NULL("seqOffsetK", context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_K_INDEX), return ge::GRAPH_FAILED);
+    auto seqOffsetShapeK = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_K_INDEX)->GetStorageShape();
+    OPS_CHECK(seqOffsetShapeQ != seqOffsetShapeK,
+              OPS_LOG_E("", "seqOffsetQ.shape != seqOffsetK.shape\n"), return ge::GRAPH_FAILED);
+
+    int64_t batchSize = seqOffsetShapeQ.GetDim(INDEX_T::INDEX_0) - 1;
     OPS_CHECK((batchSize < 1 || batchSize > MAX_BATCH_SIZE),
               OPS_LOG_E("", "batchSize limit (0, %d], but get %lld\n", MAX_BATCH_SIZE, batchSize),
               return ge::GRAPH_FAILED);
 
-    // gradShape(bs, n, d)
-    int64_t seqLen = gradShape.GetDim(INDEX_T::INDEX_0);
-    int64_t headNum = gradShape.GetDim(INDEX_T::INDEX_1);
+    // qShape(bs, n, d)
+    int64_t seqLenQ = qShape.GetDim(INDEX_T::INDEX_0);
+    int64_t seqLenK = kShape.GetDim(INDEX_T::INDEX_0);
+    int64_t headNum = qShape.GetDim(INDEX_T::INDEX_1);
     int64_t headDimQK = qShape.GetDim(INDEX_T::INDEX_2);
     int64_t headDimV = gradShape.GetDim(INDEX_T::INDEX_2);
-    int64_t biasGradSeqLen = 0;
-    auto attnBiasGradShape = context->GetOutputShape(OUTPUT_INDEX_T::ATTN_BIAS_GRAD_INDEX);
-    if (attnBiasGradShape != nullptr) {
-        biasGradSeqLen = attnBiasGradShape->GetStorageShape().GetDim(INDEX_T::INDEX_2);
-        OPS_CHECK(biasGradSeqLen < maxSeqLen, OPS_LOG_E("", "attnBiasGrad get seqLen less than maxSeqLen\n"),
-                  return ge::GRAPH_FAILED);
-    } else {
-        biasGradSeqLen = AlignUp(maxSeqLen, static_cast<int64_t>(BLOCK_256));
-        OPS_CHECK((biasGradSeqLen == 0), OPS_LOG_E("", "attnBiasGrad get seqLen error\n"), return ge::GRAPH_FAILED);
-    }
+
     tiling.set_batchSize(batchSize);
-    tiling.set_seqLen(seqLen);
+    tiling.set_seqLenQ(seqLenQ);
+    tiling.set_seqLenK(seqLenK);
     tiling.set_headNum(headNum);
     tiling.set_headDimQK(headDimQK);
     tiling.set_headDimV(headDimV);
-    tiling.set_biasGradSeqLen(biasGradSeqLen);
     tiling.set_isNormal(0);
 
-    OPS_CHECK(!BasicJaggedShapeCheck(batchSize, maxSeqLen, headNum, headDimQK, headDimV),
-        OPS_LOG_E("", "jagged shape check failed\n"), return ge::GRAPH_FAILED);
+    OPS_CHECK(!BasicJaggedShapeCheck<false>(batchSize, maxSeqLenQ, headNum, headDimQK),
+              OPS_LOG_E("", "Q jagged shape check failed\n"), return ge::GRAPH_FAILED);
+    OPS_CHECK(!BasicJaggedShapeCheck<false>(batchSize, maxSeqLenK, headNum, headDimQK),
+              OPS_LOG_E("", "K jagged shape check failed\n"), return ge::GRAPH_FAILED);
+    OPS_CHECK(!BasicJaggedShapeCheck<true>(batchSize, maxSeqLenK, headNum, headDimV),
+              OPS_LOG_E("", "V jagged shape check failed\n"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -179,8 +196,11 @@ ge::graphStatus TilingJaggedFunc(gert::TilingContext *context,
     OPS_CHECK(GetJaggedBasicShapeInfo(context, tiling) == ge::GRAPH_FAILED,
                 OPS_LOG_E("", "JaggedTiling GetJaggedBasicShapeInfo failed\n"), return ge::GRAPH_FAILED);
 
-    OPS_CHECK(CheckMaskTypeAndBias<HstuJaggedBackwardTilingData>(context, tiling) == ge::GRAPH_FAILED,
-                OPS_LOG_E("", "JaggedTiling CheckMaskTypeAndBias failed\n"), return ge::GRAPH_FAILED);
+    auto maxSeqLenQ = tiling.get_maxSeqLenQ();
+    auto maxSeqLenK = tiling.get_maxSeqLenK();
+    OPS_CHECK(
+        CheckMaskTypeAndBias<HstuJaggedBackwardTilingData>(context, tiling, maxSeqLenQ, maxSeqLenK) == ge::GRAPH_FAILED,
+        OPS_LOG_E("", "JaggedTiling CheckMaskTypeAndBias failed\n"), return ge::GRAPH_FAILED);
 
     OPS_CHECK(InitJaggedTilingKey(context, tiling) == ge::GRAPH_FAILED,
                 OPS_LOG_E("", "JaggedTiling InitJaggedTilingKey failed\n"), return ge::GRAPH_FAILED);
@@ -190,39 +210,44 @@ ge::graphStatus TilingJaggedFunc(gert::TilingContext *context,
 
     return ge::GRAPH_SUCCESS;
 }
+
 ge::graphStatus JaggedInferShape(gert::InferShapeContext *context)
 {
     const gert::Shape *qShape = context->GetInputShape(INPUT_INDEX_T::Q_INDEX);
     OPS_CHECK_PTR_NULL(qShape, return ge::GRAPH_FAILED);
 
-    // q_grad、k_grad的shape与q一致
+    const gert::Shape *kShape = context->GetInputShape(INPUT_INDEX_T::K_INDEX);
+    OPS_CHECK_PTR_NULL(kShape, return ge::GRAPH_FAILED);
+
+    const gert::Shape *vShape = context->GetInputShape(INPUT_INDEX_T::V_INDEX);
+    OPS_CHECK_PTR_NULL(vShape, return ge::GRAPH_FAILED);
+
     gert::Shape *qGradShape = context->GetOutputShape(OUTPUT_INDEX_T::Q_GRAD_INDEX);
     OPS_CHECK_PTR_NULL(qGradShape, return ge::GRAPH_FAILED);
     qGradShape->SetDimNum(qShape->GetDimNum());
 
     gert::Shape *kGradShape = context->GetOutputShape(OUTPUT_INDEX_T::K_GRAD_INDEX);
     OPS_CHECK_PTR_NULL(kGradShape, return ge::GRAPH_FAILED);
-    kGradShape->SetDimNum(qShape->GetDimNum());
-
-    const gert::Shape *gradShape = context->GetInputShape(INPUT_INDEX_T::GRAD_INDEX);
-    OPS_CHECK_PTR_NULL(gradShape, return ge::GRAPH_FAILED);
+    kGradShape->SetDimNum(kShape->GetDimNum());
 
     gert::Shape *vGradShape = context->GetOutputShape(OUTPUT_INDEX_T::V_GRAD_INDEX);
     OPS_CHECK_PTR_NULL(vGradShape, return ge::GRAPH_FAILED);
-    vGradShape->SetDimNum(gradShape->GetDimNum());
+    vGradShape->SetDimNum(vShape->GetDimNum());
 
     for (size_t i = 0; i < qShape->GetDimNum(); i++) {
         qGradShape->SetDim(i, qShape->GetDim(i));
-        kGradShape->SetDim(i, qShape->GetDim(i));
-        vGradShape->SetDim(i, gradShape->GetDim(i));
+        kGradShape->SetDim(i, kShape->GetDim(i));
+        vGradShape->SetDim(i, vShape->GetDim(i));
     }
 
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OPS_CHECK_PTR_NULL(attrs, return ge::GRAPH_FAILED);
-    const int32_t *maxSeqLen = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MAX_SEQ_LEN_INDEX);
-    OPS_CHECK_PTR_NULL(maxSeqLen, return ge::GRAPH_FAILED);
+    const int32_t *maxSeqLenQ = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MAX_SEQLEN_Q_INDEX);
+    OPS_CHECK_PTR_NULL(maxSeqLenQ, return ge::GRAPH_FAILED);
+    const int32_t *maxSeqLenK = attrs->GetAttrPointer<int32_t>(ATTR_INDEX_T::MAX_SEQLEN_K_INDEX);
+    OPS_CHECK_PTR_NULL(maxSeqLenK, return ge::GRAPH_FAILED);
 
-    const gert::Shape *seqOffsetShape = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_INDEX);
+    const gert::Shape *seqOffsetShape = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX);
     OPS_CHECK_PTR_NULL(seqOffsetShape, return ge::GRAPH_FAILED);
     int64_t batchSize = seqOffsetShape->GetDim(INDEX_T::INDEX_0) - 1;
 
@@ -231,8 +256,8 @@ ge::graphStatus JaggedInferShape(gert::InferShapeContext *context)
         attnBiasGradShape->SetDimNum(BIAS_DIM_NUM);
         attnBiasGradShape->SetDim(INDEX_T::INDEX_0, batchSize);
         attnBiasGradShape->SetDim(INDEX_T::INDEX_1, qShape->GetDim(1));
-        attnBiasGradShape->SetDim(INDEX_T::INDEX_2, *maxSeqLen);
-        attnBiasGradShape->SetDim(INDEX_T::INDEX_3, *maxSeqLen);
+        attnBiasGradShape->SetDim(INDEX_T::INDEX_2, *maxSeqLenQ);
+        attnBiasGradShape->SetDim(INDEX_T::INDEX_3, *maxSeqLenK);
     }
 
     return ge::GRAPH_SUCCESS;

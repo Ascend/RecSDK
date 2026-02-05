@@ -126,45 +126,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
     const c10::optional<int64_t>& targetGroupSize,
     const c10::optional<double>& alpha)
 {
-    TORCH_CHECK(grad.dim() == CONST_3, "The grad should be 3D in jagged layout");
-    TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
-    TORCH_CHECK(k.dim() == CONST_3, "The k should be 3D in jagged layout");
-    TORCH_CHECK(v.dim() == CONST_3, "The v should be 3D in jagged layout");
-
-    TORCH_CHECK(q.sizes() == k.sizes(), "Q and K batch size check failed");
-    TORCH_CHECK(v.sizes() == grad.sizes(), "V and grad batch size check failed");
-
-    TORCH_CHECK(
-        grad.scalar_type() == at::kHalf || grad.scalar_type() == at::kFloat || grad.scalar_type() == at::kBFloat16,
-        "float16, float32 or bfloat16 tensor expected but got a tensor with dtype: ", grad.scalar_type());
-    TORCH_CHECK(grad.scalar_type() == q.scalar_type(),
-                "grad dtype should be the same as q dtype, but got grad: ", grad.scalar_type(),
-                " and q: ", q.scalar_type());
-    TORCH_CHECK(grad.scalar_type() == k.scalar_type(),
-                "grad dtype should be the same as k dtype, but got grad: ", grad.scalar_type(),
-                " and k: ", k.scalar_type());
-    TORCH_CHECK(grad.scalar_type() == v.scalar_type(),
-                "grad dtype should be the same as v dtype, but got grad: ", grad.scalar_type(),
-                " and v: ", v.scalar_type());
-
-    TORCH_CHECK(MaxSeqLenCheck(maxSeqLen), "maxSeqLen check failed");
-    TORCH_CHECK(MaskCheck(maskType, CheckOptionalTensorIsNotNone(mask)), "maskType check failed");
-
-    if (static_cast<uint32_t>(maskType) == MASK_TYPE_CUSTOM) {
-        TORCH_CHECK(CheckOptionalTensorIsNotNone(mask), "mask is required when maskType is MASK_TYPE_CUSTOM");
-        TORCH_CHECK(mask.value().scalar_type() == grad.scalar_type(),
-                    "mask dtype should be the same as grad dtype, but got mask: ", mask.value().scalar_type(),
-                    " and grad: ", grad.scalar_type());
-    }
-
-    if (CheckOptionalTensorIsNotNone(attnBias)) {
-        TORCH_CHECK(attnBias.value().scalar_type() == grad.scalar_type(),
-                    "attnBias dtype should be the same as grad dtype, but got attnBias: ",
-                    attnBias.value().scalar_type(), " and grad: ", grad.scalar_type());
-    }
-
-    uint32_t batchSize = seqOffset.size(0) - 1;
     if (CheckOptionalTensorIsNotNone(numContext) || CheckOptionalTensorIsNotNone(numTarget)) {
+        uint32_t batchSize = seqOffset.size(0) - 1;
         TORCH_CHECK(numContext.has_value(), "numContext is required when numTarget or targetGroupSize is not None");
         TORCH_CHECK(numTarget.has_value(), "numTarget is required when numContext or targetGroupSize is not None");
         TORCH_CHECK(numContext.value().dim() == CONST_1, "The numContext should be 1D in normal layout");
@@ -177,7 +140,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
     }
 
     auto acSeqOffset = seqOffset;
-    TORCH_CHECK(acSeqOffset.size(0) >= CONST_2, "acSeqOffset params error should have at least two element.");
 
     auto _empty = at::Tensor();
     auto acAttnBias = attnBias.value_or(at::Tensor());
@@ -198,14 +160,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
     auto denseMask = acMask.contiguous();
     auto denseNumContext = acNumContext.contiguous();
     auto denseNumTarget = acNumTarget.contiguous();
-
-    TORCH_CHECK(MaxSeqLenCheck(maxSeqLen), "maxSeqLen check failed");
-
-    if (static_cast<uint32_t>(maskType) == MASK_TYPE_CUSTOM) {
-        TORCH_CHECK(denseMask.defined(), "use maskType:MASK_CUSTOM, but no mask given\n");
-        // mask dim 2 must be equal to maxSeqLen
-        TORCH_CHECK(denseMask.size(2) == maxSeqLen, "mask size 2 should be equal to maxSeqLen\n");
-    }
 
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
@@ -230,10 +184,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward_
                  denseMask,
                  denseAttnBias,
                  acSeqOffset,
+                 acSeqOffset,
                  denseNumContext,
                  denseNumTarget,
                  layout,
                  maskType,
+                 maxSeqLen,
                  maxSeqLen,
                  realSiluScale,
                  acTargetGroupSize,
