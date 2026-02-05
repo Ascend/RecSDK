@@ -45,9 +45,3 @@ pip3 install torchrec-1.2.0+npu-*.whl
 # 安装torchrec依赖。若提示安装expecttest失败，可忽略，该包仅测试场景使用
 pip3 install -r requirements.txt
 ```
-
-**说明**
-
-若环境无网络，采用“手动下载torchrec源码并上传到目标环境”的方式获取源码时，需注意：
-> 1. 下载源码包时需切换分支（示例：`release/v1.2.0`，`release/v1.2.0`）后再下载（patch文件是基于指定分支修改，不适配torchrec仓库默认的master分支）。
-> 2. 在目标环境上解压缩后，需将解压出来的文件夹名称改为`torchrec`，使文件夹名称和上述指令及build_whl.sh脚本中的文件夹名称一致。

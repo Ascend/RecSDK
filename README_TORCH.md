@@ -22,7 +22,7 @@
 
 ### 编译环境
 
-容器环境编译，参考[README](docs/build_torch_rec_images/README.md)
+容器环境编译，参考[README](docs/zh/torch/build_torch_rec_images/README.md)
 
 ### 编译Ascend-mindxsdk-torchrec-\*-npu-\*.tar.gz
 
@@ -65,7 +65,7 @@ cd RecSDK/cust_op/framework/torch_plugin/torch_library/common/
 
 **安装方法**
 
-编译完成后，会在common/build下生成so，并拷贝到在python默认site-packages路径下。
+编译完成后，会在common/build下生成so，并自动拷贝到python默认site-packages路径下。
 
 hybrid_torchrec 软件包会自动加载python默认site-packages路径下libfbgemm_npu_api.so。
 
