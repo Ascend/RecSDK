@@ -1,11 +1,13 @@
 diff --git a/examples/hstu/benchmark/inference_benchmark_random_2k.py b/examples/hstu/benchmark/inference_benchmark_random_2k.py
-index 064ccb0..5442b3f 100644
+index 064ccb0..6aa8614 100644
 --- a/examples/hstu/benchmark/inference_benchmark_random_2k.py
 +++ b/examples/hstu/benchmark/inference_benchmark_random_2k.py
-@@ -48,6 +48,7 @@ dataset_path = os.getenv("DATASET_PATH")
+@@ -47,7 +47,8 @@ use_cudaGraph = int(os.getenv("USR_CUDA_GRAPH")) == 1
+ dataset_path = os.getenv("DATASET_PATH")
  model_path = os.getenv("MODEL_PATH")
  folder_name = os.getenv("PROF_SAVE_PATH")
- is_save_input_and_output = int(os.getenv("SAVE_INPUT_AND_PUTPUT")) == 1
+-is_save_input_and_output = int(os.getenv("SAVE_INPUT_AND_PUTPUT")) == 1
++is_save_input_and_output = int(os.getenv("SAVE_INPUT_AND_OUTPUT", "0")) == 1
 +is_save_model = int(os.getenv("SAVE_MODEL", "0")) == 1
  is_use_npu_input = int(os.getenv("USE_NPU_INPUT")) == 1
  batch_size = int(os.getenv("BATCH_SIZE", "1"))
@@ -21,44 +23,202 @@ index 064ccb0..5442b3f 100644
                  cpu_state_dict = {k: v.cpu() for k, v in model_predict.state_dict().items()}
                  torch.save(cpu_state_dict, model_path)  # 保存模型权重
          else:
-@@ -231,15 +232,18 @@ def run_ranking_gr_inference():
-                     prof.step()
+@@ -213,103 +214,111 @@ def run_ranking_gr_inference():
  
-         print("收集端到端时间")
-+        cnt = 0
-         with torch.no_grad():
+         for item in infer_list * run_num:
+             result = model_predict.forward(item[0], item[1])
+-            # print([model output is],result)
+             if is_save_input_and_output:
+                 torch.save(result.cpu(), "input_output/gpu_output.pt")
+ 
+         print("性能测试-运行开始！")
+-        time_arr = []
+-        with torch.profiler.profile(
+-                activities=[ProfilerActivity.CUDA, ProfilerActivity.CPU],  # 同时分析 CPU 和 CUDA
+-                record_shapes=True,  # 记录张量形状
+-        ) as prof:
+-            with torch.no_grad():
+-                torch.cuda.synchronize()
+-                for item in infer_list * run_num:
+-                    model_predict.forward(item[0], item[1])  # 推理
+-                    torch.cuda.synchronize()
+-                    prof.step()
+-
+-        print("收集端到端时间")
+-        with torch.no_grad():
 -            for item in infer_list * run_num:
-+            for item in infer_list * run_num * 2:
-                 torch.cuda.synchronize()
-                 start_time = time.perf_counter()
-                 model_predict.forward(item[0], item[1])  # 推理
-                 torch.cuda.synchronize()
-                 duration = (time.perf_counter() - start_time) * 1_000_000
+-                torch.cuda.synchronize()
+-                start_time = time.perf_counter()
+-                model_predict.forward(item[0], item[1])  # 推理
+-                torch.cuda.synchronize()
+-                duration = (time.perf_counter() - start_time) * 1_000_000
 -                time_arr.append(duration)
 -                print(f"[E2E] time: {duration:.2f} us")
-+                if cnt > run_num:
-+                    time_arr.append(duration)
-+                    print(f"[E2E] time: {duration:.2f} us")
-+                cnt += 1
-         report = {'Batch_size': max_batch_size,
-                   'model_name': "GR"}
- 
-@@ -253,7 +257,6 @@ def run_ranking_gr_inference():
-         report["AVG Latency"] = avg_latency
-         report["P99 Latency"] = tail_latency
-         report["P90 Latency"] = p90_latency
+-        report = {'Batch_size': max_batch_size,
+-                  'model_name': "GR"}
+-
+-        time_arr.sort()
+-        tail_latency = round(time_arr[int(len(time_arr) * 0.99)] / 1000, 6)
+-        p90_latency = round(time_arr[int(len(time_arr) * 0.90)] / 1000, 6)
+-        avg_latency = round(sum(time_arr) / len(time_arr) / 1000, 6)
+-        qps = int(1000.0 * max_batch_size / avg_latency)
+-
+-        report["QPS"] = qps
+-        report["AVG Latency"] = avg_latency
+-        report["P99 Latency"] = tail_latency
+-        report["P90 Latency"] = p90_latency
 -        print(report)
          time_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
  
          if not os.path.exists(folder_name):
-@@ -270,7 +273,6 @@ def run_ranking_gr_inference():
+             os.makedirs(folder_name)
+ 
+-        with open(os.path.join(folder_name, f'report_bs{max_batch_size}.json'), "w", encoding="utf-8") as f:
+-            json.dump(
+-                report,
+-                f,
+-                ensure_ascii=False,  # 保留非ASCII字符（如中文）
+-                indent=4  # 格式化输出，缩进4个空格，增强可读性
+-            )
++        if os.getenv('USE_PROFILING', '0') != '0':
++            with torch.profiler.profile(
++                    activities=[ProfilerActivity.CUDA, ProfilerActivity.CPU],  # 同时分析 CPU 和 CUDA
++                    record_shapes=True,  # 记录张量形状
++            ) as prof:
++                steps = min(10, run_num)
++                with torch.no_grad():
++                    torch.cuda.synchronize()
++                    for item in infer_list * steps:
++                        model_predict.forward(item[0], item[1])  # 推理
++                        torch.cuda.synchronize()
++                        prof.step()
++            output_trace_path = os.path.join(folder_name, f'{time_str}_trace.json')
++            prof.export_chrome_trace(output_trace_path)
++
++            # 3. 获取聚合后的性能数据
++            # key_averages() 会按操作名分组聚合事件
++            key_averages_events = prof.key_averages()
++            if key_averages_events:
++                print("可用的 Event 属性列表:")
++                print(dir(key_averages_events[0]))
++
++            # 4. 将 profiler 结果转换为 Pandas DataFrame
++            # 每个事件都有如 name, cpu_time_total, cuda_time_total 等属性
++            # 我们可以用 map(vars, ...) 快速地将每个事件对象转换为字典
++            profiler_data = []
++            for event in key_averages_events:
++                profiler_data.append({
++                    'Name': event.key,
++                    'CPU Time Total (us)': event.cpu_time_total,
++                    'CUDA Time Total (us)': event.device_time_total,  # <-- 修正
++                    'CPU Time Self (us)': event.self_cpu_time_total,
++                    'CUDA Time Self (us)': event.self_device_time_total,  # <-- 修正
++                    'CPU Memory Self (B)': event.self_cpu_memory_usage,
++                    'CUDA Memory Self (B)': event.self_device_memory_usage,  # <-- 修正
++                    'Number of Calls': event.count,
++                })
++
++            df = pd.DataFrame(profiler_data)
++
++            # 5. (可选) 对数据进行排序，方便分析
++            # 按 CUDA 总时间降序排列
++            df_sorted = df.sort_values(by='CUDA Time Total (us)', ascending=False)
++
++            # 6. 导出到 Excel 文件
++
++            output_excel_path = os.path.join(folder_name, f'{time_str}_profiler_results.xlsx')
++            df_sorted.to_excel(output_excel_path, index=False)
++
++            print(f"Profiler results have been exported to {output_excel_path}")
++
++        if os.getenv('USE_E2E', '1') != '0':
++            print("收集端到端时间")
++            all_time = []
+ 
++            with torch.no_grad():
++                for item in infer_list * run_num:
++                    torch.cuda.synchronize()
++                    start_time = time.perf_counter()
++                    model_predict.forward(item[0], item[1])  # 推理
++                    torch.cuda.synchronize()
++                    duration = (time.perf_counter() - start_time) * 1_000_000
++                    all_time.append(duration)
++                    if (len(all_time) % 100 == 0):
++                        print(f"[E2E] time: {duration:.2f} us")
++
++            report = {'Batch_size': max_batch_size,
++                    'model_name': "GR"}
++
++            all_time.sort()
++            p999_latency = round(all_time[int(len(all_time) * 0.999)] / 1000, 6)
++            tail_latency = round(all_time[int(len(all_time) * 0.99)] / 1000, 6)
++            p95_latency = round(all_time[int(len(all_time) * 0.95)] / 1000, 6)
++            p90_latency = round(all_time[int(len(all_time) * 0.90)] / 1000, 6)
++            avg_latency = round(sum(all_time) / len(all_time) / 1000, 6)
++            qps = int(1000.0 * max_batch_size / avg_latency)
++
++            report["QPS"] = qps
++            report["AVG Latency"] = avg_latency
++            report["P999 Latency"] = p999_latency
++            report["P99 Latency"] = tail_latency
++            report["P95 Latency"] = p95_latency
++            report["P90 Latency"] = p90_latency
++        
++            print(report)
++            with open(os.path.join(folder_name, f'report_bs{max_batch_size}.json'), "w", encoding="utf-8") as f:
++                json.dump(
++                    report,
++                    f,
++                    ensure_ascii=False,  # 保留非ASCII字符（如中文）
++                    indent=4  # 格式化输出，缩进4个空格，增强可读性
++                )
++        print(f"计算过程中显存峰值：{torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
          print("性能分析完成！")
          print("-" * 30)
  
 -        print(prof.key_averages())
-         output_trace_path = os.path.join(folder_name, f'{time_str}_trace.json')
-         prof.export_chrome_trace(output_trace_path)
+-        output_trace_path = os.path.join(folder_name, f'{time_str}_trace.json')
+-        prof.export_chrome_trace(output_trace_path)
+-
+-        # 3. 获取聚合后的性能数据
+-        # key_averages() 会按操作名分组聚合事件
+-        key_averages_events = prof.key_averages()
+-        if key_averages_events:
+-            print("可用的 Event 属性列表:")
+-            print(dir(key_averages_events[0]))
+-
+-        # 4. 将 profiler 结果转换为 Pandas DataFrame
+-        # 每个事件都有如 name, cpu_time_total, cuda_time_total 等属性
+-        # 我们可以用 map(vars, ...) 快速地将每个事件对象转换为字典
+-        profiler_data = []
+-        for event in key_averages_events:
+-            profiler_data.append({
+-                'Name': event.key,
+-                'CPU Time Total (us)': event.cpu_time_total,
+-                'CUDA Time Total (us)': event.device_time_total,  # <-- 修正
+-                'CPU Time Self (us)': event.self_cpu_time_total,
+-                'CUDA Time Self (us)': event.self_device_time_total,  # <-- 修正
+-                'CPU Memory Self (B)': event.self_cpu_memory_usage,
+-                'CUDA Memory Self (B)': event.self_device_memory_usage,  # <-- 修正
+-                'Number of Calls': event.count,
+-            })
+-
+-        df = pd.DataFrame(profiler_data)
+-
+-        # 5. (可选) 对数据进行排序，方便分析
+-        # 按 CUDA 总时间降序排列
+-        df_sorted = df.sort_values(by='CUDA Time Total (us)', ascending=False)
+-
+-        # 6. 导出到 Excel 文件
+-
+-        output_excel_path = os.path.join(folder_name, f'{time_str}_profiler_results.xlsx')
+-        df_sorted.to_excel(output_excel_path, index=False)
+-
+-        print(f"Profiler results have been exported to {output_excel_path}")
+-
  
+ if __name__ == "__main__":
+     torch.manual_seed(42)
 diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modules/hstu_block_inference.py
 index 74ec9c2..c79c713 100644
 --- a/examples/hstu/modules/hstu_block_inference.py
@@ -205,70 +365,75 @@ index b7b740e..d92d577 100644
          layer_out = self.sparse_moe_linear.forward(layer_out) if self.use_moe_op else self.sparse_moe_linear.forward_naive(layer_out)
  
  
-diff --git a/examples/hstu/run_random_2k_05B.sh b/examples/hstu/run_random_2k_05B.sh
-new file mode 100644
-index 0000000..97c3d29
---- /dev/null
+diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k_05B.sh
+similarity index 58%
+rename from examples/hstu/run_random_2k.sh
+rename to examples/hstu/run_random_2k_05B.sh
+index 8c1e258..be5a8f7 100644
+--- a/examples/hstu/run_random_2k.sh
 +++ b/examples/hstu/run_random_2k_05B.sh
-@@ -0,0 +1,51 @@
-+#开启编译
-+export USE_COMPILE=0
-+
-+#开启cudagraph
+@@ -2,27 +2,27 @@
+ export USE_COMPILE=0
+ 
+ #开启cudagraph
+-export USR_CUDA_GRAPH=1
 +export USR_CUDA_GRAPH=0
-+
-+# 运行轮数(运行多少轮采集性能数据)
-+export RUN_NUM=10
-+
-+# 模型参数
+ 
+ # 运行轮数(运行多少轮采集性能数据)
+-export RUN_NUM=10
++export RUN_NUM=2000
+ 
+ # 模型参数
+-export MODEL_PATH="hstu3B.bin"
 +export MODEL_PATH="hstu_05B.pth"
-+export USE_MOE=0     #  USE_FFN 和 USE_MOE 不能同时开启
+ export USE_MOE=0     #  USE_FFN 和 USE_MOE 不能同时开启
+-export LAYER_NUM=7
+-export MOE_EXPERT_TOTAL_NUM=4
+-export MOE_EXPERT_ACT_NUM=2
+-export USE_FFN=1     #  USE_FFN 和 USE_MOE 不能同时开启
 +export LAYER_NUM=15
 +export MOE_EXPERT_TOTAL_NUM=16
 +export MOE_EXPERT_ACT_NUM=16
 +export USE_FFN=0     #  USE_FFN 和 USE_MOE 不能同时开启
-+export USE_FFN_NUMBER=2
-+# 不比较精度，可以使用随机初始化参数的模型
-+export USE_RANDOM_PARM=1
+ export USE_FFN_NUMBER=2
+ # 不比较精度，可以使用随机初始化参数的模型
+ export USE_RANDOM_PARM=1
+-export PARM_MAX_VALUE="0.5"
 +export PARM_MAX_VALUE="0.1"
-+
-+export SEQ_LEN=2048
-+export CANDIDATE_LEN=100
+ 
+ export SEQ_LEN=2048
+ export CANDIDATE_LEN=100
+-export HIDDEN_DIM=4096
+-export HEAD_NUM=16
 +export HIDDEN_DIM=768
 +export HEAD_NUM=3
-+export HEAD_DIM=256
-+
-+export ENABLE_MATMUL_FP8=0
-+
-+export USE_FLOAT16=0
-+export USE_FLOAT32=0
-+export USE_HSTU_OP=1
-+export USE_RAB=0
-+
-+# prof路径
+ export HEAD_DIM=256
+ 
+ export ENABLE_MATMUL_FP8=0
+@@ -33,7 +33,7 @@ export USE_HSTU_OP=1
+ export USE_RAB=0
+ 
+ # prof路径
+-export PROF_SAVE_PATH="prof_result_2k"
 +export PROF_SAVE_PATH="prof_result_2k_05B"
-+
-+#batchsize 目前L20只支持1 2 4, 超过会超显存
-+export BATCH_SIZE=1
-+
-+#是否加载NPU输入,维持和NPU输入一致
-+export USE_NPU_INPUT=0
-+
-+#是否保存输入和输出tensor, 和NPU对比精度
-+export SAVE_INPUT_AND_PUTPUT=1
-+
-+export USE_MOE_OP=1
-+export TEST_DYNAMIC=0
-+
-+#执行
-+python3  benchmark/inference_benchmark_random_2k.py
+ 
+ #batchsize 目前L20只支持1 2 4, 超过会超显存
+ export BATCH_SIZE=1
+@@ -48,4 +48,5 @@ export USE_MOE_OP=1
+ export TEST_DYNAMIC=0
+ 
+ #执行
+-python3  benchmark/inference_benchmark_random_2k.py
+\ No newline at end of file
++LOG_SUFFIX="$(date '+%Y%m%d_%H%M%S')_2k_compile${USE_COMPILE}_aclgraph${USR_CUDA_GRAPH}_precise${BATCH_SIZE}_e2e"
++python3  benchmark/inference_benchmark_random_2k.py 2>&1 | tee temp_${LOG_SUFFIX}_profiling.log
 \ No newline at end of file
 diff --git a/examples/hstu/run_random_2k_1B.sh b/examples/hstu/run_random_2k_1B.sh
 new file mode 100644
-index 0000000..41e29e3
+index 0000000..455b222
 --- /dev/null
 +++ b/examples/hstu/run_random_2k_1B.sh
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,53 @@
 +#开启编译
 +export USE_COMPILE=0
 +
@@ -276,7 +441,7 @@ index 0000000..41e29e3
 +export USR_CUDA_GRAPH=0
 +
 +# 运行轮数(运行多少轮采集性能数据)
-+export RUN_NUM=10
++export RUN_NUM=2000
 +
 +# 模型参数
 +export MODEL_PATH="hstu_1B.pth"
@@ -320,14 +485,15 @@ index 0000000..41e29e3
 +export TEST_DYNAMIC=0
 +
 +#执行
-+python3  benchmark/inference_benchmark_random_2k.py
++LOG_SUFFIX="$(date '+%Y%m%d_%H%M%S')_2k_compile${USE_COMPILE}_aclgraph${USR_CUDA_GRAPH}_precise${BATCH_SIZE}_e2e"
++python3  benchmark/inference_benchmark_random_2k.py 2>&1 | tee temp_${LOG_SUFFIX}_profiling.log
 \ No newline at end of file
 diff --git a/examples/hstu/run_random_2k_2B.sh b/examples/hstu/run_random_2k_2B.sh
 new file mode 100644
-index 0000000..0dfc22d
+index 0000000..80ea773
 --- /dev/null
 +++ b/examples/hstu/run_random_2k_2B.sh
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,53 @@
 +#开启编译
 +export USE_COMPILE=0
 +
@@ -335,7 +501,7 @@ index 0000000..0dfc22d
 +export USR_CUDA_GRAPH=0
 +
 +# 运行轮数(运行多少轮采集性能数据)
-+export RUN_NUM=10
++export RUN_NUM=2000
 +
 +# 模型参数
 +export MODEL_PATH="hstu_2B.pth"
@@ -379,5 +545,6 @@ index 0000000..0dfc22d
 +export TEST_DYNAMIC=0
 +
 +#执行
-+python3  benchmark/inference_benchmark_random_2k.py
++LOG_SUFFIX="$(date '+%Y%m%d_%H%M%S')_2k_compile${USE_COMPILE}_aclgraph${USR_CUDA_GRAPH}_precise${BATCH_SIZE}_e2e"
++python3  benchmark/inference_benchmark_random_2k.py 2>&1 | tee temp_${LOG_SUFFIX}_profiling.log
 \ No newline at end of file

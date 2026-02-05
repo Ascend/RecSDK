@@ -1,5 +1,5 @@
 diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples/hstu/benchmark/inference_benchmark_2b_random.py
-index 8a74a62..7776690 100644
+index 8a74a62..d51ac7a 100644
 --- a/examples/hstu/benchmark/inference_benchmark_2b_random.py
 +++ b/examples/hstu/benchmark/inference_benchmark_2b_random.py
 @@ -40,8 +40,8 @@ from inference_ranking_gr import InferenceRankingGR
@@ -38,7 +38,26 @@ index 8a74a62..7776690 100644
              cpu_state_dict = torch.load(MODEL_PATH, map_location='cpu')
              model_predict.load_state_dict(cpu_state_dict)
  
-@@ -320,20 +321,23 @@ def run_ranking_gr_inference():
+@@ -286,15 +287,16 @@ def run_ranking_gr_inference():
+             result = model_predict.forward(item[0], item[1])
+             if is_save_input_and_output:
+                 torch.save(result.cpu(), "input_output/npu_output.pt")
+-            # print("[model output is]",result)
+ 
+         print("性能测试-运行开始！")
++        if not os.path.exists(porf_path):
++            os.makedirs(porf_path)
+         e2e_flag = (os.getenv('USE_E2E', '0') == '1')
+         if os.getenv('USE_PROFILING', '0') != '0':
+             torch.npu.synchronize()
+             WAIT = 0
+             WARMUP = 0
+-            ACTIVE = RUN_NUM
++            ACTIVE = min(10, RUN_NUM)
+             REPEAT = 1
+             SKIP_FIRST = 0
+             experimental_config = torch_npu.profiler._ExperimentalConfig(
+@@ -320,47 +322,54 @@ def run_ranking_gr_inference():
                      model_predict.forward(item[0], item[1])
                      torch.npu.synchronize()
                      prof.step()
@@ -56,26 +75,84 @@ index 8a74a62..7776690 100644
 -            if PERCISE_FLAG:
 -                file_name = "inductor_out.pt" if COMPILE_FLAG else "eager_out.pt"
 -                torch.save(out, file_name)
+-
+-        print("收集端到端时间")
+-        report = {'Batch_size': max_batch_size,
+-                  'model_name': "GR"}
+-
+-        all_time.sort()
+-        tail_latency = round(all_time[int(len(all_time) * 0.99)] / 1000, 6)
+-        p90_latency = round(all_time[int(len(all_time) * 0.90)] / 1000, 6)
+-        avg_latency = round(sum(all_time) / len(all_time) / 1000, 6)
+-        qps = int(1000.0 * max_batch_size / avg_latency)
+-
+-        report["QPS"] = qps
+-        report["AVG Latency"] = avg_latency
+-        report["P99 Latency"] = tail_latency
+-        report["P90 Latency"] = p90_latency
+-        print(report)
+-
+-        if not os.path.exists(porf_path):
+-            os.makedirs(porf_path)
+-
+-        with open(os.path.join(porf_path, f'report_bs{max_batch_size}.json'), "w", encoding="utf-8") as f:
+-            json.dump(
+-                report,
+-                f,
+-                ensure_ascii=False,  # 保留非ASCII字符（如中文）
+-                indent=4  # 格式化输出，缩进4个空格，增强可读性
+-            )
++        print("e2e性能测试-运行开始！")
 +        if e2e_flag:
 +            all_time = []
 +            cnt = 0
-+            for item in infer_list * RUN_NUM * 2:
++            for item in infer_list * RUN_NUM:
 +                torch.npu.synchronize()
 +                start_time = time.perf_counter()
 +                out = model_predict.forward(item[0], item[1])
 +                torch.npu.synchronize()
 +                duration = (time.perf_counter() - start_time) * 1_000_000
-+                if cnt > RUN_NUM:
-+                    all_time.append(duration)
++                all_time.append(duration)
++                if (len(all_time) % 100 == 0):
 +                    print(f"[E2E] time: {duration:.2f} us")
 +
 +                if PERCISE_FLAG:
 +                    file_name = "inductor_out.pt" if COMPILE_FLAG else "eager_out.pt"
 +                    torch.save(out, file_name)
 +                cnt += 1
++
++            print("收集端到端时间")
++            report = {'Batch_size': max_batch_size,
++                    'model_name': "GR"}
++
++            all_time.sort()
++            p999_latency = round(all_time[int(len(all_time) * 0.999)] / 1000, 6)
++            tail_latency = round(all_time[int(len(all_time) * 0.99)] / 1000, 6)
++            p95_latency = round(all_time[int(len(all_time) * 0.95)] / 1000, 6)
++            p90_latency = round(all_time[int(len(all_time) * 0.90)] / 1000, 6)
++            avg_latency = round(sum(all_time) / len(all_time) / 1000, 6)
++            qps = int(1000.0 * max_batch_size / avg_latency)
++
++            report["QPS"] = qps
++            report["AVG Latency"] = avg_latency
++            report["P999 Latency"] = p999_latency
++            report["P99 Latency"] = tail_latency
++            report["P95 Latency"] = p95_latency
++            report["P90 Latency"] = p90_latency
++
++            print(report)
++
++            with open(os.path.join(porf_path, f'report_bs{max_batch_size}.json'), "w", encoding="utf-8") as f:
++                json.dump(
++                    report,
++                    f,
++                    ensure_ascii=False,  # 保留非ASCII字符（如中文）
++                    indent=4  # 格式化输出，缩进4个空格，增强可读性
++                )
++        print(f"计算过程中显存峰值：{torch.npu.max_memory_allocated() / 1024 ** 2:.2f} MB")
+         print("性能分析完毕! finish!")
  
-         print("收集端到端时间")
-         report = {'Batch_size': max_batch_size,
+ 
 diff --git a/examples/hstu/model/inference_ranking_gr.py b/examples/hstu/model/inference_ranking_gr.py
 index b292388..df46e34 100755
 --- a/examples/hstu/model/inference_ranking_gr.py
@@ -417,7 +494,7 @@ index 20e386c..f93b525 100644
          qk_attn = qk_attn * process_jagged_mask(init_mask,batchsize, jaggedData.seqlen_offsets, total_max_seq_len, actual_len, self.user_candidate_len)
  
 diff --git a/examples/hstu/out_compare.py b/examples/hstu/out_compare.py
-index 528e938..d35eb95 100644
+index 528e938..9f0205c 100644
 --- a/examples/hstu/out_compare.py
 +++ b/examples/hstu/out_compare.py
 @@ -1,5 +1,30 @@
@@ -470,13 +547,13 @@ index 528e938..d35eb95 100644
  
  
 diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k_05B.sh
-similarity index 86%
+similarity index 85%
 rename from examples/hstu/run_random_2k.sh
 rename to examples/hstu/run_random_2k_05B.sh
-index e71c2fe..d1027ed 100644
+index e71c2fe..cc95abe 100644
 --- a/examples/hstu/run_random_2k.sh
 +++ b/examples/hstu/run_random_2k_05B.sh
-@@ -4,7 +4,7 @@ rm -rf /tmp/torchinductor_*
+@@ -4,10 +4,10 @@ rm -rf /tmp/torchinductor_*
  export USE_COMPILE=0
  
  #开启ACLgraph
@@ -484,7 +561,11 @@ index e71c2fe..d1027ed 100644
 +export USE_GRAPH=0
  
  # 运行轮数(运行多少轮采集性能数据)
- export RUN_NUM=10
+-export RUN_NUM=10
++export RUN_NUM=2000
+ 
+ #是否开启端到端时间统计
+ export USE_E2E=1
 @@ -19,35 +19,32 @@ export USE_PROFILING=1
  export USE_GPU_INPUT=0
  
@@ -548,9 +629,16 @@ index e71c2fe..d1027ed 100644
  #执行
  LOG_SUFFIX="$(date '+%Y%m%d_%H%M%S')_2k_compile${USE_COMPILE}_aclgraph${ENABLE_ACLGRAPH}_precise${GR_VLLM_PRECISE}_e2e${GR_VLLM_E2E}"
  
+@@ -101,4 +102,4 @@ else
+             TRITON_DISABLE_FFTS=1 python3  benchmark/inference_benchmark_2b_random.py 2>&1 | tee temp_${LOG_SUFFIX}_profiling.log
+         fi
+     fi
+-fi
++fi
+\ No newline at end of file
 diff --git a/examples/hstu/run_random_2k_1B.sh b/examples/hstu/run_random_2k_1B.sh
 new file mode 100644
-index 0000000..a87f5f2
+index 0000000..95efbc3
 --- /dev/null
 +++ b/examples/hstu/run_random_2k_1B.sh
 @@ -0,0 +1,113 @@
@@ -560,10 +648,10 @@ index 0000000..a87f5f2
 +export USE_COMPILE=0
 +
 +#开启ACLgraph
-+export USE_GRAPH=1
++export USE_GRAPH=0
 +
 +# 运行轮数(运行多少轮采集性能数据)
-+export RUN_NUM=10
++export RUN_NUM=2000
 +
 +#是否开启端到端时间统计
 +export USE_E2E=1
@@ -667,9 +755,10 @@ index 0000000..a87f5f2
 +        fi
 +    fi
 +fi
+\ No newline at end of file
 diff --git a/examples/hstu/run_random_2k_2B.sh b/examples/hstu/run_random_2k_2B.sh
 new file mode 100644
-index 0000000..ec004d6
+index 0000000..21288ad
 --- /dev/null
 +++ b/examples/hstu/run_random_2k_2B.sh
 @@ -0,0 +1,113 @@
@@ -682,7 +771,7 @@ index 0000000..ec004d6
 +export USE_GRAPH=0
 +
 +# 运行轮数(运行多少轮采集性能数据)
-+export RUN_NUM=10
++export RUN_NUM=2000
 +
 +#是否开启端到端时间统计
 +export USE_E2E=1
@@ -786,3 +875,4 @@ index 0000000..ec004d6
 +        fi
 +    fi
 +fi
+\ No newline at end of file
