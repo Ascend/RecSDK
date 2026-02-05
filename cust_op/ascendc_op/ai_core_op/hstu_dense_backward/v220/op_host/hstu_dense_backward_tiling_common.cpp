@@ -22,19 +22,19 @@ See the License for the specific language governing permissions and
 
 #include "hstu_dense_backward_tiling_common.h"
 
-ShapeRange::ShapeRange(int64_t lbound, int64_t ubound, int64_t mutiple, const char *name)
+ShapeRange::ShapeRange(int64_t lbound, int64_t ubound, int64_t multiple, const char *name)
 {
     this->lbound = lbound;
     this->ubound = ubound;
-    this->mutiple = mutiple;
+    this->multiple = multiple;
     this->name = name;
 }
 
 bool ShapeRange::Check(int64_t val) const
 {
-    OPS_CHECK((val < lbound || val > ubound || val % mutiple != 0),
-        OPS_LOG_E("", "%s must meet range[%lld %lld] and mutiple of [%lld]. but get value %lld\n",
-            name, lbound, ubound, mutiple, val),
+    OPS_CHECK((val < lbound || val > ubound || val % multiple != 0),
+        OPS_LOG_E("", "%s must meet range[%lld %lld] and multiple of [%lld]. but get value %lld\n",
+            name, lbound, ubound, multiple, val),
         return false);
     return true;
 }
@@ -43,7 +43,7 @@ ge::graphStatus GetInputLayout(const gert::RuntimeAttrs *attrs, InputLayout &lay
 {
     OPS_CHECK_PTR_NULL(attrs, return ge::GRAPH_FAILED);
 
-    const char *inputLayout = attrs->GetAttrPointer<char>(INDEX_T::INDEX_0);
+    const char *inputLayout = attrs->GetAttrPointer<char>(ATTR_INDEX_T::LAYOUT_INDEX);
     OPS_CHECK_PTR_NULL(inputLayout, return ge::GRAPH_FAILED);
 
     std::string inputLayoutStr = std::string(inputLayout);

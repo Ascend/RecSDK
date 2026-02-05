@@ -841,11 +841,15 @@ public:
             colLine = colLine > blockHeight ? blockHeight : colLine;
 
             for (int64_t rowId = 0; rowId < rowBlockNum; rowId++) {
-                this->blockMaskParams[taskId % COMPUTE_PIPE_NUM] = {
-                    static_cast<uint32_t>(rowId),  static_cast<uint32_t>(colId),
-                    static_cast<uint32_t>(seqLen), this->blockHeight,
-                    GetNumContext(batchId),        GetNumTarget(batchId),
-                    this->targetGroupSize,         1};
+                this->blockMaskParams[taskId % COMPUTE_PIPE_NUM] = {static_cast<uint32_t>(rowId),
+                                                                    static_cast<uint32_t>(colId),
+                                                                    static_cast<uint32_t>(seqLen),
+                                                                    static_cast<uint32_t>(seqLen),
+                                                                    this->blockHeight,
+                                                                    GetNumContext(batchId),
+                                                                    GetNumTarget(batchId),
+                                                                    this->targetGroupSize,
+                                                                    1};
                 if (IfMask(maskType, MaskType::MASK_TRIL) &&
                     this->blockMaskParams[taskId % COMPUTE_PIPE_NUM].NoComputation()) {
                     continue;
@@ -900,11 +904,15 @@ public:
             rowLine = rowLine > blockHeight ? blockHeight : rowLine;
 
             for (int64_t colId = 0; colId < colBlockNum; colId++) {
-                this->blockMaskParams[taskId % COMPUTE_PIPE_NUM] = {
-                    static_cast<uint32_t>(rowId),  static_cast<uint32_t>(colId),
-                    static_cast<uint32_t>(seqLen), this->blockHeight,
-                    GetNumContext(batchId),        GetNumTarget(batchId),
-                    this->targetGroupSize,         1};
+                this->blockMaskParams[taskId % COMPUTE_PIPE_NUM] = {static_cast<uint32_t>(rowId),
+                                                                    static_cast<uint32_t>(colId),
+                                                                    static_cast<uint32_t>(seqLen),
+                                                                    static_cast<uint32_t>(seqLen),
+                                                                    this->blockHeight,
+                                                                    GetNumContext(batchId),
+                                                                    GetNumTarget(batchId),
+                                                                    this->targetGroupSize,
+                                                                    1};
                 if (IfMask(maskType, MaskType::MASK_TRIL) &&
                     this->blockMaskParams[taskId % COMPUTE_PIPE_NUM].NoComputation()) {
                     continue;

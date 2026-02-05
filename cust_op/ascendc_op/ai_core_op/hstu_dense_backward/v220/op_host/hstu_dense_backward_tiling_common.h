@@ -25,7 +25,16 @@ See the License for the specific language governing permissions and
 #include "ops_log.h"
 
 constexpr int MAX_BATCH_SIZE = 2048;
+constexpr int MIN_BATCH_SIZE = 1;
 constexpr int MAX_SEQ_LENS = 20480;
+constexpr int MIN_SEQ_LENS = 1;
+constexpr int MAX_HEAD_NUM = 16;
+constexpr int MIN_HEAD_NUM = 1;
+constexpr int MAX_HEAD_DIM = 512;
+constexpr int MIN_HEAD_DIM_QK = 1;
+constexpr int MIN_HEAD_DIM_V = 16;
+constexpr int NO_INT_MULT_REQUIRE = 1;
+constexpr int MULT_OF_16 = 16;
 
 constexpr int JAGGED_FLOAT_TILING_KEY = 5;
 constexpr int JAGGED_BF16_TILING_KEY = 4;
@@ -76,9 +85,10 @@ constexpr int K_INDEX = 2;
 constexpr int V_INDEX = 3;
 constexpr int MASK_INDEX = 4;
 constexpr int ATTN_BIAS_INDEX = 5;
-constexpr int SEQ_OFFSET_INDEX = 6;
-constexpr int NUM_CONTEXT_INDEX = 7;
-constexpr int NUM_TARGET_INDEX = 8;
+constexpr int SEQ_OFFSET_Q_INDEX = 6;
+constexpr int SEQ_OFFSET_K_INDEX = 7;
+constexpr int NUM_CONTEXT_INDEX = 8;
+constexpr int NUM_TARGET_INDEX = 9;
 } // namespace INPUT_INDEX_T
 
 namespace OUTPUT_INDEX_T {
@@ -88,23 +98,23 @@ constexpr int V_GRAD_INDEX = 2;
 constexpr int ATTN_BIAS_GRAD_INDEX = 3;
 } // namespace OUTPUT_INDEX_T
 
-
 namespace ATTR_INDEX_T {
 constexpr int LAYOUT_INDEX = 0;
 constexpr int MASK_TYPE_INDEX = 1;
-constexpr int MAX_SEQ_LEN_INDEX = 2;
-constexpr int SILU_SCALE_INDEX = 3;
-constexpr int TARGET_GROUP_SIZE_INDEX = 4;
-constexpr int REAL_ALPHA_INDEX = 5;
+constexpr int MAX_SEQLEN_Q_INDEX = 2;
+constexpr int MAX_SEQLEN_K_INDEX = 3;
+constexpr int SILU_SCALE_INDEX = 4;
+constexpr int TARGET_GROUP_SIZE_INDEX = 5;
+constexpr int REAL_ALPHA_INDEX = 6;
 } // namespace ATTR_INDEX_T
 
 struct ShapeRange {
 public:
     int64_t lbound {0}; // shape下限
     int64_t ubound {0}; // shape上限
-    int64_t mutiple {0}; // 倍数
+    int64_t multiple {0}; // 倍数
     const char *name {nullptr};
-    ShapeRange(int64_t lbound, int64_t ubound, int64_t mutiple, const char *name);
+    ShapeRange(int64_t lbound, int64_t ubound, int64_t multiple, const char *name);
     bool Check(int64_t val) const;
 };
 

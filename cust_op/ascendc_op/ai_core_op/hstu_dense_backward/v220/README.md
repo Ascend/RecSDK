@@ -144,8 +144,8 @@ v_grad = dense_to_jagged(v, v_grad_dens, seq_lens)
 
 ## 输入参数
 
-| 名称         | 输入/输出 | 参数类型          | 数据类型                               | 数据格式                                    | 范围                                                         | 说明                                                         |
-| ------------ | --------- | ----------------- | -------------------------------------- | ------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| 名称           | 输入/输出 | 参数类型          | 数据类型                               | 数据格式                                    | 范围                                                         | 说明                                                         |
+|--------------| --------- | ----------------- | -------------------------------------- | ------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | grad         | 输入      | Tensor (REQUIRED) | float32/float16/bf16                   | Normal: [B, S, N, D]<br>Jagged: [T, N, D_v] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[1, 16]<br>D/D_v∈[16, 512]且是16的倍数 | 前向输出out的反向梯度，Jagged模式下T为所有batch的序列长度seq的和           |
 | q            | 输入      | Tensor (REQUIRED) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [T, N, D_qk] | B、S、N、D同grad<br>D_qk∈[1, 512]                                                       | Q张量，Jagged模式下传入[T, N, D]，Normal模式下传入[B, S, N, D] |
 | k            | 输入      | Tensor (REQUIRED) | float32/float16/bf16<br>与grad类型一致 | Normal: [B, S, N, D]<br>Jagged: [T, N, D_qk] | 同q                                                       | K张量，Shape和类型与Q一致                                    |
@@ -153,16 +153,18 @@ v_grad = dense_to_jagged(v, v_grad_dens, seq_lens)
 | mask         | 输入      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | [B, N, S, S]                                | 同grad                                                       | mask张量，当mask_type=3时必须提供，类型与grad一致            |
 | attn_bias    | 输入      | Tensor (OPTIONAL) | float32/float16/bf16<br>与grad类型一致 | [B, N, S, S]                                | 同grad                                                       | attn_bias张量，类型与grad一致                                |
 | seq_offset_q | 输入      | Tensor (OPTIONAL) | int32/int64                           | [BatchSize+1]                               | BatchSize∈[1, 2048]                                          | Jagged模式下必须提供，表示每个batch的序列长度偏移，至少包含2个元素 |
+| seq_offset_k | 输入      | Tensor (OPTIONAL) | int32/int64                           | [BatchSize+1]                               | BatchSize∈[1, 2048]                                          | Jagged模式下必须提供，表示每个batch的序列长度偏移，至少包含2个元素 |
 | num_context  | 输入      | Tensor (OPTIONAL) | int32/int64                           | [B]                                         | B∈[1, 2048]                                                  | Context掩码长度，当提供时必须与num_target和target_group_size一起提供，且其中的值范围[1, 128] |
 | num_target   | 输入      | Tensor (OPTIONAL) | int32/int64                           | [B]                                         | B∈[1, 2048]                                                  | Target掩码长度，当提供时必须与num_context和target_group_size一起提供, 且其中的值范围[1, 512] |
 
 ## 属性参数
 
-| 名称              | 参数类型        | 数据类型 | 默认值   | 范围/取值            | 说明                                                         |
-| ----------------- | --------------- | -------- | -------- | -------------------- | ------------------------------------------------------------ |
+| 名称                | 参数类型        | 数据类型 | 默认值   | 范围/取值            | 说明                                                         |
+|-------------------| --------------- | -------- | -------- | -------------------- | ------------------------------------------------------------ |
 | layout            | Attr            | string   | "normal" | ["normal", "jagged"] | QKV内存布局，normal表示[B, S, N, D]，jagged表示[T, N, D]   |
 | mask_type         | Attr            | int      | -        | [0, 2, 3]            | mask类型：0表示使用内置下三角mask（TRIL），2表示不使用mask，3表示使用自定义mask（CUSTOM）<br>注意：1（TRIU）当前不支持 |
-| max_seq_len       | Attr            | int      | -        | [1, 20480]           | 模型最大序列长度<br>**反向传播特殊约束**: Normal模式下seqLen必须等于max_seq_len，Jagged模式下必须与mask和attn_bias的shape中S相等 |
+| max_seqlen_q      | Attr            | int      | -        | [1, 20480]           | 模型最大序列长度<br>**反向传播特殊约束**: Normal模式下seqLen必须等于max_seq_len，Jagged模式下必须与mask和attn_bias的shape中S相等 |
+| max_seqlen_k      | Attr            | int      | -        | [1, 20480]           | 模型最大序列长度<br>**反向传播特殊约束**: Normal模式下seqLen必须等于max_seq_len，Jagged模式下必须与mask和attn_bias的shape中S相等 |
 | silu_scale        | Attr            | float    | 0.0      | 任意值               | SiLU激活函数前的缩放因子，如果为0.0则自动计算为1.0/max_seq_len |
 | target_group_size | Attr (OPTIONAL) | int      | None        | {1, 3}               | Target分组大小，当提供时值必须在{1, 3}中，且必须与num_context和num_target一起提供 |
 | alpha             | Attr (OPTIONAL) | float    | 1.0      | 任意值               | 缩放因子，默认值为1.0                                        |
@@ -178,7 +180,7 @@ v_grad = dense_to_jagged(v, v_grad_dens, seq_lens)
 
 ## 接口范围限制说明
 
-由于反向算子通过PTA层进行调用不能直调，参数限制和范围请参考PTA侧(../../../../framework/torch_plugin/torch_library/hstu/README.md)
+由于反向算子通过PTA层进行调用不能直调，参数限制和范围请参考[PTA侧文档](../../../../framework/torch_plugin/torch_library/hstu/README.md)
 
 
 # 算子编译部署

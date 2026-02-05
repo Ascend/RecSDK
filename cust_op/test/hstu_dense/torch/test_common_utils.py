@@ -18,6 +18,7 @@ import dataclasses
 import random
 import sysconfig
 from enum import Enum
+import logging
 
 import numpy as np
 import torch
@@ -56,7 +57,7 @@ def set_seed(seed):
 def allclose(tensor: torch.Tensor, other: torch.Tensor, atol: float, ratio: float) -> bool:
     assert tensor.shape == other.shape
     diff = (torch.abs(tensor - other) > atol)
-    diff_count = torch.sum(diff)
+    diff_count = torch.sum(diff).tolist()
     return (diff_count / tensor.numel()) < ratio
 
 
@@ -83,6 +84,24 @@ def dense_to_jagged(q, dense_tensor, seq_lens):
         offset = offset + seq_len
 
     return tensor
+
+
+def show_diff(golden: torch.Tensor, result: torch.Tensor, atol: float):
+    if golden is None or result is None:
+        return
+    diff = (torch.abs(golden - result) > atol)
+
+    cnt = 0
+    last_offset = last_head = -1
+    for (offset, head, dim) in torch.nonzero(diff):
+        if offset == last_offset and head == last_head:
+            continue
+        last_offset, last_head, cnt = offset, head, cnt + 1
+        logging.info(f"===== ({offset, head, dim}) =====")
+        logging.info(golden[offset, head, dim: dim + 16])
+        logging.info(result[offset, head, dim: dim + 16])
+        if cnt >= 5:
+            break
 
 
 @dataclasses.dataclass

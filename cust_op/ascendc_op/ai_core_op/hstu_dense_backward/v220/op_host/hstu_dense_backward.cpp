@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-
 #include <cstdint>
 
 #include "register/op_def_registry.h"
@@ -35,7 +34,7 @@ static ge::graphStatus TilingCommonFunc(gert::TilingContext *context, HstuDenseB
     int32_t isNormal = tiling.get_isNormal();
 
     matmul_tiling::DataType dataType;
-    ge::DataType gradType = context->GetInputTensor(INDEX_T::INDEX_0)->GetDataType();
+    ge::DataType gradType = context->GetInputTensor(INPUT_INDEX_T::GRAD_INDEX)->GetDataType();
     if (gradType == ge::DataType::DT_FLOAT) {
         dataType = matmul_tiling::DataType::DT_FLOAT;
     } else if (gradType == ge::DataType::DT_FLOAT16) {
@@ -219,7 +218,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext *context)
 static ge::graphStatus InferDtype(gert::InferDataTypeContext *context)
 {
     // q dataType
-    auto dataType = context->GetInputDataType(INDEX_T::INDEX_1);
+    auto dataType = context->GetInputDataType(INPUT_INDEX_T::GRAD_INDEX);
 
     context->SetOutputDataType(INDEX_T::INDEX_0, dataType);
     context->SetOutputDataType(INDEX_T::INDEX_1, dataType);
@@ -260,27 +259,31 @@ public:
             .Follow("grad", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Input("seq_offset_q")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT32, ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("seq_offset_k")
+            .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("num_context")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("num_target")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Output("q_grad")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .Follow("grad", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("k_grad")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .Follow("grad", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("v_grad")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .Follow("grad", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("attn_bias_grad")
@@ -290,7 +293,8 @@ public:
 
         this->Attr("layout").String("normal");
         this->Attr("mask_type").Int();
-        this->Attr("max_seq_len").Int();
+        this->Attr("max_seqlen_q").Int();
+        this->Attr("max_seqlen_k").Int();
         this->Attr("silu_scale").Float();
         this->Attr("target_group_size").AttrType(OPTIONAL).Int(0);
         this->Attr("alpha").AttrType(OPTIONAL).Float(1.0);

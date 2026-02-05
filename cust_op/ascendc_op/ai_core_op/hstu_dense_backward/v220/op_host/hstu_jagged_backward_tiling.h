@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,8 @@ TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, kGradMatmul);
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, vGradMatmul);
 
 TILING_DATA_FIELD_DEF(int64_t, batchSize);
-TILING_DATA_FIELD_DEF(int64_t, seqLen);
+TILING_DATA_FIELD_DEF(int64_t, seqLenQ);
+TILING_DATA_FIELD_DEF(int64_t, seqLenK);
 TILING_DATA_FIELD_DEF(int64_t, headNum);
 TILING_DATA_FIELD_DEF(int64_t, headDimQK);
 TILING_DATA_FIELD_DEF(int64_t, headDimV);
@@ -42,8 +43,8 @@ TILING_DATA_FIELD_DEF(int32_t, maskType);
 TILING_DATA_FIELD_DEF(int32_t, enableBias);
 TILING_DATA_FIELD_DEF(int32_t, enableContextMask);
 TILING_DATA_FIELD_DEF(int32_t, enableTargetMask);
-TILING_DATA_FIELD_DEF(int32_t, maxSeqLen);
-TILING_DATA_FIELD_DEF(int32_t, biasGradSeqLen);
+TILING_DATA_FIELD_DEF(int32_t, maxSeqLenQ);
+TILING_DATA_FIELD_DEF(int32_t, maxSeqLenK);
 TILING_DATA_FIELD_DEF(float, siluScale);
 TILING_DATA_FIELD_DEF(int32_t, targetGroupSize);
 TILING_DATA_FIELD_DEF(float, alpha);

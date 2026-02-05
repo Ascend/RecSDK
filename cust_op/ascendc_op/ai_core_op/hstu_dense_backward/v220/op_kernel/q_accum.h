@@ -30,7 +30,7 @@ public:
     {
         qGradAccumTempGt_ = qGradAccumTempGt;
         qGradGt_ = qGradGt;
-        seqOffsetsGt_ = seqOffsetsGt;
+        seqOffsetsQGt_ = seqOffsetsGt;
         pipe_ = pipePtr;
         aivNum_ = aivNum;
         batchSize_ = baseShapeArgs->batchSize;
@@ -70,7 +70,7 @@ public:
             uint32_t headIdx = (offsetOfThisCore + taskId) % headNum_;
 
             int64_t curSeqLen =
-                static_cast<int64_t>(seqOffsetsGt_.GetValue(thisBatchIdx + 1) - seqOffsetsGt_.GetValue(thisBatchIdx));
+                static_cast<int64_t>(seqOffsetsQGt_.GetValue(thisBatchIdx + 1) - seqOffsetsQGt_.GetValue(thisBatchIdx));
             DoCopyBlockQGrad(thisBatchIdx, headIdx, curSeqLen);
         }
     }
@@ -80,9 +80,9 @@ public:
         int64_t totalLen = curSeqLen * headDimQKAlign32_;
         int64_t remain = totalLen;
         int64_t thisLen = vecOnceDataNum_;
-        int64_t thisBatchInOffset = seqOffsetsGt_.GetValue(thisBatchIdx) * headDimQKAlign32_ * headNum_;
+        int64_t thisBatchInOffset = seqOffsetsQGt_.GetValue(thisBatchIdx) * headDimQKAlign32_ * headNum_;
         int64_t BasicInOffset = thisBatchInOffset + (headIdx * totalLen);
-        int64_t thisBatchOutOffset = seqOffsetsGt_.GetValue(thisBatchIdx) * headDimQK_ * headNum_;
+        int64_t thisBatchOutOffset = seqOffsetsQGt_.GetValue(thisBatchIdx) * headDimQK_ * headNum_;
         int64_t BasicOutOffset = thisBatchOutOffset + headIdx * headDimQK_;
         while (remain > 0) {
             if (thisLen > remain) {
@@ -114,7 +114,7 @@ public:
                 DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
                 DataCopyPad<toType>(qGradGt_[curOutOffset], outputLt_, copyParams);
             }
-            
+
             PipeBarrier<PIPE_ALL>();
             remain = remain - thisLen;
         }
@@ -130,7 +130,7 @@ public:
     LocalTensor<toType> outputLt_;
     GlobalTensor<fromType> qGradAccumTempGt_;
     GlobalTensor<toType> qGradGt_;
-    GlobalTensor<seqType> seqOffsetsGt_;
+    GlobalTensor<seqType> seqOffsetsQGt_;
     TPipe* pipe_ = nullptr;
 };
 }  // namespace HstuDenseBackward

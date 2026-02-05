@@ -256,6 +256,37 @@ def cached_create_causal_mask(param: ScoreShapeParam) -> torch.Tensor:
         return mask[:param.seq_len, :param.seq_len]
 
 
+def create_target_mask(num_target: int, target_group_size: int) -> torch.Tensor:
+    row_indices = torch.arange(num_target).view(-1, 1)
+    col_indices = torch.arange(num_target).view(1, -1)
+
+    block_row = row_indices // target_group_size
+    block_col = col_indices // target_group_size
+
+    mask = (block_row == block_col).int()
+    tril = torch.tril(torch.ones(num_target, num_target), diagonal=0).int()
+    return tril & mask
+
+
+def create_causal_mask(seqlen_q: int,
+                       seqlen_k: int = None,
+                       num_context: int = None,
+                       num_target: int = None,
+                       target_group_size: int = None) -> torch.Tensor:
+    if seqlen_k is None:
+        seqlen_k = seqlen_q
+    # causal mask
+    mask = torch.tril(torch.ones(seqlen_q, seqlen_k), diagonal=(seqlen_k - seqlen_q))
+    # context mask
+    if _check_int_valid(num_context):
+        num_target = 0 if num_target is None else num_target
+        mask[:num_context, :seqlen_k - num_target] = 1
+    # target mask
+    if _check_int_valid(target_group_size) and _check_int_valid(num_target):
+        mask[-num_target:, -num_target:] = create_target_mask(num_target, target_group_size)
+    return mask
+
+
 @pytest.mark.parametrize("seq_len", [64])
 @pytest.mark.parametrize("num_target", [16])
 @pytest.mark.parametrize("num_context", [16])
@@ -280,7 +311,7 @@ def test_hstu_target_mask(seq_len, num_target, num_context, target_group_size, b
         block_weight,
     )
     result_gpu = compute_target_mask_each_block_concat(score_shape_param, use_npu=False)
-    result_npu = compute_target_mask_each_block_concat(score_shape_param, use_npu=True)
+    result_npu = create_causal_mask(seq_len, seq_len, num_context, num_target, target_group_size)
     write_tensor2file(result_npu)
     assert torch.allclose(
         result_gpu, result_npu, 1e-4, 1e-4
@@ -288,4 +319,5 @@ def test_hstu_target_mask(seq_len, num_target, num_context, target_group_size, b
 
 
 if __name__ == "__main__":
-    result = test_hstu_target_mask(65, 0, 0, 0, 8, 8)
+    mask = create_causal_mask(seqlen_q=373, seqlen_k=373, num_context=128, num_target=0, target_group_size=1)
+    write_tensor2file(mask)

@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,12 +31,13 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
     int64_t headDimV = tiling.get_headDimV();
     int64_t blockHeight = tiling.get_blockHeight();
     int64_t dataTypeLength = tiling.get_dataTypeLength();
-    int64_t maxSeqLen = tiling.get_maxSeqLen();
+    int64_t maxSeqLenQ = tiling.get_maxSeqLenQ();
+    int64_t maxSeqLenK = tiling.get_maxSeqLenK();
     int32_t enableBias = tiling.get_enableBias();
     int32_t isNormal = tiling.get_isNormal();
 
     matmul_tiling::DataType dataType;
-    ge::DataType gradType = context->GetInputTensor(INDEX_T::INDEX_0)->GetDataType();
+    ge::DataType gradType = context->GetInputTensor(INPUT_INDEX_T::GRAD_INDEX)->GetDataType();
     if (gradType == ge::DataType::DT_FLOAT) {
         dataType = matmul_tiling::DataType::DT_FLOAT;
     } else if (gradType == ge::DataType::DT_FLOAT16) {
@@ -74,7 +75,7 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
     int64_t workspaceSize = vecCoreNum * totalTempSpaceForOneVec;
 
     int64_t biasGradTempSpace = blockHeight * blockHeight;
-    int64_t qGradAccumTempSpace = batchSize * headNum * maxSeqLen * HeadDimQKAlign32;
+    int64_t qGradAccumTempSpace = batchSize * headNum * maxSeqLenQ * HeadDimQKAlign32;
     workspaceSize += qGradAccumTempSpace * sizeof(float);
     workspaceSize = (workspaceSize + BLOCK_256 - 1) / BLOCK_256 * BLOCK_256;
 
@@ -201,7 +202,6 @@ ge::graphStatus TilingFuncJagged(gert::TilingContext *context)
                 return ge::GRAPH_FAILED);
 
     HstuJaggedBackwardTilingData tiling;
-
     TilingJaggedFunc(context, attrs, tiling);
 
     return TilingCommonFuncJagged(context, tiling);
@@ -227,7 +227,7 @@ static ge::graphStatus InferShapeJagged(gert::InferShapeContext *context)
 static ge::graphStatus InferDtypeJagged(gert::InferDataTypeContext *context)
 {
     // q dataType
-    auto dataType = context->GetInputDataType(INDEX_T::INDEX_1);
+    auto dataType = context->GetInputDataType(INPUT_INDEX_T::GRAD_INDEX);
 
     context->SetOutputDataType(INDEX_T::INDEX_0, dataType);
     context->SetOutputDataType(INDEX_T::INDEX_1, dataType);
@@ -271,24 +271,28 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
+        this->Input("seq_offset_k")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_INT32, ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
         this->Input("num_context")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("num_target")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
+            .DataType({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Output("q_grad")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .Follow("grad", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("k_grad")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .Follow("grad", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("v_grad")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .Follow("grad", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("attn_bias_grad")
@@ -298,7 +302,8 @@ public:
 
         this->Attr("layout").String("normal");
         this->Attr("mask_type").Int();
-        this->Attr("max_seq_len").Int();
+        this->Attr("max_seqlen_q").Int();
+        this->Attr("max_seqlen_k").Int();
         this->Attr("silu_scale").Float();
         this->Attr("target_group_size").AttrType(OPTIONAL).Int(0);
         this->Attr("alpha").AttrType(OPTIONAL).Float(1.0);
