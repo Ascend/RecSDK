@@ -16,7 +16,7 @@ cm_worker_size = 1
 # Support "train_and_evaluate", "load_and_train", "predict".
 mode = "train_and_evaluate"
 # Set to true for precision alignment mode.
-deterministic = false
+deterministic = true
 
 saved_path = "saved_model"
 train_steps = 200
