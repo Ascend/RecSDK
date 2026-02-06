@@ -221,7 +221,7 @@ class TestDynamicEmbTableOptions:
 
     @staticmethod
     def test_bucket_capacity_ok():
-        assert DynamicEmbTableOptions(bucket_capacity=3).bucket_capacity == 4
+        assert DynamicEmbTableOptions(bucket_capacity=31).bucket_capacity == 32
 
     @staticmethod
     def test_safe_check_mode_type_err():
