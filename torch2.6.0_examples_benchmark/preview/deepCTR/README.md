@@ -28,7 +28,7 @@
 
 请根据机器架构、机器型号选择合适的安装包进行安装。
 
-参考：https://gitcode.com/Ascend/RecSDK/blob/develop/torch_examples/README.md
+参考[README](../../develop/README.md)
 
 由于源码中保留了一些TF的接口调用，所以需要安装TF(本次测试安装的TF版本为2.20.0，安装其他版本也可以)
 ```bash
