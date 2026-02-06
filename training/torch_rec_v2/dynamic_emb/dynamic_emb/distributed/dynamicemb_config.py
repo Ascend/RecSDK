@@ -40,7 +40,7 @@ from dynamic_emb.distributed.types import Storage
 DEFAULT_INDEX_TYPE = torch.int64
 DynamicEmbKernel = "DynamicEmb"
 DEFAULT_BATCH_SIZE = 512
-MIN_BATCH_SIZE = 0
+MIN_BATCH_SIZE = 1
 MAX_BATCH_SIZE = 1000000
 DTYPE_NUM_BYTES: Dict[torch.dtype, int] = {
     torch.float32: 4,
@@ -374,7 +374,7 @@ class DynamicEmbTableOptions(_ContextOptions):
             method=NumCheckValueMethod.OPEN_INTERVAL.value,
         )
         class_safe_check("score_strategy", self.score_strategy, (DynamicEmbScoreStrategy,))
-        int_safe_check("bucket_capacity", self.bucket_capacity, min_value=2, max_value=1024)
+        int_safe_check("bucket_capacity", self.bucket_capacity, min_value=16, max_value=1024)
         target_bucket_capacity = next_power_of_2(self.bucket_capacity)
         if self.bucket_capacity != target_bucket_capacity:
             self.bucket_capacity = target_bucket_capacity

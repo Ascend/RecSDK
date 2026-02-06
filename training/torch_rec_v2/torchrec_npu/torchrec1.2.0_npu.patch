@@ -476,7 +476,7 @@ index a7cd8479..22618d30 100644
      ) -> None:
 +        check(topology is not None, "topology should be not None")
 +        check(constraints is not None, "constraints should be not None")
-+        check(batch_size is None or 0 <= batch_size <= 1000000, "batch_size shold in [1, 1000000]")
++        check(batch_size is None or 1 <= batch_size <= 1000000, "batch_size should in [1, 1000000]")
 +        check(storage_reservation is None, "storage_reservation should be None")
 +        check(proposer is None, "proposer should be None")
 +        check(partitioner is None, "partitioner should be None")
