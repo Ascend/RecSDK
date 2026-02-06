@@ -2,7 +2,8 @@
 本文档主要介绍如何进行推荐系统模型中的mmoe模型和eta模型的数据预处理和模型训练。
 
 ## 运行环境准备
-请参考：https://gitcode.com/Ascend/RecSDK/tree/develop/torch_examples/README.md
+
+参考[README](../../develop/README.md)
 
 说明:如果只执行mmoe和eta模型样例，可以忽略torchrec,hybrid_torchrec以及算子等依赖的安装。
 

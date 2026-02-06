@@ -63,9 +63,7 @@ TorchRec昇腾注册包为基于torchrec开源代码固定分支，进行NPU设�
 提供通过安装包安装、源码编译安装两种方式，选择其一即可。
 
 #### 2.1 通过安装包安装
-从[RecSDK release版本](https://gitcode.com/Ascend/RecSDK/releases)，选择最新版本，下载Ascend-mindxsdk-hybrid-torchrec-*.tar.gz软件包。
-
-说明：hybrid_torchrec软件包在7.x.x版本同时支持torch 2.6.0和torch 2.7.1两种配套版本。之前的版本包仅支持torch 2.6.0配套。
+从[RecSDK release版本](https://gitcode.com/Ascend/RecSDK/releases)，选择最新版本，下载对应配套版本的Ascend-mindxsdk-hybrid-torchrec-*.tar.gz软件包。
 
 ```shell
 tar zxvf Ascend-mindxsdk-hybrid-torchrec*.tar.gz
@@ -108,4 +106,4 @@ cd ../../
 cd recsdk-npu-ops/torch_plugin/torch_library/common
 bash build_ops.sh
 ```
-注意：执行完"编译算子适配文件"步骤后，融合算子的依赖包libfbgemm_npu_api.so会生成在同目录下的build文件夹下，同时也会生成在python默认安装的site-package路径中，也可以将该so包拷贝到指定的目录下，在后续模型运行时会配置该文件的路径 。
+注意：执行完"编译算子适配文件"步骤后，融合算子的依赖包libfbgemm_npu_api.so会生成在同目录下的build文件夹下，同时也会生成在python默认安装的site-package路径中，也可以将该so包拷贝到指定的目录下，在后续模型运行时会配置该文件的路径。
