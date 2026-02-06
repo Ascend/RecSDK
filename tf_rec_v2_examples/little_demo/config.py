@@ -46,8 +46,8 @@ class Config:
     key_type: tf.DType = tf.int64
     label_type: tf.DType = tf.float32
     value_type: tf.DType = tf.float32
-    item_range: int = 80000 * rank_size
-    user_range: int = 200000 * rank_size
+    item_range: int = 5000000 * rank_size
+    user_range: int = 5000000 * rank_size
     item_vocab_size: int = item_range * rank_size
     user_vocab_size: int = user_range * rank_size
     user_hashtable_dim: int = 32
