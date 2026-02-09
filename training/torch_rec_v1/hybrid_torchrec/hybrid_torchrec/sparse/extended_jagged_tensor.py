@@ -220,11 +220,15 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         # 动态设置字段属性
         if self._fields:
             tensor = field_tensors.get(self._fields, extra)
-            if tensor is not None and values.size() != tensor.size():
-                raise ValueError(
-                    f"Field '{self._fields}' size must match values size, "
-                    f"but got tensor size: {tensor.size()}, values size: {values.size()}"
-                )
+            if tensor is not None:
+                # count准入淘汰时，要求字段张量大小与values大小相同; 当使用showclick准入淘汰，允许字段张量大小为2倍values大小
+                count_match = values.size(0) == tensor.numel()
+                showclick_match = values.size(0) * 2 == tensor.numel()
+                if not count_match and not showclick_match:
+                    raise ValueError(
+                        f"Field '{self._fields}' size should match 1* or 2* values size, "
+                        f"but got tensor size: {tensor.size()}, values size: {values.size()}"
+                    )
             setattr(self, self._fields, tensor)
 
     @property

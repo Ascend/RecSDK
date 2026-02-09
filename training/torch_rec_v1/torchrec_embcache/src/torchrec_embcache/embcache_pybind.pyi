@@ -17,11 +17,27 @@ class InitializerType(Enum):
     UNIFORM = 2
 
 
+class AdmitAndEvictPolicyType(Enum):
+    NONE = 0,
+    POLICY_COUNT = 1
+    POLICY_SHOWCLICK = 2
+
+
+class ShowClickParams:
+    alpha: float = 1.0
+    beta: float = 0.0
+    admit_threshold: Optional[float]
+    evict_percentage: Optional[float]
+    score_decay: Optional[float]
+
+
 class AdmitAndEvictConfig:
     admit_threshold: Optional[int]
     not_admitted_default_value: Optional[float]
     evict_threshold: Optional[int]
     evict_step_interval: Optional[int]
+    showclick_params: Optional[ShowClickParams]
+    policy_type: AdmitAndEvictPolicyType
 
 
 class EmbConfig:

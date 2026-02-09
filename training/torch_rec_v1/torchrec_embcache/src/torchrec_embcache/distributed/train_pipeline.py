@@ -180,6 +180,9 @@ def _start_data_dist(
         # entire model to get the arg_info_list
         args, kwargs = _build_args_kwargs(batch, forward.args)
 
+        if hasattr(batch, 'click_labels'):
+            kwargs['labels'] = batch.click_labels
+
         # Start input distribution.
         module_ctx = module.create_context()
         if context.version == 0:

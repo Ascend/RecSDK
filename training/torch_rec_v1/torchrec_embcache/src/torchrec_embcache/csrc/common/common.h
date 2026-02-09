@@ -51,6 +51,25 @@ enum class BeforeRemoveFuncState {
     BEFORE_FAIL,
 };
 
+enum class AdmitAndEvictPolicyType {
+    NONE, // 无准入淘汰策略
+    POLICY_COUNT,
+    POLICY_SHOWCLICK,
+};
+
+struct ShowClickParams {
+    // 准入分数计算 admitScore = alpha * count + beta * label
+    // 淘汰分数     evictScore = (oldEvictScore + alpha * count + beta * label) * scoreDecay
+    float alpha = 1.0;
+    float beta = 0.0;
+    // 准入阈值 开启准入时,小于此分数的则丢弃  当此分数大于0时表示开启准入功能
+    float admitThreshold = 0.0;
+    // 淘汰比例 开启淘汰时,分数较小且在此比例中的则淘汰  当此值大于0时表示开启淘汰功能
+    float evictPercentage = 0.0;
+    // 分数衰减系数 用于淘汰分数计算和更新 [0,1] 1表示不衰减 0表示全衰减
+    float scoreDecay = 1.0;
+};
+
 struct AdmitAndEvictConfig {
     int64_t admitThreshold = INVALID_KEY;
     float notAdmittedDefaultValue = 0.0;
@@ -58,22 +77,50 @@ struct AdmitAndEvictConfig {
     uint64_t evictThreshold = 0;  // unit: seconds
     uint64_t evictStepInterval = 0;
 
+    ShowClickParams showClickParams;
+    AdmitAndEvictPolicyType policyType;
+
     AdmitAndEvictConfig() = default;
     AdmitAndEvictConfig(int64_t admitThreshold, float notAdmittedDefaultValue, uint64_t evictThreshold,
                         uint64_t evictStepInterval)
         : admitThreshold(admitThreshold),
           notAdmittedDefaultValue(notAdmittedDefaultValue),
           evictThreshold(evictThreshold),
-          evictStepInterval(evictStepInterval) {};
+          evictStepInterval(evictStepInterval)
+    {
+        policyType = AdmitAndEvictPolicyType::POLICY_COUNT;
+    };
+
+    AdmitAndEvictConfig(int64_t admitThreshold, float notAdmittedDefaultValue, uint64_t evictThreshold,
+                        uint64_t evictStepInterval, const ShowClickParams& showClickParams,
+                        const AdmitAndEvictPolicyType& policyType)
+        : admitThreshold(admitThreshold),
+          notAdmittedDefaultValue(notAdmittedDefaultValue),
+          evictThreshold(evictThreshold),
+          evictStepInterval(evictStepInterval),
+          showClickParams(showClickParams),
+          policyType(policyType) {};
 
     bool IsAdmitEnabled() const
     {
-        return admitThreshold != INVALID_KEY;
+        if (policyType == AdmitAndEvictPolicyType::POLICY_COUNT) {
+            return admitThreshold != INVALID_KEY;
+        }
+        if (policyType == AdmitAndEvictPolicyType::POLICY_SHOWCLICK) {
+            return showClickParams.admitThreshold > SHOWCLICK_OPEN_THRESHOLD;
+        }
+        return false;
     }
 
     bool IsEvictEnabled() const
     {
-        return evictThreshold != 0;
+        if (policyType == AdmitAndEvictPolicyType::POLICY_COUNT) {
+            return evictThreshold != 0;
+        }
+        if (policyType == AdmitAndEvictPolicyType::POLICY_SHOWCLICK) {
+            return showClickParams.evictPercentage > SHOWCLICK_OPEN_THRESHOLD;
+        }
+        return false;
     }
 
     bool IsFeatureFilterEnabled() const

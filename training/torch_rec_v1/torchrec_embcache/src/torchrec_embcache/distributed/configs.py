@@ -19,10 +19,27 @@ from hybrid_torchrec.constants import (
     MAX_BATCH_SIZE
 )
 from hybrid_torchrec.modules.hash_embeddingbag import check_embedding_config_valid
+from torchrec_embcache.embcache_pybind import AdmitAndEvictPolicyType as CppPolicyType
 
 
 _DEFAULT_ADMIT_THRESHOLD: int = -1
 _DEFAULT_EVICT_THRESHOLD: int = 0
+
+
+class AdmitAndEvictPolicyType(CppPolicyType):
+    pass
+
+
+@dataclass
+class ShowClickParams:
+    alpha: float = 1.0
+    beta: float = 0.0
+    #  准入阈值 开启准入时,小于此分数的则丢弃  当此分数大于0时表示开启准入功能
+    admit_threshold: float = 0.0
+    #  淘汰比例 开启淘汰时,分数较小且在此比例中的则淘汰  当此值大于0时表示开启淘汰功能
+    evict_percentage: float = 0.0
+    #  分数衰减系数 用于淘汰分数计算和更新 [0,1] 1表示不衰减 0表示全衰减
+    score_decay: float = 1.0
 
 
 @dataclass
@@ -47,6 +64,12 @@ class AdmitAndEvictConfig:
 
     evict_threshold: Optional[int] = _DEFAULT_EVICT_THRESHOLD  # unit: seconds
     evict_step_interval: Optional[int] = 0
+
+    showclick_params: ShowClickParams = field(
+        default_factory=lambda: ShowClickParams()
+    )
+    # 默认为基于count的admit和evict策略
+    policy_type: AdmitAndEvictPolicyType = AdmitAndEvictPolicyType.POLICY_COUNT
 
     def __post_init__(self):
         """后置校验函数，确保参数类型和值的正确性"""
@@ -91,13 +114,33 @@ class AdmitAndEvictConfig:
                 )
 
     def is_feature_admit_enabled(self) -> bool:
-        return self.admit_threshold != _DEFAULT_ADMIT_THRESHOLD
+        if self.policy_type == AdmitAndEvictPolicyType.POLICY_COUNT:
+            return self.admit_threshold != _DEFAULT_ADMIT_THRESHOLD
+
+        return self.is_showclick_admit_enabled()
 
     def is_feature_evict_enabled(self) -> bool:
-        return self.evict_threshold != _DEFAULT_EVICT_THRESHOLD
+        if self.policy_type == AdmitAndEvictPolicyType.POLICY_COUNT:
+            return self.evict_threshold != _DEFAULT_EVICT_THRESHOLD
+
+        return self.is_showclick_evict_enabled()
 
     def is_feature_filter_enabled(self) -> bool:
         return self.is_feature_admit_enabled() or self.is_feature_evict_enabled()
+
+    def is_showclick_policy(self) -> bool:
+        return self.policy_type == AdmitAndEvictPolicyType.POLICY_SHOWCLICK
+
+    def is_showclick_admit_enabled(self) -> bool:
+        return self.is_showclick_policy() and \
+               self.showclick_params.admit_threshold > _DEFAULT_EVICT_THRESHOLD
+
+    def is_showclick_evict_enabled(self) -> bool:
+        return self.is_showclick_policy() and \
+               self.showclick_params.evict_percentage > _DEFAULT_EVICT_THRESHOLD
+    
+    def is_showclick_filter_enabled(self) -> bool:
+        return self.is_showclick_admit_enabled() or self.is_showclick_evict_enabled()
 
 
 class InitializerType(str, Enum):
