@@ -170,7 +170,10 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
         if self.weights_or_none() is not None:
             splits.append(length_per_split)
         if self._counts is not None:
-            splits.append(length_per_split)
+            count_dim = self._counts.shape[-1]
+            splits.append([count_dim * x for x in length_per_split])
+            if count_dim != 1:
+                self._counts = self._counts.view(-1)
         return splits
 
     def dist_tensors(self) -> List[torch.Tensor]:
@@ -196,7 +199,7 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
     ) -> "KeyedJaggedTensorWithCount":
         lengths, values, stride_per_rank_per_key, weights = unpack_tensors(tensors, variable_stride_per_key)
         counts = tensors[-1]
-
+        count_dim = int(len(counts) / torch.sum(lengths).item()) if counts is not None else 0
         if variable_stride_per_key:
             stride_per_key_per_rank_tensor: torch.Tensor = stride_per_rank_per_key.view(
                 num_workers, len(keys)
@@ -237,7 +240,7 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
                     if counts is not None:
                         new_counts, _ = _permute_tensor_by_segments(
                             counts,
-                            length_per_key_tensor,
+                            length_per_key_tensor * count_dim,
                             torch.jit._unwrap_optional(recat),
                             None,
                         )
@@ -300,7 +303,7 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
                         if counts is not None:
                             _, new_counts, _ = torch.ops.fbgemm.permute_2D_sparse_data_input1D(
                                 torch.jit._unwrap_optional(recat),
-                                lengths,
+                                lengths * count_dim,
                                 counts,
                                 stride,
                                 None,
@@ -321,12 +324,13 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
                         if counts is not None:
                             _, new_counts, _ = torch.ops.fbgemm.permute_2D_sparse_data(
                                 torch.jit._unwrap_optional(recat),
-                                lengths.view(-1, stride),
+                                lengths.view(-1, stride) * count_dim,
                                 counts,
                                 None,
                                 counts.numel(),
                             )
                         new_lengths = new_lengths.view(-1)
+                        new_counts = new_counts.view(-1) if new_counts is not None else None
                     else:  # variable batch size per rank
                         (
                             new_lengths,
@@ -342,11 +346,12 @@ class KeyedJaggedTensorWithCount(KeyedExtendedJaggedTensor[JaggedTensorWithCount
                         if counts is not None:
                             _, new_counts, _ = torch.ops.fbgemm.permute_1D_sparse_data(
                                 torch.jit._unwrap_optional(recat),
-                                lengths.view(-1),
+                                lengths.view(-1) * count_dim,
                                 counts,
                                 None,
                                 counts.numel(),
                             )
+                            new_counts = new_counts.view(-1, count_dim)
                 else:
                     new_lengths = lengths
                     new_values = values

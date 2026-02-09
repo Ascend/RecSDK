@@ -61,10 +61,7 @@ EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool 
         if (embConfigs[i].admitAndEvictConfig.IsFeatureFilterEnabled()) {
             const auto& aaeConfig = embConfigs[i].admitAndEvictConfig;
             featureFilters_[i] = std::make_unique<FeatureFilter>(
-                embConfigs[i].tableName,
-                aaeConfig.admitThreshold,
-                aaeConfig.evictThreshold,
-                aaeConfig.evictStepInterval);
+                embConfigs[i].tableName, aaeConfig);
         }
     }
     TORCH_CHECK(embConfigs.size() > 0, "ERROR, Size of embConfigs must > 0")
@@ -154,10 +151,13 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
                     "Invalid offsetPerKey[{}]: {}, offsetPerKey[{}]: {}, keyNum: {}", i, startIndex, i + 1,
                     endIndex, keyNum);
 
-        if (embConfigs_[idx].admitAndEvictConfig.IsAdmitEnabled()) {
-            if (featureFilters_[idx]) {
-                featureFilters_[idx]->CountFilter(keyPtr, startIndex, endIndex);
-            }
+        if (embConfigs_[idx].admitAndEvictConfig.policyType == AdmitAndEvictPolicyType::POLICY_COUNT &&
+            embConfigs_[idx].admitAndEvictConfig.IsAdmitEnabled() && featureFilters_[idx]) {
+            featureFilters_[idx]->CountFilter(keyPtr, startIndex, endIndex);
+        } else if (embConfigs_[idx].admitAndEvictConfig.policyType == AdmitAndEvictPolicyType::POLICY_SHOWCLICK &&
+                   embConfigs_[idx].admitAndEvictConfig.IsFeatureFilterEnabled() && featureFilters_[idx]) {
+            // showclick策略下 只要准入或者淘汰开启 都需要调用此方法进行分数计算
+            featureFilters_[idx]->ShowClickFilter(keyPtr, startIndex, endIndex);
         }
 
         // 取出每个表的 key
@@ -1316,6 +1316,20 @@ void EmbcacheManager::RemoveEmbeddingTableInfo()
     LOG_INFO("RemoveEmbeddingTableInfo execution time: {} ms", removeEmbeddingTableTC.ElapsedMS());
 }
 
+bool EmbcacheManager::IsNeedStatisticsKeyCount(int64_t tableIndex)
+{
+    // count策略下 只有开启了准入功能的表才需要记录key count统计信息
+    if (embConfigs_[tableIndex].admitAndEvictConfig.policyType == AdmitAndEvictPolicyType::POLICY_COUNT &&
+        embConfigs_[tableIndex].admitAndEvictConfig.IsAdmitEnabled()) {
+        return true;
+    } else if (embConfigs_[tableIndex].admitAndEvictConfig.policyType == AdmitAndEvictPolicyType::POLICY_SHOWCLICK &&
+               embConfigs_[tableIndex].admitAndEvictConfig.IsFeatureFilterEnabled()) {
+        // showclick策略下 只要开启了准入功能或者淘汰功能的表都需要记录key count label统计信息
+        return true;
+    }
+    return false;
+}
+
 void EmbcacheManager::StatisticsKeyCount(const at::Tensor& batchKeys, const torch::Tensor& offset,
                                          const at::Tensor& batchKeyCounts, int64_t tableIndex)
 {
@@ -1331,17 +1345,18 @@ void EmbcacheManager::StatisticsKeyCount(const at::Tensor& batchKeys, const torc
              embConfigs_[tableIndex].tableName, embConfigs_[tableIndex].admitAndEvictConfig.IsAdmitEnabled());
 
     // 只有开启了准入功能的表才需要记录key count统计信息
-    if (!embConfigs_[tableIndex].admitAndEvictConfig.IsAdmitEnabled()) {
+    if (!IsNeedStatisticsKeyCount(tableIndex)) {
         LOG_INFO("Table {} does not have admit enabled, skipping StatisticsKeyCount", tableIndex);
         return;
     }
     TORCH_CHECK(offset.numel() > tableIndex + 1, "param error, tableIndex need be smaller than offset length,"
                 " but got equal or greater than offset length.")
 
+    int64_t countDim = 1;
     bool isCountDataEmpty = batchKeyCounts.numel() == 0;
     if (!isCountDataEmpty) {
-        TORCH_CHECK(batchKeys.numel() == batchKeyCounts.numel(),
-                    "batchKeys length should equal with batchKeyCounts length when batchKeyCounts is not empty.")
+        countDim = batchKeyCounts.numel() / batchKeys.numel();
+        TORCH_CHECK(countDim == 1 || countDim == 2, "countDim should be equal to 1 or 2, but got {}", countDim);
     }
     auto* featureDataPtr = batchKeys.data_ptr<int64_t>();
     auto* countDataPtr = batchKeyCounts.data_ptr<int64_t>();
@@ -1363,7 +1378,8 @@ void EmbcacheManager::StatisticsKeyCount(const at::Tensor& batchKeys, const torc
         return;
     }
 
-    featureFilters_[tableIndex]->StatisticsKeyCount(featureDataPtr, countDataPtr, start, end, isCountDataEmpty);
+    featureFilters_[tableIndex]->StatisticsKeyCount(featureDataPtr, countDataPtr, start, end, isCountDataEmpty,
+                                                    countDim);
 }
 
 void EmbcacheManager::SaveFeatureAdmitAndEvictInfo(int32_t tableIndex, const std::string& pathPrefix,

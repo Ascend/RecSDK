@@ -69,6 +69,8 @@ from torchrec_embcache.embcache_pybind import (
     InitializerType as CppInitType,
     SwapInfo,
     restore_async,
+    ShowClickParams,
+    AdmitAndEvictPolicyType as CppPolicyType,
 )
 from torchrec.distributed.embedding import (
     ShardedEmbeddingCollection,
@@ -375,7 +377,8 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         self.table2hashmap: Dict[str, HashMapBase] = self.create_table2hashmap(module)
         self._enable_admit = any(
             hasattr(emb_config, "admit_and_evict_config")
-            and emb_config.admit_and_evict_config.is_feature_admit_enabled()
+            and (emb_config.admit_and_evict_config.is_feature_admit_enabled() or \
+                 emb_config.admit_and_evict_config.is_showclick_filter_enabled())
             for emb_config in self._embedding_configs
         )
 
@@ -743,12 +746,31 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
     def _build_admit_and_evict_config(cache_ec_config: EmbCacheEmbeddingConfig):
         aaec_py = cache_ec_config.admit_and_evict_config
         logging.info("admit_and_evict_config info:%s", aaec_py)
-        aaec = AdmitAndEvictConfig(
-            admit_threshold=aaec_py.admit_threshold,
-            not_admitted_default_value=aaec_py.not_admitted_default_value,
-            evict_threshold=aaec_py.evict_threshold,
-            evict_step_interval=aaec_py.evict_step_interval,
-        )
+
+        if aaec_py.policy_type == CppPolicyType.POLICY_SHOWCLICK:
+            showclick_params = ShowClickParams()
+            showclick_params.alpha = aaec_py.showclick_params.alpha
+            showclick_params.beta = aaec_py.showclick_params.beta
+            showclick_params.admit_threshold = aaec_py.showclick_params.admit_threshold
+            showclick_params.evict_percentage = aaec_py.showclick_params.evict_percentage
+            showclick_params.score_decay = aaec_py.showclick_params.score_decay
+
+            aaec = AdmitAndEvictConfig(
+                admit_threshold=aaec_py.admit_threshold,
+                not_admitted_default_value=aaec_py.not_admitted_default_value,
+                evict_threshold=aaec_py.evict_threshold,
+                evict_step_interval=aaec_py.evict_step_interval,
+                showclick_params=showclick_params,
+                policy_type=CppPolicyType.POLICY_SHOWCLICK,
+            )
+        else:
+            aaec = AdmitAndEvictConfig(
+                admit_threshold=aaec_py.admit_threshold,
+                not_admitted_default_value=aaec_py.not_admitted_default_value,
+                evict_threshold=aaec_py.evict_threshold,
+                evict_step_interval=aaec_py.evict_step_interval
+            )
+
         return aaec
 
     def _create_embcache_mgr(self, need_accumulate_offset: bool) -> EmbcacheManager:
@@ -840,6 +862,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         self,
         ctx: EmbeddingCollectionAwaitable,
         features: KeyedJaggedTensorWithTimestamp,
+        labels: Optional[torch.Tensor] = None,
     ) -> Awaitable[Awaitable[KJTList]]:
         """
         feature的顺序按照Dict[str, list[]]  shardType -> [t.feature_name for t in tables]
@@ -876,7 +899,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                 shard_context = HybridSequenceShardingContext(
                     features_before_input_dist=features
                 )
-                awaitables.append(input_dist(features, shard_context))
+                awaitables.append(input_dist(features, shard_context, labels))
 
                 ctx.sharding_contexts.append(shard_context)
             if unpadded_features is not None:

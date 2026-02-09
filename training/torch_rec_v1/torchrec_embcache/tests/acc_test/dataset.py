@@ -46,15 +46,42 @@ class Batch(Pipelineable):
         )
 
 
+@dataclass
+class ShowClickBatch(Pipelineable):
+    sparse_features: KeyedJaggedTensor
+    click_labels: torch.Tensor
+
+    def __init__(self, sparse_features, labels) -> None:
+        self.sparse_features = sparse_features
+        self.click_labels = labels
+
+    def to(self, device: torch.device, non_blocking: bool = False) -> "ShowClickBatch":
+        return ShowClickBatch(
+            sparse_features=self.sparse_features,
+            labels=self.click_labels.to(device, non_blocking=non_blocking),
+        )
+
+    def record_stream(self, stream: torch_npu.npu.streams.Stream) -> None:
+        self.click_labels.record_stream(stream)
+
+    def pin_memory(self):
+        return ShowClickBatch(
+            sparse_features=self.sparse_features.pin_memory(),
+            labels=self.click_labels.pin_memory(),
+        )
+
+
 class RandomRecDataset(IterableDataset[Batch]):
     def __init__(self, batch_num, lookup_lens, num_embeddings, table_num,
-                 is_evict_enabled: bool = False, timestamp_min: int = None, timestamp_max: int = None):
+                 is_evict_enabled: bool = False, timestamp_min: int = None, timestamp_max: int = None,
+                 is_enable_score: bool = False) -> None:
         super().__init__()
         self.index = 0
         self.lookup_lens = lookup_lens
         self.num_embeddings = num_embeddings
         self.table_num = table_num
         self.batch_num = batch_num
+        self.is_enable_score = is_enable_score
         torch.manual_seed(1)
 
         # 淘汰相关参数
@@ -81,6 +108,17 @@ class RandomRecDataset(IterableDataset[Batch]):
     def generate_one_batch(self) -> Batch:
         input_dict = {}
         feature_len = len(self.num_embeddings)
+        if self.is_enable_score:
+            for ind in range(feature_len):
+                name = f"feat{ind}"
+                id_range = self.num_embeddings[ind]
+                ids = torch.randint(0, id_range, (self.lookup_lens,))
+                lengths = torch.ones(self.lookup_lens).long()
+                input_dict[name] = JaggedTensor(values=ids, lengths=lengths)
+            kjt_tensor = KeyedJaggedTensor.from_jt_dict(input_dict)
+            label = torch.randint(0, 2, (self.lookup_lens,))
+            return ShowClickBatch(kjt_tensor, label)
+
         if self.is_evict_enabled:
             for ind in range(feature_len):
                 name = f"feat{ind}"

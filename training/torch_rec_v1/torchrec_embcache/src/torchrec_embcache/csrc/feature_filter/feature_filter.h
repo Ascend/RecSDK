@@ -16,29 +16,43 @@
 
 #include "evict_feature_record.h"
 #include "common/constants.h"
+#include "common/common.h"
 
 namespace Embcache {
 
 struct FeatureRecord {
     uint64_t count;
+    uint64_t label;
+    double score;
 };
 
 class FeatureFilter {
 public:
-    FeatureFilter(const std::string& tableName, int64_t admitThreshold, uint64_t evictThreshold,
-                  uint64_t evictStepInterval);
+    FeatureFilter(
+        const std::string& tableName, const AdmitAndEvictConfig& config)
+        : tableName_(tableName),
+          admitAndEvictConfig_(config),
+          admitThreshold_(config.admitThreshold),
+          evictThreshold_(config.evictThreshold),
+          evictStepInterval_(config.evictStepInterval)
+    {}
+
     void StatisticsKeyCount(const int64_t* featureDataPtr, const int64_t* countDataPtr, int64_t startIndex,
-                            int64_t endIndex, bool isCountDataEmpty);
+                            int64_t endIndex, bool isCountDataEmpty, int64_t countDim);
     void CountFilter(int64_t* featureDataPtr, int64_t startIndex, int64_t endIndex);
     void RecordTimestamp(const int64_t* featureDataPtr, int64_t startIndex, int64_t endIndex,
                          const int64_t* timestampDataPtr);
     void FeatureEvict();
+    void ShowClickFilter(int64_t* featureDataPtr, int64_t startIndex, int64_t endIndex);
+    void FeatureScoreEvict();
 
     // 要从embTable中删除的key信息，待lookup执行到和GetSwapInfo相同步数后删除key对应emb
     EvictFeatureRecord evictFeatureRecord_;
 
     const std::unordered_map<int64_t, FeatureRecord>& GetFeatureCountMap();
+    const std::unordered_map<int64_t, FeatureRecord>& GetFeatureRecordMap();
     const std::unordered_map<int64_t, std::time_t>& GetFeatureTimestampMap();
+    const std::unordered_map<int64_t, double>& GetScoreRecordMap();
 
     void LoadFeatureRecords(const std::vector<int64_t>& keys, std::vector<uint64_t>& counts);
     void LoadTimestampRecords(const std::vector<int64_t>& keys, std::vector<int64_t>& timestamps,
@@ -48,8 +62,11 @@ public:
     void ClearFeatureCountMap();
     void ClearFeatureTimestampMap();
 
+    const std::unordered_map<int64_t, uint64_t>& GetFeatureScoreMap();
+
 private:
     std::string tableName_;
+    AdmitAndEvictConfig admitAndEvictConfig_;
 
     // 准入相关配置
     int64_t admitThreshold_ = INVALID_KEY;         // 准入阈值，默认值表示未开启准入
@@ -61,8 +78,10 @@ private:
     uint64_t recordTsBatchId_ = 0;
     std::time_t latestTimestamp_ = 0;                              // 当前表最新的时间戳，用于判断淘汰
     std::unordered_map<int64_t, std::time_t> timestampRecordMap_;  // 淘汰，记录key时间戳
-
+    std::unordered_map<int64_t, double> scoreRecordMap_;         // 淘汰，记录key分数
     bool IsAdmitEnabled() const;
+    // showclick淘汰
+    std::unordered_map<int64_t, double> evictScoreRecordMap_;         // 淘汰，记录key分数
 };
 
 }  // namespace Embcache

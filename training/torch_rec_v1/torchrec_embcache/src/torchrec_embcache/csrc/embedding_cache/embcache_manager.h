@@ -278,6 +278,7 @@ private:
     TableFileHandles OpenTableFiles(const std::string& prefixPath, int32_t tableIndex);
     void CloseTableFiles(TableFileHandles& handles);
     int OpenOrThrow(const std::string& filePath, int flags, mode_t mode, const std::string& fileType);
+    bool IsNeedStatisticsKeyCount(int64_t tableIndex);
 
 private:
     int32_t embNum_;

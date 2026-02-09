@@ -82,11 +82,29 @@ PYBIND11_MODULE(embcache_pybind, m)
 {
     AddInitializerType(m);
 
+    py::class_<ShowClickParams>(m, "ShowClickParams")
+        .def(py::init<>())
+        .def_readwrite("alpha", &ShowClickParams::alpha)
+        .def_readwrite("beta", &ShowClickParams::beta)
+        .def_readwrite("admit_threshold", &ShowClickParams::admitThreshold)
+        .def_readwrite("evict_percentage", &ShowClickParams::evictPercentage)
+        .def_readwrite("score_decay", &ShowClickParams::scoreDecay);
+
+    py::enum_<AdmitAndEvictPolicyType>(m, "AdmitAndEvictPolicyType")
+        .value("NONE", AdmitAndEvictPolicyType::NONE)
+        .value("POLICY_COUNT", AdmitAndEvictPolicyType::POLICY_COUNT)
+        .value("POLICY_SHOWCLICK", AdmitAndEvictPolicyType::POLICY_SHOWCLICK)
+        .export_values();
+
     py::class_<AdmitAndEvictConfig>(m, "AdmitAndEvictConfig")
         .def(py::init<>())
         .def(py::init<int64_t, float, uint64_t, uint64_t>(), py::arg("admit_threshold") = INVALID_KEY,
              py::arg("not_admitted_default_value") = 0.0, py::arg("evict_threshold") = 0,
              py::arg("evict_step_interval") = 0)
+        .def(py::init<int64_t, float, uint64_t, uint64_t, ShowClickParams, AdmitAndEvictPolicyType>(),
+             py::arg("admit_threshold") = INVALID_KEY, py::arg("not_admitted_default_value") = 0.0,
+             py::arg("evict_threshold") = 0, py::arg("evict_step_interval") = 0,
+             py::arg("showclick_params") = ShowClickParams(), py::arg("policy_type") = AdmitAndEvictPolicyType::NONE)
         .def_readwrite("admit_threshold", &AdmitAndEvictConfig::admitThreshold)
         .def_readwrite("not_admitted_default_value", &AdmitAndEvictConfig::notAdmittedDefaultValue)
         .def_readwrite("evict_threshold", &AdmitAndEvictConfig::evictThreshold)

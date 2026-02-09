@@ -60,11 +60,11 @@ class EmbCacheInputDistThreadPoolExecutorSingleton:
 
 class EmbCacheRwSparseFeaturesDistAwaitable(Awaitable):
     def __init__(
-        self, function, module, sparse_feature: KeyedJaggedTensor, context
+        self, function, module, sparse_feature: KeyedJaggedTensor, context, labels=None
     ) -> None:
         super().__init__()
         self.future = EmbCacheInputDistThreadPoolExecutorSingleton().executor.submit(
-            function, sparse_feature
+            function, sparse_feature, labels
         )
         self.pg = module.pg
         self._context = context
@@ -113,6 +113,7 @@ class EmbCacheRwSparseFeaturesDist(RwSparseFeaturesDist):
     def _forward_func(
         self,
         sparse_features: KeyedJaggedTensor,
+        labels=None
     ) -> Awaitable[Awaitable[KeyedJaggedTensor]]:
         (
             bucketized_features,
@@ -130,15 +131,16 @@ class EmbCacheRwSparseFeaturesDist(RwSparseFeaturesDist):
             keep_original_indices=self._keep_original_indices,
             do_unique=self._do_unique,
             enable_admit=self._enable_admit,
+            labels=labels,
         )
         result = self._dist(bucketized_features)
         return result, unbucketize_permute_tensor
 
     def forward(
-        self, sparse_features: KeyedJaggedTensor, context=None
+        self, sparse_features: KeyedJaggedTensor, context=None, labels=None
     ) -> Awaitable[Awaitable[KeyedJaggedTensor]]:
         return EmbCacheRwSparseFeaturesDistAwaitable(
-            self._forward_func, self, sparse_features, context
+            self._forward_func, self, sparse_features, context, labels
         )
 
 

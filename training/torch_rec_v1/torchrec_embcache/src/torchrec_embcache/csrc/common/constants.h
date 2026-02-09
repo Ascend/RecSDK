@@ -40,5 +40,7 @@ struct EmbMemPoolConfigConstants {
 
 constexpr uint64_t FAST_HASHMAP_RESERVE_BUCKET_NUM = 2 * 1024 * 1024;
 
+constexpr float SHOWCLICK_OPEN_THRESHOLD = 0.0f;
+
 }  // namespace Embcache
 #endif  // EMBEDDING_CACHE_CONSTANTS_H

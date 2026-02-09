@@ -102,6 +102,7 @@ def bucketize_kjt_before_all2all(
     keep_original_indices: bool = False,
     do_unique: bool = False,
     enable_admit: bool = False,
+    labels: torch.Tensor = None,
 ) -> Tuple[KeyedJaggedTensor, KeyedJaggedTensorWithCount, Optional[torch.Tensor]]:
     """
     :param kjt: 稀疏特征数据
@@ -111,6 +112,9 @@ def bucketize_kjt_before_all2all(
     :param bucketize_pos:
     :param block_bucketize_row_pos:
     :param keep_original_indices:
+    :param do_unique: 是否开启去重
+    :param enable_admit: 是否开启准入
+    :param labels: 标签数据
     :return:
     """
     num_features = len(kjt.keys())
@@ -121,6 +125,8 @@ def bucketize_kjt_before_all2all(
     # 开启local unique时且有表开启准入时，需返回counts数据并进行all2all
     return_count = do_unique and enable_admit
     block_sizes_new_type = _fx_wrap_tensor_to_device_dtype(block_sizes, kjt.values())
+    if labels is not None:
+        labels = labels.to(kjt.values().device)
     bucket_params = BucketParams( 
         kjt.lengths().view(-1),
         kjt.values(),
@@ -135,6 +141,7 @@ def bucketize_kjt_before_all2all(
         keep_orig_idx=keep_original_indices,
         do_unique=do_unique,
         return_count=return_count,
+        labels=labels,
     )
     (
         bucketized_lengths,
