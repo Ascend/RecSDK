@@ -63,6 +63,7 @@ pytest ./test_embedding_cache_pipeline.py
 (
     export DO_EC_LOCAL_UNIQUE=1
     pytest ./test_feature_filter.py
+    pytest ./test_show_click.py
 )
 
 pytest ./test_feature_filter.py
