@@ -167,7 +167,7 @@ index 70bf80c..a65b43c 100644
      historical_ids = row["historical_ids"].to(device)  # [B, N]
      historical_ratings = row["historical_ratings"].to(device)
 diff --git a/generative_recommenders/modeling/sequential/hstu.py b/generative_recommenders/modeling/sequential/hstu.py
-index 7bae34d..939c7c7 100644
+index 7bae34d..deb8c5c 100644
 --- a/generative_recommenders/modeling/sequential/hstu.py
 +++ b/generative_recommenders/modeling/sequential/hstu.py
 @@ -19,7 +19,11 @@ Implements HSTU (Hierarchical Sequential Transduction Unit) in
@@ -225,7 +225,7 @@ index 7bae34d..939c7c7 100644
 +    @staticmethod
 +    def forward(ctx, q, k, v, mask, bias, mask_type, mode, seq_offset, max_seq_len):
 +        silu_value = 1 / max_seq_len
-+        out = torch.ops.mxrec.hstu_dense(q, k, v, mask, bias, mask_type, max_seq_len, silu_value, mode, seq_offset)
++        out = torch.ops.mxrec.hstu_jagged(q, k, v, mask, bias, mask_type, max_seq_len, silu_value, seq_offset)
 +        ctx.save_for_backward(q, k, v, mask, bias)
 +        ctx.max_seq_len = max_seq_len
 +        ctx.silu_scale = silu_value
@@ -237,8 +237,8 @@ index 7bae34d..939c7c7 100644
 +    @staticmethod
 +    def backward(ctx, grad_output):
 +        q, k, v, mask, bias = ctx.saved_tensors
-+        q_grad, k_grad, v_grad, bias_grad = torch.ops.mxrec.hstu_dense_backward(
-+            grad_output, q, k, v, mask, bias, ctx.mode, ctx.mask_type, ctx.max_seq_len, ctx.silu_scale, ctx.seq_offset)
++        q_grad, k_grad, v_grad, bias_grad = torch.ops.mxrec.hstu_jagged_backward(
++            grad_output, q, k, v, mask, bias, ctx.mask_type, ctx.max_seq_len, ctx.silu_scale, ctx.seq_offset)
 +        if bias is None:
 +            bias_grad = None
 +        return q_grad, k_grad, v_grad, None, bias_grad, None, None, None, None
@@ -304,7 +304,7 @@ index 7bae34d..939c7c7 100644
 +            q_ = q.reshape(-1, num_heads, attention_dim)
 +            k_ = k.reshape(-1, num_heads, attention_dim)
 +            v_ = v.reshape(-1, num_heads, attention_dim)
-+            prefetch_lengths = numpy.array(prefetch_shape.args["lengths"])
++            prefetch_lengths = torch.from_numpy(numpy.array(prefetch_shape.args["lengths"])).to('npu')
 +            mask_type = 0
 +            attn_output = hstu_fusion_op.apply(q_, k_, v_, None, None, mask_type, "jagged", prefetch_lengths, n)
 +            attn_output = attn_output.reshape(-1, num_heads * linear_dim)
