@@ -190,7 +190,8 @@ public:
     }
 
     // Matmul
-    using MatmulTypeA = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, false>;
+    using MatmulTypeA = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, false,
+        LayoutMode::NONE, false, TPosition::VECOUT>;
     using MatmulTypeB = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, false>;
     using MatmulTypeB1 = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, true>;
     using MatmulTypeC = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T, false>;
