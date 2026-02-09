@@ -19,16 +19,13 @@ See the License for the specific language governing permissions and
 
 namespace optiling {
     BEGIN_TILING_DATA_DEF(AsynchronousCompleteCumsumTilingData)
-    TILING_DATA_FIELD_DEF(int32_t, totalLength); // 处理数据的总长度
+    TILING_DATA_FIELD_DEF(int64_t, totalLength); // 处理数据的总长度
 
     // 分块策略参数
-    TILING_DATA_FIELD_DEF(int32_t, totalBlocks);           // 总块数
-    TILING_DATA_FIELD_DEF(int32_t, paddedBlocks);
-    TILING_DATA_FIELD_DEF(int32_t, blocksPerCore);         // 每核处理的块数k
-    TILING_DATA_FIELD_DEF(int32_t, remainderBlocks);       // 余数块数l
+    TILING_DATA_FIELD_DEF(int64_t, totalBlocks);           // 总块数
+    TILING_DATA_FIELD_DEF(int64_t, blocksPerCore);         // 每核处理的块数k
+    TILING_DATA_FIELD_DEF(int64_t, remainderBlocks);       // 余数块数l
     
-    // 并行和内存参数
-    TILING_DATA_FIELD_DEF(int32_t, coreNum);               // AI Core总数
     END_TILING_DATA_DEF;
 
     REGISTER_TILING_DATA_CLASS(AsynchronousCompleteCumsum, AsynchronousCompleteCumsumTilingData)

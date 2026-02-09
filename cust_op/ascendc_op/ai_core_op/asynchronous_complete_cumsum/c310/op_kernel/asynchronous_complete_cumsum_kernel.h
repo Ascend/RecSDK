@@ -19,16 +19,17 @@ See the License for the specific language governing permissions and
 #include <cstdint>
 #include <type_traits>
 #include "kernel_operator.h"
+#include "simt_api/asc_simt.h"
 
 using namespace AscendC;
-
-namespace AsynchronousCompleteCumsumSimt {
 
 constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
 constexpr int32_t WARP_SIZE = 32;
 constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
 constexpr int32_t MAX_WARPS = MAX_THREADS_PER_BLOCK / WARP_SIZE;
 constexpr int32_t CACHE_ALIGN = 64;
+
+namespace AsynchronousCompleteCumsumSimt {
 
 // Warp级前缀和计算
 template<typename T>
@@ -48,7 +49,7 @@ __aicore__ inline T WarpPrefixSum(T val)
 // 小数据模式中与Warp聚合相关的公共逻辑
 template<typename T>
 __aicore__ inline bool PrepareWarpAggregates(__gm__ T* input, __ubuf__ T* sharedMemory,
-                                             int32_t totalLength, int32_t blockIdx,
+                                             int64_t totalLength, int32_t blockIdx,
                                              int32_t blockDim, int32_t threadIdx,
                                              int32_t warpId, int32_t laneId, int32_t globalIdx,
                                              int32_t& activeWarpCount, T& currentSum,
@@ -92,7 +93,7 @@ __aicore__ inline bool PrepareWarpAggregates(__gm__ T* input, __ubuf__ T* shared
 template<typename T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
     inline void SimtSmallDataCompute(__gm__ T* input, __gm__ T* output,
-                                     __gm__ T* blockSums, __ubuf__ T* sharedMemory, int32_t totalLength)
+                                     __gm__ T* blockSums, __ubuf__ T* sharedMemory, int64_t totalLength)
 {
     // 线程信息计算
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
@@ -152,7 +153,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
 // SIMT VF函数 - 小数据模式第二阶段
 template<typename T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
-    inline void SimtSmallDataUpdate(__gm__ T* output, __gm__ T* blockSums, int32_t totalLength)
+    inline void SimtSmallDataUpdate(__gm__ T* output, __gm__ T* blockSums, int64_t totalLength)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
     int32_t blockIdx = AscendC::Simt::GetBlockIdx();
@@ -187,7 +188,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
 
 template<typename T>
 __aicore__ inline void FinalizeLargeDataBlock(__gm__ T* output, __gm__ T* blockSums,
-                                              __ubuf__ T* sharedMemory, int32_t totalLength,
+                                              __ubuf__ T* sharedMemory, int64_t totalLength,
                                               int32_t globalBlockIdx, int32_t threadElementBase,
                                               int32_t elementsForThread, int32_t threadIdx,
                                               int32_t warpId, int32_t laneId,
@@ -241,8 +242,8 @@ template<typename T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
     inline void SimtLargeDataCompute(__gm__ T* input, __gm__ T* output,
                                      __gm__ T* blockSums, __ubuf__ T* sharedMemory,
-                                     int32_t totalLength, int32_t totalBlocks,
-                                     int32_t blockStartIdx, int32_t curBlocksCount)
+                                     int64_t totalLength, int64_t totalBlocks,
+                                     int64_t blockStartIdx, int64_t curBlocksCount)
 {
     constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
 
@@ -309,8 +310,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
 template<typename T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
     inline void SimtLargeDataUpdate(__gm__ T* output, __gm__ T* blockSums,
-                                    int32_t totalLength, int32_t totalBlocks,
-                                    int32_t blockStartIdx, int32_t curBlocksCount)
+                                    int64_t totalLength, int64_t totalBlocks,
+                                    int64_t blockStartIdx, int64_t curBlocksCount)
 {
     constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
 

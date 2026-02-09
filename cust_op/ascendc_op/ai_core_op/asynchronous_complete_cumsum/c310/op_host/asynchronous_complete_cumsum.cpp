@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("inputShape", context->GetInputShape(0), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("inputTensor", context->GetInputTensor(0), return ge::GRAPH_FAILED);
 
-    uint32_t inputLength = context->GetInputShape(0)->GetOriginShape().GetShapeSize();
+    int64_t inputLength = context->GetInputShape(0)->GetOriginShape().GetShapeSize();
     auto inputTensor = context->GetInputTensor(0);
     ge::DataType inputDataType = inputTensor->GetDataType();
 
@@ -45,28 +45,22 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF(dimNum != 1, context, return ge::GRAPH_FAILED,
                  "[ERROR]AsynchronousCompleteCumsum required the dim of input-0 is 1");
 
-    // 判断数据类型和数据量级
-    bool isInt32 = true;
-    if (inputDataType == ge::DT_INT64) {
-        isInt32 = false;
-    } else if (inputDataType == ge::DT_INT32) {
-        isInt32 = true;
-    } else {
-        OPS_LOG_E("[ERROR]Invalid data type. AsynchronousCompleteCumsum only support int64 and int32.", NULL);
-        return ge::GRAPH_FAILED;
-    }
-    bool isSmall = (inputLength <= (isInt32 ? SMALL_DATA_THRESHOLD_32 : SMALL_DATA_THRESHOLD_64));
+    OPS_CHECK(inputDataType != ge::DT_INT32 && inputDataType != ge::DT_INT64,
+              OPS_LOG_E("[ERROR]Invalid data type",
+                        "AsynchronousCompleteCumsum only support int64 and int32."),
+              return ge::GRAPH_FAILED);
+    bool isSmall = (inputLength <= (inputDataType == ge::DT_INT32 ? SMALL_DATA_THRESHOLD_32 : SMALL_DATA_THRESHOLD_64));
 
     // 计算实际需要的线程块数量
-    size_t elementsPerBlock = static_cast<size_t>(0);
-    if (isInt32) {
+    int64_t elementsPerBlock;
+    if (inputDataType == ge::DT_INT32) {
         elementsPerBlock = (inputLength <= SMALL_DATA_THRESHOLD_32) ? MAX_THREADS_PER_BLOCK :
                                                                     MAX_THREADS_PER_BLOCK * MAX_ELEMENTS_PER_THREAD;
     } else {
         elementsPerBlock = (inputLength <= SMALL_DATA_THRESHOLD_64) ? MAX_THREADS_PER_BLOCK :
                                                                     MAX_THREADS_PER_BLOCK * MAX_ELEMENTS_PER_THREAD;
     }
-    size_t totalBlocks = (inputLength + elementsPerBlock - 1) / elementsPerBlock;
+    int64_t totalBlocks = (inputLength + elementsPerBlock - 1) / elementsPerBlock;
 
     // 获取可用核心数，但只使用实际需要的核心数
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -77,8 +71,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         OPS_LOG_E(context, "[ERROR] need more than 0 ai core");
         return ge::GRAPH_FAILED;
     }
-    int32_t blocksPerCore = totalBlocks / coreNum;                      // 每核基础块数k
-    int32_t remainderBlocks = totalBlocks % coreNum;                    // 余数块数l
+    int64_t blocksPerCore = totalBlocks / coreNum;                      // 每核基础块数k
+    int64_t remainderBlocks = totalBlocks % coreNum;                    // 余数块数l
 
     if (totalBlocks == 0) {
         OPS_LOG_E(context, "[ERROR] need more than 0 thread block");
@@ -99,7 +93,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_blocksPerCore(blocksPerCore);
     tiling.set_remainderBlocks(remainderBlocks);
     tiling.set_isSmall(isSmall);
-    tiling.set_isInt32(isInt32);
 
     context->SetBlockDim(coreNum);
     OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return ge::GRAPH_FAILED);

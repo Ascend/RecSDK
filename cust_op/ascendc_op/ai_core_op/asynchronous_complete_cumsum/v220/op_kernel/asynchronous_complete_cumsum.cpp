@@ -23,12 +23,6 @@ extern "C" __global__ __aicore__ void asynchronous_complete_cumsum(
     GET_TILING_DATA(tilingData, tiling);
     AsynchronousCompleteCumsum::Args args{x, y, workspace, tiling};
 
-    // 根据数据类型选择对应的kernel实例
-    if (TILING_KEY_IS(1)) {  // TYPE_INT32
-        AsynchronousCompleteCumsum::AsynchronousCompleteCumsumKernel<int32_t, false> kernel(args);
-        kernel.Compute();
-    } else if (TILING_KEY_IS(0)) {  // TYPE_INT64
-        AsynchronousCompleteCumsum::AsynchronousCompleteCumsumKernel<int64_t, true> kernel(args);
-        kernel.Compute();
-    }
+    AsynchronousCompleteCumsum::AsynchronousCompleteCumsumKernel<DTYPE_X> kernel(args);
+    kernel.Compute();
 }
