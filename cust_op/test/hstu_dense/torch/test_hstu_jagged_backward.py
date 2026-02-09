@@ -58,14 +58,11 @@ def jagged_data_gen(
     bias = torch.rand(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type).uniform_(-1, 1)
 
     if mask_type == MaskType.TRIL:
-        if num_context is None and num_target is None:
-            mask = torch.tril(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len))
-        else:
-            mask = torch.zeros(batch_size, num_heads, max_seq_len, max_seq_len)
-            for sample_id, (seq_len_q, seq_len_k) in enumerate(zip(seq_lens_q, seq_lens_k)):
-                mask_tensor = create_causal_mask(seq_len_q, seq_len_k, num_context, num_target, target_group_size)
-                mask[sample_id, :, :seq_len_q, :seq_len_k] = mask_tensor
-            mask = mask.to(data_type)
+        mask = torch.zeros(batch_size, num_heads, max_seq_len, max_seq_len)
+        for sample_id, (seq_len_q, seq_len_k) in enumerate(zip(seq_lens_q, seq_lens_k)):
+            mask_tensor = create_causal_mask(seq_len_q, seq_len_k, num_context, num_target, target_group_size)
+            mask[sample_id, :, :seq_len_q, :seq_len_k] = mask_tensor
+        mask = mask.to(data_type)
     elif mask_type == MaskType.TRIU:
         mask = torch.triu(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type))
     elif mask_type == MaskType.NONE:
