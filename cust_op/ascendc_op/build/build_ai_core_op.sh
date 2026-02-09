@@ -39,6 +39,37 @@ base_op_dir="v220"
 
 source /etc/profile
 
+declare -A OP_PLUGIN_MAP=(
+  ["asynchronous_complete_cumsum"]="asynchronous_complete_cumsum"
+  ["backward_codegen_adagrad_unweighted_exact"]="split_embedding_codegen_forward_unweighted"
+  ["concat_2d_jagged"]="concat_2d_jagged"
+  ["concat_2d_jagged_grad"]="concat_2d_jagged"
+  ["dense_embedding_codegen_lookup_function"]="dense_embedding_codegen_lookup_function"
+  ["dense_embedding_codegen_lookup_function_grad"]="dense_embedding_codegen_lookup_function"
+  ["dense_to_jagged"]="dense_to_jagged"
+  ["disetangle_attention"]="disetangle_attention"
+  ["gather_for_rank1"]="gather_for_rank1"
+  ["hstu_dense_backward"]="hstu"
+  ["hstu_dense_backward_fuxi"]="hstu_dense_backward_fuxi"
+  ["hstu_dense_forward"]="hstu"
+  ["hstu_dense_forward_fuxi"]="hstu_dense_forward_fuxi"
+  ["in_linear_silu"]="in_linear_silu"
+  ["index_select_for_rank1_backward"]="gather_for_rank1"
+  ["int_nbit_split_embedding_codegen_lookup_function"]="int_nbit_split_embedding_codegen_lookup_function"
+  ["invert_permute"]="invert_permute"
+  ["jagged_to_padded_dense"]="jagged_to_padded_dense"
+  ["ln_mul"]="ln_mul"
+  ["permute2d_sparse_data"]="permute1d_sparse_data permute2d_sparse_data"
+  ["relative_attn_bias_backward"]="relative_attn_bias"
+  ["relative_attn_bias_pos"]="relative_attn_bias"
+  ["relative_attn_bias_time"]="relative_attn_bias"
+  ["reverse_sequence"]="reverse_sequence"
+  ["segment_sum_csr"]="segment_sum_csr"
+  ["split_embedding_codegen_forward_unweighted"]="split_embedding_codegen_forward_unweighted"
+  ["token_mixing"]="token_mixing"
+)
+
+
 support_A2_tf_ops="cust_op_by_addr
 fused_lazy_adam
 fused_sgd
@@ -73,16 +104,18 @@ cd "${ASCENDC_OP_DIR}"
 function cp_op_plugin()
 {
     cd "${torch_plugin_path}"
-    cp -r ../torch_plugin "${output_path}"
+    cp -r torch_library/common "${output_path}/torch_plugin"
 }
 
 function make_output_dir() {
     mxrec_output_path="${ASCENDC_OP_DIR}"/output
     output_path="${CUR_DIR}"/output
     opp_output_path="${CUR_DIR}"/output/recsdk_ops
+    plugin_output_path="${CUR_DIR}"/output/torch_plugin
     mkdir -p "${mxrec_output_path}"
     mkdir -p "${output_path}"
     mkdir -p "${opp_output_path}"
+    mkdir -p "${plugin_output_path}"
 }
 
 function in_list() {
@@ -98,6 +131,7 @@ function compile_ops_v220() {
         cd "$ops_path"
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
+            plugin_dir_names=${OP_PLUGIN_MAP[$dir_name]}
             if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
                 continue
             fi
@@ -113,6 +147,10 @@ function compile_ops_v220() {
                             cd "$dir_name"
                             cp ./build_out/custom_opp*.run  "${new_op_name}"
                             mv "${new_op_name}" "${opp_output_path}"
+                            # copy torch_plugin
+                            for plugin_dir_name in ${plugin_dir_names}; do
+                              cp -r ${torch_plugin_path}/torch_library/${plugin_dir_name} "${plugin_output_path}"
+                            done
                         fi
                     done
                 elif [ "${BUILD_VER}" == "A3" ]; then
@@ -123,6 +161,9 @@ function compile_ops_v220() {
                             cd "$dir_name"
                             cp ./build_out/custom_opp*.run  "${new_op_name}"
                             mv "${new_op_name}" "${opp_output_path}"
+                            for plugin_dir_name in ${plugin_dir_names}; do
+                              cp -r ${torch_plugin_path}/torch_library/${plugin_dir_name} "${plugin_output_path}"
+                            done
                         fi
                     done
                 elif [ "${BUILD_VER}" == "A2-TF" ]; then
@@ -142,6 +183,9 @@ function compile_ops_v220() {
                     cd "$dir_name"
                     cp ./build_out/custom_opp*.run  "${new_op_name}"
                     mv "${new_op_name}" "${opp_output_path}"
+                    for plugin_dir_name in ${plugin_dir_names}; do
+                      cp -r ${torch_plugin_path}/torch_library/${plugin_dir_name} "${plugin_output_path}"
+                    done
                 fi
             fi
         fi
@@ -186,8 +230,7 @@ function get_tar_pkg() {
     mkdir -p "${pkg_dir}"
 
     cp -r "${opp_output_path}" "${pkg_dir}"/
-
-    cp -r "${output_path}"/torch_plugin "${pkg_dir}"/
+    cp -r "${plugin_output_path}" "${pkg_dir}"/
 
     tar -zvcf "${release_tar}" "${pkg_dir}"
     rm -rf "${pkg_dir}"
