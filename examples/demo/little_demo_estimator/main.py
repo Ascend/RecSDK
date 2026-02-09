@@ -188,7 +188,7 @@ def _clear_saved_model() -> None:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--model_dir', type=str, default='_rank')
-    parser.add_argument('--learning_rate', type=float, default=0.0008)
+    parser.add_argument('--learning_rate', type=float, default=0.0001)
     parser.add_argument('--max_data_generate_steps', type=int, default=200)  # 生成数据最大步数
     parser.add_argument('--max_steps', type=int, default=200)  # train的最大步数
     parser.add_argument('--train_steps', type=int, default=100)  # 训练train_steps步后进行eval
