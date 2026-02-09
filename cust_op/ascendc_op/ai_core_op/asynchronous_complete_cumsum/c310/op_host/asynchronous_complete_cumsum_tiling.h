@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,11 +19,10 @@ See the License for the specific language governing permissions and
 
 namespace optiling {
     BEGIN_TILING_DATA_DEF(AsynchronousCompleteCumsumTilingData)
-    TILING_DATA_FIELD_DEF(int32_t, totalLength);
-    TILING_DATA_FIELD_DEF(int32_t, totalBlocks);
-    TILING_DATA_FIELD_DEF(int32_t, blocksPerCore);
-    TILING_DATA_FIELD_DEF(int32_t, remainderBlocks);
-    TILING_DATA_FIELD_DEF(bool, isInt32);
+    TILING_DATA_FIELD_DEF(int64_t, totalLength);
+    TILING_DATA_FIELD_DEF(int64_t, totalBlocks);
+    TILING_DATA_FIELD_DEF(int64_t, blocksPerCore);
+    TILING_DATA_FIELD_DEF(int64_t, remainderBlocks);
     TILING_DATA_FIELD_DEF(bool, isSmall);
     END_TILING_DATA_DEF;
 

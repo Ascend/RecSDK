@@ -41,7 +41,7 @@ struct Args {
 };
 
 
-template<typename T, bool int64_input>
+template<typename T>
 class AsynchronousCompleteCumsumKernel {
 public:
     __aicore__ inline AsynchronousCompleteCumsumKernel(Args args)
@@ -53,14 +53,12 @@ public:
         totalBlocks = tilingData.totalBlocks;
         blocksPerCore = tilingData.blocksPerCore;
         remainderBlocks = tilingData.remainderBlocks;
-        coreNum = tilingData.coreNum;
-        paddedBlocks = tilingData.paddedBlocks;
 
         static_assert(sizeof(T) == sizeof(int32_t) || sizeof(T) == sizeof(int64_t), "T must be 4 or 8 bytes");
         cache_align = CACHE_LINE_SIZE / static_cast<int32_t>(sizeof(T));
 
         // 根据负载均衡策略计算每个core的工作分配
-        coreId = GetBlockIdx();
+        int64_t coreId = GetBlockIdx();
         if (coreId < remainderBlocks) {
             myBlocksCount = blocksPerCore + 1;
             myStartBlock = coreId * myBlocksCount;
@@ -126,15 +124,15 @@ private:
     // 第一阶段：只计算各块的部分和
     __aicore__ inline void ComputeBlockPrefixSums()
     {
-        for (int32_t i = 0; i < myBlocksCount; i++) {
-            int32_t blockIdx = myStartBlock + i;
+        for (int64_t i = 0; i < myBlocksCount; i++) {
+            int64_t blockIdx = myStartBlock + i;
 
-            int32_t blockStart = blockIdx * BLOCK_SIZE;
-            int32_t blockEnd = (blockStart + BLOCK_SIZE < inputLength) ? (blockStart + BLOCK_SIZE) : inputLength;
-            int32_t actualSize = blockEnd - blockStart;
+            int64_t blockStart = blockIdx * BLOCK_SIZE;
+            int64_t blockEnd = (blockStart + BLOCK_SIZE < inputLength) ? (blockStart + BLOCK_SIZE) : inputLength;
+            int64_t actualSize = blockEnd - blockStart;
 
             T blockSum = static_cast<T>(0);
-            for (int32_t j = 0; j < actualSize; ++j) {
+            for (int64_t j = 0; j < actualSize; ++j) {
                 outputGT(blockStart + j) = blockSum;
                 blockSum += inputGT(blockStart + j);
             }
@@ -154,7 +152,7 @@ private:
     {
         // 计算全局前缀和
         T prefixOffset = static_cast<T>(0);
-        for (int32_t blockIdx = 0; blockIdx < myStartBlock; ++blockIdx) {
+        for (int64_t blockIdx = 0; blockIdx < myStartBlock; ++blockIdx) {
             T blockSum = sharedMem(blockIdx * cache_align);
             prefixOffset += blockSum;
         }
@@ -163,7 +161,7 @@ private:
             prefixOffset += sharedMem(0);
         }
 
-        if constexpr (int64_input) {
+        if constexpr (std::is_same_v<T, int64_t>) {
             CombineResultsInt64(prefixOffset);
         } else {
             CombineResultsInt32(prefixOffset);
@@ -172,19 +170,19 @@ private:
 
     __aicore__ inline void CombineResultsInt64(T prefixOffset)
     {
-        for (int32_t i = 0; i < myBlocksCount; i++) {
-            int32_t blockIdx = myStartBlock + i;
+        for (int64_t i = 0; i < myBlocksCount; i++) {
+            int64_t blockIdx = myStartBlock + i;
 
             if (blockIdx == 0) {
                 continue;
             }
 
-            int32_t blockStart = blockIdx * BLOCK_SIZE;
-            int32_t blockEnd = (blockStart + BLOCK_SIZE < inputLength) ? (blockStart + BLOCK_SIZE) : inputLength;
-            int32_t actualSize = blockEnd - blockStart;
+            int64_t blockStart = blockIdx * BLOCK_SIZE;
+            int64_t blockEnd = (blockStart + BLOCK_SIZE < inputLength) ? (blockStart + BLOCK_SIZE) : inputLength;
+            int64_t actualSize = blockEnd - blockStart;
 
             GlobalTensor<T> outputSlice = outputGT[blockStart];
-            for (int32_t j = 0; j < actualSize; ++j) {
+            for (int64_t j = 0; j < actualSize; ++j) {
                 outputSlice(j) += prefixOffset;
             }
 
@@ -201,24 +199,24 @@ private:
         AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::ENTIRE_DATA_CACHE,
                                           AscendC::DcciDst::CACHELINE_OUT>(sharedMem);
 
-        for (int32_t i = 0; i < myBlocksCount; ++i) {
-            int32_t blockIdx = myStartBlock + i;
+        for (int64_t i = 0; i < myBlocksCount; ++i) {
+            int64_t blockIdx = myStartBlock + i;
 
             if (blockIdx == 0) {
                 continue;
             }
 
-            int32_t blockStart = blockIdx * BLOCK_SIZE;
-            int32_t blockEnd = (blockStart + BLOCK_SIZE < inputLength) ? (blockStart + BLOCK_SIZE) : inputLength;
-            int32_t actualSize = blockEnd - blockStart;
-            int32_t leftSize = 0;
+            int64_t blockStart = blockIdx * BLOCK_SIZE;
+            int64_t blockEnd = (blockStart + BLOCK_SIZE < inputLength) ? (blockStart + BLOCK_SIZE) : inputLength;
+            int64_t actualSize = blockEnd - blockStart;
+            int64_t leftSize = 0;
 
             if (blockIdx == totalBlocks - 1) {
-                int32_t totalSize = actualSize;
-                int32_t alignBytes = totalSize * sizeof(T) / CACHE_LINE_SIZE * CACHE_LINE_SIZE;
+                int64_t totalSize = actualSize;
+                int64_t alignBytes = totalSize * sizeof(T) / CACHE_LINE_SIZE * CACHE_LINE_SIZE;
                 actualSize = alignBytes / sizeof(T);  // 对齐部分的元素个数
 
-                int32_t unalignBytes = totalSize * sizeof(T) - alignBytes;
+                int64_t unalignBytes = totalSize * sizeof(T) - alignBytes;
                 leftSize = unalignBytes / sizeof(T);  // 非对齐部分的元素个数
             }
 
@@ -240,7 +238,7 @@ private:
             inputQueue.FreeTensor(localInCopy);
 
             if (blockIdx == totalBlocks - 1) {
-                for (int32_t j = 0; j <= leftSize; ++j) {
+                for (int64_t j = 0; j <= leftSize; ++j) {
                     outputGT(blockStart + actualSize + j) += prefixOffset;
                 }
             }
@@ -257,18 +255,15 @@ private:
     GM_ADDR tiling;
 
     // Tiling参数
-    int32_t inputLength;
-    int32_t totalBlocks;
-    int32_t blocksPerCore;
-    int32_t remainderBlocks;
-    int32_t coreNum;
+    int64_t inputLength;
+    int64_t totalBlocks;
+    int64_t blocksPerCore;
+    int64_t remainderBlocks;
     int32_t cache_align;
-    int32_t paddedBlocks;
 
     // 当前core信息
-    int32_t coreId;
-    int32_t myBlocksCount;
-    int32_t myStartBlock;
+    int64_t myBlocksCount;
+    int64_t myStartBlock;
 
     // Global Tensor
     GlobalTensor<T> inputGT;

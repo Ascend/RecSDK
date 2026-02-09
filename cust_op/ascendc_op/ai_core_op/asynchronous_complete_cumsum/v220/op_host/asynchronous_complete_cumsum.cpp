@@ -39,10 +39,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
 
     // 获取输入信息
     int64_t inputLength = context->GetInputShape(0)->GetOriginShape().GetShapeSize();
-    OPS_CHECK(inputLength <= 0 || inputLength >= std::numeric_limits<int32_t>::max(),
-        OPS_LOG_E("[ERROR]", "inputLength limit (0, %d), but get %lld\n",
-            std::numeric_limits<int32_t>::max(), inputLength),
-        return ge::GRAPH_FAILED);
     auto inputTensor = context->GetInputTensor(0);
     ge::DataType inputDataType = inputTensor->GetDataType();
 
@@ -50,15 +46,11 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF(dimNum != 1, context, return ge::GRAPH_FAILED,
                  "[ERROR]AsynchronousCompleteCumsum required the dim of input-0 is 1");
 
-    if (inputDataType == ge::DT_INT64) {
-        context->SetTilingKey(0);
-    } else if (inputDataType == ge::DT_INT32) {
-        context->SetTilingKey(1);
-    } else {
-        OPS_LOG_E("[ERROR]Invalid data type. AsynchronousCompleteCumsum only support int64 and int32.", NULL);
-        return ge::GRAPH_FAILED;
-    }
-
+    OPS_CHECK(inputDataType != ge::DT_INT32 && inputDataType != ge::DT_INT64,
+              OPS_LOG_E("[ERROR]Invalid data type",
+                        "AsynchronousCompleteCumsum only support int64 and int32."),
+              return ge::GRAPH_FAILED);
+    
     // 获取平台信息
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
@@ -69,7 +61,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     int64_t ubAvailable = (ubTotal - RESERVERD_UB_SIZE) / UB_ALIGN / NUM_QUEUE * UB_ALIGN * NUM_QUEUE;
 
     // 计算分块策略
-    int32_t totalBlocks = (inputLength + BLOCK_SIZE - 1) / BLOCK_SIZE;  // 向上取整
+    int64_t totalBlocks = (inputLength + BLOCK_SIZE - 1) / BLOCK_SIZE;  // 向上取整
     if (totalBlocks < coreNum) {
         coreNum = totalBlocks;
     }
@@ -78,13 +70,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         OPS_LOG_E(context, "[ERROR] need more than 0 ai core");
         return ge::GRAPH_FAILED;
     }
-    int32_t blocksPerCore = totalBlocks / coreNum;                      // 每核基础块数k
-    int32_t remainderBlocks = totalBlocks % coreNum;                    // 余数块数l
-
-    int32_t paddedBlocks = 1;
-    while (paddedBlocks < totalBlocks) {
-        paddedBlocks <<= 1;
-    }
+    int64_t blocksPerCore = totalBlocks / coreNum;                      // 每核基础块数k
+    int64_t remainderBlocks = totalBlocks % coreNum;                    // 余数块数l
 
     // 配置Workspace
     // 每个块需要一个cache line（64字节）来避免false sharing
@@ -98,10 +85,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     AsynchronousCompleteCumsumTilingData tiling;
     tiling.set_totalLength(inputLength);
     tiling.set_totalBlocks(totalBlocks);
-    tiling.set_paddedBlocks(paddedBlocks);
     tiling.set_blocksPerCore(blocksPerCore);
     tiling.set_remainderBlocks(remainderBlocks);
-    tiling.set_coreNum(coreNum);
 
     context->SetBlockDim(coreNum);
     OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return ge::GRAPH_FAILED);
