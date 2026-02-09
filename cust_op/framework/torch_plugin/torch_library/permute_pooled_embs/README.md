@@ -43,7 +43,7 @@ torch.ops.mxrec.permute_pooled_embs(Tensor pooled_embs,
 - **类型**: `int64`
 - **描述**: 排列顺序列表，`permute_list[i]` 表示输出位置 `i` 应该放置原始特征 `permute_list[i]`
   - 每个元素范围: `[0, T-1]`
-  - 可以是任意排列（permutation），也支持重复（duplicate）
+  - 可以是任意排列（permutation），不支持重复
 - **示例**: `permute_list = [2, 0, 1]` 表示：
   - 输出位置 0 放置原始特征 2
   - 输出位置 1 放置原始特征 0
@@ -110,7 +110,7 @@ torch.ops.mxrec.permute_pooled_embs(Tensor pooled_embs,
    - `permute_list.numel() == T`
    - `inv_offset_dim_list.numel() == T + 1`
    - `inv_permute_list.numel() == T`
-   - `offset_dim_list[T] == pooled_embs.size(1)`（除非允许重复）
+   - `offset_dim_list[T] == pooled_embs.size(1)`
 5. **排列有效性**: `permute_list` 中的值必须在 `[0, T-1]` 范围内
 
 
@@ -131,15 +131,27 @@ Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../READ
 import itertools
 import random
 import sysconfig
-
 import pytest
 import torch
 import torch_npu
 import fbgemm_gpu
 import numpy as np
 
+
 DEVICE = "npu:0"
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # 如果使用多GPU
+    torch.backends.cudnn.deterministic = True   # 确保CuDNN使用确定性算法
+    torch.backends.cudnn.benchmark = False      # 关闭CuDNN自动优化
+
+set_seed(10000)
+
 
 def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
     tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
@@ -158,9 +170,10 @@ def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
     return [x.cpu() if isinstance(x, torch.Tensor) else x for x in results]
 
 
-T = np.random.randint(2, 20, 6)
-B = [32, 128, 1024, 2048, 10240, 102400]
+T = np.random.randint(4, 41, 6)
+B = [32, 128, 512, 1024, 2048, 4096, 8192, 16384]
 SHAPE_LIST = list(itertools.product(T, B))
+
 
 @pytest.mark.parametrize("types", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("shapes", SHAPE_LIST)
@@ -177,8 +190,8 @@ def test_permute_pooled_embs_aligned(types, shapes, is_mxrec):
     etype = types[0] if isinstance(types, tuple) else types
     t, b = shapes
 
-    # 每个特征的维度随机选择[32, 64, 128]中的一个
-    choices = torch.tensor([32, 64, 128], dtype=torch.int64)
+    # 每个特征的维度随机选择[16, 32, 64, 128, 256, 512, 1024]中的一个
+    choices = torch.tensor([16, 32, 64, 128, 256, 512, 1024], dtype=torch.int64)
     embs_dims = choices[torch.randint(0, len(choices), (t,), dtype=torch.int64)]
     offset_dim_list = torch.cat([torch.tensor([0], dtype=torch.int64), torch.cumsum(embs_dims, dim=0)])
     permute = torch.randperm(t, dtype=torch.int64)
@@ -187,7 +200,7 @@ def test_permute_pooled_embs_aligned(types, shapes, is_mxrec):
         inv_permute[p] = i
     inv_embs_dims = embs_dims[permute]
     inv_offset_dim_list = torch.cat([torch.tensor([0], dtype=torch.int64), torch.cumsum(inv_embs_dims, dim=0)])
-    pooled_embs = torch.arange(0, embs_dims.sum().item() * b, dtype=etype).reshape(b, -1)
+    pooled_embs = torch.randn(b, embs_dims.sum().item()).to(etype)
 
     params = {
         'pooled_embs': pooled_embs,
