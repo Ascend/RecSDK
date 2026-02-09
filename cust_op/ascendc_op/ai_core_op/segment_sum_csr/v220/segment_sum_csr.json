@@ -1,0 +1,49 @@
+[
+  {
+    "op": "SegmentSumCsr",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "csrSeg",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "int32", "int64"
+        ]
+      },
+      {
+        "name": "values",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "fp32"
+        ]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "y",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "fp32"
+        ]
+      }
+    ],
+    "attr": [
+      {
+        "name": "batchSize",
+        "param_type": "required",
+        "type": [
+          "int32", "int64"
+        ]
+      }
+    ]
+  }
+]
