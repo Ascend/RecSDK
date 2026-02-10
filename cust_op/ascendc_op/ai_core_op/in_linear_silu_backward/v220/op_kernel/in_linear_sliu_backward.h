@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#ifndef LN_LINEAR_SILU_BACKWARD_H
-#define LN_LINEAR_SILU_BACKWARD_H
+#ifndef IN_LINEAR_SILU_BACKWARD_H
+#define IN_LINEAR_SILU_BACKWARD_H
 
 #include <unistd.h>
 
