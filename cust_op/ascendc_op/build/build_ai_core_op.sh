@@ -132,7 +132,7 @@ function compile_ops_v220() {
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
             plugin_dir_names=${OP_PLUGIN_MAP[$dir_name]}
-            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" || "$dir_name" == "in_linear_silu_backward" ]]; then
+            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
                 continue
             fi
             cur_ver_op_dir=${dir_name}/${base_op_dir}
