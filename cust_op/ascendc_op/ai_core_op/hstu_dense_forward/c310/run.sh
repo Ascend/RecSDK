@@ -19,7 +19,7 @@ set -e
 onnx_path=$(dirname "$(readlink -f "$0")")/../../../build/scripts/onnx_plugin
 
 VALID_AI_CORES=(
-    "ai_core-Ascend910_95"
+    "ai_core-Ascend950"
 )
 
 validate_ai_core() {
@@ -34,7 +34,7 @@ validate_ai_core() {
     exit 1
 }
 
-ai_core="ai_core-Ascend910_95"
+ai_core="ai_core-Ascend950"
 if [ "$#" -eq 1 ]; then
   ai_core="$1"
   validate_ai_core $ai_core
@@ -78,9 +78,9 @@ line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`
 sed -i "${line}s/True/False/g" CMakePresets.json
 
-sed -i "1i #define SUPPORT_910_95" ./op_kernel/matmul_constexpr.h
-sed -i "1i #define SUPPORT_910_95" ./op_host/hstu_dense_forward.cpp
-sed -i "1i #define SUPPORT_910_95" ./op_host/tiling_policy.cpp
+sed -i "1i #define SUPPORT_950" ./op_kernel/matmul_constexpr.h
+sed -i "1i #define SUPPORT_950" ./op_host/hstu_dense_forward.cpp
+sed -i "1i #define SUPPORT_950" ./op_host/tiling_policy.cpp
 
 add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../../v220/hstu_dense_forward.json DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${vendor_name}_impl/dynamic)"
 sed -i '$a\'"$add_cmake_line" ./op_kernel/CMakeLists.txt

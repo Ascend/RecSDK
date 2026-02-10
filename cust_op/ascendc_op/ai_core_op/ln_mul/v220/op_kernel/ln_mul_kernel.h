@@ -230,7 +230,7 @@ private:
 
         // shape
         uint32_t meanShape[2] = {rowCount, 1};
-#ifdef SUPPORT_910_95
+#ifdef SUPPORT_950
         uint32_t shape[2] = {rowCount, rLengthWithPadding};
 #else
         uint32_t shape[2] = {rowCount, rLength};

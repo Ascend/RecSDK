@@ -91,7 +91,7 @@ public:
     {
         this->Input("q")
             .ParamType(REQUIRED)
-#ifndef SUPPORT_910_95
+#ifndef SUPPORT_950
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
 #else
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN})
@@ -151,7 +151,7 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Output("attn_output")
             .ParamType(REQUIRED)
-#ifndef SUPPORT_910_95
+#ifndef SUPPORT_950
             .Follow("q", FollowType::DTYPE)
 #else
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT16})
@@ -181,7 +181,7 @@ public:
         this->AICore().AddConfig("ascend310p", aicore_config);
         this->AICore().AddConfig("ascend910b", aicore_config);
         this->AICore().AddConfig("ascend910_93", aicore_config);
-        this->AICore().AddConfig("ascend910_95", aicore_config);
+        this->AICore().AddConfig("ascend950", aicore_config);
     }
 };
 

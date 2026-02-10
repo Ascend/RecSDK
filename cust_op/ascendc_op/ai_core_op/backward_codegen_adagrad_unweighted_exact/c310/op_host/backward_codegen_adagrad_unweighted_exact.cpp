@@ -481,7 +481,7 @@ public:
         this->SetInferShape(ge::InferShape);
 
         this->AICore().SetTiling(optiling::TilingFunc);
-        this->AICore().AddConfig("ascend910_95");
+        this->AICore().AddConfig("ascend950");
     }
 };
 

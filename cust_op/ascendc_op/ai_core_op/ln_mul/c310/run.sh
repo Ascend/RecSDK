@@ -17,7 +17,7 @@
 set -e
 
 VALID_AI_CORES=(
-    "ai_core-Ascend910_95"
+    "ai_core-Ascend950"
 )
 
 validate_ai_core() {
@@ -32,7 +32,7 @@ validate_ai_core() {
     exit 1
 }
 
-ai_core="ai_core-Ascend910_95"
+ai_core="ai_core-Ascend950"
 if [ "$#" -eq 1 ]; then
   ai_core="$1"
   validate_ai_core $ai_core
@@ -67,8 +67,8 @@ fi
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
 sed -i 's:"customize":"ln_mul":g' CMakePresets.json
 
-if [ "$ai_core" = "ai_core-Ascend910_95" ]; then
-    sed -i "1i #define SUPPORT_910_95" ./op_kernel/ln_mul_kernel.h
+if [ "$ai_core" = "ai_core-Ascend950" ]; then
+    sed -i "1i #define SUPPORT_950" ./op_kernel/ln_mul_kernel.h
 fi
 
 # 增加LOG_CPP编译选项支持错误日志打印

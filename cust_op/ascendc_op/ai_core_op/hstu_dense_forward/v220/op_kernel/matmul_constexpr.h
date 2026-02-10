@@ -28,7 +28,7 @@ constexpr int MATMUL_L1_SIZE = 524288;  // 512KB
 
 constexpr MatmulConfigMode configMode = MatmulConfigMode::CONFIG_NORM;
 
-#ifdef SUPPORT_910_95
+#ifdef SUPPORT_950
     // FP16/BFP16
     constexpr MatmulShapeParams qkShapeFp16Params = {
         BLOCK_HEIGHT_256, BLOCK_HEIGHT_256, MAX_BLOCK_DIM,

@@ -97,7 +97,7 @@ c) 原型注册
   - 输出"y"：必需参数，支持int32/int64，ND格式
 - 绑定推理函数：InferShape和InferDataType
 - 绑定Tiling函数：optiling::TilingFunc
-- 配置AI Core支持：ascend910_95
+- 配置AI Core支持：ascend950
 
 3. Kernel侧算子实现
 
