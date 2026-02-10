@@ -16,7 +16,7 @@
 set -e
 
 VALID_AI_CORES=(
-    "ai_core-Ascend910_95"
+    "ai_core-Ascend950"
 )
 
 validate_ai_core() {
@@ -31,7 +31,7 @@ validate_ai_core() {
     exit 1
 }
 
-ai_core="ai_core-Ascend910_95"
+ai_core="ai_core-Ascend950"
 if [ "$#" -eq 1 ]; then
   ai_core="$1"
   validate_ai_core "$ai_core"

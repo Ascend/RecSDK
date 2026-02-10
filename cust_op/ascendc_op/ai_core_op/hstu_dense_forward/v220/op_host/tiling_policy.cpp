@@ -206,7 +206,7 @@ bool TilingPolicy::TilingWorkSpace(gert::TilingContext* context, optiling::HstuD
     int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float);
     auto socVersion = ascendPlatform.GetSocVersion();
     // A5平台需要额外的FP8 workspace
-    if (socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
+    if (socVersion == platform_ascendc::SocVersion::ASCEND950) {
         workspaceSize += oneCoreMidElem * 1;
     }
     int64_t syncSize = coreNum * VCORE_NUM_IN_ONE_AIC * DATA_ALIGN_BYTES;
@@ -246,7 +246,7 @@ bool TilingPolicy::TilingKeySet(gert::TilingContext* context, optiling::HstuDens
     return false;
 }
 
-#ifdef SUPPORT_910_95
+#ifdef SUPPORT_950
 void Find4BytesShape(optiling::HstuDenseForwardTilingData& tiling, uint32_t &tilingM, uint32_t &tilingN)
 {
     constexpr uint32_t tileMList[] = {32, 64, 64, 128, 128, 256, 128};

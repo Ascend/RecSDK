@@ -206,7 +206,7 @@ function compile_ops_A5() {
             if [ -d "$cur_ver_op_dir" ]; then
                 echo "Entering directory: $dir_name, DIR: $dir"
                 cd "$cur_ver_op_dir"
-                bash ./run.sh ai_core-Ascend910_95
+                bash ./run.sh ai_core-Ascend950
                 new_op_name=mxrec_opp_"${dir_name}".run
                 cd "$dir_name"
                 cp ./build_out/custom_opp*.run  "${new_op_name}"
