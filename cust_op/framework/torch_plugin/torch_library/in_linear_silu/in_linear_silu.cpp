@@ -1,7 +1,7 @@
 /**
  * @file in_linear_silu.cpp
  *
- * Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
+ * Copyright (C) 2026. Huawei Technologies Co., Ltd. All rights reserved.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -37,11 +37,9 @@ void IsValidShape(const at::Tensor& x, const at::Tensor& weight,
 {
     check_tensor_non_empty(x, "x");
     check_tensor_non_empty(weight, "weight");
-    check_tensor_non_empty(bias, "bias");
 
     check_tensor_dim(x, DIM_2, "x");
     check_tensor_dim(weight, DIM_2, "weight");
-    check_tensor_dim(bias, DIM_1, "bias");
 
     TORCH_CHECK(splitList.size() == TENSOR_NUM, "splitList must have 4 elements.");
     int32_t totalDim = 0;
@@ -58,9 +56,14 @@ void IsValidShape(const at::Tensor& x, const at::Tensor& weight,
     TORCH_CHECK(n >= MIN_DIM * TENSOR_NUM && n <= MAX_DIM * TENSOR_NUM && n % MIN_DIM == 0,
         "weight dim[0] must in range[64, 32768] and multiples of 16.");
     TORCH_CHECK(totalDim == n, "weight_dim[0] must equal to sum(splitList).");
-    TORCH_CHECK(bias.size(0) == n, "bias dim[0] must equal to weight dim[0].");
     TORCH_CHECK(weight.size(1) == k, "weight dim[1] must equal to x dim[1].");
     TORCH_CHECK((n % (4 * k) == 0), "weight dim[0] must be a multiple of 4 x dim[1]");
+
+    if (bias.defined()) {
+        check_tensor_non_empty(bias, "bias");
+        check_tensor_dim(bias, DIM_1, "bias");
+        TORCH_CHECK(bias.size(0) == n, "bias dim[0] must equal to weight dim[0].");
+    }
 }
 
 torch::autograd::variable_list RunInLinearSiluForwardInter(const at::Tensor& x, const at::Tensor& weight,
@@ -86,52 +89,32 @@ torch::autograd::variable_list RunInLinearSiluForwardInter(const at::Tensor& x, 
     return {userOut, valueOut, queryOut, keyOut, linearOutputOut};
 }
 
-torch::autograd::variable_list RunInLinearSiluForward(const at::Tensor& x, const at::Tensor& weight,
-                                                      const at::Tensor& bias, at::IntArrayRef splitList)
+torch::autograd::variable_list RunInLinearSiluBackward(const at::Tensor& x,
+    const at::Tensor& weight, const at::optional<Tensor>& bias, const at::Tensor& user_grad,
+    const at::Tensor& value_grad, const at::Tensor& query_grad,
+    const at::Tensor& key_grad, const at::Tensor& linear_output, at::IntArrayRef attr_dict)
 {
-    bool requiresGrad = false;
-    if (x.requires_grad() || weight.requires_grad() || bias.requires_grad()) {
-        requiresGrad = true;
+    auto xConti = x.contiguous();
+    auto weightConti = weight.contiguous();
+    auto biasConti = bias.has_value() ? bias.value() : at::Tensor();
+    biasConti = biasConti.contiguous();
+    IsValidShape(xConti, weightConti, biasConti, attr_dict);
+    auto user_gradConti = user_grad.contiguous();
+    auto value_gradConti = value_grad.contiguous();
+    auto query_gradConti = query_grad.contiguous();
+    auto key_gradConti = key_grad.contiguous();
+    auto linear_outputConti = linear_output.contiguous();
+    auto x_grad = at::zeros_like(xConti, at::kFloat);
+    auto weight_grad = at::zeros_like(weightConti, at::kFloat);
+    auto bias_grad = at::Tensor();
+    if (bias.has_value()) {
+        bias_grad = at::zeros_like(biasConti, biasConti.options());
     }
-    return RunInLinearSiluForwardInter(x, weight, bias, splitList);
-}
-
-torch::autograd::variable_list RunInLinearSiluBackward(const at::Tensor& gradUser, const at::Tensor& gradValue,
-                                                       const at::Tensor& gradQuery, const at::Tensor& gradKey,
-                                                       const at::Tensor& x, const at::Tensor& weight,
-                                                       const at::Tensor& bias, const at::Tensor& linearOutput)
-{
-    // split 反向 合并梯度
-    auto gradActivated = torch::cat({gradUser, gradValue, gradQuery, gradKey}, -1);
-
-    // silu
-    auto gradLinear = torch::silu_backward(gradActivated, linearOutput);
-
-    // addmm
-    // 初始化梯度张量
-    at::Tensor gradX;
-    at::Tensor gradWeight;
-    at::Tensor gradBias;
-
-    // 计算x的梯度
-    if (x.requires_grad()) {
-        gradX = torch::mm(gradLinear, weight);
-    }
-    // 计算weight的梯度
-    if (weight.requires_grad()) {
-        gradWeight = torch::mm(gradLinear.t(), x);
-    }
-    // 计算bias的梯度
-    if (bias.defined() && bias.requires_grad()) {
-        gradBias = gradLinear.sum(0, false);
-    }
-
-    return {gradX, gradWeight, gradBias, at::Tensor()};
-}
-
-at::Tensor RunSiluBackward(const at::Tensor& gradActivated, const at::Tensor& linearOutput)
-{
-    return torch::silu_backward(gradActivated, linearOutput);
+    bool isTrans = false;
+    EXEC_NPU_CMD(aclnnInLinearSiluBackward, xConti, weightConti, biasConti,
+                 user_gradConti, value_gradConti, query_gradConti, key_gradConti,
+                 linear_outputConti, attr_dict, isTrans, x_grad, weight_grad, bias_grad);
+    return {x_grad.to(xConti.scalar_type()), weight_grad.to(weightConti.scalar_type()), bias_grad, at::Tensor()};
 }
 
 class RunInLinearSiluFunction : public torch::autograd::Function<RunInLinearSiluFunction> {
@@ -140,38 +123,46 @@ public:
                                                   const at::Tensor& weight, const at::Tensor& bias,
                                                   at::IntArrayRef splitList)
     {
-        bool requiresGrad = false;
-        if (x.requires_grad() || weight.requires_grad() || bias.requires_grad()) {
-            requiresGrad = true;
-        }
-        ctx->saved_data["requiresGrad"] = requiresGrad;
-
         auto output = RunInLinearSiluForwardInter(x, weight, bias, splitList);
-        if (requiresGrad) {
-            ctx->save_for_backward({x, weight, bias, output[4]});
-        }
+        ctx->save_for_backward({x, weight, bias, output[4]});
+        ctx->saved_data["splitList"] = c10::List<int64_t>(splitList);
         return {output[0], output[1], output[2], output[3], output[4]};
     }
 
     static torch::autograd::variable_list backward(torch::autograd::AutogradContext* ctx,
                                                    torch::autograd::variable_list grad_outputs)
     {
-        auto requiresGrad = ctx->saved_data["requiresGrad"].toBool();
-        if (!requiresGrad) {
-            return {at::Tensor(), at::Tensor(), at::Tensor(), at::Tensor()};
-        }
-
         // 获取保存的张量
         auto saved = ctx->get_saved_variables();
         auto x = saved[0];
         auto weight = saved[1];
         auto bias = saved[2];
         auto linearOutput = saved[3];
-
-        return RunInLinearSiluBackward(grad_outputs[0], grad_outputs[1], grad_outputs[2], grad_outputs[3], x, weight,
-                                       bias, linearOutput);
+        auto splitListVec = ctx->saved_data["splitList"].toIntVector();
+        at::IntArrayRef splitList(splitListVec);
+        return RunInLinearSiluBackward(x, weight, bias,
+            grad_outputs[0], grad_outputs[1], grad_outputs[2], grad_outputs[3],
+            linearOutput, splitList);
     }
 };
+
+
+TORCH_LIBRARY_FRAGMENT(mxrec, m)
+{
+    m.def("distance_in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_dict) -> Tensor[]");
+    m.def("in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_dict) -> Tensor[]");
+    m.def("in_linear_silu_backward("
+        "Tensor x, Tensor weight, Tensor ? bias,"
+        "Tensor user_grad, Tensor value_grad, Tensor query_grad, Tensor key_grad,"
+        "Tensor linear_output,"
+        "int[] attr_dict) -> Tensor[]");
+}
+
+TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
+{
+    m.impl("distance_in_linear_silu", TORCH_FN(RunInLinearSiluForwardInter));
+    m.impl("in_linear_silu_backward", TORCH_FN(RunInLinearSiluBackward));
+}
 
 torch::autograd::variable_list RunInLinearSilu(const at::Tensor& x, const at::Tensor& weight, const at::Tensor& bias,
                                                at::IntArrayRef splitList)
@@ -179,23 +170,7 @@ torch::autograd::variable_list RunInLinearSilu(const at::Tensor& x, const at::Te
     return RunInLinearSiluFunction::apply(x, weight, bias, splitList);
 }
 
-TORCH_LIBRARY_FRAGMENT(mxrec, m)
-{
-    m.def("distance_in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] split_list) -> Tensor[]");
-    m.def("distance_in_linear_silu_forward(Tensor x, Tensor weight, Tensor bias, int[] split_list) -> Tensor[]");
-    m.def("distance_in_linear_silu_backward(Tensor gradUser, Tensor gradValue, Tensor gradQuery, Tensor gradKey, "
-          "Tensor x, Tensor weight, Tensor bias, Tensor linearOutput) -> Tensor[]");
-    m.def("silu_backward(Tensor grad_silu, Tensor input) -> Tensor");
-}
-
-TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
-{
-    m.impl("distance_in_linear_silu_forward", &RunInLinearSiluForward);
-    m.impl("distance_in_linear_silu_backward", &RunInLinearSiluBackward);
-    m.impl("silu_backward", &RunSiluBackward);
-}
-
 TORCH_LIBRARY_IMPL(mxrec, AutogradPrivateUse1, m)
 {
-    m.impl("distance_in_linear_silu", &RunInLinearSilu);
+    m.impl("in_linear_silu", TORCH_FN(RunInLinearSilu));
 }
