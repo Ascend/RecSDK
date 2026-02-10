@@ -84,8 +84,17 @@ struct TraitParams {
 };
 
 template <typename qType, int blockK>
-__aicore__ inline constexpr bool useL1Cache() {
+__aicore__ inline constexpr bool UseL1Cache() {
     return !std::is_same<qType, float>::value && (blockK < MAX_BLOCK_DIM);
+}
+
+template <typename qType, int blockM, int blockN, int blockK>
+__aicore__ inline constexpr size_t GetL1CacheSize() {
+    if constexpr (UseL1Cache<qType, blockK>()) {
+        return MATMUL_L1_SIZE - 2 * sizeof(qType) * blockM * blockN;
+    } else {
+        return MATMUL_L1_SIZE;
+    }
 }
 
 template <typename qType, int blockM, int blockN, int blockK>
@@ -147,7 +156,7 @@ __aicore__ inline void CopySVB1(const LocalTensor<int8_t>& bMatrix, const __gm__
     HstuDenseForwardTilingData* tilingP = reinterpret_cast<HstuDenseForwardTilingData*>(tilingPtr);
     int64_t dim = tilingP->vDim;
     int32_t headNumK = static_cast<int32_t>(dataPtr);
-    int32_t baseN = lookup<sizeof(qType), blockM, blockN, blockK>().getSVMatmulConfig().basicM;
+    int32_t baseN = lookup<sizeof(qType), blockM, blockN, blockK>().getSVMatmulConfig().basicN;
     int32_t baseK = lookup<sizeof(qType), blockM, blockN, blockK>().getSVMatmulConfig().basicK;
 
     uint16_t alignOfK = 0;
@@ -424,7 +433,18 @@ public:
         float scale)
     {
         if constexpr (!std::is_same<qType, float>::value) {
-            CalcuScoreWithFloat32(inLt, biasLt, inMaskLt, inMaskLtFp32, tmpLt, tmpLtFp32, needMask, thisLen, scale);
+            queIn.DeQue();
+            Cast(tmpLtFp32, inLt, RoundMode::CAST_NONE, thisLen);
+            queIn.FreeTensor(inLt);
+
+            auto biasLtFp32 = biasLt.template ReinterpretCast<float>();
+            Muls<float>(tmpLtFp32, tmpLtFp32, alpha, thisLen);
+            Silu<float>(biasLtFp32, tmpLtFp32, thisLen);
+            DoMaskOptional(inMaskLt, inMaskLtFp32, tmpLt, biasLtFp32, thisLen, needMask, scale);
+
+            auto outLt = queOut.AllocTensor<qType>();
+            Cast(outLt, biasLtFp32, RoundMode::CAST_RINT, thisLen);
+            queOut.EnQue(outLt);
         } else {
             queIn.DeQue();
 
@@ -642,7 +662,7 @@ public:
     __aicore__ inline void DoQkMatmulImpl(int64_t qOffset, int64_t kOffset, uint32_t taskId, uint32_t m, uint32_t n,
                                           uint32_t k)
     {
-        if constexpr (isFirst && useL1Cache<qType, TraitParams::blockK>()) {
+        if constexpr (isFirst && UseL1Cache<qType, TraitParams::blockK>()) {
             this->scm.FreeTensor(this->scmQKTensor);
             int64_t dim = xDim3;
             int64_t headNum = xDim2;
@@ -659,7 +679,7 @@ public:
 
         int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
         int64_t outOffset = midResultIdx * TraitParams::blockM * TraitParams::blockN;
-        if constexpr (useL1Cache<qType, TraitParams::blockK>()) {
+        if constexpr (UseL1Cache<qType, TraitParams::blockK>()) {
             qkMatmul.SetTensorA(scmQKTensor);
         } else {
             qkMatmul.SetTensorA(qGt[qOffset]);
@@ -675,7 +695,7 @@ public:
     __aicore__ inline void DoQkMatmulImpl(int64_t qOffset, int64_t kOffset, uint32_t taskId, uint32_t m, uint32_t n,
                                           uint32_t k, const GlobalTensor<qType>& midkGt)
     {
-        if constexpr (isFirst && useL1Cache<qType, TraitParams::blockK>()) {
+        if constexpr (isFirst && UseL1Cache<qType, TraitParams::blockK>()) {
             this->scm.FreeTensor(this->scmQKTensor);
             int64_t dim = xDim3;
             int64_t headNum = xDim2;
@@ -693,7 +713,7 @@ public:
         int64_t midResultIdx = taskId % COMPUTE_PIPE_NUM;
         int64_t outOffset = midResultIdx * TraitParams::blockM * TraitParams::blockN;
 
-        if constexpr (useL1Cache<qType, TraitParams::blockK>()) {
+        if constexpr (UseL1Cache<qType, TraitParams::blockK>()) {
             qkMatmul.SetTensorA(scmQKTensor);
         } else {
             qkMatmul.SetTensorA(qGt[qOffset]);
@@ -934,12 +954,12 @@ public:
 
     // Matmul
     using QK_MM_A_T = std::conditional_t<
-        useL1Cache<qType, TraitParams::blockK>(),
+        UseL1Cache<qType, TraitParams::blockK>(),
         matmul::MatmulType<TPosition::TSCM, CubeFormat::NZ, qType, false>,
         matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>
         >;
     using QK_MM_CB_T = std::conditional_t<
-        useL1Cache<qType, TraitParams::blockK>(),
+        UseL1Cache<qType, TraitParams::blockK>(),
         matmul::MatmulCallBackFunc<nullptr, nullptr, CopyQKB1<qType, TraitParams::blockM,
                                    TraitParams::blockN, TraitParams::blockK>>,
         matmul::MatmulCallBackFunc<nullptr, CopyQKA1<qType, TraitParams::blockM, TraitParams::blockN,
@@ -950,7 +970,7 @@ public:
     using QK_MM_C_T = matmul::MatmulType<qkMMCPos, CubeFormat::ND, scoreType, false>;
     using QK_MM_BIAS_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>;
     static constexpr auto staticQkTilingCfg = GetMatmulApiTiling<QK_MM_A_T, QK_MM_B_T, QK_MM_C_T, QK_MM_BIAS_T>(
-        qkMMConfig, MATMUL_L1_SIZE);
+        qkMMConfig, GetL1CacheSize<qType, TraitParams::blockM, TraitParams::blockN, TraitParams::blockK>());
     matmul::Matmul<QK_MM_A_T, QK_MM_B_T, QK_MM_C_T, QK_MM_BIAS_T, staticQkTilingCfg, QK_MM_CB_T> qkMatmul;
 
     using SV_MM_A_T = matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false, LayoutMode::NONE, false,
@@ -961,7 +981,7 @@ public:
     using SV_MM_CB_T = matmul::MatmulCallBackFunc<nullptr, nullptr, CopySVB1<qType, TraitParams::blockM,
                                                   TraitParams::blockN, TraitParams::blockK>>;
     static constexpr auto staticSvTilingCfg = GetMatmulApiTiling<SV_MM_A_T, SV_MM_B_T, SV_MM_C_T, SV_MM_BIAS_T>(
-        svMMConfig, MATMUL_L1_SIZE);
+        svMMConfig, GetL1CacheSize<qType, TraitParams::blockM, TraitParams::blockN, TraitParams::blockK>());
     matmul::Matmul<SV_MM_A_T, SV_MM_B_T, SV_MM_C_T, SV_MM_BIAS_T, staticSvTilingCfg, SV_MM_CB_T> svMatmul;
 };
 }  // namespace HstuDenseForward
