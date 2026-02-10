@@ -394,8 +394,8 @@ class TestHstuDeltaqkDemo:
     @pytest.mark.parametrize("silu_scale", [1 / 1024])
     @pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
     @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
-    def test_hstu_deltaqk_forward(self, batch_size, head_num, max_seq_len, head_dim_qk, head_dim_v, enable_bias,
-                                  mask_type, silu_scale, data_type):
+    def test_hstu_deltaqk_forward_MASK_NONE(self, batch_size, head_num, max_seq_len, head_dim_qk, head_dim_v,
+                                enable_bias, mask_type, silu_scale, data_type):
         qkv_shape_info = QKVShapeInfo(float_type=data_type,
                                       int_type=torch.int64,
                                       batch_size=batch_size,
@@ -429,7 +429,7 @@ class TestHstuDeltaqkDemo:
         @pytest.mark.parametrize("silu_scale", [0, 1 / 1024])
         @pytest.mark.parametrize("data_type", [torch.float8_e4m3fn])
         @pytest.mark.skipif(get_chip(), reason="This test case is Skipped for Ascend310P.")
-        def test_hstu_varlen_forward(self, batch_size, head_num_q, head_num_k, max_seq_len, head_dim_qk, head_dim_v,
+        def test_hstu_varlen_forward_fp8(self, batch_size, head_num_q, head_num_k, max_seq_len, head_dim_qk, head_dim_v,
                                      enable_bias, mask_type, silu_scale, data_type):
             qkv_shape_info = QKVShapeInfo(float_type=data_type,
                                           int_type=torch.int32,
