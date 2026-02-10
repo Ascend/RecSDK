@@ -45,6 +45,7 @@ def get_result(permute, device):
     if "cpu" in device:
         result = torch.ops.fbgemm.invert_permute(permute)
     elif "npu" in device:
+        torch.npu.set_device(device)
         permute = permute.to(device)
         result = torch.ops.mxrec.invert_permute(permute)
         torch.npu.synchronize()

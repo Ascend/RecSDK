@@ -89,6 +89,9 @@ sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.tx
 line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
 sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
 
+# A5核间数据通路默认走GM。配置DENABLE_CV_COMM_VIA_SSBUF编译选项，核间数据通路保持与A2一致
+sed -i '1i\add_ops_compile_options(ALL OPTIONS --cce-long-call=true -DENABLE_CV_COMM_VIA_SSBUF=true)' ./op_kernel/CMakeLists.txt
+
 sed -i '/\${ASCEND_CANN_PACKAGE_PATH}\/include/a\
 \${ASCEND_CANN_PACKAGE_PATH}\/pkg_inc
 ' ./cmake/*.cmake
