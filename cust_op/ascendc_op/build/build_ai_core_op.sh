@@ -104,14 +104,14 @@ cd "${ASCENDC_OP_DIR}"
 function cp_op_plugin()
 {
     cd "${torch_plugin_path}"
-    cp -r torch_library/common "${output_path}/torch_plugin"
+    cp -r torch_library/common "${plugin_output_path}"
 }
 
 function make_output_dir() {
     mxrec_output_path="${ASCENDC_OP_DIR}"/output
     output_path="${CUR_DIR}"/output
     opp_output_path="${CUR_DIR}"/output/recsdk_ops
-    plugin_output_path="${CUR_DIR}"/output/torch_plugin
+    plugin_output_path="${CUR_DIR}"/output/torch_plugin/torch_library
     mkdir -p "${mxrec_output_path}"
     mkdir -p "${output_path}"
     mkdir -p "${opp_output_path}"
@@ -198,6 +198,7 @@ function compile_ops_A5() {
         cd "$ops_path"
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
+            plugin_dir_names=${OP_PLUGIN_MAP[$dir_name]}
             if [[ "$dir_name" == "cmake" || "$dir_name" == "common" || "$dir_name" == "in_linear_silu" ]]; then
                 continue
             fi
@@ -210,6 +211,9 @@ function compile_ops_A5() {
                 cd "$dir_name"
                 cp ./build_out/custom_opp*.run  "${new_op_name}"
                 mv "${new_op_name}" "${opp_output_path}"
+                for plugin_dir_name in ${plugin_dir_names}; do
+                  cp -r ${torch_plugin_path}/torch_library/${plugin_dir_name} "${plugin_output_path}"
+                done
             fi
         fi
     done
@@ -230,7 +234,7 @@ function get_tar_pkg() {
     mkdir -p "${pkg_dir}"
 
     cp -r "${opp_output_path}" "${pkg_dir}"/
-    cp -r "${plugin_output_path}" "${pkg_dir}"/
+    cp -r "${output_path}/torch_plugin" "${pkg_dir}"/
 
     tar -zvcf "${release_tar}" "${pkg_dir}"
     rm -rf "${pkg_dir}"
