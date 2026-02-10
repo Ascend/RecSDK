@@ -89,37 +89,37 @@ class RunMode:
     def set_train_ops(self):
         dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
-        # multi task training
-        for loss, (dense_optimizer, sparse_optimizer) in zip(self.train_model.loss_list, self.optimizer_list):
-            # do dense optimization
-            grads = dense_optimizer.compute_gradients(loss, var_list=dense_variables)
-            avg_grads = []
-            for grad, var in grads:
-                if GLOBAL_RANK_SIZE > 1:
-                    grad = hccl_ops.allreduce(grad, "sum") if grad is not None else None
-                if grad is not None:
-                    avg_grads.append((grad, var))
-            # apply gradients: update variables
-            self.train_ops.append(dense_optimizer.apply_gradients(avg_grads))
+        dense_optimizer, sparse_optimizer = self.optimizer_list[0]
+        loss = self.train_model.loss
+        # do dense optimization
+        grads = dense_optimizer.compute_gradients(loss, var_list=dense_variables)
+        avg_grads = []
+        for grad, var in grads:
+            if GLOBAL_RANK_SIZE > 1:
+                grad = hccl_ops.allreduce(grad, "sum") if grad is not None else None
+            if grad is not None:
+                avg_grads.append((grad, var))
+        # apply gradients: update variables
+        self.train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
-            if bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0))):
-                from mx_rec.constants.constants import (
-                    ASCEND_SPARSE_LOOKUP_ID_OFFSET,
-                    ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
+        if bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0))):
+            from mx_rec.constants.constants import (
+                ASCEND_SPARSE_LOOKUP_ID_OFFSET,
+                ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
 
-                train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
+            train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
 
-                train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
+            train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
 
-                # do sparse optimization by addr
-                local_grads = tf.gradients(loss, train_emb_list)  # local_embedding
-                grads_and_vars = [(grad, address) for grad, address in zip(local_grads, train_address_list)]
-                self.train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
-            else:
-                # do sparse optimization
-                sparse_grads = tf.gradients(loss, sparse_variables)
-                grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
-                self.train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
+            # do sparse optimization by addr
+            local_grads = tf.gradients(loss, train_emb_list)  # local_embedding
+            grads_and_vars = [(grad, address) for grad, address in zip(local_grads, train_address_list)]
+            self.train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
+        else:
+            # do sparse optimization
+            sparse_grads = tf.gradients(loss, sparse_variables)
+            grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
+            self.train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
 
     def train(self, train_interval: int, saving_interval: int, if_load: bool, model_file: List[str]):
         self.set_train_ops()

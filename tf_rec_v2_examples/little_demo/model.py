@@ -26,7 +26,7 @@ class Model:
     def __init__(self):
         self._layer_dims = [1024, 512, 256, 128]
         self._emb_dim = None
-        self._loss = 0.0
+        self._loss_list = []
         self._all_layer_dims = None
         self._h_w = []
         self._h_b = []
@@ -96,11 +96,15 @@ class Model:
             for logit, label in zip(logit_list, (label_0, label_1)):
                 basic_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=logit, labels=label)
                 deep_loss = tf.reduce_mean(basic_loss)
-                self._loss += deep_loss
+                self._loss_list.append(deep_loss)
 
     @property
     def loss(self):
-        return self._loss
+        return tf.add_n(self._loss_list)
+
+    @property
+    def loss_list(self):
+        return self._loss_list
 
     def _forward(self, embedding):
         hidden_output = tf.reshape(embedding, [-1, self._emb_dim])
