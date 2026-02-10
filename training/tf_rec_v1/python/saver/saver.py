@@ -120,7 +120,7 @@ class Saver(object):
         self.save_op_dict = defaultdict(dict)
         self.restore_fetch_dict = defaultdict()
         self.placeholder_dict = defaultdict(dict)
-        self._last_checkponts = []
+        self._last_checkpoints = []
         self.config_instance = ConfigInitializer.get_instance()
         self.build()
         self.warm_start_tables = warm_start_tables
@@ -201,12 +201,12 @@ class Saver(object):
 
         self._save(sess, saving_path, save_delta)
         if self.max_to_keep:
-            self._last_checkponts.append(saving_path)
-            if len(self._last_checkponts) > self.max_to_keep:
+            self._last_checkpoints.append(saving_path)
+            if len(self._last_checkpoints) > self.max_to_keep:
                 logger.info("checkpoints num %d > max_to_keep %d delete %s",
-                            len(self._last_checkponts), self.max_to_keep,
-                            self._last_checkponts[0])
-                checkpoint_path = self._last_checkponts.pop(0)
+                            len(self._last_checkpoints), self.max_to_keep,
+                            self._last_checkpoints[0])
+                checkpoint_path = self._last_checkpoints.pop(0)
                 file_validator = FileValidator("checkpoint_path", checkpoint_path)
                 if not check_file_system_is_hdfs(checkpoint_path):
                     file_validator.check_not_soft_link()
