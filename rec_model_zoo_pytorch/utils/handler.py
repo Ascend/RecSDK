@@ -128,7 +128,7 @@ def get_fun_argument(parser):
         type=str,
         help="gpu数据路径",
     )
-    parser.add_argument("--seed", type=int, default=2025, help="随机数种子")
+    parser.add_argument("--seed", type=int, default=2026, help="随机数种子")
     parser.add_argument('--random_seqlen', nargs='+', type=int, default=[0],
                         help="动态seqlen的取值范围，为0则不启用动态seqlen")
     parser.add_argument(

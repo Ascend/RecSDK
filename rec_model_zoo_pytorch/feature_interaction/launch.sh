@@ -35,7 +35,7 @@ for model in ${MODELS[@]}; do
                             --learning_rate=0.001 \
                             --embedding_size=128 \
                             --hf32=true \
-                            --seed=2025 \
+                            --seed=2026 \
                             --graph=false \
                             --compile=false \
                             --dynamic_batch=false \
