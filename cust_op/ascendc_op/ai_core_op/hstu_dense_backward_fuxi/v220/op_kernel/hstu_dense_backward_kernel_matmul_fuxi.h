@@ -120,7 +120,7 @@ public:
         qkMatmul;
 
     matmul::Matmul<
-        matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
+        matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false, LayoutMode::NONE, false, TPosition::VECOUT>,
         matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
         matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
         matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>, CFG_NORM,
@@ -136,7 +136,7 @@ public:
         kGradMatmul;
 
     matmul::Matmul<
-        matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true>,
+        matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true, LayoutMode::NONE, false, TPosition::VECOUT>,
         matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
         matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
         matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>, CFG_NORM,
