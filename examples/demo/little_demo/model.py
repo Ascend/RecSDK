@@ -80,6 +80,9 @@ class MyModel:
                 self.predict_list.append(train_preds)
                 self.loss_list.append(deep_loss)
 
+    @property
+    def loss(self):
+        return tf.add_n(self.loss_list)
 
     def forward(self, embedding, act_func, keep_prob, training):
         hidden_output = tf.reshape(embedding, [-1, self.emb_dim]) # *512

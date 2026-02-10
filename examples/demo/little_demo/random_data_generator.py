@@ -29,9 +29,9 @@ def get_data_generator(config, batch_number):
         while i < batch_number:
             item_ids = np.random.randint(0, config.item_range, (config.batch_size, config.item_feat_cnt))
             user_ids = np.random.randint(0, config.user_range, (config.batch_size, config.user_feat_cnt))
-            category_ids = np.random.randint(0, config.category_range, (config.batch_size, config.category_feat_cnt))
             label_0 = np.random.randint(0, 2, (config.batch_size,))
             label_1 = np.random.randint(0, 2, (config.batch_size,))
+            category_ids = np.random.randint(0, config.category_range, (config.batch_size, config.category_feat_cnt))
 
             if USE_PADDING_KEYS:
                 batch_id = np.random.randint(0, config.batch_size)

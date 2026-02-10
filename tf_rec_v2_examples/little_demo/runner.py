@@ -80,8 +80,8 @@ class TaskRunner:
         for i in range(self._train_steps):
             logger.info("################    training at step %d    ################", i + 1)
             try:
-                _, loss = self._sess.run([train_ops, train_model.loss])
-                logger.info("Training loss: %s.", loss)
+                _, loss = self._sess.run([train_ops, train_model.loss_list])
+                logger.info("Training loss: %s.", loss[0])
             except tf.errors.OutOfRangeError:
                 logger.info("Encounter the end of Sequence for training.")
                 break
@@ -116,8 +116,8 @@ class TaskRunner:
         for i in range(start_step, start_step + self._train_steps):
             logger.info("################    training at step %d    ################", i)
             try:
-                _, loss = self._sess.run([train_ops, train_model.loss])
-                logger.info("Training loss: %s.", loss)
+                _, loss = self._sess.run([train_ops, train_model.loss_list])
+                logger.info("Training loss: %s.", loss[0])
             except tf.errors.OutOfRangeError:
                 logger.info("Encounter the end of Sequence for training.")
                 break
@@ -199,10 +199,12 @@ def _get_train_ops(train_model: Model) -> List[tf.Tensor]:
     train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
     # Do sparse optimization.
-    sparse_optimizer = mxrec.AdamWOptimizer(learning_rate=Config.learning_rate)
     sparse_embeddings = mxrec.get_sparse_embedding()
-    sparse_grads = tf.gradients(train_model.loss, sparse_embeddings)
-    train_ops.append(sparse_optimizer.apply_gradients(zip(sparse_grads, sparse_embeddings)))
+    for table_idx, sparse_emb in enumerate(sparse_embeddings[:2]):
+        opt_name = f"AdamWOptimizer_{table_idx}"
+        sparse_opt = mxrec.AdamWOptimizer(learning_rate=Config.learning_rate, name=opt_name)
+        sparse_grads = tf.gradients(train_model.loss, [sparse_emb])
+        train_ops.append(sparse_opt.apply_gradients(zip(sparse_grads, [sparse_emb])))
 
     return train_ops
 
