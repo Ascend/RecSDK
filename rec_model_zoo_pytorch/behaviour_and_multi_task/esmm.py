@@ -26,7 +26,7 @@ from deepctr_torch.inputs import DenseFeat
 from easydict import EasyDict as edict
 
 from datasets.aliccp import load_data, TestAliccpHandler, get_spec
-from utils.handler import ModelHandler, get_params, get_opts
+from utils.handler import ModelHandler, get_params, get_opts, set_all_seed
 from utils.common import get_loop_element
 from utils.logger import logger
 
@@ -173,6 +173,7 @@ if __name__ == "__main__":
         )
     )
     params = get_opts(sys.argv, params)
+    set_all_seed(params)
     params.tower_dnn_hidden_size = [val * 3 for val in params.tower_dnn_hidden_size]
     params.embedding_size = [8, 16, 32, 64, 128]
     logger.info(params)
