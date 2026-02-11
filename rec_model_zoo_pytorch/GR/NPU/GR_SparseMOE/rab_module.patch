@@ -64,7 +64,7 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/modules/paged_hstu_infer_layer.py
 --- a/examples/hstu/modules/paged_hstu_infer_layer.py	(revision 843c3f37f6c772dff19c274ba4423931ea699051)
 +++ b/examples/hstu/modules/paged_hstu_infer_layer.py	(date 1766367310839)
-@@ -14,7 +14,7 @@
+@@ -14,13 +14,14 @@
  # limitations under the License.
  # import hstu_attn
  # import paged_kvcache_ops
@@ -73,7 +73,14 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
  
  import os
  import torch
-@@ -51,14 +51,96 @@
+ import torch.nn.functional as F
+ from configs import InferenceHSTUConfig
+ from modules.jagged_data import JaggedData
++from modules.hstu_triton_op import triton_hstu_jagged_forword#, tune_block_config
+ import torch_npu
+ 
+ 
+@@ -51,14 +52,96 @@
          self.expert_number = expert_number
          self.experts = torch.nn.ModuleList([
                  FFN_npu_swiglu(emb_dim, emb_dim * 4, dtype) for _ in range(expert_number)])
@@ -171,7 +178,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
  
          final_hidden_states = torch.zeros(
              (seq_len, hidden_dim),
-@@ -70,13 +152,12 @@
+@@ -70,13 +153,12 @@
              expert_layer = self.experts[expert_idx]
              idx, top_x = torch.where(expert_mask[expert_idx])
              current_state = hidden_states.unsqueeze(0)[:, top_x, :].reshape(-1, hidden_dim)  # token选取专家
@@ -186,7 +193,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
  class MOERouter(torch.nn.Module):
      def __init__(self, emb_dim, expert_number, top_k_number, dtype):
          super().__init__()
-@@ -92,13 +173,169 @@
+@@ -92,13 +174,169 @@
          router_weights, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)  # shape都是 (b * s, top_k)
  
          # 专家权重归一化
@@ -358,7 +365,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
  
  # 专家ffn
  class FFN_npu_swiglu(torch.nn.Module):
-@@ -266,8 +503,20 @@
+@@ -266,8 +504,21 @@
  
          self.use_ffn = int(os.getenv("USE_FFN")) == 1
          self.use_moe = int(os.getenv("USE_MOE")) == 1
@@ -366,6 +373,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 +        self.use_rab = int(os.getenv("USE_RAB"))
          self.use_matmul_fp8 = int(os.getenv("ENABLE_MATMUL_FP8")) == 1
          self.use_new_hstu_op = int(os.getenv("USE_NEW_HSTU_OP")) == 1
++        self.use_trion_hstu_op = int(os.getenv("USE_TRITON_HSTU_OP")) == 1
 +        self.use_hstu_op = int(os.getenv("USE_HSTU_OP")) == 1
 +        self.user_seq_len = int(os.getenv("SEQ_LEN"))
 +        self.user_candidate_len = int(os.getenv("CANDIDATE_LEN"))
@@ -379,7 +387,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
  
          if self.use_matmul_fp8:
  
-@@ -284,7 +533,7 @@
+@@ -284,7 +535,7 @@
              self.feed_forward = torch.nn.ModuleList([
                  FFN_npu_swiglu(self._embedding_dim, self._embedding_dim * 4, dtype) for _ in range(self.ffn_number)])
  
@@ -388,7 +396,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
              self.sparse_moe_linear = SparseMOE(
                  emb_dim=self._embedding_dim,
                  expert_number=int(os.getenv("MOE_EXPERT_TOTAL_NUM")),
-@@ -292,6 +541,20 @@
+@@ -292,6 +543,20 @@
                  dtype=dtype
              )
  
@@ -409,7 +417,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
  
      def layer_output(self, num_tokens):
          return self.output_buffer_[:num_tokens, ...]
-@@ -330,42 +593,52 @@
+@@ -330,42 +595,54 @@
              dim=-1,
          )
  
@@ -454,18 +462,20 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 -                num_target=None,
 -                target_group_size=1,
 -            )
-+            if not self.use_new_hstu_op:
-+                jagged_attn_output = torch.ops.mxrec.hstu_dense(
-+                    query,
-+                    key,
-+                    value,
-+                    None,
-+                    rab,
-+                    0,  # mask_type, 0 表示下三角
-+                    jd.max_seqlen,
-+                    1.0 / (self._attention_dim_per_head ** 0.5),
-+                    "jagged",
-+                    seq_len,
++            if not self.use_new_hstu_op and self.use_trion_hstu_op:
++                jagged_attn_output = triton_hstu_jagged_forword(
++                    q=query,
++                    k=key,
++                    v=value,
++                    max_seq_len_q=jd.max_seqlen,
++                    max_seq_len_k=jd.max_seqlen,
++                    seq_offsets_q=jd.seqlen_offsets,
++                    seq_offsets_k=jd.seqlen_offsets,
++                    num_context=None,
++                    num_target=None,
++                    alpha=1.0 / (self._attention_dim_per_head ** 0.5),
++                    silu_scale=1,
++                    core_num=28
 +                )
 +            else:
 +                jagged_attn_output = torch.ops.mxrec.hstu_jagged(
@@ -496,7 +506,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
          parallel_input = user * F.layer_norm(
              jagged_attn_output,
              normalized_shape=[self._num_heads * self._linear_dim_per_head],
-@@ -380,8 +653,8 @@
+@@ -380,8 +657,8 @@
              layer_output = self._linear_proj(parallel_input)
  
  
@@ -507,7 +517,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
  
          if self.use_ffn:  # 适用于专家数和选择数相等，简化
              res = torch.zeros_like(layer_output)
-@@ -396,11 +669,11 @@
+@@ -396,11 +673,11 @@
  
      @torch.inference_mode()
      def forward_input(
@@ -524,7 +534,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
      ) -> JaggedData:
          input_tensor = input_buffer[:num_tokens, ...]
          normed_input = F.layer_norm(
-@@ -440,43 +713,53 @@
+@@ -440,43 +717,55 @@
              dim=-1,
          )
  
@@ -571,18 +581,20 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 -                num_target=None,
 -                target_group_size=1,
 -            )
-+            if not self.use_new_hstu_op:
-+                jagged_attn_output = torch.ops.mxrec.hstu_dense(
-+                    query,
-+                    key,
-+                    value,
-+                    None,
-+                    rab,
-+                    0,  # mask_type, 0 表示下三角
-+                    jd.max_seqlen,
-+                    1.0 / (self._attention_dim_per_head ** 0.5),
-+                    "jagged",
-+                    seq_len,
++            if not self.use_new_hstu_op and self.use_trion_hstu_op:
++                jagged_attn_output = triton_hstu_jagged_forword(
++                    q=query,
++                    k=key,
++                    v=value,
++                    max_seq_len_q=jd.max_seqlen,
++                    max_seq_len_k=jd.max_seqlen,
++                    seq_offsets_q=jd.seqlen_offsets,
++                    seq_offsets_k=jd.seqlen_offsets,
++                    num_context=None,
++                    num_target=None,
++                    alpha=1.0 / (self._attention_dim_per_head ** 0.5),
++                    silu_scale=1,
++                    core_num=28
 +                )
 +            else:
 +                jagged_attn_output = torch.ops.mxrec.hstu_jagged(
@@ -613,7 +625,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
          parallel_input = user * F.layer_norm(
              jagged_attn_output,
              normalized_shape=[self._num_heads * self._linear_dim_per_head],
-@@ -490,23 +773,20 @@
+@@ -490,23 +779,20 @@
          else:
              layer_output = self._linear_proj(parallel_input)
  
@@ -648,7 +660,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
  
      @torch.inference_mode()
      def forward_moe(
-@@ -514,20 +794,61 @@
+@@ -514,20 +800,61 @@
              num_tokens: int,
              layer_input: torch.Tensor,
      ) -> torch.Tensor:
@@ -722,6 +734,599 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 +    if actual_len == total_max_seq_len:
 +        return x.reshape(batchsize * max_seq_len, -1)
 +    return torch.ops.fbgemm.dense_to_jagged(x,[seq_offset],actual_len)[0]
+Index: examples/hstu/modules/hstu_triton_op.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/examples/hstu/modules/hstu_triton_op.py b/examples/hstu/modules/hstu_triton_op.py
+new file mode 100644
+--- /dev/null	(date 1770642650679)
++++ b/examples/hstu/modules/hstu_triton_op.py	(date 1770642650679)
+@@ -0,0 +1,583 @@
++import math
++import torch
++import triton
++import triton.language as tl
++import triton.language.extra.cann.extension as al
++import triton.extension.buffer.language as bl
++
++from enum import IntEnum
++
++class SeqType(IntEnum):
++    BASIC_KV = 0  # K基本块模式，sv可以直接store
++    FEW_KV = 1    # K块数量<=3，sv在fp16上累加精度可接受
++    LONG_QKV = 2  # 长序列模式，需在f32上累加，增加cast流水
++
++# 长度为len搬运n次的最优BLOCK（使多余搬运最少，BLOCK被32整除）
++# BLOCK = 32*ceil(len/(32*n)) n=1,2,...
++TILE_CONFIGS = [
++    {
++        "condition": lambda q, k, d: q <= 32 and k <= 32 and d == 256,
++        "BLOCK_M": 32, "BLOCK_N": 32,
++    },
++    {
++        "condition": lambda q, k, d: q <= 2048 and k <= 2048 and d == 256,
++        "BLOCK_M": 112, "BLOCK_N": 256,
++    },
++    {
++        "condition": lambda q, k, d: q <= 8192 and k <= 8192 and d == 256,
++        "BLOCK_M": 256, "BLOCK_N": 192,
++    },
++    {
++        "condition": lambda q, k, d: q <= 128 and k <= 256 and d == 128,
++        "BLOCK_M": 128, "BLOCK_N": 256,
++    },
++    {
++        "condition": lambda q, k, d: q <= 1024 and k <= 1024 and d == 128,
++        "BLOCK_M": 64, "BLOCK_N": 352,
++    },
++    {
++        "condition": lambda q, k, d: q <= 32 and k <= 512 and d == 64,
++        "BLOCK_M": 32, "BLOCK_N": 512,
++    },
++    {
++        "condition": lambda q, k, d: q <= 64 and k <= 1024 and d == 64,
++        "BLOCK_M": 64, "BLOCK_N": 512,
++    },
++    {
++        "condition": lambda q, k, d: q <= 256 and k <= 256 and d == 64,
++        "BLOCK_M": 256, "BLOCK_N": 128,
++    },
++    {
++        "condition": lambda q, k, d: q <= 512 and k <= 1024 and d == 64,
++        "BLOCK_M": 128, "BLOCK_N": 352,
++    },
++    {
++        "condition": lambda q, k, d: q <= 32 and k <= 512 and d == 32,
++        "BLOCK_M": 32, "BLOCK_N": 256,
++    },
++    {
++        "condition": lambda q, k, d: d <= 64,
++        "BLOCK_M": 128, "BLOCK_N": 352,
++    },
++    {
++        "condition": lambda q, k, d: d <= 80,
++        "BLOCK_M": 128, "BLOCK_N": 352,
++    },
++    {
++        "condition": lambda q, k, d: d <= 128,
++        "BLOCK_M": 128, "BLOCK_N": 256,
++    },
++    {
++        "condition": lambda q, k, d: d <= 256,
++        "BLOCK_M": 256, "BLOCK_N": 192,
++    },
++    {
++        "condition": lambda q, k, d: d <= 512,
++        "BLOCK_M": 128, "BLOCK_N": 128,
++    },
++    {
++        "condition": lambda q, k, d: True,
++        "BLOCK_M": 96, "BLOCK_N": 64,
++    },
++]
++
++@triton.jit
++def _upper_bound_prefix(prefix_ptr, n: tl.constexpr, log_n: tl.constexpr, x):
++    # return first idx such that prefix[idx] > x
++    l = 0
++    r = n
++    for _ in range(log_n):
++        m = (l + r) // 2
++        v = tl.load(prefix_ptr + m)
++        if v <= x:
++            l = m + 1
++        else:
++            r = m
++    return l
++
++@triton.jit
++def _map_qtask_to_batch_qblk(
++    q_task,
++    total_q_blocks,
++    q_blk_offsets,
++    BATCH_SIZE: tl.constexpr,
++    LOG_BATCH_SIZE_P1: tl.constexpr,
++    MAX_SEQ_LEN_Q: tl.constexpr,
++    BLOCK_M: tl.constexpr,
++):
++    head_id = q_task // total_q_blocks
++    gq = q_task % total_q_blocks
++    if MAX_SEQ_LEN_Q <= BLOCK_M:
++        batch_id = gq               # 0..B-1
++        q_block_id = tl.cast(0, tl.int64)
++    else:
++        ub = _upper_bound_prefix(q_blk_offsets, BATCH_SIZE + 1, LOG_BATCH_SIZE_P1, gq)  # 1..B
++        batch_id = tl.cast(ub - 1, tl.int64)
++        base = tl.load(q_blk_offsets + batch_id)  # prefix[batch]
++        q_block_id = gq - base
++
++    return head_id, batch_id, q_block_id
++
++@triton.jit
++def _split_core_range(total_tasks, pid, num_cores):
++    used = tl.minimum(num_cores, total_tasks)
++
++    split_next = total_tasks // used
++    split_prev = split_next + 1
++    rem = total_tasks % used
++
++    in_used = pid < used
++    in_prev = pid < rem
++
++    start_prev = pid * split_prev
++    start_next = rem * split_prev + (pid - rem) * split_next
++
++    task_start = tl.where(in_used, tl.where(in_prev, start_prev, start_next), 0)
++    task_cnt   = tl.where(in_used, tl.where(in_prev, split_prev, split_next), 0)
++    task_end   = task_start + task_cnt
++    return task_start, task_end, used
++
++@triton.jit
++def _do_qk_matmul(
++    q_sub, k_base, qk_ub,
++    seq_len_q, seq_len_k,
++    q_block_id, n_offset,
++    stride_qm, stride_kn,
++    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
++    HEAD_DIM: tl.constexpr,
++):
++    offs_n = tl.arange(0, BLOCK_N)
++    offs_d = tl.arange(0, HEAD_DIM)
++
++    k_row_idx = n_offset + offs_n
++    k_row_mask = k_row_idx < seq_len_k
++
++    k_ptrs = k_base + k_row_idx[:, None] * stride_kn + offs_d[None, :]
++    k_sub = tl.load(k_ptrs, mask=k_row_mask[:, None], other=0.0)
++    s_tile = tl.dot(q_sub, tl.trans(k_sub))
++
++    al.fixpipe(s_tile, qk_ub, dma_mode=al.FixpipeDMAMode.NZ2NZ, dual_dst_mode=al.FixpipeDualDstMode.COLUMN_SPLIT)
++
++@triton.jit
++def _do_vec_score(
++    qk_ub, s_l1,
++    alpha, silu_scale,
++    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
++    seq_len_q, seq_len_k,
++    q_block_id, n_offset,
++    DATA_TYPE: tl.constexpr,
++):
++    BLOCK_N_HALF: tl.constexpr = BLOCK_N // 2
++    s = bl.to_tensor(qk_ub)
++    s = s.reshape(BLOCK_N_HALF * BLOCK_M)
++    S = s * alpha
++    s_act = S * tl.sigmoid(S)
++    s_out = s_act * silu_scale
++    s_out = s_out.to(DATA_TYPE)
++    s_out = s_out.reshape(BLOCK_N_HALF // 16, BLOCK_M // 16, 16, 16)
++
++    # UB(nz) -> L1(nz)
++    al.copy_from_ub_to_l1(bl.to_buffer(s_out, al.ascend_address_space.UB), s_l1)
++
++@triton.jit
++def _do_sv_matmul(
++    s_l1,
++    v_base, acc_base,
++    out_base,
++    seq_len_q, seq_len_k,
++    q_block_id, n_offset,
++    stride_vn, stride_om,
++    seq_type: tl.constexpr,
++    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
++    V_HEAD_DIM: tl.constexpr,
++    OUT_DATA_TYPE: tl.constexpr,
++):
++    offs_m = tl.arange(0, BLOCK_M)
++    offs_n = tl.arange(0, BLOCK_N)
++    offs_d = tl.arange(0, V_HEAD_DIM)
++
++    q_row_idx = q_block_id * BLOCK_M + offs_m
++    q_row_mask = q_row_idx < seq_len_q
++
++    v_row_idx = n_offset + offs_n
++    v_row_mask = v_row_idx < seq_len_k
++    s = bl.to_tensor(s_l1, target_shape=[BLOCK_M, BLOCK_N])
++
++    v_ptrs = v_base + v_row_idx[:, None] * stride_vn + offs_d[None, :]
++    v = tl.load(v_ptrs, mask=v_row_mask[:, None], other=0.0)
++
++    acc = tl.dot(s, v)
++
++    if seq_type == 0:
++        out_ptr = out_base + q_row_idx[:, None] * stride_om + offs_d[None, :]
++        tl.store(out_ptr, acc.to(OUT_DATA_TYPE), mask=q_row_mask[:, None])
++    elif seq_type == 1:
++        out_ptr = out_base + q_row_idx[:, None] * stride_om + offs_d[None, :]
++        tl.atomic_add(out_ptr, acc.to(OUT_DATA_TYPE), mask=q_row_mask[:, None])
++    else:
++        acc_ptr = acc_base + q_row_idx[:, None] * stride_om + offs_d[None, :]
++        tl.atomic_add(acc_ptr, acc, mask=q_row_mask[:, None])
++
++@triton.jit
++def _do_cast_store(
++    acc_base, out_base,
++    seq_len_q, q_block_id,
++    stride_om, stride_oh,
++    BLOCK_M: tl.constexpr, V_HEAD_DIM: tl.constexpr,
++    OUT_DATA_TYPE: tl.constexpr,
++    MAX_ELEMS_PER_STEP: tl.constexpr,
++):
++    BLOCK_M_HALF: tl.constexpr = BLOCK_M // 2
++    ROWS_PER_STEP: tl.constexpr = MAX_ELEMS_PER_STEP // V_HEAD_DIM
++
++    sub_vec_id = al.sub_vec_id()
++    base_row = q_block_id * BLOCK_M + sub_vec_id * BLOCK_M_HALF
++
++    offs_d = tl.arange(0, V_HEAD_DIM)
++    offs_step = tl.arange(0, ROWS_PER_STEP)
++    for row_start in tl.range(0, BLOCK_M_HALF, ROWS_PER_STEP):
++        offs_m = row_start + offs_step
++        q_row_idx = base_row + offs_m
++        row_mask = q_row_idx < seq_len_q
++
++        acc_ptrs = acc_base + q_row_idx[:, None] * stride_om + offs_d[None, :]
++        acc_val = tl.load(acc_ptrs, mask=row_mask[:, None])
++
++        out_val = acc_val.to(OUT_DATA_TYPE)
++        out_ptrs = out_base + q_row_idx[:, None] * stride_om + offs_d[None, :]
++        tl.store(out_ptrs, out_val, mask=row_mask[:, None])
++
++@triton.jit
++def _hstu_jagged_fwd(
++    Q, K, V,
++    seq_offsets_q, seq_offsets_k,
++    q_blk_offsets,
++    Acc,
++    Out,
++    stride_qm: tl.constexpr, stride_qh: tl.constexpr,
++    stride_kn: tl.constexpr, stride_kh: tl.constexpr,
++    stride_vn: tl.constexpr, stride_vh: tl.constexpr,
++    stride_om: tl.constexpr, stride_oh: tl.constexpr,
++    alpha, silu_scale,
++    MAX_SEQ_LEN_Q, MAX_SEQ_LEN_K,
++    DeltaSize,
++    HEAD_DIM: tl.constexpr,
++    V_HEAD_DIM: tl.constexpr,
++    GROUP_SIZE: tl.constexpr,
++    HEAD_NUM_Q: tl.constexpr,
++    BATCH_SIZE: tl.constexpr,
++    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
++    dtype: tl.constexpr,
++    seq_type: tl.constexpr,
++):
++    pid = tl.program_id(0)
++    num_cores = tl.num_programs(0)
++
++    # 计算 q_blk_offsets
++    with al.scope(core_mode="vector"):
++        if (pid == 0 and al.sub_vec_id() == 0) and MAX_SEQ_LEN_Q > BLOCK_M:
++            tl.store(q_blk_offsets, 0)
++            running_sum = 0
++            start_q = tl.load(seq_offsets_q)
++            for i in range(BATCH_SIZE):
++                end_q = tl.load(seq_offsets_q + i + 1)
++                length_q = end_q - start_q
++                n_blks = (length_q + BLOCK_M - 1) // BLOCK_M
++                running_sum += tl.cast(n_blks, tl.int32)
++                tl.store(q_blk_offsets + i + 1, running_sum)
++                start_q = end_q
++    al.sync_block_all("all", 0)
++
++    if MAX_SEQ_LEN_Q <= BLOCK_M:
++        total_q_blocks = tl.cast(BATCH_SIZE, tl.int64)
++    else:
++        total_q_blocks = tl.load(q_blk_offsets + BATCH_SIZE).to(tl.int64)
++    total_tasks = HEAD_NUM_Q * total_q_blocks
++    task_start, task_end, used = _split_core_range(total_tasks, pid, num_cores)
++    if pid >= used:
++        return
++    q_task_cnt = task_end - task_start
++    if q_task_cnt <= 0:
++        return
++    LOG_BATCH_SIZE_P1 = int(math.log2(BATCH_SIZE + 1)) + 1
++
++    # KV tile 上界（用 MAX_SEQ_LEN_K 做扁平化长度）
++    kv_blk_num: tl.constexpr = tl.cdiv(MAX_SEQ_LEN_K, BLOCK_N)
++    blk_cnt = q_task_cnt * kv_blk_num
++
++    BLOCK_M_HALF: tl.constexpr = BLOCK_M // 2
++    BLOCK_N_HALF: tl.constexpr = BLOCK_N // 2
++    PIPE_STAGES: tl.constexpr = 2
++    DATA_TYPE: tl.constexpr = tl.float16 if dtype == 0 else tl.bfloat16 if dtype == 1 else tl.float8e4nv
++    OUT_DATA_TYPE: tl.constexpr = tl.bfloat16 if dtype == 1 else tl.float16
++
++    qk_ub_ping = bl.alloc(tl.float32, [BLOCK_N_HALF // 16, BLOCK_M // 16, 16, 16], al.ascend_address_space.UB)
++    qk_ub_pong = bl.alloc(tl.float32, [BLOCK_N_HALF // 16, BLOCK_M // 16, 16, 16], al.ascend_address_space.UB)
++
++    # [a0a1, b0b1] (ND) -> [b1, a1, a0, b0] (zN)
++    s_l1_ping = bl.alloc(DATA_TYPE, [BLOCK_N // 16, BLOCK_M // 16, 16, 16], al.ascend_address_space.L1)
++    s_l1_pong = bl.alloc(DATA_TYPE, [BLOCK_N // 16, BLOCK_M // 16, 16, 16], al.ascend_address_space.L1)
++
++    with al.scope(core_mode="cube"):
++        old_head_id, old_batch_id, old_q_block_id = tl.cast(-1, tl.int64), tl.cast(-1, tl.int64), tl.cast(-1, tl.int64)
++        q_keep = bl.alloc(DATA_TYPE, [BLOCK_M, HEAD_DIM], al.ascend_address_space.L1)
++        for p in range(0, blk_cnt + 2):
++            blk_sv = p - 2
++            if 0 <= blk_sv and blk_sv < blk_cnt:
++                q_task = task_start + (blk_sv // kv_blk_num)
++                tile_sv = blk_sv % kv_blk_num
++
++                head_id, batch_id, q_block_id = _map_qtask_to_batch_qblk(
++                    q_task, total_q_blocks, q_blk_offsets, BATCH_SIZE, LOG_BATCH_SIZE_P1, MAX_SEQ_LEN_Q, BLOCK_M
++                )
++                kv_head_id = head_id // GROUP_SIZE
++
++                seq_start_q = tl.load(seq_offsets_q + batch_id)
++                seq_end_q = tl.load(seq_offsets_q + batch_id + 1)
++                seq_start_k = tl.load(seq_offsets_k + batch_id)
++                seq_end_k = tl.load(seq_offsets_k + batch_id + 1)
++
++                seq_len_q = seq_end_q - seq_start_q
++                seq_len_k = seq_end_k - seq_start_k
++
++                v_base = V + kv_head_id * stride_vh + seq_start_k * stride_vn
++                acc_base = Acc + head_id * stride_oh + seq_start_q * stride_om
++                out_base = Out + head_id * stride_oh + seq_start_q * stride_om
++
++                num_tiles = tl.cdiv(seq_len_k, BLOCK_N)
++                n_offset_sv = tile_sv * BLOCK_N
++                ping_pong_id = blk_sv % PIPE_STAGES
++
++                if tile_sv < num_tiles:
++                    al.sync_block_wait("vector", "cube", 1, al.PIPE.PIPE_MTE3, al.PIPE.PIPE_MTE1)  # SYNC_S_READY
++                    if ping_pong_id == 0:
++                        s_l1 = s_l1_ping
++                    else:
++                        s_l1 = s_l1_pong
++                    _do_sv_matmul(
++                        s_l1,
++                        v_base, acc_base,
++                        out_base,
++                        seq_len_q, seq_len_k,
++                        q_block_id, n_offset_sv,
++                        stride_vn, stride_om,
++                        seq_type,
++                        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N,
++                        V_HEAD_DIM=V_HEAD_DIM,
++                        OUT_DATA_TYPE=OUT_DATA_TYPE,
++                    )
++
++                    # 长序列模式 最后一个k块后通知vec做cast
++                    if seq_type == 2 and tile_sv == num_tiles - 1:
++                        al.sync_block_set("cube", "vector", 2, al.PIPE.PIPE_FIX, al.PIPE.PIPE_MTE2)
++
++            blk_qk = p
++            if blk_qk < blk_cnt:
++                q_task = task_start + (blk_qk // kv_blk_num)
++                tile_qk = blk_qk % kv_blk_num
++
++                head_id, batch_id, q_block_id = _map_qtask_to_batch_qblk(
++                    q_task, total_q_blocks, q_blk_offsets, BATCH_SIZE, LOG_BATCH_SIZE_P1, MAX_SEQ_LEN_Q, BLOCK_M
++                )
++                kv_head_id = head_id // GROUP_SIZE
++
++                seq_start_q = tl.load(seq_offsets_q + batch_id)
++                seq_end_q = tl.load(seq_offsets_q + batch_id + 1)
++                seq_start_k = tl.load(seq_offsets_k + batch_id)
++                seq_end_k = tl.load(seq_offsets_k + batch_id + 1)
++
++                seq_len_q = seq_end_q - seq_start_q
++                seq_len_k = seq_end_k - seq_start_k
++
++                q_base = Q + head_id * stride_qh + seq_start_q * stride_qm
++                k_base = K + kv_head_id * stride_kh + seq_start_k * stride_kn
++
++                num_tiles = tl.cdiv(seq_len_k, BLOCK_N)
++                n_offset_qk = tile_qk * BLOCK_N
++                ping_pong_id = blk_qk % PIPE_STAGES
++
++                if tile_qk < num_tiles:
++                    # q块复用优化
++                    if (head_id != old_head_id or batch_id != old_batch_id) or q_block_id != old_q_block_id:
++                        offs_m = tl.arange(0, BLOCK_M)
++                        offs_d = tl.arange(0, HEAD_DIM)
++                        q_row_idx = q_block_id * BLOCK_M + offs_m
++                        q_row_mask = q_row_idx < seq_len_q
++                        q_ptrs = q_base + q_row_idx[:, None] * stride_qm + offs_d[None, :]
++                        q_sub = tl.load(q_ptrs, mask=q_row_mask[:, None], other=0.0)
++                        bl.to_buffer(tensor=q_sub, bind_buffer=q_keep)
++                    else:
++                        q_sub = bl.to_tensor(q_keep)
++
++                    old_head_id, old_batch_id, old_q_block_id = head_id, batch_id, q_block_id
++                    if ping_pong_id == 0:
++                        qk_ub = qk_ub_ping
++                    else:
++                        qk_ub = qk_ub_pong
++                    _do_qk_matmul(
++                        q_sub, k_base, qk_ub,
++                        seq_len_q, seq_len_k,
++                        q_block_id, n_offset_qk,
++                        stride_qm, stride_kn,
++                        BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N,
++                        HEAD_DIM=HEAD_DIM,
++                    )
++                    al.sync_block_set("cube", "vector", 0, al.PIPE.PIPE_FIX, al.PIPE.PIPE_V)  # SYNC_QK_READY
++
++    with al.scope(core_mode="vector"):
++        for p in range(0, blk_cnt + 3):
++            blk_vec = p - 1
++            if 0 <= blk_vec and blk_vec < blk_cnt:
++                q_task = task_start + (blk_vec // kv_blk_num)
++                tile_vec = blk_vec % kv_blk_num
++
++                head_id, batch_id, q_block_id = _map_qtask_to_batch_qblk(
++                    q_task, total_q_blocks, q_blk_offsets, BATCH_SIZE, LOG_BATCH_SIZE_P1, MAX_SEQ_LEN_Q, BLOCK_M
++                )
++
++                seq_start_q = tl.load(seq_offsets_q + batch_id)
++                seq_end_q = tl.load(seq_offsets_q + batch_id + 1)
++                seq_start_k = tl.load(seq_offsets_k + batch_id)
++                seq_end_k = tl.load(seq_offsets_k + batch_id + 1)
++
++                seq_len_q = seq_end_q - seq_start_q
++                seq_len_k = seq_end_k - seq_start_k
++
++                num_tiles = tl.cdiv(seq_len_k, BLOCK_N)
++                n_offset_vec = tile_vec * BLOCK_N
++                ping_pong_id = blk_vec % PIPE_STAGES
++                if tile_vec < num_tiles:
++                    al.sync_block_wait("cube", "vector", 0, al.PIPE.PIPE_FIX, al.PIPE.PIPE_V)
++                    if ping_pong_id == 0:
++                        qk_ub = qk_ub_ping
++                    else:
++                        qk_ub = qk_ub_pong
++                    sub_vec_id = al.sub_vec_id()
++                    if ping_pong_id == 0:
++                        s_l1 = bl.subview(s_l1_ping, [sub_vec_id * (BLOCK_N_HALF // 16), 0, 0, 0], [BLOCK_N_HALF // 16, BLOCK_M // 16, 16, 16], [1, 1, 1, 1])
++                    else:
++                        s_l1 = bl.subview(s_l1_pong, [sub_vec_id * (BLOCK_N_HALF // 16), 0, 0, 0], [BLOCK_N_HALF // 16, BLOCK_M // 16, 16, 16], [1, 1, 1, 1])
++                    _do_vec_score(
++                        qk_ub, s_l1,
++                        alpha, silu_scale,
++                        BLOCK_M, BLOCK_N,
++                        seq_len_q, seq_len_k,
++                        q_block_id, n_offset_vec,
++                        DATA_TYPE,
++                    )
++                    al.sync_block_set("vector", "cube", 1, al.PIPE.PIPE_MTE3, al.PIPE.PIPE_MTE1)
++
++            # 长序列模式 最后一个k块后做cast
++            if seq_type == 2:
++                blk_cast = p - 3
++                if 0 <= blk_cast and blk_cast < blk_cnt:
++                    q_task = task_start + (blk_cast // kv_blk_num)
++                    tile_cast = blk_cast % kv_blk_num
++                    head_id, batch_id, q_block_id = _map_qtask_to_batch_qblk(
++                        q_task, total_q_blocks, q_blk_offsets, BATCH_SIZE, LOG_BATCH_SIZE_P1, MAX_SEQ_LEN_Q, BLOCK_M
++                    )
++
++                    seq_start_q = tl.load(seq_offsets_q + batch_id)
++                    seq_end_q = tl.load(seq_offsets_q + batch_id + 1)
++                    seq_start_k = tl.load(seq_offsets_k + batch_id)
++                    seq_end_k = tl.load(seq_offsets_k + batch_id + 1)
++
++                    seq_len_q = seq_end_q - seq_start_q
++                    seq_len_k = seq_end_k - seq_start_k
++                    num_tiles = tl.cdiv(seq_len_k, BLOCK_N)
++                    if tile_cast == num_tiles - 1:
++                        al.sync_block_wait("cube", "vector", 2, al.PIPE.PIPE_FIX, al.PIPE.PIPE_MTE2)
++                        acc_base = Acc + head_id * stride_oh + seq_start_q * stride_om
++                        out_base = Out + head_id * stride_oh + seq_start_q * stride_om
++                        if BLOCK_M_HALF * V_HEAD_DIM <= 72 * 128:
++                            CAST_MAX_ELEMS_PER_STEP: tl.constexpr = BLOCK_M_HALF * V_HEAD_DIM
++                        else:
++                            CAST_MAX_ELEMS_PER_STEP: tl.constexpr = 72 * 128
++                        _do_cast_store(
++                            acc_base, out_base,
++                            seq_len_q, q_block_id,
++                            stride_om, stride_oh,
++                            BLOCK_M, V_HEAD_DIM,
++                            OUT_DATA_TYPE,
++                            CAST_MAX_ELEMS_PER_STEP,
++                        )
++
++def triton_hstu_jagged_forword(
++    q: torch.Tensor,
++    k: torch.Tensor,
++    v: torch.Tensor,
++    max_seq_len_q: int,
++    max_seq_len_k: int,
++    seq_offsets_q: torch.Tensor,
++    seq_offsets_k: torch.Tensor,
++    num_context: torch.Tensor,
++    num_target: torch.Tensor,
++    alpha: float,
++    silu_scale: float,
++    core_num: int,
++) -> torch.Tensor:
++    BLOCK_M = 128
++    BLOCK_N = 128
++    device = q.device
++    batch_size = len(seq_offsets_q) - 1
++    total_tokens, head_num_q, head_dim = q.shape
++    head_num_k = k.shape[1]
++    _, _, v_head_dim = v.shape
++
++    for config in TILE_CONFIGS:
++        if config["condition"](max_seq_len_q, max_seq_len_k, max(head_dim, v_head_dim)):
++            BLOCK_M = config["BLOCK_M"]
++            BLOCK_N = config["BLOCK_N"]
++            break
++
++    k_block_count = (max_seq_len_k + BLOCK_N - 1) // BLOCK_N
++    if k_block_count <= 1:
++        seq_type = SeqType.BASIC_KV
++    elif k_block_count <= 3:
++        seq_type = SeqType.FEW_KV
++    else:
++        seq_type = SeqType.LONG_QKV
++
++    assert head_num_q % head_num_k == 0, f"Query heads ({head_num_q}) must be divisible by KV heads ({head_num_k})"
++    group_size = head_num_q // head_num_k
++    out_dtype = torch.float16 if q.dtype == torch.float8_e4m3fn else q.dtype
++    acc = torch.zeros((total_tokens, head_num_q, v_head_dim), dtype=torch.float32, device=device)
++    out = torch.zeros((total_tokens, head_num_q, v_head_dim), dtype=out_dtype, device=device)
++    type_mapper = {torch.float16: 0, torch.bfloat16: 1, torch.float8_e4m3fn: 2}
++    dtype = type_mapper.get(q.dtype, 0)
++    grid = (core_num,)
++    q_blk_offsets = torch.empty((batch_size + 1,), dtype=torch.int32, device=device)
++    _hstu_jagged_fwd[grid](
++        Q=q, K=k, V=v,
++        Acc=acc,
++        Out=out,
++        seq_offsets_q=seq_offsets_q,
++        seq_offsets_k=seq_offsets_k,
++        q_blk_offsets=q_blk_offsets,
++        stride_qm=q.stride(0),
++        stride_qh=q.stride(1),
++        stride_kn=k.stride(0),
++        stride_kh=k.stride(1),
++        stride_vn=v.stride(0),
++        stride_vh=v.stride(1),
++        stride_om=out.stride(0),
++        stride_oh=out.stride(1),
++        alpha=alpha,
++        silu_scale=silu_scale,
++        MAX_SEQ_LEN_Q=max_seq_len_q,
++        MAX_SEQ_LEN_K=max_seq_len_k,
++        DeltaSize=0,
++        HEAD_DIM=head_dim,
++        V_HEAD_DIM=v_head_dim,
++        GROUP_SIZE=group_size,
++        HEAD_NUM_Q=head_num_q,
++        BATCH_SIZE=batch_size,
++        BLOCK_M=BLOCK_M,
++        BLOCK_N=BLOCK_N,
++        dtype=dtype,
++        seq_type=seq_type,
++        disable_auto_inject_block_sync=True,
++        enable_drop_unit_dims=False,
++        enable_auto_vectorize_v2=True,
++    )
++    return out
 Index: examples/hstu/benchmark/inference_benchmark_2b_random.py
 IDEA additional info:
 Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
@@ -910,7 +1515,7 @@ diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k.sh
  export MODEL_PATH="hstu3B.bin"
  export USE_MOE=0     #  USE_FFN 和 USE_MOE 不能同时开启
  export LAYER_NUM=7
-@@ -30,9 +29,18 @@
+@@ -30,9 +29,19 @@
  export MOE_EXPERT_ACT_NUM=2
  export USE_FFN=1     #  USE_FFN 和 USE_MOE 不能同时开启
  export USE_FFN_NUMBER=2
@@ -927,10 +1532,11 @@ diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k.sh
  export ENABLE_MATMUL_FP8=0
 -export USE_NEW_HSTU_OP=0
 +export USE_NEW_HSTU_OP=1
++export USE_TRITON_HSTU_OP=0
  
  
  #库路径
-@@ -45,15 +53,21 @@
+@@ -45,15 +54,21 @@
  export BATCH_SIZE=1
  
  export USE_FLOAT16=0
