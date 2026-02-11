@@ -129,24 +129,29 @@ if not CPU_ENABLE:
             end_time = time.time()
             latency = end_time - start_time
             latency_list.append(latency)
-            print(f"{model_name} time cost: {latency}")
 
     latency_list = latency_list[2:]
     avg_time = sum(latency_list) / len(latency_list)
-    print(f"{model_name} avg time cost: {avg_time}")
 
     latency_list.sort()
     p90 = 0.0
+    p95 = 0.0
     p99 = 0.0
+    p999 = 0.0
+
+    def calculate_percentile(values, percentile):
+        """计算指定分位数的值"""
+        if not values:
+            return None
+        index = int(len(values) * percentile)
+        index = min(index, len(values) - 1)
+        return round(values[index], 6)
 
     if len(latency_list) > 0:
-        p90_index = int(len(latency_list) * 0.9)
-        p90_index = min(p90_index, len(latency_list) - 1)
-        p90 = round(latency_list[p90_index], 6)
-
-        p99_index = int(len(latency_list) * 0.99)
-        p99_index = min(p99_index, len(latency_list) - 1)
-        p99 = round(latency_list[p99_index], 6)
+        p90 = calculate_percentile(latency_list, 0.9)
+        p95 = calculate_percentile(latency_list, 0.95)
+        p99 = calculate_percentile(latency_list, 0.99)
+        p999 = calculate_percentile(latency_list, 0.999)
 
     QPS = int(1 / avg_time)
     e2e_result = {
@@ -154,8 +159,10 @@ if not CPU_ENABLE:
         "model_name": model_name,
         "QPS": QPS,
         "AVG Latency": avg_time,
+        "P999 Latency": p999,
         "P99 Latency": p99,
-        "P90 Latency": p90
+        "P95 Latency": p95,
+        "P90 Latency": p90,
     }
 
     model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
