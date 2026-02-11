@@ -1,5 +1,5 @@
 diff --git a/fuxictr/pytorch/models/rank_model.py b/fuxictr/pytorch/models/rank_model.py
-index 1ce33aa..0012222 100644
+index 1ce33aa..7f4a99b 100644
 --- a/fuxictr/pytorch/models/rank_model.py
 +++ b/fuxictr/pytorch/models/rank_model.py
 @@ -27,6 +27,17 @@ from fuxictr.pytorch.torch_utils import get_device, get_optimizer, get_loss, get
@@ -15,8 +15,8 @@ index 1ce33aa..0012222 100644
 +    torch_npu.npu.matmul.allow_hf32 = True
 +    torch_npu.npu.conv.allow_hf32 = True
 +if GPU_ENABLE:
++    torch.backends.cuda.matmul.allow_tf32 = True
 +    torch.backends.cudnn.allow_tf32 = True
-+    torch.backends.cudnn.benchmark = True
  
  class BaseModel(nn.Module):
      def __init__(self, 
@@ -46,31 +46,28 @@ index 1ce33aa..0012222 100644
 +            latency_list = []
 +            with torch.no_grad():
 +                import time
-+                for _ in range(10):
++                for _ in range(int(os.environ.get("MODEL_EPOCH", 10))):
 +                    for batch_data in data_generator:
 +                        start_time = time.time()
 +                        return_dict = self.forward(batch_data)
 +                        end_time = time.time()
 +                        latency = end_time - start_time
 +                        latency_list.append(latency)
-+                        print(f"{model_name} time cost: {latency}")
 +
 +            latency_list = latency_list[2:]
 +            avg_time = sum(latency_list) / len(latency_list)
-+            print(f"{model_name} avg time cost: {avg_time}")
 +
 +            latency_list.sort()
 +            p90 = 0.0
++            p95 = 0.0
 +            p99 = 0.0
++            p999 = 0.0
 +
 +            if len(latency_list) > 0:
-+                p90_index = int(len(latency_list) * 0.9)
-+                p90_index = min(p90_index, len(latency_list) - 1)
-+                p90 = round(latency_list[p90_index], 6)
-+
-+                p99_index = int(len(latency_list) * 0.99)
-+                p99_index = min(p99_index, len(latency_list) - 1)
-+                p99 = round(latency_list[p99_index], 6)
++                p90 = np.percentile(latency_list, 90, method="lower")
++                p95 = np.percentile(latency_list, 95, method="lower")
++                p99 = np.percentile(latency_list, 99, method="lower")
++                p999 = np.percentile(latency_list, 99.9, method="lower")
 +
 +            QPS = int(1 / avg_time)
 +            e2e_result = {
@@ -78,8 +75,10 @@ index 1ce33aa..0012222 100644
 +                "model_name": model_name,
 +                "QPS": QPS,
 +                "AVG Latency": avg_time,
++                "P999 Latency": p999,
 +                "P99 Latency": p99,
-+                "P90 Latency": p90
++                "P95 Latency": p95,
++                "P90 Latency": p90,
 +            }
 +
 +            model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
@@ -87,6 +86,7 @@ index 1ce33aa..0012222 100644
 +            os.makedirs(f"../../../save_results_{device_name}/", exist_ok=True)
 +            with open(f"../../../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
 +                f.write(eval_str + "\n")
++            print(eval_str)
 +
 +            # 性能数据采集
 +            prof_flat = (

@@ -39,7 +39,7 @@ index 4b636fd..af5d74c 100644
              raise RuntimeError(f"No parquet files exist in {self._input_path}.")
  
 diff --git a/tzrec/main.py b/tzrec/main.py
-index 355fac0..7d5ce87 100644
+index 355fac0..d00172e 100644
 --- a/tzrec/main.py
 +++ b/tzrec/main.py
 @@ -12,14 +12,18 @@
@@ -100,7 +100,7 @@ index 355fac0..7d5ce87 100644
      else:
          device: torch.device = torch.device("cpu")
          backend = "gloo"
-@@ -279,10 +306,124 @@ def _evaluate(
+@@ -279,10 +306,126 @@ def _evaluate(
      is_local_rank_zero = int(os.environ.get("LOCAL_RANK", 0)) == 0
      model.eval()
      pipeline = create_train_pipeline(model)
@@ -116,29 +116,29 @@ index 355fac0..7d5ce87 100644
 +
 +    latency_list = []
 +    with torch.no_grad():
-+        for i_step in range(10):
-+            start_time = time.time()
-+            losses, predictions, batch = pipeline.progress(iterator)
-+            end_time = time.time()
-+            latency = end_time - start_time
-+            latency_list.append(latency)
-+            print(f"{model_name} time cost: {latency}")
++        for i_step in range(int(os.environ.get("MODEL_EPOCH", 10))):
++            try:
++                start_time = time.time()
++                losses, predictions, batch = pipeline.progress(iterator)
++                end_time = time.time()
++                latency = end_time - start_time
++                latency_list.append(latency)
++            except StopIteration:
++                iterator = iter(eval_dataloader)
 +
 +    avg_time = sum(latency_list) / len(latency_list)
-+    print(f"{model_name} avg time cost: {avg_time}")
 +
 +    latency_list.sort()
 +    p90 = 0.0
++    p95 = 0.0
 +    p99 = 0.0
++    p999 = 0.0
 +
 +    if len(latency_list) > 0:
-+        p90_index = int(len(latency_list) * 0.9)
-+        p90_index = min(p90_index, len(latency_list) - 1)
-+        p90 = round(latency_list[p90_index], 6)
-+
-+        p99_index = int(len(latency_list) * 0.99)
-+        p99_index = min(p99_index, len(latency_list) - 1)
-+        p99 = round(latency_list[p99_index], 6)
++        p90 = np.percentile(latency_list, 90, method="lower")
++        p95 = np.percentile(latency_list, 95, method="lower")
++        p99 = np.percentile(latency_list, 99, method="lower")
++        p999 = np.percentile(latency_list, 99.9, method="lower")
 +
 +    QPS = int(1 / avg_time)
 +    e2e_result = {
@@ -146,8 +146,10 @@ index 355fac0..7d5ce87 100644
 +        "model_name": model_name,
 +        "QPS": QPS,
 +        "AVG Latency": avg_time,
++        "P999 Latency": p999,
 +        "P99 Latency": p99,
-+        "P90 Latency": p90
++        "P95 Latency": p95,
++        "P90 Latency": p90,
 +    }
 +
 +    device_name = str(model.device).split(":")[0]
@@ -225,7 +227,7 @@ index 355fac0..7d5ce87 100644
  
      desc_suffix = ""
      if global_epoch is not None:
-@@ -294,13 +435,21 @@ def _evaluate(
+@@ -294,13 +437,21 @@ def _evaluate(
      plogger = None
      if is_local_rank_zero:
          plogger = ProgressLogger(desc=f"Evaluating{desc_suffix}")
@@ -250,7 +252,7 @@ index 355fac0..7d5ce87 100644
                  if (
                      plogger is not None
                      and i_step % eval_config.log_step_count_steps == 0
-@@ -308,22 +457,14 @@ def _evaluate(
+@@ -308,22 +459,14 @@ def _evaluate(
                      plogger.log(i_step)
              except StopIteration:
                  break
@@ -278,7 +280,7 @@ index 355fac0..7d5ce87 100644
  
  
  def _log_train(
-@@ -852,17 +993,54 @@ def evaluate(
+@@ -852,17 +995,54 @@ def evaluate(
      model = DistributedModelParallel(
          module=model, sharders=sharders, device=device, plan=plan
      )
@@ -342,7 +344,7 @@ index 355fac0..7d5ce87 100644
      summary_writer = None
      if is_rank_zero:
          summary_writer = SummaryWriter(os.path.join(pipeline_config.model_dir, "eval"))
-@@ -1339,3 +1517,17 @@ def predict(
+@@ -1339,3 +1519,17 @@ def predict(
          prof.stop()
      if is_local_rank_zero:
          logger.info("Predict Finished.")
