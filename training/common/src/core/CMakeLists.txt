@@ -36,6 +36,9 @@ ENDIF ()
 target_include_directories(COMMON_ASC
     PUBLIC
         ${SECUREC_PATH}/include
+        ${ASCEND_PATH}/${ARCH}-linux/pkg_inc/
+        ${ASCEND_PATH}/${ARCH}-linux/pkg_inc/runtime/
+        ${ASCEND_PATH}/${ARCH}-linux/pkg_inc/profiling/
         ${ASCEND_PATH}/${ARCH}-linux/include/
         ${ASCEND_PATH}/${ARCH}-linux/include/hccl/
         ${ASCEND_PATH}/${ARCH}-linux/include/experiment/runtime/

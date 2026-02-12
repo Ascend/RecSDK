@@ -141,7 +141,7 @@ class CMakeBuild(build_ext):
         
         # 从环境变量获取配置或使用默认值
         run_mode = os.getenv('RUN_MODE', 'npu')
-        soc_version = os.getenv('SOC_VERSION', 'Ascend910_9579')
+        soc_version = os.getenv('SOC_VERSION', 'Ascend950PR_9579')
         ascend_cann_path = os.getenv('ASCEND_CANN_PACKAGE_PATH', '/usr/local/Ascend/ascend-toolkit/latest')
         
         cmake_args.extend([
