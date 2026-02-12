@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,13 @@ See the License for the specific language governing permissions and
 #ifndef BACKWARD_CODEGEN_UNWEIGHTED_EXACT_KERNEL_UNIQUE_FUN_H
 #define BACKWARD_CODEGEN_UNWEIGHTED_EXACT_KERNEL_UNIQUE_FUN_H
 
-#include <cstdint>
-
 #include "kernel_operator.h"
-#include "backward_codegen_unweighted_exact_kernel.h"
-using namespace AscendC;
-using namespace BackwardCodegenUnweightedExact;
-namespace BackwardCodegenUnweightedExactUnique {
+#include "backward_codegen_unweighted_exact_crtp_base.h"
+#include "structure/unique_jagged_tensor_input.h"
 
-constexpr int M1_INDEX = 1;
-constexpr int M2_INDEX = 2;
+using namespace AscendC;
+
+namespace BackwardCodegenUnweightedExact {
 
 struct ComputeUniqueArgs {
     int64_t tableIndex;
@@ -33,152 +30,121 @@ struct ComputeUniqueArgs {
     int64_t inOffset;
     int64_t thisLen;
     int64_t startInd;
-    int64_t weightsAddr;
-    int64_t m1Addr;
-    int64_t m2Addr;
-};
-  
-struct DynamicArgs {
-    int64_t weightsAddr;
-    int64_t m1Addr;
-    int64_t m2Addr;
 };
 
-__aicore__ inline void Scheduler(const int64_t &totalLen, int64_t &offsetLen, int64_t &calcLen)
-{
-    int64_t splitBaseLen = totalLen / GetBlockNum();
-    int64_t tailSplitIndex = totalLen % GetBlockNum();
-    if (GetBlockIdx() >= tailSplitIndex) {
-        calcLen = splitBaseLen;
-        offsetLen =
-            tailSplitIndex * (splitBaseLen + 1) + (GetBlockIdx() - tailSplitIndex) * splitBaseLen;
-    } else {
-        calcLen = splitBaseLen + 1;
-        offsetLen = GetBlockIdx() * (splitBaseLen + 1);
-    }
-}
-
-class BackwardCodegenUnweightedExactKernelUnique : public BackwardCodegenUnweightedExactKernel {
+template <MomentumLayoutType layoutType, typename OptimizerT>
+class BackwardCodegenUnweightedExactKernelUnique
+    : public BackwardCodegenUnweightedExactCRTPBase<BackwardCodegenUnweightedExactKernelUnique<layoutType, OptimizerT>,
+                                                    layoutType, OptimizerT> {
 public:
     __aicore__ inline BackwardCodegenUnweightedExactKernelUnique() {}
+
+    __aicore__ inline void Init(Args args)
+    {
+        BackwardCodegenUnweightedExactCRTPBase<BackwardCodegenUnweightedExactKernelUnique<layoutType, OptimizerT>,
+                                               layoutType, OptimizerT>::Init(args);
+        InitUnique(args);
+    }
 
     __aicore__ inline void InitUnique(Args args)
     {
         GET_TILING_DATA(tilingData, args.tiling);
-        uniqueId = args.uniqueId;
-        uniqueInverse = args.uniqueInverse;
-        uniqueHashSize = args.uniqueHashSize;
-        indiceSizeCumsum = args.indiceSizeCumsum;
-        
-        uniqueHashDim0 = tilingData.uniqueHashDim0;
-        
-        uniqueHashSizeGT.SetGlobalBuffer((__gm__ int64_t*)uniqueHashSize, uniqueHashDim0);
-        uniqueInverseGT.SetGlobalBuffer((__gm__ int64_t*)uniqueInverse, indicesDim0);
-
-        offsetsGT.SetGlobalBuffer((__gm__ int64_t*)offsets, offsetsDim0);
-        dOffsetsGT.SetGlobalBuffer((__gm__ int32_t*)dOffsets, dOffsetsDim0);
-
-        // len(uniqueId) = uniqueHash[-1]
-        uniqueIdDim0 = uniqueHashSizeGT.GetValue(uniqueHashDim0 - 1);
-        uniqueIdGT.SetGlobalBuffer((__gm__ int64_t*)uniqueId, uniqueIdDim0);
-
-        indiceSizeCumsumGT.SetGlobalBuffer((__gm__ int64_t*)indiceSizeCumsum, weightsOffsetsDim0 + 1);
-
-        pipe.InitBuffer(queIndices, 1, MAX_ARGS_PIPE_LEN * sizeof(int64_t));
+        this->pipe_.InitBuffer(queIndices, 1, MAX_ARGS_PIPE_LEN * sizeof(int64_t));
+        uniqueJaggedInput_.Init(args, tilingData);
     }
 
     __aicore__ inline void ClearGrad()
     {
-        int64_t total = 0;
-        int64_t offsetLen = 0;
-
-        Scheduler(uniqueIdDim0, offsetLen, total);
-
-        int64_t loopLen = blockLen / maxD;
-        int64_t loops = total / loopLen;
-        int64_t tailLen = total % loopLen;
-        LocalTensor<float> outLt = queOut.template AllocTensor<float>();
-        Duplicate<float>(outLt, 0.0, blockLen);
-        queOut.template EnQue(outLt);
-        LocalTensor<float> newOutLt = queOut.template DeQue<float>();
+        this->workloadSharder_.Compute(uniqueJaggedInput_.GetUniqueIdDim0());
+        int64_t loopLen = this->blockLen_ / this->embeddingTable_.GetMaxDim();
+        int64_t loops = this->workloadSharder_.length / loopLen;
+        int64_t tailLen = this->workloadSharder_.length % loopLen;
+        LocalTensor<float> outLt = this->queOut_.template AllocTensor<float>();
+        Duplicate<float>(outLt, 0.0, this->blockLen_);
+        this->queOut_.template EnQue(outLt);
+        LocalTensor<float> newOutLt = this->queOut_.template DeQue<float>();
         for (int64_t i = 0; i < loops; i++) {
-            int64_t outOffset = (offsetLen + i * loopLen) * maxD;
-            CpLocal2Gm(outGT[outOffset], newOutLt, blockLen);
+            int64_t outOffset = (this->workloadSharder_.start + i * loopLen) * this->embeddingTable_.GetMaxDim();
+            CpLocal2Gm(this->gradientFlow_.GetOutputTensor()[outOffset], newOutLt, this->blockLen_);
         }
         if (tailLen > 0) {
-            int64_t outOffset = (offsetLen + loops * loopLen) * maxD;
-            CpLocal2Gm(outGT[outOffset], newOutLt, tailLen * maxD);
+            int64_t outOffset = (this->workloadSharder_.start + loops * loopLen) * this->embeddingTable_.GetMaxDim();
+            CpLocal2Gm(this->gradientFlow_.GetOutputTensor()[outOffset], newOutLt,
+                       tailLen * this->embeddingTable_.GetMaxDim());
         }
-        queOut.template FreeTensor(newOutLt);
+        this->queOut_.template FreeTensor(newOutLt);
     }
 
-    __aicore__ inline void ComputeGradBag(ComputeUniqueArgs &args, float meanLen)
+    __aicore__ inline void ComputeGradBag(ComputeUniqueArgs& args, float meanLen)
     {
-        LocalTensor<float> inputLt = queIn.template AllocTensor<float>();
-        LocalTensor<float> outputLt = queOut.template AllocTensor<float>();
-        LocalTensor<int64_t> indicesLt = queIndices.AllocTensor<int64_t>();
+        LocalTensor<float> inputLt = this->queIn_.template AllocTensor<float>();
+        LocalTensor<float> outputLt = this->queOut_.template AllocTensor<float>();
+        LocalTensor<int64_t> indicesLt = queIndices.template AllocTensor<int64_t>();
 
-        CpGm2Local(indicesLt, uniqueInverseGT[args.startInd], args.thisLen);
-        int64_t inverseOffset = uniqueHashSizeGT.GetValue(args.tableIndex);
-        CpGm2Local(inputLt, gradOutputGT[args.inOffset], args.embedDim);
+        CpGm2Local(indicesLt, uniqueJaggedInput_.GetInverseIndicesGT()[args.startInd], args.thisLen);
+        int64_t inverseOffset = uniqueJaggedInput_.GetUniqueCountPrefixSum(args.tableIndex);
+        CpGm2Local(inputLt, this->gradientFlow_.GetInputTensor()[args.inOffset], args.embedDim);
 
         queIndices.EnQue(indicesLt);
-        queIn.template EnQue(inputLt);
+        this->queIn_.template EnQue(inputLt);
 
-        inputLt = queIn.template DeQue<float>();
-        indicesLt = queIndices.DeQue<int64_t>();
+        inputLt = this->queIn_.template DeQue<float>();
+        indicesLt = queIndices.template DeQue<int64_t>();
 
-        if (poolMode == MEAN_POOL) {
+        if (this->gradientFlow_.GetPoolMode() == PoolingMode::POOL_MODE_MEAN) {
             Muls(outputLt, inputLt, meanLen, args.embedDim);
         } else {
             DataCopy(outputLt, inputLt, args.embedDim);
         }
-    
-        queOut.template EnQue(outputLt);
-        LocalTensor<float> newOutLt = queOut.template DeQue<float>();
+
+        this->queOut_.template EnQue(outputLt);
+        LocalTensor<float> newOutLt = this->queOut_.template DeQue<float>();
         SetAtomicAdd<float>();
         for (int64_t i = 0; i < args.thisLen; i++) {
-            int64_t outOffset = (indicesLt.GetValue(i) + inverseOffset) * maxD;
-            CpLocal2Gm(outGT[outOffset], newOutLt, args.embedDim);
+            int64_t outOffset = (indicesLt.GetValue(i) + inverseOffset) * this->embeddingTable_.GetMaxDim();
+            CpLocal2Gm(this->gradientFlow_.GetOutputTensor()[outOffset], newOutLt, args.embedDim);
         }
         SetAtomicNone();
-        queIn.template FreeTensor(inputLt);
-        queOut.template FreeTensor(newOutLt);
-        queIndices.FreeTensor(indicesLt);
+        this->queIn_.template FreeTensor(inputLt);
+        this->queOut_.template FreeTensor(newOutLt);
+        queIndices.template FreeTensor(indicesLt);
     }
 
-    __aicore__ inline void ComputeGradNoBag(ComputeUniqueArgs &args)
+    __aicore__ inline void ComputeGradNoBag(ComputeUniqueArgs& args)
     {
-        LocalTensor<float> inputLt = queIn.template AllocTensor<float>();
-        LocalTensor<float> outputLt = queOut.template AllocTensor<float>();
-        LocalTensor<int64_t> indicesLt = queIndices.AllocTensor<int64_t>();
+        LocalTensor<float> inputLt = this->queIn_.template AllocTensor<float>();
+        LocalTensor<float> outputLt = this->queOut_.template AllocTensor<float>();
+        LocalTensor<int64_t> indicesLt = queIndices.template AllocTensor<int64_t>();
 
-        CpGm2Local(indicesLt, uniqueInverseGT[args.startInd], args.thisLen);
-        int64_t inverseOffset = uniqueHashSizeGT.GetValue(args.tableIndex) * maxD;
-        CpGm2Local(inputLt, gradOutputGT[args.inOffset], maxD * args.thisLen);
+        CpGm2Local(indicesLt, uniqueJaggedInput_.GetInverseIndicesGT()[args.startInd], args.thisLen);
+        int64_t inverseOffset =
+            uniqueJaggedInput_.GetUniqueCountPrefixSum(args.tableIndex) * this->embeddingTable_.GetMaxDim();
+        CpGm2Local(inputLt, this->gradientFlow_.GetInputTensor()[args.inOffset],
+                   this->embeddingTable_.GetMaxDim() * args.thisLen);
 
         queIndices.EnQue(indicesLt);
-        queIn.template EnQue(inputLt);
-        inputLt = queIn.template DeQue<float>();
-        indicesLt = queIndices.DeQue<int64_t>();
+        this->queIn_.template EnQue(inputLt);
+        inputLt = this->queIn_.template DeQue<float>();
+        indicesLt = queIndices.template DeQue<int64_t>();
 
-        DataCopy(outputLt, inputLt, maxD * args.thisLen);
-        queOut.template EnQue(outputLt);
-        LocalTensor<float> newOutLt = queOut.template DeQue<float>();
+        DataCopy(outputLt, inputLt, this->embeddingTable_.GetMaxDim() * args.thisLen);
+        this->queOut_.template EnQue(outputLt);
+        LocalTensor<float> newOutLt = this->queOut_.template DeQue<float>();
         SetAtomicAdd<float>();
         for (int64_t i = 0; i < args.thisLen; i++) {
-            int64_t outOffset = indicesLt.GetValue(i) * maxD  + inverseOffset;
-            CpLocal2Gm(outGT[outOffset], newOutLt[i * maxD], args.embedDim);
+            int64_t outOffset = indicesLt.GetValue(i) * this->embeddingTable_.GetMaxDim() + inverseOffset;
+            CpLocal2Gm(this->gradientFlow_.GetOutputTensor()[outOffset],
+                       newOutLt[i * this->embeddingTable_.GetMaxDim()], args.embedDim);
         }
         SetAtomicNone();
-        queIn.template FreeTensor(inputLt);
-        queOut.template FreeTensor(newOutLt);
-        queIndices.FreeTensor(indicesLt);
+        this->queIn_.template FreeTensor(inputLt);
+        this->queOut_.template FreeTensor(newOutLt);
+        queIndices.template FreeTensor(indicesLt);
     }
 
     __aicore__ inline void ComputeGrad()
     {
-        if (poolMode == NONE_POOL) {
+        if (this->gradientFlow_.GetPoolMode() == PoolingMode::POOL_MODE_NONE) {
             ComputeGradEC();
         } else {
             ComputeGradEBC();
@@ -187,17 +153,15 @@ public:
 
     __aicore__ inline void ComputeGradEC()
     {
-        int64_t indicesNumOneBlock = blockLen / maxD;
-        if (indicesNumOneBlock >= MAX_ARGS_PIPE_LEN) {
-            indicesNumOneBlock = MAX_ARGS_PIPE_LEN;
-        }
+        int64_t indicesNumOneBlock = this->ComputeIndicesNumOneBlock(1);
         int64_t lastIndices = 0;
         int64_t thisLen = 0;
-        int64_t offsetOfThisTable = 0;
-        for (int64_t i = 1; i <= weightsOffsetsDim0; i++) {
-            Scheduler(indiceSizeCumsumGT.GetValue(i) - lastIndices, offsetOfThisTable, thisLen);
-            int64_t startIndices = offsetOfThisTable + lastIndices; // 上一张表的偏移+table_i的偏移
-            lastIndices = indiceSizeCumsumGT.GetValue(i);
+        for (int64_t i = 1; i <= this->embeddingTable_.GetWeightsOffsetsDim0(); i++) {
+            int64_t rawCount = uniqueJaggedInput_.GetRawCount(i);
+            this->workloadSharder_.Compute(rawCount - lastIndices);
+            thisLen = this->workloadSharder_.length;
+            int64_t startIndices = this->workloadSharder_.start + lastIndices; // 上一张表的偏移+table_i的偏移
+            lastIndices = rawCount;
             if (thisLen <= 0) {
                 continue;
             }
@@ -206,8 +170,8 @@ public:
 
             // datacopy In params
             int64_t tableIndex = i - 1;
-            int64_t embedDim = dOffsetsGT.GetValue(tableIndex + 1) - dOffsetsGT.GetValue(tableIndex);
-            int64_t inputOffset = startIndices * gradOutputDim1;
+            int64_t embedDim = this->embeddingTable_.GetEmbedDim(tableIndex);
+            int64_t inputOffset = startIndices * this->gradientFlow_.GetInputDim1();
             while (remain > 0) {
                 if (thisLen > indicesNumOneBlock) {
                     thisLen = indicesNumOneBlock;
@@ -215,7 +179,7 @@ public:
                 remain -= thisLen;
                 ComputeUniqueArgs args{tableIndex, embedDim, inputOffset, thisLen, startIndices};
                 ComputeGradNoBag(args);
-                inputOffset += thisLen * gradOutputDim1;
+                inputOffset += thisLen * this->gradientFlow_.GetInputDim1();
                 startIndices += thisLen;
                 thisLen = remain;
             }
@@ -224,21 +188,19 @@ public:
 
     __aicore__ inline void ComputeGradEBC()
     {
-        Scheduler(offsetsDim0 - 1, offsetOfThisCore, lenOfThisCore);
-        if (lenOfThisCore == 0) {
+        this->workloadSharder_.Compute(this->jaggedInput_.GetOffsetsSize() - 1);
+        if (this->workloadSharder_.length == 0) {
             return;
         }
-        int64_t indicesNumOneBlock = blockLen / maxD;
-        if (indicesNumOneBlock >= MAX_ARGS_PIPE_LEN) {
-            indicesNumOneBlock = MAX_ARGS_PIPE_LEN;
-        }
-        int64_t batchs = (offsetsDim0 - 1) / weightsOffsetsDim0;
-        for (int64_t loop = 0; loop < lenOfThisCore; loop++) {
-            int64_t i = (offsetOfThisCore + loop) / weightsOffsetsDim0;
-            int64_t j = (offsetOfThisCore + loop) % weightsOffsetsDim0;
+        int64_t indicesNumOneBlock = this->ComputeIndicesNumOneBlock(1);
+
+        int64_t batchs = (this->jaggedInput_.GetOffsetsDimSize() - 1) / this->embeddingTable_.GetWeightsOffsetsDim0();
+        for (int64_t loop = 0; loop < this->workloadSharder_.length; loop++) {
+            int64_t i = (this->workloadSharder_.start + loop) / this->embeddingTable_.GetWeightsOffsetsDim0();
+            int64_t j = (this->workloadSharder_.start + loop) % this->embeddingTable_.GetWeightsOffsetsDim0();
             int64_t thisOffsetIndex = j * batchs + i;
-            int64_t startIndices = offsetsGT.GetValue(thisOffsetIndex);
-            int64_t endIndices = offsetsGT.GetValue(thisOffsetIndex + 1);
+            int64_t startIndices = this->jaggedInput_.GetOffset(thisOffsetIndex);
+            int64_t endIndices = this->jaggedInput_.GetOffset(thisOffsetIndex + 1);
             int32_t thisLen = endIndices - startIndices;
 
             if (thisLen <= 0) {
@@ -250,10 +212,12 @@ public:
 
             // dataCopy In params
             int64_t tableIndex = thisOffsetIndex / batchs;
-            int64_t embedDim = dOffsetsGT.GetValue(tableIndex + 1) - dOffsetsGT.GetValue(tableIndex);
             int64_t inputBatchInd = thisOffsetIndex % batchs;
-            int64_t inputEmbedOffset = dOffsetsGT.GetValue(tableIndex);
-            int64_t inputOffset = inputBatchInd * gradOutputDim1 + inputEmbedOffset;
+
+            int64_t embedDim;
+            int64_t inputEmbedOffset;
+            this->embeddingTable_.GetDimAndOffset(tableIndex, embedDim, inputEmbedOffset);
+            int64_t inputOffset = inputBatchInd * this->gradientFlow_.GetInputDim1() + inputEmbedOffset;
             while (remain > 0) {
                 if (thisLen > indicesNumOneBlock) {
                     thisLen = indicesNumOneBlock;
@@ -267,22 +231,177 @@ public:
         }
     }
 
-    GM_ADDR uniqueId;
-    GM_ADDR uniqueHashSize;
-    GM_ADDR uniqueInverse;
-    GM_ADDR indiceSizeCumsum;
-    int64_t uniqueIdDim0;
-    int64_t uniqueHashDim0;
- 
+    // 实现CRTP接口
+    __aicore__ inline void ComputeImpl(Args args)
+    {
+        Init(args);
+        ClearGrad();
+        pipe_barrier(PIPE_ALL);
+        SyncAll();
+        ComputeGrad();
+        pipe_barrier(PIPE_ALL);
+        SyncAll();
+    }
+
+    // 权重更新调度方法
+    __aicore__ inline void UpdateWeightsSchedulerImpl(Args args)
+    {
+        this->InitCommonVariables(OutputCount<layoutType>::value);
+        int64_t lastIndices = 0;
+        for (int64_t i = 1; i < uniqueJaggedInput_.GetUniqueHashIdCount(); i++) {
+            int64_t index = uniqueJaggedInput_.GetUniqueCountPrefixSum(i);
+            if (index != lastIndices) { // 每张表上的indices尽量均分到每张卡上
+                this->workloadSharder_.Compute(index - lastIndices);
+                if (this->workloadSharder_.length > 0) {
+                    this->tableIndex_ = i - 1;
+                    this->thisTableOffset_ = this->workloadSharder_.start + lastIndices;
+                    UpdateEmbed();
+                }
+                lastIndices = index;
+            }
+        }
+    }
+
+    // 权重更新方法
+    __aicore__ inline void UpdateEmbed()
+    {
+        this->indicesNumOneBlock_ = this->ComputeIndicesNumOneBlock(this->numOfOut_);
+        int64_t thisLen = this->workloadSharder_.length;
+        int64_t remain = this->workloadSharder_.length;
+
+        int64_t embedDim = this->embeddingTable_.GetEmbedDim(this->tableIndex_);
+
+        while (remain > 0) {
+            if (remain > this->indicesNumOneBlock_) {
+                thisLen = this->indicesNumOneBlock_;
+            }
+
+            int calcLen = thisLen * this->embeddingTable_.GetMaxDim();
+
+            remain -= thisLen;
+            LocalTensor<float> inputLt = this->queIn_.template AllocTensor<float>();
+            LocalTensor<float> outputLt = this->queOut_.template AllocTensor<float>();
+
+            // copyIn
+            CpGm2Local(inputLt,
+                       this->gradientFlow_.GetOutputTensor()[this->thisTableOffset_ *
+                       this->embeddingTable_.GetMaxDim()], calcLen);
+            this->queIn_.template EnQue(inputLt);
+            // CopyIn
+            int64_t updateArgs[MAX_ARGS_PIPE_LEN];
+            CopyInNormal(updateArgs, thisLen, embedDim);
+            // compute
+            inputLt = this->queIn_.template DeQue<float>();
+
+            ComputeOptimizer(inputLt, outputLt, calcLen);
+            this->queOut_.template EnQue(outputLt);
+
+            // copyOut
+            CopyOutNormal(updateArgs, thisLen, embedDim);
+
+            this->queIn_.template FreeTensor(inputLt);
+            this->thisTableOffset_ += thisLen;
+            thisLen = remain;
+        }
+    }
+
+    // 通用的CopyInNormal实现，使用模板参数控制不同优化器的行为
+    __aicore__ inline void CopyInNormal(int64_t* updateArgs, int64_t cnt, int64_t embedDim)
+    {
+        LocalTensor<float> inputLt = this->queIn_.template DeQue<float>();
+
+        // 在Adagrad的情况下，动量的起始索引是 cnt * this->embeddingTable_.GetMaxDim() * MOMENTUM1_IDX
+        int64_t baseMomentIndex = cnt * this->embeddingTable_.GetMaxDim();
+
+        for (int64_t i = 0; i < cnt; i++) {
+            // 获取unique索引和权重偏移
+            int64_t thisIndForThisTable = uniqueJaggedInput_.GetUniqueIdx(this->thisTableOffset_ + i);
+            int64_t thisWeightOffset = this->embeddingTable_.GetWeightOffsetTableValue(this->tableIndex_);
+            updateArgs[i] = thisWeightOffset + thisIndForThisTable * embedDim;
+
+            // 根据内存布局类型进行数据复制
+            if constexpr (OutputCount<layoutType>::value > EngineLayout::OUTPUT_COUNT_LAYOUT_GRAD_ONLY) {
+                // Adagrad 需要复制momentum1
+                int64_t thisMoment1Index =
+                    baseMomentIndex * static_cast<int64_t>(OptimizerState::Index::MOMENTUM1_IDX) +
+                    i * this->embeddingTable_.GetMaxDim();
+
+                DataCopy(inputLt[thisMoment1Index], this->optimizerState_.GetMomentum1InGT()[updateArgs[i]], embedDim);
+            }
+
+            if constexpr (OutputCount<layoutType>::value > EngineLayout::OUTPUT_COUNT_LAYOUT_GRAD_MOMENTUM1_PER_DIM) {
+                // ADAM版本需要额外的momentum2复制
+                int64_t moment2Index = baseMomentIndex * static_cast<int64_t>(OptimizerState::Index::MOMENTUM2_IDX) +
+                                       i * this->embeddingTable_.GetMaxDim();
+                DataCopy(inputLt[moment2Index], this->optimizerState_.GetMomentum2InGT()[updateArgs[i]], embedDim);
+            }
+        }
+
+        this->queIn_.EnQue(inputLt);
+    }
+
+    // 通用的CopyOutNormal实现，同样使用模板参数控制不同优化器的行为
+    __aicore__ inline void CopyOutNormal(int64_t* outOffset, int64_t cnt, int64_t embedDim)
+    {
+        LocalTensor<float> newOutLt = this->queOut_.template DeQue<float>();
+
+        SetAtomicAdd<float>();
+        // 首先处理权重更新
+        for (int64_t i = 0; i < cnt; i++) {
+            DataCopy(this->optimizerState_.GetWeightsDevOutGT()[outOffset[i]],
+                     newOutLt[i * this->embeddingTable_.GetMaxDim()], embedDim);
+
+            if constexpr (OutputCount<layoutType>::value == EngineLayout::OUTPUT_COUNT_LAYOUT_GRAD_MOMENTUM1_PER_DIM) {
+                // Adagrad 使用常规momentum1复制
+                int64_t thisMoment1Index = cnt * this->embeddingTable_.GetMaxDim() *
+                                           static_cast<int64_t>(OptimizerState::Index::MOMENTUM1_IDX);
+                DataCopy(this->optimizerState_.GetMomentum1OutGT()[outOffset[i]],
+                         newOutLt[thisMoment1Index + i * this->embeddingTable_.GetMaxDim()], embedDim);
+            }
+        }
+        SetAtomicNone();
+
+        // 然后根据内存布局类型复制momentum数据
+        for (int64_t i = 0; i < cnt; i++) {
+            if constexpr (OutputCount<layoutType>::value ==
+                          EngineLayout::OUTPUT_COUNT_LAYOUT_GRAD_MOMENTUM1_MOMENTUM2) {
+                // Adam版本需要额外的momentum2输出
+                int64_t thisMoment1Index = cnt * this->embeddingTable_.GetMaxDim() *
+                                           static_cast<int64_t>(OptimizerState::Index::MOMENTUM1_IDX);
+                DataCopy(this->optimizerState_.GetMomentum1OutGT()[outOffset[i]],
+                         newOutLt[thisMoment1Index + i * this->embeddingTable_.GetMaxDim()], embedDim);
+                int64_t thisMoment2Index = cnt * this->embeddingTable_.GetMaxDim() *
+                                           static_cast<int64_t>(OptimizerState::Index::MOMENTUM2_IDX);
+
+                DataCopy(this->optimizerState_.GetMomentum2OutGT()[outOffset[i]],
+                         newOutLt[thisMoment2Index + i * this->embeddingTable_.GetMaxDim()], embedDim);
+            }
+        }
+
+        this->queOut_.FreeTensor(newOutLt);
+    }
+
+    // 优化器计算实现
+    __aicore__ inline void ComputeOptimizer(LocalTensor<float> newInputLt, LocalTensor<float> outLt, int64_t totalLen)
+    {
+        // 根据内存布局类型和优化器类型决定调用优化器的不同方法
+        if constexpr (layoutType == MomentumLayoutType::LAYOUT_GRAD_MOMENTUM1_PER_DIM) {
+            // Adagrad优化器需要6个参数
+            this->optimizer_.Compute(newInputLt, outLt, 0, totalLen, totalLen, this->optimizerConfig_);
+        } else if constexpr (layoutType == MomentumLayoutType::LAYOUT_GRAD_MOMENTUM1_MOMENTUM2) {
+            // Adam优化器需要7个参数
+            this->optimizer_.Compute(newInputLt, outLt, 0, totalLen,
+                static_cast<int64_t>(OptimizerState::Index::MOMENTUM2_IDX) * totalLen,
+                totalLen, this->optimizerConfig_);
+        } else if constexpr (layoutType == MomentumLayoutType::LAYOUT_GRAD_ONLY) {
+            // SGD优化器需要5个参数
+            this->optimizer_.Compute(newInputLt, outLt, 0, totalLen, this->optimizerConfig_);
+        }
+    }
+
+    UniqueJaggedTensorInput uniqueJaggedInput_;
     TQue<TPosition::VECIN, 1> queIndices;
- 
-    GlobalTensor<int64_t> uniqueIdGT;
-    GlobalTensor<int64_t> uniqueHashSizeGT;
-    GlobalTensor<int64_t> uniqueInverseGT;
-    GlobalTensor<int64_t> indiceSizeCumsumGT;
-    GlobalTensor<int64_t> indicesGT;
-    GlobalTensor<int64_t> offsetsGT;
-    GlobalTensor<int32_t> dOffsetsGT;
 };
-}  // namespace BackwardCodegenUnweightedExactUnique
+
+} // namespace BackwardCodegenUnweightedExact
 #endif
