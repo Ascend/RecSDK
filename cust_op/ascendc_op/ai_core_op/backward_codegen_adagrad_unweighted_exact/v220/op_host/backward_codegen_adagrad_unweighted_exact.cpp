@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -170,7 +170,6 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
 
     int64_t outDim0 = devWeightsDim0;
 
-    int64_t bytesOfDataType = sizeof(float);
     int64_t offsetDataType = DATA_TYPE_INT64;
 
     auto hashIndices = context->GetOptionalInputTensor(HASH_INDICES_INDEX);
@@ -203,7 +202,6 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     tilingData.set_indicesDim0(indicesDim0);
     tilingData.set_offsetsDim0(offsetsDim0);
     tilingData.set_outDim0(outDim0);
-    tilingData.set_bytesOfDataType(bytesOfDataType);
     tilingData.set_offsetDataType(offsetDataType);
 
     if (optimType == ADAM) {
@@ -248,12 +246,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     // Tiling
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
     OPS_CHECK(coreNum == 0, OPS_LOG_E("Tiling Debug", "Core num is 0."), return ge::GRAPH_FAILED);
-
-    int64_t splitBaseLen = tiling.get_indicesDim0() / coreNum;
-    int64_t tailSplitIndex = tiling.get_indicesDim0() % coreNum;
-
-    tiling.set_splitBaseLen(splitBaseLen);
-    tiling.set_tailSplitIndex(tailSplitIndex);
 
     uint64_t ubCanUsed;
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
