@@ -8,7 +8,7 @@ set(RUN_MODE "npu" CACHE STRING "cpu/sim/npu")
 if(DEFINED ENV{SOC_VERSION})
     set(SOC_VERSION $ENV{SOC_VERSION} CACHE STRING "system on chip type")
 else()
-    set(SOC_VERSION "Ascend910_9579" CACHE STRING "system on chip type")
+    set(SOC_VERSION "Ascend950PR_9579" CACHE STRING "system on chip type")
 endif()
 
 if(DEFINED ENV{ASCEND_CANN_PACKAGE_PATH})

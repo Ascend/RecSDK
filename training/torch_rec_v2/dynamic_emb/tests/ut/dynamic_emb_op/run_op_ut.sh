@@ -27,7 +27,7 @@ COV_OUTPUT_DIR="${SCRIPT_DIR}/coverage_report"
 TEST_FILE_PATH="${SCRIPT_DIR}"
 
 RUN_MODE="${RUN_MODE:-npu}"
-SOC_VERSION="${SOC_VERSION:-Ascend910_9579}"
+SOC_VERSION="${SOC_VERSION:-Ascend950PR_9579}"
 ASCEND_CANN_PATH="${ASCEND_CANN_PACKAGE_PATH:-/usr/local/Ascend/ascend-toolkit/latest}"
 
 PYBIND11_DIR=$(python3 -c 'import pybind11; print(pybind11.get_cmake_dir())')
