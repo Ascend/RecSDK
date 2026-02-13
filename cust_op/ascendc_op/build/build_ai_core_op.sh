@@ -59,6 +59,7 @@ declare -A OP_PLUGIN_MAP=(
   ["invert_permute"]="invert_permute"
   ["jagged_to_padded_dense"]="jagged_to_padded_dense"
   ["ln_mul"]="ln_mul"
+  ["permute_pooled_embs"]="permute_pooled_embs"
   ["permute2d_sparse_data"]="permute1d_sparse_data permute2d_sparse_data"
   ["relative_attn_bias_backward"]="relative_attn_bias"
   ["relative_attn_bias_pos"]="relative_attn_bias"
@@ -81,6 +82,7 @@ gather_for_rank1
 index_select_for_rank1_backward
 dense_to_jagged
 jagged_to_padded_dense
+permute_pooled_embs
 permute2d_sparse_data
 split_embedding_codegen_forward_unweighted
 backward_codegen_adagrad_unweighted_exact
