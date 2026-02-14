@@ -1,0 +1,59 @@
+[
+    {
+        "op": "MultisliceConcat",
+        "input_desc": [
+            {
+                "name": "input",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp16",
+                    "fp32",
+                    "bf16"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "output",
+                "param_type": "dynamic",
+                "format": [
+                    "ND",
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "fp16",
+                    "fp32",
+                    "bf16"
+                ]
+            }
+        ],
+        "attr": [
+            {
+                "name": "concat_num",
+                "param_type": "required",
+                "type": "int"
+            },
+            {
+                "name": "concat_size",
+                "param_type": "required",
+                "type": "list_int"
+            },
+            {
+                "name": "slice_begin",
+                "param_type": "required",
+                "type": "list_int"
+            },
+            {
+                "name": "slice_length",
+                "param_type": "required",
+                "type": "list_int"
+            }
+        ]
+    }
+]
