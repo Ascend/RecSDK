@@ -66,6 +66,34 @@ void IsValidShape(const at::Tensor& x, const at::Tensor& weight,
     }
 }
 
+void IsValidShapeBackward(const at::Tensor& x, const at::Tensor& weight,
+                          const at::Tensor& user_grad, const at::Tensor& value_grad,
+                          const at::Tensor& query_grad, const at::Tensor& key_grad,
+                          const at::Tensor& linear_output, at::IntArrayRef splitList)
+{
+    check_tensor_non_empty(user_grad, "user_grad");
+    check_tensor_non_empty(value_grad, "value_grad");
+    check_tensor_non_empty(query_grad, "query_grad");
+    check_tensor_non_empty(key_grad, "key_grad");
+    check_tensor_non_empty(linear_output, "linear_output");
+
+    check_tensor_dim(user_grad, DIM_2, "user_grad");
+    check_tensor_dim(value_grad, DIM_2, "value_grad");
+    check_tensor_dim(query_grad, DIM_2, "query_grad");
+    check_tensor_dim(key_grad, DIM_2, "key_grad");
+    check_tensor_dim(linear_output, DIM_2, "linear_output");
+
+    auto n = weight.size(0);
+    TORCH_CHECK(user_grad.size(1) == splitList[0] && value_grad.size(1) == splitList[1] &&
+                query_grad.size(1) == splitList[2] && key_grad.size(1) == splitList[3] &&
+                "user_grad, value_grad, query_grad, key_grad dim[1] must be equal to splitList.");
+    TORCH_CHECK(user_grad.size(0) == x.size(0) && value_grad.size(0) == x.size(0) &&
+                query_grad.size(0) == x.size(0) && key_grad.size(0) == x.size(0) &&
+                linear_output.size(0) == x.size(0),
+                "user_grad, value_grad, query_grad, key_grad linear_output dim[0] must equal to x dim[0].");
+    TORCH_CHECK(linear_output.size(1) == n, "linear_output dim[1] must equal to weight dim[0].");
+}
+
 torch::autograd::variable_list RunInLinearSiluForwardInter(const at::Tensor& x, const at::Tensor& weight,
                                                            const at::Tensor& bias, at::IntArrayRef splitList)
 {
@@ -99,22 +127,33 @@ torch::autograd::variable_list RunInLinearSiluBackward(const at::Tensor& x,
     auto biasConti = bias.has_value() ? bias.value() : at::Tensor();
     biasConti = biasConti.contiguous();
     IsValidShape(xConti, weightConti, biasConti, attr_dict);
+
     auto user_gradConti = user_grad.contiguous();
     auto value_gradConti = value_grad.contiguous();
     auto query_gradConti = query_grad.contiguous();
     auto key_gradConti = key_grad.contiguous();
     auto linear_outputConti = linear_output.contiguous();
+    IsValidShapeBackward(xConti, weightConti, user_gradConti, value_gradConti,
+                         query_gradConti, key_gradConti, linear_outputConti, attr_dict);
+
     auto x_grad = at::zeros_like(xConti, at::kFloat);
     auto weight_grad = at::zeros_like(weightConti, at::kFloat);
     auto bias_grad = at::Tensor();
+    bool isVardim = false;
+    
+    if (attr_dict[0] != attr_dict[1] || attr_dict[0] != attr_dict[2] || attr_dict[0] != attr_dict[3]) {
+        isVardim = true;
+        user_gradConti = torch::cat({user_gradConti, value_gradConti, query_gradConti, key_gradConti}, -1);
+    }
+
     if (bias.has_value()) {
         bias_grad = at::zeros_like(biasConti, biasConti.options());
     }
     bool isTrans = false;
     EXEC_NPU_CMD(aclnnInLinearSiluBackward, xConti, weightConti, biasConti,
                  user_gradConti, value_gradConti, query_gradConti, key_gradConti,
-                 linear_outputConti, attr_dict, isTrans, x_grad, weight_grad, bias_grad);
-    return {x_grad.to(xConti.scalar_type()), weight_grad.to(weightConti.scalar_type()), bias_grad, at::Tensor()};
+                 linear_outputConti, attr_dict, isTrans, isVardim, x_grad, weight_grad, bias_grad);
+    return {x_grad, weight_grad, bias_grad, at::Tensor()};
 }
 
 class RunInLinearSiluFunction : public torch::autograd::Function<RunInLinearSiluFunction> {

@@ -20,6 +20,7 @@ See the License for the specific language governing permissions and
 ASCENDC_TPL_ARGS_DECL(InLinearSiluBackward, // 算子OpType
 ASCENDC_TPL_BOOL_DECL(enableBias, 0, 1),
 ASCENDC_TPL_BOOL_DECL(isTrans, 0, 1),
+ASCENDC_TPL_BOOL_DECL(isVardim, 0, 1),
 );
 
 // 模板参数组合
@@ -28,6 +29,7 @@ ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_BOOL_DECL(enableBias, 0, 1),
         ASCENDC_TPL_BOOL_DECL(isTrans, 0, 1),
+        ASCENDC_TPL_BOOL_DECL(isVardim, 0, 1),
     ),
 );
 
