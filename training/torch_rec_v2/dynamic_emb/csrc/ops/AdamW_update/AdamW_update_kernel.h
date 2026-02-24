@@ -27,9 +27,10 @@ namespace AdamWUpdateSimt {
 constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
 constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
 
+template <bool isPowerOfTwo>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmallInBlockDataCompute(
     __gm__ float* grads, __gm__ float* __gm__* valuesPtr, int32_t gradDim, int32_t inLength,
-    float lr, float beta1, float beta2, float eps, float weightDecay, int32_t iterNum)
+    float lr, float beta1, float beta2, float eps, float weightDecay, int32_t iterNum, int32_t gradDimShift)
 {
     // 1. 线程信息计算
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
@@ -58,6 +59,18 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
     int32_t elementsForThread =
         (elementsThisBlockRemaining > MAX_ELEMENTS_PER_THREAD) ? MAX_ELEMENTS_PER_THREAD : elementsThisBlockRemaining;
 
+    // 当前梯度元素所属的嵌入向量（行）索引
+    int rowIdx = isPowerOfTwo ? (threadElementBase >> gradDimShift) : (threadElementBase / gradDim);
+    // 当前梯度元素所属的嵌入向量内的特征（列）索引
+    int colIdx = isPowerOfTwo ? (threadElementBase & (gradDim - 1)) : (threadElementBase % gradDim);
+    // 获取当前行的基地址
+    __gm__ float* curRowBasePtr = reinterpret_cast<__gm__ float*>(valuesPtr[rowIdx]);
+    // 部分中间变量置于循环外计算
+    float oneMinusBeta1 = (1.0f - beta1);
+    float oneMinusBeta2 = (1.0f - beta2);
+    float mHatDenom = 1.0f - AscendC::Simt::Pow(beta1, (float)iterNum);
+    float vHatDenom = 1.0f - AscendC::Simt::Pow(beta2, (float)iterNum);
+
     // 2. 实际计算
 #pragma unroll
     for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; i++) {
@@ -68,44 +81,50 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
         if (globalIdx >= inLength) {
             return;
         }
-        // 当前梯度元素所属的嵌入向量（行）索引
-        int rowIdx = globalIdx / gradDim;
-        // 当前梯度元素所属的嵌入向量内的特征（列）索引
-        int colIdx = globalIdx % gradDim;
 
         float tmpGrad = grads[globalIdx];
-
-        __gm__ float* values = reinterpret_cast<__gm__ float*>(valuesPtr[rowIdx]);
 
         int weightIdx = colIdx;
         int mIdx = weightIdx + gradDim;
         int vIdx = mIdx + gradDim;
 
-        float tmpWeight = values[weightIdx];
-        float tmpM = values[mIdx];
-        float tmpV = values[vIdx];
+        float tmpWeight = curRowBasePtr[weightIdx];
+        float tmpM = curRowBasePtr[mIdx];
+        float tmpV = curRowBasePtr[vIdx];
 
         // 计算新的动量
-        float newM = beta1 * tmpM + (1.0f - beta1) * tmpGrad;
+        float newM = beta1 * tmpM + oneMinusBeta1 * tmpGrad;
         // 计算新的方差
-        float newV = beta2 * tmpV + (1.0f - beta2) * tmpGrad * tmpGrad;
+        float newV = beta2 * tmpV + oneMinusBeta2 * tmpGrad * tmpGrad;
         // 计算归一化后的动量和方差
-        float mHat = newM / (1.0f - AscendC::Simt::Pow(beta1, (float)iterNum));
-        float vHat = newV / (1.0f - AscendC::Simt::Pow(beta2, (float)iterNum));
+        float mHat = newM / mHatDenom;
+        float vHat = newV / vHatDenom;
         // 计算权重更新量
         float deltaW = lr * (mHat / (AscendC::Simt::Sqrt(vHat) + eps) + weightDecay * tmpWeight);
         // 更新权重
-        values[weightIdx] = tmpWeight - deltaW;
+        curRowBasePtr[weightIdx] = tmpWeight - deltaW;
         // 更新动量和方差
-        values[mIdx] = newM;
-        values[vIdx] = newV;
+        curRowBasePtr[mIdx] = newM;
+        curRowBasePtr[vIdx] = newV;
+
+        // --- 索引更新逻辑 ---
+        colIdx++;
+        if (colIdx == gradDim) {
+            colIdx = 0;
+            rowIdx++;
+            // 只有当还有下一次循环且确实跨行时，才去全局内存加载新的行指针
+            if (i < MAX_ELEMENTS_PER_THREAD - 1) {
+                curRowBasePtr = reinterpret_cast<__gm__ float*>(valuesPtr[rowIdx]);
+            }
+        }
     }
 }
 
+template <bool isPowerOfTwo>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLargeDataCompute(
     __gm__ float* grads, __gm__ float* __gm__* valuesPtr, int32_t gradDim, int32_t inLength, float lr,
     float beta1, float beta2, float eps, float weightDecay, int32_t iterNum, int32_t totalBlocks,
-    int32_t blockStartIdx, int32_t curBlocksCount)
+    int32_t blockStartIdx, int32_t curBlocksCount, int32_t gradDimShift)
 {
     // 1. 线程信息计算
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
@@ -113,7 +132,6 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
     int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
 
     for (int32_t iter = 0; iter < curBlocksCount; ++iter) {
-        // 1. 位置计算
         int32_t globalBlockIdx = blockStartIdx + iter;
         if (globalBlockIdx >= totalBlocks) {
             break;
@@ -140,6 +158,18 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
         int32_t elementsForThread = elementsThisBlockRemaining > MAX_ELEMENTS_PER_THREAD ?
                                     MAX_ELEMENTS_PER_THREAD : elementsThisBlockRemaining;
 
+        // 当前梯度元素所属的嵌入向量（行）索引
+        int rowIdx = isPowerOfTwo ? (threadElementBase >> gradDimShift) : (threadElementBase / gradDim);
+        // 当前梯度元素所属的嵌入向量内的特征（列）索引
+        int colIdx = isPowerOfTwo ? (threadElementBase & (gradDim - 1)) : (threadElementBase % gradDim);
+        // 获取当前行的基地址
+        __gm__ float* curRowBasePtr = reinterpret_cast<__gm__ float*>(valuesPtr[rowIdx]);
+        // 部分中间变量置于循环外计算
+        float oneMinusBeta1 = (1.0f - beta1);
+        float oneMinusBeta2 = (1.0f - beta2);
+        float mHatDenom = 1.0f - AscendC::Simt::Pow(beta1, (float)iterNum);
+        float vHatDenom = 1.0f - AscendC::Simt::Pow(beta2, (float)iterNum);
+
         // 2. 实际计算
 #pragma unroll
         for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; i++) {
@@ -150,38 +180,42 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
             if (globalIdx >= inLength) {
                 break;
             }
-            // 当前梯度元素所属的嵌入向量（行）索引
-            int rowIdx = globalIdx / gradDim;
-            // 当前梯度元素所属的嵌入向量内的特征（列）索引
-            int colIdx = globalIdx % gradDim;
 
             float tmpGrad = grads[globalIdx];
-
-            __gm__ float* values = reinterpret_cast<__gm__ float*>(valuesPtr[rowIdx]);
 
             int weightIdx = colIdx;
             int mIdx = weightIdx + gradDim;
             int vIdx = mIdx + gradDim;
             
-
-            float tmpWeight = values[weightIdx];
-            float tmpM = values[mIdx];
-            float tmpV = values[vIdx];
+            float tmpWeight = curRowBasePtr[weightIdx];
+            float tmpM = curRowBasePtr[mIdx];
+            float tmpV = curRowBasePtr[vIdx];
 
             // 计算新的动量
-            float newM = beta1 * tmpM + (1.0f - beta1) * tmpGrad;
+            float newM = beta1 * tmpM + oneMinusBeta1 * tmpGrad;
             // 计算新的方差
-            float newV = beta2 * tmpV + (1.0f - beta2) * tmpGrad * tmpGrad;
+            float newV = beta2 * tmpV + oneMinusBeta2 * tmpGrad * tmpGrad;
             // 计算归一化后的动量和方差
-            float mHat = newM / (1.0f - AscendC::Simt::Pow(beta1, (float)iterNum));
-            float vHat = newV / (1.0f - AscendC::Simt::Pow(beta2, (float)iterNum));
+            float mHat = newM / mHatDenom;
+            float vHat = newV / vHatDenom;
             // 计算权重更新量
             float deltaW = lr * (mHat / (AscendC::Simt::Sqrt(vHat) + eps) + weightDecay * tmpWeight);
             // 更新权重
-            values[weightIdx] = tmpWeight - deltaW;
+            curRowBasePtr[weightIdx] = tmpWeight - deltaW;
             // 更新动量和方差
-            values[mIdx] = newM;
-            values[vIdx] = newV;
+            curRowBasePtr[mIdx] = newM;
+            curRowBasePtr[vIdx] = newV;
+
+            // --- 索引更新逻辑 ---
+            colIdx++;
+            if (colIdx == gradDim) {
+                colIdx = 0;
+                rowIdx++;
+                // 只有当还有下一次循环且确实跨行时，才去全局内存加载新的行指针
+                if (i < MAX_ELEMENTS_PER_THREAD - 1) {
+                    curRowBasePtr = reinterpret_cast<__gm__ float*>(valuesPtr[rowIdx]);
+                }
+            }
         }
     }
 }
