@@ -1,0 +1,144 @@
+[
+    {
+        "op": "NormMultiplyDropoutBackward",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "d_out",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16", "fp32"
+                ]
+            },
+            {
+                "name": "x",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16", "fp32"
+                ]
+            },
+            {
+                "name": "u",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16", "fp32"
+                ]
+            },
+            {
+                "name": "weight",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16", "fp32"
+                ]
+            },
+            {
+                "name": "bias",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16", "fp32"
+                ]
+            },
+            {
+                "name": "mean",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp32", "fp32"
+                ]
+            },
+            {
+                "name": "var",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp32", "fp32"
+                ]
+            },
+            {
+                "name": "mask",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "uint8", "uint8", "uint8"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "d_u",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16", "fp32"
+                ]
+            },
+            {
+                "name": "d_x",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "bf16", "fp16", "fp32"
+                ]
+            },
+            {
+                "name": "d_weight",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp32", "fp32"
+                ]
+            },
+            {
+                "name": "d_bias",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND", "ND"
+                ],
+                "type": [
+                    "fp32", "fp32", "fp32"
+                ]
+            }
+        ],
+        "attr": [
+            {
+              "name": "eps",
+              "param_type": "required",
+              "type": "float",
+              "default_value": 1e-5
+            },
+            {
+              "name": "dropout_ratio",
+              "param_type": "required",
+              "type": "float",
+              "default_value": 0
+            }
+        ]
+    }
+]
