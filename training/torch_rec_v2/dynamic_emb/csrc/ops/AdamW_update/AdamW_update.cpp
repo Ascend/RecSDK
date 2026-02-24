@@ -30,19 +30,45 @@ extern "C" __global__ __aicore__ void AdamW_update(GM_ADDR grads, GM_ADDR values
     __gm__ float* gradsPtr = reinterpret_cast<__gm__ float*>(grads);
     __gm__ float* __gm__* valuesPtr = reinterpret_cast<__gm__ float* __gm__*>(values);
 
-    if (isSmall)
-    {
-        AscendC::Simt::VF_CALL<AdamWUpdateSimt::SimtSmallInBlockDataCompute>(
-            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength, lr, beta1, beta2, eps,
-            weightDecay, iterNum);
+    // 判断 gradDim 是否为 2 的正整数幂
+    bool isPowerOfTwo = (gradDim & (gradDim - 1)) == 0;
+
+    int32_t gradDimShift = 0;
+    if (isPowerOfTwo) {
+        // 计算 log2，即 shift 位数
+        int32_t gradDimCopy = gradDim;
+        while (gradDimCopy >>= 1) {
+            gradDimShift++;
+        }
+    } else {
+        gradDimShift = 0;
+    }
+
+    if (isSmall) {
+        if (isPowerOfTwo) {
+            AscendC::Simt::VF_CALL<AdamWUpdateSimt::SimtSmallInBlockDataCompute<true>>(
+                AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength, lr, beta1, beta2, eps,
+                weightDecay, iterNum, gradDimShift);
+        } else {
+            AscendC::Simt::VF_CALL<AdamWUpdateSimt::SimtSmallInBlockDataCompute<false>>(
+                AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength, lr, beta1, beta2, eps,
+                weightDecay, iterNum, gradDimShift);
+        }
+            
     } else {
         // 计算当前核心需要处理的块数
         int32_t curBlocksCount = (coreId < remainderBlocks) ? (blocksPerCore + 1) : blocksPerCore;
         // 计算当前核心需要处理的起始块索引
         int32_t blockStartIdx = coreId * blocksPerCore + ((coreId < remainderBlocks) ? coreId : remainderBlocks);
-
-        AscendC::Simt::VF_CALL<AdamWUpdateSimt::SimtLargeDataCompute>(
-            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength, lr, beta1, beta2, eps,
-            weightDecay, iterNum, totalBlocks, blockStartIdx, curBlocksCount);
+        
+        if (isPowerOfTwo) {
+            AscendC::Simt::VF_CALL<AdamWUpdateSimt::SimtLargeDataCompute<true>>(
+                AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength, lr, beta1, beta2, eps,
+                weightDecay, iterNum, totalBlocks, blockStartIdx, curBlocksCount, gradDimShift);
+        } else {
+            AscendC::Simt::VF_CALL<AdamWUpdateSimt::SimtLargeDataCompute<false>>(
+                AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength, lr, beta1, beta2, eps,
+                weightDecay, iterNum, totalBlocks, blockStartIdx, curBlocksCount, gradDimShift);
+        }
     }
 }
