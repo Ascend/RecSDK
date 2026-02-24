@@ -35,7 +35,7 @@ cp -f ../gr_npu.patch ./ && git apply gr_npu.patch
 cp ../run.sh ./examples/hstu/
 cd ./examples/hstu
 ```
-2. 参考 https://gitcode.com/Ascend/MindSpeed/tree/core_r0.14.0 安装 MindSpeed 和 Megatron-LM (core_v0.12.1)
+2. 参考 https://gitcode.com/Ascend/MindSpeed/tree/core_r0.14.0 安装 MindSpeed 和 Megatron-LM (core_v0.14.0)
 在gr_nv目录下载Mindspeed文件夹和Megatron-LM文件夹
 ```shell
 -- gr_nv
@@ -48,10 +48,10 @@ cd ./examples/hstu
 2. 参考 https://github.com/NVIDIA/recsys-examples/blob/v25.09/examples/hstu/README.md#dataset-preprocessing 准备数据集(示例为ml-20m数据集)。
 
 ```shell
--- tm_data
+-- tmp_data
    |-- ml-20m
 ```
-tm_data放置在recsys-examples/examples/hstu路径下
+tmp_data放置在recsys-examples/examples/hstu路径下
 
 3. 执行命令：
 修改run.sh的MEGATRON_DIR和MINDSPEED_DIR，修改WORLD_SIZE和ASCEND_RT_VISIBLE_DEVICE为实际使用卡数
