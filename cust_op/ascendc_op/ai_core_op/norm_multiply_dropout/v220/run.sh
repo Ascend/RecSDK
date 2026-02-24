@@ -42,12 +42,12 @@ if [ "$#" -eq 1 ]; then
   validate_ai_core $ai_core
 fi
 
-OP_FILE_PATH="norm_multiply_dropout_backward"
-rm -rf ./${OP_FILE_PATH}
-
-# 生成算子工程
+# 利用msopgen生成算子工程
+OP_NAME="NormMultiplyDropout"
+OP_FILE_PATH="norm_multiply_dropout"
 msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin | head -1)
-python3 ${msopgen_path} gen -i ${OP_FILE_PATH}.json -f tf -c ${ai_core} -lan cpp -out ./${OP_FILE_PATH} -m 0 -op NormMultiplyDropoutBackward
+rm -rf ./${OP_FILE_PATH}
+python3 ${msopgen_path} gen -i ${OP_FILE_PATH}.json -f tf -c ${ai_core} -lan cpp -out ./${OP_FILE_PATH} -m 0 -op ${OP_NAME}
 cp -r ./op_host/ ./${OP_FILE_PATH}
 cp -r ./op_kernel/ ./${OP_FILE_PATH}
 cd ${OP_FILE_PATH}
@@ -68,7 +68,7 @@ fi
 # 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
-sed -i 's:"customize":"norm_multiply_dropout_backward":g' CMakePresets.json
+sed -i 's:"customize":"norm_multiply_dropout":g' CMakePresets.json
 
 # 增加LOG_CPP编译选项支持错误日志打印
 sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
