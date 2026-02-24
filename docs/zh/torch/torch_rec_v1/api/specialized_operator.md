@@ -34,9 +34,10 @@
 | concat_2d_jagged                                | 无                                                                                            | 否             | 实现将两个tensor分别按照其对应offset偏移量,按顺序依次拼接，组成一个tensor。                                     |
 | concat_2d_jagged_grad                           | 无                                                                                            | 否             | 为concat_2d_jagged的反向算子,将一个tensor，分别按照两个offset偏移量，按顺序依次拆分形成两个tensor。                 |
 | in_linear_silu                                  | 无                                                                                            | 否             | 实现将输入tensor进行线性变换、silu函数激活后拆分为4个tensor的功能。                                          |
-| in_linear_silu_backward                                  | 无                                                                                            | 否             | 实现in_linear_silu的反向算子。                                          |
+| in_linear_silu_backward                         | 无                                                                                            | 否             | 实现in_linear_silu的反向算子。                                                              |
 | reverse_sequence                                | 无                                                                                            | 否             | 实现将输入tensor进行逆序操作的功能。                                                               |
-
+| norm_multiply_dropout                           | 无                                                                                            | 否             | 实现layer_norm + multiply + dropout计算逻辑的前向计算功能。                                       |
+| norm_multiply_dropout_backward                  | 无                                                                                            | 否             | 实现layer_norm + multiply + dropout计算逻辑的反向计算功能。                                       |
 
 >[!NOTE]  说明
 >表格中仅列举ai\_core\_op路径下PyTorch场景的自定义算子。

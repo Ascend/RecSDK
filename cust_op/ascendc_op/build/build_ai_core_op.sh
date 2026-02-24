@@ -60,6 +60,7 @@ declare -A OP_PLUGIN_MAP=(
   ["jagged_to_padded_dense"]="jagged_to_padded_dense"
   ["ln_mul"]="ln_mul"
   ["multislice_concat"]="multislice_concat"
+  ["norm_multiply_dropout"]="norm_multiply_dropout"
   ["permute_pooled_embs"]="permute_pooled_embs"
   ["permute2d_sparse_data"]="permute1d_sparse_data permute2d_sparse_data"
   ["relative_attn_bias_backward"]="relative_attn_bias"
