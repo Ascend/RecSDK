@@ -33,6 +33,7 @@ static const uint64_t MIN_X_DIM = 16;
 static const uint64_t MAX_X_DIM = 8192;
 static const uint64_t MIN_W_DIM = 64;
 static const uint64_t MAX_W_DIM = 32768;
+static const uint64_t COMPUTE_PIPE_NUM = 2;
 }  // namespace
 
 namespace INPUT_INDEX_T {
@@ -50,23 +51,22 @@ namespace INPUT_INDEX_T {
 }
 
 namespace optiling {
-static bool TilingKeySetImpl(gert::TilingContext* context, InLinearSiluBackwardTilingData &tiling)
+static bool TilingKeySetImpl(gert::TilingContext* context, InLinearSiluBackwardTilingData &tiling,
+                             bool isTrans, bool isVardim)
 {
     bool enableBias = tiling.get_enableBias();
-    bool isTrans = tiling.get_isTrans();
-    
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(enableBias, isTrans);
+
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(enableBias, isTrans, isVardim);
     context->SetTilingKey(tilingKey);
 
     return true;
 }
 
-static ge::graphStatus GetBlockMN(gert::TilingContext* context, int64_t seqLen,
-                                  const int64_t *split_arg_list)
+static ge::graphStatus GetBlockMN(gert::TilingContext* context, uint32_t hiddenSize)
 {
-    uint32_t max_dim = min(split_arg_list[0], split_arg_list[2]);
-    uint32_t blockK = BLOCK_HEIGHT;
-    while (blockK >= 16) {
+    uint32_t max_dim = hiddenSize / 4;
+    uint32_t blockK = MAX_BLOCK_DIM;
+    while (blockK >= MIN_X_DIM) {
         if (max_dim % blockK == 0) {
             break;
         }
@@ -154,7 +154,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     const int64_t* data = list->GetData();
     OPS_LOG_E_IF_NULL("data", data, return ge::GRAPH_FAILED);
     
-    bool isTrans = true;
     uint32_t hiddenSize = wShape.GetDim(0);
     // 有效范围校验
     rangeCheck(context, seqLen, embedDim, hiddenSize, data);
@@ -165,7 +164,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     } else {
         tiling.set_enableBias(1);
     }
-    auto blockK = GetBlockMN(context, seqLen, data);
+    auto blockK = GetBlockMN(context, hiddenSize);
     tiling.set_embedDim(embedDim);
     tiling.set_hiddenSize(hiddenSize);
     tiling.set_seqLen(seqLen);
@@ -173,11 +172,12 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_vDim(data[1]);
     tiling.set_qDim(data[2]);
     tiling.set_kDim(data[3]);
-    tiling.set_isTrans(isTrans);
     tiling.set_blockM(BLOCK_HEIGHT);
     tiling.set_blockK(blockK);
+    bool isTrans = *context->GetAttrs()->GetBool(1);
+    bool isVardim = *context->GetAttrs()->GetBool(2);
 
-    TilingKeySetImpl(context, tiling);
+    TilingKeySetImpl(context, tiling, isTrans, isVardim);
     if (ge::GRAPH_FAILED == TilingMatmulImpl(context, BLOCK_HEIGHT, embedDim, blockK, false, tiling.LW_MM)) {
         return ge::GRAPH_FAILED;
     }
@@ -189,7 +189,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
 
     OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
-    size_t userSize = static_cast<size_t>(2 * aicCoreNum * BLOCK_HEIGHT * MAX_BLOCK_DIM * sizeof(float));
+    size_t userSize = static_cast<size_t>(COMPUTE_PIPE_NUM * 2 * aicCoreNum * BLOCK_HEIGHT * blockK * sizeof(float));
     currentWorkspace[0] = userSize + sysWorkspaceSize;
     OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return ge::GRAPH_FAILED);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(),
@@ -228,7 +228,7 @@ explicit InLinearSiluBackward(const char* name) : OpDef(name)
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16})
-            .FormatList({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("weight")
             .ParamType(REQUIRED)
@@ -238,7 +238,7 @@ explicit InLinearSiluBackward(const char* name) : OpDef(name)
         this->Input("bias")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("user_grad")
             .ParamType(REQUIRED)
@@ -277,14 +277,17 @@ explicit InLinearSiluBackward(const char* name) : OpDef(name)
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("bias_grad")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_BF16})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("split_arg_list").AttrType(REQUIRED).ListInt();
         this->Attr("isTrans").AttrType(OPTIONAL).Bool(true);
+        this->Attr("isVardim").AttrType(OPTIONAL).Bool(false);
         this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDtype);
         this->AICore().SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910b");
+        this->AICore().AddConfig("ascend910_93");
+        this->AICore().AddConfig("ascend950");
     }
 };
 

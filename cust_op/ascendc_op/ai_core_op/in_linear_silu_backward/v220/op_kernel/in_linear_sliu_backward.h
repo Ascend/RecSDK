@@ -29,25 +29,21 @@ using namespace AscendC;
 
 namespace InLinearSiluBackward {
 
-constexpr int VEC_PER_PROCESS = 32;
-constexpr int UB_SIZE = 170 * 1024;  // 170KB
-constexpr int QUEUE_IN_NUM = 2;
-constexpr int SPLIT_CORE = 2;
-constexpr int ALIGN_16 = 16;
 constexpr int COMPUTE_PIPE_NUM = 2;
-constexpr int INT_ALIGN_NUM = 8;
-constexpr int BLOCK_HEIGHT_128 = 128;
-constexpr int BLOCK_HEIGHT_256 = 256;
 constexpr int DATA_ALIGN_BYTES = 32;
 constexpr int USE_QUEUE_NUM = 1;
 constexpr int VCORE_NUM_IN_ONE_AIC = 2;
+
+#ifdef SUPPORT_950
+constexpr int VECTOR_SCORE_UB_SIZE = 16 * 1024;
+#else
 constexpr int VECTOR_SCORE_UB_SIZE = 12 * 1024;
+#endif
 constexpr int UVQK_NUM = 4;
 constexpr int UVQK_INDEX_U = 0;
 constexpr int UVQK_INDEX_V = 1;
 constexpr int UVQK_INDEX_Q = 2;
 constexpr int UVQK_INDEX_K = 3;
-constexpr float ONE_FLOAT = 1.0f;
 
 struct Args {
     // input
@@ -83,12 +79,11 @@ struct TaskInfo {
 };
 
 
-template <typename xType, typename wType, bool enableBias, bool isTrans>
+template <typename xType, typename wType, bool enableBias, bool isTrans, bool isVardim>
 class InLinearSiluBackward {
 public:
     static constexpr int ElementOfBlock = DATA_ALIGN_BYTES / sizeof(xType);
-    static constexpr int blockHeight = BLOCK_HEIGHT_256;
-    static constexpr int vectorScoreUbBlockElem = VECTOR_SCORE_UB_SIZE / QUEUE_IN_NUM;
+    static constexpr int vectorScoreUbBlockElem = VECTOR_SCORE_UB_SIZE / USE_QUEUE_NUM;
     __aicore__ inline InLinearSiluBackward() {}
     __aicore__ inline void Init(const Args& args, const InLinearSiluBackwardTilingData* __restrict tilingDataPtr,
                              TPipe* pipePtr)
@@ -112,7 +107,7 @@ public:
         bias_grad = args.bias_grad;
         workspace = args.workspace;
         seqLen = tilingDataPtr->seqLen;
-        blockM = BLOCK_HEIGHT_256;
+        blockM = tilingDataPtr->blockM;
         blockK = tilingDataPtr->blockK;
         hiddenSize = tilingDataPtr->hiddenSize;
         dim = tilingDataPtr->embedDim;
@@ -140,7 +135,6 @@ public:
         qGradGt.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(query_grad));
         kGradGt.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(key_grad));
         linearOutGt.SetGlobalBuffer(reinterpret_cast<__gm__ xType*>(linear_output));
-
         // output
         xGradGt.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(x_grad));
         weightGradGt.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(weight_grad));
@@ -198,12 +192,37 @@ public:
         sync.SetFlag(0);
         sync.WaitFlag(0);
     }
+    __aicore__ inline void Wait_MTE3_V()
+    {
+        AscendC::TQueSync<PIPE_MTE3, PIPE_V> sync;
+        sync.SetFlag(0);
+        sync.WaitFlag(0);
+    }
 
-    __aicore__ inline void SiluGrad(TaskInfo &taskInfo, int32_t taskId)
+    __aicore__ inline void GetUvqkInput(TaskInfo &taskInfo,
+                                        LocalTensor<xType> &inputLt,
+                                        DataCopyParams &inParams,
+                                        int32_t offset)
     {
         GlobalTensor<xType>uvqkGt[UVQK_NUM] = {
             uGradGt, vGradGt, qGradGt, kGradGt,
         };
+        if constexpr (isVardim) {
+            uint32_t srcOffset = (taskInfo.rowId * blockM + offset) * totalDim + taskInfo.kOffset;
+            DataCopy(inputLt, uGradGt[srcOffset], inParams);
+        } else {
+            // datacopyin uvqk
+            uint16_t uvqkSrcGap = (splitList[taskInfo.uvqkId] - taskInfo.computeKSeqLen) * \
+                sizeof(xType) / DATA_ALIGN_BYTES;
+            DataCopyParams uvqkParams = {inParams.blockCount, inParams.blockLen, uvqkSrcGap, inParams.dstStride};
+            uint32_t srcOffset = (taskInfo.rowId * this->blockM + offset) * splitList[taskInfo.uvqkId] + \
+                        taskInfo.uvqkSeqOffset;
+            DataCopy(inputLt, uvqkGt[taskInfo.uvqkId][srcOffset], uvqkParams);
+        }
+    }
+
+    __aicore__ inline void SiluGrad(TaskInfo &taskInfo, int32_t taskId)
+    {
         // datacopyIn linearOut
         int32_t totalLen = taskInfo.computeMSeqLen * taskInfo.computeKSeqLen;
         int32_t siluOffset = blockM * blockK * (taskId % COMPUTE_PIPE_NUM);
@@ -226,13 +245,9 @@ public:
             uint16_t blockCount = lines;
             uint16_t blockLen = taskInfo.computeKSeqLen * sizeof(xType) / DATA_ALIGN_BYTES;
             uint16_t dstGap = 0;
+           
             uint16_t srcGap = (totalDim - taskInfo.computeKSeqLen) * sizeof(xType) / DATA_ALIGN_BYTES;
             DataCopyParams lnOutparams = {blockCount, blockLen, srcGap, dstGap};
-
-            uint16_t uvqkSrcGap = (splitList[taskInfo.uvqkId] - taskInfo.computeKSeqLen) * \
-                sizeof(xType) / DATA_ALIGN_BYTES;
-            DataCopyParams uvqkParams = {blockCount, blockLen, uvqkSrcGap, dstGap};
-            
             uint32_t srcOffset = (taskInfo.rowId * blockM + offset) * totalDim + taskInfo.kOffset;
 
             DataCopy(inputLt, linearOutGt[srcOffset], lnOutparams);
@@ -241,27 +256,20 @@ public:
             
             if constexpr(!std::is_same<xType, float>::value) {
                 Cast(tmpLt, inputLt, RoundMode::CAST_NONE, calcLen);
-                AscendC::PipeBarrier<PIPE_ALL>();
                 auto srcLt = inputLt.template ReinterpretCast<float>();
                 LinearOutGradCalcFp32(tmpLt, srcLt, dstLt, calcLen);
                 // datacopyin uvqk
-                srcOffset = (taskInfo.rowId * this->blockM + offset) * splitList[taskInfo.uvqkId] + \
-                            taskInfo.uvqkSeqOffset;
                 Wait_V_MTE2();
-                DataCopy(inputLt, uvqkGt[taskInfo.uvqkId][srcOffset], uvqkParams);
+                GetUvqkInput(taskInfo, inputLt, lnOutparams, offset);
 
                 // x * d(sigmoid(x))/dx
-                queIn.template EnQue(inputLt);
-                inputLt = queIn.template DeQue<xType>();
-                
+                Wait_MTE2_V();
                 Cast(tmpLt, inputLt, RoundMode::CAST_NONE, calcLen);
-                AscendC::PipeBarrier<PIPE_ALL>();
 
                 Mul(srcLt, dstLt, tmpLt, calcLen);
 
                 GetBiasGrad(srcLt, dstLt, lines, taskInfo.computeKSeqLen, taskInfo.kOffset);
-                AscendC::PipeBarrier<PIPE_ALL>();
-
+                Wait_MTE3_V();
                 // cast-> xType
                 auto outLt = dstLt.template ReinterpretCast<xType>();
                 Cast(outLt, srcLt, RoundMode::CAST_RINT, calcLen);
@@ -270,21 +278,18 @@ public:
                 DataCopy(SiluGradGt[siluOffset + offset * taskInfo.computeKSeqLen], outLt, calcLen);
             } else {
                 LinearOutGradCalcFp32(inputLt, tmpLt, dstLt, calcLen);
-                srcOffset = (taskInfo.rowId * this->blockM + offset) * splitList[taskInfo.uvqkId] +
-                    taskInfo.uvqkSeqOffset;
                 Wait_V_MTE2();
-                DataCopy(inputLt, uvqkGt[taskInfo.uvqkId][srcOffset], uvqkParams);
-
-                // x * d(sigmoid(x))/dx
+                GetUvqkInput(taskInfo, inputLt, lnOutparams, offset);
+                
                 Wait_MTE2_V();
-
+                // x * d(sigmoid(x))/dx
                 Mul(dstLt, dstLt, inputLt, calcLen);
                 Wait_V_MTE3();
 
                 DataCopy(SiluGradGt[siluOffset + offset * taskInfo.computeKSeqLen], dstLt, calcLen);
                 GetBiasGrad(dstLt, inputLt, lines, taskInfo.computeKSeqLen, taskInfo.kOffset);
             }
-            AscendC::PipeBarrier<PIPE_ALL>();
+
             offset += lines;
             totalLen -= calcLen;
             
@@ -340,14 +345,10 @@ public:
 
     __aicore__ inline void FillTaskInfo(TaskInfo &taskInfo, uint32_t rowId)
     {
-        // 按行分核
-        // 按照blockK进行计算，uvqk核小dim可能存在较小尾块，记录computeSeqLenOffset, blockM, blockK
-        // 计算 uvqk索引下标，uvqk拷贝起始地址，linear_output拷贝起始地址
         taskInfo.rowId = rowId;
         taskInfo.computeMSeqLen = (taskInfo.rowId + 1) * blockM < this->seqLen ? blockM :
                              this->seqLen - taskInfo.rowId * blockM;
-        taskInfo.computeKSeqLen = ((taskInfo.uvqkSeqOffset + blockK) < splitList[taskInfo.uvqkId]) ? blockK :
-                                  splitList[taskInfo.uvqkId] - taskInfo.uvqkSeqOffset;
+        taskInfo.computeKSeqLen = blockK;
     }
 
     __aicore__ inline void UpdateTaskInfo(uint32_t taskId)
@@ -362,7 +363,7 @@ public:
                 computeTaskInfo[nextTaskId].uvqkId = computeTaskInfo[currTaskId].uvqkId + 1;
                 computeTaskInfo[nextTaskId].kOffset = computeTaskInfo[currTaskId].computeKSeqLen +
                 computeTaskInfo[currTaskId].kOffset;
-            } else { // 换行 todo待测试
+            } else {
                 computeTaskInfo[nextTaskId].rowId = computeTaskInfo[currTaskId].rowId + 1;
                 computeTaskInfo[nextTaskId].uvqkId = UVQK_INDEX_U;
                 computeTaskInfo[nextTaskId].kOffset = 0;
@@ -382,9 +383,28 @@ public:
             blockK : uvqkLen - computeTaskInfo[nextTaskId].uvqkSeqOffset;
     }
 
+    __aicore__ inline void UpdateTaskInfoVarDim(uint32_t taskId)
+    {
+        int32_t nextTaskId = (taskId + 1) % COMPUTE_PIPE_NUM;
+        int32_t currTaskId = taskId % COMPUTE_PIPE_NUM;
+        int32_t lastTaskOffset = computeTaskInfo[currTaskId].computeKSeqLen + computeTaskInfo[currTaskId].kOffset;
+        computeTaskInfo[nextTaskId] = computeTaskInfo[currTaskId];
+        if (lastTaskOffset >= totalDim) {
+            computeTaskInfo[nextTaskId].rowId = computeTaskInfo[currTaskId].rowId + 1;
+            computeTaskInfo[nextTaskId].kOffset = 0;
+            computeTaskInfo[nextTaskId].computeMSeqLen = (computeTaskInfo[nextTaskId].rowId + 1) *
+                blockM < this->seqLen ? blockM :
+                this->seqLen - computeTaskInfo[nextTaskId].rowId * blockM;
+        } else {
+            computeTaskInfo[nextTaskId].kOffset = computeTaskInfo[currTaskId].kOffset +
+                computeTaskInfo[currTaskId].computeKSeqLen;
+        }
+        computeTaskInfo[nextTaskId].computeKSeqLen = ((computeTaskInfo[nextTaskId].kOffset + blockK) < totalDim) ?
+            blockK : totalDim - computeTaskInfo[nextTaskId].kOffset;
+    }
+
     __aicore__ inline void DolwMatmul(TaskInfo &taskInfo, uint32_t taskId)
     {
-        // 一次性拷完weight
         // [sq, H] [H, d]
         int32_t siluOffset = blockM * blockK * taskId;
         // 右矩阵偏移
@@ -399,7 +419,6 @@ public:
 
     __aicore__ inline void DolxMatmul(TaskInfo &taskInfo, uint32_t taskId)
     {
-        // 一次性拷完weight
         // [sq, H] [sq, d]
         int32_t siluOffset = blockM * blockK * taskId;
         // 右矩阵偏移
@@ -440,7 +459,11 @@ public:
                     WaitLxMatmul();
                     WaitLwMatmul();
                 }
-                UpdateTaskInfo(taskId);
+                if constexpr (isVardim) {
+                    UpdateTaskInfoVarDim(taskId);
+                } else {
+                    UpdateTaskInfo(taskId);
+                }
                 taskId++;
                 currentTaskId = taskId % COMPUTE_PIPE_NUM;
                 prevTaskId = (taskId - 1) % COMPUTE_PIPE_NUM;
@@ -512,7 +535,8 @@ public:
     GlobalTensor<xType> SiluGradGt;
 
     matmul::Matmul<
-    matmul::MatmulType<TPosition::GM, CubeFormat::ND, xType, true>,
+    matmul::MatmulType<TPosition::GM, CubeFormat::ND, xType, true, LayoutMode::NONE, false,
+        TPosition::VECOUT>,
     matmul::MatmulType<TPosition::GM, CubeFormat::ND, xType, false>,
     matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
     matmul::MatmulType<TPosition::GM, CubeFormat::ND, float>, CFG_NORM,

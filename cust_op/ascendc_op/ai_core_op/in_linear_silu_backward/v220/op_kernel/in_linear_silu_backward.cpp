@@ -38,7 +38,7 @@ __aicore__ inline void InvokeLinearSiluBackwardOpImpl(const InLinearSiluBackward
     op.Compute();
 }
 
-template<bool enableBias, bool isTrans>
+template<bool enableBias, bool isTrans, bool isVardim>
 __global__ __aicore__ void in_linear_silu_backward(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR user_grad,
                                                    GM_ADDR value_grad, GM_ADDR query_grad, GM_ADDR key_grad,
                                                    GM_ADDR linear_output, GM_ADDR x_grad, GM_ADDR weight_grad,
@@ -48,5 +48,5 @@ __global__ __aicore__ void in_linear_silu_backward(GM_ADDR x, GM_ADDR weight, GM
     InLinearSiluBackward::Args args{x, weight, bias, user_grad, value_grad, query_grad, key_grad,
                                    linear_output, x_grad, weight_grad, bias_grad, workspace, tiling};
     InvokeLinearSiluBackwardOpImpl<InLinearSiluBackward::InLinearSiluBackward<
-        DTYPE_X, DTYPE_WEIGHT, enableBias, isTrans>>(args);
+        DTYPE_X, DTYPE_WEIGHT, enableBias, isTrans, isVardim>>(args);
 }
