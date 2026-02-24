@@ -30,6 +30,7 @@ constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
 constexpr int32_t CACHE_ALIGN = 64;
 constexpr int32_t SMALL_DATA_THRESHOLD_32 = 24 * MAX_THREADS_PER_BLOCK;  // 24576
 constexpr int32_t SMALL_DATA_THRESHOLD_64 = 44 * MAX_THREADS_PER_BLOCK;  // 45056
+constexpr int32_t UNROLL_FACTOR = 4;
 
 template <typename T>
 __aicore__ inline T Min(const T& a, const T& b)
@@ -291,7 +292,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
     }
 }
 
-template <typename T>
+template <typename T, bool isPowerOfTwo>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtComputeNewLengths(
     const __gm__ int64_t* offsets, const __gm__ T* indices, const __gm__ T* blockSizes,
     const __gm__ T* distTypePerFeature, __gm__ T* newLengths, int32_t lengthSize, int32_t B, int32_t mySize)
@@ -301,6 +302,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
     int32_t threadNumPerCore = AscendC::Simt::GetThreadNum<0>();
     int32_t coreId = AscendC::Simt::GetBlockIdx();
     int32_t coreNum = AscendC::Simt::GetBlockNum();
+    const uindex_t mySizeMask = (isPowerOfTwo) ? (mySize - 1) : 0;
 
     for (int32_t feature = coreId * threadNumPerCore + threadIdx; feature < lengthSize;
          feature += coreNum * threadNumPerCore) {
@@ -312,17 +314,58 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
         T rowstart = (feature == 0) ? 0 : offsets[feature - 1];
         T rowend = offsets[feature];
 
-        for (auto i = rowstart; i < rowend; i++) {
-            uindex_t idx = static_cast<uindex_t>(indices[i]);
-            uindex_t p = 0;
+        if (useRoundRobin) {
+            uindex_t i = rowstart;
 
-            if (useRoundRobin) {
-                p = idx % mySize;
-            } else {
-                p = (idx < blkSize * mySize) ? (idx / blkSize) : (idx % mySize);
+            for (; i + (UNROLL_FACTOR - 1) < rowend; i += UNROLL_FACTOR) {
+                uindex_t idx0 = static_cast<uindex_t>(indices[i]);
+                uindex_t idx1 = static_cast<uindex_t>(indices[i + 1]);
+                uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
+                uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
+
+                uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) : (idx0 % mySize);
+                uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) : (idx1 % mySize);
+                uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) : (idx2 % mySize);
+                uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) : (idx3 % mySize);
+
+                newLengths[p0 * lengthSize + feature] += 1;
+                newLengths[p1 * lengthSize + feature] += 1;
+                newLengths[p2 * lengthSize + feature] += 1;
+                newLengths[p3 * lengthSize + feature] += 1;
             }
 
-            newLengths[p * lengthSize + feature] += 1;
+            for (; i < rowend; i++) {
+                uindex_t idx = static_cast<uindex_t>(indices[i]);
+                uindex_t p = isPowerOfTwo ? (idx & mySizeMask) : (idx % mySize);
+                newLengths[p * lengthSize + feature] += 1;
+            }
+
+        } else {
+            const uindex_t blkSizeMulMySize = blkSize * mySize;
+            uindex_t i = rowstart;
+
+            for (; i + (UNROLL_FACTOR - 1) < rowend; i += UNROLL_FACTOR) {
+                const uindex_t idx0 = static_cast<uindex_t>(indices[i]);
+                const uindex_t idx1 = static_cast<uindex_t>(indices[i + 1]);
+                const uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
+                const uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
+
+                const uindex_t p0 = (idx0 < blkSizeMulMySize) ? (idx0 / blkSize) : (idx0 % mySize);
+                const uindex_t p1 = (idx1 < blkSizeMulMySize) ? (idx1 / blkSize) : (idx1 % mySize);
+                const uindex_t p2 = (idx2 < blkSizeMulMySize) ? (idx2 / blkSize) : (idx2 % mySize);
+                const uindex_t p3 = (idx3 < blkSizeMulMySize) ? (idx3 / blkSize) : (idx3 % mySize);
+
+                newLengths[p0 * lengthSize + feature] += 1;
+                newLengths[p1 * lengthSize + feature] += 1;
+                newLengths[p2 * lengthSize + feature] += 1;
+                newLengths[p3 * lengthSize + feature] += 1;
+            }
+
+            for (; i < rowend; i++) {
+                const uindex_t idx = static_cast<uindex_t>(indices[i]);
+                const uindex_t p = (idx < blkSizeMulMySize) ? (idx / blkSize) : (idx % mySize);
+                newLengths[p * lengthSize + feature] += 1;
+            }
         }
     }
 
@@ -330,7 +373,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
 }
 
 // 得到newIndices
-template <bool sequence, bool hasWeight, bool bucketizePos, typename T>
+template <bool sequence, bool hasWeight, bool bucketizePos, typename T, bool isPowerOfTwo>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearrangeData(
     const __gm__ int64_t* offsets, const __gm__ T* indices, const __gm__ float* weights, const __gm__ T* blockSizes,
     const __gm__ T* distTypePerFeature, __gm__ T* newOffsets, __gm__ T* newIndices, __gm__ float* newWeights,
@@ -341,6 +384,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
     int32_t threadNumPerCore = AscendC::Simt::GetThreadNum<0>();
     int32_t coreId = AscendC::Simt::GetBlockIdx();
     int32_t coreNum = AscendC::Simt::GetBlockNum();
+    const uindex_t mySizeMask = (isPowerOfTwo) ? (mySize - 1) : 0;
 
     for (int32_t feature = coreId * threadNumPerCore + threadIdx; feature < lengthSize;
          feature += coreNum * threadNumPerCore) {
@@ -350,36 +394,167 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
 
         uindex_t rowstart = (feature == 0) ? 0 : offsets[feature - 1];
         uindex_t rowend = offsets[feature];
+        if (useRoundRobin) {
+            uindex_t i = rowstart;
 
-        for (uindex_t i = rowstart; i < rowend; ++i) {
-            uindex_t idx = static_cast<uindex_t>(indices[i]);
-            uindex_t p = 0;
-            uindex_t newIdx = 0;
+            for (; i + (UNROLL_FACTOR - 1) < rowend; i += UNROLL_FACTOR) {
+                const uindex_t idx0 = static_cast<uindex_t>(indices[i]);
+                const uindex_t idx1 = static_cast<uindex_t>(indices[i + 1]);
+                const uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
+                const uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
 
-            if (useRoundRobin) {
-                p = idx % mySize;
-                newIdx = idx;
-            } else {
-                p = (idx < blkSize * mySize) ? (idx / blkSize) : (idx % mySize);
-                newIdx = (idx < blkSize * mySize) ? (idx % blkSize) : (idx / mySize);
+                const uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) : (idx0 % mySize);
+                const uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) : (idx1 % mySize);
+                const uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) : (idx2 % mySize);
+                const uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) : (idx3 % mySize);
+
+                const uindex_t offset0 = p0 * lengthSize + feature;
+                const uindex_t offset1 = p1 * lengthSize + feature;
+                const uindex_t offset2 = p2 * lengthSize + feature;
+                const uindex_t offset3 = p3 * lengthSize + feature;
+
+                const uindex_t pos0 = newOffsets[offset0];
+                newOffsets[offset0]++;
+                const uindex_t pos1 = newOffsets[offset1];
+                newOffsets[offset1]++;
+                const uindex_t pos2 = newOffsets[offset2];
+                newOffsets[offset2]++;
+                const uindex_t pos3 = newOffsets[offset3];
+                newOffsets[offset3]++;
+
+                newIndices[pos0] = static_cast<T>(idx0);
+                newIndices[pos1] = static_cast<T>(idx1);
+                newIndices[pos2] = static_cast<T>(idx2);
+                newIndices[pos3] = static_cast<T>(idx3);
+
+                // 更新newOffsets
+
+                if (sequence) {
+                    unbucketizePermute[i] = static_cast<T>(pos0);
+                    unbucketizePermute[i + 1] = static_cast<T>(pos1);
+                    unbucketizePermute[i + 2] = static_cast<T>(pos2);
+                    unbucketizePermute[i + 3] = static_cast<T>(pos3);
+                }
+
+                if (hasWeight) {
+                    newWeights[pos0] = weights[i];
+                    newWeights[pos1] = weights[i + 1];
+                    newWeights[pos2] = weights[i + 2];
+                    newWeights[pos3] = weights[i + 3];
+                }
+
+                if (bucketizePos) {
+                    newPos[pos0] = static_cast<T>(i - rowstart);
+                    newPos[pos1] = static_cast<T>(i + 1 - rowstart);
+                    newPos[pos2] = static_cast<T>(i + 2 - rowstart);
+                    newPos[pos3] = static_cast<T>(i + 3 - rowstart);
+                }
             }
 
-            uindex_t pos = newOffsets[p * lengthSize + feature];
+            for (; i < rowend; ++i) {
+                const uindex_t idx = static_cast<uindex_t>(indices[i]);
+                const uindex_t p = isPowerOfTwo ? (idx & mySizeMask) : (idx % mySize);
+                const uindex_t offset = p * lengthSize + feature;
+                const uindex_t pos = newOffsets[offset];
 
-            newIndices[pos] = newIdx;
+                newIndices[pos] = static_cast<T>(idx);
+                newOffsets[offset]++;
 
-            newOffsets[p * lengthSize + feature]++;
+                if (sequence) {
+                    unbucketizePermute[i] = static_cast<T>(pos);
+                }
 
-            if (sequence) {
-                unbucketizePermute[i] = pos;
+                if (hasWeight) {
+                    newWeights[pos] = weights[i];
+                }
+
+                if (bucketizePos) {
+                    newPos[pos] = static_cast<T>(i - rowstart);
+                }
+            }
+        } else {
+            const uindex_t blkSizeMulMySize = blkSize * mySize;
+            uindex_t i = rowstart;
+
+            for (; i + (UNROLL_FACTOR - 1) < rowend; i += UNROLL_FACTOR) {
+                const uindex_t idx0 = static_cast<uindex_t>(indices[i]);
+                const uindex_t idx1 = static_cast<uindex_t>(indices[i + 1]);
+                const uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
+                const uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
+
+                const uindex_t p0 = (idx0 < blkSizeMulMySize) ? (idx0 / blkSize) : (idx0 % mySize);
+                const uindex_t p1 = (idx1 < blkSizeMulMySize) ? (idx1 / blkSize) : (idx1 % mySize);
+                const uindex_t p2 = (idx2 < blkSizeMulMySize) ? (idx2 / blkSize) : (idx2 % mySize);
+                const uindex_t p3 = (idx3 < blkSizeMulMySize) ? (idx3 / blkSize) : (idx3 % mySize);
+
+                const uindex_t newIdx0 = (idx0 < blkSizeMulMySize) ? (idx0 % blkSize) : (idx0 / mySize);
+                const uindex_t newIdx1 = (idx1 < blkSizeMulMySize) ? (idx1 % blkSize) : (idx1 / mySize);
+                const uindex_t newIdx2 = (idx2 < blkSizeMulMySize) ? (idx2 % blkSize) : (idx2 / mySize);
+                const uindex_t newIdx3 = (idx3 < blkSizeMulMySize) ? (idx3 % blkSize) : (idx3 / mySize);
+
+                const uindex_t offset0 = p0 * lengthSize + feature;
+                const uindex_t offset1 = p1 * lengthSize + feature;
+                const uindex_t offset2 = p2 * lengthSize + feature;
+                const uindex_t offset3 = p3 * lengthSize + feature;
+
+                const uindex_t pos0 = newOffsets[offset0];
+                newOffsets[offset0]++;
+                const uindex_t pos1 = newOffsets[offset1];
+                newOffsets[offset1]++;
+                const uindex_t pos2 = newOffsets[offset2];
+                newOffsets[offset2]++;
+                const uindex_t pos3 = newOffsets[offset3];
+                newOffsets[offset3]++;
+
+                newIndices[pos0] = static_cast<T>(newIdx0);
+                newIndices[pos1] = static_cast<T>(newIdx1);
+                newIndices[pos2] = static_cast<T>(newIdx2);
+                newIndices[pos3] = static_cast<T>(newIdx3);
+
+                if (sequence) {
+                    unbucketizePermute[i] = static_cast<T>(pos0);
+                    unbucketizePermute[i + 1] = static_cast<T>(pos1);
+                    unbucketizePermute[i + 2] = static_cast<T>(pos2);
+                    unbucketizePermute[i + 3] = static_cast<T>(pos3);
+                }
+
+                if (hasWeight) {
+                    newWeights[pos0] = weights[i];
+                    newWeights[pos1] = weights[i + 1];
+                    newWeights[pos2] = weights[i + 2];
+                    newWeights[pos3] = weights[i + 3];
+                }
+
+                if (bucketizePos) {
+                    newPos[pos0] = static_cast<T>(i - rowstart);
+                    newPos[pos1] = static_cast<T>(i + 1 - rowstart);
+                    newPos[pos2] = static_cast<T>(i + 2 - rowstart);
+                    newPos[pos3] = static_cast<T>(i + 3 - rowstart);
+                }
             }
 
-            if (hasWeight) {
-                newWeights[pos] = weights[i];
-            }
+            for (; i < rowend; ++i) {
+                const uindex_t idx = static_cast<uindex_t>(indices[i]);
+                const uindex_t p = (idx < blkSizeMulMySize) ? (idx / blkSize) : (idx % mySize);
+                const uindex_t newIdx = (idx < blkSizeMulMySize) ? (idx % blkSize) : (idx / mySize);
 
-            if (bucketizePos) {
-                newPos[pos] = i - rowstart;
+                const uindex_t offset = p * lengthSize + feature;
+                const uindex_t pos = newOffsets[offset];
+
+                newIndices[pos] = static_cast<T>(newIdx);
+                newOffsets[offset]++;
+
+                if (sequence) {
+                    unbucketizePermute[i] = static_cast<T>(pos);
+                }
+
+                if (hasWeight) {
+                    newWeights[pos] = weights[i];
+                }
+
+                if (bucketizePos) {
+                    newPos[pos] = static_cast<T>(i - rowstart);
+                }
             }
         }
     }
