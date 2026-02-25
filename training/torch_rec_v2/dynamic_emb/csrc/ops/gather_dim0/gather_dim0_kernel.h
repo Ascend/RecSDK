@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright 2026. Huawei Technologies Co.,Ltd. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,121 +21,59 @@ See the License for the specific language governing permissions and
 
 using namespace AscendC;
 
-namespace GatherDim0Simt {
+namespace GatherDimSimt {
 
-constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
-constexpr int32_t WARP_SIZE = 32;
-constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
-constexpr int32_t CACHE_ALIGN = 64;
+constexpr int MAX_THREADS_PER_BLOCK = 1024;
+constexpr int UNROLL_SHIFT = 2;
 
-// SIMT VF函数 - 小数据模式
-template <typename T>
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmallDataCompute(
-    __gm__ float* input, __gm__ T* indices, __gm__ float* output, int32_t dataDim, int32_t inLength, int32_t outLength)
+template <typename INDEX, typename DATA>
+__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void GatherDim(
+    const __gm__ DATA* input, const __gm__ INDEX* indices, __gm__ DATA* output,
+    int dim, int startIdx, int endIdx, int endUnrollIdx)
 {
-    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockIdx = AscendC::Simt::GetBlockIdx();
-    int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
+    int threadIdx = AscendC::Simt::GetThreadIdx<0>();
+    int threadNum = AscendC::Simt::GetThreadNum<0>();
+    int i = startIdx + threadIdx;
 
-    int32_t blockBase = blockIdx * blockElementCapacity;
+    for (; i < endUnrollIdx; i += (threadNum << UNROLL_SHIFT)) {
+        int i0 = i;
+        int index0 = i0 / dim;
+        int dimIdx0 = i0 % dim;
 
-    if (blockBase >= outLength) {
-        return;
+        int i1 = i + threadNum;
+        int index1 = i1 / dim;
+        int dimIdx1 = i1 % dim;
+
+        int i2 = i + threadNum * 2;
+        int index2 = i2 / dim;
+        int dimIdx2 = i2 % dim;
+
+        int i3 = i + threadNum * 3;
+        int index3 = i3 / dim;
+        int dimIdx3 = i3 % dim;
+
+        auto rowIdx0 = indices[index0];
+        auto rowIdx1 = indices[index1];
+        auto rowIdx2 = indices[index2];
+        auto rowIdx3 = indices[index3];
+
+        auto out0 = input[rowIdx0 * dim + dimIdx0];
+        auto out1 = input[rowIdx1 * dim + dimIdx1];
+        auto out2 = input[rowIdx2 * dim + dimIdx2];
+        auto out3 = input[rowIdx3 * dim + dimIdx3];
+
+        output[i0] = out0;
+        output[i1] = out1;
+        output[i2] = out2;
+        output[i3] = out3;
     }
 
-    int32_t elementsRemaining = outLength - blockBase;
-    int32_t elementsThisBlock = (elementsRemaining < blockElementCapacity) ? elementsRemaining : blockElementCapacity;
-    if (elementsThisBlock <= 0) {
-        return;
-    }
+    for (; i < endIdx; i += threadNum) {
+        int index = i / dim;
+        int dimIdx = i % dim;
+        auto rowIdx = indices[index];
 
-    int32_t threadElementBase = blockBase + threadIdx * MAX_ELEMENTS_PER_THREAD;
-
-    if (threadElementBase >= outLength) {
-        return;
-    }
-
-    int32_t elementsThisBlockRemaining = elementsThisBlock - threadIdx * MAX_ELEMENTS_PER_THREAD;
-    int32_t elementsForThread =
-        (elementsThisBlockRemaining > MAX_ELEMENTS_PER_THREAD) ? MAX_ELEMENTS_PER_THREAD : elementsThisBlockRemaining;
-
-    // 2. 实际计算
-#pragma unroll
-    for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; ++i) {
-        if (i >= elementsForThread) {
-            return;
-        }
-        int32_t globalIdx = threadElementBase + i;
-        if (globalIdx >= outLength) {
-            return;
-        }
-        int32_t indices_index = globalIdx / dataDim;
-        int32_t indices_dim = globalIdx % dataDim;
-        int64_t index = indices[indices_index];
-        int64_t data_index = index * dataDim + indices_dim;
-        output[globalIdx] = input[data_index];
+        output[i] = input[rowIdx * dim + dimIdx];
     }
 }
-
-// SIMT VF函数 - 大数据模式
-template <typename T>
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLargeDataCompute(
-    __gm__ float* input, __gm__ T* indices, __gm__ float* output, int32_t dataDim, int32_t inLength, int32_t outLength,
-    int32_t totalBlocks, int32_t blockStartIdx, int32_t curBlocksCount)
-{
-    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-
-    int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
-
-    for (int32_t iter = 0; iter < curBlocksCount; ++iter) {
-        // 1.位置计算
-        int32_t globalBlockIdx = blockStartIdx + iter;
-        if (globalBlockIdx >= totalBlocks) {
-            break;
-        }
-
-        int32_t blockBase = globalBlockIdx * blockElementCapacity;
-        if (blockBase >= outLength) {
-            break;
-        }
-
-        int32_t elementsRemaining = outLength - blockBase;
-        int32_t elementsThisBlock =
-            (elementsRemaining < blockElementCapacity) ? elementsRemaining : blockElementCapacity;
-        if (elementsThisBlock <= 0) {
-            continue;
-        }
-
-        int32_t threadElementBase = blockBase + threadIdx * MAX_ELEMENTS_PER_THREAD;
-
-        if (threadElementBase >= outLength) {
-            break;
-        }
-
-        int32_t elementsThisBlockRemaining = elementsThisBlock - threadIdx * MAX_ELEMENTS_PER_THREAD;
-        int32_t elementsForThread = (elementsThisBlockRemaining > MAX_ELEMENTS_PER_THREAD) ? MAX_ELEMENTS_PER_THREAD
-                                                                                           : elementsThisBlockRemaining;
-
-        // 2. 实际计算
-#pragma unroll
-        for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; ++i) {
-            if (i >= elementsForThread) {
-                break;
-            }
-            int32_t globalIdx = threadElementBase + i;
-            if (globalIdx >= outLength) {
-                break;
-            }
-            int32_t indices_index = globalIdx / dataDim;
-            int32_t indices_dim = globalIdx % dataDim;
-            int64_t index = indices[indices_index];
-            int64_t data_index = index * dataDim + indices_dim;
-            output[globalIdx] = input[data_index];
-        }
-    }
 }
-
-}  // namespace GatherDim0Simt

@@ -32,7 +32,7 @@ def get_ops_result(inputs, indices):
     return dynamic_emb_extensions.gather_embedding(inputs, indices)
 
 
-@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("dtype", [torch.int64])
 @pytest.mark.parametrize("device", [0])
 @pytest.mark.parametrize("N", [1, 10, 100, 1000, 10000])
 @pytest.mark.parametrize("M", [5, 50, 500, 5000, 50000])
@@ -52,19 +52,19 @@ def test_gather_embedding(dtype, device, N, M, dim):
     for _ in range(10):
         _ = get_ops_result(inputs, indices)
         _ = get_result(inputs, indices)
-    
+
     # 测试自定义op性能
     start_time = time.time()
     for _ in range(100):
         _ = get_ops_result(inputs, indices)
     custom_time = time.time() - start_time
-    
+
     # 测试基准方法性能
     start_time = time.time()
     for _ in range(100):
         _ = get_result(inputs, indices)
     base_time = time.time() - start_time
-    
+
     # 计算加速比
     speedup = base_time / custom_time if custom_time > 0 else float('inf')
     logging.info(f"\nN={N}, M={M}, dim={dim}, dtype={dtype}")

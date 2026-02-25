@@ -14,11 +14,11 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include <type_traits>
-#include "gather_dim0_kernel.h"
 #include "kernel_operator.h"
+#include "load_from_pointer_kernel.h"
 
-extern "C" __global__ __aicore__ void gather_dim0(GM_ADDR inData, GM_ADDR indicesData, GM_ADDR outData,
-    int dim, int total, int blkPerCore, int remainderBlk, uint32_t threads)
+extern "C" __global__ __aicore__ void load_from_pointer(GM_ADDR inData, GM_ADDR outData,
+    int32_t dim, int64_t total, int64_t blkPerCore, int32_t remainderBlk, uint32_t threads)
 {
     int coreId = AscendC::GetBlockIdx();
     int curBlk = (coreId < remainderBlk) ? (blkPerCore + 1) : blkPerCore;
@@ -28,7 +28,7 @@ extern "C" __global__ __aicore__ void gather_dim0(GM_ADDR inData, GM_ADDR indice
     int endIdx = (startBlk + curBlk) * threads;
     int endUnrollIdx = 0;
     int curNum = 0;
-    int unrollNum = (threads << GatherDimSimt::UNROLL_SHIFT);
+    int unrollNum = (threads << LoadFromPointerSimt::UNROLL_SHIFT);
 
     if (endIdx < total) {
         endIdx = startIdx + curBlk * threads;
@@ -39,21 +39,18 @@ extern "C" __global__ __aicore__ void gather_dim0(GM_ADDR inData, GM_ADDR indice
     endUnrollIdx = startIdx + curNum / unrollNum * unrollNum;
 
     if (dim % 2 == 0) {
-        const __gm__ float2* input = reinterpret_cast<const __gm__ float2*>(inData);
-        const __gm__ int64_t* indices = reinterpret_cast<const __gm__ int64_t*>(indicesData);
+        const __gm__ float2* __gm__* input = reinterpret_cast<const __gm__ float2* __gm__*>(inData);
         __gm__ float2* output = reinterpret_cast<__gm__ float2*>(outData);
 
-        AscendC::Simt::VF_CALL<GatherDimSimt::GatherDim<int64_t, float2>>(
-            AscendC::Simt::Dim3{threads, 1, 1}, input, indices, output, dim >> 1,
+        AscendC::Simt::VF_CALL<LoadFromPointerSimt::LoadFromPointerCompute<float2>>(
+            AscendC::Simt::Dim3{threads, 1, 1}, input, output, dim >> 1,
             startIdx, endIdx, endUnrollIdx);
     } else {
-        const __gm__ float* input = reinterpret_cast<const __gm__ float*>(inData);
-        const __gm__ int64_t* indices = reinterpret_cast<const __gm__ int64_t*>(indicesData);
+        const __gm__ float* __gm__* input = reinterpret_cast<const __gm__ float* __gm__*>(inData);
         __gm__ float* output = reinterpret_cast<__gm__ float*>(outData);
 
-        AscendC::Simt::VF_CALL<GatherDimSimt::GatherDim<int64_t, float>>(
-            AscendC::Simt::Dim3{threads, 1, 1}, input, indices, output, dim,
+        AscendC::Simt::VF_CALL<LoadFromPointerSimt::LoadFromPointerCompute<float>>(
+            AscendC::Simt::Dim3{threads, 1, 1}, input, output, dim,
             startIdx, endIdx, endUnrollIdx);
     }
 }
-
