@@ -37,22 +37,14 @@ template <typename T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void GetTableRangeKernel(
     __gm__ T* offsets, __gm__ T* featureOffsets, __gm__ T* tableRange,
     int64_t numTable,         // 表的个数
-    int64_t featureNumXBatch  // 一个batch的特征总数
+    int64_t batch
 )
 {
     int32_t coreId = AscendC::Simt::GetBlockIdx();
     int32_t tid = AscendC::Simt::GetThreadIdx<0>();
     int32_t threadNumPerCore = AscendC::Simt::GetThreadNum<0>();
     int64_t globalTid = coreId * threadNumPerCore + tid;
-
-    if (numTable == 0) {
-        tableRange[0] = 0;
-        return;
-    }
-
     if (globalTid < numTable + 1) {
-        T numFeature = featureOffsets[numTable];
-        int64_t batch = featureNumXBatch / numFeature;
         T featureOffset = featureOffsets[globalTid];
         int64_t featurePerBatchOffset = static_cast<int64_t>(featureOffset * batch);
         tableRange[globalTid] = offsets[featurePerBatchOffset];
