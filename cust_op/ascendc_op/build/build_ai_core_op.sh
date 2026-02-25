@@ -70,6 +70,7 @@ declare -A OP_PLUGIN_MAP=(
   ["segment_sum_csr"]="segment_sum_csr"
   ["split_embedding_codegen_forward_unweighted"]="split_embedding_codegen_forward_unweighted"
   ["token_mixing"]="token_mixing"
+  ["select_dim1_to_permute"]="select_dim1_to_permute"
 )
 
 
