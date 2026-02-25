@@ -39,10 +39,15 @@ extern "C" __global__ __aicore__ void get_table_range_op(GM_ADDR offsets, GM_ADD
         __gm__ DTYPE_X* tableRangeGm = reinterpret_cast<__gm__ DTYPE_X*>(tableRange);
         int32_t coreNum = AscendC::GetBlockNum();
         int32_t totalThreads = coreNum * DynamicEmbeddingTableRangeOPSimt::MAX_THREADS_PER_BLOCK;
-
+        if (tableNum == 0) {
+            tableRange[0] = 0;
+            return;
+        }
+        DTYPE_X numFeature = featureOffsetsGm[tableNum];
+        int64_t batch = featureNumXBatch / numFeature;
         Simt::VF_CALL<DynamicEmbeddingTableRangeOPSimt::GetTableRangeKernel<DTYPE_X>>(
             Simt::Dim3{DynamicEmbeddingTableRangeOPSimt::MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, featureOffsetsGm,
-            tableRangeGm, tableNum, featureNumXBatch);
+            tableRangeGm, tableNum, batch);
         SyncAll();
     });
 }
