@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,12 +36,56 @@ def get_ops_result(t_in, is_mxrec):
         return torch.ops.fbgemm.asynchronous_complete_cumsum(t_in).cpu()
 
 
+def get_inclusive_result(t_in):
+    return torch.ops.fbgemm.asynchronous_inclusive_cumsum(t_in)
+
+
+def get_inclusive_ops_result(t_in, is_mxrec):
+    if is_mxrec:
+        return torch.ops.mxrec.asynchronous_inclusive_cumsum(t_in).cpu()
+    else:
+        return torch.ops.fbgemm.asynchronous_inclusive_cumsum(t_in).cpu()
+
+
+def get_exclusive_result(t_in):
+    return torch.ops.fbgemm.asynchronous_exclusive_cumsum(t_in)
+
+
+def get_exclusive_ops_result(t_in, is_mxrec):
+    if is_mxrec:
+        return torch.ops.mxrec.asynchronous_exclusive_cumsum(t_in).cpu()
+    else:
+        return torch.ops.fbgemm.asynchronous_exclusive_cumsum(t_in).cpu()
+
+
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
 @pytest.mark.parametrize("device", ["npu:0"])
-@pytest.mark.parametrize("length", [1, 10, 100, 1000, 1024, 10000])
+@pytest.mark.parametrize("length", [1, 10, 100, 1000, 1024, 10000, 20000])
 @pytest.mark.parametrize("is_mxrec", [True, False])
 def test_asynchronous_complete_cumsum(dtype, device, length, is_mxrec):
     t_int = torch.randint(0, 100, (length,), dtype=dtype)
     golden = get_result(t_int)
     result = get_ops_result(t_int.to(device), is_mxrec)
     assert torch.allclose(result, golden)
+
+
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("device", ["npu:0"])
+@pytest.mark.parametrize("length", [1, 10, 100, 1000, 1024, 10000, 20000])
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_asynchronous_inclusive_cumsum(dtype, device, length, is_mxrec):
+    t_int = torch.randint(0, 100, (length,), dtype=dtype)
+    golden = get_inclusive_result(t_int)
+    result = get_inclusive_ops_result(t_int.to(device), is_mxrec)
+    assert torch.equal(result, golden)
+
+
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("device", ["npu:0"])
+@pytest.mark.parametrize("length", [1, 10, 100, 1000, 1024, 10000, 20000])
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_asynchronous_exclusive_cumsum(dtype, device, length, is_mxrec):
+    t_int = torch.randint(0, 100, (length,), dtype=dtype)
+    golden = get_exclusive_result(t_int)
+    result = get_exclusive_ops_result(t_int.to(device), is_mxrec)
+    assert torch.equal(result, golden)

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
+* Copyright (C) 2025-2026. Huawei Technologies Co., Ltd. All rights reserved.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,3 +15,5 @@
  * @return 累积求和结果张量
  */
 at::Tensor asynchronous_complete_cumsum_npu(const at::Tensor &offset);
+at::Tensor asynchronous_inclusive_cumsum_npu(const at::Tensor &offset);
+at::Tensor asynchronous_exclusive_cumsum_npu(const at::Tensor &offset);

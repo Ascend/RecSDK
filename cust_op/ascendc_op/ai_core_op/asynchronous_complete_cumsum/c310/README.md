@@ -85,8 +85,7 @@ a) Tiling实现
   - 获取可用AI Core数量，实现负载均衡
   - 计算每个Core处理的Block数量
 - 工作空间计算：
-  - BlockSums空间：存储每个Block的累积和
-  - SharedMemory空间：用于Block内Warp间通信
+   - SharedMemory空间：存储每个Block的累积和
   - 系统工作空间：AscendC平台所需空间
 
 **TilingData结构**：
@@ -94,8 +93,9 @@ a) Tiling实现
 - totalBlocks：总Block数量
 - blocksPerCore：每个Core处理的Block数量
 - remainderBlocks：余数Block数量（用于负载均衡）
+- elementsPerBlock：单线程块处理的最大元素个数
 - isSmall：判断是否是小数据
-- isInt32：判断是否是int32输入
+- isFullCore：判断是否用到全部的核
 
 b) Shape推导
 
@@ -134,19 +134,17 @@ c) 核心算法实现：
    - 使用SIMT向量化函数`SimtSmallDataCompute`进行并行计算
    - 采用Warp级前缀和算法：每个Warp内部使用`WarpPrefixSum`进行并行前缀和计算
    - 通过共享内存实现Block级同步和前缀和聚合
-   - 支持多Block场景下的两阶段更新：`SimtSmallDataUpdate`
+   - 支持多Block场景下的两阶段更新：使用ReduceSum指令计算块级的前缀和
 
    **大数据模式**：
    - 第一阶段：`SimtLargeDataCompute` - 每个线程处理多个元素，计算局部前缀和
-   - 第二阶段：`SimtLargeDataUpdate` - 根据前面Block的累积结果更新当前Block的输出
+   - 第二阶段：使用ReduceSum指令计算块级的前缀和，更新当前Block的输出
    - 支持多核并行：每个AI Core处理多个Block，通过`blocksPerCore`和`remainderBlocks`实现负载均衡
 
 d) 关键技术特性：
 
    **内存优化**：
-   - 使用Cache对齐（64字节）优化内存访问性能
-   - 共享内存用于Block内Warp间通信，减少全局内存访问
-   - 工作空间分为BlockSums和SharedMemory两部分
+  - 共享内存用于Block内Warp间通信，减少全局内存访问
 
    **并行策略**：
    - 最大支持1024个线程/Block，32个线程/Warp
@@ -162,7 +160,6 @@ d) 关键技术特性：
 4. 性能优化特性
 
 a) **内存访问优化**：
-   - Cache对齐访问：所有内存访问按64字节对齐，提高Cache命中率
    - 共享内存通信：Block内Warp间通过共享内存通信，减少全局内存访问
    - 向量化处理：使用SIMT向量化函数，提高指令吞吐量
 

@@ -43,6 +43,7 @@ rm -rf ./asynchronous_complete_cumsum
 msopgen gen -i asynchronous_complete_cumsum.json -f tf -c ${ai_core} -lan cpp -out ./asynchronous_complete_cumsum -m 0 -op AsynchronousCompleteCumsum
 cp -rf op_kernel asynchronous_complete_cumsum/
 cp -rf op_host asynchronous_complete_cumsum/
+cp -rf ../../common/kernel_common_utils.h asynchronous_complete_cumsum/op_kernel
 cd asynchronous_complete_cumsum
 
 # 判断当前目录下是否存在CMakePresets.json文件
