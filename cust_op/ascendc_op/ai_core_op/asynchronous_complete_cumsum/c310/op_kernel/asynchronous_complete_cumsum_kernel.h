@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,359 +16,255 @@ See the License for the specific language governing permissions and
 #ifndef ASYNCHRONOUS_COMPLETE_CUMSUM_KERNEL_H
 #define ASYNCHRONOUS_COMPLETE_CUMSUM_KERNEL_H
 
-#include <cstdint>
-#include <type_traits>
-#include "kernel_operator.h"
-#include "simt_api/asc_simt.h"
+#include "simt_kernel.h"
+#include "kernel_common_utils.h"
 
-using namespace AscendC;
+struct Args {
+    GM_ADDR x;
+    GM_ADDR y;
+    GM_ADDR workspace;
+    GM_ADDR tiling;
+};
 
-constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
-constexpr int32_t WARP_SIZE = 32;
-constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
-constexpr int32_t MAX_WARPS = MAX_THREADS_PER_BLOCK / WARP_SIZE;
-constexpr int32_t CACHE_ALIGN = 64;
+namespace AsynchronousCompleteCumsum {
 
-namespace AsynchronousCompleteCumsumSimt {
+constexpr int BUFFER_NUM = 2;
 
-// Warp级前缀和计算
-template<typename T>
-__aicore__ inline T WarpPrefixSum(T val)
-{
-    int32_t laneId = AscendC::Simt::GetThreadIdx<0>() % WARP_SIZE;
-#pragma unroll
-    for (int32_t offset = 1; offset < WARP_SIZE; offset <<= 1) {
-        T temp = AscendC::Simt::WarpShflUpSync(val, offset);
-        if (laneId >= offset) {
-            val += temp;
-        }
-    }
-    return val;
-}
+template <typename T>
+class AsynchronousCompleteCumsumKernel {
+public:
+    __aicore__ inline AsynchronousCompleteCumsumKernel(Args &args)
+    {
+        GET_TILING_DATA(tilingData, args.tiling);
 
-// 小数据模式中与Warp聚合相关的公共逻辑
-template<typename T>
-__aicore__ inline bool PrepareWarpAggregates(__gm__ T* input, __ubuf__ T* sharedMemory,
-                                             int64_t totalLength, int32_t blockIdx,
-                                             int32_t blockDim, int32_t threadIdx,
-                                             int32_t warpId, int32_t laneId, int32_t globalIdx,
-                                             int32_t& activeWarpCount, T& currentSum,
-                                             T& warpPrefixSum)
-{
-    if (globalIdx > totalLength) {
-        return false;
+        InitTilingParams(tilingData);
+        InitGmParams(args);
+        InitUbParams();
     }
 
-    int32_t blockStart = blockIdx * blockDim;
-    int32_t elementsRemaining = totalLength - blockStart;
-    elementsRemaining = elementsRemaining < 0 ? 0 : elementsRemaining;
-    int32_t elementsThisBlock = (elementsRemaining < blockDim) ? elementsRemaining : blockDim;
-    activeWarpCount = (elementsThisBlock + WARP_SIZE - 1) / WARP_SIZE;
-
-    // 1. 读取输入数据
-    currentSum = (globalIdx < totalLength) ? input[globalIdx] : static_cast<T>(0);
-    // 2. Warp级前缀和计算
-    warpPrefixSum = WarpPrefixSum(currentSum);
-
-    // 3. Block级同步
-    int32_t elementsInThisWarp = (warpId < activeWarpCount - 1) ? WARP_SIZE :
-                                                                (elementsThisBlock - warpId * WARP_SIZE);
-    if (laneId == elementsInThisWarp - 1 && warpId < activeWarpCount && warpId < MAX_WARPS) {
-        sharedMemory[warpId] = warpPrefixSum;
-    }
-    AscendC::Simt::ThreadBarrier();
-
-    // 4. Block级前缀和计算
-    if (threadIdx < activeWarpCount && threadIdx < MAX_WARPS) {
-        T warpSumValue = sharedMemory[threadIdx];
-        T warpSumPrefix = WarpPrefixSum(warpSumValue);
-        sharedMemory[threadIdx] = warpSumPrefix;
-    }
-    AscendC::Simt::ThreadBarrier();
-
-    return true;
-}
-
-// SIMT VF函数 - 小数据模式第一阶段
-template<typename T>
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
-    inline void SimtSmallDataCompute(__gm__ T* input, __gm__ T* output,
-                                     __gm__ T* blockSums, __ubuf__ T* sharedMemory, int64_t totalLength)
-{
-    // 线程信息计算
-    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockIdx = AscendC::Simt::GetBlockIdx();
-    int32_t blockDim = AscendC::Simt::GetThreadNum<0>();
-    int32_t globalIdx = blockIdx * blockDim + threadIdx;
-    int32_t warpId = threadIdx / WARP_SIZE;
-    int32_t laneId = threadIdx % WARP_SIZE;
-
-    constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
-    int32_t activeWarpCount = 0;
-    T currentSum = static_cast<T>(0);
-    T warpPrefixSum = static_cast<T>(0);
-    if (!PrepareWarpAggregates(input, sharedMemory, totalLength, blockIdx, blockDim, threadIdx,
-                               warpId, laneId, globalIdx, activeWarpCount, currentSum, warpPrefixSum)) {
-        return;
-    }
-
-    // 5. 计算最终前缀和
-    T blockOffset = static_cast<T>(0);
-    if (warpId > 0 && warpId < activeWarpCount && (warpId - 1) < MAX_WARPS) {
-        blockOffset = sharedMemory[warpId - 1];
-    }
-    T finalPrefixSum = blockOffset + warpPrefixSum - currentSum;
-
-    // 6. 写入输出
-    if (globalIdx < totalLength) {
-        output[globalIdx] = finalPrefixSum;
-    }
-
-    // 7. 保存block结果
-    if (threadIdx == 0) {
-        if (activeWarpCount > 0) {
-            int32_t lastWarpIdx = activeWarpCount - 1;
-            if (lastWarpIdx >= 0 && lastWarpIdx < MAX_WARPS) {
-                T blockSum = sharedMemory[lastWarpIdx];
-                blockSums[blockIdx * stride] = blockSum;
-            }
+    __aicore__ inline void Compute()
+    {
+        int32_t coreIdx = GetBlockIdx();
+        if (coreIdx < remainderBlocks) {
+            blockCount = blocksPerCore + 1;
+            blockStart = coreIdx * blockCount;
         } else {
-            blockSums[blockIdx * stride] = static_cast<T>(0);
+            blockCount = blocksPerCore;
+            blockStart = remainderBlocks * (blocksPerCore + 1) + (coreIdx - remainderBlocks) * blocksPerCore;
+        }
+
+        if (isFullCore) {
+            ProcessMultiCycles();
+        } else {
+            ProcessOneCycle();
         }
     }
 
-    AscendC::Simt::ThreadBarrier();
+private:
+    __aicore__ inline void InitTilingParams(const AsynchronousCompleteCumsumTilingData &tilingData)
+    {
+        totalLength = tilingData.totalLength;
+        totalBlocks = tilingData.totalBlocks;
+        blocksPerCore = tilingData.blocksPerCore;
+        remainderBlocks = tilingData.remainderBlocks;
+        elementsPerBlock = tilingData.elementsPerBlock;
+        isSmall = tilingData.isSmall;
+        isFullCore = tilingData.isFullCore;
+    }
 
-    // 8. 计算总和（仅单块场景）
-    if (AscendC::Simt::GetBlockNum() == 1 && threadIdx == 0) {
-        T totalSum = static_cast<T>(0);
-        int32_t totalBlocks = AscendC::Simt::GetBlockNum();
-        for (int32_t i = 0; i < totalBlocks; ++i) {
-            totalSum += blockSums[i * stride];
+    __aicore__ inline void InitGmParams(const Args &args)
+    {
+        inputGT.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(args.x), totalLength);
+        outputGT.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(args.y), totalLength + 1);
+
+        auto user_workspace = GetUserWorkspace(args.workspace);
+        sharedMem = reinterpret_cast<__gm__ T*>(user_workspace);
+        blockSumGT.SetGlobalBuffer(sharedMem, totalBlocks);
+    }
+
+    __aicore__ inline void InitUbParams()
+    {
+        pipe.InitBuffer(inputQueue, BUFFER_NUM, elementsPerBlock * sizeof(T));
+        pipe.InitBuffer(outputQueue, BUFFER_NUM, elementsPerBlock * sizeof(T));
+        pipe.InitBuffer(sharedBuf, MAX_WARPS * sizeof(T));
+        pipe.InitBuffer(reduceTmpBuf, elementsPerBlock * sizeof(T));
+        pipe.InitBuffer(reduceDstBuf, DATA_ALIGN_BYTES);
+    }
+
+    __aicore__ inline T ComputePrefixOffset(int64_t blockIdx, LocalTensor<T> &scratchLt)
+    {
+        if (blockIdx == 0) {
+            return static_cast<T>(0);
         }
-        output[totalLength] = totalSum;
-    }
-}
 
-// SIMT VF函数 - 小数据模式第二阶段
-template<typename T>
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
-    inline void SimtSmallDataUpdate(__gm__ T* output, __gm__ T* blockSums, int64_t totalLength)
-{
-    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockIdx = AscendC::Simt::GetBlockIdx();
-    int32_t blockDim = AscendC::Simt::GetThreadNum<0>();
-    int32_t globalIdx = blockIdx * blockDim + threadIdx;
+        LocalTensor<uint8_t> reduceTmpLt = reduceTmpBuf.Get<uint8_t>();
+        LocalTensor<T> reduceDstLt = reduceDstBuf.Get<T>();
 
-    if (globalIdx >= totalLength) {
-        return;
-    }
+        T prefix = static_cast<T>(0);
+        int64_t processed = 0;
+        while (processed < blockIdx) {
+            int32_t chunk = static_cast<int32_t>(blockIdx - processed);
+            chunk = chunk > elementsPerBlock ? elementsPerBlock : chunk;
 
-    constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
-
-    // 计算前面所有block的偏移
-    T blockOffset = static_cast<T>(0);
-    for (int32_t i = 0; i < blockIdx; ++i) {
-        blockOffset += blockSums[i * stride];
-    }
-
-    // 更新输出
-    output[globalIdx] += blockOffset;
-
-    // 最后一个线程计算总和
-    if (globalIdx == totalLength - 1 && blockIdx == AscendC::Simt::GetBlockNum() - 1) {
-        T totalSum = static_cast<T>(0);
-        int32_t totalBlocks = AscendC::Simt::GetBlockNum();
-        for (int32_t i = 0; i < totalBlocks; ++i) {
-            totalSum += blockSums[i * stride];
+            CpGm2Local(scratchLt, blockSumGT[processed], chunk);
+            inputQueue.EnQue(scratchLt);
+            scratchLt = inputQueue.DeQue<T>();
+            uint32_t shape[2] = {1, static_cast<uint32_t>(chunk)};
+            ReduceSum<T, AscendC::Pattern::Reduce::AR>(reduceDstLt, scratchLt, reduceTmpLt, shape, false);
+            prefix += reduceDstLt(0);
+            processed += chunk;
         }
-        output[totalLength] = totalSum;
-    }
-}
-
-template<typename T>
-__aicore__ inline void FinalizeLargeDataBlock(__gm__ T* output, __gm__ T* blockSums,
-                                              __ubuf__ T* sharedMemory, int64_t totalLength,
-                                              int32_t globalBlockIdx, int32_t threadElementBase,
-                                              int32_t elementsForThread, int32_t threadIdx,
-                                              int32_t warpId, int32_t laneId,
-                                              int32_t activeWarpCount, int32_t threadsInWarp,
-                                              T warpPrefixSum, T threadSum, T* prefixSums,
-                                              int32_t stride)
-{
-    if (threadsInWarp > 0 && warpId < activeWarpCount && warpId < MAX_WARPS &&
-        laneId == (threadsInWarp - 1)) {
-        sharedMemory[warpId] = warpPrefixSum;
-    }
-    AscendC::Simt::ThreadBarrier();
-
-    if (threadIdx < activeWarpCount && threadIdx < MAX_WARPS) {
-        T warpSumValue = sharedMemory[threadIdx];
-        T warpSumPrefix = WarpPrefixSum(warpSumValue);
-        sharedMemory[threadIdx] = warpSumPrefix;
-    }
-    AscendC::Simt::ThreadBarrier();
-
-    T blockOffset = static_cast<T>(0);
-    if (warpId > 0 && warpId < activeWarpCount && (warpId - 1) < MAX_WARPS) {
-        blockOffset = sharedMemory[warpId - 1];
+        return prefix;
     }
 
-    T finalOffset = blockOffset + warpPrefixSum - threadSum;
-
-#pragma unroll
-    for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; ++i) {
-        if (i < elementsForThread) {
-            int32_t globalIdx = threadElementBase + i;
-            if (globalIdx < totalLength) {
-                output[globalIdx] = finalOffset + prefixSums[i];
-            }
+    __aicore__ inline void SimtProcess(__local_mem__ T* input, __local_mem__ T* output, __ubuf__ T* sharedUb,
+                                       int32_t elementsThisBlock, int64_t blockIdx)
+    {
+        if (isSmall) {
+            asc_vf_call<CumsumSimt::SmallDataCompute<T>>(
+                dim3{MAX_THREADS_PER_BLOCK, 1, 1},
+                input,
+                output,
+                sharedMem,
+                sharedUb,
+                elementsThisBlock,
+                blockIdx);
+        } else {
+            asc_vf_call<CumsumSimt::LargeDataCompute<T>>(
+                dim3{MAX_THREADS_PER_BLOCK, 1, 1},
+                input,
+                output,
+                sharedMem,
+                sharedUb,
+                elementsThisBlock,
+                blockIdx);
         }
     }
 
-    AscendC::Simt::ThreadBarrier();
-    if (threadIdx == 0) {
-        T blockSum = static_cast<T>(0);
-        if (activeWarpCount > 0) {
-            blockSum = sharedMemory[activeWarpCount - 1];
+    __aicore__ inline void ProcessOneCycle()
+    {
+        // 每个AI Core只处理一个logical block
+        int64_t blockBase = blockStart * elementsPerBlock;
+        int64_t remain = totalLength - blockBase;
+        int32_t elementsThisBlock = static_cast<int32_t>(remain < elementsPerBlock ? remain : elementsPerBlock);
+
+        LocalTensor<T> sharedLt = sharedBuf.Get<T>();
+        __ubuf__ T* sharedUb =  reinterpret_cast<__ubuf__ T*>(sharedLt.GetPhyAddr());
+
+        LocalTensor<T> inputLt = inputQueue.AllocTensor<T>();
+        CpGm2Local(inputLt, inputGT[blockBase], elementsThisBlock);
+        inputQueue.EnQue(inputLt);
+        inputLt = inputQueue.DeQue<T>();
+        __local_mem__ T* input = reinterpret_cast<__local_mem__ T*>(inputLt.GetPhyAddr());
+
+        LocalTensor<T> outputLt = outputQueue.AllocTensor<T>();
+        __local_mem__ T* output = reinterpret_cast<__local_mem__ T*>(outputLt.GetPhyAddr());
+
+        SimtProcess(input, output, sharedUb, elementsThisBlock, blockStart);
+
+        if (totalBlocks == 1) {
+            inputQueue.FreeTensor(inputLt);
+            outputQueue.EnQue(outputLt);
+            outputLt = outputQueue.DeQue<T>();
+            CpLocal2Gm(outputGT[blockBase + 1], outputLt, elementsThisBlock);
+            outputQueue.FreeTensor(outputLt);
+        } else {
+            SyncAll();
+
+            // 计算当前线程块之前所有线程块的总和prefixOffset
+            T prefixOffset = ComputePrefixOffset(blockStart, inputLt);
+            inputQueue.FreeTensor(inputLt);
+
+            Adds(outputLt, outputLt, prefixOffset, elementsThisBlock);
+            outputQueue.EnQue(outputLt);
+            outputLt = outputQueue.DeQue<T>();
+            CpLocal2Gm(outputGT[blockBase + 1], outputLt, elementsThisBlock);
+            outputQueue.FreeTensor(outputLt);
         }
-        blockSums[globalBlockIdx * stride] = blockSum;
-    }
-    AscendC::Simt::ThreadBarrier();
-}
-
-// SIMT VF函数 - 大数据模式第一阶段
-template<typename T>
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
-    inline void SimtLargeDataCompute(__gm__ T* input, __gm__ T* output,
-                                     __gm__ T* blockSums, __ubuf__ T* sharedMemory,
-                                     int64_t totalLength, int64_t totalBlocks,
-                                     int64_t blockStartIdx, int64_t curBlocksCount)
-{
-    constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
-
-    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockDim = AscendC::Simt::GetThreadNum<0>();
-    int32_t warpId = threadIdx / WARP_SIZE;
-    int32_t laneId = threadIdx % WARP_SIZE;
-    int32_t blockElementCapacity = blockDim * MAX_ELEMENTS_PER_THREAD;
-
-    for (int32_t iter = 0; iter < curBlocksCount; ++iter) {
-        int32_t globalBlockIdx = blockStartIdx + iter;
-        if (globalBlockIdx >= totalBlocks) {
-            break;
-        }
-
-        int32_t blockBase = globalBlockIdx * blockElementCapacity;
-        if (blockBase >= totalLength) {
-            break;
-        }
-
-        int32_t elementsRemaining = totalLength - blockBase;
-        int32_t elementsThisBlock = (elementsRemaining < blockElementCapacity) ?
-                                                                               elementsRemaining : blockElementCapacity;
-        if (elementsThisBlock <= 0) {
-            continue;
-        }
-
-        int32_t threadElementBase = blockBase + threadIdx * MAX_ELEMENTS_PER_THREAD;
-        int32_t elementsForThread = elementsThisBlock - threadIdx * MAX_ELEMENTS_PER_THREAD;
-        elementsForThread = (elementsForThread < 0) ? 0 : elementsForThread;
-        elementsForThread = (elementsForThread > MAX_ELEMENTS_PER_THREAD) ? MAX_ELEMENTS_PER_THREAD : elementsForThread;
-
-        if (threadElementBase >= totalLength) {
-            elementsForThread = 0;
-        }
-
-        T threadSum = static_cast<T>(0);
-        T prefixSums[MAX_ELEMENTS_PER_THREAD] = {static_cast<T>(0)};
-#pragma unroll
-        for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; ++i) {
-            if (i < elementsForThread) {
-                T value = input[threadElementBase + i];
-                prefixSums[i] = threadSum;
-                threadSum += value;
-            }
-        }
-
-        T warpPrefixSum = WarpPrefixSum(threadSum);
-
-        int32_t activeThreads = (elementsThisBlock + MAX_ELEMENTS_PER_THREAD - 1) / MAX_ELEMENTS_PER_THREAD;
-        int32_t activeWarpCount = (activeThreads + WARP_SIZE - 1) / WARP_SIZE;
-        int32_t threadsInWarp = activeThreads - warpId * WARP_SIZE;
-        threadsInWarp = (threadsInWarp > WARP_SIZE) ? WARP_SIZE : threadsInWarp;
-        threadsInWarp = (threadsInWarp < 0) ? 0 : threadsInWarp;
-
-        FinalizeLargeDataBlock(output, blockSums, sharedMemory, totalLength,
-                               globalBlockIdx, threadElementBase, elementsForThread,
-                               threadIdx, warpId, laneId, activeWarpCount, threadsInWarp,
-                               warpPrefixSum, threadSum, prefixSums, stride);
-    }
-}
-
-// SIMT VF函数 - 大数据模式第二阶段
-template<typename T>
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK)
-    inline void SimtLargeDataUpdate(__gm__ T* output, __gm__ T* blockSums,
-                                    int64_t totalLength, int64_t totalBlocks,
-                                    int64_t blockStartIdx, int64_t curBlocksCount)
-{
-    constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
-
-    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockIdx = AscendC::Simt::GetBlockIdx();
-    int32_t blockDim = AscendC::Simt::GetThreadNum<0>();
-    (void)blockIdx;  // 保持接口一致
-
-    int32_t blockElementCapacity = blockDim * MAX_ELEMENTS_PER_THREAD;
-
-    T blockPrefix = static_cast<T>(0);
-    for (int32_t i = 0; i < blockStartIdx && i < totalBlocks; ++i) {
-        blockPrefix += blockSums[i * stride];
     }
 
-    for (int32_t iter = 0; iter < curBlocksCount; ++iter) {
-        int32_t globalBlockIdx = blockStartIdx + iter;
-        if (globalBlockIdx >= totalBlocks) {
-            break;
+    __aicore__ inline void ProcessMultiCycles()
+    {
+        LocalTensor<T> sharedLt = sharedBuf.Get<T>();
+        __ubuf__ T* sharedUb =  reinterpret_cast<__ubuf__ T*>(sharedLt.GetPhyAddr());
+
+        // 第一阶段：块内前缀和写回GM
+        for (int64_t blockIdx = blockStart; blockIdx < blockStart + blockCount; ++blockIdx) {
+            int64_t blockBase = blockIdx * elementsPerBlock;
+            int64_t remain = totalLength - blockBase;
+            int32_t elementsThisBlock = static_cast<int32_t>(remain < elementsPerBlock ? remain : elementsPerBlock);
+
+            LocalTensor<T> inputLt = inputQueue.AllocTensor<T>();
+            CpGm2Local(inputLt, inputGT[blockBase], elementsThisBlock);
+            inputQueue.EnQue(inputLt);
+            inputLt = inputQueue.DeQue<T>();
+            __local_mem__ T* input = reinterpret_cast<__local_mem__ T*>(inputLt.GetPhyAddr());
+
+            LocalTensor<T> outputLt = outputQueue.AllocTensor<T>();
+            __local_mem__ T* output = reinterpret_cast<__local_mem__ T*>(outputLt.GetPhyAddr());
+
+            SimtProcess(input, output, sharedUb, elementsThisBlock, blockIdx);
+
+            inputQueue.FreeTensor(inputLt);
+            outputQueue.EnQue(outputLt);
+            outputLt = outputQueue.DeQue<T>();
+            CpLocal2Gm(outputGT[blockBase + 1], outputLt, elementsThisBlock);
+            outputQueue.FreeTensor(outputLt);
         }
 
-        int32_t blockBase = globalBlockIdx * blockElementCapacity;
-        if (blockBase >= totalLength) {
-            break;
-        }
+        SyncAll();
 
-        int32_t elementsRemaining = totalLength - blockBase;
-        int32_t elementsThisBlock = (elementsRemaining < blockElementCapacity) ?
-                                                                               elementsRemaining : blockElementCapacity;
-        if (elementsThisBlock <= 0) {
-            continue;
-        }
+        // 计算该核心首个block的跨block偏移
+        LocalTensor<T> inputLt = inputQueue.AllocTensor<T>();
+        T prefixOffset = ComputePrefixOffset(blockStart, inputLt);
+        inputQueue.FreeTensor(inputLt);
 
-        int32_t threadElementBase = blockBase + threadIdx * MAX_ELEMENTS_PER_THREAD;
-        int32_t elementsForThread = elementsThisBlock - threadIdx * MAX_ELEMENTS_PER_THREAD;
-        if (elementsForThread < 0) {
-            elementsForThread = 0;
-        }
-        if (elementsForThread > MAX_ELEMENTS_PER_THREAD) {
-            elementsForThread = MAX_ELEMENTS_PER_THREAD;
-        }
+        for (int64_t blockIdx = blockStart; blockIdx < blockStart + blockCount; ++blockIdx) {
+            int64_t blockBase = blockIdx * elementsPerBlock;
+            int64_t remain = totalLength - blockBase;
+            int32_t elementsThisBlock = static_cast<int32_t>(remain < elementsPerBlock ? remain : elementsPerBlock);
 
-        for (int32_t i = 0; i < elementsForThread; ++i) {
-            int32_t globalIdx = threadElementBase + i;
-            if (globalIdx < totalLength) {
-                output[globalIdx] += blockPrefix;
-            }
-        }
+            LocalTensor<T> inputLt = inputQueue.AllocTensor<T>();
+            CpGm2Local(inputLt, outputGT[blockBase + 1], elementsThisBlock);
+            inputQueue.EnQue(inputLt);
+            inputLt = inputQueue.DeQue<T>();
 
-        if (threadIdx == 0 && globalBlockIdx == totalBlocks - 1) {
-            output[totalLength] = blockPrefix + blockSums[globalBlockIdx * stride];
-        }
+            LocalTensor<T> correctionLt = outputQueue.AllocTensor<T>();
+            Adds(correctionLt, inputLt, prefixOffset, elementsThisBlock);
+            outputQueue.EnQue(correctionLt);
+            correctionLt = outputQueue.DeQue<T>();
+            CpLocal2Gm(outputGT[blockBase + 1], correctionLt, elementsThisBlock);
+            outputQueue.FreeTensor(correctionLt);
+            inputQueue.FreeTensor(inputLt);
 
-        blockPrefix += blockSums[globalBlockIdx * stride];
+            prefixOffset += sharedMem[blockIdx];
+        }
     }
-}
 
-} // namespace AsynchronousCompleteCumsumSimt
+private:
+    TPipe pipe;
+    TQue<TPosition::VECIN, BUFFER_NUM> inputQueue;
+    TQue<TPosition::VECOUT, BUFFER_NUM> outputQueue;
+    TBuf<TPosition::VECCALC> sharedBuf;
+    TBuf<TPosition::VECCALC> reduceTmpBuf;
+    TBuf<TPosition::VECCALC> reduceDstBuf;
 
-#endif // ASYNCHRONOUS_COMPLETE_CUMSUM_KERNEL_H
+    GlobalTensor<T> inputGT;
+    GlobalTensor<T> outputGT;
+    GlobalTensor<T> blockSumGT;
+    __gm__ T* sharedMem;
+
+    int64_t totalLength;
+    int64_t totalBlocks;
+    int64_t blocksPerCore;
+    int32_t remainderBlocks;
+    int32_t elementsPerBlock;
+    bool isSmall;
+    bool isFullCore;
+    int64_t blockCount;
+    int64_t blockStart;
+};
+
+}  // namespace AsynchronousCompleteCumsum
+
+#endif  // ASYNCHRONOUS_COMPLETE_CUMSUM_KERNEL_H

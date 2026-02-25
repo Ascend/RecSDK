@@ -5,7 +5,6 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  */
-#include "asynchronous_complete_cumsum.h"
 #include <torch/csrc/autograd/custom_function.h>
 #include <torch/library.h>
 
@@ -20,33 +19,52 @@ at::Tensor asynchronous_complete_cumsum_npu(const at::Tensor &offset)
 {
     const at::OptionalDeviceGuard guard(device_of(offset));
     check_tensor_non_empty(offset, "offset");
-    
+
     // 检查NPU设备（单个张量）
     std::vector<at::Tensor> tensors = {offset};
     std::vector<std::string> names = {"offset"};
     check_tensor_npu_device(tensors, names);
-    
+
     auto offset_contin = offset.contiguous();
     int64_t offset_size = offset.size(0);
     TORCH_CHECK(offset_size > 0 && offset_size < std::numeric_limits<int64_t>::max(),
         "offset.size(0) limit (0, %lld), but get %lld\n", std::numeric_limits<int64_t>::max(), offset_size);
     auto output = at::empty({offset_size + 1}, offset.options());
+    output.narrow(0, 0, 1).zero_();
 
     EXEC_NPU_CMD(aclnnAsynchronousCompleteCumsum, offset_contin, output);
     return output;
 }
 
+at::Tensor asynchronous_inclusive_cumsum_npu(const at::Tensor &offset)
+{
+    auto complete_result = asynchronous_complete_cumsum_npu(offset);
+    return complete_result.narrow(0, 1, complete_result.size(0) - 1);
+}
+
+at::Tensor asynchronous_exclusive_cumsum_npu(const at::Tensor &offset)
+{
+    auto complete_result = asynchronous_complete_cumsum_npu(offset);
+    return complete_result.narrow(0, 0, complete_result.size(0) - 1);
+}
+
 TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
+    m.def("asynchronous_inclusive_cumsum(Tensor offset) -> Tensor");
+    m.def("asynchronous_exclusive_cumsum(Tensor offset) -> Tensor");
     m.def("asynchronous_complete_cumsum(Tensor offset) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 {
+    m.impl("asynchronous_inclusive_cumsum", &asynchronous_inclusive_cumsum_npu);
+    m.impl("asynchronous_exclusive_cumsum", &asynchronous_exclusive_cumsum_npu);
     m.impl("asynchronous_complete_cumsum", &asynchronous_complete_cumsum_npu);
 }
 
 TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m)
 {
+    m.impl("asynchronous_inclusive_cumsum", &asynchronous_inclusive_cumsum_npu);
+    m.impl("asynchronous_exclusive_cumsum", &asynchronous_exclusive_cumsum_npu);
     m.impl("asynchronous_complete_cumsum", &asynchronous_complete_cumsum_npu);
 }
