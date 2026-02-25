@@ -1,0 +1,42 @@
+[
+    {
+        "op": "SelectDim1ToPermute",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "indices",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int32"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "permute",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int32"
+                ]
+            }
+        ],
+        "attr": [
+            {
+              "name": "batchSize",
+			  "param_type": "required",
+              "type": "int"
+            },
+            {
+              "name": "lengthsSize",
+			  "param_type": "required",
+              "type": "int"
+            }
+        ]
+    }
+]
