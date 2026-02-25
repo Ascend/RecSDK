@@ -170,74 +170,77 @@ ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const
 
 torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor& indices)
 {
-    auto acl_stream = c10_npu::getCurrentNPUStream().stream(true);
-    // data info
-    int32_t indicesLength = indices.size(0);
-    int32_t dataDim = inputs.size(1);
-    auto output = at::empty({indicesLength, dataDim}, inputs.options());
-    if (indicesLength == 0) {
-        return output;
+    int indicesLen = indices.size(0);
+    uint32_t dim = inputs.size(1);
+
+    if (indicesLen == 0) {
+        return torch::empty({0, dim}, inputs.options());
     }
 
-    int32_t inLength = inputs.numel();
-    int32_t outLength = indicesLength * dataDim;
+    int outLen = indicesLen * dim;
+    constexpr int GATHER_THRESHOLD = 100000;
 
-    auto inputs_contin = inputs.contiguous();
-    auto indices_contin = indices.contiguous();
+    // 大数据量采用ACL接口
+    if (outLen > GATHER_THRESHOLD) {
+        torch::Tensor indicesExpand = indices.unsqueeze(-1).expand({indicesLen, dim});
+        return torch::gather(inputs, 0, indicesExpand);
+    }
 
-    float* input_data = inputs_contin.data_ptr<float>();
-    void* row_indices = indices_contin.data_ptr();
+    torch::Tensor output = torch::empty({indicesLen, dim}, inputs.options());
+    void* inData = inputs.contiguous().data_ptr();
+    void* indicesData = indices.contiguous().data_ptr();
+    void* outData = output.data_ptr();
+    constexpr uint32_t THREAD_NUM = 1024;
 
-    void* output_data = output.data_ptr();
+    if (dim % 2 == 0) {
+        // 偶数时使用float2
+        outLen >>= 1;
+    }
 
-    // tiling info
-    bool isInt32 = indices.dtype() == torch::kInt32;
-    bool isSmall = (outLength <= SMALL_DATA_THRESHOLD);
-    int32_t totalBlocks = (outLength + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
-    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
-    int32_t coreNum = (totalBlocks < maxCores) ? totalBlocks : maxCores;
+    int totalBlocks = (outLen + THREAD_NUM - 1) / THREAD_NUM;
+    int maxCores = AclSingleton::GetInstance().GetMaxCores();
+    int coreNum = (totalBlocks < maxCores) ? totalBlocks : maxCores;
 
-    int32_t blocksPerCore = totalBlocks / coreNum;    // 每核基础块数
-    int32_t remainderBlocks = totalBlocks % coreNum;  // 余数块数
+    int blocksPerCore = totalBlocks / coreNum;
+    int remainderBlocks = totalBlocks % coreNum;
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
 
-    ACLRT_LAUNCH_KERNEL(gather_dim0)(coreNum, acl_stream, input_data, row_indices, output_data, inLength, dataDim,
-                                     indicesLength, outLength, totalBlocks, blocksPerCore, remainderBlocks, isInt32,
-                                     isSmall);
+    ACLRT_LAUNCH_KERNEL(gather_dim0)(coreNum, stream, inData, indicesData, outData,
+        dim, outLen, blocksPerCore, remainderBlocks, THREAD_NUM);
     return output;
 }
 
-torch::Tensor load_from_pointer(const torch::Tensor& pointers, torch::Tensor& dst)
+torch::Tensor load_from_pointer_imp(const torch::Tensor& pointers, torch::Tensor& output)
 {
-    auto acl_stream = c10_npu::getCurrentNPUStream().stream(true);
-    // data info
-    int64_t inLength = pointers.size(0);
-    int32_t dataDim = dst.size(1);
-    if (inLength == 0) {
-        return dst;
+    int64_t inLen = pointers.size(0);
+    if (inLen == 0) {
+        return output;
     }
 
-    int64_t outLength = inLength * dataDim;
-    int64_t dstLength = dst.numel();
-    TORCH_CHECK(outLength == dstLength, "dst.numel() must equal pointers.numel() * dst.size(1)");
+    int32_t dim = output.size(1);
+    int64_t outLen = inLen * dim;
+    TORCH_CHECK(outLen == output.numel(), "output.numel() must equal pointers.numel() * output.size(1)");
 
-    auto pointers_contin = pointers.contiguous();
-    auto dst_contin = dst.contiguous();
+    void* pData = pointers.contiguous().data_ptr();
+    void* outData = output.contiguous().data_ptr();
+    constexpr uint32_t THREAD_NUM = 1024;
 
-    void* pointers_data = pointers_contin.data_ptr();
-    float* dst_data = dst_contin.data_ptr<float>();
+    if (dim % 2 == 0) {
+        // 偶数时使用float2
+        outLen >>= 1;
+    }
 
-    // tiling info
-    bool isSmall = (outLength <= SMALL_DATA_THRESHOLD);
-    int64_t totalBlocks = (outLength + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+    int64_t totalBlocks = (outLen + THREAD_NUM - 1) / THREAD_NUM;
     int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
     int32_t coreNum = (totalBlocks < maxCores) ? totalBlocks : maxCores;
 
     int64_t blocksPerCore = totalBlocks / coreNum;    // 每核基础块数
     int32_t remainderBlocks = totalBlocks % coreNum;  // 余数块数
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
 
-    ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, acl_stream, pointers_data, dst_data, inLength, dataDim, outLength,
-                                           totalBlocks, blocksPerCore, remainderBlocks, isSmall);
-    return dst;
+    ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen,
+        blocksPerCore, remainderBlocks, THREAD_NUM);
+    return output;
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> unique_op_impl(const at::Tensor& key)
@@ -874,7 +877,7 @@ void bind_dyn_emb_op(py::module& m)
 
     m.def("device_timestamp", &device_timestamp, "device_timestamp");
 
-    m.def("load_from_pointer", &load_from_pointer, "load_from_pointer", py::arg("pointers"), py::arg("dst"));
+    m.def("load_from_pointer", &load_from_pointer_imp, "load_from_pointer", py::arg("pointers"), py::arg("dst"));
 
     m.def("reduce_grads", &reduce_grads, "reduce grads", py::arg("grad"), py::arg("unique"), py::arg("inverse"));
 

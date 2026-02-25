@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright 2026. Huawei Technologies Co.,Ltd. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,123 +23,57 @@ using namespace AscendC;
 
 namespace LoadFromPointerSimt {
 
-constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
-constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
+constexpr int MAX_THREADS_PER_BLOCK = 1024;
+constexpr int UNROLL_SHIFT = 2;
 
-// SIMT VF函数 - 小数据模式
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SmallDataLoadFromPointerCompute(
-    __gm__ float* __gm__* input, __gm__ float* output, int32_t dataDim, int64_t inLength, int64_t outLength)
+template <typename DATA>
+__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void LoadFromPointerCompute(
+    const __gm__ DATA* __gm__* input, __gm__ DATA* output, int dim,
+    int startIdx, int endIdx, int endUnrollIdx)
 {
-    // 1. 线程信息计算
-    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockIdx = AscendC::Simt::GetBlockIdx();
-    int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
+    int threadIdx = AscendC::Simt::GetThreadIdx<0>();
+    int threadNum = AscendC::Simt::GetThreadNum<0>();
 
-    int64_t blockBase = blockIdx * blockElementCapacity;
+    int i = startIdx + threadIdx;
+    for (; i < endUnrollIdx; i += (threadNum << UNROLL_SHIFT)) {
+        int i0 = i;
+        int index0 = i0 / dim;
+        int dimIdx0 = i0 % dim;
 
-    if (blockBase >= outLength) {
-        return;
+        int i1 = i + threadNum;
+        int index1 = i1 / dim;
+        int dimIdx1 = i1 % dim;
+
+        int i2 = i + threadNum * 2;
+        int index2 = i2 / dim;
+        int dimIdx2 = i2 % dim;
+
+        int i3 = i + threadNum * 3;
+        int index3 = i3 / dim;
+        int dimIdx3 = i3 % dim;
+
+        const __gm__ DATA* pointer0 = input[index0];
+        const __gm__ DATA* pointer1 = input[index1];
+        const __gm__ DATA* pointer2 = input[index2];
+        const __gm__ DATA* pointer3 = input[index3];
+
+        DATA out0 = pointer0[dimIdx0];
+        DATA out1 = pointer1[dimIdx1];
+        DATA out2 = pointer2[dimIdx2];
+        DATA out3 = pointer3[dimIdx3];
+
+        output[i0] = out0;
+        output[i1] = out1;
+        output[i2] = out2;
+        output[i3] = out3;
     }
 
-    int64_t elementsRemaining = outLength - blockBase;
-    int64_t elementsThisBlock = (elementsRemaining < blockElementCapacity) ? elementsRemaining : blockElementCapacity;
-    if (elementsThisBlock <= 0) {
-        return;
-    }
+    for (; i < endIdx; i += threadNum) {
+        int index = i / dim;
+        int dimIdx = i % dim;
 
-    int64_t threadElementBase = blockBase + threadIdx * MAX_ELEMENTS_PER_THREAD;
-
-    if (threadElementBase >= outLength) {
-        return;
-    }
-
-    int64_t elementsThisBlockRemaining = elementsThisBlock - threadIdx * MAX_ELEMENTS_PER_THREAD;
-    int64_t elementsForThread =
-        (elementsThisBlockRemaining > MAX_ELEMENTS_PER_THREAD) ? MAX_ELEMENTS_PER_THREAD : elementsThisBlockRemaining;
-
-    // 2. 实际计算
-#pragma unroll
-    for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; ++i) {
-        if (i >= elementsForThread) {
-            return;
-        }
-        int32_t globalIdx = threadElementBase + i;
-        if (globalIdx >= outLength) {
-            return;
-        }
-
-        int32_t indices_index = globalIdx / dataDim;
-        int32_t indices_dim = globalIdx % dataDim;
-
-        if (input[indices_index] == 0) {
-            continue;
-        }
-
-        __gm__ float* first_pointer = reinterpret_cast<__gm__ float*>(input[indices_index]);
-        output[globalIdx] = first_pointer[indices_dim];
+        const __gm__ DATA* pointer = input[index];
+        output[i] = pointer[dimIdx];
     }
 }
-
-// SIMT VF函数 - 大数据模式
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void LargeDataLoadFromPointerCompute(
-    __gm__ float* __gm__* input, __gm__ float* output, int32_t dataDim, int64_t inLength, int64_t outLength,
-    int64_t totalBlocks, int64_t blockStartIdx, int64_t curBlocksCount)
-{
-    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
-
-    for (int32_t iter = 0; iter < curBlocksCount; ++iter) {
-        // 1.位置计算
-        int64_t globalBlockIdx = blockStartIdx + iter;
-        if (globalBlockIdx >= totalBlocks) {
-            break;
-        }
-
-        int64_t blockBase = globalBlockIdx * blockElementCapacity;
-        if (blockBase >= outLength) {
-            break;
-        }
-
-        int64_t elementsRemaining = outLength - blockBase;
-        int64_t elementsThisBlock =
-            (elementsRemaining < blockElementCapacity) ? elementsRemaining : blockElementCapacity;
-        if (elementsThisBlock <= 0) {
-            continue;
-        }
-
-        int64_t threadElementBase = blockBase + threadIdx * MAX_ELEMENTS_PER_THREAD;
-
-        if (threadElementBase >= outLength) {
-            break;
-        }
-
-        int64_t elementsThisBlockRemaining = elementsThisBlock - threadIdx * MAX_ELEMENTS_PER_THREAD;
-        int64_t elementsForThread = (elementsThisBlockRemaining > MAX_ELEMENTS_PER_THREAD) ? MAX_ELEMENTS_PER_THREAD
-                                                                                           : elementsThisBlockRemaining;
-
-        // 2. 实际计算
-#pragma unroll
-        for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; ++i) {
-            if (i >= elementsForThread) {
-                break;
-            }
-            int64_t globalIdx = threadElementBase + i;
-            if (globalIdx >= outLength) {
-                break;
-            }
-
-            int64_t indices_index = globalIdx / dataDim;
-            int64_t indices_dim = globalIdx % dataDim;
-
-            if (input[indices_index] == 0) {
-                continue;
-            }
-
-            __gm__ float* first_pointer = reinterpret_cast<__gm__ float*>(input[indices_index]);
-            output[globalIdx] = first_pointer[indices_dim];
-        }
-    }
 }
-}  // namespace LoadFromPointerSimt

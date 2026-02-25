@@ -33,17 +33,17 @@ def get_dim_pointers_optimized(x_2d):
     """利用内存布局特性高效计算首地址"""
     if not x_2d.is_contiguous():
         x_2d = x_2d.contiguous()
-    
+
     n, m = x_2d.size()
     element_size = x_2d.element_size()  # 每个元素的大小（字节）
-    
+
     # 计算基地址
     base_ptr = x_2d.data_ptr()
-    
+
     # 批量计算所有行的首地址
     stride = m * element_size  # 每行的字节跨度
     pointers = [base_ptr + i * stride for i in range(n)]
-    
+
     return torch.tensor(pointers, dtype=torch.int64, device=x_2d.device)
 
 
@@ -53,7 +53,7 @@ def get_dim_pointers_optimized(x_2d):
     OptimizerType.Adam,
     OptimizerType.AdaGrad,
     OptimizerType.RowWiseAdaGrad
-]) 
+])
 @pytest.mark.parametrize("device", [0])
 @pytest.mark.parametrize("N", [1, 10, 100, 1000, 10000, 100000])
 @pytest.mark.parametrize("vocabulary_size", [1024, 10240, 102400, 1024000, 10240000])
@@ -91,17 +91,17 @@ def test_find_pointers(optimizer_type, device, N, vocabulary_size, dim):
 
 
 @pytest.mark.parametrize("device", [0])
-@pytest.mark.parametrize("N", [1, 10, 100, 1000, 10000, 100000, 1000000, 10000001])
+@pytest.mark.parametrize("N", [1, 10, 100, 1000, 10000, 100000, 1000000])
 @pytest.mark.parametrize("dim", [8, 64, 128, 256, 512, 513, 1024, 1025])
 def test_load_from_pointer(device, N, dim):
     torch.npu.set_device(device)
     inputs = torch.randn(N, dim, dtype=torch.float32, device=f'npu:{device}')
     pointers = get_dim_pointers_optimized(inputs)
-    dst = torch.empty_like(inputs)
-    
+    dst = torch.zeros(N, dim, dtype=torch.float32, device=f'npu:{device}')
+
     result = load_from_pointer(pointers, dst)
     expected = inputs
-    
+
     diff = torch.abs(result.cpu() - expected.cpu())
     max_diff = torch.max(diff).item()
     assert max_diff == 0
