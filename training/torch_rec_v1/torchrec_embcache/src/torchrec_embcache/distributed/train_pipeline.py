@@ -461,8 +461,10 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
             with torch_npu.npu.stream(self._memcpy_stream):
                 for module in self._pipelined_modules:
                     module_name = module.forward.name
-                    swap_info_future = context.swap_info_future.pop(module_name)
+                    swap_info_future = context.swap_info_future.pop(module_name, None)
                     if swap_info_future is None:
+                        logger.info(f"Module {module_name} has no swap info future, "
+                                    f"skip waiting and getting swap info.")
                         continue
 
                     swap_info = swap_info_future.get()
@@ -790,6 +792,10 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
 
         self.dequeue_batch()
         return (output, losses) if self._return_loss else output
+    
+    def wait_pipline_compute_swapinfo(self):
+        if len(self.batches) >= 2:
+            self.wait_and_get_swap_info(self.contexts[1])
 
     def _start_feature_evict(self):
         logging.info("Start invoke embcache_mgr.evict_features()")

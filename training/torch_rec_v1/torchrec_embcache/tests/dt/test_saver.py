@@ -20,6 +20,7 @@ class TestSaver:
     @staticmethod
     @patch("torch.distributed.is_initialized", return_value=True)
     @patch("torch.distributed.get_rank", return_value=0)
+    @patch("torch.distributed.get_world_size", return_value=2)
     def test_init_with_no_rank_should_ok(*mock):
         saver = Saver()
         assert saver.rank == 0
