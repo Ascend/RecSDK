@@ -45,7 +45,7 @@ export FAST_HASHMAP_RESERVE_BUCKET_NUM=2097152
 # training job related
 #----------------------------------------
 export WORLD_SIZE=2
-export ASCEND_RT_VISIBLE_DEVICES=6,7
+export ASCEND_RT_VISIBLE_DEVICES=0,1,2
 
 pytest ./test_embedding_cache_pipeline.py
 

@@ -58,6 +58,8 @@ class Saver:
 7.  增量保存加载仅支持pipeline模式下的训练产生的增量数据的保存和加载
 8.  增量保存加载功能需要创建表时在EmbCacheEmbeddingBagConfig/EmbCacheEmbeddingConfig添加is_incremental参数，详见[创表接口](table_creation_apis.md)
 9.  差异卡加载功能不支持准入淘汰
+10. pipline模式下，如果需要在pipeline中间状态下执行保存，需要在保存前手动触发wait_pipline_compute_swapinfo。
+    详细参考[保存加载用例](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_save_and_load.py)
 
 **参数说明<a name="section888634319218"></a>**
 

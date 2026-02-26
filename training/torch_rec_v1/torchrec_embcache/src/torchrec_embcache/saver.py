@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 import shutil
+from typing import Optional
 
 import torch.distributed as dist
 import torch.nn
@@ -29,6 +30,7 @@ _OPEN_FILE_FLAGS = os.O_CREAT | os.O_WRONLY | os.O_TRUNC
 
 class Saver:
     def __init__(self, rank: int = None):
+        world_size = None
         if rank is None:
             if dist.is_initialized():
                 rank = dist.get_rank()
@@ -46,7 +48,7 @@ class Saver:
                     raise ValueError(f"param `rank` must less than torch distribution world_size:{world_size},"
                                      f" but got rank {rank}")
         self.rank: int = rank
-        self.world_size: int = world_size
+        self.world_size: Optional[int] = world_size
         self.cache_module = []
 
     @staticmethod
