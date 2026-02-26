@@ -1558,3 +1558,4 @@ diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k.sh
  
  #执行
  LOG_SUFFIX="$(date '+%Y%m%d_%H%M%S')_2k_compile${USE_COMPILE}_aclgraph${ENABLE_ACLGRAPH}_precise${GR_VLLM_PRECISE}_e2e${GR_VLLM_E2E}"
+ 
