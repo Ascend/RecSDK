@@ -42,6 +42,7 @@ source /etc/profile
 declare -A OP_PLUGIN_MAP=(
   ["asynchronous_complete_cumsum"]="asynchronous_complete_cumsum"
   ["backward_codegen_adagrad_unweighted_exact"]="split_embedding_codegen_forward_unweighted"
+  ["block_bucketize_sparse_features"]="block_bucketize_sparse_features"
   ["concat_2d_jagged"]="concat_2d_jagged"
   ["concat_2d_jagged_grad"]="concat_2d_jagged"
   ["dense_embedding_codegen_lookup_function"]="dense_embedding_codegen_lookup_function"
