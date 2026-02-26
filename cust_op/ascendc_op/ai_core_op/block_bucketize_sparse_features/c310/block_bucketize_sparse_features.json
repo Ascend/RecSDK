@@ -1,0 +1,114 @@
+[
+  {
+    "op": "BlockBucketizeSparseFeatures",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "lengths",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "indices",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "block_sizes",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "weights",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["fp32", "fp32"]
+      },
+      {
+        "name": "batch_size_per_feature",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "total_num_blocks",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "block_bucketize_pos_list",
+        "param_type": "dynamic",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "new_lengths",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "new_indices",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "new_weights",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["fp32", "fp32"]
+      },
+      {
+        "name": "new_pos",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "unbucketize_permute",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      }
+    ],
+    "attr": [
+      {
+        "name": "my_size",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 1
+      },
+      {
+        "name": "bucketize_pos",
+        "param_type": "optional",
+        "type": "bool",
+        "default_value": false
+      },
+      {
+        "name": "sequence",
+        "param_type": "optional",
+        "type": "bool",
+        "default_value": false
+      },
+      {
+        "name": "keep_orig_idx",
+        "param_type": "optional",
+        "type": "bool",
+        "default_value": false
+      },
+      {
+        "name": "max_B",
+        "param_type": "optional",
+        "type": "int",
+        "default_value": -1
+      }
+    ]
+  }
+]
