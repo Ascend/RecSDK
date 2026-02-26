@@ -58,7 +58,7 @@ __aicore__ inline T WarpPrefixSum(T val)
 template <typename T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmallDataCompute(
     __gm__ T* input, __gm__ T* output, __gm__ T* blockSums, __ubuf__ T* sharedMemory, const int32_t totalLength,
-    int32_t coreNum)
+    int32_t coreNum, int32_t stride)
 {
     int32_t coreId = AscendC::Simt::GetBlockIdx();
     int32_t tid = AscendC::Simt::GetThreadIdx<0>();
@@ -102,7 +102,6 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
     output[globalTid] = finalPrefixSum;
 
     // 当前核心总和
-    constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
     if (tid == 0) {
         T coreSum = (activeWarpCount > 0 && activeWarpCount - 1 < MAX_WARPS) ? sharedMemory[activeWarpCount - 1] : 0;
         if (coreId * stride < coreNum * stride) {
@@ -115,7 +114,8 @@ template <typename T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmallDataUpdate(__gm__ T* output,
                                                                                            __gm__ T* blockSums,
                                                                                            const int32_t totalLength,
-                                                                                           int32_t coreNum)
+                                                                                           int32_t coreNum,
+                                                                                           int32_t stride)
 {
     int32_t coreId = AscendC::Simt::GetBlockIdx();
     int32_t tid = AscendC::Simt::GetThreadIdx<0>();
@@ -126,7 +126,6 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
         return;
     }
 
-    constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
     T coreOffset = static_cast<T>(0);
     int32_t totalBlocks = (totalLength + MAX_THREADS_PER_BLOCK - 1) / MAX_THREADS_PER_BLOCK;
     for (int32_t c = 0; c < coreId && c < totalBlocks; ++c) {
@@ -140,7 +139,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
 template <typename T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLargeDataCompute(
     __gm__ T* input, __gm__ T* output, __gm__ T* blockSums, __ubuf__ T* sharedMemory, const int32_t totalLength,
-    int32_t coreNum, int32_t blockStartIdx, int32_t curBlocksCount)
+    int32_t coreNum, int32_t blockStartIdx, int32_t curBlocksCount, int32_t stride)
 {
     int32_t coreId = AscendC::Simt::GetBlockIdx();
     int32_t tid = AscendC::Simt::GetThreadIdx<0>();
@@ -149,6 +148,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
     int32_t warpId = threadIdxInt / WARP_SIZE;
     int32_t laneId = threadIdxInt % WARP_SIZE;
     int32_t blockElementCapacity = threadNumPerCore * MAX_ELEMENTS_PER_THREAD;
+    int32_t threadElementOffset = threadIdxInt * MAX_ELEMENTS_PER_THREAD;
 
     for (int32_t iter = 0; iter < curBlocksCount; ++iter) {
         int32_t globalBlockIdx = blockStartIdx + iter;
@@ -162,8 +162,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
             continue;
 
         // 线程内处理范围
-        int32_t threadElementBase = blockBase + threadIdxInt * MAX_ELEMENTS_PER_THREAD;
-        int32_t elementsForThread = elementsThisBlock - threadIdxInt * MAX_ELEMENTS_PER_THREAD;
+        int32_t threadElementBase = blockBase + threadElementOffset;
+        int32_t elementsForThread = elementsThisBlock - threadElementOffset;
         if (elementsForThread < 0)
             elementsForThread = 0;
         if (elementsForThread > MAX_ELEMENTS_PER_THREAD)
@@ -227,7 +227,6 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
             }
         }
 
-        constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
         if (threadIdxInt == 0) {
             T blockSum =
                 (activeWarpCount > 0 && activeWarpCount - 1 < MAX_WARPS) ? sharedMemory[activeWarpCount - 1] : 0;
@@ -240,14 +239,14 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
 template <typename T>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLargeDataUpdate(
     __gm__ T* output, __gm__ T* blockSums, const int32_t totalLength, int32_t coreNum, int32_t blockStartIdx,
-    int32_t curBlocksCount)
+    int32_t curBlocksCount, int32_t stride)
 {
     int32_t tid = AscendC::Simt::GetThreadIdx<0>();
     int32_t threadIdxInt = static_cast<int32_t>(tid);
     int32_t threadNumPerCore = AscendC::Simt::GetThreadNum<0>();
     int32_t blockElementCapacity = threadNumPerCore * MAX_ELEMENTS_PER_THREAD;
+    int32_t threadElementOffset = threadIdxInt * MAX_ELEMENTS_PER_THREAD;
 
-    constexpr int32_t stride = CACHE_ALIGN / sizeof(T);
     T blockPrefix = 0;
     // 累加当前Block之前的所有BlockSum
     for (int32_t i = 0; i < blockStartIdx; ++i) {
@@ -267,8 +266,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
             continue;
 
         // 线程内处理范围
-        int32_t threadElementBase = blockBase + threadIdxInt * MAX_ELEMENTS_PER_THREAD;
-        int32_t elementsForThread = elementsThisBlock - threadIdxInt * MAX_ELEMENTS_PER_THREAD;
+        int32_t threadElementBase = blockBase + threadElementOffset;
+        int32_t elementsForThread = elementsThisBlock - threadElementOffset;
         if (elementsForThread < 0)
             elementsForThread = 0;
         if (elementsForThread > MAX_ELEMENTS_PER_THREAD)
@@ -292,10 +291,41 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
     }
 }
 
+/* 本函数原公式为：bucket = idx % mySize
+ * 现由快除法计算出div_res = idx / mySize，再由bucket = idx - div_res * mySize
+ * uint64_t快除法：
+ * r = x / y，如果y的值固定，则除法可以等效替换为如下公式
+ * 预计算部分（host）：
+ * 1. shift = ceil(log2(y))
+ * 2. magic = ceil(2 ^ (64 + shift) / y)
+ * 运行时计算部分（本函数内）：
+ * 3. q = (x * magic) >> 64 由__umul64hi完成
+ * 4. t = ((x - q) >> 1) + q
+ * 5. r = t >> (shift - 1)
+ */
+__inline__ __aicore__ uint64_t QuickRemainder(
+    const uint64_t& x, const uint64_t& divisorMagic, const uint64_t& divisorShift, const uint64_t& y)
+{
+    uint64_t divTmp = __umul64hi(x, divisorMagic);
+    divTmp = ((x - divTmp) >> 1) + divTmp;
+    uint64_t divResult = divTmp >> divisorShift;
+    return x - divResult * y;
+}
+
+__inline__ __aicore__ uint64_t QuickDivision(
+    const uint64_t& x, const uint64_t& divisorMagic, const uint64_t& divisorShift, const uint64_t& y)
+{
+    uint64_t divTmp = __umul64hi(x, divisorMagic);
+    divTmp = ((x - divTmp) >> 1) + divTmp;
+    uint64_t divResult = divTmp >> divisorShift;
+    return divResult;
+}
+
 template <typename T, bool isPowerOfTwo>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtComputeNewLengths(
     const __gm__ int64_t* offsets, const __gm__ T* indices, const __gm__ T* blockSizes,
-    const __gm__ T* distTypePerFeature, __gm__ T* newLengths, int32_t lengthSize, int32_t B, int32_t mySize)
+    const __gm__ T* distTypePerFeature, __gm__ T* newLengths, int32_t lengthSize, int32_t B, const uint64_t mySize,
+    const uint64_t mySizeDivisorMagic, const uint64_t mySizeDivisorShift)
 {
     using uindex_t = typename std::make_unsigned<T>::type;
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
@@ -303,16 +333,15 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
     int32_t coreId = AscendC::Simt::GetBlockIdx();
     int32_t coreNum = AscendC::Simt::GetBlockNum();
     const uindex_t mySizeMask = (isPowerOfTwo) ? (mySize - 1) : 0;
+    bool isLeastMySize = (mySize <= 1);
 
     for (int32_t feature = coreId * threadNumPerCore + threadIdx; feature < lengthSize;
          feature += coreNum * threadNumPerCore) {
         const auto t = feature / B;
 
         bool useRoundRobin = distTypePerFeature ? (distTypePerFeature[t] != 0) : false;
-        uindex_t blkSize = blockSizes[t];
-
-        T rowstart = (feature == 0) ? 0 : offsets[feature - 1];
-        T rowend = offsets[feature];
+        int32_t rowstart = (feature == 0) ? 0 : offsets[feature - 1];
+        int32_t rowend = offsets[feature];
 
         if (useRoundRobin) {
             uindex_t i = rowstart;
@@ -323,10 +352,26 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
                 uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
                 uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
 
-                uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) : (idx0 % mySize);
-                uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) : (idx1 % mySize);
-                uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) : (idx2 % mySize);
-                uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) : (idx3 % mySize);
+                uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) :
+                                           (isLeastMySize ? 0 :
+                                                          static_cast<uindex_t>(QuickRemainder(
+                                                              static_cast<uint64_t>(idx0), mySizeDivisorMagic,
+                                                              mySizeDivisorShift, mySize)));
+                uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) :
+                                           (isLeastMySize ? 0 :
+                                                          static_cast<uindex_t>(QuickRemainder(
+                                                              static_cast<uint64_t>(idx1), mySizeDivisorMagic,
+                                                              mySizeDivisorShift, mySize)));
+                uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) :
+                                           (isLeastMySize ? 0 :
+                                                          static_cast<uindex_t>(QuickRemainder(
+                                                              static_cast<uint64_t>(idx2), mySizeDivisorMagic,
+                                                              mySizeDivisorShift, mySize)));
+                uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) :
+                                           (isLeastMySize ? 0 :
+                                                          static_cast<uindex_t>(QuickRemainder(
+                                                              static_cast<uint64_t>(idx3), mySizeDivisorMagic,
+                                                              mySizeDivisorShift, mySize)));
 
                 newLengths[p0 * lengthSize + feature] += 1;
                 newLengths[p1 * lengthSize + feature] += 1;
@@ -336,11 +381,16 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
 
             for (; i < rowend; i++) {
                 uindex_t idx = static_cast<uindex_t>(indices[i]);
-                uindex_t p = isPowerOfTwo ? (idx & mySizeMask) : (idx % mySize);
+                uindex_t p = isPowerOfTwo ? (idx & mySizeMask) :
+                                          (isLeastMySize ? 0 :
+                                                         static_cast<uindex_t>(QuickRemainder(
+                                                             static_cast<uint64_t>(idx), mySizeDivisorMagic,
+                                                             mySizeDivisorShift, mySize)));
                 newLengths[p * lengthSize + feature] += 1;
             }
 
         } else {
+            uindex_t blkSize = blockSizes[t];
             const uindex_t blkSizeMulMySize = blkSize * mySize;
             uindex_t i = rowstart;
 
@@ -377,7 +427,8 @@ template <bool sequence, bool hasWeight, bool bucketizePos, typename T, bool isP
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearrangeData(
     const __gm__ int64_t* offsets, const __gm__ T* indices, const __gm__ float* weights, const __gm__ T* blockSizes,
     const __gm__ T* distTypePerFeature, __gm__ T* newOffsets, __gm__ T* newIndices, __gm__ float* newWeights,
-    __gm__ T* newPos, __gm__ T* unbucketizePermute, int32_t lengthSize, int32_t B, int32_t mySize)
+    __gm__ T* newPos, __gm__ T* unbucketizePermute, int32_t lengthSize, int32_t B, const uint64_t mySize,
+    const uint64_t mySizeDivisorMagic, const uint64_t mySizeDivisorShift)
 {
     using uindex_t = typename std::make_unsigned<T>::type;
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
@@ -385,15 +436,15 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
     int32_t coreId = AscendC::Simt::GetBlockIdx();
     int32_t coreNum = AscendC::Simt::GetBlockNum();
     const uindex_t mySizeMask = (isPowerOfTwo) ? (mySize - 1) : 0;
+    bool isLeastMySize = (mySize <= 1);
 
     for (int32_t feature = coreId * threadNumPerCore + threadIdx; feature < lengthSize;
          feature += coreNum * threadNumPerCore) {
         const auto t = feature / B;
         bool useRoundRobin = distTypePerFeature ? (distTypePerFeature[t] != 0) : false;
-        T blkSize = blockSizes[t];
 
-        uindex_t rowstart = (feature == 0) ? 0 : offsets[feature - 1];
-        uindex_t rowend = offsets[feature];
+        int32_t rowstart = (feature == 0) ? 0 : offsets[feature - 1];
+        int32_t rowend = offsets[feature];
         if (useRoundRobin) {
             uindex_t i = rowstart;
 
@@ -403,10 +454,26 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
                 const uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
                 const uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
 
-                const uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) : (idx0 % mySize);
-                const uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) : (idx1 % mySize);
-                const uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) : (idx2 % mySize);
-                const uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) : (idx3 % mySize);
+                const uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) :
+                                           (isLeastMySize ? 0 :
+                                                          static_cast<uindex_t>(QuickRemainder(
+                                                              static_cast<uint64_t>(idx0), mySizeDivisorMagic,
+                                                              mySizeDivisorShift, mySize)));
+                const uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) :
+                                           (isLeastMySize ? 0 :
+                                                          static_cast<uindex_t>(QuickRemainder(
+                                                              static_cast<uint64_t>(idx1), mySizeDivisorMagic,
+                                                              mySizeDivisorShift, mySize)));
+                const uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) :
+                                           (isLeastMySize ? 0 :
+                                                          static_cast<uindex_t>(QuickRemainder(
+                                                              static_cast<uint64_t>(idx2), mySizeDivisorMagic,
+                                                              mySizeDivisorShift, mySize)));
+                const uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) :
+                                           (isLeastMySize ? 0 :
+                                                          static_cast<uindex_t>(QuickRemainder(
+                                                              static_cast<uint64_t>(idx3), mySizeDivisorMagic,
+                                                              mySizeDivisorShift, mySize)));
 
                 const uindex_t offset0 = p0 * lengthSize + feature;
                 const uindex_t offset1 = p1 * lengthSize + feature;
@@ -453,7 +520,11 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
 
             for (; i < rowend; ++i) {
                 const uindex_t idx = static_cast<uindex_t>(indices[i]);
-                const uindex_t p = isPowerOfTwo ? (idx & mySizeMask) : (idx % mySize);
+                const uindex_t p = isPowerOfTwo ? (idx & mySizeMask) :
+                                                (isLeastMySize ? 0 :
+                                                               static_cast<uindex_t>(QuickRemainder(
+                                                                   static_cast<uint64_t>(idx), mySizeDivisorMagic,
+                                                                   mySizeDivisorShift, mySize)));
                 const uindex_t offset = p * lengthSize + feature;
                 const uindex_t pos = newOffsets[offset];
 
@@ -473,6 +544,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
                 }
             }
         } else {
+            uindex_t blkSize = blockSizes[t];
             const uindex_t blkSizeMulMySize = blkSize * mySize;
             uindex_t i = rowstart;
 
