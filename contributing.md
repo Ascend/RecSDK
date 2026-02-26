@@ -3,8 +3,7 @@
 
 # 开发RecSDK
 请先按深度学习框架分类阅读文档：
-* [TensorFlow](https://gitcode.com/Ascend/RecSDK/blob/develop/README.md)
-* [TorchRec](https://gitcode.com/Ascend/RecSDK/blob/develop/README_TORCH.md)
+* [快速入门](./README.md##快速入门)
 
 # 代码提交规范
 ## Commit 消息格式
@@ -116,19 +115,23 @@ ci: CI/CD 相关变更
 
 # CI说明
 CI检查项目有：
-* 执行Shell：CI内部调用。
-* 执行Shell：CI内部调用。
-* code_check：编码风格、规范、安全检查。
-* sca：开源合规检查。
-* anti_poison：病毒扫描。
-* pr编译构建：构建RecSDK TF v1 wheel包。
-* build_DT_python_common
-* build_DT_python_tf1
-* build_DT_cpp_tf1
-* torchrec构建
-* add_ons构建：构建算子及插件。
-* torchrec_DT
-* AccCTR_UT
+* 编译构建：
+  * PR-build-SAST-check
+  * Build_TF
+  * Build_torchrec
+  * Build_add_ons
+* 恶意代码检查：Antipoison
+* 编码安全与规范检查：CodeCheck
+* 开源片段检查：SCA
+* 开发者测试：
+  * presmoke_TF
+  * UT_torchrec
+  * PreSmoke_torchrec
+  * UT_python_common
+  * UT_python_tf1
+  * UT_AccCTR
+  * UT_cpp_tf1
+* 流水线：PR-pipeline_RecSDK
 
 任意一项失败可以通过详情链接查看具体问题。如果是CI自身故障，请[联系committer](https://gitcode.com/Ascend/community/blob/master/MindSDK/sigs/RecSDK/sig-info.yaml)，或通过评论“rebuild”尝试重新构建。
 
@@ -143,6 +146,9 @@ CI检查项目有：
 4. 社区建设
 通过代码贡献、技术分享等方式，培养技术人才，推动社区生态建设。
 
+## 角色说明
+[Ascend 社区角色定义及晋升机制](https://gitcode.com/Ascend/community/blob/master/docs/role-definition-and-promotion-mechanism.md)
+
 ## 例会
 * 周期：每1个月举行一次例会，可通过[Ascend开源社区](https://meeting.ascend.osinfra.cn/)搜索、查看sig-RecSDK的会议链接。
 * 申报议题：通过[sig-RecSDK Etherpad链接](https://etherpad.ascend.osinfra.cn/p/sig-RecSDK)进入共享文档，编辑申报议题。
@@ -151,4 +157,4 @@ CI检查项目有：
 * 会议归档：会议纪要位于[sig-RecSDK Etherpad链接](https://etherpad.ascend.osinfra.cn/p/sig-RecSDK)。
 
 ## 成员列表
-[SIG成员列表](https://gitcode.com/Ascend/community/blob/master/MindSDK/sigs/RecSDK/sig-info.yaml)。
+[SIG成员列表](https://gitcode.com/Ascend/community/blob/master/MindSeriesSDK/sigs/RecSDK/sig-info.yaml)。
