@@ -76,7 +76,6 @@ __global__ __aicore__ void hstu_dense_forward(GM_ADDR q,
                                               GM_ADDR workspace,
                                               GM_ADDR tiling)
 {
-    GET_TILING_DATA(tiling_data, tiling);
     HstuDenseForward::Args args{q, k, v, mask, attnBias, seq_offset_q, seq_offset_k,
                                 seq_offset_t, kv_cache, page_offsets, page_ids, last_page_len,
                                 num_context, num_target, attnOutput, workspace, tiling};

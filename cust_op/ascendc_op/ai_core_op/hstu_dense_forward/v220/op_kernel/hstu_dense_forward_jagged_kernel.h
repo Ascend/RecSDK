@@ -88,8 +88,12 @@ class HstuDenseForwardJaggedKernel : public HstuDenseForwardKernelPattenBsnd<Tra
 public:
     using qType = typename TraitParams::qType;
     using oType = typename TraitParams::oType;
-
+#ifdef SUPPORT_950
+    __aicore__ inline HstuDenseForwardJaggedKernel(int vecPerProcess = 48)
+        : HstuDenseForwardKernelPattenBsnd<TraitParams>(vecPerProcess) {}
+#else
     __aicore__ inline HstuDenseForwardJaggedKernel() {}
+#endif
 
     __aicore__ inline void Compute(const HstuDenseForwardTilingData* __restrict tilingDataPtr);
 
@@ -561,6 +565,8 @@ __aicore__ inline int HstuDenseForwardJaggedKernel<TraitParams>::PreInit(
     this->splitMode = STREAM_K;
     if (this->maxSeqLenQ <= TraitParams::blockM && this->maxSeqLenK <= TraitParams::blockN) {
         this->splitMode = FAST_SPLIT_SINGLE;
+    } else if (this->maxSeqLenK <= TraitParams::blockN) {
+        this->splitMode = FAST_SPLIT;
     }
 
     int blocks[4] = {0};  // start block id, end block id
@@ -580,6 +586,9 @@ __aicore__ inline int HstuDenseForwardJaggedKernel<TraitParams>::PreInit(
             TraitParams::blockN, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
         taskAssigner.Compute(blocks, blockId);
     }
+#ifdef SUPPORT_950
+    this->L2CacheHintCfg(this->splitMode);
+#endif
     
 
     this->skSeqBlkId = blocks[0];

@@ -30,7 +30,13 @@ class HstuDenseForwardPagedKernel : public HstuDenseForwardJaggedKernel<TraitPar
 public:
     using qType = typename TraitParams::qType;
     using oType = typename TraitParams::oType;
+
+#ifdef SUPPORT_950
+    __aicore__ inline HstuDenseForwardPagedKernel(int vecPerProcess = 32)
+        : HstuDenseForwardJaggedKernel<TraitParams>(vecPerProcess) {}
+#else
     __aicore__ inline HstuDenseForwardPagedKernel() {}
+#endif
     __aicore__ inline void Compute(const HstuDenseForwardTilingData* __restrict tilingDataPtr);
     __aicore__ inline void Init(const Args& args,
                                 const HstuDenseForwardTilingData* __restrict tilingDataPtr,

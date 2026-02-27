@@ -27,12 +27,12 @@ See the License for the specific language governing permissions and
 #include "hstu_dense_causal_mask.h"
 #include "hstu_common_const.h"
 #include "matmul_constexpr.h"
+#include "regbase_silu.h"
 
 using namespace AscendC;
 
 namespace HstuDenseForward {
 
-constexpr int VEC_PER_PROCESS = 32;
 constexpr int UB_SIZE = 170 * 1024;  // 170KB
 constexpr int QUEUE_IN_NUM = 2;
 constexpr int SPLIT_CORE = 2;
@@ -184,8 +184,6 @@ public:
     static constexpr int ElementOfBlock = DATA_ALIGN_BYTES / sizeof(qType);
     static constexpr int blockHeight = TraitParams::isQkUseUb ?
                          BLOCK_HEIGHT_128 : BLOCK_HEIGHT_256; // only used in dense_hstu_forward
-    static constexpr int vectorScoreUbBlockElem =
-        (TraitParams::isQkUseUb ? (blockHeight * blockHeight) : (VEC_PER_PROCESS * blockHeight)) / USE_QUEUE_NUM;
     static constexpr auto qkMMCPos = TraitParams::isQkUseUb ? TPosition::VECIN : TPosition::GM;
     static constexpr MatmulConfig qkMMConfig = lookup<sizeof(qType),
                      TraitParams::blockM, TraitParams::blockN, TraitParams::blockK>().getQKMatmulConfig();
@@ -193,7 +191,12 @@ public:
                      TraitParams::blockM, TraitParams::blockN, TraitParams::blockK>().getSVMatmulConfig();
     using scoreType = std::conditional_t<std::is_same<qType, fp8_e4m3fn_t>::value, float, qType>;
 
-    __aicore__ inline HstuDenseForwardKernelPattenBsnd() {}
+    __aicore__ inline HstuDenseForwardKernelPattenBsnd(int vecPerProcess = 32)
+    {
+        vectorScoreUbBlockElem =
+        (TraitParams::isQkUseUb ? (blockHeight * blockHeight) : (vecPerProcess * BLOCK_HEIGHT_256)) / USE_QUEUE_NUM;
+    }
+
     __aicore__ inline void Init(const Args& args, const HstuDenseForwardTilingData* __restrict tilingDataPtr,
                                 TPipe* pipePtr)
     {
@@ -243,6 +246,24 @@ public:
         headRatio = tilingDataPtr->headRatio;
     }
 
+    __aicore__ inline void L2CacheHintCfg(int splitmode)
+    {
+        if (splitmode == FAST_SPLIT_SINGLE) {
+            // 多核QKV不共享，不开启QKVL2Cache
+            qGt.template SetL2CacheHint<CacheRwMode::READ>(CacheMode::CACHE_MODE_DISABLE);
+            kGt.template SetL2CacheHint<CacheRwMode::READ>(CacheMode::CACHE_MODE_DISABLE);
+            vGt.template SetL2CacheHint<CacheRwMode::READ>(CacheMode::CACHE_MODE_DISABLE);
+            attnOutputGt.template SetL2CacheHint<CacheRwMode::READ>(CacheMode::CACHE_MODE_DISABLE);
+        } else if (splitmode == FAST_SPLIT) {
+            // 多核Q不共享，不开启Q L2Cache
+            qGt.template SetL2CacheHint<CacheRwMode::READ>(CacheMode::CACHE_MODE_DISABLE);
+            attnOutputGt.template SetL2CacheHint<CacheRwMode::READ>(CacheMode::CACHE_MODE_DISABLE);
+        } else {
+            // 多核QKV共享，需要开启L2 Cache
+            attnOutputGt.template SetL2CacheHint<CacheRwMode::READ>(CacheMode::CACHE_MODE_DISABLE);
+        }
+    }
+
     __aicore__ inline void InitPipe(TPipe* pipePtr)
     {
         pipe = pipePtr;
@@ -268,10 +289,10 @@ public:
 
         const uint32_t coreNum = GetBlockNum() * VCORE_NUM_IN_ONE_AIC;
 
-        int64_t oneBlockMidElem = blockHeight * blockHeight * COMPUTE_PIPE_NUM;
+        int64_t oneBlockMidElem = TraitParams::blockM * TraitParams::blockN * COMPUTE_PIPE_NUM;
         int64_t oneCoreMidElem = coreNum * oneBlockMidElem;
 
-        int64_t oneBlockMidTransElem = blockHeight * MAX_BLOCK_DIM * TRANS_PIPE_NUM;
+        int64_t oneBlockMidTransElem = TraitParams::blockM * TraitParams::blockK * TRANS_PIPE_NUM;
         int64_t oneCoreTransMidElem = coreNum * oneBlockMidTransElem;
         int64_t kvOffset = oneCoreMidElem + oneCoreTransMidElem * 3; // svResultGt midkGt midvGt
 
@@ -289,19 +310,20 @@ public:
         syncGm.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t*>(workspace) + oneCoreMidElem + coreNum * oneBlockMidTransElem);
 
-        pipe->InitBuffer(vecIn, 1, 8 * sizeof(int32_t));
+        pipe->InitBuffer(vecIn, USE_QUEUE_NUM, DATA_ALIGN_BYTES);
 
-        pipe->InitBuffer(scm, 1, BLOCK_N * BLOCK_M * sizeof(qType));
+        pipe->InitBuffer(scm, USE_QUEUE_NUM, BLOCK_N * BLOCK_M * sizeof(qType));
 
         if constexpr (!TraitParams::isQkUseUb) {
-            // Init pipe total 32K * 5 = 160K
+            // Init pipe total 48K * 5 = 240K
             transUbBlockElem = vectorScoreUbBlockElem;
             pipe->InitBuffer(queIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
             pipe->InitBuffer(queOut, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
             pipe->InitBuffer(tmpBuff, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
             pipe->InitBuffer(biasIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
             pipe->InitBuffer(queMaskIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
-            pipe->InitBuffer(vecOutFp8, USE_QUEUE_NUM, blockHeight * blockHeight * sizeof(fp8_e4m3fn_t));
+            pipe->InitBuffer(vecOutFp8, USE_QUEUE_NUM,
+                             TraitParams::blockM * TraitParams::blockN * sizeof(fp8_e4m3fn_t));
         } else {
             transUbBlockElem = vectorScoreUbBlockElem / 2;
             pipe->InitBuffer(queIn, USE_QUEUE_NUM, transUbBlockElem * sizeof(float));
@@ -438,8 +460,7 @@ public:
             queIn.FreeTensor(inLt);
 
             auto biasLtFp32 = biasLt.template ReinterpretCast<float>();
-            Muls<float>(tmpLtFp32, tmpLtFp32, alpha, thisLen);
-            Silu<float>(biasLtFp32, tmpLtFp32, thisLen);
+            SiluCompute<float>(biasLtFp32, tmpLtFp32, alpha, thisLen);
             DoMaskOptional(inMaskLt, inMaskLtFp32, tmpLt, biasLtFp32, thisLen, needMask, scale);
 
             auto outLt = queOut.AllocTensor<qType>();
@@ -449,8 +470,7 @@ public:
             queIn.DeQue();
 
             auto outLt = queOut.AllocTensor<scoreType>();
-            Muls<float>(inLt, inLt, alpha, thisLen);
-            Silu<float>(outLt, inLt, thisLen);
+            SiluCompute<scoreType>(outLt, inLt, alpha, thisLen);
             queIn.FreeTensor(inLt);
 
             DoMaskOptional(inMaskLt, inMaskLtFp32, tmpLt, outLt, thisLen, needMask, scale);
@@ -476,8 +496,7 @@ public:
 
         auto outLt = queOut.AllocTensor<scoreType>();
         auto newOutLt = outLt.template ReinterpretCast<float>();
-        Muls<float>(newInLt, newInLt, alpha, thisLen);
-        Silu<float>(newOutLt, newInLt, thisLen);
+        SiluCompute<float>(newOutLt, newInLt, alpha, thisLen);
 
         queIn.FreeTensor(inLt);
         DoMaskOptional(inMaskLt, inMaskLtFp32, tmpLt, newOutLt, thisLen, needMask, scale);
@@ -897,6 +916,7 @@ public:
     int64_t maxSeqLenK;
     bool enableNumContext;
     bool enableNumTarget;
+    int vectorScoreUbBlockElem;
 
     // Tiling
     int64_t seqBlockNumQk;
