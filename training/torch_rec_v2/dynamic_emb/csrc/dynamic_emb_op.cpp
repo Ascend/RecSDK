@@ -537,9 +537,11 @@ void dedup_input_indices_npu(const at::Tensor indices, const at::Tensor offsets,
     at::Tensor hUniqueIndicesRange = std::get<3>(segUniqueResult);
 
     size_t reverseIdxSize = inverseIdx.numel() * inverseIdx.element_size();
-    TORCH_CHECK(aclrtMemcpy(reverseIdx.data_ptr(), reverseIdxSize, inverseIdx.data_ptr(), reverseIdxSize,
-                            ACL_MEMCPY_DEVICE_TO_DEVICE) == ACL_SUCCESS,
-                "Sync MemCpy failed for inverse idx.");
+    if (reverseIdxSize > 0) {
+        TORCH_CHECK(aclrtMemcpy(reverseIdx.data_ptr(), reverseIdxSize, inverseIdx.data_ptr(), reverseIdxSize,
+                                ACL_MEMCPY_DEVICE_TO_DEVICE) == ACL_SUCCESS,
+                    "Sync MemCpy failed for inverse idx.");
+    }
 
     at::Tensor lengths = hUniqueIndicesRange.narrow(0, 1, tableNum) - hUniqueIndicesRange.narrow(0, 0, tableNum);
     dUniqueNums.copy_(lengths);
