@@ -17,6 +17,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 #include <vector>
 
 #include <pybind11/pybind11.h>
@@ -197,17 +198,16 @@ ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const
 
 torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor& indices)
 {
-    int indicesLen = indices.size(0);
+    uint64_t indicesLen = indices.size(0);
     uint32_t dim = inputs.size(1);
 
     if (indicesLen == 0) {
         return torch::empty({0, dim}, inputs.options());
     }
 
-    int outLen = indicesLen * dim;
-    constexpr int GATHER_THRESHOLD = 100000;
+    uint64_t outLen = indicesLen * dim;
+    constexpr uint32_t GATHER_THRESHOLD = 100000;
 
-    // 大数据量采用ACL接口
     if (outLen > GATHER_THRESHOLD) {
         torch::Tensor indicesExpand = indices.unsqueeze(-1).expand({indicesLen, dim});
         return torch::gather(inputs, 0, indicesExpand);
@@ -220,16 +220,15 @@ torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor&
     constexpr uint32_t THREAD_NUM = 1024;
 
     if (dim % 2 == 0) {
-        // 偶数时使用float2
         outLen >>= 1;
     }
 
-    int totalBlocks = (outLen + THREAD_NUM - 1) / THREAD_NUM;
-    int maxCores = AclSingleton::GetInstance().GetMaxCores();
-    int coreNum = (totalBlocks < maxCores) ? totalBlocks : maxCores;
+    uint32_t totalBlocks = (outLen + THREAD_NUM - 1) / THREAD_NUM;
+    uint32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    uint32_t coreNum = (totalBlocks < maxCores) ? totalBlocks : maxCores;
 
-    int blocksPerCore = totalBlocks / coreNum;
-    int remainderBlocks = totalBlocks % coreNum;
+    uint32_t blocksPerCore = totalBlocks / coreNum;
+    uint32_t remainderBlocks = totalBlocks % coreNum;
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
 
     ACLRT_LAUNCH_KERNEL(gather_dim0)(coreNum, stream, inData, indicesData, outData,
@@ -239,13 +238,13 @@ torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor&
 
 torch::Tensor load_from_pointer_imp(const torch::Tensor& pointers, torch::Tensor& output)
 {
-    int64_t inLen = pointers.size(0);
+    uint64_t inLen = pointers.size(0);
     if (inLen == 0) {
         return output;
     }
 
-    int32_t dim = output.size(1);
-    int64_t outLen = inLen * dim;
+    uint32_t dim = output.size(1);
+    uint64_t outLen = inLen * dim;
     TORCH_CHECK(outLen == output.numel(), "output.numel() must equal pointers.numel() * output.size(1)");
 
     void* pData = pointers.contiguous().data_ptr();
@@ -253,20 +252,25 @@ torch::Tensor load_from_pointer_imp(const torch::Tensor& pointers, torch::Tensor
     constexpr uint32_t THREAD_NUM = 1024;
 
     if (dim % 2 == 0) {
-        // 偶数时使用float2
         outLen >>= 1;
     }
 
-    int64_t totalBlocks = (outLen + THREAD_NUM - 1) / THREAD_NUM;
-    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
-    int32_t coreNum = (totalBlocks < maxCores) ? totalBlocks : maxCores;
+    uint32_t totalBlocks = (outLen + THREAD_NUM - 1) / THREAD_NUM;
+    uint32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    uint32_t coreNum = (totalBlocks < maxCores) ? totalBlocks : maxCores;
 
-    int64_t blocksPerCore = totalBlocks / coreNum;    // 每核基础块数
-    int32_t remainderBlocks = totalBlocks % coreNum;  // 余数块数
+    uint32_t blocksPerCore = totalBlocks / coreNum;    // 每核基础块数
+    uint32_t remainderBlocks = totalBlocks % coreNum;  // 余数块数
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
 
-    ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen,
-        blocksPerCore, remainderBlocks, THREAD_NUM);
+    if (outLen < UINT32_MAX) {
+        ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen,
+            blocksPerCore, remainderBlocks, THREAD_NUM, 1);
+    } else {
+        ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen,
+            blocksPerCore, remainderBlocks, THREAD_NUM, 0);
+    }
+
     return output;
 }
 
