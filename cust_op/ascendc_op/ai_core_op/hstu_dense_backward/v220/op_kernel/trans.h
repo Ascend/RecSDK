@@ -30,25 +30,25 @@ class TransStrideHdDKernel {
 public:
     __aicore__ inline TransStrideHdDKernel() {}
 
-    __aicore__ inline void Init(TPipe* pipePtr, uint32_t headNum, uint32_t headDim)
+    __aicore__ inline void Init(TPipe* pipePtr, uint32_t headNumK, uint32_t headDim)
     {
         pipe_ = pipePtr;
-        headNum_ = headNum;
+        headNumK_ = headNumK;
         headDim_ = headDim;
         headDimAlign32_ = AlignUp(headDim * sizeof(toType), DATA_ALIGN_BYTES) / sizeof(toType);
-        vecOnceDataNum_ = UB_SIZE / (sizeof(fromType) + sizeof(toType));
+        vecOnceDataNum_ = UB_SIZE / (sizeof(fromType) + sizeof(float));
         vecOnceDataNum_ = vecOnceDataNum_ / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
         vecOnceDataNum_ = vecOnceDataNum_ / headDimAlign32_ * headDimAlign32_;
 
         const uint32_t inputUbLen = vecOnceDataNum_ * sizeof(fromType);
-        const uint32_t outputUbLen = vecOnceDataNum_ * sizeof(toType);
+        const uint32_t outputUbLen = vecOnceDataNum_ * sizeof(float);
 
         inputLt_ = {TPosition::VECIN, 0, vecOnceDataNum_};
         outputLt_ = {TPosition::VECOUT, inputUbLen, vecOnceDataNum_};
     }
 
-    __aicore__ inline void DoTransOfStrideHeadDim(GlobalTensor<fromType>& from, GlobalTensor<toType>& to,
-                                                  int64_t fromOffset, int64_t toOffset, int64_t total)
+    __aicore__ inline void DoTransOfStrideHeadDim(GlobalTensor<fromType>& from, GlobalTensor<float>& to,
+                                                   int64_t fromOffset, int64_t toOffset, int64_t total)
     {
         int64_t remain = total;
         int64_t thisLen = vecOnceDataNum_;
@@ -67,46 +67,44 @@ public:
             // 2.做UB Copy需要等待上一轮的MTE3完成
             DoVWhenMte3Finish(pipe_);
 
-            if constexpr (std::is_same<toType, fromType>::value) {
-                DataCopy(outputLt_, inputLt_, thisLen);
-            } else {
-                Cast(outputLt_, inputLt_, RoundMode::CAST_RINT, thisLen);
-            }
+            DataCopy(outputLt_, inputLt_, thisLen);
 
             // 3.下一轮的MTE2需要等待当前UB Copy完成
             DoMte2WhenVFinish(pipe_);
 
-            int64_t curToOffset = curFromOffset / headDimAlign32_ * headDim_ * headNum_;
+            int64_t curToOffset = curFromOffset / headDimAlign32_ * headDim_ * headNumK_;
             uint16_t blockCount = thisLen / headDimAlign32_;
 
+            SetAtomicAdd<float>();
             if ((headDim_ * sizeof(toType)) % DATA_ALIGN_BYTES == 0) {
-                uint16_t blockLen = headDim_ * sizeof(toType) / DATA_ALIGN_BYTES;
-                uint16_t dstStride = (headNum_ * headDim_ - headDim_) * sizeof(toType) / DATA_ALIGN_BYTES;
+                uint16_t blockLen = headDim_ * sizeof(float) / DATA_ALIGN_BYTES;
+                uint16_t dstStride = (headNumK_ * headDim_ - headDim_) * sizeof(float) / DATA_ALIGN_BYTES;
                 DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
                 // 4.下一轮的MTE3需要等待当前UB Copy完成
                 DoMte3WhenVFinish(pipe_);
                 DataCopy(to[toOffset + curToOffset], outputLt_, copyParams);
             } else {
-                uint16_t blockLen = headDim_ * sizeof(toType);
-                uint16_t dstStride = (headNum_ * headDim_ - headDim_) * sizeof(toType);
-                DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
+                uint16_t blockLen = headDim_ * sizeof(float);
+                uint16_t srcStride = (headDimAlign32_ - headDim_) * sizeof(float) / DATA_ALIGN_BYTES;
+                uint16_t dstStride = (headNumK_ * headDim_ - headDim_) * sizeof(float);
+                DataCopyParams copyParams{blockCount, blockLen, srcStride, dstStride};
                 // 4.下一轮的MTE3需要等待当前UB Copy完成
                 DoMte3WhenVFinish(pipe_);
                 DataCopyPad(to[toOffset + curToOffset], outputLt_, copyParams);
             }
-
+            SetAtomicNone();
             remain = remain - thisLen;
         }
         // 5.Trans需要等待MTE3完成
         PipeBarrier<PIPE_ALL>();
     }
 
-    uint32_t headNum_ = 0;
+    uint32_t headNumK_ = 0;
     uint32_t headDim_ = 0;
     uint32_t headDimAlign32_ = 0;
     uint32_t vecOnceDataNum_ = 0;
     LocalTensor<fromType> inputLt_;
-    LocalTensor<toType> outputLt_;
+    LocalTensor<fromType> outputLt_;
     TPipe* pipe_ = nullptr;
 };
 }  // namespace HstuDenseBackward

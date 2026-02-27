@@ -26,7 +26,7 @@ namespace optiling {
 static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, HstuJaggedBackwardTilingData &tiling)
 {
     int64_t batchSize = tiling.get_batchSize();
-    int64_t headNum = tiling.get_headNum();
+    int64_t headNumQ = tiling.get_headNumQ();
     int64_t headDimQK = tiling.get_headDimQK();
     int64_t headDimV = tiling.get_headDimV();
     int64_t blockHeight = tiling.get_blockHeight();
@@ -75,7 +75,7 @@ static ge::graphStatus TilingCommonFuncJagged(gert::TilingContext *context, Hstu
     int64_t workspaceSize = vecCoreNum * totalTempSpaceForOneVec;
 
     int64_t biasGradTempSpace = blockHeight * blockHeight;
-    int64_t qGradAccumTempSpace = batchSize * headNum * maxSeqLenQ * HeadDimQKAlign32;
+    int64_t qGradAccumTempSpace = batchSize * headNumQ * maxSeqLenQ * HeadDimQKAlign32;
     workspaceSize += qGradAccumTempSpace * sizeof(float);
     workspaceSize = (workspaceSize + BLOCK_256 - 1) / BLOCK_256 * BLOCK_256;
 
@@ -289,11 +289,11 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Output("k_grad")
             .ParamType(REQUIRED)
-            .Follow("grad", FollowType::DTYPE)
+            .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
         this->Output("v_grad")
             .ParamType(REQUIRED)
-            .Follow("grad", FollowType::DTYPE)
+            .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
         this->Output("attn_bias_grad")
             .ParamType(OPTIONAL)

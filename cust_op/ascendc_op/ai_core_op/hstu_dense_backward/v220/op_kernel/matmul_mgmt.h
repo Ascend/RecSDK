@@ -40,8 +40,8 @@ public:
         v_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.v));
 
         qGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.qGrad));
-        kGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.kGrad));
-        vGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.vGrad));
+        kGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(addrArgs.kGrad));
+        vGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(addrArgs.vGrad));
     }
 
     __aicore__ inline void InitTempSpace(GM_ADDR workspace, int64_t& totalTempSpaceForOneVec)
@@ -54,7 +54,7 @@ public:
         const int64_t scoreTempSpace = blockHeightQ * blockHeightK;
         const int64_t maskTempSpace = blockHeightQ * blockHeightK;
         const int64_t biasOrSGradTempSpace = blockHeightQ * blockHeightK;
-        const int64_t qGradAccumTempSpace = static_cast<int64_t>(batchSize_) * static_cast<int64_t>(headNum_) *
+        const int64_t qGradAccumTempSpace = static_cast<int64_t>(batchSize_) * static_cast<int64_t>(headNumQ_) *
                                             static_cast<int64_t>(maxSeqLenQ_) * static_cast<int64_t>(headDimQKAlign32_);
 
         totalTempSpaceForOneVec = MID_USE_TIMES * (vGradAccumTempSpace + kGradAccumTempSpace) * sizeof(float) +
@@ -91,7 +91,7 @@ public:
 
     __aicore__ inline void ClearQGradAccumTemp(GM_ADDR workspace, int64_t totalTempSpaceForOneVec)
     {
-        int64_t qGradAccumTempSpace = static_cast<int64_t>(batchSize_) * static_cast<int64_t>(headNum_) *
+        int64_t qGradAccumTempSpace = static_cast<int64_t>(batchSize_) * static_cast<int64_t>(headNumQ_) *
                                       static_cast<int64_t>(maxSeqLenQ_) * static_cast<int64_t>(headDimQKAlign32_);
 
         // 所有核共享一片globalMemory，且存在累加操作，每次执行需要清理内存防止上次执行结果残留数据影响本次结果
@@ -122,7 +122,7 @@ public:
         headDimQK_ = baseShape.headDimQK;
         headDimQKAlign32_ = baseShape.headDimQKAlign32;
         headDimV_ = baseShape.headDimV;
-        headNum_ = baseShape.headNum;
+        headNumQ_ = baseShape.headNumQ;
         aivNum_ = GetBlockNum() * VCORE_NUM_IN_ONE_AIC;
 
         InitGt(addrArgs);
@@ -200,7 +200,7 @@ public:
     uint32_t headDimQK_;
     uint32_t headDimQKAlign32_;
     uint32_t headDimV_;
-    uint32_t headNum_;
+    uint32_t headNumQ_;
 
     // AIC
     uint32_t aivNum_;
@@ -212,8 +212,8 @@ public:
     GlobalTensor<qType> v_;
 
     GlobalTensor<qType> qGrad_;
-    GlobalTensor<qType> kGrad_;
-    GlobalTensor<qType> vGrad_;
+    GlobalTensor<float> kGrad_;
+    GlobalTensor<float> vGrad_;
     GlobalTensor<qType> attnBiasGrad_;
 
     GlobalTensor<qType> qkTemp_;
@@ -406,14 +406,14 @@ public:
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>, CFG_NORM,
-                   matmul::MatmulCallBackFunc<nullptr, nullptr, CopyFun::CopyQKGradB1_Strd>>
+                   matmul::MatmulCallBackFunc<nullptr, nullptr, CopyFun::CopyQGradB1_Strd>>
         qGradMatmul_;
 
     matmul::Matmul<matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
                    matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>, CFG_NORM,
-                   matmul::MatmulCallBackFunc<nullptr, nullptr, CopyFun::CopyQKGradB1_Strd>>
+                   matmul::MatmulCallBackFunc<nullptr, nullptr, CopyFun::CopyKGradB1_Strd>>
         kGradMatmul_;
 
     matmul::Matmul<

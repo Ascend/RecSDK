@@ -34,7 +34,7 @@ public:
         pipe_ = pipePtr;
         aivNum_ = aivNum;
         batchSize_ = baseShapeArgs->batchSize;
-        headNum_ = baseShapeArgs->headNum;
+        headNumQ_ = baseShapeArgs->headNumQ;
         headDimQK_ = baseShapeArgs->headDimQK;
         headDimQKAlign32_ = baseShapeArgs->headDimQKAlign32;
         vecOnceDataNum_ = UB_SIZE / (sizeof(fromType) + sizeof(toType));
@@ -51,7 +51,7 @@ public:
     __aicore__ inline void DoCopyQGrad()
     {
         uint32_t batchIdx = GetBlockIdx();
-        uint32_t taskNum = batchSize_ * headNum_;
+        uint32_t taskNum = batchSize_ * headNumQ_;
         uint32_t coreTask = taskNum / aivNum_;
         uint32_t coreSplitId = taskNum % aivNum_;
 
@@ -66,8 +66,8 @@ public:
         }
 
         for (int64_t taskId = 0; taskId < taskNumOfThisCore; taskId++) {
-            uint32_t thisBatchIdx = (offsetOfThisCore + taskId) / headNum_;
-            uint32_t headIdx = (offsetOfThisCore + taskId) % headNum_;
+            uint32_t thisBatchIdx = (offsetOfThisCore + taskId) / headNumQ_;
+            uint32_t headIdx = (offsetOfThisCore + taskId) % headNumQ_;
 
             int64_t curSeqLen =
                 static_cast<int64_t>(seqOffsetsQGt_.GetValue(thisBatchIdx + 1) - seqOffsetsQGt_.GetValue(thisBatchIdx));
@@ -80,9 +80,9 @@ public:
         int64_t totalLen = curSeqLen * headDimQKAlign32_;
         int64_t remain = totalLen;
         int64_t thisLen = vecOnceDataNum_;
-        int64_t thisBatchInOffset = seqOffsetsQGt_.GetValue(thisBatchIdx) * headDimQKAlign32_ * headNum_;
+        int64_t thisBatchInOffset = seqOffsetsQGt_.GetValue(thisBatchIdx) * headDimQKAlign32_ * headNumQ_;
         int64_t BasicInOffset = thisBatchInOffset + (headIdx * totalLen);
-        int64_t thisBatchOutOffset = seqOffsetsQGt_.GetValue(thisBatchIdx) * headDimQK_ * headNum_;
+        int64_t thisBatchOutOffset = seqOffsetsQGt_.GetValue(thisBatchIdx) * headDimQK_ * headNumQ_;
         int64_t BasicOutOffset = thisBatchOutOffset + headIdx * headDimQK_;
         while (remain > 0) {
             if (thisLen > remain) {
@@ -100,17 +100,17 @@ public:
             }
             PipeBarrier<PIPE_ALL>();
 
-            int64_t curOutOffset = BasicOutOffset + (totalLen - remain) / headDimQKAlign32_ * headDimQK_ * headNum_;
+            int64_t curOutOffset = BasicOutOffset + (totalLen - remain) / headDimQKAlign32_ * headDimQK_ * headNumQ_;
             uint16_t blockCount = thisLen / headDimQKAlign32_;
 
             if ((headDimQK_ * sizeof(toType)) % DATA_ALIGN_BYTES == 0) {
                 uint16_t blockLen = headDimQK_ * sizeof(toType) / DATA_ALIGN_BYTES;
-                uint16_t dstStride = (headNum_ - 1) * headDimQK_ * sizeof(toType) / DATA_ALIGN_BYTES;
+                uint16_t dstStride = (headNumQ_ - 1) * headDimQK_ * sizeof(toType) / DATA_ALIGN_BYTES;
                 DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
                 DataCopy<toType>(qGradGt_[curOutOffset], outputLt_, copyParams);
             } else {
                 uint16_t blockLen = headDimQK_ * sizeof(toType);
-                uint16_t dstStride = (headNum_ - 1) * headDimQK_ * sizeof(toType);
+                uint16_t dstStride = (headNumQ_ - 1) * headDimQK_ * sizeof(toType);
                 DataCopyParams copyParams{blockCount, blockLen, 0, dstStride};
                 DataCopyPad<toType>(qGradGt_[curOutOffset], outputLt_, copyParams);
             }
@@ -121,7 +121,7 @@ public:
     }
 
     uint32_t batchSize_ = 0;
-    uint32_t headNum_ = 0;
+    uint32_t headNumQ_ = 0;
     uint32_t headDimQK_ = 0;
     uint32_t headDimQKAlign32_ = 0;
     uint32_t vecOnceDataNum_ = 0;

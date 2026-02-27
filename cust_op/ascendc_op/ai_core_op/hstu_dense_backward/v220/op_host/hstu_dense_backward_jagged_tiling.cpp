@@ -136,24 +136,30 @@ ge::graphStatus GetJaggedBasicShapeInfo(gert::TilingContext *context, HstuJagged
     // qShape(bs, n, d)
     int64_t seqLenQ = qShape.GetDim(INDEX_T::INDEX_0);
     int64_t seqLenK = kShape.GetDim(INDEX_T::INDEX_0);
-    int64_t headNum = qShape.GetDim(INDEX_T::INDEX_1);
+    int64_t headNumQ = qShape.GetDim(INDEX_T::INDEX_1);
+    int64_t headNumK = kShape.GetDim(INDEX_T::INDEX_1);
     int64_t headDimQK = qShape.GetDim(INDEX_T::INDEX_2);
     int64_t headDimV = gradShape.GetDim(INDEX_T::INDEX_2);
+
+    OPS_CHECK(!BasicJaggedShapeCheck<false>(batchSize, maxSeqLenQ, headNumQ, headDimQK),
+              OPS_LOG_E("", "Q jagged shape check failed\n"), return ge::GRAPH_FAILED);
+    OPS_CHECK(!BasicJaggedShapeCheck<false>(batchSize, maxSeqLenK, headNumK, headDimQK),
+              OPS_LOG_E("", "K jagged shape check failed\n"), return ge::GRAPH_FAILED);
+    OPS_CHECK(!BasicJaggedShapeCheck<true>(batchSize, maxSeqLenK, headNumK, headDimV),
+              OPS_LOG_E("", "V jagged shape check failed\n"), return ge::GRAPH_FAILED);
+    OPS_CHECK((headNumQ % headNumK) != 0, OPS_LOG_E("", "For GQA, headNumQ must be divisible by headNumK"),
+              return false);
 
     tiling.set_batchSize(batchSize);
     tiling.set_seqLenQ(seqLenQ);
     tiling.set_seqLenK(seqLenK);
-    tiling.set_headNum(headNum);
+    tiling.set_headNum(headNumQ);
+    tiling.set_headNumQ(headNumQ);
+    tiling.set_headNumK(headNumK);
+    tiling.set_headRatio(headNumQ / headNumK);
     tiling.set_headDimQK(headDimQK);
     tiling.set_headDimV(headDimV);
     tiling.set_isNormal(0);
-
-    OPS_CHECK(!BasicJaggedShapeCheck<false>(batchSize, maxSeqLenQ, headNum, headDimQK),
-              OPS_LOG_E("", "Q jagged shape check failed\n"), return ge::GRAPH_FAILED);
-    OPS_CHECK(!BasicJaggedShapeCheck<false>(batchSize, maxSeqLenK, headNum, headDimQK),
-              OPS_LOG_E("", "K jagged shape check failed\n"), return ge::GRAPH_FAILED);
-    OPS_CHECK(!BasicJaggedShapeCheck<true>(batchSize, maxSeqLenK, headNum, headDimV),
-              OPS_LOG_E("", "V jagged shape check failed\n"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
