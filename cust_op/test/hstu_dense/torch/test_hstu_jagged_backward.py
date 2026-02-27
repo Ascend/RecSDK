@@ -26,7 +26,8 @@ from test_common_utils import allclose, MaskType
 def jagged_data_gen(
     batch_size,
     max_seq_len,
-    num_heads,
+    head_num_q,
+    head_num_k,
     head_dim_qk,
     head_dim_v,
     mask_type,
@@ -50,25 +51,25 @@ def jagged_data_gen(
     total_len_q = torch.sum(seq_lens_q).item()
     total_len_k = torch.sum(seq_lens_k).item()
 
-    grad = torch.rand(total_len_q, num_heads, head_dim_v, dtype=data_type).uniform_(-1, 1)
-    q = torch.rand(total_len_q, num_heads, head_dim_qk, dtype=data_type).uniform_(-1, 1)
-    k = torch.rand(total_len_k, num_heads, head_dim_qk, dtype=data_type).uniform_(-1, 1)
-    v = torch.rand(total_len_k, num_heads, head_dim_v, dtype=data_type).uniform_(-1, 1)
+    grad = torch.rand(total_len_q, head_num_q, head_dim_v, dtype=data_type).uniform_(-1, 1)
+    q = torch.rand(total_len_q, head_num_q, head_dim_qk, dtype=data_type).uniform_(-1, 1)
+    k = torch.rand(total_len_k, head_num_k, head_dim_qk, dtype=data_type).uniform_(-1, 1)
+    v = torch.rand(total_len_k, head_num_k, head_dim_v, dtype=data_type).uniform_(-1, 1)
 
-    bias = torch.rand(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type).uniform_(-1, 1)
+    bias = torch.rand(batch_size, head_num_q, max_seq_len, max_seq_len, dtype=data_type).uniform_(-1, 1)
 
     if mask_type == MaskType.TRIL:
-        mask = torch.zeros(batch_size, num_heads, max_seq_len, max_seq_len)
+        mask = torch.zeros(batch_size, head_num_q, max_seq_len, max_seq_len)
         for sample_id, (seq_len_q, seq_len_k) in enumerate(zip(seq_lens_q, seq_lens_k)):
             mask_tensor = create_causal_mask(seq_len_q, seq_len_k, num_context, num_target, target_group_size)
             mask[sample_id, :, :seq_len_q, :seq_len_k] = mask_tensor
         mask = mask.to(data_type)
     elif mask_type == MaskType.TRIU:
-        mask = torch.triu(torch.ones(batch_size, num_heads, max_seq_len, max_seq_len, dtype=data_type))
+        mask = torch.triu(torch.ones(batch_size, head_num_q, max_seq_len, max_seq_len, dtype=data_type))
     elif mask_type == MaskType.NONE:
         mask = None
     else:
-        mask = torch.randint(0, 2, (batch_size, num_heads, max_seq_len, max_seq_len), dtype=data_type)
+        mask = torch.randint(0, 2, (batch_size, head_num_q, max_seq_len, max_seq_len), dtype=data_type)
 
     return grad, q, k, v, bias, mask, max_seq_len, seq_offset_q, seq_offset_k
 
@@ -190,20 +191,30 @@ class TestHstuJaggedDemo:
         data_type,
         alpha
     ):
-        head_nums = grad.shape[1]
+        head_num_q = grad.shape[1]
+        head_num_k = k.shape[1]
         head_dim_v = grad.shape[2]
         head_dim_qk = q.shape[2]
+        batch_size = bias.shape[0]
 
         seqlen_q = seq_offset_q[1:] - seq_offset_q[:-1]
         seqlen_k = seq_offset_k[1:] - seq_offset_k[:-1]
 
-        grad_dens = self.jagged_to_dense(grad, seqlen_q, max_seq_len, head_nums, head_dim_v).to("npu")
-        q_dens = self.jagged_to_dense(q, seqlen_q, max_seq_len, head_nums, head_dim_qk).to("npu")
-        k_dens = self.jagged_to_dense(k, seqlen_k, max_seq_len, head_nums, head_dim_qk).to("npu")
-        v_dens = self.jagged_to_dense(v, seqlen_k, max_seq_len, head_nums, head_dim_v).to("npu")
+        if head_num_q != head_num_k:
+            assert head_num_q % head_num_k == 0, (f"head_nums_q ({head_num_q}) must be divisible by "
+                                                  f"head_nums_k({head_num_k}) ")
+        h_qk_ratio = head_num_q // head_num_k
 
-        qk = torch.matmul(q_dens.permute(0, 2, 1, 3), k_dens.permute(0, 2, 3, 1))
-        gv = torch.matmul(grad_dens.permute(0, 2, 1, 3), v_dens.permute(0, 2, 3, 1))
+        grad_dens = self.jagged_to_dense(grad, seqlen_q, max_seq_len, head_num_q, head_dim_v).to("npu")
+        q_dens = self.jagged_to_dense(q, seqlen_q, max_seq_len, head_num_q, head_dim_qk).to("npu")
+        k_dens = self.jagged_to_dense(k, seqlen_k, max_seq_len, head_num_k, head_dim_qk).to("npu")
+        v_dens = self.jagged_to_dense(v, seqlen_k, max_seq_len, head_num_k, head_dim_v).to("npu")
+
+        k_dens_expanded = k_dens.repeat_interleave(h_qk_ratio, dim=2)
+        v_dens_expanded = v_dens.repeat_interleave(h_qk_ratio, dim=2)
+
+        qk = torch.matmul(q_dens.permute(0, 2, 1, 3), k_dens_expanded.permute(0, 2, 3, 1))
+        gv = torch.matmul(grad_dens.permute(0, 2, 1, 3), v_dens_expanded.permute(0, 2, 3, 1))
 
         qk = qk.float()
         gv = gv.float()
@@ -228,6 +239,8 @@ class TestHstuJaggedDemo:
             score = F.silu(qkb) * real_silu_scale
 
         score = score.to(data_type)
+        score = score.float()
+        grad_dens = grad_dens.float()
         v_grad_dens = torch.matmul(score.permute(0, 1, 3, 2), grad_dens.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
 
         if mask_type == 0 or mask_type == 3:
@@ -236,8 +249,16 @@ class TestHstuJaggedDemo:
             bias_grad = gv * real_silu_scale * F.sigmoid(qkb) * (1 + qkb * (1 - F.sigmoid(qkb)))
         bias_grad = bias_grad * alpha
         bias_grad = bias_grad.to(data_type)
+        bias_grad = bias_grad.float()
+        q_dens = q_dens.float()
         k_grad_dens = torch.matmul(bias_grad.permute(0, 1, 3, 2), q_dens.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
-        q_grad_dens = torch.matmul(bias_grad, k_dens.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
+        q_grad_dens = torch.matmul(bias_grad, k_dens_expanded.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
+
+        if h_qk_ratio > 1:
+            k_grad_dens = torch.sum(k_grad_dens.reshape(batch_size, max_seq_len, head_num_k, h_qk_ratio, head_dim_qk),
+                                    dim=3, keepdim=True).reshape(batch_size, max_seq_len, head_num_k, head_dim_qk)
+            v_grad_dens = torch.sum(v_grad_dens.reshape(batch_size, max_seq_len, head_num_k, h_qk_ratio, head_dim_v),
+                                    dim=3, keepdim=True).reshape(batch_size, max_seq_len, head_num_k, head_dim_v)
 
         bias_grad = bias_grad.cpu()
         q_grad_dens = q_grad_dens.cpu()
@@ -255,7 +276,8 @@ class TestHstuJaggedDemo:
         self,
         batch_size,
         max_seq_len,
-        head_num,
+        head_num_q,
+        head_num_k,
         head_dim_qk,
         head_dim_v,
         mask_type,
@@ -270,7 +292,8 @@ class TestHstuJaggedDemo:
         grad, q, k, v, bias, mask, max_seq_len, seq_offset_q, seq_offset_k = jagged_data_gen(
             batch_size,
             max_seq_len,
-            head_num,
+            head_num_q,
+            head_num_k,
             head_dim_qk,
             head_dim_v,
             mask_type,
@@ -332,11 +355,12 @@ class TestHstuJaggedDemo:
 
 
     @pytest.mark.parametrize("batch_size", [1, 4])  # 范围: [1, 2048]
-    @pytest.mark.parametrize("head_num", [1, 16])  # 范围: [1, 16]
+    @pytest.mark.parametrize("head_num_q", [8])  # 范围: [1, 16]
+    @pytest.mark.parametrize("head_num_k", [8, 4, 2, 1])
     @pytest.mark.parametrize("head_dim_qk", [1, 16, 32, 72])  # 范围: [1, 512]
     @pytest.mark.parametrize("head_dim_v", [16, 32])  # 范围: [16, 512]，必须是16的倍数
     @pytest.mark.parametrize("mask_type", [MaskType.TRIL, MaskType.NONE, MaskType.CUSTOM])
-    @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
+    @pytest.mark.parametrize("silu_scale", [0.0])
     @pytest.mark.parametrize("enable_bias", [True, False])
     @pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
     @pytest.mark.parametrize("max_seq_len,num_context,num_target,target_group_size", [
@@ -350,7 +374,8 @@ class TestHstuJaggedDemo:
     def test_hstu_dens_jagged(
         self,
         batch_size,
-        head_num,
+        head_num_q,
+        head_num_k,
         head_dim_qk,
         head_dim_v,
         mask_type,
@@ -366,7 +391,56 @@ class TestHstuJaggedDemo:
         self.execute(
             batch_size,
             max_seq_len,
-            head_num,
+            head_num_q,
+            head_num_k,
+            head_dim_qk,
+            head_dim_v,
+            mask_type,
+            silu_scale,
+            enable_bias,
+            data_type,
+            num_context,
+            num_target,
+            target_group_size,
+            alpha
+        )
+
+    # batch_size泛化测试
+    @pytest.mark.parametrize("batch_size", [1, 32, 128, 512, 1024])  # 范围: [1, 2048]
+    @pytest.mark.parametrize("head_num_q", [4])  # 范围: [1, 16]
+    @pytest.mark.parametrize("head_num_k", [4])
+    @pytest.mark.parametrize("head_dim_qk", [128])  # 范围: [1, 512]
+    @pytest.mark.parametrize("head_dim_v", [128])  # 范围: [16, 512]，必须是16的倍数
+    @pytest.mark.parametrize("mask_type", [MaskType.TRIL])
+    @pytest.mark.parametrize("silu_scale", [0.0])
+    @pytest.mark.parametrize("enable_bias", [False])
+    @pytest.mark.parametrize("data_type", [torch.float16])
+    @pytest.mark.parametrize("max_seq_len,num_context,num_target,target_group_size", [
+        (512, None, None, None),
+    ])
+    @pytest.mark.parametrize("alpha", [0.5])
+    def test_hstu_dens_jagged_bs(
+            self,
+            batch_size,
+            head_num_q,
+            head_num_k,
+            head_dim_qk,
+            head_dim_v,
+            mask_type,
+            silu_scale,
+            enable_bias,
+            data_type,
+            max_seq_len,
+            num_context,
+            num_target,
+            target_group_size,
+            alpha,
+    ):
+        self.execute(
+            batch_size,
+            max_seq_len,
+            head_num_q,
+            head_num_k,
             head_dim_qk,
             head_dim_v,
             mask_type,

@@ -33,6 +33,9 @@ TILING_DATA_FIELD_DEF(int64_t, batchSize);
 TILING_DATA_FIELD_DEF(int64_t, seqLenQ);
 TILING_DATA_FIELD_DEF(int64_t, seqLenK);
 TILING_DATA_FIELD_DEF(int64_t, headNum);
+TILING_DATA_FIELD_DEF(int64_t, headNumQ);
+TILING_DATA_FIELD_DEF(int64_t, headNumK);
+TILING_DATA_FIELD_DEF(int64_t, headRatio);
 TILING_DATA_FIELD_DEF(int64_t, headDimQK);
 TILING_DATA_FIELD_DEF(int64_t, headDimV);
 
