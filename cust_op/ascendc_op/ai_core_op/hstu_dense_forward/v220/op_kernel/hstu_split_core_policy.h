@@ -63,7 +63,7 @@ public:
         uint32_t totalTaskNum = 0;
         if (this->splitMode == FAST_SPLIT_SINGLE) {
             totalTaskNum = this->bxn;
-        } else {
+        } else if (this->splitMode == FAST_SPLIT) {
             for (auto batchId = 0; batchId < batchSize; batchId++) {
                 int64_t seqlenQ = seqOffsetsQGt.GetValue(batchId + 1) - seqOffsetsQGt.GetValue(batchId);
                 int64_t numBlkQ = CeilDiv(seqlenQ, blockM);
