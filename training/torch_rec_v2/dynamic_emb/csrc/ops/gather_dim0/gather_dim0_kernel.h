@@ -29,28 +29,28 @@ constexpr int UNROLL_SHIFT = 2;
 template <typename INDEX, typename DATA>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void GatherDim(
     const __gm__ DATA* input, const __gm__ INDEX* indices, __gm__ DATA* output,
-    int dim, int startIdx, int endIdx, int endUnrollIdx)
+    uint32_t dim, uint32_t startIdx, uint32_t endIdx, uint32_t endUnrollIdx)
 {
-    int threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int threadNum = AscendC::Simt::GetThreadNum<0>();
-    int i = startIdx + threadIdx;
+    uint32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
+    uint32_t threadNum = AscendC::Simt::GetThreadNum<0>();
+    uint32_t i = startIdx + threadIdx;
 
     for (; i < endUnrollIdx; i += (threadNum << UNROLL_SHIFT)) {
-        int i0 = i;
-        int index0 = i0 / dim;
-        int dimIdx0 = i0 % dim;
+        uint32_t i0 = i;
+        uint32_t index0 = i0 / dim;
+        uint32_t dimIdx0 = i0 % dim;
 
-        int i1 = i + threadNum;
-        int index1 = i1 / dim;
-        int dimIdx1 = i1 % dim;
+        uint32_t i1 = i + threadNum;
+        uint32_t index1 = i1 / dim;
+        uint32_t dimIdx1 = i1 % dim;
 
-        int i2 = i + threadNum * 2;
-        int index2 = i2 / dim;
-        int dimIdx2 = i2 % dim;
+        uint32_t i2 = i + threadNum * 2;
+        uint32_t index2 = i2 / dim;
+        uint32_t dimIdx2 = i2 % dim;
 
-        int i3 = i + threadNum * 3;
-        int index3 = i3 / dim;
-        int dimIdx3 = i3 % dim;
+        uint32_t i3 = i + threadNum * 3;
+        uint32_t index3 = i3 / dim;
+        uint32_t dimIdx3 = i3 % dim;
 
         auto rowIdx0 = indices[index0];
         auto rowIdx1 = indices[index1];
@@ -69,8 +69,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void GatherDim
     }
 
     for (; i < endIdx; i += threadNum) {
-        int index = i / dim;
-        int dimIdx = i % dim;
+        uint32_t index = i / dim;
+        uint32_t dimIdx = i % dim;
         auto rowIdx = indices[index];
 
         output[i] = input[rowIdx * dim + dimIdx];

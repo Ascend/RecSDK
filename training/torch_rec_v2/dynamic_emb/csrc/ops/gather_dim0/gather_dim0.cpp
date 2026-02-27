@@ -18,17 +18,17 @@ See the License for the specific language governing permissions and
 #include "kernel_operator.h"
 
 extern "C" __global__ __aicore__ void gather_dim0(GM_ADDR inData, GM_ADDR indicesData, GM_ADDR outData,
-    int dim, int total, int blkPerCore, int remainderBlk, uint32_t threads)
+    uint32_t dim, uint64_t total, uint32_t blkPerCore, uint32_t remainderBlk, uint32_t threads)
 {
-    int coreId = AscendC::GetBlockIdx();
-    int curBlk = (coreId < remainderBlk) ? (blkPerCore + 1) : blkPerCore;
-    int startBlk = coreId * blkPerCore + ((coreId < remainderBlk) ? coreId : remainderBlk);
+    uint32_t coreId = AscendC::GetBlockIdx();
+    uint32_t curBlk = (coreId < remainderBlk) ? (blkPerCore + 1) : blkPerCore;
+    uint32_t startBlk = coreId * blkPerCore + ((coreId < remainderBlk) ? coreId : remainderBlk);
 
-    int startIdx = startBlk * threads;
-    int endIdx = (startBlk + curBlk) * threads;
-    int endUnrollIdx = 0;
-    int curNum = 0;
-    int unrollNum = (threads << GatherDimSimt::UNROLL_SHIFT);
+    uint32_t startIdx = startBlk * threads;
+    uint32_t endIdx = (startBlk + curBlk) * threads;
+    uint32_t endUnrollIdx = 0;
+    uint32_t curNum = 0;
+    uint32_t unrollNum = (threads << GatherDimSimt::UNROLL_SHIFT);
 
     if (endIdx < total) {
         endIdx = startIdx + curBlk * threads;

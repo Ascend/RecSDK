@@ -91,7 +91,7 @@ def test_find_pointers(optimizer_type, device, N, vocabulary_size, dim):
 
 
 @pytest.mark.parametrize("device", [0])
-@pytest.mark.parametrize("N", [1, 10, 100, 1000, 10000, 100000, 1000000])
+@pytest.mark.parametrize("N", [1, 10, 100, 1000, 10000, 100000, 1000000, 10000001])
 @pytest.mark.parametrize("dim", [8, 64, 128, 256, 512, 513, 1024, 1025])
 def test_load_from_pointer(device, N, dim):
     torch.npu.set_device(device)

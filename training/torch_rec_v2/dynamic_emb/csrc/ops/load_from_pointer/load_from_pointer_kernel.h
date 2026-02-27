@@ -26,31 +26,31 @@ namespace LoadFromPointerSimt {
 constexpr int MAX_THREADS_PER_BLOCK = 1024;
 constexpr int UNROLL_SHIFT = 2;
 
-template <typename DATA>
+template <typename DATA, typename INDEX>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void LoadFromPointerCompute(
-    const __gm__ DATA* __gm__* input, __gm__ DATA* output, int dim,
-    int startIdx, int endIdx, int endUnrollIdx)
+    const __gm__ DATA* __gm__* input, __gm__ DATA* output, uint32_t dim,
+    INDEX startIdx, INDEX endIdx, INDEX endUnrollIdx)
 {
-    int threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int threadNum = AscendC::Simt::GetThreadNum<0>();
+    uint32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
+    uint32_t threadNum = AscendC::Simt::GetThreadNum<0>();
+    INDEX i = startIdx + threadIdx;
 
-    int i = startIdx + threadIdx;
     for (; i < endUnrollIdx; i += (threadNum << UNROLL_SHIFT)) {
-        int i0 = i;
-        int index0 = i0 / dim;
-        int dimIdx0 = i0 % dim;
+        INDEX i0 = i;
+        uint32_t index0 = i0 / dim;
+        uint32_t dimIdx0 = i0 % dim;
 
-        int i1 = i + threadNum;
-        int index1 = i1 / dim;
-        int dimIdx1 = i1 % dim;
+        INDEX i1 = i + threadNum;
+        uint32_t index1 = i1 / dim;
+        uint32_t dimIdx1 = i1 % dim;
 
-        int i2 = i + threadNum * 2;
-        int index2 = i2 / dim;
-        int dimIdx2 = i2 % dim;
+        INDEX i2 = i + threadNum * 2;
+        uint32_t index2 = i2 / dim;
+        uint32_t dimIdx2 = i2 % dim;
 
-        int i3 = i + threadNum * 3;
-        int index3 = i3 / dim;
-        int dimIdx3 = i3 % dim;
+        INDEX i3 = i + threadNum * 3;
+        uint32_t index3 = i3 / dim;
+        uint32_t dimIdx3 = i3 % dim;
 
         const __gm__ DATA* pointer0 = input[index0];
         const __gm__ DATA* pointer1 = input[index1];
@@ -69,8 +69,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void LoadFromP
     }
 
     for (; i < endIdx; i += threadNum) {
-        int index = i / dim;
-        int dimIdx = i % dim;
+        uint32_t index = i / dim;
+        uint32_t dimIdx = i % dim;
 
         const __gm__ DATA* pointer = input[index];
         output[i] = pointer[dimIdx];
