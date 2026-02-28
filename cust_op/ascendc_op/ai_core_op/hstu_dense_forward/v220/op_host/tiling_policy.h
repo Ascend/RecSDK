@@ -18,11 +18,21 @@ See the License for the specific language governing permissions and
 #define TILING_POLICY_H
 
 #include "register/op_def_registry.h"
-#include "hstu_dense_forward_tiling.h"
 
-namespace HstuDenseForward {
+namespace HstuForward {
 
 bool QKVShapeCheck(gert::TilingContext* context, int qkvDim);
+
+
+struct TilingKeyParam {
+    bool enableBias;
+    bool deterministic;
+    uint32_t maskType;
+    int64_t dimQ;
+    int64_t dimV;
+    int64_t maxSeqLenQ;
+    int64_t maxSeqLenK;
+};
 
 class ShapeRange {
 public:
@@ -45,27 +55,12 @@ public:
     virtual bool GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim,
         bool dimAlign = false);
 
-    virtual void DumpTiling(optiling::HstuDenseForwardTilingData& tiling);
+    virtual bool TilingWorkSpace(gert::TilingContext* context);
 
-    virtual bool TilingWorkSpace(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling);
-
-    virtual bool TilingKeySetImpl(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling,
+    virtual bool TilingKeySetImpl(gert::TilingContext* context, const TilingKeyParam& tilingKeyParam,
         uint32_t typeTilingKey);
 
-private:
-    virtual bool CheckIsSupport(gert::TilingContext* context);
-
-    virtual bool TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling);
-
-    virtual bool TilingAttribute(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling);
-
-    virtual bool TilingCore(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling);
-
-    virtual bool TilingHeighLevelApi(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling);
-
-    virtual bool TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling);
-
-    virtual bool TilingSaveToBuffer(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling);
+    virtual bool TilingCore(gert::TilingContext* context);
 };
 
 }

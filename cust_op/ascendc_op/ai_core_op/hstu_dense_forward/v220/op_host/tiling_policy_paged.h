@@ -18,18 +18,20 @@ See the License for the specific language governing permissions and
 #define TILING_POLICY_PAGED_H
 
 #include "tiling_policy.h"
-#include "tiling_policy_jagged.h"
+#include "hstu_paged_forward_tiling.h"
 
-namespace HstuDenseForward {
-    
-class TilingPolicyPaged : public TilingPolicyJagged {
+namespace HstuPagedForward {
+
+class TilingPolicyPaged : public HstuForward::TilingPolicy {
 public:
-    bool TilingWorkSpace(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
-    bool TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
-    bool TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
-    
+    ge::graphStatus TilingProcess(gert::TilingContext* context) override;
+    bool TilingWorkSpace(gert::TilingContext* context) override;
 private:
-    bool TilingShapePaged(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling);
+    bool TilingAttribute(gert::TilingContext* context, optiling::HstuPagedForwardTilingData& tiling);
+    bool TilingShape(gert::TilingContext* context, optiling::HstuPagedForwardTilingData& tiling);
+    bool TilingShapePaged(gert::TilingContext* context, optiling::HstuPagedForwardTilingData& tiling);
+    bool TilingKeySet(gert::TilingContext* context, optiling::HstuPagedForwardTilingData& tiling);
+    bool TilingSaveToBuffer(gert::TilingContext* context, optiling::HstuPagedForwardTilingData& tiling);
 };
 
 }

@@ -24,7 +24,6 @@ See the License for the specific language governing permissions and
 
 #include "common_host.h"
 #include "register/op_def_registry.h"
-#include "tiling_policy_factory.h"
 #include "tiling_policy_jagged.h"
 
 constexpr bool JAGGED_TASK_ASSIGN_DEBUG = false;
@@ -33,11 +32,83 @@ constexpr bool JAGGED_TASK_ASSIGN_DEBUG = false;
 #include <chrono>
 #endif
 
-namespace HstuDenseForward {
+using namespace HstuForward;
 
-REGISTER_POLICY(LAYOUT_TYPE::JAGGED, std::make_shared<TilingPolicyJagged>());
+namespace HstuJaggedForward {
 
-bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+ge::graphStatus TilingPolicyJagged::TilingProcess(gert::TilingContext* context)
+{
+    OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
+
+    optiling::HstuJaggedForwardTilingData tiling;
+
+    // step1: get attribute
+    OPS_CHECK(!TilingAttribute(context, tiling), OPS_LOG_E("", "TilingAttribute is failed.\n"),
+              return ge::GRAPH_FAILED);
+
+    // step2: get key shape form input
+    OPS_CHECK(!TilingShape(context, tiling), OPS_LOG_E("", "TilingShape is failed.\n"), return ge::GRAPH_FAILED);
+
+    // step3: tiling core
+    OPS_CHECK(!TilingCore(context), OPS_LOG_E("", "TilingCore is failed.\n"), return ge::GRAPH_FAILED);
+
+    // step4: set tiling key
+    OPS_CHECK(!TilingKeySet(context, tiling), OPS_LOG_E("", "TilingKeySet is failed.\n"), return ge::GRAPH_FAILED);
+
+    // step5: tiling save to buffer
+    OPS_CHECK(!TilingSaveToBuffer(context, tiling), OPS_LOG_E("", "TilingSaveToBuffer is failed.\n"),
+              return ge::GRAPH_FAILED);
+
+    // step6: set workspace
+    OPS_CHECK(!TilingWorkSpace(context), OPS_LOG_E("", "Set workspace size is failed.\n"),
+    return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+bool TilingPolicyJagged::TilingAttribute(gert::TilingContext* context, optiling::HstuJaggedForwardTilingData& tiling)
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OPS_CHECK_PTR_NULL(attrs, return false);
+
+    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(JAGGED_ATTR_INDEX_T::MASKTYPE_INDEX);
+    OPS_CHECK_PTR_NULL(maskType, return false);
+
+    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(JAGGED_ATTR_INDEX_T::MAX_SEQ_Q_INDEX);
+    OPS_CHECK_PTR_NULL(maxSeqLen, return false);
+
+    const uint32_t *maxSeqLenk = attrs->GetAttrPointer<uint32_t>(JAGGED_ATTR_INDEX_T::MAX_SEQ_K_INDEX);
+    OPS_CHECK_PTR_NULL(maxSeqLenk, return false);
+
+    const float *siluScale = attrs->GetAttrPointer<float>(JAGGED_ATTR_INDEX_T::SILU_SCALE_INDEX);
+    OPS_CHECK_PTR_NULL(siluScale, return false);
+
+    const uint32_t *targetGroupSize = attrs->GetAttrPointer<uint32_t>(JAGGED_ATTR_INDEX_T::TARGET_GROUP_SIZE_INDEX);
+    OPS_CHECK_PTR_NULL(targetGroupSize, return false);
+
+    const float *alpha = attrs->GetAttrPointer<float>(JAGGED_ATTR_INDEX_T::ALPHA_INDEX);
+    OPS_CHECK_PTR_NULL(alpha, return false);
+
+    const bool *deterministic = attrs->GetAttrPointer<bool>(JAGGED_ATTR_INDEX_T::DETERMINISTIC_INDEX);
+    OPS_CHECK_PTR_NULL(deterministic, return false);
+
+    auto biasTensor = context->GetOptionalInputTensor(JAGGED_INPUT_INDEX_T::ATTN_BIAS_INDEX);
+    bool enableBias = (biasTensor != nullptr);
+    tiling.set_enableBias(enableBias);
+
+    tiling.set_maskType(*maskType);
+    tiling.set_siluScale(*siluScale);
+    tiling.set_alpha(*alpha);
+    tiling.set_maxSeqLen(*maxSeqLen);
+    tiling.set_maxSeqLenq(*maxSeqLen);
+    tiling.set_maxSeqLenk(*maxSeqLenk);
+    tiling.set_targetGroupSize(*targetGroupSize);
+    tiling.set_deterministic(*deterministic);
+    tiling.set_blockHeight(BLOCK_HEIGHT);
+    return true;
+}
+
+bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::HstuJaggedForwardTilingData& tiling)
 {
     int64_t batchSize;
     int64_t seqlenBatchSumQ;
@@ -52,17 +123,17 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     int64_t headNumV;
     int64_t headDimV;
 
-    auto seqOffsetQShape = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
+    auto seqOffsetQShape = context->GetInputShape(JAGGED_INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
     batchSize = seqOffsetQShape.GetDim(0) - 1;
 
     OPS_CHECK((batchSize == 0 || batchSize > MAX_BATCH_SIZE),
               OPS_LOG_E("", "batchSize limit (0, %d], but get %lld\n", MAX_BATCH_SIZE, batchSize), return false);
 
-    OPS_CHECK_PTR_NULL(context->GetInputShape(INPUT_INDEX_T::Q_INDEX), return false);
+    OPS_CHECK_PTR_NULL(context->GetInputShape(JAGGED_INPUT_INDEX_T::Q_INDEX), return false);
 
-    auto qShape = context->GetInputShape(INPUT_INDEX_T::Q_INDEX)->GetStorageShape();
-    auto kShape = context->GetInputShape(INPUT_INDEX_T::K_INDEX)->GetStorageShape();
-    auto vShape = context->GetInputShape(INPUT_INDEX_T::V_INDEX)->GetStorageShape();
+    auto qShape = context->GetInputShape(JAGGED_INPUT_INDEX_T::Q_INDEX)->GetStorageShape();
+    auto kShape = context->GetInputShape(JAGGED_INPUT_INDEX_T::K_INDEX)->GetStorageShape();
+    auto vShape = context->GetInputShape(JAGGED_INPUT_INDEX_T::V_INDEX)->GetStorageShape();
 
     OPS_CHECK(qShape.GetDimNum() != JAGGED_DIM_NUM,
               OPS_LOG_E("", "Jagged QKV should have 3 dimensions, but get %d", qShape.GetDimNum()), return false);
@@ -106,16 +177,8 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     tiling.set_headNumK(headNumK);
 
     uint32_t masktype = tiling.get_maskType();
-    auto *isDeltaQK = context->GetAttrs()->GetAttrPointer<uint32_t>(ATTR_INDEX_T::IS_DELTA_QK_INDEX);
-    if (!*isDeltaQK) {
-        OPS_CHECK(seqlenBatchSumQ != seqlenBatchSumK, OPS_LOG_E("", "Q, K seqLens mismatch"), return false);
-    }
 
-    const bool *deterministic = context->GetAttrs()->GetAttrPointer<bool>(ATTR_INDEX_T::DETERMINISTIC_INDEX);
-    OPS_CHECK_PTR_NULL(deterministic, return false);
-    tiling.set_deterministic(*deterministic);
-
-    auto numContext = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX);
+    auto numContext = context->GetOptionalInputShape(JAGGED_INPUT_INDEX_T::NUM_CONTEXT_INDEX);
     bool enableNumContext = (numContext != nullptr);
     tiling.set_enableNumContext(enableNumContext);
     if (enableNumContext) {
@@ -130,7 +193,7 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
                   return false);
     }
 
-    auto numTarget = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_TARGET_INDEX);
+    auto numTarget = context->GetOptionalInputShape(JAGGED_INPUT_INDEX_T::NUM_TARGET_INDEX);
     bool enableNumTarget = (numTarget != nullptr);
     tiling.set_enableNumTarget(enableNumTarget);
     if (enableNumTarget) {
@@ -147,21 +210,26 @@ bool TilingPolicyJagged::TilingShape(gert::TilingContext* context, optiling::Hst
     return true;
 }
 
-bool TilingPolicyJagged::TilingCore(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
-{
-    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    size_t coreNum = ascendPlatform.GetCoreNumAiv();
-    OPS_CHECK(coreNum > MAX_AIV_NUM, OPS_LOG_E("", "vecCoreNum %d should be < %d\n", coreNum, MAX_AIV_NUM),
-              return false);
-    size_t aicCoreNum = ascendPlatform.GetCoreNumAic();
-    context->SetBlockDim(aicCoreNum);
-
-    return true;
-}
-
-bool TilingPolicyJagged::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+bool TilingPolicyJagged::TilingKeySet(gert::TilingContext* context, optiling::HstuJaggedForwardTilingData& tiling)
 {
     uint32_t typeTilingKey = JAGGED_TILING_KEY & 0x3;
-    return TilingKeySetImpl(context, tiling, typeTilingKey);
+    TilingKeyParam param {
+        .enableBias = tiling.get_enableBias(),
+        .deterministic = tiling.get_deterministic(),
+        .maskType = tiling.get_maskType(),
+        .dimQ = tiling.get_dim(),
+        .dimV = tiling.get_vDim(),
+        .maxSeqLenQ = tiling.get_maxSeqLenq(),
+        .maxSeqLenK = tiling.get_maxSeqLenk()
+    };
+    return TilingKeySetImpl(context, param, typeTilingKey);
+}
+
+bool TilingPolicyJagged::TilingSaveToBuffer(gert::TilingContext* context, optiling::HstuJaggedForwardTilingData& tiling)
+{
+    OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return false);
+    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+    return true;
 }
 }  // namespace HstuDenseForward
