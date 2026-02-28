@@ -1,0 +1,831 @@
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
+#ifndef HSTU_DENSE_FORWARD_PAGED_KERNEL_FUN_H
+#define HSTU_DENSE_FORWARD_PAGED_KERNEL_FUN_H
+
+#include "hstu_dense_forward_kernel_patten_bsnd.h"
+#include "hstu_split_core_policy.h"
+#include "hstu_dense_causal_mask.h"
+
+using namespace AscendC;
+
+namespace HstuDenseForward {
+constexpr int KVUBSIZE = 16384; // 176KB-160KB
+constexpr int64_t CONST_2 = 2;
+
+template <typename TraitParams, typename TilingDataType>
+class HstuDenseForwardPagedKernel : public HstuDenseForwardKernelPattenBsnd<TraitParams, TilingDataType> {
+public:
+    using qType = typename TraitParams::qType;
+    using oType = typename TraitParams::oType;
+
+#ifdef SUPPORT_950
+    __aicore__ inline HstuDenseForwardPagedKernel(int vecPerProcess = 32)
+        : HstuDenseForwardKernelPattenBsnd<TraitParams, TilingDataType>(vecPerProcess) {}
+#else
+    __aicore__ inline HstuDenseForwardPagedKernel() {}
+#endif
+
+    __aicore__ inline void Compute();
+    __aicore__ inline void Init(const Args& args,
+                                const HstuPagedForwardTilingData* __restrict tilingDataPtr,
+                                TPipe* pipePtr);
+    __aicore__ inline void ComputeAllBlock();
+    __aicore__ inline void ComputeTailBlock(uint32_t taskId,
+                                            uint32_t currentTaskId,
+                                            uint32_t preTaskId,
+                                            uint32_t transtaskId);
+    __aicore__ inline void ComputeSvMatmul(uint32_t taskId);
+    __aicore__ inline void ComputeQkMatmul(uint32_t taskId);
+    __aicore__ inline void ComputeVecScore(uint32_t taskId);
+private:
+    __aicore__ inline int PreInit();
+
+    __aicore__ inline void InitPagedArgs(const Args& args,
+                                         const HstuPagedForwardTilingData* __restrict tilingDataPtr,
+                                         TPipe* pipePtr);
+    __aicore__ inline void InitArgs(const Args& args, const HstuPagedForwardTilingData* __restrict tilingDataPtr);
+
+    __aicore__ inline void GetTaskInfo(uint32_t sBlkId);
+
+    __aicore__ inline void FillTaskInfo(uint32_t batchId, uint32_t headId, int64_t seqGlobalOffset, uint32_t taskId);
+
+    __aicore__ inline void UpdateTaskInfo(uint32_t taskId);
+
+    __aicore__ inline void TransResult(uint32_t transtaskId);
+
+    __aicore__ inline void NotifypreBlock();
+
+    __aicore__ inline void WaitNextBlock(uint32_t transtaskId);
+
+    __aicore__ inline void FillTaskInfoPaged(uint32_t batchId, uint32_t taskId);
+
+    __aicore__ inline void FetchKvMayFromCache(uint32_t taskId);
+
+    __aicore__ inline void CopyFromKvCache(uint32_t pageSid, uint32_t pageNum, uint32_t taskId);
+
+    __aicore__ inline void CopySeqFromGT(const GlobalTensor<qType>& dstGt,
+                                         const GlobalTensor<qType>& srcGt,
+                                         uint32_t seqLen);
+    __aicore__ inline void CopyFromKvInputCache(uint32_t taskId, uint32_t pageSid, uint32_t pageNum,
+                                                uint32_t cacheLen, uint32_t candLen);
+
+    // GM_ADDR
+    GM_ADDR seqOffsetQ;
+    GM_ADDR seqOffsetK;
+    GM_ADDR numContext;
+    GM_ADDR numTarget;
+
+    GM_ADDR kvCache;
+    GM_ADDR pageOffset;
+    GM_ADDR pageIds;
+    GM_ADDR lastPageLen;
+
+    int32_t pageSize;
+    GlobalTensor<oType> pageOffsetGt;
+    GlobalTensor<oType> pageIdsGt;
+    GlobalTensor<oType> lastPageLenGt;
+    GlobalTensor<qType> kvCacheGt;
+    GlobalTensor<qType> midkGt;
+    GlobalTensor<qType> midvGt;
+
+    TQueBind<TPosition::VECIN, TPosition::VECOUT, USE_QUEUE_NUM> queKv;
+    uint32_t kvLtUbSize = KVUBSIZE;
+
+    int64_t maxSeqLenQ;
+    int64_t targetGroupSize;
+
+    // GQA
+    uint64_t headNumK;
+    uint64_t headRatio;
+
+    uint32_t sBlkId{0};
+    uint32_t eBlkId{0};
+    uint32_t skSeqBlkId{0};
+    uint32_t ekSeqBlkId{0};
+    uint32_t batchSize{0};
+    uint32_t seqLen{0};
+    uint32_t headNum{0};
+    uint32_t headDim{0};
+    uint32_t headDimV{0};
+    int32_t splitMode{DEFAULT_SPLIT};
+
+    BlockMaskParams maskTaskInfo[COMPUTE_PIPE_NUM];
+    JaggedTaskArgs computeTaskInfo[COMPUTE_PIPE_NUM];
+    JaggedTaskArgs transTaskInfo[TRANS_PIPE_NUM];
+    GlobalTensor<oType> seqOffsetsQGt;
+    GlobalTensor<oType> seqOffsetsKGt;
+    GlobalTensor<oType> numContextGt;
+    GlobalTensor<oType> numTargetGt;
+};
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::Compute()
+{
+    int ret = this->PreInit();
+    if (ret == -1) {
+        return; // no task
+    }
+    ComputeAllBlock();
+}
+
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::Init(
+    const Args& args,
+    const HstuPagedForwardTilingData* __restrict tilingDataPtr,
+    TPipe* pipePtr)
+{
+    InitArgs(args, tilingDataPtr);
+    this->InitPipe(pipePtr);
+    InitPagedArgs(args, tilingDataPtr, pipePtr);
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::InitArgs(
+    const Args& args, const HstuPagedForwardTilingData* __restrict tilingDataPtr)
+{
+    this->q = args.q;
+    this->k = args.k;
+    this->v = args.v;
+    this->attnBias = args.attnBias;
+    this->mask = args.mask;
+
+    this->attnOutput = args.attnOutput;
+    this->workspace = args.workspace;
+
+    // Batch Size
+    this->xDim0 = tilingDataPtr->batchSize;
+    // Seq Len
+    this->xDim1 = tilingDataPtr->seqLen;
+    // Head Num
+    this->xDim2 = tilingDataPtr->headNum;
+    // Embedding Dim
+    this->xDim3 = tilingDataPtr->dim;
+    this->vDim = tilingDataPtr->vDim;
+
+    this->maxSeqLenK = tilingDataPtr->maxSeqLenk;
+
+    // attr
+    this->siluScale = tilingDataPtr->siluScale;
+    this->alpha = tilingDataPtr->alpha;
+
+    // copyKV
+    this->copyHeadNum = tilingDataPtr->headNumK;
+
+    this->seqOffsetQ = args.seqOffsetQ;
+    this->seqOffsetK = args.seqOffsetK;
+    this->numContext = args.numContext;
+    this->numTarget = args.numTarget;
+
+    this->maxSeqLenQ = tilingDataPtr->maxSeqLenq;
+
+    this->targetGroupSize = tilingDataPtr->targetGroupSize;
+
+    // GQA
+    this->headNumK = tilingDataPtr->headNumK;
+    this->headRatio = tilingDataPtr->headRatio;
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::InitPagedArgs(
+    const Args& args,
+    const HstuPagedForwardTilingData* __restrict tilingDataPtr,
+    TPipe* pipePtr)
+{
+    kvCache = args.kvCache;
+    pageOffset = args.pageOffsets;
+    pageIds = args.pageIds;
+    lastPageLen = args.lastPageLen;
+    pageSize = tilingDataPtr->pageSize;
+
+    int64_t oneBlockMidElem = this->blockHeight * this->blockHeight * COMPUTE_PIPE_NUM;
+    int64_t oneCoreMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
+
+    int64_t oneBlockMidTransElem = this->blockHeight * MAX_BLOCK_DIM * TRANS_PIPE_NUM;
+    int64_t oneCoreTransMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
+
+    int64_t syncOffset = sizeof(uint32_t) / sizeof(qType) * GetBlockNum() *
+                         VCORE_NUM_IN_ONE_AIC * DATA_ALIGN_BYTES / sizeof(int32_t);
+    int64_t kOffset = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float) / sizeof(qType) + syncOffset;
+    int64_t vOffset = kOffset + oneCoreTransMidElem;
+
+    midkGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(this->workspace) + kOffset + \
+                           GetBlockIdx() * oneBlockMidTransElem, oneBlockMidTransElem);
+    midvGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(this->workspace) + vOffset + \
+                           GetBlockIdx() * oneBlockMidTransElem, oneBlockMidTransElem);
+    pageOffsetGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(pageOffset), this->xDim0 + 1);
+    pageIdsGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(pageIds));
+    lastPageLenGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(lastPageLen), this->xDim0 + 1);
+    kvCacheGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(kvCache));
+    // 176 - 160 -> 16KB
+    pipePtr->InitBuffer(queKv, USE_QUEUE_NUM, kvLtUbSize);
+
+    // copy kv
+    this->copyHeadNum = 1;
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::CopyFromKvCache(
+    uint32_t pageSid, uint32_t pageNum, uint32_t taskId)
+{
+    // datacopy pageSid
+    int64_t headId = static_cast<int64_t>(this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].headId);
+    uint32_t taskOffset = taskId * this->blockHeight * this->xDim3;
+
+    uint32_t batchId = this->computeTaskInfo[taskId].batchId;
+    int64_t totalPageNum = this->computeTaskInfo[taskId].pageNum;
+    int64_t lastPageIdx = pageOffsetGt.GetValue(batchId + 1) - 1;
+    int64_t lastPageLen = lastPageLenGt.GetValue(batchId);
+    uint64_t kvHeadId = headId / this->headRatio;
+
+    for (uint32_t i = 0; i < pageNum; i++) {
+        int64_t pageIdx = pageIdsGt.GetValue(pageSid + i); // [page_num, 2, pageSize, num_head, head_dim]
+        // [pageIdx, 0, pageSize, headId, head_dim]
+        int64_t offsetK = pageIdx * CONST_2 * pageSize * this->headNumK * this->xDim3 + \
+                          kvHeadId * this->xDim3;
+        
+        // [pageIdx, 1, pageSize, headId, head_dim]
+        int64_t offsetV = pageIdx * CONST_2 * pageSize * this->headNumK * this->xDim3 + \
+                          pageSize * this->headNumK * this->xDim3 + \
+                          kvHeadId * this->xDim3;
+        int64_t dstOffset = taskOffset + pageSize * i * this->xDim3;
+
+        if (lastPageLen > 0 && (i + pageSid) == lastPageIdx) {
+            CopySeqFromGT(midkGt[dstOffset], kvCacheGt[offsetK], lastPageLen);
+            CopySeqFromGT(midvGt[dstOffset], kvCacheGt[offsetV], lastPageLen);
+        } else {
+            CopySeqFromGT(midkGt[dstOffset], kvCacheGt[offsetK], pageSize);
+            CopySeqFromGT(midvGt[dstOffset], kvCacheGt[offsetV], pageSize);
+        }
+    }
+    this->computeTaskInfo[taskId].kvOffset = taskOffset;
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::CopySeqFromGT(
+    const GlobalTensor<qType>& dstGt,
+    const GlobalTensor<qType>& srcGt,
+    uint32_t seqLen)
+{
+    uint16_t blockLen = this->xDim3 * sizeof(qType) / DATA_ALIGN_BYTES;
+    // 前一个数据尾和后一个数据头的间隔 (num_head - 1) * head_dim
+    uint16_t srcGap = (this->headNumK - 1) * this->xDim3 * sizeof(qType) / DATA_ALIGN_BYTES;
+    uint16_t totalBlockCnt = seqLen;
+    uint16_t maxBlockCnt = kvLtUbSize / this->xDim3 / sizeof(qType);
+    uint16_t dstGap = (this->blockHeight - pageSize) * sizeof(qType) / DATA_ALIGN_BYTES;
+    uint32_t copyedCnt = 0;
+    while (totalBlockCnt > 0) {
+        // Copy K from kvCache->Lt
+        auto kvLt = queKv.template AllocTensor<qType>();
+        uint16_t blockCnt = totalBlockCnt > maxBlockCnt ? maxBlockCnt : totalBlockCnt;
+        DataCopyParams copyInK(blockCnt, blockLen, srcGap, 0);
+
+        DataCopy(kvLt, srcGt[copyedCnt * this->headNumK * this->xDim3], copyInK);
+        queKv.EnQue(kvLt);
+        auto newKvLt = queKv.DeQue<qType>();
+
+        // Copy Lt-> workspace
+        DataCopyParams copyOut(blockCnt, blockLen, 0, 0);
+        DataCopy(dstGt[copyedCnt * this->xDim3], newKvLt, blockCnt * this->xDim3);
+        copyedCnt += blockCnt;
+        totalBlockCnt -= blockCnt;
+        queKv.template FreeTensor(kvLt);
+    }
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::CopyFromKvInputCache(
+    uint32_t taskId, uint32_t pageSid, uint32_t pageNum, uint32_t cacheLen, uint32_t candLen)
+{
+    // copy kv from kv cache
+    int64_t taskOffset = taskId * this->blockHeight * this->xDim3;
+    CopyFromKvCache(pageSid, pageNum, taskId);
+    // copy kv from input 偏移newhistorylen
+    uint64_t kvHeadId = this->computeTaskInfo[taskId].headId / this->headRatio;
+    int64_t offset = this->computeTaskInfo[taskId].batchOffset * this->headDim * this->headNumK + \
+                     this->computeTaskInfo[taskId].actualNewHistLen * this->headNumK * this->headDim + \
+                     kvHeadId * this->headDim;
+    CopySeqFromGT(midkGt[taskOffset + cacheLen * this->xDim3], this->kGt[offset], candLen);
+    CopySeqFromGT(midvGt[taskOffset + cacheLen * this->xDim3], this->vGt[offset], candLen);
+
+    this->computeTaskInfo[taskId].kvOffset = taskOffset;
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::FetchKvMayFromCache(
+    uint32_t taskId)
+{
+    auto batchId = this->computeTaskInfo[taskId].batchId; // 当前seqlen计算的长度
+    auto computeLen = this->computeTaskInfo[taskId].computeBSeqLen;
+    auto seqLenStart = this->computeTaskInfo[taskId].kSeqId * this->blockHeight;
+    auto seqLenEnd = seqLenStart + computeLen;
+    if (seqLenEnd <= this->computeTaskInfo[taskId].actualHistLen) { // 当前计算结尾小于历史序列
+        uint32_t kvPageNum = (computeLen + pageSize - 1) / pageSize;
+        int32_t pageSid = seqLenStart / pageSize + pageOffsetGt.GetValue(batchId);
+        CopyFromKvCache(pageSid, kvPageNum, taskId);
+    } else if (seqLenStart >= this->computeTaskInfo[taskId].actualHistLen) {
+        // 从inputkv里拷贝
+        uint32_t taskOffset = taskId * this->blockHeight * this->headDim;
+        auto diffHistLen = this->computeTaskInfo[taskId].actualHistLen - this->computeTaskInfo[taskId].actualNewHistLen;
+        auto inputkvStart = seqLenStart - diffHistLen;
+        uint64_t kvHeadId = this->computeTaskInfo[taskId].headId / this->headRatio;
+        int64_t offset = this->computeTaskInfo[taskId].batchOffset * this->headDim * this->headNumK + \
+                         inputkvStart * this->headNumK * this->headDim + \
+                         kvHeadId * this->headDim;
+        CopySeqFromGT(midkGt[taskOffset], this->kGt[offset], computeLen);
+        CopySeqFromGT(midvGt[taskOffset], this->vGt[offset], computeLen);
+        this->computeTaskInfo[taskId].kvOffset = taskOffset;
+    } else {
+        // 部分从inputkv拷贝部分从kvcache拷贝
+        // kvCache拷贝起始pageid
+        int32_t pageSid = seqLenStart / pageSize + pageOffsetGt.GetValue(batchId);
+        int32_t kvpageNum = (this->computeTaskInfo[taskId].actualHistLen - seqLenStart + pageSize - 1) / pageSize;
+        int32_t candLen = seqLenStart + computeLen - this->computeTaskInfo[taskId].actualHistLen;
+        CopyFromKvInputCache(taskId,
+                             pageSid,
+                             kvpageNum,
+                             this->computeTaskInfo[taskId].actualHistLen - seqLenStart,
+                             candLen);
+    }
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::ComputeSvMatmul(
+    uint32_t taskId)
+{
+    int isAtomic = 1;
+    if (this->computeTaskInfo[taskId].isFirstSeqBlk) {
+        isAtomic = 0;
+    }
+
+    this->DoSvMatmulImpl(this->computeTaskInfo[taskId].kvOffset, taskId, this->computeTaskInfo[taskId].transTaskId,
+                         isAtomic, this->computeTaskInfo[taskId].computeASeqLen, this->headDim,
+                         this->computeTaskInfo[taskId].computeBSeqLen, this->midvGt);
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::ComputeQkMatmul(
+    uint32_t taskId)
+{
+    if (this->computeTaskInfo[taskId].isStartFromZero) {
+        this->template DoQkMatmulImpl<true>(this->computeTaskInfo[taskId].iOffset,
+                            this->computeTaskInfo[taskId].kvOffset, taskId,
+                            this->computeTaskInfo[taskId].computeASeqLen, this->computeTaskInfo[taskId].computeBSeqLen,
+                            this->headDim, this->midkGt);
+    } else {
+        this->template DoQkMatmulImpl<false>(this->computeTaskInfo[taskId].iOffset,
+                            this->computeTaskInfo[taskId].kvOffset, taskId,
+                            this->computeTaskInfo[taskId].computeASeqLen, this->computeTaskInfo[taskId].computeBSeqLen,
+                            this->headDim, this->midkGt);
+    }
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::ComputeVecScore(
+    uint32_t taskId)
+{
+    int64_t biasOffset = computeTaskInfo[taskId].batchId * this->headNum * this->maxSeqLenQ * this->maxSeqLenK +
+                         computeTaskInfo[taskId].headId * this->maxSeqLenQ * this->maxSeqLenK +
+                         computeTaskInfo[taskId].qSeqId * this->maxSeqLenK * TraitParams::blockM +
+                         computeTaskInfo[taskId].kSeqId * TraitParams::blockN;
+                         
+    int64_t maskOffset = biasOffset;
+
+    this->template VecScoreImpl<BlockMaskParams>(taskId, biasOffset, maskOffset, computeTaskInfo[taskId].scale,
+                                                 maskTaskInfo[taskId], computeTaskInfo[taskId].computeASeqLen,
+                                                 computeTaskInfo[taskId].computeBSeqLen);
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::TransResult(
+    uint32_t transtaskId)
+{
+    uint32_t transtaskIdModed = transtaskId % TRANS_PIPE_NUM;
+    if constexpr (TraitParams::deterministic) {
+        if (transTaskInfo[transtaskIdModed].isEndToTail) {
+            this->template DoTransSvImpl<false>(transtaskId, transTaskInfo[transtaskIdModed].oOffset,
+                                                transTaskInfo[transtaskIdModed].computeASeqLen);
+        } else {
+            this->template DoTransSvImpl<true>(transtaskId, transTaskInfo[transtaskIdModed].oOffset,
+                                            transTaskInfo[transtaskIdModed].computeASeqLen);
+        }
+    } else {
+        this->template DoTransSvImpl<true>(transtaskId, transTaskInfo[transtaskIdModed].oOffset,
+                                           transTaskInfo[transtaskIdModed].computeASeqLen);
+    }
+    
+    if (transtaskId == 0) {
+        NotifypreBlock();
+    }
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::NotifypreBlock()
+{
+    if constexpr (TraitParams::deterministic) {
+        if (GetBlockIdx() > 0 && transTaskInfo[0].isStartFromZero == 0) {
+            auto syncBuf = this->vecIn.template AllocTensor<int32_t>();
+            AscendC::IBSet<false>(this->syncGm, syncBuf, GetBlockIdx(), 0);
+            this->vecIn.FreeTensor(syncBuf);
+        }
+    }
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::ComputeAllBlock()
+{
+    GetTaskInfo(this->sBlkId);
+
+    uint32_t taskId = 0;
+    uint32_t transtaskId = 0;
+
+    uint32_t currentTaskId = 0;
+    uint32_t preTaskId = 0;
+    uint32_t prePreTaskId = 0;
+    uint32_t nextTaskId = 0;
+    uint32_t kSeqId = this->skSeqBlkId;
+    uint32_t kSeqNum = 0;
+
+    this->scmQKTensor =  this->scm.template AllocTensor<qType>();
+    for (auto blkId = this->sBlkId; blkId <= this->eBlkId; blkId++) {
+        kSeqNum = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
+        auto deltaQK = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].deltaQK;
+        auto nblk = deltaQK / this->blockHeight;
+        bool isDeltaQK = deltaQK % this->blockHeight != 0;
+        int64_t maskOffset1 = deltaQK % this -> blockHeight;
+        int64_t maskOffset2 = deltaQK % this -> blockHeight - this -> blockHeight;
+
+        auto limit = (blkId == this->eBlkId) ? this->ekSeqBlkId : kSeqNum;
+        uint32_t isStartFromZero = (kSeqId == 0);
+        uint32_t isEndToTail = false;
+        for (; kSeqId < limit; kSeqId++) {
+            auto taskinfo = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
+            BlockMaskParams maskinfo = {
+                taskinfo.qSeqId,
+                static_cast<uint32_t> (kSeqId),
+                taskinfo.actualSeqLen,
+                taskinfo.actualSeqLenK,
+                this->blockHeight,
+                this->blockHeight,
+                taskinfo.numContext,
+                taskinfo.numTarget,
+                this->targetGroupSize,
+                taskinfo.scale,
+                maskOffset1,
+                maskOffset2,
+                nblk,
+                isDeltaQK
+            };
+            // 在下三角下跳过运算
+            if (maskinfo.NoComputation(TraitParams::maskType)) {
+                isEndToTail = true;
+                break;
+            }
+            currentTaskId = taskId % COMPUTE_PIPE_NUM;
+            preTaskId = (taskId - 1) % COMPUTE_PIPE_NUM;
+            prePreTaskId = (taskId - 2) % COMPUTE_PIPE_NUM;
+            nextTaskId = (taskId + 1) % COMPUTE_PIPE_NUM;
+
+            this->maskTaskInfo[currentTaskId] = maskinfo;
+            this->computeTaskInfo[currentTaskId].transTaskId = transtaskId % TRANS_PIPE_NUM;
+            this->computeTaskInfo[currentTaskId].kSeqId = kSeqId;
+            this->computeTaskInfo[currentTaskId].computeBSeqLen =
+                   (kSeqId != (kSeqNum - 1)) ? (this->blockHeight) :
+                   (this->computeTaskInfo[currentTaskId].actualSeqLenK - kSeqId * this->blockHeight);
+            
+            // fetch kv data
+            FetchKvMayFromCache(currentTaskId);
+            pipe_barrier(PIPE_ALL);
+
+            // matmul qk
+            this->ComputeQkMatmul(currentTaskId);
+
+            // matmul sv
+            if (taskId > 1) {
+                this->ComputeSvMatmul(prePreTaskId);
+            }
+
+            // VecScore
+            if (taskId > 0) {
+                this->ComputeVecScore(preTaskId);
+            }
+
+            // wait qk
+            this->WaitQkMatmul();
+
+            // wait sv
+            if (taskId > 1) {
+                this->WaitSvMatmul();
+            }
+
+            this->computeTaskInfo[nextTaskId] = this->computeTaskInfo[currentTaskId];
+            this->computeTaskInfo[nextTaskId].isFirstSeqBlk = 0;
+            this->maskTaskInfo[nextTaskId] = this->maskTaskInfo[currentTaskId];
+            taskId++;
+        }
+        if (blkId == this->eBlkId && this->ekSeqBlkId == 0) {
+            break;
+        }
+        this->transTaskInfo[transtaskId % TRANS_PIPE_NUM] = this->computeTaskInfo[currentTaskId];
+        this->transTaskInfo[transtaskId % TRANS_PIPE_NUM].isStartFromZero = isStartFromZero;
+        this->transTaskInfo[transtaskId % TRANS_PIPE_NUM].isEndToTail = isEndToTail | (kSeqId == kSeqNum);
+        if (transtaskId > 1) {
+            this->TransResult(transtaskId - 2);
+        }
+        transtaskId++;
+
+        UpdateTaskInfo(taskId % COMPUTE_PIPE_NUM);
+        kSeqId = 0;
+    }
+    this->scm.FreeTensor(this->scmQKTensor);
+    ComputeTailBlock(taskId, currentTaskId, preTaskId, transtaskId);
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::ComputeTailBlock(
+    uint32_t taskId, uint32_t currentTaskId, uint32_t preTaskId, uint32_t transtaskId)
+{
+    if (taskId == 0) {
+        this->scm.template FreeTensor<qType>(this->scmQKTensor);
+        return;
+    }
+
+    if (taskId == 1) {
+        this->ComputeVecScore(currentTaskId);
+        pipe_barrier(PIPE_ALL);
+
+        this->ComputeSvMatmul(currentTaskId);
+        this->WaitSvMatmul();
+        this->WaitNextBlock(transtaskId - 1);
+        this->TransResult(transtaskId - 1);
+        return;
+    }
+
+    if (transtaskId == 1) {
+        this->ComputeSvMatmul(preTaskId);
+        this->WaitSvMatmul();
+
+        this->ComputeVecScore(currentTaskId);
+        pipe_barrier(PIPE_ALL);
+
+        this->ComputeSvMatmul(currentTaskId);
+        this->WaitSvMatmul();
+        this->WaitNextBlock(transtaskId - 1);
+        this->TransResult(transtaskId - 1);
+        return;
+    }
+
+    this->ComputeSvMatmul(preTaskId);
+    this->WaitSvMatmul();
+
+    this->ComputeVecScore(currentTaskId);
+    pipe_barrier(PIPE_ALL);
+
+    this->ComputeSvMatmul(currentTaskId);
+    this->WaitSvMatmul();
+
+    this->TransResult(transtaskId - 2);
+    this->WaitNextBlock(transtaskId - 1);
+    this->TransResult(transtaskId - 1);
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::WaitNextBlock(
+    uint32_t transtaskId)
+{
+    if constexpr (TraitParams::deterministic) {
+        if (GetBlockIdx() + 1 < GetBlockNum() * GetTaskRation() &&
+            transTaskInfo[transtaskId % TRANS_PIPE_NUM].isEndToTail == 0) {
+            auto syncBuf = this->vecIn.template AllocTensor<int32_t>();
+            AscendC::IBWait<false>(this->syncGm, syncBuf, GetBlockIdx() + 1, 0);
+            this->vecIn.FreeTensor(syncBuf);
+        }
+    }
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::FillTaskInfoPaged(
+    uint32_t batchId, uint32_t taskId)
+{
+    if (batchId >= this->batchSize) {
+        return;
+    }
+
+    taskId = taskId % COMPUTE_PIPE_NUM;
+    this->computeTaskInfo[taskId].actualHistLen = this->computeTaskInfo[taskId].actualSeqLenK -
+                                                  this->numTargetGt.GetValue(batchId);
+    this->computeTaskInfo[taskId].actualNewHistLen = this->computeTaskInfo[taskId].actualSeqLen -
+                                                     this->numTargetGt.GetValue(batchId);
+    this->computeTaskInfo[taskId].pageNum = pageOffsetGt.GetValue(batchId + 1) - pageOffsetGt.GetValue(batchId);
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::UpdateTaskInfo(
+    uint32_t taskId)
+{
+    auto batchId = this->computeTaskInfo[taskId].batchId;
+    auto headId = this->computeTaskInfo[taskId].headId;
+
+    int64_t seqGlobalOffset = this->computeTaskInfo[taskId].seqGlobalOffset;
+    int64_t gap = this->computeTaskInfo[taskId].headSeqLimit - seqGlobalOffset;
+
+    if (gap <= this->blockHeight) {
+        headId++;
+        if (headId >= this->headNum) {
+            batchId++;
+        }
+
+        if (batchId >= this->batchSize) {
+            return;
+        }
+
+        seqGlobalOffset = seqGlobalOffset + gap;
+        headId = headId % this->headNum;
+        FillTaskInfo(batchId, headId, seqGlobalOffset, taskId);
+        FillTaskInfoPaged(batchId, taskId);
+    } else {
+        this->computeTaskInfo[taskId].seqGlobalOffset = seqGlobalOffset + this->blockHeight;
+
+        uint32_t computeASeqLen = this->blockHeight;
+        uint32_t computeHeadSeq = this->computeTaskInfo[taskId].seqGlobalOffset + this->blockHeight;
+        if (computeHeadSeq > this->computeTaskInfo[taskId].headSeqLimit) {
+            computeASeqLen = this->computeTaskInfo[taskId].headSeqLimit -
+                             this->computeTaskInfo[taskId].seqGlobalOffset;
+        }
+
+        auto batchInnerOffset =
+            this->computeTaskInfo[taskId].seqGlobalOffset - (this->computeTaskInfo[taskId].batchOffset * this->headNum);
+        this->computeTaskInfo[taskId].qSeqId =
+            (batchInnerOffset - this->computeTaskInfo[taskId].headId * this->computeTaskInfo[taskId].actualSeqLen) /
+            this->blockHeight;
+        this->computeTaskInfo[taskId].iOffset =
+            this->computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum + \
+            this->computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDim + \
+            this->computeTaskInfo[taskId].headId * this->headDim;
+        this->computeTaskInfo[taskId].oOffset =
+            this->computeTaskInfo[taskId].batchOffset * this->headDimV * this->headNum + \
+            this->computeTaskInfo[taskId].qSeqId * this->blockHeight * this->headNum * this->headDimV + \
+            this->computeTaskInfo[taskId].headId * this->headDimV;
+        this->computeTaskInfo[taskId].computeASeqLen = computeASeqLen;
+    }
+    this->computeTaskInfo[taskId].isFirstSeqBlk = 1;
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::GetTaskInfo(
+    uint32_t sBlkId)
+{
+    uint32_t offsetOfBlk = 0;
+    int64_t offsetOfSeq = 0;
+    int64_t seqGlobalOffset = 0;
+
+    for (auto index = 0; index < this->batchSize * this->headNum; index++) {
+        uint32_t batchId = index / this->headNum;
+        uint32_t headId = index % this->headNum;
+
+        uint32_t batchSeqSize = this->seqOffsetsQGt.GetValue(batchId + 1) - this->seqOffsetsQGt.GetValue(batchId);
+        uint32_t batchBlkSize = (batchSeqSize + this->blockHeight - 1) / this->blockHeight;
+
+        if (sBlkId < (offsetOfBlk + batchBlkSize)) {
+            uint32_t innerBlkId = sBlkId - offsetOfBlk;
+            seqGlobalOffset = seqGlobalOffset + innerBlkId * this->blockHeight;
+            FillTaskInfo(batchId, headId, seqGlobalOffset, 0);
+            FillTaskInfoPaged(batchId, 0);
+            return;
+        }
+
+        offsetOfBlk += batchBlkSize;
+        seqGlobalOffset += batchSeqSize;
+    }
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::FillTaskInfo(
+    uint32_t batchId, uint32_t headId, int64_t seqGlobalOffset, uint32_t taskId)
+{
+    if (batchId >= this->batchSize) {
+        return;
+    }
+
+    taskId = taskId % COMPUTE_PIPE_NUM;
+
+    auto nextBatchSeqOffset = this->seqOffsetsQGt.GetValue(batchId + 1);
+    auto currentBatchSeqOffset = this->seqOffsetsQGt.GetValue(batchId);
+
+    auto nextBatchSeqOffsetK = this->seqOffsetsKGt.GetValue(batchId + 1);
+    auto currentBatchSeqOffsetK = this->seqOffsetsKGt.GetValue(batchId);
+
+    auto numContext = this->numContextGt.GetValue(batchId);
+    auto numTarget = this->numTargetGt.GetValue(batchId);
+
+    computeTaskInfo[taskId].seqGlobalOffset = seqGlobalOffset;
+    computeTaskInfo[taskId].batchId = batchId;
+    computeTaskInfo[taskId].actualSeqLen = nextBatchSeqOffset - currentBatchSeqOffset;
+    computeTaskInfo[taskId].actualSeqLenK = nextBatchSeqOffsetK - currentBatchSeqOffsetK;
+    computeTaskInfo[taskId].deltaQK = computeTaskInfo[taskId].actualSeqLenK - computeTaskInfo[taskId].actualSeqLen;
+
+    computeTaskInfo[taskId].scale = this->siluScale;
+    computeTaskInfo[taskId].numTarget = numTarget;
+    computeTaskInfo[taskId].numContext = numContext;
+    computeTaskInfo[taskId].batchOffset = currentBatchSeqOffset;
+    computeTaskInfo[taskId].batchOffsetK = currentBatchSeqOffsetK;
+    // 每个注意力头在序列维度上的处理边界
+    computeTaskInfo[taskId].headSeqLimit =
+        computeTaskInfo[taskId].batchOffset * this->headNum + computeTaskInfo[taskId].actualSeqLen * (headId + 1);
+    auto batchInnerOffset = seqGlobalOffset - (computeTaskInfo[taskId].batchOffset * this->headNum);
+    computeTaskInfo[taskId].headId = headId;
+    computeTaskInfo[taskId].qSeqId =
+        (batchInnerOffset - computeTaskInfo[taskId].headId *
+         computeTaskInfo[taskId].actualSeqLen) / TraitParams::blockM;
+    computeTaskInfo[taskId].kSeqNum =
+        CeilDiv(computeTaskInfo[taskId].actualSeqLenK, static_cast<uint32_t>(TraitParams::blockN));
+    computeTaskInfo[taskId].qSeqNum =
+        CeilDiv(computeTaskInfo[taskId].actualSeqLen, static_cast<uint32_t>(TraitParams::blockM));
+
+    computeTaskInfo[taskId].iOffset =
+        computeTaskInfo[taskId].batchOffset * this->headDim * this->headNum +
+        computeTaskInfo[taskId].qSeqId * TraitParams::blockM * this->headNum * this->headDim +
+        computeTaskInfo[taskId].headId * this->headDim;
+    computeTaskInfo[taskId].oOffset =
+        computeTaskInfo[taskId].batchOffset * this->headDimV * this->headNum +
+        computeTaskInfo[taskId].qSeqId * TraitParams::blockM * this->headNum * this->headDimV +
+        computeTaskInfo[taskId].headId * this->headDimV;
+
+    if ((computeTaskInfo[taskId].headSeqLimit - seqGlobalOffset) >= TraitParams::blockM) {
+        computeTaskInfo[taskId].computeASeqLen = TraitParams::blockM;
+    } else {
+        computeTaskInfo[taskId].computeASeqLen = computeTaskInfo[taskId].headSeqLimit - seqGlobalOffset;
+    }
+}
+
+template <typename TraitParams, typename TilingDataType>
+__aicore__ inline int HstuDenseForwardPagedKernel<TraitParams, TilingDataType>::PreInit()
+{
+    seqOffsetsQGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetQ), this->xDim0 + 1);
+    seqOffsetsKGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->seqOffsetK), this->xDim0 + 1);
+    auto validBatchSize = GetBatchSizeFromJaggedOffset(seqOffsetsQGt, this->xDim0 + 1);
+    ASCENDC_ASSERT((validBatchSize > 0 && validBatchSize <= MAX_BATCH_SIZE), "batchSize exceed limit of (0, 20480]\n");
+
+    const int blockId = GetBlockIdx();
+    const uint32_t coreNum = GetBlockNum() * GetTaskRation();
+    this->batchSize = validBatchSize;
+    this->xDim0 = validBatchSize;
+    this->seqLen = this->xDim1;
+    this->headNum = this->xDim2;
+    this->headDim = this->xDim3;
+    this->headDimV = this->vDim;
+
+    numContextGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numContext), this->batchSize);
+    numTargetGt.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(this->numTarget), this->batchSize);
+
+    this->splitMode = STREAM_K;
+    if (this->maxSeqLenQ <= TraitParams::blockM && this->maxSeqLenK <= TraitParams::blockN) {
+        this->splitMode = FAST_SPLIT_SINGLE;
+    }
+
+    int blocks[4] = {0};  // start block id, end block id
+    if constexpr (TraitParams::maskType == CausalMaskT::MASK_TRIL) {
+        auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_TRIL>(
+            coreNum, this->batchSize, this->headNum, this->targetGroupSize, TraitParams::blockM,
+            TraitParams::blockN, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
+        taskAssigner.Compute(blocks, blockId);
+    } else if constexpr (TraitParams::maskType == CausalMaskT::MASK_CUSTOM) {
+        auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_CUSTOM>(
+            coreNum, this->batchSize, this->headNum, this->targetGroupSize, TraitParams::blockM,
+            TraitParams::blockN, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
+        taskAssigner.Compute(blocks, blockId);
+    } else {
+        auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_NONE>(
+            coreNum, this->batchSize, this->headNum, this->targetGroupSize, TraitParams::blockM,
+            TraitParams::blockN, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
+        taskAssigner.Compute(blocks, blockId);
+    }
+    
+
+    this->skSeqBlkId = blocks[0];
+    this->ekSeqBlkId = blocks[1];
+    this->sBlkId = blocks[2];
+    this->eBlkId = blocks[3];
+    if (this->skSeqBlkId == this->ekSeqBlkId && this->sBlkId == this->eBlkId && this->sBlkId == 0 &&
+        this->skSeqBlkId == 0) {
+        return -1;
+    }
+    return 0;
+}
+
+}
+
+#endif
