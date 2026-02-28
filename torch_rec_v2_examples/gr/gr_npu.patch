@@ -955,7 +955,7 @@ index 6b02397..9d34f9a 100644
          """
          Forward pass of the MultiTaskLossModule.
 diff --git a/examples/hstu/modules/native_hstu_layer.py b/examples/hstu/modules/native_hstu_layer.py
-index 9c85635..9e0057e 100644
+index 9c85635..581b684 100644
 --- a/examples/hstu/modules/native_hstu_layer.py
 +++ b/examples/hstu/modules/native_hstu_layer.py
 @@ -18,24 +18,27 @@ from functools import partial
@@ -1752,6 +1752,19 @@ index 0000000..bca95d4
 +        ),
 +    )
 +    return padded_x.flatten(0, 1)[mask.view(-1), :]
+diff --git a/examples/hstu/ops/pt_ops/pt_norm_mul_dropout.py b/examples/hstu/ops/pt_ops/pt_norm_mul_dropout.py
+index 198c513..c479ab7 100644
+--- a/examples/hstu/ops/pt_ops/pt_norm_mul_dropout.py
++++ b/examples/hstu/ops/pt_ops/pt_norm_mul_dropout.py
+@@ -32,6 +32,8 @@ def pytorch_norm_mul_dropout(
+     """
+     All op is performed in fp32.
+     """
++    if x.shape[0] == 0:
++        return x
+     dtype = x.dtype
+     x = x.to(torch.float32)
+     u = u.reshape(u.size(0), -1).to(torch.float32)
 diff --git a/examples/hstu/ops/pt_ops/pt_position.py b/examples/hstu/ops/pt_ops/pt_position.py
 new file mode 100644
 index 0000000..b6a89af

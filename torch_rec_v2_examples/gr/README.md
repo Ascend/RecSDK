@@ -35,10 +35,10 @@ cp -f ../gr_npu.patch ./ && git apply gr_npu.patch
 cp ../run.sh ./examples/hstu/
 cd ./examples/hstu
 ```
-2. 参考 https://gitcode.com/Ascend/MindSpeed/tree/core_r0.14.0 安装 MindSpeed 和 Megatron-LM (core_v0.14.0)
-在gr_nv目录下载Mindspeed文件夹和Megatron-LM文件夹
+2. 参考 https://gitcode.com/Ascend/MindSpeed/tree/core_r0.14.0 下载指定版本的MindSpeed (core_r0.14.0) 和 Megatron-LM (core_v0.14.0)
+在gr目录下载Mindspeed文件夹和Megatron-LM文件夹
 ```shell
--- gr_nv
+-- gr
    |-- Mindspeed
    |-- Megatron-LM
    |-- recsys-examples
