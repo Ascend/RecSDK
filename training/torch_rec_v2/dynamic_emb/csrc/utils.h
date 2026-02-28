@@ -21,7 +21,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <acl/acl.h>
 namespace dyn_emb {
 
 // 计算大于等于value的最小2的幂

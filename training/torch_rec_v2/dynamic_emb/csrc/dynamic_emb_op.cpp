@@ -44,7 +44,9 @@
 #include "aclrtlaunch_load_from_pointer.h"
 #include "aclrtlaunch_reduce_grad_op.h"
 #include "aclrtlaunch_unique_op.h"
+#include "aclrtlaunch_pooling_embeddings.h"
 #include "dynamic_variable_base.h"
+#include "torch_utils.h"
 #include "utils.h"
 #include "./ops/unique_op/cpu_unique.h"
 
@@ -663,6 +665,48 @@ void find_pointers_with_scores(std::shared_ptr<dyn_emb::DynamicVariableBase> tab
     }
 }
 
+void lookup_forward(const at::Tensor& src, const at::Tensor& dst,
+                    const at::Tensor& offset, const at::Tensor& inverse,
+                    int32_t combiner, int32_t total_dims, int32_t accum_dims, int32_t ev_size,
+                    int32_t num_vec, int32_t batch_size)
+{
+    // data check
+    TORCH_CHECK(offset.dtype() == inverse.dtype(), "offset and inverse must have the same dtype");
+    TORCH_CHECK(offset.dim() == 1 && inverse.dim() == 1, "offset and inverse must be 1D tensor");
+    auto src_type = scalartype_to_datatype(convertTypeMetaToScalarType(src.dtype()));
+    auto dst_type = scalartype_to_datatype(convertTypeMetaToScalarType(dst.dtype()));
+    auto offset_type = scalartype_to_datatype(convertTypeMetaToScalarType(offset.dtype()));
+
+    // data info
+    auto src_contin = src.contiguous();
+    auto offset_contin = offset.contiguous();
+    auto inverse_contin = inverse.contiguous();
+    void* src_data = src_contin.data_ptr();
+    void* dst_data = dst.data_ptr();
+    void* offset_data = offset_contin.data_ptr();
+    void* inverse_data = inverse_contin.data_ptr();
+
+    // tilling info
+    bool isInt32 = offset.dtype() == torch::kInt32;
+    bool isSmall = (ev_size * num_vec <= (isInt32 ? SMALL_DATA_THRESHOLD_32 : SMALL_DATA_THRESHOLD));
+    int32_t total_blocks = (ev_size * num_vec + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+    int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
+    int32_t core_num = std::min(max_cores, total_blocks);
+    if (core_num == 0) {
+        return;
+    }
+    int32_t blocks_per_core = total_blocks / core_num;
+    int32_t remainder_blocks = total_blocks % core_num;
+
+    // run
+    auto acl_stream = c10_npu::getCurrentNPUStream().stream(true);
+    ACLRT_LAUNCH_KERNEL(pooling_embeddings)(core_num, acl_stream, src_data, dst_data, offset_data, inverse_data,
+                                        combiner, total_dims, accum_dims, ev_size, num_vec, batch_size,
+                                        total_blocks, blocks_per_core, remainder_blocks, isSmall,
+                                        static_cast<uint32_t>(src_type), static_cast<uint32_t>(dst_type),
+                                        static_cast<uint32_t>(offset_type));
+}
+
 class DeviceTimestamp {
 public:
     DeviceTimestamp()
@@ -929,5 +973,11 @@ void bind_dyn_emb_op(py::module& m)
           py::arg("offsets"), py::arg("d_table_offsets_in_feature"), py::arg("table_num"), py::arg("local_batch_size"),
           py::arg("reverse_idx"), py::arg("d_unique_nums"), py::arg("d_unique_offsets"), py::arg("unique_idx"),
           py::arg("new_offsets"), py::arg("new_lengths"));
+
+    m.def("lookup_forward", &lookup_forward, "lookup_forward",
+          py::arg("src"), py::arg("dst"), py::arg("offset"),
+          py::arg("inverse"), py::arg("combiner"), py::arg("total_dims"),
+          py::arg("accum_dims"), py::arg("ev_size"), py::arg("num_vec"),
+          py::arg("batch_size"));
 }
 }  // namespace dyn_emb
