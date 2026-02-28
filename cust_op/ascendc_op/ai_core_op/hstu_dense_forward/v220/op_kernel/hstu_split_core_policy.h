@@ -27,7 +27,7 @@ See the License for the specific language governing permissions and
 
 using namespace AscendC;
 
-namespace HstuDenseForward {
+namespace HstuForward {
 
 template <typename oType, CausalMaskT maskType>
 class BlockTaskAssign {
@@ -63,7 +63,7 @@ public:
         uint32_t totalTaskNum = 0;
         if (this->splitMode == FAST_SPLIT_SINGLE) {
             totalTaskNum = this->bxn;
-        } else if (this->splitMode == FAST_SPLIT) {
+        } else {
             for (auto batchId = 0; batchId < batchSize; batchId++) {
                 int64_t seqlenQ = seqOffsetsQGt.GetValue(batchId + 1) - seqOffsetsQGt.GetValue(batchId);
                 int64_t numBlkQ = CeilDiv(seqlenQ, blockM);

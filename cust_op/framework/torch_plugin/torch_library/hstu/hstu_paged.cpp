@@ -76,9 +76,7 @@ at::Tensor hstu_paged_forward_impl_npu(
     const auto _numContext = at::zeros_like(numTarget);
     const auto acNumTarget = numTarget.to(seqOffset.scalar_type());
 
-    const char *layout = "paged";
-    const int64_t isDeltaQK = 1;
-    EXEC_NPU_CMD(aclnnHstuDenseForward,
+    EXEC_NPU_CMD(aclnnHstuPagedForward,
                  denseQ,
                  denseK,
                  denseV,
@@ -97,9 +95,7 @@ at::Tensor hstu_paged_forward_impl_npu(
                  maxSeqLen,
                  maxSeqLenK,
                  realSiluScale,
-                 layout,
                  targetGroupSize,
-                 isDeltaQK,
                  realAlpha,
                  deterministic,
                  attnOutput);

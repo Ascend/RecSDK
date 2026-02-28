@@ -60,18 +60,18 @@ struct SVTransArgs {
     int64_t qSeqId;
 };
 
-template <typename TraitParams>
-class HstuDenseForwardKernel : public HstuDenseForwardKernelPattenBsnd<TraitParams> {
+template <typename TraitParams, typename TilingDataType>
+class HstuDenseForwardKernel : public HstuDenseForwardKernelPattenBsnd<TraitParams, TilingDataType> {
 public:
     using qType = typename TraitParams::qType;
     using oType = typename TraitParams::oType;
 
     __aicore__ inline HstuDenseForwardKernel() {}
 
-    __aicore__ inline void PreInit(const HstuDenseForwardTilingData* __restrict tilingDataPtr)
+    __aicore__ inline void PreInit()
     {
-        seqBlockNumQk = DivCeil(this->xDim1, this->blockHeight); // 不满足一个block的按照一个block进行计算
-        qkTotalBlock = this->xDim0 * this->xDim2 * seqBlockNumQk;
+        seqBlockNumQk = DivCeil(this->seqLen, this->blockHeight); // 不满足一个block的按照一个block进行计算
+        qkTotalBlock = this->batchSize * this->headNum * seqBlockNumQk;
     }
 
     __aicore__ inline void VecScore(ScoreVectorArgs& scoreArgs)
@@ -80,24 +80,19 @@ public:
             return;
         }
         
-        int64_t attnBiasOffset = scoreArgs.batchId * this->xDim2 * this->xDim1 * this->xDim1 + \
-                                scoreArgs.headId * this->xDim1 * this->xDim1 + \
-                                scoreArgs.qSeqId * this->blockHeight * this->xDim1 + \
+        int64_t attnBiasOffset = scoreArgs.batchId * this->headNum * this->seqLen * this->seqLen + \
+                                scoreArgs.headId * this->seqLen * this->seqLen + \
+                                scoreArgs.qSeqId * this->blockHeight * this->seqLen + \
                                 scoreArgs.kSeqId * this->blockHeight;
 
         int64_t maskOffset = attnBiasOffset;
-#ifdef SUPPORT_V200
-        maskOffset = scoreArgs.batchId * this->xDim1 * this->xDim1 + \
-                     scoreArgs.qSeqId * this->blockHeight * this->xDim1 + \
-                     scoreArgs.kSeqId * this->blockHeight;
-#endif
         uint32_t causalMask = ((scoreArgs.qSeqId == scoreArgs.kSeqId) &&
             (TraitParams::maskType == CausalMaskT::MASK_TRIL)) ? 1 : 0;
 
         int64_t m = (scoreArgs.qSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
-                                                                (this->xDim1 - scoreArgs.qSeqId * this->blockHeight);
+                                                                (this->seqLen - scoreArgs.qSeqId * this->blockHeight);
         int64_t n = (scoreArgs.kSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
-                                                                (this->xDim1 - scoreArgs.kSeqId * this->blockHeight);
+                                                                (this->seqLen - scoreArgs.kSeqId * this->blockHeight);
 
         this->template VecScoreImpl<uint32_t>(scoreArgs.taskId, attnBiasOffset, maskOffset, this->siluScale,
                                               causalMask, m, n);
@@ -109,19 +104,19 @@ public:
             return;
         }
 
-        int64_t qOffset = qkPosArgs.batchId * this->xDim1 * this->xDim2 * this->xDim3 + \
-                          qkPosArgs.qSeqId * this->blockHeight * this->xDim2 * this->xDim3 + \
-                          qkPosArgs.headId * this->xDim3;
-        int64_t kOffset = qkPosArgs.batchId * this->xDim1 * this->xDim2 * this->xDim3 + \
-                          qkPosArgs.kSeqId * this->blockHeight * this->xDim2 * this->xDim3 + \
-                          qkPosArgs.headId * this->xDim3;
+        int64_t qOffset = qkPosArgs.batchId * this->seqLen * this->headNum * this->dim + \
+                          qkPosArgs.qSeqId * this->blockHeight * this->headNum * this->dim + \
+                          qkPosArgs.headId * this->dim;
+        int64_t kOffset = qkPosArgs.batchId * this->seqLen * this->headNum * this->dim + \
+                          qkPosArgs.kSeqId * this->blockHeight * this->headNum * this->dim + \
+                          qkPosArgs.headId * this->dim;
 
         int64_t m = (qkPosArgs.qSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
-                                                                (this->xDim1 - qkPosArgs.qSeqId * this->blockHeight);
+                                                                (this->seqLen - qkPosArgs.qSeqId * this->blockHeight);
         int64_t n = (qkPosArgs.kSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
-                                                                (this->xDim1 - qkPosArgs.kSeqId * this->blockHeight);
+                                                                (this->seqLen - qkPosArgs.kSeqId * this->blockHeight);
 
-        this->template DoQkMatmulImpl(qOffset, kOffset, qkPosArgs.taskId, m, n, this->xDim3);
+        this->template DoQkMatmulImpl(qOffset, kOffset, qkPosArgs.taskId, m, n, this->dim);
     }
 
     __aicore__ inline void DoSvMatmul(SvMatmulArgs& svArgs)
@@ -130,22 +125,17 @@ public:
             return;
         }
 
-        int64_t vOffset = svArgs.batchId * this->xDim1 * this->xDim2 * this->xDim3 +
-                          svArgs.vSeqId * this->blockHeight * this->xDim2 * this->xDim3 +
-                          svArgs.headId * this->xDim3;
+        int64_t vOffset = svArgs.batchId * this->seqLen * this->headNum * this->dim +
+                          svArgs.vSeqId * this->blockHeight * this->headNum * this->dim +
+                          svArgs.headId * this->dim;
 
         int64_t m = (svArgs.qSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
-                                                                (this->xDim1 - svArgs.qSeqId * this->blockHeight);
+                                                                (this->seqLen - svArgs.qSeqId * this->blockHeight);
         int64_t n = (svArgs.vSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
-                                                                (this->xDim1 - svArgs.vSeqId * this->blockHeight);
+                                                                (this->seqLen - svArgs.vSeqId * this->blockHeight);
 
-        if (svArgs.vSeqId == 0) {
-            // Override
-            this->DoSvMatmulImpl(vOffset, svArgs.taskId, svArgs.transTaskId, 0, m, this->xDim3, n);
-        } else {
-            // Automic Add
-            this->DoSvMatmulImpl(vOffset, svArgs.taskId, svArgs.transTaskId, 1, m, this->xDim3, n);
-        }
+        uint8_t isAutomicAdd = (svArgs.vSeqId == 0) ? 0 : 1;
+        this->DoSvMatmulImpl(vOffset, svArgs.taskId, svArgs.transTaskId, isAutomicAdd, m, this->dim, n);
     }
 
     __aicore__ inline void DoTransSv(SVTransArgs& args)
@@ -154,26 +144,26 @@ public:
             return;
         }
         
-        int64_t outStartOffset = args.batchId * this->xDim1 * this->xDim2 * this->xDim3 + \
-                                args.qSeqId * this->blockHeight * this->xDim2 * this->xDim3 + \
-                                args.headId * this->xDim3;
+        int64_t outStartOffset = args.batchId * this->seqLen * this->headNum * this->dim + \
+                                args.qSeqId * this->blockHeight * this->headNum * this->dim + \
+                                args.headId * this->dim;
 
         int64_t m = (args.qSeqId != (seqBlockNumQk - 1)) ? this->blockHeight :
-                                                                (this->xDim1 - args.qSeqId * this->blockHeight);
+                                                                (this->seqLen - args.qSeqId * this->blockHeight);
 
         this->DoTransSvImpl(args.transTaskId, outStartOffset, m);
     }
 
-    __aicore__ inline void Compute(const HstuDenseForwardTilingData *__restrict tilingDataPtr)
+    __aicore__ inline void Compute()
     {
-        PreInit(tilingDataPtr);
+        PreInit();
         int64_t taskId = 0;
         int64_t transTaskId = 0;
 
         int64_t cubeCoreLen = this->qkTotalBlock / GetBlockNum();
         int64_t cubeCoreSplitId = this->qkTotalBlock % GetBlockNum();
 
-        int64_t blockNumOfOneBatch = this->xDim2 * this->seqBlockNumQk;
+        int64_t blockNumOfOneBatch = this->headNum * this->seqBlockNumQk;
         int64_t blockNumOfOneHead = this->seqBlockNumQk;
 
         int64_t lenOfThisCore;

@@ -53,14 +53,14 @@ rm -rf hstu_dense_forward/op_kernel/*.h
 rm -rf hstu_dense_forward/op_kernel/*.cpp
 rm -rf hstu_dense_forward/host/*.h
 rm -rf hstu_dense_forward/host/*.cpp
+
 cp -rf op_kernel hstu_dense_forward/
 cp -rf op_host/*.h hstu_dense_forward/op_host/
 cp -rf op_host/hstu_*.cpp hstu_dense_forward/op_host/
 cp -rf op_host/tiling_policy.cpp hstu_dense_forward/op_host/
-cp -rf op_host/tiling_policy_factory.cpp hstu_dense_forward/op_host/
-cp -rf op_host/tiling_policy_normal.cpp hstu_dense_forward/op_host/
+cp -rf op_host/tiling_policy_dense.cpp hstu_dense_forward/op_host/
 if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-  cp -rf op_host/tiling_policy_normal_v200.cpp hstu_dense_forward/op_host/
+  cp -rf op_host/tiling_policy_dense_v200.cpp hstu_dense_forward/op_host/
 else
   cp -rf op_host/tiling_policy_jagged.cpp hstu_dense_forward/op_host/
   cp -rf op_host/tiling_policy_paged.cpp hstu_dense_forward/op_host/
@@ -99,6 +99,7 @@ sed -i "${line}s/True/False/g" CMakePresets.json
 
 if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
   sed -i "1i #define SUPPORT_V200" ./op_host/hstu_dense_forward_tiling.h
+  sed -i "1i #define SUPPORT_V200" ./op_host/hstu_dense_forward.cpp
   sed -i "1i #define SUPPORT_V200" ./op_host/tiling_policy_define.h
   sed -i "1i #define SUPPORT_V200" ./op_kernel/hstu_dense_forward_kernel.h
   sed -i "1i #define SUPPORT_V200" ./op_kernel/hstu_dense_forward.cpp

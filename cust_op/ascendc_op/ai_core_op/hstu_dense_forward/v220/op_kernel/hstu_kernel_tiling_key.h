@@ -25,7 +25,7 @@ See the License for the specific language governing permissions and
 ASCENDC_TPL_ARGS_DECL(HstuDenseForward, // 算子OpType
 ASCENDC_TPL_UINT_DECL(maskedType, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 2, 3),
 ASCENDC_TPL_BOOL_DECL(enableBias, 0, 1),
-ASCENDC_TPL_BOOL_DECL(isQkUseUb, 0, 1),
+// ASCENDC_TPL_BOOL_DECL(isQkUseUb, 0, 1),
 ASCENDC_TPL_UINT_DECL(typeTilingKey, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 2),
 ASCENDC_TPL_BOOL_DECL(deterministic, 0, 1),
 ASCENDC_TPL_UINT_DECL(blockM, 9, ASCENDC_TPL_UI_LIST, 256),
@@ -39,7 +39,7 @@ ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(maskedType, ASCENDC_TPL_UI_LIST, 0, 2, 3),
         ASCENDC_TPL_BOOL_SEL(enableBias, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(isQkUseUb, 0, 1),
+        // ASCENDC_TPL_BOOL_SEL(isQkUseUb, 0, 1),
         ASCENDC_TPL_UINT_SEL(typeTilingKey, ASCENDC_TPL_UI_RANGE, 1, 0, 2),
         ASCENDC_TPL_BOOL_SEL(deterministic, 0, 1),
         ASCENDC_TPL_UINT_SEL(blockM, ASCENDC_TPL_UI_LIST, 256),

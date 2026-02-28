@@ -28,6 +28,7 @@ See the License for the specific language governing permissions and
 #include "hstu_common_const.h"
 
 using namespace AscendC;
+using namespace HstuForward;
 
 namespace HstuDenseForward {
 
@@ -42,36 +43,24 @@ constexpr int VCORE_NUM_IN_ONE_AIC = 1;
 constexpr int COMPUTE_PIPE_NUM = 1;
 constexpr int TRANS_PIPE_NUM = 1;
 
-struct Args {
+struct DenseArgs {
     // hstu normal
     GM_ADDR q;
     GM_ADDR k;
     GM_ADDR v;
     GM_ADDR attnBias;
     GM_ADDR mask;
-    // jagged
-    GM_ADDR seqOffsetQ;
-    GM_ADDR seqOffsetK;
-    // page
-    GM_ADDR seqOffsetT;
-    GM_ADDR kvCache;
-    GM_ADDR pageOffsets;
-    GM_ADDR pageIds;
-    GM_ADDR lastPageLen;
-    // mask
-    GM_ADDR numContext;
-    GM_ADDR numTarget;
 
     GM_ADDR attnOutput;
     GM_ADDR workspace;
     GM_ADDR tiling;
 };
 
-template <typename qType>
+template <typename qType, typename TilingDataType>
 class HstuDenseForwardKernelPattenBsnd {
 public:
     __aicore__ inline HstuDenseForwardKernelPattenBsnd() {}
-    __aicore__ inline void Init(const Args& args,
+    __aicore__ inline void Init(const DenseArgs& args,
                                 const HstuDenseForwardTilingData* __restrict tilingDataPtr,
                                 TPipe* pipePtr)
     {
@@ -85,20 +74,20 @@ public:
         workspace = args.workspace;
 
         // Batch Size
-        xDim0 = tilingDataPtr->batchSize;
+        batchSize = tilingDataPtr->batchSize;
         // Seq Len
-        xDim1 = tilingDataPtr->seqLen;
+        seqLen = tilingDataPtr->seqLen;
         // Head Num
-        xDim2 = tilingDataPtr->headNum;
+        headNum = tilingDataPtr->headNum;
         // Embedding Dim
-        xDim3 = tilingDataPtr->dim;
+        dim = tilingDataPtr->dim;
 
         // Tiling
         blockHeight = tilingDataPtr->blockHeight;
-        seqBlockNumQk = xDim1 / blockHeight;
-        seqBlockNumSV = xDim1 / blockHeight;
+        seqBlockNumQk = seqLen / blockHeight;
+        seqBlockNumSV = seqLen / blockHeight;
 
-        qkTotalBlock = xDim0 * xDim2 * seqBlockNumQk;
+        qkTotalBlock = batchSize * headNum * seqBlockNumQk;
 
         // DataType
         dataTypeBitNum = sizeof(qType);
@@ -106,7 +95,7 @@ public:
 
         // Ub
         tmpUbSize = tilingDataPtr->tmpUbSize;
-        int usedUb = blockHeight * xDim3 * MATMUL_NUM * sizeof(qType) +
+        int usedUb = blockHeight * dim * MATMUL_NUM * sizeof(qType) +
                      blockHeight * blockHeight * sizeof(float) + tmpUbSize;
         
         int blockElem = (UB_SIZE - usedUb) / sizeof(qType) / VECTOR_ELEM / USE_QUEUE_NUM / blockHeight * blockHeight;
@@ -124,7 +113,7 @@ public:
         int64_t oneBlockMidElem = blockHeight * blockHeight * COMPUTE_PIPE_NUM;
         int64_t oneCoreMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
 
-        int64_t oneBlockMidTransElem = blockHeight * xDim3 * TRANS_PIPE_NUM;
+        int64_t oneBlockMidTransElem = blockHeight * dim * TRANS_PIPE_NUM;
         int64_t oneCoreTransMidElem = GetBlockNum() * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
 
         attnBiasGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(attnBias));
@@ -142,8 +131,8 @@ public:
         pipe->InitBuffer(queTransIn, USE_QUEUE_NUM, accuBlockElem * sizeof(float));
         pipe->InitBuffer(queTransOut, USE_QUEUE_NUM, accuBlockElem * sizeof(qType));
 
-        pipe->InitBuffer(queInputQ, 1, blockHeight * xDim3 * sizeof(qType));
-        pipe->InitBuffer(queInputKV, 1,  blockHeight * xDim3 * sizeof(qType));
+        pipe->InitBuffer(queInputQ, 1, blockHeight * dim * sizeof(qType));
+        pipe->InitBuffer(queInputKV, 1,  blockHeight * dim * sizeof(qType));
 
         pipe->InitBuffer(queTmp, 1,  tmpUbSize);
         pipe->InitBuffer(queAttnScore, 1, blockHeight * blockHeight *sizeof(float));
@@ -165,7 +154,7 @@ public:
                                           int64_t height, int64_t width)
     {
         uint16_t blockLen = width / dataTypeAlign;
-        uint16_t srcStride = static_cast<uint16_t>((xDim2 - 1) * xDim3 / dataTypeAlign);
+        uint16_t srcStride = static_cast<uint16_t>((headNum - 1) * dim / dataTypeAlign);
         DataCopyParams params {static_cast<uint16_t>(height), blockLen, srcStride, 0};
         DataCopy(inTensor, inGlobalTensor, params);
     }
@@ -179,7 +168,7 @@ public:
 
         // Ub
         uint16_t copyLen = blockHeight * sizeof(qType) / DATA_ALIGN_BYTES;
-        uint16_t srcStride = (xDim1 - blockHeight) * sizeof(qType) / DATA_ALIGN_BYTES;
+        uint16_t srcStride = (seqLen - blockHeight) * sizeof(qType) / DATA_ALIGN_BYTES;
 
         int64_t total = blockHeight * blockHeight;
         int64_t remain = total;
@@ -194,8 +183,8 @@ public:
                 thisLen = remain;
             }
             int64_t thisOffset = total - remain;
-            int64_t thisAttnBaisOffset = attnBiasOffset + thisOffset / blockHeight * xDim1;
-            int64_t thisAttnMaskOffset = maskOffset + thisOffset / blockHeight * xDim1;
+            int64_t thisAttnBaisOffset = attnBiasOffset + thisOffset / blockHeight * seqLen;
+            int64_t thisAttnMaskOffset = maskOffset + thisOffset / blockHeight * seqLen;
 
             LocalTensor<qType> inLt = queMaskIn.AllocTensor<qType>();
             LocalTensor<qType> inMaskLt = queIn.AllocTensor<qType>();
@@ -230,7 +219,7 @@ public:
     __aicore__ inline void DoCopyQImpl(int64_t qOffset)
     {
         LocalTensor<qType> inQTensor = queInputQ.AllocTensor<qType>();
-        CopyInputGm2Ub(inQTensor, qGt[qOffset], blockHeight, xDim3);
+        CopyInputGm2Ub(inQTensor, qGt[qOffset], blockHeight, dim);
         queInputQ.EnQue(inQTensor);
     }
 
@@ -249,7 +238,7 @@ public:
         LocalTensor<qType> inQTensor = queInputQ.DeQue<qType>();
 
         LocalTensor<qType> inKTensor = queInputKV.AllocTensor<qType>();
-        CopyInputGm2Ub(inKTensor, kGt[kOffset], blockHeight, xDim3);
+        CopyInputGm2Ub(inKTensor, kGt[kOffset], blockHeight, dim);
         queInputKV.EnQue(inKTensor);
         inKTensor = queInputKV.DeQue<qType>();
 
@@ -282,7 +271,7 @@ public:
         svMatmul.SetTensorA(attnScoreTensor);
 
         LocalTensor<qType> inVTensor = queInputKV.AllocTensor<qType>();
-        CopyInputGm2Ub(inVTensor, vGt[vOffset], blockHeight, xDim3);
+        CopyInputGm2Ub(inVTensor, vGt[vOffset], blockHeight, dim);
         queInputKV.EnQue(inVTensor);
         inVTensor = queInputKV.DeQue<qType>();
         svMatmul.SetTensorB(inVTensor);
@@ -307,10 +296,10 @@ public:
             return;
         }
 
-        int64_t total = blockHeight * xDim3;
+        int64_t total = blockHeight * dim;
         int64_t remain = total;
-        uint16_t copyLen = xDim3 * sizeof(qType) / DATA_ALIGN_BYTES;
-        uint16_t distStride = (xDim2 * xDim3 - xDim3) * sizeof(qType) / DATA_ALIGN_BYTES;
+        uint16_t copyLen = dim * sizeof(qType) / DATA_ALIGN_BYTES;
+        uint16_t distStride = (headNum * dim - dim) * sizeof(qType) / DATA_ALIGN_BYTES;
 
         while (remain > 0) {
             LocalTensor<float> inLt = queTransIn.AllocTensor<float>();
@@ -336,9 +325,9 @@ public:
             
             LocalTensor<qType> newOutLt = queTransOut.DeQue<qType>();
 
-            DataCopyParams copyParms = {(uint16_t)(thisLen / xDim3), copyLen, 0, distStride};
-            int64_t thisLineOffset = (total - remain) / xDim3;
-            int64_t outOffset = outStartOffset + thisLineOffset * xDim2 * xDim3;
+            DataCopyParams copyParms = {(uint16_t)(thisLen / dim), copyLen, 0, distStride};
+            int64_t thisLineOffset = (total - remain) / dim;
+            int64_t outOffset = outStartOffset + thisLineOffset * headNum * dim;
             DataCopy(attnOutputGt[outOffset], newOutLt, copyParms);
 
             remain = remain - thisLen;
@@ -357,10 +346,10 @@ public:
     GM_ADDR tiling;
 
     // Shape
-    int64_t xDim0;
-    int64_t xDim1;
-    int64_t xDim2;
-    int64_t xDim3;
+    int64_t batchSize;
+    int64_t seqLen;
+    int64_t headNum;
+    int64_t dim;
 
     // Tiling
     int64_t blockHeight;

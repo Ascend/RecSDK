@@ -43,16 +43,19 @@ fi
 # 利用msopgen生成可编译文件
 rm -rf ./hstu_dense_forward
 msopgen gen -i ../v220/hstu_dense_forward.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward -m 0 -op HstuDenseForward
-cp -rf ../v220/op_kernel hstu_dense_forward/
+# cp -rf ../v220/op_kernel hstu_dense_forward/
 # 用 c310 目录下的 A5 版本文件覆盖 bsnd.h
 cp -rf ../v220/op_host/*.h hstu_dense_forward/op_host/
 cp -rf ../v220/op_host/hstu_*.cpp hstu_dense_forward/op_host/
 cp -rf ../v220/op_host/tiling_policy.cpp hstu_dense_forward/op_host/
-cp -rf ../v220/op_host/tiling_policy_factory.cpp hstu_dense_forward/op_host/
-cp -rf ../v220/op_host/tiling_policy_normal.cpp hstu_dense_forward/op_host/
+cp -rf ../v220/op_host/tiling_policy_dense.cpp hstu_dense_forward/op_host/
 cp -rf ../v220/op_host/tiling_policy_jagged.cpp hstu_dense_forward/op_host/
 cp -rf ../v220/op_host/tiling_policy_paged.cpp hstu_dense_forward/op_host/
-cp -rf ../c310/op_kernel/ hstu_dense_forward/
+# kernel 文件
+cp -rf ../c310/op_kernel hstu_dense_forward/
+cp -rf ../v220/op_kernel/hstu_common_const.h hstu_dense_forward/op_kernel/
+cp -rf ../v220/op_kernel/hstu_dense_causal_mask.h hstu_dense_forward/op_kernel/
+cp -rf ../v220/op_kernel/hstu_split_core_policy.h hstu_dense_forward/op_kernel/
 
 cd hstu_dense_forward
 
@@ -79,7 +82,10 @@ line=`expr ${line} + 2`
 sed -i "${line}s/True/False/g" CMakePresets.json
 
 sed -i "1i #define SUPPORT_950" ./op_kernel/matmul_constexpr.h
-sed -i "1i #define SUPPORT_950" ./op_host/hstu_dense_forward.cpp
+sed -i "1i #define SUPPORT_950" ./op_kernel/hstu_dense_forward_jagged_kernel.h
+sed -i "1i #define SUPPORT_950" ./op_kernel/hstu_paged_forward_kernel.h
+sed -i "1i #define SUPPORT_950" ./op_host/hstu_jagged_forward.cpp
+sed -i "1i #define SUPPORT_950" ./op_host/hstu_paged_forward.cpp
 sed -i "1i #define SUPPORT_950" ./op_host/tiling_policy.cpp
 
 add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../../v220/hstu_dense_forward.json DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${vendor_name}_impl/dynamic)"
