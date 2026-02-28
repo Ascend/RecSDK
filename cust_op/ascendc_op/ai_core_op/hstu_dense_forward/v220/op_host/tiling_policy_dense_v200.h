@@ -14,20 +14,21 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 
-#ifndef TILING_POLICY_NORMAL_H
-#define TILING_POLICY_NORMAL_H
+#ifndef TILING_POLICY_DENSE_V200_H
+#define TILING_POLICY_DENSE_V200_H
 
 #include "tiling_policy.h"
+#include "tiling_policy_dense.h"
 
 namespace HstuDenseForward {
 
-class TilingPolicyNormal : public TilingPolicy {
-private:
-    bool TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
-
+class TilingPolicyNormalv200 : public TilingPolicyDense {
+public:
+    bool TilingAttribute(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
+    bool DenseGeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim) override;
+    bool TilingHeighLevelApi(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
     bool TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
 };
-
 }
 
 #endif

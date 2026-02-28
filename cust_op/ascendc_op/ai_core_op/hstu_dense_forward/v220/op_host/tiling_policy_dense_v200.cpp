@@ -18,13 +18,42 @@ See the License for the specific language governing permissions and
 
 #include "register/op_def_registry.h"
 #include "matmul_check.h"
-#include "tiling_policy_factory.h"
-#include "tiling_policy_normal_v200.h"
+#include "tiling_policy_dense_v200.h"
+
 using namespace MatmulTilingCheck;
+using namespace HstuForward;
 
 namespace HstuDenseForward {
-REGISTER_POLICY(LAYOUT_TYPE::NORMALV200, std::make_shared<TilingPolicyNormalv200>());
-bool TilingPolicyNormalv200::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim)
+
+bool TilingPolicyNormalv200::TilingAttribute(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OPS_CHECK_PTR_NULL(attrs, return false);
+
+    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(DENSE_ATTR_INDEX_T::MASKTYPE_INDEX);
+    OPS_CHECK_PTR_NULL(maskType, return false);
+    if (*maskType != static_cast<uint32_t>(MASK_TYPE::MASK_CUSTOM)) {
+        OPS_LOG_E("", "maskType is only support MASK_CUSTOM\n");
+        return false;
+    }
+
+    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(DENSE_ATTR_INDEX_T::MAX_SEQ_Q_INDEX);
+    OPS_CHECK_PTR_NULL(maxSeqLen, return false);
+
+    const float *siluScale = attrs->GetAttrPointer<float>(DENSE_ATTR_INDEX_T::SILU_SCALE_INDEX);
+    OPS_CHECK_PTR_NULL(siluScale, return false);
+
+    auto biasTensor = context->GetOptionalInputTensor(DENSE_INPUT_INDEX_T::ATTN_BIAS_INDEX);
+    bool enableBias = (biasTensor != nullptr);
+    tiling.set_enableBias(enableBias);
+
+    tiling.set_maskType(*maskType);
+    tiling.set_siluScale(*siluScale);
+    tiling.set_maxSeqLen(*maxSeqLen);
+    return true;
+}
+
+bool TilingPolicyNormalv200::DenseGeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim)
 {
     static const ShapeRange seqRange(128, 4096, BLOCK_HEIGHT, "seq size");
     static const ShapeRange batchRange(1, MAX_BATCH_SIZE, 1, "batch size");
@@ -133,11 +162,12 @@ bool TilingPolicyNormalv200::TilingHeighLevelApi(gert::TilingContext* context,
 
 bool TilingPolicyNormalv200::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
 {
+    uint32_t typeTilingKey = NORMAL_TILING_KEY & 0x3;
     ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT16) {
         bool isQkUseUb = false;
         bool enableBias = tiling.get_enableBias();
-        bool enableDeteministic = tiling.get_deterministic();
+        bool enableDeteministic = false;
         uint32_t maskType = tiling.get_maskType();
         uint32_t maskedType = maskType & 0x3;
         // 组合tiling key：
@@ -154,34 +184,13 @@ bool TilingPolicyNormalv200::TilingKeySet(gert::TilingContext* context, optiling
     return true;
 }
 
-bool TilingPolicyNormalv200::TilingAttribute(gert::TilingContext* context, optiling::HstuDenseForwardTilingData &tiling)
+bool TilingPolicyNormalv200::TilingSaveToBuffer(gert::TilingContext* context,
+    optiling::HstuDenseForwardTilingData& tiling)
 {
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    OPS_CHECK_PTR_NULL(attrs, return false);
-
-    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MASKTYPE_INDEX);
-    OPS_CHECK_PTR_NULL(maskType, return false);
-    if (*maskType != static_cast<uint32_t>(MASK_TYPE::MASK_CUSTOM)) {
-        OPS_LOG_E("", "maskType is only support MASK_CUSTOM\n");
-        return false;
-    }
-
-    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MAX_SEQ_Q_INDEX);
-    OPS_CHECK_PTR_NULL(maxSeqLen, return false);
-
-    const float *siluScale = attrs->GetAttrPointer<float>(ATTR_INDEX_T::SILU_SCALE_INDEX);
-    OPS_CHECK_PTR_NULL(siluScale, return false);
-
-    auto biasTensor = context->GetOptionalInputTensor(INPUT_INDEX_T::ATTN_BIAS_INDEX);
-    if (biasTensor == nullptr) {
-        tiling.set_enableBias(0);
-    } else {
-        tiling.set_enableBias(1);
-    }
-
-    tiling.set_maskType(*maskType);
-    tiling.set_siluScale(*siluScale);
-    tiling.set_maxSeqLen(*maxSeqLen);
+    OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return false);
+    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
     return true;
 }
+
 } // namespace HstuDenseForward

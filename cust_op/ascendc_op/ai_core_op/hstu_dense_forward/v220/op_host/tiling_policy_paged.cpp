@@ -14,36 +14,87 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include "register/op_def_registry.h"
-#include "tiling_policy_factory.h"
 #include "tiling_policy_paged.h"
 
 constexpr uint32_t DIM_2 = 2;
 
-namespace HstuDenseForward {
+using namespace HstuForward;
 
-REGISTER_POLICY(LAYOUT_TYPE::PAGED, std::make_shared<TilingPolicyPaged>());
+namespace HstuPagedForward {
 
-bool TilingPolicyPaged::TilingWorkSpace(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+ge::graphStatus TilingPolicyPaged::TilingProcess(gert::TilingContext* context)
 {
-    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
-    OPS_CHECK_PTR_NULL(currentWorkspace, return false);
-    size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
-    size_t coreNum = ascendPlatform.GetCoreNumAic();
+    OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
 
-    int64_t oneBlockMidElem = BLOCK_HEIGHT * BLOCK_HEIGHT * COMPUTE_PIPE_NUM;
-    int64_t oneCoreMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
+    optiling::HstuPagedForwardTilingData tiling;
 
-    int64_t oneBlockMidTransElem = BLOCK_HEIGHT * MAX_DIM * TRANS_PIPE_NUM;
-    int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
-    // 3: midk midv attnscore
-    int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem * 3) * sizeof(float);
-    int64_t syncSize = coreNum * VCORE_NUM_IN_ONE_AIC * DATA_ALIGN_BYTES;
-    currentWorkspace[0] = workspaceSize + systemWorkspacesSize + syncSize;
+    // step1: get attribute
+    OPS_CHECK(!TilingAttribute(context, tiling), OPS_LOG_E("", "TilingAttribute is failed.\n"),
+              return ge::GRAPH_FAILED);
+
+    // step2: get key shape form input
+    OPS_CHECK(!TilingShape(context, tiling), OPS_LOG_E("", "TilingShape is failed.\n"), return ge::GRAPH_FAILED);
+
+    // step3: tiling core
+    OPS_CHECK(!TilingCore(context), OPS_LOG_E("", "TilingCore is failed.\n"), return ge::GRAPH_FAILED);
+
+    // step5: set tiling key
+    OPS_CHECK(!TilingKeySet(context, tiling), OPS_LOG_E("", "TilingKeySet is failed.\n"), return ge::GRAPH_FAILED);
+
+    // step6: tiling save to buffer
+    OPS_CHECK(!TilingSaveToBuffer(context, tiling), OPS_LOG_E("", "TilingSaveToBuffer is failed.\n"),
+              return ge::GRAPH_FAILED);
+
+    // step7: set workspace
+    OPS_CHECK(!TilingWorkSpace(context), OPS_LOG_E("", "Set workspace size is failed.\n"),
+    return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+bool TilingPolicyPaged::TilingAttribute(gert::TilingContext* context, optiling::HstuPagedForwardTilingData& tiling)
+{
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OPS_CHECK_PTR_NULL(attrs, return false);
+
+    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(PAGED_ATTR_INDEX_T::MASKTYPE_INDEX);
+    OPS_CHECK_PTR_NULL(maskType, return false);
+
+    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(PAGED_ATTR_INDEX_T::MAX_SEQ_Q_INDEX);
+    OPS_CHECK_PTR_NULL(maxSeqLen, return false);
+
+    const uint32_t *maxSeqLenk = attrs->GetAttrPointer<uint32_t>(PAGED_ATTR_INDEX_T::MAX_SEQ_K_INDEX);
+    OPS_CHECK_PTR_NULL(maxSeqLenk, return false);
+
+    const float *siluScale = attrs->GetAttrPointer<float>(PAGED_ATTR_INDEX_T::SILU_SCALE_INDEX);
+    OPS_CHECK_PTR_NULL(siluScale, return false);
+
+    const float *alpha = attrs->GetAttrPointer<float>(PAGED_ATTR_INDEX_T::ALPHA_INDEX);
+    OPS_CHECK_PTR_NULL(alpha, return false);
+
+    const bool *deterministic = attrs->GetAttrPointer<bool>(PAGED_ATTR_INDEX_T::DETERMINISTIC_INDEX);
+    OPS_CHECK_PTR_NULL(deterministic, return false);
+
+    const uint32_t *targetGroupSize = attrs->GetAttrPointer<uint32_t>(PAGED_ATTR_INDEX_T::TARGET_GROUP_SIZE_INDEX);
+    OPS_CHECK_PTR_NULL(targetGroupSize, return false);
+
+    auto biasTensor = context->GetOptionalInputTensor(PAGED_INPUT_INDEX_T::ATTN_BIAS_INDEX);
+    bool enableBias = (biasTensor != nullptr);
+    tiling.set_enableBias(enableBias);
+
+    tiling.set_maskType(*maskType);
+    tiling.set_siluScale(*siluScale);
+    tiling.set_alpha(*alpha);
+    tiling.set_maxSeqLen(*maxSeqLen);
+    tiling.set_maxSeqLenq(*maxSeqLen);
+    tiling.set_maxSeqLenk(*maxSeqLenk);
+    tiling.set_targetGroupSize(*targetGroupSize);
+    tiling.set_deterministic(*deterministic);
+    tiling.set_blockHeight(BLOCK_HEIGHT);
     return true;
 }
 
-bool TilingPolicyPaged::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+bool TilingPolicyPaged::TilingShape(gert::TilingContext* context, optiling::HstuPagedForwardTilingData& tiling)
 {
     int64_t batchSize;
     int64_t seqLensQ;
@@ -56,15 +107,15 @@ bool TilingPolicyPaged::TilingShape(gert::TilingContext* context, optiling::Hstu
     int64_t headDimV;
     int64_t maxSeqLensK;
 
-    auto seqOffsetQShape = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
+    auto seqOffsetQShape = context->GetInputShape(PAGED_INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape();
     batchSize = seqOffsetQShape.GetDim(0) - 1;
 
     OPS_CHECK((batchSize == 0 || batchSize > MAX_BATCH_SIZE),
               OPS_LOG_E("", "batchSize limit (0, %d], but get %lld\n", MAX_BATCH_SIZE, batchSize), return false);
 
-    auto qShape = context->GetInputShape(INPUT_INDEX_T::Q_INDEX)->GetStorageShape();
-    auto kShape = context->GetInputShape(INPUT_INDEX_T::K_INDEX)->GetStorageShape();
-    auto vShape = context->GetInputShape(INPUT_INDEX_T::V_INDEX)->GetStorageShape();
+    auto qShape = context->GetInputShape(PAGED_INPUT_INDEX_T::Q_INDEX)->GetStorageShape();
+    auto kShape = context->GetInputShape(PAGED_INPUT_INDEX_T::K_INDEX)->GetStorageShape();
+    auto vShape = context->GetInputShape(PAGED_INPUT_INDEX_T::V_INDEX)->GetStorageShape();
 
     OPS_CHECK(qShape.GetDimNum() != JAGGED_DIM_NUM,
               OPS_LOG_E("", "Jagged QKV should have 3 dimensions, but get %d", qShape.GetDimNum()), return false);
@@ -106,16 +157,12 @@ bool TilingPolicyPaged::TilingShape(gert::TilingContext* context, optiling::Hstu
     tiling.set_headNumK(headNumK);
 
     uint32_t masktype = tiling.get_maskType();
-    auto *isDeltaQK = context->GetAttrs()->GetAttrPointer<uint32_t>(ATTR_INDEX_T::IS_DELTA_QK_INDEX);
-    if (!*isDeltaQK) {
-        OPS_CHECK(seqLensQ != seqLensK, OPS_LOG_E("", "Q, K seqLens mismatch"), return false);
-    }
 
-    const bool *deterministic = context->GetAttrs()->GetAttrPointer<bool>(ATTR_INDEX_T::DETERMINISTIC_INDEX);
+    const bool *deterministic = context->GetAttrs()->GetAttrPointer<bool>(PAGED_ATTR_INDEX_T::DETERMINISTIC_INDEX);
     OPS_CHECK_PTR_NULL(deterministic, return false);
     tiling.set_deterministic(*deterministic);
 
-    auto numContext = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_CONTEXT_INDEX);
+    auto numContext = context->GetOptionalInputShape(PAGED_INPUT_INDEX_T::NUM_CONTEXT_INDEX);
     if (numContext != nullptr) {
         auto numCtxShape = numContext->GetStorageShape();
         int64_t numCtxDim = numCtxShape.GetDimNum();
@@ -128,7 +175,7 @@ bool TilingPolicyPaged::TilingShape(gert::TilingContext* context, optiling::Hstu
                   return false);
     }
 
-    auto numTarget = context->GetOptionalInputShape(INPUT_INDEX_T::NUM_TARGET_INDEX);
+    auto numTarget = context->GetOptionalInputShape(PAGED_INPUT_INDEX_T::NUM_TARGET_INDEX);
     if (numTarget != nullptr) {
         auto numTarShape = numTarget->GetStorageShape();
         int64_t numTarDim = numTarShape.GetDimNum();
@@ -143,27 +190,27 @@ bool TilingPolicyPaged::TilingShape(gert::TilingContext* context, optiling::Hstu
     return TilingShapePaged(context, tiling);
 }
 
-bool TilingPolicyPaged::TilingShapePaged(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+bool TilingPolicyPaged::TilingShapePaged(gert::TilingContext* context, optiling::HstuPagedForwardTilingData& tiling)
 {
     // paged_ids、page_offsets、为空
-    auto pagedIds = context->GetOptionalInputTensor(INPUT_INDEX_T::PAGE_IDS_INDEX);
-    auto pagedOffset = context->GetOptionalInputTensor(INPUT_INDEX_T::PAGE_OFFSETS_INDEX);
-    auto lastPageLen = context->GetOptionalInputTensor(INPUT_INDEX_T::LAST_PAGE_LEN_INDEX);
-    auto kvCache = context->GetOptionalInputTensor(INPUT_INDEX_T::KV_CACHE_INDEX);
+    auto pagedIds = context->GetOptionalInputTensor(PAGED_INPUT_INDEX_T::PAGE_IDS_INDEX);
+    auto pagedOffset = context->GetOptionalInputTensor(PAGED_INPUT_INDEX_T::PAGE_OFFSETS_INDEX);
+    auto lastPageLen = context->GetOptionalInputTensor(PAGED_INPUT_INDEX_T::LAST_PAGE_LEN_INDEX);
+    auto kvCache = context->GetOptionalInputTensor(PAGED_INPUT_INDEX_T::KV_CACHE_INDEX);
     OPS_CHECK(pagedIds == nullptr || pagedOffset == nullptr || lastPageLen == nullptr || kvCache == nullptr,
               OPS_LOG_E("Tiling Debug", "pagedIds, pagedOffset, lastPageLen and kvCache should not be nullptr."),
               return false);
 
-    OPS_LOG_E_IF_NULL("kvCache shape", context->GetInputShape(INPUT_INDEX_T::KV_CACHE_INDEX), return false);
-    OPS_LOG_E_IF_NULL("q_offsets shape", context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX), return false);
-    OPS_LOG_E_IF_NULL("k_offsets shape", context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_K_INDEX), return false);
-    OPS_LOG_E_IF_NULL("t_offsets shape", context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_T_INDEX), return false);
+    OPS_LOG_E_IF_NULL("kvCache shape", context->GetInputShape(PAGED_INPUT_INDEX_T::KV_CACHE_INDEX), return false);
+    OPS_LOG_E_IF_NULL("q_offsets shape", context->GetInputShape(PAGED_INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX), return false);
+    OPS_LOG_E_IF_NULL("k_offsets shape", context->GetInputShape(PAGED_INPUT_INDEX_T::SEQ_OFFSET_K_INDEX), return false);
+    OPS_LOG_E_IF_NULL("t_offsets shape", context->GetInputShape(PAGED_INPUT_INDEX_T::SEQ_OFFSET_T_INDEX), return false);
 
     // [page_num, 2, paged_size, num_head, head_dim]
-    auto pageSize = context->GetInputShape(INPUT_INDEX_T::KV_CACHE_INDEX)->GetStorageShape().GetDim(DIM_2);
-    auto offsetsLenQ = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape().GetDim(0);
-    auto offsetsLenK = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_K_INDEX)->GetStorageShape().GetDim(0);
-    auto offsetsLenT = context->GetInputShape(INPUT_INDEX_T::SEQ_OFFSET_T_INDEX)->GetStorageShape().GetDim(0);
+    auto pageSize = context->GetInputShape(PAGED_INPUT_INDEX_T::KV_CACHE_INDEX)->GetStorageShape().GetDim(DIM_2);
+    auto offsetsLenQ = context->GetInputShape(PAGED_INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX)->GetStorageShape().GetDim(0);
+    auto offsetsLenK = context->GetInputShape(PAGED_INPUT_INDEX_T::SEQ_OFFSET_K_INDEX)->GetStorageShape().GetDim(0);
+    auto offsetsLenT = context->GetInputShape(PAGED_INPUT_INDEX_T::SEQ_OFFSET_T_INDEX)->GetStorageShape().GetDim(0);
 
     OPS_CHECK(offsetsLenQ != offsetsLenK || offsetsLenQ != offsetsLenT,
         OPS_LOG_E("Tiling Debug", "offsetsLenQ, offsetsLenK and offsetsLenT should have the same shape."),
@@ -176,9 +223,46 @@ bool TilingPolicyPaged::TilingShapePaged(gert::TilingContext* context, optiling:
     return true;
 }
 
-bool TilingPolicyPaged::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+bool TilingPolicyPaged::TilingKeySet(gert::TilingContext* context, optiling::HstuPagedForwardTilingData& tiling)
 {
     uint32_t typeTilingKey = PAGED_TILING_KEY & 0x3;
-    return TilingKeySetImpl(context, tiling, typeTilingKey);
+    TilingKeyParam param {
+        .enableBias = tiling.get_enableBias(),
+        .deterministic = tiling.get_deterministic(),
+        .maskType = tiling.get_maskType(),
+        .dimQ = tiling.get_dim(),
+        .dimV = tiling.get_vDim(),
+        .maxSeqLenQ = tiling.get_maxSeqLenq(),
+        .maxSeqLenK = tiling.get_maxSeqLenk()
+    };
+    return TilingKeySetImpl(context, param, typeTilingKey);
+}
+
+bool TilingPolicyPaged::TilingSaveToBuffer(gert::TilingContext* context, optiling::HstuPagedForwardTilingData& tiling)
+{
+    OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return false);
+    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+    return true;
+}
+
+bool TilingPolicyPaged::TilingWorkSpace(gert::TilingContext* context)
+{
+    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    OPS_CHECK_PTR_NULL(currentWorkspace, return false);
+    size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
+    size_t coreNum = ascendPlatform.GetCoreNumAic();
+
+    int64_t oneBlockMidElem = BLOCK_HEIGHT * BLOCK_HEIGHT * COMPUTE_PIPE_NUM;
+    int64_t oneCoreMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidElem;
+
+    int64_t oneBlockMidTransElem = BLOCK_HEIGHT * MAX_DIM * TRANS_PIPE_NUM;
+    int64_t oneCoreTransMidElem = coreNum * VCORE_NUM_IN_ONE_AIC * oneBlockMidTransElem;
+    // 3: midk midv attnscore
+    int64_t workspaceSize = (oneCoreMidElem + oneCoreTransMidElem * 3) * sizeof(float);
+    int64_t syncSize = coreNum * VCORE_NUM_IN_ONE_AIC * DATA_ALIGN_BYTES;
+    currentWorkspace[0] = workspaceSize + systemWorkspacesSize + syncSize;
+    return true;
 }
 }

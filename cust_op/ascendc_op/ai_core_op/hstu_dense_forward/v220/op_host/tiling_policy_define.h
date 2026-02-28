@@ -19,12 +19,10 @@ See the License for the specific language governing permissions and
 
 #include "ops_log.h"
 
-namespace HstuDenseForward {
+namespace HstuForward {
 
 #include <cstdio>
 #include <cstdint>
-#include "register/tilingdata_base.h"
-#include "tiling/tiling_api.h"
 
 namespace INDEX_T {
     constexpr int INDEX_0 = 0;
@@ -35,7 +33,43 @@ namespace INDEX_T {
     constexpr int INDEX_5 = 5;
 }
 
-namespace INPUT_INDEX_T {
+namespace DENSE_INPUT_INDEX_T {
+    constexpr int Q_INDEX = 0;
+    constexpr int K_INDEX = 1;
+    constexpr int V_INDEX = 2;
+    constexpr int MASK_INDEX = 3;
+    constexpr int ATTN_BIAS_INDEX = 4;
+}
+
+namespace DENSE_ATTR_INDEX_T {
+    constexpr int MASKTYPE_INDEX = 0;
+    constexpr int MAX_SEQ_INDEX = 1;
+    constexpr int SILU_SCALE_INDEX = 2;
+}
+
+namespace JAGGED_INPUT_INDEX_T {
+    constexpr int Q_INDEX = 0;
+    constexpr int K_INDEX = 1;
+    constexpr int V_INDEX = 2;
+    constexpr int MASK_INDEX = 3;
+    constexpr int ATTN_BIAS_INDEX = 4;
+    constexpr int SEQ_OFFSET_Q_INDEX = 5;
+    constexpr int SEQ_OFFSET_K_INDEX = 6;
+    constexpr int NUM_CONTEXT_INDEX = 7;
+    constexpr int NUM_TARGET_INDEX = 8;
+}
+
+namespace JAGGED_ATTR_INDEX_T {
+    constexpr int MASKTYPE_INDEX = 0;
+    constexpr int MAX_SEQ_Q_INDEX = 1;
+    constexpr int MAX_SEQ_K_INDEX = 2;
+    constexpr int SILU_SCALE_INDEX = 3;
+    constexpr int TARGET_GROUP_SIZE_INDEX = 4;
+    constexpr int ALPHA_INDEX = 5;
+    constexpr int DETERMINISTIC_INDEX = 6;
+}
+
+namespace PAGED_INPUT_INDEX_T {
     constexpr int Q_INDEX = 0;
     constexpr int K_INDEX = 1;
     constexpr int V_INDEX = 2;
@@ -52,16 +86,14 @@ namespace INPUT_INDEX_T {
     constexpr int NUM_TARGET_INDEX = 13;
 }
 
-namespace ATTR_INDEX_T {
+namespace PAGED_ATTR_INDEX_T {
     constexpr int MASKTYPE_INDEX = 0;
     constexpr int MAX_SEQ_Q_INDEX = 1;
     constexpr int MAX_SEQ_K_INDEX = 2;
     constexpr int SILU_SCALE_INDEX = 3;
-    constexpr int LAYOUT_INDEX = 4;
-    constexpr int TARGET_GROUP_SIZE_INDEX = 5;
-    constexpr int IS_DELTA_QK_INDEX = 6;
-    constexpr int ALPHA_INDEX = 7;
-    constexpr int DETERMINISTIC_INDEX = 8;
+    constexpr int TARGET_GROUP_SIZE_INDEX = 4;
+    constexpr int ALPHA_INDEX = 5;
+    constexpr int DETERMINISTIC_INDEX = 6;
 }
 
 constexpr int NORMAL_TILING_KEY = 0;

@@ -13,17 +13,16 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-
+#include "tiling_policy.h"
 #include <cstdint>
 #include "register/op_def_registry.h"
 #include "matmul_check.h"
 #include "../op_kernel/hstu_kernel_tiling_key.h"
-#include "tiling_policy.h"
-
+#include "tiling_policy_define.h"
 
 using namespace MatmulTilingCheck;
 
-namespace HstuDenseForward {
+namespace HstuForward {
 
 ShapeRange::ShapeRange(int64_t lbound, int64_t ubound, int64_t multiple, const char* name)
 {
@@ -64,57 +63,7 @@ ge::graphStatus TilingPolicy::InferDtype(gert::InferDataTypeContext* context)
 
 ge::graphStatus TilingPolicy::TilingProcess(gert::TilingContext* context)
 {
-    OPS_CHECK_PTR_NULL(context, return ge::GRAPH_FAILED);
-
-    optiling::HstuDenseForwardTilingData tiling;
-
-    // step0: check platform is support
-    OPS_CHECK(!CheckIsSupport(context), OPS_LOG_E("", "CheckIsSupport is failed."), return ge::GRAPH_FAILED);
-
-    // step1: get attribute
-    OPS_CHECK(!TilingAttribute(context, tiling), OPS_LOG_E("", "TilingAttribute is failed.\n"),
-              return ge::GRAPH_FAILED);
-
-    // step2: get key shape form input
-    OPS_CHECK(!TilingShape(context, tiling), OPS_LOG_E("", "TilingShape is failed.\n"), return ge::GRAPH_FAILED);
-
-    // step3: tiling core
-    OPS_CHECK(!TilingCore(context, tiling), OPS_LOG_E("", "TilingCore is failed.\n"), return ge::GRAPH_FAILED);
-
-    // step4: hight level api tiling
-    OPS_CHECK(!TilingHeighLevelApi(context, tiling), OPS_LOG_E("", "TilingHeight is failed.\n"),
-              return ge::GRAPH_FAILED);
-
-    // step5: set tiling key
-    OPS_CHECK(!TilingKeySet(context, tiling), OPS_LOG_E("", "TilingKeySet is failed.\n"), return ge::GRAPH_FAILED);
-
-    // step6: tiling save to buffer
-    OPS_CHECK(!TilingSaveToBuffer(context, tiling), OPS_LOG_E("", "TilingSaveToBuffer is failed.\n"),
-              return ge::GRAPH_FAILED);
-    // step7: set workspace
-    OPS_CHECK(!TilingWorkSpace(context, tiling), OPS_LOG_E("", "Set workspace size is failed.\n"),
-    return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
-}
-
-bool TilingPolicy::TilingSaveToBuffer(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
-{
-    OPS_LOG_E_IF_NULL("raw tilingData", context->GetRawTilingData(), return false);
-    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
-    return true;
-}
-
-bool TilingPolicy::CheckIsSupport(gert::TilingContext* context)
-{
-    return true;
-}
-
-bool TilingPolicy::TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
-{
-    // base unrealized
-    return false;
 }
 
 bool TilingPolicy::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim, bool dimAlign)
@@ -144,51 +93,7 @@ bool TilingPolicy::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t 
     return true;
 }
 
-bool TilingPolicy::TilingAttribute(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
-{
-    const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    OPS_CHECK_PTR_NULL(attrs, return false);
-
-    const uint32_t *maskType = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MASKTYPE_INDEX);
-    OPS_CHECK_PTR_NULL(maskType, return false);
-
-    const uint32_t *maxSeqLen = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MAX_SEQ_Q_INDEX);
-    OPS_CHECK_PTR_NULL(maxSeqLen, return false);
-
-    const uint32_t *maxSeqLenk = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::MAX_SEQ_K_INDEX);
-    OPS_CHECK_PTR_NULL(maxSeqLenk, return false);
-
-    const float *siluScale = attrs->GetAttrPointer<float>(ATTR_INDEX_T::SILU_SCALE_INDEX);
-    OPS_CHECK_PTR_NULL(siluScale, return false);
-
-    const float *alpha = attrs->GetAttrPointer<float>(ATTR_INDEX_T::ALPHA_INDEX);
-    OPS_CHECK_PTR_NULL(alpha, return false);
-
-    const bool *deterministic = attrs->GetAttrPointer<bool>(ATTR_INDEX_T::DETERMINISTIC_INDEX);
-    OPS_CHECK_PTR_NULL(deterministic, return false);
-
-    const uint32_t *targetGroupSize = attrs->GetAttrPointer<uint32_t>(ATTR_INDEX_T::TARGET_GROUP_SIZE_INDEX);
-    OPS_CHECK_PTR_NULL(targetGroupSize, return false);
-
-    auto biasTensor = context->GetOptionalInputTensor(INPUT_INDEX_T::ATTN_BIAS_INDEX);
-    if (biasTensor == nullptr) {
-        tiling.set_enableBias(0);
-    } else {
-        tiling.set_enableBias(1);
-    }
-
-    tiling.set_maskType(*maskType);
-    tiling.set_siluScale(*siluScale);
-    tiling.set_alpha(*alpha);
-    tiling.set_maxSeqLen(*maxSeqLen);
-    tiling.set_maxSeqLenq(*maxSeqLen);
-    tiling.set_maxSeqLenk(*maxSeqLenk);
-    tiling.set_targetGroupSize(*targetGroupSize);
-    tiling.set_deterministic(*deterministic);
-    return true;
-}
-
-bool TilingPolicy::TilingWorkSpace(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+bool TilingPolicy::TilingWorkSpace(gert::TilingContext* context)
 {
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t *currentWorkspace = context->GetWorkspaceSizes(1);
@@ -214,47 +119,26 @@ bool TilingPolicy::TilingWorkSpace(gert::TilingContext* context, optiling::HstuD
     return true;
 }
 
-bool TilingPolicy::TilingHeighLevelApi(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
-{
-    tiling.set_blockHeight(BLOCK_HEIGHT);
-
-    matmul_tiling::DataType dataType;
-    OPS_LOG_E_IF_NULL("query", context->GetInputTensor(INPUT_INDEX_T::Q_INDEX), return false);
-    ge::DataType qTypeGe = context->GetInputTensor(INPUT_INDEX_T::Q_INDEX)->GetDataType();
-    if (qTypeGe == ge::DataType::DT_FLOAT) {
-        dataType = matmul_tiling::DataType::DT_FLOAT;
-    } else if (qTypeGe == ge::DataType::DT_FLOAT16) {
-        dataType = matmul_tiling::DataType::DT_FLOAT16;
-    } else {
-        dataType = matmul_tiling::DataType::DT_BFLOAT16;
-    }
-
-    return true;
-}
-
-bool TilingPolicy::TilingCore(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
+bool TilingPolicy::TilingCore(gert::TilingContext* context)
 {
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    size_t coreNum = ascendPlatform.GetCoreNumAic();
-    context->SetBlockDim(coreNum);
+    size_t coreNum = ascendPlatform.GetCoreNumAiv();
+    OPS_CHECK(coreNum > MAX_AIV_NUM, OPS_LOG_E("", "vecCoreNum %d should be < %d\n", coreNum, MAX_AIV_NUM),
+              return false);
+    size_t aicCoreNum = ascendPlatform.GetCoreNumAic();
+    context->SetBlockDim(aicCoreNum);
     return true;
-}
-
-bool TilingPolicy::TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling)
-{
-    // base unrealized
-    return false;
 }
 
 #ifdef SUPPORT_950
-void Find4BytesShape(optiling::HstuDenseForwardTilingData& tiling, uint32_t &tilingM, uint32_t &tilingN)
+void Find4BytesShape(const TilingKeyParam& tilingKeyParam, uint32_t &tilingM, uint32_t &tilingN)
 {
     constexpr uint32_t tileMList[] = {32, 64, 64, 128, 128, 256, 128};
     constexpr uint32_t tileNList[] = {32, 64, 1024, 128, 512, 256, 256};
     int idx = NO_TILING_IDX;
     int area = MAX_DIM * MAX_DIM;
-    auto maxSeqLenQ = tiling.get_maxSeqLenq();
-    auto maxSeqLenK = tiling.get_maxSeqLenk();
+    auto maxSeqLenQ = tilingKeyParam.maxSeqLenQ;
+    auto maxSeqLenK = tilingKeyParam.maxSeqLenK;
     if (maxSeqLenQ > maxSeqLenK) {
         idx = (maxSeqLenK >= TILING_1024) ? 5 :
         (maxSeqLenK >= TILING_64)   ? 3 :
@@ -296,14 +180,14 @@ void Find4BytesShape(optiling::HstuDenseForwardTilingData& tiling, uint32_t &til
 }
 
 
-void Find2BytesShape(optiling::HstuDenseForwardTilingData& tiling, uint32_t &tilingM, uint32_t &tilingN)
+void Find2BytesShape(const TilingKeyParam& tilingKeyParam, uint32_t &tilingM, uint32_t &tilingN)
 {
     constexpr uint32_t tileMList[] = {32, 64, 64, 128, 128, 256, 128};
     constexpr uint32_t tileNList[] = {32, 64, 1024, 128, 512, 256, 256};
     int idx = NO_TILING_IDX;
     int area = MAX_DIM * MAX_DIM;
-    auto maxSeqLenQ = tiling.get_maxSeqLenq();
-    auto maxSeqLenK = tiling.get_maxSeqLenk();
+    auto maxSeqLenQ = tilingKeyParam.maxSeqLenQ;
+    auto maxSeqLenK = tilingKeyParam.maxSeqLenK;
     if (maxSeqLenQ > maxSeqLenK) {
         if (maxSeqLenK > TILING_128) {
             idx = 5;
@@ -383,64 +267,60 @@ void Find2BytesShape(optiling::HstuDenseForwardTilingData& tiling, uint32_t &til
     return;
 }
 
-void FindMatchShape(optiling::HstuDenseForwardTilingData& tiling,
+void FindMatchShape(const TilingKeyParam& tilingKeyParam,
     gert::TilingContext* context, uint32_t &tilingM, uint32_t &tilingN, uint32_t &tilingDim)
 {
     constexpr uint32_t tileKList[] = {64, 128, 256, 512};
 
-    uint32_t vdim = tiling.get_vDim();
-    uint32_t qdim = tiling.get_dim();
+    uint32_t vdim = tilingKeyParam.dimV;
+    uint32_t qdim = tilingKeyParam.dimQ;
     tilingDim = *std::lower_bound(std::begin(tileKList), std::end(tileKList), std::max(qdim, vdim));
-    ge::DataType qTypeGe = context->GetInputTensor(INPUT_INDEX_T::Q_INDEX)->GetDataType();
+    ge::DataType qTypeGe = context->GetInputTensor(JAGGED_INPUT_INDEX_T::Q_INDEX)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT) {
-        Find4BytesShape(tiling, tilingM, tilingN);
+        Find4BytesShape(tilingKeyParam, tilingM, tilingN);
     } else if (qTypeGe == ge::DataType::DT_FLOAT16 || qTypeGe == ge::DataType::DT_BF16) {
-        Find2BytesShape(tiling, tilingM, tilingN);
+        Find2BytesShape(tilingKeyParam, tilingM, tilingN);
     }
     return;
 }
 
-bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling,
+bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, const TilingKeyParam& tilingKeyParam,
     uint32_t typeTilingKey)
 {
-    // A2/A3默认为false，在A5上可以选择qk结果是否使用ub，通过(tiling.get_blockHeight() == BLOCK_HEIGHT)判断
-    bool isQkUseUb = false;
-    bool enableBias = tiling.get_enableBias();
-    bool enableDeteministic = tiling.get_deterministic();
-    uint32_t maskType = tiling.get_maskType();
+    bool enableBias = tilingKeyParam.enableBias;
+    bool enableDeteministic = tilingKeyParam.deterministic;
+    uint32_t maskType = tilingKeyParam.maskType;
     uint32_t maskedType = maskType & 0x3;
     uint32_t tilingM = 0;
     uint32_t tilingN = 0;
     uint32_t tilingDim = 0;
     
-    ge::DataType qTypeGe = context->GetInputTensor(INPUT_INDEX_T::Q_INDEX)->GetDataType();
+    ge::DataType qTypeGe = context->GetInputTensor(JAGGED_INPUT_INDEX_T::Q_INDEX)->GetDataType();
     if ((qTypeGe == ge::DataType::DT_FLOAT8_E4M3FN) || (typeTilingKey != (JAGGED_TILING_KEY & 0x3))) {
         tilingDim = MAX_DIM;
         tilingM = MAX_TILING_DIM;
         tilingN = MAX_TILING_DIM;
     } else {
-        FindMatchShape(tiling, context, tilingM, tilingN, tilingDim);
+        FindMatchShape(tilingKeyParam, context, tilingM, tilingN, tilingDim);
     }
     
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias, isQkUseUb,
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias,
                                                   typeTilingKey, enableDeteministic, tilingM,
                                                   tilingN, tilingDim);
     context->SetTilingKey(tilingKey);
     return true;
 }
 #else
-bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling,
+bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, const TilingKeyParam& tilingKeyParam,
     uint32_t typeTilingKey)
 {
-    // A2/A3默认为false，在A5上可以选择qk结果是否使用ub，通过(tiling.get_blockHeight() == BLOCK_HEIGHT)判断
-    bool isQkUseUb = false;
-    bool enableBias = tiling.get_enableBias();
-    bool enableDeteministic = tiling.get_deterministic();
-    uint32_t maskType = tiling.get_maskType();
+    bool enableBias = tilingKeyParam.enableBias;
+    bool enableDeteministic = tilingKeyParam.deterministic;
+    uint32_t maskType = tilingKeyParam.maskType;
     uint32_t maskedType = maskType & 0x3;
     // 组合tiling key：
     
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias, isQkUseUb,
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias,
                                                   typeTilingKey, enableDeteministic, MAX_TILING_DIM,
                                                   MAX_TILING_DIM, MAX_DIM);
     context->SetTilingKey(tilingKey);
@@ -448,20 +328,5 @@ bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, optiling::Hstu
     return true;
 }
 #endif
-
-void TilingPolicy::DumpTiling(optiling::HstuDenseForwardTilingData& tiling)
-{
-    OPS_LOG_D("batchSize = %ld\n", tiling.get_batchSize());
-    OPS_LOG_D("seqLen = %ld\n", tiling.get_seqLen());
-    OPS_LOG_D("headNum = %ld\n", tiling.get_headNum());
-    OPS_LOG_D("dim = %ld\n", tiling.get_dim());
-
-    OPS_LOG_D("enableBias = %d\n", tiling.get_enableBias());
-    OPS_LOG_D("maskType = %d\n", tiling.get_maskType());
-    OPS_LOG_D("maxSeqLen = %d\n", tiling.get_maxSeqLen());
-    OPS_LOG_D("siluScale = %f\n", tiling.get_siluScale());
-    OPS_LOG_D("alpha = %f\n", tiling.get_alpha());
-    OPS_LOG_D("deterministic = %f\n", tiling.get_deterministic());
-}
 
 }

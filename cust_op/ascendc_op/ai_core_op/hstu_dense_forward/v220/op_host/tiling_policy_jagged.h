@@ -18,16 +18,18 @@ See the License for the specific language governing permissions and
 #define TILING_POLICY_JAGGED_H
 
 #include "tiling_policy.h"
+#include "hstu_jagged_forward_tiling.h"
 
-namespace HstuDenseForward {
-    
-class TilingPolicyJagged : public TilingPolicy {
+namespace HstuJaggedForward {
+
+class TilingPolicyJagged : public HstuForward::TilingPolicy {
+public:
+    ge::graphStatus TilingProcess(gert::TilingContext* context) override;
 private:
-    bool TilingShape(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
-
-    bool TilingCore(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
-
-    bool TilingKeySet(gert::TilingContext* context, optiling::HstuDenseForwardTilingData& tiling) override;
+    bool TilingAttribute(gert::TilingContext* context, optiling::HstuJaggedForwardTilingData& tiling);
+    bool TilingShape(gert::TilingContext* context, optiling::HstuJaggedForwardTilingData& tiling);
+    bool TilingKeySet(gert::TilingContext* context, optiling::HstuJaggedForwardTilingData& tiling);
+    bool TilingSaveToBuffer(gert::TilingContext* context, optiling::HstuJaggedForwardTilingData& tiling);
 };
 
 }
