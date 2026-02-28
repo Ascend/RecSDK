@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright 2026. Huawei Technologies Co.,Ltd. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,13 +22,10 @@ See the License for the specific language governing permissions and
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
+#include "hstu_common_const.h"
 
-constexpr int BLOCK_HEIGHT_256 = 256;
-constexpr int BLOCK_HEIGHT_128 = 128;
-constexpr int BASIC_K_32 = 32;
-constexpr int BASIC_K_64 = 64;
-constexpr int MAX_BLOCK_DIM = 512;
-constexpr int MATMUL_L1_SIZE = 524288;  // 512KB
+using namespace HstuForward;
+
 constexpr MatmulConfigMode configMode = MatmulConfigMode::CONFIG_NORM;
 
 template <uint32_t m, uint32_t n, uint32_t k,
@@ -192,5 +189,85 @@ template <uint32_t wid, uint32_t blockM, uint32_t blockN, uint32_t blockK>
 __aicore__ constexpr auto lookup() noexcept {
     return lookupImpl<0, wid, blockM, blockN, blockK>();
 }
+
+template <typename qType, int blockM, int blockN, int blockK, typename TilingDataType>
+class MatmulCopyFun {
+public:
+    __aicore__ inline static void CopyQKA1(const LocalTensor<int8_t>& aMatrix, const __gm__ void* gm, int row, int col,
+        int useM, int useK, const uint64_t tilingPtr, const uint64_t dataPtr)
+    {
+        GlobalTensor<qType> globalGt;
+        globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useM * useK);
+        int blockLen = useM * useK;
+
+        TilingDataType* tilingP = reinterpret_cast<TilingDataType*>(tilingPtr);
+        int64_t dim = tilingP->dim;
+        int64_t headNum = tilingP->headNum;
+        int32_t baseM = lookup<sizeof(qType), blockM, blockN, blockK>().getQKMatmulConfig().basicM;
+        int32_t baseK = lookup<sizeof(qType), blockM, blockN, blockK>().getQKMatmulConfig().basicK;
+
+        auto alignOfM = AlignUp(useM, ALIGN_16);
+        Nd2NzParams param = {
+            1, static_cast<uint16_t>(useM), static_cast<uint16_t>(useK), 0,
+            static_cast<uint16_t>(dim * headNum), static_cast<uint16_t>(alignOfM), 1, 0
+        };
+
+        int64_t offsetOfGt = static_cast<int64_t>(row) * dim * headNum * static_cast<int64_t>(baseM) +
+                            static_cast<int64_t>(col) * static_cast<int64_t>(baseK);
+        DataCopy(aMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
+    };
+
+    __aicore__ inline static void CopyQKB1(const LocalTensor<int8_t>& bMatrix, const __gm__ void* gm, int row, int col,
+        int useK, int useN, const uint64_t tilingPtr, const uint64_t dataPtr)
+    {
+        GlobalTensor<qType> globalGt;
+        globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useN * useK);
+
+        TilingDataType* tilingP = reinterpret_cast<TilingDataType*>(tilingPtr);
+        int64_t dim = tilingP->dim;
+        int32_t headNumK = static_cast<int32_t>(dataPtr);
+        int32_t baseN = lookup<sizeof(qType), blockM, blockN, blockK>().getQKMatmulConfig().basicN;
+        int32_t baseK = lookup<sizeof(qType), blockM, blockN, blockK>().getQKMatmulConfig().basicK;
+
+        auto alignOfN = AlignUp(useN, ALIGN_16);
+        Nd2NzParams param = {
+            1, static_cast<uint16_t>(useN), static_cast<uint16_t>(useK), 0,
+            static_cast<uint16_t>(dim * headNumK), static_cast<uint16_t>(alignOfN), 1, 0
+        };
+
+        int64_t offsetOfGt = static_cast<int64_t>(col) * dim * headNumK * static_cast<int64_t>(baseN) +
+                            static_cast<int64_t>(row) * static_cast<int64_t>(baseK);
+        DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
+    };
+
+    __aicore__ inline static void CopySVB1(const LocalTensor<int8_t>& bMatrix, const __gm__ void* gm, int row, int col,
+        int useK, int useN, const uint64_t tilingPtr, const uint64_t dataPtr)
+    {
+        GlobalTensor<qType> globalGt;
+        globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useN * useK);
+
+        TilingDataType* tilingP = reinterpret_cast<TilingDataType*>(tilingPtr);
+        int64_t dim = tilingP->vDim;
+        int32_t headNumK = static_cast<int32_t>(dataPtr);
+        int32_t baseN = lookup<sizeof(qType), blockM, blockN, blockK>().getSVMatmulConfig().basicN;
+        int32_t baseK = lookup<sizeof(qType), blockM, blockN, blockK>().getSVMatmulConfig().basicK;
+
+        uint16_t alignOfK = 0;
+        if constexpr (std::is_same<qType, fp8_e4m3fn_t>::value) {
+            alignOfK = AlignUp(useK, ALIGN_32);
+        } else {
+            alignOfK = AlignUp(useK, ALIGN_16);
+        }
+
+        Nd2NzParams param = {
+            1, static_cast<uint16_t>(useK), static_cast<uint16_t>(useN), 0,
+            static_cast<uint16_t>(dim * headNumK), static_cast<uint16_t>(alignOfK), 1, 0
+        };
+
+        int64_t offsetOfGt = static_cast<int64_t>(row) * dim * headNumK * static_cast<int64_t>(baseK) +
+                            static_cast<int64_t>(col) * static_cast<int64_t>(baseN);
+        DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
+    };
+};
 
 #endif
