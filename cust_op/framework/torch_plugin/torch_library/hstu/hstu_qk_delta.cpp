@@ -68,15 +68,7 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
 
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
-    const auto _acSeqOffsetT = at::Tensor();
-    const auto _kvCacheNpu = at::Tensor();
-    const auto _pageOffsets = at::Tensor();
-    const auto _pageIds = at::Tensor();
-    const auto _lastPageLen = at::Tensor();
-
-    const char *layout = "jagged";
-    const int64_t isDeltaQK = 1;
-    EXEC_NPU_CMD(aclnnHstuDenseForward,
+    EXEC_NPU_CMD(aclnnHstuJaggedForward,
                  denseQ,
                  denseK,
                  denseV,
@@ -84,20 +76,13 @@ at::Tensor hstu_deltaq_forward_impl_npu(const at::Tensor& q,
                  denseBias,
                  acSeqOffset,
                  acSeqOffsetK,
-                 _acSeqOffsetT,
-                 _kvCacheNpu,
-                 _pageOffsets,
-                 _pageIds,
-                 _lastPageLen,
                  acNumContext,
                  acNumTarget,
                  maskType,
                  maxSeqLen,
                  maxSeqLenK,
                  realSiluScale,
-                 layout,
                  acTargetGroupSize,
-                 isDeltaQK,
                  realAlpha,
                  deterministic,
                  attnOutput);

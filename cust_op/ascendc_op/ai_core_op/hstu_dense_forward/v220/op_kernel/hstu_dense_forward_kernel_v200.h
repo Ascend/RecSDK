@@ -19,15 +19,15 @@ See the License for the specific language governing permissions and
 
 namespace HstuDenseForward {
 
-template <typename qType>
-class HstuDenseForwardKernelv200 : public HstuDenseForwardKernel<qType> {
+template <typename qType, typename TilingDataType>
+class HstuDenseForwardKernelv200 : public HstuDenseForwardKernel<qType, TilingDataType> {
 public:
     __aicore__ inline HstuDenseForwardKernelv200() {}
 
-    __aicore__ inline void PreInit(const HstuDenseForwardTilingData* __restrict tilingDataPtr)
+    __aicore__ inline void PreInit()
     {
-        seqBlockNumQk = this->xDim1 / this->blockHeight;
-        qkTotalBlock = this->xDim0 * this->xDim2 * seqBlockNumQk;
+        seqBlockNumQk = this->seqLen / this->blockHeight;
+        qkTotalBlock = this->batchSize * this->xDim2 * seqBlockNumQk;
     }
 
     __aicore__ inline void DoQkMatmul(QkMatmulArgs& qkPosArgs)
@@ -36,12 +36,12 @@ public:
             return;
         }
 
-        int64_t qOffset = qkPosArgs.batchId * this->xDim1 * this->xDim2 * this->xDim3 + \
-                          qkPosArgs.qSeqId * this->blockHeight * this->xDim2 * this->xDim3 + \
-                          qkPosArgs.headId * this->xDim3;
-        int64_t kOffset = qkPosArgs.batchId * this->xDim1 * this->xDim2 * this->xDim3 + \
-                          qkPosArgs.kSeqId * this->blockHeight * this->xDim2 * this->xDim3 + \
-                          qkPosArgs.headId * this->xDim3;
+        int64_t qOffset = qkPosArgs.batchId * this->seqLen * this->xDim2 * this->dim + \
+                          qkPosArgs.qSeqId * this->blockHeight * this->xDim2 * this->dim + \
+                          qkPosArgs.headId * this->dim;
+        int64_t kOffset = qkPosArgs.batchId * this->seqLen * this->xDim2 * this->dim + \
+                          qkPosArgs.kSeqId * this->blockHeight * this->xDim2 * this->dim + \
+                          qkPosArgs.headId * this->dim;
 
         if (qkPosArgs.kSeqId == 0) {
             this->DoCopyQImpl(qOffset);
@@ -50,9 +50,9 @@ public:
         this->DoQkMatmulImpl(qOffset, kOffset, qkPosArgs.taskId);
     }
 
-    __aicore__ inline void Compute(const HstuDenseForwardTilingData *__restrict tilingDataPtr)
+    __aicore__ inline void Compute()
     {
-        PreInit(tilingDataPtr);
+        PreInit();
         int64_t taskId = 0;
         int64_t transTaskId = 0;
 

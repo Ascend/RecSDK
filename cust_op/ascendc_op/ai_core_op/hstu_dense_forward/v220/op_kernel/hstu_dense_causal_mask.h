@@ -28,14 +28,7 @@ See the License for the specific language governing permissions and
 
 using namespace AscendC;
 
-namespace HstuDenseForward {
-
-enum class CausalMaskT {
-    MASK_TRIL = 0,  // 下三角
-    MASK_TRIU,      // 上三角
-    MASK_NONE,      // 不使能mask
-    MASK_CUSTOM,   // 用户自定义mask
-};
+namespace HstuForward {
 
 struct BlockMaskParams {
     int64_t qSeqId;           // 该基本块所属Query 输入的第几个seq block 一个block是256条seq
@@ -312,5 +305,5 @@ __aicore__ inline void DoCausalMask(
         ASCENDC_ASSERT((false), "DoCausalMask custom is unreadlized");
     }
 }
-}  // namespace HstuDenseForward
+}  // namespace HstuForward
 #endif

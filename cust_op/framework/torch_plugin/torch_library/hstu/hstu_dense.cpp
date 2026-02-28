@@ -41,47 +41,16 @@ at::Tensor hstu_dense_forward_impl_npu(
     auto attnOutput = at::empty_like(denseQ);
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
 
-    const auto _acSeqOffset = at::empty(1, at::kInt);
-    const auto _acSeqOffsetK = at::Tensor();
-    const auto _acSeqOffsetT = at::Tensor();
-    const auto _kvCacheNpu = at::Tensor();
-    const auto _pageOffsets = at::Tensor();
-    const auto _pageIds = at::Tensor();
-    const auto _lastPageLen = at::Tensor();
-    const auto _numContext = at::Tensor();
-    const auto _numTarget = at::Tensor();
-    const auto _maxSeqLenK = int();
-    const auto _acTargetGroupSize = int();
-
-    const char *layout = "normal";
-    const int64_t isDeltaQK = 0;
-    double realAlpha = 1.0;
-    bool deterministic = false;
     EXEC_NPU_CMD(aclnnHstuDenseForward,
-                 denseQ,
-                 denseK,
-                 denseV,
-                 maskNpu,
-                 denseBias,
-                 _acSeqOffset,
-                 _acSeqOffsetK,
-                 _acSeqOffsetT,
-                 _kvCacheNpu,
-                 _pageOffsets,
-                 _pageIds,
-                 _lastPageLen,
-                 _numContext,
-                 _numTarget,
-                 maskType,
-                 maxSeqLen,
-                 _maxSeqLenK,
-                 realSiluScale,
-                 layout,
-                 _acTargetGroupSize,
-                 isDeltaQK,
-                 realAlpha,
-                 deterministic,
-                 attnOutput);
+        denseQ,
+        denseK,
+        denseV,
+        maskNpu,
+        denseBias,
+        maskType,
+        maxSeqLen,
+        realSiluScale,
+        attnOutput);
     return attnOutput;
 }
 
