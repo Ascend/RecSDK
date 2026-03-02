@@ -20,7 +20,7 @@ import torch
 import torch.nn.functional as F
 
 from test_common_utils import allclose, jagged_to_dense, dense_to_jagged, MaskType, QKVShapeInfo, MaskGenInfo
-from test_target_mask import cached_create_causal_mask, ScoreShapeParam
+from test_target_mask import create_causal_mask
 
 
 def jagged_data_gen(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo, enable_bias: bool,
@@ -62,15 +62,10 @@ def jagged_data_gen(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo, enable
 
     if mask_info.mask_type == MaskType.TRIL:
         mask = torch.zeros(batch_size, num_heads_q, max_seq_len, max_seq_len)
-        for batch_id, seq_len in enumerate(seq_lens.tolist()):
-            score_shape_param = ScoreShapeParam(
-                seq_len=seq_len,
-                num_target=num_target[batch_id],
-                num_context=num_context[batch_id],
-                num_history=seq_len - num_target[batch_id],
-                target_group_size=mask_info.target_group_size
-            )
-            mask[batch_id, :, :seq_len, :seq_len] = cached_create_causal_mask(score_shape_param)
+        seqs = zip(seq_lens.tolist(), num_context.tolist(), num_target.tolist())
+        for batch_id, (seq_len, ctx, tar) in enumerate(seqs):
+            mask_tensor = create_causal_mask(seq_len, seq_len, ctx, tar, mask_info.target_group_size)
+            mask[batch_id, :, :seq_len, :seq_len] = mask_tensor
         mask = mask.cpu().to(float_type)
     elif mask_info.mask_type == MaskType.CUSTOM:
         mask = torch.randint(0, 2, size=(batch_size, num_heads_q, max_seq_len, max_seq_len))
@@ -150,13 +145,14 @@ class TestHstuJaggedDemo:
 
         if rel_attn_bias is not None:
             rel_attn_bias = rel_attn_bias.to(torch.float32).to("npu")
-            qk_attn = qk_attn + rel_attn_bias
+            qk_attn += rel_attn_bias
 
-        qk_attn = F.silu(qk_attn) * silu_scale
+        F.silu(qk_attn, inplace=True)
+        qk_attn *= silu_scale
 
         if mask_type != MaskType.NONE:
             mask = mask.to(torch.float32).to("npu")
-            qk_attn = qk_attn * mask
+            qk_attn *= mask
 
         v_dens = v_dens_expanded.permute(0, 2, 1, 3)
 

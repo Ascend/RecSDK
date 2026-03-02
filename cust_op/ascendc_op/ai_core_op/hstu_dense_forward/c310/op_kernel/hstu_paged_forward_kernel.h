@@ -462,11 +462,6 @@ __aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>:
     this->scmQKTensor =  this->scm.template AllocTensor<qType>();
     for (auto blkId = this->sBlkId; blkId <= this->eBlkId; blkId++) {
         kSeqNum = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
-        auto deltaQK = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].deltaQK;
-        auto nblk = deltaQK / this->blockHeight;
-        bool isDeltaQK = deltaQK % this->blockHeight != 0;
-        int64_t maskOffset1 = deltaQK % this -> blockHeight;
-        int64_t maskOffset2 = deltaQK % this -> blockHeight - this -> blockHeight;
 
         auto limit = (blkId == this->eBlkId) ? this->ekSeqBlkId : kSeqNum;
         uint32_t isStartFromZero = (kSeqId == 0);
@@ -483,11 +478,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>:
                 taskinfo.numContext,
                 taskinfo.numTarget,
                 this->targetGroupSize,
-                taskinfo.scale,
-                maskOffset1,
-                maskOffset2,
-                nblk,
-                isDeltaQK
+                taskinfo.scale
             };
             // 在下三角下跳过运算
             if (maskinfo.NoComputation(TraitParams::maskType)) {
@@ -735,7 +726,6 @@ __aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>:
     computeTaskInfo[taskId].batchId = batchId;
     computeTaskInfo[taskId].actualSeqLen = nextBatchSeqOffset - currentBatchSeqOffset;
     computeTaskInfo[taskId].actualSeqLenK = nextBatchSeqOffsetK - currentBatchSeqOffsetK;
-    computeTaskInfo[taskId].deltaQK = computeTaskInfo[taskId].actualSeqLenK - computeTaskInfo[taskId].actualSeqLen;
 
     computeTaskInfo[taskId].scale = this->siluScale;
     computeTaskInfo[taskId].numTarget = numTarget;

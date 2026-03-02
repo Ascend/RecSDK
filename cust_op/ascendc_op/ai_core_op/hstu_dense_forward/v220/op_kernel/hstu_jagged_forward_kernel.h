@@ -237,17 +237,11 @@ public:
         scmQKTensor_ =  scm_.template AllocTensor<qType>();
         for (auto blkId = sBlkId_; blkId <= eBlkId_; blkId++) {
             kSeqNum = computeTaskInfo_[taskId % COMPUTE_PIPE_NUM].kSeqNum;
-            auto deltaQK = computeTaskInfo_[taskId % COMPUTE_PIPE_NUM].deltaQK;
-            auto nblk = deltaQK / TraitParams::blockN;
-            bool isDeltaQK = deltaQK % TraitParams::blockN != 0;
             auto limit = (blkId == eBlkId_) ? ekSeqBlkId_ : kSeqNum;
             uint32_t isStartFromZero = (kSeqId == 0);
             uint32_t isEndToTail = false;
             for (; kSeqId < limit; kSeqId++) {
                 auto taskinfo = computeTaskInfo_[taskId % COMPUTE_PIPE_NUM];
-                int64_t maskOffset1 = (deltaQK +  (int64_t)taskinfo.qSeqId * TraitParams::blockM) % TraitParams::blockN;
-                int64_t maskOffset2 = (deltaQK + (int64_t)taskinfo.qSeqId * TraitParams::blockM + TraitParams::blockM) %
-                                    TraitParams::blockN - TraitParams::blockM;
                 HstuForward::BlockMaskParams maskinfo = {
                     taskinfo.qSeqId,
                     kSeqId,
@@ -258,11 +252,7 @@ public:
                     taskinfo.numContext,
                     taskinfo.numTarget,
                     targetGroupSize_,
-                    taskinfo.scale,
-                    maskOffset1,
-                    maskOffset2,
-                    nblk,
-                    isDeltaQK
+                    taskinfo.scale
                 };
                 // 在下三角下跳过运算
                 if (maskinfo.NoComputation(TraitParams::maskType)) {
@@ -430,9 +420,7 @@ public:
         computeTaskInfo_[taskId].batchId = batchId;
         computeTaskInfo_[taskId].actualSeqLen = nextBatchSeqOffset - currentBatchSeqOffset;
         computeTaskInfo_[taskId].actualSeqLenK = nextBatchSeqOffsetK - currentBatchSeqOffsetK;
-        computeTaskInfo_[taskId].deltaQK =
-            computeTaskInfo_[taskId].actualSeqLenK - computeTaskInfo_[taskId].actualSeqLen;
-    
+
         computeTaskInfo_[taskId].scale = siluScale_;
         computeTaskInfo_[taskId].numTarget = numTarget;
         computeTaskInfo_[taskId].numContext = numContext;

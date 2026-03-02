@@ -50,37 +50,36 @@ __aicore__ inline int64_t GetBatchSizeFromJaggedOffset(GlobalTensor<oType>& seqO
 }
 
 struct JaggedTaskArgs {
-    uint32_t batchId = 0;         // 该基本块所属的batch
-    uint32_t headId = 0;          // 该基本块所属的head
-    uint32_t qSeqId = 0;          // 该基本块所属Query 输入的第几个seq block 一个block是256条seq
-    uint32_t kSeqId = 0;          // 该基本块所属Key 输入的第几个seq block 一个block是256条seq
-    uint32_t actualSeqLen = 0;    // Q序列的基本块实际的序列长度
-    uint32_t actualSeqLenK = 0;    // K序列的基本块实际的序列长度
-    uint32_t actualHistLen = 0;    // KV序列的历史序列长度
-    uint32_t actualNewHistLen = 0; // Q序列的历史序列长度
-    uint32_t qSeqNum = 0;         // 该Batch下Qblock数
-    uint32_t kSeqNum = 0;         // 该基本块在K轴需要乘多少次
-    uint32_t transTaskId = 0;     // 该基本块转置任务的id
-    uint32_t computeASeqLen = 0;  // 该基本块matmul计算左矩阵的序列长度
-    uint32_t computeBSeqLen = 0;  // 该基本块matmul计算右矩阵的序列长度
-    float scale = 0.0f;           // 该基本块的siluScale
-    int64_t numContext = 0;       // 该基本块所属序列的numContext
-    int64_t numTarget = 0;        // 该基本块所属序列的numTarget
-    int64_t seqGlobalOffset = 0;  // 该基本块的全局序列偏移
-    int64_t batchOffset = 0;      // 该基本块的batch偏移
-    int64_t batchOffsetK = 0;      // K序列的基本块的batch偏移
-    int64_t headSeqLimit = 0;     // 该基本块的head offset最大长度, 超过则需要考虑切换head_id
-    int64_t kvOffset = 0;         // 该基本块的key value计算偏移
-    int64_t kOffset = 0;         // 该基本块的key计算偏移
-    int64_t vOffset = 0;         // 该基本块的value计算偏移
-    int64_t ioOffset = 0;         // 该基本块的query attnOutput计算偏移
-    int64_t iOffset = 0;         // 该基本块的query计算偏移
-    int64_t oOffset = 0;         // 该基本块的attnOutput计算偏移
-    int32_t deltaQK = 0;         // QK序列长度差
-    int64_t pageNum = 0;          // 该基本块存在kvcache中的page个数
-    uint32_t isFirstSeqBlk = 1;        // 该基本块的sv matmul是否需要清空流水对应空间
-    uint32_t isStartFromZero = 1;        // 该基本块所在q行在本核心中的是否从0开始
-    uint32_t isEndToTail = 1;        // 该基本块所在q行在本核心中的是否到最后结束
+    uint32_t batchId = 0;           // 该基本块所属的batch
+    uint32_t headId = 0;            // 该基本块所属的head
+    uint32_t qSeqId = 0;            // 该基本块所属Query 输入的第几个seq block 一个block是256条seq
+    uint32_t kSeqId = 0;            // 该基本块所属Key 输入的第几个seq block 一个block是256条seq
+    uint32_t actualSeqLen = 0;      // Q序列的基本块实际的序列长度
+    uint32_t actualSeqLenK = 0;     // K序列的基本块实际的序列长度
+    uint32_t actualHistLen = 0;     // KV序列的历史序列长度
+    uint32_t actualNewHistLen = 0;  // Q序列的历史序列长度
+    uint32_t qSeqNum = 0;           // 该Batch下Qblock数
+    uint32_t kSeqNum = 0;           // 该基本块在K轴需要乘多少次
+    uint32_t transTaskId = 0;       // 该基本块转置任务的id
+    uint32_t computeASeqLen = 0;    // 该基本块matmul计算左矩阵的序列长度
+    uint32_t computeBSeqLen = 0;    // 该基本块matmul计算右矩阵的序列长度
+    float scale = 0.0f;             // 该基本块的siluScale
+    int64_t numContext = 0;         // 该基本块所属序列的numContext
+    int64_t numTarget = 0;          // 该基本块所属序列的numTarget
+    int64_t seqGlobalOffset = 0;    // 该基本块的全局序列偏移
+    int64_t batchOffset = 0;        // 该基本块的batch偏移
+    int64_t batchOffsetK = 0;       // K序列的基本块的batch偏移
+    int64_t headSeqLimit = 0;       // 该基本块的head offset最大长度, 超过则需要考虑切换head_id
+    int64_t kvOffset = 0;           // 该基本块的key value计算偏移
+    int64_t kOffset = 0;            // 该基本块的key计算偏移
+    int64_t vOffset = 0;            // 该基本块的value计算偏移
+    int64_t ioOffset = 0;           // 该基本块的query attnOutput计算偏移
+    int64_t iOffset = 0;            // 该基本块的query计算偏移
+    int64_t oOffset = 0;            // 该基本块的attnOutput计算偏移
+    int64_t pageNum = 0;            // 该基本块存在kvcache中的page个数
+    uint32_t isFirstSeqBlk = 1;     // 该基本块的sv matmul是否需要清空流水对应空间
+    uint32_t isStartFromZero = 1;   // 该基本块所在q行在本核心中的是否从0开始
+    uint32_t isEndToTail = 1;       // 该基本块所在q行在本核心中的是否到最后结束
 };
 
 template <typename TraitParams>
@@ -264,17 +263,11 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams>::ComputeAllBloc
     this->scmQKTensor =  this->scm.template AllocTensor<qType>();
     for (auto blkId = this->sBlkId; blkId <= this->eBlkId; blkId++) {
         kSeqNum = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
-        auto deltaQK = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].deltaQK;
-        auto nblk = deltaQK / TraitParams::blockN;
-        bool isDeltaQK = deltaQK % TraitParams::blockN != 0;
         auto limit = (blkId == this->eBlkId) ? this->ekSeqBlkId : kSeqNum;
         uint32_t isStartFromZero = (kSeqId == 0);
         uint32_t isEndToTail = false;
         for (; kSeqId < limit; kSeqId++) {
             auto taskinfo = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
-            int64_t maskOffset1 = (deltaQK +  (int64_t)taskinfo.qSeqId * TraitParams::blockM) % TraitParams::blockN;
-            int64_t maskOffset2 = (deltaQK + (int64_t)taskinfo.qSeqId * TraitParams::blockM + TraitParams::blockM) %
-                                  TraitParams::blockN - TraitParams::blockM;
             BlockMaskParams maskinfo = {
                 taskinfo.qSeqId,
                 kSeqId,
@@ -285,11 +278,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams>::ComputeAllBloc
                 taskinfo.numContext,
                 taskinfo.numTarget,
                 this->targetGroupSize,
-                taskinfo.scale,
-                maskOffset1,
-                maskOffset2,
-                nblk,
-                isDeltaQK
+                taskinfo.scale
             };
             // 在下三角下跳过运算
             if (maskinfo.NoComputation(TraitParams::maskType)) {
@@ -431,7 +420,6 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams>::FillTaskInfo(
     computeTaskInfo[taskId].batchId = batchId;
     computeTaskInfo[taskId].actualSeqLen = nextBatchSeqOffset - currentBatchSeqOffset;
     computeTaskInfo[taskId].actualSeqLenK = nextBatchSeqOffsetK - currentBatchSeqOffsetK;
-    computeTaskInfo[taskId].deltaQK = computeTaskInfo[taskId].actualSeqLenK - computeTaskInfo[taskId].actualSeqLen;
 
     computeTaskInfo[taskId].scale = this->siluScale;
     computeTaskInfo[taskId].numTarget = numTarget;
