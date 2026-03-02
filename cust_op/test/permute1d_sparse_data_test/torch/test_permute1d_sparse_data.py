@@ -178,9 +178,13 @@ def test_empty_input(is_mxrec):
         'permuted_lengths_sum': None
     }
 
-    with pytest.raises(RuntimeError):
-        result = get_result(params, DEVICE, is_mxrec)
-        assert result is not None
+    golden = get_result(params)
+    result = get_result(params, DEVICE, is_mxrec)
+
+    for gt, pred in zip(golden, result):
+        assert type(gt) is type(pred)
+        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
+            assert torch.allclose(gt, pred, atol=1e-4)
 
 
 @pytest.mark.parametrize("is_mxrec", [True, False])

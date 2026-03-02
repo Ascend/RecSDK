@@ -58,7 +58,7 @@ permuted_weights = [1.0, 1.1, 1.4, 1.5, 1.6]
 |  lengths | 输入     | Tensor  | int32/int64 | [ [lengths], [lengths],... ]                  |           
 |  values | 输入     | Tensor  | int32/int64/fp32 | [values]                                      | values的长度等于`lengths.sum()` | 
 |  weights | 输入(可选) | Tensor  | fp32       | [weights]                                     | weight的长度等于`lengths.sum()` |
-|  permuted_lengths_sum | 输入(可选) | SymInt  | int        | NA                                            |        (0, std::numeric_limits<int>::max()]      |
+|  permuted_lengths_sum | 输入(可选) | SymInt  | int64        | NA                                            |        (0, std::numeric_limits<int64>::max()]      |
 |  permuted_lengths | 输出     | Tensor  | int32/int64   | [permuted_lengths], [permuted_lengths], ... ] |                     |
 |  permuted_values | 输出     | Tensor  | int32/int64/fp32   | [permuted_values]                             |                     |
 |  permuted_weights | 输出     | Tensor  |  fp32  | [permuted_weights]                            |       |

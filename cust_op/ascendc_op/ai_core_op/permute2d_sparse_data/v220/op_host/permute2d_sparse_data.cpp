@@ -20,8 +20,6 @@ See the License for the specific language governing permissions and
 #include "ops_log.h"
 namespace optiling {
 
-    constexpr int GM_ALIGN = 64;
-    constexpr int RESERVER_UB_SIZE = 20 * 1024;
     constexpr int NUM_QUEUE = 4;
     constexpr int UB_ALIGN = 32;
     constexpr int SUPPORT_EMBEDDING_DIM_NUM = 2;
@@ -126,7 +124,7 @@ namespace optiling {
         // set ub
         uint64_t ubCanUsed;
         ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
-        ubCanUsed = (ubCanUsed - RESERVER_UB_SIZE) / UB_ALIGN / NUM_QUEUE * UB_ALIGN * NUM_QUEUE;
+        ubCanUsed = ubCanUsed / UB_ALIGN / NUM_QUEUE * UB_ALIGN * NUM_QUEUE;
         tiling.set_ubCanUsed(ubCanUsed);
 
         // apply workspace
@@ -201,15 +199,15 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("totalOffset")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
+            .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("lengthsOffset")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
+            .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("permutedLengthsOffset")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
+            .DataTypeList({ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Output("permuted_lengths")
             .ParamType(REQUIRED)

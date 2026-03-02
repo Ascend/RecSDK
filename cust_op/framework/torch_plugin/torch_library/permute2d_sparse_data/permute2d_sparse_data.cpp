@@ -21,9 +21,9 @@ using namespace std;
 
 constexpr int EXPECTED_DIM_1D = 1;
 constexpr int EXPECTED_DIM_2D = 2;
-constexpr int threshold_mean_lengths = 30000;
-constexpr int threshold_mean_lengths_large = 750000;
-constexpr int threshold_T = 56;
+constexpr int THRESHOLD_MEAN_LENGTHS = 30000;
+constexpr int THRESHOLD_MEAN_LENGTHS_LARGE = 750000;
+constexpr int THRESHOLD_T = 56;
 /**
  * 验证permute2d_sparse_data的输入参数
  * @param permute 排列索引张量
@@ -35,11 +35,6 @@ void validate_permute2d_sparse_data_inputs(
     const Tensor &lengths,
     const Tensor &values)
 {
-    // ============= 空值检查 =============
-    check_tensor_non_empty(permute, "permute");
-    check_tensor_non_empty(lengths, "lengths");
-    check_tensor_non_empty(values, "values");
-
     // ============= NPU设备检查 =============
     std::vector<Tensor> tensors = {permute, lengths, values};
     std::vector<std::string> names = {"permute", "lengths", "values"};
@@ -61,30 +56,33 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
     auto weightsConti = weights.value_or(at::Tensor()).contiguous();
 
     const auto T = permute.size(0);
-    const auto B = lengths.size(1);
+    const auto lengthsRows = lengths.size(0);
+    const auto batchSize = lengths.size(1);
     const auto lengthsSum = values.size(0);
+    if (lengthsRows == 0 || batchSize == 0 || T == 0) {
+        return make_tuple(lengthsConti.clone(),
+                          valuesConti.clone(),
+                          weights.has_value() ? c10::make_optional(weightsConti.clone()) : c10::nullopt);
+    }
 
     at::Tensor reduceSumLengths;
-    at::Tensor permuteReduceSumLengths;
-    at::Tensor totalOffset;
-    at::Tensor permutedLengths = at::empty({T, B}, lengthsConti.options());
-    at::Tensor lengthsOffset;
-    at::Tensor permutedLengthsOffset;
+    at::Tensor permuteReduceSumLengths = at::Tensor();
+    at::Tensor permutedLengths = at::Tensor();
+    at::Tensor totalOffset = at::Tensor();
+    at::Tensor lengthsOffset = at::Tensor();
+    at::Tensor permutedLengthsOffset = at::Tensor();
 
     int cols = lengthsConti.size(1);
-    auto ones_matrix = at::ones({cols, 1}, lengthsConti.options().dtype(at::kFloat));
-    reduceSumLengths = at::matmul(lengthsConti.to(at::kFloat), ones_matrix).squeeze(1).to(lengthsConti.options());
+    auto onesMatrix = at::ones({cols, 1}, lengthsConti.options().dtype(at::kFloat));
+    reduceSumLengths = at::matmul(lengthsConti.to(at::kFloat), onesMatrix).squeeze(1).to(at::kLong);
     // 计算每行的平均元素数
-    auto mean_lengths = lengthsSum / lengths.size(0);
-    bool use_totalOffset = (mean_lengths > threshold_mean_lengths_large) ||
-                           (T <= 10) ||
-                           ((mean_lengths > threshold_mean_lengths) && (T < threshold_T));
-    if (use_totalOffset) {
+    auto meanLengths = lengthsSum / lengthsRows;
+    bool useTotalOffset = (meanLengths > THRESHOLD_MEAN_LENGTHS_LARGE) ||
+                          (T <= 10) ||
+                          ((meanLengths > THRESHOLD_MEAN_LENGTHS) && (T < THRESHOLD_T));
+    if (useTotalOffset) {
         totalOffset = asynchronous_complete_cumsum_npu(reduceSumLengths);
-        lengthsOffset = at::Tensor();
-        permutedLengthsOffset = at::Tensor();
     } else {
-        totalOffset = at::Tensor();
         // 直接进行 index_select重排lengthsConti和reduceSumLengths
         permutedLengths = lengthsConti.index_select(0, permuteConti);
         permuteReduceSumLengths = reduceSumLengths.index_select(0, permuteConti);
@@ -96,26 +94,18 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
         permutedLengthsOffset = asynchronous_complete_cumsum_npu(permuteReduceSumLengths);
     }
 
-    int outValuesLen;
+    int64_t outValuesLen;
     if (permuted_lengths_sum.has_value() && permuted_lengths_sum.value() > 0) {
-        int64_t permuted_lengths_sum_value = permuted_lengths_sum.value();
-        TORCH_CHECK(permuted_lengths_sum_value <= std::numeric_limits<int>::max(),
-            "permuted_lengths_sum limit (0, %d], but get %lld\n", std::numeric_limits<int>::max(),
-            permuted_lengths_sum_value);
-        outValuesLen = static_cast<int>(permuted_lengths_sum_value);
+        outValuesLen = static_cast<int64_t>(permuted_lengths_sum.value());
     } else {
-        int64_t sum_value;
-        if (use_totalOffset) {
-            sum_value = lengthsConti.index_select(0, permuteConti).sum().item<int64_t>();
+        if (useTotalOffset) {
+            outValuesLen = lengthsConti.index_select(0, permuteConti).sum().item<int64_t>();
         } else {
-            sum_value = permutedLengthsOffset[-1].item<int64_t>();
+            outValuesLen = permutedLengthsOffset.index({-1}).item<int64_t>();
         }
-        TORCH_CHECK(sum_value > 0 && sum_value <= std::numeric_limits<int>::max(),
-            "sum_value limit (0, %d], but get %lld\n", std::numeric_limits<int>::max(), sum_value);
-        outValuesLen = static_cast<int>(sum_value);
     }
 
-    at::Tensor outLengths = at::empty({T, B}, lengthsConti.options());
+    at::Tensor outLengths = at::empty({T, batchSize}, lengthsConti.options());
     at::Tensor outValues = at::empty({outValuesLen}, valuesConti.options());
     at::Tensor outWeights = weights.has_value() ? at::empty({outValuesLen}, weightsConti.options()) : at::Tensor();
 
@@ -123,7 +113,7 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
                  totalOffset, lengthsOffset, permutedLengthsOffset, outValuesLen,
                  outLengths, outValues, outWeights);
 
-    if (use_totalOffset) {
+    if (useTotalOffset) {
         return make_tuple(outLengths, outValues, outWeights);
     } else {
         return make_tuple(permutedLengths, outValues, outWeights);
