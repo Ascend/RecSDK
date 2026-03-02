@@ -135,7 +135,7 @@ public:
             } else {
                 // 处理 BlockMaskParams 类型
                 BlockMaskGenerator blkMaskGen(maskinfo);
-                needMask = blkMaskGen.GenMask(inMaskLtFp32, blockOffset, thisLen / blockM_, blockM_);
+                needMask = blkMaskGen.GenMask(inMaskLtFp32, blockOffset, thisLen / blockN_, blockN_);
             }
 
             queMaskIn_.EnQue(inMaskLtFp32);
@@ -153,12 +153,12 @@ public:
     }
 
     __aicore__ inline bool GenMask(LocalTensor<float>& inMaskLt, int causalMask, int64_t maskLen,
-        int64_t maskOffset, float sclae)
+        int64_t maskOffset, float scale)
     {
         bool needMask = false;
         if (causalMask == 1) {
-            DoCausalMask<float, CausalMaskT::MASK_TRIL>(inMaskLt, maskOffset, maskLen, blockM_, maskLen / blockM_,
-                sclae);
+            DoCausalMask<float, CausalMaskT::MASK_TRIL>(inMaskLt, maskOffset, maskLen, blockN_,
+                maskLen / blockN_, scale);
             needMask = true;
         }
 
@@ -248,7 +248,7 @@ public:
     __aicore__ inline void VecScoreImpl(const VecScoreRabParam<MaskInfoType>& params, GlobalTensor<qType>& attnScoreGt)
     {
         int64_t offset = params.srcOffset;
-        int64_t total = params.m * this->blockM_;
+        int64_t total = params.m * this->blockN_;
 
         auto tmpLt = this->tmpBuff_.template AllocTensor<qType>();
         auto tmpLtFp32 = tmpLt.template ReinterpretCast<float>();
@@ -353,7 +353,7 @@ public:
 
     __aicore__ inline void VecScoreImpl(const VecScoreRabParam<MaskInfoType>& params, GlobalTensor<qType>& attnScoreGt)
     {
-        int64_t total = params.m * this->blockM_;
+        int64_t total = params.m * this->blockN_;
         int64_t offset = params.srcOffset;
 
         auto tmpLt = this->tmpBuff_.template AllocTensor<qType>();

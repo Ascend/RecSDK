@@ -195,14 +195,12 @@ class TestHstuJaggedDemo:
         head_num_k = k.shape[1]
         head_dim_v = grad.shape[2]
         head_dim_qk = q.shape[2]
-        batch_size = bias.shape[0]
 
         seqlen_q = seq_offset_q[1:] - seq_offset_q[:-1]
         seqlen_k = seq_offset_k[1:] - seq_offset_k[:-1]
 
-        if head_num_q != head_num_k:
-            assert head_num_q % head_num_k == 0, (f"head_nums_q ({head_num_q}) must be divisible by "
-                                                  f"head_nums_k({head_num_k}) ")
+        assert head_num_q % head_num_k == 0, (f"head_nums_q ({head_num_q}) must be divisible by "
+                                              f"head_nums_k({head_num_k}) ")
         h_qk_ratio = head_num_q // head_num_k
 
         grad_dens = self.jagged_to_dense(grad, seqlen_q, max_seq_len, head_num_q, head_dim_v).to("npu")
@@ -255,10 +253,10 @@ class TestHstuJaggedDemo:
         q_grad_dens = torch.matmul(bias_grad, k_dens_expanded.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
 
         if h_qk_ratio > 1:
-            k_grad_dens = torch.sum(k_grad_dens.reshape(batch_size, max_seq_len, head_num_k, h_qk_ratio, head_dim_qk),
-                                    dim=3, keepdim=True).reshape(batch_size, max_seq_len, head_num_k, head_dim_qk)
-            v_grad_dens = torch.sum(v_grad_dens.reshape(batch_size, max_seq_len, head_num_k, h_qk_ratio, head_dim_v),
-                                    dim=3, keepdim=True).reshape(batch_size, max_seq_len, head_num_k, head_dim_v)
+            k_grad_dens = torch.sum(k_grad_dens.reshape(-1, max_seq_len, head_num_k, h_qk_ratio, head_dim_qk),
+                                    dim=3, keepdim=True).reshape(-1, max_seq_len, head_num_k, head_dim_qk)
+            v_grad_dens = torch.sum(v_grad_dens.reshape(-1, max_seq_len, head_num_k, h_qk_ratio, head_dim_v),
+                                    dim=3, keepdim=True).reshape(-1, max_seq_len, head_num_k, head_dim_v)
 
         bias_grad = bias_grad.cpu()
         q_grad_dens = q_grad_dens.cpu()

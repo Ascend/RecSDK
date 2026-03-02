@@ -268,17 +268,11 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
     this->scmQKTensor =  this->scm.template AllocTensor<qType>();
     for (auto blkId = this->sBlkId; blkId <= this->eBlkId; blkId++) {
         kSeqNum = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
-        auto deltaQK = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].deltaQK;
-        auto nblk = deltaQK / TraitParams::blockN;
-        bool isDeltaQK = deltaQK % TraitParams::blockN != 0;
         auto limit = (blkId == this->eBlkId) ? this->ekSeqBlkId : kSeqNum;
         uint32_t isStartFromZero = (kSeqId == 0);
         uint32_t isEndToTail = false;
         for (; kSeqId < limit; kSeqId++) {
             auto taskinfo = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
-            int64_t maskOffset1 = (deltaQK +  (int64_t)taskinfo.qSeqId * TraitParams::blockM) % TraitParams::blockN;
-            int64_t maskOffset2 = (deltaQK + (int64_t)taskinfo.qSeqId * TraitParams::blockM + TraitParams::blockM) %
-                                  TraitParams::blockN - TraitParams::blockM;
             BlockMaskParams maskinfo = {
                 taskinfo.qSeqId,
                 kSeqId,
@@ -289,11 +283,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
                 taskinfo.numContext,
                 taskinfo.numTarget,
                 this->targetGroupSize,
-                taskinfo.scale,
-                maskOffset1,
-                maskOffset2,
-                nblk,
-                isDeltaQK
+                taskinfo.scale
             };
             // 在下三角下跳过运算
             if (maskinfo.NoComputation(TraitParams::maskType)) {
@@ -432,7 +422,6 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
     computeTaskInfo[taskId].batchId = batchId;
     computeTaskInfo[taskId].actualSeqLen = nextBatchSeqOffset - currentBatchSeqOffset;
     computeTaskInfo[taskId].actualSeqLenK = nextBatchSeqOffsetK - currentBatchSeqOffsetK;
-    computeTaskInfo[taskId].deltaQK = computeTaskInfo[taskId].actualSeqLenK - computeTaskInfo[taskId].actualSeqLen;
 
     computeTaskInfo[taskId].scale = this->siluScale;
     computeTaskInfo[taskId].numTarget = numTarget;

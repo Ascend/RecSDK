@@ -267,11 +267,6 @@ public:
         scmQKTensor_ =  scm_.template AllocTensor<qType>();
         for (auto blkId = sBlkId_; blkId <= eBlkId_; blkId++) {
             kSeqNum = computeTaskInfo_[taskId % COMPUTE_PIPE_NUM].kSeqNum;
-            auto deltaQK = computeTaskInfo_[taskId % COMPUTE_PIPE_NUM].deltaQK;
-            auto nblk = deltaQK / BLOCK_HEIGHT_256;
-            bool isDeltaQK = deltaQK % BLOCK_HEIGHT_256 != 0;
-            int64_t maskOffset1 = deltaQK % BLOCK_HEIGHT_256;
-            int64_t maskOffset2 = deltaQK % BLOCK_HEIGHT_256 - BLOCK_HEIGHT_256;
 
             auto limit = (blkId == eBlkId_) ? ekSeqBlkId_ : kSeqNum;
             uint32_t isStartFromZero = (kSeqId == 0);
@@ -289,10 +284,6 @@ public:
                     taskinfo.numTarget,
                     targetGroupSize_,
                     taskinfo.scale,
-                    maskOffset1,
-                    maskOffset2,
-                    nblk,
-                    isDeltaQK
                 };
                 // 在下三角下跳过运算
                 if (maskinfo.NoComputation(TraitParams::maskType)) {
@@ -406,9 +397,7 @@ public:
         computeTaskInfo_[taskId].batchId = batchId;
         computeTaskInfo_[taskId].actualSeqLen = nextBatchSeqOffset - currentBatchSeqOffset;
         computeTaskInfo_[taskId].actualSeqLenK = nextBatchSeqOffsetK - currentBatchSeqOffsetK;
-        computeTaskInfo_[taskId].deltaQK =
-            computeTaskInfo_[taskId].actualSeqLenK - computeTaskInfo_[taskId].actualSeqLen;
-    
+
         computeTaskInfo_[taskId].scale = siluScale_;
         computeTaskInfo_[taskId].numTarget = numTarget_;
         computeTaskInfo_[taskId].numContext = numContext_;
