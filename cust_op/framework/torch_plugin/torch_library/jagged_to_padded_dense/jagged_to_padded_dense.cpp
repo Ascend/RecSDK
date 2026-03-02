@@ -72,13 +72,18 @@ at::Tensor jagged_to_padded_dense_forward_npu_v1(const at::Tensor& values,
     std::vector<std::string> names = {"values", "offset_tensor"};
     check_tensor_npu_device(tensors, names);
     
-    TORCH_CHECK(max_lengths > 0, "max_lengths must be positive, but got ", max_lengths);
+    TORCH_CHECK(max_lengths >= 0, "max_lengths must be non-negative, but got ", max_lengths);
 
     const at::OptionalDeviceGuard guard(device_of(values));
-    auto values_contin = values.contiguous();
+    auto B = offsets[0].size(0) - 1;
     auto D = values.size(-1);
-    auto output =
-        at::empty({offsets[0].size(0) - 1, max_lengths, values.size(1)}, values.options());
+    auto output = at::empty({B, max_lengths, D}, values.options());
+
+    if (max_lengths == 0) {
+        return output;
+    }
+
+    auto values_contin = values.contiguous();
     int64_t padding_value_int64 = static_cast<int64_t>(padding_value);
     EXEC_NPU_CMD(aclnnJaggedToPaddedDense, values_contin, offsets[0], max_lengths,
         padding_value, padding_value_int64, output);
