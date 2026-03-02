@@ -237,6 +237,45 @@ def test_jagged_to_padded_dense(config: ExecuteConfig, is_mxrec: bool):
     ), f"NPU python梯度与NPU梯度不匹配\nNPU python梯度:\n{npu_py_grad_input.cpu()}\nNPU梯度:\n{npu_grad_input.cpu()}"
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_jagged_to_padded_dense_max_lengths_zero(
+    dtype, is_mxrec
+):
+    """max_lengths=0 时，NPU 应返回与 FBGEMM CPU 一致的 (B, 0, D) 空 tensor"""
+    batch_size = 16
+    num_heads = 8
+    attention_dim = 32
+    padding_value = 0.0
+    max_seq_len = 64
+    data_types = (dtype, torch.int64)
+    jagged_tensor, seq_offsets, _ = generate_jagged_tensor(
+        batch_size, max_seq_len, num_heads, attention_dim, data_types=data_types
+    )
+    input_flat = jagged_tensor.reshape(jagged_tensor.shape[0], -1)
+    offsets_tensor = torch.from_numpy(seq_offsets)
+
+    reference_dense = torch.ops.fbgemm.jagged_to_padded_dense(
+        input_flat, [offsets_tensor], [0], padding_value
+    )
+
+    if is_mxrec:
+        npu_dense = torch.ops.mxrec.jagged_to_padded_dense(
+            input_flat.to(DEVICE), [offsets_tensor.to(DEVICE)], 0, padding_value
+        )
+    else:
+        npu_dense = torch.ops.fbgemm.jagged_to_padded_dense(
+            input_flat.to(DEVICE), [offsets_tensor.to(DEVICE)], 0, padding_value
+        )
+
+    npu_cpu = npu_dense.cpu()
+    assert torch.equal(reference_dense, npu_cpu), (
+        f"max_lengths=0 时结果不一致\n"
+        f"FBGEMM shape: {reference_dense.shape}, NPU shape: {npu_cpu.shape}\n"
+        f"FBGEMM:\n{reference_dense}\nNPU:\n{npu_cpu}"
+    )
+
+
 SCENARIOS = [
     # 浮点常规 padding 值：覆盖多组 batch / max_seq_len / padding 组合
     Scenario(
