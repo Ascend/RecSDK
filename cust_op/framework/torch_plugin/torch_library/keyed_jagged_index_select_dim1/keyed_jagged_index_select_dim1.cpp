@@ -16,21 +16,15 @@ using namespace std;
 
 namespace {
 constexpr int EXPECTED_DIM_1D = 1;
-constexpr int threshold_mean_lengths = 30000;
-constexpr int threshold_mean_lengths_large = 750000;
-constexpr int threshold_T = 56;
+constexpr int THRESHOLD_MEAN_LENGTHS = 30000;
+constexpr int THRESHOLD_MEAN_LENGTHS_LARGE = 750000;
+constexpr int THRESHOLD_T = 56;
 }  // namespace
 
 void validate_keyed_jagged_index_select_dim1_inputs(const Tensor& values, const Tensor& lengths, const Tensor& offsets,
                                                     const Tensor& indices, const c10::optional<Tensor>& weights,
                                                     const c10::optional<int64_t>& selectedLengthsSum)
 {
-    // ============= 空值检查 =============
-    check_tensor_non_empty(values, "values");
-    check_tensor_non_empty(lengths, "lengths");
-    check_tensor_non_empty(offsets, "offsets");
-    check_tensor_non_empty(indices, "indices");
-
     check_tensor_dim(values, EXPECTED_DIM_1D, "values");
     check_tensor_dim(lengths, EXPECTED_DIM_1D, "lengths");
     check_tensor_dim(offsets, EXPECTED_DIM_1D, "offsets");
@@ -49,13 +43,13 @@ void validate_keyed_jagged_index_select_dim1_inputs(const Tensor& values, const 
     check_tensor_npu_device(tensors, names);
 
     // ============ 长度一致性检查 ============
-    const auto values_len = values.size(0);
+    const auto valuesLen = values.size(0);
     // 检查weights张量(如果存在)
     if (weights.has_value()) {
         check_tensor_non_empty(*weights, "weights");
         check_tensor_dim(*weights, EXPECTED_DIM_1D, "weights");
-        const auto weights_len = weights->size(0);
-        TORCH_CHECK(weights_len == values_len, "weights and values length mismatch: ", weights_len, " vs ", values_len);
+        const auto weightsLen = weights->size(0);
+        TORCH_CHECK(weightsLen == valuesLen, "weights and values length mismatch: ", weightsLen, " vs ", valuesLen);
     }
 
     // 检查selectedLengthsSum(如果存在)
@@ -99,44 +93,43 @@ std::vector<Tensor> keyed_jagged_index_select_dim1_impl_npu(const Tensor& values
     EXEC_NPU_CMD(aclnnSelectDim1ToPermute, indicesConti, batchSize, lengthsSize, permute);
 
     const auto pLength = permute.size(0);
+    const auto lengthSize = lengths.size(0);
     const auto lengthsSum = values.size(0);
+    if (lengthSize == 0 || pLength == 0) {
+        return {valuesConti.clone(), lengthsConti.clone(),
+                weights.has_value() ? weightsConti.clone() : at::Tensor()};
+    }
     // 计算每行的平均元素数
-    auto meanLengths = lengthsSum / lengths.size(0);
+    auto meanLengths = lengthsSum / lengthSize;
     bool useOffset =
-        (meanLengths > threshold_mean_lengths_large) || (meanLengths > threshold_mean_lengths && pLength < threshold_T);
+        (meanLengths > THRESHOLD_MEAN_LENGTHS_LARGE) || (meanLengths > THRESHOLD_MEAN_LENGTHS && pLength < THRESHOLD_T);
 
-    at::Tensor totalOffset = offsetsConti;
+    at::Tensor totalOffset = at::Tensor();
     at::Tensor lengthsOffset = at::Tensor();
     at::Tensor permutedLengthsOffset = at::Tensor();
     at::Tensor permutedLengths = at::empty({pLength}, lengthsConti.options());
     auto permuteConti = permute.contiguous();
-    if (!useOffset) {
+    if (useOffset) {
+        totalOffset = offsetsConti.to(at::kLong);
+    } else {
         // 直接进行 index_select重排lengthsConti
         permutedLengths = lengthsConti.index_select(0, permuteConti);
-        totalOffset = at::Tensor();
         // 使用 asynchronous_complete_cumsum 计算重排后lengthsConti的累积和
-        lengthsOffset = offsetsConti;
-        permutedLengthsOffset = asynchronous_complete_cumsum_npu(permutedLengths);
+        lengthsOffset = offsetsConti.to(at::kLong);
+        permutedLengthsOffset = asynchronous_complete_cumsum_npu(permutedLengths).to(at::kLong);
     }
 
-    int outvaluesSize = 0;
+    int64_t outvaluesSize = 0;
     if (selectedLengthsSum.has_value() && selectedLengthsSum.value() > 0) {
         // 提供了输出长度, 直接使用
-        int64_t selectedLengthsSumValue = selectedLengthsSum.value();
-        TORCH_CHECK(selectedLengthsSumValue <= std::numeric_limits<int>::max(), "selectedLengthsSum limit (0, ",
-                    std::numeric_limits<int>::max(), "], but get ", selectedLengthsSumValue, "\n");
-        outvaluesSize = static_cast<int>(selectedLengthsSumValue);
+        outvaluesSize = static_cast<int64_t>(selectedLengthsSum.value());
     } else {
         // 未提供输出长度，通过permute长度进行计算
-        int64_t sumValue = 0;
         if (useOffset) {
-            sumValue = lengthsConti.index_select(0, permuteConti).sum().item<int64_t>();
+            outvaluesSize = lengthsConti.index_select(0, permuteConti).sum().item<int64_t>();
         } else {
-            sumValue = permutedLengthsOffset[-1].item<int64_t>();
+            outvaluesSize = permutedLengthsOffset.index({-1}).item<int64_t>();
         }
-        TORCH_CHECK(sumValue > 0 && sumValue <= std::numeric_limits<int>::max(), "sumValue limit(0, ",
-                    std::numeric_limits<int>::max(), "], but get ", sumValue, "\n");
-        outvaluesSize = static_cast<int>(sumValue);
     }
     lengthsConti = lengthsConti.view({-1, 1});
     // 初始化输出向量

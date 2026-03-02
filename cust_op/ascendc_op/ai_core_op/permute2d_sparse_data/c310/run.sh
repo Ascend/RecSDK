@@ -47,6 +47,7 @@ rm -rf permute2d_sparse_data/host/*.h
 rm -rf permute2d_sparse_data/host/*.cpp
 cp -rf ../v220/op_kernel permute2d_sparse_data/
 cp -rf ../v220/op_host permute2d_sparse_data/
+cp ../../common/kernel_common_utils.h permute2d_sparse_data/op_kernel
 
 cd permute2d_sparse_data
 

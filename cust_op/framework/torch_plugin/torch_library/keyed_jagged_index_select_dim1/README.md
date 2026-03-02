@@ -30,8 +30,8 @@ torch.ops.mxrec.keyed_jagged_index_select_dim(Tensor values,
 |  offset | 输入     | Tensor  | int32      | [offset]                                       | 从0开始，为lengths元素的累加序列 |
 |  indices | 输入     | Tensor  | int32      | [indices]                                       | indices中的每个值均满足: >= 0 且 < `batch_size` |
 |  weights | 输入(可选) | Tensor  | fp32       | [weights]                                       | weight的长度等于`lengths.sum()` |
-|  batch_size | 输入 | SymInt  | int        | NA                                              |        dim 1 of KIT (0, std::numeric_limits<int>::max()]      |
-|  selected_lengths_sum | 输入(可选) | SymInt  | int        | NA                                              |        (0, std::numeric_limits<int>::max()]      |
+|  batch_size | 输入 | Int  | int        | NA                                              |        dim 1 of KIT (0, std::numeric_limits<int>::max()]      |
+|  selected_lengths_sum | 输入(可选) | Int  | int64        | NA                                              |        (0, std::numeric_limits<int64>::max()]      |
 |  output | 输出     | Tensor[]  | Tensor[]  | [output] | 包含3个Tensor，outvalues,dtype和values相同， outlengths,dtype和lengths相同， outweight（如果weights存在，dtype和weight相同否则为None）
 
 说明：

@@ -164,3 +164,25 @@ def test_large_permuted_dim_small_values_length(types):
         assert type(gt) is type(pred)
         if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
             assert torch.allclose(gt, pred, atol=1e-5)
+
+
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_empty_input(is_mxrec):
+    """
+    测试空输入的情况
+    """
+    params = {
+        'permute': np.array([], dtype=np.int32),
+        'lengths': np.empty((0, 0), dtype=np.int32),
+        'values': np.array([], dtype=np.int32),
+        'weights': None,
+        'permuted_lengths_sum': None
+    }
+
+    golden = get_result(params)
+    result = get_result(params, DEVICE, is_mxrec)
+
+    for gt, pred in zip(golden, result):
+        assert type(gt) is type(pred)
+        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
+            assert torch.allclose(gt, pred, atol=1e-4)

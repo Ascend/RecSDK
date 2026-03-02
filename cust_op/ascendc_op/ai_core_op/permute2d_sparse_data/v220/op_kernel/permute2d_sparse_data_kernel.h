@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ See the License for the specific language governing permissions and
 #define PERMUTE2D_SPARSE_DATA_H
 
 #include <cstdint>
-
+#include "kernel_common_utils.h"
 #include "kernel_operator.h"
 
 using namespace AscendC;
@@ -40,7 +40,6 @@ struct Args {
     GM_ADDR outLengths;
     GM_ADDR outValues;
     GM_ADDR outWeights;
-    GM_ADDR workspace;
     GM_ADDR tiling;
 };
 
@@ -66,20 +65,8 @@ public:
 
         ubCanUsed = tilingData.ubCanUsed;
 
-        permute = args.permute;
-        lengths = args.lengths;
-        values = args.values;
-        weights = args.weights;
-        totalOffset = args.totalOffset;
-        lengthsOffset = args.lengthsOffset;
-        permutedLengthsOffset = args.permutedLengthsOffset;
         enableWeights = tilingData.enableWeights;
         enableTotalOffset = tilingData.enableTotalOffset;
-
-        outLengths = args.outLengths;
-        outValues = args.outValues;
-        outWeights = args.outWeights;
-        workspace = args.workspace;
 
         // 计算分核
         if (GetBlockIdx() < tailSplitIndex) {
@@ -90,65 +77,32 @@ public:
             tOffsetOfThisCore = tailSplitIndex * (baseBatchLen + 1) + (GetBlockIdx() - tailSplitIndex) * baseBatchLen;
         }
 
-        lengthsGT.SetGlobalBuffer(lengths, lengthsT * lengthsB * sizeof(LType));
-        valuesGT.SetGlobalBuffer(values, valuesDim * sizeof(VType));
+        lengthsGT.SetGlobalBuffer(args.lengths, lengthsT * lengthsB * sizeof(LType));
+        valuesGT.SetGlobalBuffer(args.values, valuesDim * sizeof(VType));
 
-        outLengthsGT.SetGlobalBuffer(outLengths, permuteDim0 * lengthsB * sizeof(LType));
-        outValuesGT.SetGlobalBuffer(outValues, valuesOutDim * sizeof(VType));
+        outLengthsGT.SetGlobalBuffer(args.outLengths, permuteDim0 * lengthsB * sizeof(LType));
+        outValuesGT.SetGlobalBuffer(args.outValues, valuesOutDim * sizeof(VType));
 
         if (enableWeights) {
-            weightsGT.SetGlobalBuffer(weights, valuesDim * sizeof(float));
-            outWeightsGT.SetGlobalBuffer(outWeights, valuesOutDim * sizeof(float));
+            weightsGT.SetGlobalBuffer(args.weights, valuesDim * sizeof(float));
+            outWeightsGT.SetGlobalBuffer(args.outWeights, valuesOutDim * sizeof(float));
         }
+
+        permutePtr = (__gm__ int32_t*)args.permute;
         if (enableTotalOffset) {
-            totalOffsetGT.SetGlobalBuffer(totalOffset, lengthsT * sizeof(LType));
+            totalOffsetPtr = (__gm__ int64_t*)args.totalOffset;
         } else {
-            lengthsOffsetGT.SetGlobalBuffer(lengthsOffset, lengthsT * lengthsB * sizeof(LType));
-            permutedLengthsOffsetGT.SetGlobalBuffer(permutedLengthsOffset, permuteDim0 * lengthsB * sizeof(LType));
+            lengthsOffsetPtr = (__gm__ int64_t*)args.lengthsOffset;
+            permutedLengthsOffsetPtr = (__gm__ int64_t*)args.permutedLengthsOffset;
         }
+
         pipe = pipePtr;
         pipe->InitBuffer(inQueueX, USE_QUEUE_NUM, ubCanUsed / USE_QUEUE_NUM);
         blockLen = ubCanUsed / USE_QUEUE_NUM;
     }
 
-    template <typename T>
-    __aicore__ inline void CpGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T>& gt, int64_t len)
-    {
-        uint32_t alignLen = len * sizeof(T) / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
-        uint32_t unAlignLen = len * sizeof(T) - alignLen;
-
-        GlobalTensor<uint8_t> uint8Gt;
-        uint8Gt.SetGlobalBuffer((__gm__ uint8_t*)gt.GetPhyAddr(), len * sizeof(T));
-        LocalTensor<uint8_t> uint8Lt = lt.template ReinterpretCast<uint8_t>();
-
-        DataCopy(uint8Lt, uint8Gt, alignLen);
-        if (unAlignLen != 0) {
-            const DataCopyExtParams dataCopyExtParams{1, unAlignLen, 0, 0, 0};
-            const DataCopyPadExtParams<uint8_t> dataCopyPadExtParams{false, 0, 0, 0};
-            DataCopyPad(uint8Lt[alignLen], uint8Gt[alignLen], dataCopyExtParams, dataCopyPadExtParams);
-        }
-    }
-
-    template <typename T>
-    __aicore__ inline void CpLocal2Gm(const GlobalTensor<T>& gt, const LocalTensor<T>& lt, int64_t len)
-    {
-        uint32_t alignLen = len * sizeof(T) / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
-        uint32_t unAlignLen = len * sizeof(T) - alignLen;
-
-        GlobalTensor<uint8_t> uint8Gt;
-        uint8Gt.SetGlobalBuffer((__gm__ uint8_t*)gt.GetPhyAddr(), len * sizeof(T));
-        LocalTensor<uint8_t> uint8Lt = lt.template ReinterpretCast<uint8_t>();
-
-        DataCopy(uint8Gt, uint8Lt, alignLen);
-        if (unAlignLen != 0) {
-            const DataCopyExtParams dataCopyExtParams{1, unAlignLen, 0, 0, 0};
-            DataCopyPad(uint8Gt[alignLen], uint8Lt[alignLen], dataCopyExtParams);
-        }
-    }
-
     __aicore__ void PermuteLengths()
     {
-        permutePtr = (__gm__ int32_t*)permute;
         int64_t totalLen = lengthsB * sizeof(LType);
 
         for (int64_t i = tOffsetOfThisCore; i < lenOfThisCore + tOffsetOfThisCore; i++) {
@@ -182,7 +136,6 @@ public:
     {
         int64_t outValueOffset = 0;
         int64_t currentT = 0;
-        totalOffsetPtr = (__gm__ LType*)totalOffset;
         for (int64_t i = 0; i < permuteDim0; i++) {
             currentT = *(permutePtr + i);
             int64_t startIndex = static_cast<int64_t>(*(totalOffsetPtr + currentT));
@@ -227,18 +180,13 @@ public:
     // 在PermuteDataLine函数中，不再有外层循环，直接处理分配给当前core的行
     __aicore__ void PermuteDataLine(GlobalTensor<uint8_t> dstGT, GlobalTensor<uint8_t> srcGT, uint8_t datasize)
     {
-        // 初始化指针
-        permutePtr = (__gm__ int32_t*)permute;
-        lengthsOffsetPtr = (__gm__ LType*)lengthsOffset;
-        permutedLengthsOffsetPtr = (__gm__ LType*)permutedLengthsOffset;
         // lenOfThisCore 和 tOffsetOfThisCore 已在构造函数中计算好（165-172行）
         // lenOfThisCore: 当前core负责的行数
         // tOffsetOfThisCore: 当前core负责的第一行在输出中的索引
-        
         // 遍历当前core负责的每一行
         for (int64_t i = tOffsetOfThisCore; i < lenOfThisCore + tOffsetOfThisCore; i++) {
             // 通过permute数组找到对应的输入T维度
-            int64_t ToffsetThisIndex = *(permutePtr + i);
+            int64_t ToffsetThisIndex = static_cast<int64_t>(*(permutePtr + i));
             // 计算输入数据的起始和结束位置
             int64_t startIndex = static_cast<int64_t>(*(lengthsOffsetPtr + ToffsetThisIndex));
             int64_t endIndex = static_cast<int64_t>(*(lengthsOffsetPtr + ToffsetThisIndex + 1));
@@ -296,19 +244,6 @@ public:
     }
 
 private:
-    // GM_ADDR
-    GM_ADDR permute;
-    GM_ADDR lengths;
-    GM_ADDR values;
-    GM_ADDR weights;
-    GM_ADDR totalOffset;
-    GM_ADDR lengthsOffset;
-    GM_ADDR permutedLengthsOffset;
-    GM_ADDR outLengths;
-    GM_ADDR outValues;
-    GM_ADDR outWeights;
-    GM_ADDR workspace;
-
     // Shape
     int64_t permuteDim0 = 0;
     int64_t lengthsT = 0;
@@ -344,17 +279,14 @@ private:
     GlobalTensor<uint8_t> lengthsGT;
     GlobalTensor<uint8_t> valuesGT;
     GlobalTensor<uint8_t> weightsGT;
-    GlobalTensor<uint8_t> totalOffsetGT;
-    GlobalTensor<uint8_t> lengthsOffsetGT;
-    GlobalTensor<uint8_t> permutedLengthsOffsetGT;
     GlobalTensor<uint8_t> outLengthsGT;
     GlobalTensor<uint8_t> outValuesGT;
     GlobalTensor<uint8_t> outWeightsGT;
 
-    __gm__ int32_t* permutePtr;
-    __gm__ LType* totalOffsetPtr;
-    __gm__ LType* lengthsOffsetPtr;
-    __gm__ LType* permutedLengthsOffsetPtr;
+    __gm__ int32_t* permutePtr = nullptr;
+    __gm__ int64_t* totalOffsetPtr = nullptr;
+    __gm__ int64_t* lengthsOffsetPtr = nullptr;
+    __gm__ int64_t* permutedLengthsOffsetPtr = nullptr;
 };
 }  // namespace Permute2dSparseData
 #endif
