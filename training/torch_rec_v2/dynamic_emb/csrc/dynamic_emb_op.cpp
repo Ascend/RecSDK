@@ -36,6 +36,8 @@
 #include "acl_singleton.h"
 #include "aclrtlaunch_Adam_update.h"
 #include "aclrtlaunch_AdamW_update.h"
+#include "aclrtlaunch_Adam_update_float2.h"
+#include "aclrtlaunch_AdamW_update_float2.h"
 #include "aclrtlaunch_block_bucketsize_sparse_features.h"
 #include "aclrtlaunch_device_timestamp.h"
 #include "aclrtlaunch_gather_dim0.h"
@@ -754,33 +756,64 @@ void dynamic_emb_Adam_with_pointer(const torch::Tensor& grads, const torch::Tens
                                    int64_t state_dim, const float lr, const float beta1, const float beta2,
                                    const float eps, const float weight_decay, const uint32_t iter_num)
 {
-    auto stream = c10_npu::getCurrentNPUStream().stream(true);
     int32_t in_length = grads.numel();
-    int32_t grad_dim = grads.size(1);
     if (in_length == 0) {
         return;
     }
-    // 确保张量在连续内存中
+    int32_t grad_dim = grads.size(1);
+
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
     auto grads_continous = grads.contiguous();
     auto val_pointers_continous = val_pointers.contiguous();
-    // 获取数据在内存中第一个元素的指针
+    
     float* grads_ptr = grads_continous.data_ptr<float>();
     void* values_ptr = val_pointers_continous.data_ptr();
 
-    // tiling
-    bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
-    int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+    // 将重复计算的常量提取到 Host 侧仅计算一次
+    float oneMinusBeta1 = 1.0f - beta1;
+    float oneMinusBeta2 = 1.0f - beta2;
+    float mHatDenom = 1.0f - std::pow(beta1, iter_num);
+    float vHatDenom = 1.0f - std::pow(beta2, iter_num);
+    
+    float step_size = lr / mHatDenom;
+    float inv_vHatDenom = 1.0f / vHatDenom;
+    
+    // 获取最大核数
     int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
-    int32_t core_num = std::min(max_cores, total_blocks);
-    if (core_num == 0) {
-        return;
-    }
-    int32_t blocks_per_core = total_blocks / core_num;
-    int32_t remainder_blocks = total_blocks % core_num;
+    bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
 
-    ACLRT_LAUNCH_KERNEL(Adam_update)(core_num, stream, grads_ptr, values_ptr, grad_dim, in_length, lr, beta1, beta2,
-                                     eps, weight_decay, iter_num, total_blocks, blocks_per_core, remainder_blocks,
-                                     is_small);
+    // === 分支 1：偶数维度，使用 float2 算子===
+    if (grad_dim % 2 == 0) {
+        int32_t vec_length = in_length / 2;
+        const int32_t VEC_PER_BLOCK = ELEMENTS_PER_BLOCK / 2;
+
+        int32_t total_blocks = (vec_length + VEC_PER_BLOCK - 1) / VEC_PER_BLOCK;
+        int32_t core_num = std::min(max_cores, total_blocks);
+        if (core_num == 0) {
+            return;
+        }
+        int32_t blocks_per_core = total_blocks / core_num;
+        int32_t remainder_blocks = total_blocks % core_num;
+
+        ACLRT_LAUNCH_KERNEL(Adam_update_float2)(core_num, stream, grads_ptr, values_ptr, grad_dim, vec_length,
+                                                 beta1, beta2, oneMinusBeta1, oneMinusBeta2,
+                                                 step_size, inv_vHatDenom, weight_decay, eps,
+                                                 total_blocks, blocks_per_core, remainder_blocks, is_small);
+    } else { // === 分支 2：奇数维度，使用标量 float 算子 ===
+        int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+        int32_t core_num = std::min(max_cores, total_blocks);
+        if (core_num == 0) {
+            return;
+        }
+
+        int32_t blocks_per_core = total_blocks / core_num;
+        int32_t remainder_blocks = total_blocks % core_num;
+
+        ACLRT_LAUNCH_KERNEL(Adam_update)(core_num, stream, grads_ptr, values_ptr, grad_dim, in_length,
+                                          beta1, beta2, oneMinusBeta1, oneMinusBeta2,
+                                          step_size, inv_vHatDenom, weight_decay, eps,
+                                          total_blocks, blocks_per_core, remainder_blocks, is_small);
+    }
 }
 
 void dynamic_emb_AdamW_with_pointer(const torch::Tensor& grads, const torch::Tensor& val_pointers, DataType val_type,
@@ -791,30 +824,63 @@ void dynamic_emb_AdamW_with_pointer(const torch::Tensor& grads, const torch::Ten
     if (in_length == 0) {
         return;
     }
+    int32_t grad_dim = grads.size(1);
 
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
-    int32_t grad_dim = grads.size(1);
-    // 确保张量在连续内存中
     auto grads_continous = grads.contiguous();
     auto val_pointers_continous = val_pointers.contiguous();
-    // 获取数据在内存中第一个元素的指针
+    
     float* grads_ptr = grads_continous.data_ptr<float>();
     void* values_ptr = val_pointers_continous.data_ptr();
 
-    // tiling
-    bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
-    int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
-    int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
-    int32_t core_num = std::min(max_cores, total_blocks);
-    if (core_num == 0) {
-        return;
-    }
-    int32_t blocks_per_core = total_blocks / core_num;
-    int32_t remainder_blocks = total_blocks % core_num;
+    // 将重复计算的常量提取到 Host 侧仅计算一次
+    float oneMinusBeta1 = 1.0f - beta1;
+    float oneMinusBeta2 = 1.0f - beta2;
+    float mHatDenom = 1.0f - std::pow(beta1, iter_num);
+    float vHatDenom = 1.0f - std::pow(beta2, iter_num);
+    
+    float step_size = lr / mHatDenom;
+    float inv_vHatDenom = 1.0f / vHatDenom;
+    float decay_factor = 1.0f - lr * weight_decay;
 
-    ACLRT_LAUNCH_KERNEL(AdamW_update)(core_num, stream, grads_ptr, values_ptr, grad_dim, in_length, lr, beta1, beta2,
-                                      eps, weight_decay, iter_num, total_blocks, blocks_per_core, remainder_blocks,
-                                      is_small);
+    // 获取最大核数
+    int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
+
+    bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
+
+    // === 分支 1：偶数维度，使用 float2 算子===
+    if (grad_dim % 2 == 0) {
+        int32_t vec_length = in_length / 2;
+        const int32_t VEC_PER_BLOCK = ELEMENTS_PER_BLOCK / 2;
+
+        int32_t total_blocks = (vec_length + VEC_PER_BLOCK - 1) / VEC_PER_BLOCK;
+        int32_t core_num = std::min(max_cores, total_blocks);
+        if (core_num == 0) {
+            return;
+        }
+
+        int32_t blocks_per_core = total_blocks / core_num;
+        int32_t remainder_blocks = total_blocks % core_num;
+
+        ACLRT_LAUNCH_KERNEL(AdamW_update_float2)(core_num, stream, grads_ptr, values_ptr, grad_dim, vec_length,
+                                                 beta1, beta2, oneMinusBeta1, oneMinusBeta2,
+                                                 step_size, inv_vHatDenom, decay_factor, eps,
+                                                 total_blocks, blocks_per_core, remainder_blocks, is_small);
+    } else { // === 分支 2：奇数维度，使用标量 float 算子 ===
+        int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+        int32_t core_num = std::min(max_cores, total_blocks);
+        if (core_num == 0) {
+            return;
+        }
+
+        int32_t blocks_per_core = total_blocks / core_num;
+        int32_t remainder_blocks = total_blocks % core_num;
+
+        ACLRT_LAUNCH_KERNEL(AdamW_update)(core_num, stream, grads_ptr, values_ptr, grad_dim, in_length,
+                                          beta1, beta2, oneMinusBeta1, oneMinusBeta2,
+                                          step_size, inv_vHatDenom, decay_factor, eps,
+                                          total_blocks, blocks_per_core, remainder_blocks, is_small);
+    }
 }
 
 // PYTHON WARP

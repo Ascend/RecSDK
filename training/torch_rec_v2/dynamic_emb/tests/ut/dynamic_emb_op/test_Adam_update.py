@@ -68,7 +68,7 @@ def get_dim_pointers_optimized(x_2d):
 
 @pytest.mark.parametrize("device", [0])
 @pytest.mark.parametrize("batch_size", [1, 1024, 4096, 8192, 10240, 102400])
-@pytest.mark.parametrize("embedding_dim", [8, 64, 128, 256, 512, 1024])
+@pytest.mark.parametrize("embedding_dim", [8, 64, 128, 256, 512, 1024, 31, 1023])
 @pytest.mark.parametrize("lr", [0.001, 0.01, 0.1])
 @pytest.mark.parametrize("beta1", [0.9])
 @pytest.mark.parametrize("beta2", [0.999])

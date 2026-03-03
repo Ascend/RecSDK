@@ -1,4 +1,4 @@
-/* Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright 2026. Huawei Technologies Co.,Ltd. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,35 +13,54 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 #include <type_traits>
-
 #include "Adam_update_kernel.h"
 #include "kernel_operator.h"
 
 constexpr int32_t BLOCK_THREADS = AdamUpdateSimt::MAX_THREADS_PER_BLOCK;
 
 extern "C" __global__ __aicore__ void Adam_update(GM_ADDR grads, GM_ADDR values, int32_t gradDim, int32_t inLength,
-                                                    float lr, float beta1, float beta2, float eps, float weightDecay,
-                                                    int32_t iterNum, int32_t totalBlocks, int32_t blocksPerCore,
-                                                    int32_t remainderBlocks, bool isSmall)
+    float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize, float invVHatDenom,
+    float weightDecay, float eps, int32_t totalBlocks, int32_t blocksPerCore, int32_t remainderBlocks, bool isSmall)
 {
-    // 获取当前核心ID
     int32_t coreId = AscendC::GetBlockIdx();
 
     __gm__ float* gradsPtr = reinterpret_cast<__gm__ float*>(grads);
     __gm__ float* __gm__* valuesPtr = reinterpret_cast<__gm__ float* __gm__*>(values);
 
+    bool isPowerOfTwo = (gradDim & (gradDim - 1)) == 0;
+    
+    int32_t gradDimShift = 0;
+    if (isPowerOfTwo) {
+        int32_t gradDimCopy = gradDim;
+        while (gradDimCopy >>= 1) {
+            gradDimShift++;
+        }
+    }
+
     if (isSmall) {
-        AscendC::Simt::VF_CALL<AdamUpdateSimt::SimtSmallInBlockDataCompute>(
-            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength, lr, beta1, beta2, eps,
-            weightDecay, iterNum);
+        if (isPowerOfTwo) {
+            AscendC::Simt::VF_CALL<AdamUpdateSimt::SimtSmallInBlockDataCompute<true>>(
+                AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength,
+                beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, weightDecay, eps, gradDimShift);
+        } else {
+            AscendC::Simt::VF_CALL<AdamUpdateSimt::SimtSmallInBlockDataCompute<false>>(
+                AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength,
+                beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, weightDecay, eps, gradDimShift);
+        }
     } else {
-        // 计算当前核心需要处理的块数
         int32_t curBlocksCount = (coreId < remainderBlocks) ? (blocksPerCore + 1) : blocksPerCore;
-        // 计算当前核心需要处理的起始块索引
         int32_t blockStartIdx = coreId * blocksPerCore + ((coreId < remainderBlocks) ? coreId : remainderBlocks);
 
-        AscendC::Simt::VF_CALL<AdamUpdateSimt::SimtLargeDataCompute>(
-            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength, lr, beta1, beta2, eps,
-            weightDecay, iterNum, totalBlocks, blockStartIdx, curBlocksCount);
+        if (isPowerOfTwo) {
+            AscendC::Simt::VF_CALL<AdamUpdateSimt::SimtLargeDataCompute<true>>(
+                AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength,
+                beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, weightDecay, eps,
+                totalBlocks, blockStartIdx, curBlocksCount, gradDimShift);
+        } else {
+            AscendC::Simt::VF_CALL<AdamUpdateSimt::SimtLargeDataCompute<false>>(
+                AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, gradsPtr, valuesPtr, gradDim, inLength,
+                beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, weightDecay, eps,
+                totalBlocks, blockStartIdx, curBlocksCount, gradDimShift);
+        }
     }
 }
