@@ -252,14 +252,23 @@ def test_block_bucketize_sparse_features_block_bucketize_pos_with_flags(case: Pe
 )
 @pytest.mark.parametrize("sequence", [False, True])
 @pytest.mark.parametrize("keep_orig_idx", [False, True])
+@pytest.mark.parametrize("dtype_combo", [
+    pytest.param((None, None), id="same_dtype"),
+    pytest.param((torch.int32, torch.int64), id="off32_idx64"),
+    pytest.param((torch.int64, torch.int32), id="off64_idx32"),
+])
 @pytest.mark.parametrize("case", PERF_CASES, ids=lambda case: case.name)
-# 覆盖全可选项交叉：weights + bucketize_pos + block_bucketize_pos + batch_size_per_feature/max_B + total_num_blocks
-# 且切换 sequence/keep_orig_idx
 def test_block_bucketize_sparse_features_with_all_optionals(
-    case: PerfCase, total_num_blocks_type: GenTotalNumsBlocksType, sequence: bool, keep_orig_idx: bool
+    case: PerfCase, dtype_combo,
+    total_num_blocks_type: GenTotalNumsBlocksType, sequence: bool, keep_orig_idx: bool
 ):
-    lengths, indices, block_sizes, weights = _generate_case_tensors(case, True)
-    batch_size_per_feature, max_B = _generate_batch_size_per_feature_and_max_B(block_sizes, case.batch_size)
+    offset_dtype, index_dtype = dtype_combo
+    lengths, indices, block_sizes, weights = _generate_case_tensors(
+        case, True, offset_dtype=offset_dtype, index_dtype=index_dtype
+    )
+    batch_size_per_feature, max_B = _generate_batch_size_per_feature_and_max_B(
+        block_sizes.to(offset_dtype or case.dtype), case.batch_size
+    )
     total_num_blocks = _generate_total_num_blocks_tensors(block_sizes, case.my_size, total_num_blocks_type)
     block_bucketize_pos_cpu_list, block_bucketize_pos_npu_list = _generate_block_bucketize_pos(
         block_sizes, case.my_size, DEVICE
@@ -291,3 +300,43 @@ def test_block_bucketize_sparse_features_with_all_optionals(
 
     _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
 
+
+@pytest.mark.parametrize("sequence", [False, True])
+@pytest.mark.parametrize("keep_orig_idx", [False, True])
+def test_block_bucketize_sparse_features_int64_extreme(sequence, keep_orig_idx):
+    """
+    indices 包含超出 int32 表示范围的极值，验证 int64 通路无截断。
+    - lengths 使用 int32（覆盖 OffsetT=int32 / IndexT=int64 混合 dtype 路径）
+    - indices 覆盖 int32 边界值（INT32_MAX, INT32_MAX+1）和极大值（2^40, 2^62）
+    - 多 feature 使用不同 block_size，验证多 feature 场景下分桶一致性
+    """
+    int32_max = int(np.iinfo(np.int32).max)
+    lengths = torch.tensor([3, 2, 2], dtype=torch.int32)
+    indices = torch.tensor([
+        int32_max, int32_max + 1, int32_max * 2,
+        2**33 + 7, 2**40 + 13,
+        2**50, 2**62,
+    ], dtype=torch.int64)
+    block_sizes = torch.tensor([2**16, 2**18, 2**20], dtype=torch.int64)
+    my_size = 4
+
+    weights = torch.randn(indices.numel(), dtype=torch.float32).uniform_(-1.0, 1.0)
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths,
+        indices=indices,
+        block_sizes=block_sizes,
+        my_size=my_size,
+        weights=weights,
+        bucketize_pos=False,
+        sequence=sequence,
+        keep_orig_idx=keep_orig_idx,
+    )
+
+    kwargs_npu = _op_kwargs(**kwargs_cpu)
+    kwargs_npu['lengths'] = lengths.to(DEVICE)
+    kwargs_npu['indices'] = indices.to(DEVICE)
+    kwargs_npu['block_sizes'] = block_sizes.to(DEVICE)
+    kwargs_npu['weights'] = weights.to(DEVICE)
+
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)

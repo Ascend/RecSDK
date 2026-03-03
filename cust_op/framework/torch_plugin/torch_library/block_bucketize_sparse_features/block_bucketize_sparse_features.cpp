@@ -51,11 +51,8 @@ void validate_supported_inputs(
     TORCH_CHECK(block_sizes.dim() == 1, "block_sizes must be 1D.");
     TORCH_CHECK(block_sizes.numel() > 0, "block_sizes must be non-empty.");
     TORCH_CHECK(
-        lengths.scalar_type() == indices.scalar_type(),
-        "lengths and indices must share dtype.");
-    TORCH_CHECK(
-        block_sizes.scalar_type() == lengths.scalar_type(),
-        "block_sizes dtype must match lengths.");
+        block_sizes.scalar_type() == indices.scalar_type(),
+        "block_sizes dtype must match indices.");
     if (weights.has_value()) {
         TORCH_CHECK(weights.value().dim() == 1, "weights must be 1D.");
         TORCH_CHECK(
@@ -118,6 +115,14 @@ BucketizeResult block_bucketize_sparse_features_npu(
     if (weights.has_value()) {
         tensors.push_back(weights.value());
         names.push_back("weights");
+    }
+    if (batch_size_per_feature.has_value()) {
+        tensors.push_back(batch_size_per_feature.value());
+        names.push_back("batch_size_per_feature");
+    }
+    if (total_num_blocks.has_value()) {
+        tensors.push_back(total_num_blocks.value());
+        names.push_back("total_num_blocks");
     }
     check_tensor_npu_device(tensors, names);
     validate_supported_inputs(

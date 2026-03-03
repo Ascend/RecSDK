@@ -43,19 +43,23 @@ def _op_kwargs(**kwargs):
     return args
 
 
-def _generate_case_tensors(case: PerfCase, need_weights: bool = False):
+def _generate_case_tensors(case: PerfCase, need_weights: bool = False,
+                           offset_dtype: torch.dtype = None, index_dtype: torch.dtype = None):
+    o_dtype = offset_dtype if offset_dtype is not None else case.dtype
+    i_dtype = index_dtype if index_dtype is not None else case.dtype
+
     lengths = torch.randint(
         case.min_length,
         case.max_length + 1,
         (case.num_features * case.batch_size,),
-        dtype=case.dtype,
+        dtype=o_dtype,
     )
     block_low, block_high = case.block_size_range
     block_sizes = torch.randint(
         block_low,
         block_high + 1,
         (case.num_features,),
-        dtype=case.dtype,
+        dtype=i_dtype,
     ).clamp_min(1)
 
     lengths_2d = lengths.view(case.num_features, case.batch_size)
@@ -68,13 +72,13 @@ def _generate_case_tensors(case: PerfCase, need_weights: bool = False):
             count = int(row_length.item())
             if count == 0:
                 continue
-            segments.append(torch.randint(0, limit, (count,), dtype=case.dtype))
+            segments.append(torch.randint(0, limit, (count,), dtype=i_dtype))
 
     if segments:
         indices = torch.cat(segments)
     else:
-        indices = torch.zeros(0, dtype=case.dtype)
-    
+        indices = torch.zeros(0, dtype=i_dtype)
+
     weights = None
     if need_weights == True:
         weights = torch.randn_like(indices, dtype=torch.float32).uniform_(-1.0, 1.0)
