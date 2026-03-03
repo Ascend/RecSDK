@@ -10,7 +10,7 @@
 
 # select_dim1_to_permute算子目录层级
 ```shell
--- select_dim1_to_permuteu
+-- select_dim1_to_permute
    |-- v220
       |-- op_host                 # 算子host侧实现
       |-- op_kernel               # 算子kernel侧实现
@@ -37,7 +37,7 @@
 
 输入:
 ```python
-# 表示每个batch中取下标为 1, 2, 4, 3的元素
+# 表示每个batch中取下标为 1, 0, 4, 2的元素
 indices = [1, 0, 4, 2]
 # 表示一个batch有5个元素
 batchSize = 5

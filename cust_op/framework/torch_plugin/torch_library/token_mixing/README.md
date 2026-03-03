@@ -7,7 +7,7 @@
 ### PyTorch框架对外接口原型
 
 ```python
-torch.ops.mxrec.token_mixing(Tensor x, Tensor gamma, Tensor beta, float epsilon = 1e-7) -> (Tensor, Tensor, Tensor)
+torch.ops.mxrec.token_mixing(Tensor x, Tensor gamma, Tensor beta, float epsilon = 1e-7) -> Tensor
 ```
 
 ### 参数说明

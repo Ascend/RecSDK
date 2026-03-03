@@ -9,17 +9,17 @@ torch.ops.fbgemm.keyed_jagged_index_select_dim(Tensor values,
                                                Tensor lengths,
                                                Tensor offsets,
                                                Tensor indices,
-                                               SymInt batch_size,
+                                               int batch_size,
                                                Tensor? weights=None,
-                                               SymInt? selected_lengths_sum=None) -> Tensor[]
+                                               int? selected_lengths_sum=None) -> Tensor[]
 
 torch.ops.mxrec.keyed_jagged_index_select_dim(Tensor values,
                                                Tensor lengths,
                                                Tensor offsets,
                                                Tensor indices,
-                                               SymInt batch_size,
+                                               int batch_size,
                                                Tensor? weights=None,
-                                               SymInt? selected_lengths_sum=None) -> Tensor[]
+                                               int? selected_lengths_sum=None) -> Tensor[]
 ```
 
 #### 参数说明
