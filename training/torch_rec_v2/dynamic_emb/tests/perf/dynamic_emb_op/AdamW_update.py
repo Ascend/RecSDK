@@ -128,8 +128,8 @@ def main():
         cur_device, 1, 128, OptimizerParams(0.001, 0.9, 0.999, 1e-8, 0.0), iter_num_max)
     
     # 定义测试参数范围
-    batch_size_list = [128, 256, 512, 1024, 4096, 8192, 10240, 102400]
-    embedding_dim_list = [128, 256, 512, 1024]
+    batch_size_list = [32, 128, 512, 1024, 4096, 8192, 10240, 102400, 1024000]
+    embedding_dim_list = [16, 32, 128, 512, 1024, 4096, 8192]
     lr = 0.001
     beta1 = 0.9
     beta2 = 0.999
@@ -139,12 +139,14 @@ def main():
     test_cases = []
     for batch_size in batch_size_list:
         for embedding_dim in embedding_dim_list:
+            if batch_size * embedding_dim >= 1024000 * 4096:
+                continue
             test_cases.append((cur_device, batch_size, embedding_dim,
                                OptimizerParams(lr, beta1, beta2, eps, weight_decay)))
     
     # 收集所有测试结果
     logging.info("start test")
-    repeats = 10
+    repeats = 20
     results = []
     for device, batch_size, embedding_dim, optimizer_params in test_cases:
         result = None
