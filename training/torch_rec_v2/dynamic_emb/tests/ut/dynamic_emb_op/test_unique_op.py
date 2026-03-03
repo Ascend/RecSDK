@@ -29,7 +29,7 @@ import dynamic_emb_extensions
 logging.basicConfig(level=logging.NOTSET)
 
 
-@pytest.mark.parametrize("dtype", [torch.int64])
+@pytest.mark.parametrize("dtype", [torch.int64, torch.uint64])
 @pytest.mark.parametrize("device", ["npu:0"])
 @pytest.mark.parametrize("length", [1, 10, 100, 1000, 10000])
 @pytest.mark.parametrize("range_max", [5, 50, 100])
@@ -41,8 +41,13 @@ def test_unique_op_consistency(dtype, device, length, range_max):
     2. 验证 count c 是否与 a 中每个元素在恢复后张量中的出现次数一致。
     """
     device_id = int(device.split(":")[-1])
-    # 1. 生成测试数据
-    tensor_1d = torch.randint(0, range_max, (length,), dtype=dtype, device=device)
+
+    # # 1. 生成测试数据
+    if dtype == torch.uint64:
+        tensor_1d = torch.randint(0, range_max, (length,), dtype=torch.int64, device=device)
+        tensor_1d = tensor_1d.to(torch.uint64)
+    else:
+        tensor_1d = torch.randint(0, range_max, (length,), dtype=dtype, device=device)
 
     # 2. 使用自定义算子计算结果
     a, b, c = dynamic_emb_extensions.unique_op(tensor_1d)
@@ -51,7 +56,10 @@ def test_unique_op_consistency(dtype, device, length, range_max):
     a_cpu = a.cpu()
     b_cpu = b.cpu()
     c_cpu = c.cpu()
-    s_cpu = a_cpu[b_cpu]
+
+    s_cpu = torch.empty_like(tensor_1d_cpu)
+    for i, idx in enumerate(b_cpu):
+        s_cpu[i] = a_cpu[idx]
 
     assert (
         s_cpu.shape == tensor_1d_cpu.shape
