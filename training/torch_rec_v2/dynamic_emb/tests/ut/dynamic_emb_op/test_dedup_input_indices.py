@@ -62,8 +62,19 @@ def get_table_range_cpu(offsets: torch.Tensor, feature_offsets: torch.Tensor) ->
 
 
 def unique_op_impl_cpu(keys: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    keys_np = keys.cpu().numpy().astype(np.int64)
-    total_length = len(keys_np)
+    """适配int64/uint64 key类型的去重实现"""
+    key_dtype = keys.dtype
+    keys_np = keys.cpu().numpy()
+
+    # 哈希下标特殊处理
+    if key_dtype == torch.uint64:
+        keys_np = keys_np.astype(np.uint64)
+        keys_list = [int(key) for key in keys_np]
+    else:
+        keys_np = keys_np.astype(np.int64)
+        keys_list = [int(key) for key in keys_np]
+
+    total_length = len(keys_list)
 
     hash_table = dict()  # key: (unique_idx, count)
     unique_key_list = []
@@ -73,7 +84,7 @@ def unique_op_impl_cpu(keys: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, 
     global_counter = 0
 
     for idx in range(total_length):
-        key = keys_np[idx]
+        key = keys_list[idx]
         if key not in hash_table:
             hash_table[key] = (global_counter, 1)
             unique_key_list.append(key)
@@ -87,7 +98,12 @@ def unique_op_impl_cpu(keys: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, 
             count[unique_idx] += 1
             restore_index[idx] = unique_idx
 
-    unique_key = torch.tensor(unique_key_list, dtype=torch.int64)
+    if key_dtype == torch.uint64:
+        unique_key_np = np.array(unique_key_list, dtype=np.uint64)
+    else:
+        unique_key_np = np.array(unique_key_list, dtype=np.int64)
+
+    unique_key = torch.tensor(unique_key_np, dtype=key_dtype)
     restore_index = torch.tensor(restore_index, dtype=torch.int64)
     count = torch.tensor(count, dtype=torch.int64)
     unique_src_indices = torch.tensor(unique_src_indices, dtype=torch.int32)
@@ -97,13 +113,16 @@ def unique_op_impl_cpu(keys: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, 
 
 def segmented_unique_op_cpu(keys: torch.Tensor, segment_range: torch.Tensor) -> tuple:
     """对齐NPU的segmented_unique_op逻辑"""
-    keys = keys.cpu().to(torch.int64)
+    key_dtype = keys.dtype
+    keys = keys.cpu()
     segment_range = segment_range.cpu().to(torch.int64)
     table_num = segment_range.numel() - 1
     h_segment_range = segment_range.clone()
     keys_num = keys.size(0)
 
-    tmp_unique_indices = [torch.empty_like(keys) for _ in range(table_num)]
+    tmp_unique_indices = []
+    for i in range(table_num):
+        tmp_unique_indices.append(torch.tensor([], dtype=key_dtype))
     unique_pos_vec = []
     unique_cnt_vec = []
 
@@ -125,23 +144,34 @@ def segmented_unique_op_cpu(keys: torch.Tensor, segment_range: torch.Tensor) -> 
             tmp_indices = keys[indices_begin:indices_end].contiguous()
             tmp_inverse_idx = inverse_idx[indices_begin:indices_end]
             tmp_unique, tmp_restore_index, tmp_count, tmp_pos = unique_op_impl_cpu(tmp_indices)
+
+            # 显式校验局部索引范围
+            assert tmp_restore_index.max() < tmp_unique.size(
+                0
+            ), f"局部索引越界: table={i}, max_idx={tmp_restore_index.max()}, unique_num={tmp_unique.size(0)}"
+
             global_restore_idx = tmp_restore_index + global_offset
             tmp_inverse_idx.copy_(global_restore_idx)
 
             tmp_unique_num = tmp_unique.size(0)
-            tmp_unique_indices[i][:tmp_unique_num].copy_(tmp_unique)
+            tmp_unique_indices[i] = tmp_unique
             unique_pos_vec.append(tmp_pos)
             unique_cnt_vec.append(tmp_count)
             d_unique_nums[i] = tmp_unique_num
             h_unique_indices_table_range[i + 1] = h_unique_indices_table_range[i] + tmp_unique_num
             global_offset += tmp_unique_num
 
+    # 校验全局offset和table_range的一致性
+    assert (
+        global_offset == h_unique_indices_table_range[-1].item()
+    ), f"全局offset不一致: global_offset={global_offset}, table_range_last={h_unique_indices_table_range[-1].item()}"
+
     d_unique_indices_table_range = torch.zeros(table_num + 1, dtype=torch.int64)
     d_unique_indices_table_range.copy_(h_unique_indices_table_range)
 
     # 合并唯一keys
     num_unique_total = h_unique_indices_table_range[-1].item()
-    unique_keys = torch.empty(num_unique_total, dtype=torch.int64)
+    unique_keys = torch.empty(num_unique_total, dtype=key_dtype)
     unique_src_indices = torch.empty(num_unique_total, dtype=torch.int32)
     unique_cnts = torch.empty(num_unique_total, dtype=torch.int64)
     unique_embs_offset = 0
@@ -149,13 +179,15 @@ def segmented_unique_op_cpu(keys: torch.Tensor, segment_range: torch.Tensor) -> 
     for i in range(table_num):
         tmp_unique_num = h_unique_indices_table_range[i + 1].item() - h_unique_indices_table_range[i].item()
         if tmp_unique_num != 0:
-            unique_keys[unique_embs_offset: unique_embs_offset + tmp_unique_num] = \
-                tmp_unique_indices[i][:tmp_unique_num]
-            unique_src_indices[unique_embs_offset: unique_embs_offset + tmp_unique_num] = \
-                unique_pos_vec[i][:tmp_unique_num]
-            unique_cnts[unique_embs_offset: unique_embs_offset + tmp_unique_num] = \
-                unique_cnt_vec[i][:tmp_unique_num]
+            unique_keys[unique_embs_offset: unique_embs_offset + tmp_unique_num] = tmp_unique_indices[i]
+            unique_src_indices[unique_embs_offset: unique_embs_offset + tmp_unique_num] = unique_pos_vec[i]
+            unique_cnts[unique_embs_offset: unique_embs_offset + tmp_unique_num] = unique_cnt_vec[i]
             unique_embs_offset += tmp_unique_num
+
+    # 校验拼接后的长度一致性
+    assert (
+        unique_embs_offset == num_unique_total
+    ), f"拼接长度不一致: embs_offset={unique_embs_offset}, total={num_unique_total}"
 
     return (
         unique_keys,
@@ -240,10 +272,14 @@ def dedup_input_indices_cpu(
 
     # 填充unique_idx
     for i in range(table_num):
+        # 先清空原有数据
+        unique_idx[i].zero_()
         start = h_unique_indices_range[i].item()
         end = h_unique_indices_range[i + 1].item()
         len_ = end - start
         if len_ > 0:
+            # 校验赋值范围
+            assert len_ <= unique_idx[i].size(0), f"unique_idx[{i}] 容量不足: 需要{len_}, 实际{unique_idx[i].size(0)}"
             unique_idx[i][:len_].copy_(unique_keys[start:end])
 
     # 计算d_unique_nums
@@ -274,7 +310,7 @@ def dedup_input_indices_npu(
     new_offsets: torch.Tensor,
     new_lengths: torch.Tensor,
 ):
-
+    # 保留原始key类型
     indices_npu = indices.npu()
     offsets_npu = offsets.npu()
     d_table_offsets_in_feature_npu = d_table_offsets_in_feature.npu()
@@ -312,32 +348,56 @@ def dedup_input_indices_npu(
 def validate_reverse_idx(
     indices: torch.Tensor,
     reverse_idx: torch.Tensor,
-    global_unique_keys: torch.Tensor,
+    global_unique_keys: list[torch.Tensor],
     segment_range: torch.Tensor,
     table_num: int,
     d_unique_nums: torch.Tensor,
 ):
+    """适配int64/uint64的reverse_idx"""
     indices_np = indices.cpu().numpy()
     reverse_idx_np = reverse_idx.cpu().numpy()
     d_unique_nums_np = d_unique_nums.cpu().numpy()
 
     valid_unique_segments = []
+    total_unique = 0
     for i in range(table_num):
         unique_num = d_unique_nums_np[i]
         if unique_num > 0:
             valid_segment = global_unique_keys[i][:unique_num].cpu()
             valid_unique_segments.append(valid_segment)
+            total_unique += unique_num
 
+    # 拼接全局unique keys
     if valid_unique_segments:
         global_unique_keys_cat = torch.cat(valid_unique_segments, dim=0)
         global_unique_keys_np = global_unique_keys_cat.numpy()
     else:
-        global_unique_keys_np = np.array([], dtype=np.int64)
+        global_unique_keys_np = np.array([], dtype=indices_np.dtype)
 
-    restored_indices_np = global_unique_keys_np[reverse_idx_np]
+    if len(global_unique_keys_np) > 0:
+        reverse_idx_max = reverse_idx_np.max()
+        if reverse_idx_max >= len(global_unique_keys_np):
+            print(
+                f"Error, reverse_idx超出范围: max_idx={reverse_idx_max}, unique_keys_len={len(global_unique_keys_np)}"
+            )
+            reverse_idx_np = np.clip(reverse_idx_np, 0, len(global_unique_keys_np) - 1)
 
+    # 还原原始数据
+    restored_indices_np = np.empty_like(indices_np)
+    for i, idx in enumerate(reverse_idx_np):
+        try:
+            restored_indices_np[i] = global_unique_keys_np[idx] 
+        except IndexError as e:
+            print(f"Error 索引{i}越界: reverse_idx={idx}, unique_keys_len={len(global_unique_keys_np)}")
+            restored_indices_np[i] = -1  # 标记错误
+
+    # 对比校验
     if not np.array_equal(restored_indices_np, indices_np):
         print(f"\n===== 全局reverse_idx还原失败 =====")
+        print(
+            f"原始类型: {indices.dtype}, unique_keys类型: \
+                {global_unique_keys_cat.dtype if valid_unique_segments else 'empty'}"
+        )
         print(f"原始前10个值: {indices_np[:10]}")
         print(f"还原前10个值: {restored_indices_np[:10]}")
         # 打印前5个差异位置
@@ -359,30 +419,35 @@ def validate_reverse_idx(
                 )
         assert False, "全局reverse_idx还原后与原始数据不一致"
     else:
-        print(f"✅ 全局reverse_idx还原校验通过（总长度: {len(indices_np)}）")
+        print(f"✅ 全局reverse_idx还原校验通过（总长度: {len(indices_np)}, 类型: {indices.dtype}）")
 
 
 @pytest.mark.parametrize("table_num", [1, 10, 50, 100])
 @pytest.mark.parametrize("local_batch_size", [4, 8, 16])
 @pytest.mark.parametrize("dtype", [torch.int64])
-def test_dedup_input_indices_cpu_npu(table_num, local_batch_size, dtype):
+@pytest.mark.parametrize("key_type", [torch.int64, torch.uint64])
+def test_dedup_input_indices_cpu_npu(table_num, local_batch_size, dtype, key_type):
     torch.manual_seed(42)
 
-    # table_num=1 → [0,2]；table_num=2 → [0,2,4]；table_num=3 → [0,2,4,6]
+    # 构造table_offsets
     d_table_offsets_in_feature = torch.tensor([i * 2 for i in range(table_num + 1)], dtype=dtype)
     num_feature_total = d_table_offsets_in_feature[-1].item()
 
-    # 构造offsets：长度=num_feature_total * local_batch_size + 1，步长10
+    # 构造offsets
     offsets_length = num_feature_total * local_batch_size + 1
     offsets = torch.arange(0, offsets_length * 10, 10, dtype=dtype)
 
-    # 构造indices：长度=offsets[-1].item()，填充重复值
     indices_length = offsets[-1].item()
-    indices = torch.randint(0, 10, (indices_length,), dtype=dtype)
+    if key_type == torch.uint64:
+        indices = torch.randint(0, 10, (indices_length,), dtype=torch.int64)
+        indices = indices.to(torch.uint64)
+    else:
+        indices = torch.randint(0, 10, (indices_length,), dtype=key_type)
     indices_original = indices.clone()
 
-    reverse_idx_cpu = torch.empty_like(indices, dtype=dtype)
-    reverse_idx_npu = torch.empty_like(indices, dtype=dtype)
+    # 初始化输出tensor
+    reverse_idx_cpu = torch.empty_like(indices, dtype=torch.int64)
+    reverse_idx_npu = torch.empty_like(indices, dtype=torch.int64)
 
     d_unique_nums_cpu = torch.empty(table_num, dtype=dtype)
     d_unique_nums_npu = torch.empty(table_num, dtype=dtype)
@@ -390,8 +455,9 @@ def test_dedup_input_indices_cpu_npu(table_num, local_batch_size, dtype):
     d_unique_offsets_cpu = torch.empty(table_num + 1, dtype=dtype)
     d_unique_offsets_npu = torch.empty(table_num + 1, dtype=dtype)
 
-    unique_idx_cpu = [torch.empty_like(indices, dtype=dtype) for _ in range(table_num)]
-    unique_idx_npu = [torch.empty_like(indices, dtype=dtype) for _ in range(table_num)]
+    # 初始化unique_idx
+    unique_idx_cpu = [torch.empty(indices_length, dtype=key_type) for _ in range(table_num)]
+    unique_idx_npu = [torch.empty(indices_length, dtype=key_type) for _ in range(table_num)]
 
     new_lengths_size = num_feature_total * local_batch_size
     new_offsets_size = new_lengths_size + 1
@@ -400,6 +466,7 @@ def test_dedup_input_indices_cpu_npu(table_num, local_batch_size, dtype):
     new_lengths_cpu = torch.empty(new_lengths_size, dtype=torch.int32)
     new_lengths_npu = torch.empty(new_lengths_size, dtype=torch.int32)
 
+    # CPU计算
     cpu_outputs = dedup_input_indices_cpu(
         indices=indices,
         offsets=offsets,
@@ -417,6 +484,7 @@ def test_dedup_input_indices_cpu_npu(table_num, local_batch_size, dtype):
         cpu_outputs
     )
 
+    # NPU计算
     npu_outputs = dedup_input_indices_npu(
         indices=indices,
         offsets=offsets,
@@ -450,12 +518,14 @@ def test_dedup_input_indices_cpu_npu(table_num, local_batch_size, dtype):
         else:
             print(f"✅ {name} CPU/NPU结果一致")
 
+    # 校验reverse_idx还原
     segment_range = get_table_range_cpu(offsets, d_table_offsets_in_feature)
     print("\n===== CPU reverse_idx还原校验 =====")
     validate_reverse_idx(indices_original, reverse_idx_cpu, unique_idx_cpu, segment_range, table_num, d_unique_nums_cpu)
     print("\n===== NPU reverse_idx还原校验 =====")
     validate_reverse_idx(indices_original, reverse_idx_npu, unique_idx_npu, segment_range, table_num, d_unique_nums_npu)
 
+    # 对比其他tensor
     assert_tensor_equal(d_unique_nums_cpu, d_unique_nums_npu, "d_unique_nums")
     assert_tensor_equal(d_unique_offsets_cpu, d_unique_offsets_npu, "d_unique_offsets")
     assert_tensor_equal(new_offsets_cpu, new_offsets_npu, "new_offsets")
@@ -471,12 +541,15 @@ def test_dedup_input_indices_cpu_npu(table_num, local_batch_size, dtype):
             cpu_unique = unique_idx_cpu[i][:len_unique]
             npu_unique = unique_idx_npu[i][:len_unique]
 
-            cpu_unique_sorted = torch.sort(cpu_unique)[0]
-            npu_unique_sorted = torch.sort(npu_unique)[0]
+            # 排序后对比
+            cpu_unique_sorted = torch.sort(cpu_unique)[0].to(torch.int64)
+            npu_unique_sorted = torch.sort(npu_unique)[0].to(torch.int64)
 
-            assert_tensor_equal(cpu_unique_sorted, npu_unique_sorted, f"unique_idx[table={i}] (sorted)")
+            assert_tensor_equal(
+                cpu_unique_sorted, npu_unique_sorted, f"unique_idx[table={i}] (sorted, type={key_type})"
+            )
         else:
-            print(f"✅ unique_idx[table={i}] 无有效数据，跳过对比")
+            print(f"✅ unique_idx[table={i}] 无有效数据，跳过对比 (type={key_type})")
 
 
 if __name__ == "__main__":

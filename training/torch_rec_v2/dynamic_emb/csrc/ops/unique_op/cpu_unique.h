@@ -11,9 +11,10 @@
 #include <cmath>
 #include <torch/extension.h>
 
+template <typename KeyType>
 class CPUUniqueHash {
 public:
-    void ComputeUnique(const int64_t* keys, int64_t num)
+    void ComputeUnique(const KeyType* keys, int64_t num)
     {
         if (num == 0) {
             uniqueNum = 0;
@@ -28,10 +29,10 @@ public:
         cpuKeys.resize(num);
 
         int64_t counter = 0;
-        std::hash<int64_t> hashFunc;
+        std::hash<KeyType> hashFunc;
 
         for (int64_t i = 0; i < num; ++i) {
-            int64_t key = keys[i];
+            KeyType key = keys[i];
             size_t hashValue = hashFunc(key);
             int64_t index = static_cast<int64_t>(hashValue) % num;
             int64_t probeCount = 0;
@@ -66,7 +67,7 @@ public:
         cpuKeys.resize(counter);
     }
 
-    const std::vector<int64_t>& GetUniqueKeys() const
+    const std::vector<KeyType>& GetUniqueKeys() const
     {
         return cpuKeys;
     }
@@ -93,12 +94,12 @@ public:
 
 private:
     struct Entry {
-        int64_t key{0};
+        KeyType key{0};
         int64_t index{0};
         bool used{false};
     };
 
-    std::vector<int64_t> cpuKeys;
+    std::vector<KeyType> cpuKeys;
     std::vector<int64_t> inverse;
     std::vector<int64_t> counts;
     int64_t uniqueNum{0};
@@ -112,6 +113,7 @@ struct DedupResult {
     int64_t uniqueCount;
 };
 
+template <typename KeyType>
 class HashDeduplicator {
 public:
     HashDeduplicator() = default;
@@ -125,18 +127,23 @@ public:
             return emptyRes;
         }
 
-        const int64_t* inputPtr = data.data_ptr<int64_t>();
+        const KeyType* inputPtr = data.data_ptr<KeyType>();
         hashObj.ComputeUnique(inputPtr, n);
 
         const auto& uniqueKeys = hashObj.GetUniqueKeys();
         const auto& keyCounts = hashObj.GetKeyCounts();
         const auto& inverseindices = hashObj.GetInverseIndices();
         const int64_t uniqueNum = hashObj.GetUniqueCount();
-
         auto optionsInt64 = torch::TensorOptions().dtype(torch::kInt64).device(torch::kCPU);
         DedupResult res;
 
-        res.uniqueElements = at::tensor(uniqueKeys, optionsInt64);
+        auto uniqueTensorOptions = torch::TensorOptions().dtype(data.dtype()).device(torch::kCPU);
+        res.uniqueElements = at::empty({uniqueNum}, uniqueTensorOptions);
+        if (uniqueNum > 0) {
+            size_t dataSize = uniqueNum * sizeof(KeyType);
+            errno_t ret = memcpy_s(res.uniqueElements.data_ptr<KeyType>(), dataSize, uniqueKeys.data(), dataSize);
+            TORCH_CHECK(ret == EOK, "UniqueIndicesRange memcpy_s failed, ret = ", ret);
+        }
         res.counts = at::tensor(keyCounts, optionsInt64);
         res.reverseIndices = at::tensor(inverseindices, optionsInt64);
         res.uniqueCount = static_cast<int64_t>(uniqueNum);
@@ -145,7 +152,7 @@ public:
     }
 
 private:
-    CPUUniqueHash hashObj;
+    CPUUniqueHash<KeyType> hashObj;
 };
 
 #endif  // CPU_UNIQUE_H

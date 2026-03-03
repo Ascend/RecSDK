@@ -64,13 +64,8 @@ constexpr int64_t MIN_HASH_TABLE_CAPACITY = 1;
 constexpr int32_t CACHE_ALIGN = 64;
 constexpr size_t MIN_CORE_NUM = 1;
 constexpr int32_t CPU_KEY_THRESHOLD = 10000;
-using ReturnType=std::tuple<
-    at::Tensor,
-    at::Tensor,
-    c10::optional<at::Tensor>,
-    c10::optional<at::Tensor>,
-    c10::optional<at::Tensor>
-    >;
+using ReturnType =
+    std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>, c10::optional<at::Tensor>, c10::optional<at::Tensor>>;
 
 inline void ComputeMagicShift(uint64_t divisor, uint64_t& rstDivisorMagic, uint64_t& rstDivisorShift)
 {
@@ -84,15 +79,15 @@ inline void ComputeMagicShift(uint64_t divisor, uint64_t& rstDivisorMagic, uint6
             break;
         }
     }
-    unsigned __int128 magicU128 =
-        ((oneU128 << 64) * ((oneU128 << divisorShift) - divisor)) / divisor + 1;
+    unsigned __int128 magicU128 = ((oneU128 << 64) * ((oneU128 << divisorShift) - divisor)) / divisor + 1;
     rstDivisorMagic = static_cast<uint64_t>(magicU128);
     rstDivisorShift = divisorShift - 1;
 }
 
-ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const at::Tensor& indices,
-    bool bucketizePos, bool sequence, const at::Tensor& distTypePerFeature, const at::Tensor& blockSizes,
-    int32_t mySize, const c10::optional<at::Tensor>& weights)
+ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const at::Tensor& indices, bool bucketizePos,
+                                                bool sequence, const at::Tensor& distTypePerFeature,
+                                                const at::Tensor& blockSizes, int32_t mySize,
+                                                const c10::optional<at::Tensor>& weights)
 {
     if (mySize == 0) {
         throw std::runtime_error("MySize is zero");
@@ -194,8 +189,8 @@ ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const
      static_cast<int32_t>(lengthSize), static_cast<int32_t>(indicesSize), static_cast<int32_t>(mySize),
      static_cast<int32_t>(B), static_cast<int32_t>(isInt32), static_cast<int32_t>(weights.has_value()),
      static_cast<int32_t>(sequence), static_cast<int32_t>(bucketizePos), static_cast<int32_t>(isSmall),
-     static_cast<int32_t>(newLengthsTotalSize), static_cast<int32_t>(totalBlocksForCusum),
-     mySizeDivisorMagic, mySizeDivisorShift);
+     static_cast<int32_t>(newLengthsTotalSize), static_cast<int32_t>(totalBlocksForCusum), mySizeDivisorMagic,
+     mySizeDivisorShift);
 
     return std::make_tuple(newLengths, newIndices, newWeights, newPos, unbucketizePermute);
 }
@@ -235,8 +230,8 @@ torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor&
     uint32_t remainderBlocks = totalBlocks % coreNum;
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
 
-    ACLRT_LAUNCH_KERNEL(gather_dim0)(coreNum, stream, inData, indicesData, outData,
-        dim, outLen, blocksPerCore, remainderBlocks, THREAD_NUM);
+    ACLRT_LAUNCH_KERNEL(gather_dim0)(coreNum, stream, inData, indicesData, outData, dim, outLen, blocksPerCore,
+                                     remainderBlocks, THREAD_NUM);
     return output;
 }
 
@@ -268,11 +263,11 @@ torch::Tensor load_from_pointer_imp(const torch::Tensor& pointers, torch::Tensor
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
 
     if (outLen < UINT32_MAX) {
-        ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen,
-            blocksPerCore, remainderBlocks, THREAD_NUM, 1);
+        ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen, blocksPerCore,
+                                               remainderBlocks, THREAD_NUM, 1);
     } else {
-        ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen,
-            blocksPerCore, remainderBlocks, THREAD_NUM, 0);
+        ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen, blocksPerCore,
+                                               remainderBlocks, THREAD_NUM, 0);
     }
 
     return output;
@@ -327,10 +322,14 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> hash_unique(const at::Tensor& key
 {
     at::Tensor cpuKey = key.to(at::kCPU).contiguous();
 
-    HashDeduplicator hashDeduplicator;
-    auto res = hashDeduplicator.deduplicate(cpuKey);
-    auto uniqueKeys = res.uniqueElements;
-    auto uniqueCounts = res.counts;
+    DedupResult res;
+    if (cpuKey.dtype() == torch::kInt64) {
+        HashDeduplicator<int64_t> hashDeduplicator;
+        res = hashDeduplicator.deduplicate(cpuKey);
+    } else {
+        HashDeduplicator<uint64_t> hashDeduplicator;
+        res = hashDeduplicator.deduplicate(cpuKey);
+    }
 
     int64_t uniqueSize = res.uniqueElements.size(0);
     int64_t uniqueByteSize = uniqueSize * sizeof(int64_t);
@@ -338,8 +337,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> hash_unique(const at::Tensor& key
     int64_t reverseByteSize = reverseSize * sizeof(int64_t);
 
     at::Tensor uniqueKeysNpu = at::empty({uniqueSize}, key.options());
-    at::Tensor reverseIndicesNpu = at::empty({reverseSize}, key.options());
-    at::Tensor countsNpu = at::empty({uniqueSize}, key.options());
+    at::Tensor reverseIndicesNpu = at::empty({reverseSize}, key.options().dtype(torch::kInt64));
+    at::Tensor countsNpu = at::empty({uniqueSize}, key.options().dtype(torch::kInt64));
 
     aclrtMemcpy(uniqueKeysNpu.data_ptr(), uniqueByteSize, res.uniqueElements.data_ptr(), uniqueByteSize,
                 ACL_MEMCPY_HOST_TO_DEVICE);
@@ -359,7 +358,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> sort_unique_op(const at::Tensor& 
 std::tuple<at::Tensor, at::Tensor, at::Tensor> unique_op_npu(const at::Tensor& keys)
 {
     const at::OptionalDeviceGuard guard(at::device_of(keys));
-    TORCH_CHECK(keys.dtype() == torch::kInt64, "unique_op only supports int64 dtype for key");
+    TORCH_CHECK(keys.dtype() == torch::kInt64 || keys.dtype() == torch::kUInt64,
+                "unique_op only supports int64 (kInt64) or uint64 (kUInt64)");
     TORCH_CHECK(keys.dim() == 1, "unique_op only supports 1-dimensional tensor for key, but got ", keys.dim(),
                 "-dimensional tensor");
 
@@ -446,7 +446,8 @@ void get_new_length_and_offsets_npu(const at::Tensor& dUniqueOffsets, const at::
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> segmented_unique_op(
     const at::Tensor& keys, const at::Tensor& segmentRange)
 {
-    TORCH_CHECK(keys.dtype() == torch::kInt64, "segmented_unique_op_npu only supports int64 dtype for keys");
+    TORCH_CHECK(keys.dtype() == torch::kInt64 || keys.dtype() == torch::kUInt64,
+                "segmented_unique_op_npu only supports int64 or uint64 dtype for keys");
     int64_t keysNum = keys.size(0);
 
     at::Tensor hSegmentRange =
@@ -667,10 +668,9 @@ void find_pointers_with_scores(std::shared_ptr<dyn_emb::DynamicVariableBase> tab
     }
 }
 
-void lookup_forward(const at::Tensor& src, const at::Tensor& dst,
-                    const at::Tensor& offset, const at::Tensor& inverse,
-                    int32_t combiner, int32_t total_dims, int32_t accum_dims, int32_t ev_size,
-                    int32_t num_vec, int32_t batch_size)
+void lookup_forward(const at::Tensor& src, const at::Tensor& dst, const at::Tensor& offset, const at::Tensor& inverse,
+                    int32_t combiner, int32_t total_dims, int32_t accum_dims, int32_t ev_size, int32_t num_vec,
+                    int32_t batch_size)
 {
     // data check
     TORCH_CHECK(offset.dtype() == inverse.dtype(), "offset and inverse must have the same dtype");
@@ -702,11 +702,10 @@ void lookup_forward(const at::Tensor& src, const at::Tensor& dst,
 
     // run
     auto acl_stream = c10_npu::getCurrentNPUStream().stream(true);
-    ACLRT_LAUNCH_KERNEL(pooling_embeddings)(core_num, acl_stream, src_data, dst_data, offset_data, inverse_data,
-                                        combiner, total_dims, accum_dims, ev_size, num_vec, batch_size,
-                                        total_blocks, blocks_per_core, remainder_blocks, isSmall,
-                                        static_cast<uint32_t>(src_type), static_cast<uint32_t>(dst_type),
-                                        static_cast<uint32_t>(offset_type));
+    ACLRT_LAUNCH_KERNEL(pooling_embeddings)(
+        core_num, acl_stream, src_data, dst_data, offset_data, inverse_data, combiner, total_dims, accum_dims, ev_size,
+        num_vec, batch_size, total_blocks, blocks_per_core, remainder_blocks, isSmall, static_cast<uint32_t>(src_type),
+        static_cast<uint32_t>(dst_type), static_cast<uint32_t>(offset_type));
 }
 
 class DeviceTimestamp {
@@ -1040,10 +1039,8 @@ void bind_dyn_emb_op(py::module& m)
           py::arg("reverse_idx"), py::arg("d_unique_nums"), py::arg("d_unique_offsets"), py::arg("unique_idx"),
           py::arg("new_offsets"), py::arg("new_lengths"));
 
-    m.def("lookup_forward", &lookup_forward, "lookup_forward",
-          py::arg("src"), py::arg("dst"), py::arg("offset"),
-          py::arg("inverse"), py::arg("combiner"), py::arg("total_dims"),
-          py::arg("accum_dims"), py::arg("ev_size"), py::arg("num_vec"),
-          py::arg("batch_size"));
+    m.def("lookup_forward", &lookup_forward, "lookup_forward", py::arg("src"), py::arg("dst"), py::arg("offset"),
+          py::arg("inverse"), py::arg("combiner"), py::arg("total_dims"), py::arg("accum_dims"), py::arg("ev_size"),
+          py::arg("num_vec"), py::arg("batch_size"));
 }
 }  // namespace dyn_emb

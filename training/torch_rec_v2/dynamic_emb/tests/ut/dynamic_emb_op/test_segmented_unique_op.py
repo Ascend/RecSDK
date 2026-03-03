@@ -28,7 +28,7 @@ import dynamic_emb_extensions
 logging.basicConfig(level=logging.NOTSET)
 
 
-@pytest.mark.parametrize("dtype", [torch.int64])
+@pytest.mark.parametrize("dtype", [torch.int64, torch.uint64])
 @pytest.mark.parametrize("device", ["npu:0"])
 @pytest.mark.parametrize("length", [10, 100, 1000, 10000])
 @pytest.mark.parametrize("range_max", [5, 50, 100])
@@ -44,7 +44,12 @@ def test_segmented_unique_op_consistency(dtype, device, length, range_max, segme
     device_id = int(device.split(":")[-1])
 
     # 1. 生成测试数据
-    keys = torch.randint(0, range_max, (length,), dtype=dtype, device=device)
+    if dtype == torch.uint64:
+        keys = torch.randint(0, range_max, (length,), dtype=torch.int64, device=device)
+        keys = keys.to(torch.uint64)
+    else:
+        keys = torch.randint(0, range_max, (length,), dtype=dtype, device=device)
+
     segment_size = length // segment_num
     segment_offsets = [i * segment_size for i in range(segment_num + 1)]
     segment_offsets[-1] = length
@@ -61,7 +66,10 @@ def test_segmented_unique_op_consistency(dtype, device, length, range_max, segme
     segment_range_cpu = segment_range.cpu()
 
     # 校验 1: 验证 inverse_idx 的正确性
-    restored_keys_cpu = unique_keys_cpu[inverse_idx_cpu]
+    restored_keys_cpu = torch.empty_like(keys_cpu)
+    for i, idx in enumerate(inverse_idx_cpu):
+        restored_keys_cpu[i] = unique_keys_cpu[idx]
+
     # 每段还原后的数据与原始数据对比
     restore_match = torch.equal(restored_keys_cpu, keys_cpu)
 
@@ -118,9 +126,8 @@ def test_segmented_unique_op_consistency(dtype, device, length, range_max, segme
                 )
 
                 seg_unique_keys = unique_keys_cpu[
-                    h_unique_indices_table_range_cpu[seg_idx]:h_unique_indices_table_range_cpu[seg_idx + 1]
+                    h_unique_indices_table_range_cpu[seg_idx]: h_unique_indices_table_range_cpu[seg_idx + 1]
                 ]
-
                 logging.error(f"    This index belongs to segment {seg_idx}.")
                 logging.error(f"    Segment {seg_idx} unique keys: {seg_unique_keys}")
 
