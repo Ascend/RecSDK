@@ -31,33 +31,33 @@ struct KernelEntryParams {
     GM_ADDR workspace;
 };
 
-template <typename IndexT>
+template <typename OffsetT, typename IndexT>
 __aicore__ inline void RunSimtKernel(
     const KernelEntryParams& p,
     const BlockBucketizeSparseFeaturesTilingData& td)
 {
     __gm__ uint8_t* wsBase = reinterpret_cast<__gm__ uint8_t*>(GetUserWorkspace(p.workspace));
-    __gm__ IndexT* offsets = reinterpret_cast<__gm__ IndexT*>(wsBase + td.offsetsOffset);
-    __gm__ IndexT* newOffsets = reinterpret_cast<__gm__ IndexT*>(wsBase + td.newOffsetsOffset);
-    __gm__ IndexT* writeOffsets = reinterpret_cast<__gm__ IndexT*>(wsBase + td.writeOffsetsOffset);
-    __gm__ IndexT* batchSizeOffsets = (td.batchSizeOffsetsOffset != 0) ?
-        reinterpret_cast<__gm__ IndexT*>(wsBase + td.batchSizeOffsetsOffset) : nullptr;
+    __gm__ OffsetT* offsets = reinterpret_cast<__gm__ OffsetT*>(wsBase + td.offsetsOffset);
+    __gm__ OffsetT* newOffsets = reinterpret_cast<__gm__ OffsetT*>(wsBase + td.newOffsetsOffset);
+    __gm__ OffsetT* writeOffsets = reinterpret_cast<__gm__ OffsetT*>(wsBase + td.writeOffsetsOffset);
+    __gm__ OffsetT* batchSizeOffsets = (td.batchSizeOffsetsOffset != 0) ?
+        reinterpret_cast<__gm__ OffsetT*>(wsBase + td.batchSizeOffsetsOffset) : nullptr;
     __gm__ uint64_t* posPtrs = (td.posPtrsOffset != 0) ?
         reinterpret_cast<__gm__ uint64_t*>(wsBase + td.posPtrsOffset) : nullptr;
     __gm__ int64_t* posLens = (td.posLensOffset != 0) ?
         reinterpret_cast<__gm__ int64_t*>(wsBase + td.posLensOffset) : nullptr;
-    __gm__ IndexT* blockSums = reinterpret_cast<__gm__ IndexT*>(wsBase + td.blockSumsOffset);
+    __gm__ OffsetT* blockSums = reinterpret_cast<__gm__ OffsetT*>(wsBase + td.blockSumsOffset);
 
-    typename BlockBucketizeSparseFeaturesKernel<IndexT>::KernelArgs args{
-        reinterpret_cast<__gm__ IndexT*>(p.lengths),
+    typename BlockBucketizeSparseFeaturesKernel<OffsetT, IndexT>::KernelArgs args{
+        reinterpret_cast<__gm__ OffsetT*>(p.lengths),
         reinterpret_cast<__gm__ IndexT*>(p.indices),
         reinterpret_cast<__gm__ IndexT*>(p.blockSizes),
-        reinterpret_cast<__gm__ IndexT*>(p.batchSizePerFeature),
+        reinterpret_cast<__gm__ OffsetT*>(p.batchSizePerFeature),
         reinterpret_cast<__gm__ IndexT*>(p.totalNumBlocks),
         reinterpret_cast<__gm__ void*>(p.blockBucketizePos),
         posPtrs,
         posLens,
-        reinterpret_cast<__gm__ IndexT*>(p.newLengths),
+        reinterpret_cast<__gm__ OffsetT*>(p.newLengths),
         reinterpret_cast<__gm__ IndexT*>(p.newIndices),
         reinterpret_cast<__gm__ IndexT*>(p.unbucketizePermute),
         reinterpret_cast<__gm__ float*>(p.weights),
@@ -85,7 +85,7 @@ __aicore__ inline void RunSimtKernel(
         td.mySizeDivMagic,
         td.mySizeDivShift};
 
-    BlockBucketizeSparseFeaturesKernel<IndexT> kernel(args);
+    BlockBucketizeSparseFeaturesKernel<OffsetT, IndexT> kernel(args);
     kernel.Process();
 }
 
@@ -115,9 +115,5 @@ extern "C" __global__ __aicore__ void block_bucketize_sparse_features(
         new_lengths, new_indices, new_weights, new_pos,
         unbucketize_permute, workspace};
 
-    if (tilingData.isInt32) {
-        RunSimtKernel<int32_t>(params, tilingData);
-    } else {
-        RunSimtKernel<int64_t>(params, tilingData);
-    }
+    RunSimtKernel<DTYPE_LENGTHS, DTYPE_INDICES>(params, tilingData);
 }

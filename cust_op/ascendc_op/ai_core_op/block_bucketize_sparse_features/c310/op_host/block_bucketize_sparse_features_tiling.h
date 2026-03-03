@@ -28,7 +28,6 @@ BEGIN_TILING_DATA_DEF(BlockBucketizeSparseFeaturesTilingData)
     TILING_DATA_FIELD_DEF(int64_t, mySize);
     TILING_DATA_FIELD_DEF(int64_t, newLengthsSize);
     TILING_DATA_FIELD_DEF(int64_t, maxBatchSize);
-    TILING_DATA_FIELD_DEF(bool, isInt32);
     TILING_DATA_FIELD_DEF(bool, enableSequence);
     TILING_DATA_FIELD_DEF(bool, enableWeights);
     TILING_DATA_FIELD_DEF(bool, enableBucketizePos);

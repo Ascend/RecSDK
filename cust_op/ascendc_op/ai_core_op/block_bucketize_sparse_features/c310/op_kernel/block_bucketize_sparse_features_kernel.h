@@ -29,29 +29,29 @@ See the License for the specific language governing permissions and
 
 using namespace AscendC;
 
-template <typename IndexT>
+template <typename OffsetT, typename IndexT>
 class BlockBucketizeSparseFeaturesKernel {
 public:
     struct KernelArgs {
-        __gm__ IndexT* lengths;
+        __gm__ OffsetT* lengths;
         __gm__ IndexT* indices;
         __gm__ IndexT* blockSizes;
-        __gm__ IndexT* batchSizePerFeature;
+        __gm__ OffsetT* batchSizePerFeature;
         __gm__ IndexT* totalNumBlocks;
         __gm__ void* blockBucketizePosList;
         __gm__ uint64_t* blockBucketizePosPtrs;
         __gm__ int64_t* blockBucketizePosLens;
-        __gm__ IndexT* newLengths;
+        __gm__ OffsetT* newLengths;
         __gm__ IndexT* newIndices;
         __gm__ IndexT* unbucketizePermute;
         __gm__ float* weights;
         __gm__ float* newWeights;
         __gm__ IndexT* newPos;
-        __gm__ IndexT* offsets;
-        __gm__ IndexT* newOffsets;
-        __gm__ IndexT* writeOffsets;
-        __gm__ IndexT* batchSizeOffsets;
-        __gm__ IndexT* blockSums;
+        __gm__ OffsetT* offsets;
+        __gm__ OffsetT* newOffsets;
+        __gm__ OffsetT* writeOffsets;
+        __gm__ OffsetT* batchSizeOffsets;
+        __gm__ OffsetT* blockSums;
         int64_t lengthsSize;
         int64_t indicesSize;
         int64_t numFeatures;
@@ -108,17 +108,17 @@ public:
          mySizeDivShift(args.mySizeDivShift)
     {
         // UB空间分配：取 cumsum 和 pooled scatter 所需字节数的较大值
-        // cumsum 阶段使用 IndexT 类型元素
+        // cumsum 阶段使用 OffsetT 类型元素
         const int64_t cumsumUbBytes = (static_cast<int64_t>(MAX_THREADS_PER_BLOCK) + 1) *
-                                      static_cast<int64_t>(sizeof(IndexT));
+                                      static_cast<int64_t>(sizeof(OffsetT));
         // pooled scatter 阶段使用 int32_t 计数器（UB asc_atomic_add 仅支持 int32_t）
         const int64_t pooledWarps = static_cast<int64_t>(WARPS_PER_BLOCK);
         const int64_t pooledUbBytes = pooledWarps * static_cast<int64_t>(args.mySize) *
                                       static_cast<int64_t>(sizeof(int32_t));
         const int64_t ubBytes = (cumsumUbBytes > pooledUbBytes) ? cumsumUbBytes : pooledUbBytes;
         pipe.InitBuffer(ubBuf, static_cast<int32_t>(ubBytes));
-        ubTensor = ubBuf.Get<IndexT>();
-        ubPtr = reinterpret_cast<__ubuf__ IndexT*>(ubTensor.GetPhyAddr());
+        ubTensor = ubBuf.Get<OffsetT>();
+        ubPtr = reinterpret_cast<__ubuf__ OffsetT*>(ubTensor.GetPhyAddr());
     }
 
     __aicore__ inline void Process()
@@ -240,10 +240,10 @@ public:
     }
 private:
     // 统一 cumsum 入口：对 input[0..totalLength-1] 做前缀和写入 output，blockSums 复用共享 buffer
-    __aicore__ inline void RunCumsum(__gm__ IndexT* input,
-                                     __gm__ IndexT* output,
-                                     __gm__ IndexT* blockSumsPtr,
-                                     __ubuf__ IndexT* ubMem,
+    __aicore__ inline void RunCumsum(__gm__ OffsetT* input,
+                                     __gm__ OffsetT* output,
+                                     __gm__ OffsetT* blockSumsPtr,
+                                     __ubuf__ OffsetT* ubMem,
                                      int64_t totalLength)
     {
         if (totalLength <= 0) {
@@ -251,7 +251,7 @@ private:
         }
         const int32_t coreNum = static_cast<int32_t>(AscendC::GetBlockNum());
         const int32_t coreId = static_cast<int32_t>(AscendC::GetBlockIdx());
-        const bool isInt32 = (sizeof(IndexT) == 4);
+        const bool isInt32 = (sizeof(OffsetT) == 4);
         const int64_t smallThreshold = isInt32 ? (24 * CUMSUM_THREADS_PER_BLOCK) : (44 * CUMSUM_THREADS_PER_BLOCK);
         const bool isSmall = (totalLength <= smallThreshold);
         const int64_t perBlockCapacity = isSmall ?
@@ -266,12 +266,12 @@ private:
 
         const int32_t totalLength32 = static_cast<int32_t>(totalLength > 0 ? totalLength : 0);
         if (isSmall && totalBlocks <= coreNum) {
-            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtSmallDataCompute<IndexT>>(
+            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtSmallDataCompute<OffsetT>>(
                 AscendC::Simt::Dim3{CUMSUM_THREADS_PER_BLOCK, 1, 1},
                 input, output, blockSumsPtr, ubMem, totalLength32, totalBlocks);
             AscendC::SyncAll();
             if (totalBlocks > 1) {
-                AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtSmallDataUpdate<IndexT>>(
+                AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtSmallDataUpdate<OffsetT>>(
                     AscendC::Simt::Dim3{CUMSUM_THREADS_PER_BLOCK, 1, 1},
                     output, blockSumsPtr, totalLength32, totalBlocks);
             }
@@ -282,11 +282,11 @@ private:
                 coreId * blocksPerCore + (coreId < remainderBlocks ? coreId : remainderBlocks);
             const int32_t curBlocksCount = blocksPerCore + (coreId < remainderBlocks ? 1 : 0);
 
-            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtLargeDataCompute<IndexT>>(
+            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtLargeDataCompute<OffsetT>>(
                 AscendC::Simt::Dim3{CUMSUM_THREADS_PER_BLOCK, 1, 1},
                 input, output, blockSumsPtr, ubMem, totalLength32, totalBlocks, blockStartIdx, curBlocksCount);
             AscendC::SyncAll();
-            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtLargeDataUpdate<IndexT>>(
+            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtLargeDataUpdate<OffsetT>>(
                 AscendC::Simt::Dim3{CUMSUM_THREADS_PER_BLOCK, 1, 1},
                 output, blockSumsPtr, totalLength32, totalBlocks, blockStartIdx, curBlocksCount);
         }
@@ -365,25 +365,25 @@ private:
     static constexpr int64_t CACHE_LINE_ELEMS_64BIT = 8;  // 64 bytes / 8 bytes per element
     static constexpr int32_t CUMSUM_THREADS_PER_BLOCK = AsynchronousCompleteCumsumSimt::MAX_THREADS_PER_BLOCK;
 
-    __gm__ IndexT* lengths;
+    __gm__ OffsetT* lengths;
     __gm__ IndexT* indices;
     __gm__ IndexT* blockSizes;
-    __gm__ IndexT* batchSizePerFeature;
+    __gm__ OffsetT* batchSizePerFeature;
     __gm__ IndexT* totalNumBlocks;
     __gm__ void* blockBucketizePosList;
     __gm__ uint64_t* blockBucketizePosPtrs;
     __gm__ int64_t* blockBucketizePosLens;
-    __gm__ IndexT* newLengths;
+    __gm__ OffsetT* newLengths;
     __gm__ IndexT* newIndices;
     __gm__ IndexT* unbucketizePermute;
     __gm__ float* weights;
     __gm__ float* newWeights;
     __gm__ IndexT* newPos;
-    __gm__ IndexT* offsets;
-    __gm__ IndexT* newOffsets;
-    __gm__ IndexT* writeOffsets;
-    __gm__ IndexT* batchSizeOffsets;
-    __gm__ IndexT* blockSums;
+    __gm__ OffsetT* offsets;
+    __gm__ OffsetT* newOffsets;
+    __gm__ OffsetT* writeOffsets;
+    __gm__ OffsetT* batchSizeOffsets;
+    __gm__ OffsetT* blockSums;
     int64_t lengthsSize;
     int64_t indicesSize;
     int64_t numFeatures;
@@ -403,13 +403,13 @@ private:
 
     TPipe pipe;
     TBuf<TPosition::VECCALC> ubBuf;
-    LocalTensor<IndexT> ubTensor;
-    __ubuf__ IndexT* ubPtr;
+    LocalTensor<OffsetT> ubTensor;
+    __ubuf__ OffsetT* ubPtr;
 
     __aicore__ static inline int64_t ResolveFeatureIndexForRow(
         int64_t row,
         int64_t batchSize,
-        const __gm__ IndexT* batchSizeOffsets,
+        const __gm__ OffsetT* batchSizeOffsets,
         int64_t numFeatures,
         bool useBatchSizePerFeature)
     {
@@ -450,17 +450,17 @@ private:
     __simt_vf__ __aicore__ static LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtComputeNewLengthsUbAtomic(
         const __gm__ IndexT* blockSizes,
         const __gm__ IndexT* totalNumBlocks,
-        const __gm__ IndexT* offsets,
+        const __gm__ OffsetT* offsets,
         const __gm__ IndexT* indices,
-        __gm__ IndexT* newLengths,
-        __ubuf__ IndexT* ubPtr,
+        __gm__ OffsetT* newLengths,
+        __ubuf__ OffsetT* ubPtr,
         int64_t lengthsSize,
         int64_t batchSize,
         int64_t mySize,
         int64_t rowBegin,
         int64_t rowEnd,
         bool totalNumBlocksEnabled,
-        const __gm__ IndexT* batchSizeOffsets,
+        const __gm__ OffsetT* batchSizeOffsets,
         int64_t numFeatures,
         bool batchSizePerFeatureEnabled,
         const __gm__ uint64_t* blockBucketizePosPtrs,
@@ -497,7 +497,7 @@ private:
                 rowIdx, batchSize, batchSizeOffsets, numFeatures, batchSizePerFeatureEnabled);
             if (featureIndex < 0 || featureIndex >= numFeatures) {
                 for (int64_t b = laneId; b < mySize; b += WARP_SIZE) {
-                    newLengths[b * lengthsSize + rowIdx] = static_cast<IndexT>(0);
+                    newLengths[b * lengthsSize + rowIdx] = static_cast<OffsetT>(0);
                 }
                 continue;
             }
@@ -511,7 +511,7 @@ private:
             const IndexT blkSizeVal = blockSizes[featureIndex];
             if (blkSizeVal < 0) {
                 for (int64_t b = laneId; b < mySize; b += WARP_SIZE) {
-                    newLengths[b * lengthsSize + rowIdx] = static_cast<IndexT>(0);
+                    newLengths[b * lengthsSize + rowIdx] = static_cast<OffsetT>(0);
                 }
                 continue;
             }
@@ -573,7 +573,7 @@ private:
 
             // 将 UB 计数器写回 newLengths
             for (int64_t b = laneId; b < mySize; b += WARP_SIZE) {
-                newLengths[b * lengthsSize + rowIdx] = static_cast<IndexT>(ubCounters[b]);
+                newLengths[b * lengthsSize + rowIdx] = static_cast<OffsetT>(ubCounters[b]);
             }
         }
     }
@@ -581,14 +581,14 @@ private:
     __simt_vf__ __aicore__ static LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtScatterNewIndicesPooledUbAtomic(
         const __gm__ IndexT* blockSizes,
         const __gm__ IndexT* totalNumBlocks,
-        const __gm__ IndexT* offsets,
+        const __gm__ OffsetT* offsets,
         const __gm__ IndexT* indices,
         const __gm__ float* weights,
         __gm__ float* newWeights,
         __gm__ IndexT* newPos,
-        const __gm__ IndexT* newOffsets,
+        const __gm__ OffsetT* newOffsets,
         __gm__ IndexT* newIndices,
-        __ubuf__ IndexT* ubPtr,
+        __ubuf__ OffsetT* ubPtr,
         int64_t lengthsSize,
         int64_t batchSize,
         int64_t mySize,
@@ -599,7 +599,7 @@ private:
         bool bucketizePosEnabled,
         bool keepOrigIdxEnabled,
         bool totalNumBlocksEnabled,
-        const __gm__ IndexT* batchSizeOffsets,
+        const __gm__ OffsetT* batchSizeOffsets,
         int64_t numFeatures,
         bool batchSizePerFeatureEnabled,
         const __gm__ uint64_t* blockBucketizePosPtrs,
@@ -717,9 +717,10 @@ private:
                     }
                 }
                 const int32_t relativePos = asc_atomic_add(&ubCounters[bucket], 1);
-                const IndexT baseOffset = newOffsets[static_cast<int64_t>(bucket) * lengthsSize + rowIdx];
-                const IndexT writePos = baseOffset + static_cast<IndexT>(relativePos);
-                if (static_cast<int64_t>(writePos) < indicesSize) {
+                const int64_t baseOffset =
+                    static_cast<int64_t>(newOffsets[static_cast<int64_t>(bucket) * lengthsSize + rowIdx]);
+                const int64_t writePos = baseOffset + static_cast<int64_t>(relativePos);
+                if (writePos < indicesSize) {
                     newIndices[writePos] = finalIndex;
                     if (writeWeights) {
                         newWeights[writePos] = weights[i];
@@ -735,12 +736,12 @@ private:
     __simt_vf__ __aicore__ static LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtScatterNewIndicesRowsAtomic(
         const __gm__ IndexT* blockSizes,
         const __gm__ IndexT* totalNumBlocks,
-        const __gm__ IndexT* offsets,
+        const __gm__ OffsetT* offsets,
         const __gm__ IndexT* indices,
         const __gm__ float* weights,
         __gm__ float* newWeights,
         __gm__ IndexT* newPos,
-        __gm__ IndexT* writeOffsets,
+        __gm__ OffsetT* writeOffsets,
         __gm__ IndexT* newIndices,
         __gm__ IndexT* unbucketizePermute,
         int64_t lengthsSize,
@@ -754,7 +755,7 @@ private:
         bool bucketizePosEnabled,
         bool keepOrigIdxEnabled,
         bool totalNumBlocksEnabled,
-        const __gm__ IndexT* batchSizeOffsets,
+        const __gm__ OffsetT* batchSizeOffsets,
         int64_t numFeatures,
         bool batchSizePerFeatureEnabled,
         const __gm__ uint64_t* blockBucketizePosPtrs,
@@ -766,7 +767,7 @@ private:
             return;
         }
         using UIndexT = std::make_unsigned_t<IndexT>;
-        IndexT writeCursor;
+        OffsetT writeCursor;
         const int32_t blockDim = AscendC::Simt::GetThreadNum<0>();
         const int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
         const IndexT mySizeUnsigned = static_cast<IndexT>(static_cast<int64_t>(mySize));
@@ -867,16 +868,17 @@ private:
                     L1CacheType::NON_CACHEABLE>(writeOffsets + slot);
                 __stg<ST_L2CacheType::L2_CACHE_HINT_NORMAL_FV,
                     L1CacheType::NON_CACHEABLE>(writeOffsets + slot, writeCursor + 1);
-                if (static_cast<int64_t>(writeCursor) < indicesSize) {
-                    newIndices[writeCursor] = finalIndex;
+                const int64_t writeIdx = static_cast<int64_t>(writeCursor);
+                if (writeIdx < indicesSize) {
+                    newIndices[writeIdx] = finalIndex;
                     if (writeUnbucketizePermute) {
-                        unbucketizePermute[i] = writeCursor;
+                        unbucketizePermute[i] = static_cast<IndexT>(writeIdx);
                     }
                     if (writeWeights) {
-                        newWeights[writeCursor] = weights[i];
+                        newWeights[writeIdx] = weights[i];
                     }
                     if (writePositions) {
-                        newPos[writeCursor] = static_cast<IndexT>(i - rowStart);
+                        newPos[writeIdx] = static_cast<IndexT>(i - rowStart);
                     }
                 }
             }

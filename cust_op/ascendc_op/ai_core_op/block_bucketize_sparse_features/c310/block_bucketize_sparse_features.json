@@ -6,76 +6,76 @@
       {
         "name": "lengths",
         "param_type": "required",
-        "format": ["ND", "ND"],
-        "type": ["int32", "int64"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int32", "int64", "int64"]
       },
       {
         "name": "indices",
         "param_type": "required",
-        "format": ["ND", "ND"],
-        "type": ["int32", "int64"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int64", "int32", "int64"]
       },
       {
         "name": "block_sizes",
         "param_type": "required",
-        "format": ["ND", "ND"],
-        "type": ["int32", "int64"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int64", "int32", "int64"]
       },
       {
         "name": "weights",
         "param_type": "optional",
-        "format": ["ND", "ND"],
-        "type": ["fp32", "fp32"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["fp32", "fp32", "fp32", "fp32"]
       },
       {
         "name": "batch_size_per_feature",
         "param_type": "optional",
-        "format": ["ND", "ND"],
-        "type": ["int32", "int64"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int32", "int64", "int64"]
       },
       {
         "name": "total_num_blocks",
         "param_type": "optional",
-        "format": ["ND", "ND"],
-        "type": ["int32", "int64"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int64", "int32", "int64"]
       },
       {
         "name": "block_bucketize_pos_list",
         "param_type": "dynamic",
-        "format": ["ND", "ND"],
-        "type": ["int32", "int64"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int64", "int32", "int64"]
       }
     ],
     "output_desc": [
       {
         "name": "new_lengths",
         "param_type": "required",
-        "format": ["ND", "ND"],
-        "type": ["int32", "int64"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int32", "int64", "int64"]
       },
       {
         "name": "new_indices",
         "param_type": "required",
-        "format": ["ND", "ND"],
-        "type": ["int32", "int64"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int64", "int32", "int64"]
       },
       {
         "name": "new_weights",
         "param_type": "optional",
-        "format": ["ND", "ND"],
-        "type": ["fp32", "fp32"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["fp32", "fp32", "fp32", "fp32"]
       },
       {
         "name": "new_pos",
         "param_type": "optional",
-        "format": ["ND", "ND"],
-        "type": ["int32", "int64"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int64", "int32", "int64"]
       },
       {
         "name": "unbucketize_permute",
         "param_type": "optional",
-        "format": ["ND", "ND"],
-        "type": ["int32", "int64"]
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int64", "int32", "int64"]
       }
     ],
     "attr": [

@@ -102,6 +102,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("blockSizesShape", context->GetInputShape(INPUT_BLOCK_SIZES_INDEX), return ge::GRAPH_FAILED);
     const auto* totalNumBlocksShape = context->GetInputShape(INPUT_TOTAL_NUM_BLOCKS_INDEX);
     const auto* batchSizePerFeatureShape = context->GetInputShape(INPUT_BATCH_SIZE_PER_FEATURE_INDEX);
+    const auto* posTensorShape = context->GetInputShape(INPUT_BLOCK_BUCKETIZE_POS_INDEX);
     OPS_LOG_E_IF_NULL("lengthsTensor", context->GetInputTensor(INPUT_LENGTHS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("indicesTensor", context->GetInputTensor(INPUT_INDICES_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("blockSizesTensor", context->GetInputTensor(INPUT_BLOCK_SIZES_INDEX), return ge::GRAPH_FAILED);
@@ -158,8 +159,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         OPS_LOG_E("[ERROR]", "max_B must be positive when batch_size_per_feature is provided"),
             return ge::GRAPH_FAILED);
 
-    OPS_CHECK(lengthsType != indicesType || lengthsType != blockSizesType,
-        OPS_LOG_E("[ERROR]", "lengths/indices/block_sizes must share dtype"), return ge::GRAPH_FAILED);
+    OPS_CHECK(blockSizesType != indicesType,
+        OPS_LOG_E("[ERROR]", "block_sizes dtype must match indices"), return ge::GRAPH_FAILED);
     if (enableBatchSizePerFeature) {
         OPS_LOG_E_IF_NULL("batch_size_per_feature Tensor", batchSizePerFeatureTensor, return ge::GRAPH_FAILED);
         OPS_CHECK(batchSizePerFeatureTensor->GetDataType() != lengthsType,
@@ -173,24 +174,30 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     size_t* workspace = context->GetWorkspaceSizes(1);
     OPS_LOG_E_IF_NULL("workspace", workspace, return ge::GRAPH_FAILED);
     size_t systemWorkspaceSize = ascendPlatform.GetLibApiWorkSpaceSize();
-    const bool isInt32 = (lengthsType == ge::DT_INT32);
-    const uint32_t elementSize = isInt32 ? sizeof(int32_t) : sizeof(int64_t);
-    const bool hasBucketizePosList = true;
+    const bool isOffsetInt32 = (lengthsType == ge::DT_INT32);
+    const bool isIndexInt32 = (indicesType == ge::DT_INT32);
+    const uint32_t offsetElementSize = isOffsetInt32 ? sizeof(int32_t) : sizeof(int64_t);
+    const uint32_t indexElementSize = isIndexInt32 ? sizeof(int32_t) : sizeof(int64_t);
+    bool hasBucketizePosList = false;
+    if (posTensorShape != nullptr) {
+        const auto posStorageShape = posTensorShape->GetStorageShape();
+        hasBucketizePosList = (posStorageShape.GetShapeSize() > 0);
+    }
     constexpr uint64_t ALIGN64 = 64;
 
-    const uint64_t offsetsSize = static_cast<uint64_t>(lengthsSize + 1) * elementSize;
-    const uint64_t newOffsetsSize = static_cast<uint64_t>(newLengthsSize + 1) * elementSize;
-    const uint64_t writeOffsetsSize = static_cast<uint64_t>(newLengthsSize) * elementSize;
+    const uint64_t offsetsSize = static_cast<uint64_t>(lengthsSize + 1) * offsetElementSize;
+    const uint64_t newOffsetsSize = static_cast<uint64_t>(newLengthsSize + 1) * offsetElementSize;
+    const uint64_t writeOffsetsSize = static_cast<uint64_t>(newLengthsSize) * offsetElementSize;
     const uint64_t batchSizeOffsetsSize = enableBatchSizePerFeature ?
-        static_cast<uint64_t>(numFeatures + 1) * elementSize : 0;
+        static_cast<uint64_t>(numFeatures + 1) * offsetElementSize : 0;
     const uint64_t posPtrsSize = hasBucketizePosList ?
         static_cast<uint64_t>(numFeatures) * sizeof(uint64_t) : 0;
     const uint64_t posLensSize = hasBucketizePosList ?
         static_cast<uint64_t>(numFeatures) * sizeof(int64_t) : 0;
 
-    const int64_t totalBlocksForLengths = ComputeTotalBlocks(lengthsSize, isInt32);
-    const int64_t totalBlocksForBatchSize = ComputeTotalBlocks(numFeatures, isInt32);
-    const int64_t totalBlocksForNewLengths = ComputeTotalBlocks(newLengthsSize, isInt32);
+    const int64_t totalBlocksForLengths = ComputeTotalBlocks(lengthsSize, isOffsetInt32);
+    const int64_t totalBlocksForBatchSize = ComputeTotalBlocks(numFeatures, isOffsetInt32);
+    const int64_t totalBlocksForNewLengths = ComputeTotalBlocks(newLengthsSize, isOffsetInt32);
 
     // kernel 使用 512 threads / 32 warp_size = 16 warps，每个 warp 处理一个 row
     constexpr int64_t KERNEL_WARPS_PER_BLOCK = 16;
@@ -261,7 +268,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_mySize(mySize);
     tiling.set_newLengthsSize(newLengthsSize);
     tiling.set_maxBatchSize(maxB);
-    tiling.set_isInt32(lengthsType == ge::DT_INT32);
     tiling.set_enableSequence(*sequencePtr);
     const auto* weightsTensor = context->GetInputTensor(INPUT_WEIGHTS_INDEX);
     tiling.set_enableWeights(weightsTensor != nullptr);
@@ -396,65 +402,53 @@ public:
     {
         this->Input("lengths")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT64, ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
         this->Input("indices")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataType({ge::DT_INT32, ge::DT_INT64, ge::DT_INT32, ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
         this->Input("block_sizes")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("indices", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Input("weights")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND});
         this->Input("batch_size_per_feature")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("lengths", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Input("total_num_blocks")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("indices", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Input("block_bucketize_pos_list")
             .ParamType(DYNAMIC)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("indices", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
 
         this->Output("new_lengths")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("lengths", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Output("new_indices")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("indices", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Output("new_weights")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("weights", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Output("new_pos")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("indices", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
         this->Output("unbucketize_permute")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+            .Follow("indices", FollowType::DTYPE)
+            .FormatList({ge::FORMAT_ND});
 
         this->Attr("my_size").Int();
         this->Attr("bucketize_pos").AttrType(OPTIONAL).Bool(false);
