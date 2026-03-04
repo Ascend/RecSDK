@@ -64,15 +64,21 @@ static bool TilingKeySetImpl(gert::TilingContext* context, InLinearSiluBackwardT
 
 static ge::graphStatus GetBlockMN(gert::TilingContext* context, uint32_t hiddenSize)
 {
-    uint32_t max_dim = hiddenSize / 4;
-    uint32_t blockK = MAX_BLOCK_DIM;
-    while (blockK >= MIN_X_DIM) {
-        if (max_dim % blockK == 0) {
-            break;
+    uint32_t embedDim = hiddenSize / 4;
+    if (hiddenSize <= MAX_BLOCK_DIM) {
+        return hiddenSize;
+    } else if (embedDim <= MAX_BLOCK_DIM) {
+        return embedDim;
+    } else {
+        uint32_t blockK = MAX_BLOCK_DIM;
+        while (blockK >= MIN_X_DIM) {
+            if (embedDim % blockK == 0) {
+                break;
+            }
+            blockK >>= 1;
         }
-        blockK >>= 1;
+        return blockK;
     }
-    return blockK;
 }
 
 static bool rangeCheck(gert::TilingContext* context,

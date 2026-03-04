@@ -17,14 +17,17 @@
 import itertools
 import logging
 import sysconfig
+import sys
+import os
 from dataclasses import dataclass
 
 import numpy as np
 import pytest
 import torch
 import torch.nn.functional as F
-from torch import Tensor
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../common')))
+from utils import compare_data_with_double_pole
 
 is_gpu = torch.cuda.is_available()
 if not is_gpu:
@@ -36,9 +39,6 @@ logging.getLogger().setLevel(logging.INFO)
 torch.manual_seed(321)
 np.random.seed(42)
 
-MARE_L1 = 5
-MERE_L1 = 1.5
-RMSE_L1 = 1.5
 
 DIM0_MAX = int(1e6)
 SUPPORT_DIM1_LIST = [512, 1024]
@@ -94,66 +94,6 @@ def norm_multiply_dropout_by_device(x_fused, u_fused, g_fused, b_fused):
         return norm_multiply_dropout_pytorch(x_fused, u_fused, g_fused, b_fused)
     else:
         return torch.ops.mxrec.norm_multiply_dropout(x_fused, u_fused, g_fused, b_fused, eps, 0.0)[0]
-
-
-def compare_mare(actual: Tensor, golden: Tensor):
-    """
-    计算最大相对误差
-    """
-    if actual.shape != golden.shape:
-        raise ValueError(f"actual shape {actual.shape} != golden shape {golden.shape}")
-    return (torch.abs(actual - actual) / (torch.abs(golden) + 1e-7)).max().item()
-
-
-def compare_mere(actual: Tensor, golden: Tensor):
-    """
-    计算平均相对误差
-    """
-    if actual.shape != golden.shape:
-        raise ValueError(f"actual shape {actual.shape} != golden shape {golden.shape}")
-    return torch.mean(torch.abs(actual - actual) / (torch.abs(golden) + 1e-7)).item()
-
-
-def compare_rmse(actual: Tensor, golden: Tensor):
-    """
-    计算均方根误差
-    """
-    if actual.shape != golden.shape:
-        raise ValueError(f"actual shape {actual.shape} != golden shape {golden.shape}")
-    squared_error = (actual - golden).pow(2)
-    mse = torch.mean(squared_error)
-    return torch.sqrt(mse).item()
-
-
-def compare_data_with_double_pole(tensor_msg: str, actual_fused: Tensor, actual_npu: Tensor, golden: Tensor):
-    """
-    双标杆对比
-    Args:
-        tensor_msg: 待比较tensor描述信息
-        actual_fused: NPU融合算子计算结果
-        actual_npu: NPU小算子计算结果
-        golden: CPU 高精度计算结果
-    """
-    if actual_fused.device.type != golden.device.type:
-        actual_fused = actual_fused.to(golden.device)
-    if actual_npu.device.type != golden.device.type:
-        actual_npu = actual_npu.to(golden.device)
-
-    mare_fused = compare_mare(actual_fused, golden)
-    mare_npu = compare_mare(actual_npu, golden)
-    mere_fused = compare_mere(actual_fused, golden)
-    mere_npu = compare_mere(actual_npu, golden)
-    rmse_fused = compare_rmse(actual_fused, golden)
-    rmse_npu = compare_rmse(actual_npu, golden)
-
-    logging.info(f"{tensor_msg}, mare_fused: {mare_fused}, mare_npu: {mare_npu}, mere_fused: {mere_fused},"
-                 f" mere_npu: {mere_npu}, rmse_fused: {rmse_fused}, rmse_npu: {rmse_npu}")
-    assert mare_fused / mare_npu <= MARE_L1 if mare_npu != 0.0 else (mare_fused - mare_npu) < 0.000001, \
-        "mare error ratio does not meet the requirement"
-    assert mere_fused / mere_npu <= MERE_L1 if mere_npu != 0.0 else (mere_fused - mere_npu) < 0.000001, \
-        "mere error ratio does not meet the requirement"
-    assert rmse_fused / rmse_npu <= RMSE_L1 if rmse_npu != 0.0 else (rmse_fused - rmse_npu) < 0.000001, \
-        "rmse error ratio does not meet the requirement"
 
 
 @pytest.mark.parametrize("dim0", [1, 1000, 2345, 4096 * 4, 262144, 927750, DIM0_MAX])

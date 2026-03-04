@@ -154,6 +154,6 @@ def test_in_linear_silu_backward_large(total_seqs, dim, data_type, is_diff_dim):
 if __name__ == "__main__":
     set_seed(0)
     test_in_linear_silu_backward(total_seqs=1024,
-                                 dim=(16, 64),
-                                 data_type=torch.float16,
-                                 is_diff_dim=True)
+                                dim=(16, 64),
+                                data_type=torch.float16,
+                                is_diff_dim=True)

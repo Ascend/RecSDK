@@ -193,7 +193,7 @@ def test_in_linear_silu_autograd():
     bias.requires_grad = True
     
     # 调用自动微分接口
-    outputs = torch.ops.mxrec.ln_linear_silu(x, weight, bias, split_list)
+    outputs = torch.ops.mxrec.in_linear_silu(x, weight, bias, split_list)
     user_out, value_out, query_out, key_out, linear_output_out = outputs
     
     # 计算损失并反向传播
@@ -210,5 +210,5 @@ if __name__ == "__main__":
 1. **数据类型一致性**: 输入张量x和weight的数据类型必须一致，支持float16、float32和bfloat16
 2. **形状限制**: 所有维度参数必须是16的倍数，并且满足n = sum(split_arg_list)和n = 4*k*倍数的要求
 3. **设备要求**: 所有输入张量必须在NPU设备上
-4. **梯度计算**: 只有调用`ln_linear_silu`接口时才会自动计算梯度
+4. **梯度计算**: 只有调用`in_linear_silu`接口时才会自动计算梯度
 5. **bias参数**: 前向传播时bias是必填参数，反向传播时bias是可选参数

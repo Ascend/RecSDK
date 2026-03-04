@@ -33,7 +33,8 @@ constexpr int COMPUTE_PIPE_NUM = 2;
 constexpr int DATA_ALIGN_BYTES = 32;
 constexpr int USE_QUEUE_NUM = 1;
 constexpr int VCORE_NUM_IN_ONE_AIC = 2;
-
+constexpr int KB_SIZE = 1024;
+constexpr int MAX_BLOCK_DIM = 512;
 #ifdef SUPPORT_950
 constexpr int VECTOR_SCORE_UB_SIZE = 16 * 1024;
 #else
@@ -147,17 +148,13 @@ public:
         coreNum = GetBlockNum() * VCORE_NUM_IN_ONE_AIC;
 
         int64_t oneBlockMidElem = blockK * blockM * COMPUTE_PIPE_NUM;
-        int64_t weightStart = coreNum * oneBlockMidElem;
-        int64_t weightOffset = blockK * dim;
-        int64_t xStart = weightStart + weightOffset * coreNum;
-        int64_t xOffset = blockM * dim;
-
-        SiluGradGt.SetGlobalBuffer(
+        siluGradGt.SetGlobalBuffer(
             reinterpret_cast<__gm__ xType*>(workspace) + oneBlockMidElem * GetBlockIdx(),
             oneBlockMidElem);
         pipe->InitBuffer(queIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
         pipe->InitBuffer(queOut, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
         pipe->InitBuffer(tmpBuff, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+        pipe->InitBuffer(transOut, USE_QUEUE_NUM, KB_SIZE * sizeof(float));
     }
 
     __aicore__ inline void Compute()
@@ -210,6 +207,15 @@ public:
         if constexpr (isVardim) {
             uint32_t srcOffset = (taskInfo.rowId * blockM + offset) * totalDim + taskInfo.kOffset;
             DataCopy(inputLt, uGradGt[srcOffset], inParams);
+        } else if (totalDim <= MAX_BLOCK_DIM) {
+            uint16_t srcGap = 0;
+            for (size_t uvqkId = 0; uvqkId < UVQK_NUM; uvqkId++) {
+                uint16_t dstGap = (UVQK_NUM - 1) * uDim * sizeof(xType) / DATA_ALIGN_BYTES;
+                uint16_t blockLen = uDim * sizeof(xType) / DATA_ALIGN_BYTES;
+                DataCopyParams uvqkParams = {inParams.blockCount, blockLen, srcGap, dstGap};
+                uint32_t srcOffset = (taskInfo.rowId * this->blockM + offset) * uDim;
+                DataCopy(inputLt[uDim * uvqkId], uvqkGt[uvqkId][srcOffset], uvqkParams);
+            }
         } else {
             // datacopyin uvqk
             uint16_t uvqkSrcGap = (splitList[taskInfo.uvqkId] - taskInfo.computeKSeqLen) * \
@@ -230,6 +236,9 @@ public:
         int32_t calcLen = 0;
         int32_t lines = 0;
         int32_t offset = 0;
+        auto biasLt = transOut.template AllocTensor<float>();
+        Duplicate<float>(biasLt, 0.0, KB_SIZE);
+
         while (totalLen > 0) {
             if (totalLen > (vectorScoreUbBlockElem)) {
                 lines = vectorScoreUbBlockElem / taskInfo.computeKSeqLen;
@@ -268,14 +277,14 @@ public:
 
                 Mul(srcLt, dstLt, tmpLt, calcLen);
 
-                GetBiasGrad(srcLt, dstLt, lines, taskInfo.computeKSeqLen, taskInfo.kOffset);
+                GetBiasGrad(srcLt, dstLt, biasLt, lines, taskInfo.computeKSeqLen, taskInfo.kOffset);
                 Wait_MTE3_V();
                 // cast-> xType
                 auto outLt = dstLt.template ReinterpretCast<xType>();
                 Cast(outLt, srcLt, RoundMode::CAST_RINT, calcLen);
                 queOut.template EnQue(outLt);
                 outLt = queOut.template DeQue<xType>();
-                DataCopy(SiluGradGt[siluOffset + offset * taskInfo.computeKSeqLen], outLt, calcLen);
+                DataCopy(siluGradGt[siluOffset + offset * taskInfo.computeKSeqLen], outLt, calcLen);
             } else {
                 LinearOutGradCalcFp32(inputLt, tmpLt, dstLt, calcLen);
                 Wait_V_MTE2();
@@ -284,10 +293,11 @@ public:
                 Wait_MTE2_V();
                 // x * d(sigmoid(x))/dx
                 Mul(dstLt, dstLt, inputLt, calcLen);
+                
                 Wait_V_MTE3();
 
-                DataCopy(SiluGradGt[siluOffset + offset * taskInfo.computeKSeqLen], dstLt, calcLen);
-                GetBiasGrad(dstLt, inputLt, lines, taskInfo.computeKSeqLen, taskInfo.kOffset);
+                DataCopy(siluGradGt[siluOffset + offset * taskInfo.computeKSeqLen], dstLt, calcLen);
+                GetBiasGrad(dstLt, inputLt, biasLt, lines, taskInfo.computeKSeqLen, taskInfo.kOffset);
             }
 
             offset += lines;
@@ -297,10 +307,16 @@ public:
             queOut.template FreeTensor(dstLt);
             tmpBuff.template FreeTensor(tmpLt);
         }
+        Wait_V_MTE3();
+        AscendC::SetAtomicAdd<float>();
+        DataCopy(biasGradGt[taskInfo.kOffset], biasLt, taskInfo.computeKSeqLen);
+        AscendC::SetAtomicNone();
+        transOut.template FreeTensor(biasLt);
     }
 
     __aicore__ inline void GetBiasGrad(const LocalTensor<float>& srcLt,
                                        const LocalTensor<float>& dstLt,
+                                       const LocalTensor<float>& biasLt,
                                        uint32_t row,
                                        uint32_t col,
                                        uint32_t kOffset)
@@ -312,10 +328,7 @@ public:
         constexpr bool srcInnerPad = false; // k轴切分时已对齐
         uint32_t srcShape[2] = {row, col}; // 对第一维进行reduce RA
         AscendC::ReduceSum<float, AscendC::Pattern::Reduce::RA, isReUse>(dstLt, srcLt, srcShape, srcInnerPad);
-        Wait_V_MTE3();
-        AscendC::SetAtomicAdd<float>();
-        DataCopy(biasGradGt[kOffset], dstLt, col);
-        AscendC::SetAtomicNone();
+        Add<float>(biasLt, biasLt, dstLt, col);
     }
 
     __aicore__ inline void LinearOutGradCalcFp32(const LocalTensor<float>& srcLt,
@@ -349,6 +362,7 @@ public:
         taskInfo.computeMSeqLen = (taskInfo.rowId + 1) * blockM < this->seqLen ? blockM :
                              this->seqLen - taskInfo.rowId * blockM;
         taskInfo.computeKSeqLen = blockK;
+        taskInfo.isFirst = 1;
     }
 
     __aicore__ inline void UpdateTaskInfo(uint32_t taskId)
@@ -357,6 +371,7 @@ public:
         int32_t currTaskId = taskId % COMPUTE_PIPE_NUM;
         int32_t lastTaskOffset = computeTaskInfo[currTaskId].computeKSeqLen + computeTaskInfo[currTaskId].uvqkSeqOffset;
         computeTaskInfo[nextTaskId] = computeTaskInfo[currTaskId];
+        computeTaskInfo[nextTaskId].isFirst = 0;
         if (lastTaskOffset >= splitList[computeTaskInfo[currTaskId].uvqkId]) {
             if (computeTaskInfo[currTaskId].uvqkId < UVQK_INDEX_K) { // 换uvqk
                 computeTaskInfo[nextTaskId].rowId = computeTaskInfo[currTaskId].rowId;
@@ -370,6 +385,7 @@ public:
                 computeTaskInfo[nextTaskId].computeMSeqLen = (computeTaskInfo[nextTaskId].rowId + 1) *
                     blockM < this->seqLen ? blockM :
                     this->seqLen - computeTaskInfo[nextTaskId].rowId * blockM;
+                computeTaskInfo[nextTaskId].isFirst = 1;
             }
             computeTaskInfo[nextTaskId].uvqkSeqOffset = 0;
         } else {
@@ -389,12 +405,14 @@ public:
         int32_t currTaskId = taskId % COMPUTE_PIPE_NUM;
         int32_t lastTaskOffset = computeTaskInfo[currTaskId].computeKSeqLen + computeTaskInfo[currTaskId].kOffset;
         computeTaskInfo[nextTaskId] = computeTaskInfo[currTaskId];
+        computeTaskInfo[nextTaskId].isFirst = 0;
         if (lastTaskOffset >= totalDim) {
             computeTaskInfo[nextTaskId].rowId = computeTaskInfo[currTaskId].rowId + 1;
             computeTaskInfo[nextTaskId].kOffset = 0;
             computeTaskInfo[nextTaskId].computeMSeqLen = (computeTaskInfo[nextTaskId].rowId + 1) *
                 blockM < this->seqLen ? blockM :
                 this->seqLen - computeTaskInfo[nextTaskId].rowId * blockM;
+            computeTaskInfo[nextTaskId].isFirst = 1;
         } else {
             computeTaskInfo[nextTaskId].kOffset = computeTaskInfo[currTaskId].kOffset +
                 computeTaskInfo[currTaskId].computeKSeqLen;
@@ -410,11 +428,14 @@ public:
         // 右矩阵偏移
         int32_t startOffsetB = taskInfo.kOffset * dim;
         int32_t outOffset = taskInfo.rowId * blockM * dim;
-        lwMatmul.SetTensorA(SiluGradGt[siluOffset]);
+        lwMatmul.SetTensorA(siluGradGt[siluOffset]);
         lwMatmul.SetTensorB(weightGt[startOffsetB], false);
         lwMatmul.SetTail(taskInfo.computeMSeqLen, dim, taskInfo.computeKSeqLen);
-
-        lwMatmul.template IterateAll<false>(xGradGt[outOffset], 1, false, true);
+        if (taskInfo.isFirst == 1) { // 第一个块直接拷贝，减少zero_like耗时
+            lwMatmul.template IterateAll<false>(xGradGt[outOffset], 0, false, true);
+        } else {
+            lwMatmul.template IterateAll<false>(xGradGt[outOffset], 1, false, true);
+        }
     }
 
     __aicore__ inline void DolxMatmul(TaskInfo &taskInfo, uint32_t taskId)
@@ -424,7 +445,7 @@ public:
         // 右矩阵偏移
         int32_t startOffsetB = taskInfo.rowId * blockM * dim;
         int32_t outOffset = taskInfo.kOffset * dim;
-        lxMatmul.SetTensorA(SiluGradGt[siluOffset], true);
+        lxMatmul.SetTensorA(siluGradGt[siluOffset], true);
         lxMatmul.SetTensorB(xGt[startOffsetB]);
         lxMatmul.SetTail(taskInfo.computeKSeqLen, dim, taskInfo.computeMSeqLen);
         lxMatmul.template IterateAll<false>(weightGradGt[outOffset], 1, false, true);
@@ -459,7 +480,7 @@ public:
                     WaitLxMatmul();
                     WaitLwMatmul();
                 }
-                if constexpr (isVardim) {
+                if (isVardim || totalDim <= MAX_BLOCK_DIM) {
                     UpdateTaskInfoVarDim(taskId);
                 } else {
                     UpdateTaskInfo(taskId);
@@ -532,7 +553,7 @@ public:
     GlobalTensor<float> weightGradGt;
     GlobalTensor<float> biasGradGt;
 
-    GlobalTensor<xType> SiluGradGt;
+    GlobalTensor<xType> siluGradGt;
 
     matmul::Matmul<
     matmul::MatmulType<TPosition::GM, CubeFormat::ND, xType, true, LayoutMode::NONE, false,
@@ -543,7 +564,8 @@ public:
     matmul::MatmulCallBackFunc<nullptr, nullptr, nullptr>> lxMatmul;
 
     matmul::Matmul<
-    matmul::MatmulType<TPosition::GM, CubeFormat::ND, xType, false>,
+    matmul::MatmulType<TPosition::GM, CubeFormat::ND, xType, false, LayoutMode::NONE, false,
+        TPosition::VECOUT>,
     matmul::MatmulType<TPosition::GM, CubeFormat::ND, xType, false>,
     matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
     matmul::MatmulType<TPosition::GM, CubeFormat::ND, float>, CFG_NORM,
