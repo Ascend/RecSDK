@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
  * All rights reserved.
  *
  * This source code is licensed under the BSD-style license found in the
@@ -118,6 +118,9 @@ public:
         auto optimNum = config_.optimNum;
         for (uint64_t i = 0; i < keys.size(); i++) {
             auto key = keys[i];
+            if (key == INVALID_KEY) {
+                continue;  // 跳过无效key，避免将无效key插入表中
+            }
             auto it = table_.find(key);
             if (it == table_.end()) {
                 auto res = table_.emplace(key, extEmbDim_);
@@ -321,6 +324,9 @@ public:
             0, keys.size(), std::ceil(keys.size() * 1.0 / at::get_num_threads()), [&](int64_t begin, int64_t end) {
                 for (int64_t i = begin; i < end; ++i) {
                     const auto key = keys[i];
+                    if (key == INVALID_KEY) {
+                        continue;  // 跳过无效key，避免将无效key插入表中
+                    }
                     uint64_t addrValue = 0;
 
                     FkvState ret = fastHashMapPtr_->FindOrInsert(key, addrValue, [&]() {

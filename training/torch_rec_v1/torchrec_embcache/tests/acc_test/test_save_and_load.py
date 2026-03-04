@@ -324,15 +324,19 @@ class TestModel:
                 for base_time in range(SAVE_BASE_TIMES):
                     for _ in range(SAVE_STEPS):
                         _, _ = pipe.progress(iter_)
+                    pipe.wait_pipeline_compute_swapinfo()
                     saver.save(ddp_model, f"save_dir/sparse/base_{base_time+1}")
                     for delta_time in range(SAVE_DELTA_TIMES):
                         for _ in range(SAVE_STEPS):
                             _, _ = pipe.progress(iter_)
+                        pipe.wait_pipeline_compute_swapinfo()
                         saver.save(ddp_model, f"save_dir/sparse/base_{base_time+1}_delta_{delta_time+1}", 
                                    incremental=True)
             else:
                 for _ in range(LOOP_TIMES):
                     _, _ = pipe.progress(iter_)
+                pipe.wait_pipeline_compute_swapinfo()
+                saver.save(ddp_model, "save_dir/sparse")
 
             ddp_model.eval()
             for _ in range(LOOP_TIMES):
@@ -344,9 +348,6 @@ class TestModel:
                     safe_makedirs(RESULT_TMP_DIR)
                 torch.save(results, os.path.join(RESULT_TMP_DIR, "results_train.pt"))
             logging.info("ddp_model.state_dict %s", ddp_model.state_dict())
-
-            if not embedding_config[0].is_incremental:
-                saver.save(ddp_model, "save_dir/sparse")
             # 由于差异卡加载时torch保存的dense数据会校验报错，且该测试用例里的dense部分没有参数，所以不保存dense部分
         else:
             # sparse-加载
