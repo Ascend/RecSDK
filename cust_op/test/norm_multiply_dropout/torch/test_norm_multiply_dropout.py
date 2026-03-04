@@ -82,7 +82,7 @@ def norm_multiply_dropout_pytorch(x, u, gamma, bias, convert_to_high_level_type=
         gamma = gamma.to(high_level_type)
         bias = bias.to(high_level_type)
     ln_ret = F.layer_norm(x, normalized_shape=[x.shape[-1]], weight=gamma, bias=bias, eps=eps)
-    ln_out = u * ln_ret
+    ln_out = ln_ret * u
     if convert_to_high_level_type:
         ln_out = ln_out.to(ori_dtype)
 
@@ -96,69 +96,60 @@ def norm_multiply_dropout_by_device(x_fused, u_fused, g_fused, b_fused):
         return torch.ops.mxrec.norm_multiply_dropout(x_fused, u_fused, g_fused, b_fused, eps, 0.0)[0]
 
 
+def generate_input_tensor(dim0, dim1, dtype, weight_bias_dim=None):
+    # weight_bias_dim参数用于构造错误场景，构造weight和bias的dim和dim1不一致
+    # 正常场景下生成数据不用传weight_bias_dim参数
+    if not weight_bias_dim:
+        weight_bias_dim = dim1
+
+    x_data = torch.rand((dim0, dim1), dtype=dtype).uniform_(-1, 1)
+    u_data = torch.rand((dim0, dim1), dtype=dtype).uniform_(-1, 1)
+    g_data = torch.rand((weight_bias_dim,), dtype=dtype).uniform_(-1, 1)
+    b_data = torch.rand((weight_bias_dim,), dtype=dtype).uniform_(-1, 1)
+    dy_data = torch.rand((dim0, dim1), dtype=dtype).uniform_(-1, 1)
+    return x_data, u_data, g_data, b_data, dy_data
+
+
 @pytest.mark.parametrize("dim0", [1, 1000, 2345, 4096 * 4, 262144, 927750, DIM0_MAX])
 @pytest.mark.parametrize("dim1", SUPPORT_DIM1_LIST)
 @pytest.mark.parametrize("dtype", SUPPORT_DTYPES)
 def test_norm_multiply_double_pole(dim0: int, dim1: int, dtype):
     # 使用双标杆，计算对比精度
     logging.info(f"===test case info: dim0:{dim0}, dim1:{dim1}, dtype:{dtype}, dropout_ratio:{0.0}===")
-    # 由于dropout具有随机性，和golden比较数据时需设置dropout_ratio为0
-    low = -1.0
-    high = 1.0
-    b_np, dy_np, g_np, u_np, x_np = generate_np_data(dim0, dim1, high, low)
+    x, u, g, b, dy = generate_input_tensor(dim0, dim1, dtype)
 
     # =====  pytorch小算子执行 =====
-    golden_device = cpu_device
-    x_pt = torch.tensor(x_np, dtype=dtype, device=golden_device).contiguous().requires_grad_(True)
-    u_pt = torch.tensor(u_np, dtype=dtype, device=golden_device).contiguous().requires_grad_(True)
-    g_pt = torch.tensor(g_np, dtype=dtype, device=golden_device).contiguous().requires_grad_(True)
-    b_pt = torch.tensor(b_np, dtype=dtype, device=golden_device).contiguous().requires_grad_(True)
+    x_pt, u_pt, g_pt, b_pt = [t.clone().contiguous().requires_grad_() for t in [x, u, g, b]]
+    dy_pt = dy.contiguous()
     y_golden = norm_multiply_dropout_pytorch(x_pt, u_pt, g_pt, b_pt)
-    dy_pt = torch.tensor(dy_np, dtype=dtype, device=golden_device).contiguous()
     y_golden.backward(dy_pt)
     device_synchronize()
+    x_pt_grad = x_pt.grad
+    u_pt_grad = u_pt.grad
+    g_pt_grad = g_pt.grad
+    b_pt_grad = b_pt.grad
 
     # ===== NPU融合算子执行 =====
-    x_fused = torch.tensor(x_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_(True)
-    u_fused = torch.tensor(u_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_(True)
-    g_fused = torch.tensor(g_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_(True)
-    b_fused = torch.tensor(b_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_(True)
+    x_fused, u_fused, g_fused, b_fused = [t.to(accelerator_device).contiguous().requires_grad_() for t in [x, u, g, b]]
+    dy_npu = dy.to(accelerator_device).contiguous()
     y_fused = norm_multiply_dropout_by_device(x_fused, u_fused, g_fused, b_fused)
-    dy_fused = torch.tensor(dy_np, dtype=dtype, device=accelerator_device).contiguous()
-    y_fused.backward(dy_fused)
+    y_fused.backward(dy_npu)
     device_synchronize()
 
     # ===== NPU小算子执行 =====
-    x_npu = torch.tensor(x_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_(True)
-    u_npu = torch.tensor(u_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_(True)
-    g_npu = torch.tensor(g_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_(True)
-    b_npu = torch.tensor(b_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_(True)
+    x_npu, u_npu, g_npu, b_npu = [t.to(accelerator_device).contiguous().requires_grad_() for t in [x, u, g, b]]
     y_npu = norm_multiply_dropout_pytorch(x_npu, u_npu, g_npu, b_npu, convert_to_high_level_type=False)
-    dy_fused = torch.tensor(dy_np, dtype=dtype, device=accelerator_device).contiguous()
-    y_npu.backward(dy_fused)
+    y_npu.backward(dy_npu)
     device_synchronize()
 
     # 双标杆对比较前反向结果
-    compare_data_with_double_pole("y", y_fused, y_npu, y_golden)
-    compare_data_with_double_pole("x grad", x_fused.grad, x_npu.grad, x_pt.grad)
-    compare_data_with_double_pole("u grad", u_fused.grad, u_npu.grad, u_pt.grad)
-    compare_data_with_double_pole("g grad", g_fused.grad, g_npu.grad, g_pt.grad)
-    compare_data_with_double_pole("b grad", b_fused.grad, b_npu.grad, b_pt.grad)
+    msg = f"dim0_{dim0}-dim1_{dim1}-dtype_{dtype}_"
+    compare_data_with_double_pole(f"{msg}y", y_fused, y_npu, y_golden)
+    compare_data_with_double_pole(f"{msg}x_grad", x_fused.grad, x_npu.grad, x_pt_grad)
+    compare_data_with_double_pole(f"{msg}u_grad", u_fused.grad, u_npu.grad, u_pt_grad)
+    compare_data_with_double_pole(f"{msg}g_grad", g_fused.grad, g_npu.grad, g_pt_grad)
+    compare_data_with_double_pole(f"{msg}b_grad", b_fused.grad, b_npu.grad, b_pt_grad)
     logging.info("compare end.")
-
-
-def generate_np_data(dim0, dim1, high, low, weight_bias_dim=None):
-    # weight_bias_dim参数用于构造错误场景，构造weight和bias的dim和dim1不一致
-    # 正常场景下生成数据不用传weight_bias_dim参数
-    if not weight_bias_dim:
-        weight_bias_dim = dim1
-
-    x_np = np.random.uniform(low=low, high=high, size=(dim0, dim1))
-    u_np = np.random.uniform(low=low, high=high, size=(dim0, dim1))
-    g_np = np.random.uniform(low=low, high=high, size=(weight_bias_dim,))
-    b_np = np.random.uniform(low=low, high=high, size=(weight_bias_dim,))
-    dy_np = np.random.uniform(low=low, high=high, size=(dim0, dim1))
-    return b_np, dy_np, g_np, u_np, x_np
 
 
 @dataclass
@@ -193,16 +184,11 @@ def test_norm_multiply_dropout(config: ExecuteConfig):
     logging.info(f"===test case info: dim0:{dim0}, dim1:{dim1}, eps:{epsilon},"
                  f" dropout_ratio:{dropout_ratio}, dtype:{dtype}===")
     # 执行带dropout的场景 由于dropout具有随机性，仅验证算子功能正常执行
-    low = -1.0
-    high = 1.0
-    b_np, dy_np, g_np, u_np, x_np = generate_np_data(dim0, dim1, high, low, weight_bias_dim=weight_and_bias_dim)
-    dy_fused = torch.tensor(dy_np, dtype=dtype, device=accelerator_device).contiguous()
-    x_fused = torch.tensor(x_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_()
-    u_fused = torch.tensor(u_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_()
-    g_fused = torch.tensor(g_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_()
-    b_fused = torch.tensor(b_np, dtype=dtype, device=accelerator_device).contiguous().requires_grad_()
+    x, u, g, b, dy = generate_input_tensor(dim0, dim1, dtype, weight_bias_dim=weight_and_bias_dim)
+    x_fused, u_fused, g_fused, b_fused = [t.to(accelerator_device).contiguous().requires_grad_() for t in [x, u, g, b]]
+    dy_npu = dy.to(accelerator_device).contiguous()
     y = torch.ops.mxrec.norm_multiply_dropout(x_fused, u_fused, g_fused, b_fused, epsilon, dropout_ratio)[0]
-    y.backward(dy_fused)
+    y.backward(dy_npu)
     device_synchronize()
 
 
