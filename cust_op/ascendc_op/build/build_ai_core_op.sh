@@ -49,6 +49,7 @@ declare -A OP_PLUGIN_MAP=(
   ["dense_embedding_codegen_lookup_function_grad"]="dense_embedding_codegen_lookup_function"
   ["dense_to_jagged"]="dense_to_jagged"
   ["disetangle_attention"]="disetangle_attention"
+  ["expand_into_jagged_permute"]="expand_into_jagged_permute"
   ["gather_for_rank1"]="gather_for_rank1"
   ["hstu_dense_backward"]="hstu"
   ["hstu_dense_backward_fuxi"]="hstu_dense_backward_fuxi"
