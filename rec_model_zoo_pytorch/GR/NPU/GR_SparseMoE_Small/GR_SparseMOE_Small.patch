@@ -1,5 +1,5 @@
 diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples/hstu/benchmark/inference_benchmark_2b_random.py
-index 8a74a62..d51ac7a 100644
+index 8a74a62..3ae329b 100644
 --- a/examples/hstu/benchmark/inference_benchmark_2b_random.py
 +++ b/examples/hstu/benchmark/inference_benchmark_2b_random.py
 @@ -40,8 +40,8 @@ from inference_ranking_gr import InferenceRankingGR
@@ -38,7 +38,7 @@ index 8a74a62..d51ac7a 100644
              cpu_state_dict = torch.load(MODEL_PATH, map_location='cpu')
              model_predict.load_state_dict(cpu_state_dict)
  
-@@ -286,15 +287,16 @@ def run_ranking_gr_inference():
+@@ -286,9 +287,10 @@ def run_ranking_gr_inference():
              result = model_predict.forward(item[0], item[1])
              if is_save_input_and_output:
                  torch.save(result.cpu(), "input_output/npu_output.pt")
@@ -50,13 +50,6 @@ index 8a74a62..d51ac7a 100644
          e2e_flag = (os.getenv('USE_E2E', '0') == '1')
          if os.getenv('USE_PROFILING', '0') != '0':
              torch.npu.synchronize()
-             WAIT = 0
-             WARMUP = 0
--            ACTIVE = RUN_NUM
-+            ACTIVE = min(10, RUN_NUM)
-             REPEAT = 1
-             SKIP_FIRST = 0
-             experimental_config = torch_npu.profiler._ExperimentalConfig(
 @@ -320,47 +322,54 @@ def run_ranking_gr_inference():
                      model_predict.forward(item[0], item[1])
                      torch.npu.synchronize()
@@ -152,18 +145,6 @@ index 8a74a62..d51ac7a 100644
 +        print(f"计算过程中显存峰值：{torch.npu.max_memory_allocated() / 1024 ** 2:.2f} MB")
          print("性能分析完毕! finish!")
  
- 
-diff --git a/examples/hstu/model/inference_ranking_gr.py b/examples/hstu/model/inference_ranking_gr.py
-index b292388..df46e34 100755
---- a/examples/hstu/model/inference_ranking_gr.py
-+++ b/examples/hstu/model/inference_ranking_gr.py
-@@ -227,7 +227,6 @@ class InferenceRankingGR(torch.nn.Module):
-                     num_tokens,
-                     jagged_data.values,
-                     jagged_data,
--                    None,
-                 )
-                 jagged_data.values = hstu_output
  
 diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modules/hstu_block_inference.py
 index 1fccce8..2f4a64b 100644
@@ -327,10 +308,10 @@ index 1fccce8..2f4a64b 100644
          with torch_npu.npu.graph(graph[0], pool=memory_pool):
              static_uvqk = self._attention_layers[0].forward_input(
 diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/modules/paged_hstu_infer_layer.py
-index 20e386c..f93b525 100644
+index 7c283e7..a683fd5 100644
 --- a/examples/hstu/modules/paged_hstu_infer_layer.py
 +++ b/examples/hstu/modules/paged_hstu_infer_layer.py
-@@ -44,13 +44,14 @@ class SparseMOE(torch.nn.Module):
+@@ -45,13 +45,14 @@ class SparseMOE(torch.nn.Module):
              emb_dim,
              expert_number,
              top_k,
@@ -346,7 +327,7 @@ index 20e386c..f93b525 100644
          self.cw1, self.cw2, self.cw3 = self.create_expert_weights(self.experts)
          self.router = MOERouter(emb_dim, expert_number, top_k, dtype)
          self.top_k = top_k
-@@ -121,7 +122,7 @@ class SparseMOE(torch.nn.Module):
+@@ -122,7 +123,7 @@ class SparseMOE(torch.nn.Module):
          seq_len, hidden_dim = x.size()
          hidden_states = x.view(-1, hidden_dim)  # shape is (b * s, hidden_dim)
  
@@ -355,7 +336,7 @@ index 20e386c..f93b525 100644
  
          expend_x, idx = torch_npu.npu_moe_token_permute(
              tokens=x,
-@@ -339,12 +340,11 @@ class RelativeBucketedTimeAndPositionBasedBias(torch.nn.Module):
+@@ -340,12 +341,11 @@ class RelativeBucketedTimeAndPositionBasedBias(torch.nn.Module):
  
  # 专家ffn
  class FFN_npu_swiglu(torch.nn.Module):
@@ -369,7 +350,7 @@ index 20e386c..f93b525 100644
  
          self.use_matmul_fp8 = int(os.getenv("ENABLE_MATMUL_FP8")) == 1
          if self.use_matmul_fp8:
-@@ -361,12 +361,12 @@ class FFN_npu_swiglu(torch.nn.Module):
+@@ -362,12 +362,12 @@ class FFN_npu_swiglu(torch.nn.Module):
  
      def forward(self, x):
          if self.use_matmul_fp8:  # =========fp8 adapter============
@@ -385,7 +366,7 @@ index 20e386c..f93b525 100644
  
  
  
-@@ -494,12 +494,12 @@ class PagedHSTUInferLayer(torch.nn.Module):
+@@ -495,12 +495,12 @@ class PagedHSTUInferLayer(torch.nn.Module):
              requires_grad=False,
          )
  
@@ -404,7 +385,16 @@ index 20e386c..f93b525 100644
  
          self.use_ffn = int(os.getenv("USE_FFN")) == 1
          self.use_moe = int(os.getenv("USE_MOE")) == 1
-@@ -533,12 +533,13 @@ class PagedHSTUInferLayer(torch.nn.Module):
+@@ -508,7 +508,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+         self.use_rab = int(os.getenv("USE_RAB"))
+         self.use_matmul_fp8 = int(os.getenv("ENABLE_MATMUL_FP8")) == 1
+         self.use_new_hstu_op = int(os.getenv("USE_NEW_HSTU_OP")) == 1
+-        self.use_trion_hstu_op = int(os.getenv("USE_TRITON_HSTU_OP")) == 1
++        self.use_trion_hstu_op = int(os.getenv("USE_TRITON_HSTU_OP", "0")) == 1
+         self.use_hstu_op = int(os.getenv("USE_HSTU_OP")) == 1
+         self.user_seq_len = int(os.getenv("SEQ_LEN"))
+         self.user_candidate_len = int(os.getenv("CANDIDATE_LEN"))
+@@ -535,12 +535,13 @@ class PagedHSTUInferLayer(torch.nn.Module):
              self.feed_forward = torch.nn.ModuleList([
                  FFN_npu_swiglu(self._embedding_dim, self._embedding_dim * 4, dtype) for _ in range(self.ffn_number)])
  
@@ -420,7 +410,7 @@ index 20e386c..f93b525 100644
              )
  
          if self.use_rab:
-@@ -550,7 +551,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+@@ -552,7 +553,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
              )
  
      def post_init(self):
@@ -429,8 +419,8 @@ index 20e386c..f93b525 100644
              self.sparse_moe_linear.load_parm_post_init()
          if self.use_rab:
              self.relative_bias.load_parm_post_init()
-@@ -617,6 +618,8 @@ class PagedHSTUInferLayer(torch.nn.Module):
-                     seq_len,
+@@ -621,6 +622,8 @@ class PagedHSTUInferLayer(torch.nn.Module):
+                     core_num=28
                  )
              else:
 +                # 精度对比模式打开确定性开关
@@ -438,7 +428,7 @@ index 20e386c..f93b525 100644
                  jagged_attn_output = torch.ops.mxrec.hstu_jagged(
                      q=query,
                      k=key,
-@@ -626,10 +629,12 @@ class PagedHSTUInferLayer(torch.nn.Module):
+@@ -630,10 +633,12 @@ class PagedHSTUInferLayer(torch.nn.Module):
                      mask_type=0,
                      max_seq_len=jd.max_seqlen,
                      silu_scale=1.0 / (self._attention_dim_per_head ** 0.5),
@@ -453,7 +443,7 @@ index 20e386c..f93b525 100644
                  )
  
              jagged_attn_output = jagged_attn_output.view(
-@@ -653,7 +658,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+@@ -657,7 +662,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
              layer_output = self._linear_proj(parallel_input)
  
  
@@ -462,7 +452,7 @@ index 20e386c..f93b525 100644
              layer_output = self.sparse_moe_linear.forward(layer_output) if self.use_moe_op else self.sparse_moe_linear.forward_naive(layer_output)
  
          if self.use_ffn:  # 适用于专家数和选择数相等，简化
-@@ -747,10 +752,11 @@ class PagedHSTUInferLayer(torch.nn.Module):
+@@ -753,10 +758,11 @@ class PagedHSTUInferLayer(torch.nn.Module):
                      mask_type=0,
                      max_seq_len=jd.max_seqlen,
                      silu_scale=1.0 / (self._attention_dim_per_head ** 0.5),
@@ -476,7 +466,7 @@ index 20e386c..f93b525 100644
                  )
  
              jagged_attn_output = jagged_attn_output.view(
-@@ -773,7 +779,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+@@ -779,7 +785,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
          else:
              layer_output = self._linear_proj(parallel_input)
  
@@ -485,7 +475,7 @@ index 20e386c..f93b525 100644
              layer_output = self.sparse_moe_linear.forward(layer_output) if self.use_moe_op else self.sparse_moe_linear.forward_naive(layer_output)
  
          if self.use_ffn:  # 适用于专家数和选择数相等，简化
-@@ -815,7 +821,6 @@ class PagedHSTUInferLayer(torch.nn.Module):
+@@ -821,7 +827,6 @@ class PagedHSTUInferLayer(torch.nn.Module):
  
          if self.use_rab:
              qk_attn = qk_attn + attn_bias
@@ -494,7 +484,7 @@ index 20e386c..f93b525 100644
          qk_attn = qk_attn * process_jagged_mask(init_mask,batchsize, jaggedData.seqlen_offsets, total_max_seq_len, actual_len, self.user_candidate_len)
  
 diff --git a/examples/hstu/out_compare.py b/examples/hstu/out_compare.py
-index 528e938..9f0205c 100644
+index 528e938..f41aebd 100644
 --- a/examples/hstu/out_compare.py
 +++ b/examples/hstu/out_compare.py
 @@ -1,5 +1,30 @@
@@ -528,32 +518,22 @@ index 528e938..9f0205c 100644
  def compare_npu_and_gpu_out():
      print("")
      out_dict = []
-@@ -14,7 +39,7 @@ def compare_npu_and_gpu_out():
-             print(item + "未找到，跳过精度验证。")
-             return
- 
--        sorted_values, sorted_indices = torch.sort(logistic_out[0:100], dim=0)
-+        sorted_values, sorted_indices = torch.sort(logistic_out[0:10], dim=0)
-         # 将索引和值从张量转换为列表
-         indices_list = sorted_indices.squeeze().tolist()
-         values_list = sorted_values.squeeze().tolist()
-@@ -43,5 +68,8 @@ def compare_npu_and_gpu_out():
+@@ -43,5 +68,5 @@ def compare_npu_and_gpu_out():
  
      print("gpu和npuTop10结果 平均绝对误差是", absolute_errors.sum()/10)
  
+-
+-
 +if __name__ == "__main__":
 +    compare_all()
-+
- 
- 
 diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k_05B.sh
-similarity index 85%
+similarity index 83%
 rename from examples/hstu/run_random_2k.sh
 rename to examples/hstu/run_random_2k_05B.sh
-index e71c2fe..cc95abe 100644
+index 0b7c028..4ff74b3 100644
 --- a/examples/hstu/run_random_2k.sh
 +++ b/examples/hstu/run_random_2k_05B.sh
-@@ -4,10 +4,10 @@ rm -rf /tmp/torchinductor_*
+@@ -4,51 +4,47 @@ rm -rf /tmp/torchinductor_*
  export USE_COMPILE=0
  
  #开启ACLgraph
@@ -566,7 +546,12 @@ index e71c2fe..cc95abe 100644
  
  #是否开启端到端时间统计
  export USE_E2E=1
-@@ -19,35 +19,32 @@ export USE_PROFILING=1
+ 
+ #是否采集profiling
+-export USE_PROFILING=1
++export USE_PROFILING=0
+ 
+ #是否加载NPU输入,维持和GPU输入一致
  export USE_GPU_INPUT=0
  
  #是否保存输入和输出tensor, 和GPU对比精度
@@ -600,18 +585,19 @@ index e71c2fe..cc95abe 100644
  
  export ENABLE_MATMUL_FP8=0
  export USE_NEW_HSTU_OP=1
- 
+-export USE_TRITON_HSTU_OP=0
+-
 -
 -#库路径
 -export LIB_FBGEMM_NPU_API_SO_PATH=/usr/local/python3.11.13/lib/python3.11/site-packages/libfbgemm_npu_api.so
--
+ 
  # prof路径
 -export PROF_SAVE_PATH="prof_result_2k"
 +export PROF_SAVE_PATH="prof_result_2k_05B"
  
  #batchsize 可选值 1 2 4
  export BATCH_SIZE=1
-@@ -63,12 +60,16 @@ export PERCISE_VALIDATE=0
+@@ -64,12 +60,16 @@ export PERCISE_VALIDATE=0
  export DYNAMIC_SHAPE_TEST=0
  
  # Inductor性能
@@ -629,7 +615,7 @@ index e71c2fe..cc95abe 100644
  #执行
  LOG_SUFFIX="$(date '+%Y%m%d_%H%M%S')_2k_compile${USE_COMPILE}_aclgraph${ENABLE_ACLGRAPH}_precise${GR_VLLM_PRECISE}_e2e${GR_VLLM_E2E}"
  
-@@ -101,4 +102,4 @@ else
+@@ -102,4 +102,4 @@ else
              TRITON_DISABLE_FFTS=1 python3  benchmark/inference_benchmark_2b_random.py 2>&1 | tee temp_${LOG_SUFFIX}_profiling.log
          fi
      fi
