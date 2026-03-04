@@ -18,7 +18,7 @@ See the License for the specific language governing permissions and
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/matmul.h"
 #include "in_linear_silu_backward_tilingKey.h"
-#include "in_linear_sliu_backward.h"
+#include "in_linear_silu_backward.h"
 
 using namespace AscendC;
 
@@ -42,11 +42,13 @@ template<bool enableBias, bool isTrans, bool isVardim>
 __global__ __aicore__ void in_linear_silu_backward(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR user_grad,
                                                    GM_ADDR value_grad, GM_ADDR query_grad, GM_ADDR key_grad,
                                                    GM_ADDR linear_output, GM_ADDR x_grad, GM_ADDR weight_grad,
-                                                   GM_ADDR bias_grad, GM_ADDR workspace, GM_ADDR tiling)
+                                                   GM_ADDR bias_grad,
+                                                   GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA(tiling_data, tiling);
     InLinearSiluBackward::Args args{x, weight, bias, user_grad, value_grad, query_grad, key_grad,
-                                   linear_output, x_grad, weight_grad, bias_grad, workspace, tiling};
+                                   linear_output, x_grad, weight_grad, bias_grad,
+                                   workspace, tiling};
     InvokeLinearSiluBackwardOpImpl<InLinearSiluBackward::InLinearSiluBackward<
         DTYPE_X, DTYPE_WEIGHT, enableBias, isTrans, isVardim>>(args);
 }

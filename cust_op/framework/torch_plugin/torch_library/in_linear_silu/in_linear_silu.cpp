@@ -136,7 +136,7 @@ torch::autograd::variable_list RunInLinearSiluBackward(const at::Tensor& x,
     IsValidShapeBackward(xConti, weightConti, user_gradConti, value_gradConti,
                          query_gradConti, key_gradConti, linear_outputConti, attr_dict);
 
-    auto x_grad = at::zeros_like(xConti, at::kFloat);
+    auto x_grad = at::empty_like(xConti, at::kFloat);
     auto weight_grad = at::zeros_like(weightConti, at::kFloat);
     auto bias_grad = at::Tensor();
     bool isVardim = false;
