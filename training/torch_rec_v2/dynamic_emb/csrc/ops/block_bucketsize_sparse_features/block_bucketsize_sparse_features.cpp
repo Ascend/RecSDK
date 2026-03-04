@@ -36,8 +36,7 @@ extern "C" __global__ __aicore__ void block_bucketsize_sparse_features(
     int32_t hasWeights,        // 是否启用权重
     int32_t sequenceFlag,      // 是否启用反桶化
     int32_t bucketizePosFlag,  // 是否启用分桶位置
-    int32_t isSmall, int32_t newLengthsTotalSize, int32_t totalBlocks,
-    uint64_t mySizeDivisorMagic, uint64_t mySizeDivisorShift)
+    int32_t isSmall, int32_t newLengthsTotalSize, int32_t totalBlocks)
 {
     int32_t coreId = AscendC::GetBlockIdx();
     int32_t coreNum = AscendC::GetBlockNum();
@@ -57,7 +56,7 @@ extern "C" __global__ __aicore__ void block_bucketsize_sparse_features(
         __gm__ DTYPE_X* currOffsetsGm = reinterpret_cast<__gm__ DTYPE_X*>(currentOffsets);
 
         const int32_t lenSize = static_cast<int32_t>(lengthsSize);
-        const uint64_t mySize = static_cast<uint64_t>(npuSize);
+        const int32_t mySize = static_cast<int32_t>(npuSize);
         const int32_t batchSizeB = static_cast<int32_t>(B);
         const bool hasWeight = (hasWeights > 0);
         const bool sequence = (sequenceFlag > 0);
@@ -67,21 +66,63 @@ extern "C" __global__ __aicore__ void block_bucketsize_sparse_features(
         __gm__ float* newWeightsGm = hasWeight ? reinterpret_cast<__gm__ float*>(newWeights) : nullptr;
         bool isPowerOfTwo = ((mySize & (mySize - 1)) == 0);
 
-        if (isPowerOfTwo) {
-            Simt::VF_CALL<SimtComputeNewLengths<DTYPE_X, true>>(Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm,
-                                                                indicesGm, blockSizesGm, distTypeGm, newLengthsGm,
-                                                                lenSize, batchSizeB, mySize,
-                                                                mySizeDivisorMagic, mySizeDivisorShift);
-        } else {
-            Simt::VF_CALL<SimtComputeNewLengths<DTYPE_X, false>>(Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm,
-                                                                 indicesGm, blockSizesGm, distTypeGm, newLengthsGm,
-                                                                 lenSize, batchSizeB, mySize,
-                                                                 mySizeDivisorMagic, mySizeDivisorShift);
+        // 计算快除参数
+        int32_t featureNum = lenSize / batchSizeB;
+        bool useQuickDivide = (featureNum <= MAX_FEATURE_NUM_USE_QUICK_DIVIDE) && (mySize > 1);
+        using uindex_t = typename std::make_unsigned<DTYPE_X>::type;
+        int32_t byteLen = useQuickDivide ? (featureNum * 2 * sizeof(uindex_t)) : sizeof(uindex_t);
+        TPipe pipe1;
+        TBuf<TPosition::VECCALC> sharedMem1;
+        pipe1.InitBuffer(sharedMem1, byteLen);
+        LocalTensor<uindex_t> sharedTensor1 = sharedMem1.Get<uindex_t>();
+        __ubuf__ uindex_t* blkSizeMagicShifts = reinterpret_cast<__ubuf__ uindex_t*>(sharedTensor1.GetPhyAddr());
+        uindex_t mySizeMagic = 0;
+        uindex_t mySizeShift = 0;
+        if (useQuickDivide) {
+            for (int32_t i = 0; i < featureNum; ++i) {
+                uindex_t blkSize = blockSizesGm[i];
+                if (blkSize == 1) {
+                    useQuickDivide = false;
+                    break;
+                }
+                uindex_t magic = 0;
+                uindex_t shift = 0;
+                AscendC::GetUintDivMagicAndShift(magic, shift, blkSize);
+                blkSizeMagicShifts[i * 2] = magic;
+                blkSizeMagicShifts[i * 2 + 1] = shift - 1;
+            }
         }
-
+        if (useQuickDivide) {
+            AscendC::GetUintDivMagicAndShift(mySizeMagic, mySizeShift, static_cast<uindex_t>(mySize));
+            mySizeShift -= 1;
+        }
         SyncAll();
 
-        // 排他累加和
+        // 计算newLengths
+        if (useQuickDivide && isPowerOfTwo) {
+            Simt::VF_CALL<SimtComputeNewLengthsQuickDiv<DTYPE_X, true>>(Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1},
+                                                                        offsetsGm, indicesGm, blockSizesGm, distTypeGm,
+                                                                        newLengthsGm, lenSize, batchSizeB, mySize,
+                                                                        mySizeMagic, mySizeShift,
+                                                                        blkSizeMagicShifts);
+        } else if (useQuickDivide && !isPowerOfTwo) {
+            Simt::VF_CALL<SimtComputeNewLengthsQuickDiv<DTYPE_X, false>>(Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1},
+                                                                        offsetsGm, indicesGm, blockSizesGm, distTypeGm,
+                                                                        newLengthsGm, lenSize, batchSizeB, mySize,
+                                                                        mySizeMagic, mySizeShift,
+                                                                        blkSizeMagicShifts);
+        } else if (!useQuickDivide && isPowerOfTwo) {
+            Simt::VF_CALL<SimtComputeNewLengths<DTYPE_X, true>>(Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm,
+                                                                indicesGm, blockSizesGm, distTypeGm, newLengthsGm,
+                                                                lenSize, batchSizeB, mySize);
+        } else {
+            Simt::VF_CALL<SimtComputeNewLengths<DTYPE_X, false>>(Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm,
+                                                                indicesGm, blockSizesGm, distTypeGm, newLengthsGm,
+                                                                lenSize, batchSizeB, mySize);
+        }
+        SyncAll();
+
+        // 计算排他累加和currentOffsets
         {
             TPipe pipe;
             TBuf<TPosition::VECCALC> sharedMem;
@@ -126,9 +167,10 @@ extern "C" __global__ __aicore__ void block_bucketsize_sparse_features(
         }
         SyncAll();
 
-        if (isPowerOfTwo) {
+        // 重排indices
+        if (useQuickDivide && isPowerOfTwo) {
             if (sequence && hasWeight && bucketizePos) {
-                Simt::VF_CALL<SimtRearrangeData<true, true, true, DTYPE_X, true>>(
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<true, true, true, DTYPE_X, true>>(
                     Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1},
                     offsetsGm,             // offsets
                     indicesGm,             // indices
@@ -143,100 +185,171 @@ extern "C" __global__ __aicore__ void block_bucketsize_sparse_features(
                     lenSize,               // lengths_size
                     batchSizeB,            // B
                     mySize,                // my_size
-                    mySizeDivisorMagic,
-                    mySizeDivisorShift
+                    mySizeMagic,           // magic for my_size
+                    mySizeShift,           // shift for my_size
+                    blkSizeMagicShifts     // magics and shifts for blocksizes
                 );
             } else if (sequence && hasWeight && !bucketizePos) {
-                Simt::VF_CALL<SimtRearrangeData<true, true, false, DTYPE_X, true>>(
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<true, true, false, DTYPE_X, true>>(
                     Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm, distTypeGm,
                     currOffsetsGm, newIndicesGm, newWeightsGm, nullptr, unbucketizePermuteGm, lenSize, batchSizeB,
-                    mySize, mySizeDivisorMagic, mySizeDivisorShift);
+                    mySize, mySizeMagic, mySizeShift, blkSizeMagicShifts);
             } else if (sequence && !hasWeight && bucketizePos) {
-                Simt::VF_CALL<SimtRearrangeData<true, false, true, DTYPE_X, true>>(
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<true, false, true, DTYPE_X, true>>(
                     Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
                     currOffsetsGm, newIndicesGm, nullptr, newPosGm, unbucketizePermuteGm, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    mySizeMagic, mySizeShift, blkSizeMagicShifts);
             } else if (!sequence && hasWeight && bucketizePos) {
-                Simt::VF_CALL<SimtRearrangeData<false, true, true, DTYPE_X, true>>(
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<false, true, true, DTYPE_X, true>>(
                     Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm, distTypeGm,
                     currOffsetsGm, newIndicesGm, newWeightsGm, newPosGm, nullptr, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    mySizeMagic, mySizeShift, blkSizeMagicShifts);
             } else if (sequence && !hasWeight && !bucketizePos) {
-                Simt::VF_CALL<SimtRearrangeData<true, false, false, DTYPE_X, true>>(
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<true, false, false, DTYPE_X, true>>(
                     Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
                     currOffsetsGm, newIndicesGm, nullptr, nullptr, unbucketizePermuteGm, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    mySizeMagic, mySizeShift, blkSizeMagicShifts);
             } else if (!sequence && hasWeight && !bucketizePos) {
-                Simt::VF_CALL<SimtRearrangeData<false, true, false, DTYPE_X, true>>(
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<false, true, false, DTYPE_X, true>>(
                     Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm, distTypeGm,
                     currOffsetsGm, newIndicesGm, newWeightsGm, nullptr, nullptr, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    mySizeMagic, mySizeShift, blkSizeMagicShifts);
+            } else if (!sequence && !hasWeight && bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<false, false, true, DTYPE_X, true>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
+                    currOffsetsGm, newIndicesGm, nullptr, newPosGm, nullptr, lenSize, batchSizeB, mySize, mySizeMagic,
+                    mySizeShift, blkSizeMagicShifts);
+            } else {
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<false, false, false, DTYPE_X, true>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
+                    currOffsetsGm, newIndicesGm, nullptr, nullptr, nullptr, lenSize, batchSizeB, mySize, mySizeMagic,
+                    mySizeShift, blkSizeMagicShifts);
+            }
+        } else if (useQuickDivide && !isPowerOfTwo) {
+            if (sequence && hasWeight && bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<true, true, true, DTYPE_X, false>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, newWeightsGm, newPosGm, unbucketizePermuteGm,
+                    lenSize, batchSizeB, mySize, mySizeMagic, mySizeShift, blkSizeMagicShifts);
+            } else if (sequence && hasWeight && !bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<true, true, false, DTYPE_X, false>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm, distTypeGm,
+                    currOffsetsGm, newIndicesGm, newWeightsGm, nullptr, unbucketizePermuteGm, lenSize, batchSizeB,
+                    mySize, mySizeMagic, mySizeShift, blkSizeMagicShifts);
+            } else if (sequence && !hasWeight && bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<true, false, true, DTYPE_X, false>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
+                    currOffsetsGm, newIndicesGm, nullptr, newPosGm, unbucketizePermuteGm, lenSize, batchSizeB, mySize,
+                    mySizeMagic, mySizeShift, blkSizeMagicShifts);
+            } else if (!sequence && hasWeight && bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<false, true, true, DTYPE_X, false>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm, distTypeGm,
+                    currOffsetsGm, newIndicesGm, newWeightsGm, newPosGm, nullptr, lenSize, batchSizeB, mySize,
+                    mySizeMagic, mySizeShift, blkSizeMagicShifts);
+            } else if (sequence && !hasWeight && !bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<true, false, false, DTYPE_X, false>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
+                    currOffsetsGm, newIndicesGm, nullptr, nullptr, unbucketizePermuteGm, lenSize, batchSizeB, mySize,
+                    mySizeMagic, mySizeShift, blkSizeMagicShifts);
+            } else if (!sequence && hasWeight && !bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<false, true, false, DTYPE_X, false>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm, distTypeGm,
+                    currOffsetsGm, newIndicesGm, newWeightsGm, nullptr, nullptr, lenSize, batchSizeB, mySize,
+                    mySizeMagic, mySizeShift, blkSizeMagicShifts);
+            } else if (!sequence && !hasWeight && bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<false, false, true, DTYPE_X, false>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
+                    currOffsetsGm, newIndicesGm, nullptr, newPosGm, nullptr, lenSize, batchSizeB, mySize, mySizeMagic,
+                    mySizeShift, blkSizeMagicShifts);
+            } else {
+                Simt::VF_CALL<SimtRearrangeDataQuickDiv<false, false, false, DTYPE_X, false>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
+                    currOffsetsGm, newIndicesGm, nullptr, nullptr, nullptr, lenSize, batchSizeB, mySize, mySizeMagic,
+                    mySizeShift, blkSizeMagicShifts);
+            }
+        } else if (!useQuickDivide && isPowerOfTwo) {
+            if (sequence && hasWeight && bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeData<true, true, true, DTYPE_X, true>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, newWeightsGm, newPosGm, unbucketizePermuteGm,
+                    lenSize, batchSizeB, mySize);
+            } else if (sequence && hasWeight && !bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeData<true, true, false, DTYPE_X, true>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, newWeightsGm, nullptr, unbucketizePermuteGm, lenSize,
+                    batchSizeB, mySize);
+            } else if (sequence && !hasWeight && bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeData<true, false, true, DTYPE_X, true>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, nullptr, newPosGm, unbucketizePermuteGm, lenSize,
+                    batchSizeB, mySize);
+            } else if (!sequence && hasWeight && bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeData<false, true, true, DTYPE_X, true>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, newWeightsGm, newPosGm, nullptr, lenSize,
+                    batchSizeB, mySize);
+            } else if (sequence && !hasWeight && !bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeData<true, false, false, DTYPE_X, true>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, nullptr, nullptr, unbucketizePermuteGm, lenSize,
+                    batchSizeB, mySize);
+            } else if (!sequence && hasWeight && !bucketizePos) {
+                Simt::VF_CALL<SimtRearrangeData<false, true, false, DTYPE_X, true>>(
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, newWeightsGm, nullptr, nullptr, lenSize,
+                    batchSizeB, mySize);
             } else if (!sequence && !hasWeight && bucketizePos) {
                 Simt::VF_CALL<SimtRearrangeData<false, false, true, DTYPE_X, true>>(
-                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
-                    currOffsetsGm, newIndicesGm, nullptr, newPosGm, nullptr, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, nullptr, newPosGm, nullptr, lenSize,
+                    batchSizeB, mySize);
             } else {
                 Simt::VF_CALL<SimtRearrangeData<false, false, false, DTYPE_X, true>>(
-                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
-                    currOffsetsGm, newIndicesGm, nullptr, nullptr, nullptr, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, nullptr, nullptr, nullptr, lenSize,
+                    batchSizeB, mySize);
             }
         } else {
             if (sequence && hasWeight && bucketizePos) {
                 Simt::VF_CALL<SimtRearrangeData<true, true, true, DTYPE_X, false>>(
-                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1},
-                    offsetsGm,             // offsets
-                    indicesGm,             // indices
-                    weightsGm,             // weights
-                    blockSizesGm,          // block_sizes
-                    distTypeGm,            // dist_type_per_feature
-                    currOffsetsGm,         // current_offsets
-                    newIndicesGm,          // new_indices
-                    newWeightsGm,          // new_weights
-                    newPosGm,              // new_pos
-                    unbucketizePermuteGm,  // unbucketize_permute
-                    lenSize,               // lengths_size
-                    batchSizeB,            // B
-                    mySize,                 // my_size
-                    mySizeDivisorMagic,
-                    mySizeDivisorShift
-                );
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, newWeightsGm, newPosGm, unbucketizePermuteGm,
+                    lenSize, batchSizeB, mySize);
             } else if (sequence && hasWeight && !bucketizePos) {
                 Simt::VF_CALL<SimtRearrangeData<true, true, false, DTYPE_X, false>>(
-                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm, distTypeGm,
-                    currOffsetsGm, newIndicesGm, newWeightsGm, nullptr, unbucketizePermuteGm, lenSize, batchSizeB,
-                    mySize, mySizeDivisorMagic, mySizeDivisorShift);
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, newWeightsGm, nullptr, unbucketizePermuteGm, lenSize,
+                    batchSizeB, mySize);
             } else if (sequence && !hasWeight && bucketizePos) {
                 Simt::VF_CALL<SimtRearrangeData<true, false, true, DTYPE_X, false>>(
-                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
-                    currOffsetsGm, newIndicesGm, nullptr, newPosGm, unbucketizePermuteGm, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, nullptr, newPosGm, unbucketizePermuteGm, lenSize,
+                    batchSizeB, mySize);
             } else if (!sequence && hasWeight && bucketizePos) {
                 Simt::VF_CALL<SimtRearrangeData<false, true, true, DTYPE_X, false>>(
-                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm, distTypeGm,
-                    currOffsetsGm, newIndicesGm, newWeightsGm, newPosGm, nullptr, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, newWeightsGm, newPosGm, nullptr, lenSize,
+                    batchSizeB, mySize);
             } else if (sequence && !hasWeight && !bucketizePos) {
                 Simt::VF_CALL<SimtRearrangeData<true, false, false, DTYPE_X, false>>(
-                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
-                    currOffsetsGm, newIndicesGm, nullptr, nullptr, unbucketizePermuteGm, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, nullptr, nullptr, unbucketizePermuteGm, lenSize,
+                    batchSizeB, mySize);
             } else if (!sequence && hasWeight && !bucketizePos) {
                 Simt::VF_CALL<SimtRearrangeData<false, true, false, DTYPE_X, false>>(
-                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm, distTypeGm,
-                    currOffsetsGm, newIndicesGm, newWeightsGm, nullptr, nullptr, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, weightsGm, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, newWeightsGm, nullptr, nullptr, lenSize,
+                    batchSizeB, mySize);
             } else if (!sequence && !hasWeight && bucketizePos) {
                 Simt::VF_CALL<SimtRearrangeData<false, false, true, DTYPE_X, false>>(
-                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
-                    currOffsetsGm, newIndicesGm, nullptr, newPosGm, nullptr, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, nullptr, newPosGm, nullptr, lenSize,
+                    batchSizeB, mySize);
             } else {
                 Simt::VF_CALL<SimtRearrangeData<false, false, false, DTYPE_X, false>>(
-                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm, distTypeGm,
-                    currOffsetsGm, newIndicesGm, nullptr, nullptr, nullptr, lenSize, batchSizeB, mySize,
-                    mySizeDivisorMagic, mySizeDivisorShift);
+                    Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, offsetsGm, indicesGm, nullptr, blockSizesGm,
+                    distTypeGm, currOffsetsGm, newIndicesGm, nullptr, nullptr, nullptr, lenSize,
+                    batchSizeB, mySize);
             }
         }
 

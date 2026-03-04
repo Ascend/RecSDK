@@ -67,23 +67,6 @@ constexpr int32_t CPU_KEY_THRESHOLD = 10000;
 using ReturnType =
     std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>, c10::optional<at::Tensor>, c10::optional<at::Tensor>>;
 
-inline void ComputeMagicShift(uint64_t divisor, uint64_t& rstDivisorMagic, uint64_t& rstDivisorShift)
-{
-    if (divisor == 0) {
-        throw std::runtime_error("Fail to compute magic and shift, divisor is zero");
-    }
-    unsigned __int128 oneU128 = 1;
-    uint64_t divisorShift = 0;
-    for (divisorShift = 0; divisorShift < 64; divisorShift++) {
-        if ((oneU128 << divisorShift) >= divisor) {
-            break;
-        }
-    }
-    unsigned __int128 magicU128 = ((oneU128 << 64) * ((oneU128 << divisorShift) - divisor)) / divisor + 1;
-    rstDivisorMagic = static_cast<uint64_t>(magicU128);
-    rstDivisorShift = divisorShift - 1;
-}
-
 ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const at::Tensor& indices, bool bucketizePos,
                                                 bool sequence, const at::Tensor& distTypePerFeature,
                                                 const at::Tensor& blockSizes, int32_t mySize,
@@ -102,8 +85,8 @@ ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const
     int32_t lengthSize = lengths.size(0);
     int32_t indicesSize = indices.size(0);
     int32_t blockSize = blockSizes.size(0);
-    if (blockSize == 0) {
-        throw std::runtime_error("Dividend is zero");
+    if (lengthSize == 0 || blockSize == 0) {
+        throw std::runtime_error("LengthSize or blockSize is zero");
     }
     int32_t B = lengthSize / blockSize;
     // offsetsContig dtype is torch.int64
@@ -165,11 +148,6 @@ ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const
     size_t coreNum = std::min(totalBlocksForCusum, static_cast<size_t>(maxCores));
     coreNum = std::max(coreNum, static_cast<size_t>(MIN_CORE_NUM));
 
-    // 计算快除参数
-    uint64_t mySizeDivisorMagic = 0;
-    uint64_t mySizeDivisorShift = 0;
-    ComputeMagicShift(static_cast<uint64_t>(mySize), mySizeDivisorMagic, mySizeDivisorShift);
-
     void* lengthsPtr = lengthsContig.data_ptr();
     void* indicesPtr = indicesContig.data_ptr();
     void* weightsPtr = weightsContig.defined() ? weightsContig.data_ptr() : nullptr;
@@ -189,8 +167,7 @@ ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const
      static_cast<int32_t>(lengthSize), static_cast<int32_t>(indicesSize), static_cast<int32_t>(mySize),
      static_cast<int32_t>(B), static_cast<int32_t>(isInt32), static_cast<int32_t>(weights.has_value()),
      static_cast<int32_t>(sequence), static_cast<int32_t>(bucketizePos), static_cast<int32_t>(isSmall),
-     static_cast<int32_t>(newLengthsTotalSize), static_cast<int32_t>(totalBlocksForCusum), mySizeDivisorMagic,
-     mySizeDivisorShift);
+     static_cast<int32_t>(newLengthsTotalSize), static_cast<int32_t>(totalBlocksForCusum));
 
     return std::make_tuple(newLengths, newIndices, newWeights, newPos, unbucketizePermute);
 }

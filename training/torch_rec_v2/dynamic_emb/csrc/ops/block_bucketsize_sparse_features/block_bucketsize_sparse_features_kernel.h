@@ -31,6 +31,7 @@ constexpr int32_t CACHE_ALIGN = 64;
 constexpr int32_t SMALL_DATA_THRESHOLD_32 = 24 * MAX_THREADS_PER_BLOCK;  // 24576
 constexpr int32_t SMALL_DATA_THRESHOLD_64 = 44 * MAX_THREADS_PER_BLOCK;  // 45056
 constexpr int32_t UNROLL_FACTOR = 4;
+constexpr int32_t MAX_FEATURE_NUM_USE_QUICK_DIVIDE = 500;
 
 template <typename T>
 __aicore__ inline T Min(const T& a, const T& b)
@@ -303,7 +304,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
  * 4. t = ((x - q) >> 1) + q
  * 5. r = t >> (shift - 1)
  */
-__inline__ __aicore__ uint64_t QuickRemainder(
+__aicore__ inline uint64_t QuickRem(
     const uint64_t& x, const uint64_t& divisorMagic, const uint64_t& divisorShift, const uint64_t& y)
 {
     uint64_t divTmp = __umul64hi(x, divisorMagic);
@@ -312,8 +313,8 @@ __inline__ __aicore__ uint64_t QuickRemainder(
     return x - divResult * y;
 }
 
-__inline__ __aicore__ uint64_t QuickDivision(
-    const uint64_t& x, const uint64_t& divisorMagic, const uint64_t& divisorShift, const uint64_t& y)
+__aicore__ inline uint64_t QuickDiv(
+    const uint64_t& x, const uint64_t& divisorMagic, const uint64_t& divisorShift)
 {
     uint64_t divTmp = __umul64hi(x, divisorMagic);
     divTmp = ((x - divTmp) >> 1) + divTmp;
@@ -324,8 +325,7 @@ __inline__ __aicore__ uint64_t QuickDivision(
 template <typename T, bool isPowerOfTwo>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtComputeNewLengths(
     const __gm__ int64_t* offsets, const __gm__ T* indices, const __gm__ T* blockSizes,
-    const __gm__ T* distTypePerFeature, __gm__ T* newLengths, int32_t lengthSize, int32_t B, const uint64_t mySize,
-    const uint64_t mySizeDivisorMagic, const uint64_t mySizeDivisorShift)
+    const __gm__ T* distTypePerFeature, __gm__ T* newLengths, int32_t lengthSize, int32_t B, const int32_t mySize)
 {
     using uindex_t = typename std::make_unsigned<T>::type;
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
@@ -333,7 +333,6 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
     int32_t coreId = AscendC::Simt::GetBlockIdx();
     int32_t coreNum = AscendC::Simt::GetBlockNum();
     const uindex_t mySizeMask = (isPowerOfTwo) ? (mySize - 1) : 0;
-    bool isLeastMySize = (mySize <= 1);
 
     for (int32_t feature = coreId * threadNumPerCore + threadIdx; feature < lengthSize;
          feature += coreNum * threadNumPerCore) {
@@ -352,26 +351,10 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
                 uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
                 uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
 
-                uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) :
-                                           (isLeastMySize ? 0 :
-                                                          static_cast<uindex_t>(QuickRemainder(
-                                                              static_cast<uint64_t>(idx0), mySizeDivisorMagic,
-                                                              mySizeDivisorShift, mySize)));
-                uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) :
-                                           (isLeastMySize ? 0 :
-                                                          static_cast<uindex_t>(QuickRemainder(
-                                                              static_cast<uint64_t>(idx1), mySizeDivisorMagic,
-                                                              mySizeDivisorShift, mySize)));
-                uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) :
-                                           (isLeastMySize ? 0 :
-                                                          static_cast<uindex_t>(QuickRemainder(
-                                                              static_cast<uint64_t>(idx2), mySizeDivisorMagic,
-                                                              mySizeDivisorShift, mySize)));
-                uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) :
-                                           (isLeastMySize ? 0 :
-                                                          static_cast<uindex_t>(QuickRemainder(
-                                                              static_cast<uint64_t>(idx3), mySizeDivisorMagic,
-                                                              mySizeDivisorShift, mySize)));
+                uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) : (idx0 % mySize);
+                uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) : (idx1 % mySize);
+                uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) : (idx2 % mySize);
+                uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) : (idx3 % mySize);
 
                 newLengths[p0 * lengthSize + feature] += 1;
                 newLengths[p1 * lengthSize + feature] += 1;
@@ -381,11 +364,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
 
             for (; i < rowend; i++) {
                 uindex_t idx = static_cast<uindex_t>(indices[i]);
-                uindex_t p = isPowerOfTwo ? (idx & mySizeMask) :
-                                          (isLeastMySize ? 0 :
-                                                         static_cast<uindex_t>(QuickRemainder(
-                                                             static_cast<uint64_t>(idx), mySizeDivisorMagic,
-                                                             mySizeDivisorShift, mySize)));
+                uindex_t p = isPowerOfTwo ? (idx & mySizeMask) : (idx % mySize);
                 newLengths[p * lengthSize + feature] += 1;
             }
 
@@ -422,13 +401,12 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
     AscendC::Simt::ThreadBarrier();
 }
 
-// 得到newIndices
-template <bool sequence, bool hasWeight, bool bucketizePos, typename T, bool isPowerOfTwo>
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearrangeData(
-    const __gm__ int64_t* offsets, const __gm__ T* indices, const __gm__ float* weights, const __gm__ T* blockSizes,
-    const __gm__ T* distTypePerFeature, __gm__ T* newOffsets, __gm__ T* newIndices, __gm__ float* newWeights,
-    __gm__ T* newPos, __gm__ T* unbucketizePermute, int32_t lengthSize, int32_t B, const uint64_t mySize,
-    const uint64_t mySizeDivisorMagic, const uint64_t mySizeDivisorShift)
+template <typename T, bool isPowerOfTwo>
+__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtComputeNewLengthsQuickDiv(
+    const __gm__ int64_t* offsets, const __gm__ T* indices, const __gm__ T* blockSizes,
+    const __gm__ T* distTypePerFeature, __gm__ T* newLengths, int32_t lengthSize, int32_t B, const uint64_t mySize,
+    const uint64_t mySizeMagic, const uint64_t mySizeShift,
+    __ubuf__ typename std::make_unsigned<T>::type* blkSizeMagicShifts)
 {
     using uindex_t = typename std::make_unsigned<T>::type;
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
@@ -436,7 +414,100 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
     int32_t coreId = AscendC::Simt::GetBlockIdx();
     int32_t coreNum = AscendC::Simt::GetBlockNum();
     const uindex_t mySizeMask = (isPowerOfTwo) ? (mySize - 1) : 0;
-    bool isLeastMySize = (mySize <= 1);
+
+    for (int32_t feature = coreId * threadNumPerCore + threadIdx; feature < lengthSize;
+         feature += coreNum * threadNumPerCore) {
+        const auto t = feature / B;
+
+        bool useRoundRobin = distTypePerFeature ? (distTypePerFeature[t] != 0) : false;
+        int32_t rowstart = (feature == 0) ? 0 : offsets[feature - 1];
+        int32_t rowend = offsets[feature];
+
+        if (useRoundRobin) {
+            uindex_t i = rowstart;
+
+            for (; i + (UNROLL_FACTOR - 1) < rowend; i += UNROLL_FACTOR) {
+                uindex_t idx0 = static_cast<uindex_t>(indices[i]);
+                uindex_t idx1 = static_cast<uindex_t>(indices[i + 1]);
+                uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
+                uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
+
+                uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) : (idx0 % mySize);
+                uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) : (idx1 % mySize);
+                uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) : (idx2 % mySize);
+                uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) : (idx3 % mySize);
+
+                newLengths[p0 * lengthSize + feature] += 1;
+                newLengths[p1 * lengthSize + feature] += 1;
+                newLengths[p2 * lengthSize + feature] += 1;
+                newLengths[p3 * lengthSize + feature] += 1;
+            }
+
+            for (; i < rowend; i++) {
+                uindex_t idx = static_cast<uindex_t>(indices[i]);
+                uindex_t p = isPowerOfTwo ? (idx & mySizeMask) : (idx % mySize);
+                newLengths[p * lengthSize + feature] += 1;
+            }
+
+        } else {
+            uindex_t blkSize = blockSizes[t];
+            const uindex_t blkSizeMulMySize = blkSize * mySize;
+            uindex_t i = rowstart;
+
+            uindex_t blkSizeMagic = blkSizeMagicShifts[t * 2];
+            uindex_t blkSizeShift = blkSizeMagicShifts[t * 2 + 1];
+
+            for (; i + (UNROLL_FACTOR - 1) < rowend; i += UNROLL_FACTOR) {
+                const uindex_t idx0 = static_cast<uindex_t>(indices[i]);
+                const uindex_t idx1 = static_cast<uindex_t>(indices[i + 1]);
+                const uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
+                const uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
+
+                const uindex_t p0 = (idx0 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx0), blkSizeMagic, blkSizeShift)) :
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx0), mySizeMagic, mySizeShift, mySize));
+                const uindex_t p1 = (idx1 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx1), blkSizeMagic, blkSizeShift)) :
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx1), mySizeMagic, mySizeShift, mySize));
+                const uindex_t p2 = (idx2 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx2), blkSizeMagic, blkSizeShift)) :
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx2), mySizeMagic, mySizeShift, mySize));
+                const uindex_t p3 = (idx3 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx3), blkSizeMagic, blkSizeShift)) :
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx3), mySizeMagic, mySizeShift, mySize));
+
+                newLengths[p0 * lengthSize + feature] += 1;
+                newLengths[p1 * lengthSize + feature] += 1;
+                newLengths[p2 * lengthSize + feature] += 1;
+                newLengths[p3 * lengthSize + feature] += 1;
+            }
+
+            for (; i < rowend; i++) {
+                const uindex_t idx = static_cast<uindex_t>(indices[i]);
+                const uindex_t p = (idx < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx), blkSizeMagic, blkSizeShift)) :
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx), mySizeMagic, mySizeShift, mySize));
+                newLengths[p * lengthSize + feature] += 1;
+            }
+        }
+    }
+
+    AscendC::Simt::ThreadBarrier();
+}
+
+// 得到newIndices
+template <bool sequence, bool hasWeight, bool bucketizePos, typename T, bool isPowerOfTwo>
+__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearrangeData(
+    const __gm__ int64_t* offsets, const __gm__ T* indices, const __gm__ float* weights, const __gm__ T* blockSizes,
+    const __gm__ T* distTypePerFeature, __gm__ T* newOffsets, __gm__ T* newIndices, __gm__ float* newWeights,
+    __gm__ T* newPos, __gm__ T* unbucketizePermute, int32_t lengthSize, int32_t B, const int32_t mySize)
+{
+    using uindex_t = typename std::make_unsigned<T>::type;
+    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
+    int32_t threadNumPerCore = AscendC::Simt::GetThreadNum<0>();
+    int32_t coreId = AscendC::Simt::GetBlockIdx();
+    int32_t coreNum = AscendC::Simt::GetBlockNum();
+    const uindex_t mySizeMask = (isPowerOfTwo) ? (mySize - 1) : 0;
 
     for (int32_t feature = coreId * threadNumPerCore + threadIdx; feature < lengthSize;
          feature += coreNum * threadNumPerCore) {
@@ -454,26 +525,10 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
                 const uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
                 const uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
 
-                const uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) :
-                                           (isLeastMySize ? 0 :
-                                                          static_cast<uindex_t>(QuickRemainder(
-                                                              static_cast<uint64_t>(idx0), mySizeDivisorMagic,
-                                                              mySizeDivisorShift, mySize)));
-                const uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) :
-                                           (isLeastMySize ? 0 :
-                                                          static_cast<uindex_t>(QuickRemainder(
-                                                              static_cast<uint64_t>(idx1), mySizeDivisorMagic,
-                                                              mySizeDivisorShift, mySize)));
-                const uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) :
-                                           (isLeastMySize ? 0 :
-                                                          static_cast<uindex_t>(QuickRemainder(
-                                                              static_cast<uint64_t>(idx2), mySizeDivisorMagic,
-                                                              mySizeDivisorShift, mySize)));
-                const uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) :
-                                           (isLeastMySize ? 0 :
-                                                          static_cast<uindex_t>(QuickRemainder(
-                                                              static_cast<uint64_t>(idx3), mySizeDivisorMagic,
-                                                              mySizeDivisorShift, mySize)));
+                const uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) : (idx0 % mySize);
+                const uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) : (idx1 % mySize);
+                const uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) : (idx2 % mySize);
+                const uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) : (idx3 % mySize);
 
                 const uindex_t offset0 = p0 * lengthSize + feature;
                 const uindex_t offset1 = p1 * lengthSize + feature;
@@ -495,7 +550,6 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
                 newIndices[pos3] = static_cast<T>(idx3);
 
                 // 更新newOffsets
-
                 if (sequence) {
                     unbucketizePermute[i] = static_cast<T>(pos0);
                     unbucketizePermute[i + 1] = static_cast<T>(pos1);
@@ -520,11 +574,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
 
             for (; i < rowend; ++i) {
                 const uindex_t idx = static_cast<uindex_t>(indices[i]);
-                const uindex_t p = isPowerOfTwo ? (idx & mySizeMask) :
-                                                (isLeastMySize ? 0 :
-                                                               static_cast<uindex_t>(QuickRemainder(
-                                                                   static_cast<uint64_t>(idx), mySizeDivisorMagic,
-                                                                   mySizeDivisorShift, mySize)));
+                const uindex_t p = isPowerOfTwo ? (idx & mySizeMask) : (idx % mySize);
                 const uindex_t offset = p * lengthSize + feature;
                 const uindex_t pos = newOffsets[offset];
 
@@ -609,6 +659,219 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
                 const uindex_t idx = static_cast<uindex_t>(indices[i]);
                 const uindex_t p = (idx < blkSizeMulMySize) ? (idx / blkSize) : (idx % mySize);
                 const uindex_t newIdx = (idx < blkSizeMulMySize) ? (idx % blkSize) : (idx / mySize);
+
+                const uindex_t offset = p * lengthSize + feature;
+                const uindex_t pos = newOffsets[offset];
+
+                newIndices[pos] = static_cast<T>(newIdx);
+                newOffsets[offset]++;
+
+                if (sequence) {
+                    unbucketizePermute[i] = static_cast<T>(pos);
+                }
+
+                if (hasWeight) {
+                    newWeights[pos] = weights[i];
+                }
+
+                if (bucketizePos) {
+                    newPos[pos] = static_cast<T>(i - rowstart);
+                }
+            }
+        }
+    }
+
+    Simt::ThreadBarrier();
+}
+
+template <bool sequence, bool hasWeight, bool bucketizePos, typename T, bool isPowerOfTwo>
+__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearrangeDataQuickDiv(
+    const __gm__ int64_t* offsets, const __gm__ T* indices, const __gm__ float* weights, const __gm__ T* blockSizes,
+    const __gm__ T* distTypePerFeature, __gm__ T* newOffsets, __gm__ T* newIndices, __gm__ float* newWeights,
+    __gm__ T* newPos, __gm__ T* unbucketizePermute, int32_t lengthSize, int32_t B, const uint64_t mySize,
+    const uint64_t mySizeMagic, const uint64_t mySizeShift,
+    __ubuf__ typename std::make_unsigned<T>::type* blkSizeMagicShifts)
+{
+    using uindex_t = typename std::make_unsigned<T>::type;
+    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
+    int32_t threadNumPerCore = AscendC::Simt::GetThreadNum<0>();
+    int32_t coreId = AscendC::Simt::GetBlockIdx();
+    int32_t coreNum = AscendC::Simt::GetBlockNum();
+    const uindex_t mySizeMask = (isPowerOfTwo) ? (mySize - 1) : 0;
+
+    for (int32_t feature = coreId * threadNumPerCore + threadIdx; feature < lengthSize;
+         feature += coreNum * threadNumPerCore) {
+        const auto t = feature / B;
+        bool useRoundRobin = distTypePerFeature ? (distTypePerFeature[t] != 0) : false;
+
+        int32_t rowstart = (feature == 0) ? 0 : offsets[feature - 1];
+        int32_t rowend = offsets[feature];
+        if (useRoundRobin) {
+            uindex_t i = rowstart;
+
+            for (; i + (UNROLL_FACTOR - 1) < rowend; i += UNROLL_FACTOR) {
+                const uindex_t idx0 = static_cast<uindex_t>(indices[i]);
+                const uindex_t idx1 = static_cast<uindex_t>(indices[i + 1]);
+                const uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
+                const uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
+
+                const uindex_t p0 = isPowerOfTwo ? (idx0 & mySizeMask) : (idx0 % mySize);
+                const uindex_t p1 = isPowerOfTwo ? (idx1 & mySizeMask) : (idx1 % mySize);
+                const uindex_t p2 = isPowerOfTwo ? (idx2 & mySizeMask) : (idx2 % mySize);
+                const uindex_t p3 = isPowerOfTwo ? (idx3 & mySizeMask) : (idx3 % mySize);
+
+                const uindex_t offset0 = p0 * lengthSize + feature;
+                const uindex_t offset1 = p1 * lengthSize + feature;
+                const uindex_t offset2 = p2 * lengthSize + feature;
+                const uindex_t offset3 = p3 * lengthSize + feature;
+
+                const uindex_t pos0 = newOffsets[offset0];
+                newOffsets[offset0]++;
+                const uindex_t pos1 = newOffsets[offset1];
+                newOffsets[offset1]++;
+                const uindex_t pos2 = newOffsets[offset2];
+                newOffsets[offset2]++;
+                const uindex_t pos3 = newOffsets[offset3];
+                newOffsets[offset3]++;
+
+                newIndices[pos0] = static_cast<T>(idx0);
+                newIndices[pos1] = static_cast<T>(idx1);
+                newIndices[pos2] = static_cast<T>(idx2);
+                newIndices[pos3] = static_cast<T>(idx3);
+
+                // 更新newOffsets
+                if (sequence) {
+                    unbucketizePermute[i] = static_cast<T>(pos0);
+                    unbucketizePermute[i + 1] = static_cast<T>(pos1);
+                    unbucketizePermute[i + 2] = static_cast<T>(pos2);
+                    unbucketizePermute[i + 3] = static_cast<T>(pos3);
+                }
+
+                if (hasWeight) {
+                    newWeights[pos0] = weights[i];
+                    newWeights[pos1] = weights[i + 1];
+                    newWeights[pos2] = weights[i + 2];
+                    newWeights[pos3] = weights[i + 3];
+                }
+
+                if (bucketizePos) {
+                    newPos[pos0] = static_cast<T>(i - rowstart);
+                    newPos[pos1] = static_cast<T>(i + 1 - rowstart);
+                    newPos[pos2] = static_cast<T>(i + 2 - rowstart);
+                    newPos[pos3] = static_cast<T>(i + 3 - rowstart);
+                }
+            }
+
+            for (; i < rowend; ++i) {
+                const uindex_t idx = static_cast<uindex_t>(indices[i]);
+                const uindex_t p = isPowerOfTwo ? (idx & mySizeMask) : (idx % mySize);
+                const uindex_t offset = p * lengthSize + feature;
+                const uindex_t pos = newOffsets[offset];
+
+                newIndices[pos] = static_cast<T>(idx);
+                newOffsets[offset]++;
+
+                if (sequence) {
+                    unbucketizePermute[i] = static_cast<T>(pos);
+                }
+
+                if (hasWeight) {
+                    newWeights[pos] = weights[i];
+                }
+
+                if (bucketizePos) {
+                    newPos[pos] = static_cast<T>(i - rowstart);
+                }
+            }
+        } else {
+            uindex_t blkSize = blockSizes[t];
+            const uindex_t blkSizeMulMySize = blkSize * mySize;
+            uindex_t i = rowstart;
+
+            uindex_t blkSizeMagic = blkSizeMagicShifts[t * 2];
+            uindex_t blkSizeShift = blkSizeMagicShifts[t * 2 + 1];
+
+            for (; i + (UNROLL_FACTOR - 1) < rowend; i += UNROLL_FACTOR) {
+                const uindex_t idx0 = static_cast<uindex_t>(indices[i]);
+                const uindex_t idx1 = static_cast<uindex_t>(indices[i + 1]);
+                const uindex_t idx2 = static_cast<uindex_t>(indices[i + 2]);
+                const uindex_t idx3 = static_cast<uindex_t>(indices[i + 3]);
+
+                const uindex_t p0 = (idx0 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx0), blkSizeMagic, blkSizeShift)) :
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx0), mySizeMagic, mySizeShift, mySize));
+                const uindex_t p1 = (idx1 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx1), blkSizeMagic, blkSizeShift)) :
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx1), mySizeMagic, mySizeShift, mySize));
+                const uindex_t p2 = (idx2 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx2), blkSizeMagic, blkSizeShift)) :
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx2), mySizeMagic, mySizeShift, mySize));
+                const uindex_t p3 = (idx3 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx3), blkSizeMagic, blkSizeShift)) :
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx3), mySizeMagic, mySizeShift, mySize));
+
+                const uindex_t newIdx0 = (idx0 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx0), blkSizeMagic, blkSizeShift, blkSize)) :
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx0), mySizeMagic, mySizeShift));
+                const uindex_t newIdx1 = (idx1 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx1), blkSizeMagic, blkSizeShift, blkSize)) :
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx1), mySizeMagic, mySizeShift));
+                const uindex_t newIdx2 = (idx2 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx2), blkSizeMagic, blkSizeShift, blkSize)) :
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx2), mySizeMagic, mySizeShift));
+                const uindex_t newIdx3 = (idx3 < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx3), blkSizeMagic, blkSizeShift, blkSize)) :
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx3), mySizeMagic, mySizeShift));
+
+                const uindex_t offset0 = p0 * lengthSize + feature;
+                const uindex_t offset1 = p1 * lengthSize + feature;
+                const uindex_t offset2 = p2 * lengthSize + feature;
+                const uindex_t offset3 = p3 * lengthSize + feature;
+
+                const uindex_t pos0 = newOffsets[offset0];
+                newOffsets[offset0]++;
+                const uindex_t pos1 = newOffsets[offset1];
+                newOffsets[offset1]++;
+                const uindex_t pos2 = newOffsets[offset2];
+                newOffsets[offset2]++;
+                const uindex_t pos3 = newOffsets[offset3];
+                newOffsets[offset3]++;
+
+                newIndices[pos0] = static_cast<T>(newIdx0);
+                newIndices[pos1] = static_cast<T>(newIdx1);
+                newIndices[pos2] = static_cast<T>(newIdx2);
+                newIndices[pos3] = static_cast<T>(newIdx3);
+
+                if (sequence) {
+                    unbucketizePermute[i] = static_cast<T>(pos0);
+                    unbucketizePermute[i + 1] = static_cast<T>(pos1);
+                    unbucketizePermute[i + 2] = static_cast<T>(pos2);
+                    unbucketizePermute[i + 3] = static_cast<T>(pos3);
+                }
+
+                if (hasWeight) {
+                    newWeights[pos0] = weights[i];
+                    newWeights[pos1] = weights[i + 1];
+                    newWeights[pos2] = weights[i + 2];
+                    newWeights[pos3] = weights[i + 3];
+                }
+
+                if (bucketizePos) {
+                    newPos[pos0] = static_cast<T>(i - rowstart);
+                    newPos[pos1] = static_cast<T>(i + 1 - rowstart);
+                    newPos[pos2] = static_cast<T>(i + 2 - rowstart);
+                    newPos[pos3] = static_cast<T>(i + 3 - rowstart);
+                }
+            }
+
+            for (; i < rowend; ++i) {
+                const uindex_t idx = static_cast<uindex_t>(indices[i]);
+                const uindex_t p = (idx < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx), blkSizeMagic, blkSizeShift)) :
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx), mySizeMagic, mySizeShift, mySize));
+                const uindex_t newIdx = (idx < blkSizeMulMySize) ?
+                    static_cast<uindex_t>(QuickRem(static_cast<uint64_t>(idx), blkSizeMagic, blkSizeShift, blkSize)) :
+                    static_cast<uindex_t>(QuickDiv(static_cast<uint64_t>(idx), mySizeMagic, mySizeShift));
 
                 const uindex_t offset = p * lengthSize + feature;
                 const uindex_t pos = newOffsets[offset];
