@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
  * All rights reserved.
  *
  * This source code is licensed under the BSD-style license found in the
@@ -12,7 +12,6 @@
 
 #include <ATen/Parallel.h>
 
-#include "common/constants.h"
 #include "utils/logger.h"
 
 using namespace Embcache;
@@ -58,7 +57,7 @@ ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
                 if (it != key2off_.end()) {
                     int64_t off = it->second;
                     batchOffs[i] = off;
-                    cache_[off].version = nowVersion_;
+                    UpdateCache(key, off, nowVersion_);
                 } else {
                     local_missed.push_back(i);
                 }
@@ -93,7 +92,7 @@ ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
             swapinKeys.push_back(key);
             swapinOffs.push_back(off);
             // 更新状态
-            cache_[off] = {key, nowVersion_};
+            UpdateCache(key, off, nowVersion_);
             key2off_[key] = off;
             batchOffs[i] = off;
             continue;
@@ -101,13 +100,22 @@ ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
 
         // cache 已满，需要替换
         // 找到可以被换出的位置，这一步和上一步正在用的key不能换出
-        while (swapIdx_ < cacheSize_ && cache_[swapIdx_].version >= nowVersion_ - 1) {
+        KeyVersion lastKeyVersion;
+        while (swapIdx_ < cacheSize_) {
+            lastKeyVersion = FindLastKeyVersion(swapIdx_);
+            if (lastKeyVersion.version < nowVersion_ - 1) {
+                break;
+            }
             swapIdx_++;
         }
         // 找到末尾了，重头开始找
         if (swapIdx_ == cacheSize_) {
             swapIdx_ = memStartOffset_;
-            while (swapIdx_ < cacheSize_ && cache_[swapIdx_].version >= nowVersion_ - 1) {
+            while (swapIdx_ < cacheSize_) {
+                lastKeyVersion = FindLastKeyVersion(swapIdx_);
+                if (lastKeyVersion.version < nowVersion_ - 1) {
+                    break;
+                }
                 swapIdx_++;
             }
             // 仍没找到，说明没有可以被换出的位置
@@ -115,11 +123,13 @@ ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
                 throw std::runtime_error("cacheSize_ too small");
             }
         }
-        bool isEvictedPos = cache_[swapIdx_].version == CAN_REUSE_KEY_VERSION;  // 是否是被淘汰的位置
+        lastKeyVersion = FindLastKeyVersion(swapIdx_);
+        bool isEvictedPos = lastKeyVersion.key == INVALID_KEY;
         off = swapIdx_++;
         swapinKeys.push_back(key);
         swapinOffs.push_back(off);
-        int64_t swapoutKey = cache_[off].key;
+        lastKeyVersion = FindLastKeyVersion(off);
+        int64_t swapoutKey = lastKeyVersion.key;
         if (swapoutKey != INVALID_KEY) {
             key2off_.erase(swapoutKey);
         }
@@ -130,7 +140,7 @@ ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
         }
 
         // 更新状态
-        cache_[off] = {key, nowVersion_};
+        UpdateCache(key, off, nowVersion_);
         key2off_[key] = off;
         batchOffs[i] = off;
     }
@@ -138,7 +148,20 @@ ComputeSwapRet SwapManager::ComputeSwapInfo(const std::vector<int64_t>& keys)
     return std::make_tuple(swapoutKeys, swapoutOffs, swapinKeys, swapinOffs, batchOffs);
 }
 
-void SwapManager::RemoveKeys(const std::vector<int64_t>& keys)
+SwapManager::KeyVersion& SwapManager::FindLastKeyVersion(int64_t off)
+{
+    int idx = (cache_[off].startIndex + maxVersionDiff_ - 1) % maxVersionDiff_;
+    return cache_[off].history[idx];
+}
+
+void SwapManager::UpdateCache(int64_t key, int64_t off, int64_t version)
+{
+    auto& cacheSlot = cache_[off];
+    cacheSlot.history[cacheSlot.startIndex] = {key, version};
+    cacheSlot.startIndex = (cacheSlot.startIndex + 1) % maxVersionDiff_;
+}
+
+void SwapManager::RemoveKeys(const std::vector<int64_t>& keys, bool isEvict)
 {
     for (auto key : keys) {
         auto iter = key2off_.find(key);
@@ -148,20 +171,37 @@ void SwapManager::RemoveKeys(const std::vector<int64_t>& keys)
 
         // 删除 mem cache侧 key offset
         int64_t offset = iter->second;
-        // version字段标记为可换出就代表已删除
-        cache_[offset].version = CAN_REUSE_KEY_VERSION;
         // 置为无效key，防止该offset在被淘汰到被重用期间进来相同的key, 在重用淘汰位置时，从key2off中误删
-        cache_[offset].key = INVALID_KEY;
+        auto& lastKeyVersion = FindLastKeyVersion(offset);
+        int64_t startIndex = cache_[offset].startIndex;
+        lastKeyVersion.key = INVALID_KEY;
+        if (!isEvict) {
+            for (int i = 0; i < maxVersionDiff_ - 1; ++i) {
+                cache_[offset].history[(startIndex + i) % maxVersionDiff_] = {INVALID_KEY, INIT_VERSION};
+            }
+        }
 
         // 删除host key offset
         key2off_.erase(key);
     }
 }
 
-int64_t SwapManager::GetKey(int64_t off)
+int64_t SwapManager::GetKey(int64_t off, int64_t embeddingUpdateVersion)
 {
     TORCH_CHECK(off >= 0 && off < occupiedNum_, "off is out of bounds: ", off, ", occupiedNum: ", occupiedNum_)
-    return cache_[off].key;
+    int64_t startIndex = cache_[off].startIndex;
+    for (int i = 0; i < maxVersionDiff_; ++i) {
+        int64_t idx = (startIndex + maxVersionDiff_ - 1 - i) % maxVersionDiff_;
+        auto keyVersion = cache_[off].history[idx];
+        // cache记录的计数是version_++前的，所以需要通过version_ + 1来判断是否是同一轮的访问
+        if (embeddingUpdateVersion - keyVersion.version >= 1) {
+            return keyVersion.key;
+        }
+    }
+    // 如果没找到，说明逻辑有问题，抛异常
+    throw std::runtime_error("can not find key for off: " + std::to_string(off) + ", embeddingUpdateVersion: " +
+                             std::to_string(embeddingUpdateVersion) + ", startIndex: " + std::to_string(startIndex) +
+                             ", maxVersionDiff_: " + std::to_string(maxVersionDiff_));
 }
 
 int64_t SwapManager::GetMemStartOffset() const

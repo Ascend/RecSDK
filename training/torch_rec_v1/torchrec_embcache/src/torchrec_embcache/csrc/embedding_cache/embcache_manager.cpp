@@ -1,5 +1,5 @@
 /*
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
  * All rights reserved.
  *
  * This source code is licensed under the BSD-style license found in the
@@ -407,7 +407,7 @@ void EmbcacheManager::Embedding2Host(const at::Tensor& weightsDev, const std::ve
         std::vector<int64_t> keys;
         keys.reserve(end - start);
         for (int64_t off = start; off < end; off++) {
-            keys.emplace_back(swapManagers_[tableIndex].GetKey(off));
+            keys.emplace_back(swapManagers_[tableIndex].GetKey(off, embUpdateCount_));
         }
         std::vector<float*> momentumDataPtrs(momentumDevs.size());
         for (size_t i = 0; i < momentumDevs.size(); i++) {
@@ -958,10 +958,9 @@ void EmbcacheManager::Load(const std::string& path, int rank, int world_size, bo
         }
         LOG_INFO("Global load: total keys={}, local keys={}.", allKeys.size(), localKeys.size());
 
+        swapManagers_[i].RemoveKeys(localKeys, false);
         // Handle incremental logic
-        if (incremental) {
-            swapManagers_[i].RemoveKeys(localKeys);
-        } else {
+        if (!incremental) {
             incrementalKeySets_[i].clear();
         }
 
@@ -1248,7 +1247,7 @@ void EmbcacheManager::EvictFeatures()
         const std::vector<int64_t>& evictFeatures = featureFilters_[i]->evictFeatureRecord_.GetEvictKeys();
         // 调用swapManager删除映射信息
         // 删除embeddingTables中的embedding待对应step的swap out emb update执行完成后触发
-        swapManagers_[i].RemoveKeys(evictFeatures);
+        swapManagers_[i].RemoveKeys(evictFeatures, true);
         featureFilters_[i]->evictFeatureRecord_.SetSwapCount(swapCount_);
         evictKeyCount += evictFeatures.size();
     }
