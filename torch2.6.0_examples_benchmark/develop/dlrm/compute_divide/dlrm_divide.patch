@@ -1,0 +1,800 @@
+diff --git a/torchrec_dlrm/aws_component.py b/torchrec_dlrm/aws_component.py
+index 4668bac..3e2d018 100644
+--- a/torchrec_dlrm/aws_component.py
++++ b/torchrec_dlrm/aws_component.py
+@@ -5,13 +5,12 @@
+ # LICENSE file in the root directory of this source tree.
+ 
+ import os
++from typing import Tuple, Any
+ 
+ import torchx.specs as specs
+ from torchx.components.dist import ddp
+-from torchx.specs.api import Resource
+ 
+-
+-def run_dlrm_main(num_trainers: int = 8, *script_args: str) -> specs.AppDef:
++def run_dlrm_main(num_trainers: int = 8, *script_args: Tuple[Any]) -> specs.AppDef:
+     """
+     Args:
+         num_trainers: The number of trainers to use.
+@@ -21,6 +20,8 @@ def run_dlrm_main(num_trainers: int = 8, *script_args: str) -> specs.AppDef:
+     entrypoint = os.path.join(cwd, "dlrm_main.py")
+ 
+     user = os.environ.get("USER")
++    if user is None:
++        raise ValueError("Environment variable 'USER' is not set.")
+     image = f"/data/home/{user}"
+ 
+     if num_trainers > 8 and num_trainers % 8 != 0:
+diff --git a/torchrec_dlrm/data/dlrm_dataloader.py b/torchrec_dlrm/data/dlrm_dataloader.py
+index 4bb9001..ca58ddb 100644
+--- a/torchrec_dlrm/data/dlrm_dataloader.py
++++ b/torchrec_dlrm/data/dlrm_dataloader.py
+@@ -130,7 +130,7 @@ def _get_in_memory_dataloader(
+             ),
+         ),
+         batch_size=None,
+-        pin_memory=args.pin_memory,
++        pin_memory=False,
+         collate_fn=lambda x: x,
+     )
+     return dataloader
+diff --git a/torchrec_dlrm/data/multi_hot_criteo.py b/torchrec_dlrm/data/multi_hot_criteo.py
+index e612629..bda0de2 100644
+--- a/torchrec_dlrm/data/multi_hot_criteo.py
++++ b/torchrec_dlrm/data/multi_hot_criteo.py
+@@ -1,7 +1,8 @@
+ #!/usr/bin/env python3
+ # Copyright (c) Meta Platforms, Inc. and affiliates.
++# All rights reserved.
+ #
+-# This source code is licensed under the MIT license found in the
++# This source code is licensed under the BSD-style license found in the
+ # LICENSE file in the root directory of this source tree.
+ 
+ import zipfile
+@@ -124,15 +125,6 @@ class MultiHotCriteoIterDataPipe(IterableDataset):
+             self.sparse_arrs[0] = [
+                 feats[second_half_start_index:, :] for feats in self.sparse_arrs[0]
+             ]
+-        # When mmap_mode is enabled, sparse features are hashed when
+-        # samples are batched in def __iter__. Otherwise, the dataset has been
+-        # preloaded with sparse features hashed in the preload stage, here:
+-        # if not self.mmap_mode and self.hashes is not None:
+-        #     for k, _ in enumerate(self.sparse_arrs):
+-        #         self.sparse_arrs[k] = [
+-        #             feat % hash
+-        #             for (feat, hash) in zip(self.sparse_arrs[k], self.hashes)
+-        #         ]
+ 
+         self.num_rows_per_file: List[int] = list(map(len, self.dense_arrs))
+         total_rows = sum(self.num_rows_per_file)
+@@ -167,15 +159,15 @@ class MultiHotCriteoIterDataPipe(IterableDataset):
+         # figure out offset of .npy in .npz
+         zf = zipfile.ZipFile(fname)
+         info = zf.NameToInfo[npy_name]
+-        assert info.compress_type == 0
++        if info.compress_type != 0:
++            raise ValueError(f"Invalid compress type. Expected 0, got {info.compress_type}")
+         zf.fp.seek(info.header_offset + len(info.FileHeader()) + 20)
+         # read .npy header
+         zf.open(npy_name, "r")
+         version = np.lib.format.read_magic(zf.fp)
+         shape, fortran_order, dtype = np.lib.format._read_array_header(zf.fp, version)
+-        assert (
+-            dtype == "int32"
+-        ), f"sparse multi-hot dtype is {dtype} but should be int32"
++        if dtype != "int32":
++            raise TypeError(f"sparse multi-hot dtype is {dtype} but should be int32")
+         offset = zf.fp.tell()
+         # create memmap
+         return np.memmap(
+@@ -203,7 +195,7 @@ class MultiHotCriteoIterDataPipe(IterableDataset):
+         batch_size = len(dense)
+         lengths = torch.ones((CAT_FEATURE_COUNT * batch_size), dtype=torch.int32)
+         for k, multi_hot_size in enumerate(self.multi_hot_sizes):
+-            lengths[k * batch_size : (k + 1) * batch_size] = multi_hot_size
++            lengths[k * batch_size: (k + 1) * batch_size] = multi_hot_size
+         offsets = torch.cumsum(torch.concat((torch.tensor([0]), lengths)), dim=0)
+         length_per_key = [
+             batch_size * multi_hot_size for multi_hot_size in self.multi_hot_sizes
+@@ -285,12 +277,6 @@ class MultiHotCriteoIterDataPipe(IterableDataset):
+                     ]
+                     target_labels = self.labels_arrs[file_idx][slice_, :]
+ 
+-                    # if self.mmap_mode and self.hashes is not None:
+-                    #     sparse_inputs = [
+-                    #         feats % hash
+-                    #         for (feats, hash) in zip(sparse_inputs, self.hashes)
+-                    #     ]
+-
+                     append_to_buffer(
+                         dense_inputs,
+                         sparse_inputs,
+diff --git a/torchrec_dlrm/dlrm_divide.patch b/torchrec_dlrm/dlrm_divide.patch
+new file mode 100644
+index 0000000..e69de29
+diff --git a/torchrec_dlrm/dlrm_main.py b/torchrec_dlrm/dlrm_main.py
+index a3d98b6..1541dad 100644
+--- a/torchrec_dlrm/dlrm_main.py
++++ b/torchrec_dlrm/dlrm_main.py
+@@ -4,20 +4,28 @@
+ # This source code is licensed under the MIT license found in the
+ # LICENSE file in the root directory of this source tree.
+ 
++import logging
+ import argparse
+ import itertools
+ import os
++import shutil
+ import sys
++import time
++import sysconfig
+ from dataclasses import dataclass, field
+ from enum import Enum
+ from typing import Iterator, List, Optional
++from tqdm import tqdm
+ 
+ import torch
+ import torchmetrics as metrics
+ from pyre_extensions import none_throws
+ from torch import distributed as dist
+ from torch.utils.data import DataLoader
+-from torchrec import EmbeddingBagCollection
++
++import torch_npu
++
++from torchrec import EmbeddingBagCollection, EmbeddingCollection, EmbeddingConfig
+ from torchrec.datasets.criteo import DEFAULT_CAT_NAMES, DEFAULT_INT_NAMES
+ from torchrec.distributed import TrainPipelineSparseDist
+ from torchrec.distributed.comm import get_local_size
+@@ -25,7 +33,7 @@ from torchrec.distributed.model_parallel import (
+     DistributedModelParallel,
+     get_default_sharders,
+ )
+-from torchrec.distributed.planner import EmbeddingShardingPlanner, Topology
++from torchrec.distributed.planner import EmbeddingShardingPlanner, Topology, ParameterConstraints
+ from torchrec.distributed.planner.storage_reservations import (
+     HeuristicalStorageReservation,
+ )
+@@ -34,7 +42,17 @@ from torchrec.modules.embedding_configs import EmbeddingBagConfig
+ from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
+ from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizerWrapper
+ from torchrec.optim.optimizers import in_backward_optimizer_filter
+-from tqdm import tqdm
++from torchrec.distributed.types import ShardingEnv
++
++from ec_dcnv2 import DlrmDcnEc as DLRM_DCN_EC
++from sing_card_ebc import (
++    SingleCardEmbCacheShardedEmbeddingCollection
++)
++
++
++for handler in logging.root.handlers[:]:
++    logging.root.removeHandler(handler)
++logging.basicConfig(level=logging.INFO, format='%(message)s')
+ 
+ # OSS import
+ try:
+@@ -60,7 +78,22 @@ try:
+ except ImportError:
+     pass
+ 
+-TRAIN_PIPELINE_STAGES = 3  # Number of stages in TrainPipelineSparseDist.
++try:
++    torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
++except FileNotFoundError as e:
++    logging.warning(f"libfbgemm_npu_api.so is not exist")
++except Exception as e:
++    logging.warning(f"libfbgemm_npu_api.so failed to load: {e}")
++
++with_torchrec = os.getenv('WITH_TORCHREC', 'False').strip().lower() in {'true', '1', 'yes'}
++with_hybrid_torchrec = os.getenv('WITH_HYBRID_TORCHREC', 'False').strip().lower() in {'true', '1', 'yes'}
++with_embcache = os.getenv('WITH_EMBCACHE', 'False').strip().lower() in {'true', '1', 'yes'}
++with_embcache_and_save = with_embcache and os.getenv('WITH_EMBCACHE_AND_SAVE', 'False').strip().lower() in {'true', '1', 'yes'}
++with_embcache_and_load = with_embcache and os.getenv('WITH_EMBCACHE_AND_LOAD', 'False').strip().lower() in {'true', '1', 'yes'}
++execute_train = os.getenv('EXECUTE_TRAIN', 'False').strip().lower() in {'true', '1', 'yes'}
++execute_sing_card_eval = os.getenv('EXECUTE_SING_CARD_EVAL', 'False').strip().lower() in {'true', '1', 'yes'}
++_EMB_CACHE_SAVE_DIR='save_dir'
++use_ec = os.getenv('USE_EC', 'False').strip().lower() in {'true', '1', 'yes'}
+ 
+ 
+ class InteractionType(Enum):
+@@ -329,12 +362,12 @@ def _evaluate(
+     Returns:
+         float: auroc result
+     """
+-    pipeline._model.eval()
++    pipeline._model = pipeline._model.eval()
+     device = pipeline._device
+ 
+     iterator = itertools.islice(iter(eval_dataloader), limit_batches)
+ 
+-    auroc = metrics.AUROC(compute_on_step=False, num_classes=2).to(device)
++    auroc = metrics.AUROC("binary").to(device)
+ 
+     is_rank_zero = dist.get_rank() == 0
+     if is_rank_zero:
+@@ -349,6 +382,7 @@ def _evaluate(
+             try:
+                 _loss, logits, labels = pipeline.progress(iterator)
+                 preds = torch.sigmoid(logits)
++                # print("preds: ", preds, "labels: ", labels)
+                 auroc(preds, labels)
+                 if is_rank_zero:
+                     pbar.update(1)
+@@ -360,28 +394,44 @@ def _evaluate(
+     dist.reduce(num_samples, 0, op=dist.ReduceOp.SUM)
+ 
+     if is_rank_zero:
+-        print(f"AUROC over {stage} set: {auroc_result}.")
+-        print(f"Number of {stage} samples: {num_samples}")
++        logging.info("AUROC over %s set: %s.", stage, auroc_result)
++        logging.info(f"Number of %s samples: %s.", stage, num_samples)
+     return auroc_result
+ 
+ 
+ def batched(it: Iterator, n: int):
+-    assert n >= 1
++    if n < 1:
++        raise ValueError("Error: n must be gather than 1")
+     for x in it:
+         yield itertools.chain((x,), itertools.islice(it, n - 1))
+ 
+ 
+-def _train(
+-    pipeline: TrainPipelineSparseDist,
+-    train_dataloader: DataLoader,
+-    val_dataloader: DataLoader,
+-    epoch: int,
+-    lr_scheduler,
+-    print_lr: bool,
+-    validation_freq: Optional[int],
+-    limit_train_batches: Optional[int],
+-    limit_val_batches: Optional[int],
+-) -> None:
++@dataclass
++class TrainParam:
++    pipeline: TrainPipelineSparseDist
++    train_dataloader: DataLoader
++    val_dataloader: DataLoader
++    lr_scheduler: LRPolicyScheduler
++    print_lr: bool
++    validation_freq: Optional[int]
++    limit_train_batches: Optional[int]
++    limit_val_batches: Optional[int]
++
++
++@dataclass
++class TrainValTestParam:
++    model: torch.nn.Module
++    optimizer: torch.optim.Optimizer
++    device: torch.device
++    train_dataloader: DataLoader
++    val_dataloader: DataLoader
++    test_dataloader: DataLoader
++    lr_scheduler: LRPolicyScheduler
++
++
++def _train(epoch: int,
++        params: TrainParam
++) -> float:
+     """
+     Trains model for 1 epoch. Helper function for train_val_test.
+ 
+@@ -399,6 +449,15 @@ def _train(
+     Returns:
+         None.
+     """
++    pipeline = params.pipeline
++    train_dataloader = params.train_dataloader
++    val_dataloader = params.val_dataloader
++    lr_scheduler = params.lr_scheduler
++    print_lr = params.print_lr
++    validation_freq = params.validation_freq
++    limit_train_batches = params.limit_train_batches
++    limit_val_batches = params.limit_val_batches
++
+     pipeline._model.train()
+ 
+     iterator = itertools.islice(iter(train_dataloader), limit_train_batches)
+@@ -418,19 +477,21 @@ def _train(
+         if validation_freq
+         else limit_train_batches if limit_train_batches else len(train_dataloader)
+     )
++    # time start
++    time0 = time.time()
+     for batched_iterator in batched(iterator, n):
+         for it in itertools.count(start_it):
+             try:
+                 if is_rank_zero and print_lr:
+                     for i, g in enumerate(pipeline._optimizer.param_groups):
+-                        print(f"lr: {it} {i} {g['lr']:.6f}")
++                        logging.info("lr: %s %s %.6f", it, i, g['lr'])
+                 pipeline.progress(batched_iterator)
+                 lr_scheduler.step()
+                 if is_rank_zero:
+                     pbar.update(1)
+             except StopIteration:
+                 if is_rank_zero:
+-                    print("Total number of iterations:", it)
++                    logging.info("Total number of iterations: %s.", it)
+                 start_it = it
+                 break
+ 
+@@ -438,22 +499,22 @@ def _train(
+             _evaluate(limit_val_batches, pipeline, val_dataloader, "val")
+             pipeline._model.train()
+ 
++    all_its = (limit_train_batches if limit_train_batches else len(train_dataloader))
++    time1 = time.time()
++    avg_speed = all_its / (time1 - time0)
++    return avg_speed
++
+ 
+ @dataclass
+ class TrainValTestResults:
+     val_aurocs: List[float] = field(default_factory=list)
+     test_auroc: Optional[float] = None
++    train_speed: Optional[float] = None
+ 
+ 
+ def train_val_test(
+     args: argparse.Namespace,
+-    model: torch.nn.Module,
+-    optimizer: torch.optim.Optimizer,
+-    device: torch.device,
+-    train_dataloader: DataLoader,
+-    val_dataloader: DataLoader,
+-    test_dataloader: DataLoader,
+-    lr_scheduler: LRPolicyScheduler,
++    params: TrainValTestParam
+ ) -> TrainValTestResults:
+     """
+     Train/validation/test loop.
+@@ -471,32 +532,294 @@ def train_val_test(
+     Returns:
+         TrainValTestResults.
+     """
++    model = params.model
++    optimizer = params.optimizer
++    device = params.device
++    test_dataloader = params.test_dataloader
++
+     results = TrainValTestResults()
+-    pipeline = TrainPipelineSparseDist(
+-        model, optimizer, device, execute_all_batches=True
+-    )
+-
+-    for epoch in range(args.epochs):
+-        _train(
+-            pipeline,
+-            train_dataloader,
+-            val_dataloader,
+-            epoch,
+-            lr_scheduler,
+-            args.print_lr,
+-            args.validation_freq_within_epoch,
+-            args.limit_train_batches,
+-            args.limit_val_batches,
++
++    if with_hybrid_torchrec:
++        from hybrid_torchrec.distributed.hybrid_train_pipeline import HybridTrainPipelineSparseDist
++        pipeline = HybridTrainPipelineSparseDist(
++            model, optimizer, device, execute_all_batches=True
++        )
++    elif with_embcache:
++        from torchrec_embcache.saver import Saver
++        from torchrec_embcache.utils import safe_makedirs
++        saver = Saver(args.rank)
++        from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
++        cpu_device: torch.device = torch.device("cpu")
++        pipeline = EmbCacheTrainPipelineSparseDist(
++            model, optimizer, cpu_device=cpu_device, npu_device=device, execute_all_batches=True
+         )
+-        val_auroc = _evaluate(args.limit_val_batches, pipeline, val_dataloader, "val")
+-        results.val_aurocs.append(val_auroc)
++    else:
++        # 原始torchrec
++        pipeline = TrainPipelineSparseDist(
++            model, optimizer, device, execute_all_batches=True
++        )
++
++    train_params = TrainParam(
++        pipeline=pipeline,
++        train_dataloader=params.train_dataloader,
++        val_dataloader=params.val_dataloader,
++        lr_scheduler=params.lr_scheduler,
++        print_lr=args.print_lr,
++        validation_freq=args.validation_freq_within_epoch,
++        limit_train_batches=args.limit_train_batches,
++        limit_val_batches=args.limit_val_batches,
++    )
++
++    if with_embcache_and_load:
++        shard_embedding_collection = model.module.model.sparse_arch.embedding_collection
++        model.module.model.sparse_arch.embedding_collection = None
++        # load dense
++        model.module.load_state_dict(torch.load(f"{_EMB_CACHE_SAVE_DIR}/model_{args.rank}.pt", weights_only=True, map_location='cpu'), 
++                              strict=False)
++        # optimizer.load_state_dict(
++        #     torch.load(f"{_EMB_CACHE_SAVE_DIR}/optimizer_{args.rank}.pt", weights_only=True, map_location='cpu')
++        # )
++        model.module.model.sparse_arch.embedding_collection = shard_embedding_collection
++        # load sparse
++        saver.load(model, f"{_EMB_CACHE_SAVE_DIR}/sparse")
++
++    train_speed = 0.0
++    if execute_train:
++        for epoch in range(args.epochs):
++            train_speed = _train(
++                epoch,
++                train_params
++            )
+ 
++    if with_embcache_and_save:
++        # delete old data
++        dist.barrier()
++        shutil.rmtree(_EMB_CACHE_SAVE_DIR, ignore_errors=True)
++        # os.makedirs(_EMB_CACHE_SAVE_DIR, exist_ok=True)
++        safe_makedirs(_EMB_CACHE_SAVE_DIR)
++        shard_embedding_collection = model.module.model.sparse_arch.embedding_collection
++        model.module.model.sparse_arch.embedding_collection = None
++        # save dense
++        torch.save(model.module.state_dict(), f"{_EMB_CACHE_SAVE_DIR}/model_{args.rank}.pt")
++        torch.save(optimizer.state_dict(), f"{_EMB_CACHE_SAVE_DIR}/optimizer_{args.rank}.pt")
++        # save sparse
++        model.module.model.sparse_arch.embedding_collection = shard_embedding_collection
++        saver.save(model, f"{_EMB_CACHE_SAVE_DIR}/sparse")
++    # for ind, d in enumerate(test_dataloader):
++    #     print("data index: ", ind, "data: " , d.dense_features, d.sparse_features, d.labels)
++    #     if ind > 10:
++    #         break
++    # return
+     test_auroc = _evaluate(args.limit_test_batches, pipeline, test_dataloader, "test")
+     results.test_auroc = test_auroc
+-
++    results.train_speed = train_speed
+     return results
+ 
+ 
++def eval_main(
++    args: argparse.Namespace,
++    device: torch.device,
++    rank: int,
++    world_size: int,
++    backend: str,
++) -> None:
++    """
++    仅在 EXECUTE_TRAIN==0 时调用：创建 SingleCardEmbCacheShardedEmbeddingCollection 与
++    数据集/数据加载器，先不写推理逻辑，只把类创建出来。
++    """
++    train_dataloader = get_dataloader(args, backend, "train")
++    val_dataloader = get_dataloader(args, backend, "val")
++    test_dataloader = get_dataloader(args, backend, "test")
++
++    if not (with_embcache and use_ec):
++        if rank == 0:
++            logging.info("eval_main: only supported with WITH_EMBCACHE=1 and USE_EC=1, skip single-card EC creation.")
++        return
++
++    from torchrec_embcache.distributed.configs import EmbCacheEmbeddingConfig, InitializerType
++    from torchrec_embcache.distributed.embedding import EmbCacheEmbeddingCollection
++    from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingCollectionSharder
++
++    ec_configs = [
++        EmbCacheEmbeddingConfig(
++            name=f"t_{feature_name}",
++            embedding_dim=args.embedding_dim,
++            num_embeddings=(
++                none_throws(args.num_embeddings_per_feature)[feature_idx]
++                if args.num_embeddings is None
++                else args.num_embeddings
++            ),
++            feature_names=[feature_name],
++            weight_init_mean=0.0,
++            weight_init_stddev=0.01,
++            initializer_type=InitializerType.TRUNCATED_NORMAL,
++        )
++        for feature_idx, feature_name in enumerate(DEFAULT_CAT_NAMES)
++    ]
++
++    ebc_collection = EmbCacheEmbeddingCollection(
++        tables=ec_configs,
++        batch_size=args.batch_size,
++        multi_hot_sizes=args.multi_hot_sizes,
++        world_size=world_size,
++        device=torch.device("meta"),
++    )
++    dlrm_model = DLRM_DCN_EC(
++        embedding_collection=ebc_collection,
++        multi_hot_sizes=args.multi_hot_sizes,
++        dense_in_features=len(DEFAULT_INT_NAMES),
++        dense_arch_layer_sizes=args.dense_arch_layer_sizes,
++        over_arch_layer_sizes=args.over_arch_layer_sizes,
++        dcn_num_layers=args.dcn_num_layers,
++        dcn_low_rank_dim=args.dcn_low_rank_dim,
++        dense_device=device,
++    )
++    
++    dlrm_model = DLRMTrain(dlrm_model)
++    EMBCACHE_EC_PLAN_FQN = "model.sparse_arch.embedding_collection"
++    embedding_optimizer = torch.optim.Adagrad if args.adagrad else torch.optim.SGD
++    optimizer_kwargs = {"lr": args.learning_rate}
++    if args.adagrad:
++        optimizer_kwargs["eps"] = args.eps
++    apply_optimizer_in_backward(
++        embedding_optimizer,
++        dlrm_model.model.sparse_arch.parameters(),
++        optimizer_kwargs,
++    )
++
++    constraints = {
++        f"t_{feature_name}": ParameterConstraints(
++            sharding_types=["row_wise"],
++            compute_kernels=["fused"],
++        )
++        for feature_idx, feature_name in enumerate(DEFAULT_CAT_NAMES)
++    }
++    planner = EmbeddingShardingPlanner(
++        topology=Topology(world_size=world_size, compute_device=device.type),
++        batch_size=args.batch_size,
++        constraints=constraints,
++    )
++
++    cpu_device = torch.device("cpu")
++    cpu_pg = dist.new_group(backend="gloo")
++    cpu_env = ShardingEnv.from_process_group(cpu_pg)
++    npu_env = ShardingEnv.from_process_group(dist.GroupMember.WORLD)
++    sharder = EmbCacheEmbeddingCollectionSharder(
++        cpu_device=cpu_device,
++        cpu_env=cpu_env,
++        npu_device=device,
++        npu_env=npu_env,
++    )
++
++    plan = planner.collective_plan(dlrm_model, [sharder], dist.GroupMember.WORLD)
++    table_name_to_parameter_sharding = plan.plan[EMBCACHE_EC_PLAN_FQN]
++    sharded_ec = sharder.shard(
++        module=ebc_collection,
++        params=table_name_to_parameter_sharding,
++        env=npu_env,
++        device=device,
++        module_fqn=EMBCACHE_EC_PLAN_FQN,
++    )
++    dlrm_model.model.sparse_arch.embedding_collection = sharded_ec
++
++    eval_model = dlrm_model.to(device)
++
++    # 从 save_dir 加载：dense/over 用 state_dict，sparse 用 Saver
++    save_dir = _EMB_CACHE_SAVE_DIR
++
++    if with_embcache_and_load:
++        from torchrec_embcache.saver import Saver
++        rank = 0
++        saver = Saver(rank)
++        shard_embedding_collection = dlrm_model.model.sparse_arch.embedding_collection
++        dlrm_model.model.sparse_arch.embedding_collection = None
++        state = torch.load(f"{_EMB_CACHE_SAVE_DIR}/model_{rank}.pt", weights_only=False)
++        # print("state: ", state)
++        # load dense
++        
++        eval_model.load_state_dict(state, strict=False)
++        dlrm_model.model.sparse_arch.embedding_collection = shard_embedding_collection
++        # load sparse
++        saver.load(eval_model, f"{_EMB_CACHE_SAVE_DIR}/sparse")
++
++    single_card_ec = SingleCardEmbCacheShardedEmbeddingCollection(sharded_ec)
++    eval_model.model.sparse_arch.embedding_collection = single_card_ec
++    # 与 main 一致：multi_hot 时对 test_dataloader 做 convert_to_multi_hot
++    eval_test_dataloader = val_dataloader
++    if args.multi_hot_sizes is not None:
++        multihot = Multihot(
++            args.multi_hot_sizes,
++            args.num_embeddings_per_feature,
++            args.batch_size,
++            collect_freqs_stats=False,
++            dist_type=args.multi_hot_distribution_type,
++        )
++        eval_test_dataloader = RestartableMap(
++            multihot.convert_to_multi_hot, test_dataloader
++        )
++
++    test_auroc = _eval_single_card(
++        eval_model.model,
++        eval_test_dataloader,
++        device,
++        args.limit_test_batches,
++        stage="test",
++        rank=rank,
++    )
++    if rank == 0:
++        logging.info("eval_main: SingleCardEmbCacheShardedEmbeddingCollection eval done. Test AUROC: %.6f", test_auroc)
++
++def _eval_single_card(
++    model: torch.nn.Module,
++    test_dataloader: DataLoader,
++    device: torch.device,
++    limit_batches: Optional[int],
++    stage: str,
++    rank: int,
++) -> float:
++    """
++    仅走 eval 分支：不创建 pipeline，从 dataloader 取 batch 直接调用 model.forward。
++    参考 _evaluate / train_val_test 的评估逻辑。
++    """
++    model.eval()
++    auroc = metrics.AUROC("binary")
++    iterator = itertools.islice(iter(test_dataloader), limit_batches)
++    is_rank_zero = dist.get_rank() == 0
++    if is_rank_zero:
++        pbar = tqdm(
++            iter(int, 1),
++            desc=f"Evaluating {stage} set (single-card)",
++            total=limit_batches or len(test_dataloader),
++            disable=False,
++        )
++    with torch.no_grad():
++        for batch in iterator:
++            batch = batch.to(device=device, non_blocking=True)
++            logits = model(batch.dense_features, batch.sparse_features)
++            preds = torch.sigmoid(logits)
++            # print("preds: ", preds, "labels: ", batch.labels)
++            auroc(preds.detach().cpu(), batch.labels.detach().cpu())
++            if is_rank_zero:
++                pbar.update(1)
++    auroc_result = auroc.compute().item()
++    num_samples = torch.tensor(sum(map(len, auroc.target)), device=device)
++    if is_rank_zero:
++        logging.info("AUROC over %s set (single-card): %s.", stage, auroc_result)
++        logging.info("Number of %s samples: %s.", stage, num_samples)
++    return auroc_result
++
++
++def test_main(
++    args: argparse.Namespace,
++    device: torch.device,
++    rank: int,
++    world_size: int,
++    backend: str,
++) -> None:
++    """仅 EXECUTE_TRAIN==0 时使用，与 eval_main 相同：创建单卡 EBC 与数据加载器，先不写推理逻辑。"""
++    return eval_main(args, device, rank, world_size, backend)
++
++
+ def main(argv: List[str]) -> None:
+     """
+     Trains, validates, and tests a Deep Learning Recommendation Model (DLRM)
+@@ -520,41 +843,76 @@ def main(argv: List[str]) -> None:
+         except (ValueError, AttributeError):
+             pass
+ 
+-    torch.backends.cuda.matmul.allow_tf32 = args.allow_tf32
++    torch_npu.npu.matmul.allow_hf32 = args.allow_tf32
+ 
+     if args.multi_hot_sizes is not None:
+-        assert (
+-            args.num_embeddings_per_feature is not None
+-            and len(args.multi_hot_sizes) == len(args.num_embeddings_per_feature)
+-            or args.num_embeddings_per_feature is None
+-            and len(args.multi_hot_sizes) == len(DEFAULT_CAT_NAMES)
+-        ), "--multi_hot_sizes must be a comma delimited list the same size as the number of embedding tables."
+-    assert (
+-        args.in_memory_binary_criteo_path is None
+-        or args.synthetic_multi_hot_criteo_path is None
+-    ), "--in_memory_binary_criteo_path and --synthetic_multi_hot_criteo_path are mutually exclusive CLI arguments."
+-    assert (
+-        args.multi_hot_sizes is None or args.synthetic_multi_hot_criteo_path is None
+-    ), "--multi_hot_sizes is used to convert 1-hot to multi-hot. It's inapplicable with --synthetic_multi_hot_criteo_path."
+-    assert (
+-        args.multi_hot_distribution_type is None
+-        or args.synthetic_multi_hot_criteo_path is None
+-    ), "--multi_hot_distribution_type is used to convert 1-hot to multi-hot. It's inapplicable with --synthetic_multi_hot_criteo_path."
+-
+-    rank = int(os.environ["LOCAL_RANK"])
++        if (
++                args.num_embeddings_per_feature is not None
++                and len(args.multi_hot_sizes) != len(args.num_embeddings_per_feature)
++        ):
++            raise ValueError(
++                "--multi_hot_sizes must be a comma delimited list the same size as the number of embedding tables."
++            )
++        elif (
++                args.num_embeddings_per_feature is None
++                and len(args.multi_hot_sizes) != len(DEFAULT_CAT_NAMES)
++        ):
++            raise ValueError(
++                "--multi_hot_sizes must be a comma delimited list the same size as the number of embedding tables."
++            )
++    if (
++            args.in_memory_binary_criteo_path is None
++            and args.synthetic_multi_hot_criteo_path is not None
++    ):
++        raise ValueError(
++            "--in_memory_binary_criteo_path and --synthetic_multi_hot_criteo_path are mutually exclusive CLI arguments."
++        )
++    if (
++            args.multi_hot_sizes is not None
++            and args.synthetic_multi_hot_criteo_path is not None
++    ):
++        raise ValueError(
++            "--multi_hot_sizes is used to convert 1-hot to multi-hot. "
++            "It's inapplicable with --synthetic_multi_hot_criteo_path."
++        )
++    if (
++            args.multi_hot_distribution_type is not None
++            and args.synthetic_multi_hot_criteo_path is not None
++    ):
++        raise ValueError(
++            "--multi_hot_distribution_type is used to convert 1-hot to multi-hot. "
++            "It's inapplicable with --synthetic_multi_hot_criteo_path."
++        )
++
++    rank_str = os.environ["LOCAL_RANK"]
++    if rank_str is None:
++        raise KeyError("Environment variable LOCAL_RANK is not set.")
++    try:
++        rank = int(rank_str)
++    except ValueError as e:
++        raise Exception("Environment variable LOCAL_RANK is not a valid integer.") from e
++
++    # 单机单卡时使用 gloo（不可用 HCCL），且不初始化 DDP，避免 NPU 张量走 gloo 集合通信
++    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+     if torch.cuda.is_available():
+         device: torch.device = torch.device(f"cuda:{rank}")
+-        backend = "nccl"
++        backend = "nccl" # if world_size > 1 else "gloo"
++        logging.info("backend: %s", backend)
+         torch.cuda.set_device(device)
++    elif torch_npu.npu.is_available():
++        device: torch.device = torch.device(f"npu:{rank}")
++        backend = "hccl" # if world_size > 1 else "gloo"
++        torch_npu.npu.set_device(device)
+     else:
+         device: torch.device = torch.device("cpu")
+         backend = "gloo"
+ 
+     if rank == 0:
+-        print(
+-            "PARAMS: (lr, batch_size, warmup_steps, decay_start, decay_steps): "
+-            f"{(args.learning_rate, args.batch_size, args.lr_warmup_steps, args.lr_decay_start, args.lr_decay_steps)}"
+-        )
++        logging.info(
++            "PARAMS: (%s, %s, %s, %s, %s): ",
++            args.learning_rate, args.batch_size, args.lr_warmup_steps, args.lr_decay_start, args.lr_decay_steps)
++    if execute_sing_card_eval:
++        backend = "gloo"
+     dist.init_process_group(backend=backend)
+ 
+     if args.num_embeddings_per_feature is not None:
+@@ -571,30 +929,75 @@ def main(argv: List[str]) -> None:
+             if getattr(args, attr) is None:
+                 setattr(args, attr, 10)
+ 
++    if not execute_train and execute_sing_card_eval:
++        eval_main(args, device, rank, world_size, backend)
++        return
++
+     train_dataloader = get_dataloader(args, backend, "train")
+     val_dataloader = get_dataloader(args, backend, "val")
+     test_dataloader = get_dataloader(args, backend, "test")
+ 
+-    eb_configs = [
+-        EmbeddingBagConfig(
+-            name=f"t_{feature_name}",
+-            embedding_dim=args.embedding_dim,
+-            num_embeddings=(
+-                none_throws(args.num_embeddings_per_feature)[feature_idx]
+-                if args.num_embeddings is None
+-                else args.num_embeddings
+-            ),
+-            feature_names=[feature_name],
+-        )
+-        for feature_idx, feature_name in enumerate(DEFAULT_CAT_NAMES)
+-    ]
++    if with_embcache:
++        if use_ec:
++            from torchrec_embcache.distributed.configs import EmbCacheEmbeddingConfig, InitializerType
++            ec_configs = [
++                EmbCacheEmbeddingConfig(
