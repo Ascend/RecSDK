@@ -32,7 +32,7 @@ def allclose(a, b, atol, ratio):
     return diff_ratio < ratio
 
 
-def compare_mare(actual: Tensor, golden: Tensor):
+def compute_mare(actual: Tensor, golden: Tensor):
     """
     计算最大相对误差
     """
@@ -42,11 +42,10 @@ def compare_mare(actual: Tensor, golden: Tensor):
     diff = torch.abs(actual - golden)
     denominator = torch.abs(golden) + 1e-7
     rel_error = torch.where(denominator > 1e-7, diff / denominator, diff)
-    # 限制相对误差的最大值，防止溢出
-    return rel_error.clamp(max=1e10).max().item()
+    return rel_error.max().item()
 
 
-def compare_mere(actual: Tensor, golden: Tensor):
+def compute_mere(actual: Tensor, golden: Tensor):
     """
     计算平均相对误差
     """
@@ -56,11 +55,10 @@ def compare_mere(actual: Tensor, golden: Tensor):
     diff = torch.abs(actual - golden)
     denominator = torch.abs(golden) + 1e-7
     rel_error = torch.where(denominator > 1e-7, diff / denominator, diff)
-    # 限制相对误差的最大值，防止溢出
-    return rel_error.clamp(max=1e10).mean().item()
+    return rel_error.mean().item()
 
 
-def compare_rmse(actual: Tensor, golden: Tensor):
+def compute_rmse(actual: Tensor, golden: Tensor):
     """
     计算均方根误差
     """
@@ -85,18 +83,18 @@ def compare_data_with_double_pole(tensor_msg: str, actual_fused: Tensor, actual_
     if actual_npu.device.type != golden.device.type:
         actual_npu = actual_npu.to(golden.device)
 
-    mare_fused = compare_mare(actual_fused, golden)
-    mare_npu = compare_mare(actual_npu, golden)
-    mere_fused = compare_mere(actual_fused, golden)
-    mere_npu = compare_mere(actual_npu, golden)
-    rmse_fused = compare_rmse(actual_fused, golden)
-    rmse_npu = compare_rmse(actual_npu, golden)
+    mare_fused = compute_mare(actual_fused, golden)
+    mare_npu = compute_mare(actual_npu, golden)
+    mere_fused = compute_mere(actual_fused, golden)
+    mere_npu = compute_mere(actual_npu, golden)
+    rmse_fused = compute_rmse(actual_fused, golden)
+    rmse_npu = compute_rmse(actual_npu, golden)
 
-    logging.info(f"{tensor_msg}, mare_fused: {mare_fused}, mare_npu: {mare_npu}, mere_fused: {mere_fused},"
-                 f" mere_npu: {mere_npu}, rmse_fused: {rmse_fused}, rmse_npu: {rmse_npu}")
-    assert mare_fused / mare_npu <= MARE_L1 if mare_npu != 0.0 else torch.abs(mare_fused - mare_npu) < 1e-6, \
-        "mare error ratio does not meet the requirement"
-    assert mere_fused / mere_npu <= MERE_L1 if mere_npu != 0.0 else torch.abs(mere_fused - mere_npu) < 1e-6, \
-        "mere error ratio does not meet the requirement"
-    assert rmse_fused / rmse_npu <= RMSE_L1 if rmse_npu != 0.0 else torch.abs(rmse_fused - rmse_npu) < 1e-6, \
-        "rmse error ratio does not meet the requirement"
+    print_msg = (f"{tensor_msg}, mare_fused: {mare_fused}, mare_npu: {mare_npu}, mere_fused: {mere_fused},"
+                 f" mere_npu: {mere_npu}, rmse_fused: {rmse_fused}, rmse_npu: {rmse_npu};")
+    assert mare_fused / mare_npu <= MARE_L1 if mare_npu != 0.0 else abs(mare_fused - mare_npu) < 1e-6, \
+        f"{print_msg} mare error ratio does not meet the requirement"
+    assert mere_fused / mere_npu <= MERE_L1 if mere_npu != 0.0 else abs(mere_fused - mere_npu) < 1e-6, \
+        f"{print_msg} mere error ratio does not meet the requirement"
+    assert rmse_fused / rmse_npu <= RMSE_L1 if rmse_npu != 0.0 else (rmse_fused - rmse_npu) < 1e-6, \
+        f"{print_msg} rmse error ratio does not meet the requirement"

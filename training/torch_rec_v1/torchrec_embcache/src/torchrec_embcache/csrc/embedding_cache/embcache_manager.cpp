@@ -222,7 +222,7 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
 
     swapCount_++;
 
-    LOG_INFO("The getSwapInfoTC(ms): {}", getSwapInfoTC.ElapsedMS());
+    LOG_DEBUG("The getSwapInfoTC(ms): {}", getSwapInfoTC.ElapsedMS());
 
     return swapInfo;
 }
@@ -330,7 +330,7 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
                                             swapinOptimsPtr);
     }
 
-    LOG_INFO("The embeddingLookupTC(ms): {}", embeddingLookupTC.ElapsedMS());
+    LOG_DEBUG("The embeddingLookupTC(ms): {}", embeddingLookupTC.ElapsedMS());
     return swapinTensor;
 }
 
@@ -377,7 +377,7 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
         jaggedOff += swapoutKeys[i].size() * embConfigs_[idx].embDim;
     }
 
-    LOG_INFO("The embeddingUpdateTC(ms): {}", embeddingUpdateTC.ElapsedMS());
+    LOG_DEBUG("The embeddingUpdateTC(ms): {}", embeddingUpdateTC.ElapsedMS());
     embUpdateCount_++;
 
     if (NeedEvictEmbeddingTable()) {
