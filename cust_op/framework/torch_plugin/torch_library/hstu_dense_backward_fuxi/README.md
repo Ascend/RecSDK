@@ -198,5 +198,5 @@ class TestHstuJaggedDemo:
 
 ```
 
-注：上述用例为简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense_backward_fuxi/torch/test_hstu_dense_backward_fuxi.py](../../../../../test/hstu_dense_backward_fuxi/torch/test_hstu_dense_backward_fuxi.py)
+注：上述用例为简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense_backward_fuxi/torch/test_hstu_dense_backward_fuxi.py](../../../../test/hstu_dense_backward_fuxi/torch/test_hstu_dense_backward_fuxi.py)
 
