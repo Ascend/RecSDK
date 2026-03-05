@@ -56,6 +56,7 @@ declare -A OP_PLUGIN_MAP=(
   ["hstu_dense_forward"]="hstu"
   ["hstu_dense_forward_fuxi"]="hstu_dense_forward_fuxi"
   ["in_linear_silu"]="in_linear_silu"
+  ["in_linear_silu_backward"]="in_linear_silu"
   ["index_select_for_rank1_backward"]="gather_for_rank1"
   ["int_nbit_split_embedding_codegen_lookup_function"]="int_nbit_split_embedding_codegen_lookup_function"
   ["invert_permute"]="invert_permute"
