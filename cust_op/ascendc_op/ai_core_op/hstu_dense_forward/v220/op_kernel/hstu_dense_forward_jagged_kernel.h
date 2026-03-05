@@ -159,8 +159,8 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams>::ComputeSvMatmu
     }
 
     this->DoSvMatmulImpl(computeTaskInfo[taskId].vOffset, taskId, computeTaskInfo[taskId].transTaskId, isAtomic,
-                         computeTaskInfo[taskId].computeASeqLen, this->headDimV,
-                         computeTaskInfo[taskId].computeBSeqLen);
+                          computeTaskInfo[taskId].computeASeqLen, this->headDimV,
+                          computeTaskInfo[taskId].computeBSeqLen);
 }
 
 template <typename TraitParams>
@@ -260,7 +260,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams>::ComputeAllBloc
 
     this->AllocQkUbTensor();
 
-    this->scmQKTensor =  this->scm.template AllocTensor<qType>();
+    this->scmQKTensor =  this->qkL1In.template AllocTensor<qType>();
     for (auto blkId = this->sBlkId; blkId <= this->eBlkId; blkId++) {
         kSeqNum = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
         auto limit = (blkId == this->eBlkId) ? this->ekSeqBlkId : kSeqNum;
@@ -350,7 +350,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams>::ComputeAllBloc
         kSeqId = 0;
     }
 
-    this->scm.FreeTensor(this->scmQKTensor);
+    this->qkL1In.FreeTensor(this->scmQKTensor);
     if (taskId == 0) {
         return;
     }
@@ -574,10 +574,6 @@ __aicore__ inline int HstuDenseForwardJaggedKernel<TraitParams>::PreInit(
             TraitParams::blockN, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
         taskAssigner.Compute(blocks, blockId);
     }
-#ifdef SUPPORT_950
-    this->L2CacheHintCfg(this->splitMode);
-#endif
-    
 
     this->skSeqBlkId = blocks[0];
     this->ekSeqBlkId = blocks[1];

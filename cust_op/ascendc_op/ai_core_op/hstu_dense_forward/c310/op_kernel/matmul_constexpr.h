@@ -167,7 +167,7 @@ using CfgList = std::tuple<
 >;
 
 template <std::size_t idx, uint32_t wid, uint32_t blockM, uint32_t blockN, uint32_t blockK>
-__aicore__ constexpr auto lookupImpl() noexcept {
+__aicore__ constexpr auto FindShapeImpl() noexcept {
     using tilingTemp = std::tuple_element_t<idx, CfgList>;
 
     if constexpr (idx >= std::tuple_size_v<CfgList>) {
@@ -178,7 +178,7 @@ __aicore__ constexpr auto lookupImpl() noexcept {
         return tilingTemp{};
     }
     else if constexpr (idx + 1 < std::tuple_size_v<CfgList>) {
-        return lookupImpl<idx + 1, wid, blockM, blockN, blockK>();
+        return FindShapeImpl<idx + 1, wid, blockM, blockN, blockK>();
     }
     else {
         return tilingTemp{};
@@ -186,25 +186,26 @@ __aicore__ constexpr auto lookupImpl() noexcept {
 }
 
 template <uint32_t wid, uint32_t blockM, uint32_t blockN, uint32_t blockK>
-__aicore__ constexpr auto lookup() noexcept {
-    return lookupImpl<0, wid, blockM, blockN, blockK>();
+__aicore__ constexpr auto FindShape() noexcept {
+    return FindShapeImpl<0, wid, blockM, blockN, blockK>();
 }
 
-template <typename qType, int blockM, int blockN, int blockK, typename TilingDataType>
+template <typename TraitParams, typename TilingDataType>
 class MatmulCopyFun {
 public:
     __aicore__ inline static void CopyQKA1(const LocalTensor<int8_t>& aMatrix, const __gm__ void* gm, int row, int col,
         int useM, int useK, const uint64_t tilingPtr, const uint64_t dataPtr)
     {
-        GlobalTensor<qType> globalGt;
-        globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useM * useK);
+        GlobalTensor<typename TraitParams::qType> globalGt;
+        globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ typename TraitParams::qType*>
+            (const_cast<__gm__ void*>(gm)), useM * useK);
         int blockLen = useM * useK;
 
         TilingDataType* tilingP = reinterpret_cast<TilingDataType*>(tilingPtr);
         int64_t dim = tilingP->dim;
         int64_t headNum = tilingP->headNum;
-        int32_t baseM = lookup<sizeof(qType), blockM, blockN, blockK>().getQKMatmulConfig().basicM;
-        int32_t baseK = lookup<sizeof(qType), blockM, blockN, blockK>().getQKMatmulConfig().basicK;
+        int32_t baseM = TraitParams::GetQKMatmulConfig().basicM;
+        int32_t baseK = TraitParams::GetQKMatmulConfig().basicK;
 
         auto alignOfM = AlignUp(useM, ALIGN_16);
         Nd2NzParams param = {
@@ -214,20 +215,21 @@ public:
 
         int64_t offsetOfGt = static_cast<int64_t>(row) * dim * headNum * static_cast<int64_t>(baseM) +
                             static_cast<int64_t>(col) * static_cast<int64_t>(baseK);
-        DataCopy(aMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
+        DataCopy(aMatrix.ReinterpretCast<typename TraitParams::qType>(), globalGt[offsetOfGt], param);
     };
 
     __aicore__ inline static void CopyQKB1(const LocalTensor<int8_t>& bMatrix, const __gm__ void* gm, int row, int col,
         int useK, int useN, const uint64_t tilingPtr, const uint64_t dataPtr)
     {
-        GlobalTensor<qType> globalGt;
-        globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useN * useK);
+        GlobalTensor<typename TraitParams::qType> globalGt;
+        globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ typename TraitParams::qType*>
+            (const_cast<__gm__ void*>(gm)), useN * useK);
 
         TilingDataType* tilingP = reinterpret_cast<TilingDataType*>(tilingPtr);
         int64_t dim = tilingP->dim;
         int32_t headNumK = static_cast<int32_t>(dataPtr);
-        int32_t baseN = lookup<sizeof(qType), blockM, blockN, blockK>().getQKMatmulConfig().basicN;
-        int32_t baseK = lookup<sizeof(qType), blockM, blockN, blockK>().getQKMatmulConfig().basicK;
+        int32_t baseN = TraitParams::GetQKMatmulConfig().basicN;
+        int32_t baseK = TraitParams::GetQKMatmulConfig().basicK;
 
         auto alignOfN = AlignUp(useN, ALIGN_16);
         Nd2NzParams param = {
@@ -237,23 +239,24 @@ public:
 
         int64_t offsetOfGt = static_cast<int64_t>(col) * dim * headNumK * static_cast<int64_t>(baseN) +
                             static_cast<int64_t>(row) * static_cast<int64_t>(baseK);
-        DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
+        DataCopy(bMatrix.ReinterpretCast<typename TraitParams::qType>(), globalGt[offsetOfGt], param);
     };
 
     __aicore__ inline static void CopySVB1(const LocalTensor<int8_t>& bMatrix, const __gm__ void* gm, int row, int col,
         int useK, int useN, const uint64_t tilingPtr, const uint64_t dataPtr)
     {
-        GlobalTensor<qType> globalGt;
-        globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(const_cast<__gm__ void*>(gm)), useN * useK);
+        GlobalTensor<typename TraitParams::qType> globalGt;
+        globalGt.SetGlobalBuffer(reinterpret_cast<__gm__ typename TraitParams::qType*>
+            (const_cast<__gm__ void*>(gm)), useN * useK);
 
         TilingDataType* tilingP = reinterpret_cast<TilingDataType*>(tilingPtr);
         int64_t dim = tilingP->vDim;
         int32_t headNumK = static_cast<int32_t>(dataPtr);
-        int32_t baseN = lookup<sizeof(qType), blockM, blockN, blockK>().getSVMatmulConfig().basicN;
-        int32_t baseK = lookup<sizeof(qType), blockM, blockN, blockK>().getSVMatmulConfig().basicK;
+        int32_t baseN = TraitParams::GetSVMatmulConfig().basicN;
+        int32_t baseK = TraitParams::GetSVMatmulConfig().basicK;
 
         uint16_t alignOfK = 0;
-        if constexpr (std::is_same<qType, fp8_e4m3fn_t>::value) {
+        if constexpr (std::is_same<typename TraitParams::qType, fp8_e4m3fn_t>::value) {
             alignOfK = AlignUp(useK, ALIGN_32);
         } else {
             alignOfK = AlignUp(useK, ALIGN_16);
@@ -266,7 +269,7 @@ public:
 
         int64_t offsetOfGt = static_cast<int64_t>(row) * dim * headNumK * static_cast<int64_t>(baseK) +
                             static_cast<int64_t>(col) * static_cast<int64_t>(baseN);
-        DataCopy(bMatrix.ReinterpretCast<qType>(), globalGt[offsetOfGt], param);
+        DataCopy(bMatrix.ReinterpretCast<typename TraitParams::qType>(), globalGt[offsetOfGt], param);
     };
 };
 

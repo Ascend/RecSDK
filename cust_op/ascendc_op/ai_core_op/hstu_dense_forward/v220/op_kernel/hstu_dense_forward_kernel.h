@@ -21,6 +21,7 @@ See the License for the specific language governing permissions and
     #include "hstu_dense_forward_kernel_patten_bsnd.h"
 #endif
 #include "hstu_dense_causal_mask.h"
+#include "hstu_traitparams.h"
 namespace HstuDenseForward {
 
 struct QkMatmulArgs {
