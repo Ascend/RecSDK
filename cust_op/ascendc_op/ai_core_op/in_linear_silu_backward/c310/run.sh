@@ -57,7 +57,7 @@ if [ ! -f "CMakePresets.json" ]; then
 fi
 
 # 禁止生成CRC校验和
-sed -i 's/--nomd5/--nomd5 --nocrc --notemp/g' ./cmake/makeself.cmake
+sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
 
 # 修改cann安装路径
 if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
