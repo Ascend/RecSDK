@@ -174,6 +174,10 @@ ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const
 
 torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor& indices)
 {
+    TORCH_CHECK(indices.element_size() == 8, "indices element size must be 8");
+    uint32_t eleSz = inputs.element_size();
+    TORCH_CHECK(eleSz == 4 or eleSz == 2, "inputs element size must be 4 or 2");
+
     uint64_t indicesLen = indices.size(0);
     uint32_t dim = inputs.size(1);
 
@@ -184,19 +188,25 @@ torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor&
     uint64_t outLen = indicesLen * dim;
     constexpr uint32_t GATHER_THRESHOLD = 100000;
 
-    if (outLen > GATHER_THRESHOLD) {
+    if (outLen > GATHER_THRESHOLD && indices.scalar_type() != at::kUInt64) {
         torch::Tensor indicesExpand = indices.unsqueeze(-1).expand({indicesLen, dim});
         return torch::gather(inputs, 0, indicesExpand);
     }
 
+    auto inType = scalartype_to_datatype(inputs.scalar_type());
     torch::Tensor output = torch::empty({indicesLen, dim}, inputs.options());
     void* inData = inputs.contiguous().data_ptr();
     void* indicesData = indices.contiguous().data_ptr();
     void* outData = output.data_ptr();
     constexpr uint32_t THREAD_NUM = 1024;
 
-    if (dim % 2 == 0) {
-        outLen >>= 1;
+    if (dim % 4 == 0) {
+        // 使用float2读写内存
+        if (eleSz == 4) {
+            outLen >>= 1;
+        } else {
+            outLen >>= 2;
+        }
     }
 
     uint32_t totalBlocks = (outLen + THREAD_NUM - 1) / THREAD_NUM;
@@ -207,18 +217,22 @@ torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor&
     uint32_t remainderBlocks = totalBlocks % coreNum;
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
 
-    ACLRT_LAUNCH_KERNEL(gather_dim0)(coreNum, stream, inData, indicesData, outData, dim, outLen, blocksPerCore,
-                                     remainderBlocks, THREAD_NUM);
+    ACLRT_LAUNCH_KERNEL(gather_dim0)(coreNum, stream, inData, indicesData, outData,
+        dim, outLen, blocksPerCore, remainderBlocks, THREAD_NUM, static_cast<uint32_t>(inType), eleSz);
     return output;
 }
 
 torch::Tensor load_from_pointer_imp(const torch::Tensor& pointers, torch::Tensor& output)
 {
+    uint32_t eleSz = output.element_size();
+    TORCH_CHECK(eleSz == 4 or eleSz == 2, "output element size must be 4 or 2");
+
     uint64_t inLen = pointers.size(0);
     if (inLen == 0) {
         return output;
     }
 
+    auto outType = scalartype_to_datatype(output.scalar_type());
     uint32_t dim = output.size(1);
     uint64_t outLen = inLen * dim;
     TORCH_CHECK(outLen == output.numel(), "output.numel() must equal pointers.numel() * output.size(1)");
@@ -227,8 +241,13 @@ torch::Tensor load_from_pointer_imp(const torch::Tensor& pointers, torch::Tensor
     void* outData = output.contiguous().data_ptr();
     constexpr uint32_t THREAD_NUM = 1024;
 
-    if (dim % 2 == 0) {
-        outLen >>= 1;
+    if (dim % 4 == 0) {
+        // 使用float2读写内存
+        if (eleSz == 4) {
+            outLen >>= 1;
+        } else {
+            outLen >>= 2;
+        }
     }
 
     uint32_t totalBlocks = (outLen + THREAD_NUM - 1) / THREAD_NUM;
@@ -240,11 +259,11 @@ torch::Tensor load_from_pointer_imp(const torch::Tensor& pointers, torch::Tensor
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
 
     if (outLen < UINT32_MAX) {
-        ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen, blocksPerCore,
-                                               remainderBlocks, THREAD_NUM, 1);
+        ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen,
+            blocksPerCore, remainderBlocks, THREAD_NUM, 1, static_cast<uint32_t>(outType), eleSz);
     } else {
-        ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen, blocksPerCore,
-                                               remainderBlocks, THREAD_NUM, 0);
+        ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen,
+            blocksPerCore, remainderBlocks, THREAD_NUM, 0, static_cast<uint32_t>(outType), eleSz);
     }
 
     return output;
@@ -548,16 +567,17 @@ void dedup_input_indices_npu(const at::Tensor indices, const at::Tensor offsets,
 std::tuple<at::Tensor, at::Tensor> reduce_grads(at::Tensor& grad, at::Tensor& uniqueIdx, at::Tensor& inverse)
 {
     TORCH_CHECK(grad.dim() == 2, "only support 2D grad");
+    TORCH_CHECK(inverse.element_size() == 8, "inverse element must be 8 bytes");
 
     int num = uniqueIdx.size(0);
     int dim = grad.size(1);
     at::Tensor uniqueGrad = at::zeros({num, dim}, grad.options());
-    const int DIM_THRESHOLD = 8;
 
     if (num == 0) {
         return std::make_tuple(uniqueIdx, uniqueGrad);
     }
 
+    const int DIM_THRESHOLD = 8;
     if (dim > DIM_THRESHOLD) {
         uniqueGrad.scatter_add_(0, inverse.unsqueeze(1).expand_as(grad), grad);
         c10_npu::getCurrentNPUStream().synchronize();
@@ -577,7 +597,7 @@ std::tuple<at::Tensor, at::Tensor> reduce_grads(at::Tensor& grad, at::Tensor& un
     int remainBlk = blkNum % coreNum;
 
     ACLRT_LAUNCH_KERNEL(reduce_grad_op)(coreNum, stream, cGrad.data_ptr(), cInverse.data_ptr(), cGrad.size(0),
-                                        cGrad.size(1), baseBlk, remainBlk, cUniqueGrad.data_ptr());
+        cGrad.size(1), baseBlk, remainBlk, cUniqueGrad.data_ptr());
     c10_npu::getCurrentNPUStream().synchronize();
     if (!uniqueGrad.is_contiguous()) {
         // 如何内存不连续，contiguous会分配新内存
@@ -741,7 +761,7 @@ void dynamic_emb_Adam_with_pointer(const torch::Tensor& grads, const torch::Tens
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
     auto grads_continous = grads.contiguous();
     auto val_pointers_continous = val_pointers.contiguous();
-    
+
     float* grads_ptr = grads_continous.data_ptr<float>();
     void* values_ptr = val_pointers_continous.data_ptr();
 
@@ -750,10 +770,10 @@ void dynamic_emb_Adam_with_pointer(const torch::Tensor& grads, const torch::Tens
     float oneMinusBeta2 = 1.0f - beta2;
     float mHatDenom = 1.0f - std::pow(beta1, iter_num);
     float vHatDenom = 1.0f - std::pow(beta2, iter_num);
-    
+
     float step_size = lr / mHatDenom;
     float inv_vHatDenom = 1.0f / vHatDenom;
-    
+
     // 获取最大核数
     int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
     bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
@@ -805,7 +825,7 @@ void dynamic_emb_AdamW_with_pointer(const torch::Tensor& grads, const torch::Ten
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
     auto grads_continous = grads.contiguous();
     auto val_pointers_continous = val_pointers.contiguous();
-    
+
     float* grads_ptr = grads_continous.data_ptr<float>();
     void* values_ptr = val_pointers_continous.data_ptr();
 
@@ -814,7 +834,7 @@ void dynamic_emb_AdamW_with_pointer(const torch::Tensor& grads, const torch::Ten
     float oneMinusBeta2 = 1.0f - beta2;
     float mHatDenom = 1.0f - std::pow(beta1, iter_num);
     float vHatDenom = 1.0f - std::pow(beta2, iter_num);
-    
+
     float step_size = lr / mHatDenom;
     float inv_vHatDenom = 1.0f / vHatDenom;
     float decay_factor = 1.0f - lr * weight_decay;

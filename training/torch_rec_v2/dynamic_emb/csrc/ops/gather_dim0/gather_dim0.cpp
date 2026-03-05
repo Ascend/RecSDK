@@ -16,9 +16,11 @@ See the License for the specific language governing permissions and
 #include <type_traits>
 #include "gather_dim0_kernel.h"
 #include "kernel_operator.h"
+#include "../ops_utils.h"
 
 extern "C" __global__ __aicore__ void gather_dim0(GM_ADDR inData, GM_ADDR indicesData, GM_ADDR outData,
-    uint32_t dim, uint64_t total, uint32_t blkPerCore, uint32_t remainderBlk, uint32_t threads)
+    uint32_t dim, uint64_t total, uint32_t blkPerCore, uint32_t remainderBlk, uint32_t threads,
+    uint32_t iType, uint32_t eleSz)
 {
     uint32_t coreId = AscendC::GetBlockIdx();
     uint32_t curBlk = (coreId < remainderBlk) ? (blkPerCore + 1) : blkPerCore;
@@ -38,22 +40,32 @@ extern "C" __global__ __aicore__ void gather_dim0(GM_ADDR inData, GM_ADDR indice
     curNum = endIdx - startIdx;
     endUnrollIdx = startIdx + curNum / unrollNum * unrollNum;
 
-    if (dim % 2 == 0) {
+    if (dim % 4 == 0) {
         const __gm__ float2* input = reinterpret_cast<const __gm__ float2*>(inData);
-        const __gm__ int64_t* indices = reinterpret_cast<const __gm__ int64_t*>(indicesData);
+        const __gm__ uint64_t* indices = reinterpret_cast<const __gm__ uint64_t*>(indicesData);
         __gm__ float2* output = reinterpret_cast<__gm__ float2*>(outData);
 
-        AscendC::Simt::VF_CALL<GatherDimSimt::GatherDim<int64_t, float2>>(
-            AscendC::Simt::Dim3{threads, 1, 1}, input, indices, output, dim >> 1,
-            startIdx, endIdx, endUnrollIdx);
+        if (eleSz == 4) {
+            AscendC::Simt::VF_CALL<GatherDimSimt::GatherDim<float2>>(
+                AscendC::Simt::Dim3{threads, 1, 1}, input, indices, output, dim >> 1,
+                startIdx, endIdx, endUnrollIdx);
+        } else {
+            AscendC::Simt::VF_CALL<GatherDimSimt::GatherDim<float2>>(
+                AscendC::Simt::Dim3{threads, 1, 1}, input, indices, output, dim >> 2,
+                startIdx, endIdx, endUnrollIdx);
+        }
     } else {
-        const __gm__ float* input = reinterpret_cast<const __gm__ float*>(inData);
-        const __gm__ int64_t* indices = reinterpret_cast<const __gm__ int64_t*>(indicesData);
-        __gm__ float* output = reinterpret_cast<__gm__ float*>(outData);
+        dyn_emb::DataType inType = static_cast<dyn_emb::DataType>(iType);
 
-        AscendC::Simt::VF_CALL<GatherDimSimt::GatherDim<int64_t, float>>(
-            AscendC::Simt::Dim3{threads, 1, 1}, input, indices, output, dim,
-            startIdx, endIdx, endUnrollIdx);
+        FLOAT_TYPE_DISPATCH(inType, DataType, {
+            const __gm__ DataType* input = reinterpret_cast<const __gm__ DataType*>(inData);
+            const __gm__ uint64_t* indices = reinterpret_cast<const __gm__ uint64_t*>(indicesData);
+            __gm__ DataType* output = reinterpret_cast<__gm__ DataType*>(outData);
+
+            AscendC::Simt::VF_CALL<GatherDimSimt::GatherDim<DataType>>(
+                AscendC::Simt::Dim3{threads, 1, 1}, input, indices, output, dim,
+                startIdx, endIdx, endUnrollIdx);
+        });
     }
 }
 

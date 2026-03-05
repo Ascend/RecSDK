@@ -26,9 +26,9 @@ namespace GatherDimSimt {
 constexpr int MAX_THREADS_PER_BLOCK = 1024;
 constexpr int UNROLL_SHIFT = 2;
 
-template <typename INDEX, typename DATA>
+template <typename DATA>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void GatherDim(
-    const __gm__ DATA* input, const __gm__ INDEX* indices, __gm__ DATA* output,
+    const __gm__ DATA* input, const __gm__ uint64_t* indices, __gm__ DATA* output,
     uint32_t dim, uint32_t startIdx, uint32_t endIdx, uint32_t endUnrollIdx)
 {
     uint32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();

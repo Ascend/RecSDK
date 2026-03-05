@@ -29,14 +29,16 @@ def reduce_grads(keys, grads):
     unique_key, inverse, _ = torch.unique(keys, sorted=False, return_inverse=True, return_counts=True)
 
     # reduce
-    tmp = torch.zeros(unique_key.size(0), grads.size(1))
+    tmp = torch.zeros(unique_key.size(0), grads.size(1), dtype=grads.dtype)
     unique_grad = tmp.scatter_reduce(0, inverse.unsqueeze(1).expand_as(grads), grads, reduce='sum')
 
     return unique_key, unique_grad, inverse
 
 
 @pytest.mark.parametrize('device', ['npu:0'])
-def test_reduce_grads_case1(device):
+@pytest.mark.parametrize('val_type', [torch.float32])
+@pytest.mark.parametrize("idx_type", [torch.int64, torch.uint64])
+def test_reduce_grads_case1(device, val_type, idx_type):
     torch.npu.set_device(0)
 
     # 构造数据
@@ -44,8 +46,8 @@ def test_reduce_grads_case1(device):
     ks = [1, 2, 2, 3, 3, 3]
     vs = [k2v.get(i, [0, 0, 0]) for i in ks]
 
-    org_key = torch.tensor(ks, dtype=torch.int64)
-    org_grad = torch.tensor(vs, dtype=torch.float32)
+    org_key = torch.tensor(ks, dtype=idx_type)
+    org_grad = torch.tensor(vs, dtype=val_type)
 
     # 构造前向结果
     exp_unique_key, exp_unique_grad, inverse = reduce_grads(org_key, org_grad)
@@ -64,7 +66,9 @@ def test_reduce_grads_case1(device):
 
 
 @pytest.mark.parametrize('device', ['npu:0'])
-def test_reduce_grads_case2(device):
+@pytest.mark.parametrize('val_type', [torch.float32])
+@pytest.mark.parametrize("idx_type", [torch.int64, torch.uint64])
+def test_reduce_grads_case2(device, val_type, idx_type):
     torch.npu.set_device(0)
 
     # 构造数据
@@ -76,8 +80,8 @@ def test_reduce_grads_case2(device):
     ks = [1, 2, 2, 3, 3, 3]
     vs = [k2v.get(i, [0, 0, 0]) for i in ks]
 
-    org_key = torch.tensor(ks, dtype=torch.int64)
-    org_grad = torch.tensor(vs, dtype=torch.float32)
+    org_key = torch.tensor(ks, dtype=idx_type)
+    org_grad = torch.tensor(vs, dtype=val_type)
 
     # 构造前向结果
     exp_unique_key, exp_unique_grad, inverse = reduce_grads(org_key, org_grad)
@@ -99,7 +103,9 @@ def test_reduce_grads_case2(device):
 @pytest.mark.parametrize('device', ['npu:0'])
 @pytest.mark.parametrize('length', [10, 100, 1000])
 @pytest.mark.parametrize('dim', [8, 128])
-def test_reduce_grads_case3(length, device, dim):
+@pytest.mark.parametrize('val_type', [torch.float32])
+@pytest.mark.parametrize("idx_type", [torch.int64, torch.uint64])
+def test_reduce_grads_case3(length, device, dim, val_type, idx_type):
     torch.npu.set_device(0)
 
     k2v = {}
@@ -110,8 +116,8 @@ def test_reduce_grads_case3(length, device, dim):
     ks = [random.choice(valid_keys) for i in range(length)]
     vs = [k2v.get(i, [0, 0, 0]) for i in ks]
 
-    org_key = torch.tensor(ks, dtype=torch.int64)
-    org_grad = torch.tensor(vs, dtype=torch.float32)
+    org_key = torch.tensor(ks, dtype=idx_type)
+    org_grad = torch.tensor(vs, dtype=val_type)
 
     # 构造前向结果
     exp_unique_key, exp_unique_grad, inverse = reduce_grads(org_key, org_grad)
@@ -123,6 +129,7 @@ def test_reduce_grads_case3(length, device, dim):
     ret_unique_key, ret_unique_grad = dynamic_emb_extensions.reduce_grads(org_grad_npu, exp_unique_key_npu, inverse_npu)
     ret_unique_key = ret_unique_key.to('cpu')
     ret_unique_grad = ret_unique_grad.to('cpu')
+    torch.npu.synchronize(0)
 
     # 校验
     assert torch.equal(ret_unique_key, exp_unique_key)
