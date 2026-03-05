@@ -48,7 +48,7 @@ struct TraitParams {
     static constexpr int blockN = tilingN;
     static constexpr int blockK = tilingK;
     static constexpr int blockArea = tilingM * tilingN;
-    static constexpr auto Config = lookup<sizeof(qType), blockM, blockN, blockK>();
+    static constexpr auto Config = FindShape<sizeof(qType), blockM, blockN, blockK>();
 
     __aicore__ static constexpr bool UseL1Cache()
     {
