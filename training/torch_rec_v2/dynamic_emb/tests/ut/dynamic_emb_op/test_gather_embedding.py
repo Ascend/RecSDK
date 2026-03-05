@@ -25,22 +25,22 @@ logging.basicConfig(level=logging.INFO)
 
 
 def get_result(inputs, indices):
-    return torch.gather(inputs, 0, indices.unsqueeze(1).expand(-1, inputs.size(1)))
+    return torch.gather(inputs, 0, indices.to(torch.int64).unsqueeze(1).expand(-1, inputs.size(1)))
 
 
 def get_ops_result(inputs, indices):
     return dynamic_emb_extensions.gather_embedding(inputs, indices)
 
 
-@pytest.mark.parametrize("dtype", [torch.int64])
-@pytest.mark.parametrize("device", [0])
+@pytest.mark.parametrize("idx_type", [torch.int64, torch.uint64])
 @pytest.mark.parametrize("N", [1, 10, 100, 1000, 10000])
 @pytest.mark.parametrize("M", [5, 50, 500, 5000, 50000])
 @pytest.mark.parametrize("dim", [8, 64, 128])
-def test_gather_embedding(dtype, device, N, M, dim):
-    torch.npu.set_device(device)
-    inputs = torch.randn(N, dim, dtype=torch.float32, device=f'npu:{device}')
-    indices = torch.randint(0, N, (M, ), dtype=dtype, device=f'npu:{device}')
+@pytest.mark.parametrize('val_type', [torch.float32, torch.float16, torch.bfloat16])
+def test_gather_embedding(idx_type, N, M, dim, val_type):
+    torch.npu.set_device(0)
+    inputs = torch.randn(N, dim, dtype=val_type, device=f'npu:0')
+    indices = torch.randint(0, N, (M, ), device=f'npu:0').to(idx_type)
     result = get_ops_result(inputs, indices)
     expected = get_result(inputs, indices)
     diff = torch.abs(result.cpu() - expected.cpu())
@@ -67,7 +67,7 @@ def test_gather_embedding(dtype, device, N, M, dim):
 
     # 计算加速比
     speedup = base_time / custom_time if custom_time > 0 else float('inf')
-    logging.info(f"\nN={N}, M={M}, dim={dim}, dtype={dtype}")
+    logging.info(f"\nN={N}, M={M}, dim={dim}, dtype={val_type}")
     logging.info(f"自定义op时间: {custom_time:.6f}s")
     logging.info(f"基准方法时间: {base_time:.6f}s")
     logging.info(f"加速比: {speedup:.2f}x")

@@ -16,10 +16,12 @@ See the License for the specific language governing permissions and
 #include <type_traits>
 #include "kernel_operator.h"
 #include "load_from_pointer_kernel.h"
+#include "../ops_utils.h"
 
 template <typename T>
 __aicore__ void load_imp(GM_ADDR inData, GM_ADDR outData,
-    uint32_t dim, uint64_t total, uint32_t blkPerCore, uint32_t remainderBlk, uint32_t threads)
+    uint32_t dim, uint64_t total, uint32_t blkPerCore, uint32_t remainderBlk, uint32_t threads,
+    uint32_t oType, uint32_t eleSz)
 {
     uint32_t coreId = AscendC::GetBlockIdx();
     T curBlk = (coreId < remainderBlk) ? (blkPerCore + 1) : blkPerCore;
@@ -38,29 +40,40 @@ __aicore__ void load_imp(GM_ADDR inData, GM_ADDR outData,
     curNum = endIdx - startIdx;
     endUnrollIdx = startIdx + curNum / unrollNum * unrollNum;
 
-    if (dim % 2 == 0) {
+    if (dim % 4 == 0) {
         const __gm__ float2* __gm__* input = reinterpret_cast<const __gm__ float2* __gm__*>(inData);
         __gm__ float2* output = reinterpret_cast<__gm__ float2*>(outData);
 
-        AscendC::Simt::VF_CALL<LoadFromPointerSimt::LoadFromPointerCompute<float2, T>>(
-            AscendC::Simt::Dim3{threads, 1, 1}, input, output, dim >> 1,
-            startIdx, endIdx, endUnrollIdx);
+        if (eleSz == 4) {
+            AscendC::Simt::VF_CALL<LoadFromPointerSimt::LoadFromPointerCompute<float2, T>>(
+                AscendC::Simt::Dim3{threads, 1, 1}, input, output, dim >> 1,
+                startIdx, endIdx, endUnrollIdx);
+        } else {
+            AscendC::Simt::VF_CALL<LoadFromPointerSimt::LoadFromPointerCompute<float2, T>>(
+                AscendC::Simt::Dim3{threads, 1, 1}, input, output, dim >> 2,
+                startIdx, endIdx, endUnrollIdx);
+        }
     } else {
-        const __gm__ float* __gm__* input = reinterpret_cast<const __gm__ float* __gm__*>(inData);
-        __gm__ float* output = reinterpret_cast<__gm__ float*>(outData);
+        dyn_emb::DataType outType = static_cast<dyn_emb::DataType>(oType);
 
-        AscendC::Simt::VF_CALL<LoadFromPointerSimt::LoadFromPointerCompute<float, T>>(
-            AscendC::Simt::Dim3{threads, 1, 1}, input, output, dim,
-            startIdx, endIdx, endUnrollIdx);
+        FLOAT_TYPE_DISPATCH(outType, DataType, {
+            const __gm__ DataType* __gm__* input = reinterpret_cast<const __gm__ DataType* __gm__*>(inData);
+            __gm__ DataType* output = reinterpret_cast<__gm__ DataType*>(outData);
+
+            AscendC::Simt::VF_CALL<LoadFromPointerSimt::LoadFromPointerCompute<DataType, T>>(
+                AscendC::Simt::Dim3{threads, 1, 1}, input, output, dim,
+                startIdx, endIdx, endUnrollIdx);
+        });
     }
 }
 
 extern "C" __global__ __aicore__ void load_from_pointer(GM_ADDR inData, GM_ADDR outData,
-    uint32_t dim, uint64_t total, uint32_t blkPerCore, uint32_t remainderBlk, uint32_t threads, uint32_t small)
+    uint32_t dim, uint64_t total, uint32_t blkPerCore, uint32_t remainderBlk, uint32_t threads, uint32_t small,
+    uint32_t outType, uint32_t eleSz)
 {
     if (small == 1) {
-        load_imp<uint32_t>(inData, outData, dim, total, blkPerCore, remainderBlk, threads);
+        load_imp<uint32_t>(inData, outData, dim, total, blkPerCore, remainderBlk, threads, outType, eleSz);
     } else {
-        load_imp<uint64_t>(inData, outData, dim, total, blkPerCore, remainderBlk, threads);
+        load_imp<uint64_t>(inData, outData, dim, total, blkPerCore, remainderBlk, threads, outType, eleSz);
     }
 }
