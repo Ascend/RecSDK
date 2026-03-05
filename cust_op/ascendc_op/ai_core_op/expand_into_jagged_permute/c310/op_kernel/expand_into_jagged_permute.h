@@ -159,6 +159,7 @@ private:
             processed += cur;
         }
 
+        pipe_barrier(PIPE_ALL);
         outChunkQ.FreeTensor(chunkLt);
     }
 
