@@ -19,7 +19,6 @@ See the License for the specific language governing permissions and
 
 // maskedType: { 0:mask_tril, 2:mask_none, 3:mask_custom }
 // enableBias: { 0:no_bias, 1:bias }
-// isQkUseUb: { 0:no_ub, 1:ub }
 // typeTilingKey: { 0:normal, 1:jagged, 2:paged }
 // deterministic: {0:False, 1:true}
 ASCENDC_TPL_ARGS_DECL(HstuDenseForward, // 算子OpType

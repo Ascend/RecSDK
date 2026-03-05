@@ -52,11 +52,16 @@ constexpr int JAGGED_TILING_KEY = 1;
 constexpr int PAGED_TILING_KEY = 2;
 
 constexpr int VEC_PER_PROCESS = 32;
+#ifdef SUPPORT_950
+constexpr int UB_SIZE = 248 * 1024;
+#else
 constexpr int UB_SIZE = 170 * 1024;  // 170KB
+#endif
 constexpr int QUEUE_IN_NUM = 2;
 constexpr int SPLIT_CORE = 2;
 constexpr int ALIGN_16 = 16;
 constexpr int ALIGN_32 = 32;
+constexpr uint32_t ALIGN_1024 = 1024;
 
 constexpr int VCORE_NUM_IN_ONE_AIC = 2;
 constexpr int COMPUTE_PIPE_NUM = 3;
@@ -80,19 +85,6 @@ __aicore__ inline T CeilDiv(T dividend, T divisor)
     }
     return (dividend + divisor - 1) / divisor;
 }
-
-template <typename qTypeTemplate, typename oTypeTemplate, bool bias,
-    bool determin, CausalMaskT maskedType, int tilingM, int tilingN, int tilingK>
-struct TraitParams {
-    using qType = qTypeTemplate;
-    using oType = oTypeTemplate;
-    static constexpr bool enableBias = bias;
-    static constexpr bool deterministic = determin;
-    static constexpr CausalMaskT maskType = maskedType;
-    static constexpr int blockM = tilingM;
-    static constexpr int blockN = tilingN;
-    static constexpr int blockK = tilingK;
-};
 
 __aicore__ inline void DoVWhenMte2Finish(TPipe* pipePtr)
 {
@@ -186,6 +178,7 @@ struct JaggedTaskArgs {
     uint32_t isFirstSeqBlk = 1;     // 该基本块的sv matmul是否需要清空流水对应空间
     uint32_t isStartFromZero = 1;   // 该基本块所在q行在本核心中的是否从0开始
     uint32_t isEndToTail = 1;       // 该基本块所在q行在本核心中的是否到最后结束
+    uint32_t bufferIdx = 0;         // 该基本块所在q行在本核心中的是否到最后结束
 };
 
 }  // namespace HstuForward

@@ -459,7 +459,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>:
     uint32_t kSeqId = this->skSeqBlkId;
     uint32_t kSeqNum = 0;
 
-    this->scmQKTensor =  this->scm.template AllocTensor<qType>();
+    this->scmQKTensor =  this->qkL1In.template AllocTensor<qType>();
     for (auto blkId = this->sBlkId; blkId <= this->eBlkId; blkId++) {
         kSeqNum = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
 
@@ -541,7 +541,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>:
         UpdateTaskInfo(taskId % COMPUTE_PIPE_NUM);
         kSeqId = 0;
     }
-    this->scm.FreeTensor(this->scmQKTensor);
+    this->qkL1In.FreeTensor(this->scmQKTensor);
     ComputeTailBlock(taskId, currentTaskId, preTaskId, transtaskId);
 }
 
@@ -550,7 +550,7 @@ __aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>:
     uint32_t taskId, uint32_t currentTaskId, uint32_t preTaskId, uint32_t transtaskId)
 {
     if (taskId == 0) {
-        this->scm.template FreeTensor<qType>(this->scmQKTensor);
+        this->qkL1In.template FreeTensor<qType>(this->scmQKTensor);
         return;
     }
 

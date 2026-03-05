@@ -304,8 +304,8 @@ bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, const TilingKe
         FindMatchShape(tilingKeyParam, context, tilingM, tilingN, tilingDim);
     }
     
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias,
-                                                  typeTilingKey, enableDeteministic, tilingM,
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias, typeTilingKey,
+                                                  enableDeteministic, tilingM,
                                                   tilingN, tilingDim);
     context->SetTilingKey(tilingKey);
     return true;

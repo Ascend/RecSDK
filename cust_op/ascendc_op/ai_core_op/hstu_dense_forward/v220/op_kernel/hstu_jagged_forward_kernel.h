@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 #define HSTU_JAGGED_FORWARD_KERNEL_H
 
 #include "hstu_split_core_policy.h"
+#include "hstu_traitparams.h"
 #include "matmul_mgmt.h"
 #include "trans.h"
 #include "vector_score_inter.h"

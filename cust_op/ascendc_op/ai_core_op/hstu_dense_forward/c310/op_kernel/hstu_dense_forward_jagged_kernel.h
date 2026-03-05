@@ -180,10 +180,12 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
 {
     if (computeTaskInfo[taskId].isFirstSeqBlk) {
         this->template DoQkMatmulImpl<true>(computeTaskInfo[taskId].iOffset, computeTaskInfo[taskId].kOffset, taskId,
-            computeTaskInfo[taskId].computeASeqLen, computeTaskInfo[taskId].computeBSeqLen, this->headDim);
+            computeTaskInfo[taskId].computeASeqLen, computeTaskInfo[taskId].computeBSeqLen, this->headDim,
+            computeTaskInfo[taskId].bufferIdx);
     } else {
         this->template DoQkMatmulImpl<false>(computeTaskInfo[taskId].iOffset, computeTaskInfo[taskId].kOffset, taskId,
-            computeTaskInfo[taskId].computeASeqLen, computeTaskInfo[taskId].computeBSeqLen, this->headDim);
+            computeTaskInfo[taskId].computeASeqLen, computeTaskInfo[taskId].computeBSeqLen, this->headDim,
+            computeTaskInfo[taskId].bufferIdx);
     }
 }
 
@@ -199,7 +201,8 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
 
     this->template VecScoreImpl<BlockMaskParams>(taskId, biasOffset, maskOffset, computeTaskInfo[taskId].scale,
                                                  maskTaskInfo[taskId], computeTaskInfo[taskId].computeASeqLen,
-                                                 computeTaskInfo[taskId].computeBSeqLen);
+                                                 computeTaskInfo[taskId].computeBSeqLen,
+                                                 computeTaskInfo[taskId].bufferIdx);
 }
 
 template <typename TraitParams, typename TilingDataType>
@@ -265,7 +268,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
     uint32_t kSeqId = this->skSeqBlkId;
     uint32_t kSeqNum = 0;
 
-    this->scmQKTensor =  this->scm.template AllocTensor<qType>();
+    this->scmQKTensor =  this->qkL1In.template AllocTensor<qType>();
     for (auto blkId = this->sBlkId; blkId <= this->eBlkId; blkId++) {
         kSeqNum = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
         auto limit = (blkId == this->eBlkId) ? this->ekSeqBlkId : kSeqNum;
@@ -312,6 +315,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
                 this->computeTaskInfo[currentTaskId].batchOffsetK * this->headDimV * this->headNumK +
                 this->computeTaskInfo[currentTaskId].kSeqId * TraitParams::blockN * this->headNumK * this->headDimV +
                 kvHeadId * this->headDimV;
+            this->computeTaskInfo[currentTaskId].bufferIdx = taskId % TraitParams::GetInTQueNumber();
 
             // matmul qk
             this->ComputeQkMatmul(currentTaskId);
@@ -355,7 +359,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
         kSeqId = 0;
     }
 
-    this->scm.FreeTensor(this->scmQKTensor);
+    this->qkL1In.FreeTensor(this->scmQKTensor);
     if (taskId == 0) {
         return;
     }
@@ -573,9 +577,8 @@ __aicore__ inline int HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>:
             TraitParams::blockN, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
         taskAssigner.Compute(blocks, blockId);
     }
-#ifdef SUPPORT_950
+    
     this->L2CacheHintCfg(this->splitMode);
-#endif
 
     this->skSeqBlkId = blocks[0];
     this->ekSeqBlkId = blocks[1];

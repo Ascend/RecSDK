@@ -27,6 +27,7 @@ See the License for the specific language governing permissions and
 #include "hstu_dense_causal_mask.h"
 #include "hstu_common_const.h"
 #include "matmul_constexpr.h"
+#include "hstu_traitparams.h"
 
 using namespace AscendC;
 using namespace HstuForward;
