@@ -204,7 +204,7 @@ class DynamicEmbTableOptions(_ContextOptions):
 |caching|bool|可选|是否启用缓存模式。仅支持默认值为False，不支持用户自定义。|
 |init_capacity|Optional[int]|可选|单个NPU上表的初始容量，如果未设置，默认为分片后的max_capacity；如果设置将向上取值到2的幂。取值范围：[0,MAX_INT32)，请用户自行保证内存使用情况。|
 |max_load_factor|float|可选|触发rehash的最大负载因子。默认为0.5，取值范围(0.0,1.0)。|
-|score_strategy|DynamicEmbScoreStrategy|可选|为每一个键分配一个评分，用于淘汰策略。默认为DynamicEmbScoreStrategy.TIMESTAMP。|
+|score_strategy|DynamicEmbScoreStrategy|可选|为每一个键分配一个评分，用于淘汰策略。默认为DynamicEmbScoreStrategy.TIMESTAMP。目前暂不支持DynamicEmbScoreStrategy.CUSTOMIZED。|
 |bucket_capacity|int|可选|HKV中每个桶的容量，默认为128。如果设置，它将向上取整到2的幂。当桶已满时，桶中分数最小的键将被淘汰，其槽位将用于存放新键；桶容量越大，基于分数的淘汰就越准确，但也会导致性能损失。取值范围[16,1024]，用户自行保证内存使用情况。|
 |safe_check_mode|DynamicEmbCheckMode|可选|是否启用插入安全检查。默认为DynamicEmbCheckMode.IGNORE。|
 |global_hbm_for_values|int|可选|用于存储嵌入+优化器状态的NPU内存总量（单位：字节），默认为0的情况下在planner中会被设置为“值的类型的字节数 * 分表的行数（对齐到2的幂次）* 分表的列数”。|
@@ -458,7 +458,7 @@ class DynamicEmbeddingShardingPlanner:
 |partitioner|Optional[Partitioner]|可选|用于对嵌入表进行分片的分区器。仅支持默认值为None，不支持用户自定义。|
 |performance_model|Optional[PerfModel]|可选|性能模型，用于评估不同分片方案的效率。仅支持默认值为None，不支持用户自定义。|
 |stats|Optional[Union[Stats, List[Stats]]]|可选|统计信息收集器。仅支持默认值为None，不支持用户自定义。|
-|debug|bool|可选|是否启用调试模式，启用后将输出更多日志信息。仅支持默认值为None，不支持用户自定义。|
+|debug|bool|可选|是否启用调试模式，启用后将输出更多日志信息。仅支持默认值为True，不支持用户自定义。|
 
 **使用示例<a name="section193151694205"></a>**
 
