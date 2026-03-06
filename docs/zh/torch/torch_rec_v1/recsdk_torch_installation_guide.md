@@ -25,8 +25,8 @@
 |PyTorch昇腾适配插件|2.6.0/2.7.1|根据[配套版本](#section146113514599)，可通过下述方式安装对应版本插件。<li>单击[链接](https://gitcode.com/Ascend/pytorch/releases/v7.1.0.2-pytorch2.6.0)，根据设备架构获取torch_npu-2.6.0*-cp311-\*.whl软件包并在容器内安装。</li><li>单击[链接](https://gitcode.com/Ascend/pytorch/releases/v7.2.0-pytorch2.7.1)，根据设备架构获取torch_npu-2.7.1*-cp311-*.whl软件包并在容器内安装。</li>|
 
 
-> [!NOTICE]须知 
->对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以并且不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
+>[!NOTE] 说明 
+> 对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以并且不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
 
 
 ## 获取Rec SDK Torch软件包<a name="ZH-CN_TOPIC_0000002336148981"></a>
@@ -47,9 +47,9 @@
 
 请参考本章获取所需软件包和对应的数字签名文件，下载本软件即表示您同意[华为企业业务最终用户许可协议（EULA）](https://e.huawei.com/cn/about/eula)的条款和条件。
 
-|组件名称|软件包|获取链接|
-|--|--|--|
-|Rec SDK|推荐算法框架开发套件包|获取链接（待更新）|
+| 组件名称    | 软件包         | 获取链接                                               |
+|---------|-------------|----------------------------------------------------|
+| Rec SDK | 推荐算法框架开发套件包 | [获取链接](https://gitcode.com/Ascend/RecSDK/releases) |
 
 
 >[!NOTE]说明 
@@ -79,18 +79,18 @@
 **关键步骤说明<a name="section15488921175211"></a>**
 
 1.  准备宿主机环境。请参见[安装依赖](#安装依赖)完成宿主机环境的部署。
-2.  构建基础镜像，请参见[使用Debian 12制作训练镜像](../build_torch_rec_images/README.md)。
+2.  构建基础镜像，请参见[基础镜像构建](../build_torch_rec_images/README.md)。
 3.  启动容器，请参见[启动容器](#section12808621121114)。
 4.  安装Rec SDK Torch，请参见[安装Rec SDK Torch](#section182972951211)。
 
 
 ### 制作Rec SDK Torch训练镜像<a name="ZH-CN_TOPIC_0000002336268705"></a>
 
-**使用Debian 12制作训练镜像<a id="section104919392501"></a>**
+#### 制作基础训练镜像<a id="section104919392501"></a>
 
 参考[基础镜像构建](../build_torch_rec_images/README.md)里的DockerFile和Readme制作镜像。
 
-**启动容器<a id="section12808621121114"></a>**
+#### 启动容器<a id="section12808621121114"></a>
 
 ```bash
 #!/bin/bash
@@ -114,7 +114,7 @@ ${image_name} \
 >-   -m 300g表示设置容器内可以使用的内存大小上限为300G，可根据实际情况进行配置。
 >-   -e ASCEND\_VISIBLE\_DEVICES=0-7表示将服务器上编号为device0-device7的NPU设备挂载到容器内。可根据实际情况进行配置。
 
-**安装Rec SDK Torch<a id="section182972951211"></a>**
+#### 安装Rec SDK Torch<a id="section182972951211"></a>
 
 1.  参考[获取Rec SDK Torch软件包](#获取rec-sdk-torch软件包)获取Rec SDK Torch软件包。
 2.  将软件包拷贝到容器中。可通过以下方式：
@@ -163,18 +163,14 @@ ${image_name} \
         unset ASCEND_CUSTOM_OPP_PATH
          
         cd cust_op/ascendc_op/build
-        # 注：部分算子编译依赖外部组件，请参考build文件夹下README文件下载依赖，否则会编译失败。
-        # 编译算子包（编译时会自动安装，若仅安装部分，可在其他容器内编译，再拷贝到当前环境安装）
+        # 编译并安装算子包
         bash build_ai_core_op.sh A2
-         
-        # 可选：安装指定算子包
-        #   方式1：批量安装算子包。如下指令表示安装非"310p.run/A3.run"结尾的所有算子包，可根据设备环境修改匹配关键字。
-        find . -name "*.run" ! -name "*310p.run" ! -name "*A3.run" -exec bash {} \;
-        #   方式2：自行选择需要的算子包安装，指令示例：
+
+        # 可选：若仅需安装部分算子，可在其他容器内编译，并将build/output/recsdk_ops路径下所需算子包拷贝到当前环境，参考如下指令安装：
         bash mxrec_opp_split_embedding_codegen_forward_unweighted.run
          
         # 安装算子适配层 libfbgemm_npu_api.so
-        cd ../../../../framework/torch_plugin/torch_library/common/
+        cd ../../framework/torch_plugin/torch_library/common/
         bash build_ops.sh
         ```
 

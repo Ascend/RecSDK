@@ -13,13 +13,13 @@ Python版本要求：Python >= 3.11。
 
 ### 1.环境准备
 
-参考 [Rec SDK文档](https://www.hiascend.com/document/detail/zh/mindsdk/71rc1/rec/recug/mxrectorch_0014.html) 的"制作Rec SDK Torch训练镜像"和"启动容器"章节。
+参考 [Rec SDK文档](../../../docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md#section104919392501) 的"制作基础训练镜像"和"启动容器"章节。
 
 ### 2.软件包安装
-参考 [Rec SDK文档](https://www.hiascend.com/document/detail/zh/mindsdk/71rc1/rec/recug/mxrectorch_0014.html) 的“安装Rec SDK Torch”章节。
+参考 [Rec SDK文档](../../../docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md#section182972951211) 的"安装Rec SDK Torch"章节。
 
 #### 2.1 前提条件
-torchrec_embcache依赖于hybrid_torchrec包，请先参考[hybrid_torchrec README](../hybrid_torchrec/README.MD)完成hybrid_torchrec及其依赖包安装。
+torchrec_embcache依赖于hybrid_torchrec包，请先参考[hybrid_torchrec README](../hybrid_torchrec/README.md)完成hybrid_torchrec及其依赖包安装。
 
 本章节仅介绍torchrec_embcache软件包安装。
 
