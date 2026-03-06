@@ -170,6 +170,7 @@ if not CPU_ENABLE:
     os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
     with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
         f.write(eval_str + "\n")
+    print(eval_str)
 
     if (os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE"):
         if NPU_ENABLE:
