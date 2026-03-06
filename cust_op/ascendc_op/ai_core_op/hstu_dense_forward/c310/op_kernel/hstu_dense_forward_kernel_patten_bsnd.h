@@ -109,6 +109,10 @@ public:
             pipe->InitBuffer(tmpBuff, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
             pipe->InitBuffer(biasIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
             pipe->InitBuffer(queMaskIn, USE_QUEUE_NUM, vectorScoreUbBlockElem * sizeof(float));
+            if  constexpr (std::is_same<qType, fp8_e4m3fn_t>::value) {
+                pipe->InitBuffer(vecOutFp8, USE_QUEUE_NUM,
+                                 TraitParams::blockM * TraitParams::blockN * sizeof(fp8_e4m3fn_t));
+            }
         } else {
             vectorScoreUbBlockElem = TraitParams::GetUbBlockElem();
             transUbBlockElem = vectorScoreUbBlockElem;
@@ -278,7 +282,16 @@ public:
         float scale,
         uint32_t bufferIdx)
     {
-        if constexpr (!std::is_same<qType, float>::value) {
+        if constexpr (std::is_same<qType, fp8_e4m3fn_t>::value) {
+            queIn[bufferIdx].DeQue();
+
+            auto outLt = queOut.AllocTensor<scoreType>();
+            SiluCompute<float>(outLt, inLt, alpha, thisLen);
+            DoMaskOptional(inMaskLt, inMaskLtFp32, tmpLt, outLt, thisLen, needMask, scale);
+            queIn[bufferIdx].FreeTensor(inLt);
+
+            queOut.EnQue(outLt);
+        } else if constexpr (!std::is_same<qType, float>::value) {
             queIn[bufferIdx].DeQue();
             Cast(tmpLtFp32, inLt, RoundMode::CAST_NONE, thisLen);
             

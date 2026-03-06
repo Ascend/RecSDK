@@ -29,7 +29,8 @@ public:
     using qType = typename TraitParams::qType;
     using oType = typename TraitParams::oType;
 #ifdef SUPPORT_950
-    __aicore__ inline HstuDenseForwardJaggedKernel(int vecPerProcess = 48)
+    __aicore__ inline HstuDenseForwardJaggedKernel(int vecPerProcess =
+                                                       (std::is_same_v<qType, fp8_e4m3fn_t> ? 32 : 48))
         : HstuDenseForwardKernelPattenBsnd<TraitParams, TilingDataType>(vecPerProcess) {}
 #else
     __aicore__ inline HstuDenseForwardJaggedKernel() {}
