@@ -21,10 +21,10 @@ Python版本要求：Python >= 3.11。
 
 ### 1.环境准备
 
-参考 [Rec SDK文档](https://www.hiascend.com/document/detail/zh/mindsdk/71rc1/rec/recug/mxrectorch_0014.html) 的"制作Rec SDK Torch训练镜像"和"启动容器"章节。
+参考 [Rec SDK文档](../../../docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md#section104919392501) 的"制作基础训练镜像"和"启动容器"章节。
 
 ### 2.软件包安装
-参考 [Rec SDK文档](https://www.hiascend.com/document/detail/zh/mindsdk/71rc1/rec/recug/mxrectorch_0014.html) 的“安装Rec SDK Torch”章节。
+参考 [Rec SDK文档](../../../docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md#section182972951211) 的"安装Rec SDK Torch"章节。
 
 #### 2.1 依赖软件安装
 - PyTorch： 容器内已包含torch软件包，若torch软件包版本不满足配套需求，可进行软件升级。升级指令示例(示例升级版本为2.7.1)： `pip3 install torch==2.7.1 --upgrade`
