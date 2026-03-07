@@ -53,6 +53,12 @@ public:
             blockStart = remainderBlocks * (blocksPerCore + 1) + (coreIdx - remainderBlocks) * blocksPerCore;
         }
 
+        if (coreIdx == 0) {
+            outputGT.SetValue(0, static_cast<T>(0));
+            AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::SINGLE_CACHE_LINE,
+                                              AscendC::DcciDst::CACHELINE_OUT>(outputGT[0]);
+        }
+
         if (isFullCore) {
             ProcessMultiCycles();
         } else {
