@@ -28,7 +28,6 @@ constexpr int32_t LENGTHSSIZE_INDEX = 1;
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr int64_t USE_BUFFER_NUM = 2;
 constexpr int64_t USE_QUEUE_NUM = 2;
-constexpr int INT32_ALIGNMENT = 8;
 }  // namespace
 
 namespace optiling {
@@ -78,8 +77,10 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     // ub
     uint64_t ubCanUsed;
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
-    int64_t blockLen = ubCanUsed / USE_QUEUE_NUM / USE_BUFFER_NUM / sizeof(int32_t);
-    blockLen = blockLen / INT32_ALIGNMENT * INT32_ALIGNMENT;
+    int64_t blockLen = indicesTensor->GetDataType() == ge::DT_INT32
+                           ? ubCanUsed / USE_QUEUE_NUM / USE_BUFFER_NUM / sizeof(int32_t)
+                           : ubCanUsed / USE_QUEUE_NUM / USE_BUFFER_NUM / sizeof(int64_t);
+    blockLen = blockLen / alignment * alignment;
     OPS_LOG_E_IF(blockLen <= 0, context, return ge::GRAPH_FAILED,
                  "[ERROR]SelectDim1ToPermuteTilingData required blockLen must be a positive number");
     tiling.set_indicesLength(indicesLength);
@@ -115,8 +116,14 @@ class SelectDim1ToPermute : public OpDef {
 public:
     explicit SelectDim1ToPermute(const char* name) : OpDef(name)
     {
+#ifdef SUPPORT_C310
+        this->Input("indices").ParamType(REQUIRED).DataType({ge::DT_INT32, ge::DT_INT64}).FormatList({ge::FORMAT_ND});
+        this->Output("permute").ParamType(REQUIRED).Follow("indices", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
+#else
         this->Input("indices").ParamType(REQUIRED).DataType({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
         this->Output("permute").ParamType(REQUIRED).Follow("indices", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
+#endif
+        
         this->Attr("batchSize").Int(0);
         this->Attr("lengthsSize").Int(0);
 

@@ -58,38 +58,26 @@ def get_golden(tensors: dict, batch_num):
 
 
 LENGTHS_TYPE = [np.int32]
-VALUES_TYPE = [np.int64, np.int32, np.float32]
+VALUES_TYPE = [np.int64, np.int32, np.float32, np.float16]
 WEIGHTS_TYPE = [None, np.float32]
 TYPE_LIST = list(itertools.product(LENGTHS_TYPE, VALUES_TYPE, WEIGHTS_TYPE))
 ENABLE_SELECTED_LENGTHS_SUM = [False, True]
 IS_MXREC = [True, False]
 BOOLEAN_LIST = list(itertools.product(ENABLE_SELECTED_LENGTHS_SUM, IS_MXREC))
+INT64_LENGTHS_TYPE = [np.int64]
+FP16_WEIGHTS_TYPE = [np.float16]
+TYPE_LIST_1 = list(itertools.product(INT64_LENGTHS_TYPE, VALUES_TYPE, FP16_WEIGHTS_TYPE))
 
 
-@pytest.mark.parametrize("types", TYPE_LIST)
-@pytest.mark.parametrize("batch_num", [1, 8, 64, 100])
-@pytest.mark.parametrize("batch_size", [2, 8, 64, 256])
-@pytest.mark.parametrize("output_batch_size", [2, 8, 64, 256])
-@pytest.mark.parametrize("boolean_items", BOOLEAN_LIST)
-def test_keyed_jagged_index_select_dim1(types, batch_num, batch_size, output_batch_size, boolean_items):
-    """
-    测试正常情况下的keyed_jagged_index_select_dim1算子功能
-    Params:
-        indices: (output_batch_size) dtype=int32
-        lengths: (batch_size * batch_num) dtype=ltype
-                L = lengths[:T].sum()
-        values: (L) dtype=vtype
-        weights: (L) dtype=fp32
-        batch_size: int
-        selected_lengths_sum: int
-    """
+# 初始化测试入参，v220 indices dtype只支持int32, 可手动调整
+def init_tensor(types, batch_num, batch_size, output_batch_size, boolean_items):
     ltype, vtype, wtype = types
     enable_selected_lengths_sum, is_mxrec = boolean_items
     indices = np.random.choice(batch_size, output_batch_size).astype(dtype=ltype)
     lengths = np.random.randint(2, 500, size=batch_size * batch_num, dtype=ltype)
     total_length = int(lengths.sum())
     cumulative_lengths = np.cumsum(lengths)
-    offsets = np.zeros(len(lengths) + 1, dtype=ltype)
+    offsets = np.zeros(len(lengths) + 1, dtype=np.int64)
     offsets[1:] = cumulative_lengths
 
     is_float = vtype in [np.float32, np.float16]
@@ -113,10 +101,57 @@ def test_keyed_jagged_index_select_dim1(types, batch_num, batch_size, output_bat
         'weights': weights,
         'selected_lengths_sum': selected_lengths_sum
     }
+    return params, is_mxrec
+
+
+@pytest.mark.parametrize("types", TYPE_LIST)
+@pytest.mark.parametrize("batch_num", [1, 8, 64, 100])
+@pytest.mark.parametrize("batch_size", [2, 8, 64, 256])
+@pytest.mark.parametrize("output_batch_size", [2, 8, 64, 256])
+@pytest.mark.parametrize("boolean_items", BOOLEAN_LIST)
+def test_keyed_jagged_index_select_dim1(types, batch_num, batch_size, output_batch_size, boolean_items):
+    """
+    测试正常情况下的keyed_jagged_index_select_dim1算子功能
+    Params:
+        indices: (output_batch_size) dtype=int32
+        lengths: (batch_size * batch_num) dtype=ltype
+                L = lengths[:T].sum()
+        values: (L) dtype=vtype
+        weights: (L) dtype=fp32
+        batch_size: int
+        selected_lengths_sum: int
+    """
+    params, is_mxrec = init_tensor(types, batch_num, batch_size, output_batch_size, boolean_items)
 
     golden = get_golden(params, batch_num)
     result = get_result(params, is_mxrec)
     assert torch.allclose(golden[0], result[1], atol=1e-5)
     assert torch.allclose(golden[1], result[0], atol=1e-5)
-    if weights is not None:
+    if params['weights'] is not None:
         assert torch.allclose(golden[2], result[2], atol=1e-5)
+
+
+@pytest.mark.parametrize("types", TYPE_LIST_1)
+@pytest.mark.parametrize("batch_num", [8, 64, 100])
+@pytest.mark.parametrize("batch_size", [8, 64, 256])
+@pytest.mark.parametrize("output_batch_size", [8, 64, 256])
+@pytest.mark.parametrize("boolean_items", BOOLEAN_LIST)
+def test_keyed_jagged_index_select_dim1_tpye_list_1(types, batch_num, batch_size, output_batch_size, boolean_items):
+    params, is_mxrec = init_tensor(types, batch_num, batch_size, output_batch_size, boolean_items)
+    weights_None = None
+    params_golden = {
+        'values': params['values'],
+        'lengths': params['lengths'],
+        'offsets': params['offsets'],
+        'indices': params['indices'].astype(dtype=np.int32),
+        'batch_size': batch_size,
+        'weights': weights_None,
+        'selected_lengths_sum': params['selected_lengths_sum']
+    }
+    golden = get_golden(params_golden, batch_num)
+    params_golden['values'] = params['weights']
+    golden_weights = get_golden(params_golden, batch_num)
+    result = get_result(params, is_mxrec)
+    assert torch.allclose(golden[0], result[1], atol=1e-5)
+    assert torch.allclose(golden[1], result[0], atol=1e-5)
+    assert torch.allclose(golden_weights[1], result[2], atol=1e-5)

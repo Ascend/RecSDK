@@ -55,10 +55,14 @@ permute = [1, 0, 4, 2,
 # 算子输入与输出
 | 名称      | 输入/输出 | 参数类型 | 数据类型         | 数据格式       | 范围         | 说明                                  |
 |---------|------------|------|--------------|------------|------------|----------------------------------------|
-|indices  | 输入       | Tensor | int32 | ND | [B, ] | |
+|indices  | 输入       | Tensor | int32/int64 | ND | [B, ] | |
 |batchSize| 输入(属性) | Int | int |  |  |
 |lengthsSize | 输入(属性) | Int | int |  | | lengthsSize是batchSize的整数倍 |
-|permute | 输出 | Tensor | int32 | ND | [B * n, ] | n = (lengthsSize / batchSize) |
+|permute | 输出 | Tensor | int32/int64 | ND | [B * n, ] | n = (lengthsSize / batchSize) |
+
+说明：
+1. v220版本，select_dim1_to_permute算子的indices dtype只支持int32，不支持int64
+
 # 算子编译部署
 
 算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。

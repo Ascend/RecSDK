@@ -37,7 +37,7 @@ namespace optiling {
         OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
         OPS_LOG_E_IF_NULL("context->GetAttrs", context->GetAttrs(), return ge::GRAPH_FAILED);
 
-        bool enableWeights = (context->GetOptionalInputTensor(WEIGHTS_INDEX) != nullptr);
+        bool enableWeights = *context->GetAttrs()->GetBool(1);
         tiling.set_enableWeights(enableWeights);
         bool enableTotalOffset = (context->GetOptionalInputTensor(TOTAL_OFFSET_INDEX) != nullptr);
         tiling.set_enableTotalOffset(enableTotalOffset);
@@ -183,7 +183,7 @@ public:
     {
         this->Input("permute")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
+            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("lengths")
             .ParamType(REQUIRED)
@@ -191,11 +191,11 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("values")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT64, ge::DT_INT32, ge::DT_FLOAT})
+            .DataTypeList({ge::DT_INT64, ge::DT_INT32, ge::DT_FLOAT, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND});
         this->Input("weights")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND});
         this->Input("totalOffset")
             .ParamType(OPTIONAL)
@@ -223,6 +223,7 @@ public:
             .FormatList({ge::FORMAT_ND});
 
         this->Attr("permuted_sum").Int(0);
+        this->Attr("enableWeights").Bool(false);
 
         this->SetInferShape(ge::InferShape);
 

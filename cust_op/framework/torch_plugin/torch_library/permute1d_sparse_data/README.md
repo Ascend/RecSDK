@@ -23,10 +23,10 @@ torch.ops.mxrec.permute_1D_sparse_data(Tensor permute,
 #### 参数说明
 |  名称  | 输入/输出  | 参数类型    | 数据类型       | 数据格式                                            | 范围                  |
 |  ---- |--------|---------|------------|-------------------------------------------------|---------------------|
-|  permute | 输入     | Tensor  | int32      | [indices]                                       | permute中的每个值均满足: >= 0 且 < `lengths.shape[0]` |
+|  permute | 输入     | Tensor  | int32/int64      | [indices]                                       | permute中的每个值均满足: >= 0 且 < `lengths.shape[0]` |
 |  lengths | 输入     | Tensor  | int32/int64 | [lengths]                   |           
-|  values | 输入     | Tensor  | int32/int64/fp32 | [values]                                        | values的长度等于`lengths.sum()` | 
-|  weights | 输入(可选) | Tensor  | fp32       | [weights]                                       | weight的长度等于`lengths.sum()` |
+|  values | 输入     | Tensor  | int32/int64/fp32/fp16 | [values]                                        | values的长度等于`lengths.sum()` | 
+|  weights | 输入(可选) | Tensor  | fp32/fp16       | [weights]                                       | weight的长度等于`lengths.sum()` |
 |  permuted_lengths_sum | 输入(可选) | SymInt  | int64        | NA                                              |        (0, std::numeric_limits<int64>::max()]      |
 |  permuted_lengths | 输出     | Tensor  | int32/int64   | [permuted_lengths] |                     |
 |  permuted_values | 输出     | Tensor  | int32/int64/fp32   | [permuted_values]                               |                     |
