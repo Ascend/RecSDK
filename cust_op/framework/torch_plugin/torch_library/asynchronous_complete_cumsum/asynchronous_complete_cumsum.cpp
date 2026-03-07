@@ -30,7 +30,6 @@ at::Tensor asynchronous_complete_cumsum_npu(const at::Tensor &offset)
     TORCH_CHECK(offset_size > 0 && offset_size < std::numeric_limits<int64_t>::max(),
         "offset.size(0) limit (0, %lld), but get %lld\n", std::numeric_limits<int64_t>::max(), offset_size);
     auto output = at::empty({offset_size + 1}, offset.options());
-    output.narrow(0, 0, 1).zero_();
 
     EXEC_NPU_CMD(aclnnAsynchronousCompleteCumsum, offset_contin, output);
     return output;
