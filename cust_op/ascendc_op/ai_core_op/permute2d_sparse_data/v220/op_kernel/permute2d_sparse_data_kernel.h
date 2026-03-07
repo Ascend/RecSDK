@@ -44,7 +44,7 @@ struct Args {
 };
 
 
-template <typename LType, typename VType>
+template <typename PType, typename LType, typename VType, typename WType>
 class Permute2dSparseDataKernel {
 public:
     __aicore__ inline Permute2dSparseDataKernel(Args& args, TPipe* pipePtr)
@@ -84,11 +84,11 @@ public:
         outValuesGT.SetGlobalBuffer(args.outValues, valuesOutDim * sizeof(VType));
 
         if (enableWeights) {
-            weightsGT.SetGlobalBuffer(args.weights, valuesDim * sizeof(float));
-            outWeightsGT.SetGlobalBuffer(args.outWeights, valuesOutDim * sizeof(float));
+            weightsGT.SetGlobalBuffer(args.weights, valuesDim * sizeof(WType));
+            outWeightsGT.SetGlobalBuffer(args.outWeights, valuesOutDim * sizeof(WType));
         }
 
-        permutePtr = (__gm__ int32_t*)args.permute;
+        permutePtr = (__gm__ PType*)args.permute;
         if (enableTotalOffset) {
             totalOffsetPtr = (__gm__ int64_t*)args.totalOffset;
         } else {
@@ -231,7 +231,7 @@ public:
         PermuteLengths();
         PermuteData(outValuesGT, valuesGT, sizeof(VType));
         if (enableWeights) {
-            PermuteData(outWeightsGT, weightsGT, sizeof(float));
+            PermuteData(outWeightsGT, weightsGT, sizeof(WType));
         }
     }
 
@@ -239,7 +239,7 @@ public:
     {
         PermuteDataLine(outValuesGT, valuesGT, sizeof(VType));
         if (enableWeights) {
-            PermuteDataLine(outWeightsGT, weightsGT, sizeof(float));
+            PermuteDataLine(outWeightsGT, weightsGT, sizeof(WType));
         }
     }
 
@@ -283,7 +283,7 @@ private:
     GlobalTensor<uint8_t> outValuesGT;
     GlobalTensor<uint8_t> outWeightsGT;
 
-    __gm__ int32_t* permutePtr = nullptr;
+    __gm__ PType* permutePtr = nullptr;
     __gm__ int64_t* totalOffsetPtr = nullptr;
     __gm__ int64_t* lengthsOffsetPtr = nullptr;
     __gm__ int64_t* permutedLengthsOffsetPtr = nullptr;

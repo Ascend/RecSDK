@@ -17,8 +17,9 @@ using namespace std;
 constexpr int EXPECTED_DIM_1D = 1;
 constexpr int THRESHOLD_MEAN_LENGTHS = 30000;
 constexpr int THRESHOLD_MEAN_LENGTHS_LARGE = 750000;
+constexpr int THRESHOLD_MIN_PERMUTE_LENGTHS = 10;
 constexpr int THRESHOLD_T = 56;
- 
+
 /**
  * 验证permute1d_sparse_data的输入参数
  * @param permute 排列索引张量
@@ -42,14 +43,14 @@ void validate_permute1d_sparse_data_inputs(
     // ============= NPU设备检查 =============
     std::vector<Tensor> tensors = {permute, lengths, values};
     std::vector<std::string> names = {"permute", "lengths", "values"};
-    
+
     // 如果有权重张量，也加入检查
     if (weights.has_value()) {
         check_tensor_dim(weights.value(), EXPECTED_DIM_1D, "weights");
         tensors.push_back(weights.value());
         names.push_back("weights");
     }
-    
+
     check_tensor_npu_device(tensors, names);
 
     // ============= 长度一致性检查 =============
@@ -60,14 +61,13 @@ void validate_permute1d_sparse_data_inputs(
         check_tensor_non_empty(*weights, "weights");
         check_tensor_dim(*weights, EXPECTED_DIM_1D, "weights");
         const auto weightsLen = weights->size(0);
-        TORCH_CHECK(weightsLen == valuesLen,
-            "weights and values length mismatch: ", weightsLen, " vs ", valuesLen);
+        TORCH_CHECK(weightsLen == valuesLen, "weights and values length mismatch: ", weightsLen, " vs ", valuesLen);
     }
 
     // 检查permuted_lengths_sum(如果存在)
     if (permuted_lengths_sum.has_value()) {
-        TORCH_CHECK(permuted_lengths_sum.value() >= 0,
-            "permuted_lengths_sum must be non-negative, got ", permuted_lengths_sum.value());
+        TORCH_CHECK(permuted_lengths_sum.value() >= 0, "permuted_lengths_sum must be non-negative, got ",
+                    permuted_lengths_sum.value());
     }
 }
 
@@ -94,7 +94,8 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute1d_sparse_data_impl_npu(
     auto permuteConti = permute.contiguous();
     auto lengthsConti = lengths.contiguous();
     auto valuesConti = values.contiguous();
-    auto weightsConti = weights.value_or(at::Tensor()).contiguous();
+    auto weightsConti = weights.value_or(at::empty({}, at::kFloat)).contiguous();
+    bool enableWeights = weights.has_value();
 
     const auto pLength = permute.size(0);
     const auto lengthSize = lengths.size(0);
@@ -102,12 +103,11 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute1d_sparse_data_impl_npu(
     if (lengthSize == 0 || pLength == 0) {
         return make_tuple(lengthsConti.clone(),
                           valuesConti.clone(),
-                          weights.has_value() ? c10::make_optional(weightsConti.clone()) : c10::nullopt);
+                          enableWeights ? c10::make_optional(weightsConti.clone()) : c10::nullopt);
     }
     // 计算每行的平均元素数
     auto meanLengths = lengthsSum / lengthSize;
-    bool useTotalOffset = (meanLengths > THRESHOLD_MEAN_LENGTHS_LARGE) ||
-                          (pLength <= 10) ||
+    bool useTotalOffset = (meanLengths > THRESHOLD_MEAN_LENGTHS_LARGE) || (pLength <= THRESHOLD_MIN_PERMUTE_LENGTHS) ||
                           (meanLengths > THRESHOLD_MEAN_LENGTHS && pLength < THRESHOLD_T);
 
     at::Tensor totalOffset = at::Tensor();
@@ -141,12 +141,11 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute1d_sparse_data_impl_npu(
     // 初始化输出向量
     at::Tensor outLengths = at::empty({pLength}, lengthsConti.options());
     at::Tensor outValues = at::empty({outValuesLen}, valuesConti.options());
-    at::Tensor outWeights = weights.has_value() ? at::empty({outValuesLen}, weightsConti.options()) : at::Tensor();
+    at::Tensor outWeights = enableWeights ? at::empty({outValuesLen}, weightsConti.options()) : at::Tensor();
 
-    EXEC_NPU_CMD(aclnnPermute2dSparseData, permuteConti, lengthsConti, valuesConti, weightsConti,
-                 totalOffset, lengthsOffset, permutedLengthsOffset, outValuesLen, outLengths,
-                 outValues, outWeights);
-                
+    EXEC_NPU_CMD(aclnnPermute2dSparseData, permuteConti, lengthsConti, valuesConti, weightsConti, totalOffset,
+                 lengthsOffset, permutedLengthsOffset, outValuesLen, enableWeights, outLengths, outValues, outWeights);
+
     if (useTotalOffset) {
         return make_tuple(outLengths, outValues, outWeights);
     } else {
@@ -175,4 +174,3 @@ TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m)
 {
     m.impl("permute_1D_sparse_data", &permute1d_sparse_data_impl_npu);
 }
- 

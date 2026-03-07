@@ -23,6 +23,7 @@ constexpr int EXPECTED_DIM_1D = 1;
 constexpr int EXPECTED_DIM_2D = 2;
 constexpr int THRESHOLD_MEAN_LENGTHS = 30000;
 constexpr int THRESHOLD_MEAN_LENGTHS_LARGE = 750000;
+constexpr int THRESHOLD_MIN_PERMUTE_LENGTHS = 10;
 constexpr int THRESHOLD_T = 56;
 /**
  * 验证permute2d_sparse_data的输入参数
@@ -40,7 +41,7 @@ void validate_permute2d_sparse_data_inputs(
     std::vector<std::string> names = {"permute", "lengths", "values"};
     check_tensor_npu_device(tensors, names);
 }
- 
+
 tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
     const Tensor &permute,
     const Tensor &lengths,
@@ -53,16 +54,15 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
     auto permuteConti = permute.contiguous();
     auto lengthsConti = lengths.contiguous();
     auto valuesConti = values.contiguous();
-    auto weightsConti = weights.value_or(at::Tensor()).contiguous();
-
+    auto weightsConti = weights.value_or(at::empty({}, at::kFloat)).contiguous();
+    bool enableWeights = weights.has_value();
     const auto T = permute.size(0);
     const auto lengthsRows = lengths.size(0);
     const auto batchSize = lengths.size(1);
     const auto lengthsSum = values.size(0);
     if (lengthsRows == 0 || batchSize == 0 || T == 0) {
-        return make_tuple(lengthsConti.clone(),
-                          valuesConti.clone(),
-                          weights.has_value() ? c10::make_optional(weightsConti.clone()) : c10::nullopt);
+        return make_tuple(lengthsConti.clone(), valuesConti.clone(),
+                          enableWeights ? c10::make_optional(weightsConti.clone()) : c10::nullopt);
     }
 
     at::Tensor reduceSumLengths;
@@ -78,7 +78,7 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
     // 计算每行的平均元素数
     auto meanLengths = lengthsSum / lengthsRows;
     bool useTotalOffset = (meanLengths > THRESHOLD_MEAN_LENGTHS_LARGE) ||
-                          (T <= 10) ||
+                          (T <= THRESHOLD_MIN_PERMUTE_LENGTHS) ||
                           ((meanLengths > THRESHOLD_MEAN_LENGTHS) && (T < THRESHOLD_T));
     if (useTotalOffset) {
         totalOffset = asynchronous_complete_cumsum_npu(reduceSumLengths);
@@ -107,12 +107,10 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
 
     at::Tensor outLengths = at::empty({T, batchSize}, lengthsConti.options());
     at::Tensor outValues = at::empty({outValuesLen}, valuesConti.options());
-    at::Tensor outWeights = weights.has_value() ? at::empty({outValuesLen}, weightsConti.options()) : at::Tensor();
+    at::Tensor outWeights = enableWeights ? at::empty({outValuesLen}, weightsConti.options()) : at::Tensor();
 
-    EXEC_NPU_CMD(aclnnPermute2dSparseData, permuteConti, lengthsConti, valuesConti, weightsConti,
-                 totalOffset, lengthsOffset, permutedLengthsOffset, outValuesLen,
-                 outLengths, outValues, outWeights);
-
+    EXEC_NPU_CMD(aclnnPermute2dSparseData, permuteConti, lengthsConti, valuesConti, weightsConti, totalOffset,
+                 lengthsOffset, permutedLengthsOffset, outValuesLen, enableWeights, outLengths, outValues, outWeights);
     if (useTotalOffset) {
         return make_tuple(outLengths, outValues, outWeights);
     } else {

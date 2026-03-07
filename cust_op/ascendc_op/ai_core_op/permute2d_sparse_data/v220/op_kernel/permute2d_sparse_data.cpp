@@ -25,7 +25,8 @@ extern "C" __global__ __aicore__ void permute2d_sparse_data(GM_ADDR permute, GM_
     TPipe pipe;
     Permute2dSparseData::Args args{permute, lengths, values, weights, totalOffset, lengthsOffset,
                                    permutedLengthsOffset, outLengths, outValues, outWeights, tiling};
-    Permute2dSparseData::Permute2dSparseDataKernel<DTYPE_LENGTHS, DTYPE_VALUES> kernel(args, &pipe);
+    Permute2dSparseData::Permute2dSparseDataKernel<DTYPE_PERMUTE, DTYPE_LENGTHS, DTYPE_VALUES, DTYPE_WEIGHTS> kernel(
+        args, &pipe);
     if (TILING_KEY_IS(1)) {
         kernel.ComputeAll();
     } else if (TILING_KEY_IS(2)) {
