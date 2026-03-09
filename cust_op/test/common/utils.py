@@ -82,6 +82,9 @@ def compare_data_with_double_pole(tensor_msg: str, actual_fused: Tensor, actual_
         actual_fused = actual_fused.to(golden.device)
     if actual_npu.device.type != golden.device.type:
         actual_npu = actual_npu.to(golden.device)
+    actual_fused = actual_fused.float()
+    actual_npu = actual_npu.float()
+    golden = golden.float()
 
     mare_fused = compute_mare(actual_fused, golden)
     mare_npu = compute_mare(actual_npu, golden)
