@@ -45,6 +45,7 @@ constexpr size_t MULTIPLE_HEAD_DIM_TIMES = 16;
 
 constexpr uint32_t MASK_TYPE_TRIL = 0;
 constexpr uint32_t MASK_TYPE_TRIU = 1;
+constexpr uint32_t MASK_TYPE_NONE = 2;
 constexpr uint32_t MASK_TYPE_CUSTOM = 3;
 
 constexpr uint32_t CONST_4 = 4;
