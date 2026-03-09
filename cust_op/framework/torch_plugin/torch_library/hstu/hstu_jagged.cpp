@@ -48,7 +48,7 @@ at::Tensor hstu_jagged_forward_impl_npu(
     auto denseBias = c10::value_or_else(attnBias, [] {return at::Tensor(); });
     auto maskNpu = c10::value_or_else(mask, [] {return at::Tensor(); });
 
-    auto _inits = (maskType == 0) ? at::empty({batchsize}, acSeqOffset.options()) :
+    auto _inits = (maskType == MASK_TYPE_NONE) ? at::empty({batchsize}, acSeqOffset.options()) :
                                     at::zeros({batchsize}, acSeqOffset.options());
     auto acNumContext = numContext.has_value() ? numContext.value().to(acSeqOffset.scalar_type()) : _inits;
     auto acNumTarget = numTarget.has_value() ? numTarget.value().to(acSeqOffset.scalar_type()) : _inits;
