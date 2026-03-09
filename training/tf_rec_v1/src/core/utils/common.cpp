@@ -279,11 +279,13 @@ namespace MxRec {
             {"910_9381", UBSize::ASCEND910_9381}, {"910_9382", UBSize::ASCEND910_9382},
             {"910_9372", UBSize::ASCEND910_9372}, {"910_9362", UBSize::ASCEND910_9362},
             {"910_9361", UBSize::ASCEND910_9361},
-            {"950PR_9579", UBSize::ASCEND950PR_9579}, {"950PR_9589", UBSize::ASCEND950PR_9589},
-            {"950PR_9581", UBSize::ASCEND950PR_9581}, {"950PR_9599", UBSize::ASCEND950PR_9599},
-            {"950PR_950z", UBSize::ASCEND950PR_950Z}, {"950PR_957b", UBSize::ASCEND950PR_957B},
-            {"950PR_957d", UBSize::ASCEND950PR_957D}, {"950PR_958a", UBSize::ASCEND950PR_958A},
-            {"950PR_958b", UBSize::ASCEND950PR_958B}
+            {"950PR_9579", UBSize::ASCEND950PR_9579}, {"950PR_957a", UBSize::ASCEND950PR_957A},
+            {"950PR_957b", UBSize::ASCEND950PR_957B}, {"950PR_957c", UBSize::ASCEND950PR_957C},
+            {"950PR_957d", UBSize::ASCEND950PR_957D}, {"950PR_950z", UBSize::ASCEND950PR_950Z},
+            {"950PR_9589", UBSize::ASCEND950PR_9589}, {"950PR_958a", UBSize::ASCEND950PR_958A},
+            {"950PR_958b", UBSize::ASCEND950PR_958B}, {"950PR_958c", UBSize::ASCEND950PR_958C},
+            {"950PR_958d", UBSize::ASCEND950PR_958D}, {"950PR_9599", UBSize::ASCEND950PR_9599},
+            {"950PR_959a", UBSize::ASCEND950PR_959A}, {"950PR_959b", UBSize::ASCEND950PR_959B},
             };
         auto it = chipUbSizeList.find(GetChipName(devID));
         if (it != chipUbSizeList.end()) {
