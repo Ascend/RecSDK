@@ -143,8 +143,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_deltaq_backward_
     double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLenQ : siluScale;
 
     auto qGradOutput = at::empty_like(denseQ);
-    auto kGradOutput = at::zeros_like(denseK, at::dtype(at::kFloat));
-    auto vGradOutput = at::zeros_like(denseV, at::dtype(at::kFloat));
+    bool isGqa = denseQ.size(1) > denseK.size(1);
+    auto kGradOutput = isGqa ? at::zeros_like(denseK, at::dtype(at::kFloat)) : at::empty_like(denseK);
+    auto vGradOutput = isGqa ? at::zeros_like(denseV, at::dtype(at::kFloat)) : at::empty_like(denseV);
 
     at::Tensor attnBiasGradOutput;
     if (denseAttnBias.defined()) {
@@ -178,7 +179,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_deltaq_backward_
                  vGradOutput,
                  attnBiasGradOutput);
 
-    if (denseQ.dtype() != at::kFloat) {
+    if (isGqa) {
         kGradOutput = kGradOutput.to(denseQ.dtype());
         vGradOutput = vGradOutput.to(denseQ.dtype());
     }
