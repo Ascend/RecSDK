@@ -230,8 +230,10 @@ def test_insert_and_find_different_strategies(evict_strategy):
     
     # 插入（使用卫语句处理需要score的情况）
     scores = None
+    find_scores = None
     if evict_strategy != demb.EvictStrategy.kLru:
         scores = torch.randint(1, 100, (n,), dtype=torch.int64, device='npu:0')
+        find_scores = 1
     
     table.load(
         n, keys, values, scores, True, False
@@ -241,7 +243,7 @@ def test_insert_and_find_different_strategies(evict_strategy):
     values_out = torch.zeros(n, dtype=torch.int64, device='npu:0')
     founds = torch.zeros(n, dtype=torch.bool, device='npu:0')
     demb.find_pointers(
-        table, n, keys, values_out, founds, None
+        table, n, keys, values_out, founds, find_scores
     )
     
     assert founds.sum().item() > 0, f"在{evict_strategy}策略下能找到键"
