@@ -68,6 +68,7 @@ struct BaseShapeArgs {
     uint32_t totalLen;
     uint32_t batchSize;
     uint32_t headNumQ;
+    uint32_t headNumK;
     uint32_t headDimQK;
     uint32_t headDimQKAlign32;
     uint32_t headDimV;

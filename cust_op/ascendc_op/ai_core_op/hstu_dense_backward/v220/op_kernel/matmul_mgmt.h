@@ -40,8 +40,13 @@ public:
         v_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.v));
 
         qGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.qGrad));
-        kGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(addrArgs.kGrad));
-        vGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(addrArgs.vGrad));
+        if (isGqa_) {
+            kGradFloat_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(addrArgs.kGrad));
+            vGradFloat_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(addrArgs.vGrad));
+        } else {
+            kGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.kGrad));
+            vGrad_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(addrArgs.vGrad));
+        }
     }
 
     __aicore__ inline void InitTempSpace(GM_ADDR workspace, int64_t& totalTempSpaceForOneVec)
@@ -85,8 +90,14 @@ public:
     {
         qGradAccumTemp_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         qGrad_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-        kGrad_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-        vGrad_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+
+        if (isGqa_) {
+            kGradFloat_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+            vGradFloat_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+        } else {
+            kGrad_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+            vGrad_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+        }
     }
 
     __aicore__ inline void ClearQGradAccumTemp(GM_ADDR workspace, int64_t totalTempSpaceForOneVec)
@@ -123,7 +134,9 @@ public:
         headDimQKAlign32_ = baseShape.headDimQKAlign32;
         headDimV_ = baseShape.headDimV;
         headNumQ_ = baseShape.headNumQ;
+        headNumK_ = baseShape.headNumK;
         aivNum_ = GetBlockNum() * VCORE_NUM_IN_ONE_AIC;
+        isGqa_ = headNumQ_ > headNumK_;
 
         InitGt(addrArgs);
         int64_t totalTempSpaceForOneVec;
@@ -201,6 +214,9 @@ public:
     uint32_t headDimQKAlign32_;
     uint32_t headDimV_;
     uint32_t headNumQ_;
+    uint32_t headNumK_;
+
+    bool isGqa_;
 
     // AIC
     uint32_t aivNum_;
@@ -212,8 +228,10 @@ public:
     GlobalTensor<qType> v_;
 
     GlobalTensor<qType> qGrad_;
-    GlobalTensor<float> kGrad_;
-    GlobalTensor<float> vGrad_;
+    GlobalTensor<qType> kGrad_;
+    GlobalTensor<qType> vGrad_;
+    GlobalTensor<float> kGradFloat_;
+    GlobalTensor<float> vGradFloat_;
     GlobalTensor<qType> attnBiasGrad_;
 
     GlobalTensor<qType> qkTemp_;
