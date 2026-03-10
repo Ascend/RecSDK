@@ -157,14 +157,14 @@ def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1
 
 **参数说明<a name="zh-cn_topic_0000001422098394_section698416142519"></a>**
 
-|**参数名**|**类型**|**必选/可选**|**说明**|
-|--|--|--|--|
-|learning_rate|float/tf.Tensor|可选|学习率。默认值：0.001。取值范围：[0.0, 10.0]。|
-|beta1|float|可选|第一矩的指数衰减率估计。默认值：0.9。取值范围：(0.0, 1.0)。|
-|beta2|float|可选|第二矩的指数衰减率估计。默认值：0.999。取值范围：[0.0, 1.0]。|
-|epsilon|float|可选|加入此值到分母中，提高数据稳定性。默认值：1e-8。取值范围：(0.0, 1.0]。|
-|name|string|可选|优化器名称。默认值：LazyAdam。名称长度范围：[1, 200]。|
-|use_fusion_optim|bool|可选|是否使用LazyAdam融合算子进行slot_m, slot_v, variable数据计算和更新。默认值：False。<br>取值范围：<li>True：表示使用融合算子，且需要手动编译和部署LazyAdam融合算子，使用方法和约束请参考[README](https://gitcode.com/Ascend/RecSDK/blob/branch_v7.2.0-RC1/cust_op/ascendc_op/ai_core_op/fused_lazy_adam/v220/README.md)。</li><li>False：表示不使用LazyAdam融合算子。</li>|
+|**参数名**|**类型**|**必选/可选**| **说明**                                                                                                                                                                                                                                                                               |
+|--|--|--|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|learning_rate|float/tf.Tensor|可选| 学习率。默认值：0.001。取值范围：[0.0, 10.0]。                                                                                                                                                                                                                                                      |
+|beta1|float|可选| 第一矩的指数衰减率估计。默认值：0.9。取值范围：(0.0, 1.0)。                                                                                                                                                                                                                                                 |
+|beta2|float|可选| 第二矩的指数衰减率估计。默认值：0.999。取值范围：[0.0, 1.0]。                                                                                                                                                                                                                                               |
+|epsilon|float|可选| 加入此值到分母中，提高数据稳定性。默认值：1e-8。取值范围：(0.0, 1.0]。                                                                                                                                                                                                                                           |
+|name|string|可选| 优化器名称。默认值：LazyAdam。名称长度范围：[1, 200]。                                                                                                                                                                                                                                                  |
+|use_fusion_optim|bool|可选| 是否使用LazyAdam融合算子进行slot_m, slot_v, variable数据计算和更新。默认值：False。<br>取值范围：<li>True：表示使用融合算子，且需要手动编译和部署LazyAdam融合算子，使用方法和约束请参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/ai_core_op/fused_lazy_adam/v220/README.md)。</li><li>False：表示不使用LazyAdam融合算子。</li> |
 
 
 **返回值说明<a name="section31441728175119"></a>**

@@ -12,7 +12,7 @@
     source /usr/local/Ascend/cann/set_env.sh
     ```
 
-2.  下载[Rec SDK](https://gitcode.com/Ascend/RecSDK/tree/branch_v7.2.0-RC1/cust_op)。
+2.  下载[Rec SDK](https://gitcode.com/Ascend/RecSDK/tree/develop/cust_op)。
 3.  解压压缩包，进入“cust\_op/ascendc\_op/ai\_core\_op/cust\_op\_by\_addr“路径下，参考以下命令编译并安装片上内存侧动态扩容算子包。
 
     ```bash

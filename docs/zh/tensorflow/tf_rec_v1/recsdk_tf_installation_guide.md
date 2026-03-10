@@ -34,7 +34,73 @@
 
 可参见本章节获取Rec SDK TensorFlow的软件，并进行软件数字签名验证。
 
-如果用户需要了解Rec SDK TensorFlow的源码，则可在[源码地址](https://gitcode.com/Ascend/RecSDK/tree/branch_v7.2.0-RC1)获取组件源码；也支持用户自行编译源码，具体操作可参考编译源码指导。
+如果用户需要了解Rec SDK TensorFlow的源码，则可在[源码地址](https://gitcode.com/Ascend/RecSDK/tree/develop)获取组件源码；也支持用户自行编译源码，具体操作可参考如下：
+
+### 源码编译安装
+
+源码编译前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu)安装CANN开发套件软件包；参考[TF Adapter安装指南](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/900beta1/migration/tfmigr1/tfmigr1_000009.html)安装TensorFlow适配昇腾的框架插件包。 
+
+1. 编译环境依赖：
+   - Python3.7.5
+   - GCC 7.3.0
+   - CMake 3.20.6
+ 	 
+2. 开源依赖：
+   - [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+   - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
+   - [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): 请参考软件文档在编译环境完成安装
+   - tensorflow 1.15/2.6.5：根据实际需求选择对应版本
+ 	 
+   将pybind11和securec的压缩包放在与RecSDK代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在RecSDK同级的目录下手动创建opensource目录，然后将pybind11和securec的压缩包放在opensource目录下。
+ 	 
+3. 编译方法：
+ 	 
+   进入Rec SDK代码目录：
+   - setup.py：此脚本供内部使用，用于同时构建tf1和tf2的Rec SDK包，用户通常只需要其中一个，所以建议使用下面两个脚本构建。
+   - setup_tf1.py：执行脚本 `python3.7 setup_tf1.py bdist_wheel` 完成tf1版本whl包的构建，构建成功后，whl包在build/mindxsdk-mxrec/tf1_whl子目录下。
+   - setup_tf2.py：执行脚本 `python3.7 setup_tf2.py bdist_wheel` 完成tf2版本whl包的构建，构建成功后，whl包在build/mindxsdk-mxrec/tf2_whl子目录下。
+ 
+   如需使用动态扩容功能，进入“RecSDK/cust_op/ascendc_op/ai_core_op/cust_op_by_addr”目录中。执行命令 `bash run.sh` 编译并安装动态扩容算子包。
+ 	 
+4. 测试用例
+ 	 
+   **Python侧测试用例**
+ 	 
+   运行Python测试用例所需依赖：
+ 	 
+   - pytest 7.1.1
+   - pytest-cov 4.1.0
+   - pytest-html
+ 	 
+   如需运行python测试用例，完成上述依赖项的安装，并验证tf1环境可正常进行源码编译。然后进入RecSDK/training/tf_rec_v1/python/tests目录，参考以下命令执行python侧测试用例：
+   ```shell
+   bash run_python_dt.sh
+   ```
+ 	 
+   **C++侧测试用例**
+ 	 
+   运行C++侧测试用例所需依赖：
+ 	 
+   - [googletest 1.8.1](https://github.com/google/googletest/archive/refs/tags/release-1.8.1.zip)
+   - [emock 0.9.0](https://github.com/ez8-co/emock/archive/refs/tags/v0.9.0.zip)
+   - [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+   - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
+ 	 
+   将googletest、emock、pybind11和securec的压缩包放在与Rec SDK代码同级的opensource目录下，并且将其分别更名为googletest-release-1.8.1.zip、
+   emock-0.9.0.zip、pybind11-2.10.3.zip、 huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在Rec SDK同级的目录下手动创建opensource目录，
+   然后将前述几个压缩包放在opensource目录下。
+ 	 
+   如需运行C++测试用例，完成上述依赖项的安装。然后进入RecSDK/training/tf_rec_v1/src目录，参考以下命令执行C++测试用例：
+ 	 
+   tf1环境下使用如下命令：
+   ```shell
+   bash test_ut.sh tf1
+   ```
+ 	 
+   tf2环境下使用如下命令：
+   ```shell
+   bash test_ut.sh tf2
+   ```
 
 **下载软件包<a name="section1852417242717"></a>**
 

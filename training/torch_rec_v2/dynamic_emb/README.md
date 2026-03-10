@@ -20,13 +20,19 @@ pip3 uninstall -y dynamic_emb
 # 安装dynamic_emb
 tar -zxvf Ascend-mindxsdk-dynamic-emb-*.tar.gz
 pip3 install dynamic_emb-*.whl
-
 ```
 
 
 3.源码安装
+
+**开源依赖：**
+- [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+- [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
+
+执行编译命令前，将pybind11和securec的压缩包放在与RecSDK代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在RecSDK同级的目录下手动创建opensource目录，然后将pybind11和securec的压缩包放在opensource目录下。
+
 ```shell
-git clone https://gitcode.com/ascend/RecSDK.git
+git clone --recursive https://gitcode.com/ascend/RecSDK.git
 cd RecSDK/training/torch_rec_v2/dynamic_emb
 python3 setup.py bdist_wheel
 pip3 install ./dist/dynamic_emb-*.whl

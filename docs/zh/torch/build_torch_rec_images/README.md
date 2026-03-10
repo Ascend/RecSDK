@@ -74,7 +74,7 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 ```
 
 ## 安装RecSDK相关的包
-参考RecSDK/README_TORCH.md进行源码的编译和安装
+参考[安装部署](../torch_rec_v1/recsdk_torch_installation_guide.md#源码编译安装)进行源码的编译和安装。
 
 ## 制作PyTorch 2.7.1镜像环境
 可参考以下两种方式制作PyTorch 2.7.1版本的镜像环境。
