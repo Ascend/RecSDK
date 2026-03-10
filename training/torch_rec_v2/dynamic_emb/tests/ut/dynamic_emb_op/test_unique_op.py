@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.NOTSET)
 
 @pytest.mark.parametrize("dtype", [torch.int64, torch.uint64])
 @pytest.mark.parametrize("device", ["npu:0"])
-@pytest.mark.parametrize("length", [1, 10, 100, 1000, 10000])
+@pytest.mark.parametrize("length", [1, 10, 100, 1000, 10000, 100000])
 @pytest.mark.parametrize("range_max", [5, 50, 100])
 def test_unique_op_consistency(dtype, device, length, range_max):
     """
@@ -69,6 +69,7 @@ def test_unique_op_consistency(dtype, device, length, range_max):
     # 校验 2: 验证计数正确性
     count_match = True
     if restore_match:
+        s_cpu = s_cpu.to(torch.int64)
         unique_elements, counts = torch.unique(s_cpu, sorted=False, return_counts=True)
         count_map = {elem.item(): cnt.item() for elem, cnt in zip(unique_elements, counts)}
 

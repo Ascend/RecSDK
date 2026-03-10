@@ -11,6 +11,32 @@
 #include <cmath>
 #include <torch/extension.h>
 
+__inline__ uint64_t MurmurHash3ForUnique(uint64_t const& key)
+{
+    uint64_t k = key;
+    k ^= k >> 33;
+    k *= UINT64_C(0xff51afd7ed558ccd);
+    k ^= k >> 33;
+    k *= UINT64_C(0xc4ceb9fe1a85ec53);
+    k ^= k >> 33;
+    return k;
+}
+
+inline int64_t RoundUpToPowerOfTwo(int64_t num)
+{
+    if ((num & (num - 1)) == 0) {
+        return num;
+    }
+
+    int64_t rounded = 1;
+    while (rounded < num) {
+        rounded <<= 1;
+    }
+
+    return rounded;
+}
+
+
 template <typename KeyType>
 class CPUUniqueHash {
 public:
@@ -23,18 +49,18 @@ public:
         }
 
         numKeys = num;
-        std::vector<Entry> table(num);
+        int64_t hashTableSize = RoundUpToPowerOfTwo(num);
+        const uint64_t mask = static_cast<uint64_t>(hashTableSize - 1);
+        std::vector<Entry> table(hashTableSize);
         counts.resize(num, 0);
         inverse.resize(num);
         cpuKeys.resize(num);
-
         int64_t counter = 0;
-        std::hash<KeyType> hashFunc;
 
         for (int64_t i = 0; i < num; ++i) {
             KeyType key = keys[i];
-            size_t hashValue = hashFunc(key);
-            int64_t index = static_cast<int64_t>(hashValue) % num;
+            uint64_t hashValue = MurmurHash3ForUnique(static_cast<uint64_t>(key));
+            uint64_t index = hashValue & mask;
             int64_t probeCount = 0;
 
             while (true) {
@@ -54,7 +80,7 @@ public:
                     counts[entry.index]++;
                     break;
                 }
-                index = (index + 1) % num;
+                index = (index + 1) & mask;
                 probeCount++;
                 if (probeCount >= num) {
                     throw std::runtime_error("Probe failed, hash table overflow!");
