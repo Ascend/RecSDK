@@ -1659,7 +1659,7 @@ for key, cos in key_cos:
 
 本章节用SVE指令集优化了TF CPU侧的4个算子，分别是less、greater、floormod和where。
 
-可在Rec SDK TensorFlow的[源码地址](https://gitcode.com/Ascend/RecSDK/tree/branch_v7.2.0-RC1)获取组件源码，具体安装使用方法可参考源码中的“cust\_op/tf\_cpu\_op/README.md”文件。
+可在Rec SDK TensorFlow的[源码地址](https://gitcode.com/Ascend/RecSDK/tree/develop)获取组件源码，具体安装使用方法可参考源码中的“cust\_op/tf\_cpu\_op/README.md”文件。
 
 
 #### less<a name="ZH-CN_TOPIC_0000002175767405"></a>

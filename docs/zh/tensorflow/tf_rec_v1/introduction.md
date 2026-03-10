@@ -20,7 +20,7 @@ Rec SDK TensorFlow为用户提供了动态扩容、动态shape、自动改图、
 
     流程介绍请参见[片上内存侧动态扩容模式](appendix.md#片上内存侧动态扩容模式)
 
-    可以从[链接](https://gitcode.com/Ascend/RecSDK/tree/branch_v7.2.0-RC1/cust_op/ascendc_op/ai_core_op/cust_op_by_addr/v220)获取稀疏表的算子样例和Readme。
+    可以从[链接](https://gitcode.com/Ascend/RecSDK/tree/develop/cust_op/ascendc_op/ai_core_op/cust_op_by_addr/v220)获取稀疏表的算子样例和Readme。
 
     >[!NOTE] 说明 
     >当开启动态扩容时，请选用动态扩容相关的优化器，如：SGDByAddr、LazyAdamByAddress和AdagradByAddress。

@@ -31,6 +31,72 @@
 
 ## 获取Rec SDK Torch软件包<a name="ZH-CN_TOPIC_0000002336148981"></a>
 
+### 源码编译安装
+
+源码编译前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu)安装CANN开发套件软件包；参考[Ascend Extension for PyTorch安装指南](https://www.hiascend.com/document/detail/zh/Pytorch/730/configandinstg/instg/docs/zh/installation_guide/installation_via_binary_package.md)安装PyTorch适配昇腾的框架插件包。 
+ 	 
+需要编译的源码包：
+
+| 名称                                       | 说明              |
+|------------------------------------------|-----------------|
+| Ascend-mindxsdk-torchrec-*-npu-*.tar.gz  | torchrec昇腾适配包   |
+| Ascend-mindxsdk-dynamic-emb-*.tar.gz     | RecSDK-Torch软件包 |
+| Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz | 算子包             |
+| libfbgemm_npu_api.so                     | 算子适配层           |
+ 	 
+1. 编译环境
+ 
+   容器环境编译，参考[README](../build_torch_rec_images/README.md)。
+ 
+2. 编译Ascend-mindxsdk-torchrec-\*-npu-\*.tar.gz
+ 
+   参考[README](../../../../training/torch_rec_v2/torchrec_npu/README.md)。
+ 
+   生成的tar包在 `RecSDK/training/torch_rec_v2/torchrec_npu/torchrec/` 路径下。
+ 
+   **安装方法**
+ 
+   ```
+   tar zxvf Ascend-mindxsdk-torchrec-*-npu-*.tar.gz
+   pip3 install torchrec-*+npu-py3-none-linux_*.whl
+   ```
+ 
+3. 编译Ascend-mindxsdk-dynamic-emb-*.tar.gz
+ 
+   参考对应[README](../../../../training/torch_rec_v2/dynamic_emb/README.md)。
+ 
+   生成的tar包在 `RecSDK/training/torch_rec_v2/output/` 路径下。
+ 
+   **安装方法**
+ 
+   ```
+    tar -zxvf Ascend-mindxsdk-dynamic-emb-*.tar.gz
+    pip3 install dynamic_emb-*.whl
+   ```
+ 
+4. 编译Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz
+ 
+   参考对应[README](../../../../cust_op/ascendc_op/build/README.md)。
+ 
+5. 编译libfbgemm_npu_api.so
+ 
+   ```
+   cd RecSDK/cust_op/framework/torch_plugin/torch_library/common/
+   bash build_ops.sh
+   ```
+ 
+   生成的so包在 `RecSDK/cust_op/framework/torch_plugin/torch_library/common/build` 路径下。
+ 
+   **安装方法**
+ 
+   编译完成后，会在common/build下生成so，并自动拷贝到python默认site-packages路径下。
+ 
+   在 Python 代码中添加以下语句，即可自动从 Python 默认 site-packages 目录加载 libfbgemm_npu_api.so：
+   ```
+   torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
+   ```
+
+
 **配套版本<a name="section146113514599"></a>**
 
 当前动态稀疏表Rec SDK Torch支持的配套版本如下所示：

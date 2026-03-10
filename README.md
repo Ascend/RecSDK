@@ -115,6 +115,16 @@ mxrec/											# 项目根目录
 * [torch_rec_v1](./docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md)
 * [torch_rec_v2](./docs/zh/torch/torch_rec_v2/recsdk_torch_installation_guide.md)
 
+## 源码编译安装
+
+参见具体组件：
+
+* [tf_rec_v1](./docs/zh/tensorflow/tf_rec_v1/recsdk_tf_installation_guide.md#源码编译安装)
+* [tf_rec_v2](./docs/zh/tensorflow/tf_rec_v2/recsdk_tf_installation_guide.md#源码编译安装)
+* [torch_rec_v1](./docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md#源码编译安装)
+* [torch_rec_v2](./docs/zh/torch/torch_rec_v2/recsdk_torch_installation_guide.md#源码编译安装)
+
+
 ## 快速入门
 
 参见具体组件：
