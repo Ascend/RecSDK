@@ -28,7 +28,7 @@ import torch.nn.functional as F
 torch.npu.config.allow_internal_format = False
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
-device_id: int = 0
+device_id: int = random.choice(range(torch.npu.device_count()))
 torch.npu.set_device(device_id)
 
 

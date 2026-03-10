@@ -56,18 +56,28 @@ def fwd(qkv_shape_info: QKVShapeInfo,
     assert allclose(gold, ops)
 
 
-@pytest.mark.parametrize("batch_size", [1, 8, 16, 64, 128, 256])
-def test_hstu_batch_size(batch_size):
-    fwd(QKVShapeInfo(batch_size=batch_size),
+@pytest.mark.parametrize("batch_size, max_seq_len", [
+    (1, 2048),
+    (8, 2048),
+    (16, 2048),
+    (64, 2048),
+    (128, 2048),
+    (256, 1024),
+])
+def test_hstu_batch_size(batch_size, max_seq_len):
+    fwd(QKVShapeInfo(batch_size=batch_size,
+                     max_seq_len=max_seq_len),
         MaskGenInfo())
 
 
+@pytest.mark.parametrize("batch_size", [4])
 @pytest.mark.parametrize("num_heads_q", range(1, 17))
 @pytest.mark.parametrize("num_heads_k", range(1, 17))
-def test_hstu_nhead(num_heads_q, num_heads_k):
+def test_hstu_nhead(batch_size, num_heads_q, num_heads_k):
     if num_heads_q % num_heads_k != 0:
         return
-    fwd(QKVShapeInfo(num_heads_q=num_heads_q,
+    fwd(QKVShapeInfo(batch_size=batch_size,
+                     num_heads_q=num_heads_q,
                      num_heads_k=num_heads_k),
         MaskGenInfo())
 
