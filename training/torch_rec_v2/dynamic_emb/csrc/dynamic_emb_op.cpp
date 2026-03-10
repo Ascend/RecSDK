@@ -360,7 +360,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> unique_op_npu(const at::Tensor& k
                 "-dimensional tensor");
 
     int keySize = keys.size(0);
-    if (keySize >= CPU_KEY_THRESHOLD) {
+    if (keySize > CPU_KEY_THRESHOLD) {
         return sort_unique_op(keys);
     } else {
         return hash_unique(keys);
