@@ -626,7 +626,7 @@ void find_pointers(std::shared_ptr<dyn_emb::DynamicVariableBase> table, const si
         void* score_ptr = nullptr;
         if (table->get_evict_strategy() == EvictStrategy::kCustomized ||
             table->get_evict_strategy() == EvictStrategy::kLfu) {
-            auto&& option = at::TensorOptions().dtype(tensor::kInt64).device(keys.device());
+            auto&& option = at::TensorOptions().dtype(torch::kInt64).device(keys.device());
             // broadcast scores
             at::Tensor bc_scores = at::empty({static_cast<int64_t>(n)}, option);
             // tensor类型是uint64时，调用fill接口会报错
