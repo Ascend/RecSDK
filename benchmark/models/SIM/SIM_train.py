@@ -240,11 +240,12 @@ def evaluate_model(model, test_loader, criterion, device):
             
             # compile mode
             if os.environ.get('MODEL_COMPILE_FLAG', "False").upper() == "TRUE":
-                model = torch.compile(model, dynamic=False, backend="inductor")
-                logger.info("Inductor MODE YES")
-            elif os.environ.get('MODEL_ACLGRAPH_FLAG', "False").upper() == "TRUE":
-                model = torch.compile(model, dynamic=False, backend="inductor", mode="reduce-overhead")
-                logger.info("Aclgraph MODE YES")
+                if os.environ.get('MODEL_ACLGRAPH_FLAG', "False").upper() == "TRUE":
+                    model = torch.compile(model, dynamic=False, backend="inductor", mode="reduce-overhead")
+                    logger.info("Inductor Aclgraph MODE YES")
+                else:
+                    model = torch.compile(model, dynamic=False, backend="inductor")
+                    logger.info("Inductor MODE YES")
 
             # 采集profiling
             if os.environ.get('MODEL_PROFILING_FLAG', "False").upper() == "TRUE":
@@ -305,8 +306,7 @@ def evaluate_model(model, test_loader, criterion, device):
                     # 正式采集profiling数据
                     experimental_config = torch_npu.profiler._ExperimentalConfig(
                         export_type=[
-                            torch_npu.profiler.ExportType.Text,
-                            torch_npu.profiler.ExportType.Db
+                            torch_npu.profiler.ExportType.Text
                             ],
                         profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
                         msprof_tx=False,
