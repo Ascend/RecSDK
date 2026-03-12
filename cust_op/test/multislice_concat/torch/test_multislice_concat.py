@@ -105,7 +105,7 @@ def check_result(goldens, results, name):
 
 
 @pytest.mark.parametrize("batch_size", [8, 16, 32, 64, 96, 128, 256, 512, 1024, 2048, 3072])
-@pytest.mark.parametrize("column_size", [64, 6400, 20000])
+@pytest.mark.parametrize("column_size", [3, 64, 6400, 20000])
 @pytest.mark.parametrize("concat_num", [10, 122, 256])
 def test_multislice_concat_acc(batch_size, column_size, concat_num):
     np.random.seed(418)
