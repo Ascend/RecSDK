@@ -12,7 +12,7 @@
 |HwHiAiUser|安装驱动，运行Demo依赖的用户|用户自定义|使用**passwd**修改|
 
 
-**openeuler系统中DockerFile示例的基础镜像用户<a name="section682191514281"></a>**
+**openeuler系统中Dockerfile示例的基础镜像用户<a name="section682191514281"></a>**
 
 |用户|初始密码|密码修改方法|
 |--|--|--|
@@ -45,7 +45,7 @@
 |HwHiAiUser|驱动run包的运行用户|无|-|
 
 
-**debian系统中DockerFile示例的基础镜像用户<a name="section16139169181617"></a>**
+**debian系统中Dockerfile示例的基础镜像用户<a name="section16139169181617"></a>**
 
 |用户|初始密码|密码修改方法|
 |--|--|--|
@@ -79,7 +79,7 @@
 |sshd|-|无|-|
 
 
-**centos系统中DockerFile示例的基础镜像用户<a name="section378581843617"></a>**
+**centos系统中Dockerfile示例的基础镜像用户<a name="section378581843617"></a>**
 
 |用户|初始密码|密码修改方法|
 |--|--|--|

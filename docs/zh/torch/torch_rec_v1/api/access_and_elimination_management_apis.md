@@ -8,7 +8,7 @@
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 class AdmitAndEvictPolicyType(Enum):
     NONE = 0
     POLICY_COUNT = 1
@@ -17,11 +17,11 @@ class AdmitAndEvictPolicyType(Enum):
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|说明|
-|--|--|
-|NONE|无准入淘汰策略。|
-|POLICY_COUNT|基于计数（count）/时间（timestamp）的准入淘汰策略。特征准入基于重复次数，特征淘汰基于时间阈值。|
-|POLICY_SHOWCLICK|基于展示点击（show/click）的准入淘汰策略。特征准入和淘汰基于展示次数和点击次数的加权分数。|
+| 参数名              | 说明                                                        |
+|------------------|-----------------------------------------------------------|
+| NONE             | 无准入淘汰策略。                                                  |
+| POLICY_COUNT     | 基于计数（count） / 时间（timestamp）的准入淘汰策略。特征准入基于重复次数，特征淘汰基于时间阈值。 |
+| POLICY_SHOWCLICK | 基于展示点击（show/click）的准入淘汰策略。特征准入和淘汰基于展示次数和点击次数的加权分数。        |
 
 **返回值说明<a name="section651195312311"></a>**
 
@@ -71,20 +71,21 @@ class ShowClickParams:
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 @dataclass
 class AdmitAndEvictConfig: 
-     admit_threshold: Optional[int] = _DEFAULT_ADMIT_THRESHOLD 
-     not_admitted_default_value: Optional[float] = 0.0 
-     evict_threshold: Optional[int] = _DEFAULT_EVICT_THRESHOLD  # unit: seconds 
-     evict_step_interval: Optional[int] = 0
-     showclick_params: ShowClickParams = field(default_factory=lambda: ShowClickParams())
-     policy_type: AdmitAndEvictPolicyType = AdmitAndEvictPolicyType.POLICY_COUNT
+    admit_threshold: Optional[int] = _DEFAULT_ADMIT_THRESHOLD 
+    not_admitted_default_value: Optional[float] = 0.0 
+    evict_threshold: Optional[int] = _DEFAULT_EVICT_THRESHOLD  # unit: seconds 
+    evict_step_interval: Optional[int] = 0
+    showclick_params: ShowClickParams = field(default_factory=lambda: ShowClickParams())
+    policy_type: AdmitAndEvictPolicyType = AdmitAndEvictPolicyType.POLICY_COUNT
 ```
 
 **参数说明<a name="section888634319218"></a>**
 
 policy_type为POLICY_COUNT时：
+
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
 |admit_threshold|int|可选|特征准入阈值。特征（在输入分布后）将在重复次数大于admit_threshold时被准入。默认值为-1，表示特征准入功能未启用。|
@@ -93,6 +94,7 @@ policy_type为POLICY_COUNT时：
 |evict_step_interval|int|可选|特征淘汰功能的步长间隔。默认值为0，仅在evict_threshold为非默认值时生效。|
 
 policy_type为POLICY_SHOWCLICK时：
+
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
 |not_admitted_default_value|float|可选|未准入特征ID的嵌入值。默认值为0.0。|
@@ -112,8 +114,8 @@ POLICY_COUNT和POLICY_SHOWCLICK策略不能一起使用。
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
- class JaggedTensorWithTimestamp(ExtendedJaggedTensor):
+```python
+class JaggedTensorWithTimestamp(ExtendedJaggedTensor):
     def __init__(
         self,
         values: torch.Tensor,
@@ -144,7 +146,7 @@ POLICY_COUNT和POLICY_SHOWCLICK策略不能一起使用。
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def from_jt_dict(jt_dict: Dict[str, JaggedTensorWithTimestamp],) -> "KeyedJaggedTensorWithTimestamp"
 ```
 
@@ -153,6 +155,3 @@ def from_jt_dict(jt_dict: Dict[str, JaggedTensorWithTimestamp],) -> "KeyedJagged
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
 |jt_dict|Dict[str, JaggedTensorWithTimestamp]|必选|特征名称和对应的JaggedTensorWithTimestamp组成的字典。长度不能为0。其中JaggedTensorWithTimestamp的取值范围参考[JaggedTensor（TorchRec）](./data_apis.md)。|
-
-
-

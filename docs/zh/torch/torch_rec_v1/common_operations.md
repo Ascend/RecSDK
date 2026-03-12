@@ -6,16 +6,18 @@ Rec SDK Torch为Wheel包格式，安装、卸载日志记录在系统history中�
 
 **查看安装、卸载的历史记录<a name="section1220492120526"></a>**
 
-当注销系统或者退出容器（Rec SDK Torch通常是在容器中安装、运行）时会将history中的历史命令记录保存到**\~/.bash\_history**文件中。所以，可以直接查看.bash\_history文件就能找到Rec SDK Torch安装、卸载记录。
+当注销系统或者退出容器（Rec SDK Torch通常是在容器中安装、运行）时会将history中的历史命令记录保存到`~/.bash_history`文件中。所以，可以直接查看`~/.bash_history`文件就能找到Rec SDK Torch安装、卸载记录。
 
 **修改历史记录的保存数量<a name="section56389529527"></a>**
 
-在Linux系统中，history命令一般默认保存最新的1000条命令。如果需要修改保存的命令数量，比如只保留200条历史命令，则可以在“/etc/profile“文件中修改HISTSIZE环境变量。修改方法如下：
+在Linux系统中，history命令一般默认保存最新的1000条命令。如果需要修改保存的命令数量，比如只保留200条历史命令，则可以在“/etc/profile”文件中修改HISTSIZE环境变量。修改方法如下：
 
 -   使用编辑器（如vim编辑器）修改。
 -   使用sed直接修改，命令如下：
 
-    **sed -i 's/^HISTSIZE=**_number_**/HISTSIZE=**_newNumber_**/' /etc/profile**，__number__表示修改前的命令数量，_newNumber_表示修改后的命令数量。以保存的命令数量从1000改为200为例：
+    `sed -i 's/^HISTSIZE=number/HISTSIZE=newNumber/' /etc/profile`
+    
+    其中，**number**表示修改前的命令数量，**newNumber**表示修改后的命令数量。以保存的命令数量从1000改为200为例：
 
     ```bash
     sed -i 's/^HISTSIZE=1000/HISTSIZE=200/' /etc/profile
@@ -25,7 +27,7 @@ Rec SDK Torch为Wheel包格式，安装、卸载日志记录在系统history中�
 
 **修改历史命令文件时间戳<a name="section18178420544"></a>**
 
-如果需要在历史命令文件中有时间戳记录，可以在“/etc/profile“中添加如下配置：
+如果需要在历史命令文件中有时间戳记录，可以在“/etc/profile”中添加如下配置：
 
 **HISTTIMEFORMAT='%F %T '**
 
@@ -38,7 +40,7 @@ Rec SDK Torch为Wheel包格式，安装、卸载日志记录在系统history中�
 2025-08-18 10:10:17 history | grep "pip3 install"
 ```
 
-此外，如果需要将历史命令记录在自定义文件中，可以在“/etc/profile“中设置HISTFILE环境变量，设置完成之后执行**source /etc/profile**命令使环境变量生效。比如：
+此外，如果需要将历史命令记录在自定义文件中，可以在“/etc/profile”中设置HISTFILE环境变量，设置完成之后执行**source /etc/profile**命令使环境变量生效。比如：
 
 ```bash
 HISTDIR=~/log/RecSDK_Torch   # 配置历史命令记录保存文件

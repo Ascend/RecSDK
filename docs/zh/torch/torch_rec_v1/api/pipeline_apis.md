@@ -6,27 +6,26 @@
 
 **功能描述<a name="section634582619155"></a>**
 
-创建流水查表。
+创建纯显存模式流水查表。
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class HybridTrainPipelineSparseDist:
     def __init__(**kwargs):
 ```
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|类型|可选/必选|说明|
-|--|--|--|--|
-|model|torch.nn.Module|必选|包含EmbeddingBagCollection的nn.Module类型。|
-|optimizer|torch.optim.Optimizer|必选|优化器。优化器的创建方式请参考[步骤7](../quick_start.md#接口调用介绍 )中定义的优化器。|
-|device|torch.device|必选|设备。取值为torch.device("npu")，即npu设备。|
-|return_loss|bool|可选|是否返回loss。默认值为False。|
-|pipe_n_batch|int|可选|预取n个batch做并行。取值范围：[1, 12]。默认值为6。|
-|execute_all_batches|bool|可选|默认值为True。仅支持默认值，不支持用户自定义。|
-|apply_jit|bool|可选|默认值为False。仅支持默认值，不支持用户自定义。|
-
+| 参数名                 | 类型                    | 可选/必选 | 说明                                                               |
+|---------------------|-----------------------|-------|------------------------------------------------------------------|
+| model               | torch.nn.Module       | 必选    | 包含EmbeddingBagCollection/HashEmbeddingBagCollection的nn.Module类型。 |
+| optimizer           | torch.optim.Optimizer | 必选    | 优化器。优化器的创建方式请参考[步骤7](../quick_start.md#接口调用介绍 )中定义的优化器。          |
+| device              | torch.device          | 必选    | 设备。取值为torch.device("npu")，即npu设备。                                |
+| return_loss         | bool                  | 可选    | 是否返回loss。默认值为False。                                              |
+| pipe_n_batch        | int                   | 可选    | 预取n个batch做并行。取值范围：[1, 12]。默认值为6。                                 |
+| execute_all_batches | bool                  | 可选    | 默认值为True。仅支持默认值，不支持用户自定义。                                        |
+| apply_jit           | bool                  | 可选    | 默认值为False。仅支持默认值，不支持用户自定义。                                       |
 
 **返回值说明<a name="section651195312311"></a>**
 
@@ -35,7 +34,7 @@ class HybridTrainPipelineSparseDist:
 
 **使用示例<a name="section2553042232"></a>**
 
-```cpp
+```python
 from hybrid_torchrec.distributed.hybrid_train_pipeline import HybridTrainPipelineSparseDist
 pipeline = HybridTrainPipelineSparseDist(model, optimizer, device)
 ```
@@ -49,7 +48,7 @@ pipeline = HybridTrainPipelineSparseDist(model, optimizer, device)
 
 **函数原型<a name="section858517176587"></a>**
 
-```cpp
+```python
 def progress(dataloader_iter: Iterator[In]) -> Out:
 ```
 
@@ -67,8 +66,11 @@ def progress(dataloader_iter: Iterator[In]) -> Out:
 
 **使用示例<a name="section09971948135814"></a>**
 
-```cpp
-pipeline.progress(dataloader_iter)
+```python
+# 若创建HybridTrainPipelineSparseDist对象时，传递return_loss为False，则：
+output = pipeline.progress(dataloader_iter)
+# 若创建HybridTrainPipelineSparseDist对象时，传递return_loss为True，则：
+output, loss = pipeline.progress(dataloader_iter)
 ```
 
 
@@ -83,28 +85,27 @@ pipeline.progress(dataloader_iter)
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class EmbCacheTrainPipelineSparseDist:
      def __init__(**kwargs):
 ```
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|类型|可选/必选|说明|
-|--|--|--|--|
-|model|torch.nn.Module|必选|包含EmbCacheEmbeddingBagCollection和EmbCacheEmbeddingCollection的nn.Module对象|
-|optimizer|torch.optim.Optimizer|必选|优化器|
-|cpu_device|torch.device|必选|CPU设备|
-|npu_device|torch.device|必选|NPU设备|
-|return_loss|bool|可选|是否返回loss，默认值为False|
-|execute*_*all_batches|bool|可选|是否执行所有批次，默认值为True，不支持用户自定义|
-|apply_jit|bool|可选|是否应用JIT编译，默认值为False，不支持用户自定义|
-|context_type|Type[EmbCacheTrainPipelineContext]|可选|上下文类型，默认值为EmbCacheTrainPipelineContext|
-|pipeline_postproc|bool|可选|是否启用流水线后处理，默认值为False，与torchrec的TrainPipelineSparseDist一致|
-|custom_model_fwd|Callable|可选|自定义模型前向函数，默认值为None，与torchrec的TrainPipelineSparseDist一致|
-|custom_model_zero_grad|Callable|可选|zero_grad自定义函数，默认为None|
-|custom_model_bwd|Callable|可选|自定义模型反向函数，默认为None|
-
+| 参数名                    | 类型                                 | 可选/必选 | 说明                                                                       |
+|------------------------|------------------------------------|-------|--------------------------------------------------------------------------|
+| model                  | torch.nn.Module                    | 必选    | 包含EmbCacheEmbeddingBagCollection/EmbCacheEmbeddingCollection的nn.Module对象 |
+| optimizer              | torch.optim.Optimizer              | 必选    | 优化器                                                                      |
+| cpu_device             | torch.device                       | 必选    | CPU设备                                                                    |
+| npu_device             | torch.device                       | 必选    | NPU设备                                                                    |
+| return_loss            | bool                               | 可选    | 是否返回loss，默认值为False                                                       |
+| execute_all_batches    | bool                               | 可选    | 是否执行所有批次，默认值为True，不支持用户自定义                                               |
+| apply_jit              | bool                               | 可选    | 是否应用JIT编译，默认值为False，不支持用户自定义                                             |
+| context_type           | Type[EmbCacheTrainPipelineContext] | 可选    | 上下文类型，默认值为EmbCacheTrainPipelineContext                                   |
+| pipeline_postproc      | bool                               | 可选    | 是否启用流水线后处理，默认值为False，与torchrec的TrainPipelineSparseDist一致                 |
+| custom_model_fwd       | Callable                           | 可选    | 自定义模型前向函数，默认值为None，与torchrec的TrainPipelineSparseDist一致                   |
+| custom_model_zero_grad | Callable                           | 可选    | zero_grad自定义函数，默认为None                                                   |
+| custom_model_bwd       | Callable                           | 可选    | 自定义模型反向函数，默认为None                                                        |
 
 **返回值说明<a name="section651195312311"></a>**
 
@@ -120,7 +121,7 @@ class EmbCacheTrainPipelineSparseDist:
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 def progress(self, dataloader_iter: Iterator[In]) -> Out:
 ```
 
@@ -137,5 +138,13 @@ def progress(self, dataloader_iter: Iterator[In]) -> Out:
 
 -   失败：抛出StopIteration异常或RuntimeError。
 
+**使用示例<a name="section09971948135815"></a>**
+
+```python
+# 若创建EmbCacheTrainPipelineSparseDist对象时，传递return_loss为False，则：
+output = pipeline.progress(dataloader_iter)
+# 若创建EmbCacheTrainPipelineSparseDist对象时，传递return_loss为True，则：
+output, loss = pipeline.progress(dataloader_iter)
+```
 
 
