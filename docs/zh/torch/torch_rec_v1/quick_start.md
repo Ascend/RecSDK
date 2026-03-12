@@ -27,24 +27,24 @@
 
     将本次训练需要的所有特征整合为一个Batch类，并实现to\(\)、pin\_memory\(\)、record\_stream\(\)方法。
 
-    ```cpp
+    ```python
     @dataclass
     class Batch(Pipelineable):
-          ......
+        ......
     ```
 
 2.  创建数据集。
 
     实现一个返回[1](#li524311501994)中创建的Batch类型的Dataset。
 
-    ```cpp
+    ```python
     class RandomRecDataset(IterableDataset[Batch]):
         ......
     ```
 
 3.  初始化分布式变量。
 
-    ```cpp
+    ```python
     ......
     device = torch.device("npu")
     dist.init_process_group(backend="hccl")
@@ -56,7 +56,7 @@
 
     将稀疏表层和Dense层的模型整合为一个Module。该Module的输入必须为[1](#li524311501994)中创建的Batch类。返回为模型的loss和输出。
 
-    ```cpp
+    ```python
     class TestModel(torch.nn.Module):
         def __init__(self, ):
             super().__init__()
@@ -69,32 +69,31 @@
 
 5.  定义稀疏表的优化器。
 
-    ```bash
+    ```python
     test_model = TestModel(...)
     
-     # Optimizer
-     embedding_optimizer = torch.optim.Adagrad
-     optimizer_kwargs = {"lr": 0.001, "eps": 0.1}
-     apply_optimizer_in_backward(
-         embedding_optimizer,
-         test_model.ebc.parameters(),
-         optimizer_kwargs=optimizer_kwargs,
-     )
-    
+    # Optimizer
+    embedding_optimizer = torch.optim.Adagrad
+    optimizer_kwargs = {"lr": 0.001, "eps": 0.1}
+    apply_optimizer_in_backward(
+        embedding_optimizer,
+        test_model.ebc.parameters(),
+        optimizer_kwargs=optimizer_kwargs,
+    )
     ```
 
 6.  对稀疏表做分表。
 
     创建sharder，并使用EmbeddingShardingPlanner创建分表计划，将分表计划和sharder传入DistributedModelParallel中获得分布式模型。
 
-    ```cpp
+    ```python
     hybrid_sharder = get_default_hybrid_sharders(host_env=host_env)
     constraints = {......}
     planner = EmbeddingShardingPlanner(......)
     plan = planner.collective_plan(test_model, hybrid_sharder, dist.GroupMember.WORLD)
     logging.info(plan)
     ddp_model = DistributedModelParallel(
-     test_model, device=torch.device("npu"), plan=plan, sharders=hybrid_sharder
+        test_model, device=torch.device("npu"), plan=plan, sharders=hybrid_sharder
     )
     ```
 
@@ -102,29 +101,29 @@
 
     分离dense和sparse的参数，并组合成一个新的优化器。
 
-    ```bash
+    ```python
     # Optimizer filter
     dense_optimizer = KeyedOptimizerWrapper(
-     dict(in_backward_optimizer_filter(ddp_model.named_parameters())),
-     lambda params: torch.optim.Adagrad(params, lr=0.1),
+        dict(in_backward_optimizer_filter(ddp_model.named_parameters())),
+        lambda params: torch.optim.Adagrad(params, lr=0.1),
     )
     optimizer = CombinedOptimizer([ddp_model.fused_optimizer, dense_optimizer])
     ```
 
 8.  创建pipeline。
 
-    ```cpp
+    ```python
     pipeline = HybridTrainPipelineSparseDist(
-     ddp_model, optimizer, device, execute_all_batches=True
+        ddp_model, optimizer, device, execute_all_batches=True
     )
     ```
 
 9.  使用pipeline进行训练。
 
-    ```cpp
+    ```python
     batched_iterator = iter(data_loader)
     for i in range(...):
-     pipeline.progress(batched_iterator)
+        output = pipeline.progress(batched_iterator)
     ```
 
 
@@ -132,9 +131,9 @@
 
 在容器中执行以下命令启动训练：
 
-```cpp
+```shell
 export ASCEND_RT_VISIBLE_DEVICES=0,1 
-torchx run -s local_cwd dist.ddp -j 2 --script main.py
+bash bash.sh
 ```
 
 

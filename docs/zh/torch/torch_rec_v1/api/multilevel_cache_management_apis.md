@@ -8,11 +8,11 @@
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class InitializerType(Enum):
-     LINEAR ="linear"
-     TRUNCATED_NORMAL ="truncated_normal"
-     UNIFORM = "uniform"
+    LINEAR ="linear"
+    TRUNCATED_NORMAL ="truncated_normal"
+    UNIFORM = "uniform"
 ```
 
 **参数说明<a name="section888634319218"></a>**
@@ -38,7 +38,7 @@ class InitializerType(Enum):
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class Saver:
     def __init__(self, rank: int = None):
     ...
@@ -77,13 +77,12 @@ class Saver:
 
 **使用示例<a name="section2553042232"></a>**
 
-```bash
+```python
 from torchrec_embcache.saver import Saver
 ...
 saver = Saver(rank=rank)
 saver.save(model, "save_dir/sparse")  # 保存
 saver.load(model, "save_dir/sparse")  # 加载
- 
 ```
 
 

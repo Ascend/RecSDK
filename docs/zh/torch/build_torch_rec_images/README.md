@@ -12,21 +12,33 @@
 
 当前Rec SDK Torch支持两种版本配套：
 
-| 配套版本  | PyTorch | torch-npu | fbgemm_gpu |
+| 配套版本  | PyTorch | torch_npu | fbgemm_gpu |
 |-------|---------|-----------|------------|
 | 配套版本1 | 2.6.0   | 2.6.0     | 1.1.0      |
 | 配套版本2 | 2.7.1   | 2.7.1     | 1.2.0      |
 
-在dockerfile文件中，会下载PyTorch软件包和fbgemm_gpu软件包。（torchrec-npu软件包为源码编译，不在dockerfile安装范围内）
+在Dockerfile文件中，会下载PyTorch软件包和fbgemm_gpu软件包。
 
-当前dockerfile中默认配置下载PyTorch 2.6.0和fbgemm_gpu 1.1.0+cpu版本的软件包。
+当前Dockerfile中默认配置下载PyTorch 2.6.0和fbgemm_gpu 1.1.0+cpu版本的软件包。
 
-若需制作PyTorch 2.7.1版本配套的镜像，可参考后续[制作PyTorch 2.7.1镜像环境](#制作pytorch-271镜像环境)章节。
+若需制作PyTorch 2.7.1版本配套的镜像，请参见后续[制作PyTorch 2.7.1版本镜像](#制作pytorch-271版本镜像)章节。
 
 ## 构建步骤
 Step1：新建`build_images`目录。
 
-Step2：在`build_images`目录下准备CANN包。用户可以从[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=pt+cann&product=4&model=26)下载**8.2.RC1**版本的[toolkit](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.2.RC1)包与[kernels](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.2.RC1)包。用户也可根据实际情况选择其他CANN包。
+Step2：在`build_images`目录下准备CANN包。用户可以从[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=pt+cann&product=4&model=26)下载**8.5.0**版本的[toolkit包](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.5.0)与[算子包](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.5.0)。用户也可根据实际情况选择其他版本CANN包。
+
+CANN 8.5.0及之后版本，算子包名称存在变化，下载算子包时注意下载对应名称软件包。
+
+| 版本/包名      | CANN 8.5.0之前                                   | CANN 8.5.0及之后                                          |
+|------------|------------------------------------------------|--------------------------------------------------------|
+| toolkit包名称 | Ascend-cann-toolkit_{version}_linux-{arch}.run | Ascend-cann-toolkit_{version}_linux-{arch}.run         |
+| 算子包名称      | Ascend-cann-kernels-{version}_linux-{arch}.run | Ascend-cann-{chip_type}-ops_{version}_linux-{arch}.run |
+
+> 注意
+> 
+> 1. 当前Dockerfile中，适配的是CANN 8.5.0及之后版本的算子包名称。
+> 2. 如需安装CANN 8.5.0之前版本CANN包，需将Dockerfile中KERNEL_PKG的值修改为：`Ascend-cann-kernels*.run`。
 
 安装CANN包需要两个文件，分别是
 - version.info（驱动版本文件）
@@ -36,7 +48,7 @@ Step2：在`build_images`目录下准备CANN包。用户可以从[昇腾社区](
 ascend_install.info默认安装路径为/etc/ascend_install.info。
 
 Step3：将Dockerfile移动到`build_images`目录中，并运行下面命令构建镜像。构建镜像的步骤在Dockerfile中有详细的说明，注释部分是安装CANN包与torchrec相关包的操作。
-```dockerfile
+```shell
 # 服务器能访问外网
 docker build -t recsdk_torch_base:v1.0-[x86|arm] -f Dockerfile_[centos|debian|openeuler] .
 # 服务器配置代理访问外网
@@ -74,13 +86,13 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 ```
 
 ## 安装RecSDK相关的包
-参考[安装部署](../torch_rec_v1/recsdk_torch_installation_guide.md#源码编译安装)进行源码的编译和安装。
+请参见[安装部署](../torch_rec_v1/recsdk_torch_installation_guide.md#源码编译安装)进行源码的编译和安装。
 
-## 制作PyTorch 2.7.1镜像环境
+## 制作PyTorch 2.7.1版本镜像
 可参考以下两种方式制作PyTorch 2.7.1版本的镜像环境。
 
-### 方式一：修改dockerfile后重新制作镜像
-基于当前已有的dockerfile, 修改部分内容后编译镜像。
+### 方式一：修改Dockerfile后重新制作镜像
+基于当前已有的Dockerfile，修改部分内容后编译镜像。
 1. 修改PyTorch、fbgemm_gpu软件的下载链接。下载链接如下：
 
 | 软件版本                   | 基于Python版本 | 下载链接                                                                                               |
@@ -90,7 +102,7 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 | fbgemm_gpu 1.2.0 (X86) | 3.11       | https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl  |
 | fbgemm_gpu 1.2.0 (ARM) | 3.11       | https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl |
 
-2. 修改安装PyTorch、fbgemm_gpu、torch-npu包安装时的包名
+2. 修改安装PyTorch、fbgemm_gpu、torch_npu包安装时的包名
 
 | 修改前                        | 修改后                        |
 |----------------------------|----------------------------|
@@ -98,7 +110,7 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 | fbgemm_gpu-1.1.0+cpu-*.whl | fbgemm_gpu-1.2.0+cpu-*.whl |
 | torch-npu==2.6.0           | torch-npu==2.7.1           |
 
-3. 参考[构建步骤](#构建步骤)章节制作镜像
+3. 请参见[构建步骤](#构建步骤)章节制作镜像
 
 ### 方式二：升级已有镜像中的软件版本
 1. 升级PyTorch版本
@@ -109,7 +121,7 @@ pip3 install torch==2.7.1+cpu -i https://download.pytorch.org/whl/cpu
 ```shell
 pip3 install fbgemm_gpu==1.2.0+cpu -i https://download.pytorch.org/whl/cpu
 ```
-3. 升级torch-npu版本
+3. 升级torch_npu版本
 ```shell
 pip3 install torch-npu==2.7.1
 ```

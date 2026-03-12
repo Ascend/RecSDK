@@ -1,6 +1,11 @@
 # 阶段1：基础环境准备（缓存依赖安装）
 FROM openeuler-22.03-lts-sp4:latest
 WORKDIR /tmp
+
+# CANN相关参数
+ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
+ARG KERNEL_PKG=Ascend-cann-*-ops*.run
+
 COPY ./version.info ./
 COPY ./ascend_install.info ./
 
@@ -111,8 +116,8 @@ RUN pip3.11 install tqdm
 RUN pip3.11 install usort
 RUN pip3.11 install parameterized
 
-COPY ./Ascend-cann-toolkit_*.run ./
-COPY ./Ascend-cann-*-ops*.run ./
+COPY ./$TOOLKIT_PKG ./
+COPY ./$KERNEL_PKG ./
 
 ENV PATH=/usr/local/gcc11.2.0/bin:/usr/local/python3.11.0/bin:$PATH \
     LD_LIBRARY_PATH=/usr/local/gcc11.2.0/lib64:/usr/local/python3.11.0/lib:$LD_LIBRARY_PATH

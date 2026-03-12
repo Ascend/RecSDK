@@ -2,10 +2,15 @@
 FROM debian:12
 
 WORKDIR /tmp
+
+# CANN相关参数
+ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
+ARG KERNEL_PKG=Ascend-cann-*-ops*.run
+
 COPY ./version.info ./
 COPY ./ascend_install.info ./
-COPY ./Ascend-cann-toolkit_*.run ./
-COPY ./Ascend-cann-*-ops*.run ./
+COPY ./$TOOLKIT_PKG ./
+COPY ./$KERNEL_PKG ./
 
 # 1.配置证书
 RUN apt-get update && \
@@ -134,10 +139,6 @@ ARG ASCEND_BASE=/usr/local/Ascend
 ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$ASCEND_BASE/driver/lib64/driver:$LD_LIBRARY_PATH
 
 # 8.安装ascend-toolkit与kernels算子包
-# 9.CANN相关参数
-ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
-ARG KERNEL_PKG=Ascend-cann-*-ops*.run
-# 10.删除旧的CANN
 RUN rm -rf $ASCEND_BASE/ascend-toolkit
 
 RUN umask 0027 && \
@@ -149,5 +150,5 @@ RUN umask 0027 && \
    rm -rf /root/.cache/pip && \
    rm -f $TOOLKIT_PKG && rm -f $KERNEL_PKG
 
-# 11.清理临时目录
+# 9.清理临时目录
 RUN rm -rf ./*

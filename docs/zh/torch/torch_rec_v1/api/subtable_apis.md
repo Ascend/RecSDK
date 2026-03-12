@@ -11,7 +11,7 @@
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class ShardingEnv:
     def __init__(**kwargs):
 def from_process_group(cls, pg: dist.ProcessGroup) -> "ShardingEnv":
@@ -29,7 +29,7 @@ def from_process_group(cls, pg: dist.ProcessGroup) -> "ShardingEnv":
 
 **使用示例<a name="section193151694205"></a>**
 
-```cpp
+```python
 import torch.distributed as dist
 from torchrec.distributed.types import ShardingEnv
 host_gp = dist.new_group(backend="gloo")
@@ -52,7 +52,7 @@ host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class Topology:
     def __init__(**kwargs):
 ```
@@ -79,7 +79,7 @@ class Topology:
 
 **使用示例<a name="section193151694205"></a>**
 
-```cpp
+```python
 from torchrec.distributed.planner import Topology,
 topo = Topology(world_size=world_size, compute_device="npu")
 ```
@@ -100,17 +100,17 @@ topo = Topology(world_size=world_size, compute_device="npu")
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class ParameterConstraints:
     def __init__(**kwargs):
 ```
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|类型| 可选/必选 | 说明                                                                                                                                                                                                 |
-|--|--|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|sharding_type|List[str]| 可选    | 分表的类型。当使用NPU设备时为必选参数，取值范围：<li>"row_wise"：按照行号进行分表。</li><li>"data_parallel"：每个rank保留一个表副本。</li><div class="note"><span class="notetitle">说明</span><div class="notebody">不支持混合使用不同的分表类型。</div></div> |
-|compute_kernels|List[str]| 可选    | 计算的kernel类型。当使用NPU设备时为必选参数，取值范围：<li>"fused"：采用合表的方式查询。该方式仅在sharding_type为"row_wise"时使用。</li><li>"dense"：采用分表的方式查询。该方式仅在sharding_type为"data_parallel"时使用。</li>                                      |
+|参数名|类型| 可选/必选 | 说明                                                                                                                                                                                                          |
+|--|--|-------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|sharding_type|List[str]| 可选    | 分表的类型。当使用NPU设备时为必选参数，取值范围：<ul><li>"row_wise"：按照行号进行分表。</li><li>"data_parallel"：每个rank保留一个表副本。</li></ul><div class="note"><span class="notetitle">说明</span><div class="notebody">不支持混合使用不同的分表类型。</div></div> |
+|compute_kernels|List[str]| 可选    | 计算的kernel类型。当使用NPU设备时为必选参数，取值范围：<ul><li>"fused"：采用合表的方式查询。该方式仅在sharding_type为"row_wise"时使用。</li><li>"dense"：采用分表的方式查询。该方式仅在sharding_type为"data_parallel"时使用。</li></ul>                                      |
 |min_partition|List[int]| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
 |pooling_factors|List[float]| 可选    | 当使用NPU设备时仅支持默认值为POOLING_FACTOR，不支持用户自定义。                                                                                                                                                                    |
 |num_poolings|List[float]| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
@@ -128,10 +128,10 @@ class ParameterConstraints:
 
 **使用示例<a name="section193151694205"></a>**
 
-```cpp
+```python
 from torchrec.distributed.planner import ParameterConstraints
 constraints = {
-   "table0": ParameterConstraints(sharding_types=["row_wise"], compute_kernels=["fused"])
+    "table0": ParameterConstraints(sharding_types=["row_wise"], compute_kernels=["fused"])
 }
 ```
 
@@ -144,7 +144,7 @@ constraints = {
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 def get_default_hybrid_sharders(host_env: ShardingEnv) -> List[ModuleSharder[nn.Module]]:
 ```
 
@@ -157,13 +157,13 @@ def get_default_hybrid_sharders(host_env: ShardingEnv) -> List[ModuleSharder[nn.
 
 **返回值<a name="section06646162266"></a>**
 
-成功：返回默认的分表器。
+成功：返回支持的分表器列表。
 
 失败：抛出异常
 
 **使用示例<a name="section106984023511"></a>**
 
-```cpp
+```python
 from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
 from torchrec.distributed.types import ShardingEnv
 import torch.distributed as dist
@@ -172,7 +172,7 @@ host_gp = dist.new_group(backend="gloo")
 world_size = dist.get_world_size()
 rank = dist.get_rank()
 host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
-hybrid_sharder = get_default_hybrid_sharders(host_env=host_env)
+hybrid_sharders = get_default_hybrid_sharders(host_env=host_env)
 ```
 
 
@@ -189,7 +189,7 @@ hybrid_sharder = get_default_hybrid_sharders(host_env=host_env)
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class EmbeddingShardingPlanner:
     def __init__(**kwargs):
 ```
@@ -213,11 +213,11 @@ class EmbeddingShardingPlanner:
 
 **使用示例<a name="section193151694205"></a>**
 
-```cpp
+```python
 from torchrec.distributed.planner import EmbeddingShardingPlanner
 planner = EmbeddingShardingPlanner(
- topology=topology,
- constraints=constraints,
+    topology=topology,
+    constraints=constraints,
 )
 ```
 
@@ -237,11 +237,11 @@ planner = EmbeddingShardingPlanner(
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 def collective_plan(
- module: nn.Module,
- sharders: Optional[List[ModuleSharder[nn.Module]]] = None,
- pg: Optional[dist.ProcessGroup] = None,
+    module: nn.Module,
+    sharders: Optional[List[ModuleSharder[nn.Module]]] = None,
+    pg: Optional[dist.ProcessGroup] = None,
 )
 ```
 
@@ -256,7 +256,7 @@ def collective_plan(
 
 **使用示例<a name="section193151694205"></a>**
 
-```cpp
+```python
 from torchrec.distributed.planner import EmbeddingShardingPlanner
 planner = EmbeddingShardingPlanner(XXX)
 plan = planner.collective_plan(test_model, hybrid_sharders, dist.GroupMember.WORLD)
@@ -281,7 +281,7 @@ plan = planner.collective_plan(test_model, hybrid_sharders, dist.GroupMember.WOR
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class DistributedModelParallel:
     def __init__(**kwargs):
 ```
@@ -302,10 +302,10 @@ class DistributedModelParallel:
 
 **使用示例<a name="section193151694205"></a>**
 
-```cpp
+```python
 from torchrec.distributed.model_parallel import DistributedModelParallel
 ddp_model = DistributedModelParallel(
- test_model, device=torch.device("npu"), plan=plan, sharders=get_default_hybrid_sharders(host_env=host_env)
+    test_model, device=torch.device("npu"), plan=plan, sharders=get_default_hybrid_sharders(host_env=host_env)
 )
 ```
 
@@ -325,7 +325,7 @@ ddp_model = DistributedModelParallel(
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 def fused_optimizer()
 ```
 
@@ -336,7 +336,7 @@ def fused_optimizer()
 
 **使用示例<a name="section1045492782314"></a>**
 
-```cpp
+```python
 from torchrec.distributed.model_parallel import DistributedModelParallel
 model = DistributedModelParallel(XXX)
 optimizer = model.fused_optimizer
@@ -352,9 +352,9 @@ optimizer = model.fused_optimizer
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class EmbCacheEmbeddingBagCollectionSharder(EmbeddingBagCollectionSharder):
-     def __init__(**kwargs):
+    def __init__(**kwargs):
 ```
 
 **参数说明<a name="section888634319218"></a>**
@@ -383,9 +383,9 @@ class EmbCacheEmbeddingBagCollectionSharder(EmbeddingBagCollectionSharder):
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class EmbCacheEmbeddingCollectionSharder(EmbeddingCollectionSharder):
-     def __init__(**kwargs):
+    def __init__(**kwargs):
 ```
 
 **参数说明<a name="section888634319218"></a>**
@@ -404,5 +404,3 @@ class EmbCacheEmbeddingCollectionSharder(EmbeddingCollectionSharder):
 
 -   成功：返回EmbCacheEmbeddingCollectionSharder对象。
 -   失败：抛出异常。
-
-

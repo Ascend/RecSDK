@@ -25,26 +25,31 @@
 
 -   TorchRec示例：
 
-    ```bash
+    ```python
+    import torch.distributed as dist
     from torchrec.distributed.train_pipeline.train_pipelines import TrainPipelineSparseDist
     from torchrec.distributed.embeddingbag import EmbeddingBagCollectionSharder
     from torchrec.distributed.model_parallel import get_default_sharders
     class TestModel(torch.nn.Module):
         def __init__(self, *):
             # Rec SDK Torch 使用的接口为HashEmbeddingBagCollection
-            self.ebc = EmbeddingBagCollection()
+            self.sparse_model = EmbeddingBagCollection(xx)
+            self.dense_model = xx
         def forward(self, batch: Batch):
-            pass
+            # sparse(self.ebc)前向、dense前向调用
+            # 注意：模型前向返回值需loss在前，output在后，对齐TorchRec原生TrainPipelineSparseDist使用方式
+            return loss, output
     def invoke_main():
-        rank, world_size = get_distribute_env()
+        dist.init_process_group(backend="hccl")    
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
         device = torch.device("npu")
-        dist.init_process_group(backend="hccl")
     
         dataset = RandomRecDataset(BATCH_SIZE, BATCH_NUM, FEAT_NAMES, ID_RANGES)
         data_loader = DataLoader(
             dataset,
         )
-        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS ,NUM_EMBEDS)
+        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS, NUM_EMBEDS)
         ...
         sharder创建
         ...
@@ -56,12 +61,13 @@
         # Rec SDK Torch 使用的接口为HybridTrainPipelineSparseDist
         pipeline = TrainPipelineSparseDist()
         for i in range(20):
-            pipeline.progress(batched_iterator)
+            output = pipeline.progress(batched_iterator)
     ```
 
 -   Rec SDK Torch示例：
 
-    ```bash
+    ```python
+    import torch.distributed as dist
     from hybrid_torchrec import HashEmbeddingBagCollection
     from hybrid_torchrec.distributed.hybrid_train_pipeline import HybridTrainPipelineSparseDist
     from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
@@ -69,13 +75,18 @@
     class TestModel(torch.nn.Module):
         def __init__(self, *):
             # 原生TorchRec使用的接口为EmbeddingBagCollection
-            self.ebc = HashEmbeddingBagCollection()
+            self.sparse_model = HashEmbeddingBagCollection(xx)
+            self.dense_model = xx
         def forward(self, batch: Batch):
-            pass
+            # sparse前向、dense前向调用
+            # 注意：模型前向返回值需loss在前，output在后，对齐TorchRec原生TrainPipelineSparseDist使用方式
+            return loss, output
     def invoke_main():
-        rank, world_size = get_distribute_env()
+        dist.init_process_group(backend="hccl")    
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
         device = torch.device("npu")
-        dist.init_process_group(backend="hccl")
+        
         # Rec SDK Torch创建host连接
         host_gp = dist.new_group(backend="gloo")
         host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
@@ -83,7 +94,7 @@
         data_loader = DataLoader(
             dataset,
         )
-        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS ,NUM_EMBEDS)
+        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS, NUM_EMBEDS)
         ...
         sharder创建
         ...
@@ -95,14 +106,14 @@
         # 原生TorchRec使用的接口为TrainPipelineSparseDist
         pipeline = HybridTrainPipelineSparseDist()
         for i in range(20):
-            pipeline.progress(batched_iterator)
+            output = pipeline.progress(batched_iterator)
     ```
 
 
 ## Rec SDK Torch迁移样例<a name="ZH-CN_TOPIC_0000002336268713"></a>
 
-Rec SDK Torch支持Torch开源推荐模型迁移适配，迁移步骤可以参考如下：
+Rec SDK Torch支持Torch开源推荐模型迁移适配，迁移样例可以参考如下：
 
-[Rec SDK Torch Dcnv2迁移样例](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/dlrm/README.md)。
+[Rec SDK Torch DCNv2迁移样例](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/dlrm/README.md)。
 
 

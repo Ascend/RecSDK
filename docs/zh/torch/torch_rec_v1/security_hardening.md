@@ -18,22 +18,22 @@
 
 ### 防火墙配置<a name="ZH-CN_TOPIC_0000002302389380"></a>
 
-操作系统安装后，若配置普通用户，可以通过在“/etc/login.defs“文件中新增“ALWAYS\_SET\_PATH=yes”配置，防止越权操作。
+操作系统安装后，若配置普通用户，可以通过在“/etc/login.defs”文件中新增“ALWAYS\_SET\_PATH=yes”配置，防止越权操作。
 
 
 ### 设置umask<a name="ZH-CN_TOPIC_0000002336148913"></a>
 
-建议用户将宿主机和容器中的umask设置为027及其以上，提高文件权限。
+建议用户将宿主机和容器中的umask设置为0027及其以上，提高文件权限。
 
-以设置umask为027为例，具体操作如下所示。
+以设置umask为0027为例，具体操作如下所示。
 
-1.  以root用户登录服务器，编辑“/etc/profile“文件。
+1.  以root用户登录服务器，编辑“/etc/profile”文件。
 
     ```bash
     vim /etc/profile
     ```
 
-2.  在“/etc/profile“文件末尾加上**umask 027**，保存并退出。
+2.  在“/etc/profile”文件末尾加上**umask 0027**，保存并退出。
 3.  执行如下命令使配置生效。
 
     ```bash
