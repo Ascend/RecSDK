@@ -57,7 +57,7 @@ static ge::graphStatus CalcTilingParams(MultisliceConcatTilingData& tiling, uint
     uint64_t maxProcBatchSizePerCore = ubSize / (PING_PANG_NUM * maxProcColumnNum * dTypeSize);
     uint64_t needCoreNum = batchSize / maxProcBatchSizePerCore + 1;
     needCoreNum = std::max(MIN_NEED_CORE_NUM, needCoreNum);
-    needCoreNum = std::max(batchSize, needCoreNum);
+    needCoreNum = std::min(batchSize, needCoreNum);
     if ((batchSize > ALL_CORE_BATCH_SIZE) && (needCoreNum < coreNum)) {
         needCoreNum = coreNum;
     }
