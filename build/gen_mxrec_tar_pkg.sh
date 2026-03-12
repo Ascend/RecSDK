@@ -24,9 +24,6 @@ VERSION_FILE="${MxRec_DIR}"/../mindxsdk/build/conf/config.yaml
 get_version() {
   if [ -f "$VERSION_FILE" ]; then
     VERSION=$(sed '/.*mindxsdk:/!d;s/.*: //' "$VERSION_FILE")
-    if [[ "$VERSION" == *.[b/B]* ]] && [[ "$VERSION" != *.[RC/rc]* ]]; then
-      VERSION=${VERSION%.*}
-    fi
   else
     VERSION="6.0.RC2"
   fi
