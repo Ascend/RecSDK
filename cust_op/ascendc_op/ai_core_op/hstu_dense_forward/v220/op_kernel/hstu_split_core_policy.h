@@ -176,55 +176,47 @@ private:
             return seqTaskNum / numBlkK;
         }
         
-        if (isDeltaQK) {
-            int64_t sum = 0;
-            for (int64_t numBlkidx = 1; numBlkidx < numBlkQ; numBlkidx++) {
-                sum += CeilDiv(seqLenK - seqLenQ + numBlkidx * blockM, blockN);
-                if (seqTaskNum < sum) {
-                    return numBlkidx - 1;
-                }
-            }
-            return numBlkQ - 1;
-        }
-        if (numCtx > 0) {
-            if (seqTaskNum < CeilDiv(seqLenQ - numTg, blockN)) {
-                return 0;
-            }
-            // -1避免重复计算
-            seqTaskNum -= CeilDiv(seqLenQ - numTg, blockN) - 1;
-        }
         int64_t sum = 0;
-            for (int64_t numBlkidx = 1; numBlkidx < numBlkQ; numBlkidx++) {
-                sum += CeilDiv(seqLenK - seqLenQ + numBlkidx * blockM, blockN);
-                if (seqTaskNum < sum) {
-                    return numBlkidx - 1;
-                }
+        int64_t numBlkidx = 0;
+        int64_t numCtxCol = min(numBlkQ, CeilDiv(numCtx, blockM));
+        int64_t numCtxRow = CeilDiv(seqLenK - numTg, blockN);
+
+        for (; numBlkidx < numCtxCol; numBlkidx++) {
+            sum += numCtxRow;
+            if (seqTaskNum < sum) {
+                return numBlkidx;
             }
+        }
+        numBlkidx++;
+        for (; numBlkidx < numBlkQ; numBlkidx++) {
+            sum += CeilDiv(seqLenK - seqLenQ + numBlkidx * blockM, blockN);
+            if (seqTaskNum < sum) {
+                return numBlkidx - 1;
+            }
+        }
         return numBlkQ - 1;
     }
 
     __aicore__ inline uint32_t ComputeSeqTaskNum(bool isDeltaQK, int64_t seqLenQ, int64_t seqLenK,
                                                 int64_t numBlkQ, int64_t numBlkK, int64_t numCtx, int64_t numTg)
     {
-        uint32_t seqTaskNum = 0;
-        if constexpr (maskType == CausalMaskT::MASK_TRIL) {
-            if (isDeltaQK) {
-                for (int row = 1; row <= numBlkQ - 1; row++) {
-                    seqTaskNum += CeilDiv(seqLenK - seqLenQ + row * blockM, blockN);
-                }
-                seqTaskNum += CeilDiv(seqLenK, blockN); // 处理最后一行，可能存在缺角
-            } else {
-                for (int row = 1; row <= numBlkQ - 1; row++) {
-                    seqTaskNum += CeilDiv(seqLenK - seqLenQ + row * blockM, blockN);
-                }
-                seqTaskNum += CeilDiv(seqLenK, blockN);
-                if (numCtx > 0) {
-                    seqTaskNum += CeilDiv(seqLenQ - numTg, blockN) - 1;  // -1避免重复计算
-                }
-            }
-        } else {
-            seqTaskNum = numBlkQ * numBlkK;
+        if constexpr (maskType != CausalMaskT::MASK_TRIL) {
+            return numBlkQ * numBlkK;
         }
+        
+        int64_t numCtxCol = min(numBlkQ, CeilDiv(numCtx, blockM));
+        int64_t numCtxRow = CeilDiv(seqLenK - numTg, blockN);
+        uint32_t seqTaskNum = numCtxRow * numCtxCol;
+        int64_t numBlkidx = numCtxCol;
+
+        for (; numBlkidx < numBlkQ - 1; numBlkidx++) {
+            seqTaskNum += CeilDiv(seqLenK - seqLenQ + numBlkidx * blockM + blockM, blockN);
+        }
+
+        if (numBlkidx == numBlkQ - 1) {
+            seqTaskNum += CeilDiv(seqLenK, blockN); // 处理最后一行，可能存在缺角
+        }
+        
         return seqTaskNum;
     }
 
@@ -238,25 +230,15 @@ private:
         KseqId = (KseqId - totalTaskNum) % innerSeqTaskNum;
         if constexpr (maskType != CausalMaskT::MASK_TRIL) {
             KseqId %= numBlkK;
-        } else {
-            if (numCtx == 0) {
-                int64_t step = 1;
-                int64_t task = CeilDiv(seqLenK - seqLenQ + step * blockM, blockN);
-                while (KseqId >= task) {
-                    KseqId -= task;
-                    step++;
-                    task = CeilDiv(seqLenK - seqLenQ + step * blockM, blockN);
-                }
-            } else if (KseqId >= CeilDiv(seqLenQ - numTg, blockN)) {
-                KseqId -= CeilDiv(seqLenQ - numTg, blockN) - 1;
-                int64_t step = 1;
-                int64_t task = CeilDiv(seqLenK - seqLenQ + step * blockM, blockN);
-                while (KseqId >= task) {
-                    KseqId -= task;
-                    step++;
-                    task = CeilDiv(seqLenK - seqLenQ + step * blockM, blockN);
-                }
-            }
+            return;
+        }
+        int64_t step = 1;
+        int64_t numCtxRow = CeilDiv(seqLenK - numTg, blockN);
+        int64_t task = step > CeilDiv(numCtx, blockM) ? CeilDiv(seqLenK - seqLenQ + step * blockM, blockN) : numCtxRow;
+        while (KseqId >= task) {
+            KseqId -= task;
+            step++;
+            task = step > CeilDiv(numCtx, blockM) ? CeilDiv(seqLenK - seqLenQ + step * blockM, blockN) : numCtxRow;
         }
     }
     uint32_t coreNum;
