@@ -28,7 +28,7 @@ import torch.nn.functional as F
 torch.npu.config.allow_internal_format = False
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
-device_id: int = random.choice(range(torch.npu.device_count()))
+device_id: int = 0
 torch.npu.set_device(device_id)
 
 
@@ -142,11 +142,12 @@ class MaskGen:
         # target mask
         if self.check_init_valid(target_group_size) and self.check_init_valid(num_target):
             mask[-num_target:, -num_target:] = self.create_target_mask(num_target, target_group_size)
+
         return mask
 
 
 def create_offset(qkv_shape_info: QKVShapeInfo, mask_info: MaskGenInfo) -> (torch.Tensor, torch.Tensor):
-    min_seq_len = qkv_shape_info.min_seq_len
+    min_seq_len = 1
     if mask_info.num_context is not None:
         min_seq_len += mask_info.num_context
     if mask_info.num_target is not None:
@@ -172,8 +173,7 @@ def create_grad_qkvb(qkv_shape_info: QKVShapeInfo,
         (torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor):
     total_len_q = seq_offset_q[-1].item()
     total_len_k = seq_offset_k[-1].item()
-    grad = torch.rand(total_len_q, qkv_shape_info.num_heads_q, qkv_shape_info.head_dim_v, device="npu",
-                      dtype=qkv_shape_info.float_type).uniform_(-1, 1)
+    grad = None
     q = torch.rand(total_len_q, qkv_shape_info.num_heads_q, qkv_shape_info.head_dim_qk, device="npu",
                    dtype=qkv_shape_info.float_type).uniform_(-1, 1)
     k = torch.rand(total_len_k, qkv_shape_info.num_heads_k, qkv_shape_info.head_dim_qk, device="npu",

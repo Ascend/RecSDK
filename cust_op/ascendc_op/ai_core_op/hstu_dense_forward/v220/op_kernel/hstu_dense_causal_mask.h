@@ -103,6 +103,18 @@ struct BlockMaskParams {
         return (numTarget > 0) && (targetGroupSize > 0) && (kSeqId >= tbase) && NeedCausalMask(false);
     }
 
+    __aicore__ inline bool NeedMask()
+    {
+        bool triu = !NeedCausalMask(false);
+        bool ctx = NeedContextMask();
+        if (triu) {
+            return ctx;
+        }
+        bool diagonal = NeedCausalMask();
+        bool tar = NeedTargetMask();
+        return diagonal || tar;
+    }
+
     template<typename T>
     __aicore__ inline bool AboveDiag(T* point)
     {
@@ -129,8 +141,7 @@ public:
         causalMask = params.NeedCausalMask();
         targetMask = params.NeedTargetMask();
 
-        bool tril = params.NeedCausalMask(false);
-        fullMask = tril && !causalMask && !targetMask;
+        needMask = params.NeedMask();
     }
 
     /**
@@ -143,8 +154,7 @@ public:
     __aicore__ inline bool GenMask(LocalTensor<float>& inMaskLt, int64_t line, int64_t height, int64_t width)
     {
         int64_t total = height * width;
-        bool needMask = (contextMask || causalMask || targetMask);
-        if (!needMask || fullMask) {
+        if (!needMask) {
             return false;
         }
         Duplicate<float>(inMaskLt, 0, total);
@@ -160,7 +170,7 @@ public:
             }
             GenTargetMask(inMaskLt, line, height, width);
         }
-        return needMask;
+        return true;
     }
 
 private:
@@ -178,7 +188,7 @@ private:
     bool contextMask;
     bool causalMask;
     bool targetMask;
-    bool fullMask;
+    bool needMask;
 
     __aicore__ inline void GenContextMask(LocalTensor<float>& inMaskLt, int64_t line, int64_t height, int64_t width)
     {
