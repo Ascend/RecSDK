@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
+set(CMAKE_SKIP_RPATH TRUE)
 set(ASCEND_HOME_PATH $ENV{ASCEND_HOME_PATH})
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(TRAINING_COMM_PATH ${PROJECT_SOURCE_DIR}/../common)
