@@ -41,9 +41,16 @@ cd $PRESMOKE_DIR
 obsutil cp obs://mindcluster/torch_npu-2.7.1.post3-cp311-cp311-manylinux_2_28_aarch64.whl ./ -f -r
 python3 -m pip install torch_npu-2.7.1.post3-cp311-cp311-manylinux_2_28_aarch64.whl
 
-echo "----------------        show diff        ----------------"
+echo "----------------        build pta        ----------------"
+cd $PTA_DIR && dos2unix build_ops.sh && bash build_ops.sh
+
+echo "----------------        match cases        ----------------"
+cd $PRESMOKE_DIR
 git fetch origin
 git diff --name-only HEAD..origin/develop > changes.txt
 cat changes.txt
 
-bash run.sh
+python3 control.py
+
+echo "================        run presmoke success        ================"
+
