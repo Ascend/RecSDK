@@ -200,7 +200,7 @@ class DynamicEmbTableOptions(_ContextOptions):
 |--|--|--|--|
 |training|bool|可选|指示动态嵌入表是否处于训练模式或评估模式的标志。默认为True。如果处于训练模式，dynamicemb会将嵌入和优化器状态一起存储在底层的键值表中。|
 |initializer_args|DynamicEmbInitializerArgs|可选|训练模式下，用于初始化动态嵌入向量的参数。默认为DynamicEmbInitializerArgs实例，参考DynamicEmbInitializerArgs的取值范围。|
-|eval_initializer_args|DynamicEmbInitializerArgs|可选|评估模式下，用于初始化动态嵌入向量的参数。默认为DynamicEmbInitializerArgs实例，仅支持DynamicEmbInitializerMode.NORMAL。|
+|eval_initializer_args|DynamicEmbInitializerArgs|可选|评估模式下，用于初始化动态嵌入向量的参数。默认为DynamicEmbInitializerArgs实例，仅支持DynamicEmbInitializerMode.CONSTANT。|
 |caching|bool|可选|是否启用缓存模式。仅支持默认值为False，不支持用户自定义。|
 |init_capacity|Optional[int]|可选|单个NPU上表的初始容量，如果未设置，默认为分片后的max_capacity；如果设置将向上取值到2的幂。取值范围：[0,MAX_INT32)，请用户自行保证内存使用情况。|
 |max_load_factor|float|可选|触发rehash的最大负载因子。默认为0.5，取值范围(0.0,1.0)。|
