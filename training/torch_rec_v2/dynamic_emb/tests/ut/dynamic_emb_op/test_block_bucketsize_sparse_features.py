@@ -194,6 +194,7 @@ def print_performance_comparison(test_name: str, npu_time_ms: float, total_indic
 
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
 @pytest.mark.parametrize("device", ["npu:0"])
+@pytest.mark.parametrize("my_size", [1, 2, 4, 6, 8, 15])
 @pytest.mark.parametrize(
     "data_scale",
     [
@@ -202,8 +203,7 @@ def print_performance_comparison(test_name: str, npu_time_ms: float, total_indic
             "name": "100_indices",
             "T": 2,
             "B": 10,
-            "my_size": 4,  # T×B=20
-            "lengths_count": 20,
+            "lengths_count": 20,  # T×B=20
             "lengths_range": (5, 6),
             "indices_range": (0, 10),
             "iterations": 100,
@@ -213,9 +213,8 @@ def print_performance_comparison(test_name: str, npu_time_ms: float, total_indic
             "name": "1000_indices",
             "T": 4,
             "B": 50,
-            "my_size": 4,
             "lengths_count": 200,
-            "lengths_range": (5, 6),  # T×B=200
+            "lengths_range": (5, 6),
             "indices_range": (0, 10),
             "iterations": 50,
         },
@@ -224,26 +223,24 @@ def print_performance_comparison(test_name: str, npu_time_ms: float, total_indic
             "name": "10000_indices",
             "T": 8,
             "B": 250,
-            "my_size": 8,  # T×B=2000
             "lengths_count": 2000,
             "lengths_range": (5, 6),
             "indices_range": (0, 10),
             "iterations": 10,
         },
-        # 100000 total indices
+        # 1000000 total indices
         {
-            "name": "100000_indices",
+            "name": "1000000_indices",
             "T": 16,
-            "B": 1250,
-            "my_size": 8,  # T×B=20000
-            "lengths_count": 20000,
+            "B": 12500,
+            "lengths_count": 200000,
             "lengths_range": (5, 6),
             "indices_range": (0, 10),
             "iterations": 5,
         },
     ],
 )
-def test_block_bucketsize_consistency_by_scale(device, data_scale, dtype):
+def test_block_bucketsize_consistency_by_scale(device, data_scale, dtype, my_size):
     """
     Functional consistency test: cover 100/1000/10000 total indices scenarios
     Verify CPU and NPU calculation results match exactly (support int32/int64)
@@ -265,7 +262,7 @@ def test_block_bucketsize_consistency_by_scale(device, data_scale, dtype):
 
     # CPU实现
     cpu_result = block_bucketize_sparse_features_cpu(
-        lengths, indices, bucketize_pos, sequence, dist_type_per_feature, block_sizes, cfg["my_size"], weights, dtype
+        lengths, indices, bucketize_pos, sequence, dist_type_per_feature, block_sizes, my_size, weights, dtype
     )
     new_lengths_cpu, new_indices_cpu, new_weights_cpu, new_pos_cpu, unbucketize_permute_cpu = cpu_result
 
@@ -278,7 +275,7 @@ def test_block_bucketsize_consistency_by_scale(device, data_scale, dtype):
     weights_npu = weights.to(device, dtype=torch.float32)
 
     npu_result = dynamic_emb_extensions.block_bucketize_sparse_features(
-        lengths_npu, indices_npu, bucketize_pos, sequence, dist_type_npu, block_sizes_npu, cfg["my_size"], weights_npu
+        lengths_npu, indices_npu, bucketize_pos, sequence, dist_type_npu, block_sizes_npu, my_size, weights_npu
     )
     new_lengths_npu, new_indices_npu, new_weights_npu, new_pos_npu, unbucketize_permute_npu = npu_result
 
@@ -304,7 +301,8 @@ def test_block_bucketsize_consistency_by_scale(device, data_scale, dtype):
             error_messages.append(msg)
 
     # 断言结果一致
-    assert all_match, f"{cfg['name']} (dtype={dtype}) functional test failed\n{chr(10).join(error_messages)}"
+    assert all_match,\
+        f"{cfg['name']} (dtype={dtype}, my_size={my_size}) functional test failed\n{chr(10).join(error_messages)}"
 
 
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])

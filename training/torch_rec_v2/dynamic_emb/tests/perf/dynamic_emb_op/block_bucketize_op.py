@@ -34,20 +34,20 @@ def run_npu_performance_test(cfg, device_id=0):
     torch.manual_seed(789)  # 固定随机种子保证可复现
     
     # 2. 生成测试数据
-    lengths = torch.randint(*cfg["lengths_range"], (cfg["lengths_count"],), dtype=torch.int64)
+    lengths = torch.randint(*cfg["lengths_range"], (cfg["lengths_count"],), dtype=torch.int32)
     total_indices = lengths.sum().item()
-    indices = torch.randint(*cfg["indices_range"], (total_indices,), dtype=torch.int64)
-    dist_type_per_feature = torch.tensor([0, 1] * (cfg["T"] // 2) + [0] * (cfg["T"] % 2), dtype=torch.int64)
-    block_sizes = torch.tensor([3360] * cfg["T"], dtype=torch.int64)
+    indices = torch.randint(*cfg["indices_range"], (total_indices,), dtype=torch.int32)
+    dist_type_per_feature = torch.tensor([0, 1] * (cfg["T"] // 2) + [0] * (cfg["T"] % 2), dtype=torch.int32)
+    block_sizes = torch.tensor([3360] * cfg["T"], dtype=torch.int32)
     bucketize_pos = True
     sequence = True
     weights = torch.randn(total_indices, dtype=torch.float32)
     
     # 3. 数据转到NPU
-    lengths_npu = lengths.to(f"npu:{device_id}", dtype=torch.int64)
-    indices_npu = indices.to(f"npu:{device_id}", dtype=torch.int64)
-    dist_type_npu = dist_type_per_feature.to(f"npu:{device_id}", dtype=torch.int64)
-    block_sizes_npu = block_sizes.to(f"npu:{device_id}", dtype=torch.int64)
+    lengths_npu = lengths.to(f"npu:{device_id}", dtype=torch.int32)
+    indices_npu = indices.to(f"npu:{device_id}", dtype=torch.int32)
+    dist_type_npu = dist_type_per_feature.to(f"npu:{device_id}", dtype=torch.int32)
+    block_sizes_npu = block_sizes.to(f"npu:{device_id}", dtype=torch.int32)
     weights_npu = weights.to(f"npu:{device_id}", dtype=torch.float32)
     
     # 4. 测试NPU自定义算子耗时（核心逻辑）
