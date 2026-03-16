@@ -20,11 +20,13 @@
 import enum
 from dataclasses import dataclass, field
 from typing import Optional, Dict
+from math import sqrt
 
 import torch
 from torchrec.tensor_types import check
+from torchrec.modules.embedding_configs import BaseEmbeddingConfig
 
-from rec_sdk_common.constants.constants import NumCheckValueMethod
+from rec_sdk_common.constants.constants import NumCheckValueMethod, ValidatorParams
 from rec_sdk_common.validator.safe_checker import class_safe_check, float_safe_check, int_safe_check
 
 from dynamic_emb_extensions import (
@@ -137,9 +139,9 @@ class DynamicEmbInitializerArgs:
     std_dev : float, optional
         The standard deviation for (truncated) normal distributions. Defaults to 1.0.
     lower : float, optional
-        The lower bound for uniform/truncated_normal distribution. Defaults to 0.0.
+        The lower bound for uniform/truncated_normal distribution. Defaults to None.
     upper : float, optional
-        The upper bound for uniform/truncated_normal distribution. Defaults to 1.0.
+        The upper bound for uniform/truncated_normal distribution. Defaults to None.
     value : float, optional
         The constant value for constant initialization. Defaults to 0.0.
     """
@@ -147,16 +149,14 @@ class DynamicEmbInitializerArgs:
     mode: DynamicEmbInitializerMode = DynamicEmbInitializerMode.NORMAL
     mean: float = 0.0
     std_dev: float = 1.0
-    lower: float = 0.0
-    upper: float = 1.0
+    lower: float = None
+    upper: float = None
     value: float = 0.0
 
     def __post_init__(self):
         class_safe_check("mode", self.mode, (DynamicEmbInitializerMode,))
         float_safe_check("mean", self.mean, min_value=_MIN_INIT_ARGS_VALUE, max_value=_MAX_INIT_ARGS_VALUE)
         float_safe_check("std_dev", self.std_dev, min_value=_MIN_INIT_ARGS_VALUE, max_value=_MAX_INIT_ARGS_VALUE)
-        float_safe_check("lower", self.lower, min_value=_MIN_INIT_ARGS_VALUE, max_value=_MAX_INIT_ARGS_VALUE)
-        float_safe_check("upper", self.upper, min_value=_MIN_INIT_ARGS_VALUE, max_value=_MAX_INIT_ARGS_VALUE)
         float_safe_check("value", self.value, min_value=_MIN_INIT_ARGS_VALUE, max_value=_MAX_INIT_ARGS_VALUE)
 
     def __eq__(self, other):
@@ -164,6 +164,10 @@ class DynamicEmbInitializerArgs:
             return NotImplementedError
         if self.mode == DynamicEmbInitializerMode.NORMAL:
             return self.mean == other.mean and self.std_dev == other.std_dev
+        elif self.mode == DynamicEmbInitializerMode.UNIFORM:
+            return self.lower == other.lower and self.upper == other.upper
+        elif self.mode == DynamicEmbInitializerMode.CONSTANT:
+            return self.value == other.value
         return True
 
     def __ne__(self, other):
@@ -176,8 +180,8 @@ class DynamicEmbInitializerArgs:
             self.mode.value,
             self.mean,
             self.std_dev,
-            self.lower,
-            self.upper,
+            self.lower if self.lower else 0.0,
+            self.upper if self.upper else 1.0,
             self.value,
         )
 
@@ -336,7 +340,7 @@ class DynamicEmbTableOptions(_ContextOptions):
     initializer_args: DynamicEmbInitializerArgs = field(default_factory=DynamicEmbInitializerArgs)
     eval_initializer_args: DynamicEmbInitializerArgs = field(
         default_factory=lambda: DynamicEmbInitializerArgs(
-            mode=DynamicEmbInitializerMode.NORMAL,
+            mode=DynamicEmbInitializerMode.CONSTANT,
             value=0.0,
         )
     )
@@ -356,7 +360,7 @@ class DynamicEmbTableOptions(_ContextOptions):
         class_safe_check("training", self.training, (bool,))
         class_safe_check("initializer_args", self.initializer_args, (DynamicEmbInitializerArgs,))
         class_safe_check("eval_initializer_args", self.eval_initializer_args, (DynamicEmbInitializerArgs,))
-        if self.eval_initializer_args.mode != DynamicEmbInitializerMode.NORMAL:
+        if self.eval_initializer_args.mode != DynamicEmbInitializerMode.CONSTANT:
             raise ValueError("eval_initializer_args must be constant initialization")
         class_safe_check("init_capacity", self.init_capacity, (int, type(None)))
         if self.init_capacity == 0:
@@ -379,8 +383,12 @@ class DynamicEmbTableOptions(_ContextOptions):
         if self.bucket_capacity != target_bucket_capacity:
             self.bucket_capacity = target_bucket_capacity
         class_safe_check("safe_check_mode", self.safe_check_mode, (DynamicEmbCheckMode,))
-        int_safe_check("global_hbm_for_values", self.global_hbm_for_values, min_value=0)
-
+        int_safe_check(
+            "global_hbm_for_values", 
+            self.global_hbm_for_values, 
+            min_value=0, 
+            max_value=ValidatorParams.MAX_INT64.value
+        )
         class_safe_check("caching", self.caching, (bool,))
         check(not self.caching, "caching should be False")
         check(self.external_storage is None, "external_storage should be None")
@@ -473,3 +481,15 @@ def get_optimizer_state_dim(optimizer_type: OptimizerType, dim: int, dtype: torc
     if optimizer_type == OptimizerType.AdaGrad:
         return dim
     return 0
+
+
+def validate_initializer_args(
+    initializer_args: DynamicEmbInitializerArgs, eb_config: BaseEmbeddingConfig = None
+) -> None:
+    if initializer_args.mode == DynamicEmbInitializerMode.UNIFORM:
+        default_lower = -sqrt(1 / eb_config.num_embeddings) if eb_config else 0.0
+        default_upper = sqrt(1 / eb_config.num_embeddings) if eb_config else 1.0
+        if initializer_args.lower is None:
+            initializer_args.lower = default_lower
+        if initializer_args.upper is None:
+            initializer_args.upper = default_upper

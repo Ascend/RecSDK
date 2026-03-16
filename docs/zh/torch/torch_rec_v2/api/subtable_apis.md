@@ -293,8 +293,8 @@ class DynamicEmbInitializerArgs:
 |mode|DynamicEmbInitializerMode|可选|初始化模式。可选NORMAL、UNIFORM、CONSTANT，默认为NORMAL。|
 |mean|float|可选|正态分布的均值，默认为 0.0。|
 |std_dev|float|可选|正态分布的标准差，默认为 1.0。|
-|lower|float|可选|均匀分布的下界，默认为 0.0。|
-|upper|float|可选|均匀分布的上界，默认为 1.0。|
+|lower|float|可选|均匀分布的下界，默认为 None。|
+|upper|float|可选|均匀分布的上界，默认为 None。|
 |value|float|可选|常量初始化时使用的固定值，默认为 0.0。|
 
 
