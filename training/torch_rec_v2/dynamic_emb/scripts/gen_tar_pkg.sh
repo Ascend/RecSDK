@@ -21,24 +21,8 @@ ARCH="$(uname -m)"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 MxRec_DIR=$(dirname "$(dirname "${SCRIPT_DIR}")")
 
-VERSION_FILE="${MxRec_DIR}/dynamic_emb/dynamic_emb/__init__.py"
-
-get_version() {
-    if [ -f "${VERSION_FILE}" ]; then
-        VERSION=$(sed -nE "/__version__/s/.*__version__[[:space:]]*=[[:space:]]*['\"]([^'\"]+)['\"].*/\1/p" "${VERSION_FILE}")
-        VERSION=$(echo "${VERSION//+/.}" | tr 'a-z' 'A-Z')
-        if [[ "${VERSION}" == *.[b/B]* ]] && [[ "${VERSION}" != *.[RC/rc]* ]]; then
-            VERSION=${VERSION%.*}
-        fi
-    else
-        VERSION="7.3.T50"
-    fi
-}
-
-get_version
-
 pkg_dir="dynamic-emb"
-release_tar="Ascend-mindxsdk-${pkg_dir}-${VERSION}-pytorch2.7.1-linux-${ARCH}.tar.gz"
+release_tar="Ascend-mindxsdk-${pkg_dir}-pytorch2.7.1-linux-${ARCH}.tar.gz"
 
 function gen_tar_file()
 {

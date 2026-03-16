@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def modify_version():
-    default_version = "7.3+t50"
+    default_version = "v25.09"
 
     init_file = "dynamic_emb/__init__.py"
     with open(init_file, "r") as file:

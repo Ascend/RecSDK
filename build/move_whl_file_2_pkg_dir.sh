@@ -26,7 +26,7 @@ tf_version=$1
 function move_whl_file_2_pkg_dir() {
     mkdir -p "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
     rm -rf "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl/*
-    cp ${Tf_Rec_V1_DIR}/dist/*.whl "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
+    mv ${Tf_Rec_V1_DIR}/dist/*.whl "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
     cd "$SCRIPT_DIR"/"${pkg_dir}"/"${tf_version}"_whl
     for whl in *.whl; do
       new_name="${whl/any/linux_${ARCH}}"

@@ -20,24 +20,8 @@ ARCH="$(uname -m)"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 MxRec_DIR=$(dirname $(dirname "${SCRIPT_DIR}"))
 
-VERSION_FILE=${MxRec_DIR}/../mindxsdk/build/conf/config.yaml
-get_version() {
-  if [ -f "$VERSION_FILE" ]; then
-    VERSION=$(sed '/.*mindxsdk:/!d;s/.*: //' "$VERSION_FILE")
-    if [[ "$VERSION" == *.[b/B]* ]] && [[ "$VERSION" != *.[RC/rc]* ]]; then
-      VERSION=${VERSION%.*}
-    fi
-  else
-    VERSION="7.3.T50"
-  fi
-}
-
-get_version
-echo "MindX SDK mxrec: ${VERSION}" >> ./version.info
-
 pkg_dir=mxrec-for-lingqu2.0
-release_tar=Ascend-${pkg_dir}_${VERSION}_linux-${ARCH}.tar.gz
-mv version.info ${SCRIPT_DIR}/${pkg_dir}
+release_tar=Ascend-${pkg_dir}_linux-${ARCH}.tar.gz
 
 function gen_tar_file()
 {

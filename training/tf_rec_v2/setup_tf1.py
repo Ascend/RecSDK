@@ -24,7 +24,7 @@ from setuptools import find_packages, setup
 
 
 def modify_version():
-    default_version = "7.3.T50"
+    default_version = "1.15.0"
 
     init_file = "mxrec/__init__.py"
     with open(init_file, "r") as file:
