@@ -20,21 +20,8 @@ ARCH="$(uname -m)"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 MxRec_DIR=$(dirname "${SCRIPT_DIR}")
 
-VERSION_FILE="${MxRec_DIR}"/../mindxsdk/build/conf/config.yaml
-get_version() {
-  if [ -f "$VERSION_FILE" ]; then
-    VERSION=$(sed '/.*mindxsdk:/!d;s/.*: //' "$VERSION_FILE")
-  else
-    VERSION="6.0.RC2"
-  fi
-}
-
-get_version
-echo "MindX SDK mxrec: ${VERSION}" >> ./version.info
-
 pkg_dir=mindxsdk-mxrec
-release_tar=Ascend-"${pkg_dir}"_"${VERSION}"_linux-"${ARCH}".tar.gz
-mv version.info "${SCRIPT_DIR}"/"${pkg_dir}"
+release_tar=Ascend-"${pkg_dir}"_linux-"${ARCH}".tar.gz
 
 function gen_tar_file()
 {

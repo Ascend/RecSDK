@@ -15,7 +15,7 @@
 # limitations under the License.
 # ==============================================================================
 
-__version__ = "6.0.RC3"
+__version__ = ""
 __all__ = ["version", "__version__"]
 
 from mx_rec.constants.constants import ASCEND_GLOBAL_HASHTABLE_COLLECTION

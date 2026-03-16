@@ -82,11 +82,12 @@ def run_setup(build_script_name, build_type):
     except IOError:
         LONG_DESCRIPTION = ""
 
-    env_version = os.getenv("VERSION")
-    if env_version and re.match(r'^[0-9]+\.[0-9]+\.[A-Za-z]+[0-9]+$', env_version):
-        VERSION = env_version
+    if build_type == "tf1":
+        VERSION = "1.15.0"
+    elif build_type == "tf2":
+        VERSION = "2.6.5"
     else:
-        VERSION = "7.2.RC1"
+        raise ValueError(f"Invalid value for build_type: {build_type}, it must be 'tf1' or 'tf2'.")
 
     INIT_FILE = "training/tf_rec_v1/python/__init__.py"
     with open(INIT_FILE, 'r') as file:

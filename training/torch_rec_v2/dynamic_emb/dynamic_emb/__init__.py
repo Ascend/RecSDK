@@ -15,7 +15,7 @@
 # limitations under the License.
 # ==============================================================================
 
-__version__ = "7.3+t50"
+__version__ = "v25.09"
 
 from dynamic_emb.distributed.dynamicemb_config import (
     DynamicEmbInitializerMode,
