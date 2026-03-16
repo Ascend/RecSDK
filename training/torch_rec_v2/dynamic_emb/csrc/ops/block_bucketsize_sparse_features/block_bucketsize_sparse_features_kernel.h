@@ -406,7 +406,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
     const __gm__ int64_t* offsets, const __gm__ T* indices, const __gm__ T* blockSizes,
     const __gm__ T* distTypePerFeature, __gm__ T* newLengths, int32_t lengthSize, int32_t B, const uint64_t mySize,
     const uint64_t mySizeMagic, const uint64_t mySizeShift,
-    __ubuf__ typename std::make_unsigned<T>::type* blkSizeMagicShifts)
+    const __ubuf__ typename std::make_unsigned<T>::type* blkSizeMagicShifts)
 {
     using uindex_t = typename std::make_unsigned<T>::type;
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
@@ -454,8 +454,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtCompu
             const uindex_t blkSizeMulMySize = blkSize * mySize;
             uindex_t i = rowstart;
 
-            uindex_t blkSizeMagic = blkSizeMagicShifts[t * 2];
-            uindex_t blkSizeShift = blkSizeMagicShifts[t * 2 + 1];
+            const uindex_t blkSizeMagic = blkSizeMagicShifts[t * 2];
+            const uindex_t blkSizeShift = blkSizeMagicShifts[t * 2 + 1];
 
             for (; i + (UNROLL_FACTOR - 1) < rowend; i += UNROLL_FACTOR) {
                 const uindex_t idx0 = static_cast<uindex_t>(indices[i]);
@@ -690,7 +690,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
     const __gm__ T* distTypePerFeature, __gm__ T* newOffsets, __gm__ T* newIndices, __gm__ float* newWeights,
     __gm__ T* newPos, __gm__ T* unbucketizePermute, int32_t lengthSize, int32_t B, const uint64_t mySize,
     const uint64_t mySizeMagic, const uint64_t mySizeShift,
-    __ubuf__ typename std::make_unsigned<T>::type* blkSizeMagicShifts)
+    const __ubuf__ typename std::make_unsigned<T>::type* blkSizeMagicShifts)
 {
     using uindex_t = typename std::make_unsigned<T>::type;
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
@@ -788,8 +788,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtRearr
             const uindex_t blkSizeMulMySize = blkSize * mySize;
             uindex_t i = rowstart;
 
-            uindex_t blkSizeMagic = blkSizeMagicShifts[t * 2];
-            uindex_t blkSizeShift = blkSizeMagicShifts[t * 2 + 1];
+            const uindex_t blkSizeMagic = blkSizeMagicShifts[t * 2];
+            const uindex_t blkSizeShift = blkSizeMagicShifts[t * 2 + 1];
 
             for (; i + (UNROLL_FACTOR - 1) < rowend; i += UNROLL_FACTOR) {
                 const uindex_t idx0 = static_cast<uindex_t>(indices[i]);

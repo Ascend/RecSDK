@@ -71,9 +71,9 @@ extern "C" __global__ __aicore__ void block_bucketsize_sparse_features(
         bool useQuickDivide = (featureNum <= MAX_FEATURE_NUM_USE_QUICK_DIVIDE) && (mySize > 1);
         using uindex_t = typename std::make_unsigned<DTYPE_X>::type;
         int32_t byteLen = useQuickDivide ? (featureNum * 2 * sizeof(uindex_t)) : sizeof(uindex_t);
-        TPipe pipe1;
+        TPipe pipe;
         TBuf<TPosition::VECCALC> sharedMem1;
-        pipe1.InitBuffer(sharedMem1, byteLen);
+        pipe.InitBuffer(sharedMem1, byteLen);
         LocalTensor<uindex_t> sharedTensor1 = sharedMem1.Get<uindex_t>();
         __ubuf__ uindex_t* blkSizeMagicShifts = reinterpret_cast<__ubuf__ uindex_t*>(sharedTensor1.GetPhyAddr());
         uindex_t mySizeMagic = 0;
@@ -124,7 +124,6 @@ extern "C" __global__ __aicore__ void block_bucketsize_sparse_features(
 
         // 计算排他累加和currentOffsets
         {
-            TPipe pipe;
             TBuf<TPosition::VECCALC> sharedMem;
             pipe.InitBuffer(sharedMem, MAX_WARPS * sizeof(DTYPE_X));
             LocalTensor<DTYPE_X> sharedTensor = sharedMem.Get<DTYPE_X>();
