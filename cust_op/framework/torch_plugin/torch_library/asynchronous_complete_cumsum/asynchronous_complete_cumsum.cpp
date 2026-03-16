@@ -18,7 +18,6 @@ using namespace at;
 at::Tensor asynchronous_complete_cumsum_npu(const at::Tensor &offset)
 {
     const at::OptionalDeviceGuard guard(device_of(offset));
-    check_tensor_non_empty(offset, "offset");
 
     // 检查NPU设备（单个张量）
     std::vector<at::Tensor> tensors = {offset};
@@ -27,9 +26,13 @@ at::Tensor asynchronous_complete_cumsum_npu(const at::Tensor &offset)
 
     auto offset_contin = offset.contiguous();
     int64_t offset_size = offset.size(0);
-    TORCH_CHECK(offset_size > 0 && offset_size < std::numeric_limits<int64_t>::max(),
-        "offset.size(0) limit (0, %lld), but get %lld\n", std::numeric_limits<int64_t>::max(), offset_size);
+    TORCH_CHECK(offset_size >= 0 && offset_size < std::numeric_limits<int64_t>::max(),
+                "offset.size(0) limit [0, ", std::numeric_limits<int64_t>::max(), "), but get ", offset_size, "\n");
     auto output = at::empty({offset_size + 1}, offset.options());
+    if (offset_size == 0) {
+        output.zero_();
+        return output;
+    }
 
     EXEC_NPU_CMD(aclnnAsynchronousCompleteCumsum, offset_contin, output);
     return output;
@@ -37,12 +40,18 @@ at::Tensor asynchronous_complete_cumsum_npu(const at::Tensor &offset)
 
 at::Tensor asynchronous_inclusive_cumsum_npu(const at::Tensor &offset)
 {
+    if (offset.numel() == 0) {
+        return at::empty_like(offset);
+    }
     auto complete_result = asynchronous_complete_cumsum_npu(offset);
     return complete_result.narrow(0, 1, complete_result.size(0) - 1);
 }
 
 at::Tensor asynchronous_exclusive_cumsum_npu(const at::Tensor &offset)
 {
+    if (offset.numel() == 0) {
+        return at::empty_like(offset);
+    }
     auto complete_result = asynchronous_complete_cumsum_npu(offset);
     return complete_result.narrow(0, 0, complete_result.size(0) - 1);
 }
