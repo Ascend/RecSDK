@@ -83,9 +83,9 @@ set_target_properties(asc_kernel_lib PROPERTIES
 target_compile_options(asc_kernel_lib PRIVATE
     $<$<COMPILE_LANGUAGE:ASC>: --npu-arch=dav-3510>
     -DUSE_DUMP_KERNEL_ASC
-    -Wl,-z,relro,-z,now
-    -s
 )
+
+target_link_options(asc_kernel_lib PRIVATE -Wl,-z,relro,-z,now -s)
 
 install(TARGETS asc_kernel_lib
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
