@@ -181,7 +181,7 @@ mxrec/											# 项目根目录
 * [tf_rec_v1](./docs/zh/tensorflow/tf_rec_v1/security_hardening.md)
 * [tf_rec_v2](./docs/zh/tensorflow/tf_rec_v2/security_hardening.md)
 * [torch_rec_v1](./docs/zh/torch/torch_rec_v1/security_hardening.md)
-* [torch_rec_v1](./docs/zh/torch/torch_rec_v2/security_hardening.md)
+* [torch_rec_v2](./docs/zh/torch/torch_rec_v2/security_hardening.md)
 
 ## 免责声明
 

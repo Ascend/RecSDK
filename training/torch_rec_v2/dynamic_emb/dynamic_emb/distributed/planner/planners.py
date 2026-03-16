@@ -50,6 +50,7 @@ from dynamic_emb.distributed.dynamicemb_config import (
     DistType,
     next_power_of_2,
     get_optimizer_state_dim,
+    validate_initializer_args,
 )
 from rec_sdk_common.validator.safe_checker import class_safe_check
 
@@ -244,9 +245,13 @@ def _validate_configs(
 
     world_size = dist.get_world_size()
     for i, config_name in enumerate(config_names):
-        if not constraints[config_name].use_dynamicemb:
+        tmp_constraint = constraints[config_name]
+        if not tmp_constraint.use_dynamicemb:
             continue
         tmp_config = eb_configs[i]
+        validate_initializer_args(
+            tmp_constraint.dynamicemb_options.initializer_args, tmp_config
+        )
         # modify num_embeddings per rank to power of 2
         num_aligned_embedding_per_rank = int(next_power_of_2(math.ceil(tmp_config.num_embeddings / world_size)))
         if num_aligned_embedding_per_rank < constraints[config_name].dynamicemb_options.bucket_capacity:

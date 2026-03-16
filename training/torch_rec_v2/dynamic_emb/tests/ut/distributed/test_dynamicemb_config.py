@@ -89,18 +89,6 @@ class TestDynamicEmbInitializerArgs:
 
     @staticmethod
     @pytest.mark.parametrize("invalid_value", [-0.1, 1.1])
-    def test_lower_value_err(invalid_value):
-        with pytest.raises(ValueError):
-            DynamicEmbInitializerArgs(lower=invalid_value)
-
-    @staticmethod
-    @pytest.mark.parametrize("invalid_value", [-0.1, 1.1])
-    def test_upper_value_err(invalid_value):
-        with pytest.raises(ValueError):
-            DynamicEmbInitializerArgs(upper=invalid_value)
-
-    @staticmethod
-    @pytest.mark.parametrize("invalid_value", [-0.1, 1.1])
     def test_value_err(invalid_value):
         with pytest.raises(ValueError):
             DynamicEmbInitializerArgs(value=invalid_value)
