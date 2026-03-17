@@ -1,0 +1,36 @@
+[
+    {
+        "op": "OffsetsRange",
+        "input_desc": [
+            {
+                "name": "offsets",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int32", "int64"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "result",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "int32", "int64"
+                ]
+            }
+        ],
+        "attr": [
+            {
+                "name": "rangeSize",
+                "param_type": "required",
+                "type": "int"
+            }
+        ]
+    }
+]
