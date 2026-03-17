@@ -81,11 +81,13 @@ line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`
 sed -i "${line}s/True/False/g" CMakePresets.json
 
+sed -i "1i #define SUPPORT_950" ./op_kernel/hstu_common_const.h
 sed -i "1i #define SUPPORT_950" ./op_kernel/matmul_constexpr.h
 sed -i "1i #define SUPPORT_950" ./op_kernel/hstu_dense_forward_jagged_kernel.h
 sed -i "1i #define SUPPORT_950" ./op_kernel/hstu_paged_forward_kernel.h
 sed -i "1i #define SUPPORT_950" ./op_host/hstu_jagged_forward.cpp
 sed -i "1i #define SUPPORT_950" ./op_host/hstu_paged_forward.cpp
+sed -i "1i #define SUPPORT_950" ./op_host/hstu_dense_forward.cpp
 sed -i "1i #define SUPPORT_950" ./op_host/tiling_policy.cpp
 
 add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../../v220/hstu_dense_forward.json DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${vendor_name}_impl/dynamic)"

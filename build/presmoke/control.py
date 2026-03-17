@@ -20,7 +20,7 @@ import subprocess
 from pathlib import Path
 
 CHANGES = "changes.txt"
-ALLOWED_EXTENSIONS = {'.py', '.h', '.cpp', '.hpp', '.sh'}
+ALLOWED_EXTENSIONS = {'.py', '.h', '.cpp', '.hpp', '.sh', '.cmake'}
 MODULE_MAPS = {
     'common': 'hstu',
     'cmake': 'hstu',

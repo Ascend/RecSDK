@@ -68,6 +68,7 @@ fi
 sed -i 's:"customize":"ln_mul":g' CMakePresets.json
 
 if [ "$ai_core" = "ai_core-Ascend950" ]; then
+    sed -i "1i #define SUPPORT_950" ./op_host/ln_mul.cpp
     sed -i "1i #define SUPPORT_950" ./op_kernel/ln_mul_kernel.h
 fi
 

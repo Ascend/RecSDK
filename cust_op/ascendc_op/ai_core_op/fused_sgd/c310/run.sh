@@ -67,6 +67,8 @@ fi
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
 sed -i 's:"customize":"mxrec_fused_agd":g' CMakePresets.json
 
+sed -i "1i #define SUPPORT_950" ./op_host/sgd.cpp
+
 # 增加LOG_CPP编译选项支持错误日志打印
 sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
 

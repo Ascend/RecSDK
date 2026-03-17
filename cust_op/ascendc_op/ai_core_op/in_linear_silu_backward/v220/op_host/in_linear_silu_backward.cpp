@@ -293,7 +293,9 @@ explicit InLinearSiluBackward(const char* name) : OpDef(name)
         this->AICore().SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+#ifdef SUPPORT_950
         this->AICore().AddConfig("ascend950");
+#endif
     }
 };
 

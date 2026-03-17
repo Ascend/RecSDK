@@ -116,7 +116,7 @@ class SelectDim1ToPermute : public OpDef {
 public:
     explicit SelectDim1ToPermute(const char* name) : OpDef(name)
     {
-#ifdef SUPPORT_C310
+#ifdef SUPPORT_950
         this->Input("indices").ParamType(REQUIRED).DataType({ge::DT_INT32, ge::DT_INT64}).FormatList({ge::FORMAT_ND});
         this->Output("permute").ParamType(REQUIRED).Follow("indices", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
 #else
@@ -130,8 +130,10 @@ public:
         this->SetInferDataType(ge::InferDataType);
 
         this->AICore().SetTiling(optiling::TilingFunc);
-        this->AICore().AddConfig("ascend950");
         this->AICore().AddConfig("ascend910b");
+#ifdef SUPPORT_950
+        this->AICore().AddConfig("ascend950");
+#endif
     }
 };
 

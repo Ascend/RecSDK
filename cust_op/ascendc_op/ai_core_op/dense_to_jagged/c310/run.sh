@@ -71,6 +71,7 @@ sed -i 's:"customize":"dense_to_jagged":g' CMakePresets.json
 line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`
 sed -i "${line}s/True/False/g" CMakePresets.json
+sed -i "1i #define SUPPORT_950" ./op_host/dense_to_jagged.cpp
 
 # 增加LOG_CPP编译选项支持错误日志打印
 sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt

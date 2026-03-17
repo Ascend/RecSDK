@@ -90,6 +90,8 @@ fi
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
 sed -i 's:"customize":"in_linear_silu":g' CMakePresets.json
 
+sed -i "1i #define SUPPORT_950" ./op_host/in_linear_silu.cpp
+
 sed -i "1i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=3510 -DCATLASS_BISHENG_ARCH=a5 -DIS_A5=1 -DENABLE_CV_COMM_VIA_SSBUF=true -DCATLASS_HOME=${CATLASS_HOME} -I${catlass_include_dir})" ./op_kernel/CMakeLists.txt
 
 # 增加LOG_CPP编译选项支持错误日志打印
