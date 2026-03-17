@@ -71,6 +71,40 @@ class Saver:
     @staticmethod
     def _get_format_path():
         return datetime.now(tz=timezone.utc).strftime(TIMESTAMP_FORMAT)
+    
+    @staticmethod
+    def _read_meta_file(meta_path: str) -> dict:
+        meta_info = {}
+        with open(meta_path, "r") as f:
+            for line in f:
+                key, value = line.strip().split("=")
+                meta_info[key] = value
+        return meta_info
+    
+    def _check_module_config(self, mode: str, metadata: Optional[dict] = None):
+        if mode not in ["save", "load"]:
+            raise ValueError(f"param `mode` must be 'save' or 'load', but got {mode}")
+        if mode == "load" and metadata is None:
+            raise ValueError("param `metadata` must not be None when mode is 'load'.")
+        if len(self.cache_module) == 0:
+            raise RuntimeError(
+                "cache_module list is empty, " \
+                "there should be at least one module which type is " \
+                "EmbCacheShardedEmbeddingCollection or EmbCacheShardedEmbeddingBagCollection."
+            )
+        for mod in self.cache_module:
+            for config in mod.config_list:
+                if config.is_incremental and config.admit_and_evict_config.is_feature_filter_enabled():
+                    raise ValueError("When incremental is True, admit and evict feature filter must be False, " \
+                                     "but got True. ")
+                if mode == "save":
+                    continue
+                save_world_size = int(metadata.get("save_world_size", -1))
+                if save_world_size != self.world_size and config.admit_and_evict_config.is_feature_filter_enabled():
+                    raise ValueError("When load model with admit and evict feature filter enabled, " \
+                                     "the world size used in saving model must be same with loading world size, " \
+                                     f"but got save_world_size {save_world_size} " \
+                                     "and load_world_size {self.world_size}.")
 
     def save(self, module: torch.nn.Module, path: str, incremental: bool = False) -> None:
         check_path(path)
@@ -90,7 +124,9 @@ class Saver:
             meta_path = os.path.join(path, "meta.ini")
             with os.fdopen(os.open(meta_path, _OPEN_FILE_FLAGS, _OPEN_FILE_MODE), "w") as f:
                 f.write(f"incremental={incremental}\n")
+                f.write(f"save_world_size={self.world_size}\n")
         logging.info("In save scene, path:%s, cache_module info:%s", path, self.cache_module)
+        self._check_module_config(mode="save")
         for mod in self.cache_module:
             logging.info("In save scene, embcache_mgr info:%s", mod.embcache_mgr)
             codegen = mod.get_batched_embedding_kernels()[0][0]
@@ -113,6 +149,8 @@ class Saver:
         self._check_emb_cache_instance_len()
         path = os.path.realpath(path)
         check_path(path)
+        meta_info = self._read_meta_file(os.path.join(path, "meta.ini"))
+        self._check_module_config(mode="load", metadata=meta_info)
         for mod in self.cache_module:
             mod.embcache_mgr.load(path, self.rank, self.world_size, incremental)
 

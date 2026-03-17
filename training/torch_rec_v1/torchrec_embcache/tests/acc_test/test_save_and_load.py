@@ -329,18 +329,18 @@ class TestModel:
                 for base_time in range(SAVE_BASE_TIMES):
                     for _ in range(SAVE_STEPS):
                         _, _ = pipe.progress(iter_)
-                    pipe.wait_pipline_compute_swapinfo()
+                    pipe.wait_pipeline_compute_swapinfo()
                     saver.save(ddp_model, f"save_dir/sparse/base_{base_time+1}")
                     for delta_time in range(SAVE_DELTA_TIMES):
                         for _ in range(SAVE_STEPS):
                             _, _ = pipe.progress(iter_)
-                        pipe.wait_pipline_compute_swapinfo()
+                        pipe.wait_pipeline_compute_swapinfo()
                         saver.save(ddp_model, f"save_dir/sparse/base_{base_time+1}_delta_{delta_time+1}", 
                                    incremental=True)
             else:
                 for _ in range(LOOP_TIMES):
                     _, _ = pipe.progress(iter_)
-                pipe.wait_pipline_compute_swapinfo()
+                pipe.wait_pipeline_compute_swapinfo()
                 saver.save(ddp_model, "save_dir/sparse")
 
             ddp_model.eval()
