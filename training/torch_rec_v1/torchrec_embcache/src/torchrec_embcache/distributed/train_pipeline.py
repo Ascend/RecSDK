@@ -793,7 +793,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         self.dequeue_batch()
         return (output, losses) if self._return_loss else output
     
-    def wait_pipline_compute_swapinfo(self):
+    def wait_pipeline_compute_swapinfo(self):
         if len(self.batches) >= 2:
             self.wait_and_get_swap_info(self.contexts[1])
 

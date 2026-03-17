@@ -52,14 +52,13 @@ class Saver:
 1.  保存/加载接口仅支持多级缓存保存/加载稀疏表相关数据（稀疏表Embedding，Embedding对应的优化器参数等）。
 2.  不支持保存/加载Dense数据（需自行调用Torch原生接口）。
 3.  不支持纯显存模式下稀疏表保存/加载。
-4.  保存/加载接口不支持训练过程中调用/并发调用/异步调用，仅支持未执行训练/评估时调用接口。
-5.  保存/加载接口仅支持保存/加载本地文件系统。
-6.  增量保存加载不支持准入淘汰功能
-7.  增量保存加载仅支持pipeline模式下的训练产生的增量数据的保存和加载
-8.  增量保存加载功能需要创建表时在EmbCacheEmbeddingBagConfig/EmbCacheEmbeddingConfig添加is_incremental参数，详见[创表接口](table_creation_apis.md)
-9.  差异卡加载功能不支持准入淘汰
-10. pipline模式下，如果需要在pipeline中间状态下执行保存，需要在保存前手动触发wait_pipline_compute_swapinfo。
-    详细参考[保存加载用例](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_save_and_load.py)
+4.  保存/加载接口仅支持保存/加载本地文件系统。
+5.  增量保存加载不支持准入淘汰功能，同时开启将触发配置校验错误。
+6.  增量模型的保存与加载功能，仅适用于pipeline训练模式下生成的增量数据。
+7.  增量保存加载功能需要创建表时在EmbCacheEmbeddingBagConfig/EmbCacheEmbeddingConfig添加is_incremental参数，详见[创表接口](table_creation_apis.md#embcacheembeddingbagconfig)。
+8.  差异卡加载功能不支持准入淘汰，同时开启将触发配置校验错误。
+9.  pipeline模式下，如果需要在训练过程中（即Dataset未迭代到末尾）执行保存，需要在保存前手动触发wait_pipeline_compute_swapinfo。
+    详细参考[保存加载用例](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_save_and_load.py)。
 
 **参数说明<a name="section888634319218"></a>**
 
@@ -68,6 +67,7 @@ class Saver:
 |rank|int|可选|当前进程在整个world_size中的rank。当torch分布式环境已初始化时，该参数为可选，此时将使用torch.distributed.get_rank()获取rank；否则该参数为必选。|
 |module|torch.nn.Module|必选|模型对象实例。模型（或子模型）需包含类型为EmbCacheShardedEmbeddingBagCollection/EmbCacheShardedEmbeddingCollection的模型实例，且深度不能超过500。使用多级缓存支持的创表接口/分表接口进行模型创建和模型分片时即满足要求。|
 |path|string|必选|保存/加载路径，长度取值范围：[1,1024]。<div><div>[!NOTICE]须知</div><div>保存/加载的路径中不能包含软连接和敏感字符（Key、password、privatekey），不能使用特殊路径（如/usr下的路径），且路径的权限不能高于750。</div></div>|
+|incremental|bool|可选|是否增量保存/加载。默认为False。增量保存/加载功能适用于pipeline训练模式下生成的增量数据，且需要创建表时在EmbCacheEmbeddingBagConfig/EmbCacheEmbeddingConfig添加is_incremental参数，详见[创表接口](table_creation_apis.md#embcacheembeddingbagconfig)。|
 
 
 **返回值说明<a name="section651195312311"></a>**
