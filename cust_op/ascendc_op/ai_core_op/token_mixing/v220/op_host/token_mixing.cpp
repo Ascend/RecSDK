@@ -210,7 +210,9 @@ public:
 
         this->AICore().SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910b");
+#ifdef SUPPORT_950
         this->AICore().AddConfig("ascend950");
+#endif
     }
 };
 

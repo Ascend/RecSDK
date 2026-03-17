@@ -71,6 +71,8 @@ fi
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
 sed -i 's:"customize":"jagged_to_padded_dense":g' CMakePresets.json
 
+sed -i "1i #define SUPPORT_950" ./op_host/jagged_to_padded_dense.cpp
+
 if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
     sed -i "1i #define SUPPORT_V200" ./op_kernel/jagged_to_padded_dense_kernel.h
 fi

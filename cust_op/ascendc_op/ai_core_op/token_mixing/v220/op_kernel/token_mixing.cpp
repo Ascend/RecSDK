@@ -193,7 +193,7 @@ private:
         Add(addTmpLocal, xLocal, xTLocal, bshLength_);
         // shape
         uint32_t meanShape[2] = {static_cast<uint32_t>(rowCount), 1};
-#ifdef SUPPORT_C310
+#ifdef SUPPORT_950
         uint32_t shape[2] = {static_cast<uint32_t>(rowCount), static_cast<uint32_t>(args->xDim2WithPadding)};
 #else
         uint32_t shape[2] = {static_cast<uint32_t>(rowCount), static_cast<uint32_t>(args->xDim2)};

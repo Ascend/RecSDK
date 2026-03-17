@@ -68,6 +68,8 @@ fi
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
 sed -i 's:"customize":"permute_pooled_embs":g' CMakePresets.json
 
+sed -i "1i #define SUPPORT_950" ./op_host/permute_pooled_embs.cpp
+
 line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`
 sed -i "${line}s/True/False/g" CMakePresets.json

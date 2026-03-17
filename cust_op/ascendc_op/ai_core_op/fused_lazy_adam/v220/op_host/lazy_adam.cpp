@@ -234,7 +234,9 @@ public:
         this->AICore().SetTiling(optiling::LazyAdamTilingFunc);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+#ifdef SUPPORT_950
         this->AICore().AddConfig("ascend950");
+#endif
     }
 };
 

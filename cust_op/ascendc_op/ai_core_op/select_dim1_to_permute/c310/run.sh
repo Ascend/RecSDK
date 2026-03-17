@@ -65,7 +65,7 @@ fi
 sed -i 's:"customize":"select_dim1_to_permute":g' CMakePresets.json
 
 # 添加C310编译选项
-sed -i "1i #define SUPPORT_C310" ./op_host/select_dim1_to_permute.cpp
+sed -i "1i #define SUPPORT_950" ./op_host/select_dim1_to_permute.cpp
 
 line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`

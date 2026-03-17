@@ -68,7 +68,8 @@ fi
 sed -i 's:"customize":"token_mixing":g' CMakePresets.json
 
 # 添加C310编译选项
-sed -i "1i #define SUPPORT_C310" ./op_kernel/token_mixing.cpp
+sed -i "1i #define SUPPORT_950" ./op_kernel/token_mixing.cpp
+sed -i "1i #define SUPPORT_950" ./op_host/token_mixing.cpp
 
 # 增加LOG_CPP编译选项支持错误日志打印
 sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt

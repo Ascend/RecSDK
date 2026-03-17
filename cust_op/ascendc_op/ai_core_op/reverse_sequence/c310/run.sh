@@ -65,6 +65,8 @@ sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
 sed -i 's:"customize":"reverse_sequence":g' CMakePresets.json
 
+sed -i "1i #define SUPPORT_950" ./op_host/reverse_sequence.cpp
+
 if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
     sed -i "1i #define SUPPORT_V200" ./op_kernel/reverse_sequence.cpp
     sed -i "1i #define SUPPORT_V200" ./op_host/reverse_sequence.cpp

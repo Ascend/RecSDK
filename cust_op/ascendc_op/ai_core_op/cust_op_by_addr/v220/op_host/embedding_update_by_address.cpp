@@ -208,7 +208,9 @@ namespace ops {
             this->AICore().AddConfig("ascend910b", aicConfig);
             this->AICore().AddConfig("ascend910", aicConfig);
             this->AICore().AddConfig("ascend910_93", aicConfig);
+#ifdef SUPPORT_950
             this->AICore().AddConfig("ascend950", aicConfig);
+#endif
         }
     };
     OP_ADD(EmbeddingUpdateByAddress);

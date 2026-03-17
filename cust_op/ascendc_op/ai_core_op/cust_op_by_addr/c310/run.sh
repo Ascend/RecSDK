@@ -67,6 +67,8 @@ fi
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
 sed -i 's:"customize":"cust_op_by_addr":g' CMakePresets.json
+sed -i "1i #define SUPPORT_950" ./op_host/embedding_update_by_address.cpp
+sed -i "1i #define SUPPORT_950" ./op_host/embedding_lookup_by_address.cpp
 
 bash build.sh
 

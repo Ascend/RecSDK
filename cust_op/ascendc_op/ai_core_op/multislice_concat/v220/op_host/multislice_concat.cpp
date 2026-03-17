@@ -234,8 +234,10 @@ public:
         this->SetInferShape(ge::InferShape);
         this->SetInferDataType(ge::InferDataType);
         this->AICore().SetTiling(optiling::TilingFunc);
-        this->AICore().AddConfig("ascend950");
         this->AICore().AddConfig("ascend910b");
+#ifdef SUPPORT_950
+        this->AICore().AddConfig("ascend950");
+#endif
     }
 };
 
