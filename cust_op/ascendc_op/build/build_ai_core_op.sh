@@ -64,6 +64,7 @@ declare -A OP_PLUGIN_MAP=(
   ["ln_mul"]="ln_mul"
   ["multislice_concat"]="multislice_concat"
   ["norm_multiply_dropout"]="norm_multiply_dropout"
+  ["offsets_range"]="offsets_range"
   ["permute_pooled_embs"]="permute_pooled_embs"
   ["permute2d_sparse_data"]="permute1d_sparse_data permute2d_sparse_data"
   ["relative_attn_bias_backward"]="relative_attn_bias"
