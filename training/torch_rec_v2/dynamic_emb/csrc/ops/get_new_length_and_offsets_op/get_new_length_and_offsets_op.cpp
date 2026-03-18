@@ -29,6 +29,22 @@
         }                                   \
     } while (0)
 
+constexpr int32_t DATA_ALIGNED_BYTES = 32;
+
+template <typename T>
+__aicore__ inline void CpGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T>& gt, int32_t numElements)
+{
+    uint32_t alignLen = numElements * sizeof(T) / DATA_ALIGNED_BYTES * DATA_ALIGNED_BYTES;
+    uint32_t unAlignLen = numElements * sizeof(T) - alignLen;
+    uint32_t alignDataCount = alignLen / sizeof(T);
+    DataCopy(lt, gt, alignDataCount);
+    if (unAlignLen > 0) {
+        const DataCopyExtParams dataCopyExtParams{1, unAlignLen, 0, 0, 0};
+        const DataCopyPadExtParams<T> dataCopyPadExtParams{false, 0, 0, 0};
+        DataCopyPad(lt[alignDataCount], gt[alignDataCount], dataCopyExtParams, dataCopyPadExtParams);
+    }
+}
+
 extern "C" __global__ __aicore__ void get_new_length_and_offsets_op(GM_ADDR dUniqueOffsets,
                                                                     GM_ADDR dTableOffsetsInFeature, GM_ADDR newOffsets,
                                                                     GM_ADDR newLenghths, int tableNum,
@@ -44,9 +60,69 @@ extern "C" __global__ __aicore__ void get_new_length_and_offsets_op(GM_ADDR dUni
         __gm__ DTYPE_X* newOffsetsGm = reinterpret_cast<__gm__ DTYPE_X*>(newOffsets);
         __gm__ DTYPE_X* newLengthsGm = reinterpret_cast<__gm__ DTYPE_X*>(newLenghths);
 
-        Simt::VF_CALL<GetNewLengthAndOffsetsKernel<DTYPE_X>>(Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, dUniqueOffsetsGm,
-                                                             dTableOffsetsInFeatureGm, newOffsetsGm, newLengthsGm,
-                                                             tableNum, newLengthsSize, localBatchSize);
+        uint32_t calCount = tableNum + 1;
+        // 使用UB缓存
+        TPipe pipe;
+        TBuf<TPosition::VECCALC> sharedMem;
+        pipe.InitBuffer(sharedMem, calCount * sizeof(uint64_t));
+        LocalTensor<uint64_t> sharedTensor = sharedMem.Get<uint64_t>();
+        GlobalTensor<uint64_t> dUniqueOffsetsGT;
+        dUniqueOffsetsGT.SetGlobalBuffer(dUniqueOffsetsGm, (calCount) * sizeof(uint64_t));
+
+        CpGm2Local(sharedTensor, dUniqueOffsetsGT, calCount);
+
+        __ubuf__ uint64_t* dUniqueOffsetsUB = reinterpret_cast<__ubuf__ uint64_t*>(sharedTensor.GetPhyAddr());
+
+        // 使用UB缓存
+        TBuf<TPosition::VECCALC> sharedMem2;
+        pipe.InitBuffer(sharedMem2, calCount * sizeof(int64_t));
+        LocalTensor<int64_t> sharedTensor2 = sharedMem2.Get<int64_t>();
+        GlobalTensor<int64_t> dTableOffsetsInFeatureGT;
+        dTableOffsetsInFeatureGT.SetGlobalBuffer(dTableOffsetsInFeatureGm, (calCount) * sizeof(int64_t));
+
+        CpGm2Local(sharedTensor2, dTableOffsetsInFeatureGT, calCount);
+
+        __ubuf__ int64_t* dTableOffsetsInFeatureUB = reinterpret_cast<__ubuf__ int64_t*>(sharedTensor2.GetPhyAddr());
+
+        __ubuf__ uint64_t* tableBucketsMagicShifts = nullptr;
+
+        // 主动触发一次get 保证后续访问sharedTensor和sharedTensor2时数据已经在UB中
+        sharedTensor.GetValue(0);
+        sharedTensor2.GetValue(0);
+
+        bool useQuickDivide = tableNum < MAX_TABLE_NUM_USE_QUICK_DIVIDE;
+        if (useQuickDivide) {
+            // 使用UB缓存
+            TBuf<TPosition::VECCALC> sharedMem3;
+            pipe.InitBuffer(sharedMem3, (tableNum) * 2 * sizeof(uint64_t));
+            LocalTensor<uint64_t> sharedTensor3 = sharedMem3.Get<uint64_t>();
+            tableBucketsMagicShifts = reinterpret_cast<__ubuf__ uint64_t*>(sharedTensor3.GetPhyAddr());
+        }
+        // 计算快除法的magic number和shift，按table预计算
+        for (int tableId = 0; useQuickDivide && tableId < tableNum; ++tableId) {
+            int64_t table_feature_count = dTableOffsetsInFeatureUB[tableId + 1] - dTableOffsetsInFeatureUB[tableId];
+            int64_t table_buckets = table_feature_count * localBatchSize;
+            uint64_t unique_num = dUniqueOffsetsUB[tableId + 1] - dUniqueOffsetsUB[tableId];
+            if (table_buckets == 1) {
+                useQuickDivide = false;
+                break;
+            }
+            uint64_t magic = 0;
+            uint64_t shift = 0;
+            GetUintDivMagicAndShift(magic, shift, static_cast<uint64_t>(table_buckets));
+            tableBucketsMagicShifts[tableId * 2] = magic;
+            tableBucketsMagicShifts[tableId * 2 + 1] = shift - 1;
+        }
+
+        if (useQuickDivide) {
+            Simt::VF_CALL<GetNewLengthAndOffsetsKernel<DTYPE_X, true>>(
+                Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, dUniqueOffsetsUB, dTableOffsetsInFeatureUB,
+                tableBucketsMagicShifts, newOffsetsGm, newLengthsGm, tableNum, newLengthsSize, localBatchSize);
+        } else {
+            Simt::VF_CALL<GetNewLengthAndOffsetsKernel<DTYPE_X, false>>(
+                Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, dUniqueOffsetsUB, dTableOffsetsInFeatureUB,
+                tableBucketsMagicShifts, newOffsetsGm, newLengthsGm, tableNum, newLengthsSize, localBatchSize);
+        }
 
         SyncAll();
     });
