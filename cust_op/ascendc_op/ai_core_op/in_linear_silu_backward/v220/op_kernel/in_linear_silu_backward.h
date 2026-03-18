@@ -307,10 +307,12 @@ public:
             queOut.template FreeTensor(dstLt);
             tmpBuff.template FreeTensor(tmpLt);
         }
-        Wait_V_MTE3();
-        AscendC::SetAtomicAdd<float>();
-        DataCopy(biasGradGt[taskInfo.kOffset], biasLt, taskInfo.computeKSeqLen);
-        AscendC::SetAtomicNone();
+        if (enableBias) {
+            Wait_V_MTE3();
+            AscendC::SetAtomicAdd<float>();
+            DataCopy(biasGradGt[taskInfo.kOffset], biasLt, taskInfo.computeKSeqLen);
+            AscendC::SetAtomicNone();
+        }
         transOut.template FreeTensor(biasLt);
     }
 
