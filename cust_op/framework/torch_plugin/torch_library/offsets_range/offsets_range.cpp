@@ -25,7 +25,7 @@ constexpr int64_t MAX_OFFSETS_LEN = 1LL << 17;
 constexpr int64_t MAX_RANGE_SIZE = 1LL << 32;
 
 // 为NPU设备注册前向实现
-at::Tensor offsets_range_impl_npu(const at::Tensor& offsets, const int64_t& range_size)
+at::Tensor offsets_range_impl_npu(const at::Tensor& offsets, int64_t range_size)
 {
     check_tensor_non_empty(offsets, "offsets");
 
