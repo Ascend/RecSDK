@@ -89,13 +89,11 @@ static bool rangeCheck(gert::TilingContext* context,
     int64_t qDim = split_arg_list[2];
     int64_t kDim = split_arg_list[3];
     int64_t totalDim = uDim + vDim + qDim + kDim;
-    OPS_LOG_E_IF(uDim != vDim || qDim != kDim, context, return ge::GRAPH_FAILED,
-        "[ERROR]InLinearSilu uv or qk must be same dim!");
-    OPS_LOG_E_IF(dim < MIN_X_DIM || dim > MAX_X_DIM, context, return ge::GRAPH_FAILED,
+    OPS_LOG_E_IF(dim < MIN_X_DIM || dim > MAX_X_DIM, context, return false,
         "[ERROR]InLinearSilu normed_x dim should be in range[%d, %d]!", MIN_X_DIM, MAX_X_DIM);
-    OPS_LOG_E_IF(hiddenSize < MIN_W_DIM || hiddenSize > MAX_W_DIM, context, return ge::GRAPH_FAILED,
+    OPS_LOG_E_IF(hiddenSize < MIN_W_DIM || hiddenSize > MAX_W_DIM, context, return false,
         "[ERROR]InLinearSilu weight hiddenSize should be in range[%d, %d]!", MIN_W_DIM, MAX_W_DIM);
-    OPS_LOG_E_IF(hiddenSize != totalDim, context, return ge::GRAPH_FAILED,
+    OPS_LOG_E_IF(hiddenSize != totalDim, context, return false,
         "[ERROR]InLinearSilu hiddenSize should equal to sum(split_arg_list)!");
     return true;
 }
@@ -162,7 +160,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     
     uint32_t hiddenSize = wShape.GetDim(0);
     // 有效范围校验
-    rangeCheck(context, seqLen, embedDim, hiddenSize, data);
+    if (!rangeCheck(context, seqLen, embedDim, hiddenSize, data)) {
+        return ge::GRAPH_FAILED;
+    }
 
     auto biasTensor = context->GetOptionalInputTensor(INPUT_INDEX_T::BIAS_INDEX);
     if (biasTensor == nullptr) {
