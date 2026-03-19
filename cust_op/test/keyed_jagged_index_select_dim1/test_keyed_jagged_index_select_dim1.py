@@ -106,7 +106,7 @@ def init_tensor(types, batch_num, batch_size, output_batch_size, boolean_items):
 
 @pytest.mark.parametrize("types", TYPE_LIST)
 @pytest.mark.parametrize("batch_num", [1, 8, 64, 100])
-@pytest.mark.parametrize("batch_size", [2, 8, 64, 256])
+@pytest.mark.parametrize("batch_size", [1, 8, 64, 256])
 @pytest.mark.parametrize("output_batch_size", [2, 8, 64, 256])
 @pytest.mark.parametrize("boolean_items", BOOLEAN_LIST)
 def test_keyed_jagged_index_select_dim1(types, batch_num, batch_size, output_batch_size, boolean_items):
@@ -155,3 +155,21 @@ def test_keyed_jagged_index_select_dim1_tpye_list_1(types, batch_num, batch_size
     assert torch.allclose(golden[0], result[1], atol=1e-5)
     assert torch.allclose(golden[1], result[0], atol=1e-5)
     assert torch.allclose(golden_weights[1], result[2], atol=1e-5)
+
+
+@pytest.mark.parametrize("types", TYPE_LIST_1)
+@pytest.mark.parametrize("batch_num", [0, 2])
+@pytest.mark.parametrize("batch_size", [2])
+@pytest.mark.parametrize("output_batch_size", [0, 2])
+@pytest.mark.parametrize("boolean_items", BOOLEAN_LIST)
+def test_keyed_jagged_index_select_dim1_error(types, batch_num, batch_size, output_batch_size, boolean_items):
+    """
+    测试空tensor
+    """
+    if (batch_num != 0 and batch_size != 0 and output_batch_size != 0):
+        return
+    params, is_mxrec = init_tensor(types, batch_num, batch_size, output_batch_size, boolean_items)
+    with pytest.raises(Exception):
+        result = get_result(params, is_mxrec)
+        assert result is None
+    
