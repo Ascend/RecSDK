@@ -1,0 +1,58 @@
+[
+    {
+        "op": "InitAddressLookup",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "buffer_offsets",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int64",
+                    "int64"
+                ]
+            },
+            {
+                "name": "emb_sizes",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int64",
+                    "int32"
+                ]
+            },
+            {
+                "name": "address_lookups",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int64",
+                    "int32"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "address_lookups_out",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "int64",
+                    "int32"
+                ]
+            }
+        ]
+    }
+]
