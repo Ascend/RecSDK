@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 
 #include "kernel_common_utils.h"
 #include "kernel_operator.h"
+#include "simt_api/asc_simt.h"
 
 namespace SelectDim1ToPermute {
 
@@ -26,14 +27,39 @@ using namespace AscendC;
 constexpr int USE_QUEUE_NUM = 2;
 constexpr int USE_BUFFER_NUM = 2;
 constexpr int INT32_ALIGNMENT = 8;
+constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
 struct Args {
     GM_ADDR indices;
+    GM_ADDR lengths;
     GM_ADDR permute;
+    GM_ADDR outputLengths;
     GM_ADDR workspace;
     GM_ADDR tiling;
 };
 
-template <typename indicesDType>
+/**
+ * @brief 对input按照indices进行选择，同时将indices加上offset后写入permute
+ * @param input [in] 输入张量
+ * @param indices [in] 索引张量
+ * @param output [out] 输出张量
+ * @param permute [out] 索引偏移后的输出张量
+ * @param indicesSize 索引张量大小
+ * @param offset 偏移量
+ */
+template <typename indicesDType, typename lengthsDType>
+__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void IndexSelectSimt(
+    __local_mem__ lengthsDType* input, __local_mem__ indicesDType* indices, __gm__ lengthsDType volatile* output,
+    __gm__ indicesDType volatile* permute, int64_t indicesSize, int64_t offset)
+{
+    auto threadNum = AscendC::Simt::GetThreadNum<0>();
+    auto threadIdx = AscendC::Simt::GetThreadIdx<0>();
+    for (int64_t i = threadIdx; i < indicesSize; i += threadNum) {
+        output[i] = input[indices[i]];
+        permute[i] = indices[i] + offset;
+    }
+}
+
+template <typename indicesDType, typename lengthsDType>
 class SelectDim1ToPermuteKernel {
 public:
     __aicore__ inline SelectDim1ToPermuteKernel(Args& args, TPipe* pipePtr)
@@ -45,10 +71,13 @@ public:
         if (coreIdx < tailSplitIndex) {
             loopCount = splitBaseLen + 1;
             offsetOfThisCore = coreIdx * loopCount * indicesLength;
+            lengthsOffsetOfThisCore = coreIdx * loopCount * batchSize;
         } else {
             loopCount = splitBaseLen;
             offsetOfThisCore = tailSplitIndex * (splitBaseLen + 1) * indicesLength +
                                (coreIdx - tailSplitIndex) * splitBaseLen * indicesLength;
+            lengthsOffsetOfThisCore =
+                tailSplitIndex * (splitBaseLen + 1) * batchSize + (coreIdx - tailSplitIndex) * splitBaseLen * batchSize;
         }
         baseTableIdx = offsetOfThisCore;
         baseAddValue = static_cast<indicesDType>((offsetOfThisCore / indicesLength) * batchSize);
@@ -63,13 +92,12 @@ public:
 private:
     __aicore__ inline void InitTilingParams(const SelectDim1ToPermuteTilingData& tilingData)
     {
+        lengthsSize = tilingData.lengthsSize;
         batchSize = tilingData.batchSize;
         batchNum = tilingData.batchNum;
         indicesLength = tilingData.indicesLength;
-        indicesLengthWithPadding = tilingData.indicesLengthWithPadding;
         splitBaseLen = tilingData.splitBaseLen;
         tailSplitIndex = tilingData.tailSplitIndex;
-        ubCanUsed = tilingData.ubCanUsed;
         blockLen = tilingData.blockLen;
     }
 
@@ -77,37 +105,42 @@ private:
     {
         indicesGT.SetGlobalBuffer(reinterpret_cast<__gm__ indicesDType*>(args.indices),
                                   indicesLength * sizeof(indicesDType));
+        lengthsGT.SetGlobalBuffer(reinterpret_cast<__gm__ lengthsDType*>(args.lengths),
+                                  lengthsSize * sizeof(lengthsDType));
         permuteGT.SetGlobalBuffer(reinterpret_cast<__gm__ indicesDType*>(args.permute),
                                   indicesLength * batchNum * sizeof(indicesDType));
+        outputLengthsGT.SetGlobalBuffer(reinterpret_cast<__gm__ lengthsDType*>(args.outputLengths),
+                                        indicesLength * batchNum * sizeof(lengthsDType));
         pipe = pipePtr;
         pipe->InitBuffer(indicesQueue, USE_QUEUE_NUM, blockLen * sizeof(indicesDType));
-        pipe->InitBuffer(permuteQueue, USE_QUEUE_NUM, blockLen * sizeof(indicesDType));
+        pipe->InitBuffer(lengthsQueue, USE_QUEUE_NUM, batchSize * sizeof(lengthsDType));
     }
 
-    __aicore__ inline void CopyIn(int64_t offset, int64_t len)
+    __aicore__ inline void CopyIn(int32_t i, int64_t offset, int64_t len)
     {
         LocalTensor<indicesDType> indicesLocal = indicesQueue.AllocTensor<indicesDType>();
+        LocalTensor<lengthsDType> lengthsLocal = lengthsQueue.AllocTensor<lengthsDType>();
         CpGm2Local<indicesDType>(indicesLocal, indicesGT[offset], len);
+        CpGm2Local<lengthsDType>(lengthsLocal, lengthsGT[lengthsOffsetOfThisCore + i * batchSize], batchSize);
         AscendC::PipeBarrier<PIPE_ALL>();
         indicesQueue.EnQue(indicesLocal);
+        lengthsQueue.EnQue(lengthsLocal);
     }
 
     __aicore__ inline void Compute(int32_t i, int64_t tableIdx, int64_t offset, int64_t len)
     {
         LocalTensor<indicesDType> indicesLocal = indicesQueue.DeQue<indicesDType>();
-        LocalTensor<indicesDType> permuteLocal = permuteQueue.AllocTensor<indicesDType>();
-        AscendC::Adds(permuteLocal, indicesLocal, baseAddValue + static_cast<indicesDType>(i * batchSize),
-                      static_cast<int32_t>(len));
-        AscendC::PipeBarrier<PIPE_V>();
-        permuteQueue.EnQue<indicesDType>(permuteLocal);
+        LocalTensor<lengthsDType> lengthsLocal = lengthsQueue.DeQue<lengthsDType>();
+        __local_mem__ indicesDType* indicesPtr = (__local_mem__ indicesDType*)indicesLocal.GetPhyAddr();
+        __local_mem__ lengthsDType* lengthsPtr = (__local_mem__ lengthsDType*)lengthsLocal.GetPhyAddr();
+        __gm__ lengthsDType* outputLengthsPtr = (__gm__ lengthsDType*)outputLengthsGT[tableIdx + offset].GetPhyAddr();
+        __gm__ indicesDType* permutePtr = (__gm__ indicesDType*)permuteGT[tableIdx + offset].GetPhyAddr();
+        int64_t permuteOffset = baseAddValue + static_cast<indicesDType>(i * batchSize);
+        uint32_t threadNum = len > MAX_THREADS_PER_BLOCK ? MAX_THREADS_PER_BLOCK : len;
+        asc_vf_call<IndexSelectSimt<indicesDType, lengthsDType>>(dim3{threadNum, 1, 1}, lengthsPtr, indicesPtr,
+                                                                 outputLengthsPtr, permutePtr, len, permuteOffset);
         indicesQueue.FreeTensor(indicesLocal);
-    }
-
-    __aicore__ inline void CopyOut(int32_t i, int64_t tableIdx, int64_t offset, int64_t len)
-    {
-        LocalTensor<indicesDType> permuteLocal = permuteQueue.DeQue<indicesDType>();
-        CpLocal2Gm<indicesDType>(permuteGT[tableIdx + offset], permuteLocal, len);
-        permuteQueue.FreeTensor(permuteLocal);
+        lengthsQueue.FreeTensor(lengthsLocal);
     }
 
     __aicore__ inline void ProcessTables(Args& args)
@@ -118,23 +151,23 @@ private:
             while (offset < indicesLength) {
                 int64_t remain = indicesLength - offset;
                 int64_t len = remain < blockLen ? remain : blockLen;
-                CopyIn(offset, len);
+                CopyIn(i, offset, len);
                 Compute(i, tableIdx, offset, len);
-                CopyOut(i, tableIdx, offset, len);
                 offset += blockLen;
             }
         }
     }
 
     GlobalTensor<indicesDType> indicesGT;
+    GlobalTensor<lengthsDType> lengthsGT;
     GlobalTensor<indicesDType> permuteGT;
+    GlobalTensor<lengthsDType> outputLengthsGT;
+    int64_t lengthsSize;
     int64_t batchSize;
     int64_t indicesLength;
-    int64_t indicesLengthWithPadding;
     int64_t batchNum;
     int32_t splitBaseLen;
     int64_t tailSplitIndex;
-    int64_t ubCanUsed;
     int64_t blockLen;
 
     // ThisCoreLen for T
@@ -142,11 +175,13 @@ private:
     int64_t loopCount = 0;
     int64_t baseTableIdx = 0;
     indicesDType baseAddValue = 0;
+    // lengths
+    int64_t lengthsOffsetOfThisCore = 0;
 
     // Tpipe;
     TPipe* pipe;
     TQue<TPosition::VECIN, 1> indicesQueue;
-    TQue<TPosition::VECOUT, 1> permuteQueue;
+    TQue<TPosition::VECIN, 1> lengthsQueue;
 };
 
 }  // namespace SelectDim1ToPermute

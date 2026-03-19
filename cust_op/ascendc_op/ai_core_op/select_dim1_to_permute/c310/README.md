@@ -5,13 +5,12 @@
 # 产品支持情况
 | 硬件型号              | 是否支持                  |
 | -------------------- | ------------------------ |
-| Atlas A2训练系列产品  | 是  |
 | Atlas A5训练系列产品    | 是  |
 
 # select_dim1_to_permute算子目录层级
 ```shell
 -- select_dim1_to_permute
-   |-- v220
+   |-- c310
       |-- op_host                 # 算子host侧实现
       |-- op_kernel               # 算子kernel侧实现
       |-- select_dim1_to_permute.json   # 算子原型配置
@@ -21,7 +20,8 @@
 
 # 功能
 
-将元素个数为batch_size的select_dim1 通过attr属性扩展到多个batch_num（lengthsSize / batchSize），生成permute。
+将元素个数为batch_size的select_dim1 通过attr属性扩展到多个batch_num（lengthsSize / batchSize），生成permute,
+同时根据select_dim1中的元素值，将permute中的元素值对应到lengths中的元素值。
 
 
 # 算子实现原理
@@ -39,6 +39,10 @@
 ```python
 # 表示每个batch中取下标为 1, 0, 4, 2的元素
 indices = [1, 0, 4, 2]
+lengths = [1, 2, 3, 4, 5,
+           6, 7, 8, 9, 10,
+           11, 12, 13, 14, 15,
+           16, 17, 18, 19, 20]
 # 表示一个batch有5个元素
 batchSize = 5
 # 表示整个有20个元素
@@ -46,22 +50,27 @@ lengthsSize = 20
 ```
 输出:
 ```python
-#返回每个batch的具体下标
+# 返回每个batch的具体下标
 permute = [1, 0, 4, 2,
            6, 5, 9, 7,
            11, 10, 14, 12,
-           16, 15, 19, 17]  
+           16, 15, 19, 17]
+# 返回lengths[permute[idx]] (i >= 0, i < lengthsSize)
+outputlengths = [2, 1, 5, 3,
+                 7, 6, 10, 8,
+                 12, 11, 15, 13,
+                 18, 17, 20, 19]
 ```
 # 算子输入与输出
 | 名称      | 输入/输出 | 参数类型 | 数据类型         | 数据格式       | 范围         | 说明                                  |
 |---------|------------|------|--------------|------------|------------|----------------------------------------|
 |indices  | 输入       | Tensor | int32/int64 | ND | [B, ] | |
+|lengths  | 输入       | Tensor | int32/int64 | ND | [B, ] | |
 |batchSize| 输入(属性) | Int | int |  |  |
 |lengthsSize | 输入(属性) | Int | int |  | | lengthsSize是batchSize的整数倍 |
 |permute | 输出 | Tensor | int32/int64 | ND | [B * n, ] | n = (lengthsSize / batchSize) |
+|outputlengths | 输出 | Tensor | int32/int64 | ND | [B * n, ] | n = (lengthsSize / batchSize) |
 
-说明：
-1. v220版本，select_dim1_to_permute算子的indices dtype只支持int32，不支持int64
 
 # 算子编译部署
 

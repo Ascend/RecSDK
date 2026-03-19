@@ -19,10 +19,9 @@ See the License for the specific language governing permissions and
 
 namespace optiling {
 BEGIN_TILING_DATA_DEF(SelectDim1ToPermuteTilingData)
+TILING_DATA_FIELD_DEF(int64_t, lengthsSize);
 TILING_DATA_FIELD_DEF(int64_t, batchSize);
-TILING_DATA_FIELD_DEF(uint64_t, ubCanUsed);
 TILING_DATA_FIELD_DEF(int64_t, indicesLength);
-TILING_DATA_FIELD_DEF(int64_t, indicesLengthWithPadding);
 TILING_DATA_FIELD_DEF(int64_t, batchNum);
 TILING_DATA_FIELD_DEF(int64_t, splitBaseLen);
 TILING_DATA_FIELD_DEF(int64_t, tailSplitIndex);

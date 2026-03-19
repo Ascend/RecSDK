@@ -40,9 +40,9 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./select_dim1_to_permute
-msopgen gen -i ../v220/select_dim1_to_permute.json -f tf -c ${ai_core} -lan cpp -out ./select_dim1_to_permute -m 0 -op SelectDim1ToPermute
-cp -rf ../v220/op_kernel select_dim1_to_permute/
-cp -rf ../v220/op_host select_dim1_to_permute/
+msopgen gen -i select_dim1_to_permute.json -f tf -c ${ai_core} -lan cpp -out ./select_dim1_to_permute -m 0 -op SelectDim1ToPermute
+cp -rf op_kernel select_dim1_to_permute/
+cp -rf op_host select_dim1_to_permute/
 cp ../../common/kernel_common_utils.h select_dim1_to_permute/op_kernel
 cd select_dim1_to_permute
 
@@ -63,9 +63,6 @@ fi
 # vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
 # vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
 sed -i 's:"customize":"select_dim1_to_permute":g' CMakePresets.json
-
-# 添加C310编译选项
-sed -i "1i #define SUPPORT_950" ./op_host/select_dim1_to_permute.cpp
 
 line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
 line=`expr ${line} + 2`
