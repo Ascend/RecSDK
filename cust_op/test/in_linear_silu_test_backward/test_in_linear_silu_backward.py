@@ -121,7 +121,7 @@ def get_data(total_seqs, embeddim_dim, hidden_size, enable_bias, data_type, is_d
         weight, bias, linear_output, split_args
 
 
-def excute(total_seqs, dim, enable_bias, data_type, is_diff_dim):
+def execute(total_seqs, dim, enable_bias, data_type, is_diff_dim):
     if dim[0] <= 32 and is_diff_dim:
         return
     u_grad, v_grad, q_grad, k_grad, x, weight, bias, linear_output, split_args = get_data(total_seqs,
@@ -154,13 +154,13 @@ def excute(total_seqs, dim, enable_bias, data_type, is_diff_dim):
 
 
 @pytest.mark.parametrize("total_seqs", [1, 1123, 2048, 3201, 7687, 20480])
-@pytest.mark.parametrize("dim", [(16, 128), (64, 512), (128, 2048), (768, 768 * 4)])
+@pytest.mark.parametrize("dim", [(16, 128), (64, 512), (240, 960), (128, 2048), (768, 768 * 4)])
 @pytest.mark.parametrize("enable_bias", [True, False])
 @pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("is_diff_dim", [False, True])
 def test_in_linear_silu_backward(total_seqs, dim, enable_bias, data_type, is_diff_dim):
     set_seed(0)
-    excute(total_seqs, dim, enable_bias, data_type, is_diff_dim)
+    execute(total_seqs, dim, enable_bias, data_type, is_diff_dim)
 
 
 @pytest.mark.parametrize("total_seqs", [511, 2048])
@@ -170,7 +170,7 @@ def test_in_linear_silu_backward(total_seqs, dim, enable_bias, data_type, is_dif
 @pytest.mark.parametrize("is_diff_dim", [False])
 def test_in_linear_silu_backward_large(total_seqs, dim, enable_bias, data_type, is_diff_dim):
     set_seed(0)
-    excute(total_seqs, dim, enable_bias, data_type, is_diff_dim)
+    execute(total_seqs, dim, enable_bias, data_type, is_diff_dim)
 
 
 @pytest.mark.parametrize("invalid_case", [
@@ -266,7 +266,7 @@ def test_in_linear_silu_backward_invalid_dtype(total_seqs, dim, enable_bias, dat
 
 if __name__ == "__main__":
     set_seed(0)
-    test_in_linear_silu_backward_large(total_seqs=3201,
+    test_in_linear_silu_backward_large(total_seqs=2048,
                                  dim=(192, 768),
                                  enable_bias=True,
                                  data_type=torch.float32,
