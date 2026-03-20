@@ -62,13 +62,11 @@ static bool TilingKeySetImpl(gert::TilingContext* context, InLinearSiluBackwardT
     return true;
 }
 
-static ge::graphStatus GetBlockMN(gert::TilingContext* context, uint32_t hiddenSize)
+static uint32_t GetBlockK(gert::TilingContext* context, uint32_t hiddenSize)
 {
-    uint32_t embedDim = hiddenSize / 4;
+    uint32_t embedDim = hiddenSize / SPLIT_ARG_LIST_SIZE;
     if (hiddenSize <= MAX_BLOCK_DIM) {
         return hiddenSize;
-    } else if (embedDim <= MAX_BLOCK_DIM) {
-        return embedDim;
     } else {
         uint32_t blockK = MAX_BLOCK_DIM;
         while (blockK >= MIN_X_DIM) {
@@ -81,7 +79,7 @@ static ge::graphStatus GetBlockMN(gert::TilingContext* context, uint32_t hiddenS
     }
 }
 
-static bool rangeCheck(gert::TilingContext* context,
+static bool RangeCheck(gert::TilingContext* context,
                        int64_t seqLen, int64_t dim, int64_t hiddenSize, const int64_t *split_arg_list)
 {
     int64_t uDim = split_arg_list[0];
@@ -160,7 +158,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     
     uint32_t hiddenSize = wShape.GetDim(0);
     // 有效范围校验
-    if (!rangeCheck(context, seqLen, embedDim, hiddenSize, data)) {
+    if (!RangeCheck(context, seqLen, embedDim, hiddenSize, data)) {
         return ge::GRAPH_FAILED;
     }
 
@@ -170,7 +168,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     } else {
         tiling.set_enableBias(1);
     }
-    auto blockK = GetBlockMN(context, hiddenSize);
+    uint32_t blockK = GetBlockK(context, hiddenSize);
     tiling.set_embedDim(embedDim);
     tiling.set_hiddenSize(hiddenSize);
     tiling.set_seqLen(seqLen);
