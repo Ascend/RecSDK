@@ -99,6 +99,7 @@ struct JaggedTaskInfoColMajor {
     int64_t gOffset;   // 基本块gv乘法的左矩阵内存偏移
     int64_t vOffset;   // 基本块gv乘法的右矩阵内存偏移
     uint32_t rowLine;  // 基本块需要计算的行数
+    uint32_t qHeadId;
 
     __aicore__ inline const uint32_t GetTaskId()
     {
@@ -136,7 +137,7 @@ struct JaggedTaskInfoColMajor {
 
     __aicore__ inline const uint32_t GetHeadId()
     {
-        return colBlockPtr->headId;
+        return qHeadId;
     }
 
     __aicore__ inline const uint32_t GetRowId()
@@ -211,7 +212,6 @@ public:
         headNumQ_ = backwardTilingData_->headNumQ;
         headNumK_ = backwardTilingData_->headNumK;
         headRatio_ = backwardTilingData_->headRatio;
-        isGqa_ = headNumQ_ > headNumK_;
     }
 
     __aicore__ inline void InitAttrInfo(Args& args)
@@ -272,8 +272,8 @@ public:
         qAccumKernel_.Init(&pipe, &baseShape, mm_mgmt_->qGradAccumTemp_, mm_mgmt_->qGrad_, seqOffsetsQGt_,
                            GetBlockNum() * VCORE_NUM_IN_ONE_AIC);
         // Trans初始化
-        transKernelK_.Init(&pipe, headNumK_, headDimQK_, isGqa_);
-        transKernelV_.Init(&pipe, headNumK_, headDimV_, isGqa_);
+        transKernelK_.Init(&pipe, headNumK_, headDimQK_);
+        transKernelV_.Init(&pipe, headNumK_, headDimV_);
         // VectorScore初始化
         VectorScoreAttrs vectorScoreAttrs = {siluScale_, alpha_, enableBias_, maskType_};
         VectorScoreGtInfo<qType> vectorScoreGtInfo = {mm_mgmt_->qkTemp_, mm_mgmt_->gvTemp_, maskGt_, biasGt_,
@@ -289,8 +289,8 @@ public:
         int64_t bxn = this->batchSize_ * headNumQ_;
         auto coreNum = backwardTilingData_->aivNum;
 
-        auto taskAssigner =
-            BlockTaskAssign(seqOffsetsQGt_, seqOffsetsKGt_, coreNum, blockHeightQ, batchSize_, headNumQ_);
+        auto taskAssigner = BlockTaskAssign(seqOffsetsQGt_, seqOffsetsKGt_, coreNum, blockHeightQ, batchSize_,
+                                            headNumQ_, headNumK_, headRatio_);
         int colBlock[2] = {0};
 
         taskAssigner.ComputeCausal(colBlock, blockId, true);
@@ -317,7 +317,7 @@ public:
             curSeqLenK = nextOffsetK - offsetK;
             offsetQ = nextOffsetQ;
             offsetK = nextOffsetK;
-            auto curBatchBlock = headNumQ_ * CeilDiv(curSeqLenK, blockHeightK);
+            auto curBatchBlock = headNumK_ * CeilDiv(curSeqLenK, blockHeightK);
             if (curBatchStartBlock + curBatchBlock > startBlock) {
                 break;
             }
@@ -329,7 +329,7 @@ public:
         uint32_t curBlkLenQ = CeilDiv(curSeqLenQ, blockHeightQ);
         uint32_t curBlkLenK = CeilDiv(curSeqLenK, blockHeightK);
 
-        uint32_t headId = curBlockIdInBatch / curBlkLenK;
+        uint32_t headId = curBlockIdInBatch / curBlkLenK * headRatio_;
 
         uint32_t colId = curBlockIdInBatch % curBlkLenK;
         uint32_t colLine = curSeqLenK - colId * blockHeightK;
@@ -354,7 +354,7 @@ public:
         colId += 1;
         if (colId == curBlkLenK) {
             colId = 0;
-            headId += 1;
+            headId += headRatio_;
         }
 
         if (headId == headNumQ_) {
@@ -377,7 +377,8 @@ public:
         return colBaseInfo;
     }
 
-    __aicore__ inline void InitTaskInfoCalcBaseOffsetsJagged(int64_t taskId, uint32_t rowId, ColLineBaseInfo& colInfo)
+    __aicore__ inline void InitTaskInfoCalcBaseOffsetsJagged(int64_t taskId, uint32_t rowId, ColLineBaseInfo& colInfo,
+                                                             uint32_t qHeadId)
     {
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         computeTaskInfo_[curTaskId].taskId = taskId;
@@ -385,10 +386,10 @@ public:
         computeTaskInfo_[curTaskId].colBlockPtr = &colInfo;
         uint32_t offsetQ = seqOffsetsQGt_.GetValue(colInfo.batchId);
         uint32_t offsetK = seqOffsetsKGt_.GetValue(colInfo.batchId);
-        uint32_t kHeadId = colInfo.headId / headRatio_;
+        uint32_t kHeadId = qHeadId / headRatio_;
 
-        computeTaskInfo_[curTaskId].gOffset = gLayout_(MakeCoord(offsetQ + rowId * blockHeightQ, colInfo.headId, 0));
-        computeTaskInfo_[curTaskId].qOffset = qLayout_(MakeCoord(offsetQ + rowId * blockHeightQ, colInfo.headId, 0));
+        computeTaskInfo_[curTaskId].gOffset = gLayout_(MakeCoord(offsetQ + rowId * blockHeightQ, qHeadId, 0));
+        computeTaskInfo_[curTaskId].qOffset = qLayout_(MakeCoord(offsetQ + rowId * blockHeightQ, qHeadId, 0));
         computeTaskInfo_[curTaskId].kOffset = kLayout_(MakeCoord(offsetK + colInfo.colId * blockHeightK, kHeadId, 0));
         computeTaskInfo_[curTaskId].vOffset = vLayout_(MakeCoord(offsetK + colInfo.colId * blockHeightK, kHeadId, 0));
         computeTaskInfo_[curTaskId].rowLine = colInfo.curSeqLenQ - computeTaskInfo_[curTaskId].rowId * blockHeightQ;
@@ -432,8 +433,12 @@ public:
         int64_t midScoreOffset = (computeTaskInfo_[curTaskId].taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
         int64_t kAccumOffset =
             (computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES) * blockHeightK * headDimQKAlign32_;
-        bool isFirstBlock = maskType_ == MaskType::MASK_TRIL ? blockMaskParams_[curTaskId].IsFirstBlockNeedOverride()
-                                                             : computeTaskInfo_[curTaskId].GetRowId() == 0;
+        uint32_t qHeadId = computeTaskInfo_[curTaskId].GetHeadId();
+        uint32_t kHeadId = qHeadId / headRatio_;
+        uint32_t qHeadIdStart = kHeadId * headRatio_;
+        bool isFirstBlock = (qHeadId == qHeadIdStart) &&
+                            (maskType_ == MaskType::MASK_TRIL ? blockMaskParams_[curTaskId].IsFirstBlockNeedOverride()
+                                                              : computeTaskInfo_[curTaskId].GetRowId() == 0);
         mm_mgmt_->DoKGradMatmul(kAccumOffset, midScoreOffset, computeTaskInfo_[curTaskId].qOffset,
                                 computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine(),
                                 isFirstBlock);
@@ -444,8 +449,12 @@ public:
         int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
         int64_t midScoreOffset = (computeTaskInfo_[curTaskId].taskId % COMPUTE_PIPE_NUM) * blockHeightQ * blockHeightK;
         int64_t vAccumOffset = (computeTaskInfo_[curTaskId].GetAccumId() % MID_USE_TIMES) * blockHeightK * headDimV_;
-        bool isFirstBlock = maskType_ == MaskType::MASK_TRIL ? blockMaskParams_[curTaskId].IsFirstBlockNeedOverride()
-                                                             : computeTaskInfo_[curTaskId].GetRowId() == 0;
+        uint32_t qHeadId = computeTaskInfo_[curTaskId].GetHeadId();
+        uint32_t kHeadId = qHeadId / headRatio_;
+        uint32_t qHeadIdStart = kHeadId * headRatio_;
+        bool isFirstBlock = (qHeadId == qHeadIdStart) &&
+                            (maskType_ == MaskType::MASK_TRIL ? blockMaskParams_[curTaskId].IsFirstBlockNeedOverride()
+                                                              : computeTaskInfo_[curTaskId].GetRowId() == 0);
         mm_mgmt_->DoVGradMatmul(vAccumOffset, midScoreOffset, computeTaskInfo_[curTaskId].gOffset,
                                 computeTaskInfo_[curTaskId].rowLine, computeTaskInfo_[curTaskId].GetColLine(),
                                 isFirstBlock);
@@ -477,13 +486,7 @@ public:
 
         toOffset = computeTaskInfo_[curTaskId].kOffset;
         total = computeTaskInfo_[curTaskId].GetColLine() * headDimQKAlign32_;
-        if (isGqa_) {
-            transKernelK_.DoTransOfStrideHeadDimGqa(mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGradFloat_, fromOffset,
-                                                    toOffset, total);
-        } else {
-            transKernelK_.DoTransOfStrideHeadDim(mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGrad_, fromOffset, toOffset,
-                                                 total);
-        }
+        transKernelK_.DoTransOfStrideHeadDim(mm_mgmt_->kGradAccumTemp_, mm_mgmt_->kGrad_, fromOffset, toOffset, total);
     }
 
     __aicore__ inline void DoTransJaggedV(int64_t taskId)
@@ -497,13 +500,7 @@ public:
         toOffset = computeTaskInfo_[curTaskId].vOffset;
         total = computeTaskInfo_[curTaskId].GetColLine() * headDimV_;
 
-        if (isGqa_) {
-            transKernelV_.DoTransOfStrideHeadDimGqa(mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGradFloat_, fromOffset,
-                                                    toOffset, total);
-        } else {
-            transKernelV_.DoTransOfStrideHeadDim(mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGrad_, fromOffset, toOffset,
-                                                 total);
-        }
+        transKernelV_.DoTransOfStrideHeadDim(mm_mgmt_->vGradAccumTemp_, mm_mgmt_->vGrad_, fromOffset, toOffset, total);
     }
 
     __aicore__ inline void FirstJaggedStagePipeline(int64_t taskId)
@@ -603,34 +600,40 @@ public:
 
             const int64_t colId = thisColLineInfo.colId;
             const int64_t rowLimit = thisColLineInfo.curBlkLenQ;
+            uint32_t qHeadIdStart = thisColLineInfo.headId;
+            uint32_t qHeadIdEnd = qHeadIdStart + headRatio_;
 
-            for (int64_t rowId = 0; rowId < rowLimit; rowId++) {
-                JaggedTaskInfoColMajor& args = this->computeTaskInfo_[taskId % COMPUTE_PIPE_NUM];
-                args.taskId = taskId;
-                args.colBlockPtr = &thisColLineInfo;
+            for (uint32_t qHeadId = qHeadIdStart; qHeadId < qHeadIdEnd; qHeadId++) {
+                for (int64_t rowId = 0; rowId < rowLimit; rowId++) {
+                    JaggedTaskInfoColMajor& args = this->computeTaskInfo_[taskId % COMPUTE_PIPE_NUM];
+                    args.taskId = taskId;
+                    args.colBlockPtr = &thisColLineInfo;
+                    args.qHeadId = qHeadId;
 
-                this->blockMaskParams_[taskId % COMPUTE_PIPE_NUM] = {static_cast<uint32_t>(rowId),
-                                                                     static_cast<uint32_t>(colId),
-                                                                     static_cast<uint32_t>(thisColLineInfo.curSeqLenQ),
-                                                                     static_cast<uint32_t>(thisColLineInfo.curSeqLenK),
-                                                                     blockHeightQ,
-                                                                     GetNumContext(thisColLineInfo.batchId),
-                                                                     GetNumTarget(thisColLineInfo.batchId),
-                                                                     targetGroupSize_,
-                                                                     1};
+                    this->blockMaskParams_[taskId % COMPUTE_PIPE_NUM] = {
+                        static_cast<uint32_t>(rowId),
+                        static_cast<uint32_t>(colId),
+                        static_cast<uint32_t>(thisColLineInfo.curSeqLenQ),
+                        static_cast<uint32_t>(thisColLineInfo.curSeqLenK),
+                        blockHeightQ,
+                        GetNumContext(thisColLineInfo.batchId),
+                        GetNumTarget(thisColLineInfo.batchId),
+                        targetGroupSize_,
+                        1};
 
-                BlockMaskParams& maskinfo = this->blockMaskParams_[taskId % COMPUTE_PIPE_NUM];
-                if (maskType_ == MaskType::MASK_TRIL && maskinfo.NoComputation()) {
-                    continue;
+                    BlockMaskParams& maskinfo = this->blockMaskParams_[taskId % COMPUTE_PIPE_NUM];
+                    if (maskType_ == MaskType::MASK_TRIL && maskinfo.NoComputation()) {
+                        continue;
+                    }
+
+                    int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
+                    int64_t nextTaskId = (taskId + 1) % COMPUTE_PIPE_NUM;
+                    InitTaskInfoCalcBaseOffsetsJagged(taskId, rowId, thisColLineInfo, qHeadId);
+
+                    FirstJaggedStagePipeline(taskId);
+
+                    taskId += 1;
                 }
-
-                int64_t curTaskId = taskId % COMPUTE_PIPE_NUM;
-                int64_t nextTaskId = (taskId + 1) % COMPUTE_PIPE_NUM;
-                InitTaskInfoCalcBaseOffsetsJagged(taskId, rowId, thisColLineInfo);
-
-                FirstJaggedStagePipeline(taskId);
-
-                taskId += 1;
             }
             const int64_t nextGCol = gColId + 1;
             ColLineInfoGlobal[nextGCol % COMPUTE_PIPE_NUM] =
@@ -646,7 +649,6 @@ public:
     // targetMask
     bool enableTargetMask_ = false;
     bool enableContextMask_ = false;
-    bool isGqa_;
 
     // Shape
     TNDLayout qLayout_;
