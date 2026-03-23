@@ -67,7 +67,7 @@ index 9a3b7ad..c21d52a 100644
          plan=plan,
      )
 diff --git a/tzrec/utils/plan_util.py b/tzrec/utils/plan_util.py
-index 5edb550..07681cc 100644
+index 5edb550..183ae19 100644
 --- a/tzrec/utils/plan_util.py
 +++ b/tzrec/utils/plan_util.py
 @@ -57,7 +57,7 @@ from torchrec.distributed.types import (
@@ -94,24 +94,27 @@ index 5edb550..07681cc 100644
          world_size=dist.get_world_size(),
          compute_device=device.type,
          **topo_kwargs,
-@@ -126,24 +123,27 @@ def create_planner(
-         global_constraints = ParameterConstraints(
-             sharding_types=list(global_constraints_cfg.sharding_types)
-             if len(global_constraints_cfg.sharding_types) > 0
--            else None,
-+            else [],
-             compute_kernels=list(global_constraints_cfg.compute_kernels)
-             if len(global_constraints_cfg.compute_kernels) > 0
--            else None,
-+            else [],
-         )
+@@ -120,30 +117,22 @@ def create_planner(
+                         fqn_constraints[fqn] = ParameterConstraints(
+                             sharding_types=["data_parallel"]
+                         )
 -
+-    global_constraints = None
+-    if global_constraints_cfg is not None:
+-        global_constraints = ParameterConstraints(
+-            sharding_types=list(global_constraints_cfg.sharding_types)
+-            if len(global_constraints_cfg.sharding_types) > 0
+-            else None,
+-            compute_kernels=list(global_constraints_cfg.compute_kernels)
+-            if len(global_constraints_cfg.compute_kernels) > 0
+-            else None,
 +    # row_wise
 +    constraints = {
 +        f"{feature_name}_emb": ParameterConstraints(
 +            sharding_types=["row_wise"],
 +            compute_kernels=["fused"]
-+        )
+         )
+-
 +        for feature_name in ["user_id", "cms_segid", "cms_group_id", "final_gender_code", "age_level",
 +                             "pvalue_level", "shopping_level", "occupation", "new_user_class_level", "adgroup_id",
 +                             "cate_id", "campaign_id", "customer", "brand", "price", "pid"
@@ -133,7 +136,7 @@ index 5edb550..07681cc 100644
          debug=True,
      )
      return planner
-@@ -153,6 +153,8 @@ def get_default_sharders() -> List[ModuleSharder[nn.Module]]:
+@@ -153,6 +142,8 @@ def get_default_sharders() -> List[ModuleSharder[nn.Module]]:
      """Get embedding module default sharder."""
      if torch.cuda.is_available():
          return _get_default_sharders()
