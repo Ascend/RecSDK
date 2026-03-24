@@ -38,6 +38,7 @@ def get_embedding_table(
 
 >[!NOTE] 说明 
 >-   当前仅支持非扩容模式，即`device_vocabulary_size`需大于0。
+>-   开启特征淘汰功能后暂不支持保存与加载。
 
 **返回值说明<a name="section651195312311"></a>**
 
