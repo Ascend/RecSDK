@@ -289,11 +289,11 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Output("k_grad")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Follow("grad", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("v_grad")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Follow("grad", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Output("attn_bias_grad")
             .ParamType(OPTIONAL)
