@@ -290,7 +290,7 @@ class DynamicEmbInitializerArgs:
 
 |参数名|类型| 可选/必选 | 说明                                                  |
 |--|--|-------|-----------------------------------------------------|
-|mode|DynamicEmbInitializerMode|可选|初始化模式。可选NORMAL、UNIFORM、CONSTANT，默认为NORMAL。|
+|mode|DynamicEmbInitializerMode|可选|初始化模式。可选NORMAL、UNIFORM、CONSTANT，默认为UNIFORM。|
 |mean|float|可选|正态分布的均值，默认为 0.0。|
 |std_dev|float|可选|正态分布的标准差，默认为 1.0。|
 |lower|float|可选|均匀分布的下界，默认为 None。|
