@@ -146,7 +146,7 @@ class DynamicEmbInitializerArgs:
         The constant value for constant initialization. Defaults to 0.0.
     """
 
-    mode: DynamicEmbInitializerMode = DynamicEmbInitializerMode.NORMAL
+    mode: DynamicEmbInitializerMode = DynamicEmbInitializerMode.UNIFORM
     mean: float = 0.0
     std_dev: float = 1.0
     lower: float = None
