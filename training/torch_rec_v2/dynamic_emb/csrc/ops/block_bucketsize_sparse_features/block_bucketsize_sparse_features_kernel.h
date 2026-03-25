@@ -47,7 +47,7 @@ __aicore__ inline T WarpPrefixSum(T val)
         return val;
 
 #pragma unroll
-    for (int32_t offset = 1; offset < WARP_SIZE; offset <<= 1) {
+    for (uint32_t offset = 1; offset < static_cast<uint32_t>(WARP_SIZE); offset <<= 1) {
         T temp = AscendC::Simt::WarpShflUpSync(val, offset);
         if (laneId >= offset) {
             val += temp;
