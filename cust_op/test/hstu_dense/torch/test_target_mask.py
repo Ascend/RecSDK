@@ -202,7 +202,8 @@ def compute_target_mask_each_block_concat(
         score_shape_param.seq_len + score_shape_param.block_w - 1
     ) // score_shape_param.block_w
     score_mask_blocks = [
-        [None for _ in range(block_num_on_k)] for _ in range(block_num_on_q)
+        [None for _ in range(block_num_on_k)]
+        for _ in range(block_num_on_q)
     ]
     for block_id_q in range(block_num_on_q):
         for block_id_k in range(block_num_on_k):
