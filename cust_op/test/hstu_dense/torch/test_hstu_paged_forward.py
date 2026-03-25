@@ -426,7 +426,6 @@ def paged_hstu_attn_kernel(
         num_candidates = torch.zeros((batch_size,), dtype=torch.int32)
     num_candidates_offsets = get_offsets_from_lengths(num_candidates)
 
-    kvdata_seqlen_offsets = get_offsets_from_lengths(kvdata_seqlen)
     seqlen = new_hist_lens + num_candidates
     seqlen_offsets = get_offsets_from_lengths(seqlen)
     num_tokens = seqlen_offsets[-1].item()
