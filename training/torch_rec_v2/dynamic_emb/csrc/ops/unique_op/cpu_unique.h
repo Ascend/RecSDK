@@ -22,13 +22,13 @@ __inline__ uint64_t MurmurHash3ForUnique(uint64_t const& key)
     return k;
 }
 
-inline int64_t RoundUpToPowerOfTwo(int64_t num)
+inline int64_t RoundUpToPowerOfTwo(uint64_t num)
 {
     if ((num & (num - 1)) == 0) {
         return num;
     }
 
-    int64_t rounded = 1;
+    uint64_t rounded = 1;
     while (rounded < num) {
         rounded <<= 1;
     }
@@ -40,7 +40,7 @@ inline int64_t RoundUpToPowerOfTwo(int64_t num)
 template <typename KeyType>
 class CPUUniqueHash {
 public:
-    void ComputeUnique(const KeyType* keys, int64_t num)
+    void ComputeUnique(const KeyType* keys, uint64_t num)
     {
         if (num == 0) {
             uniqueNum = 0;
@@ -49,7 +49,7 @@ public:
         }
 
         numKeys = num;
-        int64_t hashTableSize = RoundUpToPowerOfTwo(num);
+        uint64_t hashTableSize = RoundUpToPowerOfTwo(num);
         const uint64_t mask = static_cast<uint64_t>(hashTableSize - 1);
         std::vector<Entry> table(hashTableSize);
         counts.resize(num, 0);
@@ -146,7 +146,7 @@ public:
 
     DedupResult deduplicate(const at::Tensor& data)
     {
-        const int64_t n = data.numel();
+        const uint64_t n = static_cast<uint64_t>(data.numel());
         if (n == 0) {
             DedupResult emptyRes;
             emptyRes.uniqueCount = 0;

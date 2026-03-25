@@ -18,7 +18,7 @@ See the License for the specific language governing permissions and
 
 constexpr int32_t BLOCK_THREADS = AdamWUpdateSimt::MAX_THREADS_PER_BLOCK;
 
-extern "C" __global__ __aicore__ void AdamW_update(GM_ADDR grads, GM_ADDR values, int32_t gradDim, int32_t inLength,
+extern "C" __global__ __aicore__ void AdamW_update(GM_ADDR grads, GM_ADDR values, uint32_t gradDim, int32_t inLength,
     float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize, float invVHatDenom,
     float decayFactor, float eps, int32_t totalBlocks, int32_t blocksPerCore, int32_t remainderBlocks, bool isSmall)
 {
@@ -31,8 +31,8 @@ extern "C" __global__ __aicore__ void AdamW_update(GM_ADDR grads, GM_ADDR values
 
     int32_t gradDimShift = 0;
     if (isPowerOfTwo) {
-        int32_t gradDimCopy = gradDim;
-        while (gradDimCopy >>= 1) {
+        uint32_t gradDimCopy = gradDim;
+        while ((gradDimCopy >>= 1) != 0) {
             gradDimShift++;
         }
     }

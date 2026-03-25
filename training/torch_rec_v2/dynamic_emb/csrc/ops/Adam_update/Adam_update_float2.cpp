@@ -18,7 +18,7 @@ See the License for the specific language governing permissions and
 
 constexpr int32_t BLOCK_THREADS = AdamUpdateFloat2Simt::MAX_THREADS_PER_BLOCK;
 
-extern "C" __global__ __aicore__ void Adam_update_float2(GM_ADDR grads, GM_ADDR values, int32_t gradDim,
+extern "C" __global__ __aicore__ void Adam_update_float2(GM_ADDR grads, GM_ADDR values, uint32_t gradDim,
     int32_t inVecLength, float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
     float invVHatDenom, float weightDecay, float eps, int32_t totalBlocks, int32_t blocksPerCore,
     int32_t remainderBlocks, bool isSmall)
@@ -28,13 +28,13 @@ extern "C" __global__ __aicore__ void Adam_update_float2(GM_ADDR grads, GM_ADDR 
     __gm__ float2* gradsPtr = reinterpret_cast<__gm__ float2*>(grads);
     __gm__ float2* __gm__* valuesPtr = reinterpret_cast<__gm__ float2* __gm__*>(values);
 
-    int32_t gradDimVec = gradDim >> 1;
+    uint32_t gradDimVec = gradDim >> 1;
     bool isPowerOfTwo = (gradDimVec & (gradDimVec - 1)) == 0;
     
     int32_t gradDimVecShift = 0;
     if (isPowerOfTwo) {
-        int32_t gradDimCopy = gradDimVec;
-        while (gradDimCopy >>= 1) {
+        uint32_t gradDimCopy = gradDimVec;
+        while ((gradDimCopy >>= 1) != 0) {
             gradDimVecShift++;
         }
     }
