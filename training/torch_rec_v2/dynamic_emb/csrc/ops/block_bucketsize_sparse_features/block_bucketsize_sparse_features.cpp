@@ -64,7 +64,8 @@ extern "C" __global__ __aicore__ void block_bucketsize_sparse_features(
 
         __gm__ float* weightsGm = hasWeight ? reinterpret_cast<__gm__ float*>(weights) : nullptr;
         __gm__ float* newWeightsGm = hasWeight ? reinterpret_cast<__gm__ float*>(newWeights) : nullptr;
-        bool isPowerOfTwo = ((mySize & (mySize - 1)) == 0);
+        const uint32_t mySizeU = static_cast<uint32_t>(mySize);
+        bool isPowerOfTwo = (mySize > 0) && ((mySizeU & (mySizeU - 1)) == 0);
 
         // 计算快除参数
         int32_t featureNum = lenSize / batchSizeB;
