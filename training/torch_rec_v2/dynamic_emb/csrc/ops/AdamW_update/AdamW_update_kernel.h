@@ -26,7 +26,7 @@ constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
 
 template <bool isPowerOfTwo>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmallInBlockDataCompute(
-    __gm__ float* grads, __gm__ float* __gm__* valuesPtr, int32_t gradDim, int32_t inLength,
+    __gm__ float* grads, __gm__ float* __gm__* valuesPtr, uint32_t gradDim, int32_t inLength,
     float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
     float invVHatDenom, float decayFactor, float eps, int32_t gradDimShift)
 {
@@ -77,7 +77,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
 
 template <bool isPowerOfTwo>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLargeDataCompute(
-    __gm__ float* grads, __gm__ float* __gm__* valuesPtr, int32_t gradDim, int32_t inLength,
+    __gm__ float* grads, __gm__ float* __gm__* valuesPtr, uint32_t gradDim, int32_t inLength,
     float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
     float invVHatDenom, float decayFactor, float eps, int32_t totalBlocks,
     int32_t blockStartIdx, int32_t curBlocksCount, int32_t gradDimShift)

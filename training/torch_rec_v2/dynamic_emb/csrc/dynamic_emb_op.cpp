@@ -759,7 +759,7 @@ void dynamic_emb_Adam_with_pointer(const torch::Tensor& grads, const torch::Tens
     if (in_length == 0) {
         return;
     }
-    int32_t grad_dim = grads.size(1);
+    uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
 
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
     auto grads_continous = grads.contiguous();
@@ -823,7 +823,7 @@ void dynamic_emb_AdamW_with_pointer(const torch::Tensor& grads, const torch::Ten
     if (in_length == 0) {
         return;
     }
-    int32_t grad_dim = grads.size(1);
+    uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
 
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
     auto grads_continous = grads.contiguous();
