@@ -79,6 +79,17 @@ static uint32_t GetBlockK(gert::TilingContext* context, uint32_t hiddenSize)
     }
 }
 
+static uint32_t GetBlockM(gert::TilingContext* context, uint32_t seqLen)
+{
+    uint32_t blockM = BLOCK_HEIGHT;
+    const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    size_t aivCoreNum = ascendcPlatform.GetCoreNumAiv();
+    while (blockM * aivCoreNum >= seqLen && blockM > MIN_X_DIM) {
+        blockM >>= 1;
+    }
+    return blockM;
+}
+
 static bool RangeCheck(gert::TilingContext* context,
                        int64_t seqLen, int64_t dim, int64_t hiddenSize, const int64_t *split_arg_list)
 {
@@ -169,6 +180,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         tiling.set_enableBias(1);
     }
     uint32_t blockK = GetBlockK(context, hiddenSize);
+    uint32_t blockM = GetBlockM(context, seqLen);
     tiling.set_embedDim(embedDim);
     tiling.set_hiddenSize(hiddenSize);
     tiling.set_seqLen(seqLen);
@@ -176,7 +188,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_vDim(data[1]);
     tiling.set_qDim(data[2]);
     tiling.set_kDim(data[3]);
-    tiling.set_blockM(BLOCK_HEIGHT);
+    tiling.set_blockM(blockM);
     tiling.set_blockK(blockK);
     bool isTrans = *context->GetAttrs()->GetBool(1);
     bool isVardim = *context->GetAttrs()->GetBool(2);
