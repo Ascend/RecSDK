@@ -25,7 +25,7 @@ class qBlockAccumKernel {
 public:
     __aicore__ inline qBlockAccumKernel() {}
 
-    __aicore__ inline void Init(TPipe* pipePtr, BaseShapeArgs* baseShapeArgs, GlobalTensor<fromType>& qGradAccumTempGt,
+    __aicore__ inline void Init(TPipe* pipePtr, BaseShapeArgs& baseShapeArgs, GlobalTensor<fromType>& qGradAccumTempGt,
                                 GlobalTensor<toType>& qGradGt, GlobalTensor<seqType>& seqOffsetsGt, uint32_t aivNum)
     {
         qGradAccumTempGt_ = qGradAccumTempGt;
@@ -33,10 +33,10 @@ public:
         seqOffsetsQGt_ = seqOffsetsGt;
         pipe_ = pipePtr;
         aivNum_ = aivNum;
-        batchSize_ = baseShapeArgs->batchSize;
-        headNumQ_ = baseShapeArgs->headNumQ;
-        headDimQK_ = baseShapeArgs->headDimQK;
-        headDimQKAlign32_ = baseShapeArgs->headDimQKAlign32;
+        batchSize_ = baseShapeArgs.batchSize;
+        headNumQ_ = baseShapeArgs.headNumQ;
+        headDimQK_ = baseShapeArgs.headDimQK;
+        headDimQKAlign32_ = baseShapeArgs.headDimQKAlign32;
         vecOnceDataNum_ = UB_SIZE / (sizeof(fromType) + sizeof(toType));
         vecOnceDataNum_ = vecOnceDataNum_ / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
         vecOnceDataNum_ = vecOnceDataNum_ / headDimQKAlign32_ * headDimQKAlign32_;
