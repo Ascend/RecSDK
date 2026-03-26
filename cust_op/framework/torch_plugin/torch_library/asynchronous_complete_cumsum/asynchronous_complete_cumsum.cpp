@@ -10,10 +10,6 @@
 
 #include "../common/pytorch_npu_helper.hpp"
 #include "../common/common_utils.h"
-using torch::autograd::AutogradContext;
-using torch::autograd::Function;
-using tensor_list = std::vector<at::Tensor>;
-using namespace at;
 
 at::Tensor asynchronous_complete_cumsum_npu(const at::Tensor &offset)
 {
