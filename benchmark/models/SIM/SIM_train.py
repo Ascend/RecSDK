@@ -1,4 +1,5 @@
 import os
+import gc
 import time
 import torch
 import argparse
@@ -354,6 +355,7 @@ def evaluate_model(model, test_loader, criterion, device):
 
             #统计E2E耗时
             if os.environ.get('MODEL_E2E_FLAG', "False").upper() == "TRUE":
+                gc.disable()
                 latency_list = []
                 warmup_steps = 50
                 total_steps = 100
