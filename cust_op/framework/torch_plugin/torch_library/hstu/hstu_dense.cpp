@@ -39,7 +39,7 @@ at::Tensor hstu_dense_forward_impl_npu(
     TORCH_CHECK(MaskCheck(maskType, maskNpu.defined()), "maskType check failed");
 
     auto attnOutput = at::empty_like(denseQ);
-    double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
+    double realSiluScale = (siluScale == 0.0) ? 1.0f / static_cast<double>(maxSeqLen) : siluScale;
 
     EXEC_NPU_CMD(aclnnHstuDenseForward,
         denseQ,
@@ -144,7 +144,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
     TORCH_CHECK(seqLen >= MIN_SEQ_LEN && seqLen <= MAX_SEQ_LEN, "seqLen expect in [1, 20480], but value is ", seqLen);
     TORCH_CHECK(seqLen == maxSeqLen, "seqLen must be equal to maxSeqLen");
 
-    double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
+    double realSiluScale = (siluScale == 0.0) ? 1.0f / static_cast<double>(maxSeqLen) : siluScale;
 
     auto qGradOutput = at::empty_like(denseQ);
     auto kGradOutput = at::empty_like(denseK);
