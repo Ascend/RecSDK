@@ -269,7 +269,7 @@ public:
         mm_mgmt_->Init(addrArgs, baseShape);
 
         // QAccum初始化
-        qAccumKernel_.Init(&pipe, &baseShape, mm_mgmt_->qGradAccumTemp_, mm_mgmt_->qGrad_, seqOffsetsQGt_,
+        qAccumKernel_.Init(&pipe, baseShape, mm_mgmt_->qGradAccumTemp_, mm_mgmt_->qGrad_, seqOffsetsQGt_,
                            GetBlockNum() * VCORE_NUM_IN_ONE_AIC);
         // Trans初始化
         transKernelK_.Init(&pipe, headNumK_, headDimQK_);
