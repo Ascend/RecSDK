@@ -41,7 +41,7 @@ bool EmbMemoryPool::GetNewAddr(uint64_t& newAddr)
     if (HM_UNLIKELY(currentMemoryUint_.leftCapacity <= 0)) {
         /* need to expand memory */
         uint64_t maxSize = std::min(maxExpandSize_, totalLeftVocabSize_ * itemSize_);
-        uint64_t newSize = currentMemoryUint_.capacity
+        uint64_t newSize = currentMemoryUint_.capacity > 0
                                ? std::min(currentMemoryUint_.capacity * dynamicExpandRatio_, maxSize)
                                : itemSize_;
         if (newSize == 0) {  // 所有hostVocabSize均已分配

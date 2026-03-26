@@ -32,7 +32,7 @@ public:
     ComputeSwapRet ComputeSwapInfo(const std::vector<int64_t>& keys);
 
     int64_t GetKey(int64_t off, int64_t embeddingUpdateVersion);
-    int64_t GetOccupiedNum()
+    int64_t GetOccupiedNum() const
     {
         return occupiedNum_;
     };
