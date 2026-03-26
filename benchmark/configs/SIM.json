@@ -7,8 +7,6 @@
     "compile_flag": false,
     "aclgraph_flag": false,
     "e2e_flag": false,
-    "compare_accuracy_flag": false,
-    "save_tensor_flag": false,
     "data_type": "",
     "run_cmd": [
         "python",

@@ -46,116 +46,12 @@ def set_seed(seed=2025):
         torch_npu.npu.manual_seed(seed)
         torch_npu.npu.manual_seed_all(seed)
 
-def save_tensor(pred, tensor_name = "pred_gpu.pt"):
+def save_tensor(pred, device_name, model_name, inductor_flag):
     if isinstance(pred, torch.Tensor):
         tensor_to_save = pred.detach().cpu()
         logger.info(f"save tensor type: {type(tensor_to_save)}")
-        torch.save(tensor_to_save, tensor_name)
-
-
-def load_tensor(path):
-    try:
-        tensor = torch.load(path, map_location="cpu", weights_only=False)
-        logger.info(f"{str(path)}：成功加载 tensor")
-        return tensor
-    except Exception as e:
-        logger.info(f"{str(path)}：加载失败 -> {e}")
-        return None
-
-
-def compare_accuracy_diff(npu_output, gpu_output, verbose=True):
-    results = {}
-
-    # 平均绝对误差
-    abs_error = torch.abs(npu_output - gpu_output)
-    results['mean_abs_error'] = abs_error.mean().item()
-
-    # 平均相对误差
-    eps = 1e-8
-    rel_error = abs_error / (torch.abs(npu_output) + eps)
-    results['mean_rel_error'] = rel_error.mean().item()
-    
-    # 均方误差
-    mse = torch.mean((npu_output - gpu_output) ** 2)
-    rmse = torch.sqrt(mse)
-    results['rmse'] = rmse.item()
-
-    if verbose:
-        logger.info(f"平均绝对误差: {results['mean_abs_error']:.6e}")
-        logger.info(f"平均相对误差: {results['mean_rel_error']:.6e}")
-        logger.info(f"均方根误差(RMSE): {results['rmse']:.6e}")
-    return results
-
-
-def compare_result(
-        tensor1,
-        tensor2,
-        abs_error_threshold: float = 1e-4,
-        rel_error_threshold: float = 1e-4,
-):
-    logger.info(f"loading tensor1 {tensor1} \nloading tensor2 {tensor2}")
-    tensor_1 = load_tensor(tensor1)
-    tensor_2 = load_tensor(tensor2)
-
-    if tensor_1 is not None and tensor_2 is not None:
-        try:
-            torch.testing.assert_close(
-                tensor_1, tensor_2,
-                atol = abs_error_threshold,
-                rtol = rel_error_threshold,
-                equal_nan = True
-            )
-            logger.info("精度结果对齐")
-            logger.info(compare_accuracy_diff(tensor_1, tensor_2))
-        except AssertionError as e:
-            logger.info("精度结果未对齐")
-            logger.info(compare_accuracy_diff(tensor_1, tensor_2))
-
-
-def save_mode_tensor(model, test_loader, device):
-    model.eval()
-    with torch.no_grad():
-        for user_behaviors, target_items, behavior_cats, time_ints, user_feats, targets in test_loader:
-            user_behaviors = user_behaviors.to(device)
-            target_items = target_items.to(device)
-            behavior_cats = behavior_cats.to(device)
-            time_ints = time_ints.to(device)
-            user_feats = user_feats.to(device)
-            targets = targets.to(device)
-
-            # save tensor
-            if os.environ.get('SAVE_TENSOR_FLAG', "False").upper() == "TRUE":
-                # save eager tensor
-                ctr_predictions, _, _ = model(
-                        user_behavior_seq=user_behaviors,
-                        target_item_emb=target_items,
-                        user_features=user_feats,
-                        behavior_categories=behavior_cats,
-                        time_intervals=time_ints
-                    )
-                logger.info("save eager tensor")
-
-                if torch.cuda.is_available():
-                    save_tensor(ctr_predictions, tensor_name = "pred_gpu.pt")
-                elif torch.npu.is_available():
-                    save_tensor(ctr_predictions, tensor_name = "pred_npu.pt")
-
-                # save inductor tensor
-                if os.environ.get('MODEL_COMPILE_FLAG', "False").upper() == "TRUE":
-                    model = torch.compile(model, dynamic=False, backend="inductor")
-                    ctr_predictions, _, _ = model(
-                        user_behavior_seq=user_behaviors,
-                        target_item_emb=target_items,
-                        user_features=user_feats,
-                        behavior_categories=behavior_cats,
-                        time_intervals=time_ints
-                    )
-                    logger.info("save inductor tensor")
-
-                    if torch.cuda.is_available():
-                        save_tensor(ctr_predictions, tensor_name = "pred_gpu_inductor.pt")
-                    elif torch.npu.is_available():
-                        save_tensor(ctr_predictions, tensor_name = "pred_npu_inductor.pt")
+        os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
+        torch.save(tensor_to_save, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}.pt")
 
 
 def generate_training_data(num_samples=2000, seq_len=1000, item_embedding_dim=512, user_feature_dim=512, num_categories=100):
@@ -248,6 +144,94 @@ def evaluate_model(model, test_loader, criterion, device):
                     model = torch.compile(model, dynamic=False, backend="inductor")
                     logger.info("Inductor MODE YES")
 
+            inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
+            model_name = os.environ.get("MODEL_NAME", "default_name")
+            device_name = device.split(":")[0]
+            model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
+
+            #统计E2E耗时
+            if os.environ.get('MODEL_E2E_FLAG', "False").upper() == "TRUE":
+                gc.disable()
+                latency_list = []
+                warmup_steps = 50
+                total_steps = 100
+                with torch.no_grad():
+                    # 空跑预热
+                    for i in range(warmup_steps):
+                        ctr_predictions, _, _ = model(
+                            user_behavior_seq=user_behaviors,
+                            target_item_emb=target_items,
+                            user_features=user_feats,
+                            behavior_categories=behavior_cats,
+                            time_intervals=time_ints
+                        )
+                        loss = criterion(ctr_predictions, targets)
+                        total_loss += loss.item()
+                    # 正式统计E2E
+                    start_time = time.time()
+                    for i in range(total_steps):
+                        # 前向传播
+                        step_start_time = time.time()
+                        ctr_predictions, _, _ = model(
+                            user_behavior_seq=user_behaviors,
+                            target_item_emb=target_items,
+                            user_features=user_feats,
+                            behavior_categories=behavior_cats,
+                            time_intervals=time_ints
+                        )
+                        # 计算损失
+                        loss = criterion(ctr_predictions, targets)
+                        total_loss += loss.item()
+                        step_end_time = time.time()
+                        latency = (step_end_time - step_start_time) * 1000
+                        latency_list.append(latency)
+                    end_time = time.time()
+                    e2e_time = (end_time - start_time) * 1000
+                e2e_avg_time = round(e2e_time / total_steps, 6)
+                step_avg_time = round(sum(latency_list) / total_steps, 6)
+
+                latency_list.sort()
+                p90 = 0.0
+                p99 = 0.0
+                p999 = 0.0
+
+                if len(latency_list) > 0:
+                    p90_index = int(len(latency_list) * 0.9)
+                    p90_index = min(p90_index, len(latency_list) - 1)
+                    p90 = round(latency_list[p90_index], 6)
+
+                    p95_index = int(len(latency_list) * 0.95)
+                    p95_index = min(p95_index, len(latency_list) - 1)
+                    p95 = round(latency_list[p95_index], 6)
+
+                    p99_index = int(len(latency_list) * 0.99)
+                    p99_index = min(p99_index, len(latency_list) - 1)
+                    p99 = round(latency_list[p99_index], 6)
+
+                    p999_index = int(len(latency_list) * 0.999)
+                    p999_index = min(p999_index, len(latency_list) - 1)
+                    p999 = round(latency_list[p999_index], 6)
+
+                QPS = int(args.batch_size / e2e_avg_time * 1000)
+                
+                E2E_RESULT = {
+                    "Batch_size": args.batch_size,
+                    "model_name": "SIM",
+                    "QPS": QPS,
+                    "AVG Latency": e2e_avg_time,
+                    "P999 Latency": p999,
+                    "P99 Latency": p99,
+                    "P95 Latency": p95,
+                    "P90 Latency": p90
+                }
+                logger.info(E2E_RESULT)
+
+                eval_str = "performance: " + model_detail_info + "_" + str(E2E_RESULT)
+                os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
+                with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
+                    f.write(eval_str + "\n")
+                logger.info(eval_str)
+
             # 采集profiling
             if os.environ.get('MODEL_PROFILING_FLAG', "False").upper() == "TRUE":
                 # 运行step次数
@@ -281,7 +265,7 @@ def evaluate_model(model, test_loader, criterion, device):
                             active=1, 
                             repeat=1
                         ),
-                        on_trace_ready=torch.profiler.tensorboard_trace_handler("./GPU_profiling_result"),
+                        on_trace_ready=torch.profiler.tensorboard_trace_handler(os.path.join("../profiling", model_name)),
                         record_shapes=True,
                         profile_memory=False,
                         with_stack=True
@@ -330,7 +314,10 @@ def evaluate_model(model, test_loader, criterion, device):
                             active=1, 
                             repeat=1
                         ),
-                        on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./NPU_profiling_result"),
+                        on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
+                            os.path.join("../profiling", model_name),
+                            worker_name=model_detail_info,
+                        ),
                         record_shapes=True,
                         profile_memory=False,
                         with_stack=True,
@@ -353,82 +340,6 @@ def evaluate_model(model, test_loader, criterion, device):
                             total_loss += loss.item()
                             prof.step()
 
-            #统计E2E耗时
-            if os.environ.get('MODEL_E2E_FLAG', "False").upper() == "TRUE":
-                gc.disable()
-                latency_list = []
-                warmup_steps = 50
-                total_steps = 100
-                with torch.no_grad():
-                    # 空跑预热
-                    for i in range(warmup_steps):
-                        ctr_predictions, _, _ = model(
-                            user_behavior_seq=user_behaviors,
-                            target_item_emb=target_items,
-                            user_features=user_feats,
-                            behavior_categories=behavior_cats,
-                            time_intervals=time_ints
-                        )
-                        loss = criterion(ctr_predictions, targets)
-                        total_loss += loss.item()
-                    # 正式统计E2E
-                    start_time = time.time()
-                    for i in range(total_steps):
-                        # 前向传播
-                        step_start_time = time.time()
-                        ctr_predictions, _, _ = model(
-                            user_behavior_seq=user_behaviors,
-                            target_item_emb=target_items,
-                            user_features=user_feats,
-                            behavior_categories=behavior_cats,
-                            time_intervals=time_ints
-                        )
-                        # 计算损失
-                        loss = criterion(ctr_predictions, targets)
-                        total_loss += loss.item()
-                        step_end_time = time.time()
-                        latency = (step_end_time - step_start_time) * 1000
-                        latency_list.append(latency)
-                    end_time = time.time()
-                    e2e_time = (end_time - start_time) * 1000
-                e2e_avg_time = round(e2e_time / total_steps, 6)
-                step_avg_time = round(sum(latency_list) / total_steps, 6)
-
-                latency_list.sort()
-                p90 = 0.0
-                p99 = 0.0
-
-                if len(latency_list) > 0:
-                    p90_index = int(len(latency_list) * 0.9)
-                    p90_index = min(p90_index, len(latency_list) - 1)
-                    p90 = round(latency_list[p90_index], 6)
-
-                    p95_index = int(len(latency_list) * 0.95)
-                    p95_index = min(p95_index, len(latency_list) - 1)
-                    p95 = round(latency_list[p95_index], 6)
-
-                    p99_index = int(len(latency_list) * 0.99)
-                    p99_index = min(p99_index, len(latency_list) - 1)
-                    p99 = round(latency_list[p99_index], 6)
-
-                    p999_index = int(len(latency_list) * 0.999)
-                    p999_index = min(p999_index, len(latency_list) - 1)
-                    p999 = round(latency_list[p999_index], 6)
-
-                QPS = int(args.batch_size / e2e_avg_time * 1000)
-                
-                E2E_RESULT = {
-                    "Batch_size": args.batch_size,
-                    "model_name": "SIM",
-                    "QPS": QPS,
-                    "AVG Latency": e2e_avg_time,
-                    "P999 Latency": p999,
-                    "P99 Latency": p99,
-                    "P95 Latency": p95,
-                    "P90 Latency": p90
-                }
-                logger.info(E2E_RESULT)
-
             # 前向传播
             ctr_predictions, _, _ = model(
                 user_behavior_seq=user_behaviors,
@@ -438,6 +349,8 @@ def evaluate_model(model, test_loader, criterion, device):
                 time_intervals=time_ints
             )
             
+            # 保存模型tensor
+            save_tensor(ctr_predictions, device_name, model_name, inductor_flag)
             # 计算损失
             loss = criterion(ctr_predictions, targets)
             total_loss += loss.item()
@@ -519,19 +432,6 @@ def main():
         test_loss, test_accuracy = evaluate_model(model, test_loader, criterion, device)
         logger.info(f'测试集损失: {test_loss:.4f}, 准确率: {test_accuracy:.4f}')
 
-    # 保存模型tensor
-    if os.environ.get('SAVE_TENSOR_FLAG', "False").upper() == "TRUE":
-        save_mode_tensor(model, test_loader, device)
-
-    # 模型精度比较
-    if os.environ.get('COMPARE_ACCURACY_FLAG', "False").upper() == "TRUE":
-        if os.environ.get('MODEL_COMPILE_FLAG', "False").upper() == "TRUE":
-            if torch.cuda.is_available():
-                compare_result(tensor1= "pred_gpu.pt",tensor2 = "pred_gpu_inductor.pt")
-            elif torch.npu.is_available():
-                compare_result(tensor1= "pred_npu.pt",tensor2 = "pred_npu_inductor.pt")
-        else:
-            compare_result(tensor1= "pred_npu.pt",tensor2 = "pred_gpu.pt")
 
 if __name__ == "__main__":
     # 固定随机数种子
