@@ -214,9 +214,6 @@ def set_env(config: dict, cpu_only: bool, eager: bool):
         logger.info(f"LIB_FBGEMM_NPU_API_SO_PATH: {lib_fbgemm_npu_api_so_path}")
         os.environ["LIB_FBGEMM_NPU_API_SO_PATH"] = str(lib_fbgemm_npu_api_so_path)
 
-    os.environ["COMPARE_ACCURACY_FLAG"] = str(config.get("compare_accuracy_flag"))
-    os.environ["SAVE_TENSOR_FLAG"] = str(config.get("save_tensor_flag"))
-
 
 def run_model(config: dict, target_dir: Path, cpu_only: bool, eager: bool) -> bool:
     set_env(config, cpu_only, eager)
