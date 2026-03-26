@@ -52,14 +52,14 @@ torch.ops.mxrec.permute_2D_sparse_data_input1d(Tensor permute,
 |  values | 输入     | Tensor  | int32/int64/fp32/fp16 | [values]                                        | values的长度等于`lengths.sum()` | 
 |  stride | 输入(当调用permute_2D_sparse_data_input1d需传入) | Scalar  | int64       | stride                                       | stride > 0 |
 |  weights | 输入(可选) | Tensor  | fp32/fp16       | [weights]                                       | weight的长度等于`lengths.sum()` |
-|  permuted_lengths_sum | 输入(可选) | SymInt  | int64        | NA                                              |        (0, std::numeric_limits<int64>::max()]      |
+|  permuted_lengths_sum | 输入(可选) | SymInt  | int64        | NA                                              |        [0, std::numeric_limits<int64>::max()]      |
 |  permuted_lengths | 输出     | Tensor  | int32/int64   | [ [permuted_lengths], [permuted_lengths], ... ] |                     |
 |  permuted_values | 输出     | Tensor  | int32/int64/fp32   | [permuted_values]                               |                     |
 |  permuted_weights | 输出     | Tensor  |  fp32  | [permuted_weights]                              |       |
 
 
 说明：
-1. 指定permuted_lengths_sum时，permuted_values/permuted_weights长度为permuted_lengths_sum，请用户自行保证数值正确; 未指定permuted_lengths_sum时，算子将计算得到permuted_lengths_sum
+1. 指定permuted_lengths_sum时，permuted_values/permuted_weights长度为permuted_lengths_sum，请用户自行保证数值正确; 未指定permuted_lengths_sum时，算子将计算得到permuted_lengths_sum，计算过程会导致npu-cpu之间的同步。
 
 2. 当调用permute_2D_sparse_data_input1d算子时，需传入stride参数，且满足lengths.numel()能被stride整除。
 
