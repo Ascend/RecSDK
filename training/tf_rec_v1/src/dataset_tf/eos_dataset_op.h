@@ -19,7 +19,7 @@ See the License for the specific language governing permissions and
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/public/version.h"
 
-#if TF_MAJOR_VERSION == 2
+#if defined(TF_MAJOR_VERSION) && (TF_MAJOR_VERSION == 2)
 #define TF_VERSION_TF2
 #endif
 
