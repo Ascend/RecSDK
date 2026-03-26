@@ -21,17 +21,6 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at:
 
 #define GET_OP_API_FUNC(apiName) reinterpret_cast<_##apiName>(GetOpApiFuncAddr(#apiName))
 
-#define MEMCPY_TO_BUF(data_expression, size_expression)                                                                \
-    if (g_hashOffset + (size_expression) > kHashBufSize) {                                                             \
-        g_hashOffset = kHashBufMaxSize;                                                                                \
-        return;                                                                                                        \
-    }                                                                                                                  \
-    if (memcpy_s(g_hashBuf + g_hashOffset, size_expression, data_expression, size_expression) != EOK) {                \
-        ASCEND_LOGW("memcpy_s failed.");                                                                               \
-        return;                                                                                                        \
-    }                                                                                                                  \
-    g_hashOffset += size_expression;
-
 inline const char* GetOpApiLibName(void)
 {
     return "libopapi.so";
@@ -453,34 +442,6 @@ template <typename Function, typename Tuple> auto call(Function f, Tuple t)
 {
     static constexpr auto size = std::tuple_size<Tuple>::value;
     return call(f, t, std::make_index_sequence<size>{});
-}
-
-template <std::size_t N> void AddParamToBuf(const std::array<bool, N>& value)
-{
-    MEMCPY_TO_BUF(value.data(), value.size() * sizeof(bool));
-}
-
-template <typename T> void AddParamToBuf(const T& value)
-{
-    MEMCPY_TO_BUF(&value, sizeof(T));
-}
-
-void AddParamToBuf(const at::Tensor&);
-void AddParamToBuf(const at::Scalar&);
-void AddParamToBuf(const at::IntArrayRef&);
-void AddParamToBuf(const at::ArrayRef<bool>&);
-void AddParamToBuf(const at::TensorList&);
-void AddParamToBuf(const c10::optional<at::Tensor>&);
-void AddParamToBuf(const c10::optional<at::IntArrayRef>&);
-void AddParamToBuf(const c10::optional<at::Scalar>&);
-void AddParamToBuf(const at::ScalarType);
-void AddParamToBuf(const string&);
-void AddParamToBuf();
-
-template <typename T, typename... Args> void AddParamToBuf(const T& arg, Args&... args)
-{
-    AddParamToBuf(arg);
-    AddParamToBuf(args...);
 }
 
 uint64_t CalcHashId();

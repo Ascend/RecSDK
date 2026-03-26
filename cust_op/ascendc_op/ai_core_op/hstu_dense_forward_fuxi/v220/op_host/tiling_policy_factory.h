@@ -49,7 +49,7 @@ public:
 };
 
 #define REGISTER_POLICY(policyKey, policy) \
-    static RegisterPolicy g_##po(policyKey, policy);
+    static RegisterPolicy g_##po(policyKey, policy)
 }
 
 #endif
