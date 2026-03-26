@@ -125,8 +125,8 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute1d_sparse_data_impl_npu(
         permutedLengthsOffset = asynchronous_complete_cumsum_npu(permutedLengths).to(at::kLong);
     }
 
-    int64_t outValuesLen;
-    if (permuted_lengths_sum.has_value() && permuted_lengths_sum.value() > 0) {
+    int64_t outValuesLen = 0;
+    if (permuted_lengths_sum.has_value()) {
         outValuesLen = static_cast<int64_t>(permuted_lengths_sum.value());
     } else {
         if (useTotalOffset) {

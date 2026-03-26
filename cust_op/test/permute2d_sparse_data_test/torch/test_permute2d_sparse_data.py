@@ -213,4 +213,32 @@ def test_empty_input(is_mxrec):
     for gt, pred in zip(golden, result):
         assert type(gt) is type(pred)
         if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
-            assert torch.allclose(gt, pred, atol=1e-4)
+            assert torch.allclose(gt, pred, atol=1e-5)
+
+
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_lengths_all_zero_permuted_lengths_sum_zero(is_mxrec):
+    """
+    测试lengths全为0,permuted_lengths_sum为0的情况
+    """
+    t = 10
+    b = 4
+
+    permute = np.arange(0, t).astype(np.int32)
+    lengths = np.zeros((t, b), dtype=np.int32)
+    values = np.array([], dtype=np.int32)
+    params = {
+        'permute': permute,
+        'lengths': lengths,
+        'values': values,
+        'weights': None,
+        'permuted_lengths_sum': 0
+    }
+
+    golden = get_result(params)
+    result = get_result(params, DEVICE, is_mxrec)
+
+    for gt, pred in zip(golden, result):
+        assert type(gt) is type(pred)
+        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
+            assert torch.allclose(gt, pred, atol=1e-5)

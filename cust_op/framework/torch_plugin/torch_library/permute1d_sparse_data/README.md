@@ -27,14 +27,14 @@ torch.ops.mxrec.permute_1D_sparse_data(Tensor permute,
 |  lengths | 输入     | Tensor  | int32/int64 | [lengths]                   |           
 |  values | 输入     | Tensor  | int32/int64/fp32/fp16 | [values]                                        | values的长度等于`lengths.sum()` | 
 |  weights | 输入(可选) | Tensor  | fp32/fp16       | [weights]                                       | weight的长度等于`lengths.sum()` |
-|  permuted_lengths_sum | 输入(可选) | SymInt  | int64        | NA                                              |        (0, std::numeric_limits<int64>::max()]      |
+|  permuted_lengths_sum | 输入(可选) | SymInt  | int64        | NA                                              |        [0, std::numeric_limits<int64>::max()]      |
 |  permuted_lengths | 输出     | Tensor  | int32/int64   | [permuted_lengths] |                     |
 |  permuted_values | 输出     | Tensor  | int32/int64/fp32   | [permuted_values]                               |                     |
 |  permuted_weights | 输出     | Tensor  |  fp32  | [permuted_weights]                              |       |
 
 
 说明：
-1. 指定permuted_lengths_sum时，permuted_values/permuted_weights长度为permuted_lengths_sum，请用户自行保证数值正确; 未指定permuted_lengths_sum时，算子将计算得到permuted_lengths_sum
+1. 指定permuted_lengths_sum时，permuted_values/permuted_weights长度为permuted_lengths_sum，请用户自行保证数值正确; 未指定permuted_lengths_sum时，算子将计算得到permuted_lengths_sum，计算过程会导致npu-cpu之间的同步。
 
 2. 该算子实现依赖asynchronous_complete_cumsum算子，需先安装asynchronous_complete_cumsum算子
 
