@@ -70,7 +70,7 @@ at::Tensor hstu_paged_forward_impl_npu(
                 "targetGroupSize must be greater than 0 when numTarget is defined");
 
     auto attnOutput = deterministic ? at::empty_like(denseQ) : at::zeros_like(denseQ);
-    double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
+    double realSiluScale = (siluScale == 0.0) ? 1.0f / static_cast<double>(maxSeqLen) : siluScale;
     double realAlpha = alpha.value_or(1.0);
 
     const auto _numContext = at::zeros_like(numTarget);
