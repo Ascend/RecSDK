@@ -13,8 +13,52 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 set -e
 
+# ==============================================================================
+# 1. 初始化路径
+# ==============================================================================
+readonly THIS_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+readonly THIS_DIR="$(dirname "${THIS_SCRIPT}")"
+readonly WORK_DIR="${THIS_DIR}"
+readonly OP_ROOT_DIR="$(dirname "${THIS_DIR}")"
+readonly SRC_KERNEL_DIR="${WORK_DIR}/op_kernel"
+readonly SRC_HOST_DIR="${WORK_DIR}/op_host"
+readonly PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${THIS_DIR}")")")"
+readonly UTILS_SCRIPT="${PROJECT_ROOT}/scripts/op_builder_utils.sh"
+
+# ==============================================================================
+# 2. 加载通用库
+# ==============================================================================
+
+if [ ! -f "$UTILS_SCRIPT" ]; then
+    echo "ERROR: Cannot find op_builder_utils.sh at ${UTILS_SCRIPT}" >&2
+    echo "Please check your directory structure." >&2
+    exit 1
+fi
+
+source "$UTILS_SCRIPT"
+
+# ==============================================================================
+# 3. 参数配置
+# ==============================================================================
+vendor_name="norm_multiply_dropout"
+
+parse_arguments "$@" || exit 1
+
+echo "=========================================="
+echo "Start Building Operator: ${vendor_name}"
+echo "Target AI Core: ${ai_core}"
+echo "Work Directory : ${WORK_DIR}"
+echo "Source Root    : ${OP_ROOT_DIR}"
+echo "=========================================="
+
+# ==============================================================================
+# 4. 执行标准化流程
+# ==============================================================================
+
+# 验证 AI Core
 VALID_AI_CORES=(
     "ai_core-Ascend910B1"
     "ai_core-Ascend910B2"
@@ -24,90 +68,46 @@ VALID_AI_CORES=(
     "ai_core-Ascend310P3"
 )
 
-validate_ai_core() {
-    local input_core="$1"
-    for valid_core in "${VALID_AI_CORES[@]}"; do
-        if [ "$input_core" = "$valid_core" ]; then
-            echo "ai_core $input_core"
-            return 0
-        fi
-    done
-    echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
-    exit 1
-}
+validate_ai_core "$ai_core" || exit 1
 
-ai_core="ai_core-Ascend910B1"
-if [ "$#" -eq 1 ]; then
-  ai_core="$1"
-  validate_ai_core $ai_core
+# 检查系统环境和 CANN 版本
+check_system_and_cann "$ai_core" || exit 1
+
+# 生成算子代码
+rm -rf "${WORK_DIR}/${vendor_name}"
+msopgen gen -i ${vendor_name}.json -f tf -c ${ai_core} -lan cpp -out ./${vendor_name} -m 0 -op NormMultiplyDropout
+
+# 兼容cann9.0.0早期版本的老工程
+if [ -d "${WORK_DIR}/${vendor_name}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
+    MAJOR_VERSION=8
 fi
 
-# 利用msopgen生成算子工程
-OP_NAME="NormMultiplyDropout"
-OP_FILE_PATH="norm_multiply_dropout"
-msopgen_path=$(find /usr/local/Ascend/ -name msopgen | grep bin | head -1)
-rm -rf ./${OP_FILE_PATH}
-python3 ${msopgen_path} gen -i ${OP_FILE_PATH}.json -f tf -c ${ai_core} -lan cpp -out ./${OP_FILE_PATH} -m 0 -op ${OP_NAME}
-cp -r ./op_host/ ./${OP_FILE_PATH}
-cp -r ./op_kernel/ ./${OP_FILE_PATH}
-cd ${OP_FILE_PATH}
-
-# 判断当前目录下是否存在CMakePresets.json文件
-if [ ! -f "CMakePresets.json" ]; then
-  echo "ERROR, CMakePresets.json file not exist."
-  exit 1
+if [ "${MAJOR_VERSION}" -ge 9 ]; then
+    overwrite_source_with_target "${WORK_DIR}/${vendor_name}" "${PROJECT_ROOT}/ai_core_op/custom_op_template" || exit 1
 fi
 
-# 禁止生成CRC校验和
-sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
+# 定义生成后的目标目录
+readonly TARGET_DIR="${WORK_DIR}/${vendor_name}"
 
-# 修改cann安装路径
-if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
-    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
-fi
-# 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
-# vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
-# vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
-sed -i 's:"customize":"norm_multiply_dropout":g' CMakePresets.json
+# 【特异性逻辑】复制算子特有源码
+echo "Copying specific operator source files to ${TARGET_DIR}..."
 
-# 增加LOG_CPP编译选项支持错误日志打印
-sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
-line1=`awk '/target_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt`
-sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
-line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
-sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
+# 清理旧文件 (防止残留)
+rm -rf "${TARGET_DIR}/op_kernel"/*.h "${TARGET_DIR}/op_kernel"/*.cpp 2>/dev/null || true
+rm -rf "${TARGET_DIR}/op_host"/*.h "${TARGET_DIR}/op_host"/*.cpp 2>/dev/null || true
 
-sed -i '/\${ASCEND_CANN_PACKAGE_PATH}\/include/a\
-\${ASCEND_CANN_PACKAGE_PATH}\/pkg_inc
-' ./cmake/*.cmake
+cp -rf op_kernel/*.h "${TARGET_DIR}/op_kernel" && cp -rf op_kernel/*.cpp "${TARGET_DIR}/op_kernel"
+cp -rf op_host/*.h "${TARGET_DIR}/op_host" && cp -rf op_host/*.cpp "${TARGET_DIR}/op_host"
 
-bash build.sh
+# 修改 CMakePresets.json
+configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "$TARGET_DIR" || exit 1
 
-# 获取系统ID
-os_id=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
-if [ -z "${os_id}" ]; then
-    echo "ERROR: get os_id failed"
-    exit 1
-fi
+# CANN < 9.0 特殊处理并执行编译
+prepare_legacy_build "$MAJOR_VERSION" "$vendor_name" "$TARGET_DIR" || exit 1
 
-# 获取架构
-arch=$(uname -m)
-if [ -z "${arch}" ]; then
-    echo "ERROR: get arch failed"
-    exit 1
-fi
+# 安装算子包
+install_operator_package "$OS_ID" "$ARCH" "$TARGET_DIR" || exit 1
 
-# 只允许字母/数字/点/下划线/连字符（覆盖常见 os_id 与 arch）
-SAFE_REGEX='^[A-Za-z0-9._-]+$'
-if ! [[ "$os_id" =~ $SAFE_REGEX ]]; then
-    echo "ERROR: invalid os_id: $os_id" >&2
-    exit 1
-fi
-if ! [[ "$arch" =~ $SAFE_REGEX ]]; then
-    echo "ERROR: invalid arch: $arch" >&2
-    exit 1
-fi
-
-# 安装编译成功的算子包
-installer="./build_out/custom_opp_${os_id}_${arch}.run"
-bash -- "$installer"
+echo "=========================================="
+echo "✅ Build & Install Successful for [${vendor_name}]!"
+echo "=========================================="

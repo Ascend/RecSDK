@@ -43,8 +43,8 @@ declare -A OP_PLUGIN_MAP=(
   ["asynchronous_complete_cumsum"]="asynchronous_complete_cumsum"
   ["backward_codegen_adagrad_unweighted_exact"]="split_embedding_codegen_forward_unweighted"
   ["block_bucketize_sparse_features"]="block_bucketize_sparse_features"
-  ["concat_2d_jagged"]="concat_2d_jagged"
-  ["concat_2d_jagged_grad"]="concat_2d_jagged"
+  ["concat_jagged_tensor"]="concat_2d_jagged"
+  ["concat_jagged_tensor_grad"]="concat_2d_jagged"
   ["dense_embedding_codegen_lookup_function"]="dense_embedding_codegen_lookup_function"
   ["dense_embedding_codegen_lookup_function_grad"]="dense_embedding_codegen_lookup_function"
   ["dense_to_jagged"]="dense_to_jagged"
@@ -141,7 +141,7 @@ function compile_ops_v220() {
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
             plugin_dir_names=${OP_PLUGIN_MAP[$dir_name]}
-            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
+            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" || "$dir_name" == "custom_op_template" ]]; then
                 continue
             fi
             cur_ver_op_dir=${dir_name}/${base_op_dir}
@@ -151,7 +151,7 @@ function compile_ops_v220() {
                 if [ "${BUILD_VER}" == "310P" ]; then
                     for item in $support_310p_list; do
                         if [ "$item" == "$dir_name" ]; then
-                            bash ./run.sh ai_core-Ascend310P3
+                            bash ./run.sh --ai-core ai_core-Ascend310P3
                             new_op_name=mxrec_opp_"${dir_name}_310p".run
                             cd "$dir_name"
                             cp ./build_out/custom_opp*.run  "${new_op_name}"
@@ -165,7 +165,7 @@ function compile_ops_v220() {
                 elif [ "${BUILD_VER}" == "A3" ]; then
                     for item in $support_A3_list; do
                         if [ "$item" == "$dir_name" ]; then
-                            bash ./run.sh ai_core-Ascend910_93
+                            bash ./run.sh --ai-core ai_core-Ascend910_93
                             new_op_name=mxrec_opp_"${dir_name}_A3".run
                             cd "$dir_name"
                             cp ./build_out/custom_opp*.run  "${new_op_name}"
@@ -178,7 +178,7 @@ function compile_ops_v220() {
                 elif [ "${BUILD_VER}" == "A2-TF" ]; then
                     for item in $support_A2_tf_ops; do
                         if [ "$item" == "$dir_name" ]; then
-                            bash ./run.sh ai_core-Ascend910B1
+                            bash ./run.sh --ai-core ai_core-Ascend910B1
                             new_op_name=mxrec_opp_"${dir_name}".run
                             cd "$dir_name"
                             cp ./build_out/custom_opp*.run  "${new_op_name}"
@@ -187,7 +187,7 @@ function compile_ops_v220() {
                     done
                 elif [ "${BUILD_VER}" == "A2" ]; then
                     in_list "$dir_name" $support_A2_tf_ops && continue
-                    bash ./run.sh ai_core-Ascend910B1
+                    bash ./run.sh --ai-core ai_core-Ascend910B1
                     new_op_name=mxrec_opp_"${dir_name}".run
                     cd "$dir_name"
                     cp ./build_out/custom_opp*.run  "${new_op_name}"
@@ -215,7 +215,7 @@ function compile_ops_A5() {
             if [ -d "$cur_ver_op_dir" ]; then
                 echo "Entering directory: $dir_name, DIR: $dir"
                 cd "$cur_ver_op_dir"
-                bash ./run.sh ai_core-Ascend950
+                bash ./run.sh --ai-core ai_core-Ascend950
                 new_op_name=mxrec_opp_"${dir_name}".run
                 cd "$dir_name"
                 cp ./build_out/custom_opp*.run  "${new_op_name}"
