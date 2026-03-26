@@ -400,7 +400,9 @@ class NoGradSubgraphSlicer(metaclass=abc.ABCMeta):
             tgt_trans_dataset = utils.find_trans_dataset(self._full_graph, get_next)
         except (ValueError, TypeError, RuntimeError) as err:
             trans_datasets = [
-                op for op in self._full_graph.get_operations() if AnchorDatasetOp.PREFETCH_DATASET.value in op.name
+                op
+                for op in self._full_graph.get_operations()
+                if AnchorDatasetOp.PREFETCH_DATASET.value in op.name
             ]
             trans_datasets = list(
                 filter(
@@ -837,7 +839,9 @@ class OrphanLookupKeySlicer(NoGradSubgraphSlicer):
         in_op_to_edge_ops, out_op_to_edge_ops = self._find_subgraph_in_and_out(sliced_ops)
 
         all_get_nexts = [
-            op for op in self._full_graph.get_operations() if op.type == AnchorIteratorOp.ITERATOR_GET_NEXT.value
+            op
+            for op in self._full_graph.get_operations()
+            if op.type == AnchorIteratorOp.ITERATOR_GET_NEXT.value
         ]
         alive_get_nexts = list(
             filter(
