@@ -26,12 +26,6 @@ See the License for the specific language governing permissions and
 #include "register/op_def_registry.h"
 #include "tiling_policy_jagged.h"
 
-constexpr bool JAGGED_TASK_ASSIGN_DEBUG = false;
-
-#if JAGGED_TASK_ASSIGN_DEBUG
-#include <chrono>
-#endif
-
 using namespace HstuForward;
 
 namespace HstuJaggedForward {

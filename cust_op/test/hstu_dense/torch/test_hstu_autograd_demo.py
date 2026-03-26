@@ -336,7 +336,7 @@ class TestHstuAutogradJagged:
         else:
             bias_grad_res = bias_grad is None and bias_grad_op is None
 
-        return output_res and q_grad_res and k_grad_res and v_grad_res and bias_grad_res
+        assert output_res and q_grad_res and k_grad_res and v_grad_res and bias_grad_res
 
     @pytest.mark.parametrize("batch_size", [2, 16])
     @pytest.mark.parametrize("max_seq_len", [256])
