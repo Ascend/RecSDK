@@ -275,7 +275,7 @@ private:
     static int32_t GetOneTimeLoadCount(int32_t embDim);
 
     void WriteEmbeddingEntry(int64_t key, const float* value, const EmbeddingTableWriteContext& ctx);
-    TableFileHandles OpenTableFiles(const std::string& prefixPath, int32_t tableIndex);
+    TableFileHandles OpenTableFiles(const std::string& prefix, int32_t tableIndex);
     void CloseTableFiles(TableFileHandles& handles);
     int OpenOrThrow(const std::string& filePath, int flags, mode_t mode, const std::string& fileType);
     bool IsNeedStatisticsKeyCount(int64_t tableIndex);
