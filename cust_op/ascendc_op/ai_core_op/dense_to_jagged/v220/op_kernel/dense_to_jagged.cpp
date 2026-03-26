@@ -41,25 +41,25 @@ class DenseToJagged {
 public:
     __aicore__ inline DenseToJagged() {};
 
-    __aicore__ inline void init(DenseToJaggedArgs *args, TPipe *pipe)
+    __aicore__ inline void init(DenseToJaggedArgs &args, TPipe *pipe)
     {
         this->args = args;
         this->pipe = pipe;
 
         thisId = GetBlockIdx();
-        if (thisId < args->left) {
-            args->singleCoreBatch += 1;
-            offsetStartPos = thisId * args->singleCoreBatch;
+        if (thisId < args.left) {
+            args.singleCoreBatch += 1;
+            offsetStartPos = thisId * args.singleCoreBatch;
         } else {
-            offsetStartPos = (args->singleCoreBatch + 1) * args->left + (thisId - args->left) * args->singleCoreBatch;
+            offsetStartPos = (args.singleCoreBatch + 1) * args.left + (thisId - args.left) * args.singleCoreBatch;
         }
 
         align = sizeof(dType);
-        denseGb.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(args->dense), args->denseTotal * align);
-        jaggedDenseGb.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(args->jagged_dense), args->jaggedTotal * align);
+        denseGb.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(args.dense), args.denseTotal * align);
+        jaggedDenseGb.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(args.jagged_dense), args.jaggedTotal * align);
 
-        pipe->InitBuffer(inQueue, 1, args->singleLoopSize);
-        pipe->InitBuffer(outQueue, 1, args->singleLoopSize);
+        pipe->InitBuffer(inQueue, 1, args.singleLoopSize);
+        pipe->InitBuffer(outQueue, 1, args.singleLoopSize);
     }
 
     __aicore__ inline void Compute()
@@ -91,28 +91,28 @@ private:
         tType jaggedPos;
         tType jaggedPosNext;
 
-        __gm__ tType *oPtr = (__gm__ tType *)args->offset;
+        __gm__ tType *oPtr = (__gm__ tType *)args.offset;
 
-        for (int i = 0; i < args->singleCoreBatch; i++) {
+        for (int i = 0; i < args.singleCoreBatch; i++) {
             // Get information form offset tensor to jag dense
             jaggedPos = *(oPtr + offsetStartPos + i);
             jaggedPosNext = *(oPtr + offsetStartPos + i + 1);
             int copyRows = jaggedPosNext - jaggedPos;
 
             // Get jagged Global tensor with offset
-            int64_t jaggedPosOffset = static_cast<int64_t>(jaggedPos) * args->denseDim2 * align;
+            int64_t jaggedPosOffset = static_cast<int64_t>(jaggedPos) * args.denseDim2 * align;
             GlobalTensor<uint8_t> jaggedDenseCopyGb = jaggedDenseGb[jaggedPosOffset];
-            int64_t densePos = static_cast<int64_t>(offsetStartPos + i) * args->denseDim2 * args->denseDim1 * align;
+            int64_t densePos = static_cast<int64_t>(offsetStartPos + i) * args.denseDim2 * args.denseDim1 * align;
             GlobalTensor<uint8_t> denseCopyGb = denseGb[densePos];
 
             // When offset[n] - offset[n + 1] > dense dim1, only need to copy dense dim1 * dim2
             // otherwise, copy (offset[n] - offset[n + 1]) * dense dim2
-            int64_t remainLen = copyRows > args->denseDim1 ? (args->denseDim1 * args->denseDim2 * align) :
-                (copyRows * args->denseDim2 * align);
+            int64_t remainLen = copyRows > args.denseDim1 ? (args.denseDim1 * args.denseDim2 * align) :
+                (copyRows * args.denseDim2 * align);
             while (remainLen > 0) {
-                // args->singleLoopSize - ALIGN_32 to avoid overAlignLen exceed singleLoopSize
-                int64_t thisLen = args->singleLoopSize - ALIGN_32;
-                if (remainLen < (args->singleLoopSize - ALIGN_32)) {
+                // args.singleLoopSize - ALIGN_32 to avoid overAlignLen exceed singleLoopSize
+                int64_t thisLen = args.singleLoopSize - ALIGN_32;
+                if (remainLen < (args.singleLoopSize - ALIGN_32)) {
                     thisLen = remainLen;
                 }
 
@@ -162,7 +162,7 @@ private:
     int32_t align;
     int32_t thisId;
     int32_t offsetStartPos;
-    DenseToJaggedArgs *args;
+    DenseToJaggedArgs args;
 
     GlobalTensor<uint8_t> denseGb;
     GlobalTensor<uint8_t> jaggedDenseGb;
@@ -184,6 +184,6 @@ extern "C" __global__ __aicore__ void dense_to_jagged(GM_ADDR dense, GM_ADDR off
 
     TPipe pipe;
     DenseToJagged_Kernel::DenseToJagged<DTYPE_DENSE, DTYPE_OFFSET> kernel;
-    kernel.init(&args, &pipe);
+    kernel.init(args, &pipe);
     kernel.Compute();
 }

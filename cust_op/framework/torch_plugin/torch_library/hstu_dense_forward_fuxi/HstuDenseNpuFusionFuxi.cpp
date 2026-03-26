@@ -7,6 +7,7 @@
  */
 #include <string>
 #include <algorithm>
+#include <cfloat>
 #include <torch/csrc/autograd/custom_function.h>
 #include <torch/library.h>
 
@@ -26,7 +27,7 @@ constexpr uint32_t CONST_4 = 4;
 constexpr uint32_t CONST_3 = 3;
 constexpr uint32_t CONST_2 = 2;
 
-bool MaskCheck(int64_t maskType, uint32_t maskIsDefine)
+bool MaskCheck(int64_t maskType, bool maskIsDefine)
 {
     if (maskType < MASK_TYPE_TRIL || maskType > MASK_TYPE_CUSTOM) {
         printf("maskType expect in [0, 3], but value is %d\n", maskType);
@@ -43,6 +44,11 @@ bool MaskCheck(int64_t maskType, uint32_t maskIsDefine)
         return false;
     }
     return true;
+}
+
+bool IsDoubleEqual(const double a, const double b)
+{
+    return std::abs(a - b) <= DBL_EPSILON;
 }
 
 at::Tensor hstu_dense_normal_forward_impl_npu(
@@ -74,7 +80,7 @@ at::Tensor hstu_dense_normal_forward_impl_npu(
     TORCH_CHECK(seqLen >= MIN_SEQ_LEN && seqLen <= MAX_SEQ_LEN,
         "maxSeqLen expect in [1, 20480], but value is ", seqLen);
     TORCH_CHECK(maxSeqLen == seqLen, "maxSeqLen should equal to q dim 1");
-    double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
+    double realSiluScale = IsDoubleEqual(siluScale, 0.0) ? 1.0f / maxSeqLen : siluScale;
 
     TORCH_CHECK(MaskCheck(maskType, maskNpu.defined()), "maskType check failed");
 
@@ -132,7 +138,7 @@ at::Tensor hstu_dense_jagged_forward_impl_npu(
 
     TORCH_CHECK(maxSeqLen >= MIN_SEQ_LEN && maxSeqLen <= MAX_SEQ_LEN,
         "maxSeqLen expect in [1, 20480], but value is ", maxSeqLen);
-    double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
+    double realSiluScale = IsDoubleEqual(siluScale, 0.0) ? 1.0f / maxSeqLen : siluScale;
 
     TORCH_CHECK(MaskCheck(maskType, maskNpu.defined()), "maskType check failed");
 

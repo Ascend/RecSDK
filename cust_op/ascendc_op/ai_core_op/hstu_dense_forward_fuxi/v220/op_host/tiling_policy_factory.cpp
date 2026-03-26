@@ -23,10 +23,10 @@ namespace HstuDenseForwardFuxi {
 
 std::vector<std::shared_ptr<TilingPolicy>> TilingPolicyFactory::m_policyMap(TYPE_NUM, std::make_shared<TilingPolicy>());
 
-void TilingPolicyFactory::TilingPolicyRegister(LAYOUT_TYPE layOutType, std::shared_ptr<TilingPolicy>policy)
+void TilingPolicyFactory::TilingPolicyRegister(LAYOUT_TYPE policyKey, std::shared_ptr<TilingPolicy>policy)
 {
-    if (layOutType < LAYOUT_TYPE::INVALID && layOutType >= LAYOUT_TYPE::NORMAL) {
-        m_policyMap[static_cast<int>(layOutType)] = policy;
+    if (policyKey < LAYOUT_TYPE::INVALID && policyKey >= LAYOUT_TYPE::NORMAL) {
+        m_policyMap[static_cast<int>(policyKey)] = policy;
     }
     return;
 }
