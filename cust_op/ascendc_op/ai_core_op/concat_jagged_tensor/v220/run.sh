@@ -43,7 +43,7 @@ source "$UTILS_SCRIPT"
 # ==============================================================================
 # 3. 参数配置
 # ==============================================================================
-vendor_name="dense_to_jagged"
+vendor_name="concat_jagged_tensor"
 
 parse_arguments "$@" || exit 1
 
@@ -75,7 +75,7 @@ check_system_and_cann "$ai_core" || exit 1
 
 # 生成算子代码
 rm -rf "${WORK_DIR}/${vendor_name}"
-msopgen gen -i ${vendor_name}.json -f tf -c ${ai_core} -lan cpp -out ./${vendor_name} -m 0 -op DenseToJagged
+msopgen gen -i ${vendor_name}.json -f tf -c ${ai_core} -lan cpp -out ./${vendor_name} -m 0 -op ConcatJaggedTensor
 
 # 兼容cann9.0.0早期版本的老工程
 if [ -d "${WORK_DIR}/${vendor_name}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
@@ -83,7 +83,7 @@ if [ -d "${WORK_DIR}/${vendor_name}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; th
 fi
 
 if [ "${MAJOR_VERSION}" -ge 9 ]; then
-    overwrite_source_with_target "${WORK_DIR}/${vendor_name}" "${PROJECT_ROOT}/ai_core_op/custom_op_template" || exit 1
+    overwrite_source_with_target "${PROJECT_ROOT}/ai_core_op/custom_op_template" "${WORK_DIR}/${vendor_name}" || exit 1
 fi
 
 # 定义生成后的目标目录
@@ -96,8 +96,8 @@ echo "Copying specific operator source files to ${TARGET_DIR}..."
 rm -rf "${TARGET_DIR}/op_kernel"/*.h "${TARGET_DIR}/op_kernel"/*.cpp 2>/dev/null || true
 rm -rf "${TARGET_DIR}/op_host"/*.h "${TARGET_DIR}/op_host"/*.cpp 2>/dev/null || true
 
-cp -rf op_kernel "${TARGET_DIR}/"
-cp -rf op_host "${TARGET_DIR}/"
+cp -rf op_kernel/*.h "${TARGET_DIR}/op_kernel" && cp -rf op_kernel/*.cpp "${TARGET_DIR}/op_kernel"
+cp -rf op_host/*.h "${TARGET_DIR}/op_host" && cp -rf op_host/*.cpp "${TARGET_DIR}/op_host"
 
 # 修改 CMakePresets.json
 configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "$TARGET_DIR" || exit 1
