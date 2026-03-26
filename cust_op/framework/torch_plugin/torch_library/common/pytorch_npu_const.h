@@ -61,8 +61,6 @@ typedef int (*_aclDestroyTensorList)(const aclTensorList* array);
 
 constexpr int kHashBufSize = 8192;
 constexpr int kHashBufMaxSize = kHashBufSize + 1024;
-extern thread_local char g_hashBuf[kHashBufSize];
-extern thread_local int g_hashOffset;
 
 #if NPU_CHIP_A5
 #define AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(_)                                                                    \
