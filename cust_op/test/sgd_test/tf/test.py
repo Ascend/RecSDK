@@ -191,13 +191,18 @@ def test_sgd(tf_session, static_graph, tf_vars, batch_size, table_size, dim_size
     golden_out = run_sgd_gloden(grad, indices, var_golden, input_lr, weight_decay)
     npu_out = run_sgd_npu(grad, indices, var_npu, input_lr, weight_decay)
 
+    # 确保变量读取发生在更新之后，即让tensorflow必须先执行完golden_out和npu_out，才能执行var_npu_read和var_golden_read
+    with tf.control_dependencies([golden_out, npu_out]):
+        var_npu_read = tf.identity(var_npu)
+        var_golden_read = tf.identity(var_golden)
+
     # 预热10次
     for _ in range(10):
         results = tf_session.run({
             "npu_result": npu_out,
             "golden_result": golden_out,
-            "var_npu": var_npu,
-            "var_golden": var_golden
+            "var_npu": var_npu_read,
+            "var_golden": var_golden_read
         }, feed_dict={
             grad: input_grad,
             indices: input_indices,
