@@ -123,14 +123,14 @@ def test_empty_tensor_validation():
     empty_params = params._replace(devWeights=empty_dev_weights)
 
     with pytest.raises(RuntimeError, match="devWeights tensor must be non-empty"):
-        call_dense_embedding_lookup(empty_params)
+        _ = call_dense_embedding_lookup(empty_params)
 
     # 测试空的weights_offsets
     empty_weights_offsets = torch.tensor([], dtype=torch.int64).to(DEVICE_ID)
     empty_params = params._replace(weightsOffsets=empty_weights_offsets)
 
     with pytest.raises(RuntimeError, match="weightsOffsets tensor must be non-empty"):
-        call_dense_embedding_lookup(empty_params)
+        _ = call_dense_embedding_lookup(empty_params)
 
     logger.info("Empty tensor validation test passed")
 
@@ -144,14 +144,14 @@ def test_wrong_dimension_validation():
     wrong_params = params._replace(devWeights=wrong_dim_dev_weights)
 
     with pytest.raises(RuntimeError, match="devWeights must be 1D"):
-        call_dense_embedding_lookup(wrong_params)
+        _ = call_dense_embedding_lookup(wrong_params)
 
     # 测试错误的indices维度 (应该是1D，但提供2D)
     wrong_dim_indices = params.indices.reshape(2, 2)
     wrong_params = params._replace(indices=wrong_dim_indices)
 
     with pytest.raises(RuntimeError, match="indices must be 1D"):
-        call_dense_embedding_lookup(wrong_params)
+        _ = call_dense_embedding_lookup(wrong_params)
 
     logger.info("Wrong dimension validation test passed")
 
@@ -165,14 +165,14 @@ def test_wrong_dtype_validation():
     wrong_params = params._replace(devWeights=wrong_dtype_dev_weights)
 
     with pytest.raises(RuntimeError, match="devWeights must be float type"):
-        call_dense_embedding_lookup(wrong_params)
+        _ = call_dense_embedding_lookup(wrong_params)
 
     # 测试错误的indices数据类型 (应该是int64，但提供float32)
     wrong_dtype_indices = params.indices.to(torch.float32)
     wrong_params = params._replace(indices=wrong_dtype_indices)
 
     with pytest.raises(RuntimeError, match="indices must be int or long type"):
-        call_dense_embedding_lookup(wrong_params)
+        _ = call_dense_embedding_lookup(wrong_params)
 
     logger.info("Wrong dtype validation test passed")
 
@@ -187,7 +187,7 @@ def test_device_mismatch_validation():
     cpu_params = params._replace(devWeights=cpu_dev_weights, indices=cpu_indices)
 
     with pytest.raises(RuntimeError, match="devWeights tensor must be on NPU device"):
-        call_dense_embedding_lookup(cpu_params)
+        _ = call_dense_embedding_lookup(cpu_params)
 
     logger.info("Device mismatch validation test passed")
 
@@ -203,7 +203,7 @@ def test_offset_indices_mismatch_validation():
     with pytest.raises(
         RuntimeError, match="offsets last element must match indices size"
     ):
-        call_dense_embedding_lookup(wrong_params)
+        _ = call_dense_embedding_lookup(wrong_params)
 
     logger.info("Offset-indices mismatch validation test passed")
 
