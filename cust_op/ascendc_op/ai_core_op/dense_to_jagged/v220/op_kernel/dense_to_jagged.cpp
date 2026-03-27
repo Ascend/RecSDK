@@ -43,7 +43,7 @@ public:
 
     __aicore__ inline void init(DenseToJaggedArgs &args, TPipe *pipe)
     {
-        this->args = args;
+        this->args = &args;
         this->pipe = pipe;
 
         thisId = GetBlockIdx();
@@ -91,28 +91,28 @@ private:
         tType jaggedPos;
         tType jaggedPosNext;
 
-        __gm__ tType *oPtr = (__gm__ tType *)args.offset;
+        __gm__ tType *oPtr = (__gm__ tType *)args->offset;
 
-        for (int i = 0; i < args.singleCoreBatch; i++) {
+        for (int i = 0; i < args->singleCoreBatch; i++) {
             // Get information form offset tensor to jag dense
             jaggedPos = *(oPtr + offsetStartPos + i);
             jaggedPosNext = *(oPtr + offsetStartPos + i + 1);
             int copyRows = jaggedPosNext - jaggedPos;
 
             // Get jagged Global tensor with offset
-            int64_t jaggedPosOffset = static_cast<int64_t>(jaggedPos) * args.denseDim2 * align;
+            int64_t jaggedPosOffset = static_cast<int64_t>(jaggedPos) * args->denseDim2 * align;
             GlobalTensor<uint8_t> jaggedDenseCopyGb = jaggedDenseGb[jaggedPosOffset];
-            int64_t densePos = static_cast<int64_t>(offsetStartPos + i) * args.denseDim2 * args.denseDim1 * align;
+            int64_t densePos = static_cast<int64_t>(offsetStartPos + i) * args->denseDim2 * args->denseDim1 * align;
             GlobalTensor<uint8_t> denseCopyGb = denseGb[densePos];
 
             // When offset[n] - offset[n + 1] > dense dim1, only need to copy dense dim1 * dim2
             // otherwise, copy (offset[n] - offset[n + 1]) * dense dim2
-            int64_t remainLen = copyRows > args.denseDim1 ? (args.denseDim1 * args.denseDim2 * align) :
-                (copyRows * args.denseDim2 * align);
+            int64_t remainLen = copyRows > args->denseDim1 ? (args->denseDim1 * args->denseDim2 * align) :
+                (copyRows * args->denseDim2 * align);
             while (remainLen > 0) {
-                // args.singleLoopSize - ALIGN_32 to avoid overAlignLen exceed singleLoopSize
-                int64_t thisLen = args.singleLoopSize - ALIGN_32;
-                if (remainLen < (args.singleLoopSize - ALIGN_32)) {
+                // args->singleLoopSize - ALIGN_32 to avoid overAlignLen exceed singleLoopSize
+                int64_t thisLen = args->singleLoopSize - ALIGN_32;
+                if (remainLen < (args->singleLoopSize - ALIGN_32)) {
                     thisLen = remainLen;
                 }
 
@@ -162,7 +162,7 @@ private:
     int32_t align;
     int32_t thisId;
     int32_t offsetStartPos;
-    DenseToJaggedArgs args;
+    DenseToJaggedArgs *args;
 
     GlobalTensor<uint8_t> denseGb;
     GlobalTensor<uint8_t> jaggedDenseGb;
