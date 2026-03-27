@@ -129,14 +129,14 @@ def test_empty_tensor_grad_validation():
     empty_params = params._replace(grad=empty_weights_grad)
 
     with pytest.raises(RuntimeError, match="weightsGrad tensor must be non-empty"):
-        call_dense_embedding_lookup_grad(empty_params)
+        _ = call_dense_embedding_lookup_grad(empty_params)
 
     # 测试空的dev_weights
     empty_dev_weights = torch.tensor([], dtype=torch.float32).to(DEVICE_ID)
     empty_params = params._replace(devWeights=empty_dev_weights)
 
     with pytest.raises(RuntimeError, match="devWeights tensor must be non-empty"):
-        call_dense_embedding_lookup_grad(empty_params)
+        _ = call_dense_embedding_lookup_grad(empty_params)
 
     logger.info("Empty tensor grad validation test passed")
 
@@ -150,14 +150,14 @@ def test_wrong_dimension_grad_validation():
     wrong_params = params._replace(grad=wrong_dim_weights_grad)
 
     with pytest.raises(RuntimeError, match="weightsGrad must be 2D"):
-        call_dense_embedding_lookup_grad(wrong_params)
+        _ = call_dense_embedding_lookup_grad(wrong_params)
 
     # 测试错误的dev_weights维度 (应该是1D，但提供2D)
     wrong_dim_dev_weights = params.devWeights.reshape(2, 3)
     wrong_params = params._replace(devWeights=wrong_dim_dev_weights)
 
     with pytest.raises(RuntimeError, match="devWeights must be 1D"):
-        call_dense_embedding_lookup_grad(wrong_params)
+        _ = call_dense_embedding_lookup_grad(wrong_params)
 
     logger.info("Wrong dimension grad validation test passed")
 
@@ -171,14 +171,14 @@ def test_wrong_dtype_grad_validation():
     wrong_params = params._replace(grad=wrong_dtype_weights_grad)
 
     with pytest.raises(RuntimeError, match="weightsGrad must be float type"):
-        call_dense_embedding_lookup_grad(wrong_params)
+        _ = call_dense_embedding_lookup_grad(wrong_params)
 
     # 测试错误的dev_weights数据类型 (应该是float32，但提供int64)
     wrong_dtype_dev_weights = params.devWeights.to(torch.int64)
     wrong_params = params._replace(devWeights=wrong_dtype_dev_weights)
 
     with pytest.raises(RuntimeError, match="devWeights must be float type"):
-        call_dense_embedding_lookup_grad(wrong_params)
+        _ = call_dense_embedding_lookup_grad(wrong_params)
 
     logger.info("Wrong dtype grad validation test passed")
 
@@ -193,7 +193,7 @@ def test_device_mismatch_grad_validation():
     cpu_params = params._replace(devWeights=cpu_dev_weights, grad=cpu_weights_grad)
 
     with pytest.raises(RuntimeError, match="devWeights tensor must be on NPU device"):
-        call_dense_embedding_lookup_grad(cpu_params)
+        _ = call_dense_embedding_lookup_grad(cpu_params)
 
     logger.info("Device mismatch grad validation test passed")
 
@@ -209,7 +209,7 @@ def test_offset_indices_mismatch_grad_validation():
     with pytest.raises(
         RuntimeError, match="offsets last element must match indices size"
     ):
-        call_dense_embedding_lookup_grad(wrong_params)
+        _ = call_dense_embedding_lookup_grad(wrong_params)
 
     logger.info("Offset-indices mismatch grad validation test passed")
 
