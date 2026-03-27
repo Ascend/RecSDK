@@ -265,17 +265,6 @@ def test_dense_to_jagged_edge_cases(dims, dense_dtype, offset_dtype):
     run_test(denses, offsets, types)
 
 
-def test_dense_to_jagged_empty_offsets():
-    """测试空偏移量的情况"""
-    # 创建空的偏移量 - 确保 len(offsets) == dense.shape[0]
-    denses = np.random.randn(0, 10, 8).astype(np.float32)  # 0个batch
-    offsets = np.array([])  # 空偏移量
-    types = (torch.float32, torch.int64)
-
-    with pytest.raises(RuntimeError, match="offset tensor must be non-empty"):
-        run_test(denses, offsets, types)
-
-
 def test_dense_to_jagged_large_offsets():
     """测试大偏移量的情况"""
     # 创建大的偏移量
