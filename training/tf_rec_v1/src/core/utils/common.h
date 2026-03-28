@@ -131,20 +131,8 @@ const int ASCEND910_PRO_A = 262144;
 const int ASCEND910_B = 262144;
 const int ASCEND910_A = 262144;
 const int ASCEND910_B2C = 196608;
-const int ASCEND950PR_9579 = 253952;
-const int ASCEND950PR_957A = 253952;
-const int ASCEND950PR_957B = 253952;
-const int ASCEND950PR_957C = 253952;
-const int ASCEND950PR_957D = 253952;
-const int ASCEND950PR_950Z = 253952;
-const int ASCEND950PR_9589 = 253952;
-const int ASCEND950PR_958A = 253952;
-const int ASCEND950PR_958B = 253952;
-const int ASCEND950PR_958C = 253952;
-const int ASCEND950PR_958D = 253952;
-const int ASCEND950PR_9599 = 253952;
-const int ASCEND950PR_959A = 253952;
-const int ASCEND950PR_959B = 253952;
+const int ASCEND950PR = 253952;  // The ubsize of the 950PR series
+const int ASCEND950DT = 253952;  // The ubsize of the 950DT series
 };  // namespace UBSize
 
 int GetUBSize(int devID);
