@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <torch/csrc/autograd/custom_function.h>
 #include <torch/library.h>
-
+#include <cfloat>
 #include "../common/pytorch_npu_helper.hpp"
 #include "../common/common_utils.h"
 using torch::autograd::AutogradContext;
@@ -39,7 +39,6 @@ bool HstuBackMaskCheck(int64_t maskType)
 
     return true;
 }
-
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_jagged_backward_impl_npu(
     const at::Tensor& grad,
@@ -93,7 +92,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dens
         TORCH_CHECK(denseMask.size(2) == maxSeqLen, "mask size 2 should be equal to maxSeqLen\n");
     }
 
-    double realSiluScale = (siluScale == 0.0) ? 1.0f / maxSeqLen : siluScale;
+    double realSiluScale = std::abs(siluScale - 0.0) <= DBL_EPSILON ? 1.0f / maxSeqLen : siluScale;
 
     auto qGradOutput = at::empty_like(denseQ);
     auto kGradOutput = at::empty_like(denseK);
