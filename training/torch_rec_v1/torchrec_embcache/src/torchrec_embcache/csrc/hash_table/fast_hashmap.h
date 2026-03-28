@@ -16,7 +16,7 @@ namespace Embcache {
 
 class NetHeapAllocator {
 public:
-    void* Allocate(uint64_t size)
+    void* Allocate(uint64_t size) const
     {
         return calloc(1, size);
     }
