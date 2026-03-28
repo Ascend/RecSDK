@@ -12,8 +12,10 @@ cm_worker_ip = "127.0.0.1"
 cm_worker_size = 1
 
 [model]
+# Set to true for precision alignment mode.
+deterministic = false
 
-train_epoch = 1
+train_epoch = 3
 test_epoch = 1
 batch_size = 8192
 # Simulation configuration.

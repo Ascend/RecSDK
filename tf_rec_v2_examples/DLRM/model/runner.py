@@ -44,7 +44,7 @@ class TaskRunner:
         self._config = config
         self._toml_config = toml_config
         self._seed = seed
-        self._sess = tf.compat.v1.Session(config=sess_config(dump_data=False))
+        self._sess = tf.compat.v1.Session(config=sess_config(dump_data=False, is_deterministic=config.deterministic))
 
     def __del__(self):
         self._sess.close()

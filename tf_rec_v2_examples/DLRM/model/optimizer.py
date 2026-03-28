@@ -24,9 +24,13 @@ from config import Config
 
 
 def get_dense_and_sparse_optimizer(cfg: Config) -> Tuple[tf.compat.v1.train.Optimizer, tf.compat.v1.train.Optimizer]:
-    # Due to the unavailability of many operators, use the `Adam` optimizer to get the functionality working.
-    dense_optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=cfg.learning_rate[0])
-    sparse_optimizer = mxrec.AdamWOptimizer(weight_decay=cfg.weight_decay, learning_rate=cfg.learning_rate[1])
+    if cfg.deterministic:
+        dense_optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=cfg.learning_rate[0])
+        sparse_optimizer = mxrec.AdamWOptimizer(weight_decay=cfg.weight_decay, learning_rate=cfg.learning_rate[1])
+    else:
+        # Use the SGD optimizer to avoid overflow of high-dimensional dot product values under mixed precision.
+        dense_optimizer = tf.compat.v1.train.GradientDescentOptimizer(learning_rate=cfg.learning_rate[0])
+        sparse_optimizer = mxrec.AdamWOptimizer(weight_decay=cfg.weight_decay, learning_rate=cfg.learning_rate[1], epsilon=1e-6)
 
     dense_optimizer = DenseLossScaleOptimizer(dense_optimizer, cfg.loss_scale)
     sparse_optimizer = SparseLossScaleOptimizer(sparse_optimizer, cfg.loss_scale)
