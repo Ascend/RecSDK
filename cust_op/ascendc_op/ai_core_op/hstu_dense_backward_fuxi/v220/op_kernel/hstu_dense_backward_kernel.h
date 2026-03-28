@@ -58,7 +58,7 @@ public:
         q.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.q), totalElementOfQ);
         k.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.k), totalElementOfQ);
         v.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.v), totalElementOfQ);
-        if (enableBias) {
+        if (enableBias > 0) {
             bts.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.bts), totalElementOfBts);
             bpos.SetGlobalBuffer(reinterpret_cast<__gm__ qType *>(args.bpos), totalElementOfBts);
         }
@@ -231,7 +231,7 @@ public:
             if (useMask) {
                 CastQType2Float(inputMask, inputMask.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
             }
-            if (enableBias) {
+            if (enableBias > 0) {
                 CastQType2Float(inputGpV, inputGpV.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
                 CastQType2Float(inputGtV, inputGtV.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
                 CastQType2Float(inputBts, inputBts.template ReinterpretCast<qType>(), outputMidTemp, thisLen);
@@ -256,7 +256,7 @@ public:
 
         CastInputData(inputQK, inputGV, inputBts, inputBpos, inputGposV, inputGtsV, inputMask, thisLen, useMask);
 
-        if (enableBias) {
+        if (enableBias > 0) {
             if (useMask) {
                 // Gts = GtsV * mask
                 Mul<float>(inputGtsV, inputGtsV, inputMask, thisLen);
@@ -405,7 +405,7 @@ public:
             }
             queueVecScoreMask.EnQue(inputMask);
         }
-        if (enableBias) {
+        if (enableBias > 0) {
             // input bias
             LocalTensor<float> inputBts = queueVecScoreBts.AllocTensor<float>();
             CopyInPadding(inputBts.template ReinterpretCast<qType>(), bts[curBtsOffset], validRowNum, totalColNum,
