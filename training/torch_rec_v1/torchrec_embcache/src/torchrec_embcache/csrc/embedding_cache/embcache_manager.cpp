@@ -917,12 +917,12 @@ void EmbcacheManager::WriteAttributeFile(int32_t tableIndex, const std::string& 
     }
 }
 
-void EmbcacheManager::Load(const std::string& path, int rank, int world_size, bool incremental)
+void EmbcacheManager::Load(const std::string& path, int rank, int worldSize, bool incremental)
 {
     auto fileSystemPtr = GetFileSystem(path);
     TORCH_CHECK(fileSystemPtr != nullptr, "fileSystemPtr should not be nullptr");
-    TORCH_CHECK(world_size > 0, "world_size must be positive");
-    TORCH_CHECK(rank >= 0 && rank < world_size, "rank must be in [0, world_size)");
+    TORCH_CHECK(worldSize > 0, "worldSize must be positive");
+    TORCH_CHECK(rank >= 0 && rank < worldSize, "rank must be in [0, worldSize)");
 
     for (int32_t i = 0; i < embNum_; i++) {
         std::string tableName = embConfigs_[i].tableName;
@@ -951,7 +951,7 @@ void EmbcacheManager::Load(const std::string& path, int rank, int world_size, bo
         std::vector<int64_t> localOffsets;
 
         for (size_t idx = 0; idx < allKeys.size(); ++idx) {
-            if (allKeys[idx] % world_size == rank) {
+            if (allKeys[idx] % worldSize == rank) {
                 localKeys.push_back(allKeys[idx]);
                 localOffsets.push_back(static_cast<int64_t>(idx));
             }
