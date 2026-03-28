@@ -43,6 +43,7 @@ class Config:
         self.test_epoch = toml_config["model"]["test_epoch"]
         self.dev_vocab_size = toml_config["model"]["dev_vocab_size"] * self.rank_size
         self.emb_dim = toml_config["model"]["emb_dim"]
+        self.deterministic = toml_config["model"]["deterministic"]
         self.key_type = tf.int64
         self.value_type = tf.float32
         self.global_step = tf.Variable(0, trainable=False)
@@ -60,7 +61,10 @@ class Config:
         return lr_scheduler.calc(self.global_step)
 
 
-def sess_config(dump_data: bool = False, dump_path: str = "./dump_output", dump_steps: str = "0|1|2") -> Any:
+def sess_config(
+        dump_data: bool = False, dump_path: str = "./dump_output", dump_steps: str = "0|1|2",
+        is_deterministic: bool = False
+) -> Any:
     session_config = tf.compat.v1.ConfigProto(allow_soft_placement=False, log_device_placement=False)
     session_config.gpu_options.allow_growth = True
     custom_op = session_config.graph_options.rewrite_options.custom_optimizers.add()
@@ -70,9 +74,11 @@ def sess_config(dump_data: bool = False, dump_path: str = "./dump_output", dump_
     custom_op.parameter_map["min_group_size"].b = True
     custom_op.parameter_map["enable_data_pre_proc"].b = True
     custom_op.parameter_map["iterations_per_loop"].i = 10
-    # 开启"must_keep_origin_dtype"精度模式和确定性计算以保证模型精度，若使用其他模式可能导致精度问题
-    custom_op.parameter_map["precision_mode"].s = tf.compat.as_bytes("must_keep_origin_dtype")
-    custom_op.parameter_map["deterministic"].i = 1
+    if is_deterministic:
+        custom_op.parameter_map["precision_mode"].s = tf.compat.as_bytes("must_keep_origin_dtype")
+        custom_op.parameter_map["deterministic"].i = 1
+    else:
+        custom_op.parameter_map["precision_mode"].s = tf.compat.as_bytes("allow_mix_precision")
     custom_op.parameter_map["hcom_parallel"].b = False
     custom_op.parameter_map["op_precision_mode"].s = tf.compat.as_bytes("op_precision.ini")
     custom_op.parameter_map["op_execute_timeout"].i = 2000

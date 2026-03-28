@@ -183,7 +183,7 @@ class Config:
             self.use_fusion_optim = False            
 
         # 动态学习率
-        GLOBAL_BATCH_SIZE = 8192 * 8
+        GLOBAL_BATCH_SIZE = self.batch_size * self.rank_size
         LR_SCHEDULE_STEPS = [
             int(2750 * 55296 / GLOBAL_BATCH_SIZE),
             int(49315 * 55296 / GLOBAL_BATCH_SIZE),

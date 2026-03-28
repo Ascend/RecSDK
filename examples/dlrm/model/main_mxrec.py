@@ -219,7 +219,7 @@ if __name__ == "__main__":
     best_auc = 0
     iteration_per_loop = 10
 
-    train_ops = util.set_iteration_per_loop(sess, train_ops, 10)
+    train_ops = util.set_iteration_per_loop(sess, train_ops, iteration_per_loop)
 
     # for i in range(1, TRAIN_STEPS):
     i = 0

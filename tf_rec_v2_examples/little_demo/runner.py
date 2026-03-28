@@ -202,7 +202,7 @@ def _get_train_ops(train_model: Model) -> List[tf.Tensor]:
     sparse_embeddings = mxrec.get_sparse_embedding()
     for table_idx, sparse_emb in enumerate(sparse_embeddings[:2]):
         opt_name = f"AdamWOptimizer_{table_idx}"
-        sparse_opt = mxrec.AdamWOptimizer(learning_rate=Config.learning_rate, name=opt_name)
+        sparse_opt = mxrec.AdamWOptimizer(learning_rate=Config.learning_rate, name=opt_name, epsilon=1e-6)
         sparse_grads = tf.gradients(train_model.loss, [sparse_emb])
         train_ops.append(sparse_opt.apply_gradients(zip(sparse_grads, [sparse_emb])))
 

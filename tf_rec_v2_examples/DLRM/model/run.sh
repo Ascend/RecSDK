@@ -16,9 +16,11 @@
 # ==============================================================================
 
 rec_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/mxrec
-export PYTHONPATH=${rec_package_path}:$PYTHONPATH
 so_path=${rec_package_path}/librec
-export LD_LIBRARY_PATH=${so_path}:$LD_LIBRARY_PATH
+common_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/rec_sdk_common
+common_so_path=${common_package_path}/lib
+export PYTHONPATH=${so_path}:${common_so_path}:$PYTHONPATH
+export LD_LIBRARY_PATH=${so_path}:${common_so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 export LD_PRELOAD=${rec_package_path}/../scikit_learn.libs/libgomp-d22c30c5.so.1.0.0:$LD_PRELOAD
 
 dlrm_criteo_data_path=$1
