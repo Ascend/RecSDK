@@ -33,6 +33,9 @@ readonly __UTILS_DIR="$(dirname "${__UTILS_SCRIPT_PATH}")"
 readonly __PROJECT_ROOT="$(dirname "${__UTILS_DIR}")"
 # 推导 config 目录
 readonly CONFIG_DIR="${__PROJECT_ROOT}/config"
+# ONNIX 适配层路径
+readonly ONNX_PATH="${__PROJECT_ROOT}/build/scripts/onnx_plugin"
+readonly JSON_FILE="${ONNX_PATH}/json.hpp"
 
 # ==============================================================================
 # 参数解析
@@ -76,6 +79,16 @@ parse_arguments() {
 # ==============================================================================
 # 验证 AI Core
 # ==============================================================================
+
+VALID_AI_CORES=(
+    "ai_core-Ascend910B1"
+    "ai_core-Ascend910B2"
+    "ai_core-Ascend910B3"
+    "ai_core-Ascend910B4"
+    "ai_core-Ascend910_93"
+    "ai_core-Ascend310P3"
+)
+
 validate_ai_core() {
     local target_core="$1"
     for valid_core in "${VALID_AI_CORES[@]}"; do
@@ -201,6 +214,66 @@ overwrite_source_with_target() {
 }
 
 # ==============================================================================
+# 根据 vendor_name 生成op_name
+# ==============================================================================
+generate_op_name() {
+    local vendor_name="$1"
+    # 将 vendor_name 转换为 PascalCase 作为 op_name
+    local op_name=$(echo "$vendor_name" | sed -r 's/(^|_)([a-z])/\U\2/g')
+    echo "$op_name"
+}
+
+# =============================================================================
+# 生成算子代码
+# 用法: gen_build_dir "$work_dir" "$vendor_name" "$op_name"
+# ============================================================================
+gen_build_dir() {
+    local work_dir="$1"
+    local vendor_name="$2"
+    local op_name="$3"
+    if [ -z "$op_name" ]; then
+        op_name=$(generate_op_name "$vendor_name")
+    fi
+    rm -rf "${work_dir}/${vendor_name}"
+    msopgen gen -i ${work_dir}/${vendor_name}.json -f tf -c ${ai_core} -lan cpp -out "${work_dir}/${vendor_name}" -m 0 -op ${op_name}
+    if [ -d "${work_dir}/${vendor_name}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
+        export MAJOR_VERSION=8
+    fi
+
+    if [ "${MAJOR_VERSION}" -ge 9 ]; then
+        overwrite_source_with_target "${work_dir}/${vendor_name}" \
+        "${__PROJECT_ROOT}/ai_core_op/custom_op_template" || return 1
+    fi
+}
+
+# ==============================================================================
+# 替换算子工程源文件
+# 用法: replace_operator_sources "$source_dir" "$target_dir"
+# ==============================================================================
+replace_operator_sources() {
+    local src_dir="$1"
+    local tgt_dir="$2"
+
+    if [ ! -d "$src_dir" ]; then
+        echo "ERROR: Source directory not found: $src_dir" >&2
+        return 1
+    fi
+    if [ ! -d "$tgt_dir" ]; then
+        echo "ERROR: Target directory not found: $tgt_dir" >&2
+        return 1
+    fi
+
+    # 清理旧文件 (防止残留)
+    rm -rf "${tgt_dir}/op_kernel"/*.h "${tgt_dir}/op_kernel"/*.cpp 2>/dev/null || true
+    rm -rf "${tgt_dir}/op_host"/*.h "${tgt_dir}/op_host"/*.cpp 2>/dev/null || true
+
+    # 复制新文件
+    cp -rf ${src_dir}/op_kernel/* "${tgt_dir}/op_kernel/"
+    cp -rf ${src_dir}/op_host/* "${tgt_dir}/op_host/"
+    return 0
+}
+
+# ==============================================================================
 # 构建 ONNX 适配层
 # 用法: build_onnx_adapter "$ai_core" "$onnx_path" "$json_file" "$vendor_name" "$work_dir"
 # ==============================================================================
@@ -250,7 +323,7 @@ configure_cmake_presets() {
     local maj_ver="$3"
     local target_dir="$4"
     if [ -z "$5" ]; then
-        local enable_catlass="False"
+        local enable_catlass=${enable_catlass:-"False"}
     else
         local enable_catlass="$5"
     fi
@@ -313,15 +386,15 @@ configure_cmake_presets() {
 }
 
 # ==============================================================================
-# CANN < 9.0 编译前准备
-# 用法: prepare_legacy_build "$major_version" "$vendor_name" "$target_dir" "$enable_catlass"(可选)
+# 编译前准备与执行编译，兼容cann 9.0以下版本
+# 用法: prepare_and_build "$major_version" "$vendor_name" "$target_dir" "$enable_catlass"(可选)
 # ==============================================================================
-prepare_legacy_build() {
+prepare_and_build() {
     local maj_ver="$1"
     local v_name="$2"
     local target_dir="$3"
     if [ -z "$4" ]; then
-        local enable_catlass="False"
+        local enable_catlass=${enable_catlass:-"False"}
     else
         local enable_catlass="$4"
     fi
@@ -415,4 +488,42 @@ install_operator_package() {
     echo "Installing operator package: $installer"
     bash -- "$installer"
     return $?
+}
+
+# ==============================================================================
+# 整体构建流程
+# 注意: vendor_name 需要由调用者传入，with_onnx 需要由调用者传入（如果需要构建onnx适配层则传入 "true"）
+# 使用说明：
+#  1. 该函数是构建算子的主流程，依次调用前面定义的各个步骤函数。
+#  2. 使用该函数时，需要在调用脚本里进行source ${__UTILS_SCRIPT_PATH}，然后调用 build_and_install_operator 函数，并传入必要的参数。
+#  3. 如需要对相应的步骤或者变量进行定制，可以在调用脚本里覆盖相应的函数或者变量，然后再调用 build_and_install_operator。
+#  4. 执行顺序为，先source ${__UTILS_SCRIPT_PATH}，覆盖必要的函数或者变量（如果需要），然后调用 build_and_install_operator。
+#  4. 参数： "$work_dir" "$vendor_name" "$with_onnx"(可选)
+# ==============================================================================
+build_and_install_operator() {
+    local work_dir="$1"
+    local vendor_name="$2"
+    local with_onnx="$3"
+
+    echo "=========================================="
+    echo "Start Building Operator: ${vendor_name}"
+    echo "Target AI Core: ${ai_core}"
+    echo "Work Directory : ${work_dir}"
+    echo "=========================================="
+
+    validate_ai_core "$ai_core" || return 1
+    check_system_and_cann "$ai_core" || return 1
+    gen_build_dir "$work_dir" "$vendor_name" || return 1
+    replace_operator_sources "$work_dir" "${work_dir}/${vendor_name}" || return 1
+    if [ "$with_onnx" = "true" ]; then
+        build_onnx_adapter "$ai_core" "$ONNX_PATH" "$JSON_FILE" "$vendor_name" "$work_dir" || return 1
+    fi
+    configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "${work_dir}/${vendor_name}" || return 1
+    prepare_and_build "$MAJOR_VERSION" "$vendor_name" "${work_dir}/${vendor_name}" || return 1
+    install_operator_package "$OS_ID" "$ARCH" "${work_dir}/${vendor_name}" || return 1
+
+    echo "=========================================="
+    echo "Operator ${vendor_name} built and installed successfully."
+    echo "=========================================="
+    return 0
 }
