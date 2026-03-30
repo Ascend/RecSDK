@@ -58,6 +58,8 @@ public:
         lengthsB = tilingData.lengthsB;
         valuesDim = tilingData.valuesDim;
         valuesOutDim = tilingData.valuesOutDim;
+        weightsColumns = tilingData.weightsColumns;
+        weightBytesPerSparseIndex = static_cast<int64_t>(sizeof(WType)) * weightsColumns;
 
         totalBatch = tilingData.totalBatch;
         baseBatchLen = tilingData.baseBatchLen;
@@ -84,8 +86,8 @@ public:
         outValuesGT.SetGlobalBuffer(args.outValues, valuesOutDim * sizeof(VType));
 
         if (enableWeights) {
-            weightsGT.SetGlobalBuffer(args.weights, valuesDim * sizeof(WType));
-            outWeightsGT.SetGlobalBuffer(args.outWeights, valuesOutDim * sizeof(WType));
+            weightsGT.SetGlobalBuffer(args.weights, valuesDim * weightBytesPerSparseIndex);
+            outWeightsGT.SetGlobalBuffer(args.outWeights, valuesOutDim * weightBytesPerSparseIndex);
         }
 
         permutePtr = (__gm__ PType*)args.permute;
@@ -132,7 +134,7 @@ public:
         }
     }
 
-    __aicore__ void PermuteData(GlobalTensor<uint8_t> dstGT, GlobalTensor<uint8_t> srcGT, uint8_t datasize)
+    __aicore__ void PermuteData(GlobalTensor<uint8_t> dstGT, GlobalTensor<uint8_t> srcGT, int64_t bytesPerSparseIndex)
     {
         int64_t outValueOffset = 0;
         int64_t currentT = 0;
@@ -153,10 +155,10 @@ public:
                 offsetOfThisCore = tailLen * (baseCoreLen + 1) + (GetBlockIdx() - tailLen) * baseCoreLen;
             }
 
-            int64_t valuesStartIndex = (startIndex + offsetOfThisCore) * datasize;
-            int64_t outValueStartIndex = (outValueOffset + offsetOfThisCore) * datasize;
+            int64_t valuesStartIndex = (startIndex + offsetOfThisCore) * bytesPerSparseIndex;
+            int64_t outValueStartIndex = (outValueOffset + offsetOfThisCore) * bytesPerSparseIndex;
 
-            int64_t remainLen = valueLenOfThisCore * datasize;
+            int64_t remainLen = valueLenOfThisCore * bytesPerSparseIndex;
             while (remainLen > 0) {
                 int64_t thisLen = blockLen;
                 if (remainLen < blockLen) {
@@ -178,9 +180,10 @@ public:
     }
 
     // 在PermuteDataLine函数中，不再有外层循环，直接处理分配给当前core的行
-    __aicore__ void PermuteDataLine(GlobalTensor<uint8_t> dstGT, GlobalTensor<uint8_t> srcGT, uint8_t datasize)
+    __aicore__ void PermuteDataLine(GlobalTensor<uint8_t> dstGT, GlobalTensor<uint8_t> srcGT,
+        int64_t bytesPerSparseIndex)
     {
-        // lenOfThisCore 和 tOffsetOfThisCore 已在构造函数中计算好（165-172行）
+        // lenOfThisCore 和 tOffsetOfThisCore 已在构造函数中计算好（77-84行）
         // lenOfThisCore: 当前core负责的行数
         // tOffsetOfThisCore: 当前core负责的第一行在输出中的索引
         // 遍历当前core负责的每一行
@@ -192,10 +195,11 @@ public:
             int64_t endIndex = static_cast<int64_t>(*(lengthsOffsetPtr + ToffsetThisIndex + 1));
             int64_t tLen = endIndex - startIndex;
             
-            // 将数据长度转换为字节数
-            int64_t valuesStartIndex = startIndex * datasize;
-            int64_t outValueStartIndex = static_cast<int64_t>(*(permutedLengthsOffsetPtr + i)) * datasize;
-            int64_t remainLen = tLen * datasize;
+            // 将数据长度转换为字节数（每个稀疏 index 占 bytesPerSparseIndex，2D weights 时为 D*sizeof(W)）
+            int64_t valuesStartIndex = startIndex * bytesPerSparseIndex;
+            int64_t outValueStartIndex =
+                static_cast<int64_t>(*(permutedLengthsOffsetPtr + i)) * bytesPerSparseIndex;
+            int64_t remainLen = tLen * bytesPerSparseIndex;
 
             // 分块拷贝数据（因为数据可能大于UB空间）
             while (remainLen > 0) {
@@ -229,17 +233,17 @@ public:
     __aicore__ void ComputeAll()
     {
         PermuteLengths();
-        PermuteData(outValuesGT, valuesGT, sizeof(VType));
+        PermuteData(outValuesGT, valuesGT, static_cast<int64_t>(sizeof(VType)));
         if (enableWeights) {
-            PermuteData(outWeightsGT, weightsGT, sizeof(WType));
+            PermuteData(outWeightsGT, weightsGT, weightBytesPerSparseIndex);
         }
     }
 
     __aicore__ inline void ComputeData()
     {
-        PermuteDataLine(outValuesGT, valuesGT, sizeof(VType));
+        PermuteDataLine(outValuesGT, valuesGT, static_cast<int64_t>(sizeof(VType)));
         if (enableWeights) {
-            PermuteDataLine(outWeightsGT, weightsGT, sizeof(WType));
+            PermuteDataLine(outWeightsGT, weightsGT, weightBytesPerSparseIndex);
         }
     }
 
@@ -250,6 +254,8 @@ private:
     int64_t lengthsB = 0;
     int64_t valuesDim = 0;
     int64_t valuesOutDim = 0;
+    int64_t weightsColumns = 1;
+    int64_t weightBytesPerSparseIndex = 0;
     bool enableWeights = false;
     bool enableTotalOffset = false;
 
