@@ -146,12 +146,12 @@ bool OpRunner::Init()
     return InitInput() && InitOutput();
 }
 
-const size_t OpRunner::NumInputs()
+const size_t OpRunner::NumInputs() const
 {
     return numInputs_;
 }
 
-const size_t OpRunner::NumOutputs()
+const size_t OpRunner::NumOutputs() const
 {
     return numOutputs_;
 }
