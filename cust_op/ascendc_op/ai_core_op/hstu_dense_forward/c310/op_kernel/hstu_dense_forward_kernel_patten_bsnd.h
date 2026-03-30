@@ -629,7 +629,7 @@ public:
         int64_t outMidIndex = transTaskId % TRANS_PIPE_NUM;
         int64_t inOffset = outMidIndex * TraitParams::blockM * TraitParams::blockK;
         int32_t bufferIdx = TraitParams::GetCubeToVecType() == CubeToVecT::PING_PONG_FULL_GM ?
-                            0 : !lastBufferIdx;
+                            0 : (lastBufferIdx == 0 ? 1 : 0);
 
         int64_t total = m * vDim;
         int64_t remain = total;
@@ -694,7 +694,7 @@ public:
             int64_t thisLineOffset = (total - remain) / vDim;
             int64_t outOffset = outStartOffset + thisLineOffset * xDim2 * vDim;
             if constexpr (std::is_same<qType, fp8_e4m3fn_t>::value) {
-                if constexpr (needAtomic == true) {
+                if constexpr (needAtomic) {
                     LocalTensor<half> newOutLtHalf = queOut.template DeQue<half>();
                     AscendC::SetAtomicAdd<half>();
                     AscendC::SetAtomicType<half>();
