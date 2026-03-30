@@ -67,7 +67,7 @@ public:
         embDimAligned = constData.emb_dim_aligned;
 
         int singleCoreAddrNum = (int)(addrNums / block_num); // 有可能没有整除，最后的核会处理更多的数据
-        singleCoreAddrNum = singleCoreAddrNum & (~3); // & (~3) 代表取4的倍数向下取整，处理的地址占8字节，对齐32B的话，数量需要是4倍数
+        singleCoreAddrNum = static_cast<int>(static_cast<unsigned int>(singleCoreAddrNum) & (~3U)); // & (~3U) 代表取4的倍数向下取整，处理的地址占8字节，对齐32B的话，数量需要是4倍数
 
         singleCoreAddrLen = singleCoreAddrNum * sizeof(int64_t);
         veclen = addrNumPerLoop * typeSize * embDimAligned;  // 向上对齐32B
@@ -87,7 +87,7 @@ public:
         }
         // 处理最后一张卡剩下的addr
         int unProcess = (needComputeAddrLen / sizeof(int64_t)) % addrNumPerLoop;
-        if (unProcess)
+        if (unProcess != 0)
         {
             int unProcessAligned = static_cast<int>
             ((static_cast<unsigned int>(unProcess) + 3) & (~3U)); // 处理 addressList 不对齐32b的情况

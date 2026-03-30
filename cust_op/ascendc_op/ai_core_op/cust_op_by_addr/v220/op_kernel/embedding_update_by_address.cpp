@@ -64,7 +64,7 @@ public:
         addrNumPerLoop = constData.addr_per_loop;
 
         int singleCoreAddrNum = (int)(addrNums / block_num);
-        singleCoreAddrNum = singleCoreAddrNum & (~3); // & (~3) 代表取4的倍数向下取整，处理的地址占8字节，对齐32B的话，数量需要是4倍数
+        singleCoreAddrNum = static_cast<int>(static_cast<unsigned int>(singleCoreAddrNum) & (~3U)); // & (~3U) 代表取4的倍数向下取整，处理的地址占8字节，对齐32B的话，数量需要是4倍数
 
         veclen = addrNumPerLoop * typeSize * inputDimAligned;
         singleCoreAddrLen = singleCoreAddrNum * sizeof(int64_t);
@@ -84,7 +84,7 @@ public:
         }
 
         int unProcess = (needComputeAddrLen / sizeof(int64_t)) % addrNumPerLoop;
-        if (unProcess)
+        if (unProcess != 0)
         {
             int unProcessAligned = (static_cast<unsigned int>(unProcess) + 3) & (~3U); // 处理 addressList 不对齐32b的情况
             DataCopy(srcAddrLocal, srcAddrGlobal[loopCount * addrNumPerLoop], unProcessAligned);

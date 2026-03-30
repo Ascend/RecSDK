@@ -48,13 +48,13 @@ public:
      * @brief Get number of inputs
      * @return number of inputs
      */
-    const size_t NumInputs();
+    const size_t NumInputs() const;
 
     /**
      * @brief Get number of outputs
      * @return number of outputs
      */
-    const size_t NumOutputs();
+    const size_t NumOutputs() const;
 
     /**
      * @brief Get input size by index

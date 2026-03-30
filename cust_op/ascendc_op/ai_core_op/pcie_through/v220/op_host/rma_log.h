@@ -23,7 +23,7 @@
 namespace optiling {
 constexpr int32_t DEBUG_SWITCH = 0;
 
-#if DEBUG_SWITCH
+#if DEBUG_SWITCH == 1
 #define HSHMEM_FILENAME (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define LOG_HSHMEM(_msg, ...) printf("[%s:%4d] " _msg "\n", HSHMEM_FILENAME, __LINE__, ##__VA_ARGS__)
 #define LOG_ERROR(_msg, ...) LOG_HSHMEM("[ERRNO] " _msg, ##__VA_ARGS__)
