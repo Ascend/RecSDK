@@ -49,7 +49,7 @@ template <> int FloorMod<float>(float *input, float *mod, float *output, const s
         svfloat32_t input_vec = svld1_f32(pg, input + i);
         svfloat32_t mod_vec = svld1_f32(pg, mod + i);
         svbool_t zero_mask = svcmpeq_f32(pg, mod_vec, zero_vec);
-        if (int err = CheckSveHasZeroElement(pg, zero_mask)) {
+        if (int err = CheckSveHasZeroElement(pg, zero_mask); err != 0) {
             return err;
         }
         svfloat32_t div_vec = svdiv_f32_z(pg, input_vec, mod_vec);
@@ -77,7 +77,7 @@ template <> int FloorMod<double>(double *input, double *mod, double *output, con
         svfloat64_t input_vec = svld1_f64(pg, input + i);
         svfloat64_t mod_vec = svld1_f64(pg, mod + i);
         svbool_t zero_mask = svcmpeq_f64(pg, mod_vec, zero_vec);
-        if (int err = CheckSveHasZeroElement(pg, zero_mask)) {
+        if (int err = CheckSveHasZeroElement(pg, zero_mask); err != 0) {
             return err;
         }
         svfloat64_t div_vec = svdiv_f64_z(pg, input_vec, mod_vec);
@@ -105,7 +105,7 @@ template <> int FloorMod<float>(float input, float *mod, float *output, const si
         const svbool_t pg = svwhilelt_b32(i, length);
         svfloat32_t mod_vec = svld1_f32(pg, mod + i);
         svbool_t zero_mask = svcmpeq_f32(pg, mod_vec, zero_vec);
-        if (int err = CheckSveHasZeroElement(pg, zero_mask)) {
+        if (int err = CheckSveHasZeroElement(pg, zero_mask); err != 0) {
             return err;
         }
         svfloat32_t div_vec = svdiv_f32_z(pg, input_vec, mod_vec);
@@ -133,7 +133,7 @@ template <> int FloorMod<double>(double input, double *mod, double *output, cons
         const svbool_t pg = svwhilelt_b64(i, length);
         svfloat64_t mod_vec = svld1_f64(pg, mod + i);
         svbool_t zero_mask = svcmpeq_f64(pg, mod_vec, zero_vec);
-        if (int err = CheckSveHasZeroElement(pg, zero_mask)) {
+        if (int err = CheckSveHasZeroElement(pg, zero_mask); err != 0) {
             return err;
         }
         svfloat64_t div_vec = svdiv_f64_z(pg, input_vec, mod_vec);
@@ -161,7 +161,7 @@ template <> int FloorMod<float>(float *input, float mod, float *output, const si
         const svbool_t pg = svwhilelt_b32(i, length);
         svfloat32_t input_vec = svld1_f32(pg, input + i);
         svbool_t zero_mask = svcmpeq_f32(pg, mod_vec, zero_vec);
-        if (int err = CheckSveHasZeroElement(pg, zero_mask)) {
+        if (int err = CheckSveHasZeroElement(pg, zero_mask); err != 0) {
             return err;
         }
         svfloat32_t div_vec = svdiv_f32_z(pg, input_vec, mod_vec);
@@ -189,7 +189,7 @@ template <> int FloorMod<double>(double *input, double mod, double *output, cons
         const svbool_t pg = svwhilelt_b64(i, length);
         svfloat64_t input_vec = svld1_f64(pg, input + i);
         svbool_t zero_mask = svcmpeq_f64(pg, mod_vec, zero_vec);
-        if (int err = CheckSveHasZeroElement(pg, zero_mask)) {
+        if (int err = CheckSveHasZeroElement(pg, zero_mask); err != 0) {
             return err;
         }
         svfloat64_t div_vec = svdiv_f64_z(pg, input_vec, mod_vec);
