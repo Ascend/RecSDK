@@ -56,6 +56,8 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
     auto valuesConti = values.contiguous();
     auto weightsConti = weights.value_or(at::empty({}, at::kFloat)).contiguous();
     bool enableWeights = weights.has_value();
+
+    int32_t weightsColumns = 1;
     const auto T = permute.size(0);
     const auto lengthsRows = lengths.size(0);
     const auto batchSize = lengths.size(1);
@@ -94,8 +96,8 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
         permutedLengthsOffset = asynchronous_complete_cumsum_npu(permuteReduceSumLengths);
     }
 
-    int64_t outValuesLen;
-    if (permuted_lengths_sum.has_value() && permuted_lengths_sum.value() > 0) {
+    int64_t outValuesLen = 0;
+    if (permuted_lengths_sum.has_value()) {
         outValuesLen = static_cast<int64_t>(permuted_lengths_sum.value());
     } else {
         if (useTotalOffset) {
@@ -107,7 +109,16 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute2d_sparse_data_impl_npu(
 
     at::Tensor outLengths = at::empty({T, batchSize}, lengthsConti.options());
     at::Tensor outValues = at::empty({outValuesLen}, valuesConti.options());
-    at::Tensor outWeights = enableWeights ? at::empty({outValuesLen}, weightsConti.options()) : at::Tensor();
+    at::Tensor outWeights = at::Tensor();
+
+    if (enableWeights) {
+        if (weightsConti.dense_dim() > 1) {
+            weightsColumns = weightsConti.size(1);
+            outWeights = at::empty({outValuesLen, weightsColumns}, weightsConti.options());
+        } else {
+            outWeights = at::empty({outValuesLen}, weightsConti.options());
+        }
+    }
 
     EXEC_NPU_CMD(aclnnPermute2dSparseData, permuteConti, lengthsConti, valuesConti, weightsConti, totalOffset,
                  lengthsOffset, permutedLengthsOffset, outValuesLen, enableWeights, outLengths, outValues, outWeights);

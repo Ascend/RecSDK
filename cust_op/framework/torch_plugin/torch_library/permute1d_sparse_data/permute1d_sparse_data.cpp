@@ -46,7 +46,6 @@ void validate_permute1d_sparse_data_inputs(
 
     // 如果有权重张量，也加入检查
     if (weights.has_value()) {
-        check_tensor_dim(weights.value(), EXPECTED_DIM_1D, "weights");
         tensors.push_back(weights.value());
         names.push_back("weights");
     }
@@ -59,7 +58,6 @@ void validate_permute1d_sparse_data_inputs(
     // 检查weights张量(如果存在)
     if (weights.has_value()) {
         check_tensor_non_empty(*weights, "weights");
-        check_tensor_dim(*weights, EXPECTED_DIM_1D, "weights");
         const auto weightsLen = weights->size(0);
         TORCH_CHECK(weightsLen == valuesLen, "weights and values length mismatch: ", weightsLen, " vs ", valuesLen);
     }
@@ -97,6 +95,7 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute1d_sparse_data_impl_npu(
     auto weightsConti = weights.value_or(at::empty({}, at::kFloat)).contiguous();
     bool enableWeights = weights.has_value();
 
+    int32_t weightsColumns = 1;
     const auto pLength = permute.size(0);
     const auto lengthSize = lengths.size(0);
     const auto lengthsSum = values.size(0);
@@ -125,8 +124,8 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute1d_sparse_data_impl_npu(
         permutedLengthsOffset = asynchronous_complete_cumsum_npu(permutedLengths).to(at::kLong);
     }
 
-    int64_t outValuesLen;
-    if (permuted_lengths_sum.has_value() && permuted_lengths_sum.value() > 0) {
+    int64_t outValuesLen = 0;
+    if (permuted_lengths_sum.has_value()) {
         outValuesLen = static_cast<int64_t>(permuted_lengths_sum.value());
     } else {
         if (useTotalOffset) {
@@ -141,7 +140,16 @@ tuple<Tensor, Tensor, c10::optional<Tensor>> permute1d_sparse_data_impl_npu(
     // 初始化输出向量
     at::Tensor outLengths = at::empty({pLength}, lengthsConti.options());
     at::Tensor outValues = at::empty({outValuesLen}, valuesConti.options());
-    at::Tensor outWeights = enableWeights ? at::empty({outValuesLen}, weightsConti.options()) : at::Tensor();
+    at::Tensor outWeights = at::Tensor();
+
+    if (enableWeights) {
+        if (weightsConti.dense_dim() > 1) {
+            weightsColumns = weightsConti.size(1);
+            outWeights = at::empty({outValuesLen, weightsColumns}, weightsConti.options());
+        } else {
+            outWeights = at::empty({outValuesLen}, weightsConti.options());
+        }
+    }
 
     EXEC_NPU_CMD(aclnnPermute2dSparseData, permuteConti, lengthsConti, valuesConti, weightsConti, totalOffset,
                  lengthsOffset, permutedLengthsOffset, outValuesLen, enableWeights, outLengths, outValues, outWeights);
