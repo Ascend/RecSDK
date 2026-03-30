@@ -31,7 +31,6 @@ const int MAX_DIM = 512 * 16; // max_dim * max_num_head
 const int TENSOR_NUM = 4;
 const int DIM_2 = 2;
 const int DIM_1 = 1;
-const int SMALL_CASE = 512 * 1024 * 1024;
 
 void IsValidShape(const at::Tensor& x, const at::Tensor& weight,
                   const at::Tensor& bias, at::IntArrayRef splitList)
@@ -118,43 +117,6 @@ torch::autograd::variable_list RunInLinearSiluForwardInter(const at::Tensor& x, 
     return {userOut, valueOut, queryOut, keyOut, linearOutputOut};
 }
 
-torch::autograd::variable_list RunInLinearSiluBackwardPTA(const at::Tensor& x,
-    const at::Tensor& weight, const at::optional<Tensor>& bias, const at::Tensor& user_grad,
-    const at::Tensor& value_grad, const at::Tensor& query_grad,
-    const at::Tensor& key_grad, const at::Tensor& linear_output, at::IntArrayRef attr_dict)
-{
-    auto mixedUvqk = torch::cat({user_grad, value_grad, query_grad, key_grad}, -1);
-
-    // silu
-    auto gradLinear = torch::silu_backward(mixedUvqk.to(at::kFloat), linear_output.to(at::kFloat));
-
-    // addmm
-    // 初始化梯度张量
-    at::Tensor gradX;
-    at::Tensor gradWeight;
-    at::Tensor gradBias;
-  
-    // 计算bias的梯度
-    if (bias.has_value()) {
-        gradBias = gradLinear.sum(0, false);
-    }
-    gradLinear = gradLinear.to(weight.scalar_type());
-    // 计算x的梯度
-    gradX = torch::mm(gradLinear, weight);
-
-    // 计算weight的梯度
-    gradWeight = torch::mm(gradLinear.t(), x);
-
-    return {gradX, gradWeight, gradBias, at::Tensor()};
-}
-
-bool isSmallCase(const int32_t m, const int32_t n, const int32_t k)
-{
-    // 通过matmul计算量估计计算规模
-    int32_t isSmallCase = SMALL_CASE / m / n / k;
-    return isSmallCase >= 1;
-}
-
 torch::autograd::variable_list RunInLinearSiluBackward(const at::Tensor& x,
     const at::Tensor& weight, const at::optional<Tensor>& bias, const at::Tensor& user_grad,
     const at::Tensor& value_grad, const at::Tensor& query_grad,
@@ -181,25 +143,17 @@ torch::autograd::variable_list RunInLinearSiluBackward(const at::Tensor& x,
     
     if (attr_dict[0] != attr_dict[1] || attr_dict[0] != attr_dict[2] || attr_dict[0] != attr_dict[3]) {
         isVardim = true;
-    }
-
-    bool smallCase = isSmallCase(xConti.size(0), weightConti.size(0), xConti.size(1));
-
-    if (isVardim || smallCase) {
-        return RunInLinearSiluBackwardPTA(xConti, weightConti, biasConti,
-                 user_gradConti, value_gradConti, query_gradConti, key_gradConti,
-                 linear_outputConti, attr_dict);
+        user_gradConti = torch::cat({user_gradConti, value_gradConti, query_gradConti, key_gradConti}, -1);
     }
 
     if (bias.has_value()) {
         bias_grad = at::zeros_like(biasConti, biasConti.options());
     }
-
     bool isTrans = false;
     EXEC_NPU_CMD(aclnnInLinearSiluBackward, xConti, weightConti, biasConti,
                  user_gradConti, value_gradConti, query_gradConti, key_gradConti,
                  linear_outputConti, attr_dict, isTrans, isVardim, x_grad, weight_grad, bias_grad);
-    return {x_grad.to(xConti.scalar_type()), weight_grad.to(weightConti.scalar_type()), bias_grad, at::Tensor()};
+    return {x_grad.to(x.options()), weight_grad.to(weight.options()), bias_grad, at::Tensor()};
 }
 
 class RunInLinearSiluFunction : public torch::autograd::Function<RunInLinearSiluFunction> {
