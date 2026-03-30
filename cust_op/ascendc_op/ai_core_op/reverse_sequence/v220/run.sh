@@ -20,13 +20,8 @@ set -e
 # 1. 初始化路径
 # ==============================================================================
 readonly THIS_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
-readonly THIS_DIR="$(dirname "${THIS_SCRIPT}")"
-readonly WORK_DIR="${THIS_DIR}"
-readonly OP_ROOT_DIR="$(dirname "${THIS_DIR}")"
-readonly SRC_KERNEL_DIR="${WORK_DIR}/op_kernel"
-readonly SRC_HOST_DIR="${WORK_DIR}/op_host"
-readonly PROJECT_ROOT="$(dirname "$(dirname "$(dirname "${THIS_DIR}")")")"
-readonly UTILS_SCRIPT="${PROJECT_ROOT}/scripts/op_builder_utils.sh"
+readonly WORK_DIR="$(dirname "${THIS_SCRIPT}")"
+readonly UTILS_SCRIPT="${WORK_DIR}/../../../scripts/op_builder_utils.sh"
 
 # ==============================================================================
 # 2. 加载通用库
@@ -47,73 +42,8 @@ vendor_name="reverse_sequence"
 
 parse_arguments "$@" || exit 1
 
-echo "=========================================="
-echo "Start Building Operator: ${vendor_name}"
-echo "Target AI Core: ${ai_core}"
-echo "Work Directory : ${WORK_DIR}"
-echo "Source Root    : ${OP_ROOT_DIR}"
-echo "=========================================="
-
 # ==============================================================================
 # 4. 执行标准化流程
 # ==============================================================================
 
-# 验证 AI Core
-VALID_AI_CORES=(
-    "ai_core-Ascend910B1"
-    "ai_core-Ascend910B2"
-    "ai_core-Ascend910B3"
-    "ai_core-Ascend910B4"
-    "ai_core-Ascend910_93"
-    "ai_core-Ascend310P3"
-)
-
-validate_ai_core "$ai_core" || exit 1
-
-# 检查系统环境和 CANN 版本
-check_system_and_cann "$ai_core" || exit 1
-
-# 生成算子代码
-rm -rf "${WORK_DIR}/${vendor_name}"
-msopgen gen -i ${vendor_name}.json -f tf -c ${ai_core} -lan cpp -out ./${vendor_name} -m 0 -op ReverseSequence
-
-# 兼容cann9.0.0早期版本的老工程
-if [ -d "${WORK_DIR}/${vendor_name}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
-    MAJOR_VERSION=8
-fi
-
-if [ "${MAJOR_VERSION}" -ge 9 ]; then
-    overwrite_source_with_target "${WORK_DIR}/${vendor_name}" "${PROJECT_ROOT}/ai_core_op/custom_op_template" || exit 1
-fi
-
-# 定义生成后的目标目录
-readonly TARGET_DIR="${WORK_DIR}/${vendor_name}"
-
-# 【特异性逻辑】复制算子特有源码
-echo "Copying specific operator source files to ${TARGET_DIR}..."
-
-# 清理旧文件 (防止残留)
-rm -rf "${TARGET_DIR}/op_kernel"/*.h "${TARGET_DIR}/op_kernel"/*.cpp 2>/dev/null || true
-rm -rf "${TARGET_DIR}/op_host"/*.h "${TARGET_DIR}/op_host"/*.cpp 2>/dev/null || true
-
-cp -rf op_kernel/*.cpp "${TARGET_DIR}/op_kernel"
-cp -rf op_host/*.h "${TARGET_DIR}/op_host" && cp -rf op_host/*.cpp "${TARGET_DIR}/op_host"
-
-# 修改 CMakePresets.json
-configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "$TARGET_DIR" || exit 1
-
-# 特殊处理并执行编译
-if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
-    sed -i "1i #define SUPPORT_V200" "${TARGET_DIR}/op_kernel/reverse_sequence.cpp"
-    sed -i "1i #define SUPPORT_V200" "${TARGET_DIR}/op_host/reverse_sequence.cpp"
-fi
-
-# CANN < 9.0 特殊处理并执行编译
-prepare_legacy_build "$MAJOR_VERSION" "$vendor_name" "$TARGET_DIR" || exit 1
-
-# 安装算子包
-install_operator_package "$OS_ID" "$ARCH" "$TARGET_DIR" || exit 1
-
-echo "=========================================="
-echo "✅ Build & Install Successful for [${vendor_name}]!"
-echo "=========================================="
+build_and_install_operator "$WORK_DIR" "$vendor_name" || exit 1
