@@ -28,6 +28,8 @@ namespace optiling {
     TILING_DATA_FIELD_DEF(int64_t, lengthsB);
     TILING_DATA_FIELD_DEF(int64_t, valuesDim);
     TILING_DATA_FIELD_DEF(int64_t, valuesOutDim);
+
+    TILING_DATA_FIELD_DEF(int64_t, weightsColumns);
     TILING_DATA_FIELD_DEF(bool, enableWeights);
 
     // 判断是否传入totalOffset, 传入totalOffset时，采用行内分核方案

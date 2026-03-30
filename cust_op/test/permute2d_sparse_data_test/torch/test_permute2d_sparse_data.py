@@ -17,37 +17,110 @@
 import itertools
 import random
 import sysconfig
-
 import pytest
 import torch
 import torch_npu
 import fbgemm_gpu
 import numpy as np
 
+
 DEVICE = "npu:0"
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
-# cpu不支持np.int64，只能支持np.int32
 PTYPE = [np.int32]
 LTYPE = [np.int64, np.int32]
-VTYPE = [np.int64, np.int32, np.float32, np.float16]
-WTYPE = [None, np.float32]
+VTYPE = [
+    torch.int64,
+    torch.int32,
+    torch.float32,
+    torch.float16,
+    torch.bfloat16,
+]
+WTYPE = [
+    None,
+    torch.float32,
+    torch.float16,
+    torch.bfloat16,
+    torch.float64,
+    torch.int32,
+    torch.int64,
+]
 TYPE_LIST = list(itertools.product(PTYPE, LTYPE, VTYPE, WTYPE))
-INT64_PTYPE = [np.int64]
-FP16_WTYPE = [np.float16]
-TYPE_LIST_1 = list(itertools.product(INT64_PTYPE, LTYPE, VTYPE, FP16_WTYPE))
 
 # lengths shape为[1 ~ (2T - 1), B]
 # extra_t用于测试permute和lengths不等长的情况，lengths[T + extra_T, B]
 T = np.random.randint(2, 500, 5)
 EXTRA_T = [1, 0, -1]
 B = [128, 1024, 2048, 20480]
-B_FP16 = [128, 20480]
 SHAPE_LIST = list(itertools.product(T, EXTRA_T, B))
-SHAPE_LIST_1 = list(itertools.product(T, EXTRA_T, B_FP16))
 
 
-def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False, d2: bool = False):
+# Python 版 permute_2D_sparse_data
+def permute_2d_sparse_data_reference(params):
+    tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in params.items()}
+    permute, lengths, values = tensors["permute"], tensors["lengths"], tensors["values"]
+    weights = tensors.get("weights")
+
+    permuteConti = permute.contiguous()
+    lengthsConti = lengths.contiguous()
+    valuesConti = values.contiguous()
+    if lengthsConti.size(0) == 0 or lengthsConti.size(1) == 0 or permuteConti.numel() == 0:
+        return (
+            lengthsConti.clone(),
+            valuesConti.clone(),
+            None if weights is None else weights.clone(),
+        )
+
+    w = None
+    if weights is not None:
+        w = weights.contiguous()
+        if w.dim() not in (1, 2):
+            raise ValueError(f"weights must be 1D [L] or 2D [L, D], but got {w.dim()}")
+        if w.size(0) != valuesConti.size(0):
+            raise ValueError(f"weights dim0 {w.size(0)} not match values dim0 {valuesConti.size(0)}")
+
+    rowSum = lengthsConti.sum(dim=1, dtype=torch.int64)
+    off = torch.zeros(rowSum.numel() + 1, dtype=torch.int64)
+    off[1:] = rowSum.cumsum(dim=0)
+
+    rows = permuteConti.tolist()
+    outV = torch.cat([valuesConti[off[r] : off[r + 1]] for r in rows])
+    if w is None:
+        outW = None
+    else:
+        # 1D / 2D 均在 dim=0（L）上切段再拼接，输出为 [Lout] 或 [Lout, D]
+        outW = torch.cat([w[off[r] : off[r + 1]] for r in rows], dim=0)
+
+    return lengthsConti[permuteConti], outV, outW
+
+
+def _make_values(total_length: int, vdtype: torch.dtype) -> torch.Tensor:
+    if vdtype in (torch.float16, torch.bfloat16, torch.float32):
+        if total_length == 0:
+            return torch.zeros(0, dtype=vdtype)
+        return torch.rand(total_length, dtype=vdtype)
+    return torch.arange(total_length, dtype=vdtype)
+
+
+def _make_weights(total_length: int, wdtype: torch.dtype, ncols: int) -> torch.Tensor:
+    if total_length == 0:
+        if ncols == 1:
+            return torch.zeros(0, dtype=wdtype)
+        return torch.zeros(0, ncols, dtype=wdtype)
+    if ncols == 1:
+        if wdtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+            return torch.rand(total_length, dtype=wdtype)
+        return torch.arange(total_length, dtype=wdtype)
+    if wdtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+        return torch.stack(
+            [torch.rand(total_length, dtype=wdtype) + float(c) for c in range(ncols)],
+            dim=1,
+        )
+    flat = torch.arange(total_length * ncols, dtype=wdtype)
+    return flat.reshape(total_length, ncols)
+
+
+def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False, d2: bool = True):
     tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
 
     if device and device.startswith('npu'):
@@ -70,8 +143,8 @@ def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False, d2: b
 # test_type 0 测试正常情况下的permute1d_sparse_data算子功能 
 # test_type 1 测试permutedim小,values长度大场景
 # test_type 2 测试permutedim大,values长度小场景
-def init_tensor(types, shapes, enable_permuted_sum, test_type=0):
-    ptype, ltype, vtype, wtype = types
+def init_tensor(types, shapes, enable_permuted_sum, test_type=0, weight_ncols=1):
+    ptype, ltype, vdtype, wdtype = types
     t, extra_t, b = shapes
     if test_type == 0:
         extra_t = random.randint(1, t - 1) * extra_t
@@ -85,10 +158,9 @@ def init_tensor(types, shapes, enable_permuted_sum, test_type=0):
         lengths = np.random.randint(10, 800, size=(t, b), dtype=ltype)
 
     total_length = int(lengths.sum())
-    values = (np.arange(0, total_length, dtype=vtype) 
-          if vtype != np.float16 
-          else np.random.rand(total_length).astype(vtype))
-    weights = np.arange(0, total_length, dtype=wtype) if wtype else None
+    values = _make_values(total_length, vdtype)
+    weights = _make_weights(total_length, wdtype, weight_ncols) if wdtype else None
+    
     permuted_lengths_sum = lengths[permute].sum() if enable_permuted_sum else None
     params = {
         'permute': permute,
@@ -109,14 +181,14 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec, d2)
     """
     Params:
         permute: (T) dtype=int32
-        lenghts: (T + T', B) dtype=ltype
+        lenghts: (T + T', B) dtype=int32/int64
                  L = lengths[:T].sum()
-        values: (L) dtype=vtype
-        weights: (L) dtype=fp32
+        values: (L) dtype=int32/int64/fp32/fp16(half)/bf16
+        weights: (L) dtype=None, or fp32/fp16/bf16/double/int32/int64
     """
     params = init_tensor(types, shapes, enable_permuted_sum)
 
-    golden = get_result(params, d2=d2)
+    golden = list(permute_2d_sparse_data_reference(params))
     result = get_result(params, DEVICE, is_mxrec, d2=d2)
 
     for gt, pred in zip(golden, result):
@@ -134,7 +206,7 @@ def test_small_permuted_dim_large_values_length(types):
     b = 128
     params = init_tensor(types, (t, t, b), True, 1)
 
-    golden = get_result(params)
+    golden = list(permute_2d_sparse_data_reference(params))
     result = get_result(params, DEVICE)
 
     for gt, pred in zip(golden, result):
@@ -152,7 +224,7 @@ def test_large_permuted_dim_small_values_length(types):
     b = 32
     params = init_tensor(types, (t, t, b), True, 2)
 
-    golden = get_result(params)
+    golden = list(permute_2d_sparse_data_reference(params))
     result = get_result(params, DEVICE)
 
     for gt, pred in zip(golden, result):
@@ -161,37 +233,29 @@ def test_large_permuted_dim_small_values_length(types):
             assert torch.allclose(gt, pred, atol=1e-5)
 
 
-@pytest.mark.parametrize("types", TYPE_LIST_1)
-@pytest.mark.parametrize("shapes", SHAPE_LIST_1)
-@pytest.mark.parametrize("enable_permuted_sum", [True, False])
-@pytest.mark.parametrize("d2", [True, False])
-def test_permute2d_sparse_data_type_list_1(types, shapes, enable_permuted_sum, d2):
-    """
-    Params:
-        permute: (T) dtype=int32
-        lenghts: (T + T', B) dtype=ltype
-                 L = lengths[:T].sum()
-        values: (L) dtype=vtype
-        weights: (L) dtype=fp32
-    """
-    params = init_tensor(types, shapes, enable_permuted_sum)
-    weights_None = None
-    params_golden = {
-        'permute': params['permute'].astype(dtype=np.int32),
-        'lengths': params['lengths'],
-        'values': params['values'],
-        'weights': weights_None,
-        'permuted_lengths_sum': params['permuted_lengths_sum']
-    }
+# 为避免测试用例过多，减少了T, B的取值，只保留了2个T, B的取值
+WEIGHT_NUM_COLS = [2, 4, 8, 10]
+T = np.random.randint(2, 500, 2)
+EXTRA_T = [1, 0, -1]
+B = [128, 1024]
+SHAPE_LIST = list(itertools.product(T, EXTRA_T, B))
 
-    golden = get_result(params_golden, d2=d2)
-    # permute2d_sparse_data cpu不支持weights为fp16,weights golden 由permute2d_sparse_data cpu计算value另外计算
-    params_golden['values'] = params['weights']
-    golden_weights = get_result(params_golden, d2=d2)
-    result = get_result(params, DEVICE, False, d2=d2)
-    assert torch.allclose(golden[0], result[0], atol=1e-5)
-    assert torch.allclose(golden[1], result[1], atol=1e-5)
-    assert torch.allclose(golden_weights[1], result[2], atol=1e-5)
+@pytest.mark.parametrize("types", TYPE_LIST)
+@pytest.mark.parametrize("shapes", SHAPE_LIST)
+@pytest.mark.parametrize("enable_permuted_sum", [True])
+@pytest.mark.parametrize("weight_ncols", WEIGHT_NUM_COLS)
+def test_multicol_weight(types, shapes, enable_permuted_sum, weight_ncols):
+    """
+    测试weights为2D的情况, dense_dim() > 1, D > 1。
+    """
+    params = init_tensor(types, shapes, enable_permuted_sum, weight_ncols=weight_ncols)
+    golden = list(permute_2d_sparse_data_reference(params))
+    result = get_result(params, DEVICE)
+
+    for gt, pred in zip(golden, result):
+        assert type(gt) is type(pred)
+        if isinstance(gt, torch.Tensor) and isinstance(pred, torch.Tensor):
+            assert torch.allclose(gt, pred, atol=1e-5)
 
 
 @pytest.mark.parametrize("is_mxrec", [True, False])

@@ -25,12 +25,12 @@ torch.ops.mxrec.permute_1D_sparse_data(Tensor permute,
 |  ---- |--------|---------|------------|-------------------------------------------------|---------------------|
 |  permute | 输入     | Tensor  | int32/int64      | [indices]                                       | permute中的每个值均满足: >= 0 且 < `lengths.shape[0]` |
 |  lengths | 输入     | Tensor  | int32/int64 | [lengths]                   |           
-|  values | 输入     | Tensor  | int32/int64/fp32/fp16 | [values]                                        | values的长度等于`lengths.sum()` | 
-|  weights | 输入(可选) | Tensor  | fp32/fp16       | [weights]                                       | weight的长度等于`lengths.sum()` |
+|  values | 输入     | Tensor  | int32/int64/fp32/fp16/bf16 | [values]                                        | values的长度等于`lengths.sum()` | 
+|  weights | 输入(可选) | Tensor  | fp32/fp16/bf16/double/int32/int64       | [weights] / [weights，columns]                                       | weight的长度等于`lengths.sum()`, 支持weights.dense_dim > 1 (多列)情况 |
 |  permuted_lengths_sum | 输入(可选) | SymInt  | int64        | NA                                              |        [0, std::numeric_limits<int64>::max()]      |
 |  permuted_lengths | 输出     | Tensor  | int32/int64   | [permuted_lengths] |                     |
-|  permuted_values | 输出     | Tensor  | int32/int64/fp32   | [permuted_values]                               |                     |
-|  permuted_weights | 输出     | Tensor  |  fp32  | [permuted_weights]                              |       |
+|  permuted_values | 输出     | Tensor  | int32/int64/fp32/fp16/bf16   | [permuted_values]                               |                     |
+|  permuted_weights | 输出     | Tensor  |  fp32/fp16/bf16/double/int32/int64  | [permuted_weights]                              |       |
 
 
 说明：

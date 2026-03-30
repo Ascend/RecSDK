@@ -82,14 +82,41 @@ namespace optiling {
             OPS_LOG_E("", "[ERROR]permute shape or lengths shape is error. ");
             return ge::GRAPH_FAILED;
         }
-        if (enableWeights && (valuesShape != weightsShape || valuesShape.GetDimNum() != 1)) {
-            OPS_LOG_E("", "[ERROR]values shape or weights shape is error. values.size() = %d, weights.size() = %d\n",
-                      valuesShape.GetDim(0), weightsShape.GetDim(0));
+        if (valuesShape.GetDimNum() != 1) {
+            OPS_LOG_E("", "[ERROR]values must be 1D [L], got dimNum=%d\n", valuesShape.GetDimNum());
             return ge::GRAPH_FAILED;
         }
+        int64_t weightsColumns = 1;
+        if (enableWeights && weightsShape.GetDimNum() != 1 && weightsShape.GetDimNum() != 2) {
+            OPS_LOG_E("", "[ERROR]weights must be 1D [L] or 2D [L,D], got dimNum=%d\n",
+                      weightsShape.GetDimNum());
+            return ge::GRAPH_FAILED;
+        }
+
+        if (enableWeights) {
+            const int64_t valuesDim = valuesShape.GetDim(0);
+            const int64_t weightsDim0 = weightsShape.GetDim(0);
+            if (weightsDim0 != valuesDim) {
+                OPS_LOG_E(
+                    "",
+                    "[ERROR]weights dim0 must match values dim0: weights.dim0=%lld, values.dim0=%lld\n",
+                    weightsDim0, valuesDim);
+                return ge::GRAPH_FAILED;
+            }
+
+            if (weightsShape.GetDimNum() == 2) {
+                weightsColumns = weightsShape.GetDim(1);
+            }
+
+            if (weightsColumns < 1) {
+                OPS_LOG_E("", "[ERROR]weights dim1 (D) must be >= 1, got %lld\n", weightsColumns);
+                return ge::GRAPH_FAILED;
+            }
+        }
+        tiling.set_weightsColumns(weightsColumns);
         bool totalOffsetDimValid = (totalOffsetShape.GetDim(0) == (lengthsShape.GetDim(0) + 1));
         if (enableTotalOffset && (!totalOffsetDimValid || totalOffsetShape.GetDimNum() != 1)) {
-            OPS_LOG_E("", "[ERROR]totalOffsetShape length(%d) must match lengthsShape dim0(%d)\n",
+            OPS_LOG_E("", "[ERROR]totalOffsetShape length(%lld) must match lengthsShape dim0(%lld)\n",
                       totalOffsetShape.GetDim(0), lengthsShape.GetDim(0));
             return ge::GRAPH_FAILED;
         }
@@ -151,13 +178,16 @@ namespace ge {
 static ge::graphStatus InferShape(gert::InferShapeContext* context)
 {
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
-  
+    OPS_LOG_E_IF_NULL("context->GetAttrs", context->GetAttrs(), return ge::GRAPH_FAILED);
+
     const gert::Shape* permuteShape = context->GetInputShape(optiling::PERMUTE_INDEX);
     const gert::Shape* lengthsShape = context->GetInputShape(optiling::LENGTH_INDEX);
     const gert::Shape* valuesShape = context->GetInputShape(optiling::VALUES_INDEX);
+    const gert::Shape* weightsShape = context->GetInputShape(optiling::WEIGHTS_INDEX);
 
-    gert::Shape* outPermutedLengths = context->GetOutputShape(optiling::PERMUTE_INDEX);
-    gert::Shape* outPermutedValues = context->GetOutputShape(optiling::LENGTH_INDEX);
+    gert::Shape* outPermutedLengths = context->GetOutputShape(0);
+    gert::Shape* outPermutedValues = context->GetOutputShape(1);
+    gert::Shape* outPermutedWeights = context->GetOutputShape(2);
 
     OPS_LOG_E_IF_NULL("permuteShape", permuteShape, return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("lengthsShape", lengthsShape, return ge::GRAPH_FAILED);
@@ -165,13 +195,27 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
     OPS_LOG_E_IF_NULL("outPermutedLengths", outPermutedLengths, return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("outPermutedValues", outPermutedValues, return ge::GRAPH_FAILED);
 
+    const int64_t permutedSum = *context->GetAttrs()->GetInt(0);
+    bool enableWeights = *context->GetAttrs()->GetBool(1);
+
     int dimSize = 2;
     outPermutedLengths->SetDimNum(dimSize);
     outPermutedLengths->SetDim(0, lengthsShape->GetDim(0));
     outPermutedLengths->SetDim(1, lengthsShape->GetDim(1));
 
     outPermutedValues->SetDimNum(1);
-    outPermutedValues->SetDim(0, valuesShape->GetDim(0));
+    outPermutedValues->SetDim(0, permutedSum);
+
+    if (enableWeights) {
+        if (weightsShape->GetDimNum() == 2) {
+            outPermutedWeights->SetDimNum(2);
+            outPermutedWeights->SetDim(0, permutedSum);
+            outPermutedWeights->SetDim(1, weightsShape->GetDim(1));
+        } else {
+            outPermutedWeights->SetDimNum(1);
+            outPermutedWeights->SetDim(0, permutedSum);
+        }
+    }
     return GRAPH_SUCCESS;
 }
 }  // namespace ge
@@ -183,7 +227,7 @@ public:
     {
         this->Input("permute")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
+            .DataTypeList({ge::DT_INT64, ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Input("lengths")
             .ParamType(REQUIRED)
@@ -191,11 +235,11 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("values")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT64, ge::DT_INT32, ge::DT_FLOAT, ge::DT_FLOAT16})
+            .DataTypeList({ge::DT_INT64, ge::DT_INT32, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         this->Input("weights")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16})
+            .DataTypeList({ge::DT_INT64, ge::DT_INT32, ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_DOUBLE})
             .FormatList({ge::FORMAT_ND});
         this->Input("totalOffset")
             .ParamType(OPTIONAL)
