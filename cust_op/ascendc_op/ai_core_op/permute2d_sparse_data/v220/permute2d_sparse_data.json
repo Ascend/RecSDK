@@ -7,80 +7,111 @@
                 "name": "permute",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
-                    "int32", "int32", "int32", "int32", "int32", "int32", "int32", "int32",
-                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
-                    "int32", "int32", "int32", "int32", "int32", "int32", "int32", "int32",
-                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64"
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int32", "int32"
                 ]
             },
             {
                 "name": "lengths",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
                     "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
                     "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
                     "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
-                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32"
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int32", "int32"
                 ]
             },
             {
                 "name": "values",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
-                    "int64", "int32", "fp32", "fp16", "int64", "int32", "fp32", "fp16",
-                    "int64", "int32", "fp32", "fp16", "int64", "int32", "fp32", "fp16",
-                    "int64", "int32", "fp32", "fp16", "int64", "int32", "fp32", "fp16",
-                    "int64", "int32", "fp32", "fp16", "int64", "int32", "fp32", "fp16"
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16"
                 ]
             },
             {
                 "name": "weights",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
-                    "fp32", "fp32", "fp32", "fp32", "fp32", "fp32", "fp32", "fp32",
-                    "fp32", "fp32", "fp32", "fp32", "fp32", "fp32", "fp32", "fp32",
-                    "fp16", "fp16", "fp16", "fp16", "fp16", "fp16", "fp16", "fp16",
-                    "fp16", "fp16", "fp16", "fp16", "fp16", "fp16", "fp16", "fp16"
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double"
                 ]
             },
             {
                 "name": "totalOffset",
                 "param_type": "optional",
                 "format": [
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
                     "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
                     "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
                     "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
-                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64"
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64"
                 ],
                 "default_value": "None"
             },
@@ -88,16 +119,21 @@
                 "name": "lengthsOffset",
                 "param_type": "optional",
                 "format": [
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
                     "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
                     "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
                     "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
-                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64"
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64"
                 ],
                 "default_value": "None"
             },
@@ -105,16 +141,21 @@
                 "name": "permutedLengthsOffset",
                 "param_type": "optional",
                 "format": [
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
                     "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
                     "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
                     "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
-                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64"
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64", "int64", "int64", "int64", "int64",
+                    "int64", "int64", "int64", "int64"
                 ],
                 "default_value": "None"
             }
@@ -124,48 +165,69 @@
                 "name": "permuted_lengths",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
                     "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
                     "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
                     "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
-                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32"
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int64", "int64", "int32", "int32", "int32", "int32",
+                    "int64", "int64", "int32", "int32"
                 ]
             },
             {
                 "name": "permuted_values",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
-                    "int64", "int32", "fp32", "fp16", "int64", "int32", "fp32", "fp16",
-                    "int64", "int32", "fp32", "fp16", "int64", "int32", "fp32", "fp16",
-                    "int64", "int32", "fp32", "fp16", "int64", "int32", "fp32", "fp16",
-                    "int64", "int32", "fp32", "fp16", "int64", "int32", "fp32", "fp16"
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16",
+                    "int64", "int32", "fp32", "fp16", "bf16"
                 ]
             },
             {
                 "name": "permuted_weights",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND",
-                    "ND", "ND", "ND", "ND","ND", "ND", "ND", "ND"
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND",
+                    "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND", "ND"
                 ],
                 "type": [
-                    "fp32", "fp32", "fp32", "fp32", "fp32", "fp32", "fp32", "fp32",
-                    "fp32", "fp32", "fp32", "fp32", "fp32", "fp32", "fp32", "fp32",
-                    "fp16", "fp16", "fp16", "fp16", "fp16", "fp16", "fp16", "fp16",
-                    "fp16", "fp16", "fp16", "fp16", "fp16", "fp16", "fp16", "fp16"
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double",
+                    "int64", "int32", "fp32", "fp16", "bf16", "double"
                 ]
             }
         ],
