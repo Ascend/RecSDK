@@ -1,6 +1,7 @@
 # TorchRec-EmbCache NPU适配方案
 
 ## 软件介绍
+
 本项目是基于开源项目TorchRec的1.1.0/1.2.0版本开发的embedding多级缓存扩展，助力开发者快速应用TorchRec框架并适配到NPU进行模型训练和推理。
 
 Python版本要求：Python >= 3.11。
@@ -9,8 +10,8 @@ Python版本要求：Python >= 3.11。
 
 | 配套版本  | PyTorch | torch_npu | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
 |-------|---------|-----------|-----------|------------|-----------------|-------------------|
-| 配套版本1 | 2.6.0   | 2.6.0     | 1.1.0+npu | 1.1.0      | 1.1.0           | 1.1.0             |
-| 配套版本2 | 2.7.1   | 2.7.1     | 1.2.0+npu | 1.2.0      | 1.2.0           | 1.2.0             |
+| 方案一 | 2.6.0   | 2.6.0     | 1.1.0+npu | 1.1.0      | 1.1.0           | 1.1.0             |
+| 方案二 | 2.7.1   | 2.7.1     | 1.2.0+npu | 1.2.0      | 1.2.0           | 1.2.0             |
 
 ### 1.环境准备
 
@@ -21,11 +22,13 @@ Python版本要求：Python >= 3.11。
 请参见[Rec SDK文档](../../../docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md#section182972951211)中“安装Rec SDK Torch”章节。
 
 #### 2.1 前提条件
+
 torchrec_embcache依赖于hybrid_torchrec包，请先参考[hybrid_torchrec README](../hybrid_torchrec/README.md)完成hybrid_torchrec及其依赖包安装。
 
 本章节仅介绍torchrec_embcache软件包安装。
 
 #### 2.2 torchrec_embcache安装
+
 - 基于软件包安装
 
 从[RecSDK release版本](https://gitcode.com/Ascend/RecSDK/releases)，选择最新版本，下载Ascend-mindxsdk-hybrid-torchrec-*.tar.gz软件包。
@@ -42,6 +45,7 @@ pip3 install -r requirements.txt
 ```
 
 - 基于源码编译安装
+
 ```shell
 git clone https://gitcode.com/ascend/RecSDK.git
 cd RecSDK/training/torch_rec_v1/torchrec_embcache
@@ -52,7 +56,12 @@ pip3 uninstall -y torchrec_embcache
 pip3 install ./dist/torchrec_embcache-*.whl
 ```
 
+### 3 运行测试
+
+请参见[torchrec_embcache测试套件](tests/acc_test/README.md)。
+
 ## 相关网站
-[TorchRec介绍](https://pytorch.org/torchrec)
+
+[TorchRec介绍](https://meta-pytorch.org/torchrec/)
 
 [TorchRec开源项目](https://github.com/pytorch/torchrec)
