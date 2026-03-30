@@ -1,5 +1,6 @@
 .idea/
-cmake-build-debug/
+cmake-build-*/
 .vscode/
 .DS_Store
 build/
+__pycache__/
