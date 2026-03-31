@@ -54,7 +54,7 @@ constexpr uint32_t CONST_2 = 2;
 constexpr uint32_t CONST_1 = 1;
 
 namespace hstu {
-inline bool MaskCheck(int64_t maskType, uint32_t maskIsDefine)
+inline bool MaskCheck(int64_t maskType, bool maskIsDefine)
 {
     TORCH_CHECK(MASK_TYPE_TRIL <= maskType && maskType <= MASK_TYPE_CUSTOM, "maskType expect in [0, 3], but value is ",
                 maskType);
