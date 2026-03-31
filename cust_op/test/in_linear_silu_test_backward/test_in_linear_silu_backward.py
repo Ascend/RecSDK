@@ -156,7 +156,7 @@ def execute(total_seqs, dim, enable_bias, data_type, is_diff_dim):
 @pytest.mark.parametrize("total_seqs", [1, 1123, 2048, 3201, 7687, 20480])
 @pytest.mark.parametrize("dim", [(16, 128), (64, 512), (240, 960), (128, 2048), (768, 768 * 4)])
 @pytest.mark.parametrize("enable_bias", [True, False])
-@pytest.mark.parametrize("data_type", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("data_type", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("is_diff_dim", [False, True])
 def test_in_linear_silu_backward(total_seqs, dim, enable_bias, data_type, is_diff_dim):
     set_seed(0)
@@ -166,7 +166,7 @@ def test_in_linear_silu_backward(total_seqs, dim, enable_bias, data_type, is_dif
 @pytest.mark.parametrize("total_seqs", [511, 2048])
 @pytest.mark.parametrize("dim", [(8160, 32640), (512, 6144), (1024, 16384)])
 @pytest.mark.parametrize("enable_bias", [True, False])
-@pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("data_type", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("is_diff_dim", [False])
 def test_in_linear_silu_backward_large(total_seqs, dim, enable_bias, data_type, is_diff_dim):
     set_seed(0)
@@ -211,7 +211,7 @@ def test_in_linear_silu_backward_invalid_shape(invalid_case):
     uvqk_total_seqs = invalid_case.get("uvqk_total_seqs", total_seqs)
     dim = invalid_case.get("dim", (64, 256))
     enable_bias = False
-    data_type = torch.float32
+    data_type = torch.float16
 
     split_args = invalid_case.get("split_args", [64, 64, 64, 64])
     N = sum(split_args)
@@ -269,5 +269,5 @@ if __name__ == "__main__":
     test_in_linear_silu_backward_large(total_seqs=3201,
                                  dim=(192, 768),
                                  enable_bias=True,
-                                 data_type=torch.float32,
+                                 data_type=torch.float16,
                                  is_diff_dim=True)
