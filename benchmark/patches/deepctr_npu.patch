@@ -21,7 +21,7 @@ index 717bd7e..275022f 100644
  
  
 diff --git a/deepctr_torch/models/basemodel.py b/deepctr_torch/models/basemodel.py
-index cd36340..2a62887 100644
+index cd36340..9ce8798 100644
 --- a/deepctr_torch/models/basemodel.py
 +++ b/deepctr_torch/models/basemodel.py
 @@ -15,6 +15,7 @@ import torch
@@ -60,21 +60,23 @@ index cd36340..2a62887 100644
          """
  
          :param x: Numpy array of training data (if the model has a single input), or list of Numpy arrays (if the model has multiple inputs).If input layers in the model are named, you can also pass a
-@@ -210,6 +223,13 @@ class BaseModel(nn.Module):
+@@ -210,6 +223,15 @@ class BaseModel(nn.Module):
          else:
              print(self.device)
  
 +        inductor_flag = os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE'
-+        acl_flag = '1' if os.environ.get('MODEL_ACLGRAPH_FLAG', 'False').upper() == 'TRUE' else '0'
++        acl_flag = os.environ.get('MODEL_ACLGRAPH_FLAG', 'False').upper() == 'TRUE'
 +        if inductor_flag:
 +            print('use inductor compile!!!')
-+            os.environ['ENABLE_ACLGRAPH'] = acl_flag
-+            model = torch.compile(model, backend='inductor', mode='reduce-overhead')
++            if acl_flag:
++                model = torch.compile(model, backend='inductor', mode='reduce-overhead')
++            else:
++                model = torch.compile(model, backend='inductor')
 +
          train_loader = DataLoader(
              dataset=train_tensor_data, shuffle=shuffle, batch_size=batch_size)
  
-@@ -227,6 +247,7 @@ class BaseModel(nn.Module):
+@@ -227,6 +249,7 @@ class BaseModel(nn.Module):
          callbacks.model.stop_training = False
  
          # Train
@@ -82,7 +84,7 @@ index cd36340..2a62887 100644
          print("Train on {0} samples, validate on {1} samples, {2} steps per epoch".format(
              len(train_tensor_data), len(val_y), steps_per_epoch))
          for epoch in range(initial_epoch, epochs):
-@@ -239,8 +260,17 @@ class BaseModel(nn.Module):
+@@ -239,8 +262,17 @@ class BaseModel(nn.Module):
              try:
                  with tqdm(enumerate(train_loader), disable=verbose != 1) as t:
                      for _, (x_train, y_train) in t:
@@ -101,7 +103,7 @@ index cd36340..2a62887 100644
  
                          y_pred = model(x).squeeze()
  
-@@ -299,7 +329,6 @@ class BaseModel(nn.Module):
+@@ -299,7 +331,6 @@ class BaseModel(nn.Module):
                      for name in self.metrics:
                          eval_str += " - " + "val_" + name + \
                                      ": {0: .4f}".format(epoch_logs["val_" + name])
@@ -109,7 +111,7 @@ index cd36340..2a62887 100644
              callbacks.on_epoch_end(epoch, epoch_logs)
              if self.stop_training:
                  break
-@@ -343,12 +372,138 @@ class BaseModel(nn.Module):
+@@ -343,12 +374,138 @@ class BaseModel(nn.Module):
  
          pred_ans = []
          with torch.no_grad():

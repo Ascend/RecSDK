@@ -201,10 +201,9 @@ def set_env(config: dict, cpu_only: bool, eager: bool):
     os.environ["MODEL_PROFILING_FLAG"] = str(config.get("profiling_flag"))
     if eager:
         os.environ["MODEL_COMPILE_FLAG"] = "False"
-        os.environ["MODEL_ACLGRAPH_FLAG"] = "False"
     else:
         os.environ["MODEL_COMPILE_FLAG"] = "True"
-        os.environ["MODEL_ACLGRAPH_FLAG"] = "True"
+    os.environ["MODEL_ACLGRAPH_FLAG"] = str(config.get("aclgraph_flag"))
     os.environ["MODEL_DATA_TYPE"] = config.get("data_type")
     os.environ["MODEL_NAME"] = config.get("name")
     os.environ["MODEL_E2E_FLAG"] = str(config.get("e2e_flag"))

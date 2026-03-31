@@ -4,8 +4,7 @@
     "mode": "infer",
     "epoch": 10,
     "profiling_flag": false,
-    "compile_flag": false,
-    "aclgraph_flag": false,
+    "aclgraph_flag": true,
     "e2e_flag": false,
     "data_type": "",
     "run_cmd": [

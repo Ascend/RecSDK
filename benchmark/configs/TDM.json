@@ -9,7 +9,6 @@
     "mode": "eval",
     "epoch": 10,
     "profiling_flag": true,
-    "compile_flag": false,
     "aclgraph_flag": false,
     "data_type": "float32",
     "run_cmd": [
