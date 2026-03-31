@@ -7,8 +7,7 @@
     "epoch": 10,
     "profiling_flag": false,
     "e2e_flag": false,
-    "compile_flag": false,
-    "aclgraph_flag": false,
+    "aclgraph_flag": true,
     "data_type": "",
     "run_cmd": [
         "python",

@@ -27,8 +27,10 @@ pip install pytest
 # quick start
 xxx.json替換为为configs目录下的配置文件名；
 ```shell
-python run.py xxx.json
+python run.py xxx.json --eager
 ```
+**xxx.json**:为configs文件夹中的配置文件
+**--eager**：为强制跑eager模式，不配置默认跑inductor模式（当前未支持）
 
 # 性能指标
 模型正常运行后，会在models目录下生成性能相关文件，目录为./models/save_results_{device_name}/performance_result.txt,其中{device_name}为运行设备名称，如npu、cuda、cpu,文件内容为模型的性能指标，如推理时间、qps等。
@@ -55,8 +57,7 @@ python accuracy_compare.py --actual_output ./models/save_results_npu --expected_
     "type": "infer",
     "epoch": 100,
     "profiling_flag": true,
-    "compile_flag": true,
-    "aclgraph_flag": false,
+    "aclgraph_flag": true,
     "data_type": "float32",
     "run_cmd": [
         "python",
@@ -78,7 +79,6 @@ python accuracy_compare.py --actual_output ./models/save_results_npu --expected_
 + type：推理还是训练模式(infer/train/train_evaluate)
 + epoch: 训练步数或者推理循环次数
 + profiling_flag: 是否抓取profiling
-+ compile_flag: 是否需要使能图编译
 + aclgraph_flag: 是否需要使能图下沉
 + data_type: 模型的input数据类型(float32/float16/bfloat16)
 + run_cmd: 模型的运行命令

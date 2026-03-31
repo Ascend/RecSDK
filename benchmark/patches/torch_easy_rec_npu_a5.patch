@@ -39,7 +39,7 @@ index 4b636fd..af5d74c 100644
              raise RuntimeError(f"No parquet files exist in {self._input_path}.")
  
 diff --git a/tzrec/main.py b/tzrec/main.py
-index 355fac0..d00172e 100644
+index 355fac0..2f40248 100644
 --- a/tzrec/main.py
 +++ b/tzrec/main.py
 @@ -12,14 +12,18 @@
@@ -280,7 +280,7 @@ index 355fac0..d00172e 100644
  
  
  def _log_train(
-@@ -852,17 +995,54 @@ def evaluate(
+@@ -852,17 +995,58 @@ def evaluate(
      model = DistributedModelParallel(
          module=model, sharders=sharders, device=device, plan=plan
      )
@@ -336,15 +336,19 @@ index 355fac0..d00172e 100644
 +        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.block_bucketize_sparse_features)
 +        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.get_infos_metadata)
 +        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.jagged_to_padded_dense)
-+        acl_flag = '1' if os.environ.get('MODEL_ACLGRAPH_FLAG', 'False').upper() == 'TRUE' else '0'
-+        os.environ['ENABLE_ACLGRAPH'] = acl_flag
-+        model = torch.compile(model, backend="inductor", mode="reduce-overhead")
++        acl_flag = os.environ.get('MODEL_ACLGRAPH_FLAG', 'False').upper() == 'TRUE'
++        if acl_flag:
++            model = torch.compile(model, backend="inductor", mode="reduce-overhead")
++        else:
++            model = torch.compile(model, backend="inductor")
  
++
++
 +    global_step = None
      summary_writer = None
      if is_rank_zero:
          summary_writer = SummaryWriter(os.path.join(pipeline_config.model_dir, "eval"))
-@@ -1339,3 +1519,17 @@ def predict(
+@@ -1339,3 +1523,17 @@ def predict(
          prof.stop()
      if is_local_rank_zero:
          logger.info("Predict Finished.")
