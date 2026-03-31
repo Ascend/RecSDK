@@ -1,0 +1,411 @@
+diff --git a/main.py b/main.py
+new file mode 100644
+index 0000000..3169252
+--- /dev/null
++++ b/main.py
+@@ -0,0 +1,404 @@
++import os
++import time
++import random
++import logging
++import argparse
++import numpy as np
++import pickle as pk
++
++import torch
++import torch.nn as nn
++import torch.distributed as dist
++import torch.multiprocessing as mp
++from torch.nn.parallel import DistributedDataParallel as DDP
++from sklearn.metrics import roc_auc_score
++
++from model import DIN, DIEN, DynamicGRU
++from DataLoader import MyDataSet
++
++NPU_ENABLE = not torch.cuda.is_available()
++if NPU_ENABLE: import torch_npu
++
++
++logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
++data_dir = './data'
++train_file = os.path.join(data_dir, "local_train_splitByUser")
++test_file = os.path.join(data_dir, "local_test_splitByUser")
++uid_voc = os.path.join(data_dir, "uid_voc.pkl")
++mid_voc = os.path.join(data_dir, "mid_voc.pkl")
++cat_voc = os.path.join(data_dir, "cat_voc.pkl")
++
++def str_to_bool(s):
++    if s.lower() == 'true':
++        return True
++    elif s.lower() == 'false':
++        return False
++    else:
++        raise ValueError(f"Invalid input string: {s}, must be true or false")
++
++# Control Parameters
++RANDOM_SEED = 42
++DUMP_PROFILER = str_to_bool(os.getenv("MODEL_PROFILING_FLAG", "false"))
++SET_HF32 = str_to_bool(os.getenv("MODEL_HF32_FLAG", "true"))
++
++def setup(rank: int, world_size: int, master_port: int):
++    os.environ["MASTER_ADDR"] = "localhost"
++    os.environ["MASTER_PORT"] = str(master_port)
++    if NPU_ENABLE:
++        dist.init_process_group("hccl", rank=rank, world_size=world_size)
++        torch_npu.npu.set_device(f'npu:{rank}')
++    else:
++        dist.init_process_group("nccl", rank=rank, world_size=world_size)
++        torch.cuda.set_device(f'cuda:{rank}')
++
++def cleanup():
++    dist.destroy_process_group()
++
++# Stable the random seed
++def same_seeds(seed=RANDOM_SEED):
++    torch.manual_seed(seed)
++    if torch.cuda.is_available():
++        torch.cuda.manual_seed(seed)
++        torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
++    else:
++        torch_npu.npu.manual_seed(seed)
++        torch_npu.npu.manual_seed_all(seed)
++    np.random.seed(seed)
++    random.seed(seed)
++    torch.backends.cudnn.benchmark = False
++    torch.backends.cudnn.deterministic = True
++
++def worker_init_fn(worker_id):
++    np.random.seed(RANDOM_SEED + worker_id)
++
++def set_tf32():
++    if NPU_ENABLE:
++        torch_npu.npu.matmul.allow_hf32 = True
++        torch_npu.npu.conv.allow_hf32 = True
++        logging.info(f"NPU: set hf32 is {torch_npu.npu.aclnn.allow_hf32}")
++    else:
++        torch.backends.cuda.matmul.allow_tf32 = True
++        torch.backends.cudnn.allow_tf32 = True
++        logging.info(f"GPU: set tf32 is {torch.backends.cuda.matmul.allow_tf32}")
++
++def init_profiler(rank, model_name="DIN-pytorch"):
++    suffix = 'npu' if NPU_ENABLE else 'gpu'
++    profiler_dir = f"../profiling/{model_name}/{suffix}"
++    os.makedirs(profiler_dir, exist_ok=True)
++
++    if NPU_ENABLE:
++        experimental_config = torch_npu.profiler._ExperimentalConfig(
++            export_type=[
++                torch_npu.profiler.ExportType.Text	# 解析为.json和.csv格式的timeline和summary文件以及汇总所有性能数据的.db格式文件
++            ],
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++            mstx=False,
++            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,	# 关闭AI Core的性能指标采集
++            l2_cache=False,
++            op_attr=False,
++            data_simplification=False,
++            record_op_args=False,
++            gc_detect_threshold=None
++        )
++        prof = torch_npu.profiler.profile(
++            activities=[
++                torch_npu.profiler.ProfilerActivity.CPU,
++                torch_npu.profiler.ProfilerActivity.NPU
++            ],
++            schedule=torch_npu.profiler.schedule(wait=480, active=1, warmup=10, repeat=1, skip_first=0),
++            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profiler_dir),
++            record_shapes=True, 	# 算子的InputShapes和InputTypes
++            profile_memory=False,	# 算子内存占用情况
++            with_stack=True,    	# 算子调用栈信息
++            with_modules=True,		# modules层的Python调用栈
++            with_flops=False,
++            experimental_config=experimental_config
++        )
++    else:
++        prof = torch.profiler.profile(
++            activities=[
++                torch.profiler.ProfilerActivity.CPU,
++                torch.profiler.ProfilerActivity.CUDA
++            ],
++            schedule=torch.profiler.schedule(wait=480, active=1, warmup=10, repeat=1, skip_first=0),
++            on_trace_ready=torch.profiler.tensorboard_trace_handler(profiler_dir),
++            record_shapes=True,
++            profile_memory=False,
++            with_stack=True,
++            with_modules=True,
++            with_flops=False,
++        )
++
++    logging.info(f"[{rank}]: Profiler initialized, saving traces to {profiler_dir}")
++    return prof
++
++def gather_latency_data(local_data, world_size, device):
++    """
++    收集各 rank 的 latency 数据，返回 list[list[float]]
++    """
++    if world_size <= 1:
++        return [local_data]
++    local_tensor = torch.tensor(local_data, dtype=torch.float32, device=device)
++
++    # all_gather 自动同步
++    gathered = [torch.zeros_like(local_tensor) for _ in range(world_size)]
++    dist.all_gather(gathered, local_tensor)
++
++    return [g.cpu().tolist() for g in gathered]
++
++def latency_summary(latency_list, batch_size, model_name, device_name, inductor_flag):
++    latency_array = np.array(latency_list)
++    ave_step = np.mean(latency_array, axis=0).tolist()
++    avg_time = sum(ave_step) / len(ave_step)
++    ave_step.sort()
++
++    if len(ave_step) > 0:
++        p90 = np.percentile(ave_step, 90, method="lower")
++        p95 = np.percentile(ave_step, 95, method="lower")
++        p99 = np.percentile(ave_step, 99, method="lower")
++        p999 = np.percentile(ave_step, 99.9, method="lower")
++
++    QPS = int(1 / avg_time)		# batch_size * world_size * 10 / avg_time
++    e2e_result = {
++        "Batch_size": batch_size,
++        "model_name": model_name,
++        "QPS": QPS,
++        "AVG Latency": avg_time,
++        "P999 Latency": p999,
++        "P99 Latency": p99,
++        "P95 Latency": p95,
++        "P90 Latency": p90,
++    }
++
++    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
++    logging.info(f"The final performance result: {output_str}")
++
++    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
++        f.write(output_str + "\n")
++
++# Initilize  parameters
++def weights_init( m):
++    try:
++        classname = m.__class__.__name__
++        if classname.find( 'BatchNorm') != -1:
++            nn.init.normal_( m.weight.data, 1.0, 0.02)
++            nn.init.constant_( m.bias.data, 0)
++        elif classname.find( 'Linear') != -1:
++            nn.init.normal_( m.weight.data, 0.0, 0.02)
++        elif classname.find( 'Embedding') != -1:
++            m.weight.data.uniform_(-1, 1)
++    except AttributeError:
++        logging.info(f"AttributeError: {classname}")
++
++def eval_output(device, dtype, scores, target, loss_function=torch.nn.functional.binary_cross_entropy_with_logits):
++    loss = loss_function(scores.type(dtype).to(device), target.type(dtype).to(device))
++
++    y_pred = scores.sigmoid().round()
++    accuracy = (y_pred == target).type(dtype).mean().to(device)
++
++    auc = roc_auc_score(target.cpu().detach(), scores.cpu().detach())
++    return loss, accuracy, auc
++
++def train_fn(rank: int, world_size: int, args):
++    setup(rank, world_size, args.master_port)
++    same_seeds(RANDOM_SEED)
++    if SET_HF32: set_tf32()
++    model_name = "DIN-pytorch"
++
++    if NPU_ENABLE:
++        device = torch.device(f'npu:{rank}')
++        device_name = 'npu'
++        dtype = torch.float32
++    elif torch.cuda.is_available():
++        device = torch.device(f'cuda:{rank}')
++        device_name = 'cuda'
++        dtype = torch.float32
++    else:
++        device = torch.device('cpu')
++        device_name = 'cpu'
++        dtype = torch.float32
++
++    if NPU_ENABLE:
++        logging.info(f"[{rank}]: torch_npu.npu.device_count(): {torch_npu.npu.device_count()}")
++        logging.info(f"[{rank}]: ASCEND_RT_VISIBLE_DEVICES: {os.environ.get('ASCEND_RT_VISIBLE_DEVICES', 'Not set')}")
++    elif torch.cuda.is_available():
++        logging.info(f"[{rank}]: torch.cuda.device_count(): {torch.cuda.device_count()}")
++        logging.info(f"[{rank}]: CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'Not set')}")
++
++    user_map = pk.load(open(uid_voc, 'rb'))
++    n_uid = len(user_map)
++    material_map = pk.load(open(mid_voc, 'rb'))
++    n_mid = len(material_map)
++    category_map = pk.load(open(cat_voc, 'rb'))
++    n_cat = len(category_map)
++
++    dataset_train = MyDataSet(train_file, user_map, material_map, category_map, max_length=args.max_len)
++    dataset_test = MyDataSet(test_file, user_map, material_map, category_map, max_length=args.max_len)
++
++    loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, worker_init_fn=worker_init_fn)
++    loader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False)
++
++    # with open( 'data/loader.pk', 'rb') as fin:
++    #     loader_train, loader_test = pk.load(fin)
++
++    # Get model and initialize it
++    model = DIN(n_uid, n_mid, n_cat, args.embedding_dim)
++    model.apply(weights_init)
++    model = model.to(device)
++
++    if world_size > 1:
++        model = DDP(model, device_ids=[rank], broadcast_buffers=False)
++        logging.info(f"[{rank}]: Use torch.nn.parallel.DistributedDataParallel")
++    model_or_module = model.module if world_size > 1 else model
++
++    # Set loss function and optimizer
++    optimizer = torch.optim.Adam(model_or_module.parameters(), args.lr, (args.beta1, args.beta2))
++
++    model.train()
++    iter = 0
++    latency_list = []
++    start_time = time.time()
++    for epoch in range(args.epochs):
++        for i, data in enumerate(loader_train):
++            iter += 1
++
++            # transform data to target device
++            data = [item.to(device) if item is not None else None for item in data]
++            target = data.pop(-1)
++            model.zero_grad()
++            scores = model(data, neg_sample = False)
++
++            loss, accuracy, auc = eval_output(device, dtype, scores, target)
++            loss.backward()
++            optimizer.step()
++
++            if i % 10 == 0:
++                time_diff = time.time() - start_time
++                if i > 10:  # 过滤前两个耗时
++                    latency_list.append(time_diff)
++                logging.info(f"[{rank}]: epoch: {epoch}, step: [{i} / {len(loader_train)}], loss = {loss}, accuracy = {accuracy}, auc = {auc}, time = {time_diff}")
++                start_time = time.time()
++
++            if iter % args.test_iter == 0:
++                model.eval()
++                with torch.no_grad():
++                    score_list = []
++                    target_list = []
++                    for data in loader_test:
++                        data = [item.to(device) if item is not None else None for item in data]
++
++                        target = data.pop(-1)
++
++                        scores = model(data, neg_sample=False)
++                        score_list.append(scores)
++                        target_list.append(target)
++                    scores = torch.cat(score_list, dim=-1)
++                    target = torch.cat(target_list, dim=-1)
++                    loss, accuracy, auc = eval_output(device, dtype, scores, target)
++                    logging.info("\tTest Set\t time:%.5f loss:%.5f\tacc:%.5f\tauc:%.5f"%( (time.time() - start_time) / args.test_iter, loss, accuracy, auc))
++                    start_time = time.time()
++                model.train()
++        latency_list.pop()  # 过滤最后耗时
++
++    dist.barrier(device_ids=[rank])  # 同步所有rank
++
++    # 收集所有 rank 的 latency 数据到 rank 0
++    gathered_latency = gather_latency_data(latency_list, world_size, device)
++
++    if rank == 0:
++        # inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
++        inductor_flag = 'eager'
++        latency_summary(gathered_latency, args.batch_size, model_name, device_name, inductor_flag)  # 保存e2e耗时
++
++        final_results = {
++            'epoch': args.epochs - 1,
++            'final_loss': loss.cpu().item(),    # 每1000步切evel，8480步的loss是训练的loss
++            'accuracy': float(accuracy),
++            'auc': float(auc)
++        }
++
++        os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
++        torch.save(final_results,
++                   f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_{i}.pt")
++
++    torch_npu.npu.synchronize() if NPU_ENABLE else torch.cuda.synchronize()
++
++    if DUMP_PROFILER:
++        prof = init_profiler(rank, model_name=model_name)
++        prof.start()
++        iter = 0
++        for i, data in enumerate(loader_train):
++            iter += 1
++
++            # transform data to target device
++            data = [item.to(device) if item is not None else None for item in data]
++            target = data.pop(-1)
++            model.zero_grad()
++            scores = model(data, neg_sample = False)
++
++            loss, accuracy, auc = eval_output(device, dtype, scores, target)
++            loss.backward()
++            optimizer.step()
++
++            torch_npu.npu.synchronize() if NPU_ENABLE else torch.cuda.synchronize()
++            prof.step()
++
++        prof.stop()
++
++    cleanup()
++
++def main(args):
++    if NPU_ENABLE:
++        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = args.device_id
++    else:
++        os.environ["CUDA_VISIBLE_DEVICES"] = args.device_id
++    world_size = torch_npu.npu.device_count() if NPU_ENABLE else torch.cuda.device_count()
++    mp.spawn(train_fn, args=(world_size, args), nprocs=world_size, join=True)
++
++
++if __name__ == '__main__':
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--lr",
++                        type=float,
++                        default=0.001,
++                        help="learning rate")
++    parser.add_argument("--beta1",
++                        type=float,
++                        default=0.5,
++                        help="adam optimizer parameters")
++    parser.add_argument("--beta2",
++                        type=float,
++                        default=0.99,
++                        help="adam optimizer parameters")
++    parser.add_argument("--embedding_dim",
++                        type=int,
++                        default=18,
++                        help="embedding_dim for training")
++    parser.add_argument("--batch_size",
++                        type=int,
++                        default=128,
++                        help="batch size for training")
++    parser.add_argument("--epochs",
++                        type=int,
++                        default=20,
++                        help="training epoches")
++    parser.add_argument("--test_iter",
++                        type=int,
++                        default=1000,
++                        help="test after every test_iter training steps")
++    parser.add_argument("--max_len",
++                        type=int,
++                        default=100,
++                        help="data processing parameters")
++    parser.add_argument("--device_id",
++                        type=str,
++                        default="0",
++                        help="device card ID")
++    parser.add_argument("--master_port",
++                        type=int,
++                        default=12345,
++                        help="port number monitored by the active node")
++    args = parser.parse_args()
++    main(args)
+\ No newline at end of file
