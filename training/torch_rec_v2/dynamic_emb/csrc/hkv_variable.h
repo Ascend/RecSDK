@@ -38,6 +38,8 @@ public:
                 const OptimizerType optimizer_type = OptimizerType::Null);
 
     ~HKVVariable() override;
+    
+    int64_t rows(aclrtStream stream = 0) override;
 
     DataType get_key_type() override;
 
@@ -48,7 +50,61 @@ public:
     int64_t get_max_capacity() override;
 
     const InitializerArgs& get_initializer_args() const override;
-    
+
+    EvictStrategy evict_strategy() const override;
+
+    void insert_and_evict(const size_t n,
+                          const void* keys,            // (n)
+                          const void* values,          // (n, DIM)
+                          const void* scores,          // (n)
+                          void* evicted_keys,          // (n)
+                          void* evicted_values,        // (n, DIM)
+                          void* evicted_scores,        // (n)
+                          uint64_t* d_evicted_counter, // (1)
+                          aclrtStream stream = 0, bool unique_key = true,
+                          bool ignore_evict_strategy = false) override;
+
+    void find(const size_t n, const void *keys, // (n)
+              void *values,                     // (n, DIM)
+              bool *founds,                     // (n)
+              void *scores = nullptr,           // (n)
+              aclrtStream stream = 0) const override;
+
+    void erase(const size_t n, const void *keys,
+                       aclrtStream stream = 0) override;
+
+    void clear(aclrtStream stream = 0) override;
+
+
+    void reserve(const size_t new_capacity, aclrtStream stream = 0) override;
+
+    void accum_or_assign(const size_t n,
+                         const void *keys,             // (n)
+                         const void *value_or_deltas,  // (n, DIM)
+                         const bool *accum_or_assigns, // (n)
+                         const void *scores = nullptr, // (n)
+                         aclrtStream stream = 0,
+                         bool ignore_evict_strategy = false) override;
+
+     void assign(const size_t n,
+                 const void *keys,             // (n)
+                 const void *values,           // (n, DIM)
+                 const void *scores = nullptr, // (n)
+                 aclrtStream stream = 0, bool unique_key = true) override;
+
+     void lock(const size_t n,
+               const void* keys,       // (n)
+               void** locked_keys_ptr, // (n)
+               bool* flags = nullptr,  // (n)
+               void* scores = nullptr, // (n)
+               aclrtStream stream = 0) override;
+
+     void unlock(const size_t n,
+                 void** locked_keys_ptr, // (n)
+                 const void* keys,       // (n)
+                 bool* flags = nullptr,  // (n)
+                 aclrtStream stream = 0) override;
+
     void find_pointers(const size_t n, const void *keys, // (n)
                      void **values,                      // (n)
                      bool *founds,                       // (n)
@@ -70,9 +126,9 @@ public:
                       const c10::optional<torch::Tensor>& score = c10::nullopt) const override;
 
     void export_batch_matched(const uint64_t threshold, const uint64_t n, const uint64_t offset, at::Tensor num_matched,
-                              at::Tensor keys, at::Tensor values) const override;
+                              at::Tensor keys, at::Tensor values, at::Tensor scores, aclrtStream stream) const override;
 
-    void count_matched(const uint64_t threshold, at::Tensor num_matched) const override;
+    void count_matched(const uint64_t threshold, at::Tensor num_matched, aclrtStream stream) const override;
 
     void update(const size_t n, const torch::Tensor keys, const torch::Tensor values,
                 const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,

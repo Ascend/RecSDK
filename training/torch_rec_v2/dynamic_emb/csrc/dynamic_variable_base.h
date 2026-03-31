@@ -81,29 +81,75 @@ uint32_t get_optimizer_state_dim(OptimizerType opt_type, uint32_t emb_dim)
 class DynamicVariableBase {
 public:
     virtual ~DynamicVariableBase() = default;
+    virtual int64_t rows(aclrtStream stream = 0) = 0;
     virtual int64_t get_max_capacity() = 0;
     virtual DataType get_key_type() = 0;
     virtual DataType get_value_type() = 0;
     virtual EvictStrategy get_evict_strategy() const = 0;
     virtual const InitializerArgs &get_initializer_args() const = 0;
+    virtual EvictStrategy evict_strategy() const = 0;
+    virtual void insert_and_evict(const size_t n,
+                                  const void* keys,            // (n)
+                                  const void* values,          // (n, DIM)
+                                  const void* scores,          // (n)
+                                  void* evicted_keys,          // (n)
+                                  void* evicted_values,        // (n, DIM)
+                                  void* evicted_scores,        // (n)
+                                  uint64_t* d_evicted_counter, // (1)
+                                  aclrtStream stream = 0, bool unique_key = true,
+                                  bool ignore_evict_strategy = false) = 0;
+    virtual void find(const size_t n, const void *keys, // (n)
+                      void *values,                     // (n, DIM)
+                      bool *founds,                     // (n)
+                      void *scores = nullptr,           // (n)
+                      aclrtStream stream = 0) const = 0;
+    virtual void erase(const size_t n, const void *keys,
+                       aclrtStream stream = 0) = 0;
+    virtual void clear(aclrtStream stream = 0) = 0;
+    virtual void reserve(const size_t new_capacity, aclrtStream stream = 0) = 0;
+    virtual void accum_or_assign(const size_t n,
+                                 const void *keys,             // (n)
+                                 const void *value_or_deltas,  // (n, DIM)
+                                 const bool *accum_or_assigns, // (n)
+                                 const void *scores = nullptr, // (n)
+                                 aclrtStream stream = 0,
+                                 bool ignore_evict_strategy = false) = 0;
+    virtual void assign(const size_t n,
+                        const void *keys,             // (n)
+                        const void *values,           // (n, DIM)
+                        const void *scores = nullptr, // (n)
+                        aclrtStream stream = 0, bool unique_key = true) = 0;
+    virtual void lock(const size_t n,
+                      const void* keys,       // (n)
+                      void** locked_keys_ptr, // (n)
+                      bool* flags = nullptr,  // (n)
+                      void* scores = nullptr, // (n)
+                      aclrtStream stream = 0) = 0;
+    virtual void unlock(const size_t n,
+                        void** locked_keys_ptr, // (n)
+                        const void* keys,       // (n)
+                        bool* flags = nullptr,  // (n)
+                        aclrtStream stream = 0) = 0;
     virtual void find_pointers(const size_t n, const void *keys, // (n)
-                              void **values,                    // (n)
-                              bool *founds,                     // (n)
-                              void *scores = nullptr,           // (n)
-                              aclrtStream stream = 0) const = 0;
+                               void **values,                    // (n)
+                               bool *founds,                     // (n)
+                               void *scores = nullptr,           // (n)
+                               aclrtStream stream = 0) const = 0;
     virtual void find_pointers(const size_t n, const void *keys, // (n)
-                              void **values,                    // (n)
-                              bool *founds,                     // (n)
-                              void *scores = nullptr,           // (n)
-                              aclrtStream stream = 0) = 0;
+                               void **values,                    // (n)
+                               bool *founds,                     // (n)
+                               void *scores = nullptr,           // (n)
+                               aclrtStream stream = 0) = 0;
     virtual int optstate_dim() const = 0;
     virtual int get_emb_cols() const = 0;
     virtual void export_batch(const size_t n, const size_t offset, const torch::Tensor d_counter,
                               const torch::Tensor keys, const torch::Tensor values,
                               const c10::optional<torch::Tensor>& score = c10::nullopt) const = 0;
     virtual void export_batch_matched(const uint64_t threshold, const uint64_t n, const uint64_t offset,
-                                      at::Tensor num_matched, at::Tensor keys, at::Tensor values) const = 0;
-    virtual void count_matched(const uint64_t threshold, at::Tensor num_matched) const = 0;
+                                      at::Tensor num_matched, at::Tensor keys, at::Tensor values,
+                                      at::Tensor scores, aclrtStream stream) const = 0;
+    virtual void count_matched(const uint64_t threshold, at::Tensor num_matched,
+                               aclrtStream stream) const = 0;
     virtual void update(const size_t n, const torch::Tensor keys, const torch::Tensor values,
                         const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
                         bool ignore_evict_strategy = false) = 0;
