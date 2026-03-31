@@ -101,10 +101,10 @@ public:
         blockHeight = tilingData.blockHeight;
 
         maskType = tilingData.maskType;
-        enableBias = tilingData.enableBias;
-        enableContextMask = tilingData.enableContextMask;
-        enableTargetMask = tilingData.enableTargetMask;
-        isNormal = tilingData.isNormal;
+        enableBias = tilingData.enableBias == 1;
+        enableContextMask = tilingData.enableContextMask == 1;
+        enableTargetMask = tilingData.enableTargetMask == 1;
+        isNormal = tilingData.isNormal == 1;
         aivNum = tilingData.aivNum;
 
         rowBlockNum = (seqLen + blockHeight - 1) / blockHeight;
@@ -1022,12 +1022,12 @@ public:
 
     // Attr
     int32_t maskType;
-    int32_t enableBias;
-    int32_t enableContextMask;
-    int32_t enableTargetMask;
+    bool enableBias;
+    bool enableContextMask;
+    bool enableTargetMask;
     float siluScale;
 
-    int32_t isNormal;
+    bool isNormal;
     uint32_t aivNum;
 
     // Tiling
