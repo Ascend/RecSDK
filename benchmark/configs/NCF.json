@@ -1,0 +1,26 @@
+{
+    "name": "NCF",
+    "url": "https://github.com/guoyang9/NCF.git",
+    "commit_id": "89ff06ffcd2bca6bb773b54925265c208a28d318",
+    "patch_path": "patches/ncf_npu.patch",
+    "mode": "train",
+    "profiling_flag": true,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "python",
+        "main.py",
+        "--batch_size=256",
+        "--lr=0.001",
+        "--factor_num=16",
+        "--epochs=51",
+        "--device_id=0,1,2,3,4,5,6,7",
+        "--master_port=12345"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "git clone https://github.com/hexiangnan/neural_collaborative_filtering.git ./ncf",
+        "mv ./ncf/Data ./"
+    ]
+}
