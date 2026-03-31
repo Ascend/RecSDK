@@ -121,6 +121,16 @@ def get_args():
         action="store_true",
         help="Force use eager mode",
     )
+    parser.add_argument(
+        '--custom_dropout',
+        action="store_true",
+        help='Use custom dropout function, which is required only for the Multitask-Recommendation-Library(MMoE) model'
+    )
+    parser.add_argument(
+        "--no_hf32",
+        action="store_false",
+        help="Not use hf32 when comparing precision for NCF, DIN-pytorch, Multitask-Recommendation-Library(MMoE) model",
+    )
     args = parser.parse_args()
     return args
 
@@ -195,11 +205,13 @@ def install_depend(config: dict, target_dir: Path) -> bool:
     return True
 
 
-def set_env(config: dict, cpu_only: bool, eager: bool):
+def set_env(config: dict, args: argparse.Namespace):
     os.environ["MODEL_MODE"] = config.get("mode")
     os.environ["MODEL_EPOCH"] = str(config.get("epoch"))
     os.environ["MODEL_PROFILING_FLAG"] = str(config.get("profiling_flag"))
-    if eager:
+    os.environ["MODEL_HF32_FLAG"] = str(args.no_hf32)
+    os.environ["CUSTOM_DROPOUT"] = str(args.custom_dropout)
+    if args.eager:
         os.environ["MODEL_COMPILE_FLAG"] = "False"
     else:
         os.environ["MODEL_COMPILE_FLAG"] = "True"
@@ -207,15 +219,15 @@ def set_env(config: dict, cpu_only: bool, eager: bool):
     os.environ["MODEL_DATA_TYPE"] = config.get("data_type")
     os.environ["MODEL_NAME"] = config.get("name")
     os.environ["MODEL_E2E_FLAG"] = str(config.get("e2e_flag"))
-    os.environ["MODEL_CPU_ONLY"] = str(cpu_only)
+    os.environ["MODEL_CPU_ONLY"] = str(args.cpu)
     lib_fbgemm_npu_api_so_path = config.get("lib_fbgemm_npu_api_so_path")
     if lib_fbgemm_npu_api_so_path:
         logger.info(f"LIB_FBGEMM_NPU_API_SO_PATH: {lib_fbgemm_npu_api_so_path}")
         os.environ["LIB_FBGEMM_NPU_API_SO_PATH"] = str(lib_fbgemm_npu_api_so_path)
 
 
-def run_model(config: dict, target_dir: Path, cpu_only: bool, eager: bool) -> bool:
-    set_env(config, cpu_only, eager)
+def run_model(config: dict, target_dir: Path, args: argparse.Namespace) -> bool:
+    set_env(config, args)
     logger.info(f"Running model command: {config.get('run_cmd')}")
     try:
         subprocess.run(config.get("run_cmd"), cwd=str(target_dir), check=True)
@@ -386,7 +398,7 @@ def main():
             return
 
     # 3. Run model
-    if not run_model(config, target_dir, args.cpu, args.eager):
+    if not run_model(config, target_dir, args):
         logger.error("Model run failed, process terminated.")
         return
 

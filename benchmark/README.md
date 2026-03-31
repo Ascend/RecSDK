@@ -31,6 +31,8 @@ python run.py xxx.json --eager
 ```
 **xxx.json**:为configs文件夹中的配置文件
 **--eager**：为强制跑eager模式，不配置默认跑inductor模式（当前未支持）
+**--no_hf32**：禁用混合精度加速，不配置默认使能混合精度加速。NCF、DIN-pytorch、Multitask-Recommendation-Library比对GPU与NPU精度时需禁用
+**--custom_dropout**：使用自定义的dropout函数，不配置使用默认的dropout函数。Multitask-Recommendation-Library比对GPU与NPU精度是需配置
 
 # 性能指标
 模型正常运行后，会在models目录下生成性能相关文件，目录为./models/save_results_{device_name}/performance_result.txt,其中{device_name}为运行设备名称，如npu、cuda、cpu,文件内容为模型的性能指标，如推理时间、qps等。
@@ -86,13 +88,13 @@ python accuracy_compare.py --actual_output ./models/save_results_npu --expected_
 + pip_install_requirements: 开源仓是否要安装起根目录下的requirements.txt依赖包
 + extra_cmd: 适配npu需要额外执行的命令
 
-## yolov5 模型需要手动下载权重文件
+# 模型额外操作说明
+## yolov5 模型
 
-https://gitcode.com/open-source-toolkit/6e474/blob/main/yolov5%20%E5%AE%98%E6%96%B9%E6%9D%83%E9%87%8D%E6%96%87%E4%BB%B6.zip
+yolov5模型需手动下载权重文件。https://gitcode.com/open-source-toolkit/6e474/blob/main/yolov5%20%E5%AE%98%E6%96%B9%E6%9D%83%E9%87%8D%E6%96%87%E4%BB%B6.zip
 从链接里下载并解压，把yolov5s.pt放在ckpt文件夹下再运行
 
-## SIM 模型gpu运行需要应用patch
-```
-cd ./benchmark/models/SIM/
-cp ../../patches/sim_gpu.patch ./ && git apply sim_gpu.patch
-```
+## Multitask-Recommendation-Library(MMOE) 模型
+
+MMOE模型运行前需访问 https://tianchi.aliyun.com/dataset/74690 下载aliexpress_NL_datasets.zip数据集，
+并将数据集放到**与本README.md同级的data目录**下。
