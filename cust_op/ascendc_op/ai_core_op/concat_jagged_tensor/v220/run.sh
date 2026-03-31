@@ -38,20 +38,12 @@ source "$UTILS_SCRIPT"
 # ==============================================================================
 # 3. 参数配置
 # ==============================================================================
-vendor_name="dense_embedding_codegen_lookup_function_grad"
+vendor_name="concat_jagged_tensor"
 
 parse_arguments "$@" || exit 1
 
 # ==============================================================================
 # 4. 执行标准化流程
 # ==============================================================================
-
-VALID_AI_CORES=(
-    "ai_core-Ascend910B1"
-    "ai_core-Ascend910B2"
-    "ai_core-Ascend910B3"
-    "ai_core-Ascend910B4"
-    "ai_core-Ascend910_93"
-)
 
 build_and_install_operator "$WORK_DIR" "$vendor_name" || exit 1
