@@ -1,0 +1,27 @@
+{
+    "name": "Multitask-Recommendation-Library",
+    "url": "https://github.com/easezyc/Multitask-Recommendation-Library.git",
+    "commit_id": "32a8432d74e09bf4ebef9ae9d2baaa0c0d70e428",
+    "patch_path": "patches/mmoe_npu.patch",
+    "mode": "train",
+    "profiling_flag": true,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "python",
+        "main.py",
+        "--model_name=mmoe",
+        "--expert_num=8",
+        "--dataset_name=AliExpress_NL",
+        "--epoch=51",
+        "--device_id=0,1,2,3,4,5,6,7",
+        "--master_port=12345"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "mv ../../data/aliexpress_NL_datasets.zip ./data",
+        "unzip ./data/aliexpress_NL_datasets.zip",
+        "python ./data/preprocess.py --dataset_name NL"
+    ]
+}
