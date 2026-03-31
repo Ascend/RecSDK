@@ -26,7 +26,7 @@ CURR_DIR = Path(__file__).resolve().parent
 torch.ops.load_library(
     str(
         CURR_DIR.parent.parent.parent
-        / "cust_op/framework/torch_plugin/torch_library/disetangle_attention/build/libdisentangle_attention.so"
+        / "framework/torch_plugin/torch_library/disetangle_attention/build/libdisentangle_attention.so"
     )
 )
 

@@ -41,7 +41,7 @@ bash run.sh
 若指定 AI Core 类型编译：
 
 ```shell
-bash run.sh ai_core-<soc_version>
+bash run.sh --ai-core ai_core-<soc_version>
 ```
 
 > AI处理器的型号<soc_version>请通过如下方式获取:
