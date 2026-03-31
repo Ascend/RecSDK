@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include "register/op_def_registry.h"
 #include "ops_log.h"
@@ -26,10 +27,10 @@ constexpr int BUFFER_PARAM = 2048;
 constexpr int64_t MAX_OFFSETS_LEN = 1LL << 17;
 constexpr int64_t MAX_RANGE_SIZE = 1LL << 32;
 
-static inline int64_t ComputeLutSize(int64_t rangeSize, int64_t totalRows, int64_t availableSpace, bool isInt64)
+static inline int64_t ComputeLutSize(int64_t rangeSize, int64_t totalRows, uint64_t availableSpace, bool isInt64)
 {
     // 每个 LUT 元素占用的字节数
-    const int64_t elemSize = isInt64 ? sizeof(int64_t) : sizeof(int32_t);
+    const uint64_t elemSize = isInt64 ? sizeof(int64_t) : sizeof(int32_t);
 
     if (totalRows <= 0 || rangeSize <= 0) {
         return 1;
@@ -38,17 +39,19 @@ static inline int64_t ComputeLutSize(int64_t rangeSize, int64_t totalRows, int64
     // buffer size 优化
     long double ratio = (static_cast<long double>(BUFFER_PARAM) / static_cast<long double>(totalRows)) *
                         static_cast<long double>(rangeSize);
-    int64_t lutRaw = static_cast<int64_t>(std::floor(std::sqrt(static_cast<double>(ratio)))) + 1;  // 避免除 0
+    uint64_t lutRaw = static_cast<uint64_t>(std::floor(std::sqrt(static_cast<double>(ratio)))) + 1;  // 避免除 0
 
     // 32B 对齐
-    const int64_t elemsPer32B = isInt64 ? 4 : 8;
-    int64_t lutAligned = (lutRaw + elemsPer32B - 1) & ~(elemsPer32B - 1);
-    int64_t lutMax = ((availableSpace + 31) & ~31) / elemSize;
+    const uint64_t elemsPer32B = isInt64 ? 4ULL : 8ULL;
+    const uint64_t elemsPer32BMask = elemsPer32B - 1;
+    const uint64_t dataAlignMask = DATA_ALIGN_BYTES - 1;
+    uint64_t lutAligned = (lutRaw + elemsPer32BMask) & ~elemsPer32BMask;  // 向上对齐
+    uint64_t lutMax = (availableSpace & ~dataAlignMask) / elemSize;       // 向下对齐
 
     // 上限裁剪
     lutAligned = std::min(lutAligned, lutMax);
 
-    return lutAligned;
+    return static_cast<int64_t>(lutAligned);
 }
 
 static inline size_t ComputeBlockDim(int64_t rangeSize, int64_t lutSize, size_t coreNum)
@@ -116,13 +119,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     // UB space
     uint64_t ubSize;
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    int64_t reservedSpace = DATA_ALIGN_BYTES * 2;
-    int64_t availableSpace = static_cast<int64_t>(ubSize) - reservedSpace;
-
-    if (availableSpace <= 0) {
-        OPS_LOG_E("[ERROR]", "UB space is not enough, availableSpace = %lld", availableSpace);
+    uint64_t reservedSpace = static_cast<uint64_t>(DATA_ALIGN_BYTES) * 2ULL;
+    if (ubSize <= reservedSpace) {
+        OPS_LOG_E("[ERROR]", "UB space is not enough, current UB space = %llu, less than reserved space = %llu", ubSize,
+                  reservedSpace);
         return ge::GRAPH_FAILED;
     }
+    uint64_t availableSpace = ubSize - reservedSpace;
 
     // LUT size
     int64_t lutSize = ComputeLutSize(rangeSize, totalRows, availableSpace / 3, isInt64);  // 1/3 LUT, 2/3 double buffer
