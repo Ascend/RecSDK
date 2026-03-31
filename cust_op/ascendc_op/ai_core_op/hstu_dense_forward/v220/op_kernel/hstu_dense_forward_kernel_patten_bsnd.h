@@ -484,7 +484,7 @@ public:
 
         int64_t copyLenEachLoopAlignHeadDim = vectorScoreUbBlockElem / dim * dim;
 
-        if constexpr (needAtomic == true) {
+        if constexpr (needAtomic) {
             AscendC::SetAtomicNone();
         }
 
