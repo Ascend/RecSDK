@@ -26,7 +26,6 @@
 #include <torch/torch.h>
 #include "securec.h"
 
-#include "hkv_hashtable.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "aclnn/aclnn_base.h"
@@ -668,6 +667,128 @@ void find_pointers_with_scores(std::shared_ptr<dyn_emb::DynamicVariableBase> tab
     }
 }
 
+int64_t dyn_emb_rows(std::shared_ptr<dyn_emb::DynamicVariableBase> table)
+{
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    return table->rows(stream);
+}
+  
+void count_matched(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
+                   const uint64_t threshold,
+                   at::Tensor num_matched)
+{
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    table->count_matched(threshold, num_matched, stream);
+}
+
+void export_batch_matched(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
+                          const uint64_t threshold, const uint64_t n,
+                          const uint64_t offset, at::Tensor num_matched,
+                          at::Tensor keys, at::Tensor values)
+{
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    table->export_batch_matched(threshold, n, offset, num_matched, keys, values, at::Tensor(), stream);
+}
+
+void insert_and_evict(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
+                      const size_t n, const at::Tensor keys, const at::Tensor values,
+                      const std::optional<uint64_t> score, at::Tensor evicted_keys,
+                      at::Tensor evicted_values, at::Tensor evicted_score,
+                      at::Tensor d_evicted_counter, bool unique_key = true,
+                      bool ignore_evict_strategy = false)
+{
+    if (not score and (table->evict_strategy() == EvictStrategy::kCustomized ||
+        table->evict_strategy() == EvictStrategy::kLfu)) {
+        throw std::invalid_argument("Must specify the score when evict strategy is customized or LFU.");
+    }
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    if (table->evict_strategy() == EvictStrategy::kCustomized ||
+        table->evict_strategy() == EvictStrategy::kLfu) {
+        auto&& option = at::TensorOptions().dtype(at::kUInt64).device(keys.device());
+        // broadcast scores
+        at::Tensor bc_scores = at::empty({static_cast<int64_t>(n)}, option);
+        bc_scores.fill_(score.value());
+        table->insert_and_evict(n, keys.data_ptr(), values.data_ptr(), bc_scores.data_ptr(),
+            evicted_keys.data_ptr(), evicted_values.data_ptr(), evicted_score.data_ptr(),
+            reinterpret_cast<uint64_t*>(d_evicted_counter.data_ptr()), stream, unique_key, ignore_evict_strategy);
+    } else {
+        table->insert_and_evict(n, keys.data_ptr(), values.data_ptr(), nullptr, 
+            evicted_keys.data_ptr(), evicted_values.data_ptr(), evicted_score.data_ptr(),
+            reinterpret_cast<uint64_t*>(d_evicted_counter.data_ptr()), stream, unique_key, ignore_evict_strategy);
+    }
+}
+
+void find(std::shared_ptr<dyn_emb::DynamicVariableBase> table, const size_t n,
+          const at::Tensor keys, const at::Tensor values, const at::Tensor founds,
+          const c10::optional<at::Tensor> &score = c10::nullopt)
+{
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    if (score.has_value()) {
+        at::Tensor score_ = score.value();
+        table->find(n, keys.data_ptr(), values.data_ptr(), founds.data_ptr<bool>(),
+                    score_.data_ptr(), stream);
+    } else {
+        table->find(n, keys.data_ptr(), values.data_ptr(), founds.data_ptr<bool>(),
+                    nullptr, stream);
+    }
+}
+
+void erase(std::shared_ptr<dyn_emb::DynamicVariableBase> table, const size_t n,
+           const at::Tensor keys)
+{
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    table->erase(n, keys.data_ptr(), stream);
+}
+
+void clear(std::shared_ptr<dyn_emb::DynamicVariableBase> table)
+{
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    table->clear(stream);
+}
+
+void reserve(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
+            const size_t new_capacity)
+{
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    table->reserve(new_capacity, stream);
+}
+
+void accum_or_assign(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
+                     const size_t n, const at::Tensor keys,
+                     const at::Tensor value_or_deltas,
+                     const at::Tensor accum_or_assigns,
+                     const c10::optional<at::Tensor> &score = c10::nullopt,
+                     bool ignore_evict_strategy = false)
+{
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    if (score.has_value()) {
+        at::Tensor score_ = score.value();
+        table->accum_or_assign(n, keys.data_ptr(), value_or_deltas.data_ptr(),
+                               accum_or_assigns.data_ptr<bool>(), score_.data_ptr(),
+                               stream, ignore_evict_strategy);
+    } else {
+        table->accum_or_assign(n, keys.data_ptr(), value_or_deltas.data_ptr(),
+                               accum_or_assigns.data_ptr<bool>(), nullptr, stream,
+                               ignore_evict_strategy);
+    }
+}
+
+void assign(std::shared_ptr<dyn_emb::DynamicVariableBase> table, const size_t n,
+            const at::Tensor keys, const at::Tensor values,
+            const c10::optional<at::Tensor> &score = c10::nullopt,
+            bool unique_key = true)
+{
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    if (score.has_value()) {
+        at::Tensor score_ = score.value();
+        table->assign(n, keys.data_ptr(), values.data_ptr(), score_.data_ptr(),
+                      stream, unique_key);
+    } else {
+        table->assign(n, keys.data_ptr(), values.data_ptr(), nullptr, stream,
+                      unique_key);
+    }
+}
+
 void lookup_forward(const at::Tensor& src, const at::Tensor& dst, const at::Tensor& offset, const at::Tensor& inverse,
                     int32_t combiner, int32_t total_dims, int32_t accum_dims, int32_t ev_size, int32_t num_vec,
                     int32_t batch_size)
@@ -946,12 +1067,8 @@ void bind_dyn_emb_op(py::module& m)
         .def("export_batch", &dyn_emb::DynamicVariableBase::export_batch, "export key value from table", py::arg("n"),
              py::arg("offset"), py::arg("d_counter"), py::arg("keys"), py::arg("values"),
              py::arg("score") = c10::nullopt)
-        .def("export_batch_matched", &dyn_emb::DynamicVariableBase::export_batch_matched,
-             "Export KV-pairs within [offset, offset + n) whose score > threshold", py::arg("threshold"), py::arg("n"),
-             py::arg("offset"), py::arg("num_matched"), py::arg("keys"), py::arg("values"))
-        .def("count_matched", &dyn_emb::DynamicVariableBase::count_matched,
-             "Count the KV-pairs whose score > threshold in the whole table.", py::arg("threshold"),
-             py::arg("num_matched"));
+        .def("evict_strategy", &dyn_emb::DynamicVariableBase::evict_strategy,
+             "Get evict strategy of Dynamic Emb Table.");
 
     py::enum_<dyn_emb::DataType>(m, "DynamicEmbDataType")
         .value("Float32", dyn_emb::DataType::Float32)
@@ -1016,6 +1133,47 @@ void bind_dyn_emb_op(py::module& m)
           "value's ptr",
           py::arg("table"), py::arg("n"), py::arg("keys"), py::arg("values"), py::arg("founds"),
           py::arg("scores") = py::none());
+    
+    m.def("dyn_emb_rows", &dyn_emb_rows, "Get the number of rows in the table",
+          py::arg("table"));
+  
+    m.def("export_batch_matched", &export_batch_matched,
+          "Export KV-pairs within [offset, offset + n) whose score > threshold", py::arg("table"),
+          py::arg("threshold"), py::arg("n"), py::arg("offset"), py::arg("num_matched"),
+          py::arg("keys"), py::arg("values"));
+
+    m.def("count_matched", &count_matched,
+          "Count the KV-pairs whose score > threshold in the whole table.", py::arg("table"),
+          py::arg("threshold"), py::arg("num_matched"));
+
+    m.def("insert_and_evict", &insert_and_evict,
+          "Insert keys and values, evicting if necessary", py::arg("table"),
+          py::arg("n"), py::arg("keys"), py::arg("values"), py::arg("score"),
+          py::arg("evicted_keys"), py::arg("evicted_values"),
+          py::arg("evicted_score"), py::arg("d_evicted_counter"),
+          py::arg("unique_key") = true, py::arg("ignore_evict_strategy") = false);
+
+    m.def("find", &find, "Find values in the table based on keys",
+          py::arg("table"), py::arg("n"), py::arg("keys"), py::arg("values"),
+          py::arg("founds"), py::arg("score") = c10::nullopt);
+
+    m.def("erase", &erase, "Erase values from the table based on keys",
+          py::arg("table"), py::arg("n"), py::arg("keys"));
+        
+    m.def("clear", &clear, "Clear all keys in the table", py::arg("table"));
+
+    m.def("reserve", &reserve, "reserve hash table capacity", py::arg("table"),
+          py::arg("new_capacity"));
+      
+    m.def("accum_or_assign", &accum_or_assign,
+          "Accumulate or assign values to the table", py::arg("table"),
+          py::arg("n"), py::arg("keys"), py::arg("value_or_deltas"),
+          py::arg("accum_or_assigns"), py::arg("score") = c10::nullopt,
+          py::arg("ignore_evict_strategy") = false);
+  
+    m.def("assign", &assign, "Assign values to the table based on keys",
+          py::arg("table"), py::arg("n"), py::arg("keys"), py::arg("values"),
+          py::arg("score") = c10::nullopt, py::arg("unique_key") = true);
 
     m.def("device_timestamp", &device_timestamp, "device_timestamp");
 

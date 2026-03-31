@@ -21,6 +21,36 @@
 #include "utils.h"
 
 namespace dyn_emb {
+#if defined(__CCE__)
+template <typename K, typename V, typename S>
+struct EvalAndInc {
+    __gm__ uint64_t* d_count;
+    S threshold;
+    EvalAndInc(S threshold, __gm__ uint64_t* d_count) : threshold(threshold), d_count(d_count) {}
+    template<int32_t GroupSize>
+    __device__ void operator()(const K& key, __gm__ V* value,  __gm__ S* score)
+    {
+        S score_val = *score;
+        bool match = (!npu::hkv::IS_RESERVED_KEY(key) && score_val >= threshold);
+        uint32_t vote = asc_ballot(match);
+        int32_t group_count = AscendC::Simt::Popc(vote);
+        if (threadIdx.x % GroupSize == 0) {
+            atomicAdd(d_count, group_count);
+        }
+    }
+};
+
+template <class K, class V, class S>
+struct ExportIfPredFunctor {
+    S threshold;
+    ExportIfPredFunctor(S threshold): threshold(threshold) {}
+    template <int GroupSize>
+    __forceinline__ __device__ bool operator()(const K& key, const __gm__ V* value, const S& score)
+    {
+        return ((!npu::hkv::IS_RESERVED_KEY<K>(key)) && (score >= threshold));
+    }
+};
+#endif
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 HKVVariable<KeyType, ValueType, Strategy>::HKVVariable(
@@ -80,6 +110,17 @@ template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 HKVVariable<KeyType, ValueType, Strategy>::~HKVVariable() {}
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+int64_t HKVVariable<KeyType, ValueType, Strategy>::rows(aclrtStream stream)
+{
+    return hkv_table_->size(stream);
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+EvictStrategy HKVVariable<KeyType, ValueType, Strategy>::evict_strategy() const {
+    return Strategy;
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 int64_t HKVVariable<KeyType, ValueType, Strategy>::get_max_capacity()
 {
     return max_capacity_;
@@ -107,6 +148,101 @@ template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 const InitializerArgs &HKVVariable<KeyType, ValueType, Strategy>::get_initializer_args() const
 {
     return initializer_args_;
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::insert_and_evict(
+    const size_t n, const void *keys, const void *values, const void *scores,
+    void *evicted_keys, void *evicted_values, void *evicted_scores,
+    uint64_t* d_evicted_counter, aclrtStream stream, bool unique_key,
+    bool ignore_evict_strategy)
+{
+    hkv_table_->insert_and_evict(
+        n, reinterpret_cast<const KeyType*>(keys), reinterpret_cast<const ValueType*>(values),
+        reinterpret_cast<const uint64_t*>(scores), reinterpret_cast<KeyType*>(evicted_keys),
+        reinterpret_cast<ValueType*>(evicted_values), reinterpret_cast<uint64_t*>(evicted_scores),
+        d_evicted_counter, stream, unique_key, ignore_evict_strategy);
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::find(const size_t n,
+    const void *keys, void *values, bool *founds, void *scores,
+    aclrtStream stream) const
+{
+    hkv_table_->find(n, reinterpret_cast<const KeyType*>(keys),
+        reinterpret_cast<ValueType*>(values), founds,
+        reinterpret_cast<uint64_t*>(scores), stream);
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType,Strategy >::clear(aclrtStream stream)
+{
+    hkv_table_->clear(stream);
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::erase(const size_t n,
+                                                      const void *keys,
+                                                      aclrtStream stream)
+{
+    hkv_table_->erase(n, reinterpret_cast<const KeyType*>(keys), stream);
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::reserve(const size_t new_capacity,
+                                                        aclrtStream stream)
+{
+    hkv_table_->reserve(new_capacity, stream);
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::accum_or_assign(
+    const size_t n, const void *keys, const void *value_or_deltas,
+    const bool *accum_or_assigns, const void *scores, aclrtStream stream,
+    bool ignore_evict_strategy)
+{
+    hkv_table_->accum_or_assign(n, reinterpret_cast<const KeyType*>(keys),
+        reinterpret_cast<const ValueType*>(value_or_deltas),
+        reinterpret_cast<const bool*>(accum_or_assigns),
+        reinterpret_cast<const uint64_t*>(scores), stream, ignore_evict_strategy);
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::assign(
+    const size_t n, const void *keys, const void *values, const void *scores,
+    aclrtStream stream, bool unique_key)
+{
+    hkv_table_->assign(n, reinterpret_cast<const KeyType*>(keys),
+        reinterpret_cast<const ValueType*>(values), reinterpret_cast<const uint64_t*>(scores),
+        stream, unique_key);
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::lock(
+    const size_t n,
+    const void* keys,            // (n)
+    void** locked_keys_ptr,      // (n)
+    bool* flags,                 // (n)
+    void* scores,
+    aclrtStream stream
+) 
+{
+    hkv_table_->lock_keys(n, reinterpret_cast<const KeyType*>(keys),
+        reinterpret_cast<KeyType**>(locked_keys_ptr), flags, stream,
+        reinterpret_cast<const uint64_t*>(scores));
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::unlock(
+    const size_t n,
+    void** locked_keys_ptr,      // (n)
+    const void* keys,            // (n)
+    bool* flags,                 // (n)
+    aclrtStream stream
+)
+{
+    hkv_table_->unlock_keys(n, reinterpret_cast<KeyType**>(locked_keys_ptr),
+        reinterpret_cast<const KeyType*>(keys), flags, stream);
 }
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
@@ -167,17 +303,34 @@ void HKVVariable<KeyType, ValueType, Strategy>::export_batch(const size_t n, con
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 void HKVVariable<KeyType, ValueType, Strategy>::export_batch_matched(const uint64_t threshold, const uint64_t n,
     const uint64_t offset, at::Tensor num_matched,
-    at::Tensor keys, at::Tensor values) const
+    at::Tensor keys, at::Tensor values, at::Tensor scores, aclrtStream stream) const
 {
-    // Mock implementation:
+#if defined(__CCE__)
+    using PredFunc = ExportIfPredFunctor<KeyType, ValueType, uint64_t>;
+    PredFunc func(threshold);
+    hkv_table_->export_batch_if_v2(
+        func, n, offset, reinterpret_cast<uint64_t*>(num_matched.data_ptr()), 
+        reinterpret_cast<KeyType*>(keys.data_ptr()),
+        reinterpret_cast<ValueType*>(values.data_ptr()),
+        reinterpret_cast<uint64_t*>(scores.data_ptr()), stream);
+#else
+    // Mock implementation:	 
     std::cout << "Mock export_batch_matched called with threshold=" << threshold << ", n=" << n << std::endl;
+#endif
 }
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
-void HKVVariable<KeyType, ValueType, Strategy>::count_matched(const uint64_t threshold, at::Tensor num_matched) const
+void HKVVariable<KeyType, ValueType, Strategy>::count_matched(const uint64_t threshold,
+    at::Tensor num_matched, aclrtStream stream) const
 {
-    // Mock implementation:
+#if defined(__CCE__)
+    using ExecutionFunc = EvalAndInc<KeyType, ValueType, uint64_t>;
+    ExecutionFunc func(threshold, reinterpret_cast<uint64_t*>(num_matched.data_ptr()));
+    hkv_table_->for_each(0, hkv_table_->capacity(), func, stream);
+#else
+    // Mock implementation:	 
     std::cout << "Mock count_matched called with threshold=" << threshold << std::endl;
+#endif
 }
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
