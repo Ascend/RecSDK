@@ -146,7 +146,7 @@ def evaluate_model(model, test_loader, criterion, device):
 
             inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
             model_name = os.environ.get("MODEL_NAME", "default_name")
-            device_name = device.split(":")[0]
+            device_name = device.type
             model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
 
             #统计E2E耗时
