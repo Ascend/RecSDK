@@ -108,7 +108,7 @@ class TestDynamicEmbInitializerArgs:
     @staticmethod
     def test_eq_not_normal_ok():
         init_args = DynamicEmbInitializerArgs()
-        other_args = DynamicEmbInitializerArgs(mode=DynamicEmbInitializerMode.CONSTANT)
+        other_args = DynamicEmbInitializerArgs(mode=DynamicEmbInitializerMode.UNIFORM)
         assert init_args.__eq__(other_args)
 
     @staticmethod
@@ -120,7 +120,7 @@ class TestDynamicEmbInitializerArgs:
     @staticmethod
     def test_ne_ok():
         init_args = DynamicEmbInitializerArgs()
-        other_args = DynamicEmbInitializerArgs(mean=0.9)
+        other_args = DynamicEmbInitializerArgs(lower=0.9)
         assert init_args.__ne__(other_args)
 
 
