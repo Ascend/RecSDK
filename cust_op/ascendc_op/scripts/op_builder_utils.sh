@@ -151,11 +151,6 @@ check_system_and_cann() {
     MAJOR_VERSION=$(echo "${CANN_VERSION}" | cut -d. -f1)
     echo "cann major version: ${MAJOR_VERSION}"
 
-    if [ "$MAJOR_VERSION" -ge 9 ] && [ "$target_core" == "ai_core-Ascend310P3" ]; then
-        echo "ERROR: ai_core ${target_core} not supported in cann version ${CANN_VERSION}" >&2
-        return 1
-    fi
-
     # 获取系统ID
     OS_ID=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
     if [ -z "${OS_ID}" ]; then
