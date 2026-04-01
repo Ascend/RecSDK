@@ -120,7 +120,7 @@ class TestDynamicEmbInitializerArgs:
     @staticmethod
     def test_ne_ok():
         init_args = DynamicEmbInitializerArgs()
-        other_args = DynamicEmbInitializerArgs(mean=0.9)
+        other_args = DynamicEmbInitializerArgs(lower=0.9)
         assert init_args.__ne__(other_args)
 
 
@@ -168,7 +168,7 @@ class TestDynamicEmbTableOptions:
     def test_eval_initializer_args_not_normal_err():
         with pytest.raises(ValueError):
             DynamicEmbTableOptions(
-                eval_initializer_args=DynamicEmbInitializerArgs(mode=DynamicEmbInitializerMode.CONSTANT)
+                eval_initializer_args=DynamicEmbInitializerArgs(mode=DynamicEmbInitializerMode.UNIFORM)
             )
 
     @staticmethod
