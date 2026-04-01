@@ -171,6 +171,9 @@ def test_block_bucketize_sparse_features_performance_with_total_num_blocks(
 @pytest.mark.parametrize("case", PERF_CASES, ids=lambda case: case.name)
 # 覆盖 batch_size_per_feature/max_B 分支：所有 PerfCase 下变批量的路径
 def test_block_bucketize_sparse_features_performance_with_batch_size_per_feature_and_max_B(case: PerfCase):
+    # 因为 batch_size_per_feature 要求各 feature 有不同的 batch_size，而 batch_size=1 时 lengths 总长只有 num_features 个，无法支持变长 batch 分配。
+    if case.batch_size <= 1:
+        pytest.skip("batch_size_per_feature requires batch_size > 1")
     lengths, indices, block_sizes, _ = _generate_case_tensors(case, False)
     batch_size_per_feature, max_B = _generate_batch_size_per_feature_and_max_B(block_sizes, case.batch_size)
 
@@ -262,6 +265,9 @@ def test_block_bucketize_sparse_features_with_all_optionals(
     case: PerfCase, dtype_combo,
     total_num_blocks_type: GenTotalNumsBlocksType, sequence: bool, keep_orig_idx: bool
 ):
+    # 因为 batch_size_per_feature 要求各 feature 有不同的 batch_size，而 batch_size=1 时 lengths 总长只有 num_features 个，无法支持变长 batch 分配。
+    if case.batch_size <= 1:
+        pytest.skip("batch_size_per_feature requires batch_size > 1")
     offset_dtype, index_dtype = dtype_combo
     lengths, indices, block_sizes, weights = _generate_case_tensors(
         case, True, offset_dtype=offset_dtype, index_dtype=index_dtype
