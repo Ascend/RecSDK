@@ -38,7 +38,7 @@ if [ "$#" -eq 1 ]; then
   validate_ai_core $ai_core
 fi
 # 复制hstu_dense_backward.json
-cp -rf ../v220/hstu_dense_backward.json ./
+cp -rf ../v220/hstu_dense_backward_fuxi.json ./hstu_dense_backward.json
 
 # 利用msopgen生成可编译文件
 rm -rf ./hstu_dense_backward_fuxi
