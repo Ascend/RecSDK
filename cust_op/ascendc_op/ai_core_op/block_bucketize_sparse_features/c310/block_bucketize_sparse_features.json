@@ -1,14 +1,8 @@
 [
   {
-    "op": "BlockBucketizeSparseFeatures",
+    "op": "BlockBucketizeSparseFeaturesComputeNewLengths",
     "language": "cpp",
     "input_desc": [
-      {
-        "name": "lengths",
-        "param_type": "required",
-        "format": ["ND", "ND", "ND", "ND"],
-        "type": ["int32", "int32", "int64", "int64"]
-      },
       {
         "name": "indices",
         "param_type": "required",
@@ -22,14 +16,8 @@
         "type": ["int32", "int64", "int32", "int64"]
       },
       {
-        "name": "weights",
-        "param_type": "optional",
-        "format": ["ND", "ND", "ND", "ND"],
-        "type": ["fp32", "fp32", "fp32", "fp32"]
-      },
-      {
-        "name": "batch_size_per_feature",
-        "param_type": "optional",
+        "name": "offsets",
+        "param_type": "required",
         "format": ["ND", "ND", "ND", "ND"],
         "type": ["int32", "int32", "int64", "int64"]
       },
@@ -38,6 +26,12 @@
         "param_type": "optional",
         "format": ["ND", "ND", "ND", "ND"],
         "type": ["int32", "int64", "int32", "int64"]
+      },
+      {
+        "name": "batch_size_offsets",
+        "param_type": "optional",
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int32", "int64", "int64"]
       },
       {
         "name": "block_bucketize_pos_list",
@@ -52,7 +46,95 @@
         "param_type": "required",
         "format": ["ND", "ND", "ND", "ND"],
         "type": ["int32", "int32", "int64", "int64"]
+      }
+    ],
+    "attr": [
+      {
+        "name": "my_size",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 1
       },
+      {
+        "name": "bucketize_pos",
+        "param_type": "optional",
+        "type": "bool",
+        "default_value": false
+      },
+      {
+        "name": "lengths_size",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 0
+      },
+      {
+        "name": "batch_size",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 0
+      },
+      {
+        "name": "max_B",
+        "param_type": "optional",
+        "type": "int",
+        "default_value": -1
+      }
+    ]
+  },
+  {
+    "op": "BlockBucketizeSparseFeaturesScatterNewIndices",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "indices",
+        "param_type": "required",
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int64", "int32", "int64"]
+      },
+      {
+        "name": "block_sizes",
+        "param_type": "required",
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int64", "int32", "int64"]
+      },
+      {
+        "name": "offsets",
+        "param_type": "required",
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int32", "int64", "int64"]
+      },
+      {
+        "name": "new_offsets",
+        "param_type": "required",
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int32", "int64", "int64"]
+      },
+      {
+        "name": "weights",
+        "param_type": "optional",
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["fp32", "fp32", "fp32", "fp32"]
+      },
+      {
+        "name": "total_num_blocks",
+        "param_type": "optional",
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int64", "int32", "int64"]
+      },
+      {
+        "name": "batch_size_offsets",
+        "param_type": "optional",
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int32", "int64", "int64"]
+      },
+      {
+        "name": "block_bucketize_pos_list",
+        "param_type": "dynamic",
+        "format": ["ND", "ND", "ND", "ND"],
+        "type": ["int32", "int64", "int32", "int64"]
+      }
+    ],
+    "output_desc": [
       {
         "name": "new_indices",
         "param_type": "required",
@@ -102,6 +184,18 @@
         "param_type": "optional",
         "type": "bool",
         "default_value": false
+      },
+      {
+        "name": "lengths_size",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 0
+      },
+      {
+        "name": "batch_size",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 0
       },
       {
         "name": "max_B",
