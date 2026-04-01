@@ -66,6 +66,9 @@ replace_operator_sources() {
     cp -rf "${WORK_DIR}/op_host"/tiling_policy_factory.cpp "${WORK_DIR}/${vendor_name}/op_host/"
     if [ "$ai_core" = "ai_core-Ascend310P3" ]; then
     cp -rf "${WORK_DIR}/op_host"/tiling_policy_normal_v200_fuxi.cpp "${WORK_DIR}/${vendor_name}/op_host/"
+    sed -i "1i #define SUPPORT_V200" ${WORK_DIR}/${vendor_name}/op_host/hstu_dense_forward_fuxi_tiling.h
+    sed -i "1i #define SUPPORT_V200" ${WORK_DIR}/${vendor_name}/op_host/tiling_policy_define.h
+    sed -i "1i #define SUPPORT_V200" ${WORK_DIR}/${vendor_name}/op_kernel/hstu_dense_forward_fuxi.cpp
     else
     cp -rf "${WORK_DIR}/op_host"/tiling_policy_jagged.cpp "${WORK_DIR}/${vendor_name}/op_host/"
     fi
