@@ -49,6 +49,8 @@ npu_op_package_add(${package_name}
     LIBRARY ascendc_kernels
 )
 
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../../${vendor_name}.json
-    DESTINATION packages/vendors/${vendor_name}/op_impl/ai_core/tbe/${vendor_name}_impl/dynamic
-)
+if (WITH_ONNX)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../../${vendor_name}.json
+        DESTINATION packages/vendors/${vendor_name}/op_impl/ai_core/tbe/${vendor_name}_impl/dynamic
+    )
+endif()

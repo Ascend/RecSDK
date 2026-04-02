@@ -68,6 +68,10 @@
                 "ENABLE_CATLASS": {
                     "type": "BOOL",
                     "value": "False"
+                },
+                "WITH_ONNX": {
+                    "type": "BOOL",
+                    "value": "False"
                 }
             }
         }

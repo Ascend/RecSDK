@@ -182,11 +182,6 @@ check_system_and_cann() {
     MAJOR_VERSION=$(echo "${CANN_VERSION}" | cut -d. -f1)
     echo "cann major version: ${MAJOR_VERSION}"
 
-    if [ "$MAJOR_VERSION" -ge 9 ] && [ "$target_core" == "ai_core-Ascend310P3" ]; then
-        echo "ERROR: ai_core ${target_core} not supported in cann version ${CANN_VERSION}" >&2
-        return 1
-    fi
-
     # 获取系统ID
     OS_ID=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
     if [ -z "${OS_ID}" ]; then
@@ -423,6 +418,13 @@ configure_cmake_presets() {
         sed -i "${line}s/False/True/g" "$cmake_file"
     fi
 
+    # 修改 ONNX 支持选项
+    if [ "$with_onnx" = "true" ]; then
+        line=`awk '/WITH_ONNX/{print NR}' "$cmake_file"`
+        line=`expr ${line} + 2`
+        sed -i "${line}s/False/True/g" "$cmake_file"
+    fi
+
     # c310：op_kernel 里 install(FILES .../../../${v_name}.json) 实际解析到 dirname(target_dir)
     # （即与 run.sh 同级的 c310 目录），与 msopgen -i 常用路径（如 ../v220/*.json）不一致。
     # 已在各算子设置 OPERATOR_JSON_FILE 时，顺带复制一份供 CPack install 使用。
@@ -522,9 +524,11 @@ prepare_and_build() {
         # 修改 op_kernel/CMakeLists.txt
         local kernel_cmakelists="${target_dir}/op_kernel/CMakeLists.txt"
         if [ -f "$kernel_cmakelists" ]; then
-            local add_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../${v_name}.json \
-                            DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${v_name}_impl/dynamic)"
-            sed -i "\$a\\$add_line" "$kernel_cmakelists"
+            if [ "$with_onnx" = "true" ]; then
+                local add_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../${v_name}.json \
+                                DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${v_name}_impl/dynamic)"
+                sed -i "\$a\\$add_line" "$kernel_cmakelists"
+            fi
             sed -i '1i\add_ops_compile_options(ALL OPTIONS --cce-long-call=true)' "$kernel_cmakelists"
         fi
 
