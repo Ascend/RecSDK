@@ -29,32 +29,32 @@ torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_
 
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
-|  x | 输入 | Tensor | float32/float16/bfloat16 | [m, k] | m∈[1, +∞)<br>k∈[16, 8192]且是16的倍数 | 输入张量，不可为空 |
-|  weight | 输入 | Tensor | float32/float16/bfloat16 | [n, k] | n∈[64, 32768]且是16的倍数<br>n必须是4*k的倍数 | 权重张量，不可为空 |
+|  x | 输入 | Tensor | float16/bfloat16 | [m, k] | m∈[1, +∞)<br>k∈[16, 8192]且是16的倍数 | 输入张量，不可为空 |
+|  weight | 输入 | Tensor | float16/bfloat16 | [n, k] | n∈[64, 32768]且是16的倍数<br>n必须是4*k的倍数 | 权重张量，不可为空 |
 |  bias | 输入 | Tensor | float32 | [n] | n∈[64, 32768]且是16的倍数 | 偏置张量，不可为空 |
 |  split_arg_list | 输入(属性) | int[] | int[] | [H_u, H_v, H_q, H_k] | 每个元素∈[16, 8192]且是16的倍数<br>sum(split_arg_list)=n | 分割参数，长度为4，不可为空 |
-|  user_out | 输出 | Tensor | float32/float16/bfloat16 | [m, H_u] | 同x的m<br>H_u∈[16, 8192]且是16的倍数 | 分割后的user输出张量 |
-|  value_out | 输出 | Tensor | float32/float16/bfloat16 | [m, H_v] | 同x的m<br>H_v∈[16, 8192]且是16的倍数 | 分割后的value输出张量 |
-|  query_out | 输出 | Tensor | float32/float16/bfloat16 | [m, H_q] | 同x的m<br>H_q∈[16, 8192]且是16的倍数 | 分割后的query输出张量 |
-|  key_out | 输出 | Tensor | float32/float16/bfloat16 | [m, H_k] | 同x的m<br>H_k∈[16, 8192]且是16的倍数 | 分割后的key输出张量 |
-|  linear_output_out | 输出 | Tensor | float32/float16/bfloat16 | [m, n] | 同x的m<br>n∈[64, 32768]且是16的倍数 | 线性变换后的中间结果张量 |
+|  user_out | 输出 | Tensor | float16/bfloat16 | [m, H_u] | 同x的m<br>H_u∈[16, 8192]且是16的倍数 | 分割后的user输出张量 |
+|  value_out | 输出 | Tensor | float16/bfloat16 | [m, H_v] | 同x的m<br>H_v∈[16, 8192]且是16的倍数 | 分割后的value输出张量 |
+|  query_out | 输出 | Tensor | float16/bfloat16 | [m, H_q] | 同x的m<br>H_q∈[16, 8192]且是16的倍数 | 分割后的query输出张量 |
+|  key_out | 输出 | Tensor | float16/bfloat16 | [m, H_k] | 同x的m<br>H_k∈[16, 8192]且是16的倍数 | 分割后的key输出张量 |
+|  linear_output_out | 输出 | Tensor | float16/bfloat16 | [m, n] | 同x的m<br>n∈[64, 32768]且是16的倍数 | 线性变换后的中间结果张量 |
 
 ### torch.ops.mxrec.in_linear_silu_backward接口
 
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
-|  x | 输入 | Tensor | float32/float16/bfloat16 | [m, k] | m∈[1, +∞)<br>k∈[16, 8192]且是16的倍数 | 输入张量，不可为空 |
-|  weight | 输入 | Tensor | float32/float16/bfloat16 | [n, k] | n∈[64, 32768]且是16的倍数<br>n必须是4*k的倍数 | 权重张量，不可为空 |
+|  x | 输入 | Tensor | float16/bfloat16 | [m, k] | m∈[1, +∞)<br>k∈[16, 8192]且是16的倍数 | 输入张量，不可为空 |
+|  weight | 输入 | Tensor | float16/bfloat16 | [n, k] | n∈[64, 32768]且是16的倍数<br>n必须是4*k的倍数 | 权重张量，不可为空 |
 |  bias | 输入(可选) | Tensor | float32 | [n] | n∈[64, 32768]且是16的倍数 | 偏置张量，可选 |
-|  user_grad | 输入 | Tensor | float32/float16/bfloat16 | [m, H_u] | 同x的m<br>H_u∈[16, 8192]且是16的倍数 | user输出的梯度张量 |
-|  value_grad | 输入 | Tensor | float32/float16/bfloat16 | [m, H_v] | 同x的m<br>H_v∈[16, 8192]且是16的倍数 | value输出的梯度张量 |
-|  query_grad | 输入 | Tensor | float32/float16/bfloat16 | [m, H_q] | 同x的m<br>H_q∈[16, 8192]且是16的倍数 | query输出的梯度张量 |
-|  key_grad | 输入 | Tensor | float32/float16/bfloat16 | [m, H_k] | 同x的m<br>H_k∈[16, 8192]且是16的倍数 | key输出的梯度张量 |
-|  linear_output | 输入 | Tensor | float32/float16/bfloat16 | [m, n] | 同x的m<br>n∈[64, 32768]且是16的倍数 | 前向传播的中间结果张量 |
+|  user_grad | 输入 | Tensor | float16/bfloat16 | [m, H_u] | 同x的m<br>H_u∈[16, 8192]且是16的倍数 | user输出的梯度张量 |
+|  value_grad | 输入 | Tensor | float16/bfloat16 | [m, H_v] | 同x的m<br>H_v∈[16, 8192]且是16的倍数 | value输出的梯度张量 |
+|  query_grad | 输入 | Tensor | float16/bfloat16 | [m, H_q] | 同x的m<br>H_q∈[16, 8192]且是16的倍数 | query输出的梯度张量 |
+|  key_grad | 输入 | Tensor | float16/bfloat16 | [m, H_k] | 同x的m<br>H_k∈[16, 8192]且是16的倍数 | key输出的梯度张量 |
+|  linear_output | 输入 | Tensor | float16/bfloat16 | [m, n] | 同x的m<br>n∈[64, 32768]且是16的倍数 | 前向传播的中间结果张量 |
 |  split_arg_list | 输入(属性) | int[] | int[] | [H_u, H_v, H_q, H_k] | 每个元素∈[16, 8192]且是16的倍数<br>sum(split_arg_list)=n | 分割参数，长度为4，不可为空 |
 |  isTrans | 输入(属性) | bool | bool | - | 默认为false | 权重是否需要转置，当前版本未使用 |
-|  x_grad | 输出 | Tensor | float32/float16/bfloat16 | [m, k] | 同x | 输入x的梯度张量 |
-|  weight_grad | 输出 | Tensor | float32/float16/bfloat16 | [n, k] | 同weight | 权重weight的梯度张量 |
+|  x_grad | 输出 | Tensor | float16/bfloat16 | [m, k] | 同x | 输入x的梯度张量 |
+|  weight_grad | 输出 | Tensor | float16/bfloat16 | [n, k] | 同weight | 权重weight的梯度张量 |
 |  bias_grad | 输出 | Tensor | float32 | [n] | 同bias | 偏置bias的梯度张量，仅当输入包含bias时输出 |
 
 ## 接口范围限制说明

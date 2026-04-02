@@ -135,7 +135,7 @@ def excute(total_seqs, dim, data_type, is_diff_dim):
 
 @pytest.mark.parametrize("total_seqs", [1, 1123, 20480, 32001, 7680])
 @pytest.mark.parametrize("dim", [(16, 128), (64, 512), (128, 2048)])
-@pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("data_type", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("is_diff_dim", [False])
 def test_in_linear_silu_backward(total_seqs, dim, data_type, is_diff_dim):
     if dim[0] < 32 and is_diff_dim:
@@ -145,7 +145,7 @@ def test_in_linear_silu_backward(total_seqs, dim, data_type, is_diff_dim):
 
 @pytest.mark.parametrize("total_seqs", [9, 1221])
 @pytest.mark.parametrize("dim", [(8160, 32640), (512, 32768), (512, 6144)])
-@pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("data_type", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("is_diff_dim", [False])
 def test_in_linear_silu_backward_large(total_seqs, dim, data_type, is_diff_dim):
     excute(total_seqs, dim, data_type, is_diff_dim)

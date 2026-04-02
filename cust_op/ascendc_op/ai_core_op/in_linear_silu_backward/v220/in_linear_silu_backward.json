@@ -8,12 +8,10 @@
                 "param_type": "required",
                 "format": [
                     "ND",
-                    "ND",
                     "ND"
                 ],
                 "type": [
                     "fp16",
-                    "fp32",
                     "bf16"
                 ]
             },
@@ -22,12 +20,10 @@
                 "param_type": "required",
                 "format": [
                     "ND",
-                    "ND",
                     "ND"
                 ],
                 "type": [
                     "fp16",
-                    "fp32",
                     "bf16"
                 ]
             },
@@ -36,11 +32,9 @@
                 "param_type": "optional",
                 "format": [
                     "ND",
-                    "ND",
                     "ND"
                 ],
                 "type": [
-                    "fp32",
                     "fp32",
                     "fp32"
                 ]
@@ -50,12 +44,10 @@
                 "param_type": "required",
                 "format": [
                     "ND",
-                    "ND",
                     "ND"
                 ],
                 "type": [
                     "fp16",
-                    "fp32",
                     "bf16"
                 ]
             },
@@ -64,12 +56,10 @@
                 "param_type": "required",
                 "format": [
                     "ND",
-                    "ND",
                     "ND"
                 ],
                 "type": [
                     "fp16",
-                    "fp32",
                     "bf16"
                 ]
             },
@@ -78,12 +68,10 @@
                 "param_type": "required",
                 "format": [
                     "ND",
-                    "ND",
                     "ND"
                 ],
                 "type": [
                     "fp16",
-                    "fp32",
                     "bf16"
                 ]
             },
@@ -92,12 +80,10 @@
                 "param_type": "required",
                 "format": [
                     "ND",
-                    "ND",
                     "ND"
                 ],
                 "type": [
                     "fp16",
-                    "fp32",
                     "bf16"
                 ]
             },
@@ -106,12 +92,10 @@
                 "param_type": "required",
                 "format": [
                     "ND",
-                    "ND",
                     "ND"
                 ],
                 "type": [
                     "fp16",
-                    "fp32",
                     "bf16"
                 ]
             }
@@ -122,11 +106,9 @@
                 "param_type": "required",
                 "format": [
                     "ND",
-                    "ND",
                     "ND"
                 ],
                 "type": [
-                    "fp32",
                     "fp32",
                     "fp32"
                 ]
@@ -136,11 +118,9 @@
                 "param_type": "required",
                 "format": [
                     "ND",
-                    "ND",
                     "ND"
                 ],
                 "type": [
-                    "fp32",
                     "fp32",
                     "fp32"
                 ]
@@ -150,12 +130,10 @@
                 "param_type": "optional",
                 "format": [
                     "ND",
-                    "ND",
                     "ND"
                 ],
                 "type": [
                     "fp16",
-                    "fp32",
                     "bf16"
                 ]
             }
