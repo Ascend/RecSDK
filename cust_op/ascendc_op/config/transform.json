@@ -17,6 +17,7 @@
         "ascend910_9382": "ascend910_93",
         "ascend910_9372": "ascend910_93",
         "ascend910_9362": "ascend910_93",
+        "ascend950": "ascend950",
         "ascend950dt": "ascend950",
         "ascend950pr": "ascend950",
         "ascend310p1": "ascend310p",
@@ -32,5 +33,5 @@
         "ascend310b3": "ascend310b",
         "ascend310b4": "ascend310b",
         "bs9sx1aa": "bs9sx1a"
-  }
+    }
 }
