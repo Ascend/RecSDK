@@ -21,7 +21,6 @@ See the License for the specific language governing permissions and
 
 using namespace AscendC;
 
-// 无符号快除法
 template <typename UnsignedT>
 class FastDivmod {
 public:
@@ -35,9 +34,7 @@ public:
         if (divisor_ <= 1) {
             return (divisor_ == 1) ? n : static_cast<UnsignedT>(0);
         }
-        UnsignedT q = MulHigh(n, magic_);
-        UnsignedT t = ((n - q) >> 1) + q;
-        return t >> (shift_ - 1);
+        return AscendC::Simt::UintDiv<UnsignedT>(n, magic_, static_cast<UnsignedT>(shift_));
     }
 
     __aicore__ inline UnsignedT Mod(UnsignedT n) const
@@ -49,23 +46,9 @@ public:
     }
 
 private:
-    // MulHigh: 返回 (a * b) 的高 N 位，其中 N = sizeof(UnsignedT) * 8
-    __aicore__ static inline UnsignedT MulHigh(UnsignedT a, UnsignedT b)
-    {
-        // 4字节处理
-        if constexpr (sizeof(UnsignedT) == 4) {
-            return static_cast<uint32_t>(
-                (static_cast<uint64_t>(a) * static_cast<uint64_t>(b)) >> 32);
-        } else {
-            // 8字节处理
-            return static_cast<UnsignedT>(__umul64hi(
-                static_cast<uint64_t>(a), static_cast<uint64_t>(b)));
-        }
-    }
-
-    UnsignedT magic_;    // 预计算的 magic number
-    uint32_t shift_;     // 预计算的位移量，= ceil(log2(divisor))
-    UnsignedT divisor_;  // 原始除数
+    UnsignedT magic_;
+    uint32_t shift_;
+    UnsignedT divisor_;
 };
 
 #endif // FAST_DIVMOD_H

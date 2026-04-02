@@ -24,6 +24,7 @@ See the License for the specific language governing permissions and
 
 #include "../common/pytorch_npu_helper.hpp"
 #include "../common/common_utils.h"
+#include "../asynchronous_complete_cumsum/asynchronous_complete_cumsum.h"
 
 using tensor_list = std::vector<at::Tensor>;
 using BucketizeResult = std::tuple<
@@ -145,26 +146,56 @@ BucketizeResult block_bucketize_sparse_features_npu(
     auto block_sizes_contig = block_sizes.contiguous();
 
     const auto lengths_size = lengths_contig.numel();
+    const auto num_features = block_sizes_contig.numel();
     const auto new_lengths_size = lengths_size * my_size;
+    const bool enable_batch_size_per_feature = batch_size_per_feature.has_value();
+    const int64_t batch_size = enable_batch_size_per_feature ? 0 : (lengths_size / num_features);
+
     auto new_lengths =
-        at::empty({new_lengths_size}, lengths_contig.options());
+        at::zeros({new_lengths_size}, lengths_contig.options());
     auto new_indices =
         at::empty({indices_contig.numel()}, indices_contig.options());
 
     auto empty_tensor = at::Tensor();
 
-    // Prepare input tensors
-    auto weight_contig = weights.has_value() ?
-        weights.value().contiguous() : empty_tensor;
-    auto batch_size_per_feature_contig = batch_size_per_feature.has_value() ?
-        batch_size_per_feature.value().contiguous() : empty_tensor;
     auto total_num_blocks_contig = total_num_blocks.has_value() ?
         total_num_blocks.value().contiguous() : empty_tensor;
     tensor_list block_bucketize_pos_vector = block_bucketize_pos.has_value() ?
         block_bucketize_pos.value() : tensor_list{at::empty({0}, indices_contig.options())};
     at::TensorList block_bucketize_pos_list_tensor = block_bucketize_pos_vector;
 
-    // Prepare output tensors
+    auto offsets = at::cumsum(lengths_contig, 0, lengths_contig.scalar_type()).contiguous();
+
+    auto batch_size_offsets = empty_tensor;
+    if (enable_batch_size_per_feature) {
+        auto bspf_contig = batch_size_per_feature.value();
+        batch_size_offsets = asynchronous_complete_cumsum_npu(bspf_contig).contiguous();
+    }
+
+    EXEC_NPU_CMD(
+        aclnnBlockBucketizeSparseFeaturesComputeNewLengths,
+        /* input - required */
+        indices_contig,
+        block_sizes_contig,
+        offsets,
+        /* input - optional */
+        total_num_blocks_contig,
+        batch_size_offsets,
+        /* input - dynamic */
+        block_bucketize_pos_list_tensor,
+        /* attr */
+        my_size,
+        bucketize_pos,
+        lengths_size,
+        batch_size,
+        max_B,
+        /* output */
+        new_lengths);
+
+    auto new_offsets = asynchronous_complete_cumsum_npu(new_lengths).contiguous();
+
+    auto weight_contig = weights.has_value() ?
+        weights.value().contiguous() : empty_tensor;
     auto new_weights_tensor = weights.has_value() ?
         at::empty({weight_contig.numel()}, weight_contig.options()) : empty_tensor;
     auto new_pos_tensor = bucketize_pos ?
@@ -173,23 +204,27 @@ BucketizeResult block_bucketize_sparse_features_npu(
         at::empty({indices_contig.numel()}, indices_contig.options()) : empty_tensor;
 
     EXEC_NPU_CMD(
-        aclnnBlockBucketizeSparseFeatures,
-        /* input - Tensor */
-        lengths_contig,
+        aclnnBlockBucketizeSparseFeaturesScatterNewIndices,
+        /* input - required */
         indices_contig,
         block_sizes_contig,
+        offsets,
+        new_offsets,
+        /* input - optional */
         weight_contig,
-        batch_size_per_feature_contig,
         total_num_blocks_contig,
+        batch_size_offsets,
+        /* input - dynamic */
         block_bucketize_pos_list_tensor,
-        /* input - attr */
+        /* attr */
         my_size,
         bucketize_pos,
         sequence,
         keep_orig_idx,
+        lengths_size,
+        batch_size,
         max_B,
         /* output */
-        new_lengths,
         new_indices,
         new_weights_tensor,
         new_pos_tensor,

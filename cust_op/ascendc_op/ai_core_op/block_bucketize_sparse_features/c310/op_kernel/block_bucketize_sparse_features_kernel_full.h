@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#ifndef BLOCK_BUCKETIZE_SPARSE_FEATURES_KERNEL_H
-#define BLOCK_BUCKETIZE_SPARSE_FEATURES_KERNEL_H
+#ifndef BLOCK_BUCKETIZE_SPARSE_FEATURES_KERNEL_FULL_H
+#define BLOCK_BUCKETIZE_SPARSE_FEATURES_KERNEL_FULL_H
 
 #include <cstdint>
 #include <type_traits>
@@ -24,19 +24,18 @@ See the License for the specific language governing permissions and
 #include "kernel_operator_list_tensor_intf.h"
 #include "simt_api/device_warp_functions.h"
 #include "simt_api/device_atomic_functions.h"
-#include "asynchronous_complete_cumsum_kernel.h"
+#include "block_bucketize_sparse_features_common.h"
 #include "fast_divmod.h"
 
 using namespace AscendC;
+using namespace BlockBucketizeSparseFeaturesCommon;
 
 template <typename OffsetT, typename IndexT>
-class BlockBucketizeSparseFeaturesKernel {
+class BlockBucketizeSparseFeaturesKernelFull {
 public:
     struct KernelArgs {
-        __gm__ OffsetT* lengths;
         __gm__ IndexT* indices;
         __gm__ IndexT* blockSizes;
-        __gm__ OffsetT* batchSizePerFeature;
         __gm__ IndexT* totalNumBlocks;
         __gm__ void* blockBucketizePosList;
         __gm__ uint64_t* blockBucketizePosPtrs;
@@ -49,32 +48,26 @@ public:
         __gm__ IndexT* newPos;
         __gm__ OffsetT* offsets;
         __gm__ OffsetT* newOffsets;
-        __gm__ OffsetT* writeOffsets;
         __gm__ OffsetT* batchSizeOffsets;
-        __gm__ OffsetT* blockSums;
-        int64_t lengthsSize;
-        int64_t indicesSize;
-        int64_t numFeatures;
-        int64_t batchSize;
-        int64_t mySize;
-        int64_t newLengthsSize;
+        int32_t lengthsSize;
+        int32_t indicesSize;
+        int32_t numFeatures;
+        int32_t batchSize;
+        int32_t mySize;
         bool sequenceEnabled;
         bool weightsEnabled;
         bool bucketizePosEnabled;
         bool keepOrigIdxEnabled;
         bool totalNumBlocksEnabled;
-        int64_t maxBatchSize;
         bool batchSizePerFeatureEnabled;
         bool blockBucketizePosEnabled;
         uint64_t mySizeDivMagic;
         uint32_t mySizeDivShift;
     };
 
-    __aicore__ inline BlockBucketizeSparseFeaturesKernel(KernelArgs& args)
-        :lengths(args.lengths),
-         indices(args.indices),
+    __aicore__ inline BlockBucketizeSparseFeaturesKernelFull(KernelArgs& args)
+        :indices(args.indices),
          blockSizes(args.blockSizes),
-         batchSizePerFeature(args.batchSizePerFeature),
          totalNumBlocks(args.totalNumBlocks),
          blockBucketizePosList(args.blockBucketizePosList),
          blockBucketizePosPtrs(args.blockBucketizePosPtrs),
@@ -87,41 +80,30 @@ public:
          newPos(args.newPos),
          offsets(args.offsets),
          newOffsets(args.newOffsets),
-         writeOffsets(args.writeOffsets),
          batchSizeOffsets(args.batchSizeOffsets),
-         blockSums(args.blockSums),
          lengthsSize(args.lengthsSize),
          indicesSize(args.indicesSize),
          numFeatures(args.numFeatures),
          batchSize(args.batchSize),
          mySize(args.mySize),
-         newLengthsSize(args.newLengthsSize),
          sequenceEnabled(args.sequenceEnabled),
          weightsEnabled(args.weightsEnabled),
          bucketizePosEnabled(args.bucketizePosEnabled),
          keepOrigIdxEnabled(args.keepOrigIdxEnabled),
          totalNumBlocksEnabled(args.totalNumBlocksEnabled),
-         maxBatchSize(args.maxBatchSize),
          batchSizePerFeatureEnabled(args.batchSizePerFeatureEnabled),
          blockBucketizePosEnabled(args.blockBucketizePosEnabled),
          mySizeDivMagic(args.mySizeDivMagic),
          mySizeDivShift(args.mySizeDivShift)
     {
-        // UB空间分配：取 cumsum 和 pooled scatter 所需字节数的较大值
-        // cumsum 阶段使用 OffsetT 类型元素
-        const int64_t cumsumUbBytes = (static_cast<int64_t>(MAX_THREADS_PER_BLOCK) + 1) *
-                                      static_cast<int64_t>(sizeof(OffsetT));
-        // pooled scatter 阶段使用 int32_t 计数器（UB asc_atomic_add 仅支持 int32_t）
-        const int64_t pooledWarps = static_cast<int64_t>(WARPS_PER_BLOCK);
-        const int64_t pooledUbBytes = pooledWarps * static_cast<int64_t>(args.mySize) *
-                                      static_cast<int64_t>(sizeof(int32_t));
-        const int64_t ubBytes = (cumsumUbBytes > pooledUbBytes) ? cumsumUbBytes : pooledUbBytes;
-        pipe.InitBuffer(ubBuf, static_cast<int32_t>(ubBytes));
+        const int32_t pooledUbBytes = WARPS_PER_BLOCK * args.mySize *
+                                      static_cast<int32_t>(sizeof(int32_t));
+        pipe.InitBuffer(ubBuf, pooledUbBytes);
         ubTensor = ubBuf.Get<OffsetT>();
         ubPtr = reinterpret_cast<__ubuf__ OffsetT*>(ubTensor.GetPhyAddr());
     }
 
-    __aicore__ inline void Process()
+    __aicore__ inline void ProcessComputeNewLengths()
     {
         const int32_t coreNum = static_cast<int32_t>(AscendC::GetBlockNum());
         const int32_t coreId = static_cast<int32_t>(AscendC::GetBlockIdx());
@@ -133,25 +115,15 @@ public:
             BuildBucketizePosTables();
         }
 
-        // Stage 1: 对lengths做前缀和得到offsets
-        RunCumsum(lengths, offsets, blockSums, ubPtr, lengthsSize);
         AscendC::SyncAll();
 
-        // Stage 1.5: 构建batch_size_per_feature的前缀和
-        if (batchSizePerFeatureEnabled) {
-            RunCumsum(batchSizePerFeature, batchSizeOffsets, blockSums, ubPtr, numFeatures);
-            AscendC::SyncAll();
-        }
-
-        // Stage 2 合并：UB asc_atomic_add 一次遍历统计 new_lengths
-        AscendC::Simt::VF_CALL<SimtComputeNewLengthsUbAtomic>(
+        AscendC::Simt::VF_CALL<SimtComputeNewLengthsGmAtomic>(
             AscendC::Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1},
             blockSizes,
             totalNumBlocks,
             offsets,
             indices,
             newLengths,
-            ubPtr,
             lengthsSize,
             batchSize,
             mySize,
@@ -166,15 +138,23 @@ public:
             bucketizePosEnabled,
             mySizeDivMagic,
             mySizeDivShift);
+    }
+
+    __aicore__ inline void ProcessScatterNewIndices()
+    {
+        const int32_t coreNum = static_cast<int32_t>(AscendC::GetBlockNum());
+        const int32_t coreId = static_cast<int32_t>(AscendC::GetBlockIdx());
+
+        WorkRange rowRange = {0};
+        ComputeWorkRange(lengthsSize, coreId, coreNum, rowRange);
+
+        if (blockBucketizePosEnabled) {
+            BuildBucketizePosTables();
+        }
+
         AscendC::SyncAll();
 
-        // Stage 3: 对new_lengths做前缀和，得到bucket化后的offsets
-        RunCumsum(newLengths, newOffsets, blockSums, ubPtr, newLengthsSize);
-        AscendC::SyncAll();
-
-        // Stage 4: 再次遍历indices，按bucket顺序写出new_indices
         if (!sequenceEnabled) {
-            // Pooled 路径
             AscendC::Simt::VF_CALL<SimtScatterNewIndicesPooledUbAtomic>(
                 AscendC::Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1},
                 blockSizes,
@@ -205,7 +185,6 @@ public:
                 mySizeDivMagic,
                 mySizeDivShift);
         } else {
-            // Sequence模式：（单线程-per-Row，GM读写）
             AscendC::Simt::VF_CALL<SimtScatterNewIndicesRowsAtomic>(
                 AscendC::Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1},
                 blockSizes,
@@ -239,59 +218,6 @@ public:
         }
     }
 private:
-    // 统一 cumsum 入口：对 input[0..totalLength-1] 做前缀和写入 output，blockSums 复用共享 buffer
-    __aicore__ inline void RunCumsum(__gm__ OffsetT* input,
-                                     __gm__ OffsetT* output,
-                                     __gm__ OffsetT* blockSumsPtr,
-                                     __ubuf__ OffsetT* ubMem,
-                                     int64_t totalLength)
-    {
-        if (totalLength <= 0) {
-            return;
-        }
-        const int32_t coreNum = static_cast<int32_t>(AscendC::GetBlockNum());
-        const int32_t coreId = static_cast<int32_t>(AscendC::GetBlockIdx());
-        const bool isInt32 = (sizeof(OffsetT) == 4);
-        const int64_t smallThreshold = isInt32 ? (24 * CUMSUM_THREADS_PER_BLOCK) : (44 * CUMSUM_THREADS_PER_BLOCK);
-        const bool isSmall = (totalLength <= smallThreshold);
-        const int64_t perBlockCapacity = isSmall ?
-            static_cast<int64_t>(CUMSUM_THREADS_PER_BLOCK) :
-            static_cast<int64_t>(CUMSUM_THREADS_PER_BLOCK) * AsynchronousCompleteCumsumSimt::MAX_ELEMENTS_PER_THREAD;
-        const int64_t totalBlocksVal = (totalLength + perBlockCapacity - 1) / perBlockCapacity;
-        const int32_t totalBlocks = static_cast<int32_t>(totalBlocksVal > 0 ? totalBlocksVal : 1);
-
-        if (totalBlocks <= 0) {
-            return;
-        }
-
-        const int32_t totalLength32 = static_cast<int32_t>(totalLength > 0 ? totalLength : 0);
-        if (isSmall && totalBlocks <= coreNum) {
-            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtSmallDataCompute<OffsetT>>(
-                AscendC::Simt::Dim3{CUMSUM_THREADS_PER_BLOCK, 1, 1},
-                input, output, blockSumsPtr, ubMem, totalLength32, totalBlocks);
-            AscendC::SyncAll();
-            if (totalBlocks > 1) {
-                AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtSmallDataUpdate<OffsetT>>(
-                    AscendC::Simt::Dim3{CUMSUM_THREADS_PER_BLOCK, 1, 1},
-                    output, blockSumsPtr, totalLength32, totalBlocks);
-            }
-        } else {
-            const int32_t blocksPerCore = totalBlocks / coreNum;
-            const int32_t remainderBlocks = totalBlocks % coreNum;
-            const int32_t blockStartIdx =
-                coreId * blocksPerCore + (coreId < remainderBlocks ? coreId : remainderBlocks);
-            const int32_t curBlocksCount = blocksPerCore + (coreId < remainderBlocks ? 1 : 0);
-
-            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtLargeDataCompute<OffsetT>>(
-                AscendC::Simt::Dim3{CUMSUM_THREADS_PER_BLOCK, 1, 1},
-                input, output, blockSumsPtr, ubMem, totalLength32, totalBlocks, blockStartIdx, curBlocksCount);
-            AscendC::SyncAll();
-            AscendC::Simt::VF_CALL<AsynchronousCompleteCumsumSimt::SimtLargeDataUpdate<OffsetT>>(
-                AscendC::Simt::Dim3{CUMSUM_THREADS_PER_BLOCK, 1, 1},
-                output, blockSumsPtr, totalLength32, totalBlocks, blockStartIdx, curBlocksCount);
-        }
-    }
-
     __aicore__ inline void BuildBucketizePosTables()
     {
         if (blockBucketizePosList == nullptr || blockBucketizePosPtrs == nullptr ||
@@ -305,14 +231,14 @@ private:
         const int32_t coreNum = static_cast<int32_t>(AscendC::GetBlockNum());
         const int32_t coreId = static_cast<int32_t>(AscendC::GetBlockIdx());
 
-        const int64_t totalBlocks = (numFeatures + CACHE_LINE_ELEMS_64BIT - 1) / CACHE_LINE_ELEMS_64BIT;
+        const int32_t totalBlocks = (numFeatures + CACHE_LINE_ELEMS_64BIT - 1) / CACHE_LINE_ELEMS_64BIT;
 
-        int64_t startBlock = 0;
-        int64_t myBlocks = 0;
+        int32_t startBlock = 0;
+        int32_t myBlocks = 0;
 
         if (totalBlocks > 0) {
-            const int64_t blocksPerCore = totalBlocks / coreNum;
-            const int64_t remainder = totalBlocks % coreNum;
+            const int32_t blocksPerCore = totalBlocks / coreNum;
+            const int32_t remainder = totalBlocks % coreNum;
             startBlock = coreId * blocksPerCore + ((coreId < remainder) ? coreId : remainder);
             myBlocks = blocksPerCore + ((coreId < remainder) ? 1 : 0);
         }
@@ -321,11 +247,11 @@ private:
             return;
         }
 
-        const int64_t startFeature = startBlock * CACHE_LINE_ELEMS_64BIT;
-        const int64_t endFeature = (startFeature + myBlocks * CACHE_LINE_ELEMS_64BIT) > numFeatures ?
+        const int32_t startFeature = startBlock * CACHE_LINE_ELEMS_64BIT;
+        const int32_t endFeature = (startFeature + myBlocks * CACHE_LINE_ELEMS_64BIT) > numFeatures ?
                                    numFeatures : (startFeature + myBlocks * CACHE_LINE_ELEMS_64BIT);
 
-        for (int64_t featureIndex = startFeature; featureIndex < endFeature; ++featureIndex) {
+        for (int32_t featureIndex = startFeature; featureIndex < endFeature; ++featureIndex) {
             uint64_t ptrVal = 0;
             int64_t lenVal = 0;
             uint64_t shapeBuf = 0;
@@ -348,27 +274,18 @@ private:
         }
 
         if ((endFeature & 7) != 0) {
-            int64_t lastBlockStart = (endFeature & ~7);
+            const int32_t lastBlockStart = (endFeature & ~7);
             dcci(blockBucketizePosPtrs + lastBlockStart, cache_line_t::SINGLE_CACHE_LINE, dcci_dst_t::CACHELINE_OUT);
             dcci(blockBucketizePosLens + lastBlockStart, cache_line_t::SINGLE_CACHE_LINE, dcci_dst_t::CACHELINE_OUT);
         }
     }
 
-    struct WorkRange {
-        int64_t begin;
-        int64_t end;
-    };
-
     static constexpr int32_t MAX_THREADS_PER_BLOCK = 512;
-    static constexpr int32_t WARP_SIZE = 32;
-    static constexpr int32_t WARPS_PER_BLOCK = MAX_THREADS_PER_BLOCK / WARP_SIZE;
-    static constexpr int64_t CACHE_LINE_ELEMS_64BIT = 8;  // 64 bytes / 8 bytes per element
-    static constexpr int32_t CUMSUM_THREADS_PER_BLOCK = AsynchronousCompleteCumsumSimt::MAX_THREADS_PER_BLOCK;
+    static constexpr int32_t WARPS_PER_BLOCK = MAX_THREADS_PER_BLOCK / warpSize;
+    static constexpr int32_t CACHE_LINE_ELEMS_64BIT = 8;
 
-    __gm__ OffsetT* lengths;
     __gm__ IndexT* indices;
     __gm__ IndexT* blockSizes;
-    __gm__ OffsetT* batchSizePerFeature;
     __gm__ IndexT* totalNumBlocks;
     __gm__ void* blockBucketizePosList;
     __gm__ uint64_t* blockBucketizePosPtrs;
@@ -381,21 +298,17 @@ private:
     __gm__ IndexT* newPos;
     __gm__ OffsetT* offsets;
     __gm__ OffsetT* newOffsets;
-    __gm__ OffsetT* writeOffsets;
     __gm__ OffsetT* batchSizeOffsets;
-    __gm__ OffsetT* blockSums;
-    int64_t lengthsSize;
-    int64_t indicesSize;
-    int64_t numFeatures;
-    int64_t batchSize;
-    int64_t mySize;
-    int64_t newLengthsSize;
+    int32_t lengthsSize;
+    int32_t indicesSize;
+    int32_t numFeatures;
+    int32_t batchSize;
+    int32_t mySize;
     bool sequenceEnabled;
     bool weightsEnabled;
     bool bucketizePosEnabled;
     bool keepOrigIdxEnabled;
     bool totalNumBlocksEnabled;
-    int64_t maxBatchSize;
     bool batchSizePerFeatureEnabled;
     bool blockBucketizePosEnabled;
     uint64_t mySizeDivMagic;
@@ -406,26 +319,25 @@ private:
     LocalTensor<OffsetT> ubTensor;
     __ubuf__ OffsetT* ubPtr;
 
-    __aicore__ static inline int64_t ResolveFeatureIndexForRow(
-        int64_t row,
-        int64_t batchSize,
+    __aicore__ static inline int32_t ResolveFeatureIndexForRow(
+        int32_t row,
+        int32_t batchSize,
         const __gm__ OffsetT* batchSizeOffsets,
-        int64_t numFeatures,
+        int32_t numFeatures,
         bool useBatchSizePerFeature)
     {
         if (!useBatchSizePerFeature) {
-            const int64_t safeBatch = (batchSize <= 0) ? 1 : batchSize;
+            const int32_t safeBatch = (batchSize <= 0) ? 1 : batchSize;
             return row / safeBatch;
         }
         if (batchSizeOffsets == nullptr || numFeatures <= 0) {
             return 0;
         }
-        int64_t left = 0;
-        int64_t right = numFeatures;
+        int32_t left = 0;
+        int32_t right = numFeatures;
         while (left < right) {
-            const int64_t mid = (left + right + 1) >> 1;
-            const int64_t offset = static_cast<int64_t>(batchSizeOffsets[mid]);
-            if (offset <= row) {
+            const int32_t mid = (left + right + 1) >> 1;
+            if (static_cast<int32_t>(batchSizeOffsets[mid]) <= row) {
                 left = mid;
             } else {
                 right = mid - 1;
@@ -434,34 +346,21 @@ private:
         return left;
     }
 
-    __aicore__ static inline void ComputeWorkRange(int64_t totalSize, int32_t coreId, int32_t coreNum, WorkRange &range)
-    {
-        if (totalSize <= 0 || coreNum <= 0 || coreId < 0 || coreId >= coreNum) {
-            range = {0, 0};
-            return;
-        }
-        const int64_t base = totalSize / coreNum;
-        const int64_t remainder = totalSize % coreNum;
-        const int64_t begin = coreId * base + ((coreId < remainder) ? coreId : remainder);
-        range = {begin, begin + base + ((coreId < remainder) ? 1 : 0)};
-    }
-
     // 每个 Warp 处理一个 Row
-    __simt_vf__ __aicore__ static LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtComputeNewLengthsUbAtomic(
+    __simt_vf__ __aicore__ static LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtComputeNewLengthsGmAtomic(
         const __gm__ IndexT* blockSizes,
         const __gm__ IndexT* totalNumBlocks,
         const __gm__ OffsetT* offsets,
         const __gm__ IndexT* indices,
         __gm__ OffsetT* newLengths,
-        __ubuf__ OffsetT* ubPtr,
-        int64_t lengthsSize,
-        int64_t batchSize,
-        int64_t mySize,
-        int64_t rowBegin,
-        int64_t rowEnd,
+        int32_t lengthsSize,
+        int32_t batchSize,
+        int32_t mySize,
+        int32_t rowBegin,
+        int32_t rowEnd,
         bool totalNumBlocksEnabled,
         const __gm__ OffsetT* batchSizeOffsets,
-        int64_t numFeatures,
+        int32_t numFeatures,
         bool batchSizePerFeatureEnabled,
         const __gm__ uint64_t* blockBucketizePosPtrs,
         const __gm__ int64_t* blockBucketizePosLens,
@@ -474,31 +373,21 @@ private:
         }
         const int32_t blockDim = AscendC::Simt::GetThreadNum<0>();
         const int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-        const int32_t warpsPerBlock = blockDim / WARP_SIZE;
-        const int32_t warpId = threadIdx / WARP_SIZE;
-        const int32_t laneId = threadIdx % WARP_SIZE;
+        const int32_t warpsPerBlock = blockDim / warpSize;
+        const int32_t warpId = threadIdx / warpSize;
+        const int32_t laneId = threadIdx % warpSize;
         using UIndexT = std::make_unsigned_t<IndexT>;
-        const IndexT mySizeUnsigned = static_cast<IndexT>(static_cast<int64_t>(mySize));
-        const int64_t clampedEnd = (rowEnd > lengthsSize) ? lengthsSize : rowEnd;
+        const IndexT mySizeIdx = static_cast<IndexT>(mySize);
+        const int32_t clampedEnd = (rowEnd > lengthsSize) ? lengthsSize : rowEnd;
         const bool hasTotalBlocks = totalNumBlocksEnabled && (totalNumBlocks != nullptr);
         const bool hasPosList = (blockBucketizePosPtrs != nullptr) && (blockBucketizePosLens != nullptr);
         const FastDivmod<UIndexT> fdMySize(
-            static_cast<UIndexT>(mySizeDivMagic), mySizeDivShift, static_cast<UIndexT>(mySizeUnsigned));
+            static_cast<UIndexT>(mySizeDivMagic), mySizeDivShift, static_cast<UIndexT>(mySizeIdx));
 
-        __ubuf__ int32_t* ubCounters = reinterpret_cast<__ubuf__ int32_t*>(ubPtr)
-                                       + (warpId * mySize);
-
-        for (int64_t rowIdx = rowBegin + warpId; rowIdx < clampedEnd; rowIdx += warpsPerBlock) {
-            for (int64_t b = laneId; b < mySize; b += WARP_SIZE) {
-                ubCounters[b] = 0;
-            }
-
-            const int64_t featureIndex = ResolveFeatureIndexForRow(
+        for (int32_t rowIdx = rowBegin + warpId; rowIdx < clampedEnd; rowIdx += warpsPerBlock) {
+            const int32_t featureIndex = ResolveFeatureIndexForRow(
                 rowIdx, batchSize, batchSizeOffsets, numFeatures, batchSizePerFeatureEnabled);
             if (featureIndex < 0 || featureIndex >= numFeatures) {
-                for (int64_t b = laneId; b < mySize; b += WARP_SIZE) {
-                    newLengths[b * lengthsSize + rowIdx] = static_cast<OffsetT>(0);
-                }
                 continue;
             }
             __gm__ IndexT* posPtr = nullptr;
@@ -510,22 +399,19 @@ private:
             const bool usePos = hasPosList && (posPtr != nullptr) && (posLen > 0);
             const IndexT blkSizeVal = blockSizes[featureIndex];
             if (blkSizeVal < 0) {
-                for (int64_t b = laneId; b < mySize; b += WARP_SIZE) {
-                    newLengths[b * lengthsSize + rowIdx] = static_cast<OffsetT>(0);
-                }
                 continue;
             }
-            IndexT globalBlocks = hasTotalBlocks ? totalNumBlocks[featureIndex] : mySizeUnsigned;
+            IndexT globalBlocks = hasTotalBlocks ? totalNumBlocks[featureIndex] : mySizeIdx;
             if (globalBlocks <= 0) {
-                globalBlocks = mySizeUnsigned;
+                globalBlocks = mySizeIdx;
             }
-            IndexT localBlocks = hasTotalBlocks ? static_cast<IndexT>(globalBlocks / mySizeUnsigned)
+            IndexT localBlocks = hasTotalBlocks ? static_cast<IndexT>(globalBlocks / mySizeIdx)
                                                 : static_cast<IndexT>(1);
             localBlocks = (localBlocks <= 0) ? static_cast<IndexT>(1) : localBlocks;
             const IndexT globalIdxSize = blkSizeVal * globalBlocks;
             const IndexT localIdxSize = blkSizeVal * localBlocks;
-            const int64_t rowStart = static_cast<int64_t>(offsets[rowIdx]);
-            const int64_t rowIndicesEnd = static_cast<int64_t>(offsets[rowIdx + 1]);
+            const OffsetT rowStart = (rowIdx == 0) ? static_cast<OffsetT>(0) : offsets[rowIdx - 1];
+            const OffsetT rowEndIdx = offsets[rowIdx];
 
             const UIndexT uLocalIdxSize = static_cast<UIndexT>(localIdxSize);
             const UIndexT uGlobalBlocks = static_cast<UIndexT>(globalBlocks);
@@ -534,9 +420,7 @@ private:
             const IndexT blkScalar = (usePos && blkSizeVal == 0 && globalBlocks > 0)
                 ? static_cast<IndexT>(static_cast<UIndexT>(posPtr[posLen - 1]) / uGlobalBlocks)
                 : static_cast<IndexT>(1);
-
-            // 一次遍历 indices，UB asc_atomic_add 统计
-            for (int64_t i = rowStart + laneId; i < rowIndicesEnd; i += WARP_SIZE) {
+            for (OffsetT i = rowStart + laneId; i < rowEndIdx; i += warpSize) {
                 const UIndexT idxUnsigned = static_cast<UIndexT>(indices[i]);
                 IndexT bucket;
                 if (usePos) {
@@ -556,7 +440,7 @@ private:
                     }
                     const int64_t lb = first - 1;
                     if (lb >= 0) {
-                        bucket = static_cast<IndexT>((lb < static_cast<int64_t>(mySizeUnsigned)) ?
+                        bucket = static_cast<IndexT>((lb < static_cast<int64_t>(mySizeIdx)) ?
                             lb : static_cast<int64_t>(fdMySize.Mod(idxUnsigned)));
                     } else {
                         bucket = static_cast<IndexT>(fdMySize.Mod(idxUnsigned));
@@ -568,12 +452,8 @@ private:
                         bucket = static_cast<IndexT>((idxUnsigned % uGlobalBlocks) / uLocalBlocks);
                     }
                 }
-                asc_atomic_add(&ubCounters[bucket], 1);
-            }
-
-            // 将 UB 计数器写回 newLengths
-            for (int64_t b = laneId; b < mySize; b += WARP_SIZE) {
-                newLengths[b * lengthsSize + rowIdx] = static_cast<OffsetT>(ubCounters[b]);
+                asc_atomic_add(&newLengths[static_cast<int32_t>(bucket) * lengthsSize + rowIdx],
+                               static_cast<OffsetT>(1));
             }
         }
     }
@@ -589,18 +469,18 @@ private:
         const __gm__ OffsetT* newOffsets,
         __gm__ IndexT* newIndices,
         __ubuf__ OffsetT* ubPtr,
-        int64_t lengthsSize,
-        int64_t batchSize,
-        int64_t mySize,
-        int64_t indicesSize,
-        int64_t rowBegin,
-        int64_t rowEnd,
+        int32_t lengthsSize,
+        int32_t batchSize,
+        int32_t mySize,
+        int32_t indicesSize,
+        int32_t rowBegin,
+        int32_t rowEnd,
         bool weightsEnabled,
         bool bucketizePosEnabled,
         bool keepOrigIdxEnabled,
         bool totalNumBlocksEnabled,
         const __gm__ OffsetT* batchSizeOffsets,
-        int64_t numFeatures,
+        int32_t numFeatures,
         bool batchSizePerFeatureEnabled,
         const __gm__ uint64_t* blockBucketizePosPtrs,
         const __gm__ int64_t* blockBucketizePosLens,
@@ -612,28 +492,28 @@ private:
         }
         const int32_t blockDim = AscendC::Simt::GetThreadNum<0>();
         const int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-        const int32_t warpsPerBlock = blockDim / WARP_SIZE;
-        const int32_t warpId = threadIdx / WARP_SIZE;
-        const int32_t laneId = threadIdx % WARP_SIZE;
+        const int32_t warpsPerBlock = blockDim / warpSize;
+        const int32_t warpId = threadIdx / warpSize;
+        const int32_t laneId = threadIdx % warpSize;
         using UIndexT = std::make_unsigned_t<IndexT>;
-        const IndexT mySizeUnsigned = static_cast<IndexT>(static_cast<int64_t>(mySize));
+        const IndexT mySizeIdx = static_cast<IndexT>(mySize);
         const bool writeWeights = weightsEnabled && (weights != nullptr) && (newWeights != nullptr);
         const bool writePositions = bucketizePosEnabled && (newPos != nullptr);
-        const int64_t clampedEnd = (rowEnd > lengthsSize) ? lengthsSize : rowEnd;
+        const int32_t clampedEnd = (rowEnd > lengthsSize) ? lengthsSize : rowEnd;
         const bool hasTotalBlocks = totalNumBlocksEnabled && (totalNumBlocks != nullptr);
         const bool hasPosList = (blockBucketizePosPtrs != nullptr) && (blockBucketizePosLens != nullptr);
         const FastDivmod<UIndexT> fdMySize(
-            static_cast<UIndexT>(mySizeDivMagic), mySizeDivShift, static_cast<UIndexT>(mySizeUnsigned));
+            static_cast<UIndexT>(mySizeDivMagic), mySizeDivShift, static_cast<UIndexT>(mySizeIdx));
 
         __ubuf__ int32_t* ubCounters = reinterpret_cast<__ubuf__ int32_t*>(ubPtr)
                                        + (warpId * mySize);
 
-        for (int64_t rowIdx = rowBegin + warpId; rowIdx < clampedEnd; rowIdx += warpsPerBlock) {
-            for (int64_t b = laneId; b < mySize; b += WARP_SIZE) {
+        for (int32_t rowIdx = rowBegin + warpId; rowIdx < clampedEnd; rowIdx += warpsPerBlock) {
+            for (int32_t b = laneId; b < mySize; b += warpSize) {
                 ubCounters[b] = 0;
             }
 
-            const int64_t featureIndex = ResolveFeatureIndexForRow(
+            const int32_t featureIndex = ResolveFeatureIndexForRow(
                 rowIdx, batchSize, batchSizeOffsets, numFeatures, batchSizePerFeatureEnabled);
             if (featureIndex < 0 || featureIndex >= numFeatures) {
                 continue;
@@ -649,17 +529,17 @@ private:
             if (blkSizeVal < 0) {
                 continue;
             }
-            IndexT globalBlocks = hasTotalBlocks ? totalNumBlocks[featureIndex] : mySizeUnsigned;
+            IndexT globalBlocks = hasTotalBlocks ? totalNumBlocks[featureIndex] : mySizeIdx;
             if (globalBlocks <= 0) {
-                globalBlocks = mySizeUnsigned;
+                globalBlocks = mySizeIdx;
             }
-            IndexT localBlocks = hasTotalBlocks ? static_cast<IndexT>(globalBlocks / mySizeUnsigned)
+            IndexT localBlocks = hasTotalBlocks ? static_cast<IndexT>(globalBlocks / mySizeIdx)
                                                 : static_cast<IndexT>(1);
             localBlocks = (localBlocks <= 0) ? static_cast<IndexT>(1) : localBlocks;
             const IndexT globalIdxSize = blkSizeVal * globalBlocks;
             const IndexT localIdxSize = blkSizeVal * localBlocks;
-            const int64_t rowStart = static_cast<int64_t>(offsets[rowIdx]);
-            const int64_t rowIndicesEnd = static_cast<int64_t>(offsets[rowIdx + 1]);
+            const OffsetT rowStart = (rowIdx == 0) ? static_cast<OffsetT>(0) : offsets[rowIdx - 1];
+            const OffsetT rowEndIdx = offsets[rowIdx];
 
             const UIndexT uLocalIdxSize = static_cast<UIndexT>(localIdxSize);
             const UIndexT uGlobalBlocks = static_cast<UIndexT>(globalBlocks);
@@ -669,7 +549,7 @@ private:
                 ? static_cast<IndexT>(static_cast<UIndexT>(posPtr[posLen - 1]) / uGlobalBlocks)
                 : static_cast<IndexT>(1);
 
-            for (int64_t i = rowStart + laneId; i < rowIndicesEnd; i += WARP_SIZE) {
+            for (OffsetT i = rowStart + laneId; i < rowEndIdx; i += warpSize) {
                 const UIndexT idxUnsigned = static_cast<UIndexT>(indices[i]);
                 IndexT bucket;
                 IndexT finalIndex;
@@ -690,7 +570,7 @@ private:
                     }
                     const int64_t lb = first - 1;
                     if (lb >= 0) {
-                        bucket = static_cast<IndexT>((lb < static_cast<int64_t>(mySizeUnsigned)) ?
+                        bucket = static_cast<IndexT>((lb < static_cast<int64_t>(mySizeIdx)) ?
                             lb : static_cast<int64_t>(fdMySize.Mod(idxUnsigned)));
                     } else {
                         bucket = static_cast<IndexT>(fdMySize.Mod(idxUnsigned));
@@ -699,7 +579,7 @@ private:
                         finalIndex = static_cast<IndexT>(idxUnsigned);
                     } else if (blkSizeVal == 0 && globalBlocks > 0) {
                         finalIndex = static_cast<IndexT>(idxUnsigned / uGlobalBlocks);
-                    } else if (lb >= 0 && lb < static_cast<int64_t>(mySizeUnsigned)) {
+                    } else if (lb >= 0 && lb < static_cast<int64_t>(mySizeIdx)) {
                         finalIndex = static_cast<IndexT>(idxUnsigned - static_cast<UIndexT>(posPtr[lb]));
                     } else {
                         finalIndex = static_cast<IndexT>(fdMySize.Div(idxUnsigned));
@@ -717,10 +597,9 @@ private:
                     }
                 }
                 const int32_t relativePos = asc_atomic_add(&ubCounters[bucket], 1);
-                const int64_t baseOffset =
-                    static_cast<int64_t>(newOffsets[static_cast<int64_t>(bucket) * lengthsSize + rowIdx]);
-                const int64_t writePos = baseOffset + static_cast<int64_t>(relativePos);
-                if (writePos < indicesSize) {
+                const OffsetT baseOffset = newOffsets[static_cast<int32_t>(bucket) * lengthsSize + rowIdx];
+                const OffsetT writePos = baseOffset + static_cast<OffsetT>(relativePos);
+                if (writePos < static_cast<OffsetT>(indicesSize)) {
                     newIndices[writePos] = finalIndex;
                     if (writeWeights) {
                         newWeights[writePos] = weights[i];
@@ -741,22 +620,22 @@ private:
         const __gm__ float* weights,
         __gm__ float* newWeights,
         __gm__ IndexT* newPos,
-        __gm__ OffsetT* writeOffsets,
+        __gm__ OffsetT* newOffsets,
         __gm__ IndexT* newIndices,
         __gm__ IndexT* unbucketizePermute,
-        int64_t lengthsSize,
-        int64_t batchSize,
-        int64_t mySize,
-        int64_t indicesSize,
-        int64_t rowBegin,
-        int64_t rowEnd,
+        int32_t lengthsSize,
+        int32_t batchSize,
+        int32_t mySize,
+        int32_t indicesSize,
+        int32_t rowBegin,
+        int32_t rowEnd,
         bool sequenceEnabled,
         bool weightsEnabled,
         bool bucketizePosEnabled,
         bool keepOrigIdxEnabled,
         bool totalNumBlocksEnabled,
         const __gm__ OffsetT* batchSizeOffsets,
-        int64_t numFeatures,
+        int32_t numFeatures,
         bool batchSizePerFeatureEnabled,
         const __gm__ uint64_t* blockBucketizePosPtrs,
         const __gm__ int64_t* blockBucketizePosLens,
@@ -767,20 +646,19 @@ private:
             return;
         }
         using UIndexT = std::make_unsigned_t<IndexT>;
-        OffsetT writeCursor;
         const int32_t blockDim = AscendC::Simt::GetThreadNum<0>();
         const int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-        const IndexT mySizeUnsigned = static_cast<IndexT>(static_cast<int64_t>(mySize));
+        const IndexT mySizeIdx = static_cast<IndexT>(mySize);
         const bool writeWeights = weightsEnabled && (weights != nullptr) && (newWeights != nullptr);
         const bool writePositions = bucketizePosEnabled && (newPos != nullptr);
         const bool writeUnbucketizePermute = sequenceEnabled && (unbucketizePermute != nullptr);
-        const int64_t clampedEnd = (rowEnd > lengthsSize) ? lengthsSize : rowEnd;
+        const int32_t clampedEnd = (rowEnd > lengthsSize) ? lengthsSize : rowEnd;
         const bool hasTotalBlocks = totalNumBlocksEnabled && (totalNumBlocks != nullptr);
         const bool hasPosList = (blockBucketizePosPtrs != nullptr) && (blockBucketizePosLens != nullptr);
         const FastDivmod<UIndexT> fdMySize(
-            static_cast<UIndexT>(mySizeDivMagic), mySizeDivShift, static_cast<UIndexT>(mySizeUnsigned));
-        for (int64_t rowIdx = rowBegin + threadIdx; rowIdx < clampedEnd; rowIdx += blockDim) {
-            const int64_t featureIndex = ResolveFeatureIndexForRow(
+            static_cast<UIndexT>(mySizeDivMagic), mySizeDivShift, static_cast<UIndexT>(mySizeIdx));
+        for (int32_t rowIdx = rowBegin + threadIdx; rowIdx < clampedEnd; rowIdx += blockDim) {
+            const int32_t featureIndex = ResolveFeatureIndexForRow(
                 rowIdx, batchSize, batchSizeOffsets, numFeatures, batchSizePerFeatureEnabled);
             if (featureIndex < 0 || featureIndex >= numFeatures) {
                 continue;
@@ -796,17 +674,17 @@ private:
             if (blkSizeVal < 0) {
                 continue;
             }
-            IndexT globalBlocks = hasTotalBlocks ? totalNumBlocks[featureIndex] : mySizeUnsigned;
+            IndexT globalBlocks = hasTotalBlocks ? totalNumBlocks[featureIndex] : mySizeIdx;
             if (globalBlocks <= 0) {
-                globalBlocks = mySizeUnsigned;
+                globalBlocks = mySizeIdx;
             }
-            IndexT localBlocks = hasTotalBlocks ? static_cast<IndexT>(globalBlocks / mySizeUnsigned)
+            IndexT localBlocks = hasTotalBlocks ? static_cast<IndexT>(globalBlocks / mySizeIdx)
                                                 : static_cast<IndexT>(1);
             localBlocks = (localBlocks <= 0) ? static_cast<IndexT>(1) : localBlocks;
             const IndexT globalIdxSize = blkSizeVal * globalBlocks;
             const IndexT localIdxSize = blkSizeVal * localBlocks;
-            const int64_t rowStart = static_cast<int64_t>(offsets[rowIdx]);
-            const int64_t rowIndicesEnd = static_cast<int64_t>(offsets[rowIdx + 1]);
+            const OffsetT rowStart = (rowIdx == 0) ? static_cast<OffsetT>(0) : offsets[rowIdx - 1];
+            const OffsetT rowEndIdx = offsets[rowIdx];
 
             const UIndexT uLocalIdxSize = static_cast<UIndexT>(localIdxSize);
             const UIndexT uGlobalBlocks = static_cast<UIndexT>(globalBlocks);
@@ -816,7 +694,7 @@ private:
                 ? static_cast<IndexT>(static_cast<UIndexT>(posPtr[posLen - 1]) / uGlobalBlocks)
                 : static_cast<IndexT>(1);
 
-            for (int64_t i = rowStart; i < rowIndicesEnd; ++i) {
+            for (OffsetT i = rowStart; i < rowEndIdx; ++i) {
                 const UIndexT idxUnsigned = static_cast<UIndexT>(indices[i]);
                 IndexT bucket;
                 IndexT finalIndex;
@@ -837,7 +715,7 @@ private:
                     }
                     const int64_t lb = first - 1;
                     if (lb >= 0) {
-                        bucket = static_cast<IndexT>((lb < static_cast<int64_t>(mySizeUnsigned)) ?
+                        bucket = static_cast<IndexT>((lb < static_cast<int64_t>(mySizeIdx)) ?
                             lb : static_cast<int64_t>(fdMySize.Mod(idxUnsigned)));
                     } else {
                         bucket = static_cast<IndexT>(fdMySize.Mod(idxUnsigned));
@@ -846,7 +724,7 @@ private:
                         finalIndex = static_cast<IndexT>(idxUnsigned);
                     } else if (blkSizeVal == 0 && globalBlocks > 0) {
                         finalIndex = static_cast<IndexT>(idxUnsigned / uGlobalBlocks);
-                    } else if (lb >= 0 && lb < static_cast<int64_t>(mySizeUnsigned)) {
+                    } else if (lb >= 0 && lb < static_cast<int64_t>(mySizeIdx)) {
                         finalIndex = static_cast<IndexT>(idxUnsigned - static_cast<UIndexT>(posPtr[lb]));
                     } else {
                         finalIndex = static_cast<IndexT>(fdMySize.Div(idxUnsigned));
@@ -863,22 +741,19 @@ private:
                             static_cast<IndexT>(idxUnsigned / uGlobalBlocks);
                     }
                 }
-                const int64_t slot = static_cast<int64_t>(bucket) * lengthsSize + rowIdx;
-                writeCursor = __ldg<LD_L2CacheType::L2_CACHE_HINT_NORMAL_FV,
-                    L1CacheType::NON_CACHEABLE>(writeOffsets + slot);
-                __stg<ST_L2CacheType::L2_CACHE_HINT_NORMAL_FV,
-                    L1CacheType::NON_CACHEABLE>(writeOffsets + slot, writeCursor + 1);
-                const int64_t writeIdx = static_cast<int64_t>(writeCursor);
-                if (writeIdx < indicesSize) {
-                    newIndices[writeIdx] = finalIndex;
+                const int32_t slot = static_cast<int32_t>(bucket) * lengthsSize + rowIdx;
+                const OffsetT writeCursor = newOffsets[slot];
+                newOffsets[slot] = writeCursor + 1;
+                if (writeCursor < static_cast<OffsetT>(indicesSize)) {
+                    newIndices[writeCursor] = finalIndex;
                     if (writeUnbucketizePermute) {
-                        unbucketizePermute[i] = static_cast<IndexT>(writeIdx);
+                        unbucketizePermute[i] = static_cast<IndexT>(writeCursor);
                     }
                     if (writeWeights) {
-                        newWeights[writeIdx] = weights[i];
+                        newWeights[writeCursor] = weights[i];
                     }
                     if (writePositions) {
-                        newPos[writeIdx] = static_cast<IndexT>(i - rowStart);
+                        newPos[writeCursor] = static_cast<IndexT>(i - rowStart);
                     }
                 }
             }
@@ -886,4 +761,4 @@ private:
     }
 };
 
-#endif // BLOCK_BUCKETIZE_SPARSE_FEATURES_KERNEL_H
+#endif // BLOCK_BUCKETIZE_SPARSE_FEATURES_KERNEL_FULL_H

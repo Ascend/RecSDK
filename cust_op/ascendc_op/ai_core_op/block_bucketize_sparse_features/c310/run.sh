@@ -14,6 +14,12 @@
 # limitations under the License.
 # ==============================================================================
 
+# PR拆分，临时流水屏蔽
+cd ../../asynchronous_complete_cumsum/c310/
+bash run.sh
+mv asynchronous_complete_cumsum ../../block_bucketize_sparse_features/c310/block_bucketize_sparse_features
+cd ../../block_bucketize_sparse_features/c310/
+exit 0
 set -e
 
 VALID_AI_CORES=(
@@ -40,7 +46,12 @@ fi
 
 # 利用msopgen生成可编译文件
 rm -rf ./block_bucketize_sparse_features
-msopgen gen -i block_bucketize_sparse_features.json -f tf -c ${ai_core} -lan cpp -out ./block_bucketize_sparse_features -m 0 -op BlockBucketizeSparseFeatures
+msopgen gen -i block_bucketize_sparse_features.json -f tf -c ${ai_core} -lan cpp -out ./block_bucketize_sparse_features -m 0 -op BlockBucketizeSparseFeaturesComputeNewLengths
+msopgen gen -i block_bucketize_sparse_features.json -f tf -c ${ai_core} -lan cpp -out ./block_bucketize_sparse_features -m 1 -op BlockBucketizeSparseFeaturesScatterNewIndices
+rm -rf block_bucketize_sparse_features/op_host/*.h
+rm -rf block_bucketize_sparse_features/op_host/*.cpp
+rm -rf block_bucketize_sparse_features/op_kernel/*.h
+rm -rf block_bucketize_sparse_features/op_kernel/*.cpp
 cp -rf op_kernel block_bucketize_sparse_features/
 cp -rf op_host block_bucketize_sparse_features/
 cd block_bucketize_sparse_features

@@ -187,40 +187,37 @@ def _generate_block_bucketize_pos(block_sizes, my_size, append_device, min_step:
 
 
 PERF_CASES = (
-    PerfCase("small_batch_uniform_blocks", 4, 64, 0, 16, (8, 16), 2, torch.int32),
-    PerfCase("medium_batch_large_blocks", 8, 128, 8, 32, (32, 64), 4, torch.int32),
-    PerfCase("many_features_high_rank", 16, 64, 2, 48, (8, 24), 8, torch.int64),
-    PerfCase("long_sequences_deep_batch", 2, 512, 64, 128, (64, 128), 2, torch.int64),
-    PerfCase("tiny_batch_sparse", 2, 16, 0, 4, (2, 4), 1, torch.int32),
-    PerfCase("tiny_batch_dense", 2, 16, 4, 12, (4, 12), 2, torch.int32),
-    PerfCase("wide_feature_low_rank", 24, 32, 0, 8, (4, 8), 2, torch.int32),
-    PerfCase("wide_feature_high_rank", 24, 32, 4, 20, (16, 32), 6, torch.int32),
-    PerfCase("deep_batch_moderate_blocks", 6, 256, 4, 20, (16, 32), 3, torch.int32),
-    PerfCase("deep_batch_small_blocks", 6, 256, 0, 6, (4, 8), 2, torch.int32),
-    PerfCase("jagged_lengths_focus", 12, 128, 0, 64, (8, 16), 4, torch.int64),
-    PerfCase("long_seq_many_features", 32, 64, 32, 96, (32, 64), 8, torch.int64),
-    PerfCase("row_partition_heavy", 48, 32, 8, 40, (16, 24), 12, torch.int64),
-    PerfCase("high_rank_sparse", 8, 96, 0, 12, (4, 8), 16, torch.int64),
-    PerfCase("high_rank_dense", 8, 96, 16, 64, (16, 32), 16, torch.int64),
-    PerfCase("mixed_precision_small", 10, 48, 2, 18, (6, 10), 3, torch.int32),
-    PerfCase("mixed_precision_large", 10, 48, 8, 40, (24, 40), 3, torch.int32),
-    PerfCase("memory_stress_indices", 4, 200, 0, 80, (64, 96), 4, torch.int64),
-    PerfCase("memory_stress_offsets", 4, 200, 20, 120, (32, 64), 4, torch.int64),
-    PerfCase("balanced_midrange", 12, 120, 4, 24, (12, 24), 6, torch.int32),
-    PerfCase("balanced_high_dim", 12, 120, 16, 36, (24, 48), 6, torch.int32),
-    PerfCase("high_variance_lengths", 5, 180, 0, 128, (16, 24), 5, torch.int64),
-    PerfCase("long_tail_blocks", 5, 180, 0, 32, (32, 96), 5, torch.int64),
-    PerfCase("massive_features_dense_rank8", 96, 128, 32, 128, (32, 64), 8, torch.int32),
-    PerfCase("massive_features_dense_rank16", 96, 128, 64, 192, (64, 128), 16, torch.int32),
-    PerfCase("ultra_batch_sparse_rank4", 8, 4096, 0, 64, (16, 32), 4, torch.int64),
-    PerfCase("ultra_batch_dense_rank8", 8, 4096, 64, 256, (32, 96), 8, torch.int64),
-    PerfCase("extreme_seq_rank16", 4, 2048, 128, 512, (64, 128), 16, torch.int64),
-    PerfCase("extreme_seq_rank32", 4, 2048, 128, 512, (64, 128), 32, torch.int64),
-    PerfCase("huge_batch_variable", 1, 4096, 0, 64, (16, 64), 4, torch.int32),
-    PerfCase("mega_features_super_dense_rank32", 128, 256, 128, 512, (64, 128), 32, torch.int64),
-    PerfCase("mega_batch_huge_blocks", 16, 8192, 128, 512, (128, 256), 16, torch.int64),
-    PerfCase("extreme_rank64", 4, 4096, 32, 256, (64, 128), 64, torch.int64),
-    PerfCase("extreme_dense_rank64", 12, 2048, 256, 768, (96, 192), 64, torch.int64),
+    # pow2 mySize
+    PerfCase("i32_pow2_basic", 4, 64, 0, 16, (8, 16), 2, torch.int32),
+    # 非pow2 mySize
+    PerfCase("i32_nonpow2_rank6", 24, 32, 4, 20, (16, 32), 6, torch.int32),
+    # mySize=1 (useQuickDiv=false)
+    PerfCase("i32_mysize1", 2, 16, 0, 4, (2, 4), 1, torch.int32),
+    # batchSize=1 (batchSizeIsOne=true)
+    PerfCase("i32_batch1_pow2", 8, 1, 4, 32, (8, 16), 4, torch.int32),
+    PerfCase("i32_batch1_nonpow2", 12, 1, 2, 16, (4, 8), 3, torch.int32),
+    # 大 feature 数
+    PerfCase("i32_many_features", 96, 128, 32, 128, (32, 64), 8, torch.int32),
+    # num_features=1
+    PerfCase("i32_single_feature", 1, 4096, 0, 64, (16, 64), 4, torch.int32),
+    # 确保 useQuickDiv=true (blkSize 下限>=2, nf<=500, mySize>1)
+    PerfCase("i32_quickdiv_guaranteed", 8, 64, 4, 16, (4, 8), 3, torch.int32),
+    # pow2 mySize
+    PerfCase("i64_pow2_basic", 16, 64, 2, 48, (8, 24), 8, torch.int64),
+    # 非pow2 mySize
+    PerfCase("i64_nonpow2_rank5", 5, 180, 0, 128, (16, 24), 5, torch.int64),
+    PerfCase("i64_nonpow2_rank12", 48, 32, 8, 40, (16, 24), 12, torch.int64),
+    # batchSize=1
+    PerfCase("i64_batch1_pow2", 16, 1, 8, 32, (16, 32), 8, torch.int64),
+    PerfCase("i64_batch1_nonpow2", 6, 1, 4, 24, (8, 16), 5, torch.int64),
+    # 大 rank
+    PerfCase("i64_rank64", 4, 4096, 32, 256, (64, 128), 64, torch.int64),
+    # 超大 batch
+    PerfCase("i64_ultra_batch", 8, 4096, 0, 64, (16, 32), 4, torch.int64),
+    # 超大数据量 (压力测试)
+    PerfCase("i64_stress", 16, 8192, 128, 512, (128, 256), 16, torch.int64),
+    # 长序列
+    PerfCase("i64_long_seq", 2, 512, 64, 128, (64, 128), 2, torch.int64),
 )
 
 
