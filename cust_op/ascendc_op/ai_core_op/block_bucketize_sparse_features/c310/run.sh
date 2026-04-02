@@ -14,12 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 
-# PR拆分，临时流水屏蔽
-cd ../../asynchronous_complete_cumsum/c310/
-bash run.sh
-mv asynchronous_complete_cumsum ../../block_bucketize_sparse_features/c310/block_bucketize_sparse_features
-cd ../../block_bucketize_sparse_features/c310/
-exit 0
 set -e
 
 VALID_AI_CORES=(
