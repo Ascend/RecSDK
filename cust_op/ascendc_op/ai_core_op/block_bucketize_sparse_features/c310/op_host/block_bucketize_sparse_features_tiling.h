@@ -35,20 +35,16 @@ BEGIN_TILING_DATA_DEF(BlockBucketizeSparseFeaturesTilingData)
     TILING_DATA_FIELD_DEF(bool, enableTotalNumBlocks);
     TILING_DATA_FIELD_DEF(bool, enableBatchSizePerFeature);
     TILING_DATA_FIELD_DEF(bool, enableBlockBucketizePos);
-    // Host 预计算的 mySize 快除法参数（参考 HierarchicalKV precomputation_for_kernel_div）
     TILING_DATA_FIELD_DEF(uint64_t, mySizeDivMagic);
     TILING_DATA_FIELD_DEF(uint32_t, mySizeDivShift);
-    // Workspace 布局与 64 字节对齐仅由 host 唯一决定，kernel 仅按 tiling 取指针，禁止在 kernel 内递推 offset
-    TILING_DATA_FIELD_DEF(uint64_t, offsetsOffset);
-    TILING_DATA_FIELD_DEF(uint64_t, newOffsetsOffset);
-    TILING_DATA_FIELD_DEF(uint64_t, writeOffsetsOffset);
-    TILING_DATA_FIELD_DEF(uint64_t, batchSizeOffsetsOffset);  // 0 表示未使用
-    TILING_DATA_FIELD_DEF(uint64_t, posPtrsOffset);           // 0 表示未使用
-    TILING_DATA_FIELD_DEF(uint64_t, posLensOffset);           // 0 表示未使用
-    TILING_DATA_FIELD_DEF(uint64_t, blockSumsOffset);         // 共享 buffer，供各段累加和复用
+    TILING_DATA_FIELD_DEF(uint64_t, posPtrsOffset);
+    TILING_DATA_FIELD_DEF(uint64_t, posLensOffset);
+    TILING_DATA_FIELD_DEF(uint64_t, batchSizeDivMagic);
+    TILING_DATA_FIELD_DEF(uint32_t, batchSizeDivShift);
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(BlockBucketizeSparseFeatures, BlockBucketizeSparseFeaturesTilingData)
+REGISTER_TILING_DATA_CLASS(BlockBucketizeSparseFeaturesComputeNewLengths, BlockBucketizeSparseFeaturesTilingData)
+REGISTER_TILING_DATA_CLASS(BlockBucketizeSparseFeaturesScatterNewIndices, BlockBucketizeSparseFeaturesTilingData)
 
 } // namespace optiling
 
