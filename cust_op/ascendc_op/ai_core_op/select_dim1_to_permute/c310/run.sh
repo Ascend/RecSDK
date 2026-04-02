@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2026. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,101 +16,39 @@
 
 set -e
 
-VALID_AI_CORES=(
-    "ai_core-Ascend950"
-)
+# ==============================================================================
+# 1. 初始化路径
+# ==============================================================================
+readonly THIS_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+readonly WORK_DIR="$(dirname "${THIS_SCRIPT}")"
+readonly UTILS_SCRIPT="${WORK_DIR}/../../../scripts/op_builder_utils.sh"
 
-validate_ai_core() {
-    local input_core="$1"
-    for valid_core in "${VALID_AI_CORES[@]}"; do
-        if [ "$input_core" = "$valid_core" ]; then
-            echo "ai_core $input_core"
-            return 0
-        fi
-    done
-    echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
-    exit 1
-}
+# ==============================================================================
+# 2. 加载通用库
+# ==============================================================================
 
-ai_core="ai_core-Ascend950"
-if [ "$#" -eq 1 ]; then
-  ai_core="$1"
-  validate_ai_core $ai_core
-fi
-
-# 利用msopgen生成可编译文件
-rm -rf ./select_dim1_to_permute
-msopgen gen -i ../v220/select_dim1_to_permute.json -f tf -c ${ai_core} -lan cpp -out ./select_dim1_to_permute -m 0 -op SelectDim1ToPermute
-cp -rf ../v220/op_kernel select_dim1_to_permute/
-cp -rf ../v220/op_host select_dim1_to_permute/
-cp ../../common/kernel_common_utils.h select_dim1_to_permute/op_kernel
-cd select_dim1_to_permute
-
-# 判断当前目录下是否存在CMakePresets.json文件
-if [ ! -f "CMakePresets.json" ]; then
-  echo "ERROR, CMakePresets.json file not exist."
-  exit 1
-fi
-
-# 禁止生成CRC校验和
-sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
-
-# 修改cann安装路径
-if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
-    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
-fi
-# 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
-# vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
-# vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
-sed -i 's:"customize":"select_dim1_to_permute":g' CMakePresets.json
-
-# 添加C310编译选项
-sed -i "1i #define SUPPORT_950" ./op_host/select_dim1_to_permute.cpp
-
-line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
-line=`expr ${line} + 2`
-sed -i "${line}s/True/False/g" CMakePresets.json
-
-# 增加LOG_CPP编译选项支持错误日志打印
-sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
-
-line1=`awk '/target_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt`
-sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
-
-line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
-sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
-
-sed -i '/\${ASCEND_CANN_PACKAGE_PATH}\/include/a\
-\${ASCEND_CANN_PACKAGE_PATH}\/pkg_inc
-' ./cmake/*.cmake
-
-bash build.sh
-
-# 获取系统ID
-os_id=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
-if [ -z "${os_id}" ]; then
-    echo "ERROR: get os_id failed"
+if [ ! -f "$UTILS_SCRIPT" ]; then
+    echo "ERROR: Cannot find op_builder_utils.sh at ${UTILS_SCRIPT}" >&2
+    echo "Please check your directory structure." >&2
     exit 1
 fi
 
-# 获取架构
-arch=$(uname -m)
-if [ -z "${arch}" ]; then
-    echo "ERROR: get arch failed"
-    exit 1
-fi
+source "$UTILS_SCRIPT"
 
-# 只允许字母/数字/点/下划线/连字符（覆盖常见 os_id 与 arch）
-SAFE_REGEX='^[A-Za-z0-9._-]+$'
-if ! [[ "$os_id" =~ $SAFE_REGEX ]]; then
-    echo "ERROR: invalid os_id: $os_id" >&2
-    exit 1
-fi
-if ! [[ "$arch" =~ $SAFE_REGEX ]]; then
-    echo "ERROR: invalid arch: $arch" >&2
-    exit 1
-fi
+# ==============================================================================
+# 3. 参数配置
+# ==============================================================================
+vendor_name="select_dim1_to_permute"
+export AI_CORE_PROFILE="c310"
+export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/../v220/${vendor_name}.json")"
+export OPERATOR_SOURCE_ROOT="$(readlink -f "${WORK_DIR}/../v220")"
+export INSERT_SUPPORT_950_PATHS="op_host/${vendor_name}.cpp"
+export COPY_KERNEL_COMMON_UTILS="1"
 
-# 安装编译成功的算子包
-installer="./build_out/custom_opp_${os_id}_${arch}.run"
-bash -- "$installer"
+parse_arguments "$@" || exit 1
+
+# ==============================================================================
+# 4. 执行标准化流程
+# ==============================================================================
+
+build_and_install_operator "$WORK_DIR" "$vendor_name" || exit 1
