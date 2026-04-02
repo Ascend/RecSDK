@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,112 +16,76 @@
 
 set -e
 
-onnx_path=$(dirname "$(readlink -f "$0")")/../../../build/scripts/onnx_plugin
+# ==============================================================================
+# 1. 初始化路径
+# ==============================================================================
+readonly THIS_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+readonly WORK_DIR="$(dirname "${THIS_SCRIPT}")"
+readonly UTILS_SCRIPT="${WORK_DIR}/../../../scripts/op_builder_utils.sh"
 
-VALID_AI_CORES=(
-    "ai_core-Ascend950"
-)
+# ==============================================================================
+# 2. 加载通用库
+# ==============================================================================
 
-validate_ai_core() {
-    local input_core="$1"
-    for valid_core in "${VALID_AI_CORES[@]}"; do
-        if [ "$input_core" = "$valid_core" ]; then
-            echo "ai_core $input_core"
-            return 0
-        fi
-    done
-    echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
-    exit 1
-}
-
-ai_core="ai_core-Ascend950"
-if [ "$#" -eq 1 ]; then
-  ai_core="$1"
-  validate_ai_core $ai_core
-fi
-
-# 利用msopgen生成可编译文件
-rm -rf ./hstu_dense_forward
-msopgen gen -i ../v220/hstu_dense_forward.json -f tf -c ${ai_core} -lan cpp -out ./hstu_dense_forward -m 0 -op HstuDenseForward
-# cp -rf ../v220/op_kernel hstu_dense_forward/
-# 用 c310 目录下的 A5 版本文件覆盖 bsnd.h
-cp -rf ../v220/op_host/*.h hstu_dense_forward/op_host/
-cp -rf ../v220/op_host/hstu_*.cpp hstu_dense_forward/op_host/
-cp -rf ../v220/op_host/tiling_policy.cpp hstu_dense_forward/op_host/
-cp -rf ../v220/op_host/tiling_policy_dense.cpp hstu_dense_forward/op_host/
-cp -rf ../v220/op_host/tiling_policy_jagged.cpp hstu_dense_forward/op_host/
-cp -rf ../v220/op_host/tiling_policy_paged.cpp hstu_dense_forward/op_host/
-# kernel 文件
-cp -rf ../c310/op_kernel hstu_dense_forward/
-cp -rf ../v220/op_kernel/hstu_common_const.h hstu_dense_forward/op_kernel/
-cp -rf ../v220/op_kernel/hstu_dense_causal_mask.h hstu_dense_forward/op_kernel/
-cp -rf ../v220/op_kernel/hstu_split_core_policy.h hstu_dense_forward/op_kernel/
-
-cd hstu_dense_forward
-
-# 判断当前目录下是否存在CMakePresets.json文件
-if [ ! -f "CMakePresets.json" ]; then
-  echo "ERROR, CMakePresets.json file not exist."
-  exit 1
-fi
-
-# 禁止生成CRC校验和
-sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
-
-# 修改cann安装路径
-if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
-    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
-fi
-# 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
-# vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
-# vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
-sed -i 's:"customize":"hstu_dense_forward":g' CMakePresets.json
-
-line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' CMakePresets.json`
-line=`expr ${line} + 2`
-sed -i "${line}s/True/False/g" CMakePresets.json
-
-sed -i "1i #define SUPPORT_950" ./op_kernel/hstu_common_const.h
-sed -i "1i #define SUPPORT_950" ./op_kernel/matmul_constexpr.h
-sed -i "1i #define SUPPORT_950" ./op_kernel/hstu_dense_forward_jagged_kernel.h
-sed -i "1i #define SUPPORT_950" ./op_kernel/hstu_paged_forward_kernel.h
-sed -i "1i #define SUPPORT_950" ./op_host/hstu_jagged_forward.cpp
-sed -i "1i #define SUPPORT_950" ./op_host/hstu_paged_forward.cpp
-sed -i "1i #define SUPPORT_950" ./op_host/hstu_dense_forward.cpp
-sed -i "1i #define SUPPORT_950" ./op_host/tiling_policy.cpp
-
-add_cmake_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../../v220/hstu_dense_forward.json DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${vendor_name}_impl/dynamic)"
-sed -i '$a\'"$add_cmake_line" ./op_kernel/CMakeLists.txt
-sed -i '1i\add_ops_compile_options(ALL OPTIONS --cce-long-call=true -DENABLE_CV_COMM_VIA_SSBUF=true)' ./op_kernel/CMakeLists.txt
-
-# 增加LOG_CPP编译选项支持错误日志打印
-sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
-
-line1=`awk '/target_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt`
-sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
-
-line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
-sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
-
-sed -i '/\${ASCEND_CANN_PACKAGE_PATH}\/include/a\
-\${ASCEND_CANN_PACKAGE_PATH}\/pkg_inc
-' ./cmake/*.cmake
-
-bash build.sh
-
-# 获取系统ID
-os_id=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
-if [ -z "${os_id}" ]; then
-    echo "ERROR: get os_id failed"
+if [ ! -f "$UTILS_SCRIPT" ]; then
+    echo "ERROR: Cannot find op_builder_utils.sh at ${UTILS_SCRIPT}" >&2
+    echo "Please check your directory structure." >&2
     exit 1
 fi
 
-# 获取架构
-arch=$(uname -m)
-if [ -z "${arch}" ]; then
-    echo "ERROR: get arch failed"
-    exit 1
-fi
+source "$UTILS_SCRIPT"
 
-# 安装编译成功的算子包
-bash ./build_out/custom_opp_${os_id}_${arch}.run
+# ==============================================================================
+# 3. 参数配置（c310/op_kernel + v220 部分文件混合，见 replace_sources.sh）
+# ==============================================================================
+vendor_name="hstu_dense_forward"
+export AI_CORE_PROFILE="c310"
+export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/../v220/hstu_dense_forward.json")"
+
+parse_arguments "$@" || exit 1
+
+# ==============================================================================
+# 4. 执行标准化流程
+# ==============================================================================
+validate_ai_core "$ai_core" || exit 1
+check_system_and_cann "$ai_core" || exit 1
+gen_build_dir "$WORK_DIR" "$vendor_name" || exit 1
+
+readonly TGT="${WORK_DIR}/${vendor_name}"
+readonly V220="$(readlink -f "${WORK_DIR}/../v220")"
+readonly C310K="$(readlink -f "${WORK_DIR}/op_kernel")"
+
+rm -rf "${TGT}/op_kernel"/*.h "${TGT}/op_kernel"/*.cpp 2>/dev/null || true
+rm -rf "${TGT}/op_host"/*.h "${TGT}/op_host"/*.cpp 2>/dev/null || true
+
+cp -rf "${V220}/op_host"/*.h "${TGT}/op_host/"
+cp -rf "${V220}/op_host"/hstu_*.cpp "${TGT}/op_host/"
+cp -rf "${V220}/op_host/tiling_policy.cpp" "${TGT}/op_host/"
+cp -rf "${V220}/op_host/tiling_policy_dense.cpp" "${TGT}/op_host/"
+cp -rf "${V220}/op_host/tiling_policy_jagged.cpp" "${TGT}/op_host/"
+cp -rf "${V220}/op_host/tiling_policy_paged.cpp" "${TGT}/op_host/"
+
+cp -rf "${C310K}/"* "${TGT}/op_kernel/"
+cp -rf "${V220}/op_kernel/hstu_common_const.h" "${TGT}/op_kernel/"
+cp -rf "${V220}/op_kernel/hstu_dense_causal_mask.h" "${TGT}/op_kernel/"
+cp -rf "${V220}/op_kernel/hstu_split_core_policy.h" "${TGT}/op_kernel/"
+
+for _f in \
+    op_kernel/hstu_common_const.h \
+    op_kernel/matmul_constexpr.h \
+    op_kernel/hstu_dense_forward_jagged_kernel.h \
+    op_kernel/hstu_paged_forward_kernel.h \
+    op_host/hstu_jagged_forward.cpp \
+    op_host/hstu_paged_forward.cpp \
+    op_host/hstu_dense_forward.cpp \
+    op_host/tiling_policy.cpp; do
+    sed -i "1i #define SUPPORT_950" "${TGT}/${_f}"
+done
+
+add_line='install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../../../v220/hstu_dense_forward.json DESTINATION packages/vendors/${vendor_name}/op_impl/ai_core/tbe/${vendor_name}_impl/dynamic)'
+sed -i "\$a\\${add_line}" "${TGT}/op_kernel/CMakeLists.txt"
+apply_op_kernel_compile_options_dual "$TGT" "-DENABLE_CV_COMM_VIA_SSBUF=true" || exit 1
+
+configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "$TGT" "False" || exit 1
+prepare_and_build "$MAJOR_VERSION" "$vendor_name" "$TGT" "False" || exit 1
+install_operator_package "$OS_ID" "$ARCH" "$TGT" || exit 1
