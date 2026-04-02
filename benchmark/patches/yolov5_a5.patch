@@ -1,7 +1,7 @@
-diff --git a/benchmark/models/yolov5/detect.py b/benchmark/models/yolov5/detect.py
-index 535e196f..0a1250c4 100644
---- a/benchmark/models/yolov5/detect.py
-+++ b/benchmark/models/yolov5/detect.py
+diff --git a/detect.py b/detect.py
+index 535e196f..6531d49c 100644
+--- a/detect.py
++++ b/detect.py
 @@ -33,10 +33,21 @@ import csv
  import os
  import platform
@@ -41,13 +41,12 @@ index 535e196f..0a1250c4 100644
      weights=ROOT / "yolov5s.pt",  # model path or triton URL
      source=ROOT / "data/images",  # file/dir/URL/glob/screen/0(webcam)
      data=ROOT / "data/coco128.yaml",  # dataset.yaml path
-@@ -161,13 +178,19 @@ def run(
+@@ -161,13 +178,18 @@ def run(
      (save_dir / "labels" if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
  
      # Load model
 -    device = select_device(device)
 +    if torch.cuda.is_available():
-+        device="cuda"
 +        device = select_device(device)
 +        torch.cuda.set_device(device.index)
 +    elif torch.npu.is_available():
@@ -63,7 +62,7 @@ index 535e196f..0a1250c4 100644
      if webcam:
          view_img = check_imshow(warn=True)
          dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
-@@ -176,20 +199,35 @@ def run(
+@@ -176,20 +198,35 @@ def run(
          dataset = LoadScreenshots(source, img_size=imgsz, stride=stride, auto=pt)
      else:
          dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
@@ -100,7 +99,7 @@ index 535e196f..0a1250c4 100644
  
          # Inference
          with dt[1]:
-@@ -203,121 +241,160 @@ def run(
+@@ -203,121 +240,160 @@ def run(
                          pred = torch.cat((pred, model(image, augment=augment, visualize=visualize).unsqueeze(0)), dim=0)
                  pred = [pred, None]
              else:
@@ -227,19 +226,19 @@ index 535e196f..0a1250c4 100644
 +
 +                inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
 +                model_name = os.environ.get("MODEL_NAME", "default_name")
-+                device_name = self.device.split(":")[0]
++                device_name = device.type
 +                model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
 +
 +                # save tensor
 +                global SAVE_TENSOR
-+                if os.environ.get("SAVE_TENSOR_FLAG", "False").upper() == "TRUE" and not SAVE_TENSOR:
++                if not SAVE_TENSOR:
 +                    SAVE_TENSOR = True
 +                    pred = model(im, augment=augment, visualize=visualize)
-+                    process_predictions(pred)
++                    process_predictions(pred, device_name, model_name, inductor_flag)
 +
 +                # E2E
 +                global E2E_RAN
-+                if os.environ.get('MODEL_E2E_FLAG', "False").upper() == "TRUE" and not E2E_RAN:
++                if not E2E_RAN:
 +                    E2E_RAN = True
 +                    total_time = 0.0
 +                    count = 0
@@ -327,7 +326,7 @@ index 535e196f..0a1250c4 100644
 +                                prof.step()
 +
 +                    # NPU profiling
-+                    elif torch.npu.is_available():   
++                    elif torch.npu.is_available():
 +                        experimental_config = torch_npu.profiler._ExperimentalConfig(
 +                        export_type=[
 +                            torch_npu.profiler.ExportType.Text
@@ -366,17 +365,17 @@ index 535e196f..0a1250c4 100644
 +                                prof.step()
 +
 +# Process predictions
-+def process_predictions(pred):
++def process_predictions(pred, device_name, model_name, inductor_flag):
 +    for det in pred:
 +        if isinstance(det, torch.Tensor):
 +            tensor_to_save = det.detach().cpu()
 +            logger.info(f"save tensor type: {type(tensor_to_save)}")
 +            os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
-+            torch.save(return_dict, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_{idx}.pt")
++            torch.save(return_dict, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_0.pt")
  
  
  def parse_opt():
-@@ -365,6 +442,7 @@ def parse_opt():
+@@ -365,6 +441,7 @@ def parse_opt():
          ```
      """
      parser = argparse.ArgumentParser()
@@ -384,10 +383,10 @@ index 535e196f..0a1250c4 100644
      parser.add_argument("--weights", nargs="+", type=str, default=ROOT / "yolov5s.pt", help="model path or triton URL")
      parser.add_argument("--source", type=str, default=ROOT / "data/images", help="file/dir/URL/glob/screen/0(webcam)")
      parser.add_argument("--data", type=str, default=ROOT / "data/coco128.yaml", help="(optional) dataset.yaml path")
-diff --git a/benchmark/models/yolov5/utils/torch_utils.py b/benchmark/models/yolov5/utils/torch_utils.py
-index 1640f8a6..b5dbd734 100644
---- a/benchmark/models/yolov5/utils/torch_utils.py
-+++ b/benchmark/models/yolov5/utils/torch_utils.py
+diff --git a/utils/torch_utils.py b/utils/torch_utils.py
+index 1640f8a6..30476b98 100644
+--- a/utils/torch_utils.py
++++ b/utils/torch_utils.py
 @@ -19,6 +19,12 @@ from torch.nn.parallel import DistributedDataParallel as DDP
  
  from utils.general import LOGGER, check_version, colorstr, file_date, git_describe
@@ -456,8 +455,8 @@ index 1640f8a6..b5dbd734 100644
 +            arg = "cpu"
 +    elif torch_npu.npu.is_available():
 +        if device == "npu" or device.isdigit():
-+        npu_idx = device if device.isdigit() else '0'
-+        arg = f'npu:{npu_idx}'
++            npu_idx = device if device.isdigit() else '0'
++            arg = f'npu:{npu_idx}'
      if not newline:
          s = s.rstrip()
      LOGGER.info(s)

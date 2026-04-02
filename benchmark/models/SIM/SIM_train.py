@@ -51,7 +51,7 @@ def save_tensor(pred, device_name, model_name, inductor_flag):
         tensor_to_save = pred.detach().cpu()
         logger.info(f"save tensor type: {type(tensor_to_save)}")
         os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
-        torch.save(tensor_to_save, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}.pt")
+        torch.save(tensor_to_save, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_0.pt")
 
 
 def generate_training_data(num_samples=2000, seq_len=1000, item_embedding_dim=512, user_feature_dim=512, num_categories=100):
