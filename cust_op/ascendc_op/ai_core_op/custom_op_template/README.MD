@@ -16,6 +16,7 @@
 - 修改CMAKE_CROSS_PLATFORM_COMPILER为真实的g++路径
 - 添加CATLASS_HOME环境变量，指向CatLass库的安装路径，确保编译过程中能够正确找到CatLass库和头文件，需要根据实际环境修改路径
 - 添加ENABLE_CATLASS编译选项，控制是否启用CatLass库的编译选项，根据实际需求设置为True或False
+- 添加WITH_ONNX编译选项，控制是否启用ONNX支持的编译选项，根据实际需求设置为True或False
 
 #### op_host/CMakeLists.txt相关修改
 - 添加自定义common文件夹的路径
@@ -26,3 +27,4 @@
 - 添加编译选项 --cce-long-call=true，解决算子函数调用过多导致的链接错误问题
 - 添加安装算子json文件的命令，确保算子json文件被正确安装到指定目录下
 - 根据ENABLE_CATLASS编译选项，添加CatLass库的链接命令，确保在启用CatLass库时能够正确链接相关库文件
+- 根据WITH_ONNX编译选项，支持ONNX相关的编译选项和库链接，确保在启用ONNX支持时能够正确编译和链接相关代码和库文件
