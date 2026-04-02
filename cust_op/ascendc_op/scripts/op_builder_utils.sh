@@ -433,6 +433,21 @@ configure_cmake_presets() {
         cp -f "${OPERATOR_JSON_FILE}" "${c310_install_root}/${v_name}.json"
     fi
 
+    if [[ "$maj_ver" -lt 9 && ("$v_name" == "mxrec_sgd" || "$v_name" == "mxrec_fused_lazy_adam") ]]; then
+            # 增加LOG_CPP编译选项支持错误日志打印
+            sed -i '1 i include("${target_dir}"/../../../cmake/func.cmake)' "${target_dir}"/op_host/CMakeLists.txt
+
+            line1=`awk '/target_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' "${target_dir}"/op_host/CMakeLists.txt`
+            sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" "${target_dir}"/op_host/CMakeLists.txt
+
+            line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' "${target_dir}"/op_host/CMakeLists.txt`
+            sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" "${target_dir}"/op_host/CMakeLists.txt
+
+            sed -i '/\${ASCEND_CANN_PACKAGE_PATH}\/include/a\
+            \${ASCEND_CANN_PACKAGE_PATH}\/pkg_inc
+            ' "${target_dir}"/cmake/*.cmake
+        fi
+
     return 0
 }
 
