@@ -43,7 +43,14 @@ readonly JSON_FILE="${ONNX_PATH}/json.hpp"
 # 注意: vendor_name 需要由调用者传入
 # ==============================================================================
 parse_arguments() {
-    : "${ai_core:=ai_core-Ascend910B1}"
+    case "${AI_CORE_PROFILE:-v220}" in
+        c310)
+            : "${ai_core:=ai_core-Ascend950}"
+            ;;
+        v220)
+            : "${ai_core:=ai_core-Ascend910B1}"
+            ;;
+    esac
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -55,11 +62,11 @@ parse_arguments() {
                 vendor_name="$2"
                 shift 2
                 ;;
-            --ai-core) 
+            --ai-core)
                 ai_core="$2"
                 shift 2
                 ;;
-            *) 
+            *)
                 echo "Unknown parameter passed: $1" >&2
                 return 1
                 ;;
@@ -70,7 +77,7 @@ parse_arguments() {
         echo "ERROR: --vendor-name is required." >&2
         return 1
     fi
-    
+
     export vendor_name
     export ai_core
     return 0
@@ -89,16 +96,40 @@ VALID_AI_CORES=(
     "ai_core-Ascend310P3"
 )
 
+VALID_AI_CORES_C310=(
+    "ai_core-Ascend950"
+)
+
 validate_ai_core() {
     local target_core="$1"
-    for valid_core in "${VALID_AI_CORES[@]}"; do
-        if [ "$target_core" = "$valid_core" ]; then
-            echo "ai_core $target_core"
-            return 0
-        fi
-    done
-    echo "Error: ai core must be one of: [${VALID_AI_CORES[*]}]" >&2
-    return 1
+
+    local profile="${AI_CORE_PROFILE:-v220}"
+    case "$profile" in
+        c310)
+            for valid_core in "${VALID_AI_CORES_C310[@]}"; do
+                if [ "$target_core" = "$valid_core" ]; then
+                    echo "ai_core $target_core"
+                    return 0
+                fi
+            done
+            echo "Error: ai core must be one of: [${VALID_AI_CORES_C310[*]}] (AI_CORE_PROFILE=${profile})" >&2
+            return 1
+            ;;
+        v220)
+            for valid_core in "${VALID_AI_CORES[@]}"; do
+                if [ "$target_core" = "$valid_core" ]; then
+                    echo "ai_core $target_core"
+                    return 0
+                fi
+            done
+            echo "Error: ai core must be one of: [${VALID_AI_CORES[*]}] (AI_CORE_PROFILE=${profile})" >&2
+            return 1
+            ;;
+        *)
+            echo "ERROR: AI_CORE_PROFILE must be 'v220' or 'c310' (or unset for v220), got: '${AI_CORE_PROFILE}'" >&2
+            return 1
+            ;;
+    esac
 }
 
 # ==============================================================================
@@ -120,7 +151,7 @@ get_gpp_path() {
 
 check_system_and_cann() {
     local target_core="$1"
-    
+
     # 获取架构
     ARCH=$(uname -m)
     if [ -z "${ARCH}" ]; then
@@ -146,7 +177,7 @@ check_system_and_cann() {
         echo "ERROR: failed to parse cann version" >&2
         return 1
     fi
-    
+
     echo "cann version: ${CANN_VERSION}"
     MAJOR_VERSION=$(echo "${CANN_VERSION}" | cut -d. -f1)
     echo "cann major version: ${MAJOR_VERSION}"
@@ -198,7 +229,7 @@ overwrite_source_with_target() {
     find "$src_dir" -type f | while read -r src_file; do
         local relative_path="${src_file#$src_dir/}"
         local target_file="$tgt_dir/$relative_path"
-        
+
         if [ -f "$target_file" ]; then
             cp -f "$target_file" "$src_file"
             echo "Overwrite $src_file with $target_file"
@@ -230,7 +261,8 @@ gen_build_dir() {
         op_name=$(generate_op_name "$vendor_name")
     fi
     rm -rf "${work_dir}/${vendor_name}"
-    msopgen gen -i ${work_dir}/${vendor_name}.json -f tf -c ${ai_core} -lan cpp -out "${work_dir}/${vendor_name}" -m 0 -op ${op_name}
+    local json_file="${OPERATOR_JSON_FILE:-${work_dir}/${vendor_name}.json}"
+    msopgen gen -i "${json_file}" -f tf -c ${ai_core} -lan cpp -out "${work_dir}/${vendor_name}" -m 0 -op ${op_name}
     if [ -d "${work_dir}/${vendor_name}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
         export MAJOR_VERSION=8
     fi
@@ -244,6 +276,9 @@ gen_build_dir() {
 # ==============================================================================
 # 替换算子工程源文件
 # 用法: replace_operator_sources "$source_dir" "$target_dir"
+# 可选环境变量 COPY_KERNEL_COMMON_UTILS=1: 在复制 op 源码后拷贝 kernel_common_utils.h
+#   默认目录: ${__PROJECT_ROOT}/ai_core_op/common（即 cust_op/ascendc_op/ai_core_op/common）
+#   覆盖: 设置 KERNEL_COMMON_UTILS_DIR 为含该头文件的目录路径
 # ==============================================================================
 replace_operator_sources() {
     local src_dir="$1"
@@ -265,6 +300,11 @@ replace_operator_sources() {
     # 复制新文件
     cp -rf ${src_dir}/op_kernel/* "${tgt_dir}/op_kernel/"
     cp -rf ${src_dir}/op_host/* "${tgt_dir}/op_host/"
+
+    if [ "${COPY_KERNEL_COMMON_UTILS}" = "1" ]; then
+        cp -f "${KERNEL_COMMON_UTILS_DIR:-${__PROJECT_ROOT}/ai_core_op/common}/kernel_common_utils.h" \
+            "${tgt_dir}/op_kernel/"
+    fi
     return 0
 }
 
@@ -282,20 +322,20 @@ build_onnx_adapter() {
     if [ "$a_core" = "ai_core-Ascend310P3" ]; then
         echo "Building ONNX adapter for ${a_core}..."
         local build_script="${o_path}/build_onnx.sh"
-        
+
         if [ ! -f "$build_script" ]; then
             echo "ERROR: build_onnx.sh not found in ${o_path}" >&2
             return 1
         fi
-        
+
         # 执行 build_onnx.sh
         bash "$build_script"
-        
+
         local dest_dir="${work_dir}/${v_name}/framework/onnx_plugin"
         mkdir -p "$dest_dir"
-        
+
         cp -rf "${j_file}" "$dest_dir"
-        
+
         local src_onnx_dir="$(dirname "$work_dir")/onnx_plugin"
         if [ -d "$src_onnx_dir" ]; then
             cp -rf "${src_onnx_dir}"/* "$dest_dir"
@@ -311,6 +351,7 @@ build_onnx_adapter() {
 # 修改 CMakePresets.json
 # 用法: configure_cmake_presets "$vendor_name" "$ai_core" "$major_version" "$target_dir" "$enable_catlass"(可选)
 # target_dir: 即 ${work_dir}/${vendor_name} 的绝对路径
+# c310 + OPERATOR_JSON_FILE：结束前复制到 dirname(target_dir)/${首参 v_name}.json，供 CPack 与 msopgen -i 共用同一描述文件。
 # ==============================================================================
 configure_cmake_presets() {
     local v_name="$1"
@@ -322,9 +363,9 @@ configure_cmake_presets() {
     else
         local enable_catlass="$5"
     fi
-    
+
     local cmake_file="${target_dir}/CMakePresets.json"
-    
+
     if [ ! -f "$cmake_file" ]; then
         echo "ERROR: CMakePresets.json file not exist in ${target_dir}." >&2
         return 1
@@ -333,7 +374,7 @@ configure_cmake_presets() {
     # 修改 CANN 路径
     if [ "$maj_ver" -lt 9 ]; then
         sed -i "s:\"/usr/local/Ascend/latest\":\"${ASCEND_TOOLKIT_HOME}\":g" "$cmake_file"
-    else 
+    else
         sed -i "s:\"/usr/local/Ascend/cann\":\"${ASCEND_TOOLKIT_HOME}\":g" "$cmake_file"
     fi
 
@@ -345,10 +386,10 @@ configure_cmake_presets() {
     chip_name_raw=$(echo "$a_core" | sed 's/^ai_core-//i')
     local chip_name
     chip_name=$(echo "$chip_name_raw" | tr '[:upper:]' '[:lower:]')
-    
+
     # 使用全局推导的 CONFIG_DIR
     local config_file="${CONFIG_DIR}/transform.json"
-    
+
     if [ ! -f "$config_file" ]; then
         echo "ERROR: Config file transform.json not found at $config_file" >&2
         return 1
@@ -357,7 +398,7 @@ configure_cmake_presets() {
     local mapped_value
     mapped_value=$(python3 -c "import json; cfg=json.load(open('${config_file}')); \
                    print(cfg['SOC_VERSION_TYPE'].get('${chip_name}', ''))" 2>/dev/null)
-    
+
     if [ -z "$mapped_value" ]; then
         echo "WARNING: No mapping found for chip '$chip_name' in $config_file." >&2
         return 1
@@ -377,6 +418,61 @@ configure_cmake_presets() {
         sed -i "${line}s/False/True/g" "$cmake_file"
     fi
 
+    # c310：op_kernel 里 install(FILES .../../../${v_name}.json) 实际解析到 dirname(target_dir)
+    # （即与 run.sh 同级的 c310 目录），与 msopgen -i 常用路径（如 ../v220/*.json）不一致。
+    # 已在各算子设置 OPERATOR_JSON_FILE 时，顺带复制一份供 CPack install 使用。
+    if [ "${AI_CORE_PROFILE:-v220}" = "c310" ] && [ -n "${OPERATOR_JSON_FILE:-}" ] \
+        && [ -f "${OPERATOR_JSON_FILE}" ]; then
+        local c310_install_root
+        c310_install_root="$(dirname "${target_dir}")"
+        cp -f "${OPERATOR_JSON_FILE}" "${c310_install_root}/${v_name}.json"
+    fi
+
+    return 0
+}
+
+# ==============================================================================
+# 为 op_kernel/CMakeLists.txt 追加额外 AscendC 编译选项（新/旧 CMake 二选一）
+# 用法: apply_op_kernel_compile_options_dual "$target_dir" "$opts_body"
+#   opts_body: 同 add_ops_compile_options 里 OPTIONS 后的内容，如 -DENABLE_CV_COMM_VIA_SSBUF=true
+# 有 npu_op_kernel_options 则把 opts_body 接到首行 OPTIONS "--cce-long-call=true" 后；否则首行插入 add_ops_compile_options。
+# maj<9 时 prepare_and_build 会再插一行仅含 --cce-long-call=true，opts_body 一般勿重复写 long-call。
+# ==============================================================================
+apply_op_kernel_compile_options_dual() {
+    local target_dir="$1"
+    local opts_body="$2"
+    local f="${target_dir}/op_kernel/CMakeLists.txt"
+    local tmp
+
+    if [ ! -f "$f" ]; then
+        echo "ERROR: op_kernel/CMakeLists.txt not found under ${target_dir}" >&2
+        return 1
+    fi
+    if [ -z "$opts_body" ]; then
+        echo "ERROR: apply_op_kernel_compile_options_dual: opts_body is empty" >&2
+        return 1
+    fi
+
+    if grep -q 'npu_op_kernel_options' "$f"; then
+        if ! grep -q 'OPTIONS "--cce-long-call=true"' "$f"; then
+            echo "ERROR: ${f} uses npu_op_kernel_options but lacks OPTIONS \"--cce-long-call=true\" (sync with custom_op_template)" >&2
+            return 1
+        fi
+        tmp=$(mktemp "${TMPDIR:-/tmp}/op_builder_utils.XXXXXX")
+        awk -v extra=" ${opts_body}" '
+            /OPTIONS "--cce-long-call=true"/ && done == 0 {
+                sub(/OPTIONS "--cce-long-call=true"/, "&" extra)
+                done = 1
+            }
+            { print }
+        ' "$f" > "$tmp" && mv "$tmp" "$f"
+    else
+        tmp=$(mktemp "${TMPDIR:-/tmp}/op_builder_utils.XXXXXX")
+        {
+            printf '%s\n' "add_ops_compile_options(ALL OPTIONS ${opts_body})"
+            cat "$f"
+        } > "$tmp" && mv "$tmp" "$f"
+    fi
     return 0
 }
 
@@ -396,7 +492,7 @@ prepare_and_build() {
 
     if [ "$maj_ver" -lt 9 ]; then
         echo "Preparing legacy build environment (CANN < 9.0)..."
-        
+
         # 禁止 CRC
         local makeself_cmake="${target_dir}/cmake/makeself.cmake"
         if [ -f "$makeself_cmake" ]; then
@@ -412,12 +508,17 @@ prepare_and_build() {
             sed -i '1i\add_ops_compile_options(ALL OPTIONS --cce-long-call=true)' "$kernel_cmakelists"
         fi
 
-        if [ -n "$CATLASS_HOME" ] && [ "$enable_catlass" = "True" ]; then
+        if [ -n "$CATLASS_HOME" ] && [ "$enable_catlass" = "True" ] && [ -f "$kernel_cmakelists" ]; then
             local catlass_include_dir="${CATLASS_HOME}/include"
-            sed -i "2i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=2201 \
-                -DCATLASS_BISHENG_ARCH=a2 -DIS_A5=0  -DENABLE_CV_COMM_VIA_SSBUF=true \
-                -DCATLASS_HOME=${CATLASS_HOME} -I${catlass_include_dir})" "${kernel_cmakelists}"
-
+            if [ "${AI_CORE_PROFILE:-v220}" = "c310" ]; then
+                sed -i "2i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=3510 \
+                    -DCATLASS_BISHENG_ARCH=a5 -DIS_A5=1  -DENABLE_CV_COMM_VIA_SSBUF=true \
+                    -DCATLASS_HOME=${CATLASS_HOME} -I${catlass_include_dir})" "${kernel_cmakelists}"
+            else
+                sed -i "2i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=2201 \
+                    -DCATLASS_BISHENG_ARCH=a2 -DIS_A5=0  -DENABLE_CV_COMM_VIA_SSBUF=true \
+                    -DCATLASS_HOME=${CATLASS_HOME} -I${catlass_include_dir})" "${kernel_cmakelists}"
+            fi
         fi
 
         # 修改 op_host/CMakeLists.txt
@@ -447,7 +548,7 @@ prepare_and_build() {
             done
         fi
     fi
-    
+
     # 执行编译 (需要在 target_dir 下运行 build.sh)
     # 由于 build.sh 内部可能有相对路径依赖，这里必须 cd 进去执行，但用子 shell 包裹，不影响主环境
     local build_script="${target_dir}/build.sh"
@@ -460,7 +561,7 @@ prepare_and_build() {
         echo "ERROR: build.sh not found in ${target_dir}" >&2
         return 1
     fi
-    
+
     return 0
 }
 
@@ -472,14 +573,14 @@ install_operator_package() {
     local o_id="$1"
     local a_arch="$2"
     local target_dir="$3"
-    
+
     local installer="${target_dir}/build_out/custom_opp_${o_id}_${a_arch}.run"
-    
+
     if [ ! -f "$installer" ]; then
         echo "ERROR: Installer package not found: $installer" >&2
         return 1
     fi
-    
+
     echo "Installing operator package: $installer"
     bash -- "$installer"
     return $?
@@ -492,13 +593,19 @@ install_operator_package() {
 #  1. 该函数是构建算子的主流程，依次调用前面定义的各个步骤函数。
 #  2. 使用该函数时，需要在调用脚本里进行source ${__UTILS_SCRIPT_PATH}，然后调用 build_and_install_operator 函数，并传入必要的参数。
 #  3. 如需要对相应的步骤或者变量进行定制，可以在调用脚本里覆盖相应的函数或者变量，然后再调用 build_and_install_operator。
-#  4. 执行顺序为，先source ${__UTILS_SCRIPT_PATH}，覆盖必要的函数或者变量（如果需要），然后调用 build_and_install_operator。
-#  4. 参数： "$work_dir" "$vendor_name" "$with_onnx"(可选)
+#  4. 执行顺序为，先 source，按需设置环境变量，再调用 build_and_install_operator。
+#  5. 参数： "$work_dir" "$vendor_name" "$with_onnx"(可选，需为字面值 true 才构建 ONNX)
+# 可选环境变量（与单步脚本手写链一致）:
+#   OPERATOR_JSON_FILE / OPERATOR_SOURCE_ROOT / INSERT_SUPPORT_950_PATHS / COPY_KERNEL_COMMON_UTILS
+#   CMAKE_PRESET_VENDOR_NAME — CMake customize 与 prepare_and_build 第二参（工程目录仍为 vendor_name，如 mxrec_*）
+#   MSOPGEN_OP_NAME — 传给 gen_build_dir 第三参；不设则按 vendor_name 推导 PascalCase（fused 需设 LazyAdam/Sgd）
+#   enable_catlass — True/False；build_and_install_operator 未传第 4/5 步参数时由 configure_cmake_presets / prepare_and_build 读取（默认 False）
 # ==============================================================================
 build_and_install_operator() {
     local work_dir="$1"
     local vendor_name="$2"
     local with_onnx="$3"
+    local cmake_preset="${CMAKE_PRESET_VENDOR_NAME:-$vendor_name}"
 
     echo "=========================================="
     echo "Start Building Operator: ${vendor_name}"
@@ -508,13 +615,20 @@ build_and_install_operator() {
 
     validate_ai_core "$ai_core" || return 1
     check_system_and_cann "$ai_core" || return 1
-    gen_build_dir "$work_dir" "$vendor_name" || return 1
-    replace_operator_sources "$work_dir" "${work_dir}/${vendor_name}" || return 1
+    gen_build_dir "$work_dir" "$vendor_name" "${MSOPGEN_OP_NAME:-}" || return 1
+    local op_src_root="${OPERATOR_SOURCE_ROOT:-${work_dir}}"
+    replace_operator_sources "$op_src_root" "${work_dir}/${vendor_name}" || return 1
+    if [ -n "${INSERT_SUPPORT_950_PATHS:-}" ]; then
+        local _r
+        for _r in ${INSERT_SUPPORT_950_PATHS}; do
+            sed -i "1i #define SUPPORT_950" "${work_dir}/${vendor_name}/${_r}"
+        done
+    fi
     if [ "$with_onnx" = "true" ]; then
         build_onnx_adapter "$ai_core" "$ONNX_PATH" "$JSON_FILE" "$vendor_name" "$work_dir" || return 1
     fi
-    configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "${work_dir}/${vendor_name}" || return 1
-    prepare_and_build "$MAJOR_VERSION" "$vendor_name" "${work_dir}/${vendor_name}" || return 1
+    configure_cmake_presets "$cmake_preset" "$ai_core" "$MAJOR_VERSION" "${work_dir}/${vendor_name}" || return 1
+    prepare_and_build "$MAJOR_VERSION" "$cmake_preset" "${work_dir}/${vendor_name}" || return 1
     install_operator_package "$OS_ID" "$ARCH" "${work_dir}/${vendor_name}" || return 1
 
     echo "=========================================="
