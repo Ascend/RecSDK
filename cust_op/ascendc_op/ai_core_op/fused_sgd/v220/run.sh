@@ -15,104 +15,57 @@
 # ==============================================================================
 
 set -e
-
 source /etc/profile
 
-VALID_AI_CORES=(
-    "ai_core-Ascend910B1"
-    "ai_core-Ascend910B2"
-    "ai_core-Ascend910B3"
-    "ai_core-Ascend910B4"
-    "ai_core-Ascend910_93"
-    "ai_core-Ascend310P3"
-)
+# ==============================================================================
+# 1. 初始化路径
+# ==============================================================================
+readonly THIS_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+readonly WORK_DIR="$(dirname "${THIS_SCRIPT}")"
+readonly UTILS_SCRIPT="${WORK_DIR}/../../../scripts/op_builder_utils.sh"
 
-validate_ai_core() {
-    local input_core="$1"
-    for valid_core in "${VALID_AI_CORES[@]}"; do
-        if [ "$input_core" = "$valid_core" ]; then
-            echo "ai_core $input_core"
-            return 0
-        fi
-    done
-    echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
-    exit 1
-}
+# ==============================================================================
+# 2. 加载通用库
+# ==============================================================================
 
-ai_core="ai_core-Ascend910B1"
-if [ "$#" -eq 1 ]; then
-  ai_core="$1"
-  validate_ai_core $ai_core
-fi
-
-echo $PATH
-# 利用msopgen生成可编译文件
-rm -rf ./fused_sgd
-msopgen gen -i sgd.json -f tf -c ${ai_core} -lan cpp -out ./fused_sgd -m 0 -op Sgd
-
-cp -rf op_kernel fused_sgd/
-cp -rf op_host fused_sgd/
-
-cd fused_sgd
-
-# 判断当前目录下是否存在CMakePresets.json文件
-if [ ! -f "CMakePresets.json" ]; then
-  echo "ERROR, CMakePresets.json file not exist."
-  exit 1
-fi
-
-# 禁止生成CRC校验和
-sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
-
-# 修改cann安装路径
-if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
-    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
-fi
-# 修改vendor_name 防止覆盖之前vendor_name为customize的算子;
-# vendor_name需要和aclnn中的CMakeLists.txt中的CUST_PKG_PATH值同步，不同步aclnn会调用失败;
-# vendor_name字段值不能包含customize；包含会导致多算子部署场景CANN的vendors路径下config.ini文件内容截取错误
-sed -i 's:"customize":"mxrec_sgd":g' CMakePresets.json
-
-# 增加LOG_CPP编译选项支持错误日志打印
-sed -i "1 i include(../../../../cmake/func.cmake)" ./op_host/CMakeLists.txt
-
-line1=`awk '/target_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' ./op_host/CMakeLists.txt`
-sed -i "${line1}s/OP_TILING_LIB/OP_TILING_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
-
-line2=`awk '/target_compile_definitions(cust_op_proto PRIVATE OP_PROTO_LIB)/{print NR}' ./op_host/CMakeLists.txt`
-sed -i "${line2}s/OP_PROTO_LIB/OP_PROTO_LIB LOG_CPP/g" ./op_host/CMakeLists.txt
-
-sed -i '/\${ASCEND_CANN_PACKAGE_PATH}\/include/a\
-\${ASCEND_CANN_PACKAGE_PATH}\/pkg_inc
-' ./cmake/*.cmake
-
-bash build.sh
-
-# 获取系统ID
-os_id=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
-if [ -z "${os_id}" ]; then
-    echo "ERROR: get os_id failed"
+if [ ! -f "$UTILS_SCRIPT" ]; then
+    echo "ERROR: Cannot find op_builder_utils.sh at ${UTILS_SCRIPT}" >&2
+    echo "Please check your directory structure." >&2
     exit 1
 fi
 
-# 获取架构
-arch=$(uname -m)
-if [ -z "${arch}" ]; then
-    echo "ERROR: get arch failed"
-    exit 1
+source "$UTILS_SCRIPT"
+
+# ==============================================================================
+# 3. 参数配置
+# ==============================================================================
+vendor_name="fused_sgd"
+export CMAKE_PRESET_VENDOR_NAME="mxrec_sgd"
+export MSOPGEN_OP_NAME="Sgd"
+export AI_CORE_PROFILE="v220"
+export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/sgd.json")"
+export OPERATOR_SOURCE_ROOT="$(readlink -f "${WORK_DIR}")"
+readonly TGT="${WORK_DIR}/${vendor_name}"
+cp -f "${OPERATOR_JSON_FILE}" "${OPERATOR_SOURCE_ROOT}/${CMAKE_PRESET_VENDOR_NAME}.json"
+
+parse_arguments "$@" || exit 1
+
+# ==============================================================================
+# 4. 执行标准化流程
+# ==============================================================================
+
+validate_ai_core "$ai_core" || exit 1
+check_system_and_cann "$ai_core" || exit 1
+
+rm -rf "${TGT}"
+msopgen gen -i "${OPERATOR_JSON_FILE}" -f tf -c "${ai_core}" -lan cpp -out "${TGT}" -m 0 -op "${MSOPGEN_OP_NAME}"
+if [ -d "${TGT}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
+    export MAJOR_VERSION=8
 fi
 
-# 只允许字母/数字/点/下划线/连字符（覆盖常见 os_id 与 arch）
-SAFE_REGEX='^[A-Za-z0-9._-]+$'
-if ! [[ "$os_id" =~ $SAFE_REGEX ]]; then
-    echo "ERROR: invalid os_id: $os_id" >&2
-    exit 1
-fi
-if ! [[ "$arch" =~ $SAFE_REGEX ]]; then
-    echo "ERROR: invalid arch: $arch" >&2
-    exit 1
-fi
-
-# 安装编译成功的算子包
-installer="./build_out/custom_opp_${os_id}_${arch}.run"
-bash -- "$installer"
+replace_operator_sources "${OPERATOR_SOURCE_ROOT}" "${TGT}" || exit 1
+cp -f "${OPERATOR_SOURCE_ROOT}"/../../common/* "${TGT}"/op_host/
+configure_cmake_presets "${CMAKE_PRESET_VENDOR_NAME}" "${ai_core}" "${MAJOR_VERSION}" "${TGT}" || exit 1
+prepare_and_build "$MAJOR_VERSION" "${CMAKE_PRESET_VENDOR_NAME}" "${TGT}" || exit 1
+install_operator_package "$OS_ID" "$ARCH" "${TGT}" || exit 1
+rm -rf "${OPERATOR_SOURCE_ROOT}/${CMAKE_PRESET_VENDOR_NAME}.json"
