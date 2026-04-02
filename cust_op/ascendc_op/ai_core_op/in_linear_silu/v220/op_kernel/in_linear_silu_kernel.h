@@ -31,7 +31,7 @@ See the License for the specific language governing permissions and
 #endif
 
 #if IS_A5
-#define ARCH_CODE AtlasA5
+#define ARCH_CODE Ascend950
 #define CATLASS_ARCH_A5_ENABLED
 #if USE_TLA == 0
 #error use tla in a5 arch pls.

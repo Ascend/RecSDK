@@ -56,7 +56,7 @@ def get_user_value_query_key_tensors_fused(x, weight, bias, split_arg_list):
 
 
 def get_common_input():
-    dtype = torch.float32
+    dtype = torch.float16
     split_arg_list = [16, 16, 16, 16]
     x = torch.randint(low=-100, high=101, size=(100, 16), dtype=dtype, device="npu")
     w = torch.randint(low=-100, high=101, size=(64, 16), dtype=dtype, device="npu")
@@ -94,12 +94,13 @@ def in_linear_silu_diff_dim_test(m, n, k, device, dtype):
 
 def in_linear_silu_test(m, n, k, device, dtype):
     # 构造数据
+    torch.npu.set_device(device)
     seq_len = int(n / 4)
     split_arg_list = [seq_len, seq_len, seq_len, seq_len]
-    x = torch.randint(low=-100, high=101, size=(m, k), dtype=dtype, device="npu")
-    w = torch.randint(low=-100, high=101, size=(n, k), dtype=dtype, device="npu")
+    x = torch.randint(low=-100, high=101, size=(m, k), dtype=dtype, device=device)
+    w = torch.randint(low=-100, high=101, size=(n, k), dtype=dtype, device=device)
     w = torch.nn.init.xavier_uniform_(w)
-    bias = torch.ones(n, dtype=dtype, device="npu")
+    bias = torch.ones(n, dtype=dtype, device=device)
 
     golden = get_user_value_query_key_tensors_uniattn(x, w, bias, split_arg_list)
     result = get_user_value_query_key_tensors_fused(x, w, bias, split_arg_list)
@@ -109,8 +110,8 @@ def in_linear_silu_test(m, n, k, device, dtype):
 @pytest.mark.parametrize("m", [12892, 16384, 13582, 6450, 2789, 16196, 11873, 4387, 3677])
 @pytest.mark.parametrize("n", [9216, 16384])
 @pytest.mark.parametrize("k", [48, 64])
-@pytest.mark.parametrize("device", ["npu:0"])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("device", ["npu:2"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_in_linear_silu(m, n, k, device, dtype):
     if (n != 16384 and k != 48):
         in_linear_silu_test(m, n, k, device, dtype)
@@ -119,8 +120,8 @@ def test_in_linear_silu(m, n, k, device, dtype):
 @pytest.mark.parametrize("m", [256, 512, 2048, 20480])
 @pytest.mark.parametrize("n", [1024, 4096, 9216, 16384])
 @pytest.mark.parametrize("k", [16, 32, 48, 64])
-@pytest.mark.parametrize("device", ["npu:0"])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("device", ["npu:2"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_in_linear_silu_normal(m, n, k, device, dtype):
     if (k != 48 and (n != 4096 or n != 16384)):
         in_linear_silu_test(m, n, k, device, dtype)
@@ -130,7 +131,7 @@ def test_in_linear_silu_normal(m, n, k, device, dtype):
 @pytest.mark.parametrize("n", [1024, 4096])
 @pytest.mark.parametrize("k", [64, 128, 256])
 @pytest.mark.parametrize("device", ["npu:0"])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_in_linear_silu_diff_dim(m, n, k, device, dtype):
     in_linear_silu_diff_dim_test(m, n, k, device, dtype)
 

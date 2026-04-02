@@ -26,11 +26,11 @@ in_linear_silu_backward是in_linear_silu算子的反向传播实现，用于计�
 # 算子实现原理
 
 算子工作原理说明：
-1. 输入张量x ND格式，支持FLOAT16、FLOAT、BFLOAT16类型，shape = (m, k) 不可为空
-2. 输入张量weight ND格式，支持FLOAT16、FLOAT、BFLOAT16类型，shape = (n, k), 如果为(k, n)需要转置后传入 不可为空
+1. 输入张量x ND格式，支持FLOAT16、BFLOAT16类型，shape = (m, k) 不可为空
+2. 输入张量weight ND格式，支持FLOAT16、BFLOAT16类型，shape = (n, k), 如果为(k, n)需要转置后传入 不可为空
 3. 输入张量bias ND格式，支持FLOAT类型，shape = (n,) 可选
-4. 输入张量user_grad、value_grad、query_grad、key_grad ND格式，支持FLOAT16、FLOAT、BFLOAT16类型，分别对应前向传播输出user、value、query、key的梯度
-5. 输入张量linear_output ND格式，支持FLOAT16、FLOAT、BFLOAT16类型，来自前向传播的中间结果
+4. 输入张量user_grad、value_grad、query_grad、key_grad ND格式，支持FLOAT16、BFLOAT16类型，分别对应前向传播输出user、value、query、key的梯度
+5. 输入张量linear_output ND格式，支持FLOAT16、BFLOAT16类型，来自前向传播的中间结果
 6. attr属性 split_arg_list(List[int], 计算输入)： User、Value、Query、Key的长度，4个int类型的List, 成员必须为16的倍数，4个数总和为n，不可为空
 7. attr属性 isTrans(Bool, 计算输入)： 权重是否需要转置，保留参数，当前仅支持为true
 8. 输出张量x_grad、weights_grad、bias_grad，分别对应输入x、权重weight和偏置bias的梯度
