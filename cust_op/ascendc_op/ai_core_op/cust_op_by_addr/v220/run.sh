@@ -40,6 +40,7 @@ source "$UTILS_SCRIPT"
 # 3. 参数配置
 # ==============================================================================
 vendor_name="cust_op_by_addr"
+export with_onnx="true"
 export AI_CORE_PROFILE="v220"
 export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/emb_custom.json")"
 readonly V220_SRC="$(readlink -f "${WORK_DIR}")"
