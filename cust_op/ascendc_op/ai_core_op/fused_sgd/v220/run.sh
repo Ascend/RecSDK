@@ -40,6 +40,7 @@ source "$UTILS_SCRIPT"
 # 3. 参数配置
 # ==============================================================================
 vendor_name="fused_sgd"
+export with_onnx="true"
 export CMAKE_PRESET_VENDOR_NAME="mxrec_sgd"
 export MSOPGEN_OP_NAME="Sgd"
 export AI_CORE_PROFILE="v220"

@@ -40,6 +40,7 @@ source "$UTILS_SCRIPT"
 # 3. 参数配置（目录 fused_lazy_adam；CMake customize=mxrec_*；msopgen -op 由 MSOPGEN_OP_NAME 指定，避免默认 FusedLazyAdam）
 # ==============================================================================
 vendor_name="fused_lazy_adam"
+export with_onnx="true"
 export CMAKE_PRESET_VENDOR_NAME="mxrec_fused_lazy_adam"
 export MSOPGEN_OP_NAME="LazyAdam"
 export AI_CORE_PROFILE="v220"
