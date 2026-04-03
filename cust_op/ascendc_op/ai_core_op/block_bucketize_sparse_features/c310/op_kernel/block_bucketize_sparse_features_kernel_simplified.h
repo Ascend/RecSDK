@@ -59,8 +59,7 @@ __aicore__ inline IndexT ComputeBucket(
     if (isPowerOfTwo) {
         return static_cast<IndexT>(idx & (mySize - 1));
     }
-    const UIndexT q = AscendC::Simt::UintDiv<UIndexT>(idx, mySizeMagic, static_cast<UIndexT>(mySizeShift));
-    return static_cast<IndexT>(idx - q * mySize);
+    return static_cast<IndexT>(idx % mySize);
 }
 
 template <typename IndexT, bool useQuickDiv>
@@ -68,6 +67,7 @@ __aicore__ inline IndexT ComputeNewIndex(
     typename std::make_unsigned<IndexT>::type idx,
     typename std::make_unsigned<IndexT>::type blkSize,
     typename std::make_unsigned<IndexT>::type blkSizeMulMySize,
+    typename std::make_unsigned<IndexT>::type mySize,
     typename std::make_unsigned<IndexT>::type mySizeMagic,
     uint32_t mySizeShift,
     const __ubuf__ typename std::make_unsigned<IndexT>::type* blkSizeMagicShifts,
@@ -84,7 +84,7 @@ __aicore__ inline IndexT ComputeNewIndex(
         }
         return static_cast<IndexT>(idx % blkSize);
     }
-    return static_cast<IndexT>(AscendC::Simt::UintDiv<UIndexT>(idx, mySizeMagic, static_cast<UIndexT>(mySizeShift)));
+    return static_cast<IndexT>(idx / mySize);
 }
 
 template <typename OffsetT, typename IndexT, bool useQuickDiv, bool batchSizeIsOne>
@@ -191,7 +191,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SCATTER_THREADS_PER_BLOCK) inline void SimtS
                 idx, blkSize, blkSizeMulMySize, mySizeU,
                 mySizeMagicU, mySizeDivShift, blkSizeMagicShifts, featureIndex, isPowerOfTwo);
             const IndexT finalIndex = ComputeNewIndex<IndexT, useQuickDiv>(
-                idx, blkSize, blkSizeMulMySize,
+                idx, blkSize, blkSizeMulMySize, mySizeU,
                 mySizeMagicU, mySizeDivShift, blkSizeMagicShifts, featureIndex);
             const int32_t relativePos = asc_atomic_add(&ubCounters[static_cast<int32_t>(bucket)], 1);
             const OffsetT baseOffset = currOffsets[static_cast<int32_t>(bucket) * lengthsSize + rowIdx];
@@ -257,7 +257,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SCATTER_THREADS_PER_BLOCK) inline void SimtS
                 idx, blkSize, blkSizeMulMySize, mySizeU,
                 mySizeMagicU, mySizeDivShift, blkSizeMagicShifts, featureIndex, isPowerOfTwo);
             const IndexT finalIndex = ComputeNewIndex<IndexT, useQuickDiv>(
-                idx, blkSize, blkSizeMulMySize,
+                idx, blkSize, blkSizeMulMySize, mySizeU,
                 mySizeMagicU, mySizeDivShift, blkSizeMagicShifts, featureIndex);
             const int32_t slot = static_cast<int32_t>(bucket) * lengthsSize + rowIdx;
             const OffsetT writeCursor = currOffsets[slot];
