@@ -125,10 +125,12 @@ public:
                       const torch::Tensor values,
                       const c10::optional<torch::Tensor>& score = c10::nullopt) const override;
 
-    void export_batch_matched(const uint64_t threshold, const uint64_t n, const uint64_t offset, at::Tensor num_matched,
-                              at::Tensor keys, at::Tensor values, at::Tensor scores, aclrtStream stream) const override;
+    void export_batch_matched(const uint64_t threshold, const uint64_t n, const uint64_t offset,
+                              torch::Tensor num_matched, torch::Tensor keys, torch::Tensor values,
+                              const c10::optional<torch::Tensor>& scores = c10::nullopt,
+                              aclrtStream stream = 0) const override;
 
-    void count_matched(const uint64_t threshold, at::Tensor num_matched, aclrtStream stream) const override;
+    void count_matched(const uint64_t threshold, torch::Tensor num_matched, aclrtStream stream = 0) const override;
 
     void update(const size_t n, const torch::Tensor keys, const torch::Tensor values,
                 const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,

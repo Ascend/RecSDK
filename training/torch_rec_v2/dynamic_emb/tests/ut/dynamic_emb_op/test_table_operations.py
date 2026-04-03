@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
@@ -21,6 +22,8 @@ import torch
 import dynamic_emb_extensions as demb
 logging.basicConfig(level=logging.INFO)
 
+# 统一控制设备ID
+DEVICE_ID = 0
 
 class DynamicEmbTableOptions:
     def __init__(self):
@@ -35,7 +38,7 @@ class DynamicEmbTableOptions:
         self.max_load_factor = 0.5
         self.block_size = 128
         self.io_block_size = 1024
-        self.device_id = 0
+        self.device_id = DEVICE_ID
         self.io_by_cpu = False
         self.use_constant_memory = False
         self.reserved_key_start_bit = 0
@@ -78,12 +81,12 @@ def dynamic_table(table_options: DynamicEmbTableOptions):
 
 def test_insert_or_assign_basic(dynamic_table):
     """测试基本的插入操作"""
-    torch.npu.set_device(0)
+    torch.npu.set_device(DEVICE_ID)
     n = 10
     dim = 128  # 从table_options获取
     
-    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device='npu:0')
-    values = torch.randn(n, dim, dtype=torch.float32, device='npu:0')
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
     
     # 插入键值对
     dynamic_table.load(
@@ -91,8 +94,8 @@ def test_insert_or_assign_basic(dynamic_table):
     )
     
     # 验证插入成功（通过查找验证）
-    values_out = torch.zeros(n, dtype=torch.int64, device='npu:0')
-    founds = torch.zeros(n, dtype=torch.bool, device='npu:0')
+    values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
     demb.find_pointers(
         dynamic_table, n, keys, values_out, founds, None
     )
@@ -100,42 +103,50 @@ def test_insert_or_assign_basic(dynamic_table):
     assert founds.sum().item() == n, "插入的key能全部找到"
 
 
-@pytest.mark.skip(reason="insert_or_assign暂时不支持scores更新,暂时跳过此测试,支持后放开")
-def test_insert_or_assign_with_score(dynamic_table):
+def test_insert_or_assign_with_score():
     """测试带score的插入操作"""
-    torch.npu.set_device(0)
+    torch.npu.set_device(DEVICE_ID)
     n = 10
     dim = 128
-    
-    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device='npu:0')
-    values = torch.randn(n, dim, dtype=torch.float32, device='npu:0')
-    scores = torch.randint(1, 100, (n,), dtype=torch.int64, device='npu:0')
-    
+
+    # 使用LFU策略的table，支持score参数
+    table = demb.DynamicEmbTable(
+        demb.DynamicEmbDataType.Int64,
+        demb.DynamicEmbDataType.Float32,
+        demb.EvictStrategy.kLfu,
+        dim, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024, DEVICE_ID, False, False, 0, 1,
+        demb.InitializerArgs(), demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
+    )
+
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    scores = torch.randint(1, 100, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+
     # 插入带score的键值对
-    dynamic_table.load(
+    table.load(
         n, keys, values, scores, True, False
     )
-    
+
     # 验证插入成功
-    values_out = torch.zeros(n, dtype=torch.int64, device='npu:0')
-    founds = torch.zeros(n, dtype=torch.bool, device='npu:0')
+    values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
     demb.find_pointers(
-        dynamic_table, n, keys, values_out, founds, None
+        table, n, keys, values_out, founds, None
     )
-    
+
     assert founds.sum().item() == n, "插入的key能全部找到"
 
 
 def test_insert_or_assign_unique_key(dynamic_table):
     """测试unique_key参数"""
-    torch.npu.set_device(0)
+    torch.npu.set_device(DEVICE_ID)
     n = 5
     dim = 128
     
     # 使用相同的键
-    keys = torch.tensor([1, 1, 2, 2, 3], dtype=torch.int64, device='npu:0')
-    values1 = torch.randn(n, dim, dtype=torch.float32, device='npu:0')
-    values2 = torch.randn(n, dim, dtype=torch.float32, device='npu:0')
+    keys = torch.tensor([1, 1, 2, 2, 3], dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values1 = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    values2 = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
     
     # 第一次插入
     dynamic_table.load(
@@ -148,8 +159,8 @@ def test_insert_or_assign_unique_key(dynamic_table):
     )
     
     # 验证键存在
-    values_out = torch.zeros(n, dtype=torch.int64, device='npu:0')
-    founds = torch.zeros(n, dtype=torch.bool, device='npu:0')
+    values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
     logging.info(f"values_out1 = {values_out}")
     demb.find_pointers(
         dynamic_table, n, keys, values_out, founds, None
@@ -160,20 +171,20 @@ def test_insert_or_assign_unique_key(dynamic_table):
 
 def test_find_pointers_basic(dynamic_table):
     """测试基本的查找操作"""
-    torch.npu.set_device(0)
+    torch.npu.set_device(DEVICE_ID)
     n = 10
     dim = 128
     
     # 先插入一些键值对
-    keys_insert = torch.randint(0, 1000, (n,), dtype=torch.int64, device='npu:0')
-    values_insert = torch.randn(n, dim, dtype=torch.float32, device='npu:0')
+    keys_insert = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values_insert = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
     dynamic_table.load(
         n, keys_insert, values_insert, None, True, False
     )
     
     # 查找这些键
-    values_out = torch.zeros(n, dtype=torch.int64, device='npu:0')
-    founds = torch.zeros(n, dtype=torch.bool, device='npu:0')
+    values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
     demb.find_pointers(
         dynamic_table, n, keys_insert, values_out, founds, None
     )
@@ -184,21 +195,21 @@ def test_find_pointers_basic(dynamic_table):
 
 def test_find_pointers_not_found(dynamic_table):
     """测试查找不存在的键"""
-    torch.npu.set_device(0)
+    torch.npu.set_device(DEVICE_ID)
     n = 10
     dim = 128
     
     # 插入一些键
-    keys_insert = torch.randint(0, 100, (5,), dtype=torch.int64, device='npu:0')
-    values_insert = torch.randn(5, dim, dtype=torch.float32, device='npu:0')
+    keys_insert = torch.randint(0, 100, (5,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values_insert = torch.randn(5, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
     dynamic_table.load(
         5, keys_insert, values_insert, None, True, False
     )
     
     # 查找不存在的键
-    keys_not_found = torch.randint(1000, 2000, (n,), dtype=torch.int64, device='npu:0')
-    values_out = torch.zeros(n, dtype=torch.int64, device='npu:0')
-    founds = torch.zeros(n, dtype=torch.bool, device='npu:0')
+    keys_not_found = torch.randint(1000, 2000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
     demb.find_pointers(
         dynamic_table, n, keys_not_found, values_out, founds, None
     )
@@ -214,25 +225,25 @@ def test_find_pointers_not_found(dynamic_table):
 ])
 def test_insert_and_find_different_strategies(evict_strategy):
     """测试不同淘汰策略下的插入和查找"""
-    torch.npu.set_device(0)
+    torch.npu.set_device(DEVICE_ID)
     table = demb.DynamicEmbTable(
         demb.DynamicEmbDataType.Int64,
         demb.DynamicEmbDataType.Float32,
         evict_strategy,
-        128, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024, 0, False, False, 0, 1,
+        128, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024, DEVICE_ID, False, False, 0, 1,
         demb.InitializerArgs(), demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
     )
     
     n = 10
     dim = 128
-    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device='npu:0')
-    values = torch.randn(n, dim, dtype=torch.float32, device='npu:0')
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
     
     # 插入（使用卫语句处理需要score的情况）
     scores = None
     find_scores = None
     if evict_strategy != demb.EvictStrategy.kLru:
-        scores = torch.randint(1, 100, (n,), dtype=torch.int64, device='npu:0')
+        scores = torch.randint(1, 100, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
         find_scores = 1
     
     table.load(
@@ -240,8 +251,8 @@ def test_insert_and_find_different_strategies(evict_strategy):
     )
     
     # 查找
-    values_out = torch.zeros(n, dtype=torch.int64, device='npu:0')
-    founds = torch.zeros(n, dtype=torch.bool, device='npu:0')
+    values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
     demb.find_pointers(
         table, n, keys, values_out, founds, find_scores
     )
@@ -251,13 +262,13 @@ def test_insert_and_find_different_strategies(evict_strategy):
 
 def test_empty_table_operations(dynamic_table):
     """测试空表的操作"""
-    torch.npu.set_device(0)
+    torch.npu.set_device(DEVICE_ID)
     n = 5
     
     # 在空表中查找
-    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device='npu:0')
-    values_out = torch.zeros(n, dtype=torch.int64, device='npu:0')
-    founds = torch.zeros(n, dtype=torch.bool, device='npu:0')
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
     demb.find_pointers(
         dynamic_table, n, keys, values_out, founds, None
     )
@@ -268,13 +279,13 @@ def test_empty_table_operations(dynamic_table):
 
 def test_insert_or_assign_ignore_evict_strategy(dynamic_table):
     """测试ignore_evict_strategy参数"""
-    torch.npu.set_device(0)
+    torch.npu.set_device(DEVICE_ID)
     n = 10
     dim = 128
 
-    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device='npu:0')
-    values = torch.randn(n, dim, dtype=torch.float32, device='npu:0')
-    scores = torch.randint(1, 100, (n,), dtype=torch.int64, device='npu:0')
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    scores = torch.randint(1, 100, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
 
     # 插入时忽略淘汰策略
     dynamic_table.load(
@@ -282,8 +293,8 @@ def test_insert_or_assign_ignore_evict_strategy(dynamic_table):
     )
 
     # 验证插入成功
-    values_out = torch.zeros(n, dtype=torch.int64, device='npu:0')
-    founds = torch.zeros(n, dtype=torch.bool, device='npu:0')
+    values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
     demb.find_pointers(
         dynamic_table, n, keys, values_out, founds, None
     )
@@ -293,12 +304,12 @@ def test_insert_or_assign_ignore_evict_strategy(dynamic_table):
 
 def test_export_batch(dynamic_table):
     """测试export_batch参数"""
-    torch.npu.set_device(0)
+    torch.npu.set_device(DEVICE_ID)
     n = 10
     dim = 128
 
-    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device='npu:0')
-    values = torch.randn(n, dim, dtype=torch.float32, device='npu:0')
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
 
     # 加载数据
     dynamic_table.load(
@@ -306,11 +317,264 @@ def test_export_batch(dynamic_table):
     )
 
     # 导出数据
-    keys_out = torch.empty(n, dtype=torch.int64, device='npu:0')
-    values_out = torch.empty(n, dtype=torch.int64, device='npu:0')
-    d_counter = torch.empty(n, dtype=torch.uint64, device='npu:0')
+    keys_out = torch.empty(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values_out = torch.empty(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    d_counter = torch.empty(n, dtype=torch.uint64, device=f'npu:{DEVICE_ID}')
     dynamic_table.export_batch(
         n, 0, d_counter, keys_out, values_out, None
     )
 
     assert keys_out.numel() == n, "导出数据量符合预期"
+
+
+def test_dyn_emb_rows_basic(dynamic_table):
+    """测试dyn_emb_rows基本功能"""
+    torch.npu.set_device(DEVICE_ID)
+    n = 10
+    dim = 128
+
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+
+    dynamic_table.load(n, keys, values, None, True, False)
+
+    rows = demb.dyn_emb_rows(dynamic_table)
+    assert rows == n, f"期望行数为{n}，实际为{rows}"
+
+
+def test_dyn_emb_rows_empty(dynamic_table):
+    """测试dyn_emb_rows空表"""
+    torch.npu.set_device(DEVICE_ID)
+
+    rows = demb.dyn_emb_rows(dynamic_table)
+    assert rows == 0, f"空表行数期望为0，实际为{rows}"
+
+@pytest.mark.skip
+def test_dyn_emb_rows_after_erase(dynamic_table):
+    """测试dyn_emb_rows删除后"""
+    torch.npu.set_device(DEVICE_ID)
+    n = 10
+    dim = 128
+
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+
+    dynamic_table.load(n, keys, values, None, True, False)
+
+    erase_n = 5
+    keys_to_erase = keys[:erase_n]
+    demb.erase(dynamic_table, erase_n, keys_to_erase)
+    
+    rows = demb.dyn_emb_rows(dynamic_table)
+    assert rows == n - erase_n, f"删除后期望行数为{n - erase_n}，实际为{rows}"
+
+
+def test_insert_and_evict_basic(dynamic_table):
+    """测试insert_and_evict基本功能"""
+    torch.npu.set_device(DEVICE_ID)
+    n = 5
+    dim = 128
+
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+
+    evicted_keys = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    evicted_values = torch.zeros(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    evicted_score = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    d_evicted_counter = torch.zeros(1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+
+    demb.insert_and_evict(
+        dynamic_table, n, keys, values, None,
+        evicted_keys, evicted_values, evicted_score, d_evicted_counter,
+        True, False
+    )
+
+    rows = demb.dyn_emb_rows(dynamic_table)
+    assert rows == n, f"期望行数为{n}，实际为{rows}"
+
+
+def test_insert_and_evict_with_lfu():
+    """测试insert_and_evict在LFU策略下需要score"""
+    torch.npu.set_device(DEVICE_ID)
+    table = demb.DynamicEmbTable(
+        demb.DynamicEmbDataType.Int64,
+        demb.DynamicEmbDataType.Float32,
+        demb.EvictStrategy.kLfu,
+        128, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024, DEVICE_ID, False, False, 0, 1,
+        demb.InitializerArgs(), demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
+    )
+
+    n = 5
+    dim = 128
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    scores = torch.randint(1, 100, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+
+    evicted_keys = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    evicted_values = torch.zeros(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    evicted_score = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    d_evicted_counter = torch.zeros(1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+
+    demb.insert_and_evict(
+        table, n, keys, values, scores[0].item(),
+        evicted_keys, evicted_values, evicted_score, d_evicted_counter,
+        True, False
+    )
+
+    rows = demb.dyn_emb_rows(table)
+    assert rows == n, f"LFU策略下期望行数为{n}，实际为{rows}"
+
+@pytest.mark.skip
+def test_find_basic(dynamic_table):
+    """测试find基本功能"""
+    torch.npu.set_device(DEVICE_ID)
+    n = 10
+    dim = 128
+
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+
+    dynamic_table.load(n, keys, values, None, True, False)
+
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
+    demb.find(dynamic_table, n, keys, values, founds, None)
+
+    assert founds.sum().item() == n, f"期望找到所有{n}个键"
+
+@pytest.mark.skip
+def test_find_with_score():
+    """测试find带score查找"""
+    torch.npu.set_device(DEVICE_ID)
+    table = demb.DynamicEmbTable(
+        demb.DynamicEmbDataType.Int64,
+        demb.DynamicEmbDataType.Float32,
+        demb.EvictStrategy.kLfu,
+        128, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024, DEVICE_ID, False, False, 0, 1,
+        demb.InitializerArgs(), demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
+    )
+
+    n = 5
+    dim = 128
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    scores = torch.randint(1, 100, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+
+    evicted_keys = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    evicted_values = torch.zeros(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    evicted_score = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    d_evicted_counter = torch.zeros(1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+
+    demb.insert_and_evict(
+        table, n, keys, values, scores[0].item(),
+        evicted_keys, evicted_values, evicted_score, d_evicted_counter,
+        True, False
+    )
+
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
+    demb.find(table, n, keys, values, founds, None)
+
+    assert founds.sum().item() == n, f"期望找到所有{n}个键"
+
+@pytest.mark.skip
+def test_find_not_found(dynamic_table):
+    """测试find查找不存在的key"""
+    torch.npu.set_device(DEVICE_ID)
+    n = 10
+    dim = 128
+
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+
+    dynamic_table.load(n, keys, values, None, True, False)
+
+    not_exist_keys = torch.randint(10000, 20000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
+    demb.find(dynamic_table, n, not_exist_keys, values, founds, None)
+
+    assert founds.sum().item() == 0, "不应该找到任何不存在的键"
+
+@pytest.mark.skip
+def test_erase_basic(dynamic_table):
+    """测试erase基本功能"""
+    torch.npu.set_device(DEVICE_ID)
+    n = 10
+    dim = 128
+
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+
+    dynamic_table.load(n, keys, values, None, True, False)
+
+    erase_n = 5
+    keys_to_erase = keys[:erase_n]
+    demb.erase(dynamic_table, erase_n, keys_to_erase)
+
+    founds = torch.zeros(erase_n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
+    output_values = torch.zeros(erase_n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    demb.find(dynamic_table, erase_n, keys_to_erase, output_values, founds, None)
+
+    assert founds.sum().item() == 0, "删除的键不应该被找到"
+
+@pytest.mark.skip
+def test_erase_not_exists(dynamic_table):
+    """测试erase删除不存在的key"""
+    torch.npu.set_device(DEVICE_ID)
+    n = 5
+    dim = 128
+
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+
+    dynamic_table.load(n, keys, values, None, True, False)
+
+    not_exist_keys = torch.randint(10000, 20000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    demb.erase(dynamic_table, n, not_exist_keys)
+
+    rows = demb.dyn_emb_rows(dynamic_table)
+    assert rows == n, "删除不存在的键不应影响表内容"
+
+
+def test_clear_basic(dynamic_table):
+    """测试clear清空表"""
+    torch.npu.set_device(DEVICE_ID)
+    n = 10
+    dim = 128
+
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+
+    dynamic_table.load(n, keys, values, None, True, False)
+
+    demb.clear(dynamic_table)
+
+    rows = demb.dyn_emb_rows(dynamic_table)
+    assert rows == 0, f"清空后行数期望为0,实际为{rows}"
+
+
+def test_reserve_basic(dynamic_table):
+    """测试reserve预留容量"""
+    torch.npu.set_device(DEVICE_ID)
+
+    new_capacity = 4096
+    demb.reserve(dynamic_table, new_capacity)
+
+    rows = demb.dyn_emb_rows(dynamic_table)
+    assert rows == 0, "预留容量后空表行数仍为0"
+
+
+def test_reserve_expand(dynamic_table):
+    """测试reserve扩大容量"""
+    torch.npu.set_device(DEVICE_ID)
+    n = 10
+    dim = 128
+
+    keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+
+    dynamic_table.load(n, keys, values, None, True, False)
+
+    new_capacity = 4096
+    demb.reserve(dynamic_table, new_capacity)
+
+    rows = demb.dyn_emb_rows(dynamic_table)
+    assert rows == n, f"扩大容量后行数应保持为{n}"
