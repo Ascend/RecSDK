@@ -7,10 +7,20 @@
                 "name": "indices",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND"
+                    "ND", "ND","ND", "ND"
                 ],
                 "type": [
-                    "int32", "int64"
+                    "int32", "int64", "int32", "int64"
+                ]
+            },
+            {
+                "name": "lengths",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND","ND", "ND"
+                ],
+                "type": [
+                    "int32", "int64", "int64", "int32"
                 ]
             }
         ],
@@ -19,10 +29,20 @@
                 "name": "permute",
                 "param_type": "required",
                 "format": [
-                    "ND", "ND"
+                    "ND", "ND","ND", "ND"
                 ],
                 "type": [
-                    "int32", "int64"
+                    "int32", "int64", "int32", "int64"
+                ]
+            },
+            {
+                "name": "outputlengths",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND","ND", "ND"
+                ],
+                "type": [
+                    "int32", "int64", "int64", "int32"
                 ]
             }
         ],
