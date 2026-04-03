@@ -704,10 +704,13 @@ void insert_and_evict(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
     if (table->evict_strategy() == EvictStrategy::kCustomized ||
         table->evict_strategy() == EvictStrategy::kLfu) {
-        auto&& option = at::TensorOptions().dtype(at::kUInt64).device(keys.device());
+        auto&& option = at::TensorOptions().dtype(torch::kInt64).device(keys.device());
         // broadcast scores
         at::Tensor bc_scores = at::empty({static_cast<int64_t>(n)}, option);
-        bc_scores.fill_(score.value());
+        // fill_接口不支持uint64_t
+        bc_scores.fill_(static_cast<int64_t>(score.value()));
+        // hkv要求score的tensor类型为uint64
+        bc_scores.to(at::kUInt64);
         table->insert_and_evict(n, keys.data_ptr(), values.data_ptr(), bc_scores.data_ptr(),
             evicted_keys.data_ptr(), evicted_values.data_ptr(), evicted_score.data_ptr(),
             reinterpret_cast<uint64_t*>(d_evicted_counter.data_ptr()), stream, unique_key, ignore_evict_strategy);

@@ -34,7 +34,7 @@ struct EvalAndInc {
         bool match = (!npu::hkv::IS_RESERVED_KEY(key) && score_val >= threshold);
         uint32_t vote = asc_ballot(match);
         int32_t group_count = AscendC::Simt::Popc(vote);
-        if (threadIdx.x % GroupSize == 0) {
+        if (threadIdx.x % warpSize == 0) {
             atomicAdd(d_count, group_count);
         }
     }
@@ -302,17 +302,26 @@ void HKVVariable<KeyType, ValueType, Strategy>::export_batch(const size_t n, con
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 void HKVVariable<KeyType, ValueType, Strategy>::export_batch_matched(const uint64_t threshold, const uint64_t n,
-    const uint64_t offset, at::Tensor num_matched,
-    at::Tensor keys, at::Tensor values, at::Tensor scores, aclrtStream stream) const
+    const uint64_t offset, torch::Tensor num_matched,
+    torch::Tensor keys, torch::Tensor values, const c10::optional<torch::Tensor>& scores, aclrtStream stream) const
 {
 #if defined(__CCE__)
     using PredFunc = ExportIfPredFunctor<KeyType, ValueType, uint64_t>;
     PredFunc func(threshold);
-    hkv_table_->export_batch_if_v2(
-        func, n, offset, reinterpret_cast<uint64_t*>(num_matched.data_ptr()), 
-        reinterpret_cast<KeyType*>(keys.data_ptr()),
-        reinterpret_cast<ValueType*>(values.data_ptr()),
-        reinterpret_cast<uint64_t*>(scores.data_ptr()), stream);
+    if (scores.has_value()) {
+        at::Tensor scores_ = scores.value();
+        hkv_table_->export_batch_if_v2(
+            func, n, offset, reinterpret_cast<uint64_t*>(num_matched.data_ptr()), 
+            reinterpret_cast<KeyType*>(keys.data_ptr()),
+            reinterpret_cast<ValueType*>(values.data_ptr()),
+            reinterpret_cast<uint64_t*>(scores_.data_ptr()), stream);
+    } else {
+        hkv_table_->export_batch_if_v2(
+            func, n, offset, reinterpret_cast<uint64_t*>(num_matched.data_ptr()), 
+            reinterpret_cast<KeyType*>(keys.data_ptr()),
+            reinterpret_cast<ValueType*>(values.data_ptr()),
+            nullptr, stream);
+    }
 #else
     // Mock implementation:	 
     std::cout << "Mock export_batch_matched called with threshold=" << threshold << ", n=" << n << std::endl;
@@ -321,7 +330,7 @@ void HKVVariable<KeyType, ValueType, Strategy>::export_batch_matched(const uint6
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 void HKVVariable<KeyType, ValueType, Strategy>::count_matched(const uint64_t threshold,
-    at::Tensor num_matched, aclrtStream stream) const
+    torch::Tensor num_matched, aclrtStream stream) const
 {
 #if defined(__CCE__)
     using ExecutionFunc = EvalAndInc<KeyType, ValueType, uint64_t>;
