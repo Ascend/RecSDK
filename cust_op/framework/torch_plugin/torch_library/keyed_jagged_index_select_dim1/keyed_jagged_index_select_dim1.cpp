@@ -16,9 +16,7 @@ using namespace std;
 
 namespace {
 constexpr int EXPECTED_DIM_1D = 1;
-constexpr int THRESHOLD_MEAN_LENGTHS = 30000;
 constexpr int THRESHOLD_MEAN_LENGTHS_LARGE = 750000;
-constexpr int THRESHOLD_T = 56;
 }  // namespace
 
 void validate_keyed_jagged_index_select_dim1_inputs(const Tensor& values, const Tensor& lengths, const Tensor& offsets,
@@ -84,37 +82,34 @@ std::vector<Tensor> keyed_jagged_index_select_dim1_impl_npu(const Tensor& values
     auto indicesConti = indices.contiguous();
     auto weightsConti = weights.value_or(at::empty({}, at::kFloat)).contiguous();
     bool enableWeights = weights.has_value();
-    TORCH_CHECK(batchSize > 0, "batchSize must be greater than 0", ", but get ", batchSize, "\n");
     const auto lengthsSize = lengthsConti.size(0);
-    const auto outlengthsSize = lengthsSize / batchSize * indicesConti.size(0);
-    TORCH_CHECK(lengthsSize <= std::numeric_limits<int>::max(), "lengthsSize limit (0, ",
+    const auto indicesSize = indicesConti.size(0);
+    TORCH_CHECK(batchSize > 0, "batchSize must be positive, got ", batchSize);
+    TORCH_CHECK(indicesSize > 0, "indicesSize must be positive, got ", indicesSize);
+    TORCH_CHECK(lengthsSize > 0 && lengthsSize <= std::numeric_limits<int>::max(), "lengthsSize limit (0, ",
                 std::numeric_limits<int>::max(), "], but get ", lengthsSize, "\n");
-    TORCH_CHECK(outlengthsSize <= std::numeric_limits<int>::max(), "lengthsSize limit (0, ",
-                std::numeric_limits<int>::max(), "], but get ", lengthsSize, "\n");
+    TORCH_CHECK(lengthsSize % batchSize == 0, "lengthsSize must be divisible by batchSize, got ", lengthsSize, " and ",
+                batchSize);
+    const auto outlengthsSize = lengthsSize / batchSize * indicesSize;
     at::Tensor permute = at::empty({outlengthsSize}, indicesConti.options());
-    EXEC_NPU_CMD(aclnnSelectDim1ToPermute, indicesConti, batchSize, lengthsSize, permute);
-
-    const auto pLength = permute.size(0);
+    at::Tensor permutedLengths = at::empty({outlengthsSize}, lengthsConti.options());
+    EXEC_NPU_CMD(aclnnSelectDim1ToPermute, indicesConti, lengthsConti, batchSize, lengthsSize, permute,
+                 permutedLengths);
+    permute = permute.contiguous();
+    permutedLengths = permutedLengths.contiguous();
     const auto lengthSize = lengths.size(0);
     const auto lengthsSum = values.size(0);
-    if (lengthSize == 0 || pLength == 0) {
-        return {valuesConti.clone(), lengthsConti.clone(), enableWeights ? weightsConti.clone() : at::Tensor()};
-    }
     // 计算每行的平均元素数
     auto meanLengths = lengthsSum / lengthSize;
-    bool useOffset =
-        (meanLengths > THRESHOLD_MEAN_LENGTHS_LARGE) || (meanLengths > THRESHOLD_MEAN_LENGTHS && pLength < THRESHOLD_T);
+    bool useOffset = (meanLengths > THRESHOLD_MEAN_LENGTHS_LARGE);
 
     at::Tensor totalOffset = at::Tensor();
     at::Tensor lengthsOffset = at::Tensor();
     at::Tensor permutedLengthsOffset = at::Tensor();
-    at::Tensor permutedLengths = at::empty({pLength}, lengthsConti.options());
     auto permuteConti = permute.contiguous();
     if (useOffset) {
         totalOffset = offsetsConti;
     } else {
-        // 直接进行 index_select重排lengthsConti
-        permutedLengths = lengthsConti.index_select(0, permuteConti);
         // 使用 asynchronous_complete_cumsum 计算重排后lengthsConti的累积和
         lengthsOffset = offsetsConti;
         permutedLengthsOffset = asynchronous_complete_cumsum_npu(permutedLengths).to(at::kLong);
@@ -127,7 +122,7 @@ std::vector<Tensor> keyed_jagged_index_select_dim1_impl_npu(const Tensor& values
     } else {
         // 未提供输出长度，通过permute长度进行计算
         if (useOffset) {
-            outvaluesSize = lengthsConti.index_select(0, permuteConti).sum().item<int64_t>();
+            outvaluesSize = permutedLengths.sum().item<int64_t>();
         } else {
             outvaluesSize = permutedLengthsOffset.index({-1}).item<int64_t>();
         }
