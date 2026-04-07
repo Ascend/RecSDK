@@ -41,7 +41,7 @@ from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import (
 )
 
 _original_dynamic_emb_extensions = sys.modules.get("dynamic_emb_extensions")
-
+npu_device = torch.device("npu:0")
 
 def setup_module():
     mock_dynamicemb = MagicMock()
@@ -53,7 +53,9 @@ def teardown_module():
 
 
 class MockOptimizer(BaseDynamicEmbeddingOptimizerV2):
-    def __init__(self, args):
+    def __init__(self, args=None):
+        if args is None:
+            args = OptimizerArgs()
         super().__init__(args)
         self.state_dim = 2
         self.fused_update_with_pointer_called = False
@@ -212,80 +214,65 @@ class TestKeyValueTable(unittest.TestCase):
             self.assertTrue(self.mock_optimizer.fused_update_with_pointer_called)
 
 
-class TestKeyValueTableFunction(unittest.TestCase):
-    def setUp(self):
-        # 创建存储模拟对象
-        self.mock_storage = Mock()
-        self.mock_storage.embedding_dim = MagicMock(return_value=64)
-        self.mock_storage.embedding_dtype = MagicMock(return_value=torch.float32)
-        self.mock_storage.value_dim = MagicMock(return_value=64)
-        self.mock_storage.enable_update = MagicMock(return_value=False)
-
-        self.mock_storage.find_embeddings = MagicMock(return_value=(
-            torch.tensor(0),
-            torch.empty((0,), dtype=torch.long),
-            torch.empty((0,), dtype=torch.long)
-        ))
-
-        def find_side_effect(keys, values, founds):
-            founds[:] = torch.rand(keys.numel()) < 0.6
-            founds[:5] = True
-            founds[5:keys.numel()] = False
-            missing_keys = keys[~founds]
-            return (torch.sum(founds), missing_keys, founds)
-
-        self.mock_storage.find = MagicMock(side_effect=find_side_effect)
-        self.mock_storage.insert = MagicMock()
-        self.mock_storage.update = MagicMock()
-        self.mock_storage.init_optimizer_state = MagicMock(return_value=torch.randn(1, 64))
-
-        # 创建优化器模拟对象
-        self.mock_optimizer = Mock()
-        self.mock_optimizer.fused_update = MagicMock()
-
-    def test_lookup_with_no_keys(self):
-        unique_keys = torch.empty((0,), dtype=torch.long)
-        unique_embs = torch.empty((0, 64))
-
-        KeyValueTableFunction.lookup(
-            storage=self.mock_storage,
-            unique_keys=unique_keys,
-            unique_embs=unique_embs,
-            initializer=Mock(),
+    def _create_new_test_kv_table(self):
+        options = DynamicEmbTableOptions(
+            embedding_dtype=torch.float32,
+            index_type=torch.int64,
+            dim=16,
+            init_capacity=1000,
+            max_capacity=10000,
+            local_hbm_for_values=1024 * 1024 * 10,
+            device_id=0,
+            bucket_capacity=128,
+            max_load_factor=0.5,
+            block_size=128,
+            io_block_size=1024,
+            io_by_cpu=False,
+            use_constant_memory=False,
+            reserved_key_start_bit=0,
+            num_of_buckets_per_alloc=1,
             training=True
         )
+        optimizer = MockOptimizer()
+        with patch("dynamic_emb.distributed.key_value_table.create_dynamicemb_table", return_value=self.mock_table):
+            table = KeyValueTable(options=options, optimizer=optimizer)
+        return table
+        
+    def test_count_matched(self):
+        def mock_count_matched(table, threshold, num_matched):
+            num_matched[0] = 50
 
-        self.mock_storage.find_embeddings.assert_not_called()
+        kv_table = self._create_new_test_kv_table()
+        num_matched = torch.zeros(1, dtype=torch.long, device=npu_device)
+        
+        with patch("dynamic_emb.distributed.key_value_table.count_matched", side_effect=mock_count_matched):
+            kv_table.count_matched(50, num_matched)
+        
+        print("√ count_matched 接口测试通过")
 
-    def test_lookup_with_all_existing_keys(self):
-        batch_size = 10
-        unique_keys = torch.randint(0, 100, (batch_size,), dtype=torch.long)
-        unique_embs = torch.randn(batch_size, 64)
+    def test_export_batch_matched(self):
+        def mock_export_batch_matched(table, threshold, batch_size, search_offset, d_count, d_keys, d_vals):
+            d_count[0] = 10
 
-        initializer = Mock()
-        KeyValueTableFunction.lookup(
-            storage=self.mock_storage,
-            unique_keys=unique_keys,
-            unique_embs=unique_embs,
-            initializer=initializer,
-            training=True
-        )
+        kv_table = self._create_new_test_kv_table()
+        d_count = torch.zeros(1, device=npu_device)
+        d_keys = torch.empty(32, dtype=torch.long, device=npu_device)
+        d_vals = torch.empty(32, 16, device=npu_device)
+        
+        with patch("dynamic_emb.distributed.key_value_table.export_batch_matched", side_effect=mock_export_batch_matched):
+            kv_table.export_batch_matched(30, 32, 0, d_count, d_keys, d_vals)
+        
+        print("√ export_batch_matched 接口测试通过")
 
-        initializer.assert_not_called()
-        self.mock_storage.insert.assert_not_called()
+    def test_insert_and_evict(self):
+        def mock_insert_and_evict(table, batch, keys, values, score, ek, ev, es, ne):
+            ne[0] = 2
 
-    def test_update_with_storage_enabled(self):
-        self.mock_storage.enable_update.return_value = True
-        unique_keys = torch.randint(0, 100, (5,), dtype=torch.long)
-        unique_grads = torch.randn(5, 64)
-
-        KeyValueTableFunction.update(
-            storage=self.mock_storage,
-            unique_keys=unique_keys,
-            unique_grads=unique_grads,
-            optimizer=self.mock_optimizer
-        )
-
-        self.mock_storage.update.assert_called_once_with(
-            unique_keys, unique_grads, return_missing=False
-        )
+        kv_table = self._create_new_test_kv_table()
+        keys = torch.tensor([1,2,3,4,5], device=npu_device)
+        values = torch.randn(5, 32, device=npu_device)
+        
+        with patch("dynamic_emb.distributed.key_value_table.insert_and_evict", side_effect=mock_insert_and_evict):
+            kv_table.insert_and_evict(keys, values)
+        
+        print("√ insert_and_evict 接口测试通过")

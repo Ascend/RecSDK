@@ -34,6 +34,8 @@ from dynamic_emb.distributed.dynamicemb_config import (
     dyn_emb_to_torch,
     torch_to_dyn_emb,
 )
+
+from dynamic_emb.distributed.initializers.dynamicemb_initializers import BaseDynamicEmbInitializer
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import BaseDynamicEmbeddingOptimizerV2
 from dynamic_emb.distributed.types import (
     Cache, 
@@ -52,6 +54,9 @@ from dynamic_emb_extensions import (
     find_pointers,
     load_from_pointer,
     device_timestamp,
+    count_matched,
+    export_batch_matched,
+    insert_and_evict
 )
 
 
@@ -670,7 +675,7 @@ class KeyValueTable(
     def reset(
         self,
     ) -> None:
-        pass
+        clear(self.table)
 
     def cache_metrics(self) -> Optional[torch.Tensor]:
         return self._cache_metrics if self._record_cache_metrics else None
@@ -678,6 +683,13 @@ class KeyValueTable(
     def set_record_cache_metrics(self, record: bool) -> None:
         self._record_cache_metrics = record
         return
+
+    def count_matched(
+        self,
+        threshold: int,
+        num_matched: torch.Tensor,
+    ) -> None:
+        count_matched(self.table, threshold, num_matched)
 
     def key_type(
         self,
@@ -694,6 +706,19 @@ class KeyValueTable(
     ) -> int:
         return self._capacity
 
+    def export_batch_matched(
+        self, threshold, batch_size, search_offset, d_count, d_keys, d_vals
+    ) -> None:
+        export_batch_matched(
+            self.table,
+            threshold,
+            batch_size,
+            search_offset,
+            d_count,
+            d_keys,
+            d_vals,
+        )
+
     def evict_strategy(self) -> EvictStrategy:
         return self.table.get_evict_strategy()
 
@@ -708,11 +733,52 @@ class KeyValueTable(
         keys: torch.Tensor,
         values: torch.Tensor,
     ) -> Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
-        num_evicted: int
-        evicted_keys: torch.Tensor
-        evicted_values: torch.Tensor
-        evicted_scores: torch.Tensor
-        return num_evicted, evicted_keys, evicted_values, evicted_scores
+        batch = keys.numel()
+        num_evicted: torch.Tensor = torch.zeros(1, dtype=torch.long, device=keys.device)
+        evicted_keys: torch.Tensor = torch.empty_like(keys)
+        evicted_values: torch.Tensor = torch.empty_like(values)
+        evicted_scores: torch.Tensor = torch.empty(
+            batch, dtype=torch.uint64, device=keys.device
+        )
+        insert_and_evict(
+            self.table,
+            batch,
+            keys,
+            values,
+            self.score if self._use_score else None,
+            evicted_keys,
+            evicted_values,
+            evicted_scores,
+            num_evicted,
+        )
+        if self._record_cache_metrics:
+            self._cache_metrics[2] = batch
+            self._cache_metrics[3] = num_evicted.cpu().item()
+        h_num_evict = num_evicted.cpu().item()
+        return (
+            h_num_evict,
+            evicted_keys[:h_num_evict],
+            evicted_values[:h_num_evict, :],
+            evicted_scores[:h_num_evict],
+        )
+
+
+def update_cache(
+    cache: Cache,
+    storage: Storage,
+    missing_keys: torch.Tensor,
+    missing_values: torch.Tensor,
+):
+    # need to update score.
+    num_evicted, evicted_keys, evicted_values, evicted_scores = cache.insert_and_evict(
+        missing_keys, missing_values
+    )
+    if num_evicted != 0:
+        storage.insert(
+            evicted_keys,
+            evicted_values,
+            evicted_scores,
+        )
 
 
 class KeyValueTableFunction:
@@ -779,5 +845,192 @@ class KeyValueTableFunction:
         if storage.enable_update():
             storage.update(unique_keys, unique_grads, return_missing=False)
             return
-        else:
-            raise RuntimeError("KeyValueTableFunction update only support enable_update mode")
+
+        emb_dtype = storage.embedding_dtype()
+        val_dim = storage.value_dim()
+        h_num_toatl = unique_keys.numel()
+        unique_values = torch.empty(
+            h_num_toatl, val_dim, device=unique_keys.device, dtype=emb_dtype
+        )
+        founds = torch.empty(h_num_toatl, device=unique_keys.device, dtype=torch.bool)
+        _, _, _ = storage.find(unique_keys, unique_values, founds=founds)
+
+        keys_for_storage = unique_keys[founds].contiguous()
+        values_for_storage = unique_values[founds, :].contiguous()
+        grads_for_storage = unique_grads[founds, :].contiguous()
+        optimizer.fused_update(
+            grads_for_storage,
+            values_for_storage,
+        )
+
+        storage.insert(keys_for_storage, values_for_storage)
+
+        return
+
+
+class KeyValueTableCachingFunction:
+    @staticmethod
+    def lookup(
+        cache: Cache,  # partial emb + optimizer state
+        storage: Storage,  # full emb + optimizer state
+        unique_keys: torch.Tensor,  # input
+        unique_embs: torch.Tensor,  # output
+        initializer: Callable,
+        enable_prefetch: bool,
+        training: bool,
+    ) -> None:
+        if unique_keys.dim() != 1:
+            raise ValueError(f"unique_keys must be a 1D tensor, got {unique_keys.dim()} dimensions instead")
+        
+        unique_keys.numel()
+        emb_dim = storage.embedding_dim()
+        emb_dtype = storage.embedding_dtype()
+        val_dim = (
+            storage.value_dim()
+        )  # value is generally composed of embedding and optimizer state
+
+        # 1. find in cache
+        h_num_keys_for_storage, missing_keys, missing_indices = cache.find_embeddings(
+            unique_keys, unique_embs
+        )
+        if h_num_keys_for_storage == 0:
+            return
+        keys_for_storage = missing_keys
+
+        founds = torch.empty(
+            h_num_keys_for_storage, device=unique_keys.device, dtype=torch.bool
+        )
+
+        # 2. find in storage
+        values_for_storage = torch.empty(
+            h_num_keys_for_storage,
+            val_dim,
+            device=unique_keys.device,
+            dtype=emb_dtype,
+        )
+        (
+            h_num_missing_in_storage,
+            missing_keys_in_storage,
+            missing_indices_in_storage,
+        ) = storage.find(keys_for_storage, values_for_storage, founds=founds)
+
+        # 3. initialize missing embeddings
+        if h_num_missing_in_storage != 0:
+            initializer(
+                values_for_storage[:, :emb_dim],
+                missing_indices_in_storage,
+                keys_for_storage,
+            )
+
+        # 4. copy embeddings to unique_embs
+        unique_embs[missing_indices, :] = values_for_storage[:, :emb_dim]
+
+        if training:
+            if emb_dim != val_dim:
+                values_for_storage[
+                    missing_indices_in_storage, emb_dim - val_dim :
+                ] = storage.init_optimizer_state()
+            update_cache(cache, storage, keys_for_storage, values_for_storage)
+        else:  # only update those found in the storage to cache.
+            found_keys_in_storage = keys_for_storage[founds].contiguous()
+            found_values_in_storage = values_for_storage[founds, :].contiguous()
+            update_cache(cache, storage, found_keys_in_storage, found_values_in_storage)
+        return
+
+    @staticmethod
+    def update(
+        cache: Cache,
+        storage: Storage,
+        unique_keys: torch.Tensor,
+        unique_grads: torch.Tensor,
+        optimizer: BaseDynamicEmbeddingOptimizerV2,
+    ):
+        h_num_keys_for_storage, missing_keys, missing_indices = cache.update(
+            unique_keys, unique_grads
+        )
+        if h_num_keys_for_storage == 0:
+            return
+        keys_for_storage = missing_keys
+        grads_for_storage = unique_grads[missing_indices, :].contiguous()
+
+        if storage.enable_update():
+            storage.update(keys_for_storage, grads_for_storage, return_missing=False)
+            return
+
+        emb_dtype = storage.embedding_dtype()
+        val_dim = storage.value_dim()
+        values_for_storage = torch.empty(
+            h_num_keys_for_storage, val_dim, device=unique_keys.device, dtype=emb_dtype
+        )
+        founds = torch.empty(
+            h_num_keys_for_storage, device=unique_keys.device, dtype=torch.bool
+        )
+        _, _, _ = storage.find(keys_for_storage, values_for_storage, founds=founds)
+
+        keys_for_storage = keys_for_storage[founds].contiguous()
+        values_for_storage = values_for_storage[founds, :].contiguous()
+        grads_for_storage = grads_for_storage[founds, :].contiguous()
+        optimizer.fused_update(
+            grads_for_storage,
+            values_for_storage,
+        )
+
+        storage.insert(keys_for_storage, values_for_storage)
+
+        return
+
+    @staticmethod
+    def prefetch(
+        cache: Cache,
+        storage: Storage,
+        unique_keys: torch.Tensor,
+        initializer: BaseDynamicEmbInitializer,
+        training: bool = True,
+        forward_stream: Optional[torch.cuda.Stream] = None,
+    ) -> None:
+        if cache is None:
+            raise ValueError("prefetch is available only when caching is enabled")
+        
+        emb_dtype = storage.embedding_dtype()
+        h_num_keys_for_storage, missing_keys, _ = cache.find_missed_keys(unique_keys)
+
+        if h_num_keys_for_storage == 0:
+            return
+        keys_for_storage = missing_keys
+
+        val_dim = storage.value_dim()
+        emb_dim = storage.embedding_dim()
+        values_for_storage = torch.empty(
+            h_num_keys_for_storage, val_dim, device=unique_keys.device, dtype=emb_dtype
+        )
+        founds = torch.empty(
+            h_num_keys_for_storage, device=unique_keys.device, dtype=torch.bool
+        )
+        (
+            num_missing_in_storage,
+            missing_keys_in_storage,
+            missing_indices_in_storage,
+        ) = storage.find(keys_for_storage, values_for_storage, founds=founds)
+
+        if num_missing_in_storage != 0:
+            if training:
+                embs_for_storage = values_for_storage[:, :emb_dim]
+                initializer(
+                    embs_for_storage,
+                    missing_indices_in_storage,
+                    keys_for_storage,
+                )
+                if val_dim != emb_dim:
+                    values_for_storage[
+                        missing_indices_in_storage, emb_dim - val_dim :
+                    ] = storage.init_optimizer_state()
+            else:
+                keys_for_storage = keys_for_storage[founds].contiguous()
+                values_for_storage = values_for_storage[founds, :].contiguous()
+
+        update_cache(
+            cache,
+            storage,
+            keys_for_storage,
+            values_for_storage,
+        )
