@@ -30,7 +30,7 @@
 
 | 产品名称   | 版本     |
 | ---------- | -------- |
-| Ascend HDK | 26.0.RC1 |
+| Ascend HDK | 26.0.RC1<br>26.7.0 (昇腾950代际产品) |
 | CANN       | 9.0.0    |
 
 ## 病毒扫描结果<a name="ZH-CN_TOPIC_0000002492442006"></a>
@@ -45,7 +45,7 @@
 
 | MindSDK软件版本 | MindSDK待升级版本                                                         | CANN版本兼容性                                                                                    | Ascend HDK版本兼容性                                                                                        |
 | --------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| MindSDK 26.0.0  | <ul><li>MindSDK 7.3.0及7.3.0.x</li><li>MindSDK 26.0.0及26.0.0.x</li></ul> | <ul><li>CANN 8.3.RC1及8.3.RC1.x</li><li>CANN 8.5.0及8.5.0.x</li><li>CANN 9.0.0及9.0.0.x</li></ul> | <ul><li>Ascend HDK 25.5.0及Ascend HDK 25.5.0.x</li><li>Ascend HDK 26.0.RC1及Ascend HDK 26.0.RC1.x</li></ul> |
+| MindSDK 26.0.0  | <ul><li>MindSDK 7.3.0及7.3.0.x</li><li>MindSDK 26.0.0及26.0.0.x</li></ul> | <ul><li>CANN 8.3.RC1及8.3.RC1.x</li><li>CANN 8.5.0及8.5.0.x</li><li>CANN 9.0.0及9.0.0.x</li></ul> | <ul><li>Ascend HDK 25.5.0及Ascend HDK 25.5.0.x</li><li>Ascend HDK 26.0.RC1及Ascend HDK 26.0.RC1.x</li><li>Ascend HDK 26.7.0</li></ul> |
 
 > [!NOTE] 说明 
 >软件版本兼容性是指产品软件版本升级时，其他关联软件不需要联动升级或打补丁，仍然可以支持已有功能。
@@ -60,19 +60,32 @@
 
 |特性名称|特性描述|配套产品型号|
 |--|--|--|
-|Rec SDK Torch(torch_rec_v1)|<ul><li>生成式推荐模型融合算子补齐：in_linear_silu，reverse_sequence，norm_multiply_dropout，concat_2d_jagged。</li><li>HSTU算子：反向算子性能优化，前反向算子支持int32</li><li>算子重构：查表反向算子、HSTU前反向算子重构。</li><li>多级缓存保存加载：支持增量保存加载，差异卡加载。</li><li>多级缓存准入淘汰：支持showclick准入淘汰策略。</li><li>推荐模型支持在算力切分设备推理。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器|
+|Rec SDK TensorFlow(tf_rec_v1)|<ul><li>适配昇腾950代际产品。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>昇腾950代际产品|
+|Rec SDK Torch(torch_rec_v1)|<ul><li>多级缓存保存加载：支持增量保存加载、差异卡加载。</li><li>多级缓存准入淘汰：支持showclick准入淘汰策略。</li><li>推荐模型支持在算力切分设备推理。</li><li>适配昇腾950代际产品。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>昇腾950代际产品|
+|Rec SDK TensorFlow(tf_rec_v2)|<ul><li>实现稀疏表基础功能：建表、查表、保存、加载、特征准入、特征淘汰。</li></ul>|昇腾950代际产品|
+|Rec SDK Torch(torch_rec_v2)|<ul><li>实现稀疏表基础功能：建表、查表、保存、加载、特征准入、特征淘汰。</li></ul>|昇腾950代际产品|
+|Rec SDK 算子|<ul><li>生成式推荐模型融合算子补齐，并适配昇腾950代际产品：in_linear_silu、reverse_sequence。</li><li>生成式推荐模型融合算子补齐，暂不支持昇腾950代际产品：norm_multiply_dropout、concat_2d_jagged。</li><li>HSTU算子增强：反向算子性能优化，前反向算子支持int32。</li><li>算子重构：查表反向算子、HSTU前反向算子重构。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>昇腾950代际产品|
+|fbgemm-npu|<ul><li>适配昇腾950代际产品。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>昇腾950代际产品|
+|HKV|<ul><li>适配昇腾950代际产品。</li></ul>|昇腾950代际产品| 
+
 
 ## 业务接口变更<a name="ZH-CN_TOPIC_0000002492442008"></a>
 
 **Rec SDK<a name="zh-cn_topic_0000001963197973_section3125124045019"></a>**
 
+- Rec SDK TensorFlow(tf_rec_v1)：不涉及接口变更。
 - Rec SDK Torch(torch_rec_v1)：不涉及接口变更。
+- Rec SDK TensorFlow(tf_rec_v2)：不涉及接口变更。
+- Rec SDK Torch(torch_rec_v2)：不涉及接口变更。
 
 ## 关键特性变更<a name="ZH-CN_TOPIC_0000002524441749"></a>
 
 **Rec SDK<a name="zh-cn_topic_0000001935999544_section18133752165114"></a>**
 
+- Rec SDK TensorFlow(tf_rec_v1)：不涉及关键特性变更。
 - Rec SDK Torch(torch_rec_v1)：不涉及关键特性变更。
+- Rec SDK TensorFlow (tf_rec_v2)：不涉及关键特性变更。
+- Rec SDK Torch(torch_rec_v2)：不涉及关键特性变更。
 
 ## 已解决的问题<a name="ZH-CN_TOPIC_0000002492442002"></a>
 
