@@ -72,14 +72,16 @@ def generate_increasing_sequence(num: int, seq_len: int):
     return result_np
 
 
-def gen_data(jt_num, inputs_shape, input_col, input_dtype):
+def gen_data(jt_num, inputs_shape, input_col, input_dtype, seq_len=None):
     input_values = []
     for i in range(jt_num):
         input_value = np.random.uniform(1, 100, [inputs_shape[i], input_col])
         input_value = torch.from_numpy(input_value).to(input_dtype)
         input_values.append(input_value)
     offsets = []
-    seq_len = random_seq_len(num=min(inputs_shape), min_len=2, max_len=100)
+    # 功能用例使用随机shape,性能用例使用确定shape.
+    if not seq_len:
+        seq_len = random_seq_len(num=min(inputs_shape), min_len=2, max_len=100)
     for i in range(0, jt_num):
         offset = generate_increasing_sequence(num=inputs_shape[i], seq_len=seq_len)
         offset = torch.from_numpy(offset).to(torch.int64)
