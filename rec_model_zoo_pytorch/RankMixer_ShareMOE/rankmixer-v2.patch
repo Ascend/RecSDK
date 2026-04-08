@@ -1,0 +1,971 @@
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
+index acb4e3df..19192a24 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
+@@ -41,6 +41,8 @@ import collections
+ from utils.common_utils import get_unique_path, to_clean_cpu_tensor
+ 
+ NPU_ENABLE = True
++npu_use_fp16 = False
++
+ if os.environ.get("NPU_FLAG", "True") == "False":
+     NPU_ENABLE = False
+     print("model run on GPU!!!")
+@@ -480,7 +482,7 @@ def patch_graph(model):
+     
+     def encode_graph(model_inputs):
+         if not model.graph_prepared:
+-            model.static_model_inputs = {k: v.clone() for k, v in model_inputs.items()} if model_inputs is not None else None
++            model.static_model_inputs = {k: v for k, v in model_inputs.items()} if model_inputs is not None else None
+             # warmup
+             for _i in range(3):
+                 with torch.no_grad():
+@@ -553,37 +555,30 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+ 
+     if enable_compile and enable_graph:
+         logging.info("enable compile and graph.")
+-        if NPU_ENABLE and enable_sync_loader:
+-            model.encode_static_for_compile = torch.compile(model.encode_static_for_compile, backend="inductor", dynamic=False)
++        if NPU_ENABLE:
++            model.deep_model = torch.compile(model.deep_model, backend="inductor", dynamic=False)
+             patch_graph(model)
+         else:
+-            model.encode = torch.compile(model.encode, backend="inductor", dynamic=False, mode="reduce-overhead")
++            model.deep_model = torch.compile(model.deep_model, backend="inductor", dynamic=False, mode="reduce-overhead")
++
+     elif enable_compile:
+         logging.info("enable compile.")
+-        model.encode = torch.compile(model.encode, backend="inductor", dynamic=False)
++        model.deep_model = torch.compile(model.deep_model, backend="inductor", dynamic=False)
+     elif enable_graph:
+-        if NPU_ENABLE and enable_sync_loader:
++        if NPU_ENABLE:
+             logging.info("enable npu graph.")
+             patch_graph(model)
+ 
+-    profiler_save_path = None
++    profiler_save_path = os.environ.get("profiling_dir")
+     if profiling_flag:
+         if NPU_ENABLE:
+             print("start NPU profiling!!!")
+             experimental_config = torch_npu.profiler._ExperimentalConfig(
+-                export_type=[
+-                    torch_npu.profiler.ExportType.Text
+-                    ],
+-                profiler_level=torch_npu.profiler.ProfilerLevel.Level1, # level1 leve2影响小shape算子性能，<3us的算子
+-                mstx=False,    # 原参数名称msprof_tx改名为mstx，新版本依旧兼容原参数名
+-                aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++                export_type=[torch_npu.profiler.ExportType.Text],
++                aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
++                profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
+                 l2_cache=False,
+-                op_attr=False,
+-                data_simplification=False,
+-                record_op_args=False,
+-                gc_detect_threshold=None
+             )
+-            profiler_save_path = "./profiling/1B_gemm_rankmixer_wight_graph"
+             prof = torch_npu.profiler.profile(
+                 activities=[
+                     torch_npu.profiler.ProfilerActivity.CPU,
+@@ -597,9 +592,7 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+                 with_modules=False,
+                 with_flops=False,
+                 experimental_config=experimental_config)
+-            prof.start()
+         else:
+-            profiler_save_path = os.path.join("gpu_profiling", 'profiling')
+             profiler_config = {
+                 'activities': [
+                     torch.profiler.ProfilerActivity.CPU,
+@@ -620,7 +613,7 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+                 'with_stack': False,
+             }
+             prof = torch.profiler.profile(**profiler_config)
+-            prof.start()
++
+     batch_limit = train_conf.get("batch_limit", 0)
+     e2e_average_nums = train_conf.get("e2e_average_nums", 20)
+     e2e_data = {"E2E":[]}
+@@ -629,107 +622,96 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+         layer_data = collections.OrderedDict()
+     time_arr = []
+     with torch.no_grad():
++        scores, eval_seq_features = exec_cb(eval_iter)
++        B, N = eval_seq_features.past_ids.size()
++        flattened_offsets = (
++                (eval_seq_features.past_lengths - 1)
++                + torch.arange(
++                    start=0, end=B, step=1, dtype=eval_seq_features.past_lengths.dtype, device=eval_seq_features.past_lengths.device
++                ) * N
++        )
++        target_ids = eval_seq_features.past_ids.view(-1)[flattened_offsets].reshape(B, 1)
++        pid = eval_seq_features.past_ids.view(-1)
++        pid[flattened_offsets] = 0
++        eval_seq_features.past_ids = pid.reshape(B, -1)
++        eval_seq_features.past_lengths = eval_seq_features.past_lengths - 1
++
++        model_input = eval_seq_features.past_payloads
++        model_input['past_ids'] = eval_seq_features.past_ids
++        model_input['past_lengths'] = eval_seq_features.past_lengths
++
++        bs ,seq_len = model_input['past_ids'].shape
++        embedding_dim = feature_conf["item_feature_columns"]["sequence_item_ids"].get("dim",64)
++        past_embeddings = torch.randn((bs, seq_len, embedding_dim),device=model_input['past_ids'].device)
++        model_input["past_embeddings"] = past_embeddings
++        if NPU_ENABLE != "False" and npu_use_fp16:
++            model_input["past_embeddings"]  = past_embeddings.to(torch.float16)
++        else:
++            model_input["past_embeddings"]  = past_embeddings.to(torch.bfloat16)
++
++        from utils.check_result import ioChecker
++        iochecker = ioChecker(save_dir, model_input['past_ids'].device, int(os.environ.get("LOAD_PRETRAIN_MODEL", "0")) == 1)
++        model_input = iochecker.load_or_save_inputs(model_input,0,"model_input")
++        eval_seq_features = iochecker.load_or_save_inputs(eval_seq_features,0,"eval_seq_features")
++
++        prof.start()
+         while True:
+-            try:
+-                scores, eval_seq_features = exec_cb(eval_iter)
+-            except StopIteration:
+-                logging.info("finished")
+-                break
+             if enable_sync_loader and eval_iter >= batch_limit:
+                 break
+-            if not train_conf['is_recall']:
+-                # 评估函数由于不同业务要求不同，故需要不同业务各自实现。
+-                scores, ground_truth, group_keys = process_rank_scores(
+-                    model.module, eval_seq_features, feature_conf.get('save_score_csv_item_cols', {}),
+-                    feature_conf.get('save_score_csv_user_cols', {}), feature_conf.get('token_per_item', 2)
+-                )
+ 
+-                scores_all.extend(scores.view(-1).detach().cpu().tolist())
+-                ground_truth_all.extend(ground_truth.view(-1).detach().cpu().tolist())
+-                for key in group_keys_all.keys():
+-                    items = group_keys.get(key, torch.tensor([]))
+-                    group_keys_all[key].extend(items.detach().view(-1).cpu().tolist())
+-
+-                if (eval_iter % train_conf["eval_interval"]) == 0:
+-                    torch.distributed.barrier()  # sync time taken
+-                    cost = time.perf_counter() - last_eval_time
+-                    logging.info(
+-                        f"rank {rank}; batch-stat (eval): step {eval_iter} (EVAL in {cost:.2f}s)")
+-                    last_eval_time = time.perf_counter()
+-
+-                export_num_batch = export_conf.get("export_num_batch", 1)
+-                if is_input_copied < export_num_batch:
+-                    model_input_export = copy.deepcopy(model_input)
+-                    model_input_export_list.append(model_input_export)
+-                    is_input_copied += 1
+-
+-                del scores
+-                del ground_truth
+-                del group_keys
+-            else:
+-                B, N = eval_seq_features.past_ids.size()
+-                flattened_offsets = (
+-                        (eval_seq_features.past_lengths - 1)
+-                        + torch.arange(
+-                            start=0, end=B, step=1, dtype=eval_seq_features.past_lengths.dtype, device=eval_seq_features.past_lengths.device
+-                        ) * N
++            if check_precision:
++                print(f"check precision between eager and inductor model.")
++                eager_emb_output = eval_metrics_v2_from_tensors(
++                    eval_state, eager_model, model_input, eval_seq_features, target_ids,
++                    target_ratings=None,
++                    user_max_batch_size=train_conf["eval_batch_size"],
++                    dtype=None,
++                    filter_invalid_ids=filter_invalid_ids,
+                 )
+-                target_ids = eval_seq_features.past_ids.view(-1)[flattened_offsets].reshape(B, 1)
+-                pid = eval_seq_features.past_ids.view(-1)
+-                pid[flattened_offsets] = 0
+-                eval_seq_features.past_ids = pid.reshape(B, -1)
+-                eval_seq_features.past_lengths = eval_seq_features.past_lengths - 1
+-
+-                model_input = eval_seq_features.past_payloads
+-                model_input['past_ids'] = eval_seq_features.past_ids
+-                model_input['past_lengths'] = eval_seq_features.past_lengths
+-                
+-                start = time.time()
++                inductor_emb_output = eval_metrics_v2_from_tensors(
++                    eval_state, model, model_input, eval_seq_features, target_ids,
++                    target_ratings=None,
++                    user_max_batch_size=train_conf["eval_batch_size"],
++                    dtype=None,
++                    filter_invalid_ids=filter_invalid_ids,
++                )
++                torch.testing.assert_close(eager_emb_output["deep_outputs"], inductor_emb_output["deep_outputs"],
++                                        equal_nan=True)
+ 
+-                if check_precision:
+-                    print(f"check precision between eager and inductor model.")
+-                    eager_emb_output = eval_metrics_v2_from_tensors(
+-                        eval_state, eager_model, model_input, eval_seq_features, target_ids,
+-                        target_ratings=None,
+-                        user_max_batch_size=train_conf["eval_batch_size"],
+-                        dtype=None,
+-                        filter_invalid_ids=filter_invalid_ids,
+-                    )
+-                    inductor_emb_output = eval_metrics_v2_from_tensors(
++            start = time.time()
++            val_dict = eval_metrics_v2_from_tensors(
+                         eval_state, model, model_input, eval_seq_features, target_ids,
+                         target_ratings=None,
+                         user_max_batch_size=train_conf["eval_batch_size"],
+                         dtype=None,
+                         filter_invalid_ids=filter_invalid_ids,
+-                    )
+-                    torch.testing.assert_close(eager_emb_output["deep_outputs"], inductor_emb_output["deep_outputs"],
+-                                            equal_nan=True)
+-                eval_dict = eval_metrics_v2_from_tensors(
+-                            eval_state, model, model_input, eval_seq_features, target_ids,
+-                            target_ratings=None,
+-                            user_max_batch_size=train_conf["eval_batch_size"],
+-                            dtype=None,
+-                            filter_invalid_ids=filter_invalid_ids,
+-                )
+-                if FLAGS.get_infer_result:
+-                    if round_cnt == 0:
+-                        register_forward_output_hook(model, layer_data)
+-                    round_cnt += 1
+-                    if round_cnt == 15:
+-                        print("------try to save--------")
+-                        save_torch_data(model_input, eval_dict,layer_data)
+-                end = time.time()
+-                print(f"E2E time: {end - start}")
+-                e2e_data['E2E'].append(end-start)
+-                time_arr.append(end-start)
+-                if NPU_ENABLE:
+-                    torch.npu.synchronize()
+-                else:
+-                    torch.cuda.synchronize()
+-
+-                if profiling_flag:
+-                    prof.step()
+-                eval_dict_all = {}
++            )
++            if eval_iter == 0:
++                print(val_dict["deep_outputs"])
++                val_dict["deep_outputs"]= iochecker.save_outputs(val_dict["deep_outputs"],0, "npu_output")
++            if NPU_ENABLE:
++                torch.npu.synchronize()
++            else:
++                torch.cuda.synchronize()
++            end = time.time()
++            print(f"E2E time: {end - start}")
++            e2e_data['E2E'].append(end-start)
++            time_arr.append(end-start)
++
++            if profiling_flag:
++                prof.step()
++
++            if FLAGS.get_infer_result:
++                if round_cnt == 0:
++                    register_forward_output_hook(model, layer_data)
++                round_cnt += 1
++                if round_cnt == 15:
++                    print("------try to save--------")
++                    save_torch_data(model_input, val_dict,layer_data)
++
++
++
++            eval_dict_all = {}
+             eval_iter += 1
+     #latency计算
+     print("收集端到端时间")
+@@ -755,6 +737,13 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+     report["P99 Latency"] = p99_latency
+     report["P95 Latency"] = p95_latency
+     report["P90 Latency"] = p90_latency
++    with open(os.path.join(profiler_save_path, f'report_e2e_time.json'), "w", encoding="utf-8") as f:
++        json.dump(
++            report,
++            f,
++            ensure_ascii=False,
++            indent=4
++        )
+     print(report)
+ 
+     if profiling_flag:
+@@ -1310,6 +1299,7 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+         model_path = os.path.join(save_dir, export_conf["save_dir_name"], model_file_name)
+         model_state_dict = torch.load(model_path, map_location=device)
+         model.load_state_dict(model_state_dict, False)
++        model.deep_model.reload_weights()
+         logging.info(f"Loaded pretrain model from {model_path}")
+ 
+     total_params = sum(p.numel() for p in model.parameters()) / 1e6
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
+index befbf753..627f9757 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
+@@ -35,6 +35,10 @@ class DLRModule(BaseModel):
+         ])
+         self.balance_loss_coef = 1e-8
+ 
++    def reload_weights(self):
++        for i in range(len(self.dlrm_modules)):
++            self.dlrm_modules[i].reload_weights()
++
+     def forward(self, 
+                 past_ids,
+                 num_rerank,
+@@ -71,6 +75,7 @@ class RankMixingInput(BaseModel):
+         k_multiplier = model_cfg[Const.HP].get("k_multiplier", 1)
+         assert (x_dim % dim_per_token) == 0
+         T = x_dim // dim_per_token
++        T = model_cfg[Const.HP].get("T")
+         num_heads = T
+         inner_dim = int(num_heads * k * k_multiplier)
+         assert (inner_dim % num_heads) == 0
+@@ -99,14 +104,16 @@ class TokenMixing(BaseModel):
+         为避免信息损失，要求x_dim可以被dim_per_token整除。
+         """
+         super().__init__(model_cfg=model_cfg, common_hp=common_hp, model_cls_dict=model_cls_dict)
+-        dim_per_token = model_cfg[Const.HP].get("dim_per_token")
++        # dim_per_token = model_cfg[Const.HP].get("dim_per_token")
+         x_dim = model_cfg[Const.HP].get("x_dim")
+         k = model_cfg[Const.HP].get("k")
+         k_multiplier = model_cfg[Const.HP].get("k_multiplier")
+-        assert (x_dim % dim_per_token) == 0
+-        T = x_dim // dim_per_token
++        # assert (x_dim % dim_per_token) == 0
++        # T = x_dim // dim_per_token
++        T = model_cfg[Const.HP].get("T")
+         num_heads = T
+-        inner_dim = int(num_heads * k * k_multiplier)
++        # inner_dim = int(num_heads * k * k_multiplier)
++        inner_dim = x_dim
+         assert (inner_dim % num_heads) == 0
+         self.num_heads = num_heads
+         self.ln = torch.nn.LayerNorm((inner_dim,), eps=1e-7)
+@@ -235,7 +242,7 @@ class PerTokenFFN(BaseModel):
+             if self.sparseMOE:
+                 bs, D = s.shape
+                 device = s.device
+-                s = s.to(torch.float16)
++                s = s.to(torch.bfloat16)
+                 x = torch.zeros(bs, D, device=device, dtype=s.dtype)
+                 experts_unique = torch.unique(expert_indices)
+                 with record_function("## PFFN ##"):
+@@ -244,7 +251,7 @@ class PerTokenFFN(BaseModel):
+                         if not mask.any():
+                             continue
+                         idx = mask.nonzero(as_tuple=False).squeeze(1)  # 激活样本索引
+-                        x_t = torch.index_select(s, 0, idx).to(torch.float16)            # (k, D)
++                        x_t = torch.index_select(s, 0, idx).to(torch.bfloat16)            # (k, D)
+                         for i in range(self.num_layers):
+                             if self.b is not None:
+                                 x_t = torch.addmm(self.b[exp_id][i], x_t, self.W[exp_id][i])
+@@ -309,6 +316,7 @@ class SparseMoE(BaseModel):
+         target_activation_ratio = model_cfg[Const.HP].get("target_activation_ratio")
+         sparseMOE = model_cfg[Const.HP].get("sparseMOE")
+         top_k_number = model_cfg[Const.HP].get("top_k_number")
++        npu_use_fp16 = common_hp["train_conf"].get("npu_use_fp16", False)
+ 
+         self.D = inner_dim
+         self.T = num_tokens
+@@ -317,6 +325,7 @@ class SparseMoE(BaseModel):
+         self.target_activation_ratio = target_activation_ratio
+         self.sparseMOE = sparseMOE
+         self.top_k = top_k_number
++        self._npu_use_fp16 = npu_use_fp16
+ 
+         # Router h(·): shared across positions, maps R^D -> R^{N_e}
+         self.router = nn.Linear(self.D, self.Ne, bias=False)
+@@ -454,8 +463,12 @@ class SparseMoE(BaseModel):
+             expert_outputs = torch.stack([exp(s) for exp in self.token_experts], dim=2)
+             # Weighted sum over experts: v[b,t,d] = sum_j gates[b,t,j] * out[b,t,j,d]
+             v = torch.einsum("btjd,btj->btd", expert_outputs, gates)
+-        v = v.to(torch.float16)
+-        s = s.to(torch.float16)
++        if ENABLE_NPU and self._npu_use_fp16:
++            v = v.to(torch.float16)
++            s = s.to(torch.float16)
++        else:
++            v = v.to(torch.bfloat16)
++            s = s.to(torch.bfloat16)
+         return self.ln(s + v), (reg_loss, sparsity)
+ 
+ @ModelRegistry.register()    
+@@ -559,7 +572,6 @@ class SparseMoE_Gemm(BaseModel):
+         K = self.top_k
+         bs, T, D = s.shape
+         output_dim = self.D
+-        x = s.clone()
+         # Router logits -> ReLU gates (no softmax, no top-k)
+         # shape: (bs, T, N_e)
+         with record_function("## gates ##"):
+@@ -569,7 +581,7 @@ class SparseMoE_Gemm(BaseModel):
+             topk_gates, topk_indices = torch.topk(router_logits, k=self.top_k, dim=-1) # shape: [bs, T, top_k]
+             bs, T, top_k = topk_indices.shape
+             offset = torch.arange(T, device=topk_indices.device).unsqueeze(0).unsqueeze(-1) * self.Ne  # shape: (1, T, 1)
+-            topk_indices_offset = topk_indices + offset  # shape: (bs, T, top_k)
++            topk_indices_offset = (topk_indices + offset).contiguous()  # shape: (bs, T, top_k)
+             expert_mask = F.one_hot(topk_indices_offset, num_classes=T*self.Ne).sum(dim=2)  # shape: (bs, T, T*Ne)
+             expert_mask = expert_mask.sum(dim=1) # (b*s, expert_number*T)
+             expert_mask = expert_mask.permute(1, 0) # (expert_number*T, b*s)
+@@ -655,11 +667,178 @@ class SparseMoE_Gemm(BaseModel):
+         return self.ln(s + v), (reg_loss, sparsity)
+ 
+ 
++class FFN_npu_swiglu(torch.nn.Module):
++    def __init__(self, dim: int, hidden_dim: int, dtype, dropout=0, ):
++        super().__init__()
++        if ENABLE_NPU:
++            self.w1 = torch.nn.Linear(dim, hidden_dim, bias=False).to(dtype).to("npu")
++            self.w2 = torch.nn.Linear(hidden_dim, dim, bias=False).to(dtype).to("npu")
++            self.w3 = torch.nn.Linear(dim, hidden_dim, bias=False).to(dtype).to("npu")
++        else:
++            self.w1 = torch.nn.Linear(dim, hidden_dim, bias=False).to(dtype).cuda()
++            self.w2 = torch.nn.Linear(hidden_dim, dim, bias=False).to(dtype).cuda()
++            self.w3 = torch.nn.Linear(dim, hidden_dim, bias=False).to(dtype).cuda()
++        self.dropout = torch.nn.Dropout(dropout).to(dtype)
++
++
++    def forward(self, x):
++        return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
++
++class MOERouter(torch.nn.Module):
++    def __init__(self, emb_dim, expert_number, top_k_number, dtype):
++        super().__init__()
++        self.gate = torch.nn.Linear(emb_dim, expert_number, dtype=dtype)
++        for param in self.gate.parameters():
++            param.requires_grad = False
++            param.copy_(torch.empty_like(param).uniform_(-0.5, 0.5))
++        self.expert_number = expert_number
++        self.top_k = top_k_number
++
++    def forward(self, hidden_states):
++        router_logits = self.gate(hidden_states)
++        router_weights, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)
++        router_weights = torch.softmax(router_weights, dim=-1)
++        selected_experts = selected_experts.contiguous()
++        expert_mask = F.one_hot(selected_experts, num_classes=self.expert_number).to(torch.int32)
++        group_list = expert_mask.sum(dim=1)
++        group_list = group_list.permute(1, 0)
++        group_list = group_list.sum(dim=1)
++        expert_mask = expert_mask.permute(2, 1, 0)
++
++        return router_weights, expert_mask, selected_experts, group_list
++
++class SparseMOE_share(torch.nn.Module):
++    def __init__(
++            self,
++            emb_dim,
++            expert_number,
++            top_k,
++            dtype,
++    ):
++        super().__init__()
++
++        self.ffn_hidden_dim = emb_dim*4
++        self.expert_number = expert_number
++        self.experts = torch.nn.ModuleList([
++            FFN_npu_swiglu(emb_dim, self.ffn_hidden_dim, dtype) for _ in range(self.expert_number)])
++        self.cw1, self.cw2, self.cw3 = self.create_expert_weights(self.experts)
++        self.router = MOERouter(emb_dim, expert_number, top_k, dtype)  # todo 专家token blance
++        self.top_k = top_k
++        self.dtype = dtype
++
++    def create_expert_weights(self, experts):
++        """创建多个专家的权重"""
++        w1_list = []
++        w2_list = []
++        w3_list = []
++
++        if ENABLE_NPU:
++            for item in experts:
++                w1 = item.w1.weight.T
++                w2 = item.w2.weight.T
++                w3 = item.w3.weight.T
++                w1_list.append(w1)
++                w2_list.append(w2)
++                w3_list.append(w3)
++
++            return w1_list, w2_list, w3_list
++
++        for item in experts:
++            w1 = item.w1.weight.unsqueeze(0)
++            w2 = item.w2.weight.unsqueeze(0)
++            w3 = item.w3.weight.unsqueeze(0)
++            w1_list.append(w1)
++            w2_list.append(w2)
++            w3_list.append(w3)
++
++        return torch.concat(w1_list), torch.concat(w2_list), torch.concat(w3_list)
++
++    def reload_weights(self):
++        self.cw1, self.cw2, self.cw3 = self.create_expert_weights(self.experts)
++
++    def compute_ffn_with_grouped_matmul(self, expanded_x, w1_list, w2_list, w3_list, group_list):
++        if ENABLE_NPU:
++            w1_out = torch_npu.npu_grouped_matmul(
++                x=[expanded_x],
++                weight=w1_list,
++                scale=None,
++                group_list=group_list,
++                split_item=2,
++                group_list_type=1,
++                group_type=0,
++                output_dtype=self.dtype,)[0]
++
++            w3_out = torch_npu.npu_grouped_matmul(
++                x=[expanded_x],
++                weight=w3_list,
++                scale=None,
++                group_list=group_list,
++                split_item=2,
++                group_list_type=1,
++                group_type=0,
++                output_dtype=self.dtype,)[0]
++
++            gate = F.silu(w1_out)
++            combined = gate * w3_out
++
++            w2_out = torch_npu.npu_grouped_matmul(
++                x=[combined],
++                weight=w2_list,
++                scale=None,
++                group_list=group_list,
++                split_item=2,
++                group_list_type=1,
++                group_type=0,
++                output_dtype=self.dtype,)[0]
++
++            return w2_out
++
++        w1_out = grouped_gemm.ops.gmm(expanded_x, w1_list, group_list,trans_b=True)
++        w3_out = grouped_gemm.ops.gmm(expanded_x, w3_list, group_list,trans_b=True)
++        gate = F.silu(w1_out)
++        combined = gate * w3_out
++        w2_out = grouped_gemm.ops.gmm(combined, w2_list, group_list,trans_b=True)
++
++        return w2_out
++
++    def forward(self, x):
++        bs, seq_len, hidden_dim = x.size()
++        hidden_states = x.view(-1, hidden_dim)
++
++        router_weights, expert_mask, selected_experts, group_list = self.router(hidden_states)
++        if ENABLE_NPU:
++            gates = torch.zeros_like(router_weights)
++            gates.scatter_(dim=-1, index=selected_experts, src=router_weights)
++            reg_loss = gates.sum(-1).sum(-1)
++            tokens = x.reshape(bs * seq_len, hidden_dim)
++
++            expend_x, idx = torch_npu.npu_moe_token_permute(
++                tokens=tokens,
++                indices=selected_experts,
++                num_out_tokens=bs* seq_len * self.top_k
++            )
++
++            expanded_permuted_rows = self.compute_ffn_with_grouped_matmul(expend_x, self.cw1, self.cw2, self.cw3,
++                                                                        group_list)
++
++            output = torch_npu.npu_moe_token_unpermute(expanded_permuted_rows, idx, router_weights)
++
++            return output.view(bs, seq_len, hidden_dim)
++
++        group_list = group_list.cpu()  # 注意这里这个参数只支持CPU，可能入不了图
++        selected_experts = selected_experts.to(torch.int32)
++        router_weights = router_weights.to(torch.float32)
++
++        expend_x, idx = grouped_gemm.ops.permute(hidden_states, selected_experts)
++
++        expanded_permuted_rows = self.compute_ffn_with_grouped_matmul(expend_x, self.cw1, self.cw2, self.cw3, group_list)
++
++        return grouped_gemm.ops.unpermute(expanded_permuted_rows, idx, router_weights).view(bs, seq_len, hidden_dim)
++
+ @ModelRegistry.register(req_subs={"TokenMixing", "SparseMoE"})    
+ class RankMixerBlock(BaseModel):
+     def __init__(self, model_cfg: Dict, common_hp: Dict, model_cls_dict: Dict):
+         super().__init__(model_cfg=model_cfg, common_hp=common_hp, model_cls_dict=model_cls_dict)
+-        dim_per_token = model_cfg[Const.HP].get("dim_per_token")
+         all_dim = model_cfg[Const.HP].get("all_dim")
+         num_experts = model_cfg[Const.HP].get("num_experts")
+         inner_dim = model_cfg[Const.HP].get("inner_dim")
+@@ -671,8 +850,12 @@ class RankMixerBlock(BaseModel):
+         target_activation_ratio = model_cfg[Const.HP].get("target_activation_ratio")
+         sparseMOE = model_cfg[Const.HP].get("sparseMOE")
+         top_k_number = model_cfg[Const.HP].get("top_k_number")
+-        
+-        self.model_cfg[Const.SUB_MODELS]["TokenMixing"][Const.HP] = {"dim_per_token": dim_per_token,
++        shareMOE = model_cfg[Const.HP].get("shareMOE")
++        share_experts_number= model_cfg[Const.HP].get("share_experts_number")
++        share_top_k_number= model_cfg[Const.HP].get("share_top_k_number")
++
++        self.model_cfg[Const.SUB_MODELS]["TokenMixing"][Const.HP] = {
++                                                                    "T": T,
+                                                                    "x_dim": all_dim,
+                                                                    "k": k,
+                                                                    "k_multiplier": k_multiplier}
+@@ -689,18 +872,31 @@ class RankMixerBlock(BaseModel):
+                                                                    "sparseMOE":sparseMOE,
+                                                                    "top_k_number":top_k_number
+                                                                   }
+-        
++        self.shareMOE = shareMOE
+         self.moe = self.init_sub_model("SparseMoE")
+-        
++        if shareMOE:
++            self.share_moe = SparseMOE_share(
++                    emb_dim=inner_dim,
++                    expert_number=share_experts_number,
++                    top_k=share_top_k_number,
++                    dtype=torch.bfloat16
++                )
++    def reload_weights(self):
++        self.share_moe.reload_weights()
++
+     def forward(self, x: torch.Tensor, loss_old: torch.Tensor, sparsity_old: torch.Tensor):
+         with record_function("## tokenmixing ##"):
+             x = self.tokenmixing(x)
+         with record_function("## moe ##"):
+             y, (loss, sparsity) = self.moe(x)
++        if self.shareMOE:
++            with record_function("## share_moe ##"):
++                x2 = self.share_moe(x)
++                y = y+x2
+         return y, (loss + loss_old, sparsity + sparsity_old)
+     
+ 
+-@ModelRegistry.register(req_subs={"RankMixingInput", "RankMixerBlock"})
++@ModelRegistry.register(req_subs={"RankMixerBlock"})
+ class RankMixer(BaseModel):
+     """
+     根据论文复现RankMixer模型。
+@@ -713,15 +909,6 @@ class RankMixer(BaseModel):
+         # user_dim, item_dim = compute_user_item_feature_dims(feat_conf, model_conf)
+         # all_dim = user_dim + item_dim
+         all_dim = self._embedding_dim
+-        dim_per_token = model_cfg[Const.HP].get("dim_per_token", 428)
+-        # 如果不能被整除，找到最近的一个可以被整除的数，并且修改为新的dim_per_token
+-        if all_dim % dim_per_token != 0:
+-            new_dim_per_token = self.adjust_dim_fast(all_dim, dim_per_token)
+-            logging.warning("As the parameter dim_per_token %s is not a divisor of %s, we automatically modify it to the nearest divisor %s",
+-                           dim_per_token, all_dim, new_dim_per_token)
+-            dim_per_token = new_dim_per_token
+-            model_cfg[Const.HP]["dim_per_token"] = dim_per_token
+-        
+         num_experts = model_cfg[Const.HP].get("num_experts", 10)
+         k = model_cfg[Const.HP].get("k", 4)
+         k_multiplier = model_cfg[Const.HP].get("k_multiplier", 1)
+@@ -731,17 +918,16 @@ class RankMixer(BaseModel):
+         target_activation_ratio = model_cfg[Const.HP].get("target_activation_ratio", 1.0)
+         sparseMOE = model_cfg[Const.HP].get("sparseMOE", True)
+         top_k_number = model_cfg[Const.HP].get("top_k_number", 4)
++        shareMOE = model_cfg[Const.HP].get("shareMOE", False)
++        share_experts_number= model_cfg[Const.HP].get("share_experts")
++        share_top_k_number= model_cfg[Const.HP].get("share_top_k_number")
++        T = model_cfg[Const.HP].get("T")
++        max_sequence_length = model_conf["max_sequence_length"]
+ 
+-        T = all_dim // dim_per_token
+-        inner_dim = int(T * k * k_multiplier)
+-        
+-        self.model_cfg[Const.SUB_MODELS]["RankMixingInput"][Const.HP] = {"dim_per_token": dim_per_token,
+-                                                                        "x_dim": all_dim,
+-                                                                        "k": k,
+-                                                                        "k_multiplier": k_multiplier}
+-        self.input_model = self.init_sub_model("RankMixingInput")
++        inner_dim=all_dim
++        self.T = T
+         
+-        self.model_cfg[Const.SUB_MODELS]["RankMixerBlock"][Const.HP] = {"dim_per_token": dim_per_token,
++        self.model_cfg[Const.SUB_MODELS]["RankMixerBlock"][Const.HP] = {
+                                                                         "all_dim": all_dim,
+                                                                         "num_experts": num_experts,
+                                                                         "inner_dim": inner_dim,
+@@ -752,20 +938,23 @@ class RankMixer(BaseModel):
+                                                                         "dropout_p": dropout_p,
+                                                                         "target_activation_ratio":target_activation_ratio,
+                                                                         "sparseMOE":sparseMOE,
+-                                                                        "top_k_number": top_k_number
+-                                                                       } 
++                                                                        "top_k_number": top_k_number,
++                                                                        "shareMOE":shareMOE,
++                                                                        "share_experts_number":share_experts_number,
++                                                                        "share_top_k_number":share_top_k_number
++                                                                       }
+         self.rm_blocks = nn.Sequential(*[
+                     self.init_sub_model("RankMixerBlock") 
+                     for _ in range(n_layers)
+                 ])
+-        self.output_proj = nn.Linear(inner_dim, self._embedding_dim, bias=False)
+-        self.output_norm = RMSNormNPU(self._embedding_dim, Const.EPS)
++        self.input_model = nn.Linear(int(max_sequence_length * all_dim / T), inner_dim, bias=False)
++        self.output_proj = nn.Linear(inner_dim, 1, bias=False)
++        self.output_norm = RMSNormNPU(T, Const.EPS)
+         self.balance_loss_coef = 1e-8
+ 
+-    def adjust_dim_fast(self, all_dim, dim_per_token):
+-        divisors = [d for d in range(1, all_dim + 1) if all_dim % d == 0]
+-        return min(divisors, key=lambda x: abs(x - dim_per_token))
+-        
++    def reload_weights(self):
++        for i in range(len(self.rm_blocks)):
++            self.rm_blocks[i].reload_weights()
+     def forward(self, 
+                 past_ids,
+                 num_rerank,
+@@ -781,19 +970,20 @@ class RankMixer(BaseModel):
+         else:
+             x = item_feature_embs
+         B, N, _ = x.size()
+-        x_batch = x.view(B * N, -1)
++        x_batch = x.view(B, self.T, -1)
+         rm_in = self.input_model(x_batch)
+         l1_loss = 0.0
+         sparsity = 0.0
+         for i in range(len(self.rm_blocks)):
+             block_i = self.rm_blocks[i]
+             rm_in, (l1_loss, sparsity) = block_i(rm_in, l1_loss, sparsity)
+-        rm_out = rm_in.mean(dim=1)
++        # rm_out = rm_in.mean(dim=1)
+         l1_loss = l1_loss / len(self.rm_blocks)
+         sparsity = sparsity / len(self.rm_blocks)
+-        output = self.output_proj(rm_out)
+-        y = output.view(B, N, -1)
++        rm_out = self.output_proj(rm_in)
++        y = rm_out.view(B,-1)
+         y = self.output_norm(y)
++        y = torch.sigmoid(y)
+         return {"deep_outputs": y, "deep_loss": l1_loss, "deep_sparsity": sparsity}
+     
+ @ModelRegistry.register()
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
+index aab1e849..1f15438f 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
+@@ -22,6 +22,7 @@ from modeling.generic.sequential_v2.utils import get_current_embeddings
+ from torch.autograd.profiler import record_function
+ import os
+ NPU_FLAG = os.environ.get('NPU_FLAG', False)
++ENABLE_EMBEDDING = int(os.environ.get('EMBEDDING_LAYER', 0) == 1)
+ 
+ @ModelRegistry.register(
+     req_subs={"EmbeddingModule", "InputFeaturesPreprocessorModule", "SequentialModule", "AttentionMaskModule",
+@@ -96,6 +97,35 @@ class GR_model(BaseModel):
+         user_feature_embs = self.embedding_module.get_user_embeddings(model_inputs)
+         return past_embeddings, user_feature_embs, candidate_embeddings
+     
++    def generate_input_seqence_test(
++        self,
++        model_inputs,
++        num_rerank: int
++    ) -> torch.Tensor:
++        with record_function("## embedding ##"):
++            past_lengths = model_inputs['past_lengths']
++            past_ids = model_inputs[self.infer_items_key]
++            past_payloads = model_inputs
++
++            bs, seqlen = past_ids.size()
++            past_embeddings = model_inputs["past_embeddings"]
++            if ENABLE_EMBEDDING:
++                past_embeddings, user_feature_embs, candidate_embeddings = self.get_embeddings(model_inputs)
++                if NPU_FLAG != "False" and self._npu_use_fp16:
++                    past_embeddings = past_embeddings.to(torch.float16)
++                else:
++                    past_embeddings = past_embeddings.to(torch.bfloat16)
++
++        with record_function("## deep_model ##"):
++            deep_results = self.deep_model(
++                past_ids=None,
++                num_rerank=num_rerank,
++                model_inputs=model_inputs,
++                user_feature_embs=None,
++                item_feature_embs=past_embeddings,
++                )
++        return None, past_embeddings, None, None, deep_results
++
+     def generate_input_seqence(
+         self, 
+         model_inputs,
+@@ -216,7 +246,7 @@ class GR_model(BaseModel):
+         # num_rerank: 候选集商品的数量，训练时因为不会传入candidate_前缀的特征，所以训练时这个值是0
+         num_rerank = model_inputs.get('candidate_' + self.infer_items_key, torch.tensor([[]])).shape[1]
+         attn_mask = self.attention_mask_module(model_inputs, self._max_sequence_length, num_rerank, num_user_tokens=self.user_feat_num)
+-        seq_embeddings, past_embeddings, all_timestamps, past_lengths_after_input_processor, deep_results = self.generate_input_seqence(model_inputs=model_inputs, num_rerank=num_rerank)
++        seq_embeddings, past_embeddings, all_timestamps, past_lengths_after_input_processor, deep_results = self.generate_input_seqence_test(model_inputs=model_inputs, num_rerank=num_rerank)
+         encoded_embeddings = self.generate_user_embeddings(past_lengths=past_lengths_after_input_processor,
+                                                all_timestamps=all_timestamps,
+                                                seq_embeddings=seq_embeddings,
+@@ -237,8 +267,8 @@ class GR_model(BaseModel):
+             return loss+aux_loss
+ 
+     def encode_static_for_compile(self, model_inputs):
+-        attn_mask = self.attention_mask_module(model_inputs, self._max_sequence_length, num_rerank=0, num_user_tokens=self.user_feat_num)
+-        seq_embeddings, past_embeddings, all_timestamps, past_lengths_after_input_processor, deep_results = self.generate_input_seqence(model_inputs=model_inputs, num_rerank=0)
++        # attn_mask = self.attention_mask_module(model_inputs, self._max_sequence_length, num_rerank=0, num_user_tokens=self.user_feat_num)
++        seq_embeddings, past_embeddings, all_timestamps, past_lengths_after_input_processor, deep_results = self.generate_input_seqence_test(model_inputs=model_inputs, num_rerank=0)
+         return deep_results
+     
+     def encode_static(self, model_inputs):
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
+index 69b6273d..4bc06206 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
+@@ -14,6 +14,7 @@ from modeling.generic.sequential_v2 import HAS_ATTN_FUSION_OPS
+ 
+ NPU_ENABLE = True
+ if os.environ.get("NPU_FLAG", "True") == "False":
++    from flashinfer.norm import fused_add_rmsnorm, rmsnorm
+     NPU_ENABLE = False
+ 
+ if NPU_ENABLE:
+@@ -102,14 +103,13 @@ class RMSNormNPU(torch.nn.Module):
+                 y = torch_npu.npu_rms_norm(x, self.weight, epsilon=self.eps)[0]
+             else:
+                 y, _, x = torch_npu.npu_add_rms_norm(residual, x, self.weight, self.eps)
+-            return y
+         else:
+             if residual is None:
+-                y = self.cuda_rms_norm(x, self.weight, epsilon=self.eps)[0]
++                y = rmsnorm(x, self.weight, self.eps)
+             else:
+-                # y, _, x = self.gpu_add_rms_norm(residual, x, self.weight, self.eps)
+-                y = self.gpu_add_rms_norm(residual, x, self.weight, self.eps)
+-            return y
++                fused_add_rmsnorm(x, residual, self.weight, self.eps)
++                y = x
++        return y
+         
+ class Transformer(BaseModel):
+     """
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
+index 54957e2c..7455b2cd 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
+@@ -56,10 +56,12 @@ echo "  data_dir=${data_dir:-<unset>}"
+ echo "  save_dir=${save_dir:-<unset>}"
+ 
+ # ===== 设置默认值 =====
+-: "${config_file:=../sample_configs/train_amazon_books_0.2B.ini}" # 可以修改为不同大小的模型，默认0.2B
++: "${config_file:=../sample_configs/rankmixer-v2-dim64.ini}" # 可以修改为不同大小的模型，默认0.2B
+ : "${data_dir:=../../amzn_books.ori}"  # 须手动改为数据集路径
+ : "${save_dir:=$parent_dir/modelfile/}"   # 改为预训练模型对应路径
++export profiling_dir=profiling
+ export LOAD_PRETRAIN_MODEL=0  # 是否加载预训练模型，0不加载，1加载(精度校验时使用)
++export EMBEDDING_LAYER=0
+ 
+ # 一级流水
+ export TASK_QUEUE_ENABLE=1
+@@ -91,7 +93,8 @@ PYTHON_ARGS="
+     --is_train=False \
+     --save_user_emb=False \
+     --get_infer_result=False \
+-    --tensorboard_log_dir=${save_dir}/ScalingLaw/runs/exp_amzn_all/"
++    --tensorboard_log_dir=${save_dir}/ScalingLaw/runs/exp_amzn_all/ \
++    --eval_batch_size=1024 "
+ #按需添加--eval_batch_size=128修改batch size
+ export PYTHONPATH=$(dirname $(realpath $(find ${cur_dir} -name "DLRM.py"))):${PYTHONPATH}
+ 
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/utils/check_result.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/utils/check_result.py
+new file mode 100644
+index 00000000..009a082c
+--- /dev/null
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/utils/check_result.py
+@@ -0,0 +1,101 @@
++import os
++import torch
++import numpy as np
++
++class ioChecker:
++    def __init__(self, save_dir, device, check):
++        self.path = save_dir
++        self.device = device
++        self.check = check
++        torch.backends.cudnn.deterministic = self.check
++        torch.backends.cudnn.benchmark = not self.check
++
++    def _to_cpu_detached(self, obj):
++        if isinstance(obj, torch.Tensor):
++            return obj.detach().cpu()
++        if isinstance(obj, dict):
++            return {k: self._to_cpu_detached(v) for k, v in obj.items()}
++        if isinstance(obj, (list, tuple)):
++            t = [self._to_cpu_detached(v) for v in obj]
++            return type(obj)(t)
++        return obj
++
++    def _to_device(self,obj, device):
++        if isinstance(obj, torch.Tensor):
++            return obj.to(device)
++        if isinstance(obj, dict):
++            return {k: self._to_device(v, device) for k, v in obj.items()}
++        if isinstance(obj, (list, tuple)):
++            t = [self._to_device(v) for v in obj]
++            return type(obj)(t)
++        return obj
++
++    def load_or_save_inputs(self, inputs, t, name):
++        if not self.check:
++            return inputs
++        if t != 0:
++            return inputs
++        save_path = os.path.normpath(self.path + f'{name}.pt')
++        if os.path.exists(save_path):
++            data = torch.load(save_path, map_location="cpu", weights_only=False)
++            print(f" loading input from {save_path}")
++            return self._to_device(data, self.device) if self.device else data
++
++        os.makedirs(self.path, exist_ok=True)
++        torch.save(self._to_cpu_detached(inputs), save_path)
++        print(f" save input to {self.path}")
++        return inputs
++
++
++    def save_outputs(self, outputs, t, name):
++        if t == 0 and self.check:
++            save_path = os.path.normpath(self.path + f'{name}.pt')
++            os.makedirs(self.path, exist_ok=True)
++            torch.save(self._to_cpu_detached(outputs), save_path)
++            print(f" save output to {save_path}")
++        return outputs
++
++def load_value(path):
++    x = torch.load(path, map_location="cpu", weights_only=False)
++    if isinstance(x, torch.Tensor):
++        return x.detach().cpu().float()
++    if isinstance(x, np.ndarray):
++        return torch.from_numpy(x).cpu().float()
++    return torch.tensor(x).cpu().float()
++
++def compare_tensor_outputs(gpu_path, npu_path, atol=1e-5, rtol=1e-5):
++    gpu = load_value(gpu_path)
++    npu = load_value(npu_path)
++    print("gpu:",gpu)
++    print("npu:",npu)
++
++    if gpu.shape != npu.shape:
++        raise ValueError(f"Shape mismatch: gpu={gpu.shape}, npu={npu.shape}")
++
++    diff = (npu - gpu).abs()
++
++    p99 = torch.quantile(diff, 0.99).item()
++    eps = 1e-12
++    rel = diff / (gpu.abs() + eps)
++
++    all_ok = torch.allclose(npu, gpu, atol=atol, rtol=rtol)
++
++    pyPath = "[ check_results.py ]"
++    print(f"{pyPath} ==== NPU vs GPU output====")
++    print(f"{pyPath} files: gpu={gpu_path} ")
++    print(f"{pyPath} files: npu={npu_path}")
++    print(f"{pyPath} shape: {tuple(gpu.shape)} | numel: {gpu.numel()}")
++    print(f"{pyPath} allclose(atol={atol}, rtol={rtol}): {all_ok}")
++    print(f"{pyPath} mean_abs_err  : {diff.mean().item():.6g}")
++    print(f"{pyPath} mean_rel_err  : {rel.mean().item():.6g}")
++    print(f"{pyPath} p99_abs_err   : {p99:.6g}")
++    torch.testing.assert_close(gpu, npu, rtol=rtol, atol=atol, equal_nan=True)
++
++
++if __name__ == "__main__":
++    compare_tensor_outputs(
++        gpu_path="",
++        npu_path="",
++        atol=1e-3,
++        rtol=1e-3,
++    )
