@@ -9,10 +9,10 @@
 | Atlas A3训练系列产品  | 是    |
 | Atlas 推理系列产品    | 否    |
 
-# concat_2d_jagged_grad算子目录层级
+# oncat_jagged_tensor_grad算子目录层级
 
 ```shell
--- concat_2d_jagged_grad
+-- concat_jagged_tensor_grad
    |-- v220
       |-- op_host                           # 算子host侧实现
       |-- op_kernel                         # 算子kernel侧实现

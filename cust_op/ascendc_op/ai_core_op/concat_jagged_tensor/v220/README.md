@@ -9,14 +9,14 @@
 | Atlas A3训练系列产品  | 是    |
 | Atlas 推理系列产品    | 否    |
 
-# concat_2d_jagged算子目录层级
+# concat_jagged_tensor算子目录层级
 
 ```shell
--- concat_2d_jagged
+-- concat_jagged_tensor
    |-- v220
       |-- op_host                 # 算子host侧实现
       |-- op_kernel               # 算子kernel侧实现
-      |-- concat_2d_jagged.json    # 算子原型配置
+      |-- concat_jagged_tensor.json    # 算子原型配置
       |-- README.md               # 算子说明文档
       |-- run.sh                  # 算子编译部署脚本
 ```
