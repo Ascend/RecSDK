@@ -815,3 +815,747 @@ class EmbeddingModule(nn.Module):
     @abc.abstractmethod
     def get_user_embeddings(self, user_features: Dict[str, torch.Tensor]) -> torch.Tensor:
         pass
+
+class DistributeEmbeddingModuleWithSideInfoLonger(EmbeddingModule):
+    """
+    带有sideinfo的Embedding模块, 用于生成物品和用户的表示。
+    """
+
+    def __init__(self, model_cfg: Dict, common_hp: Dict, device) -> None:
+        super().__init__(model_cfg=model_cfg, common_hp=common_hp)
+        feat_conf = common_hp["feature_conf"]
+        model_conf = common_hp["model_conf"]
+        train_conf = common_hp["train_conf"]
+        data_loader_conf = common_hp["data_loader_conf"]
+        item_feature_columns: Dict = feat_conf.get('item_feature_columns', None)
+        self.item_feature_columns = item_feature_columns
+        user_feature_columns: Dict = feat_conf.get('user_feature_columns', None)
+        self.user_feature_columns = user_feature_columns
+        sequence_feature_columns: Dict = feat_conf.get('seq_feature_columns', None)
+        self.sequence_feature_columns = sequence_feature_columns
+        self.infer_item_id_name = feat_conf.get("infer_items_key")
+        self.padding_index = feat_conf.get("padding_index", 0)
+        self.num_rerank = data_loader_conf.get("num_rerank")
+        self.use_nonseq_token = model_cfg[Const.HP].get("use_nonseq_token", False)
+        self.device = device
+
+        # if model_conf["item_user_mlp"]:
+        self.item_mlp = True
+        self.user_mlp = True
+
+        # 构造辅助embedding字典
+        self.aux_embedding_dict = torch.nn.ModuleDict()
+        self.aux_dim = {}
+        aux_dim_total = 0
+
+        self.multi_value_prefix = feat_conf.get('multi_value_prefix', "pref_")
+        if user_feature_columns is None or item_feature_columns is None or self.sequence_feature_columns is None:
+            raise ValueError("user_feature_columns and item_feature_columns cannot be None")
+        # 物品信息嵌入字典
+        self._item_feature_names: List[str] = []
+        self.item_dyte: Dict[str, str] = {}
+        item_info_dims = {}
+        # 用户信息嵌入字典
+        self._user_feature_names: List[str] = []
+        self.user_dyte: Dict[str, str] = {}
+        user_info_dims = {}
+        # 序列信息嵌入字典
+        self._seq_feature_names: Dict[str, str] = {}
+        self.seq_dyte: Dict[str, str] = {}
+        seq_info_dims = {}
+        # multi特征，emb切分时不能使用row_wise
+        self.multi_feature_names: List[str] = []
+        # 统计连续特征的个数
+        con_item_feature_count = 0
+        con_user_feature_count = 0
+
+        # 初始化物品特征嵌入
+        self.feature_tables: Dict[str, torchrec.EmbeddingConfig] = {}
+        self.enabled_item_features: List[str] = []
+        for feature_name, _feature_info in item_feature_columns.items():
+            feature_count = int(item_feature_columns[feature_name].get('feature_count', 10))
+            feature_enabled = item_feature_columns[feature_name].get("enabled", True)
+            feature_dtype = item_feature_columns[feature_name].get("dtype", "int")
+            self.item_dyte[feature_name] = feature_dtype
+            if feature_enabled:
+                self.enabled_item_features.append(feature_name)
+                if feature_dtype == "con":
+                    # 处理商品特征里的离散特征
+                    feature_dim = 1
+                    con_item_feature_count = con_item_feature_count + 1
+                elif feature_dtype in ["int", "multi"]:
+                    feature_dim = item_feature_columns[feature_name].get('dim', 32)
+                    table = torchrec.EmbeddingConfig(
+                        name=feature_name,
+                        embedding_dim=feature_dim,
+                        num_embeddings=feature_count + 1,
+                        feature_names=[feature_name],
+                    )
+                    self.feature_tables[feature_name] = table
+                    if feature_dtype == "multi":
+                        self.multi_feature_names.append(feature_name)
+                else:
+                    logging.error("feature_dtype %s is undefined for %s.", feature_dtype, feature_name)
+                self._item_feature_names.append(feature_name)
+                if _feature_info.get("enable_aux_emb", False):
+                    feature_dim = feature_dim + aux_dim_total
+                item_info_dims[feature_name] = feature_dim
+        # 初始化用户特征嵌入
+        self.enabled_user_features: List[str] = []
+        for feature_name, _feature_info in user_feature_columns.items():
+            feature_count = int(user_feature_columns[feature_name].get('feature_count', 10))
+            feature_enabled = user_feature_columns[feature_name].get("enabled", True)
+            feature_dtype = user_feature_columns[feature_name].get("dtype", "int")
+            associated_item_feature = user_feature_columns[feature_name].get("associated", None)
+            self.user_dyte[feature_name] = feature_dtype
+            if feature_enabled:
+                self.enabled_user_features.append(feature_name)
+                if feature_dtype == "pref":
+                    # 默认的关联特征是去掉pref_前缀的商品特征名，例如pref_artist默认的关联特征是artist
+                    associated = feature_name.replace(self.multi_value_prefix,"") if associated_item_feature is None \
+                        else associated_item_feature
+                    if associated in self.enabled_item_features:
+                        # 若关联特征是item embedding 且启用
+                        feature_dim = item_info_dims.get(associated)
+                        user_info_dims[feature_name] = feature_dim
+                        # 多个特征共享同一emb表
+                        self.feature_tables[associated].feature_names.append(feature_name)
+
+                    else:
+                        logging.error(
+                            "The assoicated feature %s for %s is not an item feature or not enabled in config.",
+                            associated, feature_name)
+                elif feature_dtype == "con":
+                    # 处理商品特征里的离散特征
+                    feature_dim = 1
+                    con_user_feature_count = con_user_feature_count + 1
+                    user_info_dims[feature_name] = feature_dim
+                elif feature_dtype in ["int", "multi"]:
+                    associated = user_feature_columns[feature_name].get("shared", None)
+                    if associated is None or associated not in self.feature_tables:
+                        # 若无关联特征，直接初始化
+                        feature_dim = user_feature_columns[feature_name].get('dim', 32)
+                        table = torchrec.EmbeddingConfig(
+                            name=feature_name,
+                            embedding_dim=feature_dim,
+                            num_embeddings=feature_count + 1,
+                            feature_names=[feature_name],
+                        )
+                        self.feature_tables[feature_name] = table
+                        user_info_dims[feature_name] = feature_dim
+                        if feature_dtype == "multi":
+                            self.multi_feature_names.append(feature_name)
+                    else:
+                        feature_dim = user_info_dims.get(associated)
+                        user_info_dims[feature_name] = feature_dim
+                        self.feature_tables[associated].feature_names.append(feature_name)
+                else:
+                    logging.error("feature_dtype %s is undefined for the user.", feature_dtype)
+                self._user_feature_names.append(feature_name)
+
+        # 初始化序列特征嵌入
+        user_item_feature_dim = {**item_info_dims, **user_info_dims}
+
+        self.enabled_seq_features: List[str] = []
+        for seq_name, seq_config in self.sequence_feature_columns.items():
+            seq_info_dims[seq_name] = seq_config.get("length")
+            feature_enabled = seq_config.get("enabled", True)
+            if feature_enabled:
+                feature_dtype = seq_config.get("dtype", "int")
+                if feature_dtype == "pref":
+                    # "pos_seq"属于所有序列都共享的特征，只处理第一遍就行，后面直接跳过
+                    associated = seq_config.get("associated", None)
+                    if associated in self.feature_tables:
+                        if seq_name not in self.feature_tables[associated].feature_names:
+                            self.feature_tables[associated].feature_names.append(seq_name)
+                    else:
+                        logging.error("assoiciated feature %s never appears before.", associated)
+
+                    seq_info_dims[seq_name] = user_item_feature_dim.get(associated)
+                elif feature_dtype in ["int"]:
+                    feature_dim = seq_config.get("dim", 32)
+                    feature_count = int(seq_config.get("feature_count", 10))
+                    table = torchrec.EmbeddingConfig(
+                        name=seq_name,
+                        embedding_dim=feature_dim,
+                        num_embeddings=feature_count + 1,
+                        feature_names=[seq_name],
+                    )
+                    if seq_name not in self.feature_tables:
+                        self.feature_tables[seq_name] = table
+                    if _feature_info.get("enable_aux_emb", False):
+                        feature_dim = feature_dim + aux_dim_total
+                    seq_info_dims[seq_name] = feature_dim
+
+        ecs: Dict[str, List[torchrec.EmbeddingConfig]] = {}
+        self.ec_feature_names: Dict[str, List[str]] = {}
+        for table in self.feature_tables.values():
+            # table按dim分类：每个ec中的table.embedding_dim必须相同
+            ec_attr = f"ec_dim{table.embedding_dim}"
+            ecs.setdefault(ec_attr, []).append(table)
+            self.ec_feature_names.setdefault(ec_attr, []).extend(table.feature_names)
+        self.shared_ebc_attrs = self.ec_feature_names
+        # 创建EmbeddingCollections
+        for attr, tbls in ecs.items():
+            setattr(self, attr,
+                    torchrec.EmbeddingCollection(device=self.device, tables=tbls))
+        self._con_item_info_embs = torch.nn.BatchNorm1d(con_item_feature_count)
+        self._con_user_info_embs = torch.nn.BatchNorm1d(con_user_feature_count)
+        # self._item_embedding_dim = common_hp["model_conf"].get("item_embedding_dim", 64)
+        self._item_embedding_dim = int(os.environ.get("Dim"))
+
+        # 计算物品和用户输入维度
+        item_input_dim = sum(item_info_dims.values())
+        user_input_dim = sum(user_info_dims.values())
+
+        feat_conf["item_emb_dims"] = item_input_dim
+        feat_conf["user_emb_dims"] = user_input_dim
+        logging.info("item_emb_dims is %s", item_input_dim)
+        logging.info("user_emb_dims is %s", user_input_dim)
+
+        self.item_emb_mlp, self.user_emb_mlp, self.seq_emb_mlp = torch.nn.Identity(), torch.nn.Identity(), torch.nn.Identity()
+        self.item_emb_mlp = torch.nn.Sequential(
+            torch.nn.Linear(item_input_dim, self._item_embedding_dim * 4),
+            torch.nn.ReLU(),
+            torch.nn.Linear(self._item_embedding_dim * 4, self._item_embedding_dim), )
+        logging.info('Set item_emb_mlp to Linear: %s -> %s', item_input_dim, self._item_embedding_dim)
+
+        self.user_emb_mlp = torch.nn.Sequential(
+            torch.nn.Linear(user_input_dim, self._item_embedding_dim * 4),
+            torch.nn.ReLU(),
+            torch.nn.Linear(self._item_embedding_dim * 4, self._item_embedding_dim), )
+        logging.info('Set user_emb_mlp to Linear: %s -> %s', user_input_dim, self._item_embedding_dim)
+
+        seq_input_dim = sum(seq_info_dims.values())
+        if self._item_embedding_dim != 0:
+            self.seq_emb_mlp = torch.nn.Sequential(
+                torch.nn.Linear(seq_input_dim, self._item_embedding_dim * 4),
+                torch.nn.ReLU(),
+                torch.nn.Linear(self._item_embedding_dim * 4, self._item_embedding_dim),
+                torch.nn.ReLU()
+            )
+            logging.info('Set seq_emb_mlp to Linear: %s -> %s' % (seq_input_dim, self._item_embedding_dim))
+        else:
+            if item_input_dim != user_input_dim:
+                raise RuntimeError('item_input_dim and user_input_dim mismatch! user_dim : %s, item_dim : %s' %
+                                   (user_input_dim, item_input_dim))
+            self._item_embedding_dim = item_input_dim
+
+        self.feature_values_cache = None
+
+    @property
+    def item_embedding_dim(self) -> int:
+        return self._item_embedding_dim
+
+    def debug_str(self) -> str:
+        return self.__class__.__name__
+
+    def reset_params(self):
+        seen = set()
+        for name, params in self.named_parameters():
+            if 'emb' in name:
+                ptr = params.data_ptr()
+                if ptr in seen:
+                    continue  # 已初始化过底层 tensor
+                seen.add(ptr)
+                logging.info("Initialize %s as truncated normal: %s params", name, params.data.size())
+                truncated_normal(params, mean=0.0, std=0.02)
+            elif 'weight' in name and 'mlp' in name:
+                torch.nn.init.normal_(params, mean=0.0, std=0.01)
+                logging.info("Initialize %s with normal(0, 0.01)", name)
+            elif 'bias' in name and 'mlp' in name:
+                torch.nn.init.constant_(params, 0.0)
+                logging.info("Initialize %s with constant(0.0)", name)
+            else:
+                logging.info("Skipping initializing params %s - not configured", name)
+
+    def _get_feature_values(self, all_features: Dict[str, torch.Tensor]) -> ChainMap[str, torch.Tensor]:
+        # 由于torch.fx中Proxy object cannot be iterated，EC查表返回的字典不能通过update等方式合并，
+        # 所以该处使用collections.ChainMap将多个map映射连接起来，在避免fx报错的情况下达到字典合并的效果。
+        from torchrec import JaggedTensor
+        jt_dicts: List[Dict[str, JaggedTensor]] = []
+        for ec_attr in self.shared_ebc_attrs.keys():
+            jt_dicts.append(getattr(self, ec_attr)(all_features[ec_attr]))
+        embs_dict = ChainMap(*jt_dicts)
+
+        return embs_dict
+
+    def _init_embs(self, features: Dict[str, torch.Tensor]):
+        self.feature_values_cache = self._get_feature_values(features)
+
+    def _reset_embs(self):
+        if self.feature_values_cache is not None:
+            del self.feature_values_cache
+            self.feature_values_cache = None
+
+    def prepare_embeddings_if_necessary(self, features: Dict[str, torch.Tensor]):
+        return initializing(functools.partial(self._init_embs, features), self._reset_embs)
+
+    def _get_item_embs(self, item_features: Dict[str, torch.Tensor], all_embs) -> torch.Tensor:
+        """
+        根据物品特征获取物品嵌入。
+
+        :param item_features: 物品特征字典。
+        :return: 物品嵌入张量。
+        """
+        eps = 1e-6
+        feature_emb_list = []
+        con_inputs = []
+        con_names = []
+        for feature_name in self._item_feature_names:
+            if feature_name in self.enabled_item_features:
+                item_feature_id = item_features[feature_name]
+                if self.item_dyte[feature_name] == "con":
+                    con_inputs.append(item_feature_id)
+                    con_names.append(feature_name)
+                    continue
+                elif self.item_dyte[feature_name] == "multi":
+                    if self.training:
+                        # item_feature_id： (B, N, M) M 是多值特征padding后的长度
+                        item_feature_id = item_feature_id.unsqueeze(1)
+                    B, N, M = item_feature_id.shape
+                    # feature_values：（B, N, M, D）
+                    feature_values = all_embs[feature_name].values().reshape(B, N, M, -1)
+                    feature_dim = feature_values.size(-1)
+                    feat_nonzero = item_feature_id != self.padding_index
+                    feat_mask = feat_nonzero.unsqueeze(-1).repeat(1, 1, 1, feature_dim)
+                    # 对pref多值特征做mean pooling，并忽略掉值为self.padding_index的填充index
+                    # 形状为(B, N, D)
+                    feature_value = (feature_values * feat_mask).sum(dim=2) / (feat_mask.sum(dim=2) + eps)
+                else:
+                    if not self.training:
+                        # item_feature_id: (B, N) N是候选商品数量
+                        item_feature_id = item_feature_id.squeeze(1)
+                    B, N = item_feature_id.shape[0], 1
+                    # feature_value：（B, N, D）
+                    feature_value = all_embs[feature_name].values().reshape(B, N, -1)
+
+                if self.item_feature_columns[feature_name].get("enable_aux_emb", False):
+                    # 如果此特征启用辅助embedding，则将辅助embedding和该特征拼接
+                    if self.item_dyte[feature_name] in ["multi"]:
+                        aux_embeddings = []
+                        for k, v in self.aux_embedding_dict.items():
+                            aux_dim = self.aux_dim.get(k)
+                            feat_mask = feat_nonzero.unsqueeze(-1).repeat(1, 1, aux_dim)
+                            aux_value = v(item_feature_id)
+                            aux_value = (aux_value * feat_mask).sum(dim=1) / (feat_mask.sum(dim=1) + eps)
+                            aux_embeddings.append(aux_value)
+                    else:
+                        aux_embeddings = [v(item_feature_id)
+                                          for _, v in self.aux_embedding_dict.items()]
+                    aux_embeddings.append(feature_value)
+                    feature_value = torch.cat(aux_embeddings, dim=-1)
+
+            feature_emb_list.append(feature_value)
+        if con_inputs:
+            con_input_tensor = torch.cat(con_inputs, dim=1)
+            normed_con = self._con_item_info_embs(con_input_tensor)
+            normed_con = normed_con.transpose(1, 2)
+            # 一般 shape[1] 就是 con 数量
+            num_chunks = len(con_names)
+            chunks = normed_con.chunk(num_chunks, dim=-1)
+            for i in range(num_chunks):
+                feature_emb_list.append(chunks[i])
+
+        if len(self.enabled_item_features) > 0:
+
+            feature_embs_original = torch.cat(feature_emb_list, dim=-1)
+            if self.item_mlp and self._item_embedding_dim != 0:
+                # (B, S, _item_embedding_dim)
+                feature_embs = self.item_emb_mlp(feature_embs_original)
+            else:
+                feature_embs = feature_embs_original
+        else:
+            feature_embs = None
+        return feature_embs
+
+    def _get_user_embs(self, user_features: Dict[str, torch.Tensor], all_embs) -> torch.Tensor:
+        """
+        根据用户特征获取用户嵌入。
+
+        :param user_features: 用户特征字典。
+        :return: 用户嵌入张量。
+        """
+        eps = 1e-6
+        feature_emb_list = []
+        con_inputs = []
+        con_names = []
+        for feature_name in self._user_feature_names:
+            if feature_name in self.enabled_user_features:
+                user_feature_id = user_features[feature_name]
+                feature_value = all_embs[feature_name].values()
+                if self.user_dyte[feature_name] == "con":
+                    con_inputs.append(user_feature_id)
+                    con_names.append(feature_name)
+                    continue
+                elif self.user_dyte[feature_name] in ["pref", "multi"]:
+                    B, M = user_feature_id.shape
+                    # feature_values: (B, M, D) M 是多值特征padding后的长度
+                    feature_value = feature_value.reshape(B, M, -1)
+                    feature_dim = feature_value.size(-1)
+                    feat_nonzero = user_feature_id != self.padding_index
+                    feat_mask = feat_nonzero.unsqueeze(-1).repeat(1, 1, feature_dim)
+                    # 对pref多值特征做mean pooling，并忽略掉值为self.padding_index的填充index
+                    feature_value = (feature_value * feat_mask).sum(dim=1) / (feat_mask.sum(dim=1) + eps)
+
+            feature_emb_list.append(feature_value)
+
+        if con_inputs:
+            con_input_tensor = torch.cat(con_inputs, dim=1)
+            normed_con = self._con_user_info_embs(con_input_tensor)
+            normed_con = normed_con.transpose(1, 2)
+            # 一般 shape[1] 就是 con 数量
+            num_chunks = len(con_names)
+            chunks = normed_con.chunk(num_chunks, dim=-1)
+            for i in range(num_chunks):
+                feature_emb_list.append(chunks[i])
+
+        if len(self.enabled_user_features) > 0:
+            feature_embs_original = torch.cat(feature_emb_list, dim=-1)
+            if self.user_mlp and self._item_embedding_dim != 0:
+                # (B, S, _item_embedding_dim)
+                feature_embs = self.user_emb_mlp(feature_embs_original)
+            else:
+                feature_embs = feature_embs_original
+            feature_embs = feature_embs.unsqueeze(1)
+        else:
+            feature_embs = None
+        return feature_embs
+
+    def _get_seq_embs(self, seq_features: Dict[str, torch.Tensor], all_embs) -> torch.Tensor:
+        feature_emb_list = []
+        for seq_name, seq_config in self.sequence_feature_columns.items():
+            # for feature_name, feature_info in seq_config.items():
+            seq_feature_id = seq_features[seq_name]
+            S = seq_config.get("length")
+            B = seq_feature_id.shape[0]
+            L = seq_feature_id.shape[-1]
+
+            feature_value = all_embs[seq_name].values().reshape(B, L, -1)[:, :S, :]
+
+            if seq_config.get("enable_aux_emb", False):
+                aux_embeddings = [v(seq_feature_id) for _, v in self.aux_embedding_dict.items()]
+                aux_embeddings.append(feature_value)
+                feature_value = torch.cat(aux_embeddings, dim=-1)
+            feature_emb_list.append(feature_value)
+            seq_emb = torch.cat(feature_emb_list, dim=-1)
+        if self._item_embedding_dim != 0:
+            # (B, S, _item_embedding_dim)
+            feature_embs = self.seq_emb_mlp(seq_emb)
+        return feature_embs
+
+    def get_all_embeddings(self, all_features: Dict[str, torch.Tensor]) -> Tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor]:
+        # 由于torch.fx中Proxy object cannot be iterated，EC查表返回的字典不能通过update等方式合并，
+        # 所以该处使用collections.ChainMap将多个map映射连接起来，在避免fx报错的情况下达到字典合并的效果。
+        from torchrec import JaggedTensor, KeyedJaggedTensor
+        from typing import Dict, List, Tuple, ChainMap, Callable
+        device = self.device
+
+        new_all_features = {}
+        for k, v in all_features.items():
+            if isinstance(v, KeyedJaggedTensor):
+                new_all_features[k] = KeyedJaggedTensor(
+                    keys=v.keys(),
+                    values=v.values(),
+                    lengths=v.lengths() if v.lengths() is not None else None,
+                    offsets=v.offsets() if v.offsets() is not None else None,
+                    weights=v.weights_or_none() if v.weights_or_none() is not None else None,
+                    stride=v.stride(),
+                    length_per_key=v.length_per_key(),
+                    offset_per_key=v.offset_per_key(),
+                    index_per_key=v.index_per_key(),
+                )
+            elif isinstance(v, JaggedTensor):
+                new_all_features[k] = JaggedTensor(
+                    values=v.values(),
+                    lengths=v.lengths() if v.lengths() is not None else None,
+                    offsets=v.offsets() if v.offsets() is not None else None,
+                    weights=v.weights() if v.weights() is not None else None,
+                )
+            elif hasattr(v, "to"):
+                new_all_features[k] = v
+            else:
+                new_all_features[k] = v
+
+        all_features = new_all_features
+
+        jt_dicts: List[Dict[str, JaggedTensor]] = []
+
+        for ec_attr in self.shared_ebc_attrs.keys():
+            jt_dicts.append(getattr(self, ec_attr)(all_features[ec_attr]))
+        embs_dict = ChainMap(*jt_dicts)
+
+        item_feature_embs = self._get_item_embs(all_features, embs_dict)
+
+        user_feature_embs = self._get_user_embs(all_features, embs_dict)
+        seq_feature_embs = self._get_seq_embs(all_features, embs_dict)
+
+        if self.use_nonseq_token:
+            user_feature_embs = self._get_user_embs(all_features, embs_dict)
+            return item_feature_embs, user_feature_embs, seq_feature_embs
+        else:
+            return item_feature_embs, user_feature_embs, seq_feature_embs
+
+    def get_item_embeddings(self, item_features: Dict[str, torch.Tensor]) -> torch.Tensor:
+        raise RuntimeError(
+            "Please call 'get_all_embeddings', return a tuple contains item_embeddings, user_embeddings, seq_feature_embs")
+
+    def get_user_embeddings(self, user_features: Dict[str, torch.Tensor]) -> torch.Tensor:
+        raise RuntimeError(
+            "Please call 'get_all_embeddings', return a tuple contains item_embeddings, user_embeddings, seq_feature_embs")
+
+    def get_candidate_item_embeddings(self, item_features: Dict[str, torch.Tensor]) -> torch.Tensor:
+        raise RuntimeError(
+            "Please call 'get_all_embeddings', return a tuple contains item_embeddings, user_embeddings, seq_feature_embs")
+
+
+class OneTransBlock(Transformer):
+
+    def __init__(self, model_cfg: Dict, common_hp: Dict):
+        super().__init__(model_cfg=model_cfg, common_hp=common_hp)
+        self.num_nonseq_feat = model_cfg[Const.HP].get("num_nonseq_feat", None)
+        # self.d_model = model_cfg[Const.HP].get("d_model", None)
+
+        # self.num_nonseq_feat = int(os.environ.get("Non_Seq_Len"))
+        self.d_model = int(os.environ.get("Dim"))
+
+        self.num_head = model_cfg[Const.HP].get("nhead", None)
+        self.head_dim = self.d_model // self.num_head
+        self.use_heterogeneous = model_cfg[Const.HP].get("use_heterogeneous", None)
+        self.use_pyramid = model_cfg[Const.HP].get("use_pyramid", None)
+        self.num_blocks = model_cfg[Const.HP].get("num_blocks", None)
+        self.num_pyramid = self.num_nonseq_feat // (self.num_blocks + 2)
+
+        self.ln1 = nn.LayerNorm(self.d_model)
+        self.ln2 = nn.LayerNorm(self.d_model)
+
+        # 共享参数
+        self.Wq_share = nn.Linear(self.d_model, self.d_model, bias=False)
+        self.Wk_share = nn.Linear(self.d_model, self.d_model, bias=False)
+        self.Wv_share = nn.Linear(self.d_model, self.d_model, bias=False)
+
+        self.attn = nn.MultiheadAttention(self.d_model, self.num_head, batch_first=True)
+
+        self.out_share = nn.Linear(self.d_model, self.d_model)
+        self.ffn = nn.Sequential(
+            nn.Linear(self.d_model, self.d_model * 4),
+            nn.GELU(),
+            nn.Linear(self.d_model * 4, self.d_model),
+        )
+
+        # 非共享参数
+        if self.use_heterogeneous:
+            self.Wq_ns = nn.Parameter(
+                torch.empty(self.num_nonseq_feat, self.d_model, self.d_model).normal_(mean=0, std=0.02))
+            self.Wk_ns = nn.Parameter(
+                torch.empty(self.num_nonseq_feat, self.d_model, self.d_model).normal_(mean=0, std=0.02))
+            self.Wv_ns = nn.Parameter(
+                torch.empty(self.num_nonseq_feat, self.d_model, self.d_model).normal_(mean=0, std=0.02))
+            self.out_w_ns = nn.Parameter(
+                torch.empty(self.num_nonseq_feat, self.d_model, self.d_model).normal_(mean=0, std=0.02))
+            self.out_b_ns = nn.Parameter(torch.empty(self.num_nonseq_feat, self.d_model).normal_(mean=0, std=0.02))
+            self.w1_ns = nn.Parameter(
+                torch.empty(self.num_nonseq_feat, self.d_model, self.d_model * 4).normal_(mean=0, std=0.02))
+            self.w2_ns = nn.Parameter(
+                torch.empty(self.num_nonseq_feat, self.d_model * 4, self.d_model).normal_(mean=0, std=0.02))
+            self.b1_ns = nn.Parameter(torch.empty(self.num_nonseq_feat, self.d_model * 4).normal_(mean=0, std=0.02))
+            self.b2_ns = nn.Parameter(torch.empty(self.num_nonseq_feat, self.d_model).normal_(mean=0, std=0.02))
+
+    def forward(self, ti: TransformerInput) -> Tuple[torch.Tensor, TransformerCacheState, torch.Tensor]:
+        X = ti.x
+        attention_mask = ti.invalid_attn_mask_for_fused_operator
+        num_rerank = ti.num_rerank
+        layer_num = ti.layer_num
+
+        B, N, D = X.shape
+        nonseq_len = num_rerank * self.num_nonseq_feat
+
+        residual = X
+        Xn = self.ln1(X)
+        X_s = Xn[:, :-nonseq_len, :]
+        X_ns = Xn[:, -nonseq_len:, :]
+
+        Q_s, K_s, V_s = self.Wq_share(X_s), self.Wk_share(X_s), self.Wv_share(X_s)
+
+        if self.use_heterogeneous:
+            Q_ns = torch.einsum("bnd,ndk->bnk", X_ns, self.Wq_ns)
+            K_ns = torch.einsum("bnd,ndk->bnk", X_ns, self.Wk_ns)
+            V_ns = torch.einsum("bnd,ndk->bnk", X_ns, self.Wv_ns)
+        else:
+            Q_ns, K_ns, V_ns = self.Wq_share(X_ns), self.Wk_share(X_ns), self.Wv_share(X_ns)
+
+        Q = torch.cat([Q_s, Q_ns], dim=1)
+        K = torch.cat([K_s, K_ns], dim=1)
+        V = torch.cat([V_s, V_ns], dim=1)
+
+        if self.use_pyramid:
+            attention_new_mask = attention_mask[:, :, self.num_pyramid * layer_num:, self.num_pyramid * layer_num:]
+        else:
+            attention_new_mask = attention_mask
+
+        attn_mask_2d = attention_new_mask.squeeze(1)[0]
+
+        # out, _ = self.attn(Q, K, V, attn_mask=attn_mask_2d)
+
+        out = scaled_dot_product_attention(
+            Q, K, V,
+            attn_mask=attn_mask_2d,  # 可选的注意力掩码
+            dropout_p=0,  # Dropout 概率
+            is_causal=False  # 启用因果掩码（适用于自回归任务）
+        )
+
+        if self.use_heterogeneous:
+            out_s = self.out_share(out[:, :-nonseq_len, :])
+            out_ns = torch.einsum("bnd,ndf->bnf", out[:, -nonseq_len:, :], self.out_w_ns) + self.out_b_ns
+            out = torch.cat([out_s, out_ns], dim=1)
+        else:
+            out = self.out_share(out)
+        X = residual + out  # residual connection
+
+        # FFN
+        if self.use_heterogeneous:
+            X_s = self.ffn(
+                self.ln2(
+                    X[:, :-nonseq_len, :]
+                ))
+            X_ns = torch.einsum(
+                "bnd,ndf->bnf",
+                self.ln2(
+                    X[:, -nonseq_len:, :]
+                ), self.w1_ns) + self.b1_ns
+            X_ns = F.gelu(X_ns)
+            X_ns = torch.einsum("bnd,ndf->bnf", X_ns, self.w2_ns) + self.b2_ns
+            X = X + torch.cat([X_s, X_ns], dim=1)
+        else:
+            X = + self.ffn(self.ln2(X))
+
+        if self.use_pyramid:
+            X = X[:, self.num_pyramid:, :]
+        # print(X.shape)
+        return X, (None, None, None, None), ti.time_bias
+class InputFeaturesPreprocessorModule(nn.Module):
+
+    def __init__(self, model_cfg: Dict, common_hp: Dict):
+        super().__init__()
+
+    @abc.abstractmethod
+    def forward(
+            self,
+            user_feature_embs: torch.Tensor,
+            past_embeddings: torch.Tensor,
+            past_payloads: Dict[str, torch.Tensor],
+    ) -> torch.Tensor:
+        pass
+import numpy as np
+import random
+def set_seed(seed=1234):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+class UserItemRatingInputFeaturePreprocessorLonger(InputFeaturesPreprocessorModule):
+
+    def __init__(self, model_cfg: Dict, common_hp: Dict, device) -> None:
+        super().__init__(model_cfg=model_cfg, common_hp=common_hp)
+        model_conf = common_hp["model_conf"]
+        feat_conf = common_hp["feature_conf"]
+        seq_feature_conf = feat_conf.get("seq_feature_columns")
+        self.device = device
+        seq_lens = [max(subcfg["length"] for subcfg in seq_feature_conf.values())]
+
+        self.seq_lens = seq_lens
+        self._embedding_dim = int(os.environ.get("Dim"))
+
+        set_seed(1234)
+        self._pos_emb = torch.nn.Embedding(sum(seq_lens) + 3, self._embedding_dim)
+        # 先在 CPU 上初始化
+        self._pos_emb = self._pos_emb.cpu()
+        # 再搬到对应设备
+        self._pos_emb = self._pos_emb.to(self.device)
+
+        self._seq_type_emb = torch.nn.Embedding(len(seq_lens) + 1, self._embedding_dim)
+        self._seq_type_emb = self._seq_type_emb.to(self.device)
+        self.use_nonseq_token = model_cfg[Const.HP].get("use_nonseq_token", False)
+        self._use_auto_split = model_cfg[Const.HP].get("use_auto_split", False)
+
+        if self.use_nonseq_token and self._use_auto_split:
+            total_dim = 0
+            for name, feat_info in {**feat_conf["item_feature_columns"], **feat_conf["user_feature_columns"]}.items():
+                if feat_info["enabled"]:
+                    total_dim += feat_info["dim"]
+            self.auto_layer = torch.nn.Linear(total_dim, total_dim)
+
+    def reset_state(self) -> None:
+        truncated_normal(
+            self._pos_emb, mean=0.0, std=math.sqrt(weird_division(1.0, self._embedding_dim)),
+        )
+
+    def forward(
+            self,
+            model_inputs,
+            past_ids: List[torch.Tensor],
+            num_rerank: int,
+            past_lengths,
+            user_feature_embs: torch.Tensor,
+            item_feature_embs: torch.Tensor,
+            seq_feature_embs: torch.Tensor,
+            deep_outputs: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+
+        B, N, D = item_feature_embs.size()
+        device = past_lengths.device
+        seq_feature_embs = seq_feature_embs
+
+        if self.use_nonseq_token:
+            if self._use_auto_split:
+                num_nonseq_feat = item_feature_embs.shape[1] + user_feature_embs.shape[1]
+                deep_outputs = torch.cat(
+                    [item_feature_embs.reshape(B, -1),
+                     user_feature_embs.reshape(B, -1)
+                     ], dim=-1)
+                deep_outputs = self.auto_layer(deep_outputs)
+                deep_outputs = deep_outputs.reshape(B, num_nonseq_feat, -1)
+            else:
+                if user_feature_embs is not None:
+                    deep_outputs = torch.cat(
+                        [item_feature_embs,
+                         user_feature_embs
+                         ], dim=1)
+                else:
+                    deep_outputs = item_feature_embs
+            # D = deep_outputs.shape[1]
+            # deep_pos_ids = torch.ones((1, num_rerank), dtype=torch.int, device=device)
+            # deep_pos_embs = self._pos_emb(deep_pos_ids).repeat(B, D, 1)
+            # deep_outputs = deep_outputs + deep_pos_embs
+            deep_outputs = deep_outputs
+        else:
+            deep_pos_ids = torch.ones((1, num_rerank), dtype=torch.int, device=device)
+            deep_pos_embs = self._pos_emb(deep_pos_ids).repeat(B, N, 1)
+            deep_outputs = deep_pos_embs
+
+        x_offsets = None
+        seq_offsets = None
+
+        past_sum = torch.sum(past_lengths, dim=1)
+        x_offsets = past_sum + num_rerank
+        x_offsets = torch.cumsum(x_offsets, dim=0)
+        x_offsets = torch.cat((torch.tensor([0], device=device), x_offsets))
+
+        max_seq_len = seq_feature_embs.shape[1]
+        indices = torch.arange(max_seq_len, device=device)
+
+        mask_valid = torch.concat(past_ids, dim=-1)
+        mask_valid = (mask_valid != 0)
+
+        past_sum = past_sum.unsqueeze(-1).unsqueeze(-1)
+        mask_sort = (indices < past_sum).squeeze(1)
+
+        deep_outputs = deep_outputs
+
+        whole_seq_embeddings = torch.cat(
+            [deep_outputs,
+             seq_feature_embs
+             ], dim=1)
+
+        return whole_seq_embeddings, x_offsets, seq_offsets
