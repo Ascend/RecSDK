@@ -116,6 +116,27 @@ def torch_to_dyn_emb(torch_dtype: torch.dtype) -> DynamicEmbDataType:
         raise ValueError(f"Unsupported torch dtype: {torch_dtype}")
 
 
+def dtype_to_bytes(dtype: torch.dtype) -> int:
+    dtype_size_map = {
+        torch.float16: 2,
+        torch.bfloat16: 2,
+        torch.float32: 4,
+        torch.float64: 8,
+        torch.int8: 1,
+        torch.uint8: 1,
+        torch.int16: 2,
+        torch.uint16: 2,
+        torch.int32: 4,
+        torch.uint32: 4,
+        torch.int64: 8,
+        torch.uint64: 8,
+        torch.bool: 1,
+    }
+    if dtype not in dtype_size_map:
+        raise ValueError(f"Unsupported dtype: {dtype}")
+    return dtype_size_map[dtype]
+
+
 @enum.unique
 class DynamicEmbEvictStrategy(enum.Enum):
     LRU = EvictStrategy.kLru
@@ -390,7 +411,6 @@ class DynamicEmbTableOptions(_ContextOptions):
             max_value=ValidatorParams.MAX_INT64.value
         )
         class_safe_check("caching", self.caching, (bool,))
-        check(not self.caching, "caching should be False")
         check(self.external_storage is None, "external_storage should be None")
         check(self.index_type == torch.int64, "index_type should be torch.int64")
 
@@ -493,3 +513,25 @@ def validate_initializer_args(
             initializer_args.lower = default_lower
         if initializer_args.upper is None:
             initializer_args.upper = default_upper
+
+
+def get_constraint_capacity(
+    memory_bytes: int,
+    dtype: torch.dtype,
+    dim: int,
+    optimizer_type: OptimizerType,
+    bucket_capacity: int,
+) -> int:
+    byte_consume_per_vector = (
+        dim + get_optimizer_state_dim(optimizer_type, dim, dtype)
+    ) * dtype_to_bytes(dtype)
+    bucket_size_in_bytes = bucket_capacity * byte_consume_per_vector
+    if memory_bytes < bucket_size_in_bytes:
+        raise ValueError(
+            f"reserved bytes {memory_bytes} on rank {torch.distributed.get_rank()}"
+            f"is less than the size of one bucket {bucket_size_in_bytes}. "
+        )
+    capacity = (
+        memory_bytes // byte_consume_per_vector
+    )  # maybe zero, we need at least one bucket
+    return (capacity // bucket_capacity) * bucket_capacity

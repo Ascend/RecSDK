@@ -62,7 +62,7 @@ class TestBatchedDynamicEmbeddingTablesV2(unittest.TestCase):
         self.mocked_device_timestamp = self.patched_device_timestamp.start()
         self.mocked_create_table = self.patched_create_table.start()
         self.mocked_device_timestamp.return_value = (5)
-        dynamicemb_options_list: List[Dict[str, Any]] = []
+        dynamicemb_options_list: List[DynamicEmbTableOptions] = []
         dynamicemb_options_list.append(
             DynamicEmbTableOptions(
                 index_type=torch.int64,
@@ -71,7 +71,8 @@ class TestBatchedDynamicEmbeddingTablesV2(unittest.TestCase):
                 initializer_args=DynamicEmbInitializerArgs(
                     mode=DynamicEmbInitializerMode.NORMAL,
                     value=0.0,),
-                dim=10
+                dim=10,
+                max_capacity=100,
             )
         )
         feature_table_map = [0]
@@ -92,9 +93,47 @@ class TestBatchedDynamicEmbeddingTablesV2(unittest.TestCase):
         del self.mocked_device_timestamp
         del self.mocked_create_table
 
-    def test_create_cache_storage(self):
-        self.emb_module._create_cache_storage()
-        self.assertEqual(len(self.emb_module._storages), 1)
+    def test_create_cache_storage_with_caching(self):
+        self.emb_module._dynamicemb_options = [
+            DynamicEmbTableOptions(
+                index_type=torch.int64,
+                embedding_dtype=torch.float32,
+                optimizer_type=EmbOptimType.ADAM,
+                initializer_args=DynamicEmbInitializerArgs(
+                    mode=DynamicEmbInitializerMode.NORMAL,
+                    value=0.0,),
+                dim=512,
+                max_capacity=1024 * 300, # 最大embedding数量
+                caching=True,
+                local_hbm_for_values=1024 * 1024 * 100  # 100MB
+            )
+        ]
+        
+        with patch("dynamic_emb.distributed.dynamicemb_config.get_constraint_capacity", return_value=10000):
+            self.emb_module._create_cache_storage()
+            
+            self.assertEqual(len(self.emb_module._storages), 1)
+            self.assertEqual(len(self.emb_module._caches), 1)
+            self.assertIsNotNone(self.emb_module._caches[0])
+
+    def test_create_cache_storage_with_insufficient_hbm(self):
+        self.emb_module._dynamicemb_options = [
+            DynamicEmbTableOptions(
+                index_type=torch.int64,
+                embedding_dtype=torch.float32,
+                optimizer_type=EmbOptimType.ADAM,
+                initializer_args=DynamicEmbInitializerArgs(
+                    mode=DynamicEmbInitializerMode.NORMAL,
+                    value=0.0,),
+                dim=10,
+                caching=True,
+                local_hbm_for_values=0
+            )
+        ]
+        
+        with patch("dynamic_emb.distributed.dynamicemb_config.get_constraint_capacity", return_value=0):
+            with self.assertRaises(ValueError):
+                self.emb_module._create_cache_storage()
 
     def test_create_initializers(self):
         self.emb_module._create_initializers()
@@ -175,3 +214,43 @@ class TestBatchedDynamicEmbeddingTablesV2(unittest.TestCase):
         self.emb_module._update_score()
         new_scores = self.emb_module.get_score()
         self.assertEqual(new_scores["table1"], mock_timestamp + 1)
+
+    def test_enable_prefetch_property(self):
+        self.assertFalse(self.emb_module.enable_prefetch)
+        self.emb_module.enable_prefetch = True
+        self.assertTrue(self.emb_module.enable_prefetch)
+
+    def test_get_prefetch_score(self):
+        self.emb_module._dynamicemb_options = [
+            DynamicEmbTableOptions(score_strategy=DynamicEmbScoreStrategy.STEP)
+        ]
+        self.emb_module._scores = {"table1": 10}
+        self.emb_module.num_prefetch_ahead = 5
+        self.emb_module._enable_prefetch = True
+
+        scores = self.emb_module._get_prefetch_score()
+        self.assertEqual(scores[0], 14)
+
+    def test_prefetch(self):
+        self.emb_module._dynamicemb_options = [
+            DynamicEmbTableOptions(score_strategy=DynamicEmbScoreStrategy.STEP)
+        ]
+        self.emb_module._scores = {"table1": 10}
+        self.emb_module._enable_prefetch = True
+        self.emb_module.pooling_mode = DynamicEmbPoolingMode.NONE
+        self.emb_module._caching = True
+        self.emb_module._unique_op = MagicMock()
+        
+        mock_cache = MagicMock(spec=type(self.mock_table))
+        mock_storage = MagicMock(spec=type(self.mock_table))
+        self.emb_module._caches = [mock_cache]
+        self.emb_module._storages = [mock_storage]
+
+        indices = torch.tensor([1, 2, 3], dtype=torch.int64)
+        offsets = torch.tensor([0, 3], dtype=torch.int64)
+
+        with patch("dynamic_emb.distributed.batched_dynamicemb_table.dynamicemb_prefetch") as mock_prefetch:
+            self.emb_module.prefetch(indices, offsets)
+            
+            self.assertEqual(self.emb_module.num_prefetch_ahead, 1)
+            mock_prefetch.assert_called_once()

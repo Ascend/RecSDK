@@ -25,6 +25,7 @@ import torch
 from dynamic_emb.distributed.batched_dynamicemb_function import (
     DynamicEmbeddingFunctionV2, 
     DynamicEmbeddingFunctionV2Config,
+    dynamicemb_prefetch,
 )
 
 _original_dynamic_emb_extensions = sys.modules.get("dynamic_emb_extensions")
@@ -185,3 +186,67 @@ class TestDynamicEmbeddingFunctionV2(unittest.TestCase):
             DynamicEmbeddingFunctionV2.backward(ctx, grads)
             mocked_update.assert_called_once()
             mocked_reduce_grads.assert_called_once()
+
+
+class TestDynamicEmbPrefetch(unittest.TestCase):
+    def setUp(self):
+        self.emb_dim = 2
+        self.table_num = 1
+        self.storages = [MockStorage(emb_dim=self.emb_dim)]
+        self.initializers = [MockInitializer()]
+        self.caches = [MockCache()]
+        self.unique_op = "mock"
+
+    def test_prefetch(self):
+        indices = torch.tensor([5, 3, 5], device="cpu")
+        offsets = torch.tensor([0, 3])
+        feature_offsets = torch.tensor([3])
+        feature_offsets = torch.cat([offsets[0:1], feature_offsets])
+
+        with patch("dynamic_emb.distributed.batched_dynamicemb_function.get_table_range_op",
+                   return_value=torch.tensor([0, 3], dtype=torch.long)) as mocked_get_table_range, \
+             patch("dynamic_emb.distributed.batched_dynamicemb_function.segmented_unique_op", return_value=(
+                    torch.tensor([5, 3], device="cpu"),
+                    torch.tensor([0, 1, 0], device="cpu"),
+                    torch.tensor([0, 2], device="cpu"),
+                    torch.tensor([0, 2], device="cpu")
+            )) as mocked_segmented_unique, \
+             patch("dynamic_emb.distributed.key_value_table.KeyValueTableCachingFunction.prefetch") as mocked_prefetch:
+            dynamicemb_prefetch(
+                indices=indices,
+                offsets=offsets,
+                caches=self.caches,
+                storages=self.storages,
+                feature_offsets=feature_offsets,
+                initializers=self.initializers,
+                unique_op=self.unique_op,
+                training=True
+            )
+            mocked_get_table_range.assert_called_once_with(offsets, feature_offsets)
+            mocked_segmented_unique.assert_called_once()
+            mocked_prefetch.assert_called_once()
+
+    def test_prefetch_without_training_and_caching(self):
+        indices = torch.tensor([1, 2, 3], device="cpu")
+        offsets = torch.tensor([0, 3])
+        feature_offsets = torch.tensor([3])
+        feature_offsets = torch.cat([offsets[0:1], feature_offsets])
+        self.caches = [None]
+
+        with patch("dynamic_emb.distributed.batched_dynamicemb_function.get_table_range_op",
+                   return_value=torch.tensor([0, 3], dtype=torch.long)) as mocked_get_table_range, \
+             patch("dynamic_emb.distributed.batched_dynamicemb_function.segmented_unique_op") as mocked_segmented_unique, \
+             patch("dynamic_emb.distributed.key_value_table.KeyValueTableCachingFunction.prefetch") as mocked_prefetch:
+            dynamicemb_prefetch(
+                indices=indices,
+                offsets=offsets,
+                caches=self.caches,
+                storages=self.storages,
+                feature_offsets=feature_offsets,
+                initializers=self.initializers,
+                unique_op=self.unique_op,
+                training=False
+            )
+            mocked_get_table_range.assert_called_once()
+            mocked_segmented_unique.assert_not_called()
+            mocked_prefetch.assert_called_once()

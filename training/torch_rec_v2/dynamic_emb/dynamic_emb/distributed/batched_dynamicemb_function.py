@@ -23,6 +23,7 @@ import torch
 from dynamic_emb.distributed.initializers.dynamicemb_initializers import BaseDynamicEmbInitializer
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import BaseDynamicEmbeddingOptimizerV2
 from dynamic_emb.distributed.key_value_table import (
+    KeyValueTableCachingFunction,
     KeyValueTableFunction,
 )
 from dynamic_emb_extensions import (
@@ -32,6 +33,49 @@ from dynamic_emb_extensions import (
     reduce_grads,
 )
 from dynamic_emb.distributed.types import Cache, Storage
+
+
+def dynamicemb_prefetch(
+    indices: torch.Tensor,
+    offsets: torch.Tensor,
+    caches: List[Optional[Cache]],
+    storages: List[Storage],
+    feature_offsets: torch.Tensor,
+    initializers: List[BaseDynamicEmbInitializer],
+    unique_op,
+    training: bool = True,
+    forward_stream: Optional[torch.npu.Stream] = None,
+):
+    table_num = len(storages)
+    if table_num == 0:
+        raise ValueError("table_num must be greater than 0.")
+    caching = caches[0] is not None
+
+    indices_table_range = get_table_range_op(offsets, feature_offsets)
+    if training or caching:
+        (
+            unique_indices,
+            inverse,
+            unique_indices_table_range,
+            h_unique_indices_table_range,
+        ) = segmented_unique_op(indices, indices_table_range, unique_op)
+    else:
+        h_unique_indices_table_range = indices_table_range.cpu()
+        unique_indices = indices
+
+    for i in range(table_num):
+        begin = h_unique_indices_table_range[i]
+        end = h_unique_indices_table_range[i + 1]
+        unique_indices_per_table = unique_indices[begin:end]
+
+        KeyValueTableCachingFunction.prefetch(
+            caches[i],
+            storages[i],
+            unique_indices_per_table,
+            initializers[i],
+            training,
+            forward_stream,
+        )
 
 
 @dataclass
