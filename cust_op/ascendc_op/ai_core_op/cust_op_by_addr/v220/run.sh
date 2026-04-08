@@ -63,9 +63,6 @@ msopgen gen -i "${OPERATOR_JSON_FILE}" -f tf -c "${ai_core}" -lan cpp -out "${TG
 if [ -d "${TGT}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
     export MAJOR_VERSION=8
 fi
-if [ "${MAJOR_VERSION}" -ge 9 ]; then
-    overwrite_source_with_target "${TGT}" "${__PROJECT_ROOT}/ai_core_op/custom_op_template" || exit 1
-fi
 
 replace_operator_sources "${V220_SRC}" "${TGT}" || exit 1
 
