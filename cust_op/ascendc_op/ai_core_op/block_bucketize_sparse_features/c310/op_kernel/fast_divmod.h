@@ -17,6 +17,9 @@ See the License for the specific language governing permissions and
 #define FAST_DIVMOD_H
 
 #include <cstdint>
+#include <limits>
+#include <type_traits>
+
 #include "kernel_operator.h"
 
 using namespace AscendC;
@@ -24,6 +27,9 @@ using namespace AscendC;
 template <typename UnsignedT>
 class FastDivmod {
 public:
+    static constexpr UnsignedT UINT_DIV_MAX_DIVIDEND =
+        static_cast<UnsignedT>(std::numeric_limits<typename std::make_signed<UnsignedT>::type>::max());
+
     __aicore__ inline FastDivmod(UnsignedT magic, uint32_t shift, UnsignedT divisor)
         : magic_(magic), shift_(shift), divisor_(divisor)
     {
@@ -34,6 +40,9 @@ public:
         if (divisor_ <= 1) {
             return (divisor_ == 1) ? n : static_cast<UnsignedT>(0);
         }
+        if (n > UINT_DIV_MAX_DIVIDEND) {
+            return n / divisor_;
+        }
         return AscendC::Simt::UintDiv<UnsignedT>(n, magic_, static_cast<UnsignedT>(shift_));
     }
 
@@ -42,7 +51,11 @@ public:
         if (divisor_ <= 1) {
             return (divisor_ == 1) ? static_cast<UnsignedT>(0) : n;
         }
-        return n - Div(n) * divisor_;
+        if (n > UINT_DIV_MAX_DIVIDEND) {
+            return n % divisor_;
+        }
+        const UnsignedT q = AscendC::Simt::UintDiv<UnsignedT>(n, magic_, static_cast<UnsignedT>(shift_));
+        return n - q * divisor_;
     }
 
 private:
