@@ -940,3 +940,214 @@ class SequentialFeatures:
         if self.past_embeddings is not None:
             self.past_embeddings = self.past_embeddings.pin_memory()
         return self
+
+class Batch(Pipelineable):
+    features: SequentialFeatures
+    def __init__(self, features) -> None:
+        self.features = features
+
+    def to(self, device: torch.device, non_blocking: bool = False) -> "Batch":
+        return Batch(
+            features=self.features.to(device, non_blocking)
+        )
+
+    def record_stream(self, stream: torch.cuda.streams.Stream) -> None:
+        self.features.record_stream(stream)
+
+    def pin_memory(self) -> "Batch":
+        return Batch(
+            features=self.features.pin_memory()
+        )
+
+
+def eval_fn(config, args, already_init=False) -> None:
+    """
+    Evaluate function, deprecated for now
+    """
+    common_config = config[Const.COMMON_HP]
+    train_conf, feature_conf, data_loader_conf, model_conf = get_conf(common_config)
+    init_random_seed(common_config)
+    device, rank, local_rank, world_size, node_num = init_ddp_info_params(eval(args.open_megatron))
+
+    populate_args(args, rank=rank, world_size=world_size, local_rank=local_rank, \
+                  node_num=node_num, device=device, ranking_model=True)
+    feature_conf["period"] = args.period
+    train_conf['learning_rate'] = \
+        init_learning_rate(train_conf['learning_rate'], train_conf['lr_scaling'], args.world_size)
+
+    writer = set_tensorboard_writer(args.rank, args.tensorboard_log_dir)
+
+    logging.info("Training model on rank %s (local rank: %s); device: %s; world_size: %s;", \
+                 rank, local_rank, device, world_size)
+
+    init_torch_config(local_rank, train_conf)
+
+    module_cfg = config[Const.MODEL_CFG]
+    common_hp = config[Const.COMMON_HP]
+
+    model = OneTrans(module_cfg, common_hp, device)
+
+    check_point = int(os.environ.get("Check_Point")) == 1
+    check_path = os.environ.get("check_path")
+
+    model.set_hf32()
+    total_params = sum(param.numel() for name, param in model.named_parameters() if "embedding" not in name)
+    for name, param in model.named_parameters():
+        print(f"{name}: 形状={param.shape}, 参数数量={param.numel()} type = {param.dtype}")
+    print("====== 模型参数(不包含embdding) is  ", total_params, "  STRUCT IS ======", model)
+
+    feature_conf, model_conf = \
+        refine_feat_and_model_conf(dataset=data_loader_conf["dataset_name"], feature_conf=feature_conf,
+                                   model_conf=model_conf, model_cfg=config[Const.MODEL_CFG])
+
+    feature_conf['ec_feature_names'] = model.embedding_module.shared_ebc_attrs
+
+    dataset, eval_data_loader, train_data_loader = get_train_eval_dataloader(args=args, train_conf=train_conf, \
+                                                                             model_conf=model_conf,
+                                                                             feature_conf=feature_conf,
+                                                                             dataloader_conf=data_loader_conf)
+
+    dataloader_iter = iter(eval_data_loader)
+    batch = next(dataloader_iter)
+    model_input = batch.features.past_payloads
+    model_input.update(past_lengths=batch.features.past_lengths,
+                       past_ids=batch.features.past_ids)
+    for k, v in model_input.items():
+        model_input[k] = v.to(device)
+
+    # 预热，避免把首次编译/图构建抖动全算进去
+    with torch.no_grad():
+        print(" 预热ing .......")
+        _ = model(model_inputs=model_input)
+        if NPU_ENABLE:
+            torch.npu.synchronize()
+        else:
+            torch.cuda.synchronize()
+    print(" 预热完毕................")
+
+    time_arr = []
+    batch_list = []
+    batch_size = int(os.environ.get("Batch_Size"))
+    if check_point:
+        checker = IoChecker(path=check_path, device=device, check=True)
+
+    profiler = get_profiler()
+    with torch.no_grad():
+        with profiler as prof:
+            for i in tqdm(range(15)):
+                start_time = time.time()
+                output = model(model_inputs=model_input)
+                if check_point:
+                    checker.save_outputs(output, i)
+                    exit()
+                if NPU_ENABLE:
+                    torch.npu.synchronize()
+                else:
+                    torch.cuda.synchronize()
+                end_time = time.time()
+                prof.step()
+                time_arr.append(end_time - start_time)
+                batch_list.append(batch_size)
+        output_report(time_arr, batch_list)
+
+def output_report(times_range,batch_list):
+    times_range.sort()
+    times_range = times_range[:-2]
+    print(times_range)
+    report = { "model_name": "onetrans"}
+    report["batch_size"] = batch_list[0]
+    tail_latency = round(times_range[int(len(times_range) * 0.99)] * 1000, 6)
+    p90_latency = round(times_range[int(len(times_range) * 0.90)] * 1000, 6)
+    avg_latency = round(sum(times_range) / len(times_range) * 1000, 6)
+    qps = int(sum(batch_list) / sum(times_range))
+
+    report["QPS"] = qps
+    report["AVG Latency"] = avg_latency
+    report["P99 Latency"] = tail_latency
+    report["P90 Latency"] = p90_latency
+    print(report)
+    saved_path = os.environ.get("profiling_dir")
+    if saved_path:
+        if not os.path.exists(saved_path):
+            os.makedirs(saved_path)
+        js = json.dumps(report)
+        with open(os.path.join(saved_path, "report.json"), "w") as file:
+            file.write(js)
+
+def get_profiler():
+    warmup = 0
+    activate = 10
+    skip_first = 2
+    save_dir = os.environ.get("profiling_dir")
+    os.makedirs(save_dir, exist_ok=True)
+    if NPU_ENABLE:
+        import torch_npu
+        experimental_config = torch_npu.profiler._ExperimentalConfig(
+            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
+            aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
+            l2_cache=False,
+            data_simplification=False,
+        )
+        return torch_npu.profiler.profile(
+                activities=[
+                    torch_npu.profiler.ProfilerActivity.CPU,
+                    torch_npu.profiler.ProfilerActivity.NPU,
+                ],
+                schedule=torch_npu.profiler.schedule(
+                    wait=0, warmup=warmup, active=activate, repeat=1, skip_first=skip_first
+                ),  # 与prof.step()配套使用
+                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
+                    save_dir
+                ),
+                record_shapes=True,
+                with_stack=True,
+                profile_memory=False,
+                with_modules=False,
+                with_flops=False,
+                experimental_config=experimental_config,
+            )
+    def trace_handler(p):
+        profiling_output_dir = os.path.join(save_dir)
+        if not os.path.exists(profiling_output_dir):
+            os.makedirs(profiling_output_dir, mode=0o750)
+        p.export_chrome_trace(
+            os.path.join(profiling_output_dir, f"trace_{str(p.step_num)}.json")
+        )
+    return torch.profiler.profile(
+                activities=[
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.CUDA,
+                ],
+                schedule=torch.profiler.schedule(
+                    wait=0, warmup=warmup, active=activate, repeat=1, skip_first=skip_first
+                ),  # 与prof.step()配套使用
+                on_trace_ready=trace_handler,
+                # 形状记录
+                record_shapes=True,
+                with_stack=True,
+                profile_memory=False,
+                with_modules=False,
+                with_flops=False,
+            )
+
+
+def main_torchrun():
+    args = init_args()
+
+    log_dir = f"{args.save_dir}/logs"
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)  # 创建目录
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    file_handler = logging.FileHandler(f"{log_dir}/app_{timestamp}.log")
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
+    logging.getLogger().addHandler(file_handler)
+
+    config = get_config(args.config_file)
+
+    eval_fn(config, args)
+
+
+if __name__ == "__main__":
+    main_torchrun()
