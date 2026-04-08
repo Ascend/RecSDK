@@ -346,3 +346,428 @@ def test_block_bucketize_sparse_features_int64_extreme(sequence, keep_orig_idx):
     kwargs_npu['weights'] = weights.to(DEVICE)
 
     _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+# =====================================================================
+# 固定数据精确校验用例：使用独立设计的测试数据覆盖各分支路径
+# =====================================================================
+@pytest.mark.parametrize("sequence", [False, True])
+@pytest.mark.parametrize("keep_orig_idx", [False, True])
+@pytest.mark.parametrize("my_size", [2, 3, 5, 7])
+def test_block_bucketize_sparse_features_negative_indices(sequence, keep_orig_idx, my_size):
+    """
+    indices 包含负值，验证负数转无符号后 bucket/new_index 计算正确。
+    负数 int64 转 uint64 后接近上限，曾触发快速除法（UintDiv）精度溢出。
+    覆盖 pow2 和非 pow2 的 my_size，以及 pooled / sequence 两条路径。
+    """
+    lengths = torch.tensor([4, 3], dtype=torch.int32)
+    indices = torch.tensor([
+        -1, -8, -3, 10,
+        -100, 7, -9223372036854775808,
+    ], dtype=torch.int64)
+    block_sizes = torch.tensor([4, 8], dtype=torch.int64)
+
+    weights = torch.randn(indices.numel(), dtype=torch.float32).uniform_(-1.0, 1.0)
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths,
+        indices=indices,
+        block_sizes=block_sizes,
+        my_size=my_size,
+        weights=weights,
+        bucketize_pos=True,
+        sequence=sequence,
+        keep_orig_idx=keep_orig_idx,
+    )
+
+    kwargs_npu = _op_kwargs(**kwargs_cpu)
+    kwargs_npu['lengths'] = lengths.to(DEVICE)
+    kwargs_npu['indices'] = indices.to(DEVICE)
+    kwargs_npu['block_sizes'] = block_sizes.to(DEVICE)
+    kwargs_npu['weights'] = weights.to(DEVICE)
+
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+def _make_npu_kwargs(kwargs_cpu, device, tensor_keys, list_keys=None):
+    """从 CPU kwargs 构造 NPU kwargs 的通用辅助函数。"""
+    kwargs_npu = _op_kwargs(**kwargs_cpu)
+    for key in tensor_keys:
+        val = kwargs_cpu.get(key)
+        kwargs_npu[key] = val.to(device) if val is not None else None
+    for key in (list_keys or []):
+        val = kwargs_cpu.get(key)
+        kwargs_npu[key] = [t.to(device) for t in val] if val is not None else None
+    return kwargs_npu
+
+
+@pytest.mark.parametrize("index_type", [torch.int, torch.long])
+@pytest.mark.parametrize("has_weight", [False, True])
+@pytest.mark.parametrize("bucketize_pos", [False, True])
+@pytest.mark.parametrize("sequence", [False, True])
+def test_fixed_multi_feature_basic(index_type, has_weight, bucketize_pos, sequence):
+    """
+    5 features, batch_size=2, my_size=3, 含零长度行。
+    覆盖：多 feature 不同 block_size + 零长度行 + 跨桶 indices。
+    """
+    lengths = torch.tensor([1, 3, 0, 2, 3, 1, 2, 0, 1, 4], dtype=index_type)
+    indices = torch.tensor([
+        2,
+        7, 14, 0,
+        9, 3,
+        25, 33, 44,
+        50,
+        61, 72,
+        100,
+        130, 155, 170, 199,
+    ], dtype=index_type)
+    block_sizes = torch.tensor([6, 8, 12, 20, 35], dtype=index_type)
+    my_size = 3
+    weights = torch.linspace(0.1, 1.7, indices.numel(), dtype=torch.float32) if has_weight else None
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths, indices=indices, block_sizes=block_sizes,
+        my_size=my_size, weights=weights,
+        bucketize_pos=bucketize_pos, sequence=sequence,
+    )
+    kwargs_npu = _make_npu_kwargs(kwargs_cpu, DEVICE, ['lengths', 'indices', 'block_sizes', 'weights'])
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("index_type", [torch.int, torch.long])
+@pytest.mark.parametrize("keep_orig_idx", [False, True])
+@pytest.mark.parametrize("sequence", [False, True])
+@pytest.mark.parametrize("bucketize_pos", [False, True])
+def test_fixed_long_and_negative_indices(index_type, keep_orig_idx, sequence, bucketize_pos):
+    """
+    2 features, batch_size=3, my_size=5。
+    int32 路径使用常规小值；int64 路径混入负数和超大正整数。
+    覆盖：负数 indices 分桶 + 超大正整数越界分桶 + keep_orig_idx 分支。
+    """
+    my_size = 5
+    block_sizes = torch.tensor([7, 11], dtype=index_type)
+    if index_type == torch.int:
+        lengths = torch.tensor([2, 1, 3, 0, 2, 1], dtype=index_type)
+        indices = torch.tensor([0, 13, 20, 5, 30, 34, 8, 21, 10], dtype=index_type)
+    else:
+        lengths = torch.tensor([3, 2, 1, 2, 3, 1], dtype=index_type)
+        indices = torch.tensor([
+            5, -3, 200043781927513,
+            -17, 42,
+            0,
+            -1, 100029876543210,
+            11, 33, -9223372036854775807,
+            54,
+        ], dtype=index_type)
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths, indices=indices, block_sizes=block_sizes,
+        my_size=my_size, bucketize_pos=bucketize_pos, sequence=sequence,
+        keep_orig_idx=keep_orig_idx,
+    )
+    kwargs_npu = _make_npu_kwargs(kwargs_cpu, DEVICE, ['lengths', 'indices', 'block_sizes'])
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("index_type", [torch.int, torch.long])
+@pytest.mark.parametrize("keep_orig_idx", [False, True])
+@pytest.mark.parametrize("sequence", [False, True])
+def test_fixed_total_num_blocks_even_split(index_type, keep_orig_idx, sequence):
+    """
+    2 features, batch_size=3, my_size=4, total_num_blocks 为 my_size 的整数倍。
+    覆盖：total_num_blocks 均匀可整除场景。
+    """
+    my_size = 4
+    block_sizes = torch.tensor([3, 5], dtype=index_type)
+    total_num_blocks = torch.tensor([8, 12], dtype=index_type)
+    lengths = torch.tensor([1, 2, 3, 2, 1, 0], dtype=index_type)
+    indices = torch.tensor([5, 0, 11, 2, 14, 23, 9, 55, 3], dtype=index_type)
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths, indices=indices, block_sizes=block_sizes,
+        my_size=my_size, sequence=sequence, keep_orig_idx=keep_orig_idx,
+        total_num_blocks=total_num_blocks,
+    )
+    kwargs_npu = _make_npu_kwargs(kwargs_cpu, DEVICE, ['lengths', 'indices', 'block_sizes', 'total_num_blocks'])
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("index_type", [torch.int, torch.long])
+@pytest.mark.parametrize("keep_orig_idx", [False, True])
+@pytest.mark.parametrize("sequence", [False, True])
+def test_fixed_total_num_blocks_raw_id_mode(index_type, keep_orig_idx, sequence):
+    """
+    3 features, batch_size=2, my_size=3, block_sizes 全 0 (raw id 模式)。
+    覆盖：block_size=0 时按 total_num_blocks 直接对 raw id 分桶。
+    """
+    my_size = 3
+    block_sizes = torch.tensor([0, 0, 0], dtype=index_type)
+    total_num_blocks = torch.tensor([9, 12, 6], dtype=index_type)
+    lengths = torch.tensor([3, 0, 2, 1, 4, 2], dtype=index_type)
+    indices = torch.tensor([0, 8, 3, 11, 5, 2, 1, 4, 3, 5, 0, 1], dtype=index_type)
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths, indices=indices, block_sizes=block_sizes,
+        my_size=my_size, sequence=sequence, keep_orig_idx=keep_orig_idx,
+        total_num_blocks=total_num_blocks,
+    )
+    kwargs_npu = _make_npu_kwargs(kwargs_cpu, DEVICE, ['lengths', 'indices', 'block_sizes', 'total_num_blocks'])
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("index_type", [torch.int, torch.long])
+@pytest.mark.parametrize("keep_orig_idx", [False, True])
+@pytest.mark.parametrize("sequence", [False, True])
+def test_fixed_uneven_pos_with_block_sizes(index_type, keep_orig_idx, sequence):
+    """
+    2 features, batch_size=3, my_size=3, 非均匀 block_bucketize_pos + 非零 block_sizes。
+    覆盖：block_bucketize_pos 做变长桶边界 + total_num_blocks 联合路径。
+    """
+    my_size = 3
+    block_sizes = torch.tensor([3, 5], dtype=index_type)
+    total_num_blocks = torch.tensor([9, 9], dtype=index_type)
+    lengths = torch.tensor([2, 0, 3, 1, 2, 1], dtype=index_type)
+    indices = torch.tensor([1, 7, 4, 12, 26, 0, 8, 20, 3], dtype=index_type)
+    block_bucketize_pos_cpu = [
+        torch.tensor([0, 3, 10, 15], dtype=index_type),
+        torch.tensor([0, 6, 14, 21], dtype=index_type),
+    ]
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths, indices=indices, block_sizes=block_sizes,
+        my_size=my_size, sequence=sequence, keep_orig_idx=keep_orig_idx,
+        total_num_blocks=total_num_blocks, block_bucketize_pos=block_bucketize_pos_cpu,
+    )
+    kwargs_npu = _make_npu_kwargs(
+        kwargs_cpu, DEVICE,
+        ['lengths', 'indices', 'block_sizes', 'total_num_blocks'],
+        list_keys=['block_bucketize_pos'],
+    )
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("index_type", [torch.int, torch.long])
+@pytest.mark.parametrize("keep_orig_idx", [False, True])
+@pytest.mark.parametrize("sequence", [False, True])
+def test_fixed_uneven_pos_raw_id_mode(index_type, keep_orig_idx, sequence):
+    """
+    2 features, batch_size=2, my_size=4, block_sizes 全 0 + block_bucketize_pos。
+    覆盖：raw id 模式下使用 pos 表做非均匀分桶。
+    """
+    my_size = 4
+    block_sizes = torch.tensor([0, 0], dtype=index_type)
+    total_num_blocks = torch.tensor([8, 16], dtype=index_type)
+    lengths = torch.tensor([3, 2, 1, 4], dtype=index_type)
+    indices = torch.tensor([0, 7, 3, 15, 1, 10, 2, 14, 6, 9], dtype=index_type)
+    block_bucketize_pos_cpu = [
+        torch.tensor([0, 1, 3, 6, 8], dtype=index_type),
+        torch.tensor([0, 2, 7, 11, 16], dtype=index_type),
+    ]
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths, indices=indices, block_sizes=block_sizes,
+        my_size=my_size, sequence=sequence, keep_orig_idx=keep_orig_idx,
+        total_num_blocks=total_num_blocks, block_bucketize_pos=block_bucketize_pos_cpu,
+    )
+    kwargs_npu = _make_npu_kwargs(
+        kwargs_cpu, DEVICE,
+        ['lengths', 'indices', 'block_sizes', 'total_num_blocks'],
+        list_keys=['block_bucketize_pos'],
+    )
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("index_type", [torch.int, torch.long])
+@pytest.mark.parametrize("has_weight", [False, True])
+@pytest.mark.parametrize("bucketize_pos", [False, True])
+@pytest.mark.parametrize("sequence", [False, True])
+def test_fixed_variable_batch_sizes(index_type, has_weight, bucketize_pos, sequence):
+    """
+    3 features, 各 feature batch_size 不同 (2,3,1), my_size=3。
+    覆盖：batch_size_per_feature 变长 + 不同 feature 不同行数。
+    """
+    lengths = torch.tensor([1, 3, 2, 0, 1, 2], dtype=index_type)
+    indices = torch.tensor([4, 13, 7, 20, 1, 9, 25, 6, 15], dtype=index_type)
+    batch_sizes = torch.tensor([2, 3, 1], dtype=index_type)
+    block_sizes = torch.tensor([6, 9, 14], dtype=index_type)
+    my_size = 3
+    max_B = int(batch_sizes.max().item())
+    weights = torch.linspace(-0.5, 0.5, indices.numel(), dtype=torch.float32) if has_weight else None
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths, indices=indices, block_sizes=block_sizes,
+        my_size=my_size, weights=weights, bucketize_pos=bucketize_pos,
+        sequence=sequence, batch_size_per_feature=batch_sizes, max_B=max_B,
+    )
+    kwargs_npu = _make_npu_kwargs(
+        kwargs_cpu, DEVICE,
+        ['lengths', 'indices', 'block_sizes', 'weights', 'batch_size_per_feature'],
+    )
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("index_type", [torch.int, torch.long])
+@pytest.mark.parametrize("has_weight", [False, True])
+@pytest.mark.parametrize("bucketize_pos", [False, True])
+@pytest.mark.parametrize("sequence", [False, True])
+def test_fixed_variable_batch_with_pos(index_type, has_weight, bucketize_pos, sequence):
+    """
+    2 features, batch_size_per_feature=[3,2], my_size=2, 带 block_bucketize_pos。
+    覆盖：变长 batch + pos 表联合路径。
+    """
+    lengths = torch.tensor([2, 0, 1, 3, 1], dtype=index_type)
+    indices = torch.tensor([3, 11, 5, 14, 19, 7, 2], dtype=index_type)
+    batch_sizes = torch.tensor([3, 2], dtype=index_type)
+    block_sizes = torch.tensor([7, 12], dtype=index_type)
+    my_size = 2
+    max_B = int(batch_sizes.max().item())
+    weights = torch.linspace(0.2, 1.4, indices.numel(), dtype=torch.float32) if has_weight else None
+    block_bucketize_pos_cpu = [
+        torch.tensor([0, 4, 10], dtype=index_type),
+        torch.tensor([0, 8, 18], dtype=index_type),
+    ]
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths, indices=indices, block_sizes=block_sizes,
+        my_size=my_size, weights=weights, bucketize_pos=bucketize_pos,
+        sequence=sequence, batch_size_per_feature=batch_sizes, max_B=max_B,
+        block_bucketize_pos=block_bucketize_pos_cpu,
+    )
+    kwargs_npu = _make_npu_kwargs(
+        kwargs_cpu, DEVICE,
+        ['lengths', 'indices', 'block_sizes', 'weights', 'batch_size_per_feature'],
+        list_keys=['block_bucketize_pos'],
+    )
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("index_type", [torch.int, torch.long])
+@pytest.mark.parametrize("has_weight", [False, True])
+@pytest.mark.parametrize("bucketize_pos", [False, True])
+@pytest.mark.parametrize("sequence", [False, True])
+@pytest.mark.parametrize("my_size", [3, 128, 200, 512])
+def test_fixed_large_random_stress(index_type, has_weight, bucketize_pos, sequence, my_size):
+    """
+    6 features, 1536 行, 平均长度 ~36, 随机 indices。
+    覆盖：大数据量压力测试 + 大 my_size（含 pow2 与非 pow2）。
+    """
+    num_features = 6
+    block_size = 7
+    num_rows = 1536
+    avg_len = 36
+    length_list = [max(0, int(random.gauss(mu=avg_len, sigma=2.0))) for _ in range(num_rows)]
+    total_len = sum(length_list)
+    block_sizes = torch.tensor([block_size] * num_features, dtype=index_type)
+    lengths = torch.tensor(length_list, dtype=index_type)
+    indices = torch.randint(0, my_size * block_size, (total_len,), dtype=index_type)
+    weights = torch.rand((total_len,), dtype=torch.float32) if has_weight else None
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths, indices=indices, block_sizes=block_sizes,
+        my_size=my_size, weights=weights,
+        bucketize_pos=bucketize_pos, sequence=sequence,
+    )
+    kwargs_npu = _make_npu_kwargs(kwargs_cpu, DEVICE, ['lengths', 'indices', 'block_sizes', 'weights'])
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("sequence", [False, True])
+@pytest.mark.parametrize("my_size", [2, 3, 5, 7])
+@pytest.mark.parametrize("index_type", [torch.int32, torch.int64])
+def test_block_bucketize_uintdiv_threshold_boundary(sequence, my_size, index_type):
+    """
+    覆盖 simplified kernel 中快除法阈值分支（int32 和 int64）。
+    - idx 在有符号最大值以内时走 Simt::UintDiv
+    - idx 超过有符号最大值时退回硬件 / 和 %
+    同时构造 power-of-two 与非 power-of-two 的 my_size，分别覆盖
+    ComputeBucket 和 ComputeNewIndex 的阈值切换行为。
+    """
+    iinfo = torch.iinfo(index_type)
+    signed_max = iinfo.max
+    signed_min = iinfo.min
+    indices = torch.tensor([
+        signed_max - 1,              # 阈值下，走 UintDiv
+        signed_max,                  # 阈值点，仍走 UintDiv
+        signed_min,                  # 阈值上（按无符号为 2^(N-1)），走硬件除法
+        signed_min + 1,              # 阈值上，余数最小变化
+        signed_min + (my_size - 1),  # 阈值上，余数边界
+        -1,                          # 无符号最大值
+        -my_size,
+        -(my_size + 1),
+        my_size * 4 + 1,
+    ], dtype=index_type)
+    lengths = torch.tensor([indices.numel()], dtype=torch.int32)
+    block_sizes = torch.tensor([4], dtype=index_type)
+    weights = torch.randn(indices.numel(), dtype=torch.float32).uniform_(-1.0, 1.0)
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths,
+        indices=indices,
+        block_sizes=block_sizes,
+        my_size=my_size,
+        weights=weights,
+        bucketize_pos=True,
+        sequence=sequence,
+        keep_orig_idx=False,
+    )
+    kwargs_npu = _make_npu_kwargs(kwargs_cpu, DEVICE, ['lengths', 'indices', 'block_sizes', 'weights'])
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("keep_orig_idx", [False, True])
+@pytest.mark.parametrize("sequence", [False, True])
+@pytest.mark.parametrize("my_size", [3, 5, 7])
+@pytest.mark.parametrize("index_type", [torch.int32, torch.int64])
+def test_full_kernel_fastdivmod_threshold_boundary(keep_orig_idx, sequence, my_size, index_type):
+    """
+    覆盖 full kernel 中 FastDivmod::Div/Mod 的阈值边界（int32 和 int64）。
+    full kernel 通过 block_bucketize_pos 触发，FastDivmod 在以下路径被调用：
+    - fdMySize.Mod(idxUnsigned)：当 idx 落在 pos 表范围外（lb < 0 或 lb >= mySize）
+    - fdMySize.Div(idxUnsigned)：同上条件下计算 finalIndex（keep_orig_idx=False 时）
+    keep_orig_idx=True 时 finalIndex 直接取原始值，但 bucket 仍走 fdMySize.Mod。
+    indices 精确覆盖有符号最大值两侧的阈值边界。
+    """
+    iinfo = torch.iinfo(index_type)
+    signed_max = iinfo.max
+    signed_min = iinfo.min
+    block_size = 4
+    pos_boundary = block_size * my_size
+    indices = torch.tensor([
+        signed_max - 1,
+        signed_max,
+        signed_min,
+        signed_min + 1,
+        signed_min + (my_size - 1),
+        -1,
+        -my_size,
+        -(my_size + 1),
+        pos_boundary + 1,           # 超出 blkSizeMulMySize，走 fdMySize 路径
+        pos_boundary + my_size + 1,
+        my_size * 4 + 1,
+    ], dtype=index_type)
+    lengths = torch.tensor([indices.numel()], dtype=index_type)
+    block_sizes = torch.tensor([block_size], dtype=index_type)
+    total_num_blocks = torch.tensor([my_size], dtype=index_type)
+    weights = torch.randn(indices.numel(), dtype=torch.float32).uniform_(-1.0, 1.0)
+    block_bucketize_pos_cpu = [
+        torch.tensor(list(range(0, pos_boundary + 1, block_size)), dtype=index_type),
+    ]
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths,
+        indices=indices,
+        block_sizes=block_sizes,
+        my_size=my_size,
+        weights=weights,
+        bucketize_pos=True,
+        sequence=sequence,
+        keep_orig_idx=keep_orig_idx,
+        total_num_blocks=total_num_blocks,
+        block_bucketize_pos=block_bucketize_pos_cpu,
+    )
+    kwargs_npu = _make_npu_kwargs(
+        kwargs_cpu, DEVICE,
+        ['lengths', 'indices', 'block_sizes', 'weights', 'total_num_blocks'],
+        list_keys=['block_bucketize_pos'],
+    )
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)

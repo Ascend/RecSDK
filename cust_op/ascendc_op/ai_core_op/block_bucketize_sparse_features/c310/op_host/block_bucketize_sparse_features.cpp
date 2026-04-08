@@ -26,7 +26,8 @@ namespace {
 constexpr int32_t EXPECTED_RANK = 1;
 constexpr size_t LOCAL_MEMORY_SIZE = 216 * 1024;
 
-inline void HostPrecomputeFastDivmod64(uint64_t divisor, uint64_t& outMagic, uint32_t& outShift)
+template <typename UnsignedT>
+inline void HostPrecomputeFastDivmod(UnsignedT divisor, UnsignedT& outMagic, uint32_t& outShift)
 {
     if (divisor <= 1) {
         outMagic = 0;
@@ -34,15 +35,16 @@ inline void HostPrecomputeFastDivmod64(uint64_t divisor, uint64_t& outMagic, uin
         return;
     }
     unsigned __int128 one = 1;
+    constexpr uint32_t BIT_WIDTH = static_cast<uint32_t>(sizeof(UnsignedT) * 8); /* 单字节 8 BIT */
     uint32_t s = 0;
-    for (; s < 64; ++s) {
+    for (; s < BIT_WIDTH; ++s) {
         if ((one << s) >= static_cast<unsigned __int128>(divisor)) {
             break;
         }
     }
     outShift = s;
-    outMagic = static_cast<uint64_t>(
-        ((one << 64) * ((one << s) - static_cast<unsigned __int128>(divisor))) /
+    outMagic = static_cast<UnsignedT>(
+        ((one << BIT_WIDTH) * ((one << s) - static_cast<unsigned __int128>(divisor))) /
         static_cast<unsigned __int128>(divisor) + 1);
 }
 
@@ -114,7 +116,8 @@ void FillCommonTilingFields(
     bool enableBucketizePos,
     bool enableTotalNumBlocks,
     bool enableBatchSizePerFeature,
-    bool hasBucketizePosList)
+    bool hasBucketizePosList,
+    ge::DataType indicesDataType)
 {
     tiling.set_lengthsSize(lengthsSize);
     tiling.set_indicesSize(indicesSize);
@@ -130,14 +133,20 @@ void FillCommonTilingFields(
 
     uint64_t mySizeMagic = 0;
     uint32_t mySizeShift = 0;
-    HostPrecomputeFastDivmod64(static_cast<uint64_t>(mySize), mySizeMagic, mySizeShift);
+    if (indicesDataType == ge::DT_INT32) {
+        uint32_t mySizeMagic32 = 0;
+        HostPrecomputeFastDivmod<uint32_t>(static_cast<uint32_t>(mySize), mySizeMagic32, mySizeShift);
+        mySizeMagic = mySizeMagic32;
+    } else {
+        HostPrecomputeFastDivmod<uint64_t>(static_cast<uint64_t>(mySize), mySizeMagic, mySizeShift);
+    }
     tiling.set_mySizeDivMagic(mySizeMagic);
     tiling.set_mySizeDivShift(mySizeShift);
 
     uint64_t batchSizeMagic = 0;
     uint32_t batchSizeShift = 0;
     if (batchSize > 0) {
-        HostPrecomputeFastDivmod64(static_cast<uint64_t>(batchSize), batchSizeMagic, batchSizeShift);
+        HostPrecomputeFastDivmod<uint64_t>(static_cast<uint64_t>(batchSize), batchSizeMagic, batchSizeShift);
     }
     tiling.set_batchSizeDivMagic(batchSizeMagic);
     tiling.set_batchSizeDivShift(batchSizeShift);
@@ -147,6 +156,7 @@ static ge::graphStatus ComputeNewLengthsTilingFunc(gert::TilingContext* context)
 {
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("indicesShape", context->GetInputShape(CNL_INPUT_INDICES_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("indicesTensor", context->GetInputTensor(CNL_INPUT_INDICES_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("blockSizesShape", context->GetInputShape(CNL_INPUT_BLOCK_SIZES_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("offsetsShape", context->GetInputShape(CNL_INPUT_OFFSETS_INDEX), return ge::GRAPH_FAILED);
 
@@ -160,6 +170,7 @@ static ge::graphStatus ComputeNewLengthsTilingFunc(gert::TilingContext* context)
     const auto blockSizesStorageShape = blockSizesShape->GetStorageShape();
     const int64_t indicesSize = indicesStorageShape.GetShapeSize();
     const int64_t numFeatures = blockSizesStorageShape.GetShapeSize();
+    const auto indicesDataType = context->GetInputTensor(CNL_INPUT_INDICES_INDEX)->GetDataType();
 
     auto* attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
@@ -226,7 +237,7 @@ static ge::graphStatus ComputeNewLengthsTilingFunc(gert::TilingContext* context)
     BlockBucketizeSparseFeaturesTilingData tiling;
     FillCommonTilingFields(tiling, lengthsSize, indicesSize, numFeatures,
         batchSize, mySize, maxB, *bucketizePosPtr, enableTotalNumBlocks,
-        enableBatchSizePerFeature, hasBucketizePosList);
+        enableBatchSizePerFeature, hasBucketizePosList, indicesDataType);
     tiling.set_enableSequence(false);
     tiling.set_enableWeights(false);
     tiling.set_enableKeepOrigIdx(false);
@@ -247,6 +258,7 @@ static ge::graphStatus ScatterNewIndicesTilingFunc(gert::TilingContext* context)
 {
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("indicesShape", context->GetInputShape(SNI_INPUT_INDICES_INDEX), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("indicesTensor", context->GetInputTensor(SNI_INPUT_INDICES_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("blockSizesShape", context->GetInputShape(SNI_INPUT_BLOCK_SIZES_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("offsetsShape", context->GetInputShape(SNI_INPUT_OFFSETS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("newOffsetsShape", context->GetInputShape(SNI_INPUT_NEW_OFFSETS_INDEX), return ge::GRAPH_FAILED);
@@ -261,6 +273,7 @@ static ge::graphStatus ScatterNewIndicesTilingFunc(gert::TilingContext* context)
     const auto blockSizesStorageShape = blockSizesShape->GetStorageShape();
     const int64_t indicesSize = indicesStorageShape.GetShapeSize();
     const int64_t numFeatures = blockSizesStorageShape.GetShapeSize();
+    const auto indicesDataType = context->GetInputTensor(SNI_INPUT_INDICES_INDEX)->GetDataType();
 
     auto* attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
@@ -335,7 +348,7 @@ static ge::graphStatus ScatterNewIndicesTilingFunc(gert::TilingContext* context)
     BlockBucketizeSparseFeaturesTilingData tiling;
     FillCommonTilingFields(tiling, lengthsSize, indicesSize, numFeatures,
         batchSize, mySize, maxB, *bucketizePosPtr, enableTotalNumBlocks,
-        enableBatchSizePerFeature, hasBucketizePosList);
+        enableBatchSizePerFeature, hasBucketizePosList, indicesDataType);
     tiling.set_enableSequence(*sequencePtr);
     tiling.set_enableWeights(weightsTensor != nullptr);
     tiling.set_enableKeepOrigIdx(*keepOrigIdxPtr);
