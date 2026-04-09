@@ -24,8 +24,7 @@ namespace SelectDim1ToPermute {
 
 using namespace AscendC;
 
-constexpr int USE_QUEUE_NUM = 2;
-constexpr int USE_BUFFER_NUM = 2;
+constexpr int USE_QUEUE_NUM = 1;
 constexpr int INT32_ALIGNMENT = 8;
 constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
 struct Args {
@@ -99,6 +98,7 @@ private:
         splitBaseLen = tilingData.splitBaseLen;
         tailSplitIndex = tilingData.tailSplitIndex;
         blockLen = tilingData.blockLen;
+        batchSizeWithPadding = tilingData.batchSizeWithPadding;
     }
 
     __aicore__ inline void InitGmParams(Args& args, TPipe* pipePtr)
@@ -113,7 +113,7 @@ private:
                                         indicesLength * batchNum * sizeof(lengthsDType));
         pipe = pipePtr;
         pipe->InitBuffer(indicesQueue, USE_QUEUE_NUM, blockLen * sizeof(indicesDType));
-        pipe->InitBuffer(lengthsQueue, USE_QUEUE_NUM, batchSize * sizeof(lengthsDType));
+        pipe->InitBuffer(lengthsQueue, USE_QUEUE_NUM, batchSizeWithPadding * sizeof(lengthsDType));
     }
 
     __aicore__ inline void CopyIn(int32_t i, int64_t offset, int64_t len)
@@ -166,9 +166,10 @@ private:
     int64_t batchSize;
     int64_t indicesLength;
     int64_t batchNum;
-    int32_t splitBaseLen;
+    int64_t splitBaseLen;
     int64_t tailSplitIndex;
     int64_t blockLen;
+    int64_t batchSizeWithPadding;
 
     // ThisCoreLen for T
     int64_t offsetOfThisCore = 0;

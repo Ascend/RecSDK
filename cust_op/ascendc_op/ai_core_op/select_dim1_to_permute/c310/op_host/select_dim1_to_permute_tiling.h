@@ -26,6 +26,7 @@ TILING_DATA_FIELD_DEF(int64_t, batchNum);
 TILING_DATA_FIELD_DEF(int64_t, splitBaseLen);
 TILING_DATA_FIELD_DEF(int64_t, tailSplitIndex);
 TILING_DATA_FIELD_DEF(int64_t, blockLen);
+TILING_DATA_FIELD_DEF(int64_t, batchSizeWithPadding);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(SelectDim1ToPermute, SelectDim1ToPermuteTilingData)
