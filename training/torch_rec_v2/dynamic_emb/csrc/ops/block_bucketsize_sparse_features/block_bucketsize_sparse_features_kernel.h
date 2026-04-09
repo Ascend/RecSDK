@@ -31,7 +31,7 @@ constexpr int32_t CACHE_ALIGN = 64;
 constexpr int32_t SMALL_DATA_THRESHOLD_32 = 24 * MAX_THREADS_PER_BLOCK;  // 24576
 constexpr int32_t SMALL_DATA_THRESHOLD_64 = 44 * MAX_THREADS_PER_BLOCK;  // 45056
 constexpr int32_t UNROLL_FACTOR = 4;
-constexpr int32_t MAX_FEATURE_NUM_USE_QUICK_DIVIDE = 500;
+constexpr int32_t MAX_FEATURE_NUM_USE_QUICK_DIVIDE = 400;
 
 template <typename T>
 __aicore__ inline T Min(const T& a, const T& b)
