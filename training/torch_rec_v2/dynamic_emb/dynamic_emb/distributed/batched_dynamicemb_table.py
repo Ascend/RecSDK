@@ -66,6 +66,8 @@ from dynamic_emb.distributed.initializers.dynamicemb_initializers import (
      NormalInitializer,
      ConstantInitializer,
      UniformInitializer,
+     TruncatedNormalInitializer,
+     DebugInitializer,
 )
 
 
@@ -551,6 +553,10 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
                 initializer = ConstantInitializer(initializer_args)
             elif mode == DynamicEmbInitializerMode.UNIFORM:
                 initializer = UniformInitializer(initializer_args)
+            elif mode ==DynamicEmbInitializerMode.TRUNCATED_NORMAL:
+                initializer = TruncatedNormalInitializer(initializer_args)
+            elif mode == DynamicEmbInitializerMode.DEBUG:
+                initializer = DebugInitializer(initializer_args)
             else:
                 raise ValueError(f"Not supported initializer type({mode}) {type(mode)} {mode.value}.")
             return initializer
