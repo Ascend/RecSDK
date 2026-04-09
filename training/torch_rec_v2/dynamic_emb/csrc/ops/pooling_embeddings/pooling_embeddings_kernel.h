@@ -24,150 +24,151 @@ using namespace AscendC;
 namespace PoolingEmbeddingsSimt {
 
 constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
-constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
+constexpr int32_t UNROLL_FACTOR = 4;
 
 // SIMT VF函数 - 小数据模式
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, bool IsFloat2 = false>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmallDataCompute(
     __gm__ T1* src, __gm__ T2* dst, __gm__ T3* offset, __gm__ T3* inverse, int32_t combiner,
-    int32_t total_dims, int32_t accum_dims, int32_t ev_size, int32_t num_vec, int32_t batch_size)
+    int32_t totalDims, int32_t accumDims, int32_t evSize, int32_t evSizeVec, int32_t numVec, int32_t batchSize,
+    int32_t outLen)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
     int32_t blockIdx = AscendC::Simt::GetBlockIdx();
     int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
-    int32_t outLength = num_vec * ev_size;
 
-    int32_t blockBase = blockIdx * blockElementCapacity;
-
-    if (blockBase >= outLength) {
+    int32_t blockBase = blockIdx * blockThreadNum;
+ 
+    if (blockBase >= outLen) {
         return;
     }
 
-    int32_t elementsRemaining = outLength - blockBase;
-    int32_t elementsThisBlock = (elementsRemaining < blockElementCapacity) ? elementsRemaining : blockElementCapacity;
-    if (elementsThisBlock <= 0) {
+    int32_t elementsRemaining = outLen - blockBase;
+    // block计算(blockBase, blockBase + elementsThisBlock)
+    int32_t elementsThisBlock = (elementsRemaining < blockThreadNum) ? elementsRemaining : blockThreadNum;
+    // 该运行线程
+    int32_t threadElementBase = blockBase + threadIdx;
+
+    if (threadElementBase >= outLen) {
         return;
     }
 
-    int32_t threadElementBase = blockBase + threadIdx * MAX_ELEMENTS_PER_THREAD;
+    int32_t indicesIndex = threadElementBase / evSizeVec;
+    int32_t indicesDimVec = threadElementBase % evSizeVec;
+    int32_t start = offset[indicesIndex] - offset[0];
+    int32_t vectorNum = offset[indicesIndex + 1] - offset[indicesIndex];
+    int32_t dstRowIndex = indicesIndex % batchSize;
+    int32_t dstColIndex = indicesIndex / batchSize;
 
-    if (threadElementBase >= outLength) {
-        return;
-    }
-
-    int32_t elementsThisBlockRemaining = elementsThisBlock - threadIdx * MAX_ELEMENTS_PER_THREAD;
-    int32_t elementsForThread =
-        (elementsThisBlockRemaining > MAX_ELEMENTS_PER_THREAD) ? MAX_ELEMENTS_PER_THREAD : elementsThisBlockRemaining;
-
-    // 2. 实际计算
-#pragma unroll
-    for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; ++i) {
-        if (i >= elementsForThread) {
-            return;
+    if constexpr (IsFloat2) {
+        float2 accum = {0.0f, 0.0f};
+        int32_t j = 0;
+        for (; j + UNROLL_FACTOR <= vectorNum; j += UNROLL_FACTOR) {
+            accum += src[inverse[j + start] * evSizeVec + indicesDimVec];
+            accum += src[inverse[j + start + 1] * evSizeVec + indicesDimVec];
+            accum += src[inverse[j + start + 2] * evSizeVec + indicesDimVec];
+            accum += src[inverse[j + start + 3] * evSizeVec + indicesDimVec];
         }
-        int32_t globalIdx = threadElementBase + i;
-        if (globalIdx >= outLength) {
-            return;
+        for (; j < vectorNum; ++j) {
+            int32_t srcIndex = inverse[j + start];
+            accum += src[srcIndex * evSizeVec + indicesDimVec];
         }
-        int32_t indices_index = globalIdx / ev_size;
-        int32_t indices_dim = globalIdx % ev_size;
-
-        int32_t start = offset[indices_index] - offset[0];
-        int32_t vectorNum = offset[indices_index + 1] - offset[indices_index];
-
+        if (combiner > 0) {
+            accum.x /= vectorNum;
+            accum.y /= vectorNum;
+        }
+        dst[(dstRowIndex * totalDims + accumDims + dstColIndex * evSize) >> 1 + indicesDimVec] = accum;
+    } else {
         float accum{0.0f};
-        for (int32_t j = 0; j < vectorNum; j++) {
-            int32_t src_index = inverse[j + start];
-            int32_t data_index = src_index * ev_size + indices_dim;
-            accum += src[data_index];
+        int32_t j = 0;
+        for (; j + UNROLL_FACTOR <= vectorNum; j += UNROLL_FACTOR) {
+            accum += src[inverse[j + start] * evSizeVec + indicesDimVec];
+            accum += src[inverse[j + start + 1] * evSizeVec + indicesDimVec];
+            accum += src[inverse[j + start + 2] * evSizeVec + indicesDimVec];
+            accum += src[inverse[j + start + 3] * evSizeVec + indicesDimVec];
         }
-
+        for (; j < vectorNum; ++j) {
+            int32_t srcIndex = inverse[j + start];
+            accum += src[srcIndex * evSizeVec + indicesDimVec];
+        }
         if (combiner > 0) {
             accum /= vectorNum;
         }
-
-        int32_t dstRowIndex = indices_index % batch_size;
-        int32_t dstColIndex = indices_index / batch_size;
-        dst[dstRowIndex * total_dims + accum_dims + dstColIndex * ev_size + indices_dim] = accum;
+        dst[dstRowIndex * totalDims + accumDims + dstColIndex * evSize + indicesDimVec] = accum;
     }
 }
 
 // SIMT VF函数 - 大数据模式
-template <typename T1, typename T2, typename T3>
+template <typename T1, typename T2, typename T3, bool IsFloat2 = false>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLargeDataCompute(
     __gm__ T1* src, __gm__ T2* dst, __gm__ T3* offset, __gm__ T3* inverse, int32_t combiner,
-    int32_t total_dims, int32_t accum_dims, int32_t ev_size, int32_t num_vec, int32_t batch_size,
-    int32_t totalBlocks, int32_t blockStartIdx, int32_t curBlocksCount)
+    int32_t totalDims, int32_t accumDims, int32_t evSize, int32_t evSizeVec, int32_t numVec, int32_t batchSize,
+    int32_t totalBlocks, int32_t blockStartIdx, int32_t curBlocksCount, int32_t outLen)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-
     int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
-
-    int32_t outLength = num_vec * ev_size;
 
     for (int32_t iter = 0; iter < curBlocksCount; ++iter) {
         // 1.位置计算
         int32_t globalBlockIdx = blockStartIdx + iter;
-        if (globalBlockIdx >= totalBlocks) {
+
+        int32_t blockBase = globalBlockIdx * blockThreadNum;
+        if (blockBase >= outLen) {
             break;
         }
 
-        int32_t blockBase = globalBlockIdx * blockElementCapacity;
-        if (blockBase >= outLength) {
-            break;
-        }
-
-        int32_t elementsRemaining = outLength - blockBase;
+        int32_t elementsRemaining = outLen - blockBase;
         int32_t elementsThisBlock =
-            (elementsRemaining < blockElementCapacity) ? elementsRemaining : blockElementCapacity;
-        if (elementsThisBlock <= 0) {
-            continue;
-        }
+            (elementsRemaining < blockThreadNum) ? elementsRemaining : blockThreadNum;
 
-        int32_t threadElementBase = blockBase + threadIdx * MAX_ELEMENTS_PER_THREAD;
+        int32_t threadElementBase = blockBase + threadIdx;
 
-        if (threadElementBase >= outLength) {
+        if (threadElementBase >= outLen) {
             break;
         }
 
-        int32_t elementsThisBlockRemaining = elementsThisBlock - threadIdx * MAX_ELEMENTS_PER_THREAD;
-        int32_t elementsForThread = (elementsThisBlockRemaining > MAX_ELEMENTS_PER_THREAD) ? MAX_ELEMENTS_PER_THREAD
-                                                                                           : elementsThisBlockRemaining;
+        int32_t indicesIndex = threadElementBase / evSizeVec;
+        int32_t indicesDimVec = threadElementBase % evSizeVec;
+        int32_t start = offset[indicesIndex] - offset[0];
+        int32_t vectorNum = offset[indicesIndex + 1] - offset[indicesIndex];
+        int32_t dstRowIndex = indicesIndex % batchSize;
+        int32_t dstColIndex = indicesIndex / batchSize;
 
-        // 2. 实际计算
-#pragma unroll
-        for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; ++i) {
-            if (i >= elementsForThread) {
-                break;
+        if constexpr (IsFloat2) {
+            float2 accum = {0.0f, 0.0f};
+            int32_t j = 0;
+            for (; j + UNROLL_FACTOR <= vectorNum; j += UNROLL_FACTOR) {
+                accum += src[inverse[j + start] * evSizeVec + indicesDimVec];
+                accum += src[inverse[j + start + 1] * evSizeVec + indicesDimVec];
+                accum += src[inverse[j + start + 2] * evSizeVec + indicesDimVec];
+                accum += src[inverse[j + start + 3] * evSizeVec + indicesDimVec];
             }
-            int32_t globalIdx = threadElementBase + i;
-            if (globalIdx >= outLength) {
-                break;
+            for (; j < vectorNum; ++j) {
+                int32_t srcIndex = inverse[j + start];
+                accum += src[srcIndex * evSizeVec + indicesDimVec];
             }
-
-            int32_t indices_index = globalIdx / ev_size;
-            int32_t indices_dim = globalIdx % ev_size;
-
-            int32_t start = offset[indices_index] - offset[0];
-            int32_t vectorNum = offset[indices_index + 1] - offset[indices_index];
-
+            if (combiner > 0) {
+                accum.x /= vectorNum;
+                accum.y /= vectorNum;
+            }
+            dst[(dstRowIndex * totalDims + accumDims + dstColIndex * evSize) >> 1 + indicesDimVec] = accum;
+        } else {
             float accum{0.0f};
-            for (int32_t j = 0; j < vectorNum; j++) {
-                int32_t src_index = inverse[j + start];
-                int32_t data_index = src_index * ev_size + indices_dim;
-                accum += src[data_index];
+            int32_t j = 0;
+            for (; j + UNROLL_FACTOR <= vectorNum; j += UNROLL_FACTOR) {
+                accum += src[inverse[j + start] * evSizeVec + indicesDimVec];
+                accum += src[inverse[j + start + 1] * evSizeVec + indicesDimVec];
+                accum += src[inverse[j + start + 2] * evSizeVec + indicesDimVec];
+                accum += src[inverse[j + start + 3] * evSizeVec + indicesDimVec];
             }
-
+            for (; j < vectorNum; ++j) {
+                int32_t srcIndex = inverse[j + start];
+                accum += src[srcIndex * evSizeVec + indicesDimVec];
+            }
             if (combiner > 0) {
                 accum /= vectorNum;
             }
-
-            int32_t dstRowIndex = indices_index % batch_size;
-            int32_t dstColIndex = indices_index / batch_size;
-            dst[dstRowIndex * total_dims + accum_dims + dstColIndex * ev_size + indices_dim] = accum;
+            dst[dstRowIndex * totalDims + accumDims + dstColIndex * evSize + indicesDimVec] = accum;
         }
     }
 }
