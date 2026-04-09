@@ -145,19 +145,25 @@ class EmbeddingTablePooler:
 def test_pooling_embeddings(dtype_int, dtype_float, device, combiner):
     torch.npu.set_device(device)
     src = torch.tensor([
-        [1.0, 2.0],
-        [3.0, 4.0],
-        [5.0, 6.0],
-        [7.0, 8.0]
+        [1.0, 2.0, 3.0, 4.0],
+        [5.0, 6.0, 7.0, 8.0],
+        [9.0, 10.0, 11.0, 12.0],
+        [13.0, 14.0, 15.0, 16.0]
     ], dtype=dtype_float, device=f'npu:{device}')
     inverse = torch.tensor([0, 1, 2, 1, 3], dtype=dtype_int, device=f'npu:{device}')
     offset = torch.tensor([10, 12, 13, 14, 15], dtype=dtype_int, device=f'npu:{device}')
 
     batch_size = 2
     num_vec = 4
-    ev_size = 2
-    total_dims = 10
-    accum_dims = 2
+    ev_size = 4
+    total_dims = 12
+    accum_dims = 0
+
+    '''
+    预期结果：combiner = 0
+    [[6,8,10,12,  5,6,7,8,       0,0,0,0],
+     [9,10,11,12, 13,14,15,16    0,0,0,0]]
+    '''
 
     pooler = EmbeddingTablePooler(
         combiner=combiner,

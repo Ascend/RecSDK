@@ -793,43 +793,48 @@ void assign(std::shared_ptr<dyn_emb::DynamicVariableBase> table, const size_t n,
 }
 
 void lookup_forward(const at::Tensor& src, const at::Tensor& dst, const at::Tensor& offset, const at::Tensor& inverse,
-                    int32_t combiner, int32_t total_dims, int32_t accum_dims, int32_t ev_size, int32_t num_vec,
-                    int32_t batch_size)
+                    int32_t combiner, int32_t totalDims, int32_t accumDims, int32_t evSize, int32_t numVec,
+                    int32_t batchSize)
 {
-    // data check
-    TORCH_CHECK(offset.dtype() == inverse.dtype(), "offset and inverse must have the same dtype");
+    // data type
+    TORCH_CHECK(offset.dtype() == inverse.dtype(), "offset and inverse must have the same dtype");	 
     TORCH_CHECK(offset.dim() == 1 && inverse.dim() == 1, "offset and inverse must be 1D tensor");
-    auto src_type = scalartype_to_datatype(convertTypeMetaToScalarType(src.dtype()));
-    auto dst_type = scalartype_to_datatype(convertTypeMetaToScalarType(dst.dtype()));
-    auto offset_type = scalartype_to_datatype(convertTypeMetaToScalarType(offset.dtype()));
+    auto srcType = scalartype_to_datatype(convertTypeMetaToScalarType(src.dtype()));
+    auto dstType = scalartype_to_datatype(convertTypeMetaToScalarType(dst.dtype()));
+    auto offsetType = scalartype_to_datatype(convertTypeMetaToScalarType(offset.dtype()));
 
     // data info
-    auto src_contin = src.contiguous();
-    auto offset_contin = offset.contiguous();
-    auto inverse_contin = inverse.contiguous();
-    void* src_data = src_contin.data_ptr();
-    void* dst_data = dst.data_ptr();
-    void* offset_data = offset_contin.data_ptr();
-    void* inverse_data = inverse_contin.data_ptr();
+    uint8_t* srcData = src.is_contiguous() ? static_cast<uint8_t*>(src.data_ptr()) 
+        : static_cast<uint8_t*>(src.contiguous().data_ptr());
+    uint8_t* offsetData = offset.is_contiguous() ? static_cast<uint8_t*>(offset.data_ptr()) 
+        : static_cast<uint8_t*>(offset.contiguous().data_ptr());
+    uint8_t* inverseData = inverse.is_contiguous() ? static_cast<uint8_t*>(inverse.data_ptr()) 
+        : static_cast<uint8_t*>(inverse.contiguous().data_ptr());
+    uint8_t* dstData = static_cast<uint8_t*>(dst.data_ptr());
 
-    // tilling info
-    bool isInt32 = offset.dtype() == torch::kInt32;
-    bool isSmall = (ev_size * num_vec <= (isInt32 ? SMALL_DATA_THRESHOLD_32 : SMALL_DATA_THRESHOLD));
-    int32_t total_blocks = (ev_size * num_vec + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
-    int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
-    int32_t core_num = std::min(max_cores, total_blocks);
-    if (core_num == 0) {
-        return;
+    constexpr uint32_t THREAD_NUM = 1024;
+    constexpr int32_t EMBEDDING_THRESHOLD = 8;
+    auto aclStream = c10_npu::getCurrentNPUStream().stream(true);
+
+    bool isFloat2 = (evSize % 2 == 0 && evSize > EMBEDDING_THRESHOLD);
+    int32_t evSizeVec = evSize;
+    if (isFloat2) {
+        evSizeVec >>= 1;
     }
-    int32_t blocks_per_core = total_blocks / core_num;
-    int32_t remainder_blocks = total_blocks % core_num;
+    int32_t outLen = evSizeVec * numVec;
+    int32_t totalBlocks = (outLen + THREAD_NUM - 1) / THREAD_NUM;
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    int32_t coreNum = std::min(maxCores, totalBlocks);
+    TORCH_CHECK(coreNum > 0, "coreNum must be greater than 0");
+    int32_t blocksPerCore = totalBlocks / coreNum;
+    int32_t remainderBlocks = totalBlocks % coreNum;
+    bool isSmall = (maxCores >= totalBlocks) ? true : false;
 
-    // run
-    auto acl_stream = c10_npu::getCurrentNPUStream().stream(true);
     ACLRT_LAUNCH_KERNEL(pooling_embeddings)(
-        core_num, acl_stream, src_data, dst_data, offset_data, inverse_data, combiner, total_dims, accum_dims, ev_size,
-        num_vec, batch_size, total_blocks, blocks_per_core, remainder_blocks, isSmall, static_cast<uint32_t>(src_type),
-        static_cast<uint32_t>(dst_type), static_cast<uint32_t>(offset_type));
+        coreNum, aclStream, srcData, dstData, offsetData, inverseData, combiner, totalDims,
+        accumDims, evSize, numVec, batchSize, totalBlocks, blocksPerCore, remainderBlocks, isSmall,
+        static_cast<uint32_t>(srcType), static_cast<uint32_t>(dstType), static_cast<uint32_t>(offsetType),
+        THREAD_NUM, outLen, isFloat2, evSizeVec);
 }
 
 class DeviceTimestamp {
@@ -1201,7 +1206,7 @@ void bind_dyn_emb_op(py::module& m)
           py::arg("new_offsets"), py::arg("new_lengths"));
 
     m.def("lookup_forward", &lookup_forward, "lookup_forward", py::arg("src"), py::arg("dst"), py::arg("offset"),
-          py::arg("inverse"), py::arg("combiner"), py::arg("total_dims"), py::arg("accum_dims"), py::arg("ev_size"),
-          py::arg("num_vec"), py::arg("batch_size"));
+          py::arg("inverse"), py::arg("combiner"), py::arg("totalDims"), py::arg("accumDims"), py::arg("evSize"),
+          py::arg("numVec"), py::arg("batchSize"));
 }
 }  // namespace dyn_emb
