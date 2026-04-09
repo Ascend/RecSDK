@@ -26,8 +26,8 @@ constexpr int32_t INDICES_INDEX = 0;
 constexpr int32_t BATCHSIZE_INDEX = 0;
 constexpr int32_t LENGTHSSIZE_INDEX = 1;
 constexpr uint32_t BLOCK_SIZE = 32;
-constexpr int64_t USE_BUFFER_NUM = 2;
-constexpr int64_t USE_QUEUE_NUM = 2;
+constexpr int64_t USE_BUFFER_NUM = 1;
+constexpr int64_t USE_QUEUE_NUM = 1;
 constexpr int DCACHE_SIZE = 128 * 1024;
 }  // namespace
 
@@ -83,11 +83,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
     int lengthsBytes = lengthsTensor->GetDataType() == ge::DT_INT64 ? sizeof(int64_t) : sizeof(int32_t);
     uint64_t lengthsAlignment = BLOCK_SIZE / lengthsBytes;
-    int64_t lengthsUbSize =
-        (batchSize + lengthsAlignment - 1) / lengthsAlignment * lengthsAlignment * USE_QUEUE_NUM * lengthsBytes;
+    // 执行时, lengths以batchSizeWithPadding为单位处理
+    int64_t batchSizeWithPadding = (batchSize + lengthsAlignment - 1) / lengthsAlignment * lengthsAlignment;
+    int64_t lengthsUbSize = batchSizeWithPadding * USE_QUEUE_NUM * lengthsBytes;
     ubCanUsed -= lengthsUbSize;
     int64_t blockLen = ubCanUsed / USE_QUEUE_NUM / USE_BUFFER_NUM / indicesBytes;
     blockLen = blockLen / indicesAlignment * indicesAlignment;
+    blockLen = std::min(blockLen, indicesLengthWithPadding);
     OPS_LOG_E_IF(blockLen <= 0, context, return ge::GRAPH_FAILED,
                  "[ERROR]SelectDim1ToPermuteTilingData required blockLen must be a positive number");
     tiling.set_indicesLength(indicesLength);
@@ -95,6 +97,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_splitBaseLen(splitBaseLen);
     tiling.set_tailSplitIndex(tailSplitIndex);
     tiling.set_blockLen(blockLen);
+    tiling.set_batchSizeWithPadding(batchSizeWithPadding);
 
     context->SetBlockDim(actualCoreNum);
     context->SetLocalMemorySize(DCACHE_SIZE);
