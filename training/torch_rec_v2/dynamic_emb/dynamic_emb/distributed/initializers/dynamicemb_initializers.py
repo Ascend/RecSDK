@@ -15,10 +15,14 @@
 # limitations under the License.
 # ==============================================================================
 
-import abc
+
 from typing import Optional
 
+import torch.nn.init as init
+
 import torch
+
+import abc
 
 from dynamic_emb.distributed.dynamicemb_config import DynamicEmbInitializerArgs
 
@@ -97,3 +101,44 @@ class UniformInitializer(BaseDynamicEmbInitializer):
         low, high = self._args.lower, self._args.upper
         uniform_tensor = (high - low) * torch.rand(init_shape, dtype=buffer.dtype, device=buffer.device) + low
         buffer[indices] = uniform_tensor
+
+
+class TruncatedNormalInitializer(BaseDynamicEmbInitializer):
+    def __init__(self, args: DynamicEmbInitializerArgs):
+        super().__init__(args)
+
+    def __call__(
+        self,
+        buffer: torch.Tensor,
+        indices: torch.Tensor,
+        keys: Optional[torch.Tensor],  # remove it when debug mode is removed
+    ) -> None:
+        init_shape = (len(indices),) + buffer.shape[1:]
+        trunc_normal_tensor = torch.empty(
+            size=init_shape,
+            device=buffer.device,
+            dtype=buffer.dtype
+        )
+        init.trunc_normal_(
+            tensor=trunc_normal_tensor,
+            mean=self._args.mean,
+            std=self._args.std_dev
+        )
+        buffer[indices] = trunc_normal_tensor
+
+
+class DebugInitializer(BaseDynamicEmbInitializer):
+    def __init__(self, args: DynamicEmbInitializerArgs):
+        super().__init__(args)
+
+    def __call__(
+        self,
+        buffer: torch.Tensor,
+        indices: torch.Tensor,
+        keys: Optional[torch.Tensor],
+    ) -> None:
+        if keys is None:
+            raise ValueError("DebugInitializer requires keys, but got None.")
+        debug_dividend = 100000
+        debug_tensor = (keys[indices] % debug_dividend).view(-1,1).expand(buffer[indices].shape).to(dtype=buffer.dtype, device=buffer.device)
+        buffer[indices] = debug_tensor

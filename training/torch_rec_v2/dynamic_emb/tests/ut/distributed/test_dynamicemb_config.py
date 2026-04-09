@@ -34,6 +34,13 @@ from dynamic_emb.distributed.dynamicemb_config import (
     get_optimizer_state_dim,
 )
 from dynamic_emb_extensions import InitializerArgs, DynamicEmbDataType, DynamicEmbTable, OptimizerType, SafeCheckMode
+from dynamic_emb.distributed.initializers.dynamicemb_initializers import (
+    NormalInitializer,
+    UniformInitializer,
+    ConstantInitializer,
+    TruncatedNormalInitializer,
+    DebugInitializer,
+)
 
 
 class TestDynamicEmbPoolingMode:
@@ -345,3 +352,95 @@ class TestGetOptimizerStateDim:
         assert get_optimizer_state_dim(OptimizerType.RowWiseAdaGrad, 8, torch.float32) == (16 // 4)
         assert get_optimizer_state_dim(OptimizerType.Adam, 8, torch.float32) == (8 * 2)
         assert get_optimizer_state_dim(OptimizerType.AdaGrad, 8, torch.float32) == 8
+
+class TestDynamicEmbInitializers:
+    @pytest.fixture(scope="class")
+    def initializer_args(self) -> DynamicEmbInitializerArgs:
+        return DynamicEmbInitializerArgs()
+    @pytest.fixture(scope="class")
+    def test_indices(self) -> torch.Tensor:
+        return torch.tensor([0, 5, 10, 15, 25, 30, 35, 40], dtype=torch.long)
+    @pytest.fixture(scope="class")
+    def test_keys(self) -> torch.Tensor:
+        return torch.zeros(100, 8)
+
+    @pytest.mark.parametrize(
+        "mode, init_class",
+        [
+            (DynamicEmbInitializerMode.NORMAL, NormalInitializer),
+            (DynamicEmbInitializerMode.CONSTANT, ConstantInitializer),
+            (DynamicEmbInitializerMode.UNIFORM, UniformInitializer),
+            (DynamicEmbInitializerMode.TRUNCATED_NORMAL, TruncatedNormalInitializer),
+            (DynamicEmbInitializerMode.DEBUG, DebugInitializer),
+        ],
+        ids=["normal", "constant", "uniform", "truncated_normal", "debug"] 
+    )
+    def test_initializer_creation(self, initializer_args, mode, init_class):
+        initializer_args.mode = mode
+        initializer = init_class(initializer_args)
+        assert isinstance(initializer, init_class), \
+            f"create Initializer failed ！expected:{init_class.__name__},actual:{type(initializer).__name__}"
+
+    @pytest.mark.parametrize("constant_value", [0.0, 1.5, -2.0, 3.14])  # 多值测试
+    def test_constant_initializer_value(self, initializer_args, test_indices, test_keys, constant_value):
+        initializer_args.mode = DynamicEmbInitializerMode.CONSTANT
+        initializer_args.value = constant_value
+        initializer = ConstantInitializer(initializer_args)
+        buffer=torch.zeros(100, 8)
+        initializer(buffer, test_indices, test_keys)
+        init_tensor = buffer[test_indices]
+        assert torch.allclose(init_tensor, torch.tensor(constant_value)), \
+            (f"ConstantInitializer failed！\n"
+             f"expected: {constant_value}\n"
+             f"actual: {init_tensor[0][0].item()}\n"
+             f"range: [{init_tensor.min().item()}, {init_tensor.max().item()}]")
+
+    def test_debug_initializer_value(self, initializer_args, test_indices):
+        initializer_args.mode = DynamicEmbInitializerMode.DEBUG
+        initializer = DebugInitializer(initializer_args)
+        device = 0
+        buffer = torch.zeros(100, 8,device=f'npu:{device}')
+        keys=torch.arange(100, dtype=torch.int64, device=f'npu:{device}')*123456+7
+        initializer(buffer, test_indices, keys)
+        init_tensor = buffer[test_indices]
+        expected = (keys[test_indices] % 100000).to(dtype=buffer.dtype).view(-1, 1).expand_as(init_tensor)
+        assert torch.allclose(init_tensor, expected), "DebugInitializer values error"
+        mask=torch.ones(100, dtype=torch.bool, device=f'npu:{device}')
+        mask[test_indices]=False
+        assert torch.all(buffer[mask] == 0), "DebugInitializer values should be 0 for unused indices"
+
+    @pytest.mark.parametrize(
+        "mode, init_class",
+        [
+            (DynamicEmbInitializerMode.NORMAL, NormalInitializer),
+            (DynamicEmbInitializerMode.CONSTANT, ConstantInitializer),
+            (DynamicEmbInitializerMode.UNIFORM, UniformInitializer),
+            (DynamicEmbInitializerMode.TRUNCATED_NORMAL, TruncatedNormalInitializer),
+        ],
+        ids=["normal", "constant", "uniform", "truncated_normal"],
+    )
+    def test_initializer_with_none_keys(self, initializer_args, test_indices, mode, init_class):
+        initializer_args.mode = mode
+        if mode == DynamicEmbInitializerMode.CONSTANT:
+            initializer_args.value = 2.0
+        if mode == DynamicEmbInitializerMode.TRUNCATED_NORMAL:
+            initializer_args.mean = 0.8
+            initializer_args.std_dev = 0.6
+        buffer = torch.zeros(100, 8)
+        initializer = init_class(initializer_args)
+        initializer(buffer, test_indices, None)
+        init_tensor = buffer[test_indices]
+        if mode == DynamicEmbInitializerMode.CONSTANT:
+            assert torch.allclose(init_tensor, torch.tensor(2.0))
+        elif mode == DynamicEmbInitializerMode.UNIFORM:
+            assert init_tensor.min() >= 0.0
+            assert init_tensor.max() <= 1.0
+        else:
+            assert not torch.all(init_tensor == 0)
+
+    def test_debug_initializer_none_keys_raises(self, initializer_args, test_indices):
+        initializer_args.mode = DynamicEmbInitializerMode.DEBUG
+        initializer = DebugInitializer(initializer_args)
+        buffer = torch.zeros(100, 8)
+        with pytest.raises(ValueError, match="DebugInitializer requires keys"):
+            initializer(buffer, test_indices, None)
