@@ -25,6 +25,8 @@
 #include <torch/extension.h>
 #include <torch/torch.h>
 #include "securec.h"
+#include <iostream>
+#include <string>
 
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -46,11 +48,12 @@
 #include "aclrtlaunch_reduce_grad_op.h"
 #include "aclrtlaunch_unique_op.h"
 #include "aclrtlaunch_pooling_embeddings.h"
+#include "aclrtlaunch_lookup_backward.h"
 #include "dynamic_variable_base.h"
 #include "torch_utils.h"
 #include "utils.h"
 #include "./ops/unique_op/cpu_unique.h"
-
+#define LOG_ERROR(msg) std::cout << "[INFO]" << msg << std::endl
 namespace py = pybind11;
 namespace dyn_emb {
 constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
@@ -797,18 +800,18 @@ void lookup_forward(const at::Tensor& src, const at::Tensor& dst, const at::Tens
                     int32_t batchSize)
 {
     // data type
-    TORCH_CHECK(offset.dtype() == inverse.dtype(), "offset and inverse must have the same dtype");	 
+    TORCH_CHECK(offset.dtype() == inverse.dtype(), "offset and inverse must have the same dtype");
     TORCH_CHECK(offset.dim() == 1 && inverse.dim() == 1, "offset and inverse must be 1D tensor");
     auto srcType = scalartype_to_datatype(convertTypeMetaToScalarType(src.dtype()));
     auto dstType = scalartype_to_datatype(convertTypeMetaToScalarType(dst.dtype()));
     auto offsetType = scalartype_to_datatype(convertTypeMetaToScalarType(offset.dtype()));
 
     // data info
-    uint8_t* srcData = src.is_contiguous() ? static_cast<uint8_t*>(src.data_ptr()) 
+    uint8_t* srcData = src.is_contiguous() ? static_cast<uint8_t*>(src.data_ptr())
         : static_cast<uint8_t*>(src.contiguous().data_ptr());
-    uint8_t* offsetData = offset.is_contiguous() ? static_cast<uint8_t*>(offset.data_ptr()) 
+    uint8_t* offsetData = offset.is_contiguous() ? static_cast<uint8_t*>(offset.data_ptr())
         : static_cast<uint8_t*>(offset.contiguous().data_ptr());
-    uint8_t* inverseData = inverse.is_contiguous() ? static_cast<uint8_t*>(inverse.data_ptr()) 
+    uint8_t* inverseData = inverse.is_contiguous() ? static_cast<uint8_t*>(inverse.data_ptr())
         : static_cast<uint8_t*>(inverse.contiguous().data_ptr());
     uint8_t* dstData = static_cast<uint8_t*>(dst.data_ptr());
 
@@ -1011,6 +1014,50 @@ void dynamic_emb_AdamW_with_pointer(const torch::Tensor& grads, const torch::Ten
     }
 }
 
+void lookup_backward(const at::Tensor grad, const at::Tensor unique_buffer,
+                     const at::Tensor unique_indices,
+                     const at::Tensor inverse_indices,
+                     const at::Tensor biased_offsets,  int32_t dim,
+                     int32_t table_num, int32_t batch_size, int32_t feature_num,
+                     int32_t num_key, int32_t combiner)
+{   //数据检查
+    TORCH_CHECK(biased_offsets.dtype() == inverse_indices.dtype(), "biased_offsets and inverse_indices must have the same type ");
+
+    //数据准备
+    auto grad_contin = grad.contiguous();
+    auto unique_indices_contin=unique_indices.contiguous();
+    auto biased_offsets_contin=biased_offsets.contiguous();
+    auto inverse_indices_contin=inverse_indices.contiguous();
+    float* grad_ptr = grad_contin.data_ptr<float>();
+    float* unique_buffer_ptr = unique_buffer.data_ptr<float>();
+    void* biased_offsets_ptr = biased_offsets_contin.data_ptr();
+    void* inverse_indices_ptr = inverse_indices_contin.data_ptr();
+    void* unique_indices_ptr = unique_indices_contin.data_ptr();
+    // tiling
+	bool isInt32 = biased_offsets.dtype() == torch::kInt32;
+    bool is_small = (num_key * dim  <= (isInt32 ? SMALL_DATA_THRESHOLD_32:SMALL_DATA_THRESHOLD));
+    int32_t total_blocks = (num_key * dim + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+    int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
+    int32_t core_num = std::min(max_cores, total_blocks);
+    if (core_num == 0) {
+        LOG_ERROR("core_num is zero!");
+        return;
+    }
+    int32_t blocks_per_core = total_blocks / core_num;
+    int32_t remainder_blocks = total_blocks % core_num;
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+
+    at::Tensor kernelStatus = at::ones({1}, grad_contin.options().dtype(at::kBool));
+
+    ACLRT_LAUNCH_KERNEL(lookup_backward)(core_num, stream, grad_ptr, unique_buffer_ptr,
+        unique_indices_ptr, inverse_indices_ptr, biased_offsets_ptr,
+        dim, table_num, batch_size, feature_num, num_key, combiner,
+        total_blocks, blocks_per_core, remainder_blocks, isInt32, is_small, kernelStatus.data_ptr());
+
+    TORCH_CHECK(
+        kernelStatus.item<bool>(),
+        "lookup_backward kernel failed: src_index == -1 detected in kernel (kernelStatus == false).");
+}
 // PYTHON WARP
 void bind_dyn_emb_op(py::module& m)
 {
@@ -1206,7 +1253,12 @@ void bind_dyn_emb_op(py::module& m)
           py::arg("new_offsets"), py::arg("new_lengths"));
 
     m.def("lookup_forward", &lookup_forward, "lookup_forward", py::arg("src"), py::arg("dst"), py::arg("offset"),
-          py::arg("inverse"), py::arg("combiner"), py::arg("totalDims"), py::arg("accumDims"), py::arg("evSize"),
-          py::arg("numVec"), py::arg("batchSize"));
+          py::arg("inverse"), py::arg("combiner"), py::arg("total_dims"), py::arg("accum_dims"), py::arg("ev_size"),
+          py::arg("num_vec"), py::arg("batch_size"));
+    m.def("lookup_backward", &lookup_backward, "backward", py::arg("grad"),
+      py::arg("unique_buffer"), py::arg("unique_indices"),
+      py::arg("inverse_indices"), py::arg("biased_offsets"), py::arg("dim"),
+      py::arg("tables_num"), py::arg("batch_size"), py::arg("num_feature"),
+      py::arg("num_key"), py::arg("combiner"));
 }
 }  // namespace dyn_emb
