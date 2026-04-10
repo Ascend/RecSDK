@@ -31,23 +31,25 @@ def init(**kwargs)
 |recent_key_count_threshold|int|可选|在增量保存的这段时间内key出现的最小次数，用于低频过滤，在保存增量模型的时候过滤掉出现频次小于这个参数的key。默认是0。<br>取值范围：[0, 2147483647]|
 |use_lccl|bool|可选|运行多卡任务，且通信带宽利用率低时，可使用LCCL（Low Latency Collective Communication Library）功能对集合通信进行加速，开启此功能后，将在部分场景下启用LCCL的以下算子。仅支持单机片上内存的非扩容模式。该功能的具体使用方法请参考[LCCL通信优化算子及样例说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/ai_core_op/lccl/v220/README.md)。<li>All2All算子</li><li>GatherAll算子（Gather&AllToAll融合算子）</li><li>GatherUss算子（Gather&UnsortedSegmentSum融合算子）</li>默认值为“False”，表示关闭此功能。|
 
-
->[!NOTE] 说明 
->-   使用sess run训练时：使用sess进行train/eval/save的步数，需要和train\_steps/eval\_steps/save\_steps参数一致；
->-   使用Estimator训练时：
->>    -   save\_steps需要和定义NPURunConfig对象时的save\_checkpoints\_steps参数相同，且TF不支持设置为-1。
->>    -   max\_steps需要和传递给est.train\(\)/tf.estimator.TrainSpec\(\)的max\_steps参数相同，且TF不支持设置为-1。
->>    -   train\_and\_evaluate模式时，save\_steps、max\_steps要求同上；train\_steps需要和save\_steps参数相同；eval\_steps需要和传递给tf.estimator.EvalSpec\(\)的steps参数相同，且TF不支持设置为-1。
->-   如果通过kwargs传递其他未说明参数，则Rec SDK TensorFlow内部不会使用到该参数。
->-   “max\_steps”、“train\_steps”和“eval\_steps”不能同时为“0”，且传入的参数需要与实际保持一致。
->-   当“use\_dynamic\_expansion”动态扩容参数为True时，请选用ByAddr类的优化器，如[SGDByAddr](optimizers_apis.md#sgdbyaddr)、[LazyAdamByAddress](optimizers_apis.md#lazyadambyaddress)等。
->-   在train\_and\_evaluate场景下不支持多轮eval。
->-   “max\_steps”、“train\_steps”、“eval\_steps”和“save\_steps”必须与实际训练情况保持一致。若不一致，可能会导致训练无法正常进行、训练出现精度问题等情况。
+>[!NOTE]
+>
+>- 使用sess run训练时：使用sess进行train/eval/save的步数，需要和train\_steps/eval\_steps/save\_steps参数一致；
+>- 使用Estimator训练时：
+>
+>> - save\_steps需要和定义NPURunConfig对象时的save\_checkpoints\_steps参数相同，且TF不支持设置为-1。
+>> - max\_steps需要和传递给est.train\(\)/tf.estimator.TrainSpec\(\)的max\_steps参数相同，且TF不支持设置为-1。
+>> - train\_and\_evaluate模式时，save\_steps、max\_steps要求同上；train\_steps需要和save\_steps参数相同；eval\_steps需要和传递给tf.estimator.EvalSpec\(\)的steps参数相同，且TF不支持设置为-1。
+>
+>- 如果通过kwargs传递其他未说明参数，则Rec SDK TensorFlow内部不会使用到该参数。
+>- “max\_steps”、“train\_steps”和“eval\_steps”不能同时为“0”，且传入的参数需要与实际保持一致。
+>- 当“use\_dynamic\_expansion”动态扩容参数为True时，请选用ByAddr类的优化器，如[SGDByAddr](optimizers_apis.md#sgdbyaddr)、[LazyAdamByAddress](optimizers_apis.md#lazyadambyaddress)等。
+>- 在train\_and\_evaluate场景下不支持多轮eval。
+>- “max\_steps”、“train\_steps”、“eval\_steps”和“save\_steps”必须与实际训练情况保持一致。若不一致，可能会导致训练无法正常进行、训练出现精度问题等情况。
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：None。
--   失败：抛出异常。
+- 成功：None。
+- 失败：抛出异常。
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
@@ -59,7 +61,6 @@ init(max_steps=200, train_steps=100, eval_steps=10, save_steps=100, use_dynamic=
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，请参见[迁移与训练](../migration_and_training.md)。
-
 
 ## terminate\_config\_initializer<a name="ZH-CN_TOPIC_0000001630246489"></a>
 
@@ -83,5 +84,3 @@ terminate_config_initializer()
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，请参见[迁移与训练](../migration_and_training.md)。
-
-

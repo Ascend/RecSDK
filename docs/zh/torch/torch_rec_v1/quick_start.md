@@ -14,8 +14,6 @@
 |bash.sh|启动脚本|
 |README.md|demo模型运行说明|
 
-
-
 ## 接口调用介绍<a name="ZH-CN_TOPIC_0000002336148917"></a>
 
 **图 1**  接口调用流程<a name="fig55046491373"></a>  
@@ -23,7 +21,7 @@
 
 以下步骤省略了具体实现，如需完整代码，请参考[Rec SDK Torch Little Demo样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_examples/little_demo)。关键步骤如下：
 
-1.  <a id="li524311501994"></a>定义Batch。
+1. <a id="li524311501994"></a>定义Batch。
 
     将本次训练需要的所有特征整合为一个Batch类，并实现to\(\)、pin\_memory\(\)、record\_stream\(\)方法。
 
@@ -33,7 +31,7 @@
         ......
     ```
 
-2.  创建数据集。
+2. 创建数据集。
 
     实现一个返回[1](#li524311501994)中创建的Batch类型的Dataset。
 
@@ -42,7 +40,7 @@
         ......
     ```
 
-3.  初始化分布式变量。
+3. 初始化分布式变量。
 
     ```python
     ......
@@ -52,7 +50,7 @@
     host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
     ```
 
-4.  定义模型。
+4. 定义模型。
 
     将稀疏表层和Dense层的模型整合为一个Module。该Module的输入必须为[1](#li524311501994)中创建的Batch类。返回为模型的loss和输出。
 
@@ -67,7 +65,7 @@
             return loss, result
     ```
 
-5.  定义稀疏表的优化器。
+5. 定义稀疏表的优化器。
 
     ```python
     test_model = TestModel(...)
@@ -82,7 +80,7 @@
     )
     ```
 
-6.  对稀疏表做分表。
+6. 对稀疏表做分表。
 
     创建sharder，并使用EmbeddingShardingPlanner创建分表计划，将分表计划和sharder传入DistributedModelParallel中获得分布式模型。
 
@@ -97,7 +95,7 @@
     )
     ```
 
-7.  整合优化器。
+7. 整合优化器。
 
     分离dense和sparse的参数，并组合成一个新的优化器。
 
@@ -110,7 +108,7 @@
     optimizer = CombinedOptimizer([ddp_model.fused_optimizer, dense_optimizer])
     ```
 
-8.  创建pipeline。
+8. 创建pipeline。
 
     ```python
     pipeline = HybridTrainPipelineSparseDist(
@@ -118,14 +116,13 @@
     )
     ```
 
-9.  使用pipeline进行训练。
+9. 使用pipeline进行训练。
 
     ```python
     batched_iterator = iter(data_loader)
     for i in range(...):
         output = pipeline.progress(batched_iterator)
     ```
-
 
 ## 启动模型训练<a name="ZH-CN_TOPIC_0000002302229704"></a>
 
@@ -135,5 +132,3 @@
 export ASCEND_RT_VISIBLE_DEVICES=0,1 
 bash bash.sh
 ```
-
-

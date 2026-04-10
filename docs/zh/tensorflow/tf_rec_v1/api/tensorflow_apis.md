@@ -4,9 +4,8 @@
 
 本章节列出Rec SDK TensorFlow基于TensorFlow框架patch修改的接口。更多TensorFlow原生接口信息请参考TensorFlow官网。
 
->[!NOTICE] 须知 
+>[!NOTICE]
 >对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复。本章中涉及的TensorFlow原生方法若存在漏洞，请参照TensorFlow官网社区中的安全建议进行规避和修复。
-
 
 ## tf.compat.v1.train.Saver.save<a name="ZH-CN_TOPIC_0000001630046405"></a>
 
@@ -36,11 +35,10 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 |is_incremental_checkpoint|bool|可选|是否开启模型增量保存与加载，默认为False。<li>True：开启模型增量保存与加载。</li><li>False：关闭模型增量保存与加载。</li>|
 |save_delta|bool|可选|是否保存增量模型。<li>True：保存增量模型。</li><li>False：不保存增量模型，保存全量模型。</li>|
 
-
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回“model\_checkpoint\_path”，即模型保存路径。
--   失败：抛出异常。
+- 成功：返回“model\_checkpoint\_path”，即模型保存路径。
+- 失败：抛出异常。
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -66,7 +64,6 @@ with tf.compat.v1.Session() as sess:
 
 接口调用流程及示例，参见[迁移与训练](../migration_and_training.md)。
 
-
 ## tf.compat.v1.train.Saver.restore<a name="ZH-CN_TOPIC_0000001580166484"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -84,13 +81,12 @@ def restore(self, sess, save_path)
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
 |sess|Session|必选|需要导入模型TensorFlow的Session。|
-|save_path|str|必选|<li>模型checkpoint文件的保存路径。</li><li>支持本地文件系统和HDFS文件系统，长度范围为[1,1024]。</li><li>在使用多卡训练加载模型时，多卡save_path可以输入同一加载路径（该路径下保存了多卡训练的结果），各卡会自动加载属于本卡的参数。</li>[!NOTE] 说明<br>当前加载文件单个大小上限为500G，并发读取可能会引发系统OOM。|
-
+|save_path|str|必选|<li>模型checkpoint文件的保存路径。</li><li>支持本地文件系统和HDFS文件系统，长度范围为[1,1024]。</li><li>在使用多卡训练加载模型时，多卡save_path可以输入同一加载路径（该路径下保存了多卡训练的结果），各卡会自动加载属于本卡的参数。</li><br>当前加载文件单个大小上限为500G，并发读取可能会引发系统OOM。|
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：None。
--   失败：抛出异常。
+- 成功：None。
+- 失败：抛出异常。
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -116,7 +112,6 @@ with tf.compat.v1.Session() as sess:
 
 接口调用流程及示例，参见[迁移与训练](../migration_and_training.md)。
 
-
 ## tensorflow.python.client.session.BaseSession.run<a name="ZH-CN_TOPIC_0000001701361128"></a>
 
 **功能描述<a name="section867474604710"></a>**
@@ -138,11 +133,10 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None)
 |options|tf.compat.v1.RunOptions|可选|控制特定步骤的行为。|
 |run_metadata|tf.compat.v1.RunMetadata|可选|在特定步骤时，收集非张量输出。|
 
-
 **返回值说明<a name="section191731546399"></a>**
 
--   成功：如果fetches是单个元素，则为单个值；如果fetches是list，则为值list；如果fetches是dict，则为具有相同键的dict。
--   失败：抛出异常。
+- 成功：如果fetches是单个元素，则为单个值；如果fetches是list，则为值list；如果fetches是dict，则为具有相同键的dict。
+- 失败：抛出异常。
 
 **使用示例<a name="section204450261015"></a>**
 
@@ -158,5 +152,3 @@ from mx_rec.util.initialize import init
 with tf.compat.v1.Session() as sess:
      sess.run([train_ops])      #train_ops为构建计算图中构建的训练算子
 ```
-
-

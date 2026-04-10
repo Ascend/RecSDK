@@ -15,7 +15,6 @@
 |faae_coefficient|int|可选|特征准入系数。默认值：1。<br>取值范围：[1, 2147483647]。|
 |name|string|必选|FeatureSpec名称。长度范围：[1,255]。|
 
-
 **使用示例<a name="section6456105313583"></a>**
 
 ```bash
@@ -27,7 +26,6 @@ feature_spec_list = FeatureSpec("user_ids", table_name="user_table",
 
 ```
 
-
 ## GraphModifierHook<a name="ZH-CN_TOPIC_0000001630127057"></a>
 
 自动改图Hook类，仅在[使用Estimator训练](../migration_and_training.md#使用estimator训练)模式下使用，添加后即可开启自动改图功能。
@@ -36,7 +34,6 @@ feature_spec_list = FeatureSpec("user_ids", table_name="user_table",
 |--|--|--|--|
 |dump_graph|bool|可选|是否保存TensorFlow当前计算图，默认为False。|
 |modify_graph|bool|可选|是否开启自动改图功能，默认为True。|
-
 
 **使用示例<a name="section14589163715471"></a>**
 
@@ -50,20 +47,18 @@ def input_fn():
 est.train(input_fn=lambda: input_fn(), hooks=[GraphModifierHook()])   #est为创建的NPUEstimator对象
 ```
 
-
 ## EvictHook<a name="ZH-CN_TOPIC_0000001580007108"></a>
 
 特征淘汰Hook类，仅在特征准入与淘汰模式下使用，配合特征淘汰的阈值“eviction\_threshold”设置，添加后即可开启特征淘汰功能。
 
->[!NOTE] 说明 
+>[!NOTE]
 >特征淘汰Hook类仅支持在训练场景下使用。
 
 |参数名|类型|**必选/可选**|说明|
 |--|--|--|--|
 |evict_enable|bool|可选|是否开启特征淘汰功能，默认为False。|
-|evict_time_interval|int|可选|淘汰功能触发时间间隔，单位：秒，默认为24 * 60 * 60。取值范围：[1, MAXINT32]。|
+|evict_time_interval|int|可选|淘汰功能触发时间间隔，单位：秒，默认为24 \* 60 \* 60。取值范围：[1, MAXINT32]。|
 |evict_step_interval|int|可选|淘汰功能触发步数间隔，单位：步，默认为None。取值范围：[1, MAXINT32]。|
-
 
 **使用示例<a name="section14589163715471"></a>**
 
@@ -79,7 +74,6 @@ def input_fn():
 
 est.train(input_fn=lambda: input_fn(), hooks=hooks_list)    #est为创建的NPUEstimator对象
 ```
-
 
 ## ConfigInitializer<a name="ZH-CN_TOPIC_0000002095874621"></a>
 
@@ -98,8 +92,6 @@ est.train(input_fn=lambda: input_fn(), hooks=hooks_list)    #est为创建的NPUE
 |get_initializer(is_training)|请参见[get_initializer](automatic_graph_modification.md#get_initializer)。|
 |ascend_global_hashtable_collection()|请参见[ascend_global_hashtable_collection](other_apis.md#ascend_global_hashtable_collection)。|
 
-
-
 ## TrainParamsConfig<a name="ZH-CN_TOPIC_0000002470669008"></a>
 
 保存训练任务参数配置的数据类，例如哈希表集合的名字。
@@ -111,6 +103,3 @@ est.train(input_fn=lambda: input_fn(), hooks=hooks_list)    #est为创建的NPUE
 |接口|作用|
 |--|--|
 |ascend_global_hashtable_collection()|请参见[ascend_global_hashtable_collection](other_apis.md#ascend_global_hashtable_collection)。|
-
-
-

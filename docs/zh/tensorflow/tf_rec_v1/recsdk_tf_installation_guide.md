@@ -2,12 +2,11 @@
 
 ## 安装说明<a name="ZH-CN_TOPIC_0000001579847264"></a>
 
--   Rec SDK TensorFlow支持物理机部署开发环境或通过容器部署开发环境，用户可根据实际业务情况选择其中一种进行部署。
--   建议通过普通用户进行安装、运行。
+- Rec SDK TensorFlow支持物理机部署开发环境或通过容器部署开发环境，用户可根据实际业务情况选择其中一种进行部署。
+- 建议通过普通用户进行安装、运行。
 
-    >[!NOTE] 说明 
+    >[!NOTE]
     >如果需要查看Rec SDK TensorFlow的历史安装记录，请参见[查看Rec SDK TensorFlow安装与卸载记录](common_operations.md#查看rec-sdk-tensorflow安装与卸载记录)。
-
 
 ## 安装依赖<a name="ZH-CN_TOPIC_0000001580007100"></a>
 
@@ -22,13 +21,11 @@
 |昇腾硬件产品驱动和固件|Ascend HDK 25.5.0|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。安装驱动与固件请参见相关硬件产品配套的[《驱动和固件安装升级指南》](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)。|
 |Ascend Docker Runtime|MindCluster 7.3.0|请参见《MindCluster 集群调度用户指南》的“安装 > 安装部署”章节进行安装。|
 |配置Device网卡|-|请参考《Ascend Training Solution 组网指南》的参数面网络配置示例配置示例配置训练节点章节，通过HCCN_Tool配置NPU网口的Device IP。|
-|TensorFlow|TensorFlow 1.15.0和TensorFlow 2.6.5|请从[TensorFlow](https://github.com/tensorflow/tensorflow)仓库获取源码。Arm环境下TensorFlow官方未提供对应的whl包，如需在Arm环境下使用，可以从[链接](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html)获取Arm的TensorFlow whl包。<br>[!NOTE] 说明<br>若whl包下载受阻，可复制其链接并在新标签页中打开，即可顺利完成下载。|
+|TensorFlow|TensorFlow 1.15.0和TensorFlow 2.6.5|请从[TensorFlow](https://github.com/tensorflow/tensorflow)仓库获取源码。Arm环境下TensorFlow官方未提供对应的whl包，如需在Arm环境下使用，可以从[链接](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html)获取Arm的TensorFlow whl包。<br>[!NOTE]<br>若whl包下载受阻，可复制其链接并在新标签页中打开，即可顺利完成下载。|
 |Python 3.7.5|Python 3.7.5|请从[Python官网](https://www.python.org/)获取依赖软件包。|
 
-
->[!NOTICE] 须知 
+>[!NOTICE]
 >对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以但不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
-
 
 ## 获取Rec SDK TensorFlow软件包<a name="ZH-CN_TOPIC_0000001630127085"></a>
 
@@ -38,66 +35,69 @@
 
 ### 源码编译安装
 
-源码编译前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu)安装CANN开发套件软件包；参考[TF Adapter安装指南](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/900beta1/migration/tfmigr1/tfmigr1_000009.html)安装TensorFlow适配昇腾的框架插件包。 
+源码编译前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu)安装CANN开发套件软件包；参考[TF Adapter安装指南](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/900beta1/migration/tfmigr1/tfmigr1_000009.html)安装TensorFlow适配昇腾的框架插件包。
 
 1. 编译环境依赖：
    - Python3.7.5
    - GCC 7.3.0
    - CMake 3.20.6
- 	 
+
 2. 开源依赖：
    - [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
    - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
    - [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): 请参考软件文档在编译环境完成安装
    - tensorflow 1.15/2.6.5：根据实际需求选择对应版本
- 	 
+
    将pybind11和securec的压缩包放在与RecSDK代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在RecSDK同级的目录下手动创建opensource目录，然后将pybind11和securec的压缩包放在opensource目录下。
- 	 
+
 3. 编译方法：
- 	 
+
    进入Rec SDK代码目录：
    - setup.py：此脚本供内部使用，用于同时构建tf1和tf2的Rec SDK包，用户通常只需要其中一个，所以建议使用下面两个脚本构建。
    - setup_tf1.py：执行脚本 `python3.7 setup_tf1.py bdist_wheel` 完成tf1版本whl包的构建，构建成功后，whl包在build/mindxsdk-mxrec/tf1_whl子目录下。
    - setup_tf2.py：执行脚本 `python3.7 setup_tf2.py bdist_wheel` 完成tf2版本whl包的构建，构建成功后，whl包在build/mindxsdk-mxrec/tf2_whl子目录下。
  
    如需使用动态扩容功能，进入“RecSDK/cust_op/ascendc_op/ai_core_op/cust_op_by_addr”目录中。执行命令 `bash run.sh` 编译并安装动态扩容算子包。
- 	 
+
 4. 测试用例
- 	 
+
    **Python侧测试用例**
- 	 
+
    运行Python测试用例所需依赖：
- 	 
+
    - pytest 7.1.1
    - pytest-cov 4.1.0
    - pytest-html
- 	 
+
    如需运行python测试用例，完成上述依赖项的安装，并验证tf1环境可正常进行源码编译。然后进入RecSDK/training/tf_rec_v1/python/tests目录，参考以下命令执行python侧测试用例：
+
    ```shell
    bash run_python_dt.sh
    ```
- 	 
+
    **C++侧测试用例**
- 	 
+ 
    运行C++侧测试用例所需依赖：
- 	 
+
    - [googletest 1.8.1](https://github.com/google/googletest/archive/refs/tags/release-1.8.1.zip)
    - [emock 0.9.0](https://github.com/ez8-co/emock/archive/refs/tags/v0.9.0.zip)
    - [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
    - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
- 	 
+
    将googletest、emock、pybind11和securec的压缩包放在与Rec SDK代码同级的opensource目录下，并且将其分别更名为googletest-release-1.8.1.zip、
    emock-0.9.0.zip、pybind11-2.10.3.zip、 huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在Rec SDK同级的目录下手动创建opensource目录，
    然后将前述几个压缩包放在opensource目录下。
- 	 
+
    如需运行C++测试用例，完成上述依赖项的安装。然后进入RecSDK/training/tf_rec_v1/src目录，参考以下命令执行C++测试用例：
- 	 
+
    tf1环境下使用如下命令：
+
    ```shell
    bash test_ut.sh tf1
    ```
- 	 
+
    tf2环境下使用如下命令：
+   
    ```shell
    bash test_ut.sh tf2
    ```
@@ -109,7 +109,6 @@
 |组件名称|软件包|获取链接|
 |--|--|--|
 |Rec SDK|推荐算法框架开发套件包|[获取链接](https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann)。|
-
 
 **软件数字签名验证<a name="section10830205518487"></a>**
 
@@ -123,15 +122,15 @@
 
 企业客户请访问：[https://support.huawei.com/enterprise/zh/tool/software-digital-signature-openpgp-validation-tool-TL1000000054](https://support.huawei.com/enterprise/zh/tool/software-digital-signature-openpgp-validation-tool-TL1000000054)
 
-
 ## 使用物理机部署开发环境<a name="ZH-CN_TOPIC_0000001630046437"></a>
 
->[!NOTICE] 须知 
->-   当前支持在Ubuntu  20.04、CentOS  7系统中进行物理机开发环境部署。
->-   用户请勿修改编译目录下除run.sh文件外的其他文件代码。
+>[!NOTICE]
+>
+>- 当前支持在Ubuntu  20.04、CentOS  7系统中进行物理机开发环境部署。
+>- 用户请勿修改编译目录下除run.sh文件外的其他文件代码。
 
-1.  参考《CANN 软件安装指南》安装CANN软件包和TensorFlow适配昇腾插件。
-2.  配置环境变量。
+1. 参考《CANN 软件安装指南》安装CANN软件包和TensorFlow适配昇腾插件。
+2. 配置环境变量。
 
     CANN软件提供进程级环境变量设置脚本，供用户在进程中引用，以自动完成环境变量设置。用户进程结束后自动失效。
 
@@ -141,7 +140,7 @@
     source /usr/local/Ascend/cann/set_env.sh
     ```
 
-3.  通过如下命令解压软件包，若未指定具体路径，默认解压到当前目录下，解压命令中需要添加--no-same-owner参数。
+3. 通过如下命令解压软件包，若未指定具体路径，默认解压到当前目录下，解压命令中需要添加--no-same-owner参数。
 
     ```bash
     # 解压到当前目录下
@@ -150,7 +149,7 @@
     tar -xf Ascend-mindxsdk-mxrec-{version}_linux-{arch}.tar.gz --no-same-owner -C 指定路径
     ```
 
-4.  解压完后的目录结构参见如下。
+4. 解压完后的目录结构参见如下。
 
     ```bash
     mindxsdk-mxrec/
@@ -161,7 +160,7 @@
     `-- version.info
     ```
 
-5.  安装软件包中的Wheel包。（请根据实际需求，选取对应TensorFlow版本匹配的Wheel包。）
+5. 安装软件包中的Wheel包。（请根据实际需求，选取对应TensorFlow版本匹配的Wheel包。）
 
     ```bash
     pip3 install mx_rec-{version}-py3-none-linux_{arch}.whl 
@@ -173,7 +172,7 @@
     export PYTHONPATH={rec_install_path}:{rec_install_path}/mx_rec:$PYTHONPATH
     ```
 
-6.  安装依赖，若未构建镜像，直接在物理机上进行开发，则须安装以下Python依赖。
+6. 安装依赖，若未构建镜像，直接在物理机上进行开发，则须安装以下Python依赖。
 
     ```bash
     pip3.7 install numpy decorator sympy==1.4 cffi==1.12.3 pyyaml pathlib2 grpcio grpcio-tools protobuf==3.20.0 scipy requests mpi4py easydict scikit-learn==0.20.0 attrs
@@ -185,17 +184,17 @@
     HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 pip3.7 install horovod --no-cache-dir
     ```
 
-7.  如需使用动态扩容功能，请参见[（可选）片上内存侧动态扩容算子包安装](common_operations.md#可选片上内存侧动态扩容算子包安装)，编译安装动态扩容算子包。
-8.  如需使用Hadoop分布式文件系统，请参考[Hadoop官方文档](https://hadoop.apache.org/docs/r1.0.4/cn/quickstart.html)进行环境部署和集群搭建。推荐使用Hadoop-2.7.5版本。
-
+7. 如需使用动态扩容功能，请参见[（可选）片上内存侧动态扩容算子包安装](common_operations.md#可选片上内存侧动态扩容算子包安装)，编译安装动态扩容算子包。
+8. 如需使用Hadoop分布式文件系统，请参考[Hadoop官方文档](https://hadoop.apache.org/docs/r1.0.4/cn/quickstart.html)进行环境部署和集群搭建。推荐使用Hadoop-2.7.5版本。
 
 ## 部署容器内的开发环境<a name="ZH-CN_TOPIC_0000002175060298"></a>
 
 ### 使用容器部署开发环境<a name="ZH-CN_TOPIC_0000001579847292"></a>
 
->[!NOTICE] 须知 
->-   如需使用CentOS系统进行配置（包括宿主机及容器），libstdc++版本需要高于libstdc++.so.6.0.24。
->-   出于安全保护，用户仅能使用非root用户启动容器进行使用。
+>[!NOTICE]
+>
+>- 如需使用CentOS系统进行配置（包括宿主机及容器），libstdc++版本需要高于libstdc++.so.6.0.24。
+>- 出于安全保护，用户仅能使用非root用户启动容器进行使用。
 
 基于容器部署Rec SDK TensorFlow开发环境，可参考如[图1](#fig2687191413442)步骤完成配置。
 
@@ -204,17 +203,16 @@
 
 **关键步骤说明<a name="section15488921175211"></a>**
 
-1.  宿主机环境准备。
+1. 宿主机环境准备。
 
     请参见[安装依赖](#安装依赖)完成宿主机环境的部署。
 
-2.  获取训练镜像，启动容器。可参考[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub)完成基础镜像的制作，以及Rec SDK TensorFlow的安装。
-3.  如需在容器中使用动态扩容功能，请参见[（可选）片上内存侧动态扩容算子包安装](common_operations.md#可选片上内存侧动态扩容算子包安装)，编译安装动态扩容算子包。
-4.  如需使用Hadoop分布式文件系统，请参考[Hadoop官方文档](https://hadoop.apache.org/docs/r1.0.4/cn/quickstart.html)进行环境部署和集群搭建。推荐使用Hadoop-2.7.5版本。
+2. 获取训练镜像，启动容器。可参考[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub)完成基础镜像的制作，以及Rec SDK TensorFlow的安装。
+3. 如需在容器中使用动态扩容功能，请参见[（可选）片上内存侧动态扩容算子包安装](common_operations.md#可选片上内存侧动态扩容算子包安装)，编译安装动态扩容算子包。
+4. 如需使用Hadoop分布式文件系统，请参考[Hadoop官方文档](https://hadoop.apache.org/docs/r1.0.4/cn/quickstart.html)进行环境部署和集群搭建。推荐使用Hadoop-2.7.5版本。
 
-    >[!NOTE] 说明 
+    >[!NOTE]
     >根据Hadoop官方文档部署环境之后，环境中/usr/local/hadoop-2.7.5/sbin文件属主为20415（非root用户），该属主有重命名、创建新文件来替换root用户的PATH环境变量中的可执行文件的权限，存在越权风险。
-
 
 ### 制作Rec SDK TensorFlow训练镜像<a name="ZH-CN_TOPIC_0000001787827420"></a>
 
@@ -222,30 +220,30 @@
 
 **前提条件<a name="section9622175114313"></a>**
 
-1.  已经参考[安装依赖](#安装依赖)，在物理机上安装对应CANN版本的驱动和固件。
-2.  物理机上已经安装Docker，并且Docker网络可用。
-3.  准备基础镜像。可以从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub)获取基础镜像，或者使用用户已有的基础镜像。
-    -   （推荐）从昇腾镜像仓库获取Rec SDK TensorFlow训练镜像。昇腾镜像仓库上的Rec SDK TensorFlow训练镜像中已经安装gcc、cmake等基础依赖，无需再次安装；只需更新其中的CANN和Rec SDK软件包即可使用。
-    -   从昇腾镜像仓库获取CentOS 7.6.1810镜像。如果不从昇腾镜像仓库获取基础镜像，用户自己准备一个镜像作为基础镜像，建议以CentOS 7.6.1810镜像为基础。
+1. 已经参考[安装依赖](#安装依赖)，在物理机上安装对应CANN版本的驱动和固件。
+2. 物理机上已经安装Docker，并且Docker网络可用。
+3. 准备基础镜像。可以从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub)获取基础镜像，或者使用用户已有的基础镜像。
+    - （推荐）从昇腾镜像仓库获取Rec SDK TensorFlow训练镜像。昇腾镜像仓库上的Rec SDK TensorFlow训练镜像中已经安装gcc、cmake等基础依赖，无需再次安装；只需更新其中的CANN和Rec SDK软件包即可使用。
+    - 从昇腾镜像仓库获取CentOS 7.6.1810镜像。如果不从昇腾镜像仓库获取基础镜像，用户自己准备一个镜像作为基础镜像，建议以CentOS 7.6.1810镜像为基础。
 
-4.  执行如下命令，将基础镜像加载到docker中。
+4. 执行如下命令，将基础镜像加载到docker中。
 
     ```bash
     docker load --input xxx.tar
     ```
 
-5.  创建一个制作镜像使用的文件夹（以build\_images为例）。
-    1.  仅将制作镜像过程中要使用到的文件放至该文件夹中，如对应架构的Ascend-cann-toolkit\_\*.run、tfplugin、Rec SDK软件包。
-    2.  若需安装tfplugin软件包，还需将/usr/local/Ascend/driver/version.info和/etc/ascend\_install.info两个文件拷贝到build\_images目录下。
+5. 创建一个制作镜像使用的文件夹（以build\_images为例）。
+    1. 仅将制作镜像过程中要使用到的文件放至该文件夹中，如对应架构的Ascend-cann-toolkit\_\*.run、tfplugin、Rec SDK软件包。
+    2. 若需安装tfplugin软件包，还需将/usr/local/Ascend/driver/version.info和/etc/ascend\_install.info两个文件拷贝到build\_images目录下。
 
         （请勿在build\_images目录下放入无关文件，制作镜像时会将该目录下文件拷贝到镜像内。）
 
-6.  制作镜像过程中需使用docker指令及从物理机拷贝文件，请确保用户有执行指令和访问文件权限。
+6. 制作镜像过程中需使用docker指令及从物理机拷贝文件，请确保用户有执行指令和访问文件权限。
 
 **使用Rec SDK TensorFlow基础镜像制作训练镜像<a name="section1373503012391"></a>**
 
-1.  参考[获取Rec SDK TensorFlow软件包](#获取rec-sdk-tensorflow软件包)，获取Rec SDK软件包，以及配套的CANN软件包和TensorFlow适配昇腾插件。
-2.  在build\_images目录下创建Dockerfile配置文件（以Dockerfile名称为例），使用vi Dockerfile命令编辑文件，插入如下内容。
+1. 参考[获取Rec SDK TensorFlow软件包](#获取rec-sdk-tensorflow软件包)，获取Rec SDK软件包，以及配套的CANN软件包和TensorFlow适配昇腾插件。
+2. 在build\_images目录下创建Dockerfile配置文件（以Dockerfile名称为例），使用vi Dockerfile命令编辑文件，插入如下内容。
 
     ```bash
     # 请根据实际情况修改基础镜像名称及镜像tag
@@ -301,7 +299,7 @@
         rm -rf /root/.cache/pip
     ```
 
-3.  进入build\_images路径，执行如下指令构建Rec SDK TensorFlow镜像。
+3. 进入build\_images路径，执行如下指令构建Rec SDK TensorFlow镜像。
 
     ```bash
     docker build -t {镜像名称}:{镜像tag} -f Dockerfile .
@@ -309,7 +307,7 @@
 
 **使用CentOS 7.6.1810或用户镜像制作训练镜像<a name="section104919392501"></a>**
 
-1.  确认镜像中是否已经安装以下依赖，将未安装的依赖软件包下载到build\_images目录下。
+1. 确认镜像中是否已经安装以下依赖，将未安装的依赖软件包下载到build\_images目录下。
 
     |依赖名称|下载链接|
     |--|--|
@@ -322,8 +320,7 @@
     |CANN软件包、TensorFlow适配昇腾插件以及Rec SDK软件包|参见[安装依赖](#安装依赖)|
     |TensorFlow（1.15.0/2.6.5）|[链接](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html)|
 
-
-2.  在build\_images目录下创建Dockerfile配置文件（以Dockerfile名称为例），使用vi Dockerfile命令编辑文件，插入如下内容。
+2. 在build\_images目录下创建Dockerfile配置文件（以Dockerfile名称为例），使用vi Dockerfile命令编辑文件，插入如下内容。
 
     ```bash
     # 请根据实际情况修改基础镜像名称及镜像tag
@@ -509,13 +506,11 @@
     RUN rm -rf ./*
     ```
 
-3.  进入build\_images路径，执行如下指令构建Rec SDK TensorFlow镜像。
+3. 进入build\_images路径，执行如下指令构建Rec SDK TensorFlow镜像。
 
     ```bash
     docker build -t {镜像名称}:{镜像tag} -f Dockerfile .
     ```
-
-
 
 ## 配置环境变量<a name="ZH-CN_TOPIC_0000001580326424"></a>
 
@@ -537,7 +532,7 @@ Rec SDK TensorFlow环境变量的说明如[表1](#table126401659163820)所示。
 |GLOG_stderrthreshold|glog日志等级。|可选|取值范围：[-2,2]，默认值为0。<li>-2：表示TRACE。</li><li>-1：表示DEBUG。</li><li>0：表示INFO。</li><li>1：表示WARNING。</li><li>2：表示ERROR。</li>|
 |USE_COMBINE_FAAE|控制是否合表统计次数。|可选|取值范围：0或者1，默认值为0。取值范围以外的值，将产生不可预期的行为。<li>如果USE_COMBINE_FAAE=0，表示分表统计，每张表key的count记录是独立的。</li><li>如果USE_COMBINE_FAAE=1，表示合表统计，多张表维护一个count记录。</li>|
 |CM_CHIEF_IP|主节点IP。|可选|当使用去rank table方案时为必选。|
-|CM_CHIEF_PORT|主节点侦听端口，比如60000。|可选|当使用去rank table方案时为必选。<br>[!NOTE] 说明<li>可使用如下命令指定一组本地保留端口，这些端口将被系统保留，不会被其他应用程序使用：<br>``` sysctl -w net.ipv4.ip_local_reserved_ports=60000-60015```<br>然后将CM_CHIEF_PORT设置为上述命令指定范围的端口。</li><li>检查端口是否被占用：<br>``` netstat -anp \| grep 端口号 ``` <br>如果端口号被占用，会显示出占用该端口的进程ID和进程名称。</li>|
+|CM_CHIEF_PORT|主节点侦听端口，比如60000。|可选|当使用去rank table方案时为必选。<br><li>可使用如下命令指定一组本地保留端口，这些端口将被系统保留，不会被其他应用程序使用：<br>```sysctl -w net.ipv4.ip_local_reserved_ports=60000-60015```<br>然后将CM_CHIEF_PORT设置为上述命令指定范围的端口。</li><li>检查端口是否被占用：<br>``` netstat -anp \| grep 端口号 ``` <br>如果端口号被占用，会显示出占用该端口的进程ID和进程名称。</li>|
 |CM_CHIEF_DEVICE|主节点Device ID。|可选|指定Master节点中统计Server端集群信息的Device逻辑ID。<br>取值范围：[0,环境可见Device数量<b>-1</b>]。当使用去rank table方案时为必选。|
 |CM_WORKER_IP|当前节点IP。|可选|当使用去rank table方案时为必选。|
 |CM_WORKER_SIZE|参与集群训练的device数量。|可选|取值范围：[0,512]。当使用去rank table方案时为必选。|
@@ -549,9 +544,9 @@ Rec SDK TensorFlow环境变量的说明如[表1](#table126401659163820)所示。
 |USE_SHM_SWAP|PCIE through性能提升|可选|取值范围：0或者1，默认值为0。取值范围以外的值，将产生不可预期的行为。<li>0：表示关闭该特性。</li><li>1：表示开启该特性。</li>|
 |HUGE_TLB_ENABLE|大页内存|可选|取值范围：0或者1，默认值为0。取值范围以外的值，将产生不可预期的行为。<li>0：表示关闭该特性。</li><li>1：表示开启该特性。</li>|
 |SSD_SAVE_COMPACT_LEVEL|SSD保存时的压缩等级|可选|取值范围：[0,2]，默认值为2。<li>0：表示不压缩。</li><li>1：表示仅压缩超阈值文件。</li><li>2：表示压缩所有文件。</li>|
->[!NOTE] 说明
->Rec SDK TensorFlow在OpenMPI启动的分布式训练和推理场景中需要依赖OMPI_COMM_WORLD_SIZE、OMPI_COMM_WORLD_LOCAL_SIZE、和OMPI_COMM_WORLD_RANK环境变量。这些环境变量由OpenMPI启动器自动注入，用户无需手动注入。
 
+>[!NOTE]
+>Rec SDK TensorFlow在OpenMPI启动的分布式训练和推理场景中需要依赖OMPI_COMM_WORLD_SIZE、OMPI_COMM_WORLD_LOCAL_SIZE、和OMPI_COMM_WORLD_RANK环境变量。这些环境变量由OpenMPI启动器自动注入，用户无需手动注入。
 
 **表 2**  C++编译环境变量
 <a name="table20242918114315"></a>
@@ -561,26 +556,23 @@ Rec SDK TensorFlow环境变量的说明如[表1](#table126401659163820)所示。
 |CC|C语言编译器|必选|设置为gcc|
 |CXX|C++语言编译器|必选|设置为g++|
 
-
-
 ## 升级<a name="ZH-CN_TOPIC_0000001723715541"></a>
 
 用户如需将当前版本的Rec SDK TensorFlow升级至最新版本，可将最新的Rec SDK软件包上传至安装环境后，在软件包所在目录下使用命令进行版本升级，具体命令参见如下。
 
--   升级Rec SDK TensorFlow新版本时，需要先手动卸载旧版本。
+- 升级Rec SDK TensorFlow新版本时，需要先手动卸载旧版本。
 
     ```bash
     pip3 uninstall mx_rec -y
     ```
 
--   使用<b>--upgrade</b>命令升级Rec SDK TensorFlow。
+- 使用<b>--upgrade</b>命令升级Rec SDK TensorFlow。
 
     ```bash
     pip3 install --upgrade mx_rec-{version}-py3-none-{arch}.whl
     ```
 
 \{version\}为版本号，\{arch\}为操作系统架构。
-
 
 ## 卸载<a name="ZH-CN_TOPIC_0000001629887081"></a>
 
@@ -589,5 +581,3 @@ Rec SDK TensorFlow环境变量的说明如[表1](#table126401659163820)所示。
 ```bash
 pip3 uninstall mx_rec -y
 ```
-
-

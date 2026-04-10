@@ -4,15 +4,15 @@
 
 Rec SDK Torch涉及功能如下：
 
--   模型训练基础功能
-    -   支持单机单卡训练、单机多卡分布式训练。
-    -   支持基于Torch开发的模型。
+- 模型训练基础功能
+    - 支持单机单卡训练、单机多卡分布式训练。
+    - 支持基于Torch开发的模型。
 
--   推荐场景特有功能
+- 推荐场景特有功能
 
     基于Rec SDK Torch的稀疏表方案，Rec SDK Torch提供推荐的必备功能，如非亲和算子卸载，哈希映射功能等。
 
--   大规模稀疏表特有功能
+- 大规模稀疏表特有功能
 
     支持按照Row-wise的分布式稀疏表切分方式。
 
@@ -20,26 +20,25 @@ Rec SDK Torch涉及功能如下：
 
 Rec SDK Torch为用户提供了哈希映射、Row-wise分表、EBC查表功能、流水查表、查表融合算子等特性。
 
--   哈希映射
+- 哈希映射
 
     Torch提供了用于稠密ID查表的nn.Embedding。但在推荐场景，大部分原始特征ID都是离散型，查表时不便于直接使用，常见的做法是将离散ID转为表的行号。为此Rec SDK Torch提供了哈希映射功能，用于将离散ID映射为Embedding表的行号，不需要用户提前做ID转换。
 
--   EBC查表
+- EBC查表
 
     对标原生Torch的nn.EmbeddingBag功能，对指定的多个IDs，在查表时进行求和或者取平均的Pooling操作。
 
--   Row-wise分表
+- Row-wise分表
 
     在将Embedding切分到不同表时，按行对Embedding进行分表，使用取余分桶策略，按照ID取余的余数确定Embedding在表上的分桶位置。
 
--   流水查表
+- 流水查表
 
     Rec SDK Torch查表任务由通讯、CPU、NPU计算等多个子任务构成。Rec SDK Torch提供了流水查表方法让子任务之间可以并行以充分发挥硬件算力。
 
--   查表融合算子
+- 查表融合算子
 
     Rec SDK Torch提供了梯度计算和优化器融合的查表算子以优化查表性能。
-
 
 ## 软件架构<a name="ZH-CN_TOPIC_0000002302229644"></a>
 
@@ -57,8 +56,6 @@ Rec SDK Torch基于TorchRec、推荐场景主流框架、CANN和各种硬件和�
 |推荐加速层|性能竞争力核心组件，为整机系统提供更优性能。|
 |推荐存储层|支持稀疏表的分布式存储。|
 |Torchrec-npu|开源TorchRec的昇腾适配层。|
-
-
 
 ## 支持的硬件和操作系统<a name="ZH-CN_TOPIC_0000002336268741"></a>
 
@@ -79,6 +76,3 @@ Rec SDK Torch基于TorchRec、推荐场景主流框架、CANN和各种硬件和�
     <td>OpenEuler版本：22.03</td>
   </tr>
 </table>
-
-
-
