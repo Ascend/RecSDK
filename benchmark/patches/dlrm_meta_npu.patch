@@ -1,0 +1,907 @@
+From 1b43a560ef3575667c75655f89c36669ddc4a21b Mon Sep 17 00:00:00 2001
+From: chenzihao40 <chenzihao40@huawei.com>
+Date: Wed, 8 Apr 2026 17:27:26 +0800
+Subject: [PATCH] =?UTF-8?q?dlrm=E4=BF=AE=E6=94=B9=E9=80=82=E9=85=8D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ data_utils.py                          |   4 +-
+ dlrm_s_pytorch.py                      | 175 ++++++++++++++++++++-----
+ extend_distributed.py                  |  25 +++-
+ torchrec_dlrm/aws_component.py         |   1 +
+ torchrec_dlrm/data/dlrm_dataloader.py  |  13 +-
+ torchrec_dlrm/data/multi_hot_criteo.py |  36 +++--
+ torchrec_dlrm/dlrm_main.py             |  43 +++---
+ torchrec_dlrm/multi_hot.py             |  21 +--
+ tricks/qr_embedding_bag.py             |  16 +--
+ 9 files changed, 219 insertions(+), 115 deletions(-)
+
+diff --git a/data_utils.py b/data_utils.py
+index a0dbdd2..578f98a 100644
+--- a/data_utils.py
++++ b/data_utils.py
+@@ -1015,11 +1015,11 @@ def getCriteoAdData(
+                 if max_ind_range > 0:
+                     X_cat[i] = np.array(
+                         list(map(lambda x: int(x, 16) % max_ind_range, line[14:])),
+-                        dtype=np.int32,
++                        dtype=np.int64,
+                     )
+                 else:
+                     X_cat[i] = np.array(
+-                        list(map(lambda x: int(x, 16), line[14:])), dtype=np.int32
++                        list(map(lambda x: int(x, 16), line[14:])), dtype=np.int64
+                     )
+ 
+                 # count uniques
+diff --git a/dlrm_s_pytorch.py b/dlrm_s_pytorch.py
+index e1b42b7..aa6edc7 100644
+--- a/dlrm_s_pytorch.py
++++ b/dlrm_s_pytorch.py
+@@ -100,6 +100,15 @@ from torch.nn.parameter import Parameter
+ from torch.optim.lr_scheduler import _LRScheduler
+ from torch.utils.tensorboard import SummaryWriter
+ 
++try:
++    import torch_npu
++    from torch_npu.profiler import profile as npu_profiler
++    NPU_PROFILING_ACAILABLE = True
++    NPU_ENABLE = True
++except ImportError:
++    NPU_PROFILING_ACAILABLE = False
++    NPU_ENABLE = False
++
+ # mixed-dimension trick
+ from tricks.md_embedding_bag import md_solver, PrEmbeddingBag
+ 
+@@ -125,10 +134,17 @@ def time_wrap(use_gpu):
+         torch.cuda.synchronize()
+     return time.time()
+ 
++def time_wrap_xpu(use_xpu):
++    if use_xpu:
++        if NPU_ENABLE:
++            torch.npu.synchronize()
++        else:
++            torch.cuda.synchronize()
++    return time.time()
+ 
+-def dlrm_wrap(X, lS_o, lS_i, use_gpu, device, ndevices=1):
++def dlrm_wrap(X, lS_o, lS_i, use_xpu, device, ndevices=1):
+     with record_function("DLRM forward"):
+-        if use_gpu:  # .cuda()
++        if use_xpu:  # .cuda()
+             # lS_i can be either a list of tensors or a stacked tensor.
+             # Handle each case below:
+             if ndevices == 1:
+@@ -145,7 +161,7 @@ def dlrm_wrap(X, lS_o, lS_i, use_gpu, device, ndevices=1):
+         return dlrm(X.to(device), lS_o, lS_i)
+ 
+ 
+-def loss_fn_wrap(Z, T, use_gpu, device):
++def loss_fn_wrap(Z, T, use_xpu, device):
+     with record_function("DLRM loss compute"):
+         if args.loss_function == "mse" or args.loss_function == "bce":
+             return dlrm.loss_fn(Z, T.to(device))
+@@ -763,7 +779,7 @@ def inference(
+     best_auc_test,
+     test_ld,
+     device,
+-    use_gpu,
++    use_xpu,
+     log_iter=-1,
+ ):
+     test_accu = 0
+@@ -792,7 +808,7 @@ def inference(
+             X_test,
+             lS_o_test,
+             lS_i_test,
+-            use_gpu,
++            use_xpu,
+             device,
+             ndevices=ndevices,
+         )
+@@ -801,6 +817,8 @@ def inference(
+         # tensor is on GPU memory
+         if Z_test.is_cuda:
+             torch.cuda.synchronize()
++        elif NPU_ENABLE:
++            torch.npu.synchronize()
+         (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
+         if ext_dist.my_size > 1:
+             Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
+@@ -988,6 +1006,10 @@ def run():
+     parser.add_argument("--save-onnx", action="store_true", default=False)
+     # gpu
+     parser.add_argument("--use-gpu", action="store_true", default=False)
++    # npu
++    parser.add_argument("--use-npu", action="store_true", default=False)
++    # inductor
++    parser.add_argument("--use-inductor", type=str, default="")
+     # distributed
+     parser.add_argument("--local_rank", type=int, default=-1)
+     parser.add_argument("--dist-backend", type=str, default="")
+@@ -1002,6 +1024,8 @@ def run():
+     parser.add_argument("--enable-profiling", action="store_true", default=False)
+     parser.add_argument("--plot-compute-graph", action="store_true", default=False)
+     parser.add_argument("--tensor-board-filename", type=str, default="run_kaggle_pt")
++    parser.add_argument("--sample-statistics-num", type=int, default=10)
++    parser.add_argument("--stop-step", type=int, default=-1)
+     # store/load model
+     parser.add_argument("--save-model", type=str, default="")
+     parser.add_argument("--load-model", type=str, default="")
+@@ -1070,10 +1094,10 @@ def run():
+         args.test_num_workers = args.num_workers
+ 
+     use_gpu = args.use_gpu and torch.cuda.is_available()
+-
++    use_npu = args.use_npu and torch.npu.is_available()
+     if not args.debug_mode:
+         ext_dist.init_distributed(
+-            local_rank=args.local_rank, use_gpu=use_gpu, backend=args.dist_backend
++            local_rank=args.local_rank, use_gpu=use_gpu, use_npu=use_npu, backend=args.dist_backend
+         )
+ 
+     if use_gpu:
+@@ -1082,14 +1106,26 @@ def run():
+         if ext_dist.my_size > 1:
+             ngpus = 1
+             device = torch.device("cuda", ext_dist.my_local_rank)
++            print("Using {} GPU(s)...".format(ext_dist.my_size))
+         else:
+             ngpus = torch.cuda.device_count()
+             device = torch.device("cuda", 0)
+-        print("Using {} GPU(s)...".format(ngpus))
++            print("Using {} GPU(s)...".format(ngpus))
++    elif use_npu:
++        torch.npu.manual_seed_all(args.numpy_rand_seed)
++        if ext_dist.my_size > 1:
++            ngpus = 1
++            device = torch.device("npu", ext_dist.my_local_rank)
++            print("Using {} NPU(s)...".format(ext_dist.my_size))
++        else:
++            ngpus = torch.npu.device_count()
++            device = torch.device("npu", 0)
++            print("Using {} NPU(s)...".format(ngpus))
+     else:
+         device = torch.device("cpu")
+         print("Using CPU...")
+ 
++    use_xpu = use_gpu or use_npu
+     ### prepare training data ###
+     ln_bot = np.fromstring(args.arch_mlp_bot, dtype=int, sep="-")
+     # input data
+@@ -1275,7 +1311,7 @@ def run():
+             print(T.detach().cpu())
+ 
+     global ndevices
+-    ndevices = min(ngpus, args.mini_batch_size, num_fea - 1) if use_gpu else -1
++    ndevices = min(ngpus, args.mini_batch_size, num_fea - 1) if use_xpu else -1
+ 
+     ### construct the neural network specified above ###
+     # WARNING: to obtain exactly the same initialization for
+@@ -1311,7 +1347,7 @@ def run():
+             print(param.detach().cpu().numpy())
+         # print(dlrm)
+ 
+-    if use_gpu:
++    if use_xpu:
+         # Custom Model-Data Parallel
+         # the mlps are replicated and use data parallelism, while
+         # the embeddings are distributed and use model parallelism
+@@ -1327,7 +1363,7 @@ def run():
+ 
+     # distribute data parallel mlps
+     if ext_dist.my_size > 1:
+-        if use_gpu:
++        if use_xpu:
+             device_ids = [ext_dist.my_local_rank]
+             dlrm.bot_l = ext_dist.DDP(dlrm.bot_l, device_ids=device_ids)
+             dlrm.top_l = ext_dist.DDP(dlrm.top_l, device_ids=device_ids)
+@@ -1336,7 +1372,7 @@ def run():
+             dlrm.top_l = ext_dist.DDP(dlrm.top_l)
+ 
+     if not args.inference_only:
+-        if use_gpu and args.optimizer in ["rwsadagrad", "adagrad"]:
++        if use_xpu and args.optimizer in ["rwsadagrad", "adagrad"]:
+             sys.exit("GPU version of Adagrad is not supported by PyTorch.")
+         # specify the optimizer algorithm
+         opts = {
+@@ -1376,6 +1412,16 @@ def run():
+ 
+     ### main loop ###
+ 
++    # inductor mode
++    if args.use_inductor == "normal":
++        dlrm = torch.compile(dlrm, backend="inductor", dynamic=False)
++        print("Using PyTorch Inductor with normal mode")
++    elif args.use_inductor == "graph":
++        dlrm = torch.compile(dlrm, backend="inductor", dynamic=False, mode="reduce-overhead")
++        print("Using PyTorch Inductor with graph mode")
++    else:
++        print("Using PyTorch Eager")
++
+     # training or inference
+     best_acc_test = 0
+     best_auc_test = 0
+@@ -1398,13 +1444,13 @@ def run():
+     # Load model is specified
+     if not (args.load_model == ""):
+         print("Loading saved model {}".format(args.load_model))
+-        if use_gpu:
++        if use_xpu:
+             if dlrm.ndevices > 1:
+                 # NOTE: when targeting inference on multiple GPUs,
+                 # load the model as is on CPU or GPU, with the move
+                 # to multiple GPUs to be done in parallel_forward
+                 ld_model = torch.load(args.load_model)
+-            else:
++            elif use_gpu:
+                 # NOTE: when targeting inference on single GPU,
+                 # note that the call to .to(device) has already happened
+                 ld_model = torch.load(
+@@ -1412,6 +1458,11 @@ def run():
+                     map_location=torch.device("cuda"),
+                     # map_location=lambda storage, loc: storage.cuda(0)
+                 )
++            else:
++                ld_model = torch.load(
++                    args.load_model,
++                    map_location=torch.device("npu")
++                )
+         else:
+             # when targeting inference on CPU
+             ld_model = torch.load(args.load_model, map_location=torch.device("cpu"))
+@@ -1509,9 +1560,42 @@ def run():
+     tb_file = "./" + args.tensor_board_filename
+     writer = SummaryWriter(tb_file)
+ 
++    train_times = []
++    train_losses = []
++
+     ext_dist.barrier()
+-    with torch.autograd.profiler.profile(
+-        args.enable_profiling, use_cuda=use_gpu, record_shapes=True
++    if NPU_ENABLE:
++        profiler = torch_npu.profiler
++        experimental_config = torch_npu.profiler._ExperimentalConfig(
++                export_type=[torch_npu.profiler.ExportType.Text],
++                aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
++                profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++                l2_cache=False,
++                op_attr=False,
++                data_simplification=False,
++                record_op_args=False,
++                gc_detect_threshold=None
++            )
++    else:
++        profiler = torch.profiler
++        experimental_config = None
++    with profiler.profile(
++        activities=[
++                    profiler.ProfilerActivity.CPU,
++                    profiler.ProfilerActivity.NPU if NPU_ENABLE else profiler.ProfilerActivity.CUDA
++                ],
++                schedule=profiler.schedule(
++                    wait=1, warmup=3, active=10, repeat=1, skip_first=1
++                ),
++                on_trace_ready=profiler.tensorboard_trace_handler(
++                    './profiling'
++                ),
++                record_shapes=True,
++                with_stack=False,
++                profile_memory=False,
++                with_modules=False,
++                with_flops=False,
++                experimental_config=experimental_config,
+     ) as prof:
+         if not args.inference_only:
+             k = 0
+@@ -1539,6 +1623,8 @@ def run():
+                     previous_iteration_time = None
+ 
+                 for j, inputBatch in enumerate(train_ld):
++                    if args.enable_profiling:
++                        prof.step()
+                     if j == 0 and args.save_onnx:
+                         X_onnx, lS_o_onnx, lS_i_onnx, _, _, _ = unpack_batch(inputBatch)
+ 
+@@ -1548,14 +1634,14 @@ def run():
+                     X, lS_o, lS_i, T, W, CBPP = unpack_batch(inputBatch)
+ 
+                     if args.mlperf_logging:
+-                        current_time = time_wrap(use_gpu)
++                        current_time = time_wrap_xpu(use_xpu)
+                         if previous_iteration_time:
+                             iteration_time = current_time - previous_iteration_time
+                         else:
+                             iteration_time = 0
+                         previous_iteration_time = current_time
+                     else:
+-                        t1 = time_wrap(use_gpu)
++                        t1 = time_wrap_xpu(use_xpu)
+ 
+                     # early exit if nbatches was set by the user and has been exceeded
+                     if nbatches > 0 and j >= nbatches:
+@@ -1576,7 +1662,7 @@ def run():
+                         X,
+                         lS_o,
+                         lS_i,
+-                        use_gpu,
++                        use_xpu,
+                         device,
+                         ndevices=ndevices,
+                     )
+@@ -1586,7 +1672,7 @@ def run():
+                         W = W[ext_dist.get_my_slice(mbs)]
+ 
+                     # loss
+-                    E = loss_fn_wrap(Z, T, use_gpu, device)
++                    E = loss_fn_wrap(Z, T, use_xpu, device)
+ 
+                     # compute loss and accuracy
+                     L = E.detach().cpu().numpy()  # numpy array
+@@ -1623,7 +1709,7 @@ def run():
+                     if args.mlperf_logging:
+                         total_time += iteration_time
+                     else:
+-                        t2 = time_wrap(use_gpu)
++                        t2 = time_wrap_xpu(use_xpu)
+                         total_time += t2 - t1
+ 
+                     total_loss += L * mbs
+@@ -1670,6 +1756,17 @@ def run():
+                         total_iter = 0
+                         total_samp = 0
+ 
++                        train_times.append(gT)
++                        train_losses.append(train_loss)
++
++                    if j > args.stop_step and args.stop_step > 0:
++                        print(
++                            "Early stopping at step {} as specified by --stop-step".format(
++                                args.stop_step
++                            )
++                        )
++                        break
++
+                     # testing
+                     if should_test:
+                         epoch_num_float = (j + 1) / len(train_ld) + k + 1
+@@ -1695,7 +1792,7 @@ def run():
+                             best_auc_test,
+                             test_ld,
+                             device,
+-                            use_gpu,
++                            use_xpu,
+                             log_iter,
+                         )
+ 
+@@ -1788,21 +1885,22 @@ def run():
+                 best_auc_test,
+                 test_ld,
+                 device,
+-                use_gpu,
++                use_xpu,
+             )
+ 
+     # profiling
+     if args.enable_profiling:
+-        time_stamp = str(datetime.datetime.now()).replace(" ", "_")
+-        with open("dlrm_s_pytorch" + time_stamp + "_shape.prof", "w") as prof_f:
+-            prof_f.write(
+-                prof.key_averages(group_by_input_shape=True).table(
+-                    sort_by="self_cpu_time_total"
+-                )
+-            )
+-        with open("dlrm_s_pytorch" + time_stamp + "_total.prof", "w") as prof_f:
+-            prof_f.write(prof.key_averages().table(sort_by="self_cpu_time_total"))
+-        prof.export_chrome_trace("dlrm_s_pytorch" + time_stamp + ".json")
++        prof.stop()
++        # time_stamp = str(datetime.datetime.now()).replace(" ", "_")
++        # with open("dlrm_s_pytorch" + time_stamp + "_shape.prof", "w") as prof_f:
++        #     prof_f.write(
++        #         prof.key_averages(group_by_input_shape=True).table(
++        #             sort_by="self_cpu_time_total"
++        #         )
++        #     )
++        # with open("dlrm_s_pytorch" + time_stamp + "_total.prof", "w") as prof_f:
++        #     prof_f.write(prof.key_averages().table(sort_by="self_cpu_time_total"))
++        # prof.export_chrome_trace("dlrm_s_pytorch" + time_stamp + ".json")
+         # print(prof.key_averages().table(sort_by="cpu_time_total"))
+ 
+     # plot compute graph
+@@ -1895,14 +1993,21 @@ def run():
+             input_names=all_inputs,
+             output_names=["pred"],
+             dynamic_axes=dynamic_axes,
+-            dynamo=False,
+         )
+         # recover the model back
+         dlrm_pytorch_onnx = onnx.load("dlrm_s_pytorch.onnx")
+         # check the onnx model
+         onnx.checker.check_model(dlrm_pytorch_onnx)
+-    total_time_end = time_wrap(use_gpu)
++    total_time_end = time_wrap_xpu(use_xpu)
+ 
++    if args.sample_statistics_num > 0:
++        print(
++            "Statistics training by {} num, times (ms/it): {} losses: {}".format(
++                args.sample_statistics_num,
++                sum(train_times[-args.sample_statistics_num:]) / args.sample_statistics_num,
++                sum(train_losses[-args.sample_statistics_num:]) / args.sample_statistics_num
++            )
++        )
+ 
+ if __name__ == "__main__":
+     run()
+diff --git a/extend_distributed.py b/extend_distributed.py
+index fe77ded..875d8d2 100644
+--- a/extend_distributed.py
++++ b/extend_distributed.py
+@@ -8,6 +8,11 @@ import os
+ import sys
+ 
+ import torch
++try:
++    import torch_npu
++except ImportError:
++    print("import torch_npu failed")
++
+ import torch.distributed as dist
+ from torch.autograd import Function
+ from torch.autograd.profiler import record_function
+@@ -62,7 +67,7 @@ def get_split_lengths(n):
+     return (my_len, splits)
+ 
+ 
+-def init_distributed(rank=-1, local_rank=-1, size=-1, use_gpu=False, backend=""):
++def init_distributed(rank=-1, local_rank=-1, size=-1, use_gpu=False, use_npu=False, backend=""):
+     global myreq
+     global my_rank
+     global my_size
+@@ -80,6 +85,8 @@ def init_distributed(rank=-1, local_rank=-1, size=-1, use_gpu=False, backend="")
+             backend = "ccl"
+         elif use_gpu and dist.is_nccl_available():
+             backend = "nccl"
++        elif use_npu:
++            backend = "hccl"
+         elif dist.is_mpi_available():
+             backend = "mpi"
+         else:
+@@ -157,6 +164,14 @@ def init_distributed(rank=-1, local_rank=-1, size=-1, use_gpu=False, backend="")
+                 )
+                 sys.exit(1)
+             torch.cuda.set_device(my_local_rank)
++        if use_npu:
++            if my_local_size > torch_npu.npu.device_count():
++                print(
++                    "Not sufficient NPUs available... local_size = %d, ngpus = %d"
++                    % (my_local_size, torch_npu.npu.device_count())
++                )
++                sys.exit(1)
++            torch_npu.npu.set_device(my_local_rank)
+         dist.init_process_group(backend, rank=rank, world_size=size)
+         my_rank = dist.get_rank()
+         my_size = dist.get_world_size()
+@@ -164,10 +179,10 @@ def init_distributed(rank=-1, local_rank=-1, size=-1, use_gpu=False, backend="")
+             print("Running on %d ranks using %s backend" % (my_size, backend))
+         if hasattr(dist, "all_to_all_single"):
+             try:
+-                t = torch.zeros([4])
+-                if use_gpu:
+-                    t = t.cuda()
+-                dist.all_to_all_single(t, t)
++                # t = torch.zeros([4])
++                # if use_gpu:
++                #     t = t.cuda()
++                # dist.all_to_all_single(t, t)
+                 alltoall_supported = True
+             except RuntimeError as err:
+                 print("fail to enable all_to_all_single primitive: %s" % err)
+diff --git a/torchrec_dlrm/aws_component.py b/torchrec_dlrm/aws_component.py
+index 8ebcef1..4668bac 100644
+--- a/torchrec_dlrm/aws_component.py
++++ b/torchrec_dlrm/aws_component.py
+@@ -8,6 +8,7 @@ import os
+ 
+ import torchx.specs as specs
+ from torchx.components.dist import ddp
++from torchx.specs.api import Resource
+ 
+ 
+ def run_dlrm_main(num_trainers: int = 8, *script_args: str) -> specs.AppDef:
+diff --git a/torchrec_dlrm/data/dlrm_dataloader.py b/torchrec_dlrm/data/dlrm_dataloader.py
+index eda096c..4bb9001 100644
+--- a/torchrec_dlrm/data/dlrm_dataloader.py
++++ b/torchrec_dlrm/data/dlrm_dataloader.py
+@@ -6,6 +6,7 @@
+ 
+ import argparse
+ import os
++from typing import List
+ 
+ from torch import distributed as dist
+ from torch.utils.data import DataLoader
+@@ -88,23 +89,23 @@ def _get_in_memory_dataloader(
+         (root_name, stage) = (
+             ("train", "train") if stage == "train" else ("train", "test")
+         )
+-        stage_files: list[list[str]] = [
++        stage_files: List[List[str]] = [
+             [os.path.join(dir_path, f"{root_name}_dense.npy")],
+             [os.path.join(dir_path, f"{root_name}_{sparse_part}")],
+             [os.path.join(dir_path, f"{root_name}_labels.npy")],
+         ]
+     # criteo_1tb code path uses below two conditionals
+     elif stage == "train":
+-        stage_files: list[list[str]] = [
++        stage_files: List[List[str]] = [
+             [os.path.join(dir_path, f"day_{i}_dense.npy") for i in range(DAYS - 1)],
+             [os.path.join(dir_path, f"day_{i}_{sparse_part}") for i in range(DAYS - 1)],
+             [os.path.join(dir_path, f"day_{i}_labels.npy") for i in range(DAYS - 1)],
+         ]
+     elif stage in ["val", "test"]:
+-        stage_files: list[list[str]] = [
+-            [os.path.join(dir_path, f"day_{DAYS - 1}_dense.npy")],
+-            [os.path.join(dir_path, f"day_{DAYS - 1}_{sparse_part}")],
+-            [os.path.join(dir_path, f"day_{DAYS - 1}_labels.npy")],
++        stage_files: List[List[str]] = [
++            [os.path.join(dir_path, f"day_{DAYS-1}_dense.npy")],
++            [os.path.join(dir_path, f"day_{DAYS-1}_{sparse_part}")],
++            [os.path.join(dir_path, f"day_{DAYS-1}_labels.npy")],
+         ]
+     if stage in ["val", "test"] and args.test_batch_size is not None:
+         batch_size = args.test_batch_size
+diff --git a/torchrec_dlrm/data/multi_hot_criteo.py b/torchrec_dlrm/data/multi_hot_criteo.py
+index d1076c0..fd719d4 100644
+--- a/torchrec_dlrm/data/multi_hot_criteo.py
++++ b/torchrec_dlrm/data/multi_hot_criteo.py
+@@ -5,7 +5,7 @@
+ # LICENSE file in the root directory of this source tree.
+ 
+ import zipfile
+-from collections.abc import Iterator
++from typing import Dict, Iterator, List, Optional
+ 
+ import numpy as np
+ import torch
+@@ -58,18 +58,18 @@ class MultiHotCriteoIterDataPipe(IterableDataset):
+     def __init__(
+         self,
+         stage: str,
+-        dense_paths: list[str],
+-        sparse_paths: list[str],
+-        labels_paths: list[str],
++        dense_paths: List[str],
++        sparse_paths: List[str],
++        labels_paths: List[str],
+         batch_size: int,
+         rank: int,
+         world_size: int,
+-        drop_last: bool | None = False,
++        drop_last: Optional[bool] = False,
+         shuffle_batches: bool = False,
+         shuffle_training_set: bool = False,
+         shuffle_training_set_random_seed: int = 0,
+         mmap_mode: bool = False,
+-        hashes: list[int] | None = None,
++        hashes: Optional[List[int]] = None,
+         path_manager_key: str = PATH_MANAGER_KEY,
+     ) -> None:
+         self.stage = stage
+@@ -95,13 +95,13 @@ class MultiHotCriteoIterDataPipe(IterableDataset):
+             self._shuffle_and_load_data_for_rank()
+         else:
+             m = "r" if mmap_mode else None
+-            self.dense_arrs: list[np.ndarray] = [
++            self.dense_arrs: List[np.ndarray] = [
+                 np.load(f, mmap_mode=m) for f in self.dense_paths
+             ]
+-            self.labels_arrs: list[np.ndarray] = [
++            self.labels_arrs: List[np.ndarray] = [
+                 np.load(f, mmap_mode=m) for f in self.labels_paths
+             ]
+-            self.sparse_arrs: list = []
++            self.sparse_arrs: List = []
+             for sparse_path in self.sparse_paths:
+                 multi_hot_ids_l = []
+                 for feat_id_num in range(CAT_FEATURE_COUNT):
+@@ -134,7 +134,7 @@ class MultiHotCriteoIterDataPipe(IterableDataset):
+         #             for (feat, hash) in zip(self.sparse_arrs[k], self.hashes)
+         #         ]
+ 
+-        self.num_rows_per_file: list[int] = list(map(len, self.dense_arrs))
++        self.num_rows_per_file: List[int] = List(map(len, self.dense_arrs))
+         total_rows = sum(self.num_rows_per_file)
+         self.num_full_batches: int = (
+             total_rows // batch_size // self.world_size * self.world_size
+@@ -151,15 +151,15 @@ class MultiHotCriteoIterDataPipe(IterableDataset):
+                 self.last_batch_sizes += remainder // self.world_size
+             self.last_batch_sizes[: remainder % self.world_size] += 1
+ 
+-        self.multi_hot_sizes: list[int] = [
++        self.multi_hot_sizes: List[int] = [
+             multi_hot_feat.shape[-1] for multi_hot_feat in self.sparse_arrs[0]
+         ]
+ 
+         # These values are the same for the KeyedJaggedTensors in all batches, so they
+         # are computed once here. This avoids extra work from the KeyedJaggedTensor sync
+         # functions.
+-        self.keys: list[str] = DEFAULT_CAT_NAMES
+-        self.index_per_key: dict[str, int] = {
++        self.keys: List[str] = DEFAULT_CAT_NAMES
++        self.index_per_key: Dict[str, int] = {
+             key: i for (i, key) in enumerate(self.keys)
+         }
+ 
+@@ -173,9 +173,7 @@ class MultiHotCriteoIterDataPipe(IterableDataset):
+         zf.open(npy_name, "r")
+         version = np.lib.format.read_magic(zf.fp)
+         shape, fortran_order, dtype = np.lib.format._read_array_header(zf.fp, version)
+-        assert dtype == "int32", (
+-            f"sparse multi-hot dtype is {dtype} but should be int32"
+-        )
++        assert (dtype == "int32"), f"sparse multi-hot dtype is {dtype} but should be int32"
+         offset = zf.fp.tell()
+         # create memmap
+         return np.memmap(
+@@ -190,7 +188,7 @@ class MultiHotCriteoIterDataPipe(IterableDataset):
+     def _np_arrays_to_batch(
+         self,
+         dense: np.ndarray,
+-        sparse: list[np.ndarray],
++        sparse: List[np.ndarray],
+         labels: np.ndarray,
+     ) -> Batch:
+         if self.shuffle_batches:
+@@ -229,11 +227,11 @@ class MultiHotCriteoIterDataPipe(IterableDataset):
+ 
+     def __iter__(self) -> Iterator[Batch]:
+         # Invariant: buffer never contains more than batch_size rows.
+-        buffer: list[np.ndarray] | None = None
++        buffer: Optional[List[np.ndarray]]  = None
+ 
+         def append_to_buffer(
+             dense: np.ndarray,
+-            sparse: list[np.ndarray],
++            sparse: List[np.ndarray],
+             labels: np.ndarray,
+         ) -> None:
+             nonlocal buffer
+diff --git a/torchrec_dlrm/dlrm_main.py b/torchrec_dlrm/dlrm_main.py
+index 0840e09..69ce735 100644
+--- a/torchrec_dlrm/dlrm_main.py
++++ b/torchrec_dlrm/dlrm_main.py
+@@ -8,7 +8,7 @@ import argparse
+ import itertools
+ import os
+ import sys
+-from collections.abc import Iterator
++from typing import Iterator, List, Optional
+ from dataclasses import dataclass, field
+ from enum import Enum
+ 
+@@ -72,7 +72,7 @@ class InteractionType(Enum):
+         return self.value
+ 
+ 
+-def parse_args(argv: list[str]) -> argparse.Namespace:
++def parse_args(argv: List[str]) -> argparse.Namespace:
+     parser = argparse.ArgumentParser(description="torchrec dlrm example trainer")
+     parser.add_argument(
+         "--epochs",
+@@ -312,7 +312,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
+ 
+ 
+ def _evaluate(
+-    limit_batches: int | None,
++    limit_batches: Optional[int],
+     pipeline: TrainPipelineSparseDist,
+     eval_dataloader: DataLoader,
+     stage: str,
+@@ -334,7 +334,7 @@ def _evaluate(
+ 
+     iterator = itertools.islice(iter(eval_dataloader), limit_batches)
+ 
+-    auroc = metrics.AUROC(task="multiclass", num_classes=2).to(device)
++    auroc = metrics.AUROC(compute_on_step=False, num_classes=2).to(device)
+ 
+     is_rank_zero = dist.get_rank() == 0
+     if is_rank_zero:
+@@ -349,8 +349,7 @@ def _evaluate(
+             try:
+                 _loss, logits, labels = pipeline.progress(iterator)
+                 preds = torch.sigmoid(logits)
+-                preds_reshaped = torch.stack((1 - preds, preds), dim=1)
+-                auroc(preds_reshaped, labels)
++                auroc(preds, labels)
+                 if is_rank_zero:
+                     pbar.update(1)
+             except StopIteration:
+@@ -379,9 +378,9 @@ def _train(
+     epoch: int,
+     lr_scheduler,
+     print_lr: bool,
+-    validation_freq: int | None,
+-    limit_train_batches: int | None,
+-    limit_val_batches: int | None,
++    validation_freq: Optional[int],
++    limit_train_batches: Optional[int],
++    limit_val_batches: Optional[int],
+ ) -> None:
+     """
+     Trains model for 1 epoch. Helper function for train_val_test.
+@@ -417,9 +416,7 @@ def _train(
+     n = (
+         validation_freq
+         if validation_freq
+-        else limit_train_batches
+-        if limit_train_batches
+-        else len(train_dataloader)
++        else limit_train_batches if limit_train_batches else len(train_dataloader)
+     )
+     for batched_iterator in batched(iterator, n):
+         for it in itertools.count(start_it):
+@@ -444,8 +441,8 @@ def _train(
+ 
+ @dataclass
+ class TrainValTestResults:
+-    val_aurocs: list[float] = field(default_factory=list)
+-    test_auroc: float | None = None
++    val_aurocs: List[float] = field(default_factory=list)
++    test_auroc: Optional[float] = None
+ 
+ 
+ def train_val_test(
+@@ -500,7 +497,7 @@ def train_val_test(
+     return results
+ 
+ 
+-def main(argv: list[str]) -> None:
++def main(argv: List[str]) -> None:
+     """
+     Trains, validates, and tests a Deep Learning Recommendation Model (DLRM)
+     (https://arxiv.org/abs/1906.00091). The DLRM model contains both data parallel
+@@ -531,26 +528,18 @@ def main(argv: list[str]) -> None:
+             and len(args.multi_hot_sizes) == len(args.num_embeddings_per_feature)
+             or args.num_embeddings_per_feature is None
+             and len(args.multi_hot_sizes) == len(DEFAULT_CAT_NAMES)
+-        ), (
+-            "--multi_hot_sizes must be a comma delimited list the same size as the number of embedding tables."
+-        )
++        ), "--multi_hot_sizes must be a comma delimited list the same size as the number of embedding tables."
+     assert (
+         args.in_memory_binary_criteo_path is None
+         or args.synthetic_multi_hot_criteo_path is None
+-    ), (
+-        "--in_memory_binary_criteo_path and --synthetic_multi_hot_criteo_path are mutually exclusive CLI arguments."
+-    )
++    ), "--in_memory_binary_criteo_path and --synthetic_multi_hot_criteo_path are mutually exclusive CLI arguments."
+     assert (
+         args.multi_hot_sizes is None or args.synthetic_multi_hot_criteo_path is None
+-    ), (
+-        "--multi_hot_sizes is used to convert 1-hot to multi-hot. It's inapplicable with --synthetic_multi_hot_criteo_path."
+-    )
++    ), "--multi_hot_sizes is used to convert 1-hot to multi-hot. It's inapplicable with --synthetic_multi_hot_criteo_path."
+     assert (
+         args.multi_hot_distribution_type is None
+         or args.synthetic_multi_hot_criteo_path is None
+-    ), (
+-        "--multi_hot_distribution_type is used to convert 1-hot to multi-hot. It's inapplicable with --synthetic_multi_hot_criteo_path."
+-    )
++    ), "--multi_hot_distribution_type is used to convert 1-hot to multi-hot. It's inapplicable with --synthetic_multi_hot_criteo_path."
+ 
+     rank = int(os.environ["LOCAL_RANK"])
+     if torch.cuda.is_available():
+diff --git a/torchrec_dlrm/multi_hot.py b/torchrec_dlrm/multi_hot.py
+index 3633324..2e16a73 100644
+--- a/torchrec_dlrm/multi_hot.py
++++ b/torchrec_dlrm/multi_hot.py
+@@ -3,6 +3,7 @@
+ # This source code is licensed under the MIT license found in the
+ # LICENSE file in the root directory of this source tree.
+ 
++from typing import List, Tuple
+ 
+ import numpy as np
+ import torch
+@@ -26,8 +27,8 @@ class RestartableMap:
+ class Multihot:
+     def __init__(
+         self,
+-        multi_hot_sizes: list[int],
+-        num_embeddings_per_feature: list[int],
++        multi_hot_sizes: List[int],
++        num_embeddings_per_feature: List[int],
+         batch_size: int,
+         collect_freqs_stats: bool,
+         dist_type: str = "uniform",
+@@ -58,8 +59,8 @@ class Multihot:
+         self.freqs_pre_hash = []
+         self.freqs_post_hash = []
+         for embs_count in num_embeddings_per_feature:
+-            self.freqs_pre_hash.append(np.zeros(embs_count))
+-            self.freqs_post_hash.append(np.zeros(embs_count))
++            self.freqs_pre_hash.append(np.zeros((embs_count)))
++            self.freqs_post_hash.append(np.zeros((embs_count)))
+ 
+     def save_freqs_stats(self) -> None:
+         if torch.distributed.is_available() and torch.distributed.is_initialized():
+@@ -79,9 +80,9 @@ class Multihot:
+     def __make_multi_hot_indices_tables(
+         self,
+         dist_type: str,
+-        multi_hot_sizes: list[int],
+-        num_embeddings_per_feature: list[int],
+-    ) -> list[np.array]:
++        multi_hot_sizes: List[int],
++        num_embeddings_per_feature: List[int],
++    ) -> List[np.array]:
+         np.random.seed(
+             0
+         )  # The seed is necessary for all ranks to produce the same lookup values.
+@@ -114,9 +115,9 @@ class Multihot:
+     def __make_offsets(
+         self,
+         multi_hot_sizes: int,
+-        num_embeddings_per_feature: list[int],
++        num_embeddings_per_feature: List[int],
+         batch_size: int,
+-    ) -> list[torch.Tensor]:
++    ) -> List[torch.Tensor]:
+         lS_o = torch.ones(
+             (len(num_embeddings_per_feature) * batch_size), dtype=torch.int32
+         )
+@@ -129,7 +130,7 @@ class Multihot:
+         self,
+         lS_i: torch.Tensor,
+         batch_size: int,
+-    ) -> tuple[torch.Tensor, torch.Tensor]:
++    ) -> Tuple[torch.Tensor, torch.Tensor]:
+         lS_i = lS_i.reshape(-1, batch_size)
+         multi_hot_ids_l = []
+         for k, (sparse_data_batch_for_table, multi_hot_table) in enumerate(
+diff --git a/tricks/qr_embedding_bag.py b/tricks/qr_embedding_bag.py
+index 0a7bc4f..3ec738c 100644
+--- a/tricks/qr_embedding_bag.py
++++ b/tricks/qr_embedding_bag.py
+@@ -148,9 +148,7 @@ class QREmbeddingBag(nn.Module):
+         self.scale_grad_by_freq = scale_grad_by_freq
+ 
+         if self.operation == "add" or self.operation == "mult":
+-            assert self.embedding_dim[0] == self.embedding_dim[1], (
+-                "Embedding dimensions do not match!"
+-            )
++            assert (self.embedding_dim[0] == self.embedding_dim[1]), "Embedding dimensions do not match!"
+ 
+         self.num_embeddings = [
+             int(np.ceil(num_categories / num_collisions)),
+@@ -166,18 +164,14 @@ class QREmbeddingBag(nn.Module):
+             )
+             self.reset_parameters()
+         else:
+-            assert list(_weight[0].shape) == [
++            assert (list(_weight[0].shape) == [
+                 self.num_embeddings[0],
+                 self.embedding_dim[0],
+-            ], (
+-                "Shape of weight for quotient table does not match num_embeddings and embedding_dim"
+-            )
+-            assert list(_weight[1].shape) == [
++            ]), "Shape of weight for quotient table does not match num_embeddings and embedding_dim"
++            assert (list(_weight[1].shape) == [
+                 self.num_embeddings[1],
+                 self.embedding_dim[1],
+-            ], (
+-                "Shape of weight for remainder table does not match num_embeddings and embedding_dim"
+-            )
++            ]), "Shape of weight for remainder table does not match num_embeddings and embedding_dim"
+             self.weight_q = Parameter(_weight[0])
+             self.weight_r = Parameter(_weight[1])
+         self.mode = mode
+-- 
+2.52.0.windows.1
+

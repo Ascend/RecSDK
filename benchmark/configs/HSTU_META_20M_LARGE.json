@@ -1,0 +1,32 @@
+{
+    "name": "HSTU_META",
+    "url": "https://github.com/meta-recsys/generative-recommenders.git",
+    "commit_id": "d5e2dfe1e547d92146fedef50b2bfc4bf6a6712d",
+    "patch_path": "patches/hstu_meta_npu.patch",
+    "mode": "infer",
+    "epoch": 50,
+    "profiling_flag": false,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "env",
+        "USE_NPU_HSTU=0",
+        "ENABLE_RAB=1",
+        "ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7",
+        "PYTORCH_NPU_ALLOC_CONF=expandable_segments:True",
+        "python3",
+        "main.py",
+        "--gin_config_file",
+        "configs/ml-20m/hstu-sampled-softmax-n128-large-final.gin",
+        "--master_port",
+        "32345",
+        "--batch_size",
+        "128",
+        "--skip_step_num",
+        "2"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": ["mkdir -p tmp/","python3 preprocess_public_data.py"],
+    "lib_fbgemm_npu_api_so_path" : "/usr/local/python3.11.0/lib/python3.11/site-packages/libfbgemm_npu_api.so" 
+}
