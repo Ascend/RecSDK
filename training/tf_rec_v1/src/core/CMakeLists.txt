@@ -41,6 +41,12 @@ else()
     include_directories(${PYTHON_PATH}/lib/python3.7/site-packages/tensorflow/include)
 endif()
 
+IF (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "aarch64")
+    SET(ARCH aarch64)
+ELSEIF (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64")
+    SET(ARCH x86_64)
+ENDIF ()
+
 link_libraries(stdc++fs)
 
 file(GLOB_RECURSE MXREC_SRC ./*.cpp ./*.h)
@@ -59,6 +65,7 @@ target_link_directories(ASC
         ${ASCEND_PATH}/fwkacllib/lib64
         ${ASCEND_PATH}/compiler/lib64
         ${ASCEND_PATH}/runtime/lib64
+        ${ASCEND_PATH}/${ARCH}-linux/lib64
         ${HDF5_PATH}/lib
         ${SECUREC_PATH}/lib
         ${ASCEND_DRIVER_PATH}/lib64/driver
