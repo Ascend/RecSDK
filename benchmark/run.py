@@ -380,7 +380,11 @@ def main():
         logger.error(f"Invalid repository name: {repo_name}")
         raise ValueError(f"Invalid repository name: {repo_name}")
 
-    target_dir = MODELS_DIR / repo_name
+    if config.get("model_name"):
+        model_name = config.get("model_name")
+        target_dir = MODELS_DIR / model_name / repo_name
+    else:
+        target_dir = MODELS_DIR / repo_name
 
     # 2. Execute git clone and apply patch
     if not download_and_install(config, repo_url, target_dir, commit_id, patch_path):
