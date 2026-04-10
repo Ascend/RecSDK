@@ -9,17 +9,16 @@
 **图 1**  性能调优流程图<a id="fig87871647115415"></a>  
 ![](figures/performance_tuning/性能调优流程图.png "性能调优流程图")
 
-
 ## 性能指标<a name="ZH-CN_TOPIC_0000002414375817"></a>
 
 需要对齐如下关键指标：
 
--   单卡/多卡场景：单卡场景验证时按照客户配置，在Docker中切分CPU资源进行验证；多卡场景可能会出现CPU bound，前期调试需确认CPU资源是否已满足需求。
--   时延要求：要求某个固定值，或是变化值；以及低负载和高负载的要求标准。
--   batchsize分布情况：要求固定值，或是动态值以及batchsize分布情况。
--   QPS（Queries Per Second，每秒钟请求量）：请求次数是间隔时间内请求的总量，QPS=请求数/秒（req/sec ）。
--   吞吐量：定义为网络模型在单位时间（例如1s）内可以处理的最大样本数据量，吞吐量=QPS\*batchsize。
--   数据类型：float16、float32或者其他类型。
+- 单卡/多卡场景：单卡场景验证时按照客户配置，在Docker中切分CPU资源进行验证；多卡场景可能会出现CPU bound，前期调试需确认CPU资源是否已满足需求。
+- 时延要求：要求某个固定值，或是变化值；以及低负载和高负载的要求标准。
+- batchsize分布情况：要求固定值，或是动态值以及batchsize分布情况。
+- QPS（Queries Per Second，每秒钟请求量）：请求次数是间隔时间内请求的总量，QPS=请求数/秒（req/sec）。
+- 吞吐量：定义为网络模型在单位时间（例如1s）内可以处理的最大样本数据量，吞吐量=QPS\*batchsize。
+- 数据类型：float16、float32或者其他类型。
 
 ### 性能调优工具介绍<a name="ZH-CN_TOPIC_0000002380656610"></a>
 
@@ -90,7 +89,6 @@ if __name__ == "__main__":
     main()
 ```
 
-
 ##### TensorFlow和PyTorch的性能采集<a name="ZH-CN_TOPIC_0000002414375821"></a>
 
 TensorFlow下没有接口可以直接调用，需要使用msprof命令进行采集，一般使用动态采集，方便控制采集数据量；详细请参考《CANN 性能调优工具用户指南》中的“动态采集性能数据”。
@@ -125,7 +123,7 @@ with tf.compat.v1.Session(config=session_config) as sess:
 print(result)
 ```
 
-1.  需要在循环运行推理，然后再模型开始推理一小段时间后，自行获取运行程序的pid，比如本次为9527，则运行如下命令动态采集命令采集数据
+1. 需要在循环运行推理，然后再模型开始推理一小段时间后，自行获取运行程序的pid，比如本次为9527，则运行如下命令动态采集命令采集数据
 
     ```bash
     msprof --dynamic=on --pid=9527 --output=/home/projects/output --model-execution=on --runtime-api=on --aicpu=on
@@ -140,7 +138,7 @@ print(result)
 
     其中start命令之后，为动态采集的时间窗，到输入stop命令时结束采集；
 
-2.  采集出数据后，还需要手动解析，进入到上一步采集的目录（一般是一个带有时间戳的目录），使用以下命令解析数据
+2. 采集出数据后，还需要手动解析，进入到上一步采集的目录（一般是一个带有时间戳的目录），使用以下命令解析数据
 
     ```cpp
     // 启用解析并将profiling输出到当前目录
@@ -149,10 +147,8 @@ print(result)
     msprof --export=on --output=. --summary-format=csv
     ```
 
-    >[!NOTE] 说明 
+    >[!NOTE]
     >采集时间过长，解析时间会很长，需要适当控制采集时间，一般采集5s就可以进行数据分析。
-
-
 
 #### GE DUMP介绍<a name="ZH-CN_TOPIC_0000002380656614"></a>
 
@@ -166,9 +162,6 @@ print(result)
 
 [msIT工具](https://gitcode.com/Ascend/msit/blob/master/msit/docs/graph/README.md)：dump出GE图，再用工具的msit graph功能，扫描重复结构，重复出现次数多，且占比较大的子结构，可以考虑手写融合pass和融合算子进行优化，其中也有子图抽取功能，比如图太大打不开的场景，可以抽取某块子图打开来分析，推荐使用第三方网络可视化工具：[netron.app](https://netron.app/)。
 
-
-
-
 ## 性能优化分析<a name="ZH-CN_TOPIC_0000002380816486"></a>
 
 可能涉及的软件栈主要是PyTorch和TensorFlow，在这两种场景下，也有可能根据客户的实际使用场景，衍生出不同的框架，这里只介绍这套软件栈的基础流程。
@@ -177,20 +170,17 @@ print(result)
 
 ![](figures/performance_tuning/zh-cn_image_0000002414375861.png)
 
-
 ### TensorFlow技术栈<a name="ZH-CN_TOPIC_0000002414375825"></a>
 
 ![](figures/performance_tuning/zh-cn_image_0000002380656654.png)
-
 
 ### 开箱<a name="ZH-CN_TOPIC_0000002380656618"></a>
 
 启动客户模型时，具体使用TensorFlow技术栈或是PyTorch技术栈通常取决于客户的需求，开箱软件栈的选择应基于客户的推理框架流程。
 
--   使用TensorFlow框架，客户通常会提供一个pb文件，可以根据客户的软件栈运行模型，可参考社区上的demo（[TF推理样例参考](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/82RC1alpha002/migration/tfmigr1/atlastfserv_26_0006.html)）。
--   使用PyTorch路线，可以使用TorchAir套件进行推理，参考社区上的demo\([TorchAir推理样例](https://www.hiascend.com/document/detail/zh/Pytorch/710/modthirdparty/torchairuseguide/torchair_00005.html)\)。
--   使用生态路线，即使用Inductor+Triton这套流程。完成开箱后，可以初步观察到性能基线，并与目标进行对比，同时参考本文前述章节中的profiling采集方法进行后续分析。
-
+- 使用TensorFlow框架，客户通常会提供一个pb文件，可以根据客户的软件栈运行模型，可参考社区上的demo（[TF推理样例参考](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/82RC1alpha002/migration/tfmigr1/atlastfserv_26_0006.html)）。
+- 使用PyTorch路线，可以使用TorchAir套件进行推理，参考社区上的demo\([TorchAir推理样例](https://www.hiascend.com/document/detail/zh/Pytorch/710/modthirdparty/torchairuseguide/torchair_00005.html)\)。
+- 使用生态路线，即使用Inductor+Triton这套流程。完成开箱后，可以初步观察到性能基线，并与目标进行对比，同时参考本文前述章节中的profiling采集方法进行后续分析。
 
 ### 不同的瓶颈点<a name="ZH-CN_TOPIC_0000002380816490"></a>
 
@@ -200,27 +190,26 @@ print(result)
 
 程序性能由计算核心（Kernel）的执行时间主导，可以通过以下几处查看是否bound。
 
-1.  npu-smi info查看利用率，如果利用率很高则很有可能就是bound，也有可能前期跑单个推理利用率比较低，多个推理并行时，利用率超过80%（一般认为这个值就已经很高了）；这种方式查看到的值是cube核上的cycle与时钟频率换算出来的cycle的比值，不包含vector core的占比，所以这个值是个初步查看，具体的需要从profiling里面的cycle自行计算；
+1. npu-smi info查看利用率，如果利用率很高则很有可能就是bound，也有可能前期跑单个推理利用率比较低，多个推理并行时，利用率超过80%（一般认为这个值就已经很高了）；这种方式查看到的值是cube核上的cycle与时钟频率换算出来的cycle的比值，不包含vector core的占比，所以这个值是个初步查看，具体的需要从profiling里面的cycle自行计算；
 
     通过profiling计算利用率，以下图为例：
 
     ![](figures/performance_tuning/zh-cn_image_0000002380816526.png)
 
-2.  按照算子type筛选，比如这里筛选AI\_CORE，就是计算CUBE的利用率。
-3.  按照start time排序，计算第一个和最后一个时间戳的差值，就是这一整段的所有耗时。
-4.  CUBE的总cycle数就是aic\_total\_cycles数求和。
-5.  利用率为③/\(②/1000000\*20\*1650\*1000000\)。其中②的单位是us，所以除以1000000转换成s；20是具体芯片的ai\_core数量；1650是当前芯片的频率，单位为MHz/s，所以需要乘以1000000。
+2. 按照算子type筛选，比如这里筛选AI\_CORE，就是计算CUBE的利用率。
+3. 按照start time排序，计算第一个和最后一个时间戳的差值，就是这一整段的所有耗时。
+4. CUBE的总cycle数就是aic\_total\_cycles数求和。
+5. 利用率为③/\(②/1000000\*20\*1650\*1000000\)。其中②的单位是us，所以除以1000000转换成s；20是具体芯片的ai\_core数量；1650是当前芯片的频率，单位为MHz/s，所以需要乘以1000000。
 
     这里计算出来的利用率是cube整体利用率的78.9%。
 
-6.  计算过程中各流程的占比直接用时间可以算出来。比如mte2耗时占比为ai\_core总耗时的70.18%，可以推断出ai\_core上的耗时内存搬入占大头。
+6. 计算过程中各流程的占比直接用时间可以算出来。比如mte2耗时占比为ai\_core总耗时的70.18%，可以推断出ai\_core上的耗时内存搬入占大头。
 
 cube/vector bound场景下的优化手段：
 
--   图优化，比如torch.compile或者TensorFlow的xla。
--   算子融合，可以减少算子启动开销和算子中间读写。
--   数据类型，如本来是float32降低到HF32，相同数据，计算量将减少（可能影响精度，要做好精度测试）。其中，HF32数据类型仅针对Conv类算子与Matmul类算子生效。
-
+- 图优化，比如torch.compile或者TensorFlow的xla。
+- 算子融合，可以减少算子启动开销和算子中间读写。
+- 数据类型，如本来是float32降低到HF32，相同数据，计算量将减少（可能影响精度，要做好精度测试）。其中，HF32数据类型仅针对Conv类算子与Matmul类算子生效。
 
 #### host<a name="ZH-CN_TOPIC_0000002414375829"></a>
 
@@ -238,13 +227,12 @@ host侧有计算工作量的，通过TensorFlow原生的Profiler工具导出，�
 
 **解决方案<a name="section7313618185710"></a>**
 
--   单算子下发方案替换成整图下沉。
--   动态图转静态图。
--   增大batchsize，增加算子执行时间，减少free的缝隙时间占比。
--   host侧性能提升，CPU利用率过高的话，则要考虑CPU侧的一些优化。
--   集群方式部署，保证host侧资源足够。
--   单机器部署可以考虑非host bound模型和host bound模型混布。
-
+- 单算子下发方案替换成整图下沉。
+- 动态图转静态图。
+- 增大batchsize，增加算子执行时间，减少free的缝隙时间占比。
+- host侧性能提升，CPU利用率过高的话，则要考虑CPU侧的一些优化。
+- 集群方式部署，保证host侧资源足够。
+- 单机器部署可以考虑非host bound模型和host bound模型混布。
 
 #### PCIe<a name="ZH-CN_TOPIC_0000002380656622"></a>
 
@@ -262,33 +250,30 @@ PCIe的耗时在timeline文件中的耗时就是图中的model@inputcopy。
 
 **分析方向<a name="section1960542154611"></a>**
 
-1.  一个CPU对应多少张卡，是否可以通过numa node节点绑定等操作，减少PCIe抢占带来的耗时
-2.  增大batchsize，减少PCIe传输头开销的占比
-3.  数据格式，从float32降低到float16也能有效解决（需要关注精度是否达标，或者客户接受）
-4.  host侧先把数据攒到一起，把小份数据传输转换为大份数据传输（GE框架已自带该功能，如果客户调用aclrt接口需要自己实现）
-
+1. 一个CPU对应多少张卡，是否可以通过numa node节点绑定等操作，减少PCIe抢占带来的耗时
+2. 增大batchsize，减少PCIe传输头开销的占比
+3. 数据格式，从float32降低到float16也能有效解决（需要关注精度是否达标，或者客户接受）
+4. host侧先把数据攒到一起，把小份数据传输转换为大份数据传输（GE框架已自带该功能，如果客户调用aclrt接口需要自己实现）
 
 #### 访存<a name="ZH-CN_TOPIC_0000002380816494"></a>
 
 主要是针对vector算子或者cube算子的内存搬入或者搬出，会存在访存bound。
 
-1.  一般可以通过profiling文件，根据每个算子的数据搬运量和其消耗在搬运上的时间，来计算访存速率，判断是否存在访存bound。
+1. 一般可以通过profiling文件，根据每个算子的数据搬运量和其消耗在搬运上的时间，来计算访存速率，判断是否存在访存bound。
 
     ![](figures/performance_tuning/zh-cn_image_0000002380816530.png)
 
     如上图所示，input的数据量是20000/48\*2\*8=6.5KB。其中，48是因为数据被分配到48个核上、2表示有两个20000的shape、8表示int64、mte2时间为1051us，所以计算其带宽为0.005GB/s。这个带宽远不达理论带宽，肯定是有问题的。
 
-2.  直接通过profiling文件的aiv\_mte2\_ratio字段，判断是否超过0.8。如果有大量超过0.8的算子出现，则这一部分是需要进行优化的，如下图所示：
+2. 直接通过profiling文件的aiv\_mte2\_ratio字段，判断是否超过0.8。如果有大量超过0.8的算子出现，则这一部分是需要进行优化的，如下图所示：
 
     ![](figures/performance_tuning/zh-cn_image_0000002414256021.png)
 
 **分析方向<a name="section1559362095619"></a>**
 
-1.  需要分析耗时是否合理
-2.  vector算子融合，可以有效减少需要拷贝的数据量，从而释放访存压力
-3.  排查搬运的数据量是否非32byte对齐，非对齐场景也会导致带宽低，也需要在算子内做特殊处理
-
-
+1. 需要分析耗时是否合理
+2. vector算子融合，可以有效减少需要拷贝的数据量，从而释放访存压力
+3. 排查搬运的数据量是否非32byte对齐，非对齐场景也会导致带宽低，也需要在算子内做特殊处理
 
 ### 案例分享1<a name="ZH-CN_TOPIC_0000002414255985"></a>
 
@@ -300,11 +285,11 @@ PCIe的耗时在timeline文件中的耗时就是图中的model@inputcopy。
 
 本地测试数据 ---\> step1：
 
-1.  batching策略是在客户的服务端框架做的，可以通过参数，修改其攒batch时间，和档位；
-2.  最大档位意思是从1到该最大档位中间每个bs都配置成档位；
-3.  流数则表示一张NPU卡上的实例数，即最大可以几个推理任务同时并行跑；
-4.  分核第一个数字是cube数量，第二个数字是vector数量；
-5.  最后三列性能均是通过1000/平均时间\*流数算出来的QPS值。
+1. batching策略是在客户的服务端框架做的，可以通过参数，修改其攒batch时间，和档位；
+2. 最大档位意思是从1到该最大档位中间每个bs都配置成档位；
+3. 流数则表示一张NPU卡上的实例数，即最大可以几个推理任务同时并行跑；
+4. 分核第一个数字是cube数量，第二个数字是vector数量；
+5. 最后三列性能均是通过1000/平均时间\*流数算出来的QPS值。
 
     ![](figures/performance_tuning/zh-cn_image_0000002477306400.png)
 
@@ -326,11 +311,10 @@ PCIe的耗时在timeline文件中的耗时就是图中的model@inputcopy。
 
 ![](figures/performance_tuning/zh-cn_image_0000002380816534.png)
 
--   如配置最大bs为20，则这个请求可以一次性跑完，耗时9.19ms，硬件资源只需要占用12/24的核数。
--   如配置最大bs为16，则这个请求会被拆分为两个bs 10，两个bs 10并行跑完，耗时7.01ms，时间比直接跑bs 20要少，但是占用的硬件资源是24/48的核数，比直接跑bs 20多一倍，这样就会导致NPU利用率过高。
+- 如配置最大bs为20，则这个请求可以一次性跑完，耗时9.19ms，硬件资源只需要占用12/24的核数。
+- 如配置最大bs为16，则这个请求会被拆分为两个bs 10，两个bs 10并行跑完，耗时7.01ms，时间比直接跑bs 20要少，但是占用的硬件资源是24/48的核数，比直接跑bs 20多一倍，这样就会导致NPU利用率过高。
 
 通过修改最大bs配置，线上实际的平均时延无明显变化，但是NPU利用率平均下降5%，流量高峰时延劣化情况明显改善。
-
 
 ### 案例分享2<a name="ZH-CN_TOPIC_0000002414375833"></a>
 
@@ -348,11 +332,11 @@ profiling采集：
 
 ![](figures/performance_tuning/zh-cn_image_0000002414256025.png)
 
-1.  因为串行执行，算子的耗时是稳定的，profiling上可以直接基于op\_name去重后分析单次推理的性能。
+1. 因为串行执行，算子的耗时是稳定的，profiling上可以直接基于op\_name去重后分析单次推理的性能。
 
     ![](figures/performance_tuning/zh-cn_image_0000002496791749.png)
 
-2.  这里通过按task\_duration倒排，可以看到每次推理执行时间在44ms左右，同时因为大量dynamic算子，引入了7ms左右的task\_wait时间（等待host调度）。
+2. 这里通过按task\_duration倒排，可以看到每次推理执行时间在44ms左右，同时因为大量dynamic算子，引入了7ms左右的task\_wait时间（等待host调度）。
 
     分析这里的Gather算子shape和周遭结构，首先dynamic的Gather算子，使用的是逻辑核，无法通过GE的限核功能限制，在这里不满足需要兼顾高压下性能的前提，同时，步骤1图中Gather算子的index数量只有至多20000，理论上分析不需要ms级别（实际因为数据重复度较高，有较大的核间冲突）。
 
@@ -400,8 +384,6 @@ profiling分析--\>step3：
 
 ![](figures/performance_tuning/zh-cn_image_0000002414256033.png)
 
-
-
 ## 性能调优方法<a name="ZH-CN_TOPIC_0000002380656626"></a>
 
 ### AI CPU算子消除<a name="ZH-CN_TOPIC_0000002380816498"></a>
@@ -426,7 +408,6 @@ profiling分析--\>step3：
 
 ![](figures/performance_tuning/zh-cn_image_0000002417288229.png)
 
-
 ### 自定义pass<a name="ZH-CN_TOPIC_0000002380816502"></a>
 
 **具体案例<a name="section424121710210"></a>**
@@ -435,9 +416,9 @@ profiling分析--\>step3：
 
 Bmm算子内部本身有广播逻辑，如果周围有算子实现的正好是广播逻辑，则可以将其消除以提高性能。如下图，删掉Tile算子之后，能得到几个性能提升点：
 
-1.  Tile算子本身时间。
-2.  Tile算子引入的一块128\*8\*300\*32\*4 = 37.5M的访存，对其他实例的Cache命中率有影响。
-3.  BMM算子本身的mte速度，因为广播变快。
+1. Tile算子本身时间。
+2. Tile算子引入的一块128\*8\*300\*32\*4 = 37.5M的访存，对其他实例的Cache命中率有影响。
+3. BMM算子本身的mte速度，因为广播变快。
 
     ![](figures/performance_tuning/zh-cn_image_0000002383734476.png)
 
@@ -458,7 +439,6 @@ Bmm算子内部本身有广播逻辑，如果周围有算子实现的正好是�
 通过交换tile/concat的执行顺序，将读访存量，从1\*32\*3+128\*32\*3 降到了 1\*32\*3+1\*96, 下降98.5%, 写访存量从128\*32\*3+128\*96下降到1\*96+128\*96, 下降50%。
 
 ![](figures/performance_tuning/zh-cn_image_0000002383574596.png)
-
 
 ### 自定义算子<a name="ZH-CN_TOPIC_0000002414375841"></a>
 
@@ -484,7 +464,6 @@ TopK算子在推荐推理如TWINS模型中使用，该算子即使通过1.5.4中
 
 ![](figures/performance_tuning/zh-cn_image_0000002383576056.png)
 
-
 ### 多流<a name="ZH-CN_TOPIC_0000002414255997"></a>
 
 **使用背景<a name="section736814187110"></a>**
@@ -493,15 +472,14 @@ TopK算子在推荐推理如TWINS模型中使用，该算子即使通过1.5.4中
 
 **使用约束<a name="section1042475016118"></a>**
 
-1.  多流并行场景下， 存在资源抢占，比如带宽，计算资源等，单个推理的时延，会比单流场景下单个推理的时延更长，在时延敏感场景使用需要做好时延控制；
-2.  多流如果不配合分核，可能会存在计算资源排队严重情况，需不需要配合分核一起使用，需要根据具体实际数据而定；
-3.  需要根据模型实际吞吐量，控制流数；流数越大，NPU利用率会越高，实际上卡的吞吐量就会越大，实际上超过流数某个阈值之后，会存在不同流之间刷cache的现象，导致整体吞吐量下降。
+1. 多流并行场景下，存在资源抢占，比如带宽，计算资源等，单个推理的时延，会比单流场景下单个推理的时延更长，在时延敏感场景使用需要做好时延控制；
+2. 多流如果不配合分核，可能会存在计算资源排队严重情况，需不需要配合分核一起使用，需要根据具体实际数据而定；
+3. 需要根据模型实际吞吐量，控制流数；流数越大，NPU利用率会越高，实际上卡的吞吐量就会越大，实际上超过流数某个阈值之后，会存在不同流之间刷cache的现象，导致整体吞吐量下降。
 
 **具体案例<a name="section1470014569106"></a>**
 
--   TensorFlow  demo：可以参考[GitCode.com](https://gitcode.com/Ascend/RecSDK/blob/develop/examples/rec_infer/README.md#%25E5%2590%25AF%25E5%258A%25A8%25E5%25A4%259A%25E6%25B5%2581%25E5%25B9%25B6%25E8%25A1%258C%25E4%25BC%2598%25E5%258C%2596)进行多流功能使能。
--   PyTorch demo：在PyTorch框架中，由于社区对多流没有直接支持，推荐直接使用多进程方式进行推理。
-
+- TensorFlow  demo：可以参考[GitCode.com](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/rec_infer/README.md)进行多流功能使能。
+- PyTorch demo：在PyTorch框架中，由于社区对多流没有直接支持，推荐直接使用多进程方式进行推理。
 
 ### 分核<a name="ZH-CN_TOPIC_0000002380656642"></a>
 
@@ -513,9 +491,9 @@ TopK算子在推荐推理如TWINS模型中使用，该算子即使通过1.5.4中
 
 这里，限核带来的收益主要有如下几点：
 
-1.  对于us级别小算子，大部分时间在算子启动头开销上，占用的核越多，头开销就会越大。
-2.  因为CTR场景，大部分算子shape都不大，在切核后，单核内mini tiling的次数可能不会太多，这些mini tiling可能在尾块造成算力浪费。
-3.  NPU核间访问相同地址会有访存冲突，造成访存速率大幅度下降。索引类算子，如Gather，如果数据分布较为集中，核越多，核间的冲突会越严重。
+1. 对于us级别小算子，大部分时间在算子启动头开销上，占用的核越多，头开销就会越大。
+2. 因为CTR场景，大部分算子shape都不大，在切核后，单核内mini tiling的次数可能不会太多，这些mini tiling可能在尾块造成算力浪费。
+3. NPU核间访问相同地址会有访存冲突，造成访存速率大幅度下降。索引类算子，如Gather，如果数据分布较为集中，核越多，核间的冲突会越严重。
 
     同时，需要注意，核数也不能限制得太低，一般来说，vec/cube 的限制都分别在6-12核中（因为CV实际上是模型上的不同资源，所以不用保证硬件引入的1:2比例）。
 
@@ -525,9 +503,8 @@ TopK算子在推荐推理如TWINS模型中使用，该算子即使通过1.5.4中
 
 **具体案例<a name="section1470014569106"></a>**
 
--   TensorFlow  demo：修改方法可参考《TF Adapter 接口（1.x）》的“[session配置参数说明](https://www.hiascend.com/document/detail/zh/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html)”章节配置aicore\_num参数。
--   PyTorch demo：该特性暂不支持。
-
+- TensorFlow  demo：修改方法可参考《TF Adapter 接口（1.x）》的“[session配置参数说明](https://www.hiascend.com/document/detail/zh/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html)”章节配置aicore\_num参数。
+- PyTorch demo：该特性暂不支持。
 
 ### batchsize调优<a name="ZH-CN_TOPIC_0000002414256009"></a>
 
@@ -537,9 +514,9 @@ TopK算子在推荐推理如TWINS模型中使用，该算子即使通过1.5.4中
 
 **使用约束<a name="section1042475016118"></a>**
 
-1.  增大batchsize，会提升算子计算时所需要的核数，与分核功能同时使用时，会导致时延劣化严重，需要具体时延验证最佳的batchsize。
-2.  Cache命中率会下降。
-3.  batchsize一般由客户业务决定，增大bs可以在本地压测脚本中测试出一个性能，正式推到线上的时候，由于batchsize不固定，也可能存在padding的场景，所以最佳性能会不如本地。
+1. 增大batchsize，会提升算子计算时所需要的核数，与分核功能同时使用时，会导致时延劣化严重，需要具体时延验证最佳的batchsize。
+2. Cache命中率会下降。
+3. batchsize一般由客户业务决定，增大bs可以在本地压测脚本中测试出一个性能，正式推到线上的时候，由于batchsize不固定，也可能存在padding的场景，所以最佳性能会不如本地。
 
 **具体案例<a name="section1470014569106"></a>**
 
@@ -553,7 +530,3 @@ TopK算子在推荐推理如TWINS模型中使用，该算子即使通过1.5.4中
 |128|10.4|12258|
 |256|14.9|17231|
 |512|26.7|19195|
-
-
-
-

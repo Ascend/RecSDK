@@ -29,8 +29,8 @@ class HybridTrainPipelineSparseDist:
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回pipeline。
--   失败：抛出异常。
+- 成功：返回pipeline。
+- 失败：抛出异常。
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -38,7 +38,6 @@ class HybridTrainPipelineSparseDist:
 from hybrid_torchrec.distributed.hybrid_train_pipeline import HybridTrainPipelineSparseDist
 pipeline = HybridTrainPipelineSparseDist(model, optimizer, device)
 ```
-
 
 ### progress<a name="ZH-CN_TOPIC_0000002336268757"></a>
 
@@ -58,11 +57,10 @@ def progress(dataloader_iter: Iterator[In]) -> Out:
 |--|--|--|--|
 |dataloader_iter|Iterator[In]|必选|数据集迭代器。该迭代器返回用于查表和训练的Batch类，参考[步骤1](../quick_start.md#接口调用介绍)。|
 
-
 **返回值说明<a name="section10745722145816"></a>**
 
--   成功：返回模型的输出。
--   失败：抛出异常。
+- 成功：返回模型的输出。
+- 失败：抛出异常。
 
 **使用示例<a name="section09971948135814"></a>**
 
@@ -72,8 +70,6 @@ output = pipeline.progress(dataloader_iter)
 # 若创建HybridTrainPipelineSparseDist对象时，传递return_loss为True，则：
 output, loss = pipeline.progress(dataloader_iter)
 ```
-
-
 
 ## EmbCacheTrainPipelineSparseDist<a name="ZH-CN_TOPIC_0000002396403128"></a>
 
@@ -109,9 +105,8 @@ class EmbCacheTrainPipelineSparseDist:
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回EmbCacheTrainPipelineSparseDist对象。
--   失败：抛出异常。
-
+- 成功：返回EmbCacheTrainPipelineSparseDist对象。
+- 失败：抛出异常。
 
 ### progress<a name="ZH-CN_TOPIC_0000002396563016"></a>
 
@@ -131,12 +126,11 @@ def progress(self, dataloader_iter: Iterator[In]) -> Out:
 |--|--|--|--|
 |dataloader_iter|Iterator[In]|必选|数据加载器迭代器|
 
-
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回训练输出结果。
+- 成功：返回训练输出结果。
 
--   失败：抛出StopIteration异常或RuntimeError。
+- 失败：抛出StopIteration异常或RuntimeError。
 
 **使用示例<a name="section09971948135815"></a>**
 
@@ -146,5 +140,3 @@ output = pipeline.progress(dataloader_iter)
 # 若创建EmbCacheTrainPipelineSparseDist对象时，传递return_loss为True，则：
 output, loss = pipeline.progress(dataloader_iter)
 ```
-
-

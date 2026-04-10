@@ -92,7 +92,7 @@ Rec SDK Torch软件包如下表：
 
 如需查看Rec SDK Torch软件包的历史安装记录，请参见[查看Rec SDK Torch安装与卸载记录](../../torch/torch_rec_v1/common_operations.md)。
 
->[!NOTE] 说明 
+>[!NOTE]
 > 对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以并且不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
  
 ### 基于容器安装（宿主机+容器）<a id="ZH-CN_TOPIC_0000002302389237"></a>
@@ -145,7 +145,7 @@ Rec SDK Torch软件包如下表：
     /bin/bash
     ```
 
-    >[!NOTE]说明 
+    >[!NOTE]
     >部分参数含义：
     >- -m 300g 表示设置容器内可以使用的内存大小上限为300G，可根据实际情况进行配置。
     >- -e ASCEND\_VISIBLE\_DEVICES=0-7 表示将服务器上编号为device0~device7的NPU设备挂载到容器内，可根据实际情况进行配置。
@@ -156,7 +156,7 @@ Rec SDK Torch软件包如下表：
     bash run_docker.sh 容器名 镜像名称:镜像版本
     ```
 
-    > [!NOTE]说明 
+    > [!NOTE]
     > 1. 上述指令中Docker容器为前台运行，退出交互后容器将停止。更多Docker容器使用请参见[Docker社区文档](https://docs.docker.com/)。
     > 2. 如需更新容器内依赖软件版本，请参见[容器内训练框架依赖](#容器内训练框架依赖)和[容器内训练加速库依赖](#容器内训练加速库依赖)中的说明，卸载依赖软件后重新安装。
 
@@ -233,7 +233,7 @@ Rec SDK Torch软件包如下表：
    |--tar arg1 [arg2 ...]|通过**tar**命令访问压缩包内容。|
    |--install-path|安装到指定目录路径。|
 
-   >[!NOTICE]须知
+   >[!NOTICE]
    > 
    > 安装算子后，/usr/local/Ascend/cann/opp/vendors/目录下会生成split\_embedding\_codegen\_forward\_unweighted、backward\_codegen\_adagrad\_unweighted\_exact、asynchronous\_complete\_cumsum、permute2d\_sparse\_data等文件夹。如果没有相关文件夹，请使用**unset ASCEND\_CUSTOM\_OPP\_PATH**取消环境变量后重新安装算子。
 
@@ -263,7 +263,7 @@ Rec SDK Torch软件包如下表：
    |----------------------|------------------------------------------|----------------------------------------------------|
    | Rec SDK Torch推荐算法框架包 | Ascend-mindxsdk-hybrid-torchrec-*.tar.gz | [获取链接](https://gitcode.com/Ascend/RecSDK/releases) |
    
-   >[!NOTE]说明 
+   >[!NOTE]
    >当前提供的Rec SDK推荐算法框架包基于Python 3.11版本编译，**请在相同的Python版本环境下安装使用**。若需在其他Python版本环境下安装使用，请参见[源码编译 - 安装Rec SDK Torch推荐算法框架包](#source_build_hybrid_torchrec)进行源码编译。
    
    **软件包Hash值校验<a name="section10830205518487"></a>**
