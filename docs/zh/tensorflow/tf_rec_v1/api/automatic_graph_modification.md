@@ -19,11 +19,10 @@ ConfigInitializer.get_instance().train_params_config.get_initializer(is_training
 |--|--|--|--|
 |is_training|bool|必选|是否为训练模式。<li>True：训练（train）模式。</li><li>False：评估（eval）模式。</li>|
 
-
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回初始化Iterator的TensorFlow算子（tf.Operation）。
--   失败：抛出异常。
+- 成功：返回初始化Iterator的TensorFlow算子（tf.Operation）。
+- 失败：抛出异常。
 
 **使用示例<a name="section193151694205"></a>**
 
@@ -45,18 +44,16 @@ with tf.compat.v1.Session() as sess:
 
 接口调用流程及示例，参见[自动改图](../appendix.md#自动改图)。
 
-
 ## LookupSubgraphSlicerHook<a name="ZH-CN_TOPIC_0000001911330801"></a>
 
 该Hook用于在查表KeyTensor的子图中查找指定类型算子，然后将查找到的指定类型算子及其最小依赖子图切换到CPU预取阶段执行。如果没有找到目标类型的算子，不会执行切分操作。
 
->[!NOTE] 说明 
+>[!NOTE]
 >该Hook的使用场景是NPUEstimator模式，启用自动改图功能。该Hook的调用时机需要在自动改图的GraphModifierHook之前。
 
 |参数名|类型|必选/可选|参数说明|
 |--|--|--|--|
 |op_types|list[str]|必选|指定需要切分的算子类型，目前仅支持列表格式。|
-
 
 **使用示例<a name="section11333109979"></a>**
 
@@ -77,12 +74,11 @@ est = NPUEstimator(...)
 est.train(input_fn=lambda: input_fn, hooks=npu_hooks_append(hooks_list))
 ```
 
-
 ## OrphanLookupKeySlicerHook<a name="ZH-CN_TOPIC_0000001865451328"></a>
 
 该Hook用于支持稀疏表查询时传入向上无法找到Dataset的孤儿Key类型，主要用于拓展自动改图模式下的稀疏表查询功能。如果没有找到目标类型的算子，不会执行切分操作。
 
->[!NOTE] 说明 
+>[!NOTE]
 >该Hook的使用场景是NPUEstimator模式，启用自动改图功能。该Hook的调用时机需要在自动改图的GraphModifierHook之前。
 
 **使用示例<a name="section473316525914"></a>**
@@ -102,7 +98,6 @@ hooks_list = [orphan_slicer_hook, modifier_hook]
 est = NPUEstimator(...)
 est.train(input_fn=lambda: input_fn, hooks=npu_hooks_append(hooks_list))
 ```
-
 
 ## do\_merge\_lookup<a name="ZH-CN_TOPIC_0000001935068449"></a>
 
@@ -124,7 +119,6 @@ from mx_rec.graph.merge_lookup import do_merge_lookup
 |--|--|--|--|
 |is_train|bool|必选|当前是否为训练模式。<li>True：训练（train）模式。</li><li>False：评估（eval）模式。</li>|
 
-
 **使用示例<a name="section193151694205"></a>**
 
 例如，train模式，全部的梯度计算都使用tf.gradients，则需要主动调用do\_merge\_lookup。
@@ -136,5 +130,3 @@ sparse_grads = tf.gradients(loss, sparse_variables)
 grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
 optimizer.apply_gradients(grads_and_vars)
 ```
-
-

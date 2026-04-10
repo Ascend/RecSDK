@@ -23,12 +23,10 @@ class InitializerType(Enum):
 |TRUNCATED_NORMAL|截断正态分布初始化。|
 |UNIFORM|均匀分布初始化。|
 
-
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回InitializerType枚举值。
--   失败：抛出异常。
-
+- 成功：返回InitializerType枚举值。
+- 失败：抛出异常。
 
 ## Saver<a name="ZH-CN_TOPIC_0000002420844874"></a>
 
@@ -49,15 +47,15 @@ class Saver:
 
 **使用约束<a name="section72467171850"></a>**
 
-1.  保存/加载接口仅支持多级缓存保存/加载稀疏表相关数据（稀疏表Embedding，Embedding对应的优化器参数等）。
-2.  不支持保存/加载Dense数据（需自行调用Torch原生接口）。
-3.  不支持纯显存模式下稀疏表保存/加载。
-4.  保存/加载接口仅支持保存/加载本地文件系统。
-5.  增量保存加载不支持准入淘汰功能，同时开启将触发配置校验错误。
-6.  增量模型的保存与加载功能，仅适用于pipeline训练模式下生成的增量数据。
-7.  增量保存加载功能需要创建表时在EmbCacheEmbeddingBagConfig/EmbCacheEmbeddingConfig添加is_incremental参数，详见[创表接口](table_creation_apis.md#embcacheembeddingbagconfig)。
-8.  差异卡加载功能不支持准入淘汰，同时开启将触发配置校验错误。
-9.  pipeline模式下，如果需要在训练过程中（即Dataset未迭代到末尾）执行保存，需要在保存前手动触发wait_pipeline_compute_swapinfo。
+1. 保存/加载接口仅支持多级缓存保存/加载稀疏表相关数据（稀疏表Embedding，Embedding对应的优化器参数等）。
+2. 不支持保存/加载Dense数据（需自行调用Torch原生接口）。
+3. 不支持纯显存模式下稀疏表保存/加载。
+4. 保存/加载接口仅支持保存/加载本地文件系统。
+5. 增量保存加载不支持准入淘汰功能，同时开启将触发配置校验错误。
+6. 增量模型的保存与加载功能，仅适用于pipeline训练模式下生成的增量数据。
+7. 增量保存加载功能需要创建表时在EmbCacheEmbeddingBagConfig/EmbCacheEmbeddingConfig添加is_incremental参数，详见[创表接口](table_creation_apis.md#embcacheembeddingbagconfig)。
+8. 差异卡加载功能不支持准入淘汰，同时开启将触发配置校验错误。
+9. pipeline模式下，如果需要在训练过程中（即Dataset未迭代到末尾）执行保存，需要在保存前手动触发wait_pipeline_compute_swapinfo。
     详细参考[保存加载用例](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_save_and_load.py)。
 
 **参数说明<a name="section888634319218"></a>**
@@ -69,11 +67,10 @@ class Saver:
 |path|string|必选|保存/加载路径，长度取值范围：[1,1024]。<div><div>[!NOTICE]须知</div><div>保存/加载的路径中不能包含软连接和敏感字符（Key、password、privatekey），不能使用特殊路径（如/usr下的路径），且路径的权限不能高于750。</div></div>|
 |incremental|bool|可选|是否增量保存/加载。默认为False。增量保存/加载功能适用于pipeline训练模式下生成的增量数据，且需要创建表时在EmbCacheEmbeddingBagConfig/EmbCacheEmbeddingConfig添加is_incremental参数，详见[创表接口](table_creation_apis.md#embcacheembeddingbagconfig)。|
 
-
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：接口调用无报错，保存落盘/加载稀疏表数据。
--   失败：抛出异常。
+- 成功：接口调用无报错，保存落盘/加载稀疏表数据。
+- 失败：抛出异常。
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -84,5 +81,3 @@ saver = Saver(rank=rank)
 saver.save(model, "save_dir/sparse")  # 保存
 saver.load(model, "save_dir/sparse")  # 加载
 ```
-
-

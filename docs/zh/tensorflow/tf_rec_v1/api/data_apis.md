@@ -20,11 +20,11 @@ def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, table_names=No
 |args_index_list|list[int]|参数索引列表，默认值为None。取值范围：[1, 2^31-1]|
 |table_names|list[str]|表名称列表，默认值为None。取值范围：[1, 2^31-1]|
 
-
->[!NOTE] 说明 
+>[!NOTE]
 >接口参数可选择以下其中一种方式传入。
->-   仅传入“tgt\_key\_specs”。
->-   传入“args\_index\_list”和“table\_names”。
+>
+>- 仅传入“tgt\_key\_specs”。
+>- 传入“args\_index\_list”和“table\_names”。
 
 **\*\*kwargs参数说明<a name="section1643017411155"></a>**
 
@@ -33,15 +33,15 @@ def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, table_names=No
 |is_training|bool|可选|是否为训练模式，默认值为True。<br>取值范围：<li>True：训练模式。</li><li>False：评估或预测模式。</li>|
 |dump_graph|bool|可选|是否保存模型图，默认值为False。<br>取值范围：<li>True：保存模型图。</li><li>False：不保存模型图。</li>|
 
-
->[!NOTE] 说明 
->-   \*\*kwargs参数中的“is\_training”和“dump\_graph”作为内部使用参数，不建议用户通过kwargs传递这两个参数。
->-   如果通过kwargs传递其他未说明参数，则Rec SDK TensorFlow内部不会使用到该参数。
+>[!NOTE]
+>
+>- \*\*kwargs参数中的“is\_training”和“dump\_graph”作为内部使用参数，不建议用户通过kwargs传递这两个参数。
+>- 如果通过kwargs传递其他未说明参数，则Rec SDK TensorFlow内部不会使用到该参数。
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：数据预处理函数。
--   失败：抛出异常。
+- 成功：数据预处理函数。
+- 失败：抛出异常。
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
@@ -56,7 +56,6 @@ dataset = dataset.map(get_asc_insert_func(tgt_key_specs=feature_spec_list, is_tr
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，参见[迁移与训练](../migration_and_training.md)。
-
 
 ## modify\_graph\_and\_start\_emb\_cache<a name="ZH-CN_TOPIC_0000001630246525"></a>
 
@@ -77,11 +76,10 @@ def modify_graph_and_start_emb_cache(full_graph = None, dump_graph = False)
 |full_graph|tf.Graph|可选|改图支持传入图实例，默认为None，None会被赋值为tf.compat.v1.get_default_graph()。|
 |dump_graph|bool|可选|是否保存模型图，默认值为False。<br>取值范围：<li>True：保存模型图。</li><li>False：不保存模型图。</li>|
 
-
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回None。
--   失败：抛出异常。
+- 成功：返回None。
+- 失败：抛出异常。
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -95,7 +93,6 @@ if MODIFY_GRAPH_FLAG:
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，参见[迁移与训练](../migration_and_training.md)。
-
 
 ## start\_asc\_pipeline<a name="ZH-CN_TOPIC_0000001579847256"></a>
 
@@ -111,8 +108,8 @@ def start_asc_pipeline()
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回None。
--   失败：抛出异常。
+- 成功：返回None。
+- 失败：抛出异常。
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -126,5 +123,3 @@ if not MODIFY_GRAPH_FLAG:
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，参见[迁移与训练](../migration_and_training.md)。
-
-

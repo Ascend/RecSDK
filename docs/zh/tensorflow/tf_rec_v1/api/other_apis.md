@@ -14,8 +14,8 @@ def version()
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回版本号。
--   失败：抛出异常。
+- 成功：返回版本号。
+- 失败：抛出异常。
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -26,7 +26,6 @@ import mx_rec
 print(mx_rec.version())
 print(mx_rec.__version__)
 ```
-
 
 ## ascend\_global\_hashtable\_collection<a name="ZH-CN_TOPIC_0000001649963549"></a>
 
@@ -53,11 +52,10 @@ def ascend_global_hashtable_collection(self, name):
 |--|--|--|--|
 |name|string|可选|哈希集合修改后的名称。长度范围：[1, 255]。|
 
-
 **返回值说明<a name="section10745722145816"></a>**
 
--   成功：返回None。
--   失败：抛出异常。
+- 成功：返回None。
+- 失败：抛出异常。
 
 **使用示例<a name="section09971948135814"></a>**
 
@@ -69,7 +67,6 @@ hashtable_collection = ConfigInitializer.get_instance().train_params_config.asce
 from mx_rec.util.initialize import ConfigInitializer
 ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection = "test"
 ```
-
 
 ## get\_rank\_id<a name="ZH-CN_TOPIC_0000001675558225"></a>
 
@@ -85,8 +82,8 @@ def get_rank_id()
 
 **返回值说明<a name="section46439326512"></a>**
 
--   成功：返回当前进程在MPI通信中的序号。
--   失败：抛出异常。
+- 成功：返回当前进程在MPI通信中的序号。
+- 失败：抛出异常。
 
 **使用示例<a name="section7851532751"></a>**
 
@@ -94,7 +91,6 @@ def get_rank_id()
 from rec_sdk_common.communication.hccl.hccl_info import get_rank_id
 rank_id = get_rank_id()
 ```
-
 
 ## get\_rank\_size<a name="ZH-CN_TOPIC_0000001627318510"></a>
 
@@ -110,8 +106,8 @@ def get_rank_size()
 
 **返回值说明<a name="section46439326512"></a>**
 
--   成功：返回MPI通信器中的总进程数。
--   失败：抛出异常。
+- 成功：返回MPI通信器中的总进程数。
+- 失败：抛出异常。
 
 **使用示例<a name="section7851532751"></a>**
 
@@ -119,7 +115,6 @@ def get_rank_size()
 from rec_sdk_common.communication.hccl.hccl_info import get_rank_size
 rank_size = get_rank_size()
 ```
-
 
 ## import\_host\_pipeline\_ops<a name="ZH-CN_TOPIC_0000001676679253"></a>
 
@@ -139,11 +134,10 @@ def import_host_pipeline_ops(so_pkg_name: str = LIBASC_OPS_SO) -> ModuleType
 |--|--|--|--|
 |so_pkg_name|string|可选|Rec SDK TensorFlow so包名。长度范围：[1, 100]。|
 
-
 **返回值说明<a name="section1828451185519"></a>**
 
--   成功：返回一个包含so中Rec SDK TensorFlow定义的TensorFlow算子的Python封装模块。
--   失败：返回“RuntimeError: when unable to load the library or get the python wrappers.”
+- 成功：返回一个包含so中Rec SDK TensorFlow定义的TensorFlow算子的Python封装模块。
+- 失败：返回“RuntimeError: when unable to load the library or get the python wrappers.”
 
 **使用示例<a name="section148539625910"></a>**
 
@@ -178,7 +172,6 @@ host_pipeline_ops = import_host_pipeline_ops()
 </tbody>
 </table>
 
-
 ## use\_dynamic\_expansion<a name="ZH-CN_TOPIC_0000001676359469"></a>
 
 **功能描述<a name="section193914186216"></a>**
@@ -194,8 +187,8 @@ def use_dynamic_expansion(self)
 
 **返回值说明<a name="section122575425214"></a>**
 
--   True：使用了动态扩容。
--   False：没有使用动态扩容。
+- True：使用了动态扩容。
+- False：没有使用动态扩容。
 
 **使用示例<a name="section1215012571213"></a>**
 
@@ -203,7 +196,6 @@ def use_dynamic_expansion(self)
 from mx_rec.util.initialize import ConfigInitializer
 use_dynamic_expansion = ConfigInitializer.get_instance().use_dynamic_expansion
 ```
-
 
 ## hccl\_ops<a name="ZH-CN_TOPIC_0000001676439373"></a>
 
@@ -220,7 +212,6 @@ use_dynamic_expansion = ConfigInitializer.get_instance().use_dynamic_expansion
 ```bash
 from mx_rec.util.tf_version_adapter import hccl_ops
 ```
-
 
 ## get\_target\_batch<a name="ZH-CN_TOPIC_0000001700857132"></a>
 
@@ -240,11 +231,10 @@ def get_target_batch(self, is_training: bool)
 |--|--|--|--|
 |is_training|bool|必选|是否为训练模式。<li>True：表示是训练模式。</li><li>False：表示不是训练模式。</li>|
 
-
 **返回值说明<a name="section1150317065419"></a>**
 
--   成功：返回自动改图模式下生成新数据集中batch的记录。
--   失败：抛出异常。
+- 成功：返回自动改图模式下生成新数据集中batch的记录。
+- 失败：抛出异常。
 
 **使用示例<a name="section11613181513543"></a>**
 
@@ -252,5 +242,3 @@ def get_target_batch(self, is_training: bool)
 from mx_rec.util.initialize import ConfigInitializer
 ConfigInitializer.get_instance().train_params_config.get_target_batch(False)
 ```
-
-

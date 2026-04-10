@@ -37,22 +37,25 @@ def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1
 |fusion_optimizer_var|bool|可选|是否使用融合优化参数，默认值为True。<br>取值范围：<li>True：使用融合优化参数。</li><li>False：不使用融合优化参数。</li>|
 |hashtable_threshold|int|可选|哈希表阈值，高于阈值时使用哈希表，低于阈值时使用线性表，默认值为0。取值范围：[0,2147483647]。|
 
-
->[!NOTE] 说明 
->-   对于“padding\_keys”、“padding\_keys\_mask”和“padding\_keys\_len”：
->>    -   不支持DP模式和lazy adam融合算子模式。
->>   -   所有表都需要设置padding key的情况下，需在初始化接口中设置为静态shape模式，如init\(use\_dynamic=False\)，此时约束模型脚本的“drop\_remainder=True”，如“dataset = dataset.batch\(batch\_size, drop\_remainder=True\)”。
->-   开启DDR/SSD模式必须确保[自动改图](../appendix.md#自动改图)模式也同时开启。
->-   若使用片上内存侧的动态扩容方案，即[init](initialization_and_deinitialization_of_the_training_framework.md#init)接口中传入use\_dynamic\_expansion=True，此时传入的host\_vocabulary\_size和ssd\_vocabulary\_size参数会被设置为“0”，即参数不生效，也可均不填。
->-   若不使用片上内存侧的动态扩容方案，则根据host\_vocabulary\_size和ssd\_vocabulary\_size是否为0，来判断具体存储模式。
->-   当“host\_vocabulary\_size”为“0”时，不开启Host侧DDR功能，不为“0”时开启。所有Embedding表必须保持同时使用Host侧DDR功能或同时不使用Host侧DDR功能，即所有表“host\_vocabulary\_size”参数**同时为“0”**或**同时不为“0”**，否则进行参数校验时会报错，报错信息参考如下。
->    ```bash
->    ValueError: The host-side DDR function of all tables must be used or not used at the same time. However, host voc size of each table is [].
->    ```
+>[!NOTE]
+>
+>- 对于“padding\_keys”、“padding\_keys\_mask”和“padding\_keys\_len”：
+>
+>> - 不支持DP模式和lazy adam融合算子模式。
+>> - 所有表都需要设置padding key的情况下，需在初始化接口中设置为静态shape模式，如init\(use\_dynamic=False\)，此时约束模型脚本的“drop\_remainder=True”，如“dataset = dataset.batch\(batch\_size, drop\_remainder=True\)”。
+>
+>- 开启DDR/SSD模式必须确保[自动改图](../appendix.md#自动改图)模式也同时开启。
+>- 若使用片上内存侧的动态扩容方案，即[init](initialization_and_deinitialization_of_the_training_framework.md#init)接口中传入use\_dynamic\_expansion=True，此时传入的host\_vocabulary\_size和ssd\_vocabulary\_size参数会被设置为“0”，即参数不生效，也可均不填。
+>- 若不使用片上内存侧的动态扩容方案，则根据host\_vocabulary\_size和ssd\_vocabulary\_size是否为0，来判断具体存储模式。
+>- 当“host\_vocabulary\_size”为“0”时，不开启Host侧DDR功能，不为“0”时开启。所有Embedding表必须保持同时使用Host侧DDR功能或同时不使用Host侧DDR功能，即所有表“host\_vocabulary\_size”参数**同时为“0”**或**同时不为“0”**，否则进行参数校验时会报错，报错信息参考如下。
+>
+> ```bash
+>  ValueError: The host-side DDR function of all tables must be used or not used at the same time. However, host voc size of each table is [].
+> ```
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回稀疏表实例。
+- 成功：返回稀疏表实例。
 
     通过返回的稀疏表实例可以访问该实例的两个方法说明如下：
 
@@ -61,8 +64,7 @@ def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1
     |size方法|获取稀疏表的大小。|``` def size() ```|无|<li>成功：返回稀疏表的大小。</li><li>失败：抛出异常。</li>|
     |capacity方法|获取稀疏表的容量。|``` def capacity() ```|无|<li>成功：返回稀疏表的容量。</li><li>失败：抛出异常。</li>|
 
-
--   失败：抛出异常
+- 失败：抛出异常
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -82,7 +84,6 @@ table_capacity = sparse_hashtable.capacity()   # 获取返回稀疏表的容量�
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-
 
 ## sparse\_lookup<a name="ZH-CN_TOPIC_0000001630127061"></a>
 
@@ -122,7 +123,6 @@ def sparse_lookup(hashtable, ids, send_count, is_train=True, name=None, modify_g
 |is_grad|bool|可选|此次查询是否需要梯度更新，默认值为True。<br>取值范围：<li>True：需要梯度更新。</li><li>False：不需要梯度更新。</li>|
 |serving_default_value|tf.Tensor|可选|训练时未准入特征/预测时的新特征的默认emb值。如果不指定，默认为None。|
 
-
 **\*\*kwargs参数说明<a name="section1643017411155"></a>**
 
 |参数名|类型|可选/必选|说明|
@@ -131,15 +131,15 @@ def sparse_lookup(hashtable, ids, send_count, is_train=True, name=None, modify_g
 |multi_lookup|bool|可选|是否存在一表多查的情况，无默认值。<br>取值范围：<li>True：存在一表多查的情况。</li><li>False：不存在一表多查的情况。</li>|
 |lookup_ids|FeatureSpec/tf.Tensor|可选|查询的关键字（key），对应参数类型在不同功能模式下存在区别，无默认值。具体参见如下：<li>非自动改图模式下，ids参数类型为FeatureSpec。</li><li>自动改图模式下，ids参数类型为tf.Tensor。</li>|
 
-
->[!NOTE] 说明 
->-   \*\*kwargs参数中的“feature\_spec\_name\_ids\_dict”、“multi\_lookup”和“lookup\_ids”作为内部使用参数，不建议用户通过kwargs传递这三个参数。
->-   如果通过kwargs传递其他未说明参数，则Rec SDK TensorFlow内部不会使用到该参数。
+>[!NOTE]
+>
+>- \*\*kwargs参数中的“feature\_spec\_name\_ids\_dict”、“multi\_lookup”和“lookup\_ids”作为内部使用参数，不建议用户通过kwargs传递这三个参数。
+>- 如果通过kwargs传递其他未说明参数，则Rec SDK TensorFlow内部不会使用到该参数。
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回查询到的Tensor类结果。
--   失败：抛出异常。
+- 成功：返回查询到的Tensor类结果。
+- 失败：抛出异常。
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -159,7 +159,6 @@ embedding = sparse_lookup(sparse_hashtable,
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
 
-
 ## get\_dense\_and\_sparse\_variable<a name="ZH-CN_TOPIC_0000001630046441"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -174,8 +173,8 @@ def get_dense_and_sparse_variable()
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回密集层参数变量和稀疏层参数变量。
--   失败：抛出异常。
+- 成功：返回密集层参数变量和稀疏层参数变量。
+- 失败：抛出异常。
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -188,15 +187,14 @@ dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
 接口调用流程及示例，参见[迁移与训练](../migration_and_training.md)。
 
-
 ## export<a name="ZH-CN_TOPIC_0000001629887077"></a>
 
 **功能描述<a name="section634582619155"></a>**
 
 读取当前step已保存的稀疏表checkpoint，以key-value形式保存为numpy文件，其中key为查询ID，value为嵌入层表示。以下情况可支持使用export接口导出稀疏表数据：
 
--   片上内存模式（非动态扩容）
--   DDR模式
+- 片上内存模式（非动态扩容）
+- DDR模式
 
 **函数原型<a name="section1483104721911"></a>**
 
@@ -210,11 +208,10 @@ def export(table_list=None):
 |--|--|--|--|
 |table_list|list[str]|可选|需要导出的稀疏表列表，不传参默认导出所有稀疏表。列表长度范围：[1, 2^31-1]|
 
-
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：None。
--   失败：抛出异常。
+- 成功：None。
+- 失败：抛出异常。
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -227,7 +224,6 @@ export(table_list=table_list)
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-
 
 ## if\_load<a name="ZH-CN_TOPIC_0000001675798377"></a>
 
@@ -244,8 +240,8 @@ export(table_list=table_list)
 
 **返回值说明<a name="section46439326512"></a>**
 
--   True：加载已训练的模型。
--   False：不加载已训练的模型。
+- True：加载已训练的模型。
+- False：不加载已训练的模型。
 
 **使用示例<a name="section7851532751"></a>**
 
@@ -253,5 +249,3 @@ export(table_list=table_list)
 from mx_rec.util.initialize import ConfigInitializer
 if_load = ConfigInitializer.get_instance().if_load
 ```
-
-

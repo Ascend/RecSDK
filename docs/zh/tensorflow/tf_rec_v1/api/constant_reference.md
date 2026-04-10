@@ -12,5 +12,3 @@
 from mx_rec.constants.constants import ASCEND_TIMESTAMP
 tf.compat.v1.add_to_collection(ASCEND_TIMESTAMP, batch["timestamp"])   #batch为数据集的迭代器对象
 ```
-
-

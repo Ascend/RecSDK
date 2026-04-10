@@ -20,14 +20,13 @@ class AdmitAndEvictPolicyType(Enum):
 | 参数名              | 说明                                                        |
 |------------------|-----------------------------------------------------------|
 | NONE             | 无准入淘汰策略。                                                  |
-| POLICY_COUNT     | 基于计数（count） / 时间（timestamp）的准入淘汰策略。特征准入基于重复次数，特征淘汰基于时间阈值。 |
+| POLICY_COUNT     | 基于计数（count）/ 时间（timestamp）的准入淘汰策略。特征准入基于重复次数，特征淘汰基于时间阈值。 |
 | POLICY_SHOWCLICK | 基于展示点击（show/click）的准入淘汰策略。特征准入和淘汰基于展示次数和点击次数的加权分数。        |
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回AdmitAndEvictPolicyType枚举值。
--   失败：抛出异常。
-
+- 成功：返回AdmitAndEvictPolicyType枚举值。
+- 失败：抛出异常。
 
 ## ShowClickParams<a name="ZH-CN_TOPIC_0000002430202771"></a>
 
@@ -51,17 +50,16 @@ class ShowClickParams:
 
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
-|alpha|float|可选|展示次数的权重系数，用于计算准入和淘汰分数。默认值为1.0。准入分数计算公式：score = alpha * showCount + beta * clickCount。|
-|beta|float|可选|点击次数的权重系数，用于计算准入和淘汰分数。默认值为0.0。准入分数计算公式：score = alpha * showCount + beta * clickCount。|
+|alpha|float|可选|展示次数的权重系数，用于计算准入和淘汰分数。默认值为1.0。准入分数计算公式：score = alpha \* showCount + beta \* clickCount。|
+|beta|float|可选|点击次数的权重系数，用于计算准入和淘汰分数。默认值为0.0。准入分数计算公式：score = alpha \* showCount + beta \* clickCount。|
 |admit_threshold|float|可选|特征准入阈值。开启准入时，小于此分数的特征将被丢弃。当此值大于0时表示开启准入功能。默认值为0.0，表示特征准入功能未启用。|
 |evict_percentage|float|可选|特征淘汰比例。开启淘汰时，分数较小且在此比例中的特征将被淘汰。当此值大于0时表示开启淘汰功能。默认值为0.0，表示特征淘汰功能未启用。取值范围：[0.0, 1.0]。|
-|score_decay|float|可选|分数衰减系数，用于淘汰分数计算和更新。取值范围：[0.0, 1.0]。默认值为1.0，表示不衰减；0.0表示全衰减。淘汰分数计算公式：newScore = (oldScore + alpha * showCount + beta * clickCount) * scoreDecay。|
+|score_decay|float|可选|分数衰减系数，用于淘汰分数计算和更新。取值范围：[0.0, 1.0]。默认值为1.0，表示不衰减；0.0表示全衰减。淘汰分数计算公式：newScore = (oldScore + alpha \* showCount + beta \* clickCount) \* scoreDecay。|
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回ShowClickParams对象。
--   失败：抛出异常。
-
+- 成功：返回ShowClickParams对象。
+- 失败：抛出异常。
 
 ## AdmitAndEvictConfig<a name="ZH-CN_TOPIC_0000002396563024"></a>
 
@@ -105,7 +103,6 @@ policy_type为POLICY_SHOWCLICK时：
 
 POLICY_COUNT和POLICY_SHOWCLICK策略不能一起使用。
 
-
 ## JaggedTensorWithTimestamp<a name="ZH-CN_TOPIC_0000002461958569"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -135,8 +132,6 @@ class JaggedTensorWithTimestamp(ExtendedJaggedTensor):
 |lengths|torch.Tensor|可选|表示每个样本的长度。默认为None。|
 |offsets|torch.Tensor|可选|表示每个样本的起始偏移量。默认为None。|
 |timestamps|torch.Tensor|可选|表示与values对应的时间戳信息。默认为None。|
-
-
 
 ## KeyedJaggedTensorWithTimestamp<a name="ZH-CN_TOPIC_0000002428320084"></a>
 

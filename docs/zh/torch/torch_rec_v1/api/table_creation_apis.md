@@ -34,7 +34,6 @@ class HashEmbeddingBagConfig:
 
 接口调用流程及示例，请参见[迁移与训练](../migration_and_training.md)。
 
-
 ## HashEmbeddingBagCollection<a name="ZH-CN_TOPIC_0000002302389408"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -54,7 +53,7 @@ class HashEmbeddingBagCollection:
 |-------------|----------------------------------------------------|-------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | tables      | List[HashEmbeddingBagConfig \| EmbeddingBagConfig] | 必选    | 稀疏表配置文件列表。列表长度的取值范围：[1, 10000]。<p>参数范围参考HashEmbeddingBagConfig。</p>                                                                                                                                                                                                                                     |
 | is_weighted | bool                                               | 可选    | 仅支持默认值为False。                                                                                                                                                                                                                                                                                           |
-| device      | str或者torch.device                                  | 可选    | 稀疏表的设备。默认为torch.device("cpu")。<br>如果为str取值范围：<ul><li>"npu"：npu设备。</li><li>"meta"：meta设备。</li><li>"cpu"：cpu设备。cpu设备不支持分布式表，只支持单机表。</ul></br>如果为torch.device取值范围：<ul><li>torch.device("npu")：npu设备。</li><li>torch.device("meta")：meta设备。</li><li>torch.device("cpu")：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul> |
+| device      | str或者torch.device                                  | 可选    | 稀疏表的设备。默认为torch.device("cpu")。<br>如果为str取值范围：<ul><li>"npu"：npu设备。</li><li>"meta"：meta设备。</li><li>"cpu"：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul><br>如果为torch.device取值范围：<ul><li>torch.device("npu")：npu设备。</li><li>torch.device("meta")：meta设备。</li><li>torch.device("cpu")：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul> |
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
@@ -65,7 +64,6 @@ ebc = HashEmbeddingBagCollection(device="npu", tables=table_configs)
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，请参见[迁移与训练](../migration_and_training.md)。
-
 
 ## EmbCacheEmbeddingBagConfig<a name="ZH-CN_TOPIC_0000002396403104"></a>
 
@@ -103,9 +101,8 @@ class EmbCacheEmbeddingBagConfig:
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回EmbCacheEmbeddingBagConfig对象。
--   失败：抛出异常。
-
+- 成功：返回EmbCacheEmbeddingBagConfig对象。
+- 失败：抛出异常。
 
 ## EmbCacheEmbeddingBagCollection<a name="ZH-CN_TOPIC_0000002396562992"></a>
 
@@ -135,9 +132,8 @@ class EmbCacheEmbeddingBagCollection:
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回EmbCacheEmbeddingBagCollection对象。
--   失败：抛出异常。
-
+- 成功：返回EmbCacheEmbeddingBagCollection对象。
+- 失败：抛出异常。
 
 ## EmbCacheEmbeddingConfig<a name="ZH-CN_TOPIC_0000002430082769"></a>
 
@@ -172,12 +168,10 @@ class EmbCacheEmbeddingConfig:
 |admit_and_evict_config|AdmitAndEvictConfig|可选|特征准入和淘汰配置，默认不启用准入和淘汰功能。|
 |is_incremental|bool|可选| 开启增量保存和加载功能                      |
 
-
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回EmbCacheEmbeddingConfig对象。
--   失败：抛出异常。
-
+- 成功：返回EmbCacheEmbeddingConfig对象。
+- 失败：抛出异常。
 
 ## EmbCacheEmbeddingCollection<a name="ZH-CN_TOPIC_0000002430202745"></a>
 
@@ -207,5 +201,5 @@ class EmbCacheEmbeddingCollection:
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回EmbCacheEmbeddingCollection对象。
--   失败：抛出异常。
+- 成功：返回EmbCacheEmbeddingCollection对象。
+- 失败：抛出异常。
