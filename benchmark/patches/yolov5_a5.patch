@@ -371,7 +371,7 @@ index 535e196f..6531d49c 100644
 +            tensor_to_save = det.detach().cpu()
 +            logger.info(f"save tensor type: {type(tensor_to_save)}")
 +            os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
-+            torch.save(return_dict, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_0.pt")
++            torch.save(tensor_to_save, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_0.pt")
  
  
  def parse_opt():
