@@ -71,6 +71,10 @@ target_include_directories(test_main
         ${ASCEND_PATH}/${ARCH}-linux/include/hccl
         ${ASCEND_PATH}/${ARCH}-linux/include/experiment/runtime
         ${ASCEND_PATH}/${ARCH}-linux/include/experiment/msprof
+        ${ASCEND_PATH}/${ARCH}-linux/pkg_inc/
+        ${ASCEND_PATH}/${ARCH}-linux/pkg_inc/hccl/
+        ${ASCEND_PATH}/${ARCH}-linux/pkg_inc/runtime/
+        ${ASCEND_PATH}/${ARCH}-linux/pkg_inc/profiling/
         ${CMAKE_CURRENT_SOURCE_DIR}/../core/lccl/src/3rdparty/
         ${CMAKE_CURRENT_SOURCE_DIR}/../core/lccl/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../core/lccl/include/src/3rdparty
@@ -87,6 +91,7 @@ target_link_directories(test_main
         ${ASCEND_PATH}/fwkacllib/lib64
         ${ASCEND_PATH}/compiler/lib64
         ${ASCEND_PATH}/runtime/lib64
+        ${ASCEND_PATH}/${ARCH}-linux/lib64
         ${SECUREC_PATH}/lib
         ${ASCEND_DRIVER_PATH}/lib64/driver
         )

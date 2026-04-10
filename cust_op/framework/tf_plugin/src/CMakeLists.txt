@@ -19,11 +19,18 @@ set(CMAKE_CXX_STANDARD 14)
 file(GLOB_RECURSE OP_TF_PLUGIN_SRC ./*.cpp)
 add_library(recsdk_tf_npu_ops SHARED ${OP_TF_PLUGIN_SRC})
 
+IF (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "aarch64")
+    SET(ARCH aarch64)
+ELSEIF (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64")
+    SET(ARCH x86_64)
+ENDIF ()
+
 target_link_directories(recsdk_tf_npu_ops
     PUBLIC
         ${ASCEND_PATH}/fwkacllib/lib64
         ${ASCEND_PATH}/compiler/lib64
         ${ASCEND_PATH}/runtime/lib64
+        ${ASCEND_PATH}/${ARCH}-linux/lib64
         ${SECUREC_PATH}/lib
         ${ASCEND_DRIVER_PATH}/lib64/driver
 )
