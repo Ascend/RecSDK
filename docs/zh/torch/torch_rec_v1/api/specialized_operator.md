@@ -4,7 +4,7 @@
 
 其中，部分自定义算子已绑定到开源API（将开源API的backend实现转发到NPU），在导入Rec SDK Torch软件包后，可直接通过开源API调用到自定义算子。其余算子则需通过PTA层注册的mxrec模块进行调用。详情可参考[Rec SDK Torch代码库](https://gitcode.com/Ascend/RecSDK)中RecSDK/cust\_op/ascendc\_op/ai\_core\_op/路径下各算子目录下的README文件。
 
->[!NOTICE] 须知
+>[!NOTICE]
 >自定义算子为高性能计算，用户调用自定义算子时需自行确保输入的参数满足算子约束条件、参数类型、参数shape等要求，否则可能会出现数组越界，显存不够等问题导致算子执行失败。
 
 **表 1**  自定义算子列表
@@ -39,6 +39,5 @@
 | norm_multiply_dropout                           | 无                                                                                            | 否             | 实现layer_norm + multiply + dropout计算逻辑的前向计算功能。                                       |
 | norm_multiply_dropout_backward                  | 无                                                                                            | 否             | 实现layer_norm + multiply + dropout计算逻辑的反向计算功能。                                       |
 
->[!NOTE]  说明
+>[!NOTE]
 >表格中仅列举ai\_core\_op路径下PyTorch场景的自定义算子。
-
