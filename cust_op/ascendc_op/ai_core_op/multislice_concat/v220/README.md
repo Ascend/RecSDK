@@ -3,10 +3,10 @@
 本算子仅支持NPU调用
 
 # 产品支持情况
-| 硬件型号              | 是否支持 |
-| -------------------- |------|
-| Atlas A2训练系列产品  | 是    |
-| Atlas 推理系列产品    | 是    |
+| 硬件型号             | 是否支持 |
+| -------------------- | -------- |
+| Atlas A2训练系列产品 | 是       |
+| Atlas 推理系列产品   | 是       |
 
 ## multislice_concat算子目录层级
 
@@ -59,12 +59,12 @@ def multislice_concat(input_data, concat_size, slice_begin, slice_length, concat
 
 ## 属性参数
 
-| 名称         | 参数类型 | 数据类型              | 范围/取值                                                       | 说明                                                                                                                                       |
-| ------------ | -------- | --------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| concat_num   | Attr     | int                   | concat_num∈[1, 256]                                             | 输出Tensor数量                                                                                                                             |
-| concat_size  | Attr     | int[concat_num]       | concat_size[i]∈[1, 3600]<br>sum(concat_size)∈[concat_num, 3600] | 每个输出Tensor的拼接的切片数量，最多切成3600小片                                                                                           |
-| slice_begin  | Attr     | int[sum(concat_size)] | slice_begin[i]∈[0, D-1]，D是input的列数                         | 每个输出Tensor的拼接的切片的起始偏移<br>slice_begin={slice_begin[0] ... slice_begin[slice_size[0] ... slice_begin[slice_size[concat_size]} |
-| slice_length | Attr     | int[sum(concat_size)] | slice_length[i]∈[1, D-slice_begin[i]]，D是input的列数           | 每个输出Tensor的拼接的切片的长度                                                                                                           |
+| 名称         | 参数类型 | 数据类型              | 范围/取值                                                       | 说明                                                                                                   |
+| ------------ | -------- | --------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| concat_num   | Attr     | int                   | concat_num∈[1, 256]                                             | 输出Tensor数量                                                                                         |
+| concat_size  | Attr     | int[concat_num]       | concat_size[i]∈[1, 3600]<br>sum(concat_size)∈[concat_num, 3600] | 每个输出Tensor的拼接的切片数量，最多切成3600小片                                                       |
+| slice_begin  | Attr     | int[sum(concat_size)] | slice_begin[i]∈[0, D-1]，D是input的列数                         | 每个输出Tensor的拼接的切片的起始偏移<br>slice_begin={slice_begin[0] ... slice_begin[sum(concat_size)]} |
+| slice_length | Attr     | int[sum(concat_size)] | slice_length[i]∈[1, D-slice_begin[i]]，D是input的列数           | 每个输出Tensor的拼接的切片的长度                                                                       |
 
 ## 输出参数
 
