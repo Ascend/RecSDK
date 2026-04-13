@@ -1,15 +1,17 @@
 # 稀疏表自动扩容算子及样例说明
 
 ## 扩容算子文件结构
+
 ```shell
 ├── emb_custom.json    # 算子配置
 ├── op_host    # 扩容算子Host侧实现
-├── op_kernel  # 扩容算子Kernel测实现
+├── op_kernel  # 扩容算子Kernel侧实现
 ├── README.md  # 扩容算子说明文档
 └── run.sh     # 扩容算子安装脚本
 ```
 
 ## Ascend C参考设计
+
 更多详情可以参考CANN官方的Ascend C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
 针对Rec SDK，用于动态扩容功能的Ascend C算子有两个：**查询算子embedding_lookup_by_addr**和**更新算子embedding_update_by_addr**，
@@ -17,16 +19,16 @@
 
 ## 查询算子embedding_lookup_by_addr
 
-1. 算子分析
+### 1. 算子分析
 
 a) 算子的主要功能是用addr地址作为入参，替换tf.gather算子；
 
 b) 算子支持emb表为int32、float32和float16三种类型的emb查询；
 
 c) 算子入参为：表示待查询emb地址列表的address，表示待查询emb的维度embedding_dim，表示待查询emb的类型embedding_type，
-其中，0：int32、1：float32、2：float16.
+其中，0表示int32，1表示float32，2表示float16。
 
-2. Host侧算子实现
+### 2. Host侧算子实现
 
 Host侧算子实现在目录cust_op_by_addr/op_host下，其中包括：embedding_lookup_by_address.cpp和
 embedding_lookup_by_address_tiling.h。
@@ -44,7 +46,7 @@ c) 原型注册
 
 namespace ops域中的EmbeddingLookupByAddress类。
 
-3. Kernel侧算子实现
+### 3. Kernel侧算子实现
 
 Kernel侧算子实现在目录cust_op_by_addr/op_kernel下，其中包括：embedding_lookup_by_address.cpp。
 
@@ -61,16 +63,21 @@ e) KernelEimtable::Init函数中，针对非对齐shape算子，使用Init_param
 f) KernelEimtable::Process函数实现算子的搬运和计算，最终输出结果到dstDataGm，即GM_ADDR y
 
 ## 单算子编译说明
+
 上传cust_op_by_addr文件夹到目标环境，并进入当前目录，执行指令对动态扩容算子进行编译和部署。默认编译安装Atlas A5训练系列产品AI Core类型。
+
 ```shell
 bash run.sh
 ```
+
 若指定 AI Core 类型编译：
 
 ```shell
 bash run.sh ai_core-<soc_version>
 ```
-> AI处理器的型号<soc_version>请通过如下方式获取:
+
+> AI处理器的型号`<soc_version>`请通过如下方式获取:
+> 
 > - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
 >
 > 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
@@ -88,6 +95,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 单算子调用分为两种方式：单算子API执行和模型执行。Rec SDK提供单算子API执行供参考。
 
 单算子测试用例在目录cust_op/test/aclnn_cust_op_by_addr_test/tf下，其中：
+
 * inc是头文件目录
 * scripts存放生成数据和验证数据的python脚本
 * input是存放算子入参的bin文件
@@ -107,36 +115,42 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
    aclnn_embedding_lookup_by_address.cpp和aclnn_embedding_lookup_by_address.h等。
 
 A5环境下：
+
 ```shell
 bash run.sh --aicore c310
 ```
 
 A2环境下：
+
 ```shell
 bash run.sh
 ```
 
 ### 查询算子 embedding_lookup_by_addr
+
 针对embedding_lookup_by_addr算子，入口src/main.cpp中：
 
 1. InitResource函数：初始化AscendCL并运行管理资源申请，不用修改
 2. RunLookupOp运行算子：
 
-a) 创建算子输入输出描述CreateOpDescLookup，该类是继承OperatorDesc，主要是引入了embeddingDim和embeddingType两个入参成员变量，以便后续
-op_runner中使用，基类OperatorDesc不用做修改；
+   a) 创建算子输入输出描述CreateOpDescLookup，该类是继承OperatorDesc，主要是引入了embeddingDim和embeddingType两个入参成员变量，以便后续
+   op_runner中使用，基类OperatorDesc不用做修改；
 
-b) 创建OpRunnerLookup的对象，并依次执行：
-* opRunner.Init()：申请内存存放执行算子的输入输出数据
-* SetLookupInputData()：加载数据输入bin文件并传输给OpRunner的Buffer供后续算子执行使用
-* RunOp()：算子执行，核心调用OpRunnerLookup::RunOpHelper
-* ProcessLookupOutputData()：算子输出数据处理，并落盘文件，以供后续与golden数据比对
+   b) 创建OpRunnerLookup的对象，并依次执行：
 
-OpRunnerLookup类重载了基类OpRunner的虚函数RunOpHelper，实现具体算子的aclnn调用，基类OpRunner不用做修改；
+    * opRunner.Init()：申请内存存放执行算子的输入输出数据
+    * SetLookupInputData()：加载数据输入bin文件并传输给OpRunner的Buffer供后续算子执行使用
+    * RunOp()：算子执行，核心调用OpRunnerLookup::RunOpHelper
+    * ProcessLookupOutputData()：算子输出数据处理，并落盘文件，以供后续与golden数据比对
 
-3. DestoryResource函数：释放内存，不用修改
+   OpRunnerLookup类重载了基类OpRunner的虚函数RunOpHelper，实现具体算子的aclnn调用，基类OpRunner不用做修改；
+
+3. DestroyResource函数：释放内存，不用修改
 
 ### 运行脚本
+
 run.sh脚本依次执行：
+
 1. 清除遗留生成文件和日志文件
 2. 生成输入数据和真值数据
 3. 编译acl可执行文件
@@ -144,6 +158,7 @@ run.sh脚本依次执行：
 5. 比较真值文件
 
 ### scripts脚本
+
 * gen_data.py：生成embedding_lookup_by_addr算子（这里以embedding_lookup_by_addr算子为例）的输入数据和用于精度校
   验的golden数据，用户可自行修改测试的规模，如表的大小、查询的数量、表的dim等信息。
 * verify_result.py：将算子的输出和脚本生成的golden数据进行精度比对，比对规则为：允许误差精度loss：1e-4
