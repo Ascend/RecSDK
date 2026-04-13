@@ -1,13 +1,15 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用。
 
 # 产品支持情况
+
 | 硬件型号           | 是否支持                  |
 |----------------| ------------------------ |
 | Atlas A5训练系列产品 | 是  |
 
 # backward_codegen_adagrad_unweighted_exact算子目录层级
+
 ```shell
 -- backward_codegen_adagrad_unweighted_exact
    |-- c310
@@ -19,6 +21,7 @@
 ```
 
 # 算子输入与输出
+
 | 名称                          |  输入/输出  | 数据类型    |  数据格式  | 范围                       | 说明                                                |
 |-----------------------------|  ---- |---------|  ----  |--------------------------|---------------------------------------------------|
 | grad_output                 | 输入 | float32 | poolingSum/poolingMean: [batch_size, total_D] poolingNone:[len(indices), maxD] | NA                       | 查询向量的反向的梯度                                        |
@@ -44,7 +47,7 @@
 | unique_id                   | 可选输入 | float32 | NA | [0, num_embedding]       | 去重后查表索引, 一维数组 len(unique_id) = offset[-1]         |
 | unique_hash_size            | 可选输入 | int64   | NA | NA                       | 查表索引对应的偏移                                         |
 | unique_inverse              | 可选输入 | int64   | NA | [0, num_embedding]       | 去重后的索引和原始索引的对应关系                                  |
-| table_indice_offsets        | 可选输入 | float32 | [feat_cnt + 1] | NA                       | 每个特征的查表下标数累加和                                     |
+| table_indices_offsets        | 可选输入 | float32 | [feat_cnt + 1] | NA                       | 每个特征的查表下标数累加和                                     |
 | max_D                       | 属性 | int64   | NA | NA                       | 最大的embedding_dim                                  |
 | total_hash_size_bits        | 属性 | bool    | NA | NA                       | hash表size和的int值用多少位bit表示                          |
 | pooling_mode                | 属性 | int64   | NA | NA                       | poolingSum:0, poolingMean:1, poolingNone:2        |
@@ -68,6 +71,7 @@
 | weights_dev_out             | 输出 | float32 | [total_table_size] | NA                       | 更新后的表的权重                                          |
 
 # 算子实现原理
+
 ## backward_codegen_adagrad_unweighted_exact实现原理
 
 ```python3
@@ -212,7 +216,7 @@ def backward_codegen_adam_unweighted_exact(grad_output,
 
 ```
 
-##  backward_codegen_sgd_unweighted_exact实现原理
+## backward_codegen_sgd_unweighted_exact实现原理
 
 ```python3
 import numpy as np

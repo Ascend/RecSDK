@@ -1,4 +1,4 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用
 
@@ -8,7 +8,6 @@
 | -------------------- | ------------------------ |
 | Atlas A2训练系列产品  | 是  |
 | Atlas A3训练系列产品  | 是  |
-
 
 ## hstu_dense_backward_fuxi算子文件结构
 
@@ -25,9 +24,10 @@ hstu_dense_backward_fuxi
 
  算子功能：推荐场景下，使用Hstu-fuxi融合算子实现推荐场景中的注意力机制
 
- ## 算子实现原理
+## 算子实现原理
 
-1. 计算公式：
+### 计算公式
+
     $$
     qk=matmul(Q,K_{}^{T})
     $$
@@ -50,7 +50,7 @@ hstu_dense_backward_fuxi
     posGrad=Mask(matmul(G_{biasPos}, V_{}^{T}))
     $$
 
-2. 数据格式
+### 数据格式
 
 其中Q,K,V是jagged格式
 
@@ -59,14 +59,14 @@ hstu_dense_backward_fuxi
 jagged格式如下图所示：
 ![alt text](hstu_image-3.png)
 
-3. 计算原理
+### 计算原理
 
 * 输入Q，K，V，Grad是jagged格式, 首先分别进行matmul计算
 * mask和timestampBias/positionBias按照参数决定是否加入计算
 * score和biasGrad的计算中，会除以序列长度S，jagged模式根据不同batch切换
 * 最后score，biasGrad分别和Q/K/V做矩阵乘法得到输出梯度
 
-4. 计算逻辑
+### 计算逻辑
 
 ```python
 def jagged_to_dense(self, jagged_tensor, seq_lens, max_seq_len, head_num, head_dim):
@@ -220,6 +220,7 @@ def golden_op_exec(grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, max_seq_le
 | vbts_grad | 输出 | float32/float16/bfloat16 | [s_b, N, N] | S为变长序列中最大的序列长度 |
 
 参数范围说明：
+
 * s_b：为jagged格式下各batch的实际序列长度之和
 * B: batch_size 表征批处理的大小，当前取值范围[1, 512]。
 * S: seq_lens 表征序列长度，当前取值范围[1, 20480]。
@@ -227,7 +228,7 @@ def golden_op_exec(grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, max_seq_le
 * D: head_dim 表征维度，当前取值范围范围[16, 512]，并且需要满足是16的倍数。
 * 以上四个维度数值均不能为0，为0时算子输入为空数据，不会执行算子计算;并且其中B、N、S参数影响bias、mask占用显存大小，请根据实际内存合理设置参数大小。
 * jagged模式下 S为所有序列中最大的序列长度，比如此时有两个序列，一个序列长度为256，另一个序列长度为512，则S为512。
-* jagged模式，需要传递可选属性seq_offsets，比如当前有两个序列，一个序列长度为256,另一个序列长度为512，则seqp_offsets = [0, 256, 768]，伪代码如下:
+* jagged模式，需要传递可选属性seq_offsets，比如当前有两个序列，一个序列长度为256,另一个序列长度为512，则seq_offsets = [0, 256, 768]，伪代码如下:
 
 ```python
 max_seq_len = 512

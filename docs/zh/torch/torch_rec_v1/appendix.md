@@ -31,7 +31,7 @@
 |unbound|无|-|
 |tss|无|-|
 
-**openeuler系统中RecSDK-Torch组件容器内的用户<a name="section44881041374"></a>**
+**openeuler系统中Rec SDK Torch组件容器内的用户<a name="section44881041374"></a>**
 
 |用户|描述|初始密码|密码修改方法|
 |--|--|--|--|
@@ -65,7 +65,7 @@
 |irc|无|-|
 |_apt|无|-|
 
-**debian系统中RecSDK-Torch组件容器内的用户<a name="section646063243314"></a>**
+**debian系统中Rec SDK Torch组件容器内的用户<a name="section646063243314"></a>**
 
 |用户|描述|初始密码|密码修改方法|
 |--|--|--|--|
@@ -94,7 +94,7 @@
 |systemd-network|无|-|
 |dbus|无|-|
 
-**centos系统中RecSDK-Torch组件容器内的用户<a name="section1238015439358"></a>**
+**centos系统中Rec SDK Torch组件容器内的用户<a name="section1238015439358"></a>**
 
 |用户|描述|初始密码|密码修改方法|
 |--|--|--|--|

@@ -1,4 +1,4 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用
 
@@ -11,6 +11,7 @@
 | Atlas 推理系列产品    | 是  |
 
 ## hstu_dense_forward_fuxi算子文件结构
+
 ```shell
 -- hstu_dense_forward_fuxi
    |-- onnx_plugin   # hstu_dense_forward_fuxi算子支持onnx模型转换
@@ -29,7 +30,8 @@
 
 ## 算子实现原理
 
-1. 计算公式:
+### 计算公式
+
     $$
     HSTU\_FUXI(q, k, v, timestampBias, positionBias, mask, siluScale) =
     $$
@@ -37,9 +39,10 @@
         cat([(Silu(qk_{}^{T} + bias) \times siluScale \times mask)v, (timestampBias \times mask)v, (positionBias \times mask)v], -1)
     $$
 
-2. 数据格式
+### 数据格式
 
 输入参数q, k, v数据格式在推理服务器上为normal，在训练服务器上jagged。
+
 * normal格式：shape为[B, S, N, D]的4维数据格式，排布如下图所示：
 
 ![alt text](pic/hstu_normal.png)
@@ -48,11 +51,11 @@
 
 ![alt text](pic/hstu_jagged.png)
 
-3. 计算原理
+### 计算原理
 
 ![alt text](pic/hstu_fuxi.png)
 
-4. 计算逻辑
+### 计算逻辑
 
 ```python
 def hstu_fuxi(q, k, v, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_scale, enable_bias, data_type):
@@ -138,8 +141,8 @@ def hstu_fuxi(q, k, v, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_sca
 | layout | 输入(可选属性) | string | N/A |  当前仅支持"normal"，Q,K,V数据格式为B,S,N,D格式 |  |
 | output | 输出 | float16 | [B, S, N, x * D] | 同q | 当输入RAB为空时，x=1，此时结果为qkv计算结果<br>当输入RAB不为空时，x=3，此时结果为qkv结果与两个rab结果cat，将最后一维整合所得 |
 
-
 注：
+
 * B,S,N,D四个维度数据均不能为0，为0时算子输入为空数据，不会执行算子计算。
 * 其中B,S,N参数影响bias、mask占用显存大小，请根据实际内存合理设置参数大小。
 
@@ -147,4 +150,4 @@ def hstu_fuxi(q, k, v, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_sca
 
 算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/hstu_dense_forward_fuxi/CMakeLists.txt)
+注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/hstu_dense_forward_fuxi/README.md)

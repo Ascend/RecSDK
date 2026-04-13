@@ -1,4 +1,4 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用。
 
@@ -181,7 +181,6 @@ v_grad = dense_to_jagged(v, v_grad_dens, seq_lens)
 ## 接口范围限制说明
 
 由于反向算子通过PTA层进行调用不能直调，参数限制和范围请参考[PTA侧文档](../../../../framework/torch_plugin/torch_library/hstu/README.md)
-
 
 # 算子编译部署
 
