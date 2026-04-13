@@ -1,8 +1,8 @@
-**使用PyTorch框架调用方式调用keyed_jagged_index_select_dim1算子**
+# 使用PyTorch框架调用方式调用keyed_jagged_index_select_dim1算子
 
 该样例基于 PyTorch 2.6.0 和 Python 3.11.0 运行。
 
-### Pytorch框架对外接口原型
+## Pytorch框架对外接口原型
 
 ```python
 torch.ops.fbgemm.keyed_jagged_index_select_dim(Tensor values,
@@ -22,7 +22,8 @@ torch.ops.mxrec.keyed_jagged_index_select_dim(Tensor values,
                                                int? selected_lengths_sum=None) -> Tensor[]
 ```
 
-#### 参数说明
+### 参数说明
+
 |  名称  | 输入/输出  | 参数类型    | 数据类型       | 数据格式                                            | 范围                  |
 |  ---- |--------|---------|------------|-------------------------------------------------|---------------------|
 |  values | 输入     | Tensor  | int32/int64/fp32/fp16 | [values]                                        | values的长度等于`lengths.sum()` | 
@@ -30,28 +31,30 @@ torch.ops.mxrec.keyed_jagged_index_select_dim(Tensor values,
 |  offset | 输入     | Tensor  | int64      | [offset]                                       | 从0开始，为lengths元素的累加序列 |
 |  indices | 输入     | Tensor  | int32/int64      | [indices]                                       | indices中的每个值均满足: >= 0 且 < `batch_size` |
 |  weights | 输入(可选) | Tensor  | fp32/fp16       | [weights]                                       | weight的长度等于`lengths.sum()` |
-|  batch_size | 输入 | Int  | int        | NA                                              |        dim 1 of KIT (0, std::numeric_limits<int>::max()]      |
-|  selected_lengths_sum | 输入(可选) | Int  | int64        | NA                                              |        (0, std::numeric_limits<int64>::max()]      |
+|  batch_size | 输入 | Int  | `int`        | NA                                              |        dim 1 of KIT (0, std::numeric_limits\<int>::max()]      |
+|  selected_lengths_sum | 输入(可选) | Int  | `int64`        | NA                                              |        [0, std::numeric_limits\<int64>::max()]      |
 |  output | 输出     | Tensor[]  | Tensor[]  | [output] | 包含3个Tensor，outvalues,dtype和values相同， outlengths,dtype和lengths相同， outweight（如果weights存在，dtype和weight相同否则为None）
 
 说明：
-1. 指定selected_lengths_sum时，outvalues/outweight长度为selected_lengths_sum，请用户自行保证数值正确; 未指定selected_lengths_sum时，算子将计算得到selected_lengths_sum
+
+1. 指定selected_lengths_sum时，outvalues/outweight长度为selected_lengths_sum，请用户自行保证数值正确;未指定selected_lengths_sum时，算子将计算得到selected_lengths_sum
 
 2. 该算子实现依赖asynchronous_complete_cumsum、select_dim1_to_permute、permute_2d_sparse_data算子，需先安装asynchronous_complete_cumsum、select_dim1_to_permute、permute_2d_sparse_data算子
 
 3. v220版本，select_dim1_to_permute算子的indices dtype只支持int32，不支持int64 
 
-### 运行算子样例
+## 运行算子样例
 
-#### 算子编译与部署
+## 算子编译与部署
 
 算子编译部署请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-#### Pytorch编译
+### Pytorch编译
 
 Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
-#### 算子调用示例,以下以pytest方式调用为例
+### 算子调用示例,以下以pytest方式调用为例
+
 ```python
 import itertools
 import random
