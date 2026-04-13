@@ -31,7 +31,7 @@ namespace CumsumSimt {
 
 // Warp级前缀和计算
 template <typename T>
-__aicore__ inline T WarpPrefixSum(T val)
+__simt_callee__ inline T WarpPrefixSum(T val)
 {
     int32_t laneId = threadIdx.x % WARP_SIZE;
 #pragma unroll

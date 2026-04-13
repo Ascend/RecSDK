@@ -47,7 +47,7 @@ __aicore__ inline void CpGm2Local(const LocalTensor<T>& lt, const GlobalTensor<T
     }
 }
 
-__aicore__ inline void AccumulateFromGlobalVec(const __gm__ float* src, int64_t len, float* dst)
+__simt_callee__ inline void AccumulateFromGlobalVec(const __gm__ float* src, int64_t len, float* dst)
 {
     if (len == 8) {
         float4 vec0 = reinterpret_cast<const __gm__ float4*>(src)[0];
@@ -75,7 +75,7 @@ __aicore__ inline void AccumulateFromGlobalVec(const __gm__ float* src, int64_t 
     }
 }
 
-__aicore__ inline void StoreToGlobalVec(__gm__ float* dst, const float* src, int64_t len)
+__simt_callee__ inline void StoreToGlobalVec(__gm__ float* dst, const float* src, int64_t len)
 {
     if (len == 8) {
         reinterpret_cast<__gm__ float4*>(dst)[0] = reinterpret_cast<const float4*>(src)[0];
