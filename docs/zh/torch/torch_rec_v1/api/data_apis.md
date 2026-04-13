@@ -7,7 +7,7 @@
 
 **功能描述<a name="section634582619155"></a>**
 
-持有稀疏id和特征长度的类，用于查表。例如，values为\[id1, id2, id3, id4\]，length为\[1, 2, 1\]。表示为id2和id3查表后的Embedding应该被pooling。
+持有稀疏id和特征长度的类，用于查表。例如，values为\[id1, id2, id3, id4\]，lengths为\[1, 2, 1\]。表示为id2和id3查表后的Embedding应该被pooling。
 
 **函数原型<a name="section1483104721911"></a>**
 

@@ -1,8 +1,9 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用
 
 # 产品支持情况
+
 | 硬件型号              | 是否支持                  |
 | -------------------- | ------------------------ |
 | Atlas A2训练系列产品  | 是  |
@@ -28,7 +29,7 @@
 
 # 功能
 
-推荐场景下，使用Hstu融合算子实现推荐场景中注意力机制。
+推荐场景下，使用HSTU融合算子实现推荐场景中注意力机制。
 
 **GQA支持**：本算子支持Grouped Query Attention (GQA)，允许K/V的头数小于Q的头数，多个Q头可以共享同一个K/V头，从而减少KV缓存内存占用并提升推理性能。
 
@@ -38,15 +39,16 @@
 
 # 算子实现原理
 
-1. 计算公式
+## 计算公式
 
 $$
 HSTU(q, k, v, mask, bias, siluScale) = (Silu(qk_{}^{T} + bias) \times siluScale \times mask)v
 $$
 
-2. 数据格式
+## 数据格式
 
 输入参数q, k, v数据格式为normal或者jagged。
+
 * normal格式：shape为[B, S, N, D]的4维数据格式，排布如下图所示：
 
 ![alt text](v220/pic/hstu_normal.png)
@@ -55,11 +57,11 @@ $$
 
 ![alt text](v220/pic/hstu_jagged.png)
 
-3. 计算原理
+## 计算原理
 
 ![alt text](v220/pic/hstu_image.png)
 
-4. 计算逻辑
+## 计算逻辑
 
 ```python
 def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np):
@@ -179,6 +181,7 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 | attn_output       | 输出    | Tensor[float32/float16/bfloat16] | [B, S, N, D]/<br>[s_b, N, D]    | 同q                                                                                                     | 同q                                                                                                              |
 
 注：
+
 * B,S,N,D四个维度数据均不能为0，为0时算子输入为空数据，不会执行算子计算。
 * 其中B,S,N参数影响bias、mask占用显存大小，请根据实际内存合理设置参数大小。
 

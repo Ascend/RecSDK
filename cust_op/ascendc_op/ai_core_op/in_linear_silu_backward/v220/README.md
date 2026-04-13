@@ -1,14 +1,16 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用。
 
 # 产品支持情况
+
 | 硬件型号              | 是否支持                  |
 | -------------------- | ------------------------ |
 | Atlas A2训练系列产品  | 是  |
 | Atlas A5训练系列产品    | 是  |
 
 # in_linear_silu_backward算子目录层级
+
 ```shell
 -- in_linear_silu_backward
    |-- v220
@@ -26,6 +28,7 @@ in_linear_silu_backward是in_linear_silu算子的反向传播实现，用于计�
 # 算子实现原理
 
 算子工作原理说明：
+
 1. 输入张量x ND格式，支持FLOAT16、BFLOAT16类型，shape = (m, k) 不可为空
 2. 输入张量weight ND格式，支持FLOAT16、BFLOAT16类型，shape = (n, k), 如果为(k, n)需要转置后传入 不可为空
 3. 输入张量bias ND格式，支持FLOAT类型，shape = (n,) 可选
@@ -36,10 +39,10 @@ in_linear_silu_backward是in_linear_silu算子的反向传播实现，用于计�
 8. 输出张量x_grad、weights_grad、bias_grad，分别对应输入x、权重weight和偏置bias的梯度
 9. 请注意算子输入shape受显存大小限制。
 
-
 例如：
 
 输入:
+
 ```python
 m, k = 1024, 128
 n = 512
@@ -61,6 +64,7 @@ key_grad = torch.rand((m, seg_len), dtype=torch.float16)
 ```
 
 输出：
+
 ```python
 # x_grad: shape [m, k], 类型与x相同
 # weights_grad: shape [n, k], 类型与weight相同
@@ -72,6 +76,7 @@ x_grad, weights_grad, bias_grad = in_linear_silu_backward(
 ```
 
 # 算子输入与输出
+
 | 名称      | 输入/输出 | 参数类型 | 数据类型         | 数据格式       | 范围         | 说明                                  |
 |---------|------------|------|--------------|------------|------------|----------------------------------------|
 | x       | 输入       | Tensor | float16/bfloat16 | [seq_len, embed_dim] | embed_dim取值范围[16, 8192] |   embed_dim为16的整数倍              |
@@ -82,7 +87,7 @@ x_grad, weights_grad, bias_grad = in_linear_silu_backward(
 | query_grad | 输入       | Tensor | float16/bfloat16 | [seq_len, H_q] | H_q取值范围[16, 8192] |   H_q为16的整数倍 , 数据类型与x保持一致         |
 | key_grad | 输入       | Tensor | float16/bfloat16 | [seq_len, H_k] | H_k取值范围[16, 8192] |   H_k为16的整数倍 , 数据类型与x保持一致         |
 | linear_output | 输入       | Tensor | float16/bfloat16 | [seq_len, hidden_size] | hidden_size取值范围[64, 32768] |   hidden_size为16的整数倍，来自前向传播的中间结果，数据类型与x保持一致            |
-| split_arg_list | 输入(属性)  | ListInt | int   | [H_u, H_v, H_q, H_k]          |   sum(split_arg_list)=hidden_size       |长度为4，不可为空，每个元素为16的整数倍     |
+| split_arg_list | 输入(属性)  | List[int] | int   | [H_u, H_v, H_q, H_k]          |   sum(split_arg_list)=hidden_size       |长度为4，不可为空，每个元素为16的整数倍     |
 | isTrans | 输入(属性)  | Bool | bool   | -          |   保留参数，当前仅支持为true       |权重是否需要转置     |
 | x_grad | 输出     | Tensor | float16/bfloat16 | [seq_len, embed_dim] | embed_dim取值范围[16, 8192] |   embed_dim为16的整数倍, 数据类型与x保持一致          |
 | weights_grad | 输出     | Tensor | float16/bfloat16 | [hidden_size, embed_dim] | hidden_size取值范围[64, 32768] |   hidden_size为16的整数倍, 数据类型与weight保持一致          |
