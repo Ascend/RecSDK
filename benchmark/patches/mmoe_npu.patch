@@ -25,7 +25,7 @@ index 15aea23..4b6f3c0 100644
          self.labels = data[:, -2:].astype(np.float32)
          self.numerical_num = self.numerical_data.shape[1]
 diff --git a/main.py b/main.py
-index ddf4858..03c616e 100644
+index ddf4858..2681e65 100644
 --- a/main.py
 +++ b/main.py
 @@ -1,9 +1,16 @@
@@ -48,7 +48,7 @@ index ddf4858..03c616e 100644
  
  from datasets.aliexpress import AliExpressDataset
  from models.sharedbottom import SharedBottomModel
-@@ -14,6 +21,159 @@ from models.ple import PLEModel
+@@ -14,6 +21,169 @@ from models.ple import PLEModel
  from models.aitm import AITMModel
  from models.metaheac import MetaHeacModel
  
@@ -64,11 +64,13 @@ index ddf4858..03c616e 100644
 +    else:
 +        raise ValueError(f"Invalid input string: {s}, must be true or false")
 +
++
 +logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 +# Control Parameters
 +RANDOM_SEED = 42
 +DUMP_PROFILER = str_to_bool(os.getenv("MODEL_PROFILING_FLAG"))
 +SET_HF32 = str_to_bool(os.getenv("MODEL_HF32_FLAG"))
++
 +
 +def setup(rank: int, world_size: int, master_port: int):
 +    os.environ["MASTER_ADDR"] = "localhost"
@@ -80,8 +82,10 @@ index ddf4858..03c616e 100644
 +        dist.init_process_group("nccl", rank=rank, world_size=world_size)
 +        torch.cuda.set_device(f'cuda:{rank}')
 +
++
 +def cleanup():
 +    dist.destroy_process_group()
++
 +
 +def same_seeds(seed=RANDOM_SEED):
 +    torch.manual_seed(seed)
@@ -96,8 +100,10 @@ index ddf4858..03c616e 100644
 +    torch.backends.cudnn.benchmark = False
 +    torch.backends.cudnn.deterministic = True
 +
++
 +def worker_init_fn(worker_id):
 +    np.random.seed(RANDOM_SEED + worker_id)
++
 +
 +def set_tf32():
 +    if NPU_ENABLE:
@@ -108,6 +114,7 @@ index ddf4858..03c616e 100644
 +        torch.backends.cuda.matmul.allow_tf32 = True
 +        torch.backends.cudnn.allow_tf32 = True
 +        logging.info(f"GPU: set tf32 is {torch.backends.cuda.matmul.allow_tf32}")
++
 +
 +def init_profiler(rank, model_name='Multitask-Recommendation-Library'):
 +    suffix = 'npu' if NPU_ENABLE else 'gpu'
@@ -160,6 +167,7 @@ index ddf4858..03c616e 100644
 +    logging.info(f"[{rank}]: Profiler initialized, saving traces to {profiler_dir}")
 +    return prof
 +
++
 +def gather_latency_data(local_data, world_size, device):
 +    """
 +    收集各 rank 的 latency 数据，返回 list[list[float]]
@@ -174,6 +182,7 @@ index ddf4858..03c616e 100644
 +
 +    return [g.cpu().tolist() for g in gathered]
 +
++
 +def latency_summary(latency_list, batch_size, model_name, device_name, inductor_flag):
 +    latency_array = np.array(latency_list)
 +    ave_step = np.mean(latency_array, axis=0).tolist()
@@ -186,7 +195,7 @@ index ddf4858..03c616e 100644
 +        p99 = np.percentile(ave_step, 99, method="lower")
 +        p999 = np.percentile(ave_step, 99.9, method="lower")
 +
-+    QPS = int(1 / avg_time)		# batch_size * world_size * 10 / avg_time
++    QPS = int(1 / avg_time)  # batch_size * world_size * 10 / avg_time
 +    e2e_result = {
 +        "Batch_size": batch_size,
 +        "model_name": model_name,
@@ -200,65 +209,104 @@ index ddf4858..03c616e 100644
 +
 +    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
 +    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
-+    logging.info(f"The final performance result: {output_str}")
 +
 +    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
 +    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
 +        f.write(output_str + "\n")
++    return avg_time
++
  
  def get_dataset(name, path):
      if 'AliExpress' in name:
-@@ -27,25 +187,25 @@ def get_model(name, categorical_field_dims, numerical_num, task_num, expert_num,
+@@ -21,48 +191,64 @@ def get_dataset(name, path):
+     else:
+         raise ValueError('unknown dataset name: ' + name)
+ 
+-def get_model(name, categorical_field_dims, numerical_num, task_num, expert_num, embed_dim):
++
++def get_model(name, categorical_field_dims, numerical_num, task_num, expert_num, embed_dim, dropout_rate):
      """
-     
+     Hyperparameters are empirically determined, not opitmized.
+     """
+-    
++
      if name == 'sharedbottom':
 -        print("Model: Shared-Bottom")
+-        return SharedBottomModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, dropout=0.2)
 +        logging.info("Model: Shared-Bottom")
-         return SharedBottomModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, dropout=0.2)
++        return SharedBottomModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256),
++                                 tower_mlp_dims=(128, 64), task_num=task_num, dropout=0.2)
      elif name == 'singletask':
 -        print("Model: SingleTask")
+-        return SingleTaskModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, dropout=0.2)
 +        logging.info("Model: SingleTask")
-         return SingleTaskModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, dropout=0.2)
++        return SingleTaskModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256),
++                               tower_mlp_dims=(128, 64), task_num=task_num, dropout=0.2)
      elif name == 'omoe':
 -        print("Model: OMoE")
+-        return OMoEModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, expert_num=expert_num, dropout=0.2)
 +        logging.info("Model: OMoE")
-         return OMoEModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, expert_num=expert_num, dropout=0.2)
++        return OMoEModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256),
++                         tower_mlp_dims=(128, 64), task_num=task_num, expert_num=expert_num, dropout=0.2)
      elif name == 'mmoe':
 -        print("Model: MMoE")
+-        return MMoEModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, expert_num=expert_num, dropout=0.2)
 +        logging.info("Model: MMoE")
-         return MMoEModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, expert_num=expert_num, dropout=0.2)
++        return MMoEModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256),
++                         tower_mlp_dims=(128, 64), task_num=task_num, expert_num=expert_num, dropout=dropout_rate)
      elif name == 'ple':
 -        print("Model: PLE")
+-        return PLEModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, shared_expert_num=int(expert_num / 2), specific_expert_num=int(expert_num / 2), dropout=0.2)
 +        logging.info("Model: PLE")
-         return PLEModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, shared_expert_num=int(expert_num / 2), specific_expert_num=int(expert_num / 2), dropout=0.2)
++        return PLEModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256),
++                        tower_mlp_dims=(128, 64), task_num=task_num, shared_expert_num=int(expert_num / 2),
++                        specific_expert_num=int(expert_num / 2), dropout=0.2)
      elif name == 'aitm':
 -        print("Model: AITM")
+-        return AITMModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, dropout=0.2)
 +        logging.info("Model: AITM")
-         return AITMModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, dropout=0.2)
++        return AITMModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256),
++                         tower_mlp_dims=(128, 64), task_num=task_num, dropout=0.2)
      elif name == 'metaheac':
 -        print("Model: MetaHeac")
+-        return MetaHeacModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, expert_num=expert_num, critic_num=5, dropout=0.2)
 +        logging.info("Model: MetaHeac")
-         return MetaHeacModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256), tower_mlp_dims=(128, 64), task_num=task_num, expert_num=expert_num, critic_num=5, dropout=0.2)
++        return MetaHeacModel(categorical_field_dims, numerical_num, embed_dim=embed_dim, bottom_mlp_dims=(512, 256),
++                             tower_mlp_dims=(128, 64), task_num=task_num, expert_num=expert_num, critic_num=5,
++                             dropout=0.2)
      else:
          raise ValueError('unknown model name: ' + name)
-@@ -62,7 +222,11 @@ class EarlyStopper(object):
+ 
++
+ class EarlyStopper(object):
+ 
+-    def __init__(self, num_trials, save_path):
++    def __init__(self, num_trials, save_path, num_devices):
+         self.num_trials = num_trials
+         self.trial_counter = 0
+         self.best_accuracy = 0
+         self.save_path = save_path
++        self.num_devices = num_devices
+ 
+     def is_continuable(self, model, accuracy):
          if accuracy > self.best_accuracy:
              self.best_accuracy = accuracy
              self.trial_counter = 0
 -            torch.save(model.state_dict(), self.save_path)
 +            os.makedirs(os.path.dirname(self.save_path), exist_ok=True)
-+            if torch.cuda.device_count() > 1 or (NPU_ENABLE and torch_npu.npu.device_count() > 1):
++            if self.num_devices> 1:
 +                torch.save(model.module.state_dict(), self.save_path)
 +            else:
 +                torch.save(model.state_dict(), self.save_path)
              return True
          elif self.trial_counter + 1 < self.num_trials:
              self.trial_counter += 1
-@@ -70,10 +234,13 @@ class EarlyStopper(object):
+@@ -70,12 +256,17 @@ class EarlyStopper(object):
          else:
              return False
  
 -def train(model, optimizer, data_loader, criterion, device, log_interval=100):
++
 +def train(epoch, model, optimizer, data_loader, criterion, device, rank, prof, latency_list, log_interval=100):
      model.train()
 +    step = 0
@@ -268,9 +316,13 @@ index ddf4858..03c616e 100644
 +
 +    start_time = time.time()
      for i, (categorical_fields, numerical_fields, labels) in enumerate(loader):
-         categorical_fields, numerical_fields, labels = categorical_fields.to(device), numerical_fields.to(device), labels.to(device)
+-        categorical_fields, numerical_fields, labels = categorical_fields.to(device), numerical_fields.to(device), labels.to(device)
++        categorical_fields, numerical_fields, labels = categorical_fields.to(device), numerical_fields.to(
++            device), labels.to(device)
          y = model(categorical_fields, numerical_fields)
-@@ -85,10 +252,24 @@ def train(model, optimizer, data_loader, criterion, device, log_interval=100):
+         loss_list = [criterion(y[i], labels[:, i].float()) for i in range(labels.size(1))]
+         loss = 0
+@@ -85,10 +276,25 @@ def train(model, optimizer, data_loader, criterion, device, log_interval=100):
          model.zero_grad()
          loss.backward()
          optimizer.step()
@@ -288,34 +340,84 @@ index ddf4858..03c616e 100644
 +        #     total_loss = 0
 +        if prof is None and step % 10 == 0:
 +            time_diff = time.time() - start_time
-+            if step > 10:   # 过滤前两个耗时
++            if step > 10:  # 过滤前两个耗时
 +                latency_list.append(time_diff)
 +            logging.info(f"[{rank}]: epoch: {epoch}, step: [{step} / {len(loader)}], loss = {loss}, time = {time_diff}")
 +            start_time = time.time()
 +        step += 1
 +    latency_list.pop()  # 过滤最后耗时
 +    return loss, step
++
  
  def metatrain(model, optimizer, data_loader, device, log_interval=100):
      model.train()
-@@ -135,8 +316,8 @@ def test(model, data_loader, task_num, device):
-         loss_results.append(np.array(loss_dict[i]).mean())
+@@ -96,7 +302,8 @@ def metatrain(model, optimizer, data_loader, device, log_interval=100):
+     loader = tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0)
+     list_sup_categorical, list_sup_numerical, list_sup_y, list_qry_categorical, list_qry_numerical, list_qry_y = list(), list(), list(), list(), list(), list()
+     for i, (categorical_fields, numerical_fields, labels) in enumerate(loader):
+-        categorical_fields, numerical_fields, labels = categorical_fields.to(device), numerical_fields.to(device), labels.to(device)
++        categorical_fields, numerical_fields, labels = categorical_fields.to(device), numerical_fields.to(
++            device), labels.to(device)
+         batch_size = int(categorical_fields.size(0) / 2)
+         list_sup_categorical.append(categorical_fields[:batch_size])
+         list_qry_categorical.append(categorical_fields[batch_size:])
+@@ -104,9 +311,10 @@ def metatrain(model, optimizer, data_loader, device, log_interval=100):
+         list_qry_numerical.append(numerical_fields[batch_size:])
+         list_sup_y.append(labels[:batch_size])
+         list_qry_y.append(labels[batch_size:])
+-        
++
+         if (i + 1) % 2 == 0:
+-            loss = model.global_update(list_sup_categorical, list_sup_numerical, list_sup_y, list_qry_categorical, list_qry_numerical, list_qry_y)
++            loss = model.global_update(list_sup_categorical, list_sup_numerical, list_sup_y, list_qry_categorical,
++                                       list_qry_numerical, list_qry_y)
+             model.zero_grad()
+             loss.backward()
+             optimizer.step()
+@@ -116,6 +324,7 @@ def metatrain(model, optimizer, data_loader, device, log_interval=100):
+             loader.set_postfix(loss=total_loss / log_interval)
+             total_loss = 0
+ 
++
+ def test(model, data_loader, task_num, device):
+     model.eval()
+     labels_dict, predicts_dict, loss_dict = {}, {}, {}
+@@ -123,12 +332,14 @@ def test(model, data_loader, task_num, device):
+         labels_dict[i], predicts_dict[i], loss_dict[i] = list(), list(), list()
+     with torch.no_grad():
+         for categorical_fields, numerical_fields, labels in tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0):
+-            categorical_fields, numerical_fields, labels = categorical_fields.to(device), numerical_fields.to(device), labels.to(device)
++            categorical_fields, numerical_fields, labels = categorical_fields.to(device), numerical_fields.to(
++                device), labels.to(device)
+             y = model(categorical_fields, numerical_fields)
+             for i in range(task_num):
+                 labels_dict[i].extend(labels[:, i].tolist())
+                 predicts_dict[i].extend(y[i].tolist())
+-                loss_dict[i].extend(torch.nn.functional.binary_cross_entropy(y[i], labels[:, i].float(), reduction='none').tolist())
++                loss_dict[i].extend(
++                    torch.nn.functional.binary_cross_entropy(y[i], labels[:, i].float(), reduction='none').tolist())
+     auc_results, loss_results = list(), list()
+     for i in range(task_num):
+         auc_results.append(roc_auc_score(labels_dict[i], predicts_dict[i]))
+@@ -136,7 +347,8 @@ def test(model, data_loader, task_num, device):
      return auc_results, loss_results
  
--
+ 
 -def main(dataset_name,
 +def main(rank, world_size, master_port,
 +         dataset_name,
           dataset_path,
           task_num,
           expert_num,
-@@ -146,45 +327,116 @@ def main(dataset_name,
+@@ -146,53 +358,140 @@ def main(dataset_name,
           batch_size,
           embed_dim,
           weight_decay,
 -         device,
-          save_dir):
+-         save_dir):
 -    device = torch.device(device)
++         save_dir,
++         dropout_rate):
 +    setup(rank, world_size, master_port)
 +    same_seeds(RANDOM_SEED)
 +    if SET_HF32: set_tf32()
@@ -333,12 +435,14 @@ index ddf4858..03c616e 100644
      train_dataset = get_dataset(dataset_name, os.path.join(dataset_path, dataset_name) + '/train.csv')
      test_dataset = get_dataset(dataset_name, os.path.join(dataset_path, dataset_name) + '/test.csv')
 -    train_data_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=4, shuffle=True)
-+    train_data_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=4, shuffle=True, worker_init_fn=worker_init_fn)
++    train_data_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=4, shuffle=True,
++                                   worker_init_fn=worker_init_fn, persistent_workers=True)
      test_data_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, shuffle=False)
  
      field_dims = train_dataset.field_dims
      numerical_num = train_dataset.numerical_num
-     model = get_model(model_name, field_dims, numerical_num, task_num, expert_num, embed_dim).to(device)
+-    model = get_model(model_name, field_dims, numerical_num, task_num, expert_num, embed_dim).to(device)
++    model = get_model(model_name, field_dims, numerical_num, task_num, expert_num, embed_dim, dropout_rate).to(device)
 +    if world_size > 1:
 +        model = DDP(model, device_ids=[rank], broadcast_buffers=False)
 +        logging.info(f"[{rank}]: Use torch.nn.parallel.DistributedDataParallel")
@@ -346,9 +450,11 @@ index ddf4858..03c616e 100644
 +
      criterion = torch.nn.BCELoss()
 -    optimizer = torch.optim.Adam(params=model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+-    save_path=f'{save_dir}/{dataset_name}_{model_name}.pt'
+-    early_stopper = EarlyStopper(num_trials=2, save_path=save_path)
 +    optimizer = torch.optim.Adam(params=model_or_module.parameters(), lr=learning_rate, weight_decay=weight_decay)
-     save_path=f'{save_dir}/{dataset_name}_{model_name}.pt'
-     early_stopper = EarlyStopper(num_trials=2, save_path=save_path)
++    save_path = f'{save_dir}/{dataset_name}_{model_name}.pt'
++    early_stopper = EarlyStopper(num_trials=2, save_path=save_path, num_devices=world_size)
 +
 +    latency_list = []
      for epoch_i in range(epoch):
@@ -356,7 +462,8 @@ index ddf4858..03c616e 100644
              metatrain(model, optimizer, train_data_loader, device)
          else:
 -            train(model, optimizer, train_data_loader, criterion, device)
-+            train_loss, step = train(epoch_i, model, optimizer, train_data_loader, criterion, device, rank, None, latency_list)
++            train_loss, step = train(epoch_i, model, optimizer, train_data_loader, criterion, device, rank, None,
++                                     latency_list)
          auc, loss = test(model, test_data_loader, task_num, device)
 -        print('epoch:', epoch_i, 'test: auc:', auc)
 +        logging.info(f"epoch: {epoch_i}, test: auc: {auc}")
@@ -382,19 +489,25 @@ index ddf4858..03c616e 100644
 +
 +    # 收集所有 rank 的 latency 数据到 rank 0
 +    gathered_latency = gather_latency_data(latency_list, world_size, device)
- 
++
 +    if rank == 0:
-+        # inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
-+        inductor_flag = 'eager'
-+        latency_summary(gathered_latency, batch_size, model_name_alias, device_name, inductor_flag)  # 保存e2e耗时
++        inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
++        avg_time = latency_summary(gathered_latency, batch_size, model_name_alias, device_name, inductor_flag)
 +
 +        final_results = {
 +            'epoch': epoch - 1,
-+            'final_loss': train_loss.cpu().item()
++            'step': step,
++            'final_loss': train_loss.cpu().item(),
++            'avg_time': avg_time,
 +        }
 +        for i in range(task_num):
-+            final_results[f'task{i}_auc'] = float(auc[i])
++            final_results[f'test: task{i}_auc'] = float(auc[i])
 +
++        model_detail_info = device_name + "_" + model_name + "_" + dataset_name + "_" + inductor_flag
++        output_str = model_detail_info + "_" + str(final_results)
++        logging.info(f"The final result: {output_str}")
++
++        del final_results['avg_time']
 +        os.makedirs(f"../save_results_{device_name}/{model_name_alias}", exist_ok=True)
 +        torch.save(final_results,
 +                   f"../save_results_{device_name}/{model_name_alias}/predictions_{model_name_alias}_{inductor_flag}_{step}.pt")
@@ -404,7 +517,8 @@ index ddf4858..03c616e 100644
 +    if DUMP_PROFILER:
 +        prof = init_profiler(rank, model_name_alias)
 +        prof.start()
-+        train_loss, step = train(epoch, model, optimizer, train_data_loader, criterion, device, rank, prof, latency_list)
++        train_loss, step = train(epoch, model, optimizer, train_data_loader, criterion, device, rank, prof,
++                                 latency_list)
 +        prof.stop()
 +
 +    cleanup()
@@ -419,6 +533,7 @@ index ddf4858..03c616e 100644
 +    # f.write('\n')
 +    # f.close()
 +
++
 +def train_fn(rank, world_size, args):
 +    main(rank, world_size,
 +         args.master_port,
@@ -432,7 +547,9 @@ index ddf4858..03c616e 100644
 +         args.batch_size,
 +         args.embed_dim,
 +         args.weight_decay,
-+         args.save_dir)
++         args.save_dir,
++         args.dropout_rate)
++
 +
 +def main_ddp(args):
 +    if NPU_ENABLE:
@@ -442,13 +559,27 @@ index ddf4858..03c616e 100644
 +    world_size = torch_npu.npu.device_count() if NPU_ENABLE else torch.cuda.device_count()
 +    mp.spawn(train_fn, args=(world_size, args), nprocs=world_size, join=True)
  
+ 
  if __name__ == '__main__':
      import argparse
-@@ -200,18 +452,8 @@ if __name__ == '__main__':
+ 
+     parser = argparse.ArgumentParser()
+-    parser.add_argument('--dataset_name', default='AliExpress_NL', choices=['AliExpress_NL', 'AliExpress_ES', 'AliExpress_FR', 'AliExpress_US'])
++    parser.add_argument('--dataset_name', default='AliExpress_NL',
++                        choices=['AliExpress_NL', 'AliExpress_ES', 'AliExpress_FR', 'AliExpress_US'])
+     parser.add_argument('--dataset_path', default='./data/')
+-    parser.add_argument('--model_name', default='metaheac', choices=['singletask', 'sharedbottom', 'omoe', 'mmoe', 'ple', 'aitm', 'metaheac'])
++    parser.add_argument('--model_name', default='metaheac',
++                        choices=['singletask', 'sharedbottom', 'omoe', 'mmoe', 'ple', 'aitm', 'metaheac'])
+     parser.add_argument('--epoch', type=int, default=50)
+     parser.add_argument('--task_num', type=int, default=2)
+     parser.add_argument('--expert_num', type=int, default=8)
+@@ -200,18 +499,9 @@ if __name__ == '__main__':
      parser.add_argument('--batch_size', type=int, default=2048)
      parser.add_argument('--embed_dim', type=int, default=128)
      parser.add_argument('--weight_decay', type=float, default=1e-6)
 -    parser.add_argument('--device', default='cuda:0')
++    parser.add_argument('--dropout_rate', type=float, default=0.2)
 +    parser.add_argument('--device_id', type=str, default='0')
      parser.add_argument('--save_dir', default='chkpt')
 +    parser.add_argument('--master_port', type=int, default=12345)
@@ -467,7 +598,6 @@ index ddf4858..03c616e 100644
 -         args.save_dir)
 \ No newline at end of file
 +    main_ddp(args)
-\ No newline at end of file
 diff --git a/models/layers.py b/models/layers.py
 index ab7fb80..cee3d92 100644
 --- a/models/layers.py
