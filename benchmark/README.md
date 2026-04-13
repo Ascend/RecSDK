@@ -33,10 +33,10 @@ xxx.json替換为为configs目录下的配置文件名；
 python run.py xxx.json --eager
 ```
 
-**xxx.json**:为configs文件夹中的配置文件
-**--eager**：为强制跑eager模式，不配置默认跑inductor模式（当前未支持）
-**--no_hf32**：禁用混合精度加速，不配置默认使能混合精度加速。NCF、DIN-pytorch、Multitask-Recommendation-Library比对GPU与NPU精度时需禁用
-**--custom_dropout**：使用自定义的dropout函数，不配置使用默认的dropout函数。Multitask-Recommendation-Library比对GPU与NPU精度是需配置
+**xxx.json**:为configs文件夹中的配置文件   
+**--eager**：为强制跑eager模式，不配置默认跑inductor模式（当前未支持）   
+**--no_hf32**：禁用混合精度加速，不配置默认使能混合精度加速。NCF、DIN-pytorch、Multitask-Recommendation-Library比对GPU与NPU精度时需禁用   
+**--custom_dropout**：使用自定义的dropout函数，不配置使用默认的dropout函数。Multitask-Recommendation-Library比对GPU与NPU精度时需配置
 
 # 性能指标
 
@@ -48,10 +48,10 @@ python run.py xxx.json --eager
 模型正常运行后，会在models目录下生成落盘输出文件，目录为save_results_{device_name}/{model_name},其中device_name为运行设备名称，如npu、cuda、cpu,{model_name}为模型名字。
 
 使用tools目录下的脚本对两份数据进行对比，cpu的数据作为标杆，对比npu数据与cpu数据的差异。
-对比脚本为tools/accuracy_compare.py，使用方法为：
+对比脚本为tools/compare_output.py，使用方法为：
 
 ```shell
-python accuracy_compare.py --actual_output ./models/save_results_npu --expected_output ./models/save_results_cpu  --rtol 1e-4 --atol 1e-4
+python ./tools/compare_output.py --actual_output ./models/save_results_npu --expected_output ./models/save_results_cpu  --rtol 1e-4 --atol 1e-4
 ```
 
 其中--actual_output为npu数据目录，--expected_output为cpu数据目录，--rtol为相对误差容忍度，--atol为绝对误差容忍度。
@@ -102,7 +102,7 @@ python accuracy_compare.py --actual_output ./models/save_results_npu --expected_
 ## yolov5 模型
 
 yolov5模型需手动下载权重文件。https://gitcode.com/open-source-toolkit/6e474/blob/main/yolov5%20%E5%AE%98%E6%96%B9%E6%9D%83%E9%87%8D%E6%96%87%E4%BB%B6.zip
-从链接里下载并解压，把yolov5s.pt放在ckpt文件夹下再运行
+从链接里下载并解压，把yolov5s.pt放在ckpt文件夹下再运行。
 
 ## Multitask-Recommendation-Library(MMOE) 模型
 

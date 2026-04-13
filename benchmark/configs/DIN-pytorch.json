@@ -10,6 +10,7 @@
     "run_cmd": [
         "python",
         "main.py",
+        "--batch_size=128",
         "--epochs=20",
         "--device_id=0,1,2,3,4,5,6,7",
         "--master_port=12345"
