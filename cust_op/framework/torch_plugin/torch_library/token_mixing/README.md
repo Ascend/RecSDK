@@ -1,4 +1,4 @@
-# 使用PyTorch框架调用tokenmixing算子
+# 使用PyTorch框架调用token_mixing算子
 
 该样例基于 PyTorch 2.6.0 和 Python 3.11.0 运行。
 

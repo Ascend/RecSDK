@@ -1,15 +1,17 @@
-**使用pytorch框架调用方式调用in_linear_silu算子**
+# 使用pytorch框架调用方式调用in_linear_silu算子
 
 该样例基于Pytorch2.6.0、python3.11.0运行
 
-### Pytorch框架对外接口原型
+## Pytorch框架对外接口原型
 
-#### in_linear_silu 接口
+### in_linear_silu 接口
+
 ```python
 torch.ops.mxrec.distance_in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_dict) -> Tensor[]
 ```
 
-#### in_linear_silu_backward 接口
+### in_linear_silu_backward 接口
+
 ```python
 torch.ops.mxrec.in_linear_silu_backward(
     Tensor x, Tensor weight, Tensor? bias,
@@ -18,12 +20,13 @@ torch.ops.mxrec.in_linear_silu_backward(
     int[] attr_dict) -> Tensor[]
 ```
 
-#### in_linear_silu 自动微分接口
+### in_linear_silu 自动微分接口
+
 ```python
 torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_dict) -> Tensor[]
 ```
 
-### 参数说明
+## 参数说明
 
 ### torch.ops.mxrec.distance_in_linear_silu接口
 
@@ -61,10 +64,11 @@ torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_
 
 本文档基于代码实现中的实际限制，详细说明各接口的参数范围限制和约束条件。
 
-### in_linear_silu 接口范围限制
+## in_linear_silu 接口范围限制
 
-#### 输入张量维度要求
-- **x, weight**: 必须是 **2D** 张量
+### 输入张量维度要求
+
+- **x,weight**: 必须是 **2D** 张量
   - `x`: 格式为 `[m, k]`
     - `m`: 序列长度或批次大小
     - `k`: 嵌入维度
@@ -73,7 +77,7 @@ torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_
     - `k`: 嵌入维度，必须与x的k一致
 - **bias**: 必须是 **1D** 张量，格式为 `[n]`
 
-#### 形状参数范围限制
+### 形状参数范围限制
 
 | 参数 | 范围 | 倍数要求 | 说明 |
 | ---- | ---- | -------- | ---- |
@@ -81,7 +85,7 @@ torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_
 | **n (输出维度)** | [64, 32768] | 必须是 **16** 的倍数 | weight的第1维，bias的第1维 |
 | **split_arg_list元素** | [16, 8192] | 必须是 **16** 的倍数 | 每个分割维度的大小 |
 
-#### 其他参数限制
+### 其他参数限制
 
 | 参数 | 类型 | 范围/取值 | 说明 |
 | ---- | ---- | --------- | ---- |
@@ -102,19 +106,19 @@ torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_
    - sum(split_arg_list)与weight的第1维不一致
 5. **n与k的关系检查失败**: n不是4*k的倍数
 
-### 运行算子样例
+## 运行算子样例
 
-#### 算子编译与部署
+### 算子编译与部署
 
 算子编译部署请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-#### Pytorch编译
+### Pytorch编译
 
 Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
-#### 算子调用示例,以下以pytest方式调用为例
+### 算子调用示例,以下以pytest方式调用为例
 
-##### in_linear_silu接口
+#### in_linear_silu接口
 
 ```python
 import os
@@ -205,11 +209,10 @@ if __name__ == "__main__":
     test_in_linear_silu_autograd()
 ```
 
-### 注意事项
+## 注意事项
 
 1. **数据类型一致性**: 输入张量x和weight的数据类型必须一致，支持float16和bfloat16
-2. **形状限制**: 所有维度参数必须是16的倍数，并且满足n = sum(split_arg_list)和n = 4*k*倍数的要求
+2. **形状限制**: 所有维度参数必须是16的倍数，并且满足n = sum(split_arg_list)和n = 4*k的倍数的要求
 3. **设备要求**: 所有输入张量必须在NPU设备上
 4. **梯度计算**: 只有调用`in_linear_silu`接口时才会自动计算梯度
 5. **bias参数**: 前向传播时bias是必填参数，反向传播时bias是可选参数
-6. **报错说明**: 在某些shape下，正向传播会报错507014，待解决
