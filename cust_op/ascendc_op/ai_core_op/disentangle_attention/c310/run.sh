@@ -38,9 +38,9 @@ source "$UTILS_SCRIPT"
 # ==============================================================================
 # 3. 参数配置
 # ==============================================================================
-vendor_name="disetangle_attention"
+vendor_name="disentangle_attention"
 export AI_CORE_PROFILE="c310"
-export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/../v220/disetangle_attention.json")"
+export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/../v220/disentangle_attention.json")"
 export OPERATOR_SOURCE_ROOT="$(readlink -f "${WORK_DIR}/../v220")"
 
 parse_arguments "$@" || exit 1

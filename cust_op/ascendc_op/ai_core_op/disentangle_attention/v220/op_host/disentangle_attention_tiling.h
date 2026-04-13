@@ -2,14 +2,14 @@
 * Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 */
 
-#ifndef DISETANGLE_ATTENTION_TILING_H
-#define DISETANGLE_ATTENTION_TILING_H
+#ifndef DISENTANGLE_ATTENTION_TILING_H
+#define DISENTANGLE_ATTENTION_TILING_H
 
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 
 namespace optiling {
-BEGIN_TILING_DATA_DEF(DisetangleAttentionTilingData)
+BEGIN_TILING_DATA_DEF(DisentangleAttentionTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, batchSize);
 TILING_DATA_FIELD_DEF(uint32_t, headNum);
 TILING_DATA_FIELD_DEF(uint32_t, seqLen);
@@ -27,7 +27,7 @@ TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, MM);     // 矩阵乘 [acc_s, d] * [d,
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, SV_MM);  // 矩阵乘 [acc_s, acc_s] * [acc_s, d]
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(DisetangleAttention, DisetangleAttentionTilingData)
+REGISTER_TILING_DATA_CLASS(DisentangleAttention, DisentangleAttentionTilingData)
 }  // namespace optiling
 
 #endif

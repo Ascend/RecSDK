@@ -38,7 +38,7 @@ source "$UTILS_SCRIPT"
 # ==============================================================================
 # 3. 参数配置
 # ==============================================================================
-vendor_name="disetangle_attention"
+vendor_name="disentangle_attention"
 
 parse_arguments "$@" || exit 1
 

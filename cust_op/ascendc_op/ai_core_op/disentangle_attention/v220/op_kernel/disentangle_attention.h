@@ -2,8 +2,8 @@
 * Copyright (c) Huawei Technologies Co., Ltd. 2025-2025. All rights reserved.
 */
 
-#ifndef DISETANGLE_ATTENTION_KERNEL_H
-#define DISETANGLE_ATTENTION_KERNEL_H
+#ifndef DISENTANGLE_ATTENTION_KERNEL_H
+#define DISENTANGLE_ATTENTION_KERNEL_H
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
@@ -57,11 +57,11 @@ struct KernelArgs {
 };
 
 template <typename T, bool enableC2P, bool enableP2C>
-class DisetangleAttention {
+class DisentangleAttention {
 public:
-    __aicore__ inline DisetangleAttention() = default;
+    __aicore__ inline DisentangleAttention() = default;
 
-    __aicore__ inline void init(const KernelArgs &kernel_args, const DisetangleAttentionTilingData &tiling_data,
+    __aicore__ inline void init(const KernelArgs &kernel_args, const DisentangleAttentionTilingData &tiling_data,
                                 TPipe *_pipe)
     {
         this->batch_size = tiling_data.batchSize;
@@ -148,7 +148,7 @@ public:
         }
     }
 
-    __aicore__ inline void init_core_task(const DisetangleAttentionTilingData &tiling_data)
+    __aicore__ inline void init_core_task(const DisentangleAttentionTilingData &tiling_data)
     {
         caculate_core_task(tiling_data.splitCoreIdx, tiling_data.splitPrevCoreAccSN, tiling_data.splitNextCoreAccSN,
             tiling_data.useCoreNum, this->core_acc_s_n, this->core_acc_s_offset);

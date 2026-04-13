@@ -1,6 +1,6 @@
 [
     {
-        "op": "DisetangleAttention",
+        "op": "DisentangleAttention",
         "language": "cpp",
         "input_desc": [
             {

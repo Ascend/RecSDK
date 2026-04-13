@@ -1,21 +1,22 @@
-# disetangle_attention算子及样例说明
+# disentangle_attention算子及样例说明
+
 本算子仅支持NPU调用
 
-## disetangle_attention算子文件结构
+## disentangle_attention算子文件结构
 
 ```shell
-├── disetangle_attention.json    # 算子原型配置
-├── op_host    # disetangle_attention算子Host侧实现
-├── op_kernel  # disetangle_attention算子Kernel侧实现
-├── README.md  # disetangle_attention算子说明文档
-└── run.sh     # disetangle_attention算子安装脚本
+├── disentangle_attention.json    # 算子原型配置
+├── op_host    # disentangle_attention算子Host侧实现
+├── op_kernel  # disentangle_attention算子Kernel侧实现
+├── README.md  # disentangle_attention算子说明文档
+└── run.sh     # disentangle_attention算子安装脚本
 ```
 
-## disetangle_attention算子介绍
+## disentangle_attention算子介绍
 
 1. 算子分析
 
-* a) 算子的主要功能是实现deberta模型中的disetangle_attention，解耦注意力的功能
+* a) 算子的主要功能是实现deberta模型中的disentangle_attention，解耦注意力的功能
 * b) 算子参数说明：
 
 | 名称            | 输入/输出 | 数据类型 | 数据格式     | 备注               |
@@ -50,7 +51,9 @@ c) 算子约束说明：
 * 数据类型: fp16
 
 ## 算子逻辑
+
 ```mermaid
+
 graph TD
     %% ====== 内容到位置路径（c2p） ======
     InputQuery["输入 query_layer<br/>Shape: BxH, Q, D"] --> MatMul1["MatMul"]
@@ -79,4 +82,5 @@ graph TD
 ```
 
 ## 算子使用说明
+
 请参考:[RecSDK-Torch 自定义算子说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)

@@ -52,7 +52,7 @@ def gloden_disetangle_bias(op_args: TestArgs):
     return score * op_args.score_scale
 
 
-def gloden_disetangle_attention(op_args: TestArgs):
+def gloden_disentangle_attention(op_args: TestArgs):
 
     attn_weights = torch.matmul(
         op_args.query_layer * op_args.score_scale, op_args.key_layer.permute(0, 1, 3, 2)
