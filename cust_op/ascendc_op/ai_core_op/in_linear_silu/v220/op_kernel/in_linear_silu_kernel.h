@@ -16,28 +16,6 @@ See the License for the specific language governing permissions and
 #ifndef _IN_LINEAR_SILU_KERNEL_H
 #define _IN_LINEAR_SILU_KERNEL_H
 
-#if defined(IS_A5) && IS_A5
-#define IS_A2 0
-#define USE_TLA 1
-#else
-#define IS_A2 1
-#define IS_A5 0
-#define USE_TLA 0
-#endif
-
-#if IS_A2
-#define ARCH_CODE AtlasA2
-#define CATLASS_ARCH_A2_ENABLED
-#endif
-
-#if IS_A5
-#define ARCH_CODE Ascend950
-#define CATLASS_ARCH_A5_ENABLED
-#if USE_TLA == 0
-#error use tla in a5 arch pls.
-#endif
-#endif
-
 #include <acl/acl.h>
 
 constexpr int32_t SPLIT_NUM = 4;

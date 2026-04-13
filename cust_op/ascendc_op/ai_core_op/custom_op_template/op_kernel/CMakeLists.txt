@@ -18,7 +18,9 @@ if (ENABLE_CATLASS AND CATLASS_HOME)
             OPTIONS
                 -DCATLASS_ARCH=3510
                 -DCATLASS_BISHENG_ARCH=a5
-                -DIS_A5=1
+                -DUSE_TLA=1
+                -DARCH_CODE=Ascend950
+                -DCATLASS_ARCH_A5_ENABLED=1
                 -DENABLE_CV_COMM_VIA_SSBUF=true
                 -DCATLASS_HOME=${CATLASS_HOME}
                 -I${CATLASS_HOME}/include
@@ -28,7 +30,9 @@ if (ENABLE_CATLASS AND CATLASS_HOME)
             OPTIONS
                 -DCATLASS_ARCH=2201
                 -DCATLASS_BISHENG_ARCH=a2
-                -DIS_A5=0
+                -DUSE_TLA=0
+                -DARCH_CODE=AtlasA2
+                -DCATLASS_ARCH_A2_ENABLED=1
                 -DENABLE_CV_COMM_VIA_SSBUF=true
                 -DCATLASS_HOME=${CATLASS_HOME}
                 -I${CATLASS_HOME}/include

@@ -14,6 +14,8 @@
 ├── framework
     ├──torch_plugin # 算子适配层实现
 ├── test            # 算子测试用例
+├── third_party     # 第三方依赖库
+    ├── catlass        # CATLASS源码目录
 ```
 
 ## Ascend C参考设计
@@ -38,6 +40,7 @@
 进入指定算子的功能实现目录(ascendc_op/ai_core_op/目录下)，执行指令对算子进行编译和部署，默认编译安装Atlas A2训练系列产品AI Core类型。
 
 ```shell
+git submodule update --init --recursive #部分算子存在三方库依赖，需要初始化submodule
 bash run.sh
 ```
 
