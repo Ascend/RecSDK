@@ -8,7 +8,7 @@
 #include <cmath>
 #include <limits>
 #include <vector>
-#include "disetangle_attention_tiling.h"
+#include "disentangle_attention_tiling.h"
 #include "register/op_def_registry.h"
 #include "ops_log.h"
 
@@ -23,7 +23,7 @@ constexpr uint32_t UB_REV_BYTE_SIZE = 20 * KBYTES;  // ub 预留20K空间
 
 namespace optiling {
 
-static ge::graphStatus TilingShape(gert::TilingContext *context, DisetangleAttentionTilingData &tiling)
+static ge::graphStatus TilingShape(gert::TilingContext *context, DisentangleAttentionTilingData &tiling)
 {
     OPS_LOG_E_IF_NULL("context->GetInputShape(0)", context->GetInputShape(0), return ge::GRAPH_FAILED);
     auto query_shape = context->GetInputShape(0)->GetStorageShape();
@@ -36,7 +36,7 @@ static ge::graphStatus TilingShape(gert::TilingContext *context, DisetangleAtten
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingCore(gert::TilingContext *context, DisetangleAttentionTilingData &tiling)
+static ge::graphStatus TilingCore(gert::TilingContext *context, DisentangleAttentionTilingData &tiling)
 {
     auto batchSize = tiling.get_batchSize();
     auto headNum = tiling.get_headNum();
@@ -82,7 +82,7 @@ static ge::graphStatus TilingMatmulImpl(gert::TilingContext *context, uint32_t m
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingMatmul(gert::TilingContext *context, DisetangleAttentionTilingData &tiling)
+static ge::graphStatus TilingMatmul(gert::TilingContext *context, DisentangleAttentionTilingData &tiling)
 {
     auto nums = tiling.get_headNum();
     auto dim = tiling.get_headDim();
@@ -101,7 +101,7 @@ static ge::graphStatus TilingMatmul(gert::TilingContext *context, DisetangleAtte
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingWorkspace(gert::TilingContext *context, DisetangleAttentionTilingData &tiling)
+static ge::graphStatus TilingWorkspace(gert::TilingContext *context, DisentangleAttentionTilingData &tiling)
 {
     auto useCoreNum = tiling.get_useCoreNum();
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -114,7 +114,7 @@ static ge::graphStatus TilingWorkspace(gert::TilingContext *context, DisetangleA
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingAttrs(gert::TilingContext *context, DisetangleAttentionTilingData &tiling)
+static ge::graphStatus TilingAttrs(gert::TilingContext *context, DisentangleAttentionTilingData &tiling)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     OPS_LOG_E_IF_NULL("attrs", attrs, return ge::GRAPH_FAILED);
@@ -130,7 +130,7 @@ static ge::graphStatus TilingAttrs(gert::TilingContext *context, DisetangleAtten
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingSoftmax(gert::TilingContext *context, DisetangleAttentionTilingData &tiling)
+static ge::graphStatus TilingSoftmax(gert::TilingContext *context, DisentangleAttentionTilingData &tiling)
 {
     int64_t local_workspace_byte_size = static_cast<int64_t>(UB_LOOP_PROC_N) * KBYTES;
 
@@ -147,7 +147,7 @@ static ge::graphStatus TilingSoftmax(gert::TilingContext *context, DisetangleAtt
 static ge::graphStatus TilingFunc(gert::TilingContext *context)
 {
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
-    DisetangleAttentionTilingData tiling;
+    DisentangleAttentionTilingData tiling;
     if (ge::GRAPH_SUCCESS != TilingShape(context, tiling)) {
         return ge::GRAPH_FAILED;
     }
@@ -258,9 +258,9 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext *context)
 }  // namespace ge
 
 namespace ops {
-class DisetangleAttention : public OpDef {
+class DisentangleAttention : public OpDef {
 public:
-    explicit DisetangleAttention(const char *name) : OpDef(name)
+    explicit DisentangleAttention(const char *name) : OpDef(name)
     {
         this->Input("query_layer")
             .ParamType(REQUIRED)
@@ -325,5 +325,5 @@ public:
     }
 };
 
-OP_ADD(DisetangleAttention);
+OP_ADD(DisentangleAttention);
 }  // namespace ops

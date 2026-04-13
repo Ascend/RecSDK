@@ -110,7 +110,7 @@ void tensor_format_check(const at::Tensor& query_layer, const at::Tensor& key_la
 }
 
 // 为NPU设备注册前向实现
-std::tuple<at::Tensor, at::Tensor, at::Tensor> DisetangleAttentionPTA(
+std::tuple<at::Tensor, at::Tensor, at::Tensor> DisentangleAttentionPTA(
     const at::Tensor& query_layer, const at::Tensor& key_layer, const at::Tensor& value_layer,
     const at::Tensor& pos_key_layer, const at::Tensor& pos_query_layer, const at::Tensor& relative_pos,
     const at::Tensor& attn_mask, const std::string pos_attr_type, const double score_scale)
@@ -150,13 +150,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> DisetangleAttentionPTA(
         return std::make_tuple(attn_output, attn_probs, attn_weight);
     }
 
-    EXEC_NPU_CMD(aclnnDisetangleAttention, query_layer_conti, key_layer_conti, value_layer_conti, pos_key_layer_conti,
+    EXEC_NPU_CMD(aclnnDisentangleAttention, query_layer_conti, key_layer_conti, value_layer_conti, pos_key_layer_conti,
                  pos_query_layer_conti, relative_pos_conti, mask_conti, pos_attr, score_scale, attn_output, attn_probs,
                  attn_weight);
     return std::make_tuple(attn_output, attn_probs, attn_weight);
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor> DisetangleAttentionMeta(
+std::tuple<at::Tensor, at::Tensor, at::Tensor> DisentangleAttentionMeta(
     const at::Tensor& query_layer, const at::Tensor& key_layer, const at::Tensor& value_layer,
     const at::Tensor& pos_key_layer, const at::Tensor& pos_query_layer, const at::Tensor& relative_pos,
     const at::Tensor& attn_mask, const std::string pos_attr_type, const double score_scale)
@@ -183,10 +183,10 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 {
-    m.impl("disentangle_attention", &DisetangleAttentionPTA);
+    m.impl("disentangle_attention", &DisentangleAttentionPTA);
 }
 
 TORCH_LIBRARY_IMPL(mxrec, Meta, m)
 {
-    m.impl("disentangle_attention", &DisetangleAttentionMeta);
+    m.impl("disentangle_attention", &DisentangleAttentionMeta);
 }

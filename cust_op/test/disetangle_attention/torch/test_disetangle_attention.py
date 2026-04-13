@@ -24,7 +24,7 @@ import torch
 import torch_npu
 from custom_op import call_custom_op
 from gendata import TestArgs, DataArgs, create_test_data
-from gloden import gloden_disetangle_attention
+from gloden import gloden_disentangle_attention
 from verify import compare_result
 
 DEVICE = "npu:0"
@@ -94,7 +94,7 @@ def run_test(args: TestArgs, test_cnt: int):
     torch.npu.synchronize()
     for _ in range(test_cnt):
         gloden_atten_outputs, gloden_atten_probs, gloden_atten_weights = (
-            gloden_disetangle_attention(args)
+            gloden_disentangle_attention(args)
         )
     torch.npu.synchronize()
     end_time = time.time()
