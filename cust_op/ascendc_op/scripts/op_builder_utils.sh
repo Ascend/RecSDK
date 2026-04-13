@@ -535,12 +535,12 @@ prepare_and_build() {
         if [ -n "$CATLASS_HOME" ] && [ "$enable_catlass" = "True" ] && [ -f "$kernel_cmakelists" ]; then
             local catlass_include_dir="${CATLASS_HOME}/include"
             if [ "${AI_CORE_PROFILE:-v220}" = "c310" ]; then
-                sed -i "2i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=3510 \
-                    -DCATLASS_BISHENG_ARCH=a5 -DIS_A5=1  -DENABLE_CV_COMM_VIA_SSBUF=true \
+                sed -i "2i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=3510 -DARCH_CODE=Ascend950 -DUSE_TLA=1 \
+                    -DCATLASS_BISHENG_ARCH=a5 -DCATLASS_ARCH_A5_ENABLED=true -DENABLE_CV_COMM_VIA_SSBUF=true \
                     -DCATLASS_HOME=${CATLASS_HOME} -I${catlass_include_dir})" "${kernel_cmakelists}"
             else
-                sed -i "2i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=2201 \
-                    -DCATLASS_BISHENG_ARCH=a2 -DIS_A5=0  -DENABLE_CV_COMM_VIA_SSBUF=true \
+                sed -i "2i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=2201 -DARCH_CODE=AtlasA2 -DUSE_TLA=0 \
+                    -DCATLASS_BISHENG_ARCH=a2 -DCATLASS_ARCH_A2_ENABLED=true -DENABLE_CV_COMM_VIA_SSBUF=true \
                     -DCATLASS_HOME=${CATLASS_HOME} -I${catlass_include_dir})" "${kernel_cmakelists}"
             fi
         fi

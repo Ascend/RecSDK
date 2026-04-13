@@ -42,12 +42,9 @@
 
 # 依赖
 
-算子依赖CATLASS源码， 验证过的版本是[catlass v1.3.0](https://raw.gitcode.com/cann/catlass/archive/refs/heads/v1.3.0.zip)
-
-解压后，将catlass所在目录声明为环境变量：
-
+算子依赖CATLASS源码, 编译前需要初始化submodule：
 ```shell
-export CATLASS_HOME=<catlass_home>
+git submodule update --init --recursive
 ```
 
 例如：
