@@ -8,7 +8,7 @@
 
 |用户名|描述|初始密码|密码修改方法|
 |--|--|--|--|
-|root|部署Rec SDK Torch|用户自定义|使用**passwd**命令修改|
+|root|部署RecSDK-Torch|用户自定义|使用**passwd**命令修改|
 |HwHiAiUser|安装驱动，运行Demo依赖的用户|用户自定义|使用**passwd**修改|
 
 **debian系统中DockerFile示例的基础镜像用户<a name="section16139169181617"></a>**
@@ -33,7 +33,6 @@
 |list|无|-|
 |irc|无|-|
 |_apt|无|-|
-
 
 **debian系统中RecSDK-Torch组件容器内的用户<a name="section646063243314"></a>**
 
