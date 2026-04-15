@@ -1,6 +1,25 @@
-# 常用操作<a name="ZH-CN_TOPIC_0000001630246513"></a>
+# 常用操作<a name="zh-cn_topic_0000001630246513"></a>
 
-## 查看Rec SDK TensorFlow安装与卸载记录<a name="ZH-CN_TOPIC_0000001683896117"></a>
+## （可选）片上内存侧动态扩容算子包安装<a name="zh-cn_topic_0000001630046409"></a>
+
+如需使用片上内存侧动态扩容功能，请参考本步骤编译安装片上内存侧动态扩容算子包。
+
+**操作步骤<a name="section15154203811598"></a>**
+
+1. 执行如下命令，在容器中设置CANN相关环境变量。
+
+    ```bash
+    source /usr/local/Ascend/cann/set_env.sh
+    ```
+
+2. 下载[Rec SDK](https://gitcode.com/Ascend/RecSDK/tree/develop/cust_op)。
+3. 解压压缩包，进入“cust\_op/ascendc\_op/ai\_core\_op/cust\_op\_by\_addr“路径下，参考以下命令编译并安装片上内存侧动态扩容算子包。
+
+    ```bash
+    bash run.sh
+    ```
+
+## 查看Rec SDK TensorFlow安装与卸载记录<a name="zh-cn_topic_0000001683896117"></a>
 
 Rec SDK TensorFlow为Wheel包格式，安装、卸载日志记录在系统history中。
 
@@ -12,8 +31,8 @@ Rec SDK TensorFlow为Wheel包格式，安装、卸载日志记录在系统histor
 
 在Linux系统中，history命令一般默认保存最新的1000条命令。如果需要修改保存的命令数量，比如只保留200条历史命令，则可以在“/etc/profile“文件中修改HISTSIZE环境变量。修改方法如下：
 
--   使用编辑器（如vim编辑器）修改。
--   使用sed直接修改，命令如下：
+- 使用编辑器（如vim编辑器）修改。
+- 使用sed直接修改，命令如下：
 
     **sed -i 's/^HISTSIZE=**_number_**/HISTSIZE=**_newNumber_**/' /etc/profile**，*number*表示修改前的命令数量，*newNumber*表示修改后的命令数量。以保存的命令数量从1000改为200为例：
 
@@ -57,5 +76,3 @@ PROMPT_COMMAND=' { date "+%Y-%m-%d %T - $(history 1 | { read x cmd; echo "$cmd";
 ```
 
 其中日志文件路径为“\~/log/RecSDK”，请保证磁盘空间足够，日志文件设置权限为640。
-
-

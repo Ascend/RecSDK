@@ -277,7 +277,7 @@ CM_WORKER_SIZE=8
 
     - local\_rank\_size = 8，取值说明如下：
 
-        **export CM\_CHIEF\_DEVICE**=0（表示0、1、2、3、4、5、6、7、8卡参与训练）
+        **export CM\_CHIEF\_DEVICE**=0（表示0、1、2、3、4、5、6、7卡参与训练）
 
     >[!NOTE]
     >Rec SDK TensorFlow默认使用8卡训练，16卡使能需要执行以下命令。
