@@ -1,4 +1,4 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用。
 
@@ -8,6 +8,7 @@
 |----------------|------|
 | Atlas A2训练系列产品 | 是    |
 | Atlas A3训练系列产品 | 是    |
+| Atlas A5训练系列产品 | 是    |
 
 # norm_multiply_dropout_backward算子目录层级
 
@@ -57,7 +58,9 @@ norm_multiply_dropout_backward
 | d_weight      | 输出     | Tensor | float32                  | [C]                | C仅支持值为512,1024。               | weight的梯度。由于需要保持累加精度，因此输出类型固定为float32                  |
 | d_bias        | 输出     | Tensor | float32                  | [C]                | C仅支持值为512,1024。               | bias的梯度。由于需要保持累加精度，因此输出类型固定为float32                    |
 
-注：入参中除d_out外，其他参数均为前向计算时的入参/输出，基于PyTorch自动求导框架保存给反向计算时使用。
+> 注：
+> 1 **Atlas A5训练系列产品不支持输入x的float32数据类型。**
+> 2 入参中除d_out外，其他参数均为前向计算时的入参/输出，基于PyTorch自动求导框架保存给反向计算时使用。
 
 # 算子编译部署
 

@@ -30,11 +30,13 @@ from torch import Tensor
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../common')))
 from utils import compare_data_with_double_pole
 
+is_ascend_950 = False
 is_gpu = torch.cuda.is_available()
 if not is_gpu:
     import torch_npu
     torch.npu.set_device(0)
     torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
+    is_ascend_950 = str(torch_npu.npu.get_device_name()).strip().startswith("Ascend950PR")
 
 logging.getLogger().setLevel(logging.INFO)
 torch.manual_seed(321)
@@ -43,7 +45,9 @@ np.random.seed(42)
 
 DIM0_MAX = int(1e6)
 SUPPORT_DIM1_LIST = [512, 1024]
-SUPPORT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+SUPPORT_DTYPES = [torch.float16, torch.bfloat16]
+if not is_ascend_950:
+    SUPPORT_DTYPES.append(torch.float32)
 
 eps = 1e-5
 
@@ -60,8 +64,6 @@ INVALID_PARAMS = [
     (1, 512, 1e-5, 1.3, torch.float64),  # 不支持的dtype
     (1, 512, 1e-5, 0.3, torch.bfloat16, 1024),  # weight bias dim和x dim1不一致
 ]
-
-torch.npu.set_device(0)
 
 cpu_device = torch.device("cpu")
 accelerator_device = torch.device("cuda") if is_gpu else torch.device("npu")

@@ -1,0 +1,69 @@
+#!/bin/bash
+# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+set -e
+
+# ==============================================================================
+# 1. 初始化路径
+# ==============================================================================
+readonly THIS_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+readonly WORK_DIR="$(dirname "${THIS_SCRIPT}")"
+readonly UTILS_SCRIPT="${WORK_DIR}/../../../scripts/op_builder_utils.sh"
+
+# ==============================================================================
+# 2. 加载通用库
+# ==============================================================================
+
+if [ ! -f "$UTILS_SCRIPT" ]; then
+    echo "ERROR: Cannot find op_builder_utils.sh at ${UTILS_SCRIPT}" >&2
+    echo "Please check your directory structure." >&2
+    exit 1
+fi
+
+source "$UTILS_SCRIPT"
+
+# ==============================================================================
+# 3. 参数配置
+# ==============================================================================
+vendor_name="norm_multiply_dropout"
+export AI_CORE_PROFILE="c310"
+export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/../v220/norm_multiply_dropout.json")"
+export OPERATOR_SOURCE_ROOT="$(readlink -f "${WORK_DIR}/../v220")"
+export INSERT_SUPPORT_950_PATHS="op_host/${vendor_name}.cpp"
+
+parse_arguments "$@" || exit 1
+
+# ==============================================================================
+# 4. 执行标准化流程
+# ==============================================================================
+
+readonly TGT="${WORK_DIR}/${vendor_name}"
+
+replace_operator_sources() {
+    # 清理旧文件 (防止残留)
+    rm -rf "${WORK_DIR}/${vendor_name}/op_kernel"/*.h "${WORK_DIR}/${vendor_name}/op_kernel"/*.cpp 2>/dev/null || true
+    rm -rf "${WORK_DIR}/${vendor_name}/op_host"/*.h "${WORK_DIR}/${vendor_name}/op_host"/*.cpp 2>/dev/null || true
+
+    cp -rf "${OPERATOR_SOURCE_ROOT}/op_kernel"/*.h "${WORK_DIR}/${vendor_name}/op_kernel"
+    cp -rf "${OPERATOR_SOURCE_ROOT}/op_kernel"/*.cpp "${WORK_DIR}/${vendor_name}/op_kernel"
+    cp -rf "${OPERATOR_SOURCE_ROOT}/op_host"/*.h "${WORK_DIR}/${vendor_name}/op_host"
+    cp -rf "${OPERATOR_SOURCE_ROOT}/op_host"/*.cpp "${WORK_DIR}/${vendor_name}/op_host"
+
+    sed -i "1i #define SUPPORT_950" "${TGT}/op_host/${vendor_name}.cpp"
+    sed -i "1i #define SUPPORT_950" "${TGT}/op_kernel/${vendor_name}.cpp"
+}
+
+build_and_install_operator "$WORK_DIR" "$vendor_name" || exit 1

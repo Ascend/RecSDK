@@ -1,4 +1,4 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用。
 
@@ -8,6 +8,7 @@
 |----------------|------|
 | Atlas A2训练系列产品 | 是    |
 | Atlas A3训练系列产品 | 是    |
+| Atlas A5训练系列产品 | 是    |
 
 # norm_multiply_dropout算子目录层级
 
@@ -100,6 +101,9 @@ y = norm_multiply_dropout_pt(x_pt, u_pt, w_pt, b_pt, eps, dropout_ratio)
 | output        | 输出     | Tensor | float32/float16/bfloat16 | [B, C]                                    | B∈[1,1000000]，C仅支持值为512,1024。 | 前向计算结果，输出数据类型与输入x数据类型一致。                               |
 | mean          | 输出     | Tensor | float                    | [B]                                       | B∈[1,1000000]                 | 归一化操作中计算过程中的均值。由于计算过程中会转为float计算，因此数据类型为float。         |
 | var           | 输出     | Tensor | float                    | [B]                                       | B∈[1,1000000]                 | 归一化操作中计算过程中的方差。由于计算过程中会转为float计算，因此数据类型为float。         |
+
+> 注：
+> 1 **Atlas A5训练系列产品不支持输入x的float32数据类型。**
 
 # 算子编译部署
 
