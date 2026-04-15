@@ -17,7 +17,7 @@ def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
 |key_dtype|TensorFlow的dtype类型|必选|稀疏特征键（key）数据类型。可选类型仅限于tf.int64和tf.int32。|
-|dim|<li>int</li><li>tf.Tensorshape</li>|必选|嵌入层（Embedding）维度。取值范围：[1, 8192]。如果dim需要设置为大于512的值，请保证内存和磁盘空间足够或者使用DDR模式，或者减小稀疏表的vocabulary size。<br>如入参为tf.Tensorshape类型，则要求其ndims为1，该值表示嵌入层维度。<br>请根据服务器的实际配置进行设置。|
+|dim|<li>int</li><li>tf.TensorShape</li>|必选|嵌入层（Embedding）维度。取值范围：[1, 8192]。如果dim需要设置为大于512的值，请保证内存和磁盘空间足够或者使用DDR模式，或者减小稀疏表的vocabulary size。<br>如入参为tf.TensorShape类型，则要求其ndims为1，该值表示嵌入层维度。<br>请根据服务器的实际配置进行设置。|
 |name|str|必选|稀疏表的表名，只能包含数字、字母、下划线和特殊符号“.”。表名长度范围：[1, 100]。<br>稀疏表的表名需要保持唯一，不能重复。|
 |emb_initializer|TensorFlow的初始化器类型|必选|嵌入层初始值生成器。|
 |device_vocabulary_size|int|可选|Device侧嵌入层数量，默认值为1。取值范围：1~10亿。当设置超过25600000时，请保证内存和磁盘空间足够，或者开启片上内存侧动态扩容功能，或者减小稀疏表dim的大小。请根据服务器的实际配置进行设置。<br>如果启用DDR/SSD存储，即host_vocabulary_size不为0，则需要device_vocabulary_size≥连续2个batch去重后的key个数，要求片上内存能存放至少2个batch数据，此时片上内存仅作为cache。|
@@ -72,7 +72,7 @@ def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1
 import tensorflow as tf
 from mx_rec.core.embedding import create_table
 sparse_hashtable = create_table(key_dtype=tf.int32,
-                                dim=tf.Tensorshape([128]),
+                                dim=tf.TensorShape([128]),
                                 name="sparse_embeddings_table",
                                 emb_initializer=tf.truncated_normal_initializer(),
                                 device_vocabulary_size=24_000_000 * 8,
