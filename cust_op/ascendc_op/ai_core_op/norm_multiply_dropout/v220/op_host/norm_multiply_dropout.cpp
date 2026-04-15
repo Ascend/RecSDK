@@ -48,6 +48,14 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     int32_t xRowCount = xShape->GetStorageShape().GetDim(0);
     int32_t xColCount = xShape->GetStorageShape().GetDim(1);
 
+#ifdef SUPPORT_950
+    auto xInput = context->GetInputTensor(0);
+    OPS_LOG_E_IF_NULL("xInput", xInput, return ge::GRAPH_FAILED);
+    ge::DataType dataType = xInput->GetDataType();
+    OPS_CHECK(dataType == ge::DataType::DT_FLOAT,
+              OPS_LOG_E("", "Input x not support fp32 in ascend 950 series device."), return ge::GRAPH_FAILED);
+#endif
+
     auto platformInfo = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t coreNum = platformInfo.GetCoreNumAiv();
 
@@ -188,6 +196,9 @@ public:
         this->AICore().SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+#ifdef SUPPORT_950
+        this->AICore().AddConfig("ascend950");
+#endif
     }
 };
 

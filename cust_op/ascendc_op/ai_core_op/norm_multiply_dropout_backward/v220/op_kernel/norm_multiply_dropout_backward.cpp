@@ -296,7 +296,12 @@ public:
             Adds(xLocal[i * xColCount], xLocal[i * xColCount], meanLocal.GetValue(i), xColCount);
         }
         Adds<float>(varLocal, varLocal, eps, calcRows);
+#ifdef SUPPORT_950
+        static constexpr SqrtConfig config = { SqrtAlgo::PRECISION_1ULP_FTZ_TRUE };
+        Sqrt<float, config>(stdLocal, varLocal, calcRows);
+#else
         Sqrt(stdLocal, varLocal, calcRows);
+#endif
         for (int32_t i = 0; i < calcRows; i++) {
             Muls<float>(normLocal[i * xColCount], xLocal[i * xColCount], POSITIVE_ONE_F / stdLocal.GetValue(i),
                         xColCount);

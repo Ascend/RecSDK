@@ -268,7 +268,12 @@ public:
         // norm
         // std = sqrt(var + eps)
         Adds<float>(varLocal, varLocal, eps, calcRows);
+#ifdef SUPPORT_950
+        static constexpr SqrtConfig config = { SqrtAlgo::PRECISION_1ULP_FTZ_TRUE };
+        Sqrt<float, config>(stdLocal, varLocal, calcRows);
+#else
         Sqrt(stdLocal, varLocal, calcRows);
+#endif
         // x_hat = (x - mean) / std
         for (int32_t i = 0; i < calcRows; i++) {
             Muls<float>(normLocal[i * xColCount], xLocal[i * xColCount], positiveOneFloat / stdLocal.GetValue(i),
@@ -288,8 +293,11 @@ public:
         info.firstAxis = calcRows;
         info.srcLastAxis = xColCount;
         info.maskLastAxis = xColCount / oneMask2FloatNum;
-
+#ifdef SUPPORT_950
+        pipe_barrier(PIPE_ALL);
+#else
         pipe_barrier(PIPE_V);
+#endif
         if constexpr (isNeedDrop) {
             // dropout
             DropOut<float, false, DROPOUT_MODE>(outputLocal, outputLocal, maskLocal, dropTemp, probValue, info);

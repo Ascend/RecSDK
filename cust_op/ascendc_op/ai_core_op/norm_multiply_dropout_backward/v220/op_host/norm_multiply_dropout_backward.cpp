@@ -20,7 +20,11 @@ See the License for the specific language governing permissions and
 #include "norm_multiply_dropout_backward_tiling.h"
 #include "../op_kernel/norm_multiply_dropout_backward_tilingKey.h"
 
-constexpr uint64_t UB_RESERVED_LENGTH = 2048;
+#ifdef SUPPORT_950
+    constexpr uint64_t UB_RESERVED_LENGTH = 2048 * 5;
+#else
+    constexpr uint64_t UB_RESERVED_LENGTH = 2048;
+#endif
 constexpr int32_t GRAD_TENSOR_NUM_PER_ROW = 12;
 constexpr int MASK_ELE_RATIO = 8;
 constexpr int REDUCE_ELEMENTS = 64;
@@ -37,6 +41,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_CHECK(xStorageShape.GetDimNum() != 2,
               OPS_LOG_E("", "Input x dim num must be 2, but get %d", xStorageShape.GetDimNum()),
               return ge::GRAPH_FAILED);
+#ifdef SUPPORT_950
+    auto xInput = context->GetInputTensor(1);
+    OPS_LOG_E_IF_NULL("xInput", xInput, return ge::GRAPH_FAILED);
+    ge::DataType dataType = xInput->GetDataType();
+    OPS_CHECK(dataType == ge::DataType::DT_FLOAT,
+              OPS_LOG_E("", "Input x not support fp32 in ascend 950 series device."), return ge::GRAPH_FAILED);
+#endif
     int32_t xRowCount = xStorageShape.GetDim(0);
     int32_t xColCount = xStorageShape.GetDim(1);
 
@@ -188,6 +199,9 @@ public:
         this->AICore().SetTiling(optiling::TilingFunc);
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
+#ifdef SUPPORT_950
+        this->AICore().AddConfig("ascend950");
+#endif
     }
 };
 
