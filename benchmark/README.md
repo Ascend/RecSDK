@@ -111,10 +111,88 @@ MMOE模型运行前需访问 https://tianchi.aliyun.com/dataset/74690 下载alie
 
 ## DLRM_META 模型
 
-DLRM_META模型运行前需参考 https://github.com/facebookresearch/dlrm.git 准备Kaggle Display Advertising dataset数据集(https://ailab.criteo.com/ressources/), 
-在**与本README.md同级的data目录**下，新建dlrm_meta目录存放原始train.txt和test.txt文件。
+[DLRM_META](https://github.com/facebookresearch/dlrm.git)模型运行需要下载[Kaggle Display Advertising dataset](https://ailab.criteo.com/ressources/)数据集, 
+在benchmark/datasets目录下新建dlrm_meta目录存放原始train.txt和test.txt文件。
 
-## RECSYS_RANKING 模型
+```shell
+|-- benchmark
+   |-- configs
+       |-- DLRM_META.json
+   |-- datasets
+       |-- dlrm_meta
+           |-- train.txt
+           |-- test.txt
+```
 
-RECSYS_RANKING模型运行前需参考 https://github.com/NVIDIA/recsys-examples/blob/v25.09/examples/hstu/README.md#dataset-preprocessing 准备数据集, 
-在**与本README.md同级的data目录**下，新建recsys_ranking目录存放。
+## HSTU_META 模型
+
+### 运行依赖
+
+- RecSdk自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
+    - asynchronous_complete_cumsum
+    - dense_to_jagged
+    - hstu_dense_backward
+    - hstu_dense_forward
+    - jagged_to_padded_dense
+    - invert_permute
+    - permute2d_sparse_data
+
+### 准备数据集
+
+[HSTU_META](https://github.com/meta-recsys/generative-recommenders)数据集自动下载，如果下载失败可以参考开源代码处理。
+
+## NV Recsys-examlpes 模型
+
+### 运行依赖
+
+- RecSdk自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
+    - asynchronous_complete_cumsum
+    - dense_to_jagged
+    - hstu_dense_backward
+    - hstu_dense_forward
+    - jagged_to_padded_dense
+    - invert_permute
+    - permute2d_sparse_data
+- [DynamicEmbedding for NPU](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/dynamic_emb/README.md): 使用源码方式安装
+
+### 下载指定版本的训练套件
+
+依赖:
+
+- Megatron-LM (core_r0.14.0)
+- MindSpeed(core_r0.14.0)
+
+在recsys-example目录下载Mindspeed文件夹和Megatron-LM文件夹
+
+```shell
+|-- recsys-example
+   |-- Mindspeed
+   |-- Megatron-LM
+   |-- recsys-examples-NV
+
+# Megatron
+git clone https://github.com/NVIDIA/Megatron-LM.git
+cd Megatron-LM
+git checkout core_r0.14.0
+
+# MindSpeed
+git clone https://gitcode.com/Ascend/MindSpeed.git 
+cd MindSpeed
+git checkout core_r0.14.0
+```
+
+### 准备数据集
+
+[NV Recsys-examlpes](https://github.com/NVIDIA/recsys-examples)模型运行前需要按[步骤](https://github.com/NVIDIA/recsys-examples/blob/v25.09/examples/hstu/README.md#dataset-preprocessing)准备movielen-20m数据集
+
+在benchmark/datasets目录新建recsys_examples目录存放处理好的ml-20m数据集目录。
+
+```shell
+|-- benchmark
+   |-- configs
+       |-- RECSYS_RANKING.json
+       |-- RECSYS_RETRIEVAL.json
+   |-- datasets
+       |-- recsys_examples
+           |-- ml-20m
+```

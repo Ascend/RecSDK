@@ -1,9 +1,9 @@
 {
-    "name": "RECSYS_RANKING",
+    "name": "RECSYS_RETRIEVAL",
     "url": "https://github.com/NVIDIA/recsys-examples.git",
-    "model_name": "recsys_ranking",
-    "commit_id": "e06587407d07fe86d58fac91ee0f390eef26d309",
-    "patch_path": "patches/recsys_ranking_npu.patch",
+    "model_name": "recsys_retrieval",
+    "commit_id": "a9e3feeaeac9ab933ea78dace0fbc50f81924fa0",
+    "patch_path": "patches/recsys_retrieval_npu.patch",
     "mode": "train",
     "epoch": 50,
     "profiling_flag": false,
@@ -12,12 +12,12 @@
     "run_cmd": [
         "bash",
         "-c",
-        "cd ./examples/hstu && bash recsys_ranking.sh"
+        "cd ./examples/hstu && bash recsys_retrieval.sh"
     ],
     "pip_install_self": false,
     "pip_install_requirements": false,
     "extra_cmd": [
-        "cp -r ../../../tests/recsys_ranking.sh ./examples/hstu/",
+        "cp -r ../../../tests/recsys_retrieval.sh ./examples/hstu/",
         "mkdir -p ./examples/hstu/tmp_data",
         "cp -r ../../../dataset/recsys-examples/. ./examples/hstu/tmp_data",
         "git clone https://gitcode.com/Ascend/MindSpeed.git ../MindSpeed",
