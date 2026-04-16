@@ -65,8 +65,8 @@ export NPU_PROFILE=0
 #---------------------------------------------
 # train job related
 #---------------------------------------------
-py_file=pretrain_gr_ranking.py
-config_file=movielen_ranking.gin
+py_file=./training/pretrain_gr_retrieval.py
+config_file=./training/configs/movielen_retrieval.gin
 
 
 torchrun \
@@ -75,4 +75,4 @@ torchrun \
     --master_port 6000 \
     ${py_file} \
     --gin-config-file ${config_file} \
-    $@ 2>&1 |tee temp_$(date '+%Y%m%d_%H%M%S').log
+    $@ 2>&1 |tee log/retrieval_$(date '+%Y%m%d_%H%M%S').log

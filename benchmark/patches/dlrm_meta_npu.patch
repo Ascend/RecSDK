@@ -1,22 +1,21 @@
-From 1b43a560ef3575667c75655f89c36669ddc4a21b Mon Sep 17 00:00:00 2001
+From dd4acb8384d4566a5ee9bbfb47c981f1a481ca51 Mon Sep 17 00:00:00 2001
 From: chenzihao40 <chenzihao40@huawei.com>
-Date: Wed, 8 Apr 2026 17:27:26 +0800
-Subject: [PATCH] =?UTF-8?q?dlrm=E4=BF=AE=E6=94=B9=E9=80=82=E9=85=8D?=
+Date: Wed, 15 Apr 2026 16:57:54 +0800
+Subject: [PATCH] =?UTF-8?q?npu=E9=80=82=E9=85=8Ddlrm?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 ---
  data_utils.py                          |   4 +-
- dlrm_s_pytorch.py                      | 175 ++++++++++++++++++++-----
- extend_distributed.py                  |  25 +++-
- torchrec_dlrm/aws_component.py         |   1 +
+ dlrm_s_pytorch.py                      | 220 +++++++++++++++++++------
+ extend_distributed.py                  |  30 +++-
  torchrec_dlrm/data/dlrm_dataloader.py  |  13 +-
- torchrec_dlrm/data/multi_hot_criteo.py |  36 +++--
- torchrec_dlrm/dlrm_main.py             |  43 +++---
+ torchrec_dlrm/data/multi_hot_criteo.py |  36 ++--
+ torchrec_dlrm/dlrm_main.py             |  43 ++---
  torchrec_dlrm/multi_hot.py             |  21 +--
- tricks/qr_embedding_bag.py             |  16 +--
- 9 files changed, 219 insertions(+), 115 deletions(-)
+ tricks/qr_embedding_bag.py             |  16 +-
+ 8 files changed, 255 insertions(+), 128 deletions(-)
 
 diff --git a/data_utils.py b/data_utils.py
 index a0dbdd2..578f98a 100644
@@ -37,13 +36,14 @@ index a0dbdd2..578f98a 100644
  
                  # count uniques
 diff --git a/dlrm_s_pytorch.py b/dlrm_s_pytorch.py
-index e1b42b7..aa6edc7 100644
+index e1b42b7..d9ff464 100644
 --- a/dlrm_s_pytorch.py
 +++ b/dlrm_s_pytorch.py
-@@ -100,6 +100,15 @@ from torch.nn.parameter import Parameter
+@@ -100,6 +100,16 @@ from torch.nn.parameter import Parameter
  from torch.optim.lr_scheduler import _LRScheduler
  from torch.utils.tensorboard import SummaryWriter
  
++import os
 +try:
 +    import torch_npu
 +    from torch_npu.profiler import profile as npu_profiler
@@ -56,7 +56,7 @@ index e1b42b7..aa6edc7 100644
  # mixed-dimension trick
  from tricks.md_embedding_bag import md_solver, PrEmbeddingBag
  
-@@ -125,10 +134,17 @@ def time_wrap(use_gpu):
+@@ -125,10 +135,17 @@ def time_wrap(use_gpu):
          torch.cuda.synchronize()
      return time.time()
  
@@ -76,7 +76,7 @@ index e1b42b7..aa6edc7 100644
              # lS_i can be either a list of tensors or a stacked tensor.
              # Handle each case below:
              if ndevices == 1:
-@@ -145,7 +161,7 @@ def dlrm_wrap(X, lS_o, lS_i, use_gpu, device, ndevices=1):
+@@ -145,7 +162,7 @@ def dlrm_wrap(X, lS_o, lS_i, use_gpu, device, ndevices=1):
          return dlrm(X.to(device), lS_o, lS_i)
  
  
@@ -85,7 +85,55 @@ index e1b42b7..aa6edc7 100644
      with record_function("DLRM loss compute"):
          if args.loss_function == "mse" or args.loss_function == "bce":
              return dlrm.loss_fn(Z, T.to(device))
-@@ -763,7 +779,7 @@ def inference(
+@@ -274,18 +291,21 @@ class DLRM_Net(nn.Module):
+                 ).astype(np.float32)
+                 EE.embs.weight.data = torch.tensor(W, requires_grad=True)
+             else:
+-                EE = nn.EmbeddingBag(n, m, mode="sum", sparse=True)
++                # EE = nn.EmbeddingBag(n, m, mode="sum", sparse=True)
+                 # initialize embeddings
+-                # nn.init.uniform_(EE.weight, a=-np.sqrt(1 / n), b=np.sqrt(1 / n))
+-                W = np.random.uniform(
+-                    low=-np.sqrt(1 / n), high=np.sqrt(1 / n), size=(n, m)
+-                ).astype(np.float32)
++                # W = np.random.uniform(
++                #     low=-np.sqrt(1 / n), high=np.sqrt(1 / n), size=(n, m)
++                # ).astype(np.float32)
+                 # approach 1
+-                EE.weight.data = torch.tensor(W, requires_grad=True)
++                # EE.weight.data = torch.tensor(W, requires_grad=True)
+                 # approach 2
+                 # EE.weight.data.copy_(torch.tensor(W))
+                 # approach 3
+                 # EE.weight = Parameter(torch.tensor(W),requires_grad=True)
++
++                # 使用nn.Embedding替代nn.EmbeddingBag
++                EE = nn.Embedding(n, m, sparse=True)
++                nn.init.uniform_(EE.weight, a=-np.sqrt(1 / n), b=np.sqrt(1 / n))
+             if weighted_pooling is None:
+                 v_W_l.append(None)
+             else:
+@@ -450,11 +470,14 @@ class DLRM_Net(nn.Module):
+                 ly.append(QV)
+             else:
+                 E = emb_l[k]
+-                V = E(
+-                    sparse_index_group_batch,
+-                    sparse_offset_group_batch,
+-                    per_sample_weights=per_sample_weights,
+-                )
++                # V = E(
++                #     sparse_index_group_batch,
++                #     sparse_offset_group_batch,
++                #     per_sample_weights=per_sample_weights,
++                # )
++
++                # 使用nn.Embedding替代nn.EmbeddingBag
++                V = E(sparse_index_group_batch)
+ 
+                 ly.append(V)
+ 
+@@ -763,7 +786,7 @@ def inference(
      best_auc_test,
      test_ld,
      device,
@@ -94,7 +142,7 @@ index e1b42b7..aa6edc7 100644
      log_iter=-1,
  ):
      test_accu = 0
-@@ -792,7 +808,7 @@ def inference(
+@@ -792,7 +815,7 @@ def inference(
              X_test,
              lS_o_test,
              lS_i_test,
@@ -103,7 +151,7 @@ index e1b42b7..aa6edc7 100644
              device,
              ndevices=ndevices,
          )
-@@ -801,6 +817,8 @@ def inference(
+@@ -801,6 +824,8 @@ def inference(
          # tensor is on GPU memory
          if Z_test.is_cuda:
              torch.cuda.synchronize()
@@ -112,7 +160,44 @@ index e1b42b7..aa6edc7 100644
          (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
          if ext_dist.my_size > 1:
              Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
-@@ -988,6 +1006,10 @@ def run():
+@@ -898,6 +923,36 @@ def inference(
+         )
+     return model_metrics_dict, is_best
+ 
++def latency_summary_rank0(latency_list, batch_size, model_name, device_name, inductor_flag):
++    ave_step = np.array(latency_list)
++    avg_time = sum(ave_step) / len(ave_step)
++    ave_step.sort()
++
++    if len(ave_step) > 0:
++        p90 = np.percentile(ave_step, 90, method="lower")
++        p95 = np.percentile(ave_step, 95, method="lower")
++        p99 = np.percentile(ave_step, 99, method="lower")
++        p999 = np.percentile(ave_step, 99.9, method="lower")
++    
++    QPS = int(1 / avg_time)     # batch_size * world_size * 10 / avg_time
++    e2e_result = {
++        "Batch_size": batch_size,
++        "model_name": model_name,
++        "QPS": QPS,
++        "AVG Latency": avg_time,
++        "P999 Latency": p999,
++        "P99 Latency": p99,
++        "P95 Latency": p95,
++        "P90 Latency": p90,
++    }
++
++    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
++    print(f"The final performance result: {output_str}")
++
++    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
++        f.write(output_str + "\n")
+ 
+ def run():
+     ### parse arguments ###
+@@ -988,6 +1043,10 @@ def run():
      parser.add_argument("--save-onnx", action="store_true", default=False)
      # gpu
      parser.add_argument("--use-gpu", action="store_true", default=False)
@@ -123,7 +208,7 @@ index e1b42b7..aa6edc7 100644
      # distributed
      parser.add_argument("--local_rank", type=int, default=-1)
      parser.add_argument("--dist-backend", type=str, default="")
-@@ -1002,6 +1024,8 @@ def run():
+@@ -1002,6 +1061,8 @@ def run():
      parser.add_argument("--enable-profiling", action="store_true", default=False)
      parser.add_argument("--plot-compute-graph", action="store_true", default=False)
      parser.add_argument("--tensor-board-filename", type=str, default="run_kaggle_pt")
@@ -132,7 +217,7 @@ index e1b42b7..aa6edc7 100644
      # store/load model
      parser.add_argument("--save-model", type=str, default="")
      parser.add_argument("--load-model", type=str, default="")
-@@ -1070,10 +1094,10 @@ def run():
+@@ -1070,10 +1131,10 @@ def run():
          args.test_num_workers = args.num_workers
  
      use_gpu = args.use_gpu and torch.cuda.is_available()
@@ -145,7 +230,7 @@ index e1b42b7..aa6edc7 100644
          )
  
      if use_gpu:
-@@ -1082,14 +1106,26 @@ def run():
+@@ -1082,14 +1143,26 @@ def run():
          if ext_dist.my_size > 1:
              ngpus = 1
              device = torch.device("cuda", ext_dist.my_local_rank)
@@ -173,7 +258,7 @@ index e1b42b7..aa6edc7 100644
      ### prepare training data ###
      ln_bot = np.fromstring(args.arch_mlp_bot, dtype=int, sep="-")
      # input data
-@@ -1275,7 +1311,7 @@ def run():
+@@ -1275,7 +1348,7 @@ def run():
              print(T.detach().cpu())
  
      global ndevices
@@ -182,7 +267,7 @@ index e1b42b7..aa6edc7 100644
  
      ### construct the neural network specified above ###
      # WARNING: to obtain exactly the same initialization for
-@@ -1311,7 +1347,7 @@ def run():
+@@ -1311,7 +1384,7 @@ def run():
              print(param.detach().cpu().numpy())
          # print(dlrm)
  
@@ -191,7 +276,7 @@ index e1b42b7..aa6edc7 100644
          # Custom Model-Data Parallel
          # the mlps are replicated and use data parallelism, while
          # the embeddings are distributed and use model parallelism
-@@ -1327,7 +1363,7 @@ def run():
+@@ -1327,7 +1400,7 @@ def run():
  
      # distribute data parallel mlps
      if ext_dist.my_size > 1:
@@ -200,7 +285,7 @@ index e1b42b7..aa6edc7 100644
              device_ids = [ext_dist.my_local_rank]
              dlrm.bot_l = ext_dist.DDP(dlrm.bot_l, device_ids=device_ids)
              dlrm.top_l = ext_dist.DDP(dlrm.top_l, device_ids=device_ids)
-@@ -1336,7 +1372,7 @@ def run():
+@@ -1336,7 +1409,7 @@ def run():
              dlrm.top_l = ext_dist.DDP(dlrm.top_l)
  
      if not args.inference_only:
@@ -209,7 +294,7 @@ index e1b42b7..aa6edc7 100644
              sys.exit("GPU version of Adagrad is not supported by PyTorch.")
          # specify the optimizer algorithm
          opts = {
-@@ -1376,6 +1412,16 @@ def run():
+@@ -1376,6 +1449,16 @@ def run():
  
      ### main loop ###
  
@@ -226,7 +311,7 @@ index e1b42b7..aa6edc7 100644
      # training or inference
      best_acc_test = 0
      best_auc_test = 0
-@@ -1398,13 +1444,13 @@ def run():
+@@ -1398,13 +1481,13 @@ def run():
      # Load model is specified
      if not (args.load_model == ""):
          print("Loading saved model {}".format(args.load_model))
@@ -242,7 +327,7 @@ index e1b42b7..aa6edc7 100644
                  # NOTE: when targeting inference on single GPU,
                  # note that the call to .to(device) has already happened
                  ld_model = torch.load(
-@@ -1412,6 +1458,11 @@ def run():
+@@ -1412,6 +1495,11 @@ def run():
                      map_location=torch.device("cuda"),
                      # map_location=lambda storage, loc: storage.cuda(0)
                  )
@@ -254,7 +339,7 @@ index e1b42b7..aa6edc7 100644
          else:
              # when targeting inference on CPU
              ld_model = torch.load(args.load_model, map_location=torch.device("cpu"))
-@@ -1509,9 +1560,42 @@ def run():
+@@ -1509,9 +1597,42 @@ def run():
      tb_file = "./" + args.tensor_board_filename
      writer = SummaryWriter(tb_file)
  
@@ -299,7 +384,7 @@ index e1b42b7..aa6edc7 100644
      ) as prof:
          if not args.inference_only:
              k = 0
-@@ -1539,6 +1623,8 @@ def run():
+@@ -1539,6 +1660,8 @@ def run():
                      previous_iteration_time = None
  
                  for j, inputBatch in enumerate(train_ld):
@@ -308,7 +393,7 @@ index e1b42b7..aa6edc7 100644
                      if j == 0 and args.save_onnx:
                          X_onnx, lS_o_onnx, lS_i_onnx, _, _, _ = unpack_batch(inputBatch)
  
-@@ -1548,14 +1634,14 @@ def run():
+@@ -1548,14 +1671,14 @@ def run():
                      X, lS_o, lS_i, T, W, CBPP = unpack_batch(inputBatch)
  
                      if args.mlperf_logging:
@@ -325,7 +410,7 @@ index e1b42b7..aa6edc7 100644
  
                      # early exit if nbatches was set by the user and has been exceeded
                      if nbatches > 0 and j >= nbatches:
-@@ -1576,7 +1662,7 @@ def run():
+@@ -1576,7 +1699,7 @@ def run():
                          X,
                          lS_o,
                          lS_i,
@@ -334,7 +419,7 @@ index e1b42b7..aa6edc7 100644
                          device,
                          ndevices=ndevices,
                      )
-@@ -1586,7 +1672,7 @@ def run():
+@@ -1586,7 +1709,7 @@ def run():
                          W = W[ext_dist.get_my_slice(mbs)]
  
                      # loss
@@ -343,7 +428,7 @@ index e1b42b7..aa6edc7 100644
  
                      # compute loss and accuracy
                      L = E.detach().cpu().numpy()  # numpy array
-@@ -1623,7 +1709,7 @@ def run():
+@@ -1623,7 +1746,7 @@ def run():
                      if args.mlperf_logging:
                          total_time += iteration_time
                      else:
@@ -352,7 +437,7 @@ index e1b42b7..aa6edc7 100644
                          total_time += t2 - t1
  
                      total_loss += L * mbs
-@@ -1670,6 +1756,17 @@ def run():
+@@ -1670,6 +1793,17 @@ def run():
                          total_iter = 0
                          total_samp = 0
  
@@ -370,7 +455,7 @@ index e1b42b7..aa6edc7 100644
                      # testing
                      if should_test:
                          epoch_num_float = (j + 1) / len(train_ld) + k + 1
-@@ -1695,7 +1792,7 @@ def run():
+@@ -1695,7 +1829,7 @@ def run():
                              best_auc_test,
                              test_ld,
                              device,
@@ -379,7 +464,7 @@ index e1b42b7..aa6edc7 100644
                              log_iter,
                          )
  
-@@ -1788,21 +1885,22 @@ def run():
+@@ -1788,22 +1922,12 @@ def run():
                  best_auc_test,
                  test_ld,
                  device,
@@ -399,21 +484,12 @@ index e1b42b7..aa6edc7 100644
 -        with open("dlrm_s_pytorch" + time_stamp + "_total.prof", "w") as prof_f:
 -            prof_f.write(prof.key_averages().table(sort_by="self_cpu_time_total"))
 -        prof.export_chrome_trace("dlrm_s_pytorch" + time_stamp + ".json")
+-        # print(prof.key_averages().table(sort_by="cpu_time_total"))
 +        prof.stop()
-+        # time_stamp = str(datetime.datetime.now()).replace(" ", "_")
-+        # with open("dlrm_s_pytorch" + time_stamp + "_shape.prof", "w") as prof_f:
-+        #     prof_f.write(
-+        #         prof.key_averages(group_by_input_shape=True).table(
-+        #             sort_by="self_cpu_time_total"
-+        #         )
-+        #     )
-+        # with open("dlrm_s_pytorch" + time_stamp + "_total.prof", "w") as prof_f:
-+        #     prof_f.write(prof.key_averages().table(sort_by="self_cpu_time_total"))
-+        # prof.export_chrome_trace("dlrm_s_pytorch" + time_stamp + ".json")
-         # print(prof.key_averages().table(sort_by="cpu_time_total"))
  
      # plot compute graph
-@@ -1895,14 +1993,21 @@ def run():
+     if args.plot_compute_graph:
+@@ -1895,14 +2019,16 @@ def run():
              input_names=all_inputs,
              output_names=["pred"],
              dynamic_axes=dynamic_axes,
@@ -427,18 +503,13 @@ index e1b42b7..aa6edc7 100644
 +    total_time_end = time_wrap_xpu(use_xpu)
  
 +    if args.sample_statistics_num > 0:
-+        print(
-+            "Statistics training by {} num, times (ms/it): {} losses: {}".format(
-+                args.sample_statistics_num,
-+                sum(train_times[-args.sample_statistics_num:]) / args.sample_statistics_num,
-+                sum(train_losses[-args.sample_statistics_num:]) / args.sample_statistics_num
-+            )
-+        )
++        latency_summary_rank0(train_times[-args.sample_statistics_num:], args.mini_batch_size, "DLRM",
++                "NPU" if use_npu else "GPU", "inductor" if args.use_inductor != "" else "eager")
  
  if __name__ == "__main__":
      run()
 diff --git a/extend_distributed.py b/extend_distributed.py
-index fe77ded..875d8d2 100644
+index fe77ded..73258ef 100644
 --- a/extend_distributed.py
 +++ b/extend_distributed.py
 @@ -8,6 +8,11 @@ import os
@@ -486,7 +557,7 @@ index fe77ded..875d8d2 100644
          dist.init_process_group(backend, rank=rank, world_size=size)
          my_rank = dist.get_rank()
          my_size = dist.get_world_size()
-@@ -164,10 +179,10 @@ def init_distributed(rank=-1, local_rank=-1, size=-1, use_gpu=False, backend="")
+@@ -164,11 +179,14 @@ def init_distributed(rank=-1, local_rank=-1, size=-1, use_gpu=False, backend="")
              print("Running on %d ranks using %s backend" % (my_size, backend))
          if hasattr(dist, "all_to_all_single"):
              try:
@@ -494,25 +565,18 @@ index fe77ded..875d8d2 100644
 -                if use_gpu:
 -                    t = t.cuda()
 -                dist.all_to_all_single(t, t)
-+                # t = torch.zeros([4])
-+                # if use_gpu:
-+                #     t = t.cuda()
-+                # dist.all_to_all_single(t, t)
-                 alltoall_supported = True
+-                alltoall_supported = True
++                if use_npu:
++                    alltoall_supported = True
++                else:
++                    t = torch.zeros([4])
++                    if use_gpu:
++                        t = t.cuda()
++                    dist.all_to_all_single(t, t)
++                    alltoall_supported = True
              except RuntimeError as err:
                  print("fail to enable all_to_all_single primitive: %s" % err)
-diff --git a/torchrec_dlrm/aws_component.py b/torchrec_dlrm/aws_component.py
-index 8ebcef1..4668bac 100644
---- a/torchrec_dlrm/aws_component.py
-+++ b/torchrec_dlrm/aws_component.py
-@@ -8,6 +8,7 @@ import os
- 
- import torchx.specs as specs
- from torchx.components.dist import ddp
-+from torchx.specs.api import Resource
- 
- 
- def run_dlrm_main(num_trainers: int = 8, *script_args: str) -> specs.AppDef:
+         if a2a_impl == "alltoall" and alltoall_supported == False:
 diff --git a/torchrec_dlrm/data/dlrm_dataloader.py b/torchrec_dlrm/data/dlrm_dataloader.py
 index eda096c..4bb9001 100644
 --- a/torchrec_dlrm/data/dlrm_dataloader.py
