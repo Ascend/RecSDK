@@ -25,7 +25,7 @@ index 15aea23..4b6f3c0 100644
          self.labels = data[:, -2:].astype(np.float32)
          self.numerical_num = self.numerical_data.shape[1]
 diff --git a/main.py b/main.py
-index ddf4858..2681e65 100644
+index ddf4858..96174e8 100644
 --- a/main.py
 +++ b/main.py
 @@ -1,9 +1,16 @@
@@ -48,7 +48,7 @@ index ddf4858..2681e65 100644
  
  from datasets.aliexpress import AliExpressDataset
  from models.sharedbottom import SharedBottomModel
-@@ -14,6 +21,169 @@ from models.ple import PLEModel
+@@ -14,6 +21,158 @@ from models.ple import PLEModel
  from models.aitm import AITMModel
  from models.metaheac import MetaHeacModel
  
@@ -56,20 +56,11 @@ index ddf4858..2681e65 100644
 +if NPU_ENABLE: import torch_npu
 +
 +
-+def str_to_bool(s):
-+    if s.lower() == 'true':
-+        return True
-+    elif s.lower() == 'false':
-+        return False
-+    else:
-+        raise ValueError(f"Invalid input string: {s}, must be true or false")
-+
-+
 +logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 +# Control Parameters
 +RANDOM_SEED = 42
-+DUMP_PROFILER = str_to_bool(os.getenv("MODEL_PROFILING_FLAG"))
-+SET_HF32 = str_to_bool(os.getenv("MODEL_HF32_FLAG"))
++DUMP_PROFILER = os.getenv("MODEL_PROFILING_FLAG").upper() == "TRUE"
++SET_HF32 = os.getenv("MODEL_HF32_FLAG").upper() == "TRUE"
 +
 +
 +def setup(rank: int, world_size: int, master_port: int):
@@ -195,11 +186,9 @@ index ddf4858..2681e65 100644
 +        p99 = np.percentile(ave_step, 99, method="lower")
 +        p999 = np.percentile(ave_step, 99.9, method="lower")
 +
-+    QPS = int(1 / avg_time)  # batch_size * world_size * 10 / avg_time
 +    e2e_result = {
 +        "Batch_size": batch_size,
 +        "model_name": model_name,
-+        "QPS": QPS,
 +        "AVG Latency": avg_time,
 +        "P999 Latency": p999,
 +        "P99 Latency": p99,
@@ -218,7 +207,7 @@ index ddf4858..2681e65 100644
  
  def get_dataset(name, path):
      if 'AliExpress' in name:
-@@ -21,48 +191,64 @@ def get_dataset(name, path):
+@@ -21,48 +180,64 @@ def get_dataset(name, path):
      else:
          raise ValueError('unknown dataset name: ' + name)
  
@@ -301,7 +290,7 @@ index ddf4858..2681e65 100644
              return True
          elif self.trial_counter + 1 < self.num_trials:
              self.trial_counter += 1
-@@ -70,12 +256,17 @@ class EarlyStopper(object):
+@@ -70,12 +245,17 @@ class EarlyStopper(object):
          else:
              return False
  
@@ -322,7 +311,7 @@ index ddf4858..2681e65 100644
          y = model(categorical_fields, numerical_fields)
          loss_list = [criterion(y[i], labels[:, i].float()) for i in range(labels.size(1))]
          loss = 0
-@@ -85,10 +276,25 @@ def train(model, optimizer, data_loader, criterion, device, log_interval=100):
+@@ -85,10 +265,25 @@ def train(model, optimizer, data_loader, criterion, device, log_interval=100):
          model.zero_grad()
          loss.backward()
          optimizer.step()
@@ -351,7 +340,7 @@ index ddf4858..2681e65 100644
  
  def metatrain(model, optimizer, data_loader, device, log_interval=100):
      model.train()
-@@ -96,7 +302,8 @@ def metatrain(model, optimizer, data_loader, device, log_interval=100):
+@@ -96,7 +291,8 @@ def metatrain(model, optimizer, data_loader, device, log_interval=100):
      loader = tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0)
      list_sup_categorical, list_sup_numerical, list_sup_y, list_qry_categorical, list_qry_numerical, list_qry_y = list(), list(), list(), list(), list(), list()
      for i, (categorical_fields, numerical_fields, labels) in enumerate(loader):
@@ -361,7 +350,7 @@ index ddf4858..2681e65 100644
          batch_size = int(categorical_fields.size(0) / 2)
          list_sup_categorical.append(categorical_fields[:batch_size])
          list_qry_categorical.append(categorical_fields[batch_size:])
-@@ -104,9 +311,10 @@ def metatrain(model, optimizer, data_loader, device, log_interval=100):
+@@ -104,9 +300,10 @@ def metatrain(model, optimizer, data_loader, device, log_interval=100):
          list_qry_numerical.append(numerical_fields[batch_size:])
          list_sup_y.append(labels[:batch_size])
          list_qry_y.append(labels[batch_size:])
@@ -374,7 +363,7 @@ index ddf4858..2681e65 100644
              model.zero_grad()
              loss.backward()
              optimizer.step()
-@@ -116,6 +324,7 @@ def metatrain(model, optimizer, data_loader, device, log_interval=100):
+@@ -116,6 +313,7 @@ def metatrain(model, optimizer, data_loader, device, log_interval=100):
              loader.set_postfix(loss=total_loss / log_interval)
              total_loss = 0
  
@@ -382,7 +371,7 @@ index ddf4858..2681e65 100644
  def test(model, data_loader, task_num, device):
      model.eval()
      labels_dict, predicts_dict, loss_dict = {}, {}, {}
-@@ -123,12 +332,14 @@ def test(model, data_loader, task_num, device):
+@@ -123,12 +321,14 @@ def test(model, data_loader, task_num, device):
          labels_dict[i], predicts_dict[i], loss_dict[i] = list(), list(), list()
      with torch.no_grad():
          for categorical_fields, numerical_fields, labels in tqdm.tqdm(data_loader, smoothing=0, mininterval=1.0):
@@ -399,7 +388,7 @@ index ddf4858..2681e65 100644
      auc_results, loss_results = list(), list()
      for i in range(task_num):
          auc_results.append(roc_auc_score(labels_dict[i], predicts_dict[i]))
-@@ -136,7 +347,8 @@ def test(model, data_loader, task_num, device):
+@@ -136,7 +336,8 @@ def test(model, data_loader, task_num, device):
      return auc_results, loss_results
  
  
@@ -409,7 +398,7 @@ index ddf4858..2681e65 100644
           dataset_path,
           task_num,
           expert_num,
-@@ -146,53 +358,140 @@ def main(dataset_name,
+@@ -146,53 +347,145 @@ def main(dataset_name,
           batch_size,
           embed_dim,
           weight_decay,
@@ -469,12 +458,10 @@ index ddf4858..2681e65 100644
 +        logging.info(f"epoch: {epoch_i}, test: auc: {auc}")
          for i in range(task_num):
 -            print('task {}, AUC {}, Log-loss {}'.format(i, auc[i], loss[i]))
-+            logging.info('task {}, AUC {}, Log-loss {}'.format(i, auc[i], loss[i]))
-         if not early_stopper.is_continuable(model, np.array(auc).mean()):
+-        if not early_stopper.is_continuable(model, np.array(auc).mean()):
 -            print(f'test: best auc: {early_stopper.best_accuracy}')
-+            logging.info(f'test: best auc: {early_stopper.best_accuracy}')
-             break
- 
+-            break
+-
 -    model.load_state_dict(torch.load(save_path))
 -    auc, loss = test(model, test_data_loader, task_num, device)
 -    f = open('{}_{}.txt'.format(model_name, dataset_name), 'a', encoding = 'utf-8')
@@ -485,6 +472,11 @@ index ddf4858..2681e65 100644
 -    print('\n')
 -    f.write('\n')
 -    f.close()
++            logging.info('task {}, AUC {}, Log-loss {}'.format(i, auc[i], loss[i]))
++        # if not early_stopper.is_continuable(model, np.array(auc).mean()):
++        #     logging.info(f'test: best auc: {early_stopper.best_accuracy}')
++        #     break
++
 +    dist.barrier(device_ids=[rank])  # 同步所有rank
 +
 +    # 收集所有 rank 的 latency 数据到 rank 0
@@ -495,19 +487,24 @@ index ddf4858..2681e65 100644
 +        avg_time = latency_summary(gathered_latency, batch_size, model_name_alias, device_name, inductor_flag)
 +
 +        final_results = {
++            'dataset_name': dataset_name,
++            "batch_size": batch_size,
 +            'epoch': epoch - 1,
 +            'step': step,
 +            'final_loss': train_loss.cpu().item(),
-+            'avg_time': avg_time,
++            'ms/step': avg_time * 100,
++            'metrics': {},
 +        }
 +        for i in range(task_num):
-+            final_results[f'test: task{i}_auc'] = float(auc[i])
++            final_results['metrics'][f'test: task{i}_auc'] = float(auc[i])
 +
-+        model_detail_info = device_name + "_" + model_name + "_" + dataset_name + "_" + inductor_flag
++        model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
 +        output_str = model_detail_info + "_" + str(final_results)
 +        logging.info(f"The final result: {output_str}")
++        with open(f"../save_results_{device_name}/precision_result.txt", "a", encoding="utf-8") as f:
++            f.write(output_str + "\n")
 +
-+        del final_results['avg_time']
++        del final_results['ms/step']
 +        os.makedirs(f"../save_results_{device_name}/{model_name_alias}", exist_ok=True)
 +        torch.save(final_results,
 +                   f"../save_results_{device_name}/{model_name_alias}/predictions_{model_name_alias}_{inductor_flag}_{step}.pt")
@@ -574,7 +571,7 @@ index ddf4858..2681e65 100644
      parser.add_argument('--epoch', type=int, default=50)
      parser.add_argument('--task_num', type=int, default=2)
      parser.add_argument('--expert_num', type=int, default=8)
-@@ -200,18 +499,9 @@ if __name__ == '__main__':
+@@ -200,18 +493,9 @@ if __name__ == '__main__':
      parser.add_argument('--batch_size', type=int, default=2048)
      parser.add_argument('--embed_dim', type=int, default=128)
      parser.add_argument('--weight_decay', type=float, default=1e-6)

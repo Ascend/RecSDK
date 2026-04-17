@@ -52,7 +52,7 @@ index 8b1014d..e60d29f 100644
  		NDCG.append(ndcg(gt_item, recommends))
  
 diff --git a/main.py b/main.py
-index 04df907..0cc25c8 100644
+index 04df907..b2d3530 100644
 --- a/main.py
 +++ b/main.py
 @@ -1,5 +1,7 @@
@@ -63,7 +63,7 @@ index 04df907..0cc25c8 100644
  import argparse
  import numpy as np
  
-@@ -7,135 +9,403 @@ import torch
+@@ -7,135 +9,397 @@ import torch
  import torch.nn as nn
  import torch.optim as optim
  import torch.utils.data as data
@@ -206,19 +206,10 @@ index 04df907..0cc25c8 100644
 -print("End. Best epoch {:03d}: HR = {:.3f}, NDCG = {:.3f}".format(
 -									best_epoch, best_hr, best_ndcg))
 +
-+def str_to_bool(s):
-+    if s.lower() == 'true':
-+        return True
-+    elif s.lower() == 'false':
-+        return False
-+    else:
-+        raise ValueError(f"Invalid input string: {s}, must be true or false")
-+
-+
 +logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 +RANDOM_SEED = 42
-+DUMP_PROFILER = str_to_bool(os.getenv("MODEL_PROFILING_FLAG", "false"))
-+SET_HF32 = str_to_bool(os.getenv("MODEL_HF32_FLAG", "true"))
++DUMP_PROFILER = os.getenv("MODEL_PROFILING_FLAG", "false").upper() == "TRUE"
++SET_HF32 = os.getenv("MODEL_HF32_FLAG", "true").upper() == "TRUE"
 +
 +
 +def set_seed(seed):
@@ -343,11 +334,9 @@ index 04df907..0cc25c8 100644
 +        p99 = np.percentile(ave_step, 99, method="lower")
 +        p999 = np.percentile(ave_step, 99.9, method="lower")
 +
-+    QPS = int(1 / avg_time)  # batch_size * world_size * 10 / avg_time
 +    e2e_result = {
 +        "Batch_size": batch_size,
 +        "model_name": model_name,
-+        "QPS": QPS,
 +        "AVG Latency": avg_time,
 +        "P999 Latency": p999,
 +        "P99 Latency": p99,
@@ -483,20 +472,25 @@ index 04df907..0cc25c8 100644
 +        avg_time = latency_summary(gathered_latency, args.batch_size, model_name, device_name, inductor_flag)  # 保存e2e耗时
 +
 +        final_results = {
++            'dataset_name': config.dataset,
++            "batch_size": args.batch_size,
 +            'epoch': args.epochs - 1,
 +            'step': count_in_epoch,
 +            'final_loss': loss.cpu().item(),
-+            "avg_time": float(avg_time),
-+            'HR': float(HR),
-+            'NDCG': float(NDCG),
++            "ms/step": float(avg_time) * 100,
++            'metrics': {
++                'HR': float(HR),
++                'NDCG': float(NDCG),
++            },
 +        }
 +
-+        dataset_name = config.dataset
-+        model_detail_info = device_name + "_" + model_name + "_" + dataset_name + "_" + inductor_flag
++        model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
 +        output_str = model_detail_info + "_" + str(final_results)
 +        logging.info(f"The final result: {output_str}")
++        with open(f"../save_results_{device_name}/precision_result.txt", "a", encoding="utf-8") as f:
++            f.write(output_str + "\n")
 +
-+        del final_results['avg_time']
++        del final_results['ms/step']
 +        os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
 +        torch.save(final_results,
 +                   f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_{count}.pt")
