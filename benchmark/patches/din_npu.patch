@@ -1,9 +1,9 @@
 diff --git a/main.py b/main.py
 new file mode 100644
-index 0000000..0c46947
+index 0000000..748f525
 --- /dev/null
 +++ b/main.py
-@@ -0,0 +1,427 @@
+@@ -0,0 +1,421 @@
 +import os
 +import time
 +import random
@@ -34,19 +34,10 @@ index 0000000..0c46947
 +cat_voc = os.path.join(data_dir, "cat_voc.pkl")
 +
 +
-+def str_to_bool(s):
-+    if s.lower() == 'true':
-+        return True
-+    elif s.lower() == 'false':
-+        return False
-+    else:
-+        raise ValueError(f"Invalid input string: {s}, must be true or false")
-+
-+
 +# Control Parameters
 +RANDOM_SEED = 42
-+DUMP_PROFILER = str_to_bool(os.getenv("MODEL_PROFILING_FLAG", "false"))
-+SET_HF32 = str_to_bool(os.getenv("MODEL_HF32_FLAG", "true"))
++DUMP_PROFILER = os.getenv("MODEL_PROFILING_FLAG", "false").upper() == "TRUE"
++SET_HF32 = os.getenv("MODEL_HF32_FLAG", "true").upper() == "TRUE"
 +
 +
 +def setup(rank: int, world_size: int, master_port: int):
@@ -173,11 +164,9 @@ index 0000000..0c46947
 +        p99 = np.percentile(ave_step, 99, method="lower")
 +        p999 = np.percentile(ave_step, 99.9, method="lower")
 +
-+    QPS = int(1 / avg_time)  # batch_size * world_size * 10 / avg_time
 +    e2e_result = {
 +        "Batch_size": batch_size,
 +        "model_name": model_name,
-+        "QPS": QPS,
 +        "AVG Latency": avg_time,
 +        "P999 Latency": p999,
 +        "P99 Latency": p99,
@@ -333,20 +322,25 @@ index 0000000..0c46947
 +        avg_time = latency_summary(gathered_latency, args.batch_size, model_name, device_name, inductor_flag)  # 保存e2e耗时
 +
 +        final_results = {
++            'dataset_name': "Amazon-Dataset",
++            "batch_size": args.batch_size,
 +            'epoch': args.epochs - 1,
 +            'step': i,
 +            'final_loss': loss.cpu().item(),  # 每1000步切evel，8480步的loss是训练的loss
-+            'avg_time': avg_time,
-+            'accuracy': float(accuracy),
-+            'auc': float(auc)
++            'ms/step': avg_time * 100,
++            'metrics': {
++                'accuracy': float(accuracy),
++                'auc': float(auc),
++            },
 +        }
 +
-+        dataset_name = "Amazon-Dataset"
-+        model_detail_info = device_name + "_" + model_name + "_" + dataset_name + "_" + inductor_flag
++        model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
 +        output_str = model_detail_info + "_" + str(final_results)
 +        logging.info(f"The final result: {output_str}")
++        with open(f"../save_results_{device_name}/precision_result.txt", "a", encoding="utf-8") as f:
++            f.write(output_str + "\n")
 +
-+        del final_results['avg_time']
++        del final_results['ms/step']
 +        os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
 +        torch.save(final_results,
 +                   f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_{i}.pt")
