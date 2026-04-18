@@ -1,10 +1,7 @@
-From 1bccfd5e90805d9fe09d4581a8e2c266b6866ed3 Mon Sep 17 00:00:00 2001
-From: chenzihao40 <chenzihao40@huawei.com>
-Date: Wed, 15 Apr 2026 16:51:17 +0800
-Subject: [PATCH] =?UTF-8?q?npu=E9=80=82=E9=85=8Drecsys-example?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+From 2b336ecdf0943cd74148167733c35d2a653f9842 Mon Sep 17 00:00:00 2001
+From: cann_ly <luyi120@h-partners.com>
+Date: Fri, 17 Apr 2026 20:12:29 +0800
+Subject: [PATCH] recsys retrieval
 
 ---
  examples/commons/checkpoint/checkpoint.py     |   8 +-
@@ -37,14 +34,15 @@ Content-Transfer-Encoding: 8bit
  .../hstu/ops/pt_ops/pt_norm_mul_dropout.py    |   2 +
  examples/hstu/ops/pt_ops/pt_position.py       | 152 ++++++++++
  .../hstu/ops/pt_ops/pt_split_2d_jagged.py     |  40 +++
+ .../ops/triton_ops/triton_hstu_attention.py   |  58 ----
  .../training/configs/movielen_ranking.gin     |  12 +-
  .../training/configs/movielen_retrieval.gin   |   9 +-
  examples/hstu/training/pretrain_gr_ranking.py |  35 ++-
  .../hstu/training/pretrain_gr_retrieval.py    |  27 +-
- examples/hstu/training/trainer/training.py    |  97 +++++-
+ examples/hstu/training/trainer/training.py    | 134 ++++++++-
  examples/hstu/training/trainer/utils.py       |  35 ++-
  examples/hstu/utils/gin_config_args.py        |   7 +-
- 37 files changed, 1345 insertions(+), 360 deletions(-)
+ 38 files changed, 1381 insertions(+), 419 deletions(-)
  create mode 100644 examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
@@ -2288,6 +2286,75 @@ index 0000000..c978430
 +    values_a = torch.cat(values_a_list, dim=0) if values_a_list else torch.empty(0, D, device=values.device)
 +    values_b = torch.cat(values_b_list, dim=0) if values_b_list else torch.empty(0, D, device=values.device)
 +    return values_a, values_b
+diff --git a/examples/hstu/ops/triton_ops/triton_hstu_attention.py b/examples/hstu/ops/triton_ops/triton_hstu_attention.py
+index 9c50549..7d411df 100644
+--- a/examples/hstu/ops/triton_ops/triton_hstu_attention.py
++++ b/examples/hstu/ops/triton_ops/triton_hstu_attention.py
+@@ -2308,64 +2308,6 @@ def _get_bw_configs() -> List[triton.Config]:
+             pre_hook=_bwd_pre_hook,
+         ),
+     ]
+-    if torch.cuda.is_available() and torch.version.cuda < "12.8":
+-        configs += [
+-            triton.Config(
+-                {"BLOCK_M": 16, "BLOCK_N": 64, "SEQUENCE_PARALLEL": False, "UNROLL": 1},
+-                num_stages=1,
+-                num_warps=4,
+-                pre_hook=_bwd_pre_hook,
+-            ),
+-            triton.Config(
+-                {"BLOCK_M": 32, "BLOCK_N": 64, "SEQUENCE_PARALLEL": False, "UNROLL": 1},
+-                num_stages=1,
+-                num_warps=4,
+-                pre_hook=_bwd_pre_hook,
+-            ),
+-            triton.Config(
+-                {"BLOCK_M": 32, "BLOCK_N": 64, "SEQUENCE_PARALLEL": False, "UNROLL": 1},
+-                num_stages=1,
+-                num_warps=8,
+-                pre_hook=_bwd_pre_hook,
+-            ),
+-            triton.Config(
+-                {"BLOCK_M": 32, "BLOCK_N": 64, "SEQUENCE_PARALLEL": True, "UNROLL": 1},
+-                num_stages=1,
+-                num_warps=8,
+-                pre_hook=_bwd_pre_hook,
+-            ),
+-            triton.Config(
+-                {"BLOCK_M": 32, "BLOCK_N": 128, "SEQUENCE_PARALLEL": True, "UNROLL": 1},
+-                num_stages=3,
+-                num_warps=8,
+-                pre_hook=_bwd_pre_hook,
+-            ),
+-            triton.Config(
+-                {"BLOCK_M": 32, "BLOCK_N": 64, "SEQUENCE_PARALLEL": True, "UNROLL": 1},
+-                num_stages=1,
+-                num_warps=4,
+-                pre_hook=_bwd_pre_hook,
+-            ),
+-            triton.Config(
+-                {"BLOCK_M": 32, "BLOCK_N": 64, "SEQUENCE_PARALLEL": True, "UNROLL": 1},
+-                num_stages=2,
+-                num_warps=4,
+-                pre_hook=_bwd_pre_hook,
+-            ),
+-            triton.Config(
+-                {
+-                    "BLOCK_M": 32,
+-                    "BLOCK_N": 128,
+-                    "SEQUENCE_PARALLEL": False,
+-                    "UNROLL": 2,
+-                },
+-                num_stages=2,
+-                num_warps=8,
+-                pre_hook=_bwd_pre_hook,
+-            ),
+-        ]
+-    else:
+-        print("WARNING: temporarily disabled some autotune configs for CUDA 12.8+")
+     return configs
+ 
+ 
 diff --git a/examples/hstu/training/configs/movielen_ranking.gin b/examples/hstu/training/configs/movielen_ranking.gin
 index bef569f..ece421b 100644
 --- a/examples/hstu/training/configs/movielen_ranking.gin
@@ -2508,7 +2575,7 @@ index 06266cf..5466dd4 100644
      )
  
 diff --git a/examples/hstu/training/trainer/training.py b/examples/hstu/training/trainer/training.py
-index b50c026..ab2ce96 100644
+index b50c026..a4f4214 100644
 --- a/examples/hstu/training/trainer/training.py
 +++ b/examples/hstu/training/trainer/training.py
 @@ -18,6 +18,7 @@ from typing import Iterator, Optional, Union
@@ -2519,7 +2586,7 @@ index b50c026..ab2ce96 100644
  import torch.distributed as dist
  from commons.checkpoint import get_unwrapped_module
  from commons.pipeline.train_pipeline import (
-@@ -34,6 +35,39 @@ from modules.metrics import RetrievalTaskMetricWithSampling
+@@ -34,6 +35,38 @@ from modules.metrics import RetrievalTaskMetricWithSampling
  from trainer.utils import cal_flops
  from utils import TrainerArgs
  
@@ -2537,11 +2604,9 @@ index b50c026..ab2ce96 100644
 +        p99 = np.percentile(ave_step, 99, method="lower")
 +        p999 = np.percentile(ave_step, 99.9, method="lower")
 +
-+    QPS = int(1 / avg_time)     # batch_size * world_size * 10 / avg_time
 +    e2e_result = {
 +        "Batch_size": batch_size,
 +        "model_name": model_name,
-+        "QPS": QPS,
 +        "AVG Latency": avg_time,
 +        "P999 Latency": p999,
 +        "P99 Latency": p99,
@@ -2556,10 +2621,11 @@ index b50c026..ab2ce96 100644
 +    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
 +    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
 +        f.write(output_str + "\n")
++    return avg_time
  
  def evaluate(
      pipeline: Union[
-@@ -46,7 +80,6 @@ def evaluate(
+@@ -46,7 +79,6 @@ def evaluate(
      eval_loader: torch.utils.data.DataLoader,
  ):
      eval_iter = 0
@@ -2567,11 +2633,12 @@ index b50c026..ab2ce96 100644
      max_eval_iters = trainer_args.max_eval_iters or len(eval_loader)
      max_eval_iters = min(max_eval_iters, len(eval_loader))
      # make a copy of eval_loader to avoid modifying the original loader
-@@ -75,7 +108,6 @@ def evaluate(
+@@ -75,7 +107,7 @@ def evaluate(
          f"[eval] [eval {eval_iter * dp_size * trainer_args.eval_batch_size} users]:\n    "
          + stringify_dict(eval_metric_dict, prefix="Metrics", sep="\n    ")
      )
 -    torch.cuda.nvtx.range_pop()
++    return eval_metric_dict
  
  
  def maybe_load_ckpts(
@@ -2645,7 +2712,7 @@ index b50c026..ab2ce96 100644
                  reporting_loss, (
                      local_loss,
                      logits,
-@@ -183,12 +247,20 @@ def train_with_pipeline(
+@@ -183,12 +247,21 @@ def train_with_pipeline(
                  ddp_num_contextuals.append(ddp_num_contextual.view(-1))
                  ddp_num_candidates.append(ddp_num_candidate.view(-1))
                  tokens_logged += reporting_loss[1]
@@ -2661,6 +2728,7 @@ index b50c026..ab2ce96 100644
 +            if train_iter > 100 and train_iter % trainer_args.eval_interval > 10:
 +                train_times.append(train_time)
 +
++            final_loss_value = reporting_loss[0] / reporting_loss[1]
 +            if train_iter % 10 == 0:
 +                train_time = time.time() - start_time
 +                print_rank_0(f"epoch: {epoch}, step: [{train_iter} / {trainer_args.max_train_iters}], loss = {reporting_loss[0] / reporting_loss[1]:.6f}, time = {train_time}")
@@ -2668,15 +2736,57 @@ index b50c026..ab2ce96 100644
              if train_iter > 0 and (train_iter + 1) % trainer_args.log_interval == 0:
                  gpu_timer.stop()
                  cur_td = gpu_timer.elapsed_time() - last_td
-@@ -216,3 +288,8 @@ def train_with_pipeline(
+@@ -209,10 +282,49 @@ def train_with_pipeline(
+         # TODO CHECK if train pipeline is flushed
+         if train_iter > 0 and train_iter % trainer_args.eval_interval == 0:
+             pipeline._model.eval()
+-            evaluate(
++            metrics_dict = evaluate(
+                 pipeline,
+                 stateful_metric_module,
+                 trainer_args=trainer_args,
                  eval_loader=eval_loader,
              )
++            last_metrics = metrics_dict
              pipeline._model.train()
 +        epoch += 1
 +    if PROFILE_ENABLE:
 +        prof.stop()
 +
-+    latency_summary_rank0(train_times, trainer_args.train_batch_size, trainer_args.model_name, "NPU", "eager")
++    avg_time = latency_summary_rank0(train_times, trainer_args.train_batch_size, trainer_args.model_name, "NPU", "eager")
++
++    NDCG_10 = last_metrics.get('NDCG@10', 0.0)
++    NDCG_20 = last_metrics.get('NDCG@20', 0.0)
++    HR = last_metrics.get('HR@10', 0.0)
++    if hasattr(NDCG_10, 'item'):
++        NDCG_10 = NDCG_10.item()
++    if hasattr(NDCG_20, 'item'):
++        NDCG_20 = NDCG_20.item()
++    if hasattr(HR, 'item'):
++        HR = HR.item()
++    final_results = {
++        'dataset_name': "ml-20m",
++        'batch_size': trainer_args.train_batch_size,
++        'epoch': epoch,
++        'step': train_iter,
++        'final_loss': final_loss_value,
++        "ms/step": float(avg_time) * 100,
++        'metrics': {
++            'NDCG_10': float(NDCG_10),
++            'NDCG_20': float(NDCG_20),
++            'HR': float(HR)
++        }
++    }
++
++    model_detail_info = "NPU" + "_" + "retrieval" + "_" + "eager"
++    output_str = model_detail_info + "_" + str(final_results)
++    print_rank_0(f"The Final Result: {output_str}")
++    with open(f"../save_results_NPU/precision_result.txt", "a", encoding="utf-8") as f:
++        f.write(output_str + "\n")
++
++    del final_results["ms/step"]
++    os.makedirs(f"../save_results_NPU/retrieval", exist_ok=True)
++    torch.save(final_results, f"../save_results_NPU/retrieval/predictions_retrieval_eager_{train_iter}.pt")
 diff --git a/examples/hstu/training/trainer/utils.py b/examples/hstu/training/trainer/utils.py
 index 766ea51..8b0fec6 100644
 --- a/examples/hstu/training/trainer/utils.py
@@ -2825,5 +2935,5 @@ index 1c611de..68fcecf 100644
  
  @gin.configurable
 -- 
-2.52.0.windows.1
+2.53.0.windows.1
 

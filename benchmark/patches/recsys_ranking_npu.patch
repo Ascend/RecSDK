@@ -1,7 +1,7 @@
-From 9569649924facb44eb691df7cd971f42ba4699a6 Mon Sep 17 00:00:00 2001
-From: chenzihao40 <chenzihao40@huawei.com>
-Date: Wed, 15 Apr 2026 09:31:47 +0800
-Subject: [PATCH] =?UTF-8?q?ranking=20patch=E4=BF=AE=E6=94=B9?=
+From c729bdb93be18478dee923f158d920511abcbc4a Mon Sep 17 00:00:00 2001
+From: cann_ly <luyi120@h-partners.com>
+Date: Fri, 17 Apr 2026 17:22:30 +0800
+Subject: [PATCH] =?UTF-8?q?recsys=20ranking=20npu=E9=80=82=E9=85=8D?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -35,9 +35,9 @@ Content-Transfer-Encoding: 8bit
  examples/hstu/preprocessor.py                 |   8 +-
  examples/hstu/pretrain_gr_ranking.py          |  31 ++-
  examples/hstu/training/gin_config_args.py     |   8 +-
- examples/hstu/training/training.py            | 104 +++++++-
+ examples/hstu/training/training.py            | 134 +++++++++-
  examples/hstu/training/utils.py               |  39 ++-
- 30 files changed, 1316 insertions(+), 277 deletions(-)
+ 30 files changed, 1345 insertions(+), 278 deletions(-)
  create mode 100644 examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
@@ -2268,7 +2268,7 @@ index d0fc57c..f507585 100644
  
  @gin.configurable
 diff --git a/examples/hstu/training/training.py b/examples/hstu/training/training.py
-index f975842..8614539 100644
+index f975842..83cbb75 100644
 --- a/examples/hstu/training/training.py
 +++ b/examples/hstu/training/training.py
 @@ -18,6 +18,7 @@ from typing import Iterator, Optional, Union
@@ -2279,7 +2279,7 @@ index f975842..8614539 100644
  import torch.distributed as dist
  from commons.checkpoint import get_unwrapped_module
  from commons.utils.gpu_timer import GPUTimer
-@@ -34,6 +35,39 @@ from pipeline.train_pipeline import (
+@@ -34,6 +35,38 @@ from pipeline.train_pipeline import (
  from training.gin_config_args import TrainerArgs
  from training.utils import cal_flops
  
@@ -2296,12 +2296,10 @@ index f975842..8614539 100644
 +        p95 = np.percentile(ave_step, 95, method="lower")
 +        p99 = np.percentile(ave_step, 99, method="lower")
 +        p999 = np.percentile(ave_step, 99.9, method="lower")
-+    
-+    QPS = int(1 / avg_time)     # batch_size * world_size * 10 / avg_time
++
 +    e2e_result = {
 +        "Batch_size": batch_size,
 +        "model_name": model_name,
-+        "QPS": QPS,
 +        "AVG Latency": avg_time,
 +        "P999 Latency": p999,
 +        "P99 Latency": p99,
@@ -2316,10 +2314,11 @@ index f975842..8614539 100644
 +    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
 +    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
 +        f.write(output_str + "\n")
++    return avg_time
  
  def evaluate(
      pipeline: Union[
-@@ -46,7 +80,7 @@ def evaluate(
+@@ -46,7 +79,7 @@ def evaluate(
      eval_loader: torch.utils.data.DataLoader,
  ):
      eval_iter = 0
@@ -2328,12 +2327,13 @@ index f975842..8614539 100644
      max_eval_iters = trainer_args.max_eval_iters or len(eval_loader)
      max_eval_iters = min(max_eval_iters, len(eval_loader))
      # make a copy of eval_loader to avoid modifying the original loader
-@@ -76,7 +110,7 @@ def evaluate(
+@@ -76,7 +109,8 @@ def evaluate(
          f"[eval] [eval {eval_iter * dp_size * trainer_args.eval_batch_size} users]:\n    "
          + stringify_dict(eval_metric_dict, prefix="Metrics", sep="\n    ")
      )
 -    torch.cuda.nvtx.range_pop()
 +    # torch.cuda.nvtx.range_pop()
++    return eval_metric_dict
  
  
  def maybe_load_ckpts(
@@ -2411,7 +2411,7 @@ index f975842..8614539 100644
                  reporting_loss, (
                      local_loss,
                      logits,
-@@ -184,12 +254,21 @@ def train_with_pipeline(
+@@ -184,12 +254,22 @@ def train_with_pipeline(
                  ddp_num_contextuals.append(ddp_num_contextual.view(-1))
                  ddp_num_candidates.append(ddp_num_candidate.view(-1))
                  tokens_logged += reporting_loss[1]
@@ -2428,6 +2428,7 @@ index f975842..8614539 100644
 +            if train_iter > 100 and train_iter % trainer_args.eval_interval > 10:
 +                train_times.append(train_time)
 +
++            final_loss_value = reporting_loss[0] / reporting_loss[1]
 +            if train_iter % 10 == 0:
 +                train_time = time.time() - start_time
 +                print_rank_0(f"epoch: {epoch}, step: [{train_iter} / {trainer_args.max_train_iters}], loss = {reporting_loss[0] / reporting_loss[1]:.6f}, time = {train_time}")
@@ -2435,15 +2436,50 @@ index f975842..8614539 100644
              if train_iter > 0 and (train_iter + 1) % trainer_args.log_interval == 0:
                  gpu_timer.stop()
                  cur_td = gpu_timer.elapsed_time() - last_td
-@@ -217,3 +296,8 @@ def train_with_pipeline(
+@@ -210,10 +290,42 @@ def train_with_pipeline(
+         # TODO CHECK if train pipeline is flushed
+         if train_iter > 0 and train_iter % trainer_args.eval_interval == 0:
+             pipeline._model.eval()
+-            evaluate(
++            metrics_dict = evaluate(
+                 pipeline,
+                 stateful_metric_module,
+                 trainer_args=trainer_args,
                  eval_loader=eval_loader,
              )
++            last_metrics = metrics_dict
              pipeline._model.train()
 +        epoch += 1
 +    if PROFILE_ENABLE:
 +        prof.stop()
 +
-+    latency_summary_rank0(train_times, trainer_args.train_batch_size, "ranking", "NPU", "eager")
++    avg_time = latency_summary_rank0(train_times, trainer_args.train_batch_size, "ranking", "NPU", "eager")
++
++    auc_value = last_metrics.get('task0.AUC', 0.0)
++    if hasattr(auc_value, 'item'):
++        auc_value = auc_value.item()
++    final_results = {
++        'dataset_name': "ml-20m",
++        'batch_size': trainer_args.train_batch_size,
++        'epoch': epoch,
++        'step': train_iter,
++        'final_loss': final_loss_value,
++        "ms/step": float(avg_time) * 100,
++        'metrics': {
++            'AUC': float(auc_value)
++        }
++    }
++
++    model_detail_info = "NPU" + "_" + "ranking" + "_" + "eager"
++    output_str = model_detail_info + "_" + str(final_results)
++    print_rank_0(f"The Final Result: {output_str}")
++    with open(f"../save_results_NPU/precision_result.txt", "a", encoding="utf-8") as f:
++        f.write(output_str + "\n")
++
++    del final_results["ms/step"]
++    os.makedirs(f"../save_results_NPU/ranking", exist_ok=True)
++    torch.save(final_results, f"../save_results_NPU/ranking/predictions_ranking_eager_{train_iter}.pt")
++
 diff --git a/examples/hstu/training/utils.py b/examples/hstu/training/utils.py
 index dc4f541..4887a6a 100644
 --- a/examples/hstu/training/utils.py
@@ -2549,5 +2585,5 @@ index dc4f541..4887a6a 100644
          ]
      else:
 -- 
-2.52.0.windows.1
+2.53.0.windows.1
 
