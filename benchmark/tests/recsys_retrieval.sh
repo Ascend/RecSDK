@@ -75,4 +75,6 @@ torchrun \
     --master_port 6000 \
     ${py_file} \
     --gin-config-file ${config_file} \
+    --epochs 50 \
+    --train-batch-size 128 \
     $@ 2>&1 |tee log/retrieval_$(date '+%Y%m%d_%H%M%S').log
