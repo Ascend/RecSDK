@@ -1,7 +1,7 @@
-From c729bdb93be18478dee923f158d920511abcbc4a Mon Sep 17 00:00:00 2001
+From 9fb29e2d90b1d7314c32be6736463c8b47e908c6 Mon Sep 17 00:00:00 2001
 From: cann_ly <luyi120@h-partners.com>
-Date: Fri, 17 Apr 2026 17:22:30 +0800
-Subject: [PATCH] =?UTF-8?q?recsys=20ranking=20npu=E9=80=82=E9=85=8D?=
+Date: Sat, 18 Apr 2026 18:43:24 +0800
+Subject: [PATCH] =?UTF-8?q?json=20epochs=E9=80=82=E9=85=8D?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -33,11 +33,11 @@ Content-Transfer-Encoding: 8bit
  examples/hstu/ops/pt_ops/pt_position.py       | 158 +++++++++++
  .../hstu/ops/pt_ops/pt_split_2d_jagged.py     |  43 +++
  examples/hstu/preprocessor.py                 |   8 +-
- examples/hstu/pretrain_gr_ranking.py          |  31 ++-
+ examples/hstu/pretrain_gr_ranking.py          |  41 ++-
  examples/hstu/training/gin_config_args.py     |   8 +-
- examples/hstu/training/training.py            | 134 +++++++++-
+ examples/hstu/training/training.py            | 133 +++++++++-
  examples/hstu/training/utils.py               |  39 ++-
- 30 files changed, 1345 insertions(+), 278 deletions(-)
+ 30 files changed, 1354 insertions(+), 278 deletions(-)
  create mode 100644 examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
@@ -2138,19 +2138,21 @@ index b574514..f6d9ad9 100644
  
  if __name__ == "__main__":
 diff --git a/examples/hstu/pretrain_gr_ranking.py b/examples/hstu/pretrain_gr_ranking.py
-index 446ce12..c180206 100644
+index 446ce12..d674376 100644
 --- a/examples/hstu/pretrain_gr_ranking.py
 +++ b/examples/hstu/pretrain_gr_ranking.py
-@@ -13,7 +13,7 @@
+@@ -12,8 +12,9 @@
+ # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  # See the License for the specific language governing permissions and
  # limitations under the License.
++import os
  import warnings
 -
 +import sysconfig
  # Ignore all FutureWarnings
  warnings.filterwarnings("ignore", category=FutureWarning)
  warnings.filterwarnings("ignore", category=SyntaxWarning)
-@@ -25,6 +25,10 @@ from typing import List, Tuple, cast
+@@ -25,6 +26,10 @@ from typing import List, Tuple, cast
  import commons.utils.initialize as init
  import gin
  import torch  # pylint: disable-unused-import
@@ -2161,7 +2163,7 @@ index 446ce12..c180206 100644
  from commons.utils.logger import print_rank_0
  from configs import RankingConfig
  from distributed.sharding import make_optimizer_and_shard
-@@ -51,6 +55,11 @@ from training import (
+@@ -51,6 +56,11 @@ from training import (
      maybe_load_ckpts,
      train_with_pipeline,
  )
@@ -2173,7 +2175,7 @@ index 446ce12..c180206 100644
  
  
  @gin.configurable
-@@ -77,9 +86,14 @@ parser = argparse.ArgumentParser(
+@@ -77,9 +87,23 @@ parser = argparse.ArgumentParser(
      description="Distributed GR Arguments", allow_abbrev=False
  )
  parser.add_argument("--gin-config-file", type=str)
@@ -2183,12 +2185,21 @@ index 446ce12..c180206 100644
  gin.parse_config_file(args.gin_config_file)
  trainer_args = TrainerArgs()
 +trainer_args.train_batch_size = args.train_batch_size or trainer_args.train_batch_size
-+trainer_args.max_train_iters = args.epochs * trainer_args.eval_interval if args.epochs is not None else trainer_args.max_train_iters
++final_epochs = args.epochs
++env_epoch_str = os.environ.get("MODEL_EPOCH")
++if env_epoch_str is not None:
++    try:
++        final_epochs = int(env_epoch_str)
++    except ValueError:
++        print_rank_0(
++            f"Warning: Invalid value for MODEL_EPOCH environment variable: {env_epoch_str}"
++        )
++trainer_args.max_train_iters = final_epochs * trainer_args.eval_interval if final_epochs is not None else trainer_args.max_train_iters
 +
  dataset_args, embedding_args = get_dataset_and_embedding_args()
  network_args = NetworkArgs()
  optimizer_args = OptimizerArgs()
-@@ -102,12 +116,19 @@ def create_ranking_config() -> RankingConfig:
+@@ -102,12 +126,19 @@ def create_ranking_config() -> RankingConfig:
  
  
  def main():
@@ -2209,7 +2220,7 @@ index 446ce12..c180206 100644
      print_rank_0(
          f"distributed env initialization done. Free cuda memory: {free_memory / (1024 ** 2):.2f} MB"
      )
-@@ -146,7 +167,7 @@ def main():
+@@ -146,7 +177,7 @@ def main():
      train_dataloader, test_dataloader = get_data_loader(
          "ranking", dataset_args, trainer_args, task_config.num_tasks
      )
@@ -2218,7 +2229,7 @@ index 446ce12..c180206 100644
      print_rank_0(
          f"model initialization done, start training. Free cuda memory: {free_memory / (1024 ** 2):.2f} MB"
      )
-@@ -161,13 +182,13 @@ def main():
+@@ -161,13 +192,13 @@ def main():
          pipeline = pipeline_factory(
              model_train,
              dense_optimizer,
@@ -2268,7 +2279,7 @@ index d0fc57c..f507585 100644
  
  @gin.configurable
 diff --git a/examples/hstu/training/training.py b/examples/hstu/training/training.py
-index f975842..83cbb75 100644
+index f975842..0327a13 100644
 --- a/examples/hstu/training/training.py
 +++ b/examples/hstu/training/training.py
 @@ -18,6 +18,7 @@ from typing import Iterator, Optional, Union
@@ -2279,7 +2290,7 @@ index f975842..83cbb75 100644
  import torch.distributed as dist
  from commons.checkpoint import get_unwrapped_module
  from commons.utils.gpu_timer import GPUTimer
-@@ -34,6 +35,38 @@ from pipeline.train_pipeline import (
+@@ -34,6 +35,37 @@ from pipeline.train_pipeline import (
  from training.gin_config_args import TrainerArgs
  from training.utils import cal_flops
  
@@ -2309,7 +2320,6 @@ index f975842..83cbb75 100644
 +
 +    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
 +    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
-+    print_rank_0(f"The final performance result: {output_str}")
 +
 +    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
 +    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
@@ -2318,7 +2328,7 @@ index f975842..83cbb75 100644
  
  def evaluate(
      pipeline: Union[
-@@ -46,7 +79,7 @@ def evaluate(
+@@ -46,7 +78,7 @@ def evaluate(
      eval_loader: torch.utils.data.DataLoader,
  ):
      eval_iter = 0
@@ -2327,7 +2337,7 @@ index f975842..83cbb75 100644
      max_eval_iters = trainer_args.max_eval_iters or len(eval_loader)
      max_eval_iters = min(max_eval_iters, len(eval_loader))
      # make a copy of eval_loader to avoid modifying the original loader
-@@ -76,7 +109,8 @@ def evaluate(
+@@ -76,7 +108,8 @@ def evaluate(
          f"[eval] [eval {eval_iter * dp_size * trainer_args.eval_batch_size} users]:\n    "
          + stringify_dict(eval_metric_dict, prefix="Metrics", sep="\n    ")
      )
@@ -2337,7 +2347,7 @@ index f975842..83cbb75 100644
  
  
  def maybe_load_ckpts(
-@@ -111,7 +145,7 @@ def save_ckpts(
+@@ -111,7 +144,7 @@ def save_ckpts(
              os.makedirs(ckpt_save_dir, exist_ok=True)
          except Exception as e:
              raise Exception("can't build path:", ckpt_save_dir) from e
@@ -2346,7 +2356,7 @@ index f975842..83cbb75 100644
      checkpoint.save(ckpt_save_dir, model, dense_optimizer=dense_optimizer)
      print_rank_0(f"Checkpoints saved!!")
  
-@@ -155,15 +189,51 @@ def train_with_pipeline(
+@@ -155,15 +188,51 @@ def train_with_pipeline(
      iter_slices = batched(train_loader_iter, n)
      start_iter = 0
      pipeline._model.train()
@@ -2402,7 +2412,7 @@ index f975842..83cbb75 100644
              if (
                  train_iter * trainer_args.ckpt_save_interval > 0
                  and train_iter % trainer_args.ckpt_save_interval == 0
-@@ -173,7 +243,7 @@ def train_with_pipeline(
+@@ -173,7 +242,7 @@ def train_with_pipeline(
                  )
                  save_ckpts(save_path, pipeline._model, dense_optimizer)
              try:
@@ -2411,7 +2421,7 @@ index f975842..83cbb75 100644
                  reporting_loss, (
                      local_loss,
                      logits,
-@@ -184,12 +254,22 @@ def train_with_pipeline(
+@@ -184,12 +253,22 @@ def train_with_pipeline(
                  ddp_num_contextuals.append(ddp_num_contextual.view(-1))
                  ddp_num_candidates.append(ddp_num_candidate.view(-1))
                  tokens_logged += reporting_loss[1]
@@ -2436,7 +2446,7 @@ index f975842..83cbb75 100644
              if train_iter > 0 and (train_iter + 1) % trainer_args.log_interval == 0:
                  gpu_timer.stop()
                  cur_td = gpu_timer.elapsed_time() - last_td
-@@ -210,10 +290,42 @@ def train_with_pipeline(
+@@ -210,10 +289,42 @@ def train_with_pipeline(
          # TODO CHECK if train pipeline is flushed
          if train_iter > 0 and train_iter % trainer_args.eval_interval == 0:
              pipeline._model.eval()
