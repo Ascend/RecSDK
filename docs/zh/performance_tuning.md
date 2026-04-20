@@ -30,7 +30,7 @@ PyTorch推荐使用接口进行性能采集，采集完之后会自动解析性�
 
 完整示例如下：
 
-```bash
+```python
 import torch
 import torch_npu
 device = torch.device("npu")
@@ -95,7 +95,7 @@ TensorFlow下没有接口可以直接调用，需要使用msprof命令进行采�
 
 示例代码如下：
 
-```bash
+```python
 import npu_device
 from npu_device.compat.v1.npu_init import *
 import numpy as np
@@ -123,7 +123,7 @@ with tf.compat.v1.Session(config=session_config) as sess:
 print(result)
 ```
 
-1. 需要在循环运行推理，然后再模型开始推理一小段时间后，自行获取运行程序的pid，比如本次为9527，则运行如下命令动态采集命令采集数据
+1. 需要在循环运行推理，然后在模型开始推理一小段时间后，自行获取运行程序的pid，比如本次为9527，则运行如下命令动态采集命令采集数据
 
     ```bash
     msprof --dynamic=on --pid=9527 --output=/home/projects/output --model-execution=on --runtime-api=on --aicpu=on
@@ -215,7 +215,7 @@ cube/vector bound场景下的优化手段：
 
 **分析过程<a name="section12759386573"></a>**
 
-profiling的timeline文件，通过chrome://tracing/网页打开，可以看到类似这种的算子下发。
+profiling的timeline文件，通过chrome://tracing/网页打开，可以看到类似这样的算子下发。
 
 ![](figures/performance_tuning/zh-cn_image_0000002383562202.png)
 

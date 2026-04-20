@@ -428,7 +428,7 @@ from npu_bridge.npu_init import *
 - 对于原始网络中的dropout，请替换为CANN对应的API实现，以获得更优性能，但需关注对网络精度的影响。
     - 如果存在tf.nn.dropout，请修改为：
 
-        ```bash
+        ```python
         layers = npu_ops.dropout()
         ```
 
@@ -452,7 +452,7 @@ from npu_bridge.npu_init import *
 
     迁移后的代码：
 
-    ```bash
+    ```python
     layers = npu_unary_ops.gelu(x)
     ```
 
@@ -1019,7 +1019,7 @@ Horovod是基于TensorFlow、Keras、PyTorch以及MXNet的分布式训练框架�
 
 Horovod原始代码：
 
-```bash
+```python
 import tensorflow as tf
 import horovod.tensorflow as hvd
 

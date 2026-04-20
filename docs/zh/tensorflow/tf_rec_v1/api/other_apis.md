@@ -21,7 +21,7 @@ def version()
 
 用户可以通过version\(\)或\_\_version\_\_查询Rec SDK TensorFlow框架的版本号。示例如下：
 
-```bash
+```python
 import mx_rec
 print(mx_rec.version())
 print(mx_rec.__version__)
@@ -35,7 +35,7 @@ print(mx_rec.__version__)
 
 **函数原型<a name="section858517176587"></a>**
 
-```bash
+```python
 # 获取哈希表集合名字
 @property
 def ascend_global_hashtable_collection(self):

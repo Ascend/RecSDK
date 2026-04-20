@@ -1197,7 +1197,7 @@ def train():
     for step in range(BATCH_NUM):
         # 对稀疏表数据做全量保存
         if is_train and step == 20:
-            if os.path.exists(sparse_save_dir_base):
+            if os.path.exists(sparse_save_dir):
                 shutil.rmtree(sparse_save_dir, ignore_errors=True)
             # 若需要在训练过程中（即Dataset未迭代到末尾）进行保存，则需手动触发wait_pipeline_compute_swapinfo()方法
             pipeline.wait_pipeline_compute_swapinfo()
