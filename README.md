@@ -122,7 +122,7 @@ RecSDK/                                          # 项目根目录
 * [torch_rec_v1](./docs/zh/torch/torch_rec_v1/api)
 * [torch_rec_v2](./docs/zh/torch/torch_rec_v2/api)
 
-## 模式适配样例
+## 模型适配样例
 
 | 模型名称 | 适配框架 | 组件名称 | 说明 |
 |---------|---------|---------|------|
