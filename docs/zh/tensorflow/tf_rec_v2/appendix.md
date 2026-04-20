@@ -11,8 +11,7 @@
 |root|部署Rec SDK TensorFlow|用户自定义|使用**passwd**命令修改|
 |HwHiAiUser|安装驱动，运行Demo依赖的用户|用户自定义|使用**passwd**修改|
 
-
-**centos系统中DockerFile示例的基础镜像用户<a name="section1822811311000"></a>**
+**centos系统中Dockerfile示例的基础镜像用户<a name="section1822811311000"></a>**
 
 |用户|初始密码|密码修改方法|
 |--|--|--|
@@ -32,13 +31,8 @@
 |systemd-network|无|-|
 |dbus|无|-|
 
-
 **centos系统中RecSDK-TensorFlow组件容器内的用户<a name="section1238015439358"></a>**
 
 |用户|描述|初始密码|密码修改方法|
 |--|--|--|--|
 |sshd|-|无|-|
-
-
-
-

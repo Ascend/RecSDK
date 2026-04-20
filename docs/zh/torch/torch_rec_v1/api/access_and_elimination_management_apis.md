@@ -36,7 +36,7 @@ class AdmitAndEvictPolicyType(Enum):
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 @dataclass
 class ShowClickParams:
     alpha: float = 1.0

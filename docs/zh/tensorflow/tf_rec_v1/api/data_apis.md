@@ -45,7 +45,7 @@ def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, table_names=No
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
-```bash
+```python
 import tensorflow as tf
 from mx_rec.core.asc.helper import get_asc_insert_func
 
