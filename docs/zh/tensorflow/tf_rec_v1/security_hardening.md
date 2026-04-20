@@ -64,22 +64,34 @@
     - 添加防火墙规则
 
         ```bash
-        ```shell
-        iptables -D INPUT -p tcp -j ${规则名}
-        iptables -F ${规则名}
-        iptables -X ${规则名}
-        iptables -t filter -N ${规则名}
-        iptables -I INPUT -p tcp -j ${规则名}
-        iptables -t filter -I ${规则名} -i ${要限制网卡} -p tcp --dport ${要限制的端口} -j DROP
+        #定义变量（请根据实际情况修改）
+        CHAIN_NAME="RECSDK_BLOCK" #规则名称
+        INTERFACE="eth0"          #要限制的网卡
+        PORT="8080"               #要限制的端口
+
+        #清理旧规则（先删链内规则，再删链）
+        # 1.从INPUT链中移除对自定义链的引用
+        sudo iptables -D INPUT -p tcp -j ${CHAIN_NAME} 2>/dev/null
+        # 2.清空自定义链内的所有规则
+        sudo iptables -F ${CHAIN_NAME} 2>/dev/null
+        # 3.删除自定义链
+        sudo iptables -X ${CHAIN_NAME} 2>/dev/null
+
+        #创建新规则
+        # 4.创建新的自定义链
+        sudo iptables -t filter -N ${CHAIN_NAME}
+        # 5.将自定义链插入到INPUT链的第一条位置（明确指定位置）
+        sudo iptables -I INPUT 1 -p tcp -j ${CHAIN_NAME}
+        # 6.在自定义链中添加丢弃规则
+        sudo iptables -t filter -I ${CHAIN_NAME} 1 -i ${INTERFACE} -p tcp --dport ${PORT} -j DROP
         ```
   
     - 清除防火墙规则
 
         ```bash
-        ```shell
-        iptables -D INPUT -p tcp -j ${规则名}
-        iptables -F ${规则名}
-        iptables -X ${规则名}
+        sudo iptables -D INPUT -p tcp -j ${CHAIN_NAME} 2>/dev/null
+        sudo iptables -F ${CHAIN_NAME} 2>/dev/null
+        sudo iptables -X ${CHAIN_NAME} 2>/dev/null
         ```
 
 - MPI默认配置项在启动多个Python训练进程时会对0.0.0.0地址进行侦听。

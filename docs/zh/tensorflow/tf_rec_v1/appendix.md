@@ -306,7 +306,7 @@ Hot\_Embedding功能默认开启，无需配置。
 
 示例1：模型从warm\_start路径中加载稀疏表user\_table。
 
-```bash
+```python
 import tensorflow as tf
 from tf_adapter import NPUEstimator
  
@@ -331,7 +331,7 @@ est = NPUEstimator(
 
 示例2：模型从warm\_start\_1路径中加载所有参数，然后模型从warm\_start\_2路径中加载Embedding表user\_table、item\_table，替代已经加载的warm\_start\_1路径中的稀疏表结果。模型从warm\_start\_3路径中加载mlp\_layer\_w参数，替代warm\_start\_1的加载结果。
 
-```bash
+```python
 import tensorflow as tf
 from tf_adapter import NPUEstimator
  
@@ -403,7 +403,7 @@ init(train_steps=args.train_steps,
 |root|部署Rec SDK TensorFlow|用户自定义|使用**passwd**命令修改|
 |HwHiAiUser|安装驱动，运行Demo依赖的用户|用户自定义|使用**passwd**修改|
 
-**centos系统中DockerFile示例的基础镜像用户<a name="section1822811311000"></a>**
+**centos系统中Dockerfile示例的基础镜像用户<a name="section1822811311000"></a>**
 
 |用户|初始密码|密码修改方法|
 |--|--|--|
