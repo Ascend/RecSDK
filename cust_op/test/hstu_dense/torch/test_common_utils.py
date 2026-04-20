@@ -61,6 +61,32 @@ def allclose(tensor: torch.Tensor, other: torch.Tensor, atol: float, ratio: floa
     return (diff_count / tensor.numel()) < ratio
 
 
+def hstu_close_double(actual, out_ref, fp32_ref, try_allclose: bool = False, multiplier: int = 2) -> bool:
+    # 算子输出
+    actual = actual.reshape(-1)
+    # 原生golden
+    out_ref = out_ref.reshape(-1)
+    # 高精度原生golden
+    fp32_ref = fp32_ref.reshape(-1)
+    assert fp32_ref.dtype == torch.float32, "fp32_ref should be float32"
+    if try_allclose:
+        try_allclose = torch.allclose(actual, out_ref)
+
+    left_abs_max = (actual - fp32_ref).abs().max().item()
+    right_abs_max = (out_ref - fp32_ref).abs().max().item()
+    mid_max = (out_ref - actual).abs().max().item()
+
+    if left_abs_max > multiplier * right_abs_max:
+        print("left_abs_max=", left_abs_max)
+        print("right_abs_max=", right_abs_max)
+        print("actual-out_ref=", mid_max)
+        print(
+            f"[HSTU_CLOSE] assert fail: diff abs max: {left_abs_max:.6f}, threshold: {multiplier * right_abs_max:.6f},"
+            f" multiplier: {multiplier}"
+        )
+    return (left_abs_max <= multiplier * right_abs_max) or (try_allclose)
+
+
 def jagged_to_dense(jagged_tensor, seq_lens, head_nums, attn_dim):
     need_pad_seq = []
     offset = 0
