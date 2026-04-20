@@ -14,9 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
-if [[ $(uname -m) =~ "aarch64" ]];then
-    export LD_PRELOAD=/usr/lib64/libgomp.so.1
-fi
 
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 export CUDA_DEVICE_MAX_CONNECTIONS=1

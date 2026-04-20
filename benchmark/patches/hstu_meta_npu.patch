@@ -1,7 +1,8 @@
-From 3146ab18313372f5d839d744824289efa791ee44 Mon Sep 17 00:00:00 2001
+From 8822e20e4693ea5ffbf21095c4261790fc1cfa0b Mon Sep 17 00:00:00 2001
 From: cann_ly <luyi120@h-partners.com>
-Date: Thu, 9 Apr 2026 20:32:37 +0800
-Subject: [PATCH] =?UTF-8?q?hstu=20=E4=BF=AE=E6=94=B9?=
+Date: Sat, 18 Apr 2026 17:43:46 +0800
+Subject: [PATCH] =?UTF-8?q?hstu=E5=A2=9E=E5=8A=A0=E7=B2=BE=E5=BA=A6?=
+ =?UTF-8?q?=E6=96=87=E4=BB=B6?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -13,11 +14,11 @@ Content-Transfer-Encoding: 8bit
  .../research/modeling/sequential/features.py  |   6 +
  .../research/modeling/sequential/hstu.py      | 230 +++++++++++++++---
  .../input_features_preprocessors.py           |   6 +-
- .../research/trainer/train.py                 | 101 +++++++-
+ .../research/trainer/train.py                 | 126 +++++++++-
  main.py                                       |  27 +-
  prefetch_shape.py                             |   5 +
- .../pt_jagged_dense_convert.py                |  56 +++++
- 10 files changed, 407 insertions(+), 46 deletions(-)
+ pt_jagged_dense_convert.py                    |  56 +++++
+ 10 files changed, 432 insertions(+), 46 deletions(-)
  create mode 100644 prefetch_shape.py
  create mode 100644 pt_jagged_dense_convert.py
 
@@ -129,7 +130,7 @@ index 70bf80c..c4fbbbc 100644
      historical_ids = row["historical_ids"].to(device)  # [B, N]
      historical_ratings = row["historical_ratings"].to(device)
 diff --git a/generative_recommenders/research/modeling/sequential/hstu.py b/generative_recommenders/research/modeling/sequential/hstu.py
-index 3c89245..fa3150a 100644
+index 3c89245..e8bb831 100644
 --- a/generative_recommenders/research/modeling/sequential/hstu.py
 +++ b/generative_recommenders/research/modeling/sequential/hstu.py
 @@ -22,6 +22,8 @@ Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for G
@@ -507,7 +508,7 @@ index a461ab8..226c83e 100644
      def debug_str(self) -> str:
          return f"posi_d{self._dropout_rate}"
 diff --git a/generative_recommenders/research/trainer/train.py b/generative_recommenders/research/trainer/train.py
-index 6d2da5b..89d08bf 100644
+index 6d2da5b..a956a7b 100644
 --- a/generative_recommenders/research/trainer/train.py
 +++ b/generative_recommenders/research/trainer/train.py
 @@ -24,6 +24,14 @@ from typing import Dict, Optional
@@ -545,7 +546,7 @@ index 6d2da5b..89d08bf 100644
  
  
  def cleanup() -> None:
-@@ -90,6 +103,53 @@ def get_weighted_loss(
+@@ -90,6 +103,51 @@ def get_weighted_loss(
      return weighted_loss
  
  
@@ -575,11 +576,9 @@ index 6d2da5b..89d08bf 100644
 +        p99 = np.percentile(ave_step, 99, method="lower")
 +        p999 = np.percentile(ave_step, 99.9, method="lower")
 +
-+    QPS = int(1 / avg_time)     # batch_size * world_size * 10 / avg_time
 +    e2e_result = {
 +        "Batch_size": batch_size,
 +        "model_name": model_name,
-+        "QPS": QPS,
 +        "AVG Latency": avg_time,
 +        "P999 Latency": p999,
 +        "P99 Latency": p99,
@@ -589,17 +588,17 @@ index 6d2da5b..89d08bf 100644
 +
 +    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
 +    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
-+    print(f"The final performance result: {output_str}")
 +
 +    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
 +    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
 +        f.write(output_str + "\n")
++    return avg_time
 +
 +
  @gin.configurable
  def train_fn(
      rank: int,
-@@ -128,8 +188,21 @@ def train_fn(
+@@ -128,8 +186,21 @@ def train_fn(
      l2_norm_eps: float = 1e-6,
      enable_tf32: bool = False,
      random_seed: int = 42,
@@ -621,7 +620,7 @@ index 6d2da5b..89d08bf 100644
      random.seed(random_seed)
      torch.backends.cuda.matmul.allow_tf32 = enable_tf32
      torch.backends.cudnn.allow_tf32 = enable_tf32
-@@ -150,7 +223,7 @@ def train_fn(
+@@ -150,7 +221,7 @@ def train_fn(
          batch_size=local_batch_size,
          world_size=world_size,
          rank=rank,
@@ -630,7 +629,7 @@ index 6d2da5b..89d08bf 100644
          drop_last=world_size > 1,
      )
      eval_data_sampler, eval_data_loader = create_data_loader(
-@@ -158,7 +231,7 @@ def train_fn(
+@@ -158,7 +229,7 @@ def train_fn(
          batch_size=eval_batch_size,
          world_size=world_size,
          rank=rank,
@@ -639,7 +638,7 @@ index 6d2da5b..89d08bf 100644
          drop_last=world_size > 1,
      )
  
-@@ -167,6 +240,7 @@ def train_fn(
+@@ -167,6 +238,7 @@ def train_fn(
          embedding_module: EmbeddingModule = LocalEmbeddingModule(
              num_items=dataset.max_item_id,
              item_embedding_dim=item_embedding_dim,
@@ -647,7 +646,7 @@ index 6d2da5b..89d08bf 100644
          )
      else:
          raise ValueError(f"Unknown embedding_module_type {embedding_module_type}")
-@@ -196,6 +270,7 @@ def train_fn(
+@@ -196,6 +268,7 @@ def train_fn(
          max_sequence_len=dataset.max_sequence_length + gr_output_length + 1,
          embedding_dim=item_embedding_dim,
          dropout_rate=dropout_rate,
@@ -655,7 +654,7 @@ index 6d2da5b..89d08bf 100644
      )
  
      model = get_sequential_encoder(
-@@ -207,6 +282,7 @@ def train_fn(
+@@ -207,6 +280,7 @@ def train_fn(
          input_preproc_module=input_preproc_module,
          output_postproc_module=output_postproc_module,
          verbose=True,
@@ -663,7 +662,7 @@ index 6d2da5b..89d08bf 100644
      )
      model_debug_str = model.debug_str()
  
-@@ -258,6 +334,8 @@ def train_fn(
+@@ -258,6 +332,8 @@ def train_fn(
      device = rank
      if main_module_bf16:
          model = model.to(torch.bfloat16)
@@ -672,7 +671,7 @@ index 6d2da5b..89d08bf 100644
      model = model.to(device)
      ar_loss = ar_loss.to(device)
      negatives_sampler = negatives_sampler.to(device)
-@@ -294,11 +372,11 @@ def train_fn(
+@@ -294,11 +370,11 @@ def train_fn(
          logging.info(f"Rank {rank}: disabling summary writer")
  
      last_training_time = time.time()
@@ -686,7 +685,7 @@ index 6d2da5b..89d08bf 100644
          if train_data_sampler is not None:
              train_data_sampler.set_epoch(epoch)
          if eval_data_sampler is not None:
-@@ -313,6 +391,7 @@ def train_fn(
+@@ -313,6 +389,7 @@ def train_fn(
  
              if (batch_id % eval_interval) == 0:
                  model.eval()
@@ -694,7 +693,7 @@ index 6d2da5b..89d08bf 100644
  
                  eval_state = get_eval_state(
                      model=model.module,
-@@ -394,6 +473,12 @@ def train_fn(
+@@ -394,6 +471,12 @@ def train_fn(
              main_loss = loss.detach().clone()
              loss = get_weighted_loss(loss, aux_losses, weights=loss_weights or {})
  
@@ -707,7 +706,7 @@ index 6d2da5b..89d08bf 100644
              if rank == 0:
                  assert writer is not None
                  writer.add_scalar("losses/ar_loss", loss, batch_id)
-@@ -424,6 +509,7 @@ def train_fn(
+@@ -424,6 +507,7 @@ def train_fn(
              opt.step()
  
              batch_id += 1
@@ -715,7 +714,7 @@ index 6d2da5b..89d08bf 100644
  
          def is_full_eval(epoch: int) -> bool:
              return (epoch % full_eval_every_n) == 0
-@@ -515,7 +601,12 @@ def train_fn(
+@@ -515,7 +599,39 @@ def train_fn(
          )
          last_training_time = time.time()
  
@@ -724,12 +723,39 @@ index 6d2da5b..89d08bf 100644
 +
      if rank == 0:
 +        inductor_flag = 'eager'
-+        latency_summary(gathered_latency, local_batch_size, dataset_name + "_" + main_module, "npu" if NPU_ENABLE else "cuda", inductor_flag)    # 保存e2e耗时
++        device_name = "npu" if NPU_ENABLE else "cuda"
++        avg_time = latency_summary(gathered_latency, local_batch_size, dataset_name + "_" + main_module, device_name, inductor_flag)    # 保存e2e耗时
++        final_results = {
++            'dataset_name': dataset_name,
++            'batch_size': local_batch_size,
++            'epoch': epoch,
++            'step': batch_id,
++            'final_loss': loss.cpu().item(),
++            "ms/step": float(avg_time) * 100,
++            'metrics': {
++                'NDCG@10': float(ndcg_10),
++                'NDCG@50': float(ndcg_50),
++                'HR@10': float(hr_10),
++                'HR@50': float(hr_50),
++                'MRR': float(mrr)
++            }
++        }
++
++        model_detail_info = device_name + "_" + main_module + "_" + inductor_flag
++        output_str = model_detail_info + "_" + str(final_results)
++        print(f"The Final Result: {output_str}")
++        with open(f"../save_results_{device_name}/precision_result.txt", "a", encoding="utf-8") as f:
++            f.write(output_str + "\n")
++
++        del final_results["ms/step"]
++        os.makedirs(f"../save_results_{device_name}/{main_module}", exist_ok=True)
++        torch.save(final_results, f"../save_results_{device_name}/{main_module}/predictions_{main_module}_{inductor_flag}_{batch_id}.pt")
++
          if writer is not None:
              writer.flush()
              writer.close()
 diff --git a/main.py b/main.py
-index 445f258..5271c10 100644
+index 445f258..97566a2 100644
 --- a/main.py
 +++ b/main.py
 @@ -29,6 +29,14 @@ import fbgemm_gpu  # noqa: F401, E402
@@ -808,7 +834,7 @@ index 0000000..b8d3f3a
 \ No newline at end of file
 diff --git a/pt_jagged_dense_convert.py b/pt_jagged_dense_convert.py
 new file mode 100644
-index 0000000..fe8d138
+index 0000000..354074b
 --- /dev/null
 +++ b/pt_jagged_dense_convert.py
 @@ -0,0 +1,56 @@
