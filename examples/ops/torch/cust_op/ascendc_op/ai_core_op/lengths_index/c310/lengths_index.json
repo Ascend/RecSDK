@@ -1,0 +1,36 @@
+[
+  {
+    "op": "LengthsIndex",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "offsets",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int32"]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "output",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int32"]
+      }
+    ],
+    "attr": [
+      {
+        "name": "output_size",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 0
+      },
+      {
+        "name": "num_seq",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 0
+      }
+    ]
+  }
+]

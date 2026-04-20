@@ -1,0 +1,30 @@
+[
+  {
+    "op": "AsynchronousCompleteCumsum",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "x",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "int64", "int32"
+        ]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "y",
+        "param_type": "required",
+        "format": [
+          "ND", "ND"
+        ],
+        "type": [
+          "int64", "int32"
+        ]
+      }
+    ]
+  }
+]
