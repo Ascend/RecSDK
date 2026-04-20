@@ -68,7 +68,7 @@ def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1
 
 **使用示例<a name="section2553042232"></a>**
 
-```bash
+```python
 import tensorflow as tf
 from mx_rec.core.embedding import create_table
 sparse_hashtable = create_table(key_dtype=tf.int32,

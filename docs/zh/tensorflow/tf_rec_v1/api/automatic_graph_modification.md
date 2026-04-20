@@ -26,13 +26,13 @@ ConfigInitializer.get_instance().train_params_config.get_initializer(is_training
 
 **使用示例<a name="section193151694205"></a>**
 
-```bash
+```python
 import tensorflow as tf
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 # train，需要开启自动改图
 # train模式下，自动改图需要在计算梯度之后
-计算梯度........
+# 计算梯度（省略计算梯度的实现细节）
 modify_graph_and_start_emb_cache(dump_graph=True)
 with tf.compat.v1.Session() as sess:
     # 请确保已调用过modify_graph_and_start_emb_cache()接口

@@ -15,12 +15,12 @@
 </tr>
 <tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row7259721105019"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.3.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a>版本类型</p>
 </th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.3.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a>正式版本</p>
+<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.3.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a>候选版本</p>
 </td>
 </tr>
 <tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row880773455018"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.4.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p198071234135017"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p198071234135017"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p198071234135017"></a>维护周期</p>
 </th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.4.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p15807123412509"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p15807123412509"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p15807123412509"></a>1年</p>
+<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.4.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p15807123412509"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p15807123412509"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p15807123412509"></a>3个月</p>
 </td>
 </tr>
 </tbody>
@@ -30,7 +30,7 @@
 
 | 产品名称   | 版本     |
 | ---------- | -------- |
-| Ascend HDK | 26.0.RC1<br>26.7.0 (昇腾950代际产品) |
+| Ascend HDK | <li>昇腾950代际产品（Atlas 350 加速卡、Atlas 850 系列硬件产品、Atlas 950 SuperPoD）：25.1.RC1</li><li>其他产品：26.0.RC1</li>|
 | CANN       | 9.0.0    |
 
 ## 病毒扫描结果<a name="ZH-CN_TOPIC_0000002492442006"></a>
@@ -45,7 +45,7 @@
 
 | MindSDK软件版本 | MindSDK待升级版本                                                         | CANN版本兼容性                                                                                    | Ascend HDK版本兼容性                                                                                        |
 | --------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| MindSDK 26.0.0  | <ul><li>MindSDK 7.3.0及7.3.0.x</li><li>MindSDK 26.0.0及26.0.0.x</li></ul> | <ul><li>CANN 8.3.RC1及8.3.RC1.x</li><li>CANN 8.5.0及8.5.0.x</li><li>CANN 9.0.0及9.0.0.x</li></ul> | <ul><li>Ascend HDK 25.5.0及Ascend HDK 25.5.0.x</li><li>Ascend HDK 26.0.RC1及Ascend HDK 26.0.RC1.x</li><li>Ascend HDK 26.7.0</li></ul> |
+| MindSDK 26.0.0  | <ul><li>MindSDK 7.3.0及7.3.0.x</li><li>MindSDK 26.0.0及26.0.0.x</li></ul> | <ul><li>CANN 8.3.RC1及8.3.RC1.x</li><li>CANN 8.5.0及8.5.x</li><li>CANN 9.0.0及9.0.0.x</li></ul> | <ul><li>Ascend HDK 25.5.0及Ascend HDK 25.5.0.x</li><li>Ascend HDK 25.1.RC1及Ascend HDK 25.1.RC1.x</li><li>Ascend HDK 26.0.RC1及Ascend HDK 26.0.RC1.x</li></ul> |
 
 > [!NOTE] 说明 
 >软件版本兼容性是指产品软件版本升级时，其他关联软件不需要联动升级或打补丁，仍然可以支持已有功能。
@@ -67,7 +67,6 @@
 |Rec SDK 算子|<ul><li>生成式推荐模型融合算子补齐，并适配昇腾950代际产品：in_linear_silu、reverse_sequence。</li><li>生成式推荐模型融合算子补齐，暂不支持昇腾950代际产品：norm_multiply_dropout、concat_2d_jagged。</li><li>HSTU算子增强：反向算子性能优化，前反向算子支持int32。</li><li>算子重构：查表反向算子、HSTU前反向算子重构。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>昇腾950代际产品|
 |fbgemm-npu|<ul><li>适配昇腾950代际产品。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>昇腾950代际产品|
 |HKV|<ul><li>适配昇腾950代际产品。</li></ul>|昇腾950代际产品| 
-
 
 ## 业务接口变更<a name="ZH-CN_TOPIC_0000002492442008"></a>
 
