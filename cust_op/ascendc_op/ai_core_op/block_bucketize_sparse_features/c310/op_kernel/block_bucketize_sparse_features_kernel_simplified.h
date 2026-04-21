@@ -34,13 +34,13 @@ constexpr int32_t SCATTER_WARPS_PER_BLOCK = SCATTER_THREADS_PER_BLOCK / warpSize
 constexpr int32_t MAX_FEATURE_NUM_USE_QUICK_DIVIDE = 500;
 
 template <typename T>
-__aicore__ inline constexpr T UintDivMaxDividend()
+__simt_callee__ inline constexpr T UintDivMaxDividend()
 {
     return static_cast<T>(std::numeric_limits<typename std::make_signed<T>::type>::max());
 }
 
 template <typename IndexT, bool useQuickDiv>
-__aicore__ inline IndexT ComputeBucket(
+__simt_callee__ inline IndexT ComputeBucket(
     typename std::make_unsigned<IndexT>::type idx,
     typename std::make_unsigned<IndexT>::type blkSize,
     typename std::make_unsigned<IndexT>::type blkSizeMulMySize,
@@ -73,7 +73,7 @@ __aicore__ inline IndexT ComputeBucket(
 }
 
 template <typename IndexT, bool useQuickDiv>
-__aicore__ inline IndexT ComputeNewIndex(
+__simt_callee__ inline IndexT ComputeNewIndex(
     typename std::make_unsigned<IndexT>::type idx,
     typename std::make_unsigned<IndexT>::type blkSize,
     typename std::make_unsigned<IndexT>::type blkSizeMulMySize,
