@@ -53,7 +53,7 @@ rec_sdk_comm_path="${site_pkgs}/rec_sdk_common/lib"
 export LD_LIBRARY_PATH=${so_path}:${tfa_path}:${rec_sdk_comm_path}:/usr/local/lib:$LD_LIBRARY_PATH
 export PYTHONPATH=${so_path}:$PYTHONPATH
 export PATH=${mpi_path}/bin:$PATH
-export LD_PRELOAD=/lib64/libgomp.so.1
+export LD_PRELOAD=/usr/lib64/libstdc++.so.6:/lib64/libgomp.so.1
 
 export ASCEND_GLOBAL_LOG_LEVEL=0 # “设置日志级别”章节0:debug, 1:info, 2:warning, 3:error, 4:NULL
 export MXREC_LOG_LEVEL=DEBUG

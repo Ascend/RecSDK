@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,101 +14,59 @@
 # limitations under the License.
 # ==============================================================================
 
-VALID_AI_CORES=(
-    "ai_core-Ascend910B1"
-    "ai_core-Ascend910B2"
-    "ai_core-Ascend910B3"
-    "ai_core-Ascend910B4"
-    "ai_core-Ascend910_93"
-    "ai_core-Ascend310P3"
-)
+set -e
+source /etc/profile
 
-validate_ai_core() {
-    local input_core="$1"
-    for valid_core in "${VALID_AI_CORES[@]}"; do
-        if [ "$input_core" = "$valid_core" ]; then
-            echo "ai_core $input_core"
-            return 0
-        fi
-    done
-    echo "ai core must in : [${VALID_AI_CORES[*]}]" >&2
-    exit 1
-}
+# ==============================================================================
+# 1. 初始化路径
+# ==============================================================================
+readonly THIS_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+readonly WORK_DIR="$(dirname "${THIS_SCRIPT}")"
+readonly UTILS_SCRIPT="${WORK_DIR}/../../../scripts/op_builder_utils.sh"
 
-ai_core="ai_core-Ascend910B1"
-if [ "$#" -eq 1 ]; then
-  ai_core="$1"
-  validate_ai_core $ai_core
-fi
+# ==============================================================================
+# 2. 加载通用库
+# ==============================================================================
 
-rm -rf ./pcie_through
-if [ "${ai_core}" == "ai_core-Ascend910B1" ]; then
-  msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910b1 -lan cpp -out ./pcie_through -m 0 -op RmaSwapMultiTables
-elif [ "${ai_core}" == "ai_core-Ascend910_93" ]; then
-  msopgen gen -i emb_custom.json -f tf -c ai_core-ascend910_93 -lan cpp -out ./pcie_through -m 0 -op RmaSwapMultiTables
-else
-  echo "Unsupported chip type ${ai_core}"
-fi
-
-cp -rf op_kernel pcie_through/
-cp -rf op_host pcie_through/
-
-cd pcie_through
-
-if [ ! -f "CMakePresets.json" ]; then
-  echo "CMakePresets.json does not exist in current directory"
-  exit 1
-fi
-
-sed -i 's/--nomd5/--nomd5 --nocrc/g' ./cmake/makeself.cmake
-
-if [ -d /usr/local/Ascend/ascend-toolkit/latest ]; then
-    sed -i 's:"/usr/local/Ascend/latest":"/usr/local/Ascend/ascend-toolkit/latest":g' CMakePresets.json
-fi
-cd cmake
-
-if [ ! -f "config.cmake" ]; then
-  echo "config.cmake does not exist in current directory"
-  exit 1
-fi
-
-if [ "${ai_core}" == "ai_core-Ascend910B1" ]; then
-  sed -i 's:set(ASCEND_COMPUTE_UNIT ascend910b):set(ASCEND_COMPUTE_UNIT ascend910b ascend910):g' config.cmake
-elif [ "${ai_core}" == "ai_core-ascend910_93" ]; then
-  sed -i 's:set(ASCEND_COMPUTE_UNIT ascend910_93):set(ASCEND_COMPUTE_UNIT ascend910_93 ascend910):g' config.cmake
-else
-  echo "Unsupported chip type ${ai_core}"
-fi
-
-cd ..
-
-bash build.sh
-
-# 获取系统ID
-os_id=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
-if [ -z "${os_id}" ]; then
-    echo "ERROR: get os_id failed"
+if [ ! -f "$UTILS_SCRIPT" ]; then
+    echo "ERROR: Cannot find op_builder_utils.sh at ${UTILS_SCRIPT}" >&2
+    echo "Please check your directory structure." >&2
     exit 1
 fi
 
-# 获取架构
-arch=$(uname -m)
-if [ -z "${arch}" ]; then
-    echo "ERROR: get arch failed"
-    exit 1
+source "$UTILS_SCRIPT"
+
+# ==============================================================================
+# 3. 参数配置
+# ==============================================================================
+vendor_name="pcie_through"
+export with_onnx="true"
+export AI_CORE_PROFILE="v220"
+export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/emb_custom.json")"
+readonly V220_SRC="$(readlink -f "${WORK_DIR}")"
+readonly TGT="${WORK_DIR}/${vendor_name}"
+
+parse_arguments "$@" || exit 1
+
+cp -f "$OPERATOR_JSON_FILE" "${V220_SRC}/${vendor_name}.json"
+
+# ==============================================================================
+# 4. 执行标准化流程（不可整段走 build_and_install_operator：需连续两次 msopgen -m 0 / -m 1）
+# ==============================================================================
+validate_ai_core "$ai_core" || exit 1
+check_system_and_cann "$ai_core" || exit 1
+
+rm -rf "${TGT}"
+msopgen gen -i "${OPERATOR_JSON_FILE}" -f tf -c "${ai_core}" -lan cpp -out "${TGT}" -m 0 -op RmaSwapMultiTables || exit 1
+
+if [ -d "${TGT}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
+    export MAJOR_VERSION=8
 fi
 
-# 只允许字母/数字/点/下划线/连字符（覆盖常见 os_id 与 arch）
-SAFE_REGEX='^[A-Za-z0-9._-]+$'
-if ! [[ "$os_id" =~ $SAFE_REGEX ]]; then
-    echo "ERROR: invalid os_id: $os_id" >&2
-    exit 1
-fi
-if ! [[ "$arch" =~ $SAFE_REGEX ]]; then
-    echo "ERROR: invalid arch: $arch" >&2
-    exit 1
-fi
+replace_operator_sources "${V220_SRC}" "${TGT}" || exit 1
 
-# 安装编译成功的算子包
-installer="./build_out/custom_opp_${os_id}_${arch}.run"
-bash -- "$installer"
+configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "${TGT}" || exit 1
+prepare_and_build "$MAJOR_VERSION" "$vendor_name" "${TGT}" || exit 1
+install_operator_package "$OS_ID" "$ARCH" "${TGT}" || exit 1
+
+rm -f "${V220_SRC}/${vendor_name}.json"
