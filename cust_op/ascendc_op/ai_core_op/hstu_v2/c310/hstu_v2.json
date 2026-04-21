@@ -1,0 +1,30 @@
+[
+    {
+        "op": "HstuV2",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "fakein",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "fp16", "bf16"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "fakeout",
+                "param_type": "required",
+                "format": [
+                    "ND", "ND"
+                ],
+                "type": [
+                    "fp16", "bf16"
+                ]
+            }
+        ]
+    }
+]

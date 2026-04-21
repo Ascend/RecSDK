@@ -208,7 +208,7 @@ function compile_ops_A5() {
         if [ -d "$dir" ]; then
             dir_name=$(basename "$dir")
             plugin_dir_names=${OP_PLUGIN_MAP[$dir_name]}
-            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" ]]; then
+            if [[ "$dir_name" == "cmake" || "$dir_name" == "common" || "$dir_name" == "hstu_v2" ]]; then
                 continue
             fi
             cur_ver_op_dir=${dir_name}/c310
