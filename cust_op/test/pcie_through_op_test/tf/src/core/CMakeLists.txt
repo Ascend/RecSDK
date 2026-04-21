@@ -49,6 +49,7 @@ target_link_directories(SRC
         ${ASCEND_PATH}/fwkacllib/lib64
         ${ASCEND_PATH}/compiler/lib64
         ${ASCEND_PATH}/runtime/lib64
+        ${ASCEND_PATH}/${ARCH}-linux/lib64
         ${ASCEND_DRIVER_PATH}/lib64/driver
         ${SECUREC_PATH}/lib
         )
