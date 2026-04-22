@@ -24,12 +24,12 @@ using namespace AscendC;
 template <typename UnsignedT>
 class FastDivmod {
 public:
-    __aicore__ inline FastDivmod(UnsignedT magic, uint32_t shift, UnsignedT divisor)
+    __simt_callee__ inline FastDivmod(UnsignedT magic, uint32_t shift, UnsignedT divisor)
         : magic_(magic), shift_(shift), divisor_(divisor)
     {
     }
 
-    __aicore__ inline UnsignedT Div(UnsignedT n) const
+    __simt_callee__ inline UnsignedT Div(UnsignedT n) const
     {
         if (divisor_ <= 1) {
             return (divisor_ == 1) ? n : static_cast<UnsignedT>(0);
@@ -37,7 +37,7 @@ public:
         return AscendC::Simt::UintDiv<UnsignedT>(n, magic_, static_cast<UnsignedT>(shift_));
     }
 
-    __aicore__ inline UnsignedT Mod(UnsignedT n) const
+    __simt_callee__ inline UnsignedT Mod(UnsignedT n) const
     {
         if (divisor_ <= 1) {
             return (divisor_ == 1) ? static_cast<UnsignedT>(0) : n;
