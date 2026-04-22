@@ -46,7 +46,7 @@ constexpr int32_t MAX_TABLE_NUM_USE_QUICK_DIVIDE = 200;
  * 4. t = ((x - q) >> 1) + q
  * 5. r = t >> (shift - 1)
  */
-__aicore__ inline uint64_t QuickRem(const uint64_t& x, const uint64_t& divisorMagic, const uint64_t& divisorShift,
+__simt_callee__ inline uint64_t QuickRem(const uint64_t& x, const uint64_t& divisorMagic, const uint64_t& divisorShift,
                                     const uint64_t& y)
 {
     uint64_t divTmp = __umul64hi(x, divisorMagic);
@@ -55,7 +55,7 @@ __aicore__ inline uint64_t QuickRem(const uint64_t& x, const uint64_t& divisorMa
     return x - divResult * y;
 }
 
-__aicore__ inline uint64_t QuickDiv(const uint64_t& x, const uint64_t& divisorMagic, const uint64_t& divisorShift)
+__simt_callee__ inline uint64_t QuickDiv(const uint64_t& x, const uint64_t& divisorMagic, const uint64_t& divisorShift)
 {
     uint64_t divTmp = __umul64hi(x, divisorMagic);
     divTmp = ((x - divTmp) >> 1) + divTmp;
@@ -64,7 +64,7 @@ __aicore__ inline uint64_t QuickDiv(const uint64_t& x, const uint64_t& divisorMa
 }
 
 template <typename T>
-__aicore__ inline int64_t BinarySearchLastLeIdx(__gm__ const T* const arr, int64_t num, T target)
+__simt_callee__ inline int64_t BinarySearchLastLeIdx(__gm__ const T* const arr, int64_t num, T target)
 {
     int64_t start = 0;
     int64_t end = num;
@@ -81,7 +81,7 @@ __aicore__ inline int64_t BinarySearchLastLeIdx(__gm__ const T* const arr, int64
 }
 
 template <typename T>
-__aicore__ inline int64_t BinarySearchLastLeIdxUB(__ubuf__ const T* const arr, int64_t num, T target)
+__simt_callee__ inline int64_t BinarySearchLastLeIdxUB(__ubuf__ const T* const arr, int64_t num, T target)
 {
     int64_t start = 0;
     int64_t end = num;
@@ -110,7 +110,7 @@ struct TableCache {
     uint64_t bucketRemainder;
 };
 
-__aicore__ inline void UpdateTableCache(int64_t tableId, int localBatchSize,
+__simt_callee__ inline void UpdateTableCache(int64_t tableId, int localBatchSize,
     __ubuf__ int64_t* dTableOffsetsInFeature, __ubuf__ uint64_t* dUniqueOffsets,
     __ubuf__ uint64_t* blkSizeMagicShifts, bool isQuickDivide, TableCache& cache)
 {
