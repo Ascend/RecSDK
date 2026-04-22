@@ -26,7 +26,7 @@ constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
 constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
 
 template <typename T>
-__aicore__ inline int64_t findIdxBinarySearch(__gm__ const T* const arr, int64_t num, int64_t target)
+__simt_callee__ inline int64_t findIdxBinarySearch(__gm__ const T* const arr, int64_t num, int64_t target)
 {
     if (num <= 0) {
         return -1;
