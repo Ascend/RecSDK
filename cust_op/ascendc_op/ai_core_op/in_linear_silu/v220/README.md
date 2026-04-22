@@ -1,14 +1,16 @@
-**说明**
+# in_linear_silu算子及样例说明
 
 本算子仅支持NPU调用。
 
 # 产品支持情况
+
 | 硬件型号              | 是否支持                  |
 | -------------------- | ------------------------ |
 | Atlas A2训练系列产品  | 是  |
 | Atlas A5训练系列产品    | 是  |
 
 # in_linear_silu算子目录层级
+
 ```shell
 -- in_linear_silu
    |-- v220
@@ -28,25 +30,26 @@
 ![alt text](in_linear_silu.png)
 
 算子工作原理说明：
-1. 输入张量x ND格式，支持FLOAT16、FLOAT、BFLOAT16类型，shape = (m, k) 不可为空
-2. 输入张量weight ND格式，支持FLOAT16、FLOAT、BFLOAT16类型，shape = (n, k), 如果为(k, n)需要转置后传入 不可为空
+
+1. 输入张量x ND格式，支持FLOAT16、BFLOAT16类型，shape = (m,k) 不可为空
+2. 输入张量weight ND格式，支持FLOAT16、BFLOAT16类型，shape = (n,k), 如果为(k,n)需要转置后传入 不可为空
 3. 输入张量bias ND格式，支持FLOAT类型，shape = (n,) 不可为空
 4. attr属性 splitArgList(List[int], 计算输入)： User、Value、Query、Key的长度，4个int类型的List, 成员必须为16的倍数，4个数总和为n，不可为空。
 5. 输出张量 user, value, query, key,计算输出结果
-6. 输出张量 linearOutputOut中间数据用于反向计算或者workspace使用。需要传入。类型同x。shape = (m, n) 不可为空
-7. x weight bias做mmad得到的结果做silu最后根据splitArgList将结果分为user, value, query, key。
+6. 输出张量 linearOutputOut中间数据用于反向计算或者workspace使用。需要传入。类型同x。shape = (m,n) 不可为空
+7. x weight bias做matmul得到的结果做silu最后根据splitArgList将结果分为user, value, query, key。
 8. 请注意算子输入shape受显存大小限制。
 
 # 依赖
 
-算子依赖CATLASS源码， 验证过的版本是[catlass v1.3.0](https://raw.gitcode.com/cann/catlass/archive/refs/heads/v1.3.0.zip)
+算子依赖CATLASS源码, 编译前需要初始化submodule：
 
-解压后，将catlass所在目录声明为环境变量：
 ```shell
-export CATLASS_HOME=<catlass_home>
+git submodule update --init --recursive
 ```
 
 例如：
+
 ```python
 x = [m, k]  # shape: [m, k]
 weight = [n, k]  # shape: [n, k]
@@ -63,6 +66,7 @@ mixed_uvqk = torch.nn.functional.silu(mixed_uvqk)
 ```
 
 输入:
+
 ```python
 seg_len = int(n / 4)
 split_arg_list = [seg_len, seg_len, seg_len, seg_len]
@@ -72,6 +76,7 @@ bias = torch.rand((n,))
 ```
 
 输出：
+
 ```python
 def init_linear_golden(m: torch.nn.Module):
     m.weight.data = weight
@@ -83,6 +88,7 @@ mixed_uvqk = torch.nn.functional.silu(mixed_uvqk)
 ```
 
 # 算子输入与输出
+
 | 名称      | 输入/输出 | 参数类型 | 数据类型         | 数据格式       | 范围         | 说明                                  |
 |---------|------------|------|--------------|------------|------------|----------------------------------------|
 | x       | 输入       | Tensor | float32/float16/bfloat16 | [b-s, H] | H取值范围[16, 8192] |   H为16的整数倍              |
@@ -92,7 +98,7 @@ mixed_uvqk = torch.nn.functional.silu(mixed_uvqk)
 | user (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_u] | H_u取值范围[16, 8192]         |  H_u为16的整数倍, 数据类型与x保持一致          |
 | value (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_v] | H_v取值范围[16, 8192]         |  H_v为16的整数倍, 数据类型与x保持一致          |
 | query (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_q] | H_q取值范围[16, 8192]         |  H_q为16的整数倍 , 数据类型与x保持一致         |
-| key (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_k] | H_k取值范围[16, 8192]         |  H_v为16的整数倍 , 数据类型与x保持一致         |
+| key (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, H_k] | H_k取值范围[16, 8192]         |  H_k为16的整数倍 , 数据类型与x保持一致         |
 | linear_output (返回值) | 输出     | Tensor | float32/float16/bfloat16 | [b-s, 4HH] | 4HH取值范围[64, 32768] |   4HH为16的整数倍，4HH为H的4n倍，, 数据类型与x保持一致            |
 
 # 算子编译部署

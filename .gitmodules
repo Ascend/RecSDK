@@ -1,3 +1,6 @@
 [submodule "cust_op/hkv"]
 	path = cust_op/hkv
 	url = https://gitcode.com/Ascend/HierarchicalKV-ascend.git
+[submodule "third_party/catlass"]
+	path = third_party/catlass
+	url = https://gitcode.com/cann/catlass.git

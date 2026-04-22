@@ -16,33 +16,6 @@
 
 set -e
 
-## ============================================================================
-# 校验catlass依赖
-## ============================================================================
-if [[ "x${CATLASS_HOME}x" == "xx" ]]; then
-  if [[ -d ${CMAKE_SOURCE_DIR}/third_party/catlass ]]; then
-    CATLASS_HOME=${CMAKE_SOURCE_DIR}/third_party/catlass
-  else
-    if [[ -d ${CMAKE_SOURCE_DIR}/catlass ]]; then
-      CATLASS_HOME=${CMAKE_SOURCE_DIR}/catlass
-    fi
-  fi
-fi
-
-if [[ "x${CATLASS_HOME}x" == "xx" ]]; then
-  echo "[ERROR] CATLASS_HOME not specified" >&2
-  echo "Pls download CATLASS_HOME v1.3.0 from https://raw.gitcode.com/cann/catlass/archive/refs/heads/v1.3.0.zip"
-  exit 1
-fi
-
-if [[ ! -d ${CATLASS_HOME} ]]; then
-  echo "[ERROR] CATLASS_HOME directory does not exist: ${CATLASS_HOME}" >&2
-  exit 1
-fi
-
-catlass_include_dir=${CATLASS_HOME}/include
-enable_catlass="True"
-
 # ==============================================================================
 # 1. 初始化路径
 # ==============================================================================
@@ -66,7 +39,9 @@ source "$UTILS_SCRIPT"
 # 3. 参数配置
 # ==============================================================================
 vendor_name="in_linear_silu"
-
+export CATLASS_HOME="${WORK_DIR}/../../../../../third_party/catlass"
+catlass_include_dir=${CATLASS_HOME}/include
+enable_catlass="True"
 parse_arguments "$@" || exit 1
 
 # ==============================================================================
