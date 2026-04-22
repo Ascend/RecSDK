@@ -35,7 +35,7 @@ python run.py xxx.json --eager
 
 **xxx.json**:为configs文件夹中的配置文件   
 **--eager**：为强制跑eager模式，不配置默认跑inductor模式（当前未支持）   
-**--no_hf32**：禁用混合精度加速，不配置默认使能混合精度加速。NCF、DIN-pytorch、Multitask-Recommendation-Library比对GPU与NPU精度时需禁用   
+**--no_hf32**：禁用混合精度加速，不配置默认使能混合精度加速。NCF、DIN-pytorch、Multitask-Recommendation-Library、SASRec比对GPU与NPU精度时需禁用   
 **--custom_dropout**：使用自定义的dropout函数，不配置使用默认的dropout函数。Multitask-Recommendation-Library比对GPU与NPU精度时需配置
 
 # 性能指标
@@ -128,7 +128,7 @@ MMOE模型运行前需访问 https://tianchi.aliyun.com/dataset/74690 下载alie
 
 ### 运行依赖
 
-- RecSdk自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
+- RecSDK自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
     - asynchronous_complete_cumsum
     - dense_to_jagged
     - hstu_dense_backward
@@ -145,7 +145,7 @@ MMOE模型运行前需访问 https://tianchi.aliyun.com/dataset/74690 下载alie
 
 ### 运行依赖
 
-- RecSdk自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
+- RecSDK自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
     - asynchronous_complete_cumsum
     - dense_to_jagged
     - hstu_dense_backward
@@ -196,3 +196,17 @@ git checkout core_r0.14.0
        |-- recsys_examples
            |-- ml-20m
 ```
+
+## SASRec 模型
+
+### 运行依赖
+
+- RecSDK自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
+    - asynchronous_complete_cumsum
+    - dense_to_jagged
+    - jagged_to_padded_dense
+- RecSDK自定义算子适配层安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)中算子适配层编译章节。
+
+### 准备数据集
+
+[SASRec](https://github.com/meta-recsys/generative-recommenders)数据集自动下载，如果下载失败可以参考开源代码处理。
