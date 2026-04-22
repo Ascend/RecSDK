@@ -34,13 +34,13 @@ constexpr int32_t UNROLL_FACTOR = 4;
 constexpr int32_t MAX_FEATURE_NUM_USE_QUICK_DIVIDE = 400;
 
 template <typename T>
-__aicore__ inline T Min(const T& a, const T& b)
+__simt_callee__ inline T Min(const T& a, const T& b)
 {
     return (a < b) ? a : b;
 }
 
 template <typename T>
-__aicore__ inline T WarpPrefixSum(T val)
+__simt_callee__ inline T WarpPrefixSum(T val)
 {
     int32_t laneId = AscendC::Simt::GetThreadIdx<0>() % WARP_SIZE;
     if (laneId >= WARP_SIZE)
@@ -304,7 +304,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
  * 4. t = ((x - q) >> 1) + q
  * 5. r = t >> (shift - 1)
  */
-__aicore__ inline uint64_t QuickRem(
+__simt_callee__ inline uint64_t QuickRem(
     const uint64_t& x, const uint64_t& divisorMagic, const uint64_t& divisorShift, const uint64_t& y)
 {
     uint64_t divTmp = __umul64hi(x, divisorMagic);
@@ -313,7 +313,7 @@ __aicore__ inline uint64_t QuickRem(
     return x - divResult * y;
 }
 
-__aicore__ inline uint64_t QuickDiv(
+__simt_callee__ inline uint64_t QuickDiv(
     const uint64_t& x, const uint64_t& divisorMagic, const uint64_t& divisorShift)
 {
     uint64_t divTmp = __umul64hi(x, divisorMagic);

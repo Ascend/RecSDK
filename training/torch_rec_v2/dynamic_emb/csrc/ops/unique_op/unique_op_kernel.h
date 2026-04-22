@@ -38,12 +38,12 @@ constexpr int64_t EMPTY_COUNT = -1;
 constexpr int64_t INT64_EMPTY_KEY = std::numeric_limits<int64_t>::min();
 
 template <typename T>
-__aicore__ inline T Min(const T& a, const T& b)
+__simt_callee__ inline T Min(const T& a, const T& b)
 {
     return (a < b) ? a : b;
 }
 
-__aicore__ __inline__ uint64_t MurmurHash3_64(uint64_t const& key)
+__simt_callee__ __inline__ uint64_t MurmurHash3_64(uint64_t const& key)
 {
     uint64_t k = key;
     k ^= k >> 33;
