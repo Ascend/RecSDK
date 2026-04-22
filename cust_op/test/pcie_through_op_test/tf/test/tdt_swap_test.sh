@@ -18,7 +18,7 @@ rm -rf /root/ascend/log
 
 local_rank_size=1 # 每个节点使用的NPU卡数
 
-export LD_PRELOAD=/lib64/libgomp.so.1
+export LD_PRELOAD=/usr/lib64/libstdc++.so.6:/lib64/libgomp.so.1
 export RMA_DEVICE_ID=0  #指定device
 
 current_dir=$(pwd)
