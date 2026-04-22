@@ -94,7 +94,7 @@ class TestDynamicEmbeddingFunctionV2(unittest.TestCase):
         self.optimizer = MockOptimizer(lr=0.1)
         self.caches = [None]  # 禁用缓存
         self.output_dtype = torch.float32
-        self.unique_op = "mock"  # 不影响测试的假操作
+        self.unique_op = None
 
     def test_forward(self):
         indices = torch.tensor([5], device="cpu")
@@ -195,7 +195,7 @@ class TestDynamicEmbPrefetch(unittest.TestCase):
         self.storages = [MockStorage(emb_dim=self.emb_dim)]
         self.initializers = [MockInitializer()]
         self.caches = [MockCache()]
-        self.unique_op = "mock"
+        self.unique_op = None
 
     def test_prefetch(self):
         indices = torch.tensor([5, 3, 5], device="cpu")
