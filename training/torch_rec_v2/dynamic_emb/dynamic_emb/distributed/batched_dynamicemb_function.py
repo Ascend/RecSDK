@@ -42,7 +42,7 @@ def dynamicemb_prefetch(
     storages: List[Storage],
     feature_offsets: torch.Tensor,
     initializers: List[BaseDynamicEmbInitializer],
-    unique_op,
+    unique_op = None,
     training: bool = True,
     forward_stream: Optional[torch.npu.Stream] = None,
 ):
@@ -58,7 +58,7 @@ def dynamicemb_prefetch(
             inverse,
             unique_indices_table_range,
             h_unique_indices_table_range,
-        ) = segmented_unique_op(indices, indices_table_range, unique_op)
+        ) = segmented_unique_op(indices, indices_table_range)
     else:
         h_unique_indices_table_range = indices_table_range.cpu()
         unique_indices = indices
