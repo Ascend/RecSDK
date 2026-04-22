@@ -1,0 +1,222 @@
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+============================================================================== */
+
+/**
+ • @file block_epilogue_score_grad.hpp
+
+ • @brief HSTU Score 梯度 Epilogue Block 实现
+
+ • @description 计算 SiLU 激活函数的反向传播梯度，使用 FastSiluGradVf 函数
+
+ */
+#pragma once
+
+#include "catlass/catlass.hpp"
+#include "catlass/arch/resource.hpp"
+#include "catlass/gemm_coord.hpp"
+#include "catlass/arch/cross_core_sync.hpp"
+#include "catlass/matrix_coord.hpp"
+#include "tla/tensor.hpp"
+#include "tla/layout.hpp"
+#include "../../../catlass_hstu/epilogue/regbase/fast_silu_grad.hpp"
+
+namespace Catlass::Epilogue::Block {
+
+/**
+ • @brief Score 梯度 Epilogue Block
+
+ • @tparam ArchTag_ 架构标签
+
+ • @tparam Element_ 数据类型
+
+ • @tparam ElementAccumulator_ 累加器类型
+
+ • @tparam TileBuffer_ Tile 缓冲区类型
+
+ • @tparam L0TileShape_ L0 Tile 形状
+
+ • @tparam HAS_RAB_ 是否有相对位置偏置
+
+ • @tparam HAS_MASK_ 是否有掩码
+
+ • @description 执行 SiLU 激活函数的梯度计算: d(silu(x))/dx = sigmoid(x) * (1 + x * (1 - sigmoid(x)))
+
+ */
+template <class ArchTag_, class Element_, class ElementAccumulator_, class TileBuffer_, class L0TileShape_,
+          bool HAS_RAB_ = false, bool HAS_MASK_ = false>
+struct BlockEpilogueScoreGrad {
+public:
+    using ArchTag = ArchTag_;
+    using Element = Element_;
+    using ElementAccumulator = ElementAccumulator_;
+    using TileBuffer = TileBuffer_;
+    using L0TileShape = L0TileShape_;
+
+    static constexpr uint32_t ELEM_PER_BLOCK = Catlass::BYTE_PER_C0 / sizeof(Element);
+
+    static constexpr bool HAS_RAB = HAS_RAB_;
+    static constexpr bool HAS_MASK = HAS_MASK_;
+
+    static constexpr uint32_t L0_TILE_M = tla::get<0>(L0TileShape{});
+    static constexpr uint32_t L0_TILE_N = tla::get<1>(L0TileShape{});
+
+    CATLASS_DEVICE
+    BlockEpilogueScoreGrad(ElementAccumulator alpha_, ElementAccumulator scale_, uint32_t cubeFlag, uint32_t vecFlag,
+                           Arch::Resource<ArchTag> &resource)
+        : alpha(alpha_),
+          scale(scale_)
+    {
+        if constexpr (HAS_RAB) {
+            ubRabTensor = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::RAB);
+        }
+
+        if constexpr (HAS_MASK) {
+            ubMaskTensor = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::MASK);
+        }
+
+        ubScoreTensor = resource.ubBuf.template GetBufferByByte<ElementAccumulator>(TileBuffer::SCORE);
+        ubProbTensor = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::PROB);
+        ubGRabPartTensor = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::GRABPART);
+        dstTensor = resource.l1Buf.template GetBufferByByte<Element>(TileBuffer::PROB_DST[AscendC::GetSubBlockIdx()]);
+
+        cubeReady = Arch::CrossCoreFlag(cubeFlag);
+        vecReady = Arch::CrossCoreFlag(vecFlag);
+    }
+
+    template <class TensorSrc, class Coord, class Shape>
+    CATLASS_DEVICE void operator()(TensorSrc &tensorRab, Coord const &coord, Shape const &shape, bool &waitTransFinish)
+    {
+        auto mReal = tla::get<0>(shape);
+        auto nReal = tla::get<1>(shape);
+
+        auto mLoop = CeilDiv<L0_TILE_M>(mReal);
+        auto mTail = mReal - (mLoop - 1) * L0_TILE_M;
+
+        if (waitTransFinish) {
+            if constexpr (HAS_RAB) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            }
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+            waitTransFinish = false;
+        }
+
+        for (auto m = 0; m < mLoop; m++) {
+            bool isLast = (m == mLoop - 1);
+            auto mSize = isLast ? mTail : L0_TILE_M;
+
+            auto coordNew = tla::Add(coord, tla::MakeCoord(0, 0, m * L0_TILE_M, 0));
+            if ((m % 2) == AscendC::GetSubBlockIdx()) {
+                auto tileShape = tla::MakeShape(mSize, nReal);
+
+                if constexpr (HAS_RAB) {
+                    CopyRab(tensorRab, coordNew, tileShape);
+                }
+
+                AscendC::CrossCoreWaitFlag<0x4, PIPE_V>(cubeReady.id);
+                Compute(tileShape);
+                AscendC::CrossCoreSetFlag<0x4, PIPE_MTE3>(vecReady.id);
+            }
+        }
+    }
+
+    template <class Shape>
+    CATLASS_DEVICE void Compute(Shape &shape)
+    {
+        auto count = RoundUp<ELEM_PER_BLOCK>(tla::get<0>(shape)) * RoundUp<ELEM_PER_BLOCK>(tla::get<1>(shape));
+
+        auto repeatTimes = CeilDiv(count, AscendC::GetVecLen() / sizeof(ElementAccumulator));
+
+        auto ubSPtr = (__ubuf__ ElementAccumulator *)ubScoreTensor.GetPhyAddr();
+        auto ubRabPtr = (__ubuf__ Element *)ubRabTensor.GetPhyAddr();
+        auto ubMaskPtr = (__ubuf__ Element *)ubMaskTensor.GetPhyAddr();
+        auto ubProbPtr = (__ubuf__ Element *)ubProbTensor.GetPhyAddr();
+        auto ubGradRabPartPtr = (__ubuf__ Element *)ubGRabPartTensor.GetPhyAddr();
+
+        if constexpr (HAS_RAB) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+        }
+
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+        AscendC::VF_CALL<
+            catlass::Epilogue::RegBase::FastSiluGradVf<Element, ElementAccumulator, Element, HAS_RAB, HAS_MASK>>(
+            ubSPtr, ubRabPtr, ubMaskPtr, ubProbPtr, ubGradRabPartPtr, alpha, scale, count, repeatTimes);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+
+        // datacopy to tensorP
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        CopyToDst(shape, count);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+
+        if constexpr (HAS_RAB) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+        }
+    }
+
+    template <class Shape>
+    CATLASS_DEVICE void CopyToDst(Shape &shape, uint32_t count)
+    {
+        if constexpr (HAS_RAB || HAS_MASK) {
+            auto rows = RoundUp<ELEM_PER_BLOCK>(tla::get<0>(shape));
+            auto cols = CeilDiv<ELEM_PER_BLOCK>(tla::get<1>(shape));
+
+            AscendC::DataCopyParams intriParams;
+            intriParams.blockCount = rows;
+            intriParams.blockLen = 1;
+            intriParams.srcStride = (cols - 1);
+            intriParams.dstStride = 0;
+            for (auto i = 0; i < cols; i++) {
+                AscendC::DataCopy(dstTensor[i * rows * ELEM_PER_BLOCK], ubProbTensor[i * ELEM_PER_BLOCK], intriParams);
+            }
+        } else {
+            AscendC::DataCopy(dstTensor, ubProbTensor, count);
+        }
+    }
+
+    template <class TensorSrc, class Coord, class Shape>
+    CATLASS_DEVICE void CopyRab(TensorSrc &tensorRab, Coord const &coord, Shape const &shape)
+    {
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+
+        auto srcOffset = tensorRab.layout()(coord);
+
+        AscendC::DataCopyParams intriParams;
+        AscendC::DataCopyPadParams padParams;
+        intriParams.blockCount = tla::get<0>(shape);
+        intriParams.blockLen = tla::get<1>(shape) * sizeof(Element);
+        intriParams.srcStride = (tla::get<2>(tensorRab.stride()) - tla::get<1>(shape)) * sizeof(Element);
+        intriParams.dstStride = 0;
+
+        padParams.isPad = false;
+        AscendC::DataCopyPad(ubRabTensor, tensorRab.data()[srcOffset], intriParams, padParams);
+
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+    }
+
+private:
+    Arch::CrossCoreFlag vecReady;
+    Arch::CrossCoreFlag cubeReady;
+
+    AscendC::LocalTensor<ElementAccumulator> ubScoreTensor;
+    AscendC::LocalTensor<Element> ubRabTensor;
+    AscendC::LocalTensor<Element> ubMaskTensor;
+    AscendC::LocalTensor<Element> ubProbTensor;
+    AscendC::LocalTensor<Element> ubGRabPartTensor;
+    AscendC::LocalTensor<Element> dstTensor;
+
+    ElementAccumulator alpha{0.0f};
+    ElementAccumulator scale{0.0f};
+};
+
+}
