@@ -15,12 +15,7 @@
 </tr>
 <tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row7259721105019"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.3.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a>版本类型</p>
 </th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.3.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a>候选版本</p>
-</td>
-</tr>
-<tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row880773455018"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.4.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p198071234135017"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p198071234135017"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p198071234135017"></a>维护周期</p>
-</th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.4.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p15807123412509"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p15807123412509"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p15807123412509"></a>3个月</p>
+<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.3.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a>Release版本</p>
 </td>
 </tr>
 </tbody>
@@ -30,7 +25,7 @@
 
 | 产品名称   | 版本     |
 | ---------- | -------- |
-| Ascend HDK | <li>昇腾950代际产品（Atlas 350 加速卡、Atlas 850 系列硬件产品、Atlas 950 SuperPoD）：25.1.RC1</li><li>其他产品：26.0.RC1</li>|
+| Ascend HDK | <li>Atlas 350 ：1.0.RC1</li><li>其他产品：26.0.RC1</li>|
 | CANN       | 9.0.0    |
 
 ## 病毒扫描结果<a name="ZH-CN_TOPIC_0000002492442006"></a>
@@ -39,13 +34,13 @@
 
 # 版本兼容性说明<a name="ZH-CN_TOPIC_0000002492442012"></a>
 
-- Rec SDK Torch(torch_rec_v1)：在升级版本后，需要重新编译torchrec_npu和自定义算子相关包。
+- Rec SDK Torch（torch_rec_v1）：在升级版本后，需要重新编译torchrec_npu和自定义算子相关包。
 
 **表 1**  软件版本兼容性说明
 
 | MindSDK软件版本 | MindSDK待升级版本                                                         | CANN版本兼容性                                                                                    | Ascend HDK版本兼容性                                                                                        |
 | --------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| MindSDK 26.0.0  | <ul><li>MindSDK 7.3.0及7.3.0.x</li><li>MindSDK 26.0.0及26.0.0.x</li></ul> | <ul><li>CANN 8.3.RC1及8.3.RC1.x</li><li>CANN 8.5.0及8.5.x</li><li>CANN 9.0.0及9.0.0.x</li></ul> | <ul><li>Ascend HDK 25.5.0及Ascend HDK 25.5.0.x</li><li>Ascend HDK 25.1.RC1及Ascend HDK 25.1.RC1.x</li><li>Ascend HDK 26.0.RC1及Ascend HDK 26.0.RC1.x</li></ul> |
+| Rec SDK 26.0.0  | <ul><li>MindSDK 7.3.0及7.3.0.x</li></ul> | <ul><li>CANN 8.3.RC1及补丁版本</li><li>CANN 8.5.0及补丁版本</li><li>CANN 9.0.0及补丁版本</li></ul> | <ul><li>Ascend HDK 25.5.0及补丁版本</li><li>Ascend HDK 25.1.RC1及补丁版本</li><li>Ascend HDK 26.0.RC1及补丁版本</li></ul> |
 
 > [!NOTE] 说明 
 >软件版本兼容性是指产品软件版本升级时，其他关联软件不需要联动升级或打补丁，仍然可以支持已有功能。
@@ -60,13 +55,13 @@
 
 |特性名称|特性描述|配套产品型号|
 |--|--|--|
-|Rec SDK TensorFlow(tf_rec_v1)|<ul><li>适配昇腾950代际产品。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>昇腾950代际产品|
-|Rec SDK Torch(torch_rec_v1)|<ul><li>多级缓存保存加载：支持增量保存加载、差异卡加载。</li><li>多级缓存准入淘汰：支持showclick准入淘汰策略。</li><li>推荐模型支持在算力切分设备推理。</li><li>适配昇腾950代际产品。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>昇腾950代际产品|
-|Rec SDK TensorFlow(tf_rec_v2)|<ul><li>实现稀疏表基础功能：建表、查表、保存、加载、特征准入、特征淘汰。</li></ul>|昇腾950代际产品|
-|Rec SDK Torch(torch_rec_v2)|<ul><li>实现稀疏表基础功能：建表、查表、保存、加载、特征准入、特征淘汰。</li></ul>|昇腾950代际产品|
-|Rec SDK 算子|<ul><li>生成式推荐模型融合算子补齐，并适配昇腾950代际产品：in_linear_silu、reverse_sequence。</li><li>生成式推荐模型融合算子补齐，暂不支持昇腾950代际产品：norm_multiply_dropout、concat_2d_jagged。</li><li>HSTU算子增强：反向算子性能优化，前反向算子支持int32。</li><li>算子重构：查表反向算子、HSTU前反向算子重构。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>昇腾950代际产品|
-|fbgemm-npu|<ul><li>适配昇腾950代际产品。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>昇腾950代际产品|
-|HKV|<ul><li>适配昇腾950代际产品。</li></ul>|昇腾950代际产品| 
+|Rec SDK TensorFlow(tf_rec_v1)|<ul><li>适配Atlas 350 标卡。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>Atlas 350 标卡|
+|Rec SDK Torch(torch_rec_v1)|<ul><li>多级缓存保存加载：支持增量保存加载、差异卡加载。</li><li>多级缓存准入淘汰：支持showclick准入淘汰策略。</li><li>推荐模型支持在算力切分设备推理。</li><li>适配Atlas 350 标卡。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>Atlas 350 标卡|
+|Rec SDK TensorFlow(tf_rec_v2)|<ul><li>实现稀疏表基础功能：建表、查表、保存、加载、特征准入、特征淘汰。</li></ul>|Atlas 350 标卡|
+|Rec SDK Torch(torch_rec_v2)|<ul><li>实现稀疏表基础功能：建表、查表、保存、加载、特征准入、特征淘汰。</li></ul>|Atlas 350 标卡|
+|Rec SDK 算子|<ul><li>生成式推荐模型融合算子补齐，并适配Atlas 350 标卡：in_linear_silu、reverse_sequence。</li><li>生成式推荐模型融合算子补齐，暂不支持Atlas 350 标卡：norm_multiply_dropout、concat_2d_jagged。</li><li>HSTU算子增强：反向算子性能优化，前反向算子支持int32。</li><li>算子重构：查表反向算子、HSTU前反向算子重构。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>Atlas 350 标卡|
+|fbgemm-npu|<ul><li>适配Atlas 350 标卡。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>Atlas 350 标卡|
+|HKV|<ul><li>适配Atlas 350 标卡。</li></ul>|Atlas 350 标卡| 
 
 ## 业务接口变更<a name="ZH-CN_TOPIC_0000002492442008"></a>
 
