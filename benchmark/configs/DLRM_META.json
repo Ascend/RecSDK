@@ -31,7 +31,8 @@
         "--use-npu",
         "--mini-batch-size", "128",
         "--print-freq", "1",
-        "--stop-step", "100"
+        "--stop-step", "100",
+        "--test-freq", "100"
     ],
     "pip_install_self": false,
     "pip_install_requirements": false,

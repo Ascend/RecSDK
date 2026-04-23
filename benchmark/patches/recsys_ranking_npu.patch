@@ -2474,7 +2474,7 @@ index f975842..0327a13 100644
 +        'epoch': epoch,
 +        'step': train_iter,
 +        'final_loss': final_loss_value,
-+        "ms/step": float(avg_time) * 100,
++        "ms/step": float(avg_time) * 1000,
 +        'metrics': {
 +            'AUC': float(auc_value)
 +        }
