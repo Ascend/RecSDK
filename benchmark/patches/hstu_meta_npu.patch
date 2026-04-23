@@ -731,7 +731,7 @@ index 6d2da5b..a956a7b 100644
 +            'epoch': epoch,
 +            'step': batch_id,
 +            'final_loss': loss.cpu().item(),
-+            "ms/step": float(avg_time) * 100,
++            "ms/step": float(avg_time) * 1000,
 +            'metrics': {
 +                'NDCG@10': float(ndcg_10),
 +                'NDCG@50': float(ndcg_50),

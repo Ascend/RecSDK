@@ -1,7 +1,7 @@
-From b0fcae831d88c63530ef0bdb0395db8363db709f Mon Sep 17 00:00:00 2001
+From 46edddc7f84d0a6e2250eb03a0ad6150fea75969 Mon Sep 17 00:00:00 2001
 From: cann_ly <luyi120@h-partners.com>
-Date: Sat, 18 Apr 2026 18:54:39 +0800
-Subject: [PATCH] =?UTF-8?q?json=20epoch=E9=80=82=E9=85=8D?=
+Date: Wed, 22 Apr 2026 17:58:07 +0800
+Subject: [PATCH] =?UTF-8?q?retrieval=20patch=E4=BF=AE=E6=94=B9?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -23,7 +23,7 @@ Content-Transfer-Encoding: 8bit
  examples/hstu/modules/hstu_attention.py       |  86 +++++-
  examples/hstu/modules/hstu_block.py           |   2 +-
  examples/hstu/modules/hstu_processor.py       | 126 +++++---
- .../hstu/modules/metrics/metric_modules.py    |   8 +-
+ .../hstu/modules/metrics/metric_modules.py    |   9 +-
  examples/hstu/modules/mlp.py                  |   2 +-
  .../hstu/modules/multi_task_loss_module.py    |   4 +-
  examples/hstu/modules/native_hstu_layer.py    | 279 +++++++++---------
@@ -45,7 +45,7 @@ Content-Transfer-Encoding: 8bit
  examples/hstu/training/trainer/training.py    | 133 ++++++++-
  examples/hstu/training/trainer/utils.py       |  35 ++-
  examples/hstu/utils/gin_config_args.py        |   7 +-
- 38 files changed, 1390 insertions(+), 419 deletions(-)
+ 38 files changed, 1391 insertions(+), 419 deletions(-)
  create mode 100644 examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
@@ -1094,7 +1094,7 @@ index 7690bc9..9cd9076 100644
          else:
              sequence_embeddings = jd.values
 diff --git a/examples/hstu/modules/metrics/metric_modules.py b/examples/hstu/modules/metrics/metric_modules.py
-index bcb871f..3799937 100644
+index bcb871f..e3bd228 100644
 --- a/examples/hstu/modules/metrics/metric_modules.py
 +++ b/examples/hstu/modules/metrics/metric_modules.py
 @@ -25,7 +25,7 @@ import torch
@@ -1122,7 +1122,11 @@ index bcb871f..3799937 100644
      def forward(
          self,
          query_embeddings: torch.Tensor,  # preds, dense embedding tensor
-@@ -347,13 +345,13 @@ class RetrievalTaskMetricWithSampling(BaseTaskMetric):
+@@ -344,16 +342,17 @@ class RetrievalTaskMetricWithSampling(BaseTaskMetric):
+                     )  # (Q, T)
+                 else:
+                     local_topk_logits = torch.cat([local_topk_logits, logits], dim=1)
++                    local_topk_logits = local_topk_logits.to(torch.float32)
                      chunk_keys = chunk_keys.unsqueeze(0).expand(
                          local_topk_keys.size(0), -1
                      )
@@ -2595,7 +2599,7 @@ index 06266cf..acdb139 100644
      )
  
 diff --git a/examples/hstu/training/trainer/training.py b/examples/hstu/training/trainer/training.py
-index b50c026..66dcd2a 100644
+index b50c026..898c769 100644
 --- a/examples/hstu/training/trainer/training.py
 +++ b/examples/hstu/training/trainer/training.py
 @@ -18,6 +18,7 @@ from typing import Iterator, Optional, Union
@@ -2789,7 +2793,7 @@ index b50c026..66dcd2a 100644
 +        'epoch': epoch,
 +        'step': train_iter,
 +        'final_loss': final_loss_value,
-+        "ms/step": float(avg_time) * 100,
++        "ms/step": float(avg_time) * 1000,
 +        'metrics': {
 +            'NDCG_10': float(NDCG_10),
 +            'NDCG_20': float(NDCG_20),
