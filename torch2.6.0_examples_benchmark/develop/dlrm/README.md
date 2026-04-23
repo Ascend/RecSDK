@@ -2,7 +2,11 @@
 
 ## 适配说明
 
-本样例以DLRM模型为例,适配torchrec框架并在NPU上进行训练。 模型参考的开源链接为:https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/ 克隆源码并固定版本为:Commits on Jun 7 , 2024，提交的SHA-1 hash值（提交ID）：b631a99
+本样例以DLRM模型为例,适配torchrec框架并在NPU上进行训练。
+
+模型参考的[开源代码链接](https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/)。 
+
+克隆源码并固定版本为:Commits on Jun 7 , 2024，提交的SHA-1 hash值（提交ID）：b631a99。
 
 ## 代码结构说明
 
@@ -14,12 +18,13 @@
 ```
 
 ## 运行环境准备
-请参考：[模型样例运行环境说明](../README.md)
 
+请参考：[模型样例运行环境说明](../README.md)
 
 ## dlrm源码适配
 
 进入当前目录，下载官方模型代码后，并使用patch文件进行修改。
+
 ```shell
 git clone -b main https://github.com/facebookresearch/dlrm.git
 cd dlrm && git checkout b631a99 
@@ -28,6 +33,7 @@ git apply dlrm_npu.patch
 ```
 
 ### 数据集下载
+
 说明：本样例提供两种获取数据集的方式：使用官网数据集可验证模型性能和精度，若仅验证模型功能跑通可使用随机数据集。
 
 1.官网数据集
@@ -40,10 +46,12 @@ git apply dlrm_npu.patch
 
 由于(1)需要的条件苛刻，大部分机器很难满足条件，本次演示使用(2)中的条件。无host瓶颈的情况下，对性能影响较小。需要修改模型脚本代码，让host生成的数据在pin_memory上。
 
-进入[开源模型官网](https://github.com/facebookresearch/dlrm/blob/main/torchrec_dlrm/README.MD)，按照指引下载数据集到指定目录。该数据集已经托管到HuggingFace:https://huggingface.co/datasets/criteo/CriteoClickLogs 也可直接前往下载。
+进入[开源模型官网](https://github.com/facebookresearch/dlrm/blob/main/torchrec_dlrm/README.MD)，按照指引下载数据集到指定目录。
 
+该数据集已经托管到[HuggingFace](https://huggingface.co/datasets/criteo/CriteoClickLogs)，也可直接前往下载。
 
 2.使用生成的数据集
+
 ```shell
 mkdir generate_data
 cp generate_data.py generate_data
@@ -52,6 +60,7 @@ python3 generate_data.py
 ```
 
 数据集准备完成后的格式如下，后续模型运行时会配置该数据集文件路径。
+
 ```shell
 day_0_sparse.npy
 day_0_dense.npy
@@ -61,8 +70,8 @@ day_23_sparse.npy
 day_23_dense.npy
 day_23_labels.npy
 ```
-说明：数据集较大，数据下载时间较长，请预留时间和磁盘空间，官网数据集大约690GB,随机生成数据集大约71GB
 
+说明：数据集较大，数据下载时间较长，请预留时间和磁盘空间，官网数据集大约690GB,随机生成数据集大约71GB
 
 ## 修改脚本并运行
 
@@ -87,4 +96,4 @@ bash run.sh
 | GPU         | 8                   |104.54|2,048|16,384|0.006|DCN v2|Adagrad| 0.7973                            | ~55.0 batches/s == ~901,120 samples/s | 1h20m21s              |`--batch_size 2048 --learning_rate 0.006 --adagrad --interaction_type=dcn` |
 | NPU         | 8                   |104.54|2,048|16,384|0.006|DCN v2|Adagrad| 0.7975                            | ~59.0 batches/s == ~966,656 samples/s | 1h12m03s              |`--batch_size 2048 --learning_rate 0.006 --adagrad --interaction_type=dcn`|
 
-说明：NPU测试结果为在参考镜像的X86环境上的测试结果。GPU测试数据参考: https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/ 。
+说明：NPU测试结果为在参考镜像的X86环境上的测试结果。GPU测试数据参考[开源模型](https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/) 。
