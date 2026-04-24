@@ -1,72 +1,93 @@
 
-[TOC]
-
 # 开发RecSDK
+
 请先按深度学习框架分类阅读文档：
+
 * [快速入门](./README.md##快速入门)
 
 # 代码提交规范
+
 ## Commit 消息格式
+
 所有提交必须遵循以下格式：
-```
+
+```text
 <type>(<scope>): <subject>
 
 <body>
 ```
+
 ## Type（类型）
-feat: 新功能
-fix: Bug修复
-docs: 文档更新
-style: 代码格式（不影响功能，如空格、格式化等）
-refactor: 重构（既不是 Bug 修复也不是新功能）
-perf: 性能优化
-test: 测试相关
-chore: 构建/工具变更（如依赖更新、构建配置等）
-ci: CI/CD 相关变更
+
+- feat: 新功能
+- fix: Bug修复
+- docs: 文档更新
+- style: 代码格式（不影响功能，如空格、格式化等）
+- refactor: 重构（既不是 Bug 修复也不是新功能）
+- perf: 性能优化
+- test: 测试相关
+- chore: 构建/工具变更（如依赖更新、构建配置等）
+- ci: CI/CD 相关变更
+
 ## Scope（范围，可选）
+
 指定提交影响的范围，例如：
+
 - `op`: 算子
 - `emb_table`: 稀疏表相关
 - `docs`: 文档
 - `build`: 构建
+
 ## Subject（主题）
+
 - 使用祈使句，首字母小写
 - 不超过50个字符
 - 不以句号结尾
 - 描述"做了什么"而不是"做了什么改动"
+
 ## Body（正文，可选）
+
 - 详细描述变更的原因和方式
 - 说明与之前行为的对比
 - 可以多行，每行不超过 72 个字符
 
 # PullRequest
+
 ## PR 创建流程
+
 1. **创建特性分支**
+   
    ```bash
    git checkout -b feature/your-feature-name
    # 或
    git checkout -b fix/issue-number
    ```
+   
 2. **进行开发**
    - 编写代码
    - 添加测试
    - 更新文档
    - 确保代码通过本地测试
 3. **提交代码**
+   
    ```bash
    git add .
    git commit -m "[feat] add new feature"
    ```
+
 4. **推送到 Fork 仓库**
+   
    ```bash
    git push origin feature/your-feature-name
    ```
+
 5. **创建 Pull Request**
    - 访问gitcode仓库页面
    - 点击"Pull Request"或"合并请求"
    - 填写PR描述（见PR创建页面模板）
 
 ## PR最佳实践
+
 1. **保持PR小规模**
    - 一次PR只解决一个问题
    - 便于评审和理解
@@ -82,8 +103,11 @@ ci: CI/CD 相关变更
    - 添加截图或示例（如适用）
 
 ## PR评审与合入规则
+
 ### 评审要求
+
 1. **评审人员要求**
+   
    - 评审人员必须熟悉相关代码领域
    - 评审人员不能是PR作者本人
 2. **评审检查项**
@@ -98,7 +122,9 @@ ci: CI/CD 相关变更
    - ✅ 所有 CI 检查必须通过
 4. **无 Block 评论**
    - PR不能有任何未解决问题
+
 ### 合入规则
+
 1. **Squash and Merge**
    - 将 PR 的所有提交合并为一个提交
    - 保持主分支历史清晰
@@ -108,13 +134,17 @@ ci: CI/CD 相关变更
 3. **禁止的操作**
    - ❌ 禁止 Force Push 到主分支
    - ❌ 禁止合并自己的 PR（必须有他人评审）
+
 ### 合并权限
+
 - **Maintainer**：可以合并任何PR
 - **Committer**：可以合并任何PR
 - **Contributor**：无合并权限，需要等待Maintainer或Committer合并
 
 # CI说明
+
 CI检查项目有：
+
 * 编译构建：
   * PR-build-SAST-check
   * Build_TF
@@ -133,7 +163,7 @@ CI检查项目有：
   * UT_cpp_tf1
 * 流水线：PR-pipeline_RecSDK
 
-任意一项失败可以通过详情链接查看具体问题。如果是CI自身故障，请[联系committer](https://gitcode.com/Ascend/community/blob/master/MindSDK/sigs/RecSDK/sig-info.yaml)，或通过评论“rebuild”尝试重新构建。
+任意一项失败可以通过详情链接查看具体问题。如果是CI自身故障，请[联系committer](https://gitcode.com/Ascend/community/blob/master/MindSeriesSDK/sigs/RecSDK/sig-info.yaml)，或通过评论“rebuild”尝试重新构建。
 
 ## PreSmoke_torchrec运行说明
 
@@ -147,7 +177,9 @@ bash run_presmoke.sh
 ```
 
 # Special Interest Group
+
 ## 工作目标和范围
+
 1. 技术聚焦
 围绕基于NPU的推荐系统SDK和算子进行深入研究，推动技术发展，解决实际问题。
 2. 促进协作
@@ -158,9 +190,11 @@ bash run_presmoke.sh
 通过代码贡献、技术分享等方式，培养技术人才，推动社区生态建设。
 
 ## 角色说明
+
 [Ascend 社区角色定义及晋升机制](https://gitcode.com/Ascend/community/blob/master/docs/role-definition-and-promotion-mechanism.md)
 
 ## 例会
+
 * 周期：每1个月举行一次例会，可通过[Ascend开源社区](https://meeting.ascend.osinfra.cn/)搜索、查看sig-RecSDK的会议链接。
 * 申报议题：通过[sig-RecSDK Etherpad链接](https://etherpad.ascend.osinfra.cn/p/sig-RecSDK)进入共享文档，编辑申报议题。
 * 参会人员：maintainer、committer、contributor等核心成员，其他对本SIG感兴趣的人员。
@@ -168,4 +202,5 @@ bash run_presmoke.sh
 * 会议归档：会议纪要位于[sig-RecSDK Etherpad链接](https://etherpad.ascend.osinfra.cn/p/sig-RecSDK)。
 
 ## 成员列表
+
 [SIG成员列表](https://gitcode.com/Ascend/community/blob/master/MindSeriesSDK/sigs/RecSDK/sig-info.yaml)。
