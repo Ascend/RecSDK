@@ -1,0 +1,737 @@
+diff --git a/pytorch_widedeep/training/_base_trainer.py b/pytorch_widedeep/training/_base_trainer.py
+index fb8e8de..b79c033 100644
+--- a/pytorch_widedeep/training/_base_trainer.py
++++ b/pytorch_widedeep/training/_base_trainer.py
+@@ -7,6 +7,14 @@ from pathlib import Path
+ 
+ import numpy as np
+ import torch
++import torch.distributed as dist
++
++try:
++    import torch_npu
++    HAS_NPU = True
++except ImportError:
++    HAS_NPU = False
++
+ from torchmetrics import Metric as TorchMetric
+ from torch.optim.lr_scheduler import ReduceLROnPlateau
+ 
+@@ -86,13 +94,35 @@ class BaseTrainer(ABC):
+         # Simply we need this attribute
+         self.model.wd_device = self.device
+ 
+-        use_multi_gpu = kwargs.get("use_multi_gpu", False) and self.device.startswith(
+-            "cuda"
+-        )
+-        if use_multi_gpu and torch.cuda.device_count() > 1:
+-            if self.verbose:
+-                print(f"Using {torch.cuda.device_count()} GPUs for training")
+-            self.model = torch.nn.DataParallel(self.model)
++        if kwargs.get("torch_compile", False):
++            compile_mode = kwargs.get("compile_mode", "default")
++            print('Compiling model with torch.compile (backend=inductor, mode={}, dynamic=True)'.format(compile_mode))
++            self.model = torch.compile(self.model, backend='inductor', mode=compile_mode, dynamic=True)
++
++        self.profiler = kwargs.get("profiler", None)
++
++        self.use_multi_gpu = False
++        if (
++            kwargs.get("use_multi_gpu", False)
++            and (self.device.startswith("cuda") or self.device.startswith("npu"))
++            and dist.is_initialized()
++        ):
++            if self.device.startswith("cuda") and torch.cuda.device_count() > 1:
++                rank = torch.cuda.current_device()
++                if self.verbose:
++                    print(f"Using {torch.cuda.device_count()} GPUs for DDP training, current rank: {rank}")
++                self.model = torch.nn.parallel.DistributedDataParallel(
++                    self.model, device_ids=[rank], broadcast_buffers=False
++                )
++                self.use_multi_gpu = True
++            elif HAS_NPU and self.device.startswith("npu") and torch_npu.npu.device_count() > 1:
++                rank = torch_npu.npu.current_device()
++                if self.verbose:
++                    print(f"Using {torch_npu.npu.device_count()} NPUs for DDP training, current rank: {rank}")
++                self.model = torch.nn.parallel.DistributedDataParallel(
++                    self.model, device_ids=[rank], broadcast_buffers=False
++                )
++                self.use_multi_gpu = True
+ 
+         self.objective = objective
+         self.method: str = _ObjectiveToMethod.get(objective)  # type: ignore
+@@ -164,7 +194,10 @@ class BaseTrainer(ABC):
+                             print(
+                                 f"Model weights restored to best epoch: {callback.best_epoch + 1}"
+                             )
+-                        self.model.load_state_dict(callback.best_state_dict)
++                        if self.use_multi_gpu:
++                            self.model.module.load_state_dict(callback.best_state_dict)
++                        else:
++                            self.model.load_state_dict(callback.best_state_dict)
+                     else:
+                         if self.verbose:
+                             print(
+@@ -178,13 +211,13 @@ class BaseTrainer(ABC):
+             self.initializer = MultipleInitializer(
+                 initializers, verbose=self.verbose > 0
+             )
+-            self.initializer.apply(self.model)
++            self.initializer.apply(self.model.module if self.use_multi_gpu else self.model)
+         elif isinstance(initializers, type):
+             self.initializer = initializers()
+-            self.initializer(self.model)
++            self.initializer(self.model.module if self.use_multi_gpu else self.model)
+         elif isinstance(initializers, Initializer):
+             self.initializer = initializers
+-            self.initializer(self.model)
++            self.initializer(self.model.module if self.use_multi_gpu else self.model)
+         else:
+             # aesthetics
+             pass
+@@ -221,12 +254,15 @@ class BaseTrainer(ABC):
+                 optimizer: Union[Optimizer, MultipleOptimizer] = optimizers
+             elif isinstance(optimizers, Dict):
+                 opt_names = list(optimizers.keys())
+-                mod_names = [n for n, c in self.model.named_children()]
++                if self.use_multi_gpu:
++                    mod_names = [n for n, c in self.model.module.named_children()]
++                else:
++                    mod_names = [n for n, c in self.model.named_children()]
+                 for mn in mod_names:
+                     assert mn in opt_names, "No optimizer found for {}".format(mn)
+                 optimizer = MultipleOptimizer(optimizers)
+         else:
+-            optimizer = torch.optim.Adam(self.model.parameters())  # type: ignore
++            optimizer = torch.optim.Adam(self.model.module.parameters() if self.use_multi_gpu else self.model.parameters())  # type: ignore
+         return optimizer
+ 
+     def _set_lr_scheduler(
+@@ -342,7 +378,7 @@ class BaseTrainer(ABC):
+         else:
+             self.eval_metric = None
+         self.callback_container = CallbackContainer(self.callbacks)
+-        self.callback_container.set_model(self.model)
++        self.callback_container.set_model(self.model.module if self.use_multi_gpu else self.model)
+         self.callback_container.set_trainer(self)
+ 
+     def _save_history(self, path: str):
+@@ -375,7 +411,7 @@ class BaseTrainer(ABC):
+         if save_state_dict and save_optimizer:
+             torch.save(
+                 {
+-                    "model_state_dict": self.model.state_dict(),
++                    "model_state_dict": self.model.module.state_dict() if self.use_multi_gpu else self.model.state_dict(),
+                     "optimizer_state_dict": (
+                         self.optimizer.state_dict()
+                         if not isinstance(self.optimizer, MultipleOptimizer)
+@@ -388,17 +424,17 @@ class BaseTrainer(ABC):
+                 model_path,
+             )
+         elif save_state_dict and not save_optimizer:
+-            torch.save(self.model.state_dict(), model_path)
++            torch.save(self.model.module.state_dict() if self.use_multi_gpu else self.model.state_dict(), model_path)
+         elif not save_state_dict and save_optimizer:
+             torch.save(
+                 {
+-                    "model": self.model,
++                    "model": self.model.module if self.use_multi_gpu else self.model,
+                     "optimizer": self.optimizer,  # this can be a MultipleOptimizer
+                 },
+                 model_path,
+             )
+         else:
+-            torch.save(self.model, model_path)
++            torch.save(self.model.module if self.use_multi_gpu else self.model, model_path)
+ 
+     @staticmethod
+     def _check_inputs(
+@@ -454,21 +490,27 @@ class BaseTrainer(ABC):
+             else os.cpu_count()
+         )
+         num_workers = kwargs.get("num_workers", default_num_workers)
++        print(f"!!!!!!!!!!! num_workers: {num_workers}")
++
+         default_device = setup_device()
+         device = kwargs.get("device", default_device)
+ 
+-        # Check for multi-GPU setup
+-        use_cuda = device.startswith("cuda")
+-        use_multi_gpu = use_cuda and kwargs.get("use_multi_gpu", False)
++        use_cuda_or_npu = device.startswith("cuda") or device.startswith("npu")
++        use_multi_gpu = use_cuda_or_npu and kwargs.get("use_multi_gpu", False) and dist.is_initialized()
+ 
+-        if use_multi_gpu and torch.cuda.device_count() > 1:
++        if use_multi_gpu and device.startswith("cuda") and torch.cuda.device_count() > 1:
+             device = f"cuda:{torch.cuda.current_device()}"
++        elif use_multi_gpu and HAS_NPU and device.startswith("npu") and torch_npu.npu.device_count() > 1:
++            device = f"npu:{torch_npu.npu.current_device()}"
+ 
+         return device, num_workers
+ 
+     def __repr__(self) -> str:  # noqa: C901
+         list_of_params: List[str] = []
+-        list_of_params.append(f"model={self.model.__class__.__name__}")
++        if self.use_multi_gpu:
++            list_of_params.append(f"model={self.model.module.__class__.__name__}")
++        else:
++            list_of_params.append(f"model={self.model.__class__.__name__}")
+         list_of_params.append("objective={objective}")
+         list_of_params.append(f"loss_function={self.loss_fn.__class__.__name__}")
+         list_of_params.append(f"optimizers={self.optimizer.__class__.__name__}")
+@@ -487,4 +529,4 @@ class BaseTrainer(ABC):
+         if self.num_workers is not None:
+             list_of_params.append("num_workers={num_workers}")
+         all_params = ", ".join(list_of_params)
+-        return f"Trainer({all_params.format(**self.__dict__)})"
++        return f"Trainer({all_params.format(**self.__dict__)})"
+\ No newline at end of file
+diff --git a/pytorch_widedeep/training/trainer.py b/pytorch_widedeep/training/trainer.py
+index 6244241..2418b76 100644
+--- a/pytorch_widedeep/training/trainer.py
++++ b/pytorch_widedeep/training/trainer.py
+@@ -483,8 +483,18 @@ class Trainer(BaseTrainer):
+                 "n_epochs": n_epochs,
+             }
+         )
++
++        latency_list = []
++        steps_per_epoch = 0
++        final_loss = 0.0
++
++        if self.profiler is not None:
++            self.profiler.start()
+         for epoch in range(n_epochs):
+-            epoch_logs = self._train_epoch(train_loader, epoch)
++            epoch_logs, epoch_latency, epoch_steps = self._train_epoch(train_loader, epoch)
++            latency_list.extend(epoch_latency)
++            steps_per_epoch = epoch_steps
++
+             if eval_loader is not None and epoch % validation_freq == (
+                 validation_freq - 1
+             ):
+@@ -499,8 +509,12 @@ class Trainer(BaseTrainer):
+                     )
+             self.callback_container.on_epoch_end(epoch, epoch_logs, on_epoch_end_metric)
+             if self.early_stop:
+-                # self.callback_container.on_train_end(epoch_logs)
+                 break
++        if self.profiler is not None:
++            self.profiler.stop()
++
++        if 'train_loss' in epoch_logs:
++            final_loss = float(epoch_logs['train_loss'])
+ 
+         self.callback_container.on_train_end(epoch_logs)
+         if feature_importance_sample_size is not None:
+@@ -510,6 +524,12 @@ class Trainer(BaseTrainer):
+         self._restore_best_weights()
+         self.model.train()
+ 
++        return {
++            'latency_list': latency_list,
++            'final_loss': final_loss,
++            'steps_per_epoch': steps_per_epoch,
++        }
++
+     def predict(  # type: ignore[override, return]
+         self,
+         X_wide: Optional[np.ndarray] = None,
+@@ -844,40 +864,15 @@ class Trainer(BaseTrainer):
+         Simple wrap-up to individually fine-tune model components
+         """
+ 
+-        if isinstance(self.model, torch.nn.DataParallel):
+-            wide_component = (
+-                torch.nn.DataParallel(self.model.module.wide)
+-                if self.model.module.wide
+-                else None
+-            )
+-            deeptabular_component = (
+-                torch.nn.DataParallel(self.model.module.deeptabular)
+-                if self.model.module.deeptabular
+-                else None
+-            )
+-            deeptext_component = (
+-                torch.nn.DataParallel(self.model.module.deeptext)
+-                if self.model.module.deeptext
+-                else None
+-            )
+-            deepimage_component = (
+-                torch.nn.DataParallel(self.model.module.deepimage)
+-                if self.model.module.deepimage
+-                else None
+-            )
+-            deephead_component = (
+-                torch.nn.DataParallel(self.model.module.deephead)
+-                if self.model.module.deephead
+-                else None
+-            )
+-        else:
+-            wide_component = self.model.wide if self.model.wide else None
+-            deeptabular_component = (
+-                self.model.deeptabular if self.model.deeptabular else None
+-            )
+-            deeptext_component = self.model.deeptext if self.model.deeptext else None
+-            deepimage_component = self.model.deepimage if self.model.deepimage else None
+-            deephead_component = self.model.deephead if self.model.deephead else None
++        base_model = self.model.module if self.use_multi_gpu else self.model
++
++        wide_component = base_model.wide if base_model.wide else None
++        deeptabular_component = (
++            base_model.deeptabular if base_model.deeptabular else None
++        )
++        deeptext_component = base_model.deeptext if base_model.deeptext else None
++        deepimage_component = base_model.deepimage if base_model.deepimage else None
++        deephead_component = base_model.deephead if base_model.deephead else None
+ 
+         if deephead_component is not None:
+             raise ValueError(
+@@ -952,16 +947,64 @@ class Trainer(BaseTrainer):
+         self.train_running_loss = 0.0
+ 
+         train_steps = len(train_loader)
+-        with trange(train_steps, disable=self.verbose != 1) as t:
+-            for batch_idx, (data, targett) in zip(t, train_loader):
+-                t.set_description("epoch %i" % (epoch + 1))
+-                train_score, train_loss = self._train_step(data, targett, batch_idx)
+-                print_loss_and_metric(t, train_loss, train_score)
+-                self.callback_container.on_batch_end(batch=batch_idx)
++        import time
++        start_time = time.time()
++        epoch_latency = []
++        warmup_steps = 10
++
++        for batch_idx, (data, targett) in enumerate(train_loader):
++            step_start = time.time()
++            train_score, train_loss = self._train_step(data, targett, batch_idx)
++            step_end = time.time()
++            step_latency = step_end - step_start
++
++            # 跳过 warmup 步骤
++            if batch_idx >= warmup_steps:
++                epoch_latency.append(step_latency)
++
++            if self.profiler is not None:
++                self.profiler.step()
++
++            if batch_idx % 10 == 0:
++                metrics={
++                    k: np.round(v.astype(float), 4).tolist() for k, v in train_score.items()
++                }
++                print(f"epoch: {epoch}, step: [{batch_idx} / {len(train_loader)}], loss = {train_loss:.6f}, time = {time.time() - start_time:.6f}, metric = {metrics}")
++                start_time = time.time()
++
++        # 去掉最后一步（可能是不完整的 batch）
++        if len(epoch_latency) > 1:
++            epoch_latency = epoch_latency[:-1]
+ 
+         epoch_logs = save_epoch_logs(epoch_logs, train_loss, train_score, "train")
+ 
+-        return epoch_logs
++        return epoch_logs, epoch_latency, train_steps
++
++    def run_profiling_epoch(self, prof, X_wide, X_tab, target, batch_size):
++        """运行单独的 profiling epoch"""
++        from pytorch_widedeep.training._wd_dataset import WideDeepDataset
++        from torch.utils.data import DataLoader
++
++        print("Starting profiling epoch...")
++
++        train_set = WideDeepDataset(
++            X_wide=X_wide, X_tab=X_tab, target=target, transforms=self.transforms
++        )
++        train_loader = DataLoader(
++            dataset=train_set,
++            batch_size=batch_size,
++            num_workers=0,
++            shuffle=False,
++        )
++
++        prof.start()
++
++        for batch_idx, (data, targett) in enumerate(train_loader):
++            self._train_step(data, targett, batch_idx)
++            prof.step()
++
++        prof.stop()
++        print("Profiling epoch completed.")
+ 
+     def _train_step(
+         self,
+@@ -997,6 +1040,7 @@ class Trainer(BaseTrainer):
+             score = self._get_score(y_pred, y, is_train=True)
+ 
+         loss.backward()
++
+         self.optimizer.step()
+ 
+         self.train_running_loss += loss.item()
+@@ -1243,4 +1287,4 @@ class Trainer(BaseTrainer):
+             if k in finetune_params:
+                 finetune_args[k] = v
+ 
+-        return dataloader_args, finetune_args
++        return dataloader_args, finetune_args
+\ No newline at end of file
+diff --git a/wnd_trainer.py b/wnd_trainer.py
+new file mode 100644
+index 0000000..49e1abf
+--- /dev/null
++++ b/wnd_trainer.py
+@@ -0,0 +1,354 @@
++import os
++import argparse
++import logging
++import random
++import time
++
++import numpy as np
++import torch
++import torch.distributed as dist
++import torch.multiprocessing as mp
++
++try:
++    import torch_npu
++    HAS_NPU = True
++except ImportError:
++    HAS_NPU = False
++
++from sklearn.model_selection import train_test_split
++from pytorch_widedeep import Trainer
++from pytorch_widedeep.preprocessing import WidePreprocessor, TabPreprocessor
++from pytorch_widedeep.models import Wide, TabMlp, WideDeep
++from pytorch_widedeep.metrics import Accuracy, Precision, Recall
++from pytorch_widedeep.datasets import load_adult
++
++logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
++
++
++def str_to_bool(s):
++    if s.lower() == 'true':
++        return True
++    elif s.lower() == 'false':
++        return False
++    else:
++        raise ValueError(f"Invalid input string: {s}, must be true or false")
++
++
++RANDOM_SEED = 42
++DUMP_PROFILER = str_to_bool(os.getenv("MODEL_PROFILING_FLAG", "false"))
++SET_HF32 = str_to_bool(os.getenv("MODEL_HF32_FLAG", "true"))
++MODEL_NAME = "WideDeep"
++
++
++def fix_random_seed_as(seed):
++    random.seed(seed)
++    np.random.seed(seed)
++    torch.manual_seed(seed)
++    if torch.cuda.is_available():
++        torch.cuda.manual_seed(seed)
++        torch.cuda.manual_seed_all(seed)
++        torch.backends.cudnn.deterministic = True
++        torch.backends.cudnn.benchmark = False
++    if HAS_NPU and torch.npu.is_available():
++        torch.manual_seed(seed)
++        torch.npu.manual_seed(seed)
++        torch.npu.manual_seed_all(seed)
++        torch_npu.npu.manual_seed(seed)
++        torch_npu.npu.manual_seed_all(seed)
++
++
++def set_tf32():
++    if HAS_NPU and torch.npu.is_available():
++        torch_npu.npu.matmul.allow_hf32 = True
++        torch_npu.npu.conv.allow_hf32 = True
++        logging.info(f"NPU: set hf32 is {torch_npu.npu.aclnn.allow_hf32}")
++    elif torch.cuda.is_available():
++        torch.backends.cuda.matmul.allow_tf32 = True
++        torch.backends.cudnn.allow_tf32 = True
++        logging.info(f"GPU: set tf32 is {torch.backends.cuda.matmul.allow_tf32}")
++
++
++def init_profiler(rank, model_name, device_name):
++    profiler_dir = f"../profiling/{model_name}/{device_name}"
++    os.makedirs(profiler_dir, exist_ok=True)
++
++    if HAS_NPU and torch.npu.is_available():
++        experimental_config = torch_npu.profiler._ExperimentalConfig(
++            export_type=[torch_npu.profiler.ExportType.Text],
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
++            mstx=False,
++            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++            l2_cache=False,
++            op_attr=False,
++            data_simplification=False,
++            record_op_args=False,
++            gc_detect_threshold=None
++        )
++        prof = torch_npu.profiler.profile(
++            activities=[
++                torch_npu.profiler.ProfilerActivity.CPU,
++                torch_npu.profiler.ProfilerActivity.NPU
++            ],
++            schedule=torch_npu.profiler.schedule(wait=480, active=1, warmup=10, repeat=1, skip_first=0),
++            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profiler_dir),
++            record_shapes=False,
++            profile_memory=False,
++            with_stack=False,
++            with_modules=False,
++            with_flops=False,
++            experimental_config=experimental_config
++        )
++    else:
++        prof = torch.profiler.profile(
++            activities=[
++                torch.profiler.ProfilerActivity.CPU,
++                torch.profiler.ProfilerActivity.CUDA
++            ],
++            schedule=torch.profiler.schedule(wait=480, active=1, warmup=10, repeat=1, skip_first=0),
++            on_trace_ready=torch.profiler.tensorboard_trace_handler(profiler_dir),
++            record_shapes=False,
++            profile_memory=False,
++            with_stack=False,
++            with_modules=False,
++            with_flops=False,
++        )
++
++    logging.info(f"[{rank}]: Profiler initialized, saving traces to {profiler_dir}")
++    return prof
++
++
++def gather_latency_data(local_data, world_size, device):
++    """收集各 rank 的 latency 数据"""
++    if world_size <= 1:
++        return [local_data]
++    local_tensor = torch.tensor(local_data, dtype=torch.float32, device=device)
++    gathered = [torch.zeros_like(local_tensor) for _ in range(world_size)]
++    dist.all_gather(gathered, local_tensor)
++    return [g.cpu().tolist() for g in gathered]
++
++
++def latency_summary(latency_list, batch_size, model_name, device_name, inductor_flag):
++    latency_array = np.array(latency_list)
++    ave_step = np.mean(latency_array, axis=0).tolist()
++    avg_time = sum(ave_step) / len(ave_step) if len(ave_step) > 0 else 0
++    ave_step.sort()
++
++    p90, p95, p99, p999 = 0, 0, 0, 0
++    if len(ave_step) > 0:
++        p90 = np.percentile(ave_step, 90, method="lower")
++        p95 = np.percentile(ave_step, 95, method="lower")
++        p99 = np.percentile(ave_step, 99, method="lower")
++        p999 = np.percentile(ave_step, 99.9, method="lower")
++
++    QPS = int(1 / avg_time) if avg_time > 0 else 0
++    e2e_result = {
++        "Batch_size": batch_size,
++        "model_name": model_name,
++        "QPS": QPS,
++        "AVG Latency": avg_time,
++        "P999 Latency": p999,
++        "P99 Latency": p99,
++        "P95 Latency": p95,
++        "P90 Latency": p90,
++    }
++
++    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
++
++    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
++        f.write(output_str + "\n")
++    return avg_time
++
++
++def setup(rank, world_size, master_port):
++    os.environ["MASTER_ADDR"] = "localhost"
++    os.environ["MASTER_PORT"] = str(master_port)
++    if torch.cuda.is_available():
++        dist.init_process_group("nccl", rank=rank, world_size=world_size)
++        torch.cuda.set_device(rank)
++    elif HAS_NPU and torch.npu.is_available():
++        dist.init_process_group("hccl", rank=rank, world_size=world_size)
++        torch_npu.npu.set_device(rank)
++    else:
++        dist.init_process_group("gloo", rank=rank, world_size=world_size)
++
++
++def cleanup():
++    dist.destroy_process_group()
++
++
++def train_fn(rank, world_size, args, device_name):
++    setup(rank, world_size, args.master_port)
++    fix_random_seed_as(RANDOM_SEED)
++    if SET_HF32:
++        set_tf32()
++
++    device = torch.device(f'{device_name}:{rank}')
++
++    if HAS_NPU and torch.npu.is_available():
++        logging.info(f"[{rank}]: torch_npu.npu.device_count(): {torch_npu.npu.device_count()}")
++        logging.info(f"[{rank}]: ASCEND_RT_VISIBLE_DEVICES: {os.environ.get('ASCEND_RT_VISIBLE_DEVICES', 'Not set')}")
++    elif torch.cuda.is_available():
++        logging.info(f"[{rank}]: torch.cuda.device_count(): {torch.cuda.device_count()}")
++        logging.info(f"[{rank}]: CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'Not set')}")
++
++    # 加载数据
++    df = load_adult(as_frame=True)
++    logging.info('Data load success')
++    df["income_label"] = (df["income"].apply(lambda x: ">50K" in x)).astype(int)
++    df.drop("income", axis=1, inplace=True)
++    df_train, df_test = train_test_split(df, test_size=0.2, stratify=df.income_label, random_state=RANDOM_SEED)
++
++    wide_cols = [
++        "education", "relationship", "workclass",
++        "occupation", "native-country", "gender",
++    ]
++    crossed_cols = [("education", "occupation"), ("native-country", "occupation")]
++    cat_embed_cols = [
++        "workclass", "education", "marital-status", "occupation",
++        "relationship", "race", "gender", "capital-gain",
++        "capital-loss", "native-country",
++    ]
++    continuous_cols = ["age", "hours-per-week"]
++    target = df_train["income_label"].values
++
++    wide_preprocessor = WidePreprocessor(wide_cols=wide_cols, crossed_cols=crossed_cols)
++    X_wide = wide_preprocessor.fit_transform(df_train)
++    logging.info('WidePreprocessor complete')
++
++    tab_preprocessor = TabPreprocessor(
++        cat_embed_cols=cat_embed_cols, continuous_cols=continuous_cols
++    )
++    X_tab = tab_preprocessor.fit_transform(df_train)
++    logging.info('TabPreprocessor complete')
++
++    # 构建模型
++    wide = Wide(input_dim=np.unique(X_wide).shape[0], pred_dim=1)
++    tab_mlp = TabMlp(
++        column_idx=tab_preprocessor.column_idx,
++        cat_embed_input=tab_preprocessor.cat_embed_input,
++        continuous_cols=continuous_cols,
++    )
++    model = WideDeep(wide=wide, deeptabular=tab_mlp)
++    logging.info('Build model complete')
++
++    # 训练
++    trainer = Trainer(
++        model, objective="binary", metrics=[Accuracy, Precision, Recall],
++        use_multi_gpu=True, seed=RANDOM_SEED, num_workers=0,
++        device=f'{device_name}:{rank}',
++        torch_compile=args.torch_compile, compile_mode=args.compile_mode,
++        profiler=None,
++    )
++
++    train_result = trainer.fit(
++        X_wide=X_wide,
++        X_tab=X_tab,
++        target=target,
++        n_epochs=args.num_epochs,
++        batch_size=args.batch_size,
++        shuffle=False,
++    )
++    logging.info('Training complete')
++
++    latency_list = train_result.get('latency_list', [])
++    final_loss = train_result.get('final_loss', 0.0)
++    steps_per_epoch = train_result.get('steps_per_epoch', 0)
++
++    # 测试预测
++    X_wide_te = wide_preprocessor.transform(df_test)
++    X_tab_te = tab_preprocessor.transform(df_test)
++    preds = trainer.predict(X_wide=X_wide_te, X_tab=X_tab_te)
++    logging.info('Prediction complete')
++
++    # 计算测试集指标
++    y_test = df_test["income_label"].values
++    accuracy = float(np.mean((preds == y_test).astype(int)))
++
++    # 计算 Precision 和 Recall (二分类，正类为 1)
++    tp = float(np.sum((preds == 1) & (y_test == 1)))
++    fp = float(np.sum((preds == 1) & (y_test == 0)))
++    fn = float(np.sum((preds == 0) & (y_test == 1)))
++
++    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
++    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
++
++    final_metrics = {
++        'acc': accuracy,
++        'prec': precision,
++        'rec': recall,
++    }
++    logging.info(f'Test acc: {accuracy:.4f}, prec: {precision:.4f}, rec: {recall:.4f}')
++
++    # 同步所有 rank
++    dist.barrier(device_ids=[rank])
++
++    # 收集所有 rank 的 latency 数据
++    gathered_latency = gather_latency_data(latency_list, world_size, device)
++
++    if rank == 0:
++        inductor_flag = 'inductor' if args.torch_compile else 'eager'
++        avg_time = latency_summary(gathered_latency, args.batch_size, MODEL_NAME, device_name, inductor_flag)
++
++        final_results = {
++            'epoch': args.num_epochs - 1,
++            'step': steps_per_epoch,
++            'final_loss': final_loss,
++            'avg_time': float(avg_time),
++        }
++        for k, v in final_metrics.items():
++            final_results[k] = float(v)
++
++        model_detail_info = device_name + "_" + MODEL_NAME + "_" + inductor_flag
++        output_str = model_detail_info + "_" + str(final_results)
++        logging.info(f"The final result: {output_str}")
++
++        del final_results['avg_time']
++        os.makedirs(f"../save_results_{device_name}/{MODEL_NAME}", exist_ok=True)
++        torch.save(final_results,
++                   f"../save_results_{device_name}/{MODEL_NAME}/predictions_{MODEL_NAME}_{inductor_flag}_{steps_per_epoch}.pt")
++
++    torch_npu.npu.synchronize() if (HAS_NPU and torch.npu.is_available()) else torch.cuda.synchronize()
++
++    # Profiler 采集阶段
++    if DUMP_PROFILER:
++        prof = init_profiler(rank, MODEL_NAME, device_name)
++        trainer.run_profiling_epoch(prof, X_wide, X_tab, target, args.batch_size)
++
++    cleanup()
++
++
++def main(args):
++    if HAS_NPU and torch.npu.is_available():
++        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = args.device_id
++        device_name = 'npu'
++    elif torch.cuda.is_available():
++        os.environ["CUDA_VISIBLE_DEVICES"] = args.device_id
++        device_name = 'cuda'
++    else:
++        device_name = 'cpu'
++
++    world_size = torch_npu.npu.device_count() if (HAS_NPU and torch.npu.is_available()) else torch.cuda.device_count()
++    if world_size == 0:
++        world_size = 1
++    mp.spawn(train_fn, args=(world_size, args, device_name), nprocs=world_size, join=True)
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser(description='WideDeep Training with Benchmark Support')
++
++    # 训练相关
++    parser.add_argument('--num_epochs', type=int, default=52, help='Number of epochs')
++    parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
++
++    # torch.compile 相关
++    parser.add_argument('--torch_compile', action='store_true', help='Enable torch.compile with inductor')
++    parser.add_argument('--compile_mode', type=str, default='default', choices=['default', 'reduce-overhead', 'max-autotune'])
++
++    # 运行控制
++    parser.add_argument('--device_id', type=str, default='0,1,2,3,4,5,6,7', help='Device IDs')
++    parser.add_argument('--master_port', type=int, default=12345, help='Master port for distributed training')
++
++    args = parser.parse_args()
++    main(args)
+\ No newline at end of file
