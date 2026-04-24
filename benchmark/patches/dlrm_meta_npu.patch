@@ -1,6 +1,6 @@
-From dc1e0c57d4679f60503fc8cc7ff9df8155fd2e4e Mon Sep 17 00:00:00 2001
+From 370b963fe4bde36d29e8c728e720ccac0516a242 Mon Sep 17 00:00:00 2001
 From: cann_ly <luyi120@h-partners.com>
-Date: Wed, 22 Apr 2026 17:01:51 +0800
+Date: Thu, 23 Apr 2026 11:35:24 +0800
 Subject: [PATCH] =?UTF-8?q?dlrm=20=E5=9B=9E=E6=98=BE?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -8,14 +8,14 @@ Content-Transfer-Encoding: 8bit
 
 ---
  data_utils.py                          |   4 +-
- dlrm_s_pytorch.py                      | 251 ++++++++++++++++++++-----
+ dlrm_s_pytorch.py                      | 250 ++++++++++++++++++++-----
  extend_distributed.py                  |  30 ++-
  torchrec_dlrm/data/dlrm_dataloader.py  |  13 +-
  torchrec_dlrm/data/multi_hot_criteo.py |  36 ++--
  torchrec_dlrm/dlrm_main.py             |  43 ++---
  torchrec_dlrm/multi_hot.py             |  21 ++-
  tricks/qr_embedding_bag.py             |  16 +-
- 8 files changed, 282 insertions(+), 132 deletions(-)
+ 8 files changed, 281 insertions(+), 132 deletions(-)
 
 diff --git a/data_utils.py b/data_utils.py
 index a0dbdd2..578f98a 100644
@@ -36,7 +36,7 @@ index a0dbdd2..578f98a 100644
  
                  # count uniques
 diff --git a/dlrm_s_pytorch.py b/dlrm_s_pytorch.py
-index e1b42b7..f399283 100644
+index e1b42b7..5416430 100644
 --- a/dlrm_s_pytorch.py
 +++ b/dlrm_s_pytorch.py
 @@ -100,6 +100,16 @@ from torch.nn.parameter import Parameter
@@ -408,16 +408,23 @@ index e1b42b7..f399283 100644
      ) as prof:
          if not args.inference_only:
              k = 0
-@@ -1539,6 +1661,8 @@ def run():
+@@ -1539,6 +1661,15 @@ def run():
                      previous_iteration_time = None
  
                  for j, inputBatch in enumerate(train_ld):
++                    if j == args.stop_step and args.stop_step > 0:
++                        print(
++                            "Early stopping at step {} as specified by --stop-step".format(
++                                args.stop_step
++                            )
++                        )
++                        break
 +                    if args.enable_profiling:
 +                        prof.step()
                      if j == 0 and args.save_onnx:
                          X_onnx, lS_o_onnx, lS_i_onnx, _, _, _ = unpack_batch(inputBatch)
  
-@@ -1548,14 +1672,14 @@ def run():
+@@ -1548,14 +1679,14 @@ def run():
                      X, lS_o, lS_i, T, W, CBPP = unpack_batch(inputBatch)
  
                      if args.mlperf_logging:
@@ -434,7 +441,7 @@ index e1b42b7..f399283 100644
  
                      # early exit if nbatches was set by the user and has been exceeded
                      if nbatches > 0 and j >= nbatches:
-@@ -1576,7 +1700,7 @@ def run():
+@@ -1576,7 +1707,7 @@ def run():
                          X,
                          lS_o,
                          lS_i,
@@ -443,7 +450,7 @@ index e1b42b7..f399283 100644
                          device,
                          ndevices=ndevices,
                      )
-@@ -1586,7 +1710,7 @@ def run():
+@@ -1586,7 +1717,7 @@ def run():
                          W = W[ext_dist.get_my_slice(mbs)]
  
                      # loss
@@ -452,7 +459,7 @@ index e1b42b7..f399283 100644
  
                      # compute loss and accuracy
                      L = E.detach().cpu().numpy()  # numpy array
-@@ -1623,7 +1747,7 @@ def run():
+@@ -1623,7 +1754,7 @@ def run():
                      if args.mlperf_logging:
                          total_time += iteration_time
                      else:
@@ -461,7 +468,7 @@ index e1b42b7..f399283 100644
                          total_time += t2 - t1
  
                      total_loss += L * mbs
-@@ -1656,10 +1780,9 @@ def run():
+@@ -1656,10 +1787,9 @@ def run():
                              wall_time = " ({})".format(time.strftime("%H:%M"))
  
                          print(
@@ -474,25 +481,17 @@ index e1b42b7..f399283 100644
                              + wall_time,
                              flush=True,
                          )
-@@ -1670,6 +1793,17 @@ def run():
+@@ -1670,6 +1800,9 @@ def run():
                          total_iter = 0
                          total_samp = 0
  
 +                        train_times.append(gT)
 +                        train_losses.append(train_loss)
 +
-+                    if j > args.stop_step and args.stop_step > 0:
-+                        print(
-+                            "Early stopping at step {} as specified by --stop-step".format(
-+                                args.stop_step
-+                            )
-+                        )
-+                        break
-+
                      # testing
                      if should_test:
                          epoch_num_float = (j + 1) / len(train_ld) + k + 1
-@@ -1695,7 +1829,7 @@ def run():
+@@ -1695,7 +1828,7 @@ def run():
                              best_auc_test,
                              test_ld,
                              device,
@@ -501,7 +500,7 @@ index e1b42b7..f399283 100644
                              log_iter,
                          )
  
-@@ -1788,22 +1922,12 @@ def run():
+@@ -1788,22 +1921,12 @@ def run():
                  best_auc_test,
                  test_ld,
                  device,
@@ -526,7 +525,7 @@ index e1b42b7..f399283 100644
  
      # plot compute graph
      if args.plot_compute_graph:
-@@ -1895,14 +2019,39 @@ def run():
+@@ -1895,14 +2018,39 @@ def run():
              input_names=all_inputs,
              output_names=["pred"],
              dynamic_axes=dynamic_axes,
@@ -550,7 +549,7 @@ index e1b42b7..f399283 100644
 +            'dataset_name': args.data_set,
 +            'batch_size': args.mini_batch_size,
 +            'epoch': args.nepochs,
-+            'step': j + 1,
++            'step': j,
 +            'final_loss': train_loss,
 +            "ms/step": float(avg_time),
 +            'metrics': all_metrics
