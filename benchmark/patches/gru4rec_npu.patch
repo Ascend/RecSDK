@@ -232,8 +232,8 @@ index 7058de8..0db3700 100644
 +                    return {'latency_list': latency_list, 'final_loss': final_loss, 'steps_per_epoch': step}
 +
 +                if step % 10 == 0:
-+                    print(f"epoch: {epoch}, step: {step}, loss = {L}, time = {time_module.time() - start_time}")
-+                    start_time = time_module.time()
++                    print(f"epoch: {epoch}, step: {step}, loss = {L}, time = {time.time() - start_time}")
++                    start_time = time.time()
 +                    if step >= 6910:
 +                        break
 +
