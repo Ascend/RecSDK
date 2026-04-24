@@ -303,3 +303,755 @@ index 7058de8..0db3700 100644
              self.model = self.model.to(device)
              self.model.eval()
          self.device = device
+diff --git a/retailrocket_preproc.py b/retailrocket_preproc.py
+new file mode 100644
+index 0000000..4386404
+--- /dev/null
++++ b/retailrocket_preproc.py
+@@ -0,0 +1,234 @@
++import numpy as np
++import pandas as pd
++import gc
++import datetime as dt
++import glob
++import argparse
++import os
++import shutil
++
++
++def _find_file(root: str, name: str) -> str:
++    for dirpath, _dirnames, filenames in os.walk(root):
++        if name in filenames:
++            return os.path.join(dirpath, name)
++    return ""
++
++
++def download_retailrocket_to(path: str) -> None:
++    """使用 kagglehub 下载 retailrocket/ecommerce-dataset，将 events.csv 放入 path。"""
++    try:
++        import kagglehub
++    except ImportError as e:
++        raise RuntimeError(
++            "需要安装 kagglehub: pip install kagglehub"
++        ) from e
++
++    os.makedirs(path, exist_ok=True)
++    cache_path = kagglehub.dataset_download("retailrocket/ecommerce-dataset")
++    print("KaggleHub dataset cache path:", cache_path)
++
++    events_src = _find_file(cache_path, "events.csv")
++    if not events_src:
++        raise FileNotFoundError(
++            f"在已下载数据集中未找到 events.csv: {cache_path}"
++        )
++    events_dst = os.path.join(path, "events.csv")
++    shutil.copy2(events_src, events_dst)
++    print("Copied events.csv to:", events_dst)
++
++
++def main(path: str):
++    data = pd.read_csv(os.path.join(path,"events.csv"))
++
++    data["user_idx"] = data.visitorid.values
++    data["item_id"] = data.itemid.values
++
++    data = data.sort_values(["user_idx", "timestamp", "item_id"]).reset_index(drop=True)
++    data["session_id"] = np.cumsum(
++        np.hstack(
++            [
++                False,
++                (data.timestamp.values[1:] - data.timestamp.values[:-1] > 3600 * 1000)
++                | (data.user_idx.values[1:] != data.user_idx.values[:-1]),
++            ]
++        )
++    )
++    view = data[data.event == 'view']
++    view = pd.DataFrame(
++        {
++            "session_id": view.session_id.values,
++            "item_id": view.item_id.values,
++            "time": view.timestamp.values,
++        }
++    )
++
++    dupmask = np.hstack(
++        [
++            False,
++            (view.session_id.values[1:] == view.session_id.values[:-1])
++            & (view.item_id.values[1:] == view.item_id.values[:-1]),
++        ]
++    )
++    view_dedup = view[~dupmask].copy()
++
++    pl = -1
++    print(
++        len(view_dedup),
++        view_dedup.session_id.nunique(),
++        view_dedup.item_id.nunique(),
++    )
++    while len(view_dedup) != pl:
++        pl = len(view_dedup)
++        slength = view_dedup.groupby("session_id").size()
++        view_dedup.drop(
++            view_dedup[view_dedup.session_id.isin(slength[slength == 1].index)].index,
++            inplace=True,
++        )
++        gc.collect()
++        print(
++            len(view_dedup),
++            view_dedup.session_id.nunique(),
++            view_dedup.item_id.nunique(),
++        )
++        isupp = view_dedup.groupby("item_id").size()
++        view_dedup.drop(
++            view_dedup[view_dedup.item_id.isin(isupp[isupp < 5].index)].index, inplace=True
++        )
++        gc.collect()
++        print(
++            len(view_dedup),
++            view_dedup.session_id.nunique(),
++            view_dedup.item_id.nunique(),
++        )
++
++    processed = pd.DataFrame(
++        {
++            "SessionId": view_dedup.session_id.values,
++            "ItemId": view_dedup.item_id.values,
++            "Time": view_dedup.time.values,
++        }
++    )
++    processed.to_csv(
++        f"{path}/retailrocket_processed_view_full.tsv",
++        sep="\t",
++        index=False,
++    )
++
++    sbeg = processed.groupby("SessionId").Time.min()
++    tsplit = 1442545200000
++    tday = 86400 * 1000
++    test = processed[processed.SessionId.isin(sbeg[sbeg >= tsplit - tday * 7].index)]
++    train = processed[processed.Time < tsplit - tday * 7]
++    test.to_csv(
++        f"{path}/retailrocket_processed_view_test.tsv",
++        sep="\t",
++        index=False,
++    )
++    session_length = train.groupby("SessionId").size()
++    train = train[train.SessionId.isin(session_length[session_length > 1].index)]
++    train.to_csv(
++        f"{path}/retailrocket_processed_view_train_full.tsv",
++        sep="\t",
++        index=False,
++    )
++
++    train2 = train[train.Time < tsplit - tday * 2 * 7]
++    test2 = train[train.SessionId.isin(sbeg[sbeg >= tsplit - tday * 2 * 7].index)]
++    session_length2 = train2.groupby("SessionId").size()
++    train2 = train2[train2.SessionId.isin(session_length2[session_length2 > 1].index)]
++    train2.to_csv(
++        f"{path}/retailrocket_processed_view_train_tr.tsv",
++        sep="\t",
++        index=False,
++    )
++    test2.to_csv(
++        f"{path}/retailrocket_processed_view_train_valid.tsv",
++        sep="\t",
++        index=False,
++    )
++
++    names = []
++    num_events = []
++    num_sessions = []
++    num_items = []
++    num_days = []
++    start_times = []
++    end_times = []
++    length_min = []
++    length_max = []
++    length_avg = []
++    item_view_avg = []
++    diff_min = []
++    diff_max = []
++    for curr_path in glob.glob(
++        f"{path}/retailrocket_processed_view*"
++    ):
++        data = pd.read_csv(curr_path, sep="\t", dtype={"ItemId": "str"})
++        data.Time = data.Time
++        names.append(curr_path.split("/")[-1])
++        num_events.append(len(data))
++        num_sessions.append(data.SessionId.nunique())
++        num_items.append(data.ItemId.nunique())
++        num_days.append((data.Time.max() - data.Time.min()) / tday)
++        start_times.append(
++            dt.datetime.utcfromtimestamp(data.Time.min() / 1000).strftime("%Y-%m-%d %H:%M:%S.%f")
++        )
++        end_times.append(
++            dt.datetime.utcfromtimestamp(data.Time.max() / 1000).strftime("%Y-%m-%d %H:%M:%S.%f")
++        )
++        slength = data.groupby("SessionId").size()
++        itemview = data.groupby("ItemId").size()
++        sdiff = data.groupby("SessionId").Time.max() - data.groupby("SessionId").Time.min()
++        sdiff = sdiff / 1000
++        length_min.append(slength.min())
++        length_max.append(slength.max())
++        length_avg.append(slength.mean())
++        item_view_avg.append(itemview.mean())
++        diff_min.append(sdiff.min())
++        diff_max.append(sdiff.max())
++    stats = pd.DataFrame(
++        {
++            "Dataset": names,
++            "NumEvents": num_events,
++            "NumSessions": num_sessions,
++            "NumItems": num_items,
++            "NumDays": num_days,
++            "StartTime": start_times,
++            "EndTime": end_times,
++            "AvgItemViews": item_view_avg,
++            "MinSessionLength": length_min,
++            "MaxSessionLength": length_max,
++            "AvgSessionLength": length_avg,
++            "MinSessionTime (sec)": diff_min,
++            "MaxSessionTime (sec)": diff_max,
++        }
++    )
++    print(stats)
++    stats.to_csv(
++        f"{path}/stats.tsv",
++        sep="\t",
++        index=False,
++        float_format='%.4f',
++    )
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser(
++        description="RetailRocket 预处理；可选先通过 kagglehub 下载 events.csv 到 -p 目录"
++    )
++    parser.add_argument(
++        "-p",
++        "--path",
++        type=str,
++        default="./data",
++        help="数据目录：需含 events.csv；使用 --download 时会把 events.csv 下载/复制到此目录",
++    )
++    parser.add_argument(
++        "--download",
++        action="store_true",
++        help="先从 Kaggle 下载 retailrocket/ecommerce-dataset，再执行预处理（依赖: pip install kagglehub）",
++    )
++    args = parser.parse_args()
++    if args.download:
++        download_retailrocket_to(args.path)
++    main(path=args.path)
+\ No newline at end of file
+diff --git a/run.py b/run.py
+index fb6d043..af012b1 100644
+--- a/run.py
++++ b/run.py
+@@ -1,132 +1,398 @@
+ import argparse
+ import os
+-import shutil
+-
+-class MyHelpFormatter(argparse.HelpFormatter):
+-    def __init__(self, *args, **kwargs):
+-        super(MyHelpFormatter, self).__init__(*args, **kwargs)
+-        self._width = shutil.get_terminal_size().columns
+-
+-parser = argparse.ArgumentParser(formatter_class=MyHelpFormatter, description='Train or load a GRU4Rec model & measure recall and MRR on the specified test set(s).')
+-parser.add_argument('path', metavar='PATH', type=str, help='Path to the training data (TAB separated file (.tsv or .txt) or pickled pandas.DataFrame object (.pickle)) (if the --load_model parameter is NOT provided) or to the serialized model (if the --load_model parameter is provided).')
+-parser.add_argument('-ps', '--parameter_string', metavar='PARAM_STRING', type=str, help='Training parameters provided as a single parameter string. The format of the string is `param_name1=param_value1,param_name2=param_value2...`, e.g.: `loss=bpr-max,layers=100,constrained_embedding=True`. Boolean training parameters should be either True or False; parameters that can take a list should use / as the separator (e.g. layers=200/200). Mutually exclusive with the -pf (--parameter_file) and the -l (--load_model) arguments and one of the three must be provided.')
+-parser.add_argument('-pf', '--parameter_file', metavar='PARAM_PATH', type=str, help='Alternatively, training parameters can be set using a config file specified in this argument. The config file must contain a single OrderedDict named `gru4rec_params`. The parameters must have the appropriate type (e.g. layers = [100]). Mutually exclusive with the -ps (--parameter_string) and the -l (--load_model) arguments and one of the three must be provided.')
+-parser.add_argument('-l', '--load_model', action='store_true', help='Load an already trained model instead of training a model. Mutually exclusive with the -ps (--parameter_string) and the -pf (--parameter_file) arguments and one of the three must be provided.')
+-parser.add_argument('-s', '--save_model', metavar='MODEL_PATH', type=str, help='Save the trained model to the MODEL_PATH. (Default: don\'t save model)')
+-parser.add_argument('-t', '--test', metavar='TEST_PATH', type=str, nargs='+', help='Path to the test data set(s) located at TEST_PATH. Multiple test sets can be provided (separate with spaces). (Default: don\'t evaluate the model)')
+-parser.add_argument('-m', '--measure', metavar='AT', type=int, nargs='+', default=[20], help='Measure recall & MRR at the defined recommendation list length(s). Multiple values can be provided. (Default: 20)')
+-parser.add_argument('-e', '--eval_type', metavar='EVAL_TYPE', choices=['standard', 'conservative', 'median'], default='standard', help='Sets how to handle if multiple items in the ranked list have the same prediction score (which is usually due to saturation or an error). See the documentation of batch_eval() in evaluation.py for further details. (Default: standard)')
+-parser.add_argument('-ss', '--sample_store_size', metavar='SS', type=int, default=10000000, help='GRU4Rec uses a buffer for negative samples during training to maximize GPU utilization. This parameter sets the buffer length. Lower values require more frequent recomputation, higher values use more (GPU) memory. Unless you know what you are doing, you shouldn\'t mess with this parameter. (Default: 10000000)')
+-parser.add_argument('-g', '--gru4rec_model', metavar='GRFILE', type=str, default='gru4rec_pytorch', help='Name of the file containing the GRU4Rec class. Can be used to select different varaiants. (Default: gru4rec_pytorch)')
+-parser.add_argument('-d', '--device', metavar='D', type=str, default='cuda:0', help='Device used for computations (default: cuda:0).')
+-parser.add_argument('-ik', '--item_key', metavar='IK', type=str, default='ItemId', help='Column name corresponding to the item IDs (detault: ItemId).')
+-parser.add_argument('-sk', '--session_key', metavar='SK', type=str, default='SessionId', help='Column name corresponding to the session IDs (default: SessionId).')
+-parser.add_argument('-tk', '--time_key', metavar='TK', type=str, default='Time', help='Column name corresponding to the timestamp (default: Time).')
+-parser.add_argument('-pm', '--primary_metric', metavar='METRIC', choices=['recall', 'mrr'], default='recall', help='Set primary metric, recall or mrr (e.g. for paropt). (Default: recall)')
+-parser.add_argument('-lpm', '--log_primary_metric', action='store_true', help='If provided, evaluation will log the value of the primary metric at the end of the run. Only works with one test file and list length.')
+-args = parser.parse_args()
+-
+-import os.path
+-orig_cwd = os.getcwd()
+-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+-import numpy as np
+-import pandas as pd
+-import datetime as dt
+ import sys
+ import time
++import random
++import logging
+ from collections import OrderedDict
+ import importlib
+-GRU4Rec = importlib.import_module(args.gru4rec_model).GRU4Rec
+-import evaluation
+ import importlib.util
++
++import numpy as np
++import pandas as pd
+ import joblib
+-os.chdir(orig_cwd)
++
++import torch
++import torch.distributed as dist
++import torch.multiprocessing as mp
++
++try:
++    import torch_npu
++    HAS_NPU = True
++except ImportError:
++    HAS_NPU = False
++
++logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
++
++
++def str_to_bool(s):
++    if isinstance(s, bool):
++        return s
++    if s is None:
++        raise ValueError("Invalid input value: None, must be true/false")
++    normalized = str(s).strip().lower()
++    if normalized in ('true', '1', 'yes', 'y', 'on'):
++        return True
++    if normalized in ('false', '0', 'no', 'n', 'off'):
++        return False
++    raise ValueError(f"Invalid input string: {s}, must be true/false")
++
++
++RANDOM_SEED = 42
++DUMP_PROFILER = str_to_bool(os.getenv("MODEL_PROFILING_FLAG", "false"))
++SET_HF32 = str_to_bool(os.getenv("MODEL_HF32_FLAG", "true"))
++MODEL_NAME = "GRU4Rec"
++
++
++def fix_random_seed_as(seed):
++    random.seed(seed)
++    np.random.seed(seed)
++    torch.manual_seed(seed)
++    if torch.cuda.is_available():
++        torch.cuda.manual_seed(seed)
++        torch.cuda.manual_seed_all(seed)
++        torch.backends.cudnn.deterministic = True
++        torch.backends.cudnn.benchmark = False
++    if HAS_NPU and torch.npu.is_available():
++        torch.manual_seed(seed)
++        torch.npu.manual_seed(seed)
++        torch.npu.manual_seed_all(seed)
++        torch_npu.npu.manual_seed(seed)
++        torch_npu.npu.manual_seed_all(seed)
++
++
++def set_tf32():
++    if HAS_NPU and torch.npu.is_available():
++        torch_npu.npu.matmul.allow_hf32 = True
++        torch_npu.npu.conv.allow_hf32 = True
++        logging.info(f"NPU: set hf32 is {torch_npu.npu.aclnn.allow_hf32}")
++    elif torch.cuda.is_available():
++        torch.backends.cuda.matmul.allow_tf32 = True
++        torch.backends.cudnn.allow_tf32 = True
++        logging.info(f"GPU: set tf32 is {torch.backends.cuda.matmul.allow_tf32}")
++
++
++def init_profiler(rank, model_name, device_name):
++    profiler_dir = f"../profiling/{model_name}/{device_name}"
++    os.makedirs(profiler_dir, exist_ok=True)
++
++    if HAS_NPU and torch.npu.is_available():
++        experimental_config = torch_npu.profiler._ExperimentalConfig(
++            export_type=[torch_npu.profiler.ExportType.Text],
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
++            mstx=False,
++            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++            l2_cache=False,
++            op_attr=False,
++            data_simplification=False,
++            record_op_args=False,
++            gc_detect_threshold=None
++        )
++        prof = torch_npu.profiler.profile(
++            activities=[
++                torch_npu.profiler.ProfilerActivity.CPU,
++                torch_npu.profiler.ProfilerActivity.NPU
++            ],
++            schedule=torch_npu.profiler.schedule(wait=480, active=1, warmup=10, repeat=1, skip_first=0),
++            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profiler_dir),
++            record_shapes=False,
++            profile_memory=False,
++            with_stack=False,
++            with_modules=False,
++            with_flops=False,
++            experimental_config=experimental_config
++        )
++    else:
++        prof = torch.profiler.profile(
++            activities=[
++                torch.profiler.ProfilerActivity.CPU,
++                torch.profiler.ProfilerActivity.CUDA
++            ],
++            schedule=torch.profiler.schedule(wait=480, active=1, warmup=10, repeat=1, skip_first=0),
++            on_trace_ready=torch.profiler.tensorboard_trace_handler(profiler_dir),
++            record_shapes=False,
++            profile_memory=False,
++            with_stack=False,
++            with_modules=False,
++            with_flops=False,
++        )
++
++    logging.info(f"[{rank}]: Profiler initialized, saving traces to {profiler_dir}")
++    return prof
++
++
++def gather_latency_data(local_data, world_size, device):
++    """收集各 rank 的 latency 数据"""
++    if world_size <= 1:
++        return [local_data]
++    local_tensor = torch.tensor(local_data, dtype=torch.float32, device=device)
++    gathered = [torch.zeros_like(local_tensor) for _ in range(world_size)]
++    dist.all_gather(gathered, local_tensor)
++    return [g.cpu().tolist() for g in gathered]
++
++
++def latency_summary(latency_list, batch_size, model_name, device_name, inductor_flag):
++    latency_array = np.array(latency_list)
++    ave_step = np.mean(latency_array, axis=0).tolist()
++    avg_time = sum(ave_step) / len(ave_step) if len(ave_step) > 0 else 0
++    ave_step.sort()
++
++    p90, p95, p99, p999 = 0, 0, 0, 0
++    if len(ave_step) > 0:
++        p90 = np.percentile(ave_step, 90, method="lower")
++        p95 = np.percentile(ave_step, 95, method="lower")
++        p99 = np.percentile(ave_step, 99, method="lower")
++        p999 = np.percentile(ave_step, 99.9, method="lower")
++
++    QPS = int(1 / avg_time) if avg_time > 0 else 0
++    e2e_result = {
++        "Batch_size": batch_size,
++        "model_name": model_name,
++        "QPS": QPS,
++        "AVG Latency": avg_time,
++        "P999 Latency": p999,
++        "P99 Latency": p99,
++        "P95 Latency": p95,
++        "P90 Latency": p90,
++    }
++
++    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
++
++    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
++        f.write(output_str + "\n")
++    return avg_time
++
++
++def setup(rank: int, world_size: int, master_port: int):
++    os.environ["MASTER_ADDR"] = "localhost"
++    os.environ["MASTER_PORT"] = str(master_port)
++    if torch.cuda.is_available():
++        dist.init_process_group("nccl", rank=rank, world_size=world_size)
++        torch.cuda.set_device(rank)
++    elif HAS_NPU and torch.npu.is_available():
++        dist.init_process_group("hccl", rank=rank, world_size=world_size)
++        torch_npu.npu.set_device(f'npu:{rank}')
++
++
++def cleanup():
++    dist.destroy_process_group()
++
+ 
+ def load_data(fname, args):
+-    if fname.endswith('.pickle'):
+-        print('Loading data from pickle file: {}'.format(fname))
+-        data = joblib.load(fname)
+-        if args.session_key not in data.columns:
+-            print('ERROR. The column specified for session IDs "{}" is not in the data file ({})'.format(args.session_key, fname))
+-            print('The default column name is "SessionId", but you can specify otherwise by setting the `session_key` parameter of the model.')
++    def _ensure_columns(columns, path):
++        if args.session_key not in columns:
++            logging.error('The column specified for session IDs "{}" is not in the data file ({})'.format(args.session_key, path))
+             sys.exit(1)
+-        if args.item_key not in data.columns:
+-            print('ERROR. The column specified for item IDs "{}" is not in the data file ({})'.format(args.item_key, fname))
+-            print('The default column name is "ItemId", but you can specify otherwise by setting the `item_key` parameter of the model.')
++        if args.item_key not in columns:
++            logging.error('The column specified for item IDs "{}" is not in the data file ({})'.format(args.item_key, path))
+             sys.exit(1)
+-        if args.time_key not in data.columns:
+-            print('ERROR. The column specified for time "{}" is not in the data file ({})'.format(args.time_key, fname))
+-            print('The default column name is "Time", but you can specify otherwise by setting the `time_key` parameter of the model.')
++        if args.time_key not in columns:
++            logging.error('The column specified for time "{}" is not in the data file ({})'.format(args.time_key, path))
+             sys.exit(1)
++
++    if fname.endswith('.pickle'):
++        logging.info('Loading data from pickle file: {}'.format(fname))
++        data = joblib.load(fname)
++        _ensure_columns(data.columns, fname)
+     else:
+         with open(fname, 'rt') as f:
+             header = f.readline().strip().split('\t')
+-        if args.session_key not in header:
+-            print('ERROR. The column specified for session IDs "{}" is not in the data file ({})'.format(args.session_key, fname))
+-            print('The default column name is "SessionId", but you can specify otherwise by setting the `session_key` parameter of the model.')
+-            sys.exit(1)
+-        if args.item_key not in header:
+-            print('ERROR. The colmn specified for item IDs "{}" is not in the data file ({})'.format(args.item_key, fname))
+-            print('The default column name is "ItemId", but you can specify otherwise by setting the `item_key` parameter of the model.')
+-            sys.exit(1)
+-        if args.time_key not in header:
+-            print('ERROR. The column specified for time "{}" is not in the data file ({})'.format(args.time_key, fname))
+-            print('The default column name is "Time", but you can specify otherwise by setting the `time_key` parameter of the model.')
+-            sys.exit(1)
+-        print('Loading data from TAB separated file: {}'.format(fname))
++        _ensure_columns(header, fname)
++        logging.info('Loading data from TAB separated file: {}'.format(fname))
+         data = pd.read_csv(fname, sep='\t', usecols=[args.session_key, args.item_key, args.time_key], dtype={args.session_key:'int32', args.item_key:'str'})
+     return data
+ 
+-if (args.parameter_string is not None) + (args.parameter_file is not None) + (args.load_model) != 1:
+-    print('ERROR. Exactly one of the following parameters must be provided: --parameter_string, --parameter_file, --load_model')
+-    sys.exit(1)
+-
+-if args.load_model:
+-    print('Loading trained model from file: {} (to device "{}")'.format(args.path, args.device))
+-    gru = GRU4Rec.loadmodel(args.path, device=args.device)
+-else:
+-    if args.parameter_file:
+-        param_file_path = os.path.abspath(args.parameter_file)
+-        param_dir, param_file = os.path.split(param_file_path)
+-        spec = importlib.util.spec_from_file_location(param_file.split('.py')[0], os.path.abspath(args.parameter_file))
+-        params = importlib.util.module_from_spec(spec)
+-        spec.loader.exec_module(params)
+-        gru4rec_params = params.gru4rec_params
+-        print('Loaded parameters from file: {}'.format(param_file_path))
+-    if args.parameter_string:
+-        gru4rec_params = OrderedDict([x.split('=') for x in args.parameter_string.split(',')])
+-    print('Creating GRU4Rec model on device "{}"'.format(args.device))
+-    gru = GRU4Rec(device=args.device)
+-    gru.set_params(**gru4rec_params)
+-    print('Loading training data...')
+-    data = load_data(args.path, args)
+-    print('Started training')
+-    t0 = time.time()
+-    gru.fit(data, sample_cache_max_size=args.sample_store_size, item_key=args.item_key, session_key=args.session_key, time_key=args.time_key)
+-    t1 = time.time()
+-    print('Total training time: {:.2f}s'.format(t1 - t0))
+-    if args.save_model is not None:
+-        print('Saving trained model to: {}'.format(args.save_model))
+-        gru.savemodel(args.save_model)
+-    
+-if args.test is not None:
+-    if args.primary_metric.lower() == 'recall':
+-        pm_index = 0
+-    elif args.primary_metric.lower() == 'mrr':
+-        pm_index = 1
++
++def train_fn(rank: int, world_size: int, args, device_name):
++    setup(rank, world_size, args.master_port)
++    fix_random_seed_as(RANDOM_SEED)
++    if SET_HF32:
++        set_tf32()
++
++    device = torch.device(f'{device_name}:{rank}')
++    args.device = f'{device_name}:{rank}'
++
++    if HAS_NPU and torch.npu.is_available():
++        logging.info(f"[{rank}]: torch_npu.npu.device_count(): {torch_npu.npu.device_count()}")
++        logging.info(f"[{rank}]: ASCEND_RT_VISIBLE_DEVICES: {os.environ.get('ASCEND_RT_VISIBLE_DEVICES', 'Not set')}")
++    elif torch.cuda.is_available():
++        logging.info(f"[{rank}]: torch.cuda.device_count(): {torch.cuda.device_count()}")
++        logging.info(f"[{rank}]: CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'Not set')}")
++
++    if (args.parameter_string is not None) + (args.parameter_file is not None) + (args.load_model) != 1:
++        logging.error('Exactly one of the following parameters must be provided: --parameter_string, --parameter_file, --load_model')
++        sys.exit(1)
++
++    # 动态导入 GRU4Rec
++    orig_cwd = os.getcwd()
++    os.chdir(os.path.dirname(os.path.abspath(__file__)))
++    GRU4Rec = importlib.import_module(args.gru4rec_model).GRU4Rec
++    import evaluation
++    os.chdir(orig_cwd)
++
++    final_metrics = {}
++    latency_list = []
++    steps_per_epoch = 0
++    final_loss = 0.0
++    batch_size = 80
++
++    if args.load_model:
++        logging.info('Loading trained model from file: {} (to device "{}")'.format(args.path, args.device))
++        gru = GRU4Rec.loadmodel(args.path, device=args.device)
+     else:
+-        raise RuntimeError('Invalid value `{}` for `primary_metric` parameter'.format(args.primary_metric))
+-    for test_file in args.test:
+-        print('Loading test data...')
+-        test_data = load_data(test_file, args)
+-        print('Starting evaluation (cut-off={}, using {} mode for tiebreaking)'.format(args.measure, args.eval_type))
++        if args.parameter_file:
++            param_file_path = os.path.abspath(args.parameter_file)
++            spec = importlib.util.spec_from_file_location(os.path.basename(param_file_path).split('.py')[0], param_file_path)
++            params = importlib.util.module_from_spec(spec)
++            spec.loader.exec_module(params)
++            gru4rec_params = params.gru4rec_params
++            logging.info('Loaded parameters from file: {}'.format(param_file_path))
++        if args.parameter_string:
++            gru4rec_params = OrderedDict([x.split('=') for x in args.parameter_string.split(',')])
++            if 'batch_size' in gru4rec_params:
++                batch_size = int(gru4rec_params['batch_size'])
++
++        logging.info('Creating GRU4Rec model on device "{}"'.format(args.device))
++        gru = GRU4Rec(device=args.device, torch_compile=args.torch_compile, compile_mode=args.compile_mode)
++        gru.set_params(**gru4rec_params)
++        logging.info('Loading training data...')
++        data = load_data(args.path, args)
++        logging.info('Started training')
++
+         t0 = time.time()
+-        res = evaluation.batch_eval(gru, test_data, batch_size=512, cutoff=args.measure, mode=args.eval_type, item_key=args.item_key, session_key=args.session_key, time_key=args.time_key)
++        train_result = gru.fit(
++            rank, data,
++            sample_cache_max_size=args.sample_store_size,
++            item_key=args.item_key,
++            session_key=args.session_key,
++            time_key=args.time_key,
++            profiler=None
++        )
+         t1 = time.time()
+-        print('Evaluation took {:.2f}s'.format(t1 - t0))
+-        for c in args.measure:
+-            print('Recall@{}: {:.6f} MRR@{}: {:.6f}'.format(c, res[0][c], c, res[1][c]))
++        logging.info('Total training time: {:.2f}s'.format(t1 - t0))
++
++        latency_list = train_result['latency_list']
++        final_loss = train_result['final_loss']
++        steps_per_epoch = train_result['steps_per_epoch']
++
++        if args.save_model is not None:
++            logging.info('Saving trained model to: {}'.format(args.save_model))
++            gru.savemodel(args.save_model)
++
++    # 测试评估
++    if args.test is not None:
++        if args.primary_metric.lower() == 'recall':
++            pm_index = 0
++        elif args.primary_metric.lower() == 'mrr':
++            pm_index = 1
++        else:
++            raise RuntimeError('Invalid value `{}` for `primary_metric` parameter'.format(args.primary_metric))
++
++        for test_file in args.test:
++            logging.info('Loading test data...')
++            test_data = load_data(test_file, args)
++            logging.info('Starting evaluation (cut-off={}, using {} mode for tiebreaking)'.format(args.measure, args.eval_type))
++            t0 = time.time()
++            res = evaluation.batch_eval(gru, test_data, batch_size=512, cutoff=args.measure, mode=args.eval_type, item_key=args.item_key, session_key=args.session_key, time_key=args.time_key)
++            t1 = time.time()
++            logging.info('Evaluation took {:.2f}s'.format(t1 - t0))
++
++            for c in args.measure:
++                recall_val = res[0][c]
++                mrr_val = res[1][c]
++                logging.info('Recall@{}: {:.6f} MRR@{}: {:.6f}'.format(c, recall_val, c, mrr_val))
++                final_metrics[f'Recall@{c}'] = float(recall_val)
++                final_metrics[f'MRR@{c}'] = float(mrr_val)
++
++            if args.log_primary_metric:
++                logging.info('PRIMARY METRIC: {}'.format([x for x in res[pm_index].values()][0]))
++
++    # 同步所有 rank
++    dist.barrier(device_ids=[rank])
++
++    # 收集所有 rank 的 latency 数据
++    gathered_latency = gather_latency_data(latency_list, world_size, device)
++
++    if rank == 0:
++        inductor_flag = 'inductor' if args.torch_compile else 'eager'
++        avg_time = latency_summary(gathered_latency, batch_size, MODEL_NAME, device_name, inductor_flag)
++
++        final_results = {
++            'epoch': gru.n_epochs - 1 if hasattr(gru, 'n_epochs') else 0,
++            'step': steps_per_epoch,
++            'final_loss': final_loss,
++            'avg_time': float(avg_time),
++        }
++        for k, v in final_metrics.items():
++            final_results[k] = float(v)
++
++        model_detail_info = device_name + "_" + MODEL_NAME + "_" + inductor_flag
++        output_str = model_detail_info + "_" + str(final_results)
++        logging.info(f"The final result: {output_str}")
++
++        del final_results['avg_time']
++        os.makedirs(f"../save_results_{device_name}/{MODEL_NAME}", exist_ok=True)
++        torch.save(final_results,
++                   f"../save_results_{device_name}/{MODEL_NAME}/predictions_{MODEL_NAME}_{inductor_flag}_{steps_per_epoch}.pt")
++
++    torch_npu.npu.synchronize() if (HAS_NPU and torch.npu.is_available()) else torch.cuda.synchronize()
++
++    # Profiler 采集阶段
++    if DUMP_PROFILER:
++        prof = init_profiler(rank, MODEL_NAME, device_name)
++        gru.run_profiling_epoch(prof)
++
++    cleanup()
++
++
++def main(args):
++    if HAS_NPU and torch.npu.is_available():
++        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = args.device_id
++        device_name = 'npu'
++    elif torch.cuda.is_available():
++        os.environ["CUDA_VISIBLE_DEVICES"] = args.device_id
++        device_name = 'cuda'
++    else:
++        device_name = 'cpu'
++
++    world_size = torch_npu.npu.device_count() if (HAS_NPU and torch.npu.is_available()) else torch.cuda.device_count()
++    if world_size == 0:
++        world_size = 1
++    mp.spawn(train_fn, args=(world_size, args, device_name), nprocs=world_size, join=True)
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser(description='GRU4Rec Training with Benchmark Support')
++
++    # 数据相关
++    parser.add_argument('path', metavar='PATH', type=str, help='Path to training data (.tsv/.txt/.pickle)')
++    parser.add_argument('-ps', '--parameter_string', metavar='PARAM_STRING', type=str, help='Training parameters as param=value,... string')
++    parser.add_argument('-pf', '--parameter_file', metavar='PARAM_PATH', type=str, help='Config file with gru4rec_params OrderedDict')
++    parser.add_argument('-l', '--load_model', action='store_true', help='Load trained model instead of training')
++    parser.add_argument('-s', '--save_model', metavar='MODEL_PATH', type=str, help='Save trained model path')
++    parser.add_argument('-t', '--test', metavar='TEST_PATH', type=str, nargs='+', help='Test data path(s)')
++    parser.add_argument('-m', '--measure', metavar='AT', type=int, nargs='+', default=[20], help='Recall & MRR cutoff(s)')
++    parser.add_argument('-e', '--eval_type', choices=['standard', 'conservative', 'median'], default='standard')
++    parser.add_argument('-ss', '--sample_store_size', type=int, default=10000000)
++    parser.add_argument('-g', '--gru4rec_model', type=str, default='gru4rec_pytorch')
++
++    # 列名相关
++    parser.add_argument('-ik', '--item_key', type=str, default='ItemId')
++    parser.add_argument('-sk', '--session_key', type=str, default='SessionId')
++    parser.add_argument('-tk', '--time_key', type=str, default='Time')
++    parser.add_argument('-pm', '--primary_metric', choices=['recall', 'mrr'], default='recall')
++    parser.add_argument('-lpm', '--log_primary_metric', action='store_true')
++
++    # torch.compile 相关
++    parser.add_argument('--torch_compile', action='store_true', help='Enable torch.compile with inductor')
++    parser.add_argument('--compile_mode', type=str, default='default', choices=['default', 'reduce-overhead', 'max-autotune'])
++
++    # 运行控制
++    parser.add_argument('--device_id', type=str, default='0,1,2,3,4,5,6,7', help='Device IDs')
++    parser.add_argument('--master_port', type=int, default=12345, help='Master port for distributed training')
+ 
+-        if args.log_primary_metric:
+-            print('PRIMARY METRIC: {}'.format([x for x in res[pm_index].values()][0]))
++    args = parser.parse_args()
++    main(args)
+ 
