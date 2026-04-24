@@ -2473,7 +2473,7 @@ index f975842..0327a13 100644
 +        'batch_size': trainer_args.train_batch_size,
 +        'epoch': epoch,
 +        'step': train_iter,
-+        'final_loss': final_loss_value,
++        'final_loss': final_loss_value.cpu().item(),
 +        "ms/step": float(avg_time) * 1000,
 +        'metrics': {
 +            'AUC': float(auc_value)

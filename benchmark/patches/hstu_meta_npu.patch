@@ -1,8 +1,7 @@
-From 8822e20e4693ea5ffbf21095c4261790fc1cfa0b Mon Sep 17 00:00:00 2001
+From bc107ab18530ea1f7f0ebb58b760d419948aa066 Mon Sep 17 00:00:00 2001
 From: cann_ly <luyi120@h-partners.com>
-Date: Sat, 18 Apr 2026 17:43:46 +0800
-Subject: [PATCH] =?UTF-8?q?hstu=E5=A2=9E=E5=8A=A0=E7=B2=BE=E5=BA=A6?=
- =?UTF-8?q?=E6=96=87=E4=BB=B6?=
+Date: Fri, 24 Apr 2026 11:20:46 +0800
+Subject: [PATCH] =?UTF-8?q?hstu=20npu=E9=80=82=E9=85=8D?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -130,7 +129,7 @@ index 70bf80c..c4fbbbc 100644
      historical_ids = row["historical_ids"].to(device)  # [B, N]
      historical_ratings = row["historical_ratings"].to(device)
 diff --git a/generative_recommenders/research/modeling/sequential/hstu.py b/generative_recommenders/research/modeling/sequential/hstu.py
-index 3c89245..e8bb831 100644
+index 3c89245..84e688d 100644
 --- a/generative_recommenders/research/modeling/sequential/hstu.py
 +++ b/generative_recommenders/research/modeling/sequential/hstu.py
 @@ -22,6 +22,8 @@ Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for G
@@ -151,13 +150,6 @@ index 3c89245..e8bb831 100644
  
  TIMESTAMPS_KEY = "timestamps"
  
-+try:
-+    torch.ops.load_library(os.getenv('LIB_FBGEMM_NPU_API_SO_PATH'))
-+except FileNotFoundError as e:
-+    logging.warning(f'libfbgemm_npu_api.so is not exit')
-+except Exception as e:
-+    logging.warning(f'libfbgemm_npu_api.so failed to load: {e}')
-+
 +# pytorch for npu
 +try:
 +    import torch_npu
@@ -166,11 +158,18 @@ index 3c89245..e8bb831 100644
 +    NPU_ENABLE = False
 +
 +if NPU_ENABLE:
++    try:
++        torch.ops.load_library(os.getenv('LIB_FBGEMM_NPU_API_SO_PATH'))
++    except FileNotFoundError as e:
++        logging.warning(f'libfbgemm_npu_api.so is not exit')
++    except Exception as e:
++        logging.warning(f'libfbgemm_npu_api.so failed to load: {e}')
++
 +    from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
 +    torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
 +
 +try:
-+    ENABLE_RELATIVE_ATTENTION_BIAS = bool(int(os.getenv('ENABLE_RAB', 0)))
++    ENABLE_RELATIVE_ATTENTION_BIAS = bool(int(os.getenv('ENABLE_RAB', 1)))
 +except ValueError:
 +    raise ValueError("ENABLE_RAB environment variable is not a valid integer.")
 +
@@ -508,7 +507,7 @@ index a461ab8..226c83e 100644
      def debug_str(self) -> str:
          return f"posi_d{self._dropout_rate}"
 diff --git a/generative_recommenders/research/trainer/train.py b/generative_recommenders/research/trainer/train.py
-index 6d2da5b..a956a7b 100644
+index 6d2da5b..e588fb9 100644
 --- a/generative_recommenders/research/trainer/train.py
 +++ b/generative_recommenders/research/trainer/train.py
 @@ -24,6 +24,14 @@ from typing import Dict, Optional
@@ -681,7 +680,7 @@ index 6d2da5b..a956a7b 100644
      epoch = 0
 -    for epoch in range(num_epochs):
 +    latency_list = []
-+    for epoch in range(int(os.environ.get("MODEL_EPOCH", 10))):
++    for epoch in range(int(os.environ.get("MODEL_EPOCH", num_epochs))):
          if train_data_sampler is not None:
              train_data_sampler.set_epoch(epoch)
          if eval_data_sampler is not None:

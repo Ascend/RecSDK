@@ -1,14 +1,11 @@
-From 46edddc7f84d0a6e2250eb03a0ad6150fea75969 Mon Sep 17 00:00:00 2001
+From 138e106fe489523a87b826d0d7126e9b6b8f2c74 Mon Sep 17 00:00:00 2001
 From: cann_ly <luyi120@h-partners.com>
-Date: Wed, 22 Apr 2026 17:58:07 +0800
-Subject: [PATCH] =?UTF-8?q?retrieval=20patch=E4=BF=AE=E6=94=B9?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Date: Fri, 24 Apr 2026 14:44:32 +0800
+Subject: [PATCH] patch
 
 ---
  examples/commons/checkpoint/checkpoint.py     |   8 +-
- examples/commons/datasets/data_loader.py      |  28 +-
+ examples/commons/datasets/data_loader.py      |  26 ++
  examples/commons/distributed/sharding.py      | 119 ++++++--
  examples/commons/hstu_data_preprocessor.py    |  11 +-
  examples/commons/modules/embedding.py         |  20 +-
@@ -20,7 +17,7 @@ Content-Transfer-Encoding: 8bit
  examples/hstu/model/ranking_gr.py             |   3 +-
  examples/hstu/model/retrieval_gr.py           |  39 ++-
  examples/hstu/modules/fused_hstu_layer.py     |  11 +-
- examples/hstu/modules/hstu_attention.py       |  86 +++++-
+ examples/hstu/modules/hstu_attention.py       |  89 +++++-
  examples/hstu/modules/hstu_block.py           |   2 +-
  examples/hstu/modules/hstu_processor.py       | 126 +++++---
  .../hstu/modules/metrics/metric_modules.py    |   9 +-
@@ -45,7 +42,7 @@ Content-Transfer-Encoding: 8bit
  examples/hstu/training/trainer/training.py    | 133 ++++++++-
  examples/hstu/training/trainer/utils.py       |  35 ++-
  examples/hstu/utils/gin_config_args.py        |   7 +-
- 38 files changed, 1391 insertions(+), 419 deletions(-)
+ 38 files changed, 1393 insertions(+), 418 deletions(-)
  create mode 100644 examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
@@ -80,51 +77,38 @@ index 87ec248..c68e907 100644
  
  
 diff --git a/examples/commons/datasets/data_loader.py b/examples/commons/datasets/data_loader.py
-index 8635ffb..6d3dbf0 100644
+index 8635ffb..5a62a88 100644
 --- a/examples/commons/datasets/data_loader.py
 +++ b/examples/commons/datasets/data_loader.py
-@@ -2,15 +2,41 @@ import torch
- from torch.utils.data import DataLoader
- 
- 
-+# def get_data_loader(
-+#     dataset: torch.utils.data.Dataset,
-+#     pin_memory: bool = False,
-+# ) -> DataLoader:
-+#     loader = DataLoader(
-+#         dataset,
-+#         batch_size=None,
-+#         batch_sampler=None,
-+#         pin_memory=pin_memory,
-+#         collate_fn=lambda x: x,
-+#     )
-+#     return loader
+@@ -14,3 +14,29 @@ def get_data_loader(
+         collate_fn=lambda x: x,
+     )
+     return loader
 +
 +# 多进程加载数据，解决单进程加载数据过慢的问题
- def get_data_loader(
-     dataset: torch.utils.data.Dataset,
-     pin_memory: bool = False,
++def get_data_loader_multi_worker(
++    dataset: torch.utils.data.Dataset,
++    pin_memory: bool = False,
 +    num_workers: int = 4,
 +    prefetch_factor: int = 3,
- ) -> DataLoader:
++) -> DataLoader:
 +    def worker_init_fn(worker_id):
 +        if hasattr(dataset, 'set_worker_id'):
 +            dataset.set_worker_id(worker_id, num_workers)
 +            if hasattr(dataset, '_shuffle_batch'):
 +                dataset._shuffle_batch(worker_id=worker_id)
 +
-     loader = DataLoader(
-         dataset,
-         batch_size=None,
-         batch_sampler=None,
-         pin_memory=pin_memory,
-         collate_fn=lambda x: x,
++    loader = DataLoader(
++        dataset,
++        batch_size=None,
++        batch_sampler=None,
++        pin_memory=pin_memory,
++        collate_fn=lambda x: x,
 +        num_workers=num_workers,
 +        prefetch_factor=prefetch_factor if num_workers > 0 else None,
 +        worker_init_fn=worker_init_fn if num_workers > 0 else None,
 +        persistent_workers=num_workers > 0,
-     )
--    return loader
++    )
 +    return loader
 \ No newline at end of file
 diff --git a/examples/commons/distributed/sharding.py b/examples/commons/distributed/sharding.py
@@ -765,7 +749,7 @@ index 1c341f6..b73a7f1 100644
          input = jd.values
          output = fused_hstu_op(
 diff --git a/examples/hstu/modules/hstu_attention.py b/examples/hstu/modules/hstu_attention.py
-index 4257956..a5787b1 100644
+index 4257956..7af775e 100644
 --- a/examples/hstu/modules/hstu_attention.py
 +++ b/examples/hstu/modules/hstu_attention.py
 @@ -16,9 +16,11 @@ import abc
@@ -781,7 +765,7 @@ index 4257956..a5787b1 100644
  
  class HSTUAttention(torch.nn.Module):
      """
-@@ -137,6 +139,75 @@ class TorchHSTUAttention(HSTUAttention):
+@@ -137,6 +139,78 @@ class TorchHSTUAttention(HSTUAttention):
          ).view(-1, self.num_heads * self.linear_dim)
  
  
@@ -838,6 +822,9 @@ index 4257956..a5787b1 100644
 +            torch.Tensor: Output tensor of shape (T, d).
 +        """
 +
++        if num_candidates is None:
++            num_candidates = torch.zeros_like(num_contextuals)
++
 +        return torch.ops.mxrec.hstu_jagged(tq.view(-1, self.num_heads, self.attention_dim),
 +                                          tk.view(-1, self.num_heads, self.attention_dim),
 +                                          tv.view(-1, self.num_heads, self.attention_dim),
@@ -857,7 +844,7 @@ index 4257956..a5787b1 100644
  class TritonHSTUAttention(HSTUAttention):
      """
      Triton-based HUST implementation.
-@@ -250,7 +321,7 @@ class FusedHSTUAttention(HSTUAttention):
+@@ -250,7 +324,7 @@ class FusedHSTUAttention(HSTUAttention):
              self.linear_dim == self.attention_dim
          ), "only support linear_dim and attention_dim"
  
@@ -866,7 +853,7 @@ index 4257956..a5787b1 100644
      def forward(
          self,
          tq: torch.Tensor,  # (T, d)
-@@ -345,7 +416,7 @@ class FusedHSTUAttentionHopper(HSTUAttention):
+@@ -345,7 +419,7 @@ class FusedHSTUAttentionHopper(HSTUAttention):
              self.linear_dim == self.attention_dim
          ), "only support linear_dim and attention_dim"
  
@@ -875,7 +862,7 @@ index 4257956..a5787b1 100644
      def forward(
          self,
          tq: torch.Tensor,  # (T, d)
-@@ -431,7 +502,14 @@ def create_hstu_attention(
+@@ -431,7 +505,14 @@ def create_hstu_attention(
      Raises:
          ValueError: If the kernel backend is not supported.
      """
@@ -1755,7 +1742,7 @@ index 0000000..f7865fc
 +    return out_values, out_offsets
 diff --git a/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py b/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
 new file mode 100644
-index 0000000..bb15831
+index 0000000..ce235a4
 --- /dev/null
 +++ b/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
 @@ -0,0 +1,71 @@
@@ -1789,7 +1776,7 @@ index 0000000..bb15831
 +    if total_L is None:
 +        total_L = offsets[0][-1].item()
 +
-+    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense.to(torch.float32), offsets, total_L)
++    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense, offsets, total_L)
 +    return out0, out1
 +
 +
@@ -2792,7 +2779,7 @@ index b50c026..898c769 100644
 +        'batch_size': trainer_args.train_batch_size,
 +        'epoch': epoch,
 +        'step': train_iter,
-+        'final_loss': final_loss_value,
++        'final_loss': final_loss_value.cpu().item(),
 +        "ms/step": float(avg_time) * 1000,
 +        'metrics': {
 +            'NDCG_10': float(NDCG_10),
