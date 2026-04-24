@@ -1,0 +1,22 @@
+{
+    "name": "BERT4Rec",
+    "url": "https://github.com/jaywonchung/BERT4Rec-VAE-Pytorch.git",
+    "commit_id": "f66f2534ebfd937778c7174b5f9f216efdebe5de",
+    "patch_path": "patches/bert4rec_npu.patch",
+    "mode": "train",
+    "profiling_flag": true,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "python",
+        "main.py",
+        "--train_batch_size=128",
+        "--lr=0.001",
+        "--num_epochs=51",
+        "--device_id=0,1,2,3,4,5,6,7",
+        "--master_port=12345"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": []
+}
