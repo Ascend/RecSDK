@@ -1,0 +1,305 @@
+diff --git a/gru4rec_pytorch.py b/gru4rec_pytorch.py
+index 7058de8..0db3700 100644
+--- a/gru4rec_pytorch.py
++++ b/gru4rec_pytorch.py
+@@ -2,8 +2,12 @@ import math
+ import numpy as np
+ import pandas as pd
+ import torch
++try:
++    import torch_npu
++    HAS_NPU = True
++except ImportError:
++    HAS_NPU = False
+ from torch import autograd, nn
+-from torch.autograd import Variable
+ from collections import OrderedDict
+ import time
+ 
+@@ -52,6 +56,7 @@ class IndexedAdagradM(Optimizer):
+                     grad = grad.coalesce()
+                     grad_indices = grad._indices()[0]
+                     grad_values = grad._values()
++
+                     accs = state['acc'][grad_indices] + grad_values.pow(2)
+                     state['acc'].index_copy_(0, grad_indices, accs)
+                     accs.add_(group['eps']).sqrt_().mul_(-1/clr)
+@@ -81,7 +86,7 @@ def init_parameter_matrix(tensor: torch.Tensor, dim0_scale: int = 1, dim1_scale:
+ class GRUEmbedding(nn.Module):
+     def __init__(self, dim_in, dim_out):
+         super(GRUEmbedding, self).__init__()
+-        self.Wx0 = nn.Embedding(dim_in, dim_out * 3, sparse=True)
++        self.Wx0 = nn.Embedding(dim_in, dim_out * 3, sparse=False)
+         self.Wrz0 = nn.Parameter(torch.empty((dim_out, dim_out * 2), dtype=torch.float))
+         self.Wh0 = nn.Parameter(torch.empty((dim_out, dim_out * 1), dtype=torch.float))
+         self.Bh0 = nn.Parameter(torch.zeros(dim_out * 3, dtype=torch.float))
+@@ -115,7 +120,7 @@ class GRU4RecModel(nn.Module):
+         if constrained_embedding:
+             n_input = layers[-1]
+         elif embedding:
+-            self.E = nn.Embedding(n_items, embedding, sparse=True)
++            self.E = nn.Embedding(n_items, embedding, sparse=False)
+             n_input = embedding
+         else:
+             self.GE = GRUEmbedding(n_items, layers[0])
+@@ -129,8 +134,8 @@ class GRU4RecModel(nn.Module):
+             self.D.append(nn.Dropout(dropout_p_hidden))
+         self.G = nn.ModuleList(self.G)
+         self.D = nn.ModuleList(self.D)
+-        self.Wy = nn.Embedding(n_items, layers[-1], sparse=True)
+-        self.By = nn.Embedding(n_items, 1, sparse=True)
++        self.Wy = nn.Embedding(n_items, layers[-1], sparse=False)
++        self.By = nn.Embedding(n_items, 1, sparse=False)
+         self.reset_parameters()
+     @torch.no_grad()
+     def reset_parameters(self):
+@@ -175,15 +180,15 @@ class GRU4RecModel(nn.Module):
+             m.append(self._init_numpy_weights((n_input, self.layers[i])))
+             m.append(self._init_numpy_weights((n_input, self.layers[i])))
+             m.append(self._init_numpy_weights((n_input, self.layers[i])))
+-            self.G[i].weight_ih.set_(torch.tensor(np.vstack(m), device=self.G[i].weight_ih.device))
++            self.G[i].weight_ih.set_(torch.tensor(np.vstack(m), device=self.G[i].weight_ih.device, dtype = torch.float32))
+             m2 = []
+             m2.append(self._init_numpy_weights((self.layers[i] , self.layers[i])))
+             m2.append(self._init_numpy_weights((self.layers[i] , self.layers[i])))
+             m2.append(self._init_numpy_weights((self.layers[i] , self.layers[i])))
+-            self.G[i].weight_hh.set_(torch.tensor(np.vstack(m2), device=self.G[i].weight_hh.device))
++            self.G[i].weight_hh.set_(torch.tensor(np.vstack(m2), device=self.G[i].weight_hh.device, dtype = torch.float32))
+             self.G[i].bias_hh.set_(torch.zeros((self.layers[i]*3,), device=self.G[i].bias_hh.device))
+             self.G[i].bias_ih.set_(torch.zeros((self.layers[i]*3,), device=self.G[i].bias_ih.device))
+-        self.Wy.weight.set_(torch.tensor(self._init_numpy_weights((self.n_items, self.layers[-1])), device=self.Wy.weight.device))
++        self.Wy.weight.set_(torch.tensor(self._init_numpy_weights((self.n_items, self.layers[-1])), device=self.Wy.weight.device, dtype = torch.float32))
+         self.By.weight.set_(torch.zeros((self.n_items, 1), device=self.By.weight.device))
+     def embed_constrained(self, X, Y=None):
+         if Y is not None:
+@@ -226,7 +231,7 @@ class GRU4RecModel(nn.Module):
+         return E, O, B
+     def hidden_step(self, X, H, training=False):
+         for i in range(self.start, len(self.layers)):
+-            X = self.G[i](X, Variable(H[i]))
++            X = self.G[i](X, H[i])
+             if training:
+                 X = self.D[i](X)
+             H[i] = X
+@@ -236,7 +241,7 @@ class GRU4RecModel(nn.Module):
+         return O
+     def forward(self, X, H, Y, training=False):
+         E, O, B = self.embed(X, H, Y)
+-        if training: 
++        if training:
+             E = self.DE(E)
+         if not (self.constrained_embedding or self.embedding):
+             H[0] = E
+@@ -245,12 +250,13 @@ class GRU4RecModel(nn.Module):
+         return R
+ 
+ class SampleCache:
+-    def __init__(self, n_sample, sample_cache_max_size, distr, device=torch.device('cuda:0')):
++    def __init__(self, n_sample, sample_cache_max_size, distr, device=torch.device('cpu')):
+         self.device = device
+         self.n_sample = n_sample
+         self.generate_length = sample_cache_max_size // n_sample if n_sample > 0 else 0
+         self.distr = distr
+         self._refresh()
++        # print(f'!!!!!!!!!!!! {self.device}')
+         print('Created sample store with {} batches of samples (type=GPU)'.format(self.generate_length))
+     def _bin_search(self, arr, x):
+         l = x.shape[0]
+@@ -266,6 +272,7 @@ class SampleCache:
+     def _refresh(self):
+         if self.n_sample <= 0: return
+         x = torch.rand(self.generate_length * self.n_sample, dtype=torch.float32, device=self.device)
++        # x = torch.rand(self.generate_length * self.n_sample, dtype=torch.float32, device='cpu').to(self.device)
+         self.neg_samples = self._bin_search(self.distr, x).reshape((self.generate_length, self.n_sample))
+         self.sample_pointer = 0
+     def get_sample(self):
+@@ -276,7 +283,7 @@ class SampleCache:
+         return sample
+ 
+ class SessionDataIterator:
+-    def __init__(self, data, batch_size, n_sample=0, sample_alpha=0.75, sample_cache_max_size=10000000, item_key='ItemId', session_key='SessionId', time_key='Time', session_order='time', device=torch.device('cuda:0'), itemidmap=None):
++    def __init__(self, data, batch_size, n_sample=0, sample_alpha=0.75, sample_cache_max_size=10000000, item_key='ItemId', session_key='SessionId', time_key='Time', session_order='time', device=torch.device('cpu'), itemidmap=None):
+         self.device = device
+         self.batch_size = batch_size
+         if itemidmap is None:
+@@ -380,7 +387,8 @@ class SessionDataIterator:
+ class GRU4Rec:
+     def __init__(self, layers=[100], loss='cross-entropy', batch_size=64, dropout_p_embed=0.0,
+                  dropout_p_hidden=0.0, learning_rate=0.05, momentum=0.0, sample_alpha=0.5, n_sample=2048, embedding=0,
+-                 constrained_embedding=True, n_epochs=10, bpreg=1.0, elu_param=0.5, logq=0.0, device=torch.device('cuda:0')):
++                 constrained_embedding=True, n_epochs=10, bpreg=1.0, elu_param=0.5, logq=0.0, device='cuda:0',
++                 torch_compile=False, compile_mode='default'):
+         self.device = device
+         self.layers = layers
+         self.loss = loss
+@@ -401,6 +409,9 @@ class GRU4Rec:
+             self.embedding = embedding
+         self.constrained_embedding = constrained_embedding
+         self.n_epochs = n_epochs
++        self.torch_compile = torch_compile
++        self.compile_mode = compile_mode
++        self.is_parallel = torch.cuda.device_count() > 1 or (HAS_NPU and torch_npu.npu.device_count() > 1)
+     def set_loss_function(self, loss):
+         if loss == 'cross-entropy': self.loss_function = self.xe_loss_with_softmax
+         elif loss == 'bpr-max': self.loss_function = self.bpr_max_loss_with_elu
+@@ -435,7 +446,7 @@ class GRU4Rec:
+         X = X / X.sum(dim=1, keepdim=True)
+         return -torch.sum(torch.log(torch.diag(X)+1e-24))
+     def softmax_neg(self, X):
+-        hm = 1.0 - torch.eye(*X.shape, out=torch.empty_like(X))
++        hm = 1.0 - torch.eye(X.shape[0], X.shape[1], device=X.device, dtype=X.dtype)
+         X = X * hm
+         e_x = torch.exp(X - X.max(dim=1, keepdim=True)[0]) * hm
+         return e_x / e_x.sum(dim=1, keepdim=True)
+@@ -446,50 +457,134 @@ class GRU4Rec:
+         target_scores = torch.diag(O)
+         target_scores = target_scores.reshape(target_scores.shape[0],-1)
+         return torch.sum((-torch.log(torch.sum(torch.sigmoid(target_scores-O)*softmax_scores, dim=1)+1e-24)+self.bpreg*torch.sum((O**2)*softmax_scores, dim=1)))
+-    def fit(self, data, sample_cache_max_size=10000000, compatibility_mode=True, item_key='ItemId', session_key='SessionId', time_key='Time'):
++    def fit(self, rank, data, sample_cache_max_size=10000000, compatibility_mode=True, item_key='ItemId', session_key='SessionId', time_key='Time', profiler=None):
++        """
++        训练模型，返回包含 latency 和 metrics 的结果字典
++        """
+         self.error_during_train = False
+         self.data_iterator = SessionDataIterator(data, self.batch_size, n_sample=self.n_sample, sample_alpha=self.sample_alpha, sample_cache_max_size=sample_cache_max_size, item_key=item_key, session_key=session_key, time_key=time_key, session_order='time', device=self.device)
+         if self.logq and self.loss == 'cross-entropy':
+             pop = data.groupby(item_key).size()
+             self.P0 = torch.tensor(pop[self.data_iterator.itemidmap.index.values], dtype=torch.float32, device=self.device)
+         model = GRU4RecModel(self.data_iterator.n_items, self.layers, self.dropout_p_embed, self.dropout_p_hidden, self.embedding, self.constrained_embedding).to(self.device)
+-        if compatibility_mode: 
++        if compatibility_mode:
+             model._reset_weights_to_compatibility_mode()
++        if self.torch_compile:
++            print('Compiling model with torch.compile (backend=inductor, mode={}, dynamic=True)'.format(self.compile_mode))
++            model = torch.compile(model, backend='inductor', mode=self.compile_mode, dynamic=True)
++        if self.is_parallel:
++            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank], broadcast_buffers=False)
+         self.model = model
++
+         opt = IndexedAdagradM(self.model.parameters(), self.learning_rate, self.momentum)
++        self.opt = opt
++
++        latency_list = []
++        steps_per_epoch = 0
++        final_loss = 0.0
++        warmup_steps = 10
++
++        start_time = time.time()
+         for epoch in range(self.n_epochs):
+             t0 = time.time()
+-            H = []
+-            for i in range(len(self.layers)):
+-                H.append(torch.zeros((self.batch_size, self.layers[i]), dtype=torch.float32, requires_grad=False, device=self.device))
++            H = [
++                torch.zeros((self.batch_size, self.layers[i]), dtype=torch.float32, requires_grad=False, device=self.device)
++                for i in range(len(self.layers))
++            ]
+             c = []
+             cc = []
+             n_valid = self.batch_size
+             reset_hook = lambda n_valid, finished_mask, valid_mask: self._adjust_hidden(n_valid, finished_mask, valid_mask, H)
++
++            step = 0
++            epoch_latency = []
++
+             for in_idx, out_idx in self.data_iterator(enable_neg_samples=(self.n_sample>0), reset_hook=reset_hook):
++                step_start = time.time()
++
+                 for h in H: h.detach_()
+                 self.model.zero_grad()
+-                R = self.model.forward(in_idx, H, out_idx, training=True)
++
++                R = self.model(in_idx, H, out_idx, training=True)
+                 L = self.loss_function(R, out_idx, n_valid) / self.batch_size
+                 L.backward()
+                 opt.step()
++
++                step_end = time.time()
++                step_latency = step_end - step_start
++
++                # 跳过 warmup 步骤
++                if step >= warmup_steps:
++                    epoch_latency.append(step_latency)
++
+                 L = L.cpu().detach().numpy()
+                 c.append(L)
+                 cc.append(n_valid)
++
+                 if np.isnan(L):
+                     print(str(epoch) + ': NaN error!')
+                     self.error_during_train = True
+-                    return
++                    return {'latency_list': latency_list, 'final_loss': final_loss, 'steps_per_epoch': step}
++
++                if step % 10 == 0:
++                    print(f"epoch: {epoch}, step: {step}, loss = {L}, time = {time_module.time() - start_time}")
++                    start_time = time_module.time()
++                    if step >= 6910:
++                        break
++
++                step += 1
++
++            # 本 epoch 内优化步数（与 latency 条数统计一致）
++            steps_per_epoch = step
++
++            # 去掉最后一步（可能是不完整的 batch）
++            if len(epoch_latency) > 1:
++                epoch_latency = epoch_latency[:-1]
++            latency_list.extend(epoch_latency)
++
+             c = np.array(c)
+             cc = np.array(cc)
+             avgc = np.sum(c * cc) / np.sum(cc)
++            final_loss = float(avgc)
++
+             if np.isnan(avgc):
+                 print('Epoch {}: NaN error!'.format(str(epoch)))
+                 self.error_during_train = True
+-                return
++                return {'latency_list': latency_list, 'final_loss': final_loss, 'steps_per_epoch': steps_per_epoch}
++
+             t1 = time.time()
+             dt = t1 - t0
+             print('Epoch{} --> loss: {:.6f} \t({:.2f}s) \t[{:.2f} mb/s | {:.0f} e/s]'.format(epoch+1, avgc, dt, len(c)/dt, np.sum(cc)/dt))
++
++        return {
++            'latency_list': latency_list,
++            'final_loss': final_loss,
++            'steps_per_epoch': steps_per_epoch,
++        }
++
++    def run_profiling_epoch(self, prof):
++        """运行单独的 profiling epoch"""
++        print("Starting profiling epoch...")
++        prof.start()
++
++        H = [
++            torch.zeros((self.batch_size, self.layers[i]), dtype=torch.float32, requires_grad=False, device=self.device)
++            for i in range(len(self.layers))
++        ]
++
++        reset_hook = lambda n_valid, finished_mask, valid_mask: self._adjust_hidden(n_valid, finished_mask, valid_mask, H)
++
++        for in_idx, out_idx in self.data_iterator(enable_neg_samples=(self.n_sample>0), reset_hook=reset_hook):
++            for h in H: h.detach_()
++            self.model.zero_grad()
++            R = self.model(in_idx, H, out_idx, training=True)
++            L = self.loss_function(R, out_idx, self.batch_size) / self.batch_size
++            L.backward()
++            self.opt.step()
++            prof.step()
++
++        prof.stop()
++        print("Profiling epoch completed.")
+     def _adjust_hidden(self, n_valid, finished_mask, valid_mask, H):
+         if (self.n_sample == 0) and (n_valid < 2):
+             return True
+@@ -505,7 +600,7 @@ class GRU4Rec:
+             device = torch.device(device)
+         if device == self.device:
+             return
+-        if hasattr(self, 'model'):
++        if hasattr(self, 'model') or hasattr(self, 'module'):
+             self.model = self.model.to(device)
+             self.model.eval()
+         self.device = device

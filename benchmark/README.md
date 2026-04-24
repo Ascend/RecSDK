@@ -210,3 +210,9 @@ git checkout core_r0.14.0
 ### 准备数据集
 
 [SASRec](https://github.com/meta-recsys/generative-recommenders)数据集自动下载，如果下载失败可以参考开源代码处理。
+
+## GRU4Rec 模型
+
+### 准备数据集
+
+[GRU4Rec](https://github.com/hidasib/GRU4Rec_PyTorch_Official)数据集自动下载解析，如下载失败可以参考开源代码下载RetailRocket数据集，然后在模型目录下使用`python retailrocket_preproc.py -p ./data`命令预处理
