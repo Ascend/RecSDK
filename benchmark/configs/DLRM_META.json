@@ -30,9 +30,9 @@
         "--test-num-workers", "16",
         "--use-npu",
         "--mini-batch-size", "128",
-        "--print-freq", "1",
-        "--stop-step", "100",
-        "--test-freq", "100"
+        "--print-freq", "10",
+        "--stop-step", "10240",
+        "--test-freq", "10240"
     ],
     "pip_install_self": false,
     "pip_install_requirements": false,
