@@ -1,0 +1,21 @@
+{
+    "name": "WideDeep",
+    "url": "https://github.com/jrzaurin/pytorch-widedeep.git",
+    "commit_id": "35ec7c2768361d4977be1a41fec1a876b887f0f2",
+    "patch_path": "patches/widedeep_npu.patch",
+    "mode": "train",
+    "profiling_flag": true,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "python",
+        "wnd_trainer.py",
+        "--batch_size=256",
+        "--num_epochs=51",
+        "--device_id=0,1,2,3,4,5,6,7",
+        "--master_port=12345"
+    ],
+    "pip_install_self": true,
+    "pip_install_requirements": true,
+    "extra_cmd": []
+}
