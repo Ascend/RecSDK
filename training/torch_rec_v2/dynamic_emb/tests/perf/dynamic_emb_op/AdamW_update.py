@@ -84,7 +84,7 @@ def test_dynamic_emb_AdamW_with_pointer(device, batch_size, embedding_dim, optim
         torch.npu.synchronize(device)
         # 记录开始时间
         start_time = time.perf_counter()
-        demb.dynamic_emb_AdamW_with_pointer(grads, val_pointers, demb.DynamicEmbDataType.Float32, embedding_dim * 2, 
+        demb.dynamic_emb_adamW_with_pointer(grads, val_pointers, demb.DynamicEmbDataType.Float32, embedding_dim * 2, 
                                 lr, beta1, beta2, eps, weight_decay, iter_num)
         # 注意同步
         torch.npu.synchronize(device)

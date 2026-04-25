@@ -15,7 +15,7 @@
 |--------|--------|
 |block_bucketize_sparse_features|稀疏特征输入（keys）分块桶化。|
 |dynamic_emb_Adam_with_pointer|使用Adam优化器，通过指针来定位并更新特定的嵌入向量。|
-|dynamic_emb_AdamW_with_pointer|使用AdamW优化器，通过指针来定位并更新特定的嵌入向量。|
+|dynamic_emb_adamW_with_pointer|使用AdamW优化器，通过指针来定位并更新特定的嵌入向量。|
 |find_pointers|在动态嵌入表中查找key对应的value指针并标记查找成功与否。|
 |unique_op|对一维indices张量去重操作。|
 |segmented_unique_op|多表indices分段后的数据进行去重。|
@@ -25,7 +25,6 @@
 |reduce_grads|根据indices张量进行梯度规约操作。|
 |load_from_pointer|从指针地址加载数据到目标张量。|
 |device_timestamp|获取NPU设备的时间戳。|
-
 
 **表 2**  DynamicEmb配置类
 
