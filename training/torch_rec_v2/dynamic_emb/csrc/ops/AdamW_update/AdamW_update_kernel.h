@@ -19,118 +19,82 @@ See the License for the specific language governing permissions and
 
 using namespace AscendC;
 
-namespace AdamWUpdateSimt {
+struct AdamWOptimizer {
+    static constexpr int32_t MAX_THREADS_PER_BLOCK  = 1024;
+    static constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
+    __aicore__ inline void updatefloat2(__gm__ float2* valuesRowBasePtr,
+        int32_t colVecIdx,
+        uint32_t gradDim,
+        float2 grad,
+        float beta1,
+        float beta2,
+        float oneMinusBeta1,
+        float oneMinusBeta2,
+        float stepSize,
+        float invVHatDenom,
+        float decayFactor,
+        float eps) const
+    {
+        int32_t weightIdx = colVecIdx;
+        int32_t mIdx = weightIdx + static_cast<int32_t>(gradDim);
+        int32_t vIdx = mIdx + static_cast<int32_t>(gradDim);
 
-constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
-constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
+        float2 tmpWeight = valuesRowBasePtr[weightIdx];
+        float2 tmpM      = valuesRowBasePtr[mIdx];
+        float2 tmpV      = valuesRowBasePtr[vIdx];
 
-template <bool isPowerOfTwo>
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmallInBlockDataCompute(
-    __gm__ float* grads, __gm__ float* __gm__* valuesPtr, uint32_t gradDim, int32_t inLength,
-    float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
-    float invVHatDenom, float decayFactor, float eps, int32_t gradDimShift)
-{
-    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockIdx = AscendC::Simt::GetBlockIdx();
-    int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
+        float2 newM, newV, vHat, res_w;
 
-    int32_t blockBase = blockIdx * blockElementCapacity;
-    int32_t lastRowIdx = -1;
-    __gm__ float* valuesRowBasePtr = nullptr;
+        newM.x = beta1 * tmpM.x + oneMinusBeta1 * grad.x;
+        newM.y = beta1 * tmpM.y + oneMinusBeta1 * grad.y;
 
-#pragma unroll
-    for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; i++) {
-        int32_t globalIdx = blockBase + i * blockThreadNum + threadIdx;
-        if (globalIdx >= inLength) {
-            break;
-        }
+        newV.x = beta2 * tmpV.x + oneMinusBeta2 * grad.x * grad.x;
+        newV.y = beta2 * tmpV.y + oneMinusBeta2 * grad.y * grad.y;
 
-        int rowIdx = isPowerOfTwo ? (globalIdx >> gradDimShift) : (globalIdx / gradDim);
-        int colIdx = isPowerOfTwo ? (globalIdx & (gradDim - 1)) : (globalIdx % gradDim);
+        // 使用 Host 侧传来的乘法因子代替除法
+        vHat.x = newV.x * invVHatDenom;
+        vHat.y = newV.y * invVHatDenom;
 
-        if (rowIdx != lastRowIdx) {
-            valuesRowBasePtr = reinterpret_cast<__gm__ float*>(valuesPtr[rowIdx]);
-            lastRowIdx = rowIdx;
-        }
-
-        float tmpGrad = grads[globalIdx];
-        int weightIdx = colIdx;
-        int mIdx = weightIdx + gradDim;
-        int vIdx = mIdx + gradDim;
-
-        float tmpWeight = valuesRowBasePtr[weightIdx];
-        float tmpM = valuesRowBasePtr[mIdx];
-        float tmpV = valuesRowBasePtr[vIdx];
-
-        float newM = beta1 * tmpM + oneMinusBeta1 * tmpGrad;
-        float newV = beta2 * tmpV + oneMinusBeta2 * tmpGrad * tmpGrad;
-        
-        float vHat = newV * invVHatDenom;
-        float res_w = tmpWeight * decayFactor - stepSize * newM / (AscendC::Simt::Sqrt(vHat) + eps);
+        res_w.x = tmpWeight.x * decayFactor
+        - stepSize * newM.x / (AscendC::Simt::Sqrt(vHat.x + eps) );
+        res_w.y = tmpWeight.y * decayFactor
+        - stepSize * newM.y / (AscendC::Simt::Sqrt(vHat.y + eps) );
 
         valuesRowBasePtr[weightIdx] = res_w;
-        valuesRowBasePtr[mIdx] = newM;
-        valuesRowBasePtr[vIdx] = newV;
+        valuesRowBasePtr[mIdx]      = newM;
+        valuesRowBasePtr[vIdx]      = newV;     
     }
-}
+    template <typename grad_t, typename weight_t>
+    __aicore__ inline void update(__gm__ weight_t* valuesRowBasePtr,
+                                  int32_t colIdx,
+                                  uint32_t gradDim,
+                                  grad_t grad,
+                                  float beta1,
+                                  float beta2,
+                                  float oneMinusBeta1,
+                                  float oneMinusBeta2,
+                                  float stepSize,
+                                  float invVHatDenom,
+                                  float decayFactor,
+                                  float eps) const
+    {
+        int32_t weightIdx = colIdx;
+        int32_t mIdx = weightIdx + static_cast<int32_t>(gradDim);
+        int32_t vIdx = mIdx + static_cast<int32_t>(gradDim);
 
-template <bool isPowerOfTwo>
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLargeDataCompute(
-    __gm__ float* grads, __gm__ float* __gm__* valuesPtr, uint32_t gradDim, int32_t inLength,
-    float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
-    float invVHatDenom, float decayFactor, float eps, int32_t totalBlocks,
-    int32_t blockStartIdx, int32_t curBlocksCount, int32_t gradDimShift)
-{
-    int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
+        weight_t tmpWeight = valuesRowBasePtr[weightIdx];
+        weight_t tmpM = valuesRowBasePtr[mIdx];
+        weight_t tmpV = valuesRowBasePtr[vIdx];
 
-    for (int32_t iter = 0; iter < curBlocksCount; ++iter) {
-        int32_t globalBlockIdx = blockStartIdx + iter;
-        int32_t blockBase = globalBlockIdx * blockElementCapacity;
-        if (blockBase >= inLength) {
-            break;
-        }
+        grad_t newM = beta1 * tmpM + oneMinusBeta1 * grad;
+        grad_t newV = beta2 * tmpV + oneMinusBeta2 * grad * grad;
 
-        int32_t lastRowIdx = -1;
-        __gm__ float* valuesRowBasePtr = nullptr;
+        float vHat = newV * invVHatDenom;
+        float resW = tmpWeight * decayFactor
+                    - stepSize * newM / (AscendC::Simt::Sqrt(vHat + eps) );
 
-#pragma unroll
-        for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; i++) {
-            int32_t globalIdx = blockBase + i * blockThreadNum + threadIdx;
-            if (globalIdx >= inLength) {
-                break;
-            }
-
-            int rowIdx = isPowerOfTwo ? (globalIdx >> gradDimShift) : (globalIdx / gradDim);
-            int colIdx = isPowerOfTwo ? (globalIdx & (gradDim - 1)) : (globalIdx % gradDim);
-
-            if (rowIdx != lastRowIdx) {
-                valuesRowBasePtr = reinterpret_cast<__gm__ float*>(valuesPtr[rowIdx]);
-                lastRowIdx = rowIdx;
-            }
-
-            float tmpGrad = grads[globalIdx];
-            int weightIdx = colIdx;
-            int mIdx = weightIdx + gradDim;
-            int vIdx = mIdx + gradDim;
-
-            float tmpWeight = valuesRowBasePtr[weightIdx];
-            float tmpM = valuesRowBasePtr[mIdx];
-            float tmpV = valuesRowBasePtr[vIdx];
-
-            float newM = beta1 * tmpM + oneMinusBeta1 * tmpGrad;
-            float newV = beta2 * tmpV + oneMinusBeta2 * tmpGrad * tmpGrad;
-            
-            float vHat = newV * invVHatDenom;
-            float res_w = tmpWeight * decayFactor - stepSize * newM / (AscendC::Simt::Sqrt(vHat) + eps);
-
-            valuesRowBasePtr[weightIdx] = res_w;
-            valuesRowBasePtr[mIdx] = newM;
-            valuesRowBasePtr[vIdx] = newV;
-        }
+        valuesRowBasePtr[weightIdx] = resW;
+        valuesRowBasePtr[mIdx]      = newM;
+        valuesRowBasePtr[vIdx]      = newV;
     }
-}
-
-} // namespace AdamWUpdateSimt
+};
