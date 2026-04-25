@@ -164,6 +164,50 @@ index 7c3e43a..aa19e2c 100644
          return grad_in, None
  
  
+diff --git a/examples/hstu/configs/fsdp2_config.yaml b/examples/hstu/configs/fsdp2_config.yaml
+new file mode 100644
+index 0000000..c2264f3
+--- /dev/null
++++ b/examples/hstu/configs/fsdp2_config.yaml
+@@ -0,0 +1,37 @@
++# FSDP2 Configuration for GR Model
++# Based on: https://mindspeed-mm.readthedocs.io/zh-cn/latest/config/fsdp2%E9%85%8D%E7%BD%AE.html#fsdp2-config
++
++# Sharding configuration
++sharding_size: Null  # Use all available processes for sharding
++
++# Reshard parameters after forward pass
++# 设置为true时，会在每个forward pass后reshard参数，这会引入额外的通信成本，建议在参数量较大时开启
++reshard_after_forward: false
++
++# Mixed precision settings
++param_dtype: "fp32"  # Parameter data type
++reduce_dtype: "fp32"  # Gradient reduction data type
++output_dtype: "bf16" # Output data type
++cast_forward_inputs: true # Cast forward inputs to param_dtype
++
++# CPU offloading settings
++offload_to_cpu: false  # Disable CPU offloading for better performance
++pin_memory: true       # Only effective if offload_to_cpu is true
++
++# Prefetch settings
++num_to_forward_prefetch: 1
++
++# Modules to wrap with FSDP2
++# 只包装HSTUBlock模块
++sub_modules_to_wrap:
++  - "modules.hstu_block.HSTUBlock"
++  - "modules.native_hstu_layer.HSTULayer"
++
++# 根据提供的模型结构，忽略除HSTUBlock之外的所有网络层
++ignored_modules:
++  # 自定义模块
++  - "modules.multi_task_loss_module.MultiTaskLossModule"
++  - "modules.metrics.metric_modules.MultiClassificationTaskMetric"
++  - "torchrec_embcache.distributed.embedding.EmbCacheShardedEmbeddingCollection"
++  - "dynamic_emb.distributed.embedding.ShardedDynamicEmbeddingCollection"
++  - "modules.mlp.MLP"
+\ No newline at end of file
 diff --git a/examples/hstu/configs/hstu_config.py b/examples/hstu/configs/hstu_config.py
 index 752d4e0..a35b9a8 100644
 --- a/examples/hstu/configs/hstu_config.py
@@ -231,8 +275,49 @@ index 752d4e0..a35b9a8 100644
  
      def __post_init__(self):
          super().__post_init__()
+diff --git a/examples/hstu/dataset/sequence_dataset.py b/examples/hstu/dataset/sequence_dataset.py
+index 1a256dd..c0f5744 100644
+--- a/examples/hstu/dataset/sequence_dataset.py
++++ b/examples/hstu/dataset/sequence_dataset.py
+@@ -181,17 +181,29 @@ class SequenceDataset(IterableDataset[Batch]):
+ 
+     # We do batching in our own
+     def __len__(self) -> int:
++        if self._num_samples % self._global_batch_size < self._world_size:
++            return math.floor(self._num_samples / self._global_batch_size)
+         return math.ceil(self._num_samples / self._global_batch_size)
+ 
+     def __iter__(self) -> Iterator[Batch]:
+         for i in range(len(self)):
+-            local_batch_start = (
+-                i * self._global_batch_size + self._rank * self._batch_size
+-            )
+-            local_batch_end = min(
+-                i * self._global_batch_size + (self._rank + 1) * self._batch_size,
+-                len(self._sample_ids),
+-            )
++            if i == len(self) - 1:
++                last_batch_size = (len(self._sample_ids) - i * self._global_batch_size) // self._world_size
++                local_batch_start = (
++                    i * self._global_batch_size + self._rank * last_batch_size
++                )
++                local_batch_end = min(
++                    i * self._global_batch_size + (self._rank + 1) * last_batch_size,
++                    len(self._sample_ids),
++                )
++            else:
++                local_batch_start = (
++                    i * self._global_batch_size + self._rank * self._batch_size
++                )
++                local_batch_end = min(
++                    i * self._global_batch_size + (self._rank + 1) * self._batch_size,
++                    len(self._sample_ids),
++                )
+             sample_ids = self._sample_ids[local_batch_start:local_batch_end]
+ 
+             contextual_features: Dict[str, List[int]] = defaultdict(list)
 diff --git a/examples/hstu/distributed/sharding.py b/examples/hstu/distributed/sharding.py
-index b564988..c7bbe97 100644
+index b564988..9ce83eb 100644
 --- a/examples/hstu/distributed/sharding.py
 +++ b/examples/hstu/distributed/sharding.py
 @@ -14,25 +14,16 @@
@@ -263,7 +348,7 @@ index b564988..c7bbe97 100644
  from fbgemm_gpu.split_embedding_configs import EmbOptimType, SparseType
  from megatron.core import tensor_parallel
  from megatron.core.distributed import DistributedDataParallel as DDP
-@@ -59,10 +50,112 @@ from torchrec.distributed.fbgemm_qcomm_codec import (
+@@ -59,10 +50,118 @@ from torchrec.distributed.fbgemm_qcomm_codec import (
  from torchrec.distributed.model_parallel import DistributedModelParallel
  from torchrec.distributed.types import ShardedTensor, ShardingEnv
  from torchrec.optim.optimizers import in_backward_optimizer_filter
@@ -287,6 +372,12 @@ index b564988..c7bbe97 100644
  DATA_PARALLEL_EMBEDDING_MODULE_NAME = "_data_parallel_embedding_collection"
  from megatron.core import parallel_state
  
++from megatron.core.distributed import TorchFullyShardedDataParallel
++
++class BatchFSDP(TorchFullyShardedDataParallel):
++    def forward(self, batch):
++        return self.module(batch)
++
 +# TorchRec 嵌入模块类型集合，用于识别需要分片的模块
 +TORCHREC_TYPES: Set[Type[Union[EmbeddingBagCollection, EmbeddingCollection]]] = {
 +    EmbeddingBagCollection,
@@ -376,7 +467,7 @@ index b564988..c7bbe97 100644
  
  def apply_megatron_ddp(
      model: Union[DistributedModelParallel, torch.nn.Module],
-@@ -260,10 +353,11 @@ def apply_dmp(
+@@ -260,10 +359,11 @@ def apply_dmp(
          )
      )
      sharders = [
@@ -392,7 +483,7 @@ index b564988..c7bbe97 100644
          DynamicEmbeddingCollectionSharder(
              qcomm_codecs_registry=qcomm_codecs_registry,
              use_index_dedup=True,
-@@ -280,11 +374,10 @@ def apply_dmp(
+@@ -280,11 +380,10 @@ def apply_dmp(
      with tensor_parallel.get_cuda_rng_tracker().fork("sharded-embedding-group-seed"):
          model = DistributedModelParallel(
              module=model,
@@ -405,7 +496,7 @@ index b564988..c7bbe97 100644
          )
  
      # Create keyed optimizer
-@@ -334,7 +427,7 @@ def make_optimizer_and_shard(
+@@ -334,7 +433,7 @@ def make_optimizer_and_shard(
      pg: torch.distributed.ProcessGroup = None,
  ) -> Tuple[DistributedModelParallel, torch.optim.Optimizer]:
      if device is None:
@@ -414,6 +505,106 @@ index b564988..c7bbe97 100644
      if pg is None:
          pg = dist.group.WORLD
  
+@@ -351,3 +450,98 @@ def make_optimizer_and_shard(
+     )
+ 
+     return model, dense_optimizer
++
++def apply_megatron_fsdp2(
++    dmp: DistributedModelParallel,
++    config: TransformerConfig,
++    dense_optimizer_param: OptimizerParam,
++    device: torch.device,
++):
++    model = dmp._dmp_wrapped_module
++    model = model.to(device)
++    if config.fp16 or config.bf16:
++        model = Float16Module(config, model)
++    
++    # FSDP2 configuration based on mindspeed docs
++    ddp_config = DistributedDataParallelConfig(
++        grad_reduce_in_fp32=True,
++        overlap_grad_reduce=False,
++        use_distributed_optimizer=False,  # Required for FSDP2
++        check_for_nan_in_grad=False,
++        bucket_size=True,
++    )
++    
++    # Configure FSDP2 to wrap only HSTUBlock modules as specified in fsdp2_config.yaml
++    from modules.hstu_block import HSTUBlock
++    from modules.native_hstu_layer import HSTULayer
++    
++    dmp._dmp_wrapped_module = BatchFSDP(
++        config,
++        ddp_config,
++        model,
++        sub_modules_to_wrap={HSTUBlock, HSTULayer},  # Wrap only HSTU modules
++    )  
++
++    param_dtype = torch.float32
++    if config.bf16:
++        param_dtype = torch.bfloat16
++    elif config.fp16:
++        param_dtype = torch.float16
++
++    dense_optimizer_config = OptimizerConfig(
++        optimizer=dense_optimizer_param.optimizer_str,
++        lr=dense_optimizer_param.learning_rate,
++        adam_beta1=dense_optimizer_param.adam_beta1,
++        adam_beta2=dense_optimizer_param.adam_beta2,
++        adam_eps=dense_optimizer_param.adam_eps,
++        params_dtype=param_dtype,
++        bf16=config.bf16,
++        fp16=config.fp16,
++    )
++    dense_optimizer = get_megatron_optimizer(
++        dense_optimizer_config, [dmp._dmp_wrapped_module]
++    )
++    return dmp, dense_optimizer
++
++def make_optimizer_and_shard_fsdp2(
++    model: torch.nn.Module,
++    config: TransformerConfig,
++    sparse_optimizer_param: OptimizerParam,
++    dense_optimizer_param: OptimizerParam,
++    dynamicemb_options_dict: Dict[str, DynamicEmbTableOptions] = {},
++    pipeline_type: str = "native",
++    device: torch.device = None,
++    pg: torch.distributed.ProcessGroup = None,
++) -> Tuple[BatchFSDP, torch.optim.Optimizer]:
++    """
++    Create FSDP2-wrapped model with optimizers based on MindSpeed FSDP2 implementation.
++    
++    This function:
++    1. Applies DMP (DistributedModelParallel) to handle embeddings
++    2. Applies FSDP2 to the dense layers (HSTU layers) using PyTorch FSDP2 API
++    3. Creates Megatron optimizer for dense parameters
++    
++    Args:
++        model (torch.nn.Module): Model to wrap.
++        config (TransformerConfig): Transformer configuration.
++        sparse_optimizer_param (OptimizerParam): Sparse optimizer parameters.
++        dense_optimizer_param (OptimizerParam): Dense optimizer parameters.
++        device (torch.device): Device to use.
++        pg (torch.distributed.ProcessGroup): Process group.
++    
++    Returns:
++        Tuple[BatchFSDP, torch.optim.Optimizer]: FSDP-wrapped model and optimizer.
++    """
++    if device is None:
++        device = torch.device("npu", torch_npu.npu.current_device())
++    if pg is None:
++        pg = dist.group.WORLD
++    
++    model = apply_dmp(
++        model, dynamicemb_options_dict, sparse_optimizer_param, pg, device, pipeline_type
++    )
++    model, dense_optimizer = apply_megatron_fsdp2(
++        model, config, dense_optimizer_param, device
++    )
++    
++    return model, dense_optimizer
+\ No newline at end of file
 diff --git a/examples/hstu/model/__init__.py b/examples/hstu/model/__init__.py
 index e4fba4b..7fa50f7 100644
 --- a/examples/hstu/model/__init__.py
@@ -599,7 +790,7 @@ index 83848b9..7070dfa 100644
          input = jd.values
          output = fused_hstu_op(
 diff --git a/examples/hstu/modules/hstu_attention.py b/examples/hstu/modules/hstu_attention.py
-index d8af93b..4245f87 100644
+index d8af93b..64bbbc4 100644
 --- a/examples/hstu/modules/hstu_attention.py
 +++ b/examples/hstu/modules/hstu_attention.py
 @@ -13,12 +13,15 @@
@@ -685,7 +876,7 @@ index d8af93b..4245f87 100644
 +                                          0,  # 0默认为下三角，跟TorchHSTUAttention的mask实现不一致
 +                                          max_seqlen,
 +                                          1.0 / max_seqlen,
-+                                          offsets.long(),
++                                          offsets,
 +                                          num_contextuals,
 +                                          num_candidates,
 +                                          target_group_size,
@@ -1495,91 +1686,6 @@ index 0000000..4336b93
 +    out_values = torch.cat(out_values, dim=0)
 +    out_offsets = torch.tensor(out_offsets, device=values_a.device, dtype=offsets_a.dtype)
 +    return out_values, out_offsets
-diff --git a/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py b/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
-new file mode 100644
-index 0000000..b1c7f24
---- /dev/null
-+++ b/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
-@@ -0,0 +1,79 @@
-+# -*- coding: utf-8 -*-
-+# Copyright (c) Meta Platforms, Inc. and affiliates.
-+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
-+#
-+# Licensed under the Apache License, Version 2.0 (the "License");
-+# you may not use this file except in compliance with the License.
-+# You may obtain a copy of the License at
-+#
-+#    http://www.apache.org/licenses/LICENSE-2.0
-+#
-+# Unless required by applicable law or agreed to in writing, software
-+# distributed under the License is distributed on an "AS IS" BASIS,
-+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+# See the License for the specific language governing permissions and
-+# limitations under the License.
-+import torch
-+
-+
-+def jagged_to_padded_dense(values, offsets, max_lengths, padding_value) -> torch.Tensor:
-+    """
-+    不规则张量转稠密张量（调用 NPU 自定义算子）
-+    """
-+    return torch.ops.mxrec.jagged_to_padded_dense(
-+        values=values.to(torch.float32),
-+        offsets=offsets,
-+        max_lengths=max(max_lengths),
-+        padding_value=padding_value,
-+    ).to(torch.bfloat16)
-+
-+
-+def dense_to_jagged(dense, offsets, total_L=None):
-+    """
-+    稠密张量转不规则张量（调用 NPU 自定义算子）
-+    """
-+    if total_L is None:
-+        total_L = offsets[0][-1].item()
-+
-+    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense.to(torch.float32), offsets, total_L)
-+    return out0.to(torch.bfloat16), out1
-+
-+
-+class JaggedToPaddedDense(torch.autograd.Function):
-+    @staticmethod
-+    def forward(ctx, values, offsets, max_lengths, padding_value):
-+        ctx.save_for_backward(*offsets)
-+        ctx.total_L = values.shape[0]
-+        return jagged_to_padded_dense(values, offsets, max_lengths, padding_value)
-+
-+    @staticmethod
-+    def backward(ctx, grad_output):
-+        offsets = list(ctx.saved_tensors)
-+        total_L = ctx.total_L
-+        grad_values, _ = dense_to_jagged(grad_output, offsets, total_L)
-+        return grad_values, None, None, None
-+
-+
-+class DenseToJagged(torch.autograd.Function):
-+    @staticmethod
-+    def forward(ctx, dense, offsets, total_L=None):
-+        ctx.save_for_backward(*offsets)
-+        out0, out1 = dense_to_jagged(dense, offsets, total_L)
-+        ctx.dense_shape = dense.shape
-+        return out0, out1
-+
-+    @staticmethod
-+    def backward(ctx, grad_out0, grad_out1):
-+        offsets = list(ctx.saved_tensors)
-+        max_len = ctx.dense_shape[1]
-+        grad_dense = jagged_to_padded_dense(grad_out0, offsets, [max_len], 0.0)
-+        return grad_dense, None, None
-+
-+
-+# 对外暴露的 wrapper 函数（供 torch.ops.fbgemm 替换使用）
-+def jagged_to_padded_dense_wrapper(values, offsets, max_lengths, padding_value):
-+    return JaggedToPaddedDense.apply(values, offsets, max_lengths, padding_value)
-+
-+
-+def dense_to_jagged_wrapper(dense, offsets, total_L=None):
-+    return DenseToJagged.apply(dense, offsets, total_L)
 diff --git a/examples/hstu/ops/pt_ops/pt_jagged_tensors.py b/examples/hstu/ops/pt_ops/pt_jagged_tensors.py
 new file mode 100644
 index 0000000..cf851c9
@@ -2061,6 +2167,24 @@ index 0000000..05c410a
 +    values_a = torch.cat(values_a_list, dim=0) if values_a_list else torch.empty(0, D, device=values.device)
 +    values_b = torch.cat(values_b_list, dim=0) if values_b_list else torch.empty(0, D, device=values.device)
 +    return values_a, values_b
+diff --git a/examples/hstu/pipeline/train_pipeline.py b/examples/hstu/pipeline/train_pipeline.py
+index 2af4c57..d7d24a8 100644
+--- a/examples/hstu/pipeline/train_pipeline.py
++++ b/examples/hstu/pipeline/train_pipeline.py
+@@ -956,6 +956,13 @@ class JaggedMegatronTrainNonePipeline:
+             with nvtx.annotate("## backward ##"):
+                 local_loss_average = local_loss[0] / reporting_loss[1] * dp_size
+                 local_loss_average.backward()
++            
++            # unshard when reshard_after_forward is True
++            from torch.distributed.fsdp import FSDPModule
++            fsdp_root = self._model.module
++            for module in fsdp_root.modules():
++                if isinstance(module, FSDPModule):
++                    module.unshard()
+ 
+             with nvtx.annotate("## finalize_model_grads ##"):
+                 if isinstance(self._model.module, DistributedDataParallel):
 diff --git a/examples/hstu/preprocessor.py b/examples/hstu/preprocessor.py
 index b574514..f6d9ad9 100644
 --- a/examples/hstu/preprocessor.py
@@ -2088,19 +2212,20 @@ index b574514..f6d9ad9 100644
  
  if __name__ == "__main__":
 diff --git a/examples/hstu/pretrain_gr_ranking.py b/examples/hstu/pretrain_gr_ranking.py
-index 446ce12..a8a9d32 100644
+index 446ce12..d9348f7 100644
 --- a/examples/hstu/pretrain_gr_ranking.py
 +++ b/examples/hstu/pretrain_gr_ranking.py
-@@ -13,7 +13,7 @@
+@@ -13,7 +13,8 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  import warnings
 -
 +import sysconfig
++import os
  # Ignore all FutureWarnings
  warnings.filterwarnings("ignore", category=FutureWarning)
  warnings.filterwarnings("ignore", category=SyntaxWarning)
-@@ -25,6 +25,10 @@ from typing import List, Tuple, cast
+@@ -25,9 +26,13 @@ from typing import List, Tuple, cast
  import commons.utils.initialize as init
  import gin
  import torch  # pylint: disable-unused-import
@@ -2110,8 +2235,21 @@ index 446ce12..a8a9d32 100644
 +import mindspeed.megatron_adaptor
  from commons.utils.logger import print_rank_0
  from configs import RankingConfig
- from distributed.sharding import make_optimizer_and_shard
-@@ -51,6 +55,11 @@ from training import (
+-from distributed.sharding import make_optimizer_and_shard
++from distributed.sharding import make_optimizer_and_shard, make_optimizer_and_shard_fsdp2
+ from megatron.core import parallel_state
+ from model import get_ranking_model
+ from modules.metrics import get_multi_event_metric_module
+@@ -38,6 +43,8 @@ from pipeline.train_pipeline import (
+ )
+ from training import (
+     NetworkArgs,
++    DatasetArgs,
++    EmbeddingArgs,
+     OptimizerArgs,
+     TensorModelParallelArgs,
+     TrainerArgs,
+@@ -51,6 +58,10 @@ from training import (
      maybe_load_ckpts,
      train_with_pipeline,
  )
@@ -2119,17 +2257,63 @@ index 446ce12..a8a9d32 100644
 +from megatron.training.arguments import parse_args, validate_args
 +from megatron.training.yaml_arguments import validate_yaml
 +from megatron.training.global_vars import set_global_variables
-+from ops.pt_ops.pt_jagged_dense_convert import jagged_to_padded_dense_wrapper, dense_to_jagged_wrapper
  
  
  @gin.configurable
-@@ -102,12 +111,16 @@ def create_ranking_config() -> RankingConfig:
+@@ -73,20 +84,7 @@ class RankingArgs:
+             ], "prediction_head_act_type should be in ['relu', 'gelu']"
  
+ 
+-parser = argparse.ArgumentParser(
+-    description="Distributed GR Arguments", allow_abbrev=False
+-)
+-parser.add_argument("--gin-config-file", type=str)
+-args = parser.parse_args()
+-gin.parse_config_file(args.gin_config_file)
+-trainer_args = TrainerArgs()
+-dataset_args, embedding_args = get_dataset_and_embedding_args()
+-network_args = NetworkArgs()
+-optimizer_args = OptimizerArgs()
+-tp_args = TensorModelParallelArgs()
+-
+-
+-def create_ranking_config() -> RankingConfig:
++def create_ranking_config(dataset_args: DatasetArgs, network_args: NetworkArgs, embedding_args: EmbeddingArgs) -> RankingConfig:
+     ranking_args = RankingArgs()
+ 
+     return RankingConfig(
+@@ -100,19 +98,46 @@ def create_ranking_config() -> RankingConfig:
+         eval_metrics=ranking_args.eval_metrics,
+     )
+ 
++def extra_init_args(parser: argparse.ArgumentParser):
++    group = parser.add_argument_group('Distributed GR Arguments')
++    group.add_argument("--gin-config-file", type=str)
++    return parser
  
  def main():
-+    # 用 NPU 自定义算子替换原生的 fbgemm 算子
-+    torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
-+    torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
++        
++    # Check if FSDP2 is enabled
++    use_fsdp2 = os.getenv('USE_FSDP2', '0').lower() in ('1', 'true')
++
++    args = parse_args(extra_init_args, True)
++    if use_fsdp2:
++        if args.yaml_cfg is not None:
++            args = validate_yaml(args, {})
++        else:
++            validate_args(args, {})
++        set_global_variables(args, False)
++
++    parser = argparse.ArgumentParser(
++        description="Distributed GR Arguments", allow_abbrev=False
++    )
++    parser.add_argument("--gin-config-file", type=str)
++    gin.parse_config_file(args.gin_config_file)
++    trainer_args = TrainerArgs()
++    dataset_args, embedding_args = get_dataset_and_embedding_args()
++    network_args = NetworkArgs()
++    optimizer_args = OptimizerArgs()
++    tp_args = TensorModelParallelArgs()
 +
      init.initialize_distributed()
      init.initialize_model_parallel(
@@ -2141,7 +2325,51 @@ index 446ce12..a8a9d32 100644
      print_rank_0(
          f"distributed env initialization done. Free cuda memory: {free_memory / (1024 ** 2):.2f} MB"
      )
-@@ -146,7 +159,7 @@ def main():
+     hstu_config = create_hstu_config(network_args, tp_args)
+-    task_config = create_ranking_config()
++    task_config = create_ranking_config(dataset_args, network_args, embedding_args)
+     model = get_ranking_model(hstu_config=hstu_config, task_config=task_config)
+ 
+     dynamic_options_dict = create_dynamic_optitons_dict(
+@@ -125,14 +150,29 @@ def main():
+     )
+ 
+     optimizer_param = create_optimizer_params(optimizer_args)
+-    model_train, dense_optimizer = make_optimizer_and_shard(
+-        model,
+-        config=hstu_config,
+-        sparse_optimizer_param=optimizer_param,
+-        dense_optimizer_param=optimizer_param,
+-        dynamicemb_options_dict=dynamic_options_dict,
+-        pipeline_type=trainer_args.pipeline_type,
+-    )
++
++    if use_fsdp2:
++        print_rank_0("Using FSDP2 for model sharding")
++        if network_args.dtype_str == "bfloat16":
++            model.bfloat16()
++        model_train, dense_optimizer = make_optimizer_and_shard_fsdp2(
++            model,
++            config=hstu_config,
++            sparse_optimizer_param=optimizer_param,
++            dense_optimizer_param=optimizer_param,
++            dynamicemb_options_dict=dynamic_options_dict,
++            pipeline_type=trainer_args.pipeline_type,
++        )
++    else:
++        print_rank_0(f"Using standard sharding with pipeline_type: {trainer_args.pipeline_type}")
++        model_train, dense_optimizer = make_optimizer_and_shard(
++            model,
++            config=hstu_config,
++            sparse_optimizer_param=optimizer_param,
++            dense_optimizer_param=optimizer_param,
++            dynamicemb_options_dict=dynamic_options_dict,
++            pipeline_type=trainer_args.pipeline_type,
++        )
+ 
+     stateful_metric_module = get_multi_event_metric_module(
+         num_classes=task_config.prediction_head_arch[-1],
+@@ -146,7 +186,7 @@ def main():
      train_dataloader, test_dataloader = get_data_loader(
          "ranking", dataset_args, trainer_args, task_config.num_tasks
      )
@@ -2150,7 +2378,7 @@ index 446ce12..a8a9d32 100644
      print_rank_0(
          f"model initialization done, start training. Free cuda memory: {free_memory / (1024 ** 2):.2f} MB"
      )
-@@ -161,13 +174,13 @@ def main():
+@@ -161,13 +201,13 @@ def main():
          pipeline = pipeline_factory(
              model_train,
              dense_optimizer,
