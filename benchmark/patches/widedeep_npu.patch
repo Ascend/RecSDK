@@ -374,6 +374,51 @@ index 6244241..2418b76 100644
 -        return dataloader_args, finetune_args
 +        return dataloader_args, finetune_args
 \ No newline at end of file
+diff --git a/pytorch_widedeep/utils/general_utils.py b/pytorch_widedeep/utils/general_utils.py
+index 4455beb..01d53c0 100644
+--- a/pytorch_widedeep/utils/general_utils.py
++++ b/pytorch_widedeep/utils/general_utils.py
+@@ -3,12 +3,20 @@ from functools import wraps
+ import torch
+ from torch import Tensor
+ 
++try:
++    import torch_npu
++    HAS_NPU = True
++except ImportError:
++    HAS_NPU = False
++
+ 
+ def setup_device() -> str:
+     if torch.cuda.is_available():
+         return f"cuda:{torch.cuda.current_device()}"
+     elif torch.backends.mps.is_available():
+         return "mps"
++    elif HAS_NPU and torch_npu.npu.is_available():
++        return "npu"
+     else:
+         return "cpu"
+ 
+@@ -24,7 +32,11 @@ def to_device_model(model, device: str):  # noqa: C901
+     # insistent transformation since it some cases overall approaches such as
+     # model.to('mps') do not work
+ 
+-    if device == "cpu" or (device.startswith("cuda") and torch.cuda.is_available()):
++    if (
++        device == "cpu"
++        or (device.startswith("npu") and HAS_NPU and torch_npu.npu.is_available())
++        or (device.startswith("cuda") and torch.cuda.is_available())
++    ):
+         return model.to(device)
+ 
+     if device == "mps":
+@@ -62,4 +74,4 @@ def alias(original_name: str, alternative_names: list):
+ 
+         return wrapper
+ 
+-    return decorator
++    return decorator
+\ No newline at end of file
 diff --git a/wnd_trainer.py b/wnd_trainer.py
 new file mode 100644
 index 0000000..49e1abf
