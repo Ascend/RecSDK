@@ -31,7 +31,7 @@ def _get_chip_name():
 
 def _determine_ranktable_format() -> bool:
     chip_name = _get_chip_name()
-    is_new_chip = chip_name.startswith("950PR_95")
+    is_new_chip = chip_name.startswith("950")
     return is_new_chip
 
 
