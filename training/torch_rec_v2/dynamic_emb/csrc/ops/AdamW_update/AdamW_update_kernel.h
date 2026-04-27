@@ -22,7 +22,7 @@ using namespace AscendC;
 struct AdamWOptimizer {
     static constexpr int32_t MAX_THREADS_PER_BLOCK  = 1024;
     static constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
-    __aicore__ inline void updatefloat2(__gm__ float2* valuesRowBasePtr,
+    __simt_callee__  inline void updatefloat2(__gm__ float2* valuesRowBasePtr,
         int32_t colVecIdx,
         uint32_t gradDim,
         float2 grad,
@@ -65,7 +65,7 @@ struct AdamWOptimizer {
         valuesRowBasePtr[vIdx]      = newV;     
     }
     template <typename grad_t, typename weight_t>
-    __aicore__ inline void update(__gm__ weight_t* valuesRowBasePtr,
+    __simt_callee__  inline void update(__gm__ weight_t* valuesRowBasePtr,
                                   int32_t colIdx,
                                   uint32_t gradDim,
                                   grad_t grad,
