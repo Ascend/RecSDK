@@ -110,9 +110,287 @@
 
 ## Rec SDK Torch迁移样例<a name="ZH-CN_TOPIC_0000002336268713"></a>
 
-Rec SDK Torch支持Torch开源推荐模型迁移适配，迁移样例可以参考如下：
+Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开源DLRM（DCNv2）模型迁移到Rec SDK Torch框架时的主要迁移修改。完整的迁移修改请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/dlrm/README.md)，查看应用patch文件后的代码。
 
-[Rec SDK Torch DCNv2迁移样例](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/dlrm/README.md)。
+迁移时的主要修改内容为将开源模型中使用到的TorchRec原生的稀疏表配置、训练流水线等API替换为Rec SDK Torch框架中的API。
+
+迁移前请先下载开源模型代码并切换到指定commit版本：
+
+```bash
+git clone -b main https://github.com/facebookresearch/dlrm.git
+cd dlrm && git checkout b631a99 
+```
+
+主要修改内容如下：
+
+1. 修改分布式后端
+
+    将`dlrm/torchrec_dlrm/dlrm_main.py`中L555-L562的代码替换为：
+
+    ```python
+        if torch.cuda.is_available():
+            device: torch.device = torch.device(f"cuda:{rank}")
+            backend = "nccl"
+            torch.cuda.set_device(device)
+        elif torch_npu.npu.is_available():
+            device: torch.device = torch.device(f"npu:{rank}")
+            backend = "hccl"
+            torch_npu.npu.set_device(device)
+        else:
+            device: torch.device = torch.device("cpu")
+            backend = "gloo"
+    ```
+
+2. 修改稀疏表配置
+
+    将`dlrm/torchrec_dlrm/dlrm_main.py`中L589-L601的代码替换为：
+
+    ```python
+        if with_embcache:
+            if use_ec:
+                from torchrec_embcache.distributed.configs import EmbCacheEmbeddingConfig, InitializerType
+                ec_configs = [
+                    EmbCacheEmbeddingConfig(
+                        name=f"t_{feature_name}",
+                        embedding_dim=args.embedding_dim,
+                        num_embeddings=(
+                            none_throws(args.num_embeddings_per_feature)[feature_idx]
+                            if args.num_embeddings is None
+                            else args.num_embeddings
+                        ),
+                        feature_names=[feature_name],
+                        # Initialize the weight limit to zero tensor.
+                        weight_init_mean=0.0,
+                        weight_init_stddev=0.01,
+                        initializer_type=InitializerType.TRUNCATED_NORMAL
+                    )
+                    for feature_idx, feature_name in enumerate(DEFAULT_CAT_NAMES)
+                ]
+            else:
+                from torchrec_embcache.distributed.configs import EmbCacheEmbeddingBagConfig, InitializerType
+                eb_configs = [
+                    EmbCacheEmbeddingBagConfig(
+                        name=f"t_{feature_name}",
+                        embedding_dim=args.embedding_dim,
+                        num_embeddings=(
+                            none_throws(args.num_embeddings_per_feature)[feature_idx]
+                            if args.num_embeddings is None
+                            else args.num_embeddings
+                        ),
+                        feature_names=[feature_name],
+                        # Initialize the weight limit to zero tensor.
+                        weight_init_mean=0.0,
+                        weight_init_stddev=0.01,
+                        initializer_type=InitializerType.TRUNCATED_NORMAL
+                    )
+                    for feature_idx, feature_name in enumerate(DEFAULT_CAT_NAMES)
+                ]
+        else:
+            eb_configs = [
+                EmbeddingBagConfig(
+                    name=f"t_{feature_name}",
+                    embedding_dim=args.embedding_dim,
+                    num_embeddings=(
+                        none_throws(args.num_embeddings_per_feature)[feature_idx]
+                        if args.num_embeddings is None
+                        else args.num_embeddings
+                    ),
+                    feature_names=[feature_name],
+                )
+                for feature_idx, feature_name in enumerate(DEFAULT_CAT_NAMES)
+            ]
+    ```
+
+3. 修改Embedding Collection实现
+
+    将`dlrm/torchrec_dlrm/dlrm_main.py`中L606-L644的代码替换为：
+
+    ```python
+        if args.interaction_type == InteractionType.ORIGINAL:
+            from hybrid_torchrec import HashEmbeddingBagCollection
+            dlrm_model = DLRM(
+                embedding_bag_collection=HashEmbeddingBagCollection(
+                    tables=eb_configs, device=torch.device("meta")
+                ),
+                dense_in_features=len(DEFAULT_INT_NAMES),
+                dense_arch_layer_sizes=args.dense_arch_layer_sizes,
+                over_arch_layer_sizes=args.over_arch_layer_sizes,
+                dense_device=device,
+            )
+        elif args.interaction_type == InteractionType.DCN:
+            if with_hybrid_torchrec:
+                from hybrid_torchrec import HashEmbeddingBagCollection
+                dlrm_model = DLRM_DCN(
+                    embedding_bag_collection=HashEmbeddingBagCollection(
+                        tables=eb_configs, device=torch.device("meta")
+                    ),
+                    dense_in_features=len(DEFAULT_INT_NAMES),
+                    dense_arch_layer_sizes=args.dense_arch_layer_sizes,
+                    over_arch_layer_sizes=args.over_arch_layer_sizes,
+                    dcn_num_layers=args.dcn_num_layers,
+                    dcn_low_rank_dim=args.dcn_low_rank_dim,
+                    dense_device=device,
+                )
+            elif with_embcache:
+                if use_ec:
+                    from torchrec_embcache.distributed.embedding import EmbCacheEmbeddingCollection
+                    dlrm_model = DLRM_DCN_EC(
+                        embedding_collection=EmbCacheEmbeddingCollection(
+                            tables=ec_configs,
+                            batch_size=args.batch_size,
+                            multi_hot_sizes=args.multi_hot_sizes,
+                            world_size=dist.get_world_size(),
+                            device=torch.device("meta"),
+                        ),
+                        multi_hot_sizes=args.multi_hot_sizes,
+                        dense_in_features=len(DEFAULT_INT_NAMES),
+                        dense_arch_layer_sizes=args.dense_arch_layer_sizes,
+                        over_arch_layer_sizes=args.over_arch_layer_sizes,
+                        dcn_num_layers=args.dcn_num_layers,
+                        dcn_low_rank_dim=args.dcn_low_rank_dim,
+                        dense_device=device,
+                    )
+                else:
+                    from torchrec_embcache.distributed.embedding_bag import EmbCacheEmbeddingBagCollection
+                    dlrm_model = DLRM_DCN(
+                        embedding_bag_collection=EmbCacheEmbeddingBagCollection(
+                            tables=eb_configs,
+                            batch_size=args.batch_size,
+                            multi_hot_sizes=args.multi_hot_sizes,
+                            world_size=dist.get_world_size(),
+                            device=torch.device("meta"),
+                        ),
+                        dense_in_features=len(DEFAULT_INT_NAMES),
+                        dense_arch_layer_sizes=args.dense_arch_layer_sizes,
+                        over_arch_layer_sizes=args.over_arch_layer_sizes,
+                        dcn_num_layers=args.dcn_num_layers,
+                        dcn_low_rank_dim=args.dcn_low_rank_dim,
+                        dense_device=device,
+                    )
+            else:
+                dlrm_model = DLRM_DCN(
+                    embedding_bag_collection=EmbeddingBagCollection(
+                        tables=eb_configs, device=torch.device("meta")
+                    ),
+                    dense_in_features=len(DEFAULT_INT_NAMES),
+                    dense_arch_layer_sizes=args.dense_arch_layer_sizes,
+                    over_arch_layer_sizes=args.over_arch_layer_sizes,
+                    dcn_num_layers=args.dcn_num_layers,
+                    dcn_low_rank_dim=args.dcn_low_rank_dim,
+                    dense_device=device,
+                )
+        elif args.interaction_type == InteractionType.PROJECTION:
+            from hybrid_torchrec import HashEmbeddingBagCollection
+            dlrm_model = DLRM_Projection(
+                embedding_bag_collection=HashEmbeddingBagCollection(
+                    tables=eb_configs, device=torch.device("meta")
+                ),
+                dense_in_features=len(DEFAULT_INT_NAMES),
+                dense_arch_layer_sizes=args.dense_arch_layer_sizes,
+                over_arch_layer_sizes=args.over_arch_layer_sizes,
+                interaction_branch1_layer_sizes=args.interaction_branch1_layer_sizes,
+                interaction_branch2_layer_sizes=args.interaction_branch2_layer_sizes,
+                dense_device=device,
+            )
+        else:
+            raise ValueError(
+                "Unknown interaction option set. Should be original, dcn, or projection."
+            )
+    ```
+
+    上述代码中，`DLRM_DCN_EC`为新增的EC版本模型定义，该模型定义在新增文件:`dlrm/torchrec_dlrm/ec_dcnv2.py`（应用patch后能看到该文件详细代码）。
+
+4. 修改分表计划和创建分布式模型
+
+    将`dlrm/torchrec_dlrm/dlrm_main.py`中L622-L675的代码替换为：
+
+    ```python
+        constraints = {
+            f"t_{feature_name}": ParameterConstraints(
+                sharding_types=["row_wise"],
+                compute_kernels=["fused"]
+            )
+            for feature_idx, feature_name in enumerate(DEFAULT_CAT_NAMES)
+        }
+
+        planner = EmbeddingShardingPlanner(
+            topology=Topology(
+                world_size=dist.get_world_size(),
+                compute_device=device.type,
+            ),
+            batch_size=args.batch_size,
+            constraints=constraints,
+        )
+
+        if with_hybrid_torchrec:
+            from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
+            host_gp = dist.new_group(backend='gloo')
+            host_env = ShardingEnv(world_size=dist.get_world_size(), rank=rank, pg=host_gp)
+            sharders = get_default_hybrid_sharders(host_env)
+        elif with_embcache:
+            if use_ec:
+                from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingCollectionSharder
+                cpu_device = torch.device("cpu")
+                cpu_pg = dist.new_group(backend="gloo")
+                cpu_env = ShardingEnv.from_process_group(cpu_pg)
+                embcache_sharder = EmbCacheEmbeddingCollectionSharder(
+                    cpu_device=cpu_device,
+                    cpu_env=cpu_env,
+                    npu_device=device,
+                    npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),
+                )
+                sharders = [embcache_sharder]
+            else:
+                from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingBagCollectionSharder
+                cpu_device = torch.device("cpu")
+                cpu_pg = dist.new_group(backend="gloo")
+                cpu_env = ShardingEnv.from_process_group(cpu_pg)
+                embcache_sharder = EmbCacheEmbeddingBagCollectionSharder(
+                    cpu_device=cpu_device,
+                    cpu_env=cpu_env,
+                    npu_device=device,
+                    npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),
+                )
+                sharders = [embcache_sharder]
+        else:
+            sharders = get_default_sharders()
+
+
+        plan = planner.collective_plan(
+            train_model, sharders, dist.GroupMember.WORLD
+        )
+        if rank == 0:
+            logging.info("plan:%s", plan)
+        model = DistributedModelParallel(
+            module=train_model,
+            sharders=sharders,
+            device=device,
+            plan=plan,
+        )
+    ```
+
+5. 修改训练流水线
+
+    将`dlrm/torchrec_dlrm/dlrm_main.py`中L477-L480的代码替换为：
+
+    ```python
+        if with_hybrid_torchrec:
+            from hybrid_torchrec.distributed.hybrid_train_pipeline import HybridTrainPipelineSparseDist
+            pipeline = HybridTrainPipelineSparseDist(
+                model, optimizer, device, execute_all_batches=True
+            )
+        elif with_embcache:
+            from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
+            cpu_device: torch.device = torch.device("cpu")
+            pipeline = EmbCacheTrainPipelineSparseDist(
+                model, optimizer, cpu_device=cpu_device, npu_device=device, execute_all_batches=True
+            )
+        else:
+            # 原始torchrec
+            pipeline = TrainPipelineSparseDist(
+                model, optimizer, device, execute_all_batches=True
+            )
+    ```
 
 ## 功能特性介绍
 
