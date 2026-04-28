@@ -15,6 +15,8 @@ See the License for the specific language governing permissions and
 #include <type_traits>
 #include <iostream>
 #include "../AdamW_update/AdamW_update_kernel.h"
+#include "../Adagrad_update/Adagrad_update_kernel.h"
+#include "../Rowwise_adagrad_update/Rowwise_adagrad_update_kernel.h"
 #include "../../optimizer_kind.h"
 #include "update_float2_fused_kernel.h"
 #include "../ops_utils.h"
@@ -87,7 +89,17 @@ __global__ __aicore__ void update_float2_fused(GM_ADDR grads, GM_ADDR values, GM
                 valDimVec, inVecLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor,
                 eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimVecShift, coreId);
             break;
-        // 分支 2：后续支持SGD/AdaGrad/RowWiseAdaGrad优化器
+        case OptimizerKind::AdaGrad:
+            DispatchOptimizerUpdateFusedFloat2<AdaGradOptimizer>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDimVec,
+                valDimVec, inVecLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor,
+                eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimVecShift, coreId);
+            break;
+        case OptimizerKind::RowWiseAdaGrad:
+            DispatchOptimizerUpdateFusedFloat2<RowWiseAdaGradOptimizer>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDimVec,
+                valDimVec, inVecLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor,
+                eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimVecShift, coreId);
+            break;
+        // 分支 2：后续支持SGD优化器
         default:
             AscendC::printf("Unsupported optimizer kind: %d\n", optimizerKindRaw);
             return;

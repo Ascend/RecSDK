@@ -72,6 +72,116 @@ constexpr int32_t CPU_KEY_THRESHOLD = 10000;
 using ReturnType =
     std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>, c10::optional<at::Tensor>, c10::optional<at::Tensor>>;
 
+static bool LaunchUpdateKernelCommon(
+    aclrtStream stream,
+    uint8_t* gradsPtr,
+    uint8_t* valuesPtr,
+    uint8_t* foundsPtr,
+    uint32_t gradDim,
+    int32_t inLength,
+    int32_t maxCores,
+    bool isSmall,
+    float beta1,
+    float beta2,
+    float oneMinusBeta1,
+    float oneMinusBeta2,
+    float stepSize,
+    float invVHatDenom,
+    float decayFactor,
+    float eps,
+    DataType gradType,
+    DataType valType,
+    uint32_t optimizerKind)
+{
+    if (gradDim % 2 == 0 && gradType == DataType::Float32 && valType == DataType::Float32) {
+        int32_t vecLength = inLength / 2;
+        const int32_t vecPerBlock = ELEMENTS_PER_BLOCK / 2;
+        int32_t totalBlocks = (vecLength + vecPerBlock - 1) / vecPerBlock;
+        int32_t coreNum = std::min(maxCores, totalBlocks);
+        if (coreNum == 0) {
+            LOG_ERROR("core_num is zero!");
+            return false;
+        }
+        int32_t blocksPerCore = totalBlocks / coreNum;
+        int32_t remainderBlocks = totalBlocks % coreNum;
+        ACLRT_LAUNCH_KERNEL(update_float2)(
+            coreNum, stream, gradsPtr, valuesPtr, foundsPtr, gradDim, vecLength,
+            beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom,
+            decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall,
+            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind);
+    } else {
+        int32_t totalBlocks = (inLength + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+        int32_t coreNum = std::min(maxCores, totalBlocks);
+        if (coreNum == 0) {
+            LOG_ERROR("core_num is zero!");
+            return false;
+        }
+        int32_t blocksPerCore = totalBlocks / coreNum;
+        int32_t remainderBlocks = totalBlocks % coreNum;
+        ACLRT_LAUNCH_KERNEL(update)(
+            coreNum, stream, gradsPtr, valuesPtr, foundsPtr, gradDim, inLength,
+            beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom,
+            decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall,
+            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind);
+    }
+    return true;
+}
+
+static bool LaunchUpdateFusedKernelCommon(
+    aclrtStream stream,
+    uint8_t* gradsPtr,
+    uint8_t* valuesPtr,
+    uint32_t gradDim,
+    uint32_t valDim,
+    int32_t inLength,
+    int32_t maxCores,
+    bool isSmall,
+    float beta1,
+    float beta2,
+    float oneMinusBeta1,
+    float oneMinusBeta2,
+    float stepSize,
+    float invVHatDenom,
+    float decayFactor,
+    float eps,
+    DataType gradType,
+    DataType valType,
+    uint32_t optimizerKind)
+{
+    if (gradDim % 2 == 0 && gradType == DataType::Float32 && valType == DataType::Float32) {
+        int32_t vecLength = inLength / 2;
+        const int32_t vecPerBlock = ELEMENTS_PER_BLOCK / 2;
+        int32_t totalBlocks = (vecLength + vecPerBlock - 1) / vecPerBlock;
+        int32_t coreNum = std::min(maxCores, totalBlocks);
+        if (coreNum == 0) {
+            LOG_ERROR("core_num is zero!");
+            return false;
+        }
+        int32_t blocksPerCore = totalBlocks / coreNum;
+        int32_t remainderBlocks = totalBlocks % coreNum;
+        ACLRT_LAUNCH_KERNEL(update_float2_fused)(
+            coreNum, stream, gradsPtr, valuesPtr, nullptr, gradDim, valDim, vecLength,
+            beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom,
+            decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall,
+            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind);
+    } else {
+        int32_t totalBlocks = (inLength + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+        int32_t coreNum = std::min(maxCores, totalBlocks);
+        if (coreNum == 0) {
+            LOG_ERROR("core_num is zero!");
+            return false;
+        }
+        int32_t blocksPerCore = totalBlocks / coreNum;
+        int32_t remainderBlocks = totalBlocks % coreNum;
+        ACLRT_LAUNCH_KERNEL(update_fused)(
+            coreNum, stream, gradsPtr, valuesPtr, nullptr, gradDim, valDim, inLength,
+            beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom,
+            decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall,
+            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind);
+    }
+    return true;
+}
+
 ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const at::Tensor& indices, bool bucketizePos,
                                                 bool sequence, const at::Tensor& distTypePerFeature,
                                                 const at::Tensor& blockSizes, int32_t mySize,
@@ -1019,6 +1129,84 @@ void dynamic_emb_adamW_with_pointer(const torch::Tensor& grads, const torch::Ten
     }
 }
 
+void dynamic_emb_adagrad_with_pointer(const torch::Tensor& grads, const torch::Tensor& valPointers, DataType valType,
+    int64_t stateDim, const float lr, const float eps)
+{
+    int32_t inLength = static_cast<int32_t>(grads.numel());
+    if (inLength == 0) {
+        LOG_ERROR("dynamic_emb_adagrad_with_pointer: inLength is zero!");
+        return;
+    }
+    const uint32_t gradDim = static_cast<uint32_t>(grads.size(1));
+    if (stateDim != static_cast<int64_t>(gradDim)) {
+        LOG_ERROR("dynamic_emb_adagrad_with_pointer: stateDim must equal embedding dim (sum of squared grads state per dim).");
+        return;
+    }
+
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    auto gradsContinuous = grads.is_contiguous() ? grads : grads.contiguous();
+    auto valPointersContinuous = valPointers.is_contiguous() ? valPointers : valPointers.contiguous();
+
+    uint8_t* gradsPtr = static_cast<uint8_t*>(gradsContinuous.data_ptr());
+    uint8_t* valuesPtr = static_cast<uint8_t*>(valPointersContinuous.data_ptr());
+    const float beta1 = 0.0f;
+    const float beta2 = 0.0f;
+    const float oneMinusBeta1 = 0.0f;
+    const float oneMinusBeta2 = 0.0f;
+    const float stepSize = lr;
+    const float invVHatDenom = 1.0f;
+    const float decayFactor = 1.0f;
+
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    bool isSmall = (inLength <= SMALL_DATA_THRESHOLD);
+    auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    constexpr uint32_t optimizerKind = static_cast<uint32_t>(OptimizerKind::AdaGrad);
+
+    if (!LaunchUpdateKernelCommon(stream, gradsPtr, valuesPtr, nullptr, gradDim, inLength, maxCores, isSmall, beta1, beta2,
+        oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, gradType, valType, optimizerKind)) {
+        return;
+    }
+}
+
+void dynamic_emb_rowwise_adagrad_with_pointer(const torch::Tensor& grads, const torch::Tensor& valPointers, DataType valType,
+    int64_t stateDim, const float lr, const float eps)
+{
+    int32_t inLength = static_cast<int32_t>(grads.numel());
+    if (inLength == 0) {
+        LOG_ERROR("dynamic_emb_rowwise_adagrad_with_pointer: inLength is zero!");
+        return;
+    }
+    const uint32_t gradDim = static_cast<uint32_t>(grads.size(1));
+    if (stateDim <= 0) {
+        LOG_ERROR("dynamic_emb_rowwise_adagrad_with_pointer: stateDim must be positive.");
+        return;
+    }
+
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    auto gradsContinuous = grads.is_contiguous() ? grads : grads.contiguous();
+    auto valPointersContinuous = valPointers.is_contiguous() ? valPointers : valPointers.contiguous();
+
+    uint8_t* gradsPtr = static_cast<uint8_t*>(gradsContinuous.data_ptr());
+    uint8_t* valuesPtr = static_cast<uint8_t*>(valPointersContinuous.data_ptr());
+    const float beta1 = 0.0f;
+    const float beta2 = 0.0f;
+    const float oneMinusBeta1 = 0.0f;
+    const float oneMinusBeta2 = 0.0f;
+    const float stepSize = lr;
+    const float invVHatDenom = 1.0f;
+    const float decayFactor = 1.0f;
+
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    bool isSmall = (inLength <= SMALL_DATA_THRESHOLD);
+    auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    constexpr uint32_t optimizerKind = static_cast<uint32_t>(OptimizerKind::RowWiseAdaGrad);
+
+    if (!LaunchUpdateKernelCommon(stream, gradsPtr, valuesPtr, nullptr, gradDim, inLength, maxCores, isSmall, beta1, beta2,
+        oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, gradType, valType, optimizerKind)) {
+        return;
+    }
+}
+
 void dynamic_emb_adamW_with_table( std::shared_ptr<dyn_emb::DynamicVariableBase> ht,
     const uint64_t n, const torch::Tensor& indices, const torch::Tensor& grads, 
     const float lr, const float beta1, const float beta2,
@@ -1094,6 +1282,95 @@ void dynamic_emb_adamW_with_table( std::shared_ptr<dyn_emb::DynamicVariableBase>
     }
 }
 
+void dynamic_emb_adagrad_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase> ht,
+    const uint64_t n, const torch::Tensor& indices, const torch::Tensor& grads,
+    const float lr, const float eps, DataType weightType)
+{
+    int32_t inLength = static_cast<int32_t>(grads.numel());
+    if (n == 0 || inLength == 0) {
+        LOG_ERROR("n or inLength is zero!");
+        return;
+    }
+
+    at::Tensor founds = at::empty({static_cast<int64_t>(n)},
+                                  at::TensorOptions().dtype(at::kBool).device(indices.device()));
+    at::Tensor vectorPtrs = at::empty({static_cast<int64_t>(n)},
+                                      at::TensorOptions().dtype(at::kLong).device(indices.device()));
+
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    find_pointers(ht, n, indices, vectorPtrs, founds);
+
+    uint32_t gradDim = static_cast<uint32_t>(grads.size(1));
+    auto gradsContinuous = grads.is_contiguous() ? grads : grads.contiguous();
+    auto vectorPtrsContinuous = vectorPtrs.is_contiguous() ? vectorPtrs : vectorPtrs.contiguous();
+    uint8_t* gradsPtr = static_cast<uint8_t*>(gradsContinuous.data_ptr());
+    uint8_t* valuesPtr = static_cast<uint8_t*>(vectorPtrsContinuous.data_ptr());
+    auto foundsContinuous = founds.contiguous();
+    uint8_t* foundsPtr = static_cast<uint8_t*>(foundsContinuous.data_ptr());
+
+    const float beta1 = 0.0f;
+    const float beta2 = 0.0f;
+    const float oneMinusBeta1 = 0.0f;
+    const float oneMinusBeta2 = 0.0f;
+    const float stepSize = lr;
+    const float invVHatDenom = 1.0f;
+    const float decayFactor = 1.0f;
+
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    bool isSmall = (inLength <= SMALL_DATA_THRESHOLD);
+    auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    constexpr uint32_t optimizerKind = static_cast<uint32_t>(OptimizerKind::AdaGrad);
+
+    if (!LaunchUpdateKernelCommon(stream, gradsPtr, valuesPtr, foundsPtr, gradDim, inLength, maxCores, isSmall, beta1, beta2,
+        oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, gradType, weightType, optimizerKind)) {
+        return;
+    }
+}
+
+void dynamic_emb_rowwise_adagrad_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase> ht,
+    const uint64_t n, const torch::Tensor& indices, const torch::Tensor& grads,
+    const float lr, const float eps, DataType weightType)
+{
+    int32_t inLength = static_cast<int32_t>(grads.numel());
+    if (n == 0 || inLength == 0) {
+        LOG_ERROR("n or inLength is zero!");
+        return;
+    }
+
+    at::Tensor founds = at::empty({static_cast<int64_t>(n)},
+                                  at::TensorOptions().dtype(at::kBool).device(indices.device()));
+    at::Tensor vectorPtrs = at::empty({static_cast<int64_t>(n)},
+                                      at::TensorOptions().dtype(at::kLong).device(indices.device()));
+
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    find_pointers(ht, n, indices, vectorPtrs, founds);
+
+    uint32_t gradDim = static_cast<uint32_t>(grads.size(1));
+    auto gradsContinuous = grads.is_contiguous() ? grads : grads.contiguous();
+    auto vectorPtrsContinuous = vectorPtrs.is_contiguous() ? vectorPtrs : vectorPtrs.contiguous();
+    uint8_t* gradsPtr = static_cast<uint8_t*>(gradsContinuous.data_ptr());
+    uint8_t* valuesPtr = static_cast<uint8_t*>(vectorPtrsContinuous.data_ptr());
+    auto foundsContinuous = founds.contiguous();
+    uint8_t* foundsPtr = static_cast<uint8_t*>(foundsContinuous.data_ptr());
+
+    const float beta1 = 0.0f;
+    const float beta2 = 0.0f;
+    const float oneMinusBeta1 = 0.0f;
+    const float oneMinusBeta2 = 0.0f;
+    const float stepSize = lr;
+    const float invVHatDenom = 1.0f;
+    const float decayFactor = 1.0f;
+
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    bool isSmall = (inLength <= SMALL_DATA_THRESHOLD);
+    auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    constexpr uint32_t optimizerKind = static_cast<uint32_t>(OptimizerKind::RowWiseAdaGrad);
+
+    if (!LaunchUpdateKernelCommon(stream, gradsPtr, valuesPtr, foundsPtr, gradDim, inLength, maxCores, isSmall, beta1, beta2,
+        oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, gradType, weightType, optimizerKind)) {
+        return;
+    }
+}
 
 void dynamic_emb_adamW_fused(const torch::Tensor& grads, const torch::Tensor& values, const float lr, const float beta1, const float beta2,
                                     const float eps, const float weight_decay, const uint32_t iter_num)
@@ -1155,6 +1432,76 @@ void dynamic_emb_adamW_fused(const torch::Tensor& grads, const torch::Tensor& va
             beta1, beta2, one_m_beta1, one_m_beta2, step_size, inv_v_hat_denom, decay_factor, eps, total_blocks,
             blocks_per_core, remainder_blocks, is_small, static_cast<uint32_t>(grad_type), 
             static_cast<uint32_t>(val_type), optimizer_kind);
+    }
+}
+
+void dynamic_emb_adagrad_fused(const torch::Tensor& grads, const torch::Tensor& values, const float lr, const float eps)
+{
+    int32_t inLength = static_cast<int32_t>(grads.numel());
+    if (inLength == 0) {
+        LOG_ERROR("inLength is zero!");
+        return;
+    }
+    uint32_t gradDim = static_cast<uint32_t>(grads.size(1));
+    uint32_t valDim = static_cast<uint32_t>(values.size(1));
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    auto gradsContinuous = grads.is_contiguous() ? grads : grads.contiguous();
+    auto valuesContinuous = values.is_contiguous() ? values : values.contiguous();
+    uint8_t* gradsPtr = static_cast<uint8_t*>(gradsContinuous.data_ptr());
+    uint8_t* valuesPtr = static_cast<uint8_t*>(valuesContinuous.data_ptr());
+
+    const float beta1 = 0.0f;
+    const float beta2 = 0.0f;
+    const float oneMinusBeta1 = 0.0f;
+    const float oneMinusBeta2 = 0.0f;
+    const float stepSize = lr;
+    const float invVHatDenom = 1.0f;
+    const float decayFactor = 1.0f;
+
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    bool isSmall = (inLength <= SMALL_DATA_THRESHOLD);
+    auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    auto valType = scalartype_to_datatype(convertTypeMetaToScalarType(values.dtype()));
+    constexpr uint32_t optimizerKind = static_cast<uint32_t>(OptimizerKind::AdaGrad);
+
+    if (!LaunchUpdateFusedKernelCommon(stream, gradsPtr, valuesPtr, gradDim, valDim, inLength, maxCores, isSmall, beta1, beta2,
+        oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, gradType, valType, optimizerKind)) {
+        return;
+    }
+}
+
+void dynamic_emb_rowwise_adagrad_fused(const torch::Tensor& grads, const torch::Tensor& values, const float lr, const float eps)
+{
+    int32_t inLength = static_cast<int32_t>(grads.numel());
+    if (inLength == 0) {
+        LOG_ERROR("inLength is zero!");
+        return;
+    }
+    uint32_t gradDim = static_cast<uint32_t>(grads.size(1));
+    uint32_t valDim = static_cast<uint32_t>(values.size(1));
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    auto gradsContinuous = grads.is_contiguous() ? grads : grads.contiguous();
+    auto valuesContinuous = values.is_contiguous() ? values : values.contiguous();
+    uint8_t* gradsPtr = static_cast<uint8_t*>(gradsContinuous.data_ptr());
+    uint8_t* valuesPtr = static_cast<uint8_t*>(valuesContinuous.data_ptr());
+
+    const float beta1 = 0.0f;
+    const float beta2 = 0.0f;
+    const float oneMinusBeta1 = 0.0f;
+    const float oneMinusBeta2 = 0.0f;
+    const float stepSize = lr;
+    const float invVHatDenom = 1.0f;
+    const float decayFactor = 1.0f;
+
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    bool isSmall = (inLength <= SMALL_DATA_THRESHOLD);
+    auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    auto valType = scalartype_to_datatype(convertTypeMetaToScalarType(values.dtype()));
+    constexpr uint32_t optimizerKind = static_cast<uint32_t>(OptimizerKind::RowWiseAdaGrad);
+
+    if (!LaunchUpdateFusedKernelCommon(stream, gradsPtr, valuesPtr, gradDim, valDim, inLength, maxCores, isSmall, beta1, beta2,
+        oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, gradType, valType, optimizerKind)) {
+        return;
     }
 }
 
@@ -1389,15 +1736,33 @@ void bind_dyn_emb_op(py::module& m)
           "AdamW optimizer for dynamic embedding", py::arg("ht"), py::arg("n"), py::arg("indices"), py::arg("grads"),
           py::arg("lr"), py::arg("beta1"), py::arg("beta2"), py::arg("eps"), py::arg("weight_decay"), py::arg("iter_num"),
           py::arg("weight_type"));
+    m.def("dynamic_emb_adagrad_with_table", &dyn_emb::dynamic_emb_adagrad_with_table,
+          "AdaGrad optimizer for dynamic embedding", py::arg("ht"), py::arg("n"), py::arg("indices"), py::arg("grads"),
+          py::arg("lr"), py::arg("eps"), py::arg("weightType"));
+    m.def("dynamic_emb_rowwise_adagrad_with_table", &dyn_emb::dynamic_emb_rowwise_adagrad_with_table,
+          "RowWise AdaGrad optimizer for dynamic embedding", py::arg("ht"), py::arg("n"), py::arg("indices"),
+          py::arg("grads"), py::arg("lr"), py::arg("eps"), py::arg("weightType"));
     
     m.def("dynamic_emb_adamW_with_pointer", &dyn_emb::dynamic_emb_adamW_with_pointer,
           "AdamW optimizer for dynamic embedding", py::arg("grads"), py::arg("val_pointers"), py::arg("val_type"),
           py::arg("state_dim"), py::arg("lr"), py::arg("beta1"), py::arg("beta2"), py::arg("eps"),
           py::arg("weight_decay"), py::arg("iter_num"));
+    m.def("dynamic_emb_adagrad_with_pointer", &dyn_emb::dynamic_emb_adagrad_with_pointer,
+          "AdaGrad optimizer for dynamic embedding", py::arg("grads"), py::arg("valPointers"), py::arg("valType"),
+          py::arg("stateDim"), py::arg("lr"), py::arg("eps"));
+    m.def("dynamic_emb_rowwise_adagrad_with_pointer", &dyn_emb::dynamic_emb_rowwise_adagrad_with_pointer,
+          "RowWise AdaGrad optimizer for dynamic embedding", py::arg("grads"), py::arg("valPointers"), py::arg("valType"),
+          py::arg("stateDim"), py::arg("lr"), py::arg("eps"));
     m.def("dynamic_emb_adamW_fused", &dyn_emb::dynamic_emb_adamW_fused,
           "AdamW optimizer for dynamic embedding", py::arg("grads"), py::arg("values"), 
           py::arg("lr"), py::arg("beta1"), py::arg("beta2"), py::arg("eps"),
           py::arg("weight_decay"), py::arg("iter_num"));
+    m.def("dynamic_emb_adagrad_fused", &dyn_emb::dynamic_emb_adagrad_fused,
+          "AdaGrad optimizer for dynamic embedding", py::arg("grads"), py::arg("values"),
+          py::arg("lr"), py::arg("eps"));
+    m.def("dynamic_emb_rowwise_adagrad_fused", &dyn_emb::dynamic_emb_rowwise_adagrad_fused,
+          "RowWise AdaGrad optimizer for dynamic embedding", py::arg("grads"), py::arg("values"),
+          py::arg("lr"), py::arg("eps"));
 
     m.def("dedup_input_indices_op", &dedup_input_indices_npu,
           "NPU-accelerated deduplication for input indices (dedup input indices on NPU)", py::arg("indices"),

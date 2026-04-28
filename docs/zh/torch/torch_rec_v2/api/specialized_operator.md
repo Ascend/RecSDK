@@ -16,6 +16,12 @@
 |block_bucketize_sparse_features|稀疏特征输入（keys）分块桶化。|
 |dynamic_emb_Adam_with_pointer|使用Adam优化器，通过指针来定位并更新特定的嵌入向量。|
 |dynamic_emb_adamW_with_pointer|使用AdamW优化器，通过指针来定位并更新特定的嵌入向量。|
+|dynamic_emb_adagrad_with_pointer|使用Adagrad优化器，通过指针来定位并更新特定的嵌入向量。|
+|dynamic_emb_adagrad_with_table|使用Adagrad优化器，通过table指针管理来定位并更新特定的嵌入向量。|
+|dynamic_emb_adagrad_fused|使用Adagrad优化器，通过张量管理来定位并更新特定的嵌入向量。|
+|dynamic_emb_rowwise_adagrad_with_pointer|使用RowWiseAdagrad优化器，通过指针来定位并更新特定的嵌入向量。|
+|dynamic_emb_rowwise_adagrad_with_table|使用RowWiseAdagrad优化器，通过table指针管理来定位并更新特定的嵌入向量。|
+|dynamic_emb_rowwise_adagrad_fused|使用RowWiseAdagrad优化器，通过张量管理来定位并更新特定的嵌入向量。|
 |find_pointers|在动态嵌入表中查找key对应的value指针并标记查找成功与否。|
 |unique_op|对一维indices张量去重操作。|
 |segmented_unique_op|多表indices分段后的数据进行去重。|
