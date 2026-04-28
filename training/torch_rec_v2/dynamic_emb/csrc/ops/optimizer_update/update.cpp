@@ -16,6 +16,8 @@ See the License for the specific language governing permissions and
 #include <iostream>
 #include "update_kernel.h"
 #include "../AdamW_update/AdamW_update_kernel.h"
+#include "../Adagrad_update/Adagrad_update_kernel.h"
+#include "../Rowwise_adagrad_update/Rowwise_adagrad_update_kernel.h"
 #include "../../optimizer_kind.h"
 #include "kernel_operator.h"
 #include "../ops_utils.h"
@@ -91,7 +93,16 @@ __global__ __aicore__ void update(GM_ADDR grads, GM_ADDR values, GM_ADDR founds,
                         beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
                         totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
                     break;
-                // 分支 2：后续支持SGD/AdaGrad/RowWiseAdaGrad优化器
+                case OptimizerKind::AdaGrad:
+                    DispatchOptimizerUpdate<AdaGradOptimizer, grad_t, weight_t>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, inLength,
+                        beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
+                        totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
+                    break;
+                case OptimizerKind::RowWiseAdaGrad:
+                    DispatchOptimizerUpdate<RowWiseAdaGradOptimizer, grad_t, weight_t>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, inLength,
+                        beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
+                        totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
+                    break;
                 default:
                     AscendC::printf("Unsupported optimizer kind: %d\n", optimizerKindRaw);
                     return;
