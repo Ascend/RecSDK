@@ -141,13 +141,25 @@ class DynamicEmbeddingFunctionV2(torch.autograd.Function):
             end = h_unique_indices_table_range[i + 1]
             unique_indices_per_table = unique_indices[begin:end]
             unique_embs_per_table = unique_embs[begin:end, :]
-            KeyValueTableFunction.lookup(
-                storages[i],
-                unique_indices_per_table,
-                unique_embs_per_table,
-                initializers[i],
-                training,
-            )
+
+            if caching:
+                KeyValueTableCachingFunction.lookup(
+                    caches[i],
+                    storages[i],
+                    unique_indices_per_table,
+                    unique_embs_per_table,
+                    initializers[i],
+                    enable_prefetch,
+                    training,
+                )
+            else:
+                KeyValueTableFunction.lookup(
+                    storages[i],
+                    unique_indices_per_table,
+                    unique_embs_per_table,
+                    initializers[i],
+                    training,
+                )
 
         if training or caching:
             output_embs = gather_embedding(unique_embs, inverse)
@@ -197,10 +209,20 @@ class DynamicEmbeddingFunctionV2(torch.autograd.Function):
             unique_grads_indices_per_table = unique_grads_indices[begin:end]
             unique_grads_per_table = unique_grads[begin:end, :]
 
-            KeyValueTableFunction.update(
-                storages[i],
-                unique_grads_indices_per_table,
-                unique_grads_per_table,
-                optimizer,
-            )
+            if caching:
+                KeyValueTableCachingFunction.update(
+                    caches[i],
+                    storages[i],
+                    unique_grads_indices_per_table,
+                    unique_grads_per_table,
+                    optimizer,
+                )
+            else:
+                KeyValueTableFunction.update(
+                    storages[i],
+                    unique_grads_indices_per_table,
+                    unique_grads_per_table,
+                    optimizer,
+                )
+
         return (None,) * 2
