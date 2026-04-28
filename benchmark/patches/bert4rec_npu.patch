@@ -400,7 +400,7 @@ index 28469b9..b06c809 100644
  # Experiment
  ################
 diff --git a/trainers/base.py b/trainers/base.py
-index aa2defc..fef9262 100644
+index aa2defc..2209fd5 100644
 --- a/trainers/base.py
 +++ b/trainers/base.py
 @@ -8,19 +8,37 @@ import torch.optim as optim
@@ -442,7 +442,7 @@ index aa2defc..fef9262 100644
  
          self.train_loader = train_loader
          self.val_loader = val_loader
-@@ -64,24 +82,59 @@ class AbstractTrainer(metaclass=ABCMeta):
+@@ -64,24 +82,60 @@ class AbstractTrainer(metaclass=ABCMeta):
      def calculate_metrics(self, batch):
          pass
  
@@ -452,11 +452,10 @@ index aa2defc..fef9262 100644
 +        训练模型，返回包含 latency 和 metrics 的结果字典
 +        """
          accum_iter = 0
+-        self.validate(0, accum_iter)
 +        self.profiler = profiler
 +        if self.profiler is not None:
 +            self.profiler.start()
-+
-         self.validate(0, accum_iter)
 +
 +        latency_list = []
 +        final_loss = 0.0
@@ -470,7 +469,10 @@ index aa2defc..fef9262 100644
 +            latency_list.extend(epoch_latency)
 +            final_loss = epoch_loss
 +            steps_per_epoch = epoch_steps
-+            final_metrics = self.validate(epoch, accum_iter)
++
++        # 仅在全部 epoch 训练完成后做一次评估
++        eval_epoch = self.num_epochs - 1 if self.num_epochs > 0 else 0
++        final_metrics = self.validate(eval_epoch, accum_iter)
 +
 +        if self.profiler is not None:
 +            self.profiler.stop()
@@ -506,7 +508,7 @@ index aa2defc..fef9262 100644
  
          for batch_idx, batch in enumerate(tqdm_dataloader):
              batch_size = batch[0].size(0)
-@@ -90,27 +143,58 @@ class AbstractTrainer(metaclass=ABCMeta):
+@@ -90,27 +144,58 @@ class AbstractTrainer(metaclass=ABCMeta):
              self.optimizer.zero_grad()
              loss = self.calculate_loss(batch)
              loss.backward()
@@ -581,7 +583,7 @@ index aa2defc..fef9262 100644
  
      def validate(self, epoch, accum_iter):
          self.model.eval()
-@@ -142,11 +226,25 @@ class AbstractTrainer(metaclass=ABCMeta):
+@@ -142,11 +227,25 @@ class AbstractTrainer(metaclass=ABCMeta):
              self.log_extra_val_info(log_data)
              self.logger_service.log_val(log_data)
  
@@ -609,7 +611,7 @@ index aa2defc..fef9262 100644
          self.model.eval()
  
          average_meter_set = AverageMeterSet()
-@@ -170,14 +268,20 @@ class AbstractTrainer(metaclass=ABCMeta):
+@@ -170,14 +269,20 @@ class AbstractTrainer(metaclass=ABCMeta):
              average_metrics = average_meter_set.averages()
              with open(os.path.join(self.export_root, 'logs', 'test_metrics.json'), 'w') as f:
                  json.dump(average_metrics, f, indent=4)
