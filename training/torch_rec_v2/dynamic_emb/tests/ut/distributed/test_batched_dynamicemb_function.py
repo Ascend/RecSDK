@@ -141,6 +141,59 @@ class TestDynamicEmbeddingFunctionV2(unittest.TestCase):
             self.assertTrue(torch.allclose(output_embs, expected))
             mocked_get_table_range.assert_called_once()
 
+    def test_forward_with_cache(self):
+        indices = torch.tensor([5], device="cpu")
+        offsets = torch.tensor([0, 1])
+        feature_offsets = torch.tensor([1])
+        feature_offsets = torch.cat([offsets[0:1], feature_offsets])
+        caches = [MockCache()]
+
+        def set_val_fun_cache(cache, storage, indices_per_table, embs_per_table, initializer, enable_prefetch, training):
+            embs_per_table.fill_(2.0)
+
+        with patch(
+            "dynamic_emb.distributed.key_value_table.KeyValueTableCachingFunction.lookup",
+            side_effect=set_val_fun_cache,
+        ) as mocked_caching_lookup, patch(
+            "dynamic_emb.distributed.key_value_table.KeyValueTableFunction.lookup"
+        ) as mocked_non_caching_lookup, patch(
+            "dynamic_emb.distributed.batched_dynamicemb_function.gather_embedding",
+            return_value=torch.tensor([[2.0, 2.0]], dtype=torch.float32),
+        ), patch(
+            "dynamic_emb.distributed.batched_dynamicemb_function.get_table_range_op",
+            return_value=torch.tensor([0, 1], dtype=torch.long),
+        ), patch(
+            "dynamic_emb.distributed.batched_dynamicemb_function.segmented_unique_op",
+            return_value=(
+                torch.tensor([5], device="cpu"),
+                torch.tensor([0], device="cpu"),
+                torch.tensor([0, 1], device="cpu"),
+                torch.tensor([0, 1], device="cpu"),
+            ),
+        ):
+            emb_config = DynamicEmbeddingFunctionV2Config(
+                indices=indices,
+                offsets=offsets,
+                caches=caches,
+                storages=self.storages,
+                feature_offsets=feature_offsets,
+                output_dtype=self.output_dtype,
+                initializers=self.initializers,
+                optimizer=self.optimizer,
+                enable_prefetch=self.unique_op,
+                input_dist_dedup=False,
+                training=False,
+            )
+            output_embs = DynamicEmbeddingFunctionV2.apply(
+                emb_config,
+                True,
+            )
+
+            expected = torch.tensor([[2.0, 2.0]], dtype=torch.float32)
+            self.assertTrue(torch.allclose(output_embs, expected))
+            mocked_caching_lookup.assert_called_once()
+            mocked_non_caching_lookup.assert_not_called()
+
     def test_manual_backward(self):
         class MockCtx:
             def __init__(self, indices, unique_indices, unique_embs, inverse, indices_table_range,
@@ -185,6 +238,60 @@ class TestDynamicEmbeddingFunctionV2(unittest.TestCase):
             )) as mocked_reduce_grads:
             DynamicEmbeddingFunctionV2.backward(ctx, grads)
             mocked_update.assert_called_once()
+            mocked_reduce_grads.assert_called_once()
+
+    def test_manual_backward_with_cache(self):
+        class MockCtx:
+            def __init__(self, indices, unique_indices, unique_embs, inverse, indices_table_range,
+                         h_unique_indices_table_range, caches, storages, optimizer):
+                self.saved_tensors = (indices,)
+                self.unique_indices = unique_indices
+                self.unique_embs = unique_embs
+                self.inverse = inverse
+                self.indices_table_range = indices_table_range
+                self.h_indices_table_range = indices_table_range.cpu()
+                self.h_unique_indices_table_range = h_unique_indices_table_range
+                self.unique_indices_table_range = None
+                self.caches = caches
+                self.storages = storages
+                self.optimizer = optimizer
+                self.input_dist_dedup = False
+
+        indices = torch.tensor([5], device="cpu")
+        unique_indices = torch.tensor([5], device="cpu")
+        inverse = torch.tensor([0], device="cpu")
+        indices_table_range = torch.tensor([0, 1], device="cpu")
+        h_unique_indices_table_range = torch.tensor([0, 1], device="cpu")
+        unique_embs = torch.tensor([[5.0, 6.0]], device="cpu")
+        caches = [MockCache()]
+
+        ctx = MockCtx(
+            indices=indices,
+            unique_indices=unique_indices,
+            unique_embs=unique_embs,
+            inverse=inverse,
+            indices_table_range=indices_table_range,
+            h_unique_indices_table_range=h_unique_indices_table_range,
+            caches=caches,
+            storages=self.storages,
+            optimizer=self.optimizer
+        )
+        grads = torch.tensor([[1.0, 1.0]], device="cpu")
+
+        with patch(
+            "dynamic_emb.distributed.key_value_table.KeyValueTableCachingFunction.update"
+        ) as mocked_caching_update, patch(
+            "dynamic_emb.distributed.key_value_table.KeyValueTableFunction.update"
+        ) as mocked_non_caching_update, patch(
+            "dynamic_emb.distributed.batched_dynamicemb_function.reduce_grads",
+            return_value=(
+                torch.tensor([5], device="cpu"),
+                torch.tensor([[1.0, 1.0]], dtype=torch.float32),
+            ),
+        ) as mocked_reduce_grads:
+            DynamicEmbeddingFunctionV2.backward(ctx, grads)
+            mocked_caching_update.assert_called_once()
+            mocked_non_caching_update.assert_not_called()
             mocked_reduce_grads.assert_called_once()
 
 

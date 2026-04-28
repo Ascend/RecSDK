@@ -22,7 +22,7 @@ from typing import Optional
 import torch
 
 from dynamic_emb.distributed.optimizers.adam_dynamicemb_optimizer import AdamDynamicEmbeddingOptimizerV2
-from dynamic_emb_extensions import dynamic_emb_AdamW_with_pointer, DynamicEmbDataType
+from dynamic_emb_extensions import dynamic_emb_adamW_with_pointer, DynamicEmbDataType
 
 
 class AdamWDynamicEmbeddingOptimizerV2(AdamDynamicEmbeddingOptimizerV2):
@@ -40,7 +40,7 @@ class AdamWDynamicEmbeddingOptimizerV2(AdamDynamicEmbeddingOptimizerV2):
         emb_dim = grads.size(1)
         state_dim = self.get_state_dim(emb_dim)
 
-        dynamic_emb_AdamW_with_pointer(
+        dynamic_emb_adamW_with_pointer(
             grads,
             value_ptr,
             value_type,
