@@ -61,7 +61,7 @@ from dynamic_emb.distributed.types import (
     Storage, 
     StorageOptionalFilePaths,
 )
-from dynamic_emb.distributed.key_value_table import KeyValueTable
+from dynamic_emb.distributed.key_value_table import KeyValueTable, batched_export_keys_values
 from dynamic_emb.distributed.initializers.dynamicemb_initializers import (
      NormalInitializer,
      ConstantInitializer,
@@ -982,6 +982,24 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
                     optional_files=optional_files,
                 )
 
+    def export_keys_values(
+            self, table_name: str, device: torch.device, batch_size: int = 65536
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+
+        keys_list = []
+        values_list = []
+        self.flush()
+        for dynamic_table_name, dynamic_table in zip(self.table_names, self.tables):
+            if table_name != dynamic_table_name:
+                continue
+
+            for keys, embeddings, _, _ in batched_export_keys_values(
+                    dynamic_table.table, device, batch_size
+            ):
+                keys_list.append(keys)
+                values_list.append(embeddings)
+
+        return torch.cat(keys_list), torch.cat(values_list, dim=0)
 
 def _create_optimizer_instance(
     optimizer_type: EmbOptimType, optimizer_args: OptimizerArgs
