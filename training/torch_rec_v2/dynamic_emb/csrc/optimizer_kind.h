@@ -21,4 +21,5 @@ enum class OptimizerKind : uint32_t {
     AdamW = 0,
     AdaGrad = 1,
     RowWiseAdaGrad = 2,
+    SGD = 3
 };

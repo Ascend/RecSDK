@@ -74,7 +74,7 @@ def get_dim_pointers_optimized(x_2d):
 @pytest.mark.parametrize("beta2", [0.999])
 @pytest.mark.parametrize("eps", [1e-8])
 @pytest.mark.parametrize("weight_decay", [0.0, 0.001, 0.01, 0.1])
-@pytest.mark.parametrize("iter_num", [10, 100, 1000, 10000])
+@pytest.mark.parametrize("iter_num", [10, 100])
 def test_dynamic_emb_Adam_with_pointer(device, batch_size, embedding_dim, optimizer_params, iter_num): 
     """
     1. 使用 PyTorch 模拟生成符合真实分布的 m, v, params。

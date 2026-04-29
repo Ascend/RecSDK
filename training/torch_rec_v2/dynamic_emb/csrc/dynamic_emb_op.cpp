@@ -1505,6 +1505,189 @@ void dynamic_emb_rowwise_adagrad_fused(const torch::Tensor& grads, const torch::
     }
 }
 
+void dynamic_emb_sgd_with_pointer(const torch::Tensor& grads, const torch::Tensor& val_pointers, DataType val_type,
+                                  const float lr)
+{
+    int32_t in_length = grads.numel();
+    if (in_length == 0) {
+        LOG_ERROR("in_length is zero!");
+        return;
+    }
+    uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
+
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    auto grads_continous = grads.contiguous();
+    auto val_pointers_continous = val_pointers.contiguous();
+
+    uint8_t* grads_ptr = static_cast<uint8_t*>(grads_continous.data_ptr());
+    uint8_t* values_ptr = static_cast<uint8_t*>(val_pointers_continous.data_ptr());
+
+    float decay_factor = lr;
+
+    // 获取最大核数
+    int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
+    bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
+    auto grad_type = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    constexpr uint32_t optimizer_kind = static_cast<uint32_t>(OptimizerKind::SGD);
+    // === 分支 1：偶数维度，使用 float2 算子,且 grad_type 和 val_type 为 float32===
+    if (grad_dim % 2 == 0 && grad_type == DataType::Float32 && val_type == DataType::Float32) {
+        int32_t vec_length = in_length / 2;
+        const int32_t VEC_PER_BLOCK = ELEMENTS_PER_BLOCK / 2;
+
+        int32_t total_blocks = (vec_length + VEC_PER_BLOCK - 1) / VEC_PER_BLOCK;
+        int32_t core_num = std::min(max_cores, total_blocks);
+        if (core_num == 0) {
+            LOG_ERROR("core_num is zero!");
+            return;
+        }
+
+        int32_t blocks_per_core = total_blocks / core_num;
+        int32_t remainder_blocks = total_blocks % core_num;
+
+        ACLRT_LAUNCH_KERNEL(update_float2)(core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, vec_length, 0, 0,
+                                           0, 0, 0, 0, decay_factor, 0, total_blocks, blocks_per_core, remainder_blocks,
+                                           is_small, static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type),
+                                           optimizer_kind);
+
+    } else {  // === 分支 2：奇数维度，使用标量 float 算子 ===
+        int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+        int32_t core_num = std::min(max_cores, total_blocks);
+        if (core_num == 0) {
+            LOG_ERROR("core_num is zero!");
+            return;
+        }
+
+        int32_t blocks_per_core = total_blocks / core_num;
+        int32_t remainder_blocks = total_blocks % core_num;
+
+        ACLRT_LAUNCH_KERNEL(update)(core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, in_length, 0, 0, 0, 0,
+                                    0, 0, decay_factor, 0, total_blocks, blocks_per_core, remainder_blocks, is_small,
+                                    static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind);
+    }
+}
+
+void dynamic_emb_sgd_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase> ht, const uint64_t n,
+                                const torch::Tensor& indices, const torch::Tensor& grads, const float lr,
+                                DataType weight_type)
+{
+    int32_t in_length = grads.numel();
+    if (n == 0 || in_length == 0) {
+        LOG_ERROR("n or in_length is zero!");
+        return;
+    }
+    at::Tensor founds = at::empty({static_cast<int64_t>(n)},
+                                  at::TensorOptions().dtype(at::kBool).device(indices.device()));
+    at::Tensor vector_ptrs = at::empty({static_cast<int64_t>(n)},
+                                    at::TensorOptions().dtype(at::kLong).device(indices.device()));
+
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    find_pointers(ht, n, indices, vector_ptrs, founds);
+
+    uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
+    auto grads_continous = grads.contiguous();
+    auto vector_pointers_continous = vector_ptrs.contiguous();
+    uint8_t* grads_ptr = static_cast<uint8_t*>(grads_continous.data_ptr());
+    uint8_t* values_ptr = static_cast<uint8_t*>(vector_pointers_continous.data_ptr());
+    auto founds_continous = founds.contiguous();
+    uint8_t* founds_ptr = static_cast<uint8_t*>(founds_continous.data_ptr());
+
+    float decay_factor = lr;
+
+    // 获取最大核数
+    int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
+
+    bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
+    auto grad_type =
+      scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    constexpr uint32_t optimizer_kind = static_cast<uint32_t>(OptimizerKind::SGD);
+    // === 分支 1：偶数维度，使用 float2 算子,且 grad_type 和 weight_type 为 float32===
+    if (grad_dim % 2 == 0 && grad_type == DataType::Float32 && weight_type == DataType::Float32) {
+        int32_t vec_length = in_length / 2;
+        const int32_t VEC_PER_BLOCK = ELEMENTS_PER_BLOCK / 2;
+
+        int32_t total_blocks = (vec_length + VEC_PER_BLOCK - 1) / VEC_PER_BLOCK;
+        int32_t core_num = std::min(max_cores, total_blocks);
+        if (core_num == 0) {
+            LOG_ERROR("core_num is zero!");
+            return;
+        }
+        int32_t blocks_per_core = total_blocks / core_num;
+        int32_t remainder_blocks = total_blocks % core_num;
+        ACLRT_LAUNCH_KERNEL(update_float2)(core_num, stream, grads_ptr, values_ptr, founds_ptr, grad_dim, vec_length, 0,
+                                           0, 0, 0, 0, 0, decay_factor, 0, total_blocks, blocks_per_core,
+                                           remainder_blocks, is_small, static_cast<uint32_t>(grad_type),
+                                           static_cast<uint32_t>(weight_type), optimizer_kind);
+    } else { // === 分支 2：奇数维度，使用标量 float 算子 ===
+        int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+        int32_t core_num = std::min(max_cores, total_blocks);
+        if (core_num == 0) {
+            LOG_ERROR("core_num is zero!");
+            return;
+        }
+        int32_t blocks_per_core = total_blocks / core_num;
+        int32_t remainder_blocks = total_blocks % core_num;
+        ACLRT_LAUNCH_KERNEL(update)(core_num, stream, grads_ptr, values_ptr, founds_ptr, grad_dim, in_length, 0, 0, 0,
+                                    0, 0, 0, decay_factor, 0, total_blocks, blocks_per_core, remainder_blocks, is_small,
+                                    static_cast<uint32_t>(grad_type), static_cast<uint32_t>(weight_type),
+                                    optimizer_kind);
+    }
+}
+
+void dynamic_emb_sgd_fused(const torch::Tensor& grads, const torch::Tensor& values, const float lr)
+{
+    int32_t in_length = grads.numel();
+    if (in_length == 0) {
+        LOG_ERROR("in_length is zero!");
+        return;
+    }
+    uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
+    uint32_t val_dim = static_cast<uint32_t>(values.size(1));
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    auto grads_continous = grads.contiguous();
+    auto values_continous = values.contiguous();
+    uint8_t* grads_ptr = static_cast<uint8_t*>(grads_continous.data_ptr());
+    uint8_t* values_ptr = static_cast<uint8_t*>(values_continous.data_ptr());
+
+    float decay_factor = lr;
+
+    // 获取最大核数
+    int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
+    bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
+    auto grad_type = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    auto val_type = scalartype_to_datatype(convertTypeMetaToScalarType(values.dtype()));
+    constexpr uint32_t optimizer_kind = static_cast<uint32_t>(OptimizerKind::SGD);
+    // === 分支 1：偶数维度，使用 float2 算子,且 grad_type 和 val_type 为 float32===
+    if (grad_dim % 2 == 0 && grad_type == DataType::Float32 && val_type == DataType::Float32) {
+        int32_t vec_length = in_length / 2;
+        const int32_t VEC_PER_BLOCK = ELEMENTS_PER_BLOCK / 2;
+        int32_t total_blocks = (vec_length + VEC_PER_BLOCK - 1) / VEC_PER_BLOCK;
+        int32_t core_num = std::min(max_cores, total_blocks);
+        if (core_num == 0) {
+            LOG_ERROR("core_num is zero!");
+            return;
+        }
+        int32_t blocks_per_core = total_blocks / core_num;
+        int32_t remainder_blocks = total_blocks % core_num;
+        ACLRT_LAUNCH_KERNEL(update_float2_fused)(
+            core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, val_dim, vec_length, 0, 0, 0, 0, 0, 0,
+            decay_factor, 0, total_blocks, blocks_per_core, remainder_blocks, is_small,
+            static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind);
+    } else {  // === 分支 2：奇数维度，使用标量 float 算子 ===
+        int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+        int32_t core_num = std::min(max_cores, total_blocks);
+        if (core_num == 0) {
+            LOG_ERROR("core_num is zero!");
+            return;
+        }
+        int32_t blocks_per_core = total_blocks / core_num;
+        int32_t remainder_blocks = total_blocks % core_num;
+        ACLRT_LAUNCH_KERNEL(update_fused)(core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, val_dim,
+                                          in_length, 0, 0, 0, 0, 0, 0, decay_factor, 0, total_blocks, blocks_per_core,
+                                          remainder_blocks, is_small, static_cast<uint32_t>(grad_type),
+                                          static_cast<uint32_t>(val_type), optimizer_kind);
+    }
+}
+
 void lookup_backward(const at::Tensor grad, const at::Tensor unique_buffer,
                      const at::Tensor unique_indices,
                      const at::Tensor inverse_indices,
@@ -1742,7 +1925,9 @@ void bind_dyn_emb_op(py::module& m)
     m.def("dynamic_emb_rowwise_adagrad_with_table", &dyn_emb::dynamic_emb_rowwise_adagrad_with_table,
           "RowWise AdaGrad optimizer for dynamic embedding", py::arg("ht"), py::arg("n"), py::arg("indices"),
           py::arg("grads"), py::arg("lr"), py::arg("eps"), py::arg("weightType"));
-    
+    m.def("dynamic_emb_sgd_with_table", &dyn_emb::dynamic_emb_sgd_with_table, "SGD optimizer for dynamic embedding",
+          py::arg("ht"), py::arg("n"), py::arg("indices"), py::arg("grads"), py::arg("lr"), py::arg("weight_type"));
+
     m.def("dynamic_emb_adamW_with_pointer", &dyn_emb::dynamic_emb_adamW_with_pointer,
           "AdamW optimizer for dynamic embedding", py::arg("grads"), py::arg("val_pointers"), py::arg("val_type"),
           py::arg("state_dim"), py::arg("lr"), py::arg("beta1"), py::arg("beta2"), py::arg("eps"),
@@ -1753,6 +1938,9 @@ void bind_dyn_emb_op(py::module& m)
     m.def("dynamic_emb_rowwise_adagrad_with_pointer", &dyn_emb::dynamic_emb_rowwise_adagrad_with_pointer,
           "RowWise AdaGrad optimizer for dynamic embedding", py::arg("grads"), py::arg("valPointers"), py::arg("valType"),
           py::arg("stateDim"), py::arg("lr"), py::arg("eps"));
+    m.def("dynamic_emb_sgd_with_pointer", &dyn_emb::dynamic_emb_sgd_with_pointer, "SGD optimizer for dynamic embedding",
+          py::arg("grads"), py::arg("val_pointers"), py::arg("val_type"), py::arg("lr"));
+
     m.def("dynamic_emb_adamW_fused", &dyn_emb::dynamic_emb_adamW_fused,
           "AdamW optimizer for dynamic embedding", py::arg("grads"), py::arg("values"), 
           py::arg("lr"), py::arg("beta1"), py::arg("beta2"), py::arg("eps"),
@@ -1763,6 +1951,8 @@ void bind_dyn_emb_op(py::module& m)
     m.def("dynamic_emb_rowwise_adagrad_fused", &dyn_emb::dynamic_emb_rowwise_adagrad_fused,
           "RowWise AdaGrad optimizer for dynamic embedding", py::arg("grads"), py::arg("values"),
           py::arg("lr"), py::arg("eps"));
+    m.def("dynamic_emb_sgd_fused", &dyn_emb::dynamic_emb_sgd_fused, "SGD optimizer for dynamic embedding",
+          py::arg("grads"), py::arg("values"), py::arg("lr"));
 
     m.def("dedup_input_indices_op", &dedup_input_indices_npu,
           "NPU-accelerated deduplication for input indices (dedup input indices on NPU)", py::arg("indices"),
