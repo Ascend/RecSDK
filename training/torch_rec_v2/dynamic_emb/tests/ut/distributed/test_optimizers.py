@@ -171,7 +171,7 @@ class TestAdamWDynamicEmbeddingOptimizerV2(unittest.TestCase):
         value_type = torch.float32
 
         with patch(
-            "dynamic_emb.distributed.optimizers.adamw_dynamicemb_optimizer.dynamic_emb_AdamW_with_pointer"
+            "dynamic_emb.distributed.optimizers.adamw_dynamicemb_optimizer.dynamic_emb_adamW_with_pointer"
         ) as mocked_func:
             mocked_func.return_value = ()
             optimizer.fused_update_with_pointer(grads, value_ptr, value_type)

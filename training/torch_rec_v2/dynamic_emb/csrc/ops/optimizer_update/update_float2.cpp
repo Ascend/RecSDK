@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 #include "../AdamW_update/AdamW_update_kernel.h"
 #include "../Adagrad_update/Adagrad_update_kernel.h"
 #include "../Rowwise_adagrad_update/Rowwise_adagrad_update_kernel.h"
+#include "../sgd_update/sgd_update_kernel.h"
 #include "../../optimizer_kind.h"
 #include "update_float2_kernel.h"
 #include "../ops_utils.h"
@@ -97,13 +98,21 @@ __global__ __aicore__ void update_float2(GM_ADDR grads, GM_ADDR values, GM_ADDR 
                 inVecLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
                 totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimVecShift, coreId);
             break;
+        // 分支 2：AdaGrad 优化器
         case OptimizerKind::AdaGrad:
             DispatchOptimizerUpdateFloat2<AdaGradOptimizer>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDimVec,
                 inVecLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
                 totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimVecShift, coreId);
             break;
+        // 分支 3：RowWiseAdaGrad 优化器
         case OptimizerKind::RowWiseAdaGrad:
             DispatchOptimizerUpdateFloat2<RowWiseAdaGradOptimizer>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDimVec,
+                inVecLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
+                totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimVecShift, coreId);
+            break;
+        // 分支 4：SGD优化器
+        case OptimizerKind::SGD:
+            DispatchOptimizerUpdateFloat2<SGDOptimizer>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDimVec,
                 inVecLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
                 totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimVecShift, coreId);
             break;

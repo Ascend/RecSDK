@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 #include "../AdamW_update/AdamW_update_kernel.h"
 #include "../Adagrad_update/Adagrad_update_kernel.h"
 #include "../Rowwise_adagrad_update/Rowwise_adagrad_update_kernel.h"
+#include "../sgd_update/sgd_update_kernel.h"
 #include "../../optimizer_kind.h"
 #include "kernel_operator.h"
 #include "../ops_utils.h"
@@ -93,13 +94,21 @@ __global__ __aicore__ void update(GM_ADDR grads, GM_ADDR values, GM_ADDR founds,
                         beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
                         totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
                     break;
+                // 分支 2：AdaGrad 优化器
                 case OptimizerKind::AdaGrad:
                     DispatchOptimizerUpdate<AdaGradOptimizer, grad_t, weight_t>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, inLength,
                         beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
                         totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
                     break;
+                // 分支 3：RowWiseAdaGrad 优化器
                 case OptimizerKind::RowWiseAdaGrad:
                     DispatchOptimizerUpdate<RowWiseAdaGradOptimizer, grad_t, weight_t>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, inLength,
+                        beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
+                        totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
+                    break;
+                // 分支 4：SGD优化器
+                case OptimizerKind::SGD:
+                    DispatchOptimizerUpdate<SGDOptimizer,grad_t,weight_t>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, inLength,
                         beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
                         totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
                     break;

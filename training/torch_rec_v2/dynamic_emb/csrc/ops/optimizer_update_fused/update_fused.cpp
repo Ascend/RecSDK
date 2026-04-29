@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 #include "../AdamW_update/AdamW_update_kernel.h"
 #include "../Adagrad_update/Adagrad_update_kernel.h"
 #include "../Rowwise_adagrad_update/Rowwise_adagrad_update_kernel.h"
+#include "../sgd_update/sgd_update_kernel.h"
 #include "../../optimizer_kind.h"
 #include "kernel_operator.h"
 #include "../ops_utils.h"
@@ -90,17 +91,24 @@ __global__ __aicore__ void update_fused(GM_ADDR grads, GM_ADDR values, GM_ADDR f
                         inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
                         totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
                     break;
+                // 分支 1：AdaGrad 优化器
                 case OptimizerKind::AdaGrad:
                     DispatchOptimizerUpdateFused<AdaGradOptimizer, grad_t, weight_t>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, valDim,
                         inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
                         totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
                     break;
+                // 分支 1：RowWiseAdaGrad 优化器
                 case OptimizerKind::RowWiseAdaGrad:
                     DispatchOptimizerUpdateFused<RowWiseAdaGradOptimizer, grad_t, weight_t>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, valDim,
                         inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
                         totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
                     break;
-                // 分支 2：后续支持SGD优化器
+                // 分支 4：SGD优化器
+                case OptimizerKind::SGD:
+                    DispatchOptimizerUpdateFused<SGDOptimizer,grad_t,weight_t>(gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, valDim,
+                        inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
+                        totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
+                    break;
                 default:
                     AscendC::printf("Unsupported optimizer kind: %d\n", optimizerKindRaw);
                     return;
