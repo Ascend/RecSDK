@@ -254,3 +254,20 @@ class TestBatchedDynamicEmbeddingTablesV2(unittest.TestCase):
             
             self.assertEqual(self.emb_module.num_prefetch_ahead, 1)
             mock_prefetch.assert_called_once()
+
+    def test_export_keys_values(self):
+        self.emb_module._dynamicemb_options = [
+            DynamicEmbTableOptions(score_strategy=DynamicEmbScoreStrategy.CUSTOMIZED)
+        ]
+        named_score = {"table1": 100}
+        self.emb_module.set_score(named_score)
+        with patch("dynamic_emb.distributed.key_value_table.batched_export_keys_values") as mock_prefetch:
+            mock_key = torch.tensor([1, 2])
+            mock_val = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+            mock_prefetch.return_value = [
+                ( mock_key, mock_val , None, None)
+            ]
+            key, val = self.emb_module.export_keys_values("table1", torch.device(f"cpu"))
+
+        self.assertEqual(key.numel(), mock_key.numel() )
+        self.assertEqual(val.numel(), mock_val.numel() )
