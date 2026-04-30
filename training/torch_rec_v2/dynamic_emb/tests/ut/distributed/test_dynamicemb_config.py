@@ -41,6 +41,7 @@ from dynamic_emb.distributed.initializers.dynamicemb_initializers import (
     TruncatedNormalInitializer,
     DebugInitializer,
 )
+from dynamic_emb.distributed.types import Storage
 
 
 class TestDynamicEmbPoolingMode:
@@ -234,14 +235,52 @@ class TestDynamicEmbTableOptions:
             DynamicEmbTableOptions(caching=-1)
 
     @staticmethod
-    def test_caching_should_be_false_err():
-        with pytest.raises(ValueError):
+    def test_caching_true_ok():
+        try:
             DynamicEmbTableOptions(caching=True)
+        except Exception as e:
+            pytest.fail(f"unexpected exception raised: {e}")
 
     @staticmethod
     def test_external_storage_value_err():
         with pytest.raises(ValueError):
             DynamicEmbTableOptions(external_storage=-1)
+
+    @staticmethod
+    def test_external_storage_requires_caching():
+        class MockStorage(Storage):
+            def __init__(self, options, optimizer): pass
+            def find(self, unique_keys, unique_vals, founds=None): pass
+            def find_embeddings(self, unique_keys, unique_embs, founds=None): pass
+            def insert(self, keys, values, scores=None): pass
+            def update(self, keys, grads): pass
+            def enable_update(self): return False
+            def dump(self, meta_file_path, emb_key_path, embedding_file_path, optional_files=None): pass
+            def load(self, meta_file_path, emb_file_path, embedding_file_path, include_optim, optional_files=None): pass
+            def embedding_dtype(self): return torch.float32
+            def embedding_dim(self): return 1
+            def value_dim(self): return 1
+            def init_optimizer_state(self): return 0.0
+        with pytest.raises(ValueError):
+            DynamicEmbTableOptions(external_storage=MockStorage, caching=False)
+
+    @staticmethod
+    def test_external_storage_requires_training():
+        class MockStorage(Storage):
+            def __init__(self, options, optimizer): pass
+            def find(self, unique_keys, unique_vals, founds=None): pass
+            def find_embeddings(self, unique_keys, unique_embs, founds=None): pass
+            def insert(self, keys, values, scores=None): pass
+            def update(self, keys, grads): pass
+            def enable_update(self): return False
+            def dump(self, meta_file_path, emb_key_path, embedding_file_path, optional_files=None): pass
+            def load(self, meta_file_path, emb_file_path, embedding_file_path, include_optim, optional_files=None): pass
+            def embedding_dtype(self): return torch.float32
+            def embedding_dim(self): return 1
+            def value_dim(self): return 1
+            def init_optimizer_state(self): return 0.0
+        with pytest.raises(ValueError):
+            DynamicEmbTableOptions(external_storage=MockStorage, caching=True, training=False)
 
     @staticmethod
     def test_index_type_type_err():
@@ -373,7 +412,7 @@ class TestDynamicEmbInitializers:
             (DynamicEmbInitializerMode.TRUNCATED_NORMAL, TruncatedNormalInitializer),
             (DynamicEmbInitializerMode.DEBUG, DebugInitializer),
         ],
-        ids=["normal", "constant", "uniform", "truncated_normal", "debug"] 
+        ids=["normal", "constant", "uniform", "truncated_normal", "debug"]
     )
     def test_initializer_creation(self, initializer_args, mode, init_class):
         initializer_args.mode = mode

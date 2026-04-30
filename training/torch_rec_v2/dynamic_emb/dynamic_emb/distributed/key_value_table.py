@@ -326,7 +326,7 @@ class KeyValueTable(
         if self._use_score:
             if scores is None:
                 scores = torch.empty(
-                    h_num_unique_keys, device=unique_keys.device, dtype=torch.int32
+                    h_num_unique_keys, device=unique_keys.device, dtype=SCORE_TYPE
                 )
                 scores.fill_(self.score)
         else:
@@ -881,7 +881,7 @@ class KeyValueTableCachingFunction:
     ) -> None:
         if unique_keys.dim() != 1:
             raise ValueError(f"unique_keys must be a 1D tensor, got {unique_keys.dim()} dimensions instead")
-        
+
         unique_keys.numel()
         emb_dim = storage.embedding_dim()
         emb_dtype = storage.embedding_dtype()
@@ -990,7 +990,7 @@ class KeyValueTableCachingFunction:
     ) -> None:
         if cache is None:
             raise ValueError("prefetch is available only when caching is enabled")
-        
+
         emb_dtype = storage.embedding_dtype()
         h_num_keys_for_storage, missing_keys, _ = cache.find_missed_keys(unique_keys)
 

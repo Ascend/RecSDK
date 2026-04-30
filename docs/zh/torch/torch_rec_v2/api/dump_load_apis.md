@@ -46,6 +46,84 @@ DynamicEmbDump(
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
 
+## set_score <a name="ZH-CN_TOPIC_0000002430202770"></a>
+
+**功能描述<a name="section634582619156"></a>**
+
+为模型中的动态嵌入表设置分数（score）。分数可用于控制后续增量导出等依赖分数阈值的处理逻辑。
+
+**函数原型<a name="section1483104721912"></a>**
+
+```cpp
+def set_score(
+    model: nn.Module,
+    table_score: Union[int, Dict[str, Dict[str, int]]],
+) -> None
+```
+
+**参数说明<a name="section888634319219"></a>**
+
+|参数名|类型|可选/必选|说明|
+|--|--|--|--|
+|model|nn.Module|必选|包含动态嵌入表的模型对象。|
+|table_score|Union[int, Dict[str, Dict[str, int]]]|必选|分数设置策略。传入`int`时表示对所有动态嵌入表统一设置；传入`Dict[str, Dict[str, int]]`时，外层key为embedding collection在模型中的路径，内层key为表名，value为分数。|
+
+**使用示例<a name="section193151694206"></a>**
+
+```cpp
+from dynamic_emb import set_score
+
+# 所有动态嵌入表设置为同一分数
+set_score(model, 100)
+
+# 按 collection 和表名分别设置分数
+set_score(
+    model,
+    {
+        "model.embedding": {
+            "user_table": 100,
+            "item_table": 200,
+        }
+    },
+)
+```
+
+## get_score <a name="ZH-CN_TOPIC_0000002430202771"></a>
+
+**功能描述<a name="section634582619157"></a>**
+
+获取模型中动态嵌入表当前分数，返回按embedding collection和表名组织的分数字典。
+
+**函数原型<a name="section1483104721913"></a>**
+
+```cpp
+def get_score(
+    model: nn.Module,
+) -> Optional[Dict[str, Dict[str, int]]]
+```
+
+**参数说明<a name="section888634319220"></a>**
+
+|参数名|类型|可选/必选|说明|
+|--|--|--|--|
+|model|nn.Module|必选|包含动态嵌入表的模型对象。|
+
+**返回值说明<a name="section888634319221"></a>**
+
+|返回值类型|说明|
+|--|--|
+|Optional[Dict[str, Dict[str, int]]]|成功时返回分数字典；若模型中不存在动态嵌入集合或动态嵌入表，则返回`None`并给出告警。|
+
+**使用示例<a name="section193151694207"></a>**
+
+```cpp
+from dynamic_emb import get_score
+
+score_info = get_score(model)
+if score_info is not None:
+    print(score_info)
+```
+
 ## DynamicEmbLoad <a name="ZH-CN_TOPIC_0000002430202769"></a>
 
 **功能描述<a name="section634582619155"></a>**

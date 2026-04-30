@@ -18,6 +18,7 @@
 # ==============================================================================
 
 import enum
+import inspect
 from dataclasses import dataclass, field
 from typing import Optional, Dict
 from math import sqrt
@@ -333,8 +334,8 @@ class _ContextOptions:
 
     """
 
-    # Fixed.
-    score_type: torch.dtype = torch.int32
+    # Fixed. Use int64 for step/timestamp-style scores (torch.uint64 is not used for portability).
+    score_type: torch.dtype = torch.int64
 
     # Inferred from the context.
     embedding_dtype: Optional[torch.dtype] = None
@@ -411,7 +412,19 @@ class DynamicEmbTableOptions(_ContextOptions):
             max_value=ValidatorParams.MAX_INT64.value
         )
         class_safe_check("caching", self.caching, (bool,))
-        check(self.external_storage is None, "external_storage should be None")
+        check(
+            self.external_storage is None
+            or (inspect.isclass(self.external_storage) and issubclass(self.external_storage, Storage)),
+            "external_storage should be None or a Storage subclass",
+        )
+        check(
+            not (self.external_storage is not None and not self.caching),
+            "external_storage requires caching=True",
+        )
+        check(
+            not (self.external_storage is not None and not self.training),
+            "external_storage requires training=True",
+        )
         check(self.index_type == torch.int64, "index_type should be torch.int64")
 
     def __eq__(self, other):

@@ -173,7 +173,7 @@ class TestKeyValueTable(unittest.TestCase):
             torch.testing.assert_close(actual_values, unique_values.to(kv_table.value_type())) # 确保类型匹配
 
             self.assertIsNotNone(actual_scores)
-            self.assertEqual(actual_scores.dtype, torch.int32)
+            self.assertEqual(actual_scores.dtype, torch.int64)
             self.assertTrue((actual_scores == expected_score_value).all())
 
     def test_update_with_return_missing(self):

@@ -732,7 +732,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
             self._update_score()
 
         return res
-    
+
     def prefetch(
         self,
         indices: Tensor,
@@ -852,9 +852,9 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
                     )
                 self._scores[table_name] = new_score
             elif option.score_strategy == DynamicEmbScoreStrategy.STEP:
-                max_int32 = (2**16) - 1
+                max_step_score = torch.iinfo(torch.int64).max
                 new_score = old_score + 1
-                if new_score > max_int32:
+                if new_score > max_step_score:
                     warnings.warn(
                         f"Table '{table_name}' 's score({new_score}) is out of range, reset to 0.",
                         UserWarning,
@@ -888,7 +888,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
 
             ret_scores.append(new_score)
         return ret_scores
-    
+
     def dump(
         self,
         save_dir: str,
