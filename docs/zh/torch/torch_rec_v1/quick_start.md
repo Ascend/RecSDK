@@ -40,7 +40,7 @@
         ......
     ```
 
-3. 初始化分布式变量。
+3. 初始化分布式环境。
 
     ```python
     ......
@@ -50,7 +50,7 @@
     host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
     ```
 
-4. 定义模型。
+4. 创建模型。
 
     将稀疏表层和Dense层的模型整合为一个Module。该Module的输入必须为[1](#li524311501994)中创建的Batch类。返回模型的loss和输出。
 

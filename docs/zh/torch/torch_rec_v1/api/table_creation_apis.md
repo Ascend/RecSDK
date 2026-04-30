@@ -30,6 +30,25 @@ class HashEmbeddingBagConfig:
 | need_pos                    | bool                                        | 可选    | 仅支持默认值为False，不支持用户自定义。                                                                    |
 | pooling                     | torchrec.modules.embedding_configs.PoolType | 可选    | pool操作的类型。取值范围：<ul><li>SUM：求和。</li><li>MEAN：取平均。</li><li>NONE：不做pool操作。</li></ul> 默认为SUM。 |
 
+**返回值说明**
+
+- 成功：返回HashEmbeddingBagConfig对象。
+- 失败：抛出异常。
+
+**使用示例**
+
+```python
+from hybrid_torchrec import HashEmbeddingBagConfig, HashEmbeddingBagCollection
+emb_config = HashEmbeddingBagConfig(
+    name="table0",
+    embedding_dim=128,
+    num_embeddings=1000,
+    feature_names=["feat0"],
+    pooling=torchrec.PoolingType.MEAN,
+    init_fn=weight_init,  # type: ignore
+)
+```
+
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，请参见[迁移与训练](../migration_and_training.md)。
@@ -55,9 +74,17 @@ class HashEmbeddingBagCollection:
 | is_weighted | bool                                               | 可选    | 仅支持默认值为False。                                                                                                                                                                                                                                                                                           |
 | device      | str或者torch.device                                  | 可选    | 稀疏表的设备。默认为torch.device("cpu")。<br>如果为str取值范围：<ul><li>"npu"：npu设备。</li><li>"meta"：meta设备。</li><li>"cpu"：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul><br>如果为torch.device取值范围：<ul><li>torch.device("npu")：npu设备。</li><li>torch.device("meta")：meta设备。</li><li>torch.device("cpu")：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul> |
 
+**返回值说明**
+
+- 成功：返回HashEmbeddingBagCollection对象。
+- 失败：抛出异常。
+
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
 ```python
+from hybrid_torchrec import HashEmbeddingBagConfig, HashEmbeddingBagCollection
+
+table_configs: list[HashEmbeddingBagConfig] = xx
 ebc = HashEmbeddingBagCollection(device="npu", tables=table_configs)
 ```
 
@@ -104,6 +131,23 @@ class EmbCacheEmbeddingBagConfig:
 - 成功：返回EmbCacheEmbeddingBagConfig对象。
 - 失败：抛出异常。
 
+**使用示例**
+
+```python
+from torchrec_embcache.distributed import EmbCacheEmbeddingBagConfig, InitializerType
+
+emb_config = EmbCacheEmbeddingBagConfig(
+    name="table0",
+    embedding_dim=128,
+    num_embeddings=1000,
+    feature_names=["feat0"],
+    # init_fn=weight_init,  # 注意：多级缓存模式，不支持自定义初始化函数
+    initializer_type=InitializerType.UNIFORM,  # embedding初始化方式通过initializer_type参数设置
+    weight_init_mean=0.0,
+    weight_init_stddev=0.05,
+)
+```
+
 ## EmbCacheEmbeddingBagCollection<a name="ZH-CN_TOPIC_0000002396562992"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -134,6 +178,25 @@ class EmbCacheEmbeddingBagCollection:
 
 - 成功：返回EmbCacheEmbeddingBagCollection对象。
 - 失败：抛出异常。
+
+**使用示例**
+
+```python
+from typing import List
+from torchrec_embcache.distributed import EmbCacheEmbeddingBagCollection
+
+embedding_configs: List[EmbCacheEmbeddingBagConfig] = xx
+world_size: int = 2
+batch_size: int = 128
+table_num = len(embedding_configs)
+sparse_ebc: torch.nn.Module = EmbCacheEmbeddingBagCollection(
+    embedding_configs,
+    world_size,
+    batch_size,
+    multi_hot_sizes=[1] * table_num,
+    device=torch.device("meta"),
+)
+```
 
 ## EmbCacheEmbeddingConfig<a name="ZH-CN_TOPIC_0000002430082769"></a>
 
@@ -173,6 +236,24 @@ class EmbCacheEmbeddingConfig:
 - 成功：返回EmbCacheEmbeddingConfig对象。
 - 失败：抛出异常。
 
+**使用示例**
+
+```python
+from torchrec_embcache.distributed import AdmitAndEvictConfig, EmbCacheEmbeddingConfig, InitializerType
+
+emb_config = EmbCacheEmbeddingConfig(
+    name="table0",
+    embedding_dim=128,
+    num_embeddings=1000,
+    feature_names=["feat0"],
+    # init_fn=weight_init,  # 注意：多级缓存模式，不支持自定义初始化函数
+    initializer_type=InitializerType.UNIFORM,  # embedding初始化方式通过initializer_type参数设置
+    weight_init_mean=0.0,
+    weight_init_stddev=0.05,
+    admit_and_evict_config=admit_and_evict_config,  # 传递准入淘汰配置参数
+)
+```
+
 ## EmbCacheEmbeddingCollection<a name="ZH-CN_TOPIC_0000002430202745"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -203,3 +284,18 @@ class EmbCacheEmbeddingCollection:
 
 - 成功：返回EmbCacheEmbeddingCollection对象。
 - 失败：抛出异常。
+
+**使用示例**
+
+```python
+from torchrec_embcache.distributed import EmbCacheEmbeddingCollection
+
+embedding_configs: List[EmbCacheEmbeddingConfig] = xx
+sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
+    embedding_configs,  # type: ignore
+    2,
+    128,
+    multi_hot_sizes=[1] * 2,
+    device=torch.device("meta"),
+)
+```

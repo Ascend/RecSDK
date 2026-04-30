@@ -8,7 +8,7 @@
 
 **基于开源TorchRec进行迁移<a name="section9248145363514"></a>**
 
-如果用户已经在TorchRec上搭建了网络，则按照接口对应关系进行替换，如[表1](#table16435142101913)所示。
+基于已有的TorchRec模型网络，按照接口对应关系进行替换，如[表1](#table16435142101913)所示。
 
 **表 1**  接口对应关系
 <a id="table16435142101913"></a>
@@ -18,7 +18,7 @@
 |EmbeddingBagConfig|HashEmbeddingBagConfig|稀疏表配置|
 |EmbeddingBagCollection|HashEmbeddingBagCollection|创建稀疏表|
 |get_default_sharders|get_default_hybrid_sharders|获取分表器|
-|TrainPipelineSparseDist|HybridTrainPipelineSparseDist|查询稀疏表|
+|TrainPipelineSparseDist|HybridTrainPipelineSparseDist|创建pipeline|
 
 接口示例：
 
@@ -369,7 +369,7 @@ cd dlrm && git checkout b631a99
         )
     ```
 
-5. 修改训练流水线
+5. 修改pipeline创建方式
 
     将`dlrm/torchrec_dlrm/dlrm_main.py`中L477-L480的代码替换为：
 
@@ -1037,7 +1037,7 @@ def train():
 
 多级缓存模式下，支持**基于时间和计数**、**基于展示点击和分数**两种准入淘汰策略。
 
-> [!NOTICE] 须知
+> [!NOTICE]
 > 
 > **仅支持单独使用其中一种准入淘汰策略，不支持两种策略混合使用。**
 
