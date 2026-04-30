@@ -1730,3 +1730,151 @@ Rec SDK TensorFlow支持TensorFlow开源推荐模型迁移适配，迁移步骤�
 - [xDeepFM样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/xDeepFM/README.md)
 - [WideDeep样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/WideDeep/README.md)
 - [mmoe样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/mmoe/README.md)
+
+### DCNv2模型开发指南
+
+本章节指导如何将基于TensorFlow 1.15.0的DCNv2推荐模型从GPU环境迁移至华为昇腾NPU环境，使用tf_rec_v1组件的自动改图模式。适配后的模型代码，详见[DCNv2模型](https://gitcode.com/Ascend/Rec SDK/tree/develop_examples_and_tools/examples/DCNv2)。
+
+#### 前置操作
+
+参考[昇腾社区sess.run迁移文档](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/migration/tfmigr1/tfmigr1_000019.html)完成模型从gpu到npu的迁移。
+
+#### 步骤一：稀疏特征查表接口替换
+
+1. 区分稀疏特征与稠密特征 
+
+    以criteo数据集为例：
+
+    - 26 个稀疏特征：类别型特征，需 Embedding
+    - 13 个稠密特征：数值型特征，直接输入
+
+    ```python
+    features = {
+        # Extract features using the keys set during creation
+        'label': tf.compat.v1.FixedLenFeature(shape=(config.line_per_sample,), dtype=tf.int64),
+        'sparse_feature': tf.compat.v1.FixedLenFeature(shape=(26 * config.line_per_sample,), dtype=tf.int64),
+        'dense_feature': tf.compat.v1.FixedLenFeature(shape=(13 * config.line_per_sample,), dtype=tf.float32),
+    }
+    ```
+
+2. 替换 Embedding 查表接口
+
+    ```python
+    from mx_rec.core.embedding import create_table, sparse_lookup
+    
+    # 1. 创建稀疏表（替代 tf.get_variable）
+    sparse_hashtable = create_table(
+        key_dtype=cfg.key_type,
+        dim=tf.TensorShape([cfg.emb_dim]),
+        name="sparse_embeddings",
+        emb_initializer=emb_initializer,
+        **cfg.get_emb_table_cfg()
+    )
+    
+    # 2. 稀疏特征查表（替代 tf.nn.embedding_lookup）
+    feature = batch["sparse_feature"]
+    embedding = sparse_lookup(sparse_hashtable, feature, cfg.send_count, dim=None, is_train=is_train,
+                              name="user_embedding_lookup", modify_graph=True, batch=batch,
+                              access_and_evict_config=None)
+    ```
+
+    说明：Criteo 数据集中的 26 个稀疏特征在预处理时已偏移合并为 sparse_feature，因此只需调用 1 次 create_table。若特征未合并，需为每个 field 单独建表。
+
+#### 步骤二：稀疏特征优化器替换
+
+稀疏特征参数存储在自定义的 Hash 表中，必须使用自定义的`create_hash_optimizer`进行更新。
+
+```python
+import tensorflow as tf
+from mx_rec.optimizers.lazy_adam import create_hash_optimizer
+from delay_loss_scale import DenseLossScaleOptimizer, SparseLossScaleOptimizer
+
+def get_dense_and_sparse_optimizer(cfg):
+    """
+    分别创建密集层和稀疏层的优化器
+    """
+    # 密集层优化器：使用 TensorFlow 原生 Adam
+    dense_optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=cfg.learning_rate[0])
+    # 稀疏层优化器：使用 Rec SDK 提供的 Lazy Adam
+    sparse_optimizer = create_hash_optimizer(learning_rate=cfg.learning_rate[1])
+
+    # 添加损失缩放
+    sparse_optimizer = SparseLossScaleOptimizer(sparse_optimizer, 65536)
+    dense_optimizer = DenseLossScaleOptimizer(dense_optimizer, 65536)
+    return dense_optimizer, sparse_optimizer
+```
+
+#### 步骤三：梯度计算代码修改
+
+```python
+from mx_rec.util.variable import get_dense_and_sparse_variable
+
+# 获取模型中密集层参数变量和稀疏层参数变量
+dense_variables, sparse_variables = get_dense_and_sparse_variable()
+rank_size = rec_sdk_common.communication.hccl.hccl_info.get_rank_size()     # # 获取分布式训练卡数
+train_ops = []
+for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], optimizer_list):
+    # ========== 密集层梯度计算 ==========
+    grads = dense_optimizer.compute_gradients(loss, var_list=dense_variables)
+    avg_grads = []
+    for grad, var in grads:
+        if rank_size > 1:
+            grad = hccl_ops.allreduce(grad, "sum") if grad is not None else None
+        if grad is not None:
+            avg_grads.append((grad / 8.0, var))
+    # 应用梯度更新
+    train_ops.append(dense_optimizer.apply_gradients(avg_grads))
+
+    # ========== 稀疏层梯度计算 ==========
+    sparse_grads = sparse_optimizer.compute_gradients(loss, sparse_variables)
+    logger.info(f"sparse_grads_tensor: {sparse_grads}")
+    grads_and_vars = [(grad, variable) for grad, variable in zip(sparse_grads, sparse_variables)]
+    train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
+```
+
+#### 步骤四：模型训练流程适配
+
+1. 初始化Rec SDK框架
+
+    在模型训练开始、数据加载前调用`init`接口：
+
+    ```python
+    from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
+    
+    init(train_steps=cm.train_steps, eval_steps=cm.eval_steps,
+         use_dynamic=use_dynamic, use_dynamic_expansion=False)
+    ```
+
+2. 开启自动改图模式
+
+    在计算梯度之后，初始化所有全局变量之前调用`modify_graph_and_start_emb_cache`接口:
+
+    ```python
+    from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
+    from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
+    
+    # 开启自动改图和数据加载、预处理
+    modify_graph_and_start_emb_cache(dump_graph=True)
+    
+    # 创建 Session
+    sess = tf.compat.v1.Session(config=sess_config(dump_data=False))
+    
+    # 初始化所有全局变量
+    sess.run(ConfigInitializer.get_instance().train_params_config.get_initializer(True))
+    ```
+
+    说明：自动改图模式下，初始化所有全局变量必须用`ConfigInitializer.get_instance().train_params_config.get_initializer(True)`替换 `tf.compat.v1.global_variables_initializer()`
+
+3. 去初始化框架
+
+    在模型训练结束、`sess.close()`之后调用`terminate_config_initializer`接口:
+
+    ```python
+    from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
+    
+    # 关闭 Session
+    sess.close()
+    
+    # 去初始化并释放资源
+    terminate_config_initializer()
+    ```
