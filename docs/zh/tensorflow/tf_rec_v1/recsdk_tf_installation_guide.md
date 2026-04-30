@@ -25,6 +25,7 @@
 |Python 3.7.5|Python 3.7.5|请从[Python官网](https://www.python.org/)获取依赖软件包。|
 
 >[!NOTICE]
+> 
 >对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以但不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
 
 ## 获取Rec SDK TensorFlow软件包<a name="ZH-CN_TOPIC_0000001630127085"></a>

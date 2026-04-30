@@ -46,10 +46,14 @@ with tf.compat.v1.Session() as sess:
 
 ## LookupSubgraphSlicerHook<a name="ZH-CN_TOPIC_0000001911330801"></a>
 
+**功能描述<a name="section634364213155"></a>**
+
 该Hook用于在查表KeyTensor的子图中查找指定类型算子，然后将查找到的指定类型算子及其最小依赖子图切换到CPU预取阶段执行。如果没有找到目标类型的算子，不会执行切分操作。
 
 >[!NOTE]
 >该Hook的使用场景是NPUEstimator模式，启用自动改图功能。该Hook的调用时机需要在自动改图的GraphModifierHook之前。
+
+**参数说明<a name="section888634296311"></a>**
 
 |参数名|类型|必选/可选|参数说明|
 |--|--|--|--|
@@ -75,6 +79,8 @@ est.train(input_fn=lambda: input_fn, hooks=npu_hooks_append(hooks_list))
 ```
 
 ## OrphanLookupKeySlicerHook<a name="ZH-CN_TOPIC_0000001865451328"></a>
+
+**功能描述<a name="section276399619155"></a>**
 
 该Hook用于支持稀疏表查询时传入向上无法找到Dataset的孤儿Key类型，主要用于拓展自动改图模式下的稀疏表查询功能。如果没有找到目标类型的算子，不会执行切分操作。
 

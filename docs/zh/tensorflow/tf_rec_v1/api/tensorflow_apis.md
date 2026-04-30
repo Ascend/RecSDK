@@ -5,6 +5,7 @@
 本章节列出Rec SDK TensorFlow基于TensorFlow框架patch修改的接口。更多TensorFlow原生接口信息请参考TensorFlow官网。昇腾AI处理器对TensorFlow API的支持情况详见官方文档：[TensorFlow 1.15](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/API/tfadapter1x/tfmigr1_tfadapi_0131.html)和[TensorFlow 2.6](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/API/tfadapter2x/tfmigr2_tfadapi_0029.html)。
 
 >[!NOTICE]
+> 
 >对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复。本章中涉及的TensorFlow原生方法若存在漏洞，请参照TensorFlow官网社区中的安全建议进行规避和修复。
 
 ## tf.compat.v1.train.Saver.save<a name="ZH-CN_TOPIC_0000001630046405"></a>

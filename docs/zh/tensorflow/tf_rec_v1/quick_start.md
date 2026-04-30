@@ -352,8 +352,8 @@ CM_WORKER_SIZE=8
 
 ![](../../figures/tf_rec_v1/8-3-5-视频解码.png)
 
-1. 双机节点创建并配置容器。
-    1. 确定节点需要使用的端口号。所有节点都需要用同一未被占用的端口号。可在物理机上执行以下命令，查询端口是否使用。以端口12345为例。
+1. 双机节点创建并配置容器。  
+    i. 确定节点需要使用的端口号。所有节点都需要用同一未被占用的端口号。可在物理机上执行以下命令，查询端口是否使用。以端口12345为例。
 
         ```bash
         ss -tuln | grep 12345
@@ -365,7 +365,7 @@ CM_WORKER_SIZE=8
         - 结果为空，表示端口未使用 =\> 继续执行[1.b](#li9821162384914)
         - 结果不为空，表示端口已使用 =\> 重复查询其他端口号
 
-    2. <a id="li9821162384914"></a>在容器内修改sshd\_config文件。
+    ii. <a id="li9821162384914"></a>在容器内修改sshd\_config文件。
 
         ```bash
         vi /etc/ssh/sshd_config
@@ -377,7 +377,7 @@ CM_WORKER_SIZE=8
             >[!NOTE]
             >如果不执行该步骤，不会影响集群训练，但是会侦听宿主机全零IP的对应端口。出于安全考虑，建议进行修改。
 
-    3. 在容器内执行以下命令重启SSH服务。
+    iii. 在容器内执行以下命令重启SSH服务。
 
         ```bash
         systemctl restart sshd
@@ -393,7 +393,7 @@ CM_WORKER_SIZE=8
         kill -9 `ps -ef | grep sshd | grep -v grep | awk '{print $2}'` > /dev/null 2>&1
         ```
 
-    4. 设置容器内环境变量。
+    iv. 设置容器内环境变量。
 
         将启动训练前需要配置的环境变量设置到容器内的\~/.bashrc文件，便于主节点免密登录到其他节点容器内时能直接使用，无需配置环境变量。
 
@@ -422,14 +422,14 @@ CM_WORKER_SIZE=8
         3. 按“Esc”键，输入<b>:wq!</b>，按“Enter”保存并退出编辑。
         4. 执行**source \~/.bashrc**使环境变量配置生效。
 
-2. 配置little\_demo模型。
-    1. 使用以下命令查看8卡芯片的device IP，命令参考如下。
+2. 配置little\_demo模型。  
+    i. 使用以下命令查看8卡芯片的device IP，命令参考如下。
 
         ```bash
         for i in {0..7}; do hccn_tool -i $i -ip -g ; done
         ```
 
-    2. 配置资源信息。
+    ii. 配置资源信息。
         - <a id="li488122614226"></a>ranktable方式启动时，所有节点中均需要“hccl\_json\_16p\_2\_host.json”配置文件，且文件内容一样。“hccl\_json\_16p\_2\_host.json”文件配置样例参考如下。
 
             示例为双机节点“hccl\_json\_16p\_2\_host.json”配置，主节点的device信息需配置在第一个device中。\{device\_ip\}和\{host\_ip\}需要根据真实环境配置进行替换，rank\_id需要保持升序。
@@ -480,7 +480,8 @@ CM_WORKER_SIZE=8
                 os.environ['CM_WORKER_IP'] = "{host_ip}"
             ```
 
-    3. 修改run.sh脚本（仅需修改主节点）。
+    iii. 修改run.sh脚本（仅需修改主节点）。
+
         1. num\_server修改为实际节点数（比如2）。
         2. 删除mpi\_args变量值中的“-mca btl\_tcp\_if\_exclude docker0”字符串。
         3. 将“interface“的值修改为配置当前host ip的网卡名。可通过**ip addr**进行查询。
@@ -516,8 +517,8 @@ CM_WORKER_SIZE=8
             >- -p 12345：容器内ssh server侦听端口号。
             >- 8：单节点参与训练的device数。
 
-3. 在每个节点上互相设置免密登录。
-    1. 在每个节点的容器内执行以下命令，设置免密登录。其中\{target\_host\_user\}为对端节点的用户名，\{target\_host\_ip\}为对端节点的IP。
+3. 在每个节点上互相设置免密登录。  
+    i. 在每个节点的容器内执行以下命令，设置免密登录。其中\{target\_host\_user\}为对端节点的用户名，\{target\_host\_ip\}为对端节点的IP。
 
         ```bash
         ssh-copy-id -i ~/.ssh/id_rsa.pub {target_host_user}@{target_host_ip}
@@ -535,7 +536,7 @@ CM_WORKER_SIZE=8
         >[!NOTE] 
         >以上为示例，请注意SSH密钥和密钥密码在使用和保管过程中的风险，特别是密钥未加密时的风险，用户应按照所在组织的安全策略进行相关配置，如口令复杂度要求、安全配置（协议、加密套件、密钥长度、是否允许使用ssh-keygen等）。
 
-    2. 设置SSH代理管理SSH密钥。
+    ii. 设置SSH代理管理SSH密钥。
 
         设置SSH代理命令如下：
 
@@ -562,7 +563,7 @@ CM_WORKER_SIZE=8
         ssh-add -l 
         ```
 
-    3. 检查免密登录是否设置成功。
+    iii. 检查免密登录是否设置成功。
 
         ```bash
         ssh-keygen -R {target_host_ip}  # 删除当前节点中目标ip的host key缓存
