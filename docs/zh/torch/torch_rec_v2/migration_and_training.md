@@ -145,6 +145,282 @@
 
 ## Rec SDK Torch迁移样例<a name="ZH-CN_TOPIC_0000002336268713"></a>
 
-Rec SDK Torch支持Torch开源推荐模型迁移适配，迁移步骤可以参考如下：
+Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开源模型recsys-gr迁移至Rec SDK Torch框架的主要修改及基于recsys-gr的性能调优实例。完整的代码修改适配可参见以下链接：
 
 [Rec SDK Torch recsys-gr样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr)
+
+### 迁移主要修改
+
+#### 1. 设备管理API修改
+
+命名空间变化，修改CUDA接口至NPU接口：`torch.cuda`->`torch_npu.npu`,如：
+
+| CUDA API| NPU API | 位置|
+| --- | --- | --- |
+|torch.cuda|torch_npu.npu|全文件|
+|torch.cuda.device_count() | torch_npu.npu.device_count() | distributed_utils.py|
+|torch.cuda.current_device() | torch_npu.npu.current_device() | training.py, hstu_layer.py, pretrain_gr_ranking.py|
+|torch.cuda.mem_get_info() | torch_npu.npu.mem_get_info()| pretrain_gr_ranking.py|
+|torch.cuda.stream()|torch_npu.npu.stream()|embedding.py|
+
+#### 2. GIN配置参数扩展
+
+扩展 NetworkArgs 类，新增 NPU 适配相关参数，扩展kernel_backend支持。
+
+```python
+# 添加NPU后端支持
+layer_type: str = "fused"
+···
+assert self.kernel_backend.lower() in ["cutlass", "triton", "pytorch", "npu_fused"]
+assert self.layer_type.lower() in ["fused", "native"]
+···
+elif network_args.kernel_backend == "npu_fused":
+    kernel_backend = KernelBackend.NPU_FUSED
+···
+```
+
+#### 3. dynamic_emb接口替换
+
+配置NPU dynamic_emb接口替换GPU实现。
+
+```python
+# 稀疏表分表相关接口
+from dynamic_emb import (
+    DynamicEmbeddingEnumerator, 
+    DynamicEmbParameterConstraints, 
+    DynamicEmbTableOptions,
+    DynamicEmbeddingShardingPlanner, 
+    DynamicEmbeddingCollectionSharder,
+)
+···
+# 稀疏表配置项接口
+from dynamic_emb.distributed.dynamicemb_config import DynamicEmbEvictStrategy
+from dynamic_emb import DynamicEmbCheckMode, DynamicEmbInitializerArgs, DynamicEmbInitializerMode
+···
+```
+
+#### 4. 算子适配
+
+将CUDA上Triton/Cutlass实现的算子转化为Pytorch原生实现/RecSDK推荐业务算子。算子实现位于`example/hstu/ops`文件夹下。
+
+- jagged_to_padded_dense / dense_to_jagged CUDA版本依赖FBGEMM算子，NPU替换为RecSDK业务算子实现
+- concat_2D_jagged / split_2D_jagged Triton算子替换为Pytorch实现
+- Position Encoding算子 Triton算子替换为Pytorch实现
+
+#### 5. HSTU层适配
+
+- 取消对于`megatron`中`TEColumnParallelLinear`和`TERowParallelLinear`的引用，相关代码替换为`torch.nn`的方法
+
+```python
+self._output_layernorm_weight = torch.nn.Parameter(
+    torch.ones(self._num_heads * self._linear_dim_per_head, device=device)
+)
+self._output_layernorm_bias = torch.nn.Parameter(
+    torch.zeros(self._num_heads * self._linear_dim_per_head, device=device)
+)
+self._linear_uvqk = torch.nn.Linear(
+    self._embedding_dim,
+    sum(self._split_arg_list),
+    bias=True,
+).apply(init_mlp_weights_optional_bias)
+```
+
+- 新增`NpuFusedHSTUAttention`适配`torch.ops.mxrec.hstu_jagged`算子
+
+```python
+class NpuFusedHSTUAttention(HSTUAttention):
+    def forward(self,
+                tq: torch.Tensor,  # (T, d)
+                tk: torch.Tensor,  # (T, d)
+                tv: torch.Tensor,  # (T, d)
+                offsets: torch.Tensor,  # (batch_size, 1)
+                max_seqlen: int,
+                target_group_size: int = 1,  # target == candidates
+                num_candidates: Optional[torch.Tensor] = None,
+                num_contextuals: Optional[Union[int, torch.Tensor]] = None,
+                ) -> torch.Tensor:  # T, d
+
+        return torch.ops.mxrec.hstu_jagged(tq.view(-1, self.num_heads, self.attention_dim),
+                                          tk.view(-1, self.num_heads, self.attention_dim),
+                                          tv.view(-1, self.num_heads, self.attention_dim),
+                                          None,
+                                          None,
+                                          0,  # 0默认为下三角，跟TorchHSTUAttention的mask实现不一致
+                                          max_seqlen,
+                                          1.0 / max_seqlen,
+                                          offsets.long(),
+                                          num_contextuals,
+                                          num_candidates,
+                                          target_group_size,
+                                          1.0 / (self.attention_dim**0.5),
+                                          ).view(-1, self.num_heads * self.attention_dim)
+```
+
+## recsys-gr 性能调优实例
+
+### 背景
+
+以非FSDP2模式为例，recsys-gr 模型在不同架构（x86/ARM）及主频的CPU环境下，端到端训练性能存在显著差距。对比两类硬件环境，device侧设备规格参数相同，核心区别在于CPU架构规格与主频差异，低主频ARM环境性能劣化严重，初步判定存在Host Bound瓶颈。
+
+### 分析
+
+#### 1. 设备侧（Device）算子耗时验证
+
+设置环境变量 `NPU_PROFILE = 1`，使用torch.profiler采集模型性能数据。
+
+```python
+   if PROFILE_ENABLE:
+      experimental_config = torch_npu.profiler._ExperimentalConfig(
+         export_type=[
+            torch_npu.profiler.ExportType.Text,
+            ],
+            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
+            msprof_tx=False,
+            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
+            l2_cache=False,
+            op_attr=False,
+            data_simplification=False,
+            record_op_args=False,
+            gc_detect_threshold=None,
+        )
+
+         prof = torch_npu.profiler.profile(
+         activities=[
+            torch_npu.profiler.ProfilerActivity.CPU,
+            torch_npu.profiler.ProfilerActivity.NPU
+         ],
+         schedule=torch_npu.profiler.schedule(wait=10, warmup=0, active=1, repeat=1, skip_first=1),
+         on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
+         record_shapes=False,
+         profile_memory=False,
+         with_stack=True,
+         with_modules=True,
+         with_flops=False,
+         experimental_config=experimental_config)
+
+         prof.start()
+```
+
+对比NPU侧Kernel耗时，可得两种环境性能基本无差异，可排除Device侧导致的性能劣化。
+
+#### 2. 整体计算耗时分析
+
+利用获取的profiling文件，可使用[MindStudio Insight](https://www.hiascend.com/document/detail/zh/mindstudio/830/GUI_baseddevelopmenttool/msascendinsightug/Insight_userguide_0002.html)可视化工具进行时间线（Timeline）可视化分析。
+
+x86与ARM环境下模型的的Free空闲时间占比均超70%，NPU实际计算占比极低。
+
+**核心猜测**：性能瓶颈不在 NPU 算力，而在Host侧CPU操作（数据搬运、算子下发、调度等待）。
+
+### 调优方案
+
+#### 1. 多线程数据加载优化
+
+模型采用DataLoader单线程加载（完全运行在CPU上），主进程串行读数据，CPU成为瓶颈，NPU长期空闲。单线程模式大幅放大了CPU主频差异带来的性能差距。
+
+可启用多核多进程加载，支持预加载、进程常驻、数据分区、并行打乱。例如对数据加载函数进行如下优化：
+
+```python
+def get_data_loader(
+    dataset: torch.utils.data.Dataset,
+    pin_memory: bool = False,
+    num_workers: int = 8,
+    prefetch_factor: int = 2,
+) -> DataLoader:
+    def worker_init_fn(worker_id: int) -> None:
+        """
+        Worker初始化函数，设置每个worker的数据分区
+        """
+        if hasattr(dataset, 'set_worker_id'):
+            dataset.set_worker_id(worker_id, num_workers)
+            # 重新shuffle该worker的数据，使用不同的随机种子
+            if hasattr(dataset, '_shuffle_batch'):
+                dataset._shuffle_batch(worker_id=worker_id)
+
+    loader = DataLoader(
+        dataset,
+        batch_size=None,
+        batch_sampler=None,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor if num_workers > 0 else None,
+        pin_memory=pin_memory,
+        collate_fn=lambda x: x,
+        worker_init_fn=worker_init_fn if num_workers > 0 else None,
+        persistent_workers=num_workers > 0,
+    )
+    return loader
+```
+
+同步修改`recsys-example/examples/hstu/dataset/sequence.py`文件,设置每个worker的数据分区，避免数据重复：
+
+```python
+    def set_worker_id(self, worker_id: int, num_workers: int) -> None:
+        """
+        设置当前worker的ID和总worker数，用于多进程数据分区。
+        每个worker只处理分配给它的数据子集。
+
+        Args:
+            worker_id: 当前worker的ID (0 to num_workers-1)
+            num_workers: 总worker数量
+        """
+        if num_workers <= 1:
+            return
+
+        total_samples = len(self._sample_ids)
+        samples_per_worker = total_samples // num_workers
+
+        # 计算当前worker负责的数据范围
+        start_idx = worker_id * samples_per_worker
+        end_idx = start_idx + samples_per_worker if worker_id < num_workers - 1 else total_samples
+
+        # 截取该worker负责的样本ID
+        self._sample_ids = self._sample_ids[start_idx:end_idx]
+        self._num_samples = len(self._sample_ids)
+
+        # 重新计算batch数量
+        self._num_batches = math.ceil(self._num_samples / self._global_batch_size)
+```
+
+开启多线程加载后，数据加载数据大幅减小，且对模型训练精度无较大影响。
+
+#### 2. 开启大页内存池
+
+Linux 默认4KB内存页会产生大量TLB Miss和缺页中断，大页内存可大幅降低该开销。详见[开启大页内存池](https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0070.html)
+
+在模型run.sh脚本中使能OS开启透明大页内存：
+
+```bash
+echo always > /sys/kernel/mm/transparent_hugepage/enabled
+```
+
+#### 3. jemalloc 内存分配器优化
+
+使用 CANN 优化版 jemalloc 提升内存分配效率。使用模型run.sh脚本进行加载：
+
+```bash
+export LD_PRELOAD=${ASCEND_CANN_PACKAGE_PATH}/${ARCH}-linux/lib64/libjemalloc.so
+```
+
+#### 4. 细粒度绑核、NUMA 内存绑定
+
+原模型脚本粗粒度绑核效果差，需要针对Python主进程、acl_thread做专属绑核，并配置内存亲和性。
+
+开启算子队列优化:
+
+```bash
+export TASK_QUEUE_ENABLE=2
+```
+
+单卡 NUMA 内存绑定：
+
+```python
+import numa
+def bind_memory_to_numa0():
+    numa.memory.set_membind_nodes(0)
+    return True
+```
+
+#### 5. 其他调优方向
+
+- 1.业务框架层数据并行策略优化,如采用流水并行等。
+- 2.编译优化，详见：[编译优化技术介绍](https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0062.html)
+- 3.BIOS参数调优，如开启超频、高性能模式等。
