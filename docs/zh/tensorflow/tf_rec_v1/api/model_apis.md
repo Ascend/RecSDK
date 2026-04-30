@@ -114,7 +114,7 @@ def sparse_lookup(hashtable, ids, send_count, is_train=True, name=None, modify_g
 |--|--|--|--|
 |hashtable|BaseSparseEmbedding|必选|待查询的稀疏表。|
 |ids|FeatureSpec/tf.Tensor|必选|查询的关键字（key），对应参数类型在不同功能模式下存在区别，具体参见如下。<li>非自动改图模式下，ids参数类型为FeatureSpec。</li><li>自动改图模式下，ids参数类型为tf.Tensor。</li>|
-|send_count|int|开启静态shape时为必选参数|作为All2All通信技术，取值范围：[1, 2147483647]。<br>开启动态shape时无需传该参数，或传None即可。默认值为None。|
+|send_count|int|开启静态shape时为必选参数|作为All2All通信发送数量，取值范围：[1, 2147483647]。<br>开启动态shape时无需传该参数，或传None即可。默认值为None。|
 |is_train|bool|必选|是否为训练模式。默认值为True。<br>取值范围：<li>True：训练模式。</li><li>False：评估或预测模式。</li>|
 |name|str|可选|为该次查询操作创建对应的名称，字符串长度为[1,255]。默认值为None。|
 |modify_graph|bool|可选|自动改图功能开关，该功能将在创建Session实例前对模型原图进行修改优化，默认值为False。<br>取值范围：<li>True：开启自动改图功能。</li><li>False：关闭自动改图功能。</li>|

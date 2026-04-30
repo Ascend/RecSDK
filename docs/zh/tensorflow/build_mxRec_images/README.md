@@ -19,19 +19,18 @@
 
 物理机上已经安装docker，并且docker网络可用
 
-准备好基础镜像，如果用户没有准备好基础镜像，可以从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/)拉取基础
-镜像，建议拉取以下镜像作为基础镜像：
+准备好基础镜像，如果用户没有准备好基础镜像，可以从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/)拉取基础镜像，建议拉取以下镜像作为基础镜像：
 
 * 优先拉取Rec SDK训练镜像，因为AscendHub上的Rec SDK训练镜像中已经安装gcc、cmake等基础依赖，无需再次安装。
 同时，镜像也安装了CANN以及Rec SDK包，但是版本较老。所以如果使用Rec SDK镜像作为基础镜像只需更新其中的CANN和Rec SDK包即可。
-* 其次从AscendHub上拉取[CentOS7.6.1810](https://www.hiascend.com/developer/ascendhub/detail/9353d9619c2a44db87845bce546c17bd)这个镜像
+* 其次从AscendHub上拉取[CentOS7.6.1810](https://www.hiascend.com/developer/ascendhub/detail/9353d9619c2a44db87845bce546c17bd)这个镜像。
 * 最后，如果不用以上两个镜像，用户自己准备一个镜像作为基础镜像，建议这个镜像是CentOS 7.6.1810为基础。
 
 ## 准备依赖
 
 根据基础镜像的不同，需要下载的依赖也有所区别
 
-1. 以AscendHub上的Rec SDK训练镜像作为基础镜像，只需要下载[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=sdk+cann)上最新版本配套的CANN、tf-plugin、和Rec SDK安装包。可以参考以下链接下载配套版本的CANN和Rec SDK：
+1. 以AscendHub上的Rec SDK训练镜像作为基础镜像，只需要下载[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=sdk+cann)上最新版本配套的CANN、tf-plugin和Rec SDK安装包。可以参考以下链接下载配套版本的CANN和Rec SDK：
 
     https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann
     

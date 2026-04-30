@@ -24,8 +24,7 @@
 |TensorFlow|TensorFlow 1.15.0和TensorFlow 2.6.5|请从[TensorFlow](https://github.com/tensorflow/tensorflow)仓库获取源码。Arm环境下TensorFlow官方未提供对应的whl包，如需在Arm环境下使用，可以从[链接](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html)获取Arm的TensorFlow whl包。<br>[!NOTE]<br>若whl包下载受阻，可复制其链接并在新标签页中打开，即可顺利完成下载。|
 |Python 3.7.5|Python 3.7.5|请从[Python官网](https://www.python.org/)获取依赖软件包。|
 
->[!NOTICE]
-> 
+>[!NOTE]
 >对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以但不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
 
 ## 获取Rec SDK TensorFlow软件包<a name="ZH-CN_TOPIC_0000001630127085"></a>
@@ -53,9 +52,12 @@
 
 3. 编译方法：
 
+   > [!NOTE]
+   > build_wrapper.sh 脚本构建方式跟随资源下载中心同步更新，目前推荐单独编译安装Rec SDK whl包
+
    进入RecSDK代码目录：
 
-   如需编译安装软件包，可参考build/build_wrapper/tf_rec_v1/build_wrapper.sh脚本，执行脚本命令构建软件包，构建成功后，软件包在build/output子目录下：
+   如需编译安装软件包，可参考build/build_wrapper/tf_rec_v1/build_wrapper.sh脚本，执行脚本命令构建软件包，构建成功，软件包在build/output子目录下：
 
    ```bash
    # 编译软件包
@@ -139,10 +141,10 @@
 
 ## 使用物理机部署开发环境<a name="ZH-CN_TOPIC_0000001630046437"></a>
 
->[!NOTICE]
+> [!NOTE]
 >
->- 当前支持在Ubuntu  20.04及以上版本系统中进行物理机开发环境部署。其他系统环境请使用源码编译方式安装或者通过部署容器安装。
->- 用户请勿修改编译目录下除run.sh文件外的其他文件代码。
+> - 当前支持在Ubuntu  20.04及以上版本系统中进行物理机开发环境部署。其他系统环境请使用源码编译方式安装或者通过部署容器安装。
+> - 用户请勿修改编译目录下除run.sh文件外的其他文件代码。
 
 1. 参考《CANN 软件安装指南》安装CANN软件包和TensorFlow适配昇腾插件。
 2. 配置环境变量。
@@ -180,7 +182,7 @@
 
 ### 使用容器部署开发环境<a name="ZH-CN_TOPIC_0000001579847292"></a>
 
->[!NOTICE]
+>[!NOTE]
 >
 >- 如需使用CentOS系统进行配置（包括宿主机及容器），libstdc++版本需要高于libstdc++.so.6.0.24。
 >- 出于安全保护，用户仅能使用非root用户启动容器进行使用。

@@ -29,7 +29,7 @@ HCCL集群通信失败。
 
         其中192.x.x.x为节点A的rank0的device ip；0为指定使用B节点rank0 device去ping对应ip。
 
-        若指令回显包含“0.00% packet loss”则说明能ping通；ping不通则需检查环境网络配置；
+        若指令回显包含“0.00% packet loss”则说明能ping通；ping不通则需检查环境网络配置。
 
         >[!NOTE]
         >若device ip配置为IPv6，查询device ip指令和ping device指令有所区别，示例：
@@ -69,7 +69,7 @@ HCCL集群通信失败。
 
 **可能原因<a name="section1581817491790"></a>**
 
-Rec SDK TensorFlow编译使用了OpenMP，OpenMP将使用Thread Local Storage（动态TLS）内存空间，sklearn在执行一些并行计算的时候需要使用静态TLS空间。在aarch64架构的机器上动态TLS和静态TLS使用的是相同的预分配池，先导入Rec SDK TensorFlow时导致预分配过多的内存空间，导致sklearn导入时libgomp.so空间不足。
+Rec SDK TensorFlow编译使用了OpenMP，OpenMP将使用Thread Local Storage（动态TLS）内存空间，sklearn在执行一些并行计算的时候需要使用静态TLS空间。在aarch64架构的机器上，动态TLS和静态TLS使用的是相同的预分配池，若先导入Rec SDK TensorFlow，会导致预分配过多的内存空间，从而使sklearn导入时libgomp.so空间不足。
 
 **解决方案<a name="section181445017916"></a>**
 

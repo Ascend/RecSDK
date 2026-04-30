@@ -36,14 +36,15 @@ def get_embedding_table(
 | min_used_times         | int / None        | 可选   | 特征准入功能，ID历史出现次数必须超过该值才能生效，否则使用该ID查表返回默认的Embedding值，取值范围[0, 2^31-1]。                                  |
 | max_cold_secs          | int / None        | 可选   | 特征淘汰功能，该值用于表示ID和Embedding自最后一次被访问后，最久能够容忍的未访问时长。超过这个阈值的ID将会在保存时，从存储Embedding的哈希表中删除，取值范围[0, 2^64-1]。 |
 
->[!NOTE] 说明 
->-   当前仅支持非扩容模式，即`device_vocabulary_size`需大于0。
->-   开启特征淘汰功能后暂不支持保存与加载。
+>[!NOTE] 说明
+>
+> - 当前仅支持非扩容模式，即`device_vocabulary_size`需大于0。
+> - 开启特征淘汰功能后暂不支持保存与加载。
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回稀疏表实例
--   失败：抛出异常
+- 成功：返回稀疏表实例
+- 失败：抛出异常
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -72,6 +73,7 @@ table = mxrec.get_embedding_table(
 稀疏表特征查询接口。
 
 暂不支持`tf.SparseTensor`数据类型，若为`tf.SparseTensor`需转成`tf.Tensor`。示例代码如下：
+
 ```python
 sparse_ids = tf.SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
 dense_ids = tf.sparse.to_dense(sparse_ids, default_value=0)
@@ -95,8 +97,8 @@ def embedding_lookup(
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回查询到Tensor结果
--   失败：抛出异常
+- 成功：返回查询到Tensor结果
+- 失败：抛出异常
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -133,8 +135,8 @@ def get_sparse_embedding():
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回已创建稀疏表的可训练参数列表
--   失败：抛出异常
+- 成功：返回已创建稀疏表的可训练参数列表
+- 失败：抛出异常
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -174,8 +176,8 @@ def get_init_hashtable_op():
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：稀疏表的初始化算子列表
--   失败：抛出异常
+- 成功：稀疏表的初始化算子列表
+- 失败：抛出异常
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -215,8 +217,8 @@ def get_existing_tables():
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：当前所有已创建的稀疏表对象
--   失败：抛出异常
+- 成功：当前所有已创建的稀疏表对象
+- 失败：抛出异常
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -265,13 +267,14 @@ def __init__(self, emb_tables: List[BaseEmbeddingTable]):
 |------------|--------------------------|------|----------------------------------------------|
 | emb_tables | List[BaseEmbeddingTable] | 必选   | 待执行保存恢复操作的稀疏表对象，通过`get_existing_tables`接口得到。 |
 
->[!NOTE] 说明 
->-   `BaseEmbeddingTable`表示稀疏表实例，可通过`get_embedding_table`接口获取。
+> [!NOTE] 说明 
+> 
+> - `BaseEmbeddingTable`表示稀疏表实例，可通过`get_embedding_table`接口获取。
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：None
--   失败：抛出异常
+- 成功：None
+- 失败：抛出异常
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -320,8 +323,8 @@ def save(self, sess: tf.compat.v1.Session, save_path: str, global_step: int):
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：None
--   失败：抛出异常
+- 成功：None
+- 失败：抛出异常
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -373,8 +376,8 @@ def load(self, sess: tf.compat.v1.Session, save_path: str, global_step: int):
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：None
--   失败：抛出异常
+- 成功：None
+- 失败：抛出异常
 
 **使用示例<a name="section2553042232"></a>**
 

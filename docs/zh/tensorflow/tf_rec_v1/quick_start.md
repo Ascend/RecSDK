@@ -2,7 +2,7 @@
 
 ## 使用前说明<a name="ZH-CN_TOPIC_0000001848119673"></a>
 
-本章节指导用户基于Rec SDK TensorFlow为用户提供的little-demo样例，快速理解一个使用tf.Session进行模型训练需要准备的相关文件和关键接口适配。little-demo仅是一个代码示例，并介绍了调用相关接口的逻辑，不包含具体的模型，没有实现具体的功能。
+本章节指导用户基于Rec SDK TensorFlow为用户提供的little-demo样例，理解使用一个tf.Session进行模型训练需要准备的相关文件和关键接口适配。little-demo仅是一个代码示例，并介绍了调用相关接口的逻辑，不包含具体的模型，没有实现具体的功能。
 
 little-demo仅作参考学习，不支持在little-demo上适配用户自己的模型。little-demo存放路径为：[链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/demo)。
 
@@ -234,7 +234,7 @@ CM_WORKER_SIZE=8
 
     下面的示例以环境中可见8卡为例，卡逻辑ID列表为\[0,1,2,3,4,5,6,7\]
 
-    - local\_rank\_size = 1，则**export CM\_CHIEF\_DEVICE=**\[0,1,2,3,4,5,6,7\]的任一卡号。
+    - local\_rank\_size = 1，则**export CM\_CHIEF\_DEVICE**可选\[0,1,2,3,4,5,6,7\]的任一卡号。
     - local\_rank\_size = 2，取值说明如下：
 
         <a name="table12571887269"></a>
@@ -484,7 +484,7 @@ CM_WORKER_SIZE=8
 
         1. num\_server修改为实际节点数（比如2）。
         2. 删除mpi\_args变量值中的“-mca btl\_tcp\_if\_exclude docker0”字符串。
-        3. 将“interface“的值修改为配置当前host ip的网卡名。可通过**ip addr**进行查询。
+        3. 将“interface”的值修改为配置当前host ip的网卡名。可通过**ip addr**进行查询。
         4. 使用ranktable启动方案时，还需修改export RANK\_TABLE\_FILE变量值中的json文件名称，使其与[•ranktable方式启动时，所有节点中均需要...](#li488122614226)中配置的双机的hccl json文件名一致，例如：
 
             将

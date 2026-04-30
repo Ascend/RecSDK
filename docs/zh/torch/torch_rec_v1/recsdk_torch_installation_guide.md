@@ -165,6 +165,9 @@ Rec SDK Torch软件包如下表：
 
 ### 源码编译安装
 
+> [!NOTE]
+> build_wrapper.sh 脚本构建方式跟随资源下载中心同步更新，目前推荐基于Release版本安装
+
 该方案默认已配置完成宿主机环境并进入Docker容器内。
 
 1. 依赖软件安装
@@ -200,9 +203,9 @@ Rec SDK Torch软件包如下表：
    source /usr/local/Ascend/cann/set_env.sh
    unset ASCEND_CUSTOM_OPP_PATH
 
-   # 编译并安装算子包（rec_ops）。
+   # 编译并安装算子包（rec_ops），以A2算子举例
    cd RecSDK/cust_op/ascendc_op/build
-   bash build_ai_core_op.sh A2
+   bash build_ai_core_op.sh A2 
    
    # 可选：若仅需安装部分算子，可在其他容器内编译，并将build/output/recsdk_ops路径下所需算子包拷贝到当前环境，参考如下指令安装：
    # bash mxrec_opp_split_embedding_codegen_forward_unweighted.run
