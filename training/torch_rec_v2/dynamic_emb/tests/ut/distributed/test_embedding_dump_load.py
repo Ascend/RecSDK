@@ -115,6 +115,19 @@ class TestDynamicEmbDumpLoad(unittest.TestCase):
             return_value=self.mock_key_value_table
         )
         self.mock_create_dynamicemb_table = self.creat_table_patcher.start()
+
+        # Patch optimizer creation to avoid constructing real optimizer dependencies.
+        def mock_create_optimizer(self_obj, *args, **kwargs):
+            self_obj._optimizer = self.mock_optimizer
+            self_obj._optimizer_type = EmbOptimType.ADAM
+
+        self.create_optimizer_patcher = patch.object(
+            BatchedDynamicEmbeddingTablesV2,
+            "_create_optimizer",
+            autospec=True,
+            side_effect=mock_create_optimizer,
+        )
+        self.create_optimizer_patcher.start()
     
         # 创建表名
         self.test_table_name = 'test_table'
@@ -133,7 +146,8 @@ class TestDynamicEmbDumpLoad(unittest.TestCase):
                         mode=DynamicEmbInitializerMode.NORMAL,
                         value=0.0,
                     ),
-                    dim=10
+                    dim=10,
+                    max_capacity=1024,
                 )
             ]
             self.model = self._create_test_model()
@@ -145,6 +159,7 @@ class TestDynamicEmbDumpLoad(unittest.TestCase):
         self.init_pg_patcher.stop()
         self.dist_barrier_patcher.stop()       
         self.creat_table_patcher.stop()
+        self.create_optimizer_patcher.stop()
         
         # 清理测试目录
         if os.path.exists(self.test_dir):
@@ -152,14 +167,6 @@ class TestDynamicEmbDumpLoad(unittest.TestCase):
 
     def _create_test_model(self):
         """创建简单的测试模型，包含BatchedDynamicEmbeddingTablesV2"""
-        
-        # 创建optimizer
-        def mock_create_optimizer(self_obj, *args, **kwargs):
-            self_obj._optimizer = self.mock_optimizer
-            self_obj._optimizer_type = EmbOptimType.ADAM
-        
-        BatchedDynamicEmbeddingTablesV2._create_optimizer = mock_create_optimizer
-        
         class TestModel(nn.Module):
             def __init__(self, table_options, feature_table_map, test_table_name):
                 super().__init__()

@@ -29,6 +29,7 @@ from dynamic_emb.distributed.planner.types import DynamicEmbParameterConstraints
 from dynamic_emb.distributed.planner.planners import DynamicEmbeddingShardingPlanner
 from dynamic_emb.distributed.planner.enumerators import DynamicEmbeddingEnumerator
 from dynamic_emb.distributed.dump_load import DynamicEmbDump, DynamicEmbLoad
+from dynamic_emb.distributed.incremental_dump import set_score, get_score
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import EmbOptimType
 
 
@@ -44,5 +45,7 @@ __all__ = [
     DynamicEmbeddingEnumerator,
     DynamicEmbDump,
     DynamicEmbLoad,
+    set_score,
+    get_score,
     EmbOptimType,
 ]
