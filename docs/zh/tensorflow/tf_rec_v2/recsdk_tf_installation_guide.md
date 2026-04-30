@@ -17,8 +17,8 @@
 
 |依赖名称/操作|推荐版本|获取方式|
 |--|--|--|
-|CANN软件包和TensorFlow适配昇腾插件|CANN 8.5.0|<li>Ascend-cann-toolkit_{version}_linux-{arch}.run：单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>请参见《CANN 软件安装指南》进行安装。</li><li>TensorFlow适配昇腾插件单击[获取链接](https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.44_8.3.RC1)。npu_bridge-1.15.0\*适配TensorFlow 1.15.0的版本。</li>|
-|昇腾硬件产品驱动和固件|Ascend HDK 25.5.0|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。安装驱动与固件请参见相关硬件产品配套的[《驱动和固件安装升级指南》](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)。|
+|CANN软件包和TensorFlow适配昇腾插件|CANN 9.0.0|<li>Ascend-cann-toolkit_{version}_linux-{arch}.run：单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>请参见《CANN 软件安装指南》进行安装。</li><li>TensorFlow适配昇腾插件单击[获取链接](https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.44_8.3.RC1)。npu_bridge-1.15.0\*适配TensorFlow 1.15.0的版本。</li>|
+|昇腾硬件产品驱动和固件|Ascend HDK 26.0.RC1及补丁版本|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。安装驱动与固件请参见相关硬件产品配套的[《驱动和固件安装升级指南》](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)。|
 |Ascend Docker Runtime|MindCluster 7.3.0|请参见《MindCluster 集群调度用户指南》的“安装 > 安装部署”章节进行安装。|
 |配置Device网卡|-|请参考《Ascend Training Solution 组网指南》的参数面网络配置示例配置示例配置训练节点章节，通过HCCN_Tool配置NPU网口的Device IP。|
 |TensorFlow|TensorFlow 1.15.0|请从[TensorFlow](https://github.com/tensorflow/tensorflow)仓库获取源码。Arm环境下TensorFlow官方未提供对应的whl包，如需在Arm环境下使用，可以从[链接](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html)获取Arm的TensorFlow whl包。<br>[!NOTE] 说明<br>若whl包下载受阻，可复制其链接并在新标签页中打开，即可顺利完成下载。|
@@ -40,7 +40,7 @@
 编译环境依赖：
 
 - Python3.7.5
-- GCC 7.3.0
+- GCC 11.2.0
 - CMake 3.20.6
 
 开源依赖：
@@ -54,7 +54,19 @@
 
 **编译方法**
 
-进入Rec SDK代码目录：
+进入RecSDK代码目录：
+
+如需编译安装软件包，可参考build/build_wrapper/tf_rec_v2/build_wrapper.sh脚本，执行脚本命令构建软件包，构建成功后，软件包在build/output子目录下：
+
+```bash
+# 编译软件包
+bash build/build_wrapper/tf_rec_v2/build_wrapper.sh
+
+# 安装软件包
+pip install build/output/tf_rec_v2*.tar.gz
+```
+
+如需单独编译安装Rec SDK whl包（不包含自动识别tf版本功能及框架依赖算子安装），可参考如下命令：
 
 - setup.py：执行脚本 `python3.7 setup.py bdist_wheel` 构建tf1版本whl包。构建成功后，whl包在`build`子目录下。
 
@@ -76,36 +88,22 @@
     source /usr/local/Ascend/cann/set_env.sh
     ```
 
-3. 通过如下命令解压软件包，若未指定具体路径，默认解压到当前目录下，解压命令中需要添加--no-same-owner参数。
+3. 通过如下命令安装软件包。
 
     ```bash
-    # 解压到当前目录下
-    tar -xf Ascend-mxrec-for-lingqu2.0-{version}_linux-{arch}.tar.gz --no-same-owner
-    # 解压到特定目录下
-    tar -xf Ascend-mxrec-for-lingqu2.0{version}_linux-{arch}.tar.gz --no-same-owner -C 指定路径
+    # 安装软件包
+    pip install tf_rec_v2-{version}-{arch}.tar.gz
     ```
 
-4. 解压完后的目录结构参见如下。
+    （其中 `{version}` 代表版本号，`{arch}` 代表操作系统架构，请根据实际安装包替换）
+
+    软件包默认安装在Python的“site-packages”路径，若通过“--target”参数指定目录，在安装完成后需要将Rec SDK TensorFlow路径加入“PYTHONPATH”环境变量。
 
     ```bash
-    mxrec-for-lingqu2.0/
-    |-- tf1_whl
-    |   -- mxrec_for_lingqu-{version}-py3-none-linux_{arch}.whl    #适用于TensorFlow 1.15.0版本的mxrec框架Wheel包
+    export PYTHONPATH={rec_install_path}:{rec_install_path}/tf_rec_v2:$PYTHONPATH
     ```
 
-5. 安装软件包中的Wheel包。（请根据实际需求，选取对应TensorFlow版本匹配的Wheel包。）
-
-    ```bash
-    pip3 install mxrec_for_lingqu-{version}-py3-none-linux_{arch}.whl
-    ```
-
-    Wheel包默认安装在Python的“site-packages”路径，若通过“--target”参数指定目录，在安装完成后需要将Rec SDK TensorFlow路径加入“PYTHONPATH”环境变量。
-
-    ```bash
-    export PYTHONPATH={rec_install_path}:{rec_install_path}/mxrec:$PYTHONPATH
-    ```
-
-6. 安装依赖，若未构建镜像，直接在物理机上进行开发，则须安装以下Python依赖。
+4. 安装依赖，若未构建镜像，直接在物理机上进行开发，则须安装以下Python依赖。
 
     ```bash
     pip3.7 install numpy decorator sympy==1.4 cffi==1.12.3 pyyaml pathlib2 grpcio grpcio-tools protobuf==3.20.0 scipy requests mpi4py easydict scikit-learn==0.20.0 attrs toml
@@ -117,7 +115,7 @@
     HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 pip3.7 install horovod --no-cache-dir
     ```
 
-7. 如需使用Hadoop分布式文件系统，请参考[Hadoop官方文档](https://hadoop.apache.org/docs/r1.0.4/cn/quickstart.html)进行环境部署和集群搭建。推荐使用Hadoop-2.7.5版本。
+5. 如需使用Hadoop分布式文件系统，请参考[Hadoop官方文档](https://hadoop.apache.org/docs/r1.0.4/cn/quickstart.html)进行环境部署和集群搭建。推荐使用Hadoop-2.7.5版本。
 
 ## 部署容器内的开发环境<a name="zh-cn_topic_0000002175060298"></a>
 
@@ -156,7 +154,7 @@
 2. 物理机上已经安装Docker，并且Docker网络可用。
 3. 准备基础镜像。可以从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub)获取基础镜像，或者使用用户已有的基础镜像。
     - （推荐）从昇腾镜像仓库获取Rec SDK TensorFlow训练镜像。昇腾镜像仓库上的Rec SDK TensorFlow训练镜像中已经安装gcc、cmake等基础依赖，无需再次安装；只需更新其中的CANN和Rec SDK软件包即可使用。
-    - 从昇腾镜像仓库获取CentOS 7.6.1810镜像。如果不从昇腾镜像仓库获取基础镜像，用户自己准备一个镜像作为基础镜像，建议以CentOS 7.6.1810镜像为基础。
+    - 准备一个镜像作为基础镜像，建议以Ubuntu 20.04镜像为基础。
 
 4. 执行如下命令，将基础镜像加载到docker中。
 
@@ -186,7 +184,7 @@
     ARG KERNEL_PKG=Ascend-cann-*-ops*.run
     ARG TF1_PLUGIN=npu_bridge-1.15.0-*.whl
     # Rec SDK TensorFlow包
-    ARG REC_SDK_PKG=Ascend-mxrec*.tar.gz
+    ARG REC_SDK_PKG=tf_rec_v2*.tar.gz
     
     # 设置安装路径环境变量
     ARG ASCEND_BASE=/usr/local/Ascend
@@ -221,11 +219,10 @@
         rm -rf /etc/ascend_install.info
     
     # 安装Rec SDK TensorFlow
-    ARG SDK_TF_VERSION=tf1
-    RUN pip3.7 install $TF1_PLUGIN --force-reinstall
-    tar -zxvf Ascend-mindxsdk-mxrec*.tar.gz && \
-        pip3.7 install mxrec-for-lingqu2.0/${SDK_TF_VERSION}_whl/mxrec*.whl --force-reinstall && \
-        rm -rf /root/.cache/pip
+    RUN pip3.7 install $TF1_PLUGIN --force-reinstall && \
+        pip3.7 install $REC_SDK_PKG --force-reinstall && \
+        rm -rf /root/.cache/pip && \
+        rm -f $REC_SDK_PKG
     ```
 
 3. 进入build\_images路径，执行如下指令构建Rec SDK TensorFlow镜像。
@@ -234,14 +231,14 @@
     docker build -t {镜像名称}:{镜像tag} -f Dockerfile .
     ```
 
-**使用CentOS 7.6.1810或用户镜像制作训练镜像<a name="section104919392501"></a>**
+**使用Ubuntu 20.04或用户镜像制作训练镜像<a name="section104919392501"></a>**
 
 1. 确认镜像中是否已经安装以下依赖，将未安装的依赖软件包下载到build\_images目录下。
 
     |依赖名称| 下载链接                                                                                         |
     |--|----------------------------------------------------------------------------------------------|
-    |gcc-7.3.0| [链接](https://mirrors.ustc.edu.cn/gnu/gcc/gcc-7.3.0/gcc-7.3.0.tar.gz)                         |
-    |cmake-3.20.6| [链接](https://cmake.org/files/v3.20/cmake-3.20.6.tar.gz)                                      |
+    |gcc-11.2.0| [链接](https://mirrors.ustc.edu.cn/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz)                         |
+    |cmake-3.22.6| [链接](https://cmake.org/files/v3.22/cmake-3.22.6.tar.gz)                                      |
     |ucx| [链接](https://github.com/openucx/ucx/archive/master.zip)                                      |
     |openmpi-4.1.5| [链接](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz)               |
     |python-3.7.5| [链接](https://repo.huaweicloud.com/python/3.7.5/Python-3.7.5.tar.xz)                          |
@@ -249,195 +246,7 @@
     |CANN软件包、TensorFlow适配昇腾插件以及Rec SDK软件包| 参见[安装依赖](#zh-cn_topic_0000001580007100)                                                                                   |
     |TensorFlow（1.15.0）| [链接](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html) |
 
-2. 在build\_images目录下创建Dockerfile配置文件（以Dockerfile名称为例），使用vi Dockerfile命令编辑文件，插入如下内容。
-
-    ```bash
-    # 请根据实际情况修改基础镜像名称及镜像tag
-    FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/centos:7.6.1810
-    
-    WORKDIR /tmp
-    
-    
-    # 根据实际情况选择安装需要的依赖，如果一些依赖不需要可以将对应代码去掉或注释；同时，确保下载的依赖的包名与如下代码中的包名一致，
-    # 否则在安装对应的依赖时可能出现找不到文件的错误。
-    COPY gcc-7.3.0.tar.gz ./
-    COPY cmake-3.20.6.tar.gz ./
-    COPY ucx-master.zip ./
-    COPY openmpi-4.1.5.tar.gz ./
-    COPY Python-3.7.5.tar.xz ./
-    COPY hdf5-1.10.5.tar.gz ./
-    
-    COPY Ascend-cann-toolkit*.run ./
-    COPY Ascend-cann-*-ops*.run ./
-    COPY version.info ./
-    COPY ascend_install.info ./
-    COPY ./npu_bridge-1.15.0-*.whl ./
-    COPY Ascend-mindxsdk-mxrec*.tar.gz ./
-    
-    # 1.安装编译环境
-    RUN yum makecache && \
-        yum -y install centos-release-scl && \
-        yum -y install devtoolset-7 && \
-        yum -y install devtoolset-7-gcc-c++ && \
-        yum -y install epel-release && \
-        yum -y install wget zlib-devel bzip2 bzip2-devel openssl-devel ncurses-devel openssh-clients openssh-server sqlite-devel openmpi-devel \
-        readline-devel tk-devel gdbm-devel db4-devel libpcap-devel xz-devel libffi-devel hdf5-devel patch pciutils lcov vim dos2unix gcc-c++ \
-        autoconf automake libtool git net-tools make sudo unzip && \
-        yum clean all && \
-        rm -rf /var/cache/yum && \
-        echo "source /opt/rh/devtoolset-7/enable" >> /etc/profile
-    # 注：openssh-server为双机训练样例需要，仅单机训练时可去掉
-    
-    # 2.安装gcc-7.3.0
-    RUN source /etc/profile && \
-        tar -zxvf gcc-7.3.0.tar.gz && \
-        cd gcc-7.3.0 && \
-        wget https://mirrors.huaweicloud.com/gnu/gmp/gmp-6.1.0.tar.bz2 && \
-        wget https://mirrors.huaweicloud.com/gnu/mpfr/mpfr-3.1.4.tar.bz2 && \
-        wget https://mirrors.huaweicloud.com/gnu/mpc/mpc-1.0.3.tar.gz && \
-        wget https://mindx.obs.cn-south-1.myhuaweicloud.com/opensource/isl-0.16.1.tar.bz2 && \
-        sed -i "246s/tar -xf "${ar}"/tar --no-same-owner -xf "${ar}"/" contrib/download_prerequisites && \
-        ./contrib/download_prerequisites && \
-        ./configure --enable-languages=c,c++ --disable-multilib --with-system-zlib --prefix=/usr/local/gcc7.3.0 && \
-        make -j && make -j install && cd .. && \
-        find gcc-7.3.0/ -name libstdc++.so.6.0.24 -exec cp {} /lib64/ \; && \
-        rm -rf gcc-7.3.0*
-    
-    ENV LD_LIBRARY_PATH=/usr/local/gcc7.3.0/lib64:$LD_LIBRARY_PATH \
-        PATH=/usr/local/gcc7.3.0/bin:$PATH
-    
-    # 3.安装cmake
-    RUN source /etc/profile && gcc -v && tar -zxf cmake-3.20.6.tar.gz && \
-        cd cmake-3.20.6 && \
-        ./bootstrap && make && make install && cd .. && \
-        rm -rf cmake-3.20.6*
-    
-    # 4.安装ucx
-    RUN source /etc/profile && gcc -v && unzip ucx-master.zip && \
-        cd ucx-master && \
-        ./autogen.sh && \
-        ./contrib/configure-release --prefix=/usr/local/ucx && \
-        make && make install && cd .. && \
-        rm -rf ucx-master*
-    
-    # 5.安装openmpi，需要配置ucx
-    RUN source /etc/profile && gcc -v && tar -zxvf openmpi-4.1.5.tar.gz && \
-        cd openmpi-4.1.5 && \
-        ./configure --enable-orterun-prefix-by-default --prefix=/usr/local/openmpi --with-ucx=/usr/local/ucx && \
-        make -j 16 && make install && cd .. && \
-        rm -rf openmpi-4.1.5*
-    
-    ENV LD_LIBRARY_PATH=/usr/local/openmpi/lib:$LD_LIBRARY_PATH \
-        PATH=/usr/local/openmpi/bin:$PATH
-    
-    # 6.安装python3.7.5
-    RUN source /etc/profile && gcc -v && tar -xvf Python-3.7.5.tar.xz && \
-        cd Python-3.7.5 && \
-        mkdir -p build && cd build && \
-        ../configure --enable-shared --prefix=/usr/local/python3.7.5 && \
-        make -j && make install && \
-        cd ../../ && rm -rf Python-3.7.5* && \
-        ldconfig
-    
-    ENV PATH=$PATH:/usr/local/python3.7.5/bin \
-        LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/python3.7.5/lib
-    
-    # 配置python源
-    RUN mkdir ~/.pip && touch ~/.pip/pip.conf && \
-        echo "[global]" > ~/.pip/pip.conf && \
-        echo "trusted-host=pypi.douban.com" >> ~/.pip/pip.conf && \
-        echo "index-url=http://pypi.douban.com/simple/" >> ~/.pip/pip.conf && \
-        echo "timeout=200" >> ~/.pip/pip.conf
-    
-    # 7.安装hdf5
-    RUN source /etc/profile && gcc -v && tar -zxvf hdf5-1.10.5.tar.gz && \
-        cd hdf5-1.10.5 && \
-        ./configure --prefix=/usr/local/hdf5 && \
-        make && make install && cd .. && rm -rf hdf5-1.10.5*
-    
-    ENV CPATH=/usr/local/hdf5/include/:/usr/local/hdf5/lib/
-    
-    RUN ln -s /usr/local/hdf5/lib/libhdf5.so /usr/lib/libhdf5.so && \
-        ln -s /usr/local/hdf5/lib/libhdf5_hl.so /usr/lib/libhdf5_hl.so
-    
-    # 8.安装python包
-    # 安装mpi4py时使用该环境变量，安装完成后取消
-    ENV CC=/usr/lib64/openmpi/bin/mpicc
-    
-    RUN pip3.7 install -U pip && \
-        pip3.7 install numpy && \
-        pip3.7 install decorator && \
-        pip3.7 install sympy==1.4 && \
-        pip3.7 install cffi==1.12.3 && \
-        pip3.7 install pyyaml && \
-        pip3.7 install pathlib2 && \
-        pip3.7 install grpcio && \
-        pip3.7 install grpcio-tools && \
-        pip3.7 install protobuf==3.20.0 && \
-        pip3.7 install scipy && \
-        pip3.7 install requests && \
-        pip3.7 install mpi4py && \
-        pip3.7 install scikit-learn && \
-        pip3.7 install easydict && \
-        pip3.7 install attrs && \
-        pip3.7 install pytest==7.1.1 && \
-        pip3.7 install pytest-cov==4.1.0 && \
-        pip3.7 install pytest-html && \
-        pip3.7 install Cython && \
-        pip3.7 install h5py==3.1.0 && \
-        pip3.7 install pandas && \
-        pip3.7 install funcsigs && \
-        pip3.7 install tqdm && \
-        pip3.7 install portalocker && \
-        pip3.7 install toml && \
-        rm -rf /root/.cache/pip
-    
-    RUN unset CC
-    
-    # 9.设置驱动路径环境变量
-    ARG ASCEND_BASE=/usr/local/Ascend
-    ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$ASCEND_BASE/driver/lib64/driver:$LD_LIBRARY_PATH
-    
-    # 10.CANN相关参数
-    ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
-    ARG KERNEL_PKG=Ascend-cann-*-ops*.run
-    
-    # 11.安装ascend-toolkit和ops算子包
-    RUN umask 0027 && \
-        mkdir -p $ASCEND_BASE/driver && \
-        /usr/bin/cp -f version.info $ASCEND_BASE/driver/ && \
-        /usr/bin/cp -f ascend_install.info /etc/ && \
-        chmod +x $TOOLKIT_PKG && \
-        echo Y | bash $TOOLKIT_PKG --quiet --install --install-path=$ASCEND_BASE && \
-        chmod +x $KERNEL_PKG && \
-        echo Y | bash $KERNEL_PKG --quiet --install && \
-        source $ASCEND_BASE/cann/set_env.sh && \
-        rm -rf /root/.cache/pip && \
-        rm -f $TOOLKIT_PKG && \
-        rm -f $KERNEL_PKG && \
-        rm -rf $ASCEND_BASE/driver && \
-        rm -rf /etc/ascend_install.info
-    
-    # 12.安装tf相关的Python包以及Rec SDK# 默认构建tf1的镜像，构建tf2镜像自行修改参数
-    ARG TF_VER=1.15.0
-    ARG TF1_PLUGIN=npu_bridge-1.15.0-*.whl
-    RUN pip3.7 install tensorflow==${TF_VER} && \
-        pip3.7 install tf_slim && \
-        HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 pip3.7 install horovod --no-cache-dir && \
-        pip3.7 install $TF1_PLUGIN --force-reinstall && \
-        tar -zxvf Ascend-mindxsdk-mxrec*.tar.gz && \
-        pip3.7 install mxrec-for-lingqu2.0/tf1_whl/mxrec*.whl --force-reinstall && \
-        rm -rf /root/.cache/pip
-    
-    # 13.清理临时目录
-    RUN rm -rf ./*
-    ```
-
-3. 进入build\_images路径，执行如下指令构建Rec SDK TensorFlow镜像。
-
-    ```bash
-    docker build -t {镜像名称}:{镜像tag} -f Dockerfile .
-    ```
+2. 请参见[OVERVIEW](../../../../docker/OVERVIEW.md)制作镜像。
 
 ## 配置环境变量<a name="zh-cn_topic_0000001580326424"></a>
 
@@ -470,21 +279,21 @@ Rec SDK TensorFlow环境变量的说明如[表1](#table126401659163820)所示。
 - 升级Rec SDK TensorFlow新版本时，需要先手动卸载旧版本。
 
     ```bash
-    pip3 uninstall mxrec -y
+    pip3 uninstall tf_rec_v2 -y
     ```
 
 - 使用<b>--upgrade</b>命令升级Rec SDK TensorFlow。
 
     ```bash
-    pip3 install --upgrade mxrec_for_lingqu-{version}-py3-none-{arch}.whl
+    pip3 install --upgrade tf_rec_v2-{version}-{arch}.tar.gz
     ```
 
-其中，{version}为版本号，{arch}为操作系统架构。
+（其中 `{version}` 代表版本号，`{arch}` 代表操作系统架构，请根据实际安装包替换）
 
 ## 卸载<a name="zh-cn_topic_0000001629887081"></a>
 
 用户如需移除Rec SDK TensorFlow软件包部署，可参考以下命令进行卸载。
 
 ```bash
-pip3 uninstall mxrec -y
+pip3 uninstall tf_rec_v2 -y
 ```

@@ -17,7 +17,7 @@
 
 |依赖名称/操作|推荐版本|获取方式|
 |--|--|--|
-|昇腾硬件产品驱动和固件|Ascend HDK 25.5.0|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>安装驱动与固件请参见相关硬件产品配套的《[驱动和固件安装升级指南](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)》。|
+|昇腾硬件产品驱动和固件|Ascend HDK 26.0.RC1及补丁版本|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>安装驱动与固件请参见相关硬件产品配套的《[驱动和固件安装升级指南](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)》。|
 |Ascend Docker Runtime|MindCluster 7.3.0|请参见《[MindCluster 集群调度用户指南](https://www.hiascend.com/document/detail/zh/mindcluster/730/clustersched/dlug/dlug_installation_017.html)》的“安装 > 安装部署”章节进行安装。|
 |配置Device网卡|-|请参考《[Ascend Training Solution 23.0.0 组网指南](https://support.huawei.com/enterprise/zh/doc/EDOC1100349028/d9914967)》的参数面网络配置示例配置示例配置训练节点章节，通过HCCN_Tool配置NPU网口的Device IP。|
 |CANN软件包|CANN 9.0.0|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>根据设备架构获取Ascend-cann-toolkit_<i>{version}</i>_linux-<i>{arch}</i>.run和Ascend-cann-<i>{chip_type}</i>-ops-<i>{version}</i>_linux-<i>{arch}</i>.run，并参考《[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta2/softwareinst/instg/instg_0008.html?Mode=PmIns&OS=Debian&InstallType=local)》的“安装CANN”章节在容器内进行安装。|
@@ -36,63 +36,46 @@
 
 | 名称                                       | 说明              |
 |------------------------------------------|-----------------|
-| Ascend-mindxsdk-torchrec-*-npu-*.tar.gz  | torchrec昇腾适配包   |
-| Ascend-mindxsdk-dynamic-emb-*.tar.gz     | RecSDK-Torch软件包 |
-| Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz | 算子包             |
-| libfbgemm_npu_api.so                     | 算子适配层           |
+| torch_rec_v2-*.tar.gz     | RecSDK-Torch软件包（已包含TorchRec昇腾注册包） |
+| rec_ops-*.whl | 自定义算子包             |
+| fbgemm_ascend-*.whl                     | fbgemm自定义算子包及PyTorch框架适配层           |
+| HierarchicalKV_ascend                     | HKV算子包           |
 
 1. 编译环境
  
    容器环境编译，参考[README](../build_torch_rec_v2_images/README.md)。
  
-2. 编译Ascend-mindxsdk-torchrec-\*-npu-\*.tar.gz
+2. 编译torch_rec_v2-*.tar.gz
  
-   参考[README](../../../../training/torch_rec_v2/torchrec_npu/README.md)。
- 
-   生成的tar包在 `RecSDK/training/torch_rec_v2/torchrec_npu/torchrec/` 路径下。
- 
-   **安装方法**
- 
+   进入RecSDK目录下：
+
+   如需编译安装软件包，可参考build/build_wrapper/torch_rec_v2/build_wrapper.sh脚本，执行脚本命令构建软件包，构建成功后，软件包在build/output子目录下：
+   
    ```bash
-   tar zxvf Ascend-mindxsdk-torchrec-*-npu-*.tar.gz
-   pip3 install torchrec-*+npu-py3-none-linux_*.whl
+   # 编译软件包
+   bash build/build_wrapper/torch_rec_v2/build_wrapper.sh
+   
+   # 安装软件包
+   pip3 uninstall -y torch_rec_v2
+   pip3 install build/output/torch_rec_v2*.tar.gz
    ```
+   
+   > [!NOTE]
+   > TorchRec昇腾注册包是基于TorchRec源码做的NPU设备适配。Rec SDK Torch 推荐算法框架包的编译安装，会同时安装TorchRec昇腾注册包。
+   > 如需单独编译安装，可通过Rec SDK Torch提供的patch文件和TorchRec源码的固定分支编译出该注册包。
+   > 请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/torchrec_npu/README.md)进行源码编译和安装。
  
-3. 编译Ascend-mindxsdk-dynamic-emb-*.tar.gz
- 
-   参考对应[README](../../../../training/torch_rec_v2/dynamic_emb/README.md)。
- 
-   生成的tar包在 `RecSDK/training/torch_rec_v2/output/` 路径下。
- 
-   **安装方法**
- 
-   ```bash
-    tar -zxvf Ascend-mindxsdk-dynamic-emb-*.tar.gz
-    pip3 install dynamic_emb-*.whl
-   ```
- 
-4. 编译Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz
+3. 编译自定义算子
  
    参考对应[README](../../../../cust_op/ascendc_op/build/README.md)。
  
-5. 编译libfbgemm_npu_api.so
+4. 编译fbgemm_ascend算子及其适配层
  
-   ```bash
-   cd RecSDK/cust_op/framework/torch_plugin/torch_library/common/
-   bash build_ops.sh
-   ```
- 
-   生成的so包在 `RecSDK/cust_op/framework/torch_plugin/torch_library/common/build` 路径下。
- 
-   **安装方法**
- 
-   编译完成后，会在common/build下生成so，并自动拷贝到python默认site-packages路径下。
- 
-   在 Python 代码中添加以下语句，即可自动从 Python 默认 site-packages 目录加载 libfbgemm_npu_api.so：
+   参考fbgemm_ascend的[README](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md)进行源码编译安装。
 
-   ```python
-   torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-   ```
+5. 编译安装HKV算子包
+
+   torch_rec_v2-*.tar.gz包中已包含HKV算子包，如需单独编译安装，请参考[README](https://gitcode.com/Ascend/HierarchicalKV-ascend/blob/develop/README.md)进行源码编译和安装。
 
 **配套版本<a name="section146113514599"></a>**
 
@@ -107,6 +90,9 @@
 **下载软件包<a name="section1852417242717"></a>**
 
 请参考本章获取所需软件包和对应的数字签名文件，下载本软件即表示您同意[华为企业业务最终用户许可协议（EULA）](https://e.huawei.com/cn/about/eula)的条款和条件。
+
+> [!NOTE]
+> 当前Release软件包为Rec SDK whl包，一键安装部署软件包待资源下载中心上线后更新。
 
 |组件名称|软件包|获取链接|
 |--|--|--|
@@ -123,7 +109,7 @@
 
 |组件名称|软件包|
 |--|--|
-|Ascend-mindxsdk-dynamic-emb-*.tar.gz|Rec SDK Torch功能包|
+|torch_rec_v2-*.tar.gz|Rec SDK Torch功能包|
 
 ## 部署容器内的开发环境<a name="ZH-CN_TOPIC_0000002336148877"></a>
 
@@ -196,19 +182,29 @@ ${image_name} \
 
 3. 按照如下步骤进行编译和安装包。
 
-    1. 安装TorchRec昇腾注册包
-
-        TorchRec昇腾注册包是基于TorchRec源码做的NPU设备适配。可通过Rec SDK Torch提供的patch文件和TorchRec源码的固定分支编译出该注册包。
-
-        具体的源码编译和安装可参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/torchrec_npu/README.md)（该包的源码编译不区分PyTorch版本）。
-
-    2. 安装Ascend-mindxsdk-dynamic-emb-\*-linux-\*.tar.gz
+    1. 安装torch_rec_v2-{version}-{arch}.tar.gz
 
         ```bash
-        # 安装Ascend-mindxsdk-dynamic-emb-*-linux-*.tar.gz
-        tar zxvf Ascend-mindxsdk-dynamic-emb-*-linux-*.tar.gz
-        pip3 install dynamic_emb-*-cp11-cp11-linux_*.whl
+        # 安装Torch SDK功能包
+        pip3 uninstall -y torch_rec_v2
+        pip3 install torch_rec_v2-{version}-{arch}.tar.gz
         ```
+
+        （其中 `{version}` 代表版本号，`{arch}` 代表操作系统架构，请根据实际安装包替换）
+
+    2. 安装自定义算子相关包
+       
+       参考fbgemm_ascend的[安装指南](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md)获取fbgemm_ascend算子包。
+
+       > [!NOTE]
+       > fbgemm_ascend whl包及rec_ops whl包待资源下载中心上线后更新。
+
+       ```shell
+       # 安装框架依赖算子包 fbgemm_ascend
+       pip3 install fbgemm_ascend-*.whl
+       # 安装自定义算子包 rec_ops
+       pip3 install rec_ops-*.whl
+       ```
 
 ## 配置环境变量<a name="ZH-CN_TOPIC_0000002336268805"></a>
 
@@ -227,10 +223,12 @@ Rec SDK Torch环境变量的说明如[表1](#table126401659163820)所示。
 用户如需移除Rec SDK Torch软件包，可参考以下命令进行卸载。
 
 ```bash
-# 卸载dynamic_emb
-pip3 uninstall dynamic_emb -y
-# 卸载torchrec
-pip3 uninstall torchrec -y
+# 卸载Rec SDK Torch主包，并连带卸载TorchRec昇腾注册包
+pip3 uninstall torch_rec_v2 -y
+
+# 基于Release版本安装方式卸载算子
+pip uninstall rec_ops
+pip uninstall fbgemm_ascend
 ```
 
 ## 升级<a name="ZH-CN_TOPIC_0000002302389340"></a>
