@@ -586,3 +586,16 @@ CM_WORKER_SIZE=8
 
         >[!NOTE] 
         >执行完拉起训练任务后，请使用**exit**命令退出ssh-agent的bash进程，避免安全风险。
+
+### Rec SDK TensorFlow执行样例
+
+RecSDK TensorFlow目前已适配以下模型，各模型的具体运行步骤请参考对应文档：
+
+| 模型                      | 说明                 | 文档链接                                                                                                          |
+| :---------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------ |
+| little\_demo            | 基础示例（sess 模式）      | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/README.md) |
+| little\_demo\_estimator | 基础示例（Estimator 模式） | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo_estimator/README.md) |
+| DCNv2                   | 深度交叉网络 v2          | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/DCNv2/README.md)            |
+| DLRM                    | 深度学习推荐模型           | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/dlrm/README.md)             |
+| MMOE                    | 多任务混合专家模型          | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/mmoe/README.md#模型运行)        |
+| WideDeep                | 宽深学习模型             | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/WideDeep/README.md#模型运行)    |
