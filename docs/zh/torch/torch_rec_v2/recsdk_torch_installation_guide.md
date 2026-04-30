@@ -30,6 +30,9 @@
 
 ### 源码编译安装
 
+> [!NOTE]
+> build_wrapper.sh 脚本构建方式跟随资源下载中心同步更新，目前推荐参考training/torch_rec_v2/dynamic_emb/README.md进行单独编译安装
+
 源码编译前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu)安装CANN开发套件软件包；参考[Ascend Extension for PyTorch安装指南](https://www.hiascend.com/document/detail/zh/Pytorch/730/configandinstg/instg/docs/zh/installation_guide/installation_via_binary_package.md)安装PyTorch适配昇腾的框架插件包。 
 
 需要编译的源码包：
@@ -161,8 +164,8 @@ ${image_name} \
 **安装Rec SDK Torch<a id="section182972951211"></a>**
 
 1. 参考[获取Rec SDK Torch软件包](#获取rec-sdk-torch软件包)获取Rec SDK Torch软件包。
-2. 将软件包拷贝到容器中。可通过以下方式：
-    - 在启动容器时，指定一个宿主机目录挂载到容器内，并将下载的软件包放在其中，使容器可以访问到下载的软件包。
+2. 将软件包拷贝到容器中。可通过以下方法二选一：
+    - 方法一：在启动容器时，指定一个宿主机目录挂载到容器内，并将下载的软件包放在其中，使容器可以访问到下载的软件包。
 
         宿主机目录挂载到容器的docker参数示例：
 
@@ -170,12 +173,12 @@ ${image_name} \
         -v /dir1:/dir1
         ```
 
-    - 在宿主机上，使用**docker cp**指令将软件包拷贝到容器内。
+    - 方法二：在宿主机上，使用**docker cp**指令将软件包拷贝到容器内。
 
         **docker cp**指令示例：
 
         ```bash
-        docker cp host_file_path container_name:container_file_path
+        docker cp {host_file_path} {container_name}:{container_file_path}
         ```
 
         其中，host\_file\_path为宿主机文件路径，container\_name为待拷入的docker容器名称，container\_file\_path为待拷入的docker容器内的文件路径。
@@ -190,7 +193,7 @@ ${image_name} \
         pip3 install torch_rec_v2-{version}-{arch}.tar.gz
         ```
 
-        （其中 `{version}` 代表版本号，`{arch}` 代表操作系统架构，请根据实际安装包替换）
+        其中 `{version}` 代表版本号，`{arch}` 代表操作系统架构，请根据实际安装包替换。
 
     2. 安装自定义算子相关包
        
@@ -199,7 +202,7 @@ ${image_name} \
        > [!NOTE]
        > fbgemm_ascend whl包及rec_ops whl包待资源下载中心上线后更新。
 
-       ```shell
+       ```bash
        # 安装框架依赖算子包 fbgemm_ascend
        pip3 install fbgemm_ascend-*.whl
        # 安装自定义算子包 rec_ops

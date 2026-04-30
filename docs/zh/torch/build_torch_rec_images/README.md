@@ -19,9 +19,7 @@
 | 配套版本1 | 2.6.0   | 2.6.0     | 1.1.0      |
 | 配套版本2 | 2.7.1   | 2.7.1     | 1.2.0      |
 
-在Dockerfile文件中，会下载PyTorch软件包和fbgemm_gpu软件包。
-
-当前Dockerfile中默认配置下载PyTorch 2.6.0和fbgemm_gpu 1.1.0+cpu版本的软件包。
+当前Dockerfile中默认配置下载PyTorch 2.6.0和fbgemm_gpu 1.1.0+cpu版本的软件包，用户可以根据需要，对Dockerfile中对应版本下载命令进行修改。
 
 若需制作PyTorch 2.7.1版本配套的镜像，请参见后续[制作PyTorch 2.7.1版本镜像](#制作pytorch-271版本镜像)章节。
 
@@ -51,7 +49,7 @@ CANN 8.5.0及之后版本，算子包名称存在变化，下载算子包时注�
 可将物理机上相应的文件拷贝到`build_images`目录。物理机安装驱动与固件后，version.info默认安装路径为/usr/local/Ascend/driver/version.info；
 ascend_install.info默认安装路径为/etc/ascend_install.info。
 
-Step3：将Dockerfile移动到`build_images`目录中，并运行下面命令构建镜像。构建镜像的步骤在Dockerfile中有详细的说明，注释部分是安装CANN包与torchrec相关包的操作。
+Step3：根据基础OS镜像将[Dockerfile_centos](./Dockerfile_centos)、[Dockerfile_debian](./Dockerfile_debian)或[Dockerfile_openeuler](./Dockerfile_openeuler)移动到`build_images`目录中，并运行下面命令构建镜像。构建镜像的步骤在Dockerfile中有详细的说明，注释部分是安装CANN包与torchrec相关包的操作。
 
 ```shell
 # 服务器能访问外网
@@ -129,6 +127,8 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 3. 请参见[构建步骤](#构建步骤)章节制作镜像
 
 ### 方式二：升级已有镜像中的软件版本
+
+基于当前已有的镜像，升级其中的PyTorch版本，fbgemm_gpu版本，torch_npu版本至PyTorch 2.7.1对应版本。
 
 1. 升级PyTorch版本
 

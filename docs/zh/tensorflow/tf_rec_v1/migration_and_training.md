@@ -9,12 +9,12 @@ Rec SDK TensorFlow提供使用tf.Session训练场景和NPUEstimator训练场景�
 - tf.Session训练场景。通过新建的Session实例启动模型运行，返回Tensor示例，进行定制化模型训练。
 - NPUEstimator训练场景。基于对机器学习不同阶段的控制的封装，用户无需不断地为新机器学习任务重复编写训练、评估、预测的代码，可以专注于对网络结构的控制。
 
->[!NOTE]
+> [!NOTE]
 >
->- Rec SDK TensorFlow暂时不支持Keras。
->- Rec SDK TensorFlow目前仅支持使用TensorFlow原生API模型训练脚本迁移，不支持使用第三方框架（tf\_adapter、HugeCTR、DeepRec等）。
->- Rec SDK TensorFlow目前仅支持模型的输入数据为tf.data.Dataset格式。
->- 启用大小循环的情况下，训练迭代的总次数必须是小循环（即iterations\_per\_loop）的整数倍。
+> - Rec SDK TensorFlow暂时不支持Keras。
+> - Rec SDK TensorFlow目前仅支持使用TensorFlow原生API模型训练脚本迁移，不支持使用第三方框架（tf\_adapter、HugeCTR、DeepRec等）。
+> - Rec SDK TensorFlow目前仅支持模型的输入数据为tf.data.Dataset格式。
+> - 启用大小循环的情况下，训练迭代的总次数必须是小循环（即iterations\_per\_loop）的整数倍。
 
 **TensorFlow与Rec SDK TensorFlow接口对应关系<a name="section9248145363514"></a>**
 
@@ -80,8 +80,8 @@ Estimator API属于TensorFlow的高阶API，在2018年发布的TensorFlow  1.10�
 from npu_bridge.npu_init import *
 ```
 
->[!NOTE]
->引入上述头文件后，训练脚本默认在昇腾AI处理器执行。
+> [!NOTE]
+> 引入上述头文件后，训练脚本默认在昇腾AI处理器执行。
 
 **数据预处理<a name="section1740155317117"></a>**
 
@@ -198,8 +198,8 @@ mnist_classifier.train(
   hooks=[logging_hook])
 ```
 
->[!NOTE]
->如果在迁移与训练过程中遇到报错，请参考[FAQ](faq.md)进行解决，或者联系技术支持。
+> [!NOTE]
+> 如果在迁移与训练过程中遇到报错，请参考[FAQ](faq.md)进行解决，或者联系技术支持。
 
 ### 使用Estimator训练<a name="ZH-CN_TOPIC_0000001580326420"></a>
 
@@ -218,9 +218,9 @@ Estimator封装了对机器学习不同阶段的控制，用户无需不断地�
 
 用户需要适配所使用的模型，可以在适配模型过程中加入Rec SDK TensorFlow提供的功能特性。本章节旨在介绍模型适配过程中的一些关键步骤，以及怎样在适配模型过程中加入想要使用的功能特性。
 
->[!NOTE]
->功能特性可以叠加使用，用户需在对应的关键步骤中修改适配。如需查看单个功能特性的调用流程，请参考[训练功能特性流程](appendix.md#训练功能特性流程)。
->特征淘汰功能和片上内存侧动态扩容模式不能同时开启。
+> [!NOTE]
+> 功能特性可以叠加使用，用户需在对应的关键步骤中修改适配。如需查看单个功能特性的调用流程，请参考[训练功能特性流程](appendix.md#训练功能特性流程)。
+> 特征淘汰功能和片上内存侧动态扩容模式不能同时开启。
 
 关键步骤操作参考如下。
 
@@ -295,8 +295,8 @@ Estimator封装了对机器学习不同阶段的控制，用户无需不断地�
 
      通过调用[create_table](./api/model_apis.md#create_table)接口创建稀疏网络层，每个稀疏特征都可以创建一个稀疏网络层。
 
-     >[!NOTE]
-     >在Estimator模式下，create\_table接口必须在传入Estimator的model\_fn里面调用，Estimator源码会在调用model\_fn时创建新的图实例，这个和入口函数main所在的默认图不是同一张图。
+     > [!NOTE]
+     > 在Estimator模式下，create\_table接口必须在传入Estimator的model\_fn里面调用，Estimator源码会在调用model\_fn时创建新的图实例，这个和入口函数main所在的默认图不是同一张图。
 
 6. 传入稀疏网络层和特征列表创建模型计算图，在计算图中使用[sparse_lookup](./api/model_apis.md#sparse_lookup)进行特征查询和误差计算。
 
@@ -334,8 +334,8 @@ Estimator封装了对机器学习不同阶段的控制，用户无需不断地�
 
 请参考[Estimator迁移](#estimator迁移)章节中的“执行训练”。
 
->[!NOTE]
->Estimator场景下执行train\_and\_evaluate时，若未启用片上内存侧动态扩容时会两次建表，当表特别大时可能会导致显存不足，此时可以改成片上内存侧扩容模式进行规避，扩容模式只会建一次表。
+> [!NOTE]
+> Estimator场景下执行train\_and\_evaluate时，若未启用片上内存侧动态扩容时会两次建表，当表特别大时可能会导致显存不足，此时可以改成片上内存侧扩容模式进行规避，扩容模式只会建一次表。
 
 #### 完成训练并查看结果<a name="ZH-CN_TOPIC_0000001629887041"></a>
 
@@ -402,8 +402,8 @@ sess.run API属于TensorFlow的低阶API，相对于Estimator来讲，灵活性�
 from npu_bridge.npu_init import *
 ```
 
->[!NOTE]
->引入上述头文件后，训练脚本默认在昇腾AI处理器执行。
+> [!NOTE]
+> 引入上述头文件后，训练脚本默认在昇腾AI处理器执行。
 
 **数据预处理<a id="section3602537142311"></a>**
 
@@ -566,8 +566,8 @@ with tf.Session(config=config) as sess:
     sess.run(...)
 ```
 
->[!NOTE]
->如果在迁移与训练过程中遇到报错，请参考[FAQ](faq.md)进行解决，或者联系技术支持。
+> [!NOTE]
+> 如果在迁移与训练过程中遇到报错，请参考[FAQ](faq.md)进行解决，或者联系技术支持。
 
 ### 使用tf.Session训练<a name="ZH-CN_TOPIC_0000001580166508"></a>
 
@@ -584,8 +584,8 @@ with tf.Session(config=config) as sess:
 
 用户需要适配所使用的模型，可以在适配模型过程中加入Rec SDK TensorFlow提供的功能特性。本章节旨在介绍模型适配过程中的一些关键步骤，以及怎样在适配模型过程中加入想要使用的功能特性。
 
->[!NOTE]
->功能特性可以叠加使用，用户需在对应的关键步骤中修改适配。如需查看单个功能特性的调用流程，请参考[训练功能特性流程](appendix.md#训练功能特性流程)。
+> [!NOTE]
+> 功能特性可以叠加使用，用户需在对应的关键步骤中修改适配。如需查看单个功能特性的调用流程，请参考[训练功能特性流程](appendix.md#训练功能特性流程)。
 >特征淘汰功能和片上内存侧动态扩容模式不能同时开启。
 
 关键步骤操作参考如下。
@@ -700,8 +700,8 @@ with tf.Session(config=config) as sess:
 1. 查看训练结果。
 2. 调用[terminate\_config\_initializer](./api/initialization_and_deinitialization_of_the_training_framework.md#terminate_config_initializer)接口关闭数据流释放资源。
 
->[!NOTE]
->如需将基于Rec SDK TensorFlow保存下来的NPU格式的模型，转换为可被GPU、CPU加载使用的模型，请参考[模型转换工具使用说明](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/reference-tools/model_convert/README.md)。
+> [!NOTE]
+> 如需将基于Rec SDK TensorFlow保存下来的NPU格式的模型，转换为可被GPU、CPU加载使用的模型，请参考[模型转换工具使用说明](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/reference-tools/model_convert/README.md)。
 
 ## 分布式训练脚本迁移<a name="ZH-CN_TOPIC_0000001788871148"></a>
 
@@ -718,7 +718,7 @@ Allreduce是主流的数据并行架构，各个节点按照算法协同工作�
 
 如果按照梯度聚合方式进行分类，数据并行的主流实现有**PS-workers架构**和**Allreduce架构**两种。在**Allreduce架构**中，每个参与训练的Device形成一个环，没有中心节点来聚合所有计算梯度。Allreduce算法将参与训练的Device放置在一个逻辑环路（logical ring）中。每个Device从上行的Device接收数据，并向下行的Device发送数据，可充分利用每个Device的上下行带宽。
 
-Allreduce架构是为了解决了PS-workers架构无法线性扩展问题而提出的改良架构。各个节点按照算法协同工作，算法的目标是减少传输数据量，并充分利用硬件通信带宽。一般适合训练算力要求高、设备规模大的场景。Allreduce架构的实现原理如下图所示。
+Allreduce架构是为了解决PS-workers架构无法线性扩展问题而提出的改良架构。各个节点按照算法协同工作，算法的目标是减少传输数据量，并充分利用硬件通信带宽。一般适合训练算力要求高、设备规模大的场景。Allreduce架构的实现原理如下图所示。
 
 **图 2**  Allreduce模式<a id="fig1321114115499"></a>  
 ![](../../figures/tf_rec_v1/Allreduce模式.png "Allreduce模式")
@@ -782,9 +782,9 @@ Allreduce架构是为了解决了PS-workers架构无法线性扩展问题而提�
         return tf.estimator.EstimatorSpec(mode=mode,loss=loss,train_op=train_op)
     ```
 
-    >[!NOTE]
-    >- NPUDistributedOptimizer分布式优化器在当前版本依然兼容。
-    >- Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce功能时，由于NPUEstimator中自动添加了NPUBroadcastGlobalVariablesHook，因此无需手写实现broadcast功能。
+    > [!NOTE]
+    > - NPUDistributedOptimizer分布式优化器在当前版本依然兼容。
+    > - Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce功能时，由于NPUEstimator中自动添加了NPUBroadcastGlobalVariablesHook，因此无需手写实现broadcast功能。
 
     如果原始脚本使用TensorFlow接口计算梯度，例如grads = tf.gradients\(loss, tvars\)，需要在计算完梯度之后，调用npu\_allreduce接口对梯度进行Allreduce。
 
@@ -851,8 +851,8 @@ Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce�
     distributedOptimizer=npu_distributed_optimizer_wrapper(optimizer) # 使用NPU分布式计算，更新梯度
     ```
 
-    >[!NOTE]
-    >NPUDistributedOptimizer分布式优化器在当前版本依然兼容。
+    > [!NOTE]
+    > NPUDistributedOptimizer分布式优化器在当前版本依然兼容。
 
     如果原始脚本使用TensorFlow接口计算梯度，例如grads = tf.gradients\(loss, tvars\)，需要在计算完梯度之后，调用npu\_allreduce接口对梯度进行Allreduce：
 
@@ -875,11 +875,11 @@ Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce�
 
 **配置集群信息<a name="section644513616218"></a>**
 
->[!NOTICE]
+> [!NOTICE]
 >
->- 在昇腾AI处理器通过PS-Worker架构进行分布式训练当前仅支持NPUEstimator模式。
->- 当前仅支持一个worker进程对应在一个device上执行。
->- PS-Worker集群场景下，建议用户选择高速率网卡。
+> - 在昇腾AI处理器通过PS-Worker架构进行分布式训练当前仅支持NPUEstimator模式。
+> - 当前仅支持一个worker进程对应在一个device上执行。
+> - PS-Worker集群场景下，建议用户选择高速率网卡。
 
 PS-Worker架构下通过环境变量TF\_CONFIG配置集群信息，TF\_CONFIG里包括了两个部分：cluster和task。cluster提供了关于整个集群的信息，也就是集群中的工作服务器和参数服务器。task提供了关于当前任务的信息，详细使用说明请参考[TensorFlow官网](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_estimator)。
 
@@ -921,7 +921,7 @@ PS-Worker架构下通过环境变量TF\_CONFIG配置集群信息，TF\_CONFIG里
     配置说明：
 
     - worker\_hosts/ps\_hosts：每条信息用“,”分开，“,”后不能加空格。
-    - chief\_hosts：只能有一个，也可像当前示例一样不设置。若chief不设置，则默认第一个worker为chief，chief与其他worker一样，也进行模型训练。chief worker除了进行模型训练，还管理一些其它work（例如：checkpoint保存/恢复，写入summary信息等）。
+    - chief\_hosts：只能有一个，也可像当前示例一样不设置。若chief不设置，则默认第一个worker为chief，chief与其他worker一样，也进行模型训练。chief worker除了进行模型训练，还管理一些其它worker（例如：checkpoint保存/恢复，写入summary信息等）。
     - evaluator\_hosts：只能有一个，如果不做评估，可以不设置。
 
         下面需要做的就是正确地设置所有worker的环境变量TF\_CONFIG。
@@ -967,13 +967,12 @@ tf.estimator.train_and_evaluate(
     eval_spec=tf.estimator.EvalSpec(input_fn=input_fn))
 ```
 
->[!NOTICE]
-> 
->**评估**进程可以在Device执行，也可以在Host侧的CPU执行，但各有利弊，用户可以根据实际情况使用。
->以1机8卡场景举例，一共需要1个ps进程和8个worker进程，其中8个worker进程在Device侧执行。
+> [!NOTICE]
+> **评估**进程可以在Device执行，也可以在Host侧的CPU执行，但各有利弊，用户可以根据实际情况使用。
+> 以1机8卡场景举例，一共需要1个ps进程和8个worker进程，其中8个worker进程在Device侧执行。
 >
->- 如果**在训练的同时进行评估**，要求evaluator和worker同时启动的进程数不能超出当前Server上最大的Device数（当前是8），由于Device已经被worker进程占用，因此需要通过Host侧的CPU进行评估，此时虽然能达到训练的同时进行评估的目的，但评估时无法利用昇腾AI处理器的性能优势，但可以与训练并行执行；建议使用此方式评估时，配置checkpoint的保存时长要大于评估的执行时长。<br>要实现Host侧的评估，需要直接使用TensorFlow的原生Estimator进行评估（不能转成NPUEstimator，否则需要Device资源，会因为已被训练占用而失败）。
->- 如果**在训练完成后再进行评估**，此时用户只需要保证worker训练结束后再执行evaluator，这种情况下，训练和评估进程都可以在Device上执行，可以达到较优的性能。
+> - 如果**在训练的同时进行评估**，要求evaluator和worker同时启动的进程数不能超出当前Server上最大的Device数（当前是8），由于Device已经被worker进程占用，因此需要通过Host侧的CPU进行评估，此时虽然能达到训练的同时进行评估的目的，但评估时无法利用昇腾AI处理器的性能优势，但可以与训练并行执行；建议使用此方式评估时，配置checkpoint的保存时长要大于评估的执行时长。<br>要实现Host侧的评估，需要直接使用TensorFlow的原生Estimator进行评估（不能转成NPUEstimator，否则需要Device资源，会因为已被训练占用而失败）。
+> - 如果**在训练完成后再进行评估**，此时用户只需要保证worker训练结束后再执行evaluator，这种情况下，训练和评估进程都可以在Device上执行，可以达到较优的性能。
 
 **脚本运行<a name="section13115183161016"></a>**
 
@@ -1009,8 +1008,8 @@ python resnet50_ps_strategy.py --job_name=chief --task_index=0
 python resnet50_ps_strategy.py --job_name=evaluator --task_index=0
 ```
 
->[!NOTE]
->脚本运行依赖的环境变量请参考《TensorFlow 1.15模型迁移指南》的“执行单Device训练”章节。
+> [!NOTE]
+> 脚本运行依赖的环境变量请参考《TensorFlow 1.15模型迁移指南》的“执行单Device训练”章节。
 
 ### Horovod脚本迁移<a name="ZH-CN_TOPIC_0000001835790373"></a>
 
@@ -1117,8 +1116,8 @@ init_sess.run(npu_shutdown)
 init_sess.close()
 ```
 
->[!NOTE]
->NPUDistributedOptimizer分布式优化器在当前版本依然兼容。
+> [!NOTE]
+> NPUDistributedOptimizer分布式优化器在当前版本依然兼容。
 
 ## 精度看护<a name="ZH-CN_TOPIC_0000001980207106"></a>
 
@@ -1299,9 +1298,9 @@ precrec-python精度比对工具详细使用说明请参考[链接](https://gitc
         estim_specs = tf.estimator.EstimatorSpec(training_hooks=[npu_tf_config.estimator_dump()])
         ```
 
-    >[!NOTE]
-    >- session.run模式下，不支持dump配置和Rec SDK TensorFlow模型保存功能同时使用。
-    >- 多卡训练时，仅需在某一张卡的训练中增加dump配置，否则多卡同时保存会导致数据冲突。
+    > [!NOTE]
+    > - session.run模式下，不支持dump配置和Rec SDK TensorFlow模型保存功能同时使用。
+    > - 多卡训练时，仅需在某一张卡的训练中增加dump配置，否则多卡同时保存会导致数据冲突。
 
 3. 执行训练。
 
@@ -1331,9 +1330,9 @@ precrec-python精度比对工具详细使用说明请参考[链接](https://gitc
         npu_config = NPURunConfig(dump_config=dump_config)
         ```
 
-    >[!NOTE]
-    >- session.run模式下，不支持dump配置和Rec SDK TensorFlow模型保存功能同时使用。
-    >- 多卡训练时，仅需在某一张卡的训练中增加dump配置，否则多卡同时保存会导致数据冲突。
+    > [!NOTE]
+    > - session.run模式下，不支持dump配置和Rec SDK TensorFlow模型保存功能同时使用。
+    > - 多卡训练时，仅需在某一张卡的训练中增加dump配置，否则多卡同时保存会导致数据冲突。
 
 2. 执行训练。
 
@@ -1425,11 +1424,11 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
 
 从上图的比对结果可以看到，算子的输入基本一致，但第一个输出与标杆存在明显差异（余弦相似度为0.806927，小于0.98），说明该算子可能存在精度问题；如果算子的输入就存在明显差异，需要继续找输入节点的比对结果。
 
->[!NOTE]
+> [!NOTE]
 >执行<b>ni \(-n\) \[op\_name\] -g \[graph\] -a \[attr\] -s \[save sub graph depth\]</b>命令，可以查询算子的输入输出节点信息，具体可参考《TensorFlow 1.15模型迁移指南》的“precision\_tool命令参考”章节。
-><br>![](../../figures/tf_rec_v1/zh-cn_image_0000002210306721.png)
-><br>ni命令可以根据传入的算子名称，得到如下关键信息：
-><br>\[ \]内部为算子类型，以上图为例，算子类型为Add，如果包含PassName，表示该算子为融合算子，对应值表示融合规则名称，OriginOp为融合前的算子。
+> <br>![](../../figures/tf_rec_v1/zh-cn_image_0000002210306721.png)
+> <br>ni命令可以根据传入的算子名称，得到如下关键信息：
+> <br>\[ \]内部为算子类型，以上图为例，算子类型为Add，如果包含PassName，表示该算子为融合算子，对应值表示融合规则名称，OriginOp为融合前的算子。
 
 #### 问题来源定界<a name="ZH-CN_TOPIC_0000002174900606"></a>
 
@@ -1606,7 +1605,7 @@ for key, cos in key_cos:
 
 本章节用SVE指令集优化了TF CPU侧的4个算子，分别是less、greater、floormod和where。
 
-可在Rec SDK TensorFlow的[源码地址](https://gitcode.com/Ascend/RecSDK/tree/develop)获取组件源码，具体安装使用方法可参考源码中的“cust\_op/tf\_cpu\_op/README.md”文件。
+可在Rec SDK TensorFlow的[源码地址](https://gitcode.com/Ascend/RecSDK/tree/develop)获取组件源码，具体实现方法可参考源码中的“cust\_op/tf\_cpu\_op/README.md”文件。
 
 #### less<a name="ZH-CN_TOPIC_0000002175767405"></a>
 
@@ -1734,7 +1733,7 @@ Rec SDK TensorFlow支持TensorFlow开源推荐模型迁移适配，迁移步骤�
 
 ### DCNv2模型开发指南
 
-本章节指导如何将基于TensorFlow 1.15.0的DCNv2推荐模型从GPU环境迁移至华为昇腾NPU环境，使用tf_rec_v1组件的自动改图模式。适配后的模型代码，详见[DCNv2模型](https://gitcode.com/Ascend/Rec SDK/tree/develop_examples_and_tools/examples/DCNv2)。
+本章节指导如何将基于TensorFlow 1.15.0的DCNv2推荐模型从GPU环境迁移至华为昇腾NPU环境，使用tf_rec_v1组件的自动改图模式。适配后的模型代码，详见[DCNv2模型](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/DCNv2)。
 
 #### 前置操作
 

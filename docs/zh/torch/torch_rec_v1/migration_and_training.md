@@ -1037,7 +1037,7 @@ def train():
 
 多级缓存模式下，支持**基于时间和计数**、**基于展示点击和分数**两种准入淘汰策略。
 
-> [!NOTICE]
+> [!NOTE]
 > 
 > **仅支持单独使用其中一种准入淘汰策略，不支持两种策略混合使用。**
 
@@ -1144,11 +1144,11 @@ def train():
 **说明**
 
 - 准入
-  - 使用展示次数与点击次数按权重合成准入分数：`score = alpha × 展示 + beta × 点击（参数见 ShowClickParams）`。
-  - 当 `showclick_params.admit_threshold > 0` 时表示开启准入：分数低于准入阈值的特征视为未准入。特征ID的Embedding查表结果为全0.0向量（值可在准入策略中配置）。
+  - 使用展示次数与点击次数按权重合成准入分数：`score = alpha * 展示 + beta * 点击（参数见 ShowClickParams）`。
+  - 当 `showclick_params.admit_threshold > 0` 时表示开启准入，分数低于准入阈值的特征视为未准入。特征ID的Embedding查表结果为全0.0向量（值可在准入策略中配置）。
   - 特征ID的出现次数会进行AllToAll通信，确保所有进程都能获取到所有特征ID的出现次数。
 - 淘汰
-  - 维护淘汰分数：每步按 `new_score = (oldScore + alpha × 展示 + beta × 点击) × score_decay` 更新（score_decay 为 1 表示不衰减）。
+  - 维护淘汰分数：每步按 `new_score = (oldScore + alpha * 展示 + beta * 点击) × score_decay` 更新（score_decay 为 1 表示不衰减）。
   - 当 `evict_percentage > 0` 时表示开启淘汰：按分数升序取约 evict_percentage 比例的Embedding进行淘汰。
 
 **约束**
