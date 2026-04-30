@@ -2,7 +2,8 @@
 
 ## JaggedTensor（TorchRec）<a name="ZH-CN_TOPIC_0000002336148837"></a>
 
->[!NOTICE] 
+>[!NOTICE]
+>
 >此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
@@ -22,7 +23,7 @@ class JaggedTensor:
 |--|--|------|-------------------------------------------------------------------------------------------------------------------------------------------|
 |values|torch.Tensor[int64]| 必选   | 稀疏表查表ID。                                                                                                                                  |
 |weights|torch.Tensor| 可选   | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                            |
-|lengths|torch.Tensor[int64]| 可选   | 每一个样本中的特征序列的长度。当使用NPU设备时为必选，取值范围：[1，10000]。需保证lengths的总和与values的长度相等。Rec SDK Torch目前不支持可变batchsize，一个训练任务中的所有JaggedTensor的lengths的长度必须一致。 |
+|lengths|torch.Tensor[int64]| 可选   | 每一个样本中的特征序列的长度。当使用NPU设备时为必选，取值范围：[1, 10000]。需保证lengths的总和与values的长度相等。Rec SDK Torch目前不支持可变batch_size，一个训练任务中的所有JaggedTensor的lengths的长度必须一致。 |
 |offsets|torch.Tensor[int64]| 可选   | offsets是lengths累加的结果。offsets的第一位为0，后续位数为lengths的累加。默认值为None。offsets的合法性由用户自行保证。                                                           |
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
@@ -41,6 +42,7 @@ JaggedTensor(values=[1, 3, 4], lengths=[1, 1, 1], offsets=[0, 1, 2, 3])
 ### from\_jt\_dict<a name="ZH-CN_TOPIC_0000002508691797"></a>
 
 >[!NOTICE]
+>
 >此类下的接口为TorchRec开源接口，非Rec SDK Torch对外接口。本章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**

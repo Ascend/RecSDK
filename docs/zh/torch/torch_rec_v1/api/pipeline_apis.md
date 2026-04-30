@@ -108,6 +108,18 @@ class EmbCacheTrainPipelineSparseDist:
 - 成功：返回EmbCacheTrainPipelineSparseDist对象。
 - 失败：抛出异常。
 
+**使用示例**
+
+```python
+import torch
+from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
+cpu_device: torch.device = torch.device("cpu")
+optimizer = xx
+pipeline = EmbCacheTrainPipelineSparseDist(
+    model, optimizer, cpu_device=cpu_device, npu_device=device, execute_all_batches=True
+)
+```
+
 ### progress<a name="ZH-CN_TOPIC_0000002396563016"></a>
 
 **功能描述<a name="section634582619155"></a>**

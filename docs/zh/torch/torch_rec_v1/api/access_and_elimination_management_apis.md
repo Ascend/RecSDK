@@ -28,6 +28,13 @@ class AdmitAndEvictPolicyType(Enum):
 - 成功：返回AdmitAndEvictPolicyType枚举值。
 - 失败：抛出异常。
 
+**使用示例**
+
+```python
+from torchrec_embcache.distributed.configs import AdmitAndEvictPolicyType
+policy = AdmitAndEvictPolicyType.POLICY_COUNT
+```
+
 ## ShowClickParams<a name="ZH-CN_TOPIC_0000002430202771"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -60,6 +67,13 @@ class ShowClickParams:
 
 - 成功：返回ShowClickParams对象。
 - 失败：抛出异常。
+
+**使用示例**
+
+```python
+from torchrec_embcache.distributed.configs import ShowClickParams
+showclick_params = ShowClickParams(alpha=1, beta=1, admit_threshold=0.1, evict_percentage=0.1, score_decay=0.9)
+```
 
 ## AdmitAndEvictConfig<a name="ZH-CN_TOPIC_0000002396563024"></a>
 
@@ -103,6 +117,38 @@ policy_type为POLICY_SHOWCLICK时：
 
 POLICY_COUNT和POLICY_SHOWCLICK策略不能一起使用。
 
+**返回值说明**
+
+- 成功：返回AdmitAndEvictConfig对象。
+- 失败：抛出异常。
+
+**使用示例**
+
+policy_type为POLICY_COUNT时：
+
+```python
+from torchrec_embcache.distributed.configs import AdmitAndEvictConfig
+admit_and_evict_config = AdmitAndEvictConfig(
+    admit_threshold=2,
+    not_admitted_default_value=0.999,
+    evict_threshold=2000_0000,
+    evict_step_interval=evict_step_interval,
+)
+```
+
+policy_type为POLICY_SHOWCLICK时：
+
+```python
+from torchrec_embcache.distributed.configs import AdmitAndEvictConfig, AdmitAndEvictPolicyType, ShowClickParams
+showclick_params = ShowClickParams(alpha=1, beta=1, admit_threshold=0.1, evict_percentage=0.1, score_decay=0.9)
+admit_and_evict_config = AdmitAndEvictConfig(
+    showclick_params=showclick_params,
+    not_admitted_default_value=0.999,
+    evict_step_interval=evict_step_interval,
+    policy_type=AdmitAndEvictPolicyType.POLICY_SHOWCLICK,  # type: ignore
+)
+```
+
 ## JaggedTensorWithTimestamp<a name="ZH-CN_TOPIC_0000002461958569"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -133,6 +179,28 @@ class JaggedTensorWithTimestamp(ExtendedJaggedTensor):
 |offsets|torch.Tensor|可选|表示每个样本的起始偏移量。默认为None。|
 |timestamps|torch.Tensor|可选|表示与values对应的时间戳信息。默认为None。|
 
+**返回值说明**
+
+- 成功：返回JaggedTensorWithTimestamp对象。
+- 失败：抛出异常。
+
+**使用示例**
+
+```python
+import torch
+from torchrec_embcache.sparse.jagged_tensor_with_timestamp import (
+    JaggedTensorWithTimestamp,
+)
+id_range = 10000
+lookup_lens = 100
+start_time = 1745897370
+end_time = 1777433370
+ids = torch.randint(0, id_range, (lookup_lens,))
+timestamp_data = torch.randint(start_time, end_time, ids.size(), dtype=torch.int64)
+lengths = torch.ones(lookup_lens).long()
+jagged_tensor_with_ts = JaggedTensorWithTimestamp(values=ids, lengths=lengths, timestamps=timestamp_data)
+```
+
 ## KeyedJaggedTensorWithTimestamp<a name="ZH-CN_TOPIC_0000002428320084"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -150,3 +218,31 @@ def from_jt_dict(jt_dict: Dict[str, JaggedTensorWithTimestamp],) -> "KeyedJagged
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
 |jt_dict|Dict[str, JaggedTensorWithTimestamp]|必选|特征名称和对应的JaggedTensorWithTimestamp组成的字典。长度不能为0。其中JaggedTensorWithTimestamp的取值范围参考[JaggedTensor（TorchRec）](./data_apis.md)。|
+
+**返回值说明**
+
+- 成功：返回KeyedJaggedTensorWithTimestamp对象。
+- 失败：抛出异常。
+
+**使用示例**
+
+```python
+import torch
+from torchrec_embcache.sparse.jagged_tensor_with_timestamp import (
+    JaggedTensorWithTimestamp,
+    KeyedJaggedTensorWithTimestamp
+)
+lookup_lens = 100
+start_time = 1745897370
+end_time = 1777433370
+feature_len = 4
+num_embeddings = [1000, 1000, 1000, 1000]
+for ind in range(feature_len):
+    name = f"feat{ind}"
+    id_range = num_embeddings[ind]
+    ids = torch.randint(0, id_range, (lookup_lens,))
+    timestamp_data = torch.randint(start_time, end_time, ids.size(), dtype=torch.int64)
+    lengths = torch.ones(lookup_lens).long()
+    input_dict[name] = JaggedTensorWithTimestamp(values=ids, lengths=lengths, timestamps=timestamp_data)
+kjt_tensor_with_ts = KeyedJaggedTensorWithTimestamp.from_jt_dict(input_dict)
+```

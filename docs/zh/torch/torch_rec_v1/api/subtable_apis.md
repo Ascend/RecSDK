@@ -3,6 +3,7 @@
 ## ShardingEnv（TorchRec）<a name="ZH-CN_TOPIC_0000002336148941"></a>
 
 >[!NOTICE]
+>
 >此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
@@ -23,7 +24,7 @@ def from_process_group(cls, pg: dist.ProcessGroup) -> "ShardingEnv":
 |--|--|--|--|
 |world_size|int|必选|使用的卡数。取值范围：[1，8]|
 |rank|int|必选|当前的卡号。取值范围：[0，world_size -1]|
-|pg|dist.ProcessGroup|必选|分布式通讯链接。取值范围：只支持backend为hccl和gloo的链接。<div class="notice"><span class="noticetitle">须知</span><div class="notebody">“hccl”在PyTorch里面的backend_name为custom。</div></div>|
+|pg|dist.ProcessGroup|必选|分布式通讯链接。取值范围：只支持backend为hccl和gloo的链接。hccl在PyTorch里面的backend_name为custom。|
 |output_dtensor|bool|可选|仅支持默认值为False，不支持用户自定义。|
 
 **使用示例<a name="section193151694205"></a>**
@@ -42,6 +43,7 @@ host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
 ## Topology（TorchRec）<a name="ZH-CN_TOPIC_0000002336268737"></a>
 
 >[!NOTICE]
+>
 >此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
@@ -87,7 +89,8 @@ topo = Topology(world_size=world_size, compute_device="npu")
 
 ## ParameterConstraints（TorchRec）<a name="ZH-CN_TOPIC_0000002336148869"></a>
 
->[!NOTICE]
+>[!NOTICE] 
+>
 >此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
@@ -173,6 +176,7 @@ hybrid_sharders = get_default_hybrid_sharders(host_env=host_env)
 ### 初始化<a name="ZH-CN_TOPIC_0000002524309357"></a>
 
 >[!NOTICE]
+>
 >此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
@@ -190,8 +194,8 @@ class EmbeddingShardingPlanner:
 
 |参数名|类型| 可选/必选 | 说明                                                    |
 |--|--|-------|-------------------------------------------------------|
-|topology|Topology| 可选    | 参考Topology（TorchRec）的取值范围。当使用NPU设备时参数为必传。                            |
-|constraints|Dict[str, ParameterConstraints]| 可选    | 参考ParameterConstraints（TorchRec）的取值范围。当使用NPU设备时参数为必传。 |
+|topology|Topology| 可选    | 参考Topology（TorchRec）的取值范围。当使用NPU设备时参数为必选。                            |
+|constraints|Dict[str, ParameterConstraints]| 可选    | 参考ParameterConstraints（TorchRec）的取值范围。当使用NPU设备时参数为必选。 |
 |batch_size|int| 可选    | 取值范围：[1, 1000000]。                                    |
 |enumerator|torchrec.distributed.planner.types.Enumerator| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                 |
 |storage_reservation|torchrec.distributed.planner.types.StorageReservation| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                 |
@@ -219,6 +223,7 @@ planner = EmbeddingShardingPlanner(
 ### collective\_plan<a name="ZH-CN_TOPIC_0000002508694909"></a>
 
 >[!NOTICE]
+>
 >此类下的接口为TorchRec开源接口，非Rec SDK Torch对外接口。本章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
@@ -260,6 +265,7 @@ plan = planner.collective_plan(test_model, hybrid_sharders, dist.GroupMember.WOR
 ### 初始化<a name="ZH-CN_TOPIC_0000002492189666"></a>
 
 >[!NOTICE]
+>
 >此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
@@ -302,6 +308,7 @@ ddp_model = DistributedModelParallel(
 ### fused\_optimizer<a name="ZH-CN_TOPIC_0000002476574952"></a>
 
 >[!NOTICE]
+>
 >此类下的接口为TorchRec开源接口，非Rec SDK Torch对外接口。本章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
@@ -316,7 +323,7 @@ def fused_optimizer()
 
 **返回值说明<a name="section1367815197580"></a>**
 
-- 成功：返回系数表的优化器。
+- 成功：返回稀疏表的优化器。
 - 失败：抛出异常。
 
 **使用示例<a name="section1045492782314"></a>**
@@ -348,13 +355,31 @@ class EmbCacheEmbeddingBagCollectionSharder(EmbeddingBagCollectionSharder):
 |cpu_env|ShardingEnv|必选|CPU环境配置|
 |npu_device|torch.device|必选|NPU设备|
 |npu_env|ShardingEnv|必选|NPU环境配置|
-|fused_params|Dict[str, Any]|可选|融合参数，默认值None, 和torchrec的EmbeddingBagCollectionSharder一致|
-|qcomm_codecs_registry|Dict[str, QuantizedCommCodecs]|可选|量化通信编解码器注册表，默认值None, 和torchrec的EmbeddingBagCollectionSharder一致|
+|fused_params|Dict[str, Any]|可选|融合参数，默认值None，和torchrec的EmbeddingBagCollectionSharder一致|
+|qcomm_codecs_registry|Dict[str, QuantizedCommCodecs]|可选|量化通信编解码器注册表，默认值None，和torchrec的EmbeddingBagCollectionSharder一致|
 
 **返回值说明<a name="section651195312311"></a>**
 
 - 成功：返回EmbCacheEmbeddingBagCollectionSharder对象。
 - 失败：抛出异常。
+
+**使用示例**
+
+```python
+import torch
+from torch import distributed as dist
+from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingBagCollectionSharder
+cpu_device = torch.device("cpu")
+device = torch.device("npu")
+cpu_pg = dist.new_group(backend="gloo")
+cpu_env = ShardingEnv.from_process_group(cpu_pg)
+embcache_sharder = EmbCacheEmbeddingBagCollectionSharder(
+    cpu_device=cpu_device,
+    cpu_env=cpu_env,
+    npu_device=device,
+    npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),
+)
+```
 
 ## EmbCacheEmbeddingCollectionSharder<a name="ZH-CN_TOPIC_0000002396403120"></a>
 
@@ -377,10 +402,28 @@ class EmbCacheEmbeddingCollectionSharder(EmbeddingCollectionSharder):
 |cpu_env|ShardingEnv|必选|CPU环境配置|
 |npu_device|torch.device|必选|NPU设备|
 |npu_env|ShardingEnv|必选|NPU环境配置|
-|fused_params|Dict[str, Any]|可选|融合参数，默认值None, 和torchrec的EmbeddingBagCollectionSharder一致|
-|qcomm_codecs_registry|Dict[str, QuantizedCommCodecs]|可选|量化通信编解码器注册表，默认值None, 和torchrec的EmbeddingBagCollectionSharder一致|
+|fused_params|Dict[str, Any]|可选|融合参数，默认值None，和torchrec的EmbeddingBagCollectionSharder一致|
+|qcomm_codecs_registry|Dict[str, QuantizedCommCodecs]|可选|量化通信编解码器注册表，默认值None，和torchrec的EmbeddingBagCollectionSharder一致|
 
 **返回值说明<a name="section651195312311"></a>**
 
 - 成功：返回EmbCacheEmbeddingCollectionSharder对象。
 - 失败：抛出异常。
+
+**使用示例**
+
+```python
+import torch
+from torch import distributed as dist
+from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingCollectionSharder
+cpu_device = torch.device("cpu")
+device = torch.device("npu")
+cpu_pg = dist.new_group(backend="gloo")
+cpu_env = ShardingEnv.from_process_group(cpu_pg)
+embcache_sharder = EmbCacheEmbeddingCollectionSharder(
+    cpu_device=cpu_device,
+    cpu_env=cpu_env,
+    npu_device=device,
+    npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),
+)
+```

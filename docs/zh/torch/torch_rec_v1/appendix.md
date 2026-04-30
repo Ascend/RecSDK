@@ -9,9 +9,9 @@
 |用户名|描述|初始密码|密码修改方法|
 |--|--|--|--|
 |root|部署Rec SDK Torch|用户自定义|使用**passwd**命令修改|
-|HwHiAiUser|安装驱动，运行Demo依赖的用户|用户自定义|使用**passwd**修改|
+|HwHiAiUser|安装驱动，运行Demo依赖的用户|用户自定义|使用**passwd**命令修改|
 
-**openeuler系统中Dockerfile示例的基础镜像用户<a name="section682191514281"></a>**
+**openEuler系统中Dockerfile示例的基础镜像用户<a name="section682191514281"></a>**
 
 |用户|初始密码|密码修改方法|
 |--|--|--|
@@ -31,7 +31,7 @@
 |unbound|无|-|
 |tss|无|-|
 
-**openeuler系统中Rec SDK Torch组件容器内的用户<a name="section44881041374"></a>**
+**openEuler系统中Rec SDK Torch组件容器内的用户<a name="section44881041374"></a>**
 
 |用户|描述|初始密码|密码修改方法|
 |--|--|--|--|

@@ -147,11 +147,10 @@ RecSDK/                                          # 项目根目录
 
 * [tf_rec_v1](./docs/zh/tensorflow/tf_rec_v1/faq.md)
 * [tf_rec_v2](./docs/zh/tensorflow/tf_rec_v2/faq.md)
-* [torch_rec_v1](./docs/zh/torch/torch_rec_v1/faq.md)
 
 ## 贡献指导
 
-贡献代码前，请先签署[开放项目贡献者许可协议（CLA）](https://clasign.osinfra.cn/sign/gitee_ascend-1611222220829317930)。
+贡献代码前，请先签署[开放项目贡献者许可协议（CLA）](https://clasign.osinfra.cn/sign/690ca9ddf91c03dee6082ab1)。
 
 1. 如果您遇到bug，请[提交issue](https://gitcode.com/Ascend/RecSDK/issues)。
 2. 如果您计划贡献bug-fixes，请提交Pull Requests，参见[具体要求](./contributing.md#pullrequest)。
