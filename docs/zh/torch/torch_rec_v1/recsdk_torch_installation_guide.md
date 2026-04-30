@@ -28,7 +28,7 @@
 | 层级 | 组件名称 | 依赖项 | 说明 |
 |------|----------|--------|------|
 | **应用层** | Rec SDK Torch | hybrid_torchrec、torchrec_embcache | Rec SDK Torch组件 |
-| **自定义算子层** | 自定义算子相关包 | Ascend-recsdk-npu-ops-*、libfbgemm_npu_api.so | 自定义算子实现 |
+| **自定义算子层** | 自定义算子相关包 | rec_ops、fbgemm_ascend | 自定义算子实现 |
 | **适配层** | Torchrec框架适配NPU | torchrec_npu | TorchRec的适配NPU版本 |
 | **依赖层** | Torchrec依赖 | fbgemm_gpu | TorchRec依赖的底层加速库 |
 | **框架层** | 训练框架 | PyTorch、torch_npu | 深度学习训练框架 |
@@ -41,7 +41,7 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 
 | 依赖名称/操作               | 推荐版本              | 获取方式/安装说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 |-----------------------|-------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 昇腾硬件产品驱动和固件           | Ascend HDK 25.5.0 | 单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>安装驱动与固件请参见相关硬件产品配套的《[驱动和固件安装升级指南](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)》。                                                                                                                                                                                                                           |
+| 昇腾硬件产品驱动和固件           | Ascend HDK 26.0.RC1及补丁版本 | 单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>安装驱动与固件请参见相关硬件产品配套的《[驱动和固件安装升级指南](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)》。                                                                                                                                                                                                                           |
 | Ascend Docker Runtime | MindCluster 7.3.0 | 若宿主机未安装Docker，请参见[Docker社区或官网](https://docs.docker.com/engine/install/)先安装Docker。<br>请参见《MindCluster 集群调度用户指南》的“安装 > [安装部署](https://www.hiascend.com/document/detail/zh/mindcluster/730/clustersched/dlug/dlug_installation_009.html)”章节下载和安装`Ascend Docker Runtime`软件包。                                                                                                                                                                                                                       |
 | 配置Device网卡            | -                 | 宿主机依赖，请在宿主机环境操作。<br>请参见《Ascend Training Solution 23.0.0 组网指南 01》的“参数面网络配置示例->配置示例->[配置训练节点](https://support.huawei.com/enterprise/zh/doc/EDOC1100349028/f48f446c)”章节，通过HCCN_Tool配置NPU网口的Device IP相关信息。                                                                                                                                                                                                                                                                                                          |
 
@@ -49,7 +49,7 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 
 | 依赖名称/操作       | 推荐版本    | 获取方式/安装说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CANN软件包          | CANN 8.5.0  | 容器内依赖，若容器内未安装，请在容器内安装。<br>单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>根据设备架构获取`Ascend-cann-toolkit_{version}_linux-{arch}.run`和`Ascend-cann-{chip_type}-ops-{version}_linux-{arch}.run`。<br>请参见《CANN 软件安装指南》的“[安装CANN](https://www.hiascend.com/document/detail/zh/canncommercial/850/softwareinst/instg/instg_0008.html?Mode=PmIns&InstallType=local&OS=Debian&Software=cannToolKit)”章节在容器内进行安装。<br>如需卸载，请参考上述安装CANN资料中的“卸载-卸载CANN”章节。 |
+| CANN软件包          | CANN 9.0.0  | 容器内依赖，若容器内未安装，请在容器内安装。<br>单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>根据设备架构获取`Ascend-cann-toolkit_{version}_linux-{arch}.run`和`Ascend-cann-{chip_type}-ops-{version}_linux-{arch}.run`。<br>请参见《CANN 软件安装指南》的“[安装CANN](https://www.hiascend.com/document/detail/zh/canncommercial/850/softwareinst/instg/instg_0008.html?Mode=PmIns&InstallType=local&OS=Debian&Software=cannToolKit)”章节在容器内进行安装。<br>如需卸载，请参考上述安装CANN资料中的“卸载-卸载CANN”章节。 |
 | PyTorch和torch_npu | 2.6.0/2.7.1 | 容器内依赖，若容器内未安装，请在容器内安装。<br>根据[配套版本](#section146113514599)，请参见[安装PyTorch和PyTorch昇腾适配插件](https://gitcode.com/Ascend/pytorch/blob/v2.7.1/docs/zh/installation_guide/installation_via_binary_package.md)章节分别安装PyTorch框架和torch_npu插件安装。<br>请根据PyTorch版本、Python版本、设备架构选择对应的安装指令，Python版本建议使用Python 3.11。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。|
 
 #### 容器内训练加速库依赖<a name="section146113514600"></a>
@@ -71,10 +71,9 @@ Rec SDK Torch软件包如下表：
 
 | 名称                                        | 说明                   |
 |-------------------------------------------|----------------------|
-| Ascend-mindxsdk-torchrec-\*-npu-\*.tar.gz | TorchRec昇腾注册包        |
-| Ascend-mindxsdk-hybrid-torchrec-*.tar.gz  | Rec SDK Torch推荐算法框架包（包含hybrid_torchrec和 torchrec_embcache） |
-| Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz  | 自定义算子包               |
-| libfbgemm_npu_api.so                      | 自定义算子PyTorch框架适配层    |
+| torch_rec_v1-*.tar.gz  | Rec SDK Torch推荐算法框架包（已包含TorchRec昇腾注册包） |
+| rec_ops  | 自定义算子包               |
+| fbgemm_ascend                      | fbgemm自定义算子包及PyTorch框架适配层    |
 
 ## 安装Rec SDK Torch<a id="section182972951211"></a>
 
@@ -86,8 +85,8 @@ Rec SDK Torch软件包如下表：
 - 方案二：源码编译安装
   - 基于**容器内**安装Rec SDK Torch软件包，默认已配置完成宿主机环境并进入Docker容器内。介绍如何通过源码编译的方式安装Rec SDK Torch软件包。
   - 若使用的Docker容器镜像不是参考[基础镜像构建](../build_torch_rec_images/README.md)制作，**可能存在cmake、glibc等基础软件版本不兼容**的情况，需自行处理。
-- 方案三：基于Release版本+源码编译安装
-  - 基于**容器内**安装Rec SDK Torch软件包，默认已配置完成宿主机环境并进入Docker容器内，介绍如何通过下载Release版本的二进制包+部分源码编译的方式安装Rec SDK Torch软件包。
+- 方案三：基于Release版本安装
+  - 基于**容器内**安装Rec SDK Torch软件包，默认已配置完成宿主机环境并进入Docker容器内，介绍如何通过下载Release版本的二进制包安装Rec SDK Torch软件包及自定义算子包。
   - 若使用的Docker容器镜像不是参考[基础镜像构建](../build_torch_rec_images/README.md)制作，**可能存在cmake、glibc等基础软件版本不兼容**的情况，需自行处理。
 
 如需查看Rec SDK Torch软件包的历史安装记录，请参见[查看Rec SDK Torch安装与卸载记录](../../torch/torch_rec_v1/common_operations.md)。
@@ -162,7 +161,7 @@ Rec SDK Torch软件包如下表：
 
 4. 安装Rec SDK Torch软件包
    
-   安装Rec SDK Torch可参考后文中[源码编译安装](#源码编译安装)或者[基于Release版本+源码编译安装](#基于release版本源码编译安装)章节，并可跳过其中的`依赖软件安装`步骤（制作基础镜像时已安装容器内的相关依赖）。
+   安装Rec SDK Torch可参考后文中[源码编译安装](#源码编译安装)或者[基于Release版本安装](#基于release版本安装)章节，并可跳过其中的`依赖软件安装`步骤（制作基础镜像时已安装容器内的相关依赖）。
 
 ### 源码编译安装
 
@@ -172,29 +171,27 @@ Rec SDK Torch软件包如下表：
 
    请参见[容器内训练框架依赖](#容器内训练框架依赖)和[容器内训练加速库依赖](#容器内训练加速库依赖)完成容器内的依赖软件安装。
 
-2. 安装TorchRec昇腾注册包
+2. 安装Rec SDK Torch推荐算法框架包<a id="source_build_hybrid_torchrec"></a>
    
-   TorchRec昇腾注册包是基于TorchRec源码做的NPU设备适配。可通过Rec SDK Torch提供的patch文件和TorchRec源码的固定分支编译出该注册包。
-   
-   请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_npu/README.md)进行源码编译和安装。
+   进入RecSDK代码目录：
 
-3. 安装Rec SDK Torch推荐算法框架包<a id="source_build_hybrid_torchrec"></a>
-   
-   请参见如下指令进行编译安装：
+   如需编译安装软件包，可参考build/build_wrapper/torch_rec_v1/build_wrapper.sh脚本，执行脚本命令构建软件包，构建成功后，软件包在build/output子目录下：
 
    ```bash
-   git clone https://gitcode.com/ascend/RecSDK.git
-   cd RecSDK/training/torch_rec_v1/hybrid_torchrec
-   bash build_whl.sh
-   cd dist
-   pip3 uninstall -y hybrid_torchrec
-   pip3 install hybrid_torchrec-*.whl
-   pip3 install -r requirements.txt
-   pip3 uninstall -y torchrec_embcache
-   pip3 install torchrec_embcache-*-py3-none-linux*.whl
+   # 编译软件包
+   bash build/build_wrapper/torch_rec_v1/build_wrapper.sh
+   
+   # 安装软件包
+   pip3 uninstall -y torch_rec_v1
+   pip3 install build/output/torch_rec_v1*.tar.gz
    ```
 
-4. 安装自定义算子相关包<a id="install_costom_op"></a>
+   > [!NOTE]
+   > TorchRec昇腾注册包是基于TorchRec源码做的NPU设备适配。Rec SDK Torch 推荐算法框架包的编译安装，会同时安装TorchRec昇腾注册包。
+   > 如需单独编译安装，可通过Rec SDK Torch提供的patch文件和TorchRec源码的固定分支编译出该注册包。
+   > 请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_npu/README.md)进行源码编译和安装。
+
+3. 安装自定义算子相关包<a id="install_costom_op"></a>
    
    下载[RecSDK](https://gitcode.com/Ascend/RecSDK)源码，按如下指令进行算子相关包的编译和安装：
    
@@ -202,17 +199,13 @@ Rec SDK Torch软件包如下表：
    # 编译算子前，需使能CANN环境变量。默认路径安装CANN包时，使能CANN环境变量指令如下：
    source /usr/local/Ascend/cann/set_env.sh
    unset ASCEND_CUSTOM_OPP_PATH
-   
-   # 编译并安装算子包（Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz）。
+
+   # 编译并安装算子包（rec_ops）。
    cd RecSDK/cust_op/ascendc_op/build
    bash build_ai_core_op.sh A2
    
    # 可选：若仅需安装部分算子，可在其他容器内编译，并将build/output/recsdk_ops路径下所需算子包拷贝到当前环境，参考如下指令安装：
    # bash mxrec_opp_split_embedding_codegen_forward_unweighted.run
-   
-   # 安装算子适配层（libfbgemm_npu_api.so）
-   cd ../../framework/torch_plugin/torch_library/common/
-   bash build_ops.sh
    ```
    
    安装算子run包的参数如[表1](#table14435173717221)所示。
@@ -237,7 +230,11 @@ Rec SDK Torch软件包如下表：
    > 
    > 安装算子后，/usr/local/Ascend/cann/opp/vendors/目录下会生成split\_embedding\_codegen\_forward\_unweighted、backward\_codegen\_adagrad\_unweighted\_exact、asynchronous\_complete\_cumsum、permute2d\_sparse\_data等文件夹。如果没有相关文件夹，请使用**unset ASCEND\_CUSTOM\_OPP\_PATH**取消环境变量后重新安装算子。
 
-### 基于Release版本+源码编译安装
+4. 安装fbgemm_asend算子及其适配层
+
+   参考fbgemm_ascend的[README](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md)进行源码编译安装。
+
+### 基于Release版本安装
 
 该方案默认已配置完成宿主机环境并进入Docker容器内。
 
@@ -247,21 +244,18 @@ Rec SDK Torch软件包如下表：
    
    请参见[容器内训练框架依赖](#容器内训练框架依赖)和[容器内训练加速库依赖](#容器内训练加速库依赖)完成容器内的依赖软件安装。
 
-2. 安装TorchRec昇腾注册包
-   
-   TorchRec昇腾注册包是基于TorchRec源码做的NPU设备适配。可通过Rec SDK Torch提供的patch文件和TorchRec源码的固定分支编译出该注册包。
-   
-   请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_npu/README.md)进行源码编译和安装。
-
-3. 安装Rec SDK Torch推荐算法框架包
+2. 安装Rec SDK Torch推荐算法框架包
    
    **下载软件包<a name="section1852417242717"></a>**
    
    请参考本章获取所需软件包和对应的数字签名文件，下载本软件即表示您同意[华为企业业务最终用户许可协议（EULA）](https://e.huawei.com/cn/about/eula)的条款和条件。
+
+   > [!NOTE]
+   > 当前Release软件包为Rec SDK whl包，一键安装部署软件包待资源下载中心上线后更新。
    
    | 组件名称                 | 软件包                                      | 获取链接                                               |
    |----------------------|------------------------------------------|----------------------------------------------------|
-   | Rec SDK Torch推荐算法框架包 | Ascend-mindxsdk-hybrid-torchrec-*.tar.gz | [获取链接](https://gitcode.com/Ascend/RecSDK/releases) |
+   | Rec SDK Torch推荐算法框架包 | torch_rec_v1-*.tar.gz | [获取链接](https://gitcode.com/Ascend/RecSDK/releases) |
    
    >[!NOTE]
    >当前提供的Rec SDK推荐算法框架包基于Python 3.11版本编译，**请在相同的Python版本环境下安装使用**。若需在其他Python版本环境下安装使用，请参见[源码编译 - 安装Rec SDK Torch推荐算法框架包](#source_build_hybrid_torchrec)进行源码编译。
@@ -295,18 +289,27 @@ Rec SDK Torch软件包如下表：
    执行如下指令进行安装：
 
    ```shell
-   tar zxvf Ascend-mindxsdk-hybrid-torchrec*.tar.gz
    # 如已安装，请先卸载
-   pip3 uninstall -y hybrid_torchrec torchrec_embcache
+   pip3 uninstall -y torch_rec_v1
    # 安装软件包
-   pip3 install hybrid_torchrec-*-py3-none-linux*.whl
-   pip3 install -r requirements.txt
-   pip3 install torchrec_embcache-*-py3-none-linux*.whl
+   pip3 install torch_rec_v1-{version}-{arch}.tar.gz
    ```
 
-4. 安装自定义算子相关包
+   （其中 `{version}` 代表版本号，`{arch}` 代表操作系统架构，请根据实际安装包替换）
+
+3. 安装自定义算子相关包
    
-   本节内容和“源码编译 - 安装自定义算子相关包”内容相同，请参见前文[安装自定义算子相关包](#install_costom_op)章节。
+   参考fbgemm_ascend的[README](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md)获取fbgemm_ascend软件包。
+
+   > [!NOTE]
+   > fbgemm_ascend whl包及rec_ops whl包待资源下载中心上线后更新。
+
+   ```shell
+   # 安装框架依赖算子包 fbgemm_ascend
+   pip3 install fbgemm_ascend-*.whl
+   # 安装自定义算子包 rec_ops
+   pip3 install rec_ops-*.whl
+   ```
 
 ## 安装验证
 
@@ -351,12 +354,8 @@ Rec SDK Torch环境变量的说明如[表1](#table126401659163820)所示。
 用户如需移除Rec SDK Torch推荐算法框架包和TorchRec昇腾注册包，可参考以下命令进行卸载。
 
 ```bash
-# 卸载hybrid_torchrec
-pip3 uninstall hybrid_torchrec -y
-# 卸载 torchrec_embcache
-pip3 uninstall torchrec_embcache -y
-# 卸载torchrec
-pip3 uninstall torchrec -y
+# 卸载Rec SDK Torch主包，并连带卸载TorchRec昇腾注册包
+pip3 uninstall torch_rec_v1 -y
 ```
 
 用户如需移除Rec SDK Torch自定义算子相关包，可参考以下命令进行卸载。其中，
@@ -365,6 +364,7 @@ pip3 uninstall torchrec -y
 - 卸载自定义算子时，删除vendors路径下自定义算子名称对应的文件夹即可。可以通过[ai\_core\_op](https://gitcode.com/Ascend/RecSDK/tree/develop/cust_op/ascendc_op/ai_core_op)查看Rec SDK的自定义算子目录。
 
 ```bash
+# 源码编译安装方式卸载
 # 卸载算子指令示例（仅列出部分，其他算子卸载指令同理）
 rm -rf /usr/local/Ascend/cann/opp/vendors/asynchronous_complete_cumsum
 rm -rf /usr/local/Ascend/cann/opp/vendors/backward_codegen_adagrad_unweighted_exact
@@ -378,6 +378,10 @@ if [ -d "$PACKAGE_PATH" ]; then
 else
   echo "no site-package"
 fi
+
+# 基于Release版本安装方式卸载
+pip uninstall rec_ops
+pip uninstall fbgemm_ascend
 ```
 
 ## 升级<a name="ZH-CN_TOPIC_0000002302389340"></a>
