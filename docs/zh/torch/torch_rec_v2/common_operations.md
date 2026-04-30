@@ -10,10 +10,10 @@ Rec SDK Torch为Wheel包格式，安装、卸载日志记录在系统history中�
 
 **修改历史记录的保存数量<a name="section56389529527"></a>**
 
-在Linux系统中，history命令一般默认保存最新的1000条命令。如果需要修改保存的命令数量，比如只保留200条历史命令，则可以在“/etc/profile“文件中修改HISTSIZE环境变量。修改方法如下：
+在Linux系统中，history命令一般默认保存最新的1000条命令。如果需要修改保存的命令数量，比如只保留200条历史命令，则可以在“/etc/profile”文件中修改HISTSIZE环境变量。修改方法如下：
 
--   使用编辑器（如vim编辑器）修改。
--   使用sed直接修改，命令如下：
+- 使用编辑器（如vim编辑器）修改。
+- 使用sed直接修改，命令如下：
 
     **sed -i 's/^HISTSIZE=**_number_**/HISTSIZE=**_newNumber_**/' /etc/profile**，__number__表示修改前的命令数量，_newNumber_表示修改后的命令数量。以保存的命令数量从1000改为200为例：
 
@@ -57,5 +57,3 @@ PROMPT_COMMAND=' { date "+%Y-%m-%d %T - $(history 1 | { read x cmd; echo "$cmd";
 ```
 
 其中日志文件路径为“\~/log/RecSDK\_Torch”，请保证磁盘空间足够，日志文件设置权限为640。
-
-

@@ -18,12 +18,12 @@
 |依赖名称/操作|推荐版本|获取方式|
 |--|--|--|
 |昇腾硬件产品驱动和固件|Ascend HDK 25.5.0|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>安装驱动与固件请参见相关硬件产品配套的《[驱动和固件安装升级指南](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)》。|
-|Ascend Docker Runtime|MindCluster 7.3.0|请参见《MindCluster 集群调度用户指南》的“安装 > 安装部署”章节进行安装。|
-|配置Device网卡|-|请参考《Ascend Training Solution 23.0.0 组网指南》的参数面网络配置示例配置示例配置训练节点章节，通过HCCN_Tool配置NPU网口的Device IP。|
-|CANN软件包|CANN 8.5.0|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>根据设备架构获取Ascend-cann-toolkit_<i>{version}</i>_linux-<i>{arch}</i>.run和Ascend-cann-<i>{chip_type}</i>-ops-<i>{version}</i>_linux-<i>{arch}</i>.run，并参考《CANN 软件安装指南》的“安装CANN”章节在容器内进行安装。|
-|PyTorch昇腾适配插件|2.7.1|单击[链接](https://gitcode.com/Ascend/pytorch/releases/v7.2.0-pytorch2.7.1)，根据设备架构获取torch_npu-2.7.1*-cp311-*.whl软件包并在容器内安装。|
+|Ascend Docker Runtime|MindCluster 7.3.0|请参见《[MindCluster 集群调度用户指南](https://www.hiascend.com/document/detail/zh/mindcluster/730/clustersched/dlug/dlug_installation_017.html)》的“安装 > 安装部署”章节进行安装。|
+|配置Device网卡|-|请参考《[Ascend Training Solution 23.0.0 组网指南](https://support.huawei.com/enterprise/zh/doc/EDOC1100349028/d9914967)》的参数面网络配置示例配置示例配置训练节点章节，通过HCCN_Tool配置NPU网口的Device IP。|
+|CANN软件包|CANN 9.0.0|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>根据设备架构获取Ascend-cann-toolkit_<i>{version}</i>_linux-<i>{arch}</i>.run和Ascend-cann-<i>{chip_type}</i>-ops-<i>{version}</i>_linux-<i>{arch}</i>.run，并参考《[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta2/softwareinst/instg/instg_0008.html?Mode=PmIns&OS=Debian&InstallType=local)》的“安装CANN”章节在容器内进行安装。|
+|PyTorch昇腾适配插件|2.7.1|单击[链接](https://pytorch-package.obs.cn-north-4.myhuaweicloud.com/pta/Daily/v2.7.1/20260327.4/pytorch_v2.7.1_py311.tar.gz)，根据设备架构获取torch_npu-2.7.1*-cp311-*.whl软件包并在容器内安装。|
 
-> [!NOTICE]须知 
+> [!NOTE]须知 
 >对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以并且不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
 
 ## 获取Rec SDK Torch软件包<a name="ZH-CN_TOPIC_0000002336148981"></a>
@@ -43,7 +43,7 @@
 
 1. 编译环境
  
-   容器环境编译，参考[README](../build_torch_rec_images/README.md)。
+   容器环境编译，参考[README](../build_torch_rec_v2_images/README.md)。
  
 2. 编译Ascend-mindxsdk-torchrec-\*-npu-\*.tar.gz
  
@@ -90,7 +90,7 @@
  
    在 Python 代码中添加以下语句，即可自动从 Python 默认 site-packages 目录加载 libfbgemm_npu_api.so：
 
-   ```bash
+   ```python
    torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
    ```
 
@@ -100,7 +100,7 @@
 
 |PyTorch|PyTorch昇腾适配插件|Rec SDK Torch|
 |--|--|--|
-|2.7.1|2.7.1|7.3.T50|
+|2.7.1|2.7.1|25.09|
 
 其他软件配套版本信息请参考[基础镜像构建](../build_torch_rec_v2_images/README.md)。
 
@@ -110,7 +110,7 @@
 
 |组件名称|软件包|获取链接|
 |--|--|--|
-|Rec SDK|推荐算法框架开发套件包|获取链接（待更新）|
+|Rec SDK|推荐算法框架开发套件包|[获取链接](https://gitcode.com/Ascend/RecSDK/releases)|
 
 >[!NOTE]说明 
 >当前提供的Rec SDK推荐算法框架开发套件包基于Python 3.11版本编译，请在相同的Python版本环境下安装使用。若需要在其他Python版本环境下安装使用，请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/dynamic_emb/README.md)进行源码编译。
@@ -221,7 +221,6 @@ Rec SDK Torch环境变量的说明如[表1](#table126401659163820)所示。
 |--|--|--|--|
 |ASCEND_RT_VISIBLE_DEVICES|昇腾处理器可见的设备，来指定程序只使用其中的部分设备。|可选|使用ASCEND_RT_VISIBLE_DEVICES环境变量指定训练中的NPU设备（用户可执行ls /dev/ \| grep davinci*命令查询宿主机的NPU设备），使用设备序号指定设备，支持单个和范围指定且支持混用。例如：<ul> <li>ASCEND_RT_VISIBLE_DEVICES=0：表示将0号设备（/dev/davinci0）挂载入容器中。</li><li>ASCEND_RT_VISIBLE_DEVICES=1,3：表示将1、3号设备挂载入容器中。</li><li>ASCEND_RT_VISIBLE_DEVICES=0-2：表示将0号至2号设备（包含0号和2号）挂载入容器中，效果同ASCEND_RT_VISIBLE_DEVICES=0,1,2。</li><li>ASCEND_RT_VISIBLE_DEVICES=0-2,4：表示将0号至2号以及4号设备挂载入容器，效果同ASCEND_RT_VISIBLE_DEVICES=0,1,2,4。</li></ul>|
 |ASCEND_CANN_PACKAGE_PATH ASCEND_HOME_PATH|CANN包实际安装路径。|必选|编译算子所需指定的CANN包实际安装目录。默认为/usr/local/Ascend/ascend-toolkit/latest。|
-|ASC_DIR|ASC路径。|必选|使用ASC对Ascned C编程语言进行编译，指定ASC目录。默认为/usr/local/Ascend/ascend-toolkit/8.5.0/[x86_64-linux\|aarch64-linux]/tikcpp/ascend_kernel_cmake|
 
 ## 卸载<a name="ZH-CN_TOPIC_0000002302389376"></a>
 

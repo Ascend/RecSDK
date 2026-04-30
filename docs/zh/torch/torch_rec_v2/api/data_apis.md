@@ -2,7 +2,7 @@
 
 ## JaggedTensor（TorchRec）<a name="ZH-CN_TOPIC_0000002336148837"></a>
 
->[!NOTICE]须知 
+>[!NOTE]须知
 >此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
@@ -11,7 +11,7 @@
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class JaggedTensor:
     def __init__(**kwargs):
 ```
@@ -40,7 +40,7 @@ JaggedTensor(values=[1, 3, 4], lengths=[1, 1, 1], offsets=[0, 1, 2, 3])
 
 ### from\_jt\_dict<a name="ZH-CN_TOPIC_0000002508691797"></a>
 
->[!NOTICE]须知
+>[!NOTE]须知
 >此类下的接口为TorchRec开源接口，非Rec SDK Torch对外接口。本章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**

@@ -8,7 +8,7 @@
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 def DynamicEmbDump(
     path: str,
     model: nn.Module,
@@ -32,7 +32,7 @@ def DynamicEmbDump(
 
 **使用示例<a name="section193151694205"></a>**
 
-```cpp
+```python
 from dynamic_emb.distributed.dump_load import DynamicEmbDump
 DynamicEmbDump(
     path=path,
@@ -54,7 +54,7 @@ DynamicEmbDump(
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 def DynamicEmbLoad(
     path: str,
     model: nn.Module,
@@ -76,7 +76,7 @@ def DynamicEmbLoad(
 
 **使用示例<a name="section193151694205"></a>**
 
-```cpp
+```python
 from dynamic_emb.distributed.dump_load import DynamicEmbLoad
 DynamicEmbLoad(
     path=path,
@@ -88,4 +88,3 @@ DynamicEmbLoad(
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-

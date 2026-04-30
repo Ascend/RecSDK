@@ -2,7 +2,7 @@
 
 ## EmbeddingConfig<a name="ZH-CN_TOPIC_0000002336148933"></a>
 
->[!NOTICE] 须知 
+>[!NOTE] 须知
 >此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
@@ -11,7 +11,7 @@ EmbeddingCollection的入参，用于配置表的大小、dim、数据类型等�
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 @dataclass
 class EmbeddingConfig:
     def __init__(**kwargs):
@@ -32,15 +32,27 @@ class EmbeddingConfig:
 |init_fn|Callable|可选|初始化函数。支持传入nn.Parameter类型的函数。用户需自行保证该函数的正确性。默认值为None。|
 |need_pos|bool|可选|位置权重。仅支持默认值为False，不支持用户自定义。|
 
+**使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
+
+```python
+ec_configs = [
+    EmbeddingConfig(
+    name="table_name",
+    embedding_dim=embedding_dim,
+    num_embeddings=num_embeddings,
+    feature_names=["user_id"],
+    ),
+    ···
+    ]
+```
 
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，请参见[迁移与训练](../migration_and_training.md)。
 
-
 ## EmbeddingCollection<a name="ZH-CN_TOPIC_0000002302389408"></a>
 
->[!NOTICE] 须知 
+>[!NOTE] 须知
 >此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
@@ -49,7 +61,7 @@ class EmbeddingConfig:
 
 **函数原型<a name="section1483104721911"></a>**
 
-```cpp
+```python
 class EmbeddingCollection:
     def __init__(**kwargs):
 ```
@@ -59,17 +71,15 @@ class EmbeddingCollection:
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
 |tables|List[EmbeddingConfig]|必选|稀疏表配置文件列表。<p>参数范围参考EmbeddingConfig。</p>|
-|device|Optional[torch.device]|可选|稀疏表的设备。默认为torch.device("cpu")。</ul></li><li>如果为torch.device取值范围：<ul><li>torch.device("npu")：npu设备。</li><li>torch.device("meta")：meta设备。</li><li>torch.device("cpu")：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul></li>|
+|device|Optional[torch.device]|可选|稀疏表的设备。默认为torch.device("cpu")。<br>如果为torch.device取值范围：<ul><li>torch.device("npu")：npu设备。</li><li>torch.device("meta")：meta设备。</li><li>torch.device("cpu")：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul>|
 |need_indices|bool|可选|是否需要索引，默认值为False。|
-
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
-```cpp
+```python
 ec = EmbeddingCollection(device="npu", tables=table_configs)
 ```
 
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，请参见[迁移与训练](../migration_and_training.md)。
-
