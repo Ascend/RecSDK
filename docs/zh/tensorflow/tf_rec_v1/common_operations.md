@@ -13,7 +13,7 @@
     ```
 
 2. 下载[Rec SDK](https://gitcode.com/Ascend/RecSDK/tree/develop/cust_op)。
-3. 解压压缩包，进入“cust\_op/ascendc\_op/ai\_core\_op/cust\_op\_by\_addr“路径下，参考以下命令编译并安装片上内存侧动态扩容算子包。
+3. 解压压缩包，进入“cust\_op/ascendc\_op/ai\_core\_op/cust\_op\_by\_addr“路径。Atlas A2/A3系列服务器进入v220目录、Atlas A5系列服务器进入c310目录，参考以下命令编译并安装片上内存侧动态扩容算子包。
 
     ```bash
     bash run.sh
@@ -32,7 +32,7 @@ Rec SDK TensorFlow为Wheel包格式，安装、卸载日志记录在系统histor
 在Linux系统中，history命令一般默认保存最新的1000条命令。如果需要修改保存的命令数量，比如只保留200条历史命令，则可以在“/etc/profile“文件中修改HISTSIZE环境变量。修改方法如下：
 
 - 使用编辑器（如vim编辑器）修改。
-- 使用sed直接修改，命令如下：
+- 通过sed命令在终端命令行环境对文件进行编辑修改，命令如下：
 
     **sed -i 's/^HISTSIZE=**_number_**/HISTSIZE=**_newNumber_**/' /etc/profile**，*number*表示修改前的命令数量，*newNumber*表示修改后的命令数量。以保存的命令数量从1000改为200为例：
 

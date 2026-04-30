@@ -968,6 +968,7 @@ tf.estimator.train_and_evaluate(
 ```
 
 >[!NOTICE]
+> 
 >**评估**进程可以在Device执行，也可以在Host侧的CPU执行，但各有利弊，用户可以根据实际情况使用。
 >以1机8卡场景举例，一共需要1个ps进程和8个worker进程，其中8个worker进程在Device侧执行。
 >
@@ -1670,7 +1671,7 @@ for key, cos in key_cos:
 <a name="table9918150856"></a>
 <table><tbody><tr id="row79351901356"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.1.1"><p id="p99352018517"><a name="p99352018517"></a><a name="p99352018517"></a>功能介绍</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.1.1 "><p id="p1793618017517"><a name="p1793618017517"></a><a name="p1793618017517"></a>返回除法的元素方向余数。</p>
+<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.1.1 "><p id="p1793618017517"><a name="p1793618017517"></a><a name="p1793618017517"></a>返回除法的逐元素余数。</p>
 </td>
 </tr>
 <tr id="row13111931175717"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.2.1"><p id="p5111203125711"><a name="p5111203125711"></a><a name="p5111203125711"></a>函数原型</p>
