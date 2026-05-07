@@ -5,11 +5,6 @@ project(dynamic_emb_extensions LANGUAGES ASC CXX)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=1")
 set(CMAKE_CXX_STANDARD 17)
 set(RUN_MODE "npu" CACHE STRING "cpu/sim/npu")
-if(DEFINED ENV{SOC_VERSION})
-    set(SOC_VERSION $ENV{SOC_VERSION} CACHE STRING "system on chip type")
-else()
-    set(SOC_VERSION "Ascend950PR_9579" CACHE STRING "system on chip type")
-endif()
 
 if(DEFINED ENV{ASCEND_CANN_PACKAGE_PATH})
     set(ASCEND_CANN_PACKAGE_PATH $ENV{ASCEND_CANN_PACKAGE_PATH}
@@ -123,7 +118,6 @@ if(MAIN_SOURCE_FILES)
     target_compile_options(${PROJECT_NAME} PRIVATE
         $<BUILD_INTERFACE:$<$<STREQUAL:${RUN_MODE},cpu>:-g>>
         $<$<NOT:$<BOOL:${ENABLE_COVERAGE}>>: -O2> 
-        -Wall -DSOC_VERSION="${SOC_VERSION}"
         -Wno-error=unused-variable
         -fvisibility=hidden
         -fvisibility-inlines-hidden
