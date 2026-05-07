@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+import random
+
+import numpy as np
+import torch
+import torch_npu
+
+
+class TestDataGenerator:
+    def __init__(self, seed, seq_all_equal, seq_max_ratio=1):
+        self.seed = seed
+        self.seq_all_equal = seq_all_equal
+        self.seq_max_ratio = seq_max_ratio
+        self.__init_seed()
+
+
+    @staticmethod
+    def __gen_random_sequence(batch_size, max_seqlen_q, max_seqlen_k):
+        seq_lens_q = torch.randint(1, max_seqlen_q + 1, (batch_size,), dtype=torch.int32)
+        seq_lens_k = torch.randint(1, max_seqlen_k + 1, (batch_size,), dtype=torch.int32)
+        return seq_lens_q, seq_lens_k
+
+
+    def gen_data(self, batch_size, head_num, max_seqlen_q, max_seqlen_k, head_dim_qk, head_dim_v, has_rab, data_type):
+
+        seq_lens_q, seq_lens_k = self.__gen_sequence(batch_size, max_seqlen_q, max_seqlen_k)
+
+        seq_offset_q = torch.concat((torch.zeros((1,), dtype=torch.int32), torch.cumsum(seq_lens_q, axis=0))).numpy()
+        seq_offset_k = torch.concat((torch.zeros((1,), dtype=torch.int32), torch.cumsum(seq_lens_k, axis=0))).numpy()
+
+        total_len_q = torch.sum(seq_lens_q).item()
+        total_len_k = torch.sum(seq_lens_k).item()
+
+        grad = torch.rand(total_len_q, head_num, head_dim_v, dtype=data_type).uniform_(-1, 1)
+        q = torch.rand(total_len_q, head_num, head_dim_qk, dtype=data_type).uniform_(-1, 1)
+        k = torch.rand(total_len_k, head_num, head_dim_qk, dtype=data_type).uniform_(-1, 1)
+        v = torch.rand(total_len_k, head_num, head_dim_v, dtype=data_type).uniform_(-1, 1)
+
+        if has_rab:
+            rab = torch.rand(batch_size, head_num, max_seqlen_q, max_seqlen_k, dtype=data_type).uniform_(-1, 1)
+        else:
+            rab = None
+
+        mask = None
+        return grad, q, k, v, rab, mask, seq_offset_q, seq_offset_k
+
+
+    def __init_seed(self):
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
+        torch_npu.npu.manual_seed_all(self.seed)  # 如果使用多GPU
+        torch.backends.cudnn.deterministic = True  # 确保CuDNN使用确定性算法
+        torch.backends.cudnn.benchmark = False  # 关闭CuDNN自动优化
+
+
+    def __gen_all_equal_sequence(self, batch_size, max_seqlen_q, max_seqlen_k):
+        average_max_seqlen_q = int(self.seq_max_ratio * max_seqlen_q)
+        average_max_seqlen_k = int(self.seq_max_ratio * max_seqlen_k)
+        seq_lens_q = torch.randint(average_max_seqlen_q, average_max_seqlen_q + 1, (batch_size,), dtype=torch.int32)
+        seq_lens_k = torch.randint(average_max_seqlen_k, average_max_seqlen_k + 1, (batch_size,), dtype=torch.int32)
+        return seq_lens_q, seq_lens_k
+
+
+    def __gen_sequence(self, batch_size, max_seqlen_q, max_seqlen_k):
+        if self.seq_all_equal:
+            seq_lens_q, seq_lens_k = self.__gen_all_equal_sequence(batch_size, max_seqlen_q, max_seqlen_k)
+        else:
+            seq_lens_q, seq_lens_k = self.__gen_random_sequence(batch_size, max_seqlen_q, max_seqlen_k)
+        return seq_lens_q, seq_lens_k
