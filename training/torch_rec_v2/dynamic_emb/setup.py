@@ -104,7 +104,7 @@ class CMakeBuild(build_ext):
         # 查找依赖库
         lib_patterns = [
             'libdynamic_emb_op_*.so',
-            'libasc_kernel_lib.so'
+            'libdynamic_variable_base.so'
         ]
         
         # 搜索路径

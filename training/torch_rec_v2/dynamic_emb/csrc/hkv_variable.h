@@ -25,7 +25,135 @@
 
 
 namespace dyn_emb {
+#ifdef USE_RTTI
+template <typename KeyType, typename ValueType, EvictStrategy Strategy = EvictStrategy::kLru>
+class HKVVariable {
+public:
+    HKVVariable(DataType key_type, DataType value_type, int64_t dim, int64_t init_capacity, size_t max_capacity,
+                size_t max_hbm_for_vectors = 0, size_t max_bucket_size = 128, float max_load_factor = 0.5f,
+                int block_size = 128, int io_block_size = 1024, int device_id = -1, bool io_by_cpu = false,
+                bool use_constant_memory = false, int reserved_key_start_bit = 0, size_t num_of_buckets_per_alloc = 1,
+                const InitializerArgs& initializer_args = InitializerArgs(),
+                const SafeCheckMode safe_check_mode = SafeCheckMode::IGNORE,
+                const OptimizerType optimizer_type = OptimizerType::Null);
 
+    ~HKVVariable();
+    
+    int64_t rows(aclrtStream stream = 0);
+
+    DataType get_key_type();
+
+    DataType get_value_type();
+
+    EvictStrategy get_evict_strategy() const;
+
+    int64_t get_max_capacity();
+
+    const InitializerArgs& get_initializer_args() const;
+
+    EvictStrategy evict_strategy() const;
+
+    void insert_and_evict(const size_t n,
+                          const void* keys,            // (n)
+                          const void* values,          // (n, DIM)
+                          const void* scores,          // (n)
+                          void* evicted_keys,          // (n)
+                          void* evicted_values,        // (n, DIM)
+                          void* evicted_scores,        // (n)
+                          uint64_t* d_evicted_counter, // (1)
+                          aclrtStream stream = 0, bool unique_key = true,
+                          bool ignore_evict_strategy = false);
+
+    void find(const size_t n, const void *keys, // (n)
+              void *values,                     // (n, DIM)
+              bool *founds,                     // (n)
+              void *scores = nullptr,           // (n)
+              aclrtStream stream = 0) const;
+
+    void erase(const size_t n, const void *keys,
+                      aclrtStream stream = 0);
+
+    void clear(aclrtStream stream = 0);
+
+
+    void reserve(const size_t new_capacity, aclrtStream stream = 0);
+
+    void accum_or_assign(const size_t n,
+                         const void *keys,             // (n)
+                         const void *value_or_deltas,  // (n, DIM)
+                         const bool *accum_or_assigns, // (n)
+                         const void *scores = nullptr, // (n)
+                         aclrtStream stream = 0,
+                         bool ignore_evict_strategy = false);
+
+    void assign(const size_t n,
+                const void *keys,             // (n)
+                const void *values,           // (n, DIM)
+                const void *scores = nullptr, // (n)
+                aclrtStream stream = 0, bool unique_key = true);
+
+    void lock(const size_t n,
+              const void* keys,       // (n)
+              void** locked_keys_ptr, // (n)
+              bool* flags = nullptr,  // (n)
+              void* scores = nullptr, // (n)
+              aclrtStream stream = 0);
+
+    void unlock(const size_t n,
+                void** locked_keys_ptr, // (n)
+                const void* keys,       // (n)
+                bool* flags = nullptr,  // (n)
+                aclrtStream stream = 0);
+
+    void find_pointers(const size_t n, const void *keys, // (n)
+                       void **values,                      // (n)
+                       bool *founds,                       // (n)
+                       void *scores = nullptr,             // (n)
+                       aclrtStream stream = 0) const;
+
+    void find_pointers(const size_t n, const void *keys, // (n)
+                       void **values,                      // (n)
+                       bool *founds,                       // (n)
+                       void *scores = nullptr,             // (n)
+                       aclrtStream stream = 0);
+
+    int optstate_dim() const;
+
+    int get_emb_cols() const;
+
+    void export_batch(const size_t n, const size_t offset, const torch::Tensor d_counter, const torch::Tensor keys,
+                      const torch::Tensor values,
+                      const c10::optional<torch::Tensor>& score = c10::nullopt) const;
+
+    void export_batch_matched(const uint64_t threshold, const uint64_t n, const uint64_t offset,
+                              torch::Tensor num_matched, torch::Tensor keys, torch::Tensor values,
+                              const c10::optional<torch::Tensor>& scores = c10::nullopt,
+                              aclrtStream stream = 0) const;
+
+    void count_matched(const uint64_t threshold, torch::Tensor num_matched, aclrtStream stream = 0) const;
+
+    void update(const size_t n, const torch::Tensor keys, const torch::Tensor values,
+                const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
+                bool ignore_evict_strategy = false);
+
+    void load(const size_t n, const torch::Tensor keys, const torch::Tensor values,
+              const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
+              bool ignore_evict_strategy = false);
+private:
+    using HKVTable =
+      npu::hkv::HashTable<KeyType, ValueType, uint64_t, (int)Strategy>;
+    std::unique_ptr<HKVTable> hkv_table_ = std::make_unique<HKVTable>();
+    npu::hkv::HashTableOptions hkv_table_option_;
+    size_t dim_;
+    size_t max_capacity_;
+    const InitializerArgs initializer_args_;
+
+    DataType key_type_;
+    DataType value_type_;
+    SafeCheckMode safe_check_mode_;
+    OptimizerType optimizer_type_;
+};
+#else
 template <typename KeyType, typename ValueType, EvictStrategy Strategy = EvictStrategy::kLru>
 class HKVVariable : public DynamicVariableBase {
 public:
@@ -139,7 +267,6 @@ public:
     void load(const size_t n, const torch::Tensor keys, const torch::Tensor values,
               const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
               bool ignore_evict_strategy = false) override;
-
 private:
     using HKVTable =
       npu::hkv::HashTable<KeyType, ValueType, uint64_t, (int)Strategy>;
@@ -154,7 +281,7 @@ private:
     SafeCheckMode safe_check_mode_;
     OptimizerType optimizer_type_;
 };
-
+#endif
 }  // namespace dyn_emb
 
 #endif  // HKV_VARIABLE_H

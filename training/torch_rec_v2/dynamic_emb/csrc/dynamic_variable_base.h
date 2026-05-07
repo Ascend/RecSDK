@@ -78,6 +78,174 @@ uint32_t get_optimizer_state_dim(OptimizerType opt_type, uint32_t emb_dim)
     return optstate_dim;
 }
 
+#ifdef USE_RTTI
+class DynamicVariableBase {
+public:
+    using RowsFn = std::function<int64_t(aclrtStream)>;
+    using GetMaxCapacityFn = std::function<int64_t()>;
+    using GetKeyTypeFn = std::function<DataType()>;
+    using GetValueTypeFn = std::function<DataType()>;
+    using GetEvictStrategyFn = std::function<EvictStrategy()>;
+    using GetInitializerArgsFn = std::function<const InitializerArgs&()>;
+    using InsertAndEvictFn = std::function<void(const size_t, const void*, const void*, const void*,
+                                                void*, void*, void*, uint64_t*, aclrtStream, bool, bool)>;
+    using FindFn = std::function<void(const size_t, const void*, void*, bool*, void*, aclrtStream)>;
+    using EraseFn = std::function<void(const size_t, const void*, aclrtStream)>;
+    using ClearFn = std::function<void(aclrtStream)>;
+    using ReserveFn = std::function<void(const size_t, aclrtStream)>;
+    using AccumOrAssignFn = std::function<void(const size_t, const void*, const void*, const bool*,
+                                            const void*, aclrtStream, bool)>;
+    using AssignFn = std::function<void(const size_t, const void*, const void*, const void*,
+                                        aclrtStream, bool)>;
+    using LockFn = std::function<void(const size_t, const void*, void**, bool*, void*, aclrtStream)>;
+    using UnlockFn = std::function<void(const size_t, void**, const void*, bool*, aclrtStream)>;
+    using FindPointersConstFn = std::function<void(const size_t, const void*, void**, bool*, void*, aclrtStream)>;
+    using FindPointersFn = std::function<void(const size_t, const void*, void**, bool*, void*, aclrtStream)>;
+    using OptStateDimFn = std::function<int()>;
+    using GetEmbColsFn = std::function<int()>;
+    using ExportBatchFn = std::function<void(const size_t, const size_t, const torch::Tensor,
+                                             const torch::Tensor, const torch::Tensor,
+                                             const c10::optional<torch::Tensor>&)>;
+    using ExportBatchMatchedFn = std::function<void(const uint64_t, const uint64_t, const uint64_t,
+                                                    torch::Tensor, torch::Tensor, torch::Tensor, const c10::optional<torch::Tensor>&,
+                                                    aclrtStream)>;
+    using CountMatchedFn = std::function<void(const uint64_t, torch::Tensor, aclrtStream)>;
+    using UpdateFn = std::function<void(const size_t, const torch::Tensor, const torch::Tensor,
+                                        const c10::optional<torch::Tensor>&, bool, bool)>;
+    using LoadFn = std::function<void(const size_t, const torch::Tensor, const torch::Tensor,
+                                      const c10::optional<torch::Tensor>&, bool, bool)>;
+
+    DynamicVariableBase(
+        RowsFn rows_fn,
+        GetMaxCapacityFn get_max_capacity_fn,
+        GetKeyTypeFn get_key_type_fn,
+        GetValueTypeFn get_value_type_fn,
+        GetEvictStrategyFn get_evict_strategy_fn,
+        GetInitializerArgsFn get_initializer_args_fn,
+        InsertAndEvictFn insert_and_evict_fn,
+        FindFn find_fn,
+        EraseFn erase_fn,
+        ClearFn clear_fn,
+        ReserveFn reserve_fn,
+        AccumOrAssignFn accum_or_assign_fn,
+        AssignFn assign_fn,
+        LockFn lock_fn,
+        UnlockFn unlock_fn,
+        FindPointersConstFn find_pointers_const_fn,
+        FindPointersFn find_pointers_fn,
+        OptStateDimFn optstate_dim_fn,
+        GetEmbColsFn get_emb_cols_fn,
+        ExportBatchFn export_batch_fn,
+        ExportBatchMatchedFn export_batch_matched_fn,
+        CountMatchedFn count_matched_fn,
+        UpdateFn update_fn,
+        LoadFn load_fn);
+
+    ~DynamicVariableBase() = default;
+
+    int64_t rows(aclrtStream stream = 0);
+    int64_t get_max_capacity();
+    DataType get_key_type();
+    DataType get_value_type();
+    EvictStrategy get_evict_strategy() const;
+    const InitializerArgs &get_initializer_args() const;
+    EvictStrategy evict_strategy() const;
+    void insert_and_evict(const size_t n,
+                          const void* keys,
+                          const void* values,
+                          const void* scores,
+                          void* evicted_keys,
+                          void* evicted_values,
+                          void* evicted_scores,
+                          uint64_t* d_evicted_counter,
+                          aclrtStream stream = 0, bool unique_key = true,
+                          bool ignore_evict_strategy = false);
+    void find(const size_t n, const void *keys,
+              void *values,
+              bool *founds,
+              void *scores = nullptr,
+              aclrtStream stream = 0) const;
+    void erase(const size_t n, const void *keys,
+               aclrtStream stream = 0);
+    void clear(aclrtStream stream = 0);
+    void reserve(const size_t new_capacity, aclrtStream stream = 0);
+    void accum_or_assign(const size_t n,
+                         const void *keys,
+                         const void *value_or_deltas,
+                         const bool *accum_or_assigns,
+                         const void *scores = nullptr,
+                         aclrtStream stream = 0,
+                         bool ignore_evict_strategy = false);
+    void assign(const size_t n,
+                const void *keys,
+                const void *values,
+                const void *scores = nullptr,
+                aclrtStream stream = 0, bool unique_key = true);
+    void lock(const size_t n,
+              const void* keys,
+              void** locked_keys_ptr,
+              bool* flags = nullptr,
+              void* scores = nullptr,
+              aclrtStream stream = 0);
+    void unlock(const size_t n,
+                void** locked_keys_ptr,
+                const void* keys,
+                bool* flags = nullptr,
+                aclrtStream stream = 0);
+    void find_pointers(const size_t n, const void *keys,
+                       void **values,
+                       bool *founds,
+                       void *scores = nullptr,
+                       aclrtStream stream = 0) const;
+    void find_pointers(const size_t n, const void *keys,
+                       void **values,
+                       bool *founds,
+                       void *scores = nullptr,
+                       aclrtStream stream = 0);
+    int optstate_dim() const;
+    int get_emb_cols() const;
+    void export_batch(const size_t n, const size_t offset, const torch::Tensor d_counter,
+                      const torch::Tensor keys, const torch::Tensor values,
+                      const c10::optional<torch::Tensor>& score = c10::nullopt) const;
+    void export_batch_matched(const uint64_t threshold, const uint64_t n, const uint64_t offset,
+                              torch::Tensor num_matched, torch::Tensor keys, torch::Tensor values,
+                              const c10::optional<torch::Tensor>& scores = c10::nullopt, aclrtStream stream = 0) const;
+    void count_matched(const uint64_t threshold, torch::Tensor num_matched,
+                       aclrtStream stream = 0) const;
+    void update(const size_t n, const torch::Tensor keys, const torch::Tensor values,
+                const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
+                bool ignore_evict_strategy = false);
+    void load(const size_t n, const torch::Tensor keys, const torch::Tensor values,
+              const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
+              bool ignore_evict_strategy = false);
+
+private:
+    RowsFn rows_fn_;
+    GetMaxCapacityFn get_max_capacity_fn_;
+    GetKeyTypeFn get_key_type_fn_;
+    GetValueTypeFn get_value_type_fn_;
+    GetEvictStrategyFn get_evict_strategy_fn_;
+    GetInitializerArgsFn get_initializer_args_fn_;
+    InsertAndEvictFn insert_and_evict_fn_;
+    FindFn find_fn_;
+    EraseFn erase_fn_;
+    ClearFn clear_fn_;
+    ReserveFn reserve_fn_;
+    AccumOrAssignFn accum_or_assign_fn_;
+    AssignFn assign_fn_;
+    LockFn lock_fn_;
+    UnlockFn unlock_fn_;
+    FindPointersConstFn find_pointers_const_fn_;
+    FindPointersFn find_pointers_fn_;
+    OptStateDimFn optstate_dim_fn_;
+    GetEmbColsFn get_emb_cols_fn_;
+    ExportBatchFn export_batch_fn_;
+    ExportBatchMatchedFn export_batch_matched_fn_;
+    CountMatchedFn count_matched_fn_;
+    UpdateFn update_fn_;
+    LoadFn load_fn_;
+};
+#else
 class DynamicVariableBase {
 public:
     virtual ~DynamicVariableBase() = default;
@@ -158,6 +326,7 @@ public:
                       const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
                       bool ignore_evict_strategy = false) = 0;
 };
+#endif
 
 class VariableFactory {
 public:
