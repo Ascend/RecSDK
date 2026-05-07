@@ -42,12 +42,6 @@ file(GLOB_RECURSE KERNEL_FILES
     "csrc/ops/*.cc" 
     "csrc/ops/*.cxx"
     "csrc/ops/*.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../cust_op/hkv/hkv_hashtable/*.cpp"
-)
-
-# 将dump_kernel.cpp从KERNEL_FILES中移除 独立使用ASC编译
-list(REMOVE_ITEM KERNEL_FILES 
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../cust_op/hkv/hkv_hashtable/dump_kernel/dump_kernel.cpp"
 )
 
 message(STATUS "AscendC source files: ${KERNEL_FILES}")
@@ -61,28 +55,51 @@ else()
 endif()
 
 ## ASC compile start
-# 使用ASC编译dump算子 规避新驱动导致的dump_kernel运行异常问题
+include(cmake/CommonTorchOpConfig.cmake)
 set_source_files_properties(
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../cust_op/hkv/hkv_hashtable/dump_kernel/dump_kernel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/csrc/dynamic_variable_base.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/csrc/hkv_variable.cpp
     PROPERTIES LANGUAGE ASC
 )
 
-add_library(asc_kernel_lib SHARED
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../cust_op/hkv/hkv_hashtable/dump_kernel/dump_kernel.cpp
+add_library(dynamic_variable_base SHARED
+    ${CMAKE_CURRENT_SOURCE_DIR}/csrc/dynamic_variable_base.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/csrc/hkv_variable.cpp
 )
 
-set_target_properties(asc_kernel_lib PROPERTIES
+set_target_properties(dynamic_variable_base PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
-
-target_compile_options(asc_kernel_lib PRIVATE
-    $<$<COMPILE_LANGUAGE:ASC>: --npu-arch=dav-3510>
-    -DUSE_DUMP_KERNEL_ASC
+target_include_directories(dynamic_variable_base PRIVATE
+	${Python3_INCLUDE_DIRS}
+	"${CMAKE_CURRENT_SOURCE_DIR}/../../../cust_op/hkv/include"
 )
 
-target_link_options(asc_kernel_lib PRIVATE -Wl,-z,relro,-z,now -s)
+target_compile_options(dynamic_variable_base PRIVATE
+    $<$<COMPILE_LANGUAGE:ASC>: --npu-arch=dav-3510>
+    -DUSE_RTTI
+)
 
-install(TARGETS asc_kernel_lib
+target_link_options(dynamic_variable_base PRIVATE -Wl,-z,relro,-z,now -s)
+
+target_link_libraries(dynamic_variable_base PRIVATE
+    ${Python3_LIBRARIES}
+    m
+    graph_base
+    tiling_api
+    register
+    platform
+    ascendalog
+    dl
+    opapi
+    nnopbase
+    "${PYTORCH_NPU_INSTALL_PATH}/lib/libtorch_npu.so"                                                                          
+    "${PYTORCH_INSTALL_PATH}/lib/libc10.so"                                                                                    
+    "${PYTORCH_INSTALL_PATH}/lib/libtorch.so"                                                                                  
+    "${PYTORCH_INSTALL_PATH}/lib/libtorch_cpu.so" 
+)
+
+install(TARGETS dynamic_variable_base
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 ## ASC compile end
@@ -95,8 +112,10 @@ file(GLOB_RECURSE MAIN_SOURCE_FILES
     "csrc/*.c"
 )
 
-# 过滤掉ops目录的文件
+# 过滤掉ops目录和dynamic_variable_base_lib相关的文件
 list(FILTER MAIN_SOURCE_FILES EXCLUDE REGEX ".*ops.*")
+list(REMOVE_ITEM MAIN_SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/csrc/dynamic_variable_base.cpp)
+list(REMOVE_ITEM MAIN_SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/csrc/hkv_variable.cpp)
 message(STATUS "Main source files: ${MAIN_SOURCE_FILES}")
 
 # 构建主Python扩展
@@ -121,8 +140,8 @@ if(MAIN_SOURCE_FILES)
         -Wno-error=unused-variable
         -fvisibility=hidden
         -fvisibility-inlines-hidden
-        -DUSE_DUMP_KERNEL_ASC
         -fPIC
+        -DUSE_RTTI
         $<$<BOOL:${ENABLE_COVERAGE}>: -O0 --coverage -g>
     )
 
@@ -159,7 +178,7 @@ if(MAIN_SOURCE_FILES)
         torch
         torch_cpu
         c_sec
-        asc_kernel_lib
+        dynamic_variable_base
     )
     # 添加链接选项
     target_link_options(${PROJECT_NAME} PRIVATE -fPIC)

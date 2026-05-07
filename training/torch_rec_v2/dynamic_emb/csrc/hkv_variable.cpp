@@ -21,14 +21,12 @@
 #include "utils.h"
 
 namespace dyn_emb {
-#if defined(__CCE__)
 template <typename K, typename V, typename S>
 struct EvalAndInc {
     __gm__ uint64_t* d_count;
     S threshold;
     EvalAndInc(S threshold, __gm__ uint64_t* d_count) : threshold(threshold), d_count(d_count) {}
-    template<int32_t GroupSize>
-    __device__ void operator()(const K& key, __gm__ V* value,  __gm__ S* score)
+    __simt_callee__ void operator()(const K& key, __gm__ V* value,  __gm__ S* score, int32_t)
     {
         S score_val = *score;
         bool match = (!npu::hkv::IS_RESERVED_KEY(key) && score_val >= threshold);
@@ -45,12 +43,11 @@ struct ExportIfPredFunctor {
     S threshold;
     ExportIfPredFunctor(S threshold): threshold(threshold) {}
     template <int GroupSize>
-    __forceinline__ __device__ bool operator()(const K& key, const __gm__ V* value, const S& score)
+    __forceinline__ __simt_callee__ bool operator()(const K& key, const __gm__ V* value, const S& score)
     {
         return ((!npu::hkv::IS_RESERVED_KEY<K>(key)) && (score >= threshold));
     }
 };
-#endif
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 HKVVariable<KeyType, ValueType, Strategy>::HKVVariable(
@@ -305,7 +302,6 @@ void HKVVariable<KeyType, ValueType, Strategy>::export_batch_matched(const uint6
     const uint64_t offset, torch::Tensor num_matched,
     torch::Tensor keys, torch::Tensor values, const c10::optional<torch::Tensor>& scores, aclrtStream stream) const
 {
-#if defined(__CCE__)
     using PredFunc = ExportIfPredFunctor<KeyType, ValueType, uint64_t>;
     PredFunc func(threshold);
     if (scores.has_value()) {
@@ -322,24 +318,15 @@ void HKVVariable<KeyType, ValueType, Strategy>::export_batch_matched(const uint6
             reinterpret_cast<ValueType*>(values.data_ptr()),
             nullptr, stream);
     }
-#else
-    // Mock implementation:	 
-    std::cout << "Mock export_batch_matched called with threshold=" << threshold << ", n=" << n << std::endl;
-#endif
 }
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 void HKVVariable<KeyType, ValueType, Strategy>::count_matched(const uint64_t threshold,
     torch::Tensor num_matched, aclrtStream stream) const
 {
-#if defined(__CCE__)
     using ExecutionFunc = EvalAndInc<KeyType, ValueType, uint64_t>;
     ExecutionFunc func(threshold, reinterpret_cast<uint64_t*>(num_matched.data_ptr()));
     hkv_table_->for_each(0, hkv_table_->capacity(), func, stream);
-#else
-    // Mock implementation:	 
-    std::cout << "Mock count_matched called with threshold=" << threshold << std::endl;
-#endif
 }
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>

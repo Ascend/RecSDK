@@ -349,7 +349,6 @@ def test_dyn_emb_rows_empty(dynamic_table):
     rows = demb.dyn_emb_rows(dynamic_table)
     assert rows == 0, f"空表行数期望为0，实际为{rows}"
 
-@pytest.mark.skip
 def test_dyn_emb_rows_after_erase(dynamic_table):
     """测试dyn_emb_rows删除后"""
     torch.npu.set_device(DEVICE_ID)
@@ -424,7 +423,6 @@ def test_insert_and_evict_with_lfu():
     rows = demb.dyn_emb_rows(table)
     assert rows == n, f"LFU策略下期望行数为{n}，实际为{rows}"
 
-@pytest.mark.skip
 def test_find_basic(dynamic_table):
     """测试find基本功能"""
     torch.npu.set_device(DEVICE_ID)
@@ -441,7 +439,6 @@ def test_find_basic(dynamic_table):
 
     assert founds.sum().item() == n, f"期望找到所有{n}个键"
 
-@pytest.mark.skip
 def test_find_with_score():
     """测试find带score查找"""
     torch.npu.set_device(DEVICE_ID)
@@ -475,7 +472,6 @@ def test_find_with_score():
 
     assert founds.sum().item() == n, f"期望找到所有{n}个键"
 
-@pytest.mark.skip
 def test_find_not_found(dynamic_table):
     """测试find查找不存在的key"""
     torch.npu.set_device(DEVICE_ID)
@@ -493,7 +489,6 @@ def test_find_not_found(dynamic_table):
 
     assert founds.sum().item() == 0, "不应该找到任何不存在的键"
 
-@pytest.mark.skip
 def test_erase_basic(dynamic_table):
     """测试erase基本功能"""
     torch.npu.set_device(DEVICE_ID)
@@ -515,7 +510,6 @@ def test_erase_basic(dynamic_table):
 
     assert founds.sum().item() == 0, "删除的键不应该被找到"
 
-@pytest.mark.skip
 def test_erase_not_exists(dynamic_table):
     """测试erase删除不存在的key"""
     torch.npu.set_device(DEVICE_ID)
