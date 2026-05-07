@@ -132,25 +132,15 @@
 
 1. 获取已有容器镜像并启动容器
     
-    请参见[OVERVIEW](../../../../docker/OVERVIEW.zh.md)基于已经制作好的运行镜像，启动容器并进入容器内。
+    请参见[链接](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中“镜像下载”页签，获取基于已经制作好的运行镜像；并参考“镜像概述-容器启动命令”启动容器并进入容器内。
 
-2. 配置容器内环境
+2. 启动模型训练
     
-    执行如下指令配置容器内环境：
+    执行如下指令下载模型源码并启动模型训练：
 
     ```bash
-    # 激活python虚拟环境
-    source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
-    # 设置CANN 版本
-    bash /usr/local/set_cann_env.sh A2
-    ```
-
-3. 启动模型训练
-    
-    执行如下指令启动模型训练：
-
-    ```bash
-    cd /RecSDK/torch_examples/little_demo
+    git clone https://gitcode.com/Ascend/RecSDK.git -b develop_examples_and_tools
+    cd RecSDK/torch_examples/little_demo
     export ASCEND_RT_VISIBLE_DEVICES=0,1
     bash bash.sh
     ```
@@ -159,11 +149,13 @@
 
 1. 请参见[安装Rec SDK Torch](./recsdk_torch_installation_guide.md#section182972951211)章节进行容器环境准备，启动并进入容器。
 
-2. 下载[Rec SDK Torch Little Demo样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_examples/little_demo)代码。
+2. 启动模型训练
+    
+    执行如下指令下载模型源码并启动模型训练：
 
-3. 进入当前文件目录，执行以下命令启动模型训练：
-
-    ```shell
-    export ASCEND_RT_VISIBLE_DEVICES=0,1 
+    ```bash
+    git clone https://gitcode.com/Ascend/RecSDK.git -b develop_examples_and_tools
+    cd RecSDK/torch_examples/little_demo
+    export ASCEND_RT_VISIBLE_DEVICES=0,1
     bash bash.sh
     ```
