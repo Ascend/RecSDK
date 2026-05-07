@@ -166,7 +166,7 @@ index 7c3e43a..aa19e2c 100644
  
 diff --git a/examples/hstu/configs/fsdp2_config.yaml b/examples/hstu/configs/fsdp2_config.yaml
 new file mode 100644
-index 0000000..c2264f3
+index 0000000..3efac30
 --- /dev/null
 +++ b/examples/hstu/configs/fsdp2_config.yaml
 @@ -0,0 +1,37 @@
@@ -181,8 +181,8 @@ index 0000000..c2264f3
 +reshard_after_forward: false
 +
 +# Mixed precision settings
-+param_dtype: "fp32"  # Parameter data type
-+reduce_dtype: "fp32"  # Gradient reduction data type
++param_dtype: "bf16"  # Parameter data type
++reduce_dtype: "bf16"  # Gradient reduction data type
 +output_dtype: "bf16" # Output data type
 +cast_forward_inputs: true # Cast forward inputs to param_dtype
 +
@@ -317,7 +317,7 @@ index 1a256dd..c0f5744 100644
  
              contextual_features: Dict[str, List[int]] = defaultdict(list)
 diff --git a/examples/hstu/distributed/sharding.py b/examples/hstu/distributed/sharding.py
-index b564988..9ce83eb 100644
+index b564988..efa1f6f 100644
 --- a/examples/hstu/distributed/sharding.py
 +++ b/examples/hstu/distributed/sharding.py
 @@ -14,25 +14,16 @@
@@ -505,7 +505,7 @@ index b564988..9ce83eb 100644
      if pg is None:
          pg = dist.group.WORLD
  
-@@ -351,3 +450,98 @@ def make_optimizer_and_shard(
+@@ -351,3 +450,99 @@ def make_optimizer_and_shard(
      )
  
      return model, dense_optimizer
@@ -556,6 +556,7 @@ index b564988..9ce83eb 100644
 +        params_dtype=param_dtype,
 +        bf16=config.bf16,
 +        fp16=config.fp16,
++        weight_decay=dense_optimizer_param.weight_decay,
 +    )
 +    dense_optimizer = get_megatron_optimizer(
 +        dense_optimizer_config, [dmp._dmp_wrapped_module]
@@ -923,7 +924,7 @@ index d8af93b..64bbbc4 100644
          sm_minor_version = torch.cuda.get_device_properties(0).minor
          if sm_major_version == 9 and sm_minor_version == 0:
 diff --git a/examples/hstu/modules/hstu_block.py b/examples/hstu/modules/hstu_block.py
-index e42579e..59598e8 100644
+index e42579e..8805306 100644
 --- a/examples/hstu/modules/hstu_block.py
 +++ b/examples/hstu/modules/hstu_block.py
 @@ -3,7 +3,8 @@
@@ -965,6 +966,18 @@ index e42579e..59598e8 100644
      def forward(
          self,
          embeddings: Dict[str, JaggedTensor],
+@@ -76,8 +79,10 @@ class HSTUBlock(MegatronModule):
+             if jd.num_candidates is not None
+             else torch.zeros_like(seqlen_after_preprocessor)
+         )
++        # fsdp2会通过判断训练数据是否带有梯度来判断是否需要进行梯度聚合
++        # 当前仅支持对tensor、union、dict数据类型进行解析，不支持JaggedTensor,额外传入jd.values
+         for hstu_layer in self._attention_layers:
+-            jd = hstu_layer(jd)
++            jd, x = hstu_layer(jd, jd.values)
+         return self._postprocessor(jd), (
+             seqlen_after_preprocessor.detach(),
+             num_contextuals_after_preprocessor.detach(),
 diff --git a/examples/hstu/modules/hstu_processor.py b/examples/hstu/modules/hstu_processor.py
 index 8f28c96..ffde828 100644
 --- a/examples/hstu/modules/hstu_processor.py
@@ -1193,7 +1206,7 @@ index 6b02397..dbe3795 100644
          """
          Forward pass of the MultiTaskLossModule.
 diff --git a/examples/hstu/modules/native_hstu_layer.py b/examples/hstu/modules/native_hstu_layer.py
-index 9c85635..837c1fc 100644
+index 9c85635..d7cccbd 100644
 --- a/examples/hstu/modules/native_hstu_layer.py
 +++ b/examples/hstu/modules/native_hstu_layer.py
 @@ -18,24 +18,29 @@ from functools import partial
@@ -1367,7 +1380,7 @@ index 9c85635..837c1fc 100644
  
      def get_user_value_query_key_tensors(self, hidden_states: torch.Tensor):
          """
-@@ -157,38 +188,22 @@ class HSTULayer(MegatronModule):
+@@ -157,39 +188,23 @@ class HSTULayer(MegatronModule):
          """
  
          # TODO: fuse linear, bias, and silu?
@@ -1413,14 +1426,17 @@ index 9c85635..837c1fc 100644
          return user, value, query, key
  
 -    @output_nvtx_hook(nvtx_tag="HSTULayer")
+-    def forward(self, jd: JaggedData) -> JaggedData:
 +    # @output_nvtx_hook(nvtx_tag="HSTULayer")
-     def forward(self, jd: JaggedData) -> JaggedData:
++    def forward(self, jd: JaggedData, x: torch.Tensor = None) -> JaggedData:
          """
          Forward pass of the HSTULayer
-@@ -201,58 +216,47 @@ class HSTULayer(MegatronModule):
+ 
+@@ -200,59 +215,47 @@ class HSTULayer(MegatronModule):
+             Tensor: The output embeddings [\*, D]
          """
          # input is [*, h]
-         x = jd.values
+-        x = jd.values
 -        with nvtx.annotate("hstu input layernorm fwd", color="RED"):
 -            if self._recompute_input_layernorm:
 -                normed_x = self.input_layernorm_checkpoint.checkpoint(
@@ -1510,6 +1526,12 @@ index 9c85635..837c1fc 100644
  
          return JaggedData(
              values=output,
+@@ -266,4 +269,4 @@ class HSTULayer(MegatronModule):
+             contextual_seqlen=jd.contextual_seqlen,
+             contextual_seqlen_offsets=jd.contextual_seqlen_offsets,
+             has_interleaved_action=jd.has_interleaved_action,
+-        )
++        ), output
 diff --git a/examples/hstu/modules/position_encoder.py b/examples/hstu/modules/position_encoder.py
 index 52fb3b3..f6e7337 100644
 --- a/examples/hstu/modules/position_encoder.py
@@ -2167,24 +2189,6 @@ index 0000000..05c410a
 +    values_a = torch.cat(values_a_list, dim=0) if values_a_list else torch.empty(0, D, device=values.device)
 +    values_b = torch.cat(values_b_list, dim=0) if values_b_list else torch.empty(0, D, device=values.device)
 +    return values_a, values_b
-diff --git a/examples/hstu/pipeline/train_pipeline.py b/examples/hstu/pipeline/train_pipeline.py
-index 2af4c57..d7d24a8 100644
---- a/examples/hstu/pipeline/train_pipeline.py
-+++ b/examples/hstu/pipeline/train_pipeline.py
-@@ -956,6 +956,13 @@ class JaggedMegatronTrainNonePipeline:
-             with nvtx.annotate("## backward ##"):
-                 local_loss_average = local_loss[0] / reporting_loss[1] * dp_size
-                 local_loss_average.backward()
-+            
-+            # unshard when reshard_after_forward is True
-+            from torch.distributed.fsdp import FSDPModule
-+            fsdp_root = self._model.module
-+            for module in fsdp_root.modules():
-+                if isinstance(module, FSDPModule):
-+                    module.unshard()
- 
-             with nvtx.annotate("## finalize_model_grads ##"):
-                 if isinstance(self._model.module, DistributedDataParallel):
 diff --git a/examples/hstu/preprocessor.py b/examples/hstu/preprocessor.py
 index b574514..f6d9ad9 100644
 --- a/examples/hstu/preprocessor.py
