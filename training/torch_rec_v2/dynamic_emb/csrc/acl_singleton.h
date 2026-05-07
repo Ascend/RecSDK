@@ -72,12 +72,11 @@ public:
 private:
     AclSingleton()
     {
-        const char* socVersion = SOC_VERSION;
-        auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance(socVersion);
+        auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
         if (ascendcPlatform != nullptr) {
             maxCores = ascendcPlatform->GetCoreNumAiv();
         } else {
-            throw std::runtime_error("ascendcPlatform for socVersion " + std::string(socVersion) + " does not exist");
+            throw std::runtime_error("ascendcPlatform does not exist");
         }
     }
     ~AclSingleton() {}
