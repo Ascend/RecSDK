@@ -119,7 +119,9 @@ Rec SDK Torch软件包如下表：
 
 2. 制作基础训练镜像<a id="section104919392501"></a>
    
-   请参见[基础镜像构建](../build_torch_rec_images/README.md)里的Dockerfile和README制作镜像。
+   可直接下载已经制作好的基础训练镜像，[下载链接](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)。
+
+   也可手动制作基础训练镜像，请参见[基础镜像构建](../build_torch_rec_images/README.md)里的Dockerfile和README制作镜像。
    
    制作基础镜像时，会同时安装[容器内训练框架依赖](#容器内训练框架依赖)和[容器内训练加速库依赖](#容器内训练加速库依赖)中的依赖软件（CANN、PyTorch、torch_npu、fbgemm_gpu）。后续安装Rec SDK Torch时可跳过`依赖软件安装`步骤。
 
@@ -204,7 +206,9 @@ Rec SDK Torch软件包如下表：
    unset ASCEND_CUSTOM_OPP_PATH
 
    # 编译并安装算子包（rec_ops），以A2算子举例
-   cd RecSDK/cust_op/ascendc_op/build
+   cd RecSDK
+   git submodule update --init --recursive 
+   cd cust_op/ascendc_op/build
    bash build_ai_core_op.sh A2 
    
    # 可选：若仅需安装部分算子，可在其他容器内编译，并将build/output/recsdk_ops路径下所需算子包拷贝到当前环境，参考如下指令安装：
@@ -233,7 +237,7 @@ Rec SDK Torch软件包如下表：
    > 
    > 安装算子后，/usr/local/Ascend/cann/opp/vendors/目录下会生成split\_embedding\_codegen\_forward\_unweighted、backward\_codegen\_adagrad\_unweighted\_exact、asynchronous\_complete\_cumsum、permute2d\_sparse\_data等文件夹。如果没有相关文件夹，请使用**unset ASCEND\_CUSTOM\_OPP\_PATH**取消环境变量后重新安装算子。
 
-4. 安装fbgemm_asend算子及其适配层
+4. 安装fbgemm_ascend算子及其适配层
 
    参考fbgemm_ascend的[README](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md)进行源码编译安装。
 
