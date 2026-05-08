@@ -132,7 +132,7 @@
 
 1. 获取已有容器镜像并启动容器
     
-    请参见[链接](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中“镜像下载”页签，获取基于已经制作好的运行镜像；并参考“镜像概述-容器启动命令”启动容器并进入容器内。
+    请参见[链接](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中“镜像下载”页签，获取已经制作好的最新运行镜像；并参考“镜像概述-容器启动命令”启动容器并进入容器内。
 
 2. 启动模型训练
     
