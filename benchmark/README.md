@@ -20,41 +20,102 @@
 # 必要依赖安装
 
 ```shell
+
 apt-get install protobuf-compiler protobuf-devel
-pip install tensorflow
 pip install pytest
+```
+
+由于DeepCTR仓中tf和torch混用，所以DeepCTR仓模型需要额外安装tf。
+
+```shell
+pip install tensorflow
 ```
 
 # quick start
 
-xxx.json替換为为configs目录下的配置文件名；
+xxx.json替換为configs目录下的配置文件名；
 
 ```shell
 python run.py xxx.json --eager
 ```
 
-**xxx.json**:为configs文件夹中的配置文件   
-**--eager**：为强制跑eager模式，不配置默认跑inductor模式（当前未支持）   
-**--no_hf32**：禁用混合精度加速，不配置默认使能混合精度加速。NCF、DIN-pytorch、Multitask-Recommendation-Library、SASRec比对GPU与NPU精度时需禁用   
-**--custom_dropout**：使用自定义的dropout函数，不配置使用默认的dropout函数。Multitask-Recommendation-Library比对GPU与NPU精度时需配置
+**xxx.json**:为configs文件夹中的配置文件\
+**--eager**：为强制跑eager模式，不配置默认跑inductor模式（当前未支持）\
+**--no\_hf32**：禁用混合精度加速，不配置默认使能混合精度加速。NCF、DIN-pytorch、Multitask-Recommendation-Library、SASRec比对GPU与NPU精度时需禁用\
+**--custom\_dropout**：使用自定义的dropout函数，不配置使用默认的dropout函数。Multitask-Recommendation-Library比对GPU与NPU精度时需配置
+
+# Model List
+
+|Model Name|配置文件|
+|--|--|
+|AFM|[AFM.json](configs/AFM.json)|
+|AFN|[AFN.json](configs/AFN.json)|
+|AutoInt|[AutoInt.json](configs/AutoInt.json)|
+|BERT4Rec|[BERT4Rec.json](configs/BERT4Rec.json)|
+|DAT|[DAT.json](configs/DAT.json)|
+|DBMTL|[DBMTL.json](configs/DBMTL.json)|
+|DCN|[DCN.json](configs/DCN.json)|
+|DCNv2|[DCNv2.json](configs/DCNv2.json)|
+|DeepFM|[DeepFM.json](configs/DeepFM.json)|
+|DIEN|[DIEN.json](configs/DIEN.json)|
+|DIFM|[DIFM.json](configs/DIFM.json)|
+|DIN|[DIN.json](configs/DIN.json)|
+|DIN-pytorch|[DIN-pytorch.json](configs/DIN-pytorch.json)|
+|DLRM|[DLRM.json](configs/DLRM.json)|
+|DLRM_META|[DLRM_META.json](configs/DLRM_META.json)|
+|DMR|[DMR.json](configs/DMR.json)|
+|DSSM|[DSSM.json](configs/DSSM.json)|
+|EDCN|[EDCN.json](configs/EDCN.json)|
+|ESMM|[ESMM.json](configs/ESMM.json)|
+|EulerNet|[EulerNet.json](configs/EulerNet.json)|
+|FiBiNET|[FiBiNET.json](configs/FiBiNET.json)|
+|GRU4Rec|[GRU4Rec.json](configs/GRU4Rec.json)|
+|HSTU_META_1M|[HSTU_META_1M.json](configs/HSTU_META_1M.json)|
+|HSTU_META_1M_LARGE|[HSTU_META_1M_LARGE.json](configs/HSTU_META_1M_LARGE.json)|
+|HSTU_META_20M|[HSTU_META_20M.json](configs/HSTU_META_20M.json)|
+|HSTU_META_20M_LARGE|[HSTU_META_20M_LARGE.json](configs/HSTU_META_20M_LARGE.json)|
+|IFM|[IFM.json](configs/IFM.json)|
+|MIND|[MIND.json](configs/MIND.json)|
+|MMOE|[MMOE.json](configs/MMOE.json)|
+|MaskNet|[MaskNet.json](configs/MaskNet.json)|
+|MultiTower|[MultiTower.json](configs/MultiTower.json)|
+|Multitask-Recommendation-Library|[Multitask-Recommendation-Library.json](configs/Multitask-Recommendation-Library.json)|
+|NCF|[NCF.json](configs/NCF.json)|
+|NFM|[NFM.json](configs/NFM.json)|
+|ONN|[ONN.json](configs/ONN.json)|
+|PLE|[PLE.json](configs/PLE.json)|
+|PNN|[PNN.json](configs/PNN.json)|
+|RECSYS_RANKING|[RECSYS_RANKING.json](configs/RECSYS_RANKING.json)|
+|RECSYS_RETRIEVAL|[RECSYS_RETRIEVAL.json](configs/RECSYS_RETRIEVAL.json)|
+|SASREC_1M|[SASREC_1M.json](configs/SASREC_1M.json)|
+|SASREC_20M|[SASREC_20M.json](configs/SASREC_20M.json)|
+|SharedBottom|[SharedBottom.json](configs/SharedBottom.json)|
+|SIM|[SIM.json](configs/SIM.json)|
+|TDM|[TDM.json](configs/TDM.json)|
+|WideDeep|[WideDeep.json](configs/WideDeep.json)|
+|WideandDeep|[WideandDeep.json](configs/WideandDeep.json)|
+|Yolov5|[Yolov5.json](configs/Yolov5.json)|
+|dlrmHSTU|[dlrmHSTU.json](configs/dlrmHSTU.json)|
+|wukong|[wukong.json](configs/wukong.json)|
+|xDeepFM|[xDeepFM.json](configs/xDeepFM.json)|
 
 # 性能指标
 
-模型正常运行后，会在models目录下生成性能相关文件，目录为./models/save_results_{device_name}/performance_result.txt,其中{device_name}为运行设备名称，如npu、cuda、cpu,文件内容为模型的性能指标，如推理时间、qps等。
-如config中开启了profiling_flag，会在./models/profiling/{model_name}生成profiling结果文件。其中{model_name}为模型名字。
+模型正常运行后，会在models目录下生成性能相关文件，目录为./models/save\_results\_{device\_name}/performance\_result.txt,其中{device\_name}为运行设备名称，如npu、cuda、cpu,文件内容为模型的性能指标，如推理时间、qps等。
+如config中开启了profiling\_flag，会在./models/profiling/{model\_name}生成profiling结果文件。其中{model\_name}为模型名字。
 
 # 精度指标
 
-模型正常运行后，会在models目录下生成落盘输出文件，目录为save_results_{device_name}/{model_name},其中device_name为运行设备名称，如npu、cuda、cpu,{model_name}为模型名字。
+模型正常运行后，会在models目录下生成落盘输出文件，目录为save\_results\_{device\_name}/{model\_name},其中device\_name为运行设备名称，如npu、cuda、cpu,{model\_name}为模型名字。
 
 使用tools目录下的脚本对两份数据进行对比，cpu的数据作为标杆，对比npu数据与cpu数据的差异。
-对比脚本为tools/compare_output.py，使用方法为：
+对比脚本为tools/compare\_output.py，使用方法为：
 
 ```shell
 python ./tools/compare_output.py --actual_output ./models/save_results_npu --expected_output ./models/save_results_cpu  --rtol 1e-4 --atol 1e-4
 ```
 
-其中--actual_output为npu数据目录，--expected_output为cpu数据目录，--rtol为相对误差容忍度，--atol为绝对误差容忍度。
+其中--actual\_output为npu数据目录，--expected\_output为cpu数据目录，--rtol为相对误差容忍度，--atol为绝对误差容忍度。
 
 # config文件示例
 
@@ -83,36 +144,36 @@ python ./tools/compare_output.py --actual_output ./models/save_results_npu --exp
 }
 ```
 
-+ name:模型名字
-+ url:模型代码仓下载路径
-+ commit_id:本示例适配的commit节点
-+ patch_path:适配的patch目录
-+ type：推理还是训练模式(infer/train/train_evaluate)
-+ epoch: 训练步数或者推理循环次数
-+ profiling_flag: 是否抓取profiling
-+ aclgraph_flag: 是否需要使能图下沉
-+ data_type: 模型的input数据类型(float32/float16/bfloat16)
-+ run_cmd: 模型的运行命令
-+ pip_install_self: 是否依赖安装开源仓自己
-+ pip_install_requirements: 开源仓是否要安装起根目录下的requirements.txt依赖包
-+ extra_cmd: 适配npu需要额外执行的命令
+- name:模型名字
+- url:模型代码仓下载路径
+- commit\_id:本示例适配的commit节点
+- patch\_path:适配的patch目录
+- type：推理还是训练模式(infer/train/train\_evaluate)
+- epoch: 训练步数或者推理循环次数
+- profiling\_flag: 是否抓取profiling
+- aclgraph\_flag: 是否需要使能图下沉
+- data\_type: 模型的input数据类型(float32/float16/bfloat16)
+- run\_cmd: 模型的运行命令
+- pip\_install\_self: 是否依赖安装开源仓自己
+- pip\_install\_requirements: 开源仓是否要安装其根目录下的requirements.txt依赖包
+- extra\_cmd: 适配npu需要额外执行的命令
 
 # 模型额外操作说明
 
 ## yolov5 模型
 
-yolov5模型需手动下载权重文件。https://gitcode.com/open-source-toolkit/6e474/blob/main/yolov5%20%E5%AE%98%E6%96%B9%E6%9D%83%E9%87%8D%E6%96%87%E4%BB%B6.zip
+yolov5模型需手动下载权重文件。<https://gitcode.com/open-source-toolkit/6e474/blob/main/yolov5%20%E5%AE%98%E6%96%B9%E6%9D%83%E9%87%8D%E6%96%87%E4%BB%B6.zip>
 从链接里下载并解压，把yolov5s.pt放在ckpt文件夹下再运行。
 
 ## Multitask-Recommendation-Library(MMOE) 模型
 
-MMOE模型运行前需访问 https://tianchi.aliyun.com/dataset/74690 下载aliexpress_NL_datasets.zip数据集，
+MMOE模型运行前需访问 <https://tianchi.aliyun.com/dataset/74690> 下载aliexpress\_NL\_datasets.zip数据集，
 并将数据集放到**与本README.md同级的data目录**下。
 
-## DLRM_META 模型
+## DLRM\_META 模型
 
-[DLRM_META](https://github.com/facebookresearch/dlrm.git)模型运行需要下载[Kaggle Display Advertising dataset](https://ailab.criteo.com/ressources/)数据集, 
-在benchmark/datasets目录下新建dlrm_meta目录存放原始train.txt和test.txt文件。
+[DLRM\_META](https://github.com/facebookresearch/dlrm.git)模型运行需要下载[Kaggle Display Advertising dataset](https://ailab.criteo.com/ressources/)数据集,
+在benchmark/datasets目录下新建dlrm\_meta目录存放原始train.txt和test.txt文件。
 
 ```shell
 |-- benchmark
@@ -124,43 +185,43 @@ MMOE模型运行前需访问 https://tianchi.aliyun.com/dataset/74690 下载alie
            |-- test.txt
 ```
 
-## HSTU_META 模型
+## HSTU\_META 模型
 
 ### 运行依赖
 
 - RecSDK自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
-    - asynchronous_complete_cumsum
-    - dense_to_jagged
-    - hstu_dense_backward
-    - hstu_dense_forward
-    - jagged_to_padded_dense
-    - invert_permute
-    - permute2d_sparse_data
+  - asynchronous\_complete\_cumsum
+  - dense\_to\_jagged
+  - hstu\_dense\_backward
+  - hstu\_dense\_forward
+  - jagged\_to\_padded\_dense
+  - invert\_permute
+  - permute2d\_sparse\_data
 
 ### 准备数据集
 
-[HSTU_META](https://github.com/meta-recsys/generative-recommenders)数据集自动下载，如果下载失败可以参考开源代码处理。
+[HSTU\_META](https://github.com/meta-recsys/generative-recommenders)数据集自动下载，如果下载失败可以参考开源代码处理。
 
-## NV Recsys-examlpes 模型
+## NV Recsys-examples 模型
 
 ### 运行依赖
 
 - RecSDK自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
-    - asynchronous_complete_cumsum
-    - dense_to_jagged
-    - hstu_dense_backward
-    - hstu_dense_forward
-    - jagged_to_padded_dense
-    - invert_permute
-    - permute2d_sparse_data
+  - asynchronous\_complete\_cumsum
+  - dense\_to\_jagged
+  - hstu\_dense\_backward
+  - hstu\_dense\_forward
+  - jagged\_to\_padded\_dense
+  - invert\_permute
+  - permute2d\_sparse\_data
 - [DynamicEmbedding for NPU](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/dynamic_emb/README.md): 使用源码方式安装
 
 ### 下载指定版本的训练套件
 
 依赖:
 
-- Megatron-LM (core_r0.14.0)
-- MindSpeed(core_r0.14.0)
+- Megatron-LM (core\_r0.14.0)
+- MindSpeed(core\_r0.14.0)
 
 在recsys-example目录下载Mindspeed文件夹和Megatron-LM文件夹
 
@@ -183,9 +244,9 @@ git checkout core_r0.14.0
 
 ### 准备数据集
 
-[NV Recsys-examlpes](https://github.com/NVIDIA/recsys-examples)模型运行前需要按[步骤](https://github.com/NVIDIA/recsys-examples/blob/v25.09/examples/hstu/README.md#dataset-preprocessing)准备movielen-20m数据集
+[NV Recsys-examples](https://github.com/NVIDIA/recsys-examples)模型运行前需要按[步骤](https://github.com/NVIDIA/recsys-examples/blob/v25.09/examples/hstu/README.md#dataset-preprocessing)准备movielen-20m数据集
 
-在benchmark/datasets目录新建recsys_examples目录存放处理好的ml-20m数据集目录。
+在benchmark/datasets目录新建recsys\_examples目录存放处理好的ml-20m数据集目录。
 
 ```shell
 |-- benchmark
@@ -202,9 +263,9 @@ git checkout core_r0.14.0
 ### 运行依赖
 
 - RecSDK自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
-    - asynchronous_complete_cumsum
-    - dense_to_jagged
-    - jagged_to_padded_dense
+  - asynchronous\_complete\_cumsum
+  - dense\_to\_jagged
+  - jagged\_to\_padded\_dense
 - RecSDK自定义算子适配层安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)中算子适配层编译章节。
 
 ### 准备数据集
