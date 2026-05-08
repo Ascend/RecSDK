@@ -59,14 +59,12 @@ check_system_and_cann "$ai_core" || exit 1
 rm -rf "${TGT}"
 msopgen gen -i "${OPERATOR_JSON_FILE}" -f tf -c "${ai_core}" -lan cpp -out "${TGT}" -m 0 -op RmaSwapMultiTables || exit 1
 
-if [ -d "${TGT}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
-    export MAJOR_VERSION=8
-fi
+set_build_version "${TGT}"
 
 replace_operator_sources "${V220_SRC}" "${TGT}" || exit 1
 
-configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "${TGT}" || exit 1
-prepare_and_build "$MAJOR_VERSION" "$vendor_name" "${TGT}" || exit 1
+configure_cmake_presets "$vendor_name" "$ai_core" "$BUILD_VERSION" "${TGT}" || exit 1
+prepare_and_build "$BUILD_VERSION" "$vendor_name" "${TGT}" || exit 1
 install_operator_package "$OS_ID" "$ARCH" "${TGT}" || exit 1
 
 rm -f "${V220_SRC}/${vendor_name}.json"

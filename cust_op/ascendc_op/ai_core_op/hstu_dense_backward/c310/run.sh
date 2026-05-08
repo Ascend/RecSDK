@@ -57,6 +57,6 @@ sed -i "1i #define SUPPORT_950" "${TGT}/op_host/hstu_jagged_backward.cpp"
 sed -i "1i #define __DAV_C310_VEC__" "${TGT}/op_host/hstu_dense_backward_tiling_common.h"
 apply_op_kernel_compile_options_dual "$TGT" "-DENABLE_CV_COMM_VIA_SSBUF=true" || exit 1
 
-configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "$TGT" "False" || exit 1
-prepare_and_build "$MAJOR_VERSION" "$vendor_name" "$TGT" "False" || exit 1
+configure_cmake_presets "$vendor_name" "$ai_core" "$BUILD_VERSION" "$TGT" "False" || exit 1
+prepare_and_build "$BUILD_VERSION" "$vendor_name" "$TGT" "False" || exit 1
 install_operator_package "$OS_ID" "$ARCH" "$TGT" || exit 1

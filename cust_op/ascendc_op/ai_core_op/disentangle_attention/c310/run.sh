@@ -59,6 +59,6 @@ sed -i "1i #define SUPPORT_950" "${TGT}/op_host/${vendor_name}.cpp"
 
 apply_op_kernel_compile_options_dual "$TGT" "-DENABLE_CV_COMM_VIA_SSBUF=true" || exit 1
 
-configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "$TGT" || exit 1
-prepare_and_build "$MAJOR_VERSION" "$vendor_name" "$TGT" || exit 1
+configure_cmake_presets "$vendor_name" "$ai_core" "$BUILD_VERSION" "$TGT" || exit 1
+prepare_and_build "$BUILD_VERSION" "$vendor_name" "$TGT" || exit 1
 install_operator_package "$OS_ID" "$ARCH" "$TGT" || exit 1

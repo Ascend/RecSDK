@@ -43,31 +43,34 @@ vendor_name="cust_op_by_addr"
 export with_onnx="true"
 export AI_CORE_PROFILE="v220"
 export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/emb_custom.json")"
+export ENABLE_SOURCE_PACKAGE="true"
 readonly V220_SRC="$(readlink -f "${WORK_DIR}")"
-readonly TGT="${WORK_DIR}/${vendor_name}"
 
 parse_arguments "$@" || exit 1
 
 cp -f "$OPERATOR_JSON_FILE" "${V220_SRC}/${vendor_name}.json"
 
 # ==============================================================================
-# 4. 执行标准化流程（不可整段走 build_and_install_operator：需连续两次 msopgen -m 0 / -m 1）
+# 4. 执行标准化流程
 # ==============================================================================
-validate_ai_core "$ai_core" || exit 1
-check_system_and_cann "$ai_core" || exit 1
 
-rm -rf "${TGT}"
-msopgen gen -i "${OPERATOR_JSON_FILE}" -f tf -c "${ai_core}" -lan cpp -out "${TGT}" -m 0 -op EmbeddingLookupByAddress || exit 1
-msopgen gen -i "${OPERATOR_JSON_FILE}" -f tf -c "${ai_core}" -lan cpp -out "${TGT}" -m 1 -op EmbeddingUpdateByAddress || exit 1
+gen_build_dir() {
+    local work_dir="$1"
+    local vendor_name="$2"
 
-if [ -d "${TGT}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
-    export MAJOR_VERSION=8
-fi
+    rm -rf "${work_dir}/${vendor_name}"
+    local json_file="${OPERATOR_JSON_FILE:-${work_dir}/${vendor_name}.json}"
+    msopgen gen -i "${json_file}" -f tf -c "${ai_core}" -lan cpp -out "${work_dir}/${vendor_name}" -m 0 \
+        -op EmbeddingLookupByAddress || exit 1
+    msopgen gen -i "${json_file}" -f tf -c "${ai_core}" -lan cpp -out "${work_dir}/${vendor_name}" -m 1 \
+        -op EmbeddingUpdateByAddress || exit 1
 
-replace_operator_sources "${V220_SRC}" "${TGT}" || exit 1
+    set_build_version "${work_dir}/${vendor_name}"
 
-configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "${TGT}" || exit 1
-prepare_and_build "$MAJOR_VERSION" "$vendor_name" "${TGT}" || exit 1
-install_operator_package "$OS_ID" "$ARCH" "${TGT}" || exit 1
+    if [ "${BUILD_VERSION}" = "modern" ]; then
+        overwrite_source_with_target "${work_dir}/${vendor_name}" \
+        "${__PROJECT_ROOT}/ai_core_op/custom_op_template" || return 1
+    fi
+}
 
-rm -f "${V220_SRC}/${vendor_name}.json"
+build_and_install_operator "$WORK_DIR" "$vendor_name" || exit 1

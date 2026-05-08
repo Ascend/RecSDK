@@ -58,7 +58,7 @@ replace_operator_sources() {
     # 复制新文件
     cp -rf ${src_dir}/op_kernel/* "${tgt_dir}/op_kernel/"
     cp -rf ${src_dir}/op_host/* "${tgt_dir}/op_host/"
-    if [ "$ai_core" = "ai_core-Ascend310P3" ] && [ "$MAJOR_VERSION" -lt 9 ]; then
+    if [ "$ai_core" = "ai_core-Ascend310P3" ] && [ "$BUILD_VERSION" = "legacy" ]; then
         sed -i "1i #define SUPPORT_V200" "${tgt_dir}/op_host/gather_for_rank1.cpp"
         sed -i "1i #define SUPPORT_V200" "${tgt_dir}/op_kernel/gather_for_rank1_kernel.h"
     fi
