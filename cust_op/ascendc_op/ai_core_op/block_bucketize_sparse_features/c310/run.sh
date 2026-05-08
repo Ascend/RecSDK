@@ -57,10 +57,10 @@ gen_build_dir() {
         -m 0 -op BlockBucketizeSparseFeaturesComputeNewLengths || return 1
     msopgen gen -i "${json_file}" -f tf -c "${ai_core}" -lan cpp -out "${work_dir}/${vendor_name}" \
         -m 1 -op BlockBucketizeSparseFeaturesScatterNewIndices || return 1
-    if [ -d "${work_dir}/${vendor_name}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
-        export MAJOR_VERSION=8
-    fi
-    if [ "${MAJOR_VERSION}" -ge 9 ]; then
+
+    set_build_version "${work_dir}/${vendor_name}"
+
+    if [ "${BUILD_VERSION}" = "modern" ]; then
         overwrite_source_with_target "${work_dir}/${vendor_name}" \
             "${__PROJECT_ROOT}/ai_core_op/custom_op_template" || return 1
     fi

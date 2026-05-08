@@ -42,6 +42,7 @@ vendor_name="cust_op_by_addr"
 export with_onnx="true"
 export AI_CORE_PROFILE="c310"
 export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/../v220/emb_custom.json")"
+export ENABLE_SOURCE_PACKAGE="true"
 readonly V220_SRC="$(readlink -f "${WORK_DIR}/../v220")"
 readonly TGT="${WORK_DIR}/${vendor_name}"
 
@@ -57,10 +58,9 @@ rm -rf "${TGT}"
 msopgen gen -i "${OPERATOR_JSON_FILE}" -f tf -c "${ai_core}" -lan cpp -out "${TGT}" -m 0 -op EmbeddingLookupByAddress || exit 1
 msopgen gen -i "${OPERATOR_JSON_FILE}" -f tf -c "${ai_core}" -lan cpp -out "${TGT}" -m 1 -op EmbeddingUpdateByAddress || exit 1
 
-if [ -d "${TGT}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
-    export MAJOR_VERSION=8
-fi
-if [ "${MAJOR_VERSION}" -ge 9 ]; then
+set_build_version "${TGT}"
+
+if [ "${BUILD_VERSION}" = "modern" ]; then
     overwrite_source_with_target "${TGT}" "${__PROJECT_ROOT}/ai_core_op/custom_op_template" || exit 1
 fi
 
@@ -69,6 +69,6 @@ replace_operator_sources "${V220_SRC}" "${TGT}" || exit 1
 sed -i "1i #define SUPPORT_950" "${TGT}/op_host/embedding_update_by_address.cpp"
 sed -i "1i #define SUPPORT_950" "${TGT}/op_host/embedding_lookup_by_address.cpp"
 
-configure_cmake_presets "$vendor_name" "$ai_core" "$MAJOR_VERSION" "${TGT}" || exit 1
-prepare_and_build "$MAJOR_VERSION" "$vendor_name" "${TGT}" || exit 1
+configure_cmake_presets "$vendor_name" "$ai_core" "$BUILD_VERSION" "${TGT}" || exit 1
+prepare_and_build "$BUILD_VERSION" "$vendor_name" "${TGT}" || exit 1
 install_operator_package "$OS_ID" "$ARCH" "${TGT}" || exit 1

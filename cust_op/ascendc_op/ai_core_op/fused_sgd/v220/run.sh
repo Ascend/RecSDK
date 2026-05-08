@@ -60,13 +60,12 @@ check_system_and_cann "$ai_core" || exit 1
 
 rm -rf "${TGT}"
 msopgen gen -i "${OPERATOR_JSON_FILE}" -f tf -c "${ai_core}" -lan cpp -out "${TGT}" -m 0 -op "${MSOPGEN_OP_NAME}"
-if [ -d "${TGT}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
-    export MAJOR_VERSION=8
-fi
+
+set_build_version "${TGT}"
 
 replace_operator_sources "${OPERATOR_SOURCE_ROOT}" "${TGT}" || exit 1
 cp -f "${OPERATOR_SOURCE_ROOT}"/../../common/* "${TGT}"/op_host/
-configure_cmake_presets "${CMAKE_PRESET_VENDOR_NAME}" "${ai_core}" "${MAJOR_VERSION}" "${TGT}" || exit 1
-prepare_and_build "$MAJOR_VERSION" "${CMAKE_PRESET_VENDOR_NAME}" "${TGT}" || exit 1
+configure_cmake_presets "${CMAKE_PRESET_VENDOR_NAME}" "${ai_core}" "${BUILD_VERSION}" "${TGT}" || exit 1
+prepare_and_build "$BUILD_VERSION" "${CMAKE_PRESET_VENDOR_NAME}" "${TGT}" || exit 1
 install_operator_package "$OS_ID" "$ARCH" "${TGT}" || exit 1
 rm -rf "${OPERATOR_SOURCE_ROOT}/${CMAKE_PRESET_VENDOR_NAME}.json"
