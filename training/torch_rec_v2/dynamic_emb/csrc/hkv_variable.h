@@ -22,9 +22,42 @@
 #include <torch/extension.h>
 #include "dynamic_variable_base.h"
 #include "hkv_hashtable.h"
-
+#include "lookup_kernel.h"
+#include "utils.h"
+#include "device_utils.h"
 
 namespace dyn_emb {
+template <typename ElementType, typename SizeType>
+struct OptStateInitializer {
+    SizeType dim;
+    ElementType initial_optstate;
+    DEVICE_INLINE void init(ElementType* vec_ptr)
+    {
+        if (vec_ptr == nullptr) {
+            return;
+        }
+        for (SizeType i = threadIdx.x; i < dim; i++) {
+            vec_ptr[i] = initial_optstate;
+        }
+    }
+    DEVICE_INLINE void init4(ElementType* vec_ptr)
+    {
+        if (vec_ptr == nullptr) {
+            return;
+        }
+        Vec4T<ElementType> state;
+        state.reset(initial_optstate);
+
+        constexpr int VecSize = 4;
+        constexpr int kWarpSize = 32;
+        const int lane_id = threadIdx.x % kWarpSize;
+        for (int i = 0; VecSize * (kWarpSize * i + lane_id) < dim; ++i) {
+            int idx4 = VecSize * (kWarpSize * i + lane_id);
+            state.store(vec_ptr + idx4);
+        }
+    }
+};
+
 #ifdef USE_RTTI
 template <typename KeyType, typename ValueType, EvictStrategy Strategy = EvictStrategy::kLru>
 class HKVVariable {
