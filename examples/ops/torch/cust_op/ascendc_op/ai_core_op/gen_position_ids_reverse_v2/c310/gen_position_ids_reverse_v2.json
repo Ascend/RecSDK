@@ -1,0 +1,41 @@
+[
+  {
+    "op": "GenPositionIdsReverseV2",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "seqlen",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["int32"]
+      },
+      {
+        "name": "seqlen_offsets",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["int32"]
+      },
+      {
+        "name": "rspos",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["int32"]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "position_ids",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["int32"]
+      }
+    ],
+    "attr": [
+      {
+        "name": "batchSize",
+        "param_type": "required",
+        "type": ["int32", "int64"]
+      }
+    ]
+  }
+]
