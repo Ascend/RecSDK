@@ -1,0 +1,60 @@
+[
+  {
+    "op": "GenPositionIdsWithTimestamp",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "seqlen",
+        "param_type": "required",
+        "format": [
+          "ND"
+        ],
+        "type": [
+          "int32"
+        ]
+      },
+      {
+        "name": "seqlen_offsets",
+        "param_type": "required",
+        "format": [
+          "ND"
+        ],
+        "type": [
+          "int32"
+        ]
+      },
+      {
+        "name": "timestamps",
+        "param_type": "required",
+        "format": [
+          "ND"
+        ],
+        "type": [
+          "int32"
+        ]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "position_ids",
+        "param_type": "required",
+        "format": [
+          "ND"
+        ],
+        "type": [
+          "int32"
+        ]
+      }
+    ],
+    "attr": [
+      {
+        "name": "timeScale",
+        "param_type": "optional",
+        "type": [
+          "float"
+        ],
+        "default_value": "300.0"
+      }
+    ]
+  }
+]
