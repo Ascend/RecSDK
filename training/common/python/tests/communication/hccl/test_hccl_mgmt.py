@@ -16,13 +16,19 @@
 # ==============================================================================
 
 import os
+import sys
 import unittest
 from unittest import mock
-from unittest.mock import mock_open, patch
+from unittest.mock import mock_open, patch, MagicMock
 
 import rec_sdk_common.util
 from rec_sdk_common.constants.constants import CommonEnv, RankTableInfo
-from rec_sdk_common.communication.hccl.hccl_mgmt import _get_rank_info_with_ranktable, _get_rank_info_without_ranktable
+from rec_sdk_common.communication.hccl.hccl_mgmt import (
+    _get_chip_name,
+    _determine_ranktable_format,
+    _get_rank_info_with_ranktable,
+    _get_rank_info_without_ranktable
+)
 
 
 class HCCLMGMTTest(unittest.TestCase):
@@ -136,7 +142,6 @@ class HCCLMGMTTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 rank_to_device_dict, local_rank_size = _get_rank_info_with_ranktable()
 
-
 class TestSetHcclInfoWithoutRanktable(unittest.TestCase):
     @mock.patch("os.environ", {CommonEnv.CM_WORKER_SIZE.value: "1", CommonEnv.CM_CHIEF_DEVICE.value: "0"})
     @mock.patch.multiple(
@@ -154,6 +159,29 @@ class TestSetHcclInfoWithoutRanktable(unittest.TestCase):
     )
     def test_ok(self):
         self.assertIsNotNone(_get_rank_info_without_ranktable())
+
+class TestGetChipName(unittest.TestCase):
+    @mock.patch.dict("sys.modules", {"common_binding": MagicMock()})
+    def test_ok(self):
+        sys.modules["common_binding"].get_chip_name.return_value = "910B"
+        result = _get_chip_name()
+        self.assertEqual(result, "910B")
+
+
+class TestDetermineRanktableFormat(unittest.TestCase):
+    @mock.patch(
+        "rec_sdk_common.communication.hccl.hccl_mgmt._get_chip_name",
+        return_value="950PR_xxxx"
+    )
+    def test_new_chip_returns_true(self, mock_chip):
+        self.assertTrue(_determine_ranktable_format())
+
+    @mock.patch(
+        "rec_sdk_common.communication.hccl.hccl_mgmt._get_chip_name",
+        return_value="910B"
+    )
+    def test_old_chip_returns_false(self, mock_chip):
+        self.assertFalse(_determine_ranktable_format())
 
 
 if __name__ == "__main__":
