@@ -143,6 +143,7 @@ class CMakeBuild(build_ext):
         run_mode = os.getenv('RUN_MODE', 'npu')
         soc_version = os.getenv('SOC_VERSION', 'Ascend950PR_9579')
         ascend_cann_path = os.getenv('ASCEND_CANN_PACKAGE_PATH', '/usr/local/Ascend/ascend-toolkit/latest')
+        max_compile_threads = os.getenv('MAX_COMPILE_THREADS', '8')
         
         cmake_args.extend([
             f'-DRUN_MODE={run_mode}',
@@ -159,8 +160,8 @@ class CMakeBuild(build_ext):
         subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=build_temp)
         
         logging.info("Building project...")
-        subprocess.check_call(['cmake', '--build', '.', '--verbose', '--config', 'Debug' if self.debug else 'Release'], 
-                             cwd=build_temp)
+        subprocess.check_call(['cmake', '--build', '.', '--parallel', max_compile_threads, '--verbose', '--config',
+                               'Debug' if self.debug else 'Release'], cwd=build_temp)
 
 # 设置依赖
 setup_requires = ['pybind11']

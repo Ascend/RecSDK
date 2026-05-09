@@ -43,6 +43,9 @@ from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import (
 )
 from dynamic_emb.distributed.optimizers.adam_dynamicemb_optimizer import AdamDynamicEmbeddingOptimizerV2
 from dynamic_emb.distributed.optimizers.adamw_dynamicemb_optimizer import AdamWDynamicEmbeddingOptimizerV2
+from dynamic_emb.distributed.optimizers.adagrad_dynamicemb_optimizer import AdagradDynamicEmbeddingOptimizerV2
+from dynamic_emb.distributed.optimizers.row_wise_adagrad_dynamicemb_optimizer import RowWiseAdagradDynamicEmbeddingOptimizerV2
+from dynamic_emb.distributed.optimizers.sgd_dynamicemb_optimizer import SGDDynamicEmbeddingOptimizerV2
 from dynamic_emb.distributed.dynamicemb_config import (
     DynamicEmbTableOptions,
     DynamicEmbPoolingMode,
@@ -599,7 +602,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
             momentum=config.momentum,
         )
         self._optimizer_args = optimizer_args
-        self._optimizer = _create_optimizer_instance(config.optimizer_type, optimizer_args)
+        self._optimizer = self._create_optimizer_instance(config.optimizer_type, optimizer_args)
 
     def split_embedding_weights(self) -> List[Tensor]:
         """
@@ -1001,15 +1004,23 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
 
         return torch.cat(keys_list), torch.cat(values_list, dim=0)
 
-def _create_optimizer_instance(
-    optimizer_type: EmbOptimType, optimizer_args: OptimizerArgs
-) -> BaseDynamicEmbeddingOptimizerV2:
-    if optimizer_type == EmbOptimType.ADAM:
-        return AdamDynamicEmbeddingOptimizerV2(optimizer_args)
-    elif optimizer_type == EmbOptimType.ADAMW:
-        return AdamWDynamicEmbeddingOptimizerV2(optimizer_args)
-    else:
-        raise ValueError(
-            f"Not supported optimizer type, optimizer type = {optimizer_type} {type(optimizer_type)} "
-            f"{optimizer_type.value}."
-        )
+    def _create_optimizer_instance(
+            self, optimizer_type: EmbOptimType, optimizer_args: OptimizerArgs
+    ) -> BaseDynamicEmbeddingOptimizerV2:
+        if optimizer_type == EmbOptimType.ADAM:
+            return AdamDynamicEmbeddingOptimizerV2(optimizer_args)
+        elif optimizer_type == EmbOptimType.ADAMW:
+            return AdamWDynamicEmbeddingOptimizerV2(optimizer_args)
+        elif optimizer_type == EmbOptimType.SGD:
+            return SGDDynamicEmbeddingOptimizerV2(optimizer_args)
+        elif optimizer_type == EmbOptimType.EXACT_SGD:
+            return SGDDynamicEmbeddingOptimizerV2(optimizer_args)
+        elif optimizer_type == EmbOptimType.EXACT_ADAGRAD:
+            return AdagradDynamicEmbeddingOptimizerV2(optimizer_args)
+        elif optimizer_type == EmbOptimType.EXACT_ROWWISE_ADAGRAD:
+            return RowWiseAdagradDynamicEmbeddingOptimizerV2(optimizer_args, emb_dtype=self.embedding_dtype)
+        else:
+            raise ValueError(
+                f"Not supported optimizer type, optimizer type = {optimizer_type} {type(optimizer_type)} "
+                f"{optimizer_type.value}."
+            )
