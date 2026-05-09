@@ -75,8 +75,12 @@ def generate_increasing_sequence(num: int, seq_len: int):
 def gen_data(jt_num, inputs_shape, input_col, input_dtype, seq_len=None):
     input_values = []
     for i in range(jt_num):
-        input_value = np.random.uniform(1, 100, [inputs_shape[i], input_col])
-        input_value = torch.from_numpy(input_value).to(input_dtype)
+        if input_dtype == torch.int32:
+            input_value = np.random.randint(1, 100, [inputs_shape[i], input_col])
+            input_value = torch.from_numpy(input_value).to(input_dtype)
+        else:
+            input_value = np.random.uniform(1, 100, [inputs_shape[i], input_col])
+            input_value = torch.from_numpy(input_value).to(input_dtype)
         input_values.append(input_value)
     offsets = []
     # 功能用例使用随机shape,性能用例使用确定shape.
@@ -98,7 +102,7 @@ def gen_data(jt_num, inputs_shape, input_col, input_dtype, seq_len=None):
 
 @pytest.mark.parametrize("input_shape", [[100, 200], [1000, 100000]])
 @pytest.mark.parametrize("input_col", [128, 256, 512])
-@pytest.mark.parametrize("input_dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("input_dtype", [torch.float16, torch.float32, torch.bfloat16, torch.int32])
 def test_concat_jagged_tensor(input_shape, input_col, input_dtype):
     jt_num = 2
     values, offsets, max_seqlens = gen_data(jt_num, input_shape, input_col, input_dtype)
@@ -123,7 +127,7 @@ def test_concat_jagged_tensor(input_shape, input_col, input_dtype):
 
 @pytest.mark.parametrize("output_shape", [[100, 200], [1000, 100000]])
 @pytest.mark.parametrize("input_col", [128, 256, 512])
-@pytest.mark.parametrize("input_dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("input_dtype", [torch.float16, torch.float32, torch.bfloat16, torch.int32])
 def test_split_jagged_tensor(output_shape, input_col, input_dtype):
     jt_num = 2
     values, offsets, max_seqlens = gen_data(jt_num, output_shape, input_col, input_dtype)
