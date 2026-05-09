@@ -80,10 +80,10 @@ at::Tensor concat_2d_jagged_npu(
 
     TORCH_CHECK(valuesA.size(0) >= 1, "values must have length >= 1.");
     // check type
-    TORCH_CHECK(valuesA.dtype() == at::kFloat || valuesA.dtype() == at::kHalf || valuesA.dtype() == at::kBFloat16,
-                "valuesA must have be kFloat or kHalf or kBFloat16 dtype.");
-    TORCH_CHECK(valuesB.dtype() == at::kFloat || valuesB.dtype() == at::kHalf || valuesB.dtype() == at::kBFloat16,
-                "valuesB must have be kFloat or kHalf or kBFloat16 dtype.");
+    TORCH_CHECK(valuesA.dtype() == at::kFloat || valuesA.dtype() == at::kHalf || valuesA.dtype() == at::kBFloat16 || valuesA.dtype() == at::kInt,
+                "valuesA must have be kFloat or kHalf or kBFloat16 or kInt dtype.");
+    TORCH_CHECK(valuesB.dtype() == at::kFloat || valuesB.dtype() == at::kHalf || valuesB.dtype() == at::kBFloat16 || valuesA.dtype() == at::kInt,
+                "valuesB must have be kFloat or kHalf or kBFloat16 or kInt dtype.");
     TORCH_CHECK(offsetA.dtype() == at::kLong || offsetA.dtype() == at::kInt,
                 "offsetA must have be kLong or kInt dtype.");
     TORCH_CHECK(offsetB.dtype() == at::kLong || offsetB.dtype() == at::kInt,
@@ -134,8 +134,8 @@ tuple<Tensor, Tensor> split_2d_jagged_npu(
     TORCH_CHECK(values.dim() == EXPECTED_DIM_2D, "values must be a 2-dimensional tensor.");
 
     // check type
-    TORCH_CHECK(values.dtype() == at::kFloat || values.dtype() == at::kHalf || values.dtype() == at::kBFloat16,
-                "values must have be kFloat or kHalf or kBFloat16 dtype.");
+    TORCH_CHECK(values.dtype() == at::kFloat || values.dtype() == at::kHalf || values.dtype() == at::kBFloat16 || values.dtype() == at::kInt,
+                "values must have be kFloat or kHalf or kBFloat16 or kInt dtype.");
     TORCH_CHECK(offsetA.dtype() == at::kLong || offsetA.dtype() == at::kInt,
                 "offsetA must have be kLong or kInt dtype.");
     TORCH_CHECK(offsetB.dtype() == at::kLong || offsetB.dtype() == at::kInt,

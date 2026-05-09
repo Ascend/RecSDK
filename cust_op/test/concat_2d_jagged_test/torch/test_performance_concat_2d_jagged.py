@@ -33,7 +33,7 @@ def test_performance_concat_jagged():
     # 测试参数组合
     input_shape = [500, 50000]
     input_cols = [128, 256, 512]
-    input_dtypes = [torch.float16, torch.float32, torch.bfloat16]
+    input_dtypes = [torch.float16, torch.float32, torch.bfloat16, torch.int32]
 
     for input_col in input_cols:
         for input_dtype in input_dtypes:
@@ -79,7 +79,7 @@ def test_performance_split_jagged():
     # 测试参数组合
     output_shape = [500, 50000]
     input_cols = [128, 256, 512]
-    input_dtypes = [torch.float16, torch.float32, torch.bfloat16]
+    input_dtypes = [torch.float16, torch.float32, torch.bfloat16, torch.int32]
 
     for input_col in input_cols:
         for input_dtype in input_dtypes:
