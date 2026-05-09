@@ -32,6 +32,10 @@ from dynamic_emb_extensions import OptimizerType, DynamicEmbDataType
 class EmbOptimType(enum.Enum):
     ADAM = "adam"
     ADAMW = "adamW"
+    SGD = "sgd"
+    EXACT_SGD = "exact_sgd"
+    EXACT_ADAGRAD = "exact_adagrad"
+    EXACT_ROWWISE_ADAGRAD = "exact_row_wise_adagrad"
     NONE = "none"
 
     def __str__(self) -> str:
@@ -50,6 +54,12 @@ def convert_optimizer_type(optimizer: EmbOptimType) -> OptimizerType:
         return OptimizerType.Adam
     elif optimizer == EmbOptimType.ADAMW:
         return OptimizerType.AdamW
+    elif optimizer == EmbOptimType.SGD or optimizer == EmbOptimType.EXACT_SGD:
+        return OptimizerType.SGD
+    elif optimizer == EmbOptimType.EXACT_ADAGRAD:
+        return OptimizerType.AdaGrad
+    elif optimizer == EmbOptimType.EXACT_ROWWISE_ADAGRAD:
+        return OptimizerType.RowWiseAdaGrad
     else:
         raise ValueError(
             f"Not supported optimizer type, optimizer type = {optimizer} {type(optimizer)} {optimizer.value}."

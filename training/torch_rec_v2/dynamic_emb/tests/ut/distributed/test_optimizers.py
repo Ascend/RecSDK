@@ -31,6 +31,9 @@ from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import (
 )
 from dynamic_emb.distributed.optimizers.adam_dynamicemb_optimizer import AdamDynamicEmbeddingOptimizerV2
 from dynamic_emb.distributed.optimizers.adamw_dynamicemb_optimizer import AdamWDynamicEmbeddingOptimizerV2
+from dynamic_emb.distributed.optimizers.adagrad_dynamicemb_optimizer import AdagradDynamicEmbeddingOptimizerV2
+from dynamic_emb.distributed.optimizers.row_wise_adagrad_dynamicemb_optimizer import RowWiseAdagradDynamicEmbeddingOptimizerV2
+from dynamic_emb.distributed.optimizers.sgd_dynamicemb_optimizer import SGDDynamicEmbeddingOptimizerV2
 
 _original_dynamic_emb_extensions = sys.modules.get("dynamic_emb_extensions")
 
@@ -153,7 +156,7 @@ class TestAdamDynamicEmbeddingOptimizerV2(unittest.TestCase):
         value_type = torch.float32
 
         with patch(
-            "dynamic_emb.distributed.optimizers.adam_dynamicemb_optimizer.dynamic_emb_Adam_with_pointer"
+            "dynamic_emb.distributed.optimizers.adam_dynamicemb_optimizer.dynamic_emb_adamW_with_pointer"
         ) as mocked_func:
             mocked_func.return_value = ()
             optimizer.fused_update_with_pointer(grads, value_ptr, value_type)
@@ -172,6 +175,197 @@ class TestAdamWDynamicEmbeddingOptimizerV2(unittest.TestCase):
 
         with patch(
             "dynamic_emb.distributed.optimizers.adamw_dynamicemb_optimizer.dynamic_emb_adamW_with_pointer"
+        ) as mocked_func:
+            mocked_func.return_value = ()
+            optimizer.fused_update_with_pointer(grads, value_ptr, value_type)
+            mocked_func.assert_called_once()
+
+
+class TestAdagradDynamicEmbeddingOptimizerV2(unittest.TestCase):
+    def test_adagrad_optimizer_initialization(self):
+        opt_args = OptimizerArgs(learning_rate=0.001)
+        optimizer = AdagradDynamicEmbeddingOptimizerV2(opt_args)
+
+        opt_args_dict = optimizer.get_opt_args()
+        self.assertEqual(opt_args_dict["opt_type"], "exact_adagrad")
+        self.assertEqual(opt_args_dict["lr"], 0.001)
+        self.assertEqual(opt_args_dict["eps"], 1e-8)
+        self.assertEqual(opt_args_dict["initial_accumulator_value"], 0.0)
+        self.assertEqual(optimizer.get_state_dim(10), 10)
+
+    def test_set_learning_rate(self):
+        optimizer = AdagradDynamicEmbeddingOptimizerV2(OptimizerArgs(learning_rate=0.01))
+        self.assertEqual(optimizer.get_opt_args()["lr"], 0.01)
+        optimizer.set_learning_rate(0.005)
+        self.assertEqual(optimizer.get_opt_args()["lr"], 0.005)
+
+    def test_set_opt_args(self):
+        optimizer = AdagradDynamicEmbeddingOptimizerV2(OptimizerArgs())
+        new_args = {"lr": 0.02, "eps": 1e-7, "initial_accumulator_value": 0.1}
+
+        optimizer.set_opt_args(new_args)
+        opt_args = optimizer.get_opt_args()
+
+        self.assertEqual(opt_args["lr"], 0.02)
+        self.assertEqual(opt_args["eps"], 1e-7)
+        self.assertEqual(opt_args["initial_accumulator_value"], 0.1)
+
+    def test_get_state_dim(self):
+        emb_dim = 128
+        optimizer = AdagradDynamicEmbeddingOptimizerV2(OptimizerArgs())
+        self.assertEqual(optimizer.get_state_dim(emb_dim), emb_dim)
+
+    def test_initial_optim_states(self):
+        initial_val = 0.5
+        opt_args = OptimizerArgs(initial_accumulator_value=initial_val)
+        optimizer = AdagradDynamicEmbeddingOptimizerV2(opt_args)
+        self.assertEqual(optimizer.get_initial_optim_states(), initial_val)
+
+        new_initial = 0.1
+        optimizer.set_initial_optim_states(new_initial)
+        self.assertEqual(optimizer.get_initial_optim_states(), new_initial)
+
+    def test_fused_update_with_pointer_shape(self):
+        optimizer = AdagradDynamicEmbeddingOptimizerV2(OptimizerArgs())
+        batch_size = 32
+        emb_dim = 16
+
+        grads = torch.randn(batch_size, emb_dim)
+        value_ptr = torch.tensor([i for i in range(batch_size)], dtype=torch.int64)
+        value_type = torch.float32
+
+        with patch(
+            "dynamic_emb.distributed.optimizers.adagrad_dynamicemb_optimizer.dynamic_emb_adagrad_with_pointer"
+        ) as mocked_func:
+            mocked_func.return_value = ()
+            optimizer.fused_update_with_pointer(grads, value_ptr, value_type)
+            mocked_func.assert_called_once()
+
+
+class TestRowWiseAdagradDynamicEmbeddingOptimizerV2(unittest.TestCase):
+    def test_row_wise_adagrad_optimizer_initialization(self):
+        opt_args = OptimizerArgs(learning_rate=0.001)
+        emb_dtype = torch.float32
+        optimizer = RowWiseAdagradDynamicEmbeddingOptimizerV2(opt_args, emb_dtype)
+
+        opt_args_dict = optimizer.get_opt_args()
+        self.assertEqual(opt_args_dict["opt_type"], "exact_row_wise_adagrad")
+        self.assertEqual(opt_args_dict["lr"], 0.001)
+        self.assertEqual(opt_args_dict["eps"], 1e-8)
+        self.assertEqual(opt_args_dict["initial_accumulator_value"], 0.0)
+        self.assertEqual(optimizer.get_state_dim(10), 4)  # 16 // 4 = 4 for float32
+
+    def test_set_learning_rate(self):
+        emb_dtype = torch.float32
+        optimizer = RowWiseAdagradDynamicEmbeddingOptimizerV2(OptimizerArgs(learning_rate=0.01), emb_dtype)
+        self.assertEqual(optimizer.get_opt_args()["lr"], 0.01)
+        optimizer.set_learning_rate(0.005)
+        self.assertEqual(optimizer.get_opt_args()["lr"], 0.005)
+
+    def test_set_opt_args(self):
+        emb_dtype = torch.float32
+        optimizer = RowWiseAdagradDynamicEmbeddingOptimizerV2(OptimizerArgs(), emb_dtype)
+        new_args = {"lr": 0.02, "eps": 1e-7, "initial_accumulator_value": 0.1}
+
+        optimizer.set_opt_args(new_args)
+        opt_args = optimizer.get_opt_args()
+
+        self.assertEqual(opt_args["lr"], 0.02)
+        self.assertEqual(opt_args["eps"], 1e-7)
+        self.assertEqual(opt_args["initial_accumulator_value"], 0.1)
+
+    def test_get_state_dim_float32(self):
+        emb_dim = 128
+        emb_dtype = torch.float32
+        optimizer = RowWiseAdagradDynamicEmbeddingOptimizerV2(OptimizerArgs(), emb_dtype)
+        self.assertEqual(optimizer.get_state_dim(emb_dim), 4)  # 16 // 4
+
+    def test_get_state_dim_float16(self):
+        emb_dim = 128
+        emb_dtype = torch.float16
+        optimizer = RowWiseAdagradDynamicEmbeddingOptimizerV2(OptimizerArgs(), emb_dtype)
+        self.assertEqual(optimizer.get_state_dim(emb_dim), 8)  # 16 // 2
+
+    def test_initial_optim_states(self):
+        emb_dtype = torch.float32
+        initial_val = 0.5
+        opt_args = OptimizerArgs(initial_accumulator_value=initial_val)
+        optimizer = RowWiseAdagradDynamicEmbeddingOptimizerV2(opt_args, emb_dtype)
+        self.assertEqual(optimizer.get_initial_optim_states(), initial_val)
+
+        new_initial = 0.1
+        optimizer.set_initial_optim_states(new_initial)
+        self.assertEqual(optimizer.get_initial_optim_states(), new_initial)
+
+    def test_fused_update_with_pointer_shape(self):
+        emb_dtype = torch.float32
+        optimizer = RowWiseAdagradDynamicEmbeddingOptimizerV2(OptimizerArgs(), emb_dtype)
+        batch_size = 32
+        emb_dim = 16
+
+        grads = torch.randn(batch_size, emb_dim)
+        value_ptr = torch.tensor([i for i in range(batch_size)], dtype=torch.int64)
+        value_type = torch.float32
+
+        with patch(
+            "dynamic_emb.distributed.optimizers.row_wise_adagrad_dynamicemb_optimizer.dynamic_emb_rowwise_adagrad_with_pointer"
+        ) as mocked_func:
+            mocked_func.return_value = ()
+            optimizer.fused_update_with_pointer(grads, value_ptr, value_type)
+            mocked_func.assert_called_once()
+
+
+class TestSGDDynamicEmbeddingOptimizerV2(unittest.TestCase):
+    def test_sgd_optimizer_initialization(self):
+        opt_args = OptimizerArgs(learning_rate=0.001)
+        optimizer = SGDDynamicEmbeddingOptimizerV2(opt_args)
+
+        opt_args_dict = optimizer.get_opt_args()
+        self.assertEqual(opt_args_dict["opt_type"], "sgd")
+        self.assertEqual(opt_args_dict["lr"], 0.001)
+        self.assertEqual(optimizer.get_state_dim(10), 0)
+
+    def test_set_learning_rate(self):
+        optimizer = SGDDynamicEmbeddingOptimizerV2(OptimizerArgs(learning_rate=0.01))
+        self.assertEqual(optimizer.get_opt_args()["lr"], 0.01)
+        optimizer.set_learning_rate(0.005)
+        self.assertEqual(optimizer.get_opt_args()["lr"], 0.005)
+
+    def test_set_opt_args(self):
+        optimizer = SGDDynamicEmbeddingOptimizerV2(OptimizerArgs())
+        new_args = {"lr": 0.02}
+
+        optimizer.set_opt_args(new_args)
+        opt_args = optimizer.get_opt_args()
+
+        self.assertEqual(opt_args["lr"], 0.02)
+
+    def test_get_state_dim(self):
+        emb_dim = 128
+        optimizer = SGDDynamicEmbeddingOptimizerV2(OptimizerArgs())
+        self.assertEqual(optimizer.get_state_dim(emb_dim), 0)
+
+    def test_initial_optim_states(self):
+        initial_val = 0.5
+        opt_args = OptimizerArgs(initial_accumulator_value=initial_val)
+        optimizer = SGDDynamicEmbeddingOptimizerV2(opt_args)
+        self.assertEqual(optimizer.get_initial_optim_states(), initial_val)
+
+        new_initial = 0.1
+        optimizer.set_initial_optim_states(new_initial)
+        self.assertEqual(optimizer.get_initial_optim_states(), new_initial)
+
+    def test_fused_update_with_pointer_shape(self):
+        optimizer = SGDDynamicEmbeddingOptimizerV2(OptimizerArgs())
+        batch_size = 32
+        emb_dim = 16
+
+        grads = torch.randn(batch_size, emb_dim)
+        value_ptr = torch.tensor([i for i in range(batch_size)], dtype=torch.int64)
+        value_type = torch.float32
+
+        with patch(
+            "dynamic_emb.distributed.optimizers.sgd_dynamicemb_optimizer.dynamic_emb_sgd_with_pointer"
         ) as mocked_func:
             mocked_func.return_value = ()
             optimizer.fused_update_with_pointer(grads, value_ptr, value_type)

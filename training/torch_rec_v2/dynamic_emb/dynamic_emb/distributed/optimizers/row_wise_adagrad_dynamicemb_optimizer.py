@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,19 +26,23 @@ from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import (
     OptimizerArgs,
     get_required_arg,
 )
-from dynamic_emb_extensions import dynamic_emb_adamW_fused, dynamic_emb_adamW_with_pointer, DynamicEmbDataType
+from dynamic_emb_extensions import dynamic_emb_rowwise_adagrad_fused, dynamic_emb_rowwise_adagrad_with_pointer, DynamicEmbDataType
 
 
-class AdamDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
+class RowWiseAdagradDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
     def __init__(
         self,
         opt_args: OptimizerArgs,
+        emb_dtype: torch.dtype,
     ) -> None:
         super().__init__(opt_args)
-        self._iterations: int = 0
-
-    def step(self):
-        self._iterations += 1
+        
+        DTYPE_NUM_BYTES: Dict[torch.dtype, int] = {
+            torch.float32: 4,
+            torch.float16: 2,
+            torch.bfloat16: 2,
+        }
+        self._optim_state_dim = 16 // DTYPE_NUM_BYTES[emb_dtype]
 
     def update(
         self,
@@ -54,20 +58,13 @@ class AdamDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
         values: torch.Tensor,
     ) -> None:
         lr = self._opt_args.learning_rate
-        beta1 = self._opt_args.beta1
-        beta2 = self._opt_args.beta2
-        weight_decay = self._opt_args.weight_decay
         eps = self._opt_args.eps
 
-        dynamic_emb_adamW_fused(
+        dynamic_emb_rowwise_adagrad_fused(
             grads,
             values,
             lr,
-            beta1,
-            beta2,
             eps,
-            weight_decay,
-            self._iterations,
         )
 
     def fused_update_with_pointer(
@@ -77,50 +74,38 @@ class AdamDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
         value_type: Optional[DynamicEmbDataType] = None,
     ) -> None:
         lr = self._opt_args.learning_rate
-        beta1 = self._opt_args.beta1
-        beta2 = self._opt_args.beta2
-        weight_decay = self._opt_args.weight_decay
         eps = self._opt_args.eps
 
         emb_dim = grads.size(1)
         state_dim = self.get_state_dim(emb_dim)
 
-        dynamic_emb_adamW_with_pointer(
+        dynamic_emb_rowwise_adagrad_with_pointer(
             grads,
             value_ptr,
             value_type,
             state_dim,
             lr,
-            beta1,
-            beta2,
             eps,
-            weight_decay,
-            self._iterations,
         )
 
     def get_opt_args(self):
         ret_args = {
-            "opt_type": "adam",
+            "opt_type": "exact_row_wise_adagrad",
             "lr": self._opt_args.learning_rate,
-            "iters": self._iterations,
-            "beta1": self._opt_args.beta1,
-            "beta2": self._opt_args.beta2,
             "eps": self._opt_args.eps,
-            "weight_decay": self._opt_args.weight_decay,
+            "initial_accumulator_value": self._opt_args.initial_accumulator_value,
         }
         return ret_args
 
     def set_opt_args(self, args: Dict[str, Any]):
         self._opt_args.learning_rate = get_required_arg(args, "lr")
-        self._iterations = get_required_arg(args, "iters")
-        self._opt_args.beta1 = get_required_arg(args, "beta1")
-        self._opt_args.beta2 = get_required_arg(args, "beta2")
         self._opt_args.eps = get_required_arg(args, "eps")
-        self._opt_args.weight_decay = get_required_arg(args, "weight_decay")
+        initial_value = get_required_arg(args, "initial_accumulator_value")
+        self._opt_args.initial_accumulator_value = initial_value
         return
 
     def get_state_dim(self, emb_dim: int) -> int:
         """
         Get the state dim.
         """
-        return emb_dim * 2
+        return self._optim_state_dim
