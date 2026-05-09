@@ -1,8 +1,8 @@
 diff --git a/main.py b/main.py
-index 5b72403..3d55a45 100644
+index 5b72403..531df65 100644
 --- a/main.py
 +++ b/main.py
-@@ -1,26 +1,337 @@
+@@ -1,26 +1,335 @@
 +import os
 +import time
 +import logging
@@ -161,8 +161,8 @@ index 5b72403..3d55a45 100644
 +        "P90 Latency": p90,
 +    }
 +
-+    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
-+    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
++    prefix = f"{device_name}_{model_name}_{inductor_flag}_"
++    output_str = prefix + str(e2e_result)
 +
 +    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
 +    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
@@ -231,16 +231,14 @@ index 5b72403..3d55a45 100644
 +        for k, v in final_metrics.items():
 +            final_results[k] = float(v)
 +
-+        dataset_name = args.dataset_code
-+        model_detail_info = device_name + "_" + MODEL_NAME + "_" + dataset_name + "_" + inductor_flag
-+        output_str = model_detail_info + "_" + str(final_results)
-+        logging.info(f"The final result: {output_str}")
++        final_results["dataset"] = args.dataset_code
++        prefix = f"{device_name}_{MODEL_NAME}_{inductor_flag}_"
++        output_str = prefix + str(final_results)
++        logging.info(output_str)
 +
-+        # 保存精度结果（不含 avg_time）
-+        del final_results['avg_time']
-+        os.makedirs(f"../save_results_{device_name}/{MODEL_NAME}", exist_ok=True)
-+        torch.save(final_results,
-+                   f"../save_results_{device_name}/{MODEL_NAME}/predictions_{MODEL_NAME}_{inductor_flag}_{steps_per_epoch}.pt")
++        os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++        with open(f"../save_results_{device_name}/precision_result.txt", "a", encoding="utf-8") as f:
++            f.write(output_str + "\n")
 +
 +    if device_name == 'npu':
 +        torch_npu.npu.synchronize()

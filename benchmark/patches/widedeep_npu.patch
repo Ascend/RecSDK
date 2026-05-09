@@ -421,10 +421,10 @@ index 4455beb..01d53c0 100644
 \ No newline at end of file
 diff --git a/wnd_trainer.py b/wnd_trainer.py
 new file mode 100644
-index 0000000..49e1abf
+index 0000000..c551c28
 --- /dev/null
 +++ b/wnd_trainer.py
-@@ -0,0 +1,354 @@
+@@ -0,0 +1,353 @@
 +import os
 +import argparse
 +import logging
@@ -579,8 +579,8 @@ index 0000000..49e1abf
 +        "P90 Latency": p90,
 +    }
 +
-+    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
-+    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
++    prefix = f"{device_name}_{model_name}_{inductor_flag}_"
++    output_str = prefix + str(e2e_result)
 +
 +    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
 +    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
@@ -727,14 +727,13 @@ index 0000000..49e1abf
 +        for k, v in final_metrics.items():
 +            final_results[k] = float(v)
 +
-+        model_detail_info = device_name + "_" + MODEL_NAME + "_" + inductor_flag
-+        output_str = model_detail_info + "_" + str(final_results)
-+        logging.info(f"The final result: {output_str}")
++        prefix = f"{device_name}_{MODEL_NAME}_{inductor_flag}_"
++        output_str = prefix + str(final_results)
++        logging.info(output_str)
 +
-+        del final_results['avg_time']
-+        os.makedirs(f"../save_results_{device_name}/{MODEL_NAME}", exist_ok=True)
-+        torch.save(final_results,
-+                   f"../save_results_{device_name}/{MODEL_NAME}/predictions_{MODEL_NAME}_{inductor_flag}_{steps_per_epoch}.pt")
++        os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++        with open(f"../save_results_{device_name}/precision_result.txt", "a", encoding="utf-8") as f:
++            f.write(output_str + "\n")
 +
 +    torch_npu.npu.synchronize() if (HAS_NPU and torch.npu.is_available()) else torch.cuda.synchronize()
 +

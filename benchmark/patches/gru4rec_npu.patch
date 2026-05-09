@@ -1,5 +1,5 @@
 diff --git a/gru4rec_pytorch.py b/gru4rec_pytorch.py
-index 7058de8..0db3700 100644
+index 7058de8..2003baf 100644
 --- a/gru4rec_pytorch.py
 +++ b/gru4rec_pytorch.py
 @@ -2,8 +2,12 @@ import math
@@ -545,10 +545,10 @@ index 0000000..4386404
 +    main(path=args.path)
 \ No newline at end of file
 diff --git a/run.py b/run.py
-index fb6d043..af012b1 100644
+index fb6d043..27d389d 100644
 --- a/run.py
 +++ b/run.py
-@@ -1,132 +1,398 @@
+@@ -1,132 +1,397 @@
  import argparse
  import os
 -import shutil
@@ -742,8 +742,8 @@ index fb6d043..af012b1 100644
 +        "P90 Latency": p90,
 +    }
 +
-+    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
-+    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
++    prefix = f"{device_name}_{model_name}_{inductor_flag}_"
++    output_str = prefix + str(e2e_result)
 +
 +    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
 +    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
@@ -985,14 +985,13 @@ index fb6d043..af012b1 100644
 +        for k, v in final_metrics.items():
 +            final_results[k] = float(v)
 +
-+        model_detail_info = device_name + "_" + MODEL_NAME + "_" + inductor_flag
-+        output_str = model_detail_info + "_" + str(final_results)
-+        logging.info(f"The final result: {output_str}")
++        prefix = f"{device_name}_{MODEL_NAME}_{inductor_flag}_"
++        output_str = prefix + str(final_results)
++        logging.info(output_str)
 +
-+        del final_results['avg_time']
-+        os.makedirs(f"../save_results_{device_name}/{MODEL_NAME}", exist_ok=True)
-+        torch.save(final_results,
-+                   f"../save_results_{device_name}/{MODEL_NAME}/predictions_{MODEL_NAME}_{inductor_flag}_{steps_per_epoch}.pt")
++        os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++        with open(f"../save_results_{device_name}/precision_result.txt", "a", encoding="utf-8") as f:
++            f.write(output_str + "\n")
 +
 +    torch_npu.npu.synchronize() if (HAS_NPU and torch.npu.is_available()) else torch.cuda.synchronize()
 +
