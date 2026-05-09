@@ -62,17 +62,6 @@ enum class OptimizerType : int {
     AdaGrad,
     RowWiseAdaGrad,
 };
-#ifdef USE_RTTI
-#else
-// host侧没有half和bfloat16类型的定义，这里定义为uint16_t以保持相同的类型占位宽度
-struct half {
-    uint16_t value;
-};
-
-struct bfloat16_t {
-    uint16_t value;
-};
-#endif
 
 #define CASE_TYPE_USING_HINT(enum_type, type, HINT, ...)                       \
     case (enum_type): {                                                          \
