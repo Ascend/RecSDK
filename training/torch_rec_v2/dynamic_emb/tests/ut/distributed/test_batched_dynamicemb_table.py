@@ -261,7 +261,7 @@ class TestBatchedDynamicEmbeddingTablesV2(unittest.TestCase):
         ]
         named_score = {"table1": 100}
         self.emb_module.set_score(named_score)
-        with patch("dynamic_emb.distributed.key_value_table.batched_export_keys_values") as mock_prefetch:
+        with patch("dynamic_emb.distributed.batched_dynamicemb_table.batched_export_keys_values") as mock_prefetch:
             mock_key = torch.tensor([1, 2])
             mock_val = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
             mock_prefetch.return_value = [
