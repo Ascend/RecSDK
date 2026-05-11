@@ -29,15 +29,15 @@ constexpr static int64_t BLOCK_HEIGHT_256 = 256;
 constexpr static int64_t BLOCK_HEIGHT_128 = 128;
 constexpr static int64_t MASK_TYPE_TRIL = 0;
 
-template <typename qType, typename seqOffsetType, uint32_t blockHeightQ, uint32_t blockHeightK, uint32_t headDimPadding,
-          class MatmulMgmtType, class VectorScoreType>
+template <typename qType, typename seqOffsetType,  typename numContextType, uint32_t blockHeightQ,
+          uint32_t blockHeightK, uint32_t headDimPadding, class MatmulMgmtType, class VectorScoreType>
 __aicore__ inline void InvokeKernelWithRegistMM(HstuDenseBackward::Args& args)
 {
     MatmulMgmtType mmMgmtCommon;
     VectorScoreType vectorScoreKernel;
 
-    HstuDenseBackward::HstuJaggedKernel<qType, seqOffsetType, blockHeightQ, blockHeightK, headDimPadding,
-                                        MatmulMgmtType, VectorScoreType>
+    HstuDenseBackward::HstuJaggedKernel<qType, seqOffsetType, numContextType, blockHeightQ, blockHeightK,
+                                        headDimPadding, MatmulMgmtType, VectorScoreType>
         kernel;
     REGIST_MATMUL_OBJ(&kernel.pipe, GetSysWorkSpacePtr(), mmMgmtCommon.qkOrGvMatmul_, &args.tilingDataPtr->qkMatmul,
                       mmMgmtCommon.qGradMatmul_, &args.tilingDataPtr->qGradMatmul, mmMgmtCommon.kGradMatmul_,
@@ -51,15 +51,15 @@ __aicore__ inline void InvokeKernelWithRegistMM(HstuDenseBackward::Args& args)
     kernel.Compute(args, &mmMgmtCommon, &vectorScoreKernel);
 }
 
-template <typename qType, typename seqOffsetType, uint32_t blockHeightQ, uint32_t blockHeightK, uint32_t headDimPadding,
-          class MatmulMgmtType, class VectorScoreType>
+template <typename qType, typename seqOffsetType, typename numContextType, uint32_t blockHeightQ,
+          uint32_t blockHeightK, uint32_t headDimPadding, class MatmulMgmtType, class VectorScoreType>
 __aicore__ inline void InvokeKernelConstMM(HstuDenseBackward::Args& args)
 {
     MatmulMgmtType mmMgmtCommon;
     VectorScoreType vectorScoreKernel;
 
-    HstuDenseBackward::HstuJaggedKernel<qType, seqOffsetType, blockHeightQ, blockHeightK, headDimPadding,
-                                        MatmulMgmtType, VectorScoreType>
+    HstuDenseBackward::HstuJaggedKernel<qType, seqOffsetType, numContextType, blockHeightQ, blockHeightK,
+                                        headDimPadding, MatmulMgmtType, VectorScoreType>
         kernel;
     REGIST_MATMUL_OBJ(&kernel.pipe, GetSysWorkSpacePtr(), mmMgmtCommon.qkOrGvMatmul_, (TCubeTiling*)nullptr,
                       mmMgmtCommon.qGradMatmul_, (TCubeTiling*)nullptr, mmMgmtCommon.kGradMatmul_,
@@ -93,8 +93,8 @@ extern "C" __global__ __aicore__ void hstu_jagged_backward(GM_ADDR grad, GM_ADDR
         using MMCOM = HstuDenseBackward::MmMgmtCommon<float, BLOCK_HEIGHT_128, BLOCK_HEIGHT_128, HEAD_DIM_PADDING,
                                                       HstuJaggedBackwardTilingData>;
         using VsKernelType = HstuDenseBackward::HstuVectorScoreCommon<float, BLOCK_HEIGHT_128, BLOCK_HEIGHT_128>;
-        InvokeKernelWithRegistMM<float, DTYPE_SEQ_OFFSET_Q, BLOCK_HEIGHT_128, BLOCK_HEIGHT_128, HEAD_DIM_PADDING, MMCOM,
-                                 VsKernelType>(args);
+        InvokeKernelWithRegistMM<float, DTYPE_SEQ_OFFSET_Q, DTYPE_NUM_CONTEXT, BLOCK_HEIGHT_128, BLOCK_HEIGHT_128,
+                                 HEAD_DIM_PADDING, MMCOM, VsKernelType>(args);
     } else {
         bool isSameDim = (tilingDataPtr->headDimQK == tilingDataPtr->headDimV);
         HEAD_DIM_SWITCH(
@@ -104,15 +104,15 @@ extern "C" __global__ __aicore__ void hstu_jagged_backward(GM_ADDR grad, GM_ADDR
                                                                     HEAD_DIM, HstuJaggedBackwardTilingData>;
                 using VsKernelType =
                     HstuDenseBackward::HstuF16R0VectorScore<DTYPE_GRAD, BLOCK_HEIGHT_256, BLOCK_HEIGHT_256>;
-                InvokeKernelConstMM<DTYPE_GRAD, DTYPE_SEQ_OFFSET_Q, BLOCK_HEIGHT_256, BLOCK_HEIGHT_256, HEAD_DIM, MMCOM,
-                                    VsKernelType>(args);
+                InvokeKernelConstMM<DTYPE_GRAD, DTYPE_SEQ_OFFSET_Q, DTYPE_NUM_CONTEXT, BLOCK_HEIGHT_256,
+                                    BLOCK_HEIGHT_256, HEAD_DIM, MMCOM, VsKernelType>(args);
             } else {
                 using MMCOM = HstuDenseBackward::MmMgmtCommon<DTYPE_GRAD, BLOCK_HEIGHT_256, BLOCK_HEIGHT_256,
                                                               HEAD_DIM_PADDING, HstuJaggedBackwardTilingData>;
                 using VsKernelType =
                     HstuDenseBackward::HstuVectorScoreCommon<DTYPE_GRAD, BLOCK_HEIGHT_256, BLOCK_HEIGHT_256>;
-                InvokeKernelWithRegistMM<DTYPE_GRAD, DTYPE_SEQ_OFFSET_Q, BLOCK_HEIGHT_256, BLOCK_HEIGHT_256,
-                                         HEAD_DIM_PADDING, MMCOM, VsKernelType>(args);
+                InvokeKernelWithRegistMM<DTYPE_GRAD, DTYPE_SEQ_OFFSET_Q, DTYPE_NUM_CONTEXT, BLOCK_HEIGHT_256,
+                                         BLOCK_HEIGHT_256, HEAD_DIM_PADDING, MMCOM, VsKernelType>(args);
             });
     }
 }
