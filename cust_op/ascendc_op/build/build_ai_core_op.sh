@@ -55,6 +55,7 @@ declare -A OP_PLUGIN_MAP=(
   ["hstu_dense_backward_fuxi"]="hstu_dense_backward_fuxi"
   ["hstu_dense_forward"]="hstu"
   ["hstu_dense_forward_fuxi"]="hstu_dense_forward_fuxi"
+  ["hstu_v2"]="hstu_v2"
   ["in_linear_silu"]="in_linear_silu"
   ["in_linear_silu_backward"]="in_linear_silu"
   ["index_select_for_rank1_backward"]="gather_for_rank1"
