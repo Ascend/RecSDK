@@ -176,8 +176,8 @@ struct JaggedTaskInfoColMajor {
     }
 };
 
-template <typename qType, typename seqOffsetType, uint32_t blockHeightQ, uint32_t blockHeightK, uint32_t headDimPadding,
-          class MatmulMgmtType, class VectorScoreType>
+template <typename qType, typename seqOffsetType, typename numContextType, uint32_t blockHeightQ, uint32_t blockHeightK,
+          uint32_t headDimPadding, class MatmulMgmtType, class VectorScoreType>
 class HstuJaggedKernel {
 public:
     using MmInterface =
@@ -227,8 +227,8 @@ public:
     }
     __aicore__ inline void InitGtInfo(Args& args)
     {
-        numContextGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.numContext), batchSize_);
-        numTargetGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.numTarget), batchSize_);
+        numContextGt_.SetGlobalBuffer(reinterpret_cast<__gm__ numContextType*>(args.numContext), batchSize_);
+        numTargetGt_.SetGlobalBuffer(reinterpret_cast<__gm__ numContextType*>(args.numTarget), batchSize_);
         seqOffsetsQGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.seqOffsetQ), this->batchSize_ + 1);
         seqOffsetsKGt_.SetGlobalBuffer(reinterpret_cast<__gm__ seqOffsetType*>(args.seqOffsetK), this->batchSize_ + 1);
         int64_t totalElementOfAttnBias = batchSize_ * headNumQ_ * maxSeqLenQ_ * maxSeqLenK_;
@@ -685,8 +685,8 @@ public:
     TPipe pipe;  // pipe.InitBuffer等初始化
 
     // Gt
-    GlobalTensor<seqOffsetType> numContextGt_;
-    GlobalTensor<seqOffsetType> numTargetGt_;
+    GlobalTensor<numContextType> numContextGt_;
+    GlobalTensor<numContextType> numTargetGt_;
 
     GlobalTensor<qType> biasGt_;
     GlobalTensor<qType> maskGt_;

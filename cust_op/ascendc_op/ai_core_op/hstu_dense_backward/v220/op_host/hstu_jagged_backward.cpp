@@ -277,11 +277,11 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("num_context")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
+            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("num_target")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
+            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Output("q_grad")
             .ParamType(REQUIRED)
