@@ -86,6 +86,7 @@ python run.py xxx.json --eager
 |PLE|[PLE.json](configs/PLE.json)|
 |PNN|[PNN.json](configs/PNN.json)|
 |RECSYS_RANKING|[RECSYS_RANKING.json](configs/RECSYS_RANKING.json)|
+|RECSYS_RANKING_GR_7B|[RECSYS_RANKING_GR_7B.json](configs/RECSYS_RANKING_GR_7B.json)|
 |RECSYS_RETRIEVAL|[RECSYS_RETRIEVAL.json](configs/RECSYS_RETRIEVAL.json)|
 |SASREC_1M|[SASREC_1M.json](configs/SASREC_1M.json)|
 |SASREC_20M|[SASREC_20M.json](configs/SASREC_20M.json)|
@@ -204,6 +205,9 @@ MMOE模型运行前需访问 <https://tianchi.aliyun.com/dataset/74690> 下载al
 
 ## NV Recsys-examples 模型
 
+- 包含开源gr_ranking、gr_retrival
+- 包含增加MoE结构的GR RANKING 7B
+
 ### 运行依赖
 
 - RecSDK自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
@@ -215,10 +219,11 @@ MMOE模型运行前需访问 <https://tianchi.aliyun.com/dataset/74690> 下载al
   - invert\_permute
   - permute2d\_sparse\_data
 - [DynamicEmbedding for NPU](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/dynamic_emb/README.md): 使用源码方式安装
+- [Torchrec NPU for Recsys-example](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/torchrec_npu/README.md)
 
-### 下载指定版本的训练套件
+### 下载指定版本的训练套件(脚本自动下载，可跳过)
 
-依赖:
+训练套件依赖:
 
 - Megatron-LM (core\_r0.14.0)
 - MindSpeed(core\_r0.14.0)
@@ -246,7 +251,7 @@ git checkout core_r0.14.0
 
 [NV Recsys-examples](https://github.com/NVIDIA/recsys-examples)模型运行前需要按[步骤](https://github.com/NVIDIA/recsys-examples/blob/v25.09/examples/hstu/README.md#dataset-preprocessing)准备movielen-20m数据集
 
-在benchmark/datasets目录新建recsys\_examples目录存放处理好的ml-20m数据集目录。
+在benchmark/datasets目录新建recsys\-examples目录存放处理好的ml-20m数据集目录。
 
 ```shell
 |-- benchmark
@@ -254,7 +259,7 @@ git checkout core_r0.14.0
        |-- RECSYS_RANKING.json
        |-- RECSYS_RETRIEVAL.json
    |-- datasets
-       |-- recsys_examples
+       |-- recsys-examples
            |-- ml-20m
 ```
 

@@ -1,0 +1,28 @@
+{
+    "name": "RECSYS_RANKING_GR_7B",
+    "url": "https://github.com/NVIDIA/recsys-examples.git",
+    "model_name": "ranking_gr",
+    "commit_id": "a9e3feeaeac9ab933ea78dace0fbc50f81924fa0",
+    "patch_path": "patches/recsys_examples_moe.patch",
+    "mode": "train",
+    "epoch": 50,
+    "profiling_flag": false,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "bash",
+        "-c",
+        "cd ./examples/hstu && bash recsys_ranking_gr_7B.sh"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "cp -r ../../../tests/recsys_ranking_gr_7B.sh ./examples/hstu/",
+        "mkdir -p ./examples/hstu/tmp_data",
+        "cp -r ../../../dataset/recsys-examples/. ./examples/hstu/tmp_data",
+        "git clone https://gitcode.com/Ascend/MindSpeed.git ../MindSpeed",
+        "git -C ../MindSpeed checkout core_r0.14.0",
+        "git clone https://github.com/NVIDIA/Megatron-LM.git ../Megatron-LM",
+        "git -C ../Megatron-LM checkout core_r0.14.0"
+    ]
+}
