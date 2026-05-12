@@ -2418,7 +2418,7 @@ index 1b67a3a..5d39fb2 100644
  import gin
  import torch  # pylint: disable-unused-import
 +import torch_npu
-+torch.ops.load_library(f"/usr/local/python3.11.0/lib/python3.11/site-packages/libfbgemm_npu_api.so")
++torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 +import mindspeed.megatron_adaptor
  from commons.distributed.batch_shuffler_factory import BatchShufflerFactory
  from commons.distributed.sharding import make_optimizer_and_shard
