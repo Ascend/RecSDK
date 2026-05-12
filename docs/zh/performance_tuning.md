@@ -530,3 +530,79 @@ TopK算子在推荐推理如TWINS模型中使用，该算子即使通过1.5.4中
 |128|10.4|12258|
 |256|14.9|17231|
 |512|26.7|19195|
+
+## 性能调优案例
+
+### Host侧
+
+**背景**
+
+以生成式推荐模型Recsys-gr模型为例，其在不同架构（x86/ARM）及主频的CPU环境下，端到端训练性能存在显著差距。对比两类硬件环境，Device侧设备规格参数相同，采集profiling文件，观察到device侧耗时基本无明显差距。
+
+两种运行环境核心区别在于CPU架构规格与主频差异，低主频ARM环境端到端性能劣化严重，初步判定存在Host Bound瓶颈。
+
+**优化方法**
+
+Host Bound问题主要由算子下发延迟、CPU计算负载过重两个因素导致。可通过以下几个手段进行性能调优：
+
+#### 绑核（进程亲和性绑定）
+
+将训练主进程、数据加载进程固定绑定到指定CPU核心，避免进程跨核心频繁迁移与上下文切换，大幅降低系统调度开销，加快Host侧算子调度、任务下发效率，减少NPU空闲等待时间。
+
+#### 开启大页内存
+
+启用系统大页内存机制，减少内存页表寻址与缺页中断损耗，提升Host内存访问带宽，加速CPU内存分配、Host与NPU间数据拷贝速度，降低主机侧内存与通信耗时。
+
+#### BIOS调优
+
+关闭CPU节能降频策略，锁定高主频、启用性能调度模式，提升CPU单核运算能力，加快串行的算子调度、逻辑预处理等Host任务执行速度，让CPU任务下发节奏跟上NPU计算节奏。
+
+详细的Host Bound问题分析及优化方法及案例可参考[Host Bound问题定位及解决方法](https://www.hiascend.com/document/detail/zh/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/solution_to_top3.md?framework=mindspore)
+
+基于Recsys-gr模型的性能调优详见[Recsys-gr 性能调优实例](./torch/torch_rec_v2/migration_and_training.md)章节。
+
+### Device侧
+
+**背景**
+
+在训练和推理场景中，Host侧能快速完成任务下发，NPU（Device 侧）承担算子计算、张量运算等核心执行工作。若Device侧的计算处理耗时远大于Host侧任务下发耗时，NPU算力会持续满载、计算链路阻塞，成为整体性能的核心瓶颈。
+
+**优化方法**
+
+算子性能问题需要借助专门的分析工具和代码优化技术来解决。获取模型的profiling数据，对比不同算子的计算时间、内存占用等指标。device侧算子优化可通过以下手段：
+
+#### 亲和算子替换
+
+将PyTorch原生通用算子，替换为NPU专属的亲和算子，深度适配NPU硬件架构与计算核心，消除算子适配开销，大幅提升单算子执行效率。
+
+#### 融合算子
+
+把多个连续的细粒度算子合并为一个融合算子，减少NPU内核调用次数、中间张量内存读写损耗，简化计算流程，让NPU算力无浪费。
+
+详细的算子优化策略及案例可参考[NPU亲和适配优化](https://www.hiascend.com/document/detail/zh/Pytorch/2600/ptmoddevg/trainingmigrguide/FrameworkPTAdapter/26.0.0/zh/pytorch_model_migration_fine_tuning/overall_optimization_strategy.md)及[算子性能问题优化方案](https://www.hiascend.com/document/detail/zh/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/solution_to_top2.md)。
+
+### 通信
+
+**背景**
+
+在多卡分布式训练场景中，各NPU卡之间梯度聚合、参数同步、数据交互的集合通信耗时占比过高，远超单卡本身的计算耗时，所有卡都陷入互相等待通信完成的状态，整体训练吞吐被通信环节拖累，这类性能瓶颈即为通信瓶颈。
+
+**优化方法**
+
+通信瓶颈需要依托分布式调度、HCCL通信库调优、负载均衡技术解决，通过调整执行逻辑与通信策略，消除同步等待耗时，核心优化手段如下：
+
+#### 通算融合
+
+打破计算与通信串行执行的模式，通过梯度累积、流水线并行、梯度分片同步等技术，让NPU在执行计算任务的同时，后台并行完成通信操作，将通信耗时完全隐藏在计算间隙中，抵消通信等待开销。
+
+#### HCCL通信库调优
+
+基于HCCL通信库进行参数调优，调整合理的链路及网卡配置、缓冲区大小等特性，提升多机多卡间数据传输带宽与同步效率，降低集合通信时延。
+
+#### 快慢卡问题解决
+
+快卡是在集群中首先完成计算任务的卡，慢卡是在集群任务中较慢完成计算任务的卡。不同卡完成任务的时间不同，造成快卡等待慢卡完成计算的情况，从而使整个集群的性能劣化。
+
+针对集群内NPU卡性能差异、节点负载不均导致的快慢卡问题，通过硬件资源隔离、数据分片负载均衡、同规格卡统一编排等方式，拉平各卡迭代耗时，消除快卡等待慢卡的同步阻塞，规避木桶效应。
+
+详细的通信优化相关问题及案例可参考[通信问题优化方案](https://www.hiascend.com/document/detail/zh/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/solution_to_top1.md)及[通信优化](https://www.hiascend.com/document/detail/zh/Pytorch/2600/ptmoddevg/trainingmigrguide/FrameworkPTAdapter/26.0.0/zh/pytorch_model_migration_fine_tuning/communication_basics_overview.md)。
