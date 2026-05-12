@@ -732,7 +732,7 @@ index d8af93b..4245f87 100644
 +                                          0,  # 0默认为下三角，跟TorchHSTUAttention的mask实现不一致
 +                                          max_seqlen,
 +                                          1.0 / max_seqlen,
-+                                          offsets.long(),
++                                          offsets,
 +                                          num_contextuals,
 +                                          num_candidates,
 +                                          target_group_size,
