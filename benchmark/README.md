@@ -85,6 +85,7 @@ python run.py xxx.json --eager
 |ONN|[ONN.json](configs/ONN.json)|
 |PLE|[PLE.json](configs/PLE.json)|
 |PNN|[PNN.json](configs/PNN.json)|
+|RANKMIXER|[RANKMIXER.json](configs/RANKMIXER.json)|
 |RECSYS_RANKING|[RECSYS_RANKING.json](configs/RECSYS_RANKING.json)|
 |RECSYS_RANKING_GR_7B|[RECSYS_RANKING_GR_7B.json](configs/RECSYS_RANKING_GR_7B.json)|
 |RECSYS_RETRIEVAL|[RECSYS_RETRIEVAL.json](configs/RECSYS_RETRIEVAL.json)|
@@ -282,3 +283,20 @@ git checkout core_r0.14.0
 ### 准备数据集
 
 [GRU4Rec](https://github.com/hidasib/GRU4Rec_PyTorch_Official)数据集自动下载解析，如下载失败可以参考开源代码下载RetailRocket数据集，然后在模型目录下使用`python retailrocket_preproc.py -p ./data`命令预处理
+
+### RANKMIXER 模型
+
+### 准备数据集
+
+amazon books数据集处理参考开源代码[HSTU\_META](https://github.com/meta-recsys/generative-recommenders)，下载HSTU源码后，执行`mkdir -p tmp/ && python3 preprocess_public_data.py`
+
+处理完成后，将HSTU目录下的`generative-recommenders/tmp/amzn_books/sasrec_format.csv`放到本项目的`benchmark/datasets`目录下即可
+
+```shell
+|-- benchmark
+   |-- configs
+       |-- RANKMIXER.json
+   |-- datasets
+       |-- rankmixer
+           |-- sasrec_format.csv
+```

@@ -1,0 +1,54 @@
+From bd57bb58e257857f7177f8d534294e27ada55c52 Mon Sep 17 00:00:00 2001
+From: chenzihao40 <chenzihao40@huawei.com>
+Date: Mon, 11 May 2026 20:28:57 +0800
+Subject: [PATCH] =?UTF-8?q?rankmixer=E6=94=AF=E6=8C=81=E8=AE=AD=E7=BB=83?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .../ScalingLaw/modeling/generic/sequential_v2/GR_model.py    | 5 ++++-
+ .../ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh         | 4 ++--
+ 2 files changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
+index aab1e849..1b22853d 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
+@@ -233,7 +233,10 @@ class GR_model(BaseModel):
+                                      predictions=results,
+                                      model_inputs=model_inputs,
+                                      negative_sampler=self.negative_sampler)
+-            aux_loss = torch.sum(deep_results["aux_loss"])
++            if deep_results["aux_loss"] is None:
++                aux_loss = torch.tensor(0.0, device=loss.device)
++            else:
++                aux_loss = torch.sum(deep_results["aux_loss"])
+             return loss+aux_loss
+ 
+     def encode_static_for_compile(self, model_inputs):
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
+index b530d773..6980af8e 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
+@@ -56,7 +56,7 @@ echo "  data_dir=${data_dir:-<unset>}"
+ echo "  save_dir=${save_dir:-<unset>}"
+ 
+ # ===== 设置默认值 =====
+-: "${config_file:=../sample_configs/train_amazon_books_0.2B.ini}" # 可以修改为不同大小的模型，默认0.2B
++: "${config_file:=../sample_configs/train_amazon_books_1B.ini}" # 可以修改为不同大小的模型，默认0.2B
+ : "${data_dir:=../../amzn_books.ori}"  # 须手动改为数据集路径
+ : "${save_dir:=$parent_dir/modelfile/}"   # 改为预训练模型对应路径
+ export LOAD_PRETRAIN_MODEL=0  # 是否加载预训练模型，0不加载，1加载(精度校验时使用)
+@@ -88,7 +88,7 @@ PYTHON_ARGS="
+     --config_file=${config_file} \
+     --data_dir=${data_dir} \
+     --save_dir=${save_dir}/modelfile/ \
+-    --is_train=False \
++    --is_train=True \
+     --save_user_emb=False \
+     --get_infer_result=False \
+     --tensorboard_log_dir=${save_dir}/ScalingLaw/runs/exp_amzn_all/"
+-- 
+2.52.0.windows.1
+
