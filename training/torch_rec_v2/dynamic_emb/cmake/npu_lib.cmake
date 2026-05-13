@@ -8,3 +8,6 @@ endif()
 include(${ASCENDC_CMAKE_DIR}/ascendc.cmake)
 
 ascendc_library(dynamic_emb_op_${RUN_MODE} SHARED ${KERNEL_FILES})
+ascendc_compile_definitions(dynamic_emb_op_${RUN_MODE} PRIVATE
+    ASCENDC_DUMP=0
+)
