@@ -58,6 +58,10 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
         // 行指针缓存判定，只有换行才去全局内存读二级指针
         if (rowIdx != lastRowIdx) {
             valuesRowBasePtr = reinterpret_cast<__gm__ float2*>(valuesPtr[rowIdx]);
+            // 处理查表未查到的情况，跳过
+            if (valuesRowBasePtr == nullptr) {
+                continue;
+            }
             lastRowIdx = rowIdx;
         }
 
@@ -105,6 +109,10 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
 
             if (rowIdx != lastRowIdx) {
                 valuesRowBasePtr = reinterpret_cast<__gm__ float2*>(valuesPtr[rowIdx]);
+                // 处理查表未查到的情况，跳过
+                if (valuesRowBasePtr == nullptr) {
+                    continue;
+                }
                 lastRowIdx = rowIdx;
             }
 

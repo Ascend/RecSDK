@@ -110,4 +110,4 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
     }
 }
 
-} // namespace UpdateSimt
+} // namespace UpdateFusedSimt

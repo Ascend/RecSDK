@@ -56,7 +56,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
         
         int colVecIdx = isPowerOfTwo ? (globalVecIdx & (gradDimVec - 1)) : (globalVecIdx % gradDimVec);
 
-        // 行指针缓存判定，只有换行才去全局内存读二级指针
+        // 行基址缓存：换行时按 fused 布局 valuesPtr + rowIdx * valDim 更新
         if (rowIdx != lastRowIdx) {
             valuesRowBasePtr = reinterpret_cast<__gm__ float2*>(valuesPtr + rowIdx * valDim);
             lastRowIdx = rowIdx;
@@ -116,4 +116,4 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
     }
 }
 
-} // namespace UpdateFloat2Simt
+} // namespace UpdateFloat2FusedSimt
