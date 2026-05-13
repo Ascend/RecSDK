@@ -53,6 +53,10 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
 
         if (rowIdx != lastRowIdx) {
             valuesRowBasePtr = reinterpret_cast<__gm__ weight_t*>(valuesPtr[rowIdx]);
+            // 处理查表未查到的情况，跳过
+            if (valuesRowBasePtr == nullptr) {
+                continue;
+            }
             lastRowIdx = rowIdx;
         }
 
@@ -98,6 +102,10 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
 
             if (rowIdx != lastRowIdx) {
                 valuesRowBasePtr = reinterpret_cast<__gm__ weight_t*>(valuesPtr[rowIdx]);
+                // 处理查表未查到的情况，跳过
+                if (valuesRowBasePtr == nullptr) {
+                    continue;
+                }
                 lastRowIdx = rowIdx;
             }
 
