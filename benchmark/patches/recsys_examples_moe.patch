@@ -1,6 +1,6 @@
-From 8f5bcfbe68f8376eb7cebb9f1f162bb240080f6c Mon Sep 17 00:00:00 2001
+From 2ab84ab29041a74360282b7cc957e726188c04fa Mon Sep 17 00:00:00 2001
 From: chenzihao40 <chenzihao40@huawei.com>
-Date: Mon, 11 May 2026 18:13:51 +0800
+Date: Tue, 12 May 2026 17:20:02 +0800
 Subject: [PATCH] npu patch + moe
 
 ---
@@ -13,7 +13,7 @@ Subject: [PATCH] npu patch + moe
  examples/commons/utils/distributed_utils.py   |  11 +-
  examples/commons/utils/initialize.py          |  26 +-
  examples/commons/utils/nvtx_op.py             |   4 -
- examples/hstu/configs/hstu_config.py          |  75 +++++
+ examples/hstu/configs/hstu_config.py          |  77 +++++
  examples/hstu/model/ranking_gr.py             |   9 +-
  examples/hstu/model/retrieval_gr.py           |  39 ++-
  examples/hstu/modules/fused_hstu_layer.py     |  11 +-
@@ -22,9 +22,9 @@ Subject: [PATCH] npu patch + moe
  examples/hstu/modules/hstu_processor.py       | 126 ++++---
  .../hstu/modules/metrics/metric_modules.py    |   9 +-
  examples/hstu/modules/mlp.py                  |   2 +-
- examples/hstu/modules/moe_layer.py            |  97 ++++++
+ examples/hstu/modules/moe_layer.py            |  98 ++++++
  .../hstu/modules/multi_task_loss_module.py    |   4 +-
- examples/hstu/modules/native_hstu_layer.py    | 315 ++++++++++--------
+ examples/hstu/modules/native_hstu_layer.py    | 316 ++++++++++--------
  examples/hstu/modules/negatives_sampler.py    |   7 +-
  examples/hstu/modules/position_encoder.py     |  28 +-
  .../hstu/modules/similarity/dot_product.py    |  38 +--
@@ -43,12 +43,12 @@ Subject: [PATCH] npu patch + moe
  .../training/configs_extra/ranking_gr_7B.gin  |  48 +++
  .../configs_extra/ranking_mtgr_0_05B.gin      |  44 +++
  .../configs_extra/ranking_mtgr_2B.gin         |  48 +++
- examples/hstu/training/pretrain_gr_ranking.py |  44 ++-
+ examples/hstu/training/pretrain_gr_ranking.py |  46 ++-
  .../hstu/training/pretrain_gr_retrieval.py    |  37 +-
  examples/hstu/training/trainer/training.py    | 133 +++++++-
- examples/hstu/training/trainer/utils.py       |  44 ++-
+ examples/hstu/training/trainer/utils.py       |  45 ++-
  examples/hstu/utils/gin_config_args.py        |  21 +-
- 44 files changed, 1845 insertions(+), 439 deletions(-)
+ 44 files changed, 1852 insertions(+), 439 deletions(-)
  create mode 100644 examples/hstu/modules/moe_layer.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
@@ -582,7 +582,7 @@ index 7c3e43a..b47721b 100644
  
  
 diff --git a/examples/hstu/configs/hstu_config.py b/examples/hstu/configs/hstu_config.py
-index 0ad39e9..046af95 100644
+index 0ad39e9..2b80271 100644
 --- a/examples/hstu/configs/hstu_config.py
 +++ b/examples/hstu/configs/hstu_config.py
 @@ -54,11 +54,13 @@ class KernelBackend(Enum):
@@ -661,13 +661,14 @@ index 0ad39e9..046af95 100644
  
      def __post_init__(self):
          super().__post_init__()
-@@ -162,6 +219,15 @@ def get_hstu_config(
+@@ -162,6 +219,16 @@ def get_hstu_config(
      add_uvqk_bias: bool = True,
      fuse_norm_mul_dropout: bool = True,
      scaling_seqlen: int = -1,
 +    use_moe: bool = False,
 +    moe_expert_num: int = 4,
 +    moe_top_k: int = 2,
++    moe_hidden_size: int = 128,
 +    moe_aux_loss_weight: float = 0.01,
 +    moe_hidden_dropout: float = 0.0,
 +    use_ffn: bool = False,
@@ -677,13 +678,14 @@ index 0ad39e9..046af95 100644
  ) -> HSTUConfig:
      """
      Create the HSTU configuration.
-@@ -236,4 +302,13 @@ def get_hstu_config(
+@@ -236,4 +303,14 @@ def get_hstu_config(
          is_inference=is_inference,
          fuse_norm_mul_dropout=fuse_norm_mul_dropout,
          scaling_seqlen=scaling_seqlen,
 +        use_moe=use_moe,
 +        moe_expert_num=moe_expert_num,
 +        moe_top_k=moe_top_k,
++        moe_hidden_size=moe_hidden_size,
 +        moe_aux_loss_weight=moe_aux_loss_weight,
 +        moe_hidden_dropout=moe_hidden_dropout,
 +        use_ffn=use_ffn,
@@ -1272,10 +1274,10 @@ index d2124e0..6a1d50e 100644
          Forward pass of the MLP module.
 diff --git a/examples/hstu/modules/moe_layer.py b/examples/hstu/modules/moe_layer.py
 new file mode 100644
-index 0000000..43099c0
+index 0000000..9b19170
 --- /dev/null
 +++ b/examples/hstu/modules/moe_layer.py
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,98 @@
 +import torch
 +import torch.nn.functional as F
 +
@@ -1340,6 +1342,7 @@ index 0000000..43099c0
 +            emb_dim,
 +            expert_number,
 +            top_k,
++            hidden_size,
 +            aux_loss_weight=0.01,
 +            dropout = 0.0,
 +        ):
@@ -1347,7 +1350,7 @@ index 0000000..43099c0
 +
 +        self.expert_number = expert_number
 +        self.experts = torch.nn.ModuleList([
-+                FFN_swiglu(emb_dim, emb_dim * 4, dropout=dropout) for _ in range(expert_number)])
++                FFN_swiglu(emb_dim, hidden_size, dropout=dropout) for _ in range(expert_number)])
 +        self.router = MOERouter(emb_dim, expert_number, top_k, aux_loss_weight)
 +
 +    def forward(self, x):
@@ -1397,7 +1400,7 @@ index 6b02397..9d34f9a 100644
          """
          Forward pass of the MultiTaskLossModule.
 diff --git a/examples/hstu/modules/native_hstu_layer.py b/examples/hstu/modules/native_hstu_layer.py
-index c157f6d..3bef93b 100644
+index c157f6d..7867b3b 100644
 --- a/examples/hstu/modules/native_hstu_layer.py
 +++ b/examples/hstu/modules/native_hstu_layer.py
 @@ -18,25 +18,28 @@ from functools import partial
@@ -1556,7 +1559,7 @@ index c157f6d..3bef93b 100644
  
          self._target_group_size = config.target_group_size
  
-@@ -148,9 +173,35 @@ class HSTULayer(MegatronModule):
+@@ -148,9 +173,36 @@ class HSTULayer(MegatronModule):
              linear_dim=self._linear_dim_per_head,
              is_causal=config.is_causal,
          )
@@ -1577,6 +1580,7 @@ index c157f6d..3bef93b 100644
 +                emb_dim=self._embedding_dim,
 +                expert_number=self.moe_expert_num,
 +                top_k=self.top_k,
++                hidden_size=self.moe_hidden_size,
 +                aux_loss_weight=config.moe_aux_loss_weight,
 +                dropout=config.moe_hidden_dropout)
 +            
@@ -1595,7 +1599,7 @@ index c157f6d..3bef93b 100644
  
      def get_user_value_query_key_tensors(self, hidden_states: torch.Tensor):
          """
-@@ -164,38 +215,46 @@ class HSTULayer(MegatronModule):
+@@ -164,38 +216,46 @@ class HSTULayer(MegatronModule):
          """
  
          # TODO: fuse linear, bias, and silu?
@@ -1669,7 +1673,7 @@ index c157f6d..3bef93b 100644
      def forward(self, jd: JaggedData) -> JaggedData:
          """
          Forward pass of the HSTULayer
-@@ -208,86 +267,52 @@ class HSTULayer(MegatronModule):
+@@ -208,86 +268,52 @@ class HSTULayer(MegatronModule):
          """
          # input is [*, h]
          x = jd.values
@@ -1794,7 +1798,7 @@ index c157f6d..3bef93b 100644
          return JaggedData(
              values=output,
              seqlen=jd.seqlen,
-@@ -302,4 +327,4 @@ class HSTULayer(MegatronModule):
+@@ -302,4 +328,4 @@ class HSTULayer(MegatronModule):
              contextual_seqlen_offsets=jd.contextual_seqlen_offsets,
              has_interleaved_action=jd.has_interleaved_action,
              scaling_seqlen=jd.scaling_seqlen,
@@ -2735,13 +2739,13 @@ index 0000000..94d409c
 \ No newline at end of file
 diff --git a/examples/hstu/training/configs_extra/ranking_gr_3B.gin b/examples/hstu/training/configs_extra/ranking_gr_3B.gin
 new file mode 100644
-index 0000000..d77e0ac
+index 0000000..c7d3095
 --- /dev/null
 +++ b/examples/hstu/training/configs_extra/ranking_gr_3B.gin
 @@ -0,0 +1,47 @@
 +# torchrun --nproc_per_node 1 --master_addr localhost --master_port 6000  ./hstu/pretrain_gr_ranking.py --gin-config-file examples/hstu/movielen_ranking.gin 
-+TrainerArgs.train_batch_size = 4
-+TrainerArgs.eval_batch_size = 4
++TrainerArgs.train_batch_size = 1
++TrainerArgs.eval_batch_size = 1
 +TrainerArgs.eval_interval = 100
 +TrainerArgs.log_interval = 100
 +TrainerArgs.seed = 1234
@@ -2949,7 +2953,7 @@ index 0000000..31d5d9b
 +TensorModelParallelArgs.tensor_model_parallel_size = 1
 \ No newline at end of file
 diff --git a/examples/hstu/training/pretrain_gr_ranking.py b/examples/hstu/training/pretrain_gr_ranking.py
-index 1b67a3a..38d19f6 100644
+index 1b67a3a..5c0b1d9 100644
 --- a/examples/hstu/training/pretrain_gr_ranking.py
 +++ b/examples/hstu/training/pretrain_gr_ranking.py
 @@ -23,6 +23,9 @@ from typing import List, Union
@@ -2957,7 +2961,7 @@ index 1b67a3a..38d19f6 100644
  import gin
  import torch  # pylint: disable-unused-import
 +import torch_npu
-+torch.ops.load_library(f"/usr/local/python3.11.0/lib/python3.11/site-packages/libfbgemm_npu_api.so")
++torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 +import mindspeed.megatron_adaptor
  from commons.distributed.batch_shuffler_factory import BatchShufflerFactory
  from commons.distributed.sharding import make_optimizer_and_shard
@@ -3000,7 +3004,7 @@ index 1b67a3a..38d19f6 100644
      optimizer_args = OptimizerArgs()
      tp_args = TensorModelParallelArgs()
  
-@@ -92,14 +108,26 @@ def main():
+@@ -92,14 +108,28 @@ def main():
          tensor_model_parallel_size=tp_args.tensor_model_parallel_size
      )
      init.set_random_seed(trainer_args.seed)
@@ -3025,11 +3029,13 @@ index 1b67a3a..38d19f6 100644
 +    print(f"====== ranking模型总参数量: {total_params} , as {total_params/(10**9):.3f} B ======")
 +    print(f"====== ranking模型参数量（不含embedding collection）: {dense_params} , as {dense_params/(10**9):.3f} B ======")
 +    print(f"====== embedding: {total_params - dense_params} , as {(total_params - dense_params)/(10**9):.3f} B ======")
++    for name, param in model.named_parameters():
++        print(f"{name}: 形状={param.shape}, 参数量={param.numel()}, 类型={param.dtype}")
 +
      dynamic_options_dict = create_dynamic_optitons_dict(
          embedding_args,
          network_args.hidden_size,
-@@ -143,9 +171,9 @@ def main():
+@@ -143,9 +173,9 @@ def main():
      train_dataloader, test_dataloader = get_data_loader(
          "ranking", dataset_args, trainer_args, task_config.num_tasks
      )
@@ -3041,7 +3047,7 @@ index 1b67a3a..38d19f6 100644
      )
  
      maybe_load_ckpts(trainer_args.ckpt_load_dir, model, dense_optimizer)
-@@ -163,7 +191,7 @@ def main():
+@@ -163,7 +193,7 @@ def main():
          pipeline_name,
          model=model_train,
          optimizer=dense_optimizer,
@@ -3067,7 +3073,7 @@ index 06266cf..acdb139 100644
  import gin
  import torch  # pylint: disable-unused-import
 +import torch_npu
-+torch.ops.load_library(f"/usr/local/python3.11.0/lib/python3.11/site-packages/libfbgemm_npu_api.so")
++torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 +import mindspeed.megatron_adaptor
  from commons.distributed.batch_shuffler_factory import BatchShufflerFactory
  from commons.distributed.sharding import make_optimizer_and_shard
@@ -3341,17 +3347,17 @@ index b50c026..d1aae33 100644
 +        }
 +    }
 +
-+    model_detail_info = "NPU" + "_" + "retrieval" + "_" + "eager"
++    model_detail_info = "NPU" + "_" + trainer_args.model_name + "_" + "eager"
 +    output_str = model_detail_info + "_" + str(final_results)
 +    print_rank_0(f"The Final Result: {output_str}")
 +    with open(f"../save_results_NPU/precision_result.txt", "a", encoding="utf-8") as f:
 +        f.write(output_str + "\n")
 +
 +    del final_results["ms/step"]
-+    os.makedirs(f"../save_results_NPU/retrieval", exist_ok=True)
-+    torch.save(final_results, f"../save_results_NPU/retrieval/predictions_retrieval_eager_{train_iter}.pt")
++    os.makedirs(f"../save_results_NPU/{trainer_args.model_name}", exist_ok=True)
++    torch.save(final_results, f"../save_results_NPU/{trainer_args.model_name}/predictions_{trainer_args.model_name}_eager_{train_iter}.pt")
 diff --git a/examples/hstu/training/trainer/utils.py b/examples/hstu/training/trainer/utils.py
-index 766ea51..2af891e 100644
+index 766ea51..f0f6fbd 100644
 --- a/examples/hstu/training/trainer/utils.py
 +++ b/examples/hstu/training/trainer/utils.py
 @@ -28,7 +28,7 @@ from configs import (
@@ -3385,13 +3391,14 @@ index 766ea51..2af891e 100644
  
      position_encoding_config = PositionEncodingConfig(
          num_position_buckets=network_args.num_position_buckets,
-@@ -210,6 +214,15 @@ def create_hstu_config(
+@@ -210,6 +214,16 @@ def create_hstu_config(
          recompute_input_layernorm=network_args.recompute_input_layernorm,
          recompute_input_silu=network_args.recompute_input_silu,
          scaling_seqlen=network_args.scaling_seqlen,
 +        use_moe=network_args.use_moe,
 +        moe_expert_num=network_args.moe_expert_num,
 +        moe_top_k=network_args.moe_top_k,
++        moe_hidden_size=network_args.moe_hidden_size,
 +        moe_aux_loss_weight=network_args.moe_aux_loss_weight,
 +        moe_hidden_dropout=network_args.moe_hidden_dropout,
 +        use_ffn=network_args.use_ffn,
@@ -3401,7 +3408,7 @@ index 766ea51..2af891e 100644
      )
  
  
-@@ -375,12 +388,15 @@ def create_dynamic_optitons_dict(
+@@ -375,12 +389,15 @@ def create_dynamic_optitons_dict(
      dynamic_options_dict: Dict[str, DynamicEmbTableOptions] = {}
      for embedding_args in embedding_args_list:
          if isinstance(embedding_args, DynamicEmbeddingArgs):
@@ -3419,7 +3426,7 @@ index 766ea51..2af891e 100644
                  global_hbm_for_values=embedding_args.global_hbm_for_values,
                  evict_strategy=DynamicEmbEvictStrategy.LRU
                  if embedding_args.evict_strategy == "lru"
-@@ -388,13 +404,14 @@ def create_dynamic_optitons_dict(
+@@ -388,13 +405,14 @@ def create_dynamic_optitons_dict(
                  safe_check_mode=DynamicEmbCheckMode.IGNORE,
                  bucket_capacity=128,
                  training=training,
@@ -3435,7 +3442,7 @@ index 766ea51..2af891e 100644
  ) -> Tuple[
      Union[DatasetArgs, BenchmarkDatasetArgs],
      List[Union[DynamicEmbeddingArgs, EmbeddingArgs]],
-@@ -405,7 +422,7 @@ def get_dataset_and_embedding_args(
+@@ -405,7 +423,7 @@ def get_dataset_and_embedding_args(
          benchmark_dataset_args = BenchmarkDatasetArgs()  # type: ignore[call-arg]
          return benchmark_dataset_args, benchmark_dataset_args.embedding_args
      assert isinstance(dataset_args, DatasetArgs)
@@ -3444,7 +3451,7 @@ index 766ea51..2af891e 100644
      if dataset_args.dataset_name == "kuairand-pure":
          return dataset_args, [
              EmbeddingArgs(
-@@ -614,25 +631,26 @@ def get_dataset_and_embedding_args(
+@@ -614,25 +632,26 @@ def get_dataset_and_embedding_args(
          ]
      elif dataset_args.dataset_name == "ml-20m":
          return dataset_args, [

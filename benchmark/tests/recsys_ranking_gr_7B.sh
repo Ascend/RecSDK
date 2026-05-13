@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 
@@ -73,5 +71,4 @@ torchrun \
     ${py_file} \
     --gin-config-file ${config_file} \
     --epochs 50 \
-    --train-batch-size 128 \
     $@ 2>&1 |tee log/ranking_gr_7B_$(date '+%Y%m%d_%H%M%S').log
