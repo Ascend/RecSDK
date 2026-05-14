@@ -19,7 +19,7 @@ See the License for the specific language governing permissions and
 #include <torch/library.h>
 
 #include "../common/pytorch_npu_helper.hpp"
-#include "../common/common_utils.h"
+#include "hstu_v2_param_check.h"
 #include "c10/core/ScalarType.h"
 #include "torch/types.h"
 
@@ -28,11 +28,6 @@ using torch::autograd::Function;
 using tensor_list = std::vector<at::Tensor>;
 using namespace at;
 
-constexpr uint32_t CONST_4 = 4;
-constexpr uint32_t CONST_3 = 3;
-constexpr uint32_t CONST_2 = 2;
-constexpr uint32_t CONST_1 = 1;
-
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl_npu(
     const at::Tensor &grad, const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const int64_t maxSeqLenQ,
     const int64_t maxSeqLenK, const at::Tensor &seqOffsetQ, const at::Tensor &seqOffsetK,
@@ -40,21 +35,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl
     const c10::optional<at::Tensor> &numTarget, const c10::optional<double> &scale,
     const c10::optional<int64_t> &targetGroupSize, const c10::optional<double> &alpha)
 {
-    if (CheckOptionalTensorIsNotNone(numContext) || CheckOptionalTensorIsNotNone(numTarget)) {
-        uint32_t batchSize = seqOffsetQ.size(0) - 1;
-        TORCH_CHECK(numContext.has_value(), "numContext is required when numTarget or targetGroupSize is not None");
-        TORCH_CHECK(numTarget.has_value(), "numTarget is required when numContext or targetGroupSize is not None");
-        TORCH_CHECK(numContext.value().dim() == CONST_1, "The numContext should be 1D in normal layout");
-        TORCH_CHECK(numTarget.value().dim() == CONST_1, "The numTarget should be 1D in normal layout");
-        TORCH_CHECK(numContext.value().size(0) == batchSize,
-                    "The numContext batch size should be equal to the grad batch size");
-        TORCH_CHECK(numTarget.value().size(0) == batchSize,
-                    "The numTarget batch size should be equal to the grad batch size");
-        TORCH_CHECK(CheckInList(targetGroupSize.value_or(0), {1, 3}), "The targetGroupSize should be in [1, 3]");
-    }
-
-    TORCH_CHECK(maxSeqLenQ != 0, "maxSeqLenQ cant be zero");
-    TORCH_CHECK(maxSeqLenK != 0, "maxSeqLenK cant be zero");
+    hstu_v2::HstuV2ParamChecker(grad, q, k, v, seqOffsetQ, seqOffsetK,
+                                 maxSeqLenQ, maxSeqLenK,
+                                 rab, numContext, numTarget, targetGroupSize);
 
     auto _empty = at::Tensor();
     auto acRab = rab.value_or(at::Tensor());
