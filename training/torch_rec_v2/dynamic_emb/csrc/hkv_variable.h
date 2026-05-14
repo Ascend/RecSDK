@@ -20,6 +20,7 @@
 
 #include <string>
 #include <torch/extension.h>
+#include <acl/acl.h>
 #include "dynamic_variable_base.h"
 #include "hkv_hashtable.h"
 #include "lookup_kernel.h"
@@ -58,6 +59,20 @@ struct OptStateInitializer {
     }
 };
 
+class DeviceCounter {
+public:
+    DeviceCounter();
+    ~DeviceCounter();
+
+    DeviceCounter& reset(const aclrtStream& stream);
+    uint64_t* get();
+    DeviceCounter& sync(const aclrtStream& stream);
+    uint64_t result();
+private:
+    static void check_ret(aclError ret, const char* msg);
+    uint64_t* d_counter{nullptr};
+    uint64_t h_counter{0};
+};
 #ifdef USE_RTTI
 template <typename KeyType, typename ValueType, EvictStrategy Strategy = EvictStrategy::kLru>
 class HKVVariable {
