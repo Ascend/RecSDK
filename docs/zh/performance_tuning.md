@@ -606,3 +606,27 @@ Host Bound问题主要由算子下发延迟、CPU计算负载过重两个因素�
 针对集群内NPU卡性能差异、节点负载不均导致的快慢卡问题，通过硬件资源隔离、数据分片负载均衡、同规格卡统一编排等方式，拉平各卡迭代耗时，消除快卡等待慢卡的同步阻塞，规避木桶效应。
 
 详细的通信优化相关问题及案例可参考[通信问题优化方案](https://www.hiascend.com/document/detail/zh/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/solution_to_top1.md)及[通信优化](https://www.hiascend.com/document/detail/zh/Pytorch/2600/ptmoddevg/trainingmigrguide/FrameworkPTAdapter/26.0.0/zh/pytorch_model_migration_fine_tuning/communication_basics_overview.md)。
+
+### 吞吐
+
+**背景**
+
+在推荐推理场景中，受实例资源竞争、调度密度不足等因素影响，模型推理效率受限，单位时间内可处理的推理任务数量（吞吐量）偏低，整体推理性能难以充分释放，成为制约推理业务高效运行的关键瓶颈。
+
+**优化方法**
+
+吞吐瓶颈需依托资源调度、硬件控核、批量调度策略解决，通过合理分配资源、提升调度密度，最大化吞吐量，核心优化手段如下：
+
+#### 多实例并行
+
+通过部署多个推理实例，充分利用硬件空闲资源，提升推理任务并行处理能力，打破单实例处理能力上限，直接扩大单位时间内可承接的推理任务规模，提升整体吞吐水平。
+
+#### AICore 控核（分核）
+
+针对多实例并行时易出现的硬件资源竞争问题，通过控制 AI Core 核心资源分配，避免实例间资源抢占冲突，保障各推理实例稳定运行，有效提升吞吐量并降低推理时延。
+
+#### 优化调度密度
+
+通过合理增大推理批次大小（BatchSize），提升任务调度密度，减少调度间隙损耗，充分发挥硬件算力优势，提升吞吐量，在可控范围内平衡吞吐与时延关系。
+
+详细的吞吐优化相关问题及案例可参考[推理调优案例](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/programug/graphdevg/atlasag_25_0101.html)。
