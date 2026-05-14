@@ -18,9 +18,55 @@
 #include "hkv_variable.h"
 #include <stdexcept>
 #include "torch_npu/csrc/core/npu/NPUStream.h"
+#include "ops/check_safe_pointers/check_safe_pointers_kernel.h"
+#include "acl_singleton.h"
 #include "utils.h"
 
 namespace dyn_emb {
+DeviceCounter::DeviceCounter()
+{
+    check_ret(aclrtMalloc(reinterpret_cast<void**>(&d_counter), sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_FIRST),
+                "aclrtMalloc d_counter failed.");
+}
+
+DeviceCounter::~DeviceCounter()
+{
+    check_ret(aclrtFree(d_counter), "aclrtFree d_counter failed.");
+}
+
+DeviceCounter& DeviceCounter::reset(const aclrtStream& stream)
+{
+    (void)stream;
+    check_ret(aclrtMemset(d_counter, sizeof(uint64_t), 0, sizeof(uint64_t)), "aclrtMemset d_counter failed.");
+    return *this;
+}
+
+uint64_t* DeviceCounter::get()
+{
+    return d_counter;
+}
+
+DeviceCounter& DeviceCounter::sync(const aclrtStream& stream)
+{
+    check_ret(aclrtMemcpyAsync(&h_counter, sizeof(uint64_t), d_counter, sizeof(uint64_t), ACL_MEMCPY_DEVICE_TO_HOST,
+                                stream),
+                "aclrtMemcpyAsync d_counter to h_counter failed.");
+    check_ret(aclrtSynchronizeStream(stream), "aclrtSynchronizeStream failed.");
+    return *this;
+}
+
+uint64_t DeviceCounter::result()
+{
+    return h_counter;
+}
+
+void DeviceCounter::check_ret(aclError ret, const char* msg)
+{
+    if (ret != ACL_SUCCESS) {
+        throw std::runtime_error(msg);
+    }
+}
+
 template <typename K, typename V, typename S>
 struct EvalAndInc {
     __gm__ uint64_t* d_count;
@@ -41,13 +87,142 @@ struct EvalAndInc {
 template <class K, class V, class S>
 struct ExportIfPredFunctor {
     S threshold;
-    ExportIfPredFunctor(S threshold): threshold(threshold) {}
+    ExportIfPredFunctor(S threshold) : threshold(threshold) {}
     template <int GroupSize>
     __forceinline__ __simt_callee__ bool operator()(const K& key, const __gm__ V* value, const S& score)
     {
         return ((!npu::hkv::IS_RESERVED_KEY<K>(key)) && (score >= threshold));
     }
 };
+
+__forceinline__ __simt_callee__ uint64_t GlobalThreadId() {
+    uint64_t id = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    return id;
+}
+
+template <typename ElementType>
+struct TableVector {
+    struct Args {
+        __gm__ ElementType* __gm__* vec_ptrs{nullptr};
+        __gm__ bool* founds{nullptr};
+    };
+
+    __forceinline__ __simt_callee__ TableVector(Args args)
+        : vec_ptrs_(args.vec_ptrs),
+          founds_(args.founds),
+          vec_id_(-1),
+          vec_ptr_(nullptr),
+          found_(false)
+    {
+    }
+
+    __forceinline__ __simt_callee__ bool isInitialized(int64_t vec_id)
+    {
+        if (vec_id != vec_id_) {
+            load(vec_id);
+        }
+        return found_;
+    }
+
+    __forceinline__ __simt_callee__ bool isValid(int64_t vec_id)
+    {
+        if (vec_id != vec_id_) {
+            load(vec_id);
+        }
+        return vec_ptr_ != nullptr;
+    }
+
+    __forceinline__ __simt_callee__ __gm__ ElementType* data_ptr(int64_t vec_id, int i = 0)
+    {
+        if (vec_id != vec_id_) {
+            load(vec_id);
+        }
+        if (vec_ptr_ != nullptr) {
+            return vec_ptr_ + i;
+        } else {
+            return nullptr;
+        }
+    }
+
+private:
+    __forceinline__ __simt_callee__ void load(int64_t vec_id)
+    {
+        vec_id_ = vec_id;
+        found_ = founds_[vec_id];
+        vec_ptr_ = vec_ptrs_[vec_id];
+    }
+
+    __gm__ ElementType* __gm__* vec_ptrs_;
+    __gm__ bool* founds_;
+    int64_t vec_id_;
+    __gm__ ElementType* vec_ptr_;
+    bool found_;
+};
+
+template <typename K>
+struct MappingEmbeddingGenerator {
+    struct Args {
+        const __gm__ K* keys;
+        uint64_t mod;
+    };
+
+    __forceinline__ __simt_callee__
+    MappingEmbeddingGenerator(Args args): mod(args.mod), keys(args.keys) {}
+
+    __forceinline__ __simt_callee__
+    float generate(int64_t vec_id) {
+        K key = keys[vec_id];
+        return static_cast<float>(key % mod);
+    }
+
+    __forceinline__ __simt_callee__ void destroy() {}
+    uint64_t mod;
+    const __gm__ K* keys;
+};
+
+struct ConstEmbeddingGenerator {
+    struct Args {
+        float val;
+    };
+
+    __forceinline__ __simt_callee__
+    ConstEmbeddingGenerator(Args args): val(args.val) {}
+
+    __forceinline__ __simt_callee__
+    float generate(int64_t vec_id) {
+        return val;
+    }
+
+    __forceinline__ __simt_callee__ void destroy() {}
+    float val;
+};
+
+template <typename T>
+void check_safe_pointers_sync(const uint64_t n, const T** ptrs, const SafeCheckMode safe_check_mode,
+                              const aclrtStream& stream)
+{
+    if (n == 0) {
+        return;
+    }
+    static DeviceCounter counter;
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    check_safe_pointers_kernel<T><<<maxCores, 0, stream>>>(
+        n, ptrs, counter.reset(stream).get());
+
+    auto result = counter.sync(stream).result();
+    if (result == 0) {
+        std::cout << "#DynamicEmb LOG: All indices in current batch size " << n << " have legal pointers.\n";
+        return;
+    }
+    std::stringstream ss;
+    ss << "#DynamicEmb ERROR: Failed to insert " << result << " indices in current batch size " << n << ". "
+       << "Consider expanding the capacity/num_embedding.\n";
+    if (safe_check_mode == SafeCheckMode::WARNING) {
+        std::cerr << ss.str();
+    } else if (safe_check_mode == SafeCheckMode::ERROR) {
+        throw std::runtime_error(ss.str());
+    }
+}
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 HKVVariable<KeyType, ValueType, Strategy>::HKVVariable(

@@ -46,16 +46,20 @@ enum class DataType : uint32_t {
 
 enum class EvictStrategy : uint32_t {
     kLru = 0,
-    kLfu = 1,      // dynamicemb don't use
-    kEpochLru = 2, // dynamicemb don't use
-    kEpochLfu = 3, // dynamicemb don't use
+    kLfu = 1,       // dynamicemb don't use
+    kEpochLru = 2,  // dynamicemb don't use
+    kEpochLfu = 3,  // dynamicemb don't use
     kCustomized = 4,
 };
 
-enum class SafeCheckMode : int { ERROR = 0, WARNING = 1, IGNORE = 2 };
+enum class SafeCheckMode : int {
+    ERROR = 0,
+    WARNING = 1,
+    IGNORE = 2
+};
 
 enum class OptimizerType : int {
-    Null = 0, // used in inference mode.
+    Null = 0,  // used in inference mode.
     SGD,
     Adam,
     AdamW,
@@ -70,39 +74,55 @@ enum class OptimizerType : int {
         break;                                                                     \
     }
 
-#define CASE_ENUM_USING_HINT(enum_type, HINT, ...)                             \
-    case (enum_type): {                                                          \
-        constexpr auto HINT = enum_type;                                           \
-        __VA_ARGS__();                                                             \
-        break;                                                                     \
+#define CASE_ENUM_USING_HINT(enum_type, HINT, ...) \
+    case (enum_type): {                            \
+        constexpr auto HINT = enum_type;           \
+        __VA_ARGS__();                             \
+        break;                                     \
     }
 
-#define DISPATCH_INTEGER_DATATYPE_FUNCTION(DATA_TYPE, HINT, ...)               \
-    switch (DATA_TYPE) {                                                         \
-        CASE_TYPE_USING_HINT(DataType::Int64, int64_t, HINT, __VA_ARGS__)          \
-        CASE_TYPE_USING_HINT(DataType::UInt64, uint64_t, HINT, __VA_ARGS__)        \
-    default:                                                                     \
-        exit(EXIT_FAILURE);                                                        \
+#define DISPATCH_INTEGER_DATATYPE_FUNCTION(DATA_TYPE, HINT, ...)            \
+    switch (DATA_TYPE) {                                                    \
+        CASE_TYPE_USING_HINT(DataType::Int64, int64_t, HINT, __VA_ARGS__)   \
+        CASE_TYPE_USING_HINT(DataType::UInt64, uint64_t, HINT, __VA_ARGS__) \
+        default:                                                            \
+            exit(EXIT_FAILURE);                                             \
     }
 
-#define DISPATCH_FLOAT_DATATYPE_FUNCTION(DATA_TYPE, HINT, ...)                 \
-    switch (DATA_TYPE) {                                                         \
-        CASE_TYPE_USING_HINT(DataType::Float32, float, HINT, __VA_ARGS__)          \
-        CASE_TYPE_USING_HINT(DataType::Float16, half, HINT, __VA_ARGS__)         \
+#define DISPATCH_FLOAT_DATATYPE_FUNCTION(DATA_TYPE, HINT, ...)                  \
+    switch (DATA_TYPE) {                                                        \
+        CASE_TYPE_USING_HINT(DataType::Float32, float, HINT, __VA_ARGS__)       \
+        CASE_TYPE_USING_HINT(DataType::Float16, half, HINT, __VA_ARGS__)        \
         CASE_TYPE_USING_HINT(DataType::BFloat16, bfloat16_t, HINT, __VA_ARGS__) \
-    default:                                                                     \
-       exit(EXIT_FAILURE);                                                        \
+        default:                                                                \
+            exit(EXIT_FAILURE);                                                 \
     }
 
-#define DISPATCH_EVICTYPE_FUNCTION(EVICT_TYPE, HINT, ...)                      \
-    switch (EVICT_TYPE) {                                                        \
-        CASE_ENUM_USING_HINT(EvictStrategy::kLru, HINT, __VA_ARGS__)               \
-        CASE_ENUM_USING_HINT(EvictStrategy::kCustomized, HINT, __VA_ARGS__)        \
-        CASE_ENUM_USING_HINT(EvictStrategy::kLfu, HINT, __VA_ARGS__)               \
-    default:                                                                     \
-        exit(EXIT_FAILURE);                                                        \
+#define DISPATCH_EVICTYPE_FUNCTION(EVICT_TYPE, HINT, ...)                   \
+    switch (EVICT_TYPE) {                                                   \
+        CASE_ENUM_USING_HINT(EvictStrategy::kLru, HINT, __VA_ARGS__)        \
+        CASE_ENUM_USING_HINT(EvictStrategy::kCustomized, HINT, __VA_ARGS__) \
+        CASE_ENUM_USING_HINT(EvictStrategy::kLfu, HINT, __VA_ARGS__)        \
+        default:                                                            \
+            exit(EXIT_FAILURE);                                             \
     }
 
-} // namespace dyn_emb
+class DeviceProp {
+public:
+    static DeviceProp& getDeviceProp(int device_id = 0);
+    // DeviceProp(const DeviceProp&) = delete; //TODO: whether to remove
+    DeviceProp& operator=(const DeviceProp&) = delete;
 
-#endif // UTILS_H
+    int num_sms = 0;
+    int warp_size = 0;
+    int max_thread_per_sm = 0;
+    int max_thread_per_block = 0;
+    int total_threads = 0;
+
+private:
+    explicit DeviceProp(int device_id);
+    ~DeviceProp() = default;
+};
+}  // namespace dyn_emb
+
+#endif  // UTILS_H
