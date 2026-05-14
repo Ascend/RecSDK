@@ -23,7 +23,7 @@
       |-- op_kernel  # hstu_dense_forward算子Kernel侧实现
       |-- pic        # 算子实现原理图
       |-- hstu_dense_forward.json    # 算子原型配置
-      |-- run.sh     # hstu_dense_forward算子A2安装脚本
+      |-- run.sh     # hstu_dense_forward算子A2/A3安装脚本
    |-- README.md  # hstu_dense_forward算子说明文档
 ```
 
