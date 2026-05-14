@@ -141,7 +141,7 @@ RecOps 是 Rec SDK 基于 Ascend C 开发的推荐场景自定义算子集，为
       |-- op_kernel                # hstu_dense_forward算子Kernel侧实现
       |-- pic                      # 算子实现原理图
       |-- hstu_dense_forward.json  # 算子原型配置
-      |-- run.sh                   # hstu_dense_forward算子A2安装脚本
+      |-- run.sh                   # hstu_dense_forward算子A2/A3安装脚本
    |-- README.md                   # hstu_dense_forward算子说明文档
 ```
 
@@ -208,7 +208,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 #### 算子编译
 
-进入指定算子的功能实现目录(ascendc_op/ai_core_op/目录下)，执行指令对算子进行编译和部署，默认编译安装Atlas A2训练系列产品AI Core类型。
+进入HSTU_V1前向算子的功能实现目录(cust_op/ascendc_op/ai_core_op/hstu_dense_forward, A5在c310下, A2/A3在v220下)，执行指令对算子进行编译和部署，默认编译安装Atlas A2训练系列产品AI Core类型。
 
 若指定 AI Core 类型编译：
 
@@ -224,7 +224,7 @@ bash run.sh --ai-core ai_core-(soc_version)
 
 #### 算子适配层编译
 
-进入hstu算子的适配层目录(framework/torch_plugin/torch_library/hstu)。执行算子适配层编译。
+进入HSTU_V1前向算子的适配层目录(cust_op/framework/torch_plugin/torch_library/hstu)。执行算子适配层编译。
 
 ```shell
 bash build_ops.sh
