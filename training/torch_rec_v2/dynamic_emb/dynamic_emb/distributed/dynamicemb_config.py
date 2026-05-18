@@ -45,6 +45,7 @@ DynamicEmbKernel = "DynamicEmb"
 DEFAULT_BATCH_SIZE = 512
 MIN_BATCH_SIZE = 1
 MAX_BATCH_SIZE = 1000000
+BATCH_SIZE_PER_DUMP = 65536
 DTYPE_NUM_BYTES: Dict[torch.dtype, int] = {
     torch.float32: 4,
     torch.float16: 2,

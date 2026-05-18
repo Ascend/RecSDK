@@ -803,7 +803,7 @@ void export_batch_matched(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
                           at::Tensor keys, at::Tensor values)
 {
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
-    table->export_batch_matched(threshold, n, offset, num_matched, keys, values, at::Tensor(), stream);
+    table->export_batch_matched(threshold, n, offset, num_matched, keys, values, c10::nullopt, stream);
 }
 
 void insert_and_evict(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
