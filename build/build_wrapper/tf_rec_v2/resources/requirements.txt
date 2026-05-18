@@ -1,0 +1,14 @@
+numpy
+pandas
+decorator
+sympy==1.4
+cffi==1.12.3
+pyyaml
+pathlib2
+protobuf==3.20.0
+scipy
+requests
+mpi4py
+easydict
+attrs
+# tensorflow install 1.15.0 or 2.6.5

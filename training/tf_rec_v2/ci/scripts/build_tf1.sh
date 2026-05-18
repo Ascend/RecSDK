@@ -29,10 +29,19 @@ SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 PROJECT_ROOT_DIR=$(dirname "$(dirname "${SCRIPT_DIR}")")
 
 # 配置tf1路径
-[ -e /usr/local/python3.7.5/tf1_env/bin/activate ] && source /usr/local/python3.7.5/tf1_env/bin/activate
+TF1_ENV_ACTIVATED=false
+if [ -e /opt/buildtools/tf1_env/bin/activate ]; then
+    source /opt/buildtools/tf1_env/bin/activate
+    TF1_ENV_ACTIVATED=true
+elif [ -e /usr/local/python3.7.5/tf1_env/bin/activate ]; then
+    source /usr/local/python3.7.5/tf1_env/bin/activate
+    TF1_ENV_ACTIVATED=true
+else
+    echo "tf1_env virtual environment not found"
+fi
 python_home=$(dirname "$(dirname "$(which python3.7)")")
 tf1_path=$python_home/lib/python3.7/site-packages/tensorflow_core
-[ -e /usr/local/python3.7.5/tf1_env/bin/activate ] && deactivate tf1_env
+$TF1_ENV_ACTIVATED && deactivate
 if [ ! -d "${tf1_path}" ]; then
     echo "TensorFlow path not found: ${tf1_path}"
     exit 1
