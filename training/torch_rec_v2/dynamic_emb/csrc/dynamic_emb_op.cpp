@@ -859,7 +859,12 @@ int64_t dyn_emb_rows(std::shared_ptr<dyn_emb::DynamicVariableBase> table)
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
     return table->rows(stream);
 }
-  
+
+int64_t dyn_emb_cols(std::shared_ptr<dyn_emb::DynamicVariableBase> table)
+{
+    return table->cols();
+}
+
 void count_matched(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
                    const uint64_t threshold,
                    at::Tensor num_matched)
@@ -960,6 +965,42 @@ void accum_or_assign(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
         table->accum_or_assign(n, keys.data_ptr(), value_or_deltas.data_ptr(),
                                accum_or_assigns.data_ptr<bool>(), nullptr, stream,
                                ignore_evict_strategy);
+    }
+}
+
+void find_or_insert_pointers(
+    std::shared_ptr<dyn_emb::DynamicVariableBase> table,
+    const size_t n,
+    const at::Tensor keys,
+    at::Tensor values,
+    at::Tensor founds,
+    const std::optional<uint64_t> score = c10::nullopt,
+    bool unique_key = true,
+    bool ignore_evict_strategy = false)
+{
+    if (not score and (table->evict_strategy() == EvictStrategy::kCustomized || table->evict_strategy() == EvictStrategy::kLfu)) {
+        throw std::invalid_argument("Must specify the score when evict strategy is customized or LFU.");
+    }
+    if (n == 0) {
+        return;
+    }
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    auto values_data_ptr = reinterpret_cast<void**>(values.data_ptr<int64_t>());
+    auto found_tensor_data_ptr = founds.data_ptr<bool>();
+  
+    if (table->evict_strategy() == EvictStrategy::kCustomized || table->evict_strategy() == EvictStrategy::kLfu) {
+        auto&& option = at::TensorOptions().dtype(torch::kInt64).device(keys.device());
+        // broadcast scores
+        at::Tensor bc_scores = at::empty({static_cast<int64_t>(n)}, option);
+        // fill_接口不支持uint64_t
+        bc_scores.fill_(static_cast<int64_t>(score.value()));
+        // hkv要求score的tensor类型为uint64
+        bc_scores.to(at::kUInt64);
+        table->find_or_insert_pointers(n, keys.data_ptr(), values_data_ptr, found_tensor_data_ptr, 
+            bc_scores.data_ptr(), stream, unique_key, ignore_evict_strategy);
+    } else {
+        table->find_or_insert_pointers(n, keys.data_ptr(), values_data_ptr, found_tensor_data_ptr, 
+            nullptr, stream, unique_key, ignore_evict_strategy);
     }
 }
 
@@ -1965,6 +2006,9 @@ void bind_dyn_emb_op(py::module& m)
     
     m.def("dyn_emb_rows", &dyn_emb_rows, "Get the number of rows in the table",
           py::arg("table"));
+
+    m.def("dyn_emb_cols", &dyn_emb_cols, "Get the number of columns in the table",
+          py::arg("table"));
   
     m.def("export_batch_matched", &export_batch_matched,
           "Export KV-pairs within [offset, offset + n) whose score > threshold", py::arg("table"),
@@ -1998,6 +2042,13 @@ void bind_dyn_emb_op(py::module& m)
           "Accumulate or assign values to the table", py::arg("table"),
           py::arg("n"), py::arg("keys"), py::arg("value_or_deltas"),
           py::arg("accum_or_assigns"), py::arg("score") = c10::nullopt,
+          py::arg("ignore_evict_strategy") = false);
+
+    m.def("find_or_insert_pointers", &find_or_insert_pointers,
+          "Find or insert a key-value pair in the table , and return every "
+          "value's ptr",
+          py::arg("table"), py::arg("n"), py::arg("keys"), py::arg("values"), py::arg("founds"),
+          py::arg("score") = py::none(), py::arg("unique_key") = true, 
           py::arg("ignore_evict_strategy") = false);
   
     m.def("assign", &assign, "Assign values to the table based on keys",
