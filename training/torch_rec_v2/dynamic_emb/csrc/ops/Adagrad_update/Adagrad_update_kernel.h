@@ -20,8 +20,6 @@ See the License for the specific language governing permissions and
 using namespace AscendC;
 
 struct AdaGradOptimizer {
-    static constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
-    static constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
     __simt_callee__ inline void updatefloat2(__gm__ float2* valuesRowBasePtr, int32_t colVecIdx, uint32_t gradDim,
         float2 grad, float, float, float, float, float stepSize, float, float, float eps) const
     {
@@ -52,7 +50,6 @@ struct AdaGradOptimizer {
     {
         const int32_t weightIdx = colIdx;
         const int32_t gIdx = weightIdx + static_cast<int32_t>(gradDim);
-
         weight_t tmpWeight = valuesRowBasePtr[weightIdx];
         weight_t tmpG = valuesRowBasePtr[gIdx];
 
@@ -61,7 +58,6 @@ struct AdaGradOptimizer {
         const float wF = static_cast<float>(tmpWeight);
         const float denom = AscendC::Simt::Sqrt(gAcc) + eps;
         const float resW = wF - stepSize * gradF / denom;
-
         valuesRowBasePtr[weightIdx] = static_cast<weight_t>(resW);
         valuesRowBasePtr[gIdx] = static_cast<weight_t>(gAcc);
     }

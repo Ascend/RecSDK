@@ -1,0 +1,130 @@
+/* Copyright 2026. Huawei Technologies Co.,Ltd. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
+#pragma once
+
+#include <cstdint>
+#include "kernel_operator.h"
+#include "adagrad_simd_tiling.h"
+
+using namespace AscendC;
+
+namespace dyn_emb_adagrad_fused_simd {
+
+// 连续 values（fused）+ 扁平 grads；按 rowsPerGroup 行一组分核，组内整维矢量更新；组间无流水
+class AdagradFusedSimd {
+public:
+    // UB 四槽：u0=g, u1=w, u2=acc, u3=scratch（与 adagrad_simd 一致）
+    static constexpr uint64_t kUbSlotCount = 4ULL;
+
+    __aicore__ inline explicit AdagradFusedSimd(TPipe* pipe) : pipe_(pipe) {}
+
+    __aicore__ inline void Init(GM_ADDR grads, GM_ADDR values, const __gm__ AdagradSimdTilingData* tiling)
+    {
+        tiling_ = tiling;
+        const int64_t numRows = static_cast<int64_t>(tiling_->numRows);
+        const int64_t gradDim = static_cast<int64_t>(tiling_->gradDim);
+        const int64_t valDim = static_cast<int64_t>(tiling_->valDim);
+        const int64_t rowsPerGroup = static_cast<int64_t>(tiling_->rowsPerGroup);
+        const int64_t totalGradFloats = numRows * gradDim;
+        const int64_t totalValFloats = numRows * valDim;
+        gradsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(grads), static_cast<uint64_t>(totalGradFloats));
+        valuesGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(values), static_cast<uint64_t>(totalValFloats));
+        const uint64_t ubBytes = static_cast<uint64_t>(rowsPerGroup) * static_cast<uint64_t>(tiling_->gradDim) *
+            sizeof(float) * kUbSlotCount;
+        pipe_->InitBuffer(ubMem_, ubBytes);
+    }
+
+    __aicore__ inline void CopyInGroup(uint32_t rowsInGroup, int64_t rowValBase, int64_t gradBase, uint32_t gradDim,
+        uint32_t valDim, LocalTensor<float>& u0, LocalTensor<float>& u1, LocalTensor<float>& u2)
+    {
+        const uint32_t rowLen = rowsInGroup * gradDim;
+        DataCopy(u0, gradsGm_[gradBase], rowLen);
+        for (uint32_t r = 0; r < rowsInGroup; ++r) {
+            const int64_t rowOff = static_cast<int64_t>(r) * static_cast<int64_t>(valDim);
+            const uint32_t ubOff = r * gradDim;
+            DataCopy(u1[ubOff], valuesGm_[rowValBase + rowOff], gradDim);
+            DataCopy(u2[ubOff], valuesGm_[rowValBase + rowOff + static_cast<int64_t>(gradDim)], gradDim);
+        }
+    }
+
+    __aicore__ inline void CopyOutGroup(uint32_t rowsInGroup, int64_t rowValBase, uint32_t gradDim, uint32_t valDim,
+        LocalTensor<float>& u1, LocalTensor<float>& u2)
+    {
+        for (uint32_t r = 0; r < rowsInGroup; ++r) {
+            const int64_t rowOff = static_cast<int64_t>(r) * static_cast<int64_t>(valDim);
+            const uint32_t ubOff = r * gradDim;
+            DataCopy(valuesGm_[rowValBase + rowOff], u1[ubOff], gradDim);
+            DataCopy(valuesGm_[rowValBase + rowOff + static_cast<int64_t>(gradDim)], u2[ubOff], gradDim);
+        }
+    }
+
+    __aicore__ inline void Process()
+    {
+        const int32_t coreId = static_cast<int32_t>(GetBlockIdx());
+        if (coreId >= tiling_->needCoreNum) {
+            return;
+        }
+        const uint32_t gradDim = tiling_->gradDim;
+        const uint32_t valDim = tiling_->valDim;
+        const int32_t numRows = tiling_->numRows;
+        const uint32_t rowsPerGroup = tiling_->rowsPerGroup;
+        const float lr = tiling_->lr;
+        const float eps = tiling_->eps;
+        const int32_t stride = tiling_->needCoreNum;
+        const int32_t numGroups = (numRows + static_cast<int32_t>(rowsPerGroup) - 1) / static_cast<int32_t>(rowsPerGroup);
+        // 无组间流水：每组 CopyIn -> V 计算 -> CopyOut 全同步后再处理下一组
+        for (int32_t groupIdx = coreId; groupIdx < numGroups; groupIdx += stride) {
+            const int32_t rowIdx = groupIdx * static_cast<int32_t>(rowsPerGroup);
+            const uint32_t rowsInGroup = static_cast<uint32_t>(
+                (rowIdx + static_cast<int32_t>(rowsPerGroup) <= numRows) ? rowsPerGroup : (numRows - rowIdx));
+            const uint32_t len = rowsInGroup * gradDim;
+
+            const int64_t rowValBase = static_cast<int64_t>(rowIdx) * static_cast<int64_t>(valDim);
+            const int64_t gradBase = static_cast<int64_t>(rowIdx) * static_cast<int64_t>(gradDim);
+            LocalTensor<float> u = ubMem_.Get<float>();
+            LocalTensor<float> u0 = u[0];
+            LocalTensor<float> u1 = u[len];
+            LocalTensor<float> u2 = u[len * 2U];
+            LocalTensor<float> u3 = u[len * 3U];
+
+            CopyInGroup(rowsInGroup, rowValBase, gradBase, gradDim, valDim, u0, u1, u2);
+            event_t eMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+            SetFlag<HardEvent::MTE2_V>(eMte2ToV);
+            WaitFlag<HardEvent::MTE2_V>(eMte2ToV);
+            Mul<float>(u3, u0, u0, len);
+            Add<float>(u2, u2, u3, len);
+            Sqrt<float>(u3, u2, len);
+            Adds<float>(u3, u3, eps, len);
+            Div<float>(u0, u0, u3, len);
+            Muls<float>(u0, u0, lr, len);
+            Sub<float>(u1, u1, u0, len);
+            event_t eVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+            SetFlag<HardEvent::V_MTE3>(eVToMte3);
+            WaitFlag<HardEvent::V_MTE3>(eVToMte3);
+            CopyOutGroup(rowsInGroup, rowValBase, gradDim, valDim, u1, u2);
+            event_t eMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
+            SetFlag<HardEvent::MTE3_MTE2>(eMte3ToMte2);
+            WaitFlag<HardEvent::MTE3_MTE2>(eMte3ToMte2);
+        }
+    }
+
+private:
+    TPipe* pipe_;
+    TBuf<TPosition::VECCALC> ubMem_;
+    GlobalTensor<float> gradsGm_;
+    GlobalTensor<float> valuesGm_;
+    const __gm__ AdagradSimdTilingData* tiling_;
+};
+} // namespace dyn_emb_adagrad_fused_simd

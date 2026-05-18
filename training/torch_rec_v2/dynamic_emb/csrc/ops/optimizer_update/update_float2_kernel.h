@@ -22,29 +22,26 @@ using namespace AscendC;
 namespace UpdateFloat2Simt {
 
 constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
-constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
 
-template <bool isPowerOfTwo, typename OptimizerFunc>
+template <int32_t kMaxElementsPerThread, bool isPowerOfTwo, typename OptimizerFunc>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmallInBlockDataCompute(
-    __gm__ float2* grads, __gm__ float2* __gm__* valuesPtr,  __gm__ bool* founds, uint32_t gradDimVec, int32_t inVecLength,
+    __gm__ float2* grads, __gm__ float2* __gm__* valuesPtr, __gm__ bool* founds, uint32_t gradDimVec, int32_t inVecLength,
     float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
     float invVHatDenom, float decayFactor, float eps, int32_t gradDimVecShift, OptimizerFunc optimizer)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
     int32_t blockIdx = AscendC::Simt::GetBlockIdx();
     int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
+    int32_t blockElementCapacity = blockThreadNum * kMaxElementsPerThread;
     int32_t blockBase = blockIdx * blockElementCapacity;
 
-    // 行指针缓存初始化
     int32_t lastRowIdx = -1;
     __gm__ float2* valuesRowBasePtr = nullptr;
 
 #pragma unroll
-    for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; i++) {
-        // 连续寻址
+    for (int32_t i = 0; i < kMaxElementsPerThread; i++) {
         int32_t globalVecIdx = blockBase + i * blockThreadNum + threadIdx;
-        
+
         if (globalVecIdx >= inVecLength) {
             break;
         }
@@ -55,10 +52,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
         }
         int colVecIdx = isPowerOfTwo ? (globalVecIdx & (gradDimVec - 1)) : (globalVecIdx % gradDimVec);
 
-        // 行指针缓存判定，只有换行才去全局内存读二级指针
         if (rowIdx != lastRowIdx) {
             valuesRowBasePtr = reinterpret_cast<__gm__ float2*>(valuesPtr[rowIdx]);
-            // 处理查表未查到的情况，跳过
             if (valuesRowBasePtr == nullptr) {
                 continue;
             }
@@ -71,32 +66,31 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
     }
 }
 
-template <bool isPowerOfTwo, typename OptimizerFunc>
+template <int32_t kMaxElementsPerThread, bool isPowerOfTwo, typename OptimizerFunc>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLargeDataCompute(
-    __gm__ float2* grads, __gm__ float2* __gm__* valuesPtr,  __gm__ bool* founds, uint32_t gradDimVec, int32_t inVecLength,
+    __gm__ float2* grads, __gm__ float2* __gm__* valuesPtr, __gm__ bool* founds, uint32_t gradDimVec, int32_t inVecLength,
     float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
     float invVHatDenom, float decayFactor, float eps, int32_t totalBlocks,
     int32_t blockStartIdx, int32_t curBlocksCount, int32_t gradDimVecShift, OptimizerFunc optimizer)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
     int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
+    int32_t blockElementCapacity = blockThreadNum * kMaxElementsPerThread;
     for (int32_t iter = 0; iter < curBlocksCount; ++iter) {
         int32_t globalBlockIdx = blockStartIdx + iter;
         int32_t blockBase = globalBlockIdx * blockElementCapacity;
-        
+
         if (blockBase >= inVecLength) {
             break;
         }
 
-        // 每处理一个新 Block 重置行指针缓存
         int32_t lastRowIdx = -1;
         __gm__ float2* valuesRowBasePtr = nullptr;
 
 #pragma unroll
-        for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; i++) {
+        for (int32_t i = 0; i < kMaxElementsPerThread; i++) {
             int32_t globalVecIdx = blockBase + i * blockThreadNum + threadIdx;
-            
+
             if (globalVecIdx >= inVecLength) {
                 break;
             }
@@ -109,7 +103,6 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
 
             if (rowIdx != lastRowIdx) {
                 valuesRowBasePtr = reinterpret_cast<__gm__ float2*>(valuesPtr[rowIdx]);
-                // 处理查表未查到的情况，跳过
                 if (valuesRowBasePtr == nullptr) {
                     continue;
                 }

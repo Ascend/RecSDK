@@ -22,24 +22,23 @@ using namespace AscendC;
 namespace UpdateSimt {
 
 constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
-constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
 
-template <bool isPowerOfTwo, typename grad_t, typename weight_t, typename OptimizerFunc>
+template <int32_t kMaxElementsPerThread, bool isPowerOfTwo, typename grad_t, typename weight_t, typename OptimizerFunc>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmallInBlockDataCompute(
-    __gm__ grad_t* grads, __gm__ weight_t* __gm__* valuesPtr,  __gm__ bool* founds, uint32_t gradDim, int32_t inLength,
+    __gm__ grad_t* grads, __gm__ weight_t* __gm__* valuesPtr, __gm__ bool* founds, uint32_t gradDim, int32_t inLength,
     float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
     float invVHatDenom, float decayFactor, float eps, int32_t gradDimShift, OptimizerFunc optimizer)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
     int32_t blockIdx = AscendC::Simt::GetBlockIdx();
     int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
+    int32_t blockElementCapacity = blockThreadNum * kMaxElementsPerThread;
     int32_t blockBase = blockIdx * blockElementCapacity;
     int32_t lastRowIdx = -1;
     __gm__ weight_t* valuesRowBasePtr = nullptr;
 
 #pragma unroll
-    for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; i++) {
+    for (int32_t i = 0; i < kMaxElementsPerThread; i++) {
         int32_t globalIdx = blockBase + i * blockThreadNum + threadIdx;
         if (globalIdx >= inLength) {
             break;
@@ -53,7 +52,6 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
 
         if (rowIdx != lastRowIdx) {
             valuesRowBasePtr = reinterpret_cast<__gm__ weight_t*>(valuesPtr[rowIdx]);
-            // 处理查表未查到的情况，跳过
             if (valuesRowBasePtr == nullptr) {
                 continue;
             }
@@ -62,21 +60,20 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
 
         grad_t tmpGrad = grads[globalIdx];
         optimizer.update(reinterpret_cast<__gm__ weight_t*>(valuesRowBasePtr), colIdx, gradDim, tmpGrad, beta1, beta2,
-                          oneMinusBeta1, oneMinusBeta2,
-                          stepSize, invVHatDenom, decayFactor, eps);
+            oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps);
     }
 }
 
-template <bool isPowerOfTwo, typename grad_t, typename weight_t, typename OptimizerFunc>
+template <int32_t kMaxElementsPerThread, bool isPowerOfTwo, typename grad_t, typename weight_t, typename OptimizerFunc>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLargeDataCompute(
-    __gm__ grad_t* grads, __gm__ weight_t* __gm__* valuesPtr,  __gm__ bool* founds, uint32_t gradDim, int32_t inLength,
+    __gm__ grad_t* grads, __gm__ weight_t* __gm__* valuesPtr, __gm__ bool* founds, uint32_t gradDim, int32_t inLength,
     float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
     float invVHatDenom, float decayFactor, float eps, int32_t totalBlocks,
     int32_t blockStartIdx, int32_t curBlocksCount, int32_t gradDimShift, OptimizerFunc optimizer)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
     int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-    int32_t blockElementCapacity = blockThreadNum * MAX_ELEMENTS_PER_THREAD;
+    int32_t blockElementCapacity = blockThreadNum * kMaxElementsPerThread;
     for (int32_t iter = 0; iter < curBlocksCount; ++iter) {
         int32_t globalBlockIdx = blockStartIdx + iter;
         int32_t blockBase = globalBlockIdx * blockElementCapacity;
@@ -88,7 +85,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
         __gm__ weight_t* valuesRowBasePtr = nullptr;
 
 #pragma unroll
-        for (int32_t i = 0; i < MAX_ELEMENTS_PER_THREAD; i++) {
+        for (int32_t i = 0; i < kMaxElementsPerThread; i++) {
             int32_t globalIdx = blockBase + i * blockThreadNum + threadIdx;
             if (globalIdx >= inLength) {
                 break;
@@ -102,7 +99,6 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
 
             if (rowIdx != lastRowIdx) {
                 valuesRowBasePtr = reinterpret_cast<__gm__ weight_t*>(valuesPtr[rowIdx]);
-                // 处理查表未查到的情况，跳过
                 if (valuesRowBasePtr == nullptr) {
                     continue;
                 }
@@ -111,8 +107,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
 
             grad_t tmpGrad = grads[globalIdx];
             optimizer.update(reinterpret_cast<__gm__ weight_t*>(valuesRowBasePtr), colIdx, gradDim, tmpGrad, beta1, beta2,
-                             oneMinusBeta1, oneMinusBeta2,
-                             stepSize, invVHatDenom, decayFactor, eps);
+                oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps);
         }
     }
 }
