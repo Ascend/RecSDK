@@ -39,6 +39,8 @@
 #include "aclrtlaunch_Adam_update_float2.h"
 #include "aclrtlaunch_update.h"
 #include "aclrtlaunch_update_float2.h"
+#include "aclrtlaunch_adagrad_fused_simd.h"
+#include "aclrtlaunch_adagrad_simd.h"
 #include "aclrtlaunch_update_fused.h"
 #include "aclrtlaunch_update_float2_fused.h"
 #include "optimizer_kind.h"
@@ -56,6 +58,7 @@
 #include "torch_utils.h"
 #include "utils.h"
 #include "./ops/unique_op/cpu_unique.h"
+#include "./ops/Adagrad_update/adagrad_simd_tiling.h"
 #define LOG_ERROR(msg) std::cout << "[INFO]" << msg << std::endl
 namespace py = pybind11;
 namespace dyn_emb {
@@ -93,9 +96,11 @@ static bool LaunchUpdateKernelCommon(
     DataType valType,
     uint32_t optimizerKind)
 {
+    constexpr int32_t maxElementsPerThread = 2;
+    const int32_t elementsPerBlock = MAX_THREADS_PER_BLOCK * maxElementsPerThread;
     if (gradDim % 2 == 0 && gradType == DataType::Float32 && valType == DataType::Float32) {
         int32_t vecLength = inLength / 2;
-        const int32_t vecPerBlock = ELEMENTS_PER_BLOCK / 2;
+        const int32_t vecPerBlock = elementsPerBlock / 2;
         int32_t totalBlocks = (vecLength + vecPerBlock - 1) / vecPerBlock;
         int32_t coreNum = std::min(maxCores, totalBlocks);
         if (coreNum == 0) {
@@ -108,9 +113,9 @@ static bool LaunchUpdateKernelCommon(
             coreNum, stream, gradsPtr, valuesPtr, foundsPtr, gradDim, vecLength,
             beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom,
             decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall,
-            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind);
+            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind, maxElementsPerThread);
     } else {
-        int32_t totalBlocks = (inLength + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+        int32_t totalBlocks = (inLength + elementsPerBlock - 1) / elementsPerBlock;
         int32_t coreNum = std::min(maxCores, totalBlocks);
         if (coreNum == 0) {
             LOG_ERROR("core_num is zero!");
@@ -122,7 +127,7 @@ static bool LaunchUpdateKernelCommon(
             coreNum, stream, gradsPtr, valuesPtr, foundsPtr, gradDim, inLength,
             beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom,
             decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall,
-            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind);
+            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind, maxElementsPerThread);
     }
     return true;
 }
@@ -148,9 +153,11 @@ static bool LaunchUpdateFusedKernelCommon(
     DataType valType,
     uint32_t optimizerKind)
 {
+    constexpr int32_t maxElementsPerThread = 2;
+    const int32_t elementsPerBlock = MAX_THREADS_PER_BLOCK * maxElementsPerThread;
     if (gradDim % 2 == 0 && gradType == DataType::Float32 && valType == DataType::Float32) {
         int32_t vecLength = inLength / 2;
-        const int32_t vecPerBlock = ELEMENTS_PER_BLOCK / 2;
+        const int32_t vecPerBlock = elementsPerBlock / 2;
         int32_t totalBlocks = (vecLength + vecPerBlock - 1) / vecPerBlock;
         int32_t coreNum = std::min(maxCores, totalBlocks);
         if (coreNum == 0) {
@@ -163,9 +170,9 @@ static bool LaunchUpdateFusedKernelCommon(
             coreNum, stream, gradsPtr, valuesPtr, nullptr, gradDim, valDim, vecLength,
             beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom,
             decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall,
-            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind);
+            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind, maxElementsPerThread);
     } else {
-        int32_t totalBlocks = (inLength + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+        int32_t totalBlocks = (inLength + elementsPerBlock - 1) / elementsPerBlock;
         int32_t coreNum = std::min(maxCores, totalBlocks);
         if (coreNum == 0) {
             LOG_ERROR("core_num is zero!");
@@ -177,8 +184,72 @@ static bool LaunchUpdateFusedKernelCommon(
             coreNum, stream, gradsPtr, valuesPtr, nullptr, gradDim, valDim, inLength,
             beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom,
             decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall,
-            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind);
+            static_cast<uint32_t>(gradType), static_cast<uint32_t>(valType), optimizerKind, maxElementsPerThread);
     }
+    return true;
+}
+
+static constexpr int64_t kAdagradSimdElemThreshold = 4000000LL;
+
+static bool ShouldUseAdagradSimd(uint32_t gradDim, int32_t inLength, DataType gradType, DataType valType)
+{
+    return (gradDim > 512U) && (gradDim % 8U == 0U) &&
+        (static_cast<int64_t>(inLength) >= kAdagradSimdElemThreshold) && (gradType == DataType::Float32) &&
+        (valType == DataType::Float32);
+}
+
+static bool LaunchAdagradSimdTiling(const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim, int32_t numRows,
+    int32_t maxCores, float lr, float eps, uint32_t rowsPerGroup, int32_t& coreNumOut, at::Tensor& tilingNpuOut)
+{
+    const int32_t numGroups = (numRows + static_cast<int32_t>(rowsPerGroup) - 1) / static_cast<int32_t>(rowsPerGroup);
+    coreNumOut = static_cast<int32_t>(
+        std::max<int64_t>(1, std::min<int64_t>(static_cast<int64_t>(maxCores), static_cast<int64_t>(numGroups))));
+
+    AdagradSimdTilingData tilingData {};
+    tilingData.gradDim = gradDim;
+    tilingData.valDim = valDim;
+    tilingData.numRows = numRows;
+    tilingData.lr = lr;
+    tilingData.eps = eps;
+    tilingData.needCoreNum = coreNumOut;
+    tilingData.rowsPerGroup = rowsPerGroup;
+
+    at::Tensor tilingHost = at::empty({static_cast<int64_t>(sizeof(AdagradSimdTilingData))},
+        at::TensorOptions().dtype(at::kByte).device(at::kCPU));
+    if (memcpy_s(tilingHost.data_ptr(), tilingHost.nbytes(), &tilingData, sizeof(tilingData)) != EOK) {
+        return false;
+    }
+    tilingNpuOut = tilingHost.to(gradsContinuous.device()).contiguous();
+    return true;
+}
+
+static bool LaunchAdagradFusedSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* valuesPtr,
+    const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim, int32_t numRows, int32_t maxCores, float lr,
+    float eps)
+{
+    constexpr uint32_t kRowsPerGroup = 2U;
+    int32_t coreNum = 0;
+    at::Tensor tilingNpu;
+    if (!LaunchAdagradSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, lr, eps, kRowsPerGroup, coreNum,
+            tilingNpu)) {
+        return false;
+    }
+    ACLRT_LAUNCH_KERNEL(adagrad_fused_simd)(coreNum, stream, gradsPtr, valuesPtr,
+        static_cast<uint8_t*>(tilingNpu.data_ptr()));
+    return true;
+}
+
+static bool LaunchAdagradSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* rowPtrsPtr, uint8_t* foundsPtr,
+    const at::Tensor& gradsContinuous, uint32_t gradDim, int32_t numRows, int32_t maxCores, float lr, float eps,
+    uint32_t rowsPerGroup)
+{
+    const uint32_t valDim = gradDim * 2U;
+    int32_t coreNum = 0;
+    at::Tensor tilingNpu;
+    TORCH_CHECK(LaunchAdagradSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, lr, eps, rowsPerGroup,
+        coreNum, tilingNpu), "LaunchAdagradSimd: LaunchAdagradSimdTiling failed.");
+    ACLRT_LAUNCH_KERNEL(adagrad_simd)(coreNum, stream, gradsPtr, rowPtrsPtr, foundsPtr,
+        static_cast<uint8_t*>(tilingNpu.data_ptr()));
     return true;
 }
 
@@ -1109,7 +1180,7 @@ void dynamic_emb_adamW_with_pointer(const torch::Tensor& grads, const torch::Ten
         ACLRT_LAUNCH_KERNEL(update_float2)(core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, vec_length,
             beta1, beta2, oneMinusBeta1, oneMinusBeta2, step_size, inv_vHatDenom, 
             decay_factor, eps, total_blocks, blocks_per_core, remainder_blocks, is_small, 
-            static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind);
+            static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind, MAX_ELEMENTS_PER_THREAD);
 
     } else { // === 分支 2：奇数维度，使用标量 float 算子 ===
         int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
@@ -1125,7 +1196,7 @@ void dynamic_emb_adamW_with_pointer(const torch::Tensor& grads, const torch::Ten
         ACLRT_LAUNCH_KERNEL(update)(core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, in_length,
             beta1, beta2, oneMinusBeta1, oneMinusBeta2, step_size, inv_vHatDenom, 
             decay_factor, eps, total_blocks, blocks_per_core, remainder_blocks, is_small, 
-            static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind);
+            static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind, MAX_ELEMENTS_PER_THREAD);
     }
 }
 
@@ -1158,8 +1229,17 @@ void dynamic_emb_adagrad_with_pointer(const torch::Tensor& grads, const torch::T
     const float decayFactor = 1.0f;
 
     int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
-    bool isSmall = (inLength <= SMALL_DATA_THRESHOLD);
     auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
+    if (ShouldUseAdagradSimd(gradDim, inLength, gradType, valType)) {
+        constexpr uint32_t kRowsPerGroup = 2U;
+        if (LaunchAdagradSimd(stream, gradsPtr, valuesPtr, nullptr, gradsContinuous, gradDim, numRows, maxCores,
+                lr, eps, kRowsPerGroup)) {
+            return;
+        }
+    }
+
+    bool isSmall = (inLength <= SMALL_DATA_THRESHOLD);
     constexpr uint32_t optimizerKind = static_cast<uint32_t>(OptimizerKind::AdaGrad);
 
     if (!LaunchUpdateKernelCommon(stream, gradsPtr, valuesPtr, nullptr, gradDim, inLength, maxCores, isSmall, beta1, beta2,
@@ -1265,7 +1345,7 @@ void dynamic_emb_adamW_with_table( std::shared_ptr<dyn_emb::DynamicVariableBase>
         ACLRT_LAUNCH_KERNEL(update_float2)(core_num, stream, grads_ptr, values_ptr, founds_ptr, grad_dim, vec_length,
             beta1, beta2, one_m_beta1, one_m_beta2, step_size, inv_v_hat_denom, 
             decay_factor, eps, total_blocks, blocks_per_core, remainder_blocks, is_small, 
-            static_cast<uint32_t>(grad_type), static_cast<uint32_t>(weight_type), optimizer_kind);
+            static_cast<uint32_t>(grad_type), static_cast<uint32_t>(weight_type), optimizer_kind, MAX_ELEMENTS_PER_THREAD);
     } else { // === 分支 2：奇数维度，使用标量 float 算子 ===
         int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
         int32_t core_num = std::min(max_cores, total_blocks);
@@ -1278,7 +1358,7 @@ void dynamic_emb_adamW_with_table( std::shared_ptr<dyn_emb::DynamicVariableBase>
         ACLRT_LAUNCH_KERNEL(update)(core_num, stream, grads_ptr, values_ptr, founds_ptr, grad_dim, in_length,
             beta1, beta2, one_m_beta1, one_m_beta2, step_size, inv_v_hat_denom, 
             decay_factor, eps, total_blocks, blocks_per_core, remainder_blocks, is_small, 
-            static_cast<uint32_t>(grad_type), static_cast<uint32_t>(weight_type), optimizer_kind);
+            static_cast<uint32_t>(grad_type), static_cast<uint32_t>(weight_type), optimizer_kind, MAX_ELEMENTS_PER_THREAD);
     }
 }
 
@@ -1317,8 +1397,17 @@ void dynamic_emb_adagrad_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase
     const float decayFactor = 1.0f;
 
     int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
-    bool isSmall = (inLength <= SMALL_DATA_THRESHOLD);
     auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
+    if (ShouldUseAdagradSimd(gradDim, inLength, gradType, weightType)) {
+        constexpr uint32_t kRowsPerGroup = 1U;
+        if (LaunchAdagradSimd(stream, gradsPtr, valuesPtr, foundsPtr, gradsContinuous, gradDim, numRows, maxCores,
+                lr, eps, kRowsPerGroup)) {
+            return;
+        }
+    }
+
+    bool isSmall = (inLength <= SMALL_DATA_THRESHOLD);
     constexpr uint32_t optimizerKind = static_cast<uint32_t>(OptimizerKind::AdaGrad);
 
     if (!LaunchUpdateKernelCommon(stream, gradsPtr, valuesPtr, foundsPtr, gradDim, inLength, maxCores, isSmall, beta1, beta2,
@@ -1418,7 +1507,8 @@ void dynamic_emb_adamW_fused(const torch::Tensor& grads, const torch::Tensor& va
         int32_t remainder_blocks = total_blocks % core_num;
         ACLRT_LAUNCH_KERNEL(update_float2_fused)(core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, val_dim, vec_length,
             beta1, beta2, one_m_beta1, one_m_beta2, step_size, inv_v_hat_denom, decay_factor, eps, total_blocks, blocks_per_core, 
-            remainder_blocks, is_small, static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind);
+            remainder_blocks, is_small, static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind,
+            MAX_ELEMENTS_PER_THREAD);
     } else { // === 分支 2：奇数维度，使用标量 float 算子 ===
         int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
         int32_t core_num = std::min(max_cores, total_blocks);
@@ -1431,7 +1521,7 @@ void dynamic_emb_adamW_fused(const torch::Tensor& grads, const torch::Tensor& va
         ACLRT_LAUNCH_KERNEL(update_fused)(core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, val_dim, in_length,
             beta1, beta2, one_m_beta1, one_m_beta2, step_size, inv_v_hat_denom, decay_factor, eps, total_blocks,
             blocks_per_core, remainder_blocks, is_small, static_cast<uint32_t>(grad_type), 
-            static_cast<uint32_t>(val_type), optimizer_kind);
+            static_cast<uint32_t>(val_type), optimizer_kind, MAX_ELEMENTS_PER_THREAD);
     }
 }
 
@@ -1450,6 +1540,18 @@ void dynamic_emb_adagrad_fused(const torch::Tensor& grads, const torch::Tensor& 
     uint8_t* gradsPtr = static_cast<uint8_t*>(gradsContinuous.data_ptr());
     uint8_t* valuesPtr = static_cast<uint8_t*>(valuesContinuous.data_ptr());
 
+    auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    auto valType = scalartype_to_datatype(convertTypeMetaToScalarType(values.dtype()));
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+
+    const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
+    if (ShouldUseAdagradSimd(gradDim, inLength, gradType, valType)) {
+        if (LaunchAdagradFusedSimd(stream, gradsPtr, valuesPtr, gradsContinuous, gradDim, valDim, numRows, maxCores, lr,
+                eps)) {
+            return;
+        }
+    }
+
     const float beta1 = 0.0f;
     const float beta2 = 0.0f;
     const float oneMinusBeta1 = 0.0f;
@@ -1458,10 +1560,7 @@ void dynamic_emb_adagrad_fused(const torch::Tensor& grads, const torch::Tensor& 
     const float invVHatDenom = 1.0f;
     const float decayFactor = 1.0f;
 
-    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
     bool isSmall = (inLength <= SMALL_DATA_THRESHOLD);
-    auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
-    auto valType = scalartype_to_datatype(convertTypeMetaToScalarType(values.dtype()));
     constexpr uint32_t optimizerKind = static_cast<uint32_t>(OptimizerKind::AdaGrad);
 
     if (!LaunchUpdateFusedKernelCommon(stream, gradsPtr, valuesPtr, gradDim, valDim, inLength, maxCores, isSmall, beta1, beta2,
@@ -1547,7 +1646,7 @@ void dynamic_emb_sgd_with_pointer(const torch::Tensor& grads, const torch::Tenso
         ACLRT_LAUNCH_KERNEL(update_float2)(core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, vec_length, 0, 0,
                                            0, 0, 0, 0, decay_factor, 0, total_blocks, blocks_per_core, remainder_blocks,
                                            is_small, static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type),
-                                           optimizer_kind);
+                                           optimizer_kind, MAX_ELEMENTS_PER_THREAD);
 
     } else {  // === 分支 2：奇数维度，使用标量 float 算子 ===
         int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
@@ -1562,7 +1661,8 @@ void dynamic_emb_sgd_with_pointer(const torch::Tensor& grads, const torch::Tenso
 
         ACLRT_LAUNCH_KERNEL(update)(core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, in_length, 0, 0, 0, 0,
                                     0, 0, decay_factor, 0, total_blocks, blocks_per_core, remainder_blocks, is_small,
-                                    static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind);
+                                    static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind,
+                                    MAX_ELEMENTS_PER_THREAD);
     }
 }
 
@@ -1616,7 +1716,7 @@ void dynamic_emb_sgd_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase> ht
         ACLRT_LAUNCH_KERNEL(update_float2)(core_num, stream, grads_ptr, values_ptr, founds_ptr, grad_dim, vec_length, 0,
                                            0, 0, 0, 0, 0, decay_factor, 0, total_blocks, blocks_per_core,
                                            remainder_blocks, is_small, static_cast<uint32_t>(grad_type),
-                                           static_cast<uint32_t>(weight_type), optimizer_kind);
+                                           static_cast<uint32_t>(weight_type), optimizer_kind, MAX_ELEMENTS_PER_THREAD);
     } else { // === 分支 2：奇数维度，使用标量 float 算子 ===
         int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
         int32_t core_num = std::min(max_cores, total_blocks);
@@ -1629,7 +1729,7 @@ void dynamic_emb_sgd_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase> ht
         ACLRT_LAUNCH_KERNEL(update)(core_num, stream, grads_ptr, values_ptr, founds_ptr, grad_dim, in_length, 0, 0, 0,
                                     0, 0, 0, decay_factor, 0, total_blocks, blocks_per_core, remainder_blocks, is_small,
                                     static_cast<uint32_t>(grad_type), static_cast<uint32_t>(weight_type),
-                                    optimizer_kind);
+                                    optimizer_kind, MAX_ELEMENTS_PER_THREAD);
     }
 }
 
@@ -1671,7 +1771,7 @@ void dynamic_emb_sgd_fused(const torch::Tensor& grads, const torch::Tensor& valu
         ACLRT_LAUNCH_KERNEL(update_float2_fused)(
             core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, val_dim, vec_length, 0, 0, 0, 0, 0, 0,
             decay_factor, 0, total_blocks, blocks_per_core, remainder_blocks, is_small,
-            static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind);
+            static_cast<uint32_t>(grad_type), static_cast<uint32_t>(val_type), optimizer_kind, MAX_ELEMENTS_PER_THREAD);
     } else {  // === 分支 2：奇数维度，使用标量 float 算子 ===
         int32_t total_blocks = (in_length + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
         int32_t core_num = std::min(max_cores, total_blocks);
@@ -1684,7 +1784,7 @@ void dynamic_emb_sgd_fused(const torch::Tensor& grads, const torch::Tensor& valu
         ACLRT_LAUNCH_KERNEL(update_fused)(core_num, stream, grads_ptr, values_ptr, nullptr, grad_dim, val_dim,
                                           in_length, 0, 0, 0, 0, 0, 0, decay_factor, 0, total_blocks, blocks_per_core,
                                           remainder_blocks, is_small, static_cast<uint32_t>(grad_type),
-                                          static_cast<uint32_t>(val_type), optimizer_kind);
+                                          static_cast<uint32_t>(val_type), optimizer_kind, MAX_ELEMENTS_PER_THREAD);
     }
 }
 
