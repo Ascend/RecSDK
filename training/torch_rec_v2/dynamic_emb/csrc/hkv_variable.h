@@ -89,6 +89,8 @@ public:
     
     int64_t rows(aclrtStream stream = 0);
 
+    int64_t cols();
+
     DataType get_key_type();
 
     DataType get_value_type();
@@ -133,6 +135,14 @@ public:
                          const void *scores = nullptr, // (n)
                          aclrtStream stream = 0,
                          bool ignore_evict_strategy = false);
+
+    void find_or_insert_pointers(const size_t n, const void *keys, // (n)
+                                 void **value_ptrs,                // (n * ptrs)
+                                 bool *d_found,                    // (n * 1)
+                                 void *scores = nullptr,           // (n)
+                                 aclrtStream stream = 0, bool unique_key = true,
+                                 bool ignore_evict_strategy = false);
+
 
     void assign(const size_t n,
                 const void *keys,             // (n)
@@ -217,6 +227,8 @@ public:
     
     int64_t rows(aclrtStream stream = 0) override;
 
+    int64_t cols() override;
+
     DataType get_key_type() override;
 
     DataType get_value_type() override;
@@ -262,24 +274,31 @@ public:
                          aclrtStream stream = 0,
                          bool ignore_evict_strategy = false) override;
 
-     void assign(const size_t n,
-                 const void *keys,             // (n)
-                 const void *values,           // (n, DIM)
-                 const void *scores = nullptr, // (n)
-                 aclrtStream stream = 0, bool unique_key = true) override;
+    void find_or_insert_pointers(const size_t n, const void *keys, // (n)
+                                 void **value_ptrs,                // (n * ptrs)
+                                 bool *d_found,                    // (n * 1)
+                                 void *scores = nullptr,           // (n)
+                                 aclrtStream stream = 0, bool unique_key = true,
+                                 bool ignore_evict_strategy = false) override;
 
-     void lock(const size_t n,
-               const void* keys,       // (n)
-               void** locked_keys_ptr, // (n)
-               bool* flags = nullptr,  // (n)
-               void* scores = nullptr, // (n)
-               aclrtStream stream = 0) override;
+    void assign(const size_t n,
+                const void *keys,             // (n)
+                const void *values,           // (n, DIM)
+                const void *scores = nullptr, // (n)
+                aclrtStream stream = 0, bool unique_key = true) override;
 
-     void unlock(const size_t n,
-                 void** locked_keys_ptr, // (n)
-                 const void* keys,       // (n)
-                 bool* flags = nullptr,  // (n)
-                 aclrtStream stream = 0) override;
+    void lock(const size_t n,
+              const void* keys,       // (n)
+              void** locked_keys_ptr, // (n)
+              bool* flags = nullptr,  // (n)
+              void* scores = nullptr, // (n)
+              aclrtStream stream = 0) override;
+
+    void unlock(const size_t n,
+                void** locked_keys_ptr, // (n)
+                const void* keys,       // (n)
+                bool* flags = nullptr,  // (n)
+                aclrtStream stream = 0) override;
 
     void find_pointers(const size_t n, const void *keys, // (n)
                      void **values,                      // (n)

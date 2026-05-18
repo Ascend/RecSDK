@@ -82,6 +82,7 @@ uint32_t get_optimizer_state_dim(OptimizerType opt_type, uint32_t emb_dim)
 class DynamicVariableBase {
 public:
     using RowsFn = std::function<int64_t(aclrtStream)>;
+    using ColsFn = std::function<int64_t()>;
     using GetMaxCapacityFn = std::function<int64_t()>;
     using GetKeyTypeFn = std::function<DataType()>;
     using GetValueTypeFn = std::function<DataType()>;
@@ -94,7 +95,9 @@ public:
     using ClearFn = std::function<void(aclrtStream)>;
     using ReserveFn = std::function<void(const size_t, aclrtStream)>;
     using AccumOrAssignFn = std::function<void(const size_t, const void*, const void*, const bool*,
-                                            const void*, aclrtStream, bool)>;
+                                               const void*, aclrtStream, bool)>;
+    using FindOrInsertPointersFn = std::function<void(const size_t, const void*, void **, bool *,
+                                                      void*, aclrtStream, bool, bool)>;
     using AssignFn = std::function<void(const size_t, const void*, const void*, const void*,
                                         aclrtStream, bool)>;
     using LockFn = std::function<void(const size_t, const void*, void**, bool*, void*, aclrtStream)>;
@@ -117,6 +120,7 @@ public:
 
     DynamicVariableBase(
         RowsFn rows_fn,
+        ColsFn cols_fn,
         GetMaxCapacityFn get_max_capacity_fn,
         GetKeyTypeFn get_key_type_fn,
         GetValueTypeFn get_value_type_fn,
@@ -128,6 +132,7 @@ public:
         ClearFn clear_fn,
         ReserveFn reserve_fn,
         AccumOrAssignFn accum_or_assign_fn,
+        FindOrInsertPointersFn find_or_insert_pointers_fn,
         AssignFn assign_fn,
         LockFn lock_fn,
         UnlockFn unlock_fn,
@@ -144,6 +149,7 @@ public:
     ~DynamicVariableBase() = default;
 
     int64_t rows(aclrtStream stream = 0);
+    int64_t cols();
     int64_t get_max_capacity();
     DataType get_key_type();
     DataType get_value_type();
@@ -176,6 +182,13 @@ public:
                          const void *scores = nullptr,
                          aclrtStream stream = 0,
                          bool ignore_evict_strategy = false);
+    void find_or_insert_pointers(const size_t n, const void *keys,
+                                 void **value_ptrs,
+                                 bool *d_found,
+                                 void *scores = nullptr,
+                                 aclrtStream stream = 0,
+                                 bool unique_key = true,
+                                 bool ignore_evict_strategy = false);
     void assign(const size_t n,
                 const void *keys,
                 const void *values,
@@ -221,6 +234,7 @@ public:
 
 private:
     RowsFn rows_fn_;
+    ColsFn cols_fn_;
     GetMaxCapacityFn get_max_capacity_fn_;
     GetKeyTypeFn get_key_type_fn_;
     GetValueTypeFn get_value_type_fn_;
@@ -232,6 +246,7 @@ private:
     ClearFn clear_fn_;
     ReserveFn reserve_fn_;
     AccumOrAssignFn accum_or_assign_fn_;
+    FindOrInsertPointersFn find_or_insert_pointers_fn_;
     AssignFn assign_fn_;
     LockFn lock_fn_;
     UnlockFn unlock_fn_;
@@ -250,6 +265,7 @@ class DynamicVariableBase {
 public:
     virtual ~DynamicVariableBase() = default;
     virtual int64_t rows(aclrtStream stream = 0) = 0;
+    virtual int64_t cols() override = 0;
     virtual int64_t get_max_capacity() = 0;
     virtual DataType get_key_type() = 0;
     virtual DataType get_value_type() = 0;
@@ -282,6 +298,13 @@ public:
                                  const void *scores = nullptr, // (n)
                                  aclrtStream stream = 0,
                                  bool ignore_evict_strategy = false) = 0;
+    virtual void find_or_insert_pointers(const size_t n, const void *keys, // (n)
+                                         void **value_ptrs,      // (n * ptrs)
+                                         bool *d_found,          // (n * 1)
+                                         void *scores = nullptr, // (n)
+                                         aclrtStream stream = 0,
+                                         bool unique_key = true,
+                                         bool ignore_evict_strategy = false) = 0;
     virtual void assign(const size_t n,
                         const void *keys,             // (n)
                         const void *values,           // (n, DIM)

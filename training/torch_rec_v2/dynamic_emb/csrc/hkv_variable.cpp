@@ -17,12 +17,18 @@
 
 #include "hkv_variable.h"
 #include <stdexcept>
+#include <acl/acl.h>
+#include "tiling/platform/platform_ascendc.h"
+#include <simt_api/common_functions.h>
+#include "kernel_operator.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "ops/check_safe_pointers/check_safe_pointers_kernel.h"
 #include "acl_singleton.h"
 #include "utils.h"
 
 namespace dyn_emb {
+constexpr uint32_t BLOCK_THREAD_NUM_OPT = 2048;
+
 DeviceCounter::DeviceCounter()
 {
     check_ret(aclrtMalloc(reinterpret_cast<void**>(&d_counter), sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_FIRST),
@@ -159,6 +165,59 @@ private:
     bool found_;
 };
 
+template <
+    typename T, 
+    typename EmbeddingGenerator,
+    typename TableVector>
+__simt_vf__ __aicore__
+LAUNCH_BOUND(BLOCK_THREAD_NUM_OPT) inline void fill_output_with_table_vectors_kernel_vf(
+    uint64_t n,
+    int emb_dim,
+    __gm__ T* outputs, 
+    typename TableVector::Args vector_args,
+    typename EmbeddingGenerator::Args generator_args,
+    const uint32_t block_index,
+    const uint64_t thread_all)
+{
+    TableVector vectors(vector_args);
+    EmbeddingGenerator emb_gen(generator_args);
+    for (int64_t emb_id = block_index * blockDim.x + threadIdx.x; emb_id < n; emb_id += thread_all) {
+        if (vectors.isInitialized(emb_id)) { // copy embedding from table to outputs.
+            for (int i = 0; i < emb_dim; i++) {
+                outputs[emb_id * emb_dim + i] = *vectors.data_ptr(emb_id, i);
+            }
+        } else if (vectors.isValid(emb_id)) { // initialize the embedding as well as outputs.
+            for (int i = 0; i < emb_dim; i++) {
+                auto tmp = emb_gen.generate(emb_id);
+                outputs[emb_id * emb_dim + i] = TypeConvertFunc<T, float>::convert(tmp);
+                *vectors.data_ptr(emb_id, i) = TypeConvertFunc<T, float>::convert(tmp);
+            }
+        } else { // vector not exists in table, set the output to 0.
+            for (int i = 0; i < emb_dim; i++) {
+                outputs[emb_id * emb_dim + i] = TypeConvertFunc<T, float>::convert(0.0f);
+            }
+        }
+    }
+    emb_gen.destroy();
+}
+
+template <
+    typename T, 
+    typename EmbeddingGenerator,
+    typename TableVector>
+__global__ __vector__ void fill_output_with_table_vectors_kernel(
+    uint64_t n,
+    int emb_dim,
+    __gm__ T* outputs, 
+    typename TableVector::Args vector_args,
+    typename EmbeddingGenerator::Args generator_args)
+{
+    const uint64_t thread_all = BLOCK_THREAD_NUM_OPT * GetBlockNum();
+    asc_vf_call<fill_output_with_table_vectors_kernel_vf<T, EmbeddingGenerator, TableVector>>(
+        dim3{BLOCK_THREAD_NUM_OPT}, n, emb_dim, outputs,
+        vector_args, generator_args, GetBlockIdx(), thread_all);
+}
+
 template <typename K>
 struct MappingEmbeddingGenerator {
     struct Args {
@@ -288,7 +347,14 @@ int64_t HKVVariable<KeyType, ValueType, Strategy>::rows(aclrtStream stream)
 }
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
-EvictStrategy HKVVariable<KeyType, ValueType, Strategy>::evict_strategy() const {
+int64_t HKVVariable<KeyType, ValueType, Strategy>::cols()
+{
+    return dim_;
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+EvictStrategy HKVVariable<KeyType, ValueType, Strategy>::evict_strategy() const
+{
     return Strategy;
 }
 
@@ -377,6 +443,26 @@ void HKVVariable<KeyType, ValueType, Strategy>::accum_or_assign(
         reinterpret_cast<const ValueType*>(value_or_deltas),
         reinterpret_cast<const bool*>(accum_or_assigns),
         reinterpret_cast<const uint64_t*>(scores), stream, ignore_evict_strategy);
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::find_or_insert_pointers(
+    const size_t n, const void *keys, void **value_ptrs, bool *d_found,
+    void *scores, aclrtStream stream, bool unique_key, bool ignore_evict_strategy)
+{
+    if (n == 0) {
+        return;
+    }
+    int64_t dim = cols();
+    hkv_table_->find_or_insert(n, reinterpret_cast<const KeyType*>(keys), reinterpret_cast<ValueType **>(value_ptrs),
+                               d_found, reinterpret_cast<uint64_t *>(scores), stream, unique_key,
+                               ignore_evict_strategy);
+    if (this->safe_check_mode_ != SafeCheckMode::IGNORE) {
+        auto hkv_ptrs = reinterpret_cast<const ValueType **>(
+            const_cast<const void **>(value_ptrs));
+        check_safe_pointers_sync<ValueType>(n, hkv_ptrs, this->safe_check_mode_,
+                                            stream);
+    }
 }
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
