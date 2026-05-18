@@ -1,0 +1,2 @@
+recursive-include mindxsdk-torchrec *.whl
+include requirements.txt
