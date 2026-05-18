@@ -53,6 +53,7 @@ from dynamic_emb.distributed.dynamicemb_config import (
     DynamicEmbScoreStrategy,
     DynamicEmbEvictStrategy,
     get_constraint_capacity,
+    BATCH_SIZE_PER_DUMP,
 )
 from dynamic_emb.distributed.batched_dynamicemb_function import (
     DynamicEmbeddingFunctionV2,
@@ -72,6 +73,8 @@ from dynamic_emb.distributed.initializers.dynamicemb_initializers import (
      TruncatedNormalInitializer,
      DebugInitializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class WeightDecayMode(enum.IntEnum):
@@ -342,6 +345,136 @@ def _print_memory_consume(
     ]
     output = "\n\n" + tabulate(table_consume, title, sub_headers=True)
     logging.info(output)
+
+
+def _export_matched_and_gather(
+    dynamic_table: KeyValueTable,
+    threshold: int,
+    pg: Optional[dist.ProcessGroup] = None,
+    batch_size: int = BATCH_SIZE_PER_DUMP,
+) -> Tuple[Tensor, Tensor]:
+    if not torch_npu.npu.is_available():
+        raise ValueError("No available npu device.")
+    # Get the rank of the current process
+    rank = dist.get_rank(group=pg)
+    world_size = dist.get_world_size(group=pg)
+    device = torch.device(f"npu:{torch_npu.npu.current_device()}")
+
+    d_num_matched = torch.zeros(1, dtype=torch.int64, device=device).to(torch.uint64)
+    dynamic_table.count_matched(threshold, d_num_matched)
+
+    gathered_num_matched = [
+        torch.tensor(0, dtype=torch.int64, device=device)
+        for _ in range(world_size)
+    ]
+    dist.all_gather(gathered_num_matched, d_num_matched.to(dtype=torch.int64), group=pg)
+
+    total_matched = sum([t.item() for t in gathered_num_matched])  # t is on device.
+    key_dtype = dynamic_table.key_type()
+    value_dtype = dynamic_table.value_type()
+    dim: int = dynamic_table.embedding_dim()
+
+    ret_keys = torch.empty(total_matched, dtype=key_dtype, device="cpu")
+    ret_vals = torch.empty(total_matched * dim, dtype=value_dtype, device="cpu")
+    ret_offset = 0
+
+    search_offset = 0
+    search_capacity = dynamic_table.capacity()
+    batch_size = batch_size if batch_size < search_capacity else search_capacity
+    logger.debug(
+        "[_export_matched_and_gather] rank=%s world_size=%s device=%s threshold=%d count_matched=%d capacity=%d batch_size=%d",
+        rank, world_size, device, threshold, total_matched, search_capacity, batch_size
+    )
+
+    d_keys = torch.empty(batch_size, dtype=key_dtype, device=device)
+    d_vals = torch.empty(batch_size * dim, dtype=value_dtype, device=device)
+    d_count = torch.zeros(1, dtype=torch.int64, device=device).to(torch.uint64)
+
+    # Gather keys and values for all ranks
+    gathered_keys = [torch.empty_like(d_keys) for _ in range(world_size)]
+    gathered_vals = [torch.empty_like(d_vals) for _ in range(world_size)]
+    gathered_counts = [
+        torch.empty_like(d_count, dtype=torch.int64)
+        for _ in range(world_size)
+    ]
+
+    while search_offset < search_capacity:
+        dynamic_table.export_batch_matched(
+            threshold, batch_size, search_offset, d_count, d_keys, d_vals
+        )
+
+        dist.all_gather(gathered_keys, d_keys, group=pg)
+        dist.all_gather(gathered_vals, d_vals, group=pg)
+        dist.all_gather(gathered_counts, d_count.to(dtype=torch.int64), group=pg)
+
+        for d_keys_, d_vals_, d_count_ in zip(
+            gathered_keys, gathered_vals, gathered_counts
+        ):
+            h_count = d_count_.cpu().item()
+            ret_keys[ret_offset : ret_offset + h_count] = d_keys_[0:h_count].cpu()
+            ret_vals[
+                ret_offset * dim : (ret_offset + h_count) * dim
+            ] = d_vals_[0 : h_count * dim].cpu()
+            ret_offset += h_count
+
+        search_offset += batch_size
+        d_count = torch.zeros(1, dtype=torch.int64, device=device).to(torch.uint64)
+
+    logger.debug(
+        "[_export_matched_and_gather] export finished num_keys=%d num_vals=%d", ret_keys.numel(), ret_vals.numel()
+    )
+    return ret_keys, ret_vals
+
+
+def _export_matched(
+    dynamic_table: KeyValueTable,
+    threshold: int,
+    batch_size: int = BATCH_SIZE_PER_DUMP,
+) -> Tuple[Tensor, Tensor]:
+    if not torch_npu.npu.is_available():
+        raise ValueError("No available npu device.")
+    device = torch.device(f"npu:{torch_npu.npu.current_device()}")
+    d_num_matched = torch.zeros(1, dtype=torch.int64, device=device).to(torch.uint64)
+    dynamic_table.count_matched(threshold, d_num_matched)
+
+    total_matched = d_num_matched.cpu().item()
+    key_dtype = dynamic_table.key_type()
+    value_dtype = dynamic_table.value_type()
+    dim: int = dynamic_table.embedding_dim()
+
+    ret_keys = torch.empty(total_matched, dtype=key_dtype, device="cpu")
+    ret_vals = torch.empty(total_matched * dim, dtype=value_dtype, device="cpu")
+    ret_offset = 0
+
+    search_offset = 0
+    search_capacity = dynamic_table.capacity()
+    batch_size = batch_size if batch_size < search_capacity else search_capacity
+    logger.debug(
+        "[_export_matched] device=%s threshold=%d count_matched=%d capacity=%d batch_size=%d",
+        device, threshold, total_matched, search_capacity, batch_size
+    )
+
+    d_keys = torch.empty(batch_size, dtype=key_dtype, device=device)
+    d_vals = torch.empty(batch_size * dim, dtype=value_dtype, device=device)
+    d_count = torch.zeros(1, dtype=torch.int64, device=device).to(torch.uint64)
+
+    while search_offset < search_capacity:
+        dynamic_table.export_batch_matched(
+            threshold, batch_size, search_offset, d_count, d_keys, d_vals
+        )
+
+        h_count = d_count.cpu().item()
+        ret_keys[ret_offset : ret_offset + h_count] = d_keys[0:h_count].cpu()
+        ret_vals[ret_offset * dim : (ret_offset + h_count) * dim] = d_vals[0 : h_count * dim].cpu()
+        ret_offset += h_count
+
+        search_offset += batch_size
+        d_count = torch.zeros(1, dtype=torch.int64, device=device).to(torch.uint64)
+
+    logger.debug(
+        "[_export_matched] export finished num_keys=%s num_vals=%s", ret_keys.numel(), ret_vals.numel()
+    )
+    return ret_keys, ret_vals
 
 
 class BatchedDynamicEmbeddingTablesV2(nn.Module):
@@ -988,7 +1121,6 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
     def export_keys_values(
             self, table_name: str, device: torch.device, batch_size: int = 65536
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-
         keys_list = []
         values_list = []
         self.flush()
@@ -1024,3 +1156,62 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
                 f"Not supported optimizer type, optimizer type = {optimizer_type} {type(optimizer_type)} "
                 f"{optimizer_type.value}."
             )
+
+    def incremental_dump(
+        self,
+        named_thresholds: Dict[str, int] = None,
+        pg: Optional[dist.ProcessGroup] = None,
+    ) -> Tuple[Dict[str, Tuple[Tensor, Tensor]], Dict[str, int]]:
+        if named_thresholds is None:
+            named_thresholds = {}
+        table_names: List[str] = list(named_thresholds.keys())
+        table_thresholds: List[int] = list(named_thresholds.values())
+        ret_tensors: Dict[str, Tuple[Tensor, Tensor]] = {}
+        ret_scores: Dict[str, int] = {}
+
+        def _export_matched_per_table(pg, table, threshold):
+            if not dist.is_initialized() or dist.get_world_size(group=pg) == 1:
+                key, value = _export_matched(table, threshold)
+            else:
+                key, value = _export_matched_and_gather(table, threshold, pg)
+            return key, value
+
+        for table_name, threshold in zip(table_names, table_thresholds):
+            index = self._table_names.index(table_name)
+
+            storage = self._storages[index]
+            if not isinstance(storage, KeyValueTable):
+                raise RuntimeError(
+                    "Only KeyValueTable is supported for incremental dump"
+                )
+            key, value = _export_matched_per_table(pg, storage, threshold)
+            logger.debug(
+                "[incremental_dump] table=%s storage export num_keys=%d", table_name, key.numel()
+            )
+
+            if self._caches[index] is not None:
+                cache = self._caches[index]
+                key_c, value_c = _export_matched_per_table(pg, cache, threshold)
+                logger.debug(
+                    "[incremental_dump] table=%s cache export num_keys=%d", table_name, key_c.numel()
+                )
+
+                mask = ~torch.isin(key, key_c)
+                if key.numel() != 0:
+                    if mask.sum() != 0:
+                        value = (
+                            value.view(key.numel(), -1)[mask, :].contiguous().view(-1)
+                        )
+                        key = key[mask].contiguous()
+                        key = torch.cat((key_c, key), dim=0).contiguous()
+                        value = torch.cat((value_c, value), dim=0).contiguous()
+                    else:
+                        key = key_c
+                        value = value_c
+                else:
+                    key = key_c
+                    value = value_c
+
+            ret_tensors[table_name] = (key, value)
+            ret_scores[table_name] = self._scores[table_name]
+        return ret_tensors, ret_scores
