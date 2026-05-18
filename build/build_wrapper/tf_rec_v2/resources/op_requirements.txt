@@ -1,0 +1,5 @@
+cust_op_by_addr
+fused_sgd
+fused_lazy_adam
+lccl
+pcie_through

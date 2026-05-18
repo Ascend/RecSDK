@@ -1,0 +1,3 @@
+recursive-include mindxsdk-mxrec *.whl
+recursive-include npu-ops *
+include requirements.txt
