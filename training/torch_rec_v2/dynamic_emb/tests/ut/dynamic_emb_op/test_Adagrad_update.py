@@ -62,7 +62,7 @@ def get_dim_pointers_optimized(x_2d):
 
 @pytest.mark.parametrize("device", [0])
 @pytest.mark.parametrize("batch_size", [1, 1024, 4096, 8192, 10240, 102400])
-@pytest.mark.parametrize("embedding_dim", [8, 64, 128, 256, 512, 1024, 31, 1023])
+@pytest.mark.parametrize("embedding_dim", [8, 64, 128, 256, 512, 1024, 8192, 31, 1023])
 @pytest.mark.parametrize("lr", [0.001, 0.01, 0.1])
 @pytest.mark.parametrize("iter_num", [10, 100])
 @pytest.mark.parametrize(
@@ -135,8 +135,8 @@ def test_dynamic_emb_adagrad_with_pointer(device, batch_size, embedding_dim, opt
 
 
 @pytest.mark.parametrize("device", [0])
-@pytest.mark.parametrize("batch_size", [1, 1024, 4096])
-@pytest.mark.parametrize("embedding_dim", [64, 128, 31])
+@pytest.mark.parametrize("batch_size", [1, 1024, 4096, 102400])
+@pytest.mark.parametrize("embedding_dim", [64, 128, 8192, 31])
 @pytest.mark.parametrize("lr", [0.001, 0.01])
 @pytest.mark.parametrize("iter_num", [10, 100])
 @pytest.mark.parametrize(
@@ -179,14 +179,18 @@ def test_dynamic_emb_adagrad_with_table(device, batch_size, embedding_dim, optim
         torch.bfloat16: DynamicEmbDataType.BFloat16,
     }
     val_dynamic_type = dtype_to_dynamic_emb[grad_type]
+    # 向量池需落在 HBM；按容量预留 w+acc，避免回落 host 触发 HKV 报错
+    vector_capacity = max(2048, batch_size * 2)
+    bytes_per_vector = embedding_dim * 2 * values.element_size()
+    max_hbm_for_vectors = max(1 * 1024 * 1024 * 1024, int(vector_capacity * bytes_per_vector * 2))
     table = DynamicEmbTable(
         DynamicEmbDataType.Int64,
         val_dynamic_type,
         EvictStrategy.kLru,
         embedding_dim * 2,
         1024,
-        max(2048, batch_size * 2),
-        1 * 1024 * 1024 * 1024,
+        vector_capacity,
+        max_hbm_for_vectors,
         128,
         0.5,
         128,
@@ -273,8 +277,8 @@ def test_dynamic_emb_adagrad_with_table(device, batch_size, embedding_dim, optim
 
 
 @pytest.mark.parametrize("device", [0])
-@pytest.mark.parametrize("batch_size", [1, 1024, 4096, 8192])
-@pytest.mark.parametrize("embedding_dim", [8, 64, 128, 256, 31, 1023])
+@pytest.mark.parametrize("batch_size", [1, 1024, 4096, 8192, 102400])
+@pytest.mark.parametrize("embedding_dim", [8, 64, 128, 256, 8192, 31, 1023])
 @pytest.mark.parametrize("lr", [0.001, 0.01])
 @pytest.mark.parametrize("iter_num", [10, 100])
 @pytest.mark.parametrize(
