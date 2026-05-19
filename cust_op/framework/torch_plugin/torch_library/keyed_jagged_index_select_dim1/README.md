@@ -27,13 +27,13 @@ torch.ops.mxrec.keyed_jagged_index_select_dim(Tensor values,
 |  名称  | 输入/输出  | 参数类型    | 数据类型       | 数据格式                                            | 范围                  |
 |  ---- |--------|---------|------------|-------------------------------------------------|---------------------|
 |  values | 输入     | Tensor  | int32/int64/fp32/fp16 | [values]                                        | values的长度等于`lengths.sum()` | 
-|  lengths | 输入     | Tensor  | int32/int64 | [lengths]                   |
+|  lengths | 输入     | Tensor  | int32/int64 | [lengths]                   |    |
 |  offset | 输入     | Tensor  | int64      | [offset]                                       | 从0开始，为lengths元素的累加序列 |
 |  indices | 输入     | Tensor  | int32/int64      | [indices]                                       | indices中的每个值均满足: >= 0 且 < `batch_size` |
 |  weights | 输入(可选) | Tensor  | fp32/fp16       | [weights]                                       | weight的长度等于`lengths.sum()` |
 |  batch_size | 输入 | Int  | `int`        | NA                                              |        dim 1 of KIT (0, std::numeric_limits\<int>::max()]      |
 |  selected_lengths_sum | 输入(可选) | Int  | `int64`        | NA                                              |        [0, std::numeric_limits\<int64>::max()]      |
-|  output | 输出     | Tensor[]  | Tensor[]  | [output] | 包含3个Tensor，outvalues,dtype和values相同， outlengths,dtype和lengths相同， outweight（如果weights存在，dtype和weight相同否则为None）
+|  output | 输出     | Tensor[]  | Tensor[]  | [output] | 包含5个Tensor，outvalues,dtype和values相同， outlengths,dtype和lengths相同， outweight（如果weights存在，dtype和weight相同否则为None）， outputoffset,dtype和offsets相同）,savedDataT, dtype为int64 |
 
 说明：
 

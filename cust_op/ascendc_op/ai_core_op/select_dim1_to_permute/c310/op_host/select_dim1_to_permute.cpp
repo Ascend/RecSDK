@@ -126,8 +126,14 @@ class SelectDim1ToPermute : public OpDef {
 public:
     explicit SelectDim1ToPermute(const char* name) : OpDef(name)
     {
-        this->Input("indices").ParamType(REQUIRED).DataType({ge::DT_INT32, ge::DT_INT64}).FormatList({ge::FORMAT_ND});
-        this->Input("lengths").ParamType(REQUIRED).DataType({ge::DT_INT32, ge::DT_INT64}).FormatList({ge::FORMAT_ND});
+        this->Input("indices")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
+        this->Input("lengths")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
         this->Output("permute").ParamType(REQUIRED).Follow("indices", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
         this->Output("outputLengths")
             .ParamType(REQUIRED)

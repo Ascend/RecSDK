@@ -33,7 +33,7 @@ torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 
 # 定义参数shape
-def get_result(tensors: dict, is_mxrec: bool = False):
+def get_result(tensors: dict):
     tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
     torch.npu.set_device(DEVICE)
     tensors = {k: v.to(DEVICE) if isinstance(v, torch.Tensor) else v for k, v in tensors.items()}
@@ -48,46 +48,47 @@ def get_golden(tensors: dict, batch_num):
     tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
     indiceslen = tensors['indices'].size(0)
     permutelen = batch_num * indiceslen
-    permute = torch.empty(permutelen, dtype=tensors['indices'].dtype)
+    permute = torch.empty(permutelen, dtype=torch.int32)
     for i in range(batch_num):
         for j in range(indiceslen):
             permute[i * indiceslen + j] = tensors['batch_size'] * i + tensors['indices'][j].item()
-    results = torch.ops.fbgemm.permute_1D_sparse_data(permute,
-        tensors['lengths'], tensors['values'], tensors['weights'], tensors['selected_lengths_sum'])
+    results = torch.ops.fbgemm.permute_1D_sparse_data(
+        permute, tensors['lengths'], tensors['values'], tensors['weights'], tensors['selected_lengths_sum']
+    )
     return [x.cpu() if isinstance(x, torch.Tensor) else x for x in results]
 
 
-LENGTHS_TYPE = [np.int32]
+LENGTHS_TYPE = [np.int32, np.int64]
+INDICES_TYPE = [np.int64, np.int32]
 VALUES_TYPE = [np.int64, np.int32, np.float32, np.float16]
 WEIGHTS_TYPE = [None, np.float32]
-TYPE_LIST = list(itertools.product(LENGTHS_TYPE, VALUES_TYPE, WEIGHTS_TYPE))
+OFFSET_TYPE = [np.int64, np.int32]
+TYPE_LIST = list(itertools.product(LENGTHS_TYPE, INDICES_TYPE, VALUES_TYPE, WEIGHTS_TYPE, OFFSET_TYPE))
 ENABLE_SELECTED_LENGTHS_SUM = [False, True]
-IS_MXREC = [True, False]
-BOOLEAN_LIST = list(itertools.product(ENABLE_SELECTED_LENGTHS_SUM, IS_MXREC))
 INT64_LENGTHS_TYPE = [np.int64]
 FP16_WEIGHTS_TYPE = [np.float16]
-TYPE_LIST_1 = list(itertools.product(INT64_LENGTHS_TYPE, VALUES_TYPE, FP16_WEIGHTS_TYPE))
+TYPE_LIST_1 = list(itertools.product(INT64_LENGTHS_TYPE, INDICES_TYPE, VALUES_TYPE, FP16_WEIGHTS_TYPE, OFFSET_TYPE))
 
 
 # 初始化测试入参，v220 indices dtype只支持int32, 可手动调整
-def init_tensor(types, batch_num, batch_size, output_batch_size, boolean_items):
-    ltype, vtype, wtype = types
-    enable_selected_lengths_sum, is_mxrec = boolean_items
-    indices = np.random.choice(batch_size, output_batch_size).astype(dtype=ltype)
-    lengths = np.random.randint(2, 500, size=batch_size * batch_num, dtype=ltype)
+def init_tensor(types, batch_num, batch_size, output_batch_size, enable_selected_lengths_sum):
+    length_type, indices_type, values_type, weights_type, offset_type = types
+
+    indices = np.random.choice(batch_size, output_batch_size).astype(dtype=indices_type)
+    lengths = np.random.randint(2, 500, size=batch_size * batch_num, dtype=length_type)
     total_length = int(lengths.sum())
     cumulative_lengths = np.cumsum(lengths)
-    offsets = np.zeros(len(lengths) + 1, dtype=np.int64)
+    offsets = np.zeros(len(lengths) + 1, dtype=offset_type)
     offsets[1:] = cumulative_lengths
 
-    is_float = vtype in [np.float32, np.float16]
+    is_float = values_type in [np.float32, np.float16]
     if is_float:
-        values = np.random.rand(total_length).astype(dtype=vtype)
+        values = np.random.rand(total_length).astype(dtype=values_type)
     else:
-        values = np.random.randint(0, 2**16, (total_length,), dtype=vtype)
-    weights = np.arange(0, total_length, dtype=wtype) if wtype else None
+        values = np.random.randint(0, 2**16, (total_length,), dtype=values_type)
+    weights = np.arange(0, total_length, dtype=weights_type) if weights_type else None
 
-    permute = np.empty(batch_num * output_batch_size, dtype=ltype)
+    permute = np.empty(batch_num * output_batch_size, dtype=indices_type)
     for i in range(batch_num):
         for j in range(output_batch_size):
             permute[i * output_batch_size + j] = batch_size * i + indices[j]
@@ -99,17 +100,17 @@ def init_tensor(types, batch_num, batch_size, output_batch_size, boolean_items):
         'indices': indices,
         'batch_size': batch_size,
         'weights': weights,
-        'selected_lengths_sum': selected_lengths_sum
+        'selected_lengths_sum': selected_lengths_sum,
     }
-    return params, is_mxrec
+    return params
 
 
 @pytest.mark.parametrize("types", TYPE_LIST)
 @pytest.mark.parametrize("batch_num", [1, 8, 64, 100])
 @pytest.mark.parametrize("batch_size", [1, 8, 64, 256])
 @pytest.mark.parametrize("output_batch_size", [2, 8, 64, 256])
-@pytest.mark.parametrize("boolean_items", BOOLEAN_LIST)
-def test_keyed_jagged_index_select_dim1(types, batch_num, batch_size, output_batch_size, boolean_items):
+@pytest.mark.parametrize("enable_selected_lengths_sum", ENABLE_SELECTED_LENGTHS_SUM)
+def test_keyed_jagged_index_select_dim1(types, batch_num, batch_size, output_batch_size, enable_selected_lengths_sum):
     """
     测试正常情况下的keyed_jagged_index_select_dim1算子功能
     Params:
@@ -121,10 +122,10 @@ def test_keyed_jagged_index_select_dim1(types, batch_num, batch_size, output_bat
         batch_size: int
         selected_lengths_sum: int
     """
-    params, is_mxrec = init_tensor(types, batch_num, batch_size, output_batch_size, boolean_items)
+    params = init_tensor(types, batch_num, batch_size, output_batch_size, enable_selected_lengths_sum)
 
     golden = get_golden(params, batch_num)
-    result = get_result(params, is_mxrec)
+    result = get_result(params)
     assert torch.allclose(golden[0], result[1], atol=1e-5)
     assert torch.allclose(golden[1], result[0], atol=1e-5)
     if params['weights'] is not None:
@@ -135,9 +136,11 @@ def test_keyed_jagged_index_select_dim1(types, batch_num, batch_size, output_bat
 @pytest.mark.parametrize("batch_num", [8, 64, 100])
 @pytest.mark.parametrize("batch_size", [8, 64, 256])
 @pytest.mark.parametrize("output_batch_size", [8, 64, 256])
-@pytest.mark.parametrize("boolean_items", BOOLEAN_LIST)
-def test_keyed_jagged_index_select_dim1_tpye_list_1(types, batch_num, batch_size, output_batch_size, boolean_items):
-    params, is_mxrec = init_tensor(types, batch_num, batch_size, output_batch_size, boolean_items)
+@pytest.mark.parametrize("enable_selected_lengths_sum", ENABLE_SELECTED_LENGTHS_SUM)
+def test_keyed_jagged_index_select_dim1_tpye_list_1(
+    types, batch_num, batch_size, output_batch_size, enable_selected_lengths_sum
+):
+    params = init_tensor(types, batch_num, batch_size, output_batch_size, enable_selected_lengths_sum)
     weights_None = None
     params_golden = {
         'values': params['values'],
@@ -146,12 +149,12 @@ def test_keyed_jagged_index_select_dim1_tpye_list_1(types, batch_num, batch_size
         'indices': params['indices'].astype(dtype=np.int32),
         'batch_size': batch_size,
         'weights': weights_None,
-        'selected_lengths_sum': params['selected_lengths_sum']
+        'selected_lengths_sum': params['selected_lengths_sum'],
     }
     golden = get_golden(params_golden, batch_num)
     params_golden['values'] = params['weights']
     golden_weights = get_golden(params_golden, batch_num)
-    result = get_result(params, is_mxrec)
+    result = get_result(params)
     assert torch.allclose(golden[0], result[1], atol=1e-5)
     assert torch.allclose(golden[1], result[0], atol=1e-5)
     assert torch.allclose(golden_weights[1], result[2], atol=1e-5)
@@ -161,15 +164,16 @@ def test_keyed_jagged_index_select_dim1_tpye_list_1(types, batch_num, batch_size
 @pytest.mark.parametrize("batch_num", [0, 2])
 @pytest.mark.parametrize("batch_size", [2])
 @pytest.mark.parametrize("output_batch_size", [0, 2])
-@pytest.mark.parametrize("boolean_items", BOOLEAN_LIST)
-def test_keyed_jagged_index_select_dim1_error(types, batch_num, batch_size, output_batch_size, boolean_items):
+@pytest.mark.parametrize("enable_selected_lengths_sum", ENABLE_SELECTED_LENGTHS_SUM)
+def test_keyed_jagged_index_select_dim1_error(
+    types, batch_num, batch_size, output_batch_size, enable_selected_lengths_sum
+):
     """
     测试空tensor
     """
-    if (batch_num != 0 and batch_size != 0 and output_batch_size != 0):
+    if batch_num != 0 and batch_size != 0 and output_batch_size != 0:
         return
-    params, is_mxrec = init_tensor(types, batch_num, batch_size, output_batch_size, boolean_items)
+    params = init_tensor(types, batch_num, batch_size, output_batch_size, enable_selected_lengths_sum)
     with pytest.raises(Exception):
-        result = get_result(params, is_mxrec)
+        result = get_result(params)
         assert result is None
-    

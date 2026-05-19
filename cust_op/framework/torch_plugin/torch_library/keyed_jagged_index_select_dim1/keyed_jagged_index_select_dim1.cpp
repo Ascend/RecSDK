@@ -27,7 +27,7 @@ void validate_keyed_jagged_index_select_dim1_inputs(const Tensor& values, const 
     check_tensor_dim(lengths, EXPECTED_DIM_1D, "lengths");
     check_tensor_dim(offsets, EXPECTED_DIM_1D, "offsets");
     check_tensor_dim(indices, EXPECTED_DIM_1D, "indices");
-    TORCH_CHECK(offsets.dtype() == at::kLong, "offsets must be dtype Long");
+    TORCH_CHECK(offsets.dtype() == at::kLong || offsets.dtype() == at::kInt, "offsets must be dtype Long or Int32");
 
     // ============= NPU设备检查 =============
     std::vector<Tensor> tensors = {values, lengths, offsets, indices};
@@ -78,7 +78,7 @@ std::vector<Tensor> keyed_jagged_index_select_dim1_impl_npu(const Tensor& values
     validate_keyed_jagged_index_select_dim1_inputs(values, lengths, offsets, indices, weights, selectedLengthsSum);
     auto valuesConti = values.contiguous();
     auto lengthsConti = lengths.contiguous();
-    auto offsetsConti = offsets.contiguous();
+    auto offsetsConti = offsets.dtype() == at::kLong ? offsets.contiguous() : offsets.to(at::kLong).contiguous();
     auto indicesConti = indices.contiguous();
     auto weightsConti = weights.value_or(at::empty({}, at::kFloat)).contiguous();
     bool enableWeights = weights.has_value();
@@ -90,7 +90,8 @@ std::vector<Tensor> keyed_jagged_index_select_dim1_impl_npu(const Tensor& values
                 std::numeric_limits<int>::max(), "], but get ", lengthsSize, "\n");
     TORCH_CHECK(lengthsSize % batchSize == 0, "lengthsSize must be divisible by batchSize, got ", lengthsSize, " and ",
                 batchSize);
-    const auto outlengthsSize = lengthsSize / batchSize * indicesSize;
+    const auto numBatches = lengthsSize / batchSize;
+    const auto outlengthsSize = numBatches * indicesSize;
     at::Tensor permute = at::empty({outlengthsSize}, indicesConti.options());
     at::Tensor permutedLengths = at::empty({outlengthsSize}, lengthsConti.options());
     EXEC_NPU_CMD(aclnnSelectDim1ToPermute, indicesConti, lengthsConti, batchSize, lengthsSize, permute,
@@ -107,12 +108,13 @@ std::vector<Tensor> keyed_jagged_index_select_dim1_impl_npu(const Tensor& values
     at::Tensor lengthsOffset = at::Tensor();
     at::Tensor permutedLengthsOffset = at::Tensor();
     auto permuteConti = permute.contiguous();
+    at::Tensor outputoffset = asynchronous_complete_cumsum_npu(permutedLengths);
     if (useOffset) {
         totalOffset = offsetsConti;
     } else {
         // 使用 asynchronous_complete_cumsum 计算重排后lengthsConti的累积和
         lengthsOffset = offsetsConti;
-        permutedLengthsOffset = asynchronous_complete_cumsum_npu(permutedLengths).to(at::kLong);
+        permutedLengthsOffset = outputoffset.to(at::kLong);
     }
 
     int64_t outvaluesSize = 0;
@@ -135,10 +137,29 @@ std::vector<Tensor> keyed_jagged_index_select_dim1_impl_npu(const Tensor& values
     EXEC_NPU_CMD(aclnnPermute2dSparseData, permuteConti, lengthsConti, valuesConti, weightsConti, totalOffset,
                  lengthsOffset, permutedLengthsOffset, outvaluesSize, enableWeights, outlengths, outvalues, outweights);
 
+    int64_t savedData[] = {
+        outvaluesSize,
+        lengthsSum,
+        batchSize,
+        numBatches,
+    };
+    auto savedDataT = at::empty({sizeof(savedData) / sizeof(int64_t)}, at::TensorOptions().dtype(at::kLong));
+    TORCH_CHECK(savedDataT.is_contiguous());
+    errno_t ret = memcpy_s(savedDataT.data_ptr<int64_t>(), sizeof(savedData), savedData, sizeof(savedData));
+    TORCH_CHECK(ret == 0, "memcpy_s failed with error code ", ret);
+    outputoffset = outputoffset.to(offsets.dtype());
     if (useOffset) {
-        return {outvalues, outlengths, outweights};
+        if (enableWeights) {
+            return {outvalues, outlengths, outweights, outputoffset, savedDataT};
+        } else {
+            return {outvalues, outlengths, outputoffset, savedDataT};
+        }
     } else {
-        return {outvalues, permutedLengths, outweights};
+        if (enableWeights) {
+            return {outvalues, permutedLengths, outweights, outputoffset, savedDataT};
+        } else {
+            return {outvalues, permutedLengths, outputoffset, savedDataT};
+        }
     }
 }
 
