@@ -23,6 +23,7 @@
 #include "kernel_operator.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "ops/check_safe_pointers/check_safe_pointers_kernel.h"
+#include "ops/load_or_initialize_embeddings/load_or_initialize_embeddings_kernel.h"
 #include "acl_singleton.h"
 #include "utils.h"
 
@@ -604,6 +605,48 @@ void HKVVariable<KeyType, ValueType, Strategy>::load(const size_t n, const torch
     } else {
         hkv_table_->insert_or_assign(n, (KeyType*)keys.data_ptr(), (ValueType*)values.data_ptr(), nullptr, stream,
             unique_key, ignore_evict_strategy);
+    }
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::find_and_initialize(
+    const size_t n, const void* keys, void** value_ptrs, void* values,
+    bool* d_found, const c10::optional<InitializerArgs>& initializer_args, aclrtStream stream)
+{
+    if (n == 0) {
+        return;
+    }
+    int dim = dim_;
+    const_cast<const HKVVariable<KeyType, ValueType, Strategy>*>(this)->find_pointers(
+        n, keys, value_ptrs, d_found, nullptr, stream);
+
+    auto& init_args = initializer_args.has_value() ? initializer_args.value() : initializer_args_;
+    auto& initializer_mode = init_args.mode_;
+    int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
+
+    if (initializer_mode == "normal") {
+        throw std::runtime_error("Unrecognized initializer {normal}. NPU does not support normal generator yet.");
+    } else if (initializer_mode == "truncated_normal") {
+        throw std::runtime_error("Unrecognized initializer {truncated_normal}. NPU does not support truncated_normal generator yet.");
+    } else if (initializer_mode == "uniform") {
+        throw std::runtime_error("Unrecognized initializer {uniform}. NPU does not support uniform generator yet.");
+    } else if (initializer_mode == "debug") {
+        using Generator = MappingEmbeddingGenerator<KeyType>;
+        // Debug initializer maps each key to key % 100000 for deterministic output.
+        auto generator_args = typename Generator::Args{reinterpret_cast<const KeyType*>(keys), 100000};
+        load_or_initialize_embeddings_kernel<ValueType, Generator>
+            <<<max_cores, 0, stream>>>(
+                n, dim, reinterpret_cast<ValueType*>(values),
+                reinterpret_cast<ValueType**>(value_ptrs), d_found, generator_args);
+    } else if (initializer_mode == "constant") {
+        using Generator = ConstEmbeddingGenerator;
+        auto generator_args = typename Generator::Args{init_args.value_};
+        load_or_initialize_embeddings_kernel<ValueType, Generator>
+            <<<max_cores, 0, stream>>>(
+                n, dim, reinterpret_cast<ValueType*>(values),
+                reinterpret_cast<ValueType**>(value_ptrs), d_found, generator_args);
+    } else {
+        throw std::runtime_error("Unrecognized initializer {" + initializer_mode + "}");
     }
 }
 

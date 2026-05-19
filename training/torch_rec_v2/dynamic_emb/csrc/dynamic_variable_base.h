@@ -117,6 +117,8 @@ public:
                                         const c10::optional<torch::Tensor>&, bool, bool)>;
     using LoadFn = std::function<void(const size_t, const torch::Tensor, const torch::Tensor,
                                       const c10::optional<torch::Tensor>&, bool, bool)>;
+    using FindAndInitializeFn = std::function<void(const size_t, const void*, void**, void*,
+                                                    bool*, const c10::optional<InitializerArgs>&, aclrtStream)>;
 
     DynamicVariableBase(
         RowsFn rows_fn,
@@ -144,7 +146,8 @@ public:
         ExportBatchMatchedFn export_batch_matched_fn,
         CountMatchedFn count_matched_fn,
         UpdateFn update_fn,
-        LoadFn load_fn);
+        LoadFn load_fn,
+        FindAndInitializeFn find_and_initialize_fn);
 
     ~DynamicVariableBase() = default;
 
@@ -232,6 +235,10 @@ public:
               const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
               bool ignore_evict_strategy = false);
 
+    void find_and_initialize(const size_t n, const void* keys, void** value_ptrs, void* values,
+                             bool* d_found, const c10::optional<InitializerArgs>& initializer_args = c10::nullopt,
+                             aclrtStream stream = 0);
+
 private:
     RowsFn rows_fn_;
     ColsFn cols_fn_;
@@ -259,6 +266,7 @@ private:
     CountMatchedFn count_matched_fn_;
     UpdateFn update_fn_;
     LoadFn load_fn_;
+    FindAndInitializeFn find_and_initialize_fn_;
 };
 #else
 class DynamicVariableBase {
@@ -348,6 +356,9 @@ public:
     virtual void load(const size_t n, const torch::Tensor keys, const torch::Tensor values,
                       const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
                       bool ignore_evict_strategy = false) = 0;
+    virtual void find_and_initialize(const size_t n, const void* keys, void** value_ptrs, void* values,
+                                     bool* d_found, const c10::optional<InitializerArgs>& initializer_args = c10::nullopt,
+                                     aclrtStream stream = 0) = 0;
 };
 #endif
 

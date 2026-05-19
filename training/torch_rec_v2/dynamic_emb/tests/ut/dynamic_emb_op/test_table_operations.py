@@ -218,6 +218,57 @@ def test_find_pointers_not_found(dynamic_table):
     assert founds.sum().item() == 0, "不应该找到不存在的键"
 
 
+def test_find_and_initialize_constant(dynamic_table):
+    torch.npu.set_device(DEVICE_ID)
+    n_existing = 4
+    n_missing = 3
+    dim = 128
+    init_value = 0.5
+
+    existing_keys = torch.arange(1, n_existing + 1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    existing_values = torch.randn(n_existing, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    dynamic_table.load(n_existing, existing_keys, existing_values, None, True, False)
+
+    missing_keys = torch.arange(1001, 1001 + n_missing, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    keys = torch.cat([existing_keys, missing_keys])
+    n = keys.numel()
+
+    value_ptrs = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values_out = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
+    initializer_args = demb.InitializerArgs("constant", 0.0, 1.0, 0.0, 1.0, init_value)
+
+    demb.find_and_initialize(dynamic_table, n, keys, value_ptrs, values_out, founds, initializer_args)
+
+    assert torch.all(founds[:n_existing]).item(), "existing keys should be found"
+    assert not torch.any(founds[n_existing:]).item(), "missing keys should not be found"
+    torch.testing.assert_close(values_out[:n_existing].cpu(), existing_values.cpu())
+    torch.testing.assert_close(
+        values_out[n_existing:].cpu(),
+        torch.full((n_missing, dim), init_value, dtype=torch.float32),
+    )
+    assert demb.dyn_emb_rows(dynamic_table) == n_existing
+
+
+def test_find_and_initialize_debug(dynamic_table):
+    torch.npu.set_device(DEVICE_ID)
+    n = 5
+    dim = 128
+    keys = torch.tensor([7, 101, 100001, 200002, 99999], dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    value_ptrs = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values_out = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
+    initializer_args = demb.InitializerArgs("debug", 0.0, 1.0, 0.0, 1.0, 0.0)
+
+    demb.find_and_initialize(dynamic_table, n, keys, value_ptrs, values_out, founds, initializer_args)
+
+    # Debug initializer maps each key to key % 100000 for deterministic output.
+    expected_values = (keys % 100000).to(torch.float32).unsqueeze(1).expand(n, dim)
+    assert not torch.any(founds).item(), "empty table should not find any keys"
+    torch.testing.assert_close(values_out.cpu(), expected_values.cpu())
+    assert demb.dyn_emb_rows(dynamic_table) == 0
+
+
 @pytest.mark.parametrize("evict_strategy", [
     demb.EvictStrategy.kLru,
     demb.EvictStrategy.kLfu,

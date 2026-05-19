@@ -854,6 +854,20 @@ void find_pointers_with_scores(std::shared_ptr<dyn_emb::DynamicVariableBase> tab
     }
 }
 
+void find_and_initialize(std::shared_ptr<dyn_emb::DynamicVariableBase> table, const size_t n, const at::Tensor keys,
+                         at::Tensor value_ptrs, at::Tensor values, at::Tensor founds,
+                         const c10::optional<dyn_emb::InitializerArgs>& initializer_args = c10::nullopt)
+{
+    if (n == 0) {
+        return;
+    }
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    auto values_data_ptr = reinterpret_cast<void**>(value_ptrs.data_ptr<int64_t>());
+    auto found_tensor_data_ptr = founds.data_ptr<bool>();
+    table->find_and_initialize(n, keys.data_ptr(), values_data_ptr, values.data_ptr(),
+                               found_tensor_data_ptr, initializer_args, stream);
+}
+
 int64_t dyn_emb_rows(std::shared_ptr<dyn_emb::DynamicVariableBase> table)
 {
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
@@ -2003,7 +2017,12 @@ void bind_dyn_emb_op(py::module& m)
           "value's ptr",
           py::arg("table"), py::arg("n"), py::arg("keys"), py::arg("values"), py::arg("founds"),
           py::arg("scores") = py::none());
-    
+
+    m.def("find_and_initialize", &find_and_initialize,
+          "Find and initialize embeddings with given initializer",
+          py::arg("table"), py::arg("n"), py::arg("keys"), py::arg("value_ptrs"),
+          py::arg("values"), py::arg("founds"), py::arg("initializer_args") = py::none());
+
     m.def("dyn_emb_rows", &dyn_emb_rows, "Get the number of rows in the table",
           py::arg("table"));
 
