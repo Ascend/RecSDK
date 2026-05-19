@@ -14,7 +14,6 @@
 # limitations under the License.
 # ==============================================================================
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
-export CUDA_DEVICE_MAX_CONNECTIONS=1
 
 RECSYS_DIR=$(realpath ../)
 HSTU_DIR=$RECSYS_DIR/hstu
@@ -29,7 +28,7 @@ export PYTHONPATH=${PYTHONPATH}:${RECSYS_DIR}:${HSTU_DIR}:${MEGATRON_DIR}:${MIND
 export TASK_QUEUE_ENABLE=2
 
 # cpu-binding
-NPU_NUM=$(npu-smi info|grep 950PR|wc -l)
+NPU_NUM=$(npu-smi info|grep 950|wc -l)
 CPU_CORES=$(nproc --all)
 if [ "$NPU_NUM" -eq 0 ]; then
   echo "NPU_NUM is 0, exit"
@@ -65,7 +64,7 @@ export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 export USE_FSDP2=1
 MICRO_BATCH_SIZE=128
 GLOBAL_BATCH_SIZE=$((WORLD_SIZE * MICRO_BATCH_SIZE))
-export CUDA_DEVICE_MAX_CONNECTIONS=$WORLD_SIZE
+export CUDA_DEVICE_MAX_CONNECTIONS=2 # 与mindspeed文档保持一致，默认值为2
 GPT_ARGS="
   --num-layers 1 \
   --num-attention-heads 4 \
