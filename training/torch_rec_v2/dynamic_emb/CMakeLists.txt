@@ -72,6 +72,7 @@ set_target_properties(dynamic_variable_base PROPERTIES
 )
 target_include_directories(dynamic_variable_base PRIVATE
 	${Python3_INCLUDE_DIRS}
+	"${CMAKE_CURRENT_SOURCE_DIR}/csrc"
 	"${CMAKE_CURRENT_SOURCE_DIR}/../../../cust_op/hkv/include"
 )
 

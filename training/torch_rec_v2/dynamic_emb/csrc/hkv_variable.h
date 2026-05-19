@@ -197,6 +197,10 @@ public:
     void load(const size_t n, const torch::Tensor keys, const torch::Tensor values,
               const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
               bool ignore_evict_strategy = false);
+
+    void find_and_initialize(const size_t n, const void* keys, void** value_ptrs, void* values,
+                             bool* d_found, const c10::optional<InitializerArgs>& initializer_args = c10::nullopt,
+                             aclrtStream stream = 0);
 private:
     using HKVTable =
       npu::hkv::HashTable<KeyType, ValueType, uint64_t, (int)Strategy>;
@@ -334,6 +338,10 @@ public:
     void load(const size_t n, const torch::Tensor keys, const torch::Tensor values,
               const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
               bool ignore_evict_strategy = false) override;
+
+    void find_and_initialize(const size_t n, const void* keys, void** value_ptrs, void* values,
+                             bool* d_found, const c10::optional<InitializerArgs>& initializer_args = c10::nullopt,
+                             aclrtStream stream = 0) override;
 private:
     using HKVTable =
       npu::hkv::HashTable<KeyType, ValueType, uint64_t, (int)Strategy>;

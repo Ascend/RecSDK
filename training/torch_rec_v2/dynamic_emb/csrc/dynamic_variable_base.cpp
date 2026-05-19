@@ -31,7 +31,8 @@ DynamicVariableBase::DynamicVariableBase(
     FindPointersConstFn find_pointers_const_fn, FindPointersFn find_pointers_fn,
     OptStateDimFn optstate_dim_fn, GetEmbColsFn get_emb_cols_fn,
     ExportBatchFn export_batch_fn, ExportBatchMatchedFn export_batch_matched_fn,
-    CountMatchedFn count_matched_fn, UpdateFn update_fn, LoadFn load_fn)
+    CountMatchedFn count_matched_fn, UpdateFn update_fn, LoadFn load_fn,
+    FindAndInitializeFn find_and_initialize_fn)
     : rows_fn_(std::move(rows_fn)),
       cols_fn_(std::move(cols_fn)),
       get_max_capacity_fn_(std::move(get_max_capacity_fn)),
@@ -57,7 +58,8 @@ DynamicVariableBase::DynamicVariableBase(
       export_batch_matched_fn_(std::move(export_batch_matched_fn)),
       count_matched_fn_(std::move(count_matched_fn)),
       update_fn_(std::move(update_fn)),
-      load_fn_(std::move(load_fn)) {}
+      load_fn_(std::move(load_fn)),
+      find_and_initialize_fn_(std::move(find_and_initialize_fn)) {}
 
 int64_t DynamicVariableBase::rows(aclrtStream stream) {
   return rows_fn_(stream);
@@ -206,6 +208,14 @@ void DynamicVariableBase::load(const size_t n, const torch::Tensor keys,
   load_fn_(n, keys, values, score, unique_key, ignore_evict_strategy);
 }
 
+void DynamicVariableBase::find_and_initialize(const size_t n, const void* keys,
+                                            void** value_ptrs, void* values,
+                                            bool* d_found,
+                                            const c10::optional<InitializerArgs>& initializer_args,
+                                            aclrtStream stream) {
+  find_and_initialize_fn_(n, keys, value_ptrs, values, d_found, initializer_args, stream);
+}
+
 std::shared_ptr<DynamicVariableBase> VariableFactory::Create(
     DataType key_type, DataType value_type, EvictStrategy evict_type,
     int64_t dim, size_t init_capacity, size_t max_capacity,
@@ -322,6 +332,13 @@ std::shared_ptr<DynamicVariableBase> VariableFactory::Create(
                    bool ignore_evict_strategy) {
               impl->load(n, keys, values, score, unique_key,
                          ignore_evict_strategy);
+            },
+            [impl](const size_t n, const void* keys, void** value_ptrs,
+                   void* values, bool* d_found,
+                   const c10::optional<InitializerArgs>& initializer_args,
+                   aclrtStream stream) {
+              impl->find_and_initialize(n, keys, value_ptrs, values, d_found,
+                                        initializer_args, stream);
             });
       });
     });
