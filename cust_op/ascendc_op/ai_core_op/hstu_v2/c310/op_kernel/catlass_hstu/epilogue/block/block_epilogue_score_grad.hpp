@@ -71,6 +71,7 @@ public:
 
     static constexpr uint32_t L0_TILE_M = tla::get<0>(L0TileShape{});
     static constexpr uint32_t L0_TILE_N = tla::get<1>(L0TileShape{});
+    static constexpr uint32_t PING_PONG_ROW = L0_TILE_M / 2;
 
     CATLASS_DEVICE
     BlockEpilogueScoreGrad(ElementAccumulator alpha_, ElementAccumulator scale_, uint32_t cubeFlag, uint32_t vecFlag,
@@ -96,21 +97,13 @@ public:
     }
 
     template <class TensorSrc, class Coord, class Shape>
-    CATLASS_DEVICE void operator()(TensorSrc &tensorRab, Coord const &coord, Shape const &shape, bool &waitTransFinish)
+    CATLASS_DEVICE void operator()(TensorSrc &tensorRab, Coord const &coord, Shape const &shape)
     {
         auto mReal = tla::get<0>(shape);
         auto nReal = tla::get<1>(shape);
 
         auto mLoop = CeilDiv<L0_TILE_M>(mReal);
         auto mTail = mReal - (mLoop - 1) * L0_TILE_M;
-
-        if (waitTransFinish) {
-            if constexpr (HAS_RAB) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-            }
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
-            waitTransFinish = false;
-        }
 
         for (auto m = 0; m < mLoop; m++) {
             bool isLast = (m == mLoop - 1);
@@ -131,56 +124,68 @@ public:
         }
     }
 
+    CATLASS_DEVICE void CallVectorFunction(int64_t offset, uint32_t count)
+    {
+        auto repeatTimes = CeilDiv(count, AscendC::GetVecLen() / sizeof(ElementAccumulator));
+
+        auto ubSPtr = (__ubuf__ ElementAccumulator *)ubScoreTensor[offset].GetPhyAddr();
+        auto ubRabPtr = (__ubuf__ Element *)ubRabTensor[offset].GetPhyAddr();
+        auto ubMaskPtr = (__ubuf__ Element *)ubMaskTensor[offset].GetPhyAddr();
+        auto ubProbPtr = (__ubuf__ Element *)ubProbTensor[offset].GetPhyAddr();
+        auto ubGradRabPartPtr = (__ubuf__ Element *)ubGRabPartTensor[offset].GetPhyAddr();
+        
+        AscendC::VF_CALL<
+            catlass::Epilogue::RegBase::FastSiluGradVf<Element, ElementAccumulator, Element, HAS_RAB, HAS_MASK>>(
+            ubSPtr, ubRabPtr, ubMaskPtr, ubProbPtr, ubGradRabPartPtr, alpha, scale, count, repeatTimes);
+    }
+
     template <class Shape>
     CATLASS_DEVICE void Compute(Shape &shape)
     {
-        auto count = RoundUp<ELEM_PER_BLOCK>(tla::get<0>(shape)) * RoundUp<ELEM_PER_BLOCK>(tla::get<1>(shape));
-
-        auto repeatTimes = CeilDiv(count, AscendC::GetVecLen() / sizeof(ElementAccumulator));
-
-        auto ubSPtr = (__ubuf__ ElementAccumulator *)ubScoreTensor.GetPhyAddr();
-        auto ubRabPtr = (__ubuf__ Element *)ubRabTensor.GetPhyAddr();
-        auto ubMaskPtr = (__ubuf__ Element *)ubMaskTensor.GetPhyAddr();
-        auto ubProbPtr = (__ubuf__ Element *)ubProbTensor.GetPhyAddr();
-        auto ubGradRabPartPtr = (__ubuf__ Element *)ubGRabPartTensor.GetPhyAddr();
+        auto rows = RoundUp<ELEM_PER_BLOCK>(tla::get<0>(shape));
+        auto cols = RoundUp<ELEM_PER_BLOCK>(tla::get<1>(shape));
 
         if constexpr (HAS_RAB) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
         }
 
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-        AscendC::VF_CALL<
-            catlass::Epilogue::RegBase::FastSiluGradVf<Element, ElementAccumulator, Element, HAS_RAB, HAS_MASK>>(
-            ubSPtr, ubRabPtr, ubMaskPtr, ubProbPtr, ubGradRabPartPtr, alpha, scale, count, repeatTimes);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        auto loop = CeilDiv(rows, PING_PONG_ROW);
+        for (auto i = 0; i < loop; i++) {
+            int64_t offset = i * PING_PONG_ROW * cols;
+            uint32_t count = (i == loop - 1) ? (rows * cols - offset) : PING_PONG_ROW * cols;
+            uint32_t pingPongFlag = i % 2;
 
-        // datacopy to tensorP
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        CopyToDst(shape, count);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(pingPongFlag);
+            CallVectorFunction(offset, count);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(pingPongFlag);
+
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingPongFlag);
+            CopyToDst(offset, count, rows, cols);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(pingPongFlag);
+        }
 
         if constexpr (HAS_RAB) {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
     }
 
-    template <class Shape>
-    CATLASS_DEVICE void CopyToDst(Shape &shape, uint32_t count)
+    CATLASS_DEVICE void CopyToDst(int64_t offset, uint32_t count, uint32_t rows, uint32_t cols)
     {
         if constexpr (HAS_RAB || HAS_MASK) {
-            auto rows = RoundUp<ELEM_PER_BLOCK>(tla::get<0>(shape));
-            auto cols = CeilDiv<ELEM_PER_BLOCK>(tla::get<1>(shape));
+            auto rowOffset = offset / cols;
+            auto colBlk = cols / ELEM_PER_BLOCK;
 
             AscendC::DataCopyParams intriParams;
-            intriParams.blockCount = rows;
+            intriParams.blockCount = count / cols;
             intriParams.blockLen = 1;
-            intriParams.srcStride = (cols - 1);
+            intriParams.srcStride = (colBlk - 1);
             intriParams.dstStride = 0;
-            for (auto i = 0; i < cols; i++) {
-                AscendC::DataCopy(dstTensor[i * rows * ELEM_PER_BLOCK], ubProbTensor[i * ELEM_PER_BLOCK], intriParams);
+            for (auto i = 0; i < colBlk; i++) {
+                AscendC::DataCopy(dstTensor[(i * rows + rowOffset) * ELEM_PER_BLOCK],
+                    ubProbTensor[offset + i * ELEM_PER_BLOCK], intriParams);
             }
         } else {
-            AscendC::DataCopy(dstTensor, ubProbTensor, count);
+            AscendC::DataCopy(dstTensor[offset], ubProbTensor[offset], count);
         }
     }
 

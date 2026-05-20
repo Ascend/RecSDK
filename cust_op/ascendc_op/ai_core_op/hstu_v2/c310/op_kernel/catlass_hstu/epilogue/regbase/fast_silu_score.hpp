@@ -49,12 +49,12 @@ namespace catlass::Epilogue::RegBase {
  */
 // y = 1 / (1 + exp(-x))
 template <typename RegType>
-__simd_callee__ inline void Sigmoid(RegType &dst, RegType &src, RegType &ones, AscendC::MicroAPI::MaskReg &maskReg)
+__simd_callee__ inline void Sigmoid(RegType &dst, RegType &src, RegType &ones,
+                                    RegType &zeros, AscendC::MicroAPI::MaskReg &maskReg)
 {
-    AscendC::MicroAPI::Muls(dst, src, -1.0f, maskReg);  // dst = src * -1
-    AscendC::MicroAPI::Exp(dst, dst, maskReg);          // dst = exp(dst)
-    AscendC::MicroAPI::Add(dst, ones, dst, maskReg);    // dst = 1 + dst
-    AscendC::MicroAPI::Div(dst, ones, dst, maskReg);    // dst = 1 / dst
+    AscendC::MicroAPI::ExpSub(dst, zeros, src, maskReg);  // dst = exp(0 - dst)
+    AscendC::MicroAPI::Add(dst, ones, dst, maskReg);      // dst = 1 + dst
+    AscendC::MicroAPI::Div(dst, ones, dst, maskReg);      // dst = 1 / dst
 }
 
 /**
@@ -78,8 +78,8 @@ __simd_callee__ inline void Sigmoid(RegType &dst, RegType &src, RegType &ones, A
 
  */
 template <typename Type, typename AccType, typename RegType>
-__simd_callee__ inline void AddRab(RegType &dst, RegType &src, __ubuf__ Type *ubRabPtr,
-                                   AscendC::MicroAPI::MaskReg &maskReg)
+__simd_callee__ inline void AddRab(RegType &dst, __ubuf__ Type *ubRabPtr,
+                                   AccType alpha, AscendC::MicroAPI::MaskReg &maskReg)
 {
     RegType vregRab;
 
@@ -88,7 +88,8 @@ __simd_callee__ inline void AddRab(RegType &dst, RegType &src, __ubuf__ Type *ub
     } else {
         AscendC::MicroAPI::LoadAlign(vregRab, ubRabPtr);
     }
-    AscendC::MicroAPI::Add(dst, src, vregRab, maskReg);  // A = A + Rab
+ 
+    AscendC::MicroAPI::Axpy(dst, vregRab, alpha, maskReg); // A = A + Rab * alpha
 }
 
 /**
@@ -182,24 +183,22 @@ __simd_callee__ inline void MulMask(RegType &dst, RegType &src, __ubuf__ Type *u
 template <typename Type, typename AccType, bool HAS_RAB, bool HAS_MASK, typename RegType>
 __simd_callee__ inline void SiluScore(__ubuf__ AccType *ubSPtr, __ubuf__ Type *ubRabPtr, __ubuf__ Type *ubMaskPtr,
                                       __ubuf__ Type *ubSiluScorePtr, RegType &vregA, RegType &vregZ, RegType &vregT,
-                                      RegType &vregS, RegType &vregOnes, RegType &vregAlpha, RegType &vregScale,
+                                      RegType &vregS, RegType &vregOnes, RegType &vregZeros, AccType alpha,
                                       AscendC::MicroAPI::MaskReg &maskReg)
 {
     AscendC::MicroAPI::LoadAlign(vregA, ubSPtr);
 
     if constexpr (HAS_RAB) {
-        AddRab<Type, AccType>(vregA, vregA, ubRabPtr, maskReg);  // A = A + Rab
+        AddRab<Type, AccType>(vregA, ubRabPtr, alpha, maskReg);  // A = A + Rab * alpha
     }
 
-    AscendC::MicroAPI::Mul(vregA, vregA, vregAlpha, maskReg);  // A = A * alpha
-    Sigmoid(vregZ, vregA, vregOnes, maskReg);                  // Z = Sigmoid(A)
+    Sigmoid(vregZ, vregA, vregOnes, vregZeros, maskReg);     // Z = Sigmoid(A)
 
     if constexpr (HAS_MASK) {
         MulMask<Type, AccType>(vregZ, vregZ, ubMaskPtr, maskReg);  // Z = Z * mask
     }
 
-    AscendC::MicroAPI::Mul(vregT, vregZ, vregScale, maskReg);  // T = Z * scale
-    AscendC::MicroAPI::Mul(vregS, vregT, vregA, maskReg);      // S = A * T
+    AscendC::MicroAPI::Mul(vregS, vregZ, vregA, maskReg);      // S = A * Z
 
     if constexpr (!std::is_same<Type, AccType>::value) {
         CastDownStore<Type, AccType>(ubSiluScorePtr, vregS, maskReg);
@@ -252,19 +251,17 @@ __simd_vf__ inline void FastSiluScoreVf(__ubuf__ AccType *ubSPtr, __ubuf__ Type 
     AscendC::MicroAPI::RegTensor<AccType> vregT;
     AscendC::MicroAPI::RegTensor<AccType> vregS;
     AscendC::MicroAPI::RegTensor<AccType> vregOnes;
-    AscendC::MicroAPI::RegTensor<AccType> vregAlpha;
-    AscendC::MicroAPI::RegTensor<AccType> vregScale;
+    AscendC::MicroAPI::RegTensor<AccType> vregZeros;
     AscendC::MicroAPI::MaskReg maskReg;
 
     AscendC::MicroAPI::Duplicate(vregOnes, 1.0f);
-    AscendC::MicroAPI::Duplicate(vregAlpha, alpha);
-    AscendC::MicroAPI::Duplicate(vregScale, scale);
+    AscendC::MicroAPI::Duplicate(vregZeros, 0.0f);
     for (uint16_t i = 0; i < repeatTimes; ++i) {
         maskReg = AscendC::MicroAPI::UpdateMask<AccType>(count);
 
         SiluScore<Type, AccType, HAS_RAB, HAS_MASK>(ubSPtr + i * oneRepElm, ubRabPtr + i * oneRepElm,
                                                     ubMaskPtr + i * oneRepElm, ubSiluScorePtr + i * oneRepElm, vregA,
-                                                    vregZ, vregT, vregS, vregOnes, vregAlpha, vregScale, maskReg);
+                                                    vregZ, vregT, vregS, vregOnes, vregZeros, alpha, maskReg);
     }
 }
 

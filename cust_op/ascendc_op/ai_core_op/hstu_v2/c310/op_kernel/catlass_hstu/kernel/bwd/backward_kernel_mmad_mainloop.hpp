@@ -131,6 +131,8 @@ struct BackwardMmadMainloop {
         totalSeqLenQ = tilingData.totalSeqLenQ;
         totalSeqLenK = tilingData.totalSeqLenK;
         targetGroupSize = tilingData.targetGroupSize;
+        alpha = tilingData.alpha;
+        scale = tilingData.scale;
     }
 
     struct PipeEventGuard {
@@ -219,6 +221,10 @@ struct BackwardMmadMainloop {
         BlockMmadKGrad blockMmadKGrad(resource, GRAB_READY_ID, K_TRANS_READY_ID, {EVENT_Q0_ID, EVENT_Q1_ID});
         BlockMmadQGrad blockMmadQGrad(resource);
 
+        blockMmadQK.SetDeqScalar(alpha);
+        blockMmadGV.SetDeqScalar(scale * alpha);
+        blockMmadVGrad.SetDeqScalar(scale);
+
         QBlockScheduler qBlockScheduler(batch, heads, params.ptrSeqOffsetQ);
         KBlockScheduler kBlockScheduler(batch, heads, params.ptrSeqOffsetK, params.ptrSeqOffsetQ);
         uint32_t pingPongFlag = 0;
@@ -267,6 +273,8 @@ struct BackwardMmadMainloop {
     uint32_t totalSeqLenQ{0};
     uint32_t totalSeqLenK{0};
     int32_t targetGroupSize{0};
+    ElementACC alpha{0.0f};
+    ElementACC scale{0.0f};
 };
 
 }
