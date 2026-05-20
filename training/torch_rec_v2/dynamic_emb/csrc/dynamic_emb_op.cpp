@@ -817,8 +817,6 @@ void find_pointers(std::shared_ptr<dyn_emb::DynamicVariableBase> table, const si
             at::Tensor bc_scores = at::empty({static_cast<int64_t>(n)}, option);
             // tensor类型是uint64时，调用fill接口会报错
             bc_scores.fill_(score.value());
-            // hkv要求score的tensor类型为uint64
-            bc_scores.to(at::kUInt64);
             score_ptr = bc_scores.data_ptr();
         }
         table->find_pointers(n, keys.data_ptr(), values_data_ptr, found_tensor_data_ptr, score_ptr, stream);
@@ -915,8 +913,6 @@ void insert_and_evict(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
         at::Tensor bc_scores = at::empty({static_cast<int64_t>(n)}, option);
         // fill_接口不支持uint64_t
         bc_scores.fill_(static_cast<int64_t>(score.value()));
-        // hkv要求score的tensor类型为uint64
-        bc_scores.to(at::kUInt64);
         table->insert_and_evict(n, keys.data_ptr(), values.data_ptr(), bc_scores.data_ptr(),
             evicted_keys.data_ptr(), evicted_values.data_ptr(), evicted_score.data_ptr(),
             reinterpret_cast<uint64_t*>(d_evicted_counter.data_ptr()), stream, unique_key, ignore_evict_strategy);
@@ -982,6 +978,43 @@ void accum_or_assign(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
     }
 }
 
+void find_or_insert(std::shared_ptr<dyn_emb::DynamicVariableBase> table, const size_t n, const at::Tensor keys,
+                    const at::Tensor values, const std::optional<uint64_t> score = std::nullopt, bool unique_key = true,
+                    bool ignore_evict_strategy = false)
+{
+    if (not score and
+        (table->evict_strategy() == EvictStrategy::kCustomized || table->evict_strategy() == EvictStrategy::kLfu)) {
+        throw std::invalid_argument("Must specify the score when evict strategy is customized or LFU.");
+    }
+    if (n == 0) {
+        return;
+    }
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    at::Tensor new_tensor =
+        at::empty({static_cast<int64_t>(n)}, at::TensorOptions().dtype(at::kLong).device(values.device()));
+
+    auto new_tensor_data_ptr = reinterpret_cast<void**>(new_tensor.data_ptr<int64_t>());
+
+    at::Tensor found_tensor =
+        at::empty({static_cast<int64_t>(n)}, at::TensorOptions().dtype(at::kBool).device(keys.device()));
+
+    auto found_tensor_data_ptr = found_tensor.data_ptr<bool>();
+
+    if (table->evict_strategy() == EvictStrategy::kCustomized || table->evict_strategy() == EvictStrategy::kLfu) {
+        auto&& option = at::TensorOptions().dtype(torch::kInt64).device(keys.device());
+        // broadcast scores
+        at::Tensor bc_scores = at::empty({static_cast<int64_t>(n)}, option);
+        // fill_接口不支持uint64_t
+        bc_scores.fill_(static_cast<int64_t>(score.value()));
+        table->find_or_insert(n, keys.data_ptr(), new_tensor_data_ptr, values.data_ptr(), found_tensor_data_ptr,
+                              bc_scores.data_ptr(), stream, unique_key, ignore_evict_strategy);
+
+    } else {
+        table->find_or_insert(n, keys.data_ptr(), new_tensor_data_ptr, values.data_ptr(), found_tensor_data_ptr,
+                              nullptr, stream, unique_key, ignore_evict_strategy);
+    }
+}
+
 void find_or_insert_pointers(
     std::shared_ptr<dyn_emb::DynamicVariableBase> table,
     const size_t n,
@@ -1008,8 +1041,6 @@ void find_or_insert_pointers(
         at::Tensor bc_scores = at::empty({static_cast<int64_t>(n)}, option);
         // fill_接口不支持uint64_t
         bc_scores.fill_(static_cast<int64_t>(score.value()));
-        // hkv要求score的tensor类型为uint64
-        bc_scores.to(at::kUInt64);
         table->find_or_insert_pointers(n, keys.data_ptr(), values_data_ptr, found_tensor_data_ptr, 
             bc_scores.data_ptr(), stream, unique_key, ignore_evict_strategy);
     } else {
@@ -1941,6 +1972,10 @@ void bind_dyn_emb_op(py::module& m)
              "Get max capacity of Dynamic Emb Table.")
         .def("get_initializer_args", &dyn_emb::DynamicVariableBase::get_initializer_args, "Get initializer arguments.")
         .def("optstate_dim", &dyn_emb::DynamicVariableBase::optstate_dim, "Get dim of all optimizer states.")
+        .def("set_initial_optstate", &dyn_emb::DynamicVariableBase::set_initial_optstate,
+             "Set initial optimizer state value.", py::arg("value"))
+        .def("get_initial_optstate", &dyn_emb::DynamicVariableBase::get_initial_optstate,
+             "Get initial optimizer state value.")
         .def("get_emb_cols", &dyn_emb::DynamicVariableBase::get_emb_cols, "Get the number of columns in the table.")
         .def("load", &dyn_emb::DynamicVariableBase::load, "Load a key-value pair in the table", py::arg("n"),
              py::arg("keys"), py::arg("values"), py::arg("score") = c10::nullopt, py::arg("unique_key") = true,
@@ -2061,6 +2096,12 @@ void bind_dyn_emb_op(py::module& m)
           "Accumulate or assign values to the table", py::arg("table"),
           py::arg("n"), py::arg("keys"), py::arg("value_or_deltas"),
           py::arg("accum_or_assigns"), py::arg("score") = c10::nullopt,
+          py::arg("ignore_evict_strategy") = false);
+
+    m.def("find_or_insert", &find_or_insert,
+          "Find or insert a key-value pair in the table", py::arg("table"),
+          py::arg("n"), py::arg("keys"), py::arg("values"),
+          py::arg("score") = py::none(), py::arg("unique_key") = true, 
           py::arg("ignore_evict_strategy") = false);
 
     m.def("find_or_insert_pointers", &find_or_insert_pointers,

@@ -26,10 +26,13 @@ DynamicVariableBase::DynamicVariableBase(
     GetInitializerArgsFn get_initializer_args_fn,
     InsertAndEvictFn insert_and_evict_fn, FindFn find_fn, EraseFn erase_fn,
     ClearFn clear_fn, ReserveFn reserve_fn, AccumOrAssignFn accum_or_assign_fn,
+    FindOrInsertFn find_or_insert_fn,
     FindOrInsertPointersFn find_or_insert_pointers_fn,
     AssignFn assign_fn, LockFn lock_fn, UnlockFn unlock_fn,
     FindPointersConstFn find_pointers_const_fn, FindPointersFn find_pointers_fn,
-    OptStateDimFn optstate_dim_fn, GetEmbColsFn get_emb_cols_fn,
+    OptStateDimFn optstate_dim_fn,
+    SetInitialOptStateFn set_initial_optstate_fn,
+    GetInitialOptStateFn get_initial_optstate_fn, GetEmbColsFn get_emb_cols_fn,
     ExportBatchFn export_batch_fn, ExportBatchMatchedFn export_batch_matched_fn,
     CountMatchedFn count_matched_fn, UpdateFn update_fn, LoadFn load_fn,
     FindAndInitializeFn find_and_initialize_fn)
@@ -46,6 +49,7 @@ DynamicVariableBase::DynamicVariableBase(
       clear_fn_(std::move(clear_fn)),
       reserve_fn_(std::move(reserve_fn)),
       accum_or_assign_fn_(std::move(accum_or_assign_fn)),
+      find_or_insert_fn_(std::move(find_or_insert_fn)),
       find_or_insert_pointers_fn_(std::move(find_or_insert_pointers_fn)),
       assign_fn_(std::move(assign_fn)),
       lock_fn_(std::move(lock_fn)),
@@ -53,6 +57,8 @@ DynamicVariableBase::DynamicVariableBase(
       find_pointers_const_fn_(std::move(find_pointers_const_fn)),
       find_pointers_fn_(std::move(find_pointers_fn)),
       optstate_dim_fn_(std::move(optstate_dim_fn)),
+      set_initial_optstate_fn_(std::move(set_initial_optstate_fn)),
+      get_initial_optstate_fn_(std::move(get_initial_optstate_fn)),
       get_emb_cols_fn_(std::move(get_emb_cols_fn)),
       export_batch_fn_(std::move(export_batch_fn)),
       export_batch_matched_fn_(std::move(export_batch_matched_fn)),
@@ -127,6 +133,15 @@ void DynamicVariableBase::accum_or_assign(const size_t n, const void* keys,
                       stream, ignore_evict_strategy);
 }
 
+void DynamicVariableBase::find_or_insert(const size_t n, const void* keys,
+                                         void **value_ptrs, void* values,
+                                         bool* founds, void* scores,
+                                         aclrtStream stream, bool unique_key,
+                                         bool ignore_evict_strategy) {
+    find_or_insert_fn_(n, keys, value_ptrs, values, founds, scores, stream,
+                       unique_key, ignore_evict_strategy);
+}
+
 void DynamicVariableBase::find_or_insert_pointers(const size_t n, const void *keys,
     void **value_ptrs,
     bool *d_found,
@@ -170,6 +185,14 @@ void DynamicVariableBase::find_pointers(const size_t n, const void* keys,
 }
 
 int DynamicVariableBase::optstate_dim() const { return optstate_dim_fn_(); }
+
+void DynamicVariableBase::set_initial_optstate(const float value) {
+    set_initial_optstate_fn_(value);
+}
+
+const float DynamicVariableBase::get_initial_optstate() const {
+    return get_initial_optstate_fn_();
+}
 
 int DynamicVariableBase::get_emb_cols() const { return get_emb_cols_fn_(); }
 
@@ -273,6 +296,12 @@ std::shared_ptr<DynamicVariableBase> VariableFactory::Create(
               impl->accum_or_assign(n, keys, value_or_deltas, accum_or_assigns,
                                     scores, stream, ignore_evict_strategy);
             },
+            [impl](const size_t n, const void* keys, void **value_ptrs, void* values,
+                   bool* founds, void* scores, aclrtStream stream, bool unique_key,
+                   bool ignore_evict_strategy) {
+                impl->find_or_insert(n, keys, value_ptrs, values, founds, scores,
+                                     stream, unique_key, ignore_evict_strategy);
+            },
             [impl](const size_t n, const void *keys, void **value_ptrs, bool *d_found, void *scores,
                    aclrtStream stream, bool unique_key, bool ignore_evict_strategy) {
                 impl->find_or_insert_pointers(n, keys, value_ptrs, d_found, scores,
@@ -300,6 +329,8 @@ std::shared_ptr<DynamicVariableBase> VariableFactory::Create(
               impl->find_pointers(n, keys, values, founds, scores, stream);
             },
             [impl]() { return impl->optstate_dim(); },
+            [impl](const float value) { impl->set_initial_optstate(value); },
+            [impl]() -> const float { return impl->get_initial_optstate(); },
             [impl]() { return impl->get_emb_cols(); },
             [impl](const size_t n, const size_t offset,
                    const torch::Tensor d_counter, const torch::Tensor keys,

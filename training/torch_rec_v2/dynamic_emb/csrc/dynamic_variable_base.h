@@ -96,6 +96,8 @@ public:
     using ReserveFn = std::function<void(const size_t, aclrtStream)>;
     using AccumOrAssignFn = std::function<void(const size_t, const void*, const void*, const bool*,
                                                const void*, aclrtStream, bool)>;
+    using FindOrInsertFn = std::function<void(const size_t, const void*, void**, void*, bool*,
+                                              void*, aclrtStream, bool, bool)>;
     using FindOrInsertPointersFn = std::function<void(const size_t, const void*, void **, bool *,
                                                       void*, aclrtStream, bool, bool)>;
     using AssignFn = std::function<void(const size_t, const void*, const void*, const void*,
@@ -105,6 +107,8 @@ public:
     using FindPointersConstFn = std::function<void(const size_t, const void*, void**, bool*, void*, aclrtStream)>;
     using FindPointersFn = std::function<void(const size_t, const void*, void**, bool*, void*, aclrtStream)>;
     using OptStateDimFn = std::function<int()>;
+    using SetInitialOptStateFn = std::function<void(const float)>;
+    using GetInitialOptStateFn = std::function<const float()>;
     using GetEmbColsFn = std::function<int()>;
     using ExportBatchFn = std::function<void(const size_t, const size_t, const torch::Tensor,
                                              const torch::Tensor, const torch::Tensor,
@@ -134,6 +138,7 @@ public:
         ClearFn clear_fn,
         ReserveFn reserve_fn,
         AccumOrAssignFn accum_or_assign_fn,
+        FindOrInsertFn find_or_insert_fn,
         FindOrInsertPointersFn find_or_insert_pointers_fn,
         AssignFn assign_fn,
         LockFn lock_fn,
@@ -141,6 +146,8 @@ public:
         FindPointersConstFn find_pointers_const_fn,
         FindPointersFn find_pointers_fn,
         OptStateDimFn optstate_dim_fn,
+        SetInitialOptStateFn set_initial_optstate_fn,
+        GetInitialOptStateFn get_initial_optstate_fn,
         GetEmbColsFn get_emb_cols_fn,
         ExportBatchFn export_batch_fn,
         ExportBatchMatchedFn export_batch_matched_fn,
@@ -185,6 +192,9 @@ public:
                          const void *scores = nullptr,
                          aclrtStream stream = 0,
                          bool ignore_evict_strategy = false);
+    void find_or_insert(const size_t n, const void* keys, void **value_ptrs, void* values,
+                        bool* founds, void* scores = nullptr, aclrtStream stream = 0,
+                        bool unique_key = true, bool ignore_evict_strategy = false);
     void find_or_insert_pointers(const size_t n, const void *keys,
                                  void **value_ptrs,
                                  bool *d_found,
@@ -192,6 +202,8 @@ public:
                                  aclrtStream stream = 0,
                                  bool unique_key = true,
                                  bool ignore_evict_strategy = false);
+    void set_initial_optstate(const float value);
+    const float get_initial_optstate() const;
     void assign(const size_t n,
                 const void *keys,
                 const void *values,
@@ -253,6 +265,7 @@ private:
     ClearFn clear_fn_;
     ReserveFn reserve_fn_;
     AccumOrAssignFn accum_or_assign_fn_;
+    FindOrInsertFn find_or_insert_fn_;
     FindOrInsertPointersFn find_or_insert_pointers_fn_;
     AssignFn assign_fn_;
     LockFn lock_fn_;
@@ -260,6 +273,8 @@ private:
     FindPointersConstFn find_pointers_const_fn_;
     FindPointersFn find_pointers_fn_;
     OptStateDimFn optstate_dim_fn_;
+    SetInitialOptStateFn set_initial_optstate_fn_;
+    GetInitialOptStateFn get_initial_optstate_fn_;
     GetEmbColsFn get_emb_cols_fn_;
     ExportBatchFn export_batch_fn_;
     ExportBatchMatchedFn export_batch_matched_fn_;
@@ -273,7 +288,7 @@ class DynamicVariableBase {
 public:
     virtual ~DynamicVariableBase() = default;
     virtual int64_t rows(aclrtStream stream = 0) = 0;
-    virtual int64_t cols() override = 0;
+    virtual int64_t cols() = 0;
     virtual int64_t get_max_capacity() = 0;
     virtual DataType get_key_type() = 0;
     virtual DataType get_value_type() = 0;
@@ -306,6 +321,9 @@ public:
                                  const void *scores = nullptr, // (n)
                                  aclrtStream stream = 0,
                                  bool ignore_evict_strategy = false) = 0;
+    virtual void find_or_insert(const size_t n, const void* keys, void **value_ptrs, void* values,
+                                bool* founds, void* scores = nullptr, aclrtStream stream = 0,
+                                bool unique_key = true, bool ignore_evict_strategy = false) = 0;
     virtual void find_or_insert_pointers(const size_t n, const void *keys, // (n)
                                          void **value_ptrs,      // (n * ptrs)
                                          bool *d_found,          // (n * 1)
@@ -313,6 +331,8 @@ public:
                                          aclrtStream stream = 0,
                                          bool unique_key = true,
                                          bool ignore_evict_strategy = false) = 0;
+    virtual void set_initial_optstate(const float value) = 0;
+    virtual const float get_initial_optstate() const = 0;
     virtual void assign(const size_t n,
                         const void *keys,             // (n)
                         const void *values,           // (n, DIM)

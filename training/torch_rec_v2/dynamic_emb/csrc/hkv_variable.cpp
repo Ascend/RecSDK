@@ -219,6 +219,64 @@ __global__ __vector__ void fill_output_with_table_vectors_kernel(
         vector_args, generator_args, GetBlockIdx(), thread_all);
 }
 
+template <typename T, typename OptStateInitializer, typename TableVector>
+__simt_vf__ __aicore__ LAUNCH_BOUND(BLOCK_THREAD_NUM_OPT) inline void initialize_optimizer_state_vf_vec4(
+    uint64_t n, int emb_dim, typename TableVector::Args vector_args, OptStateInitializer optstate_initailizer,
+    const uint64_t warp_num_all)
+{
+    TableVector vectors(vector_args);
+
+    T initial_optstate = TypeConvertFunc<T, float>::convert(optstate_initailizer.initial_optstate);
+    int dim = optstate_initailizer.dim;
+
+    const int warp_num_per_block = blockDim.x / warpSize;
+    const int warp_id_in_block = threadIdx.x / warpSize;
+
+    for (int64_t emb_id = warp_num_per_block * blockIdx.x + warp_id_in_block; emb_id < n; emb_id += warp_num_all) {
+        if ((!vectors.isInitialized(emb_id)) and vectors.isValid(emb_id)) {
+            OptStateInitializerInit4(vectors.data_ptr(emb_id, emb_dim), dim, initial_optstate);
+        }
+    }
+}
+
+template <typename T, typename OptStateInitializer, typename TableVector>
+__global__ __vector__ void initialize_optimizer_state_kernel_vec4(uint64_t n, int emb_dim,
+                                                                  typename TableVector::Args vector_args,
+                                                                  OptStateInitializer optstate_initailizer)
+{
+    const int warp_num_per_block = BLOCK_THREAD_NUM_OPT / warpSize;
+    const uint64_t warp_num_all = static_cast<uint64_t>(warp_num_per_block) * GetBlockNum();
+    asc_vf_call<initialize_optimizer_state_vf_vec4<T, OptStateInitializer, TableVector>>(
+        dim3{BLOCK_THREAD_NUM_OPT}, n, emb_dim, vector_args, optstate_initailizer, warp_num_all);
+}
+
+template <typename T, typename OptStateInitializer, typename TableVector>
+__simt_vf__ __aicore__ LAUNCH_BOUND(BLOCK_THREAD_NUM_OPT) inline void initialize_optimizer_state_vf(
+    uint64_t n, int emb_dim, typename TableVector::Args vector_args, OptStateInitializer optstate_initailizer,
+    const uint64_t block_all)
+{
+    T initial_optstate = TypeConvertFunc<T, float>::convert(optstate_initailizer.initial_optstate);
+    int dim = optstate_initailizer.dim;
+
+    TableVector vectors(vector_args);
+
+    for (int64_t emb_id = blockIdx.x; emb_id < n; emb_id += block_all) {
+        if ((!vectors.isInitialized(emb_id)) and vectors.isValid(emb_id)) {
+            OptStateInitializerInit(vectors.data_ptr(emb_id, emb_dim), dim, initial_optstate);
+        }
+    }
+}
+
+template <typename T, typename OptStateInitializer, typename TableVector>
+__global__ __vector__ void initialize_optimizer_state_kernel(uint64_t n, int emb_dim,
+                                                             typename TableVector::Args vector_args,
+                                                             OptStateInitializer optstate_initailizer)
+{
+    const uint64_t block_all = GetBlockNum();
+    asc_vf_call<initialize_optimizer_state_vf<T, OptStateInitializer, TableVector>>(
+        dim3{BLOCK_THREAD_NUM_OPT}, n, emb_dim, vector_args, optstate_initailizer, block_all);
+}
+
 template <typename K>
 struct MappingEmbeddingGenerator {
     struct Args {
@@ -294,10 +352,10 @@ HKVVariable<KeyType, ValueType, Strategy>::HKVVariable(
     bool io_by_cpu, bool use_constant_memory,
     int reserved_key_start_bit,
     size_t num_of_buckets_per_alloc,
-    const InitializerArgs &initializer_args,
+    const InitializerArgs &initializer_args_,
     const SafeCheckMode safe_check_mode,
     const OptimizerType optimizer_type)
-    : dim_(dim), max_capacity_(max_capacity), initializer_args_(initializer_args),
+    : dim_(dim), max_capacity_(max_capacity), initializer_args_(initializer_args_),
     key_type_(key_type), value_type_(value_type),
     safe_check_mode_(safe_check_mode), optimizer_type_(optimizer_type)
 {
@@ -551,11 +609,11 @@ void HKVVariable<KeyType, ValueType, Strategy>::export_batch(const size_t n, con
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
     if (score.has_value()) {
         at::Tensor score_ = score.value();
-        hkv_table_->export_batch(n, offset, d_counter.data_ptr<size_t>(), (KeyType*)keys.data_ptr(),
-                                 (ValueType*)values.data_ptr(), (uint64_t*)score_.data_ptr(), stream);
+        hkv_table_->export_batch(n, offset, d_counter.data_ptr<size_t>(), reinterpret_cast<KeyType*>(keys.data_ptr()),
+                                 reinterpret_cast<ValueType*>(values.data_ptr()), reinterpret_cast<uint64_t*>(score_.data_ptr()), stream);
     } else {
-        hkv_table_->export_batch(n, offset, d_counter.data_ptr<size_t>(), (KeyType*)keys.data_ptr(),
-                                 (ValueType*)values.data_ptr(), nullptr, stream);
+        hkv_table_->export_batch(n, offset, d_counter.data_ptr<size_t>(), reinterpret_cast<KeyType*>(keys.data_ptr()),
+                                 reinterpret_cast<ValueType*>(values.data_ptr()), nullptr, stream);
     }
 }
 
@@ -600,10 +658,10 @@ void HKVVariable<KeyType, ValueType, Strategy>::load(const size_t n, const torch
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
     if (score.has_value()) {
         at::Tensor score_ = score.value();
-        hkv_table_->insert_or_assign(n, (KeyType*)keys.data_ptr(), (ValueType*)values.data_ptr(),
-            (uint64_t*)score_.data_ptr(), stream, unique_key, ignore_evict_strategy);
+        hkv_table_->insert_or_assign(n, reinterpret_cast<KeyType*>(keys.data_ptr()), reinterpret_cast<ValueType*>(values.data_ptr()),
+            reinterpret_cast<uint64_t*>(score_.data_ptr()), stream, unique_key, ignore_evict_strategy);
     } else {
-        hkv_table_->insert_or_assign(n, (KeyType*)keys.data_ptr(), (ValueType*)values.data_ptr(), nullptr, stream,
+        hkv_table_->insert_or_assign(n, reinterpret_cast<KeyType*>(keys.data_ptr()), reinterpret_cast<ValueType*>(values.data_ptr()), nullptr, stream,
             unique_key, ignore_evict_strategy);
     }
 }
@@ -665,6 +723,69 @@ void HKVVariable<KeyType, ValueType, Strategy>::update(const size_t n, const tor
         hkv_table_->insert_or_assign(n, (KeyType*)keys.data_ptr(), (ValueType*)values.data_ptr(), nullptr, stream,
             unique_key, ignore_evict_strategy);
     }
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::find_or_insert(const size_t n, const void* keys, void** value_ptrs,
+                                                               void* values, bool* d_found, void* scores,
+                                                               aclrtStream stream, bool unique_key,
+                                                               bool ignore_evict_strategy)
+{
+    if (n == 0) {
+        return;
+    }
+    int64_t dim = cols();
+    hkv_table_->find_or_insert(n, reinterpret_cast<const KeyType*>(keys), reinterpret_cast<ValueType**>(value_ptrs),
+                               d_found, reinterpret_cast<uint64_t*>(scores), stream, unique_key, ignore_evict_strategy);
+    if (this->safe_check_mode_ != SafeCheckMode::IGNORE) {
+        auto hkv_ptrs = reinterpret_cast<const ValueType**>(const_cast<const void**>(value_ptrs));
+        check_safe_pointers_sync<ValueType>(n, hkv_ptrs, this->safe_check_mode_, stream);
+    }
+
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    using TableVector = TableVector<ValueType>;
+    auto table_vec_args = typename TableVector::Args{reinterpret_cast<ValueType**>(value_ptrs), d_found};
+
+    auto& initializer_ = initializer_args_.mode_;
+    if (initializer_ == "debug") {
+        using Generator = MappingEmbeddingGenerator<KeyType>;
+        auto generator_args = typename Generator::Args{reinterpret_cast<const KeyType*>(keys), 100000};
+        fill_output_with_table_vectors_kernel<ValueType, Generator, TableVector>
+            <<<maxCores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values), table_vec_args, generator_args);
+    } else if (initializer_ == "constant") {
+        using Generator = ConstEmbeddingGenerator;
+        auto generator_args = typename Generator::Args{initializer_args_.value_};
+        fill_output_with_table_vectors_kernel<ValueType, Generator, TableVector>
+            <<<maxCores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values), table_vec_args, generator_args);
+    } else {
+        throw std::runtime_error("Unrecognized initializer {" + initializer_ + "}");
+    }
+
+    int optstate_dim = get_optimizer_state_dim<ValueType>(optimizer_type_, dim);
+    if (optstate_dim == 0) {
+        return;
+    }
+    using OptStateInitializer = OptStateInitializer<float, int>;
+    OptStateInitializer optstate_initializer{optstate_dim, initial_optstate_};
+    if (dim % 4 == 0 and optstate_dim % 4 == 0) {
+        initialize_optimizer_state_kernel_vec4<ValueType, OptStateInitializer, TableVector>
+            <<<maxCores, 0, stream>>>(n, dim, table_vec_args, optstate_initializer);
+    } else {
+        initialize_optimizer_state_kernel<ValueType, OptStateInitializer, TableVector>
+            <<<maxCores, 0, stream>>>(n, dim, table_vec_args, optstate_initializer);
+    }
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+void HKVVariable<KeyType, ValueType, Strategy>::set_initial_optstate(const float value)
+{
+    this->initial_optstate_ = value;
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+const float HKVVariable<KeyType, ValueType, Strategy>::get_initial_optstate() const
+{
+    return this->initial_optstate_;
 }
 
 // 2 × 3 × 3 = 18 种组合全部给出实例化
