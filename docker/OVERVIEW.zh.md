@@ -1,43 +1,52 @@
 # RecSDK Docker 镜像构建概览与说明
 
-本文档基于 `docker` 目录下的提供的 Dockerfile 文件 (`Dockerfile.ubuntu20.04-tf-py37` 和 `Dockerfile.ubuntu20.04-pt-py311`) 整理得出，旨在帮助开发者快速了解并使用这些容器镜像。
+> [English](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/OVERVIEW.md) | 中文
+
+本文档基于 [docker](https://gitcode.com/Ascend/RecSDK/blob/develop/docker) 目录下的提供的 Dockerfile 文件整理得出，旨在帮助开发者快速了解并使用这些容器镜像。
 
 ## a) 快速参考
 
-- **基础镜像**: `ubuntu:20.04`
-- **支持架构**: `x86_64` (x86) / `aarch64` (ARM)
-- **预置编译环境与依赖**: 
-  - `GCC` 11.2.0, `CMake` 3.22.6
-  - `UCX` & `OpenMPI` 4.1.5
-  - `OpenSSL` 1.1.1w & `Python` 3.7.5 
-  - `HDF5` 1.10.5 & `h5py` 3.1.0 
-- **AI 硬件与驱动支持**: 华为 Ascend CANN 9.0 (并在容器内部提供对应硬件版本的 [Toolkit和相应的算子包](https://www.hiascend.com/developer/download/commercial/result?module=cann))
-- **核心功能**: 提供一套开箱即用、依赖环境相互隔离的框架（如 TensorFlow / PyTorch 等）推进推荐系统 SDK (RecSDK) 运行与构建的容器化方案。
+- 从哪里获取帮助
+  - [issue 反馈](https://gitcode.com/Ascend/RecSDK/issues)
+  - [RecSDK 代码](https://gitcode.com/Ascend/RecSDK)
+  - [RecSDK 文档](https://gitcode.com/Ascend/RecSDK/tree/develop/docs)
 
-## b) 镜像 tag 中关键字段描述
+## b) RecSDK 简介
+
+Rec SDK作为面向互联网市场搜索推荐广告的应用使能SDK产品，对于搜索推荐广告模型训练的应用场景需求，提供基于昇腾平台的搜索推荐广告框架，支撑大规模搜推广场景，助力完成搜推广模型的高效训练。
+
+Rec SDK的功能涉及：
+
+1. 模型训练基础功能。支持单机单卡训练、多机多卡分布式训练。
+2. 推荐场景特有功能。基于Rec SDK的稀疏表方案，Rec SDK提供必备功能，如特征保存和加载、特征准入、特征淘汰等。
+3. 大规模稀疏表特有功能。支持加速卡内存、主机内存、主机磁盘多级存储、支持多机存储、支持动态扩容。规模可超10TB。
+
+## c) 镜像 tag 中关键字段描述
 
 镜像标签遵循以下字段组合规范，便于直观区分镜像内包含的软硬件栈版本细节：
 
+- **RecSDK版本**: RecSDK版本号（例如`26.1.0`）
 - **OS版本**: 基础操作系统的代号或版本号（例如 `ubuntu20.04`）
-- **框架标识**: 应用支持的机器学习框架（例如 `tf` 包含 TF_v1 与 TF_v2 环境，或者是 `torch`）
-- **Python版本**: 核心运行的解释器版本（例如 `py37`）
-- **CANN版本**: 涵盖的华为计算包大板本级别（例如 `cann9.0`）
+- **框架标识**: 镜像支持的机器学习框架（例如 `tf` 为TensorFlow环境，或者是 `torch`为PyTorch环境）
+- **Python版本**: 核心运行的解释器版本（例如 `py3.7`）
 
-> **Tag 命名示例**: `recsdk:ubuntu20.04-tf-py37-x86_64`
-
-## c) Dockerfile 归档路径
+## d) Dockerfile 归档路径
 
 目前工程中支持由于底层框架不同而划分的容器场景，对应构建脚本存放于以下路径：
 
 > [!NOTE]
 > Dockerfile文件会与昇腾社区以及昇腾镜像仓库同步上线，目前暂未更新
 
-- **TensorFlow 版本**: `docker/Dockerfile.ubuntu20.04-tf-py37`
-  - 通过 Python 的原生虚拟环境 (`venv`) 特性，在一个镜像中同时隔离出涵盖 TensorFlow 1.15.0 (`/opt/buildtools/tf1_env`) 与 TensorFlow 2.6.5 (`/opt/buildtools/tf2_env`) 的两套环境。通过安装编译输出产物，集成了适配各版本的 RecSDK 。
-- **PyTorch 版本**: `docker/Dockerfile.Dockerfile.ubuntu20.04-pt-py311`
-  - 整体环境筹备与资源拉取的流程与 TensorFlow 镜像相仿，核心目标定位于作为支持基于 PyTorch 等相应依赖框架执行构建、装载包和调试 RecSDK 系列工作流的基础容器。
+### RecSDK 26.1.0
 
-## d) 快速开始
+| Tag | Dockerfile |
+|-----|------------|
+|26.1.0-ubuntu20.04-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7)|
+|26.1.0-ubuntu22.04-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu22.04-pt-py3.11)|
+|26.1.0-openEuler20.03-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler20.03-tf-py3.7)|
+|26.1.0-openEuler22.03-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-26.1.0-openEuler22.03-pt-py3.11)|
+
+## e) 快速开始
 
 ### 运行现有镜像
 
@@ -68,18 +77,27 @@ docker run -it \
 构建基于 TensorFlow 支持版本的镜像：
 
 ```bash
-docker build -t recsdk_tf:latest -f docker/Dockerfile.Ubuntu.tfrec .
+docker build -t recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 -f docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
 ```
 
 若您在编译算子或载入框架包时需要强制适配特定类型的核心类型 (默认为 `a2`)，可以在构建中通过 `CORE_TYPE` 参数显式声明：
 
 ```bash
-docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a3:latest -f docker/Dockerfile.Ubuntu.tfrec .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a2:26.1.0-ubuntu20.04-tf-py3.7 -f Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
 ```
 
 ### 二次开发与底层环境切换
 
 镜像内部为您准备了便捷的环境切换脚本，适用于需要在多种底层依赖框架或指定芯片类型之间切换的研发及 Debug 工作：
+
+- **如何进行二次开发**:
+  
+  ```dockerfile
+  # 以recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7镜像为基础镜像，叠加用户软件
+  FROM recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7
+  RUN apt update -y &&
+      apt install ...
+  ```
 
 - **切换 Python 框架环境 (TensorFlow 容器)**:
 
@@ -119,12 +137,12 @@ docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a3:latest -f docker/Dockerfil
   借助内置切换脚本，您可以动态调整全局与 CANN 包绑定的环境变量及软链接地址：
 
   ```bash
-  source /usr/local/set_cann_env.sh a2  # 切换并生效 Atlas 800T2 训练服务器 配套Toolkit及相关环境变量
+  source /usr/local/set_cann_env.sh a2  # 切换并生效 Atlas 800T2 训练服务器 配套Toolkit及相关环境变量(系统默认状态)
   source /usr/local/set_cann_env.sh a3  # 切换并生效 Atlas 800T3 超节点服务器 配套Toolkit及相关环境变量
-  source /usr/local/set_cann_env.sh a5  # 切换并生效 Ascend 950 配套Toolkit及相关环境变量(系统默认状态)
+  source /usr/local/set_cann_env.sh a5  # 切换并生效 Ascend 950 配套Toolkit及相关环境变量
   ```
 
-## e) 支持信息与变更说明
+## f) 支持信息与变更说明
 
 ### 硬件支持信息
 
@@ -136,7 +154,7 @@ docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a3:latest -f docker/Dockerfil
 - 放弃在全局系统 Python 下混装多个高排他性框架模块并由此产生的依赖灾难（如以往常见的 `npu_bridge` 与 `npu_device` 碰撞以及 Slim 兼容性等问题）风险。新版本脚本全网采取 `python3.7 -m venv` 为基础展开虚拟环境隔离级部署，各框架模块运行相互无感知、互不影响。
 - 其中高度耦合硬件逻辑运算的依赖性套件（如涵盖在内的 GCC 11.2, CMake, OpenMPI, Python 等重要运行库），不再使用系统的包管理器发行版，均转而使用了自源码 `make install` 的编译手段构建。
 
-## f) 许可证/免责声明
+## g) 许可证/免责声明
 
-- 本容器所依赖并打包进内部的所有外部开源层应用源代码、解释器、中间件，均受到各版权方原发行的所属开源许可证（可能包括但不限于 GPL, MIT, Apache 2.0 序列等协议）制约。
-- 涉及 Ascend （昇腾）设备的运行套件 `CANN Toolkit` 以及相关的 NPU 的基础依赖驱动资源均由相应产品所有方提供限度使用与约束授权。最终解释权与运行许可范围基于原有提供条款制定，使用者出于任何形式应用（包含且不仅局限于训练、生产系统部署或商业分析时），由此镜像使用过程中产生的技术不兼容以及业务级潜在风险后果，须由最终应用方自主评估及承担责任。
+- 查看这些镜像中包含的 RecSDK 和 Mind 系列软件的[许可证信息](https://gitcode.com/Ascend/RecSDK/blob/develop/LICENSE)。
+- 与所有容器镜像一样，预装软件包（Python，系统库等）可能受其自身许可证约束。
