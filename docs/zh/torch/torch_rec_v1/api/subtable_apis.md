@@ -48,7 +48,7 @@ host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
 
 **功能描述<a name="section634582619155"></a>**
 
-保存分布式环境的参数。
+保存分布式环境网络设备拓扑参数。
 
 **函数原型<a name="section1483104721911"></a>**
 
