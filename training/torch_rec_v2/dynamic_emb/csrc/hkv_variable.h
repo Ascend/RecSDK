@@ -32,32 +32,37 @@ template <typename ElementType, typename SizeType>
 struct OptStateInitializer {
     SizeType dim;
     ElementType initial_optstate;
-    DEVICE_INLINE void init(ElementType* vec_ptr)
-    {
-        if (vec_ptr == nullptr) {
-            return;
-        }
-        for (SizeType i = threadIdx.x; i < dim; i++) {
-            vec_ptr[i] = initial_optstate;
-        }
-    }
-    DEVICE_INLINE void init4(ElementType* vec_ptr)
-    {
-        if (vec_ptr == nullptr) {
-            return;
-        }
-        Vec4T<ElementType> state;
-        state.reset(initial_optstate);
-
-        constexpr int VecSize = 4;
-        constexpr int kWarpSize = 32;
-        const int lane_id = threadIdx.x % kWarpSize;
-        for (int i = 0; VecSize * (kWarpSize * i + lane_id) < dim; ++i) {
-            int idx4 = VecSize * (kWarpSize * i + lane_id);
-            state.store(vec_ptr + idx4);
-        }
-    }
 };
+
+template <typename ElementType, typename SizeType>
+DEVICE_INLINE void OptStateInitializerInit(__gm__ ElementType* vec_ptr, const SizeType dim,
+                                           ElementType initial_optstate)
+{
+    if (vec_ptr == nullptr) {
+        return;
+    }
+    for (SizeType i = threadIdx.x; i < dim; i++) {
+        vec_ptr[i] = initial_optstate;
+    }
+}
+
+template <typename ElementType, typename SizeType>
+DEVICE_INLINE void OptStateInitializerInit4(__gm__ ElementType* vec_ptr, const SizeType dim,
+                                            ElementType initial_optstate)
+{
+    if (vec_ptr == nullptr) {
+        return;
+    }
+    Vec4T<ElementType> state;
+    state.reset(initial_optstate);
+
+    constexpr int VecSize = 4;
+    const int lane_id = threadIdx.x % warpSize;
+    for (int i = 0; VecSize * (warpSize * i + lane_id) < dim; ++i) {
+        int idx4 = VecSize * (warpSize * i + lane_id);
+        state.store(vec_ptr + idx4);
+    }
+}
 
 class DeviceCounter {
 public:
@@ -113,6 +118,13 @@ public:
                           uint64_t* d_evicted_counter, // (1)
                           aclrtStream stream = 0, bool unique_key = true,
                           bool ignore_evict_strategy = false);
+
+    void find_or_insert(const size_t n, const void* keys, void** value_ptrs, void* values, bool* d_found, void* scores,
+                        aclrtStream stream, bool unique_key, bool ignore_evict_strategy);
+
+    void set_initial_optstate(const float value);
+
+    const float get_initial_optstate() const;
 
     void find(const size_t n, const void *keys, // (n)
               void *values,                     // (n, DIM)
@@ -209,6 +221,7 @@ private:
     size_t dim_;
     size_t max_capacity_;
     const InitializerArgs initializer_args_;
+    float initial_optstate_ {0.};
 
     DataType key_type_;
     DataType value_type_;
@@ -255,6 +268,13 @@ public:
                           uint64_t* d_evicted_counter, // (1)
                           aclrtStream stream = 0, bool unique_key = true,
                           bool ignore_evict_strategy = false) override;
+
+    void find_or_insert(const size_t n, const void* keys, void** value_ptrs, void* values, bool* d_found, void* scores,
+                        aclrtStream stream, bool unique_key, bool ignore_evict_strategy) override;
+
+    void set_initial_optstate(const float value) override;
+
+    const float get_initial_optstate() const override;
 
     void find(const size_t n, const void *keys, // (n)
               void *values,                     // (n, DIM)
@@ -350,6 +370,7 @@ private:
     size_t dim_;
     size_t max_capacity_;
     const InitializerArgs initializer_args_;
+    float initial_optstate_ {0.};
 
     DataType key_type_;
     DataType value_type_;
