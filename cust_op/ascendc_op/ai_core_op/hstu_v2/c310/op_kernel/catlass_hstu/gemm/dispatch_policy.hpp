@@ -58,11 +58,12 @@ struct MmadHSTUDQ : public MmadBase<ArchTag_, false> {
  • @description 用于 Q * K^T 计算的分发策略，流水线阶段数为 2
 
  */
-template <class ArchTag_, bool PAGED_CACHE_FLAG_ = false, bool ENABLE_UNIT_FLAG_ = false>
+template <class ArchTag_, bool PAGED_CACHE_FLAG_ = false, bool ENABLE_UNIT_FLAG_ = false, bool ENABLE_SCALAR_QUANT_ = false>
 struct MmadHSTUQK : public MmadBase<ArchTag_, false> {
     static constexpr uint32_t STAGES = 2;
     static constexpr bool PAGED_CACHE_FLAG = PAGED_CACHE_FLAG_;
     static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
+    static constexpr bool ENABLE_SCALAR_QUANT = ENABLE_SCALAR_QUANT_;
 };
 
 /**
@@ -81,13 +82,13 @@ struct MmadHSTUQK : public MmadBase<ArchTag_, false> {
  • @description 用于 Score * V 计算的分发策略，支持子核绑定
 
  */
-template <class ArchTag_, bool PAGED_CACHE_FLAG_ = false, bool ENABLE_UNIT_FLAG_ = false, bool BIND_SUB_CORE_ = false,
-          uint32_t SUB_CORE_ID_ = 0>
+template <class ArchTag_, bool PAGED_CACHE_FLAG_ = false, bool ENABLE_UNIT_FLAG_ = false, uint32_t SUB_CORE_ID_ = 0,
+          bool ENABLE_SCALAR_QUANT_ = false>
 struct MmadHSTUPV : public MmadBase<ArchTag_, false> {
     static constexpr uint32_t STAGES = 2;
     static constexpr bool PAGED_CACHE_FLAG = PAGED_CACHE_FLAG_;
     static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
-    static constexpr bool BIND_SUB_CORE = BIND_SUB_CORE_;
     static constexpr uint32_t SUB_CORE_ID = SUB_CORE_ID_;
+    static constexpr bool ENABLE_SCALAR_QUANT = ENABLE_SCALAR_QUANT_;
 };
 }  // namespace Catlass::Gemm

@@ -86,7 +86,7 @@ public:
     }
 
     template <class TensorA>
-    CATLASS_DEVICE void operator()(TensorA &dstTensor, bool &waitTransFinish)
+    CATLASS_DEVICE void operator()(TensorA &dstTensor)
     {
         AscendC::CrossCoreWaitFlag<0x4, PIPE_MTE3>(cubeReady.id);
 
@@ -101,14 +101,6 @@ public:
         intriParams.dstStride = (stride - cols) / ELE_NUM_PER_C0;
 
         AscendC::DataCopy(dstTensor.data()[dstOffset], ubTransOut, intriParams);
-
-        if (!waitTransFinish) {
-            if constexpr (HAS_RAB) {
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-            }
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
-            waitTransFinish = true;
-        }
     }
 
 private:

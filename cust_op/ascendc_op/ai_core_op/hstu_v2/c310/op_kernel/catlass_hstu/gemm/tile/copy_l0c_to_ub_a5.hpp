@@ -85,6 +85,52 @@ template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_
 struct CopyL0CToUBTla<
     Catlass::Arch::Ascend950, TensorSrc_,
     tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
+    CopyL0CToUBMode::NO_SPLIT, ScaleGranularity::PER_TENSOR, ReluEnable_,
+    std::enable_if_t<tla::detail::isL0czN<LayoutDst_>::value>> {
+    using ArchTag = Catlass::Arch::Ascend950;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::PER_TENSOR>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    template <class TensorDst, class TensorSrc>
+    CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0,
+                                   ElementSrc deqScalar = 0.0f, uint32_t subBlockId = 0)
+    {
+        static_assert(tla::detail::isL0czN<typename TensorDst::Layout>::value &&
+                          TensorSrc::position == AscendC::TPosition::CO1 &&
+                          TensorDst::position == AscendC::TPosition::VECCALC,
+                      "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and zN");
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
+
+        // Fixpipe layout information
+        intriParams.nSize = tla::get<1, 0>(dstTensor.shape()) * tla::get<1, 1>(dstTensor.shape());
+        intriParams.mSize = tla::get<0, 0>(dstTensor.shape()) * tla::get<0, 1>(dstTensor.shape());
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
+        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride());
+
+        // Fixpipe auxiliary arguments
+        intriParams.quantPre = quantPre;
+        intriParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&deqScalar));
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+        intriParams.dualDstCtl = 0;
+        intriParams.subBlockId = subBlockId;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_UB>(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset],
+                                                            intriParams);
+    }
+};
+
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToUBTla<
+    Catlass::Arch::Ascend950, TensorSrc_,
+    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
     CopyL0CToUBMode::RESERVED, ScaleGranularity::NO_QUANT, ReluEnable_,
     std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
     using ArchTag = Catlass::Arch::Ascend950;
@@ -113,6 +159,53 @@ struct CopyL0CToUBTla<
 
         // Fixpipe auxiliary arguments
         intriParams.quantPre = quantPre;
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+        intriParams.dualDstCtl = 0;
+        intriParams.subBlockId = subBlockId;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        // Call AscendC Fixpipe
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
+    }
+};
+
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToUBTla<
+    Catlass::Arch::Ascend950, TensorSrc_,
+    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
+    CopyL0CToUBMode::RESERVED, ScaleGranularity::PER_TENSOR, ReluEnable_,
+    std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
+    using ArchTag = Catlass::Arch::Ascend950;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::PER_TENSOR>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    template <class TensorDst, class TensorSrc>
+    CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0,
+                                   ElementSrc deqScalar = 0.0f, uint32_t subBlockId = 0)
+    {
+        static_assert(
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
+
+        // Fixpipe layout information
+        intriParams.nSize = tla::get<1>(dstTensor.shape());
+        intriParams.mSize = tla::get<0>(dstTensor.shape());
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
+        intriParams.dstStride = tla::get<0>(dstTensor.stride());
+
+        // Fixpipe auxiliary arguments
+        intriParams.quantPre = quantPre;
+        intriParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&deqScalar));
         intriParams.reluEn = reluEn;
         intriParams.unitFlag = unitFlag;
         intriParams.dualDstCtl = 0;

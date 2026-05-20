@@ -14,9 +14,12 @@ See the License for the specific language governing permissions and
 ============================================================================== */
 
 /**
- * @file block_epilogue_rab_grad.hpp
- * @brief HSTU RAB 梯度 Epilogue Block 实现
- * @description 计算相对位置注意力偏置 (RAB) 的梯度，使用 FastRabGradVf 函数
+ • @file block_epilogue_rab_grad.hpp
+
+ • @brief HSTU RAB 梯度 Epilogue Block 实现
+
+ • @description 计算相对位置注意力偏置 (RAB) 的梯度，使用 FastRabGradVf 函数
+
  */
 #pragma once
 
@@ -32,10 +35,14 @@ See the License for the specific language governing permissions and
 namespace Catlass::Epilogue::Block {
 
 /**
- * @brief RAB 梯度 Epilogue Block
- * @tparam EpilogueScoreGrad_ Score 梯度 Epilogue 类型
- * @tparam TileBuffer_ Tile 缓冲区类型
- * @description 执行 RAB 梯度的计算，将 SiLU Score 的梯度传递到 RAB 参数
+ • @brief RAB 梯度 Epilogue Block
+
+ • @tparam EpilogueScoreGrad_ Score 梯度 Epilogue 类型
+
+ • @tparam TileBuffer_ Tile 缓冲区类型
+
+ • @description 执行 RAB 梯度的计算，将 SiLU Score 的梯度传递到 RAB 参数
+
  */
 template <class EpilogueScoreGrad_, class TileBuffer_>
 struct BlockEpilogueRabGrad {
@@ -53,6 +60,7 @@ public:
 
     static constexpr uint32_t L0_TILE_M = tla::get<0>(L0TileShape{});
     static constexpr uint32_t L0_TILE_N = tla::get<1>(L0TileShape{});
+    static constexpr uint32_t PING_PONG_ROW = L0_TILE_M / 2;
 
     CATLASS_DEVICE
     BlockEpilogueRabGrad(uint32_t cubeFlag, uint32_t vecFlag, Arch::Resource<ArchTag> &resource)
@@ -93,45 +101,57 @@ public:
         }
     }
 
-    template <class Shape>
-    CATLASS_DEVICE void Compute(Shape const &shape)
+    CATLASS_DEVICE void CallVectorFunction(int64_t offset, uint32_t count)
     {
-        auto count = RoundUp<ELEM_PER_BLOCK>(tla::get<0>(shape)) * RoundUp<ELEM_PER_BLOCK>(tla::get<1>(shape));
-
         auto repeatTimes = CeilDiv(count, AscendC::GetVecLen() / sizeof(ElementAccumulator));
 
-        auto ubGSPtr = (__ubuf__ ElementAccumulator *)ubGsTensor.GetPhyAddr();
-        auto ubGRadPartPtr = (__ubuf__ Element *)ubGRabPartTensor.GetPhyAddr();
-        auto ubGRabPtr = (__ubuf__ Element *)ubGRabTensor.GetPhyAddr();
+        auto ubGSPtr = (__ubuf__ ElementAccumulator *)ubGsTensor[offset].GetPhyAddr();
+        auto ubGRadPartPtr = (__ubuf__ Element *)ubGRabPartTensor[offset].GetPhyAddr();
+        auto ubGRabPtr = (__ubuf__ Element *)ubGRabTensor[offset].GetPhyAddr();
 
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::VF_CALL<catlass::Epilogue::RegBase::FastRabGradVf<Element, ElementAccumulator, Element>>(
             ubGSPtr, ubGRadPartPtr, ubGRabPtr, count, repeatTimes);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-
-        // dataCopy
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        CopyToDst(shape, count);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
     }
 
     template <class Shape>
-    CATLASS_DEVICE void CopyToDst(Shape &shape, uint32_t count)
+    CATLASS_DEVICE void Compute(Shape const &shape)
+    {
+        auto rows = RoundUp<ELEM_PER_BLOCK>(tla::get<0>(shape));
+        auto cols = RoundUp<ELEM_PER_BLOCK>(tla::get<1>(shape));
+
+        auto loop = CeilDiv(rows, PING_PONG_ROW);
+        for (auto i = 0; i < loop; i++) {
+            int64_t offset = i * PING_PONG_ROW * cols;
+            uint32_t count = (i == loop - 1) ? (rows * cols - offset) : PING_PONG_ROW * cols;
+            uint32_t pingPongFlag = i % 2;
+
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(pingPongFlag);
+            CallVectorFunction(offset, count);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(pingPongFlag);
+
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingPongFlag);
+            CopyToDst(offset, count, rows, cols);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(pingPongFlag);
+        }
+    }
+
+    CATLASS_DEVICE void CopyToDst(int64_t offset, uint32_t count, uint32_t rows, uint32_t cols)
     {
         if constexpr (HAS_RAB || HAS_MASK) {
-            auto rows = RoundUp<ELEM_PER_BLOCK>(tla::get<0>(shape));
-            auto cols = CeilDiv<ELEM_PER_BLOCK>(tla::get<1>(shape));
+            auto rowOffset = offset / cols;
+            auto colBlk = cols / ELEM_PER_BLOCK;
 
             AscendC::DataCopyParams intriParams;
-            intriParams.blockCount = rows;
+            intriParams.blockCount = count / cols;
             intriParams.blockLen = 1;
-            intriParams.srcStride = (cols - 1);
+            intriParams.srcStride = (colBlk - 1);
             intriParams.dstStride = 0;
-            for (auto i = 0; i < cols; i++) {
-                AscendC::DataCopy(dstTensor[i * rows * ELEM_PER_BLOCK], ubGRabTensor[i * ELEM_PER_BLOCK], intriParams);
+            for (auto i = 0; i < colBlk; i++) {
+                AscendC::DataCopy(dstTensor[(i * rows + rowOffset) * ELEM_PER_BLOCK],
+                    ubGRabTensor[offset + i * ELEM_PER_BLOCK], intriParams);
             }
         } else {
-            AscendC::DataCopy(dstTensor, ubGRabTensor, count);
+            AscendC::DataCopy(dstTensor[offset], ubGRabTensor[offset], count);
         }
     }
 

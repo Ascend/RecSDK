@@ -62,12 +62,14 @@ namespace Catlass::Gemm::Block {
  •              支持多阶段流水线，包含 L1/L0 拷贝和 Cube/Vector 混合计算
 
  */
-template <class ArchTag_, bool PAGED_CACHE_FLAG_, bool ENABLE_UNIT_FLAG_, class L1TileShape_, class L0TileShape_,
-          class ElementA_, class ElementB_, class ElementC_, class TileBuffer_, class TileCopy_, class TileMmad_>
-struct BlockMmadTla<MmadHSTUQK<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_>, L1TileShape_, L0TileShape_, ElementA_,
-                    ElementB_, ElementC_, TileBuffer_, TileCopy_, TileMmad_> {
+template <class ArchTag_, bool PAGED_CACHE_FLAG_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SCALAR_QUANT_,
+          class L1TileShape_, class L0TileShape_, class ElementA_, class ElementB_, class ElementC_,
+          class TileBuffer_, class TileCopy_, class TileMmad_>
+struct BlockMmadTla<MmadHSTUQK<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, ENABLE_SCALAR_QUANT_>,
+                    L1TileShape_, L0TileShape_, ElementA_, ElementB_, ElementC_,
+                    TileBuffer_, TileCopy_, TileMmad_> {
 public:
-    using DispatchPolicy = MmadHSTUQK<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_>;
+    using DispatchPolicy = MmadHSTUQK<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, ENABLE_SCALAR_QUANT_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using L1TileShape = L1TileShape_;
     using L0TileShape = L0TileShape_;
@@ -94,6 +96,7 @@ public:
     using L1AAlignHelper = typename TileCopy::L1AAlignHelper;
 
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
+    static constexpr bool ENABLE_SCALAR_QUANT = DispatchPolicy::ENABLE_SCALAR_QUANT;
     static constexpr uint32_t L1_TILE_M = tla::get<0>(L1TileShape{});
     static constexpr uint32_t L1_TILE_N = tla::get<1>(L1TileShape{});
     static constexpr uint32_t L1_TILE_K = tla::get<2>(L1TileShape{});
@@ -192,6 +195,12 @@ public:
 
         this->headNum = headNum;
         this->stride = headNum * headDim;
+    }
+
+    CATLASS_DEVICE
+    void SetDeqScalar(ElementAccumulator deqScalar)
+    {
+        this->deqScalar = deqScalar;
     }
 
     CATLASS_DEVICE
@@ -329,7 +338,11 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(pingPongFlag);
             auto dstLayout = tla::MakeLayout<ElementA, LayoutTagDST>(mSize, nRound);
             auto tensorC = tla::MakeTensor(dstTensor, dstLayout, Arch::PositionUB{});
-            copyL0CToDst(tensorC, tensorL0c, 0, m % STAGES);
+            if constexpr (ENABLE_SCALAR_QUANT) {
+                copyL0CToDst(tensorC, tensorL0c, 0, deqScalar, m % STAGES);
+            } else {
+                copyL0CToDst(tensorC, tensorL0c, 0, m % STAGES);
+            }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(pingPongFlag);
 
             AscendC::CrossCoreSetFlag<0x4, PIPE_FIX>(cubeReady[m % STAGES].id);
@@ -360,5 +373,7 @@ protected:
 
     uint32_t L1B_EVENT_ID{0};
     uint32_t L1A_EVENT_ID[2]{0};
+
+    ElementAccumulator deqScalar{0.0f};
 };
 }

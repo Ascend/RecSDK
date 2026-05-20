@@ -65,13 +65,13 @@ namespace Catlass::Gemm::Block {
  •              支持子核绑定 (BIND_SUB_CORE) 可将计算绑定到特定子核
 
  */
-template <class ArchTag_, bool PAGED_CACHE_FLAG_, bool ENABLE_UNIT_FLAG_, bool BIND_SUB_CORE_, bool SUB_CORE_ID_,
-          class L1TileShape_, class L0TileShape_, class ElementA_, class ElementB_, class ElementC_, class TileBuffer_,
-          class TileCopy_, class TileMmad_>
-struct BlockMmadTla<MmadHSTUPV<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, BIND_SUB_CORE_, SUB_CORE_ID_>,
+template <class ArchTag_, bool PAGED_CACHE_FLAG_, bool ENABLE_UNIT_FLAG_, bool SUB_CORE_ID_,
+          bool ENABLE_SCALAR_QUANT_, class L1TileShape_, class L0TileShape_, class ElementA_, class ElementB_, 
+          class ElementC_, class TileBuffer_, class TileCopy_, class TileMmad_>
+struct BlockMmadTla<MmadHSTUPV<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, SUB_CORE_ID_, ENABLE_SCALAR_QUANT_>,
                     L1TileShape_, L0TileShape_, ElementA_, ElementB_, ElementC_, TileBuffer_, TileCopy_, TileMmad_> {
 public:
-    using DispatchPolicy = MmadHSTUPV<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, BIND_SUB_CORE_, SUB_CORE_ID_>;
+    using DispatchPolicy = MmadHSTUPV<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, SUB_CORE_ID_, ENABLE_SCALAR_QUANT_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using L1TileShape = L1TileShape_;
     using L0TileShape = L0TileShape_;
@@ -104,6 +104,7 @@ public:
     static constexpr uint32_t STAGES = DispatchPolicy::STAGES;
     static constexpr bool BIND_SUB_CORE = DispatchPolicy::BIND_SUB_CORE;
     static constexpr uint32_t SUB_CORE_ID = DispatchPolicy::SUB_CORE_ID;
+    static constexpr bool ENABLE_SCALAR_QUANT = DispatchPolicy::ENABLE_SCALAR_QUANT;
 
     /**
      ◦ @brief 构造函数
@@ -143,6 +144,12 @@ public:
         L1B_EVENT_ID[1] = L1B_EVENT_ID_[1];  // q or grad
     }
 
+    CATLASS_DEVICE
+    void SetDeqScalar(ElementAccumulator deqScalar)
+    {
+        this->deqScalar = deqScalar;
+    }
+
     /**
      ◦ @brief 触发数据刷新到目标缓冲区
 
@@ -169,7 +176,9 @@ public:
     CATLASS_DEVICE void TriggerFlushToDst(TensorDst &dst, TensorSrc &src, bool isFlush, TileCopy &tileCopy)
     {
         if (isFlush) {
-            if constexpr (BIND_SUB_CORE) {
+            if constexpr (ENABLE_SCALAR_QUANT) {
+                tileCopy(dst, src, 0, deqScalar, SUB_CORE_ID);
+            } else {
                 tileCopy(dst, src, 0, SUB_CORE_ID);
             }
             AscendC::CrossCoreSetFlag<0x4, PIPE_FIX>(cubeReady.id);
@@ -287,6 +296,8 @@ protected:
     CopyL1ToL0B copyL1ToL0B;
 
     uint32_t L1B_EVENT_ID[2]{0};
+
+    ElementAccumulator deqScalar{0.0f};
 };
 
 }

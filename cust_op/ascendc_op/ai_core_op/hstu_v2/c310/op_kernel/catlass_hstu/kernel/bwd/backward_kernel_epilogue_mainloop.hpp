@@ -77,6 +77,8 @@ struct BackwardEpilogueMainloop {
     static constexpr uint32_t TRANS_READY_ID = 4;
     static constexpr uint32_t Q_TRANS_READY_ID = 5;
 
+    static constexpr bool HAS_RAB = BlockEpilogueQK::HAS_RAB;
+
     struct Params {
         GM_ADDR ptrRab;
         GM_ADDR ptrSeqOffsetQ;
@@ -128,6 +130,7 @@ struct BackwardEpilogueMainloop {
         {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
@@ -139,10 +142,29 @@ struct BackwardEpilogueMainloop {
         {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+        }
+    };
+
+    struct LoopPipeEventGuard {
+        CATLASS_DEVICE
+        LoopPipeEventGuard() {
+            if constexpr (HAS_RAB) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            }
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
+        }
+
+        CATLASS_DEVICE
+        ~LoopPipeEventGuard() {
+            if constexpr (HAS_RAB) {
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+            }
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
         }
     };
 
@@ -157,6 +179,8 @@ struct BackwardEpilogueMainloop {
         gKGrad.SetGlobalBuffer((__gm__ ElementK *)params.ptrKGrad);
         gRab.SetGlobalBuffer((__gm__ ElementG *)params.ptrRab);
         gRabGrad.SetGlobalBuffer((__gm__ ElementG *)params.ptrRabGrad);
+
+        gRab.template SetL2CacheHint<AscendC::CacheRwMode::READ>(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
 
     template <typename ElementT>
@@ -203,23 +227,25 @@ struct BackwardEpilogueMainloop {
         QBlockScheduler qBlockScheduler(batch, heads, params.ptrSeqOffsetQ);
         KBlockScheduler kBlockScheduler(batch, heads, params.ptrSeqOffsetK, params.ptrSeqOffsetQ);
 
-        bool waitTransFinish = true;
         kBlockScheduler.Init();
         for (; kBlockScheduler.IsValid(); ++kBlockScheduler) {
             auto tVg = kBlockScheduler.GetTile(tensorVGrad);
             auto tKg = kBlockScheduler.GetTile(tensorKGrad);
+        
+            LoopPipeEventGuard loopPipeEventGuard;
+
             qBlockScheduler.Init(kBlockScheduler);
             for (; qBlockScheduler.IsValid(); ++qBlockScheduler) {
                 auto mapping = qBlockScheduler.GetTileMapping(tVg.coord(), tVg.shape());
                 auto coord = tla::get<0>(mapping);
                 auto shape = tla::get<1>(mapping);
-                blockEpilogueQK(tensorRab, coord, shape, waitTransFinish);
+                blockEpilogueQK(tensorRab, coord, shape);
                 blockEpilogueGV(tensorGrab, coord, shape);
             }
             if (AscendC::GetSubBlockIdx() == 0) {
-                blockEpilogueVGrad(tVg, waitTransFinish);
+                blockEpilogueVGrad(tVg);
             } else {
-                blockEpilogueKGrad(tKg, waitTransFinish);
+                blockEpilogueKGrad(tKg);
             }
         }
 
@@ -289,8 +315,8 @@ struct BackwardEpilogueMainloop {
     uint32_t totalSeqLenQ{0};
     uint32_t totalSeqLenK{0};
     int32_t targetGroupSize{0};
-    float alpha{0.0f};
-    float scale{0.0f};
+    ElementACC alpha{0.0f};
+    ElementACC scale{0.0f};
 };
 
 }

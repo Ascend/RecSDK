@@ -85,28 +85,25 @@ __simd_vf__ inline void FastSiluGradVf(__ubuf__ AccType *ubSPtr, __ubuf__ Type *
     AscendC::MicroAPI::RegTensor<AccType> vregT;
     AscendC::MicroAPI::RegTensor<AccType> vregS;
     AscendC::MicroAPI::RegTensor<AccType> vregOnes;
-    AscendC::MicroAPI::RegTensor<AccType> vregAlpha;
-    AscendC::MicroAPI::RegTensor<AccType> vregScale;
+    AscendC::MicroAPI::RegTensor<AccType> vregZeros;
     AscendC::MicroAPI::MaskReg maskReg;
 
     AscendC::MicroAPI::Duplicate(vregOnes, 1.0f);
-    AscendC::MicroAPI::Duplicate(vregAlpha, alpha);
-    AscendC::MicroAPI::Duplicate(vregScale, scale);
+    AscendC::MicroAPI::Duplicate(vregZeros, 0.0f);
     for (uint16_t i = 0; i < repeatTimes; ++i) {
         maskReg = AscendC::MicroAPI::UpdateMask<AccType>(count);
 
         SiluScore<Type, AccType, HAS_RAB, HAS_MASK>(ubSPtr + i * oneRepElm, ubRabPtr + i * oneRepElm,
                                                     ubMaskPtr + i * oneRepElm, ubSiluScorePtr + i * oneRepElm, vregA,
-                                                    vregZ, vregT, vregS, vregOnes, vregAlpha, vregScale, maskReg);
+                                                    vregZ, vregT, vregS, vregOnes, vregZeros, alpha, maskReg);
 
-        AscendC::MicroAPI::Sub(vregZ, vregOnes, vregZ, maskReg);     // Z = 1 - Z
-        AscendC::MicroAPI::MulAddDst(vregT, vregS, vregZ, maskReg);  // T = T + S * (1 - Z)
-        AscendC::MicroAPI::Mul(vregT, vregT, vregAlpha, maskReg);    // T = T * alpha
+        AscendC::MicroAPI::Sub(vregT, vregOnes, vregZ, maskReg);     // T = 1 - Z
+        AscendC::MicroAPI::MulAddDst(vregZ, vregS, vregT, maskReg);  // Z = Z + S * T
 
         if constexpr (!std::is_same<GrabType, AccType>::value) {
-            CastDownStore<GrabType, AccType>(ubGradPartPtr + i * oneRepElm, vregT, maskReg);
+            CastDownStore<GrabType, AccType>(ubGradPartPtr + i * oneRepElm, vregZ, maskReg);
         } else {
-            AscendC::MicroAPI::StoreAlign(ubGradPartPtr + i * oneRepElm, vregT, maskReg);
+            AscendC::MicroAPI::StoreAlign(ubGradPartPtr + i * oneRepElm, vregZ, maskReg);
         }
     }
 }

@@ -162,10 +162,11 @@ struct QKBlockBuilder {
     using TileCopyTla = std::conditional_t<
         (HAS_RAB || HAS_MASK),
         Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS, void,
-                                          Gemm::Tile::CopyL0CToUBMode::RESERVED>,
-        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS>>;
+                                          Gemm::Tile::CopyL0CToUBMode::RESERVED, false, Gemm::Tile::ScaleGranularity::PER_TENSOR>,
+        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS, void,
+                                          Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false, Gemm::Tile::ScaleGranularity::PER_TENSOR>>;
 
-    using DispatchPolicy = Gemm::MmadHSTUQK<ArchTag, false, false>;
+    using DispatchPolicy = Gemm::MmadHSTUQK<ArchTag, false, false, true>;
 
     using MmadTileBuffer = TileBufferType_<BufferTag::QK_MMAD>;
     using BlockMmad = Gemm::Block::BlockMmadTla<DispatchPolicy, L1TileShape, L0TileShape, ElementQ, ElementK, ElementS,
@@ -218,10 +219,11 @@ struct GVBlockBuilder {
     using TileCopyTla = std::conditional_t<
         (HAS_RAB || HAS_MASK),
         Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementG, LayoutG, ElementV, LayoutV, ElementGS, LayoutGS, void,
-                                          Gemm::Tile::CopyL0CToUBMode::RESERVED>,
-        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementG, LayoutG, ElementV, LayoutV, ElementGS, LayoutGS>>;
+                                          Gemm::Tile::CopyL0CToUBMode::RESERVED, false, Gemm::Tile::ScaleGranularity::PER_TENSOR>,
+        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementG, LayoutG, ElementV, LayoutV, ElementGS, LayoutGS, void,
+                                          Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false, Gemm::Tile::ScaleGranularity::PER_TENSOR>>;
 
-    using DispatchPolicy = Gemm::MmadHSTUQK<ArchTag, false, false>;
+    using DispatchPolicy = Gemm::MmadHSTUQK<ArchTag, false, false, true>;
 
     using BlockMmad = Gemm::Block::BlockMmadTla<DispatchPolicy, L1TileShape, L0TileShape, ElementG, ElementV, ElementGS,
                                                 TileBufferType_<BufferTag::GV_MMAD>, TileCopyTla>;
@@ -272,20 +274,23 @@ struct KVGradBlockBuilder {
     using ElementXGrad = ElementType;  // X means K or V
     using LayoutXGrad = layout::RowMajor;
 
-    using DispatchPolicyVGrad = Gemm::MmadHSTUPV<ArchTag, false, false, true, 0>;
-    using TileCopyTla = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutP, ElementG, LayoutG, ElementXGrad,
-                                                          LayoutXGrad, void, Gemm::Tile::CopyL0CToUBMode::RESERVED>;
+    using DispatchPolicyVGrad = Gemm::MmadHSTUPV<ArchTag, false, false, 0, true>;
+    using VGradTileCopyTla = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutP, ElementG, LayoutG, ElementXGrad,
+                                                          LayoutXGrad, void, Gemm::Tile::CopyL0CToUBMode::RESERVED, false,
+                                                          Gemm::Tile::ScaleGranularity::PER_TENSOR>;
 
     // GEMM VGrad
     using BlockMmadVGrad =
         Gemm::Block::BlockMmadTla<DispatchPolicyVGrad, L1TileShape, L0TileShape, ElementP, ElementG, ElementXGrad,
-                                  TileBufferType_<BufferTag::V_GRAD_MMAD>, TileCopyTla>;
+                                  TileBufferType_<BufferTag::V_GRAD_MMAD>, VGradTileCopyTla>;
 
-    using DispatchPolicyKGrad = Gemm::MmadHSTUPV<ArchTag, false, false, true, 1>;
+    using DispatchPolicyKGrad = Gemm::MmadHSTUPV<ArchTag, false, false, 1, false>;
+    using KGradTileCopyTla = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutP, ElementG, LayoutG, ElementXGrad,
+                                                          LayoutXGrad, void, Gemm::Tile::CopyL0CToUBMode::RESERVED>;
     // GEMM KGrad
     using BlockMmadKGrad =
         Gemm::Block::BlockMmadTla<DispatchPolicyKGrad, L1TileShape, L0TileShape, ElementGrab, ElementQ, ElementXGrad,
-                                  TileBufferType_<BufferTag::K_GRAD_MMAD>, TileCopyTla>;
+                                  TileBufferType_<BufferTag::K_GRAD_MMAD>, KGradTileCopyTla>;
 
     using BlockEpilogue =
         Epilogue::Block::BlockEpilogueTransOut<ArchTag, TileBufferType_<BufferTag::TRANS_KV_GRAD_EPILOGUE>,
