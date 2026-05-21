@@ -4,14 +4,14 @@
 
 本文档基于 [docker](https://gitcode.com/Ascend/RecSDK/blob/develop/docker) 目录下的提供的 Dockerfile 文件整理得出，旨在帮助开发者快速了解并使用这些容器镜像。
 
-## a) 快速参考
+## 快速参考
 
 - 从哪里获取帮助
   - [issue 反馈](https://gitcode.com/Ascend/RecSDK/issues)
   - [RecSDK 代码](https://gitcode.com/Ascend/RecSDK)
   - [RecSDK 文档](https://gitcode.com/Ascend/RecSDK/tree/develop/docs)
 
-## b) RecSDK 简介
+## RecSDK 简介
 
 Rec SDK作为面向互联网市场搜索推荐广告的应用使能SDK产品，对于搜索推荐广告模型训练的应用场景需求，提供基于昇腾平台的搜索推荐广告框架，支撑大规模搜推广场景，助力完成搜推广模型的高效训练。
 
@@ -21,7 +21,7 @@ Rec SDK的功能涉及：
 2. 推荐场景特有功能。基于Rec SDK的稀疏表方案，Rec SDK提供必备功能，如特征保存和加载、特征准入、特征淘汰等。
 3. 大规模稀疏表特有功能。支持加速卡内存、主机内存、主机磁盘多级存储、支持多机存储、支持动态扩容。规模可超10TB。
 
-## c) 镜像 tag 中关键字段描述
+## 镜像 tag 中关键字段描述
 
 镜像标签遵循以下字段组合规范，便于直观区分镜像内包含的软硬件栈版本细节：
 
@@ -30,7 +30,7 @@ Rec SDK的功能涉及：
 - **框架标识**: 镜像支持的机器学习框架（例如 `tf` 为TensorFlow环境，或者是 `torch`为PyTorch环境）
 - **Python版本**: 核心运行的解释器版本（例如 `py3.7`）
 
-## d) Dockerfile 归档路径
+## Dockerfile 归档路径
 
 目前工程中支持由于底层框架不同而划分的容器场景，对应构建脚本存放于以下路径：
 
@@ -43,10 +43,8 @@ Rec SDK的功能涉及：
 |-----|------------|
 |26.1.0-ubuntu20.04-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7)|
 |26.1.0-ubuntu22.04-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu22.04-pt-py3.11)|
-|26.1.0-openEuler20.03-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler20.03-tf-py3.7)|
-|26.1.0-openEuler22.03-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-26.1.0-openEuler22.03-pt-py3.11)|
 
-## e) 快速开始
+## 快速开始
 
 ### 运行现有镜像
 
@@ -142,7 +140,7 @@ docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a2:26.1.0-ubuntu20.04-tf-py3.
   source /usr/local/set_cann_env.sh a5  # 切换并生效 Ascend 950 配套Toolkit及相关环境变量
   ```
 
-## f) 支持信息与变更说明
+## 支持信息与变更说明
 
 ### 硬件支持信息
 
@@ -154,7 +152,7 @@ docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a2:26.1.0-ubuntu20.04-tf-py3.
 - 放弃在全局系统 Python 下混装多个高排他性框架模块并由此产生的依赖灾难（如以往常见的 `npu_bridge` 与 `npu_device` 碰撞以及 Slim 兼容性等问题）风险。新版本脚本全网采取 `python3.7 -m venv` 为基础展开虚拟环境隔离级部署，各框架模块运行相互无感知、互不影响。
 - 其中高度耦合硬件逻辑运算的依赖性套件（如涵盖在内的 GCC 11.2, CMake, OpenMPI, Python 等重要运行库），不再使用系统的包管理器发行版，均转而使用了自源码 `make install` 的编译手段构建。
 
-## g) 许可证/免责声明
+## 许可证/免责声明
 
 - 查看这些镜像中包含的 RecSDK 和 Mind 系列软件的[许可证信息](https://gitcode.com/Ascend/RecSDK/blob/develop/LICENSE)。
 - 与所有容器镜像一样，预装软件包（Python，系统库等）可能受其自身许可证约束。

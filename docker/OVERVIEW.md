@@ -4,14 +4,14 @@
 
 This document is compiled from the Dockerfiles provided in the `docker` directory, aiming to help developers quickly understand and use these container images.
 
-## a) Quick Reference
+## Quick Reference
 
 - Where to get help
   - [Issue feedback](https://gitcode.com/Ascend/RecSDK/issues)
   - [RecSDK source code](https://gitcode.com/Ascend/RecSDK)
   - [RecSDK documentation](https://gitcode.com/Ascend/RecSDK/tree/develop/docs)
 
-## b) RecSDK Overview
+## RecSDK Overview
 
 RecSDK is an application-enablement SDK product targeting search, recommendation, and advertising (SRA) scenarios in the Internet market. For the application requirements of search/recommendation/advertising model training, it provides an Atlas-based SRA framework that supports large-scale SRA scenarios and facilitates efficient training of SRA models.
 
@@ -21,7 +21,7 @@ RecSDK features include:
 2. Recommendation-specific features. Based on RecSDK's sparse table solution, RecSDK provides essential functionality such as feature saving/loading, feature admission, and feature eviction.
 3. Large-scale sparse table features. Supports multi-level storage across accelerator memory, host memory, and host disk; supports multi-node storage; supports dynamic capacity expansion. Scale can exceed 10 TB.
 
-## c) Key Fields in Image Tags
+## Key Fields in Image Tags
 
 Image tags follow the convention below for intuitive identification of the software and hardware stack versions contained within the image:
 
@@ -30,7 +30,7 @@ Image tags follow the convention below for intuitive identification of the softw
 - **Framework identifier**: The ML framework supported by the image (e.g., `tf` for TensorFlow, or `torch` for PyTorch)
 - **Python version**: The core interpreter version (e.g., `py3.7`)
 
-## d) Dockerfile Archive Paths
+## Dockerfile Archive Paths
 
 The project currently supports container scenarios divided by underlying frameworks. The corresponding build scripts are located at the following paths:
 
@@ -43,10 +43,8 @@ The project currently supports container scenarios divided by underlying framewo
 |-----|------------|
 |26.1.0-ubuntu20.04-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7)|
 |26.1.0-ubuntu22.04-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu22.04-pt-py3.11)|
-|26.1.0-openEuler20.03-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler20.03-tf-py3.7)|
-|26.1.0-openEuler22.03-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-26.1.0-openEuler22.03-pt-py3.11)|
 
-## e) Quick Start
+## Quick Start
 
 ### Running an Existing Image
 
@@ -142,7 +140,7 @@ The image provides convenient environment switching scripts for development and 
   source /usr/local/set_cann_env.sh a5  # Switch to Ascend 950 toolkit and related env vars
   ```
 
-## f) Support Information and Changelog
+## Support Information and Changelog
 
 ### Hardware Support Information
 
@@ -154,7 +152,7 @@ The image provides convenient environment switching scripts for development and 
 - Abandoned the practice of mixing multiple highly-exclusive framework modules under the global system Python, which previously led to dependency disasters (such as the common `npu_bridge` and `npu_device` collisions and Slim compatibility issues). The new scripts universally adopt `python3.7 -m venv` for virtual-environment-isolated deployment, ensuring each framework module runs independently without mutual awareness or interference.
 - For dependency suites highly coupled with hardware logic operations (including important runtime libraries such as GCC 11.2, CMake, OpenMPI, Python, etc.), the system package manager distributions are no longer used. Instead, they are built from source using `make install`.
 
-## g) License / Disclaimer
+## License / Disclaimer
 
 - View the [license information](https://gitcode.com/Ascend/RecSDK/blob/develop/LICENSE) for RecSDK and Mind series software included in these images.
 - As with all container images, pre-installed packages (Python, system libraries, etc.) may be subject to their own licenses.
