@@ -23,7 +23,6 @@ pytest-html
 Cython
 absl-py
 gin-config
-torch-npu==2.6.0
 tensorboard==2.18.0
 black
 cmake
