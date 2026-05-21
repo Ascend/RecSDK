@@ -43,6 +43,8 @@ Rec SDK的功能涉及：
 |-----|------------|
 |26.1.0-ubuntu20.04-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7)|
 |26.1.0-ubuntu22.04-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu22.04-pt-py3.11)|
+|26.1.0-openEuler22.03-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler22.03-tf-py3.7)|
+|26.1.0-openEuler22.03-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler22.03-pt-py3.11)|
 
 ## 快速开始
 
@@ -54,8 +56,10 @@ Rec SDK的功能涉及：
 docker run -it \
     --name {容器名} \
     --net=host \
+    -m 300g \
     -e ASCEND_VISIBLE_DEVICES=0-7 \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
+    -v /etc/ascend_install.info:/etc/ascend_install.info \
     -v {挂载目录}:{挂载目录} \
     {镜像名}:{镜像tag} \
     /bin/bash
@@ -81,7 +85,7 @@ docker build -t recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 -f docker/Dockerfile.26.1.
 若您在编译算子或载入框架包时需要强制适配特定类型的核心类型 (默认为 `a2`)，可以在构建中通过 `CORE_TYPE` 参数显式声明：
 
 ```bash
-docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a2:26.1.0-ubuntu20.04-tf-py3.7 -f Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a2:26.1.0-ubuntu20.04-tf-py3.7 -f docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
 ```
 
 ### 二次开发与底层环境切换
@@ -93,7 +97,7 @@ docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a2:26.1.0-ubuntu20.04-tf-py3.
   ```dockerfile
   # 以recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7镜像为基础镜像，叠加用户软件
   FROM recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7
-  RUN apt update -y &&
+  RUN apt update -y && \
       apt install ...
   ```
 
@@ -125,7 +129,7 @@ docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a2:26.1.0-ubuntu20.04-tf-py3.
   deactivate torch_v1_pt2.7.1
 
   # 激活切换到 torch_rec_v2 PT 2.7.1 的 RecSDK 开发环境
-  source /opt/buildtools/torch_v1_pt2.7.1/bin/activate  
+  source /opt/buildtools/torch_v2_pt2.7.1/bin/activate  
   # 退出环境
   deactivate torch_v2_pt2.7.1
   ```

@@ -2,7 +2,7 @@
 
 > English | [中文](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/OVERVIEW.zh.md)
 
-This document is compiled from the Dockerfiles provided in the `docker` directory, aiming to help developers quickly understand and use these container images.
+This document is compiled from the Dockerfiles provided in the [`docker`](https://gitcode.com/Ascend/RecSDK/blob/develop/docker) directory, aiming to help developers quickly understand and use these container images.
 
 ## Quick Reference
 
@@ -43,6 +43,8 @@ The project currently supports container scenarios divided by underlying framewo
 |-----|------------|
 |26.1.0-ubuntu20.04-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7)|
 |26.1.0-ubuntu22.04-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu22.04-pt-py3.11)|
+|26.1.0-openEuler22.03-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler22.03-tf-py3.7)|
+|26.1.0-openEuler22.03-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler22.03-pt-py3.11)|
 
 ## Quick Start
 
@@ -54,8 +56,10 @@ If you have already pulled or built a usable image, you can quickly start and en
 docker run -it \
     --name {container_name} \
     --net=host \
+    -m 300g \
     -e ASCEND_VISIBLE_DEVICES=0-7 \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
+    -v /etc/ascend_install.info:/etc/ascend_install.info \
     -v {mount_dir}:{mount_dir} \
     {image_name}:{image_tag} \
     /bin/bash
@@ -81,7 +85,7 @@ docker build -t recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 -f docker/Dockerfile.26.1.
 If you need to target a specific core type (default is `a2`) when compiling operators or loading framework packages, you can explicitly specify it via the `CORE_TYPE` build argument:
 
 ```bash
-docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a2:26.1.0-ubuntu20.04-tf-py3.7 -f Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a2:26.1.0-ubuntu20.04-tf-py3.7 -f docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
 ```
 
 ### Secondary Development and Underlying Environment Switching
@@ -93,7 +97,7 @@ The image provides convenient environment switching scripts for development and 
   ```dockerfile
   # Use recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 as the base image and layer user software on top
   FROM recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7
-  RUN apt update -y &&
+  RUN apt update -y && \
       apt install ...
   ```
 
@@ -125,7 +129,7 @@ The image provides convenient environment switching scripts for development and 
   deactivate torch_v1_pt2.7.1
 
   # Activate the RecSDK development environment for torch_rec_v2 PT 2.7.1
-  source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
+  source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
   # Exit the environment
   deactivate torch_v2_pt2.7.1
   ```
