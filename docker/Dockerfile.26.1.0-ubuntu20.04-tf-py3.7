@@ -252,7 +252,9 @@ RUN ARCH=$(uname -m) && \
 
 # 13.准备外部软件包 (RecSDK)，需要用户自行准备对应框架软件包，这里不再做匹配
 COPY packages/tf_rec_v1_*.tar.gz /tmp/
-COPY packages/tf_rec_v2_*.tar.gz /tmp/
+
+# 定义安装算子时指定的核心类型 (a2/a3/a5)，默认为a2，软件包支持智能识别，用户也可自行修改
+ARG CORE_TYPE="a2"
 
 # 14.安装tf相关的Python包以及Rec SDK
 # 创建两个虚拟环境：tf1 (1.15.0) 和 tf2 (2.6.5)
@@ -274,7 +276,7 @@ RUN python3.7 -m venv /opt/buildtools/tf1_env && \
         /opt/buildtools/tf1_env/bin/pip install npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl; \
     fi && \
     /opt/buildtools/tf1_env/bin/pip install tf_slim mpi4py && \
-    /opt/buildtools/tf1_env/bin/pip install /tmp/tf_rec_v1*.tar.gz && \
+    CORE_TYPE=${CORE_TYPE} /opt/buildtools/tf1_env/bin/pip install /tmp/tf_rec_v1*.tar.gz && \
     rm -rf /root/.cache/pip
 
 # 创建 tf2 虚拟环境
@@ -290,7 +292,7 @@ RUN python3.7 -m venv /opt/buildtools/tf2_env && \
         /opt/buildtools/tf2_env/bin/pip install npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl; \
     fi && \
     /opt/buildtools/tf2_env/bin/pip install tf_slim mpi4py && \
-    /opt/buildtools/tf2_env/bin/pip install /tmp/tf_rec_v2*.tar.gz && \
+    CORE_TYPE=${CORE_TYPE} /opt/buildtools/tf2_env/bin/pip install /tmp/tf_rec_v1*.tar.gz && \
     rm -rf /root/.cache/pip
 
 RUN unset CC && unset CXX

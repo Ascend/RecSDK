@@ -185,7 +185,7 @@ RUN python3 -m venv /opt/buildtools/torch_v1_pt2.7.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install /tmp/torch_rec_v1*.tar.gz && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install /tmp/fbgemm_ascend*.whl && \
-    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install /tmp/rec_sdk_ops*.whl && \ 
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install /tmp/rec_sdk_ops*.whl && \
     rm -rf /root/.cache/pip
 
 # 13.创建 torch_v2_pt2.7.1 虚拟环境（与 torch_v1_pt2.7.1 一致）
