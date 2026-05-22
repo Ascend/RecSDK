@@ -1,6 +1,6 @@
-From 138e106fe489523a87b826d0d7126e9b6b8f2c74 Mon Sep 17 00:00:00 2001
+From 7494d25fd5c9540f1ebf0aaad31bfe47eedd5220 Mon Sep 17 00:00:00 2001
 From: cann_ly <luyi120@h-partners.com>
-Date: Fri, 24 Apr 2026 14:44:32 +0800
+Date: Wed, 20 May 2026 16:33:12 +0800
 Subject: [PATCH] patch
 
 ---
@@ -37,12 +37,12 @@ Subject: [PATCH] patch
  .../ops/triton_ops/triton_hstu_attention.py   |  58 ----
  .../training/configs/movielen_ranking.gin     |  12 +-
  .../training/configs/movielen_retrieval.gin   |   9 +-
- examples/hstu/training/pretrain_gr_ranking.py |  35 ++-
- .../hstu/training/pretrain_gr_retrieval.py    |  37 ++-
+ examples/hstu/training/pretrain_gr_ranking.py |  48 ++-
+ .../hstu/training/pretrain_gr_retrieval.py    |  40 ++-
  examples/hstu/training/trainer/training.py    | 133 ++++++++-
  examples/hstu/training/trainer/utils.py       |  35 ++-
  examples/hstu/utils/gin_config_args.py        |   7 +-
- 38 files changed, 1393 insertions(+), 418 deletions(-)
+ 38 files changed, 1409 insertions(+), 418 deletions(-)
  create mode 100644 examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
@@ -749,7 +749,7 @@ index 1c341f6..b73a7f1 100644
          input = jd.values
          output = fused_hstu_op(
 diff --git a/examples/hstu/modules/hstu_attention.py b/examples/hstu/modules/hstu_attention.py
-index 4257956..7af775e 100644
+index 4257956..ba47353 100644
 --- a/examples/hstu/modules/hstu_attention.py
 +++ b/examples/hstu/modules/hstu_attention.py
 @@ -16,9 +16,11 @@ import abc
@@ -2365,7 +2365,7 @@ index bef569f..ece421b 100644
 +TrainerArgs.profile = False
 +TrainerArgs.pipeline_type = "none"
 +TrainerArgs.enable_balanced_shuffler = False  # Set to True to enable balanced batch shuffling
-+TrainerArgs.enable_disterminism = False
++TrainerArgs.enable_determinism = False
  
  # ml-1m : 5 contextual features, 
  # ml-20m : 1 contextual feature
@@ -2390,7 +2390,7 @@ index a251af2..f8de69c 100644
 +TrainerArgs.max_train_iters = 5000
 +TrainerArgs.pipeline_type = "none"
 +TrainerArgs.enable_balanced_shuffler = False  # Set to True to enable balanced batch shuffling
-+TrainerArgs.enable_disterminism = False
++TrainerArgs.enable_determinism = False
  
  DatasetArgs.dataset_name = 'ml-20m'
  DatasetArgs.max_history_seqlen = 200
@@ -2410,20 +2410,29 @@ index a251af2..f8de69c 100644
  OptimizerArgs.optimizer_str = 'adam'
  OptimizerArgs.learning_rate = 1e-3
 diff --git a/examples/hstu/training/pretrain_gr_ranking.py b/examples/hstu/training/pretrain_gr_ranking.py
-index 1b67a3a..5d39fb2 100644
+index 1b67a3a..41b7561 100644
 --- a/examples/hstu/training/pretrain_gr_ranking.py
 +++ b/examples/hstu/training/pretrain_gr_ranking.py
-@@ -23,6 +23,9 @@ from typing import List, Union
+@@ -12,6 +12,7 @@
+ # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
++import os
+ import warnings
+ 
+ # Ignore all FutureWarnings
+@@ -23,6 +24,10 @@ from typing import List, Union
  import commons.utils.initialize as init
  import gin
  import torch  # pylint: disable-unused-import
 +import torch_npu
++import sysconfig
 +torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 +import mindspeed.megatron_adaptor
  from commons.distributed.batch_shuffler_factory import BatchShufflerFactory
  from commons.distributed.sharding import make_optimizer_and_shard
  from commons.pipeline import TrainPipelineFactory
-@@ -51,7 +54,12 @@ from utils import (  # from hstu.utils
+@@ -51,7 +56,12 @@ from utils import (  # from hstu.utils
      TensorModelParallelArgs,
      TrainerArgs,
  )
@@ -2437,7 +2446,7 @@ index 1b67a3a..5d39fb2 100644
  
  def create_ranking_config(
      dataset_args: Union[DatasetArgs, BenchmarkDatasetArgs],
-@@ -77,13 +85,21 @@ def main():
+@@ -77,13 +87,32 @@ def main():
          description="HSTU Example Arguments", allow_abbrev=False
      )
      parser.add_argument("--gin-config-file", type=str)
@@ -2449,7 +2458,18 @@ index 1b67a3a..5d39fb2 100644
      trainer_args = TrainerArgs()
 +    trainer_args.model_name = "ranking"
 +    trainer_args.train_batch_size = args.train_batch_size or trainer_args.train_batch_size
-+    trainer_args.max_train_iters = args.epochs * trainer_args.eval_interval if args.epochs is not None else trainer_args.max_train_iters
++    final_epochs = args.epochs
++    env_epoch_str = os.environ.get("MODEL_EPOCH")
++    if env_epoch_str is not None:
++        try:
++            final_epochs = int(env_epoch_str)
++        except ValueError:
++            print_rank_0(
++                f"Warning: Invalid value for MODEL_EPOCH environment variable: {env_epoch_str}"
++            )
++    if final_epochs is not None and final_epochs <= 1:
++        raise ValueError("Training configuration error: 'epochs' cannot be less than or equal to 1. Please set a value greater than 1.")
++    trainer_args.max_train_iters = final_epochs * trainer_args.eval_interval if final_epochs is not None else trainer_args.max_train_iters
 +
 +    network_args = NetworkArgs()
      dataset_args, embedding_args = get_dataset_and_embedding_args(
@@ -2461,12 +2481,12 @@ index 1b67a3a..5d39fb2 100644
      optimizer_args = OptimizerArgs()
      tp_args = TensorModelParallelArgs()
  
-@@ -92,9 +108,12 @@ def main():
+@@ -92,9 +121,12 @@ def main():
          tensor_model_parallel_size=tp_args.tensor_model_parallel_size
      )
      init.set_random_seed(trainer_args.seed)
 -    free_memory, total_memory = torch.cuda.mem_get_info()
-+    if trainer_args.enable_disterminism:
++    if trainer_args.enable_determinism:
 +        from msprobe.pytorch import seed_all
 +        seed_all(seed = trainer_args.seed, mode = True, rm_dropout = False)
 +    free_memory, total_memory = torch_npu.npu.mem_get_info()
@@ -2476,7 +2496,7 @@ index 1b67a3a..5d39fb2 100644
      )
      hstu_config = create_hstu_config(network_args, tp_args)
      task_config = create_ranking_config(dataset_args, network_args, embedding_args)
-@@ -143,9 +162,9 @@ def main():
+@@ -143,9 +175,9 @@ def main():
      train_dataloader, test_dataloader = get_data_loader(
          "ranking", dataset_args, trainer_args, task_config.num_tasks
      )
@@ -2488,7 +2508,7 @@ index 1b67a3a..5d39fb2 100644
      )
  
      maybe_load_ckpts(trainer_args.ckpt_load_dir, model, dense_optimizer)
-@@ -163,7 +182,7 @@ def main():
+@@ -163,7 +195,7 @@ def main():
          pipeline_name,
          model=model_train,
          optimizer=dense_optimizer,
@@ -2498,7 +2518,7 @@ index 1b67a3a..5d39fb2 100644
      )
  
 diff --git a/examples/hstu/training/pretrain_gr_retrieval.py b/examples/hstu/training/pretrain_gr_retrieval.py
-index 06266cf..acdb139 100644
+index 06266cf..cab5d39 100644
 --- a/examples/hstu/training/pretrain_gr_retrieval.py
 +++ b/examples/hstu/training/pretrain_gr_retrieval.py
 @@ -12,6 +12,7 @@
@@ -2509,17 +2529,18 @@ index 06266cf..acdb139 100644
  import warnings
  
  # Ignore all FutureWarnings
-@@ -23,6 +24,9 @@ from typing import List, Union
+@@ -23,6 +24,10 @@ from typing import List, Union
  import commons.utils.initialize as init
  import gin
  import torch  # pylint: disable-unused-import
 +import torch_npu
++import sysconfig
 +torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 +import mindspeed.megatron_adaptor
  from commons.distributed.batch_shuffler_factory import BatchShufflerFactory
  from commons.distributed.sharding import make_optimizer_and_shard
  from commons.pipeline import TrainPipelineFactory
-@@ -49,6 +53,12 @@ from utils import (  # from hstu.utils
+@@ -49,6 +54,12 @@ from utils import (  # from hstu.utils
      TensorModelParallelArgs,
      TrainerArgs,
  )
@@ -2532,7 +2553,7 @@ index 06266cf..acdb139 100644
  
  
  def create_retrieval_config(
-@@ -74,13 +84,30 @@ def main():
+@@ -74,13 +85,32 @@ def main():
          description="Distributed GR Arguments", allow_abbrev=False
      )
      parser.add_argument("--gin-config-file", type=str)
@@ -2553,6 +2574,8 @@ index 06266cf..acdb139 100644
 +            print_rank_0(
 +                f"Warning: Invalid value for MODEL_EPOCH environment variable: {env_epoch_str}"
 +            )
++    if final_epochs is not None and final_epochs <= 1:
++        raise ValueError("Training configuration error: 'epochs' cannot be less than or equal to 1. Please set a value greater than 1.")
 +    trainer_args.max_train_iters = final_epochs * trainer_args.eval_interval if final_epochs is not None else trainer_args.max_train_iters
 +
 +    network_args = NetworkArgs()
@@ -2565,18 +2588,18 @@ index 06266cf..acdb139 100644
      optimizer_args = OptimizerArgs()
      tp_args = TensorModelParallelArgs()
  
-@@ -89,7 +116,9 @@ def main():
+@@ -89,7 +119,9 @@ def main():
          tensor_model_parallel_size=tp_args.tensor_model_parallel_size
      )
      init.set_random_seed(trainer_args.seed)
 -
-+    if trainer_args.enable_disterminism:
++    if trainer_args.enable_determinism:
 +        from msprobe.pytorch import seed_all
 +        seed_all(seed = trainer_args.seed, mode = True, rm_dropout = False)
      hstu_config = create_hstu_config(network_args, tp_args)
      task_config = create_retrieval_config(dataset_args, network_args, embedding_args)
      model = get_retrieval_model(hstu_config=hstu_config, task_config=task_config)
-@@ -143,7 +172,7 @@ def main():
+@@ -143,7 +175,7 @@ def main():
          pipeline_name,
          model=model_train,
          optimizer=dense_optimizer,
@@ -2586,7 +2609,7 @@ index 06266cf..acdb139 100644
      )
  
 diff --git a/examples/hstu/training/trainer/training.py b/examples/hstu/training/trainer/training.py
-index b50c026..898c769 100644
+index b50c026..d1aae33 100644
 --- a/examples/hstu/training/trainer/training.py
 +++ b/examples/hstu/training/trainer/training.py
 @@ -18,6 +18,7 @@ from typing import Iterator, Optional, Union
@@ -2916,7 +2939,7 @@ index 1c611de..68fcecf 100644
      # - True -> use balanced batch shuffler (e.g., HASTUBalancedBatchShuffler)
      # - False -> use IdentityBalancedBatchShuffler (no load balancing)
      enable_balanced_shuffler: bool = False
-+    enable_disterminism: bool = False
++    enable_determinism: bool = False
 +    model_name: Optional[str] = None
  
      def __post_init__(self):

@@ -71,4 +71,4 @@ torchrun \
     ${py_file} \
     --gin-config-file ${config_file} \
     --epochs 50 \
-    $@ 2>&1 |tee log/ranking_gr_7B_$(date '+%Y%m%d_%H%M%S').log
+    $@ 2>&1 |tee ranking_gr_7B_$(date '+%Y%m%d_%H%M%S').log

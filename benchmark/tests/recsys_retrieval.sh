@@ -72,4 +72,4 @@ torchrun \
     --gin-config-file ${config_file} \
     --epochs 50 \
     --train-batch-size 128 \
-    $@ 2>&1 |tee log/retrieval_$(date '+%Y%m%d_%H%M%S').log
+    $@ 2>&1 |tee retrieval_$(date '+%Y%m%d_%H%M%S').log
