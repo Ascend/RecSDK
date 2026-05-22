@@ -1,10 +1,7 @@
-From 9fb29e2d90b1d7314c32be6736463c8b47e908c6 Mon Sep 17 00:00:00 2001
+From d79bcab293a4120e8ed96bdcf2eacfe1cb03393c Mon Sep 17 00:00:00 2001
 From: cann_ly <luyi120@h-partners.com>
-Date: Sat, 18 Apr 2026 18:43:24 +0800
-Subject: [PATCH] =?UTF-8?q?json=20epochs=E9=80=82=E9=85=8D?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Date: Wed, 20 May 2026 16:03:19 +0800
+Subject: [PATCH] patch
 
 ---
  examples/commons/checkpoint/checkpoint.py     |  10 +-
@@ -33,11 +30,11 @@ Content-Transfer-Encoding: 8bit
  examples/hstu/ops/pt_ops/pt_position.py       | 158 +++++++++++
  .../hstu/ops/pt_ops/pt_split_2d_jagged.py     |  43 +++
  examples/hstu/preprocessor.py                 |   8 +-
- examples/hstu/pretrain_gr_ranking.py          |  41 ++-
+ examples/hstu/pretrain_gr_ranking.py          |  43 ++-
  examples/hstu/training/gin_config_args.py     |   8 +-
  examples/hstu/training/training.py            | 133 +++++++++-
  examples/hstu/training/utils.py               |  39 ++-
- 30 files changed, 1354 insertions(+), 278 deletions(-)
+ 30 files changed, 1356 insertions(+), 278 deletions(-)
  create mode 100644 examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
@@ -646,7 +643,7 @@ index 83848b9..7070dfa 100644
          input = jd.values
          output = fused_hstu_op(
 diff --git a/examples/hstu/modules/hstu_attention.py b/examples/hstu/modules/hstu_attention.py
-index d8af93b..4245f87 100644
+index d8af93b..64bbbc4 100644
 --- a/examples/hstu/modules/hstu_attention.py
 +++ b/examples/hstu/modules/hstu_attention.py
 @@ -13,12 +13,15 @@
@@ -1444,7 +1441,7 @@ index d8e8d33..eb383e2 100644
 +TrainerArgs.max_train_iters = 5000
 +TrainerArgs.profile = False # 关闭原生性能分析
 +TrainerArgs.pipeline_type = "none" # NPU 目前不支持流水线
-+TrainerArgs.enable_disterminism = False
++TrainerArgs.enable_determinism = False
  
  DatasetArgs.dataset_name = 'ml-20m'
  DatasetArgs.max_sequence_length = 200
@@ -2138,7 +2135,7 @@ index b574514..f6d9ad9 100644
  
  if __name__ == "__main__":
 diff --git a/examples/hstu/pretrain_gr_ranking.py b/examples/hstu/pretrain_gr_ranking.py
-index 446ce12..d674376 100644
+index 446ce12..c39917c 100644
 --- a/examples/hstu/pretrain_gr_ranking.py
 +++ b/examples/hstu/pretrain_gr_ranking.py
 @@ -12,8 +12,9 @@
@@ -2175,7 +2172,7 @@ index 446ce12..d674376 100644
  
  
  @gin.configurable
-@@ -77,9 +87,23 @@ parser = argparse.ArgumentParser(
+@@ -77,9 +87,25 @@ parser = argparse.ArgumentParser(
      description="Distributed GR Arguments", allow_abbrev=False
  )
  parser.add_argument("--gin-config-file", type=str)
@@ -2194,12 +2191,14 @@ index 446ce12..d674376 100644
 +        print_rank_0(
 +            f"Warning: Invalid value for MODEL_EPOCH environment variable: {env_epoch_str}"
 +        )
++if final_epochs is not None and final_epochs <= 1:
++    raise ValueError("Training configuration error: 'epochs' cannot be less than or equal to 1. Please set a value greater than 1.")
 +trainer_args.max_train_iters = final_epochs * trainer_args.eval_interval if final_epochs is not None else trainer_args.max_train_iters
 +
  dataset_args, embedding_args = get_dataset_and_embedding_args()
  network_args = NetworkArgs()
  optimizer_args = OptimizerArgs()
-@@ -102,12 +126,19 @@ def create_ranking_config() -> RankingConfig:
+@@ -102,12 +128,19 @@ def create_ranking_config() -> RankingConfig:
  
  
  def main():
@@ -2213,14 +2212,14 @@ index 446ce12..d674376 100644
      )
      init.set_random_seed(trainer_args.seed)
 -    free_memory, total_memory = torch.cuda.mem_get_info()
-+    if trainer_args.enable_disterminism:
++    if trainer_args.enable_determinism:
 +        from msprobe.pytorch import seed_all
 +        seed_all(seed = trainer_args.seed, mode = True, rm_dropout = False)
 +    free_memory, total_memory = torch_npu.npu.mem_get_info()
      print_rank_0(
          f"distributed env initialization done. Free cuda memory: {free_memory / (1024 ** 2):.2f} MB"
      )
-@@ -146,7 +177,7 @@ def main():
+@@ -146,7 +179,7 @@ def main():
      train_dataloader, test_dataloader = get_data_loader(
          "ranking", dataset_args, trainer_args, task_config.num_tasks
      )
@@ -2229,19 +2228,19 @@ index 446ce12..d674376 100644
      print_rank_0(
          f"model initialization done, start training. Free cuda memory: {free_memory / (1024 ** 2):.2f} MB"
      )
-@@ -161,13 +192,13 @@ def main():
+@@ -161,13 +194,13 @@ def main():
          pipeline = pipeline_factory(
              model_train,
              dense_optimizer,
 -            device=torch.device("cuda", torch.cuda.current_device()),
-+            device=torch.device("cuda", torch_npu.npu.current_device()),
++            device=torch.device("npu", torch_npu.npu.current_device()),
          )
      else:
          pipeline = JaggedMegatronTrainNonePipeline(
              model_train,
              dense_optimizer,
 -            device=torch.device("cuda", torch.cuda.current_device()),
-+            device=torch.device("cuda", torch_npu.npu.current_device()),
++            device=torch.device("npu", torch_npu.npu.current_device()),
          )
      train_with_pipeline(
          pipeline,
@@ -2253,7 +2252,7 @@ index d0fc57c..f507585 100644
      # - prefetch -> overlap [h2d, input dist, prefetch, fwd+bwd]
      pipeline_type: str = "native"  # none, native, prefetch
  
-+    enable_disterminism: bool = False
++    enable_determinism: bool = False
 +
      def __post_init__(self):
          if isinstance(self.max_train_iters, str):
@@ -2279,7 +2278,7 @@ index d0fc57c..f507585 100644
  
  @gin.configurable
 diff --git a/examples/hstu/training/training.py b/examples/hstu/training/training.py
-index f975842..0327a13 100644
+index f975842..5ce57d7 100644
 --- a/examples/hstu/training/training.py
 +++ b/examples/hstu/training/training.py
 @@ -18,6 +18,7 @@ from typing import Iterator, Optional, Union
