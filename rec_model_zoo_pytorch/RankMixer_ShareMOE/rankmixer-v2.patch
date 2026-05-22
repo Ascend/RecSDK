@@ -247,7 +247,7 @@ index acb4e3df..19192a24 100644
 +            )
 +            if eval_iter == 0:
 +                print(val_dict["deep_outputs"])
-+                val_dict["deep_outputs"]= iochecker.save_outputs(val_dict["deep_outputs"],0, "npu_output")
++                val_dict["deep_outputs"]= iochecker.save_outputs(val_dict["deep_outputs"],0, "output")
 +            if NPU_ENABLE:
 +                torch.npu.synchronize()
 +            else:
