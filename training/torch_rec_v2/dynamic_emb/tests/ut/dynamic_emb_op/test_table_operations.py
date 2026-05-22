@@ -937,10 +937,10 @@ def test_find_or_insert_init_optstate_vec4():
             f"vec4路径下键{keys[i]}的optimizer state值应为{init_optstate_val}"
 
 
-def test_find_or_insert_init_optstate_scalar():
+@pytest.mark.parametrize("dim", [10, 102401])
+def test_find_or_insert_init_optstate_scalar(dim):
     """测试find_or_insert时optimizer state的标量路径初始化正确，dim不能被4整除"""
     torch.npu.set_device(DEVICE_ID)
-    dim = 10
     n = 5
     init_optstate_val = 0.75
 
