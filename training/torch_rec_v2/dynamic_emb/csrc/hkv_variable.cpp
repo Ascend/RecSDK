@@ -24,6 +24,7 @@
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "ops/check_safe_pointers/check_safe_pointers_kernel.h"
 #include "ops/load_or_initialize_embeddings/load_or_initialize_embeddings_kernel.h"
+#include "ops/initialize_optimizer_state/initialize_optimizer_state_simd_kernel.h"
 #include "acl_singleton.h"
 #include "utils.h"
 
@@ -221,13 +222,13 @@ __global__ __vector__ void fill_output_with_table_vectors_kernel(
 
 template <typename T, typename OptStateInitializer, typename TableVector>
 __simt_vf__ __aicore__ LAUNCH_BOUND(BLOCK_THREAD_NUM_OPT) inline void initialize_optimizer_state_vf_vec4(
-    uint64_t n, int emb_dim, typename TableVector::Args vector_args, OptStateInitializer optstate_initailizer,
+    uint64_t n, int emb_dim, typename TableVector::Args vector_args, OptStateInitializer optstate_initializer,
     const uint64_t warp_num_all)
 {
     TableVector vectors(vector_args);
 
-    T initial_optstate = TypeConvertFunc<T, float>::convert(optstate_initailizer.initial_optstate);
-    int dim = optstate_initailizer.dim;
+    T initial_optstate = TypeConvertFunc<T, float>::convert(optstate_initializer.initial_optstate);
+    int dim = optstate_initializer.dim;
 
     const int warp_num_per_block = blockDim.x / warpSize;
     const int warp_id_in_block = threadIdx.x / warpSize;
@@ -242,21 +243,21 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(BLOCK_THREAD_NUM_OPT) inline void initialize
 template <typename T, typename OptStateInitializer, typename TableVector>
 __global__ __vector__ void initialize_optimizer_state_kernel_vec4(uint64_t n, int emb_dim,
                                                                   typename TableVector::Args vector_args,
-                                                                  OptStateInitializer optstate_initailizer)
+                                                                  OptStateInitializer optstate_initializer)
 {
     const int warp_num_per_block = BLOCK_THREAD_NUM_OPT / warpSize;
     const uint64_t warp_num_all = static_cast<uint64_t>(warp_num_per_block) * GetBlockNum();
     asc_vf_call<initialize_optimizer_state_vf_vec4<T, OptStateInitializer, TableVector>>(
-        dim3{BLOCK_THREAD_NUM_OPT}, n, emb_dim, vector_args, optstate_initailizer, warp_num_all);
+        dim3{BLOCK_THREAD_NUM_OPT}, n, emb_dim, vector_args, optstate_initializer, warp_num_all);
 }
 
 template <typename T, typename OptStateInitializer, typename TableVector>
 __simt_vf__ __aicore__ LAUNCH_BOUND(BLOCK_THREAD_NUM_OPT) inline void initialize_optimizer_state_vf(
-    uint64_t n, int emb_dim, typename TableVector::Args vector_args, OptStateInitializer optstate_initailizer,
+    uint64_t n, int emb_dim, typename TableVector::Args vector_args, OptStateInitializer optstate_initializer,
     const uint64_t block_all)
 {
-    T initial_optstate = TypeConvertFunc<T, float>::convert(optstate_initailizer.initial_optstate);
-    int dim = optstate_initailizer.dim;
+    T initial_optstate = TypeConvertFunc<T, float>::convert(optstate_initializer.initial_optstate);
+    int dim = optstate_initializer.dim;
 
     TableVector vectors(vector_args);
 
@@ -270,11 +271,11 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(BLOCK_THREAD_NUM_OPT) inline void initialize
 template <typename T, typename OptStateInitializer, typename TableVector>
 __global__ __vector__ void initialize_optimizer_state_kernel(uint64_t n, int emb_dim,
                                                              typename TableVector::Args vector_args,
-                                                             OptStateInitializer optstate_initailizer)
+                                                             OptStateInitializer optstate_initializer)
 {
     const uint64_t block_all = GetBlockNum();
     asc_vf_call<initialize_optimizer_state_vf<T, OptStateInitializer, TableVector>>(
-        dim3{BLOCK_THREAD_NUM_OPT}, n, emb_dim, vector_args, optstate_initailizer, block_all);
+        dim3{BLOCK_THREAD_NUM_OPT}, n, emb_dim, vector_args, optstate_initializer, block_all);
 }
 
 template <typename K>
@@ -765,14 +766,27 @@ void HKVVariable<KeyType, ValueType, Strategy>::find_or_insert(const size_t n, c
     if (optstate_dim == 0) {
         return;
     }
-    using OptStateInitializer = OptStateInitializer<float, int>;
-    OptStateInitializer optstate_initializer{optstate_dim, initial_optstate_};
-    if (dim % 4 == 0 and optstate_dim % 4 == 0) {
-        initialize_optimizer_state_kernel_vec4<ValueType, OptStateInitializer, TableVector>
-            <<<maxCores, 0, stream>>>(n, dim, table_vec_args, optstate_initializer);
+
+    // 当前HKV无法判断是否使用HOST DDR，因此默认使用SIMD算子确保功能正确；
+    static bool simd_flag = true;
+    if (simd_flag) {
+        const uint32_t buffer_num = 1;  // 不开double_buffer，只有1片内存
+        auto tiling = npu::hkv::GetValueMoveTiling(n, maxCores, optstate_dim, sizeof(ValueType), true, buffer_num);
+        initialize_optimizer_state_simd_kernel<ValueType><<<maxCores, tiling.valid_ub_size, stream>>>(
+            tiling.former_num, tiling.former_core_move_num, tiling.tail_core_move_num, tiling.tile_size,
+            tiling.num_tiles, n, dim, reinterpret_cast<ValueType**>(value_ptrs), d_found, optstate_dim,
+            initial_optstate_);
     } else {
-        initialize_optimizer_state_kernel<ValueType, OptStateInitializer, TableVector>
-            <<<maxCores, 0, stream>>>(n, dim, table_vec_args, optstate_initializer);
+        using OptStateInitializer = OptStateInitializer<float, int>;
+        OptStateInitializer optstate_initializer{optstate_dim, initial_optstate_};
+        // 当dim和optstate_dim都是4的倍数时，SIMT算子内部使用Vec4T进行4个元素的向量化优化
+        if (dim % 4 == 0 and optstate_dim % 4 == 0) {
+            initialize_optimizer_state_kernel_vec4<ValueType, OptStateInitializer, TableVector>
+                <<<maxCores, 0, stream>>>(n, dim, table_vec_args, optstate_initializer);
+        } else {
+            initialize_optimizer_state_kernel<ValueType, OptStateInitializer, TableVector>
+                <<<maxCores, 0, stream>>>(n, dim, table_vec_args, optstate_initializer);
+        }
     }
 }
 

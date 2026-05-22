@@ -23,6 +23,33 @@
 
 namespace dyn_emb {
 
+template <typename TOUT, typename TIN>
+struct SimdTypeConvertFunc;
+
+template <>
+struct SimdTypeConvertFunc<bfloat16_t, float> {
+    __aicore__ __inline__ static bfloat16_t convert(float val)
+    {
+        return AscendC::ToBfloat16(val);
+    }
+};
+
+template <>
+struct SimdTypeConvertFunc<float, float> {
+    __aicore__ __inline__ static float convert(float val)
+    {
+        return val;
+    }
+};
+
+template <>
+struct SimdTypeConvertFunc<half, float> {
+    __aicore__ __inline__ static half convert(float val)
+    {
+        return AscendC::ScalarCast<float, half, AscendC::RoundMode::CAST_ODD>(val);
+    }
+};
+
 #define DEVICE_INLINE __simt_callee__ __forceinline__
 
 template <typename TOUT, typename TIN>
