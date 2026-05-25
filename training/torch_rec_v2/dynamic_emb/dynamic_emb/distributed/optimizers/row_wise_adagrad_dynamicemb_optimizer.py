@@ -17,16 +17,87 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import torch
 
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import (
+    BaseDynamicEmbeddingOptimizer,
     BaseDynamicEmbeddingOptimizerV2,
     OptimizerArgs,
     get_required_arg,
 )
-from dynamic_emb_extensions import dynamic_emb_rowwise_adagrad_fused, dynamic_emb_rowwise_adagrad_with_pointer, DynamicEmbDataType
+from dynamic_emb.distributed.dynamicemb_config import (
+    DynamicEmbTableOptions,
+    DynamicEmbTable,
+    torch_to_dyn_emb,
+)
+from dynamic_emb_extensions import (
+    dynamic_emb_rowwise_adagrad_fused,
+    dynamic_emb_rowwise_adagrad_with_pointer,
+    dynamic_emb_rowwise_adagrad_with_table,
+    DynamicEmbDataType,
+)
+
+
+class RowWiseAdagradDynamicEmbeddingOptimizer(BaseDynamicEmbeddingOptimizer):
+    def __init__(
+        self,
+        opt_args: OptimizerArgs,
+        table_options: List[DynamicEmbTableOptions],
+        hashtables: List[DynamicEmbTable],
+    ) -> None:
+        super().__init__(opt_args, table_options, hashtables)
+
+        self._state_dict["Gt"] = hashtables
+
+        for table in hashtables:
+            table.set_initial_optstate(self._opt_args.initial_accumulator_value)
+
+    def update(
+        self,
+        hashtables: List[DynamicEmbTable],
+        indices: List[torch.Tensor],
+        grads: List[torch.Tensor],
+    ) -> None:
+        for ht in hashtables:
+            if ht not in self._table_state_map.keys():
+                raise ValueError(
+                    f"DynamicEmb ERROR: Hashtable {ht} not found in _table_state_map in class {self.__class__.__name__}."
+                )
+        lr = self._opt_args.learning_rate
+        eps = self._opt_args.eps
+        for i, ht in enumerate(hashtables):
+            state_idx = self._table_state_map[ht]
+            table_option = self._table_options[state_idx]
+
+            indice = indices[i]
+            grad = grads[i]
+            num_indice = indice.shape[0]
+
+            weight_dtype = torch_to_dyn_emb(table_option.embedding_dtype)
+
+            dynamic_emb_rowwise_adagrad_with_table(
+                ht, num_indice, indice, grad, lr, eps, weight_dtype
+            )
+
+    def get_opt_args(self):
+        ret_args = {
+            "opt_type": "exact_row_wise_adagrad",
+            "lr": self._opt_args.learning_rate,
+            "eps": self._opt_args.eps,
+            "initial_accumulator_value": self._opt_args.initial_accumulator_value,
+        }
+        return ret_args
+
+    def set_opt_args(self, args: Dict[str, Any]):
+        self._opt_args.learning_rate = get_required_arg(args, "lr")
+        self._opt_args.eps = get_required_arg(args, "eps")
+        initial_value = get_required_arg(args, "initial_accumulator_value")
+        self._opt_args.initial_accumulator_value = initial_value
+        for table in self._state_dict["Gt"]:
+            table.set_initial_optstate(initial_value)
+        return
 
 
 class RowWiseAdagradDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
