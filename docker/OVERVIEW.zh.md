@@ -74,7 +74,7 @@ docker run -it \
 
 ### 本地构建镜像
 
-开发人员可自行在当前系统环境中本地打包构建业务镜像。在此之前需确保外层目录下存在对应的打包产物资源（例：`output/tf_rec_v1_*.tar.gz` 等），因为 Dockerfile 使用了 `COPY` 动作引入它们。
+开发人员可自行在当前系统环境中本地打包构建业务镜像。在此之前需确保外层目录下存在对应的打包产物资源（例：`packages/tf_rec_v1_*.tar.gz` 等），因为 Dockerfile 使用了 `COPY` 动作引入它们。
 
 构建基于 TensorFlow 支持版本的镜像：
 
@@ -155,6 +155,16 @@ docker build --build-arg CORE_TYPE=a2 -t recsdk_tf_a2:26.1.0-ubuntu20.04-tf-py3.
 
 - 放弃在全局系统 Python 下混装多个高排他性框架模块并由此产生的依赖灾难（如以往常见的 `npu_bridge` 与 `npu_device` 碰撞以及 Slim 兼容性等问题）风险。新版本脚本全网采取 `python3.7 -m venv` 为基础展开虚拟环境隔离级部署，各框架模块运行相互无感知、互不影响。
 - 其中高度耦合硬件逻辑运算的依赖性套件（如涵盖在内的 GCC 11.2, CMake, OpenMPI, Python 等重要运行库），不再使用系统的包管理器发行版，均转而使用了自源码 `make install` 的编译手段构建。
+  
+## 快速验证
+
+### TensorFlow镜像验证
+
+可参考[little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/README.md)进行little demo验证，验证前可通过[章节 - 二次开发与底层环境切换](#二次开发与底层环境切换)切换容器内CANN包环境与python虚拟环境。
+
+### PyTorch镜像验证
+
+可参考[little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/README.md)进行little demo验证，验证前可通过[章节 - 二次开发与底层环境切换](#二次开发与底层环境切换)切换容器内CANN包环境与python虚拟环境。
 
 ## 许可证/免责声明
 

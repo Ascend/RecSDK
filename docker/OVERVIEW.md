@@ -74,7 +74,7 @@ Parameter descriptions:
 
 ### Building Images Locally
 
-Developers can locally package and build business images in the current system environment. Before doing so, ensure the corresponding packaged artifacts exist in the outer directory (e.g., `output/tf_rec_v1_*.tar.gz`, etc.), as the Dockerfile uses `COPY` to include them.
+Developers can locally package and build business images in the current system environment. Before doing so, ensure the corresponding packaged artifacts exist in the outer directory (e.g., `packages/tf_rec_v1_*.tar.gz`, etc.), as the Dockerfile uses `COPY` to include them.
 
 Build a TensorFlow-based image:
 
@@ -155,6 +155,16 @@ The image provides convenient environment switching scripts for development and 
 
 - Abandoned the practice of mixing multiple highly-exclusive framework modules under the global system Python, which previously led to dependency disasters (such as the common `npu_bridge` and `npu_device` collisions and Slim compatibility issues). The new scripts universally adopt `python3.7 -m venv` for virtual-environment-isolated deployment, ensuring each framework module runs independently without mutual awareness or interference.
 - For dependency suites highly coupled with hardware logic operations (including important runtime libraries such as GCC 11.2, CMake, OpenMPI, Python, etc.), the system package manager distributions are no longer used. Instead, they are built from source using `make install`.
+
+## Quick Verification
+
+### TensorFlow Image Verification
+
+Refer to the [little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/README.md) for verification. Before running, switch the CANN environment and Python virtual environment via [Secondary Development and Underlying Environment Switching](#secondary-development-and-underlying-environment-switching).
+
+### PyTorch Image Verification
+
+Refer to the [little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/README.md) for verification. Before running, switch the CANN environment and Python virtual environment via [Secondary Development and Underlying Environment Switching](#secondary-development-and-underlying-environment-switching).
 
 ## License / Disclaimer
 
