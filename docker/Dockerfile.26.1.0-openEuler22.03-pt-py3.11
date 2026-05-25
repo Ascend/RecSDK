@@ -67,7 +67,7 @@ RUN ln -sf /usr/local/python3.11.0/bin/python3 /usr/bin/python3 && \
 ARG ASCEND_BASE=/usr/local/Ascend
 ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$ASCEND_BASE/driver/lib64/driver:$LD_LIBRARY_PATH
 
-# # 6.下载并安装 CANN 安装包 (根据架构自动选择)
+# 6.下载并安装 CANN 安装包 (根据架构自动选择)
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
         wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-toolkit_9.0.0_linux-x86_64.run ; \
