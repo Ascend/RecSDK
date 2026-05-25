@@ -21,9 +21,15 @@ import abc
 import copy
 import enum
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import torch
+
+from dynamic_emb.distributed.dynamicemb_config import (
+    DynamicEmbTableOptions,
+    DynamicEmbTable,
+    create_dynamicemb_table,
+)
 
 from dynamic_emb_extensions import OptimizerType, DynamicEmbDataType
 
@@ -82,6 +88,72 @@ def get_required_arg(args: Dict[str, Any], key: str) -> Any:
     if key not in args:
         raise ValueError(f"Input args does not contain required optimizer argument: {key}")
     return args[key]
+
+
+class BaseDynamicEmbeddingOptimizer(abc.ABC):
+    def __init__(
+        self,
+        opt_args: OptimizerArgs,
+        table_options: List[DynamicEmbTableOptions],
+        hashtables: List[DynamicEmbTable],
+    ) -> None:
+        self._opt_args: OptimizerArgs = copy.deepcopy(opt_args)
+        self._table_options: List[DynamicEmbTableOptions] = copy.deepcopy(table_options)
+
+        self._hashtables: List[DynamicEmbTable] = hashtables
+        self._num_tables: int = len(self._hashtables)
+
+        self._state_dict: Dict[str, List[DynamicEmbTable]] = {}
+        self._table_state_map: Dict[DynamicEmbTable, int] = {}
+
+        for i, ht in enumerate(self._hashtables):
+            self._table_state_map[ht] = i
+
+    def get_state_by_name(self, state_name: str) -> Union[List[DynamicEmbTable], None]:
+        """
+        Get the state from the state dictionary.
+        """
+        return self._state_dict.get(state_name, None)
+
+    def get_state(self) -> Union[Dict[str, List[DynamicEmbTable]], None]:
+        """
+        Get the state from the state dictionary.
+        """
+        return self._state_dict
+
+    def state_names(self) -> List[str]:
+        """
+        Get a list of all state names in the state dictionary.
+        """
+        return list(self._state_dict.keys())
+
+    def table_state_map(self) -> Dict[DynamicEmbTable, int]:
+        """
+        Get a list of all state names in the state dictionary.
+        """
+        return self._table_state_map
+
+    def set_learning_rate(self, new_lr) -> None:
+        self._opt_args.learning_rate = new_lr
+        return
+
+    def _create_tables(self, states: List[DynamicEmbTable]) -> None:
+        for i, table_option in enumerate(self._table_options):
+            states.append(create_dynamicemb_table(table_option))
+
+    @abc.abstractmethod
+    def update(
+        self,
+        hashtables: List[DynamicEmbTable],
+        indices: List[torch.Tensor],
+        grads: List[torch.Tensor],
+    ) -> None: ...
+
+    @abc.abstractmethod
+    def get_opt_args(self) -> Dict[str, Any]: ...
+
+    @abc.abstractmethod
+    def set_opt_args(self, args: Dict[str, Any]) -> None: ...
 
 
 class BaseDynamicEmbeddingOptimizerV2(abc.ABC):

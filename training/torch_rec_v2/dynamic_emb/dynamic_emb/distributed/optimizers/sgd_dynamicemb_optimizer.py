@@ -17,16 +17,79 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import torch
 
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import (
+    BaseDynamicEmbeddingOptimizer,
     BaseDynamicEmbeddingOptimizerV2,
     OptimizerArgs,
     get_required_arg,
 )
-from dynamic_emb_extensions import dynamic_emb_sgd_fused, dynamic_emb_sgd_with_pointer, DynamicEmbDataType
+from dynamic_emb.distributed.dynamicemb_config import (
+    DynamicEmbTableOptions,
+    DynamicEmbTable,
+    torch_to_dyn_emb,
+)
+from dynamic_emb_extensions import (
+    dynamic_emb_sgd_with_table,
+    dynamic_emb_sgd_fused,
+    dynamic_emb_sgd_with_pointer,
+    DynamicEmbDataType,
+)
+
+
+class SGDDynamicEmbeddingOptimizer(BaseDynamicEmbeddingOptimizer):
+    def __init__(
+        self,
+        opt_args: OptimizerArgs,
+        table_options: List[DynamicEmbTableOptions],
+        hashtables: List[DynamicEmbTable],
+    ) -> None:
+        super().__init__(opt_args, table_options, hashtables)
+
+    def update(
+        self,
+        hashtables: List[DynamicEmbTable],
+        indices: List[torch.Tensor],
+        grads: List[torch.Tensor],
+    ) -> None:
+        for ht in hashtables:
+            if ht not in self._hashtables:
+                raise ValueError(
+                    f"DynamicEmb ERROR: Hashtable {ht} not found in hashtables in class {self.__class__.__name__}."
+                )
+
+        lr = self._opt_args.learning_rate
+        for i, ht in enumerate(hashtables):
+            state_idx = self._table_state_map[ht]
+            table_option = self._table_options[state_idx]
+
+            grad = grads[i]
+            indice = indices[i]
+            num_indice = indice.shape[0]
+            weight_dtype = torch_to_dyn_emb(table_option.embedding_dtype)
+
+            dynamic_emb_sgd_with_table(
+                ht,
+                num_indice,
+                indice,
+                grad,
+                lr,
+                weight_dtype,
+            )
+
+    def get_opt_args(self):
+        ret_args = {
+            "lr": self._opt_args.learning_rate,
+            "opt_type": "exact_sgd",
+        }
+        return ret_args
+
+    def set_opt_args(self, args: Dict[str, Any]):
+        self._opt_args.learning_rate = get_required_arg(args, "lr")
+        return
 
 
 class SGDDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
