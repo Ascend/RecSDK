@@ -20,7 +20,8 @@
 namespace dyn_emb {
 #ifdef USE_RTTI
 DynamicVariableBase::DynamicVariableBase(
-    RowsFn rows_fn, ColsFn cols_fn, GetMaxCapacityFn get_max_capacity_fn,
+    RowsFn rows_fn, ColsFn cols_fn, IsPureHbmModeFn is_pure_hbm_mode_fn,
+    GetMaxCapacityFn get_max_capacity_fn,
     GetKeyTypeFn get_key_type_fn, GetValueTypeFn get_value_type_fn,
     GetEvictStrategyFn get_evict_strategy_fn,
     GetInitializerArgsFn get_initializer_args_fn,
@@ -38,6 +39,7 @@ DynamicVariableBase::DynamicVariableBase(
     FindAndInitializeFn find_and_initialize_fn)
     : rows_fn_(std::move(rows_fn)),
       cols_fn_(std::move(cols_fn)),
+      is_pure_hbm_mode_fn_(std::move(is_pure_hbm_mode_fn)),
       get_max_capacity_fn_(std::move(get_max_capacity_fn)),
       get_key_type_fn_(std::move(get_key_type_fn)),
       get_value_type_fn_(std::move(get_value_type_fn)),
@@ -73,6 +75,10 @@ int64_t DynamicVariableBase::rows(aclrtStream stream) {
 
 int64_t DynamicVariableBase::cols() {
     return cols_fn_();
+}
+
+bool DynamicVariableBase::is_pure_hbm_mode() const {
+    return is_pure_hbm_mode_fn_();
 }
 
 int64_t DynamicVariableBase::get_max_capacity() {
@@ -261,6 +267,7 @@ std::shared_ptr<DynamicVariableBase> VariableFactory::Create(
         table = std::make_shared<DynamicVariableBase>(
             [impl](aclrtStream s) { return impl->rows(s); },
             [impl]() { return impl->cols(); },
+            [impl]() { return impl->is_pure_hbm_mode(); },
             [impl]() { return impl->get_max_capacity(); },
             [impl]() { return impl->get_key_type(); },
             [impl]() { return impl->get_value_type(); },

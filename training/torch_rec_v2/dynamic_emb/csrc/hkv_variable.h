@@ -96,6 +96,8 @@ public:
 
     int64_t cols();
 
+    bool is_pure_hbm_mode() const;
+
     DataType get_key_type();
 
     DataType get_value_type();
@@ -245,6 +247,8 @@ public:
     int64_t rows(aclrtStream stream = 0) override;
 
     int64_t cols() override;
+
+    bool is_pure_hbm_mode() const override;
 
     DataType get_key_type() override;
 

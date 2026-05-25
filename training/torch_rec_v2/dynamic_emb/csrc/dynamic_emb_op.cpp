@@ -59,6 +59,7 @@
 #include "utils.h"
 #include "./ops/unique_op/cpu_unique.h"
 #include "./ops/Adagrad_update/adagrad_simd_tiling.h"
+#include "./custom_kernel_ops.h"
 #define LOG_ERROR(msg) std::cout << "[INFO]" << msg << std::endl
 namespace py = pybind11;
 namespace dyn_emb {
@@ -451,6 +452,36 @@ torch::Tensor load_from_pointer_imp(const torch::Tensor& pointers, torch::Tensor
         ACLRT_LAUNCH_KERNEL(load_from_pointer)(coreNum, stream, pData, outData, dim, outLen,
             blocksPerCore, remainderBlocks, THREAD_NUM, 0, static_cast<uint32_t>(outType), eleSz);
     }
+
+    return output;
+}
+
+torch::Tensor load_from_pointer_hybrid_imp(const torch::Tensor& pointers, torch::Tensor& output)
+{
+    uint32_t eleSz = output.element_size();
+    TORCH_CHECK(eleSz == 4 or eleSz == 2, "output element size must be 4 or 2");
+
+    // 传入数据量不会超过uint32_t类型上限
+    uint32_t inLen = pointers.size(0);
+    if (inLen == 0) {
+        LOG_ERROR("[DYNAMIC_EMB] load_from_pointer_hybrid: pointers is empty");
+        return output;
+    }
+
+    auto outType = scalartype_to_datatype(output.scalar_type());
+    uint32_t dim = output.size(1);
+    uint64_t outLen = static_cast<uint64_t>(inLen) * dim;
+    TORCH_CHECK(outLen == output.numel(), "output.numel() must equal pointers.numel() * output.size(1)");
+
+    void* pData = pointers.is_contiguous() ? pointers.data_ptr() : pointers.contiguous().data_ptr();
+    void* outData = output.is_contiguous() ? output.data_ptr() : output.contiguous().data_ptr();
+
+    uint32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    uint64_t totalUbSize = AclSingleton::GetInstance().GetTotalUbSize();
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+
+    dyn_emb::load_from_pointer_hybrid_ops(pData, outData, dim, inLen, stream, maxCores,
+                                          static_cast<uint32_t>(outType), totalUbSize);
 
     return output;
 }
@@ -875,6 +906,11 @@ int64_t dyn_emb_rows(std::shared_ptr<dyn_emb::DynamicVariableBase> table)
 int64_t dyn_emb_cols(std::shared_ptr<dyn_emb::DynamicVariableBase> table)
 {
     return table->cols();
+}
+
+bool dyn_emb_is_pure_hbm_mode(std::shared_ptr<dyn_emb::DynamicVariableBase> table)
+{
+    return table->is_pure_hbm_mode();
 }
 
 void count_matched(std::shared_ptr<dyn_emb::DynamicVariableBase> table,
@@ -2063,7 +2099,10 @@ void bind_dyn_emb_op(py::module& m)
 
     m.def("dyn_emb_cols", &dyn_emb_cols, "Get the number of columns in the table",
           py::arg("table"));
-  
+
+    m.def("dyn_emb_is_pure_hbm_mode", &dyn_emb_is_pure_hbm_mode,
+          "Check whether all value storage currently resides in HBM", py::arg("table"));
+
     m.def("export_batch_matched", &export_batch_matched,
           "Export KV-pairs within [offset, offset + n) whose score > threshold", py::arg("table"),
           py::arg("threshold"), py::arg("n"), py::arg("offset"), py::arg("num_matched"),
@@ -2118,7 +2157,9 @@ void bind_dyn_emb_op(py::module& m)
     m.def("device_timestamp", &device_timestamp, "device_timestamp");
 
     m.def("load_from_pointer", &load_from_pointer_imp, "load_from_pointer", py::arg("pointers"), py::arg("dst"));
-
+    
+    m.def("load_from_pointer_hybrid", &load_from_pointer_hybrid_imp, "load_from_pointer_hybrid", py::arg("pointers"), py::arg("dst"));
+    
     m.def("reduce_grads", &reduce_grads, "reduce grads", py::arg("grad"), py::arg("unique"), py::arg("inverse"));
 
     m.def("dynamic_emb_Adam_with_pointer", &dyn_emb::dynamic_emb_Adam_with_pointer,

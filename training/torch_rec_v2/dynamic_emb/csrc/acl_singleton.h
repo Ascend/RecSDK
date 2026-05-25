@@ -53,6 +53,14 @@ aclTensor* CreateAclTensorFromAtTensor(const at::Tensor& tensor, aclDataType typ
     return aclTensorPtr;
 }
 
+// 1 KB = 1024 B，左移位数
+constexpr uint64_t kKilobyteShiftBits = 10;
+// 千字节
+constexpr uint64_t kKb(uint64_t n)
+{
+    return n << kKilobyteShiftBits;
+}
+
 class AclSingleton {
 public:
     AclSingleton(const AclSingleton&) = delete;
@@ -66,21 +74,42 @@ public:
 
     size_t GetMaxCores() const
     {
-        return maxCores;
+        return maxCores_;
+    }
+
+    uint64_t GetTotalUbSize() const
+    {
+        return totalUbSize_;
+    }
+
+    uint64_t GetMixedOpUbSize() const
+    {
+        return mixedOpUbSize_;
     }
 
 private:
     AclSingleton()
     {
         auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance();
-        if (ascendcPlatform != nullptr) {
-            maxCores = ascendcPlatform->GetCoreNumAiv();
-        } else {
+        if (ascendcPlatform == nullptr) {
             throw std::runtime_error("ascendcPlatform does not exist");
+        }
+        maxCores_ = ascendcPlatform->GetCoreNumAiv();
+        if (maxCores_ == 0) {
+            throw std::runtime_error("get block dim failed");
+        }
+        ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, totalUbSize_);
+
+        constexpr uint64_t RESERVE_UB_SIZE = kKb(8);
+        constexpr uint64_t SIMT_UB_SIZE = kKb(32);
+        if (totalUbSize_ > RESERVE_UB_SIZE + SIMT_UB_SIZE) {
+            mixedOpUbSize_ = totalUbSize_ - RESERVE_UB_SIZE - SIMT_UB_SIZE;
         }
     }
     ~AclSingleton() {}
 
-    size_t maxCores;
+    size_t maxCores_ = 0;
+    uint64_t totalUbSize_ = 0;
+    uint64_t mixedOpUbSize_ = 0;
 };
 }  // namespace dyn_emb
