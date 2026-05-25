@@ -101,26 +101,20 @@ class TestKeyValueTable(unittest.TestCase):
         self.mock_optimizer = MockOptimizer(args)
         self.mock_table = MagicMock()
 
-    def test_find_impl_partial_hit(self):
-        batch_size = 4
-        unique_keys = torch.tensor([101, 102, 103, 104], dtype=torch.int64)  # 测试key
+    def _run_find_impl_with_founds(self, expected_founds, expected_pointers, is_pure_hbm_mode):
+        batch_size = expected_founds.numel()
+        unique_keys = torch.arange(101, 101 + batch_size, dtype=torch.int64)
         unique_embs = torch.empty(
-            batch_size, self.options.dim,
-            dtype=self.options.embedding_dtype
+            batch_size, self.options.dim, dtype=self.options.embedding_dtype
         )
-
-        expected_founds = torch.tensor([True, False, True, False])  # 101、103命中
-        expected_pointers = torch.tensor([42, 0, 105, 0])  # 命中的key对应底层存储指针
-        # 预期的缺失结果
-        expected_num_missing = 2
-        expected_missing_keys = torch.tensor([102, 104])
-        expected_missing_indices = torch.tensor([1, 3])
 
         with patch("dynamic_emb.distributed.key_value_table.create_dynamicemb_table", return_value=self.mock_table), \
              patch("dynamic_emb.distributed.key_value_table.EvictStrategy") as mock_evict_strategy, \
-                patch("dynamic_emb.distributed.key_value_table.find_pointers") as mock_find_pointers, \
-                patch("dynamic_emb.distributed.key_value_table.load_from_pointer") as mock_load_from_pointers:
-            # 配置EvictStrategy mock：模拟非KLru策略（让_use_score=True）
+             patch("dynamic_emb.distributed.key_value_table.find_pointers") as mock_find_pointers, \
+             patch("dynamic_emb.distributed.key_value_table.dyn_emb_is_pure_hbm_mode",
+                   return_value=is_pure_hbm_mode) as mock_is_pure_hbm_mode, \
+             patch("dynamic_emb.distributed.key_value_table.load_from_pointer") as mock_load_from_pointer, \
+             patch("dynamic_emb.distributed.key_value_table.load_from_pointer_hybrid") as mock_load_from_pointer_hybrid:
             mock_evict_strategy.KLru = "KLru"
             mock_evict_strategy.LRU = "LRU"
             self.mock_table.get_evict_strategy.return_value = mock_evict_strategy.LRU
@@ -129,16 +123,74 @@ class TestKeyValueTable(unittest.TestCase):
 
             kv_table = KeyValueTable(self.options, self.mock_optimizer)
 
-            # 配置find_pointers mock：模拟修改传入的pointers和founds张量
             def find_pointers_side_effect(table, batch, keys, pointers, founds, *args):
-                pointers.copy_(expected_pointers)  # 写入命中的指针
-                founds.copy_(expected_founds)      # 写入命中标记
-            mock_find_pointers.side_effect = find_pointers_side_effect
-            num_missing, missing_keys, missing_indices = kv_table.find_impl(unique_keys, unique_embs)
+                pointers.copy_(expected_pointers)
+                founds.copy_(expected_founds)
 
-            self.assertEqual(num_missing, expected_num_missing)
-            torch.testing.assert_close(missing_keys, expected_missing_keys)  # 缺失key一致
-            torch.testing.assert_close(missing_indices, expected_missing_indices)  # 缺失索引一致
+            mock_find_pointers.side_effect = find_pointers_side_effect
+            return kv_table.find_impl(unique_keys, unique_embs), {
+                "mock_is_pure_hbm_mode": mock_is_pure_hbm_mode,
+                "mock_load_from_pointer": mock_load_from_pointer,
+                "mock_load_from_pointer_hybrid": mock_load_from_pointer_hybrid,
+            }
+
+    def test_find_impl_partial_hit(self):
+        expected_founds = torch.tensor([True, False, True, False])  # 101、103命中
+        expected_pointers = torch.tensor([42, 0, 105, 0])  # 命中的key对应底层存储指针
+        expected_num_missing = 2
+        expected_missing_keys = torch.tensor([102, 104])
+        expected_missing_indices = torch.tensor([1, 3])
+
+        (num_missing, missing_keys, missing_indices), mocks = self._run_find_impl_with_founds(
+            expected_founds, expected_pointers, is_pure_hbm_mode=True
+        )
+
+        self.assertEqual(num_missing, expected_num_missing)
+        torch.testing.assert_close(missing_keys, expected_missing_keys)
+        torch.testing.assert_close(missing_indices, expected_missing_indices)
+        mocks["mock_is_pure_hbm_mode"].assert_called_once_with(self.mock_table)
+        mocks["mock_load_from_pointer"].assert_called_once()
+        mocks["mock_load_from_pointer_hybrid"].assert_not_called()
+
+    def test_find_impl_pure_hbm_mode_uses_load_from_pointer(self):
+        expected_founds = torch.tensor([True, True])
+        expected_pointers = torch.tensor([11, 22], dtype=torch.long)
+
+        _, mocks = self._run_find_impl_with_founds(
+            expected_founds, expected_pointers, is_pure_hbm_mode=True
+        )
+
+        mocks["mock_is_pure_hbm_mode"].assert_called_once_with(self.mock_table)
+        mocks["mock_load_from_pointer"].assert_called_once()
+        mocks["mock_load_from_pointer_hybrid"].assert_not_called()
+        pointers_new, _ = mocks["mock_load_from_pointer"].call_args[0]
+        torch.testing.assert_close(pointers_new, expected_pointers)
+
+    def test_find_impl_non_pure_hbm_mode_uses_load_from_pointer_hybrid(self):
+        expected_founds = torch.tensor([True, True])
+        expected_pointers = torch.tensor([33, 44], dtype=torch.long)
+
+        _, mocks = self._run_find_impl_with_founds(
+            expected_founds, expected_pointers, is_pure_hbm_mode=False
+        )
+
+        mocks["mock_is_pure_hbm_mode"].assert_called_once_with(self.mock_table)
+        mocks["mock_load_from_pointer_hybrid"].assert_called_once()
+        mocks["mock_load_from_pointer"].assert_not_called()
+        pointers_new, _ = mocks["mock_load_from_pointer_hybrid"].call_args[0]
+        torch.testing.assert_close(pointers_new, expected_pointers)
+
+    def test_find_impl_no_hit_skips_load(self):
+        expected_founds = torch.tensor([False, False, False, False])
+        expected_pointers = torch.zeros(4, dtype=torch.long)
+
+        _, mocks = self._run_find_impl_with_founds(
+            expected_founds, expected_pointers, is_pure_hbm_mode=True
+        )
+
+        mocks["mock_is_pure_hbm_mode"].assert_not_called()
+        mocks["mock_load_from_pointer"].assert_not_called()
+        mocks["mock_load_from_pointer_hybrid"].assert_not_called()
 
     def test_insert_with_score(self):
         """测试当 _use_score 为 True 时的插入行为。"""

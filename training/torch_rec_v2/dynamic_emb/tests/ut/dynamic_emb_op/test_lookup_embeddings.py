@@ -26,6 +26,7 @@ from dynamic_emb_extensions import (
     OptimizerType,
     find_pointers,
     load_from_pointer,
+    load_from_pointer_hybrid,
 )
 
 
@@ -101,6 +102,25 @@ def test_load_from_pointer(device, N, dim, val_type):
     dst = torch.zeros(N, dim, dtype=val_type, device=f'npu:{device}')
 
     result = load_from_pointer(pointers, dst)
+    expected = inputs
+
+    diff = torch.abs(result.cpu() - expected.cpu())
+    max_diff = torch.max(diff).item()
+    assert max_diff == 0
+    torch.npu.empty_cache()
+
+
+@pytest.mark.parametrize("device", [0])
+@pytest.mark.parametrize("N", [1, 10, 100, 1000, 10000, 100000, 1000000, 10000001])
+@pytest.mark.parametrize("dim", [8, 64, 128, 256, 512, 513, 1024, 1025])
+@pytest.mark.parametrize('val_type', [torch.float32, torch.float16, torch.bfloat16])
+def test_load_from_pointer_hybrid(device, N, dim, val_type):
+    torch.npu.set_device(device)
+    inputs = torch.randn(N, dim, dtype=val_type, device=f'npu:{device}')
+    pointers = get_dim_pointers_optimized(inputs)
+    dst = torch.zeros(N, dim, dtype=val_type, device=f'npu:{device}')
+
+    result = load_from_pointer_hybrid(pointers, dst)
     expected = inputs
 
     diff = torch.abs(result.cpu() - expected.cpu())

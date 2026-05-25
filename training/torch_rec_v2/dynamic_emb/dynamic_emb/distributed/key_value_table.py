@@ -56,7 +56,9 @@ from dynamic_emb_extensions import (
     device_timestamp,
     count_matched,
     export_batch_matched,
-    insert_and_evict
+    insert_and_evict,
+    dyn_emb_is_pure_hbm_mode,
+    load_from_pointer_hybrid,
 )
 
 
@@ -270,7 +272,10 @@ class KeyValueTable(
             pointers_new = pointers[founds]
             tmp_embs = torch.empty((find_num, unique_embs.size(1)), dtype=unique_embs.dtype,
                                    device=unique_embs.device)
-            load_from_pointer(pointers_new, tmp_embs)
+            if dyn_emb_is_pure_hbm_mode(self.table):
+                load_from_pointer(pointers_new, tmp_embs)
+            else:
+                load_from_pointer_hybrid(pointers_new, tmp_embs)
             unique_embs[founds, :] = tmp_embs[:, :]
 
         missing = torch.logical_not(founds)

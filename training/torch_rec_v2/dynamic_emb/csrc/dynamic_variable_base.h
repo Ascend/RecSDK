@@ -83,6 +83,7 @@ class DynamicVariableBase {
 public:
     using RowsFn = std::function<int64_t(aclrtStream)>;
     using ColsFn = std::function<int64_t()>;
+    using IsPureHbmModeFn = std::function<bool()>;
     using GetMaxCapacityFn = std::function<int64_t()>;
     using GetKeyTypeFn = std::function<DataType()>;
     using GetValueTypeFn = std::function<DataType()>;
@@ -127,6 +128,7 @@ public:
     DynamicVariableBase(
         RowsFn rows_fn,
         ColsFn cols_fn,
+        IsPureHbmModeFn is_pure_hbm_mode_fn,
         GetMaxCapacityFn get_max_capacity_fn,
         GetKeyTypeFn get_key_type_fn,
         GetValueTypeFn get_value_type_fn,
@@ -160,6 +162,7 @@ public:
 
     int64_t rows(aclrtStream stream = 0);
     int64_t cols();
+    bool is_pure_hbm_mode() const;
     int64_t get_max_capacity();
     DataType get_key_type();
     DataType get_value_type();
@@ -254,6 +257,7 @@ public:
 private:
     RowsFn rows_fn_;
     ColsFn cols_fn_;
+    IsPureHbmModeFn is_pure_hbm_mode_fn_;
     GetMaxCapacityFn get_max_capacity_fn_;
     GetKeyTypeFn get_key_type_fn_;
     GetValueTypeFn get_value_type_fn_;
@@ -289,6 +293,7 @@ public:
     virtual ~DynamicVariableBase() = default;
     virtual int64_t rows(aclrtStream stream = 0) = 0;
     virtual int64_t cols() = 0;
+    virtual bool is_pure_hbm_mode() const = 0;
     virtual int64_t get_max_capacity() = 0;
     virtual DataType get_key_type() = 0;
     virtual DataType get_value_type() = 0;

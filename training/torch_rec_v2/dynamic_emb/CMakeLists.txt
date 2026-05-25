@@ -59,12 +59,14 @@ include(cmake/CommonTorchOpConfig.cmake)
 set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/csrc/dynamic_variable_base.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/csrc/hkv_variable.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/csrc/custom_kernel_ops.cpp
     PROPERTIES LANGUAGE ASC
 )
 
 add_library(dynamic_variable_base SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/csrc/dynamic_variable_base.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/csrc/hkv_variable.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/csrc/custom_kernel_ops.cpp
 )
 
 set_target_properties(dynamic_variable_base PROPERTIES
@@ -117,6 +119,7 @@ file(GLOB_RECURSE MAIN_SOURCE_FILES
 list(FILTER MAIN_SOURCE_FILES EXCLUDE REGEX ".*ops.*")
 list(REMOVE_ITEM MAIN_SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/csrc/dynamic_variable_base.cpp)
 list(REMOVE_ITEM MAIN_SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/csrc/hkv_variable.cpp)
+list(REMOVE_ITEM MAIN_SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/csrc/custom_kernel_ops.cpp)
 message(STATUS "Main source files: ${MAIN_SOURCE_FILES}")
 
 # 构建主Python扩展

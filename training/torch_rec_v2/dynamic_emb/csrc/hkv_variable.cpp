@@ -413,6 +413,12 @@ int64_t HKVVariable<KeyType, ValueType, Strategy>::cols()
 }
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+bool HKVVariable<KeyType, ValueType, Strategy>::is_pure_hbm_mode() const
+{
+    return hkv_table_->is_pure_hbm_mode();
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 EvictStrategy HKVVariable<KeyType, ValueType, Strategy>::evict_strategy() const
 {
     return Strategy;
@@ -767,8 +773,8 @@ void HKVVariable<KeyType, ValueType, Strategy>::find_or_insert(const size_t n, c
         return;
     }
 
-    // 当前HKV无法判断是否使用HOST DDR，因此默认使用SIMD算子确保功能正确；
-    static bool simd_flag = true;
+    // 当使用HOST DDR时，使用SIMD算子；
+    bool simd_flag = !is_pure_hbm_mode();
     if (simd_flag) {
         const uint32_t buffer_num = 1;  // 不开double_buffer，只有1片内存
         auto tiling = npu::hkv::GetValueMoveTiling(n, maxCores, optstate_dim, sizeof(ValueType), true, buffer_num);

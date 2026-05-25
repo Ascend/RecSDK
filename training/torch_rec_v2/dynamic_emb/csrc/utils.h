@@ -21,7 +21,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+
 namespace dyn_emb {
+
+constexpr uint32_t kDoubleBuffer = 2;
 
 // 计算大于等于value的最小2的幂
 inline int64_t next_power_of_two(int64_t value)
@@ -106,6 +109,72 @@ enum class OptimizerType : int {
         default:                                                            \
             exit(EXIT_FAILURE);                                             \
     }
+
+
+// SIMD 向量搬运类算子的启动分核与 tiling 参数。
+struct SimdValueMoveLaunchTiling {
+    uint32_t block_dim;              // 实际启动核数
+    uint32_t former_num;             // 多搬运 1 条数据的核数
+    uint64_t former_core_move_num;   // 上述每个核搬运的条数
+    uint64_t tail_core_move_num;       // 其余核每个核搬运的条数
+    uint64_t valid_ub_size;            // 内核 UB 可用空间，用于 <<<block_dim, valid_ub_size, stream>>>
+    uint32_t tile_size;                // 每条数据按 dim 切分时的 tile 大小
+    uint32_t num_tiles;                // 每条数据的 tile 个数
+};
+
+/**
+ * @brief 计算 SIMD 向量 value-move 类算子的启动分核与 tiling 参数。
+ *
+ * 当 n < max_block_dim 时，仅 former_num（等于 n）个核有搬运任务，会将 block_dim 缩减为 n，
+ * 避免多余核心空转。
+ *
+ * @param n              待搬运的数据条数（如指针个数）
+ * @param max_block_dim  平台最大可用核数（通常取 AclSingleton::GetMaxCores()）
+ * @param dim            每条数据的元素个数（embedding 维度）
+ * @param element_size   单个元素字节数（如 sizeof(float)）
+ * @param valid_ub_size  单核可用 UB 大小，由调用方根据场景选择：
+ *                       - 纯 SIMD 算子：AclSingleton::GetInstance().GetTotalUbSize()
+ *                       - 混合 SIMT+SIMD 算子：AclSingleton::GetInstance().GetMixedOpUbSize()
+ * @param buffer_num     UB 双缓冲份数，默认 kDoubleBuffer（2）
+ *
+ * @return SimdValueMoveLaunchTiling 启动参数，用于内核 launch 及内核内分核逻辑。
+ *
+ * 调用示例（load_from_pointer_hybrid）：
+ * @code
+ *   uint32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+ *   uint64_t ubSize = AclSingleton::GetInstance().GetTotalUbSize();  // 或 GetMixedOpUbSize()
+ *   auto tiling = ComputeSimdValueMoveLaunchTiling(num, maxCores, dim, sizeof(T), ubSize);
+ *   kernel<T><<<tiling.block_dim, tiling.valid_ub_size, stream>>>(
+ *       tiling.former_num, tiling.former_core_move_num, tiling.tail_core_move_num,
+ *       tiling.tile_size, tiling.num_tiles, dim, dst, num, src_ptrs);
+ * @endcode
+ */
+inline SimdValueMoveLaunchTiling ComputeSimdValueMoveLaunchTiling(uint32_t n, uint32_t max_block_dim, uint32_t dim,
+                                                                uint32_t element_size, uint64_t valid_ub_size,
+                                                                uint32_t buffer_num = kDoubleBuffer)
+{
+    SimdValueMoveLaunchTiling info;
+    info.block_dim = max_block_dim;
+    if (n > 0 && n < max_block_dim) {
+        info.block_dim = n;
+    }
+    if (info.block_dim == 0) {
+        info.block_dim = 1;
+    }
+
+    info.tail_core_move_num = n / info.block_dim;
+    info.former_core_move_num = info.tail_core_move_num + 1;
+    info.former_num = n - info.tail_core_move_num * info.block_dim;
+    info.valid_ub_size = valid_ub_size;
+
+    uint32_t max_tile_size = static_cast<uint32_t>(info.valid_ub_size / (buffer_num * element_size));
+    if (max_tile_size == 0) {
+        max_tile_size = 1;
+    }
+    info.tile_size = (dim <= max_tile_size) ? dim : max_tile_size;
+    info.num_tiles = (dim + info.tile_size - 1) / info.tile_size;
+    return info;
+}
 
 class DeviceProp {
 public:
