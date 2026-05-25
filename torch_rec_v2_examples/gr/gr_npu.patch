@@ -166,10 +166,10 @@ index 7c3e43a..aa19e2c 100644
  
 diff --git a/examples/hstu/configs/fsdp2_config.yaml b/examples/hstu/configs/fsdp2_config.yaml
 new file mode 100644
-index 0000000..3efac30
+index 0000000..8eb0622
 --- /dev/null
 +++ b/examples/hstu/configs/fsdp2_config.yaml
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,36 @@
 +# FSDP2 Configuration for GR Model
 +# Based on: https://mindspeed-mm.readthedocs.io/zh-cn/latest/config/fsdp2%E9%85%8D%E7%BD%AE.html#fsdp2-config
 +
@@ -204,7 +204,6 @@ index 0000000..3efac30
 +  # 自定义模块
 +  - "modules.multi_task_loss_module.MultiTaskLossModule"
 +  - "modules.metrics.metric_modules.MultiClassificationTaskMetric"
-+  - "torchrec_embcache.distributed.embedding.EmbCacheShardedEmbeddingCollection"
 +  - "dynamic_emb.distributed.embedding.ShardedDynamicEmbeddingCollection"
 +  - "modules.mlp.MLP"
 \ No newline at end of file
@@ -2423,7 +2422,7 @@ index d0fc57c..c6ac492 100644
  
  @gin.configurable
 diff --git a/examples/hstu/training/training.py b/examples/hstu/training/training.py
-index f975842..fc1225b 100644
+index f975842..5ce57d7 100644
 --- a/examples/hstu/training/training.py
 +++ b/examples/hstu/training/training.py
 @@ -18,6 +18,7 @@ from typing import Iterator, Optional, Union
@@ -2434,7 +2433,45 @@ index f975842..fc1225b 100644
  import torch.distributed as dist
  from commons.checkpoint import get_unwrapped_module
  from commons.utils.gpu_timer import GPUTimer
-@@ -46,7 +47,7 @@ def evaluate(
+@@ -34,6 +35,37 @@ from pipeline.train_pipeline import (
+ from training.gin_config_args import TrainerArgs
+ from training.utils import cal_flops
+ 
++import time
++import numpy as np
++
++def latency_summary_rank0(latency_list, batch_size, model_name, device_name, inductor_flag):
++    ave_step = np.array(latency_list)
++    avg_time = sum(ave_step) / len(ave_step)
++    ave_step.sort()
++
++    if len(ave_step) > 0:
++        p90 = np.percentile(ave_step, 90, method="lower")
++        p95 = np.percentile(ave_step, 95, method="lower")
++        p99 = np.percentile(ave_step, 99, method="lower")
++        p999 = np.percentile(ave_step, 99.9, method="lower")
++
++    e2e_result = {
++        "Batch_size": batch_size,
++        "model_name": model_name,
++        "AVG Latency": avg_time,
++        "P999 Latency": p999,
++        "P99 Latency": p99,
++        "P95 Latency": p95,
++        "P90 Latency": p90,
++    }
++
++    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
++
++    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
++        f.write(output_str + "\n")
++    return avg_time
+ 
+ def evaluate(
+     pipeline: Union[
+@@ -46,7 +78,7 @@ def evaluate(
      eval_loader: torch.utils.data.DataLoader,
  ):
      eval_iter = 0
@@ -2443,16 +2480,17 @@ index f975842..fc1225b 100644
      max_eval_iters = trainer_args.max_eval_iters or len(eval_loader)
      max_eval_iters = min(max_eval_iters, len(eval_loader))
      # make a copy of eval_loader to avoid modifying the original loader
-@@ -76,7 +77,7 @@ def evaluate(
+@@ -76,7 +108,8 @@ def evaluate(
          f"[eval] [eval {eval_iter * dp_size * trainer_args.eval_batch_size} users]:\n    "
          + stringify_dict(eval_metric_dict, prefix="Metrics", sep="\n    ")
      )
 -    torch.cuda.nvtx.range_pop()
 +    # torch.cuda.nvtx.range_pop()
++    return eval_metric_dict
  
  
  def maybe_load_ckpts(
-@@ -111,7 +112,7 @@ def save_ckpts(
+@@ -111,7 +144,7 @@ def save_ckpts(
              os.makedirs(ckpt_save_dir, exist_ok=True)
          except Exception as e:
              raise Exception("can't build path:", ckpt_save_dir) from e
@@ -2461,7 +2499,7 @@ index f975842..fc1225b 100644
      checkpoint.save(ckpt_save_dir, model, dense_optimizer=dense_optimizer)
      print_rank_0(f"Checkpoints saved!!")
  
-@@ -155,15 +156,49 @@ def train_with_pipeline(
+@@ -155,15 +188,51 @@ def train_with_pipeline(
      iter_slices = batched(train_loader_iter, n)
      start_iter = 0
      pipeline._model.train()
@@ -2470,13 +2508,10 @@ index f975842..fc1225b 100644
 +    PROFILE_ENABLE = os.environ.get("NPU_PROFILE", "0").lower() in ("1", "true")
 +    if PROFILE_ENABLE:
 +        experimental_config = torch_npu.profiler._ExperimentalConfig(
-+            export_type=[
-+                torch_npu.profiler.ExportType.Text,
-+                torch_npu.profiler.ExportType.Db,
-+                ],
++            export_type=torch_npu.profiler.ExportType.Text,
 +            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
 +            msprof_tx=False,
-+            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++            aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
 +            l2_cache=False,
 +            op_attr=False,
 +            data_simplification=False,
@@ -2489,19 +2524,24 @@ index f975842..fc1225b 100644
 +            torch_npu.profiler.ProfilerActivity.CPU,
 +            torch_npu.profiler.ProfilerActivity.NPU
 +            ],
-+        schedule=torch_npu.profiler.schedule(wait=10, warmup=0, active=1, repeat=1, skip_first=1),
++        schedule=torch_npu.profiler.schedule(wait=50, warmup=0, active=10, repeat=1, skip_first=1),
 +        on_trace_ready=torch_npu.profiler.tensorboard_trace_handler("./result"),
-+        record_shapes=False,
++        record_shapes=True,
 +        profile_memory=False,
-+        with_stack=True,
-+        with_modules=True,
++        with_stack=False,
++        with_modules=False,
 +        with_flops=False,
 +        experimental_config=experimental_config)
 +
 +        prof.start()
++
++    epoch = 0
++    train_times = []
++
      for batched_iterator in iter_slices:
          # for one slice(every eval interval)
          for train_iter in count(start_iter):
++            start_time = time.time()
              if trainer_args.profile and train_iter == trainer_args.profile_step_start:
 -                dist.barrier(device_ids=[torch.cuda.current_device()])
 -                torch.cuda.profiler.start()
@@ -2515,7 +2555,7 @@ index f975842..fc1225b 100644
              if (
                  train_iter * trainer_args.ckpt_save_interval > 0
                  and train_iter % trainer_args.ckpt_save_interval == 0
-@@ -173,7 +208,7 @@ def train_with_pipeline(
+@@ -173,7 +242,7 @@ def train_with_pipeline(
                  )
                  save_ckpts(save_path, pipeline._model, dense_optimizer)
              try:
@@ -2524,7 +2564,7 @@ index f975842..fc1225b 100644
                  reporting_loss, (
                      local_loss,
                      logits,
-@@ -184,10 +219,12 @@ def train_with_pipeline(
+@@ -184,12 +253,22 @@ def train_with_pipeline(
                  ddp_num_contextuals.append(ddp_num_contextual.view(-1))
                  ddp_num_candidates.append(ddp_num_candidate.view(-1))
                  tokens_logged += reporting_loss[1]
@@ -2538,15 +2578,63 @@ index f975842..fc1225b 100644
 +                # torch.cuda.nvtx.range_pop()
                  break
              # log
++            if train_iter > 100 and train_iter % trainer_args.eval_interval > 10:
++                train_times.append(train_time)
++
++            final_loss_value = reporting_loss[0] / reporting_loss[1]
++            if train_iter % 10 == 0:
++                train_time = time.time() - start_time
++                print_rank_0(f"epoch: {epoch}, step: [{train_iter} / {trainer_args.max_train_iters}], loss = {reporting_loss[0] / reporting_loss[1]:.6f}, time = {train_time}")
++
              if train_iter > 0 and (train_iter + 1) % trainer_args.log_interval == 0:
-@@ -217,3 +254,5 @@ def train_with_pipeline(
+                 gpu_timer.stop()
+                 cur_td = gpu_timer.elapsed_time() - last_td
+@@ -210,10 +289,42 @@ def train_with_pipeline(
+         # TODO CHECK if train pipeline is flushed
+         if train_iter > 0 and train_iter % trainer_args.eval_interval == 0:
+             pipeline._model.eval()
+-            evaluate(
++            metrics_dict = evaluate(
+                 pipeline,
+                 stateful_metric_module,
+                 trainer_args=trainer_args,
                  eval_loader=eval_loader,
              )
++            last_metrics = metrics_dict
              pipeline._model.train()
++        epoch += 1
 +    if PROFILE_ENABLE:
 +        prof.stop()
++
++    avg_time = latency_summary_rank0(train_times, trainer_args.train_batch_size, "ranking", "NPU", "eager")
++
++    auc_value = last_metrics.get('task0.AUC', 0.0)
++    if hasattr(auc_value, 'item'):
++        auc_value = auc_value.item()
++    final_results = {
++        'dataset_name': "ml-20m",
++        'batch_size': trainer_args.train_batch_size,
++        'epoch': epoch,
++        'step': train_iter,
++        'final_loss': final_loss_value.cpu().item(),
++        "ms/step": float(avg_time) * 1000,
++        'metrics': {
++            'AUC': float(auc_value)
++        }
++    }
++
++    model_detail_info = "NPU" + "_" + "ranking" + "_" + "eager"
++    output_str = model_detail_info + "_" + str(final_results)
++    print_rank_0(f"The Final Result: {output_str}")
++    with open(f"../save_results_NPU/precision_result.txt", "a", encoding="utf-8") as f:
++        f.write(output_str + "\n")
++
++    del final_results["ms/step"]
++    os.makedirs(f"../save_results_NPU/ranking", exist_ok=True)
++    torch.save(final_results, f"../save_results_NPU/ranking/predictions_ranking_eager_{train_iter}.pt")
++
 diff --git a/examples/hstu/training/utils.py b/examples/hstu/training/utils.py
-index dc4f541..4887a6a 100644
+index dc4f541..24a6a40 100644
 --- a/examples/hstu/training/utils.py
 +++ b/examples/hstu/training/utils.py
 @@ -28,7 +28,7 @@ from configs import (
@@ -2611,6 +2699,15 @@ index dc4f541..4887a6a 100644
              )
      return dynamic_options_dict
  
+@@ -405,7 +416,7 @@ def get_dataset_and_embedding_args() -> (
+         benchmark_dataset_args = BenchmarkDatasetArgs()  # type: ignore[call-arg]
+         return benchmark_dataset_args, benchmark_dataset_args.embedding_args
+     assert isinstance(dataset_args, DatasetArgs)
+-    HASH_SIZE = 10_000_000
++    HASH_SIZE = 10_000_00
+     if dataset_args.dataset_name == "kuairand-pure":
+         return dataset_args, [
+             EmbeddingArgs(
 @@ -606,25 +617,33 @@ def get_dataset_and_embedding_args() -> (
          ]
      elif dataset_args.dataset_name == "ml-20m":
