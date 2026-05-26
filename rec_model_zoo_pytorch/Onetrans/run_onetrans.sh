@@ -23,7 +23,7 @@ export ASCEND_RT_VISIBLE_DEVICES=${VISIBLE_DEVICES}
 export CUDA_VISIBLE_DEVICES=${VISIBLE_DEVICES}
 
 #修改为# rec算子libfbgemm_npu_api.so的路径
-export LD_LIBRARY_PATH=
+export LIB_FBGEMM_NPU_API_SO_PATH=
 
 unset ASCEND_CUSTOM_OPP_PATH
 cur_dir=$(dirname "$0")
