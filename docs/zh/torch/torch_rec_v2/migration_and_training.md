@@ -32,7 +32,7 @@
     from torchrec.distributed.model_parallel import get_default_sharders
 
     class TestModel(torch.nn.Module):
-        def __init__(self, *):
+        def __init__(self, *args, **kwargs):
             self.ec = EmbeddingCollection(···)
 
         def forward(self, batch):
@@ -78,9 +78,9 @@
     ...
 
     class TestModel(torch.nn.Module):
-        def __init__(self, *):
-            self.ec = EmbeddingCollection()
-        def forward(self, *):
+        def __init__(self, *args, **kwargs):
+            self.ec = EmbeddingCollection(...)
+        def forward(self, *args, **kwargs):
             pass
     def invoke_main():
         rank, world_size = get_distribute_env()
@@ -188,10 +188,10 @@ elif network_args.kernel_backend == "npu_fused":
 ```python
 # 稀疏表分表相关接口
 from dynamic_emb import (
-    DynamicEmbeddingEnumerator, 
-    DynamicEmbParameterConstraints, 
+    DynamicEmbeddingEnumerator,
+    DynamicEmbParameterConstraints,
     DynamicEmbTableOptions,
-    DynamicEmbeddingShardingPlanner, 
+    DynamicEmbeddingShardingPlanner,
     DynamicEmbeddingCollectionSharder,
 )
 ···
@@ -437,7 +437,7 @@ def bind_memory_to_numa0():
 
 ```bash
 git clone -b main https://github.com/facebookresearch/dlrm.git
-cd dlrm && git checkout b631a99 
+cd dlrm && git checkout b631a99
 ```
 
 主要修改内容如下：
