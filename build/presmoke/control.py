@@ -19,12 +19,14 @@ import subprocess
 
 from pathlib import Path
 
+# fmt:off
 CHANGES = "changes.txt"
 ALLOWED_EXTENSIONS = {'.py', '.h', '.cpp', '.hpp', '.sh', '.cmake'}
 MODULE_MAPS = {
     'common': 'hstu',
     'cmake': 'hstu',
-    'hstu_dense_forward': 'hstu'
+    'hstu_dense_forward': 'hstu',
+    'hstu_dense_backward': 'hstu'
 }
 
 
@@ -35,7 +37,7 @@ def is_source_code_file(file: str) -> bool:
 def read_changes(src: str) -> list[str]:
     if not os.path.exists(src):
         return []
-    with open(src, "r") as f:
+    with open(src, "r", encoding="utf-8") as f:
         changes = map(lambda line: line.strip(), f)
         changes = list(filter(is_source_code_file, changes))
     return changes
