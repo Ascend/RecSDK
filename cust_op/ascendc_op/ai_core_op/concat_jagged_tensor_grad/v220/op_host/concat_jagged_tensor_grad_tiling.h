@@ -20,17 +20,18 @@ See the License for the specific language governing permissions and
 constexpr uint32_t MAX_SLICE_SIZE = 2 * 1024;
 namespace optiling {
 BEGIN_TILING_DATA_DEF(ConcatJaggedTensorGradTilingData)
-    TILING_DATA_FIELD_DEF(uint32_t, jtNum);
-    TILING_DATA_FIELD_DEF(uint32_t, inputColSize);
-    TILING_DATA_FIELD_DEF(uint32_t, ubMaxLength);
-    TILING_DATA_FIELD_DEF(uint32_t, formerCore);
-    TILING_DATA_FIELD_DEF(uint32_t, tailCore);
-    TILING_DATA_FIELD_DEF(uint32_t, batchNumInTail);
-    TILING_DATA_FIELD_DEF(uint32_t, batchNumInFormer);
+TILING_DATA_FIELD_DEF(uint32_t, jtNum);
+TILING_DATA_FIELD_DEF(uint32_t, inputColSize);
+TILING_DATA_FIELD_DEF(uint32_t, ubMaxLength);
+TILING_DATA_FIELD_DEF(uint32_t, formerCore);
+TILING_DATA_FIELD_DEF(uint32_t, tailCore);
+TILING_DATA_FIELD_DEF(uint32_t, batchNumInTail);
+TILING_DATA_FIELD_DEF(uint32_t, batchNumInFormer);
+TILING_DATA_FIELD_DEF(uint32_t, indexSliceForRight);
 
-    TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_SLICE_SIZE, inputOffsetBegin)
-    TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_SLICE_SIZE, sliceSize)
-    TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_SLICE_SIZE, outputOffsetBegin)
+TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_SLICE_SIZE + 1, inputOffsetBegin)
+TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_SLICE_SIZE + 1, sliceSize)
+TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_SLICE_SIZE + 1, outputOffsetBegin)
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ConcatJaggedTensorGrad, ConcatJaggedTensorGradTilingData)

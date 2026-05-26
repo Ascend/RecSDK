@@ -53,14 +53,9 @@ c10::optional<at::IntArrayRef> vec_to_intarray(const std::vector<int64_t>& vec)
 }
 
 // 为NPU设备注册实现
-at::Tensor concat_2d_jagged_npu(
-    const int64_t &maxSeqlen,
-    const Tensor &valuesA,
-    const Tensor &valuesB,
-    const Tensor &offsetA,
-    const Tensor &offsetB,
-    const bool isReplace = false,
-    const int64_t nPrefixFromRight = 0)
+at::Tensor concat_2d_jagged_npu(const int64_t& maxSeqlen, const Tensor& valuesA, const Tensor& valuesB,
+                                const Tensor& offsetA, const Tensor& offsetB, const bool isReplace = false,
+                                const int64_t nPrefixFromRight = 0)
 {
     // check values same dim
     TORCH_CHECK(valuesA.size(1) == valuesB.size(1), "values must be the same dimensional.");
@@ -68,8 +63,7 @@ at::Tensor concat_2d_jagged_npu(
     TORCH_CHECK(offsetA.dim() == 1, "offsetA must be a 1-dimensional tensor.");
     TORCH_CHECK(offsetB.dim() == 1, "offsetB must be a 1-dimensional tensor.");
     // check offset size
-    TORCH_CHECK(offsetA.size(0) == offsetB.size(0),
-                "offsetA and offsetB must have the same length.");
+    TORCH_CHECK(offsetA.size(0) == offsetB.size(0), "offsetA and offsetB must have the same length.");
     TORCH_CHECK(offsetA.size(0) >= 2 && offsetA.size(0) <= MAX_OFFSET_LEN,
                 "offset must have length >= 2 and <= ", MAX_OFFSET_LEN);
     // check values size
@@ -80,9 +74,11 @@ at::Tensor concat_2d_jagged_npu(
 
     TORCH_CHECK(valuesA.size(0) >= 1, "values must have length >= 1.");
     // check type
-    TORCH_CHECK(valuesA.dtype() == at::kFloat || valuesA.dtype() == at::kHalf || valuesA.dtype() == at::kBFloat16 || valuesA.dtype() == at::kInt,
+    TORCH_CHECK(valuesA.dtype() == at::kFloat || valuesA.dtype() == at::kHalf || valuesA.dtype() == at::kBFloat16 ||
+                    valuesA.dtype() == at::kInt,
                 "valuesA must have be kFloat or kHalf or kBFloat16 or kInt dtype.");
-    TORCH_CHECK(valuesB.dtype() == at::kFloat || valuesB.dtype() == at::kHalf || valuesB.dtype() == at::kBFloat16 || valuesA.dtype() == at::kInt,
+    TORCH_CHECK(valuesB.dtype() == at::kFloat || valuesB.dtype() == at::kHalf || valuesB.dtype() == at::kBFloat16 ||
+                    valuesA.dtype() == at::kInt,
                 "valuesB must have be kFloat or kHalf or kBFloat16 or kInt dtype.");
     TORCH_CHECK(offsetA.dtype() == at::kLong || offsetA.dtype() == at::kInt,
                 "offsetA must have be kLong or kInt dtype.");
@@ -90,6 +86,9 @@ at::Tensor concat_2d_jagged_npu(
                 "offsetB must have be kLong or kInt dtype.");
 
     TORCH_CHECK(valuesA.dtype() == valuesB.dtype(), "values must have same dtype.");
+
+    // check nPrefixFromRight
+    TORCH_CHECK(nPrefixFromRight >= 0, "nPrefixFromRight must be >= 0.");
 
     // offsetlen
     int64_t offsetlen = offsetA.size(0);
@@ -108,25 +107,19 @@ at::Tensor concat_2d_jagged_npu(
     int64_t resultRows = valuesA.size(0) + valuesB.size(0);
     int64_t resultCols = valuesA.size(1);
     auto result = at::empty({resultRows, resultCols}, valuesA.options());
-    EXEC_NPU_CMD(aclnnConcatJaggedTensor, values, offsetArray, offsetlen, jtNum, result);
+    EXEC_NPU_CMD(aclnnConcatJaggedTensor, values, offsetArray, offsetlen, jtNum, nPrefixFromRight, result);
     return result;
 }
 
-
-tuple<Tensor, Tensor> split_2d_jagged_npu(
-    const Tensor &values,
-    const SymInt &maxSeqlen,
-    const Tensor &offsetA,
-    const Tensor &offsetB,
-    const SymInt dense_size = 0,
-    const SymInt nPrefixToRight = 0)
+tuple<Tensor, Tensor> split_2d_jagged_npu(const Tensor& values, const int64_t& maxSeqlen, const Tensor& offsetA,
+                                          const Tensor& offsetB, const int64_t dense_size = 0,
+                                          const int64_t nPrefixToRight = 0)
 {
     // check offset
     TORCH_CHECK(offsetA.dim() == 1, "offsetA must be a 1-dimensional tensor.");
     TORCH_CHECK(offsetB.dim() == 1, "offsetB must be a 1-dimensional tensor.");
     // check offset size
-    TORCH_CHECK(offsetA.size(0) == offsetB.size(0),
-                "offsetA and offsetB must have the same length.");
+    TORCH_CHECK(offsetA.size(0) == offsetB.size(0), "offsetA and offsetB must have the same length.");
     TORCH_CHECK(offsetA.size(0) >= 2 && offsetA.size(0) <= MAX_OFFSET_LEN,
                 "offset must have length >= 2 and <= ", MAX_OFFSET_LEN);
 
@@ -134,12 +127,15 @@ tuple<Tensor, Tensor> split_2d_jagged_npu(
     TORCH_CHECK(values.dim() == EXPECTED_DIM_2D, "values must be a 2-dimensional tensor.");
 
     // check type
-    TORCH_CHECK(values.dtype() == at::kFloat || values.dtype() == at::kHalf || values.dtype() == at::kBFloat16 || values.dtype() == at::kInt,
+    TORCH_CHECK(values.dtype() == at::kFloat || values.dtype() == at::kHalf || values.dtype() == at::kBFloat16 ||
+                    values.dtype() == at::kInt,
                 "values must have be kFloat or kHalf or kBFloat16 or kInt dtype.");
     TORCH_CHECK(offsetA.dtype() == at::kLong || offsetA.dtype() == at::kInt,
                 "offsetA must have be kLong or kInt dtype.");
     TORCH_CHECK(offsetB.dtype() == at::kLong || offsetB.dtype() == at::kInt,
                 "offsetB must have be kLong or kInt dtype.");
+    // check nPrefixToRight
+    TORCH_CHECK(nPrefixToRight >= 0, "nPrefixToRight must be >= 0.");
 
     // offsetlen
     int64_t offsetlen = offsetA.size(0);
@@ -161,7 +157,7 @@ tuple<Tensor, Tensor> split_2d_jagged_npu(
     outputs.push_back(outputA);
     outputs.push_back(outputB);
     at::TensorList outputs_list = at::TensorList(outputs);
-    EXEC_NPU_CMD(aclnnConcatJaggedTensorGrad, values, offsetArray, offsetlen, jtNum, outputs_list);
+    EXEC_NPU_CMD(aclnnConcatJaggedTensorGrad, values, offsetArray, offsetlen, jtNum, nPrefixToRight, outputs_list);
 
     return make_tuple(outputA, outputB);
 }
@@ -169,18 +165,14 @@ tuple<Tensor, Tensor> split_2d_jagged_npu(
 // 通过继承torch::autograd::funcation类实现前反向绑定
 class ConcatJaggedFunction : public torch::autograd::Function<ConcatJaggedFunction> {
 public:
-    static at::Tensor forward(AutogradContext* ctx,
-                              const int64_t &maxSeqlen,
-                              const Tensor &valuesA,
-                              const Tensor &valuesB,
-                              const Tensor &offsetA,
-                              const Tensor &offsetB,
-                              const bool isReplace = false,
-                              const int64_t nPrefixFromRight = 0)
+    static at::Tensor forward(AutogradContext* ctx, const int64_t& maxSeqlen, const Tensor& valuesA,
+                              const Tensor& valuesB, const Tensor& offsetA, const Tensor& offsetB,
+                              const bool isReplace = false, const int64_t nPrefixFromRight = 0)
     {
         at::AutoDispatchBelowADInplaceOrView guard;
         ctx->save_for_backward({offsetA, offsetB});
         ctx->saved_data["maxSeqlen"] = maxSeqlen;
+        ctx->saved_data["nPrefixFromRight"] = nPrefixFromRight;
         return concat_2d_jagged_npu(maxSeqlen, valuesA, valuesB, offsetA, offsetB, isReplace, nPrefixFromRight);
     }
 
@@ -190,8 +182,9 @@ public:
         at::Tensor offsetA = saved[0];
         at::Tensor offsetB = saved[1];
         const int64_t maxSeqlen = ctx->saved_data["maxSeqlen"].toInt();
+        const int64_t nPrefixFromRight = ctx->saved_data["nPrefixFromRight"].toInt();
         auto grad_output = grad_outputs[0];
-        auto tensors = split_2d_jagged_npu(grad_output, maxSeqlen, offsetA, offsetB, 0, 0);
+        auto tensors = split_2d_jagged_npu(grad_output, maxSeqlen, offsetA, offsetB, 0, nPrefixFromRight);
         at::Tensor tensor_a = std::get<0>(tensors);
         at::Tensor tensor_b = std::get<1>(tensors);
         return {Variable(), tensor_a, tensor_b, Variable(), Variable(), Variable(), Variable()};
@@ -200,17 +193,14 @@ public:
 
 class SplitJaggedFunction : public torch::autograd::Function<SplitJaggedFunction> {
 public:
-    static std::vector<at::Tensor> forward(AutogradContext* ctx,
-                                         const Tensor &values,
-                                         const SymInt &maxSeqlen,
-                                         const Tensor &offsetA,
-                                         const Tensor &offsetB,
-                                         const SymInt dense_size = 0,
-                                         const SymInt nPrefixToRight = 0)
+    static std::vector<at::Tensor> forward(AutogradContext* ctx, const Tensor& values, const int64_t& maxSeqlen,
+                                           const Tensor& offsetA, const Tensor& offsetB, const int64_t dense_size = 0,
+                                           const int64_t nPrefixToRight = 0)
     {
         at::AutoDispatchBelowADInplaceOrView guard;
         ctx->save_for_backward({offsetA, offsetB});
         ctx->saved_data["maxSeqlen"] = maxSeqlen;
+        ctx->saved_data["nPrefixToRight"] = nPrefixToRight;
         auto tensors = split_2d_jagged_npu(values, maxSeqlen, offsetA, offsetB, dense_size, nPrefixToRight);
         at::Tensor tensor_a = std::get<0>(tensors);
         at::Tensor tensor_b = std::get<1>(tensors);
@@ -225,37 +215,28 @@ public:
         at::Tensor offsetA = saved[0];
         at::Tensor offsetB = saved[1];
         const int64_t maxSeqlen = ctx->saved_data["maxSeqlen"].toInt();
-        auto concat_tensor = concat_2d_jagged_npu(maxSeqlen, tensor_back_a, tensor_back_b, offsetA, offsetB, false, 0);
+        const int64_t nPrefixToRight = ctx->saved_data["nPrefixToRight"].toInt();
+        auto concat_tensor =
+            concat_2d_jagged_npu(maxSeqlen, tensor_back_a, tensor_back_b, offsetA, offsetB, false, nPrefixToRight);
         return {concat_tensor, Variable(), Variable(), Variable(), Variable(), Variable()};
     }
 };
 
 // 使用的时候调用apply()方法
-at::Tensor concat_2d_jagged_autograd(
-    const int64_t &maxSeqlen,
-    const Tensor &valuesA,
-    const Tensor &valuesB,
-    const Tensor &offsetA,
-    const Tensor &offsetB,
-    const bool isReplace = false,
-    const int64_t nPrefixFromRight = 0)
-    {
-        return ConcatJaggedFunction::apply(maxSeqlen, valuesA, valuesB, offsetA, offsetB, false, 0);
-    }
+at::Tensor concat_2d_jagged_autograd(const int64_t& maxSeqlen, const Tensor& valuesA, const Tensor& valuesB,
+                                     const Tensor& offsetA, const Tensor& offsetB, const bool isReplace = false,
+                                     const int64_t nPrefixFromRight = 0)
+{
+    return ConcatJaggedFunction::apply(maxSeqlen, valuesA, valuesB, offsetA, offsetB, false, nPrefixFromRight);
+}
 
-
-tuple<Tensor, Tensor> split_2d_jagged_autograd(
-    const Tensor &values,
-    const SymInt &maxSeqlen,
-    const Tensor &offsetA,
-    const Tensor &offsetB,
-    const SymInt dense_size = 0,
-    const SymInt nPrefixToRight = 0)
-    {
-        auto result = SplitJaggedFunction::apply(values, maxSeqlen, offsetA, offsetB, 0, 0);
-        return {result[0], result[1]};
-    }
-
+tuple<Tensor, Tensor> split_2d_jagged_autograd(const Tensor& values, const int64_t& maxSeqlen, const Tensor& offsetA,
+                                               const Tensor& offsetB, const int64_t dense_size = 0,
+                                               const int64_t nPrefixToRight = 0)
+{
+    auto result = SplitJaggedFunction::apply(values, maxSeqlen, offsetA, offsetB, 0, nPrefixToRight);
+    return {result[0], result[1]};
+}
 
 // 在npu命名空间里注册concat_2d_jagged
 TORCH_LIBRARY_FRAGMENT(mxrec, m)
@@ -274,7 +255,6 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
           "                SymInt dense_size = 0, "
           "                SymInt nPrefixToRight = 0) -> (Tensor, Tensor) ");
 }
-
 
 // NPU设备在pytorch 2.1及以上版本使用的设备名称是PrivateUse1，在2.1以下版本用的是XLA，如果是2.1以下版本PrivateUse1需要改成XLA
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
