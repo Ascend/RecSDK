@@ -17,11 +17,13 @@
 
 ## 接口调用介绍<a name="ZH-CN_TOPIC_0000002336148917"></a>
 
+以下出现的相关接口的参数含义及约束详细可见[接口说明](./api/README.md)
+
 以下步骤省略了具体实现，如需完整代码，请参考[Rec SDK Torch Little Demo样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/little_demo)。关键步骤如下：
 
 1. 定义数据集与数据转换
 
-    自定义Dataset读取原始数据，并通过collate_fn将稀疏特征（Sparse Features）转换为TorchRec所需的KeyedJaggedTensor(KJT)格式。
+    自定义Dataset读取原始数据，并通过collate_fn将稀疏特征 (Sparse Features) 转换为TorchRec所需的KeyedJaggedTensor (KJT) 格式。
 
     ```python
     # dataset.py
@@ -82,8 +84,8 @@
     def get_sharder(args, optimizer_type):
         ...
         optimizer_kwargs = {
-            "optimizer": optimizer_type, 
-            "learning_rate": learning_rate, 
+            "optimizer": optimizer_type,
+            "learning_rate": learning_rate,
             ...
         }
         ...
@@ -131,6 +133,12 @@
 
     保存模型权重（Dense 部分）以及动态 Embedding 数据。
     稀疏权重和优化器状态需使用专用接口
+
+    ```python
+    from dynamic_emb.distributed.dump_load import DynamicEmbDump
+    from dynamic_emb.distributed.dump_load import DynamicEmbLoad
+    ```
+
     - 保存：```DynamicEmbDump(save_dir, model, optim=True)```
     - 加载：```DynamicEmbLoad(save_dir, model, optim=True)```
 
@@ -164,18 +172,18 @@
 
     下载 MovieLens-1M 数据集并解压到当前目录的 ml-1m 文件夹。
     数据集链接：[MovieLens-1M](https://files.grouplens.org/datasets/movielens/ml-1m.zip) 。
-    
+
     下载后的文件名为ml-1m.zip，将其解压。样例模型默认使用./ml-1m为数据路径，若需更改路径，可在run.sh脚本中通过--data_path参数指定。
 
     执行模型运行脚本：
-    
+
     ```bash
     bash run.sh
     ```
 
     run.sh脚本会自动设置PYTHONPATH并启动训练。
-    命令行参数 --train 参数指定模型训练， --dump --load指定模型进行端到端验证，执行训练->保存->加载->推理全过程。
-    
+    命令行参数 --train 参数指定模型训练， --dump --load 指定模型进行端到端验证，执行训练->保存->加载->推理全过程。
+
     ```bash
     torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=1 main.py --train "$@"
     torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=1 main.py --load --dump "$@"
@@ -185,4 +193,4 @@
 
 1. 请参见[安装Rec SDK Torch](./recsdk_torch_installation_guide.md#section182972951211)章节进行容器环境准备，启动并进入容器。
 2. 下载[Rec SDK Torch Little Demo样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/little_demo)代码。
-3. 启动模型训练同方案一。
+3. 启动模型训练同方案1。
