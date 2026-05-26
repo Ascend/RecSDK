@@ -185,6 +185,33 @@ check_system_and_cann() {
 }
 
 # ==============================================================================
+# 第三方库检测与拉取
+# 用法: check_and_fetch_third_party_libs
+# 根据环境变量 THIRD_PARTY_LIBS_EXIT_CODE 判断如果拉取不成功是否退出（0/1，默认不存在该环境变量 则为 1）
+# ==============================================================================
+check_and_fetch_third_party_libs() {
+    # 检测是否存在CATLASS第三方库
+    if [ -d "$catlass_include_dir" ]; then
+        echo "Found CATLASS library at ${catlass_include_dir}"
+    else
+        echo "Not found CATLASS library at ${catlass_include_dir}, attempting to fetch via git submodule..."
+        # 拉取第三方库（用 if 包裹，避免 set -e 导致脚本退出）
+        if ! git submodule update --init --recursive; then
+            echo "Error: Failed to fetch CATLASS library at ${catlass_include_dir}" >&2
+            return 1
+        # git 执行成功，再检查目录是否真的拉下来了
+        elif [ -d "$catlass_include_dir" ]; then
+            echo "Successfully fetched CATLASS library at ${catlass_include_dir}"
+        else
+            # git 成功了但目录不存在，说明拉下来的内容不符合预期
+            echo "Error: git submodule succeeded but CATLASS library not found at ${catlass_include_dir}" >&2
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# ==============================================================================
 # 用目标文件夹覆盖源目录
 # 用法: overwrite_source_with_target "$source_dir" "$target_dir"
 # ==============================================================================
