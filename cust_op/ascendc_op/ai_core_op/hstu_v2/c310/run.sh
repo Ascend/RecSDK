@@ -45,6 +45,7 @@ export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/hstu_v2.json")"
 export OPERATOR_SOURCE_ROOT="$(readlink -f "${WORK_DIR}")"
 catlass_include_dir=${CATLASS_HOME}/include
 enable_catlass="True"
+check_and_fetch_third_party_libs || exit 1
 parse_arguments "$@" || exit 1
 
 # ==============================================================================

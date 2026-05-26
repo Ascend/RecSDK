@@ -42,6 +42,7 @@ vendor_name="in_linear_silu"
 export CATLASS_HOME="${WORK_DIR}/../../../../../third_party/catlass"
 catlass_include_dir=${CATLASS_HOME}/include
 enable_catlass="True"
+check_and_fetch_third_party_libs || exit 1
 parse_arguments "$@" || exit 1
 
 # ==============================================================================

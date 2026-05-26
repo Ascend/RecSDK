@@ -16,7 +16,7 @@
 
 set -e
 
-if [ "$#" -ne 1 ]; then
+if [ "$#" -lt 1 ]; then
     echo "ERROR: Please specify the version to compile. e.g. 'bash $0 A2'"
     exit 1
 fi
@@ -27,6 +27,31 @@ if [[ "${BUILD_VER}" =~ ^(A2|A3|A5|310P|A2-TF)$ ]]; then
     echo "BUILD_VER: ${BUILD_VER}"
 else
     echo "ERROR: Unknown BUILD_VER:${BUILD_VER}"
+    exit 1
+fi
+
+REBUILD_ALL=${2:-"true"}
+
+if [[ "${REBUILD_ALL}" == "true" ]]; then
+    echo "Rebuild all operators: ${REBUILD_ALL}, \
+        you can set it to false to only build operators that have not been built successfully. \
+        e.g. 'bash $0 A2 false'"
+elif [[ "${REBUILD_ALL}" == "false" ]]; then
+    echo "Only build operators that have not been built successfully: rebuild_all=${REBUILD_ALL}"
+else
+    echo "ERROR: Unknown value for REBUILD_ALL: ${REBUILD_ALL}, please set it to true or false."
+    exit 1
+fi
+
+ERROR_MODE=${3:-"exit"}
+if [[ "${ERROR_MODE}" == "exit" ]]; then
+    echo "Error mode: ${ERROR_MODE}, the script will exit immediately when an error occurs during compilation.
+          you can set it to continue to record the failed operator and continue to compile the remaining operators. \
+          e.g. 'bash $0 A2 false continue'"
+elif [[ "${ERROR_MODE}" == "continue" ]]; then
+    echo "Error mode: ${ERROR_MODE}, the script will record the failed operator and continue to compile the remaining operators when an error occurs during compilation."
+else
+    echo "ERROR: Unknown value for ERROR_MODE: ${ERROR_MODE}, please set it to exit or continue."
     exit 1
 fi
 
@@ -134,6 +159,14 @@ function in_list() {
     return 1
 }
 
+failed_ops=()
+
+function record_failed_op() {
+    local op_name="$1"
+    echo "Failed to build operator: ${op_name}"
+    failed_ops+=("${op_name}")
+}
+
 
 function compile_ops_v220() {
     echo "OP Path: $ops_path"
@@ -152,7 +185,20 @@ function compile_ops_v220() {
                 if [ "${BUILD_VER}" == "310P" ]; then
                     for item in $support_310p_list; do
                         if [ "$item" == "$dir_name" ]; then
-                            bash ./run.sh --ai-core ai_core-Ascend310P3
+                            if [ "${REBUILD_ALL}" == "false" ] && \
+                                [ -f "${opp_output_path}"/mxrec_opp_"${dir_name}"_310p.run ]; then
+                                echo "Operator ${dir_name} for 310P already built, skipping..."
+                                continue
+                            fi
+                            bash ./run.sh --ai-core ai_core-Ascend310P3 || { 
+                                if [[ "$ERROR_MODE" == "exit" ]]; then
+                                    echo "错误模式为 exit，脚本即将退出..."
+                                    exit 1
+                                else
+                                    record_failed_op "$dir_name"
+                                    continue
+                                fi
+                            }
                             new_op_name=mxrec_opp_"${dir_name}_310p".run
                             cd "$dir_name"
                             cp ./build_out/custom_opp*.run  "${new_op_name}"
@@ -166,7 +212,20 @@ function compile_ops_v220() {
                 elif [ "${BUILD_VER}" == "A3" ]; then
                     for item in $support_A3_list; do
                         if [ "$item" == "$dir_name" ]; then
-                            bash ./run.sh --ai-core ai_core-Ascend910_93
+                            if [ "${REBUILD_ALL}" == "false" ] && \
+                                [ -f "${opp_output_path}"/mxrec_opp_"${dir_name}"_A3.run ]; then
+                                echo "Operator ${dir_name} for A3 already built, skipping..."
+                                continue
+                            fi
+                            bash ./run.sh --ai-core ai_core-Ascend910_93 || { 
+                                if [[ "$ERROR_MODE" == "exit" ]]; then
+                                    echo "Error mode is exit, the script will exit immediately..."
+                                    exit 1
+                                else
+                                    record_failed_op "$dir_name"
+                                    continue
+                                fi
+                            }
                             new_op_name=mxrec_opp_"${dir_name}_A3".run
                             cd "$dir_name"
                             cp ./build_out/custom_opp*.run  "${new_op_name}"
@@ -179,7 +238,20 @@ function compile_ops_v220() {
                 elif [ "${BUILD_VER}" == "A2-TF" ]; then
                     for item in $support_A2_tf_ops; do
                         if [ "$item" == "$dir_name" ]; then
-                            bash ./run.sh --ai-core ai_core-Ascend910B1
+                            if [ "${REBUILD_ALL}" == "false" ] && \
+                                [ -f "${opp_output_path}"/mxrec_opp_"${dir_name}".run ]; then
+                                echo "Operator ${dir_name} for A2 already built, skipping..."
+                                continue
+                            fi
+                            bash ./run.sh --ai-core ai_core-Ascend910B1 || { 
+                                if [[ "$ERROR_MODE" == "exit" ]]; then
+                                    echo "Error mode is exit, the script will exit immediately..."
+                                    exit 1
+                                else
+                                    record_failed_op "$dir_name"
+                                    continue
+                                fi
+                            }
                             new_op_name=mxrec_opp_"${dir_name}".run
                             cd "$dir_name"
                             cp ./build_out/custom_opp*.run  "${new_op_name}"
@@ -188,7 +260,20 @@ function compile_ops_v220() {
                     done
                 elif [ "${BUILD_VER}" == "A2" ]; then
                     in_list "$dir_name" $support_A2_tf_ops && continue
-                    bash ./run.sh --ai-core ai_core-Ascend910B1
+                    if [ "${REBUILD_ALL}" == "false" ] && \
+                        [ -f "${opp_output_path}"/mxrec_opp_"${dir_name}".run ]; then
+                        echo "Operator ${dir_name} for A2 already built, skipping..."
+                        continue
+                    fi
+                    bash ./run.sh --ai-core ai_core-Ascend910B1 || { 
+                        if [[ "$ERROR_MODE" == "exit" ]]; then
+                            echo "Error mode is exit, the script will exit immediately..."
+                            exit 1
+                        else
+                            record_failed_op "$dir_name"
+                            continue
+                        fi
+                    }
                     new_op_name=mxrec_opp_"${dir_name}".run
                     cd "$dir_name"
                     cp ./build_out/custom_opp*.run  "${new_op_name}"
@@ -216,7 +301,20 @@ function compile_ops_A5() {
             if [ -d "$cur_ver_op_dir" ]; then
                 echo "Entering directory: $dir_name, DIR: $dir"
                 cd "$cur_ver_op_dir"
-                bash ./run.sh --ai-core ai_core-Ascend950
+                if [ "${REBUILD_ALL}" == "false" ] && \
+                    [ -f "${opp_output_path}"/mxrec_opp_"${dir_name}".run ]; then
+                    echo "Operator ${dir_name} for A5 already built, skipping..."
+                    continue
+                fi
+                bash ./run.sh --ai-core ai_core-Ascend950 || { 
+                    if [[ "$ERROR_MODE" == "exit" ]]; then
+                        echo "Error mode is exit, the script will exit immediately..."
+                        exit 1
+                    else
+                        record_failed_op "$dir_name"
+                        continue
+                    fi
+                }
                 new_op_name=mxrec_opp_"${dir_name}".run
                 cd "$dir_name"
                 cp ./build_out/custom_opp*.run  "${new_op_name}"
@@ -262,4 +360,13 @@ compile_ops
 cp_op_plugin
 
 get_tar_pkg
-echo "----------------        compile success!!!!       ----------------"
+
+if [ ${#failed_ops[@]} -ne 0 ]; then
+    echo "Warning: The following operators failed to build:"
+    for op in "${failed_ops[@]}"; do
+        echo "- $op"
+    done
+else
+    echo "All operators built successfully!"
+    echo "----------------        compile success!!!!       ----------------"
+fi
