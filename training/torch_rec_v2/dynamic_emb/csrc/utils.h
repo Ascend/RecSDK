@@ -70,11 +70,11 @@ enum class OptimizerType : int {
     RowWiseAdaGrad,
 };
 
-#define CASE_TYPE_USING_HINT(enum_type, type, HINT, ...)                       \
-    case (enum_type): {                                                          \
-        using HINT = type;                                                         \
-        __VA_ARGS__();                                                             \
-        break;                                                                     \
+#define CASE_TYPE_USING_HINT(enum_type, type, HINT, ...) \
+    case (enum_type): {                                  \
+        using HINT = type;                               \
+        __VA_ARGS__();                                   \
+        break;                                           \
     }
 
 #define CASE_ENUM_USING_HINT(enum_type, HINT, ...) \
@@ -110,16 +110,15 @@ enum class OptimizerType : int {
             exit(EXIT_FAILURE);                                             \
     }
 
-
 // SIMD 向量搬运类算子的启动分核与 tiling 参数。
 struct SimdValueMoveLaunchTiling {
-    uint32_t block_dim;              // 实际启动核数
-    uint32_t former_num;             // 多搬运 1 条数据的核数
-    uint64_t former_core_move_num;   // 上述每个核搬运的条数
-    uint64_t tail_core_move_num;       // 其余核每个核搬运的条数
-    uint64_t valid_ub_size;            // 内核 UB 可用空间，用于 <<<block_dim, valid_ub_size, stream>>>
-    uint32_t tile_size;                // 每条数据按 dim 切分时的 tile 大小
-    uint32_t num_tiles;                // 每条数据的 tile 个数
+    uint32_t block_dim;             // 实际启动核数
+    uint32_t former_num;            // 多搬运 1 条数据的核数
+    uint64_t former_core_move_num;  // 上述每个核搬运的条数
+    uint64_t tail_core_move_num;    // 其余核每个核搬运的条数
+    uint64_t valid_ub_size;         // 内核 UB 可用空间，用于 <<<block_dim, valid_ub_size, stream>>>
+    uint32_t tile_size;             // 每条数据按 dim 切分时的 tile 大小
+    uint32_t num_tiles;             // 每条数据的 tile 个数
 };
 
 /**
@@ -150,8 +149,8 @@ struct SimdValueMoveLaunchTiling {
  * @endcode
  */
 inline SimdValueMoveLaunchTiling ComputeSimdValueMoveLaunchTiling(uint32_t n, uint32_t max_block_dim, uint32_t dim,
-                                                                uint32_t element_size, uint64_t valid_ub_size,
-                                                                uint32_t buffer_num = kDoubleBuffer)
+                                                                  uint32_t element_size, uint64_t valid_ub_size,
+                                                                  uint32_t buffer_num = kDoubleBuffer)
 {
     SimdValueMoveLaunchTiling info;
     info.block_dim = max_block_dim;
@@ -175,23 +174,6 @@ inline SimdValueMoveLaunchTiling ComputeSimdValueMoveLaunchTiling(uint32_t n, ui
     info.num_tiles = (dim + info.tile_size - 1) / info.tile_size;
     return info;
 }
-
-class DeviceProp {
-public:
-    static DeviceProp& getDeviceProp(int device_id = 0);
-    // DeviceProp(const DeviceProp&) = delete; //TODO: whether to remove
-    DeviceProp& operator=(const DeviceProp&) = delete;
-
-    int num_sms = 0;
-    int warp_size = 0;
-    int max_thread_per_sm = 0;
-    int max_thread_per_block = 0;
-    int total_threads = 0;
-
-private:
-    explicit DeviceProp(int device_id);
-    ~DeviceProp() = default;
-};
 }  // namespace dyn_emb
 
 #endif  // UTILS_H
