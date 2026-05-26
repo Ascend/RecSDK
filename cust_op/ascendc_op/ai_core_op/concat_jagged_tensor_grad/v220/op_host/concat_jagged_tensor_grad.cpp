@@ -22,6 +22,7 @@ See the License for the specific language governing permissions and
 constexpr uint32_t RESERVED_UB_SIZE = 1024;
 constexpr uint32_t WORKSPACE_SIZE = 4 * 1024 * 1024;
 constexpr uint32_t ALIGN = 32;
+constexpr uint32_t MAX_TENSOR_SIZE = 24 * 1024;  // 当Tensor长度大于此值时调整分核策略性能更优
 
 namespace optiling {
 
@@ -41,42 +42,144 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     // 计算偏移地址和大小
     auto offsets = context->GetAttrs()->GetListInt(0);
     int32_t offsetLen = *context->GetAttrs()->GetInt(1);
-    int32_t jtNum =  *context->GetAttrs()->GetInt(2);
+    int32_t jtNum = *context->GetAttrs()->GetInt(2);
+    int32_t nPrefixToRight = *context->GetAttrs()->GetInt(3);
 
-    uint32_t sliceSize[MAX_SLICE_SIZE] = {0};
-    uint32_t inputOffsetBegin[MAX_SLICE_SIZE] = {0};
-    uint32_t outputOffsetBegin[MAX_SLICE_SIZE] = {0};
+    uint32_t sliceSize[MAX_SLICE_SIZE + 1] = {0};  // 当nPrefixFromRight > 0时,切片个数+1。
+    uint32_t inputOffsetBegin[MAX_SLICE_SIZE + 1] = {0};
+    uint32_t outputOffsetBegin[MAX_SLICE_SIZE + 1] = {0};
 
-    int64_t sliceIndex = 0;
+    uint32_t indexSliceForRight = offsetLen - 1;
+    int64_t inputOffset = 0;
+    const int64_t* offsetsData = offsets->GetData();
 
-    for (int i = 0; i < offsetLen - 1; i++) {
-        for (int j = 0; j < jtNum; j++) {
-            int64_t index = j * offsetLen + i;
-            int64_t offset = offsets->GetData()[index];
-            outputOffsetBegin[sliceIndex] = offset;
-            sliceSize[sliceIndex] = offsets->GetData()[index + 1] - offsets->GetData()[index];
-            sliceIndex++;
+    uint32_t maxTensorLen = std::max(offsetsData[indexSliceForRight], offsetsData[2 * offsetLen - 1]);
+
+    // 判断是否需要优化切片策略：Tensor长度较长且分片较小时
+    const bool needAdjustSliceStrategy = (offsetLen < coreNum) && (maxTensorLen > MAX_TENSOR_SIZE);
+
+    if (nPrefixToRight == 0) {
+        // [A] + [B]
+        for (int i = 0; i < offsetLen - 1; i++) {
+            // A[:indexSliceForRight-1]
+            outputOffsetBegin[i] = offsetsData[i];
+            sliceSize[i] = offsetsData[i + 1] - offsetsData[i];
+            // B[indexSliceForRight:]
+            outputOffsetBegin[i + indexSliceForRight] = offsetsData[offsetLen + i];
+            sliceSize[i + indexSliceForRight] = offsetsData[offsetLen + i + 1] - offsetsData[offsetLen + i];
+        }
+    } else {
+        // [nPrefixFromB] + [A] + [remainB]
+        // first offset [nPrefixFromB]
+        int32_t bLength = offsetsData[offsetLen + 1] - offsetsData[offsetLen];
+        // nPrefixToRight
+        sliceSize[indexSliceForRight] = std::min<int32_t>(nPrefixToRight, bLength);
+        outputOffsetBegin[indexSliceForRight] = 0;
+
+        // [A] + ([remainB] + [nPrefixFromB])
+        for (int i = 0; i < offsetLen - 2; i++) {
+            // [A]
+            outputOffsetBegin[i] = offsetsData[i];
+            sliceSize[i] = offsetsData[i + 1] - offsetsData[i];
+            // [remainB]
+            int32_t remainB = std::max<int32_t>((bLength - nPrefixToRight), 0);
+            // [next nPrefixFromB]
+            bLength = offsetsData[offsetLen + i + 2] - offsetsData[offsetLen + i + 1];
+            int32_t prefixNextB = std::min<int32_t>(nPrefixToRight, bLength);
+
+            outputOffsetBegin[i + offsetLen] = outputOffsetBegin[offsetLen + i - 1] + sliceSize[i + offsetLen - 1];
+            sliceSize[i + offsetLen] = remainB + prefixNextB;
+        }
+        // last offset [A] + [remainB]
+        outputOffsetBegin[indexSliceForRight - 1] = offsetsData[indexSliceForRight - 1];
+        sliceSize[indexSliceForRight - 1] = offsetsData[indexSliceForRight] - offsetsData[indexSliceForRight - 1];
+        // B
+        int32_t LastBLength = offsetsData[2 * offsetLen - 1] - offsetsData[2 * offsetLen - 2];
+        int32_t lastRemainB = std::max<int32_t>((LastBLength - nPrefixToRight), 0);
+
+        outputOffsetBegin[2 * offsetLen - 2] = outputOffsetBegin[2 * offsetLen - 3] + sliceSize[2 * offsetLen - 3];
+        sliceSize[2 * offsetLen - 2] = lastRemainB;
+    }
+
+    uint64_t batchSize = (nPrefixToRight == 0) ? (jtNum * (offsetLen - 1)) : (jtNum * (offsetLen - 1) + 1);
+
+    if (nPrefixToRight == 0) {
+        for (int i = 0; i < offsetLen - 1; i++) {
+            inputOffsetBegin[i] = inputOffset;
+            inputOffset += sliceSize[i];
+            inputOffsetBegin[i + offsetLen - 1] = inputOffset;
+            inputOffset += sliceSize[i + offsetLen - 1];
+        }
+    } else {
+        inputOffsetBegin[offsetLen - 1] = inputOffset;
+        inputOffset += sliceSize[offsetLen - 1];
+        for (int i = 0; i < offsetLen - 1; i++) {
+            inputOffsetBegin[i] = inputOffset;
+            inputOffset += sliceSize[i];
+            inputOffsetBegin[i + offsetLen] = inputOffset;
+            inputOffset += sliceSize[i + offsetLen];
         }
     }
 
-    int64_t outputOffset = 0;
-    for (int i = 0; i < jtNum * (offsetLen - 1); i++) {
-        inputOffsetBegin[i] = outputOffset;
-        outputOffset += sliceSize[i];
+    uint32_t oneSliceSize = maxTensorLen / coreNum;
+
+    uint32_t resetIndexSliceForRight = indexSliceForRight;
+
+    std::vector<uint32_t> readjustSliceSize;
+    std::vector<uint32_t> readjustInputOffsetBegin;
+    std::vector<uint32_t> readjustOutputOffsetBegin;
+
+    if (needAdjustSliceStrategy) {
+        for (int i = 0; i < batchSize; ++i) {
+            if (i == indexSliceForRight) {
+                resetIndexSliceForRight = readjustSliceSize.size();
+            }
+
+            uint32_t inputSize = sliceSize[i];
+            uint32_t outputOffset = outputOffsetBegin[i];
+            uint32_t inputOffset = inputOffsetBegin[i];
+
+            if (inputSize <= oneSliceSize) {
+                // 不需要切分，直接添加
+                readjustSliceSize.push_back(inputSize);
+                readjustOutputOffsetBegin.push_back(outputOffset);
+                readjustInputOffsetBegin.push_back(inputOffset);
+            } else {
+                // 需要切分成多个分片
+                uint32_t remaining = inputSize;
+                uint32_t currentOutputOffset = outputOffset;
+                uint32_t currentInputOffset = inputOffset;
+
+                while (remaining > 0) {
+                    uint32_t chunkSize = std::min(remaining, oneSliceSize);
+                    readjustSliceSize.push_back(chunkSize);
+                    readjustOutputOffsetBegin.push_back(currentOutputOffset);
+                    readjustInputOffsetBegin.push_back(currentInputOffset);
+                    currentInputOffset += chunkSize;
+                    currentOutputOffset += chunkSize;
+                    remaining -= chunkSize;
+                }
+            }
+        }
     }
+
+    uint64_t resetBatchSize = batchSize;
+    if (offsetLen < coreNum && maxTensorLen > MAX_TENSOR_SIZE) {
+        resetBatchSize = readjustSliceSize.size();
+    }
+
     // 计算切分逻辑
-    uint64_t batchSize = jtNum * (offsetLen - 1);
     uint64_t formerCore = 0;
     uint64_t tailCore = 0;
     uint64_t batchNumInTail = 0;
     uint64_t batchNumInFormer = 0;
-    if (batchSize < coreNum) {
-        formerCore = batchSize;
+    if (resetBatchSize < coreNum) {
+        formerCore = resetBatchSize;
         batchNumInFormer = 1;
     } else {
-        formerCore = batchSize % coreNum;
+        formerCore = resetBatchSize % coreNum;
         tailCore = coreNum - formerCore;
-        batchNumInTail = batchSize / coreNum;
+        batchNumInTail = resetBatchSize / coreNum;
         batchNumInFormer = batchNumInTail + 1;
     }
 
@@ -100,21 +203,36 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_batchNumInTail(batchNumInTail);
     tiling.set_batchNumInFormer(batchNumInFormer);
 
-    tiling.set_inputOffsetBegin(inputOffsetBegin);
-    tiling.set_sliceSize(sliceSize);
-    tiling.set_outputOffsetBegin(outputOffsetBegin);
+    if (needAdjustSliceStrategy) {
+        // 填充剩余元素为 0
+        while (readjustSliceSize.size() < MAX_SLICE_SIZE + 1) {
+            readjustSliceSize.push_back(0);
+            readjustInputOffsetBegin.push_back(0);
+            readjustOutputOffsetBegin.push_back(0);
+        }
+        tiling.set_indexSliceForRight(resetIndexSliceForRight);
+        tiling.set_inputOffsetBegin(readjustInputOffsetBegin.data());
+        tiling.set_sliceSize(readjustSliceSize.data());
+        tiling.set_outputOffsetBegin(readjustOutputOffsetBegin.data());
+
+    } else {
+        tiling.set_indexSliceForRight(indexSliceForRight);
+        tiling.set_inputOffsetBegin(inputOffsetBegin);
+        tiling.set_sliceSize(sliceSize);
+        tiling.set_outputOffsetBegin(outputOffsetBegin);
+    }
 
     context->SetBlockDim(coreNum);
     OPS_CHECK_PTR_NULL(context->GetRawTilingData(), return ge::GRAPH_FAILED);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
-    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
     currentWorkspace[0] = WORKSPACE_SIZE;
 
     return ge::GRAPH_SUCCESS;
 }
-}
+}  // namespace optiling
 
 namespace ge {
 static ge::graphStatus InferShape(gert::InferShapeContext* context)
@@ -123,22 +241,22 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
     int32_t offsetLen = *context->GetAttrs()->GetInt(1);
     int32_t jtNum = *context->GetAttrs()->GetInt(2);
 
-    const gert::Shape *x_shape = context->GetInputShape(0);
+    const gert::Shape* x_shape = context->GetInputShape(0);
     if (x_shape == nullptr) {
         OPS_LOG_E("[ERROR]", "InputShape should not be nullptr.");
         return ge::GRAPH_FAILED;
-        }
+    }
     uint32_t dimNum = x_shape->GetDimNum();
     uint32_t inputColSize = x_shape->GetDim(1);
 
     for (int i = 0; i < jtNum; i++) {
-        gert::Shape* y_shape  = context->GetOutputShape(i);
+        gert::Shape* y_shape = context->GetOutputShape(i);
         if (y_shape == nullptr) {
             OPS_LOG_E("[ERROR]", "OutputShape should not be nullptr.");
             return ge::GRAPH_FAILED;
         }
         y_shape->SetDimNum(dimNum);
-        y_shape->SetDim(0, offsets->GetData()[i*offsetLen]);
+        y_shape->SetDim(0, offsets->GetData()[i * offsetLen]);
         y_shape->SetDim(1, inputColSize);
     }
     return ge::GRAPH_SUCCESS;
@@ -152,7 +270,7 @@ static ge::graphStatus InferDataType(gert::InferDataTypeContext* context)
     }
     return ge::GRAPH_SUCCESS;
 }
-}
+}  // namespace ge
 
 namespace ops {
 class ConcatJaggedTensorGrad : public OpDef {
@@ -173,6 +291,7 @@ public:
         this->Attr("offsets").ListInt();
         this->Attr("offsetLen").Int(0);
         this->Attr("jtNum").Int(0);
+        this->Attr("nPrefixToRight").Int(0);
 
         this->SetInferShape(ge::InferShape).SetInferDataType(ge::InferDataType);
 
@@ -187,4 +306,4 @@ public:
 };
 
 OP_ADD(ConcatJaggedTensorGrad);
-}
+}  // namespace ops

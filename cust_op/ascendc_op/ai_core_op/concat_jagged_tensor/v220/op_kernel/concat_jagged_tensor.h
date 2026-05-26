@@ -27,18 +27,19 @@ using namespace AscendC;
     }
 
 namespace AscendC {
-    template <typename T>
-    class ConcatJaggedTensorKernel {
-    public:
+template <typename T>
+class ConcatJaggedTensorKernel {
+public:
     __aicore__ inline ConcatJaggedTensorKernel() = default;
 
     __aicore__ inline void Init(GM_ADDR values, GM_ADDR result, GM_ADDR workspace,
-    ConcatJaggedTensorTilingData *tilingData)
+                                ConcatJaggedTensorTilingData* tilingData)
     {
         blockIdx_ = GetBlockIdx();
         jtNum_ = tilingData->jtNum;
         inputColSize_ = tilingData->inputColSize;
         ubMaxLength_ = tilingData->ubMaxLength;
+        indexSliceForRight_ = tilingData->indexSliceForRight;
 
         formerCore_ = tilingData->formerCore;
         tailCore_ = tilingData->tailCore;
@@ -49,27 +50,27 @@ namespace AscendC {
         if (blockIdx_ < formerCore_) {
             blockBatchOffsetBase_ = blockIdx_ * tilingData->batchNumInFormer;
         } else {
-            blockBatchOffsetBase_ = formerCore_ * tilingData->batchNumInFormer +
-                                    (blockIdx_ - formerCore_) * tilingData->batchNumInTail;
+            blockBatchOffsetBase_ =
+                formerCore_ * tilingData->batchNumInFormer + (blockIdx_ - formerCore_) * tilingData->batchNumInTail;
         }
 
         pipe_.InitBuffer(moveQue_, ubMaxLength_ * sizeof(T));
     }
 
     __aicore__ inline void Process(GM_ADDR values, GM_ADDR result, GM_ADDR workspace,
-    ConcatJaggedTensorTilingData *tilingData)
+                                   ConcatJaggedTensorTilingData* tilingData)
     {
         for (uint32_t i = 0; i < batchNum_; i++) {
             int64_t index = blockBatchOffsetBase_ + i;
             int64_t output_offset_base = tilingData->outputOffsetBegin[index] * inputColSize_;
             int64_t slice_size = tilingData->sliceSize[index] * inputColSize_;
+            int64_t tensor_index = (index < indexSliceForRight_) ? 0 : 1;
+
             int64_t input_offset = 0;
 
-            inputGm_.SetGlobalBuffer(
-                (__gm__ T *)GetTensorAddr(values, index % jtNum_) +
-                tilingData->inputOffsetBegin[index] * inputColSize_
-            );
-            outputGm_.SetGlobalBuffer((__gm__ T *)result + output_offset_base);
+            inputGm_.SetGlobalBuffer((__gm__ T*)GetTensorAddr(values, tensor_index) +
+                                     tilingData->inputOffsetBegin[index] * inputColSize_);
+            outputGm_.SetGlobalBuffer((__gm__ T*)result + output_offset_base);
             while (slice_size > 0) {
                 int64_t copySize = slice_size > ubMaxLength_ ? ubMaxLength_ : slice_size;
 
@@ -87,17 +88,18 @@ namespace AscendC {
             }
         }
     }
-    private:
-    __aicore__ inline __gm__ T *GetTensorAddr(GM_ADDR tensorList, uint32_t index)
+
+private:
+    __aicore__ inline __gm__ T* GetTensorAddr(GM_ADDR tensorList, uint32_t index)
     {
-        __gm__ uint64_t *dataAddr = reinterpret_cast<__gm__ uint64_t *>(tensorList);
+        __gm__ uint64_t* dataAddr = reinterpret_cast<__gm__ uint64_t*>(tensorList);
         uint64_t tensorPtrOffset = *dataAddr;
 
-        __gm__ uint64_t *tensorPtr = dataAddr + (tensorPtrOffset >> 3);
-        return reinterpret_cast<__gm__ T *>(*(tensorPtr + index));
+        __gm__ uint64_t* tensorPtr = dataAddr + (tensorPtrOffset >> 3);
+        return reinterpret_cast<__gm__ T*>(*(tensorPtr + index));
     }
 
-    private:
+private:
     TPipe pipe_;
     GlobalTensor<T> inputGm_;
     GlobalTensor<T> outputGm_;
@@ -111,11 +113,12 @@ namespace AscendC {
     uint32_t tailCore_;
     uint32_t batchNumInTail_;
     uint32_t batchNumInFormer_;
+    uint32_t indexSliceForRight_;
 
     uint32_t batchNum_;
     uint32_t blockBatchOffsetBase_;
 
     DataCopyPadExtParams<T> padParams{true, 0, 0, 0};
-    };
-}
+};
+}  // namespace AscendC
 #endif
