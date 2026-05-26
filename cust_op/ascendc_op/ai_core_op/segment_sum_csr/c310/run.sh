@@ -43,6 +43,7 @@ export AI_CORE_PROFILE="c310"
 export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/../v220/segment_sum_csr.json")"
 export OPERATOR_SOURCE_ROOT="$(readlink -f "${WORK_DIR}/../v220")"
 export INSERT_SUPPORT_950_PATHS="op_host/${vendor_name}.cpp"
+export COPY_KERNEL_COMMON_UTILS="1"
 
 parse_arguments "$@" || exit 1
 

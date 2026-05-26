@@ -20,71 +20,116 @@ See the License for the specific language governing permissions and
 #include "ops_log.h"
 
 namespace optiling {
-    constexpr int RESERVER_UB_SIZE = 40 * 1024;
 
-    static ge::graphStatus TilingFunc(gert::TilingContext* context)
-    {
-        OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
-        OPS_LOG_E_IF_NULL("csrSeg", context->GetInputTensor(0), return ge::GRAPH_FAILED);
-        OPS_LOG_E_IF_NULL("values", context->GetInputTensor(1), return ge::GRAPH_FAILED);
+constexpr int64_t StartIndexByInt64 = 4;
+constexpr int64_t StartIndexByInt32 = 0;
 
-        // platform info
-        auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-        size_t* currentWorkspace = context->GetWorkspaceSizes(1);
-        size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
-        currentWorkspace[0] = systemWorkspacesSize;
-        size_t coreNum = ascendPlatform.GetCoreNumAiv();
-        if (coreNum == 0) {
-            OPS_LOG_E("[ERROR]", "ai core num is zero.");
-            return ge::GRAPH_FAILED;
-        }
+static ge::graphStatus TilingFunc(gert::TilingContext* context)
+{
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("csrSeg", context->GetInputTensor(0), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("values", context->GetInputTensor(1), return ge::GRAPH_FAILED);
 
-        // ub
-        uint64_t ubCanUsed;
-        ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
-        ubCanUsed = ubCanUsed - RESERVER_UB_SIZE;
-
-        // 输入shape
-        const gert::StorageShape* x1_shape = context->GetInputShape(0);
-        const gert::Shape shape1 = x1_shape->GetStorageShape();
-        const auto segmentNums = shape1.GetDim(0) - 1;
-        const gert::StorageShape* x2_shape = context->GetInputShape(1);
-        const gert::Shape shape2 = x2_shape->GetStorageShape();
-        const auto totalLength = shape2.GetDim(0);
-
-        // 输入类型
-        ge::DataType csrType = context->GetInputTensor(0)->GetDataType();
-
-        int64_t baseCoreSegments = segmentNums / coreNum;    // 均分到每个核的数据段数
-        int64_t remainedSegments = segmentNums % coreNum;    // 剩余的数据段数，并将剩余的段数均分到前面的核
-        int64_t formerCoreSegments = baseCoreSegments + 1;
-
-        // 设置TilingKey
-        int64_t tilingKey = 0;
-        tilingKey = csrType == ge::DataType::DT_INT64 ? 1 : 0;
-
-        // 设置tiling参数
-        SegmentSumCsrTilingData tiling;
-        tiling.set_coreNum(coreNum);
-        tiling.set_segmentNums(segmentNums);
-        tiling.set_csrSegLength(shape1.GetDim(0));
-        tiling.set_totalLength(totalLength);
-        tiling.set_baseCoreSegments(baseCoreSegments);
-        tiling.set_remainedSegments(remainedSegments);
-        tiling.set_formerCoreSegments(formerCoreSegments);
-        if (csrType == ge::DataType::DT_INT32) {
-            const int32_t* batchSize = context->GetAttrs()->GetAttrPointer<int32_t>(0);
-            tiling.set_batchSize(static_cast<int64_t>(*batchSize));
-        } else {
-            const int64_t* batchSize = context->GetAttrs()->GetAttrPointer<int64_t>(0);
-            tiling.set_batchSize(*batchSize);
-        }
-        context->SetBlockDim(coreNum);
-        context->SetTilingKey(tilingKey);
-        tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-        context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
-        return ge::GRAPH_SUCCESS;
+    // platform info
+    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
+    currentWorkspace[0] = systemWorkspacesSize;
+    size_t coreNum = ascendPlatform.GetCoreNumAiv();
+    if (coreNum == 0) {
+        OPS_LOG_E("[ERROR]", "ai core num is zero.");
+        return ge::GRAPH_FAILED;
     }
+
+    // 获取UB大小
+    uint64_t ubCanUsed;
+    ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
+    // UB 预留已由 REDUCE_BUF_SIZE + ALIGNMENT_MARGIN 覆盖，无需额外固定预留
+
+    // 输入shape
+    OPS_LOG_E_IF_NULL("x1Shape", context->GetInputShape(0), return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("x2Shape", context->GetInputShape(1), return ge::GRAPH_FAILED);
+    const gert::StorageShape* x1Shape = context->GetInputShape(0);
+    const gert::Shape shape1 = x1Shape->GetStorageShape();
+    const auto segmentNums = shape1.GetDim(0) - 1;
+    const gert::StorageShape* x2Shape = context->GetInputShape(1);
+    const gert::Shape shape2 = x2Shape->GetStorageShape();
+    const auto totalLength = shape2.GetDim(0);
+
+    // 输入类型
+    ge::DataType csrType = context->GetInputTensor(0)->GetDataType();
+    ge::DataType valuesType = context->GetInputTensor(1)->GetDataType();
+
+    int64_t baseCoreSegments = segmentNums / coreNum;
+    int64_t remainedSegments = segmentNums % coreNum;
+    int64_t formerCoreSegments = baseCoreSegments + 1;
+
+    // 读取 batchSize
+    int64_t batchSizeVal = 0;
+    OPS_LOG_E_IF_NULL("attrs", context->GetAttrs(), return ge::GRAPH_FAILED);
+    if (csrType == ge::DataType::DT_INT32) {
+        const int32_t* batchSize = context->GetAttrs()->GetAttrPointer<int32_t>(0);
+        batchSizeVal = static_cast<int64_t>(*batchSize);
+    } else {
+        const int64_t* batchSize = context->GetAttrs()->GetAttrPointer<int64_t>(0);
+        batchSizeVal = *batchSize;
+    }
+
+    constexpr int64_t REDUCE_BUF_SIZE = sizeof(float) * 1024LL;  // reducesumTmpBuf 固定 4KB
+    constexpr int64_t ALIGNMENT_MARGIN = 2048LL;                 // 对齐/管理余量 2KB
+    int64_t outQueueSize = 0;
+    int64_t perElementCost = 0;
+
+    if (valuesType == ge::DataType::DT_FLOAT) {
+        outQueueSize = sizeof(float) * segmentNums;
+        perElementCost = sizeof(float) + sizeof(float);  // valuesBuf(4B) + castTmpBuf(4B)
+    } else {
+        // fp16 / bf16: valuesBuf(2B) + castTmpBuf(4B)
+        outQueueSize = (sizeof(float) / 2) * static_cast<uint64_t>(segmentNums);
+        perElementCost = (sizeof(float) / 2) + sizeof(float);  // 2 + 4 = 6
+    }
+
+    int64_t maxSegFromUB = 0;
+    if (ubCanUsed > outQueueSize + REDUCE_BUF_SIZE + ALIGNMENT_MARGIN) {
+        int64_t remainingUB = ubCanUsed - outQueueSize - REDUCE_BUF_SIZE - ALIGNMENT_MARGIN;
+        maxSegFromUB = remainingUB / perElementCost;
+    }
+
+    int64_t maxSegmentLen = maxSegFromUB > totalLength ? totalLength : maxSegFromUB;
+
+    // 设置 TilingKey，其中根据csrType的类型设置起始的TilingKey，用于kernel侧针对不同的参数类型组合（<csrType, valueType>）创建对象，
+    // 组合如下：
+    // tilingKey = 0 -> <int32_t, float>
+    // tilingKey = 1 -> <int32_t, half>
+    // tilingKey = 2 -> <int32_t, bfloat16_t>
+    // tilingKey = 4 -> <int64_t, float>
+    // tilingKey = 5 -> <int64_t, half>
+    // tilingKey = 6 -> <int64_t, bfloat16_t>
+    int64_t tilingKey = (csrType == ge::DataType::DT_INT64 ? StartIndexByInt64 : StartIndexByInt32);
+    if (valuesType == ge::DataType::DT_FLOAT16) {
+        tilingKey += 1;
+    } else if (valuesType == ge::DataType::DT_BF16) {
+        tilingKey += 2;
+    }
+
+    // 设置 tiling 参数
+    SegmentSumCsrTilingData tiling;
+    tiling.set_coreNum(coreNum);
+    tiling.set_segmentNums(segmentNums);
+    tiling.set_csrSegLength(shape1.GetDim(0));
+    tiling.set_totalLength(totalLength);
+    tiling.set_baseCoreSegments(baseCoreSegments);
+    tiling.set_remainedSegments(remainedSegments);
+    tiling.set_formerCoreSegments(formerCoreSegments);
+    tiling.set_batchSize(batchSizeVal);
+    tiling.set_maxSegmentLen(maxSegmentLen);
+
+    context->SetBlockDim(coreNum);
+    context->SetTilingKey(tilingKey);
+    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+    return ge::GRAPH_SUCCESS;
+}
 }  // namespace optiling
 
 namespace ge {
@@ -111,12 +156,12 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("values")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Output("y")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
+            .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND});
         this->Attr("batchSize").Int();

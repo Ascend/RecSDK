@@ -14,165 +14,178 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include "kernel_operator.h"
+#include "kernel_common_utils.h"
 
 namespace SegmentSumCsrKernel {
-constexpr uint32_t DATA_ALIGN_BYTES = 32;
-constexpr uint32_t DATA_COPY_ALIGN_BYTES = 16;
-constexpr uint32_t MAX_SEGMENT_LEN = 1024;
+constexpr uint32_t MAX_SEGMENT_LEN = 1024;  // 仅用于 WholeReduceSum 迭代中间结果
 constexpr uint32_t DEFAULT_BLK_STRIDE = 1;
 constexpr uint32_t REPEAT_LEN = 256;
 constexpr uint32_t DEFAULT_REP_STRIDE = 8;
+
 struct Args {
     GM_ADDR csrSeg;
     GM_ADDR values;
     GM_ADDR y;
-
     GM_ADDR workspace;
     GM_ADDR tiling;
 };
+
+template <typename T>
+struct typeTag {};
 
 template <typename csrType, typename vType>
 class KernelSegmentSumCsr {
 public:
     __aicore__ inline KernelSegmentSumCsr() {}
+
     __aicore__ inline void Init(Args args)
     {
         GET_TILING_DATA(tilingData, args.tiling);
         this->batchSize = tilingData.batchSize;
-
-        // 当前核的index
         this->blockIdx = AscendC::GetBlockIdx();
-        // 判断当前核是前核还是尾核
         this->isTailCore = (this->blockIdx >= tilingData.remainedSegments);
         this->currentCoreSegments = isTailCore ? tilingData.baseCoreSegments : tilingData.formerCoreSegments;
         this->currentSegment = isTailCore ? tilingData.remainedSegments * tilingData.formerCoreSegments +
                                                 (blockIdx - tilingData.remainedSegments) * tilingData.baseCoreSegments
                                           : blockIdx * tilingData.formerCoreSegments;
 
+        if (tilingData.segmentNums == 0) {
+            this->currentCoreSegments = 0;
+            return;
+        }
+
         csrSegGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ csrType*>(args.csrSeg), tilingData.csrSegLength);
         valuesGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ vType*>(args.values), tilingData.totalLength);
         yGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ vType*>(args.y), tilingData.segmentNums);
 
+        const int64_t maxSegBytes = sizeof(vType) * tilingData.maxSegmentLen;
+        const int64_t maxSegFloatBytes = sizeof(float) * tilingData.maxSegmentLen;
+
         pipe.InitBuffer(outQueue, 1, sizeof(vType) * tilingData.segmentNums);
-        pipe.InitBuffer(reducesumTmpBuf, sizeof(vType) * MAX_SEGMENT_LEN);
-        pipe.InitBuffer(valuesBuf, sizeof(vType) * tilingData.totalLength);
+        pipe.InitBuffer(reducesumTmpBuf, sizeof(float) * MAX_SEGMENT_LEN);
+        pipe.InitBuffer(valuesBuf, maxSegBytes);
+        pipe.InitBuffer(castTmpBuf, maxSegFloatBytes);
     }
+
     __aicore__ inline void Process()
     {
-        if (currentCoreSegments == 0U) { return; }
+        if (currentCoreSegments == 0U) {
+            return;
+        }
         Compute();
         CopyOut();
     }
 
-    template <typename dType>
-    __aicore__ inline void CpGm2Local(const AscendC::LocalTensor<dType>& lt, const AscendC::GlobalTensor<dType>& gt,
-                                      int64_t len)
+    __aicore__ inline AscendC::LocalTensor<float> ReduceFloat(const AscendC::LocalTensor<float>& floatSrc,
+                                                              csrType hLength)
     {
-        uint32_t alignLen = len * sizeof(dType) / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
-        uint32_t unAlignLen = len * sizeof(dType) - alignLen;
+        constexpr uint32_t FLOAT_ONE_REPEAT_SIZE = REPEAT_LEN / sizeof(float);
+        AscendC::SetMaskCount();
+        csrType totalNum = hLength;
+        AscendC::LocalTensor<float> floatTemp = reducesumTmpBuf.Get<float>();
 
-        AscendC::GlobalTensor<uint16_t> uint16Gt;
-        uint16Gt.SetGlobalBuffer((__gm__ uint16_t*)gt.GetPhyAddr(), len * sizeof(dType) / 2);
-        AscendC::LocalTensor<uint16_t> uint16Lt = lt.template ReinterpretCast<uint16_t>();
-
-        if (alignLen != 0) {
-            DataCopy(uint16Lt, uint16Gt, alignLen / 2);
+        AscendC::SetVectorMask<uint16_t, AscendC::MaskMode::COUNTER>(0, totalNum);
+        AscendC::WholeReduceSum<float, false>(floatTemp, floatSrc, AscendC::MASK_PLACEHOLDER, 1, DEFAULT_BLK_STRIDE,
+                                              DEFAULT_BLK_STRIDE, DEFAULT_REP_STRIDE);
+        AscendC::PipeBarrier<PIPE_V>();
+        totalNum = AscendC::DivCeil(totalNum, FLOAT_ONE_REPEAT_SIZE);
+        while (totalNum > 1) {
+            AscendC::SetVectorMask<uint16_t, AscendC::MaskMode::COUNTER>(0, totalNum);
+            AscendC::WholeReduceSum<float, false>(floatTemp, floatTemp, AscendC::MASK_PLACEHOLDER, 1,
+                                                  DEFAULT_BLK_STRIDE, DEFAULT_BLK_STRIDE, DEFAULT_REP_STRIDE);
+            AscendC::PipeBarrier<PIPE_V>();
+            totalNum = AscendC::DivCeil(totalNum, FLOAT_ONE_REPEAT_SIZE);
         }
-
-        if (unAlignLen != 0) {
-#ifdef SUPPORT_V200
-            DataCopyPadGm2Local(uint16Lt[alignLen / 2], uint16Gt[alignLen / 2], unAlignLen / 2);
-#else
-            const AscendC::DataCopyExtParams dataCopyExtParams{1, unAlignLen, 0, 0, 0};
-            const AscendC::DataCopyPadExtParams<uint16_t> dataCopyPadExtParams{false, 0, 0, 0};
-            DataCopyPad(uint16Lt[alignLen / 2], uint16Gt[alignLen / 2], dataCopyExtParams, dataCopyPadExtParams);
-#endif
-        }
-    }
-
-    __aicore__ inline void DataCopyPadGm2Local(const AscendC::LocalTensor<uint16_t>& lt,
-                                               const AscendC::GlobalTensor<uint16_t>& gt, int64_t len)
-    {
-        AscendC::DataCopy<uint16_t>(lt, gt, DATA_COPY_ALIGN_BYTES);
-        uint64_t mask0 = (1uL << 16) - (1uL << len);
-        uint64_t mask[2] = {mask0, 0};
-        AscendC::Duplicate<uint16_t>(lt, 0, mask, 1, 1, 1);
-    }
-
-    template <typename dType>
-    __aicore__ inline void CpLocal2Gm(const AscendC::GlobalTensor<dType>& gt, const AscendC::LocalTensor<dType>& lt,
-                                      int64_t len)
-    {
-        uint32_t alignLen = len * sizeof(dType) / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES;
-        uint32_t unAlignLen = len * sizeof(dType) - alignLen;
-
-        AscendC::GlobalTensor<uint16_t> uint16Gt;
-        uint16Gt.SetGlobalBuffer((__gm__ uint16_t*)gt.GetPhyAddr(), len * sizeof(dType) / 2);
-        AscendC::LocalTensor<uint16_t> uint16Lt = lt.template ReinterpretCast<uint16_t>();
-
-        if (alignLen != 0) {
-            DataCopy(uint16Gt, uint16Lt, alignLen / 2);
-        }
-        if (unAlignLen != 0) {
-#ifdef SUPPORT_V200
-            DataCopyPadLocal2Gm(uint16Gt[alignLen / 2], uint16Lt[alignLen / 2], unAlignLen / 2);
-#else
-            const AscendC::DataCopyExtParams dataCopyExtParams{1, unAlignLen, 0, 0, 0};
-            const AscendC::DataCopyPadExtParams<uint16_t> dataCopyPadExtParams{false, 0, 0, 0};
-            DataCopyPad(uint16Gt[alignLen / 2], uint16Lt[alignLen / 2], dataCopyExtParams);
-#endif
-        }
-    }
-
-    __aicore__ inline void DataCopyPadLocal2Gm(const AscendC::GlobalTensor<uint16_t>& gt,
-                                               const AscendC::LocalTensor<uint16_t>& lt, int64_t len)
-    {
-        AscendC::SetAtomicAdd<uint16_t>();
-        uint64_t mask0 = (1uL << 16) - (1uL << len);
-        uint64_t mask[2] = {mask0, 0};
-        AscendC::Duplicate<uint16_t>(lt, 0, mask, 1, 1, 1);
-        pipe_barrier(PIPE_ALL);
-        AscendC::DataCopy(gt, lt, DATA_COPY_ALIGN_BYTES);
-        AscendC::SetAtomicNone();
+        return floatTemp;
     }
 
     __aicore__ inline void WholeReduceSumImpl(const AscendC::LocalTensor<vType>& dst,
-                                              const AscendC::LocalTensor<vType>& src,
-                                              const csrType hLength,
+                                              const AscendC::LocalTensor<vType>& src, const csrType hLength,
                                               int32_t idx)
     {
-        static constexpr uint32_t ONE_REPEAT_SIZE = REPEAT_LEN / sizeof(vType);
+        WholeReduceSumImplDispatch(dst, idx, src, hLength, typeTag<vType>{});
+    }
+
+    template <typename T>
+    __aicore__ inline void WholeReduceSumImplDispatch(const AscendC::LocalTensor<T>& dst, int32_t dstIdx,
+                                                      const AscendC::LocalTensor<T>& src, csrType hLength, typeTag<T>)
+    {
+        static constexpr uint32_t ONE_REPEAT_SIZE = REPEAT_LEN / sizeof(T);
         AscendC::SetMaskCount();
         csrType totalNum = hLength;
-        AscendC::LocalTensor<vType> tempTensor = reducesumTmpBuf.Get<vType>();
+        AscendC::LocalTensor<T> tempTensor = reducesumTmpBuf.Get<T>();
 
         AscendC::SetVectorMask<uint16_t, AscendC::MaskMode::COUNTER>(0, totalNum);
-        AscendC::WholeReduceSum<vType, false>(tempTensor, src, AscendC::MASK_PLACEHOLDER, 1, DEFAULT_BLK_STRIDE,
-                                              DEFAULT_BLK_STRIDE, DEFAULT_REP_STRIDE);
+        AscendC::WholeReduceSum<T, false>(tempTensor, src, AscendC::MASK_PLACEHOLDER, 1, DEFAULT_BLK_STRIDE,
+                                          DEFAULT_BLK_STRIDE, DEFAULT_REP_STRIDE);
         AscendC::PipeBarrier<PIPE_V>();
         totalNum = AscendC::DivCeil(totalNum, ONE_REPEAT_SIZE);
         while (totalNum > 1) {
             AscendC::SetVectorMask<uint16_t, AscendC::MaskMode::COUNTER>(0, totalNum);
-            AscendC::WholeReduceSum<vType, false>(tempTensor, tempTensor, AscendC::MASK_PLACEHOLDER, 1,
-                                                  DEFAULT_BLK_STRIDE, DEFAULT_BLK_STRIDE, DEFAULT_REP_STRIDE);
+            AscendC::WholeReduceSum<T, false>(tempTensor, tempTensor, AscendC::MASK_PLACEHOLDER, 1, DEFAULT_BLK_STRIDE,
+                                              DEFAULT_BLK_STRIDE, DEFAULT_REP_STRIDE);
             AscendC::PipeBarrier<PIPE_V>();
             totalNum = AscendC::DivCeil(totalNum, ONE_REPEAT_SIZE);
         }
-        dst.SetValue(idx, tempTensor.GetValue(0));
+        dst.SetValue(dstIdx, tempTensor.GetValue(0));
+
+        AscendC::ResetMask();
+        AscendC::SetMaskNorm();
+    }
+
+    __aicore__ inline void WholeReduceSumImplDispatch(const AscendC::LocalTensor<half>& dst, int32_t dstIdx,
+                                                      const AscendC::LocalTensor<half>& src, csrType hLength,
+                                                      typeTag<half>)
+    {
+        uint32_t len = static_cast<uint32_t>(hLength);
+        AscendC::LocalTensor<float> floatSrc = castTmpBuf.Get<float>();
+        AscendC::Cast(floatSrc, src, AscendC::RoundMode::CAST_NONE, len);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::LocalTensor<float> floatResult = ReduceFloat(floatSrc, hLength);
+
+        AscendC::LocalTensor<half> halfTemp = castTmpBuf.Get<half>();
+        AscendC::Cast(halfTemp, floatResult, AscendC::RoundMode::CAST_NONE, 1);
+        AscendC::PipeBarrier<PIPE_V>();
+        dst.SetValue(dstIdx, halfTemp.GetValue(0));
+
+        AscendC::ResetMask();
+        AscendC::SetMaskNorm();
+    }
+
+    __aicore__ inline void WholeReduceSumImplDispatch(const AscendC::LocalTensor<bfloat16_t>& dst, int32_t dstIdx,
+                                                      const AscendC::LocalTensor<bfloat16_t>& src, csrType hLength,
+                                                      typeTag<bfloat16_t>)
+    {
+        uint32_t len = static_cast<uint32_t>(hLength);
+        AscendC::LocalTensor<float> floatSrc = castTmpBuf.Get<float>();
+        AscendC::Cast(floatSrc, src, AscendC::RoundMode::CAST_NONE, len);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        AscendC::LocalTensor<float> floatResult = ReduceFloat(floatSrc, hLength);
+        float result = floatResult.GetValue(0);
+
+        union {
+            float f;
+            uint32_t u;
+        } conv;
+        conv.f = result;
+        uint16_t bf16Bits = static_cast<uint16_t>(conv.u >> 16);
+
+        AscendC::LocalTensor<uint16_t> dstU16 = dst.template ReinterpretCast<uint16_t>();
+        dstU16.SetValue(dstIdx, bf16Bits);
 
         AscendC::ResetMask();
         AscendC::SetMaskNorm();
     }
 
 private:
-
     __aicore__ inline void Compute()
     {
         AscendC::LocalTensor<vType> valuesLocal = valuesBuf.Get<vType>();
         AscendC::LocalTensor<vType> outLocal = outQueue.AllocTensor<vType>();
 
         for (int32_t i = 0; i < this->currentCoreSegments; ++i) {
-            // 此时当前核需要处理的数据所在的起始位置
             csrType startLoc = csrSegGlobal.GetValue(this->currentSegment + i) * batchSize;
             csrType endLoc = csrSegGlobal.GetValue(this->currentSegment + i + 1) * batchSize;
             CpGm2Local(valuesLocal, valuesGlobal[startLoc], endLoc - startLoc);
@@ -198,23 +211,36 @@ private:
     AscendC::TQue<AscendC::TPosition::VECOUT, 1> outQueue;
     AscendC::TBuf<AscendC::TPosition::VECCALC> reducesumTmpBuf;
     AscendC::TBuf<AscendC::TPosition::VECCALC> valuesBuf;
+    AscendC::TBuf<AscendC::TPosition::VECCALC> castTmpBuf;
 
     int64_t currentCoreSegments, currentSegment, batchSize, blockIdx;
     bool isTailCore;
 };
 }  // namespace SegmentSumCsrKernel
 
-extern "C" __global__ __aicore__ void segment_sum_csr(GM_ADDR csrSeg, GM_ADDR values, GM_ADDR y,
-                                                      GM_ADDR workspace, GM_ADDR tiling)
+template <typename csrT, typename vT>
+__aicore__ inline void dispatchKernel(SegmentSumCsrKernel::Args& args)
+{
+    SegmentSumCsrKernel::KernelSegmentSumCsr<csrT, vT> op;
+    op.Init(args);
+    op.Process();
+}
+
+extern "C" __global__ __aicore__ void segment_sum_csr(GM_ADDR csrSeg, GM_ADDR values, GM_ADDR y, GM_ADDR workspace,
+                                                      GM_ADDR tiling)
 {
     SegmentSumCsrKernel::Args args{csrSeg, values, y, workspace, tiling};
     if (TILING_KEY_IS(0)) {
-        SegmentSumCsrKernel::KernelSegmentSumCsr<int32_t, float> op;
-        op.Init(args);
-        op.Process();
+        dispatchKernel<int32_t, float>(args);
     } else if (TILING_KEY_IS(1)) {
-        SegmentSumCsrKernel::KernelSegmentSumCsr<int64_t, float> op;
-        op.Init(args);
-        op.Process();
+        dispatchKernel<int32_t, half>(args);
+    } else if (TILING_KEY_IS(2)) {
+        dispatchKernel<int32_t, bfloat16_t>(args);
+    } else if (TILING_KEY_IS(4)) {
+        dispatchKernel<int64_t, float>(args);
+    } else if (TILING_KEY_IS(5)) {
+        dispatchKernel<int64_t, half>(args);
+    } else if (TILING_KEY_IS(6)) {
+        dispatchKernel<int64_t, bfloat16_t>(args);
     }
 }

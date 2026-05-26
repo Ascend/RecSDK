@@ -1,62 +1,113 @@
-# 说明
+# `SegmentSumCsr`
 
-本算子仅支持NPU调用。
+本算子仅支持 NPU 调用。
 
-# 产品支持情况
+## 目录结构
 
-| 硬件型号              | 是否支持                  |
-| -------------------- | ------------------------ |
-| Atlas A2训练系列产品  | 是  |
-| Atlas A3训练系列产品  | 是  |
-| Atlas 推理系列产品    | 是  |
-
-# segment_sum_csr算子目录层级
-
-```shell
--- segment_sum_csr
-   |-- v220
-      |-- op_host                 # 算子host侧实现
-      |-- op_kernel               # 算子kernel侧实现
-      |-- segment_sum_csr.json    # 算子原型配置
-      |-- README.md               # 算子说明文档
-      |-- run.sh                  # 算子编译部署脚本
+```text
+segment_sum_csr
+|-- segment_sum_csr.cpp
+|-- README.md
+|-- v220/
+|   |-- segment_sum_csr.json
+|   |-- op_host/
+|   |-- op_kernel/
+|   |-- run.sh
+|-- c310/
+|   |-- run.sh
 ```
 
-# 功能
+## 硬件支持情况
 
-根据输入batch_size和csr_seg计算values中各个分段的和。
+| 实现目录    | 典型硬件               |
+|---------|--------------------|
+| `v220/` | Atlas A2 / A3 训练系列 |
+| `c310/` | Atlas A5 训练系列      |
 
-# 算子实现原理
+## 接口定义
 
-![segment_sum_csr原理图](./segment_sum_csr原理图.jpg)
-
-如上图所示，假设输入是:
-
-```shell
-batch_size=2
-csr_seg=[0 3 7 8]
-values=[1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0 11.0 12.0 13.0 14.0 15.0 16.0]
+```python
+torch.ops.mxrec.segment_sum_csr(
+    int batch_size,
+    Tensor csr_seg,
+    Tensor values,
+) -> Tensor
 ```
 
-原始数据values是一个一维的张量，batch_size是每一行的长度，相当于将values reshape成n x batch_size的二维张量再计算，然后根据
-csr_seg来计算每一段的和。其中csr_seg中每一个元素都是每一段的起始行号，比如0是第一段的起始行号，3是第二段的起始行号。所以第一段数据
-就是[0, 3)行，即前三行3 x 2 = 6个数据进行求和运算，也就是上图中的蓝色部分。同理，剩下两段计算一样。最后结果y就是三段数据的求和结果：
+## 功能说明
 
-```shell
-y = [21.0 84.0 31.0]
+根据 `batch_size` 和 `csr_seg` 对 `values` 中各个分段求和。
+
+`csr_seg` 为 CSR 格式的分段偏移数组：`csr_seg[i]` 到 `csr_seg[i+1]`（不含）之间的 `values` 元素属于第 `i` 段，对该段内所有元素求和得到输出 `y[i]`。
+
+`batch_size` 定义了每一行的长度，相当于先将 `values` reshape 为 `[-1, batch_size]` 的二维张量，再按段求和。
+
+### 仿真/伪代码
+
+```python
+def segment_sum_csr(batch_size, csr_seg, values):
+    segment_nums = len(csr_seg) - 1
+    y = torch.empty(segment_nums, dtype=values.dtype)
+    for i in range(segment_nums):
+        start = csr_seg[i] * batch_size
+        end = csr_seg[i + 1] * batch_size
+        y[i] = values[start:end].sum()
+    return y
 ```
 
-# 算子输入与输出
+## 参数说明
 
-| 名称         | 输入/输出 | 数据类型    | 数据格式   | 范围                      | 说明                                                       |
-|------------|-------|---------|--------|-------------------------|----------------------------------------------------------|
-| csr_seg    | 输入    | int32/int64 | Tensor | | 各分段长度的完整累积和，分段长度是指每个段所包含的行数，csr_seg张量的形状为num_segments+1，其中num_segments为段的数量 |
-| values     | 输入    | float32 | Tensor | | 需要分段求和的张量，长度是batch_size的倍数                               |
-| batch_size | 输入    | int32/int64 | int    | | 每行包含的元素个数                                                |
-| y          | 输出    | float32 | Tensor | | 输出                                                       |
+| 名称 | 输入/输出 | 类型 | 数据格式/形状 | 说明 |
+| --- | --- | --- | --- | --- |
+| batch_size | 属性 | int64 | NA | batch 大小，要求 `values.size(0) % batch_size == 0`；允许 `batch_size = 0`（空 tensor） |
+| csr_seg | 输入 | Tensor[int32/int64] | `[segment_nums + 1]` | CSR 分段偏移数组，单调递增，首元素为 0 |
+| values | 输入 | Tensor[float32/float16/bfloat16/int32/int64] | `[N]` | 非零值数组，1D；整数类型在 NPU 侧自动转 FP32 计算后回 cast |
+| y | 输出 | Tensor | `[segment_nums]` | 每段求和结果，类型与 `values` 一致 |
 
-# 算子编译部署
+### 参数约束
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+- `csr_seg.dim() == 1`，`values.dim() == 1`
+- `csr_seg` 必须单调递增，且 `csr_seg[0] == 0`
+- `batch_size != 0` 时，`values.size(0) % batch_size == 0`
+- `values` 为空 tensor（`values.numel() == 0`）时允许，输出为空 tensor
+- `values` 为 int32/int64 时，NPU 内部先 cast 到 FP32 求和，再 cast 回整数类型；FP32 可精确表示 int32 全范围及绝对值 ≤2²⁴ 的 int64
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/reverse_sequence/README.md)
+## 调用示例
+
+```python
+import torch
+import fbgemm_gpu  # noqa: F401
+import fbgemm_ascend  # noqa: F401
+
+torch.npu.set_device("npu:0")
+
+# CSR 分段偏移：3 段，分别包含 2、3、1 个元素
+csr_seg = torch.tensor([0, 2, 5, 6], dtype=torch.int32, device="npu:0")
+values = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], dtype=torch.float32, device="npu:0")
+
+batch_size = 1
+output = torch.ops.mxrec.segment_sum_csr(batch_size, csr_seg, values)
+
+# output = [3.0, 12.0, 6.0]
+expected = torch.tensor([3.0, 12.0, 6.0], dtype=torch.float32)
+torch.testing.assert_close(output.cpu(), expected)
+```
+
+大 shape 示例：
+
+```python
+segment_nums = 100
+csr_seg = torch.arange(0, segment_nums + 1, dtype=torch.int32, device="npu:0") * 10
+values = torch.randn(segment_nums * 10, dtype=torch.float32, device="npu:0")
+
+batch_size = 1
+output = torch.ops.mxrec.segment_sum_csr(batch_size, csr_seg, values)
+
+assert output.shape == (segment_nums,)
+assert output.dtype == values.dtype
+```
+
+## 编译与测试
+
+- 算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+- 测试示例参考：`cust_op/test/segment_sum_csr_test/torch/test_segment_sum_csr.py`
