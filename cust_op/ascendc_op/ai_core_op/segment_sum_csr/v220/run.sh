@@ -39,6 +39,7 @@ source "$UTILS_SCRIPT"
 # 3. 参数配置
 # ==============================================================================
 vendor_name="segment_sum_csr"
+export COPY_KERNEL_COMMON_UTILS="1"
 
 parse_arguments "$@" || exit 1
 

@@ -23,18 +23,26 @@ using torch::autograd::Variable;
 using tensor_list = std::vector<at::Tensor>;
 using namespace at;
 
-// 为NPU设备注册前向实现
-at::Tensor segment_sum_csr_impl_npu(const at::Tensor& csr_seg, const at::Tensor& values, int64_t batch_size)
+at::Tensor segment_sum_csr_impl_npu(int64_t batch_size, const at::Tensor& csr_seg, const at::Tensor& values)
 {
     check_tensor_non_empty(csr_seg, "csr_seg");
-    check_tensor_non_empty(values, "values");
     check_tensor_dim(csr_seg, 1, "segment_sum_csr csr_seg");
     check_tensor_dim(values, 1, "segment_sum_csr values");
-    TORCH_CHECK(batch_size != 0, "batch_size is 0");
-    TORCH_CHECK(values.size(0) % batch_size == 0, "param values dim 0: ", values.size(0),
-                " is not multiple of batch_size: ", batch_size);
+    if (batch_size != 0) {
+        TORCH_CHECK(values.size(0) % batch_size == 0, "param values dim 0: ", values.size(0),
+                    " is not multiple of batch_size: ", batch_size);
+    }
     auto csr_seg_conti = csr_seg.contiguous();
     auto values_conti = values.contiguous();
+
+    // NPU kernel 仅支持浮点类型。对整数类型，先转 FP32 计算，再 cast 回原始类型。
+    if (values_conti.dtype() == at::kInt || values_conti.dtype() == at::kLong) {
+        auto values_fp32 = values_conti.to(at::kFloat);
+        at::Tensor y_fp32 = at::empty({csr_seg_conti.size(0) - 1}, values_fp32.options());
+        EXEC_NPU_CMD(aclnnSegmentSumCsr, csr_seg_conti, values_fp32, batch_size, y_fp32);
+        return y_fp32.to(values_conti.dtype());
+    }
+
     at::Tensor y = at::empty({csr_seg_conti.size(0) - 1}, values_conti.options());
     EXEC_NPU_CMD(aclnnSegmentSumCsr, csr_seg_conti, values_conti, batch_size, y);
     return y;
@@ -43,10 +51,10 @@ at::Tensor segment_sum_csr_impl_npu(const at::Tensor& csr_seg, const at::Tensor&
 // 通过继承torch::autograd::Function类实现前向绑定
 class SegmentSumCsr : public torch::autograd::Function<SegmentSumCsr> {
 public:
-    static at::Tensor forward(AutogradContext* ctx, at::Tensor csr_seg, at::Tensor values, int64_t batch_size)
+    static at::Tensor forward(AutogradContext* ctx, int64_t batch_size, at::Tensor csr_seg, at::Tensor values)
     {
         at::AutoDispatchBelowADInplaceOrView guard;
-        auto y = segment_sum_csr_impl_npu(csr_seg, values, batch_size);
+        auto y = segment_sum_csr_impl_npu(batch_size, csr_seg, values);
         ctx->save_for_backward({csr_seg, values});
         return y;
     }
@@ -55,7 +63,7 @@ public:
 // 在npu命名空间里注册segment_sum_csr的schema
 TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
-    m.def("segment_sum_csr(Tensor csr_seg, Tensor values, int batch_size) -> Tensor");
+    m.def("segment_sum_csr(SymInt batch_size, Tensor csr_seg, Tensor values) -> Tensor");
 }
 
 // 为NPU设备注册前向实现
