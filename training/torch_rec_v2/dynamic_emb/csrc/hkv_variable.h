@@ -73,10 +73,27 @@ public:
     uint64_t* get();
     DeviceCounter& sync(const aclrtStream& stream);
     uint64_t result();
+
 private:
     static void check_ret(aclError ret, const char* msg);
     uint64_t* d_counter{nullptr};
     uint64_t h_counter{0};
+};
+
+class DeviceProp {
+public:
+    static DeviceProp& getDeviceProp(int device_id = 0);
+    DeviceProp& operator=(const DeviceProp&) = delete;
+
+    int num_sms = 0;
+    int warp_size = 0;
+    int max_thread_per_sm = 0;
+    int max_thread_per_block = 0;
+    int total_threads = 0;
+
+private:
+    explicit DeviceProp(int device_id);
+    ~DeviceProp() = default;
 };
 #ifdef USE_RTTI
 template <typename KeyType, typename ValueType, EvictStrategy Strategy = EvictStrategy::kLru>
@@ -91,7 +108,7 @@ public:
                 const OptimizerType optimizer_type = OptimizerType::Null);
 
     ~HKVVariable();
-    
+
     int64_t rows(aclrtStream stream = 0);
 
     int64_t cols();
@@ -111,15 +128,14 @@ public:
     EvictStrategy evict_strategy() const;
 
     void insert_and_evict(const size_t n,
-                          const void* keys,            // (n)
-                          const void* values,          // (n, DIM)
-                          const void* scores,          // (n)
-                          void* evicted_keys,          // (n)
-                          void* evicted_values,        // (n, DIM)
-                          void* evicted_scores,        // (n)
-                          uint64_t* d_evicted_counter, // (1)
-                          aclrtStream stream = 0, bool unique_key = true,
-                          bool ignore_evict_strategy = false);
+                          const void* keys,             // (n)
+                          const void* values,           // (n, DIM)
+                          const void* scores,           // (n)
+                          void* evicted_keys,           // (n)
+                          void* evicted_values,         // (n, DIM)
+                          void* evicted_scores,         // (n)
+                          uint64_t* d_evicted_counter,  // (1)
+                          aclrtStream stream = 0, bool unique_key = true, bool ignore_evict_strategy = false);
 
     void find_or_insert(const size_t n, const void* keys, void** value_ptrs, void* values, bool* d_found, void* scores,
                         aclrtStream stream, bool unique_key, bool ignore_evict_strategy);
@@ -128,65 +144,62 @@ public:
 
     const float get_initial_optstate() const;
 
-    void find(const size_t n, const void *keys, // (n)
-              void *values,                     // (n, DIM)
-              bool *founds,                     // (n)
-              void *scores = nullptr,           // (n)
+    void find(const size_t n, const void* keys,  // (n)
+              void* values,                      // (n, DIM)
+              bool* founds,                      // (n)
+              void* scores = nullptr,            // (n)
               aclrtStream stream = 0) const;
 
-    void erase(const size_t n, const void *keys,
-                      aclrtStream stream = 0);
+    void erase(const size_t n, const void* keys, aclrtStream stream = 0);
 
     void clear(aclrtStream stream = 0);
-
 
     void reserve(const size_t new_capacity, aclrtStream stream = 0);
 
     void accum_or_assign(const size_t n,
-                         const void *keys,             // (n)
-                         const void *value_or_deltas,  // (n, DIM)
-                         const bool *accum_or_assigns, // (n)
-                         const void *scores = nullptr, // (n)
-                         aclrtStream stream = 0,
-                         bool ignore_evict_strategy = false);
+                         const void* keys,              // (n)
+                         const void* value_or_deltas,   // (n, DIM)
+                         const bool* accum_or_assigns,  // (n)
+                         const void* scores = nullptr,  // (n)
+                         aclrtStream stream = 0, bool ignore_evict_strategy = false);
 
-    void find_or_insert_pointers(const size_t n, const void *keys, // (n)
-                                 void **value_ptrs,                // (n * ptrs)
-                                 bool *d_found,                    // (n * 1)
-                                 void *scores = nullptr,           // (n)
-                                 aclrtStream stream = 0, bool unique_key = true,
-                                 bool ignore_evict_strategy = false);
-
+    void find_or_insert_pointers(const size_t n, const void* keys,  // (n)
+                                 void** value_ptrs,                 // (n * ptrs)
+                                 bool* d_found,                     // (n * 1)
+                                 void* scores = nullptr,            // (n)
+                                 aclrtStream stream = 0, bool unique_key = true, bool ignore_evict_strategy = false);
 
     void assign(const size_t n,
-                const void *keys,             // (n)
-                const void *values,           // (n, DIM)
-                const void *scores = nullptr, // (n)
+                const void* keys,              // (n)
+                const void* values,            // (n, DIM)
+                const void* scores = nullptr,  // (n)
                 aclrtStream stream = 0, bool unique_key = true);
 
     void lock(const size_t n,
-              const void* keys,       // (n)
-              void** locked_keys_ptr, // (n)
-              bool* flags = nullptr,  // (n)
-              void* scores = nullptr, // (n)
+              const void* keys,        // (n)
+              void** locked_keys_ptr,  // (n)
+              bool* flags = nullptr,   // (n)
+              void* scores = nullptr,  // (n)
               aclrtStream stream = 0);
 
     void unlock(const size_t n,
-                void** locked_keys_ptr, // (n)
-                const void* keys,       // (n)
-                bool* flags = nullptr,  // (n)
+                void** locked_keys_ptr,  // (n)
+                const void* keys,        // (n)
+                bool* flags = nullptr,   // (n)
                 aclrtStream stream = 0);
 
-    void find_pointers(const size_t n, const void *keys, // (n)
-                       void **values,                      // (n)
-                       bool *founds,                       // (n)
-                       void *scores = nullptr,             // (n)
+    curandState* get_curand_states() const;
+
+    void find_pointers(const size_t n, const void* keys,  // (n)
+                       void** values,                     // (n)
+                       bool* founds,                      // (n)
+                       void* scores = nullptr,            // (n)
                        aclrtStream stream = 0) const;
 
-    void find_pointers(const size_t n, const void *keys, // (n)
-                       void **values,                      // (n)
-                       bool *founds,                       // (n)
-                       void *scores = nullptr,             // (n)
+    void find_pointers(const size_t n, const void* keys,  // (n)
+                       void** values,                     // (n)
+                       bool* founds,                      // (n)
+                       void* scores = nullptr,            // (n)
                        aclrtStream stream = 0);
 
     int optstate_dim() const;
@@ -194,13 +207,11 @@ public:
     int get_emb_cols() const;
 
     void export_batch(const size_t n, const size_t offset, const torch::Tensor d_counter, const torch::Tensor keys,
-                      const torch::Tensor values,
-                      const c10::optional<torch::Tensor>& score = c10::nullopt) const;
+                      const torch::Tensor values, const c10::optional<torch::Tensor>& score = c10::nullopt) const;
 
     void export_batch_matched(const uint64_t threshold, const uint64_t n, const uint64_t offset,
                               torch::Tensor num_matched, torch::Tensor keys, torch::Tensor values,
-                              const c10::optional<torch::Tensor>& scores = c10::nullopt,
-                              aclrtStream stream = 0) const;
+                              const c10::optional<torch::Tensor>& scores = c10::nullopt, aclrtStream stream = 0) const;
 
     void count_matched(const uint64_t threshold, torch::Tensor num_matched, aclrtStream stream = 0) const;
 
@@ -212,18 +223,19 @@ public:
               const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
               bool ignore_evict_strategy = false);
 
-    void find_and_initialize(const size_t n, const void* keys, void** value_ptrs, void* values,
-                             bool* d_found, const c10::optional<InitializerArgs>& initializer_args = c10::nullopt,
+    void find_and_initialize(const size_t n, const void* keys, void** value_ptrs, void* values, bool* d_found,
+                             const c10::optional<InitializerArgs>& initializer_args = c10::nullopt,
                              aclrtStream stream = 0);
+
 private:
-    using HKVTable =
-      npu::hkv::HashTable<KeyType, ValueType, uint64_t, (int)Strategy>;
+    using HKVTable = npu::hkv::HashTable<KeyType, ValueType, uint64_t, (int)Strategy>;
     std::unique_ptr<HKVTable> hkv_table_ = std::make_unique<HKVTable>();
     npu::hkv::HashTableOptions hkv_table_option_;
     size_t dim_;
     size_t max_capacity_;
     const InitializerArgs initializer_args_;
-    float initial_optstate_ {0.};
+    curandState* curand_states_;
+    float initial_optstate_{0.};
 
     DataType key_type_;
     DataType value_type_;
@@ -243,7 +255,7 @@ public:
                 const OptimizerType optimizer_type = OptimizerType::Null);
 
     ~HKVVariable() override;
-    
+
     int64_t rows(aclrtStream stream = 0) override;
 
     int64_t cols() override;
@@ -263,15 +275,14 @@ public:
     EvictStrategy evict_strategy() const override;
 
     void insert_and_evict(const size_t n,
-                          const void* keys,            // (n)
-                          const void* values,          // (n, DIM)
-                          const void* scores,          // (n)
-                          void* evicted_keys,          // (n)
-                          void* evicted_values,        // (n, DIM)
-                          void* evicted_scores,        // (n)
-                          uint64_t* d_evicted_counter, // (1)
-                          aclrtStream stream = 0, bool unique_key = true,
-                          bool ignore_evict_strategy = false) override;
+                          const void* keys,             // (n)
+                          const void* values,           // (n, DIM)
+                          const void* scores,           // (n)
+                          void* evicted_keys,           // (n)
+                          void* evicted_values,         // (n, DIM)
+                          void* evicted_scores,         // (n)
+                          uint64_t* d_evicted_counter,  // (1)
+                          aclrtStream stream = 0, bool unique_key = true, bool ignore_evict_strategy = false) override;
 
     void find_or_insert(const size_t n, const void* keys, void** value_ptrs, void* values, bool* d_found, void* scores,
                         aclrtStream stream, bool unique_key, bool ignore_evict_strategy) override;
@@ -280,65 +291,64 @@ public:
 
     const float get_initial_optstate() const override;
 
-    void find(const size_t n, const void *keys, // (n)
-              void *values,                     // (n, DIM)
-              bool *founds,                     // (n)
-              void *scores = nullptr,           // (n)
+    void find(const size_t n, const void* keys,  // (n)
+              void* values,                      // (n, DIM)
+              bool* founds,                      // (n)
+              void* scores = nullptr,            // (n)
               aclrtStream stream = 0) const override;
 
-    void erase(const size_t n, const void *keys,
-                       aclrtStream stream = 0) override;
+    void erase(const size_t n, const void* keys, aclrtStream stream = 0) override;
 
     void clear(aclrtStream stream = 0) override;
-
 
     void reserve(const size_t new_capacity, aclrtStream stream = 0) override;
 
     void accum_or_assign(const size_t n,
-                         const void *keys,             // (n)
-                         const void *value_or_deltas,  // (n, DIM)
-                         const bool *accum_or_assigns, // (n)
-                         const void *scores = nullptr, // (n)
-                         aclrtStream stream = 0,
-                         bool ignore_evict_strategy = false) override;
+                         const void* keys,              // (n)
+                         const void* value_or_deltas,   // (n, DIM)
+                         const bool* accum_or_assigns,  // (n)
+                         const void* scores = nullptr,  // (n)
+                         aclrtStream stream = 0, bool ignore_evict_strategy = false) override;
 
-    void find_or_insert_pointers(const size_t n, const void *keys, // (n)
-                                 void **value_ptrs,                // (n * ptrs)
-                                 bool *d_found,                    // (n * 1)
-                                 void *scores = nullptr,           // (n)
+    void find_or_insert_pointers(const size_t n, const void* keys,  // (n)
+                                 void** value_ptrs,                 // (n * ptrs)
+                                 bool* d_found,                     // (n * 1)
+                                 void* scores = nullptr,            // (n)
                                  aclrtStream stream = 0, bool unique_key = true,
                                  bool ignore_evict_strategy = false) override;
 
     void assign(const size_t n,
-                const void *keys,             // (n)
-                const void *values,           // (n, DIM)
-                const void *scores = nullptr, // (n)
+                const void* keys,              // (n)
+                const void* values,            // (n, DIM)
+                const void* scores = nullptr,  // (n)
                 aclrtStream stream = 0, bool unique_key = true) override;
 
     void lock(const size_t n,
-              const void* keys,       // (n)
-              void** locked_keys_ptr, // (n)
-              bool* flags = nullptr,  // (n)
-              void* scores = nullptr, // (n)
+              const void* keys,        // (n)
+              void** locked_keys_ptr,  // (n)
+              bool* flags = nullptr,   // (n)
+              void* scores = nullptr,  // (n)
               aclrtStream stream = 0) override;
 
     void unlock(const size_t n,
-                void** locked_keys_ptr, // (n)
-                const void* keys,       // (n)
-                bool* flags = nullptr,  // (n)
+                void** locked_keys_ptr,  // (n)
+                const void* keys,        // (n)
+                bool* flags = nullptr,   // (n)
                 aclrtStream stream = 0) override;
 
-    void find_pointers(const size_t n, const void *keys, // (n)
-                     void **values,                      // (n)
-                     bool *founds,                       // (n)
-                     void *scores = nullptr,             // (n)
-                     aclrtStream stream = 0) const override;
+    curandState* get_curand_states() const override;
 
-    void find_pointers(const size_t n, const void *keys, // (n)
-                     void **values,                      // (n)
-                     bool *founds,                       // (n)
-                     void *scores = nullptr,             // (n)
-                     aclrtStream stream = 0) override;
+    void find_pointers(const size_t n, const void* keys,  // (n)
+                       void** values,                     // (n)
+                       bool* founds,                      // (n)
+                       void* scores = nullptr,            // (n)
+                       aclrtStream stream = 0) const override;
+
+    void find_pointers(const size_t n, const void* keys,  // (n)
+                       void** values,                     // (n)
+                       bool* founds,                      // (n)
+                       void* scores = nullptr,            // (n)
+                       aclrtStream stream = 0) override;
 
     int optstate_dim() const override;
 
@@ -363,18 +373,19 @@ public:
               const c10::optional<torch::Tensor>& score = c10::nullopt, bool unique_key = true,
               bool ignore_evict_strategy = false) override;
 
-    void find_and_initialize(const size_t n, const void* keys, void** value_ptrs, void* values,
-                             bool* d_found, const c10::optional<InitializerArgs>& initializer_args = c10::nullopt,
+    void find_and_initialize(const size_t n, const void* keys, void** value_ptrs, void* values, bool* d_found,
+                             const c10::optional<InitializerArgs>& initializer_args = c10::nullopt,
                              aclrtStream stream = 0) override;
+
 private:
-    using HKVTable =
-      npu::hkv::HashTable<KeyType, ValueType, uint64_t, (int)Strategy>;
+    using HKVTable = npu::hkv::HashTable<KeyType, ValueType, uint64_t, (int)Strategy>;
     std::unique_ptr<HKVTable> hkv_table_ = std::make_unique<HKVTable>();
     npu::hkv::HashTableOptions hkv_table_option_;
     size_t dim_;
     size_t max_capacity_;
     const InitializerArgs initializer_args_;
-    float initial_optstate_ {0.};
+    curandState* curand_states_;
+    float initial_optstate_{0.};
 
     DataType key_type_;
     DataType value_type_;

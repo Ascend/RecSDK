@@ -297,6 +297,187 @@ def test_find_and_initialize_debug(dynamic_table):
     assert demb.dyn_emb_rows(dynamic_table) == 0
 
 
+def test_find_and_initialize_normal():
+    """测试find_and_initialize使用normal初始化器"""
+    torch.npu.set_device(DEVICE_ID)
+    dim = 204800
+    dynamic_table = demb.DynamicEmbTable(
+        demb.DynamicEmbDataType.Int64,
+        demb.DynamicEmbDataType.Float32,
+        demb.EvictStrategy.kLru,
+        dim,
+        1024,
+        2048,
+        1 * 1024 * 1024 * 1024,
+        128,
+        0.5,
+        128,
+        1024,
+        DEVICE_ID,
+        False,
+        False,
+        0,
+        1,
+        demb.InitializerArgs(),
+        demb.SafeCheckMode.IGNORE,
+        demb.OptimizerType.Null,
+    )
+    n_existing = 4
+    n_missing = 3
+    mean = 0.0
+    std = 1.0
+
+    existing_keys = torch.arange(1, n_existing + 1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    existing_values = torch.randn(n_existing, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    dynamic_table.load(n_existing, existing_keys, existing_values, None, True, False)
+
+    missing_keys = torch.arange(1001, 1001 + n_missing, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    keys = torch.cat([existing_keys, missing_keys])
+    n = keys.numel()
+
+    value_ptrs = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values_out = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
+    initializer_args = demb.InitializerArgs("normal", mean, std, 0.0, 1.0, 0.0)
+
+    demb.find_and_initialize(dynamic_table, n, keys, value_ptrs, values_out, founds, initializer_args)
+
+    assert torch.all(founds[:n_existing]).item(), "existing keys should be found"
+    assert not torch.any(founds[n_existing:]).item(), "missing keys should not be found"
+    torch.testing.assert_close(values_out[:n_existing].cpu(), existing_values.cpu())
+    # Check missing keys were initialized with normal distribution (mean=0.0, std=1.0)
+    # Mean should be close to 0.0, std should be close to 1.0
+    missing_values_mean = values_out[n_existing:].mean().item()
+    missing_values_std = values_out[n_existing:].std().item()
+    assert abs(missing_values_mean) < 0.3, f"normal initializer mean should be close to 0.0, got {missing_values_mean}"
+    assert abs(missing_values_std - 1.0) < 0.3, (
+        f"normal initializer std should be close to 1.0, got {missing_values_std}"
+    )
+    assert demb.dyn_emb_rows(dynamic_table) == n_existing
+
+
+def test_find_and_initialize_truncated_normal():
+    """测试find_and_initialize使用truncated_normal初始化器"""
+    torch.npu.set_device(DEVICE_ID)
+    dim = 204800
+    dynamic_table = demb.DynamicEmbTable(
+        demb.DynamicEmbDataType.Int64,
+        demb.DynamicEmbDataType.Float32,
+        demb.EvictStrategy.kLru,
+        dim,
+        1024,
+        2048,
+        1 * 1024 * 1024 * 1024,
+        128,
+        0.5,
+        128,
+        1024,
+        DEVICE_ID,
+        False,
+        False,
+        0,
+        1,
+        demb.InitializerArgs(),
+        demb.SafeCheckMode.IGNORE,
+        demb.OptimizerType.Null,
+    )
+    n_existing = 4
+    n_missing = 3
+    mean = 0.0
+    std = 0.876
+    min_val = -2.0
+    max_val = 2.0
+
+    existing_keys = torch.arange(1, n_existing + 1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    existing_values = torch.randn(n_existing, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    dynamic_table.load(n_existing, existing_keys, existing_values, None, True, False)
+
+    missing_keys = torch.arange(1001, 1001 + n_missing, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    keys = torch.cat([existing_keys, missing_keys])
+    n = keys.numel()
+
+    value_ptrs = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values_out = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
+    initializer_args = demb.InitializerArgs("truncated_normal", mean, std, min_val, max_val, 0.0)
+
+    demb.find_and_initialize(dynamic_table, n, keys, value_ptrs, values_out, founds, initializer_args)
+
+    assert torch.all(founds[:n_existing]).item(), "existing keys should be found"
+    assert not torch.any(founds[n_existing:]).item(), "missing keys should not be found"
+    torch.testing.assert_close(values_out[:n_existing].cpu(), existing_values.cpu())
+    # Check missing keys were initialized with truncated normal distribution
+    # Values should be within [min_val, max_val] = [-2.0, 2.0]
+    missing_values = values_out[n_existing:]
+    assert (missing_values >= min_val).all(), f"truncated_normal values should be >= {min_val}"
+    assert (missing_values <= max_val).all(), f"truncated_normal values should be <= {max_val}"
+    assert demb.dyn_emb_rows(dynamic_table) == n_existing
+
+
+def test_find_and_initialize_uniform():
+    """测试find_and_initialize使用uniform初始化器"""
+    torch.npu.set_device(DEVICE_ID)
+    dim = 204800
+    dynamic_table = demb.DynamicEmbTable(
+        demb.DynamicEmbDataType.Int64,
+        demb.DynamicEmbDataType.Float32,
+        demb.EvictStrategy.kLru,
+        dim,
+        1024,
+        2048,
+        1 * 1024 * 1024 * 1024,
+        128,
+        0.5,
+        128,
+        1024,
+        DEVICE_ID,
+        False,
+        False,
+        0,
+        1,
+        demb.InitializerArgs(),
+        demb.SafeCheckMode.IGNORE,
+        demb.OptimizerType.Null,
+    )
+
+    n_existing = 4
+    n_missing = 3
+    mean = 0.5
+    std_dev = 0.2887
+    min_val = 0.0
+    max_val = 1.0
+
+    existing_keys = torch.arange(1, n_existing + 1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    existing_values = torch.randn(n_existing, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    dynamic_table.load(n_existing, existing_keys, existing_values, None, True, False)
+
+    missing_keys = torch.arange(1001, 1001 + n_missing, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    keys = torch.cat([existing_keys, missing_keys])
+    n = keys.numel()
+
+    value_ptrs = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values_out = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
+    initializer_args = demb.InitializerArgs("uniform", mean, std_dev, min_val, max_val, 0.0)
+
+    demb.find_and_initialize(dynamic_table, n, keys, value_ptrs, values_out, founds, initializer_args)
+
+    assert torch.all(founds[:n_existing]).item(), "existing keys should be found"
+    assert not torch.any(founds[n_existing:]).item(), "missing keys should not be found"
+    torch.testing.assert_close(values_out[:n_existing].cpu(), existing_values.cpu())
+    # Check missing keys were initialized with uniform distribution
+    # All values should be within [min_val, max_val] = [0.0, 1.0]
+    missing_values = values_out[n_existing:]
+    assert (missing_values >= min_val).all(), f"uniform values should be >= {min_val}"
+    assert (missing_values <= max_val).all(), f"uniform values should be <= {max_val}"
+    # Mean should be close to 0.5 for uniform distribution
+    missing_values_mean = missing_values.mean().item()
+    assert abs(missing_values_mean - 0.5) < 0.3, (
+        f"uniform initializer mean should be close to 0.5, got {missing_values_mean}"
+    )
+    assert demb.dyn_emb_rows(dynamic_table) == n_existing
+
+
 @pytest.mark.parametrize(
     "evict_strategy", [demb.EvictStrategy.kLru, demb.EvictStrategy.kLfu, demb.EvictStrategy.kCustomized]
 )
@@ -833,6 +1014,177 @@ def test_find_or_insert_constant_initializer():
         assert torch.allclose(found_values[i], torch.full((dim,), const_val, device=f'npu:{DEVICE_ID}')), (
             f"键{keys[i]}的所有维度值应为{const_val}"
         )
+
+
+def test_find_or_insert_normal_initializer():
+    """测试find_or_insert使用normal初始化器"""
+    torch.npu.set_device(DEVICE_ID)
+    dim = 204800
+    mean = 0.0
+    std = 1.0
+    initializer_args = demb.InitializerArgs("normal", mean, std, 0.0, 1.0, 0.0)
+    dynamic_table = demb.DynamicEmbTable(
+        demb.DynamicEmbDataType.Int64,
+        demb.DynamicEmbDataType.Float32,
+        demb.EvictStrategy.kLru,
+        dim,
+        1024,
+        2048,
+        1 * 1024 * 1024 * 1024,
+        128,
+        0.5,
+        128,
+        1024,
+        DEVICE_ID,
+        False,
+        False,
+        0,
+        1,
+        initializer_args,
+        demb.SafeCheckMode.IGNORE,
+        demb.OptimizerType.Null,
+    )
+    n_existing = 4
+    n_missing = 3
+
+    existing_keys = torch.arange(1, n_existing + 1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    existing_values = torch.randn(n_existing, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    dynamic_table.load(n_existing, existing_keys, existing_values, None, True, False)
+
+    missing_keys = torch.arange(1001, 1001 + n_missing, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    keys = torch.cat([existing_keys, missing_keys])
+    n = keys.numel()
+
+    values_out = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    demb.find_or_insert(dynamic_table, n, keys, values_out, None, True, False)
+
+    # Verify existing keys are found and values match
+    torch.testing.assert_close(values_out[:n_existing].cpu(), existing_values.cpu())
+    # Verify missing keys were initialized with normal distribution (mean=0.0, std=1.0)
+    missing_values = values_out[n_existing:]
+    missing_values_mean = missing_values.mean().item()
+    missing_values_std = missing_values.std().item()
+    assert abs(missing_values_mean) < 0.3, f"normal initializer mean should be close to 0.0, got {missing_values_mean}"
+    assert abs(missing_values_std - 1.0) < 0.3, (
+        f"normal initializer std should be close to 1.0, got {missing_values_std}"
+    )
+    # Total rows should be n_existing + n_missing since missing keys are inserted
+    assert demb.dyn_emb_rows(dynamic_table) == n
+
+
+def test_find_or_insert_truncated_normal_initializer():
+    """测试find_or_insert使用truncated_normal初始化器"""
+    torch.npu.set_device(DEVICE_ID)
+    dim = 204800
+    mean = 0.0
+    std = 0.876
+    min_val = -2.0
+    max_val = 2.0
+    initializer_args = demb.InitializerArgs("truncated_normal", mean, std, min_val, max_val, 0.0)
+    dynamic_table = demb.DynamicEmbTable(
+        demb.DynamicEmbDataType.Int64,
+        demb.DynamicEmbDataType.Float32,
+        demb.EvictStrategy.kLru,
+        dim,
+        1024,
+        2048,
+        1 * 1024 * 1024 * 1024,
+        128,
+        0.5,
+        128,
+        1024,
+        DEVICE_ID,
+        False,
+        False,
+        0,
+        1,
+        initializer_args,
+        demb.SafeCheckMode.IGNORE,
+        demb.OptimizerType.Null,
+    )
+    n_existing = 4
+    n_missing = 3
+
+    existing_keys = torch.arange(1, n_existing + 1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    existing_values = torch.randn(n_existing, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    dynamic_table.load(n_existing, existing_keys, existing_values, None, True, False)
+
+    missing_keys = torch.arange(1001, 1001 + n_missing, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    keys = torch.cat([existing_keys, missing_keys])
+    n = keys.numel()
+
+    values_out = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    demb.find_or_insert(dynamic_table, n, keys, values_out, None, True, False)
+
+    # Verify existing keys are found and values match
+    torch.testing.assert_close(values_out[:n_existing].cpu(), existing_values.cpu())
+    # Verify missing keys were initialized with truncated normal distribution
+    # Values should be within [min_val, max_val] = [-2.0, 2.0]
+    missing_values = values_out[n_existing:]
+    assert (missing_values >= min_val).all(), f"truncated_normal values should be >= {min_val}"
+    assert (missing_values <= max_val).all(), f"truncated_normal values should be <= {max_val}"
+    # Total rows should be n_existing + n_missing since missing keys are inserted
+    assert demb.dyn_emb_rows(dynamic_table) == n
+
+
+def test_find_or_insert_uniform_initializer():
+    """测试find_or_insert使用uniform初始化器"""
+    torch.npu.set_device(DEVICE_ID)
+    dim = 204800
+    mean = 0.5
+    std_dev = 0.2887
+    min_val = 0.0
+    max_val = 1.0
+    initializer_args = demb.InitializerArgs("uniform", mean, std_dev, min_val, max_val, 0.0)
+    dynamic_table = demb.DynamicEmbTable(
+        demb.DynamicEmbDataType.Int64,
+        demb.DynamicEmbDataType.Float32,
+        demb.EvictStrategy.kLru,
+        dim,
+        1024,
+        2048,
+        1 * 1024 * 1024 * 1024,
+        128,
+        0.5,
+        128,
+        1024,
+        DEVICE_ID,
+        False,
+        False,
+        0,
+        1,
+        initializer_args,
+        demb.SafeCheckMode.IGNORE,
+        demb.OptimizerType.Null,
+    )
+    n_existing = 4
+    n_missing = 3
+
+    existing_keys = torch.arange(1, n_existing + 1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    existing_values = torch.randn(n_existing, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    dynamic_table.load(n_existing, existing_keys, existing_values, None, True, False)
+
+    missing_keys = torch.arange(1001, 1001 + n_missing, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    keys = torch.cat([existing_keys, missing_keys])
+    n = keys.numel()
+
+    values_out = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    demb.find_or_insert(dynamic_table, n, keys, values_out, None, True, False)
+
+    # Verify existing keys are found and values match
+    torch.testing.assert_close(values_out[:n_existing].cpu(), existing_values.cpu())
+    # Verify missing keys were initialized with uniform distribution
+    # All values should be within [min_val, max_val] = [0.0, 1.0]
+    missing_values = values_out[n_existing:]
+    assert (missing_values >= min_val).all(), f"uniform values should be >= {min_val}"
+    assert (missing_values <= max_val).all(), f"uniform values should be <= {max_val}"
+    # Mean should be close to 0.5 for uniform distribution
+    missing_values_mean = missing_values.mean().item()
+    assert abs(missing_values_mean - 0.5) < 0.3, (
+        f"uniform initializer mean should be close to 0.5, got {missing_values_mean}"
+    )
+    # Total rows should be n_existing + n_missing since missing keys are inserted
+    assert demb.dyn_emb_rows(dynamic_table) == n
 
 
 def test_find_or_insert_mixed():
