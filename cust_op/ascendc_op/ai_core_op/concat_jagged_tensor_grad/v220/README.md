@@ -40,7 +40,7 @@ values = tensor([[1,1,1,1,1,1,1,1],
                 [7,7,7,7,7,7,7,7]
                  ])
 # 长度为2N,前N个数表示第一个tensor的offset,后N个数表示第2个tensor的offset。
-offsets = [0, 1, 2, 3, 0, 1, 3, 4] 
+offsets = [0, 1, 2, 3, 0, 1, 3, 4]
 # offset的长度，两个tensor的offset长度必须一致。
 offsetLen = 4
 # 拼接的tensor个数，这里仅支持两个。
@@ -64,13 +64,14 @@ result = [tensor([[1,1,1,1,1,1,1,1],
 
 # 算子输入与输出
 
-| 名称     |  输入/输出 | 数据类型                           | 数据格式                  | 范围                                 | 说明                |
-|--------|  - |--------------------------------|-----------------------|------------------------------------|-------------------|
-| values | 输入 | bfloat16/float16/float32/int32 | [dim0, dim1]  | 二维tensor                           | 待切分的tensor        |
-| offsets | 输入 | int                            | [dim0]                | 一维,长度为2N                           | 待切分的tensor的偏移     |
-| offsetLen | 输入 | int                            | NA                    | N                                  | 单个tensor的offset长度 |
-| jtNum  | 输入 | int                            | NA                    | 支持jtNum = 2                        | 切分后tensor的个数      |
-| result | 输出 | bfloat16/float16/float32/int32 | TensorList([tensor_a, tensor_b]) | 结果为TensorList,长度为2，表示切分后的两个tensor。 | NA                |
+| 名称             | 输入/输出  | 参数类型    | 数据类型                              | 数据格式                      | 范围                                  | 说明                |
+|----------------|--------|---------|-----------------------------------|---------------------------|-------------------------------------|-------------------|
+| values         | 输入     | Tensor  | bfloat16/float16/float32/int32    | [dim0, dim1]              | 二维tensor                            | 待切分的tensor        |
+| offsets        | 输入     | List    | int                               | List[int]                 | 长度为2N                               | 待切分的tensor的偏移     |
+| offsetLen      | 输入     | int     | int                               | NA                        | N                                   | 单个tensor的offset长度 |
+| jtNum          | 输入     | int     | int                               | NA                        | 支持jtNum = 2                         | 切分后tensor的个数      |
+| nPrefixToRight | 输入     | int     | int                               | NA                        | nPrefixToRight >= 0                 | 切分时右侧tensor的前缀个数  |
+| result         | 输出     | List    | bfloat16/float16/float32/int32    | List([Tensor, Tensor])    | 结果为TensorList,长度为2，表示切分后的两个tensor。  | NA                |
 
 # 算子编译部署
 
