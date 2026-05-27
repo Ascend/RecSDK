@@ -25,11 +25,11 @@ DynamicVariableBase::DynamicVariableBase(
     GetInitializerArgsFn get_initializer_args_fn, InsertAndEvictFn insert_and_evict_fn, FindFn find_fn,
     EraseFn erase_fn, ClearFn clear_fn, ReserveFn reserve_fn, AccumOrAssignFn accum_or_assign_fn,
     FindOrInsertFn find_or_insert_fn, FindOrInsertPointersFn find_or_insert_pointers_fn, AssignFn assign_fn,
-    LockFn lock_fn, UnlockFn unlock_fn, FindPointersConstFn find_pointers_const_fn, FindPointersFn find_pointers_fn,
-    OptStateDimFn optstate_dim_fn, SetInitialOptStateFn set_initial_optstate_fn,
-    GetInitialOptStateFn get_initial_optstate_fn, GetEmbColsFn get_emb_cols_fn, ExportBatchFn export_batch_fn,
-    ExportBatchMatchedFn export_batch_matched_fn, CountMatchedFn count_matched_fn, UpdateFn update_fn, LoadFn load_fn,
-    FindAndInitializeFn find_and_initialize_fn)
+    LockFn lock_fn, UnlockFn unlock_fn, GetCurandStatesConstFn get_curand_states_const_fn,
+    FindPointersConstFn find_pointers_const_fn, FindPointersFn find_pointers_fn, OptStateDimFn optstate_dim_fn,
+    SetInitialOptStateFn set_initial_optstate_fn, GetInitialOptStateFn get_initial_optstate_fn,
+    GetEmbColsFn get_emb_cols_fn, ExportBatchFn export_batch_fn, ExportBatchMatchedFn export_batch_matched_fn,
+    CountMatchedFn count_matched_fn, UpdateFn update_fn, LoadFn load_fn, FindAndInitializeFn find_and_initialize_fn)
     : rows_fn_(std::move(rows_fn)),
       cols_fn_(std::move(cols_fn)),
       is_pure_hbm_mode_fn_(std::move(is_pure_hbm_mode_fn)),
@@ -49,6 +49,7 @@ DynamicVariableBase::DynamicVariableBase(
       assign_fn_(std::move(assign_fn)),
       lock_fn_(std::move(lock_fn)),
       unlock_fn_(std::move(unlock_fn)),
+      get_curand_states_const_fn_(std::move(get_curand_states_const_fn)),
       find_pointers_const_fn_(std::move(find_pointers_const_fn)),
       find_pointers_fn_(std::move(find_pointers_fn)),
       optstate_dim_fn_(std::move(optstate_dim_fn)),
@@ -178,6 +179,11 @@ void DynamicVariableBase::unlock(const size_t n, void** locked_keys_ptr, const v
     unlock_fn_(n, locked_keys_ptr, keys, flags, stream);
 }
 
+curandState* DynamicVariableBase::get_curand_states() const
+{
+    return get_curand_states_const_fn_();
+}
+
 void DynamicVariableBase::find_pointers(const size_t n, const void* keys, void** values, bool* founds, void* scores,
                                         aclrtStream stream) const
 {
@@ -304,6 +310,7 @@ std::shared_ptr<DynamicVariableBase> VariableFactory::Create(
                     [impl](const size_t n, void** locked_keys_ptr, const void* keys, bool* flags, aclrtStream stream) {
                         impl->unlock(n, locked_keys_ptr, keys, flags, stream);
                     },
+                    [impl]() -> curandState* { return impl->get_curand_states(); },
                     [impl](const size_t n, const void* keys, void** values, bool* founds, void* scores,
                            aclrtStream stream) {
                         const auto& cimpl = *impl;

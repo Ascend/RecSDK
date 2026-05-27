@@ -17,9 +17,11 @@
 
 #include "hkv_variable.h"
 #include <stdexcept>
+#include <random>
 #include <acl/acl.h>
 #include "tiling/platform/platform_ascendc.h"
 #include <simt_api/common_functions.h>
+#include <simt_api/math_functions.h>
 #include "kernel_operator.h"
 #include "table_vector.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
@@ -34,6 +36,48 @@
 
 namespace dyn_emb {
 constexpr uint32_t BLOCK_THREAD_NUM_OPT = 2048;
+// 当前无接口获取每个block下最大线程数，查询手册Ascend950PR该值为2048
+constexpr uint32_t MAX_THREADS_PER_BLOCK = 2048;
+
+DeviceProp& DeviceProp::getDeviceProp(int device_id)
+{
+    static DeviceProp device_prop(device_id);
+    return device_prop;
+}
+
+DeviceProp::DeviceProp(int device_id)
+{
+    uint32_t deviceCount = 0;
+    if (aclrtGetDeviceCount(&deviceCount) != ACL_SUCCESS) {
+        throw std::runtime_error("aclrtGetDeviceCount failed");
+    }
+
+    if (deviceCount == 0 || device_id < 0 || device_id >= deviceCount) {
+        throw std::runtime_error("Can't get device count, or device_id < 0, or device_id >= deviceCount, device_id = " +
+                                 std::to_string(device_id) + ", deviceCount = " + std::to_string(deviceCount));
+    }
+
+    int64_t vectorCoreCount = 0;
+    if (aclrtGetDeviceInfo(device_id, ACL_DEV_ATTR_VECTOR_CORE_NUM, &vectorCoreCount) != ACL_SUCCESS) {
+        throw std::runtime_error("aclrtGetDeviceInfo(VECTOR_CORE_NUM) failed");
+    }
+    this->num_sms = vectorCoreCount;
+
+    int64_t warpSize = 0;
+    if (aclrtGetDeviceInfo(device_id, ACL_DEV_ATTR_WARP_SIZE, &warpSize) != ACL_SUCCESS) {
+        throw std::runtime_error("aclrtGetDeviceInfo(WARP_SIZE) failed");
+    }
+    this->warp_size = warpSize;
+
+    int64_t maxThreadPerVectorCore = 0;
+    if (aclrtGetDeviceInfo(device_id, ACL_DEV_ATTR_MAX_THREAD_PER_VECTOR_CORE, &maxThreadPerVectorCore) !=
+        ACL_SUCCESS) {
+        throw std::runtime_error("aclrtGetDeviceInfo(MAX_THREAD_PER_VECTOR_CORE) failed");
+    }
+    this->max_thread_per_sm = maxThreadPerVectorCore;
+    this->max_thread_per_block = MAX_THREADS_PER_BLOCK;
+    this->total_threads = this->num_sms * this->max_thread_per_sm;
+}
 
 DeviceCounter::DeviceCounter()
 {
@@ -208,6 +252,276 @@ __global__ __vector__ void initialize_optimizer_state_kernel(uint64_t n, int emb
         dim3{BLOCK_THREAD_NUM_OPT}, n, emb_dim, vector_args, optstate_initializer, block_all);
 }
 
+__forceinline__ __simt_callee__ void curand_init(uint64_t seed, uint64_t sequence, uint64_t offset,
+                                                 __gm__ curandState* state)
+{
+    // 1. 基础播种：使用传入的种子初始化最核心的位移寄存器
+    if (seed == 0) {
+        seed = 123456789;  // 规避全0死循环, 当seed为0时，默认初始化为123456789
+    }
+    state->x = static_cast<uint32_t>(seed);
+    state->y = static_cast<uint32_t>(seed * 1103515245ULL + 12345);  // 简单的线性同余法衍生其他寄存器
+    state->z = static_cast<uint32_t>(state->y * 1103515245ULL + 12345);
+    state->w = static_cast<uint32_t>(state->z * 1103515245ULL + 12345);
+    state->v = static_cast<uint32_t>(state->w * 1103515245ULL + 12345);
+
+    // 2. 引入序列号(sequence)和偏移量(offset)的影响
+    state->d = 362437 + static_cast<uint32_t>(sequence);
+
+    // 3. 预迭代（热身）：跳过 offset 指定的步数，让状态充分混合，并且精准定位到序列的指定偏移位置
+    for (uint64_t i = 0; i < offset; ++i) {
+        uint32_t t = (state->x ^ (state->x >> 2));
+        state->x = state->y;
+        state->y = state->z;
+        state->z = state->w;
+        state->w = state->v;
+        state->v = (state->v ^ (state->v << 4)) ^ (t ^ (t << 1));
+        state->d += 362437;
+    }
+}
+
+__forceinline__ __simt_callee__ uint32_t curand_next(curandState& state)
+{
+    uint32_t t = (state.x ^ (state.x >> 2));
+    state.x = state.y;
+    state.y = state.z;
+    state.z = state.w;
+    state.w = state.v;
+    state.v = (state.v ^ (state.v << 4)) ^ (t ^ (t << 1));
+    state.d += 362437;
+    return state.d + state.v;
+}
+
+__forceinline__ __simt_callee__ float curand_uniform_float(curandState& state)
+{
+    // 1. 获取一个 32 位的伪随机整数
+    uint32_t r = curand_next(state);
+
+    // 2. 提取高 23 位作为 float 的尾数 (Mantissa)
+    // IEEE 754 单精度浮点数中，尾数占 23 位。
+    // 右移 9 位可以丢弃低 9 位，保留最具随机性的高 23 位。
+    r >>= 9;
+
+    // 3. 拼接 IEEE 754 格式的二进制位
+    // float 的结构：[1位符号位(0)] [8位指数位(127)] [23位尾数(r)]
+    // 指数位设为 127 (即 0x3F800000 中的 0x7F << 23)，代表 2^0 = 1.0
+    // 这样构造出的浮点数范围天然落在 [1.0, 2.0) 之间
+    uint32_t ieee_bits = 0x3F800000 | r;
+
+    // 4. 将uint32_t二进制位解释为float
+    float result = __uint_as_float(ieee_bits);
+
+    // 5. 减去 1.0f，将范围从 [1.0, 2.0) 映射到 [0.0, 1.0)
+    // 由于 r 不会全为0（XORWOW算法特性），实际结果通常为 (0.0, 1.0]
+    return result - 1.0f;
+}
+
+__forceinline__ __simt_callee__ float curand_normal_float(curandState& state)
+{
+    if (state.has_spare) {
+        state.has_spare = 0;
+        return state.normal_spare;
+    }
+
+    float u1 = 0.0f;
+    float u2 = 0.0f;
+    float mag = 0.0f;
+    float z0 = 0.0f;
+    float z1 = 0.0f;
+
+    // Box-Muller 变换核心逻辑
+    // 规避 u1 = 0 的情况，防止 logf(0) 导致负无穷
+    do {
+        u1 = curand_uniform_float(state);
+        u2 = curand_uniform_float(state);
+    } while (u1 <= 1e-7f);
+
+    // 使用单精度数学函数 (sqrtf, logf, cosf, sinf) 保证 GPU/CPU 性能
+    mag = sqrtf(-2.0f * logf(u1));
+    z0 = mag * cosf(2.0f * 3.14159265358979323846f * u2);
+    z1 = mag * sinf(2.0f * 3.14159265358979323846f * u2);
+
+    // 返回第一个数，将第二个数存入 state 的缓存字段
+    state.normal_spare = z1;
+    state.has_spare = 1;
+    return z0;
+}
+
+__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void setup_kernel_vf(uint64_t seed,
+                                                                                       __gm__ curandState* states,
+                                                                                       const uint32_t block_index)
+{
+    uint32_t tid = block_index * blockDim.x + threadIdx.x;
+    curand_init(seed, static_cast<uint64_t>(tid), 0, &states[tid]);
+}
+
+__global__ __vector__ void setup_kernel(uint64_t seed, __gm__ curandState* states)
+{
+    asc_vf_call<setup_kernel_vf>(dim3{MAX_THREADS_PER_BLOCK}, seed, states, GetBlockIdx());
+}
+
+__forceinline__ __simt_callee__ void set_local_state(__gm__ curandState* global_state, curandState& local_state)
+{
+    // 当前毕昇编译器不支持localState_ = state_[GlobalThreadId()]操作，使用成员变量依次赋值规避
+    local_state.x = global_state[GlobalThreadId()].x;
+    local_state.y = global_state[GlobalThreadId()].y;
+    local_state.z = global_state[GlobalThreadId()].z;
+    local_state.w = global_state[GlobalThreadId()].w;
+    local_state.v = global_state[GlobalThreadId()].v;
+    local_state.d = global_state[GlobalThreadId()].d;
+    local_state.normal_spare = global_state[GlobalThreadId()].normal_spare;
+    local_state.has_spare = global_state[GlobalThreadId()].has_spare;
+}
+
+__forceinline__ __simt_callee__ void set_global_state(const curandState& local_state, __gm__ curandState* global_state)
+{
+    // 当前毕昇编译器不支持state_[GlobalThreadId()] = localState_操作，使用成员变量依次赋值规避
+    global_state[GlobalThreadId()].x = local_state.x;
+    global_state[GlobalThreadId()].y = local_state.y;
+    global_state[GlobalThreadId()].z = local_state.z;
+    global_state[GlobalThreadId()].w = local_state.w;
+    global_state[GlobalThreadId()].v = local_state.v;
+    global_state[GlobalThreadId()].d = local_state.d;
+    global_state[GlobalThreadId()].normal_spare = local_state.normal_spare;
+    global_state[GlobalThreadId()].has_spare = local_state.has_spare;
+}
+
+struct UniformEmbeddingGenerator {
+    struct Args {
+        __gm__ curandState* state;
+        float lower;
+        float upper;
+    };
+
+    __forceinline__ __simt_callee__ UniformEmbeddingGenerator(Args args)
+        : load_(false),
+          state_(args.state),
+          lower(args.lower),
+          upper(args.upper)
+    {
+    }
+
+    __forceinline__ __simt_callee__ float generate(int64_t vec_id)
+    {
+        if (!load_) {
+            set_local_state(state_, localState_);
+            load_ = true;
+        }
+        auto tmp = curand_uniform_float(this->localState_);
+        return (upper - lower) * tmp + lower;
+    }
+
+    __forceinline__ __simt_callee__ void destroy()
+    {
+        if (load_) {
+            set_global_state(localState_, state_);
+        }
+    }
+
+    bool load_;
+    curandState localState_;
+    __gm__ curandState* state_;
+    float lower;
+    float upper;
+};
+
+struct NormalEmbeddingGenerator {
+    struct Args {
+        __gm__ curandState* state;
+        float mean;
+        float std_dev;
+    };
+
+    __forceinline__ __simt_callee__ NormalEmbeddingGenerator(Args args)
+        : load_(false),
+          state_(args.state),
+          mean(args.mean),
+          std_dev(args.std_dev)
+    {
+    }
+
+    __forceinline__ __simt_callee__ float generate(int64_t vec_id)
+    {
+        if (!load_) {
+            set_local_state(state_, localState_);
+            load_ = true;
+        }
+        auto tmp = curand_normal_float(this->localState_);
+        return std_dev * tmp + mean;
+    }
+
+    __forceinline__ __simt_callee__ void destroy()
+    {
+        if (load_) {
+            set_global_state(localState_, state_);
+        }
+    }
+
+    bool load_;
+    curandState localState_;
+    __gm__ curandState* state_;
+    float mean;
+    float std_dev;
+};
+
+struct TruncatedNormalEmbeddingGenerator {
+    struct Args {
+        __gm__ curandState* state;
+        float mean;
+        float std_dev;
+        float lower;
+        float upper;
+    };
+
+    __forceinline__ __simt_callee__ TruncatedNormalEmbeddingGenerator(Args args)
+        : load_(false),
+          state_(args.state),
+          mean(args.mean),
+          std_dev(args.std_dev),
+          lower(args.lower),
+          upper(args.upper)
+    {
+    }
+
+    __forceinline__ __simt_callee__ float generate(int64_t vec_id)
+    {
+        if (!load_) {
+            set_local_state(state_, localState_);
+            load_ = true;
+        }
+        auto l = normcdff((lower - mean) / std_dev);
+        auto u = normcdff((upper - mean) / std_dev);
+        u = 2 * u - 1;
+        l = 2 * l - 1;
+
+        float tmp = curand_uniform_float(this->localState_);
+        tmp = tmp * (u - l) + l;
+        tmp = erfinvf(tmp);
+        tmp *= scale * std_dev;
+        tmp += mean;
+        tmp = __fmaxf(tmp, lower);
+        tmp = __fminf(tmp, upper);
+        return tmp;
+    }
+
+    __forceinline__ __simt_callee__ void destroy()
+    {
+        if (load_) {
+            set_global_state(localState_, state_);
+        }
+    }
+
+    bool load_;
+    curandState localState_;
+    __gm__ curandState* state_;
+    float mean;
+    float std_dev;
+    float lower;
+    float upper;
+    // 初始化scale = 1.4142136，该值等于sqrtf(2.0f)，避免sqrtf计算，同时规避调用sqrtf产生的链接报错
+    float scale = 1.4142136;
+};
+
 template <typename K>
 struct MappingEmbeddingGenerator {
     struct Args {
@@ -367,6 +681,19 @@ void check_safe_pointers_sync(const uint64_t n, const T** ptrs, const SafeCheckM
     }
 }
 
+static void set_curand_states(curandState** states, const aclrtStream& stream = 0)
+{
+    auto& deviceProp = DeviceProp::getDeviceProp();
+    // cann暂时无cudaMallocAsync对应接口，使用aclrtMalloc代替
+    NPU_CHECK(aclrtMalloc(reinterpret_cast<void**>(states), sizeof(curandState) * deviceProp.total_threads,
+                          ACL_MEM_MALLOC_HUGE_FIRST));
+
+    std::random_device rd;
+    auto seed = rd();
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    setup_kernel<<<maxCores, 0, stream>>>(seed, *states);
+}
+
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 HKVVariable<KeyType, ValueType, Strategy>::HKVVariable(
     DataType key_type, DataType value_type, int64_t dim, int64_t init_capacity, size_t max_capacity,
@@ -377,6 +704,7 @@ HKVVariable<KeyType, ValueType, Strategy>::HKVVariable(
     : dim_(dim),
       max_capacity_(max_capacity),
       initializer_args_(initializer_args_),
+      curand_states_(nullptr),
       key_type_(key_type),
       value_type_(value_type),
       safe_check_mode_(safe_check_mode),
@@ -390,8 +718,13 @@ HKVVariable<KeyType, ValueType, Strategy>::HKVVariable(
     NPU_CHECK(aclrtGetDeviceCount(&deviceCount));
     if (device_id < 0 || device_id >= deviceCount) {
         throw std::invalid_argument("Invalid device id, device id is ." + std::to_string(device_id));
+    } else {
+        NPU_CHECK(aclrtSetDevice(static_cast<int32_t>(device_id)));
+        // Init global device property.
+        DeviceProp::getDeviceProp(device_id);
     }
-    NPU_CHECK(aclrtSetDevice(static_cast<int32_t>(device_id)));
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    set_curand_states(&curand_states_, stream);
 
     hkv_table_option_.init_capacity = init_capacity;
     hkv_table_option_.max_capacity = max_capacity;
@@ -415,6 +748,10 @@ HKVVariable<KeyType, ValueType, Strategy>::HKVVariable(
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 HKVVariable<KeyType, ValueType, Strategy>::~HKVVariable()
 {
+    if (curand_states_ != nullptr) {
+        NPU_CHECK(aclrtFree(curand_states_));
+        curand_states_ = nullptr;
+    }
 }
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
@@ -572,6 +909,12 @@ void HKVVariable<KeyType, ValueType, Strategy>::unlock(const size_t n,
 }
 
 template <typename KeyType, typename ValueType, EvictStrategy Strategy>
+curandState* HKVVariable<KeyType, ValueType, Strategy>::get_curand_states() const
+{
+    return curand_states_;
+}
+
+template <typename KeyType, typename ValueType, EvictStrategy Strategy>
 void HKVVariable<KeyType, ValueType, Strategy>::find_pointers(const size_t n, const void* keys, void** value_ptrs,
                                                               bool* founds, void* scores, aclrtStream stream) const
 {
@@ -691,12 +1034,24 @@ void HKVVariable<KeyType, ValueType, Strategy>::find_and_initialize(
     auto use_pure_hbm_kernel = is_pure_hbm_mode();
 
     if (initializer_mode == "normal") {
-        throw std::runtime_error("Unrecognized initializer {normal}. NPU does not support normal generator yet.");
+        using Generator = NormalEmbeddingGenerator;
+        auto generator_args = typename Generator::Args{curand_states_, init_args.mean_, init_args.std_dev_};
+        load_or_initialize_embeddings_kernel<ValueType, Generator>
+            <<<max_cores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values),
+                                       reinterpret_cast<ValueType**>(value_ptrs), d_found, generator_args);
     } else if (initializer_mode == "truncated_normal") {
-        throw std::runtime_error(
-            "Unrecognized initializer {truncated_normal}. NPU does not support truncated_normal generator yet.");
+        using Generator = TruncatedNormalEmbeddingGenerator;
+        auto generator_args = typename Generator::Args{curand_states_, init_args.mean_, init_args.std_dev_,
+                                                       init_args.lower_, init_args.upper_};
+        load_or_initialize_embeddings_kernel<ValueType, Generator>
+            <<<max_cores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values),
+                                       reinterpret_cast<ValueType**>(value_ptrs), d_found, generator_args);
     } else if (initializer_mode == "uniform") {
-        throw std::runtime_error("Unrecognized initializer {uniform}. NPU does not support uniform generator yet.");
+        using Generator = UniformEmbeddingGenerator;
+        auto generator_args = typename Generator::Args{curand_states_, init_args.lower_, init_args.upper_};
+        load_or_initialize_embeddings_kernel<ValueType, Generator>
+            <<<max_cores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values),
+                                       reinterpret_cast<ValueType**>(value_ptrs), d_found, generator_args);
     } else if (initializer_mode == "debug") {
         using Generator = MappingEmbeddingGenerator<KeyType>;
         // Debug initializer maps each key to key % 100000 for deterministic output.
@@ -753,7 +1108,26 @@ void HKVVariable<KeyType, ValueType, Strategy>::find_or_insert(const size_t n, c
     auto use_pure_hbm_kernel = is_pure_hbm_mode();
 
     auto& initializer_ = initializer_args_.mode_;
-    if (initializer_ == "debug") {
+    if (initializer_ == "normal") {
+        using Generator = NormalEmbeddingGenerator;
+        auto generator_args =
+            typename Generator::Args{curand_states_, initializer_args_.mean_, initializer_args_.std_dev_};
+        fill_output_with_table_vectors_kernel<ValueType, Generator, TableVectorType>
+            <<<maxCores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values), table_vec_args, generator_args);
+    } else if (initializer_ == "truncated_normal") {
+        using Generator = TruncatedNormalEmbeddingGenerator;
+        auto generator_args =
+            typename Generator::Args{curand_states_, initializer_args_.mean_, initializer_args_.std_dev_,
+                                     initializer_args_.lower_, initializer_args_.upper_};
+        fill_output_with_table_vectors_kernel<ValueType, Generator, TableVectorType>
+            <<<maxCores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values), table_vec_args, generator_args);
+    } else if (initializer_ == "uniform") {
+        using Generator = UniformEmbeddingGenerator;
+        auto generator_args =
+            typename Generator::Args{curand_states_, initializer_args_.lower_, initializer_args_.upper_};
+        fill_output_with_table_vectors_kernel<ValueType, Generator, TableVectorType>
+            <<<maxCores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values), table_vec_args, generator_args);
+    } else if (initializer_ == "debug") {
         using Generator = MappingEmbeddingGenerator<KeyType>;
         auto generator_args = typename Generator::Args{reinterpret_cast<const KeyType*>(keys), 100000};
         launch_fill_output_with_table_vectors_kernel<ValueType, Generator>(

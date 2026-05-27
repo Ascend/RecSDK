@@ -121,6 +121,7 @@ public:
     using AssignFn = std::function<void(const size_t, const void*, const void*, const void*, aclrtStream, bool)>;
     using LockFn = std::function<void(const size_t, const void*, void**, bool*, void*, aclrtStream)>;
     using UnlockFn = std::function<void(const size_t, void**, const void*, bool*, aclrtStream)>;
+    using GetCurandStatesConstFn = std::function<curandState*()>;
     using FindPointersConstFn = std::function<void(const size_t, const void*, void**, bool*, void*, aclrtStream)>;
     using FindPointersFn = std::function<void(const size_t, const void*, void**, bool*, void*, aclrtStream)>;
     using OptStateDimFn = std::function<int()>;
@@ -147,7 +148,8 @@ public:
                         FindFn find_fn, EraseFn erase_fn, ClearFn clear_fn, ReserveFn reserve_fn,
                         AccumOrAssignFn accum_or_assign_fn, FindOrInsertFn find_or_insert_fn,
                         FindOrInsertPointersFn find_or_insert_pointers_fn, AssignFn assign_fn, LockFn lock_fn,
-                        UnlockFn unlock_fn, FindPointersConstFn find_pointers_const_fn, FindPointersFn find_pointers_fn,
+                        UnlockFn unlock_fn, GetCurandStatesConstFn get_curand_states_const_fn,
+                        FindPointersConstFn find_pointers_const_fn, FindPointersFn find_pointers_fn,
                         OptStateDimFn optstate_dim_fn, SetInitialOptStateFn set_initial_optstate_fn,
                         GetInitialOptStateFn get_initial_optstate_fn, GetEmbColsFn get_emb_cols_fn,
                         ExportBatchFn export_batch_fn, ExportBatchMatchedFn export_batch_matched_fn,
@@ -189,6 +191,7 @@ public:
               aclrtStream stream = 0);
     void unlock(const size_t n, void** locked_keys_ptr, const void* keys, bool* flags = nullptr,
                 aclrtStream stream = 0);
+    curandState* get_curand_states() const;
     void find_pointers(const size_t n, const void* keys, void** values, bool* founds, void* scores = nullptr,
                        aclrtStream stream = 0) const;
     void find_pointers(const size_t n, const void* keys, void** values, bool* founds, void* scores = nullptr,
@@ -232,6 +235,7 @@ private:
     AssignFn assign_fn_;
     LockFn lock_fn_;
     UnlockFn unlock_fn_;
+    GetCurandStatesConstFn get_curand_states_const_fn_;
     FindPointersConstFn find_pointers_const_fn_;
     FindPointersFn find_pointers_fn_;
     OptStateDimFn optstate_dim_fn_;
@@ -309,6 +313,7 @@ public:
                         const void* keys,        // (n)
                         bool* flags = nullptr,   // (n)
                         aclrtStream stream = 0) = 0;
+    virtual curandState* get_curand_states() const = 0;
     virtual void find_pointers(const size_t n, const void* keys,  // (n)
                                void** values,                     // (n)
                                bool* founds,                      // (n)
