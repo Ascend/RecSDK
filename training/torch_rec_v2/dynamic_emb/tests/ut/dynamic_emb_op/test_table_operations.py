@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
@@ -16,14 +15,18 @@
 # limitations under the License.
 # ==============================================================================
 
+# pylint: disable=too-many-lines,redefined-outer-name,logging-fstring-interpolation
+
 import logging
 import pytest
 import torch
 import dynamic_emb_extensions as demb
+
 logging.basicConfig(level=logging.INFO)
 
 # 统一控制设备ID
 DEVICE_ID = 0
+
 
 class DynamicEmbTableOptions:
     def __init__(self):
@@ -53,8 +56,10 @@ def table_options():
     return DynamicEmbTableOptions()
 
 
-@pytest.fixture
-def dynamic_table(table_options: DynamicEmbTableOptions):
+def create_dynamic_table(**overrides):
+    table_options = DynamicEmbTableOptions()
+    for name, value in overrides.items():
+        setattr(table_options, name, value)
     torch.npu.set_device(table_options.device_id)
     return demb.DynamicEmbTable(
         table_options.key_type,
@@ -75,8 +80,13 @@ def dynamic_table(table_options: DynamicEmbTableOptions):
         table_options.num_of_buckets_per_alloc,
         table_options.initializer_args,
         table_options.safe_check_mode,
-        table_options.optimizer_type
+        table_options.optimizer_type,
     )
+
+
+@pytest.fixture
+def dynamic_table(table_options: DynamicEmbTableOptions):
+    return create_dynamic_table(**table_options.__dict__)
 
 
 def test_insert_or_assign_basic(dynamic_table):
@@ -84,21 +94,17 @@ def test_insert_or_assign_basic(dynamic_table):
     torch.npu.set_device(DEVICE_ID)
     n = 10
     dim = 128  # 从table_options获取
-    
+
     keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
-    
+
     # 插入键值对
-    dynamic_table.load(
-        n, keys, values, None, True, False
-    )
-    
+    dynamic_table.load(n, keys, values, None, True, False)
+
     # 验证插入成功（通过查找验证）
     values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
-    demb.find_pointers(
-        dynamic_table, n, keys, values_out, founds, None
-    )
+    demb.find_pointers(dynamic_table, n, keys, values_out, founds, None)
 
     assert founds.sum().item() == n, "插入的key能全部找到"
 
@@ -110,29 +116,19 @@ def test_insert_or_assign_with_score():
     dim = 128
 
     # 使用LFU策略的table，支持score参数
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        demb.EvictStrategy.kLfu,
-        dim, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024, DEVICE_ID, False, False, 0, 1,
-        demb.InitializerArgs(), demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
-    )
+    table = create_dynamic_table(dim=dim, evict_strategy=demb.EvictStrategy.kLfu)
 
     keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
     scores = torch.randint(1, 100, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
 
     # 插入带score的键值对
-    table.load(
-        n, keys, values, scores, True, False
-    )
+    table.load(n, keys, values, scores, True, False)
 
     # 验证插入成功
     values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
-    demb.find_pointers(
-        table, n, keys, values_out, founds, None
-    )
+    demb.find_pointers(table, n, keys, values_out, founds, None)
 
     assert founds.sum().item() == n, "插入的key能全部找到"
 
@@ -142,29 +138,23 @@ def test_insert_or_assign_unique_key(dynamic_table):
     torch.npu.set_device(DEVICE_ID)
     n = 5
     dim = 128
-    
+
     # 使用相同的键
     keys = torch.tensor([1, 1, 2, 2, 3], dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values1 = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
     values2 = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
-    
+
     # 第一次插入
-    dynamic_table.load(
-        n, keys, values1, None, True, False
-    )
-    
+    dynamic_table.load(n, keys, values1, None, True, False)
+
     # 第二次插入相同键（应该更新）
-    dynamic_table.update(
-        n, keys, values2, None, True, False
-    )
-    
+    dynamic_table.update(n, keys, values2, None, True, False)
+
     # 验证键存在
     values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
     logging.info(f"values_out1 = {values_out}")
-    demb.find_pointers(
-        dynamic_table, n, keys, values_out, founds, None
-    )
+    demb.find_pointers(dynamic_table, n, keys, values_out, founds, None)
 
     assert founds.sum().item() == n, "插入的key能全部找到"
 
@@ -174,21 +164,17 @@ def test_find_pointers_basic(dynamic_table):
     torch.npu.set_device(DEVICE_ID)
     n = 10
     dim = 128
-    
+
     # 先插入一些键值对
     keys_insert = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values_insert = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
-    dynamic_table.load(
-        n, keys_insert, values_insert, None, True, False
-    )
-    
+    dynamic_table.load(n, keys_insert, values_insert, None, True, False)
+
     # 查找这些键
     values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
-    demb.find_pointers(
-        dynamic_table, n, keys_insert, values_out, founds, None
-    )
-    
+    demb.find_pointers(dynamic_table, n, keys_insert, values_out, founds, None)
+
     # 验证所有键都被找到
     assert founds.sum().item() == n, f"找到所有{n}个键"
 
@@ -198,22 +184,18 @@ def test_find_pointers_not_found(dynamic_table):
     torch.npu.set_device(DEVICE_ID)
     n = 10
     dim = 128
-    
+
     # 插入一些键
     keys_insert = torch.randint(0, 100, (5,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values_insert = torch.randn(5, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
-    dynamic_table.load(
-        5, keys_insert, values_insert, None, True, False
-    )
-    
+    dynamic_table.load(5, keys_insert, values_insert, None, True, False)
+
     # 查找不存在的键
     keys_not_found = torch.randint(1000, 2000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
-    demb.find_pointers(
-        dynamic_table, n, keys_not_found, values_out, founds, None
-    )
-    
+    demb.find_pointers(dynamic_table, n, keys_not_found, values_out, founds, None)
+
     # 应该找不到任何键
     assert founds.sum().item() == 0, "不应该找到不存在的键"
 
@@ -250,6 +232,52 @@ def test_find_and_initialize_constant(dynamic_table):
     assert demb.dyn_emb_rows(dynamic_table) == n_existing
 
 
+def test_find_and_initialize_constant_ddr():
+    torch.npu.set_device(DEVICE_ID)
+    n_existing = 4
+    dim = 32768
+    init_value = -0.25
+
+    table = create_dynamic_table(dim=dim, max_hbm_for_vectors=0)
+
+    existing_keys = torch.tensor([11, 22, 33, 44], dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    existing_values = torch.arange(n_existing * dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}').reshape(
+        n_existing, dim
+    )
+    table.load(n_existing, existing_keys, existing_values, None, True, False)
+
+    missing_keys = torch.tensor([1011, 1022, 1033, 1044], dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    keys = torch.stack(
+        [
+            existing_keys[0],
+            missing_keys[0],
+            existing_keys[1],
+            missing_keys[1],
+            existing_keys[2],
+            missing_keys[2],
+            existing_keys[3],
+            missing_keys[3],
+        ]
+    )
+    n = keys.numel()
+
+    value_ptrs = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    values_out = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
+    initializer_args = demb.InitializerArgs("constant", 0.0, 1.0, 0.0, 1.0, init_value)
+
+    demb.find_and_initialize(table, n, keys, value_ptrs, values_out, founds, initializer_args)
+
+    expected_founds = torch.tensor([True, False, True, False, True, False, True, False], device=f'npu:{DEVICE_ID}')
+    expected_values = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    expected_values[0::2] = existing_values
+    expected_values[1::2] = init_value
+
+    torch.testing.assert_close(founds.cpu(), expected_founds.cpu())
+    torch.testing.assert_close(values_out.cpu(), expected_values.cpu())
+    assert demb.dyn_emb_rows(table) == n_existing
+
+
 def test_find_and_initialize_debug(dynamic_table):
     torch.npu.set_device(DEVICE_ID)
     n = 5
@@ -269,45 +297,33 @@ def test_find_and_initialize_debug(dynamic_table):
     assert demb.dyn_emb_rows(dynamic_table) == 0
 
 
-@pytest.mark.parametrize("evict_strategy", [
-    demb.EvictStrategy.kLru,
-    demb.EvictStrategy.kLfu,
-    demb.EvictStrategy.kCustomized
-])
+@pytest.mark.parametrize(
+    "evict_strategy", [demb.EvictStrategy.kLru, demb.EvictStrategy.kLfu, demb.EvictStrategy.kCustomized]
+)
 def test_insert_and_find_different_strategies(evict_strategy):
     """测试不同淘汰策略下的插入和查找"""
     torch.npu.set_device(DEVICE_ID)
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        evict_strategy,
-        128, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024, DEVICE_ID, False, False, 0, 1,
-        demb.InitializerArgs(), demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
-    )
-    
+    table = create_dynamic_table(evict_strategy=evict_strategy)
+
     n = 10
     dim = 128
     keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
-    
+
     # 插入（使用卫语句处理需要score的情况）
     scores = None
     find_scores = None
     if evict_strategy != demb.EvictStrategy.kLru:
         scores = torch.randint(1, 100, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
         find_scores = 1
-    
-    table.load(
-        n, keys, values, scores, True, False
-    )
-    
+
+    table.load(n, keys, values, scores, True, False)
+
     # 查找
     values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
-    demb.find_pointers(
-        table, n, keys, values_out, founds, find_scores
-    )
-    
+    demb.find_pointers(table, n, keys, values_out, founds, find_scores)
+
     assert founds.sum().item() > 0, f"在{evict_strategy}策略下能找到键"
 
 
@@ -315,15 +331,13 @@ def test_empty_table_operations(dynamic_table):
     """测试空表的操作"""
     torch.npu.set_device(DEVICE_ID)
     n = 5
-    
+
     # 在空表中查找
     keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
-    demb.find_pointers(
-        dynamic_table, n, keys, values_out, founds, None
-    )
-    
+    demb.find_pointers(dynamic_table, n, keys, values_out, founds, None)
+
     # 应该找不到任何键
     assert founds.sum().item() == 0, "空表中不应该找到任何键"
 
@@ -339,16 +353,12 @@ def test_insert_or_assign_ignore_evict_strategy(dynamic_table):
     scores = torch.randint(1, 100, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
 
     # 插入时忽略淘汰策略
-    dynamic_table.load(
-        n, keys, values, scores, True, True
-    )
+    dynamic_table.load(n, keys, values, scores, True, True)
 
     # 验证插入成功
     values_out = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
-    demb.find_pointers(
-        dynamic_table, n, keys, values_out, founds, None
-    )
+    demb.find_pointers(dynamic_table, n, keys, values_out, founds, None)
 
     assert founds.sum().item() > 0, "忽略淘汰策略后能找到键"
 
@@ -363,17 +373,13 @@ def test_export_batch(dynamic_table):
     values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
 
     # 加载数据
-    dynamic_table.load(
-        n, keys, values, None, True, False
-    )
+    dynamic_table.load(n, keys, values, None, True, False)
 
     # 导出数据
     keys_out = torch.empty(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values_out = torch.empty(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     d_counter = torch.empty(n, dtype=torch.uint64, device=f'npu:{DEVICE_ID}')
-    dynamic_table.export_batch(
-        n, 0, d_counter, keys_out, values_out, None
-    )
+    dynamic_table.export_batch(n, 0, d_counter, keys_out, values_out, None)
 
     assert keys_out.numel() == n, "导出数据量符合预期"
 
@@ -400,6 +406,7 @@ def test_dyn_emb_rows_empty(dynamic_table):
     rows = demb.dyn_emb_rows(dynamic_table)
     assert rows == 0, f"空表行数期望为0，实际为{rows}"
 
+
 def test_dyn_emb_rows_after_erase(dynamic_table):
     """测试dyn_emb_rows删除后"""
     torch.npu.set_device(DEVICE_ID)
@@ -414,7 +421,7 @@ def test_dyn_emb_rows_after_erase(dynamic_table):
     erase_n = 5
     keys_to_erase = keys[:erase_n]
     demb.erase(dynamic_table, erase_n, keys_to_erase)
-    
+
     rows = demb.dyn_emb_rows(dynamic_table)
     assert rows == n - erase_n, f"删除后期望行数为{n - erase_n}，实际为{rows}"
 
@@ -434,9 +441,17 @@ def test_insert_and_evict_basic(dynamic_table):
     d_evicted_counter = torch.zeros(1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
 
     demb.insert_and_evict(
-        dynamic_table, n, keys, values, None,
-        evicted_keys, evicted_values, evicted_score, d_evicted_counter,
-        True, False
+        dynamic_table,
+        n,
+        keys,
+        values,
+        None,
+        evicted_keys,
+        evicted_values,
+        evicted_score,
+        d_evicted_counter,
+        True,
+        False,
     )
 
     rows = demb.dyn_emb_rows(dynamic_table)
@@ -446,13 +461,7 @@ def test_insert_and_evict_basic(dynamic_table):
 def test_insert_and_evict_with_lfu():
     """测试insert_and_evict在LFU策略下需要score"""
     torch.npu.set_device(DEVICE_ID)
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        demb.EvictStrategy.kLfu,
-        128, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024, DEVICE_ID, False, False, 0, 1,
-        demb.InitializerArgs(), demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
-    )
+    table = create_dynamic_table(evict_strategy=demb.EvictStrategy.kLfu)
 
     n = 5
     dim = 128
@@ -466,13 +475,22 @@ def test_insert_and_evict_with_lfu():
     d_evicted_counter = torch.zeros(1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
 
     demb.insert_and_evict(
-        table, n, keys, values, scores[0].item(),
-        evicted_keys, evicted_values, evicted_score, d_evicted_counter,
-        True, False
+        table,
+        n,
+        keys,
+        values,
+        scores[0].item(),
+        evicted_keys,
+        evicted_values,
+        evicted_score,
+        d_evicted_counter,
+        True,
+        False,
     )
 
     rows = demb.dyn_emb_rows(table)
     assert rows == n, f"LFU策略下期望行数为{n}，实际为{rows}"
+
 
 def test_find_basic(dynamic_table):
     """测试find基本功能"""
@@ -490,16 +508,11 @@ def test_find_basic(dynamic_table):
 
     assert founds.sum().item() == n, f"期望找到所有{n}个键"
 
+
 def test_find_with_score():
     """测试find带score查找"""
     torch.npu.set_device(DEVICE_ID)
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        demb.EvictStrategy.kLfu,
-        128, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024, DEVICE_ID, False, False, 0, 1,
-        demb.InitializerArgs(), demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
-    )
+    table = create_dynamic_table(evict_strategy=demb.EvictStrategy.kLfu)
 
     n = 5
     dim = 128
@@ -513,15 +526,24 @@ def test_find_with_score():
     d_evicted_counter = torch.zeros(1, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
 
     demb.insert_and_evict(
-        table, n, keys, values, scores[0].item(),
-        evicted_keys, evicted_values, evicted_score, d_evicted_counter,
-        True, False
+        table,
+        n,
+        keys,
+        values,
+        scores[0].item(),
+        evicted_keys,
+        evicted_values,
+        evicted_score,
+        d_evicted_counter,
+        True,
+        False,
     )
 
     founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
     demb.find(table, n, keys, values, founds, None)
 
     assert founds.sum().item() == n, f"期望找到所有{n}个键"
+
 
 def test_find_not_found(dynamic_table):
     """测试find查找不存在的key"""
@@ -539,6 +561,7 @@ def test_find_not_found(dynamic_table):
     demb.find(dynamic_table, n, not_exist_keys, values, founds, None)
 
     assert founds.sum().item() == 0, "不应该找到任何不存在的键"
+
 
 def test_erase_basic(dynamic_table):
     """测试erase基本功能"""
@@ -560,6 +583,7 @@ def test_erase_basic(dynamic_table):
     demb.find(dynamic_table, erase_n, keys_to_erase, output_values, founds, None)
 
     assert founds.sum().item() == 0, "删除的键不应该被找到"
+
 
 def test_erase_not_exists(dynamic_table):
     """测试erase删除不存在的key"""
@@ -624,11 +648,11 @@ def test_reserve_expand(dynamic_table):
     rows = demb.dyn_emb_rows(dynamic_table)
     assert rows == n, f"扩大容量后行数应保持为{n}"
 
+
 def test_find_or_insert_pointers_basic(dynamic_table):
     """测试find_or_insert_pointers基本功能 - 插入新键"""
     torch.npu.set_device(DEVICE_ID)
     n = 10
-    dim = 128
 
     keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
@@ -636,7 +660,7 @@ def test_find_or_insert_pointers_basic(dynamic_table):
 
     demb.find_or_insert_pointers(dynamic_table, n, keys, values, founds, None, True, False)
     # 新keys在table中找不到，直接插入新keys，验证table是否插入正确数量的keys
-    assert founds.sum().item() == 0, f"期望插入0个键"
+    assert founds.sum().item() == 0, "期望插入0个键"
     rows = demb.dyn_emb_rows(dynamic_table)
     assert rows == n, f"期望表行数为{n}，实际为{rows}"
 
@@ -684,7 +708,7 @@ def test_find_or_insert_pointers_mixed(dynamic_table):
     demb.find_or_insert_pointers(dynamic_table, n, all_keys, values_out, founds_out, None, True, False)
 
     # 前5个应该被找到，后5个应该被插入
-    assert founds_out.sum().item() >= 5, f"期望至少找到5个已存在的键"
+    assert founds_out.sum().item() >= 5, "期望至少找到5个已存在的键"
     rows = demb.dyn_emb_rows(dynamic_table)
     assert rows >= 10, f"期望表行数至少为10，实际为{rows}"
 
@@ -692,16 +716,9 @@ def test_find_or_insert_pointers_mixed(dynamic_table):
 def test_find_or_insert_pointers_with_lfu():
     """测试find_or_insert_pointers在LFU策略下使用score"""
     torch.npu.set_device(DEVICE_ID)
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        demb.EvictStrategy.kLfu,
-        128, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024, DEVICE_ID, False, False, 0, 1,
-        demb.InitializerArgs(), demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
-    )
+    table = create_dynamic_table(evict_strategy=demb.EvictStrategy.kLfu)
 
     n = 10
-    dim = 128
     keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     scores = torch.randint(1, 100, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
 
@@ -711,7 +728,7 @@ def test_find_or_insert_pointers_with_lfu():
     demb.find_or_insert_pointers(table, n, keys, values_out, founds_out, scores[0].item(), True, False)
 
     # 新keys在table中找不到，直接插入新keys，验证table是否插入正确数量的keys
-    assert founds_out.sum().item() == 0, f"期望插入0个键"
+    assert founds_out.sum().item() == 0, "期望插入0个键"
     rows = demb.dyn_emb_rows(table)
     assert rows == n, f"LFU策略下期望行数为{n}，实际为{rows}"
 
@@ -720,7 +737,6 @@ def test_find_or_insert_pointers_ignore_evict_strategy(dynamic_table):
     """测试find_or_insert_pointers的ignore_evict_strategy参数"""
     torch.npu.set_device(DEVICE_ID)
     n = 10
-    dim = 128
 
     keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     scores = torch.randint(1, 100, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
@@ -731,7 +747,7 @@ def test_find_or_insert_pointers_ignore_evict_strategy(dynamic_table):
     demb.find_or_insert_pointers(dynamic_table, n, keys, values_out, founds_out, scores[0].item(), True, True)
 
     # 新keys在table中找不到，直接插入新keys，验证table是否插入正确数量的keys
-    assert founds_out.sum().item() == 0, f"期望插入0个键"
+    assert founds_out.sum().item() == 0, "期望插入0个键"
     rows = demb.dyn_emb_rows(dynamic_table)
     assert rows == n, f"忽略淘汰策略后期望行数为{n}，实际为{rows}"
 
@@ -743,14 +759,7 @@ def test_find_or_insert_basic_find():
     dim = 128
 
     init_args = demb.InitializerArgs("debug", 0.0, 1.0, 0.0, 1.0, 0.0)
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        demb.EvictStrategy.kLru,
-        dim, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024,
-        DEVICE_ID, False, False, 0, 1,
-        init_args, demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
-    )
+    table = create_dynamic_table(dim=dim, initializer_args=init_args)
 
     keys = torch.randint(0, 1000, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values = torch.randn(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
@@ -772,14 +781,7 @@ def test_find_or_insert_debug_initializer():
     n = 10
 
     init_args = demb.InitializerArgs("debug", 0.0, 1.0, 0.0, 1.0, 0.0)
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        demb.EvictStrategy.kLru,
-        dim, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024,
-        DEVICE_ID, False, False, 0, 1,
-        init_args, demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
-    )
+    table = create_dynamic_table(dim=dim, initializer_args=init_args)
 
     keys = torch.randint(0, 500, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values_out = torch.zeros(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
@@ -798,8 +800,9 @@ def test_find_or_insert_debug_initializer():
     # MappingEmbeddingGenerator: generate(vec_id) = float(key % 100000)
     for i in range(n):
         expected_val = float(keys[i].item() % 100000)
-        assert torch.allclose(found_values[i], torch.full((dim,), expected_val, device=f'npu:{DEVICE_ID}')), \
+        assert torch.allclose(found_values[i], torch.full((dim,), expected_val, device=f'npu:{DEVICE_ID}')), (
             f"键{keys[i]}的值应与MappingEmbeddingGenerator生成的值一致"
+        )
 
 
 def test_find_or_insert_constant_initializer():
@@ -810,14 +813,7 @@ def test_find_or_insert_constant_initializer():
     const_val = 0.5
 
     init_args = demb.InitializerArgs("constant", 0.0, 1.0, 0.0, 1.0, const_val)
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        demb.EvictStrategy.kLru,
-        dim, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024,
-        DEVICE_ID, False, False, 0, 1,
-        init_args, demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
-    )
+    table = create_dynamic_table(dim=dim, initializer_args=init_args)
 
     keys = torch.randint(0, 500, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values_out = torch.zeros(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
@@ -834,8 +830,9 @@ def test_find_or_insert_constant_initializer():
 
     # ConstEmbeddingGenerator: generate(vec_id) = val (constant)
     for i in range(n):
-        assert torch.allclose(found_values[i], torch.full((dim,), const_val, device=f'npu:{DEVICE_ID}')), \
+        assert torch.allclose(found_values[i], torch.full((dim,), const_val, device=f'npu:{DEVICE_ID}')), (
             f"键{keys[i]}的所有维度值应为{const_val}"
+        )
 
 
 def test_find_or_insert_mixed():
@@ -846,14 +843,7 @@ def test_find_or_insert_mixed():
     const_val = 0.5
 
     init_args = demb.InitializerArgs("constant", 0.0, 1.0, 0.0, 1.0, const_val)
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        demb.EvictStrategy.kLru,
-        dim, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024,
-        DEVICE_ID, False, False, 0, 1,
-        init_args, demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
-    )
+    table = create_dynamic_table(dim=dim, initializer_args=init_args)
 
     # 先插入前5个键
     existing_keys = torch.tensor([1, 2, 3, 4, 5], dtype=torch.int64, device=f'npu:{DEVICE_ID}')
@@ -872,8 +862,9 @@ def test_find_or_insert_mixed():
 
     # 验证后5个新插入的键值应为constant值
     for i in range(5, n):
-        assert torch.allclose(values_out[i], torch.full((dim,), const_val, device=f'npu:{DEVICE_ID}')), \
+        assert torch.allclose(values_out[i], torch.full((dim,), const_val, device=f'npu:{DEVICE_ID}')), (
             f"新插入的键值应为constant值{const_val}"
+        )
 
     rows = demb.dyn_emb_rows(table)
     assert rows == n, f"期望表行数为{n}，实际为{rows}"
@@ -886,8 +877,47 @@ def test_find_or_insert_mixed():
     assert founds.sum().item() == n, f"期望找到所有{n}个键"
     assert torch.allclose(found_values[:5], existing_values), "前5个键的查找值应与插入值相同"
     for i in range(5, n):
-        assert torch.allclose(found_values[i], torch.full((dim,), const_val, device=f'npu:{DEVICE_ID}')), \
+        assert torch.allclose(found_values[i], torch.full((dim,), const_val, device=f'npu:{DEVICE_ID}')), (
             f"新插入的键查找值应为constant值{const_val}"
+        )
+
+
+def test_find_or_insert_constant_ddr_tiling():
+    """测试find_or_insert在DDR大dim切片场景下正确处理已存在和新插入的键"""
+    torch.npu.set_device(DEVICE_ID)
+    dim = 32769  # 大dim触发value move切片，并覆盖最后一个非满tile
+    n_existing = 2
+    n_new = 2
+    n = n_existing + n_new
+    const_val = 0.5
+
+    init_args = demb.InitializerArgs("constant", 0.0, 1.0, 0.0, 1.0, const_val)
+    table = create_dynamic_table(dim=dim, max_hbm_for_vectors=0, initializer_args=init_args)
+
+    existing_keys = torch.tensor([1, 2], dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    existing_values = torch.randn(n_existing, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    table.load(n_existing, existing_keys, existing_values, None, True, False)
+
+    new_keys = torch.tensor([101, 102], dtype=torch.int64, device=f'npu:{DEVICE_ID}')
+    all_keys = torch.cat([existing_keys, new_keys])
+
+    values_out = torch.zeros(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    demb.find_or_insert(table, n, all_keys, values_out, None, True, False)
+
+    expected_new = torch.full((n_new, dim), const_val, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    torch.testing.assert_close(values_out[:n_existing].cpu(), existing_values.cpu())
+    torch.testing.assert_close(values_out[n_existing:].cpu(), expected_new.cpu())
+
+    rows = demb.dyn_emb_rows(table)
+    assert rows == n, f"期望表行数为{n}，实际为{rows}"
+
+    found_values = torch.zeros(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
+    founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
+    demb.find(table, n, all_keys, found_values, founds, None)
+
+    assert founds.sum().item() == n, f"期望找到所有{n}个键"
+    torch.testing.assert_close(found_values[:n_existing].cpu(), existing_values.cpu())
+    torch.testing.assert_close(found_values[n_existing:].cpu(), expected_new.cpu())
 
 
 def test_find_or_insert_init_optstate_vec4():
@@ -898,19 +928,11 @@ def test_find_or_insert_init_optstate_vec4():
     init_optstate_val = 0.5
 
     init_args = demb.InitializerArgs("debug", 0.0, 1.0, 0.0, 1.0, 0.0)
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        demb.EvictStrategy.kLru,
-        dim, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024,
-        DEVICE_ID, False, False, 0, 1,
-        init_args, demb.SafeCheckMode.IGNORE, demb.OptimizerType.AdaGrad
-    )
+    table = create_dynamic_table(dim=dim, initializer_args=init_args, optimizer_type=demb.OptimizerType.AdaGrad)
 
     # 设置初始optimizer state值并验证getter
     table.set_initial_optstate(init_optstate_val)
-    assert abs(table.get_initial_optstate() - init_optstate_val) < 1e-6, \
-        "get_initial_optstate应返回设置的值"
+    assert abs(table.get_initial_optstate() - init_optstate_val) < 1e-6, "get_initial_optstate应返回设置的值"
 
     keys = torch.randint(0, 500, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values_out = torch.zeros(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
@@ -930,11 +952,13 @@ def test_find_or_insert_init_optstate_vec4():
     for i in range(n):
         expected_val = float(keys[i].item() % 100000)
         # 验证embedding部分（前dim列）
-        assert torch.allclose(found_values[i, :dim], torch.full((dim,), expected_val, device=f'npu:{DEVICE_ID}')), \
+        assert torch.allclose(found_values[i, :dim], torch.full((dim,), expected_val, device=f'npu:{DEVICE_ID}')), (
             f"vec4路径下键{keys[i]}的embedding值应与debug初始化器一致"
+        )
         # 验证optimizer state部分（后optstate_dim列），值应为set_initial_optstate设置的值
-        assert torch.allclose(found_values[i, dim:], torch.full((table.optstate_dim(),), init_optstate_val, device=f'npu:{DEVICE_ID}')), \
-            f"vec4路径下键{keys[i]}的optimizer state值应为{init_optstate_val}"
+        assert torch.allclose(
+            found_values[i, dim:], torch.full((table.optstate_dim(),), init_optstate_val, device=f'npu:{DEVICE_ID}')
+        ), f"vec4路径下键{keys[i]}的optimizer state值应为{init_optstate_val}"
 
 
 @pytest.mark.parametrize("dim", [10, 102401])
@@ -945,19 +969,11 @@ def test_find_or_insert_init_optstate_scalar(dim):
     init_optstate_val = 0.75
 
     init_args = demb.InitializerArgs("debug", 0.0, 1.0, 0.0, 1.0, 0.0)
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        demb.EvictStrategy.kLru,
-        dim, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024,
-        DEVICE_ID, False, False, 0, 1,
-        init_args, demb.SafeCheckMode.IGNORE, demb.OptimizerType.AdaGrad
-    )
+    table = create_dynamic_table(dim=dim, initializer_args=init_args, optimizer_type=demb.OptimizerType.AdaGrad)
 
     # 设置初始optimizer state值并验证getter
     table.set_initial_optstate(init_optstate_val)
-    assert abs(table.get_initial_optstate() - init_optstate_val) < 1e-6, \
-        "get_initial_optstate应返回设置的值"
+    assert abs(table.get_initial_optstate() - init_optstate_val) < 1e-6, "get_initial_optstate应返回设置的值"
 
     keys = torch.randint(0, 500, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values_out = torch.zeros(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
@@ -977,12 +993,13 @@ def test_find_or_insert_init_optstate_scalar(dim):
     for i in range(n):
         expected_val = float(keys[i].item() % 100000)
         # 验证embedding部分（前dim列）
-        assert torch.allclose(found_values[i, :dim], torch.full((dim,), expected_val, device=f'npu:{DEVICE_ID}')), \
+        assert torch.allclose(found_values[i, :dim], torch.full((dim,), expected_val, device=f'npu:{DEVICE_ID}')), (
             f"标量路径下键{keys[i]}的embedding值应与debug初始化器一致"
+        )
         # 验证optimizer state部分（后optstate_dim列），值应为set_initial_optstate设置的值
-        assert torch.allclose(found_values[i, dim:], torch.full((table.optstate_dim(),), init_optstate_val,
-                                                                device=f'npu:{DEVICE_ID}')), \
-            f"标量路径下键{keys[i]}的optimizer state值应为{init_optstate_val}"
+        assert torch.allclose(
+            found_values[i, dim:], torch.full((table.optstate_dim(),), init_optstate_val, device=f'npu:{DEVICE_ID}')
+        ), f"标量路径下键{keys[i]}的optimizer state值应为{init_optstate_val}"
 
 
 def test_find_or_insert_with_customized_score():
@@ -992,14 +1009,7 @@ def test_find_or_insert_with_customized_score():
     n = 5
 
     init_args = demb.InitializerArgs("debug", 0.0, 1.0, 0.0, 1.0, 0.0)
-    table = demb.DynamicEmbTable(
-        demb.DynamicEmbDataType.Int64,
-        demb.DynamicEmbDataType.Float32,
-        demb.EvictStrategy.kCustomized,
-        dim, 1024, 2048, 1 * 1024 * 1024 * 1024, 128, 0.5, 128, 1024,
-        DEVICE_ID, False, False, 0, 1,
-        init_args, demb.SafeCheckMode.IGNORE, demb.OptimizerType.Null
-    )
+    table = create_dynamic_table(dim=dim, evict_strategy=demb.EvictStrategy.kCustomized, initializer_args=init_args)
 
     custom_score = torch.randint(1, 100, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')[0].item()
     keys = torch.randint(0, 500, (n,), dtype=torch.int64, device=f'npu:{DEVICE_ID}')
@@ -1018,7 +1028,9 @@ def test_find_or_insert_with_customized_score():
 
     for i in range(n):
         expected_val = float(keys[i].item() % 100000)
-        assert torch.allclose(found_values[i], torch.full((dim,), expected_val, device=f'npu:{DEVICE_ID}')), \
+        assert torch.allclose(found_values[i], torch.full((dim,), expected_val, device=f'npu:{DEVICE_ID}')), (
             f"键{keys[i]}的embedding值应与debug初始化器一致"
-        assert found_scores[i].item() == custom_score, \
+        )
+        assert found_scores[i].item() == custom_score, (
             f"键{keys[i]}的score应为{custom_score}，实际为{found_scores[i].item()}"
+        )
