@@ -20,22 +20,15 @@
 namespace dyn_emb {
 #ifdef USE_RTTI
 DynamicVariableBase::DynamicVariableBase(
-    RowsFn rows_fn, ColsFn cols_fn, IsPureHbmModeFn is_pure_hbm_mode_fn,
-    GetMaxCapacityFn get_max_capacity_fn,
-    GetKeyTypeFn get_key_type_fn, GetValueTypeFn get_value_type_fn,
-    GetEvictStrategyFn get_evict_strategy_fn,
-    GetInitializerArgsFn get_initializer_args_fn,
-    InsertAndEvictFn insert_and_evict_fn, FindFn find_fn, EraseFn erase_fn,
-    ClearFn clear_fn, ReserveFn reserve_fn, AccumOrAssignFn accum_or_assign_fn,
-    FindOrInsertFn find_or_insert_fn,
-    FindOrInsertPointersFn find_or_insert_pointers_fn,
-    AssignFn assign_fn, LockFn lock_fn, UnlockFn unlock_fn,
-    FindPointersConstFn find_pointers_const_fn, FindPointersFn find_pointers_fn,
-    OptStateDimFn optstate_dim_fn,
-    SetInitialOptStateFn set_initial_optstate_fn,
-    GetInitialOptStateFn get_initial_optstate_fn, GetEmbColsFn get_emb_cols_fn,
-    ExportBatchFn export_batch_fn, ExportBatchMatchedFn export_batch_matched_fn,
-    CountMatchedFn count_matched_fn, UpdateFn update_fn, LoadFn load_fn,
+    RowsFn rows_fn, ColsFn cols_fn, IsPureHbmModeFn is_pure_hbm_mode_fn, GetMaxCapacityFn get_max_capacity_fn,
+    GetKeyTypeFn get_key_type_fn, GetValueTypeFn get_value_type_fn, GetEvictStrategyFn get_evict_strategy_fn,
+    GetInitializerArgsFn get_initializer_args_fn, InsertAndEvictFn insert_and_evict_fn, FindFn find_fn,
+    EraseFn erase_fn, ClearFn clear_fn, ReserveFn reserve_fn, AccumOrAssignFn accum_or_assign_fn,
+    FindOrInsertFn find_or_insert_fn, FindOrInsertPointersFn find_or_insert_pointers_fn, AssignFn assign_fn,
+    LockFn lock_fn, UnlockFn unlock_fn, FindPointersConstFn find_pointers_const_fn, FindPointersFn find_pointers_fn,
+    OptStateDimFn optstate_dim_fn, SetInitialOptStateFn set_initial_optstate_fn,
+    GetInitialOptStateFn get_initial_optstate_fn, GetEmbColsFn get_emb_cols_fn, ExportBatchFn export_batch_fn,
+    ExportBatchMatchedFn export_batch_matched_fn, CountMatchedFn count_matched_fn, UpdateFn update_fn, LoadFn load_fn,
     FindAndInitializeFn find_and_initialize_fn)
     : rows_fn_(std::move(rows_fn)),
       cols_fn_(std::move(cols_fn)),
@@ -67,331 +60,296 @@ DynamicVariableBase::DynamicVariableBase(
       count_matched_fn_(std::move(count_matched_fn)),
       update_fn_(std::move(update_fn)),
       load_fn_(std::move(load_fn)),
-      find_and_initialize_fn_(std::move(find_and_initialize_fn)) {}
-
-int64_t DynamicVariableBase::rows(aclrtStream stream) {
-  return rows_fn_(stream);
+      find_and_initialize_fn_(std::move(find_and_initialize_fn))
+{
 }
 
-int64_t DynamicVariableBase::cols() {
+int64_t DynamicVariableBase::rows(aclrtStream stream)
+{
+    return rows_fn_(stream);
+}
+
+int64_t DynamicVariableBase::cols()
+{
     return cols_fn_();
 }
 
-bool DynamicVariableBase::is_pure_hbm_mode() const {
+bool DynamicVariableBase::is_pure_hbm_mode() const
+{
     return is_pure_hbm_mode_fn_();
 }
 
-int64_t DynamicVariableBase::get_max_capacity() {
-  return get_max_capacity_fn_();
+int64_t DynamicVariableBase::get_max_capacity()
+{
+    return get_max_capacity_fn_();
 }
 
-DataType DynamicVariableBase::get_key_type() { return get_key_type_fn_(); }
-
-DataType DynamicVariableBase::get_value_type() { return get_value_type_fn_(); }
-
-EvictStrategy DynamicVariableBase::get_evict_strategy() const {
-  return get_evict_strategy_fn_();
+DataType DynamicVariableBase::get_key_type()
+{
+    return get_key_type_fn_();
 }
 
-const InitializerArgs& DynamicVariableBase::get_initializer_args() const {
-  return get_initializer_args_fn_();
+DataType DynamicVariableBase::get_value_type()
+{
+    return get_value_type_fn_();
 }
 
-EvictStrategy DynamicVariableBase::evict_strategy() const {
-  return get_evict_strategy_fn_();
+EvictStrategy DynamicVariableBase::get_evict_strategy() const
+{
+    return get_evict_strategy_fn_();
 }
 
-void DynamicVariableBase::insert_and_evict(
-    const size_t n, const void* keys, const void* values, const void* scores,
-    void* evicted_keys, void* evicted_values, void* evicted_scores,
-    uint64_t* d_evicted_counter, aclrtStream stream, bool unique_key,
-    bool ignore_evict_strategy) {
-  insert_and_evict_fn_(n, keys, values, scores, evicted_keys, evicted_values,
-                       evicted_scores, d_evicted_counter, stream, unique_key,
-                       ignore_evict_strategy);
+const InitializerArgs& DynamicVariableBase::get_initializer_args() const
+{
+    return get_initializer_args_fn_();
 }
 
-void DynamicVariableBase::find(const size_t n, const void* keys, void* values,
-                               bool* founds, void* scores,
-                               aclrtStream stream) const {
-  find_fn_(n, keys, values, founds, scores, stream);
+EvictStrategy DynamicVariableBase::evict_strategy() const
+{
+    return get_evict_strategy_fn_();
 }
 
-void DynamicVariableBase::erase(const size_t n, const void* keys,
-                                aclrtStream stream) {
-  erase_fn_(n, keys, stream);
+void DynamicVariableBase::insert_and_evict(const size_t n, const void* keys, const void* values, const void* scores,
+                                           void* evicted_keys, void* evicted_values, void* evicted_scores,
+                                           uint64_t* d_evicted_counter, aclrtStream stream, bool unique_key,
+                                           bool ignore_evict_strategy)
+{
+    insert_and_evict_fn_(n, keys, values, scores, evicted_keys, evicted_values, evicted_scores, d_evicted_counter,
+                         stream, unique_key, ignore_evict_strategy);
 }
 
-void DynamicVariableBase::clear(aclrtStream stream) { clear_fn_(stream); }
-
-void DynamicVariableBase::reserve(const size_t new_capacity,
-                                  aclrtStream stream) {
-  reserve_fn_(new_capacity, stream);
+void DynamicVariableBase::find(const size_t n, const void* keys, void* values, bool* founds, void* scores,
+                               aclrtStream stream) const
+{
+    find_fn_(n, keys, values, founds, scores, stream);
 }
 
-void DynamicVariableBase::accum_or_assign(const size_t n, const void* keys,
-                                          const void* value_or_deltas,
-                                          const bool* accum_or_assigns,
-                                          const void* scores,
-                                          aclrtStream stream,
-                                          bool ignore_evict_strategy) {
-  accum_or_assign_fn_(n, keys, value_or_deltas, accum_or_assigns, scores,
-                      stream, ignore_evict_strategy);
+void DynamicVariableBase::erase(const size_t n, const void* keys, aclrtStream stream)
+{
+    erase_fn_(n, keys, stream);
 }
 
-void DynamicVariableBase::find_or_insert(const size_t n, const void* keys,
-                                         void **value_ptrs, void* values,
-                                         bool* founds, void* scores,
-                                         aclrtStream stream, bool unique_key,
-                                         bool ignore_evict_strategy) {
-    find_or_insert_fn_(n, keys, value_ptrs, values, founds, scores, stream,
-                       unique_key, ignore_evict_strategy);
+void DynamicVariableBase::clear(aclrtStream stream)
+{
+    clear_fn_(stream);
 }
 
-void DynamicVariableBase::find_or_insert_pointers(const size_t n, const void *keys,
-    void **value_ptrs,
-    bool *d_found,
-    void *scores,
-    aclrtStream stream,
-    bool unique_key,
-    bool ignore_evict_strategy) {
-    find_or_insert_pointers_fn_(n, keys, value_ptrs, d_found, scores,
-                                stream, unique_key, ignore_evict_strategy);
+void DynamicVariableBase::reserve(const size_t new_capacity, aclrtStream stream)
+{
+    reserve_fn_(new_capacity, stream);
 }
 
-void DynamicVariableBase::assign(const size_t n, const void* keys,
-                                 const void* values, const void* scores,
-                                 aclrtStream stream, bool unique_key) {
-  assign_fn_(n, keys, values, scores, stream, unique_key);
+void DynamicVariableBase::accum_or_assign(const size_t n, const void* keys, const void* value_or_deltas,
+                                          const bool* accum_or_assigns, const void* scores, aclrtStream stream,
+                                          bool ignore_evict_strategy)
+{
+    accum_or_assign_fn_(n, keys, value_or_deltas, accum_or_assigns, scores, stream, ignore_evict_strategy);
 }
 
-void DynamicVariableBase::lock(const size_t n, const void* keys,
-                               void** locked_keys_ptr, bool* flags,
-                               void* scores, aclrtStream stream) {
-  lock_fn_(n, keys, locked_keys_ptr, flags, scores, stream);
+void DynamicVariableBase::find_or_insert(const size_t n, const void* keys, void** value_ptrs, void* values,
+                                         bool* founds, void* scores, aclrtStream stream, bool unique_key,
+                                         bool ignore_evict_strategy)
+{
+    find_or_insert_fn_(n, keys, value_ptrs, values, founds, scores, stream, unique_key, ignore_evict_strategy);
 }
 
-void DynamicVariableBase::unlock(const size_t n, void** locked_keys_ptr,
-                                 const void* keys, bool* flags,
-                                 aclrtStream stream) {
-  unlock_fn_(n, locked_keys_ptr, keys, flags, stream);
+void DynamicVariableBase::find_or_insert_pointers(const size_t n, const void* keys, void** value_ptrs, bool* d_found,
+                                                  void* scores, aclrtStream stream, bool unique_key,
+                                                  bool ignore_evict_strategy)
+{
+    find_or_insert_pointers_fn_(n, keys, value_ptrs, d_found, scores, stream, unique_key, ignore_evict_strategy);
 }
 
-void DynamicVariableBase::find_pointers(const size_t n, const void* keys,
-                                        void** values, bool* founds,
-                                        void* scores,
-                                        aclrtStream stream) const {
-  find_pointers_const_fn_(n, keys, values, founds, scores, stream);
+void DynamicVariableBase::assign(const size_t n, const void* keys, const void* values, const void* scores,
+                                 aclrtStream stream, bool unique_key)
+{
+    assign_fn_(n, keys, values, scores, stream, unique_key);
 }
 
-void DynamicVariableBase::find_pointers(const size_t n, const void* keys,
-                                        void** values, bool* founds,
-                                        void* scores, aclrtStream stream) {
-  find_pointers_fn_(n, keys, values, founds, scores, stream);
+void DynamicVariableBase::lock(const size_t n, const void* keys, void** locked_keys_ptr, bool* flags, void* scores,
+                               aclrtStream stream)
+{
+    lock_fn_(n, keys, locked_keys_ptr, flags, scores, stream);
 }
 
-int DynamicVariableBase::optstate_dim() const { return optstate_dim_fn_(); }
+void DynamicVariableBase::unlock(const size_t n, void** locked_keys_ptr, const void* keys, bool* flags,
+                                 aclrtStream stream)
+{
+    unlock_fn_(n, locked_keys_ptr, keys, flags, stream);
+}
 
-void DynamicVariableBase::set_initial_optstate(const float value) {
+void DynamicVariableBase::find_pointers(const size_t n, const void* keys, void** values, bool* founds, void* scores,
+                                        aclrtStream stream) const
+{
+    find_pointers_const_fn_(n, keys, values, founds, scores, stream);
+}
+
+void DynamicVariableBase::find_pointers(const size_t n, const void* keys, void** values, bool* founds, void* scores,
+                                        aclrtStream stream)
+{
+    find_pointers_fn_(n, keys, values, founds, scores, stream);
+}
+
+int DynamicVariableBase::optstate_dim() const
+{
+    return optstate_dim_fn_();
+}
+
+void DynamicVariableBase::set_initial_optstate(const float value)
+{
     set_initial_optstate_fn_(value);
 }
 
-const float DynamicVariableBase::get_initial_optstate() const {
+const float DynamicVariableBase::get_initial_optstate() const
+{
     return get_initial_optstate_fn_();
 }
 
-int DynamicVariableBase::get_emb_cols() const { return get_emb_cols_fn_(); }
-
-void DynamicVariableBase::export_batch(
-    const size_t n, const size_t offset, const torch::Tensor d_counter,
-    const torch::Tensor keys, const torch::Tensor values,
-    const c10::optional<torch::Tensor>& score) const {
-  export_batch_fn_(n, offset, d_counter, keys, values, score);
+int DynamicVariableBase::get_emb_cols() const
+{
+    return get_emb_cols_fn_();
 }
 
-void DynamicVariableBase::export_batch_matched(
-    const uint64_t threshold, const uint64_t n, const uint64_t offset,
-    torch::Tensor num_matched, torch::Tensor keys, torch::Tensor values,
-    const c10::optional<torch::Tensor>& scores, aclrtStream stream) const {
-  export_batch_matched_fn_(threshold, n, offset, num_matched, keys, values,
-                           scores, stream);
+void DynamicVariableBase::export_batch(const size_t n, const size_t offset, const torch::Tensor d_counter,
+                                       const torch::Tensor keys, const torch::Tensor values,
+                                       const c10::optional<torch::Tensor>& score) const
+{
+    export_batch_fn_(n, offset, d_counter, keys, values, score);
 }
 
-void DynamicVariableBase::count_matched(const uint64_t threshold,
-                                        torch::Tensor num_matched,
-                                        aclrtStream stream) const {
-  count_matched_fn_(threshold, num_matched, stream);
+void DynamicVariableBase::export_batch_matched(const uint64_t threshold, const uint64_t n, const uint64_t offset,
+                                               torch::Tensor num_matched, torch::Tensor keys, torch::Tensor values,
+                                               const c10::optional<torch::Tensor>& scores, aclrtStream stream) const
+{
+    export_batch_matched_fn_(threshold, n, offset, num_matched, keys, values, scores, stream);
 }
 
-void DynamicVariableBase::update(const size_t n, const torch::Tensor keys,
-                                 const torch::Tensor values,
-                                 const c10::optional<torch::Tensor>& score,
-                                 bool unique_key, bool ignore_evict_strategy) {
-  update_fn_(n, keys, values, score, unique_key, ignore_evict_strategy);
+void DynamicVariableBase::count_matched(const uint64_t threshold, torch::Tensor num_matched, aclrtStream stream) const
+{
+    count_matched_fn_(threshold, num_matched, stream);
 }
 
-void DynamicVariableBase::load(const size_t n, const torch::Tensor keys,
-                               const torch::Tensor values,
-                               const c10::optional<torch::Tensor>& score,
-                               bool unique_key, bool ignore_evict_strategy) {
-  load_fn_(n, keys, values, score, unique_key, ignore_evict_strategy);
+void DynamicVariableBase::update(const size_t n, const torch::Tensor keys, const torch::Tensor values,
+                                 const c10::optional<torch::Tensor>& score, bool unique_key, bool ignore_evict_strategy)
+{
+    update_fn_(n, keys, values, score, unique_key, ignore_evict_strategy);
 }
 
-void DynamicVariableBase::find_and_initialize(const size_t n, const void* keys,
-                                            void** value_ptrs, void* values,
-                                            bool* d_found,
-                                            const c10::optional<InitializerArgs>& initializer_args,
-                                            aclrtStream stream) {
-  find_and_initialize_fn_(n, keys, value_ptrs, values, d_found, initializer_args, stream);
+void DynamicVariableBase::load(const size_t n, const torch::Tensor keys, const torch::Tensor values,
+                               const c10::optional<torch::Tensor>& score, bool unique_key, bool ignore_evict_strategy)
+{
+    load_fn_(n, keys, values, score, unique_key, ignore_evict_strategy);
+}
+
+void DynamicVariableBase::find_and_initialize(const size_t n, const void* keys, void** value_ptrs, void* values,
+                                              bool* d_found, const c10::optional<InitializerArgs>& initializer_args,
+                                              aclrtStream stream)
+{
+    find_and_initialize_fn_(n, keys, value_ptrs, values, d_found, initializer_args, stream);
 }
 
 std::shared_ptr<DynamicVariableBase> VariableFactory::Create(
-    DataType key_type, DataType value_type, EvictStrategy evict_type,
-    int64_t dim, size_t init_capacity, size_t max_capacity,
-    size_t max_hbm_for_vectors, size_t max_bucket_size, float max_load_factor,
-    int block_size, int io_block_size, int device_id, bool io_by_cpu,
-    bool use_constant_memory, int reserved_key_start_bit,
-    size_t num_of_buckets_per_alloc, const InitializerArgs& initializer_args,
-    const SafeCheckMode safe_check_mode, const OptimizerType optimizer_type) {
-  std::shared_ptr<DynamicVariableBase> table;
-  DISPATCH_INTEGER_DATATYPE_FUNCTION(key_type, keyT, [&] {
-    DISPATCH_FLOAT_DATATYPE_FUNCTION(value_type, valueT, [&] {
-      DISPATCH_EVICTYPE_FUNCTION(evict_type, evictT, [&] {
-        auto impl = std::make_shared<HKVVariable<keyT, valueT, evictT>>(
-            key_type, value_type, dim, init_capacity, max_capacity,
-            max_hbm_for_vectors, max_bucket_size, max_load_factor, block_size,
-            io_block_size, device_id, io_by_cpu, use_constant_memory,
-            reserved_key_start_bit, num_of_buckets_per_alloc, initializer_args,
-            safe_check_mode, optimizer_type);
+    DataType key_type, DataType value_type, EvictStrategy evict_type, int64_t dim, size_t init_capacity,
+    size_t max_capacity, size_t max_hbm_for_vectors, size_t max_bucket_size, float max_load_factor, int block_size,
+    int io_block_size, int device_id, bool io_by_cpu, bool use_constant_memory, int reserved_key_start_bit,
+    size_t num_of_buckets_per_alloc, const InitializerArgs& initializer_args, const SafeCheckMode safe_check_mode,
+    const OptimizerType optimizer_type)
+{
+    std::shared_ptr<DynamicVariableBase> table;
+    DISPATCH_INTEGER_DATATYPE_FUNCTION(key_type, keyT, [&] {
+        DISPATCH_FLOAT_DATATYPE_FUNCTION(value_type, valueT, [&] {
+            DISPATCH_EVICTYPE_FUNCTION(evict_type, evictT, [&] {
+                auto impl = std::make_shared<HKVVariable<keyT, valueT, evictT>>(
+                    key_type, value_type, dim, init_capacity, max_capacity, max_hbm_for_vectors, max_bucket_size,
+                    max_load_factor, block_size, io_block_size, device_id, io_by_cpu, use_constant_memory,
+                    reserved_key_start_bit, num_of_buckets_per_alloc, initializer_args, safe_check_mode,
+                    optimizer_type);
 
-        table = std::make_shared<DynamicVariableBase>(
-            [impl](aclrtStream s) { return impl->rows(s); },
-            [impl]() { return impl->cols(); },
-            [impl]() { return impl->is_pure_hbm_mode(); },
-            [impl]() { return impl->get_max_capacity(); },
-            [impl]() { return impl->get_key_type(); },
-            [impl]() { return impl->get_value_type(); },
-            [impl]() { return impl->get_evict_strategy(); },
-            [impl]() -> const InitializerArgs& {
-              return impl->get_initializer_args();
-            },
-            [impl](const size_t n, const void* keys, const void* values,
-                   const void* scores, void* evicted_keys, void* evicted_values,
-                   void* evicted_scores, uint64_t* d_evicted_counter,
-                   aclrtStream stream, bool unique_key,
-                   bool ignore_evict_strategy) {
-              impl->insert_and_evict(n, keys, values, scores, evicted_keys,
-                                     evicted_values, evicted_scores,
-                                     d_evicted_counter, stream, unique_key,
-                                     ignore_evict_strategy);
-            },
-            [impl](const size_t n, const void* keys, void* values, bool* founds,
-                   void* scores, aclrtStream stream) {
-              impl->find(n, keys, values, founds, scores, stream);
-            },
-            [impl](const size_t n, const void* keys, aclrtStream stream) {
-              impl->erase(n, keys, stream);
-            },
-            [impl](aclrtStream stream) { impl->clear(stream); },
-            [impl](const size_t new_capacity, aclrtStream stream) {
-              impl->reserve(new_capacity, stream);
-            },
-            [impl](const size_t n, const void* keys,
-                   const void* value_or_deltas, const bool* accum_or_assigns,
-                   const void* scores, aclrtStream stream,
-                   bool ignore_evict_strategy) {
-              impl->accum_or_assign(n, keys, value_or_deltas, accum_or_assigns,
-                                    scores, stream, ignore_evict_strategy);
-            },
-            [impl](const size_t n, const void* keys, void **value_ptrs, void* values,
-                   bool* founds, void* scores, aclrtStream stream, bool unique_key,
-                   bool ignore_evict_strategy) {
-                impl->find_or_insert(n, keys, value_ptrs, values, founds, scores,
-                                     stream, unique_key, ignore_evict_strategy);
-            },
-            [impl](const size_t n, const void *keys, void **value_ptrs, bool *d_found, void *scores,
-                   aclrtStream stream, bool unique_key, bool ignore_evict_strategy) {
-                impl->find_or_insert_pointers(n, keys, value_ptrs, d_found, scores,
-                        stream, unique_key, ignore_evict_strategy);
-            },
-            [impl](const size_t n, const void* keys, const void* values,
-                   const void* scores, aclrtStream stream, bool unique_key) {
-              impl->assign(n, keys, values, scores, stream, unique_key);
-            },
-            [impl](const size_t n, const void* keys, void** locked_keys_ptr,
-                   bool* flags, void* scores, aclrtStream stream) {
-              impl->lock(n, keys, locked_keys_ptr, flags, scores, stream);
-            },
-            [impl](const size_t n, void** locked_keys_ptr, const void* keys,
-                   bool* flags, aclrtStream stream) {
-              impl->unlock(n, locked_keys_ptr, keys, flags, stream);
-            },
-            [impl](const size_t n, const void* keys, void** values,
-                   bool* founds, void* scores, aclrtStream stream) {
-              const auto& cimpl = *impl;
-              cimpl.find_pointers(n, keys, values, founds, scores, stream);
-            },
-            [impl](const size_t n, const void* keys, void** values,
-                   bool* founds, void* scores, aclrtStream stream) {
-              impl->find_pointers(n, keys, values, founds, scores, stream);
-            },
-            [impl]() { return impl->optstate_dim(); },
-            [impl](const float value) { impl->set_initial_optstate(value); },
-            [impl]() -> const float { return impl->get_initial_optstate(); },
-            [impl]() { return impl->get_emb_cols(); },
-            [impl](const size_t n, const size_t offset,
-                   const torch::Tensor d_counter, const torch::Tensor keys,
-                   const torch::Tensor values,
-                   const c10::optional<torch::Tensor>& score) {
-              impl->export_batch(n, offset, d_counter, keys, values, score);
-            },
-            [impl](const uint64_t threshold, const uint64_t n,
-                   const uint64_t offset, torch::Tensor num_matched,
-                   torch::Tensor keys, torch::Tensor values,
-                   const c10::optional<torch::Tensor>& scores,
-                   aclrtStream stream) {
-              impl->export_batch_matched(threshold, n, offset, num_matched,
-                                         keys, values, scores, stream);
-            },
-            [impl](const uint64_t threshold, torch::Tensor num_matched,
-                   aclrtStream stream) {
-              impl->count_matched(threshold, num_matched, stream);
-            },
-            [impl](const size_t n, const torch::Tensor keys,
-                   const torch::Tensor values,
-                   const c10::optional<torch::Tensor>& score, bool unique_key,
-                   bool ignore_evict_strategy) {
-              impl->update(n, keys, values, score, unique_key,
-                           ignore_evict_strategy);
-            },
-            [impl](const size_t n, const torch::Tensor keys,
-                   const torch::Tensor values,
-                   const c10::optional<torch::Tensor>& score, bool unique_key,
-                   bool ignore_evict_strategy) {
-              impl->load(n, keys, values, score, unique_key,
-                         ignore_evict_strategy);
-            },
-            [impl](const size_t n, const void* keys, void** value_ptrs,
-                   void* values, bool* d_found,
-                   const c10::optional<InitializerArgs>& initializer_args,
-                   aclrtStream stream) {
-              impl->find_and_initialize(n, keys, value_ptrs, values, d_found,
-                                        initializer_args, stream);
+                table = std::make_shared<DynamicVariableBase>(
+                    [impl](aclrtStream s) { return impl->rows(s); }, [impl]() { return impl->cols(); },
+                    [impl]() { return impl->is_pure_hbm_mode(); }, [impl]() { return impl->get_max_capacity(); },
+                    [impl]() { return impl->get_key_type(); }, [impl]() { return impl->get_value_type(); },
+                    [impl]() { return impl->get_evict_strategy(); },
+                    [impl]() -> const InitializerArgs& { return impl->get_initializer_args(); },
+                    [impl](const size_t n, const void* keys, const void* values, const void* scores, void* evicted_keys,
+                           void* evicted_values, void* evicted_scores, uint64_t* d_evicted_counter, aclrtStream stream,
+                           bool unique_key, bool ignore_evict_strategy) {
+                        impl->insert_and_evict(n, keys, values, scores, evicted_keys, evicted_values, evicted_scores,
+                                               d_evicted_counter, stream, unique_key, ignore_evict_strategy);
+                    },
+                    [impl](const size_t n, const void* keys, void* values, bool* founds, void* scores,
+                           aclrtStream stream) { impl->find(n, keys, values, founds, scores, stream); },
+                    [impl](const size_t n, const void* keys, aclrtStream stream) { impl->erase(n, keys, stream); },
+                    [impl](aclrtStream stream) { impl->clear(stream); },
+                    [impl](const size_t new_capacity, aclrtStream stream) { impl->reserve(new_capacity, stream); },
+                    [impl](const size_t n, const void* keys, const void* value_or_deltas, const bool* accum_or_assigns,
+                           const void* scores, aclrtStream stream, bool ignore_evict_strategy) {
+                        impl->accum_or_assign(n, keys, value_or_deltas, accum_or_assigns, scores, stream,
+                                              ignore_evict_strategy);
+                    },
+                    [impl](const size_t n, const void* keys, void** value_ptrs, void* values, bool* founds,
+                           void* scores, aclrtStream stream, bool unique_key, bool ignore_evict_strategy) {
+                        impl->find_or_insert(n, keys, value_ptrs, values, founds, scores, stream, unique_key,
+                                             ignore_evict_strategy);
+                    },
+                    [impl](const size_t n, const void* keys, void** value_ptrs, bool* d_found, void* scores,
+                           aclrtStream stream, bool unique_key, bool ignore_evict_strategy) {
+                        impl->find_or_insert_pointers(n, keys, value_ptrs, d_found, scores, stream, unique_key,
+                                                      ignore_evict_strategy);
+                    },
+                    [impl](const size_t n, const void* keys, const void* values, const void* scores, aclrtStream stream,
+                           bool unique_key) { impl->assign(n, keys, values, scores, stream, unique_key); },
+                    [impl](const size_t n, const void* keys, void** locked_keys_ptr, bool* flags, void* scores,
+                           aclrtStream stream) { impl->lock(n, keys, locked_keys_ptr, flags, scores, stream); },
+                    [impl](const size_t n, void** locked_keys_ptr, const void* keys, bool* flags, aclrtStream stream) {
+                        impl->unlock(n, locked_keys_ptr, keys, flags, stream);
+                    },
+                    [impl](const size_t n, const void* keys, void** values, bool* founds, void* scores,
+                           aclrtStream stream) {
+                        const auto& cimpl = *impl;
+                        cimpl.find_pointers(n, keys, values, founds, scores, stream);
+                    },
+                    [impl](const size_t n, const void* keys, void** values, bool* founds, void* scores,
+                           aclrtStream stream) { impl->find_pointers(n, keys, values, founds, scores, stream); },
+                    [impl]() { return impl->optstate_dim(); },
+                    [impl](const float value) { impl->set_initial_optstate(value); },
+                    [impl]() -> const float { return impl->get_initial_optstate(); },
+                    [impl]() { return impl->get_emb_cols(); },
+                    [impl](const size_t n, const size_t offset, const torch::Tensor d_counter, const torch::Tensor keys,
+                           const torch::Tensor values, const c10::optional<torch::Tensor>& score) {
+                        impl->export_batch(n, offset, d_counter, keys, values, score);
+                    },
+                    [impl](const uint64_t threshold, const uint64_t n, const uint64_t offset, torch::Tensor num_matched,
+                           torch::Tensor keys, torch::Tensor values, const c10::optional<torch::Tensor>& scores,
+                           aclrtStream stream) {
+                        impl->export_batch_matched(threshold, n, offset, num_matched, keys, values, scores, stream);
+                    },
+                    [impl](const uint64_t threshold, torch::Tensor num_matched, aclrtStream stream) {
+                        impl->count_matched(threshold, num_matched, stream);
+                    },
+                    [impl](const size_t n, const torch::Tensor keys, const torch::Tensor values,
+                           const c10::optional<torch::Tensor>& score, bool unique_key, bool ignore_evict_strategy) {
+                        impl->update(n, keys, values, score, unique_key, ignore_evict_strategy);
+                    },
+                    [impl](const size_t n, const torch::Tensor keys, const torch::Tensor values,
+                           const c10::optional<torch::Tensor>& score, bool unique_key, bool ignore_evict_strategy) {
+                        impl->load(n, keys, values, score, unique_key, ignore_evict_strategy);
+                    },
+                    [impl](const size_t n, const void* keys, void** value_ptrs, void* values, bool* d_found,
+                           const c10::optional<InitializerArgs>& initializer_args, aclrtStream stream) {
+                        impl->find_and_initialize(n, keys, value_ptrs, values, d_found, initializer_args, stream);
+                    });
             });
-      });
+        });
     });
-  });
-  return table;
+    return table;
 }
 #else
 std::shared_ptr<DynamicVariableBase> VariableFactory::Create(
-    DataType key_type, DataType value_type, EvictStrategy evict_type,
-    int64_t dim, size_t init_capacity, size_t max_capacity,
-    size_t max_hbm_for_vectors, size_t max_bucket_size, float max_load_factor,
-    int block_size, int io_block_size, int device_id, bool io_by_cpu,
-    bool use_constant_memory, int reserved_key_start_bit,
-    size_t num_of_buckets_per_alloc, const InitializerArgs &initializer_args,
-    const SafeCheckMode safe_check_mode,
+    DataType key_type, DataType value_type, EvictStrategy evict_type, int64_t dim, size_t init_capacity,
+    size_t max_capacity, size_t max_hbm_for_vectors, size_t max_bucket_size, float max_load_factor, int block_size,
+    int io_block_size, int device_id, bool io_by_cpu, bool use_constant_memory, int reserved_key_start_bit,
+    size_t num_of_buckets_per_alloc, const InitializerArgs& initializer_args, const SafeCheckMode safe_check_mode,
     const OptimizerType optimizer_type)
 {
     // value type float
@@ -400,11 +358,10 @@ std::shared_ptr<DynamicVariableBase> VariableFactory::Create(
         DISPATCH_FLOAT_DATATYPE_FUNCTION(value_type, valueT, [&] {
             DISPATCH_EVICTYPE_FUNCTION(evict_type, evictT, [&] {
                 table = std::make_shared<HKVVariable<keyT, valueT, evictT>>(
-                    key_type, value_type, dim, init_capacity, max_capacity,
-                    max_hbm_for_vectors, max_bucket_size, max_load_factor, block_size,
-                    io_block_size, device_id, io_by_cpu, use_constant_memory,
-                    reserved_key_start_bit, num_of_buckets_per_alloc, initializer_args,
-                    safe_check_mode, optimizer_type);
+                    key_type, value_type, dim, init_capacity, max_capacity, max_hbm_for_vectors, max_bucket_size,
+                    max_load_factor, block_size, io_block_size, device_id, io_by_cpu, use_constant_memory,
+                    reserved_key_start_bit, num_of_buckets_per_alloc, initializer_args, safe_check_mode,
+                    optimizer_type);
             });
         });
     });
