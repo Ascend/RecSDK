@@ -1,0 +1,840 @@
+diff --git a/torchrec/conftest.py b/torchrec/conftest.py
+new file mode 100644
+index 00000000..156a593d
+--- /dev/null
++++ b/torchrec/conftest.py
+@@ -0,0 +1,21 @@
++#!/usr/bin/env python3
++# -*- coding: utf-8 -*-
++# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++# ==============================================================================
++
++
++def pytest_sessionstart(session):
++    import fbgemm_ascend
++    print("fbgemm_npu loaded successfully.")
+diff --git a/torchrec/distributed/planner/tests/benchmark.py b/torchrec/distributed/planner/tests/benchmark.py
+index 082cc478..ba59c80a 100644
+--- a/torchrec/distributed/planner/tests/benchmark.py
++++ b/torchrec/distributed/planner/tests/benchmark.py
+@@ -41,7 +41,7 @@ class TestEnumeratorBenchmark(unittest.TestCase):
+     def build(
+         world_size: int, num_tables: int
+     ) -> Tuple[EmbeddingEnumerator, nn.Module]:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         topology = Topology(
+             world_size=world_size, local_world_size=8, compute_device=compute_device
+         )
+diff --git a/torchrec/distributed/planner/tests/test_constants.py b/torchrec/distributed/planner/tests/test_constants.py
+index a3799e29..5255c34e 100644
+--- a/torchrec/distributed/planner/tests/test_constants.py
++++ b/torchrec/distributed/planner/tests/test_constants.py
+@@ -21,7 +21,7 @@ from torchrec.distributed.planner.constants import (
+
+ class TestKernelBWLookup(unittest.TestCase):
+     def test_uvm_caching_bw(self) -> None:
+-        compute_device: str = "cuda"
++        compute_device: str = "npu"
+         computer_kernel: str = EmbeddingComputeKernel.FUSED_UVM_CACHING.value
+
+         caching_ratios: List[float] = [0, 0.25, 0.5, 0.75, 1]
+@@ -47,7 +47,7 @@ class TestKernelBWLookup(unittest.TestCase):
+         self.assertEqual(expected_uvm_caching_bw, uvm_caching_bw)
+
+     def test_uvm_caching_bw_with_prefetch_pipeline(self) -> None:
+-        compute_device: str = "cuda"
++        compute_device: str = "npu"
+         computer_kernel: str = EmbeddingComputeKernel.FUSED_UVM_CACHING.value
+         prefetch_pipeline: bool = True
+
+diff --git a/torchrec/distributed/planner/tests/test_enumerators.py b/torchrec/distributed/planner/tests/test_enumerators.py
+index 0ef9141b..173f8625 100644
+--- a/torchrec/distributed/planner/tests/test_enumerators.py
++++ b/torchrec/distributed/planner/tests/test_enumerators.py
+@@ -343,7 +343,7 @@ class TowerCollectionTWRWSharder(EmbeddingTowerCollectionSharder):
+
+ class TestEnumerators(unittest.TestCase):
+     def setUp(self) -> None:
+-        self.compute_device = "cuda"
++        self.compute_device = "npu"
+         self.batch_size = 256
+         self.world_size = 8
+         self.local_world_size = 4
+@@ -677,7 +677,7 @@ class TestEnumerators(unittest.TestCase):
+
+         sharder = EmbeddingBagCollectionSharder()
+         allowed_sharding_types = enumerator._filter_sharding_types(
+-            "table_0", sharder.sharding_types("cuda")
++            "table_0", sharder.sharding_types("npu")
+         )
+
+         self.assertEqual(
+@@ -706,7 +706,7 @@ class TestEnumerators(unittest.TestCase):
+
+         sharder = ManagedCollisionEmbeddingBagCollectionSharder()
+         allowed_sharding_types = enumerator._filter_sharding_types(
+-            "table_0", sharder.sharding_types("cuda")
++            "table_0", sharder.sharding_types("npu")
+         )
+
+         self.assertEqual(
+@@ -733,7 +733,7 @@ class TestEnumerators(unittest.TestCase):
+         sharder = ManagedCollisionEmbeddingBagCollectionSharder()
+         with self.assertWarns(Warning):
+             allowed_sharding_types = enumerator._filter_sharding_types(
+-                "table_0", sharder.sharding_types("cuda")
++                "table_0", sharder.sharding_types("npu")
+             )
+
+         self.assertEqual(allowed_sharding_types, [])
+@@ -756,7 +756,7 @@ class TestEnumerators(unittest.TestCase):
+         sharder = EmbeddingBagCollectionSharder()
+         sharding_type = ShardingType.ROW_WISE.value
+         allowed_compute_kernels = enumerator._filter_compute_kernels(
+-            "table_0", sharder.compute_kernels(sharding_type, "cuda"), sharding_type
++            "table_0", sharder.compute_kernels(sharding_type, "npu"), sharding_type
+         )
+
+         self.assertEqual(
+@@ -785,7 +785,7 @@ class TestEnumerators(unittest.TestCase):
+         sharder = ManagedCollisionEmbeddingBagCollectionSharder()
+         sharding_type = ShardingType.ROW_WISE.value
+         allowed_compute_kernels = enumerator._filter_compute_kernels(
+-            "table_0", sharder.compute_kernels(sharding_type, "cuda"), sharding_type
++            "table_0", sharder.compute_kernels(sharding_type, "npu"), sharding_type
+         )
+
+         self.assertEqual(
+@@ -813,7 +813,7 @@ class TestEnumerators(unittest.TestCase):
+         sharding_type = ShardingType.ROW_WISE.value
+         with self.assertWarns(Warning):
+             allowed_compute_kernels = enumerator._filter_compute_kernels(
+-                "table_0", sharder.compute_kernels(sharding_type, "cuda"), sharding_type
++                "table_0", sharder.compute_kernels(sharding_type, "npu"), sharding_type
+             )
+
+         self.assertEqual(allowed_compute_kernels, [])
+@@ -917,6 +917,6 @@ class TestEnumerators(unittest.TestCase):
+         self.assertEqual(
+             str(context.exception),
+             "No available sharding type and compute kernel combination after applying user provided constraints for table_1. "
+-            "Module: torchrec.modules.embedding_modules.EmbeddingBagCollection, sharder: CWSharder, compute device: cuda. "
++            "Module: torchrec.modules.embedding_modules.EmbeddingBagCollection, sharder: CWSharder, compute device: npu. "
+             "To debug, search above for warning logs about no available sharding types/compute kernels for table: table_1",
+         )
+diff --git a/torchrec/distributed/planner/tests/test_partitioners.py b/torchrec/distributed/planner/tests/test_partitioners.py
+index 8f46066d..296a92ca 100644
+--- a/torchrec/distributed/planner/tests/test_partitioners.py
++++ b/torchrec/distributed/planner/tests/test_partitioners.py
+@@ -91,7 +91,7 @@ class HostLevelSharder(EmbeddingBagCollectionSharder, ModuleSharder[nn.Module]):
+
+ class TestGreedyPerfPartitioner(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(world_size=2, compute_device=compute_device)
+         tables = [
+             EmbeddingBagConfig(
+@@ -292,7 +292,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+
+     def test_tw_balanced_perf_host(self) -> None:
+         self.topology = Topology(
+-            world_size=16, local_world_size=8, compute_device="cuda"
++            world_size=16, local_world_size=8, compute_device="npu"
+         )
+         tables = [
+             EmbeddingBagConfig(
+@@ -356,7 +356,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+             self.assertEqual(solution_topology.devices[i].perf, expected_perf)
+
+     def test_rw_unbalanced_perf_uniform(self) -> None:
+-        self.topology = Topology(world_size=4, compute_device="cuda")
++        self.topology = Topology(world_size=4, compute_device="npu")
+         tables = [
+             EmbeddingBagConfig(
+                 num_embeddings=64,
+@@ -412,7 +412,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+
+     def test_twcw_unbalanced_perf_host(self) -> None:
+         self.topology = Topology(
+-            world_size=16, local_world_size=8, compute_device="cuda"
++            world_size=16, local_world_size=8, compute_device="npu"
+         )
+         constraints = {
+             "table_0": ParameterConstraints(min_partition=4 * 2),
+@@ -467,7 +467,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+
+     def test_twrw_and_twcw_perf_host(self) -> None:
+         self.topology = Topology(
+-            world_size=16, local_world_size=8, compute_device="cuda"
++            world_size=16, local_world_size=8, compute_device="npu"
+         )
+         constraints = {
+             "table_0": ParameterConstraints(
+@@ -533,7 +533,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+
+     def test_twrw_and_twcw_cohost(self) -> None:
+         self.topology = Topology(
+-            world_size=16, local_world_size=8, compute_device="cuda"
++            world_size=16, local_world_size=8, compute_device="npu"
+         )
+         constraints = {
+             "table_0": ParameterConstraints(
+@@ -622,7 +622,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+
+     def test_oom(self) -> None:
+         self.topology = Topology(
+-            world_size=2, local_world_size=1, compute_device="cuda"
++            world_size=2, local_world_size=1, compute_device="npu"
+         )
+         constraints = {
+             "table_0": ParameterConstraints(
+@@ -684,7 +684,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+
+ class TestMemoryBalancedPartitioner(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(world_size=2, compute_device=compute_device)
+         tables = [
+             EmbeddingBagConfig(
+@@ -807,7 +807,7 @@ class TestMemoryBalancedPartitioner(unittest.TestCase):
+
+ class TestBalanceModules(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(world_size=2, compute_device=compute_device)
+         tables = [
+             EmbeddingBagConfig(
+diff --git a/torchrec/distributed/planner/tests/test_perf_models.py b/torchrec/distributed/planner/tests/test_perf_models.py
+index d290b664..bf1801b4 100644
+--- a/torchrec/distributed/planner/tests/test_perf_models.py
++++ b/torchrec/distributed/planner/tests/test_perf_models.py
+@@ -22,7 +22,7 @@ from torchrec.distributed.planner.types import (
+
+ class TestPerfModels(unittest.TestCase):
+     def setUp(self) -> None:
+-        self.topology = Topology(world_size=2, compute_device="cuda")
++        self.topology = Topology(world_size=2, compute_device="npu")
+         self.tables = [
+             ShardingOption(
+                 name=MagicMock(),
+diff --git a/torchrec/distributed/planner/tests/test_planners.py b/torchrec/distributed/planner/tests/test_planners.py
+index abab40ac..3b67ceec 100644
+--- a/torchrec/distributed/planner/tests/test_planners.py
++++ b/torchrec/distributed/planner/tests/test_planners.py
+@@ -60,7 +60,7 @@ class TWSharder(EmbeddingBagCollectionSharder, ModuleSharder[nn.Module]):
+
+ class TestEmbeddingShardingPlanner(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(
+             world_size=2, hbm_cap=1024 * 1024 * 2, compute_device=compute_device
+         )
+@@ -178,7 +178,7 @@ class TestEmbeddingShardingPlanner(unittest.TestCase):
+
+ class TestEmbeddingShardingPlannerWithConstraints(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(
+             world_size=2, hbm_cap=1024 * 1024 * 2, compute_device=compute_device
+         )
+@@ -310,7 +310,7 @@ class AutoSharder(EmbeddingBagCollectionSharder, ModuleSharder[nn.Module]):
+
+ class TestAutoPlannerWithScaleupProposer(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(
+             world_size=2,
+             hbm_cap=1024 * 1024 * 2,
+diff --git a/torchrec/distributed/planner/tests/test_proposers.py b/torchrec/distributed/planner/tests/test_proposers.py
+index c048f63e..de37b765 100644
+--- a/torchrec/distributed/planner/tests/test_proposers.py
++++ b/torchrec/distributed/planner/tests/test_proposers.py
+@@ -151,7 +151,7 @@ def make_sharding_option(
+
+ class TestProposers(unittest.TestCase):
+     def setUp(self) -> None:
+-        topology = Topology(world_size=2, compute_device="cuda")
++        topology = Topology(world_size=2, compute_device="npu")
+         self.enumerator = EmbeddingEnumerator(topology=topology, batch_size=BATCH_SIZE)
+         self.greedy_proposer = GreedyProposer()
+         self.uniform_proposer = UniformProposer()
+@@ -462,7 +462,7 @@ class TestProposers(unittest.TestCase):
+         proposal = self.dynamic_programming_proposer.propose()
+         GB = 1024 * 1024 * 1024
+         storage_constraint = Topology(
+-            world_size=2, compute_device="cuda", hbm_cap=100 * GB, ddr_cap=1000 * GB
++            world_size=2, compute_device="npu", hbm_cap=100 * GB, ddr_cap=1000 * GB
+         )
+         while proposal:
+             self.dynamic_programming_proposer.feedback(
+@@ -673,7 +673,7 @@ class TestProposers(unittest.TestCase):
+
+         GB = 1024 * 1024 * 1024
+         storage_constraint = Topology(
+-            world_size=2, compute_device="cuda", hbm_cap=100 * GB, ddr_cap=1000 * GB
++            world_size=2, compute_device="npu", hbm_cap=100 * GB, ddr_cap=1000 * GB
+         )
+         # Ignoring table_2, the remainder require 224GB if all placed on HBM. We only
+         # have 200GB, so we can't promote both uvm tables. Initial plan needs uses 90GB,
+@@ -853,7 +853,7 @@ class TestProposers(unittest.TestCase):
+
+         GB = 1024 * 1024 * 1024
+         storage_constraint = Topology(
+-            world_size=1, compute_device="cuda", hbm_cap=100 * GB, ddr_cap=1000 * GB
++            world_size=1, compute_device="npu", hbm_cap=100 * GB, ddr_cap=1000 * GB
+         )
+         model = TestSparseNN(tables=tables, sparse_device=torch.device("meta"))
+         enumerator = EmbeddingEnumerator(
+diff --git a/torchrec/distributed/planner/tests/test_shard_estimators.py b/torchrec/distributed/planner/tests/test_shard_estimators.py
+index 4f044787..1d157f53 100644
+--- a/torchrec/distributed/planner/tests/test_shard_estimators.py
++++ b/torchrec/distributed/planner/tests/test_shard_estimators.py
+@@ -54,7 +54,7 @@ from torchrec.modules.embedding_configs import (
+
+ class TestEmbeddingPerfEstimator(unittest.TestCase):
+     def setUp(self) -> None:
+-        self.topology = Topology(world_size=2, compute_device="cuda")
++        self.topology = Topology(world_size=2, compute_device="npu")
+         self.estimator = EmbeddingPerfEstimator(topology=self.topology)
+         self.enumerator = EmbeddingEnumerator(
+             topology=self.topology, batch_size=BATCH_SIZE, estimator=self.estimator
+@@ -618,7 +618,7 @@ class TestEmbeddingPerfEstimator(unittest.TestCase):
+         ) -> Dict[Tuple[str, str, str], List[float]]:
+             topology = Topology(
+                 world_size=2,
+-                compute_device="cuda",
++                compute_device="npu",
+                 weighted_feature_bwd_compute_multiplier=weighted_feature_bwd_compute_multiplier,
+             )
+             estimator = EmbeddingPerfEstimator(topology=topology)
+@@ -766,7 +766,7 @@ class TestEmbeddingStorageEstimator(unittest.TestCase):
+     def test_pipelined_storage(self, p1: Mock, p2: Mock) -> None:
+         for pipeline_type in list(PipelineType):
+             for run_embedding_at_peak_memory in [False, True]:
+-                topology = Topology(world_size=2, compute_device="cuda")
++                topology = Topology(world_size=2, compute_device="npu")
+                 estimator = EmbeddingStorageEstimator(
+                     topology=topology,
+                     pipeline_type=pipeline_type,
+@@ -897,7 +897,7 @@ class TestEmbeddingStorageEstimator(unittest.TestCase):
+                 self.assertEqual(expected_storage, actual_storage)
+
+     def test_default_output_sizes(self) -> None:
+-        topology = Topology(world_size=2, compute_device="cuda")
++        topology = Topology(world_size=2, compute_device="npu")
+         constraint_list = [
+             None,
+             {"table_0": ParameterConstraints(output_dtype=DataType.FP32)},
+diff --git a/torchrec/distributed/planner/tests/test_stats.py b/torchrec/distributed/planner/tests/test_stats.py
+index 10849b51..a868aec8 100644
+--- a/torchrec/distributed/planner/tests/test_stats.py
++++ b/torchrec/distributed/planner/tests/test_stats.py
+@@ -49,7 +49,7 @@ class TWvsRWSharder(EmbeddingBagCollectionSharder, ModuleSharder[nn.Module]):
+
+ class TestEmbeddingStats(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(
+             world_size=2, hbm_cap=1024 * 1024 * 2, compute_device=compute_device
+         )
+diff --git a/torchrec/distributed/planner/tests/test_storage_reservations.py b/torchrec/distributed/planner/tests/test_storage_reservations.py
+index 4bc2b40f..9a7a9a27 100644
+--- a/torchrec/distributed/planner/tests/test_storage_reservations.py
++++ b/torchrec/distributed/planner/tests/test_storage_reservations.py
+@@ -52,7 +52,7 @@ class TestHeuristicalStorageReservation(unittest.TestCase):
+         heuristical_storage_reservation = HeuristicalStorageReservation(percentage=0.0)
+
+         heuristical_storage_reservation.reserve(
+-            topology=Topology(world_size=2, compute_device="cuda"),
++            topology=Topology(world_size=2, compute_device="npu"),
+             batch_size=10,
+             module=model,
+             sharders=cast(
+@@ -92,7 +92,7 @@ class TestHeuristicalStorageReservation(unittest.TestCase):
+         heuristical_storage_reservation = HeuristicalStorageReservation(percentage=0.0)
+
+         heuristical_storage_reservation.reserve(
+-            topology=Topology(world_size=2, compute_device="cuda"),
++            topology=Topology(world_size=2, compute_device="npu"),
+             batch_size=10,
+             module=model,
+             sharders=cast(
+@@ -132,7 +132,7 @@ class TestHeuristicalStorageReservation(unittest.TestCase):
+         heuristical_storage_reservation = HeuristicalStorageReservation(percentage=0.0)
+
+         heuristical_storage_reservation.reserve(
+-            topology=Topology(world_size=2, compute_device="cuda"),
++            topology=Topology(world_size=2, compute_device="npu"),
+             batch_size=10,
+             module=model,
+             sharders=cast(
+@@ -166,7 +166,7 @@ class TestHeuristicalStorageReservation(unittest.TestCase):
+         )
+
+         heuristical_storage_reservation.reserve(
+-            topology=Topology(world_size=2, compute_device="cuda"),
++            topology=Topology(world_size=2, compute_device="npu"),
+             batch_size=10,
+             module=model,
+             sharders=cast(
+diff --git a/torchrec/inference/tests/test_inference.py b/torchrec/inference/tests/test_inference.py
+index c8f7f052..80733fbf 100644
+--- a/torchrec/inference/tests/test_inference.py
++++ b/torchrec/inference/tests/test_inference.py
+@@ -12,6 +12,7 @@ import unittest
+ from argparse import Namespace
+ from typing import Any, cast, Dict, List
+
++import pytest
+ import torch
+ from fbgemm_gpu.split_embedding_configs import SparseType
+ from torchrec import PoolingType
+diff --git a/torchrec/sparse/tests/jagged_tensor_benchmark.py b/torchrec/sparse/tests/jagged_tensor_benchmark.py
+index 34862e38..0f5e4469 100644
+--- a/torchrec/sparse/tests/jagged_tensor_benchmark.py
++++ b/torchrec/sparse/tests/jagged_tensor_benchmark.py
+@@ -75,7 +75,7 @@ def bench(
+     model = DummyModel()
+     setattr(model, "forward", lambda kwargs: fn(**kwargs))
+     prof_num = 10
+-    if device_type == "cuda":
++    if device_type == "npu":
+         result = benchmark(
+             name=name,
+             model=model,
+@@ -134,7 +134,7 @@ def bench(
+ @click.option(
+     "--device_type",
+     type=str,
+-    default="cuda",
++    default="npu",
+     help="device type",
+ )
+ @click.option(
+@@ -194,7 +194,7 @@ def main(
+         n_denses = [64, 128, 256, 512, 1024]
+         n_sparses = [16, 32, 64, 128, 256]
+         batch_sizes = [512, 1024, 2048, 4096]
+-        device_types = ["cuda"]
++        device_types = ["npu"]
+     else:
+         n_denses = [n_dense]
+         n_sparses = [n_sparse]
+diff --git a/torchrec/sparse/tests/test_jagged_tensor.py b/torchrec/sparse/tests/test_jagged_tensor.py
+index 1f15cbea..938878da 100644
+--- a/torchrec/sparse/tests/test_jagged_tensor.py
++++ b/torchrec/sparse/tests/test_jagged_tensor.py
+@@ -257,11 +257,11 @@ class TestJaggedTensor(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_from_dense_device(self) -> None:
+-        device = torch.device("cuda", index=0)
++        device = torch.device("npu", index=0)
+         values = [
+             torch.tensor([1.0], device=device),
+             torch.tensor([7.0, 8.0], device=device),
+@@ -624,16 +624,16 @@ class TestJaggedTensor(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_record_stream(self) -> None:
+         j = JaggedTensor(
+             offsets=torch.tensor([0, 2, 2, 3]),
+             values=torch.tensor([0.5, 1.0, 1.5]),
+             weights=torch.tensor([5.0, 10.0, 15.0]),
+-        ).to(torch.device("cuda"))
+-        j.record_stream(torch.cuda.current_stream())
++        ).to(torch.device("npu"))
++        j.record_stream(torch.npu.current_stream())
+
+     def test_string_basic(self) -> None:
+         values = torch.Tensor([1.0])
+diff --git a/torchrec/sparse/tests/test_keyed_jagged_tensor.py b/torchrec/sparse/tests/test_keyed_jagged_tensor.py
+index 1636a06b..223abfe5 100644
+--- a/torchrec/sparse/tests/test_keyed_jagged_tensor.py
++++ b/torchrec/sparse/tests/test_keyed_jagged_tensor.py
+@@ -842,8 +842,8 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_record_stream(self) -> None:
+         j = KeyedJaggedTensor.from_offsets_sync(
+@@ -851,8 +851,8 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+             values=torch.arange(8),
+             weights=torch.arange(8 * 10),
+             keys=["index_0", "index_1"],
+-        ).to(torch.device("cuda"))
+-        j.record_stream(torch.cuda.current_stream())
++        ).to(torch.device("npu"))
++        j.record_stream(torch.npu.current_stream())
+
+     def test_equality(self) -> None:
+         values = torch.Tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+@@ -1336,11 +1336,11 @@ class TestComputeKJTToJTDict(unittest.TestCase):
+ class TestKeyedJaggedTensorGPU(unittest.TestCase):
+     def setUp(self) -> None:
+         super().setUp()
+-        self.device = torch.cuda.current_device()
++        self.device = torch.npu.current_device()
+
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_permute(self) -> None:
+@@ -1374,7 +1374,7 @@ class TestKeyedJaggedTensorGPU(unittest.TestCase):
+
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_permute_vb(self) -> None:
+@@ -1411,7 +1411,7 @@ class TestKeyedJaggedTensorGPU(unittest.TestCase):
+
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_permute_vb_duplicate(self) -> None:
+@@ -1471,7 +1471,7 @@ class TestKeyedJaggedTensorGPU(unittest.TestCase):
+
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_permute_duplicates(self) -> None:
+diff --git a/torchrec/sparse/tests/test_keyed_tensor.py b/torchrec/sparse/tests/test_keyed_tensor.py
+index 027f2634..82f831a8 100644
+--- a/torchrec/sparse/tests/test_keyed_tensor.py
++++ b/torchrec/sparse/tests/test_keyed_tensor.py
+@@ -127,7 +127,7 @@ class TestKeyedTensor(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         regroup_func=st.sampled_from(
+             [
+                 KeyedTensor.regroup,
+@@ -141,8 +141,8 @@ class TestKeyedTensor(unittest.TestCase):
+     def test_regroup_kts(
+         self, regroup_func: Callable[..., List[torch.Tensor]], device_str: str
+     ) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+
+         kts = build_kts(
+@@ -166,7 +166,7 @@ class TestKeyedTensor(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         regroup_func=st.sampled_from(
+             [
+                 KeyedTensor.regroup,
+@@ -180,7 +180,7 @@ class TestKeyedTensor(unittest.TestCase):
+     def test_regroup_kts_inference(
+         self, regroup_func: Callable[..., List[torch.Tensor]], device_str: str
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -246,7 +246,7 @@ class TestKeyedTensor(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @given(
+-        device_str=st.sampled_from(["cpu", "cuda"]),
++        device_str=st.sampled_from(["cpu", "npu"]),
+         regroup_func=st.sampled_from(
+             [
+                 KeyedTensor.regroup,
+@@ -260,7 +260,7 @@ class TestKeyedTensor(unittest.TestCase):
+     def test_regroup_backward(
+         self, regroup_func: Callable[..., List[torch.Tensor]], device_str: str
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -331,7 +331,7 @@ class TestKeyedTensor(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         regroup_func=st.sampled_from(
+             [
+                 KeyedTensor.regroup,
+@@ -344,7 +344,7 @@ class TestKeyedTensor(unittest.TestCase):
+     def test_regroup_scriptable(
+         self, regroup_func: Callable[..., List[torch.Tensor]], device_str: str
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -379,7 +379,7 @@ class TestKeyedTensor(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         regroup_func=st.sampled_from(
+             [
+                 KeyedTensor.regroup,
+@@ -392,7 +392,7 @@ class TestKeyedTensor(unittest.TestCase):
+     def test_regroup_scriptable_inference(
+         self, regroup_func: Callable[..., List[torch.Tensor]], device_str: str
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -581,11 +581,11 @@ class TestKeyedTensor(unittest.TestCase):
+
+ class TestKeyedTensorRegroupOp(unittest.TestCase):
+     # pyre-ignore[56]
+-    @given(device_str=st.sampled_from(["cpu", "meta", "cuda"]))
++    @given(device_str=st.sampled_from(["cpu", "meta", "npu"]))
+     @settings(verbosity=Verbosity.verbose, max_examples=5, deadline=None)
+     def test_kt_regroup_arguments(self, device_str: str) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+
+         keys = [["f1", "f2"], ["f3", "f4", "f5"], ["f6"]]
+@@ -621,13 +621,13 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         batch_size=st.sampled_from([16, 128, 1024]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_multi_permute_forward(self, device_str: str, batch_size: int) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+
+         keys = [["f1", "f2"], ["f3", "f4", "f5"], ["f6"]]
+@@ -656,7 +656,7 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @given(
+-        device_str=st.sampled_from(["meta", "cpu", "cuda"]),
++        device_str=st.sampled_from(["meta", "cpu", "npu"]),
+         dtype=st.sampled_from(
+             [
+                 torch.float,
+@@ -668,8 +668,8 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_multi_permute_dtype(self, device_str: str, dtype: torch.dtype) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+
+         batch_size = 4
+@@ -704,7 +704,7 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+         zipped_args=st.sampled_from(
+             [
+                 ("cpu", 32, [[3, 4], [5, 6, 7], [8]]),
+-                ("cuda", 128, [[96, 256], [512, 128, 768], [1024]]),
++                ("npu", 128, [[96, 256], [512, 128, 768], [1024]]),
+             ],
+         ),
+     )
+@@ -713,8 +713,8 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+         self, zipped_args: Tuple[str, int, List[List[int]]]
+     ) -> None:
+         device_str, batch_size, lengths = zipped_args
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+
+         keys = [["f1", "f2"], ["f3", "f4", "f5"], ["f6"]]
+@@ -753,14 +753,14 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @given(
+-        device_str=st.sampled_from(["cpu", "cuda"]),
++        device_str=st.sampled_from(["cpu", "npu"]),
+         batch_size=st.sampled_from([16, 1024]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_multi_permute_noncontiguous(
+         self, device_str: str, batch_size: int
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -804,12 +804,12 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         batch_size=st.sampled_from([16, 1024]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_kt_regroup_arguments_op(self, device_str: str, batch_size: int) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -853,14 +853,14 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         batch_size=st.sampled_from([16, 1024]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_keyed_tensor_regroup_forward(
+         self, device_str: str, batch_size: int
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -900,14 +900,14 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+
+     # pyre-ignore[56]
+     @given(
+-        device_str=st.sampled_from(["cpu", "cuda"]),
++        device_str=st.sampled_from(["cpu", "npu"]),
+         batch_size=st.sampled_from([16, 1024]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_keyed_tensor_regroup_backward(
+         self, device_str: str, batch_size: int
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -954,11 +954,11 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+ class TestKeyedTensorGPU(unittest.TestCase):
+     def setUp(self) -> None:
+         super().setUp()
+-        self.device = torch.cuda.current_device()
++        self.device = torch.npu.current_device()
+
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_regroup_backward_skips_and_duplicates(self) -> None:
+@@ -1003,7 +1003,7 @@ class TestKeyedTensorGPU(unittest.TestCase):
+
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_regroup_backward(self) -> None:
+diff --git a/torchrec/sparse/tests/test_tensor_dict.py b/torchrec/sparse/tests/test_tensor_dict.py
+index ac6d21da..073c9b0a 100644
+--- a/torchrec/sparse/tests/test_tensor_dict.py
++++ b/torchrec/sparse/tests/test_tensor_dict.py
+@@ -19,11 +19,11 @@ from torchrec.sparse.tensor_dict import maybe_td_to_kjt
+
+ class TestTensorDict(unittest.TestCase):
+     # pyre-ignore[56]
+-    @given(device_str=st.sampled_from(["cpu", "meta", "cuda"]))
++    @given(device_str=st.sampled_from(["cpu", "meta", "npu"]))
+     @settings(verbosity=Verbosity.verbose, max_examples=5, deadline=None)
+     def test_kjt_input(self, device_str: str) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+         values = torch.tensor([0, 1, 2, 3, 2, 3, 4], device=device)
+         kjt = KeyedJaggedTensor.from_offsets_sync(
+@@ -35,11 +35,11 @@ class TestTensorDict(unittest.TestCase):
+         self.assertEqual(features, kjt)
+
+     # pyre-ignore[56]
+-    @given(device_str=st.sampled_from(["cpu", "meta", "cuda"]))
++    @given(device_str=st.sampled_from(["cpu", "meta", "npu"]))
+     @settings(verbosity=Verbosity.verbose, max_examples=5, deadline=None)
+     def test_td_kjt(self, device_str: str) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+         values = torch.tensor([0, 1, 2, 3, 2, 3, 4], device=device)
+         lengths = torch.tensor([2, 0, 1, 1, 1, 2], device=device)
