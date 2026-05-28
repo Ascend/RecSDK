@@ -386,6 +386,20 @@ __forceinline__ __simt_callee__ void set_global_state(const curandState& local_s
     global_state[GlobalThreadId()].has_spare = local_state.has_spare;
 }
 
+template <typename T, typename EmbeddingGenerator>
+__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void generate_local_tensor_kernel_vf(
+    __ubuf__ T* local, uint32_t current_tile_size, int64_t vec_id, typename EmbeddingGenerator::Args generator_args)
+{
+    EmbeddingGenerator emb_gen(generator_args);
+
+    for (uint32_t i = threadIdx.x; i < current_tile_size; i += blockDim.x) {
+        auto tmp = emb_gen.generate(vec_id);
+        local[i] = dyn_emb::TypeConvertFunc<T, float>::convert(tmp);
+    }
+
+    emb_gen.destroy();
+}
+
 struct UniformEmbeddingGenerator {
     struct Args {
         __gm__ curandState* state;
@@ -401,6 +415,15 @@ struct UniformEmbeddingGenerator {
     {
     }
 
+    __forceinline__ __aicore__ UniformEmbeddingGenerator() : load_(false) {}
+
+    __forceinline__ __aicore__ void init_simd(Args args)
+    {
+        state_ = args.state;
+        lower = args.lower;
+        upper = args.upper;
+    }
+
     __forceinline__ __simt_callee__ float generate(int64_t vec_id)
     {
         if (!load_) {
@@ -411,12 +434,31 @@ struct UniformEmbeddingGenerator {
         return (upper - lower) * tmp + lower;
     }
 
+    template <typename T>
+    __forceinline__ __aicore__ void generate_simd_tensor(LocalTensor<T>& local, int64_t vec_id,
+                                                         uint32_t current_tile_size, uint32_t tile_size,
+                                                         bool use_zero_fill)
+    {
+        if (use_zero_fill) {
+            T value = dyn_emb::SimdTypeConvertFunc<T, float>::convert(0.0f);
+            Duplicate(local, value, static_cast<int32_t>(tile_size));
+            return;
+        }
+
+        auto generator_args = Args{state_, lower, upper};
+        auto local_ptr = reinterpret_cast<__ubuf__ T*>(local.GetPhyAddr());
+        asc_vf_call<generate_local_tensor_kernel_vf<T, UniformEmbeddingGenerator>>(
+            dim3{MAX_THREADS_PER_BLOCK}, local_ptr, current_tile_size, vec_id, generator_args);
+    }
+
     __forceinline__ __simt_callee__ void destroy()
     {
         if (load_) {
             set_global_state(localState_, state_);
         }
     }
+
+    __forceinline__ __aicore__ void destroy_simd() {}
 
     bool load_;
     curandState localState_;
@@ -440,6 +482,15 @@ struct NormalEmbeddingGenerator {
     {
     }
 
+    __forceinline__ __aicore__ NormalEmbeddingGenerator() : load_(false) {}
+
+    __forceinline__ __aicore__ void init_simd(Args args)
+    {
+        state_ = args.state;
+        mean = args.mean;
+        std_dev = args.std_dev;
+    }
+
     __forceinline__ __simt_callee__ float generate(int64_t vec_id)
     {
         if (!load_) {
@@ -450,12 +501,31 @@ struct NormalEmbeddingGenerator {
         return std_dev * tmp + mean;
     }
 
+    template <typename T>
+    __forceinline__ __aicore__ void generate_simd_tensor(LocalTensor<T>& local, int64_t vec_id,
+                                                         uint32_t current_tile_size, uint32_t tile_size,
+                                                         bool use_zero_fill)
+    {
+        if (use_zero_fill) {
+            T value = dyn_emb::SimdTypeConvertFunc<T, float>::convert(0.0f);
+            Duplicate(local, value, static_cast<int32_t>(tile_size));
+            return;
+        }
+
+        auto generator_args = Args{state_, mean, std_dev};
+        auto local_ptr = reinterpret_cast<__ubuf__ T*>(local.GetPhyAddr());
+        asc_vf_call<generate_local_tensor_kernel_vf<T, NormalEmbeddingGenerator>>(
+            dim3{MAX_THREADS_PER_BLOCK}, local_ptr, current_tile_size, vec_id, generator_args);
+    }
+
     __forceinline__ __simt_callee__ void destroy()
     {
         if (load_) {
             set_global_state(localState_, state_);
         }
     }
+
+    __forceinline__ __aicore__ void destroy_simd() {}
 
     bool load_;
     curandState localState_;
@@ -483,6 +553,17 @@ struct TruncatedNormalEmbeddingGenerator {
     {
     }
 
+    __forceinline__ __aicore__ TruncatedNormalEmbeddingGenerator() : load_(false) {}
+
+    __forceinline__ __aicore__ void init_simd(Args args)
+    {
+        state_ = args.state;
+        mean = args.mean;
+        std_dev = args.std_dev;
+        lower = args.lower;
+        upper = args.upper;
+    }
+
     __forceinline__ __simt_callee__ float generate(int64_t vec_id)
     {
         if (!load_) {
@@ -504,12 +585,31 @@ struct TruncatedNormalEmbeddingGenerator {
         return tmp;
     }
 
+    template <typename T>
+    __forceinline__ __aicore__ void generate_simd_tensor(LocalTensor<T>& local, int64_t vec_id,
+                                                         uint32_t current_tile_size, uint32_t tile_size,
+                                                         bool use_zero_fill)
+    {
+        if (use_zero_fill) {
+            T value = dyn_emb::SimdTypeConvertFunc<T, float>::convert(0.0f);
+            Duplicate(local, value, static_cast<int32_t>(tile_size));
+            return;
+        }
+
+        auto generator_args = Args{state_, mean, std_dev, lower, upper};
+        auto local_ptr = reinterpret_cast<__ubuf__ T*>(local.GetPhyAddr());
+        asc_vf_call<generate_local_tensor_kernel_vf<T, TruncatedNormalEmbeddingGenerator>>(
+            dim3{MAX_THREADS_PER_BLOCK}, local_ptr, current_tile_size, vec_id, generator_args);
+    }
+
     __forceinline__ __simt_callee__ void destroy()
     {
         if (load_) {
             set_global_state(localState_, state_);
         }
     }
+
+    __forceinline__ __aicore__ void destroy_simd() {}
 
     bool load_;
     curandState localState_;
@@ -618,7 +718,7 @@ void launch_load_or_initialize_embeddings_kernel(size_t n, int dim, int32_t max_
     if (!use_pure_hbm_kernel) {
         auto tiling =
             npu::hkv::GetValueMoveTiling(n, static_cast<uint32_t>(max_cores), static_cast<uint32_t>(dim),
-                                         sizeof(ValueType), true, npu::hkv::DOUBLE_BUFFER * npu::hkv::DOUBLE_BUFFER);
+                                         sizeof(ValueType), false, npu::hkv::DOUBLE_BUFFER * npu::hkv::DOUBLE_BUFFER);
         load_or_initialize_embeddings_hybrid_kernel<ValueType, Generator><<<max_cores, tiling.valid_ub_size, stream>>>(
             tiling.former_num, tiling.former_core_move_num, tiling.tail_core_move_num, tiling.tile_size,
             tiling.num_tiles, static_cast<uint32_t>(dim), reinterpret_cast<ValueType*>(values),
@@ -641,7 +741,7 @@ void launch_fill_output_with_table_vectors_kernel(size_t n, int dim, int32_t max
             typename TableVectorSimd<ValueType>::Args{reinterpret_cast<ValueType**>(value_ptrs), d_found};
         auto tiling =
             npu::hkv::GetValueMoveTiling(n, static_cast<uint32_t>(max_cores), static_cast<uint32_t>(dim),
-                                         sizeof(ValueType), true, npu::hkv::DOUBLE_BUFFER * npu::hkv::DOUBLE_BUFFER);
+                                         sizeof(ValueType), false, npu::hkv::DOUBLE_BUFFER * npu::hkv::DOUBLE_BUFFER);
         fill_output_with_table_vectors_hybrid_kernel<ValueType, Generator><<<max_cores, tiling.valid_ub_size, stream>>>(
             tiling.former_num, tiling.former_core_move_num, tiling.tail_core_move_num, tiling.tile_size,
             tiling.num_tiles, static_cast<uint32_t>(dim), reinterpret_cast<ValueType*>(values), vector_args,
@@ -1036,22 +1136,19 @@ void HKVVariable<KeyType, ValueType, Strategy>::find_and_initialize(
     if (initializer_mode == "normal") {
         using Generator = NormalEmbeddingGenerator;
         auto generator_args = typename Generator::Args{curand_states_, init_args.mean_, init_args.std_dev_};
-        load_or_initialize_embeddings_kernel<ValueType, Generator>
-            <<<max_cores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values),
-                                       reinterpret_cast<ValueType**>(value_ptrs), d_found, generator_args);
+        launch_load_or_initialize_embeddings_kernel<ValueType, Generator>(
+            n, dim, max_cores, values, value_ptrs, d_found, generator_args, stream, use_pure_hbm_kernel);
     } else if (initializer_mode == "truncated_normal") {
         using Generator = TruncatedNormalEmbeddingGenerator;
         auto generator_args = typename Generator::Args{curand_states_, init_args.mean_, init_args.std_dev_,
                                                        init_args.lower_, init_args.upper_};
-        load_or_initialize_embeddings_kernel<ValueType, Generator>
-            <<<max_cores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values),
-                                       reinterpret_cast<ValueType**>(value_ptrs), d_found, generator_args);
+        launch_load_or_initialize_embeddings_kernel<ValueType, Generator>(
+            n, dim, max_cores, values, value_ptrs, d_found, generator_args, stream, use_pure_hbm_kernel);
     } else if (initializer_mode == "uniform") {
         using Generator = UniformEmbeddingGenerator;
         auto generator_args = typename Generator::Args{curand_states_, init_args.lower_, init_args.upper_};
-        load_or_initialize_embeddings_kernel<ValueType, Generator>
-            <<<max_cores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values),
-                                       reinterpret_cast<ValueType**>(value_ptrs), d_found, generator_args);
+        launch_load_or_initialize_embeddings_kernel<ValueType, Generator>(
+            n, dim, max_cores, values, value_ptrs, d_found, generator_args, stream, use_pure_hbm_kernel);
     } else if (initializer_mode == "debug") {
         using Generator = MappingEmbeddingGenerator<KeyType>;
         // Debug initializer maps each key to key % 100000 for deterministic output.
@@ -1112,21 +1209,21 @@ void HKVVariable<KeyType, ValueType, Strategy>::find_or_insert(const size_t n, c
         using Generator = NormalEmbeddingGenerator;
         auto generator_args =
             typename Generator::Args{curand_states_, initializer_args_.mean_, initializer_args_.std_dev_};
-        fill_output_with_table_vectors_kernel<ValueType, Generator, TableVectorType>
-            <<<maxCores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values), table_vec_args, generator_args);
+        launch_fill_output_with_table_vectors_kernel<ValueType, Generator>(
+            n, dim, maxCores, values, value_ptrs, d_found, generator_args, stream, use_pure_hbm_kernel);
     } else if (initializer_ == "truncated_normal") {
         using Generator = TruncatedNormalEmbeddingGenerator;
         auto generator_args =
             typename Generator::Args{curand_states_, initializer_args_.mean_, initializer_args_.std_dev_,
                                      initializer_args_.lower_, initializer_args_.upper_};
-        fill_output_with_table_vectors_kernel<ValueType, Generator, TableVectorType>
-            <<<maxCores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values), table_vec_args, generator_args);
+        launch_fill_output_with_table_vectors_kernel<ValueType, Generator>(
+            n, dim, maxCores, values, value_ptrs, d_found, generator_args, stream, use_pure_hbm_kernel);
     } else if (initializer_ == "uniform") {
         using Generator = UniformEmbeddingGenerator;
         auto generator_args =
             typename Generator::Args{curand_states_, initializer_args_.lower_, initializer_args_.upper_};
-        fill_output_with_table_vectors_kernel<ValueType, Generator, TableVectorType>
-            <<<maxCores, 0, stream>>>(n, dim, reinterpret_cast<ValueType*>(values), table_vec_args, generator_args);
+        launch_fill_output_with_table_vectors_kernel<ValueType, Generator>(
+            n, dim, maxCores, values, value_ptrs, d_found, generator_args, stream, use_pure_hbm_kernel);
     } else if (initializer_ == "debug") {
         using Generator = MappingEmbeddingGenerator<KeyType>;
         auto generator_args = typename Generator::Args{reinterpret_cast<const KeyType*>(keys), 100000};

@@ -89,6 +89,47 @@ def dynamic_table(table_options: DynamicEmbTableOptions):
     return create_dynamic_table(**table_options.__dict__)
 
 
+DDR_INITIALIZER_CASES = ["constant", "debug", "normal", "truncated_normal", "uniform"]
+
+
+def make_initializer_args(initializer):
+    if initializer == "constant":
+        return demb.InitializerArgs("constant", 0.0, 1.0, 0.0, 1.0, -0.25)
+    if initializer == "debug":
+        return demb.InitializerArgs("debug", 0.0, 1.0, 0.0, 1.0, 0.0)
+    if initializer == "normal":
+        return demb.InitializerArgs("normal", 0.0, 1.0, 0.0, 1.0, 0.0)
+    if initializer == "truncated_normal":
+        return demb.InitializerArgs("truncated_normal", 0.0, 0.876, -2.0, 2.0, 0.0)
+    if initializer == "uniform":
+        return demb.InitializerArgs("uniform", 0.5, 0.2887, 0.0, 1.0, 0.0)
+    raise ValueError(f"unsupported initializer {initializer}")
+
+
+def assert_initialized_values(initializer, values, keys):
+    if initializer == "constant":
+        expected_values = torch.full_like(values, -0.25)
+        torch.testing.assert_close(values.cpu(), expected_values.cpu())
+    elif initializer == "debug":
+        expected_values = (keys % 100000).to(torch.float32).unsqueeze(1).expand_as(values)
+        torch.testing.assert_close(values.cpu(), expected_values.cpu())
+    elif initializer == "normal":
+        values_mean = values.mean().item()
+        values_std = values.std().item()
+        assert abs(values_mean) < 0.3, f"normal initializer mean should be close to 0.0, got {values_mean}"
+        assert abs(values_std - 1.0) < 0.3, f"normal initializer std should be close to 1.0, got {values_std}"
+    elif initializer == "truncated_normal":
+        assert (values >= -2.0).all(), "truncated_normal values should be >= -2.0"
+        assert (values <= 2.0).all(), "truncated_normal values should be <= 2.0"
+    elif initializer == "uniform":
+        assert (values >= 0.0).all(), "uniform values should be >= 0.0"
+        assert (values <= 1.0).all(), "uniform values should be <= 1.0"
+        values_mean = values.mean().item()
+        assert abs(values_mean - 0.5) < 0.3, f"uniform initializer mean should be close to 0.5, got {values_mean}"
+    else:
+        raise ValueError(f"unsupported initializer {initializer}")
+
+
 def test_insert_or_assign_basic(dynamic_table):
     """测试基本的插入操作"""
     torch.npu.set_device(DEVICE_ID)
@@ -232,11 +273,11 @@ def test_find_and_initialize_constant(dynamic_table):
     assert demb.dyn_emb_rows(dynamic_table) == n_existing
 
 
-def test_find_and_initialize_constant_ddr():
+@pytest.mark.parametrize("initializer", DDR_INITIALIZER_CASES)
+def test_find_and_initialize_ddr(initializer):
     torch.npu.set_device(DEVICE_ID)
     n_existing = 4
-    dim = 32768
-    init_value = -0.25
+    dim = 204800
 
     table = create_dynamic_table(dim=dim, max_hbm_for_vectors=0)
 
@@ -264,17 +305,15 @@ def test_find_and_initialize_constant_ddr():
     value_ptrs = torch.zeros(n, dtype=torch.int64, device=f'npu:{DEVICE_ID}')
     values_out = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
     founds = torch.zeros(n, dtype=torch.bool, device=f'npu:{DEVICE_ID}')
-    initializer_args = demb.InitializerArgs("constant", 0.0, 1.0, 0.0, 1.0, init_value)
+    initializer_args = make_initializer_args(initializer)
 
     demb.find_and_initialize(table, n, keys, value_ptrs, values_out, founds, initializer_args)
 
     expected_founds = torch.tensor([True, False, True, False, True, False, True, False], device=f'npu:{DEVICE_ID}')
-    expected_values = torch.empty(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
-    expected_values[0::2] = existing_values
-    expected_values[1::2] = init_value
 
     torch.testing.assert_close(founds.cpu(), expected_founds.cpu())
-    torch.testing.assert_close(values_out.cpu(), expected_values.cpu())
+    torch.testing.assert_close(values_out[0::2].cpu(), existing_values.cpu())
+    assert_initialized_values(initializer, values_out[1::2], keys[1::2])
     assert demb.dyn_emb_rows(table) == n_existing
 
 
@@ -1234,16 +1273,16 @@ def test_find_or_insert_mixed():
         )
 
 
-def test_find_or_insert_constant_ddr_tiling():
+@pytest.mark.parametrize("initializer", DDR_INITIALIZER_CASES)
+def test_find_or_insert_ddr_tiling(initializer):
     """测试find_or_insert在DDR大dim切片场景下正确处理已存在和新插入的键"""
     torch.npu.set_device(DEVICE_ID)
     dim = 32769  # 大dim触发value move切片，并覆盖最后一个非满tile
     n_existing = 2
     n_new = 2
     n = n_existing + n_new
-    const_val = 0.5
 
-    init_args = demb.InitializerArgs("constant", 0.0, 1.0, 0.0, 1.0, const_val)
+    init_args = make_initializer_args(initializer)
     table = create_dynamic_table(dim=dim, max_hbm_for_vectors=0, initializer_args=init_args)
 
     existing_keys = torch.tensor([1, 2], dtype=torch.int64, device=f'npu:{DEVICE_ID}')
@@ -1256,9 +1295,8 @@ def test_find_or_insert_constant_ddr_tiling():
     values_out = torch.zeros(n, dim, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
     demb.find_or_insert(table, n, all_keys, values_out, None, True, False)
 
-    expected_new = torch.full((n_new, dim), const_val, dtype=torch.float32, device=f'npu:{DEVICE_ID}')
     torch.testing.assert_close(values_out[:n_existing].cpu(), existing_values.cpu())
-    torch.testing.assert_close(values_out[n_existing:].cpu(), expected_new.cpu())
+    assert_initialized_values(initializer, values_out[n_existing:], new_keys)
 
     rows = demb.dyn_emb_rows(table)
     assert rows == n, f"期望表行数为{n}，实际为{rows}"
@@ -1269,7 +1307,7 @@ def test_find_or_insert_constant_ddr_tiling():
 
     assert founds.sum().item() == n, f"期望找到所有{n}个键"
     torch.testing.assert_close(found_values[:n_existing].cpu(), existing_values.cpu())
-    torch.testing.assert_close(found_values[n_existing:].cpu(), expected_new.cpu())
+    assert_initialized_values(initializer, found_values[n_existing:], new_keys)
 
 
 def test_find_or_insert_init_optstate_vec4():
