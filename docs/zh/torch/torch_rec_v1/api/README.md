@@ -32,7 +32,7 @@
 |API | 功能描述|
 |--|--|
 |[JaggedTensor（TorchRec）](data_apis.md#jaggedtensortorchrec)|持有稀疏id和特征长度的类，用于查表。|
-|[KeyedJaggedTensor（TorchRec）](data_apis.md#keyedjaggedtensortorchrec)|具有锯齿维的张量，它的切片可能有不同的长度。在第一个维度上是键，在最后一个维度上是锯齿张量。|
+|[KeyedJaggedTensor（TorchRec）](data_apis.md#keyedjaggedtensortorchrec)|通过引入键（通常是特征名称）来扩展JaggedTensor，以标记不同的特征组。|
 
 ### 优化器接口
 
@@ -54,7 +54,7 @@
 |[EmbeddingShardingPlanner（TorchRec）](subtable_apis.md#embeddingshardingplannertorchrec)|创建分表计划器，用于搜索最合适的分表计划。|
 |[DistributedModelParallel（TorchRec）](subtable_apis.md#distributedmodelparalleltorchrec)|将传入的Module变为分布式的Module，并执行分表计划。|
 |[EmbCacheEmbeddingBagCollectionSharder](subtable_apis.md#embcacheembeddingbagcollectionsharder)|创建EmbCacheEmbeddingBagCollectionSharder分表器，用于将EmbCacheEmbeddingBagCollection分片到不同的设备上。|
-|[EmbCacheEmbeddingCollectionSharder](subtable_apis.md#embcacheembeddingcollectionsharder)|初始化EmbCacheEmbeddingCollectionSharder分表器，用于将EmbCacheEmbeddingCollection分片到不同的设备上。|
+|[EmbCacheEmbeddingCollectionSharder](subtable_apis.md#embcacheembeddingcollectionsharder)|创建EmbCacheEmbeddingCollectionSharder分表器，用于将EmbCacheEmbeddingCollection分片到不同的设备上。|
 
 ### pipeline接口
 

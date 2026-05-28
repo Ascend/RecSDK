@@ -14,7 +14,7 @@
 
 ```python
 class JaggedTensor:
- def __init__(**kwargs):
+    def __init__(**kwargs):
 ```
 
 **参数说明<a name="section888634319218"></a>**
