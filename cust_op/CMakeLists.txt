@@ -18,6 +18,9 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/rec_sdk_ops/
 # Python / PyTorch / torch_npu 路径（优先使用 setup.py 传入的 CMAKE_PREFIX_PATH）
 # ---------------------------------------------------------------------------
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+message(STATUS "Python3 used by CMake: ${Python3_EXECUTABLE}")
+message(STATUS "Python3 include: ${Python3_INCLUDE_DIRS}")
+message(STATUS "PyTorch prefix (from setup.py): ${CMAKE_PREFIX_PATH}")
 if(CMAKE_PREFIX_PATH)
     set(PYTORCH_INSTALL_PATH "${CMAKE_PREFIX_PATH}")
 else()
@@ -66,19 +69,23 @@ else()
     set(DRIVER_LIBC_SEC_INCLUDE "")
 endif()
 
-# ABI：必须与当前 PyTorch 一致
-execute_process(
-    COMMAND ${Python3_EXECUTABLE} -c "import torch; v=getattr(torch._C, '_GLIBCXX_USE_CXX11_ABI', 0); print(1 if v else 0)"
-    OUTPUT_VARIABLE TORCH_CXX11_ABI
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-if("${TORCH_CXX11_ABI}" STREQUAL "" OR "${TORCH_CXX11_ABI}" STREQUAL "True" OR "${TORCH_CXX11_ABI}" STREQUAL "False")
-    set(TORCH_CXX11_ABI 0)
+# ABI：必须与当前 PyTorch 一致（1=C++11 std::string 新 ABI，0=旧 ABI）；符号不一致会导致 load_library 报 undefined symbol
+# 优先使用 setup.py 通过 cmake_args 传入的 _GLIBCXX_USE_CXX11_ABI，以保证 CMake 与 setup.py 的 ABI 检测一致
+if(NOT DEFINED _GLIBCXX_USE_CXX11_ABI)
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} -c "import torch; v=getattr(torch._C, '_GLIBCXX_USE_CXX11_ABI', 0); print(1 if v else 0)"
+        OUTPUT_VARIABLE _GLIBCXX_USE_CXX11_ABI
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
 endif()
-if(NOT "${TORCH_CXX11_ABI}" STREQUAL "1")
-    set(TORCH_CXX11_ABI 0)
+string(TOLOWER "${_GLIBCXX_USE_CXX11_ABI}" _GLIBCXX_USE_CXX11_ABI_LOWER)
+if("${_GLIBCXX_USE_CXX11_ABI_LOWER}" STREQUAL "" OR "${_GLIBCXX_USE_CXX11_ABI_LOWER}" STREQUAL "true" OR "${_GLIBCXX_USE_CXX11_ABI_LOWER}" STREQUAL "false")
+    set(_GLIBCXX_USE_CXX11_ABI 0)
 endif()
-message(STATUS "TORCH_CXX11_ABI=${TORCH_CXX11_ABI}")
+if(NOT "${_GLIBCXX_USE_CXX11_ABI}" STREQUAL "1")
+    set(_GLIBCXX_USE_CXX11_ABI 0)
+endif()
+message(STATUS "_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI} (must match torch lib for torch::Library symbol)")
 
 # ---------------------------------------------------------------------------
 # AscendC 算子编译与打包（逻辑在 RecOps.cmake，新增算子只需改该文件）
@@ -93,7 +100,7 @@ function(recsdk_add_host_library target_name output_name npu_chip_flag)
     add_library(${target_name} SHARED ${RECSDK_ADAPTER_SRCS})
     target_compile_features(${target_name} PRIVATE cxx_std_17)
     target_compile_options(${target_name} PRIVATE
-        -D_GLIBCXX_USE_CXX11_ABI=${TORCH_CXX11_ABI}
+        -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI}
         -DNPU_CHIP_A5=${npu_chip_flag}
     )
 

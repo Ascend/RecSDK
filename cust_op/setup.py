@@ -15,6 +15,7 @@
 # ==============================================================================
 
 import os
+import sys
 import platform
 import setuptools
 import torch
@@ -55,6 +56,11 @@ def _ascend_serial_build():
     return "OFF" if value in {"0", "OFF", "FALSE", "NO"} else "ON"
 
 
+def _get_cxx11_abi():
+    v = getattr(torch._C, "_GLIBCXX_USE_CXX11_ABI", 0)
+    return 1 if v else 0
+
+
 def cmake_args():
     torch_root = _get_torch_prefix()
 
@@ -64,9 +70,11 @@ def cmake_args():
     )
 
     return [
+        f"-DPython3_EXECUTABLE={sys.executable}",
         f"-DCMAKE_PREFIX_PATH={torch_root}",
         f"-DRECSDK_BUILD_VERS={_build_variants()}",
         f"-DRECSDK_ASCEND_SERIAL_BUILD={_ascend_serial_build()}",
+        f"-D_GLIBCXX_USE_CXX11_ABI={_get_cxx11_abi()}",
     ]
 
 
