@@ -89,7 +89,7 @@ topo = Topology(world_size=world_size, compute_device="npu")
 
 ## ParameterConstraints（TorchRec）<a name="ZH-CN_TOPIC_0000002336148869"></a>
 
->[!NOTICE] 
+>[!NOTICE]
 >
 >此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
@@ -385,7 +385,7 @@ embcache_sharder = EmbCacheEmbeddingBagCollectionSharder(
 
 **功能描述<a name="section634582619155"></a>**
 
-初始化EmbCacheEmbeddingCollectionSharder分表器，用于将EmbCacheEmbeddingCollection分片到不同的设备上。
+创建EmbCacheEmbeddingCollectionSharder分表器，用于将EmbCacheEmbeddingCollection分片到不同的设备上。
 
 **函数原型<a name="section1483104721911"></a>**
 

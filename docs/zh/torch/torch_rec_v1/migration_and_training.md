@@ -39,11 +39,11 @@
             # 注意：模型前向返回值需loss在前，output在后，对齐TorchRec原生TrainPipelineSparseDist使用方式
             return loss, output
     def invoke_main():
-        dist.init_process_group(backend="hccl")    
+        dist.init_process_group(backend="hccl")
         rank = dist.get_rank()
         world_size = dist.get_world_size()
         device = torch.device("npu")
-    
+
         dataset = RandomRecDataset(BATCH_SIZE, BATCH_NUM, FEAT_NAMES, ID_RANGES)
         data_loader = DataLoader(
             dataset,
@@ -81,11 +81,11 @@
             # 注意：模型前向返回值需loss在前，output在后，对齐TorchRec原生TrainPipelineSparseDist使用方式
             return loss, output
     def invoke_main():
-        dist.init_process_group(backend="hccl")    
+        dist.init_process_group(backend="hccl")
         rank = dist.get_rank()
         world_size = dist.get_world_size()
         device = torch.device("npu")
-        
+
         # Rec SDK Torch创建host连接
         host_gp = dist.new_group(backend="gloo")
         host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
@@ -110,7 +110,7 @@
 
 ## Rec SDK Torch迁移样例<a name="ZH-CN_TOPIC_0000002336268713"></a>
 
-Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开源DLRM（DCNv2）模型迁移到Rec SDK Torch框架时的主要迁移修改。完整的迁移修改请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/dlrm/README.md)，查看应用patch文件后的代码。
+Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开源DLRM（DCNv2）模型迁移到Rec SDK Torch框架时的主要迁移修改。代码样例中已省略部分参数定义和模块导入，完整的迁移修改请参见[README - dlrm源码适配](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/dlrm/README.md#dlrm%E6%BA%90%E7%A0%81%E9%80%82%E9%85%8D)查看应用patch后的代码。
 
 迁移时的主要修改内容为将开源模型中使用到的TorchRec原生的稀疏表配置、训练流水线等API替换为Rec SDK Torch框架中的API。
 
@@ -118,8 +118,17 @@ Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开�
 
 ```bash
 git clone -b main https://github.com/facebookresearch/dlrm.git
-cd dlrm && git checkout b631a99 
+cd dlrm && git checkout b631a99
 ```
+
+Rec SDK Torch提供了纯显存模式和多级缓存模式，不同模式下配置、创建稀疏表等训练相关API会有所区别，详情请参见[多级缓存模式和纯显存模式使用API差异](#api_diff_embcache)。
+
+关于修改内容中的条件分支说明：
+
+- with_hybrid_torchrec：为True时表示使用Rec SDK Torch的纯显存模式。
+- with_embcache：为True时表示使用Rec SDK Torch的多级缓存模式。
+  - use_ec：为True时表示使用多级缓存的EC（EmbCacheEmbeddingCollection）模式，否则使用EBC（EmbCacheEmbeddingBagCollection）模式。
+- 非上述场景时表示使用TorchRec原生API创建稀疏表和进行模型训练。
 
 主要修改内容如下：
 
@@ -403,7 +412,7 @@ Rec SDK Torch 支持纯显存模式和多级缓存模式两种训练模式。
 本章节将介绍纯显存模式和多级缓存模式的相关功能特性和代码使用示例。
 
 > [!NOTE]
-> 
+>
 > 本文档中的**约束**章节内容仅介绍主要使用场景下的约束信息，详细信息请参见对应的API文档。
 
 ### 基于纯显存模式训练
@@ -685,7 +694,7 @@ DP模式完整代码示例请参见[DP模式测试用例](../../../../training/t
 - 仅支持通过pipeline模式进行训练。
   - pipeline模式训练时，会在调用`sparse_model.forward()`前执行换入（H2D）换出（D2H）操作，保证当前批次的训练数据均在Device Memory中。
 
-**多级缓存模式和纯显存模式使用API差异**
+**多级缓存模式和纯显存模式使用API差异**<a id="api_diff_embcache"></a>
 
 多级缓存模式在配置稀疏表、创建稀疏表、稀疏表分表、创建pipeline时使用的API接口和纯显存模式有差异。
 
@@ -773,7 +782,7 @@ class TestModel(torch.nn.Module):
 
         # 计算loss
         loss = self.loss_fn(dense_output, batch.labels)
-        
+
         # 自行定义output输出内容
         output = dict()
         output["sparse"] = embeddings
@@ -1038,7 +1047,7 @@ def train():
 多级缓存模式下，支持**基于时间和计数**、**基于展示点击和分数**两种准入淘汰策略。
 
 > [!NOTE]
-> 
+>
 > **仅支持单独使用其中一种准入淘汰策略，不支持两种策略混合使用。**
 
 ##### 准入淘汰（基于时间和计数）
@@ -1389,7 +1398,7 @@ def train():
         pipeline.wait_pipeline_compute_swapinfo()
         # 调用save接口保存稀疏表数据
         saver.save(ddp_model, sparse_save_dir)
-    
+
     ...
 ```
 
@@ -1453,7 +1462,7 @@ def train():
     )
 
     ...
-    
+
     # 设置True则进行全量和增量保存，False则全量和增量加载。
     is_train = True
 
