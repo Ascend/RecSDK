@@ -41,7 +41,7 @@ fi
 echo "[INFO] RECSDK_BUILD_VERS=${RECSDK_BUILD_VERS}"
 echo "[INFO] RECSDK_ASCEND_SERIAL_BUILD=${RECSDK_ASCEND_SERIAL_BUILD}"
 
-pip wheel . --no-build-isolation --no-deps -w dist/
+pip wheel . --no-build-isolation --no-deps -v -w dist/ 2>&1
 
 echo "==========================================================="
 echo "Done! The unified whl file is located at -> dist/"
