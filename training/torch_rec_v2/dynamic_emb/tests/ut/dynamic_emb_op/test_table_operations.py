@@ -116,8 +116,8 @@ def assert_initialized_values(initializer, values, keys):
     elif initializer == "normal":
         values_mean = values.mean().item()
         values_std = values.std().item()
-        assert abs(values_mean) < 0.3, f"normal initializer mean should be close to 0.0, got {values_mean}"
-        assert abs(values_std - 1.0) < 0.3, f"normal initializer std should be close to 1.0, got {values_std}"
+        assert abs(values_mean) < 0.01, f"normal initializer mean should be close to 0.0, got {values_mean}"
+        assert abs(values_std - 1.0) < 0.01, f"normal initializer std should be close to 1.0, got {values_std}"
     elif initializer == "truncated_normal":
         assert (values >= -2.0).all(), "truncated_normal values should be >= -2.0"
         assert (values <= 2.0).all(), "truncated_normal values should be <= 2.0"
@@ -125,7 +125,7 @@ def assert_initialized_values(initializer, values, keys):
         assert (values >= 0.0).all(), "uniform values should be >= 0.0"
         assert (values <= 1.0).all(), "uniform values should be <= 1.0"
         values_mean = values.mean().item()
-        assert abs(values_mean - 0.5) < 0.3, f"uniform initializer mean should be close to 0.5, got {values_mean}"
+        assert abs(values_mean - 0.5) < 0.01, f"uniform initializer mean should be close to 0.5, got {values_mean}"
     else:
         raise ValueError(f"unsupported initializer {initializer}")
 
@@ -388,8 +388,8 @@ def test_find_and_initialize_normal():
     # Mean should be close to 0.0, std should be close to 1.0
     missing_values_mean = values_out[n_existing:].mean().item()
     missing_values_std = values_out[n_existing:].std().item()
-    assert abs(missing_values_mean) < 0.3, f"normal initializer mean should be close to 0.0, got {missing_values_mean}"
-    assert abs(missing_values_std - 1.0) < 0.3, (
+    assert abs(missing_values_mean) < 0.01, f"normal initializer mean should be close to 0.0, got {missing_values_mean}"
+    assert abs(missing_values_std - 1.0) < 0.01, (
         f"normal initializer std should be close to 1.0, got {missing_values_std}"
     )
     assert demb.dyn_emb_rows(dynamic_table) == n_existing
@@ -511,7 +511,7 @@ def test_find_and_initialize_uniform():
     assert (missing_values <= max_val).all(), f"uniform values should be <= {max_val}"
     # Mean should be close to 0.5 for uniform distribution
     missing_values_mean = missing_values.mean().item()
-    assert abs(missing_values_mean - 0.5) < 0.3, (
+    assert abs(missing_values_mean - 0.5) < 0.01, (
         f"uniform initializer mean should be close to 0.5, got {missing_values_mean}"
     )
     assert demb.dyn_emb_rows(dynamic_table) == n_existing
@@ -1103,8 +1103,8 @@ def test_find_or_insert_normal_initializer():
     missing_values = values_out[n_existing:]
     missing_values_mean = missing_values.mean().item()
     missing_values_std = missing_values.std().item()
-    assert abs(missing_values_mean) < 0.3, f"normal initializer mean should be close to 0.0, got {missing_values_mean}"
-    assert abs(missing_values_std - 1.0) < 0.3, (
+    assert abs(missing_values_mean) < 0.01, f"normal initializer mean should be close to 0.0, got {missing_values_mean}"
+    assert abs(missing_values_std - 1.0) < 0.01, (
         f"normal initializer std should be close to 1.0, got {missing_values_std}"
     )
     # Total rows should be n_existing + n_missing since missing keys are inserted
@@ -1219,7 +1219,7 @@ def test_find_or_insert_uniform_initializer():
     assert (missing_values <= max_val).all(), f"uniform values should be <= {max_val}"
     # Mean should be close to 0.5 for uniform distribution
     missing_values_mean = missing_values.mean().item()
-    assert abs(missing_values_mean - 0.5) < 0.3, (
+    assert abs(missing_values_mean - 0.5) < 0.01, (
         f"uniform initializer mean should be close to 0.5, got {missing_values_mean}"
     )
     # Total rows should be n_existing + n_missing since missing keys are inserted

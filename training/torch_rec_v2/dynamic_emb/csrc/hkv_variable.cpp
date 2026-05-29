@@ -160,23 +160,23 @@ __forceinline__ __simt_callee__ uint64_t GlobalThreadId()
 template <typename T, typename EmbeddingGenerator, typename TableVector>
 __simt_vf__ __aicore__ LAUNCH_BOUND(BLOCK_THREAD_NUM_OPT) inline void fill_output_with_table_vectors_kernel_vf(
     uint64_t n, int emb_dim, __gm__ T* outputs, typename TableVector::Args vector_args,
-    typename EmbeddingGenerator::Args generator_args, const uint32_t block_index, const uint64_t thread_all)
+    typename EmbeddingGenerator::Args generator_args)
 {
     TableVector vectors(vector_args);
     EmbeddingGenerator emb_gen(generator_args);
-    for (int64_t emb_id = block_index * blockDim.x + threadIdx.x; emb_id < n; emb_id += thread_all) {
+    for (int64_t emb_id = AscendC::Simt::GetBlockIdx(); emb_id < n; emb_id += AscendC::Simt::GetBlockNum()) {
         if (vectors.isInitialized(emb_id)) {  // copy embedding from table to outputs.
-            for (int i = 0; i < emb_dim; i++) {
+            for (int i = threadIdx.x; i < emb_dim; i += blockDim.x) {
                 outputs[emb_id * emb_dim + i] = *vectors.data_ptr(emb_id, i);
             }
         } else if (vectors.isValid(emb_id)) {  // initialize the embedding as well as outputs.
-            for (int i = 0; i < emb_dim; i++) {
+            for (int i = threadIdx.x; i < emb_dim; i += blockDim.x) {
                 auto tmp = emb_gen.generate(emb_id);
                 outputs[emb_id * emb_dim + i] = TypeConvertFunc<T, float>::convert(tmp);
                 *vectors.data_ptr(emb_id, i) = TypeConvertFunc<T, float>::convert(tmp);
             }
         } else {  // vector not exists in table, set the output to 0.
-            for (int i = 0; i < emb_dim; i++) {
+            for (int i = threadIdx.x; i < emb_dim; i += blockDim.x) {
                 outputs[emb_id * emb_dim + i] = TypeConvertFunc<T, float>::convert(0.0f);
             }
         }
@@ -189,9 +189,8 @@ __global__ __vector__ void fill_output_with_table_vectors_kernel(uint64_t n, int
                                                                  typename TableVector::Args vector_args,
                                                                  typename EmbeddingGenerator::Args generator_args)
 {
-    const uint64_t thread_all = BLOCK_THREAD_NUM_OPT * GetBlockNum();
     asc_vf_call<fill_output_with_table_vectors_kernel_vf<T, EmbeddingGenerator, TableVector>>(
-        dim3{BLOCK_THREAD_NUM_OPT}, n, emb_dim, outputs, vector_args, generator_args, GetBlockIdx(), thread_all);
+        dim3{BLOCK_THREAD_NUM_OPT}, n, emb_dim, outputs, vector_args, generator_args);
 }
 
 template <typename T, typename OptStateInitializer, typename TableVector>
@@ -352,7 +351,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void setup_ker
                                                                                        const uint32_t block_index)
 {
     uint32_t tid = block_index * blockDim.x + threadIdx.x;
-    curand_init(seed, static_cast<uint64_t>(tid), 0, &states[tid]);
+    curand_init(seed + static_cast<uint64_t>(tid), static_cast<uint64_t>(tid), 0, &states[tid]);
 }
 
 __global__ __vector__ void setup_kernel(uint64_t seed, __gm__ curandState* states)
@@ -363,27 +362,29 @@ __global__ __vector__ void setup_kernel(uint64_t seed, __gm__ curandState* state
 __forceinline__ __simt_callee__ void set_local_state(__gm__ curandState* global_state, curandState& local_state)
 {
     // 当前毕昇编译器不支持localState_ = state_[GlobalThreadId()]操作，使用成员变量依次赋值规避
-    local_state.x = global_state[GlobalThreadId()].x;
-    local_state.y = global_state[GlobalThreadId()].y;
-    local_state.z = global_state[GlobalThreadId()].z;
-    local_state.w = global_state[GlobalThreadId()].w;
-    local_state.v = global_state[GlobalThreadId()].v;
-    local_state.d = global_state[GlobalThreadId()].d;
-    local_state.normal_spare = global_state[GlobalThreadId()].normal_spare;
-    local_state.has_spare = global_state[GlobalThreadId()].has_spare;
+    auto global_thread_id = GlobalThreadId();
+    local_state.x = global_state[global_thread_id].x;
+    local_state.y = global_state[global_thread_id].y;
+    local_state.z = global_state[global_thread_id].z;
+    local_state.w = global_state[global_thread_id].w;
+    local_state.v = global_state[global_thread_id].v;
+    local_state.d = global_state[global_thread_id].d;
+    local_state.normal_spare = global_state[global_thread_id].normal_spare;
+    local_state.has_spare = global_state[global_thread_id].has_spare;
 }
 
 __forceinline__ __simt_callee__ void set_global_state(const curandState& local_state, __gm__ curandState* global_state)
 {
     // 当前毕昇编译器不支持state_[GlobalThreadId()] = localState_操作，使用成员变量依次赋值规避
-    global_state[GlobalThreadId()].x = local_state.x;
-    global_state[GlobalThreadId()].y = local_state.y;
-    global_state[GlobalThreadId()].z = local_state.z;
-    global_state[GlobalThreadId()].w = local_state.w;
-    global_state[GlobalThreadId()].v = local_state.v;
-    global_state[GlobalThreadId()].d = local_state.d;
-    global_state[GlobalThreadId()].normal_spare = local_state.normal_spare;
-    global_state[GlobalThreadId()].has_spare = local_state.has_spare;
+    auto global_thread_id = GlobalThreadId();
+    global_state[global_thread_id].x = local_state.x;
+    global_state[global_thread_id].y = local_state.y;
+    global_state[global_thread_id].z = local_state.z;
+    global_state[global_thread_id].w = local_state.w;
+    global_state[global_thread_id].v = local_state.v;
+    global_state[global_thread_id].d = local_state.d;
+    global_state[global_thread_id].normal_spare = local_state.normal_spare;
+    global_state[global_thread_id].has_spare = local_state.has_spare;
 }
 
 template <typename T, typename EmbeddingGenerator>
