@@ -41,4 +41,5 @@
 | norm_multiply_dropout_backward                  | 无                                                                                            | NA             | 实现layer_norm + multiply + dropout计算逻辑的反向计算功能。                                       |
 
 >[!NOTE]
+>
 >表格中仅列举ai\_core\_op路径下PyTorch场景的自定义算子。

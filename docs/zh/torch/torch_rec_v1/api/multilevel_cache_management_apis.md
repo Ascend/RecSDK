@@ -15,7 +15,7 @@ class InitializerType(Enum):
     UNIFORM = "uniform"
 ```
 
-**参数说明<a name="section888634319218"></a>**
+**参数说明**
 
 |参数名|说明|
 |--|--|
@@ -23,10 +23,18 @@ class InitializerType(Enum):
 |TRUNCATED_NORMAL|截断正态分布初始化。|
 |UNIFORM|均匀分布初始化。|
 
-**返回值说明<a name="section651195312311"></a>**
+**返回值说明**
 
 - 成功：返回InitializerType枚举值。
 - 失败：抛出异常。
+
+**使用示例**
+
+```python
+from torchrec_embcache.distributed.configs import InitializerType
+
+init_type = InitializerType.LINEAR
+```
 
 ## Saver<a name="ZH-CN_TOPIC_0000002420844874"></a>
 
@@ -39,9 +47,9 @@ class InitializerType(Enum):
 ```python
 class Saver:
     def __init__(self, rank: int = None):
-    ...
+
     def save(self, module: torch.nn.Module, path: str, incremental: bool = False) -> None:
-    ...
+
     def load(self, module: torch.nn.Module, path: str, incremental: bool = False) -> None:
 ```
 
@@ -51,11 +59,10 @@ class Saver:
 2. 不支持保存/加载Dense数据（需自行调用Torch原生接口）。
 3. 不支持纯显存模式下稀疏表保存/加载。
 4. 保存/加载接口仅支持保存/加载本地文件系统。
-5. 增量保存加载不支持准入淘汰功能，同时开启将触发配置校验错误。
-6. 增量模型的保存与加载功能，仅适用于pipeline训练模式下生成的增量数据。
-7. 增量保存加载功能需要创建表时在EmbCacheEmbeddingBagConfig/EmbCacheEmbeddingConfig添加is_incremental参数，详见[创表接口](table_creation_apis.md#embcacheembeddingbagconfig)。
-8. 差异卡加载功能不支持准入淘汰，同时开启将触发配置校验错误。
-9. pipeline模式下，如果需要在训练过程中（即Dataset未迭代到末尾）执行保存，需要在保存前手动触发wait_pipeline_compute_swapinfo。
+5. 增量保存/加载功能不支持准入淘汰功能，同时开启将触发配置校验错误。
+6. 增量保存/加载功能，仅适用于pipeline训练模式下生成的增量数据。
+7. 差异卡加载功能不支持准入淘汰，同时开启将触发配置校验错误。
+8. pipeline模式下，如果需要在训练过程中（即Dataset未迭代到末尾）执行保存，需要在保存前手动触发wait_pipeline_compute_swapinfo。
     详细参考[保存加载用例](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_save_and_load.py)。
 
 **参数说明<a name="section888634319218"></a>**
@@ -64,20 +71,31 @@ class Saver:
 |--|--|--|--|
 |rank|int|可选|当前进程在整个world_size中的rank。当torch分布式环境已初始化时，该参数为可选，此时将使用torch.distributed.get_rank()获取rank；否则该参数为必选。|
 |module|torch.nn.Module|必选|模型对象实例。模型（或子模型）需包含类型为EmbCacheShardedEmbeddingBagCollection/EmbCacheShardedEmbeddingCollection的模型实例，且深度不能超过500。使用多级缓存支持的创表接口/分表接口进行模型创建和模型分片时即满足要求。|
-|path|string|必选|保存/加载路径，长度取值范围：[1,1024]。<div><div>[!NOTICE]须知</div><div>保存/加载的路径中不能包含软连接和敏感字符（Key、password、privatekey），不能使用特殊路径（如/usr下的路径），且路径的权限不能高于750。</div></div>|
-|incremental|bool|可选|是否增量保存/加载。默认为False。增量保存/加载功能适用于pipeline训练模式下生成的增量数据，且需要创建表时在EmbCacheEmbeddingBagConfig/EmbCacheEmbeddingConfig添加is_incremental参数，详见[创表接口](table_creation_apis.md#embcacheembeddingbagconfig)。|
+|path|string|必选|保存/加载路径，长度取值范围：[1,1024]。<div><div>[!NOTICE]</div><div>保存/加载的路径中不能包含软链接和敏感字符（Key、password、privatekey），不能使用特殊路径（如/usr下的路径），且路径的权限不能高于750。</div></div>|
+|incremental|bool|可选|是否开启增量保存/加载功能。默认为False，表示不开启。增量保存/加载功能适用于pipeline训练模式下生成的增量数据，且需要创建表时在[EmbCacheEmbeddingBagConfig](table_creation_apis.md#embcacheembeddingbagconfig)/[EmbCacheEmbeddingConfig](table_creation_apis.md#embcacheembeddingconfig)配置is_incremental参数为True。|
 
-**返回值说明<a name="section651195312311"></a>**
+>[!NOTE]
+>
+>1. 调用save/load接口时，若incremental为True，表示以增量的方式进行保存/加载稀疏表数据。
+>2. 增量加载时，一般先加载全量保存的base数据；再对多份增量数据，逐个调用load接口并设置incremental为True进行增量加载。
+>3. 全量/增量的保存/加载操作不强制要求保存/加载的数量/顺序，仅在实现逻辑上有所差异。
+
+**返回值说明**
 
 - 成功：接口调用无报错，保存落盘/加载稀疏表数据。
 - 失败：抛出异常。
 
-**使用示例<a name="section2553042232"></a>**
+**使用示例**
 
 ```python
+import torch
 from torchrec_embcache.saver import Saver
-...
-saver = Saver(rank=rank)
-saver.save(model, "save_dir/sparse")  # 保存
-saver.load(model, "save_dir/sparse")  # 加载
+
+# 需先进行torch.distributed模块初始化，才能使用distributed模块，此处省略详细定义。
+rank_id = torch.distributed.get_rank()
+# module为模型（或子模型）包含类型为EmbCacheShardedEmbeddingBagCollection/EmbCacheShardedEmbeddingCollection的模型实例，此处省略详细定义。
+module = ......
+saver = Saver(rank=rank_id)
+saver.save(module, "save_dir/sparse")  # 保存
+saver.load(module, "save_dir/sparse")  # 加载
 ```

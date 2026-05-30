@@ -835,7 +835,7 @@ def train():
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
             # init_fn=weight_init,  # 注意：多级缓存模式，不支持自定义初始化函数
-            initializer_type=InitializerType.UNIFORM,  # embedding初始化方式通过initializer_type参数设置
+            initializer_type=InitializerType.TRUNCATED_NORMAL,  # embedding初始化方式通过initializer_type参数设置
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
         )
@@ -997,7 +997,7 @@ def train():
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
             # init_fn=weight_init,  # 注意：多级缓存模式，不支持自定义初始化函数
-            initializer_type=InitializerType.UNIFORM,  # embedding初始化方式通过initializer_type参数设置
+            initializer_type=InitializerType.TRUNCATED_NORMAL,  # embedding初始化方式通过initializer_type参数设置
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
         )
@@ -1118,7 +1118,7 @@ def train():
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
             # init_fn=weight_init,  # 注意：多级缓存模式，不支持自定义初始化函数
-            initializer_type=InitializerType.UNIFORM,  # embedding初始化方式通过initializer_type参数设置
+            initializer_type=InitializerType.TRUNCATED_NORMAL,  # embedding初始化方式通过initializer_type参数设置
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
             admit_and_evict_config=admit_and_evict_config,  # 差异：传递准入淘汰配置参数
@@ -1249,7 +1249,7 @@ def train():
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
             # init_fn=weight_init,  # 注意：多级缓存模式，不支持自定义初始化函数
-            initializer_type=InitializerType.UNIFORM,  # embedding初始化方式通过initializer_type参数设置
+            initializer_type=InitializerType.TRUNCATED_NORMAL,  # embedding初始化方式通过initializer_type参数设置
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
             admit_and_evict_config=admit_and_evict_config,  # 差异：传递准入淘汰配置参数
@@ -1447,7 +1447,7 @@ def train():
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
             # init_fn=weight_init,  # 注意：多级缓存模式，不支持自定义初始化函数
-            initializer_type=InitializerType.UNIFORM,  # embedding初始化方式通过initializer_type参数设置
+            initializer_type=InitializerType.TRUNCATED_NORMAL,  # embedding初始化方式通过initializer_type参数设置
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
             is_incremental=True,  # 差异：配置稀疏表支持增量保存

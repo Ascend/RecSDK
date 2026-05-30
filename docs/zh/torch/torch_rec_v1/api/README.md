@@ -22,7 +22,7 @@
 |--|--|
 |[HashEmbeddingBagConfig](table_creation_apis.md#hashembeddingbagconfig)|HashEmbeddingBagCollection的入参，用于配置表的大小、dim、数据类型等。|
 |[HashEmbeddingBagCollection](table_creation_apis.md#hashembeddingbagcollection)|创建带Pooling和哈希映射的单机表对象。|
-|[EmbCacheEmbeddingBagConfig](table_creation_apis.md#embcacheembeddingbagconfig)|EmbCacheEmbeddingBagCollection的入参，用于配置表的大小、dim、数据类型、缓存策略等。|
+|[EmbCacheEmbeddingBagConfig](table_creation_apis.md#embcacheembeddingbagconfig)|EmbCacheEmbeddingBagCollection的入参，用于配置表的大小、dim、数据类型等。|
 |[EmbCacheEmbeddingBagCollection](table_creation_apis.md#embcacheembeddingbagcollection)|创建带pooling、哈希映射和多级缓存的单机表对象。|
 |[EmbCacheEmbeddingConfig](table_creation_apis.md#embcacheembeddingconfig)|EmbCacheEmbeddingCollection的配置类接口，用于配置表的大小、dim、数据类型等。|
 |[EmbCacheEmbeddingCollection](table_creation_apis.md#embcacheembeddingcollection)|创建带哈希映射和多级缓存的单机表对象。|
@@ -52,9 +52,9 @@
 |[ParameterConstraints（TorchRec）](subtable_apis.md#parameterconstraintstorchrec)|指定分表计划的查询范围。|
 |[get_default_hybrid_sharders](subtable_apis.md#get_default_hybrid_sharders)|获取分表器。|
 |[EmbeddingShardingPlanner（TorchRec）](subtable_apis.md#embeddingshardingplannertorchrec)|创建分表计划器，用于搜索最合适的分表计划。|
-|[DistributedModelParallel（TorchRec）](subtable_apis.md#distributedmodelparalleltorchrec)|将传入的Module变为分布式的Module，并执行分表计划。|
 |[EmbCacheEmbeddingBagCollectionSharder](subtable_apis.md#embcacheembeddingbagcollectionsharder)|创建EmbCacheEmbeddingBagCollectionSharder分表器，用于将EmbCacheEmbeddingBagCollection分片到不同的设备上。|
 |[EmbCacheEmbeddingCollectionSharder](subtable_apis.md#embcacheembeddingcollectionsharder)|创建EmbCacheEmbeddingCollectionSharder分表器，用于将EmbCacheEmbeddingCollection分片到不同的设备上。|
+|[DistributedModelParallel（TorchRec）](subtable_apis.md#distributedmodelparalleltorchrec)|将传入的Module变为分布式的Module，并执行分表计划。|
 
 ### pipeline接口
 
@@ -74,12 +74,12 @@
 
 |API | 功能描述|
 |--|--|
+|[JaggedTensorWithTimestamp](access_and_elimination_management_apis.md#jaggedtensorwithtimestamp)|该接口是一个扩展自JaggedTensor的类，用于表示带有时间戳信息的Jagged Tensor。该类在JaggedTensor的基础上增加了一个\_timestamps属性，存储与values对应的时间戳信息。用于特征淘汰时计算时间。|
+|[KeyedJaggedTensorWithTimestamp](access_and_elimination_management_apis.md#keyedjaggedtensorwithtimestamp)|该接口是一个扩展自KeyedJaggedTensor的类，用于表示带有时间戳信息的Keyed Jagged Tensor。该类在KeyedJaggedTensor的基础上增加了一个\_timestamps属性，存储与values对应的时间戳信息。用于特征淘汰时计算时间。|
 |[AdmitAndEvictPolicyType](access_and_elimination_management_apis.md#admitandevictpolicytype)|准入淘汰策略类型枚举，定义嵌入表特征准入和淘汰的策略类型。|
 |[ShowClickParams](access_and_elimination_management_apis.md#showclickparams)|该接口表示基于展示点击（show/click）策略的参数配置。该类提供了配置展示点击准入和淘汰功能的参数，允许用户根据展示次数和点击次数控制特征的准入和淘汰行为。|
 |[AdmitAndEvictConfig](access_and_elimination_management_apis.md#admitandevictconfig)|该接口表示单个嵌入表的准入和淘汰配置。该类提供了配置嵌入表特征准入和淘汰功能的参数，允许用户根据特定条件控制特征的准入和淘汰行为。支持两种策略类型：基于计数的策略（POLICY_COUNT）和基于展示点击的策略（POLICY_SHOWCLICK）。|
-|[JaggedTensorWithTimestamp](access_and_elimination_management_apis.md#jaggedtensorwithtimestamp)|该接口是一个扩展自JaggedTensor的类，用于表示带有时间戳信息的Jagged Tensor。该类在JaggedTensor的基础上增加了一个\_timestamps属性，存储与values对应的时间戳信息。用于特征淘汰时计算时间。|
-|[KeyedJaggedTensorWithTimestamp](access_and_elimination_management_apis.md#keyedjaggedtensorwithtimestamp)|该接口是一个扩展自KeyedJaggedTensor的类，用于表示带有时间戳信息的Keyed Jagged Tensor。该类在KeyedJaggedTensor的基础上增加了一个\_timestamps属性，存储与values对应的时间戳信息。用于特征淘汰时计算时间。|
 
 ### 自定义算子
 
-Rec SDK Torch提供了部分自定义算子，用于处理稀疏表数据和加速模型训练，详情请参考[自定义算子](specialized_operator.md)。
+Rec SDK Torch提供了部分自定义算子，用于处理稀疏表数据和加速模型训练，详情请参考[自定义算子](specialized_operator.md)中的自定义算子列表。
