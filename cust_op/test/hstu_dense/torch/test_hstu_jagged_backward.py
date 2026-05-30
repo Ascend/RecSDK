@@ -16,7 +16,6 @@
 # ==============================================================================
 import pytest
 import torch
-import torch_npu
 import torch.nn.functional as F
 
 from test_target_mask import create_causal_mask
@@ -83,7 +82,7 @@ class TestHstuJaggedDemo:
 
         offset = 0
         for batch_id, seq_len in enumerate(seq_lens):
-            dense_tensor[batch_id, :seq_len, :, :] = jagged_tensor[offset: offset + seq_len, :, :]
+            dense_tensor[batch_id, :seq_len, :, :] = jagged_tensor[offset : offset + seq_len, :, :]
             offset = offset + seq_len
 
         return dense_tensor
@@ -96,7 +95,7 @@ class TestHstuJaggedDemo:
 
         offset = 0
         for batch_id, seq_len in enumerate(seq_lens):
-            tensor[offset: offset + seq_len, :, :] = dense_tensor[batch_id, 0:seq_len, :, :]
+            tensor[offset : offset + seq_len, :, :] = dense_tensor[batch_id, 0:seq_len, :, :]
             offset = offset + seq_len
 
         return tensor
@@ -120,12 +119,12 @@ class TestHstuJaggedDemo:
 
     @staticmethod
     def _pad_qkv(
-            q: torch.Tensor,
-            k: torch.Tensor,
-            v: torch.Tensor,
-            seq_lens_q: list[int],
-            seq_lens_k: list[int],
-            max_seq_len: int
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        seq_lens_q: list[int],
+        seq_lens_k: list[int],
+        max_seq_len: int,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         L, H_q, D = q.shape
         L, H_v, V = v.shape
@@ -148,25 +147,26 @@ class TestHstuJaggedDemo:
 
     @staticmethod
     def pytorch_hstu_mha(
-            max_seq_len: int,
-            alpha: float,
-            grad,
-            q: torch.Tensor,
-            k: torch.Tensor,
-            v: torch.Tensor,
-            seq_offsets_q: torch.Tensor,
-            seq_offsets_k: torch.Tensor,
-            valid_attn_mask,
-            bias,
-            has_bias,
+        max_seq_len: int,
+        alpha: float,
+        grad,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        seq_offsets_q: torch.Tensor,
+        seq_offsets_k: torch.Tensor,
+        valid_attn_mask,
+        bias,
+        has_bias,
+        silu_scale,
     ) -> torch.Tensor:
+        silu_scale = 1.0 / max_seq_len if silu_scale == 0 else silu_scale
 
         q.requires_grad_(True)
         k.requires_grad_(True)
         v.requires_grad_(True)
-        bias.requires_grad_(True) if has_bias else None
+        bias.requires_grad_(has_bias)
 
-        scaling_seqlen = max_seq_len
         seq_lens_q = seq_offsets_q[1:] - seq_offsets_q[:-1]
         seq_lens_k = seq_offsets_k[1:] - seq_offsets_k[:-1]
 
@@ -177,8 +177,7 @@ class TestHstuJaggedDemo:
         )  # [B, H, N, D) and [B, H, N, V]
 
         if H_q != H_k:
-            assert H_q % H_k == 0, (f"head_num_q ({H_q}) must be divisible by "
-                                    f"head_num_k({H_k}) ")
+            assert H_q % H_k == 0, f"head_num_q ({H_q}) must be divisible by head_num_k({H_k}) "
         h_qk_ratio = H_q // H_k
         k_d_expend = k_d.repeat_interleave(h_qk_ratio, dim=1)
         v_d_expend = v_d.repeat_interleave(h_qk_ratio, dim=1)
@@ -187,7 +186,7 @@ class TestHstuJaggedDemo:
         if has_bias:
             qk_attn += bias
         qk_attn *= alpha
-        qk_attn = F.silu(qk_attn) / scaling_seqlen
+        qk_attn = F.silu(qk_attn) * silu_scale
         if valid_attn_mask is not None:
             qk_attn = qk_attn * valid_attn_mask
 
@@ -196,17 +195,19 @@ class TestHstuJaggedDemo:
         tensor = TestHstuJaggedDemo.dense_to_jagged(
             q,
             attn_dense.transpose(1, 2),  # [B, N, H * V]
-            seq_lens_q  # 已转换为序列长度列表
+            seq_lens_q,  # 已转换为序列长度列表
         )
 
         ops_forward_output = tensor.view(L, H_q, V)
         dbias_hstu = None
         if has_bias:
-            dq_hstu, dk_hstu, dv_hstu, dbias_hstu = torch.autograd.grad(outputs=ops_forward_output,
-                                                                        inputs=(q, k, v, bias), grad_outputs=grad)
+            dq_hstu, dk_hstu, dv_hstu, dbias_hstu = torch.autograd.grad(
+                outputs=ops_forward_output, inputs=(q, k, v, bias), grad_outputs=grad
+            )
         else:
-            dq_hstu, dk_hstu, dv_hstu = torch.autograd.grad(outputs=ops_forward_output, inputs=(q, k, v),
-                                                            grad_outputs=grad)
+            dq_hstu, dk_hstu, dv_hstu = torch.autograd.grad(
+                outputs=ops_forward_output, inputs=(q, k, v), grad_outputs=grad
+            )
         return dq_hstu, dk_hstu, dv_hstu, dbias_hstu
 
     @staticmethod
@@ -320,17 +321,7 @@ class TestHstuJaggedDemo:
         )
 
         q_grad_golden, k_grad_golden, v_grad_golden, attn_bias_grad_golden = self.pytorch_hstu_mha(
-            max_seq_len,
-            alpha,
-            grad,
-            q,
-            k,
-            v,
-            seq_offset_q,
-            seq_offset_k,
-            mask,
-            bias,
-            enable_bias
+            max_seq_len, alpha, grad, q, k, v, seq_offset_q, seq_offset_k, mask, bias, enable_bias, silu_scale
         )
 
         mask = mask.to(torch.float32) if mask is not None else None
@@ -345,15 +336,20 @@ class TestHstuJaggedDemo:
             seq_offset_k,
             mask,
             bias.to(torch.float32),
-            enable_bias
+            enable_bias,
+            silu_scale,
         )
 
         q_res = hstu_close_double(q_grad, q_grad_golden, q_grad_golden_fp32, try_allclose=True, multiplier=5)
         k_res = hstu_close_double(k_grad, k_grad_golden, k_grad_golden_fp32, try_allclose=True, multiplier=5)
         v_res = hstu_close_double(v_grad, v_grad_golden, v_grad_golden_fp32, try_allclose=True, multiplier=5)
-        bias_res = True if attn_bias_grad is None \
-            else hstu_close_double(attn_bias_grad, attn_bias_grad_golden, attn_bias_grad_golden_fp32,
-                                   try_allclose=True, multiplier=5)
+        bias_res = (
+            True
+            if attn_bias_grad is None
+            else hstu_close_double(
+                attn_bias_grad, attn_bias_grad_golden, attn_bias_grad_golden_fp32, try_allclose=True, multiplier=5
+            )
+        )
 
         assert all((q_res, k_res, v_res, bias_res))
 
@@ -363,16 +359,13 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("head_dim_qk", [1, 16, 32, 72])  # 范围: [1, 512]
     @pytest.mark.parametrize("head_dim_v", [16, 32])  # 范围: [16, 512]，必须是16的倍数
     @pytest.mark.parametrize("mask_type", [MaskType.TRIL, MaskType.NONE, MaskType.CUSTOM])
-    @pytest.mark.parametrize("silu_scale", [0.0])
+    @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
     @pytest.mark.parametrize("enable_bias", [True, False])
     @pytest.mark.parametrize("data_type", [torch.float16, torch.bfloat16])
-    @pytest.mark.parametrize("max_seq_len,num_context,num_target,target_group_size", [
-        (1, None, None, None),
-        (257, 1, 1, 1),
-        (512, 128, 0, 1),
-        (1234, 0, 512, 3),
-        (1234, 128, 512, 3)
-    ])
+    @pytest.mark.parametrize(
+        "max_seq_len,num_context,num_target,target_group_size",
+        [(1, None, None, None), (257, 1, 1, 1), (512, 128, 0, 1), (1234, 0, 512, 3), (1234, 128, 512, 3)],
+    )
     @pytest.mark.parametrize("alpha", [0.5])
     def test_hstu_dens_jagged(
         self,
@@ -405,7 +398,7 @@ class TestHstuJaggedDemo:
             num_context,
             num_target,
             target_group_size,
-            alpha
+            alpha,
         )
 
     # batch_size泛化测试
@@ -415,29 +408,32 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("head_dim_qk", [128])  # 范围: [1, 512]
     @pytest.mark.parametrize("head_dim_v", [128])  # 范围: [16, 512]，必须是16的倍数
     @pytest.mark.parametrize("mask_type", [MaskType.TRIL])
-    @pytest.mark.parametrize("silu_scale", [0.0])
+    @pytest.mark.parametrize("silu_scale", [0.0, 1.0 / 256])
     @pytest.mark.parametrize("enable_bias", [False])
     @pytest.mark.parametrize("data_type", [torch.float16])
-    @pytest.mark.parametrize("max_seq_len,num_context,num_target,target_group_size", [
-        (512, None, None, None),
-    ])
+    @pytest.mark.parametrize(
+        "max_seq_len,num_context,num_target,target_group_size",
+        [
+            (512, None, None, None),
+        ],
+    )
     @pytest.mark.parametrize("alpha", [0.5])
     def test_hstu_dens_jagged_bs(
-            self,
-            batch_size,
-            head_num_q,
-            head_num_k,
-            head_dim_qk,
-            head_dim_v,
-            mask_type,
-            silu_scale,
-            enable_bias,
-            data_type,
-            max_seq_len,
-            num_context,
-            num_target,
-            target_group_size,
-            alpha,
+        self,
+        batch_size,
+        head_num_q,
+        head_num_k,
+        head_dim_qk,
+        head_dim_v,
+        mask_type,
+        silu_scale,
+        enable_bias,
+        data_type,
+        max_seq_len,
+        num_context,
+        num_target,
+        target_group_size,
+        alpha,
     ):
         self.execute(
             batch_size,
@@ -453,5 +449,5 @@ class TestHstuJaggedDemo:
             num_context,
             num_target,
             target_group_size,
-            alpha
+            alpha,
         )
