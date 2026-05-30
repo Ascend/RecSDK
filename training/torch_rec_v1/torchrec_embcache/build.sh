@@ -44,8 +44,8 @@ function check_ret_fn()
         echo "[FAIL] $@ failed" 1>&2
         exit 1
     else
-        echo "[SUCCESS] $@ successful" 
-    fi 
+        echo "[SUCCESS] $@ successful"
+    fi
 }
 
 function build_with_cmake_func()
@@ -55,7 +55,7 @@ function build_with_cmake_func()
     fi
     mkdir -p ${SCRIPT_PATH}/src/cmake_build
     cd ${SCRIPT_PATH}/src/cmake_build
-    torch_path=`python3 -c 'import torch;print(torch.utils.cmake_prefix_path)'`
+    torch_path=$(python3 -m pip show torch 2>/dev/null | grep -E "^Location:" | awk '{print $2}')/torch/share/cmake
     cmake ../ \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${torch_path}"
