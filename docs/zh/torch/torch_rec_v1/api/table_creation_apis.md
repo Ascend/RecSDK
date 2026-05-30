@@ -10,8 +10,18 @@ HashEmbeddingBagCollection的入参，用于配置表的大小、dim、数据类
 
 ```python
 @dataclass
-class HashEmbeddingBagConfig:
-    def __init__(**kwargs):
+class HashEmbeddingBagConfig(EmbeddingBagConfig):
+    num_embeddings: int
+    embedding_dim: int
+    name: str
+    data_type: DataType = DataType.FP32
+    feature_names: List[str] = field(default_factory=list)
+    weight_init_max: Optional[float] = None
+    weight_init_min: Optional[float] = None
+    num_embeddings_post_pruning: Optional[int] = None
+    init_fn: Optional[Callable[[torch.Tensor], Optional[torch.Tensor]]] = None
+    need_pos: bool = False
+    pooling: PoolingType = PoolingType.SUM
 ```
 
 **参数说明<a name="section1643017411155"></a>**
@@ -38,7 +48,18 @@ class HashEmbeddingBagConfig:
 **使用示例**
 
 ```python
-from hybrid_torchrec import HashEmbeddingBagConfig, HashEmbeddingBagCollection
+import torch
+import torchrec
+from hybrid_torchrec import HashEmbeddingBagConfig
+
+
+def weight_init(param: torch.nn.Parameter):
+    if len(param.shape) != 2:
+        return
+    torch.manual_seed(param.shape[1])
+    result = torch.linspace(0, 1, steps=param.shape[1]).repeat(param.shape[0], 1)
+    param.data.copy_(result)
+
 emb_config = HashEmbeddingBagConfig(
     name="table0",
     embedding_dim=128,
@@ -62,8 +83,13 @@ emb_config = HashEmbeddingBagConfig(
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
-class HashEmbeddingBagCollection:
-    def __init__(**kwargs):
+class HashEmbeddingBagCollection(EmbeddingBagCollectionInterface):
+    def __init__(
+        self,
+        tables: Union[List[HashEmbeddingBagConfig], List[EmbeddingBagConfig]],
+        is_weighted: bool = False,
+        device: Optional[Union[str, torch.device]] = None,
+    ) -> None:
 ```
 
 **参数说明<a name="section1643017411155"></a>**
@@ -72,7 +98,7 @@ class HashEmbeddingBagCollection:
 |-------------|----------------------------------------------------|-------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | tables      | List[HashEmbeddingBagConfig \| EmbeddingBagConfig] | 必选    | 稀疏表配置文件列表。列表长度的取值范围：[1, 10000]。<p>参数范围参考HashEmbeddingBagConfig。</p>                                                                                                                                                                                                                                     |
 | is_weighted | bool                                               | 可选    | 仅支持默认值为False。                                                                                                                                                                                                                                                                                           |
-| device      | str或者torch.device                                  | 可选    | 稀疏表的设备。默认为torch.device("cpu")。<br>如果为str取值范围：<ul><li>"npu"：npu设备。</li><li>"meta"：meta设备。</li><li>"cpu"：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul><br>如果为torch.device取值范围：<ul><li>torch.device("npu")：npu设备。</li><li>torch.device("meta")：meta设备。</li><li>torch.device("cpu")：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul> |
+| device      | Union[str, torch.device]                                  | 可选    | 稀疏表的设备。默认为torch.device("cpu")。<br>如果为str取值范围：<ul><li>"npu"：npu设备。</li><li>"meta"：meta设备。</li><li>"cpu"：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul><br>如果为torch.device取值范围：<ul><li>torch.device("npu")：npu设备。</li><li>torch.device("meta")：meta设备。</li><li>torch.device("cpu")：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul> |
 
 **返回值说明**
 
@@ -84,8 +110,9 @@ class HashEmbeddingBagCollection:
 ```python
 from hybrid_torchrec import HashEmbeddingBagConfig, HashEmbeddingBagCollection
 
-table_configs: list[HashEmbeddingBagConfig] = xx
-ebc = HashEmbeddingBagCollection(device="npu", tables=table_configs)
+# table_configs为HashEmbeddingBagConfig配置列表，此处省略详细定义。
+table_configs: list[HashEmbeddingBagConfig] = ......
+ebc = HashEmbeddingBagCollection(device="meta", tables=table_configs)
 ```
 
 **参考资源<a name="section426664933312"></a>**
@@ -101,8 +128,26 @@ EmbCacheEmbeddingBagConfig是EmbCacheEmbeddingBagCollection的配置类接口，
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
-class EmbCacheEmbeddingBagConfig:
-    def __init__(**kwargs):
+@dataclass
+class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
+    num_embeddings: int
+    embedding_dim: int
+    name: str
+    data_type: DataType = DataType.FP32
+    feature_names: List[str] = field(default_factory=list)
+    weight_init_max: Optional[float] = None
+    weight_init_min: Optional[float] = None
+    num_embeddings_post_pruning: Optional[int] = None
+    init_fn: Optional[Callable[[torch.Tensor], Optional[torch.Tensor]]] = None
+    need_pos: bool = False
+    pooling: PoolingType = PoolingType.SUM
+    weight_init_mean: Optional[float] = 0.0
+    weight_init_stddev: Optional[float] = 0.05
+    initializer_type: InitializerType = field(default=InitializerType.LINEAR)
+    admit_and_evict_config: Optional[AdmitAndEvictConfig] = field(
+        default_factory=lambda: AdmitAndEvictConfig()
+    )
+    is_incremental: bool = False
 ```
 
 **参数说明<a name="section888634319218"></a>**
@@ -117,16 +162,16 @@ class EmbCacheEmbeddingBagConfig:
 | weight_init_max             | float                                       | 可选    | 仅支持默认值为None或1.0，不支持用户自定义。                                         |
 | weight_init_min             | float                                       | 可选    | 仅支持默认值为None或0.0，不支持用户自定义。                                         |
 | num_embeddings_post_pruning | int                                         | 可选    | 仅支持默认值为None，不支持用户自定义。                                             |
-| init_fn                     | Callable                                    | 可选    | 支持传入nn.Parameter类型的函数。用户需自行保证该函数的正确性。默认值为None。                    |
+| init_fn                     | Callable                                    | 可选    | 支持传入nn.Parameter类型的函数。用户需自行保证该函数的正确性。默认值为None。当前配置类用于多级缓存EBC模式，Embedding初始化需通过`initializer_type`参数设置，该参数不生效。                    |
 | need_pos                    | bool                                        | 可选    | 仅支持默认值为False，不支持用户自定义。                                            |
 | pooling                     | torchrec.modules.embedding_configs.PoolType | 可选    | pool操作的类型。取值范围：<ul><li>SUM：求和。</li><li>MEAN：取平均。</li></ul>默认为SUM。 |
-| weight_init_mean            | float                                       | 可选    | 权重初始化均值，用于UNIFORM初始化类型，默认值0.0。                                    |
-| weight_init_stddev          | float                                       | 可选    | 权重初始化标准差，用于UNIFORM初始化类型，默认值0.05。                                  |
-| initializer_type            | InitializerType                             | 可选    | 权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。              |
+| weight_init_mean            | float                                       | 可选    | 权重初始化均值，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.0。                                    |
+| weight_init_stddev          | float                                       | 可选    | 权重初始化标准差，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.05。                                  |
+| initializer_type            | InitializerType                             | 可选    | 权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。详细说明请参见[InitializerType](multilevel_cache_management_apis.md#initializertype)。              |
 | admit_and_evict_config      | AdmitAndEvictConfig                         | 可选    | 特征准入和淘汰配置，默认不启用准入和淘汰功能。预留参数，当前暂不支持。                               |
-| is_incremental              | bool                                        | 可选    | 开启增量保存和加载功能                                                       |
+| is_incremental              | bool                                        | 可选    | 是否开启增量保存/加载功能。默认值为False，表示不开启增量保存/加载功能。                                                       |
 
-**返回值说明<a name="section651195312311"></a>**
+**返回值说明**
 
 - 成功：返回EmbCacheEmbeddingBagConfig对象。
 - 失败：抛出异常。
@@ -142,7 +187,7 @@ emb_config = EmbCacheEmbeddingBagConfig(
     num_embeddings=1000,
     feature_names=["feat0"],
     # init_fn=weight_init,  # 注意：多级缓存模式，不支持自定义初始化函数
-    initializer_type=InitializerType.UNIFORM,  # embedding初始化方式通过initializer_type参数设置
+    initializer_type=InitializerType.TRUNCATED_NORMAL,  # embedding初始化方式通过initializer_type参数设置
     weight_init_mean=0.0,
     weight_init_stddev=0.05,
 )
@@ -157,8 +202,18 @@ emb_config = EmbCacheEmbeddingBagConfig(
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
-class EmbCacheEmbeddingBagCollection:
-    def __init__(**kwargs):
+class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
+    def __init__(
+        self,
+        tables: List[EmbCacheEmbeddingBagConfig | EmbeddingBagConfig],
+        world_size: int,
+        batch_size: int,
+        multi_hot_sizes: List[int],
+        is_weighted: bool = False,
+        need_accumulate_offset: bool = True,
+        device: Optional[torch.device] = None,
+        embedding_optimizer_cls: Type[torch.optim.Optimizer] = torch.optim.Adagrad,
+    ) -> None:
 ```
 
 **参数说明<a name="section888634319218"></a>**
@@ -168,13 +223,13 @@ class EmbCacheEmbeddingBagCollection:
 | tables                  | List[EmbCacheEmbeddingBagConfig\|EmbeddingConfig] | 必选    | 稀疏表配置文件列表。列表长度的取值范围为[1，10000]。                                                                                                                                 |
 | world_size              | int                                               | 必选    | 分布式训练world_size大小，取值范围为[1，10000]。                                                                                                                              |
 | batch_size              | int                                               | 必选    | 批次大小，取值范围为[1，102400]。                                                                                                                                          |
-| multi_hot_sizes         | List[int]                                         | 必选    | 每个特征的多热编码大小列表。该参数列表的长度必须与tables的列表长度相同，取值范围为[1，10000]；列表中多热编码大小的取值范围为[1，102400]。                                                                               |
+| multi_hot_sizes         | List[int]                                         | 必选    | 每个特征的多热编码大小列表，用于计算训练中所需的最小Device内存大小。该参数列表的长度必须与tables的列表长度相同，取值范围为[1，10000]；列表中多热编码大小的取值范围为[1，102400]。                                                                               |
 | is_weighted             | bool                                              | 可选    | 仅支持默认值False。                                                                                                                                                   |
 | need_accumulate_offset  | bool                                              | 可选    | 是否需要累积偏移量，默认值True。                                                                                                                                             |
 | device                  | torch.device                                      | 可选    | 计算设备，默认值torch.device("cpu")。                                                                                                                                   |
-| embedding_optimizer_cls | Type[torch.optim.Optimizer]                       | 可选    | 嵌入优化器类型，默认值torch.optim.Adagrad。取值范围为：<ul><li>torch.optim.Adagrad：表示Adagrad优化器。</li><li>torch.optim.Adam：表示Adam优化器。</li><li>torch.optim.SGD：表示SGD优化器。</li></ul> |
+| embedding_optimizer_cls | Type[torch.optim.Optimizer]                       | 可选    | 嵌入优化器类型，用于计算训练中所需的最小Device内存大小，默认值torch.optim.Adagrad。取值范围为：<ul><li>torch.optim.Adagrad：表示Adagrad优化器。</li><li>torch.optim.Adam：表示Adam优化器。</li><li>torch.optim.SGD：表示SGD优化器。</li><li>torchrec.optim.Adagrad：Adagrad优化器。</li><li>torchrec.optim.Adam：Adam优化器。</li><li>torchrec.optim.SGD：SGD优化器。</li></ul> <br>优化器类型参数需和调用[apply_optimizer_in_backward](optimizers_apis.md#TOPIC_0000002302229708)时传入的优化器类型一致。 |
 
-**返回值说明<a name="section651195312311"></a>**
+**返回值说明**
 
 - 成功：返回EmbCacheEmbeddingBagCollection对象。
 - 失败：抛出异常。
@@ -182,19 +237,24 @@ class EmbCacheEmbeddingBagCollection:
 **使用示例**
 
 ```python
+import torch
 from typing import List
-from torchrec_embcache.distributed import EmbCacheEmbeddingBagCollection
+from torchrec_embcache.distributed import EmbCacheEmbeddingBagCollection, EmbCacheEmbeddingBagConfig
 
-embedding_configs: List[EmbCacheEmbeddingBagConfig] = xx
-world_size: int = 2
+# embedding_configs为EmbCacheEmbeddingBagConfig对象列表，此处省略详细定义。
+embedding_configs: List[EmbCacheEmbeddingBagConfig] = ......  # type: ignore
+world_size: int = 1
 batch_size: int = 128
 table_num = len(embedding_configs)
+# 此处的优化器类型需和torchrec.optim.apply_optimizer_in_backward时传入的优化器类型一致
+embedding_optimizer_cls = torch.optim.Adagrad
 sparse_ebc: torch.nn.Module = EmbCacheEmbeddingBagCollection(
-    embedding_configs,
+    embedding_configs, # type: ignore
     world_size,
     batch_size,
     multi_hot_sizes=[1] * table_num,
     device=torch.device("meta"),
+    embedding_optimizer_cls=embedding_optimizer_cls,
 )
 ```
 
@@ -207,8 +267,25 @@ EmbCacheEmbeddingConfig是EmbCacheEmbeddingCollection的配置类接口，用于
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
-class EmbCacheEmbeddingConfig:
-    def __init__(**kwargs):
+@dataclass
+class EmbCacheEmbeddingConfig(EmbeddingConfig):
+    num_embeddings: int
+    embedding_dim: int
+    name: str
+    data_type: DataType = DataType.FP32
+    feature_names: List[str] = field(default_factory=list)
+    weight_init_max: Optional[float] = None
+    weight_init_min: Optional[float] = None
+    num_embeddings_post_pruning: Optional[int] = None
+    init_fn: Optional[Callable[[torch.Tensor], Optional[torch.Tensor]]] = None
+    need_pos: bool = False
+    weight_init_mean: Optional[float] = 0.0
+    weight_init_stddev: Optional[float] = 0.05
+    initializer_type: InitializerType = field(default=InitializerType.LINEAR)
+    admit_and_evict_config: Optional[AdmitAndEvictConfig] = field(
+        default_factory=lambda: AdmitAndEvictConfig()
+    )
+    is_incremental: bool = False
 ```
 
 **参数说明<a name="section888634319218"></a>**
@@ -223,15 +300,15 @@ class EmbCacheEmbeddingConfig:
 |weight_init_max|float|可选|仅支持默认值为None或1.0，不支持用户自定义。|
 |weight_init_min|float|可选|仅支持默认值为None或0.0，不支持用户自定义。|
 |num_embeddings_post_pruning|int|可选|仅支持默认值为None，不支持用户自定义。|
-|init_fn|Callable|可选|支持传入nn.Parameter类型的函数。用户需自行保证该函数的正确性。默认值为None。|
+|init_fn|Callable|可选|支持传入nn.Parameter类型的函数。默认值为None。当前配置类用于多级缓存EC模式，Embedding初始化需通过`initializer_type`参数设置，该参数不生效。|
 |need_pos|bool|可选|仅支持默认值为False，不支持用户自定义。|
-|weight_init_mean|float|可选|权重初始化均值，用于UNIFORM初始化类型，默认值0.0。|
-|weight_init_stddev|float|可选|权重初始化标准差，用于UNIFORM初始化类型，默认值0.05。|
+|weight_init_mean|float|可选|权重初始化均值，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.0。|
+|weight_init_stddev|float|可选|权重初始化标准差，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.05。|
 |initializer_type|InitializerType|可选|权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。|
 |admit_and_evict_config|AdmitAndEvictConfig|可选|特征准入和淘汰配置，默认不启用准入和淘汰功能。|
-|is_incremental|bool|可选| 开启增量保存和加载功能                      |
+|is_incremental|bool|可选| 是否开启增量保存/加载功能。默认值为False，表示不开启增量保存/加载功能。                      |
 
-**返回值说明<a name="section651195312311"></a>**
+**返回值说明**
 
 - 成功：返回EmbCacheEmbeddingConfig对象。
 - 失败：抛出异常。
@@ -239,7 +316,7 @@ class EmbCacheEmbeddingConfig:
 **使用示例**
 
 ```python
-from torchrec_embcache.distributed import AdmitAndEvictConfig, EmbCacheEmbeddingConfig, InitializerType
+from torchrec_embcache.distributed import EmbCacheEmbeddingConfig, InitializerType
 
 emb_config = EmbCacheEmbeddingConfig(
     name="table0",
@@ -247,10 +324,9 @@ emb_config = EmbCacheEmbeddingConfig(
     num_embeddings=1000,
     feature_names=["feat0"],
     # init_fn=weight_init,  # 注意：多级缓存模式，不支持自定义初始化函数
-    initializer_type=InitializerType.UNIFORM,  # embedding初始化方式通过initializer_type参数设置
-    weight_init_mean=0.0,
-    weight_init_stddev=0.05,
-    admit_and_evict_config=admit_and_evict_config,  # 传递准入淘汰配置参数
+    initializer_type=InitializerType.TRUNCATED_NORMAL,  # embedding初始化方式通过initializer_type参数设置
+    weight_init_mean=0.0,  # TRUNCATED_NORMAL分布的均值
+    weight_init_stddev=0.05,  # TRUNCATED_NORMAL分布的标准差
 )
 ```
 
@@ -263,8 +339,18 @@ emb_config = EmbCacheEmbeddingConfig(
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
-class EmbCacheEmbeddingCollection:
-    def __init__(**kwargs):
+class EmbCacheEmbeddingCollection(EmbeddingCollection):
+    def __init__(
+        self,
+        tables: List[EmbCacheEmbeddingConfig | EmbeddingConfig],
+        world_size: int,
+        batch_size: int,
+        multi_hot_sizes: List[int],
+        need_indices: bool = False,
+        need_accumulate_offset: bool = True,
+        device: Optional[torch.device] = None,
+        embedding_optimizer_cls: Type[torch.optim.Optimizer] = torch.optim.Adagrad,
+    ) -> None:
 ```
 
 **参数说明<a name="section888634319218"></a>**
@@ -274,13 +360,13 @@ class EmbCacheEmbeddingCollection:
 | tables                  | List[EmbCacheEmbeddingConfig\|EmbeddingConfig] | 必选    | 稀疏表配置列表。列表长度的取值范围为[1，10000]。                                                                                                                                  |
 | world_size              | int                                            | 必选    | 分布式训练world_size大小，取值范围为[1，10000]。                                                                                                                             |
 | batch_size              | int                                            | 必选    | 批次大小，取值范围为[1，102400]。                                                                                                                                         |
-| multi_hot_sizes         | List[int]                                      | 必选    | 每个特征的多热编码大小列表。该参数列表的长度必须与tables的列表长度相同，取值范围为[1，10000]；列表中多热编码大小的取值范围为[1，102400]。                                                                              |
+| multi_hot_sizes         | List[int]                                      | 必选    | 每个特征的多热编码大小列表，用于计算训练中所需的最小Device内存大小。该参数列表的长度必须与tables的列表长度相同，取值范围为[1，10000]；列表中多热编码大小的取值范围为[1，102400]。                                                                              |
 | need_indices            | bool                                           | 可选    | 是否需要索引，默认值False。                                                                                                                                              |
 | need_accumulate_offset  | bool                                           | 可选    | 是否需要累积偏移量，默认值True。                                                                                                                                            |
 | device                  | torch.device                                   | 可选    | 计算设备，默认值torch.device("cpu")。                                                                                                                                  |
-| embedding_optimizer_cls | Type[torch.optim.Optimizer]                    | 可选    | 嵌入优化器类型，默认值torch.optim.Adagrad。取值范围为：<ul><li>torch.optim.Adagrad：表示Adagrad优化器。</li><li>torch.optim.Adam：表示Adam优化器。</li><li>torch.optim.SGD：表示SGD优化器。</li></ul> |
+| embedding_optimizer_cls | Type[torch.optim.Optimizer]                    | 可选    | 嵌入优化器类型，用于计算训练中所需的最小Device内存大小，默认值torch.optim.Adagrad。取值范围为：<ul><li>torch.optim.Adagrad：表示Adagrad优化器。</li><li>torch.optim.Adam：表示Adam优化器。</li><li>torch.optim.SGD：表示SGD优化器。</li><li>torchrec.optim.Adagrad：Adagrad优化器。</li><li>torchrec.optim.Adam：Adam优化器。</li><li>torchrec.optim.SGD：SGD优化器。</li><li>torchrec.optim.AccumulateAdagrad：带梯度累积功能的Adagrad优化器。</li><li>torchrec.optim.AccumulateAdam：带梯度累积功能的Adam优化器。</li><li>torchrec.optim.AccumulateSGD：带梯度累积功能的SGD优化器。</li></ul> <br>优化器类型参数需和调用[apply_optimizer_in_backward](optimizers_apis.md#TOPIC_0000002302229708)时传入的优化器类型一致。 |
 
-**返回值说明<a name="section651195312311"></a>**
+**返回值说明**
 
 - 成功：返回EmbCacheEmbeddingCollection对象。
 - 失败：抛出异常。
@@ -288,14 +374,22 @@ class EmbCacheEmbeddingCollection:
 **使用示例**
 
 ```python
-from torchrec_embcache.distributed import EmbCacheEmbeddingCollection
+from typing import List
 
-embedding_configs: List[EmbCacheEmbeddingConfig] = xx
+import torch
+from torchrec_embcache.distributed import EmbCacheEmbeddingCollection, EmbCacheEmbeddingConfig
+
+# embedding_configs为EmbCacheEmbeddingConfig对象列表，此处省略详细定义。
+embedding_configs: List[EmbCacheEmbeddingConfig] = ......
+# 此处的优化器类型需和torchrec.optim.apply_optimizer_in_backward时传入的优化器类型一致
+embedding_optimizer_cls = torch.optim.Adagrad
+table_num = len(embedding_configs)
 sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
     embedding_configs,  # type: ignore
     2,
     128,
-    multi_hot_sizes=[1] * 2,
+    multi_hot_sizes=[1] * table_num,
     device=torch.device("meta"),
+    embedding_optimizer_cls=embedding_optimizer_cls,
 )
 ```

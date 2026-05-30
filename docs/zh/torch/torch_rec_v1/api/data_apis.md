@@ -13,8 +13,7 @@
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
-class JaggedTensor:
-    def __init__(**kwargs):
+class torchrec.sparse.jagged_tensor.JaggedTensor(*args: Any, **kwargs: Any)
 ```
 
 **参数说明<a name="section888634319218"></a>**
@@ -29,8 +28,13 @@ class JaggedTensor:
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
 ```python
+import torch
 from torchrec import JaggedTensor
-JaggedTensor(values=[1, 3, 4], lengths=[1, 1, 1], offsets=[0, 1, 2, 3])
+
+values = torch.tensor([1, 3, 4])
+lengths = torch.tensor([1, 1, 1])
+offsets = torch.tensor([0, 1, 2, 3])
+jagged_tensor = JaggedTensor(values=values, lengths=lengths, offsets=offsets)
 ```
 
 **参考资源<a name="section426664933312"></a>**
@@ -52,6 +56,7 @@ JaggedTensor(values=[1, 3, 4], lengths=[1, 1, 1], offsets=[0, 1, 2, 3])
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
+@staticmethod
 def from_jt_dict(jt_dict: Dict[str, JaggedTensor]) -> "KeyedJaggedTensor"
 ```
 
@@ -61,16 +66,21 @@ def from_jt_dict(jt_dict: Dict[str, JaggedTensor]) -> "KeyedJaggedTensor"
 |--|--|--|--|
 |jt_dict|Dict[str, JaggedTensor]|必选|特征名称和对应的JaggedTensor组成的字典。长度不能为0。其中JaggedTensor的取值范围参考[JaggedTensor（TorchRec）](#jaggedtensortorchrec)。|
 
-**返回值说明<a name="section651195312311"></a>**
+**返回值说明**
 
 - 成功：返回KeyedJaggedTensor。
 - 失败：抛出异常。
 
-**使用示例<a name="section2553042232"></a>**
+**使用示例**
 
 ```python
+import torch
 from torchrec import KeyedJaggedTensor, JaggedTensor
-jt = JaggedTensor(values=[1, 3, 4], lengths=[1, 1, 1])
+
+values = torch.tensor([1, 3, 4])
+lengths = torch.tensor([1, 1, 1])
+offsets = torch.tensor([0, 1, 2, 3])
+jt = JaggedTensor(values=values, lengths=lengths, offsets=offsets)
 kjt = KeyedJaggedTensor.from_jt_dict({"feat0": jt})
 ```
 
