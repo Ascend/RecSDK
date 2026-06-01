@@ -2,55 +2,64 @@
 
 ## 适配说明
 
-本样例以DLRM模型为例,适配torchrec框架并在NPU上进行训练。
+本样例以DLRM模型为例，适配Rec SDK Torch框架并在NPU上进行训练。
 
 模型参考的[开源代码链接](https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/)。 
 
-克隆源码并固定版本为:Commits on Jun 7 , 2024，提交的SHA-1 hash值（提交ID）：b631a99。
+克隆源码并固定版本为：`Commits on Jun 7, 2024`，提交的SHA-1 Hash值（提交ID）：b631a99。
 
 ## 代码结构说明
 
 ```shell
 ├── dlrm_npu.patch         # 模型迁移适配patch文件
-├── generate_data.patch    # 随机生成模型样例
+├── generate_data.py       # 生成随机数据集脚本
 ├── README.md              # 样例迁移说明文档
 └── run.sh                 # 模型运行脚本
 ```
 
 ## 运行环境准备
 
-请参考：[模型样例运行环境说明](../README.md)
+请参考[模型样例运行环境说明](../README.md)中“基础镜像”和“启动容器”章节，下载镜像并启动容器。
 
 ## dlrm源码适配
 
-进入当前目录，下载官方模型代码后，并使用patch文件进行修改。
+进入**当前目录**，下载开源模型代码，并应用patch文件，将开源模型从TorchRec开源框架迁移到基于昇腾NPU的Rec SDK Torch框架。
 
 ```shell
 git clone -b main https://github.com/facebookresearch/dlrm.git
-cd dlrm && git checkout b631a99 
+cd dlrm && git checkout b631a99
 cp -f ../dlrm_npu.patch ./
 git apply dlrm_npu.patch
 ```
 
-### 数据集下载
+## 数据集下载
 
-说明：本样例提供两种获取数据集的方式：使用官网数据集可验证模型性能和精度，若仅验证模型功能跑通可使用随机数据集。
+>[!NOTE]
+>
+> 1. 本样例提供两种获取数据集方式，使用官网数据集可验证模型性能和精度，若仅验证模型功能跑通可使用随机生成数据集。
+> 2. DLRM模型使用的Criteo Click Logs数据集在[HuggingFace](https://huggingface.co/datasets/criteo/CriteoClickLogs)上归档的文件形式在2026.05存在更新，但[开源模型社区](https://github.com/facebookresearch/dlrm/blob/main/torchrec_dlrm/README.MD#running-the-mlperf-dlrm-v2-benchmark)资料中的数据集下载链接和预处理脚本暂未同步更新，**当前建议使用随机生成数据集运行模型**。
 
-1.官网数据集
+1.官网数据集（Criteo Click Logs数据集）
 
-官网提供两种方式跑通demo：
+开源模型社区提供两种基于官网数据集跑通DLRM模型的方式：
 
-（1）下载原始数据处理后，提前进行mutil-hot的合成，产生4T的数据
+方式1：下载原始数据处理后，提前进行multi-hot的合成，生成4TB大小的数据集。
 
-（2）下载原始数据处理后，在训练的过程中生成mutil-hot数据，使用690gb数据集
+方式2：下载原始数据处理后，在训练的过程中生成multi-hot数据，共690GB大小的数据集。
 
-由于(1)需要的条件苛刻，大部分机器很难满足条件，本次演示使用(2)中的条件。无host瓶颈的情况下，对性能影响较小。需要修改模型脚本代码，让host生成的数据在pin_memory上。
+> 由于“方式1”需要的条件苛刻，大部分机器很难满足，后续启动脚本将基于“方式2”运行模型。“方式2”在无host瓶颈的情况下，对性能影响较小。
 
-进入[开源模型官网](https://github.com/facebookresearch/dlrm/blob/main/torchrec_dlrm/README.MD)，按照指引下载数据集到指定目录。
+官网数据集下载和预处理：
+
+参考[开源模型社区 - 运行DLRM v2模型](https://github.com/facebookresearch/dlrm/blob/main/torchrec_dlrm/README.MD#running-the-mlperf-dlrm-v2-benchmark)，按照“Step 1”和“Step 2”章节下载数据集并进行预处理。其中“Step 2”的输出结果即为“方式2”需要的数据集。
 
 该数据集已经托管到[HuggingFace](https://huggingface.co/datasets/criteo/CriteoClickLogs)，也可直接前往下载。
 
-2.使用生成的数据集
+说明：官网数据集较大，数据下载时间较长，请提前预留磁盘空间。
+
+2.随机生成数据集
+
+进入当前目录，运行如下指令，生成约71GB的随机数据集：
 
 ```shell
 mkdir generate_data
@@ -71,19 +80,21 @@ day_23_dense.npy
 day_23_labels.npy
 ```
 
-说明：数据集较大，数据下载时间较长，请预留时间和磁盘空间，官网数据集大约690GB,随机生成数据集大约71GB
-
 ## 修改脚本并运行
 
-修改run.sh文件中的参数，后拷贝到torchrec_dlrm目录下(与dlrm_main.py同级目录)，然后运行模型。
+修改run.sh文件中的如下参数，并手动拷贝run.sh文件到下载的开源模型代码dlrm/torchrec_dlrm目录下：
 
 ```shell
 # 环境参数配置说明（根据实际情况修改）
 export PREPROCESSED_DATASET="/path/to/data"                                           # 数据集文件路径
 export WORLD_SIZE=8                                                                   # 运行npu卡数，默认8卡
 export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7                                      # 可用npu卡编号，与WORLD_SIZE数量保持一致
+```
 
-# 运行代码
+进入开源模型代码dlrm/torchrec_dlrm目录并运行模型：
+
+```bash
+cd dlrm/torchrec_dlrm
 bash run.sh
 ```
 
@@ -96,4 +107,4 @@ bash run.sh
 | GPU         | 8                   |104.54|2,048|16,384|0.006|DCN v2|Adagrad| 0.7973                            | ~55.0 batches/s == ~901,120 samples/s | 1h20m21s              |`--batch_size 2048 --learning_rate 0.006 --adagrad --interaction_type=dcn` |
 | NPU         | 8                   |104.54|2,048|16,384|0.006|DCN v2|Adagrad| 0.7975                            | ~59.0 batches/s == ~966,656 samples/s | 1h12m03s              |`--batch_size 2048 --learning_rate 0.006 --adagrad --interaction_type=dcn`|
 
-说明：NPU测试结果为在参考镜像的X86环境上的测试结果。GPU测试数据参考[开源模型](https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/) 。
+说明：NPU测试结果为x86环境上的测试结果，且使用官网数据集并配置run.sh中的`MODES=("hybrid_torchrec")`模式。GPU测试数据参考[开源模型社区](https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/) 。
