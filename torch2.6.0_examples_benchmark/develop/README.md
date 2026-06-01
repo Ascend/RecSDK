@@ -21,7 +21,7 @@
 
 ## 基础镜像
 
-下载基础镜像请参见[下载链接](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)。
+基础镜像请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中“镜像下载”页面，下载最新版本的RecSDK-Torch镜像。
 
 ## 启动容器
 
@@ -66,7 +66,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 ## 安装依赖
 
-说明：最新的容器已经安装好torchrec、hybrid_torchrec、torchrec_embcache及算子等依赖，如无需重新安装可跳过后续步骤。如需重新安装依赖可参考如下步骤，并确保网络通畅。
+说明：最新的容器已经安装好torchrec、hybrid_torchrec、torchrec_embcache及算子等依赖，**如无需重新安装可跳过后续步骤**。如需重新安装依赖可参考如下步骤，并确保网络通畅。
 
 ### 1. 安装TorchRec昇腾注册包
 
