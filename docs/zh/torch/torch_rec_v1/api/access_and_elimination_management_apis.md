@@ -207,7 +207,7 @@ policy_type为POLICY_COUNT时：
 |admit_threshold|int|可选|特征准入阈值。特征（在输入分布后）将在重复次数大于admit_threshold时被准入。默认值为-1，表示特征准入功能未启用。|
 |not_admitted_default_value|float|可选|未准入特征ID的嵌入值，即未被准入的特征ID对应的Embedding向量中的值会被设置为not_admitted_default_value。默认值为0.0，仅在admit_threshold为非默认值时生效。|
 |evict_threshold|int|可选|特征淘汰阈值，单位和[KeyedJaggedTensorWithTimestamp](#TOPIC_0000002428320084)内[JaggedTensorWithTimestamp](#TOPIC_0000002461958569)中timestamps数据单位一致。<br>默认值为0，表示特征淘汰功能未启用。<br>启用淘汰功能时，训练时输入的数据Batch中的KJT必须是[KeyedJaggedTensorWithTimestamp](#TOPIC_0000002428320084)类型且带有时间戳数据。|
-|evict_step_interval|int|可选|特征淘汰功能的步长间隔。默认值为0，仅在evict_threshold为非默认值时生效。该参数需和[EmbCacheTrainPipelineSparseDist](pipeline_apis.md#embcachetrainpipelinesparsedist)中evict_step_interval参数值保持一致。|
+|evict_step_interval|int|可选|特征淘汰功能的步长间隔。默认值为0，仅在evict_threshold为非默认值时生效。<br>该参数需和[EmbCacheTrainPipelineSparseDist](pipeline_apis.md#embcachetrainpipelinesparsedist)中evict_step_interval参数值保持一致。|
 
 policy_type为POLICY_SHOWCLICK时：
 
@@ -215,7 +215,7 @@ policy_type为POLICY_SHOWCLICK时：
 |--|--|--|--|
 |showclick_params|ShowClickParams|可选|基于展示点击策略的准入淘汰参数配置。参数说明参考[ShowClickParams](#showclickparams)。|
 |not_admitted_default_value|float|可选|未准入特征ID的嵌入值，即未被准入的特征ID对应的Embedding向量中的值会被设置为not_admitted_default_value。默认值为0.0，仅在showclick_params.admit_threshold为非默认值时生效。|
-|evict_step_interval|int|可选|特征淘汰功能的步长间隔。默认值为0。该参数需和[EmbCacheTrainPipelineSparseDist](pipeline_apis.md#embcachetrainpipelinesparsedist)中evict_step_interval参数值保持一致。|
+|evict_step_interval|int|可选|特征淘汰功能的步长间隔。默认值为0。<br>该参数需和[EmbCacheTrainPipelineSparseDist](pipeline_apis.md#embcachetrainpipelinesparsedist)中evict_step_interval参数值保持一致。|
 
 **约束<a name="section888634319218"></a>**
 

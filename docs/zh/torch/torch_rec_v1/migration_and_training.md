@@ -110,18 +110,19 @@
 
 ## Rec SDK Torch迁移样例<a name="ZH-CN_TOPIC_0000002336268713"></a>
 
-Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开源DLRM（DCNv2）模型迁移到Rec SDK Torch框架时的主要迁移修改。代码样例中已省略部分参数定义和模块导入，完整的迁移修改请参见[README - dlrm源码适配](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/dlrm/README.md#dlrm%E6%BA%90%E7%A0%81%E9%80%82%E9%85%8D)查看应用patch后的代码。
+Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开源DLRM（DCNv2）模型迁移到Rec SDK Torch框架。
 
-迁移时的主要修改内容为将开源模型中使用到的TorchRec原生的稀疏表配置、训练流水线等API替换为Rec SDK Torch框架中的API。
+### 完整迁移样例
 
-迁移前请先下载开源模型代码并切换到指定commit版本：
+完整的迁移样例请参见[DLRM样例](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/dlrm/README.md)。其中介绍了如何**基于patch文件快速将DLRM模型迁移到Rec SDK Torch框架**，以及**运行环境准备**、**数据集准备**、**运行迁移后模型**等详细流程。
 
-```bash
-git clone -b main https://github.com/facebookresearch/dlrm.git
-cd dlrm && git checkout b631a99
-```
+### 迁移修改
 
-Rec SDK Torch提供了纯显存模式和多级缓存模式，不同模式下配置、创建稀疏表等训练相关API会有所区别，详情请参见[多级缓存模式和纯显存模式使用API差异](#api_diff_embcache)。
+本章节中仅介绍**迁移过程中主要修改内容**（省略部分定义和模块导入），完整的迁移后代码请参见[DLRM样例 - dlrm源码适配](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/dlrm/README.md#dlrm%E6%BA%90%E7%A0%81%E9%80%82%E9%85%8D)查看应用patch后的代码。
+
+模型迁移时的主要修改内容为将开源模型中使用到的TorchRec原生API（稀疏表配置、训练流水线等）替换为Rec SDK Torch框架中的API。
+
+Rec SDK Torch框架提供了纯显存模式和多级缓存模式，不同模式下稀疏表配置、稀疏表创建等训练相关API会有所区别，详情请参见[多级缓存模式和纯显存模式使用API差异](#api_diff_embcache)。
 
 关于修改内容中的条件分支说明：
 
@@ -129,6 +130,13 @@ Rec SDK Torch提供了纯显存模式和多级缓存模式，不同模式下配�
 - with_embcache：为True时表示使用Rec SDK Torch的多级缓存模式。
   - use_ec：为True时表示使用多级缓存的EC（EmbCacheEmbeddingCollection）模式，否则使用EBC（EmbCacheEmbeddingBagCollection）模式。
 - 非上述场景时表示使用TorchRec原生API创建稀疏表和进行模型训练。
+
+后续迁移内容为基于开源模型的指定commit版本：
+
+```bash
+git clone -b main https://github.com/facebookresearch/dlrm.git
+cd dlrm && git checkout b631a99
+```
 
 主要修改内容如下：
 
@@ -401,7 +409,7 @@ Rec SDK Torch提供了纯显存模式和多级缓存模式，不同模式下配�
             )
     ```
 
-## 功能特性介绍
+## 功能特性介绍<a id="functional_features_description"></a>
 
 Rec SDK Torch 支持纯显存模式和多级缓存模式两种训练模式。
 
