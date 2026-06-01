@@ -1,5 +1,7 @@
 # API列表
 
+注：当前API列表是从接口类型维度进行展示，如需从功能特性维度查看API使用，请参见[功能特性介绍](../migration_and_training.md#functional_features_description)。
+
 ## API概览
 
 - [接口说明](api_description.md)

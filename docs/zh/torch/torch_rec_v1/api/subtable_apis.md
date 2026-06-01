@@ -156,7 +156,7 @@ class ParameterConstraints:
 
 |参数名|类型| 可选/必选 | 说明                                                                                                                                                                                                          |
 |--|--|-------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|sharding_types|List[str]| 可选    | 分表的类型。当使用NPU设备时为必选参数，取值范围：<ul><li>"row_wise"：按照行号进行分表。</li><li>"data_parallel"：每个rank保留一个表副本。</li></ul><div class="note"><span class="notetitle">说明</span><div class="notebody">不支持混合使用不同的分表类型。</div></div> |
+|sharding_types|List[str]| 可选    | 分表的类型。当使用NPU设备时为必选参数，取值范围：<ul><li>"row_wise"：按照行号进行分表。</li><li>"data_parallel"：每个rank保留一个表副本。</li></ul><div class="note"><span class="notetitle">说明：</span><div class="notebody">不支持混合使用不同的分表类型。</div></div> |
 |compute_kernels|List[str]| 可选    | 计算的kernel类型。当使用NPU设备时为必选参数，取值范围：<ul><li>"fused"：采用合表的方式查询。该方式仅在sharding_type为"row_wise"时使用。</li><li>"dense"：采用分表的方式查询。该方式仅在sharding_type为"data_parallel"时使用。</li></ul>                                      |
 |min_partition|int| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
 |pooling_factors|List[float]| 可选    | 当使用NPU设备时仅支持默认值为POOLING_FACTOR，不支持用户自定义。                                                                                                                                                                    |

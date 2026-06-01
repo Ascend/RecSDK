@@ -169,7 +169,7 @@ class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
 | weight_init_stddev          | float                                       | 可选    | 权重初始化标准差，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.05。                                  |
 | initializer_type            | InitializerType                             | 可选    | 权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。详细说明请参见[InitializerType](multilevel_cache_management_apis.md#initializertype)。              |
 | admit_and_evict_config      | AdmitAndEvictConfig                         | 可选    | 特征准入和淘汰配置，默认不启用准入和淘汰功能。预留参数，当前暂不支持。                               |
-| is_incremental              | bool                                        | 可选    | 是否开启增量保存/加载功能。默认值为False，表示不开启增量保存/加载功能。                                                       |
+| is_incremental              | bool                                        | 可选    | 是否开启训练过程中增量数据处理功能，需结合增量保存/加载功能使用。默认值为False，表示不开启。增量保存/加载功能请参见[Saver](multilevel_cache_management_apis.md#saver)。                                                       |
 
 **返回值说明**
 
@@ -227,7 +227,7 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
 | is_weighted             | bool                                              | 可选    | 仅支持默认值False。                                                                                                                                                   |
 | need_accumulate_offset  | bool                                              | 可选    | 是否需要累积偏移量，默认值True。                                                                                                                                             |
 | device                  | torch.device                                      | 可选    | 计算设备，默认值torch.device("cpu")。                                                                                                                                   |
-| embedding_optimizer_cls | Type[torch.optim.Optimizer]                       | 可选    | 嵌入优化器类型，用于计算训练中所需的最小Device内存大小，默认值torch.optim.Adagrad。取值范围为：<ul><li>torch.optim.Adagrad：表示Adagrad优化器。</li><li>torch.optim.Adam：表示Adam优化器。</li><li>torch.optim.SGD：表示SGD优化器。</li><li>torchrec.optim.Adagrad：Adagrad优化器。</li><li>torchrec.optim.Adam：Adam优化器。</li><li>torchrec.optim.SGD：SGD优化器。</li></ul> <br>优化器类型参数需和调用[apply_optimizer_in_backward](optimizers_apis.md#TOPIC_0000002302229708)时传入的优化器类型一致。 |
+| embedding_optimizer_cls | Type[torch.optim.Optimizer]                       | 可选    | 嵌入优化器类型，用于计算训练中所需的最小Device内存大小，默认值torch.optim.Adagrad。取值范围：<ul><li>torch.optim.Adagrad：表示Adagrad优化器。</li><li>torch.optim.Adam：表示Adam优化器。</li><li>torch.optim.SGD：表示SGD优化器。</li><li>torchrec.optim.Adagrad：Adagrad优化器。</li><li>torchrec.optim.Adam：Adam优化器。</li><li>torchrec.optim.SGD：SGD优化器。</li></ul> <br>优化器类型参数需和调用[apply_optimizer_in_backward](optimizers_apis.md#TOPIC_0000002302229708)时传入的优化器类型一致。 |
 
 **返回值说明**
 
@@ -306,7 +306,7 @@ class EmbCacheEmbeddingConfig(EmbeddingConfig):
 |weight_init_stddev|float|可选|权重初始化标准差，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.05。|
 |initializer_type|InitializerType|可选|权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。|
 |admit_and_evict_config|AdmitAndEvictConfig|可选|特征准入和淘汰配置，默认不启用准入和淘汰功能。|
-|is_incremental|bool|可选| 是否开启增量保存/加载功能。默认值为False，表示不开启增量保存/加载功能。                      |
+|is_incremental|bool|可选| 是否开启训练过程中增量数据处理功能，需结合增量保存/加载功能使用。默认值为False，表示不开启。增量保存/加载功能请参见[Saver](multilevel_cache_management_apis.md#saver)。|
 
 **返回值说明**
 
@@ -364,7 +364,7 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
 | need_indices            | bool                                           | 可选    | 是否需要索引，默认值False。                                                                                                                                              |
 | need_accumulate_offset  | bool                                           | 可选    | 是否需要累积偏移量，默认值True。                                                                                                                                            |
 | device                  | torch.device                                   | 可选    | 计算设备，默认值torch.device("cpu")。                                                                                                                                  |
-| embedding_optimizer_cls | Type[torch.optim.Optimizer]                    | 可选    | 嵌入优化器类型，用于计算训练中所需的最小Device内存大小，默认值torch.optim.Adagrad。取值范围为：<ul><li>torch.optim.Adagrad：表示Adagrad优化器。</li><li>torch.optim.Adam：表示Adam优化器。</li><li>torch.optim.SGD：表示SGD优化器。</li><li>torchrec.optim.Adagrad：Adagrad优化器。</li><li>torchrec.optim.Adam：Adam优化器。</li><li>torchrec.optim.SGD：SGD优化器。</li><li>torchrec.optim.AccumulateAdagrad：带梯度累积功能的Adagrad优化器。</li><li>torchrec.optim.AccumulateAdam：带梯度累积功能的Adam优化器。</li><li>torchrec.optim.AccumulateSGD：带梯度累积功能的SGD优化器。</li></ul> <br>优化器类型参数需和调用[apply_optimizer_in_backward](optimizers_apis.md#TOPIC_0000002302229708)时传入的优化器类型一致。 |
+| embedding_optimizer_cls | Type[torch.optim.Optimizer]                    | 可选    | 嵌入优化器类型，用于计算训练中所需的最小Device内存大小，默认值torch.optim.Adagrad。取值范围：<ul><li>torch.optim.Adagrad：表示Adagrad优化器。</li><li>torch.optim.Adam：表示Adam优化器。</li><li>torch.optim.SGD：表示SGD优化器。</li><li>torchrec.optim.Adagrad：Adagrad优化器。</li><li>torchrec.optim.Adam：Adam优化器。</li><li>torchrec.optim.SGD：SGD优化器。</li><li>torchrec.optim.AccumulateAdagrad：带梯度累积功能的Adagrad优化器。</li><li>torchrec.optim.AccumulateAdam：带梯度累积功能的Adam优化器。</li><li>torchrec.optim.AccumulateSGD：带梯度累积功能的SGD优化器。</li></ul> <br>优化器类型参数需和调用[apply_optimizer_in_backward](optimizers_apis.md#TOPIC_0000002302229708)时传入的优化器类型一致。 |
 
 **返回值说明**
 
