@@ -16,6 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=too-many-lines
 
 import os
 import enum
@@ -34,18 +35,31 @@ import torch_npu
 from torch import Tensor, nn
 
 from dynamic_emb.distributed.utils import tabulate
-from dynamic_emb_extensions import device_timestamp, OptimizerType
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import (
     BaseDynamicEmbeddingOptimizerV2,
     OptimizerArgs,
     EmbOptimType,
     convert_optimizer_type,
 )
-from dynamic_emb.distributed.optimizers.adam_dynamicemb_optimizer import AdamDynamicEmbeddingOptimizerV2
-from dynamic_emb.distributed.optimizers.adamw_dynamicemb_optimizer import AdamWDynamicEmbeddingOptimizerV2
-from dynamic_emb.distributed.optimizers.adagrad_dynamicemb_optimizer import AdagradDynamicEmbeddingOptimizerV2
-from dynamic_emb.distributed.optimizers.row_wise_adagrad_dynamicemb_optimizer import RowWiseAdagradDynamicEmbeddingOptimizerV2
-from dynamic_emb.distributed.optimizers.sgd_dynamicemb_optimizer import SGDDynamicEmbeddingOptimizerV2
+from dynamic_emb.distributed.optimizers.adam_dynamicemb_optimizer import (
+    AdamDynamicEmbeddingOptimizer,
+    AdamDynamicEmbeddingOptimizerV2,
+)
+from dynamic_emb.distributed.optimizers.adamw_dynamicemb_optimizer import (
+    AdamWDynamicEmbeddingOptimizerV2,
+)
+from dynamic_emb.distributed.optimizers.sgd_dynamicemb_optimizer import (
+    SGDDynamicEmbeddingOptimizer,
+    SGDDynamicEmbeddingOptimizerV2,
+)
+from dynamic_emb.distributed.optimizers.adagrad_dynamicemb_optimizer import (
+    AdagradDynamicEmbeddingOptimizer,
+    AdagradDynamicEmbeddingOptimizerV2,
+)
+from dynamic_emb.distributed.optimizers.row_wise_adagrad_dynamicemb_optimizer import (
+    RowWiseAdagradDynamicEmbeddingOptimizer,
+    RowWiseAdagradDynamicEmbeddingOptimizerV2,
+)
 from dynamic_emb.distributed.dynamicemb_config import (
     DynamicEmbTableOptions,
     DynamicEmbPoolingMode,
@@ -57,24 +71,31 @@ from dynamic_emb.distributed.dynamicemb_config import (
 )
 from dynamic_emb.distributed.batched_dynamicemb_function import (
     DynamicEmbeddingFunctionV2,
+    DynamicEmbeddingBagFunction,
     DynamicEmbeddingFunctionV2Config,
     dynamicemb_prefetch,
 )
 from dynamic_emb.distributed.types import (
-    Cache, 
-    Storage, 
+    Cache,
+    Storage,
     StorageOptionalFilePaths,
 )
 from dynamic_emb.distributed.key_value_table import KeyValueTable, batched_export_keys_values
 from dynamic_emb.distributed.initializers.dynamicemb_initializers import (
-     NormalInitializer,
-     ConstantInitializer,
-     UniformInitializer,
-     TruncatedNormalInitializer,
-     DebugInitializer,
+    NormalInitializer,
+    ConstantInitializer,
+    UniformInitializer,
+    TruncatedNormalInitializer,
+    DebugInitializer,
 )
+from dynamic_emb_extensions import device_timestamp, OptimizerType, DynamicEmbTable
 
 logger = logging.getLogger(__name__)
+
+
+def warning_for_cstm_score() -> bool:
+    """Return whether to warn when a new CUSTOMIZED score is less than the old one."""
+    return os.environ.get("DYNAMICEMB_CSTM_SCORE_CHECK", "1") != "0"
 
 
 class WeightDecayMode(enum.IntEnum):
@@ -304,9 +325,7 @@ def _print_memory_consume(
         if optimizer is not None:
             optim_state_dim = optimizer.get_state_dim(emb_dim)
         else:
-            optim_state_dim = _get_optimizer_state_dim(
-                table_option.optimizer_type, emb_dim, element_size
-            )
+            optim_state_dim = _get_optimizer_state_dim(table_option.optimizer_type, emb_dim, element_size)
         total_dim = emb_dim + optim_state_dim
         total_memory = table_option.max_capacity * element_size * total_dim
         if F is None:
@@ -330,7 +349,7 @@ def _print_memory_consume(
                 F(int(local_dram_for_values * optim_state_dim // total_dim)),
             ]
         )
-    unit = "MB" if F == MB_ else "KB"
+    unit = "MB" if F is MB_ else "KB"
     title = [
         "table name",
         "",
@@ -363,13 +382,10 @@ def _export_matched_and_gather(
     d_num_matched = torch.zeros(1, dtype=torch.int64, device=device).to(torch.uint64)
     dynamic_table.count_matched(threshold, d_num_matched)
 
-    gathered_num_matched = [
-        torch.tensor(0, dtype=torch.int64, device=device)
-        for _ in range(world_size)
-    ]
+    gathered_num_matched = [torch.tensor(0, dtype=torch.int64, device=device) for _ in range(world_size)]
     dist.all_gather(gathered_num_matched, d_num_matched.to(dtype=torch.int64), group=pg)
 
-    total_matched = sum([t.item() for t in gathered_num_matched])  # t is on device.
+    total_matched = sum(t.item() for t in gathered_num_matched)  # t is on device.
     key_dtype = dynamic_table.key_type()
     value_dtype = dynamic_table.value_type()
     dim: int = dynamic_table.embedding_dim()
@@ -383,7 +399,13 @@ def _export_matched_and_gather(
     batch_size = batch_size if batch_size < search_capacity else search_capacity
     logger.debug(
         "[_export_matched_and_gather] rank=%s world_size=%s device=%s threshold=%d count_matched=%d capacity=%d batch_size=%d",
-        rank, world_size, device, threshold, total_matched, search_capacity, batch_size
+        rank,
+        world_size,
+        device,
+        threshold,
+        total_matched,
+        search_capacity,
+        batch_size,
     )
 
     d_keys = torch.empty(batch_size, dtype=key_dtype, device=device)
@@ -393,28 +415,19 @@ def _export_matched_and_gather(
     # Gather keys and values for all ranks
     gathered_keys = [torch.empty_like(d_keys) for _ in range(world_size)]
     gathered_vals = [torch.empty_like(d_vals) for _ in range(world_size)]
-    gathered_counts = [
-        torch.empty_like(d_count, dtype=torch.int64)
-        for _ in range(world_size)
-    ]
+    gathered_counts = [torch.empty_like(d_count, dtype=torch.int64) for _ in range(world_size)]
 
     while search_offset < search_capacity:
-        dynamic_table.export_batch_matched(
-            threshold, batch_size, search_offset, d_count, d_keys, d_vals
-        )
+        dynamic_table.export_batch_matched(threshold, batch_size, search_offset, d_count, d_keys, d_vals)
 
         dist.all_gather(gathered_keys, d_keys, group=pg)
         dist.all_gather(gathered_vals, d_vals, group=pg)
         dist.all_gather(gathered_counts, d_count.to(dtype=torch.int64), group=pg)
 
-        for d_keys_, d_vals_, d_count_ in zip(
-            gathered_keys, gathered_vals, gathered_counts
-        ):
+        for d_keys_, d_vals_, d_count_ in zip(gathered_keys, gathered_vals, gathered_counts):
             h_count = d_count_.cpu().item()
             ret_keys[ret_offset : ret_offset + h_count] = d_keys_[0:h_count].cpu()
-            ret_vals[
-                ret_offset * dim : (ret_offset + h_count) * dim
-            ] = d_vals_[0 : h_count * dim].cpu()
+            ret_vals[ret_offset * dim : (ret_offset + h_count) * dim] = d_vals_[0 : h_count * dim].cpu()
             ret_offset += h_count
 
         search_offset += batch_size
@@ -451,7 +464,11 @@ def _export_matched(
     batch_size = batch_size if batch_size < search_capacity else search_capacity
     logger.debug(
         "[_export_matched] device=%s threshold=%d count_matched=%d capacity=%d batch_size=%d",
-        device, threshold, total_matched, search_capacity, batch_size
+        device,
+        threshold,
+        total_matched,
+        search_capacity,
+        batch_size,
     )
 
     d_keys = torch.empty(batch_size, dtype=key_dtype, device=device)
@@ -459,9 +476,7 @@ def _export_matched(
     d_count = torch.zeros(1, dtype=torch.int64, device=device).to(torch.uint64)
 
     while search_offset < search_capacity:
-        dynamic_table.export_batch_matched(
-            threshold, batch_size, search_offset, d_count, d_keys, d_vals
-        )
+        dynamic_table.export_batch_matched(threshold, batch_size, search_offset, d_count, d_keys, d_vals)
 
         h_count = d_count.cpu().item()
         ret_keys[ret_offset : ret_offset + h_count] = d_keys[0:h_count].cpu()
@@ -471,9 +486,7 @@ def _export_matched(
         search_offset += batch_size
         d_count = torch.zeros(1, dtype=torch.int64, device=device).to(torch.uint64)
 
-    logger.debug(
-        "[_export_matched] export finished num_keys=%s num_vals=%s", ret_keys.numel(), ret_vals.numel()
-    )
+    logger.debug("[_export_matched] export finished num_keys=%s num_vals=%s", ret_keys.numel(), ret_vals.numel())
     return ret_keys, ret_vals
 
 
@@ -487,7 +500,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
 
     optimizer_args: OptimizerArgs
 
-    def __init__(
+    def __init__(  # pylint: disable=keyword-arg-before-vararg
         self,
         table_options: List[DynamicEmbTableOptions],
         table_names: Optional[List[str]] = None,
@@ -621,6 +634,14 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
         self._create_optimizer(optimizer_config)
         self._storage_externel = table_option.external_storage is not None
         self._create_cache_storage()
+        if self.pooling_mode != DynamicEmbPoolingMode.NONE:
+            self._tables = []
+            for storage in self._storages:
+                if not isinstance(storage, KeyValueTable):
+                    raise TypeError("The storage should be KeyValueTable when pooling mode is not None.")
+                kvtable = cast(KeyValueTable, storage)
+                self._tables.append(kvtable.table)
+            self._create_bag_optimizer(self._optimizer_type, self._optimizer_args, self._tables)
         self._initializers = []
         self._eval_initializers = []
         self._create_initializers()
@@ -658,9 +679,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
                     cache_option.bucket_capacity,
                 )
                 if capacity == 0:
-                    raise ValueError(
-                        "Can't use caching mode as the reserved HBM size is too small."
-                    )
+                    raise ValueError("Can't use caching mode as the reserved HBM size is too small.")
 
                 cache_option.max_capacity = capacity
                 cache_option.init_capacity = capacity
@@ -670,16 +689,12 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
                 storage_option.local_hbm_for_values = 0
                 PS = storage_option.external_storage
                 self._storages.append(
-                    PS(storage_option, self._optimizer)
-                    if PS
-                    else KeyValueTable(storage_option, self._optimizer)
+                    PS(storage_option, self._optimizer) if PS else KeyValueTable(storage_option, self._optimizer)
                 )
             else:
                 self._caches.append(None)
                 self._storages.append(KeyValueTable(option, self._optimizer))
-        _print_memory_consume(
-            self._table_names, self._dynamicemb_options, self._optimizer, self.device_id
-        )
+        _print_memory_consume(self._table_names, self._dynamicemb_options, self._optimizer, self.device_id)
 
     def _create_initializers(self) -> None:
         def _get_initializer(initializer_args):
@@ -690,7 +705,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
                 initializer = ConstantInitializer(initializer_args)
             elif mode == DynamicEmbInitializerMode.UNIFORM:
                 initializer = UniformInitializer(initializer_args)
-            elif mode ==DynamicEmbInitializerMode.TRUNCATED_NORMAL:
+            elif mode == DynamicEmbInitializerMode.TRUNCATED_NORMAL:
                 initializer = TruncatedNormalInitializer(initializer_args)
             elif mode == DynamicEmbInitializerMode.DEBUG:
                 initializer = DebugInitializer(initializer_args)
@@ -712,11 +727,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
         self.stochastic_rounding = config.stochastic_rounding
 
         self.weight_decay_mode = config.weight_decay_mode
-        if (
-            config.weight_decay_mode == WeightDecayMode.COUNTER
-            ) != (
-            config.counter_based_regularization is not None
-        ):
+        if (config.weight_decay_mode == WeightDecayMode.COUNTER) != (config.counter_based_regularization is not None):
             raise AssertionError(
                 "Need to set weight_decay_mode=WeightDecayMode.COUNTER together with valid counter_based_regularization"
             )
@@ -736,6 +747,47 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
         )
         self._optimizer_args = optimizer_args
         self._optimizer = self._create_optimizer_instance(config.optimizer_type, optimizer_args)
+
+    def _create_bag_optimizer(
+        self,
+        optimizer_type: EmbOptimType,
+        optimizer_args: OptimizerArgs,
+        tables: List[DynamicEmbTable],
+    ) -> None:
+        if optimizer_type == EmbOptimType.SGD:
+            self._bag_optimizer = SGDDynamicEmbeddingOptimizer(
+                optimizer_args,
+                self._dynamicemb_options,
+                tables,
+            )
+        elif optimizer_type == EmbOptimType.EXACT_SGD:
+            self._bag_optimizer = SGDDynamicEmbeddingOptimizer(
+                optimizer_args,
+                self._dynamicemb_options,
+                tables,
+            )
+        elif optimizer_type == EmbOptimType.ADAM:
+            self._bag_optimizer = AdamDynamicEmbeddingOptimizer(
+                optimizer_args,
+                self._dynamicemb_options,
+                tables,
+            )
+        elif optimizer_type == EmbOptimType.EXACT_ADAGRAD:
+            self._bag_optimizer = AdagradDynamicEmbeddingOptimizer(
+                optimizer_args,
+                self._dynamicemb_options,
+                tables,
+            )
+        elif optimizer_type == EmbOptimType.EXACT_ROWWISE_ADAGRAD:
+            self._bag_optimizer = RowWiseAdagradDynamicEmbeddingOptimizer(
+                optimizer_args,
+                self._dynamicemb_options,
+                tables,
+            )
+        else:
+            raise ValueError(
+                f"Not supported optimizer type ,optimizer type = {optimizer_type} {type(optimizer_type)} {optimizer_type.value}."
+            )
 
     def split_embedding_weights(self) -> List[Tensor]:
         """
@@ -781,10 +833,9 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
 
     def set_learning_rate(self, lr: float) -> None:
         if self.pooling_mode != DynamicEmbPoolingMode.NONE:
-            raise RuntimeError("BatchedDynamicEmbeddingTables does not support " \
-            "setting learning rate for Pooling Mode.")
-        self._optimizer.set_learning_rate(lr)
-        return
+            self._bag_optimizer.set_learning_rate(lr)
+        else:
+            self._optimizer.set_learning_rate(lr)
 
     @property
     def enable_prefetch(
@@ -813,15 +864,14 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
         if indices.dtype != self.index_type:
             indices = indices.to(self.index_type)
 
-        if any([not option.training for option in self._dynamicemb_options]) and self.training:
+        if any(not option.training for option in self._dynamicemb_options) and self.training:
             raise RuntimeError(
                 "BatchedDynamicEmbeddingTables does not support training when some tables are in eval mode."
             )
 
         scores = []
-        # if self.training:
         for table_name in self._table_names:
-            if table_name not in self._scores.keys():
+            if table_name not in self._scores:
                 raise RuntimeError(f"Must set score for table '{table_name}' whose score_strategy is customized.")
             scores.append(self._scores[table_name])
 
@@ -837,7 +887,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
                     # if not training and not caching, we don't need to update score.
                     table.score_update = self.training or self._caching
                     table.set_score(self._scores[self.table_names[i]])
-            
+
             emb_config = DynamicEmbeddingFunctionV2Config(
                 indices=indices,
                 offsets=offsets,
@@ -849,7 +899,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
                 optimizer=self._optimizer,
                 enable_prefetch=self._enable_prefetch,
                 input_dist_dedup=self.use_index_dedup,
-                training=self.training
+                training=self.training,
             )
             res = DynamicEmbeddingFunctionV2.apply(
                 emb_config,
@@ -863,6 +913,27 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
                 if isinstance(storage, KeyValueTable):
                     table = cast(KeyValueTable, storage)
                     table.score_update = False
+        else:
+            res = DynamicEmbeddingBagFunction.apply(
+                indices,
+                offsets,
+                self.use_index_dedup,
+                self.table_offsets_in_feature,
+                self._tables,
+                scores,
+                self.total_D,
+                self.dims,
+                self.feature_table_map,
+                self.embedding_dtype,
+                self.output_dtype,
+                self.pooling_mode,
+                self._unique_op,
+                torch.device(self.device_id),
+                self._bag_optimizer,
+                self.training,
+                [option.eval_initializer_args for option in self._dynamicemb_options],
+                self._empty_tensor,
+            )
         # We have to update cache's core in eval mode.
         if self.training or self._caching:
             self._update_score()
@@ -942,7 +1013,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
             if not isinstance(table_score, int):
                 raise ValueError(f"Table's score is expect to int but got {type(table_score)}")
             if table_score == 0:
-                raise ValueError(f"Can't set table's score to 0.")
+                raise ValueError("Can't set table's score to 0.")
             index = self._table_names.index(table_name)
             if self._dynamicemb_options[index].score_strategy != DynamicEmbScoreStrategy.CUSTOMIZED:
                 raise ValueError(
@@ -952,7 +1023,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
             if table_name in self._scores and self._scores[table_name] > table_score:
                 if warning_for_cstm_score():
                     warnings.warn(
-                        f"New set score is less than the old one for table '{table_name}': " 
+                        f"New set score is less than the old one for table '{table_name}': "
                         f"{table_score} < {self._scores[table_name]}",
                         UserWarning,
                     )
@@ -1007,10 +1078,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
         ret_scores = []
         for table_name, option in zip(self._table_names, self._dynamicemb_options):
             cur_score = self._scores[table_name]
-            if (
-                self.enable_prefetch
-                and option.score_strategy == DynamicEmbScoreStrategy.STEP
-            ):
+            if self.enable_prefetch and option.score_strategy == DynamicEmbScoreStrategy.STEP:
                 max_uint64 = (2**64) - 1
                 new_score = cur_score + self.num_prefetch_ahead - 1
                 if new_score > max_uint64:
@@ -1056,15 +1124,12 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
             if isinstance(storage, KeyValueTable) and not storage._use_score:
                 dist.barrier()  # sync global timestamp
                 cast(KeyValueTable, storage).update_timestamp()
-            optional_files = StorageOptionalFilePaths(
-                score_file_path=emb_score_path,
-                opt_file_path=opt_value_path
-            )
+            optional_files = StorageOptionalFilePaths(score_file_path=emb_score_path, opt_file_path=opt_value_path)
             storage.dump(
                 meta_file_path,
                 emb_key_path,
                 emb_value_path,
-                optional_files,   
+                optional_files,
                 include_optim=optim,
                 include_meta=(rank == 0),
             )
@@ -1107,9 +1172,9 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
             num_key_files = len(emb_key_files)
             for i in range(num_key_files):
                 optional_files = StorageOptionalFilePaths(
-                score_file_path=emb_score_files[i] if len(emb_score_files) > 0 else None,
-                opt_file_path=opt_value_files[i] if len(opt_value_files) > 0 else None
-            )
+                    score_file_path=emb_score_files[i] if len(emb_score_files) > 0 else None,
+                    opt_file_path=opt_value_files[i] if len(opt_value_files) > 0 else None,
+                )
                 storage.load(
                     meta_json_file,
                     emb_key_files[i],
@@ -1119,7 +1184,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
                 )
 
     def export_keys_values(
-            self, table_name: str, device: torch.device, batch_size: int = 65536
+        self, table_name: str, device: torch.device, batch_size: int = 65536
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         keys_list = []
         values_list = []
@@ -1128,16 +1193,14 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
             if table_name != dynamic_table_name:
                 continue
 
-            for keys, embeddings, _, _ in batched_export_keys_values(
-                    dynamic_table.table, device, batch_size
-            ):
+            for keys, embeddings, _, _ in batched_export_keys_values(dynamic_table.table, device, batch_size):
                 keys_list.append(keys)
                 values_list.append(embeddings)
 
         return torch.cat(keys_list), torch.cat(values_list, dim=0)
 
     def _create_optimizer_instance(
-            self, optimizer_type: EmbOptimType, optimizer_args: OptimizerArgs
+        self, optimizer_type: EmbOptimType, optimizer_args: OptimizerArgs
     ) -> BaseDynamicEmbeddingOptimizerV2:
         if optimizer_type == EmbOptimType.ADAM:
             return AdamDynamicEmbeddingOptimizerV2(optimizer_args)
@@ -1181,27 +1244,19 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
 
             storage = self._storages[index]
             if not isinstance(storage, KeyValueTable):
-                raise RuntimeError(
-                    "Only KeyValueTable is supported for incremental dump"
-                )
+                raise RuntimeError("Only KeyValueTable is supported for incremental dump")
             key, value = _export_matched_per_table(pg, storage, threshold)
-            logger.debug(
-                "[incremental_dump] table=%s storage export num_keys=%d", table_name, key.numel()
-            )
+            logger.debug("[incremental_dump] table=%s storage export num_keys=%d", table_name, key.numel())
 
             if self._caches[index] is not None:
                 cache = self._caches[index]
                 key_c, value_c = _export_matched_per_table(pg, cache, threshold)
-                logger.debug(
-                    "[incremental_dump] table=%s cache export num_keys=%d", table_name, key_c.numel()
-                )
+                logger.debug("[incremental_dump] table=%s cache export num_keys=%d", table_name, key_c.numel())
 
                 mask = ~torch.isin(key, key_c)
                 if key.numel() != 0:
                     if mask.sum() != 0:
-                        value = (
-                            value.view(key.numel(), -1)[mask, :].contiguous().view(-1)
-                        )
+                        value = value.view(key.numel(), -1)[mask, :].contiguous().view(-1)
                         key = key[mask].contiguous()
                         key = torch.cat((key_c, key), dim=0).contiguous()
                         value = torch.cat((value_c, value), dim=0).contiguous()
