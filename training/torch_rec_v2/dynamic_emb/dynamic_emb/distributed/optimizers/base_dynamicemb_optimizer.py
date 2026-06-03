@@ -60,7 +60,7 @@ def convert_optimizer_type(optimizer: EmbOptimType) -> OptimizerType:
         return OptimizerType.Adam
     elif optimizer == EmbOptimType.ADAMW:
         return OptimizerType.AdamW
-    elif optimizer == EmbOptimType.SGD or optimizer == EmbOptimType.EXACT_SGD:
+    elif optimizer in (EmbOptimType.SGD, EmbOptimType.EXACT_SGD):
         return OptimizerType.SGD
     elif optimizer == EmbOptimType.EXACT_ADAGRAD:
         return OptimizerType.AdaGrad
@@ -135,7 +135,6 @@ class BaseDynamicEmbeddingOptimizer(abc.ABC):
 
     def set_learning_rate(self, new_lr) -> None:
         self._opt_args.learning_rate = new_lr
-        return
 
     def _create_tables(self, states: List[DynamicEmbTable]) -> None:
         for i, table_option in enumerate(self._table_options):
@@ -169,16 +168,20 @@ class BaseDynamicEmbeddingOptimizerV2(abc.ABC):
         grads: torch.Tensor,
         embs: torch.Tensor,
         states: Optional[torch.Tensor],
-    ) -> None:
-        ...
+    ) -> None: ...
 
     @abc.abstractmethod
     def fused_update(
         self,
         grads: torch.Tensor,
         values: torch.Tensor,
-    ) -> None:
-        ...
+    ) -> None: ...
+    @abc.abstractmethod
+    def fused_update_hybrid(
+        self,
+        grads: torch.Tensor,
+        values: torch.Tensor,
+    ) -> None: ...
 
     @abc.abstractmethod
     def fused_update_with_pointer(
@@ -186,16 +189,20 @@ class BaseDynamicEmbeddingOptimizerV2(abc.ABC):
         grads: torch.Tensor,
         value_ptr: torch.Tensor,  # pointers to embeddng + optimizer states
         value_type: Optional[DynamicEmbDataType] = None,
-    ) -> None:
-        ...
+    ) -> None: ...
+    @abc.abstractmethod
+    def fused_update_with_pointer_hybrid(
+        self,
+        grads: torch.Tensor,
+        value_ptr: torch.Tensor,  # pointers to embeddng + optimizer states
+        value_type: Optional[DynamicEmbDataType] = None,
+    ) -> None: ...
 
     @abc.abstractmethod
-    def get_opt_args(self) -> Dict[str, Any]:
-        ...
+    def get_opt_args(self) -> Dict[str, Any]: ...
 
     @abc.abstractmethod
-    def set_opt_args(self, args: Dict[str, Any]) -> None:
-        ...
+    def set_opt_args(self, args: Dict[str, Any]) -> None: ...
 
     @abc.abstractmethod
     def get_state_dim(self, emb_dim: int) -> int:

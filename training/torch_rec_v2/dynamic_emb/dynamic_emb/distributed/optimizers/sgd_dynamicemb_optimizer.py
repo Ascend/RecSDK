@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pylint: disable=duplicate-code
 # -*- coding: utf-8 -*-
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -24,11 +25,9 @@ import torch
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import (
     BaseDynamicEmbeddingOptimizer,
     BaseDynamicEmbeddingOptimizerV2,
-    OptimizerArgs,
     get_required_arg,
 )
 from dynamic_emb.distributed.dynamicemb_config import (
-    DynamicEmbTableOptions,
     DynamicEmbTable,
     torch_to_dyn_emb,
 )
@@ -36,19 +35,13 @@ from dynamic_emb_extensions import (
     dynamic_emb_sgd_with_table,
     dynamic_emb_sgd_fused,
     dynamic_emb_sgd_with_pointer,
+    dynamic_emb_sgd_with_pointer_hybrid,
+    dynamic_emb_sgd_fused_hybrid,
     DynamicEmbDataType,
 )
 
 
 class SGDDynamicEmbeddingOptimizer(BaseDynamicEmbeddingOptimizer):
-    def __init__(
-        self,
-        opt_args: OptimizerArgs,
-        table_options: List[DynamicEmbTableOptions],
-        hashtables: List[DynamicEmbTable],
-    ) -> None:
-        super().__init__(opt_args, table_options, hashtables)
-
     def update(
         self,
         hashtables: List[DynamicEmbTable],
@@ -89,16 +82,9 @@ class SGDDynamicEmbeddingOptimizer(BaseDynamicEmbeddingOptimizer):
 
     def set_opt_args(self, args: Dict[str, Any]):
         self._opt_args.learning_rate = get_required_arg(args, "lr")
-        return
 
 
 class SGDDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
-    def __init__(
-        self,
-        opt_args: OptimizerArgs,
-    ) -> None:
-        super().__init__(opt_args)
-
     def update(
         self,
         grads: torch.Tensor,
@@ -119,6 +105,18 @@ class SGDDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
             lr,
         )
 
+    def fused_update_hybrid(
+        self,
+        grads: torch.Tensor,
+        values: torch.Tensor,
+    ) -> None:
+        lr = self._opt_args.learning_rate
+        dynamic_emb_sgd_fused_hybrid(
+            grads,
+            values,
+            lr,
+        )
+
     def fused_update_with_pointer(
         self,
         grads: torch.Tensor,
@@ -127,6 +125,20 @@ class SGDDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
     ) -> None:
         lr = self._opt_args.learning_rate
         dynamic_emb_sgd_with_pointer(
+            grads,
+            value_ptr,
+            value_type,
+            lr,
+        )
+
+    def fused_update_with_pointer_hybrid(
+        self,
+        grads: torch.Tensor,
+        value_ptr: torch.Tensor,  # pointers to embeddng + optimizer states
+        value_type: Optional[DynamicEmbDataType] = None,
+    ) -> None:
+        lr = self._opt_args.learning_rate
+        dynamic_emb_sgd_with_pointer_hybrid(
             grads,
             value_ptr,
             value_type,
@@ -142,7 +154,6 @@ class SGDDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
 
     def set_opt_args(self, args: Dict[str, Any]):
         self._opt_args.learning_rate = get_required_arg(args, "lr")
-        return
 
     def get_state_dim(self, emb_dim: int) -> int:
         """

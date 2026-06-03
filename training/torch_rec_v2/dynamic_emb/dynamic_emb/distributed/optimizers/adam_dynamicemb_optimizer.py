@@ -36,6 +36,8 @@ from dynamic_emb_extensions import (
     dynamic_emb_adamW_fused,
     dynamic_emb_adamW_with_pointer,
     dynamic_emb_adamW_with_table,
+    dynamic_emb_adamW_fused_hybrid,
+    dynamic_emb_adamW_with_pointer_hybrid,
     DynamicEmbDataType,
 )
 
@@ -60,7 +62,7 @@ class AdamDynamicEmbeddingOptimizer(BaseDynamicEmbeddingOptimizer):
         grads: List[torch.Tensor],
     ) -> None:
         for ht in hashtables:
-            if ht not in self._table_state_map.keys():
+            if ht not in self._table_state_map:
                 raise ValueError(
                     f"DynamicEmb ERROR: Hashtable {ht} not found in _table_state_map in class {self.__class__.__name__}."
                 )
@@ -114,7 +116,6 @@ class AdamDynamicEmbeddingOptimizer(BaseDynamicEmbeddingOptimizer):
         self._opt_args.beta2 = get_required_arg(args, "beta2")
         self._opt_args.eps = get_required_arg(args, "eps")
         self._opt_args.weight_decay = get_required_arg(args, "weight_decay")
-        return
 
 
 class AdamDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
@@ -158,6 +159,28 @@ class AdamDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
             self._iterations,
         )
 
+    def fused_update_hybrid(
+        self,
+        grads: torch.Tensor,
+        values: torch.Tensor,
+    ) -> None:
+        lr = self._opt_args.learning_rate
+        beta1 = self._opt_args.beta1
+        beta2 = self._opt_args.beta2
+        weight_decay = self._opt_args.weight_decay
+        eps = self._opt_args.eps
+
+        dynamic_emb_adamW_fused_hybrid(
+            grads,
+            values,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            self._iterations,
+        )
+
     def fused_update_with_pointer(
         self,
         grads: torch.Tensor,
@@ -174,6 +197,33 @@ class AdamDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
         state_dim = self.get_state_dim(emb_dim)
 
         dynamic_emb_adamW_with_pointer(
+            grads,
+            value_ptr,
+            value_type,
+            state_dim,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            self._iterations,
+        )
+
+    def fused_update_with_pointer_hybrid(
+        self,
+        grads: torch.Tensor,
+        value_ptr: torch.Tensor,  # pointers to embeddng + optimizer states
+        value_type: Optional[DynamicEmbDataType] = None,
+    ) -> None:
+        lr = self._opt_args.learning_rate
+        beta1 = self._opt_args.beta1
+        beta2 = self._opt_args.beta2
+        weight_decay = self._opt_args.weight_decay
+        eps = self._opt_args.eps
+        emb_dim = grads.size(1)
+        state_dim = self.get_state_dim(emb_dim)
+
+        dynamic_emb_adamW_with_pointer_hybrid(
             grads,
             value_ptr,
             value_type,
@@ -205,7 +255,6 @@ class AdamDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
         self._opt_args.beta2 = get_required_arg(args, "beta2")
         self._opt_args.eps = get_required_arg(args, "eps")
         self._opt_args.weight_decay = get_required_arg(args, "weight_decay")
-        return
 
     def get_state_dim(self, emb_dim: int) -> int:
         """
