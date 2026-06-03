@@ -171,10 +171,15 @@ static bool ShouldUseOptimizerSimd(uint32_t gradDim, int32_t inLength, DataType 
            (valType == DataType::Float32);
 }
 
-static bool ShouldUseAdagradSimd(uint32_t gradDim, int32_t inLength, DataType gradType, DataType valType)
+static bool ShouldUseAdagradSimd(uint32_t gradDim, int32_t inLength, DataType gradType, DataType valType,
+                                 const std::shared_ptr<dyn_emb::DynamicVariableBase> ht = nullptr)
 {
-    return (gradDim > 512U) && (gradDim % 8U == 0U) && (static_cast<int64_t>(inLength) >= kAdagradSimdElemThreshold) &&
-           (gradType == DataType::Float32) && (valType == DataType::Float32);
+    if (ht != nullptr && !ht->is_pure_hbm_mode()) {
+        return true;
+    }
+    const bool typesOk = (gradType == DataType::Float32) && (valType == DataType::Float32);
+    return typesOk && (gradDim > 512U) && (gradDim % 8U == 0U) &&
+           (static_cast<int64_t>(inLength) >= kAdagradSimdElemThreshold);
 }
 
 static bool LaunchAdagradSimdTiling(const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim,
@@ -1615,7 +1620,7 @@ void dynamic_emb_adagrad_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase
     int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
     auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
     const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
-    if (ShouldUseAdagradSimd(gradDim, inLength, gradType, weightType)) {
+    if (ShouldUseAdagradSimd(gradDim, inLength, gradType, weightType, ht)) {
         constexpr uint32_t kRowsPerGroup = 1U;
         if (LaunchAdagradSimd(stream, gradsPtr, valuesPtr, foundsPtr, gradsContinuous, gradDim, numRows, maxCores, lr,
                               eps, kRowsPerGroup)) {
@@ -2059,6 +2064,64 @@ void lookup_backward(const at::Tensor grad, const at::Tensor unique_buffer, cons
     TORCH_CHECK(kernelStatus.item<bool>(),
                 "lookup_backward kernel failed: src_index == -1 detected in kernel (kernelStatus == false).");
 }
+
+void dynamic_emb_adagrad_with_pointer_hybrid(const torch::Tensor& grads, const torch::Tensor& valPointers,
+                                             DataType valType, int64_t stateDim, const float lr, const float eps)
+{
+    int32_t inLength = static_cast<int32_t>(grads.numel());
+    if (inLength == 0) {
+        LOG_ERROR("dynamic_emb_adagrad_with_pointer_hybrid: grads.numel is zero!");
+        return;
+    }
+    const uint32_t gradDim = static_cast<uint32_t>(grads.size(1));
+    if (stateDim != static_cast<int64_t>(gradDim)) {
+        LOG_ERROR("dynamic_emb_adagrad_with_pointer_hybrid: stateDim must equal embedding dim (sum of squared grads "
+                  "state per dim), "
+                  << "stateDim=" << stateDim << ", gradDim=" << gradDim);
+        return;
+    }
+
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    auto gradsContinuous = grads.is_contiguous() ? grads : grads.contiguous();
+    auto valPointersContinuous = valPointers.is_contiguous() ? valPointers : valPointers.contiguous();
+
+    uint8_t* gradsPtr = static_cast<uint8_t*>(gradsContinuous.data_ptr());
+    uint8_t* valuesPtr = static_cast<uint8_t*>(valPointersContinuous.data_ptr());
+
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
+    constexpr uint32_t kRowsPerGroup = 2U;
+    LaunchAdagradSimd(stream, gradsPtr, valuesPtr, nullptr, gradsContinuous, gradDim, numRows, maxCores, lr, eps,
+                      kRowsPerGroup);
+}
+
+void dynamic_emb_adagrad_fused_hybrid(const torch::Tensor& grads, const torch::Tensor& values, const float lr,
+                                      const float eps)
+{
+    int32_t inLength = static_cast<int32_t>(grads.numel());
+    if (inLength == 0) {
+        LOG_ERROR("dynamic_emb_adagrad_fused_hybrid: grads.numel is zero!");
+        return;
+    }
+    uint32_t gradDim = static_cast<uint32_t>(grads.size(1));
+    uint32_t valDim = static_cast<uint32_t>(values.size(1));
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    auto gradsContinuous = grads.is_contiguous() ? grads : grads.contiguous();
+    auto valuesContinuous = values.is_contiguous() ? values : values.contiguous();
+    uint8_t* gradsPtr = static_cast<uint8_t*>(gradsContinuous.data_ptr());
+    uint8_t* valuesPtr = static_cast<uint8_t*>(valuesContinuous.data_ptr());
+
+    auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    auto valType = scalartype_to_datatype(convertTypeMetaToScalarType(values.dtype()));
+    if (gradType != DataType::Float32 || valType != DataType::Float32) {
+        LOG_ERROR("dynamic_emb_adagrad_fused_hybrid: only float32 is supported.");
+        return;
+    }
+
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
+    LaunchAdagradFusedSimd(stream, gradsPtr, valuesPtr, gradsContinuous, gradDim, valDim, numRows, maxCores, lr, eps);
+}
 // PYTHON WARP
 void bind_dyn_emb_op(py::module& m)
 {
@@ -2319,5 +2382,11 @@ void bind_dyn_emb_op(py::module& m)
           py::arg("unique_indices"), py::arg("inverse_indices"), py::arg("biased_offsets"), py::arg("dim"),
           py::arg("tables_num"), py::arg("batch_size"), py::arg("num_feature"), py::arg("num_key"),
           py::arg("combiner"));
+    m.def("dynamic_emb_adagrad_fused_hybrid", &dyn_emb::dynamic_emb_adagrad_fused_hybrid,
+          "AdaGrad optimizer for dynamic embedding (SIMD only)", py::arg("grads"), py::arg("values"), py::arg("lr"),
+          py::arg("eps"));
+    m.def("dynamic_emb_adagrad_with_pointer_hybrid", &dyn_emb::dynamic_emb_adagrad_with_pointer_hybrid,
+          "AdaGrad optimizer for dynamic embedding (SIMD only)", py::arg("grads"), py::arg("valPointers"),
+          py::arg("valType"), py::arg("stateDim"), py::arg("lr"), py::arg("eps"));
 }
 }  // namespace dyn_emb

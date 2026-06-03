@@ -27,11 +27,23 @@ class AdagradSimd {
 public:
     // UB 四槽：u0=g, u1=w, u2=acc, u3=scratch
     static constexpr uint64_t kUbSlotCount = 4ULL;
+    // float 矢量搬运/计算需 32B 对齐，见 CANN「非对齐场景」
+    static constexpr uint32_t kFloatElemsPer32B = 8U;
+
+    __aicore__ inline static uint32_t GradDimAlignedElemCount(uint32_t gradDim)
+    {
+        return ((gradDim + kFloatElemsPer32B - 1U) / kFloatElemsPer32B) * kFloatElemsPer32B;
+    }
+
+    __aicore__ inline static bool IsGradDim32BAligned(uint32_t gradDim)
+    {
+        return (gradDim % kFloatElemsPer32B) == 0U;
+    }
 
     __aicore__ inline explicit AdagradSimd(TPipe* pipe) : pipe_(pipe) {}
 
     __aicore__ inline void Init(GM_ADDR grads, GM_ADDR rowPtrs, GM_ADDR founds,
-        const __gm__ AdagradSimdTilingData* tiling)
+                                const __gm__ AdagradSimdTilingData* tiling)
     {
         tiling_ = tiling;
         const int64_t numRows = static_cast<int64_t>(tiling_->numRows);
@@ -45,8 +57,9 @@ public:
             foundsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t*>(founds), static_cast<uint64_t>(numRows));
         }
 
-        const uint64_t ubBytes = static_cast<uint64_t>(rowsPerGroup) * static_cast<uint64_t>(tiling_->gradDim) *
-            sizeof(float) * kUbSlotCount;
+        const uint32_t gradDimUb = GradDimAlignedElemCount(tiling_->gradDim);
+        const uint64_t ubBytes =
+            static_cast<uint64_t>(rowsPerGroup) * static_cast<uint64_t>(gradDimUb) * sizeof(float) * kUbSlotCount;
         pipe_->InitBuffer(ubMem_, ubBytes);
     }
 
@@ -78,30 +91,69 @@ public:
         DataCopy(dstTensor, src, len);
     }
 
+    // 非 32B 对齐 gradDim：DataCopyPad 搬入并补 0，矢量区按对齐长度计算（冗余参与 elewise）
+    __aicore__ inline void CopyGmToUbPad(const LocalTensor<float>& dst, __gm__ float* srcGm, uint32_t gradDim) const
+    {
+        const uint32_t alignedLen = GradDimAlignedElemCount(gradDim);
+        GlobalTensor<float> srcTensor;
+        srcTensor.SetGlobalBuffer(srcGm, static_cast<uint64_t>(alignedLen));
+        const DataCopyExtParams copyParams{1, static_cast<uint32_t>(gradDim * sizeof(float)), 0, 0, 0};
+        const DataCopyPadExtParams<float> padParams{true, 0, 0, 0};
+        DataCopyPad(dst, srcTensor, copyParams, padParams);
+    }
+
+    __aicore__ inline void CopyUbToGmPad(__gm__ float* dstGm, const LocalTensor<float>& src, uint32_t gradDim) const
+    {
+        const uint32_t alignedLen = GradDimAlignedElemCount(gradDim);
+        GlobalTensor<float> dstTensor;
+        dstTensor.SetGlobalBuffer(dstGm, static_cast<uint64_t>(alignedLen));
+        const DataCopyExtParams copyParams{1, static_cast<uint32_t>(gradDim * sizeof(float)), 0, 0, 0};
+        DataCopyPad(dstTensor, src, copyParams);
+    }
+
+    __aicore__ inline void CopyInGradToUbPad(const LocalTensor<float>& dst, int64_t gradBase, uint32_t gradDim) const
+    {
+        const DataCopyExtParams copyParams{1, static_cast<uint32_t>(gradDim * sizeof(float)), 0, 0, 0};
+        const DataCopyPadExtParams<float> padParams{true, 0, 0, 0};
+        DataCopyPad(dst, gradsGm_[gradBase], copyParams, padParams);
+    }
+
     __aicore__ inline void CopyInRow(uint32_t gradDim, int32_t rowIdx, int64_t gradBase, uint32_t ubOff,
-        const LocalTensor<float>& u0, const LocalTensor<float>& u1, const LocalTensor<float>& u2) const
+                                     const LocalTensor<float>& u0, const LocalTensor<float>& u1,
+                                     const LocalTensor<float>& u2) const
     {
         const LocalTensor<float> gUb = u0[ubOff];
         const LocalTensor<float> wUb = u1[ubOff];
         const LocalTensor<float> aUb = u2[ubOff];
-        DataCopy(gUb, gradsGm_[gradBase], gradDim);
         __gm__ float* rowPtr = GetRowPtr(rowIdx);
-        CopyGmToUb(wUb, rowPtr, gradDim);
-        CopyGmToUb(aUb, rowPtr + static_cast<int64_t>(gradDim), gradDim);
+        if (IsGradDim32BAligned(gradDim)) {
+            DataCopy(gUb, gradsGm_[gradBase], gradDim);
+            CopyGmToUb(wUb, rowPtr, gradDim);
+            CopyGmToUb(aUb, rowPtr + static_cast<int64_t>(gradDim), gradDim);
+        } else {
+            CopyInGradToUbPad(gUb, gradBase, gradDim);
+            CopyGmToUbPad(wUb, rowPtr, gradDim);
+            CopyGmToUbPad(aUb, rowPtr + static_cast<int64_t>(gradDim), gradDim);
+        }
     }
 
     __aicore__ inline void CopyOutRow(uint32_t gradDim, int32_t rowIdx, uint32_t ubOff, const LocalTensor<float>& u1,
-        const LocalTensor<float>& u2) const
+                                      const LocalTensor<float>& u2) const
     {
         const LocalTensor<float> wUb = u1[ubOff];
         const LocalTensor<float> aUb = u2[ubOff];
         __gm__ float* rowPtr = GetRowPtr(rowIdx);
-        CopyUbToGm(rowPtr, wUb, gradDim);
-        CopyUbToGm(rowPtr + static_cast<int64_t>(gradDim), aUb, gradDim);
+        if (IsGradDim32BAligned(gradDim)) {
+            CopyUbToGm(rowPtr, wUb, gradDim);
+            CopyUbToGm(rowPtr + static_cast<int64_t>(gradDim), aUb, gradDim);
+        } else {
+            CopyUbToGmPad(rowPtr, wUb, gradDim);
+            CopyUbToGmPad(rowPtr + static_cast<int64_t>(gradDim), aUb, gradDim);
+        }
     }
 
     __aicore__ inline void ComputeAdagrad(uint32_t len, LocalTensor<float>& u0, LocalTensor<float>& u1,
-        LocalTensor<float>& u2, LocalTensor<float>& u3) const
+                                          LocalTensor<float>& u2, LocalTensor<float>& u3) const
     {
         const float lr = tiling_->lr;
         const float eps = tiling_->eps;
@@ -170,16 +222,16 @@ public:
                 continue;
             }
             const int64_t rowGradBase = gradBase + static_cast<int64_t>(r) * static_cast<int64_t>(gradDim);
-            const uint32_t len = gradDim;
+            const uint32_t computeLen = GradDimAlignedElemCount(gradDim);
             LocalTensor<float> u = ubMem_.Get<float>();
             LocalTensor<float> u0 = u[0];
-            LocalTensor<float> u1 = u[len];
-            LocalTensor<float> u2 = u[len * 2U];
-            LocalTensor<float> u3 = u[len * 3U];
+            LocalTensor<float> u1 = u[computeLen];
+            LocalTensor<float> u2 = u[computeLen * 2U];
+            LocalTensor<float> u3 = u[computeLen * 3U];
 
             CopyInRow(gradDim, absRow, rowGradBase, 0U, u0, u1, u2);
             SyncMte2V();
-            ComputeAdagrad(len, u0, u1, u2, u3);
+            ComputeAdagrad(computeLen, u0, u1, u2, u3);
             SyncVMte3();
             CopyOutRow(gradDim, absRow, 0U, u1, u2);
             SyncMte3Mte2();
@@ -197,7 +249,8 @@ public:
         const int32_t numRows = tiling_->numRows;
         const uint32_t rowsPerGroup = tiling_->rowsPerGroup;
         const int32_t stride = tiling_->needCoreNum;
-        const int32_t numGroups = (numRows + static_cast<int32_t>(rowsPerGroup) - 1) / static_cast<int32_t>(rowsPerGroup);
+        const int32_t numGroups =
+            (numRows + static_cast<int32_t>(rowsPerGroup) - 1) / static_cast<int32_t>(rowsPerGroup);
 
         for (int32_t groupIdx = coreId; groupIdx < numGroups; groupIdx += stride) {
             const int32_t rowIdx = groupIdx * static_cast<int32_t>(rowsPerGroup);
@@ -215,7 +268,7 @@ public:
                         break;
                     }
                 }
-                if (!allActive) {
+                if (!allActive || !IsGradDim32BAligned(gradDim)) {
                     ProcessGroupPerRow(rowIdx, rowsInGroup, gradDim, gradBase);
                 } else {
                     ProcessGroupVector(rowIdx, rowsInGroup, gradDim, gradBase);
@@ -230,8 +283,8 @@ private:
     GlobalTensor<float> gradsGm_;
     GlobalTensor<uint64_t> rowPtrsGm_;
     GlobalTensor<uint8_t> foundsGm_;
-    bool useFounds_ {false};
+    bool useFounds_{false};
     const __gm__ AdagradSimdTilingData* tiling_;
 };
 
-} // namespace dyn_emb_adagrad_simd
+}  // namespace dyn_emb_adagrad_simd
