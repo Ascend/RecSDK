@@ -26,7 +26,9 @@ from dynamic_emb_extensions import (
     OptimizerType,
     SafeCheckMode,
     dynamic_emb_adagrad_fused,
+    dynamic_emb_adagrad_fused_hybrid,
     dynamic_emb_adagrad_with_pointer,
+    dynamic_emb_adagrad_with_pointer_hybrid,
     dynamic_emb_adagrad_with_table,
     find_pointers,
     load_from_pointer,
@@ -44,8 +46,8 @@ class OptimizerParams:
         self.eps = eps
 
 
-@pytest.fixture
-def optimizer_params(lr, eps):
+@pytest.fixture(name="opt_params")
+def _opt_params_fixture(lr, eps):
     return OptimizerParams(lr=lr, eps=eps)
 
 
@@ -73,13 +75,13 @@ def get_dim_pointers_optimized(x_2d):
         (torch.bfloat16, 1e-8),
     ],
 )
-def test_dynamic_emb_adagrad_with_pointer(device, batch_size, embedding_dim, optimizer_params, iter_num, grad_type):
+def test_dynamic_emb_adagrad_with_pointer(device, batch_size, embedding_dim, opt_params, iter_num, grad_type):
     torch.manual_seed(42)
     torch.npu.manual_seed_all(42)
     torch.npu.set_device(device)
 
-    lr = optimizer_params.lr
-    eps = optimizer_params.eps
+    lr = opt_params.lr
+    eps = opt_params.eps
 
     params_init = torch.randn(batch_size, embedding_dim, dtype=grad_type, device=f"npu:{device}")
     param_torch = torch.nn.Parameter(params_init.clone())
@@ -135,6 +137,78 @@ def test_dynamic_emb_adagrad_with_pointer(device, batch_size, embedding_dim, opt
 
 
 @pytest.mark.parametrize("device", [0])
+@pytest.mark.parametrize("batch_size", [1, 1024, 4096, 8192, 10240, 102400])
+@pytest.mark.parametrize("embedding_dim", [8, 64, 128, 256, 512, 1024, 8192, 31, 1023])
+@pytest.mark.parametrize("lr", [0.001, 0.01, 0.1])
+@pytest.mark.parametrize("iter_num", [10, 100])
+@pytest.mark.parametrize(
+    ("grad_type", "eps"),
+    [
+        (torch.float32, 1e-8),
+    ],
+)
+def test_dynamic_emb_adagrad_with_pointer_hybrid(device, batch_size, embedding_dim, opt_params, iter_num, grad_type):
+    torch.manual_seed(42)
+    torch.npu.manual_seed_all(42)
+    torch.npu.set_device(device)
+
+    lr = opt_params.lr
+    eps = opt_params.eps
+
+    params_init = torch.randn(batch_size, embedding_dim, dtype=grad_type, device=f"npu:{device}")
+    param_torch = torch.nn.Parameter(params_init.clone())
+    optimizer_torch = torch.optim.Adagrad([param_torch], lr=lr, eps=eps)
+
+    for _ in range(iter_num - 1):
+        dummy_grad = torch.randn_like(param_torch, dtype=grad_type)
+        optimizer_torch.zero_grad()
+        param_torch.grad = dummy_grad
+        optimizer_torch.step()
+
+    current_params = param_torch.data.clone()
+    if len(optimizer_torch.state) == 0:
+        sum_init = torch.zeros_like(current_params)
+    else:
+        state = optimizer_torch.state[param_torch]
+        sum_init = state["sum"].to(dtype=grad_type, device=current_params.device).clone()
+
+    values = torch.cat([current_params, sum_init], dim=1).contiguous()
+    val_pointers = get_dim_pointers_optimized(values)
+
+    test_grad = torch.randn_like(current_params, dtype=grad_type)
+    dtype_to_dynamic_emb = {
+        torch.float32: DynamicEmbDataType.Float32,
+        torch.float16: DynamicEmbDataType.Float16,
+        torch.bfloat16: DynamicEmbDataType.BFloat16,
+    }
+    val_dynamic_type = dtype_to_dynamic_emb[grad_type]
+    dynamic_emb_adagrad_with_pointer_hybrid(
+        test_grad,
+        val_pointers,
+        val_dynamic_type,
+        embedding_dim,
+        lr,
+        eps,
+    )
+    torch.npu.synchronize()
+
+    optimizer_torch.zero_grad()
+    param_torch.grad = test_grad.clone()
+    optimizer_torch.step()
+    torch.npu.synchronize()
+
+    custom_param_result = values[:, :embedding_dim]
+    torch_param_result = param_torch.data
+    tol_map = {
+        torch.float32: (1e-5, 1e-5),
+        torch.float16: (5e-3, 5e-3),
+        torch.bfloat16: (2e-2, 2e-2),
+    }
+    rtol, atol = tol_map[grad_type]
+    torch.testing.assert_close(custom_param_result, torch_param_result, rtol=rtol, atol=atol)
+
+
+@pytest.mark.parametrize("device", [0])
 @pytest.mark.parametrize("batch_size", [1, 1024, 4096, 102400])
 @pytest.mark.parametrize("embedding_dim", [64, 128, 8192, 31])
 @pytest.mark.parametrize("lr", [0.001, 0.01])
@@ -147,13 +221,13 @@ def test_dynamic_emb_adagrad_with_pointer(device, batch_size, embedding_dim, opt
         (torch.bfloat16, 1e-8),
     ],
 )
-def test_dynamic_emb_adagrad_with_table(device, batch_size, embedding_dim, optimizer_params, iter_num, grad_type):
+def test_dynamic_emb_adagrad_with_table(device, batch_size, embedding_dim, opt_params, iter_num, grad_type):
     torch.manual_seed(42)
     torch.npu.manual_seed_all(42)
     torch.npu.set_device(device)
 
-    lr = optimizer_params.lr
-    eps = optimizer_params.eps
+    lr = opt_params.lr
+    eps = opt_params.eps
 
     params_init = torch.randn(batch_size, embedding_dim, dtype=grad_type, device=f"npu:{device}")
     param_torch = torch.nn.Parameter(params_init.clone())
@@ -289,13 +363,13 @@ def test_dynamic_emb_adagrad_with_table(device, batch_size, embedding_dim, optim
         (torch.bfloat16, 1e-8),
     ],
 )
-def test_dynamic_emb_adagrad_fused(device, batch_size, embedding_dim, optimizer_params, iter_num, grad_type):
+def test_dynamic_emb_adagrad_fused(device, batch_size, embedding_dim, opt_params, iter_num, grad_type):
     torch.manual_seed(42)
     torch.npu.manual_seed_all(42)
     torch.npu.set_device(device)
 
-    lr = optimizer_params.lr
-    eps = optimizer_params.eps
+    lr = opt_params.lr
+    eps = opt_params.eps
 
     params_init = torch.randn(batch_size, embedding_dim, dtype=grad_type, device=f"npu:{device}")
     param_torch = torch.nn.Parameter(params_init.clone())
@@ -333,3 +407,58 @@ def test_dynamic_emb_adagrad_fused(device, batch_size, embedding_dim, optimizer_
     rtol, atol = tol_map[grad_type]
     torch.testing.assert_close(custom_param_result, torch_param_result, rtol=rtol, atol=atol)
 
+
+@pytest.mark.parametrize("device", [0])
+@pytest.mark.parametrize("batch_size", [1, 1024, 4096, 8192, 10240, 102400])
+@pytest.mark.parametrize("embedding_dim", [8, 64, 128, 256, 512, 1024, 8192, 31, 1023])
+@pytest.mark.parametrize("lr", [0.001, 0.01, 0.1])
+@pytest.mark.parametrize("iter_num", [10, 100])
+@pytest.mark.parametrize(
+    ("grad_type", "eps"),
+    [
+        (torch.float32, 1e-8),
+    ],
+)
+def test_dynamic_emb_adagrad_fused_hybrid(device, batch_size, embedding_dim, opt_params, iter_num, grad_type):
+    torch.manual_seed(42)
+    torch.npu.manual_seed_all(42)
+    torch.npu.set_device(device)
+
+    lr = opt_params.lr
+    eps = opt_params.eps
+
+    params_init = torch.randn(batch_size, embedding_dim, dtype=grad_type, device=f"npu:{device}")
+    param_torch = torch.nn.Parameter(params_init.clone())
+    optimizer_torch = torch.optim.Adagrad([param_torch], lr=lr, eps=eps)
+    for _ in range(iter_num - 1):
+        dummy_grad = torch.randn_like(param_torch, dtype=grad_type)
+        optimizer_torch.zero_grad()
+        param_torch.grad = dummy_grad
+        optimizer_torch.step()
+
+    current_params = param_torch.data.clone()
+    if len(optimizer_torch.state) == 0:
+        sum_init = torch.zeros_like(current_params)
+    else:
+        state = optimizer_torch.state[param_torch]
+        sum_init = state["sum"].to(dtype=grad_type, device=current_params.device).clone()
+
+    values = torch.cat([current_params, sum_init], dim=1).contiguous()
+    test_grad = torch.randn_like(current_params, dtype=grad_type)
+    dynamic_emb_adagrad_fused_hybrid(test_grad, values, lr, eps)
+    torch.npu.synchronize()
+
+    optimizer_torch.zero_grad()
+    param_torch.grad = test_grad.clone()
+    optimizer_torch.step()
+    torch.npu.synchronize()
+
+    custom_param_result = values[:, :embedding_dim]
+    torch_param_result = param_torch.data
+    tol_map = {
+        torch.float32: (1e-5, 1e-5),
+        torch.float16: (5e-3, 5e-3),
+        torch.bfloat16: (2e-2, 2e-2),
+    }
+    rtol, atol = tol_map[grad_type]
+    torch.testing.assert_close(custom_param_result, torch_param_result, rtol=rtol, atol=atol)
