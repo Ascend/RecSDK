@@ -96,10 +96,10 @@
 
 #### torchrec.modules.embedding_configs.EmbeddingBagConfig
 
-| API名称                                               | 是否支持 | 限制与说明 |
-| ----------------------------------------------------- | -------- | ---------- |
+| API名称                                                 | 是否支持 | 限制与说明 |
+|-------------------------------------------------------| -------- | ---------- |
 | torchrec.modules.embedding_configs.EmbeddingBagConfig | 是       | -          |
-| EmbeddingBagConfig.polling                            | 是       | -          |
+| EmbeddingBagConfig.pooling                            | 是       | -          |
 
 #### torchrec.modules.embedding_configs.EmbeddingConfig
 
