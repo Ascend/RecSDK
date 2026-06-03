@@ -18,15 +18,16 @@
 # ==============================================================================
 
 import json
-import os
 import logging
-from typing import Any, Callable, Dict, Iterator, Optional, Tuple, IO
+import os
+from contextlib import ExitStack
 from dataclasses import dataclass
+from typing import Any, Callable, Dict, IO, Iterator, Optional, Tuple
 
 import numpy as np
 import torch
-import torch_npu
 import torch.distributed as dist
+import torch_npu
 
 from dynamic_emb.distributed.dynamicemb_config import (
     DynamicEmbTableOptions,
@@ -38,7 +39,7 @@ from dynamic_emb.distributed.dynamicemb_config import (
 from dynamic_emb.distributed.initializers.dynamicemb_initializers import BaseDynamicEmbInitializer
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import BaseDynamicEmbeddingOptimizerV2
 from dynamic_emb.distributed.types import (
-    Cache, 
+    Cache,
     Storage,
     StorageOptionalFilePaths,
     KEY_TYPE,
@@ -51,13 +52,15 @@ from dynamic_emb.distributed.types import (
 from dynamic_emb_extensions import (
     DynamicEmbTable,
     EvictStrategy,
-    find_pointers,
-    load_from_pointer,
-    device_timestamp,
+    clear,
     count_matched,
-    export_batch_matched,
-    insert_and_evict,
+    device_timestamp,
     dyn_emb_is_pure_hbm_mode,
+    dyn_emb_rows,
+    export_batch_matched,
+    find_pointers,
+    insert_and_evict,
+    load_from_pointer,
     load_from_pointer_hybrid,
 )
 
@@ -87,7 +90,7 @@ class DistConfig:
 
 def save_to_json(data: Dict[str, Any], file_path: str) -> None:
     try:
-        with open(file_path, "w") as json_file:
+        with open(file_path, "w", encoding="utf-8") as json_file:
             json.dump(data, json_file, indent=4)
     except Exception as e:
         raise RuntimeError(f"Error saving data to JSON file: {e}") from e
@@ -95,7 +98,7 @@ def save_to_json(data: Dict[str, Any], file_path: str) -> None:
 
 def load_from_json(file_path: str) -> Dict[str, Any]:
     try:
-        with open(file_path, "r") as json_file:
+        with open(file_path, "r", encoding="utf-8") as json_file:
             data = json.load(json_file)
         return data
     except Exception as e:
@@ -124,9 +127,7 @@ def batched_export_keys_values(
 
         npu_device = torch.device(f"npu:{torch_npu.npu.current_device()}")
         keys = torch.empty(batch_size, dtype=key_dtype, device=npu_device)
-        values = torch.empty(
-            batch_size * total_dim, dtype=value_dtype, device=npu_device
-        )
+        values = torch.empty(batch_size * total_dim, dtype=value_dtype, device=npu_device)
         scores = torch.zeros(batch_size, dtype=SCORE_TYPE, device=npu_device)
         d_counter = torch.zeros(1, dtype=torch.int64, device=npu_device).to(torch.uint64)
 
@@ -181,12 +182,8 @@ def load_key_values(
 
     if scores is None:
         if dynamic_table.get_evict_strategy() != EvictStrategy.kLru:
-            raise ValueError(
-                "scores is None for kLru evict strategy is allowed but will be deprecated in future."
-            )
-        dynamic_table.load(
-            keys.numel(), keys.to(key_type), values.to(value_type)
-        )
+            raise ValueError("scores is None for kLru evict strategy is allowed but will be deprecated in future.")
+        dynamic_table.load(keys.numel(), keys.to(key_type), values.to(value_type))
         return
 
     dynamic_table.load(
@@ -199,9 +196,7 @@ def load_key_values(
     )
 
 
-class KeyValueTable(
-    Cache, Storage[DynamicEmbTableOptions, BaseDynamicEmbeddingOptimizerV2]
-):
+class KeyValueTable(Cache, Storage[DynamicEmbTableOptions, BaseDynamicEmbeddingOptimizerV2]):
     def __init__(
         self,
         options: DynamicEmbTableOptions,
@@ -230,6 +225,7 @@ class KeyValueTable(
         self._cache_metrics = torch.zeros(10, dtype=torch.long, device="cpu")
         self._record_cache_metrics = False
         self._use_score = self.table.get_evict_strategy() != EvictStrategy.kLru
+        self._timestamp: int = 0
 
     def find_impl(
         self,
@@ -241,11 +237,7 @@ class KeyValueTable(
             unique_keys = unique_keys.to(self.key_type())
 
         if unique_embs.dtype != self.value_type():
-            raise RuntimeError(
-                "Embedding dtype not match {} != {}".format(
-                    unique_embs.dtype, self.value_type()
-                )
-            )
+            raise RuntimeError("Embedding dtype not match {} != {}".format(unique_embs.dtype, self.value_type()))
 
         batch = unique_keys.size(0)
         if unique_embs.dim() != 2:
@@ -270,8 +262,7 @@ class KeyValueTable(
         if load_dim != 0 and founds.sum().item() > 0:
             find_num = founds.sum().item()
             pointers_new = pointers[founds]
-            tmp_embs = torch.empty((find_num, unique_embs.size(1)), dtype=unique_embs.dtype,
-                                   device=unique_embs.device)
+            tmp_embs = torch.empty((find_num, unique_embs.size(1)), dtype=unique_embs.dtype, device=unique_embs.device)
             if dyn_emb_is_pure_hbm_mode(self.table):
                 load_from_pointer(pointers_new, tmp_embs)
             else:
@@ -308,9 +299,7 @@ class KeyValueTable(
         founds: Optional[torch.Tensor] = None,
     ) -> Tuple[int, torch.Tensor, torch.Tensor]:
         # dummy tensor
-        unique_embs = torch.empty(
-            unique_keys.numel(), 0, device=unique_keys.device, dtype=self._emb_dtype
-        )
+        unique_embs = torch.empty(unique_keys.numel(), 0, device=unique_keys.device, dtype=self._emb_dtype)
         return self.find_impl(unique_keys, unique_embs, founds)
 
     def find(
@@ -323,20 +312,18 @@ class KeyValueTable(
 
     def insert(
         self,
-        unique_keys: torch.Tensor,
-        unique_values: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
         scores: Optional[torch.Tensor] = None,
     ) -> None:
-        h_num_unique_keys = unique_keys.numel()
+        h_num_unique_keys = keys.numel()
         if self._use_score:
             if scores is None:
-                scores = torch.empty(
-                    h_num_unique_keys, device=unique_keys.device, dtype=SCORE_TYPE
-                )
+                scores = torch.empty(h_num_unique_keys, device=keys.device, dtype=SCORE_TYPE)
                 scores.fill_(self.score)
         else:
             scores = None
-        self.table.update(h_num_unique_keys, unique_keys, unique_values.to(self.value_type()), scores, True, False)
+        self.table.update(h_num_unique_keys, keys, values.to(self.value_type()), scores, True, False)
 
     def update(
         self,
@@ -353,10 +340,10 @@ class KeyValueTable(
         founds = torch.empty(batch, dtype=torch.bool, device=device)
         pointers = torch.empty(batch, dtype=torch.long, device=device)
         find_pointers(self.table, batch, keys, pointers, founds)
-
-        self.optimizer.fused_update_with_pointer(
-            grads.to(self.value_type()), pointers, self._de_emb_dtype
-        )
+        if dyn_emb_is_pure_hbm_mode(self.table):
+            self.optimizer.fused_update_with_pointer(grads.to(self.value_type()), pointers, self._de_emb_dtype)
+        else:
+            self.optimizer.fused_update_with_pointer_hybrid(grads.to(self.value_type()), pointers, self._de_emb_dtype)
 
         if return_missing:
             missing = torch.logical_not(founds)
@@ -394,9 +381,9 @@ class KeyValueTable(
     def update_timestamp(self) -> None:
         self._timestamp = device_timestamp()
 
-    def dump(
+    def dump(  # pylint: disable=arguments-differ
         self,
-        meta_json_file_path: str,
+        meta_file_path: str,
         emb_key_path: str,
         embedding_file_path: str,
         optional_files: StorageOptionalFilePaths,
@@ -409,39 +396,27 @@ class KeyValueTable(
             meta_data = {}
             meta_data.update(self.optimizer.get_opt_args())
             meta_data["evict_strategy"] = str(self.table.get_evict_strategy())
-            save_to_json(meta_data, meta_json_file_path)
+            save_to_json(meta_data, meta_file_path)
 
-        fkey = open(emb_key_path, "wb")
-        fembedding = open(embedding_file_path, "wb")
-        fscore = open(score_file_path, "wb")
-        fopt_states = open(opt_file_path, "wb") if include_optim else None
+        with ExitStack() as stack:
+            fkey = stack.enter_context(open(emb_key_path, "wb"))
+            fembedding = stack.enter_context(open(embedding_file_path, "wb"))
+            fscore = stack.enter_context(open(score_file_path, "wb"))
+            fopt_states = stack.enter_context(open(opt_file_path, "wb")) if include_optim else None
 
-        for keys, embeddings, opt_states, scores in batched_export_keys_values(
-            self.table, device
-        ):
-            fkey.write(keys.cpu().numpy().tobytes())
-            fembedding.write(embeddings.cpu().numpy().tobytes())
-            if self.table.get_evict_strategy() == EvictStrategy.kLru:
-                scores = self._timestamp - scores
-            fscore.write(scores.cpu().numpy().tobytes())
-            if fopt_states:
-                fopt_states.write(opt_states.cpu().numpy().tobytes())
-
-        fkey.close()
-        fembedding.close()
-
-        if fscore:
-            fscore.close()
-
-        if fopt_states:
-            fopt_states.close()
-
-        return
+            for keys, embeddings, opt_states, scores in batched_export_keys_values(self.table, device):
+                fkey.write(keys.cpu().numpy().tobytes())
+                fembedding.write(embeddings.cpu().numpy().tobytes())
+                if self.table.get_evict_strategy() == EvictStrategy.kLru:
+                    scores = self._timestamp - scores
+                fscore.write(scores.cpu().numpy().tobytes())
+                if fopt_states:
+                    fopt_states.write(opt_states.cpu().numpy().tobytes())
 
     def load(
         self,
-        meta_json_file_path: str,
-        emb_key_path: str,
+        meta_file_path: str,
+        emb_file_path: str,
         embedding_file_path: str,
         include_optim: bool,
         optional_files: Optional[StorageOptionalFilePaths] = None,
@@ -449,7 +424,7 @@ class KeyValueTable(
         opt_files = optional_files or StorageOptionalFilePaths()
         score_file_path, opt_file_path = opt_files.score_file_path, opt_files.opt_file_path
         meta_data, include_optim = self._load_and_validate_meta(
-            meta_json_file_path, score_file_path, opt_file_path, include_optim
+            meta_file_path, score_file_path, opt_file_path, include_optim
         )
         device = torch.device(f"npu:{torch_npu.npu.current_device()}")
 
@@ -462,30 +437,22 @@ class KeyValueTable(
         if include_optim:
             self.optimizer.set_opt_args(meta_data)
 
-        paths = LoadFilePaths(
-            emb_key_path, embedding_file_path, score_file_path, opt_file_path
-        )
+        paths = LoadFilePaths(emb_file_path, embedding_file_path, score_file_path, opt_file_path)
 
-        fkey = open(paths.emb_key_path, "rb")
-        fembedding = open(paths.embedding_file_path, "rb")
-        fscore = (
-            open(paths.score_file_path, "rb")
-            if paths.score_file_path and os.path.exists(paths.score_file_path)
-            else None
-        )
-        fopt_states = open(paths.opt_file_path, "rb") if include_optim else None
+        with ExitStack() as stack:
+            fkey = stack.enter_context(open(paths.emb_key_path, "rb"))
+            fembedding = stack.enter_context(open(paths.embedding_file_path, "rb"))
+            fscore = (
+                stack.enter_context(open(paths.score_file_path, "rb"))
+                if paths.score_file_path and os.path.exists(paths.score_file_path)
+                else None
+            )
+            fopt_states = stack.enter_context(open(paths.opt_file_path, "rb")) if include_optim else None
 
-        files = LoadFileHandles(fkey, fembedding, fscore, fopt_states)
-        
-        try:
-            num_keys = self._validate_file(
-                        paths,
-                        fscore, 
-                        fopt_states, 
-                        dim, 
-                        optstate_dim
-                    )
-            
+            files = LoadFileHandles(fkey, fembedding, fscore, fopt_states)
+
+            num_keys = self._validate_file(paths, fscore, fopt_states, dim, optstate_dim)
+
             world_size = dist.get_world_size() if dist.is_initialized() else 1
             rank = dist.get_rank() if dist.is_initialized() else 0
 
@@ -494,21 +461,8 @@ class KeyValueTable(
             batch_size = DEFAULT_LOAD_BATCH_SIZE
             for start in range(0, num_keys, batch_size):
                 num_keys_to_read = min(num_keys - start, batch_size)
-                self._process_batch(
-                    files,
-                    num_keys_to_read, 
-                    dim, 
-                    optstate_dim, 
-                    dist_config
-                )        
-        finally:
-            fkey.close()
-            fembedding.close()
-            if fscore:
-                fscore.close()
-            if fopt_states:
-                fopt_states.close()
-    
+                self._process_batch(files, num_keys_to_read, dim, optstate_dim, dist_config)
+
     def _load_and_validate_meta(
         self,
         meta_json_file_path: str,
@@ -517,32 +471,25 @@ class KeyValueTable(
         include_optim: bool,
     ) -> Tuple[Dict[str, Any], bool]:
         meta_data = load_from_json(meta_json_file_path)
-        opt_type = meta_data.get(
-            "opt_type", None
-        )  # for compatibility with old format, which doesn't have opt_type
+        opt_type = meta_data.get("opt_type", None)  # for compatibility with old format, which doesn't have opt_type
         if opt_type and self.optimizer.get_opt_args().get("opt_type", None) != opt_type:
             include_optim = False
             logging.warning(
-                f"Optimizer type mismatch: {opt_type} != {self.optimizer.get_opt_args().get('opt_type')}. \
-                Will not load optimizer states."
+                "Optimizer type mismatch: %s != %s. Will not load optimizer states.",
+                opt_type,
+                self.optimizer.get_opt_args().get("opt_type"),
             )
 
         evict_strategy = meta_data.get("evict_strategy", None)
         if evict_strategy and str(self.table.get_evict_strategy()) != evict_strategy:
-            raise ValueError(
-                f"Evict strategy mismatch: {evict_strategy} != {self.table.get_evict_strategy()}"
-            )
+            raise ValueError(f"Evict strategy mismatch: {evict_strategy} != {self.table.get_evict_strategy()}")
 
         if score_file_path is None:
-            logging.info(
-                f"Score file {score_file_path} does not exist. Will not load score states."
-            )
+            logging.info("Score file %s does not exist. Will not load score states.", score_file_path)
 
         if not opt_file_path or not os.path.exists(opt_file_path):
             include_optim = False
-            logging.warning(
-                f"Optimizer file {opt_file_path} does not exist. Will not load optimizer states."
-            )
+            logging.warning("Optimizer file %s does not exist. Will not load optimizer states.", opt_file_path)
         return meta_data, include_optim
 
     def _validate_file(
@@ -554,9 +501,7 @@ class KeyValueTable(
         optstate_dim: int,
     ) -> int:
         num_keys = os.path.getsize(paths.emb_key_path) // KEY_TYPE.itemsize
-        num_embeddings = (
-            os.path.getsize(paths.embedding_file_path) // EMBEDDING_TYPE.itemsize // dim
-        )
+        num_embeddings = os.path.getsize(paths.embedding_file_path) // EMBEDDING_TYPE.itemsize // dim
 
         if num_keys != num_embeddings:
             raise ValueError(
@@ -573,11 +518,7 @@ class KeyValueTable(
                 )
 
         if fopt_states:
-            num_opt_states = (
-                os.path.getsize(paths.opt_file_path)
-                // OPT_STATE_TYPE.itemsize
-                // optstate_dim
-            )
+            num_opt_states = os.path.getsize(paths.opt_file_path) // OPT_STATE_TYPE.itemsize // optstate_dim
             if num_keys != num_opt_states:
                 raise ValueError(
                     f"The number of keys in {paths.emb_key_path} does not match with number of opt_states in \
@@ -586,35 +527,22 @@ class KeyValueTable(
         return num_keys
 
     def _process_batch(
-        self,
-        files: LoadFileHandles,
-        num_keys_to_read: int,
-        dim: int,
-        optstate_dim: int,
-        dist_config: DistConfig
+        self, files: LoadFileHandles, num_keys_to_read: int, dim: int, optstate_dim: int, dist_config: DistConfig
     ) -> None:
         keys_bytes = files.fkey.read(KEY_TYPE.itemsize * num_keys_to_read)
 
-        embedding_bytes = files.fembedding.read(
-            EMBEDDING_TYPE.itemsize * dim * num_keys_to_read
-        )
+        embedding_bytes = files.fembedding.read(EMBEDDING_TYPE.itemsize * dim * num_keys_to_read)
         embeddings = torch.tensor(
-            np.frombuffer(
-                embedding_bytes, dtype=torch_dtype_to_np_dtype[EMBEDDING_TYPE]
-            ),
+            np.frombuffer(embedding_bytes, dtype=torch_dtype_to_np_dtype[EMBEDDING_TYPE]),
             dtype=EMBEDDING_TYPE,
             device=dist_config.device,
         ).view(-1, dim)
 
         opt_states = None
         if files.fopt_states:
-            opt_state_bytes = files.fopt_states.read(
-                OPT_STATE_TYPE.itemsize * optstate_dim * num_keys_to_read
-            )
+            opt_state_bytes = files.fopt_states.read(OPT_STATE_TYPE.itemsize * optstate_dim * num_keys_to_read)
             opt_states = torch.tensor(
-                np.frombuffer(
-                    opt_state_bytes, dtype=torch_dtype_to_np_dtype[OPT_STATE_TYPE]
-                ),
+                np.frombuffer(opt_state_bytes, dtype=torch_dtype_to_np_dtype[OPT_STATE_TYPE]),
                 dtype=OPT_STATE_TYPE,
                 device=dist_config.device,
             ).view(-1, optstate_dim)
@@ -629,9 +557,7 @@ class KeyValueTable(
         if files.fscore:
             score_bytes = files.fscore.read(SCORE_TYPE.itemsize * num_keys_to_read)
             scores = torch.tensor(
-                np.frombuffer(
-                    score_bytes, dtype=torch_dtype_to_np_dtype[SCORE_TYPE]
-                ),
+                np.frombuffer(score_bytes, dtype=torch_dtype_to_np_dtype[SCORE_TYPE]),
                 dtype=SCORE_TYPE,
                 device=dist_config.device,
             )
@@ -670,9 +596,7 @@ class KeyValueTable(
 
     def flush(self, storage: Storage) -> None:
         batch_size = self._threads_in_wave
-        for keys, embeddings, opt_states, scores in batched_export_keys_values(
-            self.table, self.device, batch_size
-        ):
+        for keys, embeddings, opt_states, scores in batched_export_keys_values(self.table, self.device, batch_size):
             if keys.numel() != 0:
                 values = torch.cat((embeddings, opt_states), dim=1).contiguous()
                 storage.insert(keys, values, scores)
@@ -687,7 +611,6 @@ class KeyValueTable(
 
     def set_record_cache_metrics(self, record: bool) -> None:
         self._record_cache_metrics = record
-        return
 
     def count_matched(
         self,
@@ -711,9 +634,7 @@ class KeyValueTable(
     ) -> int:
         return self._capacity
 
-    def export_batch_matched(
-        self, threshold, batch_size, search_offset, d_count, d_keys, d_vals
-    ) -> None:
+    def export_batch_matched(self, threshold, batch_size, search_offset, d_count, d_keys, d_vals) -> None:
         export_batch_matched(
             self.table,
             threshold,
@@ -742,9 +663,7 @@ class KeyValueTable(
         num_evicted: torch.Tensor = torch.zeros(1, dtype=torch.long, device=keys.device)
         evicted_keys: torch.Tensor = torch.empty_like(keys)
         evicted_values: torch.Tensor = torch.empty_like(values)
-        evicted_scores: torch.Tensor = torch.empty(
-            batch, dtype=torch.uint64, device=keys.device
-        )
+        evicted_scores: torch.Tensor = torch.empty(batch, dtype=torch.uint64, device=keys.device)
         insert_and_evict(
             self.table,
             batch,
@@ -775,9 +694,7 @@ def update_cache(
     missing_values: torch.Tensor,
 ):
     # need to update score.
-    num_evicted, evicted_keys, evicted_values, evicted_scores = cache.insert_and_evict(
-        missing_keys, missing_values
-    )
+    num_evicted, evicted_keys, evicted_values, evicted_scores = cache.insert_and_evict(missing_keys, missing_values)
     if num_evicted != 0:
         storage.insert(
             evicted_keys,
@@ -816,10 +733,7 @@ class KeyValueTableFunction:
         if h_num_missing_in_storage == 0:
             return
 
-        initializer(
-            unique_embs,
-            missing_indices_in_storage,
-            unique_keys)
+        initializer(unique_embs, missing_indices_in_storage, unique_keys)
 
         # 3. insert missing values into table.
         if training:
@@ -830,13 +744,9 @@ class KeyValueTableFunction:
                 device=unique_keys.device,
                 dtype=emb_dtype,
             )
-            missing_values_in_storage[:, :emb_dim] = unique_embs[
-                missing_indices_in_storage, :
-            ]
+            missing_values_in_storage[:, :emb_dim] = unique_embs[missing_indices_in_storage, :]
             if val_dim != emb_dim:
-                missing_values_in_storage[
-                    :, emb_dim - val_dim:
-                ] = storage.init_optimizer_state()
+                missing_values_in_storage[:, emb_dim - val_dim :] = storage.init_optimizer_state()
             storage.insert(missing_keys_in_storage, missing_values_in_storage)
         # ignore the storage missed in eval mode
 
@@ -854,19 +764,23 @@ class KeyValueTableFunction:
         emb_dtype = storage.embedding_dtype()
         val_dim = storage.value_dim()
         h_num_toatl = unique_keys.numel()
-        unique_values = torch.empty(
-            h_num_toatl, val_dim, device=unique_keys.device, dtype=emb_dtype
-        )
+        unique_values = torch.empty(h_num_toatl, val_dim, device=unique_keys.device, dtype=emb_dtype)
         founds = torch.empty(h_num_toatl, device=unique_keys.device, dtype=torch.bool)
         _, _, _ = storage.find(unique_keys, unique_values, founds=founds)
 
         keys_for_storage = unique_keys[founds].contiguous()
         values_for_storage = unique_values[founds, :].contiguous()
         grads_for_storage = unique_grads[founds, :].contiguous()
-        optimizer.fused_update(
-            grads_for_storage,
-            values_for_storage,
-        )
+        if dyn_emb_is_pure_hbm_mode(storage.table):
+            optimizer.fused_update(
+                grads_for_storage,
+                values_for_storage,
+            )
+        else:
+            optimizer.fused_update_hybrid(
+                grads_for_storage,
+                values_for_storage,
+            )
 
         storage.insert(keys_for_storage, values_for_storage)
 
@@ -890,21 +804,15 @@ class KeyValueTableCachingFunction:
         unique_keys.numel()
         emb_dim = storage.embedding_dim()
         emb_dtype = storage.embedding_dtype()
-        val_dim = (
-            storage.value_dim()
-        )  # value is generally composed of embedding and optimizer state
+        val_dim = storage.value_dim()  # value is generally composed of embedding and optimizer state
 
         # 1. find in cache
-        h_num_keys_for_storage, missing_keys, missing_indices = cache.find_embeddings(
-            unique_keys, unique_embs
-        )
+        h_num_keys_for_storage, missing_keys, missing_indices = cache.find_embeddings(unique_keys, unique_embs)
         if h_num_keys_for_storage == 0:
             return
         keys_for_storage = missing_keys
 
-        founds = torch.empty(
-            h_num_keys_for_storage, device=unique_keys.device, dtype=torch.bool
-        )
+        founds = torch.empty(h_num_keys_for_storage, device=unique_keys.device, dtype=torch.bool)
 
         # 2. find in storage
         values_for_storage = torch.empty(
@@ -932,9 +840,7 @@ class KeyValueTableCachingFunction:
 
         if training:
             if emb_dim != val_dim:
-                values_for_storage[
-                    missing_indices_in_storage, emb_dim - val_dim :
-                ] = storage.init_optimizer_state()
+                values_for_storage[missing_indices_in_storage, emb_dim - val_dim :] = storage.init_optimizer_state()
             update_cache(cache, storage, keys_for_storage, values_for_storage)
         else:  # only update those found in the storage to cache.
             found_keys_in_storage = keys_for_storage[founds].contiguous()
@@ -950,9 +856,7 @@ class KeyValueTableCachingFunction:
         unique_grads: torch.Tensor,
         optimizer: BaseDynamicEmbeddingOptimizerV2,
     ):
-        h_num_keys_for_storage, missing_keys, missing_indices = cache.update(
-            unique_keys, unique_grads
-        )
+        h_num_keys_for_storage, missing_keys, missing_indices = cache.update(unique_keys, unique_grads)
         if h_num_keys_for_storage == 0:
             return
         keys_for_storage = missing_keys
@@ -964,21 +868,23 @@ class KeyValueTableCachingFunction:
 
         emb_dtype = storage.embedding_dtype()
         val_dim = storage.value_dim()
-        values_for_storage = torch.empty(
-            h_num_keys_for_storage, val_dim, device=unique_keys.device, dtype=emb_dtype
-        )
-        founds = torch.empty(
-            h_num_keys_for_storage, device=unique_keys.device, dtype=torch.bool
-        )
+        values_for_storage = torch.empty(h_num_keys_for_storage, val_dim, device=unique_keys.device, dtype=emb_dtype)
+        founds = torch.empty(h_num_keys_for_storage, device=unique_keys.device, dtype=torch.bool)
         _, _, _ = storage.find(keys_for_storage, values_for_storage, founds=founds)
 
         keys_for_storage = keys_for_storage[founds].contiguous()
         values_for_storage = values_for_storage[founds, :].contiguous()
         grads_for_storage = grads_for_storage[founds, :].contiguous()
-        optimizer.fused_update(
-            grads_for_storage,
-            values_for_storage,
-        )
+        if dyn_emb_is_pure_hbm_mode(storage.table):
+            optimizer.fused_update(
+                grads_for_storage,
+                values_for_storage,
+            )
+        else:
+            optimizer.fused_update_hybrid(
+                grads_for_storage,
+                values_for_storage,
+            )
 
         storage.insert(keys_for_storage, values_for_storage)
 
@@ -1005,12 +911,8 @@ class KeyValueTableCachingFunction:
 
         val_dim = storage.value_dim()
         emb_dim = storage.embedding_dim()
-        values_for_storage = torch.empty(
-            h_num_keys_for_storage, val_dim, device=unique_keys.device, dtype=emb_dtype
-        )
-        founds = torch.empty(
-            h_num_keys_for_storage, device=unique_keys.device, dtype=torch.bool
-        )
+        values_for_storage = torch.empty(h_num_keys_for_storage, val_dim, device=unique_keys.device, dtype=emb_dtype)
+        founds = torch.empty(h_num_keys_for_storage, device=unique_keys.device, dtype=torch.bool)
         (
             num_missing_in_storage,
             missing_keys_in_storage,
@@ -1026,9 +928,7 @@ class KeyValueTableCachingFunction:
                     keys_for_storage,
                 )
                 if val_dim != emb_dim:
-                    values_for_storage[
-                        missing_indices_in_storage, emb_dim - val_dim :
-                    ] = storage.init_optimizer_state()
+                    values_for_storage[missing_indices_in_storage, emb_dim - val_dim :] = storage.init_optimizer_state()
             else:
                 keys_for_storage = keys_for_storage[founds].contiguous()
                 values_for_storage = values_for_storage[founds, :].contiguous()
