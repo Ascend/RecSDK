@@ -12,75 +12,81 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
-#include <type_traits>
 #include <iostream>
-#include "update_kernel.h"
-#include "../AdamW_update/AdamW_update_kernel.h"
-#include "../Adagrad_update/Adagrad_update_kernel.h"
-#include "../Rowwise_adagrad_update/Rowwise_adagrad_update_kernel.h"
-#include "../sgd_update/sgd_update_kernel.h"
+#include <type_traits>
+
 #include "../../optimizer_kind.h"
-#include "kernel_operator.h"
+#include "../Adagrad_update/Adagrad_update_kernel.h"
+#include "../AdamW_update/AdamW_update_kernel.h"
 #include "../ops_utils.h"
+#include "../sgd_update/sgd_update_kernel.h"
+#include "kernel_operator.h"
+#include "update_kernel.h"
 constexpr int32_t BLOCK_THREADS = UpdateSimt::MAX_THREADS_PER_BLOCK;
 
 template <int32_t kMaxElementsPerThread, typename OptimizerT, typename g_type, typename w_type>
-__aicore__ inline void VfCallSimtSmallInBlock(
-    __gm__ g_type* grads, __gm__ w_type* __gm__* values, __gm__ bool* founds, uint32_t gradDim, int32_t inLength,
-    float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize, float invVHatDenom,
-    float decayFactor, float eps, int32_t gradDimShift, bool isPowerOfTwo, OptimizerT optimizer)
+__aicore__ inline void VfCallSimtSmallInBlock(__gm__ g_type* grads, __gm__ w_type* __gm__* values, __gm__ bool* founds,
+                                              uint32_t gradDim, int32_t inLength, float beta1, float beta2,
+                                              float oneMinusBeta1, float oneMinusBeta2, float stepSize,
+                                              float invVHatDenom, float decayFactor, float eps, int32_t gradDimShift,
+                                              bool isPowerOfTwo, OptimizerT optimizer)
 {
     if (isPowerOfTwo) {
-        AscendC::Simt::VF_CALL<UpdateSimt::SimtSmallInBlockDataCompute<kMaxElementsPerThread, true, g_type, w_type, OptimizerT>>(
-            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, grads, values, founds, gradDim, inLength,
-            beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, gradDimShift,
-            optimizer);
+        AscendC::Simt::VF_CALL<
+            UpdateSimt::SimtSmallInBlockDataCompute<kMaxElementsPerThread, true, g_type, w_type, OptimizerT>>(
+            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, grads, values, founds, gradDim, inLength, beta1, beta2,
+            oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, gradDimShift, optimizer);
     } else {
-        AscendC::Simt::VF_CALL<UpdateSimt::SimtSmallInBlockDataCompute<kMaxElementsPerThread, false, g_type, w_type, OptimizerT>>(
-            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, grads, values, founds, gradDim, inLength,
-            beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, gradDimShift,
-            optimizer);
+        AscendC::Simt::VF_CALL<
+            UpdateSimt::SimtSmallInBlockDataCompute<kMaxElementsPerThread, false, g_type, w_type, OptimizerT>>(
+            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, grads, values, founds, gradDim, inLength, beta1, beta2,
+            oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, gradDimShift, optimizer);
     }
 }
 
 template <int32_t kMaxElementsPerThread, typename OptimizerT, typename g_type, typename w_type>
-__aicore__ inline void VfCallSimtLargeData(
-    __gm__ g_type* grads, __gm__ w_type* __gm__* values, __gm__ bool* founds, uint32_t gradDim, int32_t inLength,
-    float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize, float invVHatDenom,
-    float decayFactor, float eps, int32_t totalBlocks, int32_t blockStartIdx, int32_t curBlocksCount,
-    int32_t gradDimShift, bool isPowerOfTwo, OptimizerT optimizer)
+__aicore__ inline void VfCallSimtLargeData(__gm__ g_type* grads, __gm__ w_type* __gm__* values, __gm__ bool* founds,
+                                           uint32_t gradDim, int32_t inLength, float beta1, float beta2,
+                                           float oneMinusBeta1, float oneMinusBeta2, float stepSize, float invVHatDenom,
+                                           float decayFactor, float eps, int32_t totalBlocks, int32_t blockStartIdx,
+                                           int32_t curBlocksCount, int32_t gradDimShift, bool isPowerOfTwo,
+                                           OptimizerT optimizer)
 {
     if (isPowerOfTwo) {
-        AscendC::Simt::VF_CALL<UpdateSimt::SimtLargeDataCompute<kMaxElementsPerThread, true, g_type, w_type, OptimizerT>>(
-            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, grads, values, founds, gradDim, inLength,
-            beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
-            totalBlocks, blockStartIdx, curBlocksCount, gradDimShift, optimizer);
+        AscendC::Simt::VF_CALL<
+            UpdateSimt::SimtLargeDataCompute<kMaxElementsPerThread, true, g_type, w_type, OptimizerT>>(
+            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, grads, values, founds, gradDim, inLength, beta1, beta2,
+            oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, totalBlocks, blockStartIdx,
+            curBlocksCount, gradDimShift, optimizer);
     } else {
-        AscendC::Simt::VF_CALL<UpdateSimt::SimtLargeDataCompute<kMaxElementsPerThread, false, g_type, w_type, OptimizerT>>(
-            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, grads, values, founds, gradDim, inLength,
-            beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps,
-            totalBlocks, blockStartIdx, curBlocksCount, gradDimShift, optimizer);
+        AscendC::Simt::VF_CALL<
+            UpdateSimt::SimtLargeDataCompute<kMaxElementsPerThread, false, g_type, w_type, OptimizerT>>(
+            AscendC::Simt::Dim3{BLOCK_THREADS, 1, 1}, grads, values, founds, gradDim, inLength, beta1, beta2,
+            oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, totalBlocks, blockStartIdx,
+            curBlocksCount, gradDimShift, optimizer);
     }
 }
 
 template <int32_t kMaxElementsPerThread, typename OptimizerT, typename g_type, typename w_type>
-__aicore__ inline void DispatchOptimizerUpdate(
-    __gm__ g_type* grads, __gm__ w_type* __gm__* values, __gm__ bool* founds, bool isPowerOfTwo,
-    uint32_t gradDim, int32_t inLength, float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2,
-    float stepSize, float invVHatDenom, float decayFactor, float eps, int32_t totalBlocks, int32_t blocksPerCore,
-    int32_t remainderBlocks, bool isSmall, int32_t gradDimShift, int32_t coreId)
+__aicore__ inline void DispatchOptimizerUpdate(__gm__ g_type* grads, __gm__ w_type* __gm__* values, __gm__ bool* founds,
+                                               bool isPowerOfTwo, uint32_t gradDim, int32_t inLength, float beta1,
+                                               float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
+                                               float invVHatDenom, float decayFactor, float eps, int32_t totalBlocks,
+                                               int32_t blocksPerCore, int32_t remainderBlocks, bool isSmall,
+                                               int32_t gradDimShift, int32_t coreId)
 {
     OptimizerT optimizer;
     if (isSmall) {
-        VfCallSimtSmallInBlock<kMaxElementsPerThread, OptimizerT, g_type, w_type>(grads, values, founds, gradDim, inLength,
-            beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, gradDimShift,
-            isPowerOfTwo, optimizer);
+        VfCallSimtSmallInBlock<kMaxElementsPerThread, OptimizerT, g_type, w_type>(
+            grads, values, founds, gradDim, inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize,
+            invVHatDenom, decayFactor, eps, gradDimShift, isPowerOfTwo, optimizer);
     } else {
         int32_t curBlocksCount = (coreId < remainderBlocks) ? (blocksPerCore + 1) : blocksPerCore;
         int32_t blockStartIdx = coreId * blocksPerCore + ((coreId < remainderBlocks) ? coreId : remainderBlocks);
-        VfCallSimtLargeData<kMaxElementsPerThread, OptimizerT, g_type, w_type>(grads, values, founds, gradDim, inLength,
-            beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, totalBlocks,
-            blockStartIdx, curBlocksCount, gradDimShift, isPowerOfTwo, optimizer);
+        VfCallSimtLargeData<kMaxElementsPerThread, OptimizerT, g_type, w_type>(
+            grads, values, founds, gradDim, inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize,
+            invVHatDenom, decayFactor, eps, totalBlocks, blockStartIdx, curBlocksCount, gradDimShift, isPowerOfTwo,
+            optimizer);
     }
 }
 
@@ -93,25 +99,22 @@ __aicore__ inline void DispatchOptimizerUpdateByKind(
 {
     switch (kind) {
         case OptimizerKind::AdamW:
-            DispatchOptimizerUpdate<kMaxElementsPerThread, AdamWOptimizer, g_type, w_type>(gradsPtr, valuesPtr, foundsPtr,
-                isPowerOfTwo, gradDim, inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom,
-                decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
+            DispatchOptimizerUpdate<kMaxElementsPerThread, AdamWOptimizer, g_type, w_type>(
+                gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, inLength, beta1, beta2, oneMinusBeta1,
+                oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks,
+                isSmall, gradDimShift, coreId);
             break;
         case OptimizerKind::AdaGrad:
-            DispatchOptimizerUpdate<kMaxElementsPerThread, AdaGradOptimizer, g_type, w_type>(gradsPtr, valuesPtr, foundsPtr,
-                isPowerOfTwo, gradDim, inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom,
-                decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
-            break;
-        case OptimizerKind::RowWiseAdaGrad:
-            DispatchOptimizerUpdate<kMaxElementsPerThread, RowWiseAdaGradOptimizer, g_type, w_type>(gradsPtr, valuesPtr,
-                foundsPtr, isPowerOfTwo, gradDim, inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize,
-                invVHatDenom, decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift,
-                coreId);
+            DispatchOptimizerUpdate<kMaxElementsPerThread, AdaGradOptimizer, g_type, w_type>(
+                gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, inLength, beta1, beta2, oneMinusBeta1,
+                oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks,
+                isSmall, gradDimShift, coreId);
             break;
         case OptimizerKind::SGD:
-            DispatchOptimizerUpdate<kMaxElementsPerThread, SGDOptimizer, g_type, w_type>(gradsPtr, valuesPtr, foundsPtr,
-                isPowerOfTwo, gradDim, inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom,
-                decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
+            DispatchOptimizerUpdate<kMaxElementsPerThread, SGDOptimizer, g_type, w_type>(
+                gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, inLength, beta1, beta2, oneMinusBeta1,
+                oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, totalBlocks, blocksPerCore, remainderBlocks,
+                isSmall, gradDimShift, coreId);
             break;
         default:
             return;
@@ -119,9 +122,10 @@ __aicore__ inline void DispatchOptimizerUpdateByKind(
 }
 
 __global__ __aicore__ void update(GM_ADDR grads, GM_ADDR values, GM_ADDR founds, uint32_t gradDim, int32_t inLength,
-    float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize, float invVHatDenom,
-    float decayFactor, float eps, int32_t totalBlocks, int32_t blocksPerCore, int32_t remainderBlocks, bool isSmall,
-    uint32_t gradTypeRaw, uint32_t weightTypeRaw, uint32_t optimizerKindRaw, int32_t maxElementsPerThread)
+                                  float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
+                                  float invVHatDenom, float decayFactor, float eps, int32_t totalBlocks,
+                                  int32_t blocksPerCore, int32_t remainderBlocks, bool isSmall, uint32_t gradTypeRaw,
+                                  uint32_t weightTypeRaw, uint32_t optimizerKindRaw, int32_t maxElementsPerThread)
 {
     int32_t coreId = AscendC::GetBlockIdx();
     bool isPowerOfTwo = (gradDim & (gradDim - 1)) == 0;
@@ -141,16 +145,18 @@ __global__ __aicore__ void update(GM_ADDR grads, GM_ADDR values, GM_ADDR founds,
     FLOAT_TYPE_DISPATCH(gradType, grad_t, {
         FLOAT_TYPE_DISPATCH(weightType, weight_t, {
             __gm__ grad_t* gradsPtr = reinterpret_cast<__gm__ grad_t*>(grads);
-            __gm__ weight_t* __gm__* valuesPtr = reinterpret_cast<__gm__ weight_t* __gm__*>(values);
+            __gm__ weight_t* __gm__* valuesPtr = reinterpret_cast<__gm__ weight_t * __gm__*>(values);
             __gm__ bool* foundsPtr = reinterpret_cast<__gm__ bool*>(founds);
             if (maxElementsPerThread == 2) {
-                DispatchOptimizerUpdateByKind<2, grad_t, weight_t>(kind, gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo,
-                    gradDim, inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor,
-                    eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
+                DispatchOptimizerUpdateByKind<2, grad_t, weight_t>(
+                    kind, gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, inLength, beta1, beta2, oneMinusBeta1,
+                    oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, totalBlocks, blocksPerCore,
+                    remainderBlocks, isSmall, gradDimShift, coreId);
             } else {
-                DispatchOptimizerUpdateByKind<4, grad_t, weight_t>(kind, gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo,
-                    gradDim, inLength, beta1, beta2, oneMinusBeta1, oneMinusBeta2, stepSize, invVHatDenom, decayFactor,
-                    eps, totalBlocks, blocksPerCore, remainderBlocks, isSmall, gradDimShift, coreId);
+                DispatchOptimizerUpdateByKind<4, grad_t, weight_t>(
+                    kind, gradsPtr, valuesPtr, foundsPtr, isPowerOfTwo, gradDim, inLength, beta1, beta2, oneMinusBeta1,
+                    oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, totalBlocks, blocksPerCore,
+                    remainderBlocks, isSmall, gradDimShift, coreId);
             }
         });
     });
