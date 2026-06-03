@@ -65,6 +65,7 @@
 - Rec SDK Torch示例：
 
     ```python
+    from torchrec.distributed.embedding import EmbeddingCollection
     from torchrec.distributed.planner.types import Topology, ShardingType
     from dynamic_emb import (
         DynamicEmbeddingCollectionSharder,
@@ -141,6 +142,9 @@
         torch.save(model.state_dict(), "model_dense.pt")
         # 动态稀疏表保存
         DynamicEmbDump(save_dir, model, optim=True)
+        ...
+        # 动态稀疏表加载
+        DynamicEmbLoad(save_dir, model, optim=True)
     ```
 
 ## Rec SDK Torch迁移样例<a name="ZH-CN_TOPIC_0000002336268713"></a>
@@ -414,7 +418,21 @@ export TASK_QUEUE_ENABLE=2
 
 单卡 NUMA 内存绑定：
 
+使用NUMA绑定前需分别安装系统级依赖以及python库依赖
+
+```bash
+# 安装系统库依赖
+# CentOS/RHEL
+yum install numactl numactl-devel
+# Ubuntu/Debian
+apt install numactl libnuma-dev
+
+# 安装python库
+pip install py-libnuma
+```
+
 ```python
+# 绑核
 import numa
 def bind_memory_to_numa0():
     numa.memory.set_membind_nodes(0)
@@ -465,6 +483,7 @@ cd dlrm && git checkout b631a99
     使用EC模式的EmbeddingConfig配置稀疏表
 
     ```python
+    from torchrec import EmbeddingConfig
     eb_configs = [
         EmbeddingConfig(
             name=f"t_{feature_name}",
@@ -485,6 +504,8 @@ cd dlrm && git checkout b631a99
     新增EC版本的模型定义`DLRM_DCN_EC`对原模型进行替换，新增模型代码在:`dlrm/torchrec_dlrm/ec_dcnv2.py`下
 
     ```python
+    from torchrec.distributed.embedding import EmbeddingCollection
+    ···
     elif args.interaction_type == InteractionType.DCN:
         dlrm_model = DLRM_DCN_EC(
             embedding_collection=EmbeddingCollection(
@@ -506,6 +527,16 @@ cd dlrm && git checkout b631a99
     使用DynamicEmb相关接口替换TorchRec原生接口
 
     ```python
+    from torchrec.distributed.planner.types import ShardingType
+    from fbgemm_gpu.split_embedding_configs import SparseType
+    from dynamic_emb_extensions import OptimizerType
+    from dynamic_emb import (
+        DynamicEmbeddingCollectionSharder,
+        DynamicEmbeddingShardingPlanner,
+        DynamicEmbTableOptions,
+        DynamicEmbParameterConstraints,
+    )
+    ···
     constraints = {
         f"t_{feature_name}": DynamicEmbParameterConstraints(
             sharding_types=[ShardingType.ROW_WISE.value],
