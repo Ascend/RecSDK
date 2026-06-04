@@ -9,7 +9,7 @@ RecOps 是 Rec SDK 基于 Ascend C 开发的推荐场景自定义算子集，为
 |---------|---------|---------|
 | [concat_jagged_tensor](../../../cust_op/ascendc_op/ai_core_op/concat_jagged_tensor/v220/README.md) | 将两个jagged Tensor按照offset在dim1维度上进行拼接，合并成一个tensor。 | ascend910b, ascend910_93, ascend310p, ascend950 |
 | [concat_jagged_tensor_grad](../../../cust_op/ascendc_op/ai_core_op/concat_jagged_tensor_grad/v220/README.md) | 将一个Tensor按照offset切分成两个不一定等长的tensor。 | ascend910b, ascend910_93, ascend310p, ascend950 |
-| [cust_op_by_addr](../../../cust_op/ascendc_op/ai_core_op/cust_op_by_addr/c310/README.md) | 用addr地址作为入参进行嵌入表查询，替换tf.gather算子，支持动态扩容。 | ascend910, ascend910b, ascend910_93, ascend950 |
+| [cust_op_by_addr](../../../cust_op/ascendc_op/ai_core_op/cust_op_by_addr/c310/README.md) | 用addr地址作为入参进行嵌入表查询，替换tf.gather算子，支持动态扩容。 | ascend910b, ascend910_93, ascend950 |
 | [disentangle_attention](../../../cust_op/ascendc_op/ai_core_op/disentangle_attention/v220/README.md) | 实现DeBERTa模型中的解耦注意力(disentangle attention)功能。 | ascend910b, ascend910_93, ascend950 |
 | [fused_lazy_adam](../../../cust_op/ascendc_op/ai_core_op/fused_lazy_adam/v220/README.md) | 实现LazyAdam优化器反向更新时m、v、variable三项数据的计算和更新。 | ascend910b, ascend910_93, ascend950 |
 | [fused_sgd](../../../cust_op/ascendc_op/ai_core_op/fused_sgd/v220/README.md) | 实现SGD优化器反向更新时参数的计算和更新。 | ascend910b, ascend910_93, ascend950 |
