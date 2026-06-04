@@ -139,8 +139,8 @@ public:
         Add<float>(u3, u3, u4, len);
 
         Muls<float>(u4, u3, invVHatDenom, len);
-        Adds<float>(u4, u4, eps, len);
         Sqrt<float>(u4, u4, len);
+        Adds<float>(u4, u4, eps, len);
         Div<float>(u0, u2, u4, len);
         Muls<float>(u0, u0, stepSize, len);
         Muls<float>(u1, u1, decayFactor, len);
