@@ -740,3 +740,761 @@ index 56c7dc26..9905da0e 100644
 +        return lookup.get(("npu", EmbeddingComputeKernel.FUSED.value))
 
      return lookup.get((compute_device, compute_kernel))
+diff --git a/torchrec/distributed/planner/enumerators.py b/torchrec/distributed/planner/enumerators.py
+index b24fe2cf..d5b197fa 100644
+--- a/torchrec/distributed/planner/enumerators.py
++++ b/torchrec/distributed/planner/enumerators.py
+@@ -96,7 +96,7 @@ class EmbeddingEnumerator(Enumerator):
+             use_exact_enumerate_order if use_exact_enumerate_order else False
+         )
+         memory_type = (
+-            "hbm_cap" if topology.compute_device in {"cuda", "mtia"} else "ddr_cap"
++            "hbm_cap" if topology.compute_device in {"cuda", "mtia", "npu"} else "ddr_cap"
+         )
+         self._device_memory_sizes: Optional[
+             List[int]
+diff --git a/torchrec/distributed/planner/shard_estimators.py b/torchrec/distributed/planner/shard_estimators.py
+index 53bb9199..2ee8557f 100644
+--- a/torchrec/distributed/planner/shard_estimators.py
++++ b/torchrec/distributed/planner/shard_estimators.py
+@@ -1349,7 +1349,7 @@ def calculate_shard_storages(
+                 count_ephemeral_storage_cost=count_ephemeral_storage_cost,
+                 is_inference=is_inference,
+             )
+-            if compute_device in {"cuda", "mtia"}
++            if compute_device in {"cuda", "mtia", "npu"}
+             else 0
+         )
+         for input_size, output_size, hbm_specific_size in zip(
+diff --git a/torchrec/distributed/planner/stats.py b/torchrec/distributed/planner/stats.py
+index 19fde330..0c88bff5 100644
+--- a/torchrec/distributed/planner/stats.py
++++ b/torchrec/distributed/planner/stats.py
+@@ -701,10 +701,7 @@ class EmbeddingStats(Stats):
+             used_hbm_gb = bytes_to_gb(used_hbm[rank])
+             used_hbm_ratio = (
+                 used_hbm[rank] / ((1 - reserved_hbm_percent) * device.storage.hbm)
+-                if (
+-                    topology.compute_device == "cuda"
+-                    or topology.compute_device == "mtia"
+-                )
++                if topology.compute_device in {"cuda", "mtia", "npu"}
+                 and ((1 - reserved_hbm_percent) * device.storage.hbm) != 0
+                 else 0
+             )
+diff --git a/torchrec/distributed/planner/storage_reservations.py b/torchrec/distributed/planner/storage_reservations.py
+index 6e7d3830..6fb9ee7b 100644
+--- a/torchrec/distributed/planner/storage_reservations.py
++++ b/torchrec/distributed/planner/storage_reservations.py
+@@ -73,7 +73,7 @@ def _reserve_dense_storage(
+         dense_tensor_size = dense_tensor_estimate
+
+     dense_tensor_storage = Storage(
+-        hbm=dense_tensor_size if topology.compute_device in {"cuda", "mtia"} else 0,
++        hbm=dense_tensor_size if topology.compute_device in {"cuda", "mtia", "npu"} else 0,
+         ddr=dense_tensor_size if topology.compute_device == "cpu" else 0,
+     )
+
+@@ -93,7 +93,7 @@ def _reserve_kjt_storage(
+     kjt_size = math.ceil(sum(batch_inputs) * float(input_data_type_size)) * multiplier
+
+     kjt_storage = Storage(
+-        hbm=kjt_size if topology.compute_device in {"cuda", "mtia"} else 0,
++        hbm=kjt_size if topology.compute_device in {"cuda", "mtia", "npu"} else 0,
+         ddr=kjt_size if topology.compute_device == "cpu" else 0,
+     )
+
+diff --git a/torchrec/distributed/planner/types.py b/torchrec/distributed/planner/types.py
+index 4891bbc5..b2025cd9 100644
+--- a/torchrec/distributed/planner/types.py
++++ b/torchrec/distributed/planner/types.py
+@@ -309,13 +309,14 @@ class Topology:
+             "cpu",
+             "cuda",
+             "mtia",
++            "npu"
+         ], f"unsupported compute device {compute_device}"
+
+         self._compute_device = compute_device
+         self._world_size = world_size
+
+         hbm_per_device = [0] * world_size
+-        if self._compute_device == "cuda" or self._compute_device == "mtia":
++        if self._compute_device == "cuda" or self._compute_device == "npu":
+             hbm_per_device = [hbm_cap if hbm_cap else HBM_CAP] * world_size
+         ddr_cap_per_rank = [ddr_cap if ddr_cap else DDR_CAP] * world_size
+
+diff --git a/torchrec/distributed/planner/utils.py b/torchrec/distributed/planner/utils.py
+index 7d776305..1157894d 100644
+--- a/torchrec/distributed/planner/utils.py
++++ b/torchrec/distributed/planner/utils.py
+@@ -52,7 +52,7 @@ def placement(
+     """
+
+     param_device = compute_device
+-    if compute_device in {"cuda", "mtia"}:
++    if compute_device in {"cuda", "mtia", "npu"}:
+         param_device = torch.device(compute_device, rank % local_size)
+     return f"rank:{rank}/{param_device}"
+
+diff --git a/torchrec/distributed/quant_embedding.py b/torchrec/distributed/quant_embedding.py
+index 0f91edc3..0fb121a7 100644
+--- a/torchrec/distributed/quant_embedding.py
++++ b/torchrec/distributed/quant_embedding.py
+@@ -215,7 +215,7 @@ def create_infer_embedding_sharding(
+         get_device_from_sharding_infos(sharding_infos)
+     )
+
+-    if storage_device_type_from_sharding_infos in ["cuda", "mtia"]:
++    if storage_device_type_from_sharding_infos in ["cuda", "mtia", "npu"]:
+         if sharding_type == ShardingType.TABLE_WISE.value:
+             assert isinstance(
+                 storage_device_type_from_sharding_infos, str
+diff --git a/torchrec/distributed/quant_embedding_kernel.py b/torchrec/distributed/quant_embedding_kernel.py
+index fe304df4..e94247fb 100644
+--- a/torchrec/distributed/quant_embedding_kernel.py
++++ b/torchrec/distributed/quant_embedding_kernel.py
+@@ -65,7 +65,7 @@ def _copy_config(
+     config = copy.deepcopy(original)
+     config.data_type = data_type
+     for table in config.embedding_tables:
+-        row_alignment = 16 if device.type == "cuda" else 1
++        row_alignment = 16 if (device.type == "cuda" or device.type == "npu") else 1
+         table.local_cols = rounded_row_size_in_bytes(
+             table.local_cols, sparse_type, row_alignment
+         )
+@@ -174,7 +174,7 @@ def _get_runtime_device(
+                 )
+                 for table in config.embedding_tables
+             )
+-            else torch.device("cuda")
++            else torch.device("npu" if torch.npu.is_available() else "cuda")
+         )
+
+
+@@ -264,7 +264,7 @@ class QuantBatchedEmbeddingBag(
+         managed: List[EmbeddingLocation] = []
+         is_virtual_table: bool = False
+         for table in config.embedding_tables:
+-            if device is not None and device.type == "cuda":
++            if device is not None and (device.type == "cuda" or device.type == "npu"):
+                 managed.append(
+                     compute_kernel_to_embedding_location(table.compute_kernel)
+                 )
+@@ -286,7 +286,11 @@ class QuantBatchedEmbeddingBag(
+             device, config, shard_index
+         )
+         # 16 for CUDA, 1 for others like CPU and MTIA.
+-        self._tbe_row_alignment: int = 16 if self._runtime_device.type == "cuda" else 1
++        self._tbe_row_alignment: int = (
++            16
++            if (self._runtime_device.type == "cuda" or self._runtime_device.type == "npu")
++            else 1
++        )
+         embedding_specs = []
+         for local_rows, local_cols, table, location in zip(
+             self._local_rows,
+@@ -528,7 +532,7 @@ class QuantBatchedEmbedding(
+         is_virtual_table = False
+         embedding_cache_mode = False
+         for table in config.embedding_tables:
+-            if device is not None and device.type == "cuda":
++            if device is not None and (device.type == "cuda" or device.type == "npu"):
+                 managed.append(
+                     compute_kernel_to_embedding_location(table.compute_kernel)
+                 )
+@@ -547,7 +551,11 @@ class QuantBatchedEmbedding(
+             device, config, shard_index
+         )
+         # 16 for CUDA, 1 for others like CPU and MTIA.
+-        self._tbe_row_alignment: int = 16 if self._runtime_device.type == "cuda" else 1
++        self._tbe_row_alignment: int = (
++            16
++            if (self._runtime_device.type == "cuda" or self._runtime_device.type == "npu")
++            else 1
++        )
+         embedding_clazz = (
+             KVEmbeddingInference
+             if is_virtual_table
+diff --git a/torchrec/distributed/quant_embeddingbag.py b/torchrec/distributed/quant_embeddingbag.py
+index 1d774b37..71319224 100644
+--- a/torchrec/distributed/quant_embeddingbag.py
++++ b/torchrec/distributed/quant_embeddingbag.py
+@@ -449,7 +449,11 @@ class ShardedQuantFeatureProcessedEmbeddingBagCollection(
+             device,
+         )
+         assert feature_processor is not None
+-        device_type: str = self._device.type if self._device is not None else "cuda"
++        device_type: str = (
++            self._device.type
++            if self._device is not None else
++            ("npu" if torch.npu.is_available() else "cuda")
++        )
+         self.feature_processors_per_rank: nn.ModuleList = torch.nn.ModuleList()
+         feature_processor_device = None
+         for _, param in feature_processor.named_parameters():
+@@ -469,7 +473,7 @@ class ShardedQuantFeatureProcessedEmbeddingBagCollection(
+                 )
+
+         if isinstance(env, Dict):
+-            expected_device_type = "cuda"
++            expected_device_type = "npu"
+             for (
+                 embedding_configs
+             ) in self._sharding_type_device_group_to_sharding_infos.values():
+@@ -501,7 +505,7 @@ class ShardedQuantFeatureProcessedEmbeddingBagCollection(
+                         feature_processor_device,
+                         (
+                             torch.device(f"{device_type}:{i}")
+-                            if device_type == "cuda"
++                            if (device_type == "cuda" or device_type == "npu")
+                             else torch.device(f"{device_type}")
+                         ),
+                     )
+diff --git a/torchrec/distributed/shard.py b/torchrec/distributed/shard.py
+index 3c088042..d9bb1c66 100644
+--- a/torchrec/distributed/shard.py
++++ b/torchrec/distributed/shard.py
+@@ -123,6 +123,8 @@ def _shard(
+         else:
+             if torch.cuda.is_available():
+                 device = torch.device(torch.cuda.current_device())
++            elif torch.npu.is_available():
++                device = torch.device(torch.npu.current_device())
+             else:
+                 device = torch.device("cpu")
+
+@@ -246,6 +248,8 @@ def _shard_modules(  # noqa: C901
+         else:
+             if torch.cuda.is_available():
+                 device = torch.device(torch.cuda.current_device())
++            elif torch.npu.is_available():
++                device = torch.device(torch.npu.current_device())
+             else:
+                 device = torch.device("cpu")
+
+diff --git a/torchrec/distributed/sharding/dynamic_sharding.py b/torchrec/distributed/sharding/dynamic_sharding.py
+index 075b1b41..92357d6f 100644
+--- a/torchrec/distributed/sharding/dynamic_sharding.py
++++ b/torchrec/distributed/sharding/dynamic_sharding.py
+@@ -699,7 +699,7 @@ def move_sharded_tensors_to_cpu(state_dict: Dict[str, Any]) -> Dict[str, Any]:
+         if isinstance(item, ShardedTensor):
+             # For ShardedTensor, move all local shards to CPU
+             for shard in item.local_shards():
+-                if shard.tensor.device.type == "cuda":
++                if shard.tensor.device.type == "cuda" or shard.tensor.device.type == "npu":
+                     shard.tensor = shard.tensor.cpu()
+             return item
+         elif isinstance(item, dict):
+@@ -716,7 +716,7 @@ def move_sharded_tensors_to_cpu(state_dict: Dict[str, Any]) -> Dict[str, Any]:
+             return item
+
+     processed_dict = _process_item(state_dict)
+-    torch.cuda.empty_cache()
++    torch.npu.empty_cache()
+     return processed_dict
+
+
+diff --git a/torchrec/distributed/sharding/rw_pool_sharding.py b/torchrec/distributed/sharding/rw_pool_sharding.py
+index e5bff5c7..8e05f920 100644
+--- a/torchrec/distributed/sharding/rw_pool_sharding.py
++++ b/torchrec/distributed/sharding/rw_pool_sharding.py
+@@ -243,6 +243,7 @@ class InferRwObjectPoolInputDist(torch.nn.Module):
+
+         id_offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(bucketized_lengths)
+         dist_ids = []
++        device_type = "npu" if torch.npu.is_available() else "cuda"
+         for rank in range(self._world_size):
+             offset = id_offsets[rank]
+             next_offset = id_offsets[rank + 1]
+@@ -250,7 +251,9 @@ class InferRwObjectPoolInputDist(torch.nn.Module):
+             dist_ids.append(
+                 ids_for_rank
+                 if self._device == torch.device("cpu")
+-                else ids_for_rank.to(torch.device(f"cuda:{rank}"), non_blocking=True)
++                else ids_for_rank.to(
++                    torch.device(f"{device_type}:{rank}"), non_blocking=True
++                )
+             )
+
+         assert unbucketize_permute is not None, "unbucketize permute must not be None"
+@@ -307,6 +310,7 @@ class InferRwObjectPoolInputDist(torch.nn.Module):
+         unbucketize_values = values[index]
+         dist_ids = []
+         dist_values = []
++        device_type = "npu" if torch.npu.is_available() else "cuda"
+         for rank in range(self._world_size):
+             offset = id_offsets[rank]
+             next_offset = id_offsets[rank + 1]
+@@ -315,12 +319,12 @@ class InferRwObjectPoolInputDist(torch.nn.Module):
+             dist_ids.append(
+                 ids_for_rank
+                 if self._device == torch.device("cpu")
+-                else ids_for_rank.to(torch.device(f"cuda:{rank}"), non_blocking=True)
++                else ids_for_rank.to(torch.device(f"{device_type}:{rank}"), non_blocking=True)
+             )
+             dist_values.append(
+                 values_for_rank
+                 if self._device == torch.device("cpu")
+-                else values_for_rank.to(torch.device(f"cuda:{rank}"), non_blocking=True)
++                else values_for_rank.to(torch.device(f"{device_type}:{rank}"), non_blocking=True)
+             )
+
+         return dist_ids, dist_values, unbucketize_permute
+diff --git a/torchrec/distributed/sharding_plan.py b/torchrec/distributed/sharding_plan.py
+index d70750d2..f301fcb2 100644
+--- a/torchrec/distributed/sharding_plan.py
++++ b/torchrec/distributed/sharding_plan.py
+@@ -75,7 +75,7 @@ def placement(
+     local_size: int,
+ ) -> str:
+     param_device = compute_device
+-    if compute_device in {"cuda", "mtia"}:
++    if compute_device in {"cuda", "mtia", "npu"}:
+         param_device = torch.device(compute_device, rank % local_size)
+     return f"rank:{rank}/{param_device}"
+
+@@ -350,7 +350,7 @@ def _get_compute_kernel(
+         compute_kernels += [
+             EmbeddingComputeKernel.FUSED.value,
+         ]
+-    if device_type in {"cuda"}:
++    if device_type in {"cuda", "npu"}:
+         compute_kernels += [
+             EmbeddingComputeKernel.FUSED_UVM.value,
+             EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+@@ -631,7 +631,7 @@ def row_wise(
+                     device_type = str(sizes_placement[1])
+                     placements.append(placement_helper(device_type, index, i))
+
+-                if device_type == "cuda":
++                if device_type == "cuda" or device_type == "npu":
+                     index += 1
+
+         return _get_parameter_sharding(
+diff --git a/torchrec/distributed/tensor_pool.py b/torchrec/distributed/tensor_pool.py
+index 21d44b56..7c5a694d 100644
+--- a/torchrec/distributed/tensor_pool.py
++++ b/torchrec/distributed/tensor_pool.py
+@@ -346,7 +346,7 @@ class ShardedInferenceTensorPool(
+         self._dtype = dtype
+         self._sharding_env = env
+         self._world_size = env.world_size
+-        self._device = device or torch.device("cuda")
++        self._device = device or torch.device("npu" if torch.npu.is_available() else "cuda")
+         self._sharding_plan = plan
+
+         self._rank = env.rank
+@@ -384,7 +384,7 @@ class ShardedInferenceTensorPool(
+             shard_device = (
+                 torch.device("cpu")
+                 if device == torch.device("cpu")
+-                else torch.device("cuda", rank)
++                else torch.device("npu" if torch.npu.is_available() else "cuda", rank)
+             )
+
+             self._local_shard_pools.append(
+diff --git a/torchrec/distributed/train_pipeline/train_pipelines.py b/torchrec/distributed/train_pipeline/train_pipelines.py
+index 2293a087..977e2d7d 100644
+--- a/torchrec/distributed/train_pipeline/train_pipelines.py
++++ b/torchrec/distributed/train_pipeline/train_pipelines.py
+@@ -212,7 +212,7 @@ class TrainPipelineBase(TrainPipeline[In, Out]):
+         self._device = device
+         self._memcpy_stream: Optional[torch.Stream] = (
+             torch.get_device_module(device).Stream()
+-            if device.type in ["cuda", "mtia"]
++            if device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+         self._inplace_copy_batch_to_gpu = inplace_copy_batch_to_gpu
+@@ -223,7 +223,7 @@ class TrainPipelineBase(TrainPipeline[In, Out]):
+         # pyre-ignore
+         self._stream_context = (
+             torch.get_device_module(self._device).stream
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else torch.cuda.stream
+         )
+         self._cur_batch: Optional[In] = None
+@@ -520,22 +520,26 @@ class TrainPipelineSparseDist(TrainPipeline[In, Out]):
+             assert (
+                 not is_torchdynamo_compiling()
+             ), "Train Pipelines rely on cuda streams, which is not supported by Dynamo"
++        if device.type == "npu":
++            assert (
++                not is_torchdynamo_compiling()
++            ), "Train Pipelines rely on npu streams, which is not supported by Dynamo"
+
+         # pyre-ignore
+         self._stream_context = (
+             torch.get_device_module(self._device).stream
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else torch.cuda.stream
+         )
+
+         self._memcpy_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(device).Stream(priority=-1))
+-            if device.type in ["cuda", "mtia"]
++            if device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+         self._data_dist_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(device).Stream(priority=-1))
+-            if device.type in ["cuda", "mtia"]
++            if device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+
+@@ -1099,7 +1103,7 @@ class TrainPipelineFusedSparseDist(TrainPipelineSparseDist[In, Out]):
+         if emb_lookup_stream == "new":
+             self._emb_lookup_stream: Optional[torch.Stream] = (
+                 (torch.get_device_module(device).Stream())
+-                if device.type in ["cuda", "mtia"]
++                if device.type in ["cuda", "mtia", "npu"]
+                 else None
+             )
+         elif emb_lookup_stream == "current":
+@@ -1651,12 +1655,12 @@ class PrefetchTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
+         self._context = PrefetchTrainPipelineContext(version=0)
+         self._prefetch_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(device).Stream())
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+         self._default_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(self._device).Stream())
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+         self._batch_ip3: Optional[In] = None
+@@ -1974,7 +1978,7 @@ class StagedTrainPipeline(TrainPipeline[In, Optional[StageOut]]):
+         # pyre-ignore
+         self._stream_context = (
+             torch.get_device_module(self._compute_stream.device).stream
+-            if self._compute_stream.device.type in ["cuda", "mtia"]
++            if self._compute_stream.device.type in ["cuda", "mtia", "npu"]
+             else torch.cuda.stream
+         )
+
+diff --git a/torchrec/distributed/train_pipeline/utils.py b/torchrec/distributed/train_pipeline/utils.py
+index 7842ff04..d60d7b61 100644
+--- a/torchrec/distributed/train_pipeline/utils.py
++++ b/torchrec/distributed/train_pipeline/utils.py
+@@ -508,7 +508,7 @@ class DataLoadingThread(Thread, Generic[In]):
+         if memcpy_stream is None:
+             self._memcpy_stream: Optional[torch.Stream] = (
+                 torch.get_device_module(device).Stream(priority=memcpy_stream_priority)
+-                if device.type in ["cuda", "mtia"]
++                if device.type in ["cuda", "mtia", "npu"]
+                 else None
+             )
+         else:
+@@ -522,6 +522,9 @@ class DataLoadingThread(Thread, Generic[In]):
+         if self._device.type == "cuda" and torch.cuda.is_available():
+             # set the current device the same as the one used in the main thread
+             torch.cuda.set_device(self._device)
++        elif self._device.type == "npu" and torch.npu.is_available():
++            # set the current device the same as the one used in the main thread
++            torch.npu.set_device(self._device)
+         elif self._device.type == "mtia" and torch.mtia.is_available():
+             # set the current device the same as the one used in the main thread
+             torch.mtia.set_device(self._device)
+diff --git a/torchrec/distributed/types.py b/torchrec/distributed/types.py
+index f81c9289..ca170e10 100644
+--- a/torchrec/distributed/types.py
++++ b/torchrec/distributed/types.py
+@@ -477,7 +477,7 @@ class DeviceToHostTensorAwaitable(LazyAwaitable[torch.Tensor]):
+         self._tensor: torch.Tensor = tensor_on_device.to("cpu", non_blocking=True)
+
+         # cuda event to record the completion of the copy
+-        self._event = torch.cuda.Event()
++        self._event = torch.npu.Event()
+         self._event.record()
+
+     def _wait_impl(self) -> torch.Tensor:
+@@ -1410,9 +1410,10 @@ class ModuleSharder(abc.ABC, Generic[M]):
+         compute kernel.
+         """
+
+-        assert compute_device_type in {"cuda", "cpu", "mtia"}
++        assert compute_device_type in {"cuda", "cpu", "mtia", "npu"}
+         storage_map = {
+             "cuda": ParameterStorage.HBM,
++            "npu": ParameterStorage.HBM,
+             "cpu": ParameterStorage.DDR,
+             "mtia": ParameterStorage.HBM,
+         }
+diff --git a/torchrec/distributed/utils.py b/torchrec/distributed/utils.py
+index a05456d0..e10f8dc9 100644
+--- a/torchrec/distributed/utils.py
++++ b/torchrec/distributed/utils.py
+@@ -57,6 +57,8 @@ def get_device_type() -> str:
+         device_type = "cuda"
+     elif torch.mtia.is_available():
+         device_type = "mtia"
++    elif torch.npu.is_available():
++        device_type = "npu"
+     else:
+         device_type = "cpu"
+     return device_type
+@@ -230,14 +232,20 @@ class sharded_model_copy:
+
+         torch.Tensor.__deepcopy__ = _copy_or_not
+         torch.nn.Parameter.__deepcopy__ = _param_copy
+-        # pyre-fixme[16]: `Type` has no attribute `__deepcopy__`.
+-        torch._C._distributed_c10d.ProcessGroupNCCL.__deepcopy__ = _no_copy
++        if torch.npu.is_available():
++            # pyre-fixme[16]: `Type` has no attribute `__deepcopy__`.
++            torch._C._distributed_c10d.ProcessGroup.__deepcopy__ = _no_copy
++            # pyre-ignore [16]
++            torch.npu.streams.Stream.__deepcopy__ = _no_copy
++        else:
++            # pyre-fixme[16]: `Type` has no attribute `__deepcopy__`.
++            torch._C._distributed_c10d.ProcessGroupNCCL.__deepcopy__ = _no_copy
++            # pyre-ignore [16]
++            torch.cuda.streams.Stream.__deepcopy__ = _no_copy
+         # pyre-fixme[16]: `Type` has no attribute `__deepcopy__`.
+         torch._C._distributed_c10d.ProcessGroupGloo.__deepcopy__ = _no_copy
+         # pyre-fixme[16]: `Type` has no attribute `__deepcopy__`.
+         torch._C._distributed_c10d.Work.__deepcopy__ = _no_copy
+-        # pyre-ignore [16]
+-        torch.cuda.streams.Stream.__deepcopy__ = _no_copy
+
+     # pyre-ignore [2]
+     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+@@ -245,14 +253,20 @@ class sharded_model_copy:
+         torch.Tensor.__deepcopy__ = self.t_copy_save_
+         # pyre-ignore [16]
+         torch.nn.Parameter.__deepcopy__ = self.p_copy_save_
+-        # pyre-fixme[16]: `Type` has no attribute `__deepcopy__`.
+-        torch._C._distributed_c10d.ProcessGroupNCCL.__deepcopy__ = None
++        if torch.npu.is_available():
++            # pyre-fixme[16]: `Type` has no attribute `__deepcopy__`.
++            torch._C._distributed_c10d.ProcessGroup.__deepcopy__ = None
++            # pyre-ignore [16]
++            torch.npu.streams.Stream.__deepcopy__ = None
++        else:
++            # pyre-fixme[16]: `Type` has no attribute `__deepcopy__`.
++            torch._C._distributed_c10d.ProcessGroupNCCL.__deepcopy__ = None
++            # pyre-ignore [16]
++            torch.cuda.streams.Stream.__deepcopy__ = None
+         # pyre-fixme[16]: `Type` has no attribute `__deepcopy__`.
+         torch._C._distributed_c10d.ProcessGroupGloo.__deepcopy__ = None
+         # pyre-fixme[16]: `Type` has no attribute `__deepcopy__`.
+         torch._C._distributed_c10d.Work.__deepcopy__ = None
+-        # pyre-ignore [16]
+-        torch.cuda.streams.Stream.__deepcopy__ = None
+
+
+ def copy_to_device(
+diff --git a/torchrec/inference/modules.py b/torchrec/inference/modules.py
+index 5458cc4f..eae2339d 100644
+--- a/torchrec/inference/modules.py
++++ b/torchrec/inference/modules.py
+@@ -308,7 +308,10 @@ class PredictModule(nn.Module):
+     # pyre-fixme[3]
+     def forward(self, batch: Dict[str, torch.Tensor]) -> Any:
+         if self._device is None:
+-            self._device = torch.device("cuda", torch.cuda.current_device())
++            if torch.npu.is_available():
++                self._device = torch.device("npu", torch.npu.current_device())
++            else:
++                self._device = torch.device("cuda", torch.cuda.current_device())
+         with torch.inference_mode():
+             return self.predict_forward(batch)
+
+@@ -575,6 +578,10 @@ def shard_quant_model(
+         hbm_cap = torch.cuda.get_device_properties(
+             f"cuda:{torch.cuda.current_device()}"
+         ).total_memory
++    elif torch.npu.is_available() and compute_device == "npu":
++        hbm_cap = torch.npu.get_device_properties(
++            f"npu:{torch.npu.current_device()}"
++        ).total_memory
+     else:
+         hbm_cap = None
+
+diff --git a/torchrec/modules/fused_embedding_modules.py b/torchrec/modules/fused_embedding_modules.py
+index 1464118d..9eb316b7 100644
+--- a/torchrec/modules/fused_embedding_modules.py
++++ b/torchrec/modules/fused_embedding_modules.py
+@@ -148,6 +148,8 @@ class _BatchedFusedEmbeddingLookups(nn.Module, FusedOptimizerModule):
+         compute_device = ComputeDevice.CPU
+         if device.type == "cuda":
+             compute_device = ComputeDevice.CUDA
++        elif device.type == "npu":
++            compute_device = ComputeDevice.NPU
+
+         self._emb_module: SplitTableBatchedEmbeddingBagsCodegen = (
+             SplitTableBatchedEmbeddingBagsCodegen(
+@@ -375,8 +377,9 @@ class FusedEmbeddingBagCollection(
+         ]:
+             assert device is not None and device.type in [
+                 "cuda",
++                "npu",
+                 "meta",
+-            ], f"Using location={location} requires device=cuda or meta"
++            ], f"Using location={location} requires device=cuda or npu or meta"
+
+         if device is None:
+             device = torch.device("cpu")
+@@ -386,6 +389,8 @@ class FusedEmbeddingBagCollection(
+                 location = EmbeddingLocation.HOST
+             elif device.type == "cuda":
+                 location = EmbeddingLocation.DEVICE
++            elif device.type == "npu":
++                location = EmbeddingLocation.DEVICE
+             else:
+                 raise ValueError("EmbeddingLocation could not be set")
+
+@@ -612,22 +617,26 @@ class FusedEmbeddingCollection(EmbeddingCollectionInterface, FusedOptimizerModul
+         ]:
+             assert device is not None and device.type in [
+                 "cuda",
++                "npu",
+                 "meta",
+-            ], f"Using location={location} requires device=cuda or meta"
++            ], f"Using location={location} requires device=cuda or npu or meta"
+
+         if device is None:
+             device = torch.device("cpu")
+
+         assert device.type in [
+             "cuda",
++            "npu",
+             "meta",
+-        ], "FusedEmbeddingCollection is only supported for device in [CUDA, meta] currently. There are plans to support device=CPU."
++        ], "FusedEmbeddingCollection is only supported for device in [CUDA, NPU, meta] currently. There are plans to support device=CPU."
+
+         if location is None:
+             if device.type in ["cpu", "meta"]:
+                 location = EmbeddingLocation.HOST
+             elif device.type == "cuda":
+                 location = EmbeddingLocation.DEVICE
++            elif device.type == "npu":
++                location = EmbeddingLocation.DEVICE
+             else:
+                 raise ValueError("EmbeddingLocation could not be set")
+
+diff --git a/torchrec/modules/itep_modules.py b/torchrec/modules/itep_modules.py
+index 28335420..7a4a0d4b 100644
+--- a/torchrec/modules/itep_modules.py
++++ b/torchrec/modules/itep_modules.py
+@@ -314,7 +314,7 @@ class GenericITEPModule(nn.Module):
+                             ), f"Device of table {table}: {table.local_metadata.placement.device()} does not match existing device: {self.current_device}"
+
+         if self.current_device is None:
+-            self.current_device = torch.device("cuda")
++            self.current_device = torch.device("npu" if torch.npu.is_available() else "cuda")
+
+         self.reversed_feature_table_map: Dict[int, str] = {
+             idx: feature_name for feature_name, idx in self.feature_table_map.items()
+diff --git a/torchrec/modules/object_pool_lookups.py b/torchrec/modules/object_pool_lookups.py
+index 0368a58f..d83ca808 100644
+--- a/torchrec/modules/object_pool_lookups.py
++++ b/torchrec/modules/object_pool_lookups.py
+@@ -321,13 +321,14 @@ class UVMCachingInt64Lookup(KeyedJaggedTensorPoolLookup):
+             [self._bit_dims], dtype=torch.int32, device=self._device
+         )
+
++        compute_device = ComputeDevice.NPU if torch.npu.is_available() else ComputeDevice.CUDA
+         self._tbe = SplitTableBatchedEmbeddingBagsCodegen(
+             embedding_specs=[
+                 (
+                     pool_size,
+                     2 * self._bit_dims,
+                     EmbeddingLocation.MANAGED,
+-                    ComputeDevice.CUDA,
++                    compute_device,
+                 ),
+             ],
+             pooling_mode=PoolingMode.NONE,
+@@ -349,7 +350,7 @@ class UVMCachingInt64Lookup(KeyedJaggedTensorPoolLookup):
+                             if device != torch.device("meta")
+                             else EmbeddingLocation.MANAGED
+                         ),
+-                        ComputeDevice.CUDA,
++                        compute_device,
+                     ),
+                 ],
+                 pooling_mode=PoolingMode.NONE,
+@@ -464,6 +465,7 @@ class UVMCachingInt32Lookup(KeyedJaggedTensorPoolLookup):
+             [self._bit_dims], dtype=torch.int32, device=self._device
+         )
+
++        compute_device = ComputeDevice.NPU if torch.npu.is_available() else ComputeDevice.CUDA
+         self._tbe = SplitTableBatchedEmbeddingBagsCodegen(
+             embedding_specs=[
+                 (
+@@ -474,7 +476,7 @@ class UVMCachingInt32Lookup(KeyedJaggedTensorPoolLookup):
+                         if self._device.type != "meta"
+                         else EmbeddingLocation.DEVICE
+                     ),
+-                    ComputeDevice.CUDA,
++                    compute_device,
+                 ),
+             ],
+             pooling_mode=PoolingMode.NONE,
+@@ -497,7 +499,7 @@ class UVMCachingInt32Lookup(KeyedJaggedTensorPoolLookup):
+                             if self._device.type != "meta"
+                             else EmbeddingLocation.DEVICE
+                         ),
+-                        ComputeDevice.CUDA,
++                        compute_device,
+                     ),
+                 ],
+                 pooling_mode=PoolingMode.NONE,
+@@ -725,7 +727,7 @@ class UVMCachingFloatLookup(TensorPoolLookup):
+                         if self._device.type != "meta"
+                         else EmbeddingLocation.DEVICE
+                     ),
+-                    ComputeDevice.CUDA,
++                    ComputeDevice.NPU if torch.npu.is_available() else ComputeDevice.CUDA,
+                 ),
+             ],
+             pooling_mode=PoolingMode.NONE,
+diff --git a/torchrec/modules/utils.py b/torchrec/modules/utils.py
+index c4fc7c0e..8e2ac24a 100644
+--- a/torchrec/modules/utils.py
++++ b/torchrec/modules/utils.py
+@@ -179,7 +179,7 @@ def _permute_tensor_by_segments(
+     NOTE:
+         `keyed_jagged_index_select_dim1` is only supported for CUDA.
+     """
+-    if tensor.device.type == "cuda":
++    if tensor.device.type == "cuda" or tensor.device.type == "npu":
+         output = torch.ops.fbgemm.keyed_jagged_index_select_dim1(
+             values=tensor,
+             lengths=segment_sizes,
+diff --git a/torchrec/sparse/jagged_tensor.py b/torchrec/sparse/jagged_tensor.py
+index df73074c..e1efac17 100644
+--- a/torchrec/sparse/jagged_tensor.py
++++ b/torchrec/sparse/jagged_tensor.py
+@@ -59,7 +59,7 @@ def _pin_and_move(tensor: torch.Tensor, device: torch.device) -> torch.Tensor:
+
+     return (
+         tensor.pin_memory().to(device=device, non_blocking=True)
+-        if device.type == "cuda" and tensor.device.type == "cpu"
++        if (device.type == "cuda" or device.type == "npu") and tensor.device.type == "cpu"
+         else tensor.to(device=device, non_blocking=True)
+     )
+
+@@ -447,7 +447,7 @@ def _permute_tensor_by_segments(
+     NOTE:
+         `keyed_jagged_index_select_dim1` is only supported for CUDA.
+     """
+-    if tensor.device.type == "cuda" and (
++    if (tensor.device.type == "cuda" or tensor.device.type == "npu") and (
+         weights is None or weights.dtype == torch.float32
+     ):
+         output = torch.ops.fbgemm.keyed_jagged_index_select_dim1(
+diff --git a/version.txt b/version.txt
+index bc80560f..16eaa17e 100644
+--- a/version.txt
++++ b/version.txt
+@@ -1 +1 @@
+-1.5.0
++1.5.0+npu
