@@ -5,9 +5,9 @@
 - Rec SDK TensorFlow支持物理机部署开发环境或通过容器部署开发环境，用户可根据实际业务情况选择其中一种进行部署。
 - 建议通过普通用户进行安装、运行。
 
-    >[!NOTE] 说明 
+    >[!NOTE] 说明
     >如果需要查看Rec SDK TensorFlow的历史安装记录，请参见[查看Rec SDK TensorFlow安装与卸载记录](common_operations.md#zh-cn_topic_0000001683896117)。
-    
+
 ## 安装依赖<a name="zh-cn_topic_0000001580007100"></a>
 
 安装Rec SDK TensorFlow软件包前需准备以下环境依赖及操作，请参见[表1](#table18461141184116)准备安装环境。
@@ -17,14 +17,14 @@
 
 |依赖名称/操作|推荐版本|获取方式|
 |--|--|--|
-|CANN软件包和TensorFlow适配昇腾插件|CANN 9.0.0|<li>Ascend-cann-toolkit_{version}_linux-{arch}.run：单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>请参见《CANN 软件安装指南》进行安装。</li><li>TensorFlow适配昇腾插件，单击[获取链接](https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.44_8.3.RC1)。npu_bridge-1.15.0\*适配TensorFlow 1.15.0的版本。</li>|
+|CANN软件包和TensorFlow适配昇腾插件|CANN 9.0.0|Ascend-cann-toolkit_{version}_linux-{arch}.run：单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>请参见《CANN 软件安装指南》进行安装。<br>TensorFlow适配昇腾插件，单击[获取链接](https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.44_8.3.RC1)。npu_bridge-1.15.0\*适配TensorFlow 1.15.0的版本。|
 |昇腾硬件产品驱动和固件|Ascend HDK 26.0.RC1及补丁版本|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。安装驱动与固件请参见相关硬件产品配套的[《驱动和固件安装升级指南》](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)。|
 |Ascend Docker Runtime|MindCluster 7.3.0|请参见《MindCluster 集群调度用户指南》的“安装 > 安装部署”章节进行安装。|
 |配置Device网卡|-|请参考《Ascend Training Solution 组网指南》的参数面网络配置示例配置训练节点章节，通过HCCN_Tool配置NPU网口的Device IP。|
 |TensorFlow|TensorFlow 1.15.0|请从[TensorFlow](https://github.com/tensorflow/tensorflow)仓库获取源码。Arm环境下TensorFlow官方未提供对应的whl包，如需在Arm环境下使用，可以从[链接](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html)获取Arm的TensorFlow whl包。<br>[!NOTE] 说明<br>若whl包下载受阻，可复制其链接并在新标签页中打开，即可顺利完成下载。|
 |Python 3.7.5|Python 3.7.5|请从[Python官网](https://www.python.org/)获取依赖软件包。|
 
->[!NOTE] 须知 
+>[!NOTE] 须知
 >对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以但不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
 
 ## 获取Rec SDK TensorFlow软件包<a name="zh-cn_topic_0000001630127085"></a>
@@ -35,7 +35,7 @@
 
 ### 源码编译安装
 
-源码编译前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu)安装CANN开发套件软件包；参考[TF Adapter安装指南](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/900beta1/migration/tfmigr1/tfmigr1_000009.html)安装TensorFlow适配昇腾的框架插件包。  
+源码编译前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu)安装CANN开发套件软件包；参考[TF Adapter安装指南](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/900beta1/migration/tfmigr1/tfmigr1_000009.html)安装TensorFlow适配昇腾的框架插件包。
 
 编译环境依赖：
 
@@ -76,7 +76,7 @@ pip install build/output/tf_rec_v2*.tar.gz
 ## 使用物理机部署开发环境<a name="zh-cn_topic_0000001630046437"></a>
 
 >[!NOTE] 须知
-> 
+>
 >- 当前支持在Ubuntu  20.04、CentOS  7系统中进行物理机开发环境部署。
 >- 用户请勿修改编译目录下除run.sh文件外的其他文件代码。
 
@@ -125,13 +125,13 @@ pip install build/output/tf_rec_v2*.tar.gz
 ### 使用容器部署开发环境<a name="zh-cn_topic_0000001579847292"></a>
 
 >[!NOTE] 须知
-> 
+>
 >- 如需使用CentOS系统进行配置（包括宿主机及容器），libstdc++版本需要高于libstdc++.so.6.0.24。
 >- 出于安全保护，用户仅能使用非root用户启动容器进行使用。
 
 基于容器部署Rec SDK TensorFlow开发环境，可参考如[图1](#fig2687191413442)步骤完成配置。
 
-**图 1**  配置容器内的开发环境及训练镜像构建<a id="fig2687191413442"></a>  
+**图 1**  配置容器内的开发环境及训练镜像构建<a id="fig2687191413442"></a>
 ![](../../figures/tf_rec_v1/配置容器内的开发环境及训练镜像构建.png "配置容器内的开发环境及训练镜像构建")
 
 **关键步骤说明<a name="section15488921175211"></a>**
@@ -144,9 +144,9 @@ pip install build/output/tf_rec_v2*.tar.gz
 3. 如需在容器中使用动态扩容功能，请参见[（可选）片上内存侧动态扩容算子包安装](common_operations.md#zh-cn_topic_0000001630046409)，编译安装动态扩容算子包。
 4. 如需使用Hadoop分布式文件系统，请参考[Hadoop官方文档](https://hadoop.apache.org/docs/r1.0.4/cn/quickstart.html)进行环境部署和集群搭建。推荐使用Hadoop-2.7.5版本。
 
-    >[!NOTE] 说明 
+    >[!NOTE] 说明
     >根据Hadoop官方文档部署环境之后，环境中/usr/local/hadoop-2.7.5/sbin文件属主为20415（非root用户），该属主有重命名、创建新文件来替换root用户的PATH环境变量中的可执行文件的权限，存在越权风险。
-    
+
 ### 制作Rec SDK TensorFlow训练镜像<a name="zh-cn_topic_0000001787827420"></a>
 
 本章节旨在指导用户根据已有基础镜像制作Rec SDK TensorFlow的训练镜像。
@@ -181,21 +181,21 @@ pip install build/output/tf_rec_v2*.tar.gz
     ```bash
     # 请根据实际情况修改基础镜像名称及镜像tag
     FROM rec_sdk-tf1:7.3.0
-    
+
     # CANN相关参数
     ARG TOOLKIT_PKG=Ascend-cann-toolkit*.run
     ARG KERNEL_PKG=Ascend-cann-*-ops*.run
     ARG TF1_PLUGIN=npu_bridge-1.15.0-*.whl
     # Rec SDK TensorFlow包
     ARG REC_SDK_PKG=tf_rec_v2*.tar.gz
-    
+
     # 设置安装路径环境变量
     ARG ASCEND_BASE=/usr/local/Ascend
-    
+
     # 删除旧的CANN
     RUN rm -rf $ASCEND_BASE/ascend-toolkit
     RUN rm -rf $ASCEND_BASE/cann*
-    
+
     # 请根据实际情况选择安装需要拷贝和安装的依赖，若无需执行可将指令行删除
     WORKDIR /tmp
     COPY $TOOLKIT_PKG .
@@ -204,7 +204,7 @@ pip install build/output/tf_rec_v2*.tar.gz
     COPY $REC_SDK_PKG .
     COPY version.info .
     COPY ascend_install.info .
-    
+
     # 安装ascend-toolkit和ops算子包
     RUN umask 0027 && \
         mkdir -p $ASCEND_BASE/driver && \
@@ -220,7 +220,7 @@ pip install build/output/tf_rec_v2*.tar.gz
         rm -f $KERNEL_PKG && \
         rm -rf $ASCEND_BASE/driver && \
         rm -rf /etc/ascend_install.info
-    
+
     # 安装Rec SDK TensorFlow
     RUN pip3.7 install $TF1_PLUGIN --force-reinstall && \
         pip3.7 install $REC_SDK_PKG --force-reinstall && \
