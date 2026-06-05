@@ -16,6 +16,38 @@
 
 set -e
 
+function setup_ccache()
+{
+    # 检查 ccache 是否安装
+    if ! command -v ccache &> /dev/null; then
+        echo "[INFO] ccache not found, using default compiler..."
+        return 0
+    fi
+
+    echo "[INFO] ccache found, enabling compiler cache..."
+
+    # 设置 ccache 路径到 PATH 最前面
+    if [ -d "/usr/lib/ccache" ]; then
+        export PATH=/usr/lib/ccache:$PATH
+    elif [ -d "/usr/lib64/ccache" ]; then
+        export PATH=/usr/lib64/ccache:$PATH
+    else
+        echo "Warning: ccache directory not found in standard paths."
+    fi
+
+    # 设置缓存目录和大小
+    export CCACHE_DIR="${CCACHE_DIR:-/home/cache}"
+    export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-10G}"
+    export CCACHE_COMPRESS=true
+    export CCACHE_HASHDIR=true
+    # 将所有绝对路径归一化到项目根目录，跨编译目录才能命中
+    export CCACHE_BASEDIR=$(pwd)
+    export CCACHE_SLOPPINESS="time_macros,file_macro,include_file_mtime,include_file_ctime,pch_defines,locale,random_seed"
+    export CCACHE_COMPILERCHECK=content
+    export CC_COMPILER_LAUNCHER=ccache
+    export CXX_COMPILER_LAUNCHER=ccache
+}
+
 if [ "$#" -lt 1 ]; then
     echo "ERROR: Please specify the version to compile. e.g. 'bash $0 A2'"
     exit 1
@@ -190,7 +222,7 @@ function compile_ops_v220() {
                                 echo "Operator ${dir_name} for 310P already built, skipping..."
                                 continue
                             fi
-                            bash ./run.sh --ai-core ai_core-Ascend310P3 || { 
+                            bash ./run.sh --ai-core ai_core-Ascend310P3 || {
                                 if [[ "$ERROR_MODE" == "exit" ]]; then
                                     echo "错误模式为 exit，脚本即将退出..."
                                     exit 1
@@ -217,7 +249,7 @@ function compile_ops_v220() {
                                 echo "Operator ${dir_name} for A3 already built, skipping..."
                                 continue
                             fi
-                            bash ./run.sh --ai-core ai_core-Ascend910_93 || { 
+                            bash ./run.sh --ai-core ai_core-Ascend910_93 || {
                                 if [[ "$ERROR_MODE" == "exit" ]]; then
                                     echo "Error mode is exit, the script will exit immediately..."
                                     exit 1
@@ -243,7 +275,7 @@ function compile_ops_v220() {
                                 echo "Operator ${dir_name} for A2 already built, skipping..."
                                 continue
                             fi
-                            bash ./run.sh --ai-core ai_core-Ascend910B1 || { 
+                            bash ./run.sh --ai-core ai_core-Ascend910B1 || {
                                 if [[ "$ERROR_MODE" == "exit" ]]; then
                                     echo "Error mode is exit, the script will exit immediately..."
                                     exit 1
@@ -265,7 +297,7 @@ function compile_ops_v220() {
                         echo "Operator ${dir_name} for A2 already built, skipping..."
                         continue
                     fi
-                    bash ./run.sh --ai-core ai_core-Ascend910B1 || { 
+                    bash ./run.sh --ai-core ai_core-Ascend910B1 || {
                         if [[ "$ERROR_MODE" == "exit" ]]; then
                             echo "Error mode is exit, the script will exit immediately..."
                             exit 1
@@ -306,7 +338,7 @@ function compile_ops_A5() {
                     echo "Operator ${dir_name} for A5 already built, skipping..."
                     continue
                 fi
-                bash ./run.sh --ai-core ai_core-Ascend950 || { 
+                bash ./run.sh --ai-core ai_core-Ascend950 || {
                     if [[ "$ERROR_MODE" == "exit" ]]; then
                         echo "Error mode is exit, the script will exit immediately..."
                         exit 1
@@ -353,6 +385,7 @@ function get_tar_pkg() {
 
 
 # start to build recsdk-npu-ops
+setup_ccache
 make_output_dir
 echo "----------------          compile  custom ops for torchrec             ----------------"
 compile_ops

@@ -39,6 +39,17 @@ cmake_version=$(cmake --version | grep "cmake version" | awk '{print $3}')
 target=package
 if [ "$1"x != ""x ]; then target=$1; fi
 
+if command -v ccache &> /dev/null; then
+    # CMake 层面也让编译器走 ccache launcher
+    echo "[INFO] ccache found, enabling compiler cache..."
+    export PATH
+    export CCACHE_DIR CCACHE_MAXSIZE CCACHE_COMPRESS CCACHE_HASHDIR \
+            CCACHE_SLOPPINESS CCACHE_COMPILERCHECK CCACHE_BASEDIR \
+            CC_COMPILER_LAUNCHER CXX_COMPILER_LAUNCHER
+    export CMAKE_C_COMPILER_LAUNCHER=ccache
+    export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+fi
+
 cmake -S . -B "$BUILD_DIR" --preset=default
 cmake --build "$BUILD_DIR" --target binary -j$(nproc)
 cmake --build "$BUILD_DIR" --target $target -j$(nproc)
