@@ -13,6 +13,14 @@ export WORLD_SIZE=8
 export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
 #---------------------------------------------
+# prof related
+#---------------------------------------------
+# 默认未开启性能数据采集模式，当ENABLE_PROF=1时,环境变量PROF_START和PROF_STEP才生效。
+export ENABLE_PROF=0 # 默认不开启
+export PROF_START=50 # 默认从第50步开始采集
+export PROF_STEP=10  # 默认采集10步数数据
+
+#---------------------------------------------
 # train with ec
 #---------------------------------------------
 # 仅使用embcache模式运行模型时才支持EC，可设置USE_EC=1,DO_EC_LOCAL_UNIQUE=1其他场景环境变量不起作用。
@@ -24,8 +32,9 @@ export PREPROCESSED_DATASET="/path/to/data"
 
 export TOTAL_TRAINING_SAMPLES=4195197692
 export GLOBAL_BATCH_SIZE=16384
+# 为快速验证,默认训练、测试步数分别为2000和500。如果希望按数据集全部训练,启动脚本时不传入此变量即可。
 export LIMIT_TRAIN_BATCHES=2000
-export LIMIT_TEST_BATCHES=1000
+export LIMIT_TEST_BATCHES=500
 FEATURE_NUM=$((40000000 * ${WORLD_SIZE} / 8))
 
 function run_dlrm_model(){
@@ -52,7 +61,8 @@ function run_dlrm_model(){
     2>&1 |tee ${model}_use_ec_${USE_EC}_$(date '+%Y%m%d_%H%M%S').log
 }
 
-MODES=("torchrec" "hybrid_torchrec" "embcache")
+# 默认使用hybrid_torchrec模式
+MODES="hybrid_torchrec"
 
 for model in "${MODES[@]}"; do
   # 重置环境变量
@@ -69,5 +79,4 @@ for model in "${MODES[@]}"; do
   run_dlrm_model # 执行模型
   sleep 5
 done
-
 
