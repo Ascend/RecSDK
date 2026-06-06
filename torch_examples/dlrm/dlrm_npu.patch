@@ -113,7 +113,7 @@ index e612629..bda0de2 100644
                          dense_inputs,
                          sparse_inputs,
 diff --git a/torchrec_dlrm/dlrm_main.py b/torchrec_dlrm/dlrm_main.py
-index a3d98b6..f8420f7 100644
+index a3d98b6..09c1f6c 100644
 --- a/torchrec_dlrm/dlrm_main.py
 +++ b/torchrec_dlrm/dlrm_main.py
 @@ -4,20 +4,27 @@
@@ -170,11 +170,12 @@ index a3d98b6..f8420f7 100644
  
  # OSS import
  try:
-@@ -60,7 +74,17 @@ try:
+@@ -60,8 +74,31 @@ try:
  except ImportError:
      pass
  
 -TRAIN_PIPELINE_STAGES = 3  # Number of stages in TrainPipelineSparseDist.
+-
 +try:
 +    torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 +except FileNotFoundError as e:
@@ -182,23 +183,44 @@ index a3d98b6..f8420f7 100644
 +except Exception as e:
 +    logging.warning(f"libfbgemm_npu_api.so failed to load: {e}")
 +
++
++def get_env_int(env_name, default_value):
++    env_value = os.getenv(env_name)
++    if env_value is None:
++        return default_value
++    try:
++        return int(env_value.strip())
++    except (ValueError, AttributeError):
++        return default_value
++
 +with_torchrec = os.getenv('WITH_TORCHREC', 'False').strip().lower() in {'true', '1', 'yes'}
 +with_hybrid_torchrec = os.getenv('WITH_HYBRID_TORCHREC', 'False').strip().lower() in {'true', '1', 'yes'}
 +with_embcache = os.getenv('WITH_EMBCACHE', 'False').strip().lower() in {'true', '1', 'yes'}
 +use_ec = os.getenv('USE_EC', 'False').strip().lower() in {'true', '1', 'yes'}
- 
++# 是否启动profiler采集性能数据,如果采集数据默认从50步开始采集10步性能数据
++prof_enabled = os.getenv("ENABLE_PROF", "False").strip().lower() in {'true', '1', 'yes'}
++prof_start = get_env_int("PROF_START", 50)
++prof_step = get_env_int("PROF_STEP", 10)
  
  class InteractionType(Enum):
-@@ -334,7 +358,7 @@ def _evaluate(
+     ORIGINAL = "original"
+@@ -332,9 +369,13 @@ def _evaluate(
+     pipeline._model.eval()
+     device = pipeline._device
  
-     iterator = itertools.islice(iter(eval_dataloader), limit_batches)
+-    iterator = itertools.islice(iter(eval_dataloader), limit_batches)
++    # 限制验证步数
++    if limit_batches is not None:
++        iterator = itertools.islice(iter(eval_dataloader), min(limit_batches, len(eval_dataloader)) - 1)
++    else:
++        iterator = iter(eval_dataloader)
  
 -    auroc = metrics.AUROC(compute_on_step=False, num_classes=2).to(device)
 +    auroc = metrics.AUROC("binary").to(device)
  
      is_rank_zero = dist.get_rank() == 0
      if is_rank_zero:
-@@ -360,28 +384,44 @@ def _evaluate(
+@@ -360,28 +401,44 @@ def _evaluate(
      dist.reduce(num_samples, 0, op=dist.ReduceOp.SUM)
  
      if is_rank_zero:
@@ -257,7 +279,7 @@ index a3d98b6..f8420f7 100644
      """
      Trains model for 1 epoch. Helper function for train_val_test.
  
-@@ -399,6 +439,15 @@ def _train(
+@@ -399,9 +456,21 @@ def _train(
      Returns:
          None.
      """
@@ -272,11 +294,39 @@ index a3d98b6..f8420f7 100644
 +
      pipeline._model.train()
  
-     iterator = itertools.islice(iter(train_dataloader), limit_train_batches)
-@@ -418,19 +467,21 @@ def _train(
+-    iterator = itertools.islice(iter(train_dataloader), limit_train_batches)
++    if limit_train_batches is not None:
++        iterator = itertools.islice(iter(train_dataloader), min(limit_train_batches, len(train_dataloader)) - 1)
++    else:
++        iterator = iter(train_dataloader)
+ 
+     is_rank_zero = dist.get_rank() == 0
+     if is_rank_zero:
+@@ -418,19 +487,44 @@ def _train(
          if validation_freq
          else limit_train_batches if limit_train_batches else len(train_dataloader)
      )
++
++    # profiling采集
++    if prof_enabled:
++        experimental_config = torch_npu.profiler._ExperimentalConfig(
++            export_type=torch_npu.profiler.ExportType.Text,
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++            aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
++        )
++        prof = torch_npu.profiler.profile(
++            activities=[
++                torch_npu.profiler.ProfilerActivity.CPU,
++                torch_npu.profiler.ProfilerActivity.NPU,
++            ],
++            schedule=torch_npu.profiler.schedule(wait=0, warmup=0, active=prof_step, repeat=1, skip_first=prof_start),
++            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler('./profiler'),
++            record_shapes=True,
++            profile_memory=True,
++            experimental_config=experimental_config,
++        )
++        prof.start()
++
 +    # time start
 +    time0 = time.time()
      for batched_iterator in batched(iterator, n):
@@ -287,6 +337,8 @@ index a3d98b6..f8420f7 100644
 -                        print(f"lr: {it} {i} {g['lr']:.6f}")
 +                        logging.info("lr: %s %s %.6f", it, i, g['lr'])
                  pipeline.progress(batched_iterator)
++                if prof_enabled:
++                    prof.step()
                  lr_scheduler.step()
                  if is_rank_zero:
                      pbar.update(1)
@@ -297,10 +349,13 @@ index a3d98b6..f8420f7 100644
                  start_it = it
                  break
  
-@@ -438,22 +489,22 @@ def _train(
+@@ -438,22 +532,25 @@ def _train(
              _evaluate(limit_val_batches, pipeline, val_dataloader, "val")
              pipeline._model.train()
  
++    if prof_enabled:
++        prof.stop()
++
 +    all_its = (limit_train_batches if limit_train_batches else len(train_dataloader))
 +    time1 = time.time()
 +    avg_speed = all_its / (time1 - time0)
@@ -327,7 +382,7 @@ index a3d98b6..f8420f7 100644
  ) -> TrainValTestResults:
      """
      Train/validation/test loop.
-@@ -471,29 +522,50 @@ def train_val_test(
+@@ -471,29 +568,50 @@ def train_val_test(
      Returns:
          TrainValTestResults.
      """
@@ -392,7 +447,7 @@ index a3d98b6..f8420f7 100644
      return results
  
  
-@@ -520,41 +592,71 @@ def main(argv: List[str]) -> None:
+@@ -520,41 +638,71 @@ def main(argv: List[str]) -> None:
          except (ValueError, AttributeError):
              pass
  
@@ -488,7 +543,7 @@ index a3d98b6..f8420f7 100644
      dist.init_process_group(backend=backend)
  
      if args.num_embeddings_per_feature is not None:
-@@ -575,26 +677,67 @@ def main(argv: List[str]) -> None:
+@@ -575,26 +723,67 @@ def main(argv: List[str]) -> None:
      val_dataloader = get_dataloader(args, backend, "val")
      test_dataloader = get_dataloader(args, backend, "test")
  
@@ -570,7 +625,7 @@ index a3d98b6..f8420f7 100644
                  tables=eb_configs, device=torch.device("meta")
              ),
              dense_in_features=len(DEFAULT_INT_NAMES),
-@@ -603,20 +746,71 @@ def main(argv: List[str]) -> None:
+@@ -603,20 +792,71 @@ def main(argv: List[str]) -> None:
              dense_device=device,
          )
      elif args.interaction_type == InteractionType.DCN:
@@ -654,7 +709,7 @@ index a3d98b6..f8420f7 100644
                  tables=eb_configs, device=torch.device("meta")
              ),
              dense_in_features=len(DEFAULT_INT_NAMES),
-@@ -631,15 +825,12 @@ def main(argv: List[str]) -> None:
+@@ -631,15 +871,12 @@ def main(argv: List[str]) -> None:
              "Unknown interaction option set. Should be original, dcn, or projection."
          )
  
@@ -673,7 +728,7 @@ index a3d98b6..f8420f7 100644
      optimizer_kwargs = {"lr": args.learning_rate}
      if args.adagrad:
          optimizer_kwargs["eps"] = args.eps
-@@ -648,39 +839,81 @@ def main(argv: List[str]) -> None:
+@@ -648,39 +885,81 @@ def main(argv: List[str]) -> None:
          train_model.model.sparse_arch.parameters(),
          optimizer_kwargs,
      )
@@ -765,7 +820,7 @@ index a3d98b6..f8420f7 100644
  
      dense_optimizer = KeyedOptimizerWrapper(
          dict(in_backward_optimizer_filter(model.named_parameters())),
-@@ -705,19 +938,29 @@ def main(argv: List[str]) -> None:
+@@ -705,19 +984,29 @@ def main(argv: List[str]) -> None:
          )
          val_dataloader = RestartableMap(multihot.convert_to_multi_hot, val_dataloader)
          test_dataloader = RestartableMap(multihot.convert_to_multi_hot, test_dataloader)

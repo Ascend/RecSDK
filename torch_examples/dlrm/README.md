@@ -23,7 +23,7 @@
 
 ## dlrm源码适配
 
-进入**当前目录**，下载开源模型代码，并应用patch文件，将开源模型从TorchRec开源框架迁移到基于昇腾NPU的Rec SDK Torch框架。
+进入**dlrm目录**，下载开源模型代码，并应用patch文件，将开源模型从TorchRec开源框架迁移到基于昇腾NPU的Rec SDK Torch框架。
 
 ```shell
 git clone -b main https://github.com/facebookresearch/dlrm.git
@@ -59,7 +59,7 @@ git apply dlrm_npu.patch
 
 2.随机生成数据集
 
-进入当前目录，运行如下指令，生成约71GB的随机数据集：
+进入generate_data.py同级目录，运行如下指令，生成约71GB的随机数据集：
 
 ```shell
 mkdir generate_data
@@ -82,7 +82,7 @@ day_23_labels.npy
 
 ## 修改脚本并运行
 
-修改run.sh文件中的如下参数，并手动拷贝run.sh文件到下载的开源模型代码dlrm/torchrec_dlrm目录下：
+1.修改run.sh文件中的如下参数
 
 ```shell
 # 环境参数配置说明（根据实际情况修改）
@@ -91,12 +91,32 @@ export WORLD_SIZE=8                                                             
 export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7                                      # 可用npu卡编号，与WORLD_SIZE数量保持一致
 ```
 
-进入开源模型代码dlrm/torchrec_dlrm目录并运行模型：
+2.拷贝run.sh文件到开源模型代码dlrm/torchrec_dlrm目录下
+
+```bash
+cp run.sh dlrm/torchrec_dlrm
+bash run.sh
+```
+
+进入开源模型代码dlrm/torchrec_dlrm目录并运行模型
 
 ```bash
 cd dlrm/torchrec_dlrm
 bash run.sh
 ```
+
+## 性能数据采集并分析
+
+1.修改run.sh文件中如下参数
+
+```shell
+# 环境参数配置说明（根据实际情况修改）
+export ENABLE_PROF=1 # 开启性能采集模式
+export PROF_START=50 # 开始采集步数,不建议从最开始就采集数据，模型训练稳定后开始采集数据更准确。
+export PROF_STEP=10  # 采集步数,训练时每个step运行功能重复，没必要采集过多步数。
+```
+
+修改run.sh脚本后重新执行训练脚本即可采集到性能数据用于分析，性能数据默认保存在运行目录./profiler目录。具体性能分析方法请参考:[昇腾社区-训练推理开发工具-模型调优msProf章节](https://www.hiascend.com/document/detail/zh/mindstudio/2600/msTT_msIT/ascend_pytorch_profiler/docs/zh/ascend_pytorch_profiler/ascend_pytorch_profiler_user_guide.md)
 
 ## 精度、性能对比
 
