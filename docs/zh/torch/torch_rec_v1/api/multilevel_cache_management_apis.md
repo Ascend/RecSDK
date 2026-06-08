@@ -65,7 +65,7 @@ class Saver:
 8. pipeline模式下，如果需要在训练过程中（即Dataset未迭代到末尾）执行保存，需要在保存前手动触发wait_pipeline_compute_swapinfo。
     详细参考[保存加载用例](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_save_and_load.py)。
 
-**参数说明<a name="section888634319218"></a>**
+**参数说明**
 
 |**参数名**|**类型**|**可选/必选**|**说明**|
 |--|--|--|--|
@@ -87,15 +87,149 @@ class Saver:
 
 **使用示例**
 
-```python
-import torch
-from torchrec_embcache.saver import Saver
+注：样例中ddp_model为调用[DistributedModelParallel（TorchRec）](subtable_apis.md#TOPIC_0000002338384297)接口并传入多级缓存模式支持的稀疏表（[EmbCacheEmbeddingCollection](table_creation_apis.md#embcacheembeddingcollection)/[EmbCacheEmbeddingBagCollection](table_creation_apis.md#embcacheembeddingbagcollection)）创建的模型对象，当前示例中使用EmbCacheEmbeddingCollection。
 
-# 需先进行torch.distributed模块初始化，才能使用distributed模块，此处省略详细定义。
-rank_id = torch.distributed.get_rank()
-# module为模型（或子模型）包含类型为EmbCacheShardedEmbeddingBagCollection/EmbCacheShardedEmbeddingCollection的模型实例，此处省略详细定义。
-module = ......
-saver = Saver(rank=rank_id)
-saver.save(module, "save_dir/sparse")  # 保存
-saver.load(module, "save_dir/sparse")  # 加载
+```python
+import os
+
+import torch
+import torch_npu
+import torchrec
+import torch.distributed as dist
+from torchrec.distributed.model_parallel import DistributedModelParallel
+from torchrec.distributed.types import ShardingEnv
+from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
+from torchrec.distributed.planner import (
+    EmbeddingShardingPlanner,
+    Topology,
+    ParameterConstraints,
+)
+
+from torchrec_embcache.distributed.configs import EmbCacheEmbeddingConfig
+from torchrec_embcache.distributed.embedding import EmbCacheEmbeddingCollection
+from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingCollectionSharder
+from torchrec_embcache.saver import Saver
+from torchrec_embcache.utils import safe_makedirs
+
+
+class DenseModel(torch.nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        self.linear = torch.nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        return self.linear(x)
+
+
+class TestModel(torch.nn.Module):
+    def __init__(self, sparse_model: torch.nn.Module, dense_model: torch.nn.Module, feat_names: list[str]):
+        super().__init__()
+        self.sparse_model: torch.nn.Module = sparse_model
+        self.dense_model: torch.nn.Module = dense_model
+        self.feat_names: list[str] = feat_names
+        self.loss_fn: torch.nn.CrossEntropyLoss = torch.nn.CrossEntropyLoss()
+
+    def forward(self, batch):
+        sparse_output = self.sparse_model(batch.sparse_features)
+        sparse_output_dict: dict[str, torchrec.JaggedTensor] = sparse_output.wait()  # type: ignore
+        feat_embeddings: list[torch.Tensor] = list()
+        for feat_name in self.feat_names:
+            feat_embeddings.append(sparse_output_dict[feat_name].values())
+        embeddings: torch.Tensor = torch.concat(feat_embeddings, dim=-1)
+        dense_output: torch.Tensor = self.dense_model(embeddings)
+        loss = self.loss_fn(dense_output, batch.labels)
+        output = dict()
+        output["sparse"] = embeddings
+        output["dense"] = dense_output
+        # forward必须返回loss和output，且loss在前，output在后
+        return loss, output
+
+
+def weight_init(param: torch.nn.Parameter):
+    if len(param.shape) != 2:
+        return
+    torch.manual_seed(param.shape[1])
+    result = torch.linspace(0, 1, steps=param.shape[1]).repeat(param.shape[0], 1)
+    param.data.copy_(result)
+
+
+# 模拟初始化单卡torch.distributed环境。实际使用时WORLD_SIZE和RANK可能由PyTorch分布式训练启动器设置。
+os.environ["WORLD_SIZE"] = "1"
+os.environ["RANK"] = "0"
+rank = int(os.environ.get("LOCAL_RANK", 0))
+torch_npu.npu.set_device(rank)
+os.environ["MASTER_ADDR"] = "127.0.0.1"
+os.environ["MASTER_PORT"] = "6000"
+os.environ["GLOO_SOCKET_IFNAME"] = "lo"
+dist.init_process_group(backend="hccl")
+
+DENSE_OUTPUT_DIM: int = 2
+batch_size = 100
+embedding_dims: list[int] = [64, 64, 64]
+num_embeddings: list[int] = [400, 4000, 400]
+table_num: int = len(num_embeddings)
+world_size = dist.get_world_size()
+npu_device = torch.device("npu")
+
+# 创建模型
+embedding_configs: list[EmbCacheEmbeddingConfig] = []
+table_names: list[str] = [f"table{i}" for i in range(len(num_embeddings))]
+feat_names: list[str] = [f"feat{i}" for i in range(len(num_embeddings))]
+for i in range(table_num):
+    emb_config = EmbCacheEmbeddingConfig(
+        name=table_names[i],
+        embedding_dim=embedding_dims[i],
+        num_embeddings=num_embeddings[i],
+        feature_names=[feat_names[i]],
+    )
+    embedding_configs.append(emb_config)
+sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
+    embedding_configs,  # type: ignore
+    world_size,
+    batch_size,
+    multi_hot_sizes=[1] * table_num,
+    device=torch.device("meta"),
+)
+dense_model: torch.nn.Module = DenseModel(sum(embedding_dims), DENSE_OUTPUT_DIM)
+test_model: torch.nn.Module = TestModel(sparse_ebc, dense_model, feat_names)
+
+# 定义优化器
+embedding_optimizer_class: type[torch.optim.Optimizer] = torch.optim.Adagrad
+optimizer_kwargs = {"lr": 0.01, "eps": 0.1}
+apply_optimizer_in_backward(
+    embedding_optimizer_class,
+    test_model.sparse_model.parameters(),
+    optimizer_kwargs=optimizer_kwargs,
+)
+
+# 稀疏表分表
+cpu_pg = dist.new_group(backend="gloo")
+cpu_env = ShardingEnv.from_process_group(cpu_pg)  # pyright: ignore[reportArgumentType]
+cpu_device = torch.device("cpu")
+sharders: list[EmbCacheEmbeddingCollectionSharder] = [
+    EmbCacheEmbeddingCollectionSharder(
+        cpu_device=cpu_device,
+        cpu_env=cpu_env,
+        npu_device=npu_device,
+        npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),  # type: ignore
+    ),
+]
+constraints: dict[str, ParameterConstraints] = {
+    table_name: ParameterConstraints(sharding_types=["row_wise"], compute_kernels=["fused"])
+    for table_name in table_names
+}
+planner: EmbeddingShardingPlanner = EmbeddingShardingPlanner(
+    topology=Topology(world_size=world_size, compute_device="npu"),
+    constraints=constraints,
+)
+plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)  # type: ignore
+ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)  # type: ignore
+
+saver = Saver(rank=rank)
+save_dir = os.path.abspath("save_dir")
+sparse_save_dir = os.path.join(save_dir, "sparse")
+if not os.path.exists(save_dir):
+    safe_makedirs(save_dir)
+saver.save(ddp_model, sparse_save_dir)  # 保存
+saver.load(ddp_model, sparse_save_dir)  # 加载
 ```

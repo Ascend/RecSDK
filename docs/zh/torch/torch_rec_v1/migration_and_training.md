@@ -124,12 +124,13 @@ Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开�
 
 Rec SDK Torch框架提供了纯显存模式和多级缓存模式，不同模式下稀疏表配置、稀疏表创建等训练相关API会有所区别，详情请参见[多级缓存模式和纯显存模式使用API差异](#api_diff_embcache)。
 
-关于修改内容中的条件分支说明：
-
-- with_hybrid_torchrec：为True时表示使用Rec SDK Torch的纯显存模式。
-- with_embcache：为True时表示使用Rec SDK Torch的多级缓存模式。
-  - use_ec：为True时表示使用多级缓存的EC（EmbCacheEmbeddingCollection）模式，否则使用EBC（EmbCacheEmbeddingBagCollection）模式。
-- 非上述场景时表示使用TorchRec原生API创建稀疏表和进行模型训练。
+>[!NOTE]
+>修改内容中的条件分支含义如下：
+>
+>- with_hybrid_torchrec：为True时表示使用Rec SDK Torch的纯显存模式。
+>- with_embcache：为True时表示使用Rec SDK Torch的多级缓存模式。
+>   - use_ec：为True时表示使用多级缓存的EC（EmbCacheEmbeddingCollection）模式，否则使用EBC（EmbCacheEmbeddingBagCollection）模式。
+>- 非上述场景时表示使用TorchRec原生API创建稀疏表和进行模型训练。
 
 后续迁移内容为基于开源模型的指定commit版本：
 
@@ -415,13 +416,14 @@ Rec SDK Torch 支持纯显存模式和多级缓存模式两种训练模式。
 
 纯显存模式指在训练时，所有稀疏表Embedding数据都存储在Device内存中。
 
-多级缓存模式指在训练时，会以Device Memory + DDR（Host Memory）结合的方式存储Embedding。
+多级缓存模式指在训练时，会以Device Memory + Host Memory（DDR）结合的方式存储Embedding。
 
 本章节将介绍纯显存模式和多级缓存模式的相关功能特性和代码使用示例。
 
 > [!NOTE]
 >
-> 本文档中的**约束**章节内容仅介绍主要使用场景下的约束信息，详细信息请参见对应的API文档。
+> 本章节中的**约束**部分仅介绍主要使用场景下的约束信息，详细信息请参见对应的API文档。
+> 本章节中的**代码示例**部分仅为展示功能特性/API使用方式，可能和实际使用场景存在差异。
 
 ### 基于纯显存模式训练
 
@@ -486,11 +488,11 @@ DENSE_OUTPUT_DIM: int = 2
 class DenseModel(torch.nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
-        # 定义dense layer
+        # 定义dense层
         self.linear = torch.nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
-        # 定义dense层实现
+        # 定义dense层前向实现
         return self.linear(x)
 
 
@@ -663,7 +665,7 @@ DP模式下，稀疏表将不再切分到不同的Device，而是每个Device都
 
 DP模式完整代码示例请参见[DP模式测试用例](../../../../training/torch_rec_v1/hybrid_torchrec/test/st/test_hybrid_hash_embeddingbag_dp.py)。
 
-简化代码示例（仅展示和基础使用模式差异部分）：
+简化代码示例（仅展示和[基础使用](#basic_usage_device_memory)模式差异部分）：
 
 ```python
     # 差异点：DP模式仅支持单表，不支持多表模式。
@@ -695,7 +697,7 @@ DP模式完整代码示例请参见[DP模式测试用例](../../../../training/t
 
 **多级缓存模式和纯显存模式功能差异**
 
-- 多级缓存模式稀疏表存储方式：Device Memory作为Cache，存储训练时所需的Embedding参数；DDR为完整的稀疏表，存储和管理全量的Embedding参数。
+- 多级缓存模式稀疏表存储方式：Device Memory作为Cache，存储训练时所需的Embedding参数；Host Memory（DDR）为完整的稀疏表，存储和管理全量的Embedding参数。
 - 支持EC模式和EBC模式。
 - 支持保存/加载稀疏表参数。
 - 仅支持稀疏表的row-wise分表方式。
@@ -719,7 +721,7 @@ DP模式完整代码示例请参见[DP模式测试用例](../../../../training/t
 
 #### 基础使用<a id="basic_usage_embcache"></a>
 
-##### 多级缓存EC模式
+##### 多级缓存EC模式<a id="basic_usage_embcache_ec"></a>
 
 **代码示例**
 
@@ -743,7 +745,7 @@ from torchrec.distributed.planner import (
 )
 from torchrec.distributed.embedding import EmbeddingCollectionAwaitable
 from torchrec_embcache.distributed.embedding import EmbCacheEmbeddingCollection
-from torchrec_embcache.distributed.configs import AdmitAndEvictConfig, EmbCacheEmbeddingConfig, InitializerType
+from torchrec_embcache.distributed.configs import EmbCacheEmbeddingConfig, InitializerType
 from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
 from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingCollectionSharder
 
@@ -758,11 +760,11 @@ BATCH_NUM: int = 50
 class DenseModel(torch.nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
-        # 定义dense layer
+        # 定义dense层
         self.linear = torch.nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
-        # 定义dense层实现
+        # 定义dense层前向实现
         return self.linear(x)
 
 
@@ -890,7 +892,7 @@ def train():
         topology=Topology(world_size=world_size, compute_device="npu"),
         constraints=constraints,
     )
-    plan: EmbeddingShardingPlan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)  # type: ignore
+    plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)  # type: ignore
     #   此处分表会根据sharders参数匹配对应class类型：EmbCacheEmbeddingCollection，
     #   只会对稀疏表参数进行分表，不会对dense参数分表
     ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)  # type: ignore
@@ -943,7 +945,7 @@ EBC模式对比EC模式，使用的创建稀疏表和分表器的API存在差异
 
 完整代码示例请参见[多级缓存EBC测试用例](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_cache_pipeline.py)。
 
-简化代码示例（仅展示和多级缓存EC模式的差异部分）：
+简化代码示例（仅展示和[多级缓存EC模式](#basic_usage_embcache_ec)的差异部分）：
 
 ```python
 ...
@@ -995,17 +997,18 @@ def train():
     ...
 
     # 2.创建稀疏表
+    # 差异：EBC模式创建表的config、collection API和EC模式有差异
     embedding_configs: list[EmbCacheEmbeddingBagConfig] = []
     table_names: list[str] = [f"table{i}" for i in range(len(num_embeddings))]
     feat_names: list[str] = [f"feat{i}" for i in range(len(num_embeddings))]
     for i in range(table_num):
-        emb_config = EmbCacheEmbeddingBagConfig(  # 差异：EBC模式创建表的config、collection API和EC模式有差异
+        emb_config = EmbCacheEmbeddingBagConfig(
             name=table_names[i],
             embedding_dim=embedding_dims[i],
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
             # init_fn=weight_init,  # 注意：多级缓存模式，不支持自定义初始化函数
-            initializer_type=InitializerType.TRUNCATED_NORMAL,  # embedding初始化方式通过initializer_type参数设置
+            initializer_type=InitializerType.TRUNCATED_NORMAL,  # Embedding初始化方式通过initializer_type参数设置
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
         )
@@ -1041,7 +1044,7 @@ def train():
         topology=Topology(world_size=world_size, compute_device="npu"),
         constraints=constraints,
     )
-    plan: EmbeddingShardingPlan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)  # type: ignore
+    plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)  # type: ignore
     #   此处分表会根据sharders参数匹配对应class类型：EmbCacheEmbeddingBagCollection，
     #   只会对稀疏表参数进行分表，不会对dense参数分表
     ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)  # type: ignore
@@ -1087,9 +1090,11 @@ def train():
 
 完整代码示例请参见[准入淘汰（基于时间和计数）测试用例](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_feature_filter.py)。
 
-简化代码示例（仅展示和多级缓存EC模式的差异部分）：
+简化代码示例（仅展示和[多级缓存EC模式](#basic_usage_embcache_ec)的差异部分）：
 
 ```python
+# 差异：增加导入模块
+from torchrec_embcache.distributed.configs import AdmitAndEvictConfig
     ...
 
     # 1.创建数据集
@@ -1108,7 +1113,8 @@ def train():
     )
 
     # 2.创建稀疏表
-    evict_step_interval = 20  # 淘汰步长，每20个batch淘汰一次
+    # 差异：设置淘汰步长，每20个batch淘汰一次
+    evict_step_interval = 20
     embedding_configs: list[EmbCacheEmbeddingConfig] = []
     table_names: list[str] = [f"table{i}" for i in range(len(num_embeddings))]
     feat_names: list[str] = [f"feat{i}" for i in range(len(num_embeddings))]
@@ -1177,11 +1183,12 @@ def train():
 
 完整代码示例请参见[准入淘汰（基于时间和计数）测试用例](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_show_click.py)。
 
-简化代码示例（仅展示和多级缓存EC模式的差异部分）：
+简化代码示例（仅展示和[多级缓存EC模式](#basic_usage_embcache_ec)的差异部分）：
 
 ```python
-# 差异：导入ShowClickBatch
-from dataset import RandomRecDataset, Batch, ShowClickBatch
+# 差异：导入相关模块
+from torchrec_embcache.distributed.configs import AdmitAndEvictConfig, ShowClickParams, AdmitAndEvictPolicyType
+from dataset import ShowClickBatch
 
 ...
 
@@ -1228,7 +1235,7 @@ def train():
     dataset: RandomRecDataset = RandomRecDataset(
         BATCH_NUM, batch_size, num_embeddings, table_num, is_enable_score=True
     )
-    data_loader: DataLoader[Batch] = DataLoader(
+    data_loader: DataLoader[ShowClickBatch] = DataLoader(
         dataset,
         batch_size=None,
         batch_sampler=None,
@@ -1238,10 +1245,11 @@ def train():
     )
 
     # 2.创建稀疏表
-    evict_step_interval = 20  # 淘汰步长，每20个batch淘汰一次
     embedding_configs: list[EmbCacheEmbeddingConfig] = []
     table_names: list[str] = [f"table{i}" for i in range(len(num_embeddings))]
     feat_names: list[str] = [f"feat{i}" for i in range(len(num_embeddings))]
+    # 差异：设置淘汰相关参数
+    evict_step_interval = 20
     showclick_params = ShowClickParams(alpha=1, beta=1, admit_threshold=0.1, evict_percentage=0.1, score_decay=0.9)
     for i in range(table_num):
         # 差异：设置show click准入淘汰配置参数并传递给emb_config
@@ -1309,7 +1317,7 @@ def train():
 
 完整代码示例请参见[梯度累积测试用例](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_ec_cache_aggregation.py)。
 
-简化代码示例（仅展示和多级缓存EC模式的差异部分）：
+简化代码示例（仅展示和[多级缓存EC模式](#basic_usage_embcache_ec)的差异部分）：
 
 ```python
 ...
@@ -1364,13 +1372,12 @@ def train():
 
 完整代码示例请参见[保存/加载测试用例](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_save_and_load.py)。
 
-简化代码示例（仅展示和多级缓存EC模式的差异部分）：
+简化代码示例（仅展示和[多级缓存EC模式](#basic_usage_embcache_ec)的差异部分）：
 
 ```python
-# 差异：导入Saver类和safe_makedirs函数
+# 差异：导入相关模块
 import os
 import shutil
-
 from torchrec_embcache.saver import Saver
 from torchrec_embcache.utils import safe_makedirs
 
@@ -1382,9 +1389,9 @@ def train():
     # 7.创建pipeline
     ...
 
-    is_train = True
-
-    # 差异：8.[Pre-operation]: 加载稀疏表数据。Dense部分数据加载需自行处理。
+    # 差异：8.[Pre-operation]: 如为加载场景，需在使用pipeline训练前加载稀疏表数据。Dense部分数据加载需自行处理。
+    # 说明：当前示例中通过设置flag来判断保存/加载场景，实际使用时根据实际场景调用保存/加载接口即可。
+    is_train = True  # 当前设置True表示训练场景，训练后保存稀疏表数据；False表示加载场景，训练前加载稀疏表数据。
     save_dir = os.path.abspath("save_dir")
     sparse_save_dir = os.path.join(save_dir, "sparse")
     if not os.path.exists(save_dir):
@@ -1431,11 +1438,12 @@ def train():
 
 完整代码示例请参见[保存/加载测试用例](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_save_and_load.py)。
 
-简化代码示例（仅展示和多级缓存EC模式的差异部分）：
+简化代码示例（仅展示和[多级缓存EC模式](#basic_usage_embcache_ec)的差异部分）：
 
 ```python
 ...
 # 差异：导入Saver类和safe_makedirs函数
+import shutil
 from torchrec_embcache.saver import Saver
 from torchrec_embcache.utils import safe_makedirs
 
@@ -1458,7 +1466,7 @@ def train():
             initializer_type=InitializerType.TRUNCATED_NORMAL,  # embedding初始化方式通过initializer_type参数设置
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
-            is_incremental=True,  # 差异：配置稀疏表支持增量保存
+            is_incremental=True,  # 差异：配置稀疏表支持增量保存/加载
         )
         embedding_configs.append(emb_config)
     sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
@@ -1471,10 +1479,9 @@ def train():
 
     ...
 
-    # 设置True则进行全量和增量保存，False则全量和增量加载。
-    is_train = True
-
-    # 差异：8.[Pre-operation]: 加载稀疏表数据
+    # 差异：8.[Pre-operation]: 如为加载场景，需在使用pipeline训练前加载稀疏表数据。Dense部分数据加载需自行处理。
+    # 说明：当前示例中通过设置flag来判断保存/加载场景，实际使用时根据实际场景调用保存/加载接口即可。
+    is_train = True  # 当前设置True表示训练场景，训练后保存稀疏表数据；False表示加载场景，训练前加载稀疏表数据。
     saver: Saver = Saver(rank=rank)
     save_dir = os.path.abspath("save_dir")
     sparse_save_dir = os.path.join(save_dir, "sparse")
@@ -1490,7 +1497,7 @@ def train():
     # 8.使用pipeline进行训练
     dataset_iterator = iter(data_loader)
     for step in range(BATCH_NUM):
-        # 对稀疏表数据做全量保存
+        # 差异：在训练中对稀疏表数据做一次全量保存
         if is_train and step == 20:
             if os.path.exists(sparse_save_dir):
                 shutil.rmtree(sparse_save_dir, ignore_errors=True)
@@ -1503,7 +1510,7 @@ def train():
         output, loss = pipeline.progress(dataset_iterator)
         logging.info("rank: %d, step: %s, loss: %s, sparse output: %s", rank, step, loss, output["sparse"])
 
-    # 差异：9.对稀疏表数据做增量保存
+    # 差异：9.模拟增量保存场景，对稀疏表数据做一次增量保存，仅为展示使用方式
     if is_train:
         # 若需要在训练过程中（即Dataset未迭代到末尾）进行保存，则需手动触发wait_pipeline_compute_swapinfo()方法
         pipeline.wait_pipeline_compute_swapinfo()
@@ -1511,5 +1518,3 @@ def train():
         saver.save(ddp_model, sparse_save_dir_delta, incremental=True)
 
 ```
-
-注：上述代码示例仅为展示使用方式，可能和实际使用场景存在差异。
