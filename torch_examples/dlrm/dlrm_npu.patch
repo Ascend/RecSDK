@@ -113,7 +113,7 @@ index e612629..bda0de2 100644
                          dense_inputs,
                          sparse_inputs,
 diff --git a/torchrec_dlrm/dlrm_main.py b/torchrec_dlrm/dlrm_main.py
-index a3d98b6..09c1f6c 100644
+index a3d98b6..8517a62 100644
 --- a/torchrec_dlrm/dlrm_main.py
 +++ b/torchrec_dlrm/dlrm_main.py
 @@ -4,20 +4,27 @@
@@ -213,7 +213,7 @@ index a3d98b6..09c1f6c 100644
 +    if limit_batches is not None:
 +        iterator = itertools.islice(iter(eval_dataloader), min(limit_batches, len(eval_dataloader)) - 1)
 +    else:
-+        iterator = iter(eval_dataloader)
++        iterator = itertools.islice(iter(eval_dataloader), len(eval_dataloader) - 1)
  
 -    auroc = metrics.AUROC(compute_on_step=False, num_classes=2).to(device)
 +    auroc = metrics.AUROC("binary").to(device)
@@ -298,7 +298,7 @@ index a3d98b6..09c1f6c 100644
 +    if limit_train_batches is not None:
 +        iterator = itertools.islice(iter(train_dataloader), min(limit_train_batches, len(train_dataloader)) - 1)
 +    else:
-+        iterator = iter(train_dataloader)
++        iterator = itertools.islice(iter(train_dataloader), len(train_dataloader) - 1)
  
      is_rank_zero = dist.get_rank() == 0
      if is_rank_zero:

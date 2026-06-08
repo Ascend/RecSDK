@@ -32,32 +32,14 @@ cp -f ../dlrm_npu.patch ./
 git apply dlrm_npu.patch
 ```
 
-## 数据集下载
+## 数据集准备
 
 >[!NOTE]
 >
 > 1. 本样例提供两种获取数据集方式，使用官网数据集可验证模型性能和精度，若仅验证模型功能跑通可使用随机生成数据集。
 > 2. DLRM模型使用的Criteo Click Logs数据集在[HuggingFace](https://huggingface.co/datasets/criteo/CriteoClickLogs)上归档的文件形式在2026.05存在更新，但[开源模型社区](https://github.com/facebookresearch/dlrm/blob/main/torchrec_dlrm/README.MD#running-the-mlperf-dlrm-v2-benchmark)资料中的数据集下载链接和预处理脚本暂未同步更新，**当前建议使用随机生成数据集运行模型**。
 
-1.官网数据集（Criteo Click Logs数据集）
-
-开源模型社区提供两种基于官网数据集跑通DLRM模型的方式：
-
-方式1：下载原始数据处理后，提前进行multi-hot的合成，生成4TB大小的数据集。
-
-方式2：下载原始数据处理后，在训练的过程中生成multi-hot数据，共690GB大小的数据集。
-
-> 由于“方式1”需要的条件苛刻，大部分机器很难满足，后续启动脚本将基于“方式2”运行模型。“方式2”在无host瓶颈的情况下，对性能影响较小。
-
-官网数据集下载和预处理：
-
-参考[开源模型社区 - 运行DLRM v2模型](https://github.com/facebookresearch/dlrm/blob/main/torchrec_dlrm/README.MD#running-the-mlperf-dlrm-v2-benchmark)，按照“Step 1”和“Step 2”章节下载数据集并进行预处理。其中“Step 2”的输出结果即为“方式2”需要的数据集。
-
-该数据集已经托管到[HuggingFace](https://huggingface.co/datasets/criteo/CriteoClickLogs)，也可直接前往下载。
-
-说明：官网数据集较大，数据下载时间较长，请提前预留磁盘空间。
-
-2.随机生成数据集
+1.随机生成数据集
 
 进入generate_data.py同级目录，运行如下指令，生成约71GB的随机数据集：
 
@@ -80,6 +62,24 @@ day_23_dense.npy
 day_23_labels.npy
 ```
 
+2.官网数据集（Criteo Click Logs数据集）
+
+开源模型社区提供两种基于官网数据集跑通DLRM模型的方式：
+
+方式1：下载原始数据处理后，提前进行multi-hot的合成，生成4TB大小的数据集。
+
+方式2：下载原始数据处理后，在训练的过程中生成multi-hot数据，共690GB大小的数据集。
+
+> 由于“方式1”需要的条件苛刻，大部分机器很难满足，后续启动脚本将基于“方式2”运行模型。“方式2”在无host瓶颈的情况下，对性能影响较小。
+
+官网数据集下载和预处理：
+
+参考[开源模型社区 - 运行DLRM v2模型](https://github.com/facebookresearch/dlrm/blob/main/torchrec_dlrm/README.MD#running-the-mlperf-dlrm-v2-benchmark)，按照“Step 1”和“Step 2”章节下载数据集并进行预处理。其中“Step 2”的输出结果即为“方式2”需要的数据集。
+
+该数据集已经托管到[HuggingFace](https://huggingface.co/datasets/criteo/CriteoClickLogs)，也可直接前往下载。
+
+说明：官网数据集较大，数据下载时间较长，请提前预留磁盘空间。
+
 ## 修改脚本并运行
 
 1.修改run.sh文件中的如下参数
@@ -91,11 +91,13 @@ export WORLD_SIZE=8                                                             
 export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7                                      # 可用npu卡编号，与WORLD_SIZE数量保持一致
 ```
 
+说明：本样例默认的参数设置支持8卡 * 64G设备运行,如果设备可用卡数或内存不满足时可通过修改模型参数让模型正常执行。
+例如：1.使用4卡或2卡运行；2.减小参数embedding_dim、dcn_low_rank_dim值；3.减小参数num_embeddings_per_feature中大稀疏表的FEATURE_NUM值等方法。
+
 2.拷贝run.sh文件到开源模型代码dlrm/torchrec_dlrm目录下
 
 ```bash
 cp run.sh dlrm/torchrec_dlrm
-bash run.sh
 ```
 
 进入开源模型代码dlrm/torchrec_dlrm目录并运行模型
@@ -117,6 +119,14 @@ export PROF_STEP=10  # 采集步数,训练时每个step运行功能重复，没�
 ```
 
 修改run.sh脚本后重新执行训练脚本即可采集到性能数据用于分析，性能数据默认保存在运行目录./profiler目录。具体性能分析方法请参考:[昇腾社区-训练推理开发工具-模型调优msProf章节](https://www.hiascend.com/document/detail/zh/mindstudio/2600/msTT_msIT/ascend_pytorch_profiler/docs/zh/ascend_pytorch_profiler/ascend_pytorch_profiler_user_guide.md)
+
+## 多级缓存模式
+
+修改run.sh中MODES参数为"embcache"即可切换模型为"稀疏表多级缓存"模式，然后重新执行训练脚本。
+
+```shell
+MODES="embcache"
+```
 
 ## 精度、性能对比
 
