@@ -14,6 +14,33 @@ Rec SDK 作为面向互联网市场搜索推荐广告场景的应用使能SDK产
 
 ![推荐全栈架构图](./figures/rec_full_stack/全栈架构图.png)
 
+**架构图说明：**
+
+1.硬件层
+
+- 昇腾硬件：包括昇腾A2、A3及950系列，提供底层算力支撑。
+
+2.CANN软件栈
+
+- 基础算子：支持Ascend C、Catlass、Triton等算子开发语言与库。
+- 自动编译优化：提供AutoFuse、Inductor等算子自动融合能力，提升计算效率。
+
+3.AI框架与适配层
+
+- AI框架：兼容PyTorch、TensorFlow业界主流框架。
+- 框架适配：通过PyTorch-Adapter（PT-Adapter）、TensorFlow-Adapter（TF-Adapter）实现模型在昇腾平台的无缝迁移与运行。
+
+4.应用层
+
+- Rec SDK：面向推荐系统场景，提供torch_rec_v1/v2、tf_rec_v1/v2等推荐框架。
+- 关键加速组件：
+  - HierarchicalKV-ascend：面向推荐系统的高性能key-value存储加速库。
+  - FBGEMM-ascend：高性能矩阵计算加速库。
+
+5.开发工具
+
+- MindStudio：提供全流程开发、调试与调优工具链。
+
 ### 产品价值
 
 表1 产品价值说明
@@ -70,7 +97,7 @@ Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`�
 
 #### fbgemm-ascend
 
-[fbgemm-ascend](https://gitcode.com/Ascend/fbgemm-ascend)是 FBGEMM 算子在昇腾 NPU 平台上的算子实现，通过 `torch.ops.fbgemm.*` 提供高性能稀疏/稠密算子，帮助推荐、搜索等场景在 Ascend 设备上获得与 GPU 同步的训练体验。目标是承接社区 [FBGEMM](https://link.gitcode.com/?target=https%3A%2F%2Fgithub.com%2Fpytorch%2FFBGEMM&from=https%3A%2F%2Fgitcode.com%2FAscend%2Ffbgemm-ascend&lang=zh&theme=white) 的新能力，并针对 Ascend AI Core 进行深度调优。
+[fbgemm-ascend](https://gitcode.com/Ascend/fbgemm-ascend)是 FBGEMM 算子在昇腾 NPU 平台上的算子实现，通过 `torch.ops.fbgemm.*` 提供高性能稀疏/稠密算子，帮助推荐、搜索等场景在 Ascend 设备上获得与 GPU 同步的训练体验。目标是承接社区 [FBGEMM](https://github.com/pytorch/FBGEMM) 的新能力，并针对 Ascend AI Core 进行深度调优。
 
 核心功能：
 
@@ -169,3 +196,15 @@ Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`�
 - AutoFuse 在图编译阶段对推荐网络进行自动融合优化，用户无需感知融合细节
 
 - Ascend C / CATLASS / Triton-Ascend 为 `rec_ops` 的自定义算子开发提供编程框架与模板库
+
+## 术语表
+
+| 术语      | 定义                                                         |
+| --------- | ------------------------------------------------------------ |
+| HBM       | HBM（High Bandwidth Memory，高带宽内存） 是一种高性能 DRAM。 |
+| Embedding | Embedding指的是将离散的、高维的数据（如单词、句子、图像像素）映射到一个低维、稠密的连续向量空间的过程，这个生成的向量就被称为该数据的“嵌入向量”。 |
+| 稀疏特征  | 稀疏特征是机器学习与数据挖掘中一个非常基础且重要的概念。它与稠密特征相对，指的是在大多数情况下取值为0（或为空、假），仅在少数情况下有非零（或非空）取值的特征。 |
+| 特征准入  | 在模型训练或推理前，判断一个从未出现过的特征（如新上架的商品ID、新注册的用户ID）是否值得被加入模型的Embedding词典中的决策过程。 |
+| 特征淘汰  | 在模型持续训练或定期调度中，将已经存在于Embedding表中但已“失效”的特征（如过季商品ID）删除，以释放存储和计算资源的机制。 |
+| FBGEMM    | FBGEMM (Facebook GEneral Matrix Multiplication) 是一个由Meta（原Facebook）开源的高性能低精度数值计算库。 |
+| HKV       | HKV（HierarchicalKV）是一个由 NVIDIA 设计并开源的高性能 GPU 哈希表库。 |
