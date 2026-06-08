@@ -6,35 +6,37 @@
 
 #### 概述
 
-介绍TorchRec 1.2.0版本原生API接口在昇腾NPU上的支持情况与限制说明，TorchRec 1.2.0版本原生API接口具体使用方法请参考[TorchRec社区文档](https://meta-pytorch.org/torchrec/api.html)。原生API接口在昇腾NPU上的支持情况与限制说明可分为如下三类：
+介绍TorchRec 1.2.0版本原生API接口在昇腾NPU上的支持情况与限制说明，TorchRec 1.2.0版本原生API接口具体使用方法请参考[TorchRec社区文档](https://meta-pytorch.org/torchrec/api.html)。原生API接口在昇腾NPU上的支持情况与限制说明如下：
 
 - API“是否支持“为“是“、“限制与说明“为“-“，说明此API和原生API支持度保持一致。
 - API“是否支持“为“是“、“限制与说明“不为“-“，说明此API和原生API支持度不一致，请注意昇腾NPU上的支持度。
-- API“是否支持“为“否“、“限制与说明“为“-“，说明在昇腾NPU上暂不支持此API。
+- API“是否支持“为“否“、“限制与说明“为“-“，说明在昇腾NPU上暂不支持此API，在昇腾NPU上请谨慎使用，后续验证后会持续更新文档。
 - 部分API在[TorchRec社区文档](https://meta-pytorch.org/torchrec/api.html)中存在，但此文档中未承载，为TorchRec 1.2.0版本没有的API。注：TorchRec社区文档中API为TorchRec最新版本API，而非TorchRec 1.2.0版本API。
+
+注：适配NPU版torchrec 1.2.0版本见[torchrec_npu v1.2.0](https://gitcode.com/Ascend/RecSDK/tree/develop/third_party/torchrec/v1.2.0)。
 
 #### torchrec.sparse.jagged_tensor.JaggedTensor
 
-| API名称                                    | 是否支持 | 限制与说明                                              |
-| ------------------------------------------ | -------- | ------------------------------------------------------- |
-| torchrec.sparse.jagged_tensor.JaggedTensor | 是       | to_padded_dense/to_padded_dense_weights方法暂未全量支持 |
-| JaggedTensor.device                        | 是       | -                                                       |
-| JaggedTensor.empty                         | 是       | -                                                       |
-| JaggedTensor.from_dense                    | 是       | -                                                       |
-| JaggedTensor.from_dense_lengths            | 是       | -                                                       |
-| JaggedTensor.lengths                       | 是       | -                                                       |
-| JaggedTensor.lengths_or_none               | 是       | -                                                       |
-| JaggedTensor.offsets                       | 是       | -                                                       |
-| JaggedTensor.offsets_or_none               | 是       | -                                                       |
-| JaggedTensor.record_stream                 | 是       | -                                                       |
-| JaggedTensor.to                            | 是       | -                                                       |
-| JaggedTensor.to_dense                      | 是       | -                                                       |
-| JaggedTensor.to_dense_weights              | 是       | -                                                       |
-| JaggedTensor.to_padded_dense               | 是       | fbgemm算子jagged_to_padded_dense部分支持                |
-| JaggedTensor.to_padded_dense_weights       | 是       | fbgemm算子jagged_to_padded_dense部分支持                |
-| JaggedTensor.values                        | 是       | -                                                       |
-| JaggedTensor.weights                       | 是       | -                                                       |
-| JaggedTensor.weights_or_none               | 是       | -                                                       |
+| API名称                                    | 是否支持 | 限制与说明 |
+| ------------------------------------------ | -------- | ---------- |
+| torchrec.sparse.jagged_tensor.JaggedTensor | 是       | -          |
+| JaggedTensor.device                        | 是       | -          |
+| JaggedTensor.empty                         | 是       | -          |
+| JaggedTensor.from_dense                    | 是       | -          |
+| JaggedTensor.from_dense_lengths            | 是       | -          |
+| JaggedTensor.lengths                       | 是       | -          |
+| JaggedTensor.lengths_or_none               | 是       | -          |
+| JaggedTensor.offsets                       | 是       | -          |
+| JaggedTensor.offsets_or_none               | 是       | -          |
+| JaggedTensor.record_stream                 | 是       | -          |
+| JaggedTensor.to                            | 是       | -          |
+| JaggedTensor.to_dense                      | 是       | -          |
+| JaggedTensor.to_dense_weights              | 是       | -          |
+| JaggedTensor.to_padded_dense               | 是       | -          |
+| JaggedTensor.to_padded_dense_weights       | 是       | -          |
+| JaggedTensor.values                        | 是       | -          |
+| JaggedTensor.weights                       | 是       | -          |
+| JaggedTensor.weights_or_none               | 是       | -          |
 
 #### torchrec.sparse.jagged_tensor.KeyedJaggedTensor
 
@@ -94,19 +96,6 @@
 | KeyedTensor.to_dict                       | 是       | -          |
 | KeyedTensor.values                        | 是       | -          |
 
-#### torchrec.modules.embedding_configs.EmbeddingBagConfig
-
-| API名称                                                 | 是否支持 | 限制与说明 |
-|-------------------------------------------------------| -------- | ---------- |
-| torchrec.modules.embedding_configs.EmbeddingBagConfig | 是       | -          |
-| EmbeddingBagConfig.pooling                            | 是       | -          |
-
-#### torchrec.modules.embedding_configs.EmbeddingConfig
-
-| API名称                                            | 是否支持 | 限制与说明 |
-| -------------------------------------------------- | -------- | ---------- |
-| torchrec.modules.embedding_configs.EmbeddingConfig | 是       | -          |
-
 #### torchrec.modules.embedding_configs.BaseEmbeddingConfig
 
 | API名称                                                | 是否支持 | 限制与说明 |
@@ -123,16 +112,29 @@
 | BaseEmbeddingConfig.init_fn                            | 是       | -          |
 | BaseEmbeddingConfig.need_pos                           | 是       | -          |
 
+#### torchrec.modules.embedding_configs.EmbeddingBagConfig
+
+| API名称                                               | 是否支持 | 限制与说明              |
+| ----------------------------------------------------- | -------- | ----------------------- |
+| torchrec.modules.embedding_configs.EmbeddingBagConfig | 是       | 继承BaseEmbeddingConfig |
+| EmbeddingBagConfig.pooling                            | 是       | -                       |
+
+#### torchrec.modules.embedding_configs.EmbeddingConfig
+
+| API名称                                            | 是否支持 | 限制与说明              |
+| -------------------------------------------------- | -------- | ----------------------- |
+| torchrec.modules.embedding_configs.EmbeddingConfig | 是       | 继承BaseEmbeddingConfig |
+
 #### torchrec.modules.embedding_modules.EmbeddingBagCollection
 
-| API名称                                                   | 是否支持 | 限制与说明                              |
-| --------------------------------------------------------- | -------- | --------------------------------------- |
-| torchrec.modules.embedding_modules.EmbeddingBagCollection | 是       | forward方法暂未全量支持                 |
-| EmbeddingBagCollection.device                             | 是       | -                                       |
-| EmbeddingBagCollection.embedding_bag_configs              | 是       | -                                       |
-| EmbeddingBagCollection.forward                            | 是       | fbgemm算子group_index_select_dim0未支持 |
-| EmbeddingBagCollection.is_weighted                        | 是       | -                                       |
-| EmbeddingBagCollection.reset_parameters                   | 是       | -                                       |
+| API名称                                                   | 是否支持 | 限制与说明 |
+| --------------------------------------------------------- | -------- | ---------- |
+| torchrec.modules.embedding_modules.EmbeddingBagCollection | 是       | -          |
+| EmbeddingBagCollection.device                             | 是       | -          |
+| EmbeddingBagCollection.embedding_bag_configs              | 是       | -          |
+| EmbeddingBagCollection.forward                            | 是       | -          |
+| EmbeddingBagCollection.is_weighted                        | 是       | -          |
+| EmbeddingBagCollection.reset_parameters                   | 是       | -          |
 
 #### torchrec.modules.embedding_modules.EmbeddingCollection
 
@@ -226,7 +228,7 @@
 
 | API名称                                             | 是否支持 | 限制与说明 |
 | --------------------------------------------------- | -------- | ---------- |
-| torchrec.inference.modules.quantize_inference_model | 否       | -          |
+| torchrec.inference.modules.quantize_inference_model | 是       | -          |
 
 #### torchrec.inference.modules.shard_quant_model
 
@@ -244,15 +246,15 @@
 
 - API“是否支持“为“是“，“限制与说明“为“-“，说明此API和原生API支持度保持一致。
 - API“是否支持“为“是“，“限制与说明“不为“-“，说明此API和原生API支持度不一致，请注意昇腾NPU上的支持度。
-- API“是否支持“为“否“，“限制与说明“为“-“，说明在昇腾NPU上暂不支持此API。
+- API“是否支持“为“否“，“限制与说明“为“-“，说明在昇腾NPU上暂不支持此API，在昇腾NPU上请谨慎使用，后续验证后会持续更新文档。
 
 #### DynamicEmbParameterConstraints
 
-| API名称                                           | 是否支持 | 限制与说明                                          |
-| ------------------------------------------------- | -------- | --------------------------------------------------- |
-| DynamicEmbParameterConstraints                    | 是       | caching、score_strategy、external_storage场景未支持 |
-| DynamicEmbParameterConstraints.use_dynamicemb     | 是       | -                                                   |
-| DynamicEmbParameterConstraints.dynamicemb_options | 是       | caching、score_strategy、external_storage场景未支持 |
+| API名称                                           | 是否支持 | 限制与说明 |
+| ------------------------------------------------- | -------- | ---------- |
+| DynamicEmbParameterConstraints                    | 是       | -          |
+| DynamicEmbParameterConstraints.use_dynamicemb     | 是       | -          |
+| DynamicEmbParameterConstraints.dynamicemb_options | 是       | -          |
 
 #### DynamicEmbeddingEnumerator
 
@@ -325,14 +327,14 @@
 | DynamicEmbTableOptions.training              | 是       | -          |
 | DynamicEmbTableOptions.initializer_args      | 是       | -          |
 | DynamicEmbTableOptions.eval_initializer_args | 是       | -          |
-| DynamicEmbTableOptions.caching               | 否       | -          |
+| DynamicEmbTableOptions.caching               | 是       | -          |
 | DynamicEmbTableOptions.init_capacity         | 是       | -          |
 | DynamicEmbTableOptions.max_load_factor       | 是       | -          |
-| DynamicEmbTableOptions.score_strategy        | 否       | -          |
+| DynamicEmbTableOptions.score_strategy        | 是       | -          |
 | DynamicEmbTableOptions.bucket_capacity       | 是       | -          |
 | DynamicEmbTableOptions.safe_check_mode       | 是       | -          |
 | DynamicEmbTableOptions.global_hbm_for_values | 是       | -          |
-| DynamicEmbTableOptions.external_storage      | 否       | -          |
+| DynamicEmbTableOptions.external_storage      | 是       | -          |
 | DynamicEmbTableOptions.index_type            | 是       | -          |
 
 #### DynamicEmbDump
@@ -361,7 +363,7 @@
 
 | API名称          | 是否支持 | 限制与说明 |
 | ---------------- | -------- | ---------- |
-| incremental_dump | 否       | -          |
+| incremental_dump | 是       | -          |
 
 #### get_score
 
