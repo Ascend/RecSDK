@@ -240,11 +240,19 @@ static bool LaunchRowwiseAdagradSimd(aclrtStream stream, uint8_t* gradsPtr, uint
     return true;
 }
 
+static bool IsSupportedOptimizerSimdDtype(DataType gradType, DataType valType)
+{
+    const auto isFloatLike = [](DataType t) {
+        return t == DataType::Float32 || t == DataType::Float16 || t == DataType::BFloat16;
+    };
+    return isFloatLike(gradType) && isFloatLike(valType);
+}
+
 static bool ShouldUseOptimizerSimd(uint32_t gradDim, int32_t inLength, DataType gradType, DataType valType)
 {
     return (gradDim > 512U) && (gradDim % 8U == 0U) &&
-           (static_cast<int64_t>(inLength) >= kOptimizerSimdElemThreshold) && (gradType == DataType::Float32) &&
-           (valType == DataType::Float32);
+           (static_cast<int64_t>(inLength) >= kOptimizerSimdElemThreshold) &&
+           IsSupportedOptimizerSimdDtype(gradType, valType);
 }
 
 static bool ShouldUseAdagradSimd(uint32_t gradDim, int32_t inLength, DataType gradType, DataType valType,
@@ -318,8 +326,14 @@ static bool LaunchAdagradSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* ro
 static bool LaunchAdamWSimdTiling(const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim, int32_t numRows,
                                   int32_t maxCores, float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2,
                                   float stepSize, float invVHatDenom, float decayFactor, float eps,
-                                  uint32_t rowsPerGroup, int32_t& coreNumOut, at::Tensor& tilingNpuOut)
+                                  uint32_t rowsPerGroup, DataType gradType, DataType weightType, int32_t& coreNumOut,
+                                  at::Tensor& tilingNpuOut)
 {
+    if (!IsSupportedOptimizerSimdDtype(gradType, weightType)) {
+        LOG_ERROR("LaunchAdamWSimdTiling: unsupported grad/weight dtype for AdamW SIMD.");
+        return false;
+    }
+
     const int32_t numGroups = (numRows + static_cast<int32_t>(rowsPerGroup) - 1) / static_cast<int32_t>(rowsPerGroup);
     coreNumOut = static_cast<int32_t>(
         std::max<int64_t>(1, std::min<int64_t>(static_cast<int64_t>(maxCores), static_cast<int64_t>(numGroups))));
@@ -338,6 +352,8 @@ static bool LaunchAdamWSimdTiling(const at::Tensor& gradsContinuous, uint32_t gr
     tilingData.eps = eps;
     tilingData.needCoreNum = coreNumOut;
     tilingData.rowsPerGroup = rowsPerGroup;
+    tilingData.gradType = static_cast<uint32_t>(gradType);
+    tilingData.weightType = static_cast<uint32_t>(weightType);
 
     at::Tensor tilingHost = at::empty({static_cast<int64_t>(sizeof(AdamWSimdTilingData))},
                                       at::TensorOptions().dtype(at::kByte).device(at::kCPU));
@@ -351,14 +367,15 @@ static bool LaunchAdamWSimdTiling(const at::Tensor& gradsContinuous, uint32_t gr
 static bool LaunchAdamWFusedSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* valuesPtr,
                                  const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim, int32_t numRows,
                                  int32_t maxCores, float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2,
-                                 float stepSize, float invVHatDenom, float decayFactor, float eps)
+                                 float stepSize, float invVHatDenom, float decayFactor, float eps, DataType gradType,
+                                 DataType weightType)
 {
     constexpr uint32_t kRowsPerGroup = 1U;
     int32_t coreNum = 0;
     at::Tensor tilingNpu;
     if (!LaunchAdamWSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, beta1, beta2, oneMinusBeta1,
-                               oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, kRowsPerGroup, coreNum,
-                               tilingNpu)) {
+                               oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, kRowsPerGroup, gradType,
+                               weightType, coreNum, tilingNpu)) {
         return false;
     }
     ACLRT_LAUNCH_KERNEL(adamw_fused_simd)
@@ -369,14 +386,15 @@ static bool LaunchAdamWFusedSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t*
 static bool LaunchAdamWSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* rowPtrsPtr, uint8_t* foundsPtr,
                             const at::Tensor& gradsContinuous, uint32_t gradDim, int32_t numRows, int32_t maxCores,
                             float beta1, float beta2, float oneMinusBeta1, float oneMinusBeta2, float stepSize,
-                            float invVHatDenom, float decayFactor, float eps, uint32_t rowsPerGroup)
+                            float invVHatDenom, float decayFactor, float eps, uint32_t rowsPerGroup, DataType gradType,
+                            DataType weightType)
 {
     const uint32_t valDim = gradDim * 3U;
     int32_t coreNum = 0;
     at::Tensor tilingNpu;
     TORCH_CHECK(LaunchAdamWSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, beta1, beta2, oneMinusBeta1,
-                                      oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, rowsPerGroup, coreNum,
-                                      tilingNpu),
+                                      oneMinusBeta2, stepSize, invVHatDenom, decayFactor, eps, rowsPerGroup, gradType,
+                                      weightType, coreNum, tilingNpu),
                 "LaunchAdamWSimd: LaunchAdamWSimdTiling failed.");
     ACLRT_LAUNCH_KERNEL(adamw_simd)
     (coreNum, stream, gradsPtr, rowPtrsPtr, foundsPtr, static_cast<uint8_t*>(tilingNpu.data_ptr()));
@@ -1454,9 +1472,14 @@ void dynamic_emb_adamW_with_pointer(const torch::Tensor& grads, const torch::Ten
         constexpr uint32_t kRowsPerGroup = 1U;
         if (LaunchAdamWSimd(stream, grads_ptr, values_ptr, nullptr, grads_continuous, grad_dim, num_rows, max_cores,
                             beta1, beta2, one_minus_beta1, one_minus_beta2, step_size, inv_v_hat_denom, decay_factor,
-                            eps, kRowsPerGroup)) {
+                            eps, kRowsPerGroup, grad_type, val_type)) {
             return;
         }
+    }
+
+    if (!IsSupportedOptimizerSimdDtype(grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_adamW_with_pointer: unsupported grad/weight dtype for AdamW update.");
+        return;
     }
 
     bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
@@ -1476,12 +1499,12 @@ void dynamic_emb_adamW_with_pointer_hybrid(const torch::Tensor& grads, const tor
 {
     int32_t in_length = grads.numel();
     if (in_length == 0) {
-        LOG_ERROR("dynamic_emb_adamW_with_pointer: in_length is zero!");
+        LOG_ERROR("dynamic_emb_adamW_with_pointer_hybrid: in_length is zero!");
         return;
     }
     const uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
     if (state_dim != static_cast<int64_t>(grad_dim) * 2) {
-        LOG_ERROR("dynamic_emb_adamW_with_pointer: state_dim must be 2 * embedding dim (m and v per dim).");
+        LOG_ERROR("dynamic_emb_adamW_with_pointer_hybrid: state_dim must be 2 * embedding dim (m and v per dim).");
         return;
     }
 
@@ -1504,10 +1527,17 @@ void dynamic_emb_adamW_with_pointer_hybrid(const torch::Tensor& grads, const tor
     auto grad_type = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
     const int32_t num_rows = in_length / static_cast<int32_t>(grad_dim);
 
+    if (!IsSupportedOptimizerSimdDtype(grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_adamW_with_pointer_hybrid: unsupported grad/weight dtype for AdamW update.");
+        return;
+    }
+
     constexpr uint32_t kRowsPerGroup = 1U;
-    LaunchAdamWSimd(stream, grads_ptr, values_ptr, nullptr, grads_continuous, grad_dim, num_rows, max_cores, beta1,
-                    beta2, one_minus_beta1, one_minus_beta2, step_size, inv_v_hat_denom, decay_factor, eps,
-                    kRowsPerGroup);
+    if (!LaunchAdamWSimd(stream, grads_ptr, values_ptr, nullptr, grads_continuous, grad_dim, num_rows, max_cores, beta1,
+                         beta2, one_minus_beta1, one_minus_beta2, step_size, inv_v_hat_denom, decay_factor, eps,
+                         kRowsPerGroup, grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_adamW_with_pointer_hybrid: LaunchAdamWSimd failed!");
+    }
 }
 
 void dynamic_emb_adagrad_with_pointer(const torch::Tensor& grads, const torch::Tensor& valPointers, DataType valType,
@@ -1686,12 +1716,17 @@ void dynamic_emb_adamW_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase> 
         constexpr uint32_t kRowsPerGroup = 1U;
         if (LaunchAdamWSimd(stream, grads_ptr, values_ptr, founds_ptr, grads_continuous, grad_dim, num_rows, max_cores,
                             beta1, beta2, one_m_beta1, one_m_beta2, step_size, inv_v_hat_denom, decay_factor, eps,
-                            kRowsPerGroup)) {
+                            kRowsPerGroup, grad_type, weight_type)) {
             return;
         } else {
             LOG_ERROR("dynamic_emb_adamW_with_table: LaunchAdamWSimd failed!");
             return;
         }
+    }
+
+    if (!IsSupportedOptimizerSimdDtype(grad_type, weight_type)) {
+        LOG_ERROR("dynamic_emb_adamW_with_table: unsupported grad/weight dtype for AdamW update.");
+        return;
     }
 
     bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
@@ -1845,12 +1880,17 @@ void dynamic_emb_adamW_fused(const torch::Tensor& grads, const torch::Tensor& va
     if (ShouldUseOptimizerSimd(grad_dim, in_length, grad_type, val_type)) {
         if (LaunchAdamWFusedSimd(stream, grads_ptr, values_ptr, grads_continuous, grad_dim, val_dim, num_rows,
                                  max_cores, beta1, beta2, one_m_beta1, one_m_beta2, step_size, inv_v_hat_denom,
-                                 decay_factor, eps)) {
+                                 decay_factor, eps, grad_type, val_type)) {
             return;
         } else {
             LOG_ERROR("dynamic_emb_adamW_fused: LaunchAdamWFusedSimd failed!");
             return;
         }
+    }
+
+    if (!IsSupportedOptimizerSimdDtype(grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_adamW_fused: unsupported grad/weight dtype for AdamW update.");
+        return;
     }
 
     bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
@@ -1892,8 +1932,17 @@ void dynamic_emb_adamW_fused_hybrid(const torch::Tensor& grads, const torch::Ten
     auto val_type = scalartype_to_datatype(convertTypeMetaToScalarType(values.dtype()));
     int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
     const int32_t num_rows = in_length / static_cast<int32_t>(grad_dim);
-    LaunchAdamWFusedSimd(stream, grads_ptr, values_ptr, grads_continuous, grad_dim, val_dim, num_rows, max_cores, beta1,
-                         beta2, one_m_beta1, one_m_beta2, step_size, inv_v_hat_denom, decay_factor, eps);
+
+    if (!IsSupportedOptimizerSimdDtype(grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_adamW_fused_hybrid: unsupported grad/weight dtype for AdamW update.");
+        return;
+    }
+
+    if (!LaunchAdamWFusedSimd(stream, grads_ptr, values_ptr, grads_continuous, grad_dim, val_dim, num_rows, max_cores,
+                              beta1, beta2, one_m_beta1, one_m_beta2, step_size, inv_v_hat_denom, decay_factor, eps,
+                              grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_adamW_fused_hybrid: LaunchAdamWFusedSimd failed!");
+    }
 }
 
 void dynamic_emb_adagrad_fused(const torch::Tensor& grads, const torch::Tensor& values, const float lr, const float eps)

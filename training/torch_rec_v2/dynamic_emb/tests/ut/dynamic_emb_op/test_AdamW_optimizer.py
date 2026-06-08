@@ -32,18 +32,17 @@ from optimizer_update_test_utils import (
 # AdamW parametrization
 # ---------------------------------------------------------------------------
 _ADAMW_POINTER_BATCH = [1, 1024, 4096, 8192, 10240, 102400]
-_ADAMW_POINTER_DIM = [8, 64, 128, 256, 512, 1024, 31, 1023]
+_ADAMW_POINTER_DIM = [1, 2, 8, 64, 128, 256, 512, 1024, 31, 1023]
 _ADAMW_TABLE_BATCH = [1, 1024, 4096, 102400]
-_ADAMW_TABLE_DIM = [64, 128, 31, 1023]
+_ADAMW_TABLE_DIM = [1, 2, 8, 64, 128, 31, 1023]
 _ADAMW_FUSED_BATCH = [1, 1024, 4096, 8192, 102400]
-_ADAMW_FUSED_DIM = [8, 64, 128, 256, 31, 1023]
+_ADAMW_FUSED_DIM = [1, 2, 8, 64, 128, 256, 31, 1023]
 _ADAMW_EPS_FP32_BF16 = [1e-8, 0.1]
 _ADAMW_EPS_FP16 = [1e-4, 0.1]
 _ADAMW_GRAD_TYPE_EPS = [
     *((grad_type, eps) for grad_type in (torch.float32, torch.bfloat16) for eps in _ADAMW_EPS_FP32_BF16),
     *((grad_type, eps) for grad_type in (torch.float16,) for eps in _ADAMW_EPS_FP16),
 ]
-_ADAMW_HYBRID_GRAD_TYPE_EPS = [(torch.float32, eps) for eps in _ADAMW_EPS_FP32_BF16]
 
 
 @pytest.fixture(name="optimizer_params")
@@ -104,7 +103,7 @@ def test_dynamic_emb_AdamW_fused(device, batch_size, embedding_dim, optimizer_pa
 @pytest.mark.parametrize("beta2", [0.999])
 @pytest.mark.parametrize("weight_decay", [0.0, 0.001, 0.01, 0.1])
 @pytest.mark.parametrize("iter_num", [10, 100])
-@pytest.mark.parametrize(("grad_type", "eps"), _ADAMW_HYBRID_GRAD_TYPE_EPS)
+@pytest.mark.parametrize(("grad_type", "eps"), _ADAMW_GRAD_TYPE_EPS)
 def test_dynamic_emb_AdamW_with_pointer_hybrid(
     device, batch_size, embedding_dim, optimizer_params, iter_num, grad_type
 ):
@@ -119,6 +118,6 @@ def test_dynamic_emb_AdamW_with_pointer_hybrid(
 @pytest.mark.parametrize("beta2", [0.999])
 @pytest.mark.parametrize("weight_decay", [0.0, 0.01])
 @pytest.mark.parametrize("iter_num", [10, 100])
-@pytest.mark.parametrize(("grad_type", "eps"), _ADAMW_HYBRID_GRAD_TYPE_EPS)
+@pytest.mark.parametrize(("grad_type", "eps"), _ADAMW_GRAD_TYPE_EPS)
 def test_dynamic_emb_AdamW_fused_hybrid(device, batch_size, embedding_dim, optimizer_params, iter_num, grad_type):
     run_adamw_fused_hybrid_test(device, batch_size, embedding_dim, optimizer_params, iter_num, grad_type)

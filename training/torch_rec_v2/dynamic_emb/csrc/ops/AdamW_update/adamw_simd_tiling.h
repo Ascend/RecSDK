@@ -1,4 +1,4 @@
-/* Copyright 2026. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,8 @@ struct AdamWSimdTilingData {
     float eps{};
     int32_t needCoreNum{};
     uint32_t rowsPerGroup{};
+    uint32_t gradType{};
+    uint32_t weightType{};
 };
 #pragma pack(pop)
-static_assert(sizeof(AdamWSimdTilingData) == 52U, "AdamWSimdTilingData packed layout");
+static_assert(sizeof(AdamWSimdTilingData) == 60U, "AdamWSimdTilingData packed layout");
