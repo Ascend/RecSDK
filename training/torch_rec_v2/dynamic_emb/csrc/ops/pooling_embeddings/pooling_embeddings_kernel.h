@@ -1,4 +1,4 @@
-/* Copyright 2026. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ See the License for the specific language governing permissions and
 
 #include <cstdint>
 #include <type_traits>
+
 #include "kernel_operator.h"
 
 using namespace AscendC;
@@ -29,16 +30,15 @@ constexpr int32_t UNROLL_FACTOR = 4;
 // SIMT VF函数 - 小数据模式
 template <typename T1, typename T2, typename T3, bool IsFloat2 = false>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmallDataCompute(
-    __gm__ T1* src, __gm__ T2* dst, __gm__ T3* offset, __gm__ T3* inverse, int32_t combiner,
-    int32_t totalDims, int32_t accumDims, int32_t evSize, int32_t evSizeVec, int32_t numVec, int32_t batchSize,
-    int32_t outLen)
+    __gm__ T1* src, __gm__ T2* dst, __gm__ T3* offset, __gm__ T3* inverse, int32_t combiner, int32_t totalDims,
+    int32_t accumDims, int32_t evSize, int32_t evSizeVec, int32_t numVec, int32_t batchSize, int32_t outLen)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
     int32_t blockIdx = AscendC::Simt::GetBlockIdx();
     int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
 
     int32_t blockBase = blockIdx * blockThreadNum;
- 
+
     if (blockBase >= outLen) {
         return;
     }
@@ -77,7 +77,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
             accum.x /= vectorNum;
             accum.y /= vectorNum;
         }
-        dst[(dstRowIndex * totalDims + accumDims + dstColIndex * evSize) >> 1 + indicesDimVec] = accum;
+        const int32_t dstFloat2Base = (dstRowIndex * totalDims + accumDims + dstColIndex * evSize) >> 1;
+        dst[dstFloat2Base + indicesDimVec] = accum;
     } else {
         float accum{0.0f};
         int32_t j = 0;
@@ -101,9 +102,9 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
 // SIMT VF函数 - 大数据模式
 template <typename T1, typename T2, typename T3, bool IsFloat2 = false>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLargeDataCompute(
-    __gm__ T1* src, __gm__ T2* dst, __gm__ T3* offset, __gm__ T3* inverse, int32_t combiner,
-    int32_t totalDims, int32_t accumDims, int32_t evSize, int32_t evSizeVec, int32_t numVec, int32_t batchSize,
-    int32_t totalBlocks, int32_t blockStartIdx, int32_t curBlocksCount, int32_t outLen)
+    __gm__ T1* src, __gm__ T2* dst, __gm__ T3* offset, __gm__ T3* inverse, int32_t combiner, int32_t totalDims,
+    int32_t accumDims, int32_t evSize, int32_t evSizeVec, int32_t numVec, int32_t batchSize, int32_t totalBlocks,
+    int32_t blockStartIdx, int32_t curBlocksCount, int32_t outLen)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
     int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
@@ -118,8 +119,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
         }
 
         int32_t elementsRemaining = outLen - blockBase;
-        int32_t elementsThisBlock =
-            (elementsRemaining < blockThreadNum) ? elementsRemaining : blockThreadNum;
+        int32_t elementsThisBlock = (elementsRemaining < blockThreadNum) ? elementsRemaining : blockThreadNum;
 
         int32_t threadElementBase = blockBase + threadIdx;
 
@@ -151,7 +151,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
                 accum.x /= vectorNum;
                 accum.y /= vectorNum;
             }
-            dst[(dstRowIndex * totalDims + accumDims + dstColIndex * evSize) >> 1 + indicesDimVec] = accum;
+            const int32_t dstFloat2Base = (dstRowIndex * totalDims + accumDims + dstColIndex * evSize) >> 1;
+            dst[dstFloat2Base + indicesDimVec] = accum;
         } else {
             float accum{0.0f};
             int32_t j = 0;
