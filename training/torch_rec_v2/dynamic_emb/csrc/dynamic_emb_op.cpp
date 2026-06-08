@@ -56,6 +56,8 @@
 #include "aclrtlaunch_load_from_pointer.h"
 #include "aclrtlaunch_reduce_grad_op.h"
 #include "aclrtlaunch_unique_op.h"
+#include "aclrtlaunch_select_op.h"
+#include "aclrtlaunch_select_index_op.h"
 #include "aclrtlaunch_pooling_embeddings.h"
 #include "aclrtlaunch_pooling_embeddings_simd.h"
 #include "aclrtlaunch_lookup_backward.h"
@@ -828,6 +830,79 @@ at::Tensor get_table_range_npu(const at::Tensor& offsets, const at::Tensor& feat
      tableNum, isInt32);
 
     return tableRange;
+}
+
+static void launch_select_kernel(bool selectIndex, const at::Tensor& flags, const c10::optional<at::Tensor>& inputs,
+                                 at::Tensor& outputs, at::Tensor& numSelected)
+{
+    int64_t numTotal = selectIndex ? outputs.size(0) : inputs->size(0);
+    if (numTotal == 0) {
+        numSelected.zero_();
+        return;
+    }
+
+    auto inputFlags = flags.contiguous();
+    auto inputOutputs = outputs.contiguous();
+    auto inputNumSelected = numSelected.contiguous();
+
+    int32_t isUInt64 = 0;
+    if (selectIndex) {
+        TORCH_CHECK(outputs.dtype() == torch::kInt64 || outputs.dtype() == torch::kUInt64,
+                    "select_index only supports int64/uint64 dtype for output_indices");
+        isUInt64 = (outputs.dtype() == torch::kUInt64) ? 1 : 0;
+    } else {
+        TORCH_CHECK(inputs->dtype() == torch::kInt64 || inputs->dtype() == torch::kUInt64,
+                    "select only supports int64/uint64 dtype for inputs");
+        isUInt64 = (inputs->dtype() == torch::kUInt64) ? 1 : 0;
+    }
+
+    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+    int32_t stride = CACHE_ALIGN / static_cast<int32_t>(sizeof(int64_t));
+    int32_t isSmall = (numTotal <= static_cast<int64_t>(SMALL_DATA_THRESHOLD)) ? 1 : 0;
+    int32_t elementsPerBlock = isSmall ? MAX_THREADS_PER_BLOCK : ELEMENTS_PER_BLOCK;
+    int32_t totalBlocks = static_cast<int32_t>((numTotal + elementsPerBlock - 1) / elementsPerBlock);
+    int32_t coreNum = std::min(totalBlocks, maxCores);
+    coreNum = std::max(coreNum, static_cast<int32_t>(MIN_CORE_NUM));
+
+    int64_t workspaceElems = numTotal + static_cast<int64_t>(totalBlocks) * stride;
+    auto workspace = at::empty({workspaceElems}, inputFlags.options().dtype(torch::kInt64));
+    inputNumSelected.zero_();
+
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+
+    if (selectIndex) {
+        ACLRT_LAUNCH_KERNEL(select_index_op)
+        (coreNum, stream, inputFlags.data_ptr<bool>(), inputOutputs.data_ptr(), inputNumSelected.data_ptr(),
+         workspace.data_ptr(), numTotal, isUInt64, isSmall, totalBlocks);
+    } else {
+        auto inputInputs = inputs->contiguous();
+        ACLRT_LAUNCH_KERNEL(select_op)
+        (coreNum, stream, inputFlags.data_ptr<bool>(), inputInputs.data_ptr(), inputOutputs.data_ptr(),
+         inputNumSelected.data_ptr(), workspace.data_ptr(), numTotal, isUInt64, isSmall, totalBlocks);
+    }
+}
+
+void select_npu(const at::Tensor& flags, const at::Tensor& inputs, at::Tensor& outputs, at::Tensor& numSelected)
+{
+    const at::OptionalDeviceGuard guard(device_of(flags));
+    TORCH_CHECK(flags.dtype() == torch::kBool, "select: flags must be bool tensor");
+    TORCH_CHECK(flags.dim() == 1 && inputs.dim() == 1 && outputs.dim() == 1,
+                "select: flags, inputs and outputs must be 1D tensors");
+    TORCH_CHECK(flags.size(0) == inputs.size(0), "select: flags and inputs must have the same length");
+    TORCH_CHECK(numSelected.numel() == 1, "select: num_selected must be a scalar tensor");
+    launch_select_kernel(false, flags, inputs, outputs, numSelected);
+}
+
+void select_index_npu(const at::Tensor& flags, at::Tensor& outputIndices, at::Tensor& numSelected)
+{
+    const at::OptionalDeviceGuard guard(device_of(flags));
+    TORCH_CHECK(flags.dtype() == torch::kBool, "select_index: flags must be bool tensor");
+    TORCH_CHECK(flags.dim() == 1 && outputIndices.dim() == 1,
+                "select_index: flags and output_indices must be 1D tensors");
+    TORCH_CHECK(flags.size(0) == outputIndices.size(0),
+                "select_index: flags and output_indices must have the same length");
+    TORCH_CHECK(numSelected.numel() == 1, "select_index: num_selected must be a scalar tensor");
+    launch_select_kernel(true, flags, c10::nullopt, outputIndices, numSelected);
 }
 
 void get_new_length_and_offsets_npu(const at::Tensor& dUniqueOffsets, const at::Tensor& dTableOffsetsInFeature,
@@ -2576,6 +2651,10 @@ void bind_dyn_emb_op(py::module& m)
 
     m.def("get_table_range_op", &get_table_range_npu, "Calculate table range based on offsets and feature offsets",
           py::arg("offsets"), py::arg("featureOffsets"));
+    m.def("select", &select_npu, "Select items in inputs where flags are true.", py::arg("flags"), py::arg("inputs"),
+          py::arg("outputs"), py::arg("num_selected"));
+    m.def("select_index", &select_index_npu, "Select indices where flags are true.", py::arg("flags"),
+          py::arg("output_indices"), py::arg("num_selected"));
     m.def("unique_op", &unique_op_npu, "NPU-accelerated unique operation for int64 tensor", py::arg("key"));
     m.def("segmented_unique_op", &segmented_unique_op_npu,
           "NPU-accelerated segmented unique operation for int64 tensor", py::arg("keys"), py::arg("segmentRange"));
