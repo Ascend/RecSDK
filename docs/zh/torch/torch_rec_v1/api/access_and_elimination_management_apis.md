@@ -20,7 +20,7 @@ class JaggedTensorWithTimestamp(ExtendedJaggedTensor):
     ) -> None:
 ```
 
-**参数说明<a name="section888634319218"></a>**
+**参数说明**
 
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
@@ -28,7 +28,7 @@ class JaggedTensorWithTimestamp(ExtendedJaggedTensor):
 |weights|torch.Tensor|可选|表示每个值的权重。默认为None。|
 |lengths|torch.Tensor|可选|表示每个样本的长度。默认为None。|
 |offsets|torch.Tensor|可选|表示每个样本的起始偏移量。默认为None。|
-|timestamps|torch.Tensor|可选|表示与values中每个特征一一对应的时间戳信息。默认为None，非None时数据shape须和values的shape相同。|
+|timestamps|torch.Tensor|可选|表示与values中每个特征一一对应的时间戳信息。默认为None，非None时数据shape须和values的shape相同。该时间戳的单位即为[AdmitAndEvictConfig](#admitandevictconfig)中`evict_threshold`参数的单位。|
 
 **返回值说明**
 
@@ -66,7 +66,7 @@ jagged_tensor_with_ts = JaggedTensorWithTimestamp(values=ids, lengths=lengths, t
 def from_jt_dict(jt_dict: Dict[str, JaggedTensorWithTimestamp]) -> "KeyedJaggedTensorWithTimestamp"
 ```
 
-**参数说明<a name="section888634319218"></a>**
+**参数说明**
 
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
@@ -117,7 +117,7 @@ class AdmitAndEvictPolicyType(Enum):
     POLICY_SHOWCLICK = 2
 ```
 
-**参数说明<a name="section888634319218"></a>**
+**参数说明**
 
 | 参数名              | 说明                                                        |
 |------------------|-----------------------------------------------------------|
@@ -156,7 +156,7 @@ class ShowClickParams:
     score_decay: float = 1.0
 ```
 
-**参数说明<a name="section888634319218"></a>**
+**参数说明**
 
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
@@ -179,7 +179,7 @@ from torchrec_embcache.distributed.configs import ShowClickParams
 showclick_params = ShowClickParams(alpha=1, beta=1, admit_threshold=0.1, evict_percentage=0.1, score_decay=0.9)
 ```
 
-## AdmitAndEvictConfig<a name="ZH-CN_TOPIC_0000002396563024"></a>
+## AdmitAndEvictConfig<a id="TOPIC_0000002396563024"></a>
 
 **功能描述<a name="section634582619155"></a>**
 
@@ -198,7 +198,7 @@ class AdmitAndEvictConfig:
     policy_type: AdmitAndEvictPolicyType = AdmitAndEvictPolicyType.POLICY_COUNT
 ```
 
-**参数说明<a name="section888634319218"></a>**
+**参数说明**
 
 policy_type为POLICY_COUNT时：
 
@@ -217,7 +217,7 @@ policy_type为POLICY_SHOWCLICK时：
 |not_admitted_default_value|float|可选|未准入特征ID的嵌入值，即未被准入的特征ID对应的Embedding向量中的值会被设置为not_admitted_default_value。默认值为0.0，仅在showclick_params.admit_threshold为非默认值时生效。|
 |evict_step_interval|int|可选|特征淘汰功能的步长间隔。默认值为0。<br>该参数需和[EmbCacheTrainPipelineSparseDist](pipeline_apis.md#embcachetrainpipelinesparsedist)中evict_step_interval参数值保持一致。|
 
-**约束<a name="section888634319218"></a>**
+**约束**
 
 POLICY_COUNT和POLICY_SHOWCLICK策略不能一起使用。
 

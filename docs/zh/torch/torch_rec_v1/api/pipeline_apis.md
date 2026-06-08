@@ -24,16 +24,16 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
     ) -> None:
 ```
 
-**参数说明<a name="section888634319218"></a>**
+**参数说明**
 
 | 参数名                 | 类型                    | 可选/必选 | 说明                                                               |
 |---------------------|-----------------------|-------|------------------------------------------------------------------|
 | model               | torch.nn.Module       | 必选    | 包含EmbeddingBagCollection/HashEmbeddingBagCollection的nn.Module类型。 |
-| optimizer           | torch.optim.Optimizer | 必选    | 优化器。优化器的创建方式请参考[步骤7](../quick_start.md#接口调用介绍 )中定义的优化器。          |
+| optimizer           | torch.optim.Optimizer | 必选    | 优化器。优化器的创建方式请参考当前API使用示例。          |
 | device              | torch.device          | 必选    | 设备。取值为torch.device("npu")，即npu设备。                                |
 | execute_all_batches | bool                  | 可选    | 默认值为True。仅支持默认值，不支持用户自定义。                                        |
 | apply_jit           | bool                  | 可选    | 默认值为False。仅支持默认值，不支持用户自定义。                                       |
-| return_loss         | bool                  | 可选    | 设置调用HybridTrainPipelineSparseDist对象的progress方法时，是否返回loss值。默认值为False。                                              |
+| return_loss         | bool                  | 可选    | 设置调用HybridTrainPipelineSparseDist对象的progress方法时，是否返回loss值。默认值为False，不返回loss值。                                              |
 | pipe_n_batch        | int                   | 可选    | 预取n个batch做并行。取值范围：[1, 12]。默认值为6。                                 |
 
 **返回值说明**
@@ -42,6 +42,8 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
 - 失败：抛出异常。
 
 **使用示例**
+
+注：样例中ddp_model为调用[DistributedModelParallel（TorchRec）](subtable_apis.md#TOPIC_0000002338384297)接口创建的模型对象，此处省略详细定义。
 
 ```python
 import torch
@@ -76,7 +78,7 @@ def progress(self, dataloader_iter: Iterator[In]) -> Out:
 
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
-|dataloader_iter|Iterator[In]|必选|数据集迭代器。该迭代器返回用于查表和训练的Batch类，参考[步骤1](../quick_start.md#接口调用介绍)。|
+|dataloader_iter|Iterator[In]|必选|数据集迭代器。该迭代器返回用于查表和训练的Batch类，详细实现可参考当前API使用示例。|
 
 **返回值说明<a name="section10745722145816"></a>**
 
@@ -85,7 +87,41 @@ def progress(self, dataloader_iter: Iterator[In]) -> Out:
 
 **使用示例<a name="section09971948135814"></a>**
 
+注：样例中省略了Batch和RandomRecDataset的详细定义，详细定义请参见[dataset.py](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/dataset.py)。
+
 ```python
+from dataclasses import dataclass
+
+from torch.utils.data import DataLoader
+from torch.utils.data.dataset import IterableDataset
+from torchrec.streamable import Pipelineable
+from hybrid_torchrec.distributed.hybrid_train_pipeline import HybridTrainPipelineSparseDist
+
+# 此处省略Batch和RandomRecDataset的详细定义。
+@dataclass
+class Batch(Pipelineable):
+    pass
+
+class RandomRecDataset(IterableDataset[Batch]):
+    pass
+
+BATCH_SIZE = 32
+BATCH_NUM = 32
+FEAT_NAMES = ["feat0", "feat1", "feat2"]
+ID_RANGES = [400, 4000, 400]
+
+dataset = RandomRecDataset(BATCH_SIZE, BATCH_NUM, FEAT_NAMES, ID_RANGES)
+dataloader = DataLoader(
+    dataset,
+    batch_size=None,
+    batch_sampler=None,
+    pin_memory=True,
+    prefetch_factor=32,
+    pin_memory_device="npu",
+    num_workers=4,
+)
+dataloader_iter = iter(dataloader)
+
 # pipeline创建请参考前面的HybridTrainPipelineSparseDist初始化方法，此处省略详细定义。
 pipeline: HybridTrainPipelineSparseDist = ......
 # 若创建HybridTrainPipelineSparseDist对象时，传递return_loss为False，则：
@@ -127,7 +163,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
     ) -> None:
 ```
 
-**参数说明<a name="section888634319218"></a>**
+**参数说明**
 
 | 参数名                 | 类型                               | 可选/必选 | 说明                                                                                             |
 | ---------------------- | ---------------------------------- | --------- | ------------------------------------------------------------------------------------------------ |
@@ -135,7 +171,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
 | optimizer              | torch.optim.Optimizer              | 必选      | 优化器。                                                                                         |
 | cpu_device             | torch.device                       | 必选      | CPU设备。                                                                                        |
 | npu_device             | torch.device                       | 必选      | NPU设备。                                                                                        |
-| return_loss            | bool                               | 可选      | 设置调用EmbCacheTrainPipelineSparseDist对象的progress方法时，是否返回loss值。默认值为False。       |
+| return_loss            | bool                               | 可选      | 设置调用EmbCacheTrainPipelineSparseDist对象的progress方法时，是否返回loss值。默认值为False，不返回loss值。       |
 | evict_step_interval    | int                                | 可选      | 淘汰步数间隔，默认值为None。当创建稀疏表并开启淘汰功能时，该参数必传。参数非None时需大于等于10。 |
 | execute_all_batches    | bool                               | 可选      | 是否执行所有批次，默认值为True，不支持用户自定义。                                               |
 | apply_jit              | bool                               | 可选      | 是否应用JIT编译，默认值为False，不支持用户自定义。                                               |
@@ -151,6 +187,8 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
 - 失败：抛出异常。
 
 **使用示例**
+
+注：样例中ddp_model为调用[DistributedModelParallel（TorchRec）](subtable_apis.md#TOPIC_0000002338384297)接口创建的模型对象，此处省略详细定义。且当前接口为多级缓存模式的pipeline，调用DistributedModelParallel接口时需传入多级缓存模式对应的[EmbCacheEmbeddingCollection](./table_creation_apis.md#embcacheembeddingcollection)/[EmbCacheEmbeddingBagCollection](./table_creation_apis.md#embcacheembeddingbagcollection)接口创建的稀疏表。
 
 ```python
 import torch
@@ -184,11 +222,11 @@ pipeline = EmbCacheTrainPipelineSparseDist(
 def progress(self, dataloader_iter: Iterator[In]) -> Out:
 ```
 
-**参数说明<a name="section888634319218"></a>**
+**参数说明**
 
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
-|dataloader_iter|Iterator[In]|必选|数据加载器迭代器|
+|dataloader_iter|Iterator[In]|必选|数据集迭代器。该迭代器返回用于查表和训练的Batch类，详细实现请参考当前API使用示例。|
 
 **返回值说明**
 
@@ -198,7 +236,41 @@ def progress(self, dataloader_iter: Iterator[In]) -> Out:
 
 **使用示例<a name="section09971948135815"></a>**
 
+注：样例中省略了Batch和RandomRecDataset的详细定义，详细定义请参见[dataset.py](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/dataset.py)。pipeline的完整使用请参见[test](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_ec_cache_pipeline.py)。
+
 ```python
+from dataclasses import dataclass
+
+from torch.utils.data import DataLoader
+from torch.utils.data.dataset import IterableDataset
+from torchrec.streamable import Pipelineable
+from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
+
+# 此处省略Batch和RandomRecDataset的详细定义。
+@dataclass
+class Batch(Pipelineable):
+    pass
+
+class RandomRecDataset(IterableDataset[Batch]):
+    pass
+
+BATCH_SIZE = 32
+BATCH_NUM = 32
+FEAT_NAMES = ["feat0", "feat1", "feat2"]
+ID_RANGES = [400, 4000, 400]
+
+dataset = RandomRecDataset(BATCH_SIZE, BATCH_NUM, FEAT_NAMES, ID_RANGES)
+dataloader = DataLoader(
+    dataset,
+    batch_size=None,
+    batch_sampler=None,
+    pin_memory=True,
+    prefetch_factor=32,
+    pin_memory_device="npu",
+    num_workers=4,
+)
+dataloader_iter = iter(dataloader)
+
 # pipeline创建请参考前面的EmbCacheTrainPipelineSparseDist初始化方法，此处省略详细定义。
 pipeline: EmbCacheTrainPipelineSparseDist = ......
 # 若创建EmbCacheTrainPipelineSparseDist对象时，传递return_loss为False，则：
