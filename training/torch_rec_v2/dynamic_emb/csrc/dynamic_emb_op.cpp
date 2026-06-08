@@ -57,6 +57,7 @@
 #include "aclrtlaunch_reduce_grad_op.h"
 #include "aclrtlaunch_unique_op.h"
 #include "aclrtlaunch_pooling_embeddings.h"
+#include "aclrtlaunch_pooling_embeddings_simd.h"
 #include "aclrtlaunch_lookup_backward.h"
 #include "aclrtlaunch_rowwise_adagrad_update.h"
 #include "aclrtlaunch_rowwise_adagrad_update_float2.h"
@@ -73,6 +74,7 @@
 #include "./ops/Adagrad_update/adagrad_simd_tiling.h"
 #include "./ops/AdamW_update/adamw_simd_tiling.h"
 #include "./ops/sgd_update/sgd_simd_tiling.h"
+#include "./ops/pooling_embeddings/pooling_embeddings_simd_tiling.h"
 #define LOG_ERROR(msg) std::cout << "[INFO]" << msg << std::endl
 namespace py = pybind11;
 namespace dyn_emb {
@@ -2295,6 +2297,129 @@ void dynamic_emb_adagrad_fused_hybrid(const torch::Tensor& grads, const torch::T
     const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
     LaunchAdagradFusedSimd(stream, gradsPtr, valuesPtr, gradsContinuous, gradDim, valDim, numRows, maxCores, lr, eps);
 }
+
+static int64_t ReadOffsetBaseScalar(const at::Tensor& offsetContinuous)
+{
+    const at::Tensor elem = offsetContinuous.index({0}).cpu().contiguous();
+    if (elem.scalar_type() == at::kUInt64) {
+        return static_cast<int64_t>(*elem.data_ptr<uint64_t>());
+    }
+    return *elem.data_ptr<int64_t>();
+}
+
+static uint32_t PoolingSimdElemBytes(DataType dataType)
+{
+    if (dataType == DataType::Float16 || dataType == DataType::BFloat16) {
+        return 2U;
+    }
+    return 4U;
+}
+
+static uint64_t PoolingSimdUbBytes(int32_t evSize, DataType srcType, DataType dstType)
+{
+    // 32字节对齐，用于SIMD UB的计算
+    const uint32_t evSizeAligned = ((static_cast<uint32_t>(evSize) + 7U) / 8U) * 8U;
+    uint64_t ubNeed = 2ULL * static_cast<uint64_t>(evSizeAligned) * sizeof(float);
+    // 如果srcType或dstType不是Float32，则需要额外分配UB空间做float的类型转换
+    if (srcType != DataType::Float32 || dstType != DataType::Float32) {
+        const uint32_t stagingElemBytes = std::max(PoolingSimdElemBytes(srcType), PoolingSimdElemBytes(dstType));
+        ubNeed += static_cast<uint64_t>(evSizeAligned) * static_cast<uint64_t>(stagingElemBytes);
+    }
+    return ubNeed;
+}
+
+static bool LaunchPoolingEmbeddingsSimdTiling(const at::Tensor& refTensor, int32_t combiner, int32_t totalDims,
+                                              int32_t accumDims, int32_t evSize, int32_t numVec, int32_t batchSize,
+                                              int32_t srcNumRows, int32_t inverseLen, int64_t offsetBase,
+                                              uint32_t offsetType, uint32_t srcType, uint32_t dstType, int32_t maxCores,
+                                              int32_t& coreNumOut, at::Tensor& tilingNpuOut)
+{
+    coreNumOut = std::max<int32_t>(1, std::min<int32_t>(maxCores, numVec));
+
+    PoolingEmbeddingsSimdTilingData tilingData{};
+    tilingData.combiner = combiner;
+    tilingData.totalDims = totalDims;
+    tilingData.accumDims = accumDims;
+    tilingData.evSize = evSize;
+    tilingData.numVec = numVec;
+    tilingData.batchSize = batchSize;
+    tilingData.srcNumRows = srcNumRows;
+    tilingData.inverseLen = inverseLen;
+    tilingData.needCoreNum = coreNumOut;
+    tilingData.offsetBase = offsetBase;
+    tilingData.offsetType = offsetType;
+    tilingData.srcType = srcType;
+    tilingData.dstType = dstType;
+
+    at::Tensor tilingHost = at::empty({static_cast<int64_t>(sizeof(PoolingEmbeddingsSimdTilingData))},
+                                      at::TensorOptions().dtype(at::kByte).device(at::kCPU));
+    if (memcpy_s(tilingHost.data_ptr(), tilingHost.nbytes(), &tilingData, sizeof(tilingData)) != EOK) {
+        LOG_ERROR("LaunchPoolingEmbeddingsSimdTiling: memcpy_s tiling data failed. evSize="
+                  << evSize << ", numVec=" << numVec << ", needCoreNum=" << coreNumOut);
+        return false;
+    }
+    tilingNpuOut = tilingHost.to(refTensor.device()).contiguous();
+    return true;
+}
+
+static bool LaunchPoolingEmbeddingsSimd(aclrtStream stream, uint8_t* srcData, uint8_t* dstData, uint8_t* offsetData,
+                                        uint8_t* inverseData, const at::Tensor& refTensor, int32_t combiner,
+                                        int32_t totalDims, int32_t accumDims, int32_t evSize, int32_t numVec,
+                                        int32_t batchSize, int32_t srcNumRows, int32_t inverseLen, int64_t offsetBase,
+                                        uint32_t offsetType, uint32_t srcType, uint32_t dstType, int32_t maxCores)
+{
+    int32_t coreNum = 0;
+    at::Tensor tilingNpu;
+    if (!LaunchPoolingEmbeddingsSimdTiling(refTensor, combiner, totalDims, accumDims, evSize, numVec, batchSize,
+                                           srcNumRows, inverseLen, offsetBase, offsetType, srcType, dstType, maxCores,
+                                           coreNum, tilingNpu)) {
+        LOG_ERROR("LaunchPoolingEmbeddingsSimd: LaunchPoolingEmbeddingsSimdTiling failed. evSize="
+                  << evSize << ", numVec=" << numVec << ", batchSize=" << batchSize << ", maxCores=" << maxCores);
+        return false;
+    }
+    ACLRT_LAUNCH_KERNEL(pooling_embeddings_simd)
+    (coreNum, stream, srcData, dstData, offsetData, inverseData, static_cast<uint8_t*>(tilingNpu.data_ptr()));
+    return true;
+}
+
+void lookup_forward_hybrid(const at::Tensor& src, const at::Tensor& dst, const at::Tensor& offset,
+                           const at::Tensor& inverse, int32_t combiner, int32_t totalDims, int32_t accumDims,
+                           int32_t evSize, int32_t numVec, int32_t batchSize)
+{
+    TORCH_CHECK(offset.dtype() == inverse.dtype(), "offset and inverse must have the same dtype");
+    TORCH_CHECK(offset.dim() == 1 && inverse.dim() == 1,
+                "offset and inverse must be 1D tensor. offset.dim()=", offset.dim(), ", inverse.dim()=", inverse.dim());
+
+    auto srcType = scalartype_to_datatype(convertTypeMetaToScalarType(src.dtype()));
+    auto dstType = scalartype_to_datatype(convertTypeMetaToScalarType(dst.dtype()));
+    auto offsetType = scalartype_to_datatype(convertTypeMetaToScalarType(offset.dtype()));
+
+    const uint64_t ubNeed = PoolingSimdUbBytes(evSize, srcType, dstType);
+    const uint64_t ubSize = static_cast<uint64_t>(AclSingleton::GetInstance().GetTotalUbSize());
+    TORCH_CHECK(ubNeed <= ubSize, "lookup_forward_hybrid: evSize is too large for SIMD UB. evSize=", evSize,
+                ", ubNeed=", ubNeed, ", ubSize=", ubSize);
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+    auto srcContinuous = src.is_contiguous() ? src : src.contiguous();
+    auto offsetContinuous = offset.is_contiguous() ? offset : offset.contiguous();
+    auto inverseContinuous = inverse.is_contiguous() ? inverse : inverse.contiguous();
+
+    const int64_t offsetBase = ReadOffsetBaseScalar(offsetContinuous);
+
+    uint8_t* srcData = static_cast<uint8_t*>(srcContinuous.data_ptr());
+    uint8_t* offsetData = static_cast<uint8_t*>(offsetContinuous.data_ptr());
+    uint8_t* inverseData = static_cast<uint8_t*>(inverseContinuous.data_ptr());
+    uint8_t* dstData = static_cast<uint8_t*>(dst.data_ptr());
+
+    const int32_t srcNumRows = static_cast<int32_t>(src.size(0));
+    const int32_t inverseLen = static_cast<int32_t>(inverse.numel());
+    const int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
+
+    TORCH_CHECK(LaunchPoolingEmbeddingsSimd(stream, srcData, dstData, offsetData, inverseData, srcContinuous, combiner,
+                                            totalDims, accumDims, evSize, numVec, batchSize, srcNumRows, inverseLen,
+                                            offsetBase, static_cast<uint32_t>(offsetType),
+                                            static_cast<uint32_t>(srcType), static_cast<uint32_t>(dstType), maxCores),
+                "lookup_forward_hybrid: LaunchPoolingEmbeddingsSimd failed.");
+}
 // PYTHON WARP
 void bind_dyn_emb_op(py::module& m)
 {
@@ -2567,5 +2692,8 @@ void bind_dyn_emb_op(py::module& m)
     m.def("dynamic_emb_adagrad_with_pointer_hybrid", &dyn_emb::dynamic_emb_adagrad_with_pointer_hybrid,
           "AdaGrad optimizer for dynamic embedding (SIMD only)", py::arg("grads"), py::arg("valPointers"),
           py::arg("valType"), py::arg("stateDim"), py::arg("lr"), py::arg("eps"));
+    m.def("lookup_forward_hybrid", &lookup_forward_hybrid, "lookup_forward (hybrid vector path)", py::arg("src"),
+          py::arg("dst"), py::arg("offset"), py::arg("inverse"), py::arg("combiner"), py::arg("total_dims"),
+          py::arg("accum_dims"), py::arg("ev_size"), py::arg("num_vec"), py::arg("batch_size"));
 }
 }  // namespace dyn_emb
