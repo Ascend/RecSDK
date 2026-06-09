@@ -15,7 +15,7 @@
 |logger.py|日志模块定义|
 |README.md|数据集下载及demo模型运行说明|
 
-## 接口调用介绍<a name="ZH-CN_TOPIC_0000002336148917"></a>
+## 模型搭建主要步骤介绍<a name="ZH-CN_TOPIC_0000002336148917"></a>
 
 以下出现的相关接口的参数含义及约束详细可见[接口说明](./api/README.md)
 
@@ -102,7 +102,7 @@
     ```python
     # model.py
     def get_planner(device, eb_configs, batch_size, training):
-        ···
+        ...
         return DynamicEmbeddingShardingPlanner(
             eb_configs=eb_configs,
             topology=topology,
@@ -119,7 +119,7 @@
     ```python
     # model.py
     def apply_dmp(model, args, training, device):
-        ···
+        ...
         plan = planner.collective_plan(model, [sharder], dist.GroupMember.WORLD)
         return DistributedModelParallel(
             module=model,
@@ -132,9 +132,10 @@
 7. 模型状态保存与加载
 
     保存模型权重（Dense 部分）以及动态 Embedding 数据。
-    稀疏权重和优化器状态需使用专用接口
+    稀疏权重和优化器状态需使用专用接口。
 
     ```python
+    # 接口调用
     from dynamic_emb.distributed.dump_load import DynamicEmbDump
     from dynamic_emb.distributed.dump_load import DynamicEmbLoad
     ```
@@ -144,12 +145,18 @@
 
 ## 启动模型训练<a name="ZH-CN_TOPIC_0000002302229704"></a>
 
-模型运行依赖容器环境。用户可基于已经制作好的容器镜像，快速启动容器并模型训练。也可以手动进行容器镜像环境的依赖安装和软件部署。
+模型运行依赖容器环境。用户可基于已经制作好的容器镜像，快速启动容器并运行模型训练。也可以手动进行容器镜像环境的依赖安装和软件部署。
 
 ### 方案1：基于已有容器镜像启动模型训练
 
 1. 获取已有运行镜像并启动容器
 请参见[OVERVIEW](../../../../docker/OVERVIEW.zh.md)基于已经制作好的容器镜像，启动容器并进入容器内。
+
+    上述镜像中的软件配套版本如下：
+
+    |软件名称|PyTorch|torch_npu|torchrec|fbgemm_gpu|dynamic_emb|
+    |--|--|--|--|--|--|
+    |配套版本|2.7.1|2.7.1|1.2.0+npu|1.2.0|25.09|
 
 2. 配置容器内环境
 
@@ -159,7 +166,7 @@
     # 激活python虚拟环境
     source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
     # 设置CANN版本
-    bash /usr/local/set_cann_env.sh A5
+    bash /usr/local/set_cann_env.sh a5 # 切换并生效 Ascend 950 配套Toolkit及相关环境变量
     ```
 
 3. 启动模型训练
@@ -173,7 +180,7 @@
     下载 MovieLens-1M 数据集并解压到当前目录的 ml-1m 文件夹。
     数据集链接：[MovieLens-1M](https://files.grouplens.org/datasets/movielens/ml-1m.zip) 。
 
-    下载后的文件名为ml-1m.zip，将其解压。样例模型默认使用./ml-1m为数据路径，若需更改路径，可在run.sh脚本中通过--data_path参数指定。
+    下载后的文件名为ml-1m.zip，将其解压。样例模型默认使用./ml-1m为数据路径，若需更改路径，可在run.sh脚本中通过--data_path参数指定，如`--data_path ./dataset/ml-1m`
 
     执行模型运行脚本：
 
@@ -188,6 +195,8 @@
     torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=1 main.py --train "$@"
     torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=1 main.py --load --dump "$@"
     ```
+
+    模型运行完成显示`Demo done.`
 
 ### 方案2：手动准备运行环境并启动模型训练
 

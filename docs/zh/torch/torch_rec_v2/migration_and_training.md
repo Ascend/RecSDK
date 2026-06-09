@@ -6,6 +6,14 @@
 
 用户可按[快速入门](./quick_start.md)的步骤搭建模型并进行训练。
 
+以下出现的相关接口的参数含义及约束详细可见[接口说明](./api/README.md)。
+
+迁移与训练中使用的软件配套版本如下所示：
+
+|软件名称|PyTorch|torch_npu|torchrec|fbgemm_gpu|dynamic_emb|
+|--|--|--|--|--|--|
+|配套版本|2.7.1|2.7.1|1.2.0+npu|1.2.0|25.09|
+
 **基于开源TorchRec进行迁移<a name="section9248145363514"></a>**
 
 如果用户已经在TorchRec上搭建了网络，则按照接口对应关系进行替换，如[表1](#table16435142101913)所示。
@@ -16,7 +24,7 @@
 |TorchRec接口|Rec SDK Torch接口|接口功能描述|
 |--|--|--|
 |EmbeddingCollectionSharder|DynamicEmbeddingCollectionSharder|稀疏表分片器|
-|EmbeddingShardingPlanner|DynamicEmbeddingShardingPlanner|分表计划生成器|
+|EmbeddingShardingPlanner|DynamicEmbeddingShardingPlanner|分片计划生成器|
 |EmbeddingEnumerator|DynamicEmbeddingEnumerator|分片选项枚举|
 |ParameterConstraints|DynamicEmbParameterConstraints|分表约束|
 |PyTorch保存/加载|DynamicEmbDump/DynamicEmbLoad|动态稀疏表保存与加载|
@@ -33,7 +41,7 @@
 
     class TestModel(torch.nn.Module):
         def __init__(self, *args, **kwargs):
-            self.ec = EmbeddingCollection(···)
+            self.ec = EmbeddingCollection(...)
 
         def forward(self, batch):
             pass
@@ -47,13 +55,13 @@
         data_loader = DataLoader(
             dataset,
         )
-        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS ,NUM_EMBEDS)
+        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS, NUM_EMBEDS)
         ...
 
         sharder = get_default_sharders()
-        planner = EmbeddingShardingPlanner(···)
+        planner = EmbeddingShardingPlanner(...)
 
-        sharding_plan = planner.collective_plan(···)
+        sharding_plan = planner.collective_plan(...)
         ...
         优化器创建
         ...
@@ -114,15 +122,15 @@
                 feature_names=[feature_names],
                 data_type=DataType.FP32,
             ),
-            ···
+            ...
         ]
         # 设置分表约束
         constraints = {}
         for eb_config in eb_configs:
-            constraints[eb_config.name] = DynamicEmbParameterConstraints(···)
+            constraints[eb_config.name] = DynamicEmbParameterConstraints(...)
 
         # 创建分片器和规划器
-        topology = Topology(···)
+        topology = Topology(...)
         sharder = DynamicEmbeddingCollectionSharder(
             fused_params=fused_params,
             use_index_dedup=True,
@@ -134,7 +142,7 @@
             batch_size=batch_size,
         )
 
-        plan = planner.collective_plan(···)
+        plan = planner.collective_plan(...)
         ...
         优化器创建
         ...
@@ -149,11 +157,11 @@
 
 ## Rec SDK Torch迁移样例<a name="ZH-CN_TOPIC_0000002336268713"></a>
 
-### Recsys-gr模型适配
+### Recsys-GR模型适配
 
-Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开源模型Recsys-gr迁移至Rec SDK Torch框架的主要修改及基于Recsys-gr的性能调优实例。完整的代码修改适配可参见以下链接：
+Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开源模型Recsys-GR迁移至Rec SDK Torch框架的主要修改及基于Recsys-GR的性能调优实例。完整的代码修改适配及配套版本可参见以下链接：
 
-[Rec SDK Torch Recsys-gr样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr)
+[Rec SDK Torch Recsys-GR样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr)
 
 #### 迁移主要修改
 
@@ -176,13 +184,13 @@ Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开�
 ```python
 # 添加NPU后端支持
 layer_type: str = "fused"
-···
+...
 assert self.kernel_backend.lower() in ["cutlass", "triton", "pytorch", "npu_fused"]
 assert self.layer_type.lower() in ["fused", "native"]
-···
+...
 elif network_args.kernel_backend == "npu_fused":
     kernel_backend = KernelBackend.NPU_FUSED
-···
+...
 ```
 
 ##### 3. dynamic_emb接口替换
@@ -198,11 +206,11 @@ from dynamic_emb import (
     DynamicEmbeddingShardingPlanner,
     DynamicEmbeddingCollectionSharder,
 )
-···
+...
 # 稀疏表配置项接口
 from dynamic_emb.distributed.dynamicemb_config import DynamicEmbEvictStrategy
 from dynamic_emb import DynamicEmbCheckMode, DynamicEmbInitializerArgs, DynamicEmbInitializerMode
-···
+...
 ```
 
 ##### 4. 算子适配
@@ -262,17 +270,17 @@ class NpuFusedHSTUAttention(HSTUAttention):
                                           ).view(-1, self.num_heads * self.attention_dim)
 ```
 
-#### Recsys-gr 性能调优实例
+#### Recsys-GR 性能调优实例
 
 ##### 背景
 
-以非FSDP2模式为例，Recsys-gr 模型在不同架构（x86/ARM）及主频的CPU环境下，端到端训练性能存在显著差距。对比两类硬件环境，device侧设备规格参数相同，核心区别在于CPU架构规格与主频差异，低主频ARM环境性能劣化严重，初步判定存在Host Bound瓶颈。
+以非FSDP2模式为例，Recsys-GR 模型在不同架构（x86/ARM）及主频的CPU环境下，端到端训练性能存在显著差距。对比两类硬件环境，device侧设备规格参数相同，核心区别在于CPU架构规格与主频差异，低主频ARM环境性能劣化严重，初步判定存在Host Bound瓶颈。
 
 ##### 分析
 
 ###### 1. 设备侧（Device）算子耗时验证
 
-设置环境变量 `NPU_PROFILE = 1`，使用torch.profiler采集模型性能数据。
+设置环境变量 `NPU_PROFILE=1`，使用torch.profiler采集模型性能数据。
 
 ```python
 if PROFILE_ENABLE:
@@ -290,7 +298,7 @@ if PROFILE_ENABLE:
         gc_detect_threshold=None,
     )
 
-        prof = torch_npu.profiler.profile(
+    prof = torch_npu.profiler.profile(
         activities=[
         torch_npu.profiler.ProfilerActivity.CPU,
         torch_npu.profiler.ProfilerActivity.NPU
@@ -304,7 +312,7 @@ if PROFILE_ENABLE:
         with_flops=False,
         experimental_config=experimental_config)
 
-        prof.start()
+    prof.start()
 ```
 
 对比NPU侧Kernel耗时，可得两种环境性能基本无差异，可排除Device侧导致的性能劣化。
@@ -313,9 +321,9 @@ if PROFILE_ENABLE:
 
 利用获取的profiling文件，可使用[MindStudio Insight](https://www.hiascend.com/document/detail/zh/mindstudio/830/GUI_baseddevelopmenttool/msascendinsightug/Insight_userguide_0002.html)可视化工具进行时间线（Timeline）可视化分析。
 
-x86与ARM环境下模型的的Free空闲时间占比均超70%，NPU实际计算占比极低。
+x86与ARM环境下模型的的Free时间占比均超70%，NPU实际计算占比极低。
 
-**核心猜测**：性能瓶颈不在 NPU 算力，而在Host侧CPU操作（数据搬运、算子下发、调度等待）。
+**核心推论**：性能瓶颈不在 NPU 算力，而在Host侧CPU操作（数据搬运、算子下发、调度等待）。
 
 ##### 调优方案
 
@@ -356,7 +364,7 @@ def get_data_loader(
     return loader
 ```
 
-同步修改`recsys-example/examples/hstu/dataset/sequence.py`文件,设置每个worker的数据分区，避免数据重复：
+同步修改`recsys-example/examples/hstu/dataset/sequence.py`文件，设置每个worker的数据分区，避免数据重复：
 
 ```python
 def set_worker_id(self, worker_id: int, num_workers: int) -> None:
@@ -386,7 +394,7 @@ def set_worker_id(self, worker_id: int, num_workers: int) -> None:
     self._num_batches = math.ceil(self._num_samples / self._global_batch_size)
 ```
 
-开启多线程加载后，数据加载数据大幅减小，且对模型训练精度无较大影响。
+开启多线程加载后，数据加载时间大幅减小，且对模型训练精度无显著影响。
 
 ###### 2. 开启大页内存池
 
@@ -441,9 +449,9 @@ def bind_memory_to_numa0():
 
 ###### 5. 其他调优方向
 
-- 1.业务框架层数据并行策略优化,如采用流水并行等。
-- 2.编译优化，详见：[编译优化技术介绍](https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0062.html)
-- 3.BIOS参数调优，如开启超频、高性能模式等。
+- 业务框架层数据并行策略优化，如采用流水并行等。
+- 编译优化，详见：[编译优化技术介绍](https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0062.html)
+- BIOS参数调优，如开启超频、高性能模式等。
 
 ### DLRM (DCNv2) 模型适配
 
@@ -505,7 +513,7 @@ cd dlrm && git checkout b631a99
 
     ```python
     from torchrec.distributed.embedding import EmbeddingCollection
-    ···
+    ...
     elif args.interaction_type == InteractionType.DCN:
         dlrm_model = DLRM_DCN_EC(
             embedding_collection=EmbeddingCollection(
@@ -529,14 +537,14 @@ cd dlrm && git checkout b631a99
     ```python
     from torchrec.distributed.planner.types import ShardingType
     from fbgemm_gpu.split_embedding_configs import SparseType
-    from dynamic_emb_extensions import OptimizerType
+    from dynamic_emb_extensions import OptimizerType # 动态稀疏表自定义算子库
     from dynamic_emb import (
         DynamicEmbeddingCollectionSharder,
         DynamicEmbeddingShardingPlanner,
         DynamicEmbTableOptions,
         DynamicEmbParameterConstraints,
     )
-    ···
+    ...
     constraints = {
         f"t_{feature_name}": DynamicEmbParameterConstraints(
             sharding_types=[ShardingType.ROW_WISE.value],
