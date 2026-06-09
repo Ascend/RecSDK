@@ -27,10 +27,9 @@ using namespace BackwardCodegenUnweightedExact;
 namespace BackwardCodegenAdagradUnweightedExact {
 
 template <typename T>
-__aicore__ inline void AdagradCompute(__local_mem__ T* dstGrad, __local_mem__ T* dstMoment,
-                                      __local_mem__ T* srcGrad, __local_mem__ T* srcMoment,
-                                      uint32_t calCount, uint16_t repeatCount, uint32_t oneRepeat,
-                                      float eps, float learning_rate)
+__aicore__ inline void AdagradCompute(__local_mem__ T* dstGrad, __local_mem__ T* dstMoment, __local_mem__ T* srcGrad,
+                                      __local_mem__ T* srcMoment, uint32_t calCount, uint16_t repeatCount,
+                                      uint32_t oneRepeat, float eps, float learning_rate)
 {
     AscendC::MicroAPI::RegTensor<T> dstVregG;
     AscendC::MicroAPI::RegTensor<T> dstVregM;
@@ -68,12 +67,12 @@ public:
     {
         this->UniqIndices();
         SyncAll();
-        
+
         __gm__ int32_t* dOffsetsPtr = (__gm__ int32_t*)dOffsets;
         __gm__ int64_t* weightsOffsetsPtr = (__gm__ int64_t*)weightsOffsets;
         __gm__ int64_t* offsetsPtr = (__gm__ int64_t*)offsets;
 
-        int64_t allLen = totalHashSize;
+        int64_t allLen = realTotalHashSize;
         int64_t totalTableSizeSplit = allLen % GetBlockNum();
         int64_t aCoreTableLen = allLen / GetBlockNum();
 
@@ -206,7 +205,7 @@ public:
     {
         Init(args);
 
-        ClearGT(workspaceGT, totalHashSize);
+        ClearGT(workspaceGT, realTotalHashSize);
         ClearGrad();
         pipe_barrier(PIPE_ALL);
         SyncAll();

@@ -43,14 +43,14 @@ public:
 
     __aicore__ inline void Tilling()
     {
-        int64_t allLen = totalHashSize;
+        int64_t allLen = realTotalHashSize;
         int64_t totalTableSizeSplit = allLen % GetBlockNum();
         int64_t aCoreTableLen = allLen / GetBlockNum();
 
         if (GetBlockIdx() >= totalTableSizeSplit) {
             thisTableLen = aCoreTableLen;
             thisTableOffset =
-                    totalTableSizeSplit * (aCoreTableLen + 1) + (GetBlockIdx() - totalTableSizeSplit) * aCoreTableLen;
+                totalTableSizeSplit * (aCoreTableLen + 1) + (GetBlockIdx() - totalTableSizeSplit) * aCoreTableLen;
         } else {
             thisTableLen = aCoreTableLen + 1;
             thisTableOffset = GetBlockIdx() * (aCoreTableLen + 1);
@@ -110,7 +110,7 @@ public:
         }
         queIn.EnQue(inputLt);
     }
-    
+
     __aicore__ inline void ComputeSgd(UpdateArgs* updateArgs, int64_t cnt)
     {
         float minusLearningRate = -learning_rate;
@@ -147,7 +147,7 @@ public:
     {
         this->UniqIndices();
         SyncAll();
-        
+
         InitSgd(args);
         Tilling();
 
@@ -165,7 +165,7 @@ public:
     {
         Init(args);
 
-        ClearGT(workspaceGT, totalHashSize);
+        ClearGT(workspaceGT, realTotalHashSize);
         ClearGrad();
         pipe_barrier(PIPE_ALL);
         SyncAll();
@@ -176,7 +176,6 @@ public:
     }
 
 private:
-
     int numOfOut;
     int indicesNumOneBlock;
 
@@ -184,5 +183,5 @@ private:
     int64_t thisTableOffset;
     int64_t tableIndex;
 };
-} // namespace BackwardCodegenSgdUnweightedExact
+}  // namespace BackwardCodegenSgdUnweightedExact
 #endif

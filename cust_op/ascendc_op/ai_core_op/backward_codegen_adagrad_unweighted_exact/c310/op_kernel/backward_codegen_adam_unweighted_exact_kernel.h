@@ -26,7 +26,7 @@ using namespace BackwardCodegenUnweightedExact;
 
 namespace BackwardCodegenAdamUnweightedExact {
 
-constexpr int NUM_OUTPUTS = 3; // grad, momentum1, momentum2
+constexpr int NUM_OUTPUTS = 3;  // grad, momentum1, momentum2
 constexpr int GRAD_OFFSET_IDX = 0;
 constexpr int MOMENTUM1_OFFSET_IDX = 1;
 constexpr int MOMENTUM2_OFFSET_IDX = 2;
@@ -34,9 +34,8 @@ constexpr int MOMENTUM2_OFFSET_IDX = 2;
 template <typename T>
 __aicore__ inline void AdamCompute(__local_mem__ T* dstG, __local_mem__ T* dstM1, __local_mem__ T* dstM2,
                                    __local_mem__ T* srcG, __local_mem__ T* srcM1, __local_mem__ T* srcM2,
-                                   uint32_t calCount, uint16_t repeatCount, uint32_t oneRepeat,
-                                   float eps, float beta1, float oneMinusBeta1, float beta2, float oneMinusBeta2,
-                                   float stepSize)
+                                   uint32_t calCount, uint16_t repeatCount, uint32_t oneRepeat, float eps, float beta1,
+                                   float oneMinusBeta1, float beta2, float oneMinusBeta2, float stepSize)
 {
     AscendC::MicroAPI::RegTensor<T> dstVregG;
     AscendC::MicroAPI::RegTensor<T> dstVregM1;
@@ -96,14 +95,14 @@ public:
         if (indicesNumOneBlock >= MAX_ARGS_PIPE_LEN) {
             indicesNumOneBlock = MAX_ARGS_PIPE_LEN;
         }
-        outIndex = GRAD_OFFSET_IDX * maxD;   // grad偏移
+        outIndex = GRAD_OFFSET_IDX * maxD;        // grad偏移
         outIndex1 = MOMENTUM1_OFFSET_IDX * maxD;  // momentum1偏移
         outIndex2 = MOMENTUM2_OFFSET_IDX * maxD;  // momentum2偏移
     }
 
     __aicore__ inline void Tilling()
     {
-        int64_t allLen = totalHashSize;
+        int64_t allLen = realTotalHashSize;
         int64_t totalTableSizeSplit = allLen % GetBlockNum();
         int64_t aCoreTableLen = allLen / GetBlockNum();
 
@@ -201,9 +200,8 @@ public:
                 constexpr uint32_t oneRepeat = vecLen / static_cast<uint32_t>(sizeof(float));
                 uint16_t repeatCount = (theArgs.embedDim + oneRepeat - 1) / oneRepeat;
 
-                VF_CALL<AdamCompute<float>>(dstG, dstM1, dstM2, srcG, srcM1, srcM2,
-                                            theArgs.embedDim, repeatCount, oneRepeat,
-                                            eps, beta1, oneMinusBeta1,  beta2, oneMinusBeta2, stepSize);
+                VF_CALL<AdamCompute<float>>(dstG, dstM1, dstM2, srcG, srcM1, srcM2, theArgs.embedDim, repeatCount,
+                                            oneRepeat, eps, beta1, oneMinusBeta1, beta2, oneMinusBeta2, stepSize);
             } else {
                 // v[:] = beta1 * v + (1 - beta1) * p.grad
                 Muls<float>(outLt[thisMoment1Index], inputLt[thisMoment1Index], beta1, theArgs.embedDim);
@@ -254,7 +252,7 @@ public:
     {
         this->UniqIndices();
         SyncAll();
-        
+
         InitAdam(args);
         Tilling();
 
@@ -272,7 +270,7 @@ public:
     {
         Init(args);
 
-        ClearGT(workspaceGT, totalHashSize);
+        ClearGT(workspaceGT, realTotalHashSize);
         ClearGrad();
         pipe_barrier(PIPE_ALL);
         SyncAll();

@@ -96,12 +96,8 @@ static ge::graphStatus NormalAdamTilingFunc(gert::TilingContext* context,
     float beta2 = *context->GetAttrs()->GetFloat(BETA2_INDEX);
     int64_t iter = *context->GetAttrs()->GetInt(ITER_INDEX);
 
-    OPS_CHECK(beta1 == 1.0,
-              OPS_LOG_E("Tiling Debug", "beta1 can not be 1.0."),
-              return ge::GRAPH_FAILED);
-    OPS_CHECK(beta2 == 1.0,
-              OPS_LOG_E("Tiling Debug", "beta2 can not be 1.0."),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(beta1 == 1.0, OPS_LOG_E("Tiling Debug", "beta1 can not be 1.0."), return ge::GRAPH_FAILED);
+    OPS_CHECK(beta2 == 1.0, OPS_LOG_E("Tiling Debug", "beta2 can not be 1.0."), return ge::GRAPH_FAILED);
 
     float _beta1 = (1 - pow(beta1, iter));
     float _beta2 = (1 - pow(beta2, iter));
@@ -118,7 +114,7 @@ static ge::graphStatus NormalAdamTilingFunc(gert::TilingContext* context,
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus UniqueTilingKey(gert::TilingContext* context, const int &optimType)
+static ge::graphStatus UniqueTilingKey(gert::TilingContext* context, const int& optimType)
 {
     if (optimType == ADAM) {
         context->SetTilingKey(UNIQUE_ADAM);
@@ -133,7 +129,7 @@ static ge::graphStatus UniqueTilingKey(gert::TilingContext* context, const int &
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus NormalTilingKey(gert::TilingContext* context, const int &optimType)
+static ge::graphStatus NormalTilingKey(gert::TilingContext* context, const int& optimType)
 {
     if (optimType == ADAM) {
         context->SetTilingKey(NORMAL_ADAM);
@@ -153,7 +149,7 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     OPS_LOG_E_IF_NULL("gradOutputIndexShape", context->GetInputShape(GRAD_OUTPUT_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("devWeightsIndexShape", context->GetInputShape(DEV_WEIGHTS_INDEX), return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("weightsOffsetsIndexShape", context->GetInputShape(WEIGHTS_OFFSETS_INDEX),
-              return ge::GRAPH_FAILED);
+                      return ge::GRAPH_FAILED);
 
     int64_t gradOutputDim0 = context->GetInputShape(GRAD_OUTPUT_INDEX)->GetStorageShape().GetDim(0);
     int64_t gradOutputDim1 = context->GetInputShape(GRAD_OUTPUT_INDEX)->GetStorageShape().GetDim(1);
@@ -195,15 +191,18 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
         useRegBase = false;
     }
 
+    bool enableAtomicCas = false;
     if (optimType == ROWWISE_ADAGRAD) {
-        OPS_LOG_E_IF_NULL("momentum1DevIndexShape",
-            context->GetInputShape(MOMENTUM1_DEV_INDEX), return ge::GRAPH_FAILED);
+        OPS_LOG_E_IF_NULL("momentum1DevIndexShape", context->GetInputShape(MOMENTUM1_DEV_INDEX),
+                          return ge::GRAPH_FAILED);
         int64_t momentumDim0 = context->GetInputShape(MOMENTUM1_DEV_INDEX)->GetStorageShape().GetDim(0);
         tilingData.set_momentumDim0(momentumDim0);
+        enableAtomicCas = true;
     } else {
         tilingData.set_momentumDim0(outDim0);
     }
     tilingData.set_useRegBase(useRegBase);
+    tilingData.set_enableAtomicCas(enableAtomicCas);
     tilingData.set_gradOutputDim0(gradOutputDim0);
     tilingData.set_gradOutputDim1(gradOutputDim1);
     tilingData.set_devWeightsDim0(devWeightsDim0);
@@ -250,7 +249,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return ge::GRAPH_FAILED);
 
     size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
-  // Tiling
+    // Tiling
     size_t coreNum = ascendPlatform.GetCoreNumAiv();
     OPS_CHECK(coreNum == 0, OPS_LOG_E("Tiling Debug", "Core num is 0."), return ge::GRAPH_FAILED);
     int bitNum = 2;
@@ -262,7 +261,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     if (tiling.get_indicesDim0() < coreNum) {
         coreNum = tiling.get_indicesDim0();
     }
-    
+
     currentWorkspace[0] = markerSize + indicesUniqSize + systemWorkspacesSize;
 
     int64_t splitBaseLen = tiling.get_indicesDim0() / coreNum;
@@ -271,7 +270,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_totalHashSize(totalHashSize);
     tiling.set_splitBaseLen(splitBaseLen);
     tiling.set_tailSplitIndex(tailSplitIndex);
-    
+
     uint64_t ubCanUsed;
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
 
