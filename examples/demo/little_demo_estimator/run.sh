@@ -88,6 +88,7 @@ export RUN_MODE="train_and_evaluate" # 支持[train, predict, train_and_evaluate
 export CACHE_MODE="HBM" # cache mode support: HBM, DDR, SSD
 
 ################# 参数配置 ######################
+export PRINT_LOG_FILTER=1       # 0：不过滤打屏日志；1：过滤RecSDK日志
 export USE_DYNAMIC=1            # 0：静态shape；1：动态shape
 export USE_DYNAMIC_EXPANSION=0  # 0：关闭动态扩容；1: 开启动态扩容
 export USE_MULTI_LOOKUP=1       # 0：一表一查；1：一表多查
@@ -162,5 +163,19 @@ fi
 
 echo "use horovod to start tasks"
 DATE=$(date +%Y-%m-%d-%H-%M-%S)
-horovodrun --network-interface ${interface} -np ${num_process} --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size} \
-python3.7 ${py} 2>&1 | tee "temp_${num_process}p_${RUN_MODE}_${DATE}.log"
+
+if [ "$PRINT_LOG_FILTER" = "1" ]; then
+    horovodrun --network-interface ${interface} \
+        -np ${num_process} \
+        --mpi-args "${mpi_args}" \
+        --mpi \
+        -H localhost:${local_rank_size} \
+        python3.7 ${py} 2>&1 | tee "temp_${num_process}p_${RUN_MODE}_${DATE}.log" | grep -v "\[MxRec\]" | grep -v "\[RecSDK\]"
+else
+    horovodrun --network-interface ${interface} \
+        -np ${num_process} \
+        --mpi-args "${mpi_args}" \
+        --mpi \
+        -H localhost:${local_rank_size} \
+        python3.7 ${py} 2>&1 | tee "temp_${num_process}p_${RUN_MODE}_${DATE}.log"
+fi
