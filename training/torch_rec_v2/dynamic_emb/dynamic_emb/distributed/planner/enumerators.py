@@ -46,9 +46,8 @@ from torchrec.distributed.types import (
 )
 from torchrec.modules.embedding_configs import DataType
 from torchrec.modules.embedding_tower import EmbeddingTower, EmbeddingTowerCollection
-from torchrec.tensor_types import check
-
 from dynamic_emb.distributed.planner.types import DynamicEmbParameterConstraints
+from dynamic_emb.distributed.utils import check
 from dynamic_emb.distributed.dynamicemb_config import (
     next_power_of_2,
     MIN_BATCH_SIZE,
@@ -122,6 +121,7 @@ class DynamicEmbeddingEnumerator(EmbeddingEnumerator):
 
         super().__init__(topology, batch_size, constraints, estimator, use_exact_enumerate_order)
         self._constraints = constraints
+        self._sharder_map = None
 
     def enumerate(
         self,

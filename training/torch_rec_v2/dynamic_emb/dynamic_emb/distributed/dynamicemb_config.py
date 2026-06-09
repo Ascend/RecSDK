@@ -24,7 +24,6 @@ from typing import Optional, Dict
 from math import sqrt
 
 import torch
-from torchrec.tensor_types import check
 from torchrec.modules.embedding_configs import BaseEmbeddingConfig
 
 from rec_sdk_common.constants.constants import NumCheckValueMethod, ValidatorParams
@@ -38,6 +37,7 @@ from dynamic_emb_extensions import (
     DynamicEmbDataType,
 )
 from dynamic_emb.distributed.types import Storage
+from dynamic_emb.distributed.utils import check
 
 
 DEFAULT_INDEX_TYPE = torch.int64
@@ -212,11 +212,11 @@ class DynamicEmbInitializerArgs:
 class DynamicEmbScoreStrategy(enum.IntEnum):
     """
     Enumeration for different modes to set index-embedding's score.
-    The index-embedding pair with smaller scores will be more likely to be evicted from the embedding table 
+    The index-embedding pair with smaller scores will be more likely to be evicted from the embedding table
     when the table is full.
 
     dynamicemb allows configuring scores by table.
-    For a table, the scores in the subsequent forward passes are larger than those 
+    For a table, the scores in the subsequent forward passes are larger than those
     in the previous ones for modes TIMESTAMP and STEP.
     Users can also provide customized score(mode CUSTOMIZED) for each table's forward pass.
     Attributes
@@ -246,9 +246,9 @@ class DynamicEmbScoreStrategy(enum.IntEnum):
 class DynamicEmbCheckMode(enum.IntEnum):
     """
     Enumeration for different modes of checking dynamic embedding's insertion behaviors.
-    DynamicEmb uses a hashtable as the backend. 
+    DynamicEmb uses a hashtable as the backend.
     If the embedding table capacity is small and the number of indices in a single lookup is large,
-    it is easy for too many indices to be allocated to the same hash table bucket in one lookup, 
+    it is easy for too many indices to be allocated to the same hash table bucket in one lookup,
     resulting in the inability to insert indices into the hashtable.
     DynamicEmb resolves this issue by setting the lookup results of indices that cannot be inserted to 0.
     Fortunately, in a hashtable with a large capacity, such insertion failures are very rare and almost never occur.
@@ -257,10 +257,10 @@ class DynamicEmbCheckMode(enum.IntEnum):
 
     To prevent this behavior from affecting training without user awareness, DynamicEmb provides a safe check mode.
     Users can set whether to enable safe check when configuring DynamicEmbTableOptions.
-    Enabling safe check will add some overhead, 
+    Enabling safe check will add some overhead,
     but it can provide insights into whether the hash table frequently fails to insert indices.
     If the number of insertion failures is high and the proportion of affected indices is large,
-    it is recommended to either increase the dynamic embedding capacity 
+    it is recommended to either increase the dynamic embedding capacity
     or avoid using dynamic embedding tables for small embedding tables.
 
     Attributes
@@ -299,20 +299,20 @@ class _ContextOptions:
         dim : Optional[int], optional
             The dimensionality of the value vectors. Default is -1, indicating it should be set explicitly.
         max_capacity : Optional[int], optional
-                The maximum capacity of the shard of the embedding table on a single GPU. 
+                The maximum capacity of the shard of the embedding table on a single GPU.
                 Automatically set in the shared planner.
                 It is not configurable, but it's important for the total memory consumption.
-                It will be automatically inferred from EmbeddingConfig.num_embeddings and the world size, 
+                It will be automatically inferred from EmbeddingConfig.num_embeddings and the world size,
                 rounded up to a power of 2，
                     and minimized to the size of bucket capacity of the HKV.
                 If init_capacity is set, max_capacity will not be smaller than init_capacity.
         evict_strategy : DynamicEmbEvictStrategy
-            Strategy used for evicting entries when the table exceeds its capacity. 
+            Strategy used for evicting entries when the table exceeds its capacity.
             Default is DynamicEmbEvictStrategy.LRU.
         local_hbm_for_values : int
             High-bandwidth memory allocated for local values, in bytes. Default is 0.
         num_aligned_embedding_per_rank: int
-                Number of aligned embedding per rank when the `num_embeddings` does not meet our alignment requirements, 
+                Number of aligned embedding per rank when the `num_embeddings` does not meet our alignment requirements,
                 default to None.
         device_id : Optional[int], optional
                 CUDA device index.
@@ -407,10 +407,7 @@ class DynamicEmbTableOptions(_ContextOptions):
             self.bucket_capacity = target_bucket_capacity
         class_safe_check("safe_check_mode", self.safe_check_mode, (DynamicEmbCheckMode,))
         int_safe_check(
-            "global_hbm_for_values", 
-            self.global_hbm_for_values, 
-            min_value=0, 
-            max_value=ValidatorParams.MAX_INT64.value
+            "global_hbm_for_values", self.global_hbm_for_values, min_value=0, max_value=ValidatorParams.MAX_INT64.value
         )
         class_safe_check("caching", self.caching, (bool,))
         check(
@@ -536,16 +533,12 @@ def get_constraint_capacity(
     optimizer_type: OptimizerType,
     bucket_capacity: int,
 ) -> int:
-    byte_consume_per_vector = (
-        dim + get_optimizer_state_dim(optimizer_type, dim, dtype)
-    ) * dtype_to_bytes(dtype)
+    byte_consume_per_vector = (dim + get_optimizer_state_dim(optimizer_type, dim, dtype)) * dtype_to_bytes(dtype)
     bucket_size_in_bytes = bucket_capacity * byte_consume_per_vector
     if memory_bytes < bucket_size_in_bytes:
         raise ValueError(
             f"reserved bytes {memory_bytes} on rank {torch.distributed.get_rank()}"
             f"is less than the size of one bucket {bucket_size_in_bytes}. "
         )
-    capacity = (
-        memory_bytes // byte_consume_per_vector
-    )  # maybe zero, we need at least one bucket
+    capacity = memory_bytes // byte_consume_per_vector  # maybe zero, we need at least one bucket
     return (capacity // bucket_capacity) * bucket_capacity
