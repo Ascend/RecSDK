@@ -36,16 +36,16 @@ constexpr int MEAN_POOL = 1;
 constexpr int NONE_POOL = 2;
 
 enum class UpdateState : uint32_t {
-    CLEAR = 0,         // 初始状态
-    NEED_UPDATE = 1,   // 需要更新状态
-    COMPUTE_GRAD = 2   // 计算梯度状态
+    CLEAR = 0,        // 初始状态
+    NEED_UPDATE = 1,  // 需要更新状态
+    COMPUTE_GRAD = 2  // 计算梯度状态
 };
 
 enum class TriadIndex : int64_t {
-    UNIQUE_INDEX = 0,      // 唯一索引在三元组中的位置
-    WEIGHT_OFFSET = 1,     // 权重偏移在三元组中的位置
-    EMBED_DIM = 2,         // 嵌入维度在三元组中的位置
-    ACCESS_STRIDE = 3      // 访问三元组元素的步长
+    UNIQUE_INDEX = 0,   // 唯一索引在三元组中的位置
+    WEIGHT_OFFSET = 1,  // 权重偏移在三元组中的位置
+    EMBED_DIM = 2,      // 嵌入维度在三元组中的位置
+    ACCESS_STRIDE = 3   // 访问三元组元素的步长
 };
 
 constexpr int MAX_ARGS_PIPE_LEN = 300;
@@ -131,7 +131,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtDedup
     __gm__ int64_t* indices, __gm__ uint64_t* hashIndices, __gm__ int64_t* offsets, __gm__ int64_t* hashSizeCumsumGT,
     __gm__ uint32_t* workspace, __gm__ volatile int64_t* indicesUniq, __ubuf__ uint32_t* validListLenPtr,
     int64_t offsetOfThisCore, int64_t lenOfThisCore, bool enableHash, int64_t offsetsDim0, int64_t batchSize,
-    int64_t indicesDim0, int64_t realTotalHashSize)
+    int64_t indicesDim0, int64_t realTotalHashSize, bool enableAtomicCas)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
     int32_t numThreads = AscendC::Simt::GetThreadNum<0>();
@@ -194,28 +194,31 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtDedup
         uint64_t thisIndForTotalTable = hashStart + rawIndex;
 
         // 原子去重
-        uint32_t oldFlag = AscendC::Simt::AtomicCas(workspace + thisIndForTotalTable,
-                                                   static_cast<uint32_t>(UpdateState::CLEAR),
-                                                   static_cast<uint32_t>(UpdateState::NEED_UPDATE));
+        if (enableAtomicCas) {
+            uint32_t oldFlag =
+                AscendC::Simt::AtomicCas(workspace + thisIndForTotalTable, static_cast<uint32_t>(UpdateState::CLEAR),
+                                         static_cast<uint32_t>(UpdateState::NEED_UPDATE));
+            if (oldFlag == static_cast<uint32_t>(UpdateState::CLEAR)) {
+                uint32_t uniqPos = AscendC::Simt::AtomicAdd(validListLenPtr, static_cast<uint32_t>(1));
 
-        if (oldFlag == static_cast<uint32_t>(UpdateState::CLEAR)) {
-            uint32_t uniqPos = AscendC::Simt::AtomicAdd(validListLenPtr, static_cast<uint32_t>(1));
+                // 计算 base index for the triplet
+                uint64_t baseIdx = (static_cast<uint64_t>(offsetOfThisCore) + uniqPos) *
+                                   static_cast<int64_t>(TriadIndex::ACCESS_STRIDE);
 
-            // 计算 base index for the triplet
-            uint64_t baseIdx = (static_cast<uint64_t>(offsetOfThisCore) + uniqPos) *
-                               static_cast<int64_t>(TriadIndex::ACCESS_STRIDE);
+                // Calculate embedDim and weightOffset using tableIndex
+                int64_t embedDim = static_cast<int64_t>(dOffsets[tableIndex + 1] - dOffsets[tableIndex]);
+                int64_t weightBase = weightsOffsets[tableIndex];
+                int64_t actualWeightOffset = weightBase + rawIndex * embedDim;
 
-            // Calculate embedDim and weightOffset using tableIndex
-            int64_t embedDim = static_cast<int64_t>(dOffsets[tableIndex + 1] - dOffsets[tableIndex]);
-            int64_t weightBase = weightsOffsets[tableIndex];
-            int64_t actualWeightOffset = weightBase + rawIndex * embedDim;
-
-            // Store the triplet
-            indicesUniq[baseIdx + static_cast<int64_t>(TriadIndex::UNIQUE_INDEX)] =
-                static_cast<int64_t>(thisIndForTotalTable);
-            indicesUniq[baseIdx + static_cast<int64_t>(TriadIndex::WEIGHT_OFFSET)] =
-                static_cast<int64_t>(actualWeightOffset);
-            indicesUniq[baseIdx + static_cast<int64_t>(TriadIndex::EMBED_DIM)] = static_cast<int64_t>(embedDim);
+                // Store the triplet
+                indicesUniq[baseIdx + static_cast<int64_t>(TriadIndex::UNIQUE_INDEX)] =
+                    static_cast<int64_t>(thisIndForTotalTable);
+                indicesUniq[baseIdx + static_cast<int64_t>(TriadIndex::WEIGHT_OFFSET)] =
+                    static_cast<int64_t>(actualWeightOffset);
+                indicesUniq[baseIdx + static_cast<int64_t>(TriadIndex::EMBED_DIM)] = static_cast<int64_t>(embedDim);
+            }
+        } else {
+            workspace[thisIndForTotalTable] = static_cast<uint32_t>(UpdateState::NEED_UPDATE);
         }
     }
     AscendC::Simt::ThreadBarrier();
@@ -285,6 +288,7 @@ public:
         eps = tilingData.eps;
         learning_rate = tilingData.learningRate;
         useRegBase = tilingData.useRegBase;
+        enableAtomicCas = tilingData.enableAtomicCas;
     }
 
     __aicore__ inline void InitTensor()
@@ -394,7 +398,7 @@ public:
         int64_t remain = lenOfThisCore;
         // 限制indicesNumOneBlock在MAX_ARGS_PIPE_LEN内
         int64_t indicesNumOneBlock = (blockLen / maxD) >= MAX_ARGS_PIPE_LEN ? MAX_ARGS_PIPE_LEN : (blockLen / maxD);
-        ComputeArgs argsArry[MAX_ARGS_PIPE_LEN];
+        ComputeArgs argsArray[MAX_ARGS_PIPE_LEN];
         int64_t batchSize = (offsetsDim0 - 1) / (dOffsetsDim0 - 1);
         int64_t cachedTableIndex = -1;
         int64_t cachedEmbedDim = 0;
@@ -429,7 +433,7 @@ public:
                 int64_t inputBatchInd = thisOffsetIndex % batchSize;
                 int64_t inputOffset = inputBatchInd * gradOutputDim1 + cachedInputEmbedOffset;
                 int64_t thisIndForTotalTable = cachedHashStart + thisIndForThisTable;
-                argsArry[thisLen] = {thisOffsetIndex, embedDim, inputOffset, thisOutOffset, thisIndForTotalTable};
+                argsArray[thisLen] = {thisOffsetIndex, embedDim, inputOffset, thisOutOffset, thisIndForTotalTable};
                 thisLen += 1;
             }
             LocalTensor<float> outLt = queOut.AllocTensor<float>();
@@ -437,7 +441,7 @@ public:
             queOut.EnQue(outLt);
             LocalTensor<float> newOutLt = queOut.DeQue<float>();
             for (int64_t i = 0; i < thisLen; i++) {
-                ComputeArgs theArgs = argsArry[i];
+                ComputeArgs theArgs = argsArray[i];
                 CpLocal2Gm(outGT[theArgs.indWeightOffset], newOutLt[i * maxD], theArgs.embedDim);
             }
             queOut.FreeTensor(newOutLt);
@@ -464,7 +468,7 @@ public:
         if (indicesNumOneBlock >= MAX_ARGS_PIPE_LEN) {
             indicesNumOneBlock = MAX_ARGS_PIPE_LEN;
         }
-        ComputeArgs argsArry[MAX_ARGS_PIPE_LEN];
+        ComputeArgs argsArray[MAX_ARGS_PIPE_LEN];
         int64_t batchSize = (offsetsDim0 - 1) / (dOffsetsDim0 - 1);
         int64_t cachedTableIndex = -1;
         int64_t cachedEmbedDim = 0;
@@ -511,7 +515,7 @@ public:
                     inputOffset = inputBatchInd * gradOutputDim1 + cachedInputEmbedOffset;
                 }
 
-                ComputeArgs& theArgs = argsArry[thisLen];
+                ComputeArgs& theArgs = argsArray[thisLen];
                 theArgs.offsetIndex = thisOffsetIndex;
                 theArgs.embedDim = embedDim;
                 theArgs.indWeightOffset = thisOutOffset;
@@ -522,7 +526,7 @@ public:
             // copy in
             LocalTensor<float> inputLt = queIn.AllocTensor<float>();  // 同一个bag拷贝时同一个的地址，可以跳过
             for (int64_t i = 0; i < thisLen; i++) {
-                ComputeArgs theArgs = argsArry[i];
+                ComputeArgs theArgs = argsArray[i];
                 CpGm2Local(inputLt[i * maxD], gradOutputGT[theArgs.inputOffset], theArgs.embedDim);
             }
             queIn.EnQue(inputLt);
@@ -532,7 +536,7 @@ public:
 
             if (poolMode == MEAN_POOL) {
                 for (int64_t i = 0; i < thisLen; i++) {
-                    ComputeArgs theArgs = argsArry[i];
+                    ComputeArgs theArgs = argsArray[i];
                     int64_t thisBagLen = *(offsetsPtr + theArgs.offsetIndex + 1) - *(offsetsPtr + theArgs.offsetIndex);
                     float meanLen = (float)1 / thisBagLen;
                     Muls<float>(outLt[i * maxD], newInputLt[i * maxD], meanLen, maxD);
@@ -547,7 +551,7 @@ public:
             LocalTensor<float> newOutLt = queOut.DeQue<float>();
             SetAtomicAdd<float>();
             for (int64_t i = 0; i < thisLen; i++) {
-                ComputeArgs theArgs = argsArry[i];
+                ComputeArgs theArgs = argsArray[i];
                 CpLocal2Gm(outGT[theArgs.indWeightOffset], newOutLt[i * maxD], theArgs.embedDim);
             }
             SetAtomicNone();
@@ -571,15 +575,11 @@ public:
         int64_t batchSize = (offsetsDim0 - 1) / (dOffsetsDim0 - 1);
 
         AscendC::Simt::VF_CALL<SimtDedupIndices>(
-            AscendC::Simt::Dim3{
-                numThreadOfPerCore, 1, 1
-            },
-            (__gm__ int32_t*)dOffsets, (__gm__ int64_t*)weightsOffsets,
+            AscendC::Simt::Dim3{numThreadOfPerCore, 1, 1}, (__gm__ int32_t*)dOffsets, (__gm__ int64_t*)weightsOffsets,
             (__gm__ int64_t*)indices, (__gm__ uint64_t*)hashIndices, (__gm__ int64_t*)offsets,
             (__gm__ int64_t*)hashSizeCumsum, (__gm__ uint32_t*)workspace, (__gm__ int64_t*)indicesUniqGT.GetPhyAddr(),
             (__ubuf__ uint32_t*)validListLenPtrLt.GetPhyAddr(), offsetOfThisCore, lenOfThisCore, enableHash,
-            offsetsDim0, batchSize, indicesDim0, realTotalHashSize
-        );
+            offsetsDim0, batchSize, indicesDim0, realTotalHashSize, enableAtomicCas);
         pipe_barrier(PIPE_ALL);
         SyncAll();
 
@@ -634,6 +634,7 @@ public:
     float learning_rate;
     bool enableHash;
     bool useRegBase;
+    bool enableAtomicCas;
 
     // ThisCoreLen
     int64_t lenOfThisCore;
