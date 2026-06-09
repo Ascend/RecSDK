@@ -10,7 +10,7 @@
 
 请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中“镜像下载”页签，**根据环境架构**获取已经制作好的**最新运行镜像**：26.0.0_openeuler2203-arm或26.0.0_debian12-x86。
 
-上述镜像中的软件配套版本如下：
+上述镜像中已包含Rec SDK Torch及相关软件包，其中软件版本如下：
 
 | 软件名称  | PyTorch | torch_npu | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
 |-------|---------|-----------|-----------|------------|-----------------|-------------------|
@@ -73,9 +73,18 @@ npu-smi info
 ## 搭建模型
 
 **图 1**  模型创建流程<a name="fig55046491373"></a>
-![](../../figures/torch_rec_v1/接口调用流程.png "接口调用流程")
+![](../../figures/torch_rec_v1/模型创建流程.png "模型创建流程")
 
-创建main.py脚本，添加如下内容：
+Rec SDK Torch关键接口说明：
+
+|接口名称|接口功能描述|
+|--|--|
+|[HashEmbeddingBagConfig](./api/table_creation_apis.md#hashembeddingbagconfig)|稀疏表配置，配置稀疏表大小，维度等|
+|[HashEmbeddingBagCollection](./api/table_creation_apis.md#hashembeddingbagcollection)|创建稀疏表，根据配置信息创建稀疏表|
+|[get_default_hybrid_sharders](./api/subtable_apis.md#get_default_hybrid_sharders)|获取分表器，用于获取稀疏表在分布式训练场景下的分表策略|
+|[HybridTrainPipelineSparseDist](./api/pipeline_apis.md#hybridtrainpipelinesparsedist)|创建pipeline，通过pipeline迭代数据集并进行训练|
+
+创建main.py脚本，添加如下内容（模型创建流程中各步骤实现可参考脚本中代码注释说明）：
 
 ```python
 import logging
@@ -202,13 +211,14 @@ class TestModel(torch.nn.Module):
 
         self.ebc = HashEmbeddingBagCollection(device="npu", tables=table_configs)
         self.input_dim = sum([len(f) * d for f, d in zip(feat_names, embed_dims)])
-        self.linear_net = torch.nn.Linear(self.input_dim, self.input_dim)
+        self.linear = torch.nn.Linear(self.input_dim, self.input_dim)
 
     def forward(self, batch: Batch):
         result = self.ebc(batch.sparse_features)
         result: torch.Tensor = result.values()
-        result = self.linear_net(result)
-        loss = result.mean() + result.sum() + result.max() + result.min()
+        result = self.linear(result)
+        # 模拟sum为损失函数，可能和实际使用场景存在差异
+        loss = result.sum()
         return loss, result
 
 
@@ -306,13 +316,14 @@ WORLD_SIZE=1 RANK=0 python3 main.py
 torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=2 main.py
 ```
 
-预期输出：
+预期耗时：约5min。
 
-训练结束后出现`demo done`字样，说明模型训练完成。
+预期输出：训练结束后出现`demo done`字样，说明模型训练完成。
 
 >[!NOTE]
 > 模型训练时会占用6000端口号，若提示端口已被占用，请修改main.py脚本/启动指令（启动多卡时）中的端口号为其他未被占用的端口。
 
 ## 进阶开发
 
-Rec SDK Torch支持Torch开源推荐模型迁移适配，如需了解开源DLRM（DCNv2）模型迁移Rec SDK Torch可参考[DLRM（DCNv2）模型迁移样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md)。
+1. Rec SDK Torch支持Torch开源推荐模型迁移适配，如需了解开源DLRM（DCNv2）模型迁移Rec SDK Torch可参考[DLRM（DCNv2）模型迁移样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md)。
+2. 如需了解Rec SDK Torch其他功能，可参考[Rec SDK Torch API文档](./api/api_description.md)。
