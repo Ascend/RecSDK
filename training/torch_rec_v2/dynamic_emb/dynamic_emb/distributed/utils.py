@@ -41,23 +41,24 @@ def tabulate(
     headers = cast(List[str], headers)
     rows = []
     # Determine the maximum width of each column
-    col_widths = [max([len(str(item)) for item in column]) for column in zip(*table)]
+    col_widths = [max(len(str(item)) for item in column) for column in zip(*table)]
     col_widths = [max(i, len(j)) for i, j in zip(col_widths, headers)]
     # Format each row of the table
     for row in table:
-        row_str = " | ".join(
-            [str(item).ljust(width) for item, width in zip(row, col_widths)]
-        )
+        row_str = " | ".join([str(item).ljust(width) for item, width in zip(row, col_widths)])
         rows.append(row_str)
     # Add the header row and the separator line
     rows.insert(
         0,
-        " | ".join(
-            [header.center(width) for header, width in zip(headers, col_widths)]
-        ),
+        " | ".join([header.center(width) for header, width in zip(headers, col_widths)]),
     )
 
     rows.insert(1, " | ".join(["-" * width for width in col_widths]))
     if sub_headers:
         rows.insert(3, " | ".join(["-" * width for width in col_widths]))
     return "\n".join(rows)
+
+
+def check(discriminant: bool, error_msg: str = "") -> None:
+    if not discriminant:
+        raise ValueError(error_msg)

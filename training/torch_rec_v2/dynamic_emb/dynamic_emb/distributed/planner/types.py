@@ -20,9 +20,8 @@ from typing import Optional
 from dataclasses import dataclass, field
 
 from torchrec.distributed.planner.types import ParameterConstraints
-from torchrec.tensor_types import check
-
 from dynamic_emb.distributed.dynamicemb_config import DynamicEmbTableOptions
+from dynamic_emb.distributed.utils import check
 from rec_sdk_common.validator.safe_checker import class_safe_check
 
 
