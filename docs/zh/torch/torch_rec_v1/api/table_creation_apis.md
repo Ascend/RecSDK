@@ -180,7 +180,7 @@ class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
 | 参数名                         | 类型                                          | 可选/必选 | 说明                                                                |
 |-----------------------------|---------------------------------------------|-------|-------------------------------------------------------------------|
 | num_embeddings              | int                                         | 必选    | 稀疏表的行数。取值范围：[1, 10亿]。使用row_wise时至少一张稀疏表的行数≥使用的卡数。                 |
-| embedding_dim               | int                                         | 必选    | 稀疏表的列数。取值范围：[8, 4096]。取值需要为8的倍数。                                  |
+| embedding_dim               | int                                         | 必选    | 稀疏表的列数。取值范围：[8, 4096]。取值需要为8的倍数。多个稀疏表的embedding_dim需保持一致。                                  |
 | name                        | str                                         | 必选    | 稀疏表的名称。只能包含数字、字母和下划线。                                             |
 | data_type                   | torchrec.types.DataType                     | 可选    | 稀疏表的数据类型。仅支持默认值为DataType.FP32。                                    |
 | feature_names               | List[str]                                   | 必选    | 稀疏表查询的特征名称列表。特征名称字符串中只能包含数字、字母和下划线。                                         |
@@ -193,7 +193,7 @@ class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
 | weight_init_mean            | float                                       | 可选    | 权重初始化均值，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.0。                                    |
 | weight_init_stddev          | float                                       | 可选    | 权重初始化标准差，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.05。                                  |
 | initializer_type            | InitializerType                             | 可选    | 权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。详细说明请参见[InitializerType](multilevel_cache_management_apis.md#initializertype)。<br>各取值类型说明：<br>InitializerType.LINEAR：配合weight_init_min、weight_init_max参数，进行Embedding的线性初始化。<br>InitializerType.TRUNCATED_NORMAL：配合weight_init_min、weight_init_max、weight_init_mean、weight_init_stddev参数，进行Embedding的截断正态分布初始化。<br>InitializerType.UNIFORM：配合weight_init_min、weight_init_max参数，进行Embedding的均匀分布初始化。              |
-| admit_and_evict_config      | AdmitAndEvictConfig                         | 可选    | 特征准入和淘汰配置，默认不启用准入和淘汰功能。预留参数，当前暂不支持。                               |
+| admit_and_evict_config      | AdmitAndEvictConfig                         | 可选    | 特征准入和淘汰配置，**预留参数，当前配置类暂不支持该参数**。                               |
 | is_incremental              | bool                                        | 可选    | 是否开启训练过程中增量数据处理功能，需结合增量保存/加载功能使用。默认值为False，表示不开启。增量保存/加载功能请参见[Saver](multilevel_cache_management_apis.md#saver)。                                                       |
 
 **返回值说明**
@@ -326,7 +326,7 @@ class EmbCacheEmbeddingConfig(EmbeddingConfig):
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
 |num_embeddings|int|必选|稀疏表的行数。取值范围：[1, 10亿]。使用row_wise时至少一张稀疏表的行数≥使用的卡数。|
-|embedding_dim|int|必选|稀疏表的列数。取值范围：[8, 4096]。取值需要为8的倍数。|
+|embedding_dim|int|必选|稀疏表的列数。取值范围：[8, 4096]。取值需要为8的倍数。多个稀疏表的embedding_dim需保持一致。|
 |name|str|必选|稀疏表的名称。只能包含数字、字母和下划线。|
 |data_type|torchrec.types.DataType|可选|稀疏表的数据类型。仅支持默认值为DataType.FP32。|
 |feature_names|List[str]|必选|稀疏表查询的特征名称列表。特征名称字符串中只能包含数字、字母和下划线。|
@@ -366,10 +366,12 @@ emb_config = EmbCacheEmbeddingConfig(
 embedding_configs: List[EmbCacheEmbeddingConfig] = [emb_config]
 embedding_optimizer_cls = torch.optim.Adagrad
 table_num = len(embedding_configs)
+world_size = 1
+batch_size = 128
 sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
     embedding_configs,  # type: ignore
-    2,
-    128,
+    world_size,
+    batch_size,
     multi_hot_sizes=[1] * table_num,
     device=torch.device("meta"),
     embedding_optimizer_cls=embedding_optimizer_cls,

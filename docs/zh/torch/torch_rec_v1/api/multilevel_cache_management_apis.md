@@ -17,7 +17,7 @@ class InitializerType(Enum):
 
 **参数说明**
 
-|参数名|说明|
+|枚举值|说明|
 |--|--|
 |LINEAR|线性初始化。|
 |TRUNCATED_NORMAL|截断正态分布初始化。|

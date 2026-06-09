@@ -15,97 +15,105 @@
 
 |TorchRec接口|Rec SDK Torch接口|接口功能描述|
 |--|--|--|
-|EmbeddingBagConfig|HashEmbeddingBagConfig|稀疏表配置|
-|EmbeddingBagCollection|HashEmbeddingBagCollection|创建稀疏表|
-|get_default_sharders|get_default_hybrid_sharders|获取分表器|
-|TrainPipelineSparseDist|HybridTrainPipelineSparseDist|创建pipeline|
+|EmbeddingBagConfig|[HashEmbeddingBagConfig](./api/table_creation_apis.md#hashembeddingbagconfig)|稀疏表配置|
+|EmbeddingBagCollection|[HashEmbeddingBagCollection](./api/table_creation_apis.md#hashembeddingbagcollection)|创建稀疏表|
+|get_default_sharders|[get_default_hybrid_sharders](./api/subtable_apis.md#get_default_hybrid_sharders)|获取分表器|
+|TrainPipelineSparseDist|[HybridTrainPipelineSparseDist](./api/pipeline_apis.md#hybridtrainpipelinesparsedist)|创建pipeline|
 
 接口示例：
+
+> 当前示例仅用于展示接口替换关系，示例中部分参数和模型定义省略详细实现。
 
 - TorchRec示例：
 
     ```python
+    import torch
     import torch.distributed as dist
+    from torch.utils.data import DataLoader
     from torchrec.distributed.train_pipeline.train_pipelines import TrainPipelineSparseDist
-    from torchrec.distributed.embeddingbag import EmbeddingBagCollectionSharder
     from torchrec.distributed.model_parallel import get_default_sharders
+    from torchrec import EmbeddingBagConfig, EmbeddingBagCollection
+
     class TestModel(torch.nn.Module):
-        def __init__(self, *):
+        def __init__(self):
+            configs = [EmbeddingBagConfig(100, 16, "table0")]
             # Rec SDK Torch 使用的接口为HashEmbeddingBagCollection
-            self.sparse_model = EmbeddingBagCollection(xx)
-            self.dense_model = xx
-        def forward(self, batch: Batch):
-            # sparse(self.ebc)前向、dense前向调用
-            # 注意：模型前向返回值需loss在前，output在后，对齐TorchRec原生TrainPipelineSparseDist使用方式
+            self.sparse_model = EmbeddingBagCollection(configs)
+            self.dense_model = torch.nn.Linear(16, 16)
+        def forward(self, batch):
+            # 此处省略模型前向实现
+            # forward方法返回loss和output两个值
             return loss, output
     def invoke_main():
+        # 省略分布式环境初始化部分
         dist.init_process_group(backend="hccl")
         rank = dist.get_rank()
         world_size = dist.get_world_size()
         device = torch.device("npu")
 
-        dataset = RandomRecDataset(BATCH_SIZE, BATCH_NUM, FEAT_NAMES, ID_RANGES)
-        data_loader = DataLoader(
-            dataset,
+        dataset = ......  # 此处省略数据集实现
+        data_loader = DataLoader(dataset, batch_size=None, batch_sampler=None,
+            pin_memory=True, pin_memory_device="npu", num_workers=1,
         )
-        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS, NUM_EMBEDS)
-        ...
-        sharder创建
-        ...
-        #  Rec SDK Torch 使用的接口为get_default_hybrid_sharders
-        hybrid_sharder = get_default_sharders()
-        ...
-        优化器创建
-        ...
+        dataset_iterator = iter(data_loader)
+        test_model = TestModel()
+        ......
+        # sharders创建
+        # Rec SDK Torch 使用的接口为get_default_hybrid_sharders
+        sharders = get_default_sharders()
+        ......
         # Rec SDK Torch 使用的接口为HybridTrainPipelineSparseDist
-        pipeline = TrainPipelineSparseDist()
+        pipeline = TrainPipelineSparseDist(......)
         for i in range(20):
-            output = pipeline.progress(batched_iterator)
+            output = pipeline.progress(dataset_iterator)
     ```
 
 - Rec SDK Torch示例：
 
     ```python
+    import torch
     import torch.distributed as dist
-    from hybrid_torchrec import HashEmbeddingBagCollection
+    from torch.utils.data import DataLoader
+    from torchrec.distributed.types import ShardingEnv
+    from hybrid_torchrec import HashEmbeddingBagConfig, HashEmbeddingBagCollection
     from hybrid_torchrec.distributed.hybrid_train_pipeline import HybridTrainPipelineSparseDist
     from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
-    ...
+
     class TestModel(torch.nn.Module):
-        def __init__(self, *):
+        def __init__(self):
+            configs = [HashEmbeddingBagConfig(100, 16, "table0")]
             # 原生TorchRec使用的接口为EmbeddingBagCollection
-            self.sparse_model = HashEmbeddingBagCollection(xx)
-            self.dense_model = xx
-        def forward(self, batch: Batch):
-            # sparse前向、dense前向调用
-            # 注意：模型前向返回值需loss在前，output在后，对齐TorchRec原生TrainPipelineSparseDist使用方式
+            self.sparse_model = HashEmbeddingBagCollection(configs)
+            self.dense_model = torch.nn.Linear(16, 16)
+        def forward(self, batch):
+            # 此处省略模型前向实现
+            # forward方法返回loss和output两个值
             return loss, output
     def invoke_main():
+        # 省略分布式环境初始化部分
         dist.init_process_group(backend="hccl")
         rank = dist.get_rank()
         world_size = dist.get_world_size()
         device = torch.device("npu")
 
+        dataset = ......  # 此处省略数据集实现
+        data_loader = DataLoader(dataset, batch_size=None, batch_sampler=None,
+            pin_memory=True, pin_memory_device="npu", num_workers=1,
+        )
+        dataset_iterator = iter(data_loader)
+        test_model = TestModel()
+        ......
+        # sharders创建
         # Rec SDK Torch创建host连接
         host_gp = dist.new_group(backend="gloo")
         host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
-        dataset = RandomRecDataset(BATCH_SIZE, BATCH_NUM, FEAT_NAMES, ID_RANGES)
-        data_loader = DataLoader(
-            dataset,
-        )
-        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS, NUM_EMBEDS)
-        ...
-        sharder创建
-        ...
         # 原生TorchRec使用的接口为get_default_sharders
-        hybrid_sharder = get_default_hybrid_sharders(host_env=host_env)
-        ...
-        优化器创建
-        ...
+        hybrid_sharders = get_default_hybrid_sharders(host_env=host_env)
+        ......
         # 原生TorchRec使用的接口为TrainPipelineSparseDist
-        pipeline = HybridTrainPipelineSparseDist()
+        pipeline = HybridTrainPipelineSparseDist(......)
         for i in range(20):
-            output = pipeline.progress(batched_iterator)
+            output = pipeline.progress(dataset_iterator)
     ```
 
 ## Rec SDK Torch迁移样例<a name="ZH-CN_TOPIC_0000002336268713"></a>
@@ -114,11 +122,11 @@ Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开�
 
 ### 完整迁移样例
 
-完整的迁移样例请参见[DLRM样例](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/dlrm/README.md)。其中介绍了如何**基于patch文件快速将DLRM模型迁移到Rec SDK Torch框架**，以及**运行环境准备**、**数据集准备**、**运行迁移后模型**等详细流程。
+完整的迁移样例请参见[DLRM样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md)。其中介绍了如何**基于patch文件快速将DLRM模型迁移到Rec SDK Torch框架**，以及**运行环境准备**、**数据集准备**、**运行迁移后模型**等详细流程。
 
 ### 迁移修改
 
-本章节中仅介绍**迁移过程中主要修改内容**（省略部分定义和模块导入），完整的迁移后代码请参见[DLRM样例 - dlrm源码适配](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/dlrm/README.md#dlrm%E6%BA%90%E7%A0%81%E9%80%82%E9%85%8D)查看应用patch后的代码。
+本章节中仅介绍**迁移过程中主要修改内容**（省略部分定义和模块导入），完整的迁移后代码请参见[DLRM样例 - dlrm源码适配](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md#dlrm%E6%BA%90%E7%A0%81%E9%80%82%E9%85%8D)查看应用patch后的代码。
 
 模型迁移时的主要修改内容为将开源模型中使用到的TorchRec原生API（稀疏表配置、训练流水线等）替换为Rec SDK Torch框架中的API。
 
@@ -153,7 +161,7 @@ cd dlrm && git checkout b631a99
         elif torch_npu.npu.is_available():
             device: torch.device = torch.device(f"npu:{rank}")
             backend = "hccl"
-            torch_npu.npu.set_device(device)
+            torch.npu.set_device(device)
         else:
             device: torch.device = torch.device("cpu")
             backend = "gloo"
@@ -446,7 +454,7 @@ Rec SDK Torch纯显存模式在配置稀疏表、创建稀疏表、稀疏表分�
 
 **纯显存模式测试用例**
 
-纯显存模式的完整测试用例请参见[README](../../../../training/torch_rec_v1/hybrid_torchrec/test/st/README.md)。
+纯显存模式的完整测试用例请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/hybrid_torchrec/test/st/README.md)。
 
 #### 基础使用<a id="basic_usage_device_memory"></a>
 
@@ -510,7 +518,7 @@ class TestModel(torch.nn.Module):
         sparse_output: EmbeddingBagCollectionAwaitable = self.sparse_model(batch.sparse_features)
         feat_embeddings: list[torch.Tensor] = list()
         for feat_name in self.feat_names:
-            feat_embeddings.append(sparse_output[feat_name])  # type: ignore
+            feat_embeddings.append(sparse_output[feat_name])
         # 合并所有稀疏特征的embedding
         embeddings: torch.Tensor = torch.concat(feat_embeddings, dim=-1)
 
@@ -525,8 +533,7 @@ class TestModel(torch.nn.Module):
         output["sparse"] = embeddings
         output["dense"] = dense_output
 
-        # 返回前向输出
-        # 注意：forward必须返回loss和output两个值，且loss在前，output在后；该用法为TorchRec原生TrainPipelineSparseDist用法
+        # 注意：forward必须返回loss和output两个值，且loss在前，output在后
         return loss, output
 
 
@@ -540,7 +547,7 @@ def weight_init(param: torch.nn.Parameter):
 
 def set_distribute_env():
     rank = int(os.environ.get("LOCAL_RANK", 0))
-    torch.npu.set_device(rank)  # type: ignore
+    torch.npu.set_device(rank)
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = "6000"
     os.environ["GLOO_SOCKET_IFNAME"] = "lo"
@@ -582,7 +589,7 @@ def train():
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
             pooling=torchrec.PoolingType.MEAN,
-            init_fn=weight_init,  # type: ignore
+            init_fn=weight_init,
         )
         embedding_configs.append(emb_config)
     sparse_ebc: HashEmbeddingBagCollection = HashEmbeddingBagCollection(device="meta", tables=embedding_configs)
@@ -651,15 +658,15 @@ if __name__ == "__main__":
 
 #### 稀疏表数据并行（DP）
 
-**约束**
+**DP模式**
 
-- DP模式仅支持单个稀疏表。
-
-**对比非DP模式**
+DP模式（Data Parallel，数据并行），即训练时稀疏表将不再切分到不同的Device，而是每个Device都持有完整的稀疏表参数。在反向传播时会聚合所有Device的梯度再统一更新。
 
 DP模式对比[非DP模式（基础使用）](#basic_usage_device_memory)，主要区别在于训练时稀疏表参数存储方式不同。
 
-DP模式下，稀疏表将不再切分到不同的Device，而是每个Device都持有完整的稀疏表参数。在反向传播时会聚合所有Device的梯度再统一更新。
+**约束**
+
+- DP模式仅支持单个稀疏表。
 
 **代码示例**
 
@@ -688,7 +695,7 @@ DP模式完整代码示例请参见[DP模式测试用例](../../../../training/t
         constraints=constraints,
     )
     plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)
-    dmp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)
+    ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)
 
     ...
 ```
@@ -702,7 +709,7 @@ DP模式完整代码示例请参见[DP模式测试用例](../../../../training/t
 - 支持保存/加载稀疏表参数。
 - 仅支持稀疏表的row-wise分表方式。
 - 仅支持通过pipeline模式进行训练。
-  - pipeline模式训练时，会在调用`sparse_model.forward()`前执行换入（H2D）换出（D2H）操作，保证当前批次的训练数据均在Device Memory中。
+  - pipeline模式训练时，会在调用`sparse_model.forward()`前执行换入（Host to Device）换出（Device to Host）操作，保证当前批次的训练数据均在Device Memory中。
 
 **多级缓存模式和纯显存模式使用API差异**<a id="api_diff_embcache"></a>
 
@@ -717,11 +724,15 @@ DP模式完整代码示例请参见[DP模式测试用例](../../../../training/t
 
 **多级缓存模式测试用例**
 
-多级缓存模式的完整测试用例请参见[README](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/README.md)。
+多级缓存模式的完整测试用例请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_embcache/tests/acc_test/README.md)。
 
 #### 基础使用<a id="basic_usage_embcache"></a>
 
 ##### 多级缓存EC模式<a id="basic_usage_embcache_ec"></a>
+
+**约束**
+
+- 多级缓存EC模式仅支持多个稀疏表使用相同的Embedding Dim。
 
 **代码示例**
 
@@ -780,7 +791,7 @@ class TestModel(torch.nn.Module):
     def forward(self, batch: Batch):
         # sparse前向
         sparse_output: EmbeddingCollectionAwaitable = self.sparse_model(batch.sparse_features)
-        sparse_output_dict: dict[str, torchrec.JaggedTensor] = sparse_output.wait()  # type: ignore
+        sparse_output_dict: dict[str, torchrec.JaggedTensor] = sparse_output.wait()
         feat_embeddings: list[torch.Tensor] = list()
         for feat_name in self.feat_names:
             feat_embeddings.append(sparse_output_dict[feat_name].values())
@@ -797,14 +808,13 @@ class TestModel(torch.nn.Module):
         output = dict()
         output["sparse"] = embeddings
         output["dense"] = dense_output
-        # 返回前向输出
-        # 注意：forward必须返回loss和output两个值，且loss在前，output在后；该用法为TorchRec原生TrainPipelineSparseDist用法
+        # 注意：forward必须返回loss和output两个值，且loss在前，output在后
         return loss, output
 
 
 def set_distribute_env():
     rank = int(os.environ.get("LOCAL_RANK", 0))
-    torch.npu.set_device(rank)  # type: ignore
+    torch.npu.set_device(rank)
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = "6000"
     os.environ["GLOO_SOCKET_IFNAME"] = "lo"
@@ -818,7 +828,7 @@ def train():
     world_size = dist.get_world_size()
     npu_device = torch.device("npu")
 
-    embedding_dims: list[int] = [64, 64, 64]  # TorchRec EC模式约束多个表必须使用相同的dim
+    embedding_dims: list[int] = [64, 64, 64]
     num_embeddings: list[int] = [400, 4000, 400]
     table_num: int = len(num_embeddings)
 
@@ -851,7 +861,7 @@ def train():
         )
         embedding_configs.append(emb_config)
     sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
-        embedding_configs,  # type: ignore
+        embedding_configs,
         world_size,
         batch_size,
         multi_hot_sizes=[1] * table_num,
@@ -873,14 +883,14 @@ def train():
 
     # 5.稀疏表分表
     cpu_pg = dist.new_group(backend="gloo")
-    cpu_env = ShardingEnv.from_process_group(cpu_pg)  # pyright: ignore[reportArgumentType]
+    cpu_env = ShardingEnv.from_process_group(cpu_pg)
     cpu_device = torch.device("cpu")
     sharders: list[EmbCacheEmbeddingCollectionSharder] = [
         EmbCacheEmbeddingCollectionSharder(
             cpu_device=cpu_device,
             cpu_env=cpu_env,
             npu_device=npu_device,
-            npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),  # type: ignore
+            npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),
         ),
     ]
     constraints: dict[str, ParameterConstraints] = {
@@ -892,10 +902,10 @@ def train():
         topology=Topology(world_size=world_size, compute_device="npu"),
         constraints=constraints,
     )
-    plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)  # type: ignore
+    plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)
     #   此处分表会根据sharders参数匹配对应class类型：EmbCacheEmbeddingCollection，
     #   只会对稀疏表参数进行分表，不会对dense参数分表
-    ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)  # type: ignore
+    ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)
 
     # 6.整合优化器
     dense_optimizer: KeyedOptimizerWrapper = KeyedOptimizerWrapper(
@@ -973,7 +983,7 @@ class TestModel(torch.nn.Module):
         # 差异：解析embedding前向查表结果方式和多级缓存EC模式有差异
         feat_embeddings: list[torch.Tensor] = list()
         for feat_name in self.feat_names:
-            feat_embeddings.append(sparse_output[feat_name])  # type: ignore
+            feat_embeddings.append(sparse_output[feat_name])
         # 合并所有稀疏特征的embedding
         embeddings: torch.Tensor = torch.concat(feat_embeddings, dim=-1)
 
@@ -987,8 +997,6 @@ class TestModel(torch.nn.Module):
         output = dict()
         output["sparse"] = embeddings
         output["dense"] = dense_output
-        # 返回前向输出
-        # 注意：forward必须返回loss和output两个值，且loss在前，output在后；该用法为TorchRec原生TrainPipelineSparseDist用法
         return loss, output
 
 ...
@@ -1014,7 +1022,7 @@ def train():
         )
         embedding_configs.append(emb_config)
     sparse_ebc: torch.nn.Module = EmbCacheEmbeddingBagCollection(
-        embedding_configs,  # type: ignore
+        embedding_configs,
         world_size,
         batch_size,
         multi_hot_sizes=[1] * table_num,
@@ -1025,14 +1033,14 @@ def train():
 
     # 5.稀疏表分表
     cpu_pg = dist.new_group(backend="gloo")
-    cpu_env = ShardingEnv.from_process_group(cpu_pg)  # pyright: ignore[reportArgumentType]
+    cpu_env = ShardingEnv.from_process_group(cpu_pg)
     cpu_device = torch.device("cpu")
     sharders: list[EmbCacheEmbeddingBagCollectionSharder] = [  # 差异：EBC模式分表器和EC模式有差异
         EmbCacheEmbeddingBagCollectionSharder(
             cpu_device=cpu_device,
             cpu_env=cpu_env,
             npu_device=npu_device,
-            npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),  # type: ignore
+            npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),
         ),
     ]
     constraints: dict[str, ParameterConstraints] = {
@@ -1044,10 +1052,10 @@ def train():
         topology=Topology(world_size=world_size, compute_device="npu"),
         constraints=constraints,
     )
-    plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)  # type: ignore
+    plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)
     #   此处分表会根据sharders参数匹配对应class类型：EmbCacheEmbeddingBagCollection，
     #   只会对稀疏表参数进行分表，不会对dense参数分表
-    ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)  # type: ignore
+    ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)
 
     ...
 
@@ -1099,7 +1107,7 @@ from torchrec_embcache.distributed.configs import AdmitAndEvictConfig
 
     # 1.创建数据集
     batch_size: int = 128
-    # 差异：淘汰场景：需创建特征ID时间戳的数据集，详细实现请参见dataset.py中RandomRecDataset定义
+    # 差异：淘汰场景：需创建特征ID时间戳的数据集
     dataset: RandomRecDataset = RandomRecDataset(
         BATCH_NUM, batch_size, num_embeddings, table_num, is_evict_enabled=True
     )
@@ -1139,7 +1147,7 @@ from torchrec_embcache.distributed.configs import AdmitAndEvictConfig
         )
         embedding_configs.append(emb_config)
     sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
-        embedding_configs,  # type: ignore
+        embedding_configs,
         world_size,
         batch_size,
         multi_hot_sizes=[1] * table_num,
@@ -1181,7 +1189,7 @@ from torchrec_embcache.distributed.configs import AdmitAndEvictConfig
 
 **代码示例**
 
-完整代码示例请参见[准入淘汰（基于时间和计数）测试用例](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_show_click.py)。
+完整代码示例请参见[准入淘汰（基于展示点击和分数）测试用例](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_show_click.py)。
 
 简化代码示例（仅展示和[多级缓存EC模式](#basic_usage_embcache_ec)的差异部分）：
 
@@ -1204,7 +1212,7 @@ class TestModel(torch.nn.Module):
     def forward(self, batch: ShowClickBatch):  # 差异: typing类型为ShowClickBatch
         # sparse前向
         sparse_output: EmbeddingCollectionAwaitable = self.sparse_model(batch.sparse_features)
-        sparse_output_dict: dict[str, torchrec.JaggedTensor] = sparse_output.wait()  # type: ignore
+        sparse_output_dict: dict[str, torchrec.JaggedTensor] = sparse_output.wait()
         feat_embeddings: list[torch.Tensor] = list()
         for feat_name in self.feat_names:
             feat_embeddings.append(sparse_output_dict[feat_name].values())
@@ -1221,8 +1229,6 @@ class TestModel(torch.nn.Module):
         output = dict()
         output["sparse"] = embeddings
         output["dense"] = dense_output
-        # 返回前向输出
-        # 注意：forward必须返回loss和output两个值，且loss在前，output在后；该用法为TorchRec原生TrainPipelineSparseDist用法
         return loss, output
 
 
@@ -1231,7 +1237,7 @@ def train():
 
     # 1.创建数据集
     batch_size: int = 128
-    # 差异：创建包含click_labels的数据集，详细实现请参见dataset.py中RandomRecDataset定义
+    # 差异：创建包含click_labels的数据集
     dataset: RandomRecDataset = RandomRecDataset(
         BATCH_NUM, batch_size, num_embeddings, table_num, is_enable_score=True
     )
@@ -1257,7 +1263,7 @@ def train():
             showclick_params=showclick_params,
             not_admitted_default_value=0.999,
             evict_step_interval=evict_step_interval,
-            policy_type=AdmitAndEvictPolicyType.POLICY_SHOWCLICK,  # type: ignore
+            policy_type=AdmitAndEvictPolicyType.POLICY_SHOWCLICK,
         )
         emb_config = EmbCacheEmbeddingConfig(
             name=table_names[i],
@@ -1272,7 +1278,7 @@ def train():
         )
         embedding_configs.append(emb_config)
     sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
-        embedding_configs,  # type: ignore
+        embedding_configs,
         world_size,
         batch_size,
         multi_hot_sizes=[1] * table_num,
@@ -1389,7 +1395,7 @@ def train():
     # 7.创建pipeline
     ...
 
-    # 差异：8.[Pre-operation]: 如为加载场景，需在使用pipeline训练前加载稀疏表数据。Dense部分数据加载需自行处理。
+    # 差异：如为加载场景，需在使用pipeline训练前加载稀疏表数据。Dense部分数据加载需自行处理。
     # 说明：当前示例中通过设置flag来判断保存/加载场景，实际使用时根据实际场景调用保存/加载接口即可。
     is_train = True  # 当前设置True表示训练场景，训练后保存稀疏表数据；False表示加载场景，训练前加载稀疏表数据。
     save_dir = os.path.abspath("save_dir")
@@ -1430,9 +1436,9 @@ def train():
 
 **增量保存/加载对比全量保存/加载接口参数差异**
 
-- 创建embedding_config时，需传入`is_incremental=True`参数，开启增量保存/加载功能。
-- 调用`Saver.save()`接口执行增量保存时，需传入`incremental=True`参数。
-- 调用`Saver.load()`接口执行增量加载时，需传入`incremental=True`参数。
+- 创建embedding_config时，需传入`is_incremental=True`参数，开启增量保存/加载功能。该参数默认为False。
+- 调用`Saver.save()`接口执行增量保存时，需传入`incremental=True`参数。该参数默认为False。
+- 调用`Saver.load()`接口执行增量加载时，需传入`incremental=True`参数。该参数默认为False。
 
 **代码示例**
 
@@ -1470,7 +1476,7 @@ def train():
         )
         embedding_configs.append(emb_config)
     sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
-        embedding_configs,  # type: ignore
+        embedding_configs,
         world_size,
         batch_size,
         multi_hot_sizes=[1] * table_num,

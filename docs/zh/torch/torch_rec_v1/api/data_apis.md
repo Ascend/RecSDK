@@ -27,7 +27,7 @@ class torchrec.sparse.jagged_tensor.JaggedTensor(*args: Any, **kwargs: Any)
 
 **返回值说明**
 
-- 成功：返回KeyedJaggedTensor。
+- 成功：返回JaggedTensor。
 - 失败：抛出异常。
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**

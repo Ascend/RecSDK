@@ -190,9 +190,9 @@ showclick_params = ShowClickParams(alpha=1, beta=1, admit_threshold=0.1, evict_p
 ```python
 @dataclass
 class AdmitAndEvictConfig:
-    admit_threshold: Optional[int] = _DEFAULT_ADMIT_THRESHOLD
+    admit_threshold: Optional[int] = -1
     not_admitted_default_value: Optional[float] = 0.0
-    evict_threshold: Optional[int] = _DEFAULT_EVICT_THRESHOLD
+    evict_threshold: Optional[int] = 0
     evict_step_interval: Optional[int] = 0
     showclick_params: ShowClickParams = field(default_factory=lambda: ShowClickParams())
     policy_type: AdmitAndEvictPolicyType = AdmitAndEvictPolicyType.POLICY_COUNT

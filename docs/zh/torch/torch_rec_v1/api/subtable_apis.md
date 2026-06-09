@@ -266,8 +266,8 @@ class EmbCacheEmbeddingBagCollectionSharder(EmbeddingBagCollectionSharder):
 |cpu_env|ShardingEnv|必选|CPU环境配置。|
 |npu_device|torch.device|必选|NPU设备。|
 |npu_env|ShardingEnv|必选|NPU环境配置。|
-|fused_params|Dict[str, Any]|可选|融合参数，默认值None，和torchrec.distributed.embeddingbag.EmbeddingBagCollectionSharder一致。|
-|qcomm_codecs_registry|Dict[str, QuantizedCommCodecs]|可选|量化通信编解码器注册表，默认值None，和torchrec.distributed.embeddingbag.EmbeddingBagCollectionSharder一致。|
+|fused_params|Dict[str, Any]|可选|融合参数，默认值None。|
+|qcomm_codecs_registry|Dict[str, QuantizedCommCodecs]|可选|量化通信编解码器注册表，默认值None。|
 
 **返回值说明**
 
@@ -324,8 +324,8 @@ class EmbCacheEmbeddingCollectionSharder(EmbeddingCollectionSharder):
 |cpu_env|ShardingEnv|必选|CPU环境配置。|
 |npu_device|torch.device|必选|NPU设备。|
 |npu_env|ShardingEnv|必选|NPU环境配置。|
-|fused_params|Dict[str, Any]|可选|融合参数，默认值None，和torchrec.distributed.embedding.EmbeddingCollectionSharder一致。|
-|qcomm_codecs_registry|Dict[str, QuantizedCommCodecs]|可选|量化通信编解码器注册表，默认值None，和torchrec.distributed.embedding.EmbeddingCollectionSharder一致。|
+|fused_params|Dict[str, Any]|可选|融合参数，默认值None。|
+|qcomm_codecs_registry|Dict[str, QuantizedCommCodecs]|可选|量化通信编解码器注册表，默认值None。|
 
 **返回值说明**
 
