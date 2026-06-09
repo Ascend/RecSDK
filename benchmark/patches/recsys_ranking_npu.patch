@@ -1,47 +1,3 @@
-From d79bcab293a4120e8ed96bdcf2eacfe1cb03393c Mon Sep 17 00:00:00 2001
-From: cann_ly <luyi120@h-partners.com>
-Date: Wed, 20 May 2026 16:03:19 +0800
-Subject: [PATCH] patch
-
----
- examples/commons/checkpoint/checkpoint.py     |  10 +-
- examples/commons/utils/distributed_utils.py   |   9 +-
- examples/commons/utils/initialize.py          |  28 +-
- examples/commons/utils/nvtx_op.py             |   8 +-
- examples/hstu/configs/hstu_config.py          |  44 ++++
- examples/hstu/distributed/sharding.py         | 129 +++++++--
- examples/hstu/model/__init__.py               |  33 +--
- examples/hstu/model/ranking_gr.py             |   3 +-
- examples/hstu/modules/embedding.py            |  27 +-
- examples/hstu/modules/fused_hstu_layer.py     |  14 +-
- examples/hstu/modules/hstu_attention.py       |  90 ++++++-
- examples/hstu/modules/hstu_block.py           |  21 +-
- examples/hstu/modules/hstu_processor.py       | 102 +++++---
- .../hstu/modules/metrics/metric_modules.py    |   9 +-
- .../hstu/modules/multi_task_loss_module.py    |   5 +-
- examples/hstu/modules/native_hstu_layer.py    | 232 +++++++++--------
- examples/hstu/modules/position_encoder.py     |  25 +-
- examples/hstu/movielen_ranking.gin            |   9 +-
- .../ops/pt_ops/pt_add_position_embeddings.py  |  34 +++
- .../hstu/ops/pt_ops/pt_concat_2d_jagged.py    |  42 +++
- .../ops/pt_ops/pt_jagged_dense_convert.py     |  79 ++++++
- examples/hstu/ops/pt_ops/pt_jagged_tensors.py | 246 ++++++++++++++++++
- .../hstu/ops/pt_ops/pt_norm_mul_dropout.py    |   3 +
- examples/hstu/ops/pt_ops/pt_position.py       | 158 +++++++++++
- .../hstu/ops/pt_ops/pt_split_2d_jagged.py     |  43 +++
- examples/hstu/preprocessor.py                 |   8 +-
- examples/hstu/pretrain_gr_ranking.py          |  43 ++-
- examples/hstu/training/gin_config_args.py     |   8 +-
- examples/hstu/training/training.py            | 133 +++++++++-
- examples/hstu/training/utils.py               |  39 ++-
- 30 files changed, 1356 insertions(+), 278 deletions(-)
- create mode 100644 examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
- create mode 100644 examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
- create mode 100644 examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
- create mode 100644 examples/hstu/ops/pt_ops/pt_jagged_tensors.py
- create mode 100644 examples/hstu/ops/pt_ops/pt_position.py
- create mode 100644 examples/hstu/ops/pt_ops/pt_split_2d_jagged.py
-
 diff --git a/examples/commons/checkpoint/checkpoint.py b/examples/commons/checkpoint/checkpoint.py
 index 958bec3..1ab942f 100644
 --- a/examples/commons/checkpoint/checkpoint.py
@@ -208,8 +164,51 @@ index 7c3e43a..aa19e2c 100644
          return grad_in, None
  
  
+diff --git a/examples/hstu/configs/fsdp2_config.yaml b/examples/hstu/configs/fsdp2_config.yaml
+new file mode 100644
+index 0000000..8eb0622
+--- /dev/null
++++ b/examples/hstu/configs/fsdp2_config.yaml
+@@ -0,0 +1,36 @@
++# FSDP2 Configuration for GR Model
++# Based on: https://mindspeed-mm.readthedocs.io/zh-cn/latest/config/fsdp2%E9%85%8D%E7%BD%AE.html#fsdp2-config
++
++# Sharding configuration
++sharding_size: Null  # Use all available processes for sharding
++
++# Reshard parameters after forward pass
++# 设置为true时，会在每个forward pass后reshard参数，这会引入额外的通信成本，建议在参数量较大时开启
++reshard_after_forward: false
++
++# Mixed precision settings
++param_dtype: "bf16"  # Parameter data type
++reduce_dtype: "bf16"  # Gradient reduction data type
++output_dtype: "bf16" # Output data type
++cast_forward_inputs: true # Cast forward inputs to param_dtype
++
++# CPU offloading settings
++offload_to_cpu: false  # Disable CPU offloading for better performance
++pin_memory: true       # Only effective if offload_to_cpu is true
++
++# Prefetch settings
++num_to_forward_prefetch: 1
++
++# Modules to wrap with FSDP2
++# 只包装HSTUBlock模块
++sub_modules_to_wrap:
++  - "modules.hstu_block.HSTUBlock"
++  - "modules.native_hstu_layer.HSTULayer"
++
++# 根据提供的模型结构，忽略除HSTUBlock之外的所有网络层
++ignored_modules:
++  # 自定义模块
++  - "modules.multi_task_loss_module.MultiTaskLossModule"
++  - "modules.metrics.metric_modules.MultiClassificationTaskMetric"
++  - "dynamic_emb.distributed.embedding.ShardedDynamicEmbeddingCollection"
++  - "modules.mlp.MLP"
+\ No newline at end of file
 diff --git a/examples/hstu/configs/hstu_config.py b/examples/hstu/configs/hstu_config.py
-index 752d4e0..a35b9a8 100644
+index 752d4e0..236b39f 100644
 --- a/examples/hstu/configs/hstu_config.py
 +++ b/examples/hstu/configs/hstu_config.py
 @@ -53,11 +53,13 @@ class KernelBackend(Enum):
@@ -226,7 +225,7 @@ index 752d4e0..a35b9a8 100644
  
  
  @dataclass
-@@ -129,6 +131,48 @@ class HSTUConfig(TransformerConfig):
+@@ -129,6 +131,55 @@ class HSTUConfig(TransformerConfig):
      is_inference: bool = False
      add_uvqk_bias: bool = True
      fuse_norm_mul_dropout: bool = True
@@ -272,11 +271,96 @@ index 752d4e0..a35b9a8 100644
 +    alibi_fusion_attn_type=None
 +    multi_head_latent_attention=False
 +    auto_settings=False
++
++    use_moe: bool = False
++    moe_expert_total_num: int = 1
++    moe_expert_act_num: int = 1
++    use_moe_op: bool = False
++    moe_hidden_size: int = 4096
++    moe_aux_loss_weight: float = 0.01
  
      def __post_init__(self):
          super().__post_init__()
+@@ -156,6 +207,12 @@ def get_hstu_config(
+     is_inference: bool = False,
+     add_uvqk_bias: bool = True,
+     fuse_norm_mul_dropout: bool = True,
++    use_moe: bool = False,
++    moe_expert_total_num: int = 1,
++    moe_expert_act_num: int = 1,
++    use_moe_op: bool = False,
++    moe_hidden_size: int = 4096,
++    moe_aux_loss_weight: float = 0.01,
+ ) -> HSTUConfig:
+     """
+     Create the HSTU configuration.
+@@ -180,6 +237,12 @@ def get_hstu_config(
+         recompute_input_layernorm (bool, optional): Whether to recompute input layernorm. Defaults to False.
+         recompute_input_silu (bool, optional): Whether to recompute input silu. Defaults to False.
+         is_inference (bool, optional): Whether is the inference mode
++        use_moe (bool, optional): Whether to use MoE (Mixture of Experts). Defaults to False.
++        moe_expert_total_num (int, optional): Total number of experts. Defaults to 1.
++        moe_expert_act_num (int, optional): Number of active experts per token. Defaults to 1.
++        use_moe_op (bool, optional): Whether to use specialized MoE operations. Defaults to False.
++        moe_hidden_size (int, optional): Hidden size of MoE experts. Defaults to 4096.
++        moe_aux_loss_weight (float, optional): Weight for auxiliary loss. Defaults to 0.01.
+     Returns:
+         HSTUConfig: The HSTU configuration object.
+     """
+@@ -225,4 +288,10 @@ def get_hstu_config(
+         add_uvqk_bias=add_uvqk_bias,
+         is_inference=is_inference,
+         fuse_norm_mul_dropout=fuse_norm_mul_dropout,
++        use_moe=use_moe,
++        moe_expert_total_num=moe_expert_total_num,
++        moe_expert_act_num=moe_expert_act_num,
++        use_moe_op=use_moe_op,
++        moe_hidden_size=moe_hidden_size,
++        moe_aux_loss_weight=moe_aux_loss_weight,
+     )
+diff --git a/examples/hstu/dataset/sequence_dataset.py b/examples/hstu/dataset/sequence_dataset.py
+index 1a256dd..c0f5744 100644
+--- a/examples/hstu/dataset/sequence_dataset.py
++++ b/examples/hstu/dataset/sequence_dataset.py
+@@ -181,17 +181,29 @@ class SequenceDataset(IterableDataset[Batch]):
+ 
+     # We do batching in our own
+     def __len__(self) -> int:
++        if self._num_samples % self._global_batch_size < self._world_size:
++            return math.floor(self._num_samples / self._global_batch_size)
+         return math.ceil(self._num_samples / self._global_batch_size)
+ 
+     def __iter__(self) -> Iterator[Batch]:
+         for i in range(len(self)):
+-            local_batch_start = (
+-                i * self._global_batch_size + self._rank * self._batch_size
+-            )
+-            local_batch_end = min(
+-                i * self._global_batch_size + (self._rank + 1) * self._batch_size,
+-                len(self._sample_ids),
+-            )
++            if i == len(self) - 1:
++                last_batch_size = (len(self._sample_ids) - i * self._global_batch_size) // self._world_size
++                local_batch_start = (
++                    i * self._global_batch_size + self._rank * last_batch_size
++                )
++                local_batch_end = min(
++                    i * self._global_batch_size + (self._rank + 1) * last_batch_size,
++                    len(self._sample_ids),
++                )
++            else:
++                local_batch_start = (
++                    i * self._global_batch_size + self._rank * self._batch_size
++                )
++                local_batch_end = min(
++                    i * self._global_batch_size + (self._rank + 1) * self._batch_size,
++                    len(self._sample_ids),
++                )
+             sample_ids = self._sample_ids[local_batch_start:local_batch_end]
+ 
+             contextual_features: Dict[str, List[int]] = defaultdict(list)
 diff --git a/examples/hstu/distributed/sharding.py b/examples/hstu/distributed/sharding.py
-index b564988..c7bbe97 100644
+index b564988..efa1f6f 100644
 --- a/examples/hstu/distributed/sharding.py
 +++ b/examples/hstu/distributed/sharding.py
 @@ -14,25 +14,16 @@
@@ -307,7 +391,7 @@ index b564988..c7bbe97 100644
  from fbgemm_gpu.split_embedding_configs import EmbOptimType, SparseType
  from megatron.core import tensor_parallel
  from megatron.core.distributed import DistributedDataParallel as DDP
-@@ -59,10 +50,112 @@ from torchrec.distributed.fbgemm_qcomm_codec import (
+@@ -59,10 +50,118 @@ from torchrec.distributed.fbgemm_qcomm_codec import (
  from torchrec.distributed.model_parallel import DistributedModelParallel
  from torchrec.distributed.types import ShardedTensor, ShardingEnv
  from torchrec.optim.optimizers import in_backward_optimizer_filter
@@ -331,6 +415,12 @@ index b564988..c7bbe97 100644
  DATA_PARALLEL_EMBEDDING_MODULE_NAME = "_data_parallel_embedding_collection"
  from megatron.core import parallel_state
  
++from megatron.core.distributed import TorchFullyShardedDataParallel
++
++class BatchFSDP(TorchFullyShardedDataParallel):
++    def forward(self, batch):
++        return self.module(batch)
++
 +# TorchRec 嵌入模块类型集合，用于识别需要分片的模块
 +TORCHREC_TYPES: Set[Type[Union[EmbeddingBagCollection, EmbeddingCollection]]] = {
 +    EmbeddingBagCollection,
@@ -420,7 +510,7 @@ index b564988..c7bbe97 100644
  
  def apply_megatron_ddp(
      model: Union[DistributedModelParallel, torch.nn.Module],
-@@ -260,10 +353,11 @@ def apply_dmp(
+@@ -260,10 +359,11 @@ def apply_dmp(
          )
      )
      sharders = [
@@ -436,7 +526,7 @@ index b564988..c7bbe97 100644
          DynamicEmbeddingCollectionSharder(
              qcomm_codecs_registry=qcomm_codecs_registry,
              use_index_dedup=True,
-@@ -280,11 +374,10 @@ def apply_dmp(
+@@ -280,11 +380,10 @@ def apply_dmp(
      with tensor_parallel.get_cuda_rng_tracker().fork("sharded-embedding-group-seed"):
          model = DistributedModelParallel(
              module=model,
@@ -449,7 +539,7 @@ index b564988..c7bbe97 100644
          )
  
      # Create keyed optimizer
-@@ -334,7 +427,7 @@ def make_optimizer_and_shard(
+@@ -334,7 +433,7 @@ def make_optimizer_and_shard(
      pg: torch.distributed.ProcessGroup = None,
  ) -> Tuple[DistributedModelParallel, torch.optim.Optimizer]:
      if device is None:
@@ -458,6 +548,107 @@ index b564988..c7bbe97 100644
      if pg is None:
          pg = dist.group.WORLD
  
+@@ -351,3 +450,99 @@ def make_optimizer_and_shard(
+     )
+ 
+     return model, dense_optimizer
++
++def apply_megatron_fsdp2(
++    dmp: DistributedModelParallel,
++    config: TransformerConfig,
++    dense_optimizer_param: OptimizerParam,
++    device: torch.device,
++):
++    model = dmp._dmp_wrapped_module
++    model = model.to(device)
++    if config.fp16 or config.bf16:
++        model = Float16Module(config, model)
++    
++    # FSDP2 configuration based on mindspeed docs
++    ddp_config = DistributedDataParallelConfig(
++        grad_reduce_in_fp32=True,
++        overlap_grad_reduce=False,
++        use_distributed_optimizer=False,  # Required for FSDP2
++        check_for_nan_in_grad=False,
++        bucket_size=True,
++    )
++    
++    # Configure FSDP2 to wrap only HSTUBlock modules as specified in fsdp2_config.yaml
++    from modules.hstu_block import HSTUBlock
++    from modules.native_hstu_layer import HSTULayer
++    
++    dmp._dmp_wrapped_module = BatchFSDP(
++        config,
++        ddp_config,
++        model,
++        sub_modules_to_wrap={HSTUBlock, HSTULayer},  # Wrap only HSTU modules
++    )  
++
++    param_dtype = torch.float32
++    if config.bf16:
++        param_dtype = torch.bfloat16
++    elif config.fp16:
++        param_dtype = torch.float16
++
++    dense_optimizer_config = OptimizerConfig(
++        optimizer=dense_optimizer_param.optimizer_str,
++        lr=dense_optimizer_param.learning_rate,
++        adam_beta1=dense_optimizer_param.adam_beta1,
++        adam_beta2=dense_optimizer_param.adam_beta2,
++        adam_eps=dense_optimizer_param.adam_eps,
++        params_dtype=param_dtype,
++        bf16=config.bf16,
++        fp16=config.fp16,
++        weight_decay=dense_optimizer_param.weight_decay,
++    )
++    dense_optimizer = get_megatron_optimizer(
++        dense_optimizer_config, [dmp._dmp_wrapped_module]
++    )
++    return dmp, dense_optimizer
++
++def make_optimizer_and_shard_fsdp2(
++    model: torch.nn.Module,
++    config: TransformerConfig,
++    sparse_optimizer_param: OptimizerParam,
++    dense_optimizer_param: OptimizerParam,
++    dynamicemb_options_dict: Dict[str, DynamicEmbTableOptions] = {},
++    pipeline_type: str = "native",
++    device: torch.device = None,
++    pg: torch.distributed.ProcessGroup = None,
++) -> Tuple[BatchFSDP, torch.optim.Optimizer]:
++    """
++    Create FSDP2-wrapped model with optimizers based on MindSpeed FSDP2 implementation.
++    
++    This function:
++    1. Applies DMP (DistributedModelParallel) to handle embeddings
++    2. Applies FSDP2 to the dense layers (HSTU layers) using PyTorch FSDP2 API
++    3. Creates Megatron optimizer for dense parameters
++    
++    Args:
++        model (torch.nn.Module): Model to wrap.
++        config (TransformerConfig): Transformer configuration.
++        sparse_optimizer_param (OptimizerParam): Sparse optimizer parameters.
++        dense_optimizer_param (OptimizerParam): Dense optimizer parameters.
++        device (torch.device): Device to use.
++        pg (torch.distributed.ProcessGroup): Process group.
++    
++    Returns:
++        Tuple[BatchFSDP, torch.optim.Optimizer]: FSDP-wrapped model and optimizer.
++    """
++    if device is None:
++        device = torch.device("npu", torch_npu.npu.current_device())
++    if pg is None:
++        pg = dist.group.WORLD
++    
++    model = apply_dmp(
++        model, dynamicemb_options_dict, sparse_optimizer_param, pg, device, pipeline_type
++    )
++    model, dense_optimizer = apply_megatron_fsdp2(
++        model, config, dense_optimizer_param, device
++    )
++    
++    return model, dense_optimizer
+\ No newline at end of file
 diff --git a/examples/hstu/model/__init__.py b/examples/hstu/model/__init__.py
 index e4fba4b..7fa50f7 100644
 --- a/examples/hstu/model/__init__.py
@@ -500,7 +691,7 @@ index e4fba4b..7fa50f7 100644
 +#     assert isinstance(task_config, RetrievalConfig), "please provide a retrieval config"
 +#     return RetrievalGR(hstu_config=hstu_config, task_config=task_config)
 diff --git a/examples/hstu/model/ranking_gr.py b/examples/hstu/model/ranking_gr.py
-index 18f7bd4..c58d041 100644
+index 18f7bd4..4865cc9 100644
 --- a/examples/hstu/model/ranking_gr.py
 +++ b/examples/hstu/model/ranking_gr.py
 @@ -15,6 +15,7 @@
@@ -520,6 +711,33 @@ index 18f7bd4..c58d041 100644
          self._hstu_config = hstu_config
          self._task_config = task_config
  
+@@ -123,13 +124,13 @@ class RankingGR(BaseModel):
+         )
+         batch = dmp_batch_to_tp(batch)
+         # hidden_states is a JaggedData
+-        hidden_states_jagged, seqlen_after_preprocessor = self._hstu_block(
++        hidden_states_jagged, seqlen_after_preprocessor, aux_loss = self._hstu_block(
+             embeddings=embeddings,
+             batch=batch,
+         )
+         hidden_states = hidden_states_jagged.values
+         logits = self._mlp(hidden_states)
+-        return logits, seqlen_after_preprocessor, batch.labels
++        return logits, seqlen_after_preprocessor, batch.labels, aux_loss
+ 
+     def forward(  # type: ignore[override]
+         self,
+@@ -148,8 +149,9 @@ class RankingGR(BaseModel):
+             jagged_item_logit,
+             seqlen_after_preprocessor,
+             labels,
++            aux_loss,
+         ) = self.get_logit_and_labels(batch)
+-        losses = self._loss_module(jagged_item_logit.float(), labels)
++        losses = self._loss_module(jagged_item_logit.float(), labels) + aux_loss
+         return losses, (
+             losses.detach(),
+             jagged_item_logit.detach(),
 diff --git a/examples/hstu/modules/embedding.py b/examples/hstu/modules/embedding.py
 index dee397b..b33a497 100644
 --- a/examples/hstu/modules/embedding.py
@@ -776,48 +994,38 @@ index d8af93b..64bbbc4 100644
          sm_minor_version = torch.cuda.get_device_properties(0).minor
          if sm_major_version == 9 and sm_minor_version == 0:
 diff --git a/examples/hstu/modules/hstu_block.py b/examples/hstu/modules/hstu_block.py
-index e42579e..59598e8 100644
+index e42579e..98fe420 100644
 --- a/examples/hstu/modules/hstu_block.py
 +++ b/examples/hstu/modules/hstu_block.py
-@@ -3,7 +3,8 @@
- from typing import Dict, Tuple, Union
- 
- import torch
--from commons.utils.nvtx_op import output_nvtx_hook
-+# 注释 CUDA NVTX 相关内容
-+# from commons.utils.nvtx_op import output_nvtx_hook
- from configs.hstu_config import HSTUConfig, HSTULayerType
- from dataset.utils import RankingBatch, RetrievalBatch
- from megatron.core.transformer.module import MegatronModule
-@@ -37,18 +38,20 @@ class HSTUBlock(MegatronModule):
-         self._preprocessor = HSTUBlockPreprocessor(config, is_inference=False)
-         self._postprocessor = HSTUBlockPostprocessor(is_inference=False)
- 
--        HSTULayerImpl = (
--            FusedHSTULayer
--            if config.hstu_layer_type == HSTULayerType.FUSED
--            else DebugHSTULayer
--            if config.hstu_layer_type == HSTULayerType.DEBUG
--            else NativeHSTULayer
--        )
-+        # HSTULayerImpl = (
-+        #     FusedHSTULayer
-+        #     if config.hstu_layer_type == HSTULayerType.FUSED
-+        #     else DebugHSTULayer
-+        #     if config.hstu_layer_type == HSTULayerType.DEBUG
-+        #     else NativeHSTULayer
-+        # )
-+        # NPU 暂不支持 FusedHSTULayer 使用的 CUTLASS/Triton，强制使用 NativeHSTULayer
+@@ -44,8 +44,9 @@ class HSTUBlock(MegatronModule):
+             if config.hstu_layer_type == HSTULayerType.DEBUG
+             else NativeHSTULayer
+         )
 +        HSTULayerImpl = NativeHSTULayer
          self._attention_layers = torch.nn.ModuleList(
-             [HSTULayerImpl(config) for l in range(self.config.num_layers)]
+-            [HSTULayerImpl(config) for l in range(self.config.num_layers)]
++            [HSTULayerImpl(config, l) for l in range(self.config.num_layers)]
          )
  
--    @output_nvtx_hook(nvtx_tag="HSTUBlock", hook_key_or_attr_name="values")
-+    # @output_nvtx_hook(nvtx_tag="HSTUBlock", hook_key_or_attr_name="values")
-     def forward(
-         self,
-         embeddings: Dict[str, JaggedTensor],
+     @output_nvtx_hook(nvtx_tag="HSTUBlock", hook_key_or_attr_name="values")
+@@ -76,10 +77,15 @@ class HSTUBlock(MegatronModule):
+             if jd.num_candidates is not None
+             else torch.zeros_like(seqlen_after_preprocessor)
+         )
++        aux_loss = torch.tensor(0.0, device=jd.values.device, dtype=self._training_dtype)
++        # fsdp2会通过判断训练数据是否带有梯度来判断是否需要进行梯度聚合
++        # 当前仅支持对tensor、union、dict数据类型进行解析，不支持JaggedTensor,额外传入jd.values
+         for hstu_layer in self._attention_layers:
+-            jd = hstu_layer(jd)
++            jd, x, layer_aux_loss = hstu_layer(jd, jd.values)
++            aux_loss += layer_aux_loss
++        aux_loss = aux_loss / len(self._attention_layers)  # 平均每层的aux loss
+         return self._postprocessor(jd), (
+             seqlen_after_preprocessor.detach(),
+             num_contextuals_after_preprocessor.detach(),
+             num_candidates_after_preprocessor.detach(),
+-        )
++        ), aux_loss
 diff --git a/examples/hstu/modules/hstu_processor.py b/examples/hstu/modules/hstu_processor.py
 index 8f28c96..ffde828 100644
 --- a/examples/hstu/modules/hstu_processor.py
@@ -1046,10 +1254,10 @@ index 6b02397..dbe3795 100644
          """
          Forward pass of the MultiTaskLossModule.
 diff --git a/examples/hstu/modules/native_hstu_layer.py b/examples/hstu/modules/native_hstu_layer.py
-index 9c85635..837c1fc 100644
+index 9c85635..34791c5 100644
 --- a/examples/hstu/modules/native_hstu_layer.py
 +++ b/examples/hstu/modules/native_hstu_layer.py
-@@ -18,24 +18,29 @@ from functools import partial
+@@ -18,25 +18,30 @@ from functools import partial
  
  import nvtx
  import torch
@@ -1081,12 +1289,23 @@ index 9c85635..837c1fc 100644
 +# from modules.tp_layer_norm import TPLayerNormMulDropout
  from ops.collective_ops import gather_along_last_dim
 -from ops.triton_ops.triton_layer_norm import triton_layer_norm
+-
 +# from ops.triton_ops.triton_layer_norm import triton_layer_norm
 +from ops.pt_ops.pt_norm_mul_dropout import pytorch_norm_mul_dropout
 +from modules.utils import init_mlp_weights_optional_bias
- 
++from modules.sparse_moe import SparseMOE
  
  class HSTULayer(MegatronModule):
+     """
+@@ -47,7 +52,7 @@ class HSTULayer(MegatronModule):
+         config (HSTUConfig): Configuration for the HSTU layer.
+     """
+ 
+-    def __init__(self, config: HSTUConfig):
++    def __init__(self, config: HSTUConfig, layer_idx):
+         assert (
+             config.hstu_layer_type == HSTULayerType.NATIVE
+         ), "HSTULayer expects native hstu layer type"
 @@ -66,11 +71,18 @@ class HSTULayer(MegatronModule):
              raise ValueError("tp size should <= num_attention_heads")
          self._num_heads_per_partition = divide(self._num_heads, self._tp_size)
@@ -1119,7 +1338,7 @@ index 9c85635..837c1fc 100644
          # input layernorm
          if config.learnable_input_layernorm:
              self._input_layernorm_weight = torch.nn.Parameter(
-@@ -91,25 +103,38 @@ class HSTULayer(MegatronModule):
+@@ -91,25 +103,52 @@ class HSTULayer(MegatronModule):
          else:
              self._input_layernorm_weight = None
              self._input_layernorm_bias = None
@@ -1172,10 +1391,24 @@ index 9c85635..837c1fc 100644
 +            bias=True,
 +        ).apply(init_mlp_weights_optional_bias)
 +
++        self.use_moe = config.use_moe
++        self.is_use_gmm = config.use_moe_op
++        self.layer_idx = layer_idx
++        if self.use_moe and self.layer_idx > 1:
++            self.sparse_moe_linear = SparseMOE(
++                emb_dim=self._embedding_dim,
++                expert_number=config.moe_expert_total_num,
++                top_k=config.moe_expert_act_num,
++                dtype=torch.bfloat16,
++                hidden_size=config.moe_hidden_size,
++                is_use_gmm=self.is_use_gmm,
++                aux_loss_weight=config.moe_aux_loss_weight,
++            )
++
          self._debug_shortcut_proj_linear = (
              os.environ.get("DEBUG_SHORTCUT_PROJ_LINEAR", "0") == "1"
          )
-@@ -121,16 +146,22 @@ class HSTULayer(MegatronModule):
+@@ -121,16 +160,22 @@ class HSTULayer(MegatronModule):
                  self._embedding_dim == self._linear_dim_per_head * self._num_heads
              ), "when shortcut proj linear is on, embedding dim must be equal to linear dim per head * num heads"
  
@@ -1207,7 +1440,7 @@ index 9c85635..837c1fc 100644
  
          self._target_group_size = config.target_group_size
  
-@@ -141,9 +172,9 @@ class HSTULayer(MegatronModule):
+@@ -141,9 +186,9 @@ class HSTULayer(MegatronModule):
              linear_dim=self._linear_dim_per_head,
              is_causal=config.is_causal,
          )
@@ -1220,7 +1453,7 @@ index 9c85635..837c1fc 100644
  
      def get_user_value_query_key_tensors(self, hidden_states: torch.Tensor):
          """
-@@ -157,38 +188,22 @@ class HSTULayer(MegatronModule):
+@@ -157,39 +202,23 @@ class HSTULayer(MegatronModule):
          """
  
          # TODO: fuse linear, bias, and silu?
@@ -1266,14 +1499,17 @@ index 9c85635..837c1fc 100644
          return user, value, query, key
  
 -    @output_nvtx_hook(nvtx_tag="HSTULayer")
+-    def forward(self, jd: JaggedData) -> JaggedData:
 +    # @output_nvtx_hook(nvtx_tag="HSTULayer")
-     def forward(self, jd: JaggedData) -> JaggedData:
++    def forward(self, jd: JaggedData, x: torch.Tensor = None) -> JaggedData:
          """
          Forward pass of the HSTULayer
-@@ -201,58 +216,47 @@ class HSTULayer(MegatronModule):
+ 
+@@ -200,59 +229,51 @@ class HSTULayer(MegatronModule):
+             Tensor: The output embeddings [\*, D]
          """
          # input is [*, h]
-         x = jd.values
+-        x = jd.values
 -        with nvtx.annotate("hstu input layernorm fwd", color="RED"):
 -            if self._recompute_input_layernorm:
 -                normed_x = self.input_layernorm_checkpoint.checkpoint(
@@ -1358,11 +1594,21 @@ index 9c85635..837c1fc 100644
 -                output = output + x
 +        output = self._linear_proj(parallel_input)
 +        
++        aux_loss = 0.0
++        if self.use_moe and self.layer_idx > 1:
++            output, aux_loss = self.sparse_moe_linear.forward(output) if self.is_use_gmm else self.sparse_moe_linear.forward_naive(output)
++        
 +        if self._residual:
 +            output = output + x
  
          return JaggedData(
              values=output,
+@@ -266,4 +287,4 @@ class HSTULayer(MegatronModule):
+             contextual_seqlen=jd.contextual_seqlen,
+             contextual_seqlen_offsets=jd.contextual_seqlen_offsets,
+             has_interleaved_action=jd.has_interleaved_action,
+-        )
++        ), output, aux_loss
 diff --git a/examples/hstu/modules/position_encoder.py b/examples/hstu/modules/position_encoder.py
 index 52fb3b3..f6e7337 100644
 --- a/examples/hstu/modules/position_encoder.py
@@ -1427,25 +1673,265 @@ index 52fb3b3..f6e7337 100644
                  jagged=seq_embeddings,
                  jagged_offsets=seq_offsets,
                  high_inds=high_inds,
+diff --git a/examples/hstu/modules/sparse_moe.py b/examples/hstu/modules/sparse_moe.py
+new file mode 100644
+index 0000000..af32e36
+--- /dev/null
++++ b/examples/hstu/modules/sparse_moe.py
+@@ -0,0 +1,237 @@
++import os
++import torch
++import torch.nn.functional as F
++import torch_npu
++from torch.autograd import Function
++
++class NPUGroupedMatmulFunction(Function):
++    @staticmethod
++    def forward(ctx, x, weight_stacked, scale, group_list, split_item, group_list_type, group_type, output_dtype):
++        ctx.save_for_backward(x, weight_stacked)
++        ctx.group_list = group_list
++        ctx.split_item = split_item
++        ctx.group_list_type = group_list_type
++        ctx.group_type = group_type
++        ctx.output_dtype = output_dtype
++        weight_T = weight_stacked.transpose(1, 2)
++        return torch_npu.npu_grouped_matmul(
++            x=[x],
++            weight=[weight_T],
++            scale=scale,
++            group_list=group_list,
++            split_item=split_item,
++            group_list_type=group_list_type,
++            group_type=group_type,
++            output_dtype=output_dtype,
++        )[0]
++
++    @staticmethod
++    def backward(ctx, grad_output):
++        x, weight_stacked = ctx.saved_tensors
++        group_list = ctx.group_list
++        split_item = ctx.split_item
++        group_list_type = ctx.group_list_type
++        group_type = ctx.group_type
++        output_dtype = ctx.output_dtype
++
++        # x_grad = grad_output @ weight_list.T
++        x_grad = torch_npu.npu_grouped_matmul(
++            x=[grad_output],
++            weight=[weight_stacked],
++            scale=None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=1,
++            group_type=0,
++            output_dtype=output_dtype,
++        )[0]
++
++        # gmm 单单单，右矩阵必须为三维，暂时不支持，退化回普通mm
++        # grad_weight_i = grad_output.T @ x_i
++        num_experts = weight_stacked.shape[0]
++        weight_stacked_grad = torch.empty_like(weight_stacked)
++        group_cumsum = torch.cumsum(group_list, dim=0)
++        start_idx = 0
++        for i in range(num_experts):
++            end_idx = group_cumsum[i].item()
++            x_i = x[start_idx:end_idx]
++            grad_out_i = grad_output[start_idx:end_idx]
++            weight_stacked_grad[i] = torch.mm(grad_out_i.T, x_i)
++            start_idx = end_idx
++        
++        return x_grad, weight_stacked_grad, None, None, None, None, None, None
++
++def npu_grouped_matmul(x, weight_stacked, scale, group_list, split_item, group_list_type, group_type, output_dtype):
++    return NPUGroupedMatmulFunction.apply(x, weight_stacked, scale, group_list, split_item, group_list_type, group_type,        output_dtype)
++
++class SparseMOE(torch.nn.Module):
++    def __init__(
++            self,
++            emb_dim,
++            expert_number,
++            top_k,
++            hidden_size,
++            dtype,
++            is_use_gmm=True,
++            aux_loss_weight=0.01,
++        ):
++        super().__init__()
++
++        self.expert_number = expert_number
++        if not is_use_gmm:
++            self.experts = torch.nn.ModuleList([
++                FFN_npu_swiglu(emb_dim, hidden_size, dtype) for _ in range(expert_number)])
++        else:
++            device = torch_npu.npu.current_device()
++            self.cw1 = torch.nn.Parameter(torch.empty(expert_number, hidden_size, emb_dim, device=device))
++            self.cw2 = torch.nn.Parameter(torch.empty(expert_number, emb_dim, hidden_size, device=device))
++            self.cw3 = torch.nn.Parameter(torch.empty(expert_number, hidden_size, emb_dim, device=device))
++            self._init_weights()
++        
++        self.router = MOERouter(emb_dim, expert_number, top_k, dtype, aux_loss_weight)
++        self.top_k = top_k
++        self.dtype = dtype
++
++    def _init_weights(self):
++        for param in [self.cw1, self.cw2, self.cw3]:
++            torch.nn.init.xavier_uniform_(param)
++
++    def compute_ffn_with_grouped_matmul(self, expanded_x, w1_list, w2_list, w3_list, group_list):
++        # w1(x): 投影到隐藏维度
++        w1_out = npu_grouped_matmul(
++            x=expanded_x,
++            weight_stacked=w1_list,
++            scale=None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=1,
++            group_type=0,
++            output_dtype=self.dtype,
++        )
++
++        w3_out = npu_grouped_matmul(
++            x=expanded_x,
++            weight_stacked=w3_list,
++            scale=None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=1,
++            group_type=0,
++            output_dtype=self.dtype,
++        )
++
++        gate = F.silu(w1_out)
++        combined = gate * w3_out
++
++        w2_out = npu_grouped_matmul(
++            x=combined,
++            weight_stacked=w2_list,
++            scale=None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=1,
++            group_type=0,
++            output_dtype=self.dtype,
++        )
++
++        return w2_out
++
++    def forward(self, x):
++        # x shape is (b, s, hidden_dim)
++        seq_len, hidden_dim = x.size()
++        hidden_states = x.view(-1, hidden_dim)  # shape is (b * s, hidden_dim)
++
++        router_weights, expert_mask, selected_experts, group_list, aux_loss = self.router(hidden_states)
++
++        expend_x, idx = torch_npu.npu_moe_token_permute(
++            tokens=x,
++            indices=selected_experts,
++            num_out_tokens=seq_len*self.top_k
++        )
++
++        expanded_permuted_rows = self.compute_ffn_with_grouped_matmul(
++            expend_x, self.cw1, self.cw2, self.cw3, group_list
++        )
++
++        return torch_npu.npu_moe_token_unpermute(expanded_permuted_rows,idx, router_weights), aux_loss
++
++    def forward_naive(self, x):
++        # x shape is (b, s, hidden_dim)
++        seq_len, hidden_dim = x.size()
++        hidden_states = x.view(-1, hidden_dim)  # shape is (b * s, hidden_dim)
++
++        router_weights, expert_mask, selected_experts, group_list, aux_loss = self.router(hidden_states)
++
++        final_hidden_states = torch.zeros(
++            (seq_len, hidden_dim),
++            dtype=hidden_states.dtype,
++            device=hidden_states.device
++        )
++
++        for expert_idx in range(self.expert_number):
++            expert_layer = self.experts[expert_idx]
++            idx, top_x = torch.where(expert_mask[expert_idx])
++            current_state = hidden_states.unsqueeze(0)[:, top_x, :].reshape(-1, hidden_dim)  # token选取专家
++            current_hidden_states = expert_layer(current_state) * router_weights[top_x, idx].unsqueeze(-1)  # 专家运算
++            final_hidden_states.index_add_(dim=0, index=top_x, source=current_hidden_states)  # 专家权重相加
++
++        return final_hidden_states, aux_loss
++
++
++class MOERouter(torch.nn.Module):
++    def __init__(self, emb_dim, expert_number, top_k_number, dtype, aux_loss_weight=0.01):
++        super().__init__()
++        self.gate = torch.nn.Linear(emb_dim, expert_number)
++        self.expert_number = expert_number
++        self.top_k = top_k_number
++        self.aux_loss_weight = aux_loss_weight
++
++    def _compute_aux_loss(self, router_logits, topk_weights, topk_indices):
++        num_experts = router_logits.size(-1)
++
++        # top-k索引转为 one-hot编码
++        topk_mask = F.one_hot(topk_indices, num_classes=num_experts).to(torch.float32)  # shape is (b * s, top_k, num_experts)
++
++        # 计算每个token分给每个专家的权重
++        expert_weights = (topk_mask * topk_weights.unsqueeze(-1)).sum(dim=1)  # shape is (b * s, num_experts)
++
++        f_i = expert_weights.mean(dim=0)  # 每个专家的平均权重
++        P_i = router_logits.mean(dim=0)  # 每个专家的平均路由概率
++
++        aux_loss = num_experts * torch.sum(f_i.detach() * P_i)  # 辅助损失计算公式
++
++        return aux_loss * self.aux_loss_weight
++        
++    def forward(self, hidden_states):
++        # 计算路由logits
++        router_logits = F.softmax(self.gate(hidden_states),dim=-1)  # shape is (b * s, dim)
++
++        # 计算topk的专家的输出
++        router_weights, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)  # shape都是 (b * s, top_k)
++
++        # 专家权重归一化
++        router_weights = torch.softmax(router_weights, dim=-1)
++
++        # 计算辅助损失
++        aux_loss = self._compute_aux_loss(router_logits, router_weights, selected_experts)
++
++        # 生成专家掩码
++        expert_mask = F.one_hot(selected_experts,num_classes=self.expert_number).to(torch.int32)  # shape是 (b * s, top_k, expert_number)
++        group_list = expert_mask.sum(dim=1)
++        group_list = group_list.permute(1, 0)
++        group_list = group_list.sum(dim=1)
++        expert_mask = expert_mask.permute(2, 1, 0)  # (expert_number, top_k, b * s)
++
++        return router_weights,  expert_mask, selected_experts, group_list, aux_loss
++
++# 专家ffn
++class FFN_npu_swiglu(torch.nn.Module):
++    def __init__(self, dim: int, hidden_dim: int, dtype=torch.bfloat16):
++        super().__init__()
++        self.w1 = torch.nn.Linear(dim, hidden_dim, bias=False)
++        self.w2 = torch.nn.Linear(hidden_dim, dim, bias=False)
++        self.w3 = torch.nn.Linear(dim, hidden_dim, bias=False)
++
++    def forward(self, x):
++        return self.w2(F.silu(self.w1(x)) * self.w3(x))
++
 diff --git a/examples/hstu/movielen_ranking.gin b/examples/hstu/movielen_ranking.gin
-index d8e8d33..eb383e2 100644
+index d8e8d33..dcfd07b 100644
 --- a/examples/hstu/movielen_ranking.gin
 +++ b/examples/hstu/movielen_ranking.gin
-@@ -4,9 +4,10 @@ TrainerArgs.eval_batch_size = 128
- TrainerArgs.eval_interval = 100
+@@ -5,8 +5,8 @@ TrainerArgs.eval_interval = 100
  TrainerArgs.log_interval = 100
  TrainerArgs.seed = 1234
--TrainerArgs.max_train_iters = 1000
+ TrainerArgs.max_train_iters = 1000
 -TrainerArgs.profile = True
 -TrainerArgs.pipeline_type = "prefetch"
-+TrainerArgs.max_train_iters = 5000
 +TrainerArgs.profile = False # 关闭原生性能分析
 +TrainerArgs.pipeline_type = "none" # NPU 目前不支持流水线
-+TrainerArgs.enable_determinism = False
  
  DatasetArgs.dataset_name = 'ml-20m'
  DatasetArgs.max_sequence_length = 200
-@@ -19,6 +20,8 @@ NetworkArgs.num_attention_heads = 4
+@@ -19,6 +19,8 @@ NetworkArgs.num_attention_heads = 4
  NetworkArgs.hidden_size = 128
  NetworkArgs.kv_channels = 128
  NetworkArgs.target_group_size = 1
@@ -1454,6 +1940,55 @@ index d8e8d33..eb383e2 100644
  
  # ratings 0-5
  RankingArgs.prediction_head_arch = [512, 10]
+diff --git a/examples/hstu/movielen_ranking_2B.gin b/examples/hstu/movielen_ranking_2B.gin
+new file mode 100644
+index 0000000..1bb4c94
+--- /dev/null
++++ b/examples/hstu/movielen_ranking_2B.gin
+@@ -0,0 +1,42 @@
++# torchrun --nproc_per_node 1 --master_addr localhost --master_port 6000  ./hstu/pretrain_gr_ranking.py --gin-config-file examples/hstu/movielen_ranking.gin 
++TrainerArgs.train_batch_size = 32
++TrainerArgs.eval_batch_size = 128
++TrainerArgs.eval_interval = 100
++TrainerArgs.log_interval = 100
++TrainerArgs.seed = 1234
++TrainerArgs.max_train_iters = 1000
++TrainerArgs.profile = False # 关闭原生性能分析
++TrainerArgs.pipeline_type = "none" # NPU 目前不支持流水线
++
++DatasetArgs.dataset_name = 'ml-20m'
++DatasetArgs.max_sequence_length = 200
++DatasetArgs.shuffle = True
++DatasetArgs.max_num_candidates = 20
++
++NetworkArgs.dtype_str = "bfloat16"
++NetworkArgs.num_layers = 15
++NetworkArgs.num_attention_heads = 3
++NetworkArgs.hidden_size = 768
++NetworkArgs.kv_channels = 256
++NetworkArgs.target_group_size = 1
++NetworkArgs.kernel_backend = 'npu_fused' # 算子后端类型 npu_fused 替代原生 CUTLASS/Triton
++NetworkArgs.layer_type = 'native' # HSTU 层使用 native 实现
++NetworkArgs.use_moe = True
++NetworkArgs.moe_expert_total_num = 16
++NetworkArgs.moe_expert_act_num = 2
++NetworkArgs.use_moe_op = True
++NetworkArgs.moe_hidden_size = 4096
++NetworkArgs.moe_aux_loss_weight = 0.01
++
++# ratings 0-5
++RankingArgs.prediction_head_arch = [512, 10]
++RankingArgs.prediction_head_bias = True
++RankingArgs.num_tasks = 1
++RankingArgs.eval_metrics = ("AUC",)
++
++OptimizerArgs.optimizer_str = 'adam'
++OptimizerArgs.learning_rate = 1e-3
++OptimizerArgs.adam_beta1 = 0.9
++OptimizerArgs.adam_beta2 = 0.98
++
++TensorModelParallelArgs.tensor_model_parallel_size = 1
+\ No newline at end of file
 diff --git a/examples/hstu/ops/pt_ops/pt_add_position_embeddings.py b/examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
 new file mode 100644
 index 0000000..4ab58bb
@@ -1542,91 +2077,6 @@ index 0000000..4336b93
 +    out_values = torch.cat(out_values, dim=0)
 +    out_offsets = torch.tensor(out_offsets, device=values_a.device, dtype=offsets_a.dtype)
 +    return out_values, out_offsets
-diff --git a/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py b/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
-new file mode 100644
-index 0000000..b1c7f24
---- /dev/null
-+++ b/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
-@@ -0,0 +1,79 @@
-+# -*- coding: utf-8 -*-
-+# Copyright (c) Meta Platforms, Inc. and affiliates.
-+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
-+#
-+# Licensed under the Apache License, Version 2.0 (the "License");
-+# you may not use this file except in compliance with the License.
-+# You may obtain a copy of the License at
-+#
-+#    http://www.apache.org/licenses/LICENSE-2.0
-+#
-+# Unless required by applicable law or agreed to in writing, software
-+# distributed under the License is distributed on an "AS IS" BASIS,
-+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+# See the License for the specific language governing permissions and
-+# limitations under the License.
-+import torch
-+
-+
-+def jagged_to_padded_dense(values, offsets, max_lengths, padding_value) -> torch.Tensor:
-+    """
-+    不规则张量转稠密张量（调用 NPU 自定义算子）
-+    """
-+    return torch.ops.mxrec.jagged_to_padded_dense(
-+        values=values.to(torch.float32),
-+        offsets=offsets,
-+        max_lengths=max(max_lengths),
-+        padding_value=padding_value,
-+    ).to(torch.bfloat16)
-+
-+
-+def dense_to_jagged(dense, offsets, total_L=None):
-+    """
-+    稠密张量转不规则张量（调用 NPU 自定义算子）
-+    """
-+    if total_L is None:
-+        total_L = offsets[0][-1].item()
-+
-+    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense.to(torch.float32), offsets, total_L)
-+    return out0.to(torch.bfloat16), out1
-+
-+
-+class JaggedToPaddedDense(torch.autograd.Function):
-+    @staticmethod
-+    def forward(ctx, values, offsets, max_lengths, padding_value):
-+        ctx.save_for_backward(*offsets)
-+        ctx.total_L = values.shape[0]
-+        return jagged_to_padded_dense(values, offsets, max_lengths, padding_value)
-+
-+    @staticmethod
-+    def backward(ctx, grad_output):
-+        offsets = list(ctx.saved_tensors)
-+        total_L = ctx.total_L
-+        grad_values, _ = dense_to_jagged(grad_output, offsets, total_L)
-+        return grad_values, None, None, None
-+
-+
-+class DenseToJagged(torch.autograd.Function):
-+    @staticmethod
-+    def forward(ctx, dense, offsets, total_L=None):
-+        ctx.save_for_backward(*offsets)
-+        out0, out1 = dense_to_jagged(dense, offsets, total_L)
-+        ctx.dense_shape = dense.shape
-+        return out0, out1
-+
-+    @staticmethod
-+    def backward(ctx, grad_out0, grad_out1):
-+        offsets = list(ctx.saved_tensors)
-+        max_len = ctx.dense_shape[1]
-+        grad_dense = jagged_to_padded_dense(grad_out0, offsets, [max_len], 0.0)
-+        return grad_dense, None, None
-+
-+
-+# 对外暴露的 wrapper 函数（供 torch.ops.fbgemm 替换使用）
-+def jagged_to_padded_dense_wrapper(values, offsets, max_lengths, padding_value):
-+    return JaggedToPaddedDense.apply(values, offsets, max_lengths, padding_value)
-+
-+
-+def dense_to_jagged_wrapper(dense, offsets, total_L=None):
-+    return DenseToJagged.apply(dense, offsets, total_L)
 diff --git a/examples/hstu/ops/pt_ops/pt_jagged_tensors.py b/examples/hstu/ops/pt_ops/pt_jagged_tensors.py
 new file mode 100644
 index 0000000..cf851c9
@@ -2135,21 +2585,20 @@ index b574514..f6d9ad9 100644
  
  if __name__ == "__main__":
 diff --git a/examples/hstu/pretrain_gr_ranking.py b/examples/hstu/pretrain_gr_ranking.py
-index 446ce12..c39917c 100644
+index 446ce12..270c1ca 100644
 --- a/examples/hstu/pretrain_gr_ranking.py
 +++ b/examples/hstu/pretrain_gr_ranking.py
-@@ -12,8 +12,9 @@
- # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+@@ -13,7 +13,8 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
-+import os
  import warnings
 -
 +import sysconfig
++import os
  # Ignore all FutureWarnings
  warnings.filterwarnings("ignore", category=FutureWarning)
  warnings.filterwarnings("ignore", category=SyntaxWarning)
-@@ -25,6 +26,10 @@ from typing import List, Tuple, cast
+@@ -25,9 +26,13 @@ from typing import List, Tuple, cast
  import commons.utils.initialize as init
  import gin
  import torch  # pylint: disable-unused-import
@@ -2159,8 +2608,21 @@ index 446ce12..c39917c 100644
 +import mindspeed.megatron_adaptor
  from commons.utils.logger import print_rank_0
  from configs import RankingConfig
- from distributed.sharding import make_optimizer_and_shard
-@@ -51,6 +56,11 @@ from training import (
+-from distributed.sharding import make_optimizer_and_shard
++from distributed.sharding import make_optimizer_and_shard, make_optimizer_and_shard_fsdp2
+ from megatron.core import parallel_state
+ from model import get_ranking_model
+ from modules.metrics import get_multi_event_metric_module
+@@ -38,6 +43,8 @@ from pipeline.train_pipeline import (
+ )
+ from training import (
+     NetworkArgs,
++    DatasetArgs,
++    EmbeddingArgs,
+     OptimizerArgs,
+     TensorModelParallelArgs,
+     TrainerArgs,
+@@ -51,6 +58,10 @@ from training import (
      maybe_load_ckpts,
      train_with_pipeline,
  )
@@ -2168,43 +2630,63 @@ index 446ce12..c39917c 100644
 +from megatron.training.arguments import parse_args, validate_args
 +from megatron.training.yaml_arguments import validate_yaml
 +from megatron.training.global_vars import set_global_variables
-+from ops.pt_ops.pt_jagged_dense_convert import jagged_to_padded_dense_wrapper, dense_to_jagged_wrapper
  
  
  @gin.configurable
-@@ -77,9 +87,25 @@ parser = argparse.ArgumentParser(
-     description="Distributed GR Arguments", allow_abbrev=False
- )
- parser.add_argument("--gin-config-file", type=str)
-+parser.add_argument("--train-batch-size", type=int, default=None)
-+parser.add_argument("--epochs", type=int, default=None)
- args = parser.parse_args()
- gin.parse_config_file(args.gin_config_file)
- trainer_args = TrainerArgs()
-+trainer_args.train_batch_size = args.train_batch_size or trainer_args.train_batch_size
-+final_epochs = args.epochs
-+env_epoch_str = os.environ.get("MODEL_EPOCH")
-+if env_epoch_str is not None:
-+    try:
-+        final_epochs = int(env_epoch_str)
-+    except ValueError:
-+        print_rank_0(
-+            f"Warning: Invalid value for MODEL_EPOCH environment variable: {env_epoch_str}"
-+        )
-+if final_epochs is not None and final_epochs <= 1:
-+    raise ValueError("Training configuration error: 'epochs' cannot be less than or equal to 1. Please set a value greater than 1.")
-+trainer_args.max_train_iters = final_epochs * trainer_args.eval_interval if final_epochs is not None else trainer_args.max_train_iters
-+
- dataset_args, embedding_args = get_dataset_and_embedding_args()
- network_args = NetworkArgs()
- optimizer_args = OptimizerArgs()
-@@ -102,12 +128,19 @@ def create_ranking_config() -> RankingConfig:
+@@ -73,20 +84,7 @@ class RankingArgs:
+             ], "prediction_head_act_type should be in ['relu', 'gelu']"
  
+ 
+-parser = argparse.ArgumentParser(
+-    description="Distributed GR Arguments", allow_abbrev=False
+-)
+-parser.add_argument("--gin-config-file", type=str)
+-args = parser.parse_args()
+-gin.parse_config_file(args.gin_config_file)
+-trainer_args = TrainerArgs()
+-dataset_args, embedding_args = get_dataset_and_embedding_args()
+-network_args = NetworkArgs()
+-optimizer_args = OptimizerArgs()
+-tp_args = TensorModelParallelArgs()
+-
+-
+-def create_ranking_config() -> RankingConfig:
++def create_ranking_config(dataset_args: DatasetArgs, network_args: NetworkArgs, embedding_args: EmbeddingArgs) -> RankingConfig:
+     ranking_args = RankingArgs()
+ 
+     return RankingConfig(
+@@ -100,21 +98,58 @@ def create_ranking_config() -> RankingConfig:
+         eval_metrics=ranking_args.eval_metrics,
+     )
+ 
++def extra_init_args(parser: argparse.ArgumentParser):
++    group = parser.add_argument_group('Distributed GR Arguments')
++    group.add_argument("--gin-config-file", type=str)
++    return parser
  
  def main():
-+    # 用 NPU 自定义算子替换原生的 fbgemm 算子
-+    torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
-+    torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
++        
++    # Check if FSDP2 is enabled
++    use_fsdp2 = os.getenv('USE_FSDP2', '0').lower() in ('1', 'true')
++
++    args = parse_args(extra_init_args, True)
++    if use_fsdp2:
++        if args.yaml_cfg is not None:
++            args = validate_yaml(args, {})
++        else:
++            validate_args(args, {})
++        set_global_variables(args, False)
++
++    parser = argparse.ArgumentParser(
++        description="Distributed GR Arguments", allow_abbrev=False
++    )
++    parser.add_argument("--gin-config-file", type=str)
++    gin.parse_config_file(args.gin_config_file)
++    trainer_args = TrainerArgs()
++    dataset_args, embedding_args = get_dataset_and_embedding_args()
++    network_args = NetworkArgs()
++    optimizer_args = OptimizerArgs()
++    tp_args = TensorModelParallelArgs()
 +
      init.initialize_distributed()
      init.initialize_model_parallel(
@@ -2212,14 +2694,67 @@ index 446ce12..c39917c 100644
      )
      init.set_random_seed(trainer_args.seed)
 -    free_memory, total_memory = torch.cuda.mem_get_info()
-+    if trainer_args.enable_determinism:
++    if os.environ.get("PRECISION_FLAG", "0") == "1":
 +        from msprobe.pytorch import seed_all
-+        seed_all(seed = trainer_args.seed, mode = True, rm_dropout = False)
++        seed_all(trainer_args.seed, mode=True, rm_dropout=False)
 +    free_memory, total_memory = torch_npu.npu.mem_get_info()
      print_rank_0(
          f"distributed env initialization done. Free cuda memory: {free_memory / (1024 ** 2):.2f} MB"
      )
-@@ -146,7 +179,7 @@ def main():
+     hstu_config = create_hstu_config(network_args, tp_args)
+-    task_config = create_ranking_config()
++    task_config = create_ranking_config(dataset_args, network_args, embedding_args)
+     model = get_ranking_model(hstu_config=hstu_config, task_config=task_config)
+ 
++    # Fix model parameters to fixed values when precision flag is enabled
++    if os.environ.get("PRECISION_FLAG", "0") == "1":
++        print_rank_0("Precision mode enabled: fixing all model parameters to fixed values")
++        model = get_unwrapped_module(pipeline._model)
++        for name, param in model.named_parameters():
++            fixed_value = 0.01
++            param.fill_(fixed_value)
+     dynamic_options_dict = create_dynamic_optitons_dict(
+         embedding_args,
+         network_args.hidden_size,
+@@ -125,14 +160,29 @@ def main():
+     )
+ 
+     optimizer_param = create_optimizer_params(optimizer_args)
+-    model_train, dense_optimizer = make_optimizer_and_shard(
+-        model,
+-        config=hstu_config,
+-        sparse_optimizer_param=optimizer_param,
+-        dense_optimizer_param=optimizer_param,
+-        dynamicemb_options_dict=dynamic_options_dict,
+-        pipeline_type=trainer_args.pipeline_type,
+-    )
++
++    if use_fsdp2:
++        print_rank_0("Using FSDP2 for model sharding")
++        if network_args.dtype_str == "bfloat16":
++            model.bfloat16()
++        model_train, dense_optimizer = make_optimizer_and_shard_fsdp2(
++            model,
++            config=hstu_config,
++            sparse_optimizer_param=optimizer_param,
++            dense_optimizer_param=optimizer_param,
++            dynamicemb_options_dict=dynamic_options_dict,
++            pipeline_type=trainer_args.pipeline_type,
++        )
++    else:
++        print_rank_0(f"Using standard sharding with pipeline_type: {trainer_args.pipeline_type}")
++        model_train, dense_optimizer = make_optimizer_and_shard(
++            model,
++            config=hstu_config,
++            sparse_optimizer_param=optimizer_param,
++            dense_optimizer_param=optimizer_param,
++            dynamicemb_options_dict=dynamic_options_dict,
++            pipeline_type=trainer_args.pipeline_type,
++        )
+ 
+     stateful_metric_module = get_multi_event_metric_module(
+         num_classes=task_config.prediction_head_arch[-1],
+@@ -146,7 +196,7 @@ def main():
      train_dataloader, test_dataloader = get_data_loader(
          "ranking", dataset_args, trainer_args, task_config.num_tasks
      )
@@ -2228,7 +2763,7 @@ index 446ce12..c39917c 100644
      print_rank_0(
          f"model initialization done, start training. Free cuda memory: {free_memory / (1024 ** 2):.2f} MB"
      )
-@@ -161,13 +194,13 @@ def main():
+@@ -161,13 +211,13 @@ def main():
          pipeline = pipeline_factory(
              model_train,
              dense_optimizer,
@@ -2245,19 +2780,10 @@ index 446ce12..c39917c 100644
      train_with_pipeline(
          pipeline,
 diff --git a/examples/hstu/training/gin_config_args.py b/examples/hstu/training/gin_config_args.py
-index d0fc57c..f507585 100644
+index d0fc57c..5e2d3f8 100644
 --- a/examples/hstu/training/gin_config_args.py
 +++ b/examples/hstu/training/gin_config_args.py
-@@ -47,6 +47,8 @@ class TrainerArgs:
-     # - prefetch -> overlap [h2d, input dist, prefetch, fwd+bwd]
-     pipeline_type: str = "native"  # none, native, prefetch
- 
-+    enable_determinism: bool = False
-+
-     def __post_init__(self):
-         if isinstance(self.max_train_iters, str):
-             self.max_train_iters = int(self.max_train_iters)
-@@ -141,6 +143,8 @@ class NetworkArgs:
+@@ -141,6 +141,8 @@ class NetworkArgs:
      num_attention_heads: int
      kv_channels: int
  
@@ -2266,7 +2792,20 @@ index d0fc57c..f507585 100644
      hidden_dropout: float = 0.2
      norm_epsilon: float = 1e-5
      is_causal: bool = True
-@@ -164,7 +168,9 @@ class NetworkArgs:
+@@ -158,13 +160,22 @@ class NetworkArgs:
+     item_embedding_dim: int = -1
+     contextual_embedding_dim: int = -1
+ 
++    use_moe: bool = False
++    moe_expert_total_num: int = 1
++    moe_expert_act_num: int = 1
++    use_moe_op: bool = False
++    moe_hidden_size: int = 4096
++    moe_aux_loss_weight: float = 0.01
++
+     def __post_init__(self):
+         assert self.dtype_str in [
+             "bfloat16",
              "float16",
          ], "Only support bfloat16 and float16 precision for Network."
  
@@ -2278,7 +2817,7 @@ index d0fc57c..f507585 100644
  
  @gin.configurable
 diff --git a/examples/hstu/training/training.py b/examples/hstu/training/training.py
-index f975842..5ce57d7 100644
+index f975842..c56fb84 100644
 --- a/examples/hstu/training/training.py
 +++ b/examples/hstu/training/training.py
 @@ -18,6 +18,7 @@ from typing import Iterator, Optional, Union
@@ -2289,11 +2828,12 @@ index f975842..5ce57d7 100644
  import torch.distributed as dist
  from commons.checkpoint import get_unwrapped_module
  from commons.utils.gpu_timer import GPUTimer
-@@ -34,6 +35,37 @@ from pipeline.train_pipeline import (
+@@ -34,6 +35,38 @@ from pipeline.train_pipeline import (
  from training.gin_config_args import TrainerArgs
  from training.utils import cal_flops
  
 +import time
++import csv
 +import numpy as np
 +
 +def latency_summary_rank0(latency_list, batch_size, model_name, device_name, inductor_flag):
@@ -2327,7 +2867,7 @@ index f975842..5ce57d7 100644
  
  def evaluate(
      pipeline: Union[
-@@ -46,7 +78,7 @@ def evaluate(
+@@ -46,7 +79,7 @@ def evaluate(
      eval_loader: torch.utils.data.DataLoader,
  ):
      eval_iter = 0
@@ -2336,7 +2876,7 @@ index f975842..5ce57d7 100644
      max_eval_iters = trainer_args.max_eval_iters or len(eval_loader)
      max_eval_iters = min(max_eval_iters, len(eval_loader))
      # make a copy of eval_loader to avoid modifying the original loader
-@@ -76,7 +108,8 @@ def evaluate(
+@@ -76,7 +109,8 @@ def evaluate(
          f"[eval] [eval {eval_iter * dp_size * trainer_args.eval_batch_size} users]:\n    "
          + stringify_dict(eval_metric_dict, prefix="Metrics", sep="\n    ")
      )
@@ -2346,7 +2886,7 @@ index f975842..5ce57d7 100644
  
  
  def maybe_load_ckpts(
-@@ -111,7 +144,7 @@ def save_ckpts(
+@@ -111,7 +145,7 @@ def save_ckpts(
              os.makedirs(ckpt_save_dir, exist_ok=True)
          except Exception as e:
              raise Exception("can't build path:", ckpt_save_dir) from e
@@ -2355,13 +2895,17 @@ index f975842..5ce57d7 100644
      checkpoint.save(ckpt_save_dir, model, dense_optimizer=dense_optimizer)
      print_rank_0(f"Checkpoints saved!!")
  
-@@ -155,15 +188,51 @@ def train_with_pipeline(
+@@ -155,15 +189,56 @@ def train_with_pipeline(
      iter_slices = batched(train_loader_iter, n)
      start_iter = 0
      pipeline._model.train()
 +
 +    # 通过环境变量控制 NPU Profiler 开关
 +    PROFILE_ENABLE = os.environ.get("NPU_PROFILE", "0").lower() in ("1", "true")
++    
++    # precision flag to save first 100 steps loss to CSV
++    PRECISION_ENABLE = os.environ.get("PRECISION_FLAG", "0").lower() in ("1", "true")
++
 +    if PROFILE_ENABLE:
 +        experimental_config = torch_npu.profiler._ExperimentalConfig(
 +            export_type=torch_npu.profiler.ExportType.Text,
@@ -2393,6 +2937,7 @@ index f975842..5ce57d7 100644
 +
 +    epoch = 0
 +    train_times = []
++    precision_losses = []
 +
      for batched_iterator in iter_slices:
          # for one slice(every eval interval)
@@ -2411,7 +2956,7 @@ index f975842..5ce57d7 100644
              if (
                  train_iter * trainer_args.ckpt_save_interval > 0
                  and train_iter % trainer_args.ckpt_save_interval == 0
-@@ -173,7 +242,7 @@ def train_with_pipeline(
+@@ -173,7 +248,7 @@ def train_with_pipeline(
                  )
                  save_ckpts(save_path, pipeline._model, dense_optimizer)
              try:
@@ -2420,7 +2965,7 @@ index f975842..5ce57d7 100644
                  reporting_loss, (
                      local_loss,
                      logits,
-@@ -184,12 +253,22 @@ def train_with_pipeline(
+@@ -184,12 +259,27 @@ def train_with_pipeline(
                  ddp_num_contextuals.append(ddp_num_contextual.view(-1))
                  ddp_num_candidates.append(ddp_num_candidate.view(-1))
                  tokens_logged += reporting_loss[1]
@@ -2434,18 +2979,23 @@ index f975842..5ce57d7 100644
 +                # torch.cuda.nvtx.range_pop()
                  break
              # log
-+            if train_iter > 100 and train_iter % trainer_args.eval_interval > 10:
-+                train_times.append(train_time)
-+
 +            final_loss_value = reporting_loss[0] / reporting_loss[1]
++            if PRECISION_ENABLE and train_iter < 100:
++                precision_losses.append({
++                    'step': train_iter,
++                    'loss': final_loss_value.cpu().item()
++                })
 +            if train_iter % 10 == 0:
 +                train_time = time.time() - start_time
 +                print_rank_0(f"epoch: {epoch}, step: [{train_iter} / {trainer_args.max_train_iters}], loss = {reporting_loss[0] / reporting_loss[1]:.6f}, time = {train_time}")
 +
++            if train_iter > 100 and train_iter % 10 == 0:
++                train_times.append(train_time)
++
              if train_iter > 0 and (train_iter + 1) % trainer_args.log_interval == 0:
                  gpu_timer.stop()
                  cur_td = gpu_timer.elapsed_time() - last_td
-@@ -210,10 +289,42 @@ def train_with_pipeline(
+@@ -210,10 +300,51 @@ def train_with_pipeline(
          # TODO CHECK if train pipeline is flushed
          if train_iter > 0 and train_iter % trainer_args.eval_interval == 0:
              pipeline._model.eval()
@@ -2461,6 +3011,15 @@ index f975842..5ce57d7 100644
 +        epoch += 1
 +    if PROFILE_ENABLE:
 +        prof.stop()
++
++    if PRECISION_ENABLE and precision_losses:
++        precision_csv_path = "../save_results_NPU/precision_losses.csv"
++        os.makedirs(os.path.dirname(precision_csv_path), exist_ok=True)
++        with open(precision_csv_path, 'w', newline='', encoding='utf-8') as f:
++            writer = csv.DictWriter(f, fieldnames=['step', 'loss'])
++            writer.writeheader()
++            writer.writerows(precision_losses)
++        print_rank_0(f"Precision losses saved to {precision_csv_path}")
 +
 +    avg_time = latency_summary_rank0(train_times, trainer_args.train_batch_size, "ranking", "NPU", "eager")
 +
@@ -2490,10 +3049,18 @@ index f975842..5ce57d7 100644
 +    torch.save(final_results, f"../save_results_NPU/ranking/predictions_ranking_eager_{train_iter}.pt")
 +
 diff --git a/examples/hstu/training/utils.py b/examples/hstu/training/utils.py
-index dc4f541..4887a6a 100644
+index dc4f541..6adb887 100644
 --- a/examples/hstu/training/utils.py
 +++ b/examples/hstu/training/utils.py
-@@ -28,7 +28,7 @@ from configs import (
+@@ -13,6 +13,7 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ import sys
++import os
+ from typing import Dict, List, Optional, Tuple, Union
+ 
+ import configs
+@@ -28,7 +29,7 @@ from configs import (
      PositionEncodingConfig,
      get_hstu_config,
  )
@@ -2502,7 +3069,7 @@ index dc4f541..4887a6a 100644
  from modules.embedding import ShardedEmbeddingConfig
  from training.gin_config_args import (
      BenchmarkDatasetArgs,
-@@ -172,15 +172,21 @@ def create_hstu_config(
+@@ -172,15 +173,21 @@ def create_hstu_config(
          kernel_backend = KernelBackend.TRITON
      elif network_args.kernel_backend == "pytorch":
          kernel_backend = KernelBackend.PYTORCH
@@ -2526,7 +3093,20 @@ index dc4f541..4887a6a 100644
  
      position_encoding_config = PositionEncodingConfig(
          num_position_buckets=network_args.num_position_buckets,
-@@ -375,12 +381,17 @@ def create_dynamic_optitons_dict(
+@@ -202,6 +209,12 @@ def create_hstu_config(
+         hidden_dropout=network_args.hidden_dropout,
+         norm_epsilon=network_args.norm_epsilon,
+         is_causal=network_args.is_causal,
++        use_moe=network_args.use_moe,
++        moe_expert_total_num=network_args.moe_expert_total_num,
++        moe_expert_act_num=network_args.moe_expert_act_num,
++        use_moe_op=network_args.use_moe_op,
++        moe_hidden_size=network_args.moe_hidden_size,
++        moe_aux_loss_weight=network_args.moe_aux_loss_weight,
+         dtype=dtype,
+         kernel_backend=kernel_backend,
+         hstu_preprocessing_config=hstu_preprocessing_config,
+@@ -375,12 +388,19 @@ def create_dynamic_optitons_dict(
      dynamic_options_dict: Dict[str, DynamicEmbTableOptions] = {}
      for embedding_args in embedding_args_list:
          if isinstance(embedding_args, DynamicEmbeddingArgs):
@@ -2538,15 +3118,17 @@ index dc4f541..4887a6a 100644
              embedding_args.calculate_and_reset_global_hbm_for_values(
                  hidden_size, embedding_dim_multiplier
              )
++            
              dynamic_options_dict[embedding_args.table_name] = DynamicEmbTableOptions(
 +                initializer_args=DynamicEmbInitializerArgs(
 +                    # 新增初始化参数配置（均匀分布）
-+                    mode=DynamicEmbInitializerMode.UNIFORM,
++                    mode=DynamicEmbInitializerMode.UNIFORM if os.environ.get("PRECISION_FLAG", 0) == "1" else DynamicEmbInitializerMode.UNIFORM,
++                    value=0.01,
 +                ),
                  global_hbm_for_values=embedding_args.global_hbm_for_values,
                  evict_strategy=DynamicEmbEvictStrategy.LRU
                  if embedding_args.evict_strategy == "lru"
-@@ -388,7 +399,7 @@ def create_dynamic_optitons_dict(
+@@ -388,7 +408,7 @@ def create_dynamic_optitons_dict(
                  safe_check_mode=DynamicEmbCheckMode.IGNORE,
                  bucket_capacity=128,
                  training=training,
@@ -2555,7 +3137,19 @@ index dc4f541..4887a6a 100644
              )
      return dynamic_options_dict
  
-@@ -606,25 +617,33 @@ def get_dataset_and_embedding_args() -> (
+@@ -405,7 +425,10 @@ def get_dataset_and_embedding_args() -> (
+         benchmark_dataset_args = BenchmarkDatasetArgs()  # type: ignore[call-arg]
+         return benchmark_dataset_args, benchmark_dataset_args.embedding_args
+     assert isinstance(dataset_args, DatasetArgs)
+-    HASH_SIZE = 10_000_000
++    if os.environ.get("GR_2B", 0) == "1":
++        HASH_SIZE = 131072 # 模型参数量太大缩小embedding表的大小
++    else:
++        HASH_SIZE = 10_000_000
+     if dataset_args.dataset_name == "kuairand-pure":
+         return dataset_args, [
+             EmbeddingArgs(
+@@ -606,25 +629,33 @@ def get_dataset_and_embedding_args() -> (
          ]
      elif dataset_args.dataset_name == "ml-20m":
          return dataset_args, [
@@ -2593,6 +3187,3 @@ index dc4f541..4887a6a 100644
              ),
          ]
      else:
--- 
-2.53.0.windows.1
-

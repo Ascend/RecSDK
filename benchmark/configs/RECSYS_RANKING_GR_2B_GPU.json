@@ -1,0 +1,26 @@
+{
+    "name": "RECSYS_RANKING_GR_2B_GPU",
+    "url": "https://github.com/NVIDIA/recsys-examples.git",
+    "model_name": "recsys_ranking_gpu",
+    "commit_id": "e06587407d07fe86d58fac91ee0f390eef26d309",
+    "patch_path": "patches/recsys_ranking_gpu.patch",
+    "mode": "train",
+    "epoch": 50,
+    "profiling_flag": false,
+    "aclgraph_flag": false,
+    "data_type": "bfloat16",
+    "run_cmd": [
+        "bash",
+        "-c",
+        "cd ./examples/hstu && bash recsys_ranking_gr_2B_gpu.sh"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "cp -r ../../../tests/recsys_ranking_gr_2B_gpu.sh ./examples/hstu/",
+        "mkdir -p ./examples/hstu/tmp_data",
+        "cp -r ../../../dataset/recsys-examples/. ./examples/hstu/tmp_data",
+        "git clone https://github.com/NVIDIA/Megatron-LM.git ../Megatron-LM",
+        "git -C ../Megatron-LM checkout core_v0.12.1"
+    ]
+}

@@ -87,6 +87,7 @@ python run.py xxx.json --eager
 |PNN|[PNN.json](configs/PNN.json)|
 |RANKMIXER|[RANKMIXER.json](configs/RANKMIXER.json)|
 |RECSYS_RANKING|[RECSYS_RANKING.json](configs/RECSYS_RANKING.json)|
+|RECSYS_RANKING_GR_2B|[RECSYS_RANKING_GR_2B.json](configs/RECSYS_RANKING_GR_2B.json)|
 |RECSYS_RANKING_GR_7B|[RECSYS_RANKING_GR_7B.json](configs/RECSYS_RANKING_GR_7B.json)|
 |RECSYS_RETRIEVAL|[RECSYS_RETRIEVAL.json](configs/RECSYS_RETRIEVAL.json)|
 |SASREC_1M|[SASREC_1M.json](configs/SASREC_1M.json)|
@@ -208,6 +209,7 @@ MMOE模型运行前需访问 <https://tianchi.aliyun.com/dataset/74690> 下载al
 
 - 包含开源gr_ranking、gr_retrival
 - 包含增加MoE结构的GR RANKING 7B
+- 包含增加GroupedMatmul优化的GR RANKING 2B
 
 ### 运行依赖
 
