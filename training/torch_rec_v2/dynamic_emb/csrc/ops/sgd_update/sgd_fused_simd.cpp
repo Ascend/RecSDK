@@ -1,4 +1,4 @@
-/* Copyright 2026. Huawei Technologies Co.,Ltd. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,21 @@ See the License for the specific language governing permissions and
 
 #include "kernel_operator.h"
 #include "sgd_fused_simd_kernel.h"
+#include "../ops_utils.h"
 
 extern "C" __global__ __aicore__ void sgd_fused_simd(GM_ADDR grads, GM_ADDR values, GM_ADDR tiling)
 {
     TPipe pipe;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     const __gm__ SgdSimdTilingData* tilingData = reinterpret_cast<const __gm__ SgdSimdTilingData*>(tiling);
-    dyn_emb_sgd_fused_simd::SgdFusedSimd op(&pipe);
-    op.Init(grads, values, tilingData);
-    op.Process();
+    const dyn_emb::DataType gradType = static_cast<dyn_emb::DataType>(tilingData->gradType);
+    const dyn_emb::DataType weightType = static_cast<dyn_emb::DataType>(tilingData->weightType);
+
+    FLOAT_TYPE_DISPATCH(gradType, grad_t, {
+        FLOAT_TYPE_DISPATCH(weightType, weight_t, {
+            dyn_emb_sgd_fused_simd::SgdFusedSimd<grad_t, weight_t> op(&pipe);
+            op.Init(grads, values, tilingData);
+            op.Process();
+        });
+    });
 }

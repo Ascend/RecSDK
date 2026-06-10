@@ -404,9 +404,14 @@ static bool LaunchAdamWSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* rowP
 }
 
 static bool LaunchSgdSimdTiling(const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim, int32_t numRows,
-                                int32_t maxCores, float lr, uint32_t rowsPerGroup, int32_t& coreNumOut,
-                                at::Tensor& tilingNpuOut)
+                                int32_t maxCores, float lr, uint32_t rowsPerGroup, DataType gradType,
+                                DataType weightType, int32_t& coreNumOut, at::Tensor& tilingNpuOut)
 {
+    if (!IsSupportedOptimizerSimdDtype(gradType, weightType)) {
+        LOG_ERROR("LaunchSgdSimdTiling: unsupported grad/weight dtype for SGD SIMD.");
+        return false;
+    }
+
     const int32_t numGroups = (numRows + static_cast<int32_t>(rowsPerGroup) - 1) / static_cast<int32_t>(rowsPerGroup);
     coreNumOut = static_cast<int32_t>(
         std::max<int64_t>(1, std::min<int64_t>(static_cast<int64_t>(maxCores), static_cast<int64_t>(numGroups))));
@@ -418,6 +423,8 @@ static bool LaunchSgdSimdTiling(const at::Tensor& gradsContinuous, uint32_t grad
     tilingData.lr = lr;
     tilingData.needCoreNum = coreNumOut;
     tilingData.rowsPerGroup = rowsPerGroup;
+    tilingData.gradType = static_cast<uint32_t>(gradType);
+    tilingData.weightType = static_cast<uint32_t>(weightType);
 
     at::Tensor tilingHost = at::empty({static_cast<int64_t>(sizeof(SgdSimdTilingData))},
                                       at::TensorOptions().dtype(at::kByte).device(at::kCPU));
@@ -430,13 +437,13 @@ static bool LaunchSgdSimdTiling(const at::Tensor& gradsContinuous, uint32_t grad
 
 static bool LaunchSgdFusedSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* valuesPtr,
                                const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim, int32_t numRows,
-                               int32_t maxCores, float lr)
+                               int32_t maxCores, float lr, DataType gradType, DataType weightType)
 {
     constexpr uint32_t kRowsPerGroup = 2U;
     int32_t coreNum = 0;
     at::Tensor tilingNpu;
-    if (!LaunchSgdSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, lr, kRowsPerGroup, coreNum,
-                             tilingNpu)) {
+    if (!LaunchSgdSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, lr, kRowsPerGroup, gradType,
+                             weightType, coreNum, tilingNpu)) {
         return false;
     }
     ACLRT_LAUNCH_KERNEL(sgd_fused_simd)
@@ -446,14 +453,14 @@ static bool LaunchSgdFusedSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* v
 
 static bool LaunchSgdSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* rowPtrsPtr, uint8_t* foundsPtr,
                           const at::Tensor& gradsContinuous, uint32_t gradDim, int32_t numRows, int32_t maxCores,
-                          float lr, uint32_t rowsPerGroup)
+                          float lr, uint32_t rowsPerGroup, DataType gradType, DataType weightType)
 {
     const uint32_t valDim = gradDim;
     int32_t coreNum = 0;
     at::Tensor tilingNpu;
-    TORCH_CHECK(
-        LaunchSgdSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, lr, rowsPerGroup, coreNum, tilingNpu),
-        "LaunchSgdSimd: LaunchSgdSimdTiling failed.");
+    TORCH_CHECK(LaunchSgdSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, lr, rowsPerGroup, gradType,
+                                    weightType, coreNum, tilingNpu),
+                "LaunchSgdSimd: LaunchSgdSimdTiling failed.");
     ACLRT_LAUNCH_KERNEL(sgd_simd)
     (coreNum, stream, gradsPtr, rowPtrsPtr, foundsPtr, static_cast<uint8_t*>(tilingNpu.data_ptr()));
     return true;
@@ -2170,12 +2177,17 @@ void dynamic_emb_sgd_with_pointer(const torch::Tensor& grads, const torch::Tenso
     if (ShouldUseOptimizerSimd(grad_dim, in_length, grad_type, val_type)) {
         constexpr uint32_t kRowsPerGroup = 2U;
         if (LaunchSgdSimd(stream, grads_ptr, values_ptr, nullptr, grads_continuous, grad_dim, num_rows, max_cores, lr,
-                          kRowsPerGroup)) {
+                          kRowsPerGroup, grad_type, val_type)) {
             return;
         } else {
             LOG_ERROR("dynamic_emb_sgd_with_pointer: LaunchSgdSimd failed!");
             return;
         }
+    }
+
+    if (!IsSupportedOptimizerSimdDtype(grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_sgd_with_pointer: unsupported grad/weight dtype for SGD update.");
+        return;
     }
 
     bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
@@ -2207,9 +2219,17 @@ void dynamic_emb_sgd_with_pointer_hybrid(const torch::Tensor& grads, const torch
     int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
     auto grad_type = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
     const int32_t num_rows = in_length / static_cast<int32_t>(grad_dim);
+
+    if (!IsSupportedOptimizerSimdDtype(grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_sgd_with_pointer_hybrid: unsupported grad/weight dtype for SGD update.");
+        return;
+    }
+
     constexpr uint32_t kRowsPerGroup = 2U;
-    LaunchSgdSimd(stream, grads_ptr, values_ptr, nullptr, grads_continuous, grad_dim, num_rows, max_cores, lr,
-                  kRowsPerGroup);
+    if (!LaunchSgdSimd(stream, grads_ptr, values_ptr, nullptr, grads_continuous, grad_dim, num_rows, max_cores, lr,
+                       kRowsPerGroup, grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_sgd_with_pointer_hybrid: LaunchSgdSimd failed!");
+    }
 }
 
 void dynamic_emb_sgd_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase> ht, const uint64_t n,
@@ -2243,12 +2263,17 @@ void dynamic_emb_sgd_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase> ht
     if (ShouldUseOptimizerSimd(grad_dim, in_length, grad_type, weight_type) || !ht->is_pure_hbm_mode()) {
         constexpr uint32_t kRowsPerGroup = 1U;
         if (LaunchSgdSimd(stream, grads_ptr, values_ptr, founds_ptr, grads_continuous, grad_dim, num_rows, max_cores,
-                          lr, kRowsPerGroup)) {
+                          lr, kRowsPerGroup, grad_type, weight_type)) {
             return;
         } else {
             LOG_ERROR("dynamic_emb_sgd_with_table: LaunchSgdSimd failed!");
             return;
         }
+    }
+
+    if (!IsSupportedOptimizerSimdDtype(grad_type, weight_type)) {
+        LOG_ERROR("dynamic_emb_sgd_with_table: unsupported grad/weight dtype for SGD update.");
+        return;
     }
 
     bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
@@ -2282,13 +2307,19 @@ void dynamic_emb_sgd_fused(const torch::Tensor& grads, const torch::Tensor& valu
     const int32_t num_rows = in_length / static_cast<int32_t>(grad_dim);
     if (ShouldUseOptimizerSimd(grad_dim, in_length, grad_type, val_type)) {
         if (LaunchSgdFusedSimd(stream, grads_ptr, values_ptr, grads_continuous, grad_dim, val_dim, num_rows, max_cores,
-                               lr)) {
+                               lr, grad_type, val_type)) {
             return;
         } else {
             LOG_ERROR("dynamic_emb_sgd_fused: LaunchSgdFusedSimd failed!");
             return;
         }
     }
+
+    if (!IsSupportedOptimizerSimdDtype(grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_sgd_fused: unsupported grad/weight dtype for SGD update.");
+        return;
+    }
+
     bool is_small = (in_length <= SMALL_DATA_THRESHOLD);
     constexpr uint32_t optimizer_kind = static_cast<uint32_t>(OptimizerKind::SGD);
     if (!LaunchUpdateFusedKernelCommon(stream, grads_ptr, values_ptr, grad_dim, val_dim, in_length, max_cores, is_small,
@@ -2319,7 +2350,15 @@ void dynamic_emb_sgd_fused_hybrid(const torch::Tensor& grads, const torch::Tenso
     int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
     const int32_t num_rows = in_length / static_cast<int32_t>(grad_dim);
 
-    LaunchSgdFusedSimd(stream, grads_ptr, values_ptr, grads_continuous, grad_dim, val_dim, num_rows, max_cores, lr);
+    if (!IsSupportedOptimizerSimdDtype(grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_sgd_fused_hybrid: unsupported grad/weight dtype for SGD update.");
+        return;
+    }
+
+    if (!LaunchSgdFusedSimd(stream, grads_ptr, values_ptr, grads_continuous, grad_dim, val_dim, num_rows, max_cores, lr,
+                            grad_type, val_type)) {
+        LOG_ERROR("dynamic_emb_sgd_fused_hybrid: LaunchSgdFusedSimd failed!");
+    }
 }
 
 void lookup_backward(const at::Tensor grad, const at::Tensor unique_buffer, const at::Tensor unique_indices,
