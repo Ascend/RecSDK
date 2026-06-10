@@ -69,6 +69,7 @@
 #include "aclrtlaunch_rowwise_adagrad_fused_simd.h"
 #include "./ops/Rowwise_adagrad_update/rowwise_adagrad_simd_tiling.h"
 #include "dynamic_variable_base.h"
+#include "initializer.h"
 #include "torch_utils.h"
 #include "utils.h"
 #include "./custom_kernel_ops.h"
@@ -2862,5 +2863,23 @@ void bind_dyn_emb_op(py::module& m)
     m.def("lookup_forward_hybrid", &lookup_forward_hybrid, "lookup_forward (hybrid vector path)", py::arg("src"),
           py::arg("dst"), py::arg("offset"), py::arg("inverse"), py::arg("combiner"), py::arg("total_dims"),
           py::arg("accum_dims"), py::arg("ev_size"), py::arg("num_vec"), py::arg("batch_size"));
+
+    py::class_<dyn_emb::CurandStateContext>(m, "CurandStateContext").def(py::init<>());
+
+    m.def("normal_init", &dyn_emb::normal_init, "Normal initializer", py::arg("buffer"), py::arg("indices"),
+          py::arg("curand_state_context"), py::arg("mean"), py::arg("std_dev"));
+
+    m.def("truncated_normal_init", &dyn_emb::truncated_normal_init, "Truncated normal initializer", py::arg("buffer"),
+          py::arg("indices"), py::arg("curand_state_context"), py::arg("mean"), py::arg("std_dev"), py::arg("lower"),
+          py::arg("upper"));
+
+    m.def("uniform_init", &dyn_emb::uniform_init, "Uniform initializer", py::arg("buffer"), py::arg("indices"),
+          py::arg("curand_state_context"), py::arg("lower"), py::arg("upper"));
+
+    m.def("const_init", &dyn_emb::const_init, "Const initializer", py::arg("buffer"), py::arg("indices"),
+          py::arg("value"));
+
+    m.def("debug_init", &dyn_emb::debug_init, "Debug initializer", py::arg("buffer"), py::arg("indices"),
+          py::arg("keys"));
 }
 }  // namespace dyn_emb

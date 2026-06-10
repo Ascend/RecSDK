@@ -35,7 +35,7 @@ inline void CheckAclRet(bool cond, const std::string& msg)
     }
 }
 
-aclTensor* CreateAclTensorFromAtTensor(const at::Tensor& tensor, aclDataType type)
+inline aclTensor* CreateAclTensorFromAtTensor(const at::Tensor& tensor, aclDataType type)
 {
     TORCH_CHECK(tensor.is_contiguous(), "Tensor must be contiguous for ACL");
     const auto& shape = tensor.sizes();
