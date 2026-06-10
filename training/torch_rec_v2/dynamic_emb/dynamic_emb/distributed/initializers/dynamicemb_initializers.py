@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,14 +19,19 @@
 
 
 from typing import Optional
-
-import torch.nn.init as init
+import abc
 
 import torch
 
-import abc
-
 from dynamic_emb.distributed.dynamicemb_config import DynamicEmbInitializerArgs
+from dynamic_emb_extensions import (
+    CurandStateContext,
+    const_init,
+    debug_init,
+    normal_init,
+    truncated_normal_init,
+    uniform_init,
+)
 
 
 class BaseDynamicEmbInitializer(abc.ABC):
@@ -41,13 +48,13 @@ class BaseDynamicEmbInitializer(abc.ABC):
         buffer: torch.Tensor,
         indices: torch.Tensor,
         keys: Optional[torch.Tensor],
-    ) -> None:
-        ...
+    ) -> None: ...
 
 
 class NormalInitializer(BaseDynamicEmbInitializer):
     def __init__(self, args: DynamicEmbInitializerArgs):
         super().__init__(args)
+        self._curand_state = CurandStateContext()
 
     def __call__(
         self,
@@ -55,41 +62,23 @@ class NormalInitializer(BaseDynamicEmbInitializer):
         indices: torch.Tensor,
         keys: Optional[torch.Tensor],  # remove it when debug mode is removed
     ) -> None:
-        init_shape = (len(indices),) + buffer.shape[1:]
-        normal_tensor = torch.normal(
-            mean=self._args.mean,
-            std=self._args.std_dev,
-            size=init_shape,
-            device=buffer.device,
-            dtype=buffer.dtype
-        )
-
-        buffer[indices] = normal_tensor
+        normal_init(buffer, indices, self._curand_state, self._args.mean, self._args.std_dev)
 
 
 class ConstantInitializer(BaseDynamicEmbInitializer):
-    def __init__(self, args: DynamicEmbInitializerArgs):
-        super().__init__(args)
-
     def __call__(
         self,
         buffer: torch.Tensor,
         indices: torch.Tensor,
         keys: Optional[torch.Tensor],  # remove it when debug mode is removed
     ) -> None:
-        init_shape = (len(indices),) + buffer.shape[1:]
-        constant_tensor = torch.full(
-            fill_value=self._args.value,
-            size=init_shape,
-            device=buffer.device,
-            dtype=buffer.dtype
-        )
-        buffer[indices] = constant_tensor
+        const_init(buffer, indices, self._args.value)
 
 
 class UniformInitializer(BaseDynamicEmbInitializer):
     def __init__(self, args: DynamicEmbInitializerArgs):
         super().__init__(args)
+        self._curand_state = CurandStateContext()
 
     def __call__(
         self,
@@ -97,15 +86,13 @@ class UniformInitializer(BaseDynamicEmbInitializer):
         indices: torch.Tensor,
         keys: Optional[torch.Tensor],  # remove it when debug mode is removed
     ) -> None:
-        init_shape = (len(indices),) + buffer.shape[1:]
-        low, high = self._args.lower, self._args.upper
-        uniform_tensor = (high - low) * torch.rand(init_shape, dtype=buffer.dtype, device=buffer.device) + low
-        buffer[indices] = uniform_tensor
+        uniform_init(buffer, indices, self._curand_state, self._args.lower, self._args.upper)
 
 
 class TruncatedNormalInitializer(BaseDynamicEmbInitializer):
     def __init__(self, args: DynamicEmbInitializerArgs):
         super().__init__(args)
+        self._curand_state = CurandStateContext()
 
     def __call__(
         self,
@@ -113,24 +100,18 @@ class TruncatedNormalInitializer(BaseDynamicEmbInitializer):
         indices: torch.Tensor,
         keys: Optional[torch.Tensor],  # remove it when debug mode is removed
     ) -> None:
-        init_shape = (len(indices),) + buffer.shape[1:]
-        trunc_normal_tensor = torch.empty(
-            size=init_shape,
-            device=buffer.device,
-            dtype=buffer.dtype
+        truncated_normal_init(
+            buffer,
+            indices,
+            self._curand_state,
+            self._args.mean,
+            self._args.std_dev,
+            self._args.lower,
+            self._args.upper,
         )
-        init.trunc_normal_(
-            tensor=trunc_normal_tensor,
-            mean=self._args.mean,
-            std=self._args.std_dev
-        )
-        buffer[indices] = trunc_normal_tensor
 
 
 class DebugInitializer(BaseDynamicEmbInitializer):
-    def __init__(self, args: DynamicEmbInitializerArgs):
-        super().__init__(args)
-
     def __call__(
         self,
         buffer: torch.Tensor,
@@ -139,6 +120,4 @@ class DebugInitializer(BaseDynamicEmbInitializer):
     ) -> None:
         if keys is None:
             raise ValueError("DebugInitializer requires keys, but got None.")
-        debug_dividend = 100000
-        debug_tensor = (keys[indices] % debug_dividend).view(-1,1).expand(buffer[indices].shape).to(dtype=buffer.dtype, device=buffer.device)
-        buffer[indices] = debug_tensor
+        debug_init(buffer, indices, keys)

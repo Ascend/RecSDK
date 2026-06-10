@@ -37,9 +37,9 @@ find_package(pybind11 CONFIG REQUIRED)
 
 
 # 收集AscendC自定义算子
-file(GLOB_RECURSE KERNEL_FILES 
-    "csrc/ops/*.cpp" 
-    "csrc/ops/*.cc" 
+file(GLOB_RECURSE KERNEL_FILES
+    "csrc/ops/*.cpp"
+    "csrc/ops/*.cc"
     "csrc/ops/*.cxx"
     "csrc/ops/*.c"
 )
@@ -60,6 +60,7 @@ set_source_files_properties(
     ${CMAKE_CURRENT_SOURCE_DIR}/csrc/dynamic_variable_base.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/csrc/hkv_variable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/csrc/custom_kernel_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/csrc/initializer_kernel_ops.cpp
     PROPERTIES LANGUAGE ASC
 )
 
@@ -67,6 +68,7 @@ add_library(dynamic_variable_base SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/csrc/dynamic_variable_base.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/csrc/hkv_variable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/csrc/custom_kernel_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/csrc/initializer_kernel_ops.cpp
 )
 
 set_target_properties(dynamic_variable_base PROPERTIES
@@ -96,10 +98,10 @@ target_link_libraries(dynamic_variable_base PRIVATE
     dl
     opapi
     nnopbase
-    "${PYTORCH_NPU_INSTALL_PATH}/lib/libtorch_npu.so"                                                                          
-    "${PYTORCH_INSTALL_PATH}/lib/libc10.so"                                                                                    
-    "${PYTORCH_INSTALL_PATH}/lib/libtorch.so"                                                                                  
-    "${PYTORCH_INSTALL_PATH}/lib/libtorch_cpu.so" 
+    "${PYTORCH_NPU_INSTALL_PATH}/lib/libtorch_npu.so"
+    "${PYTORCH_INSTALL_PATH}/lib/libc10.so"
+    "${PYTORCH_INSTALL_PATH}/lib/libtorch.so"
+    "${PYTORCH_INSTALL_PATH}/lib/libtorch_cpu.so"
 )
 
 install(TARGETS dynamic_variable_base
@@ -108,9 +110,9 @@ install(TARGETS dynamic_variable_base
 ## ASC compile end
 
 # 收集主源码文件（排除ops目录）
-file(GLOB_RECURSE MAIN_SOURCE_FILES 
-    "csrc/*.cpp" 
-    "csrc/*.cc" 
+file(GLOB_RECURSE MAIN_SOURCE_FILES
+    "csrc/*.cpp"
+    "csrc/*.cc"
     "csrc/*.cxx"
     "csrc/*.c"
 )
@@ -120,6 +122,7 @@ list(FILTER MAIN_SOURCE_FILES EXCLUDE REGEX ".*ops.*")
 list(REMOVE_ITEM MAIN_SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/csrc/dynamic_variable_base.cpp)
 list(REMOVE_ITEM MAIN_SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/csrc/hkv_variable.cpp)
 list(REMOVE_ITEM MAIN_SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/csrc/custom_kernel_ops.cpp)
+list(REMOVE_ITEM MAIN_SOURCE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/csrc/initializer_kernel_ops.cpp)
 message(STATUS "Main source files: ${MAIN_SOURCE_FILES}")
 
 # 构建主Python扩展
@@ -140,7 +143,7 @@ if(MAIN_SOURCE_FILES)
 
     target_compile_options(${PROJECT_NAME} PRIVATE
         $<BUILD_INTERFACE:$<$<STREQUAL:${RUN_MODE},cpu>:-g>>
-        $<$<NOT:$<BOOL:${ENABLE_COVERAGE}>>: -O2> 
+        $<$<NOT:$<BOOL:${ENABLE_COVERAGE}>>: -O2>
         -Wno-error=unused-variable
         -fvisibility=hidden
         -fvisibility-inlines-hidden
