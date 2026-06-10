@@ -33,7 +33,6 @@ from dynamic_emb.distributed.dynamicemb_config import (
     create_dynamicemb_table,
     get_optimizer_state_dim,
 )
-from dynamic_emb_extensions import InitializerArgs, DynamicEmbDataType, DynamicEmbTable, OptimizerType, SafeCheckMode
 from dynamic_emb.distributed.initializers.dynamicemb_initializers import (
     NormalInitializer,
     UniformInitializer,
@@ -42,6 +41,7 @@ from dynamic_emb.distributed.initializers.dynamicemb_initializers import (
     DebugInitializer,
 )
 from dynamic_emb.distributed.types import Storage
+from dynamic_emb_extensions import InitializerArgs, DynamicEmbDataType, DynamicEmbTable, OptimizerType, SafeCheckMode
 
 
 class TestDynamicEmbPoolingMode:
@@ -105,31 +105,31 @@ class TestDynamicEmbInitializerArgs:
     def test_eq_isinstance_err():
         init_args = DynamicEmbInitializerArgs()
         other_args = "xxxx"
-        assert init_args.__eq__(other_args) is NotImplementedError
+        assert (init_args == other_args) is NotImplementedError
 
     @staticmethod
     def test_eq_normal_ok():
         init_args = DynamicEmbInitializerArgs()
         other_args = DynamicEmbInitializerArgs()
-        assert init_args.__eq__(other_args)
+        assert init_args == other_args
 
     @staticmethod
     def test_eq_not_normal_ok():
         init_args = DynamicEmbInitializerArgs()
         other_args = DynamicEmbInitializerArgs(mode=DynamicEmbInitializerMode.CONSTANT)
-        assert init_args.__eq__(other_args)
+        assert init_args == other_args
 
     @staticmethod
     def test_ne_isinstance_err():
         init_args = DynamicEmbInitializerArgs()
         other_args = "xxx"
-        assert init_args.__ne__(other_args) is NotImplementedError
+        assert (init_args != other_args) is NotImplementedError
 
     @staticmethod
     def test_ne_ok():
         init_args = DynamicEmbInitializerArgs()
         other_args = DynamicEmbInitializerArgs(lower=0.9)
-        assert init_args.__ne__(other_args)
+        assert init_args != other_args
 
 
 class TestDynamicEmbScoreStrategy:
@@ -249,36 +249,84 @@ class TestDynamicEmbTableOptions:
     @staticmethod
     def test_external_storage_requires_caching():
         class MockStorage(Storage):
-            def __init__(self, options, optimizer): pass
-            def find(self, unique_keys, unique_vals, founds=None): pass
-            def find_embeddings(self, unique_keys, unique_embs, founds=None): pass
-            def insert(self, keys, values, scores=None): pass
-            def update(self, keys, grads): pass
-            def enable_update(self): return False
-            def dump(self, meta_file_path, emb_key_path, embedding_file_path, optional_files=None): pass
-            def load(self, meta_file_path, emb_file_path, embedding_file_path, include_optim, optional_files=None): pass
-            def embedding_dtype(self): return torch.float32
-            def embedding_dim(self): return 1
-            def value_dim(self): return 1
-            def init_optimizer_state(self): return 0.0
+            def __init__(self, options, optimizer):
+                pass
+
+            def find(self, unique_keys, unique_vals, founds=None):
+                pass
+
+            def find_embeddings(self, unique_keys, unique_embs, founds=None):
+                pass
+
+            def insert(self, keys, values, scores=None):
+                pass
+
+            def update(self, keys, grads):
+                pass
+
+            def enable_update(self):
+                return False
+
+            def dump(self, meta_file_path, emb_key_path, embedding_file_path, optional_files=None):
+                pass
+
+            def load(self, meta_file_path, emb_file_path, embedding_file_path, include_optim, optional_files=None):
+                pass
+
+            def embedding_dtype(self):
+                return torch.float32
+
+            def embedding_dim(self):
+                return 1
+
+            def value_dim(self):
+                return 1
+
+            def init_optimizer_state(self):
+                return 0.0
+
         with pytest.raises(ValueError):
             DynamicEmbTableOptions(external_storage=MockStorage, caching=False)
 
     @staticmethod
     def test_external_storage_requires_training():
         class MockStorage(Storage):
-            def __init__(self, options, optimizer): pass
-            def find(self, unique_keys, unique_vals, founds=None): pass
-            def find_embeddings(self, unique_keys, unique_embs, founds=None): pass
-            def insert(self, keys, values, scores=None): pass
-            def update(self, keys, grads): pass
-            def enable_update(self): return False
-            def dump(self, meta_file_path, emb_key_path, embedding_file_path, optional_files=None): pass
-            def load(self, meta_file_path, emb_file_path, embedding_file_path, include_optim, optional_files=None): pass
-            def embedding_dtype(self): return torch.float32
-            def embedding_dim(self): return 1
-            def value_dim(self): return 1
-            def init_optimizer_state(self): return 0.0
+            def __init__(self, options, optimizer):
+                pass
+
+            def find(self, unique_keys, unique_vals, founds=None):
+                pass
+
+            def find_embeddings(self, unique_keys, unique_embs, founds=None):
+                pass
+
+            def insert(self, keys, values, scores=None):
+                pass
+
+            def update(self, keys, grads):
+                pass
+
+            def enable_update(self):
+                return False
+
+            def dump(self, meta_file_path, emb_key_path, embedding_file_path, optional_files=None):
+                pass
+
+            def load(self, meta_file_path, emb_file_path, embedding_file_path, include_optim, optional_files=None):
+                pass
+
+            def embedding_dtype(self):
+                return torch.float32
+
+            def embedding_dim(self):
+                return 1
+
+            def value_dim(self):
+                return 1
+
+            def init_optimizer_state(self):
+                return 0.0
+
         with pytest.raises(ValueError):
             DynamicEmbTableOptions(external_storage=MockStorage, caching=True, training=False)
 
@@ -291,25 +339,25 @@ class TestDynamicEmbTableOptions:
     def test_eq_isinstance_err():
         de_table_opt = DynamicEmbTableOptions()
         other_table_opt = "xxx"
-        assert de_table_opt.__eq__(other_table_opt) is NotImplementedError
+        assert (de_table_opt == other_table_opt) is NotImplementedError
 
     @staticmethod
     def test_eq_ok():
         de_table_opt = DynamicEmbTableOptions()
         other_table_opt = DynamicEmbTableOptions()
-        assert de_table_opt.__eq__(other_table_opt)
+        assert de_table_opt == other_table_opt
 
     @staticmethod
     def test_ne_isinstance_err():
         de_table_opt = DynamicEmbTableOptions()
         other_table_opt = "xxx"
-        assert de_table_opt.__ne__(other_table_opt) is NotImplementedError
+        assert (de_table_opt != other_table_opt) is NotImplementedError
 
     @staticmethod
     def test_ne_ok():
         de_table_opt = DynamicEmbTableOptions()
         other_table_opt = DynamicEmbTableOptions()
-        assert not de_table_opt.__ne__(other_table_opt)
+        assert de_table_opt == other_table_opt
 
 
 class TestDistType:
@@ -392,16 +440,23 @@ class TestGetOptimizerStateDim:
         assert get_optimizer_state_dim(OptimizerType.Adam, 8, torch.float32) == (8 * 2)
         assert get_optimizer_state_dim(OptimizerType.AdaGrad, 8, torch.float32) == 8
 
+
 class TestDynamicEmbInitializers:
+    @pytest.fixture(scope="class")
+    def device(self) -> str:
+        return "npu:0"
+
     @pytest.fixture(scope="class")
     def initializer_args(self) -> DynamicEmbInitializerArgs:
         return DynamicEmbInitializerArgs()
+
     @pytest.fixture(scope="class")
-    def test_indices(self) -> torch.Tensor:
-        return torch.tensor([0, 5, 10, 15, 25, 30, 35, 40], dtype=torch.long)
+    def test_indices(self, device) -> torch.Tensor:
+        return torch.tensor([0, 5, 10, 15, 25, 30, 35, 40], dtype=torch.long, device=device)
+
     @pytest.fixture(scope="class")
-    def test_keys(self) -> torch.Tensor:
-        return torch.zeros(100, 8)
+    def test_keys(self, device) -> torch.Tensor:
+        return torch.zeros(100, 8, device=device)
 
     @pytest.mark.parametrize(
         "mode, init_class",
@@ -412,40 +467,41 @@ class TestDynamicEmbInitializers:
             (DynamicEmbInitializerMode.TRUNCATED_NORMAL, TruncatedNormalInitializer),
             (DynamicEmbInitializerMode.DEBUG, DebugInitializer),
         ],
-        ids=["normal", "constant", "uniform", "truncated_normal", "debug"]
+        ids=["normal", "constant", "uniform", "truncated_normal", "debug"],
     )
     def test_initializer_creation(self, initializer_args, mode, init_class):
         initializer_args.mode = mode
         initializer = init_class(initializer_args)
-        assert isinstance(initializer, init_class), \
+        assert isinstance(initializer, init_class), (
             f"create Initializer failed ！expected:{init_class.__name__},actual:{type(initializer).__name__}"
+        )
 
     @pytest.mark.parametrize("constant_value", [0.0, 1.5, -2.0, 3.14])  # 多值测试
-    def test_constant_initializer_value(self, initializer_args, test_indices, test_keys, constant_value):
+    def test_constant_initializer_value(self, initializer_args, test_indices, test_keys, constant_value, device):
         initializer_args.mode = DynamicEmbInitializerMode.CONSTANT
         initializer_args.value = constant_value
         initializer = ConstantInitializer(initializer_args)
-        buffer=torch.zeros(100, 8)
+        buffer = torch.zeros(100, 8, device=device)
         initializer(buffer, test_indices, test_keys)
         init_tensor = buffer[test_indices]
-        assert torch.allclose(init_tensor, torch.tensor(constant_value)), \
-            (f"ConstantInitializer failed！\n"
-             f"expected: {constant_value}\n"
-             f"actual: {init_tensor[0][0].item()}\n"
-             f"range: [{init_tensor.min().item()}, {init_tensor.max().item()}]")
+        assert torch.allclose(init_tensor, torch.tensor(constant_value, device=device)), (
+            f"ConstantInitializer failed！\n"
+            f"expected: {constant_value}\n"
+            f"actual: {init_tensor[0][0].item()}\n"
+            f"range: [{init_tensor.min().item()}, {init_tensor.max().item()}]"
+        )
 
-    def test_debug_initializer_value(self, initializer_args, test_indices):
+    def test_debug_initializer_value(self, initializer_args, test_indices, device):
         initializer_args.mode = DynamicEmbInitializerMode.DEBUG
         initializer = DebugInitializer(initializer_args)
-        device = 0
-        buffer = torch.zeros(100, 8,device=f'npu:{device}')
-        keys=torch.arange(100, dtype=torch.int64, device=f'npu:{device}')*123456+7
+        buffer = torch.zeros(100, 8, device=device)
+        keys = torch.arange(100, dtype=torch.int64, device=device) * 123456 + 7
         initializer(buffer, test_indices, keys)
         init_tensor = buffer[test_indices]
         expected = (keys[test_indices] % 100000).to(dtype=buffer.dtype).view(-1, 1).expand_as(init_tensor)
         assert torch.allclose(init_tensor, expected), "DebugInitializer values error"
-        mask=torch.ones(100, dtype=torch.bool, device=f'npu:{device}')
-        mask[test_indices]=False
+        mask = torch.ones(100, dtype=torch.bool, device=device)
+        mask[test_indices] = False
         assert torch.all(buffer[mask] == 0), "DebugInitializer values should be 0 for unused indices"
 
     @pytest.mark.parametrize(
@@ -458,28 +514,28 @@ class TestDynamicEmbInitializers:
         ],
         ids=["normal", "constant", "uniform", "truncated_normal"],
     )
-    def test_initializer_with_none_keys(self, initializer_args, test_indices, mode, init_class):
+    def test_initializer_with_none_keys(self, initializer_args, test_indices, mode, init_class, device):
         initializer_args.mode = mode
         if mode == DynamicEmbInitializerMode.CONSTANT:
             initializer_args.value = 2.0
         if mode == DynamicEmbInitializerMode.TRUNCATED_NORMAL:
             initializer_args.mean = 0.8
             initializer_args.std_dev = 0.6
-        buffer = torch.zeros(100, 8)
+        buffer = torch.zeros(100, 8, device=device)
         initializer = init_class(initializer_args)
         initializer(buffer, test_indices, None)
         init_tensor = buffer[test_indices]
         if mode == DynamicEmbInitializerMode.CONSTANT:
-            assert torch.allclose(init_tensor, torch.tensor(2.0))
+            assert torch.allclose(init_tensor, torch.tensor(2.0, device=device))
         elif mode == DynamicEmbInitializerMode.UNIFORM:
             assert init_tensor.min() >= 0.0
             assert init_tensor.max() <= 1.0
         else:
             assert not torch.all(init_tensor == 0)
 
-    def test_debug_initializer_none_keys_raises(self, initializer_args, test_indices):
+    def test_debug_initializer_none_keys_raises(self, initializer_args, test_indices, device):
         initializer_args.mode = DynamicEmbInitializerMode.DEBUG
         initializer = DebugInitializer(initializer_args)
-        buffer = torch.zeros(100, 8)
+        buffer = torch.zeros(100, 8, device=device)
         with pytest.raises(ValueError, match="DebugInitializer requires keys"):
             initializer(buffer, test_indices, None)
