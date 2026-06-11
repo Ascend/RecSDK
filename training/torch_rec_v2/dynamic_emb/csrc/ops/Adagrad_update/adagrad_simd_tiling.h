@@ -18,13 +18,15 @@ See the License for the specific language governing permissions and
 
 #pragma pack(push, 1)
 struct AdagradSimdTilingData {
-    uint32_t gradDim {};
-    uint32_t valDim {};
-    int32_t numRows {};
-    float lr {};
-    float eps {};
-    int32_t needCoreNum {};
-    uint32_t rowsPerGroup {};
+    uint32_t gradDim{};
+    uint32_t valDim{};
+    int32_t numRows{};
+    float lr{};
+    float eps{};
+    int32_t needCoreNum{};
+    uint32_t rowsPerGroup{};
+    uint32_t gradType{};
+    uint32_t weightType{};
 };
 #pragma pack(pop)
-static_assert(sizeof(AdagradSimdTilingData) == 28U, "AdagradSimdTilingData packed layout");
+static_assert(sizeof(AdagradSimdTilingData) == 36U, "AdagradSimdTilingData packed layout");

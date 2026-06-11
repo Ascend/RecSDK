@@ -145,6 +145,8 @@ def test_dynamic_emb_adagrad_with_pointer(device, batch_size, embedding_dim, opt
     ("grad_type", "eps"),
     [
         (torch.float32, 1e-8),
+        (torch.float16, 1e-4),
+        (torch.bfloat16, 1e-8),
     ],
 )
 def test_dynamic_emb_adagrad_with_pointer_hybrid(device, batch_size, embedding_dim, opt_params, iter_num, grad_type):
@@ -417,6 +419,8 @@ def test_dynamic_emb_adagrad_fused(device, batch_size, embedding_dim, opt_params
     ("grad_type", "eps"),
     [
         (torch.float32, 1e-8),
+        (torch.float16, 1e-4),
+        (torch.bfloat16, 1e-8),
     ],
 )
 def test_dynamic_emb_adagrad_fused_hybrid(device, batch_size, embedding_dim, opt_params, iter_num, grad_type):

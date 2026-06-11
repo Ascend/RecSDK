@@ -258,21 +258,36 @@ static bool ShouldUseOptimizerSimd(uint32_t gradDim, int32_t inLength, DataType 
            IsSupportedOptimizerSimdDtype(gradType, valType);
 }
 
+static bool IsAdagradSimdDtype(DataType dtype)
+{
+    return dtype == DataType::Float32 || dtype == DataType::Float16 || dtype == DataType::BFloat16;
+}
+
+static uint32_t AdagradSimdRowsPerGroup(DataType gradType, DataType valType)
+{
+    return (gradType == DataType::Float32 && valType == DataType::Float32) ? 2U : 1U;
+}
+
 static bool ShouldUseAdagradSimd(uint32_t gradDim, int32_t inLength, DataType gradType, DataType valType,
                                  const std::shared_ptr<dyn_emb::DynamicVariableBase> ht = nullptr)
 {
     if (ht != nullptr && !ht->is_pure_hbm_mode()) {
         return true;
     }
-    const bool typesOk = (gradType == DataType::Float32) && (valType == DataType::Float32);
-    return typesOk && (gradDim > 512U) && (gradDim % 8U == 0U) &&
-           (static_cast<int64_t>(inLength) >= kAdagradSimdElemThreshold);
+    return (gradDim > 512U) && (gradDim % 8U == 0U) && (static_cast<int64_t>(inLength) >= kAdagradSimdElemThreshold);
 }
 
 static bool LaunchAdagradSimdTiling(const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim,
                                     int32_t numRows, int32_t maxCores, float lr, float eps, uint32_t rowsPerGroup,
-                                    int32_t& coreNumOut, at::Tensor& tilingNpuOut)
+                                    DataType gradType, DataType weightType, int32_t& coreNumOut,
+                                    at::Tensor& tilingNpuOut)
 {
+    if (!IsAdagradSimdDtype(gradType) || !IsAdagradSimdDtype(weightType)) {
+        LOG_ERROR("LaunchAdagradSimdTiling: unsupported grad/weight dtype for Adagrad SIMD. "
+                  "Supported: Float32, Float16, BFloat16.");
+        return false;
+    }
+
     const int32_t numGroups = (numRows + static_cast<int32_t>(rowsPerGroup) - 1) / static_cast<int32_t>(rowsPerGroup);
     coreNumOut = static_cast<int32_t>(
         std::max<int64_t>(1, std::min<int64_t>(static_cast<int64_t>(maxCores), static_cast<int64_t>(numGroups))));
@@ -285,6 +300,8 @@ static bool LaunchAdagradSimdTiling(const at::Tensor& gradsContinuous, uint32_t 
     tilingData.eps = eps;
     tilingData.needCoreNum = coreNumOut;
     tilingData.rowsPerGroup = rowsPerGroup;
+    tilingData.gradType = static_cast<uint32_t>(gradType);
+    tilingData.weightType = static_cast<uint32_t>(weightType);
 
     at::Tensor tilingHost = at::empty({static_cast<int64_t>(sizeof(AdagradSimdTilingData))},
                                       at::TensorOptions().dtype(at::kByte).device(at::kCPU));
@@ -297,13 +314,14 @@ static bool LaunchAdagradSimdTiling(const at::Tensor& gradsContinuous, uint32_t 
 
 static bool LaunchAdagradFusedSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* valuesPtr,
                                    const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim,
-                                   int32_t numRows, int32_t maxCores, float lr, float eps)
+                                   int32_t numRows, int32_t maxCores, float lr, float eps, DataType gradType,
+                                   DataType weightType)
 {
-    constexpr uint32_t kRowsPerGroup = 2U;
+    const uint32_t rowsPerGroup = AdagradSimdRowsPerGroup(gradType, weightType);
     int32_t coreNum = 0;
     at::Tensor tilingNpu;
-    if (!LaunchAdagradSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, lr, eps, kRowsPerGroup, coreNum,
-                                 tilingNpu)) {
+    if (!LaunchAdagradSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, lr, eps, rowsPerGroup, gradType,
+                                 weightType, coreNum, tilingNpu)) {
         return false;
     }
     ACLRT_LAUNCH_KERNEL(adagrad_fused_simd)
@@ -313,13 +331,13 @@ static bool LaunchAdagradFusedSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_
 
 static bool LaunchAdagradSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* rowPtrsPtr, uint8_t* foundsPtr,
                               const at::Tensor& gradsContinuous, uint32_t gradDim, int32_t numRows, int32_t maxCores,
-                              float lr, float eps, uint32_t rowsPerGroup)
+                              float lr, float eps, uint32_t rowsPerGroup, DataType gradType, DataType weightType)
 {
     const uint32_t valDim = gradDim * 2U;
     int32_t coreNum = 0;
     at::Tensor tilingNpu;
     TORCH_CHECK(LaunchAdagradSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, lr, eps, rowsPerGroup,
-                                        coreNum, tilingNpu),
+                                        gradType, weightType, coreNum, tilingNpu),
                 "LaunchAdagradSimd: LaunchAdagradSimdTiling failed.");
     ACLRT_LAUNCH_KERNEL(adagrad_simd)
     (coreNum, stream, gradsPtr, rowPtrsPtr, foundsPtr, static_cast<uint8_t*>(tilingNpu.data_ptr()));
@@ -1656,9 +1674,9 @@ void dynamic_emb_adagrad_with_pointer(const torch::Tensor& grads, const torch::T
     auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
     const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
     if (ShouldUseAdagradSimd(gradDim, inLength, gradType, valType)) {
-        constexpr uint32_t kRowsPerGroup = 2U;
+        const uint32_t rowsPerGroup = AdagradSimdRowsPerGroup(gradType, valType);
         if (LaunchAdagradSimd(stream, gradsPtr, valuesPtr, nullptr, gradsContinuous, gradDim, numRows, maxCores, lr,
-                              eps, kRowsPerGroup)) {
+                              eps, rowsPerGroup, gradType, valType)) {
             return;
         }
     }
@@ -1862,7 +1880,7 @@ void dynamic_emb_adagrad_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase
     if (ShouldUseAdagradSimd(gradDim, inLength, gradType, weightType, ht)) {
         constexpr uint32_t kRowsPerGroup = 1U;
         if (LaunchAdagradSimd(stream, gradsPtr, valuesPtr, foundsPtr, gradsContinuous, gradDim, numRows, maxCores, lr,
-                              eps, kRowsPerGroup)) {
+                              eps, kRowsPerGroup, gradType, weightType)) {
             return;
         }
     }
@@ -2050,7 +2068,7 @@ void dynamic_emb_adagrad_fused(const torch::Tensor& grads, const torch::Tensor& 
     const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
     if (ShouldUseAdagradSimd(gradDim, inLength, gradType, valType)) {
         if (LaunchAdagradFusedSimd(stream, gradsPtr, valuesPtr, gradsContinuous, gradDim, valDim, numRows, maxCores, lr,
-                                   eps)) {
+                                   eps, gradType, valType)) {
             return;
         }
     }
@@ -2429,9 +2447,10 @@ void dynamic_emb_adagrad_with_pointer_hybrid(const torch::Tensor& grads, const t
 
     int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
     const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
-    constexpr uint32_t kRowsPerGroup = 2U;
+    auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
+    const uint32_t rowsPerGroup = AdagradSimdRowsPerGroup(gradType, valType);
     LaunchAdagradSimd(stream, gradsPtr, valuesPtr, nullptr, gradsContinuous, gradDim, numRows, maxCores, lr, eps,
-                      kRowsPerGroup);
+                      rowsPerGroup, gradType, valType);
 }
 
 void dynamic_emb_adagrad_fused_hybrid(const torch::Tensor& grads, const torch::Tensor& values, const float lr,
@@ -2452,14 +2471,15 @@ void dynamic_emb_adagrad_fused_hybrid(const torch::Tensor& grads, const torch::T
 
     auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
     auto valType = scalartype_to_datatype(convertTypeMetaToScalarType(values.dtype()));
-    if (gradType != DataType::Float32 || valType != DataType::Float32) {
-        LOG_ERROR("dynamic_emb_adagrad_fused_hybrid: only float32 is supported.");
+    if (!IsAdagradSimdDtype(gradType) || !IsAdagradSimdDtype(valType)) {
+        LOG_ERROR("dynamic_emb_adagrad_fused_hybrid: unsupported grad/weight dtype.");
         return;
     }
 
     int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
     const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
-    LaunchAdagradFusedSimd(stream, gradsPtr, valuesPtr, gradsContinuous, gradDim, valDim, numRows, maxCores, lr, eps);
+    LaunchAdagradFusedSimd(stream, gradsPtr, valuesPtr, gradsContinuous, gradDim, valDim, numRows, maxCores, lr, eps,
+                           gradType, valType);
 }
 
 static int64_t ReadOffsetBaseScalar(const at::Tensor& offsetContinuous)
