@@ -9,8 +9,8 @@ export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 # train job related
 #---------------------------------------------
 export OMP_NUM_THREADS=12
-export WORLD_SIZE=8
-export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export WORLD_SIZE=2
+export ASCEND_RT_VISIBLE_DEVICES=0,1
 
 #---------------------------------------------
 # prof related
@@ -35,7 +35,13 @@ export GLOBAL_BATCH_SIZE=16384
 # 为快速验证,默认训练、测试步数分别为2000和500。如果希望按数据集全部训练,启动脚本时不传入此变量即可。
 export LIMIT_TRAIN_BATCHES=2000
 export LIMIT_TEST_BATCHES=500
-FEATURE_NUM=$((40000000 * ${WORLD_SIZE} / 8))
+
+MAX_FEATURE_NUM=40000000 # 最大的稀疏表4千万,如果卡较少自动调小，以防切分后内存不够用。
+if [ "$WORLD_SIZE" -lt 4 ]; then
+    export MAX_FEATURE_NUM=20000000
+fi
+
+FEATURE_NUM=$((${MAX_FEATURE_NUM} * ${WORLD_SIZE} / 8))
 
 function run_dlrm_model(){
   torchx run -s local_cwd dist.ddp -j 1x${WORLD_SIZE} --script dlrm_main.py -- \

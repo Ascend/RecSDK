@@ -23,9 +23,13 @@
 
 ## dlrm源码适配
 
-进入**dlrm目录**，下载开源模型代码，并应用patch文件，将开源模型从TorchRec开源框架迁移到基于昇腾NPU的Rec SDK Torch框架。
+克隆当前分支代码，进入**RecSDK/torch_examples/dlrm目录**，下载开源模型代码，并应用patch文件，将开源模型从TorchRec开源框架迁移到基于昇腾NPU的Rec SDK Torch框架。
 
 ```shell
+# 克隆当前分支
+git clone -b develop_examples_and_tools https://gitcode.com/Ascend/RecSDK.git
+cd RecSDK/torch_examples/dlrm
+# 模型源码适配
 git clone -b main https://github.com/facebookresearch/dlrm.git
 cd dlrm && git checkout b631a99
 cp -f ../dlrm_npu.patch ./
@@ -82,17 +86,16 @@ day_23_labels.npy
 
 ## 修改脚本并运行
 
-1.修改run.sh文件中的如下参数
+1.修改**RecSDK/torch_examples/dlrm**目录下run.sh文件中的如下参数
 
 ```shell
 # 环境参数配置说明（根据实际情况修改）
-export PREPROCESSED_DATASET="/path/to/data"                                           # 数据集文件路径
-export WORLD_SIZE=8                                                                   # 运行npu卡数，默认8卡
-export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7                                      # 可用npu卡编号，与WORLD_SIZE数量保持一致
+export PREPROCESSED_DATASET="/path/to/data"                                          # 数据集文件路径
+export WORLD_SIZE=2                                                                  # 运行npu卡数，默认2卡
+export ASCEND_RT_VISIBLE_DEVICES=0,1                                                 # 可用npu卡编号，与WORLD_SIZE数量保持一致
 ```
 
-说明：本样例默认的参数设置支持8卡 * 64G设备运行,如果设备可用卡数或内存不满足时可通过修改模型参数让模型正常执行。
-例如：1.使用4卡或2卡运行；2.减小参数embedding_dim、dcn_low_rank_dim值；3.减小参数num_embeddings_per_feature中大稀疏表的FEATURE_NUM值等方法。
+说明：本样例默认使用随机生成数据集在2卡(0,1)环境运行。若使用官网数据集训练，设备需满足8卡 * 64G环境,并修改run.sh中WORLD_SIZE和ASCEND_RT_VISIBLE_DEVICES环境变量：`export WORLD_SIZE=8`, `export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7`。
 
 2.拷贝run.sh文件到开源模型代码dlrm/torchrec_dlrm目录下
 
@@ -130,11 +133,9 @@ MODES="embcache"
 
 ## 精度、性能对比
 
-为与开源模型比较性能和精度，模型的默认配置参数不建议修改，对比结果如下表所示。
+说明：为与开源模型比较性能和精度，模型需基于8卡环境运行。其中NPU测试结果为x86环境上且使用官网数据集并配置run.sh中的`MODES="hybrid_torchrec"`模式的测试结果。GPU测试数据参考[开源模型社区](https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/) 。 对比结果如下表所示：
 
 | Device Type | Number of GPUs/NPUs |Collective Size of Embedding Tables (GiB)|Local Batch Size|Global Batch Size|Learning Rate|Interaction Type|Optimizer| AUROC Over Test Set After 1 Epoch | Training speed                        | Time to Train 1 Epoch |Unique Flags|
 |-------------|---------------------| --- | --- | --- | --- | --- | --- |-----------------------------------|---------------------------------------|-----------------------| --- |
 | GPU         | 8                   |104.54|2,048|16,384|0.006|DCN v2|Adagrad| 0.7973                            | ~55.0 batches/s == ~901,120 samples/s | 1h20m21s              |`--batch_size 2048 --learning_rate 0.006 --adagrad --interaction_type=dcn` |
 | NPU         | 8                   |104.54|2,048|16,384|0.006|DCN v2|Adagrad| 0.7975                            | ~59.0 batches/s == ~966,656 samples/s | 1h12m03s              |`--batch_size 2048 --learning_rate 0.006 --adagrad --interaction_type=dcn`|
-
-说明：NPU测试结果为x86环境上的测试结果，且使用官网数据集并配置run.sh中的`MODES=("hybrid_torchrec")`模式。GPU测试数据参考[开源模型社区](https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/) 。
