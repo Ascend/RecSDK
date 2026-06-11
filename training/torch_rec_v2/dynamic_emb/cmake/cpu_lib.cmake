@@ -4,6 +4,9 @@ endif()
 find_package(tikicpulib REQUIRED)
 
 add_library(ascendc_kernels_${RUN_MODE} SHARED ${KERNEL_FILES})
+target_include_directories(ascendc_kernels_${RUN_MODE} PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/ops"
+)
 target_link_libraries(ascendc_kernels_${RUN_MODE} PUBLIC tikicpulib::${SOC_VERSION})
 target_compile_options(ascendc_kernels_${RUN_MODE} PRIVATE -g -O0 -std=c++17)
 install(TARGETS dynamic_emb_op_${RUN_MODE} DESTINATION ${CMAKE_INSTALL_LIBDIR})

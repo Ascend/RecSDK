@@ -61,12 +61,28 @@ __aicore__ inline void SyncMte2V()
     WaitFlag<HardEvent::MTE2_V>(e);
 }
 
+__aicore__ inline void SyncVMte2()
+{
+    using namespace AscendC;
+    event_t e = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+    SetFlag<HardEvent::V_MTE2>(e);
+    WaitFlag<HardEvent::V_MTE2>(e);
+}
+
 __aicore__ inline void SyncVMte3()
 {
     using namespace AscendC;
     event_t e = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
     SetFlag<HardEvent::V_MTE3>(e);
     WaitFlag<HardEvent::V_MTE3>(e);
+}
+
+__aicore__ inline void SyncMte3V()
+{
+    using namespace AscendC;
+    event_t e = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+    SetFlag<HardEvent::MTE3_V>(e);
+    WaitFlag<HardEvent::MTE3_V>(e);
 }
 
 __aicore__ inline void SyncMte3Mte2()
