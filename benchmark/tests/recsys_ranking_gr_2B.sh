@@ -55,7 +55,7 @@ export NPU_PROFILE=1
 #---------------------------------------------
 # precision config
 #---------------------------------------------
-export PRECISION_FLAG=1
+export PRECISION_FLAG=0
 
 #---------------------------------------------
 # train job related
@@ -71,6 +71,7 @@ MICRO_BATCH_SIZE=32
 GLOBAL_BATCH_SIZE=$((WORLD_SIZE * MICRO_BATCH_SIZE))
 export CUDA_DEVICE_MAX_CONNECTIONS=2 # 与mindspeed文档保持一致，默认值为2
 export GR_2B=1
+export HCCL_BUFFERSIZE=128
 
 GPT_ARGS="
   --num-layers 15 \

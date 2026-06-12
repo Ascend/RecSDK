@@ -360,7 +360,7 @@ index 1a256dd..c0f5744 100644
  
              contextual_features: Dict[str, List[int]] = defaultdict(list)
 diff --git a/examples/hstu/distributed/sharding.py b/examples/hstu/distributed/sharding.py
-index b564988..efa1f6f 100644
+index b564988..16521f6 100644
 --- a/examples/hstu/distributed/sharding.py
 +++ b/examples/hstu/distributed/sharding.py
 @@ -14,25 +14,16 @@
@@ -510,6 +510,15 @@ index b564988..efa1f6f 100644
  
  def apply_megatron_ddp(
      model: Union[DistributedModelParallel, torch.nn.Module],
+@@ -89,7 +188,7 @@ def apply_megatron_ddp(
+     ddp_config = DistributedDataParallelConfig(
+         grad_reduce_in_fp32=True,
+         overlap_grad_reduce=False,
+-        use_distributed_optimizer=False,
++        use_distributed_optimizer=True,
+         check_for_nan_in_grad=False,
+         bucket_size=True,
+     )
 @@ -260,10 +359,11 @@ def apply_dmp(
          )
      )
@@ -526,7 +535,7 @@ index b564988..efa1f6f 100644
          DynamicEmbeddingCollectionSharder(
              qcomm_codecs_registry=qcomm_codecs_registry,
              use_index_dedup=True,
-@@ -280,11 +380,10 @@ def apply_dmp(
+@@ -280,7 +380,6 @@ def apply_dmp(
      with tensor_parallel.get_cuda_rng_tracker().fork("sharded-embedding-group-seed"):
          model = DistributedModelParallel(
              module=model,
@@ -534,11 +543,6 @@ index b564988..efa1f6f 100644
              device=device,
              sharders=sharders,
              plan=plan,
--            init_data_parallel=False,
-+            init_data_parallel=True, # 开启数据并行
-         )
- 
-     # Create keyed optimizer
 @@ -334,7 +433,7 @@ def make_optimizer_and_shard(
      pg: torch.distributed.ProcessGroup = None,
  ) -> Tuple[DistributedModelParallel, torch.optim.Optimizer]:
@@ -1675,75 +1679,16 @@ index 52fb3b3..f6e7337 100644
                  high_inds=high_inds,
 diff --git a/examples/hstu/modules/sparse_moe.py b/examples/hstu/modules/sparse_moe.py
 new file mode 100644
-index 0000000..af32e36
+index 0000000..39c087d
 --- /dev/null
 +++ b/examples/hstu/modules/sparse_moe.py
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,165 @@
 +import os
 +import torch
 +import torch.nn.functional as F
 +import torch_npu
 +from torch.autograd import Function
-+
-+class NPUGroupedMatmulFunction(Function):
-+    @staticmethod
-+    def forward(ctx, x, weight_stacked, scale, group_list, split_item, group_list_type, group_type, output_dtype):
-+        ctx.save_for_backward(x, weight_stacked)
-+        ctx.group_list = group_list
-+        ctx.split_item = split_item
-+        ctx.group_list_type = group_list_type
-+        ctx.group_type = group_type
-+        ctx.output_dtype = output_dtype
-+        weight_T = weight_stacked.transpose(1, 2)
-+        return torch_npu.npu_grouped_matmul(
-+            x=[x],
-+            weight=[weight_T],
-+            scale=scale,
-+            group_list=group_list,
-+            split_item=split_item,
-+            group_list_type=group_list_type,
-+            group_type=group_type,
-+            output_dtype=output_dtype,
-+        )[0]
-+
-+    @staticmethod
-+    def backward(ctx, grad_output):
-+        x, weight_stacked = ctx.saved_tensors
-+        group_list = ctx.group_list
-+        split_item = ctx.split_item
-+        group_list_type = ctx.group_list_type
-+        group_type = ctx.group_type
-+        output_dtype = ctx.output_dtype
-+
-+        # x_grad = grad_output @ weight_list.T
-+        x_grad = torch_npu.npu_grouped_matmul(
-+            x=[grad_output],
-+            weight=[weight_stacked],
-+            scale=None,
-+            group_list=group_list,
-+            split_item=2,
-+            group_list_type=1,
-+            group_type=0,
-+            output_dtype=output_dtype,
-+        )[0]
-+
-+        # gmm 单单单，右矩阵必须为三维，暂时不支持，退化回普通mm
-+        # grad_weight_i = grad_output.T @ x_i
-+        num_experts = weight_stacked.shape[0]
-+        weight_stacked_grad = torch.empty_like(weight_stacked)
-+        group_cumsum = torch.cumsum(group_list, dim=0)
-+        start_idx = 0
-+        for i in range(num_experts):
-+            end_idx = group_cumsum[i].item()
-+            x_i = x[start_idx:end_idx]
-+            grad_out_i = grad_output[start_idx:end_idx]
-+            weight_stacked_grad[i] = torch.mm(grad_out_i.T, x_i)
-+            start_idx = end_idx
-+        
-+        return x_grad, weight_stacked_grad, None, None, None, None, None, None
-+
-+def npu_grouped_matmul(x, weight_stacked, scale, group_list, split_item, group_list_type, group_type, output_dtype):
-+    return NPUGroupedMatmulFunction.apply(x, weight_stacked, scale, group_list, split_item, group_list_type, group_type,        output_dtype)
++from mindspeed.ops import gmm
 +
 +class SparseMOE(torch.nn.Module):
 +    def __init__(
@@ -1779,40 +1724,27 @@ index 0000000..af32e36
 +
 +    def compute_ffn_with_grouped_matmul(self, expanded_x, w1_list, w2_list, w3_list, group_list):
 +        # w1(x): 投影到隐藏维度
-+        w1_out = npu_grouped_matmul(
++        w1_out = gmm.npu_gmm_v2(
 +            x=expanded_x,
-+            weight_stacked=w1_list,
-+            scale=None,
++            weight=w1_list.transpose(-1, -2),
 +            group_list=group_list,
-+            split_item=2,
-+            group_list_type=1,
-+            group_type=0,
-+            output_dtype=self.dtype,
++            group_type=0
 +        )
 +
-+        w3_out = npu_grouped_matmul(
++        w3_out = gmm.npu_gmm_v2(
 +            x=expanded_x,
-+            weight_stacked=w3_list,
-+            scale=None,
++            weight=w3_list.transpose(-1, -2),
 +            group_list=group_list,
-+            split_item=2,
-+            group_list_type=1,
-+            group_type=0,
-+            output_dtype=self.dtype,
++            group_type=0
 +        )
-+
 +        gate = F.silu(w1_out)
 +        combined = gate * w3_out
 +
-+        w2_out = npu_grouped_matmul(
++        w2_out = gmm.npu_gmm_v2(
 +            x=combined,
-+            weight_stacked=w2_list,
-+            scale=None,
++            weight=w2_list.transpose(-1, -2),
 +            group_list=group_list,
-+            split_item=2,
-+            group_list_type=1,
-+            group_type=0,
-+            output_dtype=self.dtype,
++            group_type=0
 +        )
 +
 +        return w2_out
@@ -1942,7 +1874,7 @@ index d8e8d33..dcfd07b 100644
  RankingArgs.prediction_head_arch = [512, 10]
 diff --git a/examples/hstu/movielen_ranking_2B.gin b/examples/hstu/movielen_ranking_2B.gin
 new file mode 100644
-index 0000000..1bb4c94
+index 0000000..a846b93
 --- /dev/null
 +++ b/examples/hstu/movielen_ranking_2B.gin
 @@ -0,0 +1,42 @@
@@ -1957,9 +1889,9 @@ index 0000000..1bb4c94
 +TrainerArgs.pipeline_type = "none" # NPU 目前不支持流水线
 +
 +DatasetArgs.dataset_name = 'ml-20m'
-+DatasetArgs.max_sequence_length = 200
++DatasetArgs.max_sequence_length = 1000
 +DatasetArgs.shuffle = True
-+DatasetArgs.max_num_candidates = 20
++DatasetArgs.max_num_candidates = 100
 +
 +NetworkArgs.dtype_str = "bfloat16"
 +NetworkArgs.num_layers = 15

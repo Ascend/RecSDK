@@ -24,7 +24,7 @@ export PYTHONPATH=${PYTHONPATH}:${RECSYS_DIR}:${HSTU_DIR}:${MEGATRON_DIR}
 #---------------------------------------------
 # prof related
 #---------------------------------------------
-export GPU_PROFILE=0
+export GPU_PROFILE=1
 
 #---------------------------------------------
 # precision config
