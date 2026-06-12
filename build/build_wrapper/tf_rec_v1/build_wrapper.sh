@@ -32,6 +32,8 @@ for file in {"setup.py","MANIFEST.in","requirements.txt"}; do
         exit 1
     fi
 done
+cp ../../_setup_common.py "$BUILD_DIR/" || { echo "Error: Cannot find _setup_common.py"; exit 1; }
+echo "Copied: _setup_common.py"
 
 # 1. 准备开源依赖 (opensource)
 OPENSOURCE_DIR="../../../../../opensource"
@@ -90,19 +92,19 @@ while IFS= read -r op || [[ -n "$op" ]]; do
     if [[ -n "$op" ]] && [[ "$op" != "#"* ]]; then
         # 算子目录名（对应 op_requirements.txt 中的行）
         op_dir_name=$op
-        
+
         # 对应的算子源码路径 (基于 run.sh 逻辑，构建产物在 v220/算子名/build_out 下)
         op_src_path="../../../../cust_op/ascendc_op/ai_core_op/${op_dir_name}/v220"
-        
+
         if [ ! -d "$op_src_path" ]; then
             echo "Warning: Operator source $op_src_path not found, skipping $op"
             continue
         fi
-        
+
         echo "Compiling $op_dir_name for Ascend910B1 (A2-TF)..."
         source /usr/local/set_cann_env.sh a2
         (cd "$op_src_path" && bash ./run.sh --ai-core ai_core-Ascend910B1 || echo "Warning: Compilation failed for A2")
-        
+
         # 收集编译出的 .run 产物
         gen_run_file=$(find "$op_src_path/${op_dir_name}/build_out" -type f -name "custom_opp*.run" 2>/dev/null | head -n 1)
         if [ -n "$gen_run_file" ]; then
@@ -115,7 +117,7 @@ while IFS= read -r op || [[ -n "$op" ]]; do
         echo "Compiling $op_dir_name for Ascend910_93 (A3)..."
         source /usr/local/set_cann_env.sh a3
         (cd "$op_src_path" && bash ./run.sh --ai-core ai_core-Ascend910_93 || echo "Warning: Compilation failed for A3")
-        
+
         gen_run_file_a3=$(find "$op_src_path/${op_dir_name}/build_out" -type f -name "custom_opp*.run" 2>/dev/null | head -n 1)
         if [ -n "$gen_run_file_a3" ]; then
             cp "$gen_run_file_a3" "$BUILD_DIR/npu-ops/A3/recsdk-npu-ops/recsdk_ops/mxrec_opp_${op}.run"
@@ -126,12 +128,12 @@ while IFS= read -r op || [[ -n "$op" ]]; do
 
         # 对应的 A5 (c310) 算子源码路径
         op_src_path_a5="../../../../cust_op/ascendc_op/ai_core_op/${op_dir_name}/c310"
-        
+
         if [ -d "$op_src_path_a5" ]; then
             echo "Compiling $op_dir_name for Ascend950 (A5)..."
             source /usr/local/set_cann_env.sh a5
             (cd "$op_src_path_a5" && bash ./run.sh --ai-core ai_core-Ascend950 || echo "Warning: Compilation failed for A5")
-            
+
             gen_run_file_a5=$(find "$op_src_path_a5/${op_dir_name}/build_out" -type f -name "custom_opp*.run" 2>/dev/null | head -n 1)
             if [ -n "$gen_run_file_a5" ]; then
                 cp "$gen_run_file_a5" "$BUILD_DIR/npu-ops/A5/recsdk-npu-ops/recsdk_ops/mxrec_opp_${op}.run"

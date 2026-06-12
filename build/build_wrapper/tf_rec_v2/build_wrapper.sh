@@ -68,6 +68,8 @@ for file in {"setup.py","MANIFEST.in","requirements.txt"}; do
         exit 1
     fi
 done
+cp ../../_setup_common.py "$BUILD_DIR/" || { echo "Error: Cannot find _setup_common.py"; exit 1; }
+echo "Copied: _setup_common.py"
 
 # 1. 准备开源依赖 (opensource)
 OPENSOURCE_DIR="../../../../../opensource"
@@ -118,15 +120,15 @@ while IFS= read -r op || [[ -n "$op" ]]; do
     op=$(echo "$op" | tr -d '\r' | xargs)
     if [[ -n "$op" ]] && [[ "$op" != "#"* ]]; then
         op_dir_name=$op
-        
+
         # 对应的 A5 (c310) 算子源码路径
         op_src_path_a5="../../../../cust_op/ascendc_op/ai_core_op/${op_dir_name}/c310"
-        
+
         if [ -d "$op_src_path_a5" ]; then
             echo "Compiling $op_dir_name for Ascend950 (A5)..."
             source /usr/local/set_cann_env.sh a5
             (cd "$op_src_path_a5" && bash ./run.sh --ai-core ai_core-Ascend950 || echo "Warning: Compilation failed for A5")
-            
+
             gen_run_file_a5=$(find "$op_src_path_a5/${op_dir_name}/build_out" -type f -name "custom_opp*.run" 2>/dev/null | head -n 1)
             if [ -n "$gen_run_file_a5" ]; then
                 cp "$gen_run_file_a5" "$BUILD_DIR/npu-ops/A5/recsdk-npu-ops/recsdk_ops/mxrec_opp_${op}.run"

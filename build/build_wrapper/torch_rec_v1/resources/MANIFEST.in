@@ -1,2 +1,3 @@
 recursive-include mindxsdk-torchrec *.whl
 include requirements.txt
+include _setup_common.py

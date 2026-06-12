@@ -41,6 +41,8 @@ for file in {"setup.py","MANIFEST.in","requirements.txt"}; do
         exit 1
     fi
 done
+cp ../../_setup_common.py "$BUILD_DIR/" || { echo "Error: Cannot find _setup_common.py"; exit 1; }
+echo "Copied: _setup_common.py"
 
 # 1. 准备开源依赖 (opensource)
 OPENSOURCE_DIR="../../../../../opensource"
