@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
@@ -34,7 +35,9 @@ from dynamic_emb.distributed.dynamicemb_config import (
 )
 from dynamic_emb_extensions import (
     dynamic_emb_adagrad_fused,
+    dynamic_emb_adagrad_fused_hybrid,
     dynamic_emb_adagrad_with_pointer,
+    dynamic_emb_adagrad_with_pointer_hybrid,
     dynamic_emb_adagrad_with_table,
     DynamicEmbDataType,
 )
@@ -61,7 +64,7 @@ class AdagradDynamicEmbeddingOptimizer(BaseDynamicEmbeddingOptimizer):
         grads: List[torch.Tensor],
     ) -> None:
         for ht in hashtables:
-            if ht not in self._table_state_map.keys():
+            if ht not in self._table_state_map:
                 raise ValueError(
                     f"DynamicEmb ERROR: Hashtable {ht} not found in _table_state_map in class {self.__class__.__name__}."
                 )
@@ -78,9 +81,7 @@ class AdagradDynamicEmbeddingOptimizer(BaseDynamicEmbeddingOptimizer):
 
             weight_dtype = torch_to_dyn_emb(table_option.embedding_dtype)
 
-            dynamic_emb_adagrad_with_table(
-                ht, num_indice, indice, grad, lr, eps, weight_dtype
-            )
+            dynamic_emb_adagrad_with_table(ht, num_indice, indice, grad, lr, eps, weight_dtype)
 
     def get_opt_args(self):
         ret_args = {
@@ -98,16 +99,9 @@ class AdagradDynamicEmbeddingOptimizer(BaseDynamicEmbeddingOptimizer):
         self._opt_args.initial_accumulator_value = initial_value
         for table in self._state_dict["Gt"]:
             table.set_initial_optstate(initial_value)
-        return
 
 
 class AdagradDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
-    def __init__(
-        self,
-        opt_args: OptimizerArgs,
-    ) -> None:
-        super().__init__(opt_args)
-
     def update(
         self,
         grads: torch.Tensor,
@@ -125,6 +119,21 @@ class AdagradDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
         eps = self._opt_args.eps
 
         dynamic_emb_adagrad_fused(
+            grads,
+            values,
+            lr,
+            eps,
+        )
+
+    def fused_update_hybrid(
+        self,
+        grads: torch.Tensor,
+        values: torch.Tensor,
+    ) -> None:
+        lr = self._opt_args.learning_rate
+        eps = self._opt_args.eps
+
+        dynamic_emb_adagrad_fused_hybrid(
             grads,
             values,
             lr,
@@ -152,6 +161,27 @@ class AdagradDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
             eps,
         )
 
+    def fused_update_with_pointer_hybrid(
+        self,
+        grads: torch.Tensor,
+        value_ptr: torch.Tensor,  # pointers to embeddng + optimizer states
+        value_type: Optional[DynamicEmbDataType] = None,
+    ) -> None:
+        lr = self._opt_args.learning_rate
+        eps = self._opt_args.eps
+
+        emb_dim = grads.size(1)
+        state_dim = self.get_state_dim(emb_dim)
+
+        dynamic_emb_adagrad_with_pointer_hybrid(
+            grads,
+            value_ptr,
+            value_type,
+            state_dim,
+            lr,
+            eps,
+        )
+
     def get_opt_args(self):
         ret_args = {
             "opt_type": "exact_adagrad",
@@ -165,7 +195,6 @@ class AdagradDynamicEmbeddingOptimizerV2(BaseDynamicEmbeddingOptimizerV2):
         self._opt_args.learning_rate = get_required_arg(args, "lr")
         self._opt_args.eps = get_required_arg(args, "eps")
         self._opt_args.initial_accumulator_value = get_required_arg(args, "initial_accumulator_value")
-        return
 
     def get_state_dim(self, emb_dim: int) -> int:
         """
