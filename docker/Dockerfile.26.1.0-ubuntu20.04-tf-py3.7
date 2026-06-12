@@ -35,6 +35,46 @@ RUN wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.g
 RUN wget https://mirrors.huaweicloud.com/python/3.7.5/Python-3.7.5.tar.xz
 RUN wget https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.gz
 
+# 下载cann包
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-toolkit_9.0.0_linux-x86_64.run; \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-910b-ops_9.0.0_linux-x86_64.run; \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-A3-ops_9.0.0_linux-x86_64.run; \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-950-ops_9.0.0_linux-x86_64.run; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-toolkit_9.0.0_linux-aarch64.run; \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-910b-ops_9.0.0_linux-aarch64.run; \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-A3-ops_9.0.0_linux-aarch64.run; \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-950-ops_9.0.0_linux-aarch64.run; \
+    fi
+
+# 下载 tensorflow 和 npu 包 (根据架构自动选择)
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl; \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl; \
+        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_bridge-1.15.0-py3-none-manylinux2014_x86_64.whl; \
+        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_device-2.6.5-py3-none-manylinux2014_x86_64.whl; \
+        rm -f tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl; \
+        rm -f *_aarch64.whl; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl; \
+        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl; \
+        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl; \
+        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl; \
+        rm -f tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl; \
+        rm -f *_x86_64.whl; \
+    fi
+
+# 下载RecSDK软件包
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260612.8/tf_rec_v1-26.1.0-linux_x86_64.tar.gz; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+        wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260612.8/tf_rec_v1-26.1.0-linux_aarch64.tar.gz; \
+    fi
+
 # 3.安装gcc-11.2.0
 RUN . /etc/profile && \
     tar -zxvf gcc-11.2.0.tar.gz && \
@@ -162,19 +202,7 @@ RUN mkdir -p /tmp/wheels && \
 ARG ASCEND_BASE=/usr/local/Ascend
 ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$ASCEND_BASE/driver/lib64/driver:$LD_LIBRARY_PATH
 
-# 11.下载并安装 CANN 安装包 (根据架构自动选择)
-RUN ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-toolkit_9.0.0_linux-x86_64.run; \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-910b-ops_9.0.0_linux-x86_64.run; \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-A3-ops_9.0.0_linux-x86_64.run; \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-950-ops_9.0.0_linux-x86_64.run; \
-    elif [ "$ARCH" = "aarch64" ]; then \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-toolkit_9.0.0_linux-aarch64.run; \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-910b-ops_9.0.0_linux-aarch64.run; \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-A3-ops_9.0.0_linux-aarch64.run; \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-950-ops_9.0.0_linux-aarch64.run; \
-    fi
+# 11.安装 CANN 安装包 (根据架构自动选择)
 
 # 安装 A2 toolkit
 RUN mkdir -p /usr/local/Ascend/cann-A2 && \
@@ -232,31 +260,10 @@ RUN echo '#!/bin/bash' > /usr/local/set_cann_env.sh && \
    echo 'source $ASCEND_TOOLKIT_HOME/ascend-toolkit/set_env.sh' >> /usr/local/set_cann_env.sh && \
    chmod +x /usr/local/set_cann_env.sh
 
-# 12.下载 tensorflow 和 npu 包 (根据架构自动选择)
-RUN ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl; \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_bridge-1.15.0-py3-none-manylinux2014_x86_64.whl; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_device-2.6.5-py3-none-manylinux2014_x86_64.whl; \
-        rm -f tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl; \
-        rm -f *_aarch64.whl; \
-    elif [ "$ARCH" = "aarch64" ]; then \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl; \
-        wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl; \
-        rm -f tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl; \
-        rm -f *_x86_64.whl; \
-    fi
-
-# 13.准备外部软件包 (RecSDK)，需要用户自行准备对应框架软件包，这里不再做匹配
-COPY packages/tf_rec_v1_*.tar.gz /tmp/
-
 # 定义安装算子时指定的核心类型 (a2/a3/a5)，默认为a2，软件包支持智能识别，用户也可自行修改
 ARG CORE_TYPE="a2"
 
-# 14.安装tf相关的Python包以及Rec SDK
+# 13.安装tf相关的Python包以及Rec SDK
 # 创建两个虚拟环境：tf1 (1.15.0) 和 tf2 (2.6.5)
 
 # 安装mpi4py时使用该环境变量，安装完成后取消
@@ -276,7 +283,7 @@ RUN python3.7 -m venv /opt/buildtools/tf1_env && \
         /opt/buildtools/tf1_env/bin/pip install npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl; \
     fi && \
     /opt/buildtools/tf1_env/bin/pip install tf_slim mpi4py && \
-    CORE_TYPE=${CORE_TYPE} /opt/buildtools/tf1_env/bin/pip install /tmp/tf_rec_v1*.tar.gz && \
+    CORE_TYPE=${CORE_TYPE} /opt/buildtools/tf1_env/bin/pip install --no-build-isolation /tmp/tf_rec_v1*.tar.gz && \
     rm -rf /root/.cache/pip
 
 # 创建 tf2 虚拟环境
@@ -292,12 +299,12 @@ RUN python3.7 -m venv /opt/buildtools/tf2_env && \
         /opt/buildtools/tf2_env/bin/pip install npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl; \
     fi && \
     /opt/buildtools/tf2_env/bin/pip install tf_slim mpi4py && \
-    CORE_TYPE=${CORE_TYPE} /opt/buildtools/tf2_env/bin/pip install /tmp/tf_rec_v1*.tar.gz && \
+    CORE_TYPE=${CORE_TYPE} /opt/buildtools/tf2_env/bin/pip install --no-build-isolation /tmp/tf_rec_v1*.tar.gz && \
     rm -rf /root/.cache/pip
 
 RUN unset CC && unset CXX
 
-# 15.在系统 Python (非虚拟环境) 中安装编译依赖包
+# 14.在系统 Python (非虚拟环境) 中安装编译依赖包
 RUN pip3.7 install -U pip && \
     ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
@@ -310,5 +317,17 @@ RUN pip3.7 install -U pip && \
     pip3.7 install packaging numpy && \
     rm -rf /root/.cache/pip
 
-# 16.清理临时目录
+# 15.清理临时目录
 RUN rm -rf ./*
+
+WORKDIR /home
+
+# 设置脚本所需变量值
+ENV ASCEND_SOFTWARE_NAME="RecSDK"
+ENV ASCEND_SOFTWARE_VERSION="26.1.0"
+
+COPY scripts/banner.sh /usr/local/bin/banner.sh
+RUN chmod +x /usr/local/bin/banner.sh
+
+ENTRYPOINT ["/usr/local/bin/banner.sh"]
+CMD ["/bin/bash"]
