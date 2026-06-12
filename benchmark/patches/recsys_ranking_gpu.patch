@@ -42,6 +42,60 @@ index 752d4e0..12f96b4 100644
          tensor_model_parallel_size=parallel_state.get_tensor_model_parallel_world_size()
          if not is_inference
          else 1,
+diff --git a/examples/hstu/dataset/sequence_dataset.py b/examples/hstu/dataset/sequence_dataset.py
+index 1a256dd..c0f5744 100644
+--- a/examples/hstu/dataset/sequence_dataset.py
++++ b/examples/hstu/dataset/sequence_dataset.py
+@@ -181,17 +181,29 @@ class SequenceDataset(IterableDataset[Batch]):
+ 
+     # We do batching in our own
+     def __len__(self) -> int:
++        if self._num_samples % self._global_batch_size < self._world_size:
++            return math.floor(self._num_samples / self._global_batch_size)
+         return math.ceil(self._num_samples / self._global_batch_size)
+ 
+     def __iter__(self) -> Iterator[Batch]:
+         for i in range(len(self)):
+-            local_batch_start = (
+-                i * self._global_batch_size + self._rank * self._batch_size
+-            )
+-            local_batch_end = min(
+-                i * self._global_batch_size + (self._rank + 1) * self._batch_size,
+-                len(self._sample_ids),
+-            )
++            if i == len(self) - 1:
++                last_batch_size = (len(self._sample_ids) - i * self._global_batch_size) // self._world_size
++                local_batch_start = (
++                    i * self._global_batch_size + self._rank * last_batch_size
++                )
++                local_batch_end = min(
++                    i * self._global_batch_size + (self._rank + 1) * last_batch_size,
++                    len(self._sample_ids),
++                )
++            else:
++                local_batch_start = (
++                    i * self._global_batch_size + self._rank * self._batch_size
++                )
++                local_batch_end = min(
++                    i * self._global_batch_size + (self._rank + 1) * self._batch_size,
++                    len(self._sample_ids),
++                )
+             sample_ids = self._sample_ids[local_batch_start:local_batch_end]
+ 
+             contextual_features: Dict[str, List[int]] = defaultdict(list)
+diff --git a/examples/hstu/distributed/sharding.py b/examples/hstu/distributed/sharding.py
+index b564988..5e1a22b 100644
+--- a/examples/hstu/distributed/sharding.py
++++ b/examples/hstu/distributed/sharding.py
+@@ -89,7 +89,7 @@ def apply_megatron_ddp(
+     ddp_config = DistributedDataParallelConfig(
+         grad_reduce_in_fp32=True,
+         overlap_grad_reduce=False,
+-        use_distributed_optimizer=False,
++        use_distributed_optimizer=True,
+         check_for_nan_in_grad=False,
+         bucket_size=True,
+     )
 diff --git a/examples/hstu/model/ranking_gr.py b/examples/hstu/model/ranking_gr.py
 index 18f7bd4..b93f2a2 100644
 --- a/examples/hstu/model/ranking_gr.py
@@ -566,10 +620,10 @@ index 0000000..e87d5fd
 +    def forward(self, x):
 +        return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
 diff --git a/examples/hstu/movielen_ranking.gin b/examples/hstu/movielen_ranking.gin
-index d8e8d33..b0a857e 100644
+index d8e8d33..7f794db 100644
 --- a/examples/hstu/movielen_ranking.gin
 +++ b/examples/hstu/movielen_ranking.gin
-@@ -1,12 +1,12 @@
+@@ -1,24 +1,30 @@
  # torchrun --nproc_per_node 1 --master_addr localhost --master_port 6000  ./hstu/pretrain_gr_ranking.py --gin-config-file examples/hstu/movielen_ranking.gin 
 -TrainerArgs.train_batch_size = 128
 +TrainerArgs.train_batch_size = 32
@@ -584,9 +638,11 @@ index d8e8d33..b0a857e 100644
 +TrainerArgs.pipeline_type = "none"
  
  DatasetArgs.dataset_name = 'ml-20m'
- DatasetArgs.max_sequence_length = 200
-@@ -14,11 +14,17 @@ DatasetArgs.shuffle = True
- DatasetArgs.max_num_candidates = 20
+-DatasetArgs.max_sequence_length = 200
++DatasetArgs.max_sequence_length = 1000
+ DatasetArgs.shuffle = True
+-DatasetArgs.max_num_candidates = 20
++DatasetArgs.max_num_candidates = 100
  
  NetworkArgs.dtype_str = "bfloat16"
 -NetworkArgs.num_layers = 1
@@ -915,7 +971,7 @@ index f975842..b3f6157 100644
 +    torch.save(final_results, f"../save_results_GPU/ranking/predictions_ranking_eager_{train_iter}.pt")
 +
 diff --git a/examples/hstu/training/utils.py b/examples/hstu/training/utils.py
-index dc4f541..521899e 100644
+index dc4f541..a1eeed1 100644
 --- a/examples/hstu/training/utils.py
 +++ b/examples/hstu/training/utils.py
 @@ -12,6 +12,7 @@
@@ -926,6 +982,15 @@ index dc4f541..521899e 100644
  import sys
  from typing import Dict, List, Optional, Tuple, Union
  
+@@ -28,7 +29,7 @@ from configs import (
+     PositionEncodingConfig,
+     get_hstu_config,
+ )
+-from dynamicemb import DynamicEmbTableOptions
++from dynamicemb import DynamicEmbTableOptions, DynamicEmbInitializerArgs, DynamicEmbInitializerMode
+ from modules.embedding import ShardedEmbeddingConfig
+ from training.gin_config_args import (
+     BenchmarkDatasetArgs,
 @@ -181,7 +182,7 @@ def create_hstu_config(
          layer_type = HSTULayerType.FUSED
      else:
@@ -972,7 +1037,7 @@ index dc4f541..521899e 100644
      if dataset_args.dataset_name == "kuairand-pure":
          return dataset_args, [
              EmbeddingArgs(
-@@ -606,7 +621,7 @@ def get_dataset_and_embedding_args() -> (
+@@ -606,10 +621,11 @@ def get_dataset_and_embedding_args() -> (
          ]
      elif dataset_args.dataset_name == "ml-20m":
          return dataset_args, [
@@ -981,3 +1046,7 @@ index dc4f541..521899e 100644
                  feature_names=["rating"],
                  table_name="action_weights",
                  item_vocab_size_or_capacity=11,
++                item_vocab_gpu_capacity_ratio=1,
+                 sharding_type="data_parallel",
+             ),
+             DynamicEmbeddingArgs(
