@@ -17,7 +17,7 @@ RUN dnf install -y ca-certificates && \
     m4 perl git e2fsprogs sudo && \
     dnf clean all && \
     rm -rf /var/cache/dnf
-    
+
 # 注：openssh-server为双机训练样例需要，仅单机训练时可去掉
 RUN mkdir -p /usr/local/gcc11.2.0
 # 2.编译安装 GCC 11.2.0
@@ -30,7 +30,7 @@ RUN wget https://mirrors.huaweicloud.com/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz &&
     wget https://gcc.gnu.org/pub/gcc/infrastructure/isl-0.18.tar.bz2 && \
     sed -i "246s/tar -xf \"\${ar}\"/tar --no-same-owner -xf \"\${ar}\"/" contrib/download_prerequisites && \
     ./contrib/download_prerequisites && \
-    ./configure --enable-languages=c,c++ --disable-multilib --with-system-zlib --prefix=/usr/local/gcc11.2.0 && \
+    ./configure --enable-languages=c,c++ --disable-multilib --with-system-zlib --disable-bootstrap --prefix=/usr/local/gcc11.2.0 && \
     make -j $(nproc) && make install && \
     find /tmp/gcc-11.2.0/ -name libstdc++.so.6.0.29 -exec cp {} /lib64/ \; && \
     rm -rf /tmp/gcc-11.2.0*
@@ -148,11 +148,19 @@ RUN mkdir -p ~/.pip && touch ~/.pip/pip.conf && \
 # 9.安装系统级 wheel（供 torchrec 编译使用）
 RUN pip3 install wheel setuptools
 
-# 10.准备外部软件包 (RecSDK)，需要用户自行准备对应框架软件包，这里不再做匹配
-COPY packages/torch_rec_v1*.tar.gz /tmp/
-COPY packages/torch_rec_v2*.tar.gz /tmp/
-COPY packages/fbgemm_ascend*.whl /tmp/
-COPY packages/rec_sdk_ops*.whl /tmp/
+# 10.下载RecSDK软件包
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260612.8/torch_rec_v1-26.1.0-linux_x86_64.tar.gz; \
+        wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260612.8/torch_rec_v2-26.1.0-linux_x86_64.tar.gz; \
+        wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260612.7/fbgemm_ascend-1.2.0-cp311-cp311-linux_x86_64.whl; \
+        wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260612.8/rec_ops-2.7.1%2Bx86.64-cp311-cp311-linux_x86_64.whl; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+        wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260612.8/torch_rec_v1-26.1.0-linux_aarch64.tar.gz; \
+        wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260612.8/torch_rec_v2-26.1.0-linux_aarch64.tar.gz; \
+        wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260612.7/fbgemm_ascend-1.2.0-cp311-cp311-linux_aarch64.whl; \
+        wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260612.8/rec_ops-2.7.1%2Baarch64-cp311-cp311-linux_aarch64.whl; \
+    fi
 
 # 11.创建 torch_v1_pt2.6.0 虚拟环境
 RUN python3 -m venv /opt/buildtools/torch_v1_pt2.6.0 && \
@@ -161,7 +169,7 @@ RUN python3 -m venv /opt/buildtools/torch_v1_pt2.6.0 && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install torch==2.6.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install torch-npu==2.6.0 && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install fbgemm_gpu==1.1.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/buildtools/torch_v1_pt2.6.0/bin/pip install /tmp/torch_rec_v1*.tar.gz && \
+    /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
     rm -rf /root/.cache/pip
 
 # 12.创建 torch_v1_pt2.7.1 虚拟环境
@@ -171,9 +179,9 @@ RUN python3 -m venv /opt/buildtools/torch_v1_pt2.7.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install torch==2.7.1+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install torch-npu==2.7.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install /tmp/torch_rec_v1*.tar.gz && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install /tmp/fbgemm_ascend*.whl && \
-    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install /tmp/rec_sdk_ops*.whl && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install /tmp/rec_ops*.whl && \
     rm -rf /root/.cache/pip
 
 # 13.创建 torch_v2_pt2.7.1 虚拟环境（与 torch_v1_pt2.7.1 一致）
@@ -183,10 +191,22 @@ RUN python3 -m venv /opt/buildtools/torch_v2_pt2.7.1 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install torch==2.7.1+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install torch-npu==2.7.1 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install /tmp/torch_rec_v2*.tar.gz && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --no-build-isolation /tmp/torch_rec_v2*.tar.gz && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install /tmp/fbgemm_ascend*.whl && \
-    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install /tmp/rec_sdk_ops*.whl && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install /tmp/rec_ops*.whl && \
     rm -rf /root/.cache/pip
 
 # 14.清理临时目录
 RUN rm -rf ./*
+
+WORKDIR /home
+
+# 设置脚本所需变量值
+ENV ASCEND_SOFTWARE_NAME="RecSDK"
+ENV ASCEND_SOFTWARE_VERSION="26.1.0"
+
+COPY scripts/banner.sh /usr/local/bin/banner.sh
+RUN chmod +x /usr/local/bin/banner.sh
+
+ENTRYPOINT ["/usr/local/bin/banner.sh"]
+CMD ["/bin/bash"]
