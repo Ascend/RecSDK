@@ -4,21 +4,15 @@
 
 本模型迁移依赖特定版本的CANN、PyTorch、驱动和固件,源码编译需使用指定版本的Python、GCC、CMake等工具,仅支持昇腾平台（Atlas 800T A2）,软件环境以Rec SDK Torch提供的基础镜像环境为准。
 
-基于PyTorch开源软件版本，支持两种软件版本配套，可根据需要自行选择。
-
-| 配套版本  | PyTorch | torch-npu | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
-|-------|---------|-----------|-----------|------------|-----------------|-------------------|
-| 配套版本1 | 2.6.0   | 2.6.0     | 1.1.0+npu | 1.1.0      | 1.1.0           | 1.1.0             |
-| 配套版本2 | 2.7.1   | 2.7.1     | 1.2.0+npu | 1.2.0      | 1.2.0           | 1.2.0             |
-
 ## 基础镜像
 
-下载基础镜像地址为：https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5
+请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中“镜像下载”页签，**根据环境架构**获取已经制作好的**最新运行镜像**（26.0.0*及之后版本）。
 
-下载镜像版本为:26.0.0_openeuler2203-arm
+上述镜像中已包含Rec SDK Torch及相关软件包，其中软件版本如下：
 
-注：该镜像环境已经包含以上“配套版本1”中依赖和必要的NPU算子,如需要使用PyTorch 2.7.1配套，可参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/torch/build_torch_rec_images/README.md)中"版本配套说明"章节，下载对应软件重新安装。
-安装步骤可参考以下"安装依赖"章节
+| 软件名称  | PyTorch | torch_npu | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
+|-------|---------|-----------|-----------|------------|-----------------|-------------------|
+| 配套版本 | 2.6.0   | 2.6.0     | 1.1.0+npu | 1.1.0      | 1.1.0           | 1.1.0             |
 
 ## 启动容器
 
@@ -60,13 +54,19 @@ docker run \
 bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 ```
 
-## 设置环境变量
+### 刷新容器内环境变量
 
-进入容器后，设置环境变量
+26.1.0-*及之后的镜像中内置了Python虚拟环境，需要刷新环境变量。使用`ll /opt/buildtools/torch_v1_pt2.6.0/bin/activate`指令判断Python虚拟环境是否存在：若回显包含文件详细属性表示存在，若回显包含“No such file or directory”表示不存在。
+
+若Python虚拟环境存在则执行如下命令刷新容器内环境变量：
 
 ```shell
-source /etc/profile
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
+# 激活 torch_rec_v1 PyTorch 2.6.0 版本Python虚拟环境，该环境内已安装好Rec SDK Torch及相关软件包。
+source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
+# 若使用完成后需退出Python虚拟环境，执行命令： deactivate 即可退出。
+
+# 切换并生效 Atlas A2 系列服务器配套CANN Toolkit及相关环境变量
+source /usr/local/set_cann_env.sh a2
 ```
 
 ## 环境可用性验证
