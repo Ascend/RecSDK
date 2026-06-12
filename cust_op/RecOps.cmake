@@ -17,6 +17,8 @@ endif()
 
 # ================================ A5 ops ================================
 set(RECSDK_CUSTOM_OPS_A5
+    concat_jagged_tensor
+    concat_jagged_tensor_grad
     disentangle_attention
     gather_for_rank1
     hstu_dense_backward
@@ -28,6 +30,8 @@ set(RECSDK_CUSTOM_OPS_A5
     index_select_for_rank1_backward
     ln_mul
     multislice_concat
+    norm_multiply_dropout
+    norm_multiply_dropout_backward
     relative_attn_bias_backward
     relative_attn_bias_pos
     relative_attn_bias_time
@@ -37,7 +41,8 @@ set(RECSDK_CUSTOM_OPS_A5
 
 # ================================ A3 ops ================================
 set(RECSDK_CUSTOM_OPS_A3
-    # Temporarily disabled: fails on A3 with transform mapping warning.
+    concat_jagged_tensor
+    concat_jagged_tensor_grad
     disentangle_attention
     gather_for_rank1
     hstu_dense_backward
@@ -45,12 +50,21 @@ set(RECSDK_CUSTOM_OPS_A3
     hstu_dense_forward
     hstu_dense_forward_fuxi
     in_linear_silu
+    in_linear_silu_backward
     index_select_for_rank1_backward
+    ln_mul
+    # multislice_concat
+    norm_multiply_dropout
+    norm_multiply_dropout_backward
+    relative_attn_bias_backward
+    relative_attn_bias_pos
+    relative_attn_bias_time
+    reverse_sequence
+    # token_mixing
 )
 
 # ================================ A2 ops ================================
 set(RECSDK_CUSTOM_OPS_A2
-    # Temporarily disabled due template overwrite regression in upstream run.sh
     concat_jagged_tensor
     concat_jagged_tensor_grad
     disentangle_attention
@@ -76,7 +90,7 @@ set(RECSDK_CUSTOM_OPS_A2
 # ---------------------------------------------------------------------------
 # AscendC 算子构建版本（受 CANN 平台信息限制，只能编译 CANN 支持的芯片）
 # 默认构建全部芯片，可通过 RECSDK_BUILD_VERS 限制（如仅有 A2 CANN 时传 "A2,A3"）
-# 注意：torch_plugin 适配层 .so 始终编译全部变体（不依赖 CANN）
+# 注意：torch_plugin 适配层 .so 按芯片拆分编译，仅包含对应芯片的算子
 # ---------------------------------------------------------------------------
 if(NOT DEFINED RECSDK_BUILD_VERS OR RECSDK_BUILD_VERS STREQUAL "")
     set(RECSDK_BUILD_VERS "A2,A3,A5")
@@ -221,19 +235,14 @@ list(REMOVE_DUPLICATES ASCENDC_STAGE_SUBDIRS)
 get_property(ASCENDC_TARGETS GLOBAL PROPERTY RECSDK_ASCEND_TARGETS)
 
 # ---------------------------------------------------------------------------
-# C++ 适配层源文件（framework/torch_plugin）
-# 新增算子在此追加；路径相对于 RECSDK_SOURCE_DIR
+# C++ 适配层源文件（framework/torch_plugin），按芯片拆分
+# 路径相对于 RECSDK_SOURCE_DIR
 # ---------------------------------------------------------------------------
 set(RECSDK_TORCH_LIBRARY_DIR framework/torch_plugin/torch_library)
 
-set(RECSDK_ADAPTER_SRCS
-    ${RECSDK_TORCH_LIBRARY_DIR}/asynchronous_complete_cumsum/asynchronous_complete_cumsum.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/block_bucketize_sparse_features/block_bucketize_sparse_features.cpp
+set(RECSDK_ADAPTER_SRCS_A5
     ${RECSDK_TORCH_LIBRARY_DIR}/concat_2d_jagged/concat_jagged_tensor.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/dense_embedding_codegen_lookup_function/dense_embedding_codegen_lookup_function.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/dense_to_jagged/dense_to_jagged.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/disentangle_attention/DisentangleAttenFusion.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/expand_into_jagged_permute/expand_into_jagged_permute.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/gather_for_rank1/gather_for_rank1.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/hstu/hstu_dense.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/hstu/hstu_jagged.cpp
@@ -241,29 +250,47 @@ set(RECSDK_ADAPTER_SRCS
     ${RECSDK_TORCH_LIBRARY_DIR}/hstu_dense_backward_fuxi/HstuDenseNpuFusionFuxi.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/hstu_dense_forward_fuxi/HstuDenseNpuFusionFuxi.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/in_linear_silu/in_linear_silu.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/init_address_lookup/init_address_lookup.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/int_nbit_split_embedding_codegen_lookup_function/int_nbit_split_embedding_codegen_lookup_function.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/invert_permute/invert_permute.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/jagged_to_padded_dense/jagged_to_padded_dense.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/keyed_jagged_index_select_dim1/keyed_jagged_index_select_dim1.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/ln_mul/ln_mul.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/multislice_concat/multislice_concat.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/norm_multiply_dropout/norm_multiply_dropout.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/offsets_range/offsets_range.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/permute1d_sparse_data/permute1d_sparse_data.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/permute2d_sparse_data/permute2d_sparse_data.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/permute_pooled_embs/permute_pooled_embs.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/relative_attn_bias/relative_attn_bias_pos.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/relative_attn_bias/relative_attn_bias_time.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/reverse_sequence/reverse_sequence.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/segment_sum_csr/segment_sum_csr.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/split_embedding_codegen_forward_unweighted.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adagrad_unweighted_exact.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adagrad_unweighted_exact_grad_aggregation.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adam_unweighted_exact.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adam_unweighted_exact_grad_aggregation.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_rowwise_adagrad_unweighted_exact.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact.cpp
-    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact_grad_aggregation.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/token_mixing/token_mixing.cpp
+)
+
+set(RECSDK_ADAPTER_SRCS_A3
+    ${RECSDK_TORCH_LIBRARY_DIR}/concat_2d_jagged/concat_jagged_tensor.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/disentangle_attention/DisentangleAttenFusion.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/gather_for_rank1/gather_for_rank1.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/hstu/hstu_dense.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/hstu/hstu_jagged.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/hstu/hstu_paged.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/hstu_dense_backward_fuxi/HstuDenseNpuFusionFuxi.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/hstu_dense_forward_fuxi/HstuDenseNpuFusionFuxi.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/in_linear_silu/in_linear_silu.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/ln_mul/ln_mul.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/norm_multiply_dropout/norm_multiply_dropout.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/relative_attn_bias/relative_attn_bias_pos.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/relative_attn_bias/relative_attn_bias_time.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/reverse_sequence/reverse_sequence.cpp
+)
+
+set(RECSDK_ADAPTER_SRCS_A2
+    ${RECSDK_TORCH_LIBRARY_DIR}/concat_2d_jagged/concat_jagged_tensor.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/disentangle_attention/DisentangleAttenFusion.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/gather_for_rank1/gather_for_rank1.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/hstu/hstu_dense.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/hstu/hstu_jagged.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/hstu/hstu_paged.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/hstu_dense_backward_fuxi/HstuDenseNpuFusionFuxi.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/hstu_dense_forward_fuxi/HstuDenseNpuFusionFuxi.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/in_linear_silu/in_linear_silu.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/ln_mul/ln_mul.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/multislice_concat/multislice_concat.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/norm_multiply_dropout/norm_multiply_dropout.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/relative_attn_bias/relative_attn_bias_pos.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/relative_attn_bias/relative_attn_bias_time.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/reverse_sequence/reverse_sequence.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/token_mixing/token_mixing.cpp
 )

@@ -34,7 +34,8 @@ elif arch in ["x86_64", "amd64"]:
 else:
     arch_suffix = f"{arch}"
 
-package_version = f"1.0.0+{arch_suffix}"
+_torch_ver = torch.__version__.split("+")[0]
+package_version = f"{_torch_ver}+{arch_suffix}"
 
 
 def _get_torch_prefix():
@@ -43,7 +44,7 @@ def _get_torch_prefix():
 
 def _build_variants():
     """AscendC 算子编译范围（受 CANN 平台信息限制）。
-    torch_plugin 适配层 .so 始终编译全部变体，不受此影响。
+    torch_plugin 适配层 .so 按芯片拆分编译，仅包含对应芯片的算子。
     """
     value = os.environ.get("RECSDK_BUILD_VERS")
     if value:
@@ -78,14 +79,14 @@ def cmake_args():
     ]
 
 
-# 始终构建所有芯片版本 (A5/A2/A3)，运行时根据 SOC 检测选择加载
+# 始终构建所有芯片版本 (A5/A3/A2)，运行时根据 SOC 检测选择加载
 skbuild_setup(
-    name="rec_sdk_ops",
+    name="rec_ops",
     version=package_version,
     description="RecSDK Custom Operations for Multiple Chips",
-    packages=setuptools.find_packages(where=".", include=["rec_sdk_ops", "rec_sdk_ops.*"]),
+    packages=setuptools.find_packages(where=".", include=["rec_ops", "rec_ops.*"]),
     cmake_args=cmake_args(),
-    cmake_install_dir="rec_sdk_ops",
+    cmake_install_dir="rec_ops",
     include_package_data=True,
     zip_safe=False,
 )
