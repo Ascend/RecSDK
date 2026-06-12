@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#include "../ops_utils.h"
+#include "ops_utils.h"
 #include "kernel_operator.h"
 
 using namespace AscendC;

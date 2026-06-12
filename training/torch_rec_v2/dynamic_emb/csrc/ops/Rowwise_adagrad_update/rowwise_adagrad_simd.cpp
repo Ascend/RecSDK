@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include "kernel_operator.h"
+#include "ops_utils.h"
 #include "rowwise_adagrad_simd_kernel.h"
 
 extern "C" __global__ __aicore__ void rowwise_adagrad_simd(GM_ADDR grads, GM_ADDR rowPtrs, GM_ADDR founds,
@@ -23,7 +24,14 @@ extern "C" __global__ __aicore__ void rowwise_adagrad_simd(GM_ADDR grads, GM_ADD
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     const __gm__ RowwiseAdagradSimdTilingData* tilingData =
         reinterpret_cast<const __gm__ RowwiseAdagradSimdTilingData*>(tiling);
-    dyn_emb_rowwise_adagrad_simd::RowwiseAdagradSimd op(&pipe);
-    op.Init(grads, rowPtrs, founds, tilingData);
-    op.Process();
+    const dyn_emb::DataType gradType = static_cast<dyn_emb::DataType>(tilingData->gradType);
+    const dyn_emb::DataType weightType = static_cast<dyn_emb::DataType>(tilingData->weightType);
+
+    FLOAT_TYPE_DISPATCH(gradType, grad_t, {
+        FLOAT_TYPE_DISPATCH(weightType, weight_t, {
+            dyn_emb_rowwise_adagrad_simd::RowwiseAdagradSimd<grad_t, weight_t> op(&pipe);
+            op.Init(grads, rowPtrs, founds, tilingData);
+            op.Process();
+        });
+    });
 }
