@@ -17,7 +17,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# 获取本脚本所在的目录 (即安装后的 rec_sdk_ops 包路径)
+# 获取本脚本所在的目录 (即安装后的 rec_ops 包路径)
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 # 动态探测并拼接所有的芯片级自定义算子路径 (如 custom_opp/A2, custom_opp/A5 等)
@@ -39,7 +39,7 @@ if [ -d "${SCRIPT_DIR}/python_libs" ]; then
 fi
 
 echo "=================================================================="
-echo "[SUCCESS] RecSDK (rec_sdk_ops) NPU Environment Loaded!"
+echo "[SUCCESS] RecSDK (rec_ops) NPU Environment Loaded!"
 echo "------------------------------------------------------------------"
 echo "Detected Chips : $(ls -d "${SCRIPT_DIR}"/custom_opp/* 2>/dev/null | awk -F/ '{print $NF}' | tr '\n' ' ')"
 echo "OPP_PATH       : ${ASCEND_CUSTOM_OPP_PATH}"

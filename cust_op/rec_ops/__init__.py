@@ -32,7 +32,7 @@ package_dir = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
 def _detect_soc_from_npu_smi():
     npu_smi = shutil.which("npu-smi")
     if not npu_smi:
-        logging.warning("rec_sdk_ops: npu-smi not found.")
+        logging.warning("rec_ops: npu-smi not found.")
         return None
     try:
         out = subprocess.check_output(
@@ -40,7 +40,7 @@ def _detect_soc_from_npu_smi():
             stderr=subprocess.STDOUT,
         ).decode(errors="ignore")
     except subprocess.CalledProcessError:
-        logging.warning("rec_sdk_ops: npu-smi failed.")
+        logging.warning("rec_ops: npu-smi failed.")
         return None
 
     for line in out.splitlines():
@@ -59,7 +59,7 @@ def _detect_soc_version():
 
 def _map_soc_to_variant(soc):
     if not soc:
-        logging.warning("rec_sdk_ops: SOC not detected, defaulting to A5 variants")
+        logging.warning("rec_ops: SOC not detected, defaulting to A5 variants")
         return "A5"
     if soc.startswith("Ascend95"):
         return "A5"
@@ -67,7 +67,7 @@ def _map_soc_to_variant(soc):
         return "A2"
     if soc.startswith("Ascend910_93"):
         return "A3"
-    logging.warning("rec_sdk_ops: unknown SOC '%s', defaulting to A5", soc)
+    logging.warning("rec_ops: unknown SOC '%s', defaulting to A5", soc)
     return "A5"
 
 
@@ -103,7 +103,7 @@ def _setup_custom_opp_path():
                     if os.path.isdir(vendor_path):
                         new_paths.append(vendor_path)
             except Exception as e:
-                logging.error("rec_sdk_ops: failed to scan vendors dir: %s", e)
+                logging.error("rec_ops: failed to scan vendors dir: %s", e)
         new_paths.append(variant_root)
 
     # 同时保留所有芯片目录（兼容老方式）
@@ -127,7 +127,7 @@ def _setup_custom_opp_path():
 
     os.environ["ASCEND_CUSTOM_OPP_PATH"] = os.pathsep.join(deduped)
     logging.info(
-        "rec_sdk_ops: ASCEND_CUSTOM_OPP_PATH=%s (variant=%s)",
+        "rec_ops: ASCEND_CUSTOM_OPP_PATH=%s (variant=%s)",
         os.environ["ASCEND_CUSTOM_OPP_PATH"],
         variant,
     )
@@ -138,34 +138,33 @@ def _setup_custom_opp_path():
 # ========================================================================
 _HOST_LIB_CANDIDATES = {
     "A5": [
-        "rec_sdk_ops_py_a5" + _EXT_SUFFIX,
-        "librec_sdk_ops_py_a5.so",
+        "rec_ops_py_a5" + _EXT_SUFFIX,
+        "librec_ops_py_a5.so",
     ],
-    "A2A3": [
-        "rec_sdk_ops_py_a2a3" + _EXT_SUFFIX,
-        "librec_sdk_ops_py_a2a3.so",
+    "A3": [
+        "rec_ops_py_a3" + _EXT_SUFFIX,
+        "librec_ops_py_a3.so",
+    ],
+    "A2": [
+        "rec_ops_py_a2" + _EXT_SUFFIX,
+        "librec_ops_py_a2.so",
     ],
 }
 
 
 def _candidate_lib_names(variant):
-    key = "A5" if variant == "A5" else "A2A3"
-    names = list(_HOST_LIB_CANDIDATES.get(key, []))
-    for other_key, values in _HOST_LIB_CANDIDATES.items():
-        if other_key != key:
-            names.extend(values)
+    names = list(_HOST_LIB_CANDIDATES.get(variant, []))
     return names
 
 
 def _load_library(no_throw=False):
-
     search_dirs = [package_dir]
     # 可编辑安装时 .so 可能在 _skbuild 中
     pkg_root = os.path.dirname(package_dir)
     skbuild_dir = os.path.join(pkg_root, "_skbuild")
     if os.path.isdir(skbuild_dir):
         for name in os.listdir(skbuild_dir):
-            install_base = os.path.join(skbuild_dir, name, "cmake-install", "rec_sdk_ops")
+            install_base = os.path.join(skbuild_dir, name, "cmake-install", "rec_ops")
             if os.path.isdir(install_base):
                 search_dirs.append(install_base)
 
@@ -180,15 +179,15 @@ def _load_library(no_throw=False):
             if os.path.isfile(lib_path):
                 try:
                     torch.ops.load_library(lib_path)
-                    logging.info("rec_sdk_ops: loaded '%s'", lib_path)
+                    logging.info("rec_ops: loaded '%s'", lib_path)
                     return
                 except Exception as e:
-                    logging.error("rec_sdk_ops: could not load '%s': %s", lib_path, e)
+                    logging.error("rec_ops: could not load '%s': %s", lib_path, e)
                     if not no_throw:
                         raise
 
     # 如果找不到 host library，仅设置 OPP 路径（兼容无 torch_plugin 的情况）
-    msg = "rec_sdk_ops: host library not found (variant=%s, dirs=%s)" % (variant, search_dirs)
+    msg = "rec_ops: host library not found (variant=%s, dirs=%s)" % (variant, search_dirs)
     if no_throw:
         logging.warning(msg)
         return

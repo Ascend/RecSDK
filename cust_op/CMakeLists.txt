@@ -8,9 +8,9 @@ set(RECSDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "Show compile commands" FORCE)
 
 # ---------------------------------------------------------------------------
-# Python 模块文件安装（rec_sdk_ops/ 打入 whl 包根目录）
+# Python 模块文件安装（rec_ops/ 打入 whl 包根目录）
 # ---------------------------------------------------------------------------
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/rec_sdk_ops/
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/rec_ops/
     DESTINATION .
 )
 
@@ -94,10 +94,11 @@ include(${RECSDK_SOURCE_DIR}/RecOps.cmake)
 
 # ---------------------------------------------------------------------------
 # 主库：torch_plugin 适配层（对齐 fbgemm 的 host library 模式）
-# 针对 A5 (c310) 与 A2/A3 (v220) 构建两份适配层 .so
+# 针对 A5 / A3 / A2 分别构建适配层 .so，仅包含对应芯片的算子
 # ---------------------------------------------------------------------------
 function(recsdk_add_host_library target_name output_name npu_chip_flag)
-    add_library(${target_name} SHARED ${RECSDK_ADAPTER_SRCS})
+    set(_adapter_srcs ${ARGN})
+    add_library(${target_name} SHARED ${_adapter_srcs})
     target_compile_features(${target_name} PRIVATE cxx_std_17)
     target_compile_options(${target_name} PRIVATE
         -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI}
@@ -149,26 +150,31 @@ function(recsdk_add_host_library target_name output_name npu_chip_flag)
     )
 endfunction()
 
-# 始终构建 A5 和 A2A3 两份 host library，运行时按 SOC 检测选择加载
-recsdk_add_host_library(rec_sdk_ops_py_a5 rec_sdk_ops_py_a5 1)
-recsdk_add_host_library(rec_sdk_ops_py_a2a3 rec_sdk_ops_py_a2a3 0)
+recsdk_add_host_library(rec_ops_py_a5 rec_ops_py_a5 1 ${RECSDK_ADAPTER_SRCS_A5})
+recsdk_add_host_library(rec_ops_py_a3 rec_ops_py_a3 0 ${RECSDK_ADAPTER_SRCS_A3})
+recsdk_add_host_library(rec_ops_py_a2 rec_ops_py_a2 0 ${RECSDK_ADAPTER_SRCS_A2})
 
 # host library 依赖 AscendC 算子编译完成
 foreach(_t ${ASCENDC_TARGETS})
     if(TARGET ${_t})
-        add_dependencies(rec_sdk_ops_py_a5 ${_t})
-        add_dependencies(rec_sdk_ops_py_a2a3 ${_t})
+        add_dependencies(rec_ops_py_a5 ${_t})
+        add_dependencies(rec_ops_py_a3 ${_t})
+        add_dependencies(rec_ops_py_a2 ${_t})
     endif()
 endforeach()
 
 # ---------------------------------------------------------------------------
 # 安装：将 .so 安装到 Python 包目录
 # ---------------------------------------------------------------------------
-install(TARGETS rec_sdk_ops_py_a5
+install(TARGETS rec_ops_py_a5
     LIBRARY DESTINATION .
     RUNTIME DESTINATION .
 )
-install(TARGETS rec_sdk_ops_py_a2a3
+install(TARGETS rec_ops_py_a3
+    LIBRARY DESTINATION .
+    RUNTIME DESTINATION .
+)
+install(TARGETS rec_ops_py_a2
     LIBRARY DESTINATION .
     RUNTIME DESTINATION .
 )
@@ -185,6 +191,6 @@ endif()
 # ---------------------------------------------------------------------------
 # 将 env_setup.sh 打入包目录，供用户 source
 # ---------------------------------------------------------------------------
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/rec_sdk_ops/env_setup.sh
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/rec_ops/env_setup.sh
     DESTINATION .
 )
