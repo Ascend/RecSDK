@@ -16,29 +16,33 @@ torch.ops.mxrec.split_2d_jagged(values, maxSeqlen, offsetA, offsetB) -> Tensor, 
 
 #### concat_2d_jagged算子输入与输出
 
-| 名称                | 输入/输出   | 参数类型     | 数据类型                           | 数据格式         | 范围                                                                  | 说明                                      |
-|-------------------|---------|----------|--------------------------------|--------------|---------------------------------------------------------------------|-----------------------------------------|
-| maxSeqlen         | 输入      | int      | int                            | NA           | NA                                                                  | 最大序列长度，即offset中最大偏移。预留参数与开源一致,对当前功能无影响。 |
+| 名称                | 输入/输出   | 参数类型     | 数据类型                           | 数据格式  | 范围                                                                  | 说明                                      |
+|-------------------|---------|----------|--------------------------------|-------|---------------------------------------------------------------------|-----------------------------------------|
+| maxSeqlen         | 输入      | int      | int                            | NA    | NA                                                                  | 最大序列长度，即offset中最大偏移。预留参数与开源一致,对当前功能无影响。 |
 | valuesA           | 输入      | Tensor   | bfloat16/float16/float32/int32 | [dim0, dim1] | dim1和dtype必须与valuesB的一致                                             | 仅支持二维                                   |
 | valuesB           | 输入      | Tensor   | bfloat16/float16/float32/int32 | [dim0, dim1] | dim1和dtype必须与valuesA的一致                                             | 仅支持二维                                   |
-| offsetA           | 输入      | List     | int                            | List[int]    | dim0的长度必须与valuesB的长度相等,长度范围[2, 1024]                                | 仅支持一维                                   |
-| offsetB           | 输入      | List     | int                            | List[int]    | dim0的长度必须与valuesA的长度相等,长度范围[2, 1024]                                | 仅支持一维                                   |
-| isReplace         | 输入(可选)  | bool     | bool                           | NA           | 预留参数，当前只支持默认值Fales，传其他值不生效。                                         | NA                                      |
-| nPrefixFromRight  | 输入(可选)  | int      | int                            | NA           | nPrefixFromRight >= 0                                               | 拼接时右侧tensor移动前缀的个数                                    |
+| offsetA           | 输入      | Tensor     | int                            | [dim0] | shape与offsetB一致,长度范围[2, 1024]                                       | 仅支持一维                                   |
+| offsetB           | 输入      | Tensor     | int                            | [dim0] | shape与offsetA一致,长度范围[2, 1024]                                       | 仅支持一维                                   |
+| isReplace         | 输入(可选)  | bool     | bool                           | NA    | 预留参数，当前只支持默认值Fales，传其他值不生效。                                         | NA                                      |
+| nPrefixFromRight  | 输入(可选)  | int      | int                            | NA    | nPrefixFromRight >= 0                                               | 拼接时右侧tensor移动前缀的个数                                    |
 | outputTensor      | 输出      | Tensor   | bfloat16/float16/float32/int32 | [dim0, dim1] | dim0的长度等于valuesA和valuesB的dim0之和，<br/>dim1的长度与valuesA和valuesB的dim1相等 | 结果为二维                                   |
+
+说明：需确保valuesA和valuesB的dim0维长度与之对应的offset的最后一位大小相等，否则结果可能出错。
 
 #### split_2d_jagged算子输入与输出
 
-| 名称              | 输入/输出    | 参数类型    | 数据类型                             | 数据格式           | 范围                                                    | 说明    |
-|-----------------|----------|---------|----------------------------------|----------------|-------------------------------------------------------|-------|
-| values          | 输入       | Tensor  | bfloat16/float16/float32/int32   | [dim0, dim1]   | NA                                                    | 仅支持二维 |
-| maxSeqlen       | 输入       | int     | int                              | NA             | NA                                                    | 最大序列长度，即offset中最大偏移。预留参数与开源一致,对当前功能无影响。    |
-| offsetA         | 输入       | List    | int                              | List[int]      | 长度范围[2, 1024]                                         | 仅支持一维 |
-| offsetB         | 输入       | List    | int                              | List[int]      | 长度范围[2, 1024]                                         | 仅支持一维 |
-| denseSize       | 输入(可选)   | int     | int                              | NA             | 默认值：0 预留参数，当前只支持默认值，传其他值不生效。                          | NA    |
-| nPrefixToRight  | 输入(可选)   | int     | int                              | NA             | 默认值：0 nPrefixToRight >= 0                             | 切分时右侧tensor的前缀个数    |
-| outputTensor1   | 输出       | Tensor  | bfloat16/float16/float32/int32   | [dim0, dim1]   | dim0的长度等于offsetA的最后一个偏移的值，<br/>dim1的长度与values的dim1相等  | 结果为二维 |
-| outputTensor2   | 输出       | Tensor  | bfloat16/float16/float32/int32   | [dim0, dim1]   | dim0的长度等于offsetB的最后一个偏移的值，<br/>dim1的长度与values的dim1相等  | 结果为二维 |
+| 名称              | 输入/输出    | 参数类型   | 数据类型                            | 数据格式           | 范围                                                | 说明    |
+|-----------------|----------|--------|---------------------------------|----------------|---------------------------------------------------|-------|
+| values          | 输入       | Tensor | bfloat16/float16/float32/int32  | [dim0, dim1]   | NA                                                | 仅支持二维 |
+| maxSeqlen       | 输入       | int    | int                             | NA             | NA                                                | 最大序列长度，即offset中最大偏移。预留参数与开源一致,对当前功能无影响。    |
+| offsetA         | 输入       | Tensor | int                             | [dim0]      | shape与offsetB一致,长度范围[2, 1024]                                     | 仅支持一维 |
+| offsetB         | 输入       | Tensor   | int                             | [dim0]      | shape与offsetA一致,长度范围[2, 1024]                                     | 仅支持一维 |
+| denseSize       | 输入(可选)   | int    | int                             | NA             | 默认值：0 预留参数，当前只支持默认值，传其他值不生效。                      | NA    |
+| nPrefixToRight  | 输入(可选)   | int    | int                             | NA             | 默认值：0 nPrefixToRight >= 0                         | 切分时右侧tensor的前缀个数    |
+| outputTensor1   | 输出       | Tensor | bfloat16/float16/float32/int32  | [dim0, dim1]   | dim0的长度等于offsetA的最后一个偏移的值，<br/>dim1的长度与values的dim1相等 | 结果为二维 |
+| outputTensor2   | 输出       | Tensor | bfloat16/float16/float32/int32  | [dim0, dim1]   | dim0的长度等于offsetB的最后一个偏移的值，<br/>dim1的长度与values的dim1相等 | 结果为二维 |
+
+说明：需确保values的dim0维长度与offsetA和offsetB最后一位之和相等，否则结果可能出错。
 
 ### 编译与部署
 
