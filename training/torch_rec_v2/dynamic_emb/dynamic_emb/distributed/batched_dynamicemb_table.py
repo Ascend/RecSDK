@@ -56,7 +56,7 @@ from dynamic_emb.distributed.optimizers.adagrad_dynamicemb_optimizer import (
     AdagradDynamicEmbeddingOptimizer,
     AdagradDynamicEmbeddingOptimizerV2,
 )
-from dynamic_emb.distributed.optimizers.row_wise_adagrad_dynamicemb_optimizer import (
+from dynamic_emb.distributed.optimizers.rowwise_adagrad_dynamicemb_optimizer import (
     RowWiseAdagradDynamicEmbeddingOptimizer,
     RowWiseAdagradDynamicEmbeddingOptimizerV2,
 )

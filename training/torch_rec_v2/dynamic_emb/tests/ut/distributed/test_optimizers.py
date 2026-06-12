@@ -41,7 +41,7 @@ from dynamic_emb.distributed.optimizers.adagrad_dynamicemb_optimizer import (
     AdagradDynamicEmbeddingOptimizer,
     AdagradDynamicEmbeddingOptimizerV2,
 )
-from dynamic_emb.distributed.optimizers.row_wise_adagrad_dynamicemb_optimizer import (
+from dynamic_emb.distributed.optimizers.rowwise_adagrad_dynamicemb_optimizer import (
     RowWiseAdagradDynamicEmbeddingOptimizer,
     RowWiseAdagradDynamicEmbeddingOptimizerV2,
 )
@@ -62,9 +62,7 @@ def teardown_module():
     sys.modules["dynamic_emb_extensions"] = _original_dynamic_emb_extensions
 
 
-def _make_mock_table_options(
-    num_tables: int = 1, embedding_dtype: torch.dtype = torch.float32
-) -> list:
+def _make_mock_table_options(num_tables: int = 1, embedding_dtype: torch.dtype = torch.float32) -> list:
     table_options = []
     for _ in range(num_tables):
         option = MagicMock(spec=DynamicEmbTableOptions)
@@ -187,7 +185,7 @@ class TestAdamDynamicEmbeddingOptimizerV2(unittest.TestCase):
         emb_dim = 16
 
         grads = torch.randn(batch_size, emb_dim)
-        value_ptr = torch.tensor([i for i in range(batch_size)], dtype=torch.int64)
+        value_ptr = torch.tensor(list(range(batch_size)), dtype=torch.int64)
         value_type = torch.float32
 
         with patch(
@@ -205,7 +203,7 @@ class TestAdamWDynamicEmbeddingOptimizerV2(unittest.TestCase):
         emb_dim = 16
 
         grads = torch.randn(batch_size, emb_dim)
-        value_ptr = torch.tensor([i for i in range(batch_size)], dtype=torch.int64)
+        value_ptr = torch.tensor(list(range(batch_size)), dtype=torch.int64)
         value_type = torch.float32
 
         with patch(
@@ -266,7 +264,7 @@ class TestAdagradDynamicEmbeddingOptimizerV2(unittest.TestCase):
         emb_dim = 16
 
         grads = torch.randn(batch_size, emb_dim)
-        value_ptr = torch.tensor([i for i in range(batch_size)], dtype=torch.int64)
+        value_ptr = torch.tensor(list(range(batch_size)), dtype=torch.int64)
         value_type = torch.float32
 
         with patch(
@@ -339,11 +337,11 @@ class TestRowWiseAdagradDynamicEmbeddingOptimizerV2(unittest.TestCase):
         emb_dim = 16
 
         grads = torch.randn(batch_size, emb_dim)
-        value_ptr = torch.tensor([i for i in range(batch_size)], dtype=torch.int64)
+        value_ptr = torch.tensor(list(range(batch_size)), dtype=torch.int64)
         value_type = torch.float32
 
         with patch(
-            "dynamic_emb.distributed.optimizers.row_wise_adagrad_dynamicemb_optimizer.dynamic_emb_rowwise_adagrad_with_pointer"
+            "dynamic_emb.distributed.optimizers.rowwise_adagrad_dynamicemb_optimizer.dynamic_emb_rowwise_adagrad_with_pointer"
         ) as mocked_func:
             mocked_func.return_value = ()
             optimizer.fused_update_with_pointer(grads, value_ptr, value_type)
@@ -396,7 +394,7 @@ class TestSGDDynamicEmbeddingOptimizerV2(unittest.TestCase):
         emb_dim = 16
 
         grads = torch.randn(batch_size, emb_dim)
-        value_ptr = torch.tensor([i for i in range(batch_size)], dtype=torch.int64)
+        value_ptr = torch.tensor(list(range(batch_size)), dtype=torch.int64)
         value_type = torch.float32
 
         with patch(
@@ -443,11 +441,14 @@ class TestSGDDynamicEmbeddingOptimizer(unittest.TestCase):
         grads = [torch.randn(batch_size, emb_dim)]
 
         mock_weight_dtype = MagicMock()
-        with patch(
-            "dynamic_emb.distributed.optimizers.sgd_dynamicemb_optimizer.dynamic_emb_sgd_with_table"
-        ) as mocked_func, patch(
-            "dynamic_emb.distributed.optimizers.sgd_dynamicemb_optimizer.torch_to_dyn_emb",
-            return_value=mock_weight_dtype,
+        with (
+            patch(
+                "dynamic_emb.distributed.optimizers.sgd_dynamicemb_optimizer.dynamic_emb_sgd_with_table"
+            ) as mocked_func,
+            patch(
+                "dynamic_emb.distributed.optimizers.sgd_dynamicemb_optimizer.torch_to_dyn_emb",
+                return_value=mock_weight_dtype,
+            ),
         ):
             optimizer.update(hashtables, indices, grads)
             mocked_func.assert_called_once()
@@ -654,7 +655,7 @@ class TestRowWiseAdagradDynamicEmbeddingOptimizer(unittest.TestCase):
         grads = [torch.randn(batch_size, emb_dim)]
 
         with patch(
-            "dynamic_emb.distributed.optimizers.row_wise_adagrad_dynamicemb_optimizer.dynamic_emb_rowwise_adagrad_with_table"
+            "dynamic_emb.distributed.optimizers.rowwise_adagrad_dynamicemb_optimizer.dynamic_emb_rowwise_adagrad_with_table"
         ) as mocked_func:
             optimizer.update(hashtables, indices, grads)
             mocked_func.assert_called_once()
