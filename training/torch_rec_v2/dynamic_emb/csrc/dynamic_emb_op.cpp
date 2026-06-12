@@ -176,20 +176,31 @@ static bool LaunchUpdateFusedKernelCommon(aclrtStream stream, uint8_t* gradsPtr,
 static constexpr int64_t kAdagradSimdElemThreshold = 4000000LL;
 static constexpr int64_t kOptimizerSimdElemThreshold = 4000000LL;
 
+static bool IsAdagradSimdDtype(DataType dtype)
+{
+    return dtype == DataType::Float32 || dtype == DataType::Float16 || dtype == DataType::BFloat16;
+}
+
 static bool ShouldUseRowwiseAdagradSimd(uint32_t gradDim, DataType gradType, DataType valType,
                                         std::shared_ptr<dyn_emb::DynamicVariableBase> ht = nullptr)
 {
     if (ht != nullptr && !ht->is_pure_hbm_mode()) {
         return true;
     }
-    return (gradDim >= 4096U) && (gradDim % 8U == 0U) && (gradType == DataType::Float32) &&
-           (valType == DataType::Float32);
+    return (gradDim >= 4096U) && (gradDim % 8U == 0U);
 }
 
 static bool LaunchRowwiseAdagradSimdTiling(const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim,
                                            int32_t numRows, int32_t maxCores, float lr, float eps,
-                                           uint32_t rowsPerGroup, int32_t& coreNumOut, at::Tensor& tilingNpuOut)
+                                           uint32_t rowsPerGroup, DataType gradType, DataType weightType,
+                                           int32_t& coreNumOut, at::Tensor& tilingNpuOut)
 {
+    if (!IsAdagradSimdDtype(gradType) || !IsAdagradSimdDtype(weightType)) {
+        LOG_ERROR("LaunchRowwiseAdagradSimdTiling: unsupported grad/weight dtype for Rowwise Adagrad SIMD. "
+                  "Supported: Float32, Float16, BFloat16.");
+        return false;
+    }
+
     const int32_t numGroups = (numRows + static_cast<int32_t>(rowsPerGroup) - 1) / static_cast<int32_t>(rowsPerGroup);
     coreNumOut = static_cast<int32_t>(
         std::max<int64_t>(1, std::min<int64_t>(static_cast<int64_t>(maxCores), static_cast<int64_t>(numGroups))));
@@ -202,6 +213,8 @@ static bool LaunchRowwiseAdagradSimdTiling(const at::Tensor& gradsContinuous, ui
     tilingData.eps = eps;
     tilingData.needCoreNum = coreNumOut;
     tilingData.rowsPerGroup = rowsPerGroup;
+    tilingData.gradType = static_cast<uint32_t>(gradType);
+    tilingData.weightType = static_cast<uint32_t>(weightType);
 
     at::Tensor tilingHost = at::empty({static_cast<int64_t>(sizeof(RowwiseAdagradSimdTilingData))},
                                       at::TensorOptions().dtype(at::kByte).device(at::kCPU));
@@ -214,13 +227,14 @@ static bool LaunchRowwiseAdagradSimdTiling(const at::Tensor& gradsContinuous, ui
 
 static bool LaunchRowwiseAdagradFusedSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* valuesPtr,
                                           const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim,
-                                          int32_t numRows, int32_t maxCores, float lr, float eps)
+                                          int32_t numRows, int32_t maxCores, float lr, float eps, DataType gradType,
+                                          DataType weightType)
 {
     constexpr uint32_t kRowsPerGroup = 1U;
     int32_t coreNum = 0;
     at::Tensor tilingNpu;
     if (!LaunchRowwiseAdagradSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, lr, eps, kRowsPerGroup,
-                                        coreNum, tilingNpu)) {
+                                        gradType, weightType, coreNum, tilingNpu)) {
         return false;
     }
     ACLRT_LAUNCH_KERNEL(rowwise_adagrad_fused_simd)
@@ -230,12 +244,13 @@ static bool LaunchRowwiseAdagradFusedSimd(aclrtStream stream, uint8_t* gradsPtr,
 
 static bool LaunchRowwiseAdagradSimd(aclrtStream stream, uint8_t* gradsPtr, uint8_t* rowPtrsPtr, uint8_t* foundsPtr,
                                      const at::Tensor& gradsContinuous, uint32_t gradDim, uint32_t valDim,
-                                     int32_t numRows, int32_t maxCores, float lr, float eps, uint32_t rowsPerGroup)
+                                     int32_t numRows, int32_t maxCores, float lr, float eps, uint32_t rowsPerGroup,
+                                     DataType gradType, DataType weightType)
 {
     int32_t coreNum = 0;
     at::Tensor tilingNpu;
     if (!LaunchRowwiseAdagradSimdTiling(gradsContinuous, gradDim, valDim, numRows, maxCores, lr, eps, rowsPerGroup,
-                                        coreNum, tilingNpu)) {
+                                        gradType, weightType, coreNum, tilingNpu)) {
         return false;
     }
     ACLRT_LAUNCH_KERNEL(rowwise_adagrad_simd)
@@ -256,11 +271,6 @@ static bool ShouldUseOptimizerSimd(uint32_t gradDim, int32_t inLength, DataType 
     return (gradDim > 512U) && (gradDim % 8U == 0U) &&
            (static_cast<int64_t>(inLength) >= kOptimizerSimdElemThreshold) &&
            IsSupportedOptimizerSimdDtype(gradType, valType);
-}
-
-static bool IsAdagradSimdDtype(DataType dtype)
-{
-    return dtype == DataType::Float32 || dtype == DataType::Float16 || dtype == DataType::BFloat16;
 }
 
 static uint32_t AdagradSimdRowsPerGroup(DataType gradType, DataType valType)
@@ -1721,7 +1731,7 @@ void dynamic_emb_rowwise_adagrad_with_pointer(const torch::Tensor& grads, const 
     if (ShouldUseRowwiseAdagradSimd(gradDim, gradType, valType)) {
         constexpr uint32_t kRowsPerGroup = 1U;
         if (LaunchRowwiseAdagradSimd(stream, gradsPtr, valuesPtr, nullptr, gradsContinuous, gradDim, valDim, numRows,
-                                     maxCores, lr, eps, kRowsPerGroup)) {
+                                     maxCores, lr, eps, kRowsPerGroup, gradType, valType)) {
             return;
         }
     }
@@ -1754,10 +1764,6 @@ void dynamic_emb_rowwise_adagrad_with_pointer_hybrid(const torch::Tensor& grads,
     }
 
     auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
-    if (gradType != DataType::Float32 || valType != DataType::Float32) {
-        LOG_ERROR("dynamic_emb_rowwise_adagrad_with_pointer_hybrid: only float32 grad/val are supported.");
-        return;
-    }
 
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
     auto gradsContinuous = grads.is_contiguous() ? grads : grads.contiguous();
@@ -1771,7 +1777,7 @@ void dynamic_emb_rowwise_adagrad_with_pointer_hybrid(const torch::Tensor& grads,
     const uint32_t valDim = gradDim + static_cast<uint32_t>(stateDim);
     constexpr uint32_t kRowsPerGroup = 1U;
     if (!LaunchRowwiseAdagradSimd(stream, gradsPtr, valuesPtr, nullptr, gradsContinuous, gradDim, valDim, numRows,
-                                  maxCores, lr, eps, kRowsPerGroup)) {
+                                  maxCores, lr, eps, kRowsPerGroup, gradType, valType)) {
         LOG_ERROR("dynamic_emb_rowwise_adagrad_with_pointer_hybrid: LaunchRowwiseAdagradSimd failed.");
     }
 }
@@ -1933,7 +1939,7 @@ void dynamic_emb_rowwise_adagrad_with_table(std::shared_ptr<dyn_emb::DynamicVari
     if (ShouldUseRowwiseAdagradSimd(gradDim, gradType, weightType, ht)) {
         constexpr uint32_t kRowsPerGroup = 1U;
         if (LaunchRowwiseAdagradSimd(stream, gradsPtr, valuesPtr, foundsPtr, gradsContinuous, gradDim, valDim, numRows,
-                                     maxCores, lr, eps, kRowsPerGroup)) {
+                                     maxCores, lr, eps, kRowsPerGroup, gradType, weightType)) {
             return;
         }
     }
@@ -2119,7 +2125,7 @@ void dynamic_emb_rowwise_adagrad_fused(const torch::Tensor& grads, const torch::
 
     if (ShouldUseRowwiseAdagradSimd(gradDim, gradType, valType)) {
         if (LaunchRowwiseAdagradFusedSimd(stream, gradsPtr, valuesPtr, gradsContinuous, gradDim, valDim, numRows,
-                                          maxCores, lr, eps)) {
+                                          maxCores, lr, eps, gradType, valType)) {
             return;
         }
     }
@@ -2154,10 +2160,6 @@ void dynamic_emb_rowwise_adagrad_fused_hybrid(const torch::Tensor& grads, const 
 
     auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
     auto valType = scalartype_to_datatype(convertTypeMetaToScalarType(values.dtype()));
-    if (gradType != DataType::Float32 || valType != DataType::Float32) {
-        LOG_ERROR("dynamic_emb_rowwise_adagrad_fused_hybrid: only float32 grad/val are supported.");
-        return;
-    }
 
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
     auto gradsContinuous = grads.is_contiguous() ? grads : grads.contiguous();
@@ -2168,7 +2170,7 @@ void dynamic_emb_rowwise_adagrad_fused_hybrid(const torch::Tensor& grads, const 
     const int32_t numRows = inLength / static_cast<int32_t>(gradDim);
 
     if (!LaunchRowwiseAdagradFusedSimd(stream, gradsPtr, valuesPtr, gradsContinuous, gradDim, valDim, numRows, maxCores,
-                                       lr, eps)) {
+                                       lr, eps, gradType, valType)) {
         LOG_ERROR("dynamic_emb_rowwise_adagrad_fused_hybrid: LaunchRowwiseAdagradFusedSimd failed.");
     }
 }
@@ -2471,10 +2473,6 @@ void dynamic_emb_adagrad_fused_hybrid(const torch::Tensor& grads, const torch::T
 
     auto gradType = scalartype_to_datatype(convertTypeMetaToScalarType(grads.dtype()));
     auto valType = scalartype_to_datatype(convertTypeMetaToScalarType(values.dtype()));
-    if (!IsAdagradSimdDtype(gradType) || !IsAdagradSimdDtype(valType)) {
-        LOG_ERROR("dynamic_emb_adagrad_fused_hybrid: unsupported grad/weight dtype.");
-        return;
-    }
 
     int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
     const int32_t numRows = inLength / static_cast<int32_t>(gradDim);

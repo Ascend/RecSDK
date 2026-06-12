@@ -25,6 +25,8 @@ struct RowwiseAdagradSimdTilingData {
     float eps{};
     int32_t needCoreNum{};
     uint32_t rowsPerGroup{};
+    uint32_t gradType{};
+    uint32_t weightType{};
 };
 #pragma pack(pop)
-static_assert(sizeof(RowwiseAdagradSimdTilingData) == 28U, "RowwiseAdagradSimdTilingData packed layout");
+static_assert(sizeof(RowwiseAdagradSimdTilingData) == 36U, "RowwiseAdagradSimdTilingData packed layout");

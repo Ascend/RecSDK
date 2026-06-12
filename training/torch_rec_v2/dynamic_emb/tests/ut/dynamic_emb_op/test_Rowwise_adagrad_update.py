@@ -175,6 +175,8 @@ def test_dynamic_emb_rowwise_adagrad_with_pointer(device, batch_size, embedding_
     ("grad_type", "eps"),
     [
         (torch.float32, 1e-8),
+        (torch.float16, 1e-4),
+        (torch.bfloat16, 1e-8),
     ],
 )
 def test_dynamic_emb_rowwise_adagrad_with_pointer_hybrid(
@@ -198,10 +200,16 @@ def test_dynamic_emb_rowwise_adagrad_with_pointer_hybrid(
     val_pointers = get_dim_pointers_optimized(values)
     test_grad = torch.randn_like(params, dtype=grad_type)
 
+    dtype_to_dynamic_emb = {
+        torch.float32: DynamicEmbDataType.Float32,
+        torch.float16: DynamicEmbDataType.Float16,
+        torch.bfloat16: DynamicEmbDataType.BFloat16,
+    }
+    val_dynamic_type = dtype_to_dynamic_emb[grad_type]
     dynamic_emb_rowwise_adagrad_with_pointer_hybrid(
         test_grad,
         val_pointers,
-        DynamicEmbDataType.Float32,
+        val_dynamic_type,
         state_dim,
         lr,
         eps,
@@ -400,6 +408,8 @@ def test_dynamic_emb_rowwise_adagrad_fused(device, batch_size, embedding_dim, op
     ("grad_type", "eps"),
     [
         (torch.float32, 1e-8),
+        (torch.float16, 1e-4),
+        (torch.bfloat16, 1e-8),
     ],
 )
 def test_dynamic_emb_rowwise_adagrad_fused_hybrid(device, batch_size, embedding_dim, opt_params, iter_num, grad_type):
