@@ -6,7 +6,7 @@
 - 物理机上已经安装好对应CANN版本的驱动和固件
 - 物理机上已经安装docker，并且docker网络可用
 - 准备基础OS镜像：在物理机上使用命令
-  - debian: x86架构: `docker pull debian:12`                       
+  - debian: x86架构: `docker pull debian:12`
   - openeuler: arm架构: `wget https://mirrors.huaweicloud.com/openeuler/openEuler-22.03-LTS-SP4/docker_img/aarch64/openEuler-docker.aarch64.tar.xz && docker load -i openEuler-docker.aarch64.tar.xz`<br>
   - centos: x86架构: `docker pull --platform=amd64 swr.cn-south-1.myhuaweicloud.com/ascendhub/centos:7.6.1810`<br>
 
@@ -27,6 +27,10 @@
 
 Step1：新建`build_images`目录。
 
+```shell
+mkdir -p build_images
+```
+
 Step2：在`build_images`目录下准备CANN包。用户可以从[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=pt+cann&product=4&model=26)下载**8.5.0**版本的[toolkit包](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.5.0)与[算子包](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.5.0)。用户也可根据实际情况选择其他版本CANN包。
 
 CANN 8.5.0及之后版本，算子包名称存在变化，下载算子包时注意下载对应名称软件包。
@@ -37,7 +41,7 @@ CANN 8.5.0及之后版本，算子包名称存在变化，下载算子包时注�
 | 算子包名称      | Ascend-cann-kernels-{version}_linux-{arch}.run | Ascend-cann-{chip_type}-ops_{version}_linux-{arch}.run |
 
 > 注意
-> 
+>
 > 1. 当前Dockerfile中，适配的是CANN 8.5.0及之后版本的算子包名称。
 > 2. 如需安装CANN 8.5.0之前版本CANN包，需将Dockerfile中KERNEL_PKG的值修改为：`Ascend-cann-kernels*.run`。
 
@@ -49,6 +53,14 @@ CANN 8.5.0及之后版本，算子包名称存在变化，下载算子包时注�
 可将物理机上相应的文件拷贝到`build_images`目录。物理机安装驱动与固件后，version.info默认安装路径为/usr/local/Ascend/driver/version.info；
 ascend_install.info默认安装路径为/etc/ascend_install.info。
 
+参考命令如下：
+
+```shell
+cd build_images
+cp /usr/local/Ascend/driver/version.info .
+cp /etc/ascend_install.info .
+```
+
 Step3：根据基础OS镜像将[Dockerfile_centos](./Dockerfile_centos)、[Dockerfile_debian](./Dockerfile_debian)或[Dockerfile_openeuler](./Dockerfile_openeuler)移动到`build_images`目录中，并运行下面命令构建镜像。构建镜像的步骤在Dockerfile中有详细的说明，注释部分是安装CANN包与torchrec相关包的操作。
 
 ```shell
@@ -58,7 +70,7 @@ docker build -t recsdk_torch_base:v1.0-[x86|arm] -f Dockerfile_[centos|debian|op
 docker build -t recsdk_torch_base:v1.0-[x86|arm] -f Dockerfile_[centos|debian|openeuler] --build-arg http_proxy=http://your_proxy --build-arg https_proxy=https://your_proxy .
 ```
 
-**注意：**   
+**注意：**
 
 1. 制作镜像时需确保服务器能访问外网，否则需要配置代理。
 2. 运行命令前注意修改Dockerfile中的基础镜像名。
@@ -97,7 +109,7 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 
 ## 安装RecSDK相关的包
 
-请参见[安装部署](../torch_rec_v1/recsdk_torch_installation_guide.md#源码编译安装)进行源码的编译和安装。
+请参见[安装部署](../torch_rec_v1/recsdk_torch_installation_guide.md#源码安装)进行源码的编译和安装。
 
 ## 制作PyTorch 2.7.1版本镜像
 

@@ -202,9 +202,13 @@ $$
 
 #### 软件依赖
 
-**Python**：版本要求 >= 3.11
+**gcc**：版本建议 11.2.0
 
-**CANN**：昇腾 CANN 工具包 [[下载地址](https://www.hiascend.com/cann/download)]，版本要求 >= 8.5.0。需正确设置环境变量：
+**cmake** 版本建议 3.22.6
+
+**Python**：版本建议 3.11.0
+
+**CANN**：昇腾 CANN 工具包 [[下载地址](https://www.hiascend.com/cann/download)]，版本建议9.0.0。需正确设置环境变量：
 
 ```shell
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
@@ -212,12 +216,19 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 当前支持两种 PyTorch 版本配套，调用HSTU_V1前向算子前需完成配套软件及算子的安装。详细配套关系如下：
 
-| 版本 | PyTorch | torch-npu | fbgemm_gpu |
-|------|---------|-----------|------------|
-| 版本1 | 2.6.0   | 2.6.0     | 1.1.0      |
-| 版本2 | 2.7.1   | 2.7.1     | 1.2.0      |
+| 版本 | PyTorch | torch-npu |
+|------|---------|-----------|
+| 1 | 2.6.0   | 2.6.0     |
+| 2 | 2.7.1   | 2.7.1     |
 
 ### 单算子使用说明
+
+#### 源码下载
+
+```shell
+git clone https://gitcode.com/Ascend/RecSDK.git
+cd RecSDK
+```
 
 #### 算子编译
 
@@ -241,11 +252,11 @@ bash run.sh --ai-core ai_core-(soc_version)
 bash build_ops.sh
 ```
 
-执行完在当前 build 目录生成 xxx.so 文件, 调用算子时执行以下命令进行加载。
+执行完在当前 build 目录生成 libhstu_dense_ops.so 文件, 调用算子时执行以下命令进行加载。
 
 ```python
 import torch
-torch.ops.load_library("path/to/build/xxx.so")  # 替换为.so文件的绝对路径
+torch.ops.load_library("path/to/build/libhstu_dense_ops.so")  # 替换为libhstu_dense_ops.so文件的绝对路径
 ```
 
 #### 单算子运行案例
@@ -255,7 +266,7 @@ torch.ops.load_library("path/to/build/xxx.so")  # 替换为.so文件的绝对路
 ```python
 import torch
 import torch_npu
-torch.ops.load_library("path/to/build/xxx.so")  # 替换为之前生成的.so文件的绝对路径
+torch.ops.load_library("path/to/build/libhstu_dense_ops.so")  # 替换为之前生成的libhstu_dense_ops.so文件的绝对路径
 
 # MHA 模式示例 [B, S, N, D]
 batch_size = 2

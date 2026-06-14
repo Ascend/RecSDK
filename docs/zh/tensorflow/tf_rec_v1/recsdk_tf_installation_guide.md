@@ -17,10 +17,9 @@
 
 |依赖名称/操作|推荐版本|获取方式|
 |--|--|--|
-|CANN软件包和TensorFlow适配昇腾插件|CANN 9.0.0|<li>Ascend-cann-toolkit_{version}_linux-{arch}.run：单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>请参见《CANN 软件安装指南》进行安装。</li><li>TensorFlow适配昇腾插件单击[获取链接](https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.44_8.3.RC1)。npu_device-2.6.5\*适配TensorFlow 2.6.5的版本；npu_bridge-1.15.0\*适配TensorFlow 1.15.0的版本。</li>|
+|CANN软件包和TensorFlow适配昇腾插件|CANN 9.0.0|<li>请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。</li><li>TensorFlow适配昇腾插件单击[获取链接](https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.44_8.3.RC1)。npu_device-2.6.5\*适配TensorFlow 2.6.5的版本；npu_bridge-1.15.0\*适配TensorFlow 1.15.0的版本。</li>|
 |昇腾硬件产品驱动和固件|Ascend HDK 26.0.RC1及补丁版本|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。安装驱动与固件请参见相关硬件产品配套的[《驱动和固件安装升级指南》](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)。|
 |Ascend Docker Runtime|MindCluster 7.3.0|请参见《MindCluster 集群调度用户指南》的“安装 > 安装部署”章节进行安装。|
-|配置Device网卡|-|请参考《Ascend Training Solution 组网指南》的参数面网络配置示例配置训练节点章节，通过HCCN_Tool配置NPU网口的Device IP。|
 |TensorFlow|TensorFlow 1.15.0和TensorFlow 2.6.5|请从[TensorFlow](https://github.com/tensorflow/tensorflow)仓库获取源码。Arm环境下TensorFlow官方未提供对应的whl包，如需在Arm环境下使用，可以从[链接](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html)获取Arm的TensorFlow whl包。<br>[!NOTE]<br>若whl包下载受阻，可复制其链接并在新标签页中打开，即可顺利完成下载。|
 |Python 3.7.5|Python 3.7.5|请从[Python官网](https://www.python.org/)获取依赖软件包。|
 
@@ -52,25 +51,11 @@
 
 3. 编译方法：
 
-   > [!NOTE]
-   > build_wrapper.sh 脚本构建方式跟随资源下载中心同步更新，目前推荐单独编译安装Rec SDK whl包
-
-   进入RecSDK代码目录：
-
-   如需编译安装软件包，可参考build/build_wrapper/tf_rec_v1/build_wrapper.sh脚本，执行脚本命令构建软件包，构建成功，软件包在build/output子目录下：
-
-   ```bash
-   # 编译软件包
-   bash build/build_wrapper/tf_rec_v1/build_wrapper.sh
-   
-   # 安装软件包
-   pip install build/output/tf_rec_v1*.tar.gz
-   ```
-
-   如需单独编译安装tf 1.15.0或tf 2.6.5的Rec SDK whl包（不包含自动识别tf版本功能及框架依赖算子安装），可参考如下命令：
+   进入Rec SDK代码目录：
+   - setup.py：此脚本供内部使用，用于同时构建tf1和tf2的Rec SDK包，用户通常只需要其中一个，所以建议使用下面两个脚本构建。
    - setup_tf1.py：执行脚本 `python3.7 setup_tf1.py bdist_wheel` 完成tf1版本whl包的构建，构建成功后，whl包在build/mindxsdk-mxrec/tf1_whl子目录下。
    - setup_tf2.py：执行脚本 `python3.7 setup_tf2.py bdist_wheel` 完成tf2版本whl包的构建，构建成功后，whl包在build/mindxsdk-mxrec/tf2_whl子目录下。
- 
+
    如需使用动态扩容功能，进入“RecSDK/cust_op/ascendc_op/ai_core_op/cust_op_by_addr”目录中。执行命令 `bash run.sh` 编译并安装动态扩容算子包。
 
 4. 测试用例
@@ -90,7 +75,7 @@
    ```
 
    **C++侧测试用例**
- 
+
    运行C++侧测试用例所需依赖：
 
    - [googletest 1.8.1](https://github.com/google/googletest/archive/refs/tags/release-1.8.1.zip)
@@ -111,7 +96,7 @@
    ```
 
    tf2环境下使用如下命令：
-   
+
    ```shell
    bash test_ut.sh tf2
    ```
@@ -119,9 +104,6 @@
 **下载软件包<a name="section1852417242717"></a>**
 
 请参考本章获取所需软件包和对应的数字签名文件，下载本软件即表示您同意[华为企业业务最终用户许可协议（EULA）](https://e.huawei.com/cn/about/eula)的条款和条件。
-
-> [!NOTE]
-> 当前Release软件包为Rec SDK whl包，一键安装部署软件包待资源下载中心上线后更新。
 
 |组件名称|软件包|获取链接|
 |--|--|--|
@@ -141,10 +123,10 @@
 
 ## 使用物理机部署开发环境<a name="ZH-CN_TOPIC_0000001630046437"></a>
 
-> [!NOTE]
+>[!NOTE]
 >
-> - 当前支持在Ubuntu  20.04及以上版本系统中进行物理机开发环境部署。其他系统环境请使用源码编译方式安装或者通过部署容器安装。
-> - 用户请勿修改编译目录下除run.sh文件外的其他文件代码。
+>- 当前支持在Ubuntu  20.04、CentOS  7系统中进行物理机开发环境部署。
+>- 用户请勿修改编译目录下除run.sh文件外的其他文件代码。
 
 1. 参考《CANN 软件安装指南》安装CANN软件包和TensorFlow适配昇腾插件。
 2. 配置环境变量。
@@ -157,26 +139,52 @@
     source /usr/local/Ascend/cann/set_env.sh
     ```
 
-3. 通过如下命令安装软件包，软件包会自动识别当前环境TensorFlow版本。软件包包含框架依赖算子，软件包会根据硬件型号自动识别芯片类型，也可指定芯片类型安装。
+3. 通过如下命令解压软件包，若未指定具体路径，默认解压到当前目录下，解压命令中需要添加--no-same-owner参数。
 
     ```bash
-    # 安装软件包
-    pip install tf_rec_v1-{version}-{arch}.tar.gz
-
-    # 指定芯片类型安装软件包
-    CORE_TYPE=A2 pip install tf_rec_v1-{version}-{arch}.tar.gz
+    # 解压到当前目录下
+    tar -xf Ascend-mindxsdk-mxrec-{version}_linux-{arch}.tar.gz --no-same-owner
+    # 解压到特定目录下
+    tar -xf Ascend-mindxsdk-mxrec-{version}_linux-{arch}.tar.gz --no-same-owner -C 指定路径
     ```
 
-    （其中 `{version}` 代表版本号，`{arch}` 代表操作系统架构，请根据实际安装包替换）
-
-    软件包默认安装在Python的“site-packages”路径，若通过“--target”参数指定目录，在安装完成后需要将Rec SDK TensorFlow路径加入“PYTHONPATH”环境变量。
+4. 解压完后的目录结构参见如下。
 
     ```bash
-    export PYTHONPATH={rec_install_path}:{rec_install_path}/tf_rec_v1:$PYTHONPATH
+    mindxsdk-mxrec/
+    |-- tf1_whl
+    |   `-- mx_rec-{version}-py3-none-linux_{arch}.whl    #适用于TensorFlow 1.15.0版本的mx_rec框架Wheel包
+    |-- tf2_whl
+    |   `-- mx_rec-{version}-py3-none-linux_{arch}.whl    #适用于TensorFlow 2.6.5版本的mx_rec框架Wheel包
+    `-- version.info
     ```
 
-4. 如需使用动态扩容功能，请参见[（可选）片上内存侧动态扩容算子包安装](common_operations.md#可选片上内存侧动态扩容算子包安装)，编译安装动态扩容算子包。
-5. 如需使用Hadoop分布式文件系统，请参考[Hadoop官方文档](https://hadoop.apache.org/docs/r1.0.4/cn/quickstart.html)进行环境部署和集群搭建。推荐使用Hadoop-2.7.5版本。
+5. 安装软件包中的Wheel包。（请根据实际需求，选取对应TensorFlow版本匹配的Wheel包。）
+
+    ```bash
+    pip3 install mx_rec-{version}-py3-none-linux_{arch}.whl
+    ```
+
+    Wheel包默认安装在Python的“site-packages”路径，若通过“--target”参数指定目录，在安装完成后需要将Rec SDK TensorFlow路径加入“PYTHONPATH”环境变量。
+
+    ```bash
+    export PYTHONPATH={rec_install_path}:{rec_install_path}/mx_rec:$PYTHONPATH
+    ```
+
+6. 安装依赖，若未构建镜像，直接在物理机上进行开发，则须安装以下Python依赖。
+
+    ```bash
+    pip3.7 install numpy decorator sympy==1.4 cffi==1.12.3 pyyaml pathlib2 grpcio grpcio-tools protobuf==3.20.0 scipy requests mpi4py easydict scikit-learn==0.20.0 attrs
+    ```
+
+    horovod依赖安装前需配置“HOROVOD\_WITH\_MPI”、“HOROVOD\_WITH\_TENSORFLOW”，依赖安装命令参考如下。
+
+    ```bash
+    HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 pip3.7 install horovod --no-cache-dir
+    ```
+
+7. 如需使用动态扩容功能，请参见[（可选）片上内存侧动态扩容算子包安装](common_operations.md#可选片上内存侧动态扩容算子包安装)，编译安装动态扩容算子包。
+8. 如需使用Hadoop分布式文件系统，请参考[Hadoop官方文档](https://hadoop.apache.org/docs/r1.0.4/cn/quickstart.html)进行环境部署和集群搭建。推荐使用Hadoop-2.7.5版本。
 
 ## 部署容器内的开发环境<a name="ZH-CN_TOPIC_0000002175060298"></a>
 
@@ -189,7 +197,7 @@
 
 基于容器部署Rec SDK TensorFlow开发环境，可参考如[图1](#fig2687191413442)步骤完成配置。
 
-**图 1**  配置容器内的开发环境及训练镜像构建<a id="fig2687191413442"></a>  
+**图 1**  配置容器内的开发环境及训练镜像构建<a id="fig2687191413442"></a>
 ![](../../figures/tf_rec_v1/配置容器内的开发环境及训练镜像构建.png "配置容器内的开发环境及训练镜像构建")
 
 **关键步骤说明<a name="section15488921175211"></a>**
@@ -312,7 +320,7 @@
     |TensorFlow（1.15.0/2.6.5）|[链接](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html)|
 
 2. 在build\_images目录下创建Dockerfile配置文件（以Dockerfile名称为例），使用vi Dockerfile命令编辑文件，插入如下内容。
-    
+
     ```bash
     # 请根据实际情况修改基础镜像名称及镜像tag
     FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/centos:7.6.1810
@@ -483,7 +491,7 @@
     # 12.安装tf相关的Python包以及Rec SDK# 默认构建tf1的镜像，构建tf2镜像自行修改参数
     ARG TF_VER=1.15.0
     ARG TF1_PLUGIN=npu_bridge-1.15.0-*.whl
-    ARG TF2_PLUGIN=npu_device-2.6.5-*.whl 
+    ARG TF2_PLUGIN=npu_device-2.6.5-*.whl
     RUN pip3.7 install tensorflow==${TF_VER} && \
         pip3.7 install tf_slim && \
         HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 pip3.7 install horovod --no-cache-dir && \
@@ -554,13 +562,13 @@ Rec SDK TensorFlow环境变量的说明如[表1](#table126401659163820)所示。
 - 升级Rec SDK TensorFlow新版本时，需要先手动卸载旧版本。
 
     ```bash
-    pip3 uninstall tf_rec_v1 -y
+    pip3 uninstall mx_rec -y
     ```
 
 - 使用<b>--upgrade</b>命令升级Rec SDK TensorFlow。
 
     ```bash
-    pip3 install --upgrade tf_rec_v1-{version}-{arch}.tar.gz
+    pip3 install --upgrade mx_rec-{version}-py3-none-{arch}.whl
     ```
 
 \{version\}为版本号，\{arch\}为操作系统架构。
@@ -570,5 +578,7 @@ Rec SDK TensorFlow环境变量的说明如[表1](#table126401659163820)所示。
 用户如需移除Rec SDK TensorFlow软件包部署，可参考以下命令进行卸载。
 
 ```bash
-pip3 uninstall tf_rec_v1 -y
+pip3 uninstall mx_rec -y
 ```
+
+如需卸载动态扩容算子，请参见[（可选）片上内存侧动态扩容算子包安装](common_operations.md#可选片上内存侧动态扩容算子包安装)中的卸载说明。
