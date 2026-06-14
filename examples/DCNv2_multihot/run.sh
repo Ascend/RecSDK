@@ -48,10 +48,13 @@ export HCCL_OP_RETRY_ENABLE="L0:0, L1:0, L2:0"
 
 export DLRM_CRITEO_DATA_PATH=${dlrm_criteo_data_path}
 export PYTHONPATH=${mx_rec_package_path}:${so_path}:${common_so_path}:${fore_path}:${project_root}:$PYTHONPATH
-if [ "$(uname -m)" == "aarch64" ]; then
-    export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6:/usr/local/python3.7.5/lib/python3.7/site-packages/scikit_learn.libs/libgomp-d22c30c5.so.1.0.0
+if [ -f /usr/local/gcc11.2.0/lib64/libgomp.so.1 ]; then
+    export LD_PRELOAD=/usr/local/gcc11.2.0/lib64/libgomp.so.1:/usr/local/gcc11.2.0/lib64/libstdc++.so.6
 else
     export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6
+fi
+if [ "$(uname -m)" == "aarch64" ] && [ -f $(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/scikit_learn.libs/libgomp-d22c30c5.so.1.0.0 ]; then
+    export LD_PRELOAD=${LD_PRELOAD}:$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/scikit_learn.libs/libgomp-d22c30c5.so.1.0.0
 fi
 export LD_LIBRARY_PATH=${so_path}:${common_so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 
