@@ -60,7 +60,7 @@ if [ -n "$ip" ]; then
 fi
 
 cur_path=`pwd`
-rec_package_path="/usr/local/python3.7.5/lib/python3.7/site-packages/mx_rec" # please config
+rec_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/mx_rec # please config
 so_path=${rec_package_path}/libasc
 common_package_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/rec_sdk_common
 common_so_path=${common_package_path}/lib
@@ -74,7 +74,12 @@ num_process=$((${num_server} * ${local_rank_size})) # 训练总的进程数，�
 export HCCL_CONNECT_TIMEOUT=1200 # HCCL集合通信 建链超时时间，取值范围[120,7200]
 export HCCL_OP_RETRY_ENABLE="L0:0, L1:0, L2:0"
 export PYTHONPATH=${so_path}:${common_so_path}:$PYTHONPATH # 环境python安装路径
-export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6 # GNU OpenMP动态库路径. 不应该使用LD_PRELOAD这种方式加载！预加载GNU C++标准库规避TLS段错误问题
+# GNU OpenMP动态库路径. 不应该使用LD_PRELOAD这种方式加载！预加载GNU C++标准库规避TLS段错误问题
+if [ -f /usr/local/gcc11.2.0/lib64/libgomp.so.1 ]; then
+    export LD_PRELOAD=/usr/local/gcc11.2.0/lib64/libgomp.so.1:/usr/local/gcc11.2.0/lib64/libstdc++.so.6
+else
+    export LD_PRELOAD=/usr/lib64/libgomp.so.1:/usr/lib64/libstdc++.so.6
+fi
 export LD_LIBRARY_PATH=${so_path}:${common_so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 # 集合通信文件，格式请参考昇腾官网CANN文档，“准备资源配置文件”章节。
 export JOB_ID=10086
