@@ -163,10 +163,10 @@
     执行如下指令配置容器内环境
 
     ```bash
+    # 设置CANN版本
+    source /usr/local/set_cann_env.sh a5 # 切换并生效 Ascend 950 配套Toolkit及相关环境变量
     # 激活python虚拟环境
     source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
-    # 设置CANN版本
-    bash /usr/local/set_cann_env.sh a5 # 切换并生效 Ascend 950 配套Toolkit及相关环境变量
     ```
 
 3. 启动模型训练

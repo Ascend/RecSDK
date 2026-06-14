@@ -19,11 +19,10 @@
 |--|--|--|
 |昇腾硬件产品驱动和固件|Ascend HDK 26.0.RC1及补丁版本|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>安装驱动与固件请参见相关硬件产品配套的《[驱动和固件安装升级指南](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)》。|
 |Ascend Docker Runtime|MindCluster 7.3.0|请参见《[MindCluster 集群调度用户指南](https://www.hiascend.com/document/detail/zh/mindcluster/730/clustersched/dlug/dlug_installation_017.html)》的“安装 > 安装部署”章节进行安装。|
-|配置Device网卡|-|请参考《[Ascend Training Solution 23.0.0 组网指南](https://support.huawei.com/enterprise/zh/doc/EDOC1100349028/d9914967)》的参数面网络配置示例配置示例配置训练节点章节，通过HCCN_Tool配置NPU网口的Device IP。|
-|CANN软件包|CANN 9.0.0|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。<br>根据设备架构获取Ascend-cann-toolkit_<i>{version}</i>_linux-<i>{arch}</i>.run和Ascend-cann-<i>{chip_type}</i>-ops-<i>{version}</i>_linux-<i>{arch}</i>.run，并参考《[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta2/softwareinst/instg/instg_0008.html?Mode=PmIns&OS=Debian&InstallType=local)》的“安装CANN”章节在容器内进行安装。|
+|CANN软件包|CANN 9.0.0|请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。|
 |PyTorch昇腾适配插件|2.7.1|单击[链接](https://pytorch-package.obs.cn-north-4.myhuaweicloud.com/pta/Daily/v2.7.1/20260327.4/pytorch_v2.7.1_py311.tar.gz)，根据设备架构获取torch_npu-2.7.1*-cp311-*.whl软件包并在容器内安装。|
 
-> [!NOTE]须知 
+> [!NOTE]须知
 >对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以并且不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
 
 ## 获取Rec SDK Torch软件包<a name="ZH-CN_TOPIC_0000002336148981"></a>
@@ -33,47 +32,47 @@
 > [!NOTE]
 > build_wrapper.sh 脚本构建方式跟随资源下载中心同步更新，目前推荐参考training/torch_rec_v2/dynamic_emb/README.md进行单独编译安装
 
-源码编译前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu)安装CANN开发套件软件包；参考[Ascend Extension for PyTorch安装指南](https://www.hiascend.com/document/detail/zh/Pytorch/730/configandinstg/instg/docs/zh/installation_guide/installation_via_binary_package.md)安装PyTorch适配昇腾的框架插件包。 
+源码编译前，请参考[CANN 软件安装指南](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu)安装CANN开发套件软件包；参考[Ascend Extension for PyTorch安装指南](https://www.hiascend.com/document/detail/zh/Pytorch/730/configandinstg/instg/docs/zh/installation_guide/installation_via_binary_package.md)安装PyTorch适配昇腾的框架插件包。
 
 需要编译的源码包：
 
 | 名称                                       | 说明              |
 |------------------------------------------|-----------------|
 | torch_rec_v2-*.tar.gz     | RecSDK-Torch软件包（已包含TorchRec昇腾注册包） |
-| rec_ops-*.whl | 自定义算子包             |
+| rec_sdk_ops*.whl | 自定义算子包             |
 | fbgemm_ascend-*.whl                     | fbgemm自定义算子包及PyTorch框架适配层           |
 | HierarchicalKV_ascend                     | HKV算子包           |
 
 1. 编译环境
- 
+
    容器环境编译，参考[README](../build_torch_rec_v2_images/README.md)。
- 
+
 2. 编译torch_rec_v2-*.tar.gz
- 
+
    进入RecSDK目录下：
 
    如需编译安装软件包，可参考build/build_wrapper/torch_rec_v2/build_wrapper.sh脚本，执行脚本命令构建软件包，构建成功后，软件包在build/output子目录下：
-   
+
    ```bash
    # 编译软件包
    bash build/build_wrapper/torch_rec_v2/build_wrapper.sh
-   
+
    # 安装软件包
    pip3 uninstall -y torch_rec_v2
    pip3 install build/output/torch_rec_v2*.tar.gz
    ```
-   
+
    > [!NOTE]
    > TorchRec昇腾注册包是基于TorchRec源码做的NPU设备适配。Rec SDK Torch 推荐算法框架包的编译安装，会同时安装TorchRec昇腾注册包。
    > 如需单独编译安装，可通过Rec SDK Torch提供的patch文件和TorchRec源码的固定分支编译出该注册包。
    > 请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/torchrec_npu/README.md)进行源码编译和安装。
- 
+
 3. 编译自定义算子
- 
+
    参考对应[README](../../../../cust_op/ascendc_op/build/README.md)。
- 
+
 4. 编译fbgemm_ascend算子及其适配层
- 
+
    参考fbgemm_ascend的[README](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md)进行源码编译安装。
 
 5. 编译安装HKV算子包
@@ -101,7 +100,7 @@
 |--|--|--|
 |Rec SDK|推荐算法框架开发套件包|[获取链接](https://gitcode.com/Ascend/RecSDK/releases)|
 
->[!NOTE]说明 
+>[!NOTE]说明
 >当前提供的Rec SDK推荐算法框架开发套件包基于Python 3.11版本编译，请在相同的Python版本环境下安装使用。若需要在其他Python版本环境下安装使用，请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/dynamic_emb/README.md)进行源码编译。
 
 **软件数字签名验证<a name="section10830205518487"></a>**
@@ -120,7 +119,7 @@
 
 基于容器部署Rec SDK Torch开发环境，可参考如[图1](#fig1345216415476)完成配置。
 
-**图 1**  配置容器内的开发环境及训练镜像构建<a id="fig1345216415476"></a>  
+**图 1**  配置容器内的开发环境及训练镜像构建<a id="fig1345216415476"></a>
 ![](../../figures/torch_rec_v1/配置容器内的开发环境及训练镜像构建.png "配置容器内的开发环境及训练镜像构建")
 
 **关键步骤说明<a name="section15488921175211"></a>**
@@ -155,7 +154,7 @@ ${image_name} \
 /bin/bash
 ```
 
->[!NOTE]说明 
+>[!NOTE]说明
 >部分参数说明如下：
 >
 >- -m 300g表示设置容器内可以使用的内存大小上限为300G，可根据实际情况进行配置。
@@ -196,17 +195,17 @@ ${image_name} \
         其中 `{version}` 代表版本号，`{arch}` 代表操作系统架构，请根据实际安装包替换。
 
     2. 安装自定义算子相关包
-       
+
        参考fbgemm_ascend的[安装指南](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md)获取fbgemm_ascend算子包。
 
        > [!NOTE]
-       > fbgemm_ascend whl包及rec_ops whl包待资源下载中心上线后更新。
+       > fbgemm_ascend whl包及rec_sdk_ops whl包待资源下载中心上线后更新。
 
        ```bash
        # 安装框架依赖算子包 fbgemm_ascend
        pip3 install fbgemm_ascend-*.whl
-       # 安装自定义算子包 rec_ops
-       pip3 install rec_ops-*.whl
+       # 安装自定义算子包 rec_sdk_ops
+       pip3 install rec_sdk_ops*.whl
        ```
 
 ## 配置环境变量<a name="ZH-CN_TOPIC_0000002336268805"></a>
@@ -223,15 +222,33 @@ Rec SDK Torch环境变量的说明如[表1](#table126401659163820)所示。
 
 ## 卸载<a name="ZH-CN_TOPIC_0000002302389376"></a>
 
-用户如需移除Rec SDK Torch软件包，可参考以下命令进行卸载。
+用户如需移除Rec SDK Torch软件包，可根据安装方式参考以下命令进行卸载。
 
 ```bash
 # 卸载Rec SDK Torch主包，并连带卸载TorchRec昇腾注册包
 pip3 uninstall torch_rec_v2 -y
 
+# 卸载HKV算子包（单独编译安装时需执行）
+pip3 uninstall HierarchicalKV_ascend -y
+
+# 基于源码编译安装方式卸载算子
+# 卸载算子指令示例（仅列出部分，其他算子卸载指令同理）
+rm -rf /usr/local/Ascend/cann/opp/vendors/asynchronous_complete_cumsum
+rm -rf /usr/local/Ascend/cann/opp/vendors/backward_codegen_adagrad_unweighted_exact
+rm -rf /usr/local/Ascend/cann/opp/vendors/permute2d_sparse_data
+rm -rf /usr/local/Ascend/cann/opp/vendors/split_embedding_codegen_forward_unweighted
+# 卸载libfbgemm_npu_api.so
+PACKAGE_PATH=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+if [ -d "$PACKAGE_PATH" ]; then
+  cd ${PACKAGE_PATH}
+  rm -rf libfbgemm_npu_api.so
+else
+  echo "no site-package"
+fi
+
 # 基于Release版本安装方式卸载算子
-pip uninstall rec_ops
-pip uninstall fbgemm_ascend
+pip3 uninstall rec_sdk_ops -y
+pip3 uninstall fbgemm_ascend -y
 ```
 
 ## 升级<a name="ZH-CN_TOPIC_0000002302389340"></a>
