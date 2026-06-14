@@ -5,9 +5,9 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+# pylint: disable=duplicate-code
 import os
 import logging
-import sysconfig
 from typing import List
 import pytest
 from dataset import RandomRecDataset, Batch
@@ -15,11 +15,10 @@ from model import Model
 from util import setup_logging
 
 import torch
-import torch_npu
-import torch.multiprocessing as mp
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.multiprocessing as mp
 from torch.utils.data import DataLoader
+import torch_npu
 
 from hybrid_torchrec import HashEmbeddingBagCollection, HashEmbeddingBagConfig
 from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
@@ -38,8 +37,6 @@ from torchrec.distributed.planner import (
 )
 from torchrec.distributed.types import ShardingEnv
 from torchrec.optim.keyed import CombinedOptimizer
-
-torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 WORLD_SIZE = 2
 LOOP_TIMES = 20
@@ -78,7 +75,7 @@ def execute(
     )
     embeding_config = []
     for i in range(table_num):
-        ebc_config = HashEmbeddingBagConfig(
+        ebc_config = HashEmbeddingBagConfig(  # pylint: disable=unexpected-keyword-arg
             name=f"table{i}",
             embedding_dim=embedding_dims[i],
             num_embeddings=num_embeddings[i],
@@ -131,7 +128,7 @@ class TestModel:
 
         table_num = len(embeding_config)
         ebc = HashEmbeddingBagCollection(device=self.device, tables=embeding_config)
-        num_features = sum([c.num_features() for c in embeding_config])
+        num_features = sum(c.num_features() for c in embeding_config)
         ebc = Model(ebc, num_features)
         apply_optimizer_in_backward(
             optimizer_class=torch.optim.Adagrad,
@@ -139,19 +136,15 @@ class TestModel:
             optimizer_kwargs={"lr": 0.02},
         )
         # Shard
-        constrans = {
-            f"table{i}": ParameterConstraints(
-                sharding_types=[sharding_type], compute_kernels=["fused"]
-            )
+        constrains = {
+            f"table{i}": ParameterConstraints(sharding_types=[sharding_type], compute_kernels=["fused"])
             for i in range(table_num)
         }
         planner = EmbeddingShardingPlanner(
             topology=Topology(world_size=self.world_size, compute_device=self.device),
-            constraints=constrans,
+            constraints=constrains,
         )
-        plan = planner.collective_plan(
-            ebc, get_default_hybrid_sharders(host_env), dist.GroupMember.WORLD
-        )
+        plan = planner.collective_plan(ebc, get_default_hybrid_sharders(host_env), dist.GroupMember.WORLD)
         if self.rank == 0:
             logging.debug(plan)
 

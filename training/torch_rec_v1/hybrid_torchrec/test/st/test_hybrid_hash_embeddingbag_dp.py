@@ -5,10 +5,9 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+# pylint: disable=duplicate-code
 import logging
-from math import log
 import os
-import sysconfig
 from typing import List
 
 import pytest
@@ -37,10 +36,6 @@ from torchrec.distributed.planner import (
     ParameterConstraints,
 )
 from torchrec.distributed.types import ShardingEnv
-from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
-from torchrec.optim.keyed import CombinedOptimizer
-
-torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 LOOP_TIMES = 8
 BATCH_NUM = 32
@@ -53,12 +48,10 @@ OPTIMIZER_PARAM = {
 }
 
 
-def generate_hash_config(
-    embedding_dims, num_embeddings, pool_type
-) -> List[HashEmbeddingBagConfig]:
+def generate_hash_config(embedding_dims, num_embeddings, pool_type) -> List[HashEmbeddingBagConfig]:
     test_table_configs: List[HashEmbeddingBagCollection] = []
     for i, (table_dim, num_embedding) in enumerate(zip(embedding_dims, num_embeddings)):
-        config = HashEmbeddingBagConfig(
+        config = HashEmbeddingBagConfig(  # pylint: disable=unexpected-keyword-arg
             name=f"table{i}",
             embedding_dim=table_dim,
             num_embeddings=num_embedding,
@@ -102,20 +95,14 @@ def execute(
 
     test_model = TestModel(rank, world_size, device)
 
-    golden_results = test_model.cpu_golden_loss(
-        embedding_conf, golden_dataset_loader, optim
-    )
-    test_results = test_model.test_loss(
-        embedding_conf, data_loader, sharding_type, optim
-    )
+    golden_results = test_model.cpu_golden_loss(embedding_conf, golden_dataset_loader, optim)
+    test_results = test_model.test_loss(embedding_conf, data_loader, sharding_type, optim)
     for golden, result in zip(golden_results, test_results):
         logging.debug("")
         logging.debug("===========================")
         logging.debug("result test %s", result)
         logging.debug("golden test %s", golden)
-        assert torch.allclose(
-            golden, result, rtol=1e-04, atol=1e-04
-        ), "golden and result is not closed"
+        assert torch.allclose(golden, result, rtol=1e-04, atol=1e-04), "golden and result is not closed"
 
 
 def weight_init(param: torch.nn.Parameter):
@@ -137,19 +124,17 @@ class TestModel:
         self.setup(rank=rank, world_size=world_size)
 
     @staticmethod
-    def cpu_golden_loss(
-        embedding_conf: List[EmbeddingBagConfig], dataloader: DataLoader[Batch], optim
-    ):
-        pg = dist.new_group(backend="gloo")      
+    def cpu_golden_loss(embedding_conf: List[EmbeddingBagConfig], dataloader: DataLoader[Batch], optim):
+        pg = dist.new_group(backend="gloo")
         assert len(embedding_conf) == 1
         num_embendings = embedding_conf[0].num_embeddings
         embedding_dim = embedding_conf[0].embedding_dim
-        
+
         weight = torch.nn.Parameter(torch.randn(num_embendings, embedding_dim))
         weight_init(weight)
         ebc = torch.nn.Embedding(num_embendings, embedding_dim, _weight=weight.data, device="cpu")
 
-        num_features = sum([c.num_features() for c in embedding_conf])
+        num_features = sum(c.num_features() for c in embedding_conf)
         ebc = Model(ebc, num_features)
         model = DDP(ebc, device_ids=None, process_group=pg)
         opt = optim(ebc.parameters(), **OPTIMIZER_PARAM[optim])
@@ -183,30 +168,24 @@ class TestModel:
         sharding_type: str,
         optim,
     ):
-        num_features = sum([c.num_features() for c in embedding_conf])
+        num_features = sum(c.num_features() for c in embedding_conf)
         rank, world_size = self.rank, self.world_size
         host_gp = dist.new_group(backend="gloo")
         host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
         # Shard
         table_num = len(embedding_conf)
-        ebc = HashEmbeddingBagCollection(
-            device=torch.device("meta"), tables=embedding_conf
-        )
+        ebc = HashEmbeddingBagCollection(device=torch.device("meta"), tables=embedding_conf)
         ebc = Model(ebc, num_features)
         # Shard
-        constrans = {
-            f"table{i}": ParameterConstraints(
-                sharding_types=[sharding_type], compute_kernels=["dense"]
-            )
+        constrains = {
+            f"table{i}": ParameterConstraints(sharding_types=[sharding_type], compute_kernels=["dense"])
             for i in range(table_num)
         }
         planner = EmbeddingShardingPlanner(
             topology=Topology(world_size=self.world_size, compute_device=self.device),
-            constraints=constrans,
+            constraints=constrains,
         )
-        plan = planner.collective_plan(
-            ebc, get_default_hybrid_sharders(host_env), dist.GroupMember.WORLD
-        )
+        plan = planner.collective_plan(ebc, get_default_hybrid_sharders(host_env), dist.GroupMember.WORLD)
         if self.rank == 0:
             logging.debug(plan)
 
