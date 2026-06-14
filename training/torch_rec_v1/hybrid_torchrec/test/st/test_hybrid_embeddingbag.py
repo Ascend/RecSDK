@@ -5,9 +5,9 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+# pylint: disable=duplicate-code
 import logging
 import os
-import sysconfig
 from typing import List
 
 import pytest
@@ -39,16 +39,12 @@ from torchrec.distributed.types import ShardingEnv
 from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
 from torchrec.optim.keyed import CombinedOptimizer
 
-torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-
 LOOP_TIMES = 8
 BATCH_NUM = 32
 WORLD_SIZE = 2
 
 
-def generate_base_config(
-    embedding_dims, num_embeddings, pool_type
-) -> List[EmbeddingBagConfig]:
+def generate_base_config(embedding_dims, num_embeddings, pool_type) -> List[EmbeddingBagConfig]:
     test_table_configs: List[EmbeddingBagConfig] = []
     for i, (table_dim, num_embedding) in enumerate(zip(embedding_dims, num_embeddings)):
         config = EmbeddingBagConfig(
@@ -94,18 +90,14 @@ def execute(
 
     test_model = TestModel(rank, world_size, device)
 
-    gloden_results = test_model.cpu_gloden_loss(
-        embeding_config, gloden_dataset_loader, sharding_type
-    )
+    gloden_results = test_model.cpu_gloden_loss(embeding_config, gloden_dataset_loader, sharding_type)
     test_results = test_model.test_loss(embeding_config, data_loader, sharding_type)
     for gloden, result in zip(gloden_results, test_results):
         logging.debug("")
         logging.debug("===========================")
         logging.debug("result test %s", gloden)
         logging.debug("gloden test %s", result)
-        assert torch.allclose(
-            gloden, result, rtol=1e-04, atol=1e-04
-        ), "gloden and result is not closed"
+        assert torch.allclose(gloden, result, rtol=1e-04, atol=1e-04), "gloden and result is not closed"
 
 
 def weight_init(param: torch.nn.Parameter):
@@ -136,7 +128,7 @@ class TestModel:
         table_num = len(embeding_config)
         ebc = EmbeddingBagCollection(device="cpu", tables=embeding_config)
 
-        num_features = sum([c.num_features() for c in embeding_config])
+        num_features = sum(c.num_features() for c in embeding_config)
         ebc = Model(ebc, num_features)
         model = DDP(ebc, device_ids=None, process_group=pg)
 
@@ -165,14 +157,14 @@ class TestModel:
         os.environ["GLOO_SOCKET_IFNAME"] = "lo"
         dist.init_process_group(self.pg_method, rank=rank, world_size=world_size)
         os.environ["LOCAL_RANK"] = f"{rank}"
-        
+
     def test_loss(
         self,
         embeding_config: List[EmbeddingBagConfig],
         dataloader: DataLoader[Batch],
         sharding_type: str,
     ):
-        num_features = sum([c.num_features() for c in embeding_config])
+        num_features = sum(c.num_features() for c in embeding_config)
         rank, world_size = self.rank, self.world_size
         host_gp = dist.new_group(backend="gloo")
         host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
@@ -186,19 +178,15 @@ class TestModel:
             optimizer_kwargs={"lr": 0.02},
         )
         # Shard
-        constrans = {
-            f"table{i}": ParameterConstraints(
-                sharding_types=[sharding_type], compute_kernels=["fused"]
-            )
+        constrains = {
+            f"table{i}": ParameterConstraints(sharding_types=[sharding_type], compute_kernels=["fused"])
             for i in range(table_num)
         }
         planner = EmbeddingShardingPlanner(
             topology=Topology(world_size=self.world_size, compute_device=self.device),
-            constraints=constrans,
+            constraints=constrains,
         )
-        plan = planner.collective_plan(
-            ebc, get_default_hybrid_sharders(host_env), dist.GroupMember.WORLD
-        )
+        plan = planner.collective_plan(ebc, get_default_hybrid_sharders(host_env), dist.GroupMember.WORLD)
         if self.rank == 0:
             logging.debug(plan)
 
