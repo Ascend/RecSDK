@@ -17,14 +17,16 @@
 # limitations under the License.
 # ==============================================================================
 
+# pylint: disable=import-error
+# pylint: disable=unexpected-keyword-arg
+# pylint: disable=redefined-outer-name
 import logging
-import os
 import random
 from typing import Dict, List, Optional
 
+import numpy as np
 import pytest
 import torch
-import torch_npu
 import torch.distributed as dist
 
 import torchrec
@@ -42,11 +44,8 @@ from fbgemm_gpu.split_embedding_configs import EmbOptimType
 from torchrec.distributed.comm import intra_and_cross_node_pg
 from torchrec.distributed.model_parallel import DistributedModelParallel
 from torchrec.distributed.planner import Topology
-from torchrec.distributed.planner.storage_reservations import (
-    HeuristicalStorageReservation,
-)
-from torchrec.distributed.types import BoundsCheckMode, ShardingType
-from torchrec.modules.embedding_configs import BaseEmbeddingConfig, PoolingType
+from torchrec.distributed.types import ShardingType
+from torchrec.modules.embedding_configs import BaseEmbeddingConfig
 
 logging.basicConfig(level=logging.NOTSET)
 logger = logging.getLogger(__name__)
@@ -231,6 +230,7 @@ def test_incremental_dump_api(
 
     if is_pooled:
         logger.warning("DynamicEmbeddingBagCollectionSharder is not implemented")
+        return
     else:
         eb_configs = [
             torchrec.EmbeddingConfig(
@@ -257,12 +257,7 @@ def test_incremental_dump_api(
         device,
     )
 
-    if is_pooled:
-        logger.warning("DynamicEmbeddingBagCollectionSharder is not implemented")
-    else:
-        sharder = DynamicEmbeddingCollectionSharder(
-            fused_params=optimizer_kwargs, use_index_dedup=False
-        )
+    sharder = DynamicEmbeddingCollectionSharder(fused_params=optimizer_kwargs, use_index_dedup=False)
 
     plan = planner.collective_plan(ebc, [sharder], dist.GroupMember.WORLD)
     logger.info("Plan: %r", plan)
@@ -287,16 +282,8 @@ def test_incremental_dump_api(
     for i in range(table_num):
         if score_strategies[i] == DynamicEmbScoreStrategy.CUSTOMIZED:
             scores_to_set[table_names[i]] = customized_scores.get(table_names[i])
-    all_customized = (
-        True
-        if score_strategies == [DynamicEmbScoreStrategy.CUSTOMIZED] * table_num
-        else False
-    )
-    param_scores = (
-        scores_to_set[table_names[0]]
-        if all_customized
-        else {prefix_path: scores_to_set}
-    )
+    all_customized = score_strategies == [DynamicEmbScoreStrategy.CUSTOMIZED] * table_num
+    param_scores = scores_to_set[table_names[0]] if all_customized else {prefix_path: scores_to_set}
     set_score(model, param_scores)
     undump_score.update(scores_to_set)
 
@@ -306,9 +293,7 @@ def test_incremental_dump_api(
             scores_to_set: Dict[str, int] = {}
             for i in range(table_num):
                 if score_strategies[i] == DynamicEmbScoreStrategy.CUSTOMIZED:
-                    scores_to_set[table_names[i]] = customized_scores.get(
-                        table_names[i]
-                    )
+                    scores_to_set[table_names[i]] = customized_scores.get(table_names[i])
             set_score(model, {prefix_path: scores_to_set})
             sparse_feature = generate_sparse_feature(
                 feature_names,
@@ -319,19 +304,151 @@ def test_incremental_dump_api(
                 num_embeddings,
             )
             ret = model(sparse_feature)  # => this is awaitable
-            kt = ret.values()  # wait
+            _ = ret.values()  # wait
 
         logger.info("Dump score=%r", undump_score)
-        param_scores = (
-            undump_score[table_names[0]]
-            if all_customized
-            else {prefix_path: undump_score}
-        )
-        ret_tensors, ret_scores = incremental_dump(
-            model, param_scores, intra_and_cross_node_pg()[0]
-        )
+        param_scores = undump_score[table_names[0]] if all_customized else {prefix_path: undump_score}
+        ret_tensors, ret_scores = incremental_dump(model, param_scores, intra_and_cross_node_pg()[0])
         undump_score = ret_scores[prefix_path]
         for i, (table_name, indices) in enumerate(zip(table_names, unique_indices)):
             if use_dynamicembs[i]:
                 dumped_indices = set(ret_tensors[prefix_path][table_name][0].tolist())
                 assert indices.issubset(dumped_indices)
+
+
+@pytest.mark.parametrize(
+    "score_threshold, should_succeed",
+    [
+        # Positive scores - should succeed
+        (0, True),
+        (1, True),
+        (1000, True),
+        # Boundary tests - MAX_INT64 and near boundary values
+        (np.iinfo(np.int64).max, True),  # MAX_INT64 - should succeed
+        (np.iinfo(np.int64).max - 1, True),  # MAX_INT64 - 1 - should succeed
+        # Overflow tests - should fail
+        (np.iinfo(np.int64).max + 1, False),  # MAX_INT64 + 1 - overflow, should fail
+        # Negative scores - should fail
+        (-1, False),
+        (-1000, False),
+    ],
+)
+def test_incremental_dump_score_threshold_validation(
+    score_threshold: int,
+    should_succeed: bool,
+    optimizer_kwargs,
+    backend_session,
+):
+    """Test incremental_dump with positive and negative score_threshold values."""
+    local_rank = dist.get_rank() if dist.is_initialized() else 0
+    device = torch.device(f"npu:{local_rank}")
+
+    table_names = ["t_0"]
+    feature_names = ["f_0"]
+    dim = 8
+    num_embeddings = [BATCH_SIZE_PER_DUMP * 8]
+
+    eb_configs = [
+        torchrec.EmbeddingConfig(
+            name=table_names[0],
+            embedding_dim=dim,
+            num_embeddings=num_embeddings[0],
+            feature_names=[feature_names[0]],
+        )
+    ]
+    ebc = torchrec.EmbeddingCollection(
+        device=torch.device("meta"),
+        tables=eb_configs,
+    )
+
+    planner = get_planner(
+        table_names,
+        eb_configs,
+        [True],
+        [DynamicEmbScoreStrategy.TIMESTAMP],
+        128,
+        [10],
+        device,
+    )
+
+    sharder = DynamicEmbeddingCollectionSharder(fused_params=optimizer_kwargs, use_index_dedup=False)
+
+    plan = planner.collective_plan(ebc, [sharder], dist.GroupMember.WORLD)
+    model = DistributedModelParallel(
+        module=ebc,
+        device=device,
+        sharders=[sharder],
+        plan=plan,
+    )
+
+    # Test integer score_threshold
+    if should_succeed:
+        # Positive score should succeed (may return None if no tables match)
+        result = incremental_dump(model, score_threshold)
+        # Result can be None or a tuple, both are valid for positive scores
+        assert result is None or isinstance(result, tuple)
+        if result is not None:
+            # Validate tuple structure: (emb_dict, score_dict)
+            assert len(result) == 2
+            emb_dict, score_dict = result
+            # emb_dict: Dict[str, Dict[str, Tuple[torch.Tensor, torch.Tensor]]]
+            assert isinstance(emb_dict, dict)
+            for coll_name, table_dict in emb_dict.items():
+                assert isinstance(coll_name, str)
+                assert isinstance(table_dict, dict)
+                for table_name, tensor_tuple in table_dict.items():
+                    assert isinstance(table_name, str)
+                    assert isinstance(tensor_tuple, tuple)
+                    assert len(tensor_tuple) == 2
+                    assert isinstance(tensor_tuple[0], torch.Tensor)
+                    assert isinstance(tensor_tuple[1], torch.Tensor)
+            # score_dict: Dict[str, Dict[str, int]]
+            assert isinstance(score_dict, dict)
+            for coll_name, table_dict in score_dict.items():
+                assert isinstance(coll_name, str)
+                assert isinstance(table_dict, dict)
+                for table_name, score in table_dict.items():
+                    assert isinstance(table_name, str)
+                    assert isinstance(score, int)
+    else:
+        # Negative score should raise ValueError
+        with pytest.raises(ValueError):
+            incremental_dump(model, score_threshold)
+
+    # Test dict format score_threshold
+    score_threshold_dict = {
+        "model": {
+            "t_0": score_threshold,
+        }
+    }
+    if should_succeed:
+        # Positive score should succeed
+        result = incremental_dump(model, score_threshold_dict)
+        assert result is None or isinstance(result, tuple)
+        if result is not None:
+            # Validate tuple structure: (emb_dict, score_dict)
+            assert len(result) == 2
+            emb_dict, score_dict = result
+            # emb_dict: Dict[str, Dict[str, Tuple[torch.Tensor, torch.Tensor]]]
+            assert isinstance(emb_dict, dict)
+            for coll_name, table_dict in emb_dict.items():
+                assert isinstance(coll_name, str)
+                assert isinstance(table_dict, dict)
+                for table_name, tensor_tuple in table_dict.items():
+                    assert isinstance(table_name, str)
+                    assert isinstance(tensor_tuple, tuple)
+                    assert len(tensor_tuple) == 2
+                    assert isinstance(tensor_tuple[0], torch.Tensor)
+                    assert isinstance(tensor_tuple[1], torch.Tensor)
+            # score_dict: Dict[str, Dict[str, int]]
+            assert isinstance(score_dict, dict)
+            for coll_name, table_dict in score_dict.items():
+                assert isinstance(coll_name, str)
+                assert isinstance(table_dict, dict)
+                for table_name, score in table_dict.items():
+                    assert isinstance(table_name, str)
+                    assert isinstance(score, int)
+    else:
+        # Negative score should raise ValueError
+        with pytest.raises(ValueError):
+            incremental_dump(model, score_threshold_dict)
