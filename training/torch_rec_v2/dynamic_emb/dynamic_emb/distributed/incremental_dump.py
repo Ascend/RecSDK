@@ -17,6 +17,8 @@
 # limitations under the License.
 # ==============================================================================
 
+# pylint: disable=import-error
+# pylint: disable=unexpected-keyword-arg
 import logging
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -64,11 +66,11 @@ def _validate_incremental_dump_inputs(
     class_safe_check("model", model, (nn.Module,))
     class_safe_check("pg", pg, (dist.ProcessGroup, type(None)))
 
-    if type(score_threshold) is int:
+    if isinstance(score_threshold, int):
         int_safe_check(
             "score_threshold",
             score_threshold,
-            min_value=ValidatorParams.MIN_INT64.value,
+            min_value=0,
             max_value=ValidatorParams.MAX_INT64.value,
         )
         return True
@@ -84,19 +86,15 @@ def _validate_incremental_dump_inputs(
                 int_safe_check(
                     "threshold of score_threshold",
                     threshold,
-                    min_value=ValidatorParams.MIN_INT64.value,
+                    min_value=0,
                     max_value=ValidatorParams.MAX_INT64.value,
                 )
         return False
 
-    raise ValueError(
-        "DynamicEmb Error: score_threshold should be int or Dict[str, Dict[str, int]]"
-    )
+    raise ValueError("DynamicEmb Error: score_threshold should be int or Dict[str, Dict[str, int]]")
 
 
-def set_score(
-        model: torch.nn.Module, table_score: Union[int, Dict[str, Dict[str, int]]]
-) -> None:
+def set_score(model: torch.nn.Module, table_score: Union[int, Dict[str, Dict[str, int]]]) -> None:
     """Set score for dynamic embedding tables in the model.
 
     NOTE: This function is adapted from the NVIDIA implementation to match
@@ -259,9 +257,11 @@ def incremental_dump(
         score_threshold(Union[int, Dict[str, Dict[str, int]]]):
             int: All embedding table's score threshold will be this integer.
                  It will dump matched results for all tables in the model.
+                 Valid range: [0, ValidatorParams.MAX_INT64.value].
             Dict[str, Dict[str, int]]: the first `str` is the name of embedding collection in the model.
                 'str' in Dict[str, int] is the name of dynamic embedding table, and `int` in Dict[str, int] is
                 the table's score threshold. It will dump for only tables whose names present in this Dict.
+                Each int value must be in valid range: [0, ValidatorParams.MAX_INT64.value].
         pg(Optional[dist.ProcessGroup]): optional. The process group used to control the communication scope
             in the dump. Defaults to None.
 
@@ -287,9 +287,7 @@ def incremental_dump(
 
     set_all_table = _validate_incremental_dump_inputs(model, score_threshold, pg)
 
-    logger.debug(
-        "[incremental_dump] set_all_table=%s score_threshold=%s", set_all_table, score_threshold
-    )
+    logger.debug("[incremental_dump] set_all_table=%s score_threshold=%s", set_all_table, score_threshold)
 
     # find embedding collections
     collections_list: List[Tuple[str, str, nn.Module]] = find_sharded_modules(model, "")
@@ -298,16 +296,14 @@ def incremental_dump(
             "Input model don't have any ShardedDynamicEmbeddingCollection module, can't incremental dump!",
             UserWarning,
         )
-        return
+        return None
 
     # check if the model have dynamic embedding
     check_dynamic_emb_modules_lists: List[List[nn.Module]] = []
 
-    for i, tmp_collection in enumerate(collections_list):
+    for tmp_collection in collections_list:
         _, _, tmp_collection_module = tmp_collection
-        check_dynamic_emb_modules_lists.append(
-            get_dynamic_emb_module(tmp_collection_module)
-        )
+        check_dynamic_emb_modules_lists.append(get_dynamic_emb_module(tmp_collection_module))
 
     has_dynamic_emb = False
     for check_dynamic_emb_module_list in check_dynamic_emb_modules_lists:
@@ -320,7 +316,7 @@ def incremental_dump(
             "Input model don't have any Dynamic embedding tables, can't incremental dump!",
             UserWarning,
         )
-        return
+        return None
     if not set_all_table:
         # filter the embedding collection
         collection_paths_in_module = set()
@@ -329,9 +325,7 @@ def incremental_dump(
         for tmp_module_path, tmp_module_name, module in collections_list:
             collection_paths_in_module.add(tmp_module_path)
             if tmp_module_path in score_threshold.keys():
-                filtered_collections_list.append(
-                    (tmp_module_path, tmp_module_name, module)
-                )
+                filtered_collections_list.append((tmp_module_path, tmp_module_name, module))
 
         collections_list = filtered_collections_list
 
@@ -339,28 +333,28 @@ def incremental_dump(
         for tmp_input_collection_name in score_threshold.keys():
             if tmp_input_collection_name not in collection_paths_in_module:
                 warnings.warn(
-                    f"sharded module '{tmp_input_collection_name}' specified in score_threshold not found in the model",
+                    f"'{tmp_input_collection_name}' specified in score_threshold "
+                    "not found in the model or not ShardedDynamicEmbeddingCollection instance",
                     UserWarning,
                 )
 
     logger.debug(
         "[incremental_dump] iterating %d collection(s), paths=%s",
         len(collections_list),
-        [path for path, _, _ in collections_list]
+        [path for path, _, _ in collections_list],
     )
 
     ret_tensors: Dict[str, Dict[str, Tuple[torch.Tensor, torch.Tensor]]] = {}
     ret_scores: Dict[str, Dict[str, int]] = {}
-    for i, tmp_collection in enumerate(collections_list):
-        collection_path, tmp_collection_name, tmp_collection_module = tmp_collection
+    for tmp_collection in collections_list:
+        collection_path, _, tmp_collection_module = tmp_collection
         tmp_dynamic_emb_module_list = get_dynamic_emb_module(tmp_collection_module)
 
         collection_tensors: Dict[str, Tuple[torch.Tensor, torch.Tensor]] = {}
         collection_scores: Dict[str, int] = {}
 
-        for j, dynamic_emb_module in enumerate(tmp_dynamic_emb_module_list):
+        for dynamic_emb_module in tmp_dynamic_emb_module_list:
             tmp_table_names = dynamic_emb_module.table_names
-            tmp_tables = dynamic_emb_module.tables
 
             filtered_table_names: List[str] = []
             filtered_thresholds: List[int] = []
@@ -376,9 +370,7 @@ def incremental_dump(
                 filtered_table_names = tmp_table_names
                 filtered_thresholds.extend([score_threshold] * len(tmp_table_names))
             if len(filtered_table_names) == 0:
-                logger.debug(
-                    "[incremental_dump] skip collection_path=%s no tables match filter", collection_path
-                )
+                logger.debug("[incremental_dump] skip collection_path=%s no tables match filter", collection_path)
                 continue
             # do incremental dump
             table_thresholds = dict(zip(filtered_table_names, filtered_thresholds))
@@ -386,7 +378,7 @@ def incremental_dump(
                 "[incremental_dump] call BatchedDynamicEmbeddingTablesV2.incremental_dump "
                 "collection_path=%s table_thresholds=%s",
                 collection_path,
-                table_thresholds
+                table_thresholds,
             )
             tensors, scores = dynamic_emb_module.incremental_dump(table_thresholds, pg)
             for tn, (k_t, v_t) in tensors.items():
@@ -397,7 +389,7 @@ def incremental_dump(
                     tn,
                     k_t.numel(),
                     v_t.numel(),
-                    scores.get(tn)
+                    scores.get(tn),
                 )
             collection_tensors.update(tensors)
             collection_scores.update(scores)
