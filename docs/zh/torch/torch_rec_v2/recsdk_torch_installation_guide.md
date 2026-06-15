@@ -47,7 +47,14 @@
 
    容器环境编译，参考[README](../build_torch_rec_v2_images/README.md)。
 
-2. 编译torch_rec_v2-*.tar.gz
+2. 开源依赖：
+
+   - [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+   - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
+
+   将pybind11和securec的压缩包放在与RecSDK代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在RecSDK同级的目录下手动创建opensource目录，然后将pybind11和securec的压缩包放在opensource目录下。
+
+3. 编译torch_rec_v2-*.tar.gz
 
    进入RecSDK目录下：
 
@@ -67,15 +74,15 @@
    > 如需单独编译安装，可通过Rec SDK Torch提供的patch文件和TorchRec源码的固定分支编译出该注册包。
    > 请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/torchrec_npu/README.md)进行源码编译和安装。
 
-3. 编译自定义算子
+4. 编译自定义算子
 
    参考对应[README](../../../../cust_op/ascendc_op/build/README.md)。
 
-4. 编译fbgemm_ascend算子及其适配层
+5. 编译fbgemm_ascend算子及其适配层
 
    参考fbgemm_ascend的[README](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md)进行源码编译安装。
 
-5. 编译安装HKV算子包
+6. 编译安装HKV算子包
 
    torch_rec_v2-*.tar.gz包中已包含HKV算子包，如需单独编译安装，请参考[README](https://gitcode.com/Ascend/HierarchicalKV-ascend/blob/develop/README.md)进行源码编译和安装。
 
