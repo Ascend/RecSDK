@@ -34,11 +34,22 @@ mkdir -p "${RESULT_DIR}"
 
 pytest "${SCRIPT_DIR}" \
     --ignore="${INCREMENTAL_DUMP_DIR}" \
+    --ignore="${SCRIPT_DIR}/test_twin_module.py" \
     --cov="${dynamic_package_path}" \
     --cov-config "${COVERAGERC}" \
     --cov-report=term \
     --junit-xml="${SCRIPT_DIR}/final.xml" \
     --html="${SCRIPT_DIR}/final.html" --self-contained-html --durations=5 -vv --cov-branch
+
+# 执行 twin_module 测试（需要使用 torchrun）
+TWIN_MODULE_TEST="${SCRIPT_DIR}/test_twin_module.py"
+if [ -f "${TWIN_MODULE_TEST}" ]; then
+    torchrun --nproc_per_node=1 -m pytest -svv "${TWIN_MODULE_TEST}" \
+        --cov="${dynamic_package_path}" \
+        --cov-config "${COVERAGERC}" \
+        --cov-report=term \
+        --cov-append
+fi
 
 # 执行incremental_dump目录下的测试
 INCREMENTAL_DUMP_RUNNER="${INCREMENTAL_DUMP_DIR}/test_incremental_dump.sh"
