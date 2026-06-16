@@ -61,7 +61,7 @@ def get_planner(
 ):
     dict_const = {}
     for eb_config in eb_configs:
-        dict_const[eb_config.name] = DynamicEmbParameterConstraints(
+        dict_const[eb_config.name] = DynamicEmbParameterConstraints(  # pylint: disable=unexpected-keyword-arg
             sharding_types=[ShardingType.ROW_WISE.value],
             compute_kernels=["fused"],
             use_dynamicemb=True,

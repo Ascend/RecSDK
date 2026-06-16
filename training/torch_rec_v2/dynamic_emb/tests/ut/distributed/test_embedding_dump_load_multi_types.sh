@@ -19,7 +19,7 @@ for num_gpus in ${NUM_GPUS[@]}; do
         torchrun \
           --nnodes 1 \
           --nproc_per_node $num_gpus \
-          "${SCRIPT_DIR}/test_embedding_dump_load.py" \
+          "${SCRIPT_DIR}/test_embedding_dump_load_multi_types.py" \
           --optimizer-type ${optimizer_type} \
           --score-strategy ${score_strategy} \
           --mode "dump" \
@@ -43,7 +43,7 @@ for num_load_gpus in ${NUM_GPUS[@]}; do
           torchrun \
             --nnodes 1 \
             --nproc_per_node $num_load_gpus \
-            "${SCRIPT_DIR}/test_embedding_dump_load.py" \
+            "${SCRIPT_DIR}/test_embedding_dump_load_multi_types.py" \
             --optimizer-type ${optimizer_type} \
             --score-strategy ${score_strategy} \
             --mode "load" \
