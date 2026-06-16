@@ -62,6 +62,8 @@ from dynamic_emb_extensions import (
     insert_and_evict,
     load_from_pointer,
     load_from_pointer_hybrid,
+    select,
+    select_index,
 )
 
 
@@ -262,7 +264,7 @@ class KeyValueTable(Cache, Storage[DynamicEmbTableOptions, BaseDynamicEmbeddingO
         if load_dim != 0 and founds.sum().item() > 0:
             find_num = founds.sum().item()
             pointers_new = pointers[founds]
-            tmp_embs = torch.empty((find_num, unique_embs.size(1)), dtype=unique_embs.dtype, device=unique_embs.device)
+            tmp_embs = torch.zeros((find_num, unique_embs.size(1)), dtype=unique_embs.dtype, device=unique_embs.device)
             if dyn_emb_is_pure_hbm_mode(self.table):
                 load_from_pointer(pointers_new, tmp_embs)
             else:
@@ -270,9 +272,12 @@ class KeyValueTable(Cache, Storage[DynamicEmbTableOptions, BaseDynamicEmbeddingO
             unique_embs[founds, :] = tmp_embs[:, :]
 
         missing = torch.logical_not(founds)
-        missing_keys = torch.masked_select(unique_keys, missing)
-        num_missing_0 = torch.tensor([missing_keys.numel()], dtype=torch.long, device=device)
-        missing_indices = torch.nonzero(missing, as_tuple=True)[0]
+        num_missing_0 = torch.empty(1, dtype=torch.long, device=device)
+        num_missing_1 = torch.empty(1, dtype=torch.long, device=device)
+        missing_keys = torch.empty_like(unique_keys)
+        missing_indices = torch.empty(batch, dtype=torch.long, device=device)
+        select(missing, unique_keys, missing_keys, num_missing_0)
+        select_index(missing, missing_indices, num_missing_1)
 
         if self._record_cache_metrics:
             self._cache_metrics[0] = batch
@@ -281,8 +286,8 @@ class KeyValueTable(Cache, Storage[DynamicEmbTableOptions, BaseDynamicEmbeddingO
         h_num_missing = num_missing_0.cpu().item()
         return (
             h_num_missing,
-            missing_keys,
-            missing_indices,
+            missing_keys[:h_num_missing],
+            missing_indices[:h_num_missing],
         )
 
     def find_embeddings(
@@ -815,7 +820,7 @@ class KeyValueTableCachingFunction:
         founds = torch.empty(h_num_keys_for_storage, device=unique_keys.device, dtype=torch.bool)
 
         # 2. find in storage
-        values_for_storage = torch.empty(
+        values_for_storage = torch.zeros(
             h_num_keys_for_storage,
             val_dim,
             device=unique_keys.device,
@@ -840,7 +845,9 @@ class KeyValueTableCachingFunction:
 
         if training:
             if emb_dim != val_dim:
-                values_for_storage[missing_indices_in_storage, emb_dim - val_dim :] = storage.init_optimizer_state()
+                init_val = storage.init_optimizer_state()
+                if init_val != 0:
+                    values_for_storage[missing_indices_in_storage, emb_dim - val_dim :] = init_val
             update_cache(cache, storage, keys_for_storage, values_for_storage)
         else:  # only update those found in the storage to cache.
             found_keys_in_storage = keys_for_storage[founds].contiguous()

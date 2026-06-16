@@ -73,7 +73,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
             int32_t srcIndex = inverse[j + start];
             accum += src[srcIndex * evSizeVec + indicesDimVec];
         }
-        if (combiner > 0) {
+        if (combiner > 0 && vectorNum > 0) {
             accum.x /= vectorNum;
             accum.y /= vectorNum;
         }
@@ -92,7 +92,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
             int32_t srcIndex = inverse[j + start];
             accum += src[srcIndex * evSizeVec + indicesDimVec];
         }
-        if (combiner > 0) {
+        if (combiner > 0 && vectorNum > 0) {
             accum /= vectorNum;
         }
         dst[dstRowIndex * totalDims + accumDims + dstColIndex * evSize + indicesDimVec] = accum;
@@ -147,7 +147,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
                 int32_t srcIndex = inverse[j + start];
                 accum += src[srcIndex * evSizeVec + indicesDimVec];
             }
-            if (combiner > 0) {
+            if (combiner > 0 && vectorNum > 0) {
                 accum.x /= vectorNum;
                 accum.y /= vectorNum;
             }
@@ -166,7 +166,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
                 int32_t srcIndex = inverse[j + start];
                 accum += src[srcIndex * evSizeVec + indicesDimVec];
             }
-            if (combiner > 0) {
+            if (combiner > 0 && vectorNum > 0) {
                 accum /= vectorNum;
             }
             dst[dstRowIndex * totalDims + accumDims + dstColIndex * evSize + indicesDimVec] = accum;
