@@ -16,19 +16,26 @@
 # ==============================================================================
 
 import logging
-import sysconfig
-
 import pytest
 import torch
-import torch_npu
 
 import dynamic_emb_extensions
 
 
 logging.basicConfig(level=logging.NOTSET)
 
+# uint64：get_table_range_op NPU 内核已支持，待 PTA/torch_npu 支持后再加入 parametrize。
+UNSIGNED_OFFSET_DTYPES = (torch.uint32,)
 
-def get_expected_table_range(offsets_np, feature_offsets_np):
+
+def _offset_tensor(data, dtype, device):
+    """构造 offset 张量；uint32 在 PTA 下需先 int64 再 cast。"""
+    if dtype in UNSIGNED_OFFSET_DTYPES:
+        return torch.tensor(data, dtype=torch.int64, device=device).to(dtype)
+    return torch.tensor(data, dtype=dtype, device=device)
+
+
+def get_expected_table_range(offsets_np, feature_offsets_np, dtype=torch.int64):
     num_table = len(feature_offsets_np) - 1
     num_feature = feature_offsets_np[-1]
 
@@ -46,12 +53,14 @@ def get_expected_table_range(offsets_np, feature_offsets_np):
         else:
             expected_val = 0
 
-        expected_table_range.append(expected_val)
+        expected_table_range.append(int(expected_val))
 
-    return torch.tensor(expected_table_range, dtype=torch.int64)
+    if dtype in UNSIGNED_OFFSET_DTYPES:
+        return torch.tensor(expected_table_range, dtype=torch.int64).to(dtype)
+    return torch.tensor(expected_table_range, dtype=dtype)
 
 
-@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64, torch.uint32], ids=["i32", "i64", "u32"])
 @pytest.mark.parametrize("device", ["npu:0"])
 @pytest.mark.parametrize("num_tables", [1, 3, 5])
 @pytest.mark.parametrize("batch_size", [1, 2, 4])
@@ -65,8 +74,6 @@ def test_get_table_range_op(dtype, device, num_tables, batch_size):
         num_tables: table 的数量。
         batch_size: 每个特征重复的 batch 次数。
     """
-    device_id = int(device.split(":")[-1])
-
     # 1. 构造测试数据, 每个 table 有 2 个特征
     features_per_table = 2
     feature_offsets_np = [0]
@@ -78,16 +85,15 @@ def test_get_table_range_op(dtype, device, num_tables, batch_size):
     offsets_length = num_feature_total * batch_size + 1
     offsets_np = torch.arange(0, offsets_length * 10, 10, dtype=torch.int64).numpy()
 
-    # 移动数据到npu设备
-    feature_offsets = torch.tensor(feature_offsets_np, dtype=dtype, device=device)
-    offsets = torch.tensor(offsets_np, dtype=dtype, device=device)
+    feature_offsets = _offset_tensor(feature_offsets_np, dtype, device)
+    offsets = _offset_tensor(offsets_np, dtype, device)
 
     # 2. 计算预期结果
-    expected_table_range = get_expected_table_range(offsets_np, feature_offsets_np).to(dtype)
+    expected_table_range = get_expected_table_range(offsets_np, feature_offsets_np, dtype=dtype)
 
     # 3. 调用自定义算子计算实际结果
     torch.npu.synchronize()
-    actual_table_range = dynamic_emb_extensions.get_table_range_op(offsets, feature_offsets).to(dtype)
+    actual_table_range = dynamic_emb_extensions.get_table_range_op(offsets, feature_offsets)
     torch.npu.synchronize()
 
     # 4. 将结果移至 CPU 进行比较
@@ -99,12 +105,50 @@ def test_get_table_range_op(dtype, device, num_tables, batch_size):
     # 5. 打印调试信息
     match = torch.equal(actual_table_range_cpu, expected_table_range_cpu)
     if not match:
-        logging.error(f"\nTest Failed for num_tables={num_tables}, batch_size={batch_size}, dtype={dtype}")
-        logging.error(f"  Inputs:")
-        logging.error(f"    feature_offsets: {feature_offsets_cpu}")
-        logging.error(f"    offsets: {offsets_cpu[:20]}... (total length: {len(offsets_np)})")
-        logging.error(f"  Expected table_range: {expected_table_range_cpu}")
-        logging.error(f"  Actual table_range:   {actual_table_range_cpu}")
+        logging.error(
+            "\nTest Failed for num_tables=%s, batch_size=%s, dtype=%s",
+            num_tables,
+            batch_size,
+            dtype,
+        )
+        logging.error("  Inputs:")
+        logging.error("    feature_offsets: %s", feature_offsets_cpu)
+        logging.error(
+            "    offsets: %s... (total length: %s)",
+            offsets_cpu[:20],
+            len(offsets_np),
+        )
+        logging.error("  Expected table_range: %s", expected_table_range_cpu)
+        logging.error("  Actual table_range:   %s", actual_table_range_cpu)
 
     # 6. 断言结果一致
     assert match, "Custom op 'get_table_range_op' did not produce the expected result."
+
+
+@pytest.mark.parametrize("device", ["npu:0"])
+def test_get_table_range_op_batch_zero_edge_cases(device):
+    """batch=0 边界：numFeature=0、offsets 仅 1 元、featureNumXBatch < numFeature。"""
+    dtype = torch.int64
+    cases = [
+        # numFeature=0，避免除零，全部填 offsets[0]
+        ([42, 100, 200], [0, 0, 0]),
+        # featureNumXBatch=0
+        ([42], [0, 2, 4]),
+        # featureNumXBatch < numFeature，整数除法 batch=0
+        ([10, 20, 30], [0, 2, 4]),
+    ]
+    for offsets_list, feature_offsets_list in cases:
+        offsets_np = torch.tensor(offsets_list, dtype=torch.int64).numpy()
+        feature_offsets_np = feature_offsets_list
+        offsets = _offset_tensor(offsets_list, dtype, device)
+        feature_offsets = _offset_tensor(feature_offsets_list, dtype, device)
+        expected = get_expected_table_range(offsets_np, feature_offsets_np, dtype=dtype)
+
+        torch.npu.synchronize()
+        actual = dynamic_emb_extensions.get_table_range_op(offsets, feature_offsets)
+        torch.npu.synchronize()
+
+        assert torch.equal(actual.cpu(), expected.cpu()), (
+            f"batch=0 edge case failed: offsets={offsets_list}, feature_offsets={feature_offsets_list}, "
+            f"expected={expected.cpu()}, actual={actual.cpu()}"
+        )

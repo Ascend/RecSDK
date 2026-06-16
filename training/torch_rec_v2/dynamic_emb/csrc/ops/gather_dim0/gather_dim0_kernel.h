@@ -26,10 +26,12 @@ namespace GatherDimSimt {
 constexpr int MAX_THREADS_PER_BLOCK = 1024;
 constexpr int UNROLL_SHIFT = 2;
 
-template <typename DATA>
-__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void GatherDim(
-    const __gm__ DATA* input, const __gm__ uint64_t* indices, __gm__ DATA* output,
-    uint32_t dim, uint32_t startIdx, uint32_t endIdx, uint32_t endUnrollIdx)
+template <typename DATA, typename IndexT>
+__simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void GatherDim(const __gm__ DATA* input,
+                                                                                 const __gm__ IndexT* indices,
+                                                                                 __gm__ DATA* output, uint32_t dim,
+                                                                                 uint32_t startIdx, uint32_t endIdx,
+                                                                                 uint32_t endUnrollIdx)
 {
     uint32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
     uint32_t threadNum = AscendC::Simt::GetThreadNum<0>();
@@ -52,10 +54,10 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void GatherDim
         uint32_t index3 = i3 / dim;
         uint32_t dimIdx3 = i3 % dim;
 
-        auto rowIdx0 = indices[index0];
-        auto rowIdx1 = indices[index1];
-        auto rowIdx2 = indices[index2];
-        auto rowIdx3 = indices[index3];
+        auto rowIdx0 = static_cast<uint64_t>(indices[index0]);
+        auto rowIdx1 = static_cast<uint64_t>(indices[index1]);
+        auto rowIdx2 = static_cast<uint64_t>(indices[index2]);
+        auto rowIdx3 = static_cast<uint64_t>(indices[index3]);
 
         auto out0 = input[rowIdx0 * dim + dimIdx0];
         auto out1 = input[rowIdx1 * dim + dimIdx1];
@@ -71,9 +73,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void GatherDim
     for (; i < endIdx; i += threadNum) {
         uint32_t index = i / dim;
         uint32_t dimIdx = i % dim;
-        auto rowIdx = indices[index];
-
+        auto rowIdx = static_cast<uint64_t>(indices[index]);
         output[i] = input[rowIdx * dim + dimIdx];
     }
 }
-}
+}  // namespace GatherDimSimt

@@ -42,6 +42,27 @@ namespace ops_utils {
         }                                                                                   \
     } while (0)
 
+#define INDEX_DTYPE_DISPATCH(enum_type, HINT, ...)                                          \
+    do {                                                                                    \
+        switch (enum_type) {                                                                \
+            CASE_TYPE_USING_HINT(dyn_emb::DataType::Int32, int32_t, HINT, __VA_ARGS__);     \
+            CASE_TYPE_USING_HINT(dyn_emb::DataType::UInt64, uint64_t, HINT, __VA_ARGS__);   \
+            default:                                                                        \
+                CASE_TYPE_USING_HINT(dyn_emb::DataType::Int64, int64_t, HINT, __VA_ARGS__); \
+        }                                                                                   \
+    } while (0)
+
+#define OFFSET_DTYPE_DISPATCH(enum_type, HINT, ...)                                         \
+    do {                                                                                    \
+        switch (enum_type) {                                                                \
+            CASE_TYPE_USING_HINT(dyn_emb::DataType::Int32, int32_t, HINT, __VA_ARGS__);     \
+            CASE_TYPE_USING_HINT(dyn_emb::DataType::UInt32, uint32_t, HINT, __VA_ARGS__);   \
+            CASE_TYPE_USING_HINT(dyn_emb::DataType::UInt64, uint64_t, HINT, __VA_ARGS__);   \
+            default:                                                                        \
+                CASE_TYPE_USING_HINT(dyn_emb::DataType::Int64, int64_t, HINT, __VA_ARGS__); \
+        }                                                                                   \
+    } while (0)
+
 #define FLOAT_TYPE_DISPATCH(enum_type, HINT, ...)                                             \
     do {                                                                                      \
         switch (enum_type) {                                                                  \

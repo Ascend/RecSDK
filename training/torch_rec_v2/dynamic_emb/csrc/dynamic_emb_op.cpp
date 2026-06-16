@@ -602,7 +602,8 @@ ReturnType block_bucketsize_sparse_features_npu(const at::Tensor& lengths, const
 
 torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor& indices)
 {
-    TORCH_CHECK(indices.element_size() == 8, "indices element size must be 8");
+    TORCH_CHECK(indices.dtype() == torch::kInt64 || indices.dtype() == torch::kUInt64,
+                "gather_embedding: indices must be int64 or uint64");
     uint32_t eleSz = inputs.element_size();
     TORCH_CHECK(eleSz == 4 or eleSz == 2, "inputs element size must be 4 or 2");
 
@@ -616,12 +617,13 @@ torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor&
     uint64_t outLen = indicesLen * dim;
     constexpr uint32_t GATHER_THRESHOLD = 100000;
 
-    if (outLen > GATHER_THRESHOLD && indices.scalar_type() != at::kUInt64) {
+    if (outLen > GATHER_THRESHOLD && indices.scalar_type() == torch::kInt64) {
         torch::Tensor indicesExpand = indices.unsqueeze(-1).expand({indicesLen, dim});
         return torch::gather(inputs, 0, indicesExpand);
     }
 
     auto inType = scalartype_to_datatype(inputs.scalar_type());
+    auto indexType = scalartype_to_datatype(indices.scalar_type());
     torch::Tensor output = torch::empty({indicesLen, dim}, inputs.options());
     void* inData = inputs.contiguous().data_ptr();
     void* indicesData = indices.contiguous().data_ptr();
@@ -647,7 +649,7 @@ torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor&
 
     ACLRT_LAUNCH_KERNEL(gather_dim0)
     (coreNum, stream, inData, indicesData, outData, dim, outLen, blocksPerCore, remainderBlocks, THREAD_NUM,
-     static_cast<uint32_t>(inType), eleSz);
+     static_cast<uint32_t>(inType), static_cast<uint32_t>(indexType), eleSz);
     return output;
 }
 
@@ -832,8 +834,9 @@ at::Tensor get_table_range_npu(const at::Tensor& offsets, const at::Tensor& feat
 {
     const at::OptionalDeviceGuard guard(device_of(offsets));
     TORCH_CHECK(offsets.dtype() == featureOffsets.dtype(), "offsets and featureOffsets must have the same dtype");
-    TORCH_CHECK(offsets.dtype() == torch::kInt32 || offsets.dtype() == torch::kInt64,
-                "get_table_range_op only supports int32/int64 dtype");
+    TORCH_CHECK(offsets.dtype() == torch::kInt32 || offsets.dtype() == torch::kInt64 ||
+                    offsets.dtype() == torch::kUInt32 || offsets.dtype() == torch::kUInt64,
+                "get_table_range_op only supports int32/int64/uint32/uint64 dtype");
     TORCH_CHECK(offsets.dim() == 1 && featureOffsets.dim() == 1, "offsets and featureOffsets must be 1D tensor");
 
     TORCH_CHECK(offsets.numel() > 0 && featureOffsets.numel() > 0,
@@ -847,7 +850,23 @@ at::Tensor get_table_range_npu(const at::Tensor& offsets, const at::Tensor& feat
     auto tableRange = at::empty_like(inputFeatureOffsets);
     int64_t tableNum = inputFeatureOffsets.size(0) - 1;
     int64_t featureNumXBatch = inputOffsets.size(0) - 1;
-    int32_t isInt32 = (inputOffsets.dtype() == torch::kInt32) ? 1 : 0;
+
+    if (tableNum == 0) {
+        tableRange.zero_();
+        return tableRange;
+    }
+
+    const int64_t numFeature = inputFeatureOffsets.select(0, tableNum).cpu().item<int64_t>();
+    int64_t batch = 0;
+    if (numFeature != 0) {
+        batch = featureNumXBatch / numFeature;
+    }
+    if (batch == 0) {
+        tableRange.fill_(inputOffsets.select(0, 0).cpu().item());
+        return tableRange;
+    }
+
+    auto offsetType = scalartype_to_datatype(convertTypeMetaToScalarType(inputOffsets.dtype()));
 
     // 配置内核启动参数
     size_t totalTasks = tableNum + 1;
@@ -863,7 +882,7 @@ at::Tensor get_table_range_npu(const at::Tensor& offsets, const at::Tensor& feat
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
     ACLRT_LAUNCH_KERNEL(get_table_range_op)
     (coreNum, stream, inputOffsets.data_ptr(), inputFeatureOffsets.data_ptr(), tableRange.data_ptr(), featureNumXBatch,
-     tableNum, isInt32);
+     tableNum, static_cast<uint32_t>(offsetType));
 
     return tableRange;
 }
@@ -2385,23 +2404,33 @@ void dynamic_emb_sgd_fused_hybrid(const torch::Tensor& grads, const torch::Tenso
 void lookup_backward(const at::Tensor grad, const at::Tensor unique_buffer, const at::Tensor unique_indices,
                      const at::Tensor inverse_indices, const at::Tensor biased_offsets, int32_t dim, int32_t table_num,
                      int32_t batch_size, int32_t feature_num, int32_t num_key, int32_t combiner)
-{  // 数据检查
+{
     TORCH_CHECK(biased_offsets.dtype() == inverse_indices.dtype(),
                 "biased_offsets and inverse_indices must have the same type ");
+    TORCH_CHECK(unique_indices.dtype() == inverse_indices.dtype(),
+                "lookup_backward: unique_indices must match inverse_indices dtype");
+    TORCH_CHECK(inverse_indices.dtype() == torch::kInt32 || inverse_indices.dtype() == torch::kInt64 ||
+                    inverse_indices.dtype() == torch::kUInt64,
+                "lookup_backward: index tensors must be int32, int64, or uint64");
+    TORCH_CHECK(grad.scalar_type() == unique_buffer.scalar_type(),
+                "lookup_backward: grad and unique_buffer must have the same dtype");
+    TORCH_CHECK(grad.dtype() == torch::kFloat32 || grad.dtype() == torch::kFloat16 || grad.dtype() == torch::kBFloat16,
+                "lookup_backward: grad and unique_buffer must be float32, float16, or bfloat16");
 
-    // 数据准备
-    auto grad_contin = grad.contiguous();
-    auto unique_indices_contin = unique_indices.contiguous();
-    auto biased_offsets_contin = biased_offsets.contiguous();
-    auto inverse_indices_contin = inverse_indices.contiguous();
-    float* grad_ptr = grad_contin.data_ptr<float>();
-    float* unique_buffer_ptr = unique_buffer.data_ptr<float>();
+    auto grad_contin = grad.is_contiguous() ? grad : grad.contiguous();
+    auto unique_buffer_contin = unique_buffer.is_contiguous() ? unique_buffer : unique_buffer.contiguous();
+    auto unique_indices_contin = unique_indices.is_contiguous() ? unique_indices : unique_indices.contiguous();
+    auto biased_offsets_contin = biased_offsets.is_contiguous() ? biased_offsets : biased_offsets.contiguous();
+    auto inverse_indices_contin = inverse_indices.is_contiguous() ? inverse_indices : inverse_indices.contiguous();
+    auto value_type = scalartype_to_datatype(convertTypeMetaToScalarType(grad.dtype()));
+    auto index_type = scalartype_to_datatype(convertTypeMetaToScalarType(inverse_indices.dtype()));
+    void* grad_ptr = grad_contin.data_ptr();
+    void* unique_buffer_ptr = unique_buffer_contin.data_ptr();
     void* biased_offsets_ptr = biased_offsets_contin.data_ptr();
     void* inverse_indices_ptr = inverse_indices_contin.data_ptr();
     void* unique_indices_ptr = unique_indices_contin.data_ptr();
-    // tiling
-    bool isInt32 = biased_offsets.dtype() == torch::kInt32;
-    bool is_small = (num_key * dim <= (isInt32 ? SMALL_DATA_THRESHOLD_32 : SMALL_DATA_THRESHOLD));
+    bool is_small =
+        (num_key * dim <= (inverse_indices.dtype() == torch::kInt32 ? SMALL_DATA_THRESHOLD_32 : SMALL_DATA_THRESHOLD));
     int32_t total_blocks = (num_key * dim + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
     int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
     int32_t core_num = std::min(max_cores, total_blocks);
@@ -2417,8 +2446,8 @@ void lookup_backward(const at::Tensor grad, const at::Tensor unique_buffer, cons
 
     ACLRT_LAUNCH_KERNEL(lookup_backward)
     (core_num, stream, grad_ptr, unique_buffer_ptr, unique_indices_ptr, inverse_indices_ptr, biased_offsets_ptr, dim,
-     table_num, batch_size, feature_num, num_key, combiner, total_blocks, blocks_per_core, remainder_blocks, isInt32,
-     is_small, kernelStatus.data_ptr());
+     table_num, batch_size, feature_num, num_key, combiner, total_blocks, blocks_per_core, remainder_blocks,
+     static_cast<uint32_t>(index_type), is_small, static_cast<uint32_t>(value_type), kernelStatus.data_ptr());
 
     TORCH_CHECK(kernelStatus.item<bool>(),
                 "lookup_backward kernel failed: src_index == -1 detected in kernel (kernelStatus == false).");

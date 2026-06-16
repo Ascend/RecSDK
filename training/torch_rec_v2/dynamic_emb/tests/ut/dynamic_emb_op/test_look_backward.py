@@ -42,14 +42,44 @@ test_cases = [
     (2, Combiner.SUM, 0, 8, 128, 100000),  # 不同feature_num，sum聚合
 ]
 repeat_rates = [0.0, 0.25, 0.5, 0.75, 1.0]
+grad_dtypes = [torch.float32, torch.float16, torch.bfloat16]
+index_dtypes = [torch.int32, torch.int64, torch.uint64]
+
+# PTA/torch_npu 限制（与 dynamic_emb C++ 算子能力无关）：
+# 1. scatter/gather 等 indexing 的 index 仅支持 int32/int64（不支持 uint64 index）。
+# 2. device 上的 uint64 tensor 不支持多数 PyTorch 算子（索引、减法、赋值等），
+#    报错示例：Tensor self not implemented for DT_UINT64 / index not implemented for DT_UINT64。
+# lookup_backward NPU 内核已支持 uint64 index；含 uint64 golden 的 UT 在当前 PTA 下跳过。
+PTA_SCATTER_INDEX_DTYPES = (torch.int32, torch.int64)
+PTA_UINT64_UT_SKIP_REASON = (
+    "PTA/torch_npu 暂不支持 NPU 上 uint64 tensor 的 PyTorch 参考算子 "
+    "(索引/减法/scatter_add_ 等，报错 Tensor self not implemented for DT_UINT64)。"
+    "lookup_backward C++ 算子已支持 uint64 index；待 PTA 支持后再启用 golden 比对 UT。"
+)
 
 
-def generate_test_data(feature_num, combiner, device, embed_dim, batch_size, unique_count, repeat_rate):
+def scatter_index_for_pta(indices: torch.Tensor) -> torch.Tensor:
+    """Cast index tensor to a dtype supported by PTA scatter/gather ops."""
+    if indices.dtype not in PTA_SCATTER_INDEX_DTYPES:
+        return indices.to(torch.int64)
+    return indices
+
+
+def _grad_tol(grad_dtype):
+    if grad_dtype == torch.float16:
+        return 1e-3, 1e-3
+    if grad_dtype == torch.bfloat16:
+        return 1e-2, 1e-2
+    return 1e-5, 1e-6
+
+
+def generate_test_data(
+    feature_num, combiner, device, embed_dim, batch_size, unique_count, repeat_rate, grad_dtype, index_dtype=torch.int64
+):
     """生成指定配置的测试数据"""
-    GRAD_DTYPE = torch.float32
-    INDEX_DTYPE = torch.int64
+    INDEX_DTYPE = index_dtype
 
-    grad_for_table = torch.ones((batch_size, embed_dim), dtype=GRAD_DTYPE, device=device)
+    grad_for_table = torch.ones((batch_size, embed_dim), dtype=grad_dtype, device=device)
 
     np.random.seed(42)
     # 重复率定义：total_features = unique_count * (1 + repeat_rate)
@@ -94,9 +124,67 @@ def generate_test_data(feature_num, combiner, device, embed_dim, batch_size, uni
         "unique_count": unique_count,
         "combiner": combiner,
         "device": device,
-        "grad_dtype": GRAD_DTYPE,
+        "grad_dtype": grad_dtype,
         "index_dtype": INDEX_DTYPE,
     }
+
+
+index_dtype_cases = [
+    (1, Combiner.SUM, 0, 8, 2, 5),
+    (1, Combiner.MEAN, 0, 8, 4, 1000),
+]
+
+
+@pytest.mark.parametrize("index_dtype", index_dtypes, ids=["i32", "i64", "u64"])
+@pytest.mark.parametrize("test_params", index_dtype_cases)
+def test_lookup_backward_index_dtype(test_params, index_dtype):
+    """NPU lookup_backward 支持 int32/int64/uint64 index；uint64 golden UT 见 skip 说明。"""
+    if index_dtype == torch.uint64:
+        pytest.skip(PTA_UINT64_UT_SKIP_REASON)
+
+    feature_num, combiner, device, embed_dim, batch_size, unique_count = test_params
+    data = generate_test_data(
+        feature_num=feature_num,
+        combiner=combiner,
+        device=device,
+        embed_dim=embed_dim,
+        batch_size=batch_size,
+        unique_count=unique_count,
+        repeat_rate=0.25,
+        grad_dtype=torch.float32,
+        index_dtype=index_dtype,
+    )
+
+    unique_backward_grads_native = torch.zeros((unique_count, embed_dim), dtype=data["grad_dtype"], device=device)
+    dynamic_emb_extensions.lookup_backward(
+        data["grad_for_table"],
+        unique_backward_grads_native,
+        data["unique_indices"],
+        data["inverse_indices"],
+        data["offsets_per_table"],
+        data["embed_dim"],
+        data["table_num"],
+        data["batch_size"],
+        data["feature_num"],
+        data["offsets_per_table"][-1].item(),
+        combiner=int(combiner),
+    )
+
+    unique_backward_grads_torch = torch_simulate_lookup_backward(
+        grad_for_table=data["grad_for_table"],
+        inverse_indices=data["inverse_indices"],
+        biased_offsets=data["biased_offsets"],
+        unique_count=unique_count,
+        batch_size=data["batch_size"],
+        feature_num=data["feature_num"],
+        dim=embed_dim,
+        combiner=combiner,
+    )
+
+    native_result = unique_backward_grads_native.reshape(unique_count, embed_dim)
+    torch_result = unique_backward_grads_torch.reshape(unique_count, embed_dim)
+    rtol, atol = _grad_tol(torch.float32)
+    assert torch.allclose(native_result, torch_result, rtol=rtol, atol=atol)
 
 
 # -------------------------- Torch算子模拟lookup_backward --------------------------
@@ -128,9 +216,9 @@ def torch_simulate_lookup_backward(
     biased_offsets = biased_offsets.to(device)
     unique_grads = torch.zeros(unique_count, dim, dtype=grad_for_table.dtype, device=grad_for_table.device)
     num_total_features = len(inverse_indices)
-    assert (
-        grad_for_table.shape[0] == len(biased_offsets) - 1
-    ), f"grad_for_table行数{grad_for_table.shape[0]}需匹配样本数{len(biased_offsets) - 1}"
+    assert grad_for_table.shape[0] == len(biased_offsets) - 1, (
+        f"grad_for_table行数{grad_for_table.shape[0]}需匹配样本数{len(biased_offsets) - 1}"
+    )
     grad_broadcast = []
 
     for sample_idx in range(len(biased_offsets) - 1):
@@ -140,20 +228,25 @@ def torch_simulate_lookup_backward(
         sample_grad = grad_for_table[sample_idx : sample_idx + 1].repeat(sample_feature_num, 1)
         grad_broadcast.append(sample_grad)
     grad_broadcast = torch.cat(grad_broadcast, dim=0)
-    assert (
-        grad_broadcast.shape[0] == num_total_features
-    ), f"广播后梯度长度{grad_broadcast.shape[0]}需匹配总特征数{num_total_features}"
+    assert grad_broadcast.shape[0] == num_total_features, (
+        f"广播后梯度长度{grad_broadcast.shape[0]}需匹配总特征数{num_total_features}"
+    )
 
     if combiner == Combiner.SUM:
-        unique_grads.scatter_add_(dim=0, index=inverse_indices.unsqueeze(1).expand(-1, dim), src=grad_broadcast)
+        scatter_index = scatter_index_for_pta(inverse_indices)
+        unique_grads.scatter_add_(dim=0, index=scatter_index.unsqueeze(1).expand(-1, dim), src=grad_broadcast)
 
     elif combiner == Combiner.MEAN:
+        # MEAN 路径需对 biased_offsets 做索引与减法；uint64 在 NPU 上需 skip（见 PTA_UINT64_UT_SKIP_REASON）
+        offsets_for_ref = biased_offsets.to(torch.int64) if biased_offsets.dtype == torch.uint64 else biased_offsets
         pooling_factors = torch.zeros(num_total_features, device=device, dtype=torch.float32)
         for feature_idx in range(num_total_features):
-            sample_idx = find_idx_by_binary_search(biased_offsets, batch_size * feature_num + 1, feature_idx)
-            pooling_factors[feature_idx] = biased_offsets[sample_idx + 1] - biased_offsets[sample_idx]
-        grad_mean = grad_broadcast / pooling_factors.unsqueeze(1)
-        index = inverse_indices.unsqueeze(1).expand(-1, dim)
+            sample_idx = find_idx_by_binary_search(offsets_for_ref, batch_size * feature_num + 1, feature_idx)
+            pooling_factors[feature_idx] = offsets_for_ref[sample_idx + 1] - offsets_for_ref[sample_idx]
+        # 与 NPU kernel 一致：在 float 域做 MEAN 除法，再 cast 回 grad dtype
+        grad_mean = (grad_broadcast.float() / pooling_factors.unsqueeze(1)).to(grad_for_table.dtype)
+        scatter_index = scatter_index_for_pta(inverse_indices)
+        index = scatter_index.unsqueeze(1).expand(-1, dim)
         unique_grads.scatter_add_(dim=0, index=index, src=grad_mean)
 
     else:
@@ -163,13 +256,14 @@ def torch_simulate_lookup_backward(
 
 
 # -------------------------- pytest测试用例 --------------------------
+@pytest.mark.parametrize("grad_dtype", grad_dtypes, ids=["f32", "f16", "bf16"])
 @pytest.mark.parametrize(
     "repeat_rate",
     repeat_rates,
     ids=["repeat_0", "repeat_0.25", "repeat_0.5", "repeat_0.75", "repeat_1.0"],
 )
 @pytest.mark.parametrize("test_params", test_cases)
-def test_lookup_backward(test_params, repeat_rate):
+def test_lookup_backward(test_params, repeat_rate, grad_dtype):
     # 解析测试参数
     feature_num, combiner, device, embed_dim, batch_size, unique_count = test_params
 
@@ -182,6 +276,7 @@ def test_lookup_backward(test_params, repeat_rate):
         batch_size=batch_size,
         unique_count=unique_count,
         repeat_rate=repeat_rate,
+        grad_dtype=grad_dtype,
     )
     # -------------------------- 原生算子执行 --------------------------
     unique_backward_grads_native = torch.zeros((unique_count, embed_dim), dtype=data["grad_dtype"], device=device)
@@ -216,12 +311,12 @@ def test_lookup_backward(test_params, repeat_rate):
     native_result = unique_backward_grads_native.reshape(unique_count, embed_dim)
     torch_result = unique_backward_grads_torch.reshape(unique_count, embed_dim)
 
-    # 断言结果是否一致（绝对误差1e-6）
-    assert torch.allclose(
-        native_result, torch_result, atol=1e-6
-    ), f"""
-        测试参数： feature_num={feature_num}, combiner={combiner}, 
-        embed_dim={embed_dim}, batch_size={batch_size}, unique_count={unique_count}, repeat_rate={repeat_rate}
+    # 断言结果是否一致
+    rtol, atol = _grad_tol(grad_dtype)
+    assert torch.allclose(native_result, torch_result, rtol=rtol, atol=atol), f"""
+        测试参数： feature_num={feature_num}, combiner={combiner},
+        embed_dim={embed_dim}, batch_size={batch_size}, unique_count={unique_count}, repeat_rate={repeat_rate},
+        grad_dtype={grad_dtype}
         原生实现和Torch模拟实现结果不一致！
         原生结果前2行：{native_result[:2]}
         Torch结果前2行：{torch_result[:2]}
@@ -330,7 +425,8 @@ def test_custom_case():
     native_result = unique_backward_grads_native.reshape(UNIQUE_COUNT, EMBED_DIM)
     torch_result = unique_backward_grads_torch.reshape(UNIQUE_COUNT, EMBED_DIM)
 
-    is_equal = torch.allclose(native_result, torch_result, atol=1e-6)
+    rtol, atol = _grad_tol(GRAD_DTYPE)
+    is_equal = torch.allclose(native_result, torch_result, rtol=rtol, atol=atol)
 
     logging.info("=" * 80)
     logging.info(
