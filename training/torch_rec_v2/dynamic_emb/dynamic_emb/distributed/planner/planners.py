@@ -40,7 +40,12 @@ from torchrec.distributed.types import (
     ParameterSharding,
     ShardingPlan,
 )
-from torchrec.modules.embedding_configs import BaseEmbeddingConfig, EmbeddingConfig, DATA_TYPE_NUM_BITS
+from torchrec.modules.embedding_configs import (
+    BaseEmbeddingConfig,
+    EmbeddingConfig,
+    EmbeddingBagConfig,
+    DATA_TYPE_NUM_BITS,
+)
 
 from dynamic_emb.distributed.planner.types import DynamicEmbParameterConstraints
 from dynamic_emb.distributed.planner.enumerators import DynamicEmbeddingEnumerator
@@ -128,7 +133,7 @@ class DynamicEmbeddingShardingPlanner:
             A flag indicating whether to enable debug mode. Defaults to True.
         """
 
-        super(DynamicEmbeddingShardingPlanner, self).__init__()
+        super(DynamicEmbeddingShardingPlanner, self).__init__()  # pylint: disable=super-with-arguments
 
         _validate_configs(constraints, eb_configs)
         class_safe_check("topology", topology, (Topology, type(None)))
@@ -195,7 +200,7 @@ class DynamicEmbeddingShardingPlanner:
                 torchrec_module_plan: Dict[str, ParameterSharding]
                 for table_name, table_plan in torchrec_module_plan.items():
                     if dyn_emb_name == table_name:
-                        dynamic_emb_param_sharding = DynamicEmbParameterSharding(
+                        dynamic_emb_param_sharding = DynamicEmbParameterSharding(  # pylint: disable=unexpected-keyword-arg
                             sharding_spec=table_plan.sharding_spec,
                             sharding_type=table_plan.sharding_type,
                             ranks=table_plan.ranks,
@@ -221,7 +226,7 @@ def _validate_configs(
         raise ValueError("Constraints and eb_configs must not be None")
     class_safe_check("eb_configs", eb_configs, (list,))
     for eb_config in eb_configs:
-        class_safe_check("eb_config", eb_config, (EmbeddingConfig,))
+        class_safe_check("eb_config", eb_config, (EmbeddingConfig, EmbeddingBagConfig))
     class_safe_check("constraints", constraints, (dict,))
     for k, v in constraints.items():
         class_safe_check("key of constraints", k, (str,))
@@ -249,12 +254,10 @@ def _validate_configs(
         if not tmp_constraint.use_dynamicemb:
             continue
         tmp_config = eb_configs[i]
-        validate_initializer_args(
-            tmp_constraint.dynamicemb_options.initializer_args, tmp_config
-        )
+        validate_initializer_args(tmp_constraint.dynamicemb_options.initializer_args, tmp_config)
         # modify num_embeddings per rank to power of 2
         num_aligned_embedding_per_rank = int(next_power_of_2(math.ceil(tmp_config.num_embeddings / world_size)))
-        if num_aligned_embedding_per_rank < constraints[config_name].dynamicemb_options.bucket_capacity:
+        if num_aligned_embedding_per_rank < constraints[config_name].dynamicemb_options.bucket_capacity:  # pylint: disable=consider-using-max-builtin
             num_aligned_embedding_per_rank = constraints[config_name].dynamicemb_options.bucket_capacity
 
         if tmp_config.num_embeddings != int(num_aligned_embedding_per_rank * world_size):

@@ -852,7 +852,7 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
         self,
         indices: Tensor,
         offsets: Tensor,
-        grad_weight_config: Optional[EmbGradWeightConfig] = None,
+        per_sample_weights: Optional[Tensor] = None,
         # 2D tensor of batch size for each rank and feature.
         # Shape (number of features, number of ranks)
         batch_size_per_feature_per_rank: Optional[List[List[int]]] = None,
