@@ -37,6 +37,7 @@ from dynamic_emb.distributed.dynamicemb_config import (
 from dynamic_emb.distributed.types import Cache, Storage
 from dynamic_emb_extensions import (
     DynamicEmbTable,
+    dyn_emb_is_pure_hbm_mode,
     find_and_initialize,
     find_or_insert,
     get_table_range_op,
@@ -44,6 +45,7 @@ from dynamic_emb_extensions import (
     gather_embedding,
     reduce_grads,
     lookup_forward,
+    lookup_forward_hybrid,
     lookup_backward,
 )
 
@@ -172,7 +174,7 @@ class DynamicEmbeddingBagFunction(torch.autograd.Function):
         accum_D = 0
         for i in range(table_num):
             num_embeddings = biased_offsets_list[i].shape[0] - 1
-            lookup_forward(
+            lookup_args = (
                 unique_embedding_list[i],
                 embs,
                 biased_offsets_list[i],
@@ -184,6 +186,10 @@ class DynamicEmbeddingBagFunction(torch.autograd.Function):
                 num_embeddings,
                 batch_size,
             )
+            if dyn_emb_is_pure_hbm_mode(tables[i]):
+                lookup_forward(*lookup_args)
+            else:
+                lookup_forward_hybrid(*lookup_args)
             accum_D += dims[i] * (num_embeddings // batch_size)
             if num_embeddings % batch_size != 0:
                 raise ValueError(f"num_embeddings ({num_embeddings}) must be divisible by batch_size ({batch_size}).")
