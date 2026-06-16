@@ -5,7 +5,7 @@
 本章节列出Rec SDK TensorFlow基于TensorFlow框架patch修改的接口。更多TensorFlow原生接口信息请参考TensorFlow官网。昇腾AI处理器对TensorFlow API的支持情况详见官方文档：[TensorFlow 1.15](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/API/tfadapter1x/tfmigr1_tfadapi_0131.html)和[TensorFlow 2.6](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/API/tfadapter2x/tfmigr2_tfadapi_0029.html)。
 
 >[!NOTICE]
-> 
+>
 >对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复。本章中涉及的TensorFlow原生方法若存在漏洞，请参照TensorFlow官网社区中的安全建议进行规避和修复。
 
 ## tf.compat.v1.train.Saver.save<a name="ZH-CN_TOPIC_0000001630046405"></a>
@@ -16,7 +16,7 @@ TensorFlow用于模型保存的接口。
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def save(self, sess, save_path, global_step=None, latest_filename=None, meta_graph_suffix="meta", write_meta_graph=True, write_state=True, strip_default_attrs=False, save_debug_info=False, is_incremental_checkpoint=False, save_delta=False)
 ```
 
@@ -45,14 +45,15 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 
 具体使用方法可参考[Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run_mode.py)代码仓中的little demo，以下仅提供一个使用的流程示例。
 
-```bash
+```python
 # 1、导入需要的库
 import tensorflow as tf
-from mx_rec.util.initialize import init, get_rank_id
+from mx_rec.util.initialize import init
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_id
 # 2、构建计算图
 # ...
 # 3、创建saver
-saver = tf.compat.v1.train.Saver() 
+saver = tf.compat.v1.train.Saver()
 # 4、获取rank_id
 rank_id = get_rank_id()
 # 5、设置需要保存模型时的训练步数
@@ -73,7 +74,7 @@ TensorFlow用于模型加载的接口。
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def restore(self, sess, save_path)
 ```
 
@@ -93,14 +94,15 @@ def restore(self, sess, save_path)
 
 具体使用方法可参考[Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run_mode.py)中的little demo，以下仅提供一个使用的流程示例。
 
-```bash
+```python
 # 1、导入需要的库
 import tensorflow as tf
-from mx_rec.util.initialize import init, get_rank_id
+from mx_rec.util.initialize import init
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_id
 # 2、构建计算图
 # ...
 # 3、创建saver
-saver = tf.compat.v1.train.Saver() 
+saver = tf.compat.v1.train.Saver()
 # 4、获取rank_id
 rank_id = get_rank_id()
 # 5、设置需要加载的模型保存时的训练步数，比如：
@@ -121,7 +123,7 @@ TensorFlow执行计算图的方法。
 
 **函数原型<a name="section36612317482"></a>**
 
-```bash
+```python
 def run(self, fetches, feed_dict=None, options=None, run_metadata=None)
 ```
 
@@ -143,7 +145,7 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None)
 
 以下仅提供使用流程的示例。
 
-```bash
+```python
 # 1、导入需要的库
 import tensorflow as tf
 from mx_rec.util.initialize import init

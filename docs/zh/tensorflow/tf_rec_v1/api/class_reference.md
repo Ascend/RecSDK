@@ -17,7 +17,7 @@
 
 **使用示例<a name="section6456105313583"></a>**
 
-```bash
+```python
 from mx_rec.core.asc.feature_spec import FeatureSpec
 feature_spec_list = FeatureSpec("user_ids", table_name="user_table",
                                 access_threshold=1,
@@ -37,7 +37,7 @@ feature_spec_list = FeatureSpec("user_ids", table_name="user_table",
 
 **使用示例<a name="section14589163715471"></a>**
 
-```bash
+```python
 from mx_rec.graph.modifier import GraphModifierHook
 
 #定义数据处理函数
@@ -62,7 +62,7 @@ est.train(input_fn=lambda: input_fn(), hooks=[GraphModifierHook()])   #est为创
 
 **使用示例<a name="section14589163715471"></a>**
 
-```bash
+```python
 from mx_rec.core.feature_process import EvictHook
 hooks_list = []
 hook_evict = EvictHook(evict_enable=True, evict_time_interval=30, evict_step_interval=20)
@@ -79,24 +79,24 @@ est.train(input_fn=lambda: input_fn(), hooks=hooks_list)    #est为创建的NPUE
 
 保存全局配置信息的管理类，为单例模式。
 
-该类通过init\(\)函数自动初始化，不需要手动进行构建。同时，本章节只列举该类中对外公开的接口，剩余未在此处公示的为内部接口，不推荐直接调用。
+该类通过init()函数自动初始化，不需要手动进行构建。同时，本章节只列举该类中对外公开的接口，剩余未在此处公示的为内部接口，不推荐直接调用。
 
 **调用示例<a name="section73615361858"></a>**
 
 |接口|作用|原型|
-|--|--|--|
+|--|--|-|
 |get_instance()|获取ConfigInitializer的全局唯一实例。|from mx_rec.util.initialize import ConfigInitializerConfigInitializer.get_instance()|
-|use_dynamic_expansion()|请参见[use_dynamic_expansion](other_apis.md#use_dynamic_expansion)。|
-|get_target_batch()|请参见[get_target_batch](other_apis.md#get_target_batch)。|
-|if_load()|请参见[if_load](model_apis.md#if_load)。|
-|get_initializer(is_training)|请参见[get_initializer](automatic_graph_modification.md#get_initializer)。|
-|ascend_global_hashtable_collection()|请参见[ascend_global_hashtable_collection](other_apis.md#ascend_global_hashtable_collection)。|
+|use_dynamic_expansion|请参见[use_dynamic_expansion](other_apis.md#use_dynamic_expansion)。||
+|get_target_batch()|请参见[get_target_batch](other_apis.md#get_target_batch)。||
+|if_load|请参见[if_load](model_apis.md#if_load)。||
+|get_initializer(is_training)|请参见[get_initializer](automatic_graph_modification.md#get_initializer)。||
+|ascend_global_hashtable_collection()|请参见[ascend_global_hashtable_collection](other_apis.md#ascend_global_hashtable_collection)。||
 
 ## TrainParamsConfig<a name="ZH-CN_TOPIC_0000002470669008"></a>
 
 保存训练任务参数配置的数据类，例如哈希表集合的名字。
 
-该类通过init\(\)函数自动初始化，不需要手动进行构建。同时，本章节只列举该类中对外公开的接口，剩余未在此处公示的为内部接口，不推荐直接调用。
+该类通过init()函数自动初始化，不需要手动进行构建。同时，本章节只列举该类中对外公开的接口，剩余未在此处公示的为内部接口，不推荐直接调用。
 
 **调用示例<a name="section73615361858"></a>**
 

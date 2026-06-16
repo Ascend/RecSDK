@@ -8,7 +8,7 @@
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 from mx_rec.util.initialize import ConfigInitializer
 ConfigInitializer.get_instance().train_params_config.get_initializer(is_training)
 ```
@@ -61,7 +61,7 @@ with tf.compat.v1.Session() as sess:
 
 **使用示例<a name="section11333109979"></a>**
 
-```bash
+```python
 from mx_rec.graph import LookupSubgraphSlicerHook, GraphModifierHook
 
 
@@ -89,7 +89,7 @@ est.train(input_fn=lambda: input_fn, hooks=npu_hooks_append(hooks_list))
 
 **使用示例<a name="section473316525914"></a>**
 
-```bash
+```python
 from mx_rec.graph import OrphanLookupKeySlicerHook, GraphModifierHook
 
 def input_fn():
@@ -115,7 +115,7 @@ est.train(input_fn=lambda: input_fn, hooks=npu_hooks_append(hooks_list))
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 from mx_rec.graph.merge_lookup import do_merge_lookup
 ```
 
@@ -129,7 +129,7 @@ from mx_rec.graph.merge_lookup import do_merge_lookup
 
 例如，train模式，全部的梯度计算都使用tf.gradients，则需要主动调用do\_merge\_lookup。
 
-```bash
+```python
 from mx_rec.graph.merge_lookup import do_merge_lookup
 do_merge_lookup(is_train=True)
 sparse_grads = tf.gradients(loss, sparse_variables)

@@ -8,7 +8,7 @@
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def init(**kwargs)
 ```
 
@@ -53,7 +53,7 @@ def init(**kwargs)
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
-```bash
+```python
 from mx_rec.util.initialize import init
 init(max_steps=200, train_steps=100, eval_steps=10, save_steps=100, use_dynamic=True, use_dynamic_expansion=False)
 ```
@@ -70,13 +70,13 @@ init(max_steps=200, train_steps=100, eval_steps=10, save_steps=100, use_dynamic=
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def terminate_config_initializer()
 ```
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
-```bash
+```python
 from mx_rec.util.initialize import terminate_config_initializer
 terminate_config_initializer()
 ```

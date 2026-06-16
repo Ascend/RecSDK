@@ -6,7 +6,7 @@
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def create_hash_optimizer(learning_rate=0.001, initial_accumulator_value=0.9, use_locking=False, name="Adagrad")
 ```
 
@@ -25,7 +25,7 @@ CustomizedAdagrad（自定义Adagrad优化器）的一个实例对象。
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
-```bash
+```python
 from mx_rec.optimizers.adagrad import create_hash_optimizer
 hashtable_optimizer = create_hash_optimizer(0.001)
 ```
@@ -36,7 +36,7 @@ hashtable_optimizer = create_hash_optimizer(0.001)
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def create_hash_optimizer(learning_rate, use_locking=False, name="Ftrl", **kwargs)
 ```
 
@@ -69,7 +69,7 @@ CustomizedFtrl（自定义Ftrl优化器）的一个实例对象。
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
-```bash
+```python
 from mx_rec.optimizers.ftrl import create_hash_optimizer
 hashtable_optimizer = create_hash_optimizer(0.001)
 ```
@@ -80,8 +80,7 @@ hashtable_optimizer = create_hash_optimizer(0.001)
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
-
+```python
 def create_hash_optimizer(learning_rate, use_locking=False, name="GradientDescent", use_fusion_optim=False, weight_decay=None)
 ```
 
@@ -101,7 +100,7 @@ CustomizedGradientDescent（自定义SGD优化器）的一个实例对象。
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
-```bash
+```python
 from mx_rec.optimizers.gradient_descent import create_hash_optimizer
 hashtable_optimizer = create_hash_optimizer(0.001)
 ```
@@ -112,7 +111,7 @@ hashtable_optimizer = create_hash_optimizer(0.001)
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def create_hash_optimizer_by_addr(learning_rate, weight_decay=0.0001, use_locking=False, name="GradientDescentByAddr")
 ```
 
@@ -131,7 +130,7 @@ CustomizedGradientDescentByAddr（自定义SGD地址优化器）的一个实例�
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
-```bash
+```python
 from mx_rec.optimizers.gradient_descent_by_addr import create_hash_optimizer_by_addr
 hashtable_optimizer = create_hash_optimizer_by_addr(0.001)
 ```
@@ -142,7 +141,7 @@ hashtable_optimizer = create_hash_optimizer_by_addr(0.001)
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, name="LazyAdam", use_fusion_optim=False)
 ```
 
@@ -163,7 +162,7 @@ CustomizedLazyAdam（自定义LazyAdam优化器）的一个实例对象。
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
-```bash
+```python
 from mx_rec.optimizers.lazy_adam import create_hash_optimizer
 hashtable_optimizer = create_hash_optimizer()
 ```
@@ -174,7 +173,7 @@ hashtable_optimizer = create_hash_optimizer()
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def create_hash_optimizer_by_address(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, name="LazyAdamByAddress")
 ```
 
@@ -194,7 +193,7 @@ CustomizedLazyAdamByAddress（自定义LazyAdam地址优化器）的一个实例
 
 **使用示例<a name="section172089497567"></a>**
 
-```bash
+```python
 from mx_rec.optimizers.lazy_adam_by_addr import create_hash_optimizer_by_address
 hashtable_optimizer = create_hash_optimizer_by_address()
 ```
@@ -205,7 +204,7 @@ hashtable_optimizer = create_hash_optimizer_by_address()
 
 **函数原型<a name="section19937194912307"></a>**
 
-```bash
+```python
 def create_hash_optimizer_by_address(learning_rate=0.001, initial_accumulator_value=0.9, name="Adagrad")
 ```
 
@@ -223,7 +222,7 @@ CustomizedAdagradByAddress（自定义Adagrad地址优化器）的一个实例�
 
 **使用示例<a name="section1311915426339"></a>**
 
-```bash
+```python
 from mx_rec.optimizers.adagrad_by_addr import create_hash_optimizer_by_address
 hashtable_optimizer = create_hash_optimizer_by_address()
 ```

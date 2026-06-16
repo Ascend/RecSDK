@@ -8,7 +8,7 @@
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, table_names=None, **kwargs)
 ```
 
@@ -65,7 +65,7 @@ dataset = dataset.map(get_asc_insert_func(tgt_key_specs=feature_spec_list, is_tr
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def modify_graph_and_start_emb_cache(full_graph = None, dump_graph = False)
 ```
 
@@ -83,7 +83,7 @@ def modify_graph_and_start_emb_cache(full_graph = None, dump_graph = False)
 
 **使用示例<a name="section2553042232"></a>**
 
-```bash
+```python
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
 MODIFY_GRAPH_FLAG = True
 if MODIFY_GRAPH_FLAG:
@@ -102,7 +102,7 @@ if MODIFY_GRAPH_FLAG:
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def start_asc_pipeline()
 ```
 
@@ -113,7 +113,7 @@ def start_asc_pipeline()
 
 **使用示例<a name="section2553042232"></a>**
 
-```bash
+```python
 from mx_rec.core.asc.manager import start_asc_pipeline
 MODIFY_GRAPH_FLAG = False
 if not MODIFY_GRAPH_FLAG:
