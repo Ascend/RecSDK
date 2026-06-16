@@ -8,7 +8,7 @@ Rec SDK TensorFlow框架版本号查询。
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def version()
 ```
 
@@ -59,7 +59,7 @@ def ascend_global_hashtable_collection(self, name):
 
 **使用示例<a name="section09971948135814"></a>**
 
-```bash
+```python
 # 获取哈希表集合名字
 from mx_rec.util.initialize import ConfigInitializer
 hashtable_collection = ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection
@@ -76,7 +76,7 @@ ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_col
 
 **函数原型<a name="section8465133218513"></a>**
 
-```bash
+```python
 def get_rank_id()
 ```
 
@@ -87,7 +87,7 @@ def get_rank_id()
 
 **使用示例<a name="section7851532751"></a>**
 
-```bash
+```python
 from rec_sdk_common.communication.hccl.hccl_info import get_rank_id
 rank_id = get_rank_id()
 ```
@@ -100,7 +100,7 @@ rank_id = get_rank_id()
 
 **函数原型<a name="section8465133218513"></a>**
 
-```bash
+```python
 def get_rank_size()
 ```
 
@@ -111,7 +111,7 @@ def get_rank_size()
 
 **使用示例<a name="section7851532751"></a>**
 
-```bash
+```python
 from rec_sdk_common.communication.hccl.hccl_info import get_rank_size
 rank_size = get_rank_size()
 ```
@@ -124,7 +124,7 @@ rank_size = get_rank_size()
 
 **函数原型<a name="section18854625145510"></a>**
 
-```bash
+```python
 def import_host_pipeline_ops(so_pkg_name: str = LIBASC_OPS_SO) -> ModuleType
 ```
 
@@ -141,7 +141,7 @@ def import_host_pipeline_ops(so_pkg_name: str = LIBASC_OPS_SO) -> ModuleType
 
 **使用示例<a name="section148539625910"></a>**
 
-```bash
+```python
 from mx_rec.util.ops import import_host_pipeline_ops
 host_pipeline_ops = import_host_pipeline_ops()
 ```
@@ -180,7 +180,7 @@ host_pipeline_ops = import_host_pipeline_ops()
 
 **函数原型<a name="section844715301121"></a>**
 
-```bash
+```python
 @property
 def use_dynamic_expansion(self)
 ```
@@ -192,7 +192,7 @@ def use_dynamic_expansion(self)
 
 **使用示例<a name="section1215012571213"></a>**
 
-```bash
+```python
 from mx_rec.util.initialize import ConfigInitializer
 use_dynamic_expansion = ConfigInitializer.get_instance().use_dynamic_expansion
 ```
@@ -209,7 +209,7 @@ use_dynamic_expansion = ConfigInitializer.get_instance().use_dynamic_expansion
 
 **使用示例<a name="section1215012571213"></a>**
 
-```bash
+```python
 from mx_rec.util.tf_version_adapter import hccl_ops
 ```
 
@@ -221,7 +221,7 @@ from mx_rec.util.tf_version_adapter import hccl_ops
 
 **函数原型<a name="section1597420420530"></a>**
 
-```bash
+```python
 def get_target_batch(self, is_training: bool)
 ```
 
@@ -238,7 +238,7 @@ def get_target_batch(self, is_training: bool)
 
 **使用示例<a name="section11613181513543"></a>**
 
-```bash
+```python
 from mx_rec.util.initialize import ConfigInitializer
 ConfigInitializer.get_instance().train_params_config.get_target_batch(False)
 ```

@@ -8,7 +8,7 @@
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1, host_vocabulary_size=0, ssd_vocabulary_size=0, ssd_data_path=(os.getcwd(),), is_save=True, is_dp=False, init_param=1.0, all2all_gradients_op=All2allGradientsOp.SUM_GRADIENTS.value, enable_merge=False, padding_keys=None, padding_keys_mask=False, padding_keys_len=None, value_dtype=tf.float32, shard_num=1, fusion_optimizer_var=True, hashtable_threshold=0)
 ```
 
@@ -95,7 +95,7 @@ Rec SDK TensorFlow模型训练框架，稀疏特征表查询接口。
 
 暂不支持tf.SparseTensor数据类型，若是tf.SparseTensor需转成tf.Tensor。示例代码如下：
 
-```bash
+```python
 # 示例代码
 sparse_ids = tf.SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
 dense_ids = tf.sparse.to_dense(sparse_ids, default_value=0)
@@ -104,7 +104,7 @@ embedding = sparse_lookup(sparse_hashtable, dense_ids)
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def sparse_lookup(hashtable, ids, send_count, is_train=True, name=None, modify_graph=False, batch=None, access_and_evict_config=None, is_grad=True, serving_default_value, **kwargs)
 ```
 
@@ -143,7 +143,7 @@ def sparse_lookup(hashtable, ids, send_count, is_train=True, name=None, modify_g
 
 **使用示例<a name="section2553042232"></a>**
 
-```bash
+```python
 from mx_rec.core.embedding import sparse_lookup
 from mx_rec.core.asc.feature_spec import FeatureSpec
 feature_spec = FeatureSpec("sparse_feature", table_name="sparse_embeddings_table",
@@ -167,7 +167,7 @@ embedding = sparse_lookup(sparse_hashtable,
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def get_dense_and_sparse_variable()
 ```
 
@@ -178,7 +178,7 @@ def get_dense_and_sparse_variable()
 
 **使用示例<a name="section2553042232"></a>**
 
-```bash
+```python
 from mx_rec.util.variable import get_dense_and_sparse_variable
 dense_variables, sparse_variables = get_dense_and_sparse_variable()
 ```
@@ -198,7 +198,7 @@ dense_variables, sparse_variables = get_dense_and_sparse_variable()
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def export(table_list=None):
 ```
 
@@ -215,7 +215,7 @@ def export(table_list=None):
 
 **使用示例<a name="section2553042232"></a>**
 
-```bash
+```python
 from mx_rec.saver.sparse import export
 table_list=["sparse_embedding_table"]
 export(table_list=table_list)
@@ -233,9 +233,9 @@ export(table_list=table_list)
 
 **函数原型<a name="section8465133218513"></a>**
 
-```bash
+```python
 @property
- def if_load(self)
+def if_load(self)
 ```
 
 **返回值说明<a name="section46439326512"></a>**
@@ -245,7 +245,7 @@ export(table_list=table_list)
 
 **使用示例<a name="section7851532751"></a>**
 
-```bash
+```python
 from mx_rec.util.initialize import ConfigInitializer
 if_load = ConfigInitializer.get_instance().if_load
 ```

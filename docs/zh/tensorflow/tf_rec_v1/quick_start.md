@@ -33,10 +33,10 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
 
 1. 初始化框架。在main.py中调用init接口，传入初始化框架需要的相关参数。相关参数请参见[init](./api/initialization_and_deinitialization_of_the_training_framework.md#init)。
 
-    ```bash
+    ```python
     # nbatch function needs to be used together with the prefetch and host_vocabulary_size != 0
     init(max_steps=max_steps,
-         train_steps=TRAIN_steps,
+         train_steps=TRAIN_STEPS,
          eval_steps=EVAL_STEPS,
          save_steps=SAVE_STEPS,
          use_dynamic=use_dynamic,
@@ -45,7 +45,7 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
 
 2. 定义数据集。在main.py中调用get\_asc\_insert\_func接口，创建数据集并对数据集进行预处理。相关参数请参见[参数说明](./api/data_apis.md#get_asc_insert_func)。
 
-    ```bash
+    ```python
         if not MODIFY_GRAPH_FLAG:
             insert_fn = get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=is_training, dump_graph=dump_graph)
             dataset = dataset.map(insert_fn)
@@ -57,7 +57,7 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
 
 3. 定义优化器。在optimizer.py中定义优化器，支持的优化器类型和相关参数请参见[优化器](./api/optimizers_apis.md)。
 
-    ```bash
+    ```python
     # coding: UTF-8
     import logging
     import tensorflow as tf
@@ -78,15 +78,15 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
 
 4. 建立稀疏表。在main.py中调用create\_table接口，建立稀疏表，创建稀疏网络层。相关参数请参见[参数说明](./api/model_apis.md#create_table)。
 
-    ```bash
+    ```python
     user_hashtable = create_table(key_dtype=tf.int64,
-                                  dim=tf.Tensorshape([cfg.user_hashtable_dim]),
+                                  dim=tf.TensorShape([cfg.user_hashtable_dim]),
                                   name='user_table',
                                   emb_initializer=tf.compat.v1.truncated_normal_initializer(),
                                   device_vocabulary_size=cfg.user_vocab_size * 10,
                                   host_vocabulary_size=0)  # cfg.user_vocab_size * 100, # for h2d test
     item_hashtable = create_table(key_dtype=tf.int64,
-                                  dim=tf.Tensorshape([cfg.item_hashtable_dim]),
+                                  dim=tf.TensorShape([cfg.item_hashtable_dim]),
                                   name='item_table',
                                   emb_initializer=tf.compat.v1.truncated_normal_initializer(),
                                   device_vocabulary_size=cfg.item_vocab_size * 10,
@@ -95,7 +95,7 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
 
 5. 建立计算图。传入稀疏网络层和特征列表，创建模型计算图，在计算图中调用sparse\_lookup进行特征查询和误差计算。相关参数请参见[参数说明](./api/model_apis.md#sparse_lookup)。
 
-    ```bash
+    ```python
     def model_forward(input_list, batch, is_train, modify_graph, config_dict=None):
         embedding_list = []
         feature_list, hash_table_list, send_count_list = input_list
@@ -115,7 +115,7 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
 
 6. 定义梯度计算和优化过程。在main.py中调用get\_dense\_and\_sparse\_variable接口，得到密集网络层和稀疏网络层的参数，通过优化器计算梯度并执行优化。接口说明请参见[get\_dense\_and\_sparse\_variable](./api/model_apis.md#get_dense_and_sparse_variable)。
 
-    ```bash
+    ```python
     train_iterator, train_model = build_graph([user_hashtable, item_hashtable], is_train=True,
                                                   feature_spec_list=train_feature_spec_list,
                                                   config_dict=ACCESS_AND_EVICT, batch_number=cfg.batch_number)
@@ -125,9 +125,9 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
     ```
 
-7. 启动数据加载和预处理。在main.py中调用modify\_graph\_and\_start\_emb\_cache（改图模式）/start\_asc\_pipeline（非改图模式）接口，启动数据流水线（示例代码中使用**if**判断配置文件中的**MODIFY\_GRAPH\_FLAG**来控制是否使用改图模式）。接口说明请参见[modify\_graph\_and\_start\_emb\_cache](./api/data_apis.md#modify_graph_and_start_emb_cache)。
+7. 启动数据流水线并执行训练循环。在main.py中依次完成以下操作：创建Saver → 调用modify\_graph\_and\_start\_emb\_cache（改图模式）/start\_asc\_pipeline（非改图模式）启动数据流水线 → 创建Session → 初始化变量 → 加载或保存初始模型 → 执行训练循环并在过程中定期保存模型。示例代码中使用**if**判断配置文件中的**MODIFY\_GRAPH\_FLAG**来控制是否使用改图模式。相关接口说明请参见[modify\_graph\_and\_start\_emb\_cache](./api/data_apis.md#modify_graph_and_start_emb_cache)、[get_initializer](./api/automatic_graph_modification.md#get_initializer)和[tf.compat.v1.train.Saver](./api/tensorflow_apis.md#tfcompatv1trainsaversave)。
 
-    ```bash
+    ```python
     saver = tf.compat.v1.train.Saver()
     if MODIFY_GRAPH_FLAG:
         logging.info("start to modifying graph")
@@ -141,8 +141,8 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
             sess.run(train_iterator.initializer)
         sess.run(tf.compat.v1.global_variables_initializer())
         EPOCH = 0
-        if os.path.exists(f"./saved-model/sparse-model-{rank_id}-%d" % 0):
-            saver.restore(sess, f"./saved-model/model-{rank_id}-%d" % 0)
+        if os.path.exists(f"./saved-model/sparse-model-{rank_id}-0"):
+            saver.restore(sess, f"./saved-model/model-{rank_id}-0")
         else:
             saver.save(sess, f"./saved-model/model-{rank_id}", global_step=0)
         for i in range(1, 201):
@@ -161,45 +161,9 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
         saver.save(sess, f"./saved-model/model-{rank_id}", global_step=i)
     ```
 
-8. 启动Session计算并在训练过程中保存模型。在main.py中调用saver接口，启动Session计算并在训练过程中保存模型。
+8. 关闭数据流释放资源。在main.py中调用terminate\_config\_initializer，关闭数据流释放资源。接口说明请参见[terminate\_config\_initializer](./api/initialization_and_deinitialization_of_the_training_framework.md#terminate_config_initializer)。
 
-    ```bash
-    saver = tf.compat.v1.train.Saver()
-    if MODIFY_GRAPH_FLAG:
-        logging.info("start to modifying graph")
-        modify_graph_and_start_emb_cache(dump_graph=True)
-    else:
-        start_asc_pipeline()
-    with tf.compat.v1.Session(config=sess_config(dump_data=False)) as sess:
-        if MODIFY_GRAPH_FLAG:
-            sess.run(get_initializer(True))
-        else:
-            sess.run(train_iterator.initializer)
-        sess.run(tf.compat.v1.global_variables_initializer())
-        EPOCH = 0
-        if os.path.exists(f"./saved-model/sparse-model-{rank_id}-%d" % 0):
-            saver.restore(sess, f"./saved-model/model-{rank_id}-%d" % 0)
-        else:
-            saver.save(sess, f"./saved-model/model-{rank_id}", global_step=0)
-        for i in range(1, 201):
-            logging.info(f"################    training at step {i}    ################")
-            try:
-                sess.run([train_ops, train_model.loss_list])
-            except tf.errors.OutOfRangeError:
-                logging.info(f"Encounter the end of Sequence for training.")
-                break
-            else:
-                if i % TRAIN_INTERVAL == 0:
-                    EPOCH += 1
-                    evaluate()
-                if i % SAVING_INTERVAL == 0:
-                    saver.save(sess, f"./saved-model/model-{rank_id}", global_step=i)
-        saver.save(sess, f"./saved-model/model-{rank_id}", global_step=i)
-    ```
-
-9. 关闭数据流释放资源。在main.py中调用terminate\_config\_initializer，关闭数据流释放资源。接口说明请参见[terminate\_config\_initializer](./api/initialization_and_deinitialization_of_the_training_framework.md#terminate_config_initializer)。
-
-    ```bash
+    ```python
     terminate_config_initializer()
     logging.info("Demo done!")
     ```
@@ -212,7 +176,7 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
 
 **前提条件<a name="section16252115164"></a>**
 
-使用该方案启动训练任务，需要设置如下环境变量。详细的配置环境变量的方法可参考[little-demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo_estimator/run.sh)；关于环境变量的说明可参见[配置环境变量](recsdk_tf_installation_guide.md#配置环境变量)。
+使用该方案启动训练任务，需要设置如下环境变量。详细的配置环境变量的方法可参考[little-demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo_estimator/run.sh)；关于环境变量的说明可参见[配置环境变量](./recsdk_tf_installation_guide.md#配置环境变量)。
 
 ```bash
 CM_CHIEF_IP={host_ip}
@@ -283,16 +247,16 @@ CM_WORKER_SIZE=8
     >Rec SDK TensorFlow默认使用8卡训练，16卡使能需要执行以下命令。
     >
     >```bash
-    >for pdev in `lspci -vvv|grep -E "^[a-f]|^[0-9]|ACSCtl"|grep ACSCtl -B1|grep -E "^[a-f]|^[0-9]"|awk '{print $1}'` 
+    >for pdev in `lspci -vvv|grep -E "^[a-f]|^[0-9]|ACSCtl"|grep ACSCtl -B1|grep -E "^[a-f]|^[0-9]"|awk '{print $1}'`
     >do
-    >setpci -s $pdev ECAP_ACS+06.w=0000 
+    >setpci -s $pdev ECAP_ACS+06.w=0000
     >done
     >```
 
 2. 直接在启动命令后传入配置Master节点的Host侦听IP，命令格式如下。
 
     ```bash
-    bash run.sh main.py {host_ip}  
+    bash run.sh main.py {host_ip}
     ```
 
     >[!NOTE]
@@ -306,10 +270,10 @@ CM_WORKER_SIZE=8
     ```bash
     ip: {host_ip} available.
     The ranktable solution is removed.
-    CM_CHIEF_IP={host_ip}  
+    CM_CHIEF_IP={host_ip}
     CM_CHIEF_PORT=60000
     CM_CHIEF_DEVICE=0
-    CM_WORKER_IP={host_ip}  
+    CM_WORKER_IP={host_ip}
     CM_WORKER_SIZE=8
     ASCEND_VISIBLE_DEVICES=0-8
     py is main.py
@@ -331,7 +295,7 @@ CM_WORKER_SIZE=8
 
 **前提条件<a name="section148281112515"></a>**
 
-- 设置如下环境变量。详细的配置环境变量的方法可参考[little-demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run.sh)；关于环境变量的说明可参见[配置环境变量](recsdk_tf_installation_guide.md#配置环境变量)。
+- 设置如下环境变量。详细的配置环境变量的方法可参考[little-demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run.sh)；关于环境变量的说明可参见[配置环境变量](./recsdk_tf_installation_guide.md#配置环境变量)。
 
     ```bash
     CM_CHIEF_IP={host_ip}
@@ -343,8 +307,8 @@ CM_WORKER_SIZE=8
 
 - 双机节点little\_demo模型代码路径和配置IP的网卡名称需要保持一致。
 - 已完成集群内的组网配置。详细方法可参见《[Ascend Training Solution 组网指南](https://support.huawei.com/enterprise/zh/doc/EDOC1100525718/549e2956?idPath=23710424|251366513|22892968|252309113|258915853)》的“组网介绍”章节。
-- 已经根据[制作Rec SDK TensorFlow训练镜像](recsdk_tf_installation_guide.md#制作rec-sdk-tensorflow训练镜像)，制作Rec SDK TensorFlow的训练镜像。
-- 已完成基础集群环境的网络配置检查，例如确认多机节点的NPU device IP能互相ping通，多机节点的NPU device的TLS配置相同等。如果集群通信失败，可参考[多机训练HCCL集群通信失败](faq.md#多机训练hccl集群通信失败)解决。
+- 已经根据[制作Rec SDK TensorFlow训练镜像](./recsdk_tf_installation_guide.md#制作rec-sdk-tensorflow训练镜像)，制作Rec SDK TensorFlow的训练镜像。
+- 已完成基础集群环境的网络配置检查，例如确认多机节点的NPU device IP能互相ping通，多机节点的NPU device的TLS配置相同等。如果集群通信失败，可参考[多机训练HCCL集群通信失败](./faq.md#多机训练hccl集群通信失败)解决。
 
 **操作步骤<a name="section4206609112"></a>**
 
@@ -352,7 +316,7 @@ CM_WORKER_SIZE=8
 
 ![](../../figures/tf_rec_v1/8-3-5-视频解码.png)
 
-1. 双机节点创建并配置容器。  
+1. 双机节点创建并配置容器。
     i. 确定节点需要使用的端口号。所有节点都需要用同一未被占用的端口号。可在物理机上执行以下命令，查询端口是否使用。以端口12345为例。
 
         ```bash
@@ -422,7 +386,7 @@ CM_WORKER_SIZE=8
         3. 按“Esc”键，输入<b>:wq!</b>，按“Enter”保存并退出编辑。
         4. 执行**source \~/.bashrc**使环境变量配置生效。
 
-2. 配置little\_demo模型。  
+2. 配置little\_demo模型。
     i. 使用以下命令查看8卡芯片的device IP，命令参考如下。
 
         ```bash
@@ -434,7 +398,7 @@ CM_WORKER_SIZE=8
 
             示例为双机节点“hccl\_json\_16p\_2\_host.json”配置，主节点的device信息需配置在第一个device中。\{device\_ip\}和\{host\_ip\}需要根据真实环境配置进行替换，rank\_id需要保持升序。
 
-            ```bash
+            ```json
             {
                 "server_count":"2",
                 "server_list":[
@@ -496,7 +460,7 @@ CM_WORKER_SIZE=8
             修改为：
 
             ```bash
-            export RANK_TABLE_FILE="${cur_path}/hccl_json_16p_2_host.json"  
+            export RANK_TABLE_FILE="${cur_path}/hccl_json_16p_2_host.json"
             ```
 
         5. 通过horovodrun启动指令指定端口号并修改host参数，修改如下内容：
@@ -504,7 +468,7 @@ CM_WORKER_SIZE=8
             在run.sh脚本末尾，将
 
             ```bash
-            xxx --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size} 
+            xxx --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size}
             ```
 
             修改为：
@@ -517,7 +481,7 @@ CM_WORKER_SIZE=8
             >- -p 12345：容器内ssh server侦听端口号。
             >- 8：单节点参与训练的device数。
 
-3. 在每个节点上互相设置免密登录。  
+3. 在每个节点上互相设置免密登录。
     i. 在每个节点的容器内执行以下命令，设置免密登录。其中\{target\_host\_user\}为对端节点的用户名，\{target\_host\_ip\}为对端节点的IP。
 
         ```bash
@@ -533,7 +497,7 @@ CM_WORKER_SIZE=8
         ssh-keygen -t rsa -b 3072 -f ~/.ssh/id_rsa
         ```
 
-        >[!NOTE] 
+        >[!NOTE]
         >以上为示例，请注意SSH密钥和密钥密码在使用和保管过程中的风险，特别是密钥未加密时的风险，用户应按照所在组织的安全策略进行相关配置，如口令复杂度要求、安全配置（协议、加密套件、密钥长度、是否允许使用ssh-keygen等）。
 
     ii. 设置SSH代理管理SSH密钥。
@@ -546,7 +510,7 @@ CM_WORKER_SIZE=8
         ssh-agent bash
         ```
 
-        >[!NOTE] 
+        >[!NOTE]
         >执行此命令时容器内的环境变量会被重置。建议将必要的环境变量保存到容器内的\~/.bashrc文件中，并在执行完该命令后使用**source \~/.bashrc**命令重新配置。
 
         b. 向ssh-agent添加私钥。
@@ -560,7 +524,7 @@ CM_WORKER_SIZE=8
         c. 验证私钥是否添加成功。
 
         ```bash
-        ssh-add -l 
+        ssh-add -l
         ```
 
     iii. 检查免密登录是否设置成功。
@@ -585,7 +549,7 @@ CM_WORKER_SIZE=8
         bash run.sh main.py {host_1_ip}
         ```
 
-        >[!NOTE] 
+        >[!NOTE]
         >执行完拉起训练任务后，请使用**exit**命令退出ssh-agent的bash进程，避免安全风险。
 
 ### Rec SDK TensorFlow执行样例

@@ -32,7 +32,7 @@ Rec SDK TensorFlow提供使用tf.Session训练场景和NPUEstimator训练场景�
 
 - TensorFlow示例：
 
-    ```bash
+    ```python
     import tensorflow as tf
     from tensorflow.contrib.lookup import MutableHashTable
     # .......
@@ -43,11 +43,11 @@ Rec SDK TensorFlow提供使用tf.Session训练场景和NPUEstimator训练场景�
 
 - Rec SDK TensorFlow示例：
 
-    ```bash
+    ```python
     import tensorflow as tf
     from mx_rec.core.embedding import create_table, sparse_lookup
     # .......
-    user_emb_table = create_table(key_dtype=tf.int64, value_dtype=tf.float32, name="user_table", dim=tf.Tensorshape([1]),             emb_initializer=tf.compat.v1.truncated_normal_initializer(mean=10), device_vocabulary_size= 800000, host_vocabulary_size=0)
+    user_emb_table = create_table(key_dtype=tf.int64, value_dtype=tf.float32, name="user_table", dim=tf.TensorShape([1]), emb_initializer=tf.compat.v1.truncated_normal_initializer(mean=10), device_vocabulary_size= 800000, host_vocabulary_size=0)
     user_emb = sparse_lookup(user_emb_table, feature_spec_list, batch_size*16, is_train=True, name=user_emb_table.table_name + "_lookup", modify_graph=False)
     ```
 
@@ -76,7 +76,7 @@ Estimator API属于TensorFlow的高阶API，在2018年发布的TensorFlow  1.10�
 
 对于以下步骤中涉及修改的Python文件，新增以下头文件引用，用于导入NPU相关库。
 
-```bash
+```python
 from npu_bridge.npu_init import *
 ```
 
@@ -89,14 +89,14 @@ from npu_bridge.npu_init import *
 
 当原始网络脚本中使用dataset.batch\(batch\_size\)返回动态形状时，由于数据流中剩余的样本数可能小于batch大小，导致网络中最后一个step的shape与之前的shape不一致，此种场景下会进入动态shape编译流程。为提升网络编译性能，建议将drop\_remainder设置为True，丢弃文件中的最后几个样本，确保网络中每个step的shape一致。
 
-```bash
-  dataset = dataset.batch(batch_size, drop_remainder=True)
+```python
+    dataset = dataset.batch(batch_size, drop_remainder=True)
 ```
 
 但需要注意的是：推理时，当最后一次迭代的推理数据量小于batch size时，需要补齐空白数据到batch size，因为有些脚本最后会加个断言，验证结果的数量要和验证数据的数量一致。
 
-```bash
- assert num_written_lines == num_actual_predict_examples
+```python
+    assert num_written_lines == num_actual_predict_examples
 ```
 
 **模型构建<a name="section182823416115"></a>**
@@ -106,13 +106,13 @@ from npu_bridge.npu_init import *
 - 对于原始网络中的dropout，建议替换为CANN对应的API实现，以获得更优性能，但需关注对网络精度的影响。
     - 如果存在tf.nn.dropout，建议修改为：
 
-        ```bash
+        ```python
         layers = npu_ops.dropout()
         ```
 
     - 如果存在tf.layers.dropout/tf.layers.Dropout/tf.keras.layers.Dropout/tf.keras.layers.SpatialDropout1D/tf.keras.layers.SpatialDropout2D/tf.keras.layers.SpatialDropout3D，建议增加头文件引用：
 
-        ```bash
+        ```python
         from npu_bridge.estimator.npu import npu_convert_dropout
         ```
 
@@ -120,17 +120,17 @@ from npu_bridge.npu_init import *
 
     TensorFlow原始代码：
 
-    ```bash
-    def gelu(x): 
+    ```python
+    def gelu(x):
       cdf = 0.5 * (1.0 + tf.tanh(
-         (np.sqrt(2 / np.pi) * (x + 0.044715 * tf.pow(x, 3))))) 
+         (np.sqrt(2 / np.pi) * (x + 0.044715 * tf.pow(x, 3)))))
       return x*cdf
     layers = gelu()
     ```
 
     迁移后的代码：
 
-    ```bash
+    ```python
     layers = npu_unary_ops.gelu(x)
     ```
 
@@ -140,21 +140,21 @@ TensorFlow通过RunConfig配置运行参数，用户需要将RunConfig迁移为N
 
 TensorFlow原始代码：
 
-```bash
+```python
 config=tf.estimator.RunConfig(
-  model_dir=FLAGS.model_dir, 
+  model_dir=FLAGS.model_dir,
   save_checkpoints_steps=FLAGS.save_checkpoints_steps,
   session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False))
 ```
 
 迁移后的代码：
 
-```bash
+```python
 npu_config=NPURunConfig(
   model_dir=FLAGS.model_dir,
   save_checkpoints_steps=FLAGS.save_checkpoints_steps,
   # 如果原始网络中使用了tf.device相关代码，则需要增加session配置“allow_soft_placement=True”，允许TensorFlow自动分配设备。
-  session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False) 
+  session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
   )
 ```
 
@@ -170,7 +170,7 @@ npu_config=NPURunConfig(
 
 TensorFlow原始代码：
 
-```bash
+```python
 mnist_classifier=tf.estimator.Estimator(
   model_fn=cnn_model_fn,
   config=config,
@@ -179,7 +179,7 @@ mnist_classifier=tf.estimator.Estimator(
 
 迁移后的代码：
 
-```bash
+```python
 mnist_classifier=NPUEstimator(
   model_fn=cnn_model_fn,
   config=npu_config,
@@ -191,7 +191,7 @@ mnist_classifier=NPUEstimator(
 
 利用指定输入对模型进行训练，此部分代码无需改造。
 
-```bash
+```python
 mnist_classifier.train(
   input_fn=train_input_fn,
   steps=20000,
@@ -199,7 +199,7 @@ mnist_classifier.train(
 ```
 
 > [!NOTE]
-> 如果在迁移与训练过程中遇到报错，请参考[FAQ](faq.md)进行解决，或者联系技术支持。
+> 如果在迁移与训练过程中遇到报错，请参考[FAQ](./faq.md)进行解决，或者联系技术支持。
 
 ### 使用Estimator训练<a name="ZH-CN_TOPIC_0000001580326420"></a>
 
@@ -211,7 +211,7 @@ Estimator封装了对机器学习不同阶段的控制，用户无需不断地�
 
 本节介绍如何使用NPUEstimator进行模型训练，整体操作流程请参见[图1](#fig91589560296)。
 
-**图 1**  NPUEstimator训练流程图<a id="fig91589560296"></a>  
+**图 1**  NPUEstimator训练流程图<a id="fig91589560296"></a>
 ![](../../figures/tf_rec_v1/NPUEstimator训练流程图.png "NPUEstimator训练流程图")
 
 #### 适配模型<a name="ZH-CN_TOPIC_0000001629887061"></a>
@@ -219,7 +219,7 @@ Estimator封装了对机器学习不同阶段的控制，用户无需不断地�
 用户需要适配所使用的模型，可以在适配模型过程中加入Rec SDK TensorFlow提供的功能特性。本章节旨在介绍模型适配过程中的一些关键步骤，以及怎样在适配模型过程中加入想要使用的功能特性。
 
 > [!NOTE]
-> 功能特性可以叠加使用，用户需在对应的关键步骤中修改适配。如需查看单个功能特性的调用流程，请参考[训练功能特性流程](appendix.md#训练功能特性流程)。
+> 功能特性可以叠加使用，用户需在对应的关键步骤中修改适配。如需查看单个功能特性的调用流程，请参考[训练功能特性流程](./appendix.md#训练功能特性流程)。
 > 特征淘汰功能和片上内存侧动态扩容模式不能同时开启。
 
 关键步骤操作参考如下。
@@ -253,9 +253,9 @@ Estimator封装了对机器学习不同阶段的控制，用户无需不断地�
      |动态扩容|-|
      |动态shape|-|
      |特征准入与淘汰|<ol><li>开启准入功能需要设置准入阈值access_threshold大于或等于0（单位：次），设置阈值小于“-1”时将会报参数错误。</li><li>开启淘汰功能需要依次执行以下步骤：<ul><li>设置淘汰阈值eviction_threshold大于或等于0（单位：秒），设置阈值小于“-1”时将会报参数错误。</li><li>设置index_key索引键为timestamp的FeatureSpec并携带参数**is_timestamp=True**，代表数据集含有时间戳。</li><li>使用**EvictHook**接口为淘汰的触发方式设置hook，接口参数有三个，**evict_enable=True**，**evict_time_interval=24 * 60 * 60**，**evict_step_interval=10000**，分别代表淘汰功能开关、淘汰触发的时间间隔（单位：秒）、global step间隔。evict_time_interval与evict_step_interval参数可选其一。</li></ul></li><li>特征淘汰功能hook仅在训练模式下使用。</li></ol>|
-     
+
      </li>
- 
+
      <li><a id="li0861185612173"></a>自动改图
 
      在NPUEstimator模式下，需要在NPUEstimator的多个模式（train、predict、train\_and\_evaluate）中添加自动改图的[GraphModifierHook](./api/class_reference.md#graphmodifierhook)，如当前为训练（train），则在训练的钩子（Hook）中添加**GraphModifierHook**，即可完成自动改图模式的训练。
@@ -345,7 +345,7 @@ Estimator封装了对机器学习不同阶段的控制，用户无需不断地�
     - 如果要将稀疏表数据导出npy格式，可以调用[export](./api/model_apis.md#export)接口。
     - 如果要导出pb模型文件，可以调用Estimator的export\_saved\_model接口，示例如下：
 
-        ```bash
+        ```python
         import os
         import tensorflow as tf
         if tf.__version__.startswith("1"):
@@ -398,7 +398,7 @@ sess.run API属于TensorFlow的低阶API，相对于Estimator来讲，灵活性�
 
 对于以下步骤中涉及修改的Python文件，新增以下头文件引用，用于导入NPU相关库。
 
-```bash
+```python
 from npu_bridge.npu_init import *
 ```
 
@@ -411,14 +411,14 @@ from npu_bridge.npu_init import *
 
 当原始网络脚本中使用dataset.batch\(batch\_size\)返回动态形状时，由于数据流中剩余的样本数可能小于batch大小，导致网络中最后一个step的shape与之前的shape不一致，此种场景下会进入动态shape编译流程。为提升网络编译性能，建议将drop\_remainder设置为True，丢弃文件中的最后几个样本，确保网络中每个step的shape一致。
 
-```bash
-  dataset = dataset.batch(batch_size, drop_remainder=True)
+```python
+    dataset = dataset.batch(batch_size, drop_remainder=True)
 ```
 
 但需要注意的是：推理时，当最后一次迭代的推理数据量小于batch\_size时，需要补齐空白数据到batch\_size，因为有些脚本最后会加个断言，验证结果的数量要和验证数据的数量一致。
 
-```bash
- assert num_written_lines == num_actual_predict_examples
+```python
+    assert num_written_lines == num_actual_predict_examples
 ```
 
 **模型搭建/计算Loss/梯度更新<a id="section177071912713"></a>**
@@ -434,7 +434,7 @@ from npu_bridge.npu_init import *
 
     - 如果存在tf.layers.dropout/tf.layers.Dropout/tf.keras.layers.Dropout/tf.keras.layers.SpatialDropout1D/tf.keras.layers.SpatialDropout2D/tf.keras.layers.SpatialDropout3D，请增加头文件引用：
 
-        ```bash
+        ```python
         from npu_bridge.estimator.npu import npu_convert_dropout
         ```
 
@@ -442,10 +442,10 @@ from npu_bridge.npu_init import *
 
     TensorFlow原始代码：
 
-    ```bash
-    def gelu(x): 
+    ```python
+    def gelu(x):
       cdf = 0.5 * (1.0 + tf.tanh(
-         (np.sqrt(2 / np.pi) * (x + 0.044715 * tf.pow(x, 3))))) 
+         (np.sqrt(2 / np.pi) * (x + 0.044715 * tf.pow(x, 3)))))
       return x*cdf
     layers = gelu()
     ```
@@ -481,7 +481,7 @@ from npu_bridge.npu_init import *
 
 TensorFlow原始代码：
 
-```bash
+```python
 #构造迭代器
 iterator=Iterator.from_structure(train_dataset.output_types, train_dataset.output_shapes)
 
@@ -490,19 +490,19 @@ next_batch=iterator.get_next()
 
 #迭代器初始化
 training_init_op=iterator.make_initializer(train_dataset)
- 
+
 #变量初始化
 init=tf.global_variables_initializer()
 sess=tf.Session()
 sess.run(init)
- 
+
 #Get the number of training/validation steps per epoch
 train_batches_per_epoch=int(np.floor(train_size/batch_size))
 ```
 
 迁移后的代码：
 
-```bash
+```python
 #构造迭代器
 iterator=Iterator.from_structure(train_dataset.output_types, train_dataset.output_shapes)
 
@@ -511,7 +511,7 @@ next_batch=iterator.get_next()
 
 #迭代器初始化
 training_init_op=iterator.make_initializer(train_dataset)
- 
+
 #变量初始化
 init=tf.global_variables_initializer()
 
@@ -524,7 +524,7 @@ config.graph_options.rewrite_options.remapping = RewriterConfig.OFF  # 显式关
 config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF  # 显式关闭
 sess = tf.Session(config=config)
 sess.run(init)
- 
+
 #Get the number of training/validation steps per epoch
 train_batches_per_epoch=int(np.floor(train_size/batch_size))
 ```
@@ -537,12 +537,12 @@ tf.Session原生功能在Ascend平台上全部支持。
 
 此部分代码无需改造，例如：
 
-```bash
+```python
 #开始循环迭代
 for epoch in range(num_epochs):
   ##Initialize iterator with the training dataset
   sess.run(training_init_op)
-  for step in range(train_batches_per_epoch):  
+  for step in range(train_batches_per_epoch):
     #get next batch of data
     img_batch,label_batch=sess.run(next_batch)
     #run the training op
@@ -553,7 +553,7 @@ tf.Session创建的session对象使用后需显式调用session.close\(\)，或�
 
 示例1：显式调用sess.close\(\)
 
-```bash
+```python
 sess = tf.Session(config=config)
 sess.run(...)
 sess.close()
@@ -561,13 +561,13 @@ sess.close()
 
 示例2：使用with创建session
 
-```bash
+```python
 with tf.Session(config=config) as sess:
     sess.run(...)
 ```
 
 > [!NOTE]
-> 如果在迁移与训练过程中遇到报错，请参考[FAQ](faq.md)进行解决，或者联系技术支持。
+> 如果在迁移与训练过程中遇到报错，请参考[FAQ](./faq.md)进行解决，或者联系技术支持。
 
 ### 使用tf.Session训练<a name="ZH-CN_TOPIC_0000001580166508"></a>
 
@@ -577,7 +577,7 @@ with tf.Session(config=config) as sess:
 
 **训练流程介绍<a name="section1612572313373"></a>**
 
-**图 1**  tf.Session训练流程图<a name="fig38480567583"></a>  
+**图 1**  tf.Session训练流程图<a name="fig38480567583"></a>
 ![](../../figures/tf_rec_v1/tf-Session训练流程图.png "tf-Session训练流程图")
 
 #### 适配模型<a name="ZH-CN_TOPIC_0000001630127081"></a>
@@ -585,7 +585,7 @@ with tf.Session(config=config) as sess:
 用户需要适配所使用的模型，可以在适配模型过程中加入Rec SDK TensorFlow提供的功能特性。本章节旨在介绍模型适配过程中的一些关键步骤，以及怎样在适配模型过程中加入想要使用的功能特性。
 
 > [!NOTE]
-> 功能特性可以叠加使用，用户需在对应的关键步骤中修改适配。如需查看单个功能特性的调用流程，请参考[训练功能特性流程](appendix.md#训练功能特性流程)。
+> 功能特性可以叠加使用，用户需在对应的关键步骤中修改适配。如需查看单个功能特性的调用流程，请参考[训练功能特性流程](./appendix.md#训练功能特性流程)。
 >特征淘汰功能和片上内存侧动态扩容模式不能同时开启。
 
 关键步骤操作参考如下。
@@ -713,14 +713,14 @@ Allreduce是主流的数据并行架构，各个节点按照算法协同工作�
 
 大规模AI训练集群中，通常采用数据并行的方式完成训练。数据并行即每个设备使用相同的模型、不同的训练样本，每个Device计算得到的梯度数据需要聚合之后进行参数更新。
 
-**图 1**  数据并行方式训练的示意图<a name="fig086734164810"></a>  
+**图 1**  数据并行方式训练的示意图<a name="fig086734164810"></a>
 ![](../../figures/tf_rec_v1/数据并行方式训练的示意图.png "数据并行方式训练的示意图")
 
 如果按照梯度聚合方式进行分类，数据并行的主流实现有**PS-workers架构**和**Allreduce架构**两种。在**Allreduce架构**中，每个参与训练的Device形成一个环，没有中心节点来聚合所有计算梯度。Allreduce算法将参与训练的Device放置在一个逻辑环路（logical ring）中。每个Device从上行的Device接收数据，并向下行的Device发送数据，可充分利用每个Device的上下行带宽。
 
 Allreduce架构是为了解决PS-workers架构无法线性扩展问题而提出的改良架构。各个节点按照算法协同工作，算法的目标是减少传输数据量，并充分利用硬件通信带宽。一般适合训练算力要求高、设备规模大的场景。Allreduce架构的实现原理如下图所示。
 
-**图 2**  Allreduce模式<a id="fig1321114115499"></a>  
+**图 2**  Allreduce模式<a id="fig1321114115499"></a>
 ![](../../figures/tf_rec_v1/Allreduce模式.png "Allreduce模式")
 
 以Ring算法为例介绍Allreduce模式（称为Ring-Allreduce），如[图2](#fig1321114115499)所示，在Ring-Allreduce架构下，每个设备都是worker，并且形成一个环，不需要中心节点来聚合所有worker计算的梯度。在一个迭代过程中，每个worker完成一份mini-batch样本数据的前向计算、反向计算，得到梯度数据，然后使用Ring-Allreduce算法完成梯度数据的同步。Ring-Allreduce算法包括scatter-reduce和allgather两部分，梯度数据分多个步骤传递给环中的下一个worker，同时它也多次接收上一个worker的梯度数据。对于一个包含N个worker的环，每个worker需要从其它worker接收2\*（N-1）次梯度数据（每次接收1/N的数据），并向其他节点发送2\*（N-1）次梯度数据（每次发送1/N的数据）。
@@ -729,7 +729,7 @@ Allreduce架构是为了解决PS-workers架构无法线性扩展问题而提出�
 
 在TensorFlow中，一般使用tf.distribute.Strategy进行分布式训练，具体请参考[链接](https://www.tensorflow.org/guide/distributed_training)。而昇腾AI处理器暂不支持上述分布式策略，TF Adapter提供了分布式接口npu\_distributed\_optimizer\_wrapper，对传入的optimizer梯度函数添加NPU的Allreduce操作，最终返回输入的优化器，从而支持单机多卡、多机多卡等组网形式下，各个Device之间计算梯度后执行梯度聚合操作。用户调用该函数后，在生成的训练图中，梯度计算和更新算子之间插入了Allreduce算子节点。
 
-**图 3**  使用的接口<a name="fig1792101713010"></a>  
+**图 3**  使用的接口<a name="fig1792101713010"></a>
 ![](../../figures/tf_rec_v1/使用的接口.png "使用的接口")
 
 因此，对于原始TensorFlow训练脚本，需要经过修改后，才可在昇腾AI处理器上支持分布式训练。
@@ -738,8 +738,8 @@ Allreduce架构是为了解决PS-workers架构无法线性扩展问题而提出�
 
 分布式训练时，用户可以使用TensorFlow接口进行数据集切分。如果数据集切分时需要获取处理器资源信息，用户可以通过集合通信接口get\_rank\_size获取昇腾AI处理器数量，通过get\_rank\_id获取处理器id，例如：
 
-```bash
-  dataset = dataset.shard(get_rank_size(),get_rank_id())
+```python
+    dataset = dataset.shard(get_rank_size(),get_rank_id())
 ```
 
 **Estimator模式下脚本迁移<a name="section89561928184711"></a>**
@@ -748,10 +748,10 @@ Allreduce架构是为了解决PS-workers架构无法线性扩展问题而提出�
 
     迁移前：
 
-    ```bash
+    ```python
     mirrored_strategy = tf.distribute.MirroredStrategy()
     config = tf.estimator.RunConfig(
-        train_distribute=mirrored_strategy, 
+        train_distribute=mirrored_strategy,
         eval_distribute=mirrored_strategy,
         session_config=session_config,
         save_checkpoints_secs=60*60*24)
@@ -759,7 +759,7 @@ Allreduce架构是为了解决PS-workers架构无法线性扩展问题而提出�
 
     迁移后：
 
-    ```bash
+    ```python
     config = tf.estimator.NPURunConfig(
         session_config=session_config,
         save_checkpoints_secs=60*60*24)
@@ -767,15 +767,15 @@ Allreduce架构是为了解决PS-workers架构无法线性扩展问题而提出�
 
 2. 然后调用npu\_distributed\_optimizer\_wrapper（函数介绍可参考《TF Adapter 接口（1.x）》的“npu\_distributed\_optimizer\_wrapper”章节），对传入的optimizer梯度函数添加NPU的Allreduce操作，最终返回输入的优化器，从而在昇腾AI处理器上实现分布式计算。具体方法为：
 
-    ```bash
-    def cnn_model_fn(features,labels,mode):    
-      #搭建网络   
-      xxx    
+    ```python
+    def cnn_model_fn(features,labels,mode):
+      #搭建网络
+      xxx
       #计算loss
-      xxx    
-    
-      #Configure the TrainingOp(for TRAIN mode)    
-      if mode == tf.estimator.ModeKeys.TRAIN:      
+      xxx
+
+      #Configure the TrainingOp(for TRAIN mode)
+      if mode == tf.estimator.ModeKeys.TRAIN:
         optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001) # 使用SGD优化器
         optimizer = npu_distributed_optimizer_wrapper(optimizer) # 使用NPU分布式计算，更新梯度
         train_op=optimizer.minimize(loss=loss,global_step=tf.train.get_global_step()) # 最小化loss
@@ -790,13 +790,13 @@ Allreduce架构是为了解决PS-workers架构无法线性扩展问题而提出�
 
     迁移前：
 
-    ```bash
+    ```python
     grads = tf.gradients(a + b, [a, b], stop_gradients=[a, b])
     ```
 
     迁移后：
 
-    ```bash
+    ```python
     grads = npu_allreduce(tf.gradients(a + b, [a, b], stop_gradients=[a, b]))
     ```
 
@@ -806,14 +806,14 @@ Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce�
 
 1. 在变量初始化之后，训练之前，通过集合通信接口broadcast进行变量广播，关于broadcast接口的详细介绍请参见《HCCL集合通信库接口参考》。
 
-    ```bash
+    ```python
     from npu_bridge.npu_init import *
-    
+
     def broadcast_global_variables(root_rank, index):
         """Broadcasts all global variables from root rank to all other processes.
         Arguments:
         root_rank: rank of the process from which global variables will be broadcasted
-        to all other processes. 
+        to all other processes.
         index: rank_id
         """
         op_list = []
@@ -825,9 +825,9 @@ Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce�
             if outputs is not None:
                 op_list.append(outputs[0].op)
                 op_list.append(tf.assign(var, outputs[0]))
-    
+
         return tf.group(op_list)
-    
+
     ...
     bcast_op = broadcast_global_variables(root_rank, index)
     sess = tf.Session()
@@ -837,7 +837,7 @@ Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce�
 
     此外，broadcast接口中有改图的操作，如果图无法修改（例如冻结了图或者使用tf.train.Supervisor创建session等），则需要先取消图冻结：
 
-    ```bash
+    ```python
     with sv.managed_session() as sess:
       sess.graph._unsafe_unfinalize() # 取消冻结的Graph
       sess.run(bcast_op)
@@ -845,7 +845,7 @@ Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce�
 
 2. 执行训练时，在使用梯度优化器计算完各Device数据后，直接调用npu\_distributed\_optimizer\_wrapper进行梯度数据聚合：
 
-    ```bash
+    ```python
     from npu_bridge.npu_init import *
     optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001) # 使用SGD优化器
     distributedOptimizer=npu_distributed_optimizer_wrapper(optimizer) # 使用NPU分布式计算，更新梯度
@@ -856,7 +856,7 @@ Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce�
 
     如果原始脚本使用TensorFlow接口计算梯度，例如grads = tf.gradients\(loss, tvars\)，需要在计算完梯度之后，调用npu\_allreduce接口对梯度进行Allreduce：
 
-    ```bash
+    ```python
     grads = npu_allreduce(tf.gradients(a + b, [a, b], stop_gradients=[a, b]))
     ```
 
@@ -866,7 +866,7 @@ Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce�
 
 **PS-Worker实现原理<a name="section1464316265102"></a>**
 
-**图 1**  PS-Worker模式<a name="fig42561512148"></a>  
+**图 1**  PS-Worker模式<a name="fig42561512148"></a>
 ![](../../figures/tf_rec_v1/PS-Worker模式.png "PS-Worker模式")
 
 在PS-Worker架构中，集群中的节点被分为两类：参数服务器（parameter server）和工作服务器（worker）。其中参数服务器存放模型的参数，而工作服务器负责计算参数的梯度。在每个迭代过程，工作服务器从参数服务器中获得参数，然后将计算的梯度返回给参数服务器，参数服务器聚合从工作服务器传回的梯度，然后更新参数，并将新的参数广播给工作服务器。
@@ -887,7 +887,7 @@ PS-Worker架构下通过环境变量TF\_CONFIG配置集群信息，TF\_CONFIG里
 
 1. 设置TF\_CONFIG信息。
 
-    ```bash
+    ```python
     os.environ['TF_CONFIG'] = json.dumps({
             'cluster': {
                 #'chief':chief_hosts, # 可不设置
@@ -901,13 +901,13 @@ PS-Worker架构下通过环境变量TF\_CONFIG配置集群信息，TF\_CONFIG里
 
 2. ps\_hosts、worker\_hosts信息可以采用Flags方式配置，配置如下：
 
-    ```bash
+    ```python
     ps_hosts = FLAGS.ps_hosts.split(',')
     worker_hosts = FLAGS.worker_hosts.split(',')
     evaluator_hosts = FLAGS.evaluator_hosts.split(',')
     task_index = FLAGS.task_index
     job_name = FLAGS.job_name
-    flags.DEFINE_string("ps_hosts", '192.168.1.100:2222,192.168.1.200:2222',) 
+    flags.DEFINE_string("ps_hosts", '192.168.1.100:2222,192.168.1.200:2222',)
     flags.DEFINE_string("worker_hosts",
                         '192.168.1.100:2223,192.168.1.100:2224,192.168.1.100:2225,192.168.1.100:2226,'
                         '192.168.1.100:2227,192.168.1.100:2228,192.168.1.100:2229,192.168.1.100:2230,'
@@ -930,7 +930,7 @@ PS-Worker架构下通过环境变量TF\_CONFIG配置集群信息，TF\_CONFIG里
 
 为支持PS-Worker架构下的分布式训练，需要先定义tf.distribute.experimental.ParameterServerStrategy实例，该策略的更多细节请参考[链接](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/ParameterServerStrategy)。
 
-```bash
+```python
 strategy = tf.distribute.experimental.ParameterServerStrategy()
 ```
 
@@ -940,7 +940,7 @@ strategy = tf.distribute.experimental.ParameterServerStrategy()
 
 另外，请确保所有worker的NPURunConfig.model\_dir设置为相同的目录，例如一个所有worker都可以读写的共享文件系统，即如果worker1设置了某个目录，则worker2上要挂载worker1上这个共享目录，且两者的NPURunConfig.model\_dir值也要一致。
 
-```bash
+```python
 from npu_bridge.npu_init import *
 
 run_config = NPURunConfig(
@@ -957,8 +957,8 @@ run_config = NPURunConfig(
             distribute=strategy)
 
 classifier = tf.estimator.NPUEstimator(
-    model_fn=model_fn, 
-    model_dir='/tmp/multiworker', 
+    model_fn=model_fn,
+    model_dir='/tmp/multiworker',
     config=run_config)
 
 tf.estimator.train_and_evaluate(
@@ -978,14 +978,14 @@ tf.estimator.train_and_evaluate(
 
 若按python脚本内的ps\_hosts，worker\_hosts等信息运行（python脚本内未定义chief）：
 
-```bash
-python resnet50_ps_strategy.py --job_name=ps --task_index=0 
-python resnet50_ps_strategy.py --job_name=ps --task_index=1 
-python resnet50_ps_strategy.py --job_name=worker --task_index=0 
+```python
+python resnet50_ps_strategy.py --job_name=ps --task_index=0
+python resnet50_ps_strategy.py --job_name=ps --task_index=1
+python resnet50_ps_strategy.py --job_name=worker --task_index=0
 python resnet50_ps_strategy.py --job_name=worker --task_index=1
 python resnet50_ps_strategy.py --job_name=worker --task_index=2
 python resnet50_ps_strategy.py --job_name=worker --task_index=3
-python resnet50_ps_strategy.py --job_name=worker --task_index=4 
+python resnet50_ps_strategy.py --job_name=worker --task_index=4
 python resnet50_ps_strategy.py --job_name=worker --task_index=5
 python resnet50_ps_strategy.py --job_name=worker --task_index=6
 python resnet50_ps_strategy.py --job_name=worker --task_index=7
@@ -993,9 +993,9 @@ python resnet50_ps_strategy.py --job_name=worker --task_index=7
 
 若需要重新定义ps\_hosts，worker\_hosts等信息（python脚本内未定义chief）：
 
-```bash
+```python
 python resnet50_ps_strategy.py \
-       --ps_hosts=192.168.1.79:2222,192.168.1.80:2222 \       
+       --ps_hosts=192.168.1.79:2222,192.168.1.80:2222 \
        --worker_hosts=192.168.1.79:2223,192.168.1.79:2224,192.168.1.79:2225,192.168.1.79:2226,192.168.1.79:2227,192.168.1.79:2228,192.168.1.79:2229,192.168.1.79:2230,192.168.1.80:2223,192.168.1.80:2224,192.168.1.80:2225,192.168.1.80:2226,192.168.1.80:2227,192.168.1.80:2228,192.168.1.80:2229,192.168.1.80:2230 \
        --job_name=ps \
        --task_index=0
@@ -1003,7 +1003,7 @@ python resnet50_ps_strategy.py \
 
 若需运行chief和evaluator，将job\_name更改为定义的类型值即可，即：
 
-```bash
+```python
 python resnet50_ps_strategy.py --job_name=chief --task_index=0
 python resnet50_ps_strategy.py --job_name=evaluator --task_index=0
 ```
@@ -1060,7 +1060,7 @@ with tf.train.MonitoredTrainingSession(checkpoint_dir=checkpoint_dir,
 
 迁移后的代码：
 
-```bash
+```python
 # 导入NPU库
 import tensorflow as tf
 from npu_bridge.npu_init import *
@@ -1072,7 +1072,7 @@ config = tf.ConfigProto()
 custom_op =  config.graph_options.rewrite_options.custom_optimizers.add()
 custom_op.name =  "NpuOptimizer"
 config.graph_options.rewrite_options.remapping = RewriterConfig.OFF
-config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF  
+config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF
 init_sess = tf.Session(config=config)
 init_sess.run(npu_int)
 
@@ -1085,7 +1085,7 @@ opt = tf.train.AdagradOptimizer(0.01 * get_rank_size())   # "hvd.size"修改为"
 
 # NPU Allreduce
 # 将"hvd.DistributedOptimizer"修改为"npu_distributed_optimizer_wrapper"
-opt = npu_distributed_optimizer_wrapper(opt)   
+opt = npu_distributed_optimizer_wrapper(opt)
 # Add hook to broadcast variables from rank 0 to all other processes during initialization.
 hooks = [NPUBroadcastGlobalVariablesHook(0)]
 
@@ -1106,11 +1106,11 @@ with tf.train.MonitoredTrainingSession(checkpoint_dir=checkpoint_dir,
                                        config=config,
                                        hooks=hooks) as mon_sess:
   # 变量广播
-  mon_sess.run(bcast_global_variables_op)  
+  mon_sess.run(bcast_global_variables_op)
   while not mon_sess.should_stop():
     # Perform synchronous training.
-    mon_sess.run(train_op) 
-  
+    mon_sess.run(train_op)
+
 # 训练结束后执行shutdown_system，同时关闭session
 init_sess.run(npu_shutdown)
 init_sess.close()
@@ -1201,7 +1201,7 @@ precrec-python精度比对工具详细使用说明请参考[链接](https://gitc
 
     session.run模式训练配置示例：
 
-    ```bash
+    ```python
     custom_op.parameter_map["op_select_implmode"].s = tf.compat.as_bytes("high_precision")
     ```
 
@@ -1209,7 +1209,7 @@ precrec-python精度比对工具详细使用说明请参考[链接](https://gitc
 
     Estimator模式训练配置示例：
 
-    ```bash
+    ```python
     config = NPURunConfig(op_select_implmode="high_precision")
     ```
 
@@ -1247,7 +1247,7 @@ precrec-python精度比对工具详细使用说明请参考[链接](https://gitc
 
 - session.run模式训练配置示例：
 
-    ```bash
+    ```python
     custom_op.parameter_map["deterministic"].i = 1
     ```
 
@@ -1255,7 +1255,7 @@ precrec-python精度比对工具详细使用说明请参考[链接](https://gitc
 
 - Estimator模式训练配置示例：
 
-    ```bash
+    ```python
     config = NPURunConfig(deterministic=1)
     ```
 
@@ -1286,14 +1286,14 @@ precrec-python精度比对工具详细使用说明请参考[链接](https://gitc
 
     - session.run模式训练配置示例：
 
-        ```bash
+        ```python
         import precision_tool.tf_config as npu_tf_config
         sess = npu_tf_config.sess_dump(sess=sess)
         ```
 
     - Estimator模式训练配置示例：
 
-        ```bash
+        ```python
         import precision_tool.tf_config as npu_tf_config
         estim_specs = tf.estimator.EstimatorSpec(training_hooks=[npu_tf_config.estimator_dump()])
         ```
@@ -1316,7 +1316,7 @@ precrec-python精度比对工具详细使用说明请参考[链接](https://gitc
 
     - session.run模式训练配置示例：
 
-        ```bash
+        ```python
         import precision_tool.tf_config as npu_tf_config
         config = npu_tf_config.session_dump_config(config, action='dump')
         sess = tf.Session(config)
@@ -1324,7 +1324,7 @@ precrec-python精度比对工具详细使用说明请参考[链接](https://gitc
 
     - Estimator模式训练配置示例：
 
-        ```bash
+        ```python
         import precision_tool.tf_config as npu_tf_config
         dump_config=npu_tf_config.estimator_dump_config(action='dump')
         npu_config = NPURunConfig(dump_config=dump_config)
@@ -1434,17 +1434,17 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
 
 1. 使用以上命令找到首个输入相似，输出存在差异的算子后，可以确定是该算子存在问题。示例如下：
 
-    **图 1**  vcs命令输出中Unique算子输出存在差异<a name="fig74041256134714"></a>  
+    **图 1**  vcs命令输出中Unique算子输出存在差异<a name="fig74041256134714"></a>
     ![](../../figures/tf_rec_v1/vcs命令输出中Unique算子输出存在差异.png "vcs命令输出中Unique算子输出存在差异")
 
 2. 如果该算子为融合算子，表明是由于算子融合导致精度问题，可以关闭该融合后重新进行精度比对，确定是否还存在其他问题。示例如下：
 
-    **图 2**  vcs命令输出中AutomaticBufferFusionOp输出存在差异<a name="fig4431239174810"></a>  
+    **图 2**  vcs命令输出中AutomaticBufferFusionOp输出存在差异<a name="fig4431239174810"></a>
     ![](../../figures/tf_rec_v1/vcs命令输出中AutomaticBufferFusionOp输出存在差异.png "vcs命令输出中AutomaticBufferFusionOp输出存在差异")
 
 3. 如果定位到算子的输入或输出中包含embedding variable，并且embedding variable存在差异，表明是Rec SDK TensorFlow查表存在精度问题。示例如下：
 
-    **图 3**  vcs命令生成的csv文件中Rec SDK TensorFlow查表算子输出存在差异<a name="fig14804312114920"></a>  
+    **图 3**  vcs命令生成的csv文件中Rec SDK TensorFlow查表算子输出存在差异<a name="fig14804312114920"></a>
     ![](../../figures/tf_rec_v1/vcs命令生成的csv文件中Rec-SDK-TensorFlow查表算子输出存在差异.png "vcs命令生成的csv文件中Rec-SDK-TensorFlow查表算子输出存在差异")
 
 ### NPU与NPU整网比对<a name="ZH-CN_TOPIC_0000002210421045"></a>
@@ -1525,16 +1525,16 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
 
     执行**python3 find\_nan.py**命令，find\_nan.py内容如下：
 
-    ```bash
-    import glob 
-    import numpy as np  
-    
-    files = glob.glob("dump_data_npy/*") 
-    files.sort(key = lambda x : int(x.split(".")[4])) 
-    for i in files:     
-          f = np.load(i)     
-          if np.isnan(f).any():         
-          print(i)         
+    ```python
+    import glob
+    import numpy as np
+
+    files = glob.glob("dump_data_npy/*")
+    files.sort(key = lambda x : int(x.split(".")[4]))
+    for i in files:
+          f = np.load(i)
+          if np.isnan(f).any():
+          print(i)
           break
     ```
 
@@ -1560,7 +1560,7 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
 
 修改ckpt\_compare.py文件（内容如下面代码块所示）中的checkpoint\_path1为异常的模型文件路径，checkpoint\_path2为正常的模型文件路径后，在TensorFlow  1.15环境中执行如下python ckpt\_compare.py脚本后，会按照余弦相似度从低到高输出变量名和余弦相似度。
 
-```bash
+```python
 from tensorflow.python import pywrap_tensorflow
 import numpy as np
 checkpoint_path1 = "path1/model-200"
@@ -1741,7 +1741,7 @@ Rec SDK TensorFlow支持TensorFlow开源推荐模型迁移适配，迁移步骤�
 
 #### 步骤一：稀疏特征查表接口替换
 
-1. 区分稀疏特征与稠密特征 
+1. 区分稀疏特征与稠密特征
 
     以criteo数据集为例：
 
@@ -1761,7 +1761,7 @@ Rec SDK TensorFlow支持TensorFlow开源推荐模型迁移适配，迁移步骤�
 
     ```python
     from mx_rec.core.embedding import create_table, sparse_lookup
-    
+
     # 1. 创建稀疏表（替代 tf.get_variable）
     sparse_hashtable = create_table(
         key_dtype=cfg.key_type,
@@ -1770,7 +1770,7 @@ Rec SDK TensorFlow支持TensorFlow开源推荐模型迁移适配，迁移步骤�
         emb_initializer=emb_initializer,
         **cfg.get_emb_table_cfg()
     )
-    
+
     # 2. 稀疏特征查表（替代 tf.nn.embedding_lookup）
     feature = batch["sparse_feature"]
     embedding = sparse_lookup(sparse_hashtable, feature, cfg.send_count, dim=None, is_train=is_train,
@@ -1840,7 +1840,7 @@ for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], 
 
     ```python
     from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
-    
+
     init(train_steps=cm.train_steps, eval_steps=cm.eval_steps,
          use_dynamic=use_dynamic, use_dynamic_expansion=False)
     ```
@@ -1852,13 +1852,13 @@ for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], 
     ```python
     from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
     from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
-    
+
     # 开启自动改图和数据加载、预处理
     modify_graph_and_start_emb_cache(dump_graph=True)
-    
+
     # 创建 Session
     sess = tf.compat.v1.Session(config=sess_config(dump_data=False))
-    
+
     # 初始化所有全局变量
     sess.run(ConfigInitializer.get_instance().train_params_config.get_initializer(True))
     ```
@@ -1871,10 +1871,10 @@ for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], 
 
     ```python
     from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
-    
+
     # 关闭 Session
     sess.close()
-    
+
     # 去初始化并释放资源
     terminate_config_initializer()
     ```
