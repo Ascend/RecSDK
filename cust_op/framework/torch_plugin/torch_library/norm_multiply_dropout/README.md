@@ -14,13 +14,19 @@ norm_multiply_dropout(Tensor x, Tensor u, Tensor weight, Tensor bias, float eps,
 
 | 名称            | 输入/输出  | 参数类型   | 数据类型                     | 数据格式   | 范围                            | 说明                                                    |
 |---------------|--------|--------|--------------------------|--------|-------------------------------|-------------------------------------------------------|
-| x             | 输入     | Tensor | float32/float16/bfloat16 | [B, C] | B∈[1,1000000]，C仅支持值为512,1024。 |                                                       |
-| u             | 输入     | Tensor | float32/float16/bfloat16 | [B, C] | B∈[1,1000000]，C仅支持值为512,1024。 | 数据类型需与输入x数据类型保持一致。                                    |
-| weight        | 输入     | Tensor | float32/float16/bfloat16 | [C]    | C仅支持值为512,1024。               | 数据类型需与输入x数据类型保持一致。                                    |
-| bias          | 输入     | Tensor | float32/float16/bfloat16 | [C]    | C仅支持值为512,1024。               | 数据类型需与输入x数据类型保持一致。                                    |
-| eps           | 输入(属性) | float  | float                    |        | 数值范围:[1e-10, 1e-4]            | 极小值，防止除0                                              |
-| dropout_ratio | 输入(属性) | float  | float                    |        | 数值范围:[0.0, 1.0]               | 当dropout_ratio值<= 1e-10时，会当做dropout概率为0而不进行dropout处理。 |
-| output        | 输出     | Tensor | float32/float16/bfloat16 | [B, C] | B∈[1,1000000]，C仅支持值为512,1024。 | 前向计算结果，输出数据类型与输入x数据类型一致。                              |
+| x             | 输入     | Tensor | float32/float16/bfloat16 | [B, C] | B∈[1, 1000000]，C仅支持值为512、1024。 |                                                       |
+| u             | 输入     | Tensor | float32/float16/bfloat16 | [B, C] | B∈[1, 1000000]，C仅支持值为512、1024。 | 数据类型需与输入x数据类型保持一致。                                    |
+| weight        | 输入     | Tensor | float32/float16/bfloat16 | [C]    | C仅支持值为512、1024。               | 数据类型需与输入x数据类型保持一致。                                    |
+| bias          | 输入     | Tensor | float32/float16/bfloat16 | [C]    | C仅支持值为512、1024。               | 数据类型需与输入x数据类型保持一致。                                    |
+| eps           | 输入(属性) | float  | float                    |        | 数值范围:[1e-10, 1e-4]。            | 极小值，防止除0。                                              |
+| dropout_ratio | 输入(属性) | float  | float                    |        | 数值范围:[0.0, 1.0]。               | 当dropout_ratio值<= 1e-10时，会当做dropout概率为0而不进行dropout处理。 |
+| output        | 输出     | Tensor | float32/float16/bfloat16 | [B, C] | B∈[1, 1000000]，C仅支持值为512、1024。 | 前向计算结果，输出数据类型与输入x数据类型一致。                              |
+
+>[!NOTE]
+>
+> 1 输入tensor值域：[-1, 1)，且tensor数据需要是连续的（contiguous）。使用PyTorch自动求导时，输入tensor还需设置requires_grad为True。
+>
+> 2 **Atlas A5训练系列产品不支持输入x的float32数据类型。**
 
 ## 算子运行样例
 
@@ -53,14 +59,16 @@ u_fused = torch.tensor(u_np, dtype=dtype, device=npu_device).contiguous().requir
 w_fused = torch.tensor(w_np, dtype=dtype, device=npu_device).contiguous().requires_grad_(True)
 b_fused = torch.tensor(b_np, dtype=dtype, device=npu_device).contiguous().requires_grad_(True)
 output = torch.ops.mxrec.norm_multiply_dropout(x_fused, u_fused, w_fused, b_fused, eps, dropout_ratio)[0]
+
+# 使用PyTorch自动求导
+output.backward(torch.tensor(dy_np, dtype=dtype, device=npu_device).contiguous())
 ```
 
 ## 编译与部署
 
 算子编译与部署请参考 [RecSDK/cust_op/README.md](../../../../README.md) 中 "单算子使用说明" 章节：
+
 - [算子编译](../../../../README.md#算子编译)
 - [算子适配层编译](../../../../README.md#算子适配层编译)
 
-> **提示**
-> 以上示例仅展示基本用法，如需更全面的测试用例，请参考完整测试文件：  
-> - [test](../../../../test/norm_multiply_dropout/torch/test_norm_multiply_dropout.py)
+以上示例仅展示基本用法，如需更全面的测试用例，请参考[完整测试文件](../../../../test/norm_multiply_dropout/torch/test_norm_multiply_dropout.py)。
