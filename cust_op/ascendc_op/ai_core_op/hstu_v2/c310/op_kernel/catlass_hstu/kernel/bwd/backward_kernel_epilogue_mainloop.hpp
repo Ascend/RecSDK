@@ -30,6 +30,7 @@ See the License for the specific language governing permissions and
 #include "catlass/arch/cross_core_sync.hpp"
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/layout/layout.hpp"
+#include "../../../catlass_hstu/kernel/mask/predictor_builder.hpp"
 
 namespace Catlass::Kernel {
 
@@ -54,7 +55,8 @@ namespace Catlass::Kernel {
 
  */
 template <class BlockEpilogueQK_, class BlockEpilogueGV_, class BlockEpilogueKVGrad_, class BlockEpilogueQGrad_,
-          class QBlockScheduler_, class KBlockScheduler_>
+          class QBlockScheduler_, class KBlockScheduler_, typename ElementOffset, bool IS_LOCAL, bool IS_CAUSAL,
+          bool IS_CONTEXT, bool IS_TARGET, bool IS_ARBITRARY, class Predictor>
 struct BackwardEpilogueMainloop {
     using BlockEpilogueQK = BlockEpilogueQK_;
     using BlockEpilogueGV = BlockEpilogueGV_;
@@ -63,6 +65,7 @@ struct BackwardEpilogueMainloop {
     using BlockEpilogueQGrad = BlockEpilogueQGrad_;
     using QBlockScheduler = QBlockScheduler_;
     using KBlockScheduler = KBlockScheduler_;
+    using L1TileShape = typename BlockEpilogueQK_::L1TileShape;
 
     using ArchTag = typename BlockEpilogueQK::ArchTag;
     using ElementK = typename BlockEpilogueQK::Element;
@@ -77,6 +80,19 @@ struct BackwardEpilogueMainloop {
     static constexpr uint32_t TRANS_READY_ID = 4;
     static constexpr uint32_t Q_TRANS_READY_ID = 5;
 
+    static constexpr bool IS_LOCAL_V = IS_LOCAL;
+    static constexpr bool IS_CAUSAL_V = IS_CAUSAL;
+    static constexpr bool IS_CONTEXT_V = IS_CONTEXT;
+    static constexpr bool IS_TARGET_V = IS_TARGET;
+    static constexpr bool IS_ARBITRARY_V = IS_ARBITRARY;
+
+    // Get BLOCK_M by indices 0
+    static constexpr uint32_t BLOCK_M = tla::get<0>(L1TileShape{});
+    // Get BLOCK_N by indices 1
+    static constexpr uint32_t BLOCK_N = tla::get<1>(L1TileShape{});
+    // Get BLOCK_K by indices 2
+    static constexpr uint32_t BLOCK_K = tla::get<2>(L1TileShape{});
+
     static constexpr bool HAS_RAB = BlockEpilogueQK::HAS_RAB;
 
     struct Params {
@@ -88,13 +104,16 @@ struct BackwardEpilogueMainloop {
         GM_ADDR ptrVGrad;
         GM_ADDR ptrRabGrad;
         GM_ADDR ptrQShare;
+        GM_ADDR ptrNumContext;
+        GM_ADDR ptrNumTarget;
 
         CATLASS_DEVICE
         Params() {}
 
         CATLASS_DEVICE
         Params(GM_ADDR ptrRab_, GM_ADDR ptrSeqOffsetQ_, GM_ADDR ptrSeqOffsetK_, GM_ADDR ptrQGrad_, GM_ADDR ptrKGrad_,
-               GM_ADDR ptrVGrad_, GM_ADDR ptrRabGrad_, GM_ADDR ptrQShare_)
+               GM_ADDR ptrVGrad_, GM_ADDR ptrRabGrad_, GM_ADDR ptrQShare_, GM_ADDR ptrNumContext_,
+               GM_ADDR ptrNumTarget_)
             : ptrRab(ptrRab_),
               ptrSeqOffsetQ(ptrSeqOffsetQ_),
               ptrSeqOffsetK(ptrSeqOffsetK_),
@@ -102,7 +121,9 @@ struct BackwardEpilogueMainloop {
               ptrKGrad(ptrKGrad_),
               ptrVGrad(ptrVGrad_),
               ptrRabGrad(ptrRabGrad_),
-              ptrQShare(ptrQShare_)
+              ptrQShare(ptrQShare_),
+              ptrNumContext(ptrNumContext_),
+              ptrNumTarget(ptrNumTarget_)
         {
         }
     };
@@ -152,7 +173,8 @@ struct BackwardEpilogueMainloop {
 
     struct LoopPipeEventGuard {
         CATLASS_DEVICE
-        LoopPipeEventGuard() {
+        LoopPipeEventGuard()
+        {
             if constexpr (HAS_RAB) {
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             }
@@ -160,7 +182,8 @@ struct BackwardEpilogueMainloop {
         }
 
         CATLASS_DEVICE
-        ~LoopPipeEventGuard() {
+        ~LoopPipeEventGuard()
+        {
             if constexpr (HAS_RAB) {
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             }
@@ -169,42 +192,45 @@ struct BackwardEpilogueMainloop {
     };
 
     CATLASS_DEVICE
-    void InitGlobalTensors(const Params &params,
-                           AscendC::GlobalTensor<ElementV> &gVGrad,
-                           AscendC::GlobalTensor<ElementK> &gKGrad,
-                           AscendC::GlobalTensor<ElementG> &gRab,
-                           AscendC::GlobalTensor<ElementG> &gRabGrad)
+    void InitGlobalTensors(const Params& params, AscendC::GlobalTensor<ElementV>& gVGrad,
+                           AscendC::GlobalTensor<ElementK>& gKGrad, AscendC::GlobalTensor<ElementG>& gRab,
+                           AscendC::GlobalTensor<ElementG>& gRabGrad)
     {
-        gVGrad.SetGlobalBuffer((__gm__ ElementV *)params.ptrVGrad);
-        gKGrad.SetGlobalBuffer((__gm__ ElementK *)params.ptrKGrad);
-        gRab.SetGlobalBuffer((__gm__ ElementG *)params.ptrRab);
-        gRabGrad.SetGlobalBuffer((__gm__ ElementG *)params.ptrRabGrad);
+        gVGrad.SetGlobalBuffer((__gm__ ElementV*)params.ptrVGrad);
+        gKGrad.SetGlobalBuffer((__gm__ ElementK*)params.ptrKGrad);
+        gRab.SetGlobalBuffer((__gm__ ElementG*)params.ptrRab);
+        gRabGrad.SetGlobalBuffer((__gm__ ElementG*)params.ptrRabGrad);
 
         gRab.template SetL2CacheHint<AscendC::CacheRwMode::READ>(AscendC::CacheMode::CACHE_MODE_DISABLE);
+
+        if constexpr (IS_CONTEXT) {
+            gNumContext.SetGlobalBuffer((__gm__ ElementOffset*)params.ptrNumContext);
+        }
+        if constexpr (IS_TARGET) {
+            gNumTarget.SetGlobalBuffer((__gm__ ElementOffset*)params.ptrNumTarget);
+        }
     }
 
     template <typename ElementT>
-    CATLASS_DEVICE
-    auto MakeTNDTensor(AscendC::GlobalTensor<ElementT> &gt, uint32_t seqLen, uint32_t dim)
+    CATLASS_DEVICE auto MakeTNDTensor(AscendC::GlobalTensor<ElementT>& gt, uint32_t seqLen, uint32_t dim)
     {
-        auto layout = tla::MakeLayout(
-            tla::MakeShape((int64_t)seqLen, dim), tla::MakeStride((int64_t)dim, tla::Int<1>{}));
+        auto layout =
+            tla::MakeLayout(tla::MakeShape((int64_t)seqLen, dim), tla::MakeStride((int64_t)dim, tla::Int<1>{}));
         return tla::MakeTensor(gt, layout, Arch::PositionGM{});
     }
 
     template <typename ElementT>
-    CATLASS_DEVICE
-    auto MakeBNSSTensor(AscendC::GlobalTensor<ElementT> &gt)
+    CATLASS_DEVICE auto MakeBNSSTensor(AscendC::GlobalTensor<ElementT>& gt)
     {
         auto stride0 = (int64_t)heads * maxSeqLenQ * maxSeqLenK;
         auto stride1 = (int64_t)maxSeqLenQ * maxSeqLenK;
         auto layout = tla::MakeLayout(tla::MakeShape(batch, heads, maxSeqLenQ, maxSeqLenK),
-                                       tla::MakeStride(stride0, stride1, maxSeqLenK, tla::Int<1>{}));
+                                      tla::MakeStride(stride0, stride1, maxSeqLenK, tla::Int<1>{}));
         return tla::MakeTensor(gt, layout, Arch::PositionGM{});
     }
 
     CATLASS_DEVICE
-    void operator()(const Params &params)
+    void operator()(const Params& params)
     {
         PipeEventGuard pipeEventGuard;
 
@@ -213,6 +239,10 @@ struct BackwardEpilogueMainloop {
         AscendC::GlobalTensor<ElementG> gRab;
         AscendC::GlobalTensor<ElementG> gRabGrad;
         InitGlobalTensors(params, gVGrad, gKGrad, gRab, gRabGrad);
+        // 使能单指令饱和模式
+        if constexpr (IS_CAUSAL || IS_LOCAL || IS_ARBITRARY) {
+            AscendC::SetCtrlSpr<60, 60>(0);
+        }
 
         auto tensorVGrad = MakeTNDTensor(gVGrad, totalSeqLenK * heads, dimGV);
         auto tensorKGrad = MakeTNDTensor(gKGrad, totalSeqLenK * heads, dimQK);
@@ -228,18 +258,32 @@ struct BackwardEpilogueMainloop {
         KBlockScheduler kBlockScheduler(batch, heads, params.ptrSeqOffsetK, params.ptrSeqOffsetQ);
 
         kBlockScheduler.Init();
+        Predictor predictor;
         for (; kBlockScheduler.IsValid(); ++kBlockScheduler) {
             auto tVg = kBlockScheduler.GetTile(tensorVGrad);
             auto tKg = kBlockScheduler.GetTile(tensorKGrad);
-        
+
             LoopPipeEventGuard loopPipeEventGuard;
 
             qBlockScheduler.Init(kBlockScheduler);
             for (; qBlockScheduler.IsValid(); ++qBlockScheduler) {
+                auto meta = kBlockScheduler.GetMeta();
+                auto blockCoord = tla::MakeCoord(static_cast<uint32_t>(tla::get<0>(meta)),             // batchId
+                                                 static_cast<uint32_t>(tla::get<1>(meta)),             // headId
+                                                 static_cast<uint32_t>(qBlockScheduler.GetBlockId()),  // qSeqId
+                                                 qBlockScheduler.GetRowBlockId());
+
+                auto blockPredParams =
+                    predictor.MakeBlockPredParams(blockCoord, this, qBlockScheduler.GetSeqLens(),
+                                                  kBlockScheduler.GetCurrentSeqLen(), qBlockScheduler.GetSwizzleDir());
+                predictor.Classifier(blockPredParams);
+                if (predictor.IsSkip()) {
+                    continue;
+                }
                 auto mapping = qBlockScheduler.GetTileMapping(tVg.coord(), tVg.shape());
                 auto coord = tla::get<0>(mapping);
                 auto shape = tla::get<1>(mapping);
-                blockEpilogueQK(tensorRab, coord, shape);
+                blockEpilogueQK(tensorRab, coord, shape, predictor);
                 blockEpilogueGV(tensorGrab, coord, shape);
             }
             if (AscendC::GetSubBlockIdx() == 0) {
@@ -256,7 +300,7 @@ struct BackwardEpilogueMainloop {
     }
 
     CATLASS_DEVICE
-    auto GetQShareTile(AscendC::GlobalTensor<ElementACC> &gQShare)
+    auto GetQShareTile(AscendC::GlobalTensor<ElementACC>& gQShare)
     {
         uint32_t coreId = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum() * AscendC::GetTaskRatio();
@@ -283,12 +327,12 @@ struct BackwardEpilogueMainloop {
     }
 
     CATLASS_DEVICE
-    void CopyQGrad(const Params &params)
+    void CopyQGrad(const Params& params)
     {
         AscendC::GlobalTensor<ElementG> gQGrad;
-        gQGrad.SetGlobalBuffer((__gm__ ElementG *)params.ptrQGrad);
+        gQGrad.SetGlobalBuffer((__gm__ ElementG*)params.ptrQGrad);
         AscendC::GlobalTensor<ElementACC> gQShare;
-        gQShare.SetGlobalBuffer((__gm__ ElementACC *)params.ptrQShare);
+        gQShare.SetGlobalBuffer((__gm__ ElementACC*)params.ptrQShare);
 
         auto tensorQShare = GetQShareTile(gQShare);
         auto totalProcSeqs = tla::get<0>(tensorQShare.shape());
@@ -306,6 +350,9 @@ struct BackwardEpilogueMainloop {
 
     Arch::Resource<ArchTag> resource;
 
+    AscendC::GlobalTensor<ElementOffset> gNumContext;
+    AscendC::GlobalTensor<ElementOffset> gNumTarget;
+
     uint32_t batch{0};
     uint32_t heads{0};
     uint32_t dimQK{0};
@@ -319,4 +366,4 @@ struct BackwardEpilogueMainloop {
     ElementACC scale{0.0f};
 };
 
-}
+}  // namespace Catlass::Kernel

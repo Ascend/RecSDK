@@ -190,7 +190,6 @@ public:
         static constexpr BufferPosition<Element, L0_NK_ELEM, score.lowerBound>
             transKVGradOut;  // trans过程和中的rab mask复用
         static constexpr BufferPosition<Element, Optional<HAS_RAB, L0_MN_ELEM>::value, score.lowerBound> rab;
-        static constexpr BufferPosition<Element, Optional<HAS_MASK, L0_MN_ELEM>::value, score.lowerBound> mask;
         static constexpr BufferPosition<Element, L0_MN_ELEM, score.lowerBound> prob;
         static constexpr BufferPosition<Element, L0_MN_ELEM, Max<transKVGradOut.lowerBound, prob.lowerBound>::value>
             grab;  // grab和score复用 因为分为两个阶段所以可以复用

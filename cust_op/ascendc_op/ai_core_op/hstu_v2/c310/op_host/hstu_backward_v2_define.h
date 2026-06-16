@@ -26,7 +26,12 @@ See the License for the specific language governing permissions and
  * @brief 维度索引枚举
  * @description 用于指定张量的维度顺序：ZERO=批次维度, ONE=头数维度, TWO=序列维度, THREE=特征维度
  */
-enum class DIM_INDEX : uint32_t { ZERO = 0, ONE, TWO, THREE };
+enum class DIM_INDEX : uint32_t {
+    ZERO = 0,
+    ONE,
+    TWO,
+    THREE
+};
 
 /**
  * @brief 输入张量索引枚举
@@ -41,7 +46,17 @@ enum class DIM_INDEX : uint32_t { ZERO = 0, ONE, TWO, THREE };
  * - NUM_CONTEXT: 上下文序列长度
  * - NUM_TARGET: 目标序列长度
  */
-enum class IN_INDEX : uint32_t { GRAD = 0, Q, K, V, RAB, SEQ_OFFSET_Q, SEQ_OFFSET_K, NUM_CONTEXT, NUM_TARGET };
+enum class IN_INDEX : uint32_t {
+    GRAD = 0,
+    Q,
+    K,
+    V,
+    RAB,
+    SEQ_OFFSET_Q,
+    SEQ_OFFSET_K,
+    NUM_CONTEXT,
+    NUM_TARGET
+};
 
 /**
  * @brief 输出张量索引枚举
@@ -51,7 +66,12 @@ enum class IN_INDEX : uint32_t { GRAD = 0, Q, K, V, RAB, SEQ_OFFSET_Q, SEQ_OFFSE
  * - V_GRAD: Value 的梯度
  * - RAB_GRAD: 相对位置注意力偏置的梯度
  */
-enum class OUT_INDEX : uint32_t { Q_GRAD = 0, K_GRAD, V_GRAD, RAB_GRAD };
+enum class OUT_INDEX : uint32_t {
+    Q_GRAD = 0,
+    K_GRAD,
+    V_GRAD,
+    RAB_GRAD
+};
 
 /**
  * @brief 属性索引枚举
@@ -62,6 +82,14 @@ enum class OUT_INDEX : uint32_t { Q_GRAD = 0, K_GRAD, V_GRAD, RAB_GRAD };
  * - TARGET_GROUP_SIZE: 目标分组大小
  * - ALPHA: 注意力分数的缩放系数
  */
-enum class ATTR_INDEX : uint32_t { MAX_SEQLEN_Q = 0, MAX_SEQLEN_K = 1, SCALE, TARGET_GROUP_SIZE, ALPHA };
+enum class ATTR_INDEX : uint32_t {
+    MAX_SEQLEN_Q = 0,
+    MAX_SEQLEN_K = 1,
+    SCALE,
+    TARGET_GROUP_SIZE,
+    ALPHA,
+    WINDOW_SIZE_LEFT,
+    WINDOW_SIZE_RIGHT
+};
 
 #endif

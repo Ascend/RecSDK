@@ -48,13 +48,13 @@ namespace catlass::Epilogue::RegBase {
 
  */
 template <typename dstType, typename srcType>
-__simd_callee__ inline void CastDownStore(__ubuf__ dstType *dst, AscendC::MicroAPI::RegTensor<srcType> &src,
-                                          AscendC::MicroAPI::MaskReg &maskReg)
+__simd_callee__ inline void CastDownStore(__ubuf__ dstType* dst, AscendC::MicroAPI::RegTensor<srcType>& src,
+                                          AscendC::MicroAPI::MaskReg& maskReg)
 {
     // float->bfloat16/float16
     static constexpr AscendC::MicroAPI::CastTrait castNativeTrait = {
-        AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT,
-        AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_RINT};
+        AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+        AscendC::RoundMode::CAST_RINT};
 
     AscendC::MicroAPI::RegTensor<dstType> vregTmp;
     AscendC::MicroAPI::Cast<dstType, srcType, castNativeTrait>(vregTmp, src, maskReg);
@@ -80,8 +80,8 @@ __simd_callee__ inline void CastDownStore(__ubuf__ dstType *dst, AscendC::MicroA
 
  */
 template <typename dstType, typename srcType>
-__simd_callee__ inline void CastUpLoad(AscendC::MicroAPI::RegTensor<dstType> &dst, __ubuf__ srcType *src,
-                                       AscendC::MicroAPI::MaskReg &maskReg)
+__simd_callee__ inline void CastUpLoad(AscendC::MicroAPI::RegTensor<dstType>& dst, __ubuf__ srcType* src,
+                                       AscendC::MicroAPI::MaskReg& maskReg)
 {
     // bfloat16/float16->float
     static constexpr AscendC::MicroAPI::CastTrait castTrait = {
@@ -93,4 +93,4 @@ __simd_callee__ inline void CastUpLoad(AscendC::MicroAPI::RegTensor<dstType> &ds
     AscendC::MicroAPI::Cast<dstType, srcType, castTrait>(dst, vregTmp, maskReg);
 }
 
-}
+}  // namespace catlass::Epilogue::RegBase

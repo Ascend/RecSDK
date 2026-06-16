@@ -43,17 +43,19 @@ namespace optiling {
  * - scale: 缩放因子
  */
 BEGIN_TILING_DATA_DEF(HstuBackwardV2TilingData)
-TILING_DATA_FIELD_DEF(uint32_t, batch);       ///< 批次大小
-TILING_DATA_FIELD_DEF(uint32_t, heads);       ///< 注意力头数
-TILING_DATA_FIELD_DEF(uint32_t, dimQK);       ///< Query 和 Key 的特征维度
-TILING_DATA_FIELD_DEF(uint32_t, dimGV);       ///< Value 和 Gradient 的特征维度
-TILING_DATA_FIELD_DEF(uint32_t, totalSeqLenQ); ///< Query 的总序列长度
-TILING_DATA_FIELD_DEF(uint32_t, totalSeqLenK); ///< Key/Value 的总序列长度
-TILING_DATA_FIELD_DEF(uint32_t, maxSeqLenQ);  ///< Query 的最大序列长度
-TILING_DATA_FIELD_DEF(uint32_t, maxSeqLenK);  ///< Key/Value 的最大序列长度
-TILING_DATA_FIELD_DEF(int32_t, targetGroupSize); ///< 目标分组大小
-TILING_DATA_FIELD_DEF(float, alpha);          ///< 注意力分数的缩放系数
-TILING_DATA_FIELD_DEF(float, scale);          ///< 缩放因子
+TILING_DATA_FIELD_DEF(uint32_t, batch);           ///< 批次大小
+TILING_DATA_FIELD_DEF(uint32_t, heads);           ///< 注意力头数
+TILING_DATA_FIELD_DEF(uint32_t, dimQK);           ///< Query 和 Key 的特征维度
+TILING_DATA_FIELD_DEF(uint32_t, dimGV);           ///< Value 和 Gradient 的特征维度
+TILING_DATA_FIELD_DEF(uint32_t, totalSeqLenQ);    ///< Query 的总序列长度
+TILING_DATA_FIELD_DEF(uint32_t, totalSeqLenK);    ///< Key/Value 的总序列长度
+TILING_DATA_FIELD_DEF(uint32_t, maxSeqLenQ);      ///< Query 的最大序列长度
+TILING_DATA_FIELD_DEF(uint32_t, maxSeqLenK);      ///< Key/Value 的最大序列长度
+TILING_DATA_FIELD_DEF(int32_t, targetGroupSize);  ///< 目标分组大小
+TILING_DATA_FIELD_DEF(float, alpha);              ///< 注意力分数的缩放系数
+TILING_DATA_FIELD_DEF(float, scale);              ///< 缩放因子
+TILING_DATA_FIELD_DEF(int32_t, windowSizeLeft);   ///< 注意力窗口左侧宽度（语义：-1 无限）
+TILING_DATA_FIELD_DEF(int32_t, windowSizeRight);  ///< 注意力窗口右侧宽度（语义：-1 无限，0 因果）
 END_TILING_DATA_DEF;
 
 /**

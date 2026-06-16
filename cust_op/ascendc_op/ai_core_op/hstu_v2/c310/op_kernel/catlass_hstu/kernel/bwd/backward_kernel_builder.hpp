@@ -64,9 +64,9 @@ struct TileSelector {
 
  */
 template <class Element>
-struct TileSelector<Element, 128> {                          // 128 max dim
-    using L1TileShape = Shape<Int<256>, Int<128>, Int<128>>; // 256, 128, 128 L1 tile block
-    using L0TileShape = Shape<Int<128>, Int<128>, Int<128>>; // 128, 128, 128 L0 tile block
+struct TileSelector<Element, 128> {                           // 128 max dim
+    using L1TileShape = Shape<Int<256>, Int<128>, Int<128>>;  // 256, 128, 128 L1 tile block
+    using L0TileShape = Shape<Int<128>, Int<128>, Int<128>>;  // 128, 128, 128 L0 tile block
 };
 
 /**
@@ -74,9 +74,9 @@ struct TileSelector<Element, 128> {                          // 128 max dim
 
  */
 template <class Element>
-struct TileSelector<Element, 256> {                         // 256 max dim
-    using L1TileShape = Shape<Int<128>, Int<64>, Int<256>>; // 128, 64, 256 L1 tile block
-    using L0TileShape = Shape<Int<64>, Int<64>, Int<256>>;  // 64, 64, 256 L1 tile block
+struct TileSelector<Element, 256> {                          // 256 max dim
+    using L1TileShape = Shape<Int<128>, Int<64>, Int<256>>;  // 128, 64, 256 L1 tile block
+    using L0TileShape = Shape<Int<64>, Int<64>, Int<256>>;   // 64, 64, 256 L1 tile block
 };
 
 /**
@@ -98,7 +98,7 @@ struct TileSelector<Element, 256> {                         // 256 max dim
 
  */
 template <typename ArchTag_, typename ElementType_, typename ElementOffset_, uint32_t TILE_K_, bool HAS_RAB_,
-          bool HAS_MASK_>
+          bool IS_LOCAL, bool IS_CAUSAL, bool IS_ARBITRARY>
 struct BackwardKernelConfig {
     using ElementType = ElementType_;
     using ElementOffset = ElementOffset_;
@@ -106,7 +106,7 @@ struct BackwardKernelConfig {
 
     static constexpr uint32_t TILE_K = TILE_K_;
     static constexpr bool HAS_RAB = HAS_RAB_;
-    static constexpr bool HAS_MASK = HAS_MASK_;
+    static constexpr bool HAS_MASK = IS_LOCAL || IS_CAUSAL || IS_ARBITRARY;
 
     using L1TileShape = typename TileSelector<ElementType, TILE_K>::L1TileShape;
     using L0TileShape = typename TileSelector<ElementType, TILE_K>::L0TileShape;
@@ -159,12 +159,11 @@ struct QKBlockBuilder {
     using ElementS = typename Gemm::helper::ElementAccumulatorSelector<ElementQ, ElementK>::ElementAccumulator;
     using LayoutS = std::conditional_t<(HAS_RAB || HAS_MASK), layout::RowMajor, layout::zN>;
 
-    using TileCopyTla = std::conditional_t<
-        (HAS_RAB || HAS_MASK),
+    static constexpr auto CopyMode =
+        (HAS_RAB || HAS_MASK) ? Gemm::Tile::CopyL0CToUBMode::RESERVED : Gemm::Tile::CopyL0CToUBMode::NO_SPLIT;
+    using TileCopyTla =
         Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS, void,
-                                          Gemm::Tile::CopyL0CToUBMode::RESERVED, false, Gemm::Tile::ScaleGranularity::PER_TENSOR>,
-        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS, LayoutS, void,
-                                          Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false, Gemm::Tile::ScaleGranularity::PER_TENSOR>>;
+                                          CopyMode, false, Gemm::Tile::ScaleGranularity::PER_TENSOR>;
 
     using DispatchPolicy = Gemm::MmadHSTUQK<ArchTag, false, false, true>;
 
@@ -174,7 +173,7 @@ struct QKBlockBuilder {
 
     using EpilogueTileBuffer = TileBufferType_<BufferTag::SCORE_GRAD_EPILOGUE>;
     using BlockEpilogue = Epilogue::Block::BlockEpilogueScoreGrad<ArchTag, ElementQ, ElementS, EpilogueTileBuffer,
-                                                                  L0TileShape, HAS_RAB, HAS_MASK>;
+                                                                  L0TileShape, L1TileShape, HAS_RAB, HAS_MASK>;
 };
 
 /**
@@ -216,12 +215,14 @@ struct GVBlockBuilder {
     using ElementGS = typename Gemm::helper::ElementAccumulatorSelector<ElementG, ElementV>::ElementAccumulator;
     using LayoutGS = std::conditional_t<(HAS_RAB || HAS_MASK), layout::RowMajor, layout::zN>;
 
-    using TileCopyTla = std::conditional_t<
-        (HAS_RAB || HAS_MASK),
-        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementG, LayoutG, ElementV, LayoutV, ElementGS, LayoutGS, void,
-                                          Gemm::Tile::CopyL0CToUBMode::RESERVED, false, Gemm::Tile::ScaleGranularity::PER_TENSOR>,
-        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementG, LayoutG, ElementV, LayoutV, ElementGS, LayoutGS, void,
-                                          Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false, Gemm::Tile::ScaleGranularity::PER_TENSOR>>;
+    using TileCopyTla =
+        std::conditional_t<(HAS_RAB || HAS_MASK),
+                           Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementG, LayoutG, ElementV, LayoutV, ElementGS,
+                                                             LayoutGS, void, Gemm::Tile::CopyL0CToUBMode::RESERVED,
+                                                             false, Gemm::Tile::ScaleGranularity::PER_TENSOR>,
+                           Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementG, LayoutG, ElementV, LayoutV, ElementGS,
+                                                             LayoutGS, void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT,
+                                                             false, Gemm::Tile::ScaleGranularity::PER_TENSOR>>;
 
     using DispatchPolicy = Gemm::MmadHSTUQK<ArchTag, false, false, true>;
 
@@ -275,9 +276,10 @@ struct KVGradBlockBuilder {
     using LayoutXGrad = layout::RowMajor;
 
     using DispatchPolicyVGrad = Gemm::MmadHSTUPV<ArchTag, false, false, 0, true>;
-    using VGradTileCopyTla = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutP, ElementG, LayoutG, ElementXGrad,
-                                                          LayoutXGrad, void, Gemm::Tile::CopyL0CToUBMode::RESERVED, false,
-                                                          Gemm::Tile::ScaleGranularity::PER_TENSOR>;
+    using VGradTileCopyTla =
+        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutP, ElementG, LayoutG, ElementXGrad, LayoutXGrad,
+                                          void, Gemm::Tile::CopyL0CToUBMode::RESERVED, false,
+                                          Gemm::Tile::ScaleGranularity::PER_TENSOR>;
 
     // GEMM VGrad
     using BlockMmadVGrad =
@@ -285,8 +287,9 @@ struct KVGradBlockBuilder {
                                   TileBufferType_<BufferTag::V_GRAD_MMAD>, VGradTileCopyTla>;
 
     using DispatchPolicyKGrad = Gemm::MmadHSTUPV<ArchTag, false, false, 1, false>;
-    using KGradTileCopyTla = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutP, ElementG, LayoutG, ElementXGrad,
-                                                          LayoutXGrad, void, Gemm::Tile::CopyL0CToUBMode::RESERVED>;
+    using KGradTileCopyTla =
+        Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutP, ElementG, LayoutG, ElementXGrad, LayoutXGrad,
+                                          void, Gemm::Tile::CopyL0CToUBMode::RESERVED>;
     // GEMM KGrad
     using BlockMmadKGrad =
         Gemm::Block::BlockMmadTla<DispatchPolicyKGrad, L1TileShape, L0TileShape, ElementGrab, ElementQ, ElementXGrad,
