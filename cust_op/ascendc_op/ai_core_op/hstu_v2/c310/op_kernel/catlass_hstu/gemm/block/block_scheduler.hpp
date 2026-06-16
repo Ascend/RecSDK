@@ -74,8 +74,8 @@ public:
         this->batchSize = batchSize;
         this->headNum = headNum;
 
-        this->seqOffsetM.SetGlobalBuffer((__gm__ ElementOffset *)seqOffsetM);
-        this->seqOffsetN.SetGlobalBuffer((__gm__ ElementOffset *)seqOffsetN);
+        this->seqOffsetM.SetGlobalBuffer((__gm__ ElementOffset*)seqOffsetM);
+        this->seqOffsetN.SetGlobalBuffer((__gm__ ElementOffset*)seqOffsetN);
     }
 
     /**
@@ -97,7 +97,7 @@ public:
         if (this->currentSeqLen == 0) {
             return;
         }
-        
+
         this->headBlockCnt = CeilDiv<BLOCK_M>(currentSeqLen);
         auto totalBlockCnt = this->headBlockCnt * this->headNum;
         auto splitNextCore = totalBlockCnt / coreNum;
@@ -260,6 +260,15 @@ public:
         return !(this->blockCnt == 0);
     }
 
+    CATLASS_DEVICE uint32_t GetHeadBlockId() const
+    {
+        return headBlockId;
+    }
+    CATLASS_DEVICE uint32_t GetCurrentSeqLen() const
+    {
+        return currentSeqLen;
+    }
+
     /**
      ◦ @brief 前缀递增运算符，移动到下一个块
 
@@ -269,7 +278,7 @@ public:
 
      */
     CATLASS_DEVICE
-    RowBlockScheduler &operator++()
+    RowBlockScheduler& operator++()
     {
         this->blockCnt--;
         headBlockId++;
@@ -300,7 +309,7 @@ public:
     }
 
     template <class Tensor>
-    CATLASS_DEVICE auto GetTile(Tensor const &tensor)
+    CATLASS_DEVICE auto GetTile(Tensor const& tensor)
     {
         auto dim = tla::get<1>(tensor.shape());
         auto coord = tla::MakeCoord(this->blockOffset, 0);
@@ -378,7 +387,7 @@ public:
     {
         this->batchSize = batchSize;
         this->headNum = headNum;
-        gSeqOffset.SetGlobalBuffer((__gm__ ElementOffset *)seqOffset);
+        gSeqOffset.SetGlobalBuffer((__gm__ ElementOffset*)seqOffset);
     }
 
     /**
@@ -392,12 +401,12 @@ public:
 
      */
     CATLASS_DEVICE
-    void Init(RowBlockScheduler const &rowBlockScheduler)
+    void Init(RowBlockScheduler const& rowBlockScheduler)
     {
         auto meta = rowBlockScheduler.GetMeta();
-        auto batchId = tla::get<0>(meta); // 0 means batchId
-        auto headId = tla::get<1>(meta); // 1 means headId
-        rowBlockId = tla::get<2>(meta); // 2 means rowBlockId
+        auto batchId = tla::get<0>(meta);  // 0 means batchId
+        auto headId = tla::get<1>(meta);   // 1 means headId
+        rowBlockId = tla::get<2>(meta);    // 2 means rowBlockId
 
         if constexpr (USE_SWIZZLE) {
             if (isInitialized && this->batchId == batchId && this->headId == headId) {
@@ -472,6 +481,23 @@ public:
         return !((swizzleDir == 1) ? blockId >= blockCnt : blockId < 0);
     }
 
+    CATLASS_DEVICE int32_t GetBlockId() const
+    {
+        return blockId;
+    }
+    CATLASS_DEVICE uint32_t GetRowBlockId() const
+    {
+        return rowBlockId;
+    }
+    CATLASS_DEVICE uint32_t GetSeqLens() const
+    {
+        return seqLens;
+    }
+    CATLASS_DEVICE uint32_t GetSwizzleDir() const
+    {
+        return swizzleDir;
+    }
+
     /**
      ◦ @brief 前缀递增运算符，移动到下一个块
 
@@ -481,7 +507,7 @@ public:
 
      */
     CATLASS_DEVICE
-    ColumnBlockScheduler &operator++()
+    ColumnBlockScheduler& operator++()
     {
         blockId = (swizzleDir == 1) ? blockId + 1 : blockId - 1;
         Update();
@@ -501,7 +527,7 @@ public:
 
      */
     template <class Tensor>
-    CATLASS_DEVICE auto GetTile(Tensor const &tensor)
+    CATLASS_DEVICE auto GetTile(Tensor const& tensor)
     {
         auto dim = tla::get<1>(tensor.shape());
         auto coord = tla::MakeCoord(blockOffset + headId, 0);
@@ -525,7 +551,7 @@ public:
 
      */
     template <class Tensor>
-    CATLASS_DEVICE auto GetShareTile(Tensor const &tensor, int64_t totalSeqLens)
+    CATLASS_DEVICE auto GetShareTile(Tensor const& tensor, int64_t totalSeqLens)
     {
         auto dim = tla::get<1>(tensor.shape());
         auto coord = tla::MakeCoord(headId * totalSeqLens + blockOffset / headNum, 0);
@@ -550,7 +576,7 @@ public:
 
      */
     template <class Coord, class Shape>
-    CATLASS_DEVICE auto GetTileMapping(Coord const &kCoord, Shape const &kShape)
+    CATLASS_DEVICE auto GetTileMapping(Coord const& kCoord, Shape const& kShape)
     {
         auto coord = tla::MakeCoord(batchId, headId, blockId * BLOCK_N, rowBlockId * BLOCK_M);
         auto shape = tla::MakeShape(blockSize, tla::get<0>(kShape));
@@ -588,4 +614,4 @@ private:
     AscendC::GlobalTensor<ElementOffset> gSeqOffset;
 };
 
-}
+}  // namespace Catlass::Gemm::Block

@@ -49,8 +49,8 @@ namespace catlass::Epilogue::RegBase {
  */
 // y = 1 / (1 + exp(-x))
 template <typename RegType>
-__simd_callee__ inline void Sigmoid(RegType &dst, RegType &src, RegType &ones,
-                                    RegType &zeros, AscendC::MicroAPI::MaskReg &maskReg)
+__simd_callee__ inline void Sigmoid(RegType& dst, RegType& src, RegType& ones, RegType& zeros,
+                                    AscendC::MicroAPI::MaskReg& maskReg)
 {
     AscendC::MicroAPI::ExpSub(dst, zeros, src, maskReg);  // dst = exp(0 - dst)
     AscendC::MicroAPI::Add(dst, ones, dst, maskReg);      // dst = 1 + dst
@@ -58,7 +58,7 @@ __simd_callee__ inline void Sigmoid(RegType &dst, RegType &src, RegType &ones,
 }
 
 /**
- • @brief 加上相对位置注意力偏置 (RAB)
+ • @brief 加上相对位置注意力偏置 (RAB)和掩码（MASK）
 
  • @tparam Type 输入数据类型
 
@@ -77,53 +77,38 @@ __simd_callee__ inline void Sigmoid(RegType &dst, RegType &src, RegType &ones,
  • @description 将 RAB (Relative Attention Bias) 加到注意力分数上: dst = src + RAB
 
  */
-template <typename Type, typename AccType, typename RegType>
-__simd_callee__ inline void AddRab(RegType &dst, __ubuf__ Type *ubRabPtr,
-                                   AccType alpha, AscendC::MicroAPI::MaskReg &maskReg)
-{
-    RegType vregRab;
-
-    if constexpr (!std::is_same<Type, AccType>::value) {
-        CastUpLoad<AccType, Type>(vregRab, ubRabPtr, maskReg);
-    } else {
-        AscendC::MicroAPI::LoadAlign(vregRab, ubRabPtr);
-    }
- 
-    AscendC::MicroAPI::Axpy(dst, vregRab, alpha, maskReg); // A = A + Rab * alpha
-}
-
-/**
- • @brief 掩码乘法操作
-
- • @tparam Type 输入数据类型
-
- • @tparam AccType 累加器数据类型
-
- • @tparam RegType 寄存器类型
-
- • @param dst 目标寄存器，存储计算结果
-
- • @param src 源寄存器，输入的注意力分数
-
- • @param ubMaskPtr 掩码数据的 UBuf 指针
-
- • @param maskReg 掩码寄存器
-
- • @description 将掩码应用到注意力分数上: dst = src * mask，用于屏蔽无效位置
-
- */
-template <typename Type, typename AccType, typename RegType>
-__simd_callee__ inline void MulMask(RegType &dst, RegType &src, __ubuf__ Type *ubMaskPtr,
-                                    AscendC::MicroAPI::MaskReg &maskReg)
+template <typename Type, typename AccType, bool HAS_RAB, typename RegType>
+__simd_callee__ inline void AddFusedRab(RegType& dst, RegType& src, __ubuf__ Type* ubRabPtr, __ubuf__ Type* ubMaskPtr,
+                                        AccType alpha, AscendC::MicroAPI::MaskReg& maskReg, bool needMask)
 {
     RegType vregMask;
-
-    if constexpr (!std::is_same<Type, AccType>::value) {
-        CastUpLoad<AccType, Type>(vregMask, ubMaskPtr, maskReg);
-    } else {
-        AscendC::MicroAPI::LoadAlign(vregMask, ubMaskPtr);
+    RegType vregRab;
+    if (needMask) {
+        if constexpr (!std::is_same<Type, AccType>::value) {
+            CastUpLoad<AccType, Type>(vregMask, ubMaskPtr, maskReg);
+        } else {
+            AscendC::MicroAPI::LoadAlign(vregMask, ubMaskPtr);
+        }
     }
-    AscendC::MicroAPI::Mul(dst, src, vregMask, maskReg);  // Z = Z * mask
+
+    if constexpr (HAS_RAB) {
+        if constexpr (!std::is_same<Type, AccType>::value) {
+            CastUpLoad<AccType, Type>(vregRab, ubRabPtr, maskReg);
+        } else {
+            AscendC::MicroAPI::LoadAlign(vregRab, ubRabPtr);
+        }
+    }
+
+    if (needMask) {
+        if constexpr (HAS_RAB) {
+            AscendC::MicroAPI::Add(src, vregRab, vregMask, maskReg);  // fusedRab = Rab + Mask
+            AscendC::MicroAPI::Axpy(dst, src, alpha, maskReg);        // A = A + fusedRab * alpha
+        } else {
+            AscendC::MicroAPI::Axpy(dst, vregMask, alpha, maskReg);  // A = A + Mask * alpha
+        }
+    } else if constexpr (HAS_RAB) {
+        AscendC::MicroAPI::Axpy(dst, vregRab, alpha, maskReg);  // A = A + Rab * alpha
+    }
 }
 
 /**
@@ -134,8 +119,6 @@ __simd_callee__ inline void MulMask(RegType &dst, RegType &src, __ubuf__ Type *u
  • @tparam AccType 累加器数据类型
 
  • @tparam HAS_RAB 是否有相对位置偏置
-
- • @tparam HAS_MASK 是否有掩码
 
  • @tparam RegType 寄存器类型
 
@@ -167,38 +150,30 @@ __simd_callee__ inline void MulMask(RegType &dst, RegType &src, __ubuf__ Type *u
 
  •              1. 加载 QK^T 分数
 
- •              2. 加上 RAB (如果 HAS_RAB)
+ •              2. 加上 RAB 和 MASK
 
  •              3. 乘以 alpha
 
  •              4. 计算 sigmoid
 
- •              5. 乘以掩码 (如果 HAS_MASK)
+ •              5. 乘以 scale
 
- •              6. 乘以 scale
-
- •              7. 计算 silu(x) = x * sigmoid(x) 并存储
+ •              6. 计算 silu(x) = x * sigmoid(x) 并存储
 
  */
-template <typename Type, typename AccType, bool HAS_RAB, bool HAS_MASK, typename RegType>
-__simd_callee__ inline void SiluScore(__ubuf__ AccType *ubSPtr, __ubuf__ Type *ubRabPtr, __ubuf__ Type *ubMaskPtr,
-                                      __ubuf__ Type *ubSiluScorePtr, RegType &vregA, RegType &vregZ, RegType &vregT,
-                                      RegType &vregS, RegType &vregOnes, RegType &vregZeros, AccType alpha,
-                                      AscendC::MicroAPI::MaskReg &maskReg)
+template <typename Type, typename AccType, bool HAS_RAB, typename RegType>
+__simd_callee__ inline void SiluScore(__ubuf__ AccType* ubSPtr, __ubuf__ Type* ubRabPtr, __ubuf__ Type* ubMaskPtr,
+                                      __ubuf__ Type* ubSiluScorePtr, RegType& vregA, RegType& vregZ, RegType& vregT,
+                                      RegType& vregS, RegType& vregOnes, RegType& vregZeros, AccType alpha,
+                                      AscendC::MicroAPI::MaskReg& maskReg, bool needMask)
 {
     AscendC::MicroAPI::LoadAlign(vregA, ubSPtr);
+    // A = A + (Rab + Mask) * alpha
+    AddFusedRab<Type, AccType, HAS_RAB>(vregA, vregZ, ubRabPtr, ubMaskPtr, alpha, maskReg, needMask);
 
-    if constexpr (HAS_RAB) {
-        AddRab<Type, AccType>(vregA, ubRabPtr, alpha, maskReg);  // A = A + Rab * alpha
-    }
+    Sigmoid(vregZ, vregA, vregOnes, vregZeros, maskReg);  // Z = Sigmoid(A)
 
-    Sigmoid(vregZ, vregA, vregOnes, vregZeros, maskReg);     // Z = Sigmoid(A)
-
-    if constexpr (HAS_MASK) {
-        MulMask<Type, AccType>(vregZ, vregZ, ubMaskPtr, maskReg);  // Z = Z * mask
-    }
-
-    AscendC::MicroAPI::Mul(vregS, vregZ, vregA, maskReg);      // S = A * Z
+    AscendC::MicroAPI::Mul(vregS, vregZ, vregA, maskReg);  // S = A * Z
 
     if constexpr (!std::is_same<Type, AccType>::value) {
         CastDownStore<Type, AccType>(ubSiluScorePtr, vregS, maskReg);
@@ -215,8 +190,6 @@ __simd_callee__ inline void SiluScore(__ubuf__ AccType *ubSPtr, __ubuf__ Type *u
  • @tparam AccType 累加器数据类型
 
  • @tparam HAS_RAB 是否有相对位置偏置
-
- • @tparam HAS_MASK 是否有掩码
 
  • @param ubSPtr SiLU 输入 (QK^T) 的 UBuf 指针
 
@@ -239,9 +212,9 @@ __simd_callee__ inline void SiluScore(__ubuf__ AccType *ubSPtr, __ubuf__ Type *u
  •              每次处理一个向量长度 (GetVecLen/sizeof(AccType)) 的数据
 
  */
-template <typename Type, typename AccType, bool HAS_RAB, bool HAS_MASK>
-__simd_vf__ inline void FastSiluScoreVf(__ubuf__ AccType *ubSPtr, __ubuf__ Type *ubRabPtr, __ubuf__ Type *ubMaskPtr,
-                                        __ubuf__ Type *ubSiluScorePtr, AccType alpha, AccType scale, uint32_t count,
+template <typename Type, typename AccType, bool HAS_RAB>
+__simd_vf__ inline void FastSiluScoreVf(__ubuf__ AccType* ubSPtr, __ubuf__ Type* ubRabPtr, __ubuf__ Type* ubMaskPtr,
+                                        __ubuf__ Type* ubSiluScorePtr, AccType alpha, AccType scale, uint32_t count,
                                         uint32_t repeatTimes)
 {
     constexpr uint32_t oneRepElm = static_cast<uint32_t>(AscendC::GetVecLen() / sizeof(AccType));
@@ -259,10 +232,10 @@ __simd_vf__ inline void FastSiluScoreVf(__ubuf__ AccType *ubSPtr, __ubuf__ Type 
     for (uint16_t i = 0; i < repeatTimes; ++i) {
         maskReg = AscendC::MicroAPI::UpdateMask<AccType>(count);
 
-        SiluScore<Type, AccType, HAS_RAB, HAS_MASK>(ubSPtr + i * oneRepElm, ubRabPtr + i * oneRepElm,
-                                                    ubMaskPtr + i * oneRepElm, ubSiluScorePtr + i * oneRepElm, vregA,
-                                                    vregZ, vregT, vregS, vregOnes, vregZeros, alpha, maskReg);
+        SiluScore<Type, AccType, HAS_RAB>(ubSPtr + i * oneRepElm, ubRabPtr + i * oneRepElm, ubMaskPtr + i * oneRepElm,
+                                          ubSiluScorePtr + i * oneRepElm, vregA, vregZ, vregT, vregS, vregOnes,
+                                          vregZeros, alpha, maskReg);
     }
 }
 
-}
+}  // namespace catlass::Epilogue::RegBase

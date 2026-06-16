@@ -40,8 +40,6 @@ namespace catlass::Epilogue::RegBase {
 
  • @tparam HAS_RAB 是否有相对位置偏置
 
- • @tparam HAS_MASK 是否有掩码
-
  • @param ubSPtr SiLU 输入 (QK^T) 的 UBuf 指针
 
  • @param ubRabPtr RAB 数据的 UBuf 指针
@@ -73,10 +71,10 @@ namespace catlass::Epilogue::RegBase {
  •              5. 存储梯度结果
 
  */
-template <typename Type, typename AccType, typename GrabType, bool HAS_RAB, bool HAS_MASK>
-__simd_vf__ inline void FastSiluGradVf(__ubuf__ AccType *ubSPtr, __ubuf__ Type *ubRabPtr, __ubuf__ Type *ubMaskPtr,
-                                       __ubuf__ Type *ubSiluScorePtr, __ubuf__ GrabType *ubGradPartPtr, AccType alpha,
-                                       AccType scale, uint32_t count, uint32_t repeatTimes)
+template <typename Type, typename AccType, typename GrabType, bool HAS_RAB>
+__simd_vf__ inline void FastSiluGradVf(__ubuf__ AccType* ubSPtr, __ubuf__ Type* ubRabPtr, __ubuf__ Type* ubMaskPtr,
+                                       __ubuf__ Type* ubSiluScorePtr, __ubuf__ GrabType* ubGradPartPtr, AccType alpha,
+                                       AccType scale, uint32_t count, uint32_t repeatTimes, bool needMask)
 {
     constexpr uint32_t oneRepElm = static_cast<uint32_t>(AscendC::GetVecLen() / sizeof(AccType));
 
@@ -93,9 +91,9 @@ __simd_vf__ inline void FastSiluGradVf(__ubuf__ AccType *ubSPtr, __ubuf__ Type *
     for (uint16_t i = 0; i < repeatTimes; ++i) {
         maskReg = AscendC::MicroAPI::UpdateMask<AccType>(count);
 
-        SiluScore<Type, AccType, HAS_RAB, HAS_MASK>(ubSPtr + i * oneRepElm, ubRabPtr + i * oneRepElm,
-                                                    ubMaskPtr + i * oneRepElm, ubSiluScorePtr + i * oneRepElm, vregA,
-                                                    vregZ, vregT, vregS, vregOnes, vregZeros, alpha, maskReg);
+        SiluScore<Type, AccType, HAS_RAB>(ubSPtr + i * oneRepElm, ubRabPtr + i * oneRepElm, ubMaskPtr + i * oneRepElm,
+                                          ubSiluScorePtr + i * oneRepElm, vregA, vregZ, vregT, vregS, vregOnes,
+                                          vregZeros, alpha, maskReg, needMask);
 
         AscendC::MicroAPI::Sub(vregT, vregOnes, vregZ, maskReg);     // T = 1 - Z
         AscendC::MicroAPI::MulAddDst(vregZ, vregS, vregT, maskReg);  // Z = Z + S * T
@@ -108,4 +106,4 @@ __simd_vf__ inline void FastSiluGradVf(__ubuf__ AccType *ubSPtr, __ubuf__ Type *
     }
 }
 
-}
+}  // namespace catlass::Epilogue::RegBase

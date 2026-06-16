@@ -55,7 +55,7 @@ namespace Catlass::Epilogue::Block {
 
  */
 template <class ArchTag_, class Element_, class ElementAccumulator_, class TileBuffer_, class L0TileShape_,
-          bool HAS_RAB_ = false, bool HAS_MASK_ = false>
+          class L1TileShape_, bool HAS_RAB_ = false, bool HAS_MASK_ = false>
 struct BlockEpilogueScoreGrad {
 public:
     using ArchTag = ArchTag_;
@@ -63,6 +63,7 @@ public:
     using ElementAccumulator = ElementAccumulator_;
     using TileBuffer = TileBuffer_;
     using L0TileShape = L0TileShape_;
+    using L1TileShape = L1TileShape_;
 
     static constexpr uint32_t ELEM_PER_BLOCK = Catlass::BYTE_PER_C0 / sizeof(Element);
 
@@ -75,7 +76,7 @@ public:
 
     CATLASS_DEVICE
     BlockEpilogueScoreGrad(ElementAccumulator alpha_, ElementAccumulator scale_, uint32_t cubeFlag, uint32_t vecFlag,
-                           Arch::Resource<ArchTag> &resource)
+                           Arch::Resource<ArchTag>& resource)
         : alpha(alpha_),
           scale(scale_)
     {
@@ -84,7 +85,7 @@ public:
         }
 
         if constexpr (HAS_MASK) {
-            ubMaskTensor = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::MASK);
+            ubMaskTensor = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::GRABPART);
         }
 
         ubScoreTensor = resource.ubBuf.template GetBufferByByte<ElementAccumulator>(TileBuffer::SCORE);
@@ -96,9 +97,10 @@ public:
         vecReady = Arch::CrossCoreFlag(vecFlag);
     }
 
-    template <class TensorSrc, class Coord, class Shape>
-    CATLASS_DEVICE void operator()(TensorSrc &tensorRab, Coord const &coord, Shape const &shape)
+    template <class TensorSrc, class Coord, class Shape, class Predictor>
+    CATLASS_DEVICE void operator()(TensorSrc& tensorRab, Coord const& coord, Shape const& shape, Predictor& predictor)
     {
+        bool needMask = predictor.needMask;
         auto mReal = tla::get<0>(shape);
         auto nReal = tla::get<1>(shape);
 
@@ -112,35 +114,40 @@ public:
             auto coordNew = tla::Add(coord, tla::MakeCoord(0, 0, m * L0_TILE_M, 0));
             if ((m % 2) == AscendC::GetSubBlockIdx()) {
                 auto tileShape = tla::MakeShape(mSize, nReal);
+                auto rows = RoundUp<ELEM_PER_BLOCK>(mSize);
+                auto cols = RoundUp<ELEM_PER_BLOCK>(nReal);
 
                 if constexpr (HAS_RAB) {
                     CopyRab(tensorRab, coordNew, tileShape);
                 }
 
+                if constexpr (HAS_MASK) {
+                    predictor.ApplyMask(ubMaskTensor, coordNew, tileShape, rows, cols);
+                }
+
                 AscendC::CrossCoreWaitFlag<0x4, PIPE_V>(cubeReady.id);
-                Compute(tileShape);
+                Compute(tileShape, needMask);
                 AscendC::CrossCoreSetFlag<0x4, PIPE_MTE3>(vecReady.id);
             }
         }
     }
 
-    CATLASS_DEVICE void CallVectorFunction(int64_t offset, uint32_t count)
+    CATLASS_DEVICE void CallVectorFunction(int64_t offset, uint32_t count, bool needMask)
     {
         auto repeatTimes = CeilDiv(count, AscendC::GetVecLen() / sizeof(ElementAccumulator));
 
-        auto ubSPtr = (__ubuf__ ElementAccumulator *)ubScoreTensor[offset].GetPhyAddr();
-        auto ubRabPtr = (__ubuf__ Element *)ubRabTensor[offset].GetPhyAddr();
-        auto ubMaskPtr = (__ubuf__ Element *)ubMaskTensor[offset].GetPhyAddr();
-        auto ubProbPtr = (__ubuf__ Element *)ubProbTensor[offset].GetPhyAddr();
-        auto ubGradRabPartPtr = (__ubuf__ Element *)ubGRabPartTensor[offset].GetPhyAddr();
-        
-        AscendC::VF_CALL<
-            catlass::Epilogue::RegBase::FastSiluGradVf<Element, ElementAccumulator, Element, HAS_RAB, HAS_MASK>>(
-            ubSPtr, ubRabPtr, ubMaskPtr, ubProbPtr, ubGradRabPartPtr, alpha, scale, count, repeatTimes);
+        auto ubSPtr = (__ubuf__ ElementAccumulator*)ubScoreTensor[offset].GetPhyAddr();
+        auto ubRabPtr = (__ubuf__ Element*)ubRabTensor[offset].GetPhyAddr();
+        auto ubMaskPtr = (__ubuf__ Element*)ubMaskTensor[offset].GetPhyAddr();
+        auto ubProbPtr = (__ubuf__ Element*)ubProbTensor[offset].GetPhyAddr();
+        auto ubGradRabPartPtr = (__ubuf__ Element*)ubGRabPartTensor[offset].GetPhyAddr();
+
+        AscendC::VF_CALL<catlass::Epilogue::RegBase::FastSiluGradVf<Element, ElementAccumulator, Element, HAS_RAB>>(
+            ubSPtr, ubRabPtr, ubMaskPtr, ubProbPtr, ubGradRabPartPtr, alpha, scale, count, repeatTimes, needMask);
     }
 
     template <class Shape>
-    CATLASS_DEVICE void Compute(Shape &shape)
+    CATLASS_DEVICE void Compute(Shape& shape, bool needMask)
     {
         auto rows = RoundUp<ELEM_PER_BLOCK>(tla::get<0>(shape));
         auto cols = RoundUp<ELEM_PER_BLOCK>(tla::get<1>(shape));
@@ -156,7 +163,7 @@ public:
             uint32_t pingPongFlag = i % 2;
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(pingPongFlag);
-            CallVectorFunction(offset, count);
+            CallVectorFunction(offset, count, needMask);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(pingPongFlag);
 
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingPongFlag);
@@ -182,7 +189,7 @@ public:
             intriParams.dstStride = 0;
             for (auto i = 0; i < colBlk; i++) {
                 AscendC::DataCopy(dstTensor[(i * rows + rowOffset) * ELEM_PER_BLOCK],
-                    ubProbTensor[offset + i * ELEM_PER_BLOCK], intriParams);
+                                  ubProbTensor[offset + i * ELEM_PER_BLOCK], intriParams);
             }
         } else {
             AscendC::DataCopy(dstTensor[offset], ubProbTensor[offset], count);
@@ -190,7 +197,7 @@ public:
     }
 
     template <class TensorSrc, class Coord, class Shape>
-    CATLASS_DEVICE void CopyRab(TensorSrc &tensorRab, Coord const &coord, Shape const &shape)
+    CATLASS_DEVICE void CopyRab(TensorSrc& tensorRab, Coord const& coord, Shape const& shape)
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
 
@@ -224,4 +231,4 @@ private:
     ElementAccumulator scale{0.0f};
 };
 
-}
+}  // namespace Catlass::Epilogue::Block

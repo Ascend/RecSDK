@@ -80,7 +80,8 @@ See the License for the specific language governing permissions and
  •              - AIV (Vector 核): 执行 Epilogue 主循环
 
  */
-template <bool HAS_RAB, uint32_t BLOCK_K>
+template <bool HAS_RAB, bool IS_LOCAL, bool IS_CAUSAL, bool IS_CONTEXT, bool IS_TARGET, bool IS_ARBITRARY,
+          uint32_t BLOCK_K>
 CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR rab, GM_ADDR seqOffsetQ,
                                      GM_ADDR seqOffsetK, GM_ADDR numContext, GM_ADDR numTarget, GM_ADDR qShare,
                                      GM_ADDR qGrad, GM_ADDR kGrad, GM_ADDR vGrad, GM_ADDR rabGrad, GM_ADDR workSpace,
@@ -89,16 +90,22 @@ CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR
     // 设置算子类型为CUBE:VECTOR = 1:2的MIX模式
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    constexpr bool HAS_MASK = false;
     using namespace Catlass::Kernel;
+    using namespace Catlass::Kernel::Mask;
 
     using Element = DTYPE_Q;
     using ElementOffset = DTYPE_SEQ_OFFSET_Q;
-    using KernelConfig = BackwardKernelConfig<Arch::Ascend950, Element, ElementOffset, BLOCK_K, HAS_RAB, HAS_MASK>;
+    using KernelConfig = BackwardKernelConfig<Arch::Ascend950, Element, ElementOffset, BLOCK_K, HAS_RAB, IS_LOCAL,
+                                              IS_CAUSAL, IS_ARBITRARY>;
     using KernelBuilder = BackwardKernelBuilder<KernelConfig>;
 
     using QBlockScheduler = typename KernelBuilder::QBlockScheduler;
     using KBlockScheduler = typename KernelBuilder::KBlockScheduler;
+
+    using L1TileShape = typename KernelConfig::L1TileShape;
+    static constexpr uint32_t BLOCK_M = tla::get<0>(L1TileShape{});
+    static constexpr uint32_t BLOCK_N = tla::get<1>(L1TileShape{});
+    using Predictor = PredictorSelector<IS_LOCAL, IS_CAUSAL, IS_ARBITRARY, BLOCK_M, BLOCK_N>;
 
     // mmad mainloop kernel
     if ASCEND_IS_AIC {
@@ -108,12 +115,14 @@ CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR
         using BlockMmadKGrad = typename KernelBuilder::BlockMmadKGrad;
         using BlockMmadQGrad = typename KernelBuilder::BlockMmadQGrad;
 
-        using MmadMainLoopKernel = BackwardMmadMainloop<BlockMmadQK, BlockMmadGV, BlockMmadVGrad, BlockMmadKGrad,
-                                                        BlockMmadQGrad, QBlockScheduler, KBlockScheduler>;
+        using MmadMainLoopKernel =
+            BackwardMmadMainloop<BlockMmadQK, BlockMmadGV, BlockMmadVGrad, BlockMmadKGrad, BlockMmadQGrad,
+                                 QBlockScheduler, KBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL, IS_CONTEXT,
+                                 IS_TARGET, IS_ARBITRARY, Predictor>;
 
         using MmadMainLoopParams = typename MmadMainLoopKernel::Params;
 
-        MmadMainLoopParams params{grad, q, k, v, seqOffsetQ, seqOffsetK, qShare};
+        MmadMainLoopParams params{grad, q, k, v, seqOffsetQ, seqOffsetK, qShare, numContext, numTarget};
         MmadMainLoopKernel kernel(tiling);
         kernel(params);
     } else {
@@ -123,12 +132,15 @@ CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR
         using BlockEpilogueKVGrad = typename KernelBuilder::BlockEpilogueKVGrad;
         using BlockEpilogueQGrad = typename KernelBuilder::BlockEpilogueQGrad;
 
-        using EpilogueMainLoopKernel = BackwardEpilogueMainloop<BlockEpilogueQK, BlockEpilogueGV, BlockEpilogueKVGrad,
-                                                                BlockEpilogueQGrad, QBlockScheduler, KBlockScheduler>;
+        using EpilogueMainLoopKernel =
+            BackwardEpilogueMainloop<BlockEpilogueQK, BlockEpilogueGV, BlockEpilogueKVGrad, BlockEpilogueQGrad,
+                                     QBlockScheduler, KBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL, IS_CONTEXT,
+                                     IS_TARGET, IS_ARBITRARY, Predictor>;
 
         using EpilogueMainLoopParams = typename EpilogueMainLoopKernel::Params;
 
-        EpilogueMainLoopParams params{rab, seqOffsetQ, seqOffsetK, qGrad, kGrad, vGrad, rabGrad, qShare};
+        EpilogueMainLoopParams params{rab,   seqOffsetQ, seqOffsetK, qGrad,      kGrad,
+                                      vGrad, rabGrad,    qShare,     numContext, numTarget};
         EpilogueMainLoopKernel kernel(tiling);
         kernel(params);
     }
