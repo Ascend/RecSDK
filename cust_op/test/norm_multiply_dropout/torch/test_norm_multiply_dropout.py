@@ -20,6 +20,7 @@ import sysconfig
 import sys
 import os
 from dataclasses import dataclass
+from typing import Union
 
 import numpy as np
 import pytest
@@ -34,6 +35,7 @@ is_ascend_950 = False
 is_gpu = torch.cuda.is_available()
 if not is_gpu:
     import torch_npu
+
     torch.npu.set_device(0)
     torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
     is_ascend_950 = str(torch_npu.npu.get_device_name()).strip().startswith("Ascend950PR")
@@ -126,7 +128,7 @@ def pairwise_sum_2d_recursive(x, dim=-1):
     # 沿dim维度分成两半
     mid = x.shape[dim] // 2
 
-    if dim == -1 or dim == 1:
+    if dim in (-1, 1):
         left = x[:, :mid]
         right = x[:, mid:]
     else:
@@ -208,7 +210,7 @@ def two_level_sum_with_grouped(x, dim: int = -1):
         x_padded = x
 
     new_shape = list(x_padded.shape)
-    new_shape[dim:dim + 1] = [num_full_segments, group_size]
+    new_shape[dim : dim + 1] = [num_full_segments, group_size]
     x_reshaped = x_padded.view(new_shape)
 
     level1_sum = x_reshaped.sum(dim=dim + 1)
@@ -243,8 +245,9 @@ def ln_mul_bwd(inputs: tuple[Tensor, Tensor, Tensor, Tensor], dy: Tensor, mean: 
 
 
 def get_npu_fused_op_ret(input_data_list, dy):
-    x_fused, u_fused, g_fused, b_fused = \
-        [t.to(accelerator_device).contiguous().requires_grad_() for t in input_data_list]
+    x_fused, u_fused, g_fused, b_fused = [
+        t.to(accelerator_device).contiguous().requires_grad_() for t in input_data_list
+    ]
     y_fused = norm_multiply_dropout_by_device(x_fused, u_fused, g_fused, b_fused)
     dy_npu = dy.to(accelerator_device).contiguous()
     y_fused.backward(dy_npu)
@@ -258,7 +261,7 @@ def get_npu_small_op_ret(input_data_list, dy):
     dy_npu = dy.to(accelerator_device).contiguous()
     y_npu.backward(dy_npu)
     device_synchronize()
-    return y_npu.cpu(), u_npu.grad.cpu(), u_npu.grad.cpu(), g_npu.grad.cpu(), b_npu.grad.cpu()
+    return y_npu.cpu(), x_npu.grad.cpu(), u_npu.grad.cpu(), g_npu.grad.cpu(), b_npu.grad.cpu()
 
 
 @pytest.mark.parametrize("dim0", [1, 1000, 2345, 4096 * 4, 262144, 927750, DIM0_MAX])
@@ -266,7 +269,7 @@ def get_npu_small_op_ret(input_data_list, dy):
 @pytest.mark.parametrize("dtype", SUPPORT_DTYPES)
 def test_norm_multiply_double_pole(dim0: int, dim1: int, dtype):
     # 使用双标杆，计算对比精度
-    logging.info(f"===test case info: dim0:{dim0}, dim1:{dim1}, dtype:{dtype}, dropout_ratio:{0.0}===")
+    logging.info("===test case info: dim0:%d, dim1:%d, dtype:%s, dropout_ratio:%f===", dim0, dim1, dtype, 0.0)
     x, u, g, b, dy = generate_input_tensor(dim0, dim1, dtype)
 
     # =====  pytorch小算子执行 =====
@@ -302,7 +305,7 @@ class ExecuteConfig:
     eps: float
     dropout_ratio: float
     dtype: torch.dtype
-    weight_and_bias_dim: int = None
+    weight_and_bias_dim: Union[int, None] = None
 
 
 params = {
@@ -314,9 +317,7 @@ params = {
 }
 
 
-@pytest.mark.parametrize("config", [
-    ExecuteConfig(*v) for v in itertools.product(*params.values())
-])
+@pytest.mark.parametrize("config", [ExecuteConfig(*v) for v in itertools.product(*params.values())])
 def test_norm_multiply_dropout(config: ExecuteConfig):
     dim0 = config.dim0
     dim1 = config.dim1
@@ -324,8 +325,14 @@ def test_norm_multiply_dropout(config: ExecuteConfig):
     dropout_ratio = config.dropout_ratio
     dtype = config.dtype
     weight_and_bias_dim = config.weight_and_bias_dim
-    logging.info(f"===test case info: dim0:{dim0}, dim1:{dim1}, eps:{epsilon},"
-                 f" dropout_ratio:{dropout_ratio}, dtype:{dtype}===")
+    logging.info(
+        "===test case info: dim0:%d, dim1:%d, eps:%f, dropout_ratio:%f, dtype:%s===",
+        dim0,
+        dim1,
+        epsilon,
+        dropout_ratio,
+        dtype,
+    )
     # 执行带dropout的场景 由于dropout具有随机性，仅验证算子功能正常执行
     x, u, g, b, dy = generate_input_tensor(dim0, dim1, dtype, weight_bias_dim=weight_and_bias_dim)
     x_fused, u_fused, g_fused, b_fused = [t.to(accelerator_device).contiguous().requires_grad_() for t in [x, u, g, b]]
