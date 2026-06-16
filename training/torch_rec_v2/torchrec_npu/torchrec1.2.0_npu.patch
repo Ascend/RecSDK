@@ -382,7 +382,7 @@ index 43eeda32..e1575133 100644
                      EmbeddingComputeKernel.FUSED_UVM.value,
                      EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
 diff --git a/torchrec/distributed/model_parallel.py b/torchrec/distributed/model_parallel.py
-index 23ce0165..fe598cd9 100644
+index 23ce0165..e2b9ffba 100644
 --- a/torchrec/distributed/model_parallel.py
 +++ b/torchrec/distributed/model_parallel.py
 @@ -49,6 +49,7 @@ from torchrec.distributed.utils import (
@@ -393,7 +393,7 @@ index 23ce0165..fe598cd9 100644
 
  try:
      torch.ops.load_library("//deeplearning/fbgemm/fbgemm_gpu:sparse_ops")
-@@ -234,6 +235,20 @@ class DistributedModelParallel(nn.Module, FusedOptimizerModule):
+@@ -234,6 +235,19 @@ class DistributedModelParallel(nn.Module, FusedOptimizerModule):
          init_parameters: bool = True,
          data_parallel_wrapper: Optional[DataParallelWrapper] = None,
      ) -> None:
@@ -407,7 +407,6 @@ index 23ce0165..fe598cd9 100644
 +            check(isinstance(sharder, ModuleSharder), "shard should be ModuleSharder")
 +
 +        check(env is None, "env should be None")
-+        check(init_data_parallel == True, "init_data_parallel should be True")
 +        check(init_parameters == True, "init_parameters should be True")
 +        check(data_parallel_wrapper is None, "data_parallel_wrapper should be None")
 +
@@ -415,7 +414,7 @@ index 23ce0165..fe598cd9 100644
          torch._C._log_api_usage_once(f"torchrec.distributed.{self.__class__.__name__}")
 
 diff --git a/torchrec/distributed/planner/constants.py b/torchrec/distributed/planner/constants.py
-index 7dd86b06..57ee8d1d 100644
+index 7dd86b06..9f0ed88a 100644
 --- a/torchrec/distributed/planner/constants.py
 +++ b/torchrec/distributed/planner/constants.py
 @@ -22,7 +22,7 @@ NUM_POOLINGS: float = 1.0
@@ -458,7 +457,7 @@ index 7dd86b06..57ee8d1d 100644
 
      return lookup.get((compute_device, compute_kernel))
 diff --git a/torchrec/distributed/planner/planners.py b/torchrec/distributed/planner/planners.py
-index a7cd8479..22618d30 100644
+index a7cd8479..ada6ffbd 100644
 --- a/torchrec/distributed/planner/planners.py
 +++ b/torchrec/distributed/planner/planners.py
 @@ -67,6 +67,8 @@ from torchrec.distributed.types import (
