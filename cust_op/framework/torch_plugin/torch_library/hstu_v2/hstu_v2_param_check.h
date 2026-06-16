@@ -30,11 +30,12 @@ public:
                        const at::Tensor& seqOffsetQ, const at::Tensor& seqOffsetK, int64_t maxSeqLenQ,
                        int64_t maxSeqLenK, const c10::optional<at::Tensor>& rab,
                        const c10::optional<at::Tensor>& numContext, const c10::optional<at::Tensor>& numTarget,
-                       const c10::optional<int64_t>& targetGroupSize)
+                       const c10::optional<int64_t>& targetGroupSize, const int64_t windowSizeLeft,
+                       const int64_t windowSizeRight)
     {
         CheckTensors(grad, q, k, v, seqOffsetQ, seqOffsetK);
         CheckAttrs(maxSeqLenQ, maxSeqLenK);
-        CheckMask(numContext, numTarget, targetGroupSize);
+        CheckMask(numContext, numTarget, targetGroupSize, windowSizeLeft, windowSizeRight, maxSeqLenK);
         if (rab.has_value() && rab.value().defined()) {
             CheckRab(rab.value(), maxSeqLenQ, maxSeqLenK);
         }
@@ -100,13 +101,42 @@ private:
     }
 
     void CheckMask(const c10::optional<at::Tensor>& numContext, const c10::optional<at::Tensor>& numTarget,
-                   const c10::optional<int64_t>& targetGroupSize)
+                   const c10::optional<int64_t>& targetGroupSize, const int64_t windowSizeLeft,
+                   const int64_t windowSizeRight, const int64_t maxSeqLenK)
     {
         bool hasCtx = CheckOptionalTensorIsNotNone(numContext);
         bool hasTgt = CheckOptionalTensorIsNotNone(numTarget);
 
-        bool IsFullMask = !hasCtx && !hasTgt;
-        TORCH_CHECK(IsFullMask, "current only support full mask.");
+        // window_size 范围校验
+        TORCH_CHECK(windowSizeLeft >= -1 && windowSizeRight >= -1,
+                    "window_size_left and window_size_right must be >= -1, got (", windowSizeLeft, ", ",
+                    windowSizeRight, ")");
+
+        TORCH_CHECK(windowSizeLeft < maxSeqLenK && windowSizeRight < maxSeqLenK,
+                    "window_size must be < max_seqlen_k, got window_size=(", windowSizeLeft, ", ", windowSizeRight,
+                    ") vs max_seqlen_k=", maxSeqLenK);
+
+        bool isCausal = (windowSizeLeft == -1 && windowSizeRight == 0);
+        // num_context/num_target 必须在 causal mask 场景下使用
+        TORCH_CHECK(!(hasCtx && !isCausal), "num_context requires causal mask (window_size=(-1, 0))");
+        TORCH_CHECK(!(hasTgt && !isCausal), "num_target requires causal mask (window_size=(-1, 0))");
+
+        // 校验 num_context 和 num_target 的 shape
+        if (hasCtx) {
+            auto numCtxTensor = numContext.value();
+            TORCH_CHECK(numCtxTensor.dim() == 1, "num_context must be 1D, got ", numCtxTensor.dim(), "D");
+            TORCH_CHECK(numCtxTensor.size(0) == batchSize, "num_context size must match batch_size, got ",
+                        numCtxTensor.size(0), " vs ", batchSize);
+        }
+
+        if (hasTgt) {
+            auto numTgtTensor = numTarget.value();
+            TORCH_CHECK(numTgtTensor.dim() == 1, "num_target must be 1D, got ", numTgtTensor.dim(), "D");
+            TORCH_CHECK(numTgtTensor.size(0) == batchSize, "num_target size must match batch_size, got ",
+                        numTgtTensor.size(0), " vs ", batchSize);
+            TORCH_CHECK(targetGroupSize > 0,
+                        "target_group_size must be greater than 0 when num_target is provided, got", targetGroupSize);
+        }
     }
 
     void CheckRab(const at::Tensor& rab, int64_t maxSeqLenQ, int64_t maxSeqLenK)

@@ -29,22 +29,22 @@ using tensor_list = std::vector<at::Tensor>;
 using namespace at;
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl_npu(
-    const at::Tensor &grad, const at::Tensor &q, const at::Tensor &k, const at::Tensor &v, const int64_t maxSeqLenQ,
-    const int64_t maxSeqLenK, const at::Tensor &seqOffsetQ, const at::Tensor &seqOffsetK,
-    const c10::optional<at::Tensor> &rab, const c10::optional<at::Tensor> &numContext,
-    const c10::optional<at::Tensor> &numTarget, const c10::optional<double> &scale,
-    const c10::optional<int64_t> &targetGroupSize, const c10::optional<double> &alpha)
+    const at::Tensor& grad, const at::Tensor& q, const at::Tensor& k, const at::Tensor& v, const int64_t maxSeqLenQ,
+    const int64_t maxSeqLenK, const at::Tensor& seqOffsetQ, const at::Tensor& seqOffsetK,
+    const c10::optional<at::Tensor>& rab, const c10::optional<at::Tensor>& numContext,
+    const c10::optional<at::Tensor>& numTarget, const c10::optional<double>& scale,
+    const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha, const int64_t windowSizeLeft,
+    const int64_t windowSizeRight)
 {
-    hstu_v2::HstuV2ParamChecker(grad, q, k, v, seqOffsetQ, seqOffsetK,
-                                 maxSeqLenQ, maxSeqLenK,
-                                 rab, numContext, numTarget, targetGroupSize);
+    hstu_v2::HstuV2ParamChecker(grad, q, k, v, seqOffsetQ, seqOffsetK, maxSeqLenQ, maxSeqLenK, rab, numContext,
+                                numTarget, targetGroupSize, windowSizeLeft, windowSizeRight);
 
     auto _empty = at::Tensor();
     auto acRab = rab.value_or(at::Tensor());
-    auto acNumContext = CheckOptionalTensorIsNotNone(numContext) ? numContext.value().to(seqOffsetQ.scalar_type()) :
-                                                                   _empty;
-    auto acNumTarget = CheckOptionalTensorIsNotNone(numTarget) ? numTarget.value().to(seqOffsetQ.scalar_type()) :
-                                                                 _empty;
+    auto acNumContext =
+        CheckOptionalTensorIsNotNone(numContext) ? numContext.value().to(seqOffsetQ.scalar_type()) : _empty;
+    auto acNumTarget =
+        CheckOptionalTensorIsNotNone(numTarget) ? numTarget.value().to(seqOffsetQ.scalar_type()) : _empty;
 
     // op input
     auto inGrad = grad.contiguous();
@@ -57,9 +57,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl
     auto inqShare = at::zeros_like(inQ, at::TensorOptions().dtype(at::kFloat));
 
     // op attr
-    auto attrTargetGroupSize = targetGroupSize.value_or(0);
+    auto attrTargetGroupSize = targetGroupSize.value_or(1);
     double attrScale = scale.value_or(1.0f / maxSeqLenQ);
     double attrAlpha = alpha.value_or(1.0);
+    int64_t attrWinLeft = windowSizeLeft;
+    int64_t attrWinRight = windowSizeRight;
 
     // op output
     auto outQGrad = at::empty_like(inQ);
@@ -69,9 +71,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl
 
     // op exec
     EXEC_NPU_CMD(aclnnHstuBackwardV2, inGrad, inQ, inK, inV, inRab, seqOffsetQ, seqOffsetK, inNumContext, inNumTarget,
-                 inqShare, maxSeqLenQ, maxSeqLenK, attrScale, attrTargetGroupSize, attrAlpha, outQGrad, outKGrad,
-                 outVGrad, outRabGrad);
-
+                 inqShare, maxSeqLenQ, maxSeqLenK, attrScale, attrTargetGroupSize, attrAlpha, attrWinLeft, attrWinRight,
+                 outQGrad, outKGrad, outVGrad, outRabGrad);
     // op return
     return std::make_tuple(outQGrad, outKGrad, outVGrad, outRabGrad);
 }
@@ -90,8 +91,10 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
           "                   Tensor? num_context=None, "
           "                   Tensor? num_target=None, "
           "                   float? scale=0.0, "
-          "                   int? target_group_size=0,"
-          "                   float? alpha=1.0) -> (Tensor, Tensor, Tensor, Tensor)");
+          "                   int? target_group_size=1, "
+          "                   float? alpha=1.0, "
+          "                   int window_size_left=-1, "
+          "                   int window_size_right=-1) -> (Tensor, Tensor, Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)

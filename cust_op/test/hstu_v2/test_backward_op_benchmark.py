@@ -14,13 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=redefined-outer-name, duplicate-code
 import sysconfig
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 import pytest
 import torch
-import torch_npu
 
 from utils import create_data_generator, BenchmarkRecord, SeqStats
 from backend import KernelBackend, create_hstu_atten_backend
@@ -29,6 +29,7 @@ from backend import KernelBackend, create_hstu_atten_backend
 @dataclass
 class BenchmarkConfig:
     """Benchmark 测试配置参数"""
+
     test_name: str
     seed: int
     seq_all_equal: bool
@@ -41,6 +42,11 @@ class BenchmarkConfig:
     max_seqlen_k: int
     has_rab: bool
     data_type: torch.dtype
+    window_size: [Tuple[int, int]]
+    num_context: Optional[int] = None
+    num_target: Optional[int] = None
+    target_group_size: Optional[int] = 1
+
 
 # 常量定义
 ASCEND_DEVICE_ID = 0
@@ -54,25 +60,25 @@ class TestRunner:
         self.backend = backends
 
     @staticmethod
-    def _create_kernel(backend, alpha, scale, has_rab,
-                       max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k):
+    def _create_kernel(backend, alpha, scale, has_rab, max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k):
         """创建内核的统一方法"""
-        return backend.kernel(
-            alpha, scale, has_rab,
-            max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k
-        )
+        return backend.kernel(alpha, scale, has_rab, max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k)
 
     def run_case(
-            self,
-            generator,
-            batch_size: int,
-            head_num: int,
-            head_dim_qk: int,
-            head_dim_v: int,
-            max_seqlen_q: int,
-            max_seqlen_k: int,
-            has_rab: bool,
-            data_type: torch.dtype
+        self,
+        generator,
+        batch_size: int,
+        head_num: int,
+        head_dim_qk: int,
+        head_dim_v: int,
+        max_seqlen_q: int,
+        max_seqlen_k: int,
+        has_rab: bool,
+        data_type: torch.dtype,
+        window_size: [Tuple[int, int]],
+        num_context: Optional[int] = None,
+        num_target: Optional[int] = None,
+        target_group_size: Optional[int] = 1,
     ) -> Tuple[bool, Dict[str, Any], Dict[str, Any]]:
         """运行单个测试用例
 
@@ -81,14 +87,22 @@ class TestRunner:
         """
         # 生成测试数据
         grad, q, k, v, rab, mask, seq_offset_q, seq_offset_k = generator.gen_data(
-            batch_size, head_num, max_seqlen_q, max_seqlen_k,
-            head_dim_qk, head_dim_v, has_rab, data_type
+            batch_size,
+            head_num,
+            max_seqlen_q,
+            max_seqlen_k,
+            head_dim_qk,
+            head_dim_v,
+            has_rab,
+            data_type,
+            window_size,
+            num_context,
+            num_target,
+            target_group_size,
         )
 
         # 计算序列长度统计
-        seq_stats = SeqStats.compute_seq_stats(
-            seq_offset_q, seq_offset_k, max_seqlen_q, max_seqlen_k
-        )
+        seq_stats = SeqStats.compute_seq_stats(seq_offset_q, seq_offset_k, max_seqlen_q, max_seqlen_k)
 
         # 配置参数
         scale = 1 / 1024
@@ -96,13 +110,12 @@ class TestRunner:
 
         # 创建内核
         kernel = self._create_kernel(
-            self.backend, alpha, scale, has_rab,
-            max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k
+            self.backend, alpha, scale, has_rab, max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k
         )
 
         # 运行计算
         for _ in range(ACTIVE):
-            kernel.backward(grad, q, k, v, rab, mask)
+            kernel.backward(grad, q, k, v, rab, mask, window_size, num_context, num_target, target_group_size)
 
         # 验证结果，返回 (passed, detail, seq_stats)
         return seq_stats
@@ -121,20 +134,27 @@ def benchmark_record():
     return benchmark_record_instance
 
 
-def _run_benchmark(
-    test_backend,
-    test_record,
-    config: BenchmarkConfig
-):
+def _run_benchmark(test_backend, test_record, config: BenchmarkConfig):
     runner = TestRunner(test_backend)
     data_generator = create_data_generator(
-        config.seed, seq_all_equal=config.seq_all_equal, seq_max_ratio=config.seq_max_ratio)
+        config.seed, seq_all_equal=config.seq_all_equal, seq_max_ratio=config.seq_max_ratio
+    )
 
     # 运行测试获取序列长度统计
     seq_stats = runner.run_case(
         data_generator,
-        config.batch_size, config.head_num, config.head_dim_qk, config.head_dim_v,
-        config.max_seqlen_q, config.max_seqlen_k, config.has_rab, config.data_type
+        config.batch_size,
+        config.head_num,
+        config.head_dim_qk,
+        config.head_dim_v,
+        config.max_seqlen_q,
+        config.max_seqlen_k,
+        config.has_rab,
+        config.data_type,
+        config.window_size,
+        config.num_context,
+        config.num_target,
+        config.target_group_size,
     )
 
     # 记录测试用例输入和序列统计
@@ -147,7 +167,7 @@ def _run_benchmark(
         "max_seqlen_k": config.max_seqlen_k,
         "has_rab": config.has_rab,
         "data_type": str(config.data_type),
-        "seed": config.seed
+        "seed": config.seed,
     }
     test_record.record(params, seq_stats)
 
@@ -156,32 +176,48 @@ def _run_benchmark(
 def test_backend():
     """提供测试后端实例的fixture"""
     return create_hstu_atten_backend(
-            KernelBackend.ASCEND_FUSE,
-            device=ASCEND_DEVICE_ID,
-            ops_library_dir=f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so"
-        )
+        KernelBackend.ASCEND_FUSE,
+        device=ASCEND_DEVICE_ID,
+        ops_library_dir=f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so",
+    )
 
 
 @pytest.mark.parametrize(
     "batch_size, head_num, head_dims, seq_lens, has_rab, data_type",
     [
-    (2048, 4, (64, 64), (52, 1000), False, torch.float16),
-    (16, 4, (64, 64), (501, 1000), False, torch.float16),
-    (8, 8, (128, 128), (8000, 8000), False, torch.float16),
-    (8, 8, (256, 256), (8000, 8000), False, torch.float16),
-    (2048, 2, (256, 256), (32, 32), False, torch.float16),
-    (96, 2, (256, 256), (512, 3072), False, torch.float16),
-    (16, 4, (64, 32), (32, 499), False, torch.float16),
-    (4, 4, (128, 48), (1001, 901), False, torch.float16),
-    (128, 4, (128, 128), (7621, 7621), False, torch.bfloat16),
-    (96, 3, (256, 256), (674, 674), False, torch.bfloat16)
-    ]
+        (2048, 4, (64, 64), (52, 1000), False, torch.float16),
+        (16, 4, (64, 64), (501, 1000), False, torch.float16),
+        (8, 8, (128, 128), (8000, 8000), False, torch.float16),
+        (8, 8, (256, 256), (8000, 8000), False, torch.float16),
+        (2048, 2, (256, 256), (32, 32), False, torch.float16),
+        (96, 2, (256, 256), (512, 3072), False, torch.float16),
+        (16, 4, (64, 32), (32, 499), False, torch.float16),
+        (4, 4, (128, 48), (1001, 901), False, torch.float16),
+        (128, 4, (128, 128), (7621, 7621), False, torch.bfloat16),
+        (96, 3, (256, 256), (674, 674), False, torch.bfloat16),
+    ],
+)
+@pytest.mark.parametrize(
+    "window_size, num_context, num_target, target_group_size",
+    [
+        ((-1, -1), None, None, None),
+    ],
 )
 @pytest.mark.parametrize("seed", [123])
 def test_user_case_1(
     test_backend,
     benchmark_record,
-    batch_size, head_num, head_dims, seq_lens, has_rab, data_type, seed
+    batch_size,
+    head_num,
+    head_dims,
+    seq_lens,
+    has_rab,
+    data_type,
+    window_size,
+    num_context,
+    num_target,
+    target_group_size,
+    seed,
 ):
     """测试用户用例"""
     head_dim_qk, head_dim_v = head_dims
@@ -198,16 +234,24 @@ def test_user_case_1(
         max_seqlen_q=max_seqlen_q,
         max_seqlen_k=max_seqlen_k,
         has_rab=has_rab,
-        data_type=data_type
+        data_type=data_type,
+        window_size=window_size,
+        num_context=num_context,
+        num_target=num_target,
+        target_group_size=target_group_size,
     )
     _run_benchmark(test_backend, benchmark_record, config)
 
 
-@pytest.mark.parametrize("batch_size, head_num, seq_lens", [
-    (32, 8, (512, 512)),
-    (32, 8, (1024, 1024)),
-    (32, 8, (2048, 2048)),
-    (32, 8, (4096, 4096))]
+@pytest.mark.parametrize(
+    "batch_size, head_num, seq_lens",
+    [(32, 8, (512, 512)), (32, 8, (1024, 1024)), (32, 8, (2048, 2048)), (32, 8, (4096, 4096))],
+)
+@pytest.mark.parametrize(
+    "window_size, num_context, num_target, target_group_size",
+    [
+        ((-1, -1), None, None, None),
+    ],
 )
 @pytest.mark.parametrize("head_dims", [(32, 32), (64, 64), (128, 128), (256, 256)])
 @pytest.mark.parametrize("has_rab", [True, False])
@@ -216,7 +260,17 @@ def test_user_case_1(
 def test_user_case_2(
     test_backend,
     benchmark_record,
-    batch_size, head_num, head_dims, seq_lens, has_rab, data_type, seed
+    batch_size,
+    head_num,
+    head_dims,
+    seq_lens,
+    has_rab,
+    data_type,
+    window_size,
+    num_context,
+    num_target,
+    target_group_size,
+    seed,
 ):
     """测试用户用例"""
     head_dim_qk, head_dim_v = head_dims
@@ -233,7 +287,11 @@ def test_user_case_2(
         max_seqlen_q=max_seqlen_q,
         max_seqlen_k=max_seqlen_k,
         has_rab=has_rab,
-        data_type=data_type
+        data_type=data_type,
+        window_size=window_size,
+        num_context=num_context,
+        num_target=num_target,
+        target_group_size=target_group_size,
     )
     _run_benchmark(test_backend, benchmark_record, config)
 
