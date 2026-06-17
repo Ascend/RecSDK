@@ -17,7 +17,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import torch
 from torchrec.distributed.embedding_sharding import (
@@ -38,6 +38,7 @@ from torchrec.distributed.types import (
 from torchrec.modules.embedding_modules import EmbeddingBagCollection
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 
+from rec_sdk_common.validator.safe_checker import class_safe_check
 from dynamic_emb.distributed.dynamicemb_config import DynamicEmbKernel
 from dynamic_emb.distributed.sharding.rw_sequence_sharding import RwPooledDynamicEmbeddingSharding
 
@@ -81,6 +82,23 @@ class DynamicEmbeddingBagCollectionSharder(EmbeddingBagCollectionSharder):
     DynamicEmbeddingBagCollectionSharder extends the EmbeddingBagCollectionSharder class from the TorchREC repo.
     The usage is completely consistent with TorchREC's EmbeddingBagCollectionSharder.
     """
+
+    def __init__(
+        self,
+        fused_params: Optional[Dict[str, Any]] = None,
+        qcomm_codecs_registry: Optional[Dict[str, QuantizedCommCodecs]] = None,
+    ) -> None:
+        class_safe_check("fused_params", fused_params, (dict, type(None)))
+        if fused_params is not None:
+            for k, v in fused_params.items():
+                class_safe_check("key of fused_params", k, (str,))
+        class_safe_check("qcomm_codecs_registry", qcomm_codecs_registry, (dict, type(None)))
+        if qcomm_codecs_registry is not None:
+            for k, v in qcomm_codecs_registry.items():
+                class_safe_check("key of qcomm_codecs_registry", k, (str,))
+                class_safe_check("value of qcomm_codecs_registry", v, (QuantizedCommCodecs,))
+
+        super().__init__(fused_params, qcomm_codecs_registry)
 
     def shard(
         self,
