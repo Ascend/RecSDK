@@ -15,27 +15,73 @@
 # limitations under the License.
 # ==============================================================================
 import torch
-import torch_npu
 import torch.nn.functional as F
 
 from .common import jagged_to_dense, dense_to_jagged
 
 
 class Kernel:
-    def __init__(self, alpha, scale, has_rab, max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k):
-        self.alpha = alpha
-        self.scale = scale
-        self.has_rab = has_rab
-        self.max_seqlen_q = max_seqlen_q
-        self.max_seqlen_k = max_seqlen_k
+    def __init__(self, alpha_, scale_, has_rab_, max_seqlen_q_, max_seqlen_k_, seq_offset_q, seq_offset_k):
+        self.alpha = alpha_
+        self.scale = scale_
+        self.has_rab = has_rab_
+        self.max_seqlen_q = max_seqlen_q_
+        self.max_seqlen_k = max_seqlen_k_
 
         self.seqlen_q = seq_offset_q[1:] - seq_offset_q[:-1]
         self.seqlen_k = seq_offset_k[1:] - seq_offset_k[:-1]
 
+    def forward(self, q, k, v, rab, mask):
+        seq_k, head_k, _ = k.shape
+        seq_q, head_q, dim_q = q.shape
+        _, _, dim_v = v.shape
+        data_type = q.dtype
 
-    def forward(self, ):
-        pass
+        if head_q != head_k:
+            if head_q % head_k != 0:
+                raise ValueError(f"head_num_q ({head_q}) must be divisible by head_num_k({head_k}) ")
 
+        q_dens = jagged_to_dense(q, self.seqlen_q, self.max_seqlen_q, head_q, dim_q).to("npu")
+        k_dens = jagged_to_dense(k, self.seqlen_k, self.max_seqlen_k, head_k, dim_q).to("npu")
+        v_dens = jagged_to_dense(v, self.seqlen_k, self.max_seqlen_k, head_k, dim_v).to("npu")
+
+        if head_q != head_k:
+            h_qk_ratio = head_q // head_k
+            k_dens = k_dens.repeat_interleave(h_qk_ratio, dim=2)
+            v_dens = v_dens.repeat_interleave(h_qk_ratio, dim=2)
+
+        qk_attn = torch.matmul(q_dens.permute(0, 2, 1, 3), k_dens.permute(0, 2, 3, 1))
+
+        qk_attn = qk_attn.float()
+
+        if mask is not None:
+            mask = mask.to("npu")
+            mask = mask.float()
+
+        if rab is not None:
+            rab = rab.to("npu")
+            rab = rab.float()
+            qk_attn = qk_attn + rab
+
+        real_silu_scale = 1 / self.max_seqlen_q if self.scale == 0.0 else self.scale
+        qk_attn = qk_attn * self.alpha
+
+        if mask is not None:
+            qk_attn = F.silu(qk_attn) * real_silu_scale * mask
+        else:
+            qk_attn = F.silu(qk_attn) * real_silu_scale
+
+        qk_attn = qk_attn.to(data_type)
+        attn_dense = torch.matmul(qk_attn, v_dens.permute(0, 2, 1, 3))
+
+        attn_dense = attn_dense.cpu()
+        output = dense_to_jagged(q, attn_dense.permute(0, 2, 1, 3), self.seqlen_q)
+
+        output = output.view(seq_q, head_q, dim_v)
+
+        torch.npu.synchronize()
+
+        return output
 
     def backward(self, grad, q, k, v, rab, mask):
         seq_k, head_k, _ = k.shape
@@ -107,7 +153,6 @@ class Validator:
     def forward_verify(actual, ref):
         pass
 
-
     @staticmethod
     def backward_verify(actual, ref):
         """返回验证结果和详细精度数据（只有通过状态，无详细精度数据）"""
@@ -138,10 +183,9 @@ class Validator:
             "DQ": {"passed": q_res},
             "DK": {"passed": k_res},
             "DV": {"passed": v_res},
-            "DRAB": {"passed": drab_res}
+            "DRAB": {"passed": drab_res},
         }
         return passed, detail
-
 
 
 class AscendNative:
@@ -151,7 +195,6 @@ class AscendNative:
     @staticmethod
     def kernel(alpha, scale, has_rab, max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k):
         return Kernel(alpha, scale, has_rab, max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k)
-
 
     @staticmethod
     def validator():
