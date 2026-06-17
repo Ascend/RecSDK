@@ -23,15 +23,16 @@ See the License for the specific language governing permissions and
  */
 #pragma once
 
+// Suppress framework's ascend950/copy_l0c_to_ub.hpp to avoid duplicate
+// SPLIT_M + NO_QUANT + RowMajor specialization. All needed specializations
+// (NO_SPLIT, SPLIT_M, SPLIT_N, RESERVED for both zN and RowMajor) are
+// defined locally in this file.
+#define CATLASS_GEMM_TILE_ASCEND950_COPY_L0C_TO_UB_950_HPP
+
 #include "../../../tla_hstu/layout.hpp"
-#include "catlass/gemm/tile/ascend950/copy_l0c_to_ub.hpp"
+#include "catlass/gemm/tile/ascend950/copy_l0c_to_dst.hpp"
 
-/**
- • @brief NZ 格式 UB 配置
-
- • @description 使用 NZ (Non-Zero) 布局配置 Unified Buffer
-
- */
+constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
 constexpr AscendC::FixpipeConfig CFG_NZ_UB = {AscendC::CO2Layout::NZ, true};
 
 namespace Catlass::Gemm::Tile {
@@ -50,7 +51,7 @@ struct CopyL0CToUBTla<
     static constexpr auto reluEn = ReluEnable_;
 
     template <class TensorDst, class TensorSrc>
-    CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0,
+    CATLASS_DEVICE void operator()(TensorDst const& dstTensor, TensorSrc const& srcTensor, uint8_t unitFlag = 0,
                                    uint32_t subBlockId = 0)
     {
         static_assert(tla::detail::isL0czN<typename TensorDst::Layout>::value &&
@@ -85,6 +86,47 @@ template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_
 struct CopyL0CToUBTla<
     Catlass::Arch::Ascend950, TensorSrc_,
     tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
+    CopyL0CToUBMode::SPLIT_M, ScaleGranularity::NO_QUANT, ReluEnable_,
+    std::enable_if_t<tla::detail::isL0czN<LayoutDst_>::value>> {
+    using ArchTag = Catlass::Arch::Ascend950;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    template <class TensorDst, class TensorSrc>
+    CATLASS_DEVICE void operator()(TensorDst const& dstTensor, TensorSrc const& srcTensor, uint8_t unitFlag = 0)
+    {
+        static_assert(tla::detail::isL0czN<typename TensorDst::Layout>::value &&
+                          TensorSrc::position == AscendC::TPosition::CO1 &&
+                          TensorDst::position == AscendC::TPosition::VECCALC,
+                      "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and zN");
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
+
+        intriParams.nSize = tla::get<1>(dstTensor.originShape());
+        intriParams.mSize = RoundUp(tla::get<0>(dstTensor.originShape()), 2);  // m must be even when split m
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
+        intriParams.dstStride = tla::get<1, 1>(dstTensor.stride());
+
+        intriParams.quantPre = quantPre;
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+        intriParams.dualDstCtl = 1;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_NZ_UB>(dstTensor.data()[dstOffset], srcTensor.data()[srcOffset],
+                                                            intriParams);
+    }
+};
+
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToUBTla<
+    Catlass::Arch::Ascend950, TensorSrc_,
+    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
     CopyL0CToUBMode::NO_SPLIT, ScaleGranularity::PER_TENSOR, ReluEnable_,
     std::enable_if_t<tla::detail::isL0czN<LayoutDst_>::value>> {
     using ArchTag = Catlass::Arch::Ascend950;
@@ -95,7 +137,7 @@ struct CopyL0CToUBTla<
     static constexpr auto reluEn = ReluEnable_;
 
     template <class TensorDst, class TensorSrc>
-    CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0,
+    CATLASS_DEVICE void operator()(TensorDst const& dstTensor, TensorSrc const& srcTensor, uint8_t unitFlag = 0,
                                    ElementSrc deqScalar = 0.0f, uint32_t subBlockId = 0)
     {
         static_assert(tla::detail::isL0czN<typename TensorDst::Layout>::value &&
@@ -131,6 +173,47 @@ template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_
 struct CopyL0CToUBTla<
     Catlass::Arch::Ascend950, TensorSrc_,
     tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
+    CopyL0CToUBMode::SPLIT_M, ScaleGranularity::NO_QUANT, ReluEnable_,
+    std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
+    using ArchTag = Catlass::Arch::Ascend950;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::NO_QUANT>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    template <class TensorDst, class TensorSrc>
+    CATLASS_DEVICE void operator()(TensorDst const& dstTensor, TensorSrc const& srcTensor, uint8_t unitFlag = 0)
+    {
+        static_assert(
+            tla::detail::isRowMajor<typename TensorDst::Layout>::value &&
+                TensorSrc::position == AscendC::TPosition::CO1 && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and RowMajor");
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
+
+        intriParams.nSize = tla::get<1>(dstTensor.shape());
+        intriParams.mSize = RoundUp(tla::get<0>(dstTensor.shape()), 2);
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
+        intriParams.dstStride = tla::get<0>(dstTensor.stride());
+
+        intriParams.quantPre = quantPre;
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+        intriParams.dualDstCtl = 1;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(dstTensor.data()[dstOffset],
+                                                                   srcTensor.data()[srcOffset], intriParams);
+    }
+};
+
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToUBTla<
+    Catlass::Arch::Ascend950, TensorSrc_,
+    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
     CopyL0CToUBMode::RESERVED, ScaleGranularity::NO_QUANT, ReluEnable_,
     std::enable_if_t<tla::detail::isRowMajor<LayoutDst_>::value>> {
     using ArchTag = Catlass::Arch::Ascend950;
@@ -141,7 +224,7 @@ struct CopyL0CToUBTla<
     static constexpr auto reluEn = ReluEnable_;
 
     template <class TensorDst, class TensorSrc>
-    CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0,
+    CATLASS_DEVICE void operator()(TensorDst const& dstTensor, TensorSrc const& srcTensor, uint8_t unitFlag = 0,
                                    uint32_t subBlockId = 0)
     {
         static_assert(
@@ -187,7 +270,7 @@ struct CopyL0CToUBTla<
     static constexpr auto reluEn = ReluEnable_;
 
     template <class TensorDst, class TensorSrc>
-    CATLASS_DEVICE void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0,
+    CATLASS_DEVICE void operator()(TensorDst const& dstTensor, TensorSrc const& srcTensor, uint8_t unitFlag = 0,
                                    ElementSrc deqScalar = 0.0f, uint32_t subBlockId = 0)
     {
         static_assert(
@@ -220,4 +303,4 @@ struct CopyL0CToUBTla<
     }
 };
 
-}
+}  // namespace Catlass::Gemm::Tile
