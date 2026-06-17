@@ -48,7 +48,7 @@ from torchrec.distributed.model_parallel import (
     DistributedModelParallel,
 )
 from torchrec.distributed.planner import ParameterConstraints, Topology
-from torchrec.distributed.types import BoundsCheckMode, ShardingType
+from torchrec.distributed.types import ShardingType
 
 
 def table_idx_to_name(i):
@@ -78,10 +78,6 @@ def get_planner(args, device, eb_configs):
         if args.data_parallel_embeddings is not None and i in args.data_parallel_embeddings:
             const = ParameterConstraints(
                 sharding_types=[ShardingType.DATA_PARALLEL.value],
-                pooling_factors=[args.multi_hot_sizes[i]],
-                num_poolings=[1],
-                enforce_hbm=True,
-                bounds_check_mode=BoundsCheckMode.NONE,
             )
         else:
             use_dynamicemb = True
@@ -90,10 +86,6 @@ def get_planner(args, device, eb_configs):
                     ShardingType.ROW_WISE.value,
                 ],
                 compute_kernels=["fused"],
-                pooling_factors=[args.multi_hot_sizes[i]],
-                num_poolings=[1],
-                enforce_hbm=True,
-                bounds_check_mode=BoundsCheckMode.NONE,
                 use_dynamicemb=use_dynamicemb,
                 dynamicemb_options=DynamicEmbTableOptions(
                     global_hbm_for_values=1024**3,

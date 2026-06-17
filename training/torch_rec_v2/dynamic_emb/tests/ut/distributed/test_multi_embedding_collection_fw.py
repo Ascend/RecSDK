@@ -97,7 +97,6 @@ def get_planner(args, device, eb_configs):
                     ShardingType.ROW_WISE.value,
                 ],
                 compute_kernels=["fused"],
-                pooling_factors=[args.multi_hot_sizes[i]],
                 use_dynamicemb=use_dynamicemb,
                 dynamicemb_options=DynamicEmbTableOptions(
                     global_hbm_for_values=1024**3,
