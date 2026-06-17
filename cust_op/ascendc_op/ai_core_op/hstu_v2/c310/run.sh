@@ -51,4 +51,17 @@ parse_arguments "$@" || exit 1
 # ==============================================================================
 # 4. 流程（msopgen -op 默认 PascalCase：hstu_v2）
 # ==============================================================================
+# build_and_install_operator "$WORK_DIR" "$vendor_name" || exit 1
 build_and_install_operator "$WORK_DIR" "$vendor_name" || exit 1
+
+# validate_ai_core "$ai_core" || exit 1
+# check_system_and_cann "$ai_core" || exit 1
+# gen_build_dir "$WORK_DIR" "$vendor_name" "${MSOPGEN_OP_NAME:-}" || exit 1
+# op_src_root="${OPERATOR_SOURCE_ROOT:-${WORK_DIR}}"
+# replace_operator_sources "$op_src_root" "${WORK_DIR}/${vendor_name}" || exit 1
+
+# apply_op_kernel_compile_options_dual "${WORK_DIR}/${vendor_name}" "-O0 -g --cce-ignore-always-inline=true" || exit 1
+
+# configure_cmake_presets "$vendor_name" "$ai_core" "$BUILD_VERSION" "${WORK_DIR}/${vendor_name}" || exit 1
+# prepare_and_build "$BUILD_VERSION" "$vendor_name" "${WORK_DIR}/${vendor_name}" || exit 1
+# install_operator_package "$OS_ID" "$ARCH" "${WORK_DIR}/${vendor_name}" || exit 1
