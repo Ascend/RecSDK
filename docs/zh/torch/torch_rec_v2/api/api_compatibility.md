@@ -277,6 +277,13 @@
 | DynamicEmbeddingCollectionSharder       | 是       | -          |
 | DynamicEmbeddingCollectionSharder.shard | 是       | -          |
 
+#### DynamicEmbeddingBagCollectionSharder
+
+| API名称                                     | 是否支持 | 限制与说明 |
+| ------------------------------------------- | -------- | ---------- |
+| DynamicEmbeddingBagCollectionSharder        | 是       | -          |
+| DynamicEmbeddingBagCollectionSharder.shard  | 是       | -          |
+
 #### DynamicEmbCheckMode
 
 | API名称                     | 是否支持 | 限制与说明 |

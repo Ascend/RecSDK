@@ -18,8 +18,9 @@ import argparse
 import os
 import random
 import sys
-from typing import Dict, List
+from typing import Dict, List, Optional
 
+import pytest
 import torch
 import torch.distributed as dist
 import torchrec
@@ -28,6 +29,7 @@ from dynamic_emb.distributed.dynamicemb_config import (
     DynamicEmbInitializerMode,
     DynamicEmbPoolingMode,
     DynamicEmbTableOptions,
+    DynamicEmbScoreStrategy,
 )
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import EmbOptimType
 from dynamic_emb.distributed.batched_dynamicemb_table import BatchedDynamicEmbeddingTablesV2
@@ -86,10 +88,22 @@ def count_tensor_to_dict(x, d):
             d[key] += 1
 
 
-def test(args):
-    backend = "hccl"
-    dist.init_process_group(backend=backend)
+def _setup_single_npu_dist_env() -> None:
+    os.environ.setdefault("MASTER_ADDR", "127.0.0.1")
+    os.environ.setdefault("MASTER_PORT", "29500")
+    os.environ.setdefault("RANK", "0")
+    os.environ.setdefault("LOCAL_RANK", "0")
+    os.environ.setdefault("WORLD_SIZE", "1")
 
+
+def _init_dist() -> None:
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    torch.npu.set_device(local_rank)
+    if not dist.is_initialized():
+        dist.init_process_group(backend="hccl")
+
+
+def _run_pooled_embedding_bw(args) -> None:
     local_rank = int(os.environ["LOCAL_RANK"])
     world_size = int(os.environ["WORLD_SIZE"])
     torch.npu.set_device(local_rank)
@@ -98,7 +112,7 @@ def test(args):
     table_num = args.num_embedding_table
     dim = args.embedding_dim
     embedding_dtype = torch.float32
-    total_hbm_for_values = 1023 * 3
+    total_hbm_for_values = 1023**3
     table_options = [
         DynamicEmbTableOptions(
             index_type=torch.int64,
@@ -111,6 +125,7 @@ def test(args):
             initializer_args=DynamicEmbInitializerArgs(
                 mode=DynamicEmbInitializerMode.DEBUG,
             ),
+            score_strategy=DynamicEmbScoreStrategy.STEP,
         )
         for num_emb in args.num_embeddings_per_feature
     ]
@@ -163,12 +178,19 @@ def test(args):
             assert res.dim() == 2
             assert res.size()[0] == local_batch_size
             assert res.size()[1] == table_num * dim
-    dist.barrier()
-    dist.destroy_process_group()
 
 
-@record
-def main(argv: List[str]) -> None:
+def _init_and_run_pooled_embedding_bw(args) -> None:
+    _init_dist()
+    try:
+        _run_pooled_embedding_bw(args)
+        dist.barrier()
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Dynamic sequence embedding's backward")
     parser.add_argument(
         "--batch_size",
@@ -232,18 +254,44 @@ def main(argv: List[str]) -> None:
         default=DynamicEmbPoolingMode.SUM,
         help="Pooling mode of dynamic embedding bag.",
     )
+    return parser
 
-    args = parser.parse_args()
+
+def _parse_args(argv: Optional[List[str]] = None):
+    args = _build_parser().parse_args([] if argv is None else argv)
     args.num_embeddings_per_feature = [int(v) for v in args.num_embeddings_per_feature.split(",")]
     args.multi_hot_sizes = [int(v) for v in args.multi_hot_sizes.split(",")]
     args.num_embedding_table = len(args.num_embeddings_per_feature)
+    return args
 
-    # Print all arguments
+
+@pytest.fixture(scope="module")
+def backend_session():
+    if not torch.npu.is_available():
+        pytest.skip("NPU not available")
+    was_initialized = dist.is_initialized()
+    if not was_initialized:
+        _setup_single_npu_dist_env()
+        _init_dist()
+    yield
+    if not was_initialized and dist.is_initialized():
+        dist.destroy_process_group()
+
+
+def test_pooled_embedding_backward(request):
+    request.getfixturevalue("backend_session")
+    _run_pooled_embedding_bw(_parse_args())
+
+
+@record
+def main(argv: List[str]) -> None:
+    args = _parse_args(argv)
+
     print("Arguments:")
     for arg, value in vars(args).items():
         print(f"{arg}: {value}")
 
-    test(args)
+    _init_and_run_pooled_embedding_bw(args)
 
 
 if __name__ == "__main__":
