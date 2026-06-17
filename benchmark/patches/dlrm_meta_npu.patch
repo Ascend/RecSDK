@@ -1,21 +1,18 @@
-From 370b963fe4bde36d29e8c728e720ccac0516a242 Mon Sep 17 00:00:00 2001
-From: cann_ly <luyi120@h-partners.com>
-Date: Thu, 23 Apr 2026 11:35:24 +0800
-Subject: [PATCH] =?UTF-8?q?dlrm=20=E5=9B=9E=E6=98=BE?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+From dd27ed7df5e36d7d2cd5a0759da445a04abe5974 Mon Sep 17 00:00:00 2001
+From: chenzihao40 <chenzihao40@huawei.com>
+Date: Mon, 15 Jun 2026 19:29:02 +0800
+Subject: [PATCH] npu patch
 
 ---
  data_utils.py                          |   4 +-
- dlrm_s_pytorch.py                      | 250 ++++++++++++++++++++-----
+ dlrm_s_pytorch.py                      | 286 ++++++++++++++++++++-----
  extend_distributed.py                  |  30 ++-
  torchrec_dlrm/data/dlrm_dataloader.py  |  13 +-
  torchrec_dlrm/data/multi_hot_criteo.py |  36 ++--
- torchrec_dlrm/dlrm_main.py             |  43 ++---
- torchrec_dlrm/multi_hot.py             |  21 ++-
+ torchrec_dlrm/dlrm_main.py             |  43 ++--
+ torchrec_dlrm/multi_hot.py             |  21 +-
  tricks/qr_embedding_bag.py             |  16 +-
- 8 files changed, 281 insertions(+), 132 deletions(-)
+ 8 files changed, 311 insertions(+), 138 deletions(-)
 
 diff --git a/data_utils.py b/data_utils.py
 index a0dbdd2..578f98a 100644
@@ -36,7 +33,7 @@ index a0dbdd2..578f98a 100644
  
                  # count uniques
 diff --git a/dlrm_s_pytorch.py b/dlrm_s_pytorch.py
-index e1b42b7..5416430 100644
+index e1b42b7..6f279ca 100644
 --- a/dlrm_s_pytorch.py
 +++ b/dlrm_s_pytorch.py
 @@ -100,6 +100,16 @@ from torch.nn.parameter import Parameter
@@ -85,35 +82,42 @@ index e1b42b7..5416430 100644
      with record_function("DLRM loss compute"):
          if args.loss_function == "mse" or args.loss_function == "bce":
              return dlrm.loss_fn(Z, T.to(device))
-@@ -274,18 +291,21 @@ class DLRM_Net(nn.Module):
+@@ -274,18 +291,22 @@ class DLRM_Net(nn.Module):
                  ).astype(np.float32)
                  EE.embs.weight.data = torch.tensor(W, requires_grad=True)
              else:
 -                EE = nn.EmbeddingBag(n, m, mode="sum", sparse=True)
-+                # EE = nn.EmbeddingBag(n, m, mode="sum", sparse=True)
-                 # initialize embeddings
+-                # initialize embeddings
 -                # nn.init.uniform_(EE.weight, a=-np.sqrt(1 / n), b=np.sqrt(1 / n))
 -                W = np.random.uniform(
 -                    low=-np.sqrt(1 / n), high=np.sqrt(1 / n), size=(n, m)
 -                ).astype(np.float32)
-+                # W = np.random.uniform(
-+                #     low=-np.sqrt(1 / n), high=np.sqrt(1 / n), size=(n, m)
-+                # ).astype(np.float32)
-                 # approach 1
+-                # approach 1
 -                EE.weight.data = torch.tensor(W, requires_grad=True)
-+                # EE.weight.data = torch.tensor(W, requires_grad=True)
-                 # approach 2
-                 # EE.weight.data.copy_(torch.tensor(W))
-                 # approach 3
-                 # EE.weight = Parameter(torch.tensor(W),requires_grad=True)
-+
-+                # 使用nn.Embedding替代nn.EmbeddingBag
-+                EE = nn.Embedding(n, m, sparse=True)
-+                nn.init.uniform_(EE.weight, a=-np.sqrt(1 / n), b=np.sqrt(1 / n))
+-                # approach 2
+-                # EE.weight.data.copy_(torch.tensor(W))
+-                # approach 3
+-                # EE.weight = Parameter(torch.tensor(W),requires_grad=True)
++                if use_inductor:
++                    EE = nn.EmbeddingBag(n, m, mode="sum", sparse=True)
++                    # initialize embeddings
++                    W = np.random.uniform(
++                        low=-np.sqrt(1 / n), high=np.sqrt(1 / n), size=(n, m)
++                    ).astype(np.float32)
++                    # approach 1
++                    EE.weight.data = torch.tensor(W, requires_grad=True)
++                    # approach 2
++                    # EE.weight.data.copy_(torch.tensor(W))
++                    # approach 3
++                    # EE.weight = Parameter(torch.tensor(W),requires_grad=True)
++                else:
++                    # 使用nn.Embedding替代nn.EmbeddingBag
++                    EE = nn.Embedding(n, m, sparse=True)
++                    nn.init.uniform_(EE.weight, a=-np.sqrt(1 / n), b=np.sqrt(1 / n))
              if weighted_pooling is None:
                  v_W_l.append(None)
              else:
-@@ -450,11 +470,14 @@ class DLRM_Net(nn.Module):
+@@ -450,11 +471,16 @@ class DLRM_Net(nn.Module):
                  ly.append(QV)
              else:
                  E = emb_l[k]
@@ -122,18 +126,20 @@ index e1b42b7..5416430 100644
 -                    sparse_offset_group_batch,
 -                    per_sample_weights=per_sample_weights,
 -                )
-+                # V = E(
-+                #     sparse_index_group_batch,
-+                #     sparse_offset_group_batch,
-+                #     per_sample_weights=per_sample_weights,
-+                # )
-+
-+                # 使用nn.Embedding替代nn.EmbeddingBag
-+                V = E(sparse_index_group_batch)
++                V = None
++                if use_inductor:
++                    V = E(
++                        sparse_index_group_batch,
++                        sparse_offset_group_batch,
++                        per_sample_weights=per_sample_weights,
++                    )
++                else:
++                    # 使用nn.Embedding替代nn.EmbeddingBag
++                    V = E(sparse_index_group_batch)
  
                  ly.append(V)
  
-@@ -763,12 +786,14 @@ def inference(
+@@ -763,12 +789,14 @@ def inference(
      best_auc_test,
      test_ld,
      device,
@@ -149,7 +155,7 @@ index e1b42b7..5416430 100644
      if args.mlperf_logging:
          scores = []
          targets = []
-@@ -792,7 +817,7 @@ def inference(
+@@ -792,7 +820,7 @@ def inference(
              X_test,
              lS_o_test,
              lS_i_test,
@@ -158,7 +164,7 @@ index e1b42b7..5416430 100644
              device,
              ndevices=ndevices,
          )
-@@ -801,6 +826,8 @@ def inference(
+@@ -801,6 +829,8 @@ def inference(
          # tensor is on GPU memory
          if Z_test.is_cuda:
              torch.cuda.synchronize()
@@ -167,7 +173,7 @@ index e1b42b7..5416430 100644
          (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
          if ext_dist.my_size > 1:
              Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
-@@ -844,7 +871,6 @@ def inference(
+@@ -844,7 +874,6 @@ def inference(
                  ),
              }
  
@@ -175,7 +181,7 @@ index e1b42b7..5416430 100644
          for metric_name, metric_function in metrics.items():
              validation_results[metric_name] = metric_function(targets, scores)
              writer.add_scalar(
-@@ -856,6 +882,7 @@ def inference(
+@@ -856,6 +885,7 @@ def inference(
      else:
          acc_test = test_accu / test_samp
          writer.add_scalar("Test/Acc", acc_test, log_iter)
@@ -183,7 +189,7 @@ index e1b42b7..5416430 100644
  
      model_metrics_dict = {
          "nepochs": args.nepochs,
-@@ -896,8 +923,37 @@ def inference(
+@@ -896,8 +926,47 @@ def inference(
              ),
              flush=True,
          )
@@ -218,10 +224,20 @@ index e1b42b7..5416430 100644
 +    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
 +        f.write(output_str + "\n")
 +    return avg_time
++
++def set_tf32():
++    if NPU_ENABLE:
++        torch_npu.npu.matmul.allow_hf32 = True
++        torch_npu.npu.conv.allow_hf32 = True
++        print(f"NPU: set hf32 is {torch_npu.npu.aclnn.allow_hf32}")
++    else:
++        torch.backends.cuda.matmul.allow_tf32 = True
++        torch.backends.cudnn.allow_tf32 = True
++        print(f"GPU: set tf32 is {torch.backends.cuda.matmul.allow_tf32}")
  
  def run():
      ### parse arguments ###
-@@ -988,6 +1044,10 @@ def run():
+@@ -988,6 +1057,10 @@ def run():
      parser.add_argument("--save-onnx", action="store_true", default=False)
      # gpu
      parser.add_argument("--use-gpu", action="store_true", default=False)
@@ -232,7 +248,7 @@ index e1b42b7..5416430 100644
      # distributed
      parser.add_argument("--local_rank", type=int, default=-1)
      parser.add_argument("--dist-backend", type=str, default="")
-@@ -1002,6 +1062,8 @@ def run():
+@@ -1002,6 +1075,8 @@ def run():
      parser.add_argument("--enable-profiling", action="store_true", default=False)
      parser.add_argument("--plot-compute-graph", action="store_true", default=False)
      parser.add_argument("--tensor-board-filename", type=str, default="run_kaggle_pt")
@@ -241,7 +257,25 @@ index e1b42b7..5416430 100644
      # store/load model
      parser.add_argument("--save-model", type=str, default="")
      parser.add_argument("--load-model", type=str, default="")
-@@ -1070,10 +1132,10 @@ def run():
+@@ -1026,6 +1101,17 @@ def run():
+     global writer
+     args = parser.parse_args()
+ 
++    # use benchmark flags first
++    args.enable_profiling = True if os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE" else args.enable_profiling
++    args.nepochs = int(os.environ.get("MODEL_EPOCH")) if os.environ.get("MODEL_EPOCH") is not None else args.nepochs
++    args.use_inductor = "normal" if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else args.use_inductor
++    SET_HF32 = os.getenv("MODEL_HF32_FLAG").upper() == "TRUE"
++    if SET_HF32:
++        set_tf32()
++
++    global use_inductor
++    use_inductor = args.use_inductor
++
+     if args.dataset_multiprocessing:
+         assert sys.version_info[0] >= 3 and sys.version_info[1] > 7, (
+             "The dataset_multiprocessing "
+@@ -1070,10 +1156,10 @@ def run():
          args.test_num_workers = args.num_workers
  
      use_gpu = args.use_gpu and torch.cuda.is_available()
@@ -254,7 +288,7 @@ index e1b42b7..5416430 100644
          )
  
      if use_gpu:
-@@ -1082,14 +1144,26 @@ def run():
+@@ -1082,14 +1168,26 @@ def run():
          if ext_dist.my_size > 1:
              ngpus = 1
              device = torch.device("cuda", ext_dist.my_local_rank)
@@ -282,7 +316,7 @@ index e1b42b7..5416430 100644
      ### prepare training data ###
      ln_bot = np.fromstring(args.arch_mlp_bot, dtype=int, sep="-")
      # input data
-@@ -1275,7 +1349,7 @@ def run():
+@@ -1275,7 +1373,7 @@ def run():
              print(T.detach().cpu())
  
      global ndevices
@@ -291,7 +325,7 @@ index e1b42b7..5416430 100644
  
      ### construct the neural network specified above ###
      # WARNING: to obtain exactly the same initialization for
-@@ -1311,7 +1385,7 @@ def run():
+@@ -1311,7 +1409,7 @@ def run():
              print(param.detach().cpu().numpy())
          # print(dlrm)
  
@@ -300,7 +334,7 @@ index e1b42b7..5416430 100644
          # Custom Model-Data Parallel
          # the mlps are replicated and use data parallelism, while
          # the embeddings are distributed and use model parallelism
-@@ -1327,7 +1401,7 @@ def run():
+@@ -1327,7 +1425,7 @@ def run():
  
      # distribute data parallel mlps
      if ext_dist.my_size > 1:
@@ -309,7 +343,7 @@ index e1b42b7..5416430 100644
              device_ids = [ext_dist.my_local_rank]
              dlrm.bot_l = ext_dist.DDP(dlrm.bot_l, device_ids=device_ids)
              dlrm.top_l = ext_dist.DDP(dlrm.top_l, device_ids=device_ids)
-@@ -1336,7 +1410,7 @@ def run():
+@@ -1336,7 +1434,7 @@ def run():
              dlrm.top_l = ext_dist.DDP(dlrm.top_l)
  
      if not args.inference_only:
@@ -318,7 +352,7 @@ index e1b42b7..5416430 100644
              sys.exit("GPU version of Adagrad is not supported by PyTorch.")
          # specify the optimizer algorithm
          opts = {
-@@ -1376,6 +1450,16 @@ def run():
+@@ -1376,6 +1474,16 @@ def run():
  
      ### main loop ###
  
@@ -335,7 +369,7 @@ index e1b42b7..5416430 100644
      # training or inference
      best_acc_test = 0
      best_auc_test = 0
-@@ -1398,13 +1482,13 @@ def run():
+@@ -1398,13 +1506,13 @@ def run():
      # Load model is specified
      if not (args.load_model == ""):
          print("Loading saved model {}".format(args.load_model))
@@ -351,7 +385,7 @@ index e1b42b7..5416430 100644
                  # NOTE: when targeting inference on single GPU,
                  # note that the call to .to(device) has already happened
                  ld_model = torch.load(
-@@ -1412,6 +1496,11 @@ def run():
+@@ -1412,6 +1520,11 @@ def run():
                      map_location=torch.device("cuda"),
                      # map_location=lambda storage, loc: storage.cuda(0)
                  )
@@ -363,7 +397,7 @@ index e1b42b7..5416430 100644
          else:
              # when targeting inference on CPU
              ld_model = torch.load(args.load_model, map_location=torch.device("cpu"))
-@@ -1509,9 +1598,42 @@ def run():
+@@ -1509,9 +1622,42 @@ def run():
      tb_file = "./" + args.tensor_board_filename
      writer = SummaryWriter(tb_file)
  
@@ -394,7 +428,7 @@ index e1b42b7..5416430 100644
 +                    profiler.ProfilerActivity.NPU if NPU_ENABLE else profiler.ProfilerActivity.CUDA
 +                ],
 +                schedule=profiler.schedule(
-+                    wait=1, warmup=3, active=10, repeat=1, skip_first=1
++                    wait=10, warmup=3, active=10, repeat=1, skip_first=1
 +                ),
 +                on_trace_ready=profiler.tensorboard_trace_handler(
 +                    './profiling'
@@ -408,7 +442,7 @@ index e1b42b7..5416430 100644
      ) as prof:
          if not args.inference_only:
              k = 0
-@@ -1539,6 +1661,15 @@ def run():
+@@ -1539,6 +1685,15 @@ def run():
                      previous_iteration_time = None
  
                  for j, inputBatch in enumerate(train_ld):
@@ -424,7 +458,7 @@ index e1b42b7..5416430 100644
                      if j == 0 and args.save_onnx:
                          X_onnx, lS_o_onnx, lS_i_onnx, _, _, _ = unpack_batch(inputBatch)
  
-@@ -1548,14 +1679,14 @@ def run():
+@@ -1548,14 +1703,14 @@ def run():
                      X, lS_o, lS_i, T, W, CBPP = unpack_batch(inputBatch)
  
                      if args.mlperf_logging:
@@ -441,7 +475,7 @@ index e1b42b7..5416430 100644
  
                      # early exit if nbatches was set by the user and has been exceeded
                      if nbatches > 0 and j >= nbatches:
-@@ -1576,7 +1707,7 @@ def run():
+@@ -1576,7 +1731,7 @@ def run():
                          X,
                          lS_o,
                          lS_i,
@@ -450,7 +484,7 @@ index e1b42b7..5416430 100644
                          device,
                          ndevices=ndevices,
                      )
-@@ -1586,7 +1717,7 @@ def run():
+@@ -1586,7 +1741,7 @@ def run():
                          W = W[ext_dist.get_my_slice(mbs)]
  
                      # loss
@@ -459,7 +493,7 @@ index e1b42b7..5416430 100644
  
                      # compute loss and accuracy
                      L = E.detach().cpu().numpy()  # numpy array
-@@ -1623,7 +1754,7 @@ def run():
+@@ -1623,7 +1778,7 @@ def run():
                      if args.mlperf_logging:
                          total_time += iteration_time
                      else:
@@ -468,7 +502,7 @@ index e1b42b7..5416430 100644
                          total_time += t2 - t1
  
                      total_loss += L * mbs
-@@ -1656,10 +1787,9 @@ def run():
+@@ -1656,10 +1811,9 @@ def run():
                              wall_time = " ({})".format(time.strftime("%H:%M"))
  
                          print(
@@ -481,7 +515,7 @@ index e1b42b7..5416430 100644
                              + wall_time,
                              flush=True,
                          )
-@@ -1670,6 +1800,9 @@ def run():
+@@ -1670,6 +1824,9 @@ def run():
                          total_iter = 0
                          total_samp = 0
  
@@ -491,7 +525,7 @@ index e1b42b7..5416430 100644
                      # testing
                      if should_test:
                          epoch_num_float = (j + 1) / len(train_ld) + k + 1
-@@ -1695,7 +1828,7 @@ def run():
+@@ -1695,7 +1852,7 @@ def run():
                              best_auc_test,
                              test_ld,
                              device,
@@ -500,7 +534,7 @@ index e1b42b7..5416430 100644
                              log_iter,
                          )
  
-@@ -1788,22 +1921,12 @@ def run():
+@@ -1788,22 +1945,12 @@ def run():
                  best_auc_test,
                  test_ld,
                  device,
@@ -525,7 +559,7 @@ index e1b42b7..5416430 100644
  
      # plot compute graph
      if args.plot_compute_graph:
-@@ -1895,14 +2018,39 @@ def run():
+@@ -1895,14 +2042,39 @@ def run():
              input_names=all_inputs,
              output_names=["pred"],
              dynamic_axes=dynamic_axes,
@@ -1026,5 +1060,5 @@ index 0a7bc4f..3ec738c 100644
              self.weight_r = Parameter(_weight[1])
          self.mode = mode
 -- 
-2.53.0.windows.1
+2.52.0.windows.1
 
