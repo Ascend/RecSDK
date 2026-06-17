@@ -921,7 +921,6 @@ static void launch_select_kernel(bool selectIndex, const at::Tensor& flags, cons
 
     int64_t workspaceElems = numTotal + static_cast<int64_t>(totalBlocks) * stride;
     auto workspace = at::empty({workspaceElems}, inputFlags.options().dtype(torch::kInt64));
-    inputNumSelected.zero_();
 
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
 
