@@ -545,7 +545,7 @@ index 0000000..4386404
 +    main(path=args.path)
 \ No newline at end of file
 diff --git a/run.py b/run.py
-index fb6d043..27d389d 100644
+index fb6d043..fe01f02 100644
 --- a/run.py
 +++ b/run.py
 @@ -1,132 +1,397 @@
@@ -627,6 +627,7 @@ index fb6d043..27d389d 100644
 +RANDOM_SEED = 42
 +DUMP_PROFILER = str_to_bool(os.getenv("MODEL_PROFILING_FLAG", "false"))
 +SET_HF32 = str_to_bool(os.getenv("MODEL_HF32_FLAG", "true"))
++TORCH_COMPILE = str_to_bool(os.getenv("MODEL_COMPILE_FLAG", "False"))
 +MODEL_NAME = "GRU4Rec"
 +
 +
@@ -908,7 +909,7 @@ index fb6d043..27d389d 100644
 +                batch_size = int(gru4rec_params['batch_size'])
 +
 +        logging.info('Creating GRU4Rec model on device "{}"'.format(args.device))
-+        gru = GRU4Rec(device=args.device, torch_compile=args.torch_compile, compile_mode=args.compile_mode)
++        gru = GRU4Rec(device=args.device, torch_compile=TORCH_COMPILE, compile_mode=args.compile_mode)
 +        gru.set_params(**gru4rec_params)
 +        logging.info('Loading training data...')
 +        data = load_data(args.path, args)
@@ -973,7 +974,7 @@ index fb6d043..27d389d 100644
 +    gathered_latency = gather_latency_data(latency_list, world_size, device)
 +
 +    if rank == 0:
-+        inductor_flag = 'inductor' if args.torch_compile else 'eager'
++        inductor_flag = 'inductor' if TORCH_COMPILE else 'eager'
 +        avg_time = latency_summary(gathered_latency, batch_size, MODEL_NAME, device_name, inductor_flag)
 +
 +        final_results = {
@@ -1042,7 +1043,6 @@ index fb6d043..27d389d 100644
 +    parser.add_argument('-lpm', '--log_primary_metric', action='store_true')
 +
 +    # torch.compile 相关
-+    parser.add_argument('--torch_compile', action='store_true', help='Enable torch.compile with inductor')
 +    parser.add_argument('--compile_mode', type=str, default='default', choices=['default', 'reduce-overhead', 'max-autotune'])
 +
 +    # 运行控制
@@ -1053,4 +1053,4 @@ index fb6d043..27d389d 100644
 -            print('PRIMARY METRIC: {}'.format([x for x in res[pm_index].values()][0]))
 +    args = parser.parse_args()
 +    main(args)
- 
+

@@ -421,7 +421,7 @@ index 4455beb..01d53c0 100644
 \ No newline at end of file
 diff --git a/wnd_trainer.py b/wnd_trainer.py
 new file mode 100644
-index 0000000..c551c28
+index 0000000..d08195f
 --- /dev/null
 +++ b/wnd_trainer.py
 @@ -0,0 +1,353 @@
@@ -464,6 +464,7 @@ index 0000000..c551c28
 +RANDOM_SEED = 42
 +DUMP_PROFILER = str_to_bool(os.getenv("MODEL_PROFILING_FLAG", "false"))
 +SET_HF32 = str_to_bool(os.getenv("MODEL_HF32_FLAG", "true"))
++TORCH_COMPILE = str_to_bool(os.getenv("MODEL_COMPILE_FLAG", "False"))
 +MODEL_NAME = "WideDeep"
 +
 +
@@ -665,7 +666,7 @@ index 0000000..c551c28
 +        model, objective="binary", metrics=[Accuracy, Precision, Recall],
 +        use_multi_gpu=True, seed=RANDOM_SEED, num_workers=0,
 +        device=f'{device_name}:{rank}',
-+        torch_compile=args.torch_compile, compile_mode=args.compile_mode,
++        torch_compile=TORCH_COMPILE, compile_mode=args.compile_mode,
 +        profiler=None,
 +    )
 +
@@ -715,7 +716,7 @@ index 0000000..c551c28
 +    gathered_latency = gather_latency_data(latency_list, world_size, device)
 +
 +    if rank == 0:
-+        inductor_flag = 'inductor' if args.torch_compile else 'eager'
++        inductor_flag = 'inductor' if TORCH_COMPILE else 'eager'
 +        avg_time = latency_summary(gathered_latency, args.batch_size, MODEL_NAME, device_name, inductor_flag)
 +
 +        final_results = {
@@ -769,7 +770,6 @@ index 0000000..c551c28
 +    parser.add_argument('--batch_size', type=int, default=256, help='Batch size')
 +
 +    # torch.compile 相关
-+    parser.add_argument('--torch_compile', action='store_true', help='Enable torch.compile with inductor')
 +    parser.add_argument('--compile_mode', type=str, default='default', choices=['default', 'reduce-overhead', 'max-autotune'])
 +
 +    # 运行控制
