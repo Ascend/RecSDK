@@ -22,13 +22,12 @@ import warnings
 from unittest.mock import patch, MagicMock
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from dynamic_emb.distributed.incremental_dump import (
-    is_valid_score_threshold,
+    _is_valid_score_threshold,
     set_score,
     get_score,
-
 )
 from dynamic_emb.distributed.batched_dynamicemb_table import BatchedDynamicEmbeddingTablesV2
 from dynamic_emb.distributed.dynamicemb_config import (
@@ -37,6 +36,7 @@ from dynamic_emb.distributed.dynamicemb_config import (
     DynamicEmbInitializerArgs,
     DynamicEmbInitializerMode,
 )
+
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import EmbOptimType
 
 _original_dynamic_emb_extensions = sys.modules.get("dynamic_emb_extensions")
@@ -52,41 +52,41 @@ def teardown_module():
 
 
 class TestIsValidScoreThreshold(unittest.TestCase):
-    """is_valid_score_threshold 的 UT"""
+    """_is_valid_score_threshold 的 UT"""
 
     def test_valid_dict(self):
         """合法 Dict[str, Dict[str, int]] 返回 True"""
-        self.assertTrue(is_valid_score_threshold({"model.emb": {"table1": 1}}))
-        self.assertTrue(is_valid_score_threshold({"c1": {"t1": 0, "t2": 2}}))
+        self.assertTrue(_is_valid_score_threshold({"model.emb": {"table1": 1}}))
+        self.assertTrue(_is_valid_score_threshold({"c1": {"t1": 0, "t2": 2}}))
 
     def test_not_dict_returns_false(self):
         """非 dict 返回 False"""
-        self.assertFalse(is_valid_score_threshold(None))
-        self.assertFalse(is_valid_score_threshold(1))
-        self.assertFalse(is_valid_score_threshold([]))
-        self.assertFalse(is_valid_score_threshold("path"))
+        self.assertFalse(_is_valid_score_threshold(None))
+        self.assertFalse(_is_valid_score_threshold(1))
+        self.assertFalse(_is_valid_score_threshold([]))
+        self.assertFalse(_is_valid_score_threshold("path"))
 
     def test_inner_value_not_dict_returns_false(self):
         """外层 value 不是 dict 返回 False"""
-        self.assertFalse(is_valid_score_threshold({"model.emb": [1, 2]}))
-        self.assertFalse(is_valid_score_threshold({"model.emb": 1}))
+        self.assertFalse(_is_valid_score_threshold({"model.emb": [1, 2]}))
+        self.assertFalse(_is_valid_score_threshold({"model.emb": 1}))
 
     def test_inner_key_not_str_returns_false(self):
         """内层 key 不是 str 返回 False"""
-        self.assertFalse(is_valid_score_threshold({"model.emb": {1: 1}}))
+        self.assertFalse(_is_valid_score_threshold({"model.emb": {1: 1}}))
 
     def test_inner_value_not_int_returns_false(self):
         """内层 value 不是 int 返回 False"""
-        self.assertFalse(is_valid_score_threshold({"model.emb": {"table1": "1"}}))
-        self.assertFalse(is_valid_score_threshold({"model.emb": {"table1": 1.0}}))
+        self.assertFalse(_is_valid_score_threshold({"model.emb": {"table1": "1"}}))
+        self.assertFalse(_is_valid_score_threshold({"model.emb": {"table1": 1.0}}))
 
     def test_outer_key_not_str_returns_false(self):
         """外层 key 不是 str 返回 False"""
-        self.assertFalse(is_valid_score_threshold({1: {"table1": 1}}))
+        self.assertFalse(_is_valid_score_threshold({1: {"table1": 1}}))
 
     def test_empty_dict_returns_true(self):
         """空 dict 视为合法"""
-        self.assertTrue(is_valid_score_threshold({}))
+        self.assertTrue(_is_valid_score_threshold({}))
 
 
 class TestSetScoreAndGetScore(unittest.TestCase):
@@ -167,11 +167,10 @@ class TestSetScoreAndGetScore(unittest.TestCase):
 
     def test_set_score_all_tables_int(self):
         """set_score(table_score=int) 对所有表设置同一分数"""
-        with patch(
-                "dynamic_emb.distributed.incremental_dump.find_sharded_modules"
-        ) as mock_find, patch(
-            "dynamic_emb.distributed.incremental_dump.get_dynamic_emb_module"
-        ) as mock_get:
+        with (
+            patch("dynamic_emb.distributed.incremental_dump.find_sharded_modules") as mock_find,
+            patch("dynamic_emb.distributed.incremental_dump.get_dynamic_emb_module") as mock_get,
+        ):
             mock_find.return_value = [("model.embedding", "embedding", self.model.embedding)]
             mock_get.return_value = [self.model.embedding]
 
@@ -183,11 +182,10 @@ class TestSetScoreAndGetScore(unittest.TestCase):
 
     def test_set_score_per_collection_dict(self):
         """set_score(table_score=Dict[collection_path, Dict[table_name, int]]) 按表设置"""
-        with patch(
-                "dynamic_emb.distributed.incremental_dump.find_sharded_modules"
-        ) as mock_find, patch(
-            "dynamic_emb.distributed.incremental_dump.get_dynamic_emb_module"
-        ) as mock_get:
+        with (
+            patch("dynamic_emb.distributed.incremental_dump.find_sharded_modules") as mock_find,
+            patch("dynamic_emb.distributed.incremental_dump.get_dynamic_emb_module") as mock_get,
+        ):
             mock_find.return_value = [("model.embedding", "embedding", self.model.embedding)]
             mock_get.return_value = [self.model.embedding]
 
@@ -208,10 +206,29 @@ class TestSetScoreAndGetScore(unittest.TestCase):
 
         with self.assertRaises(ValueError) as ctx:
             set_score(self.model, {"model.emb": {"t": "not_int"}})
-        self.assertIn("table_score should be int or Dict", str(ctx.exception))
+        self.assertIn("Invalid parameter type of para 'score of table_score'", str(ctx.exception))
+
+    def test_set_score_negative_int_raises(self):
+        """set_score(table_score=负数) 抛出 ValueError"""
+        with self.assertRaises(ValueError) as ctx:
+            set_score(self.model, -1)
+        self.assertIn("'table_score' is less than 0", str(ctx.exception))
+
+        with (
+            patch("dynamic_emb.distributed.incremental_dump.find_sharded_modules") as mock_find,
+            patch("dynamic_emb.distributed.incremental_dump.get_dynamic_emb_module") as mock_get,
+        ):
+            mock_find.return_value = [("model.embedding", "embedding", self.model.embedding)]
+            mock_get.return_value = [self.model.embedding]
+
+            with self.assertRaises(ValueError) as ctx:
+                set_score(self.model, {"model.embedding": {"test_table": -100}})
+            self.assertIn("'score of table_score' is less than 0", str(ctx.exception))
+            self.model.embedding.set_score.assert_not_called()
 
     def test_set_score_no_collections_warns_and_returns(self):
         """模型中没有 ShardedDynamicEmbeddingCollection 时告警并直接返回"""
+
         class EmptyModel(nn.Module):
             def __init__(self):
                 super().__init__()
@@ -219,8 +236,8 @@ class TestSetScoreAndGetScore(unittest.TestCase):
 
         empty_model = EmptyModel()
         with patch(
-                "dynamic_emb.distributed.incremental_dump.find_sharded_modules",
-                return_value=[],
+            "dynamic_emb.distributed.incremental_dump.find_sharded_modules",
+            return_value=[],
         ):
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
@@ -230,11 +247,12 @@ class TestSetScoreAndGetScore(unittest.TestCase):
 
     def test_set_score_no_dynamic_emb_warns_and_returns(self):
         """有 collection 但无 dynamic emb 模块时告警并返回"""
-        with patch(
-                "dynamic_emb.distributed.incremental_dump.find_sharded_modules"
-        ) as mock_find, patch(
-            "dynamic_emb.distributed.incremental_dump.get_dynamic_emb_module",
-            return_value=[],
+        with (
+            patch("dynamic_emb.distributed.incremental_dump.find_sharded_modules") as mock_find,
+            patch(
+                "dynamic_emb.distributed.incremental_dump.get_dynamic_emb_module",
+                return_value=[],
+            ),
         ):
             mock_find.return_value = [("model.embedding", "embedding", self.model.embedding)]
 
@@ -246,11 +264,10 @@ class TestSetScoreAndGetScore(unittest.TestCase):
 
     def test_set_score_unknown_collection_in_dict_warns(self):
         """table_score 中指定了模型中不存在的 collection 时告警"""
-        with patch(
-                "dynamic_emb.distributed.incremental_dump.find_sharded_modules"
-        ) as mock_find, patch(
-            "dynamic_emb.distributed.incremental_dump.get_dynamic_emb_module"
-        ) as mock_get:
+        with (
+            patch("dynamic_emb.distributed.incremental_dump.find_sharded_modules") as mock_find,
+            patch("dynamic_emb.distributed.incremental_dump.get_dynamic_emb_module") as mock_get,
+        ):
             mock_find.return_value = [("model.embedding", "embedding", self.model.embedding)]
             mock_get.return_value = [self.model.embedding]
 
@@ -269,11 +286,10 @@ class TestSetScoreAndGetScore(unittest.TestCase):
 
     def test_get_score_returns_dict_when_has_dynamic_emb(self):
         """有 dynamic emb 时 get_score 返回 collection_path -> table_name -> score"""
-        with patch(
-                "dynamic_emb.distributed.incremental_dump.find_sharded_modules"
-        ) as mock_find, patch(
-            "dynamic_emb.distributed.incremental_dump.get_dynamic_emb_module"
-        ) as mock_get:
+        with (
+            patch("dynamic_emb.distributed.incremental_dump.find_sharded_modules") as mock_find,
+            patch("dynamic_emb.distributed.incremental_dump.get_dynamic_emb_module") as mock_get,
+        ):
             mock_find.return_value = [("model.embedding", "embedding", self.model.embedding)]
             mock_get.return_value = [self.model.embedding]
             self.model.embedding.get_score.return_value = {"test_table": 5}
@@ -286,6 +302,7 @@ class TestSetScoreAndGetScore(unittest.TestCase):
 
     def test_get_score_no_collections_returns_none_and_warns(self):
         """无 collection 时 get_score 返回 None 并告警"""
+
         class EmptyModel(nn.Module):
             def __init__(self):
                 super().__init__()
@@ -293,8 +310,8 @@ class TestSetScoreAndGetScore(unittest.TestCase):
 
         empty_model = EmptyModel()
         with patch(
-                "dynamic_emb.distributed.incremental_dump.find_sharded_modules",
-                return_value=[],
+            "dynamic_emb.distributed.incremental_dump.find_sharded_modules",
+            return_value=[],
         ):
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")

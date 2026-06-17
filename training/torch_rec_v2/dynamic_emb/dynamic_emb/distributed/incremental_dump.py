@@ -27,15 +27,14 @@ import torch
 from torch import nn
 import torch.distributed as dist
 
-from dynamic_emb.distributed.dump_load import find_sharded_modules, get_dynamic_emb_module
 from rec_sdk_common.constants.constants import ValidatorParams
 from rec_sdk_common.validator.safe_checker import class_safe_check, int_safe_check
-
+from dynamic_emb.distributed.dump_load import find_sharded_modules, get_dynamic_emb_module
 
 logger = logging.getLogger(__name__)
 
 
-def is_valid_score_threshold(score_threshold: Any) -> bool:
+def _is_valid_score_threshold(score_threshold: Any) -> bool:
     """
     Check if score_threshold is instance of Dict[str, Dict[str, int]].
     """
@@ -57,6 +56,39 @@ def is_valid_score_threshold(score_threshold: Any) -> bool:
     return True
 
 
+def _validate_score_values(
+    score: Union[int, Dict[str, Dict[str, int]]],
+    param_name: str,
+) -> bool:
+    """Validate score/threshold values; return whether to apply to all tables."""
+    if isinstance(score, int):
+        int_safe_check(
+            param_name,
+            score,
+            min_value=0,
+            max_value=ValidatorParams.MAX_INT64.value,
+        )
+        return True
+
+    if isinstance(score, dict):
+        class_safe_check(param_name, score, (dict,))
+        for collection_path, table_scores in score.items():
+            class_safe_check(f"key of {param_name}", collection_path, (str,))
+            class_safe_check(f"value of {param_name}", table_scores, (dict,))
+            for table_name, value in table_scores.items():
+                class_safe_check(f"key of table {param_name}", table_name, (str,))
+                class_safe_check(f"score of {param_name}", value, (int,))
+                int_safe_check(
+                    f"score of {param_name}",
+                    value,
+                    min_value=0,
+                    max_value=ValidatorParams.MAX_INT64.value,
+                )
+        return False
+
+    raise ValueError(f"DynamicEmb Error: {param_name} should be int or Dict[str, Dict[str, int]]")
+
+
 def _validate_incremental_dump_inputs(
     model: nn.Module,
     score_threshold: Union[int, Dict[str, Dict[str, int]]],
@@ -65,33 +97,7 @@ def _validate_incremental_dump_inputs(
     """Validate incremental_dump inputs; return whether to dump all tables."""
     class_safe_check("model", model, (nn.Module,))
     class_safe_check("pg", pg, (dist.ProcessGroup, type(None)))
-
-    if isinstance(score_threshold, int):
-        int_safe_check(
-            "score_threshold",
-            score_threshold,
-            min_value=0,
-            max_value=ValidatorParams.MAX_INT64.value,
-        )
-        return True
-
-    if isinstance(score_threshold, dict):
-        class_safe_check("score_threshold", score_threshold, (dict,))
-        for collection_path, table_thresholds in score_threshold.items():
-            class_safe_check("key of score_threshold", collection_path, (str,))
-            class_safe_check("value of score_threshold", table_thresholds, (dict,))
-            for table_name, threshold in table_thresholds.items():
-                class_safe_check("key of table score_threshold", table_name, (str,))
-                class_safe_check("threshold of score_threshold", threshold, (int,))
-                int_safe_check(
-                    "threshold of score_threshold",
-                    threshold,
-                    min_value=0,
-                    max_value=ValidatorParams.MAX_INT64.value,
-                )
-        return False
-
-    raise ValueError("DynamicEmb Error: score_threshold should be int or Dict[str, Dict[str, int]]")
+    return _validate_score_values(score_threshold, "score_threshold")
 
 
 def set_score(model: torch.nn.Module, table_score: Union[int, Dict[str, Dict[str, int]]]) -> None:
@@ -107,23 +113,19 @@ def set_score(model: torch.nn.Module, table_score: Union[int, Dict[str, Dict[str
         table_score (Union[int, Dict[str, Dict[str, int]]]): Score setting
             strategy.
             - If `int`, apply the same score to all dynamic embedding tables.
+              Valid range: [0, ValidatorParams.MAX_INT64.value].
             - If `Dict[str, Dict[str, int]]`, set scores by collection path and
               table name. The outer key is collection path in model, and the
-              inner key is dynamic embedding table name.
+              inner key is dynamic embedding table name. Each int value must be
+              in valid range: [0, ValidatorParams.MAX_INT64.value].
 
     Returns:
         None
 
     Raises:
-        ValueError: If `table_score` is neither `int` nor
-            `Dict[str, Dict[str, int]]`.
+        ValueError: If `table_score` has an invalid type or value.
     """
-    if isinstance(table_score, int):
-        set_all_table = True
-    elif is_valid_score_threshold(table_score):
-        set_all_table = False
-    else:
-        raise ValueError("DynamicEmb Error: table_score should be int or Dict[str, Dict[str, int]]")
+    set_all_table = _validate_score_values(table_score, "table_score")
 
     collections_list: List[Tuple[str, str, nn.Module]] = find_sharded_modules(model, "")
     if len(collections_list) == 0:
