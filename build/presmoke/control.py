@@ -14,19 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import os.path
 import subprocess
 
 from pathlib import Path
 
-# fmt:off
-CHANGES = "changes.txt"
 ALLOWED_EXTENSIONS = {'.py', '.h', '.cpp', '.hpp', '.sh', '.cmake'}
-MODULE_MAPS = {
-    'common': 'hstu',
-    'cmake': 'hstu',
-    'hstu_dense_forward': 'hstu',
-    'hstu_dense_backward': 'hstu'
+PATH_PREFIX_MAPS = {
+    'cust_op/ascendc_op/ai_core_op/hstu_dense_forward': 'hstu',
+    'cust_op/ascendc_op/ai_core_op/hstu_dense_backward': 'hstu',
+    'cust_op/framework/torch_plugin/torch_library/hstu': 'hstu',
 }
 
 
@@ -34,38 +30,35 @@ def is_source_code_file(file: str) -> bool:
     return Path(file).suffix in ALLOWED_EXTENSIONS
 
 
-def read_changes(src: str) -> list[str]:
-    if not os.path.exists(src):
+def get_changed_files() -> list[str]:
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "origin/develop...HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    if result.returncode != 0:
         return []
-    with open(src, "r", encoding="utf-8") as f:
-        changes = map(lambda line: line.strip(), f)
-        changes = list(filter(is_source_code_file, changes))
-    return changes
+    changes = result.stdout.splitlines()
+    return [f.strip() for f in changes if is_source_code_file(f.strip())]
 
 
-def parse_modules(file: str) -> str:
-    if file.startswith("cust_op"):
-        if file.startswith("cust_op/ascendc_op/ai_core_op"):
-            relative_path = Path(file).relative_to("cust_op/ascendc_op/ai_core_op")
-            return relative_path.parts[0]
-        elif file.startswith("cust_op/framework/torch_plugin/torch_library"):
-            relative_path = Path(file).relative_to("cust_op/framework/torch_plugin/torch_library")
-            return relative_path.parts[0]
-    if file.startswith("training"):
-        return "torchrec"
+def parse_module(file: str) -> str:
+    for prefix, module in PATH_PREFIX_MAPS.items():
+        if file.startswith(prefix):
+            return module
     return ""
 
 
-def main(src):
+def main():
     modules = set()
-    changes = read_changes(src)
+    changes = get_changed_files()
     if not changes:
         return
     for file in changes:
-        module = parse_modules(file)
-        clean_module = MODULE_MAPS.get(module)
-        if clean_module:
-            modules.add(clean_module)
+        module = parse_module(file)
+        if module:
+            modules.add(module)
 
     for module in modules:
         path = Path(f"{module}/run.sh").absolute()
@@ -73,4 +66,4 @@ def main(src):
 
 
 if __name__ == '__main__':
-    main(CHANGES)
+    main()
