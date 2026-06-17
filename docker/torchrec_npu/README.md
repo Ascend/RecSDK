@@ -17,9 +17,7 @@
 docker/torchrec_npu/
 ├── Dockerfile
 ├── fbgemm_ascend-1.2.0*.whl
-├── fbgemm_ascend-1.5.0*.whl
-├── torch-npu-2.7.1*.whl
-└── torch-npu-2.10.0*.whl
+└── fbgemm_ascend-1.5.0*.whl
 ```
 
 ## 构建镜像
@@ -67,4 +65,10 @@ source /opt/buildtools/torchrec1.2.0/bin/activate
 
 # torchrec 1.5.0
 source /opt/buildtools/torchrec1.5.0/bin/activate
+```
+
+退出已激活的torchrec环境可以参考如下命令：
+
+```bash
+deactivate
 ```

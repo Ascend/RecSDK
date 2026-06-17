@@ -109,36 +109,44 @@ RUN pip3 install wheel setuptools
 # 10.根据系统架构准备对应fbgemm_ascend whl包并传入
 COPY ./fbgemm_ascend-1.2.0*.whl ./
 COPY ./fbgemm_ascend-1.5.0*.whl ./
-COPY ./torch-npu-2.7.1*.whl ./
-COPY ./torch-npu-2.10.0*.whl ./
 
 # 11.创建 torchrec1.2.0 虚拟环境
 RUN python3 -m venv /opt/buildtools/torchrec1.2.0 && \
     /opt/buildtools/torchrec1.2.0/bin/pip install -U pip && \
     /opt/buildtools/torchrec1.2.0/bin/pip install wheel setuptools && \
     /opt/buildtools/torchrec1.2.0/bin/pip install torch==2.7.1+cpu --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/buildtools/torchrec1.2.0/bin/pip install torch-npu-2.7.1*.whl && \
+    \
+    FBGEMM_ASCEND_WHL=$(ls fbgemm_ascend-1.2.0*.whl 2>/dev/null | head -n 1) && \
+    \
+    /opt/buildtools/torchrec1.2.0/bin/pip install torch-npu==2.7.1.post4 && \
     /opt/buildtools/torchrec1.2.0/bin/pip install fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/buildtools/torchrec1.2.0/bin/pip install fbgemm_ascend-1.2.0*.whl && \
+    /opt/buildtools/torchrec1.2.0/bin/pip install "$FBGEMM_ASCEND_WHL" && \
+    \
     /opt/buildtools/torchrec1.2.0/bin/pip install torchrec==1.2.0 && \
     /opt/buildtools/torchrec1.2.0/bin/pip install pytest==9.0.1 pytest-cov==7.0.0 pytest-html==4.1.1 pytest-metadata==3.1.1 && \
     /opt/buildtools/torchrec1.2.0/bin/pip install click hypothesis pyyaml && \
     rm -rf /root/.cache/pip
 
-# 12.创建 torchrec1.5.0 虚拟环境
+# 12. 创建 torchrec1.5.0 虚拟环境
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
-        wget "https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.5.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"; \
+        wget "https://download-r2.pytorch.org/whl/cpu/fbgemm_gpu-1.5.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" -O fbgemm_gpu-1.5.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl || exit 1; \
     elif [ "$ARCH" = "aarch64" ]; then \
-        wget "https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.5.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl"; \
+        wget "https://download-r2.pytorch.org/whl/cpu/fbgemm_gpu-1.5.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl" -O fbgemm_gpu-1.5.0+cpu-cp311-cp311-manylinux_2_28_aarch64.whl || exit 1; \
+    else \
+        echo "Error: Unsupported architecture $ARCH"; exit 1; \
     fi && \
     python3 -m venv /opt/buildtools/torchrec1.5.0 && \
     /opt/buildtools/torchrec1.5.0/bin/pip install -U pip && \
     /opt/buildtools/torchrec1.5.0/bin/pip install wheel setuptools && \
     /opt/buildtools/torchrec1.5.0/bin/pip install torch==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/buildtools/torchrec1.5.0/bin/pip install torch-npu-2.10.0*.whl && \
+    \
+    FBGEMM_ASCEND_WHL=$(ls fbgemm_ascend-1.5.0*.whl 2>/dev/null | head -n 1) && \
+    \
+    /opt/buildtools/torchrec1.5.0/bin/pip install torch-npu==2.10.0 && \
     /opt/buildtools/torchrec1.5.0/bin/pip install fbgemm_gpu-1.5.0*.whl && \
-    /opt/buildtools/torchrec1.5.0/bin/pip install fbgemm_ascend-1.5.0*.whl && \
+    /opt/buildtools/torchrec1.5.0/bin/pip install "$FBGEMM_ASCEND_WHL" && \
+    \
     /opt/buildtools/torchrec1.5.0/bin/pip install torchrec==1.5.0 && \
     /opt/buildtools/torchrec1.5.0/bin/pip install pytest==9.0.1 pytest-cov==7.0.0 pytest-html==4.1.1 pytest-metadata==3.1.1 && \
     /opt/buildtools/torchrec1.5.0/bin/pip install click hypothesis pyyaml && \
