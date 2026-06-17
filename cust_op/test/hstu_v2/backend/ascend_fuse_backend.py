@@ -31,8 +31,40 @@ class Kernel:
         self.seq_offset_q = seq_offset_q
         self.seq_offset_k = seq_offset_k
 
-    def forward(self):
-        pass
+    def forward(self, q, k, v, rab, mask):
+        q_npu = q.to("npu")
+        k_npu = k.to("npu")
+        v_npu = v.to("npu")
+        rab_npu = rab.to("npu") if isinstance(rab, torch.Tensor) else None
+
+        seq_offset_q = torch.Tensor(self.seq_offset_q).to("npu").to(torch.int32)
+        seq_offset_k = torch.Tensor(self.seq_offset_k).to("npu").to(torch.int32)
+
+        num_context = None
+        num_target = None
+        target_group_size = None
+        mask_npu = None
+        mask_type = 0
+
+        output = torch.ops.mxrec.hstu_forward_v2(
+            q_npu,
+            k_npu,
+            v_npu,
+            mask_npu,
+            rab_npu,
+            mask_type,
+            self.max_seqlen_q,
+            self.max_seqlen_k,
+            self.scale,
+            seq_offset_q,
+            seq_offset_k,
+            num_context,
+            num_target,
+            target_group_size,
+            self.alpha,
+        )
+        torch.npu.synchronize()
+        return output.cpu()
 
     def backward(self, grad, q, k, v, rab, mask, window_size, num_context, num_target, target_group_size):
         grad_npu = grad.to("npu")
