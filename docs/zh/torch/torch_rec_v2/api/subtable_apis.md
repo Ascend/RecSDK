@@ -120,6 +120,48 @@ eb_sharder = DynamicEmbeddingCollectionSharder(
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
 
+## DynamicEmbeddingBagCollectionSharder <a name="ZH-CN_TOPIC_0000002461958570"></a>
+
+**功能描述<a name="section634582619156"></a>**
+
+稀疏表分表器，继承自 TorchRec 的 `EmbeddingBagCollectionSharder`，其使用方法与原生类完全相同。此 API 用于对 `EmbeddingBagCollection`（pooled embedding）进行分片，并通过 `ShardedDynamicEmbeddingBagCollection` 接入动态嵌入表，在 row-wise 分片场景下使用 `RwPooledDynamicEmbeddingSharding` 完成分布式 pooled lookup。
+
+**函数原型<a name="section1483104721912"></a>**
+
+```python
+class DynamicEmbeddingBagCollectionSharder(EmbeddingBagCollectionSharder):
+    def __init__(**kwargs):
+    def shard(
+        self,
+        module: EmbeddingBagCollection,
+        params: Dict[str, ParameterSharding],
+        env: ShardingEnv,
+        device: Optional[torch.device] = None,
+        module_fqn: Optional[str] = None,
+    ) -> ShardedDynamicEmbeddingBagCollection:
+```
+
+**参数说明<a name="section888634319219"></a>**
+
+|参数名|类型|可选/必选|说明|
+|--|--|--|--|
+|fused_params|Optional[Dict[str, Any]]|可选|用于配置嵌入操作中融合的参数，如优化器状态、学习率等。默认为 None。|
+|qcomm_codecs_registry|Optional[Dict[str, QuantizedCommCodecs]]|可选|用于注册量化通信编码器，量化通信可以减少通信量。默认为 None。|
+
+**使用示例<a name="section193151694206"></a>**
+
+```python
+from dynamic_emb.distributed.embeddingbag import DynamicEmbeddingBagCollectionSharder
+
+eb_sharder = DynamicEmbeddingBagCollectionSharder(
+    fused_params=fused_params,
+)
+```
+
+**参考资源<a name="section426664933313"></a>**
+
+接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
+
 ## DynamicEmbParameterConstraints <a name="ZH-CN_TOPIC_0000002336148869"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -358,7 +400,7 @@ class EmbOptimType(enum.Enum):
 **使用示例<a name="section1045492782314"></a>**
 
 ```python
-from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import 
+from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import
 table_options = [
     DynamicEmbTableOptions(
         index_type=torch.int64,
@@ -376,7 +418,7 @@ table_options = [
 
 **功能描述<a name="section634582619155"></a>**
 
-继承自TorchRec的EmbeddingEnumerator，使用方法与其完全相同。该类别在为分片计划执行枚举时会区分常规/动态嵌入表。  
+继承自TorchRec的EmbeddingEnumerator，使用方法与其完全相同。该类别在为分片计划执行枚举时会区分常规/动态嵌入表。
 
 **函数原型<a name="section1483104721911"></a>**
 
