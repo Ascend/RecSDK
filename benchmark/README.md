@@ -188,6 +188,8 @@ MMOE模型运行前需访问 <https://tianchi.aliyun.com/dataset/74690> 下载al
            |-- test.txt
 ```
 
+GPU运行前，需要将DLRM_META.json的`--use-npu`选项替换为`--use-gpu`选项
+
 ## HSTU\_META 模型
 
 ### 运行依赖
@@ -286,7 +288,7 @@ git checkout core_r0.14.0
 
 [GRU4Rec](https://github.com/hidasib/GRU4Rec_PyTorch_Official)数据集自动下载解析，如下载失败可以参考开源代码下载RetailRocket数据集，然后在模型目录下使用`python retailrocket_preproc.py -p ./data`命令预处理
 
-### RANKMIXER 模型
+## RANKMIXER 模型
 
 ### 准备数据集
 
