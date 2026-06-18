@@ -1,9 +1,9 @@
 diff --git a/main.py b/main.py
 new file mode 100644
-index 0000000..748f525
+index 0000000..4486b1e
 --- /dev/null
 +++ b/main.py
-@@ -0,0 +1,421 @@
+@@ -0,0 +1,437 @@
 +import os
 +import time
 +import random
@@ -38,6 +38,7 @@ index 0000000..748f525
 +RANDOM_SEED = 42
 +DUMP_PROFILER = os.getenv("MODEL_PROFILING_FLAG", "false").upper() == "TRUE"
 +SET_HF32 = os.getenv("MODEL_HF32_FLAG", "true").upper() == "TRUE"
++ENABLE_COMPILE = os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE'
 +
 +
 +def setup(rank: int, world_size: int, master_port: int):
@@ -261,6 +262,11 @@ index 0000000..748f525
 +        logging.info(f"[{rank}]: Use torch.nn.parallel.DistributedDataParallel")
 +    model_or_module = model.module if world_size > 1 else model
 +
++    if ENABLE_COMPILE:
++        model = torch.compile(model, backend="inductor", mode=args.compile_mode, dynamic=args.compile_dynamic)
++        logging.info(f"Compiling model with torch.compile (backend=inductor, mode={args.compile_mode}, "
++                     f"dynamic={args.compile_dynamic})")
++
 +    # Set loss function and optimizer
 +    optimizer = torch.optim.Adam(model_or_module.parameters(), args.lr, (args.beta1, args.beta2))
 +
@@ -288,6 +294,7 @@ index 0000000..748f525
 +                    latency_list.append(time_diff)
 +                logging.info(
 +                    f"[{rank}]: epoch: {epoch}, step: [{i} / {len(loader_train)}], loss = {loss}, accuracy = {accuracy}, auc = {auc}, time = {time_diff}")
++                train_loss = loss
 +                start_time = time.time()
 +
 +            if iter % args.test_iter == 0:
@@ -318,15 +325,15 @@ index 0000000..748f525
 +    gathered_latency = gather_latency_data(latency_list, world_size, device)
 +
 +    if rank == 0:
-+        inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
++        inductor_flag = 'inductor' if ENABLE_COMPILE else 'eager'
 +        avg_time = latency_summary(gathered_latency, args.batch_size, model_name, device_name, inductor_flag)  # 保存e2e耗时
 +
 +        final_results = {
 +            'dataset_name': "Amazon-Dataset",
 +            "batch_size": args.batch_size,
 +            'epoch': args.epochs - 1,
-+            'step': i,
-+            'final_loss': loss.cpu().item(),  # 每1000步切evel，8480步的loss是训练的loss
++            'step': i // 10 * 10,
++            'final_loss': train_loss.cpu().item(),  # 每1000步切evel，8480步的loss是训练的loss
 +            'ms/step': avg_time * 100,
 +            'metrics': {
 +                'accuracy': float(accuracy),
@@ -423,5 +430,14 @@ index 0000000..748f525
 +                        type=int,
 +                        default=12345,
 +                        help="port number monitored by the active node")
++    parser.add_argument("--compile_mode",
++                        type=str,
++                        default='default',
++                        choices=['default', 'reduce-overhead', 'max-autotune'],
++                        help="torch.compile parameter")
++    parser.add_argument("--compile_dynamic",
++                        action='store_true',
++                        default=False,
++                        help="torch.compile parameter")
 +    args = parser.parse_args()
 +    main(args)

@@ -1,5 +1,5 @@
 diff --git a/configs/ml-1m/sasrec-sampled-softmax-n128-final.gin b/configs/ml-1m/sasrec-sampled-softmax-n128-final.gin
-index ead7bb2..2e3c485 100644
+index ead7bb2..6266efa 100644
 --- a/configs/ml-1m/sasrec-sampled-softmax-n128-final.gin
 +++ b/configs/ml-1m/sasrec-sampled-softmax-n128-final.gin
 @@ -12,14 +12,14 @@ train_fn.max_sequence_length = 200
@@ -20,17 +20,19 @@ index ead7bb2..2e3c485 100644
  sasrec_encoder.ffn_hidden_dim = 50
  sasrec_encoder.ffn_activation_fn = "relu"
  
-@@ -38,7 +38,7 @@ train_fn.temperature = 0.05
+@@ -38,7 +38,9 @@ train_fn.temperature = 0.05
  train_fn.item_l2_norm = True
  train_fn.l2_norm_eps = 1e-6
  
 -train_fn.enable_tf32 = True
 +# train_fn.enable_tf32 = True
++train_fn.compile_mode = "default"
++train_fn.compile_dynamic = False
  
  create_data_loader.prefetch_factor = 128
  create_data_loader.num_workers = 8
 diff --git a/configs/ml-20m/sasrec-sampled-softmax-n128-final.gin b/configs/ml-20m/sasrec-sampled-softmax-n128-final.gin
-index 3c666f8..abb92fe 100644
+index 3c666f8..26d8e6f 100644
 --- a/configs/ml-20m/sasrec-sampled-softmax-n128-final.gin
 +++ b/configs/ml-20m/sasrec-sampled-softmax-n128-final.gin
 @@ -12,14 +12,14 @@ train_fn.max_sequence_length = 200
@@ -51,12 +53,14 @@ index 3c666f8..abb92fe 100644
  sasrec_encoder.ffn_hidden_dim = 256
  sasrec_encoder.ffn_activation_fn = "relu"
  
-@@ -38,7 +38,7 @@ train_fn.temperature = 0.05
+@@ -38,7 +38,9 @@ train_fn.temperature = 0.05
  train_fn.item_l2_norm = True
  train_fn.l2_norm_eps = 1e-6
  
 -train_fn.enable_tf32 = True
 +# train_fn.enable_tf32 = True
++train_fn.compile_mode = "default"
++train_fn.compile_dynamic = False
  
  create_data_loader.prefetch_factor = 128
  create_data_loader.num_workers = 8
@@ -250,6 +254,31 @@ index 6e85a62..50e792e 100644
          for name, params in self.named_parameters():
              if "_item_emb" in name:
                  print(
+diff --git a/generative_recommenders/research/modeling/sequential/features.py b/generative_recommenders/research/modeling/sequential/features.py
+index 70bf80c..2a0c1af 100644
+--- a/generative_recommenders/research/modeling/sequential/features.py
++++ b/generative_recommenders/research/modeling/sequential/features.py
+@@ -36,13 +36,13 @@ def movielens_seq_features_from_row(
+     device: int,
+     max_output_length: int,
+ ) -> Tuple[SequentialFeatures, torch.Tensor, torch.Tensor]:
+-    historical_lengths = row["history_lengths"].to(device)  # [B]
+-    historical_ids = row["historical_ids"].to(device)  # [B, N]
+-    historical_ratings = row["historical_ratings"].to(device)
+-    historical_timestamps = row["historical_timestamps"].to(device)
+-    target_ids = row["target_ids"].to(device).unsqueeze(1)  # [B, 1]
+-    target_ratings = row["target_ratings"].to(device).unsqueeze(1)
+-    target_timestamps = row["target_timestamps"].to(device).unsqueeze(1)
++    historical_lengths = row["history_lengths"].to(device, non_blocking=True)  # [B]
++    historical_ids = row["historical_ids"].to(device, non_blocking=True)  # [B, N]
++    historical_ratings = row["historical_ratings"].to(device, non_blocking=True)
++    historical_timestamps = row["historical_timestamps"].to(device, non_blocking=True)
++    target_ids = row["target_ids"].to(device, non_blocking=True).unsqueeze(1)  # [B, 1]
++    target_ratings = row["target_ratings"].to(device, non_blocking=True).unsqueeze(1)
++    target_timestamps = row["target_timestamps"].to(device, non_blocking=True).unsqueeze(1)
+     if max_output_length > 0:
+         B = historical_lengths.size(0)
+         historical_ids = torch.cat(
 diff --git a/generative_recommenders/research/modeling/sequential/utils.py b/generative_recommenders/research/modeling/sequential/utils.py
 index 60dfb8e..8c4bfca 100644
 --- a/generative_recommenders/research/modeling/sequential/utils.py
@@ -265,7 +294,7 @@ index 60dfb8e..8c4bfca 100644
  
  def batch_gather_embeddings(
 diff --git a/generative_recommenders/research/trainer/data_loader.py b/generative_recommenders/research/trainer/data_loader.py
-index 390b04b..31ffd1d 100644
+index 390b04b..8faa588 100644
 --- a/generative_recommenders/research/trainer/data_loader.py
 +++ b/generative_recommenders/research/trainer/data_loader.py
 @@ -15,7 +15,7 @@
@@ -307,17 +336,18 @@ index 390b04b..31ffd1d 100644
      data_loader = torch.utils.data.DataLoader(
          dataset,
          batch_size=batch_size,
-@@ -53,5 +60,8 @@ def create_data_loader(
+@@ -53,5 +60,9 @@ def create_data_loader(
          num_workers=num_workers or 0,
          sampler=sampler,
          prefetch_factor=prefetch_factor,
 +        worker_init_fn=worker_init_fn,
 +        generator=generator,
 +        drop_last=drop_last,
++        pin_memory=True,
      )
      return sampler, data_loader
 diff --git a/generative_recommenders/research/trainer/train.py b/generative_recommenders/research/trainer/train.py
-index 6d2da5b..25b1b44 100644
+index 6d2da5b..8bbba6c 100644
 --- a/generative_recommenders/research/trainer/train.py
 +++ b/generative_recommenders/research/trainer/train.py
 @@ -18,8 +18,11 @@ import logging
@@ -332,7 +362,7 @@ index 6d2da5b..25b1b44 100644
  
  import gin
  import torch
-@@ -64,19 +67,164 @@ from generative_recommenders.research.trainer.data_loader import create_data_loa
+@@ -64,19 +67,165 @@ from generative_recommenders.research.trainer.data_loader import create_data_loa
  from torch.nn.parallel import DistributedDataParallel as DDP
  from torch.utils.tensorboard import SummaryWriter
  
@@ -404,23 +434,24 @@ index 6d2da5b..25b1b44 100644
 +            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
 +            mstx=False,
 +            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,  # 关闭AI Core的性能指标采集
-+            l2_cache=False,
++            l2_cache=True,
 +            op_attr=False,
 +            data_simplification=False,
 +            record_op_args=False,
-+            gc_detect_threshold=None
++            gc_detect_threshold=None,
++            sys_interconnection=True,   # 集合通信带宽数据（HCCS）、PCIe数据采集、片间传输带宽信息采集
 +        )
 +        prof = torch_npu.profiler.profile(
 +            activities=[
 +                torch_npu.profiler.ProfilerActivity.CPU,
 +                torch_npu.profiler.ProfilerActivity.NPU
 +            ],
-+            schedule=torch_npu.profiler.schedule(wait=2, active=1, warmup=2, repeat=1, skip_first=0),
++            schedule=torch_npu.profiler.schedule(wait=195, active=2, warmup=10, repeat=1, skip_first=0),
 +            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profiler_dir),
 +            record_shapes=True,  # 算子的InputShapes和InputTypes
-+            profile_memory=False,  # 算子内存占用情况
++            profile_memory=True,  # 算子内存占用情况
 +            with_stack=True,  # 算子调用栈信息
-+            with_modules=True,  # modules层的Python调用栈
++            with_modules=False,  # modules层的Python调用栈
 +            with_flops=False,
 +            experimental_config=experimental_config
 +        )
@@ -430,12 +461,12 @@ index 6d2da5b..25b1b44 100644
 +                torch.profiler.ProfilerActivity.CPU,
 +                torch.profiler.ProfilerActivity.CUDA
 +            ],
-+            schedule=torch.profiler.schedule(wait=2, active=1, warmup=2, repeat=1, skip_first=0),
++            schedule=torch.profiler.schedule(wait=195, active=2, warmup=10, repeat=1, skip_first=0),
 +            on_trace_ready=torch.profiler.tensorboard_trace_handler(profiler_dir),
 +            record_shapes=True,
-+            profile_memory=False,
++            profile_memory=True,
 +            with_stack=True,
-+            with_modules=True,
++            with_modules=False,
 +            with_flops=False,
 +        )
 +
@@ -498,7 +529,12 @@ index 6d2da5b..25b1b44 100644
  @gin.configurable
  def get_weighted_loss(
      main_loss: torch.Tensor,
-@@ -130,11 +278,12 @@ def train_fn(
+@@ -127,14 +276,18 @@ def train_fn(
+     gr_output_length: int = 10,
+     l2_norm_eps: float = 1e-6,
+     enable_tf32: bool = False,
++    compile_mode: str = "default",
++    compile_dynamic: bool = False,
      random_seed: int = 42,
  ) -> None:
      # to enable more deterministic results.
@@ -508,6 +544,7 @@ index 6d2da5b..25b1b44 100644
 -    logging.info(f"cuda.matmul.allow_tf32: {enable_tf32}")
 -    logging.info(f"cudnn.allow_tf32: {enable_tf32}")
 +    set_seed(random_seed)
++    enable_compile = os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE'
 +    enable_tf32 = os.getenv("MODEL_HF32_FLAG", "true").upper() == "TRUE"
 +    logging.info(f"enable_tf32: {enable_tf32}")
 +    set_tf32(enable_tf32)
@@ -516,7 +553,7 @@ index 6d2da5b..25b1b44 100644
      logging.info(f"Training model on rank {rank}.")
      setup(rank, world_size, master_port)
  
-@@ -152,6 +301,8 @@ def train_fn(
+@@ -152,6 +305,8 @@ def train_fn(
          rank=rank,
          shuffle=True,
          drop_last=world_size > 1,
@@ -525,7 +562,7 @@ index 6d2da5b..25b1b44 100644
      )
      eval_data_sampler, eval_data_loader = create_data_loader(
          dataset.eval_dataset,
-@@ -160,6 +311,8 @@ def train_fn(
+@@ -160,6 +315,8 @@ def train_fn(
          rank=rank,
          shuffle=True,  # needed for partial eval
          drop_last=world_size > 1,
@@ -534,7 +571,7 @@ index 6d2da5b..25b1b44 100644
      )
  
      model_debug_str = main_module
-@@ -167,6 +320,7 @@ def train_fn(
+@@ -167,6 +324,7 @@ def train_fn(
          embedding_module: EmbeddingModule = LocalEmbeddingModule(
              num_items=dataset.max_item_id,
              item_embedding_dim=item_embedding_dim,
@@ -542,7 +579,7 @@ index 6d2da5b..25b1b44 100644
          )
      else:
          raise ValueError(f"Unknown embedding_module_type {embedding_module_type}")
-@@ -255,17 +409,21 @@ def train_fn(
+@@ -255,17 +413,25 @@ def train_fn(
      sampling_debug_str = negatives_sampler.debug_str()
  
      # Creates model and moves it to GPU with id rank
@@ -556,18 +593,23 @@ index 6d2da5b..25b1b44 100644
      ar_loss = ar_loss.to(device)
      negatives_sampler = negatives_sampler.to(device)
 -    model = DDP(model, device_ids=[rank], broadcast_buffers=False)
+ 
+-    # TODO: wrap in create_optimizer.
 +    if world_size > 1:
 +        model = DDP(model, device_ids=[rank], broadcast_buffers=False)
 +    model_or_module = model.module if world_size > 1 else model
- 
-     # TODO: wrap in create_optimizer.
++
++    if enable_compile:
++        model = torch.compile(model, backend="inductor", mode=compile_mode, dynamic=compile_dynamic)
++        logging.info(f"Compiling model with torch.compile (backend=inductor, mode={compile_mode}, dynamic={compile_dynamic})")
++
      opt = torch.optim.AdamW(
 -        model.parameters(),
 +        model_or_module.parameters(),
          lr=learning_rate,
          betas=(0.9, 0.98),
          weight_decay=weight_decay,
-@@ -286,6 +444,10 @@ def train_fn(
+@@ -286,6 +452,10 @@ def train_fn(
      os.makedirs(f"./exps/{model_subfolder}", exist_ok=True)
      os.makedirs(f"./ckpts/{model_subfolder}", exist_ok=True)
      log_dir = f"./exps/{model_desc}"
@@ -578,7 +620,7 @@ index 6d2da5b..25b1b44 100644
      if rank == 0:
          writer = SummaryWriter(log_dir=log_dir)
          logging.info(f"Rank {rank}: writing logs to {log_dir}")
-@@ -298,12 +460,15 @@ def train_fn(
+@@ -298,12 +468,15 @@ def train_fn(
  
      batch_id = 0
      epoch = 0
@@ -594,7 +636,7 @@ index 6d2da5b..25b1b44 100644
          for row in iter(train_data_loader):
              seq_features, target_ids, target_ratings = movielens_seq_features_from_row(
                  row,
-@@ -315,12 +480,12 @@ def train_fn(
+@@ -315,12 +488,12 @@ def train_fn(
                  model.eval()
  
                  eval_state = get_eval_state(
@@ -609,7 +651,7 @@ index 6d2da5b..25b1b44 100644
                          item_embeddings=item_embeddings,
                          item_ids=item_ids,
                      ),
-@@ -329,7 +494,7 @@ def train_fn(
+@@ -329,7 +502,7 @@ def train_fn(
                  )
                  eval_dict = eval_metrics_v2_from_tensors(
                      eval_state,
@@ -618,7 +660,7 @@ index 6d2da5b..25b1b44 100644
                      seq_features,
                      target_ids=target_ids,
                      target_ratings=target_ratings,
-@@ -357,7 +522,7 @@ def train_fn(
+@@ -357,7 +530,7 @@ def train_fn(
              )
  
              opt.zero_grad()
@@ -627,7 +669,7 @@ index 6d2da5b..25b1b44 100644
              seq_embeddings = model(
                  past_lengths=seq_features.past_lengths,
                  past_ids=seq_features.past_ids,
-@@ -373,12 +538,12 @@ def train_fn(
+@@ -373,12 +546,12 @@ def train_fn(
                  negatives_sampler.process_batch(
                      ids=in_batch_ids,
                      presences=(in_batch_ids != 0),
@@ -642,7 +684,7 @@ index 6d2da5b..25b1b44 100644
  
              ar_mask = supervision_ids[:, 1:] != 0
              loss, aux_losses = ar_loss(
-@@ -394,6 +559,18 @@ def train_fn(
+@@ -394,6 +567,18 @@ def train_fn(
              main_loss = loss.detach().clone()
              loss = get_weighted_loss(loss, aux_losses, weights=loss_weights or {})
  
@@ -661,7 +703,7 @@ index 6d2da5b..25b1b44 100644
              if rank == 0:
                  assert writer is not None
                  writer.add_scalar("losses/ar_loss", loss, batch_id)
-@@ -423,7 +600,9 @@ def train_fn(
+@@ -423,7 +608,9 @@ def train_fn(
  
              opt.step()
  
@@ -671,7 +713,7 @@ index 6d2da5b..25b1b44 100644
  
          def is_full_eval(epoch: int) -> bool:
              return (epoch % full_eval_every_n) == 0
-@@ -433,12 +612,12 @@ def train_fn(
+@@ -433,12 +620,12 @@ def train_fn(
          eval_start_time = time.time()
          model.eval()
          eval_state = get_eval_state(
@@ -686,7 +728,7 @@ index 6d2da5b..25b1b44 100644
                  item_embeddings=item_embeddings,
                  item_ids=item_ids,
              ),
-@@ -451,7 +630,7 @@ def train_fn(
+@@ -451,7 +638,7 @@ def train_fn(
              )
              eval_dict = eval_metrics_v2_from_tensors(
                  eval_state,
@@ -695,7 +737,7 @@ index 6d2da5b..25b1b44 100644
                  seq_features,
                  target_ids=target_ids,
                  target_ratings=target_ratings,
-@@ -523,10 +702,135 @@ def train_fn(
+@@ -523,10 +710,135 @@ def train_fn(
          torch.save(
              {
                  "epoch": epoch,
@@ -715,7 +757,7 @@ index 6d2da5b..25b1b44 100644
 +    torch_npu.npu.synchronize() if NPU_ENABLE else torch.cuda.synchronize()
 +
 +    if rank == 0:
-+        inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
++        inductor_flag = 'inductor' if enable_compile else 'eager'
 +        avg_time = latency_summary(gathered_latency, local_batch_size, main_module, device_name, inductor_flag)
 +
 +        final_results = {
@@ -833,21 +875,30 @@ index 6d2da5b..25b1b44 100644
 +
      cleanup()
 diff --git a/main.py b/main.py
-index 445f258..88c806a 100644
+index 445f258..38b20d3 100644
 --- a/main.py
 +++ b/main.py
-@@ -21,9 +21,39 @@ Main entry point for model training. Please refer to README.md for usage instruc
+@@ -21,9 +21,48 @@ Main entry point for model training. Please refer to README.md for usage instruc
  import logging
  import os
  from typing import List, Optional
 +import sys
++import torch._dynamo as dynamo
  
 +os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"   # 禁用oneDNN优化，优化默认启用
  os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"  # Hide excessive tensorflow debug messages
 -import sys
-+os.environ["TORCHDYNAMO_DISABLE"] = "1"   # 禁用torchdynamo(图捕获)
-+os.environ["TORCH_COMPILE_DISABLE"] = "1"   # 禁用torch.compile
-+os.environ["TORCHINDUCTOR_COMPILE_THREADS"] = "0"   # 禁用Inductor多线程编译, GPU上运行模型时, 触发多线程编译会导致服务器卡死
++dynamo.config.optimize_ddp = False  # 关闭 DDP 图优化
++
++if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE':
++    os.environ["TORCHDYNAMO_DISABLE"] = "0"
++    os.environ["TORCH_COMPILE_DISABLE"] = "0"
++    os.environ["TORCHINDUCTOR_COMPILE_THREADS"] = "1"
++else:
++    os.environ["TORCHDYNAMO_DISABLE"] = "1"   # 禁用torchdynamo(图捕获)
++    os.environ["TORCH_COMPILE_DISABLE"] = "1"   # 禁用torch.compile
++    os.environ["TORCHINDUCTOR_COMPILE_THREADS"] = "0"   # 禁用Inductor多线程编译, GPU上运行模型时, 触发多线程编译会导致服务器卡死
++
 +
 +class LogFilter(logging.Filter):
 +    def filter(self, record):
@@ -877,7 +928,7 @@ index 445f258..88c806a 100644
  
  import fbgemm_gpu  # noqa: F401, E402
  import gin
-@@ -32,7 +62,8 @@ import torch.multiprocessing as mp
+@@ -32,7 +71,8 @@ import torch.multiprocessing as mp
  from absl import app, flags
  from generative_recommenders.research.trainer.train import train_fn
  
@@ -887,7 +938,7 @@ index 445f258..88c806a 100644
  
  
  def delete_flags(FLAGS, keys_to_delete: List[str]) -> None:  # pyre-ignore [2]
-@@ -45,6 +76,7 @@ def delete_flags(FLAGS, keys_to_delete: List[str]) -> None:  # pyre-ignore [2]
+@@ -45,6 +85,7 @@ def delete_flags(FLAGS, keys_to_delete: List[str]) -> None:  # pyre-ignore [2]
  delete_flags(flags.FLAGS, ["gin_config_file", "master_port"])
  flags.DEFINE_string("gin_config_file", None, "Path to the config file.")
  flags.DEFINE_integer("master_port", 12355, "Master port.")
@@ -895,7 +946,7 @@ index 445f258..88c806a 100644
  FLAGS = flags.FLAGS  # pyre-ignore [5]
  
  
-@@ -63,7 +95,18 @@ def mp_train_fn(
+@@ -63,7 +104,18 @@ def mp_train_fn(
  
  
  def _main(argv) -> None:  # pyre-ignore [2]
