@@ -49,7 +49,7 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 | 依赖名称/操作            | 推荐版本        | 获取方式/安装说明                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CANN软件包            | CANN 9.0.0  | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。                                                                                                                                                                                                                                                                                      |
-| PyTorch和torch\_npu | 2.6.0/2.7.1 | 容器内依赖，若容器内未安装，请在容器内安装。根据[配套版本](#section146113514599)，请参见[安装PyTorch和PyTorch昇腾适配插件](https://gitcode.com/Ascend/pytorch/blob/v2.7.1/docs/zh/installation_guide/installation_via_binary_package.md)章节分别安装PyTorch框架和torch\_npu插件安装。请根据PyTorch版本、Python版本、设备架构选择对应的安装指令，Python版本建议使用Python 3.11。如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
+| PyTorch和torch\_npu | 2.6.0/2.7.1 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.6.0版本安装：请参见[使用二进制文件进行安装](https://gitcode.com/Ascend/pytorch/blob/v7.3.1-pytorch2.6.0/README.zh.md#%E4%BD%BF%E7%94%A8%E4%BA%8C%E8%BF%9B%E5%88%B6%E6%96%87%E4%BB%B6%E8%BF%9B%E8%A1%8C%E5%AE%89%E8%A3%85)章节安装PyTorch、torch_npu依赖、torch_npu。<br>2.7.1版本安装：请参见[安装PyTorch和PyTorch昇腾适配插件](https://gitcode.com/Ascend/pytorch/blob/v2.7.1/docs/zh/installation_guide/installation_via_binary_package.md)章节分别安装PyTorch框架和torch\_npu插件安装。请根据PyTorch版本、Python版本、设备架构选择对应的安装指令，Python版本建议使用Python 3.11。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
 
 #### 容器内训练加速库依赖<a name="section146113514600"></a>
 
@@ -148,6 +148,7 @@ Rec SDK Torch软件包如下表：
    >
    > - -m 300g 表示设置容器内可以使用的内存大小上限为300G，可根据实际情况进行配置。
    > - -e ASCEND\_VISIBLE\_DEVICES=0-7 表示将服务器上编号为device0\~device7的NPU设备挂载到容器内，可根据实际情况进行配置。
+
    执行如下命令新建容器并进入容器内：
 
    ```shell
@@ -246,13 +247,17 @@ Rec SDK Torch软件包如下表：
    **下载软件包<a name="section1852417242717"></a>**
 
    请参考本章获取所需软件包和对应的数字签名文件，下载本软件即表示您同意[华为企业业务最终用户许可协议（EULA）](https://e.huawei.com/cn/about/eula)的条款和条件。
+
    > \[!NOTE]
    > 当前Release软件包为Rec SDK whl包，一键安装部署软件包待资源下载中心上线后更新。
+
    | 组件名称                   | 软件包                      | 获取链接                                               |
    | ---------------------- | ------------------------ | -------------------------------------------------- |
    | Rec SDK Torch一键安装部署软件包 | torch\_rec\_v1-\*.tar.gz | [获取链接](https://gitcode.com/Ascend/RecSDK/releases) |
+
    > \[!NOTE]
    > 当前提供的Rec SDK一键安装部署软件包基于Python 3.11版本编译，**请在相同的Python版本环境下安装使用**。若需在其他Python版本环境下安装使用，请参见[源码编译 - 安装Rec SDK Torch一键安装部署软件包](#source_build_hybrid_torchrec)进行源码编译。
+
    **软件包Hash值校验<a name="section10830205518487"></a>**
 
    为了防止软件包在传递过程中或存储期间被恶意篡改，请在软件包下载之后使用`sha256sum`命令校验Hash值是否和软件包下载页的Hash值一致。可参考如下指令进行验证（file\_name需替换为软件包文件名）：
@@ -266,7 +271,7 @@ Rec SDK Torch软件包如下表：
    将下载的软件包上传到Docker容器内，实现方式可参考:
    - 方式1：在启动容器时，指定一个宿主机目录挂载到容器内，并将下载的软件包放在其中，使容器可以访问到下载的软件包。
 
-     将宿主机目录挂载到Docker容器内，在[启动容器](#ZH-CN_TOPIC_0000002302389300)时增加如下参数（`dirX`需改为实际使用的文件目录）：
+     将宿主机目录挂载到Docker容器内，在[启动容器](#ZH-CN_TOPIC_0000002302389300)时增加如下参数（`dir1`修改为需要挂载的目录）：
 
      ```bash
      -v /dir1:/dir1
@@ -281,6 +286,7 @@ Rec SDK Torch软件包如下表：
      ```
 
      其中，host\_file\_path为宿主机文件路径，container\_name为待拷入的docker容器名称，container\_file\_path为待拷入的docker容器内的文件路径。
+
    执行如下指令进行安装：
 
    ```shell
@@ -306,7 +312,17 @@ Rec SDK Torch软件包如下表：
 
 ## 安装验证
 
-可通过执行已有用例验证Rec SDK Torch是否安装成功。
+可通过执行已有用例/模型验证Rec SDK Torch是否安装成功。
+
+**单卡验证**
+
+请参见[快速入门](./quick_start.md#搭建模型)中“搭建模型”、“启动模型训练”章节，进行模型搭建及启动单卡训练。
+
+**多卡验证**
+
+请参见[快速入门](./quick_start.md#搭建模型)中“搭建模型”、“启动模型训练”章节，进行模型搭建及启动多卡训练。
+
+**框架用例验证**
 
 hybrid\_torchrec用例列表和运行方式请参见[README](../../../../training/torch_rec_v1/hybrid_torchrec/test/st/README.md)。
 
@@ -358,9 +374,9 @@ Rec SDK Torch环境变量的说明如[表1](#table126401659163820)所示。
     # 卸载Rec SDK Torch推荐算法框架包
     pip3 uninstall hybrid_torchrec -y
     pip3 uninstall torchrec_embcache -y
+    # 卸载TorchRec昇腾注册包
+    pip3 uninstall torchrec -y
     ```
-
-    TorchRec昇腾注册包（torchrec_npu）请参见对应[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_npu/README.md)进行卸载。
 
 用户如需移除Rec SDK Torch自定义算子相关包，可参考以下命令进行卸载。其中，
 
