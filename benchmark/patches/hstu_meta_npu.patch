@@ -1,10 +1,7 @@
-From bc107ab18530ea1f7f0ebb58b760d419948aa066 Mon Sep 17 00:00:00 2001
+From 74e23b4fea64cb26cd5e0857f95b918769438fd6 Mon Sep 17 00:00:00 2001
 From: cann_ly <luyi120@h-partners.com>
-Date: Fri, 24 Apr 2026 11:20:46 +0800
-Subject: [PATCH] =?UTF-8?q?hstu=20npu=E9=80=82=E9=85=8D?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Date: Thu, 18 Jun 2026 11:04:25 +0800
+Subject: [PATCH] patch
 
 ---
  .../sequential/autoregressive_losses.py       |  11 +
@@ -13,11 +10,11 @@ Content-Transfer-Encoding: 8bit
  .../research/modeling/sequential/features.py  |   6 +
  .../research/modeling/sequential/hstu.py      | 230 +++++++++++++++---
  .../input_features_preprocessors.py           |   6 +-
- .../research/trainer/train.py                 | 126 +++++++++-
+ .../research/trainer/train.py                 | 194 ++++++++++++++-
  main.py                                       |  27 +-
  prefetch_shape.py                             |   5 +
  pt_jagged_dense_convert.py                    |  56 +++++
- 10 files changed, 432 insertions(+), 46 deletions(-)
+ 10 files changed, 500 insertions(+), 46 deletions(-)
  create mode 100644 prefetch_shape.py
  create mode 100644 pt_jagged_dense_convert.py
 
@@ -507,7 +504,7 @@ index a461ab8..226c83e 100644
      def debug_str(self) -> str:
          return f"posi_d{self._dropout_rate}"
 diff --git a/generative_recommenders/research/trainer/train.py b/generative_recommenders/research/trainer/train.py
-index 6d2da5b..e588fb9 100644
+index 6d2da5b..3f39de4 100644
 --- a/generative_recommenders/research/trainer/train.py
 +++ b/generative_recommenders/research/trainer/train.py
 @@ -24,6 +24,14 @@ from typing import Dict, Optional
@@ -545,7 +542,7 @@ index 6d2da5b..e588fb9 100644
  
  
  def cleanup() -> None:
-@@ -90,6 +103,51 @@ def get_weighted_loss(
+@@ -90,6 +103,79 @@ def get_weighted_loss(
      return weighted_loss
  
  
@@ -562,6 +559,24 @@ index 6d2da5b..e588fb9 100644
 +    dist.all_gather(gathered, local_tensor)
 +
 +    return [g.cpu().tolist() for g in gathered]
++
++def gather_avg_loss(local_loss, world_size, device):
++    """
++    收集各 rank 的 loss 数据，返回并计算全局平均loss
++    """
++    if world_size <= 1:
++        return local_loss if isinstance(local_loss, float) else local_loss.item()
++
++    if not isinstance(local_loss, torch.Tensor):
++        local_loss = torch.tensor(local_loss, dtype=torch.float32, device=device)
++    else:
++        local_loss = local_loss.detach().to(device)
++
++    gathered_losses = [torch.zeros_like(local_loss) for _ in range(world_size)]
++    dist.all_gather(gathered_losses, local_loss)
++
++    global_loss = torch.stack(gathered_losses).mean().item()
++    return global_loss
 +
 +def latency_summary(latency_list, batch_size, model_name, device_name, inductor_flag):
 +    latency_array = np.array(latency_list)
@@ -593,11 +608,21 @@ index 6d2da5b..e588fb9 100644
 +        f.write(output_str + "\n")
 +    return avg_time
 +
++def set_tf32():
++    if NPU_ENABLE:
++        torch_npu.npu.matmul.allow_hf32 = True
++        torch_npu.npu.conv.allow_hf32 = True
++        print(f"NPU: set hf32 is {torch_npu.npu.aclnn.allow_hf32}")
++    else:
++        torch.backends.cuda.matmul.allow_tf32 = True
++        torch.backends.cudnn.allow_tf32 = True
++        print(f"NPU: set hf32 is {torch_npu.npu.aclnn.allow_hf32}")
++
 +
  @gin.configurable
  def train_fn(
      rank: int,
-@@ -128,8 +186,21 @@ def train_fn(
+@@ -128,11 +214,27 @@ def train_fn(
      l2_norm_eps: float = 1e-6,
      enable_tf32: bool = False,
      random_seed: int = 42,
@@ -619,7 +644,13 @@ index 6d2da5b..e588fb9 100644
      random.seed(random_seed)
      torch.backends.cuda.matmul.allow_tf32 = enable_tf32
      torch.backends.cudnn.allow_tf32 = enable_tf32
-@@ -150,7 +221,7 @@ def train_fn(
++    SET_HF32 = os.getenv("MODEL_HF32_FLAG").upper() == "TRUE"
++    if SET_HF32:
++        set_tf32()
+     logging.info(f"cuda.matmul.allow_tf32: {enable_tf32}")
+     logging.info(f"cudnn.allow_tf32: {enable_tf32}")
+     logging.info(f"Training model on rank {rank}.")
+@@ -150,7 +252,7 @@ def train_fn(
          batch_size=local_batch_size,
          world_size=world_size,
          rank=rank,
@@ -628,7 +659,7 @@ index 6d2da5b..e588fb9 100644
          drop_last=world_size > 1,
      )
      eval_data_sampler, eval_data_loader = create_data_loader(
-@@ -158,7 +229,7 @@ def train_fn(
+@@ -158,7 +260,7 @@ def train_fn(
          batch_size=eval_batch_size,
          world_size=world_size,
          rank=rank,
@@ -637,7 +668,7 @@ index 6d2da5b..e588fb9 100644
          drop_last=world_size > 1,
      )
  
-@@ -167,6 +238,7 @@ def train_fn(
+@@ -167,6 +269,7 @@ def train_fn(
          embedding_module: EmbeddingModule = LocalEmbeddingModule(
              num_items=dataset.max_item_id,
              item_embedding_dim=item_embedding_dim,
@@ -645,7 +676,7 @@ index 6d2da5b..e588fb9 100644
          )
      else:
          raise ValueError(f"Unknown embedding_module_type {embedding_module_type}")
-@@ -196,6 +268,7 @@ def train_fn(
+@@ -196,6 +299,7 @@ def train_fn(
          max_sequence_len=dataset.max_sequence_length + gr_output_length + 1,
          embedding_dim=item_embedding_dim,
          dropout_rate=dropout_rate,
@@ -653,7 +684,7 @@ index 6d2da5b..e588fb9 100644
      )
  
      model = get_sequential_encoder(
-@@ -207,6 +280,7 @@ def train_fn(
+@@ -207,6 +311,7 @@ def train_fn(
          input_preproc_module=input_preproc_module,
          output_postproc_module=output_postproc_module,
          verbose=True,
@@ -661,7 +692,7 @@ index 6d2da5b..e588fb9 100644
      )
      model_debug_str = model.debug_str()
  
-@@ -258,6 +332,8 @@ def train_fn(
+@@ -258,6 +363,8 @@ def train_fn(
      device = rank
      if main_module_bf16:
          model = model.to(torch.bfloat16)
@@ -670,11 +701,43 @@ index 6d2da5b..e588fb9 100644
      model = model.to(device)
      ar_loss = ar_loss.to(device)
      negatives_sampler = negatives_sampler.to(device)
-@@ -294,11 +370,11 @@ def train_fn(
+@@ -294,17 +401,51 @@ def train_fn(
          logging.info(f"Rank {rank}: disabling summary writer")
  
      last_training_time = time.time()
 -    torch.autograd.set_detect_anomaly(True)
++    ENABLE_PROFILING = (os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE")
++    if ENABLE_PROFILING:
++        if NPU_ENABLE:
++            profiler = torch_npu.profiler
++            experimental_config = torch_npu.profiler._ExperimentalConfig(
++                export_type=[torch_npu.profiler.ExportType.Text],
++                aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
++                profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++                l2_cache=False,
++                op_attr=False,
++                data_simplification=False,
++                record_op_args=False,
++                gc_detect_threshold=None
++            )
++        else:
++            profiler = torch.profiler
++            experimental_config = None
++        profiler_save_path = "./profiling"
++        prof = profiler.profile(
++            activities=[
++                profiler.ProfilerActivity.CPU,
++                profiler.ProfilerActivity.NPU if NPU_ENABLE else profiler.ProfilerActivity.CUDA
++            ],
++            schedule=profiler.schedule(wait=1, active=10, warmup=10, repeat=1, skip_first=1),
++            on_trace_ready=profiler.tensorboard_trace_handler(profiler_save_path),
++            record_shapes=True,
++            profile_memory=False,
++            with_stack=False,
++            with_modules=False,
++            with_flops=False,
++            experimental_config=experimental_config)
++        prof.start()
  
      batch_id = 0
      epoch = 0
@@ -684,7 +747,15 @@ index 6d2da5b..e588fb9 100644
          if train_data_sampler is not None:
              train_data_sampler.set_epoch(epoch)
          if eval_data_sampler is not None:
-@@ -313,6 +389,7 @@ def train_fn(
+             eval_data_sampler.set_epoch(epoch)
+         model.train()
+         for row in iter(train_data_loader):
++            if ENABLE_PROFILING:
++                prof.step()
+             seq_features, target_ids, target_ratings = movielens_seq_features_from_row(
+                 row,
+                 device=device,
+@@ -313,6 +454,7 @@ def train_fn(
  
              if (batch_id % eval_interval) == 0:
                  model.eval()
@@ -692,7 +763,7 @@ index 6d2da5b..e588fb9 100644
  
                  eval_state = get_eval_state(
                      model=model.module,
-@@ -394,6 +471,12 @@ def train_fn(
+@@ -394,6 +536,12 @@ def train_fn(
              main_loss = loss.detach().clone()
              loss = get_weighted_loss(loss, aux_losses, weights=loss_weights or {})
  
@@ -705,7 +776,7 @@ index 6d2da5b..e588fb9 100644
              if rank == 0:
                  assert writer is not None
                  writer.add_scalar("losses/ar_loss", loss, batch_id)
-@@ -424,6 +507,7 @@ def train_fn(
+@@ -424,6 +572,7 @@ def train_fn(
              opt.step()
  
              batch_id += 1
@@ -713,12 +784,13 @@ index 6d2da5b..e588fb9 100644
  
          def is_full_eval(epoch: int) -> bool:
              return (epoch % full_eval_every_n) == 0
-@@ -515,7 +599,39 @@ def train_fn(
+@@ -515,7 +664,40 @@ def train_fn(
          )
          last_training_time = time.time()
  
 +    # 收集所有 rank 的 latency 数据到 rank 0
 +    gathered_latency = gather_latency_data(latency_list, world_size, device)
++    garther_avg_loss = gather_avg_loss(loss, world_size, device)
 +
      if rank == 0:
 +        inductor_flag = 'eager'
@@ -729,7 +801,7 @@ index 6d2da5b..e588fb9 100644
 +            'batch_size': local_batch_size,
 +            'epoch': epoch,
 +            'step': batch_id,
-+            'final_loss': loss.cpu().item(),
++            'final_loss': garther_avg_loss,
 +            "ms/step": float(avg_time) * 1000,
 +            'metrics': {
 +                'NDCG@10': float(ndcg_10),
@@ -753,6 +825,14 @@ index 6d2da5b..e588fb9 100644
          if writer is not None:
              writer.flush()
              writer.close()
+@@ -528,5 +710,7 @@ def train_fn(
+             },
+             f"./ckpts/{model_desc}_ep{epoch}",
+         )
++    if ENABLE_PROFILING:
++        prof.stop()
+ 
+     cleanup()
 diff --git a/main.py b/main.py
 index 445f258..97566a2 100644
 --- a/main.py
@@ -833,7 +913,7 @@ index 0000000..b8d3f3a
 \ No newline at end of file
 diff --git a/pt_jagged_dense_convert.py b/pt_jagged_dense_convert.py
 new file mode 100644
-index 0000000..354074b
+index 0000000..96b355a
 --- /dev/null
 +++ b/pt_jagged_dense_convert.py
 @@ -0,0 +1,56 @@
@@ -846,17 +926,17 @@ index 0000000..354074b
 +
 +def jagged_to_padded_dense(values, offsets, max_lengths, padding_value):
 +    return torch.ops.mxrec.jagged_to_padded_dense(
-+        values=values.to(torch.float32),
++        values=values,
 +        offsets=offsets,
 +        max_lengths=max(max_lengths),
 +        padding_value=padding_value,
-+    ).to(torch.bfloat16)
++    )
 +
 +def dense_to_jagged(dense, offsets, total_L=None):
 +    if total_L is None:
 +        total_L = offsets[0][-1].item()
-+    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense.to(torch.float32), offsets, total_L)
-+    return out0.to(torch.bfloat16), out1
++    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense, offsets, total_L)
++    return out0, out1
 +
 +
 +class JaggedToPaddedDense(torch.autograd.Function):

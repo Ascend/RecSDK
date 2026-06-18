@@ -3,7 +3,7 @@
     "url": "https://github.com/meta-recsys/generative-recommenders.git",
     "commit_id": "d5e2dfe1e547d92146fedef50b2bfc4bf6a6712d",
     "patch_path": "patches/hstu_meta_npu.patch",
-    "mode": "infer",
+    "mode": "train",
     "epoch": 50,
     "profiling_flag": false,
     "aclgraph_flag": false,
