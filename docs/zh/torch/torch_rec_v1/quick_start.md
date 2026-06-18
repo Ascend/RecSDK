@@ -325,7 +325,7 @@ if __name__ == "__main__":
 WORLD_SIZE=1 RANK=0 python3 main.py
 ```
 
-启动多卡（2卡）训练：
+启动多卡训练（2卡）：
 
 ```shell
 torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=2 main.py
