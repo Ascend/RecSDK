@@ -1,21 +1,397 @@
-From bd57bb58e257857f7177f8d534294e27ada55c52 Mon Sep 17 00:00:00 2001
+From 756b2467814d7e8f8651a0f7cae14a0dc5a549c9 Mon Sep 17 00:00:00 2001
 From: chenzihao40 <chenzihao40@huawei.com>
-Date: Mon, 11 May 2026 20:28:57 +0800
-Subject: [PATCH] =?UTF-8?q?rankmixer=E6=94=AF=E6=8C=81=E8=AE=AD=E7=BB=83?=
+Date: Thu, 18 Jun 2026 10:36:31 +0800
+Subject: [PATCH] =?UTF-8?q?=E6=89=93=E5=8D=B0=E4=BF=AE=E6=94=B9?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 ---
- .../ScalingLaw/modeling/generic/sequential_v2/GR_model.py    | 5 ++++-
- .../ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh         | 4 ++--
- 2 files changed, 6 insertions(+), 3 deletions(-)
+ rec_model_zoo_pytorch/Onetrans/gr_model.py    |  14 +-
+ .../ScalingLaw/main.py                        | 210 +++++++++++++++---
+ .../generic/sequential_v2/GR_model.py         |  13 +-
+ .../generic/sequential_v2/local_trainer.py    |  15 +-
+ .../generic/sequential_v2/transformers.py     |  10 +-
+ .../generic/utils/almightygosu_utils.py       |  10 +-
+ .../ScalingLaw/run.sh                         | 120 ++--------
+ .../train_amazon_books_0.2B.ini               |   4 +-
+ .../train_amazon_books_0.5B.ini               |   4 +-
+ .../sample_configs/train_amazon_books_1B.ini  |   4 +-
+ 10 files changed, 247 insertions(+), 157 deletions(-)
 
+diff --git a/rec_model_zoo_pytorch/Onetrans/gr_model.py b/rec_model_zoo_pytorch/Onetrans/gr_model.py
+index 7c897d13..bff3d712 100644
+--- a/rec_model_zoo_pytorch/Onetrans/gr_model.py
++++ b/rec_model_zoo_pytorch/Onetrans/gr_model.py
+@@ -22,20 +22,22 @@ from dataclasses import dataclass
+ from typing import Any
+ import functools
+ 
+-NPU_ENABLE = os.environ.get('NPU_FLAG', False)
+ HAS_ATTN_FUSION_OPS = True
+ ENABLE_JAGGED_OPS = True
+-if os.environ.get("NPU_FLAG", "True") == "False":
+-    NPU_ENABLE = False
+-    torch.cuda.manual_seed(42)
+-    torch.cuda.manual_seed_all(42)
+-else:
++NPU_ENABLE=False
++try:
+     import torch_npu
++    NPU_ENABLE=True
+     from torch_npu.profiler import profile
+     torch.npu.manual_seed(42)
+     torch.npu.manual_seed_all(42)
+     torch_npu.npu.manual_seed(42)
+     torch_npu.npu.manual_seed_all(42)
++except:
++    import torch
++    import grouped_gemm
++    torch.cuda.manual_seed(42)
++    torch.cuda.manual_seed_all(42)
+ 
+ class initializing:
+     def __init__(self, enter_fn: Callable[[], None] = None, exit_fn: Callable[[], None] = None):
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
+index acb4e3df..59028223 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
+@@ -40,14 +40,13 @@ import datetime
+ import collections
+ from utils.common_utils import get_unique_path, to_clean_cpu_tensor
+ 
+-NPU_ENABLE = True
+-if os.environ.get("NPU_FLAG", "True") == "False":
+-    NPU_ENABLE = False
+-    print("model run on GPU!!!")
+-
+-if NPU_ENABLE:
++NPU_ENABLE=False
++try:
+     import torch_npu
++    NPU_ENABLE=True
+     from torch_npu.profiler import profile
++except:
++    import torch
+ 
+ 
+ # 初始化传入参数
+@@ -114,16 +113,16 @@ def init_torch_config(local_rank, train_conf):
+     """
+     设置torch配置
+     """
+-    use_tf32 = train_conf.get("use_tf32", False)
++    use_tf32 = os.getenv("MODEL_HF32_FLAG").upper() == "TRUE" if os.getenv("MODEL_HF32_FLAG")!= None else train_conf.get("use_tf32", False)
+     if NPU_ENABLE:
+         torch_npu.npu.set_device(local_rank)
+-        torch_npu.npu.matmul.allow_hf32=True
++        torch_npu.npu.matmul.allow_hf32=use_tf32
++        print(f"NPU: set hf32 is {torch_npu.npu.aclnn.allow_hf32}")
+     else:
+         torch.cuda.set_device(local_rank)
+         torch.backends.cuda.matmul.allow_tf32 = use_tf32
+         torch.backends.cudnn.allow_tf32 = use_tf32
+-    logging.info("cuda.matmul.allow_tf32: %s", use_tf32)
+-    logging.info("cudnn.allow_tf32: %s", use_tf32)
++        print(f"GPU: set tf32 is {torch.backends.cuda.matmul.allow_tf32}")
+ 
+ def get_data_loaders(dataset, data_dir, rank, world_size, train_config, model_conf, feature_config, dataloader_config):
+     """
+@@ -169,22 +168,32 @@ def get_optimizer_callback(train_conf) -> Callable[
+     elif optimizer_type == "sgd":
+         return lambda params: torch.optim.SGD(params, lr=learning_rate, weight_decay=weight_decay)
+ 
++def time_wrap_xpu():
++    if NPU_ENABLE:
++        torch.npu.synchronize()
++    else:
++        torch.cuda.synchronize()
++    return time.time()
+ 
+ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFeatures]],
+-               train_conf, export_conf, batch_id, world_size, rank, epoch, device, save_dir):
++               train_conf, export_conf, batch_id, world_size, rank, epoch, device, save_dir, profiler=None):
+     """
+     训练模型
+     """
+     model.train()
+     train_costs, batch_group = [], train_conf['eval_interval']
+-    last_training_time = time.time()
++    last_training_time = time_wrap_xpu()
+     use_loss_weighted_grad = train_conf.get("use_loss_weighted_grad", False)
+     is_output_loss_csv_file = train_conf.get("is_output_loss_csv_file", False)
+     step_list, loss_list = [], []
++    train_times = []
+ 
+     while True:
++        if profiler:
++            profiler.step()
+         try:
+             loss, _ = exec_cb(batch_id)
++            loss.backward()
+         except StopIteration:
+             logging.info("finished")
+             break
+@@ -194,14 +203,21 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+             step_list.append(batch_id)
+ 
+         if (batch_id % batch_group) == 0:
+-            train_cost = time.time() - last_training_time
+-            logging.info("rank %s; batch-stat (train): step %s "
+-                         "(epoch %s in %.2fs): %.6f", rank, batch_id, epoch, train_cost, loss)
++            train_cost = time_wrap_xpu() - last_training_time
++            gt = 1000.0 * train_cost / batch_group
++            train_times.append(gt)
++            if rank == 0:
++                print("Finished train it {} of epoch {}, {:.2f} ms/it, loss {:.6f}".format(
++                    batch_id, epoch, gt, loss)
++                )
+             if batch_id > 0:
+                 train_costs.append(train_cost)
+-            last_training_time = time.time()
++            last_training_time = time_wrap_xpu()
+         batch_id += 1
+ 
++    if len(train_times) > 1:
++        train_times.pop(0)
++
+     if train_costs:
+         logging.info(f"rank {rank} epoch {epoch}; mean cost per step: {mean(train_costs) / batch_group:.2f}s")
+     else:
+@@ -213,7 +229,7 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+ 
+     epoch_loss = avg_eval(torch.tensor([loss]).to(device), world_size=world_size)
+ 
+-    return batch_id, epoch_loss
++    return batch_id, epoch_loss, train_times
+ 
+ def save_loss_csv_file(loss_list, step_list):
+     """
+@@ -541,8 +557,7 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+                         float_dtype=None,
+         )
+ 
+-
+-    profiling_flag = False if int(os.environ.get("PROFILING_FLAG", 0)) == 0 else True
++    profiling_flag = False if int(os.environ.get("MODEL_PROFILING_FLAG", 0)) == 0 else True
+     enable_compile = False if int(os.environ.get("ENABLE_COMPILE", 0)) == 0 else True
+     enable_graph = False if int(os.environ.get("ENABLE_GRAPH", 0)) == 0 else True
+     check_precision = False if int(os.environ.get("CHECK_PRECISION", 0)) == 0 else True
+@@ -1081,6 +1096,61 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+         save_iter += 1
+     write_embs(rank, part_iter//10, group_keys_all, save_dir)
+ 
++def latency_summary_rank0(latency_list, batch_size, model_name, device_name, inductor_flag):
++    if latency_list is None or len(latency_list) == 0:
++        print("No latency data collected, please check sample_statistics_num value effectively collects latency data.")
++        return None
++
++    ave_step = np.array(latency_list)
++    avg_time = sum(ave_step) / len(ave_step)
++    ave_step.sort()
++
++    if len(ave_step) > 0:
++        p90 = np.percentile(ave_step, 90, method="lower")
++        p95 = np.percentile(ave_step, 95, method="lower")
++        p99 = np.percentile(ave_step, 99, method="lower")
++        p999 = np.percentile(ave_step, 99.9, method="lower")
++    world_size = int(os.environ["WORLD_SIZE"])
++    QPS = int(1000.0 * batch_size * world_size / avg_time) if avg_time > 0 else 0
++    e2e_result = {
++        "Batch_size": batch_size,
++        "model_name": model_name,
++        "QPS": QPS,
++        "AVG Latency": avg_time,
++        "P999 Latency": p999,
++        "P99 Latency": p99,
++        "P95 Latency": p95,
++        "P90 Latency": p90,
++    }
++
++    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
++    print(f"The final performance result: {output_str}")
++
++    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
++        f.write(output_str + "\n")
++    return avg_time
++
++def gather_latency_data(local_data, world_size, device):
++    """
++    收集各 rank 的 latency 数据，返回 list[list[float]]
++    """
++    if world_size <= 1:
++        return [local_data]
++    local_tensor = torch.tensor(local_data, dtype=torch.float32, device=device)
++
++    # all_gather 自动同步
++    gathered = [torch.zeros_like(local_tensor) for _ in range(world_size)]
++    dist.all_gather(gathered, local_tensor)
++
++    return [g.cpu().tolist() for g in gathered]
++
++def flattn_last_n(matrix, n):
++    if n <= 0:
++        return []
++    return [item for sub in matrix for item in sub[-n:]]
++
+ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> None:
+     """
+     训练函数
+@@ -1194,8 +1264,47 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+         )
+         feed_func = feed_datas_to_exec_callback
+ 
++    # profiling
++    ENABLE_PROFILING = True if os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE" else False
++    if ENABLE_PROFILING:
++        if NPU_ENABLE:
++            profiler = torch_npu.profiler
++            experimental_config = torch_npu.profiler._ExperimentalConfig(
++                    export_type=[torch_npu.profiler.ExportType.Text],
++                    aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
++                    profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++                    l2_cache=False,
++                    op_attr=False,
++                    data_simplification=False,
++                    record_op_args=False,
++                    gc_detect_threshold=None
++                )
++        else:
++            profiler = torch.profiler
++            experimental_config = None
++        profiler_save_path = "./profiling"
++        prof = profiler.profile(
++            activities=[
++                    profiler.ProfilerActivity.CPU,
++                    profiler.ProfilerActivity.NPU if NPU_ENABLE else profiler.ProfilerActivity.CUDA
++                ],
++                schedule=profiler.schedule(
++                    wait=1, warmup=100, active=10, repeat=1, skip_first=1
++                ),
++                on_trace_ready=profiler.tensorboard_trace_handler(profiler_save_path),
++                record_shapes=True,
++                with_stack=False,
++                profile_memory=False,
++                with_modules=False,
++                with_flops=False,
++                experimental_config=experimental_config,
++        )
++        prof.start()
++
++    total_train_times = []
+     batch_id = 0
+-    for epoch in range(train_conf['num_epochs']):
++    epochs = int(os.environ.get("MODEL_EPOCH")) if os.environ.get("MODEL_EPOCH") is not None else train_conf['num_epochs']
++    for epoch in range(epochs):
+         train_data_loader.dataset.set_epoch_num(epoch)
+         if train_conf.get('eval_after_each_epoch', False):
+             train_exec_cb, eval_exec_cb = feed_func(exec_cb, train_conf['is_recall'], train_data_loader, eval_data_loader)
+@@ -1212,17 +1321,15 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+             "rank": rank,
+             "epoch": epoch,
+             "device": device,
+-            "save_dir": save_dir
++            "save_dir": save_dir,
++            "profiler": prof if ENABLE_PROFILING else None,
+         }
+-
+-        batch_id, epoch_loss = train_step(**train_step_para)
++        batch_id, epoch_loss, train_times = train_step(**train_step_para)
++        total_train_times += train_times
+ 
+         if rank == 0 and writer:
+             logging.info("loss at epoch %s is %s", epoch, epoch_loss)
+             writer.add_scalar("loss/train", epoch_loss, epoch)
+-        
+-        logging.info("saving model state dict")
+-        save_model_state_dict(model=model, save_dir=save_dir, export_conf=export_conf)
+ 
+         if train_conf.get('eval_after_each_epoch', False):
+             print(f"start evaluate_step: epoch{epoch}")
+@@ -1244,13 +1351,58 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+                         filter_invalid_ids=filter_invalid_ids,
+                         writer=writer)
+ 
+-    if dataset_name == "ag-rank":
+-        # 保存统计结果
+-        data_target.save_data(rank)
++    if ENABLE_PROFILING:
++        prof.stop()
++
++    if int(os.environ.get("SAVE_MODEL_FLAG", 0)) == 1:
++        logging.info("saving model state dict")
++        save_model_state_dict(model=model, save_dir=save_dir, export_conf=export_conf)
+ 
+     if rank == 0 and writer:    
+         writer.close()
+ 
++    total_train_times_allrank = None
++    if world_size > 1:
++        dist.barrier(device_ids=[rank])  # 同步所有rank
++        total_train_times_allrank = gather_latency_data(total_train_times, world_size, device)
++
++    if rank == 0:
++        model_name = "RankMixer"
++        avg_time = None
++        if int(os.environ.get("SAMPLE_STATISTICS_NUM", 0)) > 0:
++            sample_statistics_num = int(os.environ.get("SAMPLE_STATISTICS_NUM"))
++            if total_train_times_allrank is not None:
++                total_train_times = flattn_last_n(total_train_times_allrank, sample_statistics_num)
++                avg_time = latency_summary_rank0(total_train_times, train_conf.get("local_batch_size"), model_name,
++                        "NPU" if NPU_ENABLE else "GPU", "eager")
++            else:
++                avg_time = latency_summary_rank0(total_train_times[-sample_statistics_num:], train_conf.get("local_batch_size"), model_name,
++                        "NPU" if NPU_ENABLE else "GPU", "eager")
++
++        final_results = {
++            'dataset_name': "amazon-book",
++            'batch_size': train_conf.get("local_batch_size"),
++            'epoch': epochs,
++            'step': batch_id,
++            'final_loss': epoch_loss.cpu().tolist(),
++            "ms/step": float(avg_time) if avg_time is not None else "no valid SAMPLE_STATISTICS_NUM",
++        }
++        device_name = "NPU" if NPU_ENABLE else "GPU"
++        inductor_flag = "EAGER"
++        model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++        output_str = model_detail_info + "_" + str(final_results)
++        file_path = f"../save_results_{device_name}/precision_result.txt"
++        dir_path = os.path.dirname(file_path)
++        if dir_path:
++            os.makedirs(dir_path, exist_ok=True)
++        print(f"The Final Result: {output_str}")
++        with open(file_path, "a", encoding="utf-8") as f:
++            f.write(output_str + "\n")
++
++        del final_results["ms/step"]
++        os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
++        torch.save(final_results, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_ep{epochs}.pt")
++
+ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already_init=False) -> None:
+     """
+     单独评估函数
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
-index aab1e849..1b22853d 100644
+index aab1e849..afee8ce1 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
-@@ -233,7 +233,10 @@ class GR_model(BaseModel):
+@@ -21,7 +21,13 @@ from modeling.generic.sequential_v2.features import SequentialFeatures
+ from modeling.generic.sequential_v2.utils import get_current_embeddings
+ from torch.autograd.profiler import record_function
+ import os
+-NPU_FLAG = os.environ.get('NPU_FLAG', False)
++
++NPU_FLAG=False
++try:
++    import torch_npu
++    NPU_FLAG=True
++except:
++    import torch
+ 
+ @ModelRegistry.register(
+     req_subs={"EmbeddingModule", "InputFeaturesPreprocessorModule", "SequentialModule", "AttentionMaskModule",
+@@ -233,7 +239,10 @@ class GR_model(BaseModel):
                                       predictions=results,
                                       model_inputs=model_inputs,
                                       negative_sampler=self.negative_sampler)
@@ -27,20 +403,166 @@ index aab1e849..1b22853d 100644
              return loss+aux_loss
  
      def encode_static_for_compile(self, model_inputs):
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
+index 26a8467a..965fb365 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
+@@ -13,13 +13,12 @@ import queue
+ from modeling.generic.sequential_v2.GR_model import GR_model
+ from modeling.generic.sequential_v2.features import seq_features_from_row_cpu, SequentialFeatures
+ 
+-
+-NPU_ENABLE = True
+-if os.environ.get("NPU_FLAG", "True") == "False":
+-    NPU_ENABLE = False
+-
+-if NPU_ENABLE:
++NPU_ENABLE=False
++try:
+     import torch_npu
++    NPU_ENABLE=True
++except:
++    import torch
+ 
+ ASYNC_LOADER_FUNC = None
+ 
+@@ -107,6 +106,10 @@ def assemble_model_executable_callback(
+ 
+     # 6. 训练模型
+     model = model.to(device)
++    world_size = int(os.environ["WORLD_SIZE"])
++    rank = int(os.environ["RANK"])
++    if world_size > 1:
++        model = DDP(model, device_ids=[rank], find_unused_parameters=True, broadcast_buffers=False)
+     
+     opt = None
+     if optimizer_cb is not None:
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
+index 69b6273d..46074fb9 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
+@@ -12,12 +12,12 @@ from modeling.model_registry import ModelRegistry
+ from modeling.generic.utils.constants import Const
+ from modeling.generic.sequential_v2 import HAS_ATTN_FUSION_OPS
+ 
+-NPU_ENABLE = True
+-if os.environ.get("NPU_FLAG", "True") == "False":
+-    NPU_ENABLE = False
+-
+-if NPU_ENABLE:
++NPU_ENABLE=False
++try:
+     import torch_npu
++    NPU_ENABLE=True
++except:
++    import torch
+ 
+ TransformerCacheState = Const.TransformerCacheState
+ 
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
+index 8dde43fc..9e98a7b6 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
+@@ -2,12 +2,12 @@ import functools
+ 
+ import os
+ import torch
+-NPU_ENABLE = True
+-if os.environ.get("NPU_FLAG", "True") == "False":
+-    NPU_ENABLE = False
+-
+-if NPU_ENABLE:
++NPU_ENABLE=False
++try:
+     import torch_npu
++    NPU_ENABLE=True
++except:
++    import torch
+ 
+ try:
+     from torch_npu import gather_for_rank1 as index_select_func
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
-index b530d773..6980af8e 100644
+index b530d773..219864e4 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
-@@ -56,7 +56,7 @@ echo "  data_dir=${data_dir:-<unset>}"
+@@ -1,7 +1,4 @@
+ #!/bin/bash
+-echo -e "\n--> Generative Recommenders on ROMA environment\n"
+-
+-
+ echo -e "Period: ${period}"
+ 
+ date=${period%-*}
+@@ -12,33 +9,12 @@ echo "site-packages dir: $sitepkgs_dir"
+ # 配置CANN相关环境变量（根据环境自行配置）
+ # source .../setenv.bash
+ 
+-
+ unset ASCEND_CUSTOM_OPP_PATH
+ cur_dir=$(dirname $0)
+ train_workdir=$(cd $(dirname $0); pwd)
+ parent_dir=$(dirname "$train_workdir")
+ echo ${train_workdir}
+-
+-
+ file="${sitepkgs_dir}/fbgemm_gpu/split_table_batched_embeddings_ops_training.py"
+-# 配置device， 先检查是否已经存在 "NPU = 3"
+-if ! grep -q "NPU = 3" "$file"; then
+-    sed -i '/CUDA = 1/a\    NPU = 3' "$file"
+-    echo "Inserted 'NPU = 3' into $file"
+-else
+-    echo "'NPU = 3' already exists in $file, skip insertion."
+-fi
+-  echo "====== Install mxrec ops finished ======"
+-# fi
+-
+-param="${1:-npu}"
+-if [ "$param" = "gpu" ]; then
+-    echo "run on gpu!!!"
+-    export NPU_FLAG=False
+-else
+-    echo "run on npu!!!"
+-    export NPU_FLAG=True
+-fi
+ 
+ while [[ "$#" -gt 1 ]]; do
+     case $2 in
+@@ -56,104 +32,52 @@ echo "  data_dir=${data_dir:-<unset>}"
  echo "  save_dir=${save_dir:-<unset>}"
  
  # ===== 设置默认值 =====
 -: "${config_file:=../sample_configs/train_amazon_books_0.2B.ini}" # 可以修改为不同大小的模型，默认0.2B
-+: "${config_file:=../sample_configs/train_amazon_books_1B.ini}" # 可以修改为不同大小的模型，默认0.2B
- : "${data_dir:=../../amzn_books.ori}"  # 须手动改为数据集路径
- : "${save_dir:=$parent_dir/modelfile/}"   # 改为预训练模型对应路径
+-: "${data_dir:=../../amzn_books.ori}"  # 须手动改为数据集路径
+-: "${save_dir:=$parent_dir/modelfile/}"   # 改为预训练模型对应路径
++: "${config_file:=../sample_configs/train_amazon_books_1B.ini}" # 可以修改为不同大小的模型
++: "${data_dir:=../../amzn_books.ori}"                           # 须手动改为数据集路径，默认和SaclingLaw同级的amzn_books.ori下
++: "${save_dir:=$parent_dir/modelfile/}"                         # 改为预训练模型对应路径
  export LOAD_PRETRAIN_MODEL=0  # 是否加载预训练模型，0不加载，1加载(精度校验时使用)
-@@ -88,7 +88,7 @@ PYTHON_ARGS="
+ 
+ # 一级流水
+ export TASK_QUEUE_ENABLE=1
+ 
+-
+ MASTER_HOST="${VC_WORKER_HOSTS:-localhost}"
+ MASTER_ADDR="${VC_WORKER_HOSTS%%,*}"
+ MASTER_ADDR="${MASTER_ADDR:-localhost}"
+ NNODES="${MA_NUM_HOSTS:-1}"
+-NGPUS_PER_NODE="${MA_NUM_GPUS:-1}"
+ NODE_RANK="${VC_TASK_INDEX:-0}"
+ 
+ export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+-# export TORCH_DEVICE_BACKEND_AUTOLOAD=0
+ MASTER_PORT="12356"
+ 
+-VISIBLE_DEVICES=0
+-export ASCEND_RT_VISIBLE_DEVICES=${VISIBLE_DEVICES}
+-export CUDA_VISIBLE_DEVICES=${VISIBLE_DEVICES}
+-
+-export NNODES=${NNODES}
+-
+ # Define the Python script
+ PYTHON_SCRIPT=${train_workdir}/main.py
+ PYTHON_ARGS="
      --config_file=${config_file} \
      --data_dir=${data_dir} \
      --save_dir=${save_dir}/modelfile/ \
@@ -49,6 +571,157 @@ index b530d773..6980af8e 100644
      --save_user_emb=False \
      --get_infer_result=False \
      --tensorboard_log_dir=${save_dir}/ScalingLaw/runs/exp_amzn_all/"
+-#按需添加--eval_batch_size=128修改batch size
+-export PYTHONPATH=$(dirname $(realpath $(find ${cur_dir} -name "DLRM.py"))):${PYTHONPATH}
+-
+-#megatron开关，True则启用， False则使用原本的torchrec框架
+-PYTHON_MEGATRON="--open_megatron False"
+-
+-#megatron args。$MEGA_ARG为必备参数，没有会报错。需要与config里的手动同步
+-MICRO_BATCH_SIZE=32
+-GLOBAL_BATCH_SIZE=$((MICRO_BATCH_SIZE * NGPUS_PER_NODE * NNODES))
+-MEGA_ARGS="
+-    --micro-batch-size $MICRO_BATCH_SIZE \
+-    --global-batch-size $GLOBAL_BATCH_SIZE \
+-    --num-layers 16 \
+-    --hidden-size 128 \
+-    --num-attention-heads 8 \
+-    --seq-length 100 \
+-    --max-position-embeddings 8000 \
+-    --use-tokenizer False \
+-    --optimizer adam \
+-"
+-MEGA_OPT_ARGS="
+-    --use-distributed-optimizer \
+-    --overlap-grad-reduce \
+-    --overlap-param-gather \
+-"
+ 
++export PYTHONPATH=$(dirname $(realpath $(find ${cur_dir} -name "DLRM.py"))):${PYTHONPATH}
+ echo "$LOCAL_RANK"
+ 
+-# inductor相关环境变量
+-export ENABLE_COMPILE=0
+-export ENABLE_GRAPH=0
+-export ENABLE_SYNC_LOADER=1
+-export CHECK_PRECISION=0
+-export TORCHNPU_PRECOMPILE_THREADS=64 # 预编译线程数
+-
+-# catlass相关环境变量
+-export CATLASS_EVG_FUSION=1
+-export CATLASS_EPILOGUE_FUSION=1
+-export TORCHINDUCTOR_MAX_AUTOTUNE=1
+-export TORCHINDUCTOR_MAX_AUTOTUNE_GEMM_BACKENDS=CATLASS,ATen
+-export TORCHINDUCTOR_NPU_CATLASS_DIR=/xxx/catlass
+-export TORCHINDUCTOR_CATLASS_ENABLED_OPS="mm,addmm,bmm,grouped_mm"
++# 可选参数
++# export MODEL_PROFILING_FLAG=true  # 是否启用模型性能分析，false不启用，true启用（启用后会在当前目录下生成profiling文件夹，包含性能分析结果）
++# export MODEL_EPOCH=1              # 模型运行的epcoh数
++export SAVE_MODEL_FLAG=0            # 是否保存模型，0不保存，1保存（保存的模型会保存在save_dir指定的路径下）
++export SAMPLE_STATISTICS_NUM=10     # 采样统计的数量，设置为大于0的整数后会在训练过程中采样最后N次的训练时间，并计算平均时间（单位ms/it）
++NGPUS_PER_NODE="${MA_NUM_GPUS:-8}"  # 卡数
++VISIBLE_DEVICES=0,1,2,3,4,5,6,7     # 卡ID, 需要和卡数匹配
++export ASCEND_RT_VISIBLE_DEVICES=${VISIBLE_DEVICES}
++export CUDA_VISIBLE_DEVICES=${VISIBLE_DEVICES}
+ 
+-export PROFILING_FLAG=1
+-if [ "$PYTHON_MEGATRON" = "--open_megatron True" ];then
+-    echo "========启用megatron=========="
+-    torchrun --nproc_per_node=$NGPUS_PER_NODE \
+-         --nnodes=$NNODES \
+-         --node_rank=$NODE_RANK \
+-         --master_addr=$MASTER_ADDR \
+-         --master_port=$MASTER_PORT \
+-         $PYTHON_SCRIPT \
+-         $PYTHON_MEGATRON \
+-         $PYTHON_ARGS \
+-         $MEGA_ARGS  
+-else
+-    echo "========启用torchrec=========="
+-    torchrun --nproc_per_node=$NGPUS_PER_NODE \
+-         --nnodes=$NNODES \
+-         --node_rank=$NODE_RANK \
+-         --master_addr=$MASTER_ADDR \
+-         --master_port=$MASTER_PORT \
+-         $PYTHON_SCRIPT \
+-         $PYTHON_ARGS 
+-fi
+\ No newline at end of file
++echo "========启用torchrec=========="
++torchrun --nproc_per_node=$NGPUS_PER_NODE \
++        --nnodes=$NNODES \
++        --node_rank=$NODE_RANK \
++        --master_addr=$MASTER_ADDR \
++        --master_port=$MASTER_PORT \
++        $PYTHON_SCRIPT \
++        $PYTHON_ARGS
+\ No newline at end of file
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
+index 6a17a885..68c14722 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
+@@ -56,7 +56,7 @@
+     "dataset_name": "amazon-recall",
+     "local_batch_size": 128,
+     "eval_batch_size": 128,
+-    "eval_interval": 100,
++    "eval_interval": 1,
+     "num_epochs": 2,
+     "num_warmup_steps": 0,
+     "use_item_l2_norm": True,
+@@ -70,7 +70,7 @@
+     "use_user_embedding": False,
+     "use_item_emb_mlp": False,
+     "filter_invalid_ids": True,
+-    "eval_after_each_epoch": True
++    "eval_after_each_epoch": False
+   },
+  "feature_conf": {
+     "date": "20250301", #占位
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
+index 04c8aa81..5a9a7db4 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
+@@ -56,7 +56,7 @@
+     "dataset_name": "amazon-recall",
+     "local_batch_size": 128,
+     "eval_batch_size": 128,
+-    "eval_interval": 100,
++    "eval_interval": 1,
+     "num_epochs": 2,
+     "num_warmup_steps": 0,
+     "use_item_l2_norm": True,
+@@ -70,7 +70,7 @@
+     "use_user_embedding": False,
+     "use_item_emb_mlp": False,
+     "filter_invalid_ids": True,
+-    "eval_after_each_epoch": True
++    "eval_after_each_epoch": False
+   },
+  "feature_conf": {
+     "date": "20250301", #占位
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
+index d4bb9c3d..c266bc9b 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
+@@ -56,7 +56,7 @@
+     "dataset_name": "amazon-recall",
+     "local_batch_size": 128,
+     "eval_batch_size": 64,
+-    "eval_interval": 100,
++    "eval_interval": 1,
+     "num_epochs": 2,
+     "num_warmup_steps": 0,
+     "use_item_l2_norm": True,
+@@ -70,7 +70,7 @@
+     "use_user_embedding": False,
+     "use_item_emb_mlp": False,
+     "filter_invalid_ids": True,
+-    "eval_after_each_epoch": True
++    "eval_after_each_epoch": False
+   },
+  "feature_conf": {
+     "date": "20250301", #占位
 -- 
 2.52.0.windows.1
 
