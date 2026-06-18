@@ -250,10 +250,14 @@ class Config:
         elif self.cache_mode == CacheModeEnum.DDR.value:
             self.dev_vocab_size = 500_000 * self.rank_size
             self.host_vocab_size = 24_000_000 * self.rank_size
+            if MODEL_NAME == "WideDeep":
+                self.host_vocab_size = 14_000_000 * self.rank_size
         elif self.cache_mode == CacheModeEnum.SSD.value:
             self.dev_vocab_size = 100_000 * self.rank_size
             self.host_vocab_size = 2_000_000 * self.rank_size
             self.ssd_vocab_size = 24_000_000 * self.rank_size
+            if MODEL_NAME == "WideDeep":
+                self.host_vocab_size = 14_000_000 * self.rank_size
         else:
             raise ValueError(f"get CACHE_MODE:{self.cache_mode}, expect in [HBM, DDR, SSD]")
 
