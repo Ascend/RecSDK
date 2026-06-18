@@ -52,7 +52,7 @@ index 8b1014d..e60d29f 100644
  		NDCG.append(ndcg(gt_item, recommends))
  
 diff --git a/main.py b/main.py
-index 04df907..b2d3530 100644
+index 04df907..a531ff6 100644
 --- a/main.py
 +++ b/main.py
 @@ -1,5 +1,7 @@
@@ -63,7 +63,7 @@ index 04df907..b2d3530 100644
  import argparse
  import numpy as np
  
-@@ -7,135 +9,397 @@ import torch
+@@ -7,135 +9,412 @@ import torch
  import torch.nn as nn
  import torch.optim as optim
  import torch.utils.data as data
@@ -210,6 +210,7 @@ index 04df907..b2d3530 100644
 +RANDOM_SEED = 42
 +DUMP_PROFILER = os.getenv("MODEL_PROFILING_FLAG", "false").upper() == "TRUE"
 +SET_HF32 = os.getenv("MODEL_HF32_FLAG", "true").upper() == "TRUE"
++ENABLE_COMPILE = os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE'
 +
 +
 +def set_seed(seed):
@@ -399,6 +400,11 @@ index 04df907..b2d3530 100644
 +        model = DDP(model, device_ids=[rank], broadcast_buffers=False)
 +        logging.info(f"[{rank}]: Use torch.nn.parallel.DistributedDataParallel")
 +
++    if ENABLE_COMPILE:
++        model = torch.compile(model, backend="inductor", mode=args.compile_mode, dynamic=args.compile_dynamic)
++        logging.info(f"Compiling model with torch.compile (backend=inductor, mode={args.compile_mode}, "
++                     f"dynamic={args.compile_dynamic})")
++
 +    loss_function = nn.BCEWithLogitsLoss()
 +    model_or_module = model.module if world_size > 1 else model
 +
@@ -468,7 +474,7 @@ index 04df907..b2d3530 100644
 +    gathered_latency = gather_latency_data(latency_list, world_size, device)
 +
 +    if rank == 0:
-+        inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
++        inductor_flag = 'inductor' if ENABLE_COMPILE else 'eager'
 +        avg_time = latency_summary(gathered_latency, args.batch_size, model_name, device_name, inductor_flag)  # 保存e2e耗时
 +
 +        final_results = {
@@ -584,5 +590,14 @@ index 04df907..b2d3530 100644
 +                        type=int,
 +                        default=12345,
 +                        help="port number monitored by the active node")
++    parser.add_argument("--compile_mode",
++                        type=str,
++                        default='default',
++                        choices=['default', 'reduce-overhead', 'max-autotune'],
++                        help="torch.compile parameter")
++    parser.add_argument("--compile_dynamic",
++                        action='store_true',
++                        default=False,
++                        help="torch.compile parameter")
 +    args = parser.parse_args()
 +    main(args)

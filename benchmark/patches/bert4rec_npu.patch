@@ -1,8 +1,8 @@
 diff --git a/main.py b/main.py
-index 5b72403..531df65 100644
+index 5b72403..490b5b0 100644
 --- a/main.py
 +++ b/main.py
-@@ -1,26 +1,335 @@
+@@ -1,26 +1,337 @@
 +import os
 +import time
 +import logging
@@ -10,6 +10,7 @@ index 5b72403..531df65 100644
 +import numpy as np
 +
  import torch
++import torch._dynamo
 +import torch.distributed as dist
 +import torch.multiprocessing as mp
 +
@@ -41,6 +42,7 @@ index 5b72403..531df65 100644
 +    raise ValueError(f"Invalid input string: {s}, must be true/false")
 +
 +
++torch._dynamo.config.suppress_errors = True     # 将dynamo错误抑制，出错时自动退回到eager模式
 +logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 +
 +RANDOM_SEED = 42
@@ -84,7 +86,7 @@ index 5b72403..531df65 100644
 +    if HAS_NPU and torch.npu.is_available():
 +        experimental_config = torch_npu.profiler._ExperimentalConfig(
 +            export_type=[torch_npu.profiler.ExportType.Text],
-+            profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
 +            mstx=False,
 +            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
 +            l2_cache=False,
@@ -98,7 +100,7 @@ index 5b72403..531df65 100644
 +                torch_npu.profiler.ProfilerActivity.CPU,
 +                torch_npu.profiler.ProfilerActivity.NPU
 +            ],
-+            schedule=torch_npu.profiler.schedule(wait=480, active=1, warmup=10, repeat=1, skip_first=0),
++            schedule=torch_npu.profiler.schedule(wait=480, active=10, warmup=10, repeat=1, skip_first=0),
 +            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profiler_dir),
 +            record_shapes=False,
 +            profile_memory=False,
@@ -113,7 +115,7 @@ index 5b72403..531df65 100644
 +                torch.profiler.ProfilerActivity.CPU,
 +                torch.profiler.ProfilerActivity.CUDA
 +            ],
-+            schedule=torch.profiler.schedule(wait=480, active=1, warmup=10, repeat=1, skip_first=0),
++            schedule=torch.profiler.schedule(wait=480, active=10, warmup=10, repeat=1, skip_first=0),
 +            on_trace_ready=torch.profiler.tensorboard_trace_handler(profiler_dir),
 +            record_shapes=False,
 +            profile_memory=False,
@@ -202,7 +204,7 @@ index 5b72403..531df65 100644
 -    if test_model:
 -        trainer.test()
 +    # 训练并收集 latency 和 metrics
-+    train_result = trainer.train(profiler=None)
++    train_result = trainer.train(rank, profiler=None)
 +    latency_list = train_result['latency_list']
 +    final_loss = train_result['final_loss']
 +    final_metrics = train_result['final_metrics']
@@ -334,7 +336,7 @@ index 5b72403..531df65 100644
 +    parser.add_argument('--bert_mask_prob', type=float, default=0.15)
 +
 +    # torch.compile 相关
-+    parser.add_argument('--torch_compile', action='store_true')
++    parser.add_argument('--compile_dynamic', action='store_true', default=False)
 +    parser.add_argument('--compile_mode', type=str, default='default',
 +                        choices=['default', 'reduce-overhead', 'max-autotune'])
 +
@@ -350,7 +352,7 @@ index 5b72403..531df65 100644
 +    args = parser.parse_args()
 +    main(args)
 diff --git a/options.py b/options.py
-index 28469b9..b06c809 100644
+index 28469b9..043f233 100644
 --- a/options.py
 +++ b/options.py
 @@ -29,7 +29,7 @@ parser.add_argument('--min_uc', type=int, default=5, help='Only keep users with
@@ -391,17 +393,17 @@ index 28469b9..b06c809 100644
 +################
 +# torch.compile (inductor)
 +################
-+parser.add_argument('--torch_compile', action='store_true', help='Enable torch.compile with inductor backend for GPU kernel fusion')
++parser.add_argument('--compile_dynamic', action='store_true', default=False, help='torch.compile dynamic (default: False)')
 +parser.add_argument('--compile_mode', type=str, default='default', choices=['default', 'reduce-overhead', 'max-autotune'], help='torch.compile mode (default: default)')
 +
  ################
  # Experiment
  ################
 diff --git a/trainers/base.py b/trainers/base.py
-index aa2defc..2209fd5 100644
+index aa2defc..5540fb9 100644
 --- a/trainers/base.py
 +++ b/trainers/base.py
-@@ -8,19 +8,37 @@ import torch.optim as optim
+@@ -8,19 +8,42 @@ import torch.optim as optim
  from torch.utils.tensorboard import SummaryWriter
  from tqdm import tqdm
  
@@ -414,6 +416,7 @@ index aa2defc..2209fd5 100644
  
 +try:
 +    import torch_npu
++
 +    HAS_NPU = True
 +except ImportError:
 +    HAS_NPU = False
@@ -428,24 +431,28 @@ index aa2defc..2209fd5 100644
          self.args = args
          self.device = args.device
          self.model = model.to(self.device)
-+        if getattr(args, 'torch_compile', False):
++        if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE':
 +            compile_mode = getattr(args, 'compile_mode', 'default')
-+            logging.info('Compiling model with torch.compile (backend=inductor, mode={}, dynamic=True)'.format(compile_mode))
-+            self.model = torch.compile(self.model, backend='inductor', mode=compile_mode, dynamic=True)
++            compile_dynamic = getattr(args, 'compile_dynamic', 'default')
++            logging.info(
++                'Compiling model with torch.compile (backend=inductor, mode={}, dynamic={})'.format(compile_mode,
++                                                                                                    compile_dynamic))
++            self.model = torch.compile(self.model, backend='inductor', mode=compile_mode, dynamic=compile_dynamic)
          self.is_parallel = args.num_gpu > 1
          if self.is_parallel:
 -            self.model = nn.DataParallel(self.model)
 +            rank = int(args.device.split(':')[-1])
-+            self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[rank], broadcast_buffers=False)
++            self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[rank],
++                                                                   broadcast_buffers=False)
  
          self.train_loader = train_loader
          self.val_loader = val_loader
-@@ -64,24 +82,60 @@ class AbstractTrainer(metaclass=ABCMeta):
+@@ -64,24 +87,60 @@ class AbstractTrainer(metaclass=ABCMeta):
      def calculate_metrics(self, batch):
          pass
  
 -    def train(self):
-+    def train(self, profiler=None):
++    def train(self, rank, profiler=None):
 +        """
 +        训练模型，返回包含 latency 和 metrics 的结果字典
 +        """
@@ -463,7 +470,7 @@ index aa2defc..2209fd5 100644
          for epoch in range(self.num_epochs):
 -            accum_iter = self.train_one_epoch(epoch, accum_iter)
 -            self.validate(epoch, accum_iter)
-+            epoch_latency, epoch_loss, epoch_steps = self.train_one_epoch(epoch, accum_iter)
++            epoch_latency, epoch_loss, epoch_steps = self.train_one_epoch(epoch, rank, accum_iter)
 +            latency_list.extend(epoch_latency)
 +            final_loss = epoch_loss
 +            steps_per_epoch = epoch_steps
@@ -480,6 +487,7 @@ index aa2defc..2209fd5 100644
          })
          self.writer.close()
  
+-    def train_one_epoch(self, epoch, accum_iter):
 +        return {
 +            'latency_list': latency_list,
 +            'final_loss': final_loss,
@@ -487,7 +495,7 @@ index aa2defc..2209fd5 100644
 +            'steps_per_epoch': steps_per_epoch,
 +        }
 +
-     def train_one_epoch(self, epoch, accum_iter):
++    def train_one_epoch(self, epoch, rank, accum_iter):
 +        """
 +        训练一个 epoch，返回 (latency_list, final_loss, step_count)
 +        """
@@ -506,7 +514,7 @@ index aa2defc..2209fd5 100644
  
          for batch_idx, batch in enumerate(tqdm_dataloader):
              batch_size = batch[0].size(0)
-@@ -90,27 +144,58 @@ class AbstractTrainer(metaclass=ABCMeta):
+@@ -90,27 +149,59 @@ class AbstractTrainer(metaclass=ABCMeta):
              self.optimizer.zero_grad()
              loss = self.calculate_loss(batch)
              loss.backward()
@@ -518,14 +526,24 @@ index aa2defc..2209fd5 100644
 -                'Epoch {}, loss {:.3f} '.format(epoch+1, average_meter_set['loss'].avg))
 +            if self.profiler is not None:
 +                self.profiler.step()
- 
--            accum_iter += batch_size
++
 +            if batch_idx % 10 == 0:
 +                time_diff = time.time() - start_time
 +                if batch_idx > 10:  # 过滤前几个 warmup step
 +                    epoch_latency.append(time_diff)
-+                logging.info(f"epoch: {epoch}, step: [{batch_idx} / {len(tqdm_dataloader)}], loss = {loss:.6f}, time = {time_diff:.6f}")
++                logging.info(
++                    f"[{rank}]: epoch: {epoch}, step: [{batch_idx} / {len(tqdm_dataloader)}], loss = {loss:.6f}, time = {time_diff:.6f}")
 +                start_time = time.time()
++
++            final_loss = loss.item()
++            step_count += 1
++
++        # 过滤最后一个 step 的耗时
++        if len(epoch_latency) > 0:
++            epoch_latency.pop()
+ 
+-            accum_iter += batch_size
++        return epoch_latency, final_loss, step_count
  
 -            if self._needs_to_log(accum_iter):
 -                tqdm_dataloader.set_description('Logging to Tensorboard')
@@ -537,22 +555,13 @@ index aa2defc..2209fd5 100644
 -                log_data.update(average_meter_set.averages())
 -                self.log_extra_train_info(log_data)
 -                self.logger_service.log_train(log_data)
-+            final_loss = loss.item()
-+            step_count += 1
- 
--        return accum_iter
-+        # 过滤最后一个 step 的耗时
-+        if len(epoch_latency) > 0:
-+            epoch_latency.pop()
-+
-+        return epoch_latency, final_loss, step_count
-+
 +    def run_profiling_epoch(self, prof):
 +        """
 +        运行一个 epoch 用于 profiler 采集（训练完成后调用）
 +        """
 +        logging.info("Starting profiling epoch...")
-+
+ 
+-        return accum_iter
 +        if HAS_NPU and torch.npu.is_available():
 +            torch_npu.npu.synchronize()
 +        elif torch.cuda.is_available():
@@ -581,7 +590,24 @@ index aa2defc..2209fd5 100644
  
      def validate(self, epoch, accum_iter):
          self.model.eval()
-@@ -142,11 +227,25 @@ class AbstractTrainer(metaclass=ABCMeta):
+@@ -126,7 +217,7 @@ class AbstractTrainer(metaclass=ABCMeta):
+ 
+                 for k, v in metrics.items():
+                     average_meter_set.update(k, v)
+-                description_metrics = ['NDCG@%d' % k for k in self.metric_ks[:3]] +\
++                description_metrics = ['NDCG@%d' % k for k in self.metric_ks[:3]] + \
+                                       ['Recall@%d' % k for k in self.metric_ks[:3]]
+                 description = 'Val: ' + ', '.join(s + ' {:.3f}' for s in description_metrics)
+                 description = description.replace('NDCG', 'N').replace('Recall', 'R')
+@@ -135,18 +226,32 @@ class AbstractTrainer(metaclass=ABCMeta):
+ 
+             log_data = {
+                 'state_dict': (self._create_state_dict()),
+-                'epoch': epoch+1,
++                'epoch': epoch + 1,
+                 'accum_iter': accum_iter,
+             }
+             log_data.update(average_meter_set.averages())
              self.log_extra_val_info(log_data)
              self.logger_service.log_val(log_data)
  
@@ -609,7 +635,16 @@ index aa2defc..2209fd5 100644
          self.model.eval()
  
          average_meter_set = AverageMeterSet()
-@@ -170,14 +269,20 @@ class AbstractTrainer(metaclass=ABCMeta):
+@@ -160,7 +265,7 @@ class AbstractTrainer(metaclass=ABCMeta):
+ 
+                 for k, v in metrics.items():
+                     average_meter_set.update(k, v)
+-                description_metrics = ['NDCG@%d' % k for k in self.metric_ks[:3]] +\
++                description_metrics = ['NDCG@%d' % k for k in self.metric_ks[:3]] + \
+                                       ['Recall@%d' % k for k in self.metric_ks[:3]]
+                 description = 'Val: ' + ', '.join(s + ' {:.3f}' for s in description_metrics)
+                 description = description.replace('NDCG', 'N').replace('Recall', 'R')
+@@ -170,14 +275,22 @@ class AbstractTrainer(metaclass=ABCMeta):
              average_metrics = average_meter_set.averages()
              with open(os.path.join(self.export_root, 'logs', 'test_metrics.json'), 'w') as f:
                  json.dump(average_metrics, f, indent=4)
@@ -627,9 +662,11 @@ index aa2defc..2209fd5 100644
          elif args.optimizer.lower() == 'sgd':
 -            return optim.SGD(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
 +            if self.is_parallel:
-+                return optim.SGD(self.model.module.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
++                return optim.SGD(self.model.module.parameters(), lr=args.lr, weight_decay=args.weight_decay,
++                                 momentum=args.momentum)
 +            else:
-+                return optim.SGD(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
++                return optim.SGD(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay,
++                                 momentum=args.momentum)
          else:
              raise ValueError
  
