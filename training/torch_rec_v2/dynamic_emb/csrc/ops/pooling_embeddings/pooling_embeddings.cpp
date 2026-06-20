@@ -19,12 +19,12 @@ See the License for the specific language governing permissions and
 #include "../ops_utils.h"
 
 extern "C" __global__ __aicore__ void pooling_embeddings(GM_ADDR srcData, GM_ADDR dstData, GM_ADDR offsetData,
-                                                    GM_ADDR inverseData, int32_t combiner, int32_t totalDims,
-                                                    int32_t accumDims, int32_t evSize, int32_t numVec,
-                                                    int32_t batchSize, int32_t totalBlocks, int32_t blocksPerCore,
-                                                    int32_t remainderBlocks, bool isSmall, uint32_t srcTypeNum,
-                                                    uint32_t dstTypeNum, uint32_t offsetTypeNum, uint32_t threads,
-                                                    int32_t outLen, bool isFloat2, int32_t evSizeVec)
+                                                         GM_ADDR inverseData, int32_t combiner, int32_t totalDims,
+                                                         int32_t accumDims, int32_t evSize, int32_t numVec,
+                                                         int32_t batchSize, int32_t totalBlocks, int32_t blocksPerCore,
+                                                         int32_t remainderBlocks, bool isSmall, uint32_t srcTypeNum,
+                                                         uint32_t dstTypeNum, uint32_t offsetTypeNum, uint32_t threads,
+                                                         int32_t outLen, bool useFloat2, int32_t evSizeVec)
 {
     int32_t coreId = AscendC::GetBlockIdx();
 
@@ -32,7 +32,9 @@ extern "C" __global__ __aicore__ void pooling_embeddings(GM_ADDR srcData, GM_ADD
     dyn_emb::DataType srcType = static_cast<dyn_emb::DataType>(srcTypeNum);
     dyn_emb::DataType dstType = static_cast<dyn_emb::DataType>(dstTypeNum);
 
-    if (isFloat2) {
+    const int32_t smallBlockBase = coreId * threads;
+
+    if (useFloat2) {
         INT_TYPE_DISPATCH(offsetType, offset_t, {
             __gm__ offset_t* offset = reinterpret_cast<__gm__ offset_t*>(offsetData);
             __gm__ offset_t* inverse = reinterpret_cast<__gm__ offset_t*>(inverseData);
@@ -41,42 +43,43 @@ extern "C" __global__ __aicore__ void pooling_embeddings(GM_ADDR srcData, GM_ADD
 
             if (isSmall) {
                 AscendC::Simt::VF_CALL<PoolingEmbeddingsSimt::SimtSmallDataCompute<float2, float2, offset_t, true>>(
-                    AscendC::Simt::Dim3{threads, 1, 1}, src, dst, offset, inverse, combiner,
-                    totalDims, accumDims, evSize, evSizeVec, numVec, batchSize, outLen);
+                    AscendC::Simt::Dim3{threads, 1, 1}, src, dst, offset, inverse, combiner, totalDims, accumDims,
+                    evSize, evSizeVec, numVec, batchSize, outLen, smallBlockBase);
             } else {
                 int32_t curBlocksCount = (coreId < remainderBlocks) ? (blocksPerCore + 1) : blocksPerCore;
-                int32_t blockStartIdx = coreId * blocksPerCore +
-                    ((coreId < remainderBlocks) ? coreId : remainderBlocks);
-
+                int32_t blockStartIdx =
+                    coreId * blocksPerCore + ((coreId < remainderBlocks) ? coreId : remainderBlocks);
+                int32_t blockBase = blockStartIdx * threads;
                 AscendC::Simt::VF_CALL<PoolingEmbeddingsSimt::SimtLargeDataCompute<float2, float2, offset_t, true>>(
-                    AscendC::Simt::Dim3{threads, 1, 1}, src, dst, offset, inverse, combiner,
-                    totalDims, accumDims, evSize, evSizeVec, numVec, batchSize, totalBlocks,
-                    blockStartIdx, curBlocksCount, outLen);
+                    AscendC::Simt::Dim3{threads, 1, 1}, src, dst, offset, inverse, combiner, totalDims, accumDims,
+                    evSize, evSizeVec, numVec, batchSize, blockBase, curBlocksCount, outLen, threads);
             }
         });
     } else {
         INT_TYPE_DISPATCH(offsetType, offset_t, {
             FLOAT_TYPE_DISPATCH(srcType, src_t, {
                 FLOAT_TYPE_DISPATCH(dstType, dst_t, {
-                        __gm__ offset_t* offset = reinterpret_cast<__gm__ offset_t*>(offsetData);
-                        __gm__ offset_t* inverse = reinterpret_cast<__gm__ offset_t*>(inverseData);
-                        __gm__ src_t* src = reinterpret_cast<__gm__ src_t*>(srcData);
-                        __gm__ dst_t* dst = reinterpret_cast<__gm__ dst_t*>(dstData);
+                    __gm__ offset_t* offset = reinterpret_cast<__gm__ offset_t*>(offsetData);
+                    __gm__ offset_t* inverse = reinterpret_cast<__gm__ offset_t*>(inverseData);
+                    __gm__ src_t* src = reinterpret_cast<__gm__ src_t*>(srcData);
+                    __gm__ dst_t* dst = reinterpret_cast<__gm__ dst_t*>(dstData);
 
-                        if (isSmall) {
-                            AscendC::Simt::VF_CALL<PoolingEmbeddingsSimt::SimtSmallDataCompute<src_t, dst_t, offset_t, false>>(
-                                AscendC::Simt::Dim3{threads, 1, 1}, src, dst, offset, inverse, combiner,
-                                totalDims, accumDims, evSize, evSizeVec, numVec, batchSize, outLen);
-                        } else {
-                            int32_t curBlocksCount = (coreId < remainderBlocks) ? (blocksPerCore + 1) : blocksPerCore;
-                            int32_t blockStartIdx = coreId * blocksPerCore +
-                                ((coreId < remainderBlocks) ? coreId : remainderBlocks);
-
-                            AscendC::Simt::VF_CALL<PoolingEmbeddingsSimt::SimtLargeDataCompute<src_t, dst_t, offset_t, false>>(
-                                AscendC::Simt::Dim3{threads, 1, 1}, src, dst, offset, inverse, combiner,
-                                totalDims, accumDims, evSize, evSizeVec, numVec, batchSize, totalBlocks,
-                                blockStartIdx, curBlocksCount, outLen);
-                        }
+                    if (isSmall) {
+                        AscendC::Simt::VF_CALL<
+                            PoolingEmbeddingsSimt::SimtSmallDataCompute<src_t, dst_t, offset_t, false>>(
+                            AscendC::Simt::Dim3{threads, 1, 1}, src, dst, offset, inverse, combiner, totalDims,
+                            accumDims, evSize, evSizeVec, numVec, batchSize, outLen, smallBlockBase);
+                    } else {
+                        int32_t curBlocksCount = (coreId < remainderBlocks) ? (blocksPerCore + 1) : blocksPerCore;
+                        int32_t blockStartIdx =
+                            coreId * blocksPerCore + ((coreId < remainderBlocks) ? coreId : remainderBlocks);
+                        int32_t blockBase = blockStartIdx * threads;
+                        AscendC::Simt::VF_CALL<
+                            PoolingEmbeddingsSimt::SimtLargeDataCompute<src_t, dst_t, offset_t, false>>(
+                            AscendC::Simt::Dim3{threads, 1, 1}, src, dst, offset, inverse, combiner, totalDims,
+                            accumDims, evSize, evSizeVec, numVec, batchSize, blockBase, curBlocksCount, outLen,
+                            threads);
+                    }
                 });
             });
         });

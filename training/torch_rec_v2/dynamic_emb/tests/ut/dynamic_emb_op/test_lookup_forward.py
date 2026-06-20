@@ -129,9 +129,22 @@ def _lookup_forward_tol(dtype_float):
     }[dtype_float]
 
 
-def _assert_lookup_forward_close(expected, result, *, ev_size, combiner, dtype_float, dtype_int, op_name):
+def _lookup_forward_large_pool_tol(dtype_float):
+    """大规模多路 pool：fp32 累加顺序差异；fp16 200 路 sum 误差可达 ~1 ULP。"""
+    if dtype_float == torch.float32:
+        return (1e-4, 1e-4)
+    if dtype_float == torch.float16:
+        return (1e-2, 1e-2)
+    return _lookup_forward_tol(dtype_float)
+
+
+def _assert_lookup_forward_close(
+    expected, result, *, ev_size, combiner, dtype_float, dtype_int, op_name, rtol=None, atol=None
+):
     torch.npu.synchronize()
-    rtol, atol = _lookup_forward_tol(dtype_float)
+    default_rtol, default_atol = _lookup_forward_tol(dtype_float)
+    rtol = default_rtol if rtol is None else rtol
+    atol = default_atol if atol is None else atol
     exp_cpu = expected.cpu().float()
     res_cpu = result.cpu().float()
     if torch.allclose(exp_cpu, res_cpu, rtol=rtol, atol=atol):
@@ -282,6 +295,69 @@ def test_pooling_embeddings_float2(dtype_int, dtype_float, device, combiner):
         dtype_float=dtype_float,
         dtype_int=dtype_int,
         op_name="lookup_forward",
+    )
+
+
+# 用例2b：大规模随机池化，dim=4/8/10/17/128/512，batch=10240，seq_len=200
+@pytest.mark.parametrize("dtype_int", [torch.uint64, torch.int64])
+@pytest.mark.parametrize("dtype_float", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("device", [0])
+@pytest.mark.parametrize("combiner", [0, 1])
+@pytest.mark.parametrize("ev_size", [4, 8, 10, 17, 128, 512])
+@pytest.mark.parametrize("batch_size", [10240])
+@pytest.mark.parametrize("seq_len", [200])
+def test_pooling_embeddings_float2_large(dtype_int, dtype_float, device, combiner, ev_size, batch_size, seq_len):
+    torch.npu.set_device(device)
+    torch.manual_seed(0)
+
+    num_vec = batch_size
+    table_size = 8192
+    accum_dims = 0
+    total_dims = (num_vec // batch_size) * ev_size
+
+    npu = f"npu:{device}"
+    src = torch.randn(table_size, ev_size, dtype=dtype_float, device=npu)
+    # PyTorch arange/randint 不支持 uint64，先用 int64 构造再 cast
+    inverse = torch.randint(0, table_size, (num_vec * seq_len,), dtype=torch.int64).to(dtype_int).to(npu)
+    offset = (torch.arange(num_vec + 1, dtype=torch.int64) * seq_len).to(dtype_int).to(npu)
+
+    pooler = EmbeddingTablePooler(
+        combiner=combiner,
+        total_dims=total_dims,
+        accum_dims=accum_dims,
+        ev_size=ev_size,
+        num_vec=num_vec,
+        batch_size=batch_size,
+    )
+
+    expected = torch.zeros(batch_size, total_dims, dtype=dtype_float, device=npu)
+    pooler.pool(src, expected, offset, inverse)
+
+    result = torch.zeros(batch_size, total_dims, dtype=dtype_float, device=npu)
+    dynamic_emb_extensions.lookup_forward(
+        src,
+        result,
+        offset,
+        inverse,
+        combiner,
+        total_dims,
+        accum_dims,
+        ev_size,
+        num_vec,
+        batch_size,
+    )
+
+    rtol, atol = _lookup_forward_large_pool_tol(dtype_float)
+    _assert_lookup_forward_close(
+        expected,
+        result,
+        ev_size=ev_size,
+        combiner=combiner,
+        dtype_float=dtype_float,
+        dtype_int=dtype_int,
+        op_name="lookup_forward",
+        rtol=rtol,
+        atol=atol,
     )
 
 

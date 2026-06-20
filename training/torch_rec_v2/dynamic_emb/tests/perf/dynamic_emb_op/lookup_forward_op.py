@@ -19,7 +19,6 @@ import time
 import logging
 
 import torch
-import torch_npu
 
 import dynamic_emb_extensions
 
@@ -49,11 +48,12 @@ def run_npu_performance_test(combiner, seq_len, dim, batch_size, device_id=0):
     # 3. 测试npu性能
     start_npu = time.perf_counter()
     dynamic_emb_extensions.lookup_forward(
-        src, dst, offset, inverse, combiner, total_dims, accum_dims, dim, num_vec, batch_size)
+        src, dst, offset, inverse, combiner, total_dims, accum_dims, dim, num_vec, batch_size
+    )
     torch.npu.synchronize(device_id)  # 确保所有npu任务执行完毕
     end_npu = time.perf_counter()
 
-    avg_npu_time_us = ((end_npu - start_npu) * 1_000_000)
+    avg_npu_time_us = (end_npu - start_npu) * 1_000_000
     return avg_npu_time_us
 
 
@@ -64,40 +64,36 @@ def main():
     test_cases = [
         (0, 30, 8, 1024),
         (0, 30, 8, 10240),
+        (0, 30, 32, 1024),
+        (0, 30, 32, 10240),
+        (0, 30, 64, 1024),
+        (0, 30, 64, 10240),
         (0, 30, 128, 1024),
         (0, 30, 128, 10240),
-        (0, 30, 512, 1024),
-        (0, 30, 512, 10240),
         (0, 100, 8, 1024),
         (0, 100, 8, 10240),
+        (0, 100, 32, 1024),
+        (0, 100, 32, 10240),
+        (0, 100, 64, 1024),
+        (0, 100, 64, 10240),
         (0, 100, 128, 1024),
         (0, 100, 128, 10240),
-        (0, 100, 512, 1024),
-        (0, 100, 512, 10240),
         (0, 200, 8, 1024),
         (0, 200, 8, 10240),
+        (0, 200, 32, 1024),
+        (0, 200, 32, 10240),
+        (0, 200, 64, 1024),
+        (0, 200, 64, 10240),
         (0, 200, 128, 1024),
         (0, 200, 128, 10240),
-        (0, 200, 512, 1024),
-        (0, 200, 512, 10240),
-        (1, 30, 8, 1024),
-        (1, 30, 8, 10240),
-        (1, 30, 128, 1024),
-        (1, 30, 128, 10240),
-        (1, 30, 512, 1024),
-        (1, 30, 512, 10240),
-        (1, 100, 8, 1024),
-        (1, 100, 8, 10240),
-        (1, 100, 128, 1024),
-        (1, 100, 128, 10240),
-        (1, 100, 512, 1024),
-        (1, 100, 512, 10240),
-        (1, 200, 8, 1024),
-        (1, 200, 8, 10240),
-        (1, 200, 128, 1024),
-        (1, 200, 128, 10240),
-        (1, 200, 512, 1024),
-        (1, 200, 512, 10240),
+        (0, 500, 8, 1024),
+        (0, 500, 8, 10240),
+        (0, 500, 32, 1024),
+        (0, 500, 32, 10240),
+        (0, 500, 64, 1024),
+        (0, 500, 64, 10240),
+        (0, 500, 128, 1024),
+        (0, 500, 128, 10240),
     ]
 
     # 打印标题和表头
@@ -108,11 +104,7 @@ def main():
     # 预热
     for combiner, seq_len, dim, batch_size in test_cases:
         _ = run_npu_performance_test(
-            combiner=combiner,
-            seq_len=seq_len,
-            dim=dim,
-            batch_size=batch_size,
-            device_id=device_id
+            combiner=combiner, seq_len=seq_len, dim=dim, batch_size=batch_size, device_id=device_id
         )
 
     # 统计数据初始化
@@ -124,11 +116,7 @@ def main():
         one_latency = 0
         for _ in range(repeats):
             one_latency += run_npu_performance_test(
-                combiner=combiner,
-                seq_len=seq_len,
-                dim=dim,
-                batch_size=batch_size,
-                device_id=device_id
+                combiner=combiner, seq_len=seq_len, dim=dim, batch_size=batch_size, device_id=device_id
             )
         avg_latency = one_latency / repeats
         torch_times.append(avg_latency)
@@ -141,6 +129,7 @@ def main():
     # 替换为 logging.info
     logging.info("平均耗时: %.2f us", sum(torch_times) / len(torch_times))
     logging.info("耗时范围: %.2f ~ %.2f us", min(torch_times), max(torch_times))
+
 
 if __name__ == "__main__":
     main()
