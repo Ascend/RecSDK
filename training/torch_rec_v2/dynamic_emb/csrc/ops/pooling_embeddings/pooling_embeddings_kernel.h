@@ -28,25 +28,13 @@ constexpr int32_t MAX_THREADS_PER_BLOCK = 1024;
 constexpr int32_t UNROLL_FACTOR = 4;
 
 // SIMT VF函数 - 小数据模式
-template <typename T1, typename T2, typename T3, bool IsFloat2 = false>
+template <typename T1, typename T2, typename T3, bool UseFloat2 = false>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmallDataCompute(
     __gm__ T1* src, __gm__ T2* dst, __gm__ T3* offset, __gm__ T3* inverse, int32_t combiner, int32_t totalDims,
-    int32_t accumDims, int32_t evSize, int32_t evSizeVec, int32_t numVec, int32_t batchSize, int32_t outLen)
+    int32_t accumDims, int32_t evSize, int32_t evSizeVec, int32_t numVec, int32_t batchSize, int32_t outLen,
+    int32_t blockBase)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockIdx = AscendC::Simt::GetBlockIdx();
-    int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
-
-    int32_t blockBase = blockIdx * blockThreadNum;
-
-    if (blockBase >= outLen) {
-        return;
-    }
-
-    int32_t elementsRemaining = outLen - blockBase;
-    // block计算(blockBase, blockBase + elementsThisBlock)
-    int32_t elementsThisBlock = (elementsRemaining < blockThreadNum) ? elementsRemaining : blockThreadNum;
-    // 该运行线程
     int32_t threadElementBase = blockBase + threadIdx;
 
     if (threadElementBase >= outLen) {
@@ -60,14 +48,19 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
     int32_t dstRowIndex = indicesIndex % batchSize;
     int32_t dstColIndex = indicesIndex / batchSize;
 
-    if constexpr (IsFloat2) {
+    if constexpr (UseFloat2) {
         float2 accum = {0.0f, 0.0f};
         int32_t j = 0;
+#pragma unroll
         for (; j + UNROLL_FACTOR <= vectorNum; j += UNROLL_FACTOR) {
-            accum += src[inverse[j + start] * evSizeVec + indicesDimVec];
-            accum += src[inverse[j + start + 1] * evSizeVec + indicesDimVec];
-            accum += src[inverse[j + start + 2] * evSizeVec + indicesDimVec];
-            accum += src[inverse[j + start + 3] * evSizeVec + indicesDimVec];
+            const int32_t r0 = inverse[j + start];
+            const int32_t r1 = inverse[j + start + 1];
+            const int32_t r2 = inverse[j + start + 2];
+            const int32_t r3 = inverse[j + start + 3];
+            accum += src[r0 * evSizeVec + indicesDimVec];
+            accum += src[r1 * evSizeVec + indicesDimVec];
+            accum += src[r2 * evSizeVec + indicesDimVec];
+            accum += src[r3 * evSizeVec + indicesDimVec];
         }
         for (; j < vectorNum; ++j) {
             int32_t srcIndex = inverse[j + start];
@@ -82,11 +75,16 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
     } else {
         float accum{0.0f};
         int32_t j = 0;
+#pragma unroll
         for (; j + UNROLL_FACTOR <= vectorNum; j += UNROLL_FACTOR) {
-            accum += src[inverse[j + start] * evSizeVec + indicesDimVec];
-            accum += src[inverse[j + start + 1] * evSizeVec + indicesDimVec];
-            accum += src[inverse[j + start + 2] * evSizeVec + indicesDimVec];
-            accum += src[inverse[j + start + 3] * evSizeVec + indicesDimVec];
+            const int32_t r0 = inverse[j + start];
+            const int32_t r1 = inverse[j + start + 1];
+            const int32_t r2 = inverse[j + start + 2];
+            const int32_t r3 = inverse[j + start + 3];
+            accum += src[r0 * evSizeVec + indicesDimVec];
+            accum += src[r1 * evSizeVec + indicesDimVec];
+            accum += src[r2 * evSizeVec + indicesDimVec];
+            accum += src[r3 * evSizeVec + indicesDimVec];
         }
         for (; j < vectorNum; ++j) {
             int32_t srcIndex = inverse[j + start];
@@ -100,29 +98,16 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtSmall
 }
 
 // SIMT VF函数 - 大数据模式
-template <typename T1, typename T2, typename T3, bool IsFloat2 = false>
+template <typename T1, typename T2, typename T3, bool UseFloat2 = false>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLargeDataCompute(
     __gm__ T1* src, __gm__ T2* dst, __gm__ T3* offset, __gm__ T3* inverse, int32_t combiner, int32_t totalDims,
-    int32_t accumDims, int32_t evSize, int32_t evSizeVec, int32_t numVec, int32_t batchSize, int32_t totalBlocks,
-    int32_t blockStartIdx, int32_t curBlocksCount, int32_t outLen)
+    int32_t accumDims, int32_t evSize, int32_t evSizeVec, int32_t numVec, int32_t batchSize, int32_t blockBase,
+    int32_t curBlocksCount, int32_t outLen, int32_t blockThreadNum)
 {
     int32_t threadIdx = AscendC::Simt::GetThreadIdx<0>();
-    int32_t blockThreadNum = AscendC::Simt::GetThreadNum<0>();
+    int32_t threadElementBase = blockBase + threadIdx;
 
     for (int32_t iter = 0; iter < curBlocksCount; ++iter) {
-        // 1.位置计算
-        int32_t globalBlockIdx = blockStartIdx + iter;
-
-        int32_t blockBase = globalBlockIdx * blockThreadNum;
-        if (blockBase >= outLen) {
-            break;
-        }
-
-        int32_t elementsRemaining = outLen - blockBase;
-        int32_t elementsThisBlock = (elementsRemaining < blockThreadNum) ? elementsRemaining : blockThreadNum;
-
-        int32_t threadElementBase = blockBase + threadIdx;
-
         if (threadElementBase >= outLen) {
             break;
         }
@@ -134,14 +119,19 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
         int32_t dstRowIndex = indicesIndex % batchSize;
         int32_t dstColIndex = indicesIndex / batchSize;
 
-        if constexpr (IsFloat2) {
+        if constexpr (UseFloat2) {
             float2 accum = {0.0f, 0.0f};
             int32_t j = 0;
+#pragma unroll
             for (; j + UNROLL_FACTOR <= vectorNum; j += UNROLL_FACTOR) {
-                accum += src[inverse[j + start] * evSizeVec + indicesDimVec];
-                accum += src[inverse[j + start + 1] * evSizeVec + indicesDimVec];
-                accum += src[inverse[j + start + 2] * evSizeVec + indicesDimVec];
-                accum += src[inverse[j + start + 3] * evSizeVec + indicesDimVec];
+                const int32_t r0 = inverse[j + start];
+                const int32_t r1 = inverse[j + start + 1];
+                const int32_t r2 = inverse[j + start + 2];
+                const int32_t r3 = inverse[j + start + 3];
+                accum += src[r0 * evSizeVec + indicesDimVec];
+                accum += src[r1 * evSizeVec + indicesDimVec];
+                accum += src[r2 * evSizeVec + indicesDimVec];
+                accum += src[r3 * evSizeVec + indicesDimVec];
             }
             for (; j < vectorNum; ++j) {
                 int32_t srcIndex = inverse[j + start];
@@ -156,11 +146,16 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
         } else {
             float accum{0.0f};
             int32_t j = 0;
+#pragma unroll
             for (; j + UNROLL_FACTOR <= vectorNum; j += UNROLL_FACTOR) {
-                accum += src[inverse[j + start] * evSizeVec + indicesDimVec];
-                accum += src[inverse[j + start + 1] * evSizeVec + indicesDimVec];
-                accum += src[inverse[j + start + 2] * evSizeVec + indicesDimVec];
-                accum += src[inverse[j + start + 3] * evSizeVec + indicesDimVec];
+                const int32_t r0 = inverse[j + start];
+                const int32_t r1 = inverse[j + start + 1];
+                const int32_t r2 = inverse[j + start + 2];
+                const int32_t r3 = inverse[j + start + 3];
+                accum += src[r0 * evSizeVec + indicesDimVec];
+                accum += src[r1 * evSizeVec + indicesDimVec];
+                accum += src[r2 * evSizeVec + indicesDimVec];
+                accum += src[r3 * evSizeVec + indicesDimVec];
             }
             for (; j < vectorNum; ++j) {
                 int32_t srcIndex = inverse[j + start];
@@ -171,6 +166,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void SimtLarge
             }
             dst[dstRowIndex * totalDims + accumDims + dstColIndex * evSize + indicesDimVec] = accum;
         }
+        threadElementBase += blockThreadNum;
     }
 }
 }  // namespace PoolingEmbeddingsSimt

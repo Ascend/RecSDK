@@ -1440,9 +1440,9 @@ void lookup_forward(const at::Tensor& src, const at::Tensor& dst, const at::Tens
     constexpr int32_t EMBEDDING_THRESHOLD = 8;
     auto aclStream = c10_npu::getCurrentNPUStream().stream(true);
 
-    bool isFloat2 = (evSize % 2 == 0 && evSize > EMBEDDING_THRESHOLD);
+    bool useFloat2 = (evSize % 2 == 0 && srcType == DataType::Float32 && evSize > EMBEDDING_THRESHOLD);
     int32_t evSizeVec = evSize;
-    if (isFloat2) {
+    if (useFloat2) {
         evSizeVec >>= 1;
     }
     int32_t outLen = evSizeVec * numVec;
@@ -1452,12 +1452,14 @@ void lookup_forward(const at::Tensor& src, const at::Tensor& dst, const at::Tens
     TORCH_CHECK(coreNum > 0, "coreNum must be greater than 0");
     int32_t blocksPerCore = totalBlocks / coreNum;
     int32_t remainderBlocks = totalBlocks % coreNum;
-    bool isSmall = (maxCores >= totalBlocks) ? true : false;
+    // 参考其他算子在A5机器上的经验值，offset dtype为int32时，小表阈值为24*1024，其他为44*1024
+    bool isInt32 = offset.dtype() == torch::kInt32;
+    bool isSmall = (outLen <= (isInt32 ? SMALL_DATA_THRESHOLD_32 : SMALL_DATA_THRESHOLD));
 
     ACLRT_LAUNCH_KERNEL(pooling_embeddings)
     (coreNum, aclStream, srcData, dstData, offsetData, inverseData, combiner, totalDims, accumDims, evSize, numVec,
      batchSize, totalBlocks, blocksPerCore, remainderBlocks, isSmall, static_cast<uint32_t>(srcType),
-     static_cast<uint32_t>(dstType), static_cast<uint32_t>(offsetType), THREAD_NUM, outLen, isFloat2, evSizeVec);
+     static_cast<uint32_t>(dstType), static_cast<uint32_t>(offsetType), THREAD_NUM, outLen, useFloat2, evSizeVec);
 }
 
 class DeviceTimestamp {
