@@ -517,7 +517,7 @@ index 0000000..d08195f
 +                torch_npu.profiler.ProfilerActivity.CPU,
 +                torch_npu.profiler.ProfilerActivity.NPU
 +            ],
-+            schedule=torch_npu.profiler.schedule(wait=480, active=1, warmup=10, repeat=1, skip_first=0),
++            schedule=torch_npu.profiler.schedule(wait=100, active=1, warmup=10, repeat=1, skip_first=0),
 +            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profiler_dir),
 +            record_shapes=False,
 +            profile_memory=False,
@@ -532,7 +532,7 @@ index 0000000..d08195f
 +                torch.profiler.ProfilerActivity.CPU,
 +                torch.profiler.ProfilerActivity.CUDA
 +            ],
-+            schedule=torch.profiler.schedule(wait=480, active=1, warmup=10, repeat=1, skip_first=0),
++            schedule=torch.profiler.schedule(wait=100, active=1, warmup=10, repeat=1, skip_first=0),
 +            on_trace_ready=torch.profiler.tensorboard_trace_handler(profiler_dir),
 +            record_shapes=False,
 +            profile_memory=False,
