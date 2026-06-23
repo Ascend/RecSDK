@@ -18,11 +18,9 @@ import pytest
 import torch
 import torch_npu
 import torch.distributed as dist
-import torch.distributed.checkpoint as dcp
 import torch.multiprocessing as mp
 from dataset import RandomRecDataset, Batch
 from model import ModelEc as Model
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchrec_embcache.distributed.embedding import (
     EmbCacheEmbeddingCollection,
@@ -34,13 +32,8 @@ from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSp
 from torchrec_embcache.saver import Saver
 from torchrec_embcache.utils import safe_makedirs
 import torchrec
-from torchrec_embcache.distributed.configs import (EmbCacheEmbeddingConfig,
-                                                   AdmitAndEvictConfig)
+from torchrec_embcache.distributed.configs import EmbCacheEmbeddingConfig, AdmitAndEvictConfig
 import torchrec.distributed
-from torch.distributed.fsdp import (
-    FullyShardedDataParallel as FDSP,
-    StateDictType
-)
 from torchrec.distributed.types import ShardingEnv
 from torchrec.distributed.planner import (
     EmbeddingShardingPlanner,
@@ -50,7 +43,7 @@ from torchrec.distributed.planner import (
 from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
 from torchrec.optim.keyed import CombinedOptimizer
 
-from util import setup_logging, setup_main_logging
+from util import prepare_secure_save_dir, setup_logging, setup_main_logging
 
 WORLD_SIZE = 2
 # 不同的WORLD_SIZE
@@ -116,10 +109,12 @@ def execute(rank: int, config: ExecuteConfig, save_load_mode: Optional[str] = No
     admit_threshold = 2 if enable_admit else default_admit_evict_config.admit_threshold
     evict_threshold = 2000_00000 if enable_evict else default_admit_evict_config.evict_threshold
     for i in range(table_num):
-        admit_and_evict_config = AdmitAndEvictConfig(admit_threshold=admit_threshold,
-                                                     not_admitted_default_value=0.999,
-                                                     evict_threshold=evict_threshold,
-                                                     evict_step_interval=EVICT_STEP_INTERVAL)
+        admit_and_evict_config = AdmitAndEvictConfig(
+            admit_threshold=admit_threshold,
+            not_admitted_default_value=0.999,
+            evict_threshold=evict_threshold,
+            evict_step_interval=EVICT_STEP_INTERVAL,
+        )
         ec_config = EmbCacheEmbeddingConfig(
             name=f"table{i}",
             embedding_dim=embedding_dims[i],
@@ -155,40 +150,37 @@ def _compare_tensor(golden_results, test_results):
         logging.debug("result test %s", result)
         logging.debug("golden test %s", golden)
         i += 1
-        assert torch.allclose(
-            golden, result, rtol=1e-04, atol=1e-04
-        ), "golden and result is not closed"
-
+        assert torch.allclose(golden, result, rtol=1e-04, atol=1e-04), "golden and result is not closed"
 
 
 def weight_init(param: torch.nn.Parameter):
     if len(param.shape) != 2:
         return
     torch.manual_seed(param.shape[1])
-    result = (
-        torch.linspace(0, 1, steps=param.shape[1])
-        .unsqueeze(0)
-        .repeat(param.shape[0], 1)
-    )
+    result = torch.linspace(0, 1, steps=param.shape[1]).unsqueeze(0).repeat(param.shape[0], 1)
     param.data.copy_(result)
 
 
 def _read_admit_and_evict_data(path: str, config, incremental: bool = False):
     base_file_path = os.path.join(path, (f"base_{SAVE_BASE_TIMES}/" if incremental else "") + "table{}")
-    delta_file_paths = [
-        os.path.join(path, f"base_{SAVE_BASE_TIMES}_delta_{i+1}/" + "table{}") for i in range(SAVE_DELTA_TIMES)
-    ] if incremental else []
-    admit_key_saved_files = [os.path.join(base_file_path, "key", "slice.data")] + \
-        [os.path.join(delta_file_path, "key", "slice.data") for delta_file_path in delta_file_paths]
-    admit_count_saved_files = [os.path.join(base_file_path, "admit_count", "slice.data")] + \
-        [os.path.join(delta_file_path, "admit_count", "slice.data") for delta_file_path in delta_file_paths]
-    evict_key_saved_files = [os.path.join(base_file_path, "evict_timestamp", "slice_evict_key.data")] + \
-        [os.path.join(delta_file_path, "evict_timestamp", "slice_evict_key.data") 
-         for delta_file_path in delta_file_paths]
-    evict_ts_saved_files = [os.path.join(base_file_path, "evict_timestamp", "slice_evict_ts.data")] + \
-        [os.path.join(delta_file_path, "evict_timestamp", "slice_evict_ts.data") 
-         for delta_file_path in delta_file_paths]
-        
+    delta_file_paths = (
+        [os.path.join(path, f"base_{SAVE_BASE_TIMES}_delta_{i + 1}/" + "table{}") for i in range(SAVE_DELTA_TIMES)]
+        if incremental
+        else []
+    )
+    admit_key_saved_files = [os.path.join(base_file_path, "key", "slice.data")] + [
+        os.path.join(delta_file_path, "key", "slice.data") for delta_file_path in delta_file_paths
+    ]
+    admit_count_saved_files = [os.path.join(base_file_path, "admit_count", "slice.data")] + [
+        os.path.join(delta_file_path, "admit_count", "slice.data") for delta_file_path in delta_file_paths
+    ]
+    evict_key_saved_files = [os.path.join(base_file_path, "evict_timestamp", "slice_evict_key.data")] + [
+        os.path.join(delta_file_path, "evict_timestamp", "slice_evict_key.data") for delta_file_path in delta_file_paths
+    ]
+    evict_ts_saved_files = [os.path.join(base_file_path, "evict_timestamp", "slice_evict_ts.data")] + [
+        os.path.join(delta_file_path, "evict_timestamp", "slice_evict_ts.data") for delta_file_path in delta_file_paths
+    ]
+
     table_key_count_saved = [{} for _ in range(config.table_num)]
     table_key_ts_saved = [{} for _ in range(config.table_num)]
     for i in range(config.table_num):
@@ -198,7 +190,8 @@ def _read_admit_and_evict_data(path: str, config, incremental: bool = False):
                     raise ValueError(f"file:{admit_key_saved_file.format(i)} is not exist when check admit key data.")
                 if not os.path.exists(admit_count_saved_file.format(i)):
                     raise ValueError(
-                        f"file:{admit_count_saved_file.format(i)} is not exist when check admit count data.")
+                        f"file:{admit_count_saved_file.format(i)} is not exist when check admit count data."
+                    )
                 key_data = np.fromfile(admit_key_saved_file.format(i), dtype=np.int64).reshape(-1)
                 count_data = np.fromfile(admit_count_saved_file.format(i), dtype=np.int64).reshape(-1)
                 for index in range(key_data.shape[0]):
@@ -256,7 +249,7 @@ class TestModel:
         training: bool,
         save_load_mode: Optional[str] = None,
     ):
-        rank, world_size = self.rank, self.world_size
+        rank = self.rank
 
         table_num = len(embedding_config)
         ec = EmbCacheEmbeddingCollection(
@@ -318,10 +311,8 @@ class TestModel:
             return_loss=True,
         )
         save_dir = os.path.abspath("save_dir")
-        if training and os.path.exists(save_dir):
-            shutil.rmtree(save_dir, ignore_errors=True)
         if training:
-            safe_makedirs(save_dir)
+            prepare_secure_save_dir(save_dir, rank)
 
         saver = Saver(rank=rank)
         if training:
@@ -330,13 +321,14 @@ class TestModel:
                     for _ in range(SAVE_STEPS):
                         _, _ = pipe.progress(iter_)
                     pipe.wait_pipeline_compute_swapinfo()
-                    saver.save(ddp_model, f"save_dir/sparse/base_{base_time+1}")
+                    saver.save(ddp_model, f"save_dir/sparse/base_{base_time + 1}")
                     for delta_time in range(SAVE_DELTA_TIMES):
                         for _ in range(SAVE_STEPS):
                             _, _ = pipe.progress(iter_)
                         pipe.wait_pipeline_compute_swapinfo()
-                        saver.save(ddp_model, f"save_dir/sparse/base_{base_time+1}_delta_{delta_time+1}", 
-                                   incremental=True)
+                        saver.save(
+                            ddp_model, f"save_dir/sparse/base_{base_time + 1}_delta_{delta_time + 1}", incremental=True
+                        )
             else:
                 for _ in range(LOOP_TIMES):
                     _, _ = pipe.progress(iter_)
@@ -352,15 +344,16 @@ class TestModel:
                 if not os.path.exists(RESULT_TMP_DIR):
                     safe_makedirs(RESULT_TMP_DIR)
                 torch.save(results, os.path.join(RESULT_TMP_DIR, "results_train.pt"))
-                
+
             # 由于差异卡加载时torch保存的dense数据会校验报错，且该测试用例里的dense部分没有参数，所以不保存dense部分
         else:
             # sparse-加载
             if embedding_config[0].is_incremental:
                 saver.load(ddp_model, f"save_dir/sparse/base_{SAVE_BASE_TIMES}")
                 for delta_time in range(SAVE_DELTA_TIMES):
-                    saver.load(ddp_model, f"save_dir/sparse/base_{SAVE_BASE_TIMES}_delta_{delta_time+1}",
-                               incremental=True)
+                    saver.load(
+                        ddp_model, f"save_dir/sparse/base_{SAVE_BASE_TIMES}_delta_{delta_time + 1}", incremental=True
+                    )
             else:
                 saver.load(ddp_model, "save_dir/sparse")
             # 由于差异卡加载时torch保存的dense数据会校验报错，且该测试用例里的dense部分没有参数，所以不加载dense部分
@@ -376,8 +369,10 @@ class TestModel:
                     raise RuntimeError("golden results dir not exist")
                 torch.save(results, os.path.join(RESULT_TMP_DIR, "results_infer.pt"))
             # for admit and evict test, save again after load
-            if embedding_config[0].admit_and_evict_config.is_feature_admit_enabled() or \
-                embedding_config[0].admit_and_evict_config.is_feature_evict_enabled():
+            if (
+                embedding_config[0].admit_and_evict_config.is_feature_admit_enabled()
+                or embedding_config[0].admit_and_evict_config.is_feature_evict_enabled()
+            ):
                 saver.save(ddp_model, "save_dir/sparse_after_load")
         # Must return ddp_model, it is necessary to maintain the reference count about static ThreadPool in C++ code,
         # to facilitate the use of subsequent tasks.
@@ -394,14 +389,12 @@ params = {
     "lookup_len": [128],  # batchsize
     "device": ["npu"],
     "incremental": [False, True],
-    "enable_admit": [False], # 暂时不考虑开启admit的情况
-    "enable_evict": [False], # 暂时不考虑开启evict的情况
+    "enable_admit": [False],  # 暂时不考虑开启admit的情况
+    "enable_evict": [False],  # 暂时不考虑开启evict的情况
 }
 
 
-@pytest.mark.parametrize("config", [
-    ExecuteConfig(*v) for v in itertools.product(*params.values())
-])
+@pytest.mark.parametrize("config", [ExecuteConfig(*v) for v in itertools.product(*params.values())])
 def test_hstu_dens_normal(config: ExecuteConfig):
     save_load_mode = None
     if config.save_world_size == config.load_world_size:
@@ -435,31 +428,37 @@ def test_hstu_dens_normal(config: ExecuteConfig):
     if config.enable_evict or config.enable_admit:
         save_path = "save_dir/sparse"
         after_load_path = "save_dir/sparse_after_load"
-        save_table_key_count_saved, save_table_key_ts_saved = _read_admit_and_evict_data(save_path, config, 
-                                                                                         config.incremental)
-        after_load_table_key_count_saved, after_load_table_key_ts_saved = \
-            _read_admit_and_evict_data(after_load_path, config, incremental=False)
+        save_table_key_count_saved, save_table_key_ts_saved = _read_admit_and_evict_data(
+            save_path, config, config.incremental
+        )
+        after_load_table_key_count_saved, after_load_table_key_ts_saved = _read_admit_and_evict_data(
+            after_load_path, config, incremental=False
+        )
         for idx in range(config.table_num):
             if config.enable_admit:
-                assert _compare_table_data(save_table_key_count_saved[idx], after_load_table_key_count_saved[idx]), \
+                assert _compare_table_data(save_table_key_count_saved[idx], after_load_table_key_count_saved[idx]), (
                     f"table {idx} admit count data not match after load"
+                )
             if config.enable_evict:
-                assert _compare_table_data(save_table_key_ts_saved[idx], after_load_table_key_ts_saved[idx]), \
+                assert _compare_table_data(save_table_key_ts_saved[idx], after_load_table_key_ts_saved[idx]), (
                     f"table {idx} evict timestamp data not match after load"
+                )
 
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
-    test_hstu_dens_normal(ExecuteConfig(
-        save_world_size=WORLD_SIZE,
-        load_world_size=WORLD_SIZE,
-        table_num=2,
-        embedding_dims=[128, 128],
-        num_embeddings=[4000, 400],
-        sharding_type="row_wise",
-        lookup_len=128,
-        device="npu",
-        incremental=False,
-        enable_admit=False,
-        enable_evict=False,
-    ))
+    test_hstu_dens_normal(
+        ExecuteConfig(
+            save_world_size=WORLD_SIZE,
+            load_world_size=WORLD_SIZE,
+            table_num=2,
+            embedding_dims=[128, 128],
+            num_embeddings=[4000, 400],
+            sharding_type="row_wise",
+            lookup_len=128,
+            device="npu",
+            incremental=False,
+            enable_admit=False,
+            enable_evict=False,
+        )
+    )

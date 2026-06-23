@@ -9,6 +9,9 @@
 #----------------------------------------
 # lib related
 #----------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
+
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 if [ -e "/usr/lib64/libgomp.so.1" ]; then
     export LD_PRELOAD=/usr/lib64/libgomp.so.1

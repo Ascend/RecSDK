@@ -5,12 +5,10 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-import re
 from dataclasses import dataclass
 import itertools
 import logging
 import os
-import shutil
 from typing import List
 
 import numpy as np
@@ -23,13 +21,11 @@ from torch import nn, Tensor
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchrec_embcache.distributed.embedding import EmbCacheEmbeddingCollection
-from torchrec_embcache.distributed.configs import (EmbCacheEmbeddingConfig,
-                                                   AdmitAndEvictConfig)
+from torchrec_embcache.distributed.configs import EmbCacheEmbeddingConfig, AdmitAndEvictConfig
 from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
 from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingCollectionSharder
 from torchrec_embcache.sparse.jagged_tensor_with_timestamp import KeyedJaggedTensorWithTimestamp
 from torchrec_embcache.saver import Saver
-from torchrec_embcache.utils import safe_makedirs
 import torchrec
 import torchrec.distributed
 from torchrec import EmbeddingCollection
@@ -44,7 +40,7 @@ from torchrec.optim.keyed import CombinedOptimizer
 
 from dataset import RandomRecDataset, Batch
 from model import ModelEc as Model
-from util import setup_logging
+from util import prepare_secure_save_dir, setup_logging
 
 _SAVE_PATH = "save_dir/sparse"
 
@@ -72,7 +68,7 @@ def _check_admit_key_count(data_loader_golden, embedding_configs: List[EmbCacheE
         values = kjt.values()
         offset_per_key = kjt.offset_per_key()
         for i in range(len(offset_per_key) - 1):
-            values_per_table = values[offset_per_key[i]: offset_per_key[i + 1]]
+            values_per_table = values[offset_per_key[i] : offset_per_key[i + 1]]
             for ids in values_per_table:
                 ids = ids.item()
                 if ids % WORLD_SIZE != rank:
@@ -83,7 +79,7 @@ def _check_admit_key_count(data_loader_golden, embedding_configs: List[EmbCacheE
                     table_key_count[i][ids] = 1
 
     # 2 读取保存目录下的key count
-    
+
     key_file_saved = os.path.join(_SAVE_PATH, "table{}", "key", "slice.data")
     count_file_saved = os.path.join(_SAVE_PATH, "table{}", "admit_count", "slice.data")
     table_key_count_saved = [{} for _ in range(len(embedding_configs))]
@@ -163,10 +159,12 @@ def execute(rank: int, config: ExecuteConfig):
     admit_threshold = 2 if enable_admit else default_config.admit_threshold
     evict_threshold = 2000_0000 if enable_evict else default_config.evict_threshold
     for i in range(table_num):
-        admit_and_evict_config = AdmitAndEvictConfig(admit_threshold=admit_threshold,
-                                                     not_admitted_default_value=0.999,
-                                                     evict_threshold=evict_threshold,
-                                                     evict_step_interval=EVICT_STEP_INTERVAL)
+        admit_and_evict_config = AdmitAndEvictConfig(
+            admit_threshold=admit_threshold,
+            not_admitted_default_value=0.999,
+            evict_threshold=evict_threshold,
+            evict_step_interval=EVICT_STEP_INTERVAL,
+        )
         ec_config = EmbCacheEmbeddingConfig(
             name=f"table{i}",
             embedding_dim=embedding_dims[i],
@@ -175,7 +173,7 @@ def execute(rank: int, config: ExecuteConfig):
             init_fn=weight_init,
             weight_init_min=0.0,
             weight_init_max=1.0,
-            admit_and_evict_config=admit_and_evict_config
+            admit_and_evict_config=admit_and_evict_config,
         )
         embedding_configs.append(ec_config)
 
@@ -198,9 +196,7 @@ def execute(rank: int, config: ExecuteConfig):
         if not enable_admit and enable_evict:
             golden = test_result_golden[i]
             logging.debug("golden test %s", golden)
-            assert torch.allclose(
-                golden, result, rtol=1e-04, atol=1e-04
-            ), "golden and result is not closed"
+            assert torch.allclose(golden, result, rtol=1e-04, atol=1e-04), "golden and result is not closed"
     dist.destroy_process_group()
 
 
@@ -239,7 +235,7 @@ class TestModel:
         self.setup(rank=rank, world_size=world_size)
         self.emb_configs: List[EmbCacheEmbeddingConfig] = []
 
-        # for evict 
+        # for evict
         self.timestamps_for_table: List[dict] = []
         self.last_timestamp_for_table = []
 
@@ -256,15 +252,17 @@ class TestModel:
         sharding_type: str,
         enable_evict: bool,
         training: bool = True,
-        ):
-        rank, world_size = self.rank, self.world_size
-        host_gp = dist.new_group(backend="gloo")
-        host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
+    ):
+        rank = self.rank
 
         table_num = len(embedding_configs)
-        ec = EmbCacheEmbeddingCollection(device=torch.device("meta"), tables=embedding_configs,
-                                         batch_size=2, multi_hot_sizes=[1] * table_num,
-                                         world_size=dist.get_world_size())
+        ec = EmbCacheEmbeddingCollection(
+            device=torch.device("meta"),
+            tables=embedding_configs,
+            batch_size=2,
+            multi_hot_sizes=[1] * table_num,
+            world_size=dist.get_world_size(),
+        )
         num_features = sum([c.num_features() for c in embedding_configs])
         ec = Model(ec, num_features)
         apply_optimizer_in_backward(
@@ -293,9 +291,7 @@ class TestModel:
             topology=Topology(world_size=self.world_size, compute_device=self.device),
             constraints=constrains,
         )
-        plan = planner.collective_plan(
-            ec, shaders, dist.GroupMember.WORLD
-        )
+        plan = planner.collective_plan(ec, shaders, dist.GroupMember.WORLD)
         if self.rank == 0:
             logging.debug(plan)
 
@@ -320,7 +316,7 @@ class TestModel:
                 cpu_device=cpu_device,
                 npu_device=npu_device,
                 return_loss=True,
-                evict_step_interval=evict_step_interval
+                evict_step_interval=evict_step_interval,
             )
 
             for _ in range(LOOP_TIMES):
@@ -329,9 +325,7 @@ class TestModel:
                 results.append(out.detach().cpu())
 
             save_dir = os.path.abspath("save_dir")
-            if os.path.exists(save_dir):
-                shutil.rmtree(save_dir, ignore_errors=True)
-            safe_makedirs(save_dir)
+            prepare_secure_save_dir(save_dir, rank)
             saver = Saver(rank=rank)
             saver.save(ddp_model, _SAVE_PATH)
         else:
@@ -340,8 +334,13 @@ class TestModel:
 
         return results
 
-    def cpu_golden_loss(self, embedding_configs: List[EmbCacheEmbeddingConfig], dataloader: DataLoader[Batch],
-                        evict_threshold: int, rank_id: int):
+    def cpu_golden_loss(
+        self,
+        embedding_configs: List[EmbCacheEmbeddingConfig],
+        dataloader: DataLoader[Batch],
+        evict_threshold: int,
+        rank_id: int,
+    ):
         pg = dist.new_group(backend="gloo")
         self.emb_configs = embedding_configs
         table_num = len(embedding_configs)
@@ -382,7 +381,7 @@ class TestModel:
             for _ in range(table_num):
                 self.timestamps_for_table.append(dict())
                 self.last_timestamp_for_table.append(0)
-        
+
         # record timestamp data
         for table_index in range(table_num):
             start = offset_per_key[table_index]
@@ -396,8 +395,9 @@ class TestModel:
                 self.timestamps_for_table[table_index][ids] = ts
                 self.last_timestamp_for_table[table_index] = max(self.last_timestamp_for_table[table_index], ts)
 
-    def _evict_embedding_cpu(self, evict_threshold: int, embeddings: nn.ModuleDict,
-                             opt: torch.optim.Adagrad, batch_id: int):
+    def _evict_embedding_cpu(
+        self, evict_threshold: int, embeddings: nn.ModuleDict, opt: torch.optim.Adagrad, batch_id: int
+    ):
         logging.info("Start cpu embedding evict, current step:%d", batch_id)
         emb_dims: List[int] = [c.embedding_dim for c in self.emb_configs]
         table_names = [c.name for c in self.emb_configs]
@@ -424,9 +424,8 @@ class TestModel:
                     embeddings[table_name].weight[ids].data.copy_(emb_init_values[table_index])
                     # init optimizer slot
                     slot_tensor[ids].data.copy_(optimizer_init_values[table_index])
-            logging.info("batchId:%d, table name:%s, evict ids num:%d",
-                         batch_id, table_name, len(evict_ids_per_table))
-    
+            logging.info("batchId:%d, table name:%s, evict ids num:%d", batch_id, table_name, len(evict_ids_per_table))
+
 
 params = {
     "world_size": [WORLD_SIZE],
@@ -441,9 +440,7 @@ params = {
 }
 
 
-@pytest.mark.parametrize("config", [
-    ExecuteConfig(*v) for v in itertools.product(*params.values())
-])
+@pytest.mark.parametrize("config", [ExecuteConfig(*v) for v in itertools.product(*params.values())])
 def test_hstu_dens_normal(config: ExecuteConfig):
     mp.spawn(
         execute,
@@ -466,9 +463,7 @@ params = {
 }
 
 
-@pytest.mark.parametrize("config", [
-    ExecuteConfig(*v) for v in itertools.product(*params.values())
-])
+@pytest.mark.parametrize("config", [ExecuteConfig(*v) for v in itertools.product(*params.values())])
 def test_admit_count_correctness(config: ExecuteConfig):
     mp.spawn(
         execute,
@@ -491,9 +486,7 @@ params = {
 }
 
 
-@pytest.mark.parametrize("config", [
-    ExecuteConfig(*v) for v in itertools.product(*params.values())
-])
+@pytest.mark.parametrize("config", [ExecuteConfig(*v) for v in itertools.product(*params.values())])
 def test_evict_correctness(config: ExecuteConfig):
     mp.spawn(
         execute,
@@ -504,14 +497,16 @@ def test_evict_correctness(config: ExecuteConfig):
 
 
 if __name__ == '__main__':
-    test_evict_correctness(ExecuteConfig(
-        world_size=WORLD_SIZE,
-        table_num=2,
-        embedding_dims=[128, 128],
-        num_embeddings=[4000, 400],
-        sharding_type="row_wise",
-        lookup_len=128,
-        device="npu",
-        enable_admit=False,
-        enable_evict=True
-    ))
+    test_evict_correctness(
+        ExecuteConfig(
+            world_size=WORLD_SIZE,
+            table_num=2,
+            embedding_dims=[128, 128],
+            num_embeddings=[4000, 400],
+            sharding_type="row_wise",
+            lookup_len=128,
+            device="npu",
+            enable_admit=False,
+            enable_evict=True,
+        )
+    )
