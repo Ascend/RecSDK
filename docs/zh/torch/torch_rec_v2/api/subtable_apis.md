@@ -394,13 +394,19 @@ class EmbOptimType(enum.Enum):
 
 |参数名|类型| 可选/必选 | 说明                                                             |
 |--|--|-------|----------------------------------------------------------------|
-|ADAM|str|-|嵌入表Adam优化器|
-|ADAMW|str|-|嵌入表AdamW优化器|
+|ADAM|str|-|嵌入表 Adam 优化器，枚举值为 `"adam"`。|
+|ADAMW|str|-|嵌入表 AdamW 优化器，枚举值为 `"adamW"`。|
+|SGD|str|-|嵌入表 SGD 优化器，枚举值为 `"sgd"`。|
+|EXACT_SGD|str|-|嵌入表精确 SGD 优化器，枚举值为 `"exact_sgd"`。|
+|EXACT_ADAGRAD|str|-|嵌入表精确 AdaGrad 优化器，枚举值为 `"exact_adagrad"`。|
+|EXACT_ROWWISE_ADAGRAD|str|-|嵌入表精确逐行 AdaGrad 优化器，枚举值为 `"exact_row_wise_adagrad"`。|
+|NONE|str|-|不使用嵌入表优化器，枚举值为 `"none"`。|
 
 **使用示例<a name="section1045492782314"></a>**
 
 ```python
-from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import
+from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import EmbOptimType
+
 table_options = [
     DynamicEmbTableOptions(
         index_type=torch.int64,
