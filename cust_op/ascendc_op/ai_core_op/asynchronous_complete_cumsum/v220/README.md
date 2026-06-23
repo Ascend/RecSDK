@@ -1,16 +1,16 @@
-**说明**
+# AsynchronousCompleteCumsum算子及样例说明
 
 本算子仅支持NPU调用
 
-# 产品支持情况
+## 产品支持情况
+
 | 硬件型号              | 是否支持 |
-| -------------------- |------|
-| Atlas A2训练系列产品  | 是    |
-| Atlas A3训练系列产品  | 是    |
-| Atlas 推理系列产品    | 是    |
+| --------------------- | -------- |
+| Atlas A2训练系列产品  | 是       |
+| Atlas A3训练系列产品  | 是       |
+| Atlas 推理系列产品    | 是       |
 
-
-# AsynchronousCompleteCumsum算子目录层级
+## AsynchronousCompleteCumsum算子目录层级
 
 ```shell
 -- asynchronous_complete_cumsum
@@ -22,27 +22,39 @@
       |-- run.sh                               # 算子编译部署脚本
 ```
 
-# 功能
+## 算子输入与输出
+
+| 名称 | 输入/输出 | 参数类型 | 数据类型 | 数据格式 | 范围 | 说明 |
+| --------------------------- | ---- | ------- | ------- | ---- | ------------------------ | ------------------------------------------------- |
+| input_tensor | 输入 | Tensor | int32/int64 | [dim0] | dim0为input_tensor元素个数,长度:[1, 2^63-1) | 仅支持一维输入 |
+| output_tensor | 输出 | Tensor | int32/int64 | [dim0+1] | 长度:dim0+1 | 从零开始以此累加input_tensor元素,用户需自行控制总和不超过int32/int64数值范围 |
+
+## 功能
+
 对输入的一维Tensor累积求和
 
-# 算子实现原理
+## 算子实现原理
+
 输入:
+
 ```python
 input_tensor = [1,5,6]
 ```
+
 输出：
+
 ```python
+output_tensor_golden = torch.cumsum(torch.cat([torch.zeros(1), input_tensor]), dim=0) # torch实现
 output_tensor = [0, 1, 6, 12]
 ```
 
-1. Host侧算子实现
+### 1. Host侧算子实现
 
 Host侧算子实现在目录 op_host下
 
 a) Tiling实现
 
-namespace optiling域中的Tiling函数，主要实现从context中获取外部入参信息（输入参数指针、shape信息），及校验有效性；  
-设置BlockDim，最后通过TilingData传递属性信息。
+namespace optiling域中的Tiling函数，主要实现从context中获取外部入参信息（输入参数指针、shape信息），及校验有效性；设置BlockDim，最后通过TilingData传递属性信息。
 
 b) Shape推导
 
@@ -52,7 +64,7 @@ c) 原型注册
 
 定义了算子原型，并将算子注册到GE。
 
-2. Kernel侧算子实现
+### 2. Kernel侧算子实现
 
 Kernel侧算子实现在目录op_kernel下，其中包括：asynchronous_complete_cumsum.cpp。
 
@@ -62,7 +74,7 @@ b) 解析tiling参数：`GET_TILING_DATA(tilingData, tiling)`从TilingData中获
 
 c) 实现累计和的计算
 
-# 算子编译部署
+## 算子编译部署
 
 算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
