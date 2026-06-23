@@ -616,7 +616,7 @@ index 6d2da5b..3f39de4 100644
 +    else:
 +        torch.backends.cuda.matmul.allow_tf32 = True
 +        torch.backends.cudnn.allow_tf32 = True
-+        print(f"NPU: set hf32 is {torch_npu.npu.aclnn.allow_hf32}")
++        print(f"NPU: set hf32 is {torch.backends.cuda.matmul.allow_tf32}")
 +
 +
  @gin.configurable
