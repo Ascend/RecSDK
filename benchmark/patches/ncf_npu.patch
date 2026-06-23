@@ -52,7 +52,7 @@ index 8b1014d..e60d29f 100644
  		NDCG.append(ndcg(gt_item, recommends))
  
 diff --git a/main.py b/main.py
-index 04df907..a531ff6 100644
+index 04df907..becb654 100644
 --- a/main.py
 +++ b/main.py
 @@ -1,5 +1,7 @@
@@ -63,7 +63,7 @@ index 04df907..a531ff6 100644
  import argparse
  import numpy as np
  
-@@ -7,135 +9,412 @@ import torch
+@@ -7,135 +9,413 @@ import torch
  import torch.nn as nn
  import torch.optim as optim
  import torch.utils.data as data
@@ -436,12 +436,13 @@ index 04df907..a531ff6 100644
 +            loss.backward()
 +            optimizer.step()
 +
-+            if count % 10 == 0:
++            if count_in_epoch % 10 == 0:
 +                time_diff = time.time() - start_time
 +                if count_in_epoch > 10:  # 过滤前两个耗时
 +                    latency_list.append(time_diff)
 +                logging.info(
-+                    f"[{rank}]:epoch: {epoch}, step: [{count} / {len(train_loader)}], loss = {loss:.6f}, time = {time_diff:.6f}")
++                    f"[{rank}]:epoch: {epoch}, step: [{count_in_epoch} / {len(train_loader)}], loss = {loss:.6f}, time = {time_diff:.6f}")
++                train_loss = loss
 +                start_time = time.time()
 +
 +            # writer.add_scalar('data/loss', loss.item(), count)
@@ -481,12 +482,12 @@ index 04df907..a531ff6 100644
 +            'dataset_name': config.dataset,
 +            "batch_size": args.batch_size,
 +            'epoch': args.epochs - 1,
-+            'step': count_in_epoch,
-+            'final_loss': loss.cpu().item(),
++            'step': count_in_epoch // 10 * 10,
++            'final_loss': train_loss.cpu().item(),
 +            "ms/step": float(avg_time) * 100,
 +            'metrics': {
-+                'HR': float(HR),
-+                'NDCG': float(NDCG),
++                'HR': float(best_hr),
++                'NDCG': float(best_ndcg),
 +            },
 +        }
 +

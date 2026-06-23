@@ -1,6 +1,6 @@
 diff --git a/main.py b/main.py
 new file mode 100644
-index 0000000..4486b1e
+index 0000000..ec83903
 --- /dev/null
 +++ b/main.py
 @@ -0,0 +1,437 @@
@@ -294,7 +294,7 @@ index 0000000..4486b1e
 +                    latency_list.append(time_diff)
 +                logging.info(
 +                    f"[{rank}]: epoch: {epoch}, step: [{i} / {len(loader_train)}], loss = {loss}, accuracy = {accuracy}, auc = {auc}, time = {time_diff}")
-+                train_loss = loss
++                train_loss, train_accuracy, train_auc = loss, accuracy, auc
 +                start_time = time.time()
 +
 +            if iter % args.test_iter == 0:
@@ -336,8 +336,8 @@ index 0000000..4486b1e
 +            'final_loss': train_loss.cpu().item(),  # 每1000步切evel，8480步的loss是训练的loss
 +            'ms/step': avg_time * 100,
 +            'metrics': {
-+                'accuracy': float(accuracy),
-+                'auc': float(auc),
++                'accuracy': float(train_accuracy),
++                'auc': float(train_auc),
 +            },
 +        }
 +
