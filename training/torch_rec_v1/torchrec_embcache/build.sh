@@ -10,7 +10,9 @@ set -e
 SCRIPT_PATH=$(cd $(dirname $0); pwd)
 version_file="${SCRIPT_PATH}/version.txt"
 
-if [ ! -f "${version_file}" ]; then
+if [ -n "${BUILD_VERSION}" ]; then
+  VERSION="${BUILD_VERSION}"
+elif [ ! -f "${version_file}" ]; then
   VERSION="1.0.0"
 else
   VERSION=$(head -n 1 "${version_file}")
@@ -56,9 +58,12 @@ function build_with_cmake_func()
     mkdir -p ${SCRIPT_PATH}/src/cmake_build
     cd ${SCRIPT_PATH}/src/cmake_build
     torch_path=$(python3 -m pip show torch 2>/dev/null | grep -E "^Location:" | awk '{print $2}')/torch/share/cmake
+    torch_cxx11_abi=`python3 -c 'import torch;print(int(torch._C._GLIBCXX_USE_CXX11_ABI))'`
     cmake ../ \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX="${torch_path}"
+    -DCMAKE_INSTALL_PREFIX="${torch_path}" \
+    -DTORCH_CXX11_ABI="${torch_cxx11_abi}"
+
 
 
     make -j8

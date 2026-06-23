@@ -53,16 +53,18 @@ repos:
         types: [python]
         args: ["--rcfile=pre-commit/pyproject.toml"]
         verbose: false
+        exclude: ^pre-commit/.*|^training/torch_rec_v1/hybrid_torchrec/test/.*|^training/torch_rec_v1/torchrec_embcache/tests/.*
 
   # Bandit：指定 pre-commit/pyproject.toml
   - repo: https://gitcode.com/gh_mirrors/ba/bandit
     rev: 1.9.4
     hooks:
       - id: bandit
+        additional_dependencies: ['bandit[toml]']
         name: bandit (Python 安全漏洞检查)
         types: [python]
         args: [
-          "--config=pre-commit/pyproject.toml",
+          "--configfile=pre-commit/pyproject.toml",
           "--quiet",
         ]
 
