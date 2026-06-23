@@ -15,7 +15,9 @@ torch.ops.mxrec.hstu_backward_v2(
     num_target=None,
     scale=0.0,
     target_group_size=0,
-    alpha=1.0
+    alpha=1.0,
+    window_size_left=-1,
+    window_size_right=-1
 ) → (Tensor, Tensor, Tensor, Tensor)
 ```
 
@@ -53,6 +55,10 @@ HSTU (Hierarchical Sparse Transformer Unit) 算子的反向传播实现，用于
 
 - **alpha** (*float, optional*) – Alpha 系数，用于 RAG 计算。默认值: `1.0`
 
+- **window_size_left** (*int*) – 注意力窗口左侧宽度，默认 `-1`。`-1` 表示向左无限延伸。与 `window_size_right` 共同决定 mask 类型
+
+- **window_size_right** (*int*) – 注意力窗口右侧宽度，默认 `-1`。`-1` 表示向右无限延伸，`0` 表示因果掩码。与 `window_size_left` 共同决定 mask 类型
+
 ## 支持的数据类型
 
 `torch.float16, torch.bfloat16`
@@ -81,6 +87,26 @@ HSTU (Hierarchical Sparse Transformer Unit) 算子的反向传播实现，用于
 - `dimQK` 和 `dimGV` 必须为 16 的倍数
 - 当 `numContext` 或 `numTarget` 不为 None 时，`targetGroupSize` 必须为 `1` 或 `3`
 - `headQ` 必须等于 `headK`（当前仅支持 MHA，不支持 GQA）
+- `window_size_left` 和 `window_size_right` 必须 ≥ -1
+- 当前仅支持 `(-1, 0)`（causal mask）和 `(-1, -1)`（no mask）两种 `(window_size_left, window_size_right)` 组合
+- 当提供 `num_context` 或 `num_target` 时，必须使用 causal mask（`window_size_left=-1, window_size_right=0`）, 同时需满足num_context + num_target < max_seqlen_q
+
+## mask 行为说明
+
+通过 `window_size_left` 和 `window_size_right` 控制注意力 mask 类型：
+
+| window_size_left | window_size_right | mask 类型 | 说明 |
+|-----------------|-------------------|----------|------|
+| -1 | 0 | causal mask（因果掩码） | 下三角掩码，每个 token 只能关注自身及之前的 token |
+| -1 | -1 | no mask（无掩码） | 不做任何 mask，每个 token 可关注所有 token |
+
+当使用 causal mask 时，可通过 `num_context` 和 `num_target` 进一步细分 mask 区域：
+
+- **context 区域**（`num_context` 指定长度）：双向注意力，无 causal 限制
+- **target 区域**（`num_target` 指定长度）：分组注意力，group_size 由 `target_group_size` 控制
+- **其余区域**：标准 causal mask（下三角）
+
+注意：当前仅支持 causal mask 和 no mask 两种模式，不支持自定义 mask 张量输入。
 
 ## 使用示例
 
@@ -110,14 +136,15 @@ HSTU (Hierarchical Sparse Transformer Unit) 算子的反向传播实现，用于
 >>> seq_offset_q = torch.cat([torch.zeros(1, dtype=torch.int32), torch.cumsum(seq_lens_q, dim=0)])
 >>> seq_offset_k = torch.cat([torch.zeros(1, dtype=torch.int32), torch.cumsum(seq_lens_k, dim=0)])
 
->>> # 调用算子
+>>> # 调用算子（仅causal mask,未配置context mask及target mask）
 >>> q_grad, k_grad, v_grad, rab_grad = torch.ops.mxrec.hstu_backward_v2(
 ...     grad, q, k, v,
 ...     max_seqlen_q, max_seqlen_k,
 ...     seq_offset_q.to("npu"),
 ...     seq_offset_k.to("npu"),
 ...     None, None, None,
-...     0.0, 0, 1.0
+...     0.0, 0, 1.0,
+...     -1, 0
 ... )
 
 >>> # 输出 shape
@@ -157,6 +184,7 @@ HSTU Backward 算子实现以下反向传播计算:
 ## 依赖
 
 算子依赖CATLASS源码, 编译前需要初始化submodule：
+
 ```shell
 git submodule update --init --recursive
 ```
