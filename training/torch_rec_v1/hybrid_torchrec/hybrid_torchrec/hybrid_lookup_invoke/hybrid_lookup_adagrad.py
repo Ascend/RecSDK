@@ -13,18 +13,17 @@ from fbgemm_gpu.split_embedding_codegen_lookup_invokers.lookup_adagrad import (
     Momentum,
 )
 
+from hybrid_torchrec._adapters import adapter
 from hybrid_torchrec.hybrid_lookup_invoke.hybrid_lookup_args import HybridCommonArgs, HybridCommonArgsAggregation
-from hybrid_torchrec import IS_TORCH_REC_120
 
 
+# pylint: disable=duplicate-code
 def check_unique_valid(common_args: HybridCommonArgs):
     if common_args.hash_indices is None or common_args.unique_indices is None:
         return
     hash_indices = common_args.hash_indices.to("cpu")
     offsets = common_args.offsets.to("cpu")
-    batch_size = (
-        common_args.offsets.shape[0] - 1
-    ) // common_args.weights_offsets.shape[0]
+    batch_size = (common_args.offsets.shape[0] - 1) // common_args.weights_offsets.shape[0]
     unique_indices = common_args.unique_indices.to("cpu")
     unique_offset = common_args.unique_offset.to("cpu")
     unique_inverse = common_args.unique_inverse.to("cpu")
@@ -73,23 +72,30 @@ def invoke(
             # create offsets with fixed batch size max_b
             # not efficient but for now we just need a functional implementation for CPU
             parse_vbe_offset(common_args, num_offsets, vbe_metadata)
-        else:
-            offsets = common_args.offsets
         output = torch.ops.fbgemm.split_embedding_codegen_lookup_adagrad_function_cpu(
             # common_args
-            host_weights=common_args.host_weights, weights_placements=common_args.weights_placements,
-            weights_offsets=common_args.weights_offsets, D_offsets=common_args.D_offsets, total_D=common_args.total_D,
-            max_D=common_args.max_D, hash_size_cumsum=common_args.hash_size_cumsum,
-            total_hash_size_bits=common_args.total_hash_size_bits, indices=indices, offsets=common_args.offsets,
-            pooling_mode=common_args.pooling_mode, indice_weights=common_args.indice_weights,
+            host_weights=common_args.host_weights,
+            weights_placements=common_args.weights_placements,
+            weights_offsets=common_args.weights_offsets,
+            D_offsets=common_args.D_offsets,
+            total_D=common_args.total_D,
+            max_D=common_args.max_D,
+            hash_size_cumsum=common_args.hash_size_cumsum,
+            total_hash_size_bits=common_args.total_hash_size_bits,
+            indices=indices,
+            offsets=common_args.offsets,
+            pooling_mode=common_args.pooling_mode,
+            indice_weights=common_args.indice_weights,
             feature_requires_grad=common_args.feature_requires_grad,
             # optimizer_args
-            gradient_clipping=optimizer_args.gradient_clipping, max_gradient=optimizer_args.max_gradient,
+            gradient_clipping=optimizer_args.gradient_clipping,
+            max_gradient=optimizer_args.max_gradient,
             stochastic_rounding=optimizer_args.stochastic_rounding,
-            learning_rate=_get_lr_param(common_args, optimizer_args),
+            learning_rate=adapter.get_learning_rate(common_args, optimizer_args),
             eps=optimizer_args.eps,
             # momentum1
-            momentum1_host=momentum1.host, momentum1_offsets=momentum1.offsets,
+            momentum1_host=momentum1.host,
+            momentum1_offsets=momentum1.offsets,
             momentum1_placements=momentum1.placements,
         )
         if vbe:
@@ -133,7 +139,7 @@ def invoke(
         gradient_clipping=optimizer_args.gradient_clipping,
         max_gradient=optimizer_args.max_gradient,
         stochastic_rounding=optimizer_args.stochastic_rounding,  # if optimizer == none
-        learning_rate=_get_lr_param(common_args, optimizer_args),
+        learning_rate=adapter.get_learning_rate(common_args, optimizer_args),
         eps=optimizer_args.eps,
         # momentum1
         momentum1_dev=momentum1.dev,
@@ -159,14 +165,14 @@ def invoke(
 
 
 def invoke_grad_aggregation(
-        common_args: HybridCommonArgsAggregation,
-        optimizer_args: OptimizerArgs,
-        momentum1: Momentum,
-        iteration: int = 0,
-        apply_global_weight_decay: bool = False,
-        # only pass prev_iter_dev since prev_iter is never created on UVM
-        prev_iter_dev: Optional[torch.Tensor] = None,
-        gwd_lower_bound: float = 0.0,
+    common_args: HybridCommonArgsAggregation,
+    optimizer_args: OptimizerArgs,
+    momentum1: Momentum,
+    iteration: int = 0,
+    apply_global_weight_decay: bool = False,
+    # only pass prev_iter_dev since prev_iter is never created on UVM
+    prev_iter_dev: Optional[torch.Tensor] = None,
+    gwd_lower_bound: float = 0.0,
 ) -> torch.Tensor:
     vbe_metadata = common_args.vbe_metadata
 
@@ -181,16 +187,17 @@ def invoke_grad_aggregation(
             # create offsets with fixed batch size max_b
             # not efficient but for now we just need a functional implementation for CPU
             max_b = vbe_metadata.max_B
-            offsets = torch.empty([num_offsets * max_b + 1], dtype=common_args.offsets.dtype,
-                                  device=common_args.offsets.device)
+            offsets = torch.empty(
+                [num_offsets * max_b + 1], dtype=common_args.offsets.dtype, device=common_args.offsets.device
+            )
             for t in range(num_offsets):
                 b_offsets = vbe_metadata.B_offsets
                 if not isinstance(b_offsets, torch.Tensor):
                     raise TypeError("b_offsets must be a torch.Tensor")
                 begin = b_offsets[t]
                 end = b_offsets[t + 1]
-                offsets[t * max_b: t * max_b + end - begin] = common_args.offsets[begin: end]
-                offsets[t * max_b + end - begin: (t + 1) * max_b] = common_args.offsets[end]
+                offsets[t * max_b : t * max_b + end - begin] = common_args.offsets[begin:end]
+                offsets[t * max_b + end - begin : (t + 1) * max_b] = common_args.offsets[end]
             offsets[-1] = common_args.offsets[-1]
         else:
             offsets = common_args.offsets
@@ -213,13 +220,12 @@ def invoke_grad_aggregation(
             gradient_clipping=optimizer_args.gradient_clipping,
             max_gradient=optimizer_args.max_gradient,
             stochastic_rounding=optimizer_args.stochastic_rounding,
-            learning_rate=_get_lr_param(common_args, optimizer_args),
+            learning_rate=adapter.get_learning_rate(common_args, optimizer_args),
             eps=optimizer_args.eps,
             # momentum1
             momentum1_host=momentum1.host,
             momentum1_offsets=momentum1.offsets,
             momentum1_placements=momentum1.placements,
-
         )
         if vbe:
             output_new = torch.empty([vbe_metadata.output_size], dtype=output.dtype, device=output.device)
@@ -240,7 +246,7 @@ def invoke_grad_aggregation(
                     b_end = b_offsets_rank_per_feature[t][r + 1].item()
                     if o_end - o_begin != (b_end - b_begin) * dim:
                         raise ValueError("Assertion failed: o_end - o_begin != (b_end - b_begin) * dim")
-                    output_new[o_begin: o_end] = output[b_begin: b_end, d_offset: d_offset + dim].flatten()
+                    output_new[o_begin:o_end] = output[b_begin:b_end, d_offset : d_offset + dim].flatten()
                     d_offset += dim
             return output_new
         else:
@@ -286,7 +292,7 @@ def invoke_grad_aggregation(
         gradient_clipping=optimizer_args.gradient_clipping,
         max_gradient=optimizer_args.max_gradient,
         stochastic_rounding=optimizer_args.stochastic_rounding,  # if optimizer == none
-        learning_rate=_get_lr_param(common_args, optimizer_args),
+        learning_rate=adapter.get_learning_rate(common_args, optimizer_args),
         eps=optimizer_args.eps,
         # momentum1
         momentum1_dev=momentum1.dev,
@@ -308,13 +314,9 @@ def invoke_grad_aggregation(
         grad_accumulate_offsets=common_args.grad_accumulate_offsets,
         use_optimize=common_args.use_optimize,
         table_grad_accumulate_offsets=common_args.table_grad_accumulate_offsets,
-        table_offsets_multi=common_args.table_offsets_multi
+        table_offsets_multi=common_args.table_offsets_multi,
     )
     return result
-
-
-def _get_lr_param(common_args, optimizer_args):
-    return common_args.learning_rate if IS_TORCH_REC_120 else optimizer_args.learning_rate
 
 
 def parse_vbe_output_offset(common_args, num_offsets, output, vbe_metadata):
@@ -336,21 +338,23 @@ def parse_vbe_output_offset(common_args, num_offsets, output, vbe_metadata):
             b_end = b_offsets_rank_per_feature[t][r + 1].item()
             if o_end - o_begin != (b_end - b_begin) * dim:
                 raise ValueError("Assertion failed: o_end - o_begin != (b_end - b_begin) * dim")
-            output_new[o_begin: o_end] = output[b_begin: b_end, d_offset: d_offset + dim].flatten()
+            output_new[o_begin:o_end] = output[b_begin:b_end, d_offset : d_offset + dim].flatten()
             d_offset += dim
     return output_new
 
 
 def parse_vbe_offset(common_args, num_offsets, vbe_metadata):
     max_b = vbe_metadata.max_B
-    offsets = torch.empty([num_offsets * max_b + 1], dtype=common_args.offsets.dtype,
-                          device=common_args.offsets.device)
+    offsets = torch.empty([num_offsets * max_b + 1], dtype=common_args.offsets.dtype, device=common_args.offsets.device)
     for t in range(num_offsets):
         b_offsets = vbe_metadata.B_offsets
         if not isinstance(b_offsets, torch.Tensor):
             raise TypeError("b_offsets must be a torch.Tensor")
         begin = b_offsets[t]
         end = b_offsets[t + 1]
-        offsets[t * max_b: t * max_b + end - begin] = common_args.offsets[begin: end]
-        offsets[t * max_b + end - begin: (t + 1) * max_b] = common_args.offsets[end]
+        offsets[t * max_b : t * max_b + end - begin] = common_args.offsets[begin:end]
+        offsets[t * max_b + end - begin : (t + 1) * max_b] = common_args.offsets[end]
     offsets[-1] = common_args.offsets[-1]
+
+
+# pylint: enable=duplicate-code
