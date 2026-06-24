@@ -16,7 +16,6 @@
 # limitations under the License.
 # ==============================================================================
 
-
 from typing import Dict, Optional, Tuple
 
 import torch
@@ -26,6 +25,7 @@ from dynamic_emb.distributed.dynamicemb_config import DynamicEmbPoolingMode, Dyn
 from dynamic_emb.distributed.key_value_table import KeyValueTableFunction, KeyValueTableCachingFunction
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import EmbOptimType
 from dynamic_emb.distributed.types import Storage
+from key_value_table_test_helpers import run_caching_lookup
 
 
 class MockOptimizer:
@@ -40,11 +40,13 @@ class MockOptimizer:
 
     def fused_update(self, grads: torch.Tensor, values: torch.Tensor) -> None:
         self.last_fused_update_shapes = (tuple(grads.shape), tuple(values.shape))
-        values.add_(grads)
+        values[:, : grads.size(1)] += grads
 
 
 class PyDictStorage(Storage):
-    def __init__(self, options, optimizer):
+    """In-memory external storage backend; data lives only in dict, not in HKV."""
+
+    def __init__(self, options: DynamicEmbTableOptions, optimizer: MockOptimizer):
         self.options = options
         self.optimizer = optimizer
         self._emb_dim = options.dim
@@ -58,7 +60,7 @@ class PyDictStorage(Storage):
         unique_keys: torch.Tensor,
         unique_vals: torch.Tensor,
         founds: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[int, torch.Tensor, torch.Tensor]:
         missing_keys = []
         missing_indices = []
         found_flags = []
@@ -144,9 +146,12 @@ class CacheStub:
         self.last_insert_and_evict_keys = keys.clone()
         for i in range(keys.numel()):
             self.cache[int(keys[i].item())] = values[i, :].clone()
-        return 0, torch.empty(0, dtype=keys.dtype, device=keys.device), torch.empty(
-            0, self.value_dim, dtype=values.dtype, device=values.device
-        ), torch.empty(0, dtype=torch.int64, device=keys.device)
+        return (
+            0,
+            torch.empty(0, dtype=keys.dtype, device=keys.device),
+            torch.empty(0, self.value_dim, dtype=values.dtype, device=values.device),
+            torch.empty(0, dtype=torch.int64, device=keys.device),
+        )
 
     def update(self, unique_keys, unique_grads):
         self.last_update_keys = unique_keys.clone()
@@ -182,14 +187,29 @@ class StorageEnableUpdateStub(PyDictStorage):
             k = int(keys[i].item())
             if k in self.dict:
                 self.dict[k] = self.dict[k] + grads[i, :]
-        return 0, torch.empty(0, dtype=keys.dtype, device=keys.device), torch.empty(
-            0, dtype=torch.long, device=keys.device
+        return (
+            0,
+            torch.empty(0, dtype=keys.dtype, device=keys.device),
+            torch.empty(0, dtype=torch.long, device=keys.device),
         )
+
+
+def _external_storage_options(**kwargs) -> DynamicEmbTableOptions:
+    defaults = dict(
+        dim=2,
+        embedding_dtype=torch.float32,
+        index_type=torch.int64,
+        training=True,
+        caching=True,
+        max_capacity=1024,
+    )
+    defaults.update(kwargs)
+    return DynamicEmbTableOptions(**defaults)
 
 
 def test_key_value_table_function_update_supports_external_storage_without_enable_update():
     optimizer = MockOptimizer()
-    option = DynamicEmbTableOptions(dim=2, embedding_dtype=torch.float32, caching=True, max_capacity=1024)
+    option = _external_storage_options()
     storage = PyDictStorage(option, optimizer)
     storage.insert(
         torch.tensor([11], dtype=torch.int64),
@@ -207,6 +227,7 @@ def test_key_value_table_function_update_supports_external_storage_without_enabl
     assert torch.allclose(storage.dict[11], torch.tensor([1.5, 2.5], dtype=torch.float32))
     assert 22 not in storage.dict
     assert optimizer.last_fused_update_shapes == ((1, 2), (1, 2))
+    assert not hasattr(storage, "table")
 
 
 def test_create_cache_storage_uses_external_storage(monkeypatch):
@@ -226,8 +247,6 @@ def test_create_cache_storage_uses_external_storage(monkeypatch):
         training=True,
         caching=True,
         max_capacity=4096,
-        # >= bucket_capacity(1024) * (dim + adam_state_dim(2*dim)) * sizeof(fp32)
-        # = 1024 * (8 + 16) * 4 = 98304
         local_hbm_for_values=4 * 8 * 4096,
         external_storage=PyDictStorage,
     )
@@ -243,10 +262,11 @@ def test_create_cache_storage_uses_external_storage(monkeypatch):
 
     assert isinstance(bdet._caches[0], FakeKeyValueTable)
     assert isinstance(bdet._storages[0], PyDictStorage)
+    assert not hasattr(bdet._storages[0], "table")
 
 
 def test_key_value_table_caching_lookup_updates_cache_from_storage():
-    option = DynamicEmbTableOptions(dim=2, embedding_dtype=torch.float32, caching=True, max_capacity=1024)
+    option = _external_storage_options()
     optimizer = MockOptimizer()
     cache = CacheStub(emb_dim=2, value_dim=2, device=torch.device("cpu"))
     storage = PyDictStorage(option, optimizer)
@@ -261,13 +281,12 @@ def test_key_value_table_caching_lookup_updates_cache_from_storage():
     def no_op_initializer(vals, missing_indices, keys):
         return
 
-    KeyValueTableCachingFunction.lookup(
+    run_caching_lookup(
         cache=cache,
         storage=storage,
         unique_keys=unique_keys,
         unique_embs=unique_embs,
         initializer=no_op_initializer,
-        enable_prefetch=False,
         training=False,
     )
 
@@ -278,7 +297,7 @@ def test_key_value_table_caching_lookup_updates_cache_from_storage():
 
 
 def test_key_value_table_caching_update_calls_storage_update_when_enabled():
-    option = DynamicEmbTableOptions(dim=2, embedding_dtype=torch.float32, caching=True, max_capacity=1024)
+    option = _external_storage_options()
     optimizer = MockOptimizer()
     cache = CacheStub(emb_dim=2, value_dim=2, device=torch.device("cpu"))
     storage = StorageEnableUpdateStub(option, optimizer)
@@ -300,7 +319,7 @@ def test_key_value_table_caching_update_calls_storage_update_when_enabled():
 
 
 def test_key_value_table_caching_update_fallback_when_storage_update_disabled():
-    option = DynamicEmbTableOptions(dim=2, embedding_dtype=torch.float32, caching=True, max_capacity=1024)
+    option = _external_storage_options()
     optimizer = MockOptimizer()
     cache = CacheStub(emb_dim=2, value_dim=2, device=torch.device("cpu"))
     storage = PyDictStorage(option, optimizer)

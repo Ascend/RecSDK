@@ -708,6 +708,27 @@ def update_cache(
         )
 
 
+def _fused_update_storage_values(
+    storage: Storage,
+    optimizer: BaseDynamicEmbeddingOptimizerV2,
+    grads: torch.Tensor,
+    values: torch.Tensor,
+) -> None:
+    """Update materialized value tensors for storages that do not support pointer update.
+
+    KeyValueTable chooses pure-HBM vs hybrid kernels based on its HKV backend.
+    External storages only materialize plain tensors via find/insert, so fused_update
+    is always sufficient.
+    """
+    if isinstance(storage, KeyValueTable):
+        if dyn_emb_is_pure_hbm_mode(storage.table):
+            optimizer.fused_update(grads, values)
+        else:
+            optimizer.fused_update_hybrid(grads, values)
+    else:
+        optimizer.fused_update(grads, values)
+
+
 class KeyValueTableFunction:
     @staticmethod
     def lookup(
@@ -776,16 +797,7 @@ class KeyValueTableFunction:
         keys_for_storage = unique_keys[founds].contiguous()
         values_for_storage = unique_values[founds, :].contiguous()
         grads_for_storage = unique_grads[founds, :].contiguous()
-        if dyn_emb_is_pure_hbm_mode(storage.table):
-            optimizer.fused_update(
-                grads_for_storage,
-                values_for_storage,
-            )
-        else:
-            optimizer.fused_update_hybrid(
-                grads_for_storage,
-                values_for_storage,
-            )
+        _fused_update_storage_values(storage, optimizer, grads_for_storage, values_for_storage)
 
         storage.insert(keys_for_storage, values_for_storage)
 
@@ -882,16 +894,7 @@ class KeyValueTableCachingFunction:
         keys_for_storage = keys_for_storage[founds].contiguous()
         values_for_storage = values_for_storage[founds, :].contiguous()
         grads_for_storage = grads_for_storage[founds, :].contiguous()
-        if dyn_emb_is_pure_hbm_mode(storage.table):
-            optimizer.fused_update(
-                grads_for_storage,
-                values_for_storage,
-            )
-        else:
-            optimizer.fused_update_hybrid(
-                grads_for_storage,
-                values_for_storage,
-            )
+        _fused_update_storage_values(storage, optimizer, grads_for_storage, values_for_storage)
 
         storage.insert(keys_for_storage, values_for_storage)
 

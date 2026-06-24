@@ -15,167 +15,111 @@
 # limitations under the License.
 # ==============================================================================
 
-import torch
 import pytest
-from typing import Optional, Tuple, Dict
+import torch
 
-from dynamic_emb.distributed.key_value_table import (
-    KeyValueTableCachingFunction
+from dynamic_emb.distributed.key_value_table import KeyValueTableCachingFunction
+from key_value_table_test_helpers import (
+    DEFAULT_EMB_DIM,
+    EVAL_INITIALIZER,
+    TRAIN_INITIALIZER,
+    create_training_cache_and_storage,
+    insert_embeddings,
+    npu_device,
+    read_embeddings_from_storage,
+    run_caching_lookup,
+    sample_stored_keys_and_embs,
+    sample_update_grads,
+    sample_update_keys_and_embs,
 )
 
-npu_device = torch.device("npu:0")
 
-class Cache:
-    pass
+@pytest.mark.parametrize(
+    ("training", "initializer"),
+    [
+        (True, TRAIN_INITIALIZER),
+        (False, EVAL_INITIALIZER),
+    ],
+)
+def test_lookup_function(training: bool, initializer):
+    device = npu_device()
+    cache, storage, _ = create_training_cache_and_storage()
 
-class Storage:
-    pass
+    stored_keys, stored_embs = sample_stored_keys_and_embs(device)
+    insert_embeddings(storage, stored_keys, stored_embs)
 
-class BaseDynamicEmbeddingOptimizerV2:
-    """优化器基类"""
-    pass
+    unique_keys = torch.tensor([10, 20, 30], dtype=torch.int64, device=device)
+    unique_embs = torch.zeros(3, DEFAULT_EMB_DIM, dtype=torch.float32, device=device)
 
-class BaseDynamicEmbInitializer:
-    """初始化器基类"""
-    pass
+    run_caching_lookup(cache, storage, unique_keys, unique_embs, initializer, training)
 
-class MockCache(Cache):
-    def __init__(self):
-        self.cache_data: Dict[int, torch.Tensor] = {}
-        self.score = 0
+    assert unique_embs.shape == (3, DEFAULT_EMB_DIM)
+    torch.testing.assert_close(unique_embs[:2], stored_embs)
 
-    def find_embeddings(self, unique_keys: torch.Tensor, unique_embs: torch.Tensor) \
-        -> Tuple[int, torch.Tensor, torch.Tensor]:
-        total_keys = unique_keys.numel()
-        num_missing = total_keys // 2
-        missing_keys = unique_keys[-num_missing:] \
-            if num_missing > 0 else torch.tensor([], device=npu_device, dtype=torch.long)
-        missing_indices = \
-            torch.arange(total_keys - num_missing, total_keys, device=npu_device, dtype=torch.long) \
-              if num_missing > 0 else torch.tensor([], device=npu_device, dtype=torch.long)
+    cached_embs = torch.zeros(3, DEFAULT_EMB_DIM, dtype=torch.float32, device=device)
+    num_missing, _, _ = cache.find_embeddings(unique_keys, cached_embs)
+    if training:
+        assert not torch.all(unique_embs[2] == 0)
+        assert num_missing == 0
+        torch.testing.assert_close(cached_embs, unique_embs)
+    else:
+        torch.testing.assert_close(unique_embs[2], torch.zeros(DEFAULT_EMB_DIM, device=device))
+        assert num_missing == 1
+        torch.testing.assert_close(cached_embs[:2], stored_embs)
 
-        unique_embs[:total_keys-num_missing] = torch.randn_like(unique_embs[:total_keys-num_missing])
-        return num_missing, missing_keys, missing_indices
-
-    def update(self, unique_keys: torch.Tensor, unique_grads: torch.Tensor) \
-        -> Tuple[int, torch.Tensor, torch.Tensor]:
-        total_keys = unique_keys.numel()
-        num_missing = total_keys // 2
-        missing_keys = unique_keys[-num_missing:] \
-            if num_missing > 0 else torch.tensor([], device=npu_device, dtype=torch.long)
-        missing_indices = \
-            torch.arange(total_keys - num_missing, total_keys, device=npu_device, dtype=torch.long) \
-              if num_missing > 0 else torch.tensor([], device=npu_device, dtype=torch.long)
-        return num_missing, missing_keys, missing_indices
-
-    def find_missed_keys(self, unique_keys: torch.Tensor) -> Tuple[int, torch.Tensor, torch.Tensor]:
-        total_keys = unique_keys.numel()
-        num_missing = total_keys // 2
-        missing_keys = unique_keys[-num_missing:] \
-            if num_missing > 0 else torch.tensor([], device=npu_device, dtype=torch.long)
-        missing_indices = torch.arange(total_keys - num_missing, total_keys, device=npu_device, dtype=torch.long) \
-            if num_missing > 0 else torch.tensor([], device=npu_device, dtype=torch.long)
-        return num_missing, missing_keys, missing_indices
-
-    def insert_and_evict(self, keys: torch.Tensor, values: torch.Tensor) \
-        -> Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
-        return 0, torch.tensor([], device=npu_device), \
-            torch.tensor([], device=npu_device), torch.tensor([], device=npu_device)
-
-class MockStorage(Storage):
-    def __init__(self, emb_dim: int = 16):
-        self.emb_dim = emb_dim
-        self.device = npu_device
-        self.emb_dtype = torch.float32
-        self.storage_data: Dict[int, torch.Tensor] = {}
-
-    def embedding_dim(self) -> int:
-        return self.emb_dim
-
-    def embedding_dtype(self) -> torch.dtype:
-        return self.emb_dtype
-
-    def value_dim(self) -> int:
-        return self.emb_dim * 2
-
-    def find(self, keys: torch.Tensor, values: torch.Tensor, founds: Optional[torch.Tensor] = None) \
-        -> Tuple[int, torch.Tensor, torch.Tensor]:
-        if founds is not None:
-            founds[:] = True
-
-        values[:, :self.emb_dim] = torch.randn_like(values[:, :self.emb_dim])
-        return 0, torch.tensor([], device=npu_device, dtype=torch.long), \
-            torch.tensor([], device=npu_device, dtype=torch.long)
-
-    def init_optimizer_state(self) -> torch.Tensor:
-        return torch.zeros(self.emb_dim, dtype=self.emb_dtype, device=npu_device)
-
-    def enable_update(self) -> bool:
-        return False
-
-    def update(self, keys: torch.Tensor, grads: torch.Tensor, return_missing: bool = False):
-        pass
-
-    def insert(self, keys: torch.Tensor, values: torch.Tensor, scores=None):
-        pass
-
-class MockOptimizer(BaseDynamicEmbeddingOptimizerV2):
-    def fused_update(self, grads: torch.Tensor, values: torch.Tensor):
-        pass
-
-class MockInitializer(BaseDynamicEmbInitializer):
-    def __call__(self, embs: torch.Tensor, indices: torch.Tensor, keys: torch.Tensor):
-        embs[indices] = torch.randn_like(embs[indices])
-
-def update_cache(cache: Cache, storage: Storage, missing_keys: torch.Tensor, missing_values: torch.Tensor):
-    num_evicted, evicted_keys, evicted_values, evicted_scores = \
-        cache.insert_and_evict(missing_keys, missing_values)
-    if num_evicted != 0:
-        storage.insert(evicted_keys, evicted_values, evicted_scores)
-
-
-@pytest.mark.parametrize("training", [True, False])
-def test_lookup_function(training: bool):
-    cache = MockCache()
-    storage = MockStorage(emb_dim=16)
-    initializer = MockInitializer()
-
-    unique_keys = torch.tensor([10, 20, 30], dtype=torch.long, device=npu_device)
-    unique_embs = torch.zeros(3, 16, dtype=torch.float32, device=npu_device)
-
-    KeyValueTableCachingFunction.lookup(
-        cache=cache, storage=storage, unique_keys=unique_keys, unique_embs=unique_embs,
-        initializer=initializer, enable_prefetch=False, training=training
-    )
-
-    assert not torch.all(unique_embs == 0)
-    assert unique_embs.shape == (3, 16)
-    print("√ lookup 测试通过")
 
 def test_update_function():
-    cache = MockCache()
-    storage = MockStorage(emb_dim=16)
-    optimizer = MockOptimizer()
+    device = npu_device()
+    cache, storage, optimizer = create_training_cache_and_storage()
 
-    unique_keys = torch.tensor([5, 6, 7], dtype=torch.long, device=npu_device)
-    unique_grads = torch.randn(3, 16, dtype=torch.float32, device=npu_device)
+    keys, init_embs = sample_update_keys_and_embs(device)
+    insert_embeddings(storage, keys, init_embs)
 
+    unique_grads = sample_update_grads(keys.numel(), DEFAULT_EMB_DIM, device)
     KeyValueTableCachingFunction.update(
-        cache=cache, storage=storage, unique_keys=unique_keys, unique_grads=unique_grads, optimizer=optimizer
+        cache=cache,
+        storage=storage,
+        unique_keys=keys,
+        unique_grads=unique_grads,
+        optimizer=optimizer,
     )
-    print("√ update 测试通过")
 
-@pytest.mark.parametrize("training", [True, False])
-def test_prefetch_function(training: bool):
-    cache = MockCache()
-    storage = MockStorage(emb_dim=16)
-    initializer = MockInitializer()
+    updated_from_storage = read_embeddings_from_storage(storage, keys)
+    assert not torch.allclose(updated_from_storage, init_embs)
 
-    unique_keys = torch.tensor([100, 200, 300], dtype=torch.long, device=npu_device)
+
+@pytest.mark.parametrize(
+    ("training", "initializer"),
+    [
+        (True, TRAIN_INITIALIZER),
+        (False, EVAL_INITIALIZER),
+    ],
+)
+def test_prefetch_function(training: bool, initializer):
+    device = npu_device()
+    cache, storage, _ = create_training_cache_and_storage()
+
+    unique_keys = torch.tensor([100, 200, 300], dtype=torch.int64, device=device)
+    stored_embs = torch.tensor(
+        [[0.5, 0.5, 0.5, 0.5] * 4, [1.5, 1.5, 1.5, 1.5] * 4, [2.5, 2.5, 2.5, 2.5] * 4],
+        dtype=torch.float32,
+        device=device,
+    )
+    insert_embeddings(storage, unique_keys, stored_embs)
+
     KeyValueTableCachingFunction.prefetch(
-        cache=cache, storage=storage, unique_keys=unique_keys, initializer=initializer, training=training
+        cache=cache,
+        storage=storage,
+        unique_keys=unique_keys,
+        initializer=initializer,
+        training=training,
     )
-    print("√ prefetch 测试通过")
+
+    cached_embs = torch.zeros(3, DEFAULT_EMB_DIM, dtype=torch.float32, device=device)
+    num_missing, _, _ = cache.find_embeddings(unique_keys, cached_embs)
+    assert num_missing == 0
+    torch.testing.assert_close(cached_embs, stored_embs)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
