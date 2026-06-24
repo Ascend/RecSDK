@@ -5,14 +5,14 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-
+# pylint: disable=duplicate-code
 import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, TypeVar, Tuple
-from concurrent.futures import ThreadPoolExecutor
 
 import torch
 import torch.distributed as dist
+from hybrid_torchrec._adapters import adapter
 from hybrid_torchrec.modules.ids_process import HashMapBase
 
 from hybrid_torchrec.distributed.embedding_lookup import (
@@ -71,20 +71,20 @@ class InputDistThreadPoolExecutorSingleton:
     def __new__(cls, *args, **kwargs):
         if cls._instance:
             return cls._instance
-        cls._instance = super(InputDistThreadPoolExecutorSingleton, cls).__new__(
-            cls, *args, **kwargs
-        )
+        cls._instance = super(InputDistThreadPoolExecutorSingleton, cls).__new__(cls, *args, **kwargs)
         try:
             max_threads = int(os.environ.get("INPUT_DIST_THREADS", DEFAULT_INPUT_DIST_THREADS))
             if max_threads <= 0 or max_threads > MAX_INPUT_DIST_THREADS:
-                raise ValueError(f"INPUT_DIST_THREADS expected in range [1, {MAX_INPUT_DIST_THREADS}],"
-                                 f"but got {max_threads}.") 
+                raise ValueError(
+                    f"INPUT_DIST_THREADS expected in range [1, {MAX_INPUT_DIST_THREADS}],but got {max_threads}."
+                )
             cls.executor = ThreadPoolExecutor(max_threads)
             return cls._instance
         except ValueError as e:
             if "invalid literal for int()" in str(e):
-                raise Exception("Environment variable INPUT_DIST_THREADS is not a valid integer.") from e
+                raise ValueError("Environment variable INPUT_DIST_THREADS is not a valid integer.") from e
             raise
+
 
 C = TypeVar("C", bound=Multistreamable)
 F = TypeVar("F", bound=Multistreamable)
@@ -127,7 +127,7 @@ def bucketize_kjt_before_all2all(
     block_sizes_new_type = _fx_wrap_tensor_to_device_dtype(block_sizes, kjt.values())
     if labels is not None:
         labels = labels.to(kjt.values().device)
-    bucket_params = BucketParams( 
+    bucket_params = BucketParams(
         kjt.lengths().view(-1),
         kjt.values(),
         bucketize_pos=bucketize_pos,
@@ -193,9 +193,7 @@ def bucketize_kjt_before_all2all(
 class HashRwSparseFeaturesDistAwaitable(Awaitable):
     def __init__(self, function, module, sparse_feature: KeyedJaggedTensor) -> None:
         super().__init__()
-        self.future = InputDistThreadPoolExecutorSingleton().executor.submit(
-            function, sparse_feature
-        )
+        self.future = InputDistThreadPoolExecutorSingleton().executor.submit(function, sparse_feature)
         self.pg = module.pg
 
     def _wait_impl(self) -> Any:
@@ -214,17 +212,23 @@ class HashRwSparseFeaturesDist(RwSparseFeaturesDist):
         has_feature_processor: bool = False,
         need_pos: bool = False,
         keep_original_indices: bool = False,
+        virtual_table_feature_num_buckets: Optional[List[int]] = None,
+        has_uneven_virtual_tables: bool = False,
     ) -> None:
         super().__init__(
-            pg,
-            num_features,
-            feature_hash_sizes,
-            feature_total_num_buckets,
-            device,
-            is_sequence,
-            has_feature_processor,
-            need_pos,
-            keep_original_indices,
+            **adapter.filter_rw_sparse_features_dist_kwargs(
+                pg=pg,
+                num_features=num_features,
+                feature_hash_sizes=feature_hash_sizes,
+                feature_total_num_buckets=feature_total_num_buckets,
+                device=device,
+                is_sequence=is_sequence,
+                has_feature_processor=has_feature_processor,
+                need_pos=need_pos,
+                keep_original_indices=keep_original_indices,
+                virtual_table_feature_num_buckets=virtual_table_feature_num_buckets,
+                has_uneven_virtual_tables=has_uneven_virtual_tables,
+            )
         )
         self.pg = pg
 
@@ -234,17 +238,16 @@ class HashRwSparseFeaturesDist(RwSparseFeaturesDist):
     ) -> Awaitable[Awaitable[KeyedJaggedTensor]]:
         (
             bucketized_features,
-            self.unbucketize_permute_tensor,
+            self.unbucketize_permute_tensor,  # pylint: disable=attribute-defined-outside-init
         ) = bucketize_kjt_before_all2all(
             sparse_features,
             num_buckets=self._world_size,
             block_sizes=self._feature_block_sizes_tensor,
             output_permute=self._is_sequence,
             bucketize_pos=(
-                self._has_feature_processor
-                if sparse_features.weights_or_none() is None
-                else self._need_pos
+                self._has_feature_processor if sparse_features.weights_or_none() is None else self._need_pos
             ),
+            block_bucketize_row_pos=getattr(self, "kvzch_bucketize_row_pos", None),
             keep_original_indices=self._keep_original_indices,
         )
         result = self._dist(bucketized_features)
@@ -256,13 +259,10 @@ class HashRwSparseFeaturesDist(RwSparseFeaturesDist):
         self,
         sparse_features: KeyedJaggedTensor,
     ) -> Awaitable[Awaitable[KeyedJaggedTensor]]:
-        return HashRwSparseFeaturesDistAwaitable(
-            self.forward_function, self, sparse_features
-        )
+        return HashRwSparseFeaturesDistAwaitable(self.forward_function, self, sparse_features)
 
 
 class HybridRwPooledEmbeddingSharding(RwPooledEmbeddingSharding):
-
     def __init__(
         self,
         sharding_infos: List[EmbeddingShardingInfo],
@@ -273,7 +273,14 @@ class HybridRwPooledEmbeddingSharding(RwPooledEmbeddingSharding):
         qcomm_codecs_registry: Optional[Dict[str, QuantizedCommCodecs]] = None,
     ) -> None:
         self._host_pg = host_env.process_group
-        super().__init__(sharding_infos, env, device, need_pos, qcomm_codecs_registry)
+        self._env = env
+        super().__init__(
+            sharding_infos,
+            env,
+            device,
+            need_pos=need_pos,
+            qcomm_codecs_registry=qcomm_codecs_registry,
+        )
 
     def create_input_dist(
         self,
@@ -281,14 +288,21 @@ class HybridRwPooledEmbeddingSharding(RwPooledEmbeddingSharding):
     ) -> BaseSparseFeaturesDist[KeyedJaggedTensor]:
         num_features = self._get_num_features()
         feature_hash_sizes = self._get_feature_hash_sizes()
+        virtual_table_feature_num_buckets, has_uneven_virtual_tables = adapter.get_virtual_table_feature_num_buckets(
+            self
+        )
         return RwSparseFeaturesDist(
-            pg=self._host_pg,
-            num_features=num_features,
-            feature_hash_sizes=feature_hash_sizes,
-            device=device if device is not None else self._device,
-            is_sequence=False,
-            has_feature_processor=self._has_feature_processor,
-            need_pos=self._need_pos,
+            **adapter.filter_rw_sparse_features_dist_kwargs(
+                pg=self._host_pg,
+                num_features=num_features,
+                feature_hash_sizes=feature_hash_sizes,
+                device=device if device is not None else self._device,
+                is_sequence=False,
+                has_feature_processor=self._has_feature_processor,
+                need_pos=self._need_pos,
+                virtual_table_feature_num_buckets=virtual_table_feature_num_buckets,
+                has_uneven_virtual_tables=has_uneven_virtual_tables,
+            )
         )
 
     def create_lookup(
@@ -303,6 +317,7 @@ class HybridRwPooledEmbeddingSharding(RwPooledEmbeddingSharding):
             device=device if device is not None else self._device,
             feature_processor=feature_processor,
             sharding_type=ShardingType.ROW_WISE,
+            env=self._env,
         )
 
     def create_post_input_dist(
@@ -322,7 +337,13 @@ class HybridHashRwPooledEmbeddingSharding(HybridRwPooledEmbeddingSharding):
         device: Optional[torch.device] = None,
         qcomm_codecs_registry: Optional[Dict[str, QuantizedCommCodecs]] = None,
     ) -> None:
-        super().__init__(sharding_infos, env, host_env, device, qcomm_codecs_registry)
+        super().__init__(
+            sharding_infos,
+            env,
+            host_env,
+            device,
+            qcomm_codecs_registry=qcomm_codecs_registry,
+        )
         self.table2hashmap = table2hashmap
 
     def create_input_dist(
@@ -331,6 +352,9 @@ class HybridHashRwPooledEmbeddingSharding(HybridRwPooledEmbeddingSharding):
     ) -> BaseSparseFeaturesDist[KeyedJaggedTensor]:
         num_features = self._get_num_features()
         feature_hash_sizes = self._get_feature_hash_sizes()
+        virtual_table_feature_num_buckets, has_uneven_virtual_tables = adapter.get_virtual_table_feature_num_buckets(
+            self
+        )
         return HashRwSparseFeaturesDist(
             pg=self._host_pg,
             num_features=num_features,
@@ -339,18 +363,15 @@ class HybridHashRwPooledEmbeddingSharding(HybridRwPooledEmbeddingSharding):
             is_sequence=False,
             has_feature_processor=self._has_feature_processor,
             need_pos=self._need_pos,
+            virtual_table_feature_num_buckets=virtual_table_feature_num_buckets,
+            has_uneven_virtual_tables=has_uneven_virtual_tables,
         )
 
     def create_post_input_dist(
         self,
         device: Optional[torch.device] = None,
     ) -> BaseSparseFeaturesDist[KeyedJaggedTensor]:
-
-        table_names, features_split_by_table_name = get_feature_len_groupby_table_name(
-            self._grouped_embedding_configs
-        )
+        table_names, features_split_by_table_name = get_feature_len_groupby_table_name(self._grouped_embedding_configs)
         hashmaps = [self.table2hashmap[n] for n in table_names]
-        feature_processor = UniqueHashFeatureProcess(
-            table_names, features_split_by_table_name, hashmaps
-        )
+        feature_processor = UniqueHashFeatureProcess(table_names, features_split_by_table_name, hashmaps)
         return SparseFeaturesPostDist(feature_processor)

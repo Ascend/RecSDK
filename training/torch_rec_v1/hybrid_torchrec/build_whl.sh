@@ -2,7 +2,6 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 
 set -e
-
 SCRIPT_PATH=$(cd $(dirname $0); pwd)
 TORCHREC_EMBCACHE_PATH="${SCRIPT_PATH}/../torchrec_embcache"
 
@@ -40,6 +39,7 @@ function get_pytorch_ver()
 {
     local v260="2.6.0"
     local v271="2.7.1"
+    local v2100="2.10.0"
     local ver
     ver=$(python3 -m pip show torch 2>/dev/null | grep -E "^Version:" | awk '{print $2}') || {
         echo "ERROR: failed to get torch version !" >&2
@@ -48,6 +48,8 @@ function get_pytorch_ver()
     case "$ver" in
         *"$v260"*) echo "pytorch${v260}" ;;
         *"$v271"*) echo "pytorch${v271}" ;;
+        *"$v2100"*) echo "pytorch${v2100}" ;;
+        *) echo "ERROR: pytorch version is not supported, only support $v260, $v271 or $v2100." >&2; return 1 ;;
     esac
 }
 
@@ -55,16 +57,18 @@ function get_torchrec_ver()
 {
     local v110="1.1.0"
     local v120="1.2.0"
+    local v150="1.5.0"
     local ver
     ver=$(python3 -m pip show torchrec 2>/dev/null | grep -E "^Version:" | awk '{print $2}')
     case $? in
         0) ;;          # 导入成功，继续判断版本
-        *) echo "$v110"; return 0 ;;  # 模块不存在，直接返回 1.1.0
+        *) echo "ERROR: failed to detect torchrec version: $ver" >&2; return 1 ;;
     esac
     case "$ver" in
         *"$v110"*) echo "$v110" ;;
         *"$v120"*) echo "$v120" ;;
-        *) echo "ERROR: torchrec version is not supported, only support $v110 or $v120." >&2; return 1 ;;
+        *"$v150"*) echo "$v150" ;;
+        *) echo "ERROR: torchrec version is not supported, only support $v110, $v120 or $v150." >&2; return 1 ;;
     esac
 }
 
