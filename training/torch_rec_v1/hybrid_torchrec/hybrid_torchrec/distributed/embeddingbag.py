@@ -350,18 +350,20 @@ class HybridShardedEmbeddingBagCollection(
     def fused_optimizer(self) -> KeyedOptimizer:
         return self._optim
 
+    @staticmethod
     def _pre_state_dict_hook(
-        self: "HybridShardedEmbeddingBagCollection",
+        module: "HybridShardedEmbeddingBagCollection",
         prefix: str = "",
         keep_vars: bool = False,
     ) -> None:
-        for lookup in self._lookups:
+        for lookup in module._lookups:
             while isinstance(lookup, DistributedDataParallel):
                 lookup = lookup.module
             lookup.flush()
 
+    @staticmethod
     def _pre_load_state_dict_hook(
-        self: "HybridShardedEmbeddingBagCollection",
+        module: "HybridShardedEmbeddingBagCollection",
         state_dict: Dict[str, Any],
         prefix: str,
         *args: Any,
@@ -370,10 +372,10 @@ class HybridShardedEmbeddingBagCollection(
         Modify the destination state_dict for model parallel
         to transform from ShardedTensors into tensors
         """
-        for table_name, model_shards_sharded_tensor in self._model_parallel_name_to_local_shards.items():
+        for table_name, model_shards_sharded_tensor in module._model_parallel_name_to_local_shards.items():
             key = f"{prefix}embedding_bags.{table_name}.weight"
             # gather model shards from both DTensor and ShardedTensor maps
-            model_shards_dtensor = self._model_parallel_name_to_shards_wrapper[table_name]
+            model_shards_dtensor = module._model_parallel_name_to_shards_wrapper[table_name]
             # If state_dict[key] is already a ShardedTensor, use its local shards
             if isinstance(state_dict[key], ShardedTensor):
                 HybridShardedEmbeddingBagCollection._pre_load_state_dict_with_shared_tensor(key, state_dict)
@@ -385,7 +387,7 @@ class HybridShardedEmbeddingBagCollection(
                 )
             else:
                 raise RuntimeError(f"Unexpected state_dict key type {type(state_dict[key])} found for {key}")
-        for lookup in self._lookups:
+        for lookup in module._lookups:
             while isinstance(lookup, DistributedDataParallel):
                 lookup = lookup.module
             lookup.purge()
@@ -739,9 +741,9 @@ class HybridShardedEmbeddingBagCollection(
                     if not key.endswith(".weight"):
                         continue
                     table_name = key[: -len(".weight")]
-                    if table_name not in self._model_parallel_name_to_local_shards:
-                        continue
                     if isinstance(v, DTensor):
+                        if table_name not in self._model_parallel_name_to_shards_wrapper:
+                            continue
                         shards_wrapper = self._model_parallel_name_to_shards_wrapper[table_name]
                         local_shards_wrapper = v._local_tensor
                         shards_wrapper["local_tensors"].extend(local_shards_wrapper.local_shards())
@@ -750,6 +752,8 @@ class HybridShardedEmbeddingBagCollection(
                         shards_wrapper["global_stride"] = v.stride()
                         shards_wrapper["placements"] = v.placements
                     elif isinstance(v, ShardedTensor):
+                        if table_name not in self._model_parallel_name_to_local_shards:
+                            continue
                         self._model_parallel_name_to_local_shards[table_name].extend(v.local_shards())
             for (
                 table_name,

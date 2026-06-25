@@ -46,13 +46,15 @@ merged_tmp_dir = os.path.join(current_dir, "_torchrec_merged_src")
 is_building = any(arg in sys.argv for arg in ['install', 'bdist_wheel', 'build', 'develop', 'egg_info'])
 
 if is_building:
-    _setup_common.install_requirements()
     torch_version = detect_pt_version()
+    _setup_common.install_requirements(torch_version)
 
     if torch_version.startswith("2.6."):
         whl_dir = "mindxsdk-torchrec/pt2.6_whl"
     elif torch_version.startswith("2.7."):
         whl_dir = "mindxsdk-torchrec/pt2.7_whl"
+    elif torch_version.startswith("2.10."):
+        whl_dir = "mindxsdk-torchrec/pt2.10_whl"
     else:
         sys.exit(f"Error: Unsupported PyTorch version: {torch_version}.")
 

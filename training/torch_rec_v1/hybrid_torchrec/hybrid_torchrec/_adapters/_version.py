@@ -30,12 +30,18 @@ def _torchrec_version() -> str:
 
         if version is not None:
             return str(version)
+    except Exception:
+        pass  # pass Exception, try other method  # nosec B110
 
+    try:
         for package_path in getattr(torchrec, "__path__", []):
             version_path = Path(package_path) / "version.txt"
             if version_path.exists():
                 return version_path.read_text().strip()
+    except Exception:
+        pass  # pass Exception, try other method  # nosec B110
 
+    try:
         return metadata.version("torchrec")
     except Exception:
         raise RuntimeError("Can not get torchrec version")
