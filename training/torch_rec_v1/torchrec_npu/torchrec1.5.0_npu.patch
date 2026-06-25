@@ -1,0 +1,831 @@
+diff --git a/setup.py b/setup.py
+index c6ec32bf..85b85b84 100644
+--- a/setup.py
++++ b/setup.py
+@@ -29,8 +29,6 @@ def _get_version():
+     else:
+         with open(os.path.join(ROOT_DIR, "version.txt"), "r") as f:
+             version = f.readline().strip()
+-        if sha is not None and "OFFICIAL_RELEASE" not in os.environ:
+-            version += "+" + sha[:7]
+
+     if sha is None:
+         sha = "Unknown"
+@@ -86,13 +84,13 @@ def main(argv: List[str]) -> None:
+         name="torchrec",
+         version=version,
+         author="TorchRec Team",
+-        author_email="packages@pytorch.org",
+-        maintainer="TroyGarden",
+-        maintainer_email="hhy@meta.com",
++        author_email="",
++        maintainer="",
++        maintainer_email="",
+         description="TorchRec: Pytorch library for recommendation systems",
+         long_description=readme,
+         long_description_content_type="text/markdown",
+-        url="https://github.com/meta-pytorch/torchrec",
++        url="",
+         license="BSD-3",
+         keywords=[
+             "pytorch",
+diff --git a/torchrec/__init__.py b/torchrec/__init__.py
+index 29258f6f..5bfe1a4c 100644
+--- a/torchrec/__init__.py
++++ b/torchrec/__init__.py
+@@ -7,6 +7,8 @@
+
+ # pyre-strict
+
++import enum
++from fbgemm_gpu import split_table_batched_embeddings_ops_training
+ import torchrec.distributed  # noqa
+ import torchrec.quant  # noqa
+ from torchrec.fx import tracer  # noqa
+@@ -34,3 +36,12 @@ try:
+     from .version import __version__, github_version  # noqa
+ except ImportError:
+     pass
++
++
++class ComputeDevice(enum.IntEnum):
++    CPU = 0
++    CUDA = 1
++    MTIA = 2
++    NPU = 3
++
++split_table_batched_embeddings_ops_training.ComputeDevice = ComputeDevice
+diff --git a/torchrec/distributed/batched_embedding_kernel.py b/torchrec/distributed/batched_embedding_kernel.py
+index e0316ef2..13a361b5 100644
+--- a/torchrec/distributed/batched_embedding_kernel.py
++++ b/torchrec/distributed/batched_embedding_kernel.py
+@@ -9,6 +9,8 @@
+
+ import abc
+ import copy
++import enum
++
+ import inspect
+ import itertools
+ import logging
+@@ -29,6 +31,9 @@ from typing import (
+     TypeVar,
+     Union,
+ )
++import uuid
++from itertools import accumulate
++from math import log2
+
+ import torch
+ import torch.distributed as dist
+@@ -54,6 +59,7 @@ from fbgemm_gpu.tbe.ssd import ASSOC, SSDTableBatchedEmbeddingBags
+ from fbgemm_gpu.tbe.ssd.utils.partially_materialized_tensor import (
+     PartiallyMaterializedTensor,
+ )
++from fbgemm_gpu.config import FeatureGate, FeatureGateName
+ from torch import nn
+ from torch.autograd.profiler import record_function
+ from torch.distributed._tensor import DTensor, Replicate, Shard as DTensorShard
+@@ -107,6 +113,143 @@ from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
+
+ logger: logging.Logger = logging.getLogger(__name__)
+
++
++def custom_init(
++    self,
++    embedding_specs: List[Tuple[int, int]],  # tuple of (rows, dims)
++    feature_table_map: Optional[List[int]] = None,  # [T]
++    weights_precision: SparseType = SparseType.FP32,
++    pooling_mode: PoolingMode = PoolingMode.SUM,
++    use_cpu: bool = False,
++    output_dtype: SparseType = SparseType.FP32,
++    use_mtia: bool = False,
++) -> None:  # noqa C901  # tuple of (rows, dims,)
++    super(DenseTableBatchedEmbeddingBagsCodegen, self).__init__()
++    self.uuid = str(uuid.uuid4())
++
++    self.log(
++        f"Feature Gates: {[(feature.name, feature.is_enabled()) for feature in FeatureGateName]}"
++    )
++
++    self.pooling_mode = pooling_mode
++    self.weights_precision = weights_precision
++    self.output_dtype: int = output_dtype.as_int()
++    table_embedding_dtype = weights_precision.as_dtype()
++
++    self.use_cpu: bool = use_cpu
++    self.use_mtia: bool = use_mtia
++
++    assert not (use_cpu and use_mtia), "Cannot use CPU and MTIA at the same time"
++
++    if self.use_cpu or self.pooling_mode == PoolingMode.NONE:
++        assert output_dtype in [
++            SparseType.FP32,
++            SparseType.FP16,
++            SparseType.BF16,
++        ], "Fused pooled embedding quantization only supported for cuda."
++
++    self.current_device: torch.device = (
++        torch.device("cpu")
++        if self.use_cpu
++        else (
++            torch.device(f"mtia:{torch.mtia.current_device()}")
++            if self.use_mtia
++            else (
++                torch.device(f"npu:{torch.npu.current_device()}")
++                if hasattr(torch, "npu") and torch.npu.is_available()
++                else torch.device(f"cuda:{torch.cuda.current_device()}")
++            )
++        )
++    )
++
++    self.embedding_specs = embedding_specs
++    (rows, dims) = zip(*embedding_specs)
++    T_ = len(self.embedding_specs)
++    assert T_ > 0
++
++    feature_table_map = (
++        feature_table_map if feature_table_map is not None else list(range(T_))
++    )
++    T = len(feature_table_map)
++    assert T_ <= T
++
++    feature_dims = [dims[t] for t in feature_table_map]
++    D_offsets = [0] + list(accumulate(feature_dims))
++    self.total_D = D_offsets[-1]
++    self.max_D = max(dims)
++    self.register_buffer(
++        "D_offsets",
++        torch.tensor(D_offsets, device=self.current_device, dtype=torch.int32),
++    )
++    assert self.D_offsets.numel() == T + 1
++
++    self.register_buffer(
++        "feature_dims",
++        torch.tensor(feature_dims, device="cpu", dtype=torch.int64),
++    )
++
++    hash_size_cumsum = [0] + list(accumulate(rows))
++    if hash_size_cumsum[-1] == 0:
++        self.total_hash_size_bits: int = 0
++    else:
++        self.total_hash_size_bits: int = int(log2(float(hash_size_cumsum[-1])) + 1)
++    hash_size_cumsum = [hash_size_cumsum[t] for t in feature_table_map] + [
++        hash_size_cumsum[-1]
++    ]
++    self.register_buffer(
++        "hash_size_cumsum",
++        torch.tensor(
++            hash_size_cumsum, device=self.current_device, dtype=torch.int64
++        ),
++    )
++    weights_offsets = [0] + list(
++        accumulate([row * dim for (row, dim) in embedding_specs])
++    )
++    self.weights = nn.Parameter(
++        torch.randn(
++            weights_offsets[-1],
++            device=self.current_device,
++            dtype=table_embedding_dtype,
++        )
++    )
++    for feature in range(T):
++        t = feature_table_map[feature]
++        row, dim = embedding_specs[t]
++        if (
++            self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()
++            != row * dim
++        ):
++            self.log(
++                f"row {row} dim {dim} feature {feature} t {t} {self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()}"
++            )
++        assert (
++            self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()
++            == row * dim
++        )
++        assert self.hash_size_cumsum[feature] == sum(
++            row for (row, _) in embedding_specs[:t]
++        )
++
++    self.weights_physical_offsets: List[int] = weights_offsets
++    weights_offsets = [weights_offsets[t] for t in feature_table_map]
++    self.register_buffer(
++        "weights_offsets",
++        torch.tensor(
++            weights_offsets, device=self.current_device, dtype=torch.int64
++        ),
++    )
++
++
++DenseTableBatchedEmbeddingBagsCodegen.__init__ = custom_init
++
++
++class ComputeDevice(enum.IntEnum):
++    CPU = 0
++    CUDA = 1
++    MTIA = 2
++    NPU = 3
++
++
+ RES_ENABLED_TABLES_STR = "res_enabled_tables"
+ RES_STORE_SHARDS_STR = "res_store_shards"
+ ENABLE_RAW_EMBEDDING_STREAMING_STR = "enable_raw_embedding_streaming"
+@@ -2433,6 +2576,11 @@ class BatchedFusedEmbedding(BaseBatchedEmbedding[torch.Tensor], FusedOptimizerMo
+                 # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
+                 # But the tensor will still be created on MTIA with device type "mtia".
+                 managed.append(EmbeddingLocation.HOST)
++            elif device is not None and device.type == "npu":
++                compute_devices.append(ComputeDevice.NPU)
++                managed.append(
++                    compute_kernel_to_embedding_location(table.compute_kernel)
++                )
+             else:
+                 compute_devices.append(ComputeDevice.CPU)
+                 managed.append(EmbeddingLocation.HOST)
+@@ -2567,11 +2715,15 @@ class ShardedBatchedFusedEmbedding(BatchedFusedEmbedding):
+         self._shard_buf_nbytes: int = 0
+         self._shard_buf: Optional[torch.Tensor] = None
+
+-        self._async_stream: torch.cuda.Stream = torch.cuda.Stream(
+-            device=self._emb_module.weights_dev.device
+-        )
++        if self._emb_module.weights_dev.device.type == "npu":
++            self._async_stream = torch.npu.Stream(device=self._emb_module.weights_dev.device)
++        else:
++            self._async_stream = torch.cuda.Stream(device=self._emb_module.weights_dev.device)
+         self._async_work: Optional[dist.Work] = None
+-        self._async_event: Optional[torch.cuda.Event] = None
++        if self._emb_module.weights_dev.device.type == "npu":
++            self._async_event: Optional[torch.npu.Event] = None
++        else:
++            self._async_event: Optional[torch.cuda.Event] = None
+         self._rs_awaitable: Optional[ReduceScatterResizeAwaitable] = None
+
+         self.register_full_backward_pre_hook(
+@@ -2716,7 +2868,10 @@ class ShardedBatchedFusedEmbedding(BatchedFusedEmbedding):
+                     async_op=True,
+                 )
+
+-            self._async_event = torch.cuda.Event(enable_timing=False, blocking=False)
++            if self._emb_module.weights_dev.device.type == "npu":
++                self._async_event = torch.npu.Event(enable_timing=False, blocking=False)
++            else:
++                self._async_event = torch.cuda.Event(enable_timing=False, blocking=False)
+             # pyre-ignore[16]
+             self._async_event.record(self._async_stream)
+
+@@ -2751,7 +2906,13 @@ class BatchedDenseEmbedding(BaseBatchedEmbedding[torch.Tensor]):
+         use_cpu: bool = (
+             device is None
+             or device.type == "cpu"
+-            or (not (torch.cuda.is_available() or torch.mtia.is_available()))
++            or (
++                not (
++                    torch.cuda.is_available()
++                    or torch.mtia.is_available()
++                    or (hasattr(torch, "npu") and torch.npu.is_available())
++                )
++            )
+         )
+         self._emb_module: DenseTableBatchedEmbeddingBagsCodegen = (
+             DenseTableBatchedEmbeddingBagsCodegen(
+@@ -3544,6 +3705,11 @@ class BatchedFusedEmbeddingBag(
+                 # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
+                 # But the tensor will still be created on MTIA with device type "mtia".
+                 managed.append(EmbeddingLocation.HOST)
++            elif device is not None and device.type == "npu":
++                compute_devices.append(ComputeDevice.NPU)
++                managed.append(
++                    compute_kernel_to_embedding_location(table.compute_kernel)
++                )
+             else:
+                 compute_devices.append(ComputeDevice.CPU)
+                 managed.append(EmbeddingLocation.HOST)
+@@ -3679,11 +3845,15 @@ class ShardedBatchedFusedEmbeddingBag(BatchedFusedEmbeddingBag):
+         self._shard_buf_nbytes: int = 0
+         self._shard_buf: Optional[torch.Tensor] = None
+
+-        self._async_stream: torch.cuda.Stream = torch.cuda.Stream(
+-            device=self._emb_module.weights_dev.device
+-        )
++        if self._emb_module.weights_dev.device.type == "npu":
++            self._async_stream = torch.npu.Stream(device=self._emb_module.weights_dev.device)
++        else:
++            self._async_stream = torch.cuda.Stream(device=self._emb_module.weights_dev.device)
+         self._async_work: Optional[dist.Work] = None
+-        self._async_event: Optional[torch.cuda.Event] = None
++        if self._emb_module.weights_dev.device.type == "npu":
++            self._async_event: Optional[torch.npu.Event] = None
++        else:
++            self._async_event: Optional[torch.cuda.Event] = None
+         self._rs_awaitable: Optional[ReduceScatterResizeAwaitable] = None
+
+         self.register_full_backward_pre_hook(
+@@ -3829,7 +3999,10 @@ class ShardedBatchedFusedEmbeddingBag(BatchedFusedEmbeddingBag):
+                     async_op=True,
+                 )
+
+-            self._async_event = torch.cuda.Event(enable_timing=False, blocking=False)
++            if self._emb_module.weights_dev.device.type == "npu":
++                self._async_event = torch.npu.Event(enable_timing=False, blocking=False)
++            else:
++                self._async_event = torch.cuda.Event(enable_timing=False, blocking=False)
+             # pyre-ignore[16]
+             self._async_event.record(self._async_stream)
+
+@@ -3865,7 +4038,13 @@ class BatchedDenseEmbeddingBag(BaseBatchedEmbeddingBag[torch.Tensor]):
+         use_cpu: bool = (
+             device is None
+             or device.type == "cpu"
+-            or (not (torch.cuda.is_available() or torch.mtia.is_available()))
++            or (
++                not (
++                    torch.cuda.is_available()
++                    or torch.mtia.is_available()
++                    or (hasattr(torch, "npu") and torch.npu.is_available())
++                )
++            )
+         )
+         self._emb_module: DenseTableBatchedEmbeddingBagsCodegen = (
+             DenseTableBatchedEmbeddingBagsCodegen(
+diff --git a/torchrec/distributed/embedding.py b/torchrec/distributed/embedding.py
+index a6e7976b..35c4716a 100644
+--- a/torchrec/distributed/embedding.py
++++ b/torchrec/distributed/embedding.py
+@@ -574,7 +574,7 @@ class ShardedEmbeddingCollection(
+                 )
+         self._initialize_torch_state()
+
+-        if module.device != torch.device("meta"):
++        if module.device not in [torch.device("meta"), torch.device("cpu")] and (not (hasattr(torch, "npu") and isinstance(module.device, torch.device) and module.device.type == "npu")):
+             self.load_state_dict(module.state_dict())
+
+     @classmethod
+diff --git a/torchrec/distributed/embedding_types.py b/torchrec/distributed/embedding_types.py
+index aa50640f..dc7a3b8b 100644
+--- a/torchrec/distributed/embedding_types.py
++++ b/torchrec/distributed/embedding_types.py
+@@ -537,7 +537,7 @@ class BaseEmbeddingSharder(ModuleSharder[M]):
+             ShardingType.COLUMN_WISE.value,
+             ShardingType.TABLE_COLUMN_WISE.value,
+         ]
+-        if compute_device_type in {"cuda"}:
++        if compute_device_type in {"cuda", "npu"}:
+             types += [
+                 ShardingType.ROW_WISE.value,
+                 ShardingType.TABLE_ROW_WISE.value,
+@@ -557,7 +557,7 @@ class BaseEmbeddingSharder(ModuleSharder[M]):
+             ret += [
+                 EmbeddingComputeKernel.FUSED.value,
+             ]
+-            if compute_device_type in {"cuda"}:
++            if compute_device_type in {"cuda", "npu"}:
+                 ret += [
+                     EmbeddingComputeKernel.FUSED_UVM.value,
+                     EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+@@ -588,14 +588,15 @@ class BaseEmbeddingSharder(ModuleSharder[M]):
+             EmbeddingComputeKernel.FUSED_UVM.value,
+             EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+         }:
+-            assert compute_device_type in {"cuda"}
++            assert compute_device_type in {"cuda", "npu"}
+             return {ParameterStorage.DDR.value: tensor_bytes}
+         else:
+-            assert compute_device_type in {"cuda", "cpu", "mtia"}
++            assert compute_device_type in {"cuda", "cpu", "mtia", "npu"}
+             storage_map = {
+                 "cuda": ParameterStorage.HBM,
+                 "cpu": ParameterStorage.DDR,
+                 "mtia": ParameterStorage.HBM,
++                "npu": ParameterStorage.HBM,
+             }
+             return {
+                 storage_map[compute_device_type].value: get_tensor_size_bytes(tensor)
+@@ -668,7 +669,7 @@ class BaseQuantEmbeddingSharder(ModuleSharder[M]):
+         ret = [
+             EmbeddingComputeKernel.QUANT.value,
+         ]
+-        if compute_device_type in {"cuda"}:
++        if compute_device_type in {"cuda", "npu"}:
+             ret += [
+                 EmbeddingComputeKernel.QUANT_UVM.value,
+                 EmbeddingComputeKernel.QUANT_UVM_CACHING.value,
+@@ -691,14 +692,14 @@ class BaseQuantEmbeddingSharder(ModuleSharder[M]):
+             EmbeddingComputeKernel.QUANT_UVM.value,
+             EmbeddingComputeKernel.QUANT_UVM_CACHING.value,
+         }:
+-            assert compute_device_type in {"cuda"}
++            assert compute_device_type in {"cuda", "npu"}
+             return {ParameterStorage.DDR.value: tensor_bytes}
+         else:
+-            assert compute_device_type in {"cuda", "cpu", "mtia"}
++            assert compute_device_type in {"cuda", "cpu", "mtia", "npu"}
+             storage_map = {
+                 "cuda": ParameterStorage.HBM,
+                 "cpu": ParameterStorage.DDR,
+-                # TODO: Update it later. Setting for MTIA is same as CPU's for now.
+                 "mtia": ParameterStorage.DDR,
++                "npu": ParameterStorage.HBM,
+             }
+             return {storage_map[compute_device_type].value: tensor_bytes}
+diff --git a/torchrec/distributed/fused_embedding.py b/torchrec/distributed/fused_embedding.py
+index 15b731ad..42b4f6b4 100644
+--- a/torchrec/distributed/fused_embedding.py
++++ b/torchrec/distributed/fused_embedding.py
+@@ -134,7 +134,7 @@ class FusedEmbeddingCollectionSharder(BaseEmbeddingSharder[FusedEmbeddingCollect
+             ret += [
+                 EmbeddingComputeKernel.FUSED.value,
+             ]
+-            if compute_device_type in {"cuda"}:
++            if compute_device_type in {"cuda", "npu"}:
+                 ret += [
+                     EmbeddingComputeKernel.FUSED_UVM.value,
+                     EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+diff --git a/torchrec/distributed/fused_embeddingbag.py b/torchrec/distributed/fused_embeddingbag.py
+index 231e3716..e6cd025c 100644
+--- a/torchrec/distributed/fused_embeddingbag.py
++++ b/torchrec/distributed/fused_embeddingbag.py
+@@ -127,7 +127,7 @@ class FusedEmbeddingBagCollectionSharder(
+             ShardingType.COLUMN_WISE.value,
+             ShardingType.TABLE_COLUMN_WISE.value,
+         ]
+-        if compute_device_type in {"cuda"}:
++        if compute_device_type in {"cuda", "npu"}:
+             types += [
+                 ShardingType.ROW_WISE.value,
+                 ShardingType.TABLE_ROW_WISE.value,
+@@ -143,7 +143,7 @@ class FusedEmbeddingBagCollectionSharder(
+             ret += [
+                 EmbeddingComputeKernel.FUSED.value,
+             ]
+-            if compute_device_type in {"cuda"}:
++            if compute_device_type in {"cuda", "npu"}:
+                 ret += [
+                     EmbeddingComputeKernel.FUSED_UVM.value,
+                     EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+diff --git a/torchrec/distributed/model_parallel.py b/torchrec/distributed/model_parallel.py
+index ec6e6a8f..f4cf9776 100644
+--- a/torchrec/distributed/model_parallel.py
++++ b/torchrec/distributed/model_parallel.py
+@@ -65,6 +65,7 @@ from torchrec.distributed.utils import (
+ )
+ from torchrec.optim.fused import FusedOptimizerModule
+ from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizer
++from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
+
+ try:
+     torch.ops.load_library("//deeplearning/fbgemm/fbgemm_gpu:sparse_ops")
+@@ -252,6 +253,28 @@ class DistributedModelParallel(nn.Module, FusedOptimizerModule):
+         data_parallel_wrapper: Optional[DataParallelWrapper] = None,
+         model_tracker_configs: Optional[ModelTrackerConfigs] = None,
+     ) -> None:
++        check(module is not None and isinstance(module, nn.Module), "module should be nn.Module")
++        check(device is None or isinstance(device, torch.device), "device should be torch.device")
++        check(plan is None or isinstance(plan, ShardingPlan), "plan should be ShardingPlan")
++        check(sharders is None or isinstance(sharders, List), "sharders should be List")
++        if sharders is not None:
++            check(len(sharders) <= MAX_MODULE_LOOP_TIMES, "sharders should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES)
++            for sharder in sharders:
++                check(isinstance(sharder, ModuleSharder), "shard should be ModuleSharder")
++        check(env is None or isinstance(env, ShardingEnv), "env should be ShardingEnv")
++        check(isinstance(init_data_parallel, bool), "init_data_parallel should be bool")
++        check(isinstance(init_parameters, bool), "init_parameters should be bool")
++        check(
++            data_parallel_wrapper is None
++            or isinstance(data_parallel_wrapper, DataParallelWrapper),
++            "data_parallel_wrapper should be None",
++        )
++        check(
++            model_tracker_configs is None
++            or isinstance(model_tracker_configs, ModelTrackerConfigs),
++            "model_tracker_configs should be None or ModelTrackerConfigs",
++        )
++
+         super().__init__()
+         torch._C._log_api_usage_once(f"torchrec.distributed.{self.__class__.__name__}")
+
+@@ -972,8 +995,8 @@ class DMPCollection(DistributedModelParallel):
+         rs_awaitable_hook_module: Optional[str] = None,
+     ) -> None:
+         assert (
+-            device.type == "cuda" or device.type == "mtia"
+-        ), "DMPCollection only supports CUDA or MTIA"
++            device.type == "cuda" or device.type == "mtia" or device.type == "npu"
++        ), "DMPCollection only supports CUDA, MTIA or NPU"
+         self._device = device
+         self._pg: dist.ProcessGroup = global_pg
+         self._global_rank: int = dist.get_rank(global_pg)
+diff --git a/torchrec/distributed/planner/constants.py b/torchrec/distributed/planner/constants.py
+index 56c7dc26..a0151b0f 100644
+--- a/torchrec/distributed/planner/constants.py
++++ b/torchrec/distributed/planner/constants.py
+@@ -22,7 +22,7 @@ NUM_POOLINGS: float = 1.0
+
+ BIGINT_DTYPE: int = 8
+
+-HBM_CAP: int = 32 * 1024 * 1024 * 1024  # 32 GB
++HBM_CAP: int = 64 * 1024 * 1024 * 1024  # 64 GB
+ DDR_CAP: int = 128 * 1024 * 1024 * 1024  # 128 GB
+ DDR_MEM_BW: float = 51 * 1024 * 1024 * 1024 / 1000  # bytes/ms
+ HBM_MEM_BW: float = 897 * 1024 * 1024 * 1024 / 1000  # bytes/ms
+@@ -98,6 +98,19 @@ def kernel_bw_lookup(
+         ("cuda", EmbeddingComputeKernel.KEY_VALUE.value): hbm_to_ddr_mem_bw,
+         ("cuda", EmbeddingComputeKernel.SSD_VIRTUAL_TABLE.value): hbm_to_ddr_mem_bw,
+         ("cuda", EmbeddingComputeKernel.DRAM_VIRTUAL_TABLE.value): hbm_to_ddr_mem_bw,
++        # NPU
++        ("npu", EmbeddingComputeKernel.DENSE.value): 0.5 * hbm_mem_bw,
++        ("npu", EmbeddingComputeKernel.FUSED.value): 1 * hbm_mem_bw,
++        ("npu", EmbeddingComputeKernel.FUSED_UVM.value): ddr_mem_bw / 10,
++        ("npu", EmbeddingComputeKernel.FUSED_UVM_CACHING.value):
++            (caching_ratio * hbm_mem_bw + (1 - caching_ratio) * ddr_mem_bw) / 10,
++        ("npu", EmbeddingComputeKernel.QUANT.value): 1 * hbm_mem_bw,
++        ("npu", EmbeddingComputeKernel.QUANT_UVM.value): ddr_mem_bw / 10,
++        ("npu", EmbeddingComputeKernel.QUANT_UVM_CACHING.value):
++            (caching_ratio * hbm_mem_bw + (1 - caching_ratio) * ddr_mem_bw) / 10,
++        ("npu", EmbeddingComputeKernel.KEY_VALUE.value): ddr_mem_bw,
++        ("npu", EmbeddingComputeKernel.SSD_VIRTUAL_TABLE.value): ddr_mem_bw,
++        ("npu", EmbeddingComputeKernel.DRAM_VIRTUAL_TABLE.value): ddr_mem_bw,
+     }
+
+     if (
+@@ -106,5 +119,11 @@ def kernel_bw_lookup(
+         and compute_kernel == EmbeddingComputeKernel.FUSED_UVM_CACHING.value
+     ):
+         return lookup.get(("cuda", EmbeddingComputeKernel.FUSED.value))
++    if (
++        prefetch_pipeline
++        and compute_device == "npu"
++        and compute_kernel == EmbeddingComputeKernel.FUSED_UVM_CACHING.value
++    ):
++        return lookup.get(("npu", EmbeddingComputeKernel.FUSED.value))
+
+     return lookup.get((compute_device, compute_kernel))
+diff --git a/torchrec/distributed/planner/enumerators.py b/torchrec/distributed/planner/enumerators.py
+index b24fe2cf..2a777036 100644
+--- a/torchrec/distributed/planner/enumerators.py
++++ b/torchrec/distributed/planner/enumerators.py
+@@ -96,7 +96,9 @@ class EmbeddingEnumerator(Enumerator):
+             use_exact_enumerate_order if use_exact_enumerate_order else False
+         )
+         memory_type = (
+-            "hbm_cap" if topology.compute_device in {"cuda", "mtia"} else "ddr_cap"
++            "hbm_cap"
++            if topology.compute_device in {"cuda", "mtia", "npu"}
++            else "ddr_cap"
+         )
+         self._device_memory_sizes: Optional[
+             List[int]
+diff --git a/torchrec/distributed/planner/planners.py b/torchrec/distributed/planner/planners.py
+index 607bbada..f7ac5b09 100644
+--- a/torchrec/distributed/planner/planners.py
++++ b/torchrec/distributed/planner/planners.py
+@@ -69,6 +69,7 @@ from torchrec.distributed.types import (
+     ShardMetadata,
+ )
+ from torchrec.distributed.utils import get_device_type, none_throws
++from torchrec.tensor_types import check, validate_list_type
+
+ try:
+     # This is a safety measure against torch package issues for when
+@@ -443,6 +444,29 @@ class EmbeddingShardingPlanner(EmbeddingPlannerBase):
+         timeout_seconds: Optional[int] = None,
+         plan_loader: Optional[PlanLoader] = None,
+     ) -> None:
++        check(topology is None or isinstance(topology, Topology), "topology should be Topology")
++        check(constraints is None or isinstance(constraints, Dict), "constraints should be Dict")
++        check(batch_size is None or 0 <= batch_size <= 1000000, "batch_size should in [1, 1000000]")
++        check(enumerator is None or isinstance(enumerator, Enumerator), "enumerator should be Enumerator")
++        check(
++            storage_reservation is None
++            or isinstance(storage_reservation, StorageReservation),
++            "storage_reservation should be StorageReservation",
++        )
++        check(
++            proposer is None
++            or isinstance(proposer, Proposer)
++            or validate_list_type(proposer, Proposer),
++            "proposer should be Proposer or List[Proposer]",
++        )
++        check(partitioner is None or isinstance(partitioner, Partitioner), "partitioner should be Partitioner")
++        check(performance_model is None or isinstance(performance_model, PerfModel), "performance_model should be None")
++        check(
++            stats is None or isinstance(stats, Stats) or validate_list_type(stats, Stats),
++            "stats should be Stats or List[Stats]",
++        )
++        check(isinstance(debug, bool), "debug should be bool")
++        check(callbacks is None or isinstance(callbacks, List), "callbacks should be List")
+         super().__init__(
+             topology=topology,
+             batch_size=batch_size,
+@@ -497,6 +521,12 @@ class EmbeddingShardingPlanner(EmbeddingPlannerBase):
+         Returns:
+             ShardingPlan: the sharding plan for the module.
+         """
++        check(module is not None, "module can not be None")
++        check(pg is None or isinstance(pg, dist.ProcessGroup), "pg can be dist.ProcessGroup")
++        check(sharders is None or isinstance(sharders, List), "sharders should be List")
++        if sharders is not None:
++            for sharder in sharders:
++                check(isinstance(sharder, ModuleSharder), "shard should be ModuleSharder")
+         if pg is None:
+             assert dist.is_initialized(), (
+                 "The default process group is not yet initialized. "
+diff --git a/torchrec/distributed/planner/shard_estimators.py b/torchrec/distributed/planner/shard_estimators.py
+index 53bb9199..2ee8557f 100644
+--- a/torchrec/distributed/planner/shard_estimators.py
++++ b/torchrec/distributed/planner/shard_estimators.py
+@@ -1349,7 +1349,7 @@ def calculate_shard_storages(
+                 count_ephemeral_storage_cost=count_ephemeral_storage_cost,
+                 is_inference=is_inference,
+             )
+-            if compute_device in {"cuda", "mtia"}
++            if compute_device in {"cuda", "mtia", "npu"}
+             else 0
+         )
+         for input_size, output_size, hbm_specific_size in zip(
+diff --git a/torchrec/distributed/planner/stats.py b/torchrec/distributed/planner/stats.py
+index 19fde330..18b5e254 100644
+--- a/torchrec/distributed/planner/stats.py
++++ b/torchrec/distributed/planner/stats.py
+@@ -704,6 +704,7 @@ class EmbeddingStats(Stats):
+                 if (
+                     topology.compute_device == "cuda"
+                     or topology.compute_device == "mtia"
++                    or topology.compute_device == "npu"
+                 )
+                 and ((1 - reserved_hbm_percent) * device.storage.hbm) != 0
+                 else 0
+diff --git a/torchrec/distributed/planner/storage_reservations.py b/torchrec/distributed/planner/storage_reservations.py
+index 6e7d3830..6fb9ee7b 100644
+--- a/torchrec/distributed/planner/storage_reservations.py
++++ b/torchrec/distributed/planner/storage_reservations.py
+@@ -73,7 +73,7 @@ def _reserve_dense_storage(
+         dense_tensor_size = dense_tensor_estimate
+
+     dense_tensor_storage = Storage(
+-        hbm=dense_tensor_size if topology.compute_device in {"cuda", "mtia"} else 0,
++        hbm=dense_tensor_size if topology.compute_device in {"cuda", "mtia", "npu"} else 0,
+         ddr=dense_tensor_size if topology.compute_device == "cpu" else 0,
+     )
+
+@@ -93,7 +93,7 @@ def _reserve_kjt_storage(
+     kjt_size = math.ceil(sum(batch_inputs) * float(input_data_type_size)) * multiplier
+
+     kjt_storage = Storage(
+-        hbm=kjt_size if topology.compute_device in {"cuda", "mtia"} else 0,
++        hbm=kjt_size if topology.compute_device in {"cuda", "mtia", "npu"} else 0,
+         ddr=kjt_size if topology.compute_device == "cpu" else 0,
+     )
+
+diff --git a/torchrec/distributed/planner/types.py b/torchrec/distributed/planner/types.py
+index 4891bbc5..6feea5c0 100644
+--- a/torchrec/distributed/planner/types.py
++++ b/torchrec/distributed/planner/types.py
+@@ -39,8 +39,9 @@ from torchrec.distributed.types import (
+ from torchrec.modules.embedding_configs import DataType
+ from torchrec.modules.embedding_modules import EmbeddingCollectionInterface
+ from torchrec.modules.mc_embedding_modules import ManagedCollisionEmbeddingCollection
+-
++from torchrec.tensor_types import check, validate_list_type, MAX_MODULE_LOOP_TIMES
+ # ---- Perf ---- #
++MAX_WORLD_SIZE = 8
+
+
+ @dataclass(repr=True, eq=True)
+@@ -305,17 +306,59 @@ class Topology:
+             If it's not passed, we will create a BasicCommsBandwidths object with the provided bandwidths.
+         """
+         # validate input
++        check(isinstance(world_size, int), "world_size should be int")
++        if world_size < 1 or world_size > MAX_WORLD_SIZE:
++            raise ValueError(
++                f"world_size must be in range [0, {MAX_WORLD_SIZE}], but got {world_size}"
++            )
++        check(isinstance(compute_device, str), "compute_device should be str")
++        check(hbm_cap is None or isinstance(hbm_cap, int), "hbm_cap should be int")
++        check(ddr_cap is None or isinstance(ddr_cap, int), "ddr_cap should be int")
++        check(
++            local_world_size is None or isinstance(local_world_size, int),
++            "local_world_size should be int",
++        )
++        check(isinstance(hbm_mem_bw, (int, float)), "hbm_mem_bw should be float")
++        check(isinstance(ddr_mem_bw, (int, float)), "ddr_mem_bw should be float")
++        check(
++            isinstance(hbm_to_ddr_mem_bw, (int, float)),
++            "ddr_mem_bw should be float",
++        )
++        check(isinstance(intra_host_bw, (int, float)), "intra_host_bw should be float")
++        check(isinstance(inter_host_bw, (int, float)), "inter_host_bw should be float")
++        check(
++            isinstance(bwd_compute_multiplier, (int, float)),
++            "bwd_compute_multiplier should be float",
++        )
++        check(
++            custom_topology_data is None
++            or isinstance(custom_topology_data, CustomTopologyData),
++            "custom_topology_data should be CustomTopologyData",
++        )
++        check(
++            isinstance(weighted_feature_bwd_compute_multiplier, (int, float)),
++            "weighted_feature_bwd_compute_multiplier should be float",
++        )
++        check(
++            isinstance(uneven_sharding_perf_multiplier, (int, float)),
++            "uneven_sharding_perf_multiplier should be float",
++        )
+         assert compute_device in [
+             "cpu",
+             "cuda",
+             "mtia",
++            "npu",
+         ], f"unsupported compute device {compute_device}"
+
+         self._compute_device = compute_device
+         self._world_size = world_size
+
+         hbm_per_device = [0] * world_size
+-        if self._compute_device == "cuda" or self._compute_device == "mtia":
++        if (
++            self._compute_device == "cuda"
++            or self._compute_device == "mtia"
++            or self._compute_device == "npu"
++        ):
+             hbm_per_device = [hbm_cap if hbm_cap else HBM_CAP] * world_size
+         ddr_cap_per_rank = [ddr_cap if ddr_cap else DDR_CAP] * world_size
+
+@@ -791,6 +834,75 @@ class ParameterConstraints:
+     key_value_params: Optional[KeyValueParams] = None
+     use_virtual_table: bool = False
+
++    def __post_init__(self) -> None:
++        check(
++            self.sharding_types is None or isinstance(self.sharding_types, List),
++            "sharding_types should be List",
++        )
++        check(
++            self.compute_kernels is None or isinstance(self.compute_kernels, List),
++            "compute_kernels should be List",
++        )
++        if self.sharding_types is not None:
++            check(
++                len(self.sharding_types) <= MAX_MODULE_LOOP_TIMES,
++                "sharding_types should be less than or equal to %d"
++                % MAX_MODULE_LOOP_TIMES,
++            )
++            sharding_types = set(self.sharding_types)
++            check(len(sharding_types) == 1, "sharding_types should be unique")
++        if self.compute_kernels is not None:
++            check(
++                len(self.compute_kernels) <= MAX_MODULE_LOOP_TIMES,
++                "compute_kernels should be less than or equal to %d"
++                % MAX_MODULE_LOOP_TIMES,
++            )
++            compute_kernels = set(self.compute_kernels)
++            check(len(compute_kernels) == 1, "compute_kernels should be unique")
++        if self.sharding_types and self.compute_kernels:
++            sharding_type = next(iter(sharding_types))
++            compute_kernel = next(iter(compute_kernels))
++            supported = (("row_wise", "fused"), ("data_parallel", "dense"))
++            if (sharding_type, compute_kernel) not in supported:
++                raise ValueError(
++                    f"sharding_type {sharding_type} and compute_kernel {compute_kernel} are not supported,"
++                    f"(sharding_type, compute_kernel) supported are {supported}"
++                )
++        check(self.min_partition is None or isinstance(self.min_partition, int), "min_partition should be int")
++        check(validate_list_type(self.pooling_factors, float), "pooling_factors should be List[float]")
++        check(
++            self.num_poolings is None or validate_list_type(self.num_poolings, float),
++            "num_poolings should be List[float]",
++        )
++        check(self.batch_sizes is None or validate_list_type(self.batch_sizes, int), "batch_sizes should be List[int]")
++        check(isinstance(self.is_weighted, bool), "is_weighted should be bool")
++        check(
++            self.cache_params is None or isinstance(self.cache_params, CacheParams),
++            "cache_params should be CacheParams",
++        )
++        check(self.enforce_hbm is None or isinstance(self.enforce_hbm, bool), "enforce_hbm should be bool")
++        check(
++            self.stochastic_rounding is None
++            or isinstance(self.stochastic_rounding, bool),
++            "stochastic_rounding should be bool",
++        )
++        check(
++            self.bounds_check_mode is None
++            or isinstance(self.bounds_check_mode, BoundsCheckMode),
++            "bounds_check_mode should be BoundsCheckMode",
++        )
++        check(
++            self.feature_names is None or validate_list_type(self.feature_names, str),
++            "feature_names should be str",
++        )
++        check(self.output_dtype is None or isinstance(self.output_dtype, DataType), "output_dtype should be DataType")
++        check(self.device_group is None or isinstance(self.device_group, str), "device_group should be str")
++        check(
++            self.key_value_params is None
++            or isinstance(self.key_value_params, KeyValueParams),
++            "key_value_params should be KeyValueParams",
++        )
++
+     def __hash__(self) -> int:
+         hashable_list = [
+             tuple(self.sharding_types) if self.sharding_types else None,
