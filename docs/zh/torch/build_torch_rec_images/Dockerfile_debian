@@ -91,21 +91,21 @@ RUN wget https://download.pytorch.org/whl/cpu/torch-2.6.0%2Bcpu-cp311-cp311-linu
     wget https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.1.0%2Bcpu-cp311-cp311-manylinux2014_x86_64.whl
 
 RUN pip3 install -U pip && \
-    pip3 install numpy==1.25.0 && \
+    pip3 install numpy && \
     pip3 install wheel && \
     pip3 install decorator && \
-    pip3 install sympy==1.13.3 && \
-    pip3 install cffi==1.17.1 && \
+    pip3 install sympy && \
+    pip3 install cffi && \
     pip3 install expecttest && \
     pip3 install pybind11 && \
     pip3 install pyyaml && \
     pip3 install psutil && \
     pip3 install pathlib2 && \
-    pip3 install pandas==2.2.3 && \
+    pip3 install pandas && \
     pip3 install grpcio && \
-    pip3 install grpcio-tools==1.67.0 && \
-    pip3 install protobuf==5.28.2 && \
-    pip3 install scipy==1.14.1 && \
+    pip3 install grpcio-tools && \
+    pip3 install protobuf && \
+    pip3 install scipy && \
     pip3 install requests && \
     pip3 install scikit-learn && \
     pip3 install easydict && \
@@ -119,14 +119,14 @@ RUN pip3 install -U pip && \
     pip3 install torch-2.6.0+cpu-*.whl && \
     pip3 install fbgemm_gpu-1.1.0+cpu-*.whl && \
     pip3 install torch-npu==2.6.0 && \
-    pip3 install tensorboard==2.18.0 && \
+    pip3 install tensorboard && \
     pip3 install black && \
     pip3 install cmake && \
-    pip3 install hypothesis==6.70.1 && \
+    pip3 install hypothesis && \
     pip3 install iopath && \
     pip3 install pyre-extensions && \
     pip3 install scikit-build && \
-    pip3 install torchmetrics==1.0.3 && \
+    pip3 install torchmetrics && \
     pip3 install torchx && \
     pip3 install tqdm && \
     pip3 install usort && \
