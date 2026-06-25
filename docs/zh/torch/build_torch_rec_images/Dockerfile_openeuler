@@ -49,7 +49,7 @@ RUN tar -zxf /tmp/cmake-3.22.6.tar.gz && \
     ./bootstrap && make -j $(nproc) && make install && \
     rm -rf /tmp/cmake-3.22.6*
 
-# 编译 Python 3.11.0 
+# 编译 Python 3.11.0
 RUN tar -xvf /tmp/Python-3.11.0.tar.xz && \
     cd Python-3.11.0 && \
     mkdir -p build && cd build && \
@@ -69,25 +69,25 @@ RUN mkdir -p ~/.pip && \
     echo "               https://repo.huaweicloud.com/repository/pypi/simple" >> ~/.pip/pip.conf && \
     echo "trusted-host = pypi.tuna.tsinghua.edu.cn pypi.org mirrors.aliyun.com repo.huaweicloud.com" >> ~/.pip/pip.conf && \
     echo "timeout = 600" >> ~/.pip/pip.conf && \
-    echo "retries = 3" >> ~/.pip/pip.conf 
+    echo "retries = 3" >> ~/.pip/pip.conf
 
 # 注意：网络环境良好时建议合并安装以提高构建效率
 RUN pip3.11 install --upgrade pip
-RUN pip3.11 install numpy==1.25.0
+RUN pip3.11 install numpy
 RUN pip3.11 install wheel
 RUN pip3.11 install decorator
-RUN pip3.11 install sympy==1.13.1
-RUN pip3.11 install cffi==1.17.1
+RUN pip3.11 install sympy
+RUN pip3.11 install cffi
 RUN pip3.11 install expecttest
 RUN pip3.11 install pybind11
 RUN pip3.11 install pyyaml
 RUN pip3.11 install psutil
 RUN pip3.11 install pathlib2
-RUN pip3.11 install pandas==2.2.3
+RUN pip3.11 install pandas
 RUN pip3.11 install grpcio
-RUN pip3.11 install grpcio-tools==1.67.0
-RUN pip3.11 install protobuf==5.28.2
-RUN pip3.11 install scipy==1.14.1
+RUN pip3.11 install grpcio-tools
+RUN pip3.11 install protobuf
+RUN pip3.11 install scipy
 RUN pip3.11 install requests
 RUN pip3.11 install scikit-learn
 RUN pip3.11 install easydict
@@ -101,16 +101,16 @@ RUN pip3.11 install gin-config
 RUN pip3.11 install torch-2.6.0+cpu-*.whl
 RUN pip3.11 install fbgemm_gpu-1.1.0+cpu-*.whl
 RUN pip3.11 install torch-npu==2.6.0
-RUN pip3.11 install tensorboard==2.18.0
+RUN pip3.11 install tensorboard
 RUN pip3.11 install black
 RUN pip3.11 install cmake
-RUN pip3.11 install hypothesis==6.70.1
+RUN pip3.11 install hypothesis
 RUN pip3.11 install iopath || \
     (pip3.11 install --use-pep517 iopath || \
      pip3.11 install --only-binary=:all: iopath)
 RUN pip3.11 install pyre-extensions
 RUN pip3.11 install scikit-build
-RUN pip3.11 install torchmetrics==1.0.3
+RUN pip3.11 install torchmetrics
 RUN pip3.11 install torchx
 RUN pip3.11 install tqdm
 RUN pip3.11 install usort

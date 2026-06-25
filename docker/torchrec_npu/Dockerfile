@@ -123,7 +123,7 @@ RUN python3 -m venv /opt/buildtools/torchrec1.2.0 && \
     /opt/buildtools/torchrec1.2.0/bin/pip install "$FBGEMM_ASCEND_WHL" && \
     \
     /opt/buildtools/torchrec1.2.0/bin/pip install torchrec==1.2.0 && \
-    /opt/buildtools/torchrec1.2.0/bin/pip install pytest==9.0.1 pytest-cov==7.0.0 pytest-html==4.1.1 pytest-metadata==3.1.1 && \
+    /opt/buildtools/torchrec1.2.0/bin/pip install pytest pytest-cov pytest-html pytest-metadata && \
     /opt/buildtools/torchrec1.2.0/bin/pip install click hypothesis pyyaml && \
     rm -rf /root/.cache/pip
 
@@ -148,7 +148,7 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torchrec1.5.0/bin/pip install "$FBGEMM_ASCEND_WHL" && \
     \
     /opt/buildtools/torchrec1.5.0/bin/pip install torchrec==1.5.0 && \
-    /opt/buildtools/torchrec1.5.0/bin/pip install pytest==9.0.1 pytest-cov==7.0.0 pytest-html==4.1.1 pytest-metadata==3.1.1 && \
+    /opt/buildtools/torchrec1.5.0/bin/pip install pytest pytest-cov pytest-html pytest-metadata && \
     /opt/buildtools/torchrec1.5.0/bin/pip install click hypothesis pyyaml && \
     rm -rf /root/.cache/pip
 

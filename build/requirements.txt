@@ -1,7 +1,7 @@
 numpy
 decorator
-sympy==1.4
-cffi==1.12.3
+sympy
+cffi
 pyyaml
 pathlib2
 pandas
@@ -14,8 +14,8 @@ mpi4py
 scikit-learn
 easydict
 attrs
-pytest==7.1.1
-pytest-cov==4.1.0
+pytest
+pytest-cov
 pytest-html
 Cython
 h5py==3.1.0

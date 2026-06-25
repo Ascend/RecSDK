@@ -174,7 +174,7 @@
 6. 安装依赖，若未构建镜像，直接在物理机上进行开发，则须安装以下Python依赖。
 
     ```bash
-    pip3.7 install numpy decorator sympy==1.4 cffi==1.12.3 pyyaml pathlib2 grpcio grpcio-tools protobuf==3.20.0 scipy requests mpi4py easydict scikit-learn==0.20.0 attrs
+    pip3.7 install numpy decorator sympy cffi pyyaml pathlib2 grpcio grpcio-tools protobuf==3.20.0 scipy requests mpi4py easydict scikit-learn attrs
     ```
 
     horovod依赖安装前需配置“HOROVOD\_WITH\_MPI”、“HOROVOD\_WITH\_TENSORFLOW”，依赖安装命令参考如下。
@@ -438,8 +438,8 @@
     RUN pip3.7 install -U pip && \
         pip3.7 install numpy && \
         pip3.7 install decorator && \
-        pip3.7 install sympy==1.4 && \
-        pip3.7 install cffi==1.12.3 && \
+        pip3.7 install sympy && \
+        pip3.7 install cffi && \
         pip3.7 install pyyaml && \
         pip3.7 install pathlib2 && \
         pip3.7 install grpcio && \
@@ -451,8 +451,8 @@
         pip3.7 install scikit-learn && \
         pip3.7 install easydict && \
         pip3.7 install attrs && \
-        pip3.7 install pytest==7.1.1 && \
-        pip3.7 install pytest-cov==4.1.0 && \
+        pip3.7 install pytest && \
+        pip3.7 install pytest-cov && \
         pip3.7 install pytest-html && \
         pip3.7 install Cython && \
         pip3.7 install h5py==3.1.0 && \

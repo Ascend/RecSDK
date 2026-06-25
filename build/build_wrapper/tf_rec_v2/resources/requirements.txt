@@ -1,8 +1,8 @@
 numpy
 pandas
 decorator
-sympy==1.4
-cffi==1.12.3
+sympy
+cffi
 pyyaml
 pathlib2
 protobuf==3.20.0

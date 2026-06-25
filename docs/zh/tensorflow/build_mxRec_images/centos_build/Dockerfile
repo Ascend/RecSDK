@@ -116,8 +116,8 @@ ENV CC=/usr/lib64/openmpi/bin/mpicc
 RUN pip3.7 install -U pip && \
     pip3.7 install numpy && \
     pip3.7 install decorator && \
-    pip3.7 install sympy==1.4 && \
-    pip3.7 install cffi==1.12.3 && \
+    pip3.7 install sympy && \
+    pip3.7 install cffi && \
     pip3.7 install pyyaml && \
     pip3.7 install pathlib2 && \
     pip3.7 install pandas && \
@@ -130,8 +130,8 @@ RUN pip3.7 install -U pip && \
     pip3.7 install scikit-learn && \
     pip3.7 install easydict && \
     pip3.7 install attrs && \
-    pip3.7 install pytest==7.1.1 && \
-    pip3.7 install pytest-cov==4.1.0 && \
+    pip3.7 install pytest && \
+    pip3.7 install pytest-cov && \
     pip3.7 install pytest-html && \
     pip3.7 install Cython && \
     pip3.7 install h5py==3.1.0 && \

@@ -13,7 +13,7 @@ classifiers = [
 dynamic = ["version"]
 
 [project.optional-dependencies]
-test = ["pytest ==7.4.4", "pytest-cov ==4.1.0", "pytest-html ==4.1.1"]
+test = ["pytest", "pytest-cov", "pytest-html"]
 
 [project.urls]
 Homepage = "https://gitcode.com/Ascend/RecSDK"
