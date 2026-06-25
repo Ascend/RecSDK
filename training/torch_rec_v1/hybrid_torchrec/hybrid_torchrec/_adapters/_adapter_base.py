@@ -13,6 +13,7 @@
 - 这样新增差异点时，旧适配器无需修改（OCP）
 """
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import fields
 from inspect import signature
@@ -24,6 +25,10 @@ from torchrec.distributed.types import Awaitable
 from torchrec.modules.embedding_configs import EmbeddingTableConfig
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 from torchrec.distributed.sharding.rw_sharding import RwSparseFeaturesDist
+
+logger = logging.getLogger(__name__)
+
+_TYPE_PARAMS_CACHE: Dict[Type[Any], set] = {}
 
 
 class TorchRecVersionAdapter(ABC):
@@ -83,6 +88,12 @@ class TorchRecVersionAdapter(ABC):
         - 未来版本新增字段自动兼容
         """
         supported = {f.name for f in fields(EmbeddingTableConfig)}
+        unsupported = set(kwargs.keys()) - supported
+        if unsupported:
+            logger.warning(
+                "make_embedding_table_config: unsupported parameters %s are ignored",
+                sorted(unsupported),
+            )
         return EmbeddingTableConfig(**{k: v for k, v in kwargs.items() if k in supported})
 
     @staticmethod
@@ -93,7 +104,16 @@ class TorchRecVersionAdapter(ABC):
         - 1.5.0 新增: module_fqn, sharding_types, resize_awaitables
         - 未来版本新增参数自动兼容
         """
-        supported = set(signature(awaitable_type.__init__).parameters) - {"self"}
+        if awaitable_type not in _TYPE_PARAMS_CACHE:
+            _TYPE_PARAMS_CACHE[awaitable_type] = set(signature(awaitable_type.__init__).parameters) - {"self"}
+        supported = _TYPE_PARAMS_CACHE[awaitable_type]
+        unsupported = set(kwargs.keys()) - supported
+        if unsupported:
+            logger.warning(
+                "make_awaitable(%s): unsupported parameters %s are ignored",
+                awaitable_type.__name__,
+                sorted(unsupported),
+            )
         return awaitable_type(**{k: v for k, v in kwargs.items() if k in supported})
 
     def make_kjt_list_splits_awaitable(
@@ -123,7 +143,17 @@ class TorchRecVersionAdapter(ABC):
         覆盖差异点：
         - 1.5.0 新增: virtual_table_feature_num_buckets, has_uneven_virtual_tables
         """
-        supported = set(signature(RwSparseFeaturesDist.__init__).parameters) - {"self"}
+        if RwSparseFeaturesDist not in _TYPE_PARAMS_CACHE:
+            _TYPE_PARAMS_CACHE[RwSparseFeaturesDist] = set(signature(RwSparseFeaturesDist.__init__).parameters) - {
+                "self"
+            }
+        supported = _TYPE_PARAMS_CACHE[RwSparseFeaturesDist]
+        unsupported = set(kwargs.keys()) - supported
+        if unsupported:
+            logger.warning(
+                "filter_rw_sparse_features_dist_kwargs: unsupported parameters %s are ignored",
+                sorted(unsupported),
+            )
         return {k: v for k, v in kwargs.items() if k in supported}
 
     @staticmethod

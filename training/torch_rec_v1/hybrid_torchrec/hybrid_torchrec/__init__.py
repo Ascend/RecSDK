@@ -21,8 +21,8 @@ from hybrid_torchrec.modules.hash_embeddingbag import (
 # Backward-compatible boolean flags: legacy code may import these names
 # directly. New code should consume the version adapter (see
 # hybrid_torchrec._adapters.adapter) for behavioural differences.
-IS_TORCH_REC_120 = TORCH_REC_VERSION >= (1, 2, 0)
-IS_TORCH_REC_150 = TORCH_REC_VERSION >= (1, 5, 0)
+IS_TORCH_REC_120 = TORCH_REC_VERSION == (1, 2, 0)
+IS_TORCH_REC_150 = TORCH_REC_VERSION == (1, 5, 0)
 
 __all__ = ["HashEmbeddingBagCollection", "HashEmbeddingBagConfig"]
 

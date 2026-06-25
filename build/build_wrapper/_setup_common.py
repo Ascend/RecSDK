@@ -25,7 +25,7 @@ import platform
 from setuptools.command.build_py import build_py
 
 
-def install_requirements():
+def install_requirements(torch_version):
     """Install dependencies from requirements.txt line by line."""
     base_dir = os.path.dirname(os.path.abspath(__file__))
     req_file = os.path.join(base_dir, "requirements.txt")
@@ -35,6 +35,42 @@ def install_requirements():
         return
 
     print(f"Installing requirements from {req_file} line by line to avoid dependency resolution conflicts...")
+
+    with open(req_file, 'r', encoding='utf-8') as f:
+        reqs = []
+        for line in f:
+            req = line.strip()
+            if not req or req.startswith('#'):
+                continue
+            if req.startswith("torch-npu") or req.startswith("fbgemm-gpu"):
+                print(f"Skipping version-sensitive dependency from requirements.txt: {req}")
+                continue
+            reqs.append(req)
+
+    if torch_version.startswith("2.6."):
+        reqs.extend(
+            [
+                "torch-npu==2.6.0",
+                "fbgemm-gpu==1.1.0+cpu -i https://download.pytorch.org/whl/cpu",
+            ]
+        )
+    elif torch_version.startswith("2.7."):
+        reqs.extend(
+            [
+                "torch-npu==2.7.1",
+                "fbgemm-gpu==1.2.0+cpu -i https://download.pytorch.org/whl/cpu",
+            ]
+        )
+    elif torch_version.startswith("2.10."):
+        reqs.extend(
+            [
+                "torch-npu==2.10.0",
+                "fbgemm-gpu==1.5.0+cpu -i https://download.pytorch.org/whl/cpu",
+            ]
+        )
+    else:
+        sys.exit(f"Error: Unsupported PyTorch version: {torch_version}.")
+
     with open(req_file, 'r', encoding='utf-8') as f:
         reqs = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
 

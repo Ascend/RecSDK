@@ -160,6 +160,7 @@ class TestModel:
         os.environ["MASTER_ADDR"] = "127.0.0.1"
         os.environ["MASTER_PORT"] = "6000"
         os.environ["GLOO_SOCKET_IFNAME"] = "lo"
+        os.environ["HCCL_NPU_SOCKET_PORT_RANGE"] = "16666-26666"
         dist.init_process_group(self.pg_method, rank=rank, world_size=world_size)
         os.environ["LOCAL_RANK"] = f"{rank}"
 

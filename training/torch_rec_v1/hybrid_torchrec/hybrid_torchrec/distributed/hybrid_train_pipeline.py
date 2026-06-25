@@ -234,7 +234,6 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
 
         # Initialize attributes to avoid pylint W0201
         self._pipelined_modules = None
-        self._model = None
         self._original_forwards = None
         self._pipelined_preprocs = None
 
@@ -483,7 +482,7 @@ class HybridTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
             return
         (
             self._pipelined_modules,
-            self._model,
+            self._model,  # pylint: disable=attribute-defined-outside-init
             self._original_forwards,
             self._pipelined_preprocs,
             _,
