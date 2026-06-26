@@ -1,0 +1,7 @@
+training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_cache_pipeline.py
+training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_ec_cache_aggregation.py
+training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_ec_cache_pipeline.py
+training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_feature_filter.py
+training/torch_rec_v1/hybrid_torchrec/test/st/test_hybrid_pipeline_hash_embeddingbag.py
+training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_kjt_with_time.py
+training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_save_and_load.py

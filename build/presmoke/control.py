@@ -14,16 +14,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import os
 import subprocess
 
 from pathlib import Path
 
 ALLOWED_EXTENSIONS = {'.py', '.h', '.cpp', '.hpp', '.sh', '.cmake'}
 PATH_PREFIX_MAPS = {
-    'cust_op/ascendc_op/ai_core_op/hstu_dense_forward': 'hstu',
-    'cust_op/ascendc_op/ai_core_op/hstu_dense_backward': 'hstu',
-    'cust_op/framework/torch_plugin/torch_library/hstu': 'hstu',
+    'cust_op/ascendc_op/ai_core_op/hstu_dense_forward': ['hstu'],
+    'cust_op/ascendc_op/ai_core_op/hstu_dense_backward': ['hstu'],
+    'cust_op/framework/torch_plugin/torch_library/hstu': ['hstu'],
+    'cust_op/framework/torch_plugin/torch_library/common': ['hstu'],
+    'training/torch_rec_v1/hybrid_torchrec': ['torchrec'],
+    'training/torch_rec_v1/torchrec_npu': ['torchrec'],
+    'training/torch_rec_v1/torchrec_embcache': ['torchrec'],
 }
+PTA_REQUIRED_MODULES = {'hstu'}
+_ALREADY_BUILT_PTA = False
+_PRESMOKE_DIR = Path(os.environ.get("PRESMOKE_DIR", "")).absolute()
+_PTA_DIR = Path(os.environ.get("PTA_DIR", "")).absolute()
 
 
 def is_source_code_file(file: str) -> bool:
@@ -31,23 +40,27 @@ def is_source_code_file(file: str) -> bool:
 
 
 def get_changed_files() -> list[str]:
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "origin/develop...HEAD"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    if result.returncode != 0:
-        return []
-    changes = result.stdout.splitlines()
+    changes_file = _PRESMOKE_DIR / "changes.txt"
+    if not changes_file.exists():
+        raise RuntimeError(f"changes.txt file does not exist in {_PRESMOKE_DIR}")
+    changes = changes_file.read_text(encoding="utf-8").splitlines()
     return [f.strip() for f in changes if is_source_code_file(f.strip())]
 
 
-def parse_module(file: str) -> str:
-    for prefix, module in PATH_PREFIX_MAPS.items():
+def parse_module(file: str) -> list[str]:
+    for prefix, modules in PATH_PREFIX_MAPS.items():
         if file.startswith(prefix):
-            return module
-    return ""
+            return modules
+    return []
+
+
+def build_pta(module) -> None:
+    global _ALREADY_BUILT_PTA
+    if module not in PTA_REQUIRED_MODULES or _ALREADY_BUILT_PTA:
+        return
+    subprocess.run(["dos2unix", "build_ops.sh"], check=True, shell=False, cwd=_PTA_DIR)
+    subprocess.run(["bash", "build_ops.sh"], check=True, shell=False, cwd=_PTA_DIR)
+    _ALREADY_BUILT_PTA = True
 
 
 def main():
@@ -56,13 +69,19 @@ def main():
     if not changes:
         return
     for file in changes:
-        module = parse_module(file)
-        if module:
+        for module in parse_module(file):
             modules.add(module)
 
     for module in modules:
-        path = Path(f"{module}/run.sh").absolute()
-        subprocess.run(["bash", path], check=True, shell=False)
+        build_pta(module)
+        result = subprocess.run(
+            ["bash", f"{module}/run.sh"],
+            check=False,
+            shell=False,
+            cwd=_PRESMOKE_DIR,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Module {module} run.sh failed with return code {result.returncode}")
 
 
 if __name__ == '__main__':
