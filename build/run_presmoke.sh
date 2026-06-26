@@ -20,37 +20,29 @@
 
 set -e
 echo "================        run presmoke test!!!!        ================"
-export PROJECT_DIR=$(pwd)/../
-
+export PROJECT_DIR=$(realpath $(pwd)/../)
 export VENDORS=/usr/local/Ascend/ascend-toolkit/latest/opp/vendors/
-
 export PRESMOKE_DIR=$PROJECT_DIR/build/presmoke/
-
 export PTA_DIR=$PROJECT_DIR/cust_op/framework/torch_plugin/torch_library/common/
+export WORLD_SIZE=2
+export ASCEND_RT_VISIBLE_DEVICES=0,1
 
-source /usr/local/Ascend/driver/bin/setenv.bash
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-
-export LD_LIBRARY_PATH=/usr/local/python3.11.0/lib/:${LD_LIBRARY_PATH}
-export PATH=/usr/local/python3.11.0/bin:${PATH}
-
-unset ASCEND_CUSTOM_OPP_PATH
+source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
+source /usr/local/set_cann_env.sh a2
 
 echo "----------------        install torch_npu        ----------------"
-cd $PRESMOKE_DIR
-obsutil cp obs://mindcluster/torch_npu-2.7.1.post3-cp311-cp311-manylinux_2_28_aarch64.whl ./ -f -r
-python3 -m pip install torch_npu-2.7.1.post3-cp311-cp311-manylinux_2_28_aarch64.whl
-
-echo "----------------        build pta        ----------------"
-cd $PTA_DIR && dos2unix build_ops.sh && bash build_ops.sh
+pip3 list | grep -E "(torch|fbgemm)"
 
 echo "----------------        match cases        ----------------"
 cd $PRESMOKE_DIR
-git fetch origin
-git diff --name-only HEAD..origin/develop > changes.txt
+rm -fr changes.txt
+if [[ -f /workspace/change.txt ]]; then
+    cp -f /workspace/change.txt ./changes.txt
+else
+    echo "/workspace/change.txt not found."
+    git fetch origin && git diff --name-only HEAD..origin/develop > changes.txt
+fi
 cat changes.txt
-
 python3 control.py
 
 echo "================        run presmoke success        ================"
-
