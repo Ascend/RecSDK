@@ -14,14 +14,23 @@ EmbeddingCollection的入参，用于配置表的大小、dim、数据类型等�
 ```python
 @dataclass
 class EmbeddingConfig:
-    def __init__(**kwargs):
+    num_embeddings: int
+    embedding_dim: int
+    name: str
+    data_type: torchrec.types.DataType = torchrec.types.DataType.FP32
+    feature_names: List[str]
+    weight_init_max: float = None
+    weight_init_min: float = None
+    num_embeddings_post_pruning: int = None
+    init_fn: Callable = None
+    need_pos: bool = False
 ```
 
 **参数说明<a name="section1643017411155"></a>**
 
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
-|num_embeddings|int|必选|稀疏表的行数。取值范围：[1, 10亿]。其中最小值需要满足：≥使用的卡数。|
+|num_embeddings|int|必选|稀疏表的行数。取值范围：[1, 10^9]。其中最小值需要满足：≥使用的卡数。|
 |embedding_dim|int|必选|稀疏表的列数。取值范围：[8, 4096]。取值需要为8的倍数。|
 |name|str|必选|稀疏表的名称。只能包含数字、字母和下划线。长度范围：[1,4096]。|
 |data_type|torchrec.types.DataType|可选|稀疏表的数据类型。仅支持默认值为DataType.FP32。|

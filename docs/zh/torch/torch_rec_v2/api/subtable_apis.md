@@ -13,8 +13,16 @@
 
 ```python
 class ShardingEnv:
-    def __init__(**kwargs):
-def from_process_group(cls, pg: dist.ProcessGroup) -> "ShardingEnv":
+    def __init__(
+        self,
+        world_size: int,
+        rank: int,
+        pg: dist.ProcessGroup,
+        output_dtensor: bool = False,
+    ) -> None:
+
+    @classmethod
+    def from_process_group(cls, pg: dist.ProcessGroup) -> "ShardingEnv":
 ```
 
 **参数说明<a name="section888634319218"></a>**
@@ -77,7 +85,7 @@ class Topology:
 **使用示例<a name="section193151694205"></a>**
 
 ```python
-from torchrec.distributed.planner import Topology,
+from torchrec.distributed.planner import Topology
 topo = Topology(world_size=world_size, compute_device="npu")
 ```
 
@@ -200,10 +208,11 @@ class DynamicEmbParameterConstraints(ParameterConstraints):
 **使用示例<a name="section193151694205"></a>**
 
 ```python
+from torchrec.distributed.planner.types import ShardingType
 from dynamic_emb.distributed.planner.types import DynamicEmbParameterConstraints
 constraints = {
     "table0": DynamicEmbParameterConstraints(
-        sharding_types=[ShardingType.ROW_WISE.value],
+        sharding_type=[ShardingType.ROW_WISE.value],
         compute_kernels=["fused"],
         dynamicemb_options=DynamicEmbTableOptions(),
     ),
@@ -247,6 +256,7 @@ class DynamicEmbTableOptions(_ContextOptions):
 **使用示例<a name="section106984023511"></a>**
 
 ```python
+from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import EmbOptimType
 from dynamic_emb.distributed.dynamicemb_config import (
     DynamicEmbTableOptions,
     DynamicEmbInitializerArgs,
@@ -405,7 +415,9 @@ class EmbOptimType(enum.Enum):
 **使用示例<a name="section1045492782314"></a>**
 
 ```python
+import torch
 from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import EmbOptimType
+from dynamic_emb.distributed.dynamicemb_config import DynamicEmbTableOptions
 
 table_options = [
     DynamicEmbTableOptions(
