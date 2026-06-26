@@ -70,12 +70,27 @@ def cmake_args():
         str((os.cpu_count() or 4) // 2),
     )
 
+    # 安全编译选项
+    # 编译选项: 栈保护
+    compiler_flags = "-fstack-protector-strong"
+    # 链接选项: RELRO(GOT表保护)、BIND_NOW(立即绑定)、Strip(删除符号表)
+    link_flags = "-Wl,-z,relro -Wl,-z,now -Wl,-s"
+
     return [
         f"-DPython3_EXECUTABLE={sys.executable}",
         f"-DCMAKE_PREFIX_PATH={torch_root}",
         f"-DRECSDK_BUILD_VERS={_build_variants()}",
         f"-DRECSDK_ASCEND_SERIAL_BUILD={_ascend_serial_build()}",
         f"-D_GLIBCXX_USE_CXX11_ABI={_get_cxx11_abi()}",
+        # 编译选项
+        f"-DCMAKE_C_FLAGS={compiler_flags}",
+        f"-DCMAKE_CXX_FLAGS={compiler_flags}",
+        # 链接选项
+        f"-DCMAKE_EXE_LINKER_FLAGS={link_flags}",
+        f"-DCMAKE_SHARED_LINKER_FLAGS={link_flags}",
+        # 禁用 RPATH
+        "-DCMAKE_SKIP_BUILD_RPATH=TRUE",
+        "-DCMAKE_SKIP_INSTALL_RPATH=TRUE",
     ]
 
 

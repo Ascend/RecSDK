@@ -145,8 +145,7 @@ function(recsdk_add_host_library target_name output_name npu_chip_flag)
     set_target_properties(${target_name} PROPERTIES
         PREFIX ""
         OUTPUT_NAME ${output_name}
-        BUILD_RPATH "${PYTORCH_INSTALL_PATH}/lib;${PYTORCH_NPU_INSTALL_PATH}/lib"
-        INSTALL_RPATH "${PYTORCH_INSTALL_PATH}/lib;${PYTORCH_NPU_INSTALL_PATH}/lib"
+        # __init__.py 里会通过 import 加载 torch 库，无需编入 RPATH
     )
 endfunction()
 
