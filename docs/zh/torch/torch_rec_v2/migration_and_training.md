@@ -73,6 +73,9 @@
 - Rec SDK Torch示例：
 
     ```python
+    import torch
+    import torch.nn
+    import torch.distributed as dist
     from torchrec.distributed.embedding import EmbeddingCollection
     from torchrec.distributed.planner.types import Topology, ShardingType
     from dynamic_emb import (
@@ -321,7 +324,7 @@ if PROFILE_ENABLE:
 
 利用获取的profiling文件，可使用[MindStudio Insight](https://www.hiascend.com/document/detail/zh/mindstudio/830/GUI_baseddevelopmenttool/msascendinsightug/Insight_userguide_0002.html)可视化工具进行时间线（Timeline）可视化分析。
 
-x86与ARM环境下模型的的Free时间占比均超70%，NPU实际计算占比极低。
+x86与ARM环境下模型的Free时间占比均超70%，NPU实际计算占比极低。
 
 **核心推论**：性能瓶颈不在 NPU 算力，而在Host侧CPU操作（数据搬运、算子下发、调度等待）。
 
@@ -578,7 +581,7 @@ cd dlrm && git checkout b631a99
             fused_params={
                 "output_dtype": SparseType.FP32,
                 "optimizer": "adagrad" if args.adagrad else "sgd",
-                "learning_rate":args.learning_rate,
+                "learning_rate":args.learning_rate
             },
             use_index_dedup=False,
         )

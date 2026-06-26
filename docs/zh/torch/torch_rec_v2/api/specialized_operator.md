@@ -38,6 +38,6 @@
 |--------|--------|--------|
 |DynamicEmbTable|动态嵌入表管理类|<ul><li>get_key_type：获取表的键数据类型</li><li>get_value_type：获取表的值数据类型</li><li>get_evict_strategy：获取表的淘汰策略</li><li>get_max_capacity：获取表的最大容量</li><li>get_initializer_args：获取表的初始化参数</li><li>optstate_dim：获取优化器状态的总维度</li><li>get_emb_cols：获取嵌入表的列数</li><li>load：将键值对加载到嵌入表中</li><li>update：更新表中的键值对</li><li>export_batch：从表中导出批量键值对</li></ul>
 |InitializerArgs|动态嵌入表的初始化参数类|<ul><li>mode：初始化模式</li><li>mean：正态分布的均值</li><li>std_dev：正态分布的标准差</li><li>lower：均匀分布的下界</li><li>upper：均匀分布的上界</li><li>value：常量初始化的固定值</li></ul>|
-|DynamicEmbDataType|标识动态嵌入数据类型的枚举类|<ul><li>Float32：32位单精度浮点数</li><li>BFloat16：16位脑浮点数</li><li>Float16：16位半精度浮点数</li><li>Int64：64位有符号整数</li><li>UInt64：64位无符号整数</li><li>Int32：32位有符号整数</li><li>UInt32：32位无符号整数</li><li>Size_t：无符号整数</li></ul>|
+|DynamicEmbDataType|标识动态嵌入数据类型的枚举类|<ul><li>Float32：32位单精度浮点数</li><li>BFloat16：16位脑格式浮点数</li><li>Float16：16位半精度浮点数</li><li>Int64：64位有符号整数</li><li>UInt64：64位无符号整数</li><li>Int32：32位有符号整数</li><li>UInt32：32位无符号整数</li><li>Size_t：无符号整数</li></ul>|
 |EvictStrategy|动态嵌入表的淘汰策略的枚举类|<ul><li>kLru：最近最少使用（Least Recently Used）</li><li>kLfu：最不经常使用（Least Frequently Used）</li><li>kEpochLru：周期化LRU（Epoch-based LRU）</li><li>kEpochLfu：周期化LFU（Epoch-based LFU）</li><li>kCustomized：自定义淘汰策略</li></ul>|
 |OptimizerType|动态嵌入表优化器的枚举类|<ul><li>Null：无优化器</li><li>SGD：随机梯度下降（Stochastic Gradient Descent）</li><li>Adam：自适应矩估计</li><li>AdamW：带权重衰减的Adam</li><li>AdaGrad：自适应梯度算法</li></ul>|

@@ -91,7 +91,7 @@ if missing:
 
 **函数原型<a name="section1483104721912"></a>**
 
-```cpp
+```python
 def set_score(
     model: nn.Module,
     table_score: Union[int, Dict[str, Dict[str, int]]],
@@ -107,7 +107,7 @@ def set_score(
 
 **使用示例<a name="section193151694206"></a>**
 
-```cpp
+```python
 from dynamic_emb import set_score
 
 # 所有动态嵌入表设置为同一分数
@@ -119,7 +119,7 @@ set_score(
     {
         "model.embedding": {
             "user_table": 100,
-            "item_table": 200,
+            "item_table": 200
         }
     },
 )
@@ -133,7 +133,7 @@ set_score(
 
 **函数原型<a name="section1483104721913"></a>**
 
-```cpp
+```python
 def get_score(
     model: nn.Module,
 ) -> Optional[Dict[str, Dict[str, int]]]
@@ -153,7 +153,7 @@ def get_score(
 
 **使用示例<a name="section193151694207"></a>**
 
-```cpp
+```python
 from dynamic_emb import get_score
 
 score_info = get_score(model)
@@ -186,7 +186,7 @@ def DynamicEmbLoad(
 |path|str|必选|加载文件的主目录路径|
 |model|nn.Module|必选|包含动态嵌入表的模型对象|
 |table_names|Optional[Dict[str, List[str]]]|可选|指定要加载的嵌入集合名称及对应的动态嵌入表列表。若为None，则加载所有找到的动态嵌入表。|
-|optim|Optional[bool]|可选|是否加载优化器状态。默认为False。|
+|optim|bool|可选|是否加载优化器状态。默认为False。|
 |pg|dist.ProcessGroup|可选|用于控制加载过程中通信范围的进程组。默认使用全局WORLD组。|
 
 **使用示例<a name="section193151694205"></a>**

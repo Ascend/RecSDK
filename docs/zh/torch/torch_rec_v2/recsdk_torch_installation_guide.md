@@ -224,7 +224,7 @@ Rec SDK Torch环境变量的说明如[表1](#table126401659163820)所示。
 
 |环境变量名|含义|可选/必选|说明|
 |--|--|--|--|
-|ASCEND_RT_VISIBLE_DEVICES|昇腾处理器可见的设备，来指定程序只使用其中的部分设备。|可选|使用ASCEND_RT_VISIBLE_DEVICES环境变量指定训练中的NPU设备（用户可执行ls /dev/ \| grep davinci*命令查询宿主机的NPU设备），使用设备序号指定设备，支持单个和范围指定且支持混用。例如：<ul> <li>ASCEND_RT_VISIBLE_DEVICES=0：表示将0号设备（/dev/davinci0）挂载入容器中。</li><li>ASCEND_RT_VISIBLE_DEVICES=1,3：表示将1、3号设备挂载入容器中。</li><li>ASCEND_RT_VISIBLE_DEVICES=0-2：表示将0号至2号设备（包含0号和2号）挂载入容器中，效果同ASCEND_RT_VISIBLE_DEVICES=0,1,2。</li><li>ASCEND_RT_VISIBLE_DEVICES=0-2,4：表示将0号至2号以及4号设备挂载入容器，效果同ASCEND_RT_VISIBLE_DEVICES=0,1,2,4。</li></ul>|
+|ASCEND_RT_VISIBLE_DEVICES|昇腾NPU可见的设备，来指定程序只使用其中的部分设备。|可选|使用ASCEND_RT_VISIBLE_DEVICES环境变量指定训练中的NPU设备（用户可执行ls /dev/ \| grep davinci*命令查询宿主机的NPU设备），使用设备序号指定设备，支持单个和范围指定且支持混用。例如：<ul> <li>ASCEND_RT_VISIBLE_DEVICES=0：表示将0号设备（/dev/davinci0）挂载入容器中。</li><li>ASCEND_RT_VISIBLE_DEVICES=1,3：表示将1、3号设备挂载入容器中。</li><li>ASCEND_RT_VISIBLE_DEVICES=0-2：表示将0号至2号设备（包含0号和2号）挂载入容器中，效果同ASCEND_RT_VISIBLE_DEVICES=0,1,2。</li><li>ASCEND_RT_VISIBLE_DEVICES=0-2,4：表示将0号至2号以及4号设备挂载入容器，效果同ASCEND_RT_VISIBLE_DEVICES=0,1,2,4。</li></ul>|
 |ASCEND_CANN_PACKAGE_PATH ASCEND_HOME_PATH|CANN包实际安装路径。|必选|编译算子所需指定的CANN包实际安装目录。默认为/usr/local/Ascend/ascend-toolkit/latest。|
 
 ## 卸载<a name="ZH-CN_TOPIC_0000002302389376"></a>

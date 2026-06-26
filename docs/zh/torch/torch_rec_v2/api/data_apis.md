@@ -27,7 +27,7 @@ class JaggedTensor:
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
-```bash
+```python
 from torchrec import JaggedTensor
 JaggedTensor(values=[1, 3, 4], lengths=[1, 1, 1], offsets=[0, 1, 2, 3])
 ```
@@ -49,7 +49,7 @@ JaggedTensor(values=[1, 3, 4], lengths=[1, 1, 1], offsets=[0, 1, 2, 3])
 
 **函数原型<a name="section1483104721911"></a>**
 
-```bash
+```python
 def from_jt_dict(jt_dict: Dict[str, JaggedTensor]) -> "KeyedJaggedTensor"
 ```
 
@@ -66,7 +66,7 @@ def from_jt_dict(jt_dict: Dict[str, JaggedTensor]) -> "KeyedJaggedTensor"
 
 **使用示例<a name="section2553042232"></a>**
 
-```bash
+```python
 from torchrec import KeyedJaggedTensor, JaggedTensor
 jt = JaggedTensor(values=[1, 3, 4], lengths=[1, 1, 1])
 kjt = KeyedJaggedTensor.from_jt_dict({"feat0": jt})

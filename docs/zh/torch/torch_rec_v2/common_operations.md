@@ -25,7 +25,7 @@ Rec SDK Torch为Wheel包格式，安装、卸载日志记录在系统history中�
 
 **修改历史命令文件时间戳<a name="section18178420544"></a>**
 
-如果需要在历史命令文件中有时间戳记录，可以在“/etc/profile“中添加如下配置：
+如果需要在历史命令文件中有时间戳记录，可以在"/etc/profile"中添加如下配置：
 
 **HISTTIMEFORMAT='%F %T '**
 
@@ -38,7 +38,7 @@ Rec SDK Torch为Wheel包格式，安装、卸载日志记录在系统history中�
 2025-08-18 10:10:17 history | grep "pip3 install"
 ```
 
-此外，如果需要将历史命令记录在自定义文件中，可以在“/etc/profile“中设置HISTFILE环境变量，设置完成之后执行**source /etc/profile**命令使环境变量生效。比如：
+此外，如果需要将历史命令记录在自定义文件中，可以在"/etc/profile"中设置HISTFILE环境变量，设置完成之后执行**source /etc/profile**命令使环境变量生效。比如：
 
 ```bash
 HISTDIR=~/log/RecSDK_Torch   # 配置历史命令记录保存文件
@@ -52,8 +52,8 @@ if [ -z $USER_IP ]
 then
   USER_IP=`hostname`
 fi
-export HISTTIMEFORMAT="%F %T $USER_IP:`whoami` "    # history命令显示格式：时间、IP、用户名、执行命令 
-PROMPT_COMMAND=' { date "+%Y-%m-%d %T - $(history 1 | { read x cmd; echo "$cmd"; })"; } >> $HISTFILE'    # 实时将history命令写到配置的文件里
+export HISTTIMEFORMAT="%F %T $USER_IP:`whoami` "    # history命令显示格式：时间、IP、用户名、执行命令
+PROMPT_COMMAND='{ date "+%Y-%m-%d %T - $(history 1 | { read x cmd; echo "$cmd"; })"; } >> $HISTFILE'    # 实时将history命令写到配置的文件里
 ```
 
 其中日志文件路径为“\~/log/RecSDK\_Torch”，请保证磁盘空间足够，日志文件设置权限为640。
