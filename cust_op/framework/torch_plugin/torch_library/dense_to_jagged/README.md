@@ -1,8 +1,8 @@
-**使用pytorch框架调用方式调用dense_to_jagged算子**
+# 使用PyTorch框架调用方式调用dense_to_jagged算子
 
-该样例基于Pytorch2.6.0、python3.11.0运行
+该样例基于PyTorch2.6.0、python3.11.0运行
 
-### Pytorch框架对外接口原型
+## PyTorch框架对外接口原型
 
 ```python
 torch.ops.fbgemm.dense_to_jagged_forward(Tensor dense, Tensor[] offsets, SymInt? total_L=None) -> Tensor
@@ -18,27 +18,27 @@ torch.ops.mxrec.dense_to_jagged_backward(Tensor values, Tensor[] offsets, int ma
 注：dense_to_jagged_forward、dense_to_jagged接口均为dense_to_jagged算子调用接口。<br>
 dense_to_jagged_backward接口为dense_to_jagged算子的反向算子jagged_to_padded_dense接口，具体调用请参考[`jagged_to_padded_dense`](../jagged_to_padded_dense/README.md)算子调用。
 
-#### 参数说明
+### 参数说明
+
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
-|  dense | 输入 | Tensor | float32/float16/bfloat16/int32/int64 | [dim0, dim1, dim2] | dim0 <= std::numeric_limits<int>::max() - 1 | 仅支持三维 |
-|  offsets | 输入 | Tensor[] | int32/int64 | [dim0 + 1] | dim0 + 1 <= std::numeric_limits<int>::max()<br>数值必须从0开始依次递增 | 仅支持一维<br>offsets内元素需用户自行保证合法性，否则可能导致算子执行失败 |
+|  dense | 输入 | Tensor | float32/float16/bfloat16/int32/int64 | [dim0, dim1, dim2] | dim0 <= INT_MAX - 1 | 仅支持三维 |
+|  offsets | 输入 | Tensor[] | int32/int64 | [dim0 + 1] | dim0 + 1 <= INT_MAX 数值必须从0开始依次递增 | 仅支持一维 offsets内元素需用户自行保证合法性，否则可能导致算子执行失败 |
 |  total_L | 输入(可选) | SymInt | int | NA | 有值时必须等于offset[-1] | NA |
 |  jagged_dense | 输出 | Tensor | float32/float16/bfloat16/int32/int64 | [jagged_dim0, dim2] | NA | dense_to_jagged_forward输出 |
 |  (jagged_dense, offsets) | 输出 | Tuple | (float32/float16/bfloat16/int32/int64, int32/int64) | ([jagged_dim0, dim2], [dim0 + 1]) | NA | dense_to_jagged输出，offsets即为输入参数offsets |
 
+## 运行算子样例
 
-### 运行算子样例
+### 算子编译与部署
 
-#### 算子编译与部署
+算子编译部署请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-算子编译部署请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+### PyTorch编译
 
-#### Pytorch编译
+PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
-Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
-
-#### 算子调用示例,以下以pytest方式调用为例
+### 算子调用示例,以下以pytest方式调用为例
 
 ```python
 import itertools

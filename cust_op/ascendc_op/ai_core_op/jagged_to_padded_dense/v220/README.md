@@ -62,15 +62,15 @@ result = jagged_to_padded_dense(values=input_values, offsets=[input_offsets], ma
 
 | 名称            | 输入/输出   | 参数类型      | 数据类型          | 数据格式                                  | 范围           | 说明                                                                     |
 |---------------|---------|-----------|---------------|---------------------------------------|--------------|------------------------------------------------------------------------|
-| values        | 输入      | Tensor    | float32/float16/bfloat16/int32/int64 | [dim0, dim1]                          |              |                                                                        |
+| values        | 输入      | Tensor    | float32/float16/bfloat16/int32/int64 | [dim0, dim1] |   |  第一维为所有子tensor元素总数，第二维为特征维度 |
 | offsets       | 输入      | Tensor[]  | int32/int64   |                                       | 数值必须从0开始依次递增 | list中tensor个数只能为1, 且tensor仅支持一维<br>  offsets内元素需用户自行保证合法性，否则可能导致算子执行失败 |
 | max_lengths   | 输入(属性)  | int/int[] | int           |                                       |              | max_lengths的元素值需大于0。类型为数组时，长度只能为1                                       |
-| padding_value_fp32 | 输入(属性)  | float     | float         |                                       |              |
-| padding_value_int64 | 输入(属性)  | int64     | int64         |                                       |              |
+| padding_value_fp32 | 输入(属性)  | float     | float         |                                       |              |      |
+| padding_value_int64 | 输入(属性)  | int64     | int64         |                                       |              |      |
 | jagged_dense  | 输出(返回值) | Tensor    | float32/float16/bfloat16/int32/int64 | [len(offsets) - 1, max_lengths, dim1] |              |                                                                        |
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/jagged_to_padded_dense/README.md)

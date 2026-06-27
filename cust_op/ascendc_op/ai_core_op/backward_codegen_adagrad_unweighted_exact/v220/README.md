@@ -35,7 +35,6 @@
 | hash_size_cumsum            | 输入 | int64   | [feat_cnt] | 数值必须从0开始依次递增             | 每个特征的num_embedding累加和                             |
 | indices                     | 输入 | int64   | NA | 每张表的索引[0, num_embedding] | 查表索引,一维数组 len(indices) = offset[-1], 由用户保证输入数据正确性 |
 | offsets                     | 输入 | int64   | [feat_cnt * batch_size + 1] | 数值必须从0开始依次递增             | 查表索引对应的偏移, 由用户保证输入数据正确性                           |
-| lxu_cache_weights           | 输入 | int32   | NA | NA                       | 预留参数不支持配置                                         |
 | momentum1_dev               | 输入 | float32 | [total_table_size] | NA                       | 一阶动量，用于adagrad和adam优化器                            |
 | momentum1_uvm               | 输入 | float32 | [total_table_size] | NA                       | 保留参数                                              |
 | momentum1_placements        | 输入 | int32   | NA | NA                       | 保留参数                                              |
@@ -287,6 +286,6 @@ def backward_codegen_sgd_unweighted_exact(grad_output,
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/split_embedding_codegen_forward_unweighted/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/split_embedding_codegen_forward_unweighted/README.md)

@@ -1,16 +1,17 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用。
 
 ## 产品支持情况
+
 | 硬件型号              | 是否支持                  |
 | -------------------- | ------------------------ |
 | Atlas A5系列产品     | 是  |
 | Atlas A2训练系列产品  | 否  |
 | Atlas A3训练系列产品  | 否  |
 
-
 ## init_address_lookup算子目录层级
+
 ```shell
 -- init_address_lookup
    |-- c310
@@ -41,12 +42,14 @@
 
 计算公式：
 对于表 `t` 中的第 `r` 行（`0 <= r < rows_t`），其在全局 `address_lookups` 数组中的索引为 `idx = buffer_offsets[t] + r`。
-```
+
+```python
 address_lookups[idx] = r      (若 r < emb_sizes[t])
 address_lookups[idx] = 0      (若 r >= emb_sizes[t])
 ```
 
 例如：
+
 ```python
 buffer_offsets = [0, 5, 9]  # 表0 行数 = 5，表1 行数 = 4
 emb_sizes = [3, 4]          # 表0 有效行 0,1,2；表1 有效行 0..3
@@ -70,17 +73,18 @@ emb_sizes = [3, 4]          # 表0 有效行 0,1,2；表1 有效行 0..3
 ## 算子编译部署
 
 编译算子：
+
 ```shell
 cd cust_op/ascendc_op/ai_core_op/init_address_lookup/c310
 bash run.sh
 ```
 
-算子完整编译步骤请参考[RecSDK\cust_op\README.md](../../../../README.md)。
+算子完整编译步骤请参考[RecSDK/cust_op/README.md](../../../../README.md)。
 算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/init_address_lookup/README.md)。
 
 ## 相关算子
 
 该算子通常与以下算子配合使用：
+
 - `remap_indices_update_utils`：重映射输入索引到当前物理地址
 - `prune_embedding_tables`：执行剪枝过程
-

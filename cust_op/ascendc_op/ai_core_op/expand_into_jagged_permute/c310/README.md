@@ -2,13 +2,14 @@
 
 本算子仅支持 NPU 调用。
 
-##  产品支持情况
+## 产品支持情况
 
 | 产品 | 是否支持 |
 | ---- | :----:|
 |Atlas A5 训练系列产品|√|
 
 # 目录结构
+
 ```shell
 -- expand_into_jagged_permute
    |-- c310
@@ -39,27 +40,27 @@ $$
 - Python 伪代码实现：
 
 ```python
-def expand_into_jagged_permute(permute, input_offsets, output_offsets, output_size):
+def expand_into_jagged_permute(permute, inputOffset, outputOffset, outputSize):
     """
     将表级别的置换索引扩展到批次维度。
-    
+
     Args:
-        permute: 表级别的置换索引，形状为 [num_tables]
-        input_offsets: 输入表的累积偏移量，形状为 [num_tables + 1]
-        output_offsets: 输出表的累积偏移量，形状为 [num_tables + 1]
-        output_size: 输出结果的长度
-    
+        permute: 表级别的置换索引，形状为 [numTables]
+        inputOffset: 输入表的累积偏移量，形状为 [numTables + 1]
+        outputOffset: 输出表的累积偏移量，形状为 [numTables + 1]
+        outputSize: 输出结果的长度
+
     Returns:
-        output_permute: 扩展后的置换索引，形状为 [output_size]
+        outputPermute: 扩展后的置换索引，形状为 [outputSize]
     """
-    output_permute = []
+    outputPermute = []
     for i in range(len(permute)):
         # 获取第 permute[i] 个表的起始和结束位置
-        start_idx = input_offsets[permute[i]]
-        end_idx = input_offsets[permute[i] + 1]
+        startIdx = inputOffset[permute[i]]
+        endIdx = inputOffset[permute[i] + 1]
         # 生成该表的索引序列并追加到输出
-        output_permute.extend(range(start_idx, end_idx))
-    return output_permute
+        outputPermute.extend(range(startIdx, endIdx))
+    return outputPermute
 ```
 
 ## 参数说明
@@ -118,11 +119,12 @@ def expand_into_jagged_permute(permute, input_offsets, output_offsets, output_si
   </tbody></table>
 
 ## 约束说明
-- inputOffset、outputOffset的长度比permute多1。
-- 用户需用户自行保证输入、输出长度与大小不超过对应数据类型的数值上限。
 
+- inputOffset、outputOffset的长度比permute多1。
+- 用户需自行保证输入、输出长度与大小不超过对应数据类型的数值上限。
 
 ## 编译与部署
+
 参考 RecSDK/cust_op/README.md “单算子使用说明”章节的编译、适配层部署流程。
 
 更多 PyTorch 调用示例见 framework/torch_plugin/torch_library/expand_into_jagged_permute/README.md。
