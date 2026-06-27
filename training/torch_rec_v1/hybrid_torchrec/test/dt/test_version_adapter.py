@@ -233,5 +233,239 @@ class TestCompatFilterRwSparseFeaturesDist(unittest.TestCase):
         self.assertNotIn("future_field_abc", result)
 
 
+class TestGetOutputDtensor(unittest.TestCase):
+    """测试 get_output_dtensor 静态方法。"""
+
+    def test_from_env_true(self):
+        env = type("FakeEnv", (), {"output_dtensor": True})()
+        self.assertTrue(adapter.get_output_dtensor(env, None))
+
+    def test_from_env_false(self):
+        env = type("FakeEnv", (), {"output_dtensor": False})()
+        self.assertFalse(adapter.get_output_dtensor(env, None))
+
+    def test_fallback_to_fused_params(self):
+        env = object()
+        self.assertTrue(adapter.get_output_dtensor(env, {"output_dtensor": True}))
+        self.assertFalse(adapter.get_output_dtensor(env, {"output_dtensor": False}))
+
+    def test_default_false(self):
+        env = object()
+        self.assertFalse(adapter.get_output_dtensor(env, None))
+        self.assertFalse(adapter.get_output_dtensor(env, {}))
+        self.assertFalse(adapter.get_output_dtensor(env, {"other": 1}))
+
+
+class TestGetVirtualTableFeatureNumBuckets(unittest.TestCase):
+    """测试 get_virtual_table_feature_num_buckets 版本行为差异。"""
+
+    def test_baseline_110_returns_default(self):
+        """1.1.0/1.2.0 返回 (None, False)。"""
+        from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
+
+        methods = _build_methods((1, 1, 0))
+        self.assertNotIn("get_virtual_table_feature_num_buckets", methods)
+
+        class Adapter110(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 1, 0)
+
+        a = Adapter110()
+        result = a.get_virtual_table_feature_num_buckets(object())
+        self.assertEqual(result, (None, False))
+
+    def test_version_150_calls_instance_method(self):
+        """1.5.0 调用实例的 _get_virtual_table_feature_num_buckets()。"""
+        from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
+
+        methods = _build_methods((1, 5, 0))
+        self.assertIn("get_virtual_table_feature_num_buckets", methods)
+
+        class FakeInstance:
+            def _get_virtual_table_feature_num_buckets(self):
+                return ([100, 200], False)
+
+        class Adapter150(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 5, 0)
+
+        a = type("Adapter150_vt", (Adapter150,), methods)()
+        result = a.get_virtual_table_feature_num_buckets(FakeInstance())
+        self.assertEqual(result, ([100, 200], False))
+
+    def test_higher_version_inherits_150(self):
+        """更高版本应继承 1.5.0 的行为。"""
+        from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
+
+        methods = _build_methods((1, 6, 0))
+        self.assertIn("get_virtual_table_feature_num_buckets", methods)
+
+        class FakeInstance:
+            def _get_virtual_table_feature_num_buckets(self):
+                return ([5], True)
+
+        class Adapter160(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 6, 0)
+
+        a = type("Adapter160_vt", (Adapter160,), methods)()
+        result = a.get_virtual_table_feature_num_buckets(FakeInstance())
+        self.assertEqual(result, ([5], True))
+
+
+class TestBuildArgsKwargs(unittest.TestCase):
+    """测试 build_args_kwargs 的版本行为差异。"""
+
+    def test_version_150_uses_instance_method(self):
+        """1.5.0 使用 forward_args.build_args_kwargs 实例方法。"""
+        from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
+
+        methods = _build_methods((1, 5, 0))
+        self.assertIn("build_args_kwargs", methods)
+
+        class FakeForwardArgs:
+            def build_args_kwargs(self, batch):
+                return (batch, {"result": "ok"})
+
+        class Adapter150(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 5, 0)
+
+        a = type("Adapter150_bak", (Adapter150,), methods)()
+        result = a.build_args_kwargs("data", FakeForwardArgs())
+        self.assertEqual(result, ("data", {"result": "ok"}))
+
+    def test_version_150_raises_when_no_method(self):
+        """1.5.0 下 forward_args 缺少 build_args_kwargs 时抛 RuntimeError。"""
+        from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
+
+        methods = _build_methods((1, 5, 0))
+
+        class Adapter150(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 5, 0)
+
+        a = type("Adapter150_err", (Adapter150,), methods)()
+        with self.assertRaises(RuntimeError) as ctx:
+            a.build_args_kwargs("data", object())
+        self.assertIn("build_args_kwargs not available", str(ctx.exception))
+
+    def test_version_120_uses_module_function(self):
+        """1.2.0 使用模块级 _build_args_kwargs 函数。"""
+        from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
+
+        methods = _build_methods((1, 2, 0))
+        # 1.2.0 没有 build_args_kwargs 覆盖
+        self.assertNotIn("build_args_kwargs", methods)
+
+        class Adapter120(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 2, 0)
+
+        a = Adapter120()
+        # 基类默认实现调用 torchrec 模块级 _build_args_kwargs
+        self.assertTrue(callable(a.build_args_kwargs))
+
+
+class TestCreateShardingInfos(unittest.TestCase):
+    """测试 create_sharding_infos 的版本行为差异。"""
+
+    def test_version_120_uses_instance_method(self):
+        """1.2.0 使用 instance.create_grouped_sharding_infos。"""
+        from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
+
+        methods = _build_methods((1, 2, 0))
+        self.assertIn("create_sharding_infos", methods)
+
+        class FakeInstance:
+            def create_grouped_sharding_infos(self, mod, shard, prefix, fp):
+                return {"method": "instance", "prefix": prefix}
+
+        class Adapter120(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 2, 0)
+
+        a = type("Adapter120_si", (Adapter120,), methods)()
+        result = a.create_sharding_infos(FakeInstance(), "module", "shard", "myprefix", {})
+        self.assertEqual(result["method"], "instance")
+        self.assertEqual(result["prefix"], "myprefix")
+
+    def test_version_110_uses_module_function(self):
+        """1.1.0 使用模块级 create_sharding_infos_by_sharding。"""
+        from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
+
+        methods = _build_methods((1, 1, 0))
+        self.assertNotIn("create_sharding_infos", methods)
+
+        class Adapter110(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 1, 0)
+
+        a = Adapter110()
+        self.assertTrue(callable(a.create_sharding_infos))
+
+
+class TestEmbeddingComputeKernelValues(unittest.TestCase):
+    """测试 embedding_compute_kernel_values 安全枚举获取。"""
+
+    def test_known_enum(self):
+        from torchrec.distributed.embedding_types import EmbeddingComputeKernel
+
+        result = adapter.embedding_compute_kernel_values("DENSE")
+        self.assertIn(EmbeddingComputeKernel.DENSE.value, result)
+
+    def test_unknown_enum_silently_ignored(self):
+        """不存在的枚举值应被静默忽略，不应抛异常。"""
+        result = adapter.embedding_compute_kernel_values("DENSE", "NON_EXISTENT_ENUM_VALUE")
+        self.assertIsInstance(result, set)
+        # DENSE 仍应包含
+        from torchrec.distributed.embedding_types import EmbeddingComputeKernel
+
+        self.assertIn(EmbeddingComputeKernel.DENSE.value, result)
+
+    def test_multiple_enum_values(self):
+        """同时查询多个枚举值。"""
+        from torchrec.distributed.embedding_types import EmbeddingComputeKernel
+
+        result = adapter.embedding_compute_kernel_values("DENSE", "SPARSE", "SSD_VIRTUAL_TABLE", "DRAM_VIRTUAL_TABLE")
+        self.assertIsInstance(result, set)
+        self.assertGreater(len(result), 0)
+        self.assertIn(EmbeddingComputeKernel.DENSE.value, result)
+
+
+class TestMakeKjtListSplitsAwaitable(unittest.TestCase):
+    """测试 make_kjt_list_splits_awaitable 构造方法。"""
+
+    def test_construct_with_all_params(self):
+        from torchrec.distributed.embedding_sharding import KJTListSplitsAwaitable
+
+        obj = adapter.make_kjt_list_splits_awaitable(
+            awaitables=[],
+            ctx=None,
+            module_fqn="test.mod",
+            sharding_types=["rowwise", "colwise"],
+        )
+        self.assertIsInstance(obj, KJTListSplitsAwaitable)
+
+    def test_construct_minimal_params(self):
+        from torchrec.distributed.embedding_sharding import KJTListSplitsAwaitable
+
+        obj = adapter.make_kjt_list_splits_awaitable(
+            awaitables=[],
+            ctx=None,
+            module_fqn=None,
+            sharding_types=[],
+        )
+        self.assertIsInstance(obj, KJTListSplitsAwaitable)
+
+
 if __name__ == "__main__":
     unittest.main()
