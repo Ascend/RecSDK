@@ -87,10 +87,11 @@ __aicore__ inline void RunSelectOp(GM_ADDR flags, GM_ADDR inputs, GM_ADDR output
                                                    blockStartIdx, curBlocksCount, stride);
         SyncAll();
         Simt::VF_CALL<FlagPrefixSumLargeUpdate<int64_t>>(Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1}, prefixGm, blockSumsGm,
-                                                         static_cast<int32_t>(numTotal), blockStartIdx, curBlocksCount,
-                                                         stride);
+                                                         static_cast<int32_t>(numTotal), coreNum, blockStartIdx,
+                                                         curBlocksCount, stride);
         SyncAll();
     }
+    SyncAll();
 
     if (isSmall > 0) {
         Simt::VF_CALL<SelectScatterSmall<KeyType, int64_t, SelectIndex>>(Simt::Dim3{MAX_THREADS_PER_BLOCK, 1, 1},

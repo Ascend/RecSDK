@@ -405,7 +405,6 @@ class EmbOptimType(enum.Enum):
 |参数名|类型| 可选/必选 | 说明                                                             |
 |--|--|-------|----------------------------------------------------------------|
 |ADAM|str|-|嵌入表 Adam 优化器，枚举值为 `"adam"`。|
-|ADAMW|str|-|嵌入表 AdamW 优化器，枚举值为 `"adamW"`。|
 |SGD|str|-|嵌入表 SGD 优化器，枚举值为 `"sgd"`。|
 |EXACT_SGD|str|-|嵌入表精确 SGD 优化器，枚举值为 `"exact_sgd"`。|
 |EXACT_ADAGRAD|str|-|嵌入表精确 AdaGrad 优化器，枚举值为 `"exact_adagrad"`。|
