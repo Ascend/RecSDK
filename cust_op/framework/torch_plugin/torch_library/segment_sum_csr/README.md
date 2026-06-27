@@ -1,10 +1,11 @@
-**使用pytorch框架调用方式调用segment_sum_csr算子**
+# 使用PyTorch框架调用方式调用segment_sum_csr算子
 
-# Pytorch框架对外接口原型
+## PyTorch框架对外接口原型
 
 ```python
 torch.ops.mxrec.segment_sum_csr(Tensor csr_seg, Tensor values, int batch_size) -> Tensor
 ```
+
 # 参数说明
 
 | 名称         | 输入/输出 | 数据类型    | 数据格式   | 范围                      | 说明                                                       |
@@ -14,22 +15,22 @@ torch.ops.mxrec.segment_sum_csr(Tensor csr_seg, Tensor values, int batch_size) -
 | batch_size | 输入    | int32/int64 | int    | | 每行包含的元素个数                                                |
 | y          | 输出    | float32 | Tensor | | 输出                                                       |
 
-# 运行算子样例
+## 运行算子样例
 
-## 算子编译与部署
+### 算子编译与部署
 
-算子编译部署请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明" - "算子编译"章节。
+算子编译部署请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明" - "算子编译"章节。
 
-## Pytorch编译
+### PyTorch编译
 
-Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明" - "算子适配层编译"章节，
+PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明" - "算子适配层编译"章节，
 此算子可在当前目录下执行bash build_ops.sh编译好动态库。
 
-## 算子调用示例
+### 算子调用示例
 
 以下示例为通过python3方式调用NPU侧算子：
 
-# 使用方法
+## 使用方法
 
 ```python
 import sysconfig

@@ -31,7 +31,7 @@ torch.ops.mxrec.segment_sum_csr(
     int batch_size,
     Tensor csr_seg,
     Tensor values,
-) -> Tensor
+) -> Tensor y
 ```
 
 ## 功能说明
@@ -109,5 +109,5 @@ assert output.dtype == values.dtype
 
 ## 编译与测试
 
-- 算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+- 算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 - 测试示例参考：`cust_op/test/segment_sum_csr_test/torch/test_segment_sum_csr.py`

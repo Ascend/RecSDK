@@ -1,6 +1,6 @@
 # 使用PyTorch框架调用invert_permute算子
 
-该算子当前支持两种软件版本配套：PyTorch 2.6.0和PyTorch 2.7.1。详细配套说明见[RecSDK\cust_op\README.md](../../../../README.md)。
+该算子当前支持两种软件版本配套：PyTorch 2.6.0和PyTorch 2.7.1。详细配套说明见[RecSDK/cust_op/README.md](../../../../README.md)。
 
 ## invert_permute算子
 
@@ -20,7 +20,7 @@ torch.ops.mxrec.invert_permute(Tensor permute) -> Tensor
 
 ### 编译与部署
 
-算子编译与部署请参考 [RecSDK\cust_op\README.md](../../../../README.md) 中 "单算子使用说明" 章节：
+算子编译与部署请参考 [RecSDK/cust_op/README.md](../../../../README.md) 中 "单算子使用说明" 章节：
 
 ### 算子调用示例
 
@@ -34,6 +34,8 @@ torch.npu.config.allow_internal_format = False
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 # 准备输入
+length = 10
+dtype = torch.int64
 tensor = torch.arange(0, length).to(dtype)
 permute = tensor[torch.randperm(tensor.size(0))]
 
@@ -42,6 +44,6 @@ output = torch.ops.fbgemm.invert_permute(permute)
 ```
 
 > **提示**
-> 上述用例为通用场景执行，更详细精度、多场景测试用例，请参考完整测试文件： 
-> 
+> 上述用例为通用场景执行，更详细精度、多场景测试用例，请参考完整测试文件：
+>
 > - [`RecSDK/cust_op/test/invert_permute/torch/test_invert_permute.py`](../../../../test/invert_permute/torch/test_invert_permute.py)

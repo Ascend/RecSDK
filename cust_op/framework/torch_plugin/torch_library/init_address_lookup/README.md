@@ -6,7 +6,7 @@
 
 ## 目录结构
 
-```
+```shell
 init_address_lookup/
 ├── CMakeLists.txt           # CMake 构建配置
 ├── build_ops.sh             # 编译脚本
@@ -24,7 +24,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 bash build_ops.sh
 ```
 
-算子完整编译步骤请参考[RecSDK\cust_op\README.md](../../../../README.md)。
+算子完整编译步骤请参考[RecSDK/cust_op/README.md](../../../../README.md)。
 
 编译成功后，会在 `build/` 目录下生成 `libinit_address_lookup.so` 文件。
 
@@ -65,9 +65,8 @@ torch.ops.mxrec.init_address_lookup(address_lookup, buffer_offsets, emb_sizes)
 print(address_lookup.cpu())
 ```
 
-
-> **提示**  
-> 上述用例为通用场景执行，更详细精度、多场景测试用例，请参考完整测试文件：  
+> **提示**
+> 上述用例为通用场景执行，更详细精度、多场景测试用例，请参考完整测试文件：
 > [`RecSDK/cust_op/test/init_address_lookup_test/torch/test_init_address_lookup.py`](../../../../test/init_address_lookup_test/torch/test_init_address_lookup.py)
 
 ## 依赖

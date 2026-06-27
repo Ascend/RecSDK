@@ -4,6 +4,7 @@
 **提示：该接口用于内部查表，推荐通过 hybrid_torchrec/torchrec_embcache 框架调用。**
 
 ## 示例
+
 ```python
 import sysconfig
 import torch
@@ -17,7 +18,7 @@ DEVICE = "npu:0"
 def demo():
     specs = [
         ("table0", 128, 64, SparseType.FP8, PoolingMode.SUM, SparseType.FP32),
-        ("table1", 256, 32, SparseType.FP8, PoolingMode.SUM, SparseType.FP32),
+        ("table1", 256, 32, SparseType.FP8, PoolingMode.SUM, SparseType.FP32)
     ]
     op = IntNBitTableBatchedEmbeddingBagsCodegen(
         embedding_specs=specs,
@@ -60,5 +61,6 @@ if __name__ == "__main__":
 ```
 
 ## 编译与部署
+
 - 参考 [RecSDK/cust_op/README.md](../../../../README.md) 中“单算子使用说明”的算子编译与适配层编译章节。
 - 完整精度/功能测试可查看 `cust_op/test/int_nbit_split_embedding_codegen_lookup_function_test/torch/test_int_nbit_split_embedding_codegen_lookup_function.py`。

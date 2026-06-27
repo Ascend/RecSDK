@@ -4,8 +4,7 @@
 
 **注意：该算子为内部查表接口，不建议直接调用，推荐通过hybrid_torchrec/torchrec_embcache框架进行调用**
 
-### 算子调用示例
-
+## 算子调用示例
 
 ```python
 import sysconfig
@@ -68,10 +67,11 @@ if __name__ == "__main__":
 
 ## 编译与部署
 
-算子编译与部署请参考 [RecSDK\cust_op\README.md](../../../../README.md) 中 "单算子使用说明" 章节：
+算子编译与部署请参考 [RecSDK/cust_op/README.md](../../../../README.md) 中 "单算子使用说明" 章节：
+
 - [算子编译](../../../../README.md#算子编译)
 - [算子适配层编译](../../../../README.md#算子适配层编译)
 
 > **提示**
-> 以上示例仅展示基本用法，如需更全面的精度测试与边界用例，请参考完整测试文件：  
-> - [`RecSDK/cust_op\test\split_embedding_codegen_lookup_adagrad_function_test\torch\test_split_embedding_codegen_lookup_function.py`](../../../../test/split_embedding_codegen_lookup_adagrad_function_test/torch/test_split_embedding_codegen_lookup_function.py)
+> 以上示例仅展示基本用法，如需更全面的精度测试与边界用例，请参考完整测试文件：
+> [`RecSDK/cust_op\test\split_embedding_codegen_lookup_adagrad_function_test\torch\test_split_embedding_codegen_lookup_function.py`](../../../../test/split_embedding_codegen_lookup_adagrad_function_test/torch/test_split_embedding_codegen_lookup_function.py)
