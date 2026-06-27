@@ -17,23 +17,17 @@ See the License for the specific language governing permissions and
 #include "../common/common_utils.h"
 
 namespace hstu {
-at::Tensor hstu_dense_forward_impl_npu(
-    const at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    const c10::optional<at::Tensor>& mask,
-    const c10::optional<at::Tensor>& attnBias,
-    const int64_t maskType,
-    const int64_t maxSeqLen,
-    const double siluScale)
+at::Tensor hstu_dense_forward_impl_npu(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                                       const c10::optional<at::Tensor>& mask, const c10::optional<at::Tensor>& attnBias,
+                                       const int64_t maskType, const int64_t maxSeqLen, const double siluScale)
 {
     TORCH_CHECK(q.dim() == CONST_4, "The q should be 4D in dense layout");
 
     auto denseQ = q.contiguous();
     auto denseK = k.contiguous();
     auto denseV = v.contiguous();
-    auto denseBias = c10::value_or_else(attnBias, [] {return at::Tensor(); });
-    auto maskNpu = c10::value_or_else(mask, [] {return at::Tensor(); });
+    auto denseBias = attnBias.value_or(at::Tensor());
+    auto maskNpu = mask.value_or(at::Tensor());
 
     TORCH_CHECK(MaxSeqLenCheck(maxSeqLen), "maxSeqLen check failed");
     TORCH_CHECK(MaskCheck(maskType, maskNpu.defined()), "maskType check failed");
@@ -41,29 +35,15 @@ at::Tensor hstu_dense_forward_impl_npu(
     auto attnOutput = at::empty_like(denseQ);
     double realSiluScale = (siluScale == 0.0) ? 1.0f / static_cast<double>(maxSeqLen) : siluScale;
 
-    EXEC_NPU_CMD(aclnnHstuDenseForward,
-        denseQ,
-        denseK,
-        denseV,
-        maskNpu,
-        denseBias,
-        maskType,
-        maxSeqLen,
-        realSiluScale,
-        attnOutput);
+    EXEC_NPU_CMD(aclnnHstuDenseForward, denseQ, denseK, denseV, maskNpu, denseBias, maskType, maxSeqLen, realSiluScale,
+                 attnOutput);
     return attnOutput;
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_impl_npu(
-    const at::Tensor& grad,
-    const at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    const c10::optional<at::Tensor> mask,
-    const c10::optional<at::Tensor> attnBias,
-    const int64_t maskType,
-    const int64_t maxSeqLen,
-    const double siluScale)
+    const at::Tensor& grad, const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+    const c10::optional<at::Tensor> mask, const c10::optional<at::Tensor> attnBias, const int64_t maskType,
+    const int64_t maxSeqLen, const double siluScale)
 {
     constexpr int dim = 4;
 
@@ -164,29 +144,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_dense_backward_i
     auto _acTargetGroupSize = int();
     double realAlpha = 1.0;
 
-    const char *layout = "normal";
-    EXEC_NPU_CMD(aclnnHstuDenseBackward,
-                 denseGrad,
-                 denseQ,
-                 denseK,
-                 denseV,
-                 denseMask,
-                 denseAttnBias,
-                 _acSeqOffset,
-                 _acSeqOffset,
-                 _denseNumContext,
-                 _denseNumTarget,
-                 layout,
-                 maskType,
-                 maxSeqLen,
-                 maxSeqLen,
-                 realSiluScale,
-                 _acTargetGroupSize,
-                 realAlpha,
-                 qGradOutput,
-                 kGradOutput,
-                 vGradOutput,
-                 attnBiasGradOutput);
+    const char* layout = "normal";
+    EXEC_NPU_CMD(aclnnHstuDenseBackward, denseGrad, denseQ, denseK, denseV, denseMask, denseAttnBias, _acSeqOffset,
+                 _acSeqOffset, _denseNumContext, _denseNumTarget, layout, maskType, maxSeqLen, maxSeqLen, realSiluScale,
+                 _acTargetGroupSize, realAlpha, qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
 
     return std::make_tuple(qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
 }
@@ -220,27 +181,20 @@ TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 
 class HstuDenseNpuFusion : public torch::autograd::Function<HstuDenseNpuFusion> {
 public:
-    static at::Tensor forward(AutogradContext *ctx,
-                              const at::Tensor& q,
-                              const at::Tensor& k,
-                              const at::Tensor& v,
-                              const c10::optional<at::Tensor>& mask,
-                              const c10::optional<at::Tensor>& attnBias,
-                              const int64_t maskType,
-                              const int64_t maxSeqLen,
-                              const double siluScale)
+    static at::Tensor forward(AutogradContext* ctx, const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                              const c10::optional<at::Tensor>& mask, const c10::optional<at::Tensor>& attnBias,
+                              const int64_t maskType, const int64_t maxSeqLen, const double siluScale)
     {
         at::AutoDispatchBelowADInplaceOrView guard;
-        ctx->save_for_backward({ q, k, v, mask.value_or(at::Tensor()), attnBias.value_or(at::Tensor())});
+        ctx->save_for_backward({q, k, v, mask.value_or(at::Tensor()), attnBias.value_or(at::Tensor())});
         ctx->saved_data["maskType"] = maskType;
         ctx->saved_data["maxSeqLen"] = maxSeqLen;
         ctx->saved_data["siluScale"] = siluScale;
 
-        return hstu_dense_forward_impl_npu(q, k, v, mask, attnBias, maskType,
-                                           maxSeqLen, siluScale);
+        return hstu_dense_forward_impl_npu(q, k, v, mask, attnBias, maskType, maxSeqLen, siluScale);
     }
 
-    static tensor_list backward(AutogradContext *ctx, tensor_list grad_outputs)
+    static tensor_list backward(AutogradContext* ctx, tensor_list grad_outputs)
     {
         auto grad = grad_outputs[0];
 
@@ -255,35 +209,40 @@ public:
         auto maxSeqLen = ctx->saved_data["maxSeqLen"].toInt();
         auto siluScale = ctx->saved_data["siluScale"].toDouble();
 
-        auto resultTuple = hstu_dense_backward_impl_npu(grad, q, k, v, mask, attnBias, maskType,
-                                                        maxSeqLen, siluScale);
+        auto resultTuple = hstu_dense_backward_impl_npu(grad, q, k, v, mask, attnBias, maskType, maxSeqLen, siluScale);
 
         if (attnBias.defined()) {
             // 返回q, k, v, mask, attnBias, maskType, maxSeqLen, siluScale的梯度
-            return { std::get<0>(resultTuple), std::get<1>(resultTuple), std::get<2>(resultTuple), at::Tensor(),
-                    std::get<3>(resultTuple), at::Tensor(), at::Tensor(), at::Tensor()};
+            return {std::get<0>(resultTuple),
+                    std::get<1>(resultTuple),
+                    std::get<2>(resultTuple),
+                    at::Tensor(),
+                    std::get<3>(resultTuple),
+                    at::Tensor(),
+                    at::Tensor(),
+                    at::Tensor()};
         } else {
-            return { std::get<0>(resultTuple), std::get<1>(resultTuple), std::get<2>(resultTuple), at::Tensor(),
-                    at::Tensor(), at::Tensor(), at::Tensor(), at::Tensor()};
+            return {std::get<0>(resultTuple),
+                    std::get<1>(resultTuple),
+                    std::get<2>(resultTuple),
+                    at::Tensor(),
+                    at::Tensor(),
+                    at::Tensor(),
+                    at::Tensor(),
+                    at::Tensor()};
         }
     }
 };
 
-at::Tensor hstu_dense_autograd(const at::Tensor& q,
-                               const at::Tensor& k,
-                               const at::Tensor& v,
-                               const c10::optional<at::Tensor>& mask,
-                               const c10::optional<at::Tensor>& attnBias,
-                               const int64_t maskType,
-                               const int64_t maxSeqLen,
-                               const double siluScale)
+at::Tensor hstu_dense_autograd(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                               const c10::optional<at::Tensor>& mask, const c10::optional<at::Tensor>& attnBias,
+                               const int64_t maskType, const int64_t maxSeqLen, const double siluScale)
 {
-    return HstuDenseNpuFusion::apply(q, k, v, mask, attnBias, maskType,
-                                     maxSeqLen, siluScale);
+    return HstuDenseNpuFusion::apply(q, k, v, mask, attnBias, maskType, maxSeqLen, siluScale);
 }
 
 TORCH_LIBRARY_IMPL(mxrec, AutogradPrivateUse1, m)
 {
     m.impl("hstu_dense", TORCH_FN(hstu_dense_autograd));
 }
-}
+}  // namespace hstu

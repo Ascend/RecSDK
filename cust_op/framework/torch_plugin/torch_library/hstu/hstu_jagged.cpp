@@ -20,22 +20,11 @@ See the License for the specific language governing permissions and
 
 namespace hstu {
 at::Tensor hstu_deltaq_forward_impl_npu(
-    const at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    const c10::optional<at::Tensor>& mask,
-    const c10::optional<at::Tensor>& attnBias,
-    const int64_t maskType,
-    const int64_t maxSeqLenQ,
-    const int64_t maxSeqLenK,
-    const double siluScale,
-    const at::Tensor& seqOffset,
-    const at::Tensor& seqOffsetK,
-    const c10::optional<at::Tensor>& numContext,
-    const c10::optional<at::Tensor>& numTarget,
-    const c10::optional<int64_t>& targetGroupSize,
-    const c10::optional<double>& alpha,
-    const bool deterministic = false)
+    const at::Tensor& q, const at::Tensor& k, const at::Tensor& v, const c10::optional<at::Tensor>& mask,
+    const c10::optional<at::Tensor>& attnBias, const int64_t maskType, const int64_t maxSeqLenQ,
+    const int64_t maxSeqLenK, const double siluScale, const at::Tensor& seqOffset, const at::Tensor& seqOffsetK,
+    const c10::optional<at::Tensor>& numContext, const c10::optional<at::Tensor>& numTarget,
+    const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha, const bool deterministic = false)
 {
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
@@ -47,8 +36,8 @@ at::Tensor hstu_deltaq_forward_impl_npu(
     auto denseQ = q.contiguous();
     auto denseK = k.contiguous();
     auto denseV = v.contiguous();
-    auto denseBias = c10::value_or_else(attnBias, [] { return at::Tensor(); });
-    auto maskNpu = c10::value_or_else(mask, [] { return at::Tensor(); });
+    auto denseBias = attnBias.value_or(at::Tensor());
+    auto maskNpu = mask.value_or(at::Tensor());
 
     auto batchsize = acSeqOffset.size(0) - 1;
     auto _zeros = at::zeros({batchsize}, acSeqOffset.options());
@@ -71,43 +60,18 @@ at::Tensor hstu_deltaq_forward_impl_npu(
 
     double realSiluScale = (siluScale == 0.0) ? 1.0f / static_cast<double>(maxSeqLenQ) : siluScale;
 
-    EXEC_NPU_CMD(aclnnHstuJaggedForward,
-                 denseQ,
-                 denseK,
-                 denseV,
-                 maskNpu,
-                 denseBias,
-                 acSeqOffset,
-                 acSeqOffsetK,
-                 acNumContext,
-                 acNumTarget,
-                 maskType,
-                 maxSeqLenQ,
-                 maxSeqLenK,
-                 realSiluScale,
-                 acTargetGroupSize,
-                 realAlpha,
-                 deterministic,
-                 attnOutput);
+    EXEC_NPU_CMD(aclnnHstuJaggedForward, denseQ, denseK, denseV, maskNpu, denseBias, acSeqOffset, acSeqOffsetK,
+                 acNumContext, acNumTarget, maskType, maxSeqLenQ, maxSeqLenK, realSiluScale, acTargetGroupSize,
+                 realAlpha, deterministic, attnOutput);
     return attnOutput;
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_deltaq_backward_impl_npu(
-    const at::Tensor& grad,
-    const at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    const c10::optional<at::Tensor> mask,
-    const c10::optional<at::Tensor> attnBias,
-    const int64_t maskType,
-    const int64_t maxSeqLenQ,
-    const int64_t maxSeqLenK,
-    const double siluScale,
-    const at::Tensor& seqOffsetQ,
-    const at::Tensor& seqOffsetK,
-    const c10::optional<at::Tensor>& numContext,
-    const c10::optional<at::Tensor>& numTarget,
-    const c10::optional<int64_t>& targetGroupSize,
+    const at::Tensor& grad, const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+    const c10::optional<at::Tensor> mask, const c10::optional<at::Tensor> attnBias, const int64_t maskType,
+    const int64_t maxSeqLenQ, const int64_t maxSeqLenK, const double siluScale, const at::Tensor& seqOffsetQ,
+    const at::Tensor& seqOffsetK, const c10::optional<at::Tensor>& numContext,
+    const c10::optional<at::Tensor>& numTarget, const c10::optional<int64_t>& targetGroupSize,
     const c10::optional<double>& alpha)
 {
     TORCH_CHECK(seqOffsetQ.size(0) >= CONST_2, "seqOffsetQ params error should have at least two element.");
@@ -162,28 +126,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_deltaq_backward_
 
     const char* layout = "jagged";
 
-    EXEC_NPU_CMD(aclnnHstuJaggedBackward,
-                 denseGrad,
-                 denseQ,
-                 denseK,
-                 denseV,
-                 denseMask,
-                 denseAttnBias,
-                 acSeqOffsetQ,
-                 acSeqOffsetK,
-                 denseNumContext,
-                 denseNumTarget,
-                 layout,
-                 maskType,
-                 maxSeqLenQ,
-                 maxSeqLenK,
-                 realSiluScale,
-                 acTargetGroupSize,
-                 realAlpha,
-                 qGradOutput,
-                 kGradOutput,
-                 vGradOutput,
-                 attnBiasGradOutput);
+    EXEC_NPU_CMD(aclnnHstuJaggedBackward, denseGrad, denseQ, denseK, denseV, denseMask, denseAttnBias, acSeqOffsetQ,
+                 acSeqOffsetK, denseNumContext, denseNumTarget, layout, maskType, maxSeqLenQ, maxSeqLenK, realSiluScale,
+                 acTargetGroupSize, realAlpha, qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
 
     if (denseAttnBias.defined()) {
         return std::make_tuple(qGradOutput, kGradOutput, vGradOutput, attnBiasGradOutput);
@@ -192,84 +137,46 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_deltaq_backward_
     }
 }
 
-at::Tensor hstu_jagged_equal(
-    const at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    const c10::optional<at::Tensor>& mask,
-    const c10::optional<at::Tensor>& attnBias,
-    const int64_t maskType,
-    const int64_t maxSeqLen,
-    const double siluScale,
-    const at::Tensor& seqOffset,
-    const c10::optional<at::Tensor>& numContext,
-    const c10::optional<at::Tensor>& numTarget,
-    const c10::optional<int64_t>& targetGroupSize,
-    const c10::optional<double>& alpha,
-    const bool deterministic = false)
+at::Tensor hstu_jagged_equal(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                             const c10::optional<at::Tensor>& mask, const c10::optional<at::Tensor>& attnBias,
+                             const int64_t maskType, const int64_t maxSeqLen, const double siluScale,
+                             const at::Tensor& seqOffset, const c10::optional<at::Tensor>& numContext,
+                             const c10::optional<at::Tensor>& numTarget, const c10::optional<int64_t>& targetGroupSize,
+                             const c10::optional<double>& alpha, const bool deterministic = false)
 {
-    return hstu_deltaq_forward_impl_npu(q, k, v, mask, attnBias, maskType, maxSeqLen, maxSeqLen, siluScale,
-                                        seqOffset, seqOffset, numContext, numTarget, targetGroupSize, alpha);
+    return hstu_deltaq_forward_impl_npu(q, k, v, mask, attnBias, maskType, maxSeqLen, maxSeqLen, siluScale, seqOffset,
+                                        seqOffset, numContext, numTarget, targetGroupSize, alpha);
 }
 
-at::Tensor hstu_jagged_deltaq(
-    const at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    const c10::optional<at::Tensor>& mask,
-    const c10::optional<at::Tensor>& attnBias,
-    const int64_t maskType,
-    const int64_t maxSeqLenQ,
-    const int64_t maxSeqLenK,
-    const double siluScale,
-    const at::Tensor& seqOffset,
-    const at::Tensor& seqOffsetK,
-    const c10::optional<at::Tensor>& numContext,
-    const c10::optional<at::Tensor>& numTarget,
-    const c10::optional<int64_t>& targetGroupSize,
-    const c10::optional<double>& alpha,
-    const bool deterministic = false)
+at::Tensor hstu_jagged_deltaq(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                              const c10::optional<at::Tensor>& mask, const c10::optional<at::Tensor>& attnBias,
+                              const int64_t maskType, const int64_t maxSeqLenQ, const int64_t maxSeqLenK,
+                              const double siluScale, const at::Tensor& seqOffset, const at::Tensor& seqOffsetK,
+                              const c10::optional<at::Tensor>& numContext, const c10::optional<at::Tensor>& numTarget,
+                              const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha,
+                              const bool deterministic = false)
 {
-    return hstu_deltaq_forward_impl_npu(q, k, v, mask, attnBias, maskType, maxSeqLenQ, maxSeqLenK, siluScale,
-                                        seqOffset, seqOffsetK, numContext, numTarget, targetGroupSize, alpha);
+    return hstu_deltaq_forward_impl_npu(q, k, v, mask, attnBias, maskType, maxSeqLenQ, maxSeqLenK, siluScale, seqOffset,
+                                        seqOffsetK, numContext, numTarget, targetGroupSize, alpha);
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_jagged_backward(
-    const at::Tensor& grad,
-    const at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    const c10::optional<at::Tensor> mask,
-    const c10::optional<at::Tensor> attnBias,
-    const int64_t maskType,
-    const int64_t maxSeqLen,
-    const double siluScale,
-    const at::Tensor& seqOffset,
-    const c10::optional<at::Tensor>& numContext,
-    const c10::optional<at::Tensor>& numTarget,
-    const c10::optional<int64_t>& targetGroupSize,
-    const c10::optional<double>& alpha)
+    const at::Tensor& grad, const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+    const c10::optional<at::Tensor> mask, const c10::optional<at::Tensor> attnBias, const int64_t maskType,
+    const int64_t maxSeqLen, const double siluScale, const at::Tensor& seqOffset,
+    const c10::optional<at::Tensor>& numContext, const c10::optional<at::Tensor>& numTarget,
+    const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha)
 {
     return hstu_deltaq_backward_impl_npu(grad, q, k, v, mask, attnBias, maskType, maxSeqLen, maxSeqLen, siluScale,
                                          seqOffset, seqOffset, numContext, numTarget, targetGroupSize, alpha);
 }
 
 std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_deltaq_backward(
-    const at::Tensor& grad,
-    const at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    const c10::optional<at::Tensor> mask,
-    const c10::optional<at::Tensor> attnBias,
-    const int64_t maskType,
-    const int64_t maxSeqLenQ,
-    const int64_t maxSeqLenK,
-    const double siluScale,
-    const at::Tensor& seqOffsetQ,
-    const at::Tensor& seqOffsetK,
-    const c10::optional<at::Tensor>& numContext,
-    const c10::optional<at::Tensor>& numTarget,
-    const c10::optional<int64_t>& targetGroupSize,
+    const at::Tensor& grad, const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+    const c10::optional<at::Tensor> mask, const c10::optional<at::Tensor> attnBias, const int64_t maskType,
+    const int64_t maxSeqLenQ, const int64_t maxSeqLenK, const double siluScale, const at::Tensor& seqOffsetQ,
+    const at::Tensor& seqOffsetK, const c10::optional<at::Tensor>& numContext,
+    const c10::optional<at::Tensor>& numTarget, const c10::optional<int64_t>& targetGroupSize,
     const c10::optional<double>& alpha)
 {
     return hstu_deltaq_backward_impl_npu(grad, q, k, v, mask, attnBias, maskType, maxSeqLenQ, maxSeqLenK, siluScale,
@@ -350,22 +257,12 @@ TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 
 class HstuJaggedNpuFusion : public torch::autograd::Function<HstuJaggedNpuFusion> {
 public:
-    static at::Tensor forward(AutogradContext* ctx,
-                              const at::Tensor& q,
-                              const at::Tensor& k,
-                              const at::Tensor& v,
-                              const c10::optional<at::Tensor>& mask,
-                              const c10::optional<at::Tensor>& attnBias,
-                              const int64_t maskType,
-                              const int64_t maxSeqLenQ,
-                              const int64_t maxSeqLenK,
-                              const double siluScale,
-                              const at::Tensor& seqOffsetQ,
-                              const at::Tensor& seqOffsetK,
-                              const c10::optional<at::Tensor>& numContext,
-                              const c10::optional<at::Tensor>& numTarget,
-                              const c10::optional<int64_t>& targetGroupSize,
-                              const c10::optional<double>& alpha)
+    static at::Tensor forward(AutogradContext* ctx, const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                              const c10::optional<at::Tensor>& mask, const c10::optional<at::Tensor>& attnBias,
+                              const int64_t maskType, const int64_t maxSeqLenQ, const int64_t maxSeqLenK,
+                              const double siluScale, const at::Tensor& seqOffsetQ, const at::Tensor& seqOffsetK,
+                              const c10::optional<at::Tensor>& numContext, const c10::optional<at::Tensor>& numTarget,
+                              const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha)
     {
         ctx->save_for_backward({q, k, v, mask.value_or(at::Tensor()), attnBias.value_or(at::Tensor()),
                                 numContext.value_or(at::Tensor()), numTarget.value_or(at::Tensor()), seqOffsetQ,
@@ -428,40 +325,24 @@ public:
     }
 };
 
-at::Tensor hstu_jagged_autograd(const at::Tensor& q,
-                                const at::Tensor& k,
-                                const at::Tensor& v,
-                                const c10::optional<at::Tensor>& mask,
-                                const c10::optional<at::Tensor>& attnBias,
-                                const int64_t maskType,
-                                const int64_t maxSeqLen,
-                                const double siluScale,
-                                const at::Tensor& seqOffset,
-                                const c10::optional<at::Tensor>& numContext,
+at::Tensor hstu_jagged_autograd(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                                const c10::optional<at::Tensor>& mask, const c10::optional<at::Tensor>& attnBias,
+                                const int64_t maskType, const int64_t maxSeqLen, const double siluScale,
+                                const at::Tensor& seqOffset, const c10::optional<at::Tensor>& numContext,
                                 const c10::optional<at::Tensor>& numTarget,
-                                const c10::optional<int64_t>& targetGroupSize,
-                                const c10::optional<double>& alpha,
+                                const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha,
                                 const bool deterministic = false)
 {
     return HstuJaggedNpuFusion::apply(q, k, v, mask, attnBias, maskType, maxSeqLen, maxSeqLen, siluScale, seqOffset,
                                       seqOffset, numContext, numTarget, targetGroupSize, alpha);
 }
 
-at::Tensor hstu_deltaq_autograd(const at::Tensor& q,
-                                const at::Tensor& k,
-                                const at::Tensor& v,
-                                const c10::optional<at::Tensor>& mask,
-                                const c10::optional<at::Tensor>& attnBias,
-                                const int64_t maskType,
-                                const int64_t maxSeqLenQ,
-                                const int64_t maxSeqLenK,
-                                const double siluScale,
-                                const at::Tensor& seqOffsetQ,
-                                const at::Tensor& seqOffsetK,
-                                const c10::optional<at::Tensor>& numContext,
-                                const c10::optional<at::Tensor>& numTarget,
-                                const c10::optional<int64_t>& targetGroupSize,
-                                const c10::optional<double>& alpha,
+at::Tensor hstu_deltaq_autograd(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                                const c10::optional<at::Tensor>& mask, const c10::optional<at::Tensor>& attnBias,
+                                const int64_t maskType, const int64_t maxSeqLenQ, const int64_t maxSeqLenK,
+                                const double siluScale, const at::Tensor& seqOffsetQ, const at::Tensor& seqOffsetK,
+                                const c10::optional<at::Tensor>& numContext, const c10::optional<at::Tensor>& numTarget,
+                                const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha,
                                 const bool deterministic = false)
 {
     return HstuJaggedNpuFusion::apply(q, k, v, mask, attnBias, maskType, maxSeqLenQ, maxSeqLenK, siluScale, seqOffsetQ,

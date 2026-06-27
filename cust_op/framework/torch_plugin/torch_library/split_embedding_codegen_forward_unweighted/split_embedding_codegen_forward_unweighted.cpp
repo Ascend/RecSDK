@@ -14,19 +14,18 @@
 #include "split_embedding_codegen_common_utils.h"
 #include "split_embedding_codegen_forward_unweighted.h"
 
-using torch::autograd::Function;
 using torch::autograd::AutogradContext;
+using torch::autograd::Function;
 using torch::autograd::variable_list;
 using tensor_list = std::vector<at::Tensor>;
 using Tensor = at::Tensor;
 using namespace at;
 
-
-aclError copy_gm_to_gm(void* source_memory_ptr, // output
-                       const std::vector<torch::Tensor>& target_tensors, // 梯度表
-                       torch::Tensor size, // unique_offsets_size
+aclError copy_gm_to_gm(void* source_memory_ptr,                           // output
+                       const std::vector<torch::Tensor>& target_tensors,  // 梯度表
+                       torch::Tensor size,                                // unique_offsets_size
                        torch::Tensor grad_accumulate_offsets_size)
-{ // grad_accumulate_offsets_size
+{  // grad_accumulate_offsets_size
     // 空指针校验
     if (source_memory_ptr == nullptr) {
         AT_ERROR("Source memory pointer is null");
@@ -35,7 +34,7 @@ aclError copy_gm_to_gm(void* source_memory_ptr, // output
 
     size_t target_tensors_size = target_tensors.size();
     if (target_tensors_size == 0) {
-    return ACL_SUCCESS;
+        return ACL_SUCCESS;
     }
 
     // 检查size张量的长度是否足够
@@ -65,12 +64,9 @@ aclError copy_gm_to_gm(void* source_memory_ptr, // output
             continue;
         }
 
-        aclError ret = aclrtMemcpy(
-            tensor_ptr + grad_accumulate_offset,
-            size_bytes,
-            reinterpret_cast<char*>(source_memory_ptr) + offset,
-            size_bytes,
-            ACL_MEMCPY_DEVICE_TO_DEVICE);
+        aclError ret =
+            aclrtMemcpy(reinterpret_cast<char*>(tensor_ptr) + grad_accumulate_offset, size_bytes,
+                        reinterpret_cast<char*>(source_memory_ptr) + offset, size_bytes, ACL_MEMCPY_DEVICE_TO_DEVICE);
         if (ret != ACL_SUCCESS) {
             const char* error_msg = aclGetRecentErrMsg();
             AT_ERROR("D2D copy failed for tensor ", i, ": ", error_msg);
@@ -79,35 +75,23 @@ aclError copy_gm_to_gm(void* source_memory_ptr, // output
     return ACL_SUCCESS;
 }
 
-
 // using namespace fbgemm_gpu;
 namespace fbgemm_npu_lookups {
-at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_weights,
-                                                          const at::Tensor& uvm_weights,
-                                                          const at::Tensor& lxu_cache_weights,
-                                                          const at::Tensor& weights_placements,
-                                                          const at::Tensor& weights_offsets,
-                                                          const at::Tensor& D_offsets,
-                                                          const c10::SymInt total_D,
-                                                          const c10::SymInt max_D,
-                                                          const at::Tensor& indices,
-                                                          const at::Tensor& offsets,
-                                                          const int64_t pooling_mode,
-                                                          const at::Tensor& lxu_cache_locations,
-                                                          const at::Tensor& uvm_cache_stats,
-                                                          const int64_t output_dtype,
-                                                          const bool is_experimental,
-                                                          const at::Tensor& hash_indices,
-                                                          const at::Tensor& offset_per_key,
-                                                          const at::Tensor& rows_per_table)
+at::Tensor split_embedding_codegen_forward_unweighted_npu(
+    const at::Tensor& dev_weights, const at::Tensor& uvm_weights, const at::Tensor& lxu_cache_weights,
+    const at::Tensor& weights_placements, const at::Tensor& weights_offsets, const at::Tensor& D_offsets,
+    const c10::SymInt total_D, const c10::SymInt max_D, const at::Tensor& indices, const at::Tensor& offsets,
+    const int64_t pooling_mode, const at::Tensor& lxu_cache_locations, const at::Tensor& uvm_cache_stats,
+    const int64_t output_dtype, const bool is_experimental, const at::Tensor& hash_indices,
+    const at::Tensor& offset_per_key, const at::Tensor& rows_per_table)
 {
     const int64_t totalD = total_D.guard_int(__FILE__, __LINE__);
     const int64_t maxD = max_D.guard_int(__FILE__, __LINE__);
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
 
-    validate_forward_data_inputs(dev_weights, weights_offsets, D_offsets, indices,
-                                 offsets, hash_indices, offset_per_key, rows_per_table);
+    validate_forward_data_inputs(dev_weights, weights_offsets, D_offsets, indices, offsets, hash_indices,
+                                 offset_per_key, rows_per_table);
 
     int64_t featCnt = weights_offsets.size(0);
     int32_t totalLen = indices.numel();
@@ -117,8 +101,7 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
     TORCH_CHECK(offsets.size(0) > 1, "offsets dim_0 must be great than 1.");
 
     int64_t batchSizeRes = (offsets.size(0) - 1) % featCnt;
-    TORCH_CHECK(batchSizeRes == 0, "offset size = ", offsets.size(0),
-                " is incorrect for feature count = ", featCnt);
+    TORCH_CHECK(batchSizeRes == 0, "offset size = ", offsets.size(0), " is incorrect for feature count = ", featCnt);
     int64_t batchSize = (offsets.size(0) - 1) / featCnt;
     auto output = at::full({batchSize, totalD}, 0.0, dev_weights.options());
 
@@ -133,7 +116,7 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
     return output;
 }
 
-}; // namespace fbgemm_npu_lookups
+};  // namespace fbgemm_npu_lookups
 
 TORCH_LIBRARY_FRAGMENT(fbgemm, m)
 {
@@ -159,6 +142,6 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           ") -> Tensor");
 
     m.impl("split_embedding_codegen_forward_unweighted_cuda",
-        torch::dispatch(c10::DispatchKey::Autograd,
-                        TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_forward_unweighted_npu)));
+           torch::dispatch(c10::DispatchKey::Autograd,
+                           TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_forward_unweighted_npu)));
 }
