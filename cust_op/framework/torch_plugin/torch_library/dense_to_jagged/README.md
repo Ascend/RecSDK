@@ -1,4 +1,4 @@
-# 使用PyTorch框架调用方式调用dense_to_jagged算子
+# 使用PyTorch框架调用dense_to_jagged算子
 
 该样例基于PyTorch2.6.0、python3.11.0运行
 

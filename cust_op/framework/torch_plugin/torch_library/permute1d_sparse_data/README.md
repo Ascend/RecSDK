@@ -49,7 +49,7 @@ torch.ops.mxrec.permute_1D_sparse_data(Tensor permute,
 
 PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
-### 算子调用示例,以下以pytest方式调用为例
+### 算子调用示例,以下以pytest框架调用为例
 
 调用permute1D_sparse_data算子示例
 

@@ -66,8 +66,6 @@ torch.ops.mxrec.permute_2D_sparse_data_input1d(Tensor permute,
 
 3. 该算子实现依赖asynchronous_complete_cumsum算子，需先安装asynchronous_complete_cumsum算子
 
-当调用permute_2D_sparse_data_input1d算子时，需传入stride参数，且满足lengths.numel()能被stride整除。
-
 ## 运行算子样例
 
 ### 算子编译与部署
@@ -78,7 +76,7 @@ torch.ops.mxrec.permute_2D_sparse_data_input1d(Tensor permute,
 
 PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
-### 算子调用示例,以下以pytest方式调用为例
+### 算子调用示例,以下以pytest框架调用为例
 
 调用permute2d_sparse_data算子示例
 
@@ -166,6 +164,58 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec):
 调用permute2d_sparse_data_input1d示例
 
 ```python
+import itertools
+import random
+import sysconfig
+
+import pytest
+import torch
+import torch_npu
+import fbgemm_gpu
+import numpy as np
+
+DEVICE = "npu:0"
+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
+
+PTYPE = [np.int32]
+LTYPE = [np.int64, np.int32]
+VTYPE = [
+    torch.int64,
+    torch.int32,
+    torch.float32,
+    torch.float16,
+]
+WTYPE = [
+    None,
+    torch.float32,
+    torch.float16,
+    torch.float64,
+    torch.int32,
+    torch.int64,
+]
+TYPE_LIST = list(itertools.product(PTYPE, LTYPE, VTYPE, WTYPE))
+
+# lengths shape为[1 ~ (2T - 1) * B]
+# extra_t用于测试permute和lengths不等长的情况，lengths[(T + extra_T) * B]
+T = np.random.randint(2, 500, 5)
+EXTRA_T = [1, 0, -1]
+B = [128, 1024, 2048, 20480]
+SHAPE_LIST = list(itertools.product(T, EXTRA_T, B))
+
+def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
+    tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
+
+    if device and device.startswith('npu'):
+        torch.npu.set_device(device)
+        tensors = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in tensors.items()}
+
+    if is_mxrec:
+        results = torch.ops.mxrec.permute_2D_sparse_data_input1D(**tensors)
+    else:
+        results = torch.ops.fbgemm.permute_2D_sparse_data_input1D(**tensors)
+    return [x.cpu() if isinstance(x, torch.Tensor) else x for x in results]
+
+
 @pytest.mark.parametrize("types", TYPE_LIST)
 @pytest.mark.parametrize("shapes", SHAPE_LIST)
 @pytest.mark.parametrize("enable_permuted_sum", [True, False])

@@ -59,7 +59,7 @@ def split_embedding_nobag_codegen_forward_unweighted(dev_weights, weights_offset
     results = np.zeros((out_D0, out_D1)).astype(np.float32)
     result_indx = 0
     for i in range(len(offsets)-1):
-        # 待查indics
+        # 待查indices
         this_indice = indices[offsets[i]:offsets[i+1]]
         # 待查表
         weights_indx = i // batch_size
@@ -87,10 +87,10 @@ def split_embedding_nobag_codegen_forward_unweighted(dev_weights, weights_offset
 |  lxu_cache_locations | 输入 | int32 | NA | NA |保留参数 |
 |  total_D | 属性 | int64 |  NA | NA | 所有特征的embedding_dim之和 |
 |  max_D | 属性 | int64 | NA | NA | 最大的embedding_dim |
-|  pool_mode | 属性 | int64 | NA  | NA | poolingSum:0, poolingMean:1, poolingNone:2 |
+|  pool_mode | 属性 | int64 | NA  | NA | pooling_sum:0, pooling_mean:1, pooling_none:2 |
 |  output_dtype | 属性 | int64 | NA | NA |保留参数 |
 |  is_experimental | 属性 | bool |  NA | NA | 保留参数 |
-|  out | 输出 | float32 | poolingSum/poolingMean: [batch_size, total_D] poolingNone:[len(indices), maxD] | NA | NA |
+|  out | 输出 | float32 | pooling_sum/pooling_mean: [batch_size, total_D] pooling_none:[len(indices), max_D] | NA | NA |
 
 # 算子编译部署
 
