@@ -91,14 +91,14 @@ def expand_into_jagged_permute(permute, inputOffset, outputOffset, outputSize):
     <tr>
       <td>inputOffset</td>
       <td>输入</td>
-      <td>表示表级别长度的互斥偏移量。</td>
+      <td>表示表级别长度的累积偏移量。</td>
       <td>INT32、INT64</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>outputOffset</td>
       <td>输入</td>
-      <td>表示表级别置换长度的互斥偏移量。</td>
+      <td>表示表级别置换长度的累积偏移量。</td>
       <td>INT32、INT64</td>
       <td>ND</td>
     </tr>

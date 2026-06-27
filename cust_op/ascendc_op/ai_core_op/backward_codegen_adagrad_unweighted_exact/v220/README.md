@@ -25,7 +25,7 @@
 
 | 名称                          |  输入/输出  | 数据类型    |  数据格式  | 范围                       | 说明                                                |
 |-----------------------------|  ---- |---------|  ----  |--------------------------|---------------------------------------------------|
-| grad_output                 | 输入 | float32 | poolingSum/poolingMean: [batch_size, total_D] poolingNone:[len(indices), maxD] | NA                       | 查询向量的反向的梯度                                        |
+| grad_output                 | 输入 | float32 | poolingSum/poolingMean: [batch_size, total_D]; poolingNone:[len(indices), maxD] | NA                       | 查询向量的反向的梯度                                        |
 | dev_weights                 | 输入 | float32 | [total_table_size] | NA                       | 一维数组,所有表的权重，表的embedding_dim必须为8的整数倍               |
 | uvm_weights                 | 输入 | float32 | NA | NA                       | 预留参数不支持配置                                         |
 | lxu_cache_weights           | 输入 | float32 | NA | NA                       | 预留参数不支持配置                                         |
@@ -42,7 +42,7 @@
 | momentum2_dev               | 输入 | float32 | NA | NA                       | 二阶动量，用于adam优化器                                    |
 | momentum2_uvm               | 输入 | float32 | NA | NA                       | 保留参数                                              |
 | momentum2_placements        | 输入 | int32   | NA | NA                       | 保留参数                                              |
-| momentum2_offsets           | 输入 | int32   | NA | NA                       | 保留参数                                              |
+| momentum2_offsets           | 输入 | int64   | NA | NA                       | 保留参数                                              |
 | hash_indices                | 可选输入 | int64   | NA | [0, num_embedding]       | 映射后的查表索引, 一维数组 len(indices) = offset[-1]          |
 | unique_id                   | 可选输入 | float32 | NA | [0, num_embedding]       | 去重后查表索引, 一维数组 len(unique_id) = offset[-1]         |
 | unique_hash_size            | 可选输入 | int64   | NA | NA                       | 查表索引对应的偏移                                         |
@@ -63,7 +63,7 @@
 | learning_rate               | 属性 | float32 | NA | NA                       | 学习率                                               |
 | beta1                       | 属性 | float32 | NA | NA                       | 衰减率，通常为0.9                                        |
 | beta2                       | 属性 | float32 | NA | NA                       | 衰减率，通常为0.999                                      |
-| iter                        | 属性 | float32 | NA | NA                       | 迭代次数用于adam优化器                                     |
+| iter                        | 属性 | int64 | NA | NA                       | 迭代次数用于adam优化器                                     |
 | use_optimize                | 属性 | bool    | NA | true or false            | 是否更新参数,默认true                                     |
 | out                         | 输出 | float32 | [len(unique_id), maxD] | NA                       | 查表索引的梯度累加和                                        |
 | momentum1_dev_out           | 输出 | float32 | [total_table_size] | NA                       | 更新后的一阶动量                                          |

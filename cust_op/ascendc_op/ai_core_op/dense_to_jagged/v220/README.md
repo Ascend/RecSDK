@@ -59,7 +59,7 @@ jagged_dense =
 |  名称  |  输入/输出  |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |
 |  dense | 输入 | bfloat16/float16/float32/int32/int64 | [dim0, dim1, dim2] | dim0 <= INT_MAX - 1 | 仅支持三维 |
-|  offset | 输入 | int32/int64 | [dim0 + 1] | dim0 + 1 <= INT_MAX 数值必须从0开始依次递增 | 仅支持一维 offset内元素需用户自行保证合法性，否则可能导致算子执行失败 |
+|  offset | 输入 | int32/int64 | [dim0 + 1] | dim0 + 1 <= INT_MAX 数值必须从0开始依次递增 | 仅支持一维；offset内元素需用户自行保证合法性，否则可能导致算子执行失败 |
 |  jagged_dim0 | 输入(属性) | int | NA | 必须等于offset[-1] | NA |
 |  jagged_dense | 输出 | bfloat16/float16/float32/int32/int64 | [jagged_dim0, dim2] | NA | NA |
 

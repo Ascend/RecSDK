@@ -74,4 +74,4 @@ if __name__ == "__main__":
 
 > **提示**
 > 以上示例仅展示基本用法，如需更全面的精度测试与边界用例，请参考完整测试文件：
-> [`RecSDK/cust_op\test\split_embedding_codegen_lookup_adagrad_function_test\torch\test_split_embedding_codegen_lookup_function.py`](../../../../test/split_embedding_codegen_lookup_adagrad_function_test/torch/test_split_embedding_codegen_lookup_function.py)
+> [`RecSDK/cust_op/test/split_embedding_codegen_lookup_adagrad_function_test/torch/test_split_embedding_codegen_lookup_function.py`](../../../../test/split_embedding_codegen_lookup_adagrad_function_test/torch/test_split_embedding_codegen_lookup_function.py)

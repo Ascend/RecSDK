@@ -51,7 +51,7 @@ permuted_weights = [1.0, 1.1, 1.4, 1.5, 1.6]
 
 说明：
 
-1.permute入参为[0, 2],分别获取lengths[0]的值为[1, 1]表示两个元素,对应values中的[0, 1]; lengths[2]的值为[1, 2]表示三个元素，对应values中的[4, 5, 6]。
+1.permute入参为[0, 2]，分别取lengths[0]的值为[1, 1]表示两个元素,对应values中的[0, 1]; lengths[2]的值为[1, 2]表示三个元素，对应values中的[4, 5, 6]。
 再将[0, 1]和[4, 5, 6]拼接成最终的permuted_values结果。其中lengths[1]中的[1, 1]对应values的两个元素为[2, 3]在例子中未获取。
 
 2.permuted_weights的处理方式与permuted_values一致。
@@ -78,7 +78,7 @@ permuted_weights = [1.0, 1.1, 1.4, 1.5, 1.6]
 ```python
 import torch
 import fbgemm_gpu
-def permute2d_sparse_data(permute, lengths, values, weights, permuted_lengths_sum):
+def permute2d_sparse_data(permute, lengths, values, weights, permuted_lengths_sum=None):
     (permuted_lengths, permuted_values, permuted_weights) = (
         torch.ops.fbgemm.permute_2D_sparse_data(permute, lengths, values, weights, permuted_lengths_sum)
     )
