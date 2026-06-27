@@ -70,6 +70,8 @@ docker build -t recsdk_torch_base:v1.0-[x86|arm] -f Dockerfile_[centos|debian|op
 docker build -t recsdk_torch_base:v1.0-[x86|arm] -f Dockerfile_[centos|debian|openeuler] --build-arg http_proxy=http://your_proxy --build-arg https_proxy=https://your_proxy .
 ```
 
+注：上述指令中，构建出的镜像名称为`recsdk_torch_base`，镜像版本为`v1.0-x86`/`v1.0-arm`。
+
 **注意：**
 
 1. 制作镜像时需确保服务器能访问外网，否则需要配置代理。

@@ -6,7 +6,7 @@
 
 本章节以性能的含义以及性能工具等基础概念介绍为出发点，介绍了训练模型在昇腾设备上的通用性能调优方法。对应的性能调优流程如[图1](#fig87871647115415)所示。
 
-**图 1**  性能调优流程图<a id="fig87871647115415"></a>  
+**图 1**  性能调优流程图<a id="fig87871647115415"></a>
 ![](figures/performance_tuning/性能调优流程图.png "性能调优流程图")
 
 ## 性能指标<a name="ZH-CN_TOPIC_0000002414375817"></a>
@@ -117,9 +117,9 @@ inputs_x = inputs_x.astype(np.int64)
 inputs_y = np.random.rand(*right_shape)
 inputs_y = inputs_y.astype(np.int64)
 with tf.compat.v1.Session(config=session_config) as sess:
-  for i in range(100000):
-    result = sess.run(equal_ret, feed_dict={x:inputs_x, y:inputs_y})
-    
+    for i in range(100000):
+        result = sess.run(equal_ret, feed_dict={x:inputs_x, y:inputs_y})
+
 print(result)
 ```
 
@@ -128,10 +128,10 @@ print(result)
     ```bash
     msprof --dynamic=on --pid=9527 --output=/home/projects/output --model-execution=on --runtime-api=on --aicpu=on
     > start
-        
+
     ...
     > stop
-       
+
     ...
     > quit
     ```
@@ -140,7 +140,7 @@ print(result)
 
 2. 采集出数据后，还需要手动解析，进入到上一步采集的目录（一般是一个带有时间戳的目录），使用以下命令解析数据
 
-    ```cpp
+    ```bash
     // 启用解析并将profiling输出到当前目录
     msprof --parse=on --output=./
     // 启用导出，并将结果以CSV格式保存到当前目录
@@ -199,7 +199,7 @@ print(result)
 2. 按照算子type筛选，比如这里筛选AI\_CORE，就是计算CUBE的利用率。
 3. 按照start time排序，计算第一个和最后一个时间戳的差值，就是这一整段的所有耗时。
 4. CUBE的总cycle数就是aic\_total\_cycles数求和。
-5. 利用率为③/\(②/1000000\*20\*1650\*1000000\)。其中②的单位是us，所以除以1000000转换成s；20是具体芯片的ai\_core数量；1650是当前芯片的频率，单位为MHz/s，所以需要乘以1000000。
+5. 利用率为③/\(②/1000000\*20\*1650\*1000000\)。其中②的单位是us，所以除以1000000转换成s；20是具体芯片的ai\_core数量；1650是当前芯片的频率，单位为MHz，所以需要乘以1000000。
 
     这里计算出来的利用率是cube整体利用率的78.9%。
 
@@ -400,7 +400,7 @@ profiling分析--\>step3：
 
 **案例一：**
 
-针对topK算子，如果值为int32/int64类型，则只能在AICPU上执行，但如果为fp32类型，则有ai vector实现。基于用户实际场景，如果可以满足int32/int64fp32转换且不损失精度（值<2^24），则可以通过自定义pass将索引为int32/int64的topK转为cast\(int32fp32/int64\) + TopK\(索引fp32\) + cast\(fp32int32/int64\)去执行。
+针对TopK算子，如果值为int32/int64类型，则只能在AICPU上执行；但如果值为fp32类型，则有ai vector实现。基于用户实际场景，如果可以满足int32/int64->fp32转换且不损失精度（值<2^24），则可以通过自定义pass将索引为int32（int64处理类似）的TopK转为cast\(int32->fp32\) + TopK\(fp32\) + cast\(fp32->int32\)去执行。
 
 **案例二：**
 
@@ -450,7 +450,7 @@ Bmm算子内部本身有广播逻辑，如果周围有算子实现的正好是�
 
 **案例一：带有效数据长度的TopK**
 
-TopK算子在推荐推理如TWINS模型中使用，该算子即使通过1.5.4中的cast方案优化到vector core上，对于序列长度很长的topK，性能还是很差。同时，基于硬件原因，TOPK算子的算法在NPU上很难实现和GPU相同的性能。所以，针对自定义TOPK算子的优化需要上升到模型层面进行分析。从模型上看，TOPK入参的序列源自于一段padding过后的序列，实际上不需要所有数据参与topK，且其中有效数据占比平均只有10%左右。基于此先验条件，只需要实现一个自定义topK算子，新增一个有效长度入参，就能让算子耗时平均下降90%。
+TopK算子在推荐推理如TWINS模型中使用，该算子即使通过1.5.4中的cast方案优化到vector core上，对于序列长度很长的TopK，性能还是很差。同时，基于硬件原因，TopK算子的算法在NPU上很难实现和GPU相同的性能。所以，针对自定义TopK算子的优化需要上升到模型层面进行分析。从模型上看，TopK入参的序列源自于一段padding过后的序列，实际上不需要所有数据参与TopK，且其中有效数据占比平均只有10%左右。基于此先验条件，只需要实现一个自定义TopK算子，新增一个有效长度入参，就能让算子耗时平均下降90%。
 
 **案例二：自定义floormod算子**
 

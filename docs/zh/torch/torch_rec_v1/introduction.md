@@ -18,7 +18,7 @@ Rec SDK Torch涉及功能如下：
 
 **关键功能特性<a name="section7262101710233"></a>**
 
-Rec SDK Torch为用户提供了哈希映射、Row-wise分表、EBC查表功能、流水查表、查表融合算子等特性。
+Rec SDK Torch为用户提供了哈希映射、Row-wise分表、EBC查表功能、流水线查表、查表融合算子等特性。
 
 - 哈希映射
 
@@ -32,9 +32,9 @@ Rec SDK Torch为用户提供了哈希映射、Row-wise分表、EBC查表功能�
 
     在将Embedding切分到不同表时，按行对Embedding进行分表，使用取余分桶策略，按照ID取余的余数确定Embedding在表上的分桶位置。
 
-- 流水查表
+- 流水线查表
 
-    Rec SDK Torch查表任务由通讯、CPU、NPU计算等多个子任务构成。Rec SDK Torch提供了流水查表方法让子任务之间可以并行以充分发挥硬件算力。
+    Rec SDK Torch查表任务由通讯、CPU、NPU计算等多个子任务构成。Rec SDK Torch提供了流水线查表方法让子任务之间可以并行以充分发挥硬件算力。
 
 - 查表融合算子
 
@@ -42,7 +42,7 @@ Rec SDK Torch为用户提供了哈希映射、Row-wise分表、EBC查表功能�
 
 ## 软件架构<a name="ZH-CN_TOPIC_0000002302229644"></a>
 
-**图 1**  软件架构图<a name="fig6490183721815"></a>  
+**图 1**  软件架构图<a name="fig6490183721815"></a>
 ![](../../figures/torch_rec_v1/软件架构图.png "软件架构图")
 
 Rec SDK Torch基于TorchRec、推荐场景主流框架、CANN和各种硬件和网络，对于搜索、推荐、广告模型训练的应用场景需求，提供极简易用、高性能API，助力昇腾AI处理器完成搜索、推荐、广告等模型的高效训练。

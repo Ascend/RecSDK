@@ -6,7 +6,7 @@
 
 **功能描述<a name="section634582619155"></a>**
 
-创建纯显存模式流水查表。
+创建纯显存模式的分布式训练数据流水线调度器。
 
 **函数原型<a name="section1483104721911"></a>**
 
@@ -66,7 +66,7 @@ pipeline = HybridTrainPipelineSparseDist(ddp_model, optimizer, npu_device)
 
 **功能描述<a name="section1217131745816"></a>**
 
-进行流水训练。
+进行训练流水线查表，包括前向传播、反向传播和参数更新。
 
 **函数原型<a name="section858517176587"></a>**
 
@@ -136,7 +136,7 @@ output, loss = pipeline.progress(dataloader_iter)
 
 **功能描述<a name="section634582619155"></a>**
 
-创建多级缓存流水查表。
+创建多级缓存模式的分布式训练数据流水线调度器。
 
 **函数原型<a name="section1483104721911"></a>**
 
@@ -214,7 +214,7 @@ pipeline = EmbCacheTrainPipelineSparseDist(
 
 **功能描述<a name="section634582619155"></a>**
 
-执行训练流水线的一个步骤，包括前向传播、反向传播和参数更新。
+进行训练流水线查表，包括前向传播、反向传播和参数更新。
 
 **函数原型<a name="section1483104721911"></a>**
 
