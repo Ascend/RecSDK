@@ -37,6 +37,11 @@ LOOP_TIMES = 4
 BATCH_NUM = 16
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _setup_logging():
+    setup_logging(rank=0)
+
+
 def weight_init(param: torch.nn.Parameter):
     if len(param.shape) != 2:
         return
@@ -67,7 +72,6 @@ def generate_hash_config(embedding_dims, num_embeddings, pool_type):
 @pytest.mark.parametrize("device", ["cpu", "npu"])
 def test_adapter_integration_train(embedding_dims, num_embeddings, pool_type, lookup_len, device):
     """测试适配器在训练流程中的集成。"""
-    setup_logging(rank=0)
     logging.info(f"Testing adapter integration with torchrec {adapter.version}")
 
     # 验证版本标志与适配器版本一致
@@ -111,10 +115,8 @@ def test_adapter_integration_train(embedding_dims, num_embeddings, pool_type, lo
     logging.info(f"Adapter integration test passed for torchrec {adapter.version}")
 
 
-@pytest.mark.parametrize("device", ["cpu", "npu"])
-def test_adapter_version_compatibility(device):
+def test_adapter_version_compatibility():
     """测试不同版本的API兼容性。"""
-    setup_logging(rank=0)
     logging.info(f"Testing API compatibility for torchrec {adapter.version}")
 
     # 测试兼容性工具方法
@@ -145,10 +147,8 @@ def test_adapter_version_compatibility(device):
     logging.info(f"API compatibility test passed for torchrec {adapter.version}")
 
 
-@pytest.mark.parametrize("device", ["cpu", "npu"])
-def test_adapter_methods_in_training(device):
+def test_adapter_methods_in_training():
     """测试适配器方法在训练中的实际调用。"""
-    setup_logging(rank=0)
     logging.info(f"Testing adapter methods in training context for torchrec {adapter.version}")
 
     # 测试 get_learning_rate 方法
@@ -185,10 +185,8 @@ def test_adapter_methods_in_training(device):
     logging.info(f"Adapter methods test passed for torchrec {adapter.version}")
 
 
-@pytest.mark.parametrize("device", ["cpu", "npu"])
-def test_adapter_singleton_consistency(device):
+def test_adapter_singleton_consistency():
     """测试适配器单例的一致性。"""
-    setup_logging(rank=0)
     logging.info(f"Testing adapter singleton consistency for torchrec {adapter.version}")
 
     from hybrid_torchrec._adapters import adapter as adapter1
@@ -206,6 +204,92 @@ def test_adapter_singleton_consistency(device):
     assert adapter1 is adapter3, "Adapter should be a singleton"
 
     logging.info("Adapter singleton test passed")
+
+
+def test_adapter_output_dtensor():
+    """测试 get_output_dtensor 在集成场景下的行为。"""
+    logging.info(f"Testing get_output_dtensor for torchrec {adapter.version}")
+
+    # env 提供 output_dtensor 时的行为
+    env_true = type("Env", (), {"output_dtensor": True})()
+    env_false = type("Env", (), {"output_dtensor": False})()
+
+    assert adapter.get_output_dtensor(env_true, None) is True
+    assert adapter.get_output_dtensor(env_false, None) is False
+
+    # fused_params 回退
+    env_no_attr = object()
+    assert adapter.get_output_dtensor(env_no_attr, {"output_dtensor": True}) is True
+    assert adapter.get_output_dtensor(env_no_attr, {"output_dtensor": False}) is False
+
+    # 默认返回 False
+    assert adapter.get_output_dtensor(env_no_attr, None) is False
+    assert adapter.get_output_dtensor(env_no_attr, {}) is False
+
+    logging.info("get_output_dtensor integration test passed")
+
+
+def test_adapter_virtual_table_buckets():
+    """测试 get_virtual_table_feature_num_buckets 在不同版本下的行为。"""
+    logging.info(f"Testing get_virtual_table_feature_num_buckets for torchrec {adapter.version}")
+
+    if adapter.version >= (1, 5, 0):
+        # 1.5.0+: 调用实例方法
+        class FakeInstance:
+            def _get_virtual_table_feature_num_buckets(self):
+                return ([10, 20], True)
+
+        buckets, has_uneven = adapter.get_virtual_table_feature_num_buckets(FakeInstance())
+        assert buckets == [10, 20]
+        assert has_uneven is True
+    else:
+        # 1.1.0/1.2.0: 返回默认值
+        result = adapter.get_virtual_table_feature_num_buckets(object())
+        assert result == (None, False)
+
+    logging.info("get_virtual_table_feature_num_buckets test passed")
+
+
+def test_adapter_build_args_kwargs():
+    """测试 build_args_kwargs 在不同版本下的行为。"""
+    logging.info(f"Testing build_args_kwargs for torchrec {adapter.version}")
+
+    if adapter.version >= (1, 5, 0):
+        # 1.5.0+: forward_args 实例方法
+        class ForwardArgs:
+            def build_args_kwargs(self, batch):
+                return (batch, {"key": "value"})
+
+        result = adapter.build_args_kwargs("test_batch", ForwardArgs())
+        assert result == ("test_batch", {"key": "value"})
+
+        # forward_args 无 build_args_kwargs 时应抛 RuntimeError
+        with pytest.raises(RuntimeError, match="build_args_kwargs not available"):
+            adapter.build_args_kwargs("test_batch", object())
+    else:
+        # 1.1.0/1.2.0: 模块级函数，验证方法可调用
+        assert callable(adapter.build_args_kwargs)
+
+    logging.info("build_args_kwargs test passed")
+
+
+def test_adapter_create_sharding_infos():
+    """测试 create_sharding_infos 在不同版本下的行为。"""
+    logging.info(f"Testing create_sharding_infos for torchrec {adapter.version}")
+
+    if adapter.version >= (1, 2, 0):
+        # 1.2.0+: instance.create_grouped_sharding_infos 方法
+        class FakeInstance:
+            def create_grouped_sharding_infos(self, mod, shard, prefix, fp):
+                return {"source": "instance", "prefix": prefix}
+
+        result = adapter.create_sharding_infos(FakeInstance(), "module", "shard", "test_prefix", {})
+        assert result == {"source": "instance", "prefix": "test_prefix"}
+    else:
+        # 1.1.0: 模块级函数，验证方法可调用
+        assert callable(adapter.create_sharding_infos)
+
+    logging.info("create_sharding_infos test passed")
 
 
 if __name__ == "__main__":
