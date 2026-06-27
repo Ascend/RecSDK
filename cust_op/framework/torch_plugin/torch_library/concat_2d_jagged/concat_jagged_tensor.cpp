@@ -50,6 +50,7 @@ c10::optional<at::IntArrayRef> vec_to_intarray(const std::vector<int64_t>& vec)
         at::IntArrayRef arr_ref(vec);
         return c10::optional<at::IntArrayRef>(arr_ref);
     }
+    return std::nullopt;
 }
 
 // 为NPU设备注册实现

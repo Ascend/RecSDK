@@ -51,34 +51,29 @@ bool IsDoubleEqual(const double a, const double b)
     return std::abs(a - b) <= DBL_EPSILON;
 }
 
-at::Tensor hstu_dense_normal_forward_impl_npu(
-    const at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    const c10::optional<at::Tensor>& timestampBias,
-    const c10::optional<at::Tensor>& positionBias,
-    const c10::optional<at::Tensor>& mask,
-    const int64_t maskType,
-    const int64_t maxSeqLen,
-    const double siluScale,
-    c10::optional<at::IntArrayRef> seqOffset)
+at::Tensor hstu_dense_normal_forward_impl_npu(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                                              const c10::optional<at::Tensor>& timestampBias,
+                                              const c10::optional<at::Tensor>& positionBias,
+                                              const c10::optional<at::Tensor>& mask, const int64_t maskType,
+                                              const int64_t maxSeqLen, const double siluScale,
+                                              c10::optional<at::IntArrayRef> seqOffset)
 {
     TORCH_CHECK(q.dim() == CONST_4, "The q should be 4D in normal layout");
 
     auto denseQ = q.contiguous();
     auto denseK = k.contiguous();
     auto denseV = v.contiguous();
-    auto denseTsBias = c10::value_or_else(timestampBias, [] {return at::Tensor(); });
-    auto densePosBias = c10::value_or_else(positionBias, [] {return at::Tensor(); });
-    auto maskNpu = c10::value_or_else(mask, [] {return at::Tensor(); });
+    auto denseTsBias = timestampBias.value_or(at::Tensor());
+    auto densePosBias = positionBias.value_or(at::Tensor());
+    auto maskNpu = mask.value_or(at::Tensor());
 
-    uint32_t batchSize = denseQ.size(0); // 0 means index 0
-    uint32_t seqLen = denseQ.size(1); // 1 means index 1
-    uint32_t headNum = denseQ.size(2); // 2 means index 2
-    uint32_t headDim = denseQ.size(3); // 3 means index 3
+    uint32_t batchSize = denseQ.size(0);  // 0 means index 0
+    uint32_t seqLen = denseQ.size(1);     // 1 means index 1
+    uint32_t headNum = denseQ.size(2);    // 2 means index 2
+    uint32_t headDim = denseQ.size(3);    // 3 means index 3
 
-    TORCH_CHECK(seqLen >= MIN_SEQ_LEN && seqLen <= MAX_SEQ_LEN,
-        "maxSeqLen expect in [1, 20480], but value is ", seqLen);
+    TORCH_CHECK(seqLen >= MIN_SEQ_LEN && seqLen <= MAX_SEQ_LEN, "maxSeqLen expect in [1, 20480], but value is ",
+                seqLen);
     TORCH_CHECK(maxSeqLen == seqLen, "maxSeqLen should equal to q dim 1");
     double realSiluScale = IsDoubleEqual(siluScale, 0.0) ? 1.0f / maxSeqLen : siluScale;
 
@@ -89,40 +84,24 @@ at::Tensor hstu_dense_normal_forward_impl_npu(
     if (useRab) {
         tempDim = static_cast<uint64_t>(CONST_3) * tempDim;
     }
-    TORCH_CHECK(tempDim <= std::numeric_limits<uint32_t>::max(),
-        "tempDim limit (0, %u], but get %llu\n", std::numeric_limits<uint32_t>::max(), tempDim);
+    TORCH_CHECK(tempDim <= std::numeric_limits<uint32_t>::max(), "tempDim limit (0, %u], but get %llu\n",
+                std::numeric_limits<uint32_t>::max(), tempDim);
     uint32_t outDim2 = static_cast<uint32_t>(tempDim);
     auto attnOutput = at::empty({batchSize, seqLen, outDim2}, q.options());
 
-    const char *layout = "normal";
-    EXEC_NPU_CMD(aclnnHstuDenseForwardFuxi,
-        denseQ,
-        denseK,
-        denseV,
-        denseTsBias,
-        densePosBias,
-        maskNpu,
-        maskType,
-        maxSeqLen,
-        realSiluScale,
-        layout,
-        seqOffset,
-        attnOutput);
+    const char* layout = "normal";
+    EXEC_NPU_CMD(aclnnHstuDenseForwardFuxi, denseQ, denseK, denseV, denseTsBias, densePosBias, maskNpu, maskType,
+                 maxSeqLen, realSiluScale, layout, seqOffset, attnOutput);
 
     return attnOutput;
 }
 
-at::Tensor hstu_dense_jagged_forward_impl_npu(
-    const at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    const c10::optional<at::Tensor>& timestampBias,
-    const c10::optional<at::Tensor>& positionBias,
-    const c10::optional<at::Tensor>& mask,
-    const int64_t maskType,
-    const int64_t maxSeqLen,
-    const double siluScale,
-    c10::optional<at::IntArrayRef> seqOffset)
+at::Tensor hstu_dense_jagged_forward_impl_npu(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                                              const c10::optional<at::Tensor>& timestampBias,
+                                              const c10::optional<at::Tensor>& positionBias,
+                                              const c10::optional<at::Tensor>& mask, const int64_t maskType,
+                                              const int64_t maxSeqLen, const double siluScale,
+                                              c10::optional<at::IntArrayRef> seqOffset)
 {
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
@@ -132,12 +111,12 @@ at::Tensor hstu_dense_jagged_forward_impl_npu(
     auto denseQ = q.contiguous();
     auto denseK = k.contiguous();
     auto denseV = v.contiguous();
-    auto denseTsBias = c10::value_or_else(timestampBias, [] {return at::Tensor(); });
-    auto densePosBias = c10::value_or_else(positionBias, [] {return at::Tensor(); });
-    auto maskNpu = c10::value_or_else(mask, [] {return at::Tensor(); });
+    auto denseTsBias = timestampBias.value_or(at::Tensor());
+    auto densePosBias = positionBias.value_or(at::Tensor());
+    auto maskNpu = mask.value_or(at::Tensor());
 
-    TORCH_CHECK(maxSeqLen >= MIN_SEQ_LEN && maxSeqLen <= MAX_SEQ_LEN,
-        "maxSeqLen expect in [1, 20480], but value is ", maxSeqLen);
+    TORCH_CHECK(maxSeqLen >= MIN_SEQ_LEN && maxSeqLen <= MAX_SEQ_LEN, "maxSeqLen expect in [1, 20480], but value is ",
+                maxSeqLen);
     double realSiluScale = IsDoubleEqual(siluScale, 0.0) ? 1.0f / maxSeqLen : siluScale;
 
     TORCH_CHECK(MaskCheck(maskType, maskNpu.defined()), "maskType check failed");
@@ -146,36 +125,19 @@ at::Tensor hstu_dense_jagged_forward_impl_npu(
     uint32_t outDim1 = useRab ? (CONST_3 * denseQ.size(1) * denseQ.size(2)) : (denseQ.size(1) * denseQ.size(2));
     auto attnOutput = at::empty({denseQ.size(0), outDim1}, q.options());
 
-    const char *layout = "jagged";
-    EXEC_NPU_CMD(aclnnHstuDenseForwardFuxi,
-        denseQ,
-        denseK,
-        denseV,
-        denseTsBias,
-        densePosBias,
-        maskNpu,
-        maskType,
-        maxSeqLen,
-        realSiluScale,
-        layout,
-        acSeqOffset,
-        attnOutput);
+    const char* layout = "jagged";
+    EXEC_NPU_CMD(aclnnHstuDenseForwardFuxi, denseQ, denseK, denseV, denseTsBias, densePosBias, maskNpu, maskType,
+                 maxSeqLen, realSiluScale, layout, acSeqOffset, attnOutput);
 
     return attnOutput;
 }
 
-at::Tensor hstu_dense_forward_impl_npu(
-    const at::Tensor& q,
-    const at::Tensor& k,
-    const at::Tensor& v,
-    const c10::optional<at::Tensor>& timestampBias,
-    const c10::optional<at::Tensor>& positionBias,
-    const c10::optional<at::Tensor>& mask,
-    const int64_t maskType,
-    const int64_t maxSeqLen,
-    const double siluScale,
-    const std::string layout,
-    c10::optional<at::IntArrayRef> seqOffset)
+at::Tensor hstu_dense_forward_impl_npu(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
+                                       const c10::optional<at::Tensor>& timestampBias,
+                                       const c10::optional<at::Tensor>& positionBias,
+                                       const c10::optional<at::Tensor>& mask, const int64_t maskType,
+                                       const int64_t maxSeqLen, const double siluScale, const std::string layout,
+                                       c10::optional<at::IntArrayRef> seqOffset)
 {
     TORCH_CHECK(layout == "normal" || layout == "jagged", "The layout should be normal or jagged");
 
@@ -184,12 +146,12 @@ at::Tensor hstu_dense_forward_impl_npu(
     check_tensor_non_empty(v, "v");
 
     TORCH_CHECK(q.scalar_type() == at::kHalf || q.scalar_type() == at::kFloat || q.scalar_type() == at::kBFloat16,
-        "float16, float32 or bfloat16 tensor expected but got a tensor with dtype: ", q.scalar_type());
+                "float16, float32 or bfloat16 tensor expected but got a tensor with dtype: ", q.scalar_type());
 
     // NPU设备校验
     std::vector<at::Tensor> tensors = {q, k, v};
     std::vector<std::string> names = {"q", "k", "v"};
-    
+
     if (timestampBias.has_value()) {
         tensors.push_back(timestampBias.value());
         names.push_back("timestampBias");
@@ -202,15 +164,15 @@ at::Tensor hstu_dense_forward_impl_npu(
         tensors.push_back(mask.value());
         names.push_back("mask");
     }
-    
+
     check_tensor_npu_device(tensors, names);
-  
+
     if (layout == "normal") {
         return hstu_dense_normal_forward_impl_npu(q, k, v, timestampBias, positionBias, mask, maskType, maxSeqLen,
-            siluScale, seqOffset);
+                                                  siluScale, seqOffset);
     } else {
         return hstu_dense_jagged_forward_impl_npu(q, k, v, timestampBias, positionBias, mask, maskType, maxSeqLen,
-            siluScale, seqOffset);
+                                                  siluScale, seqOffset);
     }
 }
 
@@ -225,4 +187,3 @@ TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
 {
     m.impl("hstu_fuxi", &hstu_dense_forward_impl_npu);
 }
-
