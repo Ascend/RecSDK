@@ -97,7 +97,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void FlagPrefi
     if (warpId > 0 && warpId < activeWarpCount && (warpId - 1) < MAX_WARPS) {
         blockOffset = sharedMemory[warpId - 1];
     }
-    prefix[globalTid] = blockOffset + warpPrefixSum - currentVal;
+    OffsetT prefixValue = blockOffset + warpPrefixSum - currentVal;
+    prefix[globalTid] = prefixValue;
 
     if (tid == 0) {
         OffsetT coreSum =
@@ -126,7 +127,9 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void FlagPrefi
     for (int32_t c = 0; c < coreId && c < totalBlocks; ++c) {
         coreOffset += blockSums[c * stride];
     }
-    prefix[globalTid] += coreOffset;
+    OffsetT prefixValue = prefix[globalTid];
+    prefixValue += coreOffset;
+    prefix[globalTid] = prefixValue;
 }
 
 template <typename OffsetT>
@@ -160,9 +163,6 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void FlagPrefi
         }
         if (elementsForThread > MAX_ELEMENTS_PER_THREAD) {
             elementsForThread = MAX_ELEMENTS_PER_THREAD;
-        }
-        if (elementsForThread <= 0) {
-            continue;
         }
 
         OffsetT threadSum = 0;
@@ -230,8 +230,8 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void FlagPrefi
 
 template <typename OffsetT>
 __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void FlagPrefixSumLargeUpdate(
-    __gm__ OffsetT* prefix, __gm__ OffsetT* blockSums, const int32_t totalLength, int32_t blockStartIdx,
-    int32_t curBlocksCount, int32_t stride)
+    __gm__ OffsetT* prefix, __gm__ OffsetT* blockSums, const int32_t totalLength, int32_t coreNum,
+    int32_t blockStartIdx, int32_t curBlocksCount, int32_t stride)
 {
     int32_t tid = AscendC::Simt::GetThreadIdx<0>();
     int32_t threadIdxInt = static_cast<int32_t>(tid);
@@ -239,7 +239,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void FlagPrefi
     int32_t blockElementCapacity = threadNumPerCore * MAX_ELEMENTS_PER_THREAD;
     int32_t threadElementOffset = threadIdxInt * MAX_ELEMENTS_PER_THREAD;
 
-    OffsetT blockPrefix = 0;
+    OffsetT blockPrefix = static_cast<OffsetT>(0);
     for (int32_t i = 0; i < blockStartIdx; ++i) {
         blockPrefix += blockSums[i * stride];
     }
@@ -281,7 +281,6 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(MAX_THREADS_PER_BLOCK) inline void FlagPrefi
         }
 
         blockPrefix += blockSums[globalBlockIdx * stride];
-        AscendC::Simt::ThreadBarrier();
     }
 }
 
@@ -293,12 +292,14 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(1) inline void WriteNumSelectedVF(__gm__ Off
     if (AscendC::Simt::GetThreadIdx<0>() != 0) {
         return;
     }
-    if (totalLength > 0) {
-        int32_t last = totalLength - 1;
-        numSelected[0] = prefix[last] + (flags[last] ? static_cast<OffsetT>(1) : static_cast<OffsetT>(0));
-    } else {
+    if (totalLength <= 0) {
         numSelected[0] = static_cast<OffsetT>(0);
+        return;
     }
+    int32_t last = totalLength - 1;
+    OffsetT lastPrefix = prefix[last];
+    OffsetT lastFlag = flags[last] ? static_cast<OffsetT>(1) : static_cast<OffsetT>(0);
+    numSelected[0] = lastPrefix + lastFlag;
 }
 
 template <typename KeyT, typename OffsetT, bool SelectIndex>

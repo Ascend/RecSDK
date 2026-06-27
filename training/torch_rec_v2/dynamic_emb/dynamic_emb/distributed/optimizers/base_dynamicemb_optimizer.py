@@ -37,7 +37,6 @@ from dynamic_emb_extensions import OptimizerType, DynamicEmbDataType
 @enum.unique
 class EmbOptimType(enum.Enum):
     ADAM = "adam"
-    ADAMW = "adamW"
     SGD = "sgd"
     EXACT_SGD = "exact_sgd"
     EXACT_ADAGRAD = "exact_adagrad"
@@ -58,8 +57,6 @@ def string_to_opt_type(optimizer_str: str) -> EmbOptimType:
 def convert_optimizer_type(optimizer: EmbOptimType) -> OptimizerType:
     if optimizer == EmbOptimType.ADAM:
         return OptimizerType.Adam
-    elif optimizer == EmbOptimType.ADAMW:
-        return OptimizerType.AdamW
     elif optimizer in (EmbOptimType.SGD, EmbOptimType.EXACT_SGD):
         return OptimizerType.SGD
     elif optimizer == EmbOptimType.EXACT_ADAGRAD:

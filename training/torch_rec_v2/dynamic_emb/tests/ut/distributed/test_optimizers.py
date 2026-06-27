@@ -34,9 +34,6 @@ from dynamic_emb.distributed.optimizers.adam_dynamicemb_optimizer import (
     AdamDynamicEmbeddingOptimizer,
     AdamDynamicEmbeddingOptimizerV2,
 )
-from dynamic_emb.distributed.optimizers.adamw_dynamicemb_optimizer import (
-    AdamWDynamicEmbeddingOptimizerV2,
-)
 from dynamic_emb.distributed.optimizers.adagrad_dynamicemb_optimizer import (
     AdagradDynamicEmbeddingOptimizer,
     AdagradDynamicEmbeddingOptimizerV2,
@@ -90,17 +87,17 @@ class TestOptimizers(unittest.TestCase):
 
     def test_emb_optim_type_enum(self):
         self.assertEqual(EmbOptimType.ADAM.value, "adam")
-        self.assertEqual(EmbOptimType.ADAMW.value, "adamW")
         self.assertEqual(EmbOptimType.NONE.value, "none")
         self.assertEqual(str(EmbOptimType.ADAM), "adam")
 
     def test_string_to_opt_type(self):
         self.assertEqual(string_to_opt_type("adam"), EmbOptimType.ADAM)
-        self.assertEqual(string_to_opt_type("adamW"), EmbOptimType.ADAMW)
         self.assertEqual(string_to_opt_type("none"), EmbOptimType.NONE)
 
         with self.assertRaises(ValueError):
             string_to_opt_type("invalid")
+        with self.assertRaises(ValueError):
+            string_to_opt_type("adamW")
 
     def test_convert_optimizer_type(self):
         with patch(
@@ -108,9 +105,6 @@ class TestOptimizers(unittest.TestCase):
         ) as mocked_OptimizerType:
             mocked_OptimizerType.Adam = Mock()
             self.assertEqual(convert_optimizer_type(EmbOptimType.ADAM), mocked_OptimizerType.Adam)
-
-            mocked_OptimizerType.AdamW = Mock()
-            self.assertEqual(convert_optimizer_type(EmbOptimType.ADAMW), mocked_OptimizerType.AdamW)
 
             with self.assertRaises(ValueError):
                 convert_optimizer_type(EmbOptimType.NONE)
@@ -190,24 +184,6 @@ class TestAdamDynamicEmbeddingOptimizerV2(unittest.TestCase):
 
         with patch(
             "dynamic_emb.distributed.optimizers.adam_dynamicemb_optimizer.dynamic_emb_adamW_with_pointer"
-        ) as mocked_func:
-            mocked_func.return_value = ()
-            optimizer.fused_update_with_pointer(grads, value_ptr, value_type)
-            mocked_func.assert_called_once()
-
-
-class TestAdamWDynamicEmbeddingOptimizerV2(unittest.TestCase):
-    def test_fused_update_with_pointer_shape(self):
-        optimizer = AdamWDynamicEmbeddingOptimizerV2(OptimizerArgs())
-        batch_size = 32
-        emb_dim = 16
-
-        grads = torch.randn(batch_size, emb_dim)
-        value_ptr = torch.tensor(list(range(batch_size)), dtype=torch.int64)
-        value_type = torch.float32
-
-        with patch(
-            "dynamic_emb.distributed.optimizers.adamw_dynamicemb_optimizer.dynamic_emb_adamW_with_pointer"
         ) as mocked_func:
             mocked_func.return_value = ()
             optimizer.fused_update_with_pointer(grads, value_ptr, value_type)

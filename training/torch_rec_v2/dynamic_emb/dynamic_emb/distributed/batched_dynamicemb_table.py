@@ -45,9 +45,6 @@ from dynamic_emb.distributed.optimizers.adam_dynamicemb_optimizer import (
     AdamDynamicEmbeddingOptimizer,
     AdamDynamicEmbeddingOptimizerV2,
 )
-from dynamic_emb.distributed.optimizers.adamw_dynamicemb_optimizer import (
-    AdamWDynamicEmbeddingOptimizerV2,
-)
 from dynamic_emb.distributed.optimizers.sgd_dynamicemb_optimizer import (
     SGDDynamicEmbeddingOptimizer,
     SGDDynamicEmbeddingOptimizerV2,
@@ -1204,8 +1201,6 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
     ) -> BaseDynamicEmbeddingOptimizerV2:
         if optimizer_type == EmbOptimType.ADAM:
             return AdamDynamicEmbeddingOptimizerV2(optimizer_args)
-        elif optimizer_type == EmbOptimType.ADAMW:
-            return AdamWDynamicEmbeddingOptimizerV2(optimizer_args)
         elif optimizer_type == EmbOptimType.SGD:
             return SGDDynamicEmbeddingOptimizerV2(optimizer_args)
         elif optimizer_type == EmbOptimType.EXACT_SGD:
