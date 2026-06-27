@@ -38,12 +38,12 @@ python3 setup.py bdist_wheel
 pip3 install ./dist/dynamic_emb-*.whl
 ```
 
-- 可通过配置环境变量MAX_COMPILE_THREADS来配置编译时用到的线程数，默认为8: export MAX_COMPILE_THREADS=8
+- 可通过配置环境变量MAX_COMPILE_THREADS来指定编译时用到的线程数，默认为8: export MAX_COMPILE_THREADS=8
 
 ## 相关网站
 
-TorchRec介绍: <https://pytorch.org/torchrec>
+[TorchRec介绍](https://meta-pytorch.org/torchrec/)
 
-TorchRec开源项目:<https://github.com/pytorch/torchrec>
+[TorchRec开源项目](https://github.com/pytorch/torchrec)
 
-recsys-examples开源项目:<https://github.com/NVIDIA/recsys-examples>
+[recsys-examples开源项目](https://github.com/NVIDIA/recsys-examples)

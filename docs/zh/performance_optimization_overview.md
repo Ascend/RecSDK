@@ -69,7 +69,7 @@ compare_tools支持比较GPU与NPU之间、NPU与NPU之间的性能差异，通�
 
 ### 总体策略
 
-* [通用调优策略](https://www.hiascend.com/document/detail/zh/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/positioning_process_for_performance_issues.md#排查思路介绍 )：适用于所有框架的性能问题排查思路，帮助系统化定位瓶颈所在。
+* [通用调优策略](https://www.hiascend.com/document/detail/zh/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/positioning_process_for_performance_issues.md#排查思路介绍)：适用于所有框架的性能问题排查思路，帮助系统化定位瓶颈所在。
 
 * [PyTorch调优策略](https://www.hiascend.com/document/detail/zh/Pytorch/2600/ptmoddevg/trainingmigrguide/FrameworkPTAdapter/26.0.0/zh/pytorch_model_migration_fine_tuning/overall_optimization_strategy.md)：PyTorch模型在昇腾上的整体优化策略，按优先级梳理各阶段调优方向。
 

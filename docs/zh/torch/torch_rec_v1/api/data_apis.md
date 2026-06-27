@@ -62,7 +62,7 @@ jagged_tensor = JaggedTensor(values=values, lengths=lengths, offsets=offsets)
 
 ```python
 @staticmethod
-def from_jt_dict(jt_dict: Dict[str, JaggedTensor]) -> "KeyedJaggedTensor"
+def from_jt_dict(jt_dict: Dict[str, JaggedTensor]) -> "KeyedJaggedTensor":
 ```
 
 **参数说明**

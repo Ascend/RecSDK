@@ -22,7 +22,7 @@ Rec SDK 作为面向互联网市场搜索推荐广告场景的应用使能SDK产
 
 2.CANN软件栈
 
-- 基础算子：支持Ascend C、Catlass、Triton等算子开发语言与库。
+- 基础算子：支持Ascend C、CATLASS、Triton等算子开发语言与库。
 - 自动编译优化：提供AutoFuse、Inductor等算子自动融合能力，提升计算效率。
 
 3.AI框架与适配层
@@ -109,7 +109,7 @@ Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`�
 
 #### HierarchicalKV-ascend
 
-[HierarchicalKV-ascend](https://gitcode.com/Ascend/HierarchicalKV-ascend)（下称HKV）是 [HierarchicalKV](https://github.com/NVIDIA-Merlin/HierarchicalKV/commit/bbe2ee1858b6e54bccf9106e9f3c2d8c1c5d248c) 在昇腾 NPU 平台上的算子实现，是一个面向推荐系统的高性能key-value存储加速库。 在推荐系统中，HKV提供了大容量、高性能的动态Embedding表的增删改查能力。
+[HierarchicalKV-ascend](https://gitcode.com/Ascend/HierarchicalKV-ascend)（下称HKV）是 [开源HierarchicalKV](https://github.com/NVIDIA-Merlin/HierarchicalKV/commit/bbe2ee1858b6e54bccf9106e9f3c2d8c1c5d248c) 在昇腾 NPU 平台上的算子实现，是一个面向推荐系统的高性能key-value存储加速库。 在推荐系统中，HKV提供了大容量、高性能的动态Embedding表的增删改查能力。
 
 核心功能：
 
@@ -207,4 +207,4 @@ Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`�
 | 特征准入  | 在模型训练或推理前，判断一个从未出现过的特征（如新上架的商品ID、新注册的用户ID）是否值得被加入模型的Embedding词典中的决策过程。 |
 | 特征淘汰  | 在模型持续训练或定期调度中，将已经存在于Embedding表中但已“失效”的特征（如过季商品ID）删除，以释放存储和计算资源的机制。 |
 | FBGEMM    | FBGEMM (Facebook GEneral Matrix Multiplication) 是一个由Meta（原Facebook）开源的高性能低精度数值计算库。 |
-| HKV       | HKV（HierarchicalKV）是一个由 NVIDIA 设计并开源的高性能 GPU 哈希表库。 |
+| HKV       | HKV（指开源HierarchicalKV）是一个由 NVIDIA 设计并开源的高性能 GPU 哈希表库。 |

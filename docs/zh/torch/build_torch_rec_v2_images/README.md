@@ -21,9 +21,9 @@ CANN 8.5.0及之后版本，算子包名称存在变化，下载算子包时注�
 | 算子包名称      | Ascend-cann-kernels-{version}_linux-{arch}.run | Ascend-cann-{chip_type}-ops_{version}_linux-{arch}.run |
 
 > 注意
-> 
+>
 > 1. 当前Dockerfile中，适配的是CANN 8.5.0及之后版本的算子包名称。
-> 2. 如需安装CANN 8.5.0之前版本CANN包，需将Dockerfile中KERNEL_PKG的值修改为：`Ascend-cann-kernels*.run`。
+> 2. 如需安装CANN 8.5.0之前版本的CANN包，需将Dockerfile中KERNEL_PKG的值修改为：`Ascend-cann-kernels*.run`。
 
 安装CANN包需要两个文件，分别是
 
@@ -33,7 +33,7 @@ CANN 8.5.0及之后版本，算子包名称存在变化，下载算子包时注�
 可将物理机上相应的文件拷贝到`build_images`目录。物理机安装驱动与固件后，version.info默认安装路径为/usr/local/Ascend/driver/version.info；
 ascend_install.info默认安装路径为/etc/ascend_install.info。
 
-Step3：将Dockerfile移动到`build_images`目录中，并运行下面命令构建镜像。构建镜像的步骤在Dockerfile中有详细的说明，注释部分是安装CANN包与torchrec相关包的操作。
+Step3：将当前目录下的`Dockerfile_debian`文件移动到`build_images`目录中，并运行下面命令构建镜像。构建镜像的步骤在Dockerfile中有详细的说明，注释部分是安装CANN包与torchrec相关包的操作。
 
 ```shell
 # 服务器能访问外网

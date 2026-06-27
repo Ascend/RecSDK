@@ -5,13 +5,12 @@
 > 说明
 >
 > EmbeddingBagCollection为开源TorchRec原生稀疏表实现。
-> 
+>
 > HashEmbeddingBagCollection为hybrid_torchrec组件新增的稀疏表实现，对应TorchRec原生的EmbeddingBagCollection，支持特征ID Hash映射、ID去重等功能。
 
 ## 目录结构
 
 ```shell
-st/
 ├── README.md                           # 测试套件说明文档
 ├── dataset.py                          # 数据集定义和随机数据生成器
 ├── model.py                            # 测试模型定义

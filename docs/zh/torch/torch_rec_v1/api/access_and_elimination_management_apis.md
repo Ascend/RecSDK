@@ -122,7 +122,7 @@ class AdmitAndEvictPolicyType(Enum):
 | 参数名              | 说明                                                        |
 |------------------|-----------------------------------------------------------|
 | NONE             | 无准入淘汰策略。                                                  |
-| POLICY_COUNT     | 基于计数（count）/ 时间（timestamp）的准入淘汰策略。特征准入基于重复次数，特征淘汰基于时间阈值。<br>使用POLICY_COUNT策略并启用淘汰功能（启用方式参考[AdmitAndEvictConfig](#admitandevictconfig)的`evict_threshold`参数）时，训练时输入的数据Batch中的KJT必须是[KeyedJaggedTensorWithTimestamp](#TOPIC_0000002428320084)类型且带有时间戳数据。 |
+| POLICY_COUNT     | 基于计数（count）/ 时间（timestamp）的准入淘汰策略。特征准入基于重复次数，特征淘汰基于时间阈值。<br>使用POLICY_COUNT策略并启用淘汰功能（启用方式参考[AdmitAndEvictConfig](#admitandevictconfig)的`evict_threshold`参数）时，训练时输入的数据Batch中的KeyedJaggedTensor必须是[KeyedJaggedTensorWithTimestamp](#TOPIC_0000002428320084)类型且带有时间戳数据。 |
 | POLICY_SHOWCLICK | 基于展示点击（show/click）的准入淘汰策略。特征准入和淘汰基于展示次数和点击次数的加权分数。        |
 
 **返回值说明**

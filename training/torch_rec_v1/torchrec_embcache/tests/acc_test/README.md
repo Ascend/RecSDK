@@ -3,20 +3,19 @@
 本目录包含torchrec_embcache组件的多个测试用例，用于验证**多级缓存模式下**EmbcacheEmbeddingCollection，EmbcacheEmbeddingBagCollection的功能和精度正确性。
 
 > 说明
-> 
+>
 > EmbcacheEmbeddingCollection为torchrec_embcache组件新增的稀疏表实现，对应TorchRec原生的EmbeddingCollection。
-> 
+>
 > EmbcacheEmbeddingBagCollection为torchrec_embcache组件新增的稀疏表实现，对应TorchRec原生的EmbeddingBagCollection。
 
 ## 目录结构
 
 ```text
-acc_test/
 ├── README.md                              # 测试用例说明文档
 ├── dataset.py                             # 数据集定义和随机数据生成器
 ├── model.py                               # 测试模型定义
 ├── run_test.sh                            # 执行所有测试用例的脚本
-├── test_embedding_cache_pipeline.py       # 测试多级缓存pipeline+EmbcacheBagEmbeddingCollection的功能和精度
+├── test_embedding_cache_pipeline.py       # 测试多级缓存pipeline+EmbCacheEmbeddingBagCollection的功能和精度
 ├── test_embedding_ec_cache_aggregation.py # 测试多级缓存pipeline+EmbcacheEmbeddingCollection+梯度累积优化器的功能和精度
 ├── test_embedding_ec_cache_pipeline.py    # 测试多级缓存pipeline+EmbcacheEmbeddingCollection的功能和精度
 ├── test_feature_filter.py                 # 测试（基于特征时间戳和计数）特征准入淘汰功能

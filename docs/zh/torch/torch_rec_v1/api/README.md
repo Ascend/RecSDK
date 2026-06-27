@@ -23,11 +23,11 @@
 |API | 功能描述|
 |--|--|
 |[HashEmbeddingBagConfig](table_creation_apis.md#hashembeddingbagconfig)|HashEmbeddingBagCollection的入参，用于配置表的大小、dim、数据类型等。|
-|[HashEmbeddingBagCollection](table_creation_apis.md#hashembeddingbagcollection)|创建带Pooling和哈希映射的单机表对象。|
+|[HashEmbeddingBagCollection](table_creation_apis.md#hashembeddingbagcollection)|创建带Pooling和哈希映射的稀疏表对象。|
 |[EmbCacheEmbeddingBagConfig](table_creation_apis.md#embcacheembeddingbagconfig)|EmbCacheEmbeddingBagCollection的入参，用于配置表的大小、dim、数据类型等。|
-|[EmbCacheEmbeddingBagCollection](table_creation_apis.md#embcacheembeddingbagcollection)|创建带pooling、哈希映射和多级缓存的单机表对象。|
+|[EmbCacheEmbeddingBagCollection](table_creation_apis.md#embcacheembeddingbagcollection)|创建带pooling、哈希映射和多级缓存的稀疏表对象。|
 |[EmbCacheEmbeddingConfig](table_creation_apis.md#embcacheembeddingconfig)|EmbCacheEmbeddingCollection的配置类接口，用于配置表的大小、dim、数据类型等。|
-|[EmbCacheEmbeddingCollection](table_creation_apis.md#embcacheembeddingcollection)|创建带哈希映射和多级缓存的单机表对象。|
+|[EmbCacheEmbeddingCollection](table_creation_apis.md#embcacheembeddingcollection)|创建带哈希映射和多级缓存的稀疏表对象。|
 
 ### 数据接口
 
@@ -62,8 +62,8 @@
 
 |API | 功能描述|
 |--|--|
-|[HybridTrainPipelineSparseDist](pipeline_apis.md#hybridtrainpipelinesparsedist)|创建纯显存模式流水查表。|
-|[EmbCacheTrainPipelineSparseDist](pipeline_apis.md#embcachetrainpipelinesparsedist)|创建多级缓存流水查表。|
+|[HybridTrainPipelineSparseDist](pipeline_apis.md#hybridtrainpipelinesparsedist)|创建纯显存模式的分布式训练数据流水线调度器。|
+|[EmbCacheTrainPipelineSparseDist](pipeline_apis.md#embcachetrainpipelinesparsedist)|创建多级缓存模式的分布式训练数据流水线调度器。|
 
 ### 多级缓存管理接口
 

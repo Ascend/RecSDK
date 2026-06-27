@@ -58,7 +58,7 @@ bash run_docker.sh 容器名 镜像名称:镜像版本
 
 ### 刷新容器内环境变量
 
-26.1.0-*及之后的镜像中内置了Python虚拟环境，需要刷新环境变量。使用`ll /opt/buildtools/torch_v1_pt2.6.0/bin/activate`指令判断Python虚拟环境是否存在：若回显包含文件详细属性表示存在，若回显包含“No such file or directory”表示不存在。
+26.1.0-*及之后的镜像中内置了Python虚拟环境，需要刷新环境变量。使用`ll /opt/buildtools/torch_v1_pt2.6.0/bin/activate`指令判断Python虚拟环境是否存在：若回显显示文件详细信息表示存在，若回显包含“No such file or directory”表示不存在。
 
 若Python虚拟环境存在则执行如下命令刷新容器内环境变量：
 
@@ -281,10 +281,10 @@ def invoke_main():
     test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBEDDING_DIMS, NUM_EMBEDDINGS)
 
     # 5. 定义稀疏表的优化器
-    embedding_optimizer = torch.optim.Adagrad
+    embedding_optimizer_class = torch.optim.Adagrad
     optimizer_kwargs = {"lr": 0.001, "eps": 0.1}
     apply_optimizer_in_backward(
-        embedding_optimizer,
+        embedding_optimizer_class,
         test_model.ebc.parameters(),
         optimizer_kwargs=optimizer_kwargs,
     )
