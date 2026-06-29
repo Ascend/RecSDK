@@ -28,27 +28,19 @@ hstu_dense_backward_fuxi
 
 ### 计算公式
 
-    $$
-    qk=matmul(Q,K_{}^{T})
-    $$
-    $$
-    score=Mask(Silu(qk))/S
-    $$
-    $$
-    vGrad=matmul(score_{}^{T},G_{attn}) + matmul(Mask(biasTs)_{}^{T}, G_{biasTs}) + matmul(Mask(biasPos)_{}^{T}, G_{biasPos})
-    $$
-    $$
-    qGrad=matmul(biasGrad,k)
-    $$
-    $$
-    kGrad=matmul(biasGrad_{}^{T},q)
-    $$
-    $$
-    tsGrad=Mask(matmul(G_{biasTs}, V_{}^{T}))
-    $$
-    $$
-    posGrad=Mask(matmul(G_{biasPos}, V_{}^{T}))
-    $$
+$$
+\begin{aligned}
+qk &= \text{matmul}(Q, K^{T}) \\
+\text{score} &= \text{Mask}(\text{Silu}(qk)) / S \\
+vGrad &= \text{matmul}(\text{score}^{T}, G_{attn}) + \text{matmul}(\text{Mask}(bias\_timestamp)^{T}, G_{bias\_timestamp}) + \text{matmul}(\text{Mask}(bias\_position)^{T}, G_{bias\_position}) \\
+qGrad &= \text{matmul}(biasGrad, k) \\
+kGrad &= \text{matmul}(biasGrad^{T}, q) \\
+timestamp\_bias\_grad &= \text{Mask}(\text{matmul}(G_{bias\_timestamp}, V^{T})) \\
+position\_bias\_grad &= \text{Mask}(\text{matmul}(G_{bias\_position}, V^{T})) \\
+vbpos\_grad &= \text{matmul}(\text{Mask}(bias\_position)^{T}, G_{bias\_position}) \\
+vbts\_grad &= \text{matmul}(\text{Mask}(bias\_timestamp)^{T}, G_{bias\_timestamp})
+\end{aligned}
+$$
 
 ### 数据格式
 
@@ -62,7 +54,7 @@ jagged格式如下图所示：
 ### 计算原理
 
 * 输入Q，K，V，Grad是jagged格式, 首先分别进行matmul计算
-* mask和timestampBias/positionBias按照参数决定是否加入计算
+* mask和bias_timestamp/bias_position按照参数决定是否加入计算
 * score和biasGrad的计算中，会除以序列长度S，jagged模式根据不同batch切换
 * 最后score，biasGrad分别和Q/K/V做矩阵乘法得到输出梯度
 
@@ -92,15 +84,15 @@ def dense_to_jagged(self, jagged_tensor, dense_tensor, seq_lens):
         return tensor
 
 
-def golden_op_exec(grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, max_seq_len, seq_offset, 
+def golden_op_exec(grad, q, k, v, bias_position, bias_timestamp, grad_bias_position, grad_bias_timestamp, mask, max_seq_len, seq_offsets,
                    mask_type, silu_scale, enable_bias, data_type):
     head_nums = grad.shape[1]
     head_dim = grad.shape[2]
-    batch_size = bts.shape[0] # maybe get from mask
+    batch_size = bias_timestamp.shape[0] # maybe get from mask
 
     seq_lens = np.zeros((batch_size,)).astype(np.int64)
     for batch_id in range(batch_size):
-        seq_lens[batch_id] = seq_offset[batch_id + 1] - seq_offset[batch_id]
+        seq_lens[batch_id] = seq_offsets[batch_id + 1] - seq_offsets[batch_id]
 
     grad_dens = self.jagged_to_dense(grad, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
     q_dens = self.jagged_to_dense(q, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
@@ -117,32 +109,34 @@ def golden_op_exec(grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, max_seq_le
         mask = mask.to("npu")
         mask = mask.float()
 
-    bts_grad = None
-    bpos_grad = None
+    timestamp_bias_grad = None
+    position_bias_grad = None
+    vbpos_grad_dens = None
+    vbts_grad_dens = None
     if enable_bias:
-        bts = bts.to("npu").float()
-        bpos = bpos.to("npu").float()
+        bias_timestamp = bias_timestamp.to("npu").float()
+        bias_position = bias_position.to("npu").float()
 
-        bts_b = bts.reshape(batch_size, 1, max_seq_len, max_seq_len)\
+        bias_timestamp_b = bias_timestamp.reshape(batch_size, 1, max_seq_len, max_seq_len)\
             .expand(batch_size, head_nums, max_seq_len, max_seq_len)
-        bpos_b = bpos.reshape(1, 1, max_seq_len, max_seq_len)\
+        bias_position_b = bias_position.reshape(1, 1, max_seq_len, max_seq_len)\
             .expand(batch_size, head_nums, max_seq_len, max_seq_len)
         if mask_type == mask_tril or mask_type == mask_custom:
-            bts_b = bts_b * mask
-            bpos_b = bpos_b * mask
+            bias_timestamp_b = bias_timestamp_b * mask
+            bias_position_b = bias_position_b * mask
 
         # b Smax n d
-        grad_pos_dens = self.jagged_to_dense(grad_pos, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
-        grad_ts_dens = self.jagged_to_dense(grad_ts, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
+        grad_bias_position_dens = self.jagged_to_dense(grad_bias_position, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
+        grad_bias_timestamp_dens = self.jagged_to_dense(grad_bias_timestamp, seq_lens, max_seq_len, head_nums, head_dim).to("npu")
 
         # b n Smax d x b n d Smax -> b n Smax Smax
-        gpos_v = torch.matmul(grad_pos_dens.permute(0, 2, 1, 3), v_dens.permute(0, 2, 3, 1))
-        gts_v = torch.matmul(grad_ts_dens.permute(0, 2, 1, 3), v_dens.permute(0, 2, 3, 1))
+        grad_bias_position_v = torch.matmul(grad_bias_position_dens.permute(0, 2, 1, 3), v_dens.permute(0, 2, 3, 1))
+        grad_bias_timestamp_v = torch.matmul(grad_bias_timestamp_dens.permute(0, 2, 1, 3), v_dens.permute(0, 2, 3, 1))
         if mask_type == mask_tril or mask_type == mask_custom:
-            gpos_v = gpos_v * mask.to(data_type)
-            gts_v = gts_v * mask.to(data_type)
-        bpos_grad = gpos_v.sum(dim=1).sum(dim=0, keepdim=True)
-        bts_grad = gts_v.sum(dim=1)
+            grad_bias_position_v = grad_bias_position_v * mask.to(data_type)
+            grad_bias_timestamp_v = grad_bias_timestamp_v * mask.to(data_type)
+        position_bias_grad = grad_bias_position_v.sum(dim=1).sum(dim=0, keepdim=True)
+        timestamp_bias_grad = grad_bias_timestamp_v.sum(dim=1)
 
         qkb = qk
 
@@ -150,7 +144,7 @@ def golden_op_exec(grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, max_seq_le
         qkb = qk
 
     real_silu_scale = 1 / max_seq_len if silu_scale == 0.0 else silu_scale
-    
+
     if mask_type == mask_tril or mask_type == mask_custom:
         score = F.silu(qkb) * real_silu_scale * mask
     else:
@@ -159,11 +153,11 @@ def golden_op_exec(grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, max_seq_le
     score = score.to(data_type)
     v_grad_dens = torch.matmul(score.permute(0, 1, 3, 2), grad_dens.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
     if enable_bias:
-        bts_m = bts_b.to(data_type)
-        bpos_m = bpos_b.to(data_type)
-        bts_gts = torch.matmul(bts_m.permute(0, 1, 3, 2), grad_ts_dens.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
-        bpos_gpos = torch.matmul(bpos_m.permute(0, 1, 3, 2), grad_pos_dens.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
-        v_grad_dens = v_grad_dens + bpos_gpos + bts_gts
+        bias_timestamp_m = bias_timestamp_b.to(data_type)
+        bias_position_m = bias_position_b.to(data_type)
+        vbts_grad_dens = torch.matmul(bias_timestamp_m.permute(0, 1, 3, 2), grad_bias_timestamp_dens.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
+        vbpos_grad_dens = torch.matmul(bias_position_m.permute(0, 1, 3, 2), grad_bias_position_dens.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
+        v_grad_dens = v_grad_dens + vbpos_grad_dens + vbts_grad_dens
 
     if mask_type == mask_tril or mask_type == mask_custom:
         bias_grad = gv * real_silu_scale * mask * F.sigmoid(qkb) * (1 + qkb * (1 - F.sigmoid(qkb)))
@@ -183,41 +177,48 @@ def golden_op_exec(grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, max_seq_le
     v_grad = self.dense_to_jagged(v, v_grad_dens, seq_lens)
 
     if enable_bias:
-        bpos_grad = bpos_grad.to(data_type)
-        bts_grad = bts_grad.to(data_type)
-        bpos_grad = bpos_grad.cpu() if bpos_grad is not None else None
-        bts_grad = bts_grad.cpu() if bts_grad is not None else None
+        position_bias_grad = position_bias_grad.to(data_type)
+        timestamp_bias_grad = timestamp_bias_grad.to(data_type)
+        position_bias_grad = position_bias_grad.cpu() if position_bias_grad is not None else None
+        timestamp_bias_grad = timestamp_bias_grad.cpu() if timestamp_bias_grad is not None else None
+        vbpos_grad_dens = vbpos_grad_dens.cpu()
+        vbpos_grad = self.dense_to_jagged(v, vbpos_grad_dens, seq_lens)
+        vbts_grad_dens = vbts_grad_dens.cpu()
+        vbts_grad = self.dense_to_jagged(v, vbts_grad_dens, seq_lens)
+    else:
+        vbpos_grad = None
+        vbts_grad = None
 
     torch.npu.synchronize()
 
-    return q_grad, k_grad, v_grad, bpos_grad, bts_grad
+    return q_grad, k_grad, v_grad, position_bias_grad, timestamp_bias_grad, vbpos_grad, vbts_grad
 ```
 
 ## 算子输入与输出
 
 | 名称 | 输入/输出 | 数据类型 | 数据格式 | 备注 |
 |----|----|----|----|----|
-| grad | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| q | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| k | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| v | 输入| float32/float16/bfloat16 | [s_b, N, D] |
+| grad | 输入| float32/float16/bfloat16 | [s_b, N, D] | 梯度 |
+| q | 输入| float32/float16/bfloat16 | [s_b, N, D] | 查询向量 |
+| k | 输入| float32/float16/bfloat16 | [s_b, N, D] | 键向量 |
+| v | 输入| float32/float16/bfloat16 | [s_b, N, D] | 值向量 |
 | mask | 可选输入 | float32/float16/bfloat16 | B,N,S,S | S为模型最大的序列长度max_seq_len |
 | bias_position | 可选输入 | float32/float16/bfloat16 | 1,S,S | S为模型最大的序列长度max_seq_len |
 | bias_timestamp | 可选输入 | float32/float16/bfloat16 | B,S,S | S为模型最大的序列长度max_seq_len |
-| grad_bias_position | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| grad_bias_timestamp | 输入| float32/float16/bfloat16 | [s_b, N, D] |
+| grad_bias_position | 输入| float32/float16/bfloat16 | [s_b, N, D] | 位置偏置梯度 |
+| grad_bias_timestamp | 输入| float32/float16/bfloat16 | [s_b, N, D] | 时间偏置梯度 |
 | layout | 属性 | string | N/A | 当前仅支持"jagged"，“jagged”代表Q,K,V数据格式为s_b,N,D格式 |
 | mask_type | 属性 | int | N/A | 0:使用内置下三角掩码 1:使用内置上三角掩码(未支持) 2:不使用mask(即使mask传值) 3:使用自定义mask(需要输入mask) |
 | max_seq_len | 属性 | int | N/A | 表示模型最大序列长度 |
 | silu_scale | 属性 | float | N/A | 支持用户传入自定义silu_scale, 不传入时默认值为1/max_seq_len|
 | seq_offsets | 可选属性 | list[int64] | N/A | 表示每个序列的偏移，其中第一个序列的偏移一定是0，此选项只对jagged格式下生效，normal格式不生效。|
-| q_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |
-| k_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |
-| v_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |
+| q_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] | 查询向量梯度 |
+| k_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] | 键向量梯度 |
+| v_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] | 值向量梯度 |
 | position_bias_grad | 输出 | float32/float16/bfloat16 | 1,S,S | S为变长序列中最大的序列长度 |
 | timestamp_bias_grad | 输出 | float32/float16/bfloat16 | B,S,S | S为变长序列中最大的序列长度 |
-| vbpos_grad | 输出 | float32/float16/bfloat16 | [s_b, N, N] | S为变长序列中最大的序列长度 |
-| vbts_grad | 输出 | float32/float16/bfloat16 | [s_b, N, N] | S为变长序列中最大的序列长度 |
+| vbpos_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] | 值向量的位置偏置梯度 |
+| vbts_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] | 值向量的时间偏置梯度 |
 
 参数范围说明：
 
@@ -235,13 +236,9 @@ max_seq_len = 512
 batch_size = 2
 seq_lens = np.random.randint(1, max_seq_len + 1, (batch_size)).astype(np.int64)
 
-seq_offset = torch.concat((torch.zeros((1, ), dtype=torch.int64), \
+seq_offsets = torch.concat((torch.zeros((1, ), dtype=torch.int64), \
         torch.cumsum(torch.from_numpy(seq_lens), axis=0))).to(torch.int64).numpy()
 ```
-
-## 算子约束
-
-* 支持的CANN版本：8.2.RC1.alpha001及之后版本；
 
 # 算子编译部署
 
