@@ -13,7 +13,7 @@
         "torchrun",
         "--master_addr=localhost",
         "--master_port=6100",
-        "--nproc_per_node=1",
+        "--nproc_per_node=8",
         "dlrm_s_pytorch.py",
         "--arch-sparse-feature-size", "16",
         "--arch-mlp-bot", "13-512-256-64-16",
