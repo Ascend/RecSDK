@@ -2,8 +2,9 @@
 
 ## 说明
 
-本项目是基于开源项目TorchRec的1.2.0版本与recsys-examples开发的Dynamic Emb,（参考网站：<https://github.com/pytorch/torchrec> 与 <https://github.com/NVIDIA/recsys-examples> ）为助力开发者快速应用TorchRec框架并适配到NPU进行模型训练和推理,
-版本要求 Python >= 3.11, torchrec==1.2.0+npu。
+本项目是基于开源项目TorchRec的1.2.0版本与recsys-examples开发的Dynamic Emb，（参考网站：<https://github.com/pytorch/torchrec> 与 <https://github.com/NVIDIA/recsys-examples> ）为助力开发者快速应用TorchRec框架并适配到NPU进行模型训练和推理。
+
+版本要求 Python >= 3.11，torchrec==1.2.0+npu。
 
 1.环境准备
 
@@ -15,7 +16,7 @@
 获取地址：<https://gitcode.com/Ascend/RecSDK/releases>
 
 ```shell
-# 如果已经安装,请先卸载
+# 如果已经安装，请先卸载
 pip3 uninstall -y dynamic_emb
 # 安装dynamic_emb
 tar -zxvf Ascend-mindxsdk-dynamic-emb-*.tar.gz

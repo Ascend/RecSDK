@@ -123,7 +123,7 @@ with tf.compat.v1.Session(config=session_config) as sess:
 print(result)
 ```
 
-1. 需要在循环运行推理，然后在模型开始推理一小段时间后，自行获取运行程序的pid，比如本次为9527，则运行如下命令动态采集命令采集数据
+1. 需要在循环运行推理，然后在模型开始推理一小段时间后，自行获取运行程序的pid，比如本次为9527，则运行如下命令动态采集数据：
 
     ```bash
     msprof --dynamic=on --pid=9527 --output=/home/projects/output --model-execution=on --runtime-api=on --aicpu=on
@@ -136,7 +136,7 @@ print(result)
     > quit
     ```
 
-    其中start命令之后，为动态采集的时间窗，到输入stop命令时结束采集；
+    其中start命令之后，为动态采集的时间窗，到输入stop命令时结束采集。
 
 2. 采集出数据后，还需要手动解析，进入到上一步采集的目录（一般是一个带有时间戳的目录），使用以下命令解析数据
 
@@ -158,7 +158,7 @@ print(result)
 
 常用配置为DUMP\_GE\_GRAPH=2、DUMP\_GRAPH\_LEVEL=2。
 
-在dump图文件夹下，会生成若干张pbtxt/pb，其均为在图优化过程中各个阶段执行完后，按顺序生成。例如ge\_onnx\_00000101\_graph\_0\_Build.pbtxt中00000101为这个序号，后面的graph\_0的0代表rank id，在推荐推理场景恒为0。这里的build图对应的就是执行阶段的图，在需要通过profiling与该图对应的网络结构，分析优化空间。
+在dump图文件夹下，会生成若干张pbtxt/pb，其均为在图优化过程中各个阶段执行完后，按顺序生成。例如ge\_onnx\_00000101\_graph\_0\_Build.pbtxt中00000101为这个序号，后面的graph\_0的0代表rank id，在推荐推理场景恒为0。这里的build图对应的就是执行阶段的图，需通过profiling与该图对应的网络结构，分析优化空间。
 
 [msIT工具](https://gitcode.com/Ascend/msit/blob/master/msit/docs/graph/README.md)：dump出GE图，再用工具的msit graph功能，扫描重复结构，重复出现次数多，且占比较大的子结构，可以考虑手写融合pass和融合算子进行优化，其中也有子图抽取功能，比如图太大打不开的场景，可以抽取某块子图打开来分析，推荐使用第三方网络可视化工具：[netron.app](https://netron.app/)。
 

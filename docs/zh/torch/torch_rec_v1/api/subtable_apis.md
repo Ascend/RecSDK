@@ -443,11 +443,11 @@ def collective_plan(
 
 **参数说明**
 
-|参数名|类型| 可选/必选 | 说明                                                  |
-|--|--|-------|-----------------------------------------------------|
-|module|torch.nn.Module| 可选    | 当使用NPU设备时必须传入包含HashEmbeddingBagCollection的module列表。 |
-|sharders|List[ModuleSharder[torch.nn.Module]]| 可选    | Sharder的列表。使用NPU时仅支持传入get_default_hybrid_sharders()返回值/List[EmbCacheEmbeddingCollectionSharder]/List[EmbCacheEmbeddingBagCollectionSharder]。   |
-|pg|torch.distributed.ProcessGroup| 可选    | 当使用NPU设备时传入dist.GroupMember.WORLD。                           |
+| 参数名   | 类型                                 | 可选/必选 | 说明                                                                                                                                                                                                                                                                                             |
+| -------- | ------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| module   | torch.nn.Module                      | 可选      | 当使用NPU设备时必须传入包含[HashEmbeddingBagCollection](table_creation_apis.md#hashembeddingbagcollection)/[EmbCacheEmbeddingCollection](./table_creation_apis.md#embcacheembeddingcollection)/[EmbCacheEmbeddingBagCollection](./table_creation_apis.md#embcacheembeddingbagcollection)实例的模型。 |
+| sharders | List[ModuleSharder[torch.nn.Module]] | 可选      | 分表器列表。使用NPU时仅支持传入get_default_hybrid_sharders()返回值/List[EmbCacheEmbeddingCollectionSharder]/List[EmbCacheEmbeddingBagCollectionSharder]。<br>Sharder类型与module中Collection类型一一对应。                                                                                       |
+| pg       | torch.distributed.ProcessGroup       | 可选      | 当使用NPU设备时传入dist.GroupMember.WORLD。                                                                                                                                                                                                                                                      |
 
 **使用示例**
 
@@ -521,7 +521,7 @@ class DistributedModelParallel(nn.Module, FusedOptimizerModule):
 
 | 参数名                | 类型                                     | 可选/必选 | 说明                                                                                                                                                                                                                                                                                            |
 | --------------------- | ---------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| module                | nn.Module                                | 必选      | 需要并行的模型。包含[HashEmbeddingBagCollection](table_creation_apis.md#hashembeddingbagcollection)/[EmbCacheEmbeddingCollection](./table_creation_apis.md#embcacheembeddingcollection)/[EmbCacheEmbeddingBagCollection](./table_creation_apis.md#embcacheembeddingbagcollection)的module列表。 |
+| module                | nn.Module                                | 必选      | 需要分布式并行训练的模型。需传入包含[HashEmbeddingBagCollection](table_creation_apis.md#hashembeddingbagcollection)/[EmbCacheEmbeddingCollection](./table_creation_apis.md#embcacheembeddingcollection)/[EmbCacheEmbeddingBagCollection](./table_creation_apis.md#embcacheembeddingbagcollection)实例的模型。 |
 | env                   | ShardingEnv                              | 可选      | device为torch.device("npu")时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                                                                             |
 | device                | torch.device                             | 可选      | 设备。使用NPU时取值为torch.device("npu")，即npu设备，默认为torch.device("cpu")                                                                                                                                                                                                                  |
 | plan                  | ShardingPlan                             | 可选      | 分表计划。用户需保证传入的必须是EmbeddingShardingPlanner.collective_plan返回的结果。                                                                                                                                                                                                            |

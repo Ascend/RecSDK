@@ -55,7 +55,7 @@ Rec SDK Torch基于TorchRec、推荐场景主流框架、CANN和各种硬件和�
 |推荐功能层|核心功能实现层，满足用户的使用要求。|
 |推荐加速层|性能竞争力核心组件，为整机系统提供更优性能。|
 |推荐存储层|支持稀疏表的分布式存储。|
-|Torchrec-npu|开源TorchRec的昇腾适配层。|
+|TorchRec-npu|开源TorchRec的昇腾适配层。|
 
 ## 支持的硬件和操作系统<a name="ZH-CN_TOPIC_0000002336268741"></a>
 
