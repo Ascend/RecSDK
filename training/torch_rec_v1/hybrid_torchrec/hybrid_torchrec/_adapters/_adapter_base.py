@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 from torchrec.distributed.embedding_sharding import KJTListSplitsAwaitable
 from torchrec.distributed.embedding_types import EmbeddingComputeKernel
+from torchrec.modules.embedding_modules import EmbeddingCollectionInterface
 from torchrec.distributed.types import Awaitable
 from torchrec.modules.embedding_configs import EmbeddingTableConfig
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
@@ -51,9 +52,16 @@ class TorchRecVersionAdapter(ABC):
         fused_params: Optional[Dict],
     ) -> Dict:
         """torchrec 1.1.0: 调用模块级函数"""
-        from torchrec.distributed.embeddingbag import create_sharding_infos_by_sharding
+        if isinstance(module, EmbeddingCollectionInterface):
+            # embedding collection case
+            from torchrec.distributed.embedding import create_sharding_infos_by_sharding
 
-        return create_sharding_infos_by_sharding(module, table_name_to_parameter_sharding, prefix, fused_params)
+            return create_sharding_infos_by_sharding(module, table_name_to_parameter_sharding, fused_params)
+        else:
+            # embedding bag collection case
+            from torchrec.distributed.embeddingbag import create_sharding_infos_by_sharding
+
+            return create_sharding_infos_by_sharding(module, table_name_to_parameter_sharding, prefix, fused_params)
 
     def build_args_kwargs(self, batch: Any, forward_args: Any) -> Tuple:
         """torchrec 1.1.0/1.2.0: 模块级函数"""
@@ -68,6 +76,11 @@ class TorchRecVersionAdapter(ABC):
     def get_virtual_table_feature_num_buckets(self, instance: Any) -> Tuple[Optional[List[int]], bool]:
         """torchrec 1.1.0/1.2.0: 不支持，返回默认值"""
         return (None, False)
+
+    def check_embedding_config_new_item(self, config):
+        """EmbeddingConfig EmbeddingBagConfig 字段值检查"""
+        # 基础检字段检查在框架中包含，此处基类直接不做处理
+        pass
 
     # ═══════════════════════════════════════════════════════════════
     # 兼容性工具方法（兼容所有版本的参数/枚举）

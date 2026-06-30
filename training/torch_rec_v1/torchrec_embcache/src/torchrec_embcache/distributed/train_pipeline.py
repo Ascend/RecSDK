@@ -237,6 +237,14 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         custom_model_zero_grad: Optional[Callable] = None,
         custom_model_bwd: Optional[Callable] = None,
     ) -> None:
+        # Initialize attributes to avoid pylint W0201
+        self._pipelined_modules = None
+        self._model = None
+        self._original_forwards = None
+        self._pipelined_postprocs = None
+        self._original_kjt_dist_forwards = None
+        self._model_attached = False
+        self._next_index = 0
         super().__init__(
             model=model,
             optimizer=optimizer,
@@ -278,15 +286,6 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         self._zero_grad = self._optimizer.zero_grad if custom_model_zero_grad is None else custom_model_zero_grad
         self._custom_model_bwd = custom_model_bwd
         self._need_record_batch_keys = False
-
-        # Initialize attributes to avoid pylint W0201
-        self._pipelined_modules = None
-        self._model = None
-        self._original_forwards = None
-        self._pipelined_postprocs = None
-        self._original_kjt_dist_forwards = None
-        self._model_attached = False
-        self._next_index = 0
 
     def _init_pipelined_modules(
         self,

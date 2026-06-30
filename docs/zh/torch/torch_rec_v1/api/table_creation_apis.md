@@ -22,6 +22,11 @@ class HashEmbeddingBagConfig(EmbeddingBagConfig):
     init_fn: Optional[Callable[[torch.Tensor], Optional[torch.Tensor]]] = None
     need_pos: bool = False
     pooling: PoolingType = PoolingType.SUM
+    input_dim: Optional[int] = None
+    total_num_buckets: Optional[int] = None
+    use_virtual_table: bool = False
+    virtual_table_eviction_policy: Optional[VirtualTableEvictionPolicy] = None
+    enable_embedding_update: bool = False
 ```
 
 **参数说明<a name="section1643017411155"></a>**
@@ -39,6 +44,11 @@ class HashEmbeddingBagConfig(EmbeddingBagConfig):
 | init_fn                     | Callable                                    | 可选    | 支持传入torch.nn.Parameter类型参数的函数。用户需自行保证该函数的正确性。默认值为None。                                            |
 | need_pos                    | bool                                        | 可选    | 仅支持默认值为False，不支持用户自定义。                                                                    |
 | pooling                     | torchrec.PoolingType | 可选    | pooling操作的类型。取值范围：<ul><li>SUM：求和。</li><li>MEAN：取平均。</li><li>NONE：不做pooling操作。</li></ul> 默认为SUM。 |
+| input_dim                   | int                                         | 可选    | 输入维度。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.2.0和v1.5.0版本。                                                  |
+| total_num_buckets           | int                                         | 可选    | 全局桶数量，在模型生命周期内保持不变。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.5.0版本。                                                  |
+| use_virtual_table           | bool                                        | 可选    | 是否使用虚拟表。当使用NPU设备时仅支持默认值为False，不支持用户自定义。仅支持TorchRec v1.5.0版本。                                                  |
+| virtual_table_eviction_policy | torchrec.modules.embedding_configs.VirtualTableEvictionPolicy | 可选    | 虚拟表淘汰策略。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.5.0版本。                                                  |
+| enable_embedding_update     | bool                                        | 可选    | 是否启用Embedding更新。当使用NPU设备时仅支持默认值为False，不支持用户自定义。仅支持TorchRec v1.5.0版本。                                                  |
 
 **返回值说明**
 
@@ -166,6 +176,11 @@ class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
     init_fn: Optional[Callable[[torch.Tensor], Optional[torch.Tensor]]] = None
     need_pos: bool = False
     pooling: PoolingType = PoolingType.SUM
+    input_dim: Optional[int] = None
+    total_num_buckets: Optional[int] = None
+    use_virtual_table: bool = False
+    virtual_table_eviction_policy: Optional[VirtualTableEvictionPolicy] = None
+    enable_embedding_update: bool = False
     weight_init_mean: Optional[float] = 0.0
     weight_init_stddev: Optional[float] = 0.05
     initializer_type: InitializerType = field(default=InitializerType.LINEAR)
@@ -190,6 +205,11 @@ class EmbCacheEmbeddingBagConfig(EmbeddingBagConfig):
 | init_fn                     | Callable                                    | 可选    | 支持传入torch.nn.Parameter类型参数的函数。用户需自行保证该函数的正确性。默认值为None。**当前配置类用于多级缓存EBC模式，Embedding初始化需通过`initializer_type`参数设置，`init_fn`参数不生效**。                    |
 | need_pos                    | bool                                        | 可选    | 仅支持默认值为False，不支持用户自定义。                                            |
 | pooling                     | torchrec.PoolingType | 可选    | pooling操作的类型。取值范围：<ul><li>SUM：求和。</li><li>MEAN：取平均。</li></ul>默认为SUM。 |
+| input_dim                   | int                                         | 可选    | 输入维度。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.2.0和v1.5.0版本。                                                  |
+| total_num_buckets           | int                                         | 可选    | 全局桶数量，在模型生命周期内保持不变。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.5.0版本。                                                  |
+| use_virtual_table           | bool                                        | 可选    | 是否使用虚拟表。当使用NPU设备时仅支持默认值为False，不支持用户自定义。仅支持TorchRec v1.5.0版本。                                                  |
+| virtual_table_eviction_policy | torchrec.modules.embedding_configs.VirtualTableEvictionPolicy | 可选    | 虚拟表淘汰策略。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.5.0版本。                                                  |
+| enable_embedding_update     | bool                                        | 可选    | 是否启用Embedding更新。当使用NPU设备时仅支持默认值为False，不支持用户自定义。仅支持TorchRec v1.5.0版本。                                                  |
 | weight_init_mean            | float                                       | 可选    | 权重初始化均值，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.0。                                    |
 | weight_init_stddev          | float                                       | 可选    | 权重初始化标准差，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.05。                                  |
 | initializer_type            | InitializerType                             | 可选    | 权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。详细说明请参见[InitializerType](multilevel_cache_management_apis.md#initializertype)。<br>各取值类型说明：<br>InitializerType.LINEAR：配合weight_init_min、weight_init_max参数，进行Embedding的线性初始化。<br>InitializerType.TRUNCATED_NORMAL：配合weight_init_min、weight_init_max、weight_init_mean、weight_init_stddev参数，进行Embedding的截断正态分布初始化。<br>InitializerType.UNIFORM：配合weight_init_min、weight_init_max参数，进行Embedding的均匀分布初始化。              |
@@ -312,6 +332,11 @@ class EmbCacheEmbeddingConfig(EmbeddingConfig):
     num_embeddings_post_pruning: Optional[int] = None
     init_fn: Optional[Callable[[torch.Tensor], Optional[torch.Tensor]]] = None
     need_pos: bool = False
+    input_dim: Optional[int] = None
+    total_num_buckets: Optional[int] = None
+    use_virtual_table: bool = False
+    virtual_table_eviction_policy: Optional[VirtualTableEvictionPolicy] = None
+    enable_embedding_update: bool = False
     weight_init_mean: Optional[float] = 0.0
     weight_init_stddev: Optional[float] = 0.05
     initializer_type: InitializerType = field(default=InitializerType.LINEAR)
@@ -335,6 +360,11 @@ class EmbCacheEmbeddingConfig(EmbeddingConfig):
 |num_embeddings_post_pruning|int|可选|仅支持默认值为None，不支持用户自定义。|
 |init_fn|Callable|可选|支持传入torch.nn.Parameter类型参数的函数。默认值为None。**当前配置类用于多级缓存EC模式，Embedding初始化需通过`initializer_type`参数设置，`init_fn`参数不生效。**|
 |need_pos|bool|可选|仅支持默认值为False，不支持用户自定义。|
+|input_dim|int|可选|输入维度。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.2.0和v1.5.0版本。|
+|total_num_buckets|int|可选|全局桶数量，在模型生命周期内保持不变。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.5.0版本。|
+|use_virtual_table|bool|可选|是否使用虚拟表。当使用NPU设备时仅支持默认值为False，不支持用户自定义。仅支持TorchRec v1.5.0版本。|
+|virtual_table_eviction_policy|torchrec.modules.embedding_configs.VirtualTableEvictionPolicy|可选|虚拟表淘汰策略。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.5.0版本。|
+|enable_embedding_update|bool|可选|是否启用Embedding更新。当使用NPU设备时仅支持默认值为False，不支持用户自定义。仅支持TorchRec v1.5.0版本。|
 |weight_init_mean|float|可选|权重初始化均值，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.0。|
 |weight_init_stddev|float|可选|权重初始化标准差，用于InitializerType.TRUNCATED_NORMAL初始化类型，默认值0.05。|
 |initializer_type|InitializerType|可选|权重初始化类型，支持LINEAR、TRUNCATED_NORMAL、UNIFORM，默认值LINEAR。<br>各取值类型说明：<br>InitializerType.LINEAR：配合weight_init_min、weight_init_max参数，进行Embedding的线性初始化。<br>InitializerType.TRUNCATED_NORMAL：配合weight_init_min、weight_init_max、weight_init_mean、weight_init_stddev参数，进行Embedding的截断正态分布初始化。<br>InitializerType.UNIFORM：配合weight_init_min、weight_init_max参数，进行Embedding的均匀分布初始化。|

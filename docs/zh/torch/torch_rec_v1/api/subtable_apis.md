@@ -92,6 +92,7 @@ class Topology:
         custom_topology_data: Optional[CustomTopologyData] = None,
         weighted_feature_bwd_compute_multiplier: float = WEIGHTED_FEATURE_BWD_COMPUTE_MULTIPLIER,
         uneven_sharding_perf_multiplier: float = 1.0,
+        generalized_comms_bandwidths: Optional[GeneralizedCommsBandwidth] = None,
     ) -> None:
 ```
 
@@ -113,6 +114,7 @@ class Topology:
 |custom_topology_data|torchrec.distributed.planner.types.CustomTopologyData|可选| 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                             |
 |weighted_feature_bwd_compute_multiplier|float|可选| 当使用NPU设备时仅支持默认值为1，不支持用户自定义。                                |
 |uneven_sharding_perf_multiplier|float|可选| 当使用NPU设备时仅支持默认值为1.0，不支持用户自定义。                                |
+|generalized_comms_bandwidths|torchrec.distributed.planner.types.GeneralizedCommsBandwidth|可选| 通用通信带宽配置。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.5.0版本。 |
 
 **使用示例**
 
@@ -158,6 +160,7 @@ class ParameterConstraints:
     output_dtype: Optional[DataType] = None
     device_group: Optional[str] = None
     key_value_params: Optional[KeyValueParams] = None
+    use_virtual_table: bool = False
 ```
 
 **参数说明**
@@ -179,6 +182,7 @@ class ParameterConstraints:
 |output_dtype|torchrec.modules.embedding_configs.DataType| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
 |device_group|str| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
 |key_value_params|torchrec.distributed.types.KeyValueParams| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
+|use_virtual_table|bool| 可选    | 是否对该表启用虚拟表。当使用NPU设备时仅支持默认值为False，不支持用户自定义。仅支持TorchRec v1.5.0版本。                                                                                                                                                    |
 
 **使用示例**
 
@@ -384,6 +388,8 @@ class EmbeddingShardingPlanner(ShardingPlanner):
         callbacks: Optional[
             List[Callable[[List[ShardingOption]], List[ShardingOption]]]
         ] = None,
+        timeout_seconds: Optional[int] = None,
+        plan_loader: Optional[PlanLoader] = None,
     ) -> None:
 ```
 
@@ -402,6 +408,8 @@ class EmbeddingShardingPlanner(ShardingPlanner):
 |constraints|Dict[str, ParameterConstraints]| 可选    | 参考[ParameterConstraints（TorchRec）](#parameterconstraintstorchrec)的取值范围。当使用NPU设备时参数为必选。 |
 |debug|bool| 可选    | 当使用NPU设备时仅支持默认值为True，不支持用户自定义。                                 |
 |callbacks|List[Callable]| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                 |
+|timeout_seconds|int| 可选    | 超时时间（秒）。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.2.0和v1.5.0版本。 |
+|plan_loader|torchrec.distributed.planner.types.PlanLoader| 可选    | 分表计划加载器。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.5.0版本。 |
 
 **使用示例**
 
@@ -514,6 +522,7 @@ class DistributedModelParallel(nn.Module, FusedOptimizerModule):
         init_data_parallel: bool = True,
         init_parameters: bool = True,
         data_parallel_wrapper: Optional[DataParallelWrapper] = None,
+        model_tracker_configs: Optional[ModelTrackerConfigs] = None,
     ) -> None:
 ```
 
@@ -529,6 +538,7 @@ class DistributedModelParallel(nn.Module, FusedOptimizerModule):
 | init_data_parallel    | bool                                     | 可选      | device为torch.device("npu")时仅支持默认值为True，不支持用户自定义。                                                                                                                                                                                                                             |
 | init_parameters       | bool                                     | 可选      | device为torch.device("npu")时仅支持默认值为True，不支持用户自定义。                                                                                                                                                                                                                             |
 | data_parallel_wrapper | torchrec.distributed.DataParallelWrapper | 可选      | device为torch.device("npu")时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                                                                             |
+| model_tracker_configs | torchrec.distributed.model_parallel.ModelTrackerConfigs | 可选      | 模型追踪器配置。当使用NPU设备时仅支持默认值为None，不支持用户自定义。仅支持TorchRec v1.5.0版本。                                                                                                                                                                                                |
 
 **使用示例<a id="section_distributed_model_parallel_code_sample"></a>**
 
