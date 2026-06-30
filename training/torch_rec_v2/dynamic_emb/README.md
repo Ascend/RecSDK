@@ -27,10 +27,10 @@ pip3 install dynamic_emb-*.whl
 
 **开源依赖：**
 
-- [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+- [pybind11](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
 - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
 
-执行编译命令前，将pybind11和securec的压缩包放在与RecSDK代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在RecSDK同级的目录下手动创建opensource目录，然后将pybind11和securec的压缩包放在opensource目录下。
+执行编译命令前，将pybind11（>= 2.10.3）与securec的压缩包（huaweicloud-sdk-c-obs-3.23.9.zip）置于RecSDK代码同级的opensource目录下。
 
 ```shell
 git clone --recursive https://gitcode.com/ascend/RecSDK.git

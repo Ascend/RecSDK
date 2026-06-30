@@ -7,7 +7,7 @@ pathlib2
 pandas
 grpcio
 grpcio-tools
-protobuf==3.20.0
+protobuf==3.20.3
 scipy
 requests
 mpi4py

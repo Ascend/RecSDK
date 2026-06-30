@@ -50,7 +50,7 @@ Open-source dependencies:
 - [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): Install it in the build environment according to the software documentation.
 - TensorFlow 1.15: Select the corresponding version as required.
 
-Place the compressed pybind11 and securec packages in the `opensource` directory at the same level as the RecSDK code, and rename them to `pybind11-2.10.3.zip` and `huaweicloud-sdk-c-obs-3.23.9.zip` respectively. If the `opensource` directory does not exist, create it at the same level as RecSDK, and then place the pybind11 and securec compressed packages in the `opensource` directory.
+Place the compressed packages of pybind11 (`>= 2.10.3`) and securec (`huaweicloud-sdk-c-obs-3.23.9.zip`) in the same directory as the RecSDK code under the `opensource` subdirectory.
 
 **Compilation method:**
 
@@ -109,7 +109,7 @@ To build and install the Rec SDK .whl package separately (excluding the automati
 4. Install dependencies. If you do not build an image and instead develop directly on a physical machine, you must install the following Python dependencies.
 
     ```bash
-    pip3.7 install numpy decorator sympy==1.4 cffi==1.12.3 pyyaml pathlib2 grpcio grpcio-tools protobuf==3.20.0 scipy requests mpi4py easydict scikit-learn==0.20.0 attrs toml
+    pip3.7 install numpy decorator sympy cffi pyyaml pathlib2 grpcio grpcio-tools protobuf==3.20.3 scipy requests mpi4py easydict scikit-learn attrs toml
     ```
 
     Before you install the horovod dependency, configure `HOROVOD_WITH_MPI` and `HOROVOD_WITH_TENSORFLOW`. The installation command is as follows:

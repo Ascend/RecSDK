@@ -18,7 +18,7 @@
 #   build_tf2.sh 编译Rec SDK
 # 编译环境：Python3.7.5 GCC 7.3.0 CMake 3.20.6
 # 代码主要分为两部分：
-# 1、准备编译Rec SDK所需依赖：pybind11(v2.10.3) securec
+# 1、准备编译Rec SDK所需依赖：pybind11(>= 2.10.3) securec
 # 2、编译securec、AccCTR以及Rec SDK
 ##################################################################
 
@@ -39,8 +39,11 @@ fi
 function prepare_pybind(){
   cd "${opensource_path}"
   if [ ! -d pybind11 ]; then
-    unzip pybind11-2.10.3.zip
-    mv pybind11-2.10.3 pybind11
+    rm -rf pybind11-*/
+    zip_file=$(find . -maxdepth 1 -name "pybind11-*.zip" -type f -printf "%T@ %p\n" | sort -nr \
+                  | head -n 1 | cut -d' ' -f2-)
+    unzip "${zip_file}"
+    mv pybind11-*/ pybind11
   fi
 }
 
