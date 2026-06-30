@@ -8,14 +8,15 @@
 ## 算子文件结构
 
 ```shell
+cust_op
 ├── ascendc_op
-    ├──ai_core_op   # 算子功能实现
-    ├──build        # 算子编译
+│   ├── ai_core_op   # 算子功能实现
+│   └── build        # 算子编译
 ├── framework
-    ├──torch_plugin # 算子适配层实现
-├── test            # 算子测试用例
-├── third_party     # 第三方依赖库
-    ├── catlass        # CATLASS源码目录
+│   └── torch_plugin # 算子适配层实现
+├── test             # 算子测试用例
+└── third_party      # 第三方依赖库
+    └── catlass      # CATLASS源码目录
 ```
 
 ## Ascend C参考设计
@@ -50,10 +51,10 @@ bash run.sh
 bash run.sh --ai-core ai_core-<soc_version>
 ```
 
-> AI处理器的型号<soc_version>请通过如下方式获取:
-> 
+> AI处理器的型号 soc_version 请通过如下方式获取:
+>
 > - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
-> 
+>
 > 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
 
 注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
@@ -110,17 +111,16 @@ python3 -m pytest -x your_script.py
 
 各算子实现的详细介绍见具体算子目录中readme说明。
 
-须知：自定义算子为高性能计算，用户调用自定义算子时需自行确保输入的参数满足算子约束条件、参数类型、参数shape等要求，否则可能出现数组越界，显存不够等问题导致算子执行失败。
+注意：自定义算子为高性能计算，用户调用自定义算子时需自行确保输入的参数满足算子约束条件、参数类型、参数shape等要求，否则可能出现数组越界，显存不够等问题导致算子执行失败。
 
 # FAQs
 
-## `Could NOT find Python3 (missing: Python3_INCLUDE_DIRS Python3_LIBARIES)`
+## `Could NOT find Python3 (missing: Python3_INCLUDE_DIRS Python3_LIBRARIES)`
 
-若编译时报错：`Could NOT find Python3 (missing: Python3_INCLUDE_DIRS Python3_LIBARIES)`
+若编译时报错：`Could NOT find Python3 (missing: Python3_INCLUDE_DIRS Python3_LIBRARIES)`
 
 需检查python3的软连接是否正确创建。未创建时，可参考如下命令创建：
 
 ```bash
-ln -s /usr/local/python3.11.0/bin/python3 /usr/bin/python3 
+ln -s /usr/local/python3.11.0/bin/python3 /usr/bin/python3
 ```
-

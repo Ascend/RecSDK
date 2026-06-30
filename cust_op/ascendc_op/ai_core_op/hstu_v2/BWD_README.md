@@ -70,8 +70,8 @@ HSTU (Hierarchical Sparse Transformer Unit) 算子的反向传播实现，用于
   - `q`: `(totalSeqLenQ, heads, dimQK)`
   - `k`: `(totalSeqLenK, heads, dimQK)`
   - `v`: `(totalSeqLenK, heads, dimGV)`
-  - `seqOffsetQ`: `(batchSize + 1)`
-  - `seqOffsetK`: `(batchSize + 1)`
+  - `seq_offset_q`: `(batchSize + 1)`
+  - `seq_offset_k`: `(batchSize + 1)`
   - `rab` (optional): `(batchSize, heads, maxSeqLenQ, maxSeqLenK)`
 
 - **输出**: 4 个 Tensor 的元组
@@ -85,7 +85,7 @@ HSTU (Hierarchical Sparse Transformer Unit) 算子的反向传播实现，用于
 - 仅支持 `float16/bfloat16` 数据类型
 - `heads` 必须满足: `1 ≤ heads ≤ 16`
 - `dimQK` 和 `dimGV` 必须为 16 的倍数
-- 当 `numContext` 或 `numTarget` 不为 None 时，`targetGroupSize` 必须为 `1` 或 `3`
+- 当 `num_context` 或 `num_target` 不为 None 时，`target_group_size` 必须为 `1` 或 `3`
 - `headQ` 必须等于 `headK`（当前仅支持 MHA，不支持 GQA）
 - `window_size_left` 和 `window_size_right` 必须 ≥ -1
 - 当前仅支持 `(-1, 0)`（causal mask）和 `(-1, -1)`（no mask）两种 `(window_size_left, window_size_right)` 组合

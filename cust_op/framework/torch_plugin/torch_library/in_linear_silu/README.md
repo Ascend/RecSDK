@@ -1,8 +1,8 @@
-# 使用pytorch框架调用方式调用in_linear_silu算子
+# 使用PyTorch框架调用in_linear_silu算子
 
-该样例基于Pytorch2.6.0、python3.11.0运行
+该样例基于PyTorch2.6.0、python3.11.0运行
 
-## Pytorch框架对外接口原型
+## PyTorch框架对外接口原型
 
 ### in_linear_silu 接口
 
@@ -35,7 +35,7 @@ torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_
 |  x | 输入 | Tensor | float16/bfloat16 | [m, k] | m∈[1, +∞)<br>k∈[16, 8192]且是16的倍数 | 输入张量，不可为空 |
 |  weight | 输入 | Tensor | float16/bfloat16 | [n, k] | n∈[64, 32768]且是16的倍数<br>n必须是4*k的倍数 | 权重张量，不可为空 |
 |  bias | 输入 | Tensor | float32 | [n] | n∈[64, 32768]且是16的倍数 | 偏置张量，不可为空 |
-|  split_arg_list | 输入(属性) | int[] | int[] | [H_u, H_v, H_q, H_k] | 每个元素∈[16, 8192]且是16的倍数<br>sum(split_arg_list)=n | 分割参数，长度为4，不可为空 |
+|  split_arg_list | 输入(属性) | int[] | int[] | [H_u, H_v, H_q, H_k] | 每个元素∈[16, 8192]且是16的倍数<br>sum(split_arg_list)=n | 分割参数，长度为4，不可为空，对应接口中的attr_dict |
 |  user_out | 输出 | Tensor | float16/bfloat16 | [m, H_u] | 同x的m<br>H_u∈[16, 8192]且是16的倍数 | 分割后的user输出张量 |
 |  value_out | 输出 | Tensor | float16/bfloat16 | [m, H_v] | 同x的m<br>H_v∈[16, 8192]且是16的倍数 | 分割后的value输出张量 |
 |  query_out | 输出 | Tensor | float16/bfloat16 | [m, H_q] | 同x的m<br>H_q∈[16, 8192]且是16的倍数 | 分割后的query输出张量 |
@@ -54,7 +54,7 @@ torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_
 |  query_grad | 输入 | Tensor | float16/bfloat16 | [m, H_q] | 同x的m<br>H_q∈[16, 8192]且是16的倍数 | query输出的梯度张量 |
 |  key_grad | 输入 | Tensor | float16/bfloat16 | [m, H_k] | 同x的m<br>H_k∈[16, 8192]且是16的倍数 | key输出的梯度张量 |
 |  linear_output | 输入 | Tensor | float16/bfloat16 | [m, n] | 同x的m<br>n∈[64, 32768]且是16的倍数 | 前向传播的中间结果张量 |
-|  split_arg_list | 输入(属性) | int[] | int[] | [H_u, H_v, H_q, H_k] | 每个元素∈[16, 8192]且是16的倍数<br>sum(split_arg_list)=n | 分割参数，长度为4，不可为空 |
+|  split_arg_list | 输入(属性) | int[] | int[] | [H_u, H_v, H_q, H_k] | 每个元素∈[16, 8192]且是16的倍数<br>sum(split_arg_list)=n | 分割参数，长度为4，不可为空，对应接口中的attr_dict |
 |  isTrans | 输入(属性) | bool | bool | - | 默认为false | 权重是否需要转置，当前版本未使用 |
 |  x_grad | 输出 | Tensor | float16/bfloat16 | [m, k] | 同x | 输入x的梯度张量 |
 |  weight_grad | 输出 | Tensor | float16/bfloat16 | [n, k] | 同weight | 权重weight的梯度张量 |
@@ -100,7 +100,7 @@ torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_
 1. **维度检查失败**: 输入张量维度不符合要求
 2. **范围检查失败**: 参数超出允许范围
 3. **倍数检查失败**: 各维度不是16的倍数
-4. **形状一致性检查失败**: 
+4. **形状一致性检查失败**:
    - weight的第2维与x的第2维不一致
    - bias的第1维与weight的第1维不一致
    - sum(split_arg_list)与weight的第1维不一致
@@ -110,11 +110,11 @@ torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_
 
 ### 算子编译与部署
 
-算子编译部署请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译部署请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-### Pytorch编译
+### PyTorch编译
 
-Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
+PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
 ### 算子调用示例,以下以pytest方式调用为例
 
@@ -133,30 +133,30 @@ torch.npu.config.allow_internal_format = False
 
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
-def generate_input(m, k, n, split_list, data_type=torch.float16, device_id=0):
+def generate_input(m, k, n, split_arg_list, data_type=torch.float16, device_id=0):
     """
     生成in_linear_silu算子的输入数据
-    
+
     参数:
     m: 序列长度
     k: 嵌入维度
     n: 输出维度
-    split_list: 分割参数列表
+    split_arg_list: 分割参数列表
     data_type: 数据类型
     device_id: NPU设备ID
-    
+
     返回:
     x, weight, bias: 输入张量
     """
     # 生成x [m, k]
     x = torch.rand((m, k), dtype=data_type).uniform_(-1, 1)
-    
+
     # 生成weight [n, k]
     weight = torch.rand((n, k), dtype=data_type).uniform_(-1, 1)
-    
+
     # 生成bias [n]
     bias = torch.rand((n,), dtype=torch.float32).uniform_(-1, 1)
-    
+
     return x.to(f"npu:{device_id}"), weight.to(f"npu:{device_id}"), bias.to(f"npu:{device_id}")
 
 def test_in_linear_silu_forward():
@@ -168,13 +168,13 @@ def test_in_linear_silu_forward():
     m = 1024  # 序列长度
     k = 128   # 嵌入维度
     n = 512   # 输出维度 (必须是4*k的倍数)
-    split_list = [128, 128, 128, 128]  # 分割参数列表
+    split_arg_list = [128, 128, 128, 128]  # 分割参数列表
     data_type = torch.float16
     # 生成输入数据
-    x, weight, bias = generate_input(m, k, n, split_list, data_type, device_id)
-    
+    x, weight, bias = generate_input(m, k, n, split_arg_list, data_type, device_id)
+
     # 调用前向传播接口
-    outputs = torch.ops.mxrec.distance_in_linear_silu(x, weight, bias, split_list)
+    outputs = torch.ops.mxrec.distance_in_linear_silu(x, weight, bias, split_arg_list)
 
 def test_in_linear_silu_autograd():
     """
@@ -185,21 +185,21 @@ def test_in_linear_silu_autograd():
     m = 1024  # 序列长度
     k = 128   # 嵌入维度
     n = 512   # 输出维度 (必须是4*k的倍数)
-    split_list = [128, 128, 128, 128]  # 分割参数列表
+    split_arg_list = [128, 128, 128, 128]  # 分割参数列表
     data_type = torch.float16
-    
+
     # 生成输入数据
-    x, weight, bias = generate_input(m, k, n, split_list, data_type, device_id)
-    
+    x, weight, bias = generate_input(m, k, n, split_arg_list, data_type, device_id)
+
     # 设置需要计算梯度
     x.requires_grad = True
     weight.requires_grad = True
     bias.requires_grad = True
-    
+
     # 调用自动微分接口
-    outputs = torch.ops.mxrec.in_linear_silu(x, weight, bias, split_list)
+    outputs = torch.ops.mxrec.in_linear_silu(x, weight, bias, split_arg_list)
     user_out, value_out, query_out, key_out, linear_output_out = outputs
-    
+
     # 计算损失并反向传播
     loss = user_out.sum() + value_out.sum() + query_out.sum() + key_out.sum()
     loss.backward()

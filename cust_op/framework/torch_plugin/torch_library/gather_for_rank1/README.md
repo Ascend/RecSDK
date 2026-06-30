@@ -71,20 +71,22 @@ import torch_npu
 DEVICE = "npu:7"
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
-grad_input = torch.randn(128*211*211, dtype=torch.float32, device=DEVICE)
+grad_y = torch.randn(128*211*211, dtype=torch.float32, device=DEVICE)
 x = torch.empty(129, device=DEVICE)
 index = torch.randint(129, size=(128*211*211,), dtype=torch.int64, device=DEVICE)
 
-grad_x, _ = torch.ops.mxrec.index_select_for_rank1_backward(grad_input, x, index)
+grad_x, _ = torch.ops.mxrec.index_select_for_rank1_backward(grad_y, x, index)
 ```
 
 ## 编译与部署
 
-算子编译与部署请参考 [RecSDK\cust_op\README.md](../../../../README.md) 中 "单算子使用说明" 章节：
+算子编译与部署请参考 [RecSDK/cust_op/README.md](../../../../README.md) 中 "单算子使用说明" 章节：
+
 - [算子编译](../../../../README.md#算子编译)
 - [算子适配层编译](../../../../README.md#算子适配层编译)
 
-> **提示**  
-> 以上示例仅展示基本用法，如需更全面的精度测试与边界用例，请参考完整测试文件：  
+> **提示** \
+> 以上示例仅展示基本用法，如需更全面的精度测试与边界用例，请参考完整测试文件
+>
 > - [`RecSDK/cust_op/test/gather_for_rank1_test/torch/test_gather_for_rank1.py`](../../../../test/gather_for_rank1_test/torch/test_gather_for_rank1.py)
 > - [`RecSDK/cust_op/test/gather_for_rank1_test/torch/test_index_select_for_rank1_backward.py`](../../../../test/gather_for_rank1_test/torch/test_index_select_for_rank1_backward.py)

@@ -12,13 +12,13 @@
 # split_embedding_codegen_forward_unweighted算子目录层级
 
 ```shell
--- split_embedding_codegen_forward_unweighted
-   |-- v220
-      |-- op_host                                            # 算子host侧实现
-      |-- op_kernel                                          # 算子kernel侧实现
-      |-- split_embedding_codegen_forward_unweighted.json    # 算子原型配置
-      |-- README.md                                          # 算子说明文档
-      |-- run.sh                                             # 算子编译部署脚本
+split_embedding_codegen_forward_unweighted
+└── v220
+    ├── op_host                                            # 算子host侧实现
+    ├── op_kernel                                          # 算子kernel侧实现
+    ├── split_embedding_codegen_forward_unweighted.json    # 算子原型配置
+    ├── README.md                                          # 算子说明文档
+    └── run.sh                                             # 算子编译部署脚本
 ```
 
 # 功能

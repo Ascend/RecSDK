@@ -1,14 +1,15 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用
 
 # 产品支持情况
+
 | 硬件型号             | 是否支持 |
 | -------------------- | -------- |
 | Atlas A2训练系列产品 | 是       |
 | Atlas 推理系列产品   | 是       |
 
-## multislice_concat算子目录层级
+# multislice_concat算子目录层级
 
 ```shell
 -- multislice_concat
@@ -21,11 +22,13 @@
 ```
 
 # 功能
+
 对输入的二维Tensor在第二个维度按指定位置和长度切片，输出若干个由若干切片组成的Tensor
 
 # 算子实现原理
 
 ## 算子计算逻辑
+
 ```python
 def multislice_concat(input_data, concat_size, slice_begin, slice_length, concat_num):
     offset = 0
@@ -45,7 +48,7 @@ def multislice_concat(input_data, concat_size, slice_begin, slice_length, concat
         result_matrices.append(new_matrix)
 
         offset += curr_concat_size
-    
+
     return result_matrices
 ```
 
@@ -74,6 +77,6 @@ def multislice_concat(input_data, concat_size, slice_begin, slice_length, concat
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/multislice_concat/README.md)

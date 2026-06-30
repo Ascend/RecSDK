@@ -187,7 +187,7 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 注：详细算子调用示例参考Pytorch框架下[README.md](../../../framework/torch_plugin/torch_library/hstu/README.md)
 
@@ -233,7 +233,7 @@ output = torch.ops.mxrec.hstu_jagged(
     k=k,
     v=v,
     mask=None,
-    bias=None,
+    attn_bias=None,
     mask_type=0,  # 下三角mask
     max_seq_len=256,
     max_seq_len_k=256,
@@ -252,38 +252,48 @@ print(output.shape)  # torch.Size([512, 8, 64])
 2. **头数约束**：`N_k = N_v`（K和V的头数必须相同）
 3. **头数范围**：`N_k >= 1, N_q >= N_k`（K/V头数至少为1，Q头数不小于K/V头数）
 
-# qk与vdim不等支持说明
+# qk与v的dim不等支持说明
 
-## qk与vdim不等概述
+## qk与v的dim不等概述
 
 算子支持qk与v的dim不等的输入，算子输出dim与v_dim保持一致
 
 ## dim不等使用示例
 
 ```python
-#约束
-head_dim_q== head_dim_k  #要求Q的dim维度与K的dim维度必须相等
+import torch
+import torch_npu
 
-# q = [b,s_q, n_q, d_q]
-q = torch.rand(batch,total_seqs_q, head_num_q, head_dim_qk).to(float_type)
-# k = [b,s_k, n_k, d_k]
-k = torch.rand(batch,total_seqs_k, head_num_k, head_dim_qk).to(float_type)
-# v= [b,s_k, n_k, d_v]
-v = torch.rand(batch,total_seqs_k, head_num_k, head_dim_v).to(float_type)
-qk_attn = torch.einsum(
-    "bnhd,bmhd->bhnm",
-    q,
-    k,
+# dim配置：qk键的dim为64，v键的dim为128
+batch_size = 2
+seq_len = 256
+num_heads = 8
+head_dim_qk = 64
+head_dim_v = 128
+
+# 生成数据
+q = torch.randn(batch_size * seq_len, num_heads, head_dim_qk , dtype=torch.float16).npu()
+k = torch.randn(batch_size * seq_len, num_heads, head_dim_qk, dtype=torch.float16).npu()  # q dim == k dim
+v = torch.randn(batch_size * seq_len, num_heads, head_dim_v, dtype=torch.float16).npu()
+
+# 调用算子（jagged格式）
+seq_offsets_q = torch.tensor([0, 128, 256], dtype=torch.int64).npu()
+seq_offsets_k = torch.tensor([0, 128, 256], dtype=torch.int64).npu()
+
+output = torch.ops.mxrec.hstu_jagged(
+    q=q,
+    k=k,
+    v=v,
+    mask=None,
+    attn_bias=None,
+    mask_type=0,  # 下三角mask
+    max_seq_len=256,
+    max_seq_len_k=256,
+    silu_scale=1.0/256,
+    seq_offset=seq_offsets_q,
+    seq_offset_k=seq_offsets_k
 )
-qk_attn = qk_attn + rel_attn_bias
 
-qk_attn = F.silu(qk_attn) / n
-qk_attn = qk_attn * invalid_attn_mask.unsqueeze(0).unsqueeze(0)
-
-# attn_output = [b,s_q, n_q, d_v]
-attn_output = torch.einsum(
-    "bhnm,bmhd->bnhd",
-    qk_attn,
-    v
-).reshape(B, s_q, num_heads_q * linear_dim_v)
+# 输出形状：[batch_size * seq_len, num_heads, head_dim_v]
+print(output.shape)  # torch.Size([512, 8, 128])
 ```

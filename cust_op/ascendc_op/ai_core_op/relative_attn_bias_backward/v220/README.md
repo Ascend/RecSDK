@@ -1,7 +1,9 @@
 # 说明
+
 本算子仅支持NPU调用
 
 # 产品支持情况
+
 | 硬件型号           | 是否支持 |
 |----------------|------|
 | Atlas A2训练系列产品 | 是    |
@@ -10,14 +12,14 @@
 # relative_attn_bias_backward算子目录层级
 
 ```shell
--- relative_attn_bias_backward
-   |-- v220
-      |-- op_host                 # 算子host侧实现
-      |-- op_kernel               # 算子kernel侧实现
-      |-- rab_time_bwd.png        # 算子实现原理图
-      |-- relative_attn_bias_backward.json    # 算子原型配置
-      |-- README.md               # 算子说明文档
-      |-- run.sh                  # 算子编译部署脚本
+relative_attn_bias_backward
+└── v220
+    ├── op_host                      # 算子host侧实现
+    ├── op_kernel                    # 算子kernel侧实现
+    ├── rab_time_bwd.png             # 算子实现原理图
+    ├── relative_attn_bias_backward.json # 算子原型配置
+    ├── README.md                    # 算子说明文档
+    └── run.sh                       # 算子编译部署脚本
 ```
 
 # 功能
@@ -56,6 +58,6 @@ def rab_time_backward(timestamps_weights_grad: torch.Tensor,
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/dense_to_jagged/README.md)

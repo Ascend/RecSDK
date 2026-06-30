@@ -19,11 +19,13 @@ torch.ops.mxrec.offsets_range(offsets, range_size) -> Tensor
 | result | 输出 | int32/int64 | [range_size] | 一维，长度为 `range_size` | 每个分段内的局部下标，dtype 与 `offsets` 一致 |
 
 约束说明：
+
 - `offsets` 必须为 1D 且非空。
 - `offsets` 必须满足非递减、`offsets[0] = 0`、`offsets[-1] <= range_size`。
 - 允许空分段（即 `offsets[i] == offsets[i+1]`）。
 
 算子逻辑：
+
 - 第 `i` 段区间定义为 `[offsets[i], offsets[i+1])`，最后一段为 `[offsets[-1], range_size)`。
 - 在每段内填充 `0, 1, 2, ...`。
 
@@ -37,7 +39,7 @@ result = [0, 1, 0, 1, 2, 0, 1]
 
 ### 编译与部署
 
-算子编译与部署请参考 [RecSDK\cust_op\README.md](../../../../README.md) 中 "单算子使用说明" 章节。
+算子编译与部署请参考 [RecSDK/cust_op/README.md](../../../../README.md) 中 "单算子使用说明" 章节。
 
 ### 算子调用示例
 
@@ -62,7 +64,8 @@ result = torch.ops.mxrec.offsets_range(offsets, range_size)
 print(result.cpu())  # tensor([0, 1, 0, 1, 2, 0, 1], dtype=torch.int32)
 ```
 
-> **提示**
+> **提示** \
 > 上述用例为通用场景执行，更详细精度、多场景测试用例请参考：
+>
 > - [`RecSDK/cust_op/test/offsets_range_test/torch/test_offsets_range.py`](../../../../test/offsets_range_test/torch/test_offsets_range.py)
 > - [`RecSDK/cust_op/test/offsets_range_test/torch/special_test_offsets_range.py`](../../../../test/offsets_range_test/torch/special_test_offsets_range.py)

@@ -11,13 +11,13 @@
 # select_dim1_to_permute算子目录层级
 
 ```shell
--- select_dim1_to_permute
-   |-- c310
-      |-- op_host                 # 算子host侧实现
-      |-- op_kernel               # 算子kernel侧实现
-      |-- select_dim1_to_permute.json   # 算子原型配置
-      |-- README.md               # 算子说明文档
-      |-- run.sh                  # 算子编译部署脚本
+select_dim1_to_permute
+└── c310
+    ├── op_host                       # 算子host侧实现
+    ├── op_kernel                     # 算子kernel侧实现
+    ├── select_dim1_to_permute.json   # 算子原型配置
+    ├── README.md                     # 算子说明文档
+    └── run.sh                        # 算子编译部署脚本
 ```
 
 # 功能

@@ -68,11 +68,11 @@ HSTU (Hierarchical Sparse Transformer Unit) 算子的前向传播实现，用于
   - `v`: `(totalSeqLenK, heads, dimGV)`
   - `mask` (optional): `(batchSize, heads, maxSeqLenQ, maxSeqLenK)`
   - `rab` (optional): `(batchSize, heads, maxSeqLenQ, maxSeqLenK)`
-  - `seqOffset`: `(batchSize + 1)`
-  - `seqOffsetK` (optional): `(batchSize + 1)`
+  - `seq_offset`: `(batchSize + 1)`
+  - `seq_offset_k` (optional): `(batchSize + 1)`
 
 - **输出**: 1 个 Tensor
-  - `attnOutput`: `(totalSeqLenQ, heads, dimGV)`，dtype: `float16, bfloat16`
+  - `attn_output`: `(totalSeqLenQ, heads, dimGV)`，dtype: `float16, bfloat16`
 
 ## 约束条件
 
@@ -80,7 +80,7 @@ HSTU (Hierarchical Sparse Transformer Unit) 算子的前向传播实现，用于
 - `heads` 必须满足: `1 ≤ heads ≤ 16`
 - `dimQK` 和 `dimGV` 必须为 16 的倍数且 `16 ≤ dimQK, dimGV ≤ 256`
 - 当前仅支持 MHA（`headQ` 必须等于 `headK`），不支持 GQA
-- 当 `numContext` 或 `numTarget` 不为 None 时，`targetGroupSize` 必须为 `1` 或 `3`
+- 当 `num_context` 或 `num_target` 不为 None 时，`target_group_size` 必须为 `1` 或 `3`
 - 仅支持 Jagged 格式输入（3D 张量: `[totalSeqLen, heads, dim]`）
 
 ## 使用示例
@@ -127,7 +127,7 @@ torch.Size([200, 4, 64])
 
 *Tensor* – 注意力输出张量:
 
-- **attnOutput** (*Tensor*) – 注意力输出，形状: `(totalSeqLenQ, heads, dimGV)`
+- **attn_output** (*Tensor*) – 注意力输出，形状: `(totalSeqLenQ, heads, dimGV)`
 
 ## 算子原理
 

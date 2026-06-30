@@ -13,25 +13,25 @@
 # concat_jagged_tensor算子目录层级
 
 ```shell
--- concat_jagged_tensor
-   |-- v220
-      |-- op_host                 # 算子host侧实现
-      |-- op_kernel               # 算子kernel侧实现
-      |-- concat_jagged_tensor.json    # 算子原型配置
-      |-- README.md               # 算子说明文档
-      |-- run.sh                  # 算子编译部署脚本
+concat_jagged_tensor
+└── v220
+    ├── op_host                       # 算子host侧实现
+    ├── op_kernel                     # 算子kernel侧实现
+    ├── concat_jagged_tensor.json     # 算子原型配置
+    ├── README.md                     # 算子说明文档
+    └── run.sh                        # 算子编译部署脚本
 ```
 
 # 功能
 
-将两个jagged Tensor按照offset在dim1维度上进行拼接，合并成一个tensor。
+将两个jagged Tensor按照offset在dim0维度上进行拼接，合并成一个tensor。
 
 # 算子实现原理
 
 输入:
 
 ```python
-# 第一个tensor
+# 输入的两个tensor
 values = [tensor([[1,1,1,1,1,1,1,1],
                   [2,2,2,2,2,2,2,2],
                   [3,3,3,3,3,3,3,3]
@@ -67,15 +67,14 @@ result = tensor([[1,1,1,1,1,1,1,1],
 | 名称               | 输入/输出  | 参数类型   | 数据类型                           | 数据格式                   | 范围                                                   | 说明              |
 |------------------|--------|--------|--------------------------------|------------------------|------------------------------------------------------|-----------------|
 | values           | 输入     | List   | bfloat16/float16/float32/int32 | List[Tensor, Tensor] | tensor_a与tensor_b必须为二维且第二维相等                         | 待拼接的tensor list |
-| offsets          | 输入     | List   | int                            | List[int]              | 长度为2N                                                | 待拼接的tensor的偏移   |
+| offsets          | 输入     | List   | int32/int64                            | List[int]              | 长度为2N                                                | 待拼接的tensor的偏移   |
 | offsetLen        | 输入     | int    | int                            | NA                     | N                                                    | 单个tensor的offset长度 |
 | jtNum            | 输入     | int    | int                            | NA                     | 支持jtNum = 2                                          | 待拼接tensor个数     |
 | nPrefixFromRight | 输入     | int    | int                            | NA                     | nPrefixFromRight >= 0                                | 拼接时右侧tensor移动前缀的个数 |
 | result           | 输出     | Tensor | bfloat16/float16/float32/int32 | [dim0, dim1]           | 结果为二维,<br/>dim0的长度等于两个tensor的dim0之和，<br/>dim1的长度与拼接tensor的dim1相等。 | NA              |
 
-
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/concat_2d_jagged/README.md)
