@@ -1,4 +1,4 @@
-# 使用PyTorch框架调用permute_2D_sparse_data/permute_sparse_data/permute_2D_sparse_data_input1d算子
+# 使用PyTorch框架调用permute_2D_sparse_data/permute_sparse_data/permute_2D_sparse_data_input1D算子
 
 该样例基于PyTorch2.6.0、python3.11.0运行
 
@@ -17,7 +17,7 @@ torch.ops.fbgemm.permute_sparse_data(Tensor permute,
                                      Tensor? weights=None,
                                      SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)
 
-torch.ops.fbgemm.permute_2D_sparse_data_input1d(Tensor permute,
+torch.ops.fbgemm.permute_2D_sparse_data_input1D(Tensor permute,
                                                 Tensor lengths,
                                                 Tensor values,
                                                 int stride,
@@ -36,7 +36,7 @@ torch.ops.mxrec.permute_sparse_data(Tensor permute,
                                     Tensor? weights=None,
                                     SymInt? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)
 
-torch.ops.mxrec.permute_2D_sparse_data_input1d(Tensor permute,
+torch.ops.mxrec.permute_2D_sparse_data_input1D(Tensor permute,
                                                Tensor lengths,
                                                Tensor values,
                                                int stride,
@@ -51,8 +51,8 @@ torch.ops.mxrec.permute_2D_sparse_data_input1d(Tensor permute,
 |  permute | 输入     | Tensor  | int32/int64      | [indices]                                       | permute中的每个值均满足: >= 0 且 < `lengths.shape[0]` |
 |  lengths | 输入     | Tensor  | int32/int64 | [ [lengths], [lengths],... ]                    |           |
 |  values | 输入     | Tensor  | int32/int64/fp32/fp16/bf16 | [values]                                        | values的长度等于`lengths.sum()` |
-|  stride | 输入(当调用permute_2D_sparse_data_input1d需传入) | Scalar  | int64       | stride                                       | stride > 0 |
-|  weights | 输入(可选) | Tensor  | fp32/fp16/bf16/double/int32/int64       | [weights] / [weights，columns]                                       | weight的长度等于`lengths.sum()`, 支持weights.dense_dim > 1 (多列)情况 |
+|  stride | 输入(当调用permute_2D_sparse_data_input1D需传入) | Scalar  | int64       | stride                                       | stride > 0 |
+|  weights | 输入(可选) | Tensor  | fp32/fp16/bf16/double/int32/int64       | [weights] / [weights, columns]                                       | weights的长度等于`lengths.sum()`, 支持weights.dense_dim > 1 (多列)情况 |
 |  permuted_lengths_sum | 输入(可选) | SymInt  | int64        | NA                                              |        [0, INT64_MAX]     |
 |  permuted_lengths | 输出     | Tensor  | int32/int64   | [ [permuted_lengths], [permuted_lengths], ... ] |                     |
 |  permuted_values | 输出     | Tensor  | int32/int64/fp32/fp16/bf16   | [permuted_values]                               |                     |
@@ -62,7 +62,7 @@ torch.ops.mxrec.permute_2D_sparse_data_input1d(Tensor permute,
 
 1. 指定permuted_lengths_sum时，permuted_values/permuted_weights长度为permuted_lengths_sum，请用户自行保证数值正确; 未指定permuted_lengths_sum时，算子将计算得到permuted_lengths_sum，计算过程会导致npu-cpu之间的同步。
 
-2. 当调用permute_2D_sparse_data_input1d算子时，需传入stride参数，且满足lengths.numel()能被stride整除。
+2. 当调用permute_2D_sparse_data_input1D算子时，需传入stride参数，且满足lengths.numel()能被stride整除。
 
 3. 该算子实现依赖asynchronous_complete_cumsum算子，需先安装asynchronous_complete_cumsum算子
 
@@ -76,7 +76,7 @@ torch.ops.mxrec.permute_2D_sparse_data_input1d(Tensor permute,
 
 PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
-### 算子调用示例,以下以pytest框架调用为例
+### 算子调用示例，以下以pytest框架调用为例
 
 调用permute2d_sparse_data算子示例
 
@@ -161,7 +161,7 @@ def test_permute2d_sparse_data(types, shapes, enable_permuted_sum, is_mxrec):
             assert torch.allclose(gt, pred, atol=1e-5)
 ```
 
-调用permute2d_sparse_data_input1d示例
+调用permute_2D_sparse_data_input1D示例
 
 ```python
 import itertools
@@ -220,7 +220,7 @@ def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
 @pytest.mark.parametrize("shapes", SHAPE_LIST)
 @pytest.mark.parametrize("enable_permuted_sum", [True, False])
 @pytest.mark.parametrize("is_mxrec", [True, False])
-def test_permute2d_sparse_data_input1d(types, shapes, enable_permuted_sum, is_mxrec):
+def test_permute_2D_sparse_data_input1D(types, shapes, enable_permuted_sum, is_mxrec):
     """
     Params:
         permute: (T) dtype=int32

@@ -53,11 +53,11 @@ export ASCEND_HOME_PATH=/usr/local/Ascend/ascend-toolkit/latest
 a) 算子的主要功能是对输入张量进行逆置换操作；
 b) 算子输入说明：
 
-* x：输入张量, eg: tensor([2,0,1])
+* x：输入张量，eg: tensor([2,0,1])
 
 c) 算子输出说明：
 
-* y：输入张量的逆排列, eg: tensor([1,2,0])
+* y：输入张量的逆排列，eg: tensor([1,2,0])
 
 d) 算子约束说明：
 
@@ -68,7 +68,7 @@ d) 算子约束说明：
 
 ### 2. Host侧算子实现
 
-Host侧算子实现在目录 op_host下，包括invert_permute.cpp和invert_permute_tiling.h。
+Host侧算子实现在目录op_host下，包括invert_permute.cpp和invert_permute_tiling.h。
 
 a) Tiling实现
 

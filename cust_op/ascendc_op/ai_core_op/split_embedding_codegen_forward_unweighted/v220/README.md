@@ -28,6 +28,8 @@ split_embedding_codegen_forward_unweighted
 # 算子实现原理
 
 ```python
+import numpy as np
+
 # with bag sum or mean
 def split_embedding_codegen_forward_unweighted(dev_weights, weights_offsets, D_offsets, indices, offsets, total_D, pool_mode):
     feat_cnt = weights_offsets.shape[0]
@@ -76,15 +78,15 @@ def split_embedding_nobag_codegen_forward_unweighted(dev_weights, weights_offset
 
 |  名称  |  输入/输出  |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |
-|  dev_weights | 输入 | float32 | [total_table_size] | NA | 一维数组,所有表的权重，表的embedding_dim必须为8的整数倍 |
+|  dev_weights | 输入 | float32 | [total_table_size] | NA | 一维数组，所有表的权重，表的embedding_dim必须为8的整数倍 |
 |  uvm_weight | 输入 | float32 | NA | NA  | 保留参数|
 |  lxu_cache_weight | 输入 | float32 | NA | NA | 保留参数 |
 |  weights_placements | 输入 | int32 | NA | NA | 保留参数 |
-|  weights_offsets | 输入 | int64 | [feat_cnt] | feat_cnt >= table_num, | 一维数组 |
+|  weights_offsets | 输入 | int64 | [feat_cnt] | feat_cnt >= table_num | 一维数组 |
 |  D_offsets | 输入 | int64 | [feat_cnt + 1] | 数值必须从0开始依次递增 | 每个特征的embedding_dim的累加和 |
 |  indices | 输入 | int64 | NA | len(indices) = offsets[-1], 每张表的索引的大小[0, num_embedding] | 查表索引，需用户自行保证合法性，否则可能导致算子执行失败 |
-|  hash_indices | 输入 | int64 | NA | len(indices) = offsets[-1], 每张表的索引的大小[0, num_embedding] | 查表索引，需用户自行保证合法性，否则可能导致算子执行失败 |
-|  offsets | 输入 | float32/int64 | [feat_cnt * batch_size + 1] | 数值必须从0开始依次递增 | 查表索引对应的偏移 |
+|  hash_indices | 输入 | int64 | NA | len(hash_indices) = offsets[-1], 每张表的索引的大小[0, num_embedding] | 查表索引，需用户自行保证合法性，否则可能导致算子执行失败 |
+|  offsets | 输入 | int64 | [feat_cnt * batch_size + 1] | 数值必须从0开始依次递增 | 查表索引对应的偏移 |
 |  lxu_cache_locations | 输入 | int32 | NA | NA |保留参数 |
 |  total_D | 属性 | int64 |  NA | NA | 所有特征的embedding_dim之和 |
 |  max_D | 属性 | int64 | NA | NA | 最大的embedding_dim |
@@ -97,4 +99,4 @@ def split_embedding_nobag_codegen_forward_unweighted(dev_weights, weights_offset
 
 算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/split_embedding_codegen_forward_unweighted/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/split_embedding_codegen_forward_unweighted/README.md)。

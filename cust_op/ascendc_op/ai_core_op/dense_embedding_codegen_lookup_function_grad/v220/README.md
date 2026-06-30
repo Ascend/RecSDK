@@ -42,12 +42,12 @@ def dense_embedding_codegen_lookup_function_grad(weights_grad, weights_offsets, 
 
 |  名称  |  输入/输出  |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |
-|  dev_weights | 输入 | float32 | [total_table_size] | NA | 一维数组,所有表的权重，表的embedding_dim必须为8的整数倍 |
+|  dev_weights | 输入 | float32 | [total_table_size] | NA | 一维数组，所有表的权重，表的embedding_dim必须为8的整数倍 |
 |  weights_grad | 输入 | float32 | [len(indices), max_D] | NA | 权重梯度 |
 |  weights_offsets | 输入 | int64 | [feat_cnt] | feat_cnt >= table_num | 一维数组，表示每个特征对应的表权重在dev_weights中的起始偏移量或数量 |
 |  D_offsets | 输入 | int32/int64 | [feat_cnt + 1] | 数值必须从0开始依次递增 | 每个特征的embedding_dim的累加和 |
 |  hash_size_cumsum | 输入 | int64 | [feat_cnt + 1] | 数值必须从0开始依次递增 | 每个特征的num_embedding累加和 |
-|  indices | 输入 | int64 | NA | len(indices) = offsets[-1], 每张表的索引的大小[0, num_embedding] | 查表索引，需用户自行保证合法性，否则可能导致算子执行失败 |
+|  indices | 输入 | int64 | NA | len(indices) = offsets[-1]，每张表的索引的大小[0, num_embedding - 1] | 查表索引，需用户自行保证合法性，否则可能导致算子执行失败 |
 |  offsets | 输入 | int64 | [feat_cnt * batch_size + 1] | 数值必须从0开始依次递增 | 查表索引对应的偏移 |
 |  indice_weights | 可选输入 | float32 | NA | NA | 保留参数 |
 |  B_offset | 可选输入 | int64 | NA | NA | 保留参数 |

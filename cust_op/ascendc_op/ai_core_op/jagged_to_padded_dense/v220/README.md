@@ -28,7 +28,7 @@ jagged_to_padded_dense
 
 # 算子实现原理
 
-根据offsets将values切分为多个tensor, 再使用padding_value将每个tensor填充至max_length长度。
+根据offsets将values切分为多个tensor, 再使用padding_value将每个tensor填充至max_lengths长度。
 
 算子逻辑伪代码如下：
 
@@ -73,4 +73,4 @@ result = jagged_to_padded_dense(values=input_values, offsets=[input_offsets], ma
 
 算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/jagged_to_padded_dense/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/jagged_to_padded_dense/README.md)

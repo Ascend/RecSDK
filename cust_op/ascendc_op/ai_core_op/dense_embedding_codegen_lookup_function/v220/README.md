@@ -48,7 +48,7 @@ def dense_embedding_codegen_lookup_function(dev_weights, weights_offsets, indice
 |  weights_offsets | 输入 | int64 | [feat_cnt] | feat_cnt >= table_num | 一维数组，表示每个特征对应的表权重在dev_weights中的起始偏移量或数量 |
 |  D_offsets | 输入 | int32/int64 | [feat_cnt + 1] | 数值必须从0开始依次递增 | 每个特征的embedding_dim的累加和 |
 |  hash_size_cumsum | 输入 | int64 | [feat_cnt + 1] | 数值必须从0开始依次递增 | 每个特征的num_embedding累加和 |
-|  indices | 输入 | int64 | NA | len(indices) = offsets[-1], 每张表的索引的大小[0, num_embedding] | 查表索引，需用户自行保证合法性，否则可能导致算子执行失败 |
+|  indices | 输入 | int64 | NA | len(indices) = offsets[-1], 每张表的索引的大小[0, num_embedding - 1] | 查表索引，需用户自行保证合法性，否则可能导致算子执行失败 |
 |  offsets | 输入 | int64 | [feat_cnt * batch_size + 1] | 数值必须从0开始依次递增 | 查表索引对应的偏移 |
 |  indice_weights | 可选输入 | float32 | NA | NA | 保留参数 |
 |  B_offset | 可选输入 | int64 | NA | NA | 保留参数 |

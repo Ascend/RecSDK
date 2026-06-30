@@ -135,7 +135,7 @@ permute_pooled_embs算子的运行依赖index_select算子，需先安装index_s
 
 PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
-### 算子调用示例,以下以pytest方式调用为例
+### 算子调用示例，以下以pytest方式调用为例
 
 ```python
 import itertools
@@ -229,4 +229,4 @@ def test_permute_pooled_embs_aligned(types, shapes, is_mxrec):
             assert torch.allclose(gt, pred, atol=1e-4)
 ```
 
-注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例[`RecSDK/cust_op/test/permute_pooled_embs/torch/test_permute_pooled_embs.py`](../../../../test/permute_pooled_embs/torch/test_permute_pooled_embs.py)。
+注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例[RecSDK/cust_op/test/permute_pooled_embs/torch/test_permute_pooled_embs.py](../../../../test/permute_pooled_embs/torch/test_permute_pooled_embs.py)。
