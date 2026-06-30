@@ -1,0 +1,14 @@
+# Build output (msopgen generated)
+hstu_dense_forward/
+build_out/
+
+# Test build artifacts
+test/test_hstu_dense_forward
+test/bin_file/
+test/CMakeCache.txt
+test/CMakeFiles/
+test/Makefile
+test/cmake_install.cmake
+
+# Kernel meta cache
+kernel_meta/
