@@ -13,7 +13,14 @@
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
-class torchrec.sparse.jagged_tensor.JaggedTensor(*args: Any, **kwargs: Any)
+class torchrec.sparse.jagged_tensor.JaggedTensor:
+    def __init__(
+        self,
+        values: torch.Tensor,
+        weights: Optional[torch.Tensor] = None,
+        lengths: Optional[torch.Tensor] = None,
+        offsets: Optional[torch.Tensor] = None,
+    ) -> None:
 ```
 
 **参数说明**

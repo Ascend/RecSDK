@@ -24,24 +24,17 @@ link_directories(${PYTORCH_INSTALL_PATH}/lib)
 link_directories(${PYTORCH_NPU_INSTALL_PATH}/lib)
 link_directories(${ASCEND_DRIVER_PATH}/lib64/common)
 
-# 获取pytorch版本
+# ABI 宏必须与当前 Python 环境中的 PyTorch 保持一致。
 execute_process(
-    COMMAND python3 -c "import torch; print(torch.__version__)"
-    OUTPUT_VARIABLE PYTORCH_VERSION_STR
+    COMMAND python3 -c "import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))"
+    OUTPUT_VARIABLE GLIBCXX_ABI
     OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE GLIBCXX_ABI_RESULT
 )
-set(PYTORCH_271 "2.7.1")
-string(FIND "${PYTORCH_VERSION_STR}" "${PYTORCH_271}" PYTORCH_271_FIND_RET)
-
-# ABI 宏
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm")
-    set(GLIBCXX_ABI 1)
-elseif(PYTORCH_271_FIND_RET GREATER -1)
-        # pytorch 2.7.1版本在x86环境时需要设置ABI=1
-        set(GLIBCXX_ABI 1)
-else()
-        set(GLIBCXX_ABI 0)
+if(NOT "${GLIBCXX_ABI_RESULT}" STREQUAL "0" OR NOT "${GLIBCXX_ABI}" MATCHES "^[01]$")
+    message(FATAL_ERROR "Failed to get PyTorch _GLIBCXX_USE_CXX11_ABI from current python3.")
 endif()
+message(STATUS "Using PyTorch GLIBCXX_ABI=${GLIBCXX_ABI}")
 
 # 通用include
 include_directories(${PYTORCH_NPU_INSTALL_PATH}/include/third_party/acl/inc)
@@ -49,7 +42,7 @@ include_directories(${PYTORCH_NPU_INSTALL_PATH}/include)
 include_directories(${PYTORCH_INSTALL_PATH}/include)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/distributed)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/api/include)
-include_directories(${ASCEND_DRIVER_PATH}/kernel/libc_sec/include) 
+include_directories(${ASCEND_DRIVER_PATH}/kernel/libc_sec/include)
 
 # 根据 BUILD_VER 判断是否为 A5 芯片，并定义预处理器宏
 if(BUILD_VER STREQUAL "c310")

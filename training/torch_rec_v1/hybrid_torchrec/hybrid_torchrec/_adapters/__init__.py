@@ -13,6 +13,7 @@
 采用单例模式，确保全局只有一个适配器实例。
 """
 
+import logging
 from typing import Tuple
 
 from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
@@ -53,3 +54,4 @@ def _create_adapter() -> TorchRecVersionAdapter:
 
 # 模块导入时创建单例实例
 adapter: TorchRecVersionAdapter = _create_adapter()
+logging.info("Created adapter, adapter.version: %s", adapter.version)

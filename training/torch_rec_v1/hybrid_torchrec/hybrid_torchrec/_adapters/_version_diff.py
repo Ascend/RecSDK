@@ -52,26 +52,55 @@ def _get_virtual_table_feature_num_buckets_supported(self, instance):
     return instance._get_virtual_table_feature_num_buckets()
 
 
+def check_config_new_item_v120(self, config) -> None:
+    """检查v1.2.0新增的配置项"""
+    if hasattr(config, "input_dim") and config.input_dim is not None:
+        raise ValueError(f"The config.input_dim only support None, but got {config.input_dim}")
+
+
+def check_config_new_item_v150(self, config) -> None:
+    """检查v1.5.0新增的配置项"""
+    # v1.2.0新增字段
+    self.check_config_new_item_v120(config)
+
+    # v1.5.0新增字段
+    if hasattr(config, "total_num_buckets") and config.total_num_buckets is not None:
+        raise ValueError(f"The config.total_num_buckets only support None, but got {config.total_num_buckets}")
+    if hasattr(config, "use_virtual_table") and config.use_virtual_table:
+        raise ValueError(f"The config.use_virtual_table only support False, but got {config.use_virtual_table}")
+    if hasattr(config, "virtual_table_eviction_policy") and config.virtual_table_eviction_policy is not None:
+        raise ValueError(
+            f"The config.virtual_table_eviction_policy only support None, but got {config.virtual_table_eviction_policy}"
+        )
+    if hasattr(config, "enable_embedding_update") and config.enable_embedding_update:
+        raise ValueError(
+            f"The config.enable_embedding_update only support False, but got {config.enable_embedding_update}"
+        )
+
+
 # ═══════════════════════════════════════════════════════════════
 # 版本差异表（唯一需要修改的地方）
 # ═══════════════════════════════════════════════════════════════
 
 VERSION_DIFFS: list[tuple[Tuple[int, int, int], Dict[str, Callable]]] = [
-    # ── 1.2.0: learning_rate 移到 common_args + sharding_infos 改为实例方法 + kernel 提供 get_learning_rate ──
+    # ── TorchRec v1.2.0 方法差异，基于 TorchRec v1.1.0 ──
     (
         (1, 2, 0),
         {
             "get_learning_rate": _lr_from_common,
             "create_sharding_infos": _sharding_by_method,
             "get_kernel_learning_rate": _lr_from_kernel_method,
+            "check_embedding_config_new_item": check_config_new_item_v120,
         },
     ),
-    # ── 1.5.0: build_args_kwargs 改为方法 + output_dtensor 优先从 env ──
+    # ── TorchRec v1.5.0 方法差异，基于 TorchRec v1.2.0，且会继承 v1.2.0 的差异方法 ──
     (
         (1, 5, 0),
         {
             "build_args_kwargs": _build_args_method,
             "get_virtual_table_feature_num_buckets": _get_virtual_table_feature_num_buckets_supported,
+            "check_config_new_item_v120": check_config_new_item_v120,  # check_config_new_item_v150依赖此方法，需注册
+            "check_embedding_config_new_item": check_config_new_item_v150,
         },
     ),
     # ── 未来版本在此追加 ──
