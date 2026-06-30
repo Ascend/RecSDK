@@ -43,12 +43,12 @@ Before you build the source code, follow the [CANN Software Installation Guide](
    - CMake 3.22.6
 
 2. Open-source dependencies:
-   - [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+   - [pybind11](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
    - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
    - [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): Install it in the build environment according to the software documentation.
    - TensorFlow 1.15/2.6.5: Select the corresponding version as required.
 
-   Place the compressed pybind11 and securec packages in the `opensource` directory at the same level as the RecSDK code, and rename them to `pybind11-2.10.3.zip` and `huaweicloud-sdk-c-obs-3.23.9.zip` respectively. If the `opensource` directory does not exist, create it at the same level as RecSDK, and then place the pybind11 and securec compressed packages in the `opensource` directory.
+   Place the compressed packages of pybind11 (`>= 2.10.3`) and securec (`huaweicloud-sdk-c-obs-3.23.9.zip`) in the same directory as the RecSDK code under the `opensource` subdirectory.
 
 3. Build method:
 
@@ -95,12 +95,10 @@ Before you build the source code, follow the [CANN Software Installation Guide](
 
    - [googletest 1.8.1](https://github.com/google/googletest/archive/refs/tags/release-1.8.1.zip)
    - [emock 0.9.0](https://github.com/ez8-co/emock/archive/refs/tags/v0.9.0.zip)
-   - [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+   - [pybind11](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
    - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
 
-   Place the compressed googletest, emock, pybind11, and securec packages in the `opensource` directory at the same level as the Rec SDK code, and rename them to `googletest-release-1.8.1.zip`,
-   `emock-0.9.0.zip`, `pybind11-2.10.3.zip`, and `huaweicloud-sdk-c-obs-3.23.9.zip` respectively. If the `opensource` directory does not exist, create it at the same level as RecSDK,
-   and then place the preceding compressed packages in the `opensource` directory.
+   Place the compressed packages of googletest (`googletest-release-1.8.1.zip`), emock (`emock-0.9.0.zip`), pybind11 (`>= 2.10.3`) and securec (`huaweicloud-sdk-c-obs-3.23.9.zip`) in the same level as the RecSDK code in the `opensource` directory.
 
    To run the C++ test cases, install the preceding dependencies. Then, go to the `RecSDK/training/tf_rec_v1/src` directory and run the C++ test cases.
 
@@ -430,21 +428,21 @@ This section helps you build a Rec SDK TensorFlow training image from an existin
     RUN pip3.7 install -U pip && \
         pip3.7 install numpy && \
         pip3.7 install decorator && \
-        pip3.7 install sympy==1.4 && \
-        pip3.7 install cffi==1.12.3 && \
+        pip3.7 install sympy && \
+        pip3.7 install cffi && \
         pip3.7 install pyyaml && \
         pip3.7 install pathlib2 && \
         pip3.7 install grpcio && \
         pip3.7 install grpcio-tools && \
-        pip3.7 install protobuf==3.20.0 && \
+        pip3.7 install protobuf==3.20.3 && \
         pip3.7 install scipy && \
         pip3.7 install requests && \
         pip3.7 install mpi4py && \
         pip3.7 install scikit-learn && \
         pip3.7 install easydict && \
         pip3.7 install attrs && \
-        pip3.7 install pytest==7.1.1 && \
-        pip3.7 install pytest-cov==4.1.0 && \
+        pip3.7 install pytest && \
+        pip3.7 install pytest-cov && \
         pip3.7 install pytest-html && \
         pip3.7 install Cython && \
         pip3.7 install h5py==3.1.0 && \

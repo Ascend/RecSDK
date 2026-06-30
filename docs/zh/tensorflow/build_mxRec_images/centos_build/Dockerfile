@@ -123,7 +123,7 @@ RUN pip3.7 install -U pip && \
     pip3.7 install pandas && \
     pip3.7 install grpcio && \
     pip3.7 install grpcio-tools && \
-    pip3.7 install protobuf==3.20.0 && \
+    pip3.7 install protobuf==3.20.3 && \
     pip3.7 install scipy && \
     pip3.7 install requests && \
     pip3.7 install mpi4py && \

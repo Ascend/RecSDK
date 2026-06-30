@@ -42,12 +42,12 @@
    - CMake 3.22.6
 
 2. 开源依赖：
-   - [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+   - [pybind11](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
    - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
    - [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): 请参考软件文档在编译环境完成安装
    - tensorflow 1.15/2.6.5：根据实际需求选择对应版本
 
-   将pybind11和securec的压缩包放在与RecSDK代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在RecSDK同级的目录下手动创建opensource目录，然后将pybind11和securec的压缩包放在opensource目录下。
+   将pybind11（>= 2.10.3）与securec的压缩包（huaweicloud-sdk-c-obs-3.23.9.zip）置于RecSDK代码同级的opensource目录下。
 
 3. 编译方法：
 
@@ -83,9 +83,7 @@
    - [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
    - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
 
-   将googletest、emock、pybind11和securec的压缩包放在与Rec SDK代码同级的opensource目录下，并且将其分别更名为googletest-release-1.8.1.zip、
-   emock-0.9.0.zip、pybind11-2.10.3.zip、 huaweicloud-sdk-c-obs-3.23.9.zip。如果没有opensource目录，则需要在Rec SDK同级的目录下手动创建opensource目录，
-   然后将前述几个压缩包放在opensource目录下。
+   将googletest（googletest-release-1.8.1.zip）、emock（emock-0.9.0.zip）、pybind11（>= 2.10.3）与securec的压缩包（huaweicloud-sdk-c-obs-3.23.9.zip）置于RecSDK代码同级的opensource目录下。
 
    如需运行C++测试用例，完成上述依赖项的安装。然后进入RecSDK/training/tf_rec_v1/src目录，参考以下命令执行C++测试用例：
 
@@ -444,7 +442,7 @@
         pip3.7 install pathlib2 && \
         pip3.7 install grpcio && \
         pip3.7 install grpcio-tools && \
-        pip3.7 install protobuf==3.20.0 && \
+        pip3.7 install protobuf==3.20.3 && \
         pip3.7 install scipy && \
         pip3.7 install requests && \
         pip3.7 install mpi4py && \

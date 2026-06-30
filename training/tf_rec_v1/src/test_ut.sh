@@ -110,8 +110,11 @@ function compile_securec(){
 function prepare_pybind(){
   cd "${opensource_path}"
   if [ ! -d pybind11 ]; then
-    unzip pybind11-2.10.3.zip
-    mv pybind11-2.10.3 pybind11
+    rm -rf pybind11-*/
+    zip_file=$(find . -maxdepth 1 -name "pybind11-*.zip" -type f -printf "%T@ %p\n" | sort -nr \
+                  | head -n 1 | cut -d' ' -f2-)
+    unzip "${zip_file}"
+    mv pybind11-*/ pybind11
   fi
 }
 
@@ -143,7 +146,7 @@ function compile_common_so_file() {
     ./build.sh "${ROOT_DIR}" "YES"
 }
 
-compile_common_so_file 
+compile_common_so_file
 
 compile_acc_ctr_so_file()
 {

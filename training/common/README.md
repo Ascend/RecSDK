@@ -36,12 +36,12 @@
 
 开源依赖：
 
-- [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+- [pybind11](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
 - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
 - [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): 请参考软件文档在编译环境完成安装
 - tensorflow 1.15/2.6.5：根据实际需求选择对应版本
 
-将pybind11和securec的压缩包放在与Rec SDK代码同级的opensource目录下，并且将其分别更名为pybind11-2.10.3.zip、huaweicloud-sdk-c-obs-3.23.9.zip。
+将pybind11（>= 2.10.3）与securec的压缩包（huaweicloud-sdk-c-obs-3.23.9.zip）置于RecSDK代码同级的opensource目录下，按以下步骤编译whl包。
 
 **编译方法**
 方案1：进入common代码目录，构建单独的rec_sdk_common whl包：
@@ -78,11 +78,10 @@ bash run_python_dt.sh
 
 - [googletest 1.8.1](https://github.com/google/googletest/archive/refs/tags/release-1.8.1.zip)
 - [emock 0.9.0](https://github.com/ez8-co/emock/archive/refs/tags/v0.9.0.zip)
-- [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+- [pybind11](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
 - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
 
-将googletest、emock、pybind11和securec的压缩包放在与Rec SDK代码同级的opensource目录下，并且将其分别更名为googletest-release-1.8.1.zip、
-emock-0.9.0.zip、pybind11-2.10.3.zip、 huaweicloud-sdk-c-obs-3.23.9.zip。
+将googletest（googletest-release-1.8.1.zip）、emock（emock-0.9.0.zip）、pybind11（>= 2.10.3）与securec的压缩包（huaweicloud-sdk-c-obs-3.23.9.zip）置于RecSDK代码同级的opensource目录下。
 
 如需使用C++测试用例，需要按照上述描述准备需要的依赖，准备好之后，进入src目录中。参考以下命令执行C++测试用例：
 
