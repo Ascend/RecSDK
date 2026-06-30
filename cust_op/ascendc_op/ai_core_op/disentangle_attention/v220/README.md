@@ -34,11 +34,11 @@
 | atten_probs      | 输出      | fp16     | (b,n,s,s)    |                    |
 | atten_weights    | 输出      | fp16     | (b,n,s,s)    |                    |
 
-ps: 
+ps:
 
-* 如果pos_attr 传入"c2p"只会计算content2postion编码偏置
-* 如果pos_attr 传入"p2c"只会计算position2context编码偏置
-* 如果pos_attr 传入"c2p|p2c" 则都会计算并将上述两个偏置累加后输出
+* 如果pos_attr_type传入"c2p"只会计算content2postion编码偏置
+* 如果pos_attr_type传入"p2c"只会计算position2context编码偏置
+* 如果pos_attr_type传入"c2p|p2c" 则都会计算并将上述两个偏置累加后输出
 
 c) 算子约束说明：
 
@@ -61,12 +61,12 @@ graph TD
     Transpose -->|"pos_key_layer_T<br/>Shape: BxH, D, P"| MatMul1
     MatMul1 -->|"c2p_att_raw<br/>Shape: BxH, Q, P"| Scale1["Scale<br/>factor: 1/&radic;(D×scale_factor)"]
     Scale1 -->|"c2p_att<br/>Shape: BxH, Q, P"| Gather1["Gather"]
-    
+
     InputRelPos["输入 relative_pos<br/>Shape: B, H, Q, K"] --> Clamp["Clamp<br/>relative_pos + att_span → 0:2×att_span-1"]
     Clamp -->|"c2p_pos_raw<br/>Shape: B, H, Q, K"| Reshape["Reshape<br/>view: BxH, Q, K"]
     Reshape -->|"c2p_pos<br/>Shape: BxH, Q, K"| Gather1
     Gather1 -->|"c2p_output<br/>Shape: BxH, Q, K"| Add["Add"]
-    
+
     %% ====== 位置到内容路径（p2c） ======
     InputPosQuery["输入 pos_query_layer<br/>Shape: BxH, P, D"] --> MatMul2["MatMul"]
     InputKey["输入 key_layer<br/>Shape: BxH, K, D"] --> Transpose2["Transpose<br/>permute: -1,-2"]
@@ -75,7 +75,7 @@ graph TD
     Scale2 -->|"p2c_att<br/>Shape: BxH, P, K"| Gather2["Gather<br/>dim=-2"]
     Reshape -->|"c2p_pos<br/>Shape: BxH, Q, K"| Gather2
     Gather2 -->|"p2c_output<br/>Shape: BxH, Q, K"| Add
-    
+
     %% ====== 结果输出 ======
     Add -->|"score<br/>Shape: BxH, Q, K"| Output["输出 disentangled_bias"]
 

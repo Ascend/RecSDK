@@ -10,7 +10,7 @@
 | Atlas A3训练系列产品  | 是    |
 | Atlas 推理系列产品    | 否    |
 
-# oncat_jagged_tensor_grad算子目录层级
+# concat_jagged_tensor_grad算子目录层级
 
 ```shell
 -- concat_jagged_tensor_grad
@@ -75,6 +75,6 @@ result = [tensor([[1,1,1,1,1,1,1,1],
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/concat_2d_jagged/README.md)

@@ -14,13 +14,13 @@
 
 ```shell
 norm_multiply_dropout_backward
-|-- v220
-   |-- op_host                          # 算子host侧实现
-   |-- op_kernel                        # 算子kernel侧实现
-   |-- norm_multiply_dropout_backward.json  # 算子原型配置
-   |-- norm_multiply_dropout_backward.png   # 算子实现原理图
-   |-- README.md                        # 算子说明文档
-   |-- run.sh                           # 算子编译部署脚本
+└── v220
+    ├── op_host                              # 算子host侧实现
+    ├── op_kernel                            # 算子kernel侧实现
+    ├── norm_multiply_dropout_backward.json  # 算子原型配置
+    ├── norm_multiply_dropout_backward.png   # 算子实现原理图
+    ├── README.md                            # 算子说明文档
+    └── run.sh                               # 算子编译部署脚本
 ```
 
 # 功能
@@ -29,7 +29,7 @@ norm_multiply_dropout_backward
 
 当前算子为反向实现，对应前向算子实现参考[README](../../norm_multiply_dropout/v220/README.md)。
 
-该反向算子不建议单独调用，建议通过PyTorch的自动求导框架调用。详情参考本文末尾的Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/norm_multiply_dropout/README.md)
+该反向算子不建议单独调用，建议通过PyTorch的自动求导框架调用。详情参考本文末尾的PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/norm_multiply_dropout/README.md)
 
 该算子输入依赖算子pta层创建的mask，仅支持通过算子pta层提供的对外接口进行调用。
 
@@ -68,6 +68,6 @@ norm_multiply_dropout_backward
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/norm_multiply_dropout/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/norm_multiply_dropout/README.md)

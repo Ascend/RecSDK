@@ -1,4 +1,4 @@
-**使用pytorch框架调用方式调用jagged_to_padded_dense算子**
+# 使用pytorch框架调用jagged_to_padded_dense算子
 
 # Pytorch框架对外接口原型
 
@@ -29,20 +29,21 @@ torch.ops.fbgemm.jagged_2d_to_dense(Tensor values, Tensor offsets, SymInt max_se
 | offsets       | 输入      | Tensor[]  | int32/int64   |                                      | 数值必须从0开始依次递增 | list中tensor个数只能为1, 且tensor仅支持一维<br>  offsets内元素需用户自行保证合法性，否则可能导致算子执行失败 |
 | max_lengths   | 输入(属性)  | int/int[] | int           |                                      |              | max_length的元素值需大于0。类型为数组时，长度只能为1                                       |
 | max_sequence_length   | 输入(属性)  | SymInt | int           |                                      |              | max_sequence_length的元素值需大于0。                                       |
-| padding_value | 输入(属性)  | float     | float         |                                      |              |
+| padding_value | 输入(属性)  | float     | float         |                                      |              |  |
 | jagged_dense  | 输出(返回值) | Tensor    | float32/float16/bfloat16/int32/int64 | [len(offsets) - 1, max_length, dim1] |              |                                                                        |
 
 # 运行算子样例
 
 ## 算子编译与部署
 
-算子编译部署请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明" - "算子编译"章节。
+算子编译部署请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明" - "算子编译"章节。
 
 ## Pytorch编译
 
-Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明" - "算子适配层编译"章节。
+Pytorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明" - "算子适配层编译"章节。
 
 ## 算子调用示例
+
 ### jagged_to_padded_dense 调用示例
 
 以下示例为通过python3方式调用NPU侧算子：
@@ -57,7 +58,7 @@ import torch
 
 # 加载NPU自定义算子库
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-# 设置用的卡号
+# 设置卡号
 DEVICE = "npu:0"
 torch_npu.npu.set_device(DEVICE)
 
@@ -109,4 +110,5 @@ result = torch.ops.fbgemm.jagged_2d_to_dense(
 )
 print("result shape:", result.shape)  # [B, max_sequence_length, D]
 ```
+
 注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例 [test_jagged_to_padded_dense.py](../../../../test/jagged_to_padded_dense_test/torch/test_jagged_to_padded_dense.py)、[test_jagged_2d_to_dense.py](../../../../test/jagged_to_padded_dense_test/torch/test_jagged_2d_to_dense.py)。

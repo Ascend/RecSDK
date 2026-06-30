@@ -1,8 +1,8 @@
-**使用pytorch框架调用方式调用hstu_dense_forward_fuxi算子**
+# 使用pytorch框架调用hstu_dense_forward_fuxi算子
 
 该样例基于Pytorch2.6.0、python3.11.0运行
 
-### Pytorch框架对外接口原型
+## Pytorch框架对外接口原型
 
 ```python
 torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=None, Tensor? positionBias=None,
@@ -10,11 +10,11 @@ torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=No
     int[]? seqOffset=None) -> Tensor
 ```
 
-### 参数说明
+## 参数说明
 
-### torch.ops.mxrec.hstu_fuxi接口
+## torch.ops.mxrec.hstu_fuxi接口
 
-#### Atlas A2/A3训练产品
+### Atlas A2/A3训练产品
 
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
@@ -31,7 +31,8 @@ torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=No
 |  seqOffset | 输入(可选) | int[] | int[] | NA | NA | 表示每个batch的实际序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效，默认为None |
 |  output | 输出 | Tensor | float32/float16/bfloat16 | [s_b, N, x * D] | 同q | 当输入RAB为空时，x=1，此时结果为qkv计算结果<br>当输入RAB不为空时，x=3，此时结果为qkv结果与两个rab结果cat，将最后一维整合所得 |
 
-#### Atlas 推理系列产品
+### Atlas 推理系列产品
+
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
 |  q | 输入 | Tensor | float16 | [B, S, N, D] | B∈[1, 10]<br>S∈[64, 20480]且是64的倍数<br>N∈[1, 8]<br>D∈[16, 128]且是16的倍数 | 只支持四维 |
@@ -47,19 +48,19 @@ torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=No
 |  seqOffset | 输入(可选) | int[] | int[] | NA | NA | 推理产品不用传入，默认为None |
 |  output | 输出 | Tensor | float16 | [B, S, N, x * D] | 同q | 当输入RAB为空时，x=1，此时结果为qkv计算结果<br>当输入RAB不为空时，x=3，此时结果为qkv结果与两个rab结果cat，将最后一维整合所得 |
 
-### 运行算子样例
+## 运行算子样例
 
-#### 算子编译与部署
+### 算子编译与部署
 
-算子编译部署请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译部署请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-#### Pytorch编译
+### Pytorch编译
 
-Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
+Pytorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
-#### 算子调用示例,以下以pytest方式调用为例
+### 算子调用示例,以下以pytest方式调用为例
 
-##### hstu_fuxi接口
+#### hstu_fuxi接口
 
 ```python
 import os
@@ -89,7 +90,7 @@ def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, mask_type
 
     seq_offset = torch.concat((torch.zeros((1, ), dtype=torch.int64), \
         torch.cumsum(torch.from_numpy(seq_lens), axis=0))).to(torch.int64).numpy()
-    
+
     total_seqs = np.sum(seq_lens)
 
     q = torch.rand(total_seqs, num_heads, attention_dim).to(torch.float32).uniform_(-1, 1)

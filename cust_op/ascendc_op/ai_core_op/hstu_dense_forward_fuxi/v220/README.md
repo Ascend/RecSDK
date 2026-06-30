@@ -13,15 +13,15 @@
 ## hstu_dense_forward_fuxi算子文件结构
 
 ```shell
--- hstu_dense_forward_fuxi
-   |-- onnx_plugin   # hstu_dense_forward_fuxi算子支持onnx模型转换
-   |-- v220
-      |-- op_host    # hstu_dense_forward_fuxi算子Host侧实现
-      |-- op_kernel  # hstu_dense_forward_fuxi算子Kernel侧实现
-      |-- pic        # 算子实现原理图
-      |-- hstu_dense_forward_fuxi.json    # 算子原型配置
-      |-- README.md  # hstu_dense_forward_fuxi算子说明文档
-      |-- run.sh     # hstu_dense_forward_fuxi算子安装脚本
+hstu_dense_forward_fuxi
+├── onnx_plugin                         # hstu_dense_forward_fuxi算子支持onnx模型转换
+└── v220
+    ├── op_host                         # hstu_dense_forward_fuxi算子Host侧实现
+    ├── op_kernel                       # hstu_dense_forward_fuxi算子Kernel侧实现
+    ├── pic                             # 算子实现原理图
+    ├── hstu_dense_forward_fuxi.json    # 算子原型配置
+    ├── README.md                       # hstu_dense_forward_fuxi算子说明文档
+    └── run.sh                          # hstu_dense_forward_fuxi算子安装脚本
 ```
 
 ## 功能
@@ -136,8 +136,8 @@ def hstu_fuxi(q, k, v, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_sca
 | position_bias | 可选输入 | float16 | B,S,S | 同q | S为模型最大的序列长度max_seq_len，不使用时传入None |
 | mask | 输入 | float16 | B,1,S,S | 同q | 掩码，当前仅支持normal格式，S为模型最大的序列长度max_seq_len，mask为基于下三角的自定义，需要用户基于下三角自定义传入 |
 | maskType | 输入(属性) | int | N/A | 3:使用用户自定义mask，此时mask输入需要用户定义并传入 |  |
-| max_seq_len | 输入(属性) | int | N/A | 表示模型最大序列长度 |
-| siluScale | 输入(属性) | float | N/A | 支持用户传入自定义siluScale，不传入时默认值为1/S， S为等长的序列长度|
+| max_seq_len | 输入(属性) | int | N/A | | 表示模型最大序列长度 |
+| siluScale | 输入(属性) | float | N/A | 支持用户传入自定义siluScale，不传入时默认值为1/S， S为等长的序列长度| |
 | layout | 输入(可选属性) | string | N/A |  当前仅支持"normal"，Q,K,V数据格式为B,S,N,D格式 |  |
 | output | 输出 | float16 | [B, S, N, x * D] | 同q | 当输入RAB为空时，x=1，此时结果为qkv计算结果<br>当输入RAB不为空时，x=3，此时结果为qkv结果与两个rab结果cat，将最后一维整合所得 |
 
@@ -148,6 +148,6 @@ def hstu_fuxi(q, k, v, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_sca
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/hstu_dense_forward_fuxi/README.md)

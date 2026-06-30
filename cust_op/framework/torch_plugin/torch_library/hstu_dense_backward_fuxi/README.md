@@ -1,8 +1,8 @@
-**使用pytorch框架调用方式调用hstu_dense_backward_fuxi算子**
+# 使用pytorch框架调用hstu_dense_backward_fuxi算子
 
 该样例基于Pytorch2.6.0、python3.11.0运行
 
-### Pytorch框架对外接口原型
+## Pytorch框架对外接口原型
 
 ```python
 torch.ops.mxrec.hstu_dense_backward_fuxi(Tensor grad, Tensor q, Tensor k, Tensor v, Tensor? mask=None,
@@ -11,31 +11,30 @@ torch.ops.mxrec.hstu_dense_backward_fuxi(Tensor grad, Tensor q, Tensor k, Tensor
     int[]? seqOffset=None) -> (Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
 
-### 参数说明
+## 参数说明
 
 | 名称 | 输入/输出 | 数据类型 | 数据格式 | 备注 |
 |----|----|----|----|----|
-| grad | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| q | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| k | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| v | 输入| float32/float16/bfloat16 | [s_b, N, D] |
+| grad | 输入| float32/float16/bfloat16 | [s_b, N, D] |  |
+| q | 输入| float32/float16/bfloat16 | [s_b, N, D] |  |
+| k | 输入| float32/float16/bfloat16 | [s_b, N, D] |  |
+| v | 输入| float32/float16/bfloat16 | [s_b, N, D] |  |
 | mask | 可选输入 | float32/float16/bfloat16 | B,N,S,S | S为模型最大的序列长度max_seq_len |
 | bias_position | 可选输入 | float32/float16/bfloat16 | 1,S,S | S为模型最大的序列长度max_seq_len |
 | bias_timestamp | 可选输入 | float32/float16/bfloat16 | B,S,S | S为模型最大的序列长度max_seq_len |
-| grad_bias_position | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| grad_bias_timestamp | 输入| float32/float16/bfloat16 | [s_b, N, D] |
 | layout | 属性 | string | N/A | 当前仅支持"jagged"，“jagged”代表Q,K,V数据格式为s_b,N,D格式 |
 | mask_type | 属性 | int | N/A | 0:使用内置下三角掩码 1:使用内置上三角掩码(未支持) 2:不使用mask(即使mask传值) 3:使用自定义mask(需要输入mask) |
 | max_seq_len | 属性 | int | N/A | 表示模型最大序列长度 |
 | silu_scale | 属性 | float | N/A | 支持用户传入自定义silu_scale, 不传入时默认值为1/max_seq_len|
 | seq_offsets | 可选属性 | list[int64] | N/A | 表示每个序列的偏移，其中第一个序列的偏移一定是0，此选项只对jagged格式下生效，normal格式不生效。|
-| q_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |
-| k_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |
-| v_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |
+| q_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |  |
+| k_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |  |
+| v_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |  |
 | position_bias_grad | 输出 | float32/float16/bfloat16 | 1,S,S | S为变长序列中最大的序列长度 |
 | timestamp_bias_grad | 输出 | float32/float16/bfloat16 | B,S,S | S为变长序列中最大的序列长度 |
 
 参数范围说明：
+
 * s_b：为jagged格式下各batch的实际序列长度之和
 * B: batch_size 表征批处理的大小，当前取值范围[1, 512]。
 * S: seq_lens 表征序列长度，当前取值范围[1, 20480]。
@@ -44,20 +43,19 @@ torch.ops.mxrec.hstu_dense_backward_fuxi(Tensor grad, Tensor q, Tensor k, Tensor
 * 以上四个维度数值均不能为0，为0时算子输入为空数据，不会执行算子计算;并且其中B、N、S参数影响bias、mask占用显存大小，请根据实际内存合理设置参数大小。
 * jagged模式下 S为所有序列中最大的序列长度，比如此时有两个序列，一个序列长度为256，另一个序列长度为512，则S为512。
 
+## 运行算子样例
 
-### 运行算子样例
+### 算子编译与部署
 
-#### 算子编译与部署
+算子编译部署请参考[RecSDK/cust_op/README.md](../../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-算子编译部署请参考[RecSDK\cust_op\README.md](../../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+### Pytorch编译
 
-#### Pytorch编译
+Pytorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
-Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
+### 算子调用示例,以下以pytest方式调用为例
 
-#### 算子调用示例,以下以pytest方式调用为例
-
-##### hstu_dense_backward_fuxi 接口
+#### hstu_dense_backward_fuxi 接口
 
 ```python
 import os
@@ -93,7 +91,7 @@ torch.manual_seed(3)
 def jagged_data_gen(batch_size, max_seq_len, num_heads, attention_dim, mask_type, data_type):
     seq_lens = torch.randint(1, max_seq_len + 1, (batch_size,), dtype=torch.int64)
     seq_offset = torch.concat((torch.zeros((1,), dtype=torch.int64), torch.cumsum(seq_lens, axis=0))).numpy()
-    
+
     total_seqs = torch.sum(seq_lens)
 
     start = -1
@@ -145,8 +143,8 @@ class TestHstuJaggedDemo:
 
         return tensor
 
-    
-    def custom_op_exec(self, grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, seq_offset, 
+
+    def custom_op_exec(self, grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, seq_offset,
                        mask_type, max_seq_len, silu_scale, enable_bias, data_type):
         grad_npu = grad.to(f"npu:{device_id}")
         q_npu = q.to(f"npu:{device_id}")
@@ -161,7 +159,7 @@ class TestHstuJaggedDemo:
 
         if enable_bias:
             q_grad, k_grad, v_grad, bpos_grad, bts_grad = torch.ops.mxrec.hstu_dense_backward_fuxi(
-                grad_npu, q_npu, k_npu, v_npu, mask_npu, bpos_npu, bts_npu, "jagged", 
+                grad_npu, q_npu, k_npu, v_npu, mask_npu, bpos_npu, bts_npu, "jagged",
                 mask_type, max_seq_len, silu_scale, seq_offset
             )
         else:
@@ -173,7 +171,7 @@ class TestHstuJaggedDemo:
         torch.npu.synchronize()
         return (q_grad.cpu(), k_grad.cpu(), v_grad.cpu(),
                 (enable_bias and bpos_grad.cpu()), (enable_bias and bts_grad.cpu()))
-    
+
     def execute(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type):
         grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, max_seq_len, seq_offset = \
             jagged_data_gen(batch_size, max_seq_len, head_num, head_dim, mask_type, data_type)
@@ -199,4 +197,3 @@ class TestHstuJaggedDemo:
 ```
 
 注：上述用例为简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense_backward_fuxi/torch/test_hstu_dense_backward_fuxi.py](../../../../test/hstu_dense_backward_fuxi/torch/test_hstu_dense_backward_fuxi.py)
-

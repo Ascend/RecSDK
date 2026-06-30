@@ -23,7 +23,7 @@
 
 # 功能
 
-用于HSTU Attention前将合并并归一化后得UVQK进行Linear、Silu操作后拆分成User、Value、Query、Key 4个Tensor
+用于HSTU Attention前将合并并归一化后的UVQK进行Linear、Silu操作后拆分成User、Value、Query、Key 4个Tensor
 
 # 算子实现原理
 
@@ -43,6 +43,7 @@
 # 依赖
 
 算子依赖CATLASS源码, 编译前需要初始化submodule：
+
 ```shell
 git submodule update --init --recursive
 ```
@@ -58,7 +59,7 @@ attr_split_list = [tmp1, tmp2, tmp3, tmp4]  # tmp1 + tmp2 + tmp3 + tmp4 = n
 def init_linear_golden(m: torch.nn.Module):
     m.weight.data = weight
     m.bias.data = bias
-linear_uvqk_golden = torch.nn.Linear(128, weight.shape[0], bias=True, devie="cpu", dtype=x.dtype)
+linear_uvqk_golden = torch.nn.Linear(128, weight.shape[0], bias=True, device="cpu", dtype=x.dtype)
 mixed_uvqk = linear_uvqk_golden(x)
 mixed_uvqk = torch.nn.functional.silu(mixed_uvqk)
 (user, value, query, key) = torch.split(mixed_uvqk, split_arg_list, dim=-1,)
@@ -98,10 +99,10 @@ mixed_uvqk = torch.nn.functional.silu(mixed_uvqk)
 | value (返回值) | 输出     | Tensor | float16/bfloat16 | [b-s, H_v] | H_v取值范围[16, 8192]         |  H_v为16的整数倍, 数据类型与x保持一致          |
 | query (返回值) | 输出     | Tensor | float16/bfloat16 | [b-s, H_q] | H_q取值范围[16, 8192]         |  H_q为16的整数倍 , 数据类型与x保持一致         |
 | key (返回值) | 输出     | Tensor | float16/bfloat16 | [b-s, H_k] | H_k取值范围[16, 8192]         |  H_k为16的整数倍 , 数据类型与x保持一致         |
-| linear_output (返回值) | 输出     | Tensor | float16/bfloat16 | [b-s, 4HH] | 4HH取值范围[64, 32768] |   4HH为16的整数倍，4HH为H的4n倍，, 数据类型与x保持一致            |
+| linear_output (返回值) | 输出     | Tensor | float16/bfloat16 | [b-s, 4HH] | 4HH取值范围[64, 32768] |   4HH为16的整数倍，4HH为H的4n倍, 数据类型与x保持一致            |
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/in_linear_silu/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/in_linear_silu/README.md)

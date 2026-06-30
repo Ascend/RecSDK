@@ -12,13 +12,13 @@
 # in_linear_silu_backward算子目录层级
 
 ```shell
--- in_linear_silu_backward
-   |-- v220
-      |-- op_host                 # 算子host侧实现
-      |-- op_kernel               # 算子kernel侧实现
-      |-- in_linear_silu_backward.json   # 算子原型配置
-      |-- README.md               # 算子说明文档
-      |-- run.sh                  # 算子编译部署脚本
+in_linear_silu_backward
+└── v220
+    ├── op_host                       # 算子host侧实现
+    ├── op_kernel                     # 算子kernel侧实现
+    ├── in_linear_silu_backward.json  # 算子原型配置
+    ├── README.md                     # 算子说明文档
+    └── run.sh                        # 算子编译部署脚本
 ```
 
 # 功能
@@ -29,12 +29,12 @@ in_linear_silu_backward是in_linear_silu算子的反向传播实现，用于计�
 
 算子工作原理说明：
 
-1. 输入张量x ND格式，支持FLOAT16、BFLOAT16类型，shape = (m, k) 不可为空
-2. 输入张量weight ND格式，支持FLOAT16、BFLOAT16类型，shape = (n, k), 如果为(k, n)需要转置后传入 不可为空
-3. 输入张量bias ND格式，支持FLOAT类型，shape = (n,) 可选
+1. 输入张量x ND格式，支持FLOAT16、BFLOAT16类型，shape = (seq_len, embed_dim) 不可为空
+2. 输入张量weight ND格式，支持FLOAT16、BFLOAT16类型，shape = (hidden_size, embed_dim), 如果为(embed_dim, hidden_size)需要转置后传入 不可为空
+3. 输入张量bias ND格式，支持FLOAT类型，shape = (hidden_size,) 可选
 4. 输入张量user_grad、value_grad、query_grad、key_grad ND格式，支持FLOAT16、BFLOAT16类型，分别对应前向传播输出user、value、query、key的梯度
 5. 输入张量linear_output ND格式，支持FLOAT16、BFLOAT16类型，来自前向传播的中间结果
-6. attr属性 split_arg_list(List[int], 计算输入)： User、Value、Query、Key的长度，4个int类型的List, 成员必须为16的倍数，4个数总和为n，不可为空
+6. attr属性 split_arg_list(List[int], 计算输入)： User、Value、Query、Key的长度，4个int类型的List, 成员必须为16的倍数，4个数总和为hidden_size，不可为空
 7. attr属性 isTrans(Bool, 计算输入)： 权重是否需要转置，保留参数，当前仅支持为true
 8. 输出张量x_grad、weights_grad、bias_grad，分别对应输入x、权重weight和偏置bias的梯度
 9. 请注意算子输入shape受显存大小限制。
@@ -44,33 +44,33 @@ in_linear_silu_backward是in_linear_silu算子的反向传播实现，用于计�
 输入:
 
 ```python
-m, k = 1024, 128
-n = 512
-seg_len = int(n / 4)
+seq_len, embed_dim = 1024, 128
+hidden_size = 512
+seg_len = int(hidden_size / 4)
 split_arg_list = [seg_len, seg_len, seg_len, seg_len]
 
-x = torch.rand((m, k), dtype=torch.float16)
-weight = torch.rand((n, k), dtype=torch.float16)
-bias = torch.rand((n,), dtype=torch.float32)
+x = torch.rand((seq_len, embed_dim), dtype=torch.float16)
+weight = torch.rand((hidden_size, embed_dim), dtype=torch.float16)
+bias = torch.rand((hidden_size,), dtype=torch.float32)
 
 # 前向传播结果
-linear_output = torch.rand((m, n), dtype=torch.float16)
+linear_output = torch.rand((seq_len, hidden_size), dtype=torch.float16)
 
 # 梯度输入
-user_grad = torch.rand((m, seg_len), dtype=torch.float16)
-value_grad = torch.rand((m, seg_len), dtype=torch.float16)
-query_grad = torch.rand((m, seg_len), dtype=torch.float16)
-key_grad = torch.rand((m, seg_len), dtype=torch.float16)
+user_grad = torch.rand((seq_len, seg_len), dtype=torch.float16)
+value_grad = torch.rand((seq_len, seg_len), dtype=torch.float16)
+query_grad = torch.rand((seq_len, seg_len), dtype=torch.float16)
+key_grad = torch.rand((seq_len, seg_len), dtype=torch.float16)
 ```
 
 输出：
 
 ```python
-# x_grad: shape [m, k], 类型与x相同
-# weights_grad: shape [n, k], 类型与weight相同
-# bias_grad: shape [n,], 类型与bias相同
+# x_grad: shape [seq_len, embed_dim], 类型与x相同
+# weights_grad: shape [hidden_size, embed_dim], 类型与weight相同
+# bias_grad: shape [hidden_size,], 类型与bias相同
 x_grad, weights_grad, bias_grad = in_linear_silu_backward(
-    x, weight, bias, user_grad, value_grad, query_grad, key_grad, linear_output, 
+    x, weight, bias, user_grad, value_grad, query_grad, key_grad, linear_output,
     split_arg_list=split_arg_list, isTrans=True
 )
 ```
@@ -95,6 +95,6 @@ x_grad, weights_grad, bias_grad = in_linear_silu_backward(
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/in_linear_silu/README.md)

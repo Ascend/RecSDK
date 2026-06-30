@@ -12,13 +12,13 @@
 # permute2d_sparse_data算子文件结构
 
 ```shell
--- permute2d_sparse_data
-   |-- v220
-      |-- op_host                       # 算子host侧实现
-      |-- op_kernel                     # 算子kernel侧实现
-      |-- permute2d_sparse_data.json    # 算子原型配置
-      |-- README.md                     # 算子说明文档
-      |-- run.sh                        # 算子编译部署脚本
+permute2d_sparse_data
+└── v220
+    ├── op_host                       # 算子host侧实现
+    ├── op_kernel                     # 算子kernel侧实现
+    ├── permute2d_sparse_data.json    # 算子原型配置
+    ├── README.md                     # 算子说明文档
+    └── run.sh                        # 算子编译部署脚本
 ```
 
 # 功能

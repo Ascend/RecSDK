@@ -81,7 +81,7 @@ def dense_to_jagged(self, jagged_tensor, dense_tensor, seq_lens):
         tensor[offset: offset + seq_len, :, :] = dense_tensor[batch_id, 0: seq_len, :, :]
         offset = offset + seq_len
 
-        return tensor
+    return tensor
 
 
 def golden_op_exec(grad, q, k, v, bias_position, bias_timestamp, grad_bias_position, grad_bias_timestamp, mask, max_seq_len, seq_offsets,
@@ -242,6 +242,6 @@ seq_offsets = torch.concat((torch.zeros((1, ), dtype=torch.int64), \
 
 # 算子编译部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
 注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/hstu_dense_forward_fuxi/README.md)

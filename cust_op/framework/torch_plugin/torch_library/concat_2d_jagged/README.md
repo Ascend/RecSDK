@@ -1,6 +1,6 @@
 # 使用PyTorch框架调用concat_2d_jagged和split_2d_jagged算子
 
-该算子当前支持两种软件版本配套：PyTorch 2.6.0和PyTorch2.7.1。concat_2d_jagged 和 split_2d_jagged是互为前、反向的Tensor拼接和切分算子。详细配套说明见[RecSDK\cust_op\README.md](../../../../README.md)。
+该算子当前支持两种软件版本配套：PyTorch 2.6.0和PyTorch2.7.1。concat_2d_jagged 和 split_2d_jagged是互为前、反向的Tensor拼接和切分算子。详细配套说明见[RecSDK/cust_op/README.md](../../../../README.md)。
 
 ## concat_2d_jagged算子和split_2d_jagged算子
 
@@ -23,7 +23,7 @@ torch.ops.mxrec.split_2d_jagged(values, maxSeqlen, offsetA, offsetB) -> Tensor, 
 | valuesB           | 输入      | Tensor   | bfloat16/float16/float32/int32 | [dim0, dim1] | dim1和dtype必须与valuesA的一致                                             | 仅支持二维                                   |
 | offsetA           | 输入      | Tensor     | int                            | [dim0] | shape与offsetB一致,长度范围[2, 1024]                                       | 仅支持一维                                   |
 | offsetB           | 输入      | Tensor     | int                            | [dim0] | shape与offsetA一致,长度范围[2, 1024]                                       | 仅支持一维                                   |
-| isReplace         | 输入(可选)  | bool     | bool                           | NA    | 预留参数，当前只支持默认值Fales，传其他值不生效。                                         | NA                                      |
+| isReplace         | 输入(可选)  | bool     | bool                           | NA    | 预留参数，当前只支持默认值False，传其他值不生效。                                         | NA                                      |
 | nPrefixFromRight  | 输入(可选)  | int      | int                            | NA    | nPrefixFromRight >= 0                                               | 拼接时右侧tensor移动前缀的个数                                    |
 | outputTensor      | 输出      | Tensor   | bfloat16/float16/float32/int32 | [dim0, dim1] | dim0的长度等于valuesA和valuesB的dim0之和，<br/>dim1的长度与valuesA和valuesB的dim1相等 | 结果为二维                                   |
 
@@ -46,7 +46,7 @@ torch.ops.mxrec.split_2d_jagged(values, maxSeqlen, offsetA, offsetB) -> Tensor, 
 
 ### 编译与部署
 
-算子编译与部署请参考 [RecSDK\cust_op\README.md](../../../../README.md) 中 "单算子使用说明" 章节：
+算子编译与部署请参考 [RecSDK/cust_op/README.md](../../../../README.md) 中 "单算子使用说明" 章节：
 
 ### 算子调用示例
 
@@ -78,7 +78,7 @@ concated_tensor = torch.ops.mxrec.concat_2d_jagged(max_seqlens, tensor_a, tensor
 split_tensor_a, split_tensor_b = torch.ops.mxrec.split_2d_jagged(concated_tensor, max_seqlens, offset_a, offset_b)
 ```
 
-**提示**
+**提示** \
 上述用例为通用场景执行，更详细精度、多场景测试用例，请参考完整测试文件:
 
 [`Rec SDK/cust_op/test/concat_2d_jagged_test/torch/test_concat_2d_jagged_tensor.py`](../../../../test/concat_2d_jagged_test/torch/test_concat_2d_jagged_tensor.py)
