@@ -37,6 +37,7 @@ try:
     USE_TUPLE_DATA_FORMAT = bool(int(os.getenv("USE_TUPLE_DATA_FORMAT", 0)))
     USE_DETERMINISTIC = bool(int(os.getenv("USE_DETERMINISTIC", 0)))
     USE_EXPORT_SAVED_MODEL = bool(int(os.getenv("USE_EXPORT_SAVED_MODEL", 0)))
+    KEEP_ORIGIN_DTYPE = bool(int(os.getenv("KEEP_ORIGIN_DTYPE", 0)))
 except ValueError as err:
     raise ValueError(
         "please correctly config USE_DYNAMIC or USE_DYNAMIC_EXPANSION or "

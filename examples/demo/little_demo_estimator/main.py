@@ -36,7 +36,7 @@ from nn_model_input import get_model_fn
 from config import (
     Config, USE_DETERMINISTIC, GLOBAL_RANDOM_SEED, USE_DYNAMIC, USE_DYNAMIC_EXPANSION,
     USE_MULTI_LOOKUP, USE_MODIFY_GRAPH, USE_TIMESTAMP, USE_DP, USE_ONE_SHOT, MULTI_LOOKUP_TIMES,
-    ENABLE_SLICER_TEST, RUN_MODE, USE_EXPORT_SAVED_MODEL
+    ENABLE_SLICER_TEST, RUN_MODE, USE_EXPORT_SAVED_MODEL, KEEP_ORIGIN_DTYPE
 )
 from demo_logger import logger
 from utils import FeatureSpecIns
@@ -57,6 +57,13 @@ def set_seed():
 
 def main(params, config: Config):
     mg_session_config = tf.compat.v1.ConfigProto(allow_soft_placement=True, log_device_placement=False)
+    # Atlas A2/A3和Ascend950PR/DT间算子精度优化策略不同，本模型调参基于Atlas A2/A3，若使用Ascend950PR/DT推荐开启原精度
+    if KEEP_ORIGIN_DTYPE:
+        run_precision_mode = 'must_keep_origin_dtype'
+        run_modify_mixlist = None
+    else:
+        run_precision_mode = 'allow_mix_precision'
+        run_modify_mixlist = './ops_info.json'  # 修改算子使用的混合精度黑白灰名单
     run_config = NPURunConfig(
         model_dir=params.model_dir,
         save_summary_steps=1000,  # tf.summary运行周期
@@ -64,8 +71,8 @@ def main(params, config: Config):
         keep_checkpoint_max=5,
         session_config=mg_session_config,
         log_step_count_steps=1000,  # tf.logging运行周期
-        precision_mode='allow_mix_precision',
-        modify_mixlist='./ops_info.json',  # 修改算子使用的混合精度黑白灰名单
+        precision_mode=run_precision_mode,
+        modify_mixlist=run_modify_mixlist,
         enable_data_pre_proc=True,
         iterations_per_loop=1,
         op_precision_mode='./op_precision.ini',  # high performance
