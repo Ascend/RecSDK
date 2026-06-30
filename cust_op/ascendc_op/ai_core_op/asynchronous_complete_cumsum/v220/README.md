@@ -26,8 +26,8 @@
 
 | 名称 | 输入/输出 | 参数类型 | 数据类型 | 数据格式 | 范围 | 说明 |
 | --------------------------- | ---- | ------- | ------- | ---- | ------------------------ | ------------------------------------------------- |
-| input_tensor | 输入 | Tensor | int32/int64 | [dim0] | dim0为input_tensor元素个数,长度:[1, 2^63-1) | 仅支持一维输入 |
-| output_tensor | 输出 | Tensor | int32/int64 | [dim0+1] | 长度:dim0+1 | 从零开始依次累加input_tensor元素,用户需自行控制总和不超过int32/int64数值范围 |
+| input_tensor | 输入 | Tensor | int32/int64 | [dim0] | dim0为input_tensor元素个数，长度:[1, 2^63-1) | 仅支持一维输入 |
+| output_tensor | 输出 | Tensor | int32/int64 | [dim0+1] | 长度:dim0+1 | 从零开始依次累加input_tensor元素，用户需自行控制总和不超过int32/int64数值范围 |
 
 ## 功能
 

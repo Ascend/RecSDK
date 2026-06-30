@@ -15,7 +15,7 @@ torch.ops.mxrec.invert_permute(Tensor permute) -> Tensor
 
 | 名称             | 输入/输出 | 参数类型 |  数据类型  | 数据格式                                       | 范围             | 说明                                          |
 |----------------|-------|  ----  |  ----  |--------------------------------------------|----------------|---------------------------------------------|
-| permute        | 输入    | Tensor | int32/int64 | torch.tensor([value1, value2, value3 ...]) | 长度:[1, 2^31-1) | 仅支持一维输入, 0 <= permute[i] <= length(permute) |
+| permute        | 输入    | Tensor | int32/int64 | torch.tensor([value1, value2, value3 ...]) | 长度:[1, 2^31-1) | 仅支持一维输入, 0 <= permute[i] < length(permute) |
 | invert_permute | 输出    | Tensor | int32/int64 | torch.tensor([value1, value2, value3 ...]) |                |                                             |
 
 ### 编译与部署

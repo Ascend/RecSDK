@@ -47,7 +47,7 @@ torch.ops.mxrec.asynchronous_complete_cumsum(Tensor offset) -> Tensor
 
 PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
-### 算子调用示例,以下以pytest方式调用为例
+### 算子调用示例，以下以pytest方式调用为例
 
 ```python
 import sysconfig

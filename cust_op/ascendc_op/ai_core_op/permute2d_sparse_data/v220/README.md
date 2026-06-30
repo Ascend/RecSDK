@@ -23,7 +23,7 @@ permute2d_sparse_data
 
 # 功能
 
-同fbgemm的permute2d_sparse_data方法, 实现了对二维稀疏数据进行重排。
+同fbgemm的permute2d_sparse_data方法，实现了对二维稀疏数据进行重排。
 
 # 算子实现原理
 
@@ -51,7 +51,7 @@ permuted_weights = [1.0, 1.1, 1.4, 1.5, 1.6]
 
 说明：
 
-1.permute入参为[0, 2]，分别取lengths[0]的值为[1, 1]表示两个元素,对应values中的[0, 1]; lengths[2]的值为[1, 2]表示三个元素，对应values中的[4, 5, 6]。
+1.permute入参为[0, 2]，分别取lengths[0]的值为[1, 1]表示两个元素，对应values中的[0, 1]；lengths[2]的值为[1, 2]表示三个元素，对应values中的[4, 5, 6]。
 再将[0, 1]和[4, 5, 6]拼接成最终的permuted_values结果。其中lengths[1]中的[1, 1]对应values的两个元素为[2, 3]在例子中未获取。
 
 2.permuted_weights的处理方式与permuted_values一致。
@@ -65,7 +65,7 @@ permuted_weights = [1.0, 1.1, 1.4, 1.5, 1.6]
 |  values | 输入     | Tensor  | int32/int64/fp32/fp16/bf16 | [values]                                      | values的长度等于`lengths.sum()` |
 |  weights | 输入 | Tensor  | fp32/fp16/bf16/double/int32/int64       | [weights] / [weights, columns]                                  | weights的长度等于`lengths.sum()`, 支持weights.dense_dim > 1 (多列)情况|
 |  permuted_lengths_sum | 输入(可选) | SymInt  | int64        | NA                                            |        [0, std::numeric_limits\<int64\>::max()]      |
-|  enableWeights | 输入 | bool  | bool | NA                                            |              |
+|  enableWeights | 输入 | bool  | bool | NA                                            |  默认为false  |
 |  permuted_lengths | 输出     | Tensor  | int32/int64   | [[permuted_lengths], [permuted_lengths], ... ] |                     |
 |  permuted_values | 输出     | Tensor  | int32/int64/fp32/fp16/bf16   | [permuted_values]                             |                     |
 |  permuted_weights | 输出     | Tensor  |  fp32/fp16/bf16/double/int32/int64  | [permuted_weights]                            |       |
@@ -91,4 +91,4 @@ def permute2d_sparse_data(permute, lengths, values, weights, permuted_lengths_su
 
 算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/permute2d_sparse_data/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/permute2d_sparse_data/README.md)

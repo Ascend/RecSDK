@@ -22,8 +22,8 @@
 
 | 名称 | 输入/输出 | 参数类型 | 数据类型 | 数据格式 | 范围 | 说明 |
 | --------------------------- | ---- | ------- | ------- | ---- | ------------------------ | ------------------------------------------------- |
-| input_tensor | 输入 | Tensor | int32/int64 | [dim0] | dim0为input_tensor元素个数,长度:[1, 2^63-1) | 仅支持一维输入 |
-| output_tensor | 输出 | Tensor | int32/int64 | [dim0+1] | 长度:dim0+1 | 从零开始依次累加input_tensor元素,用户需自行控制总和不超过int32/int64数值范围 |
+| input_tensor | 输入 | Tensor | int32/int64 | [dim0] | dim0为input_tensor元素个数，长度:[1, 2^63-1) | 仅支持一维输入 |
+| output_tensor | 输出 | Tensor | int32/int64 | [dim0+1] | 长度:dim0+1 | 从零开始依次累加input_tensor元素，用户需自行控制总和不超过int32/int64数值范围 |
 
 ## Ascend C参考设计
 
@@ -67,11 +67,11 @@ export ASCEND_HOME_PATH=/usr/local/Ascend/ascend-toolkit/latest
 a) 算子的主要功能是实现输入offset的异步并行累加（前缀和计算）
 b) 算子输入说明：
 
-- x：输入的offset tensor, eg: [1,5,6]
+- x：输入的offset tensor，eg: [1,5,6]
 
 c) 算子输出说明：
 
-- y：输入的offset tensor对应的累加和, eg: [0, 1, 6, 12]
+- y：输入的offset tensor对应的累加和，eg: [0, 1, 6, 12]
   - 前N个元素为前缀和结果：[0, 1, 6]
   - 最后一个元素为总和：12
 
@@ -93,7 +93,7 @@ e) 算子约束说明：
 
 ### Host侧算子实现
 
-Host侧算子实现在目录 op_host下，包括asynchronous_complete_cumsum.cpp和asynchronous_complete_cumsum_tiling.h。
+Host侧算子实现在目录op_host下，包括asynchronous_complete_cumsum.cpp和asynchronous_complete_cumsum_tiling.h。
 
 a) Tiling实现
 

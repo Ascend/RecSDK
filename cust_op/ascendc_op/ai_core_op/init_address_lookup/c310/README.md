@@ -80,7 +80,7 @@ bash run.sh
 ```
 
 算子完整编译步骤请参考[RecSDK/cust_op/README.md](../../../../README.md)。
-算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/init_address_lookup/README.md)。
+算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/init_address_lookup/README.md)。
 
 ## 相关算子
 

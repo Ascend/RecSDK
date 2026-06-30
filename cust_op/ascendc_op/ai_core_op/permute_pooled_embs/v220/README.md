@@ -26,8 +26,8 @@
 | pooled_embs         | 输入     | Tensor   | float32/float16/bfloat16      | [B_local, total_global_D]  | 池化后的嵌入输出张量。B_local为batch size，total_global_D为所有特征的embedding维度之和 |
 | offset_dim_list     | 输入     | Tensor   | int64                         | [T+1]                      | 每个特征embedding维度的累积和。offset_dim_list[0]=0, offset_dim_list[T]=total_global_D |
 | permute_list        | 输入     | Tensor   | int64                         | [T]                        | 输出特征顺序，值范围[0, T-1]，不可重复 |
-| inv_offset_dim_list | 输入| Tensor  | int64                         | [T+1]                      | 重排后特征embedding维度的累积和|
-| inv_permute_list    | 输入| Tensor  | int64                         | [T]                        | permute_list的逆索引/逆排列 |
+| inv_offset_dim_list | 输入 | Tensor  | int64                         | [T+1]                      | 重排后特征embedding维度的累积和 |
+| inv_permute_list    | 输入 | Tensor  | int64                         | [T]                        | permute_list的逆索引/逆排列 |
 | permuted_pooled_embs | 输出     | Tensor   | float32/float16/bfloat16      | [B_local, total_global_D]  | 重排列后的嵌入张量。与输入pooled_embs形状一致，特征列顺序发生改变 |
 
 ## 算法原理
@@ -67,10 +67,10 @@ permute_pooled_embs/
 
 ## 算子编译部署
 
-算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中“单算子使用说明”-“算子编译”章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/permute_pooled_embs/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/permute_pooled_embs/README.md)
 
 ## 单算子测试
 
-算子编译与部署、算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/permute_pooled_embs/README.md)。
+算子编译与部署、算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/permute_pooled_embs/README.md)。

@@ -23,7 +23,7 @@ dense_to_jagged_backward接口为dense_to_jagged算子的反向算子jagged_to_p
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
 |  dense | 输入 | Tensor | float32/float16/bfloat16/int32/int64 | [dim0, dim1, dim2] | dim0 <= INT_MAX - 1 | 仅支持三维 |
-|  offsets | 输入 | Tensor[] | int32/int64 | [dim0 + 1] | dim0 + 1 <= INT_MAX 数值必须从0开始依次递增 | 仅支持一维 offsets内元素需用户自行保证合法性，否则可能导致算子执行失败 |
+|  offsets | 输入 | Tensor[] | int32/int64 | [dim0 + 1] | dim0 + 1 <= INT_MAX；数值必须从0开始依次递增 | 仅支持一维 offsets内元素需用户自行保证合法性，否则可能导致算子执行失败 |
 |  total_L | 输入(可选) | SymInt | int | NA | 有值时必须等于offset[-1] | NA |
 |  jagged_dense | 输出 | Tensor | float32/float16/bfloat16/int32/int64 | [jagged_dim0, dim2] | NA | dense_to_jagged_forward输出 |
 |  (jagged_dense, offsets) | 输出 | Tuple | (float32/float16/bfloat16/int32/int64, int32/int64) | ([jagged_dim0, dim2], [dim0 + 1]) | NA | dense_to_jagged输出，offsets即为输入参数offsets |
@@ -38,7 +38,7 @@ dense_to_jagged_backward接口为dense_to_jagged算子的反向算子jagged_to_p
 
 PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
-### 算子调用示例,以下以pytest方式调用为例
+### 算子调用示例，以下以pytest方式调用为例
 
 ```python
 import itertools

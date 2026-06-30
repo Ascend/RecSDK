@@ -22,8 +22,8 @@ select_dim1_to_permute
 
 # 功能
 
-将元素个数为batch_size的select_dim1 通过attr属性扩展到多个batch_num（lengthsSize / batchSize），生成permute,
-同时根据select_dim1中的元素值，将permute中的元素值对应到lengths中的元素值。
+将元素个数为batch_size的indices，扩展到多个batch_num（lengthsSize / batchSize），生成permute,
+同时根据indices中的元素值，将permute中的元素值对应到lengths中的元素值。
 
 # 算子实现原理
 
@@ -31,7 +31,7 @@ select_dim1_to_permute
 
 算子工作原理说明：
 
-1. 输入张量indices ND格式， 支持INT32, shape = (B, ) 不可为空，该元素为稀疏矩阵下标的排列，只包含一个batch
+1. 输入张量indices为ND格式， 支持INT32, shape = (B, ) 不可为空，该元素为稀疏矩阵下标的排列，只包含一个batch
 2. 属性 batchSize(int, 计算输入): 稀疏矩阵中一行中包含元素个数
 3. 属性 lengthsSize(int, 计算输入): 稀疏矩阵总长度
 4. 输出张量 permute ND格式， 支持INT32， shape = (B * n, ), 计算结果，为indices根据attr得到整个lengths的下标排列
@@ -81,5 +81,3 @@ outputlengths = [2, 1, 5, 3,
 # 算子编译部署
 
 算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
-
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/in_linear_silu/README.md)

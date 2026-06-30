@@ -3,7 +3,7 @@
 ## PyTorch框架对外接口原型
 
 ```python
-torch.ops.mxrec.segment_sum_csr(Tensor csr_seg, Tensor values, int batch_size) -> Tensor
+torch.ops.mxrec.segment_sum_csr(Tensor csr_seg, Tensor values, int batch_size) -> Tensor y
 ```
 
 # 参数说明
