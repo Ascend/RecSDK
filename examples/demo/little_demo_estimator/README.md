@@ -63,6 +63,7 @@ bash run.sh main.py {ip}
 这个参数在脚本是默认的，用户需要根据自己环境中Rec SDK实际安装的路径进行配置。
 
 如需单卡运行，将run.sh中的`local_rank_size=8`改为`local_rank_size=1`即可。
+各项特性可按需在run.sh中的参数配置下配置。
 
 # 安全说明
 
