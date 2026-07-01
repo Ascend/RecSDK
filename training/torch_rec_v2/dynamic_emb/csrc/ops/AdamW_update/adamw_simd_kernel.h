@@ -23,6 +23,53 @@ using namespace AscendC;
 
 namespace dyn_emb_adamw_simd {
 
+template <typename T>
+__aicore__ inline void AdamWCompute(__local_mem__ T* dstW, __local_mem__ T* dstM1, __local_mem__ T* dstM2,
+                                    __local_mem__ T* srcG, __local_mem__ T* srcW, __local_mem__ T* srcM1,
+                                    __local_mem__ T* srcM2, uint32_t calCount, uint16_t repeatCount, uint32_t oneRepeat,
+                                    float eps, float beta1, float oneMinusBeta1, float beta2, float oneMinusBeta2,
+                                    float stepSize, float invVHatDenom, float decayFactor)
+{
+    AscendC::MicroAPI::RegTensor<T> dstVregG;
+    AscendC::MicroAPI::RegTensor<T> dstVregW;
+    AscendC::MicroAPI::RegTensor<T> dstVregM1;
+    AscendC::MicroAPI::RegTensor<T> dstVregM2;
+    AscendC::MicroAPI::RegTensor<T> srcVregG;
+    AscendC::MicroAPI::RegTensor<T> srcVregW;
+    AscendC::MicroAPI::RegTensor<T> srcVregM1;
+    AscendC::MicroAPI::RegTensor<T> srcVregM2;
+    AscendC::MicroAPI::MaskReg mask;
+
+    for (uint16_t i = 0; i < repeatCount; ++i) {
+        mask = AscendC::MicroAPI::UpdateMask<uint32_t>(calCount);
+        AscendC::MicroAPI::DataCopy(srcVregG, srcG + i * oneRepeat);
+        AscendC::MicroAPI::DataCopy(srcVregW, srcW + i * oneRepeat);
+        AscendC::MicroAPI::DataCopy(srcVregM1, srcM1 + i * oneRepeat);
+        AscendC::MicroAPI::DataCopy(srcVregM2, srcM2 + i * oneRepeat);
+
+        AscendC::MicroAPI::Muls(dstVregM1, srcVregM1, beta1, mask);
+        AscendC::MicroAPI::Muls(dstVregG, srcVregG, oneMinusBeta1, mask);
+        AscendC::MicroAPI::Add(dstVregM1, dstVregM1, dstVregG, mask);
+
+        AscendC::MicroAPI::Muls(dstVregM2, srcVregM2, beta2, mask);
+        AscendC::MicroAPI::Mul(dstVregG, srcVregG, srcVregG, mask);
+        AscendC::MicroAPI::Muls(dstVregG, dstVregG, oneMinusBeta2, mask);
+        AscendC::MicroAPI::Add(dstVregM2, dstVregM2, dstVregG, mask);
+
+        AscendC::MicroAPI::Muls(srcVregM2, dstVregM2, invVHatDenom, mask);
+        AscendC::MicroAPI::Sqrt(srcVregM2, srcVregM2, mask);
+        AscendC::MicroAPI::Adds(srcVregM2, srcVregM2, eps, mask);
+        AscendC::MicroAPI::Div(dstVregG, dstVregM1, srcVregM2, mask);
+        AscendC::MicroAPI::Muls(dstVregG, dstVregG, stepSize, mask);
+        AscendC::MicroAPI::Muls(dstVregW, srcVregW, decayFactor, mask);
+        AscendC::MicroAPI::Sub(dstVregW, dstVregW, dstVregG, mask);
+
+        AscendC::MicroAPI::DataCopy(dstW + i * oneRepeat, dstVregW, mask);
+        AscendC::MicroAPI::DataCopy(dstM1 + i * oneRepeat, dstVregM1, mask);
+        AscendC::MicroAPI::DataCopy(dstM2 + i * oneRepeat, dstVregM2, mask);
+    }
+}
+
 /// 扁平 grads(GradT) + 每行 WeightT*（w||m||v 连续 3*gradDim）；可选 founds 掩码
 template <typename GradT, typename WeightT>
 class AdamWSimd {
@@ -135,6 +182,7 @@ public:
     __aicore__ inline void ComputeAdamW(uint32_t len, LocalTensor<float>& u0, LocalTensor<float>& u1,
                                         LocalTensor<float>& u2, LocalTensor<float>& u3, LocalTensor<float>& u4) const
     {
+        (void)u4;
         const float beta1 = tiling_->beta1;
         const float beta2 = tiling_->beta2;
         const float oneMinusBeta1 = tiling_->oneMinusBeta1;
@@ -144,22 +192,20 @@ public:
         const float decayFactor = tiling_->decayFactor;
         const float eps = tiling_->eps;
 
-        Mul<float>(u4, u0, u0, len);
-        Muls<float>(u2, u2, beta1, len);
-        Muls<float>(u0, u0, oneMinusBeta1, len);
-        Add<float>(u2, u2, u0, len);
+        __local_mem__ float* srcG = (__local_mem__ float*)u0.GetPhyAddr();
+        __local_mem__ float* srcW = (__local_mem__ float*)u1.GetPhyAddr();
+        __local_mem__ float* srcM1 = (__local_mem__ float*)u2.GetPhyAddr();
+        __local_mem__ float* srcM2 = (__local_mem__ float*)u3.GetPhyAddr();
+        __local_mem__ float* dstW = (__local_mem__ float*)u1.GetPhyAddr();
+        __local_mem__ float* dstM1 = (__local_mem__ float*)u2.GetPhyAddr();
+        __local_mem__ float* dstM2 = (__local_mem__ float*)u3.GetPhyAddr();
 
-        Muls<float>(u3, u3, beta2, len);
-        Muls<float>(u4, u4, oneMinusBeta2, len);
-        Add<float>(u3, u3, u4, len);
+        constexpr uint32_t vecLen = AscendC::GetVecLen();
+        constexpr uint32_t oneRepeat = vecLen / static_cast<uint32_t>(sizeof(float));
+        const uint16_t repeatCount = static_cast<uint16_t>((len + oneRepeat - 1U) / oneRepeat);
 
-        Muls<float>(u4, u3, invVHatDenom, len);
-        Sqrt<float>(u4, u4, len);
-        Adds<float>(u4, u4, eps, len);
-        Div<float>(u0, u2, u4, len);
-        Muls<float>(u0, u0, stepSize, len);
-        Muls<float>(u1, u1, decayFactor, len);
-        Sub<float>(u1, u1, u0, len);
+        VF_CALL<AdamWCompute<float>>(dstW, dstM1, dstM2, srcG, srcW, srcM1, srcM2, len, repeatCount, oneRepeat, eps,
+                                     beta1, oneMinusBeta1, beta2, oneMinusBeta2, stepSize, invVHatDenom, decayFactor);
     }
 
     __aicore__ inline void SyncMte2V() const
