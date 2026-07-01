@@ -1630,7 +1630,7 @@ You can obtain the component source code from the [Rec SDK TensorFlow source rep
 </tr>
 <tr id="row19317251548"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.4.1"><p id="p6931102518414">Constraints</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.4.1 "><ul id="ul189311725543"><li>Only 1D tensor inputs are supported. </li><li><code>x</code> must have the same input type.</li></ul>
+<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.4.1 "><ul id="ul189311725543"><li>Only 1D tensor inputs are supported. </li><li><code>x</code> and <code>y</code> must have the same input type.</li></ul>
 </td>
 </tr>
 </tbody>

@@ -34,7 +34,7 @@ Rec SDK TensorFlow为Wheel包格式，安装、卸载日志记录在系统histor
 - 使用编辑器（如vim编辑器）修改。
 - 通过sed命令在终端命令行环境对文件进行编辑修改，命令如下：
 
-    **sed -i 's/^HISTSIZE=**_number_**/HISTSIZE=**_newNumber_**/' /etc/profile**，*number*表示修改前的命令数量，*newNumber*表示修改后的命令数量。以保存的命令数量从1000改为200为例：
+    **sed -i 's/^HISTSIZE=*_number_*/HISTSIZE=*_newNumber_*/' /etc/profile**，*number*表示修改前的命令数量，*newNumber*表示修改后的命令数量。以保存的命令数量从1000改为200为例：
 
     ```bash
     sed -i 's/^HISTSIZE=1000/HISTSIZE=200/' /etc/profile
@@ -71,7 +71,7 @@ if [ -z $USER_IP ]
 then
   USER_IP=`hostname`
 fi
-export HISTTIMEFORMAT="%F %T $USER_IP:`whoami` "    # history命令显示格式：时间、IP、用户名、执行命令 
+export HISTTIMEFORMAT="%F %T $USER_IP:`whoami` "    # history命令显示格式：时间、IP、用户名、执行命令
 PROMPT_COMMAND=' { date "+%Y-%m-%d %T - $(history 1 | { read x cmd; echo "$cmd"; })"; } >> $HISTFILE'    # 实时将history命令写到配置的文件里
 ```
 

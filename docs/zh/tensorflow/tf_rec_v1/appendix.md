@@ -12,7 +12,7 @@ TensorFlow对Embedding的支持是通过变量实现的，用户需要预估每�
 
 本节介绍如何使用动态扩容模式进行训练，整体操作流程请参见[图1](#fig20224232242)。
 
-**图 1** 片上内存侧动态扩容模式训练流程图<a id="fig20224232242"></a>  
+**图 1** 片上内存侧动态扩容模式训练流程图<a id="fig20224232242"></a>
 ![](../../figures/tf_rec_v1/片上内存侧动态扩容模式训练流程图.png "片上内存侧动态扩容模式训练流程图")
 
 训练流程分为以下部分，整体流程示例代码请参见[示例代码](#section161606482568)。
@@ -56,15 +56,15 @@ TensorFlow对Embedding的支持是通过变量实现的，用户需要预估每�
 
 1. 初始化框架。
 
-    ```bash
+    ```python
     use_dynamic_expansion = bool(int(os.getenv("USE_DYNAMIC_EXPANSION", 0)))
-    init(use_mpi, train_steps=args.train_steps, eval_steps=args.eval_steps, 
+    init(use_mpi, train_steps=args.train_steps, eval_steps=args.eval_steps,
     use_dynamic_expansion=use_dynamic_expansion)
     ```
 
 2. <a id="li91811185710"></a>稀疏优化器导入。
 
-    ```bash
+    ```python
     def get_dense_and_sparse_optimizer(cfg):
         dense_optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=cfg.learning_rate)
         use_dynamic_expansion = get_use_dynamic_expansion()
@@ -79,20 +79,20 @@ TensorFlow对Embedding的支持是通过变量实现的，用户需要预估每�
 
 3. 获取嵌入表示结果和映射地址。
 
-    ```bash
+    ```python
     train_emb_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_LOCAL_EMB)
     train_address_list = tf.compat.v1.get_collection(ASCEND_SPARSE_LOOKUP_ID_OFFSET)
     ```
 
 4. 反向梯度计算。
 
-    ```bash
+    ```python
     local_grads = tf.gradients(loss, train_emb_list)  # local_embedding
     ```
 
 5. 反向稀疏表更新。
 
-    ```bash
+    ```python
     grads_and_vars = [(grad, address) for grad, address in zip(local_grads, train_address_list)]
     train_ops.append(sparse_optimizer.apply_gradients(grads_and_vars))
     ```
@@ -105,7 +105,7 @@ TensorFlow对Embedding的支持是通过变量实现的，用户需要预估每�
 
 Rec SDK TensorFlow训练框架支持动态shape，用户可参考使用流程启用动态shape功能。
 
-启用动态shape功能前，需要安装ops算子包，具体操作请参见“《CANN 软件安装指南》的“安装CANN”章节的“安装ops”部分。
+启用动态shape功能前，需要安装ops算子包，具体操作请参见《CANN 软件安装指南》的“安装CANN”章节的“安装ops”部分。
 
 **使用流程介绍<a name="section154771936182417"></a>**
 
@@ -113,7 +113,7 @@ Rec SDK TensorFlow训练框架支持动态shape，用户可参考使用流程启
 
 **示例代码<a name="section17737110300"></a>**
 
-```bash
+```python
 init(use_mpi, rank_id=rank_id, rank_size=rank_size, train_steps=train_steps, eval_steps=eval_steps, prefetch_batch_number=1, use_dynamic=True)
 ```
 
@@ -123,7 +123,7 @@ init(use_mpi, rank_id=rank_id, rank_size=rank_size, train_steps=train_steps, eva
 
 本节介绍如何使用自动改图模式进行训练，整体操作流程请参见[图1](#fig1066992151914)。
 
-**图 1**  自动改图使用流程<a id="fig1066992151914"></a>  
+**图 1**  自动改图使用流程<a id="fig1066992151914"></a>
 ![](../../figures/tf_rec_v1/自动改图使用流程.png "自动改图使用流程")
 
 正常训练流程一般包含处理数据、创建稀疏表、查表、开始训练，使用自动改图模式和正常训练流程一致，仅需在查表接口设置“modify\_graph”参数为“True”，并且在开始训练之前需要调用自动改图的接口。其中查表和调用自动改图接口操作为关键步骤。
@@ -150,9 +150,9 @@ init(use_mpi, rank_id=rank_id, rank_size=rank_size, train_steps=train_steps, eva
 
 1. 查询稀疏特征表。
 
-    ```bash
+    ```python
     from mx_rec.core.embedding import sparse_lookup
-    
+
     embedding = sparse_lookup(hash_table, feature, send_count, dim=None, is_train=is_train,
                               access_and_evict_config=access_and_evict_config,
                               name=hash_table.table_name + "_lookup", modify_graph=True, batch=batch)
@@ -161,23 +161,23 @@ init(use_mpi, rank_id=rank_id, rank_size=rank_size, train_steps=train_steps, eva
 2. 调用改图接口。
     1. 使用tf.Session训练模式。
 
-        ```bash
+        ```python
         from mx_rec.util.initialize import get_initializer
         from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
-        
+
         if MODIFY_GRAPH_FLAG:
             logging.info("start to modifying graph")
             modify_graph_and_start_emb_cache(dump_graph=True)
         else:
             start_asc_pipeline()
-        
+
         # train
         with tf.compat.v1.Session(config=sess_config()) as sess:
             if MODIFY_GRAPH_FLAG:
                 sess.run(get_initializer(True))
             else:
                 sess.run(train_iterator.initializer)
-        
+
         # eval
         def evaluate():
             if MODIFY_GRAPH_FLAG:
@@ -188,9 +188,9 @@ init(use_mpi, rank_id=rank_id, rank_size=rank_size, train_steps=train_steps, eva
 
     2. 使用NPUEstimator训练模式。
 
-        ```bash
+        ```python
         from mx_rec.graph.modifier import GraphModifierHook
-        
+
         est.train(input_fn=lambda: input_fn(), hooks=[GraphModifierHook()])   #est为创建的NPUEstimator对象
         ```
 
@@ -203,7 +203,7 @@ init(use_mpi, rank_id=rank_id, rank_size=rank_size, train_steps=train_steps, eva
 >[!NOTE]
 >开启淘汰功能后，不支持片上内存侧动态扩容。
 
-**图 1**  特征准入与淘汰使用流程<a name="fig457115616"></a>  
+**图 1**  特征准入与淘汰使用流程<a name="fig457115616"></a>
 ![](../../figures/tf_rec_v1/特征准入与淘汰使用流程.png "特征准入与淘汰使用流程")
 
 **关键步骤介绍<a name="section9385187220"></a>**
@@ -220,7 +220,7 @@ init(use_mpi, rank_id=rank_id, rank_size=rank_size, train_steps=train_steps, eva
 
 1. FeatureSpec模式。
 
-    ```bash
+    ```python
     feature_spec_list = [FeatureSpec("user_ids", feat_count=cfg.user_feat_cnt, table_name="user_table",
                                      access_threshold=access_threshold,
                                      eviction_threshold=eviction_threshold,
@@ -232,18 +232,18 @@ init(use_mpi, rank_id=rank_id, rank_size=rank_size, train_steps=train_steps, eva
                          FeatureSpec("timestamp", is_timestamp=True)]
     ```
 
-    ```bash
+    ```python
     hook_evict = EvictHook(evict_enable=True, evict_time_interval=24*60*60, evict_step_interval=10000)
     ```
 
 2. 自动改图模式。
 
-    ```bash
+    ```python
     config_for_user_table = dict(access_threshold=cfg.access_threshold, eviction_threshold=cfg.eviction_threshold,
                                 faae_coefficient=1)
     ```
 
-    ```bash
+    ```python
     embedding = sparse_lookup(hash_table, feature, send_count, dim=None, is_train=is_train,
                               access_and_evict_config=config_for_user_table ,
                               name=hash_table.table_name + "_lookup", modify_graph=modify_graph)
@@ -252,7 +252,7 @@ init(use_mpi, rank_id=rank_id, rank_size=rank_size, train_steps=train_steps, eva
 
 3. 更改准入阈值。
 
-    ```bash
+    ```python
     from mx_rec.util.ops import import_host_pipeline_ops
     thres_tensor = tf.constant(60, dtype=tf.int32)
     set_threshold_op = import_host_pipeline_ops().set_threshold(thres_tensor,
@@ -272,7 +272,7 @@ Hot\_Embedding功能默认开启，无需配置。
 
 1. 将op\_impl\_mode.ini配置项传入到Session。代码如下：
 
-    ```bash
+    ```python
     import tensorflow as tf
     session_config = tf.compat.v1.ConfigProto(allow_soft_placement=False, log_device_placement=False)
     session_config.gpu_options.allow_growth = True
@@ -298,7 +298,7 @@ Hot\_Embedding功能默认开启，无需配置。
 如需在Rec SDK TensorFlow训练框架使用定制WarmStart功能，需要在模型代码中创建NPUEstimator对象之前创建一个WarmStart的配置tf.estimator.WarmStartSettings，然后将这个配置传给NPUEstimator中warm\_start\_from参数即可。
 
 >[!NOTE]
->当前定制WarmStart仅支持TensorFlow  1.15.0版本下的HBM模式和DDR模式。
+>当前定制WarmStart仅支持TensorFlow 1.15.0版本下的HBM模式和DDR模式。
 
 **示例代码<a name="section18481279400"></a>**
 
@@ -309,14 +309,14 @@ Hot\_Embedding功能默认开启，无需配置。
 ```python
 import tensorflow as tf
 from tf_adapter import NPUEstimator
- 
+
 warm_settings=tf.estimator.WarmStartSettings(ckpt_to_initialize_from="./warm_start",vars_to_warm_start ="user_table", var_name_to_vocab_info=None, var_name_to_prev_var_name=None)
 est = NPUEstimator(
         model_fn=get_model_fn(create_fs_params, cfg, access_and_evict),
         params=params,
         model_dir=params.model_dir,
         config=run_config,
-        warm_start_from=warm_settings 
+        warm_start_from=warm_settings
 )
 ```
 
@@ -334,7 +334,7 @@ est = NPUEstimator(
 ```python
 import tensorflow as tf
 from tf_adapter import NPUEstimator
- 
+
 ckpt_to_initialize_from_list = ["./warm_start_1", "./warm_start_2", "./warm_start_3"]
 vars_to_warm_start_list=[".*",  ["user_table", "item_table"], "mlp_layer_w" ]
 var_name_to_prev_var_name_list = [{}, {}, {}]
@@ -343,12 +343,12 @@ warm_settings=tf.estimator.WarmStartSettings(
         vars_to_warm_start = vars_to_warm_start_list,
         var_name_to_vocab_info=None,
         var_name_to_prev_var_name=var_name_to_prev_var_name_list )
- 
+
  est = NPUEstimator(
-        model_fn=get_model_fn(create_fs_params, config, access_and_evict),
+        model_fn=get_model_fn(create_fs_params, cfg, access_and_evict),
         params=params,
         model_dir=params.model_dir,
-        config=run_config
+        config=run_config,
         warm_start_from=warm_settings
     )
 ```
@@ -377,7 +377,7 @@ warm_settings=tf.estimator.WarmStartSettings(
 
 使用示例如下：
 
-```bash
+```python
 from mx_rec.util.initialize import init
 # set init
 init(train_steps=args.train_steps,
@@ -403,7 +403,7 @@ init(train_steps=args.train_steps,
 |root|部署Rec SDK TensorFlow|用户自定义|使用**passwd**命令修改|
 |HwHiAiUser|安装驱动，运行Demo依赖的用户|用户自定义|使用**passwd**修改|
 
-**centos系统中Dockerfile示例的基础镜像用户<a name="section1822811311000"></a>**
+**CentOS系统中Dockerfile示例的基础镜像用户<a name="section1822811311000"></a>**
 
 |用户|初始密码|密码修改方法|
 |--|--|--|
@@ -423,7 +423,7 @@ init(train_steps=args.train_steps,
 |systemd-network|无|-|
 |dbus|无|-|
 
-**centos系统中RecSDK-TensorFlow组件容器内的用户<a name="section1238015439358"></a>**
+**CentOS系统中RecSDK-TensorFlow组件容器内的用户<a name="section1238015439358"></a>**
 
 |用户|描述|初始密码|密码修改方法|
 |--|--|--|--|

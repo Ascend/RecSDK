@@ -1,6 +1,6 @@
 # 优化器接口<a name="ZH-CN_TOPIC_0000002336148957"></a>
 
-## apply\_optimizer\_in\_backward（TorchRec）<a id="TOPIC_0000002302229708"></a>
+## apply\_optimizer\_in\_backward（TorchRec）<a name="TOPIC_0000002302229708"></a>
 
 >[!NOTICE]
 >

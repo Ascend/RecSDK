@@ -346,7 +346,7 @@ warm_settings=tf.estimator.WarmStartSettings(
         var_name_to_prev_var_name=var_name_to_prev_var_name_list )
 
  est = NPUEstimator(
-        model_fn=get_model_fn(create_fs_params, config, access_and_evict),
+        model_fn=get_model_fn(create_fs_params, cfg, access_and_evict),
         params=params,
         model_dir=params.model_dir,
         config=run_config,

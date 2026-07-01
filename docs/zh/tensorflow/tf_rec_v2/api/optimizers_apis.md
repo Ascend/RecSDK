@@ -39,8 +39,8 @@ def __init__(
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：`AdamWOptimizer`实例
--   失败：抛出异常
+- 成功：`AdamWOptimizer`实例
+- 失败：抛出异常
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -67,12 +67,14 @@ init_hashtable_op = mxrec.get_init_hashtable_op()
 loss = ...
 sparse_optimizer = mxrec.AdamWoptimizer(learning_rate=0.01)
 sparse_embeddings = mxrec.get_sparse_embedding()
-sparse_grads = tf.gardients(loss, sparse_embeddings)
+sparse_grads = tf.gradients(loss, sparse_embeddings)
 train_ops = sparse_optimizer.apply_gradients(zip(sparse_grads, sparse_embeddings))
 with tf.compat.v1.Session() as sess:
     sess.run(init_hashtable_op)
     sess.run(tf.compat.v1.global_variables_initializer())
     sess.run([loss, train_ops])
 ```
->[!NOTE] 说明 
->-   `apply_gradients`方法可参考开源Tensorflow优化器的用法。
+
+>[!NOTE] 说明
+>
+>- `apply_gradients`方法可参考开源Tensorflow优化器的用法。
