@@ -133,11 +133,11 @@ def hstu_fuxi(q, k, v, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_sca
 | k | 输入| float16 | [B, S, N, D] | 同q | 同q |
 | v | 输入| float16 | [B, S, N, D] | 同q | 同q |
 | timestamp_bias | 输入(可选) | float16 | B,S,S | 同q | S为模型最大的序列长度max_seq_len，不使用时传入None |
-| position_bias | 可选输入 | float16 | B,S,S | 同q | S为模型最大的序列长度max_seq_len，不使用时传入None |
+| position_bias | 输入(可选) | float16 | B,S,S | 同q | S为模型最大的序列长度max_seq_len，不使用时传入None |
 | mask | 输入 | float16 | B,1,S,S | 同q | 掩码，当前仅支持normal格式，S为模型最大的序列长度max_seq_len，mask为基于下三角的自定义，需要用户基于下三角自定义传入 |
 | maskType | 输入(属性) | int | N/A | 3:使用用户自定义mask，此时mask输入需要用户定义并传入 |  |
 | max_seq_len | 输入(属性) | int | N/A | | 表示模型最大序列长度 |
-| siluScale | 输入(属性) | float | N/A | 支持用户传入自定义siluScale，不传入时默认值为1/S， S为等长的序列长度| |
+| siluScale | 输入(属性) | float | N/A | 支持用户传入自定义siluScale，不传入时默认值为1/max_seq_len | |
 | layout | 输入(可选属性) | string | N/A |  当前仅支持"normal"，Q,K,V数据格式为B,S,N,D格式 |  |
 | output | 输出 | float16 | [B, S, N, x * D] | 同q | 当输入RAB为空时，x=1，此时结果为qkv计算结果<br>当输入RAB不为空时，x=3，此时结果为qkv结果与两个rab结果cat，将最后一维整合所得 |
 
@@ -145,6 +145,9 @@ def hstu_fuxi(q, k, v, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_sca
 
 * B,S,N,D四个维度数据均不能为0，为0时算子输入为空数据，不会执行算子计算。
 * 其中B,S,N参数影响bias、mask占用显存大小，请根据实际内存合理设置参数大小。
+* timestamp_bias和position_bias需同时为空或同时传值。
+* RAB为空：表示timestamp_bias和position_bias同时为空。
+* RAB不为空：表示timestamp_bias和position_bias同时传值。
 
 # 算子编译部署
 

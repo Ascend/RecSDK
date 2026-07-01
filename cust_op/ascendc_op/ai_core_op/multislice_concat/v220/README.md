@@ -58,7 +58,7 @@ def multislice_concat(input_data, concat_size, slice_begin, slice_length, concat
 
 | 名称  | 输入/输出 | 参数类型          | 数据类型             | 数据格式 | 范围           | 说明               |
 | ----- | --------- | ----------------- | -------------------- | -------- | -------------- | ------------------ |
-| input | 输入      | Tensor (REQUIRED) | float32/float16/bf16 | [B, D]   | B/D∈[1, 65535] | 输入的待切片Tensor |
+| input | 输入      | Tensor | float32/float16/bf16 | [B, D]   | B/D∈[1, 65535] | 输入的待切片Tensor |
 
 ## 属性参数
 

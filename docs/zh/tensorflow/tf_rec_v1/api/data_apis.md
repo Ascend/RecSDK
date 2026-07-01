@@ -17,8 +17,8 @@ def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, table_names=No
 |参数名|类型|说明|
 |--|--|--|
 |tgt_key_specs|<li>FeatureSpec</li><li>list[FeatureSpec]</li>|特征对象或特征对象列表或者特征对象元组，默认值为None。|
-|args_index_list|list[int]|参数索引列表，默认值为None。取值范围：[1, 2^31-1]|
-|table_names|list[str]|表名称列表，默认值为None。取值范围：[1, 2^31-1]|
+|args_index_list|list[int]|参数索引列表，默认值为None。列表长度取值范围：[1, 2^31-1]|
+|table_names|list[str]|表名称列表，默认值为None。列表长度取值范围：[1, 2^31-1]|
 
 >[!NOTE]
 >接口参数可选择以下其中一种方式传入。

@@ -38,7 +38,7 @@ torch.ops.mxrec.segment_sum_csr(
 
 根据 `batch_size` 和 `csr_seg` 对 `values` 中各个分段求和。
 
-`csr_seg` 为 CSR 格式的分段偏移数组：`csr_seg[i]` 到 `csr_seg[i+1]`（不含）之间的 `values` 元素属于第 `i` 段，对该段内所有元素求和得到输出 `y[i]`。
+`csr_seg` 为 CSR 格式的分段偏移数组：`csr_seg[i] * batch_size` 到 `csr_seg[i+1] * batch_size`（不含）之间的 `values` 元素属于第 `i` 段，对该段内所有元素求和得到输出 `y[i]`。
 
 `batch_size` 定义了每一行的长度，相当于先将 `values` reshape 为 `[-1, batch_size]` 的二维张量，再按段求和。
 

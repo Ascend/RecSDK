@@ -57,7 +57,7 @@ def test_lookup_multi_tables():
         device=torch.device(DEVICEID),
         pooling_mode=pooling_mode
     )
-    output = tbe(indices, offsets, **kwargs)
+    output = tbe(indices, offsets)
     loss = torch.sum(output ** 2 / 2)
     loss.backward()
 

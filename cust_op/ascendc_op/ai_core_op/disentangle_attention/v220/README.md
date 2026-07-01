@@ -36,7 +36,7 @@
 
 ps:
 
-* 如果pos_attr_type传入"c2p"只会计算content2postion编码偏置
+* 如果pos_attr_type传入"c2p"只会计算content2position编码偏置
 * 如果pos_attr_type传入"p2c"只会计算position2context编码偏置
 * 如果pos_attr_type传入"c2p|p2c" 则都会计算并将上述两个偏置累加后输出
 
@@ -62,7 +62,7 @@ graph TD
     MatMul1 -->|"c2p_att_raw<br/>Shape: BxH, Q, P"| Scale1["Scale<br/>factor: 1/&radic;(D×scale_factor)"]
     Scale1 -->|"c2p_att<br/>Shape: BxH, Q, P"| Gather1["Gather"]
 
-    InputRelPos["输入 relative_pos<br/>Shape: B, H, Q, K"] --> Clamp["Clamp<br/>relative_pos + att_span → 0:2×att_span-1"]
+    InputRelPos["输入 relative_pos"] --> Clamp["Clamp<br/>relative_pos + att_span → 0:2×att_span-1"]
     Clamp -->|"c2p_pos_raw<br/>Shape: B, H, Q, K"| Reshape["Reshape<br/>view: BxH, Q, K"]
     Reshape -->|"c2p_pos<br/>Shape: BxH, Q, K"| Gather1
     Gather1 -->|"c2p_output<br/>Shape: BxH, Q, K"| Add["Add"]
