@@ -198,7 +198,7 @@ table = mxrec.get_embedding_table(
     value_dtype=tf.float32,
 )
 init_hashtable_op = mxrec.get_init_hashtable_op()
-with tf.compat.v1.Session as sess:
+with tf.compat.v1.Session() as sess:
     sess.run(init_hashtable_op)
     sess.run(tf.compat.v1.global_variables_initializer())
 ```
@@ -240,7 +240,7 @@ table = mxrec.get_embedding_table(
 )
 
 # Get all created embedding table instance.
-emb_tables = mxrec.get_existing_table()
+emb_tables = mxrec.get_existing_tables()
 ```
 
 ## EmbeddingTableSaver<a name="ZH-CN_TOPIC_0000001630246521"></a>
@@ -267,8 +267,8 @@ def __init__(self, emb_tables: List[BaseEmbeddingTable]):
 |------------|--------------------------|------|----------------------------------------------|
 | emb_tables | List[BaseEmbeddingTable] | 必选   | 待执行保存恢复操作的稀疏表对象，通过`get_existing_tables`接口得到。 |
 
-> [!NOTE] 说明 
-> 
+> [!NOTE] 说明
+>
 > - `BaseEmbeddingTable`表示稀疏表实例，可通过`get_embedding_table`接口获取。
 
 **返回值说明<a name="section651195312311"></a>**
@@ -296,7 +296,7 @@ table = mxrec.get_embedding_table(
 )
 
 # Get all created embedding table instance.
-emb_tables = mxrec.get_existing_table()
+emb_tables = mxrec.get_existing_tables()
 
 emb_table_saver = mxrec.EmbeddingTableSaver(emb_tables)
 ```
@@ -346,7 +346,7 @@ table = mxrec.get_embedding_table(
 )
 
 # Get all created embedding table instance.
-emb_tables = mxrec.get_existing_table()
+emb_tables = mxrec.get_existing_tables()
 
 emb_table_saver = mxrec.EmbeddingTableSaver(emb_tables)
 with tf.compat.v1.Session() as sess:
@@ -399,7 +399,7 @@ table = mxrec.get_embedding_table(
 )
 
 # Get all created embedding table instance.
-emb_tables = mxrec.get_existing_table()
+emb_tables = mxrec.get_existing_tables()
 
 emb_table_saver = mxrec.EmbeddingTableSaver(emb_tables)
 with tf.compat.v1.Session() as sess:

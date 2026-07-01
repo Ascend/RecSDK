@@ -24,7 +24,7 @@ RecOps 是 Rec SDK 基于 Ascend C 开发的推荐场景自定义算子集，为
 
 **HSTU（Hierarchical Sparse Transformer Unit）** 是一种面向推荐场景的稀疏注意力机制融合算子，通过将 QK 矩阵乘法、SiLU 激活、缩放、mask 应用以及与 V 的矩阵乘法等多个环节融合为单一融合算子，大幅减少显存访问开销和 kernel 调度开销，从而在昇腾 NPU 上实现高性能的推荐模型训练。
 
-我们在 HSTU_V1 版本中实现了 **hstu_dense_forward** 前向算子，作为 HSTU（Hierarchical Sparse Transformer Unit）融合算子在昇腾 NPU 上的具体落地。其与 NV HSTU_V3 的功能对比如下：
+我们在 HSTU_V1 版本中实现了 **hstu_dense_forward** 前向算子，作为 HSTU（Hierarchical Sparse Transformer Unit）融合算子在昇腾 NPU 上的具体落地。HSTU_V1 与 NV HSTU_V3 的功能对比如下：
 
 <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%; text-align: center; font-size:14px;">
   <thead>
@@ -129,7 +129,7 @@ RecOps 是 Rec SDK 基于 Ascend C 开发的推荐场景自定义算子集，为
 数学表达式为：
 
 $$
-HSTU(q, k, v, mask, attn\_bias, silu\_scale) = (Silu(qk_{}^{T} + attn\_bias) \times silu\_scale \times mask)v
+HSTU(q, k, v, mask, attn\_bias, silu\_scale) = (Silu(qk^{T} + attn\_bias) \times silu\_scale \times mask)v
 $$
 
 其中，`Silu` 为激活函数，`silu_scale` 为缩放系数。计算流程如图所示:
@@ -159,35 +159,20 @@ $$
 
 | 名称                | 输入/输出 | 数据类型                                        | 数据格式                                 | 范围                                                                                                     | 说明                                                                                                              |
 |-------------------|-------|---------------------------------------------|--------------------------------------|--------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
-| q                 | 输入    | Tensor[float32/float16/bfloat16/fp8_e4m3fn] | [B, S, N_q, D_q]/<br>[s_b, N_q, D_q] | B∈[1, 2048]<br>S∈[1, 20480]<br>N_q∈[1, 16]<br>D_q∈[1, 512]                                       | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度<br>s_b为jagged格式下各batch的实际序列长度之和 |
-| k                 | 输入    | Tensor[float32/float16/bfloat16/fp8_e4m3fn]            | [B, S, N_k, D_q]/<br>[s_b, N_k, D_q] | B∈[1, 2048]<br>S∈[1, 20480]<br>N_k∈[1, 16]<br>D_q∈[1, 512]                                                                                                     | GQA（Grouped Query Attention，分组查询注意力机制）支持：K的头数可以小于Q的头数，但必须满足N_q能被N_k整除                                                                          |
-| v                 | 输入    | Tensor[float32/float16/bfloat16/fp8_e4m3fn]            | [B, S, N_k, D_v]/<br>[s_b, N_k, D_v] | B∈[1, 2048]<br>S∈[1, 20480]<br>N_k∈[1, 16]<br>D_v∈[16, 512]且是16的倍数                                                                                                     | dim不等支持：本算子支持qk的head_dim与v_dim不相等的场景                                                                                                              |
-| mask              | 输入    | Tensor[float32/float16/bfloat16]            | [B, N, S, S]                         | NA                                                                                                     | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致<br>N与q保持一致                                                      |
-| attn_bias         | 输入    | Tensor[float32/float16/bfloat16]            | [B, N, S, S]                         | NA                                                                                                     | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None，类型需与q一致 <br>N与q保持一致                                                |
-| seq_offsets_q     | 输入    | Tensor[int32_t/int64_t]                     | [B + 1]                              | NA                                                                                                     | 表示每个batch的实际Q序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
-| seq_offsets_k     | 输入    | Tensor[int32_t/int64_t]                     | [B + 1]                              | NA                                                                                                     | 表示每个batch的实际K序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效                                                             |
-| seq_offsets_t     | 输入    | Tensor[int32_t/int64_t]                     | [B + 1]                              | NA                                                                                                     | 目标序列偏移量张量                                                                                                       |
-| kv_cache          | 输入    | Tensor[float32/float16/bfloat16]            | [num_pages, 2, page_size, N, D]      | NA                                                                                                     | KV缓存张量，用于存储历史Key-Value对                                                                                         |
-| page_offsets      | 输入    | Tensor[int32_t/int64_t]                     | [B + 1]                              | NA                                                                                                     | 页面偏移量张量                                                                                                         |
-| page_ids          | 输入    | Tensor[int32_t/int64_t]                     | [page_offsets[-1]]                   | NA                                                                                                     | 页面ID张量                                                                                                          |
-| last_page_len     | 输入    | Tensor[int32_t/int64_t]                     | [B]                                  | NA                                                                                                     | 最后一页长度张量                                                                                                        |
-| num_context       | 输入    | Tensor[int32_t/int64_t]                     | [B]                                  | [0, 256]                                                                               | 上下文数量张量                                                                                                         |
-| num_target        | 输入    | Tensor[int32_t/int64_t]                     | [B]                                  | [0, 512]                                                                               | 目标数量张量                                                                                                          |
+| q                 | 输入    | Tensor[float32/float16/bfloat16] | [B, S, N, D] | B∈[1, 2048]<br>S∈[1, 20480]<br>N∈[1, 16]<br>D∈[16, 512]且是16的倍数                                       | B:batch_size,表征批处理大小<br>S:seq_len,表征序列长度<br>N:head_num,表征头个数<br>D:head_dim,表征维度 |
+| k                 | 输入    | 同q            | 同q | 同q                                                                                                     |                                                                          |
+| v                 | 输入    | 同q           | 同q | 同q                                                                                                     | |
+| mask              | 输入    | 同q            | [B, N, S, S]                         | NA                                                                                                     | S为模型最大序列长度max_seq_len<br>不使用mask时传入None<br>N与q保持一致                                                      |
+| attn_bias         | 输入    | 同q            | [B, N, S, S]                         | NA                                                                                                     | S为模型最大序列长度max_seq_len<br>不使用attn_bias时传入None<br>N与q保持一致                                                |
 | mask_type         | 输入    | int                                         | NA                                   | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA                                                                                                              |
-| max_seq_len_q     | 输入    | int                                         | NA                                   | [1, 20480]                                                                                             | 表示模型Q序列最大长度                                                                                                     |
-| max_seq_len_k     | 输入    | int                                         | NA                                   | [1, 20480]                                                                                             | 表示模型K序列最大长度                                                                                                     |
-| silu_scale        | 输入    | float                                       | NA                                   | NA                                                                                                     | 支持用户传入自定义缩放系数，不传入时默认为1/max_seq_len                                                                   |
-| layout            | 输入    | string                                      | NA                                   | "normal":代表q,k,v数据格式为[B, S, N, D]<br>"jagged":代表q,k,v数据格式为[s_b, N, D] | NA                                                                                                              |
-| target_group_size | 输入    | int                                         | NA                                   | {0, 1, 3}                                   | target区域mask的分组粒度。0：不创建；1：每token独立；3：每3个token为一组，组内互相attend |
-| is_delta_qk       | 输入    | int                                         | NA                                   | NA                                                                                                     | QK序列是否等长：0=等长，1=不等长                                                                                             |
-| alpha             | 输入    | float                                       | NA                                   | NA                                                                                                     | Alpha缩放参数                                                                                                       |
-| attn_output       | 输出    | Tensor[float32/float16/bfloat16]            | [B, S, N_q, D_v]/<br>[s_b, N_q, D_v] | 同v                                                                                                     | 同v                                                                                                              |
+| max_seq_len     | 输入    | int                                         | NA                                   | [1, 20480]                                                                                             | 表示模型Q序列最大长度                                                                                                     |
 
+| silu_scale        | 输入    | float                                       | NA                                   | NA                                                                                                     | 支持用户传入自定义缩放系数，不传入时默认为1/max_seq_len                                                                   |
+| attn_output       | 输出    | 同q            | 同q | 同q                                                                                                     | 同q                                                                                                              |
 注：
 
 * B,S,N,D四个维度数据均不能为0，为0时算子输入为空数据，不会执行算子计算。
 * 其中B,S,N参数影响attn_bias、mask占用显存大小，请根据实际内存合理设置参数大小。
-* jagged 格式：一种变长序列格式，允许不同 batch 的序列长度不同，q/k/v 形状为 `[s_b, N, D]`，其中 `s_b` 为各 batch 序列长度之和，使用时需配合 `seq_offsets_q/k/t` 参数。
 
 ### 运行环境依赖
 
@@ -252,7 +237,7 @@ bash run.sh --ai-core ai_core-(soc_version)
 bash build_ops.sh
 ```
 
-执行完在当前 build 目录生成 libhstu_dense_ops.so 文件, 调用算子时执行以下命令进行加载。
+执行完在当前 build 目录生成 libhstu_dense_ops.so 文件，调用算子时执行以下命令进行加载。
 
 ```python
 import torch
@@ -261,7 +246,7 @@ torch.ops.load_library("path/to/build/libhstu_dense_ops.so")  # 替换为libhstu
 
 #### 单算子运行案例
 
-`torch.ops.mxrec.hstu_dense` 是 `hstu_dense_forward` 算子的精简版 torch 接口，在不同 NPU 平台上保持一致，支持 8 个基础参数（q, k, v, mask, attn_bias, mask_type, max_seq_len, silu_scale），数据格式为 normal 格式 `[B, S, N, D]`。
+`torch.ops.mxrec.hstu_dense` 是 `hstu_dense_forward` 算子的 torch 接口，支持 8 个基础参数（q, k, v, mask, attn_bias, mask_type, max_seq_len, silu_scale），数据格式为 normal 格式 `[B, S, N, D]`。
 
 ```python
 import torch

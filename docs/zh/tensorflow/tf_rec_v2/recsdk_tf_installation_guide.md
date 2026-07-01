@@ -266,13 +266,13 @@ Rec SDK TensorFlow环境变量的说明如[表1](#table126401659163820)所示。
 - 升级Rec SDK TensorFlow新版本时，需要先手动卸载旧版本。
 
     ```bash
-    pip3 uninstall mxrec -y
+    pip3 uninstall tf_rec_v2 -y
     ```
 
 - 使用<b>--upgrade</b>命令升级Rec SDK TensorFlow。
 
     ```bash
-    pip3 install --upgrade mxrec_for_lingqu-{version}-py3-none-{arch}.whl
+    pip3 install --upgrade tf_rec_v2-{version}-{arch}.tar.gz
     ```
 
 其中，{version}为版本号，{arch}为操作系统架构。
@@ -282,5 +282,5 @@ Rec SDK TensorFlow环境变量的说明如[表1](#table126401659163820)所示。
 用户如需移除Rec SDK TensorFlow软件包部署，可参考以下命令进行卸载。
 
 ```bash
-pip3 uninstall mxrec -y
+pip3 uninstall tf_rec_v2 -y
 ```

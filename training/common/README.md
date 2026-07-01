@@ -93,5 +93,5 @@ bash test_ut.sh
 
 注：
 
-1. 部分c++用例使用了emock库进行打桩，需要在x86环境上运行；在arm64环境运行失败时可忽略。
-2. test_ut.sh脚本运行完成后会使用[lcov](https://github.com/linux-test-project/lcov/releases/download/v1.13/lcov-1.13.tar.gz)及相关工具（如perl-Digest-MD5）生成覆盖率统计信息，若指令未安装完全生成失败时可忽略。
+1. 部分C++用例使用了emock库进行打桩，需要在x86环境上运行；在arm64环境运行失败时可忽略。
+2. test_ut.sh脚本运行完成后会使用[lcov](https://github.com/linux-test-project/lcov/releases/download/v1.13/lcov-1.13.tar.gz)及相关工具（如perl-Digest-MD5）生成覆盖率统计信息，若工具未安装完全，生成失败时可忽略。

@@ -506,6 +506,19 @@ Add the EC version model definition `DLRM_DCN_EC` to replace the original model.
     Use the related DynamicEmb APIs to replace the native TorchRec APIs.
 
     ```python
+    from torchrec.distributed.planner import Topology
+    from torchrec.distributed.planner.types import ShardingType
+    from fbgemm_gpu.split_embedding_configs import SparseType
+    from dynamic_emb_extensions import OptimizerType
+    from dynamic_emb import (
+        DynamicEmbeddingCollectionSharder,
+        DynamicEmbeddingShardingPlanner,
+        DynamicEmbTableOptions,
+        DynamicEmbParameterConstraints,
+        DynamicEmbInitializerArgs,
+        DynamicEmbInitializerMode,
+    )
+    ...
     constraints = {
         f"t_{feature_name}": DynamicEmbParameterConstraints(
             sharding_types=[ShardingType.ROW_WISE.value],

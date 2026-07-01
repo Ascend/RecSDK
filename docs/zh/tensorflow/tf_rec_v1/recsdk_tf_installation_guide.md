@@ -486,7 +486,8 @@
         rm -rf $ASCEND_BASE/driver && \
         rm -rf /etc/ascend_install.info
 
-    # 12.安装tf相关的Python包以及Rec SDK# 默认构建tf1的镜像，构建tf2镜像自行修改参数
+    # 12.安装tf相关的Python包以及Rec SDK
+    # 默认构建tf1的镜像，构建tf2镜像自行修改参数
     ARG TF_VER=1.15.0
     ARG TF1_PLUGIN=npu_bridge-1.15.0-*.whl
     ARG TF2_PLUGIN=npu_device-2.6.5-*.whl

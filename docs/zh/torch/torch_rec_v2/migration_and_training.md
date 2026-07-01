@@ -538,6 +538,7 @@ cd dlrm && git checkout b631a99
     使用DynamicEmb相关接口替换TorchRec原生接口
 
     ```python
+    from torchrec.distributed.planner import Topology
     from torchrec.distributed.planner.types import ShardingType
     from fbgemm_gpu.split_embedding_configs import SparseType
     from dynamic_emb_extensions import OptimizerType # 动态稀疏表自定义算子库
@@ -546,6 +547,8 @@ cd dlrm && git checkout b631a99
         DynamicEmbeddingShardingPlanner,
         DynamicEmbTableOptions,
         DynamicEmbParameterConstraints,
+        DynamicEmbInitializerArgs,
+        DynamicEmbInitializerMode,
     )
     ...
     constraints = {

@@ -1630,7 +1630,7 @@ for key, cos in key_cos:
 </tr>
 <tr id="row19317251548"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.4.1"><p id="p6931102518414"><a name="p6931102518414"></a><a name="p6931102518414"></a>约束说明</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.4.1 "><a name="ul189311725543"></a><a name="ul189311725543"></a><ul id="ul189311725543"><li>仅支持1维Tensor入参。</li><li>x与入参类型一致。</li></ul>
+<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.4.1 "><a name="ul189311725543"></a><a name="ul189311725543"></a><ul id="ul189311725543"><li>仅支持1维Tensor入参。</li><li>x与y入参类型一致。</li></ul>
 </td>
 </tr>
 </tbody>
