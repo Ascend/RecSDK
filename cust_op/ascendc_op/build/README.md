@@ -13,7 +13,7 @@ e.g. 'bash build_ai_core_op.sh A2 false continue' 表示编译A2版本算子，�
 
 参数说明：
 
-- ver：编译版本，支持A2、A2-TF、A3、A5，必填项
+- ver：编译版本，支持A2、A2-TF、A3、A5、310P，必填项
 - rebuild_all：是否重新编译已编译成功的算子，默认为true，设置为false后会跳过已编译成功的算子，减少编译时间，选填项
 - error_mode：编译错误处理模式，默认为exit，设置为exit表示在编译过程中遇到错误时立即退出脚本，设置为continue表示在编译过程中遇到错误时记录失败的算子但继续编译剩余算子，选填项
 

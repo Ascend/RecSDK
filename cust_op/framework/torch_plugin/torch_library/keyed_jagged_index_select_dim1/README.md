@@ -5,7 +5,7 @@
 ## PyTorch框架对外接口原型
 
 ```python
-torch.ops.fbgemm.keyed_jagged_index_select_dim(Tensor values,
+torch.ops.fbgemm.keyed_jagged_index_select_dim1(Tensor values,
                                                Tensor lengths,
                                                Tensor offsets,
                                                Tensor indices,
@@ -13,7 +13,7 @@ torch.ops.fbgemm.keyed_jagged_index_select_dim(Tensor values,
                                                Tensor? weights=None,
                                                int? selected_lengths_sum=None) -> Tensor[]
 
-torch.ops.mxrec.keyed_jagged_index_select_dim(Tensor values,
+torch.ops.mxrec.keyed_jagged_index_select_dim1(Tensor values,
                                                Tensor lengths,
                                                Tensor offsets,
                                                Tensor indices,

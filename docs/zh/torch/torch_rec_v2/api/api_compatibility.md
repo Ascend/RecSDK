@@ -8,9 +8,9 @@
 
 介绍TorchRec 1.2.0版本原生API接口在昇腾NPU上的支持情况与限制说明，TorchRec 1.2.0版本原生API接口具体使用方法请参考[TorchRec社区文档](https://meta-pytorch.org/torchrec/api.html)。原生API接口在昇腾NPU上的支持情况与限制说明如下：
 
-- API“是否支持“为“是“、“限制与说明“为“-“，说明此API和原生API支持度保持一致。
-- API“是否支持“为“是“、“限制与说明“不为“-“，说明此API和原生API支持度不一致，请注意昇腾NPU上的支持度。
-- API“是否支持“为“否“、“限制与说明“为“-“，说明在昇腾NPU上暂不支持此API，在昇腾NPU上请谨慎使用，后续验证后会持续更新文档。
+- API“是否支持”为“是”、“限制与说明”为“-”，说明此API和原生API支持度保持一致。
+- API“是否支持”为“是”、“限制与说明”不为“-”，说明此API和原生API支持度不一致，请注意昇腾NPU上的支持度。
+- API“是否支持”为“否”、“限制与说明”为“-”，说明在昇腾NPU上暂不支持此API。
 - 部分API在[TorchRec社区文档](https://meta-pytorch.org/torchrec/api.html)中存在，但此文档中未承载，为TorchRec 1.2.0版本没有的API。注：TorchRec社区文档中API为TorchRec最新版本API，而非TorchRec 1.2.0版本API。
 
 注：适配NPU版torchrec 1.2.0版本见[torchrec_npu v1.2.0](https://gitcode.com/Ascend/RecSDK/tree/develop/third_party/torchrec/v1.2.0)。
@@ -244,9 +244,9 @@
 
 介绍DynamicEmb v25.09版本原生API接口在昇腾NPU上的支持情况与限制说明，DynamicEmb v25.09版本原生API接口具体使用方法请参考[DynamicEmb社区文档](https://github.com/NVIDIA/recsys-examples/blob/v25.09/corelib/dynamicemb/DynamicEmb_APIs.md)。原生API接口在昇腾NPU上的支持情况与限制说明可分为如下三类：
 
-- API“是否支持“为“是“，“限制与说明“为“-“，说明此API和原生API支持度保持一致。
-- API“是否支持“为“是“，“限制与说明“不为“-“，说明此API和原生API支持度不一致，请注意昇腾NPU上的支持度。
-- API“是否支持“为“否“，“限制与说明“为“-“，说明在昇腾NPU上暂不支持此API，在昇腾NPU上请谨慎使用，后续验证后会持续更新文档。
+- API“是否支持”为“是”，“限制与说明”为“-”，说明此API和原生API支持度保持一致。
+- API“是否支持”为“是”，“限制与说明”不为“-”，说明此API和原生API支持度不一致，请注意昇腾NPU上的支持度。
+- API“是否支持”为“否”，“限制与说明”为“-”，说明在昇腾NPU上暂不支持此API。
 
 #### DynamicEmbParameterConstraints
 

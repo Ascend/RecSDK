@@ -67,7 +67,7 @@ result = [tensor([[1,1,1,1,1,1,1,1],
 | 名称             | 输入/输出  | 参数类型    | 数据类型                              | 数据格式                      | 范围                                  | 说明                |
 |----------------|--------|---------|-----------------------------------|---------------------------|-------------------------------------|-------------------|
 | values         | 输入     | Tensor  | bfloat16/float16/float32/int32    | [dim0, dim1]              | 二维tensor                            | 待切分的tensor        |
-| offsets        | 输入     | List    | int                               | List[int]                 | 长度为2N                               | 待切分的tensor的偏移     |
+| offsets        | 输入     | List    | int32/int64                               | List[int]                 | 长度为2N                               | 待切分的tensor的偏移     |
 | offsetLen      | 输入     | int     | int                               | NA                        | N                                   | 单个tensor的offset长度 |
 | jtNum          | 输入     | int     | int                               | NA                        | 支持jtNum = 2                         | 切分后tensor的个数      |
 | nPrefixToRight | 输入     | int     | int                               | NA                        | nPrefixToRight >= 0                 | 切分时右侧tensor的前缀个数  |

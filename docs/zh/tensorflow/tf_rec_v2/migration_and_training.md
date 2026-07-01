@@ -8,7 +8,7 @@ Rec SDK TensorFlow提供使用tf.Session训练场景（当前暂不支持Estimat
 
 - tf.Session训练场景。通过新建的Session实例启动模型运行，返回Tensor示例，进行定制化模型训练。
 
->[!NOTE] 说明 
+>[!NOTE] 说明
 >
 > - Rec SDK TensorFlow暂时不支持Keras。
 > - Rec SDK TensorFlow目前仅支持使用TensorFlow原生API模型训练脚本迁移，不支持使用第三方框架（tf\_adapter、HugeCTR、DeepRec等）。
@@ -85,7 +85,7 @@ sess.run API属于TensorFlow的低阶API，相对于Estimator来讲，灵活性�
 from npu_bridge.npu_init import *
 ```
 
->[!NOTE] 说明 
+>[!NOTE] 说明
 >引入上述头文件后，训练脚本默认在昇腾AI处理器执行。
 
 **数据预处理<a id="section3602537142311"></a>**
@@ -126,9 +126,9 @@ from npu_bridge.npu_init import *
     TensorFlow原始代码：
 
     ```python
-    def gelu(x): 
+    def gelu(x):
       cdf = 0.5 * (1.0 + tf.tanh(
-         (np.sqrt(2 / np.pi) * (x + 0.044715 * tf.pow(x, 3))))) 
+         (np.sqrt(2 / np.pi) * (x + 0.044715 * tf.pow(x, 3)))))
       return x*cdf
     layers = gelu()
     ```
@@ -173,12 +173,12 @@ next_batch=iterator.get_next()
 
 #迭代器初始化
 training_init_op=iterator.make_initializer(train_dataset)
- 
+
 #变量初始化
 init=tf.global_variables_initializer()
 sess=tf.Session()
 sess.run(init)
- 
+
 #Get the number of training/validation steps per epoch
 train_batches_per_epoch=int(np.floor(train_size/batch_size))
 ```
@@ -194,7 +194,7 @@ next_batch=iterator.get_next()
 
 #迭代器初始化
 training_init_op=iterator.make_initializer(train_dataset)
- 
+
 #变量初始化
 init=tf.global_variables_initializer()
 
@@ -207,7 +207,7 @@ config.graph_options.rewrite_options.remapping = RewriterConfig.OFF  # 显式关
 config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF  # 显式关闭
 sess = tf.Session(config=config)
 sess.run(init)
- 
+
 #Get the number of training/validation steps per epoch
 train_batches_per_epoch=int(np.floor(train_size/batch_size))
 ```
@@ -225,7 +225,7 @@ tf.Session原生功能在Ascend平台上全部支持。
 for epoch in range(num_epochs):
   ##Initialize iterator with the training dataset
   sess.run(training_init_op)
-  for step in range(train_batches_per_epoch):  
+  for step in range(train_batches_per_epoch):
     #get next batch of data
     img_batch,label_batch=sess.run(next_batch)
     #run the training op
@@ -262,14 +262,14 @@ Allreduce是主流的数据并行架构，各个节点按照算法协同工作�
 
 大规模AI训练集群中，通常采用数据并行的方式完成训练。数据并行即每个设备使用相同的模型、不同的训练样本，每个Device计算得到的梯度数据需要聚合之后进行参数更新。
 
-**图 1**  数据并行方式训练的示意图<a name="fig086734164810"></a>  
+**图 1**  数据并行方式训练的示意图<a name="fig086734164810"></a>
 ![](../../figures/tf_rec_v1/数据并行方式训练的示意图.png "数据并行方式训练的示意图")
 
 如果按照梯度聚合方式进行分类，数据并行的主流实现有**PS-workers架构**和**Allreduce架构**两种。在**Allreduce架构**中，每个参与训练的Device形成一个环，没有中心节点来聚合所有计算梯度。Allreduce算法将参与训练的Device放置在一个逻辑环路（logical ring）中。每个Device从上行的Device接收数据，并向下行的Device发送数据，可充分利用每个Device的上下行带宽。
 
 Allreduce架构是为了解决了PS-workers架构无法线性扩展问题而提出的改良架构。各个节点按照算法协同工作，算法的目标是减少传输数据量，并充分利用硬件通信带宽。一般适合训练算力要求高、设备规模大的场景。Allreduce架构的实现原理如下图所示。
 
-**图 2**  Allreduce模式<a id="fig1321114115499"></a>  
+**图 2**  Allreduce模式<a id="fig1321114115499"></a>
 ![](../../figures/tf_rec_v1/Allreduce模式.png "Allreduce模式")
 
 以Ring算法为例介绍Allreduce模式（称为Ring-Allreduce），如[图2](#fig1321114115499)所示，在Ring-Allreduce架构下，每个设备都是worker，并且形成一个环，不需要中心节点来聚合所有worker计算的梯度。在一个迭代过程中，每个worker完成一份mini-batch样本数据的前向计算、反向计算，得到梯度数据，然后使用Ring-Allreduce算法完成梯度数据的同步。Ring-Allreduce算法包括scatter-reduce和allgather两部分，梯度数据分多个步骤传递给环中的下一个worker，同时它也多次接收上一个worker的梯度数据。对于一个包含N个worker的环，每个worker需要从其它worker接收2\*（N-1）次梯度数据（每次接收1/N的数据），并向其他节点发送2\*（N-1）次梯度数据（每次发送1/N的数据）。
@@ -278,7 +278,7 @@ Allreduce架构是为了解决了PS-workers架构无法线性扩展问题而提�
 
 在TensorFlow中，一般使用tf.distribute.Strategy进行分布式训练，具体请参考[链接](https://www.tensorflow.org/guide/distributed_training)。而昇腾AI处理器暂不支持上述分布式策略，TF Adapter提供了分布式接口npu\_distributed\_optimizer\_wrapper，对传入的optimizer梯度函数添加NPU的Allreduce操作，最终返回输入的优化器，从而支持单机多卡、多机多卡等组网形式下，各个Device之间计算梯度后执行梯度聚合操作。用户调用该函数后，在生成的训练图中，梯度计算和更新算子之间插入了Allreduce算子节点。
 
-**图 3**  使用的接口<a name="fig1792101713010"></a>  
+**图 3**  使用的接口<a name="fig1792101713010"></a>
 ![](../../figures/tf_rec_v1/使用的接口.png "使用的接口")
 
 因此，对于原始TensorFlow训练脚本，需要经过修改后，才可在昇腾AI处理器上支持分布式训练。
@@ -299,26 +299,27 @@ sess.run模式的训练脚本需要用户手写实现broadcast功能。具体方
 
     ```python
     from npu_bridge.npu_init import *
-    
+
     def broadcast_global_variables(root_rank, index):
         """Broadcasts all global variables from root rank to all other processes.
         Arguments:
         root_rank: rank of the process from which global variables will be broadcasted
-        to all other processes. 
+        to all other processes.
         index: rank_id
         """
         op_list = []
         for var in tf.trainable_variables():
             # the input and out tensor of HCOMBroadcast interface are list
+            outputs = None
             if "float" in var.dtype.name:
                 inputs = [var]
                 outputs=hccl_ops.broadcast(tensor=inputs,root_rank=root_rank)
             if outputs is not None:
                 op_list.append(outputs[0].op)
                 op_list.append(tf.assign(var, outputs[0]))
-    
+
         return tf.group(op_list)
-    
+
     ...
     bcast_op = broadcast_global_variables(root_rank, index)
     sess = tf.Session()
@@ -357,7 +358,7 @@ sess.run模式的训练脚本需要用户手写实现broadcast功能。具体方
 
 **PS-Worker实现原理<a name="section1464316265102"></a>**
 
-**图 1**  PS-Worker模式<a name="fig42561512148"></a>  
+**图 1**  PS-Worker模式<a name="fig42561512148"></a>
 ![](../../figures/tf_rec_v1/PS-Worker模式.png "PS-Worker模式")
 
 在PS-Worker架构中，集群中的节点被分为两类：参数服务器（parameter server）和工作服务器（worker）。其中参数服务器存放模型的参数，而工作服务器负责计算参数的梯度。在每个迭代过程，工作服务器从参数服务器中获得参数，然后将计算的梯度返回给参数服务器，参数服务器聚合从工作服务器传回的梯度，然后更新参数，并将新的参数广播给工作服务器。
@@ -367,7 +368,7 @@ sess.run模式的训练脚本需要用户手写实现broadcast功能。具体方
 **配置集群信息<a name="section644513616218"></a>**
 
 > [!NOTICE] 须知
-> 
+>
 > - 在昇腾AI处理器通过PS-Worker架构进行分布式训练当前仅支持NPUEstimator模式。
 > - 当前仅支持一个worker进程对应在一个device上执行。
 > - PS-Worker集群场景下，建议用户选择高速率网卡。
@@ -398,7 +399,7 @@ PS-Worker架构下通过环境变量TF\_CONFIG配置集群信息，TF\_CONFIG里
     evaluator_hosts = FLAGS.evaluator_hosts.split(',')
     task_index = FLAGS.task_index
     job_name = FLAGS.job_name
-    flags.DEFINE_string("ps_hosts", '192.168.1.100:2222,192.168.1.200:2222',) 
+    flags.DEFINE_string("ps_hosts", '192.168.1.100:2222,192.168.1.200:2222',)
     flags.DEFINE_string("worker_hosts",
                         '192.168.1.100:2223,192.168.1.100:2224,192.168.1.100:2225,192.168.1.100:2226,'
                         '192.168.1.100:2227,192.168.1.100:2228,192.168.1.100:2229,192.168.1.100:2230,'
@@ -430,13 +431,13 @@ strategy = tf.distribute.experimental.ParameterServerStrategy()
 若按python脚本内的ps_hosts，worker_hosts等信息运行（python脚本内未定义chief）：
 
 ```bash
-python resnet50_ps_strategy.py --job_name=ps --task_index=0 
-python resnet50_ps_strategy.py --job_name=ps --task_index=1 
-python resnet50_ps_strategy.py --job_name=worker --task_index=0 
+python resnet50_ps_strategy.py --job_name=ps --task_index=0
+python resnet50_ps_strategy.py --job_name=ps --task_index=1
+python resnet50_ps_strategy.py --job_name=worker --task_index=0
 python resnet50_ps_strategy.py --job_name=worker --task_index=1
 python resnet50_ps_strategy.py --job_name=worker --task_index=2
 python resnet50_ps_strategy.py --job_name=worker --task_index=3
-python resnet50_ps_strategy.py --job_name=worker --task_index=4 
+python resnet50_ps_strategy.py --job_name=worker --task_index=4
 python resnet50_ps_strategy.py --job_name=worker --task_index=5
 python resnet50_ps_strategy.py --job_name=worker --task_index=6
 python resnet50_ps_strategy.py --job_name=worker --task_index=7
@@ -446,7 +447,7 @@ python resnet50_ps_strategy.py --job_name=worker --task_index=7
 
 ```bash
 python resnet50_ps_strategy.py \
-       --ps_hosts=192.168.1.79:2222,192.168.1.80:2222 \       
+       --ps_hosts=192.168.1.79:2222,192.168.1.80:2222 \
        --worker_hosts=192.168.1.79:2223,192.168.1.79:2224,192.168.1.79:2225,192.168.1.79:2226,192.168.1.79:2227,192.168.1.79:2228,192.168.1.79:2229,192.168.1.79:2230,192.168.1.80:2223,192.168.1.80:2224,192.168.1.80:2225,192.168.1.80:2226,192.168.1.80:2227,192.168.1.80:2228,192.168.1.80:2229,192.168.1.80:2230 \
        --job_name=ps \
        --task_index=0
@@ -459,7 +460,7 @@ python resnet50_ps_strategy.py --job_name=chief --task_index=0
 python resnet50_ps_strategy.py --job_name=evaluator --task_index=0
 ```
 
->[!NOTE] 说明 
+>[!NOTE] 说明
 >脚本运行依赖的环境变量请参考《TensorFlow 1.15模型迁移指南》的“执行单Device训练”章节。
 
 ### Horovod脚本迁移<a name="ZH-CN_TOPIC_0000001835790373"></a>
@@ -523,7 +524,7 @@ config = tf.ConfigProto()
 custom_op =  config.graph_options.rewrite_options.custom_optimizers.add()
 custom_op.name =  "NpuOptimizer"
 config.graph_options.rewrite_options.remapping = RewriterConfig.OFF
-config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF  
+config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF
 init_sess = tf.Session(config=config)
 init_sess.run(npu_int)
 
@@ -536,7 +537,7 @@ opt = tf.train.AdagradOptimizer(0.01 * get_rank_size())   # "hvd.size"修改为"
 
 # NPU Allreduce
 # 将"hvd.DistributedOptimizer"修改为"npu_distributed_optimizer_wrapper"
-opt = npu_distributed_optimizer_wrapper(opt)   
+opt = npu_distributed_optimizer_wrapper(opt)
 # Add hook to broadcast variables from rank 0 to all other processes during initialization.
 hooks = [NPUBroadcastGlobalVariablesHook(0)]
 
@@ -557,17 +558,17 @@ with tf.train.MonitoredTrainingSession(checkpoint_dir=checkpoint_dir,
                                        config=config,
                                        hooks=hooks) as mon_sess:
   # 变量广播
-  mon_sess.run(bcast_global_variables_op)  
+  mon_sess.run(bcast_global_variables_op)
   while not mon_sess.should_stop():
     # Perform synchronous training.
-    mon_sess.run(train_op) 
-  
+    mon_sess.run(train_op)
+
 # 训练结束后执行shutdown_system，同时关闭session
 init_sess.run(npu_shutdown)
 init_sess.close()
 ```
 
->[!NOTE] 说明 
+>[!NOTE] 说明
 >NPUDistributedOptimizer分布式优化器在当前版本依然兼容。
 
 ## 精度调优<a name="ZH-CN_TOPIC_0000002210421029"></a>
@@ -703,7 +704,7 @@ init_sess.close()
         estim_specs = tf.estimator.EstimatorSpec(training_hooks=[npu_tf_config.estimator_dump()])
         ```
 
-    > [!NOTE] 说明 
+    > [!NOTE] 说明
     > - session.run模式下，不支持dump配置和Rec SDK TensorFlow模型保存功能同时使用。
     > - 多卡训练时，仅需在某一张卡的训练中增加dump配置，否则多卡同时保存会导致数据冲突。
 
@@ -735,7 +736,7 @@ init_sess.close()
         npu_config = NPURunConfig(dump_config=dump_config)
         ```
 
-    > [!NOTE] 说明 
+    > [!NOTE] 说明
     > - session.run模式下，不支持dump配置和Rec SDK TensorFlow模型保存功能同时使用。
     > - 多卡训练时，仅需在某一张卡的训练中增加dump配置，否则多卡同时保存会导致数据冲突。
 
@@ -829,7 +830,7 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
 
 从上图的比对结果可以看到，算子的输入基本一致，但第一个输出与标杆存在明显差异（余弦相似度为0.806927，小于0.98），说明该算子可能存在精度问题；如果算子的输入就存在明显差异，需要继续找输入节点的比对结果。
 
-> [!NOTE] 说明 
+> [!NOTE] 说明
 > 执行`ni (-n) [op_name] -g [graph] -a [attr] -s [save sub graph depth]`命令，可以查询算子的输入输出节点信息，具体可参考《TensorFlow 1.15模型迁移指南》的“`precision_tool`命令参考”章节。
 > <br>![](../../figures/tf_rec_v1/zh-cn_image_0000002210306721.png)
 > <br>ni命令可以根据传入的算子名称，得到如下关键信息：
@@ -839,17 +840,17 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
 
 1. 使用以上命令找到首个输入相似，输出存在差异的算子后，可以确定是该算子存在问题。示例如下：
 
-    **图 1**  vcs命令输出中Unique算子输出存在差异<a name="fig74041256134714"></a>  
+    **图 1**  vcs命令输出中Unique算子输出存在差异<a name="fig74041256134714"></a>
     ![](../../figures/tf_rec_v1/vcs命令输出中Unique算子输出存在差异.png "vcs命令输出中Unique算子输出存在差异")
 
 2. 如果该算子为融合算子，表明是由于算子融合导致精度问题，可以关闭该融合后重新进行精度比对，确定是否还存在其他问题。示例如下：
 
-    **图 2**  vcs命令输出中AutomaticBufferFusionOp输出存在差异<a name="fig4431239174810"></a>  
+    **图 2**  vcs命令输出中AutomaticBufferFusionOp输出存在差异<a name="fig4431239174810"></a>
     ![](../../figures/tf_rec_v1/vcs命令输出中AutomaticBufferFusionOp输出存在差异.png "vcs命令输出中AutomaticBufferFusionOp输出存在差异")
 
 3. 如果定位到算子的输入或输出中包含embedding variable，并且embedding variable存在差异，表明是Rec SDK TensorFlow查表存在精度问题。示例如下：
 
-    **图 3**  vcs命令生成的csv文件中Rec SDK TensorFlow查表算子输出存在差异<a name="fig14804312114920"></a>  
+    **图 3**  vcs命令生成的csv文件中Rec SDK TensorFlow查表算子输出存在差异<a name="fig14804312114920"></a>
     ![](../../figures/tf_rec_v1/vcs命令生成的csv文件中Rec-SDK-TensorFlow查表算子输出存在差异.png "vcs命令生成的csv文件中Rec-SDK-TensorFlow查表算子输出存在差异")
 
 ### NPU与NPU整网比对<a name="ZH-CN_TOPIC_0000002210421045"></a>
@@ -881,7 +882,7 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
     在out\_dir目录生成精度比对结果，可参考《TensorFlow 1.15模型迁移指南》的“整网精度比对结果文件说明”章节进行数据分析，打开目录下的csv文件，从上向下查找第一个输出余弦相似度小于0.98的算子。
 
 4. 针对以上结果，还可以使用precision\_tool的<b>ni \(-n\) \[op\_name\] -g \[graph\] -a \[attr\] -s \[save sub graph deep\]</b>命令进行单层数据比对分析，具体可参考《TensorFlow 1.15模型迁移指南》的“precision\_tool命令参考”章节。
-   
+
 5. 当precision\_data/npu/目录下同时存在debug\_0和debug\_1的时候，ni命令会同时解析两个文件夹下相同算子名的dump文件，从该解析结果中，可以比较直观的看出数据差异。
 
     ![](../../figures/tf_rec_v1/zh-cn_image_0000002210306725.png)
@@ -932,15 +933,15 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
     执行**python3 find\_nan.py**命令，find_nan.py内容如下：
 
     ```python
-    import glob 
-    import numpy as np  
-    
-    files = glob.glob("dump_data_npy/*") 
-    files.sort(key = lambda x : int(x.split(".")[4])) 
-    for i in files:     
-          f = np.load(i)     
-          if np.isnan(f).any():         
-          print(i)         
+    import glob
+    import numpy as np
+
+    files = glob.glob("dump_data_npy/*")
+    files.sort(key = lambda x : int(x.split(".")[4]))
+    for i in files:
+          f = np.load(i)
+          if np.isnan(f).any():
+          print(i)
           break
     ```
 
