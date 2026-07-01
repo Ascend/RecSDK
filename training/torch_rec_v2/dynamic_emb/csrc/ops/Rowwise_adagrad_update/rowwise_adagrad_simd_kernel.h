@@ -28,6 +28,73 @@ namespace dyn_emb_rowwise_adagrad_simd {
 
 constexpr int32_t kDataAlignBytes = 32;
 
+template <typename T>
+__aicore__ inline void RowwiseAdagradCompute(__local_mem__ T* dstW, __local_mem__ T* dstState, __local_mem__ T* srcG,
+                                             __local_mem__ T* srcW, __local_mem__ T* srcState, uint32_t calCount,
+                                             uint16_t repeatCount, uint32_t oneRepeat, float eps, float lr,
+                                             float invGradDim)
+{
+    uint32_t scalarLen = 1;
+    auto maskScalar = AscendC::MicroAPI::UpdateMask<uint32_t>(scalarLen);
+
+    AscendC::MicroAPI::RegTensor<float> vSumTotal;
+    AscendC::MicroAPI::Duplicate(vSumTotal, 0.0f, maskScalar);
+
+    uint32_t offset;
+    uint32_t remaining;
+    uint32_t blockLen;
+    AscendC::MicroAPI::RegTensor<float> vGrad;
+    AscendC::MicroAPI::RegTensor<float> vGradSq;
+    AscendC::MicroAPI::RegTensor<float> vSumSq;
+
+    for (uint16_t i = 0; i < repeatCount; ++i) {
+        offset = i * oneRepeat;
+        remaining = calCount - offset;
+        blockLen = (remaining > oneRepeat) ? oneRepeat : remaining;
+        auto maskVec = AscendC::MicroAPI::UpdateMask<uint32_t>(blockLen);
+
+        AscendC::MicroAPI::DataCopy(vGrad, srcG + offset);
+        AscendC::MicroAPI::Mul(vGradSq, vGrad, vGrad, maskVec);
+        AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(vSumSq, vGradSq, maskVec);
+        AscendC::MicroAPI::Add(vSumTotal, vSumTotal, vSumSq, maskScalar);
+    }
+
+    AscendC::MicroAPI::Muls(vSumTotal, vSumTotal, invGradDim, maskScalar);
+
+    AscendC::MicroAPI::RegTensor<float> vMomentOld;
+    AscendC::MicroAPI::RegTensor<float> vNewMoment;
+    AscendC::MicroAPI::DataCopy(vMomentOld, srcState);
+    AscendC::MicroAPI::Add(vNewMoment, vMomentOld, vSumTotal, maskScalar);
+
+    AscendC::MicroAPI::RegTensor<float> vDenom;
+    AscendC::MicroAPI::RegTensor<float> vAdaptiveLr;
+    AscendC::MicroAPI::Sqrt(vDenom, vNewMoment, maskScalar);
+    AscendC::MicroAPI::Adds(vDenom, vDenom, eps, maskScalar);
+    AscendC::MicroAPI::Duplicate(vAdaptiveLr, lr, maskScalar);
+    AscendC::MicroAPI::Div(vAdaptiveLr, vAdaptiveLr, vDenom, maskScalar);
+
+    uint32_t fullVecLen = oneRepeat;
+    auto fullMask = AscendC::MicroAPI::UpdateMask<uint32_t>(fullVecLen);
+    AscendC::MicroAPI::Duplicate(vAdaptiveLr, vAdaptiveLr, fullMask);
+
+    AscendC::MicroAPI::RegTensor<float> vWeight;
+    AscendC::MicroAPI::RegTensor<float> vUpdate;
+    for (uint16_t i = 0; i < repeatCount; ++i) {
+        offset = i * oneRepeat;
+        remaining = calCount - offset;
+        blockLen = (remaining > oneRepeat) ? oneRepeat : remaining;
+        auto maskVec = AscendC::MicroAPI::UpdateMask<uint32_t>(blockLen);
+
+        AscendC::MicroAPI::DataCopy(vGrad, srcG + offset);
+        AscendC::MicroAPI::DataCopy(vWeight, srcW + offset);
+        AscendC::MicroAPI::Mul(vUpdate, vAdaptiveLr, vGrad, maskVec);
+        AscendC::MicroAPI::Sub(vWeight, vWeight, vUpdate, maskVec);
+        AscendC::MicroAPI::DataCopy(dstW + offset, vWeight, maskVec);
+    }
+
+    AscendC::MicroAPI::DataCopy(dstState, vNewMoment, maskScalar);
+}
+
 template <typename GradT, typename WeightT>
 struct RowwiseAdagradSimdUsesCast {
     static constexpr bool value =
@@ -224,31 +291,31 @@ public:
                                       LocalTensor<float>& u1, LocalTensor<float>& u2, LocalTensor<float>& u3,
                                       LocalTensor<float>& sc, __gm__ WeightT* rowPtr, const LocalTensor<float>& scratch)
     {
+        (void)u2;
+        (void)u3;
         const float lr = tiling_->lr;
         const float eps = tiling_->eps;
         const float invGradDim = 1.0f / static_cast<float>(gradDim);
 
-        Mul<float>(u3, u0, u0, computeLen);
-        uint32_t srcShape[2] = {1, computeLen};
-        ReduceSum<float, Pattern::Reduce::AR, false>(u2, u3, srcShape, false);
-        ops_utils::SyncMte2V();
-        Muls<float>(u2, u2, invGradDim, 1);
-
         LoadStateScalar(sc, rowPtr, scratch);
         ops_utils::SyncMte2V();
-        Add<float>(u2, sc, u2, 1);
+
+        __local_mem__ float* srcG = (__local_mem__ float*)u0.GetPhyAddr();
+        __local_mem__ float* srcW = (__local_mem__ float*)u1.GetPhyAddr();
+        __local_mem__ float* dstW = (__local_mem__ float*)u1.GetPhyAddr();
+        __local_mem__ float* srcState = (__local_mem__ float*)sc.GetPhyAddr();
+        __local_mem__ float* dstState = (__local_mem__ float*)sc.GetPhyAddr();
+
+        constexpr uint32_t vecLen = AscendC::GetVecLen();
+        constexpr uint32_t oneRepeat = vecLen / static_cast<uint32_t>(sizeof(float));
+        const uint16_t repeatCount = static_cast<uint16_t>((computeLen + oneRepeat - 1U) / oneRepeat);
+
+        VF_CALL<RowwiseAdagradCompute<float>>(dstW, dstState, srcG, srcW, srcState, computeLen, repeatCount, oneRepeat,
+                                              eps, lr, invGradDim);
 
         ops_utils::SyncVMte3();
-        StoreStateScalar(u2, rowPtr, scratch);
+        StoreStateScalar(sc, rowPtr, scratch);
         ops_utils::SyncMte3Mte2();
-
-        Sqrt<float>(sc, u2, 1);
-        Adds<float>(sc, sc, eps, 1);
-        Reciprocal<float>(sc, sc, 1);
-        Muls<float>(sc, sc, lr, 1);
-        Duplicate<float>(u3, sc, computeLen);
-        Mul<float>(u3, u0, u3, computeLen);
-        Sub<float>(u1, u1, u3, computeLen);
     }
 
     __aicore__ inline void ProcessGroupPerRow(int32_t rowIdx, uint32_t rowsInGroup, uint32_t gradDim, int64_t gradBase)

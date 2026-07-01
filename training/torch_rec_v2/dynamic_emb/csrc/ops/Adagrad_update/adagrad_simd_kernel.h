@@ -25,6 +25,39 @@ using namespace AscendC;
 
 namespace dyn_emb_adagrad_simd {
 
+template <typename T>
+__aicore__ inline void AdagradCompute(__local_mem__ T* dstW, __local_mem__ T* dstAcc, __local_mem__ T* srcG,
+                                      __local_mem__ T* srcW, __local_mem__ T* srcAcc, uint32_t calCount,
+                                      uint16_t repeatCount, uint32_t oneRepeat, float eps, float lr)
+{
+    AscendC::MicroAPI::RegTensor<T> dstVregG;
+    AscendC::MicroAPI::RegTensor<T> dstVregW;
+    AscendC::MicroAPI::RegTensor<T> dstVregAcc;
+    AscendC::MicroAPI::RegTensor<T> srcVregG;
+    AscendC::MicroAPI::RegTensor<T> srcVregW;
+    AscendC::MicroAPI::RegTensor<T> srcVregAcc;
+    AscendC::MicroAPI::MaskReg mask;
+
+    for (uint16_t i = 0; i < repeatCount; ++i) {
+        mask = AscendC::MicroAPI::UpdateMask<uint32_t>(calCount);
+        AscendC::MicroAPI::DataCopy(srcVregG, srcG + i * oneRepeat);
+        AscendC::MicroAPI::DataCopy(srcVregW, srcW + i * oneRepeat);
+        AscendC::MicroAPI::DataCopy(srcVregAcc, srcAcc + i * oneRepeat);
+
+        AscendC::MicroAPI::Mul(dstVregG, srcVregG, srcVregG, mask);
+        AscendC::MicroAPI::Add(dstVregAcc, srcVregAcc, dstVregG, mask);
+
+        AscendC::MicroAPI::Sqrt(dstVregG, dstVregAcc, mask);
+        AscendC::MicroAPI::Adds(dstVregG, dstVregG, eps, mask);
+        AscendC::MicroAPI::Div(dstVregG, srcVregG, dstVregG, mask);
+        AscendC::MicroAPI::Muls(dstVregG, dstVregG, lr, mask);
+        AscendC::MicroAPI::Sub(dstVregW, srcVregW, dstVregG, mask);
+
+        AscendC::MicroAPI::DataCopy(dstW + i * oneRepeat, dstVregW, mask);
+        AscendC::MicroAPI::DataCopy(dstAcc + i * oneRepeat, dstVregAcc, mask);
+    }
+}
+
 /// 扁平 grads(GradT) + 每行 WeightT*（w||acc 连续 2*gradDim）；可选 founds 掩码
 template <typename GradT, typename WeightT>
 class AdagradSimd {
@@ -123,15 +156,21 @@ public:
     __aicore__ inline void ComputeAdagrad(uint32_t len, LocalTensor<float>& u0, LocalTensor<float>& u1,
                                           LocalTensor<float>& u2, LocalTensor<float>& u3) const
     {
+        (void)u3;
         const float lr = tiling_->lr;
         const float eps = tiling_->eps;
-        Mul<float>(u3, u0, u0, len);
-        Add<float>(u2, u2, u3, len);
-        Sqrt<float>(u3, u2, len);
-        Adds<float>(u3, u3, eps, len);
-        Div<float>(u0, u0, u3, len);
-        Muls<float>(u0, u0, lr, len);
-        Sub<float>(u1, u1, u0, len);
+
+        __local_mem__ float* srcG = (__local_mem__ float*)u0.GetPhyAddr();
+        __local_mem__ float* srcW = (__local_mem__ float*)u1.GetPhyAddr();
+        __local_mem__ float* srcAcc = (__local_mem__ float*)u2.GetPhyAddr();
+        __local_mem__ float* dstW = (__local_mem__ float*)u1.GetPhyAddr();
+        __local_mem__ float* dstAcc = (__local_mem__ float*)u2.GetPhyAddr();
+
+        constexpr uint32_t vecLen = AscendC::GetVecLen();
+        constexpr uint32_t oneRepeat = vecLen / static_cast<uint32_t>(sizeof(float));
+        const uint16_t repeatCount = static_cast<uint16_t>((len + oneRepeat - 1U) / oneRepeat);
+
+        VF_CALL<AdagradCompute<float>>(dstW, dstAcc, srcG, srcW, srcAcc, len, repeatCount, oneRepeat, eps, lr);
     }
 
     __aicore__ inline void ProcessGroupVector(int32_t rowIdx, uint32_t rowsInGroup, uint32_t gradDim, int64_t gradBase)

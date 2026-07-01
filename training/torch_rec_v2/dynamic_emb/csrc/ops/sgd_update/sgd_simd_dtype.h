@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 #pragma once
 
 #include <cstdint>
+#include "kernel_operator.h"
 #include "../AdamW_update/adamw_simd_dtype.h"
 #include "sgd_simd_tiling.h"
 
@@ -46,12 +47,42 @@ __aicore__ inline bool CanUseDirectGmCopy(uint32_t gradDim)
     return IsGradDim32BAligned(gradDim) && !NeedsGmCopyPad<T>(gradDim);
 }
 
+template <typename T>
+__aicore__ inline void SgdCompute(__local_mem__ T* dstW, __local_mem__ T* srcG, __local_mem__ T* srcW,
+                                  uint32_t calCount, uint16_t repeatCount, uint32_t oneRepeat, float lr)
+{
+    AscendC::MicroAPI::RegTensor<T> dstVregG;
+    AscendC::MicroAPI::RegTensor<T> dstVregW;
+    AscendC::MicroAPI::RegTensor<T> srcVregG;
+    AscendC::MicroAPI::RegTensor<T> srcVregW;
+    AscendC::MicroAPI::MaskReg mask;
+
+    for (uint16_t i = 0; i < repeatCount; ++i) {
+        mask = AscendC::MicroAPI::UpdateMask<uint32_t>(calCount);
+        AscendC::MicroAPI::DataCopy(srcVregG, srcG + i * oneRepeat);
+        AscendC::MicroAPI::DataCopy(srcVregW, srcW + i * oneRepeat);
+
+        AscendC::MicroAPI::Muls(dstVregG, srcVregG, lr, mask);
+        AscendC::MicroAPI::Sub(dstVregW, srcVregW, dstVregG, mask);
+
+        AscendC::MicroAPI::DataCopy(dstW + i * oneRepeat, dstVregW, mask);
+    }
+}
+
 __aicore__ inline void ComputeSgdSimd(const __gm__ SgdSimdTilingData* tiling, uint32_t len, LocalTensor<float>& u0,
                                       LocalTensor<float>& u1)
 {
     const float lr = tiling->lr;
-    Muls<float>(u0, u0, lr, len);
-    Sub<float>(u1, u1, u0, len);
+
+    __local_mem__ float* srcG = (__local_mem__ float*)u0.GetPhyAddr();
+    __local_mem__ float* srcW = (__local_mem__ float*)u1.GetPhyAddr();
+    __local_mem__ float* dstW = (__local_mem__ float*)u1.GetPhyAddr();
+
+    constexpr uint32_t vecLen = AscendC::GetVecLen();
+    constexpr uint32_t oneRepeat = vecLen / static_cast<uint32_t>(sizeof(float));
+    const uint16_t repeatCount = static_cast<uint16_t>((len + oneRepeat - 1U) / oneRepeat);
+
+    VF_CALL<SgdCompute<float>>(dstW, srcG, srcW, len, repeatCount, oneRepeat, lr);
 }
 
 }  // namespace dyn_emb_sgd_simd
