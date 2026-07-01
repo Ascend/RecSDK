@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 ==============================================================================*/
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -25,7 +26,8 @@ namespace optiling {
 constexpr int DATA_ALIGN_BYTES = 32;
 constexpr int BUFFER_PARAM = 2048;
 constexpr int64_t MAX_OFFSETS_LEN = 1LL << 17;
-constexpr int64_t MAX_RANGE_SIZE = 1LL << 32;
+constexpr int64_t MAX_RANGE_SIZE_INT32 = INT32_MAX;
+constexpr int64_t MAX_RANGE_SIZE_INT64 = LLONG_MAX;
 
 static inline int64_t ComputeLutSize(int64_t rangeSize, int64_t totalRows, uint64_t availableSpace, bool isInt64)
 {
@@ -85,8 +87,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF(offsetsLen <= 0 || offsetsLen > MAX_OFFSETS_LEN, context, return ge::GRAPH_FAILED,
                  "[ERROR] OffsetsRange offsets length must be in [1, %lld], got %lld.", MAX_OFFSETS_LEN, offsetsLen);
     int64_t rangeSize = *context->GetAttrs()->GetInt(0);
-    OPS_LOG_E_IF(rangeSize <= 0 || rangeSize > MAX_RANGE_SIZE, context, return ge::GRAPH_FAILED,
-                 "[ERROR] OffsetsRange rangeSize must be in [1, %lld], got %lld.", MAX_RANGE_SIZE, rangeSize);
 
     ge::DataType inputDataType = context->GetInputTensor(0)->GetDataType();
     bool isInt64 = false;
@@ -94,9 +94,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_LOG_E_IF(inputDataType != ge::DT_INT32 && inputDataType != ge::DT_INT64, context, return ge::GRAPH_FAILED,
                  "[ERROR] OffsetsRange only supports int32 and int64 offsets.");
     isInt64 = (inputDataType == ge::DT_INT64);
+    OPS_LOG_E_IF(rangeSize <= 0 || rangeSize > MAX_RANGE_SIZE_INT64, context, return ge::GRAPH_FAILED,
+                 "[ERROR] OffsetsRange rangeSize must be in [1, %lld], got %lld.", MAX_RANGE_SIZE_INT64, rangeSize);
 #else
     OPS_LOG_E_IF(inputDataType != ge::DT_INT32, context, return ge::GRAPH_FAILED,
                  "[ERROR] OffsetsRange only supports int32 offsets on this build.");
+    OPS_LOG_E_IF(rangeSize <= 0 || rangeSize > MAX_RANGE_SIZE_INT32, context, return ge::GRAPH_FAILED,
+                 "[ERROR] OffsetsRange rangeSize must be in [1, %lld], got %lld.", MAX_RANGE_SIZE_INT32, rangeSize);
 #endif
 
     const int64_t elemSize = isInt64 ? static_cast<int64_t>(sizeof(int64_t)) : static_cast<int64_t>(sizeof(int32_t));
@@ -159,8 +163,15 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
     OPS_LOG_E_IF_NULL("rangeSizeAttr", context->GetAttrs()->GetInt(0), return ge::GRAPH_FAILED);
 
     int64_t rangeSize = *context->GetAttrs()->GetInt(0);
-    OPS_LOG_E_IF(rangeSize <= 0 || rangeSize > optiling::MAX_RANGE_SIZE, context, return ge::GRAPH_FAILED,
-                 "[ERROR] OffsetsRange rangeSize must be in [1, %lld], got %lld.", optiling::MAX_RANGE_SIZE, rangeSize);
+#ifdef SUPPORT_950
+    OPS_LOG_E_IF(rangeSize <= 0 || rangeSize > optiling::MAX_RANGE_SIZE_INT64, context, return ge::GRAPH_FAILED,
+                 "[ERROR] OffsetsRange rangeSize must be in [1, %lld], got %lld.", optiling::MAX_RANGE_SIZE_INT64,
+                 rangeSize);
+#else
+    OPS_LOG_E_IF(rangeSize <= 0 || rangeSize > optiling::MAX_RANGE_SIZE_INT32, context, return ge::GRAPH_FAILED,
+                 "[ERROR] OffsetsRange rangeSize must be in [1, %lld], got %lld.", optiling::MAX_RANGE_SIZE_INT32,
+                 rangeSize);
+#endif
 
     gert::Shape* outShape = context->GetOutputShape(0);
     outShape->SetDimNum(1);

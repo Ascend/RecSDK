@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
+#include <climits>
 #include <torch/csrc/autograd/custom_function.h>
 #include <torch/library.h>
 
@@ -22,7 +23,8 @@ using tensor_list = std::vector<at::Tensor>;
 using namespace at;
 
 constexpr int64_t MAX_OFFSETS_LEN = 1LL << 17;
-constexpr int64_t MAX_RANGE_SIZE = 1LL << 32;
+constexpr int64_t MAX_RANGE_SIZE_INT32 = INT32_MAX;
+constexpr int64_t MAX_RANGE_SIZE_INT64 = LLONG_MAX;
 
 // 为NPU设备注册前向实现
 at::Tensor offsets_range_impl_npu(const at::Tensor& offsets, int64_t range_size)
@@ -41,8 +43,13 @@ at::Tensor offsets_range_impl_npu(const at::Tensor& offsets, int64_t range_size)
     const int64_t offsets_len = offsets.size(0);
     TORCH_CHECK(offsets_len >= 1 && offsets_len <= MAX_OFFSETS_LEN, "offsets length must be in [1, ", MAX_OFFSETS_LEN,
                 "], got ", offsets_len);
-    TORCH_CHECK(range_size >= 1 && range_size <= MAX_RANGE_SIZE, "range_size must be in [1, ", MAX_RANGE_SIZE,
-                "], got ", range_size);
+#if defined(NPU_CHIP_A5) && NPU_CHIP_A5
+    TORCH_CHECK(range_size >= 1 && range_size <= MAX_RANGE_SIZE_INT64, "range_size must be in [1, ",
+                MAX_RANGE_SIZE_INT64, "], got ", range_size);
+#else
+    TORCH_CHECK(range_size >= 1 && range_size <= MAX_RANGE_SIZE_INT32, "range_size must be in [1, ",
+                MAX_RANGE_SIZE_INT32, "], got ", range_size);
+#endif
 
     auto offsets_conti = offsets.contiguous();
     at::Tensor result = at::empty(range_size, offsets_conti.options());
