@@ -15,6 +15,10 @@ See the License for the specific language governing permissions and
 
 #include "table.h"
 
+#include <sys/file.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 #include "error/error.h"
 
 using namespace MxRec;
@@ -24,7 +28,7 @@ using namespace MxRec;
 /// \param savePaths 表的存储路径
 /// \param maxTableSize 表的最大空间，按key数量计
 /// \param compactThreshold 表的压缩阈值，当无效数据占比超阈值时，文件会被清理
-Table::Table(const string &name, vector<string> &savePaths, uint64_t maxTableSize, double compactThreshold)
+Table::Table(const string& name, vector<string>& savePaths, uint64_t maxTableSize, double compactThreshold)
     : name(name),
       savePaths(savePaths),
       maxTableSize(maxTableSize),
@@ -43,7 +47,7 @@ Table::Table(const string &name, vector<string> &savePaths, uint64_t maxTableSiz
 /// \param maxTableSize 表的最大空间，按key数量计
 /// \param compactThreshold 表的压缩阈值，当无效数据占比超阈值时，文件会被清理
 /// \param step 加载的步数
-Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize, double compactThreshold, int step)
+Table::Table(const string& name, vector<string>& saveDirs, uint64_t maxTableSize, double compactThreshold, int step)
     : name(name),
       savePaths(saveDirs),
       maxTableSize(maxTableSize),
@@ -56,10 +60,10 @@ Table::Table(const string &name, vector<string> &saveDirs, uint64_t maxTableSize
     CreateTableDir(curTablePath);
 
     bool isMetaFileFound = false;
-    for (const string &dirPath: saveDirs) {
-        auto metaFilePath = fs::absolute(
-            dirPath + "/" + saveDirPrefix + GlogConfig::gRankId + "/" +
-            name + "/" + name + ".meta." + to_string(step)).string();
+    for (const string& dirPath : saveDirs) {
+        auto metaFilePath = fs::absolute(dirPath + "/" + saveDirPrefix + GlogConfig::gRankId + "/" + name + "/" + name +
+                                         ".meta." + to_string(step))
+                                .string();
         if (!fs::exists(metaFilePath)) {
             continue;
         }
@@ -81,20 +85,19 @@ bool Table::IsKeyExist(emb_cache_key_t key)
     return !(it == keyToFile.end());
 }
 
-void Table::InsertEmbeddings(vector<emb_cache_key_t> &keys, vector<vector<float>> &embeddings)
+void Table::InsertEmbeddings(vector<emb_cache_key_t>& keys, vector<vector<float>>& embeddings)
 {
     lock_guard<mutex> guard(rwLock);
     InsertEmbeddingsInner(keys, embeddings);
 }
 
-vector<vector<float>> Table::FetchEmbeddings(vector<emb_cache_key_t> &keys)
+vector<vector<float>> Table::FetchEmbeddings(vector<emb_cache_key_t>& keys)
 {
     lock_guard<mutex> guard(rwLock);
     return FetchEmbeddingsInner(keys);
 }
 
-
-void Table::DeleteEmbeddings(vector<emb_cache_key_t> &keys)
+void Table::DeleteEmbeddings(vector<emb_cache_key_t>& keys)
 {
     lock_guard<mutex> guard(rwLock);
     DeleteEmbeddingsInner(keys);
@@ -129,24 +132,24 @@ void Table::Save(int step, const map<emb_key_t, KeyInfo>& keyInfo)
 
     // dump table name
     uint32_t nameSize = static_cast<uint32_t>(name.size());
-    metaFile.write(reinterpret_cast<char const *>(&nameSize), sizeof(nameSize));
+    metaFile.write(reinterpret_cast<char const*>(&nameSize), sizeof(nameSize));
     metaFile.write(name.c_str(), nameSize);
 
     // dump file ID
     uint64_t fileCnt = fileSet.size();
-    metaFile.write(reinterpret_cast<char const *>(&fileCnt), sizeof(fileCnt));
-    for (const auto &f: fileSet) {
+    metaFile.write(reinterpret_cast<char const*>(&fileCnt), sizeof(fileCnt));
+    for (const auto& f : fileSet) {
         uint64_t fid = f->GetFileID();
-        metaFile.write(reinterpret_cast<char const *>(&fid), sizeof(fid));
+        metaFile.write(reinterpret_cast<char const*>(&fid), sizeof(fid));
         try {
             SetTablePathToDiskWithSpace();
-        } catch (runtime_error &e) {
+        } catch (runtime_error& e) {
             metaFile.close();
             ThrowRuntimeError(StringFormat("Set table path to disk with space error:%s.", e.what()));
         }
         try {
             CreateTableDir(curTablePath);
-        } catch (runtime_error &e) {
+        } catch (runtime_error& e) {
             metaFile.close();
             throw;
         }
@@ -193,7 +196,7 @@ void Table::Save(int step)
     }
     try {
         fs::permissions(metaFilePath, fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
-    } catch (runtime_error &e) {
+    } catch (runtime_error& e) {
         auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN,
                            StringFormat("Fail to change permission of %s.", metaFilePath.c_str()));
         LOG_ERROR(error.ToString());
@@ -204,24 +207,24 @@ void Table::Save(int step)
 
     // dump table name
     uint32_t nameSize = static_cast<uint32_t>(name.size());
-    metaFile.write(reinterpret_cast<char const *>(&nameSize), sizeof(nameSize));
+    metaFile.write(reinterpret_cast<char const*>(&nameSize), sizeof(nameSize));
     metaFile.write(name.c_str(), nameSize);
 
     // dump file ID
     uint64_t fileCnt = fileSet.size();
-    metaFile.write(reinterpret_cast<char const *>(&fileCnt), sizeof(fileCnt));
-    for (const auto &f: fileSet) {
+    metaFile.write(reinterpret_cast<char const*>(&fileCnt), sizeof(fileCnt));
+    for (const auto& f : fileSet) {
         uint64_t fid = f->GetFileID();
-        metaFile.write(reinterpret_cast<char const *>(&fid), sizeof(fid));
+        metaFile.write(reinterpret_cast<char const*>(&fid), sizeof(fid));
         try {
             SetTablePathToDiskWithSpace();
-        } catch (runtime_error &e) {
+        } catch (runtime_error& e) {
             metaFile.close();
             ThrowRuntimeError(StringFormat("Set table path to disk with space error:%s.", e.what()));
         }
         try {
             CreateTableDir(curTablePath);
-        } catch (runtime_error &e) {
+        } catch (runtime_error& e) {
             metaFile.close();
             throw;
         }
@@ -241,18 +244,18 @@ void Table::Save(int step)
 /// 根据元数据加载data文件
 /// \param metaFile 元数据文件
 /// \param step 加载的步数
-void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
+void Table::LoadDataFileSet(const shared_ptr<fstream>& metaFile, int step)
 {
     LOG_INFO("table:{}, start load data file", name);
     uint64_t fileCnt;
-    metaFile->read(reinterpret_cast<char *>(&fileCnt), sizeof(fileCnt));
+    metaFile->read(reinterpret_cast<char*>(&fileCnt), sizeof(fileCnt));
     if (metaFile->fail()) {
         ThrowRuntimeError("Failed to read nFile, meta file broken.");
     }
     uint64_t fileID;
     uint64_t fidSize = sizeof(fileID);
     for (uint64_t i = 0; i < fileCnt; ++i) {
-        metaFile->read(reinterpret_cast<char *>(&fileID), fidSize);
+        metaFile->read(reinterpret_cast<char*>(&fileID), fidSize);
         if (metaFile->fail()) {
             ThrowRuntimeError("Failed to read fileID, meta file broken.");
         }
@@ -261,7 +264,7 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
         }
 
         shared_ptr<File> loadedFile = nullptr;
-        for (const string &p: savePaths) {
+        for (const string& p : savePaths) {
             // try to find data file from each path
             string loadPath = p + "/" + saveDirPrefix + GlogConfig::gRankId + "/" + name;
             SetTablePathToDiskWithSpace();
@@ -270,7 +273,7 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
                 loadedFile = make_shared<File>(fileID, curTablePath, loadPath, step);
                 fileSet.insert(loadedFile);
                 break;
-            } catch (invalid_argument &e) {
+            } catch (invalid_argument& e) {
                 // do nothing because file may in other path
                 LOG_DEBUG("data file not found, id:{}, try other path", fileID);
             }
@@ -284,7 +287,7 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
         totalKeyCnt += keys.size();
         CheckIsGraterThanMaxSize();
 
-        for (emb_cache_key_t k: keys) {
+        for (emb_cache_key_t k : keys) {
             if (keyToFile.find(k) != keyToFile.end()) {
                 ThrowInvalidArgError("Find duplicate key in files, compaction already done before saving, "
                                      "file may broken or modified.");
@@ -295,8 +298,7 @@ void Table::LoadDataFileSet(const shared_ptr<fstream> &metaFile, int step)
     curMaxFileID += 1;
 }
 
-
-void Table::Load(const string &metaFilePath, int step)
+void Table::Load(const string& metaFilePath, int step)
 {
     ValidateReadFile(metaFilePath, fs::file_size(metaFilePath));
 
@@ -309,7 +311,7 @@ void Table::Load(const string &metaFilePath, int step)
 
     // Load table name and validate
     uint32_t nameSize;
-    metaFile->read(reinterpret_cast<char *>(&nameSize), sizeof(nameSize));
+    metaFile->read(reinterpret_cast<char*>(&nameSize), sizeof(nameSize));
     if (metaFile->fail()) {
         metaFile->close();
         ThrowRuntimeError("Failed to read table name size.");
@@ -335,7 +337,7 @@ void Table::Load(const string &metaFilePath, int step)
     // construct file set
     try {
         LoadDataFileSet(metaFile, step);
-    } catch (exception &e) {
+    } catch (exception& e) {
         metaFile->close();
         ThrowRuntimeError(StringFormat("load data file set error: %s", e.what()), ErrorType::LOGIC_ERROR);
     }
@@ -346,7 +348,7 @@ void Table::Load(const string &metaFilePath, int step)
     LOG_INFO("table:{}, end load data file", name);
 }
 
-void Table::InsertEmbeddingsInner(vector<emb_cache_key_t> &keys, vector<vector<float>> &embeddings)
+void Table::InsertEmbeddingsInner(vector<emb_cache_key_t>& keys, vector<vector<float>>& embeddings)
 {
     CheckIsGraterThanMaxSize();
 
@@ -358,7 +360,7 @@ void Table::InsertEmbeddingsInner(vector<emb_cache_key_t> &keys, vector<vector<f
         curMaxFileID++;
     }
 
-    for (emb_cache_key_t k: keys) {
+    for (emb_cache_key_t k : keys) {
         auto it = keyToFile.find(k);
         if (it != keyToFile.end()) {
             it->second->DeleteEmbedding(k);
@@ -371,7 +373,7 @@ void Table::InsertEmbeddingsInner(vector<emb_cache_key_t> &keys, vector<vector<f
     totalKeyCnt += keys.size();
 }
 
-vector<vector<float>> Table::FetchEmbeddingsInner(vector<emb_cache_key_t> &keys)
+vector<vector<float>> Table::FetchEmbeddingsInner(vector<emb_cache_key_t>& keys)
 {
     // build mini batch for each file, first element for keys, second for index
     size_t dLen = keys.size();
@@ -392,7 +394,7 @@ vector<vector<float>> Table::FetchEmbeddingsInner(vector<emb_cache_key_t> &keys)
     // must convert map to list to perform parallel query, omp not support to iterate map
     vector<tuple<shared_ptr<File>, vector<emb_cache_key_t>, vector<size_t>>> queryList;
     queryList.reserve(miniBatch.size());
-    for (auto [f, info]: miniBatch) {
+    for (auto [f, info] : miniBatch) {
         queryList.emplace_back(f, info->first, info->second);
     }
 
@@ -426,7 +428,7 @@ void Table::Compact(bool fullCompact, const map<emb_key_t, KeyInfo>& keyInfo)
     LOG_DEBUG("table:{}, start compact", name);
 
     vector<shared_ptr<File>> compactFileList;
-    for (const auto &f: staleDataFileSet) {
+    for (const auto& f : staleDataFileSet) {
         if (fullCompact) {
             compactFileList.emplace_back(f);
             continue;
@@ -443,7 +445,7 @@ void Table::Compact(bool fullCompact, const map<emb_key_t, KeyInfo>& keyInfo)
         curMaxFileID++;
     }
 
-    for (const auto &f: compactFileList) {
+    for (const auto& f : compactFileList) {
         staleDataFileSet.erase(f);
         fileSet.erase(f);
         vector<emb_cache_key_t> validKeys = f->GetKeys();
@@ -475,7 +477,7 @@ void Table::Compact(bool fullCompact)
     LOG_DEBUG("table:{}, start compact", name);
 
     vector<shared_ptr<File>> compactFileList;
-    for (const auto &f: staleDataFileSet) {
+    for (const auto& f : staleDataFileSet) {
         if (fullCompact) {
             compactFileList.emplace_back(f);
             continue;
@@ -492,7 +494,7 @@ void Table::Compact(bool fullCompact)
         curMaxFileID++;
     }
 
-    for (const auto &f: compactFileList) {
+    for (const auto& f : compactFileList) {
         staleDataFileSet.erase(f);
         fileSet.erase(f);
         vector<emb_cache_key_t> validKeys = f->GetKeys();
@@ -508,9 +510,9 @@ uint64_t Table::GetTableAvailableSpace()
     return maxTableSize - totalKeyCnt;
 }
 
-void Table::DeleteEmbeddingsInner(vector<emb_cache_key_t> &keys)
+void Table::DeleteEmbeddingsInner(vector<emb_cache_key_t>& keys)
 {
-    for (emb_cache_key_t k: keys) {
+    for (emb_cache_key_t k : keys) {
         auto it = keyToFile.find(k);
         if (it != keyToFile.end()) {
             it->second->DeleteEmbedding(k);
@@ -535,8 +537,9 @@ void Table::SetTablePathToDiskWithSpace()
         if (curSavePathIdx >= savePaths.size()) {
             ThrowRuntimeError("All disk's space are not enough.", ErrorType::RESOURCE_NOT_ENOUGH);
         }
-        curTablePath = fs::absolute(
-            savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + GlogConfig::gRankId + "/" + name).string();
+        curTablePath =
+            fs::absolute(savePaths.at(curSavePathIdx) + "/" + saveDirPrefix + GlogConfig::gRankId + "/" + name)
+                .string();
 
         LOG_INFO("current data path's available space less than {}%, try next path:{}",
                  diskAvailSpaceThreshold * convertToPercentage, curTablePath);
@@ -550,21 +553,63 @@ uint64_t Table::GetTableUsage()
     return totalKeyCnt;
 }
 
-void Table::CreateTableDir(const string &path)
+void Table::CreateTableDir(const string& path)
 {
+    std::string lock_file = "/tmp/.ssd_table_lock_";
+    for (char c : path) {
+        lock_file += (c == '/' ? '_' : c);
+    }
+
+    int lock_fd = open(lock_file.c_str(), O_CREAT | O_RDWR, 0666);
+    if (lock_fd == -1) {
+        ThrowRuntimeError(StringFormat("Failed to create lock file: %s.", lock_file.c_str()));
+        return;
+    }
+
+    // RAII 确保任何退出路径（return/throw）都释放锁和 fd
+    struct LockGuard {
+        int fd;
+        explicit LockGuard(int f) : fd(f) {}
+        ~LockGuard()
+        {
+            ::flock(fd, LOCK_UN);
+            close(fd);
+        }
+    } guard(lock_fd);
+
+    if (::flock(lock_fd, LOCK_EX) == -1) {
+        ThrowRuntimeError(StringFormat("Failed to acquire lock: %s.", lock_file.c_str()));
+        return;
+    }
+
+    // 双重检查：加锁后再次确认（其他进程可能已创建完成）
     if (fs::exists(path)) {
         return;
     }
+
+    // 创建目录。create_directories 返回 false 时，可能是"已存在"（并发），不一定是失败
     if (!fs::create_directories(path)) {
-        ThrowRuntimeError(StringFormat("Failed to create table directory:%s.", path.c_str()));
+        // 再次检查：如果目录已存在，说明被其他进程创建，安全返回
+        if (fs::exists(path)) {
+            return;
+        }
+        ThrowRuntimeError(StringFormat("Failed to create table directory: %s.", path.c_str()));
+        return;
     }
+
     try {
         fs::permissions(path, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec);
-    } catch (runtime_error &e) {
+    } catch (const std::runtime_error& e) {
         auto error = Error(ModuleName::M_SSD_ENGINE, ErrorType::UNKNOWN,
                            StringFormat("Fail to change permission of %s.", path.c_str()));
         LOG_ERROR(error.ToString());
-        fs::remove_all(path);
+
+        std::error_code ec;
+        fs::remove_all(path, ec);
+        if (ec) {
+            LOG_ERROR(StringFormat("Fail to remove incomplete directory %s: %s.", path.c_str(), ec.message().c_str()));
+        }
+
         throw;
     }
     LOG_DEBUG("Create table dir:{}.", path);
