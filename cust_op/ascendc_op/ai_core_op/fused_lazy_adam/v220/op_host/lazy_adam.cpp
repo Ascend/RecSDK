@@ -19,7 +19,6 @@ See the License for the specific language governing permissions and
 #include "tiling/platform/platform_ascendc.h"
 #include "ops_log.h"
 
-
 namespace optiling {
 constexpr int BLOCK_SIZE = 32;
 constexpr int RESERVE_UB_SIZE = 20 * 1024;
@@ -84,6 +83,11 @@ static ge::graphStatus LazyAdamTilingFunc(gert::TilingContext* context)
     if (coreNum == 0) {
         return ge::GRAPH_FAILED;
     }
+    // dim1 小于物理核数时，只启动 dim1 个核，避免空核并规避尾块判断问题
+    uint32_t actualCoreNum = (dim1 < coreNum) ? dim1 : coreNum;
+    if (actualCoreNum == 0) {
+        return ge::GRAPH_FAILED;
+    }
     uint64_t ub;
     platformInfo.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ub);
     ub = ub - RESERVE_UB_SIZE;
@@ -96,15 +100,15 @@ static ge::graphStatus LazyAdamTilingFunc(gert::TilingContext* context)
     // 保证申请的内存是32的倍数并且向上取整 计算方式：(num+31)/32*32
     uint64_t indicesAllocSize = (row * indicesDtypeSize + BLOCK_SIZE - 1) / BLOCK_SIZE * BLOCK_SIZE;
     uint64_t otherAllocSize = (row * inputMDtypeSize * dim2 + BLOCK_SIZE - 1) / BLOCK_SIZE * BLOCK_SIZE;
-    // 前 CORE_NUM - 1 个核分配的任务量
-    uint64_t batch = dim1 / coreNum;
+    // 前 actualCoreNum - 1 个核分配的任务量
+    uint64_t batch = dim1 / actualCoreNum;
     // 实际使用的核数
-    context->SetBlockDim(coreNum);
-    uint64_t loopCount = batch / row;  // CORE_NUM - 1 个核的任务量，除以UB每一次能处理的数据，得到处理次数
+    context->SetBlockDim(actualCoreNum);
+    uint64_t loopCount = batch / row;  // actualCoreNum - 1 个核的任务量，除以UB每一次能处理的数据，得到处理次数
     uint64_t rowLeft = batch - row * loopCount;  // UB处理 loopCount 那么多次后，分给当前core剩下的数据量
 
     // 最后一个核分配的任务量
-    uint64_t batchTail = dim1 - batch * (coreNum - 1);  // phy 该写法适配了dim1刚好整除coreNum的情况
+    uint64_t batchTail = dim1 - batch * (actualCoreNum - 1);  // phy 该写法适配了dim1刚好整除actualCoreNum的情况
     uint64_t loopCountTail = batchTail / row;
     uint64_t rowLeftTail = batchTail - row * loopCountTail;
 
@@ -117,12 +121,12 @@ static ge::graphStatus LazyAdamTilingFunc(gert::TilingContext* context)
     tiling.set_row(row);                            // 每个ai core一次能分配的数据行数
     tiling.set_indicesAllocSize(indicesAllocSize);  // indices大小，用于申请空间
     tiling.set_otherAllocSize(otherAllocSize);      // 入参中非indices要申请的空间大小
-    tiling.set_batch(batch);                        // 前CORE_NUM - 1个核分配的任务量
-    tiling.set_loopCount(loopCount);                // 前CORE_NUM - 1 个核内循环处理次数
-    tiling.set_rowLeft(rowLeft);  // 前CORE_NUM - 1 个核, 核内处理 loopCount 次后，分给当前core剩下的数据量
+    tiling.set_batch(batch);                        // 前actualCoreNum - 1个核分配的任务量
+    tiling.set_loopCount(loopCount);                // 前actualCoreNum - 1 个核内循环处理次数
+    tiling.set_rowLeft(rowLeft);  // 前actualCoreNum - 1 个核, 核内处理 loopCount 次后，分给当前core剩下的数据量
     tiling.set_loopCountTail(loopCountTail);  // 最后一个核，核内循环次数
     tiling.set_rowLeftTail(rowLeftTail);      // 最后一个核，核内循环loopCountTail次后，剩余数据量
-    tiling.set_coreNum(coreNum);
+    tiling.set_coreNum(actualCoreNum);
     OPS_LOG_E_IF_NULL("context->GetRawTilingData()", context->GetRawTilingData(), return ge::GRAPH_FAILED);
     tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
