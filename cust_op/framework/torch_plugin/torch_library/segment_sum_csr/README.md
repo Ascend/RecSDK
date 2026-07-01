@@ -12,7 +12,7 @@ torch.ops.mxrec.segment_sum_csr(Tensor csr_seg, Tensor values, int batch_size) -
 |------------|-------|---------|--------|-------------------------|----------------------------------------------------------|
 | csr_seg    | 输入    | int32/int64 | Tensor | | 各分段长度的完整累积和，分段长度是指每个段所包含的行数，csr_seg张量的形状为num_segments+1，其中num_segments为段的数量 |
 | values     | 输入    | float32 | Tensor | | 需要分段求和的张量，长度是batch_size的倍数                               |
-| batch_size | 输入    | int32/int64 | int    | | 每行包含的元素个数                                                |
+| batch_size | 输入    | int32/int64 | int    | | values张量每行包含的元素个数（列数），values总长度 = batch_size × 行总数，行总数为csr_seg最后一个元素的值 |
 | y          | 输出    | float32 | Tensor | | 输出                                                       |
 
 ## 运行算子样例

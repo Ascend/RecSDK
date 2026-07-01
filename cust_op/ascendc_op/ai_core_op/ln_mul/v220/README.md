@@ -26,7 +26,7 @@ ln_mul
 
 ![ln_mul示意图](./ln_mul示意图.jpg)
 
-实现上述图中计算的功能，对输入X进行LayerNorm，在将其结果分别与gamma和beta进行计算，最后和输入U做乘法得到最后的结果，
+实现上述图中计算的功能，对输入X进行LayerNorm，再将其结果分别与gamma和beta进行计算，最后再与输入U做乘法得到最后的结果，
 对应开源API: torch.ops.mxrec.ln_mul
 
 # 算子实现原理

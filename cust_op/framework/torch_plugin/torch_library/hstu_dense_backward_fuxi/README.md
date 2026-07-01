@@ -190,7 +190,7 @@ class TestHstuJaggedDemo:
     @pytest.mark.parametrize("silu_scale", [1.0 / 256])
     @pytest.mark.parametrize("enable_bias", [True, False])
     @pytest.mark.parametrize("data_type", [torch.float16, torch.float32, torch.bfloat16])
-    def test_hstu_dens_jagged(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale,
+    def test_hstu_dense_backward_fuxi(self, batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale,
                               enable_bias, data_type):
         self.execute(batch_size, max_seq_len, head_num, head_dim, mask_type, silu_scale, enable_bias, data_type)
 
