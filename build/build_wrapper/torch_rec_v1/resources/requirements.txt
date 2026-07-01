@@ -35,4 +35,4 @@ torchx
 tqdm
 usort
 fbgemm-gpu
-tensordict==0.12.4
+tensordict
