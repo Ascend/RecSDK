@@ -61,7 +61,7 @@ result = [0, 1, 0, 1, 2, 0, 1]
 | 名称 | 输入/输出 | 数据类型 | 数据格式 | 范围 | 说明 |
 |------|---|---|---|---|---|
 | offsets | 输入 | int32/int64 | [dim0] | 一维，dim0∈[1,2^17] | 各分段起始位置 |
-| rangeSize | 输入（属性） | int | NA | rangeSize∈[1,2^32] | 输出长度 |
+| rangeSize | 输入（属性） | int | NA | A2:rangeSize∈[1,2^31-1]<br> A5:rangeSize∈[1,2^63-1] | 输出长度 |
 | result | 输出 | int32/int64 | [rangeSize] | 一维，长度为 `rangeSize` | 每个分段内的局部下标 |
 
 约束说明：
