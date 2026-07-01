@@ -67,8 +67,8 @@ result = tensor([[1,1,1,1,1,1,1,1],
 | 名称               | 输入/输出  | 参数类型   | 数据类型                           | 数据格式                   | 范围                                                   | 说明              |
 |------------------|--------|--------|--------------------------------|------------------------|------------------------------------------------------|-----------------|
 | values           | 输入     | List   | bfloat16/float16/float32/int32 | List[Tensor, Tensor] | tensor_a与tensor_b必须为二维且第二维相等                         | 待拼接的tensor list |
-| offsets          | 输入     | List   | int32/int64                            | List[int]              | 长度为2N                                                | 待拼接的tensor的偏移   |
-| offsetLen        | 输入     | int    | int                            | NA                     | N                                                    | 单个tensor的offset长度 |
+| offsets          | 输入     | List   | int32/int64                            | List[int]              | [4, 2048]，且列表长度需为offsetLen值的2倍                                                | 待拼接的tensor的偏移   |
+| offsetLen        | 输入     | int    | int                            | NA                     | [2, 1024]                                                    | 单个tensor的offset长度 |
 | jtNum            | 输入     | int    | int                            | NA                     | 支持jtNum = 2                                          | 待拼接tensor个数     |
 | nPrefixFromRight | 输入     | int    | int                            | NA                     | nPrefixFromRight >= 0                                | 拼接时右侧tensor移动前缀的个数 |
 | result           | 输出     | Tensor | bfloat16/float16/float32/int32 | [dim0, dim1]           | 结果为二维,<br/>dim0的长度等于两个tensor的dim0之和，<br/>dim1的长度与拼接tensor的dim1相等。 | NA              |
@@ -77,4 +77,4 @@ result = tensor([[1,1,1,1,1,1,1,1],
 
 算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/concat_2d_jagged/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/concat_2d_jagged/README.md)

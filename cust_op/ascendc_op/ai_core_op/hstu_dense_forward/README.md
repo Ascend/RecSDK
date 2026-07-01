@@ -29,13 +29,13 @@
 
 # 功能
 
-推荐场景下，使用HSTU融合算子实现推荐场景中注意力机制。
+推荐场景下，使用HSTU融合算子实现注意力机制。
 
 **GQA支持**：本算子支持Grouped Query Attention (GQA)，允许K/V的头数小于Q的头数，多个Q头可以共享同一个K/V头，从而减少KV缓存内存占用并提升推理性能。
 
 **dim不等支持**：本算子支持qk的head_dim与v_dim不相等的场景。
 
-**FP8支持**：本算子仅在A5上支持data_type为fp8_e4m3fn的qkv输入,算子输出为float16。
+**FP8支持**：本算子仅在A5上支持data_type为fp8_e4m3fn的qkv输入，算子输出为float16。
 
 # 算子实现原理
 
@@ -111,8 +111,8 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 | page_offsets      | 输入    | Tensor[int32_t/int64_t]                  | [B + 1]                              | NA                                                                                                     | 页面偏移量张量                                                                                                         |
 | page_ids          | 输入    | Tensor[int32_t/int64_t]                  | [page_offsets[-1]]                   | NA                                                                                                     | 页面ID张量                                                                                                          |
 | last_page_len     | 输入    | Tensor[int32_t/int64_t]                  | [B]                                  | NA                                                                                                     | 最后一页长度张量                                                                                                        |
-| num_context       | 输入    | Tensor[int32_t/int64_t]                  | [B]                                  | 取值范围[0, 256]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seqlen_q                                                                              | 上下文数量张量                                                                                                      |
-| num_target        | 输入    | Tensor[int32_t/int64_t]                  | [B]                                  | 取值范围[0, 512]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seqlen_q                                                                               | 目标数量张量                                                                                                     |
+| num_context       | 输入    | Tensor[int32_t/int64_t]                  | [B]                                  | 取值范围[0, 256]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seq_len_q                                                                              | 上下文数量张量                                                                                                      |
+| num_target        | 输入    | Tensor[int32_t/int64_t]                  | [B]                                  | 取值范围[0, 512]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seq_len_q                                                                               | 目标数量张量                                                                                                     |
 | mask_type         | 输入    | int                              | NA                                   | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA                                                                                                              |
 | max_seq_len_q     | 输入    | int                              | NA                                   | [1, 20480]                                                                                             | 表示模型Q序列最大长度                                                                                                     |
 | max_seq_len_k     | 输入    | int                              | NA                                   | [1, 20480]                                                                                             | 表示模型K序列最大长度                                                                                                     |
@@ -140,8 +140,8 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 | page_offsets      | 输入    | Tensor[int32_t/int64_t]                     | [B + 1]                              | NA                                                                                                     | 页面偏移量张量                                                                                                         |
 | page_ids          | 输入    | Tensor[int32_t/int64_t]                     | [page_offsets[-1]]                   | NA                                                                                                     | 页面ID张量                                                                                                          |
 | last_page_len     | 输入    | Tensor[int32_t/int64_t]                     | [B]                                  | NA                                                                                                     | 最后一页长度张量                                                                                                        |
-| num_context       | 输入    | Tensor[int32_t/int64_t]                     | [B]                                  | 取值范围[0, 256]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seqlen_q                                  | 上下文数量张量                                                                                                         |
-| num_target        | 输入    | Tensor[int32_t/int64_t]                     | [B]                                  | 取值范围[0, 512]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seqlen_q                                  | 目标数量张量                                                                                                          |
+| num_context       | 输入    | Tensor[int32_t/int64_t]                     | [B]                                  | 取值范围[0, 256]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seq_len_q                                  | 上下文数量张量                                                                                                         |
+| num_target        | 输入    | Tensor[int32_t/int64_t]                     | [B]                                  | 取值范围[0, 512]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seq_len_q                                  | 目标数量张量                                                                                                          |
 | mask_type         | 输入    | int                                         | NA                                   | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA                                                                                                              |
 | max_seq_len_q     | 输入    | int                                         | NA                                   | [1, 20480]                                                                                             | 表示模型Q序列最大长度                                                                                                     |
 | max_seq_len_k     | 输入    | int                                         | NA                                   | [1, 20480]                                                                                             | 表示模型K序列最大长度                                                                                                     |
@@ -168,8 +168,8 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 | page_offsets      | 输入    | Tensor[int32_t/int64_t]                  | [B + 1]                         | NA                                                                                                     | 页面偏移量张量                                                                                                         |
 | page_ids          | 输入    | Tensor[int32_t/int64_t]                  | [page_offsets[-1]]              | NA                                                                                                     | 页面ID张量                                                                                                          |
 | last_page_len     | 输入    | Tensor[int32_t/int64_t]                  | [B]                             | NA                                                                                                     | 最后一页长度张量                                                                                                        |
-| num_context       | 输入    | Tensor[int32_t/int64_t]                  | [B]                             | 取值范围[0, 256]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seqlen_q                                                                               | 上下文数量张量                                                                                                         |
-| num_target        | 输入    | Tensor[int32_t/int64_t]                  | [B]                             | 取值范围[0, 512]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seqlen_q                                                                               | 目标数量张量                                                                                                          |
+| num_context       | 输入    | Tensor[int32_t/int64_t]                  | [B]                             | 取值范围[0, 256]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seq_len_q                                                                               | 上下文数量张量                                                                                                         |
+| num_target        | 输入    | Tensor[int32_t/int64_t]                  | [B]                             | 取值范围[0, 512]，其余数值未约束、未看护，同时需满足num_context + num_target < max_seq_len_q                                                                               | 目标数量张量                                                                                                          |
 | mask_type         | 输入    | int                              | NA                              | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | NA                                                                                                              |
 | max_seq_len_q     | 输入    | int                              | NA                              | [1, 20480]                                                                                             | 表示模型Q序列最大长度                                                                                                     |
 | max_seq_len_k     | 输入    | int                              | NA                              | [1, 20480]                                                                                             | 表示模型K序列最大长度                                                                                                     |
@@ -189,7 +189,7 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 
 算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../framework/torch_plugin/torch_library/hstu/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../framework/torch_plugin/torch_library/hstu/README.md)
 
 # GQA (Grouped Query Attention) 支持说明
 

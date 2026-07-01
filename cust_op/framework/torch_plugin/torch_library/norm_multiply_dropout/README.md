@@ -2,7 +2,7 @@
 
 该样例基于 PyTorch 2.6.0 和 Python 3.11.0 运行。
 
-## Pytorch框架对外接口原型
+## PyTorch框架对外接口原型
 
 ```python
 norm_multiply_dropout(Tensor x, Tensor u, Tensor weight, Tensor bias, float eps, float dropout_ratio) -> Tensor[]

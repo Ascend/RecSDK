@@ -1,6 +1,6 @@
 # 使用PyTorch框架调用offsets_range算子
 
-该样例基于Pytorch2.6.0、python3.11.0运行
+该样例基于PyTorch 2.6.0、python 3.11.0运行
 
 ## offsets_range算子
 

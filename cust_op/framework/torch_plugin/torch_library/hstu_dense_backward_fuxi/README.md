@@ -1,8 +1,8 @@
 # 使用pytorch框架调用hstu_dense_backward_fuxi算子
 
-该样例基于Pytorch2.6.0、python3.11.0运行
+该样例基于PyTorch 2.6.0、python 3.11.0运行
 
-## Pytorch框架对外接口原型
+## PyTorch框架对外接口原型
 
 ```python
 torch.ops.mxrec.hstu_dense_backward_fuxi(Tensor grad, Tensor q, Tensor k, Tensor v, Tensor? mask=None,
@@ -39,7 +39,7 @@ torch.ops.mxrec.hstu_dense_backward_fuxi(Tensor grad, Tensor q, Tensor k, Tensor
 * B: batch_size 表征批处理的大小，当前取值范围[1, 512]。
 * S: seq_lens 表征序列长度，当前取值范围[1, 20480]。
 * N：head_num 表征头个数，当前取值为[2,4,6,8]。
-* D: head_dim 表征维度，当前取值范围范围[16, 512]，并且需要满足是16的倍数。
+* D: head_dim 表征维度，当前取值范围[16, 512]，并且需要满足是16的倍数。
 * 以上四个维度数值均不能为0，为0时算子输入为空数据，不会执行算子计算;并且其中B、N、S参数影响bias、mask占用显存大小，请根据实际内存合理设置参数大小。
 * jagged模式下 S为所有序列中最大的序列长度，比如此时有两个序列，一个序列长度为256，另一个序列长度为512，则S为512。
 
@@ -49,9 +49,9 @@ torch.ops.mxrec.hstu_dense_backward_fuxi(Tensor grad, Tensor q, Tensor k, Tensor
 
 算子编译部署请参考[RecSDK/cust_op/README.md](../../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-### Pytorch编译
+### PyTorch编译
 
-Pytorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
+PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
 ### 算子调用示例,以下以pytest方式调用为例
 

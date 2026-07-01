@@ -83,10 +83,10 @@ def rab_time_golden(timestamps_weights: torch.Tensor,
 
 > 注：rab_time期望返回为(num_layers, b, 2s, 2s)\
 > ONNX调用时需进行rab_time.repeat(1, 1, 1, 2, 1, 2).reshape(num_layers, b, 2s, 2s)操作。\
-> pytorch调用无需额外操作，已经在pytorch适配层完成该操作。
+> PyTorch调用无需额外操作，已经在PyTorch适配层完成该操作。
 
 # 算子编译部署
 
 算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/dense_to_jagged/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/dense_to_jagged/README.md)

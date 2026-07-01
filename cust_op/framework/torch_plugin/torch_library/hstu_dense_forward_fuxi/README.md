@@ -1,8 +1,8 @@
-# 使用pytorch框架调用hstu_dense_forward_fuxi算子
+# 使用PyTorch框架调用hstu_dense_forward_fuxi算子
 
-该样例基于Pytorch2.6.0、python3.11.0运行
+该样例基于PyTorch 2.6.0、python 3.11.0运行
 
-## Pytorch框架对外接口原型
+## PyTorch框架对外接口原型
 
 ```python
 torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=None, Tensor? positionBias=None,
@@ -25,9 +25,9 @@ torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=No
 |  positionBias | 输入(可选) | Tensor | float32/float16/bfloat16 | [1, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用positionBias时传入None，类型需与q一致 |
 |  mask | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致，默认为None |
 |  maskType | 输入(可选) | int | int | NA | 0：使用内置下三角mask，不需要传入mask<br>1：使用内置上三角mask，不需要传入mask(当前暂不支持)<br>2：不使用mask<br>3：使用自定义mask，此时mask需要用户定义并传入 | 默认值为0 |
-|  maxSeqLen | 输入(可选) | int | int | NA | [1, 20480] | 表示模型最大序列长度,默认值为0 |
+|  maxSeqLen | 输入 | int | int | NA | [1, 20480] | 表示模型最大序列长度 |
 |  siluScale | 输入(可选) | float | float | NA | NA | 支持用户传入自定义，不传入时默认为0 |
-|  layout | 输入(可选) | str | string | NA | 仅支持"jagged":代表q,k,v数据格式为[s_b, N, D] | 默认值为"normal" |
+|  layout | 输入 | str | string | NA | 仅支持"jagged":代表q,k,v数据格式为[s_b, N, D] | |
 |  seqOffset | 输入(可选) | int[] | int[] | NA | NA | 表示每个batch的实际序列长度偏移，从0开始递增，需用户自行保证合法性，仅在jagged格式下生效，默认为None |
 |  output | 输出 | Tensor | float32/float16/bfloat16 | [s_b, N, x * D] | 同q | 当输入RAB为空时，x=1，此时结果为qkv计算结果<br>当输入RAB不为空时，x=3，此时结果为qkv结果与两个rab结果cat，将最后一维整合所得 |
 
@@ -41,9 +41,9 @@ torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=No
 |  timestampBias | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用timestampBias时传入None，类型需与q一致 |
 |  positionBias | 输入(可选) | Tensor | float32/float16/bfloat16 | [B, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用positionBias时传入None，类型需与q一致 |
 |  mask | 输入 | Tensor | float16 | [B, N, S, S] | NA | S为模型最大序列长度max_seq_len<br>不使用mask时传入None，类型需与q一致，必须传入 |
-|  maskType | 输入(可选) | int | int | NA | 3：使用自定义mask，此时mask需要用户定义并传入 | 默认值为0 |
-|  maxSeqLen | 输入(可选) | int | int | NA | [128, 4096]且是128的倍数 | 表示模型最大序列长度,默认值为0 |
-|  siluScale | 输入(可选) | float | float | NA | NA | 支持用户传入自定义，不传入时默认为0 |
+|  maskType | 输入 | int | int | NA | 3：使用自定义mask，此时mask需要用户定义并传入 | |
+|  maxSeqLen | 输入 | int | int | NA | [64, 20480]且是64的倍数 | 表示模型最大序列长度 |
+|  siluScale | 输入(可选) | float | float | NA | float范围 | 支持用户传入自定义，不传入时默认为1.0/maxSeqLen |
 |  layout | 输入(可选) | str | string | NA | 仅支持"normal":代表q,k,v数据格式为[B, S, N, D] | 默认为"normal" |
 |  seqOffset | 输入(可选) | int[] | int[] | NA | NA | 推理产品不用传入，默认为None |
 |  output | 输出 | Tensor | float16 | [B, S, N, x * D] | 同q | 当输入RAB为空时，x=1，此时结果为qkv计算结果<br>当输入RAB不为空时，x=3，此时结果为qkv结果与两个rab结果cat，将最后一维整合所得 |
@@ -54,9 +54,9 @@ torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=No
 
 算子编译部署请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-### Pytorch编译
+### PyTorch编译
 
-Pytorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
+PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
 ### 算子调用示例,以下以pytest方式调用为例
 

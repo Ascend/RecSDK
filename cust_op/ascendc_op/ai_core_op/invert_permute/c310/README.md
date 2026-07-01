@@ -125,4 +125,4 @@ c) 核心算法实现：
 
 ## 单算子测试
 
-算子编译与部署、算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/invert_permute/README.md)。
+算子编译与部署、算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/invert_permute/README.md)。

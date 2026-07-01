@@ -1,10 +1,10 @@
-# 算子编译工程模版说明
+# 算子编译工程模板说明
 
-## 模版来源
+## 模板来源
 
 [CANN/asc-tools](https://gitcode.com/cann/asc-tools/tree/master/utils/templates/new_op_project_template/custom_op)
 
-## 模版详细说明
+## 模板详细说明
 
 [算子工程编译拓展](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/opdevg/Ascendcopdevg/atlas_ascendc_10_00035.html)
 

@@ -54,13 +54,13 @@ a) 核函数的入口 extern "C" __global__ __aicore__ void embedding_lookup_by_
 
 b) GET_TILING_DATA(constData, tiling)从TilingData中获取host侧传入的数据
 
-c) 根据模板类KernelEimtable构建类型不同的op对象，依次调用Init_param、Init、Process三个函数实现数据的搬运和计算；
+c) 根据模板类构建类型不同数据类型的op对象，依次调用Init_param、Init、Process三个函数实现数据的搬运和计算；
 
-d) KernelEimtable::Init_param函数中，使用获取到的TilingData计算得到singleCoreAddrNum、veclen等变量
+d) Init_param函数中，使用获取到的TilingData计算得到singleCoreAddrNum、veclen等变量
 
-e) KernelEimtable::Init函数中，针对非对齐shape算子，使用Init_param的中间变量计算得到每个核上的偏移量、每个分块大小，并初始化和绑定Buffer
+e) Init函数中，针对非对齐shape算子，使用Init_param的中间变量计算得到每个核上的偏移量、每个分块大小，并初始化和绑定Buffer
 
-f) KernelEimtable::Process函数实现算子的搬运和计算，最终输出结果到dstDataGm，即GM_ADDR y
+f) Process函数实现算子的搬运和计算，最终输出结果到dstDataGm，即GM_ADDR y
 
 ## 单算子编译说明
 
@@ -77,7 +77,7 @@ bash run.sh ai_core-<soc_version>
 ```
 
 > AI处理器的型号`<soc_version>`请通过如下方式获取:
-> 
+>
 > - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
 >
 > 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
@@ -143,10 +143,10 @@ aclnn_embedding_lookup_by_address.cpp和aclnn_embedding_lookup_by_address.h等�
 
 run.sh脚本依次执行：
 
-1. 清除遗留生成文件和日志文件 
-2. 生成输入数据和真值数据 
-3. 编译acl可执行文件 
-4. 运行可执行文件 
+1. 清除遗留生成文件和日志文件
+2. 生成输入数据和真值数据
+3. 编译acl可执行文件
+4. 运行可执行文件
 5. 比较真值文件
 
 ### scripts脚本
