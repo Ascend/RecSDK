@@ -1,6 +1,6 @@
-# 使用pytorch框架调用multislice_concat算子
+# 使用PyTorch框架调用multislice_concat算子
 
-# Pytorch框架对外接口原型
+# PyTorch框架对外接口原型
 
 ```python
 torch.ops.mxrec.multislice_concat(Tensor input, int concat_num, int[] concat_size,
@@ -24,9 +24,9 @@ int[] slice_begin, int[] slice_length) -> Tensor[]
 
 算子编译部署请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明" - "算子编译"章节。
 
-## Pytorch编译
+## PyTorch编译
 
-Pytorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明" - "算子适配层编译"章节。
+PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明" - "算子适配层编译"章节。
 
 ## 算子调用示例
 

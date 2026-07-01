@@ -1,8 +1,8 @@
-# 使用Pytorch框架调用hstu_dense_forward算子
+# 使用PyTorch框架调用hstu_dense_forward算子
 
-该样例基于Pytorch2.6.0、python3.11.0运行
+该样例基于PyTorch 2.6.0、python 3.11.0运行
 
-## Pytorch框架对外接口原型
+## PyTorch框架对外接口原型
 
 ### hstu_dense 接口
 
@@ -319,9 +319,9 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 
 算子编译部署请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-### Pytorch编译
+### PyTorch编译
 
-Pytorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
+PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
 ### 算子调用示例,以下以pytest方式调用为例
 

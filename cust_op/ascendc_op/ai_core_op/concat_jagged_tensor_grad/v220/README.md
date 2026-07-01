@@ -71,10 +71,10 @@ result = [tensor([[1,1,1,1,1,1,1,1],
 | offsetLen      | 输入     | int     | int                               | NA                        | N                                   | 单个tensor的offset长度 |
 | jtNum          | 输入     | int     | int                               | NA                        | 支持jtNum = 2                         | 切分后tensor的个数      |
 | nPrefixToRight | 输入     | int     | int                               | NA                        | nPrefixToRight >= 0                 | 切分时右侧tensor的前缀个数  |
-| result         | 输出     | List    | bfloat16/float16/float32/int32    | List([Tensor, Tensor])    | 结果为TensorList,长度为2，表示切分后的两个tensor。  | NA                |
+| result         | 输出     | List    | bfloat16/float16/float32/int32    | List[Tensor]    | 结果为Tensor列表，且列表长度为2，表示切分后的两个Tensor。  | NA                |
 
 # 算子编译部署
 
 算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/concat_2d_jagged/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/concat_2d_jagged/README.md)

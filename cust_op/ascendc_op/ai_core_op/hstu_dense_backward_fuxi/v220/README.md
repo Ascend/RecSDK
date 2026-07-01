@@ -226,7 +226,7 @@ def golden_op_exec(grad, q, k, v, bias_position, bias_timestamp, grad_bias_posit
 * B: batch_size 表征批处理的大小，当前取值范围[1, 512]。
 * S: seq_lens 表征序列长度，当前取值范围[1, 20480]。
 * N：head_num 表征头个数，当前取值为[2,4,6,8]。
-* D: head_dim 表征维度，当前取值范围范围[16, 512]，并且需要满足是16的倍数。
+* D: head_dim 表征维度，当前取值范围[16, 512]，并且需要满足是16的倍数。
 * 以上四个维度数值均不能为0，为0时算子输入为空数据，不会执行算子计算;并且其中B、N、S参数影响bias、mask占用显存大小，请根据实际内存合理设置参数大小。
 * jagged模式下 S为所有序列中最大的序列长度，比如此时有两个序列，一个序列长度为256，另一个序列长度为512，则S为512。
 * jagged模式，需要传递可选属性seq_offsets，比如当前有两个序列，一个序列长度为256,另一个序列长度为512，则seq_offsets = [0, 256, 768]，伪代码如下:
@@ -244,4 +244,4 @@ seq_offsets = torch.concat((torch.zeros((1, ), dtype=torch.int64), \
 
 算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/hstu_dense_forward_fuxi/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/hstu_dense_forward_fuxi/README.md)

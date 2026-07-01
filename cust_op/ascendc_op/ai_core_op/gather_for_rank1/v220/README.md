@@ -25,7 +25,7 @@ gather_for_rank1
 
 # 功能
 
-实现x的shape为1的index_select操作，用于从一维张量中根据索引选择元素。
+实现对输入x（一维Tensor）的index_select操作，用于从一维张量中根据索引选择元素。
 
 # 算子实现原理
 
@@ -73,4 +73,4 @@ y = torch.index_select(x, dim=0, index=index)
 
 算子编译请参考[RecSDK/cust_op/README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/gather_for_rank1/README.md)
+注：详细算子调用示例参考PyTorch框架下[README.md](../../../../framework/torch_plugin/torch_library/gather_for_rank1/README.md)

@@ -1,7 +1,7 @@
 # RecSDK-Torch 自定义算子说明
 
 在推荐训练中，存在部分算子无NPU实现，或已有NPU实现但性能较差，不能满足推荐训练需求。RecSDK提供了自定义算子用于支持或加速推荐模型NPU训练。其中部分自定义算子已绑定到开源API(将开源API的backend实现转发到NPU)
-,导入RecSDK软件包后，可直接通过开源API调用到自定义算子。其余算子则需通过PTA层注册的mxrec模块进行调用。详情请参考各算子目录下的README文件。
+，导入RecSDK软件包后，可直接通过开源API调用到自定义算子。其余算子则需通过PTA层注册的mxrec模块进行调用。详情请参考各算子目录下的README文件。
 
 说明：本说明文档只针对Torch框架下适配的推荐算子
 
@@ -73,7 +73,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 bash build_ops.sh
 ```
 
-执行完在当前build目录生成 xxx.so文件,调用算子时执行以下命令进行加载。
+执行完上述命令后将在当前build目录生成xxx.so文件，调用算子时需先执行以下命令加载so文件：
 
 ```python
 import torch
