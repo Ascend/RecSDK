@@ -93,8 +93,8 @@ public:
                 CopyIn(i, this->row);
                 Compute(i, this->row);
             }
-            // 尾块处理
-            if (this->rowLeft > 0) {
+            // 尾块处理（最后一个核应使用自己的 rowLeftTail）
+            if (this->rowLeftTail > 0) {
                 CopyIn(this->loopCountTail, this->rowLeftTail);
                 Compute(this->loopCountTail, this->rowLeftTail);
             }
@@ -120,14 +120,14 @@ private:
         // 连续传输数据块个数；len:连续传输数据块长度，Byte，非对齐搬运；0, 0, 0:源/目标数据块间隔，保留字段
         DataCopyExtParams gradientParams{1, gradientDataLen, 0, 0, 0};
         // 搬运填充参数
-        DataCopyPadExtParams<T> gradientPadParams{true, 0, 2, 0};
+        DataCopyPadExtParams<T> gradientPadParams{true, 0, 0, 0};
         DataCopyPad(localGradient, this->gmGradient[progress * this->row * this->dim2], gradientParams,
                     gradientPadParams);
 
         LocalTensor<int32_t> localIndices = this->inQueIndices.template AllocTensor<int32_t>();
         uint32_t indicesDataLen = row * sizeof(int32_t);
         DataCopyExtParams indicesParams{1, indicesDataLen, 0, 0, 0};
-        DataCopyPadExtParams<int32_t> indicesPadParams{true, 0, 2, 0};
+        DataCopyPadExtParams<int32_t> indicesPadParams{true, 0, 0, 0};
         DataCopyPad(localIndices, this->gmIndices[progress * this->row], indicesParams, indicesPadParams);
 
         this->inQueGradient.EnQue(localGradient);
