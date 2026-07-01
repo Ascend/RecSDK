@@ -2,16 +2,14 @@
 
 ## 概述
 
-`hstu_dense_forward_mc2` 是一个 **MC2（Model Communication + Computation）通算融合算子**，将多卡间的 **All-to-All 集合通信** 与 HSTU Attention 计算融合在 AI Core Kernel 内部执行，显著减少通信与计算之间的串行等待开销。
+`hstu_dense_forward_mc2` 是一个 **MC2（Model Communication + Computation）通算融合算子**，将多卡间的 **AllGather 集合通信** 与 HSTU Attention 计算融合在 AI Core Kernel 内部执行，显著减少通信与计算之间的串行等待开销。
 
 ### 核心特性
 
 | 特性 | 说明 |
 |------|------|
-| **通算融合** | All-to-All 通信与 Attention 计算在 Kernel 内重叠执行 |
-| **8 卡分布式** | K/V 序列分布在各卡 HBM 上，K/V Seq = Q Seq × 8 |
-| **GQA 支持** | K/V 头数可小于 Q 头数，支持 4 组及以上分组 |
-| **dim 不等** | qk head_dim 与 v_dim 可不等 |
+| **通算融合** | AllGather 通信与 Attention 计算在 Kernel 内重叠执行 |
+| **8 卡分布式** | Q/K/V 均按卡切分（每卡 `[B, S, N, D]`），Kernel 内 AllGather 将各卡 K/V 拼出完整 S×8 序列 |
 | **数据格式** | Normal（4D Dense） |
 | **多精度** | fp32 / fp16 / bf16 |
 
@@ -63,13 +61,13 @@ hstu_dense_forward_mc2/
 
 ### 分布式计算模型
 
-MC2 算子运行在 **8 张 NPU 卡**上，Q 的数据按卡切分，K/V 的数据全量分布在 8 张卡上：
+MC2 算子运行在 **8 张 NPU 卡**上，Q 和 K/V 的数据均按卡切分（每卡持有 [B, S, N, D] 的本地 shard），Kernel 内部通过 AllGather 将各卡 K/V 拼成完整序列：
 
 ```text
 卡 i：Output[i] = Attention( Q[i], K[0..7], V[0..7] )
 ```
 
-其中 K/V 序列长度 = Q 序列长度 × 8（每张卡持有 1/8 的 K/V 序列）。
+其中 K/V 序列长度 = Q 序列长度 × 8，各卡输入 K/V 的 seq 维度为 S（非 S×8），拼接在 Kernel 内完成。
 
 ### 计算流程
 
@@ -95,10 +93,10 @@ MC2 算子运行在 **8 张 NPU 卡**上，Q 的数据按卡切分，K/V 的数�
 ## 计算公式
 
 $$
-\text{Output} = \big(\text{SiLU}(QK^T + \text{bias}) \times \text{silu\_scale} \times \text{mask}\big) \cdot V
+\text{Output} = \text{SiLU}(QK^T + \text{bias}) \times \text{silu\_scale} \times \text{mask} \cdot V
 $$
 
-其中 SiLU 激活函数替代了传统 Softmax，提供了更好的梯度特性。
+其中 SiLU 激活函数替代了传统 Softmax（非 softmax_like），提供更好的梯度特性。
 
 ## 算子输入与输出
 
@@ -106,31 +104,20 @@ $$
 
 | 名称 | 输入/输出 | 数据类型 | 形状 | 说明 |
 |------|-----------|---------|------|------|
-| q | 输入 | fp32/fp16/bf16 | `[B, S, N_q, D_q]` | B∈[1,2048], S∈[1,20480], N_q∈[1,16], D_q∈[1,512] |
-| k | 输入 | fp32/fp16/bf16 | `[B, S×rank_size, N_k, D_q]` | K 序列长 = Q × rank_size；N_k∈[1,N_q] 且 N_q % N_k == 0，见 GQA 配置 |
-| v | 输入 | fp32/fp16/bf16 | `[B, S×rank_size, N_k, D_v]` | D_v∈[16,512] 且 16 的倍数；N_k 为 K/V 头数，见 GQA 配置 |
-| mask | 输入(可选) | fp32/fp16/bf16 | `[B, N, S, S]` | None 或全 1 表示不使用；传入时为自定义 mask（需配合 mask_type=3）；支持下三角 causal mask（mask_type=0）由算子内部自动生成 |
+| q | 输入 | fp32/fp16/bf16 | `[B, S, N, D]` | B∈[1,2048], S∈[1,20480], N∈[1,16], D∈[1,512]；Q 沿 seq 维切分到各卡 |
+| k | 输入 | fp32/fp16/bf16 | `[B, S, N, D]` | 与 Q 同 shape；每卡持有 K 的本地 shard（seq=S），Kernel 内 AllGather 拼出完整 S×rank_size 序列 |
+| v | 输入 | fp32/fp16/bf16 | `[B, S, N, D]` | 与 Q 同 shape；每卡持有 V 的本地 shard；D 与 Q/K 共用同一个 head_dim |
+| mask | 输入(可选) | fp32/fp16/bf16 | `[B, N, S, S]` | None 或全 1 表示不使用；mask_type=3 时传入自定义 mask；mask_type=0 时算子内部自动生成下三角 causal mask |
 | attn_bias | 输入(可选) | fp32/fp16/bf16 | `[B, N, S, S]` | None 表示不使用 |
 | rank_id | 属性 | int | 0 ~ 7 | 当前卡的 rank ID |
 | rank_size | 属性 | int | 8 | 总卡数 |
-| mask_type | 属性 | int | 0/2/3 | 0=下三角mask, 2=无mask, 3=自定义mask |
+| mask_type | 属性 | int | 0/2/3 | 0=下三角mask(内部生成), 2=无mask, 3=自定义mask |
 | max_seq_len | 属性 | int | [1, 20480] | Q 序列最大长度 |
 | silu_scale | 属性 | float | 默认 1/max_seq_len | SiLU 缩放系数 |
 | group | 属性 | string | HCCL 通信域名称 | HcclGetCommName 获取 |
 | layout | 属性(可选) | string | "normal" | 数据格式 |
 | seq_offsets | 属性(可选) | list_int | [] | jagged 模式时传入 |
-| attn_output | 输出 | fp32/fp16/bf16 | `[B, S, N_q, D_v]` | 注意力输出 |
-
-## GQA 支持
-
-| 配置 | N_q | N_k | 说明 |
-|------|-----|-----|------|
-| MHA | 8 | 8 | 标准多头注意力 |
-| GQA-4 | 8 | 2 | 每 4 个 Q 头共享 1 个 K/V 头 |
-| GQA-2 | 8 | 4 | 每 2 个 Q 头共享 1 个 K/V 头 |
-| MQA | 8 | 1 | 所有 Q 头共享 1 个 K/V 头 |
-
-约束：`N_q % N_k == 0`
+| attn_output | 输出 | fp32/fp16/bf16 | `[B, S, N, D]` | 与输入同 shape，注意力输出 |
 
 ## 编译部署
 
@@ -168,8 +155,8 @@ cmake . && make                                   # Step 2: 编译
 
 ## 注意事项
 
-1. **必须 8 卡运行**：MC2 融合依赖 8 卡 All-to-All 通信拓扑，不支持少于 8 卡
-2. **K/V 序列长度**：K/V 的 seq 维度必须是 Q 的 rank_size（8）倍
+1. **必须 8 卡运行**：MC2 融合依赖 8 卡 AllGather 通信拓扑，不支持少于 8 卡
+2. **K/V 序列长度**：K/V 输入 shape 为 [B, S, N, D]（与 Q 同 shape），每卡持有本地 shard；Kernel 内 AllGather 自动拼出 S×8 的完整序列
 3. **先编译算子再编译测试**：test 依赖 run.sh 安装的 API 头文件，需先执行 `bash run.sh`
 4. **Golden 数据**：由 `torchrun --nproc_per_node=8 generate_golden.py` 生成，每卡独立一份
 5. **内存管理**：Golden 生成对大 seq_len（>8192）会分 chunk 计算以避免 OOM

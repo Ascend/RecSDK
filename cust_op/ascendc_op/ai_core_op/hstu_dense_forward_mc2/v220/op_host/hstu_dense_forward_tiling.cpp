@@ -95,7 +95,7 @@ static ge::graphStatus HstuDenseForwardTilingFunc(gert::TilingContext* context)
     tilingData->rankSize = (rankSize != nullptr) ? *rankSize : 1;
     tilingData->maskType = (maskType != nullptr) ? *maskType : 0;
     tilingData->maxSeqLen = (maxSeqLen != nullptr) ? *maxSeqLen : 0;
-    tilingData->siluScale = (siluScale != nullptr) ? *siluScale : 1.0f;
+    tilingData->siluScale = (siluScale != nullptr) ? *siluScale : 1.0;
     tilingData->enableBias = (biasTensorShape == nullptr) ? 0 : 1;
 
     // set tiling core
@@ -105,7 +105,7 @@ static ge::graphStatus HstuDenseForwardTilingFunc(gert::TilingContext* context)
 
     // high level api tiling
     matmul_tiling::DataType dataType;
-    ge::DataType qTypeGe = context->GetInputTensor(0)->GetDataType();
+    ge::DataType qTypeGe = context->GetInputDesc(Q_INDEX)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT) {
         dataType = matmul_tiling::DataType::DT_FLOAT;
     } else if (qTypeGe == ge::DataType::DT_FLOAT16) {

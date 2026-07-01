@@ -20,8 +20,8 @@ See the License for the specific language governing permissions and
 #include <cstdint>
 
 // Maximum supported batch size for variable-length sequence batching
-#define HSTU_MAX_BATCH_SIZE 2048
+constexpr int HSTU_MAX_BATCH_SIZE = 2048;
 // Maximum number of AIV cores per NPU (910B has 48 AIV cores)
-#define HSTU_MAX_AIV_NUM 48
+constexpr int HSTU_MAX_AIV_NUM = 48;
 
 #endif  // TILING_POLICY_DEFINE_H

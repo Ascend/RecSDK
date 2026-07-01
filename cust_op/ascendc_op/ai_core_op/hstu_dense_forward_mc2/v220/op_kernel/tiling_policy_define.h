@@ -19,7 +19,7 @@ See the License for the specific language governing permissions and
 #include <cstdio>
 #include <cstdint>
 
-#define HSTU_MAX_BATCH_SIZE 2048
-#define HSTU_MAX_AIV_NUM 48
+constexpr int HSTU_MAX_BATCH_SIZE = 2048;
+constexpr int HSTU_MAX_AIV_NUM = 48;
 
 #endif  // TILING_POLICY_DEFINE_H
