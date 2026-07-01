@@ -65,8 +65,8 @@ result = jagged_to_padded_dense(values=input_values, offsets=[input_offsets], ma
 | values        | 输入      | Tensor    | float32/float16/bfloat16/int32/int64 | [dim0, dim1] |   |  第一维为所有子tensor元素总数，第二维为特征维度 |
 | offsets       | 输入      | Tensor[]  | int32/int64   |                                       | 数值必须从0开始依次递增 | list中tensor个数只能为1, 且tensor仅支持一维；offsets内元素需用户自行保证合法性，否则可能导致算子执行失败 |
 | max_lengths   | 输入(属性)  | int/int[] | int           |                                       |              | max_lengths的元素值需大于0。类型为数组时，长度只能为1                                       |
-| padding_value_fp32 | 输入(属性)  | float     | float         |                                       |              | 填充值(fp32) |
-| padding_value_int64 | 输入(属性)  | int64     | int64         |                                       |              | 填充值(int64) |
+| padding_value_fp32 | 输入(属性)  | float     | float         |                                       |              | 填充值，当values数据类型为float32/float16/bfloat16/int32时使用 |
+| padding_value_int64 | 输入(属性)  | int64     | int64         |                                       |              | 填充值，当values数据类型为int64时使用 |
 | jagged_dense  | 输出(返回值) | Tensor    | float32/float16/bfloat16/int32/int64 | [len(offsets) - 1, max_lengths, dim1] |              |                                                                        |
 
 # 算子编译部署

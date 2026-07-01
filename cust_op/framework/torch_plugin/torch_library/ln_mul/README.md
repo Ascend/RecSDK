@@ -31,7 +31,7 @@ PyTorch框架适配层编译请参考[RecSDK/cust_op/README.md](../../../../READ
 
 以下示例为通过python3方式调用NPU侧算子：
 
-## 使用方法
+#### 使用方法
 
 ```python
 from pathlib import Path

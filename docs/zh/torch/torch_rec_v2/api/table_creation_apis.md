@@ -38,7 +38,7 @@ class EmbeddingConfig:
 |weight_init_max|float|可选|权重初始化最大值。仅支持默认值为None，不支持用户自定义。|
 |weight_init_min|float|可选|权重初始化最小值。仅支持默认值为None，不支持用户自定义。|
 |num_embeddings_post_pruning|int|可选|推理剪枝后稀疏表数量。仅支持默认值为None，不支持用户自定义。|
-|init_fn|Callable|可选|初始化函数。支持传入nn.Parameter类型的函数。用户需自行保证该函数的正确性。默认值为None。|
+|init_fn|Callable|可选|Embedding权重初始化函数，接收nn.Parameter类型的权重参数，在函数内对权重进行原地初始化。用户需自行保证该函数的正确性。默认值为None。|
 |need_pos|bool|可选|位置权重。仅支持默认值为False，不支持用户自定义。|
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**

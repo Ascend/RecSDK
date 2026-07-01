@@ -81,7 +81,6 @@ def rab_time_golden(timestamps_weights: torch.Tensor,
 | rab_time           | 输出    | FP16,FP32 | (num_layers, b, s, 1, s, 1) |                                                 |    |
 | bucket_timestamps  | 输出    | int32     | (b, s, s)                   |                                                 |    |
 
-> 注：rab_time期望返回为(num_layers, b, 2s, 2s)\
 > ONNX调用时需进行rab_time.repeat(1, 1, 1, 2, 1, 2).reshape(num_layers, b, 2s, 2s)操作。\
 > PyTorch调用无需额外操作，已经在PyTorch适配层完成该操作。
 
