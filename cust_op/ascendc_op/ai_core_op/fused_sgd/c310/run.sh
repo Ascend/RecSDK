@@ -40,16 +40,31 @@ source "$UTILS_SCRIPT"
 # ==============================================================================
 vendor_name="fused_sgd"
 export with_onnx="true"
-export CMAKE_PRESET_VENDOR_NAME="mxrec_fused_agd"
+export CMAKE_PRESET_VENDOR_NAME="mxrec_sgd"
 export MSOPGEN_OP_NAME="Sgd"
 export AI_CORE_PROFILE="c310"
 export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/../v220/sgd.json")"
-export OPERATOR_SOURCE_ROOT="$(readlink -f "${WORK_DIR}/../v220")"
-export INSERT_SUPPORT_950_PATHS="op_host/sgd.cpp"
+export OPERATOR_SOURCE_ROOT="$(readlink -f "${WORK_DIR}/../v220/")"
+readonly TGT="${WORK_DIR}/${vendor_name}"
+cp -f "${OPERATOR_JSON_FILE}" "${OPERATOR_SOURCE_ROOT}/${CMAKE_PRESET_VENDOR_NAME}.json"
 
 parse_arguments "$@" || exit 1
 
 # ==============================================================================
 # 4. 流程（-op Sgd）
 # ==============================================================================
-build_and_install_operator "$WORK_DIR" "$vendor_name" || exit 1
+validate_ai_core "$ai_core" || exit 1
+check_system_and_cann "$ai_core" || exit 1
+
+rm -rf "${TGT}"
+msopgen gen -i "${OPERATOR_JSON_FILE}" -f tf -c "${ai_core}" -lan cpp -out "${TGT}" -m 0 -op "${MSOPGEN_OP_NAME}"
+
+set_build_version "${TGT}"
+
+replace_operator_sources "${OPERATOR_SOURCE_ROOT}" "${TGT}" || exit 1
+sed -i "1i #define SUPPORT_950" "${TGT}/op_host/sgd.cpp"
+cp -f "${OPERATOR_SOURCE_ROOT}"/../../common/* "${TGT}"/op_host/
+configure_cmake_presets "${CMAKE_PRESET_VENDOR_NAME}" "${ai_core}" "${BUILD_VERSION}" "${TGT}" || exit 1
+prepare_and_build "$BUILD_VERSION" "${CMAKE_PRESET_VENDOR_NAME}" "${TGT}" || exit 1
+install_operator_package "$OS_ID" "$ARCH" "${TGT}" || exit 1
+rm -rf "${WORK_DIR}/${CMAKE_PRESET_VENDOR_NAME}.json"
