@@ -52,4 +52,4 @@ parse_arguments "$@" || exit 1
 # ==============================================================================
 # 4. 流程（-op LazyAdam；c310 下 configure_cmake_presets 会将 OPERATOR_JSON_FILE 拷至 CPack 路径）
 # ==============================================================================
-build_and_install_operator "$WORK_DIR" "$vendor_name" || exit 1
+build_and_install_operator "$WORK_DIR" "$vendor_name" "$with_onnx" || exit 1
