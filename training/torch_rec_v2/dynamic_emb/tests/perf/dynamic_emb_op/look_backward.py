@@ -97,6 +97,7 @@ def generate_test_data(device, batch_size, embed_dim, num_key, repeat_rate, comb
         "unique_count": unique_count,
         "combiner": combiner,
         "repeat_rate": repeat_rate,
+        "num_key": num_key,
     }
 
 
@@ -125,7 +126,7 @@ def test_lookup_backward(device, batch_size, embed_dim, num_key, repeat_rate, co
             data["table_num"],
             data["batch_size"],
             data["feature_num"],
-            data["offsets_per_table"][-1].item(),
+            data["num_key"],
             combiner=combiner,
         )
         torch.npu.synchronize(device)
