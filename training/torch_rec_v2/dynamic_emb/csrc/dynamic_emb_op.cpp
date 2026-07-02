@@ -86,6 +86,19 @@ constexpr int32_t MAX_ELEMENTS_PER_THREAD = 4;
 constexpr int32_t SMALL_DATA_THRESHOLD = 44 * MAX_THREADS_PER_BLOCK;
 constexpr int32_t SMALL_DATA_THRESHOLD_32 = 24 * MAX_THREADS_PER_BLOCK;
 constexpr int32_t ELEMENTS_PER_BLOCK = MAX_THREADS_PER_BLOCK * MAX_ELEMENTS_PER_THREAD;
+
+// lookup_backward: inline binary search + per-thread ResolveGradSource cache in SIMT scatter.
+// Profiled on A5 via tests/perf/dynamic_emb_op/look_backward.py.
+//
+// lookup_backward_v2: slot-path SIMT scatter, template kernel <<<>>> direct invoke.
+// Host: lookup_backward_v2_launch() in custom_kernel_ops; empty slots skipped in kernel.
+// Falls back to lookup_backward when empty_ratio < 5% and num_key > 2 * num_active_slots.
+// Active-slot stats (CPU) run only when num_key > num_slots; otherwise fallback is impossible.
+//
+// SIMT tiling / block scheduling: num_key * launch_dim (launch_dim = dim or dim/2 for float2).
+constexpr int32_t LOOKUP_BACKWARD_FLOAT2_DIM_THRESHOLD = 8;
+constexpr float LOOKUP_BACKWARD_V2_EMPTY_RATIO_THRESHOLD = 0.05f;
+constexpr int64_t LOOKUP_BACKWARD_V2_KEYS_PER_ACTIVE_FACTOR = 2;
 constexpr float HASH_TABLE_FACTOR = 1.5f;
 constexpr int64_t MIN_HASH_TABLE_CAPACITY = 1;
 constexpr int32_t CACHE_ALIGN = 64;
@@ -2402,37 +2415,68 @@ void dynamic_emb_sgd_fused_hybrid(const torch::Tensor& grads, const torch::Tenso
     }
 }
 
-void lookup_backward(const at::Tensor grad, const at::Tensor unique_buffer, const at::Tensor unique_indices,
-                     const at::Tensor inverse_indices, const at::Tensor biased_offsets, int32_t dim, int32_t table_num,
-                     int32_t batch_size, int32_t feature_num, int32_t num_key, int32_t combiner)
+static int32_t count_active_slots(const at::Tensor& biased_offsets)
 {
-    TORCH_CHECK(biased_offsets.dtype() == inverse_indices.dtype(),
-                "biased_offsets and inverse_indices must have the same type ");
-    TORCH_CHECK(unique_indices.dtype() == inverse_indices.dtype(),
-                "lookup_backward: unique_indices must match inverse_indices dtype");
-    TORCH_CHECK(inverse_indices.dtype() == torch::kInt32 || inverse_indices.dtype() == torch::kInt64 ||
-                    inverse_indices.dtype() == torch::kUInt64,
-                "lookup_backward: index tensors must be int32, int64, or uint64");
-    TORCH_CHECK(grad.scalar_type() == unique_buffer.scalar_type(),
-                "lookup_backward: grad and unique_buffer must have the same dtype");
-    TORCH_CHECK(grad.dtype() == torch::kFloat32 || grad.dtype() == torch::kFloat16 || grad.dtype() == torch::kBFloat16,
-                "lookup_backward: grad and unique_buffer must be float32, float16, or bfloat16");
+    at::Tensor offsets_cpu = biased_offsets.contiguous().cpu();
+    const int64_t num_slots = offsets_cpu.size(0) - 1;
+    if (num_slots <= 0) {
+        return 0;
+    }
+    at::Tensor lengths = offsets_cpu.slice(0, 1) - offsets_cpu.slice(0, 0, -1);
+    return static_cast<int32_t>(lengths.gt(0).sum().item<int64_t>());
+}
+
+static bool should_fallback_to_lookup_backward_key_path(int64_t num_key, int32_t num_slots,
+                                                        const at::Tensor& biased_offsets)
+{
+    if (num_key > LOOKUP_BACKWARD_V2_KEYS_PER_ACTIVE_FACTOR * static_cast<int64_t>(num_slots)) {
+        return true;
+    }
+    if (num_key <= static_cast<int64_t>(num_slots)) {
+        return false;
+    }
+    const int32_t num_active_slots = count_active_slots(biased_offsets);
+    if (num_active_slots <= 0 || num_slots <= 0) {
+        return false;
+    }
+    const float empty_ratio = static_cast<float>(num_slots - num_active_slots) / static_cast<float>(num_slots);
+    return empty_ratio < LOOKUP_BACKWARD_V2_EMPTY_RATIO_THRESHOLD &&
+           num_key > LOOKUP_BACKWARD_V2_KEYS_PER_ACTIVE_FACTOR * static_cast<int64_t>(num_active_slots);
+}
+
+static void lookup_backward_key_path(const at::Tensor grad, const at::Tensor unique_buffer,
+                                     const at::Tensor unique_indices, const at::Tensor inverse_indices,
+                                     const at::Tensor biased_offsets, int32_t dim, int32_t table_num,
+                                     int32_t batch_size, int32_t feature_num, int32_t num_key, int32_t combiner)
+{
+    (void)unique_indices;
+    (void)table_num;
+    (void)batch_size;
+    (void)feature_num;
+
+    const int64_t num_pooling_outputs = biased_offsets.size(0) - 1;
 
     auto grad_contin = grad.is_contiguous() ? grad : grad.contiguous();
     auto unique_buffer_contin = unique_buffer.is_contiguous() ? unique_buffer : unique_buffer.contiguous();
-    auto unique_indices_contin = unique_indices.is_contiguous() ? unique_indices : unique_indices.contiguous();
     auto biased_offsets_contin = biased_offsets.is_contiguous() ? biased_offsets : biased_offsets.contiguous();
     auto inverse_indices_contin = inverse_indices.is_contiguous() ? inverse_indices : inverse_indices.contiguous();
     auto value_type = scalartype_to_datatype(convertTypeMetaToScalarType(grad.dtype()));
     auto index_type = scalartype_to_datatype(convertTypeMetaToScalarType(inverse_indices.dtype()));
     void* grad_ptr = grad_contin.data_ptr();
     void* unique_buffer_ptr = unique_buffer_contin.data_ptr();
-    void* biased_offsets_ptr = biased_offsets_contin.data_ptr();
     void* inverse_indices_ptr = inverse_indices_contin.data_ptr();
-    void* unique_indices_ptr = unique_indices_contin.data_ptr();
-    bool is_small =
-        (num_key * dim <= (inverse_indices.dtype() == torch::kInt32 ? SMALL_DATA_THRESHOLD_32 : SMALL_DATA_THRESHOLD));
-    int32_t total_blocks = (num_key * dim + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK;
+    void* biased_offsets_ptr = biased_offsets_contin.data_ptr();
+
+    const int32_t small_data_threshold =
+        (inverse_indices.dtype() == torch::kInt32) ? SMALL_DATA_THRESHOLD_32 : SMALL_DATA_THRESHOLD;
+    const bool is_float2 =
+        (grad.dtype() == torch::kFloat32 && dim % 2 == 0 && dim > LOOKUP_BACKWARD_FLOAT2_DIM_THRESHOLD);
+    const int32_t launch_dim = is_float2 ? (dim >> 1) : dim;
+    const int64_t launch_elements = static_cast<int64_t>(num_key) * static_cast<int64_t>(launch_dim);
+
+    const bool is_small = (launch_elements <= small_data_threshold);
+    const int32_t total_blocks = static_cast<int32_t>((launch_elements + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK);
+
     int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
     int32_t core_num = std::min(max_cores, total_blocks);
     if (core_num == 0) {
@@ -2443,15 +2487,91 @@ void lookup_backward(const at::Tensor grad, const at::Tensor unique_buffer, cons
     int32_t remainder_blocks = total_blocks % core_num;
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
 
-    at::Tensor kernelStatus = at::ones({1}, grad_contin.options().dtype(at::kBool));
-
     ACLRT_LAUNCH_KERNEL(lookup_backward)
-    (core_num, stream, grad_ptr, unique_buffer_ptr, unique_indices_ptr, inverse_indices_ptr, biased_offsets_ptr, dim,
-     table_num, batch_size, feature_num, num_key, combiner, total_blocks, blocks_per_core, remainder_blocks,
-     static_cast<uint32_t>(index_type), is_small, static_cast<uint32_t>(value_type), kernelStatus.data_ptr());
+    (core_num, stream, grad_ptr, unique_buffer_ptr, inverse_indices_ptr, biased_offsets_ptr, launch_dim, num_key,
+     static_cast<int32_t>(num_pooling_outputs), combiner, total_blocks, blocks_per_core, remainder_blocks,
+     static_cast<uint32_t>(index_type), is_small, is_float2, static_cast<uint32_t>(value_type));
+}
 
-    TORCH_CHECK(kernelStatus.item<bool>(),
-                "lookup_backward kernel failed: src_index == -1 detected in kernel (kernelStatus == false).");
+void lookup_backward_v2(const at::Tensor grad, const at::Tensor unique_buffer, const at::Tensor unique_indices,
+                        const at::Tensor inverse_indices, const at::Tensor biased_offsets, int32_t dim,
+                        int32_t table_num, int32_t batch_size, int32_t feature_num, int32_t num_key, int32_t combiner)
+{
+    (void)unique_indices;
+    (void)table_num;
+    (void)batch_size;
+    (void)feature_num;
+    TORCH_CHECK(biased_offsets.dtype() == inverse_indices.dtype(),
+                "lookup_backward_v2: biased_offsets and inverse_indices must have the same type ");
+    TORCH_CHECK(unique_indices.dtype() == inverse_indices.dtype(),
+                "lookup_backward_v2: unique_indices must match inverse_indices dtype");
+    TORCH_CHECK(inverse_indices.dtype() == torch::kInt32 || inverse_indices.dtype() == torch::kInt64 ||
+                    inverse_indices.dtype() == torch::kUInt64,
+                "lookup_backward_v2: index tensors must be int32, int64, or uint64");
+    TORCH_CHECK(grad.scalar_type() == unique_buffer.scalar_type(),
+                "lookup_backward_v2: grad and unique_buffer must have the same dtype");
+    TORCH_CHECK(grad.dtype() == torch::kFloat32 || grad.dtype() == torch::kFloat16 || grad.dtype() == torch::kBFloat16,
+                "lookup_backward_v2: grad and unique_buffer must be float32, float16, or bfloat16");
+    TORCH_CHECK(combiner == 0 || combiner == 1, "lookup_backward_v2: combiner must be 0 (SUM) or 1 (MEAN)");
+    TORCH_CHECK(biased_offsets.dim() == 1, "lookup_backward_v2: biased_offsets must be 1D");
+    TORCH_CHECK(inverse_indices.dim() == 1, "lookup_backward_v2: inverse_indices must be 1D");
+    TORCH_CHECK(grad.dim() == 2, "lookup_backward_v2: grad must be 2D");
+    TORCH_CHECK(grad.size(1) == static_cast<int64_t>(dim), "lookup_backward_v2: grad cols must equal dim");
+
+    const int64_t num_pooling_outputs = biased_offsets.size(0) - 1;
+    TORCH_CHECK(num_pooling_outputs > 0, "lookup_backward_v2: biased_offsets must contain at least one sample");
+    TORCH_CHECK(grad.size(0) == num_pooling_outputs,
+                "lookup_backward_v2: grad rows must equal len(biased_offsets) - 1, got grad_rows=", grad.size(0),
+                ", num_pooling_outputs=", num_pooling_outputs);
+    TORCH_CHECK(inverse_indices.size(0) == static_cast<int64_t>(num_key),
+                "lookup_backward_v2: inverse_indices length must equal num_key");
+
+    if (num_key == 0 || dim == 0) {
+        return;
+    }
+
+    const int32_t num_slots = static_cast<int32_t>(num_pooling_outputs);
+    if (should_fallback_to_lookup_backward_key_path(num_key, num_slots, biased_offsets)) {
+        lookup_backward_key_path(grad, unique_buffer, unique_indices, inverse_indices, biased_offsets, dim, table_num,
+                                 batch_size, feature_num, num_key, combiner);
+        return;
+    }
+
+    auto grad_contin = grad.is_contiguous() ? grad : grad.contiguous();
+    auto unique_buffer_contin = unique_buffer.is_contiguous() ? unique_buffer : unique_buffer.contiguous();
+    auto biased_offsets_contin = biased_offsets.is_contiguous() ? biased_offsets : biased_offsets.contiguous();
+    auto inverse_indices_contin = inverse_indices.is_contiguous() ? inverse_indices : inverse_indices.contiguous();
+    auto value_type = scalartype_to_datatype(convertTypeMetaToScalarType(grad.dtype()));
+    auto index_type = scalartype_to_datatype(convertTypeMetaToScalarType(inverse_indices.dtype()));
+    void* grad_ptr = grad_contin.data_ptr();
+    void* unique_buffer_ptr = unique_buffer_contin.data_ptr();
+    void* inverse_indices_ptr = inverse_indices_contin.data_ptr();
+    void* biased_offsets_ptr = biased_offsets_contin.data_ptr();
+
+    const int32_t small_data_threshold =
+        (inverse_indices.dtype() == torch::kInt32) ? SMALL_DATA_THRESHOLD_32 : SMALL_DATA_THRESHOLD;
+    const bool is_float2 =
+        (grad.dtype() == torch::kFloat32 && dim % 2 == 0 && dim > LOOKUP_BACKWARD_FLOAT2_DIM_THRESHOLD);
+    const int32_t launch_dim = is_float2 ? (dim >> 1) : dim;
+    const int64_t launch_elements = static_cast<int64_t>(num_slots) * static_cast<int64_t>(launch_dim);
+
+    const bool is_small = (launch_elements <= small_data_threshold);
+    const int32_t total_blocks = static_cast<int32_t>((launch_elements + ELEMENTS_PER_BLOCK - 1) / ELEMENTS_PER_BLOCK);
+
+    int32_t max_cores = AclSingleton::GetInstance().GetMaxCores();
+    int32_t core_num = std::min(max_cores, total_blocks);
+    if (core_num == 0) {
+        LOG_ERROR("core_num is zero!");
+        return;
+    }
+    int32_t blocks_per_core = total_blocks / core_num;
+    int32_t remainder_blocks = total_blocks % core_num;
+    auto stream = c10_npu::getCurrentNPUStream().stream(true);
+
+    lookup_backward_v2_launch(grad_ptr, unique_buffer_ptr, inverse_indices_ptr, biased_offsets_ptr, launch_dim,
+                              num_slots, combiner, total_blocks, blocks_per_core, remainder_blocks,
+                              static_cast<uint32_t>(index_type), is_small, is_float2, static_cast<uint32_t>(value_type),
+                              core_num, stream);
 }
 
 void dynamic_emb_adagrad_with_pointer_hybrid(const torch::Tensor& grads, const torch::Tensor& valPointers,
@@ -2898,10 +3018,11 @@ void bind_dyn_emb_op(py::module& m)
     m.def("lookup_forward", &lookup_forward, "lookup_forward", py::arg("src"), py::arg("dst"), py::arg("offset"),
           py::arg("inverse"), py::arg("combiner"), py::arg("total_dims"), py::arg("accum_dims"), py::arg("ev_size"),
           py::arg("num_vec"), py::arg("batch_size"));
-    m.def("lookup_backward", &lookup_backward, "backward", py::arg("grad"), py::arg("unique_buffer"),
-          py::arg("unique_indices"), py::arg("inverse_indices"), py::arg("biased_offsets"), py::arg("dim"),
-          py::arg("tables_num"), py::arg("batch_size"), py::arg("num_feature"), py::arg("num_key"),
-          py::arg("combiner"));
+    m.def("lookup_backward", &lookup_backward_v2,
+          "backward with slot-path kernel; dense multi-key slots fall back to lookup_backward with key-path",
+          py::arg("grad"), py::arg("unique_buffer"), py::arg("unique_indices"), py::arg("inverse_indices"),
+          py::arg("biased_offsets"), py::arg("dim"), py::arg("tables_num"), py::arg("batch_size"),
+          py::arg("num_feature"), py::arg("num_key"), py::arg("combiner"));
     m.def("dynamic_emb_adagrad_fused_hybrid", &dyn_emb::dynamic_emb_adagrad_fused_hybrid,
           "AdaGrad optimizer for dynamic embedding (SIMD only)", py::arg("grads"), py::arg("values"), py::arg("lr"),
           py::arg("eps"));
