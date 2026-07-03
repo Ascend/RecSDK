@@ -26,13 +26,13 @@ demo样例无需从其他地方下载数据集，在demo样例中Rec SDK会自�
 
 ## 2.准备运行环境
 
-运行环境可以参考[Rec SDK用户指南](https://www.hiascend.com/document/detail/zh/mindsdk/2600/rec/recug/docs/zh/overview.md)
-“安装部署”章节进行准备。
+运行环境可以参考[Rec SDK用户指南 - 安装部署](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/tensorflow/tf_rec_v1/recsdk_tf_installation_guide.md)
+章节进行准备。
 
 ## 3.安装Rec SDK
 
-Rec SDK软件包可以通过[Rec SDK用户指南](https://www.hiascend.com/document/detail/zh/mindsdk/2600/rec/recug/docs/zh/overview.md)
-“安装部署”>“环境准备”>“获取软件包”章节提供的链接进行下载，选择自己需要的架构（x86或者arm）的Rec SDK包。下载完成之后，将Rec SDK包解压，进入解压后的目录（mindxsdk-mxrec）
+Rec SDK软件包可以通过[Rec SDK用户指南 - 安装部署](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/tensorflow/tf_rec_v1/recsdk_tf_installation_guide.md)
+“环境准备”>“获取软件包”章节提供的链接进行下载，选择自己需要的架构（x86或者arm）的Rec SDK包。下载完成之后，将Rec SDK包解压，进入解压后的目录（mindxsdk-mxrec）
 如下：
 
 ```shell
@@ -63,6 +63,9 @@ bash run.sh main.py {ip}
 这个参数在脚本是默认的，用户需要根据自己环境中Rec SDK实际安装的路径进行配置。
 
 如需单卡运行，将run.sh中的`local_rank_size=8`改为`local_rank_size=1`即可。
+
+> [!NOTE]
+> 若在Ascend 950 系列产品上运行，需将 `run.sh` 中 `rankTableSolution` 函数引用的 ranktable 文件替换为适配 Ascend 950 的格式。当前目录已提供单卡示例 `hccl_json_1p.json`，使用 `rank_count` / `rank_list` / `level_list` 字段结构。多卡场景请参照该示例扩展 `rank_list` 数组。使用 ranktable 方案时运行命令无需传入 `{ip}` 参数，直接执行 `bash run.sh main.py` 即可。
 
 ## 5.开启精度对齐模式
 
