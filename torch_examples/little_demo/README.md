@@ -16,11 +16,11 @@
 
 ## 模型介绍
 
-本样例以一个最基础的模型来介绍RecSDK-Torch的使用样例。搭建一个基于RecSDK-Torch的训练任务步骤如下：
+本demo以一个最基础的模型来介绍RecSDK-Torch的使用样例。搭建一个基于RecSDK-Torch的训练模型步骤如下：
 
 ### 1. 定义Batch
 
-将本次训练需要的所有特征整合为一个Batch类。并实现to()、pin_memory()、record_stream()方法。完整代码参考dataset.py文件。
+将本次训练需要的所有特征整合为一个Batch类，并实现to()、pin_memory()、record_stream()方法。完整代码参考当前目录下的dataset.py文件。
 
 ```python
 @dataclass
@@ -30,7 +30,7 @@ class Batch(Pipelineable):
 
 ### 2. 定义Dataset
 
-实现一个返回Batch的Dataset。完整代码参考dataset.py文件。
+实现一个返回Batch的Dataset。完整代码参考当前目录下的dataset.py文件。
 
 ```python
 class RandomRecDataset(IterableDataset[Batch]):
@@ -39,7 +39,7 @@ class RandomRecDataset(IterableDataset[Batch]):
 
 ### 3. 初始化分布式变量
 
-创建host和device侧的链接。完整代码参考main.py文件。
+创建host和device侧的链接。完整代码参考当前目录下的main.py文件。
 
 ```python
 ......
@@ -50,7 +50,7 @@ host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
 
 ### 4. 定义模型
 
-将稀疏表部分和Dense部分整合为一个Module。该module的输入必须要上述环节中定义的Batch类。返回为模型的loss和输出。完整代码参考model.py。
+将稀疏表部分和Dense部分整合为一个Module。该module的输入需要是上述环节中定义的Batch类。返回为模型的loss和输出。完整代码参考当前目录下的model.py文件。
 
 ```python
 class TestModel(torch.nn.Module):
@@ -81,7 +81,7 @@ apply_optimizer_in_backward(
 
 ### 6. 对稀疏表做分表
 
-创建sharder，并使用EmbeddingShardingPlanner创建分表计划，将模型、分表计划和sharder传入DistributedModelParallel中获得分布式模型。注意当前支持row-wise和fused模式。完整代码参考main.py。
+创建sharder，并使用EmbeddingShardingPlanner创建分表计划，将模型、分表计划和sharder传入DistributedModelParallel中获得分布式模型。注意当前支持row-wise和fused模式。完整代码参考当前目录下的main.py文件。
 
 ```python
     hybrid_sharder = get_default_hybrid_sharders(host_env)
@@ -96,7 +96,7 @@ apply_optimizer_in_backward(
 
 ### 7. 整合优化器
 
-分离dense和sparse的参数，并组合成一个新的优化器。完整代码参考main.py。
+分离dense和sparse的参数，并组合成一个新的优化器。完整代码参考当前目录下的main.py文件。
 
 ```python
     dense_optimizer = KeyedOptimizerWrapper(
@@ -108,7 +108,7 @@ apply_optimizer_in_backward(
 
 ### 8. 创建pipeline
 
-完整代码参考main.py
+完整代码参考当前目录下的main.py文件。
 
 ```python
 pipeline = HybridTrainPipelineSparseDist(
@@ -118,7 +118,7 @@ pipeline = HybridTrainPipelineSparseDist(
 
 ### 9. 使用pipeline进行训练
 
-完整代码参考main.py
+完整代码参考当前目录下的main.py文件。
 
 ```python
 batched_iterator = iter(data_loader)
@@ -136,10 +136,12 @@ WORLD_SIZE=1 RANK=0 python main.py
 
 ### 多卡运行
 
-运行脚本启动训练：
+运行脚本启动多卡训练（该脚本配置的2卡，环境中需至少2张NPU卡）：
 
 ```bash
 bash bash.sh
 ```
 
-成功后出现demo done字样。
+预期耗时：2~5min。
+
+预期输出：训练结束后出现`demo done`字样，说明模型训练完成。

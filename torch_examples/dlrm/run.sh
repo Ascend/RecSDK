@@ -67,7 +67,7 @@ function run_dlrm_model(){
     2>&1 |tee ${model}_use_ec_${USE_EC}_$(date '+%Y%m%d_%H%M%S').log
 }
 
-# 默认使用hybrid_torchrec模式
+# 默认使用hybrid_torchrec模式。支持取值：torchrec、hybrid_torchrec、embcache
 MODES="hybrid_torchrec"
 
 for model in "${MODES[@]}"; do
