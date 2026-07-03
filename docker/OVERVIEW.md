@@ -169,6 +169,41 @@ The image provides convenient environment switching scripts for development and 
   source /usr/local/set_cann_env.sh a5  # Switch to Atlas 950 toolkit and related env vars
   ```
 
+- **Install or replace CANN packages manually**:
+
+  To upgrade the CANN version or replace existing CANN packages, first uninstall the old packages, then use the `--install-path` parameter to install the new packages to the target architecture directory. The container comes with three pre-configured directories:
+
+  | Architecture | Install Path | Switch Command |
+  |-------------|-------------|----------------|
+  | A2 (Atlas 800T2) | `/usr/local/Ascend/cann-A2` | `source /usr/local/set_cann_env.sh a2` |
+  | A3 (Atlas 800T3) | `/usr/local/Ascend/cann-A3` | `source /usr/local/set_cann_env.sh a3` |
+  | A5 (Ascend 950)  | `/usr/local/Ascend/cann-A5` | `source /usr/local/set_cann_env.sh a5` |
+
+  Example (download a new toolkit version and replace A2):
+
+  ```bash
+  # 0. Download the new CANN toolkit (use the actual package name)
+  wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-toolkit_9.0.0_linux-x86_64.run
+
+  # 1. Uninstall the old CANN package
+  bash /usr/local/Ascend/cann-A2/ascend-toolkit/uninstall.sh --quiet
+  # Or directly remove the install directory
+  rm -rf /usr/local/Ascend/cann-A2
+
+  # 2. Re-create the directory and install the new CANN toolkit
+  mkdir -p /usr/local/Ascend/cann-A2
+  chmod +x Ascend-cann-toolkit_9.0.0*.run
+  bash Ascend-cann-toolkit_9.0.0*.run --quiet --install --install-path=/usr/local/Ascend/cann-A2
+
+  # 3. Similarly, uninstall and reinstall the corresponding ops package
+  bash /usr/local/Ascend/cann-A2/opp/scripts/uninstall.sh --quiet
+  chmod +x Ascend-cann-910b-ops*.run
+  bash Ascend-cann-910b-ops*.run --quiet --install --install-path=/usr/local/Ascend/cann-A2
+  ```
+
+  > [!NOTE]
+  > After replacing CANN packages, run `source /usr/local/set_cann_env.sh <a2|a3|a5>` to reload the environment variables and ensure the newly installed operators and toolchain take effect.
+
 ## Support Information and Changelog
 
 ### Hardware Support Information

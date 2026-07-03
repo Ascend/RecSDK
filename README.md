@@ -65,6 +65,7 @@ Rec SDK支持的产品型号如下：
 - Atlas 200T A2 Box16
 - Atlas 800T A2 训练服务器
 - Atlas 900 A3 SuperPoD 超节点
+- Ascend 950 系列产品
 
 | 组件名称 | 安装指南 |
 | --- | --- |

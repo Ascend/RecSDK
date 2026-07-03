@@ -56,27 +56,27 @@
 ## PR 创建流程
 
 1. **创建特性分支**
-   
+
    ```bash
    git checkout -b feature/your-feature-name
    # 或
    git checkout -b fix/issue-number
    ```
-   
+
 2. **进行开发**
    - 编写代码
    - 添加测试
    - 更新文档
    - 确保代码通过本地测试
 3. **提交代码**
-   
+
    ```bash
    git add .
    git commit -m "[feat] add new feature"
    ```
 
 4. **推送到 Fork 仓库**
-   
+
    ```bash
    git push origin feature/your-feature-name
    ```
@@ -107,7 +107,7 @@
 ### 评审要求
 
 1. **评审人员要求**
-   
+
    - 评审人员必须熟悉相关代码领域
    - 评审人员不能是PR作者本人
 2. **评审检查项**
@@ -163,11 +163,11 @@ CI检查项目有：
   * UT_cpp_tf1
 * 流水线：PR-pipeline_RecSDK
 
-任意一项失败可以通过详情链接查看具体问题。如果是CI自身故障，请[联系committer](https://gitcode.com/Ascend/community/blob/master/MindSeriesSDK/sigs/RecSDK/sig-info.yaml)，或通过评论“rebuild”尝试重新构建。
+任意一项失败可以通过详情链接查看具体问题。如果是CI自身故障，请[联系committer](https://gitcode.com/Ascend/community/blob/master/MindSDK/sigs/RecSDK/sig-info.yaml)，或通过评论“rebuild”尝试重新构建。
 
 ## PreSmoke_torchrec运行说明
 
-创建PR时，`PreSmoke_torchrec`检查会根据PR修改的代码文件运行相关的测试用例。`PreSmoke_torchrec`检查的运行入口为：[run_presmoke.sh](build/run_presmoke.sh)  
+创建PR时，`PreSmoke_torchrec`检查会根据PR修改的代码文件运行相关的测试用例。`PreSmoke_torchrec`检查的运行入口为：[run_presmoke.sh](build/run_presmoke.sh)
 
 调用方式如下：
 
@@ -203,4 +203,4 @@ bash run_presmoke.sh
 
 ## 成员列表
 
-[SIG成员列表](https://gitcode.com/Ascend/community/blob/master/MindSeriesSDK/sigs/RecSDK/sig-info.yaml)。
+[SIG成员列表](https://gitcode.com/Ascend/community/blob/master/MindSDK/sigs/RecSDK/sig-info.yaml)。

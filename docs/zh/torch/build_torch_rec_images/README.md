@@ -136,7 +136,7 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
     |----------------------------|----------------------------|
     | torch-2.6.0+cpu-*.whl      | torch-2.7.1+cpu-*.whl      |
     | fbgemm_gpu-1.1.0+cpu-*.whl | fbgemm_gpu-1.2.0+cpu-*.whl |
-    | torch-npu==2.6.0           | torch-npu==2.7.1           |
+    | torch-npu==2.6.0           | torch-npu==2.7.1.post4           |
 
 3. 请参见[构建步骤](#构建步骤)章节制作镜像
 

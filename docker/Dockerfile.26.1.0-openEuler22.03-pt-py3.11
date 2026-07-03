@@ -177,7 +177,7 @@ RUN python3 -m venv /opt/buildtools/torch_v1_pt2.7.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install pip==25.0.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install wheel setuptools && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install torch==2.7.1+cpu --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install torch-npu==2.7.1 && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install torch-npu==2.7.1.post4 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install /tmp/fbgemm_ascend*.whl && \
@@ -189,7 +189,7 @@ RUN python3 -m venv /opt/buildtools/torch_v2_pt2.7.1 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install pip==25.0.1 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install wheel setuptools && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install torch==2.7.1+cpu --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install torch-npu==2.7.1 && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install torch-npu==2.7.1.post4 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --no-build-isolation /tmp/torch_rec_v2*.tar.gz && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install /tmp/fbgemm_ascend*.whl && \

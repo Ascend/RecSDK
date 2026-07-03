@@ -48,13 +48,13 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
         wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl ; \
         wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl ; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_bridge-1.15.0-py3-none-manylinux2014_x86_64.whl ; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_device-2.6.5-py3-none-manylinux2014_x86_64.whl ; \
+        wget https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_bridge-1.15.0-py3-none-manylinux2014_x86_64.whl ; \
+        wget https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_device-2.6.5-py3-none-manylinux2014_x86_64.whl ; \
     elif [ "$ARCH" = "aarch64" ]; then \
         wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl ; \
         wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl ; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl ; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl ; \
+        wget https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl ; \
+        wget https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl ; \
     fi
 
 # 下载RecSDK软件包

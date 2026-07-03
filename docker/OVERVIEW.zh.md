@@ -169,6 +169,41 @@ openEuler 22.03 镜像的构建方式与上述 Ubuntu 示例一致。
   source /usr/local/set_cann_env.sh a5  # 切换并生效 Ascend 950 配套Toolkit及相关环境变量
   ```
 
+- **自行安装或更换 CANN 包**:
+
+  如需升级 CANN 版本或替换现有 CANN 包，请先卸载旧的 CANN 包，再通过 `--install-path` 参数指定对应芯片架构的安装路径安装新包。容器内预置了三套目录：
+
+  | 芯片架构 | 安装路径 | 对应切换命令 |
+  |---------|---------|------------|
+  | A2 (Atlas 800T2) | `/usr/local/Ascend/cann-A2` | `source /usr/local/set_cann_env.sh a2` |
+  | A3 (Atlas 800T3) | `/usr/local/Ascend/cann-A3` | `source /usr/local/set_cann_env.sh a3` |
+  | A5 (Ascend 950)  | `/usr/local/Ascend/cann-A5` | `source /usr/local/set_cann_env.sh a5` |
+
+  安装示例（以下载新版本 toolkit 并替换 A2 为例）：
+
+  ```bash
+  # 0. 下载新版本 CANN toolkit（以实际获取的包名为准）
+  wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-toolkit_9.0.0_linux-x86_64.run
+
+  # 1. 卸载旧的 CANN 包
+  bash /usr/local/Ascend/cann-A2/ascend-toolkit/uninstall.sh --quiet
+  # 或直接删除对应安装目录
+  rm -rf /usr/local/Ascend/cann-A2
+
+  # 2. 重新创建目录并安装新的 CANN toolkit
+  mkdir -p /usr/local/Ascend/cann-A2
+  chmod +x Ascend-cann-toolkit_9.0.0*.run
+  bash Ascend-cann-toolkit_9.0.0*.run --quiet --install --install-path=/usr/local/Ascend/cann-A2
+
+  # 3. 同理，对应的算力 ops 包也需卸载后重新安装到同一目录
+  bash /usr/local/Ascend/cann-A2/opp/scripts/uninstall.sh --quiet
+  chmod +x Ascend-cann-910b-ops*.run
+  bash Ascend-cann-910b-ops*.run --quiet --install --install-path=/usr/local/Ascend/cann-A2
+  ```
+
+  > [!NOTE]
+  > 更换 CANN 包后请使用 `source /usr/local/set_cann_env.sh <a2|a3|a5>` 重新使能对应环境变量，以确保新安装的算子及工具链生效。
+
 ## 支持信息与变更说明
 
 ### 硬件支持信息
