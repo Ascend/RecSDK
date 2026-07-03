@@ -1,0 +1,21 @@
+{
+	"version": "2.0",
+	"status": "completed",
+	"rank_count": 1,
+	"rank_list": [
+	  {
+		"rank_id": 0,
+		"device_id": 0,
+		"local_id": 0,
+		"level_list": [
+		  {
+			"net_layer": 0,
+			"net_instance_id": "az0-rack0",
+			"net_type": "TOPO_FILE_DESC",
+			"net_attr": "",
+			"rank_addr_list": []
+		  }
+		]
+	  }
+	]
+  }

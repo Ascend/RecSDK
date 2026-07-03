@@ -22,6 +22,8 @@ Criteo4500w数据集: 如下链接中的Kaggle Display Advertising dataset
 https://ailab.criteo.com/ressources/
 ```
 
+可直接点击[下载](https://go.criteo.net/criteo-research-kaggle-display-advertising-challenge-dataset.tar.gz)，获取数据集
+
 ***
 
 ## 数据集预处理
@@ -144,6 +146,13 @@ convert_input2tfrd(in_file_path=file, out_file_path=output_path)
 ***
 
 ## 模型运行
+
+运行模型前请先安装 tqdm 和 scikit-learn依赖：
+
+```shell
+pip3 install tqdm
+pip3 install scikit-learn
+```
 
 参考Rec SDK的`README.md`文件在NPU服务器上配置环境并安装镜像创建容器后，可参考DLRM模型运行命令启动模型训练。模型运行脚本是run.sh，运行此脚本需要四个参数：so_path、rec_package_path、hccl_cfg_json以及dlrm_criteo_data_path。其中，   
 
