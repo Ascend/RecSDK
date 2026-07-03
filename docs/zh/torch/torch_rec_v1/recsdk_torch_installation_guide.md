@@ -6,10 +6,10 @@
 
 当前Rec SDK Torch支持两种配套版本，后续安装时请安装对应配套版本的软件包。
 
-| 配套版本 | Python | PyTorch | torch\_npu | fbgemm\_gpu | Rec SDK Torch |
-| ---- | ------ | ------- | ---------- | ----------- | ------------- |
-| 方案一  | 3.11+  | 2.6.0   | 2.6.0      | 1.1.0+cpu   | 1.1.0         |
-| 方案二  | 3.11+  | 2.7.1   | 2.7.1      | 1.2.0+cpu   | 1.2.0         |
+| 配套版本 | Python | PyTorch | torch\_npu | fbgemm\_gpu | Rec SDK Torch | 备注 |
+| ---- | ------ | ------- | ---------- | ----------- | ------------- |----|
+| 方案一  | 3.11+  | 2.6.0   | 2.6.0      | 1.1.0+cpu   | 1.1.0         |此方案暂不支持Ascend 950系列产品|
+| 方案二  | 3.11+  | 2.7.1   | 2.7.1      | 1.2.0+cpu   | 1.2.0         ||
 
 > \[!NOTE]说明
 >
@@ -194,6 +194,9 @@ Rec SDK Torch软件包如下表：
 4. 安装自定义算子相关包<a id="install_custom_op"></a>
 
    下载[RecSDK](https://gitcode.com/Ascend/RecSDK)源码，按如下指令进行算子相关包的编译和安装：
+
+   > [!NOTE]
+   > 编译脚本 `build_ai_core_op.sh` 的参数需根据实际芯片架构配置，默认以 `A2` 为例。详细说明请参考 [README.md](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)。
 
    ```bash
    # 编译算子前，需使能CANN环境变量。默认路径安装CANN包时，使能CANN环境变量指令如下：

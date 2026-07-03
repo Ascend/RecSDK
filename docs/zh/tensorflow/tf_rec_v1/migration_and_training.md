@@ -1425,7 +1425,7 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
 从上图的比对结果可以看到，算子的输入基本一致，但第一个输出与标杆存在明显差异（余弦相似度为0.806927，小于0.98），说明该算子可能存在精度问题；如果算子的输入就存在明显差异，需要继续找输入节点的比对结果。
 
 > [!NOTE]
->执行<b>ni \(-n\) \[op\_name\] -g \[graph\] -a \[attr\] -s \[save sub graph depth\]</b>命令，可以查询算子的输入输出节点信息，具体可参考《TensorFlow 1.15模型迁移指南》的“precision\_tool命令参考”章节。
+>执行<b>ni \(-n\) \[op\_name\] -g \[graph\] -a \[attr\] -s \[save subgraph depth\]</b>命令，可以查询算子的输入输出节点信息，具体可参考《TensorFlow 1.15模型迁移指南》的“precision\_tool命令参考”章节。
 > <br>![](../../figures/tf_rec_v1/zh-cn_image_0000002210306721.png)
 > <br>ni命令可以根据传入的算子名称，得到如下关键信息：
 > <br>\[ \]内部为算子类型，以上图为例，算子类型为Add，如果包含PassName，表示该算子为融合算子，对应值表示融合规则名称，OriginOp为融合前的算子。
@@ -1475,7 +1475,7 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
 
     在out\_dir目录生成精度比对结果，可参考《TensorFlow 1.15模型迁移指南》的“整网精度比对结果文件说明”章节进行数据分析，打开目录下的csv文件，从上向下查找第一个输出余弦相似度小于0.98的算子。
 
-4. 针对以上结果，还可以使用precision\_tool的<b>ni \(-n\) \[op\_name\] -g \[graph\] -a \[attr\] -s \[save sub graph deep\]</b>命令进行单层数据比对分析，具体可参考《TensorFlow 1.15模型迁移指南》的“precision\_tool命令参考”章节。
+4. 针对以上结果，还可以使用precision\_tool的<b>ni \(-n\) \[op\_name\] -g \[graph\] -a \[attr\] -s \[save subgraph depth\]</b>命令进行单层数据比对分析，具体可参考《TensorFlow 1.15模型迁移指南》的“precision\_tool命令参考”章节。
 5. 当precision\_data/npu/目录下同时存在debug\_0和debug\_1的时候，ni命令会同时解析两个文件夹下相同算子名的dump文件，从该解析结果中，可以比较直观的看出数据差异。
 
     ![](../../figures/tf_rec_v1/zh-cn_image_0000002210306725.png)

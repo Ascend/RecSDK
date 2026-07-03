@@ -413,6 +413,11 @@ echo always > /sys/kernel/mm/transparent_hugepage/enabled
 
 使用 CANN 优化版 jemalloc 提升内存分配效率。使用模型run.sh脚本进行加载：
 
+|环境变量名|含义|可选/必选|说明|
+|--|--|--|--|
+|ARCH|系统架构|必选|aarch64或x86_64|
+|ASCEND_CANN_PACKAGE_PATH ASCEND_HOME_PATH|CANN包实际安装路径。|必选|编译算子所需指定的CANN包实际安装目录。默认为/usr/local/Ascend/ascend-toolkit/latest。|
+
 ```bash
 export LD_PRELOAD=${ASCEND_CANN_PACKAGE_PATH}/${ARCH}-linux/lib64/libjemalloc.so
 ```

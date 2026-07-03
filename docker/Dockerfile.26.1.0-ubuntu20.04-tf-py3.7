@@ -54,15 +54,15 @@ RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then \
         wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl; \
         wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_bridge-1.15.0-py3-none-manylinux2014_x86_64.whl; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_device-2.6.5-py3-none-manylinux2014_x86_64.whl; \
+        wget https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_bridge-1.15.0-py3-none-manylinux2014_x86_64.whl ; \
+        wget https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_device-2.6.5-py3-none-manylinux2014_x86_64.whl ; \
         rm -f tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl; \
         rm -f *_aarch64.whl; \
     elif [ "$ARCH" = "aarch64" ]; then \
         wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl; \
         wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl; \
-        wget https://gitee.com/ascend/tensorflow/releases/download/tfa_v0.0.47_8.5.0/npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl; \
+        wget https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl ; \
+        wget https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl ; \
         rm -f tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl; \
         rm -f *_x86_64.whl; \
     fi
@@ -156,11 +156,11 @@ RUN [ ! -f /usr/bin/python3 ] || mv /usr/bin/python3 /usr/bin/python3.bak; \
     ln -sf /usr/local/python3.7.5/bin/python3 /usr/bin/python
 
 # 配置python源
-   RUN mkdir -p ~/.pip && touch ~/.pip/pip.conf && \
-       echo "[global]" > ~/.pip/pip.conf && \
-       echo "trusted-host=mirrors.aliyun.com" >> ~/.pip/pip.conf && \
-       echo "index-url=http://mirrors.aliyun.com/pypi/simple/ " >> ~/.pip/pip.conf && \
-       echo "timeout=200" >> ~/.pip/pip.conf
+RUN mkdir -p ~/.pip && touch ~/.pip/pip.conf && \
+    echo "[global]" > ~/.pip/pip.conf && \
+    echo "trusted-host=mirrors.aliyun.com" >> ~/.pip/pip.conf && \
+    echo "index-url=http://mirrors.aliyun.com/pypi/simple/" >> ~/.pip/pip.conf && \
+    echo "timeout=200" >> ~/.pip/pip.conf
 
 # 9.安装hdf5和h5py
 

@@ -20,7 +20,7 @@
 |CANN软件包和TensorFlow适配昇腾插件|CANN 9.0.0|<li>请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。</li><li>TensorFlow适配昇腾插件单击[获取链接](https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.44_8.3.RC1)。npu_device-2.6.5\*适配TensorFlow 2.6.5的版本；npu_bridge-1.15.0\*适配TensorFlow 1.15.0的版本。</li>|
 |昇腾硬件产品驱动和固件|Ascend HDK 26.0.RC1及补丁版本|单击[获取链接](https://www.hiascend.com/developer/download/commercial/result?module=cann)，在左侧配套资源的“编辑资源选择”中进行配置，筛选配套的软件包，确认版本信息后获取所需软件包。安装驱动与固件请参见相关硬件产品配套的[《驱动和固件安装升级指南》](https://support.huawei.com/enterprise/zh/ascend-computing/ascend-hdk-pid-252764743)。|
 |Ascend Docker Runtime|MindCluster 7.3.0|请参见《MindCluster 集群调度用户指南》的“安装 > 安装部署”章节进行安装。|
-|TensorFlow|TensorFlow 1.15.0和TensorFlow 2.6.5|请从[TensorFlow](https://github.com/tensorflow/tensorflow)仓库获取源码。Arm环境下TensorFlow官方未提供对应的whl包，如需在Arm环境下使用，可以从[链接](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html)获取Arm的TensorFlow whl包。<br>[!NOTE]<br>若whl包下载受阻，可复制其链接并在新标签页中打开，即可顺利完成下载。|
+|TensorFlow|TensorFlow 1.15.0和TensorFlow 2.6.5|请从[TensorFlow](https://github.com/tensorflow/tensorflow)仓库获取源码。Arm环境下TensorFlow官方未提供对应的whl包，如需在Arm环境下使用，可以从[链接](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html)获取Arm的TensorFlow whl包。<br>若whl包下载受阻，可复制其链接并在新标签页中打开，即可顺利完成下载。|
 |Python 3.7.5|Python 3.7.5|请从[Python官网](https://www.python.org/)获取依赖软件包。|
 
 >[!NOTE]
@@ -105,7 +105,7 @@
 
 |组件名称|软件包|获取链接|
 |--|--|--|
-|Rec SDK|推荐算法框架开发套件包|[获取链接](https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann)。|
+|Rec SDK|tf\_rec\_v1-\*.tar.gz|[获取链接](https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann)。|
 
 **软件数字签名验证<a name="section10830205518487"></a>**
 

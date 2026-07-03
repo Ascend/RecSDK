@@ -105,7 +105,7 @@
 
 |组件名称|软件包|获取链接|
 |--|--|--|
-|Rec SDK|推荐算法框架开发套件包|[获取链接](https://gitcode.com/Ascend/RecSDK/releases)|
+|Rec SDK|torch\_rec\_v2-\*.tar.gz|[获取链接](https://gitcode.com/Ascend/RecSDK/releases)|
 
 >[!NOTE]说明
 >当前提供的Rec SDK推荐算法框架开发套件包基于Python 3.11版本编译，请在相同的Python版本环境下安装使用。若需要在其他Python版本环境下安装使用，请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/dynamic_emb/README.md)进行源码编译。
