@@ -20,6 +20,11 @@
 <td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.3.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a>Release版本</p>
 </td>
 </tr>
+<tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row7259721105019"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.3.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a>维护周期</p>
+</th>
+<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.3.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a>参考<a href="../../README.md#torch_rec_v1-框架维护策略">维护策略</a></p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -77,7 +82,7 @@
   <tr>
     <td>26.1.0</td>
     <td>/</td>
-    <td>Y</td>
+    <td>/</td>
     <td>Y</td>
   </tr>
 </tbody>
@@ -117,7 +122,7 @@
   <tr>
     <td>26.1.0</td>
     <td>/</td>
-    <td>Y</td>
+    <td>/</td>
     <td>Y</td>
   </tr>
 </tbody>
@@ -157,7 +162,7 @@
   <tr>
     <td>26.1.0</td>
     <td>/</td>
-    <td>Y</td>
+    <td>/</td>
     <td>Y</td>
   </tr>
 </tbody>
@@ -227,4 +232,4 @@
 
 ## 漏洞修补列表
 
-无
+详见《[RecSDK漏洞修补列表](./resources/RecSDK漏洞修补列表.xlsx)》。

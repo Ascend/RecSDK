@@ -84,6 +84,26 @@ Rec SDK支持的产品型号如下：
 | mmoe、eta | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/model_zoo/README.md) |
 | GR | PyTorch | torch_rec_v2 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr) |
 
+## 分支维护策略
+
+RecSDK版本分支的维护阶段如下：
+
+| **状态**            | **时间** | **说明**                                         |
+| ------------------- | -------- | ------------------------------------------------ |
+| 计划                | 1—3 个月 | 计划特性                                         |
+| 开发                | 6—12 个月   | 开发新特性并修复问题，定期发布新版本。针对不同的PyTorch版本采取不同的策略，常规分支的开发周期分别为6个月，长期支持分支的开发周期为12个月 |
+| 维护                |  1年/3.5年 | 常规分支维护1年,长期支持分支维护3.5年。对重大BUG进行修复，不合入新特性，并视BUG的影响发布补丁版本 |
+| 生命周期终止（EOL） | N/A      | 分支不再接受任何修改                             |
+
+## torch_rec_v1 框架维护策略
+
+torch_rec_v1 各版本维护状态如下：
+
+| **torch_rec_v1版本** | **维护策略** | **当前状态** | **发布时间**   | **后续状态**             | **EOL日期** |
+| --- | --- | --- | --- | --- | --- |
+| 1.1.0 |常规分支 | 维护态 | 2025年7月23日 | 预计 2026年9月30日后进入无维护状态 | 2026年9月30日 |
+| 1.2.0 |常规分支 | 维护态 | 2026年1月04日 | 维护中 |  |
+
 ## 🛠️ 贡献指南
 
 欢迎参与项目贡献，贡献流程和规范请参见《[贡献指南](./contributing.md)》。
