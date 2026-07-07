@@ -10,7 +10,7 @@
 
 namespace Embcache {
 
-int Embcache::Logger::level = Embcache::Logger::INFO;
+int Embcache::Logger::level = Embcache::Logger::WARN;
 int Embcache::Logger::rank = 0;
 
 void Logger::SetRank(int logRank)
@@ -34,17 +34,13 @@ const char* Logger::LevelToStr(int logLevel)
         return "INVALID LEVEL";
     }
     static const char* msg[] = {
-        "TRACE",
-        "DEBUG",
-        "INFO",
-        "WARN",
-        "ERROR",
+        "TRACE", "DEBUG", "INFO", "WARN", "ERROR",
     };
     constexpr int levelOffset = 2;
     return msg[logLevel + levelOffset];
 }
 
-void Logger::LogUnpack(std::queue<std::string>& fmt, std::stringstream &ss)
+void Logger::LogUnpack(std::queue<std::string>& fmt, std::stringstream& ss)
 {
     while (!fmt.empty()) {
         ss << fmt.front();
@@ -53,4 +49,4 @@ void Logger::LogUnpack(std::queue<std::string>& fmt, std::stringstream &ss)
     return;
 }
 
-}
+}  // namespace Embcache

@@ -73,7 +73,7 @@ void FeatureFilter::FeatureEvict()
             featureRecordMap_.erase(feature);
         }
     }
-    LOG_INFO("The table name: {}, get evict keys size: {}", tableName_, evictKeys.size());
+    LOG_DEBUG("The table name: {}, get evict keys size: {}", tableName_, evictKeys.size());
 }
 
 void FeatureFilter::FeatureScoreEvict()
@@ -118,7 +118,7 @@ void FeatureFilter::FeatureScoreEvict()
             featureRecordMap_.erase(feature);
         }
     }
-    LOG_INFO("The table name: {}, get evict keys size: {}", tableName_, evictKeys.size());
+    LOG_DEBUG("The table name: {}, get evict keys size: {}", tableName_, evictKeys.size());
 }
 
 const std::unordered_map<int64_t, FeatureRecord>& FeatureFilter::GetFeatureCountMap()
@@ -170,8 +170,8 @@ void FeatureFilter::LoadTimestampRecords(const std::vector<int64_t>& keys, std::
     for (size_t i = 0; i < offsets.size(); ++i) {
         auto offset = offsets[i];
         if (offset < 0 || offset >= static_cast<int64_t>(keys.size())) {
-            throw std::runtime_error("Offset value " + std::to_string(offset) +
-                                     " is out of range [0, " + std::to_string(keys.size()) + ").");
+            throw std::runtime_error("Offset value " + std::to_string(offset) + " is out of range [0, " +
+                                     std::to_string(keys.size()) + ").");
         }
         auto key = keys[offset];
         auto timestamp = static_cast<std::time_t>(timestamps[offset]);
@@ -248,7 +248,8 @@ void FeatureFilter::CountFilter(int64_t* featureDataPtr, int64_t startIndex, int
         auto iter = featureRecordMap_.find(feature);
         if (iter != featureRecordMap_.end() && iter->second.count < thresholdCount) {
             LOG_DEBUG("Feature filtered out due to insufficient count. TableName : {}, Feature : {}, Count : {}, "
-                      "Threshold : {}", tableName_, feature, iter->second.count, thresholdCount);
+                      "Threshold : {}",
+                      tableName_, feature, iter->second.count, thresholdCount);
             *(featureDataPtr + i) = INVALID_KEY;
         }
     }
@@ -268,9 +269,9 @@ void FeatureFilter::ShowClickFilter(int64_t* featureDataPtr, int64_t startIndex,
     TORCH_CHECK(admitAndEvictConfig_.showClickParams.admitThreshold >= SHOWCLICK_OPEN_THRESHOLD,
                 "admitThreshold should be >= 0");
     TORCH_CHECK(admitAndEvictConfig_.showClickParams.scoreDecay >= 0.0f &&
-                admitAndEvictConfig_.showClickParams.scoreDecay <= 1.0f,
+                    admitAndEvictConfig_.showClickParams.scoreDecay <= 1.0f,
                 "scoreDecay should be in [0, 1]");
-                
+
     auto thresholdScore = static_cast<double>(admitAndEvictConfig_.showClickParams.admitThreshold);
     std::unordered_set<int64_t> unAdmittedKeys;
     for (int64_t i = startIndex; i < endIndex; ++i) {

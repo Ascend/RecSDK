@@ -22,47 +22,47 @@
 #include "logger.h"
 
 namespace Embcache {
-    // 日志级别环境变量 默认INFO
-    int GlobalEnv::glogStderrthreshold = Logger::INFO;
+// 日志级别环境变量 默认WARN
+int GlobalEnv::glogStderrthreshold = Logger::WARN;
 
-    bool ParseEnv2Int(const char* envName, int& output)
-    {
-        const char* envVariablePtr = std::getenv(envName);
-        if (envVariablePtr == nullptr) {
-            return false;
-        }
-        std::string envNameStr = envName;
-        try {
-            output = std::stoi(envVariablePtr);
-            return true;
-        } catch (std::invalid_argument const& ex) {
-            LOG_ERROR("Parse environment variable to int error, env variable is invalid");
-            throw std::runtime_error("Parse environment variable error.");
-        } catch (std::out_of_range const& ex) {
-            LOG_ERROR("Parse environment variable to int error, env variable is out of range");
-            throw std::runtime_error("Parse environment variable error.");
-        }
+bool ParseEnv2Int(const char* envName, int& output)
+{
+    const char* envVariablePtr = std::getenv(envName);
+    if (envVariablePtr == nullptr) {
         return false;
     }
-
-    void ConfigGlobalEnv()
-    {
-        // 设置日志级别
-        int logLevel = Logger::INFO;
-        auto flag = ParseEnv2Int(EnvVariableNames::GLOG_STDERRTHRESHOLD, logLevel);
-        if (flag) {
-            if (logLevel < Logger::TRACE || logLevel > Logger::ERROR) {
-                auto errMsg = Logger::Format("log level by env value:{} is invalid, it must be in range:[{}, {}]",
-                                             logLevel, Logger::TRACE, Logger::ERROR);
-                throw std::runtime_error(errMsg);
-            }
-            GlobalEnv::glogStderrthreshold = logLevel;
-        }
+    std::string envNameStr = envName;
+    try {
+        output = std::stoi(envVariablePtr);
+        return true;
+    } catch (std::invalid_argument const& ex) {
+        LOG_ERROR("Parse environment variable to int error, env variable is invalid");
+        throw std::runtime_error("Parse environment variable error.");
+    } catch (std::out_of_range const& ex) {
+        LOG_ERROR("Parse environment variable to int error, env variable is out of range");
+        throw std::runtime_error("Parse environment variable error.");
     }
+    return false;
+}
 
-    void LogGlobalEnv()
-    {
-        LOG_DEBUG("Environment variables: [{}: {}].",
-                  EnvVariableNames::GLOG_STDERRTHRESHOLD, GlobalEnv::glogStderrthreshold);
+void ConfigGlobalEnv()
+{
+    // 设置日志级别
+    int logLevel = Logger::WARN;
+    auto flag = ParseEnv2Int(EnvVariableNames::GLOG_STDERRTHRESHOLD, logLevel);
+    if (flag) {
+        if (logLevel < Logger::TRACE || logLevel > Logger::ERROR) {
+            auto errMsg = Logger::Format("log level by env value:{} is invalid, it must be in range:[{}, {}]", logLevel,
+                                         Logger::TRACE, Logger::ERROR);
+            throw std::runtime_error(errMsg);
+        }
+        GlobalEnv::glogStderrthreshold = logLevel;
     }
 }
+
+void LogGlobalEnv()
+{
+    LOG_DEBUG("Environment variables: [{}: {}].", EnvVariableNames::GLOG_STDERRTHRESHOLD,
+              GlobalEnv::glogStderrthreshold);
+}
+}  // namespace Embcache
