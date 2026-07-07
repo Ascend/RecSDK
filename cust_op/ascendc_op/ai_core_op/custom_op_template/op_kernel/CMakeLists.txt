@@ -16,6 +16,7 @@ if (ENABLE_CATLASS AND CATLASS_HOME)
     if (ASCEND_COMPUTE_UNIT STREQUAL "ascend950")
         npu_op_kernel_options(ascendc_kernels ALL
             OPTIONS
+                --cce-long-call=true
                 -DCATLASS_ARCH=3510
                 -DCATLASS_BISHENG_ARCH=a5
                 -DUSE_TLA=1
@@ -28,6 +29,7 @@ if (ENABLE_CATLASS AND CATLASS_HOME)
     else()
         npu_op_kernel_options(ascendc_kernels ALL
             OPTIONS
+                --cce-long-call=true
                 -DCATLASS_ARCH=2201
                 -DCATLASS_BISHENG_ARCH=a2
                 -DUSE_TLA=0
