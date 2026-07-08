@@ -12,30 +12,16 @@ index b0e3b247..2937b280 100644
      if sha is None:
          sha = "Unknown"
 diff --git a/torchrec/__init__.py b/torchrec/__init__.py
-index 29258f6f..53ba307e 100644
+index 29258f6f..40029c08 100644
 --- a/torchrec/__init__.py
 +++ b/torchrec/__init__.py
-@@ -7,6 +7,8 @@
-
+@@ -8,4 +8,16 @@
  # pyre-strict
-
+-
+-import torchrec.distributed  # noqa
++
 +import enum
-+
- import torchrec.distributed  # noqa
- import torchrec.quant  # noqa
- from torchrec.fx import tracer  # noqa
-@@ -28,9 +30,21 @@ from torchrec.sparse.jagged_tensor import (  # noqa
- )
- from torchrec.streamable import Multistreamable, Pipelineable  # noqa
-
 +from fbgemm_gpu import split_table_batched_embeddings_ops_training
-+
- try:
-     # pyre-ignore[21]
-     # @manual=//torchrec/fb:version
-     from .version import __version__, github_version  # noqa
- except ImportError:
-     pass
 +
 +
 +class ComputeDevice(enum.IntEnum):
@@ -44,8 +30,16 @@ index 29258f6f..53ba307e 100644
 +    MTIA = 2
 +    NPU = 3
 +
-+
 +split_table_batched_embeddings_ops_training.ComputeDevice = ComputeDevice
++
++import torchrec.distributed  # noqa
+ import torchrec.quant  # noqa
+@@ -29,3 +41,4 @@ from torchrec.sparse.jagged_tensor import (  # noqa
+ from torchrec.streamable import Multistreamable, Pipelineable  # noqa
+-
++
++
+ try:
 diff --git a/torchrec/distributed/batched_embedding_kernel.py b/torchrec/distributed/batched_embedding_kernel.py
 index 119c304c..0a2597d8 100644
 --- a/torchrec/distributed/batched_embedding_kernel.py
