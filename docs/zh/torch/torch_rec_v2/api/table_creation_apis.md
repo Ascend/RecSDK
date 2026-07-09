@@ -32,11 +32,9 @@ class EmbeddingConfig:
 |init_fn|Callable|可选|初始化函数。支持传入nn.Parameter类型的函数。用户需自行保证该函数的正确性。默认值为None。|
 |need_pos|bool|可选|位置权重。仅支持默认值为False，不支持用户自定义。|
 
-
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，请参见[迁移与训练](../migration_and_training.md)。
-
 
 ## EmbeddingCollection<a name="ZH-CN_TOPIC_0000002302389408"></a>
 
@@ -59,9 +57,8 @@ class EmbeddingCollection:
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
 |tables|List[EmbeddingConfig]|必选|稀疏表配置文件列表。<p>参数范围参考EmbeddingConfig。</p>|
-|device|Optional[torch.device]|可选|稀疏表的设备。默认为torch.device("cpu")。</ul></li><li>如果为torch.device取值范围：<ul><li>torch.device("npu")：npu设备。</li><li>torch.device("meta")：meta设备。</li><li>torch.device("cpu")：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul></li>|
+|device|Optional[torch.device]|可选|稀疏表的设备。<ul><li>默认为torch.device("cpu")。</li><li>如果为torch.device取值范围：<ul><li>torch.device("npu")：npu设备。</li><li>torch.device("meta")：meta设备。</li><li>torch.device("cpu")：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul></li></ul>|
 |need_indices|bool|可选|是否需要索引，默认值为False。|
-
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
@@ -72,4 +69,3 @@ ec = EmbeddingCollection(device="npu", tables=table_configs)
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，请参见[迁移与训练](../migration_and_training.md)。
-

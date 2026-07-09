@@ -15,13 +15,11 @@
 |logger.py|日志模块定义|
 |README.md|数据集下载及demo模型运行说明|
 
-
-
 ## 接口调用介绍<a name="ZH-CN_TOPIC_0000002336148917"></a>
 
 以下步骤省略了具体实现，如需完整代码，请参考[Rec SDK Torch Little Demo样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/little_demo)。关键步骤如下：
 
-1.  <a id="li524311501994"></a>定义数据集与数据转换
+1. <a id="li524311501994"></a>定义数据集与数据转换
 
     自定义Dataset读取原始数据，并通过collate_fn将稀疏特征（Sparse Features）转换为TorchRec所需的KeyedJaggedTensor(KJT)格式。
 
@@ -44,7 +42,7 @@
     )
     ```
 
-2.  初始化分布式环境
+2. 初始化分布式环境
 
     ```cpp
     # main.py
@@ -96,7 +94,7 @@
         )
     ```
 
-4. 自动化分表计划（Planner）
+5. 自动化分表计划（Planner）
 
     通过DynamicEmbeddingShardingPlanner结合网络拓扑结构和表配置，生成分布式切分计划。
 
@@ -113,7 +111,7 @@
         )
     ```
 
-5. 构建分布式模型（DMP）
+6. 构建分布式模型（DMP）
 
     通过 DistributedModelParallel(DMP)包装原始模型。
 
@@ -130,7 +128,7 @@
         )
     ```
 
-6. 模型状态保存与加载
+7. 模型状态保存与加载
 
     保存模型权重（Dense 部分）以及动态 Embedding 数据。
     
@@ -138,7 +136,6 @@
     - 保存：```DynamicEmbDump(save_dir, model, optim=True)```
     - 加载：```DynamicEmbLoad(save_dir, model, optim=True)```
     
-
 ## 启动模型训练<a name="ZH-CN_TOPIC_0000002302229704"></a>
 
 1. 准备数据
