@@ -4,4 +4,3 @@ Rec SDK Torch通过Python接口进行应用开发，从代码调用角度上来�
 
 >[!NOTICE]须知 
 >由于TorchRec的接口不在Rec SDK Torch的管理范围内，以下限制不做校验。
-

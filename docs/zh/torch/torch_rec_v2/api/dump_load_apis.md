@@ -88,4 +88,3 @@ DynamicEmbLoad(
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-

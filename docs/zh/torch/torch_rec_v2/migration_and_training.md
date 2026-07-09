@@ -21,10 +21,9 @@
 |ParameterConstraints|DynamicEmbParameterConstraints|分表约束|
 |PyTorch保存/加载|DynamicEmbDump/DynamicEmbLoad|动态稀疏表保存与加载|
 
-
 接口示例：
 
--   TorchRec示例：
+- TorchRec示例：
 
     ```bash
     from torchrec.distributed.embedding import EmbeddingCollection
@@ -63,7 +62,7 @@
             pipeline.progress(batched_iterator)
     ```
 
--   Rec SDK Torch示例：
+- Rec SDK Torch示例：
 
     ```bash
     from torchrec.distributed.planner.types import Topology, ShardingType
@@ -144,11 +143,8 @@
         DynamicEmbDump(save_dir, model, optim=True)
     ```
 
-
 ## Rec SDK Torch迁移样例<a name="ZH-CN_TOPIC_0000002336268713"></a>
 
 Rec SDK Torch支持Torch开源推荐模型迁移适配，迁移步骤可以参考如下：
 
 [Rec SDK Torch recsys-gr样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr)
-
-

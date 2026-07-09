@@ -86,11 +86,11 @@ est.train(input_fn=lambda: input_fn(), hooks=hooks_list)    #est为创建的NPUE
 |接口|作用|原型|
 |--|--|--|
 |get_instance()|获取ConfigInitializer的全局唯一实例。|from mx_rec.util.initialize import ConfigInitializerConfigInitializer.get_instance()|
-|use_dynamic_expansion()|请参见[use_dynamic_expansion](other_apis.md#use_dynamic_expansion)。|
-|get_target_batch()|请参见[get_target_batch](other_apis.md#get_target_batch)。|
-|if_load()|请参见[if_load](model_apis.md#if_load)。|
-|get_initializer(is_training)|请参见[get_initializer](automatic_graph_modification.md#get_initializer)。|
-|ascend_global_hashtable_collection()|请参见[ascend_global_hashtable_collection](other_apis.md#ascend_global_hashtable_collection)。|
+|use_dynamic_expansion()|请参见[use_dynamic_expansion](other_apis.md#use_dynamic_expansion)。| |
+|get_target_batch()|请参见[get_target_batch](other_apis.md#get_target_batch)。| |
+|if_load()|请参见[if_load](model_apis.md#if_load)。| |
+|get_initializer(is_training)|请参见[get_initializer](automatic_graph_modification.md#get_initializer)。| |
+|ascend_global_hashtable_collection()|请参见[ascend_global_hashtable_collection](other_apis.md#ascend_global_hashtable_collection)。| |
 
 ## TrainParamsConfig<a name="ZH-CN_TOPIC_0000002470669008"></a>
 

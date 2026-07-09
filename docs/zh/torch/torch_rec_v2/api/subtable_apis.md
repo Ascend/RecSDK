@@ -26,7 +26,6 @@ def from_process_group(cls, pg: dist.ProcessGroup) -> "ShardingEnv":
 |pg|dist.ProcessGroup|必选|分布式通讯链接。取值范围：只支持backend为hccl和gloo的链接。<div class="notice"><span class="noticetitle">须知</span><div class="notebody">“hccl”在PyTorch里面的backend_name为custom。</div></div>|
 |output_dtensor|bool|可选|仅支持默认值为False，不支持用户自定义。|
 
-
 **使用示例<a name="section193151694205"></a>**
 
 ```cpp
@@ -36,11 +35,9 @@ host_gp = dist.new_group(backend="gloo")
 host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
 ```
 
-
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-
 
 ## Topology（TorchRec）<a name="ZH-CN_TOPIC_0000002336268737"></a>
 
@@ -67,16 +64,15 @@ class Topology:
 |hbm_cap|int|可选| 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                             |
 |ddr_cap|int|可选| 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                             |
 |local_world_size|int|可选| 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                             |
-|hbm_mem_bw|float|可选| 当使用NPU设备时仅支持默认值为(897 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。 |
-|ddr_mem_bw|float|可选| 当使用NPU设备时仅支持默认值为(51 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。 |
-|hbm_to_ddr_mem_bw|float|可选| 当使用NPU设备时仅支持默认值为(32 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。 |
-|intra_host_bw|float|可选| 当使用NPU设备时仅支持默认值为(600 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。 |
-|inter_host_bw|float|可选| 当使用NPU设备时仅支持默认值为(12.5 * 1024 * 1024 * 1024 / 1000)，不支持用户自定义。 |
+|hbm_mem_bw|float|可选| 当使用NPU设备时仅支持默认值为(897 *1024* 1024 * 1024 / 1000)，不支持用户自定义。 |
+|ddr_mem_bw|float|可选| 当使用NPU设备时仅支持默认值为(51 *1024* 1024 * 1024 / 1000)，不支持用户自定义。 |
+|hbm_to_ddr_mem_bw|float|可选| 当使用NPU设备时仅支持默认值为(32 *1024* 1024 * 1024 / 1000)，不支持用户自定义。 |
+|intra_host_bw|float|可选| 当使用NPU设备时仅支持默认值为(600 *1024* 1024 * 1024 / 1000)，不支持用户自定义。 |
+|inter_host_bw|float|可选| 当使用NPU设备时仅支持默认值为(12.5 *1024* 1024 * 1024 / 1000)，不支持用户自定义。 |
 |bwd_compute_multiplier|float|可选| 当使用NPU设备时仅支持默认值为2，不支持用户自定义。                                |
 |custom_topology_data|torchrec.distribute.planner.types.CustomTopologyData|可选| 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                             |
 |weighted_feature_bwd_compute_multiplier|float|可选| 当使用NPU设备时仅支持默认值为1，不支持用户自定义。                                |
 |uneven_sharding_perf_multiplier|float|可选| 当使用NPU设备时仅支持默认值为1，不支持用户自定义。                                |
-
 
 **使用示例<a name="section193151694205"></a>**
 
@@ -102,7 +98,6 @@ class DynamicEmbeddingCollectionSharder(EmbeddingCollectionSharder):
     def __init__(**kwargs):
 ```
 
-
 **参数说明<a name="section888634319218"></a>**
 
 |参数名|类型|可选/必选|说明|
@@ -125,8 +120,6 @@ eb_sharder = DynamicEmbeddingCollectionSharder(
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
 
-
-
 ## DynamicEmbParameterConstraints <a name="ZH-CN_TOPIC_0000002336148869"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -146,7 +139,7 @@ class DynamicEmbParameterConstraints(ParameterConstraints):
 |--|--|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 |use_dynamicemb|bool|可选|是否启用动态稀疏表。当使用NPU设备时仅支持默认值为True，不支持用户自定义。|
 |dynamicemb_options|DynamicEmbTableOptions|可选|配置动态稀疏表的具体选项。参考DynmaicEmbTableOptions的取值范围|
-|sharding_type|List[str]| 可选    | 分表的类型。当使用NPU设备时为必选参数，取值范围：<li>"row_wise"：按照行号进行分表。</li>说明</span><div class="notebody">不支持混合使用不同的分表类型。</div></div> |
+|sharding_type|List[str]| 可选    | 分表的类型。当使用NPU设备时为必选参数，取值范围：<li>"row_wise"：按照行号进行分表。</li><div class="notice"><span class="noticetitle">说明</span><div class="notebody">不支持混合使用不同的分表类型。</div></div> |
 |compute_kernels|List[str]| 可选    | 计算的kernel类型。当使用NPU设备时为必选参数，取值范围：<li>"fused"：采用合表的方式查询。该方式仅在sharding_type为"row_wise"时使用。</li>                                    |
 |min_partition|List[int]| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
 |pooling_factors|List[float]| 可选    | 当使用NPU设备时仅支持默认值为POOLING_FACTOR，不支持用户自定义。                                                                                                                                                                    |
@@ -161,7 +154,6 @@ class DynamicEmbParameterConstraints(ParameterConstraints):
 |output_dtype|Enum| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
 |device_group|str| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
 |key_value_params|torchrec.distributed.types.KeyValueParams| 可选    | 当使用NPU设备时仅支持默认值为None，不支持用户自定义。                                                                                                                                                                              |
-
 
 **使用示例<a name="section193151694205"></a>**
 
@@ -179,7 +171,6 @@ constraints = {
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-
 
 ## DynamicEmbTableOptions <a name="ZH-CN_TOPIC_0000002338277269"></a>
 
@@ -207,10 +198,9 @@ class DynamicEmbTableOptions(_ContextOptions):
 |score_strategy|DynamicEmbScoreStrategy|可选|为每一个键分配一个评分，用于淘汰策略。默认为DynamicEmbScoreStrategy.TIMESTAMP。目前暂不支持DynamicEmbScoreStrategy.CUSTOMIZED。|
 |bucket_capacity|int|可选|HKV中每个桶的容量，默认为128。如果设置，它将向上取整到2的幂。当桶已满时，桶中分数最小的键将被淘汰，其槽位将用于存放新键；桶容量越大，基于分数的淘汰就越准确，但也会导致性能损失。取值范围[16,1024]，用户自行保证内存使用情况。|
 |safe_check_mode|DynamicEmbCheckMode|可选|是否启用插入安全检查。默认为DynamicEmbCheckMode.IGNORE。|
-|global_hbm_for_values|int|可选|用于存储嵌入+优化器状态的NPU内存总量（单位：字节），默认为0的情况下在planner中会被设置为“值的类型的字节数 * 分表的行数（对齐到2的幂次）* 分表的列数”。|
+|global_hbm_for_values|int|可选|用于存储嵌入+优化器状态的NPU内存总量（单位：字节），默认为0的情况下在planner中会被设置为“值的类型的字节数 *分表的行数（对齐到2的幂次）* 分表的列数”。|
 |external_storage|Storage|可选|外部存储/参数服务器，用于替代默认的KeyValueTable。仅支持默认为None，不支持用户自定义。|
 |index_type|torch.dtype|可选|稀疏特征的索引类型。仅支持默认值为torch.int64，不支持用户自定义。|
-
 
 **使用示例<a name="section106984023511"></a>**
 
@@ -234,7 +224,6 @@ table_options = [
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-
 
 ## DynamicEmbInitializerMode <a name="ZH-CN_TOPIC_0000002304198202"></a>
 
@@ -272,7 +261,6 @@ initializer_args=DynamicEmbInitializerArgs(
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
 
-
 ## DynamicEmbInitializerArgs <a name="ZH-CN_TOPIC_0000002508694909"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -297,7 +285,6 @@ class DynamicEmbInitializerArgs:
 |upper|float|可选|均匀分布的上界，默认为 None。|
 |value|float|可选|常量初始化时使用的固定值，默认为 0.0。|
 
-
 **使用示例<a name="section193151694205"></a>**
 
 ```cpp
@@ -314,7 +301,6 @@ initializer_args=DynamicEmbInitializerArgs(
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-
 
 ## DynamicEmbScoreStrategy<a name="ZH-CN_TOPIC_0000002338384297"></a>
 
@@ -337,7 +323,6 @@ class DynamicEmbScoreStrategy(enum.IntEnum):
 |CUSTOMIZED|int|-|用户完全自定义评分|
 |LFU|int|-|根据嵌入项被访问的频率自动计算评分|
 
-
 **使用示例<a name="section193151694205"></a>**
 
 ```cpp
@@ -349,8 +334,6 @@ table_options = DynamicEmbTableOptions(
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-
-
 
 ## EmbOptimType <a name="ZH-CN_TOPIC_0000002476574952"></a>
 
@@ -372,7 +355,6 @@ class EmbOptimType(enum.Enum):
 |ADAM|str|-|嵌入表Adam优化器|
 |ADAMW|str|-|嵌入表AdamW优化器|
 
-
 **使用示例<a name="section1045492782314"></a>**
 
 ```cpp
@@ -389,7 +371,6 @@ table_options = [
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-
 
 ## DynamicEmbeddingEnumerator<a name="ZH-CN_TOPIC_0000002396403112"></a>
 
@@ -425,11 +406,9 @@ enumerator=DynamicEmbeddingEnumerator(
 
 ```
 
-
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-
 
 ## DynamicEmbeddingShardingPlanner<a name="ZH-CN_TOPIC_0000002396403120"></a>
 
@@ -478,7 +457,6 @@ eb_planner = DynamicEmbeddingShardingPlanner(
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例可参见[迁移与训练](../migration_and_training.md)。
-
 
 ## DynamicEmbCheckMode <a name="ZH-CN_TOPIC_0000002396563024"></a>
 

@@ -22,13 +22,13 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
 
 ## 接口调用介绍<a name="ZH-CN_TOPIC_0000001801480550"></a>
 
-1.  初始化框架。在`main.py`中调用`init`接口，传入初始化框架需要的相关参数。相关参数请参见[接口说明](./api/initialization_of_the_training_framework.md#inita-namezh-cn_topic_0000001630046449a)。
+1. 初始化框架。在`main.py`中调用`init`接口，传入初始化框架需要的相关参数。相关参数请参见[接口说明](./api/initialization_of_the_training_framework.md#init)。
 
     ```python
     mxrec.init(params.path)
     ```
 
-2.  建立稀疏表。在`runner.py`中调用`get_embedding_table`接口，建立稀疏表，创建稀疏网络层。相关参数请参见[接口说明](./api/model_apis.md#get_embedding_tablea-namezh-cn_topic_0000001630246521a)。
+2. 建立稀疏表。在`runner.py`中调用`get_embedding_table`接口，建立稀疏表，创建稀疏网络层。相关参数请参见[接口说明](./api/model_apis.md#get_embedding_table)。
 
     ```python
     user_table = mxrec.get_embedding_table(
@@ -45,7 +45,7 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
     )
     ```
 
-3.  建立前向计算图。传入稀疏网络层和特征列表，创建模型计算图，在`runner.py`中调用`embedding_lookup`进行特征查询和误差计算。相关参数请参见[接口说明](./api/model_apis.md#embedding_lookupa-namezh-cn_topic_0000001630246521a)。
+3. 建立前向计算图。传入稀疏网络层和特征列表，创建模型计算图，在`runner.py`中调用`embedding_lookup`进行特征查询和误差计算。相关参数请参见[接口说明](./api/model_apis.md#embedding_lookup)。
 
     ```python
     embedding_list = []
@@ -58,13 +58,13 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
     model(embedding_list, batch.get(Config.label_0), batch.get(Config.label_1))
     ```
 
-4.  定义优化器。在`runner.py`中定义优化器，支持的优化器类型和相关参数请参见[优化器](./api/optimizers_apis.md)。
+4. 定义优化器。在`runner.py`中定义优化器，支持的优化器类型和相关参数请参见[优化器](./api/optimizers_apis.md)。
 
     ```python
     sparse_optimizer = mxrec.AdamWOptimizer(learning_rate=Config.learning_rate)
     ```
 
-5.  定义梯度计算和优化过程。在`runner.py`中调用`get_sparse_embedding`接口，得到稀疏网络层的参数，通过优化器计算梯度并执行优化。接口说明请参见[接口说明](./api/model_apis.md#get_sparse_embeddinga-namezh-cn_topic_0000001630246521a)。
+5. 定义梯度计算和优化过程。在`runner.py`中调用`get_sparse_embedding`接口，得到稀疏网络层的参数，通过优化器计算梯度并执行优化。接口说明请参见[接口说明](./api/model_apis.md#get_sparse_embedding)。
 
     ```python
     def _get_train_ops(train_model: Model) -> List[tf.Tensor]:
@@ -91,7 +91,7 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
         return train_ops
     ```
 
-6.  启动Session计算并在训练过程中保存模型。在`runner.py`中调用`EmbeddingTableSaver`接口，启动Session计算并在训练过程中保存模型。接口说明请参见[接口说明](./api/model_apis.md#embeddingtablesavera-namezh-cn_topic_0000001630246521a)。
+6. 启动Session计算并在训练过程中保存模型。在`runner.py`中调用`EmbeddingTableSaver`接口，启动Session计算并在训练过程中保存模型。接口说明请参见[接口说明](./api/model_apis.md#embeddingtablesaver)。
 
     ```python
     def _train_and_evaluate(self, saved_path: str):
@@ -134,11 +134,12 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
 
 **前提条件<a name="section16252115164"></a>**
 
-使用该方案启动训练任务，需要设置如下环境变量。详细的配置环境变量的方法可参考[little-demo的启动脚本](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v2_examples/little_demo/run.sh)；关于环境变量的说明可参见[配置环境变量](recsdk_tf_installation_guide.md#配置环境变量a-namezh-cn_topic_0000001580326424a)。 
+使用该方案启动训练任务，需要设置如下环境变量。详细的配置环境变量的方法可参考[little-demo的启动脚本](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v2_examples/little_demo/run.sh)；关于环境变量的说明可参见[配置环境变量](recsdk_tf_installation_guide.md#配置环境变量)。 
 
 **启动训练<a name="section16252115164"></a>**
 
 模型训练启动命令：
+
 ```bash
 bash run.sh
 ```

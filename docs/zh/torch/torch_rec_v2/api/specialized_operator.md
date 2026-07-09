@@ -26,7 +26,6 @@
 |load_from_pointer|从指针地址加载数据到目标张量。|
 |device_timestamp|获取NPU设备的时间戳。|
 
-
 **表 2**  DynamicEmb配置类
 
 |类名称|功能介绍|类方法/参数|

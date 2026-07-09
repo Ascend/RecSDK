@@ -25,7 +25,6 @@ class JaggedTensor:
 |lengths|torch.Tensor[int64]| 可选   | 每一个样本中的特征序列的长度。当使用NPU设备时为必选，取值范围：[1，10000]。需保证lengths的总和与values的长度相等。Rec SDK Torch目前不支持可变batchsize，一个训练任务中的所有JaggedTensor的lengths的长度必须一致。 |
 |offsets|torch.Tensor[int64]| 可选   | offsets是lengths累加的结果。offsets的第一位为0，后续位数为lengths的累加。默认值为None。offsets的合法性由用户自行保证。                                                           |
 
-
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
 ```bash
@@ -36,7 +35,6 @@ JaggedTensor(values=[1, 3, 4], lengths=[1, 1, 1], offsets=[0, 1, 2, 3])
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，参见[迁移与训练](../migration_and_training.md)。
-
 
 ## KeyedJaggedTensor（TorchRec）<a name="ZH-CN_TOPIC_0000002302229696"></a>
 
@@ -61,11 +59,10 @@ def from_jt_dict(jt_dict: Dict[str, JaggedTensor]) -> "KeyedJaggedTensor"
 |--|--|--|--|
 |jt_dict|Dict[str, JaggedTensor]|必选|特征名称和对应的JaggedTensor组成的字典。长度不能为0。其中JaggedTensor的取值范围参考[JaggedTensor（TorchRec）](#jaggedtensortorchrec)。|
 
-
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：返回KeyedJaggedTensor。
--   失败：抛出异常。
+- 成功：返回KeyedJaggedTensor。
+- 失败：抛出异常。
 
 **使用示例<a name="section2553042232"></a>**
 
@@ -78,6 +75,3 @@ kjt = KeyedJaggedTensor.from_jt_dict({"feat0": jt})
 **参考资源<a name="section426664933312"></a>**
 
 接口调用流程及示例，参见[迁移与训练](../migration_and_training.md)。
-
-
-
