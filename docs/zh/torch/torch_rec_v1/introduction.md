@@ -18,19 +18,21 @@ Rec SDK Torch涉及功能如下：
 
 **关键功能特性<a name="section7262101710233"></a>**
 
-Rec SDK Torch为用户提供了哈希映射、Row-wise分表、EBC查表功能、流水线查表、查表融合算子等特性。
+Rec SDK Torch为用户提供了哈希映射、Row-wise分表、EC/EBC查表模式、流水线查表、查表融合算子、多级缓存等特性。
 
 - 哈希映射
 
     Torch提供了用于稠密ID查表的nn.Embedding。但在推荐场景，大部分原始特征ID都是离散型，查表时不便于直接使用，常见的做法是将离散ID转为表的行号。为此Rec SDK Torch提供了哈希映射功能，用于将离散ID映射为Embedding表的行号，不需要用户提前做ID转换。
 
-- EBC查表
-
-    对标原生Torch的nn.EmbeddingBag功能，对指定的多个ID，在查表时进行求和或者取平均的Pooling操作。
-
 - Row-wise分表
 
     在将Embedding切分到不同表时，按行对Embedding进行分表，使用取余分桶策略，按照ID取余的余数确定Embedding在表上的分桶位置。
+
+- EC/EBC查表模式
+
+    EC查表对标原生Torch的nn.Embedding功能，对指定的多个ID，进行查表并直接输出查表结果。
+
+    EBC查表对标原生Torch的nn.EmbeddingBag功能，对指定的多个ID，在查表时进行求和或者取平均的Pooling操作。
 
 - 流水线查表
 
@@ -39,6 +41,12 @@ Rec SDK Torch为用户提供了哈希映射、Row-wise分表、EBC查表功能�
 - 查表融合算子
 
     Rec SDK Torch提供了梯度计算和优化器融合的查表算子以优化查表性能。
+
+- 多级缓存
+
+    以Device Memory + Host Memory（DDR）结合的方式存储稀疏表数据，支撑更大的稀疏表规模。
+
+详细内容请参见[功能特性介绍](./migration_and_training.md#functional_features_description)。
 
 ## 软件架构<a name="ZH-CN_TOPIC_0000002302229644"></a>
 
