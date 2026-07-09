@@ -11,9 +11,11 @@ torch.ops.mxrec.concat_2d_jagged(max_seqlens, tensor_a, tensor_b, offset_a, offs
 
 torch.ops.mxrec.split_2d_jagged(tensor, max_seqlens, offsetA, offsetB) -> Tensor, Tensor
 ```
+
 ### 参数说明
 
 # concat_2d_jagged算子输入与输出
+
 | 名称            | 输入/输出  | 数据类型                     | 数据格式         | 范围                                                                      | 说明                                      |
 |---------------|--------|--------------------------|--------------|-------------------------------------------------------------------------|-----------------------------------------|
 | max_seqlens      | 输入     | int                      | int          | NA                                                                      | 最大序列长度，即offset中最大偏移。预留参数与开源一致,对当前功能无影响。 |
@@ -26,6 +28,7 @@ torch.ops.mxrec.split_2d_jagged(tensor, max_seqlens, offsetA, offsetB) -> Tensor
 | output_tensor | 输出     | bfloat16/float16/float32 | [dim0, dim1] | dim0的长度等于tensor_a和tensor_b的dim0之和，<br/>dim1的长度与tensor_a和tensor_b的dim1相等 | 结果为二维                                   |
 
 # split_2d_jagged算子输入与输出
+
 | 名称             | 输入/输出  | 数据类型                     | 数据格式         | 范围                                                    | 说明    |
 |----------------|--------|--------------------------|--------------|-------------------------------------------------------|-------|
 | values         | 输入     | bfloat16/float16/float32 | [dim0, dim1] | NA                                                    | 仅支持二维 |
@@ -37,7 +40,7 @@ torch.ops.mxrec.split_2d_jagged(tensor, max_seqlens, offsetA, offsetB) -> Tensor
 | output_tensor1 | 输出     | bfloat16/float16/float32 | [dim0, dim1] | dim0的长度等于offset_a的最后一个偏移的值，<br/>dim1的长度与values的dim1相等 | 结果为二维 |
 | output_tensor2 | 输出     | bfloat16/float16/float32 | [dim0, dim1] | dim0的长度等于offset_b的最后一个偏移的值，<br/>dim1的长度与values的dim1相等 | 结果为二维 |
 
-### 编译与部署
+## 编译与部署
 
 算子编译与部署请参考 [RecSDK\cust_op\README.md](../../../../README.md) 中 "单算子使用说明" 章节：
 
@@ -73,4 +76,5 @@ split_tensor_a, split_tensor_b = torch.ops.mxrec.split_2d_jagged(concated_tensor
 
 > **提示**  
 > 上述用例为通用场景执行，更详细精度、多场景测试用例，请参考完整测试文件：  
+>
 > - [`Rec SDK/cust_op/test/concat_2d_jagged_test/torch/test_concat_2d_jagged_tensor.py`](../../../../test/concat_2d_jagged_test/torch/test_concat_2d_jagged_tensor.py)

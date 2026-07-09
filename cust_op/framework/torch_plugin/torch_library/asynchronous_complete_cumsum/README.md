@@ -1,8 +1,8 @@
-**使用pytorch框架调用方式调用asynchronous_inclusive_cumsum/asynchronous_exclusive_cumsum/asynchronous_complete_cumsum算子**
+# **使用pytorch框架调用方式调用asynchronous_inclusive_cumsum/asynchronous_exclusive_cumsum/asynchronous_complete_cumsum算子**
 
 该样例基于Pytorch2.6.0、python3.11.0运行
 
-### Pytorch框架对外接口原型
+## Pytorch框架对外接口原型
 
 ```python
 torch.ops.fbgemm.asynchronous_inclusive_cumsum(Tensor offset) -> Tensor
@@ -14,7 +14,8 @@ torch.ops.mxrec.asynchronous_exclusive_cumsum(Tensor offset) -> Tensor
 torch.ops.mxrec.asynchronous_complete_cumsum(Tensor offset) -> Tensor
 ```
 
-#### 参数说明
+### 参数说明
+
 | 名称            | 输入/输出 | 参数类型 |  数据类型  | 数据格式                                       | 范围             | 说明                          |
 |---------------|-------|  ----  |  ----  |--------------------------------------------|----------------|-----------------------------|
 | offset        | 输入    | Tensor | int32/int64 | torch.tensor([value1, value2, value3 ...]) | 长度:[1, 2^63-1) | 仅支持一维输入                     |
@@ -24,7 +25,8 @@ torch.ops.mxrec.asynchronous_complete_cumsum(Tensor offset) -> Tensor
 
 三个算子的功能都是实现输入offset的异步并行累加（前缀和计算），区别在于`asynchronous_complete_cumsum`包含总和与起点0，
 `asynchronous_inclusive_cumsum`只包含总和，不含起点0，`asynchronous_exclusive_cumsum`只包含起点0，不含总和。
-```
+
+```text
 ## 示例
 算子输入 x：输入的offset tensor, eg: [1,5,6]
 
@@ -45,6 +47,7 @@ torch.ops.mxrec.asynchronous_complete_cumsum(Tensor offset) -> Tensor
 Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
 #### 算子调用示例,以下以pytest方式调用为例
+
 ```python
 import sysconfig
 import pytest

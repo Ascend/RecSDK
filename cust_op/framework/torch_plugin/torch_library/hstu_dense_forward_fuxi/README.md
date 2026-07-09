@@ -1,8 +1,8 @@
-**使用pytorch框架调用方式调用hstu_dense_forward_fuxi算子**
+# 使用pytorch框架调用方式调用hstu_dense_forward_fuxi算子
 
 该样例基于Pytorch2.6.0、python3.11.0运行
 
-### Pytorch框架对外接口原型
+## Pytorch框架对外接口原型
 
 ```python
 torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=None, Tensor? positionBias=None,
@@ -10,7 +10,7 @@ torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=No
     int[]? seqOffset=None) -> Tensor
 ```
 
-### 参数说明
+## 参数说明
 
 ### torch.ops.mxrec.hstu_fuxi接口
 
@@ -32,6 +32,7 @@ torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=No
 |  output | 输出 | Tensor | float32/float16/bfloat16 | [s_b, N, x * D] | 同q | 当输入RAB为空时，x=1，此时结果为qkv计算结果<br>当输入RAB不为空时，x=3，此时结果为qkv结果与两个rab结果cat，将最后一维整合所得 |
 
 #### Atlas 推理系列产品
+
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
 |  q | 输入 | Tensor | float16 | [B, S, N, D] | B∈[1, 10]<br>S∈[64, 20480]且是64的倍数<br>N∈[1, 8]<br>D∈[16, 128]且是16的倍数 | 只支持四维 |

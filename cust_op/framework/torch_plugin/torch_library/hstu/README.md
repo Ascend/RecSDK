@@ -1,10 +1,10 @@
-**使用pytorch框架调用方式调用hstu_dense_forward算子**
+# **使用pytorch框架调用方式调用hstu_dense_forward算子**
 
 该样例基于Pytorch2.6.0、python3.11.0运行
 
-### Pytorch框架对外接口原型
+## Pytorch框架对外接口原型
 
-#### hstu_dense 接口
+### hstu_dense 接口
 
 ```python
 torch.ops.mxrec.hstu_dense(Tensor q, Tensor k, Tensor v, Tensor? mask=None, Tensor? attn_bias=None, 
@@ -59,6 +59,7 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 | output      | 输出 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | 同q | 同q |
 
 #### Atlas 推理系列产品
+
 | 名称          |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
 |-------------|  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |
 | q           | 输入 | Tensor | float16 | [B, S, N, D] | B∈[1, 2048]<br>S∈[128, 4096]且是128的倍数<br>N∈[1, 8]<br>D∈[16, 128]且是16的倍数 | 只支持四维 |
@@ -89,7 +90,6 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 |  v_grad | 输出 | Tensor | float32/float16/bfloat16 | [B, S, N, D] | 同v | 同v |
 |  attn_bias_grad | 输出 | Tensor | float32/float16/bfloat16 | [B, N, S, S] | 同attn_bias | 同attn_bias |
 
-
 ### torch.ops.mxrec.hstu_jagged接口
 
 | 名称                |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
@@ -109,9 +109,8 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 | num_target        | 输入(可选) | Tensor | int32/int64 | [B] | 取值范围[0, 512]，其余数值未约束、未看护 | 目标数量张量 |
 | target_group_size | 输入(可选) | int | int | NA | 目前仅看护{0, 1, 3}, 其余数值未约束、未看护 | 创建内置target mask时使用，target_group_size为0时不创建target mask | 
 | alpha             | 输入(可选) | float | float | NA | NA | Alpha缩放参数<br/>$SiLU(\alpha\times(QK^T+rab))$ |
-| deterministic     | 输入(可选) | bool | bool | NA | 确定性计算开关，"True"代表打开确定性计算；"False"代表关闭确定性计算,默认为"False" |
+| deterministic     | 输入(可选) | bool | bool | NA | | 确定性计算开关，"True"代表打开确定性计算；"False"代表关闭确定性计算,默认为"False" |
 | output            | 输出 | Tensor | float32/float16/bfloat16 | [s_b, N, D_v] | 同v | 同v |
-
 
 ### torch.ops.mxrec.hstu_jagged_backward接口
 
@@ -138,7 +137,6 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 | v_grad            | 输出 | Tensor | float32/float16/bfloat16 | [s_b, N, D_v] | 同v | 同v                                                                       |
 | attn_bias_grad    | 输出 | Tensor | float32/float16/bfloat16 | [B, N, S, S] | 同attn_bias | 同attn_bias                                                               |
 
-
 ## 接口范围限制说明
 
 本文档基于代码实现中的实际限制，详细说明各接口的参数范围限制和约束条件。
@@ -146,6 +144,7 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 ### hstu_dense 接口范围限制（Dense Layout）
 
 #### 输入张量维度要求
+
 - **q, k, v, grad**: 必须是 **4D** 张量，格式为 `[B, S, N, D]`
   - `B`: batch size (批次大小)
   - `S`: sequence length (序列长度)
@@ -172,6 +171,7 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 #### 可选张量参数限制
 
 **mask (可选)**
+
 - **维度**: 必须是 **4D** 张量
 - **数据格式**: `[B, N, S, S]`
 - **约束条件**:
@@ -183,6 +183,7 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
     - `mask.size(3) == seqLen`
 
 **attnBias (可选)**
+
 - **维度**: 必须是 **4D** 张量
 - **数据格式**: `[B, N, S, S]`
 - **约束条件**: 如果提供，各维度必须与输入张量对应维度一致（同mask）
@@ -190,12 +191,14 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 #### 约束条件总结
 
 **前向接口 (hstu_dense)**
+
 1. q, k, v 必须是4D张量
 2. q, k, v 的batch size必须相同
 3. 所有形状参数必须在指定范围内
 4. headDim必须是16的倍数
 
 **反向接口 (hstu_dense_backward)**
+
 1. grad, q, k, v 必须是4D张量
 2. grad, q, k, v 的形状必须完全一致
 3. **关键约束**: `seqLen` 必须等于 `maxSeqLen`
@@ -207,6 +210,7 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 ### hstu_jagged 接口范围限制（Jagged Layout）
 
 #### 输入张量维度要求
+
 - **q, k, v, grad**: 必须是 **3D** 张量，格式为 `[T, N, D]`
   - `T`: 总序列长度（所有batch的序列拼接后的总长度）
   - `N`: head number (注意力头数)
@@ -235,10 +239,10 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 | **numTarget**       | Tensor[int64/int32] | [0, 512]    | 可选，用于控制创建target mask                                                |
 | **alpha**           | float         | 任意值         | 可选，默认值: 1.0                                                         |
 
-
 #### 可选张量参数限制
 
 **mask (可选)**
+
 - **维度**: 必须是 **4D** 张量
 - **数据格式**: `[B, N, S, S]`
 - **约束条件**:
@@ -247,11 +251,13 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
   - 其他维度约束同hstu_dense接口
 
 **attnBias (可选)**
+
 - **维度**: 必须是 **4D** 张量
 - **数据格式**: `[B, N, S, S]`
 - **约束条件**: 同hstu_dense接口
 
 **numContext (可选)**
+
 - **维度**: 必须是 **1D** 张量
 - **数据格式**: `[B]`
 - **约束条件**: 
@@ -259,6 +265,7 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
   - `numContext.size(0) == batchSize`
 
 **numTarget (可选)**
+
 - **维度**: 必须是 **1D** 张量
 - **数据格式**: `[B]`
 - **约束条件**: 
@@ -268,6 +275,7 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 #### 约束条件总结
 
 **前向接口 (hstu_jagged.equal)**
+
 1. q, k, v 必须是3D张量 `[s_b, N, D]`
 2. seqOffset 必须提供，且至少包含2个元素
 3. batchSize 从 `seqOffset.size(0) - 1` 计算
@@ -275,6 +283,7 @@ torch.ops.mxrec.hstu_jagged_backward.delta(Tensor grad, Tensor q, Tensor k, Tens
 5. numContext、numTarget、targetGroupSize 必须同时提供或同时不提供
 
 **反向接口 (hstu_jagged_backward.equal)**
+
 1. grad, q, k, v 必须是3D张量 `[s_b, N, D]`
 2. grad, q, k, v 的形状必须完全一致
 3. seqOffset 必须提供，且至少包含2个元素
@@ -395,7 +404,6 @@ class TestHstuNormalDemo:
 ```
 
 注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense/torch/test_hstu_dense_forward.py](../../../../test/hstu_dense/torch/test_hstu_dense_forward.py)
-
 
 ##### hstu_dense_backward接口
 

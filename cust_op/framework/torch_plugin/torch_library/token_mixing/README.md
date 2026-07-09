@@ -18,7 +18,7 @@ torch.ops.mxrec.token_mixing(Tensor x, Tensor gamma, Tensor beta, float epsilon 
 | gamma   | 输入       | Tensor | float32 | [H] | `[]` | 仅支持一维张量              |
 | beta    | 输入       | Tensor | float32 | [H] | `[]` | 仅支持一维张量              |
 | epsilon | 输入(属性)  | float | float   |           |          | 极小数，防止除零，默认值为1e-7    |
-| y (返回值) | 输出     | Tensor | float32 | [B, S, H] NA         | 返回融合算子归一化结果张量           |
+| y (返回值) | 输出     | Tensor | float32 | [B, S, H] | NA         | 返回融合算子归一化结果张量           |
 
 ### 算子调用示例
 

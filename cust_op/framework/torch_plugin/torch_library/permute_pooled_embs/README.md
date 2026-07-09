@@ -1,8 +1,8 @@
-**使用pytorch框架调用方式调用permute_pooled_embs算子**
+# **使用pytorch框架调用方式调用permute_pooled_embs算子**
 
 该样例基于Pytorch2.6.0、python3.11.0运行
 
-### Pytorch框架对外接口原型
+## Pytorch框架对外接口原型
 
 ```python
 torch.ops.fbgemm.permute_pooled_embs(Tensor pooled_embs, 
@@ -22,6 +22,7 @@ torch.ops.mxrec.permute_pooled_embs(Tensor pooled_embs,
 ### 输入参数说明
 
 #### `pooled_embs` (Tensor)
+
 - **形状**: `[B_local, total_global_D]`
 - **类型**: `float32`, `float16`, `bfloat16`
 - **描述**: 池化后的嵌入输出张量
@@ -30,6 +31,7 @@ torch.ops.mxrec.permute_pooled_embs(Tensor pooled_embs,
 - **内存布局**: 行优先（row-major），每行代表一个样本的所有特征嵌入拼接
 
 #### `offset_dim_list` (Tensor)
+
 - **形状**: `[T+1]`，其中 `T` 是特征数量
 - **类型**: `int64`
 - **描述**: 嵌入维度的累积和（cumulative sum），包含起始偏移
@@ -39,6 +41,7 @@ torch.ops.mxrec.permute_pooled_embs(Tensor pooled_embs,
 - **示例**: 如果 `embs_dims = [4, 4, 8]`，则 `offset_dim_list = [0, 4, 8, 16]`
 
 #### `permute_list` (Tensor)
+
 - **形状**: `[T]`
 - **类型**: `int64`
 - **描述**: 排列顺序列表，`permute_list[i]` 表示输出位置 `i` 应该放置原始特征 `permute_list[i]`
@@ -50,6 +53,7 @@ torch.ops.mxrec.permute_pooled_embs(Tensor pooled_embs,
   - 输出位置 2 放置原始特征 1
 
 #### `inv_offset_dim_list` (Tensor)
+
 - **形状**: `[T+1]`
 - **类型**: `int64`
 - **描述**: 排列后嵌入维度的累积和
@@ -60,6 +64,7 @@ torch.ops.mxrec.permute_pooled_embs(Tensor pooled_embs,
   - `inv_offset_dim_list = [0, 8, 12, 16]`
 
 #### `inv_permute_list` (Tensor)
+
 - **形状**: `[T]`
 - **类型**: `int64`
 - **描述**: 逆排列列表，用于反向传播
@@ -70,6 +75,7 @@ torch.ops.mxrec.permute_pooled_embs(Tensor pooled_embs,
 ### 输出参数说明
 
 #### 返回值 (Tensor)
+
 - **形状**: `[B_local, total_global_D]`（与输入相同，除非允许重复）
 - **类型**: 与 `pooled_embs` 相同
 - **描述**: 重排列后的嵌入输出
@@ -79,19 +85,22 @@ torch.ops.mxrec.permute_pooled_embs(Tensor pooled_embs,
 ### 示例
 
 假设：
+
 - `B_local = 3`
 - `embs_dims = [4, 4, 8]`（3个特征，维度分别为4, 4, 8）
 - `permute_list = [2, 0, 1]`
 
 **输入 `pooled_embs`**:
-```
+
+```text
 样本0: [f0_0, f0_1, f0_2, f0_3, f1_0, f1_1, f1_2, f1_3, f2_0, f2_1, ..., f2_7]
 样本1: [f0_0, f0_1, f0_2, f0_3, f1_0, f1_1, f1_2, f1_3, f2_0, f2_1, ..., f2_7]
 样本2: [f0_0, f0_1, f0_2, f0_3, f1_0, f1_1, f1_2, f1_3, f2_0, f2_1, ..., f2_7]
 ```
 
 **输出**:
-```
+
+```text
 样本0: [f2_0, f2_1, ..., f2_7, f0_0, f0_1, f0_2, f0_3, f1_0, f1_1, f1_2, f1_3]
 样本1: [f2_0, f2_1, ..., f2_7, f0_0, f0_1, f0_2, f0_3, f1_0, f1_1, f1_2, f1_3]
 样本2: [f2_0, f2_1, ..., f2_7, f0_0, f0_1, f0_2, f0_3, f1_0, f1_1, f1_2, f1_3]
@@ -100,6 +109,7 @@ torch.ops.mxrec.permute_pooled_embs(Tensor pooled_embs,
 ## 约束条件
 
 ### 输入约束
+
 1. **张量维度**: `pooled_embs` 必须是至少 2 维张量
 2. **数据类型**: 
    - `pooled_embs`: 必须是浮点类型（float32/float16/bfloat16）
@@ -112,7 +122,6 @@ torch.ops.mxrec.permute_pooled_embs(Tensor pooled_embs,
    - `inv_permute_list.numel() == T`
    - `offset_dim_list[T] == pooled_embs.size(1)`
 5. **排列有效性**: `permute_list` 中的值必须在 `[0, T-1]` 范围内
-
 
 ### 运行算子样例
 
@@ -127,6 +136,7 @@ permute_pooled_embs算子的运行依赖index_select算子，需先安装index_s
 Pytorch框架适配层编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子适配层编译"。
 
 #### 算子调用示例,以下以pytest方式调用为例
+
 ```python
 import itertools
 import random
