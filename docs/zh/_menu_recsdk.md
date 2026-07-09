@@ -22,7 +22,7 @@
   - [FAQ](./tensorflow/tf_rec_v1/faq.md)
   - [附录](./tensorflow/tf_rec_v1/appendix.md)
 
-- [基于Torch开发模型]()
+- [基于PyTorch开发模型]()
   - [简介](./torch/torch_rec_v1/introduction.md)
   - [安装部署](./torch/torch_rec_v1/recsdk_torch_installation_guide.md)
   - [快速入门](./torch/torch_rec_v1/quick_start.md)
@@ -39,6 +39,7 @@
     - [自定义算子](./torch/torch_rec_v1/api/specialized_operator.md)
   - [常用操作](./torch/torch_rec_v1/common_operations.md)
   - [安全加固](./torch/torch_rec_v1/security_hardening.md)
+  - [FAQ](./torch/torch_rec_v1/faq.md)
   - [附录](./torch/torch_rec_v1/appendix.md)
 
 - [性能调优](performance_tuning.md)
