@@ -431,7 +431,10 @@ Rec SDK Torch 支持纯显存模式和多级缓存模式两种训练模式。
 > [!NOTE]
 >
 > 本章节中的**约束**部分仅介绍主要使用场景下的约束信息，详细信息请参见对应的API文档。
+>
 > 本章节中的**代码示例**部分仅为展示功能特性/API使用方式，可能和实际使用场景存在差异。
+>
+> 使用Rec SDK Torch提供的[HashEmbeddingBagCollection](./api/table_creation_apis.md#hashembeddingbagcollection)/[EmbCacheEmbeddingCollection](./api/table_creation_apis.md#embcacheembeddingcollection)/[EmbCacheEmbeddingBagCollection](./api/table_creation_apis.md#embcacheembeddingbagcollection)接口创建稀疏表且使用流水线查表（pipeline）时，自动支持哈希映射和查表融合算子功能。
 
 ### 基于纯显存模式训练
 
