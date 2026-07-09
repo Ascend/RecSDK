@@ -2,13 +2,14 @@
 
 本算子仅支持 NPU 调用。
 
-##  产品支持情况
+## 产品支持情况
 
 | 产品 | 是否支持 |
 | ---- | :----:|
 |Atlas A5 训练系列产品|√|
 
 # 目录结构
+
 ```shell
 -- expand_into_jagged_permute
    |-- c310
@@ -118,11 +119,12 @@ def expand_into_jagged_permute(permute, input_offsets, output_offsets, output_si
   </tbody></table>
 
 ## 约束说明
+
 - inputOffset、outputOffset的长度比permute多1。
 - 用户需用户自行保证输入、输出长度与大小不超过对应数据类型的数值上限。
 
-
 ## 编译与部署
+
 参考 RecSDK/cust_op/README.md “单算子使用说明”章节的编译、适配层部署流程。
 
 更多 PyTorch 调用示例见 framework/torch_plugin/torch_library/expand_into_jagged_permute/README.md。

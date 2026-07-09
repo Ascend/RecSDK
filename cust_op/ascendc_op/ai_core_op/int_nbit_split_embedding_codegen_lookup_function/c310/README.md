@@ -1,13 +1,15 @@
-**说明**
+# 说明
 
 本算子仅支持 NPU 调用。
 
 # 产品支持情况
+
 | 硬件型号 | 是否支持 |
 | --- | --- |
 | Atlas A5 训练系列产品 | 是 |
 
 # 目录结构
+
 ```shell
 -- int_nbit_split_embedding_codegen_lookup_function
    |-- c310
@@ -19,9 +21,11 @@
 ```
 
 # 功能简介
+
 实现 fbgemm `int_nbit_split_embedding_codegen_lookup_function` 的前向查表，支持 bag（SUM/MEAN）与 nobag、FP8 量化权重、FP32/FP16/BF16/INT8 输出。
 
 # 实现原理概述 (伪代码)
+
 ```python
 def int_nbit_split_embedding(dev_weights, weights_offsets, weights_tys,
                              D_offsets, indices, offsets,
@@ -58,6 +62,7 @@ def int_nbit_split_embedding(dev_weights, weights_offsets, weights_tys,
 ```
 
 # 输入输出概要
+
 | 名称 | 输入/输出 | 数据类型 | 数据格式                                           | 范围 | 说明                                              |
 | --- |-------| --- |------------------------------------------------| --- |-------------------------------------------------|
 | dev_weights | 输入    | uint8 | [total_weight_bytes]                           | NA | 多表合并后的量化权重缓冲区                                   |
@@ -90,14 +95,17 @@ def int_nbit_split_embedding(dev_weights, weights_offsets, weights_tys,
 # Embedding 维度约束
 
 ## FP8 量化权重约束
+
 - **维度对齐**：embedding 维度（D）必须是 **4 的倍数**
 - **维度上限**：D <= **4096**
 
 ## Nobag 模式特殊约束
+
 - **维度一致性**：nobag 模式下，所有表的 embedding 维度必须相同，即 `D_offsets[i+1] - D_offsets[i]` 对所有表 i 都相等
 - **维度值**：所有表的 D 必须等于 `max_D`（即 `D_offsets[-1] - D_offsets[0]`）
 
 # 编译与部署
+
 参考 [RecSDK/cust_op/README.md](../../../../README.md) “单算子使用说明”章节的编译、适配层部署流程。
 
 更多 PyTorch 调用示例见 `framework/torch_plugin/torch_library/int_nbit_split_embedding_codegen_lookup_function/README.md`。

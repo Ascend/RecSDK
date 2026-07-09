@@ -1,4 +1,4 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用
 
@@ -11,6 +11,7 @@
 | Atlas 推理系列产品    | 是  |
 
 ## hstu_dense_forward_fuxi算子文件结构
+
 ```shell
 -- hstu_dense_forward_fuxi
    |-- onnx_plugin   # hstu_dense_forward_fuxi算子支持onnx模型转换
@@ -39,18 +40,19 @@
 
 2. 数据格式
 
-输入参数q, k, v数据格式在推理服务器上为normal，在训练服务器上jagged。
-* normal格式：shape为[B, S, N, D]的4维数据格式，排布如下图所示：
+    输入参数q, k, v数据格式在推理服务器上为normal，在训练服务器上jagged。
 
-![alt text](pic/hstu_normal.png)
+    * normal格式：shape为[B, S, N, D]的4维数据格式，排布如下图所示：
 
-* jagged格式：shape为[s_b, N, D]的3维数据格式，排布如下图所示：
+    ![alt text](pic/hstu_normal.png)
 
-![alt text](pic/hstu_jagged.png)
+    * jagged格式：shape为[s_b, N, D]的3维数据格式，排布如下图所示：
+
+    ![alt text](pic/hstu_jagged.png)
 
 3. 计算原理
 
-![alt text](pic/hstu_fuxi.png)
+    ![alt text](pic/hstu_fuxi.png)
 
 4. 计算逻辑
 
@@ -133,13 +135,13 @@ def hstu_fuxi(q, k, v, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_sca
 | position_bias | 可选输入 | float16 | B,S,S | 同q | S为模型最大的序列长度max_seq_len，不使用时传入None |
 | mask | 输入 | float16 | B,1,S,S | 同q | 掩码，当前仅支持normal格式，S为模型最大的序列长度max_seq_len，mask为基于下三角的自定义，需要用户基于下三角自定义传入 |
 | maskType | 输入(属性) | int | N/A | 3:使用用户自定义mask，此时mask输入需要用户定义并传入 |  |
-| max_seq_len | 输入(属性) | int | N/A | 表示模型最大序列长度 |
-| siluScale | 输入(属性) | float | N/A | 支持用户传入自定义siluScale，不传入时默认值为1/S， S为等长的序列长度|
+| max_seq_len | 输入(属性) | int | N/A |  | 表示模型最大序列长度 |
+| siluScale | 输入(属性) | float | N/A |  | 支持用户传入自定义siluScale，不传入时默认值为1/S， S为等长的序列长度|
 | layout | 输入(可选属性) | string | N/A |  当前仅支持"normal"，Q,K,V数据格式为B,S,N,D格式 |  |
 | output | 输出 | float16 | [B, S, N, x * D] | 同q | 当输入RAB为空时，x=1，此时结果为qkv计算结果<br>当输入RAB不为空时，x=3，此时结果为qkv结果与两个rab结果cat，将最后一维整合所得 |
 
-
 注：
+
 * B,S,N,D四个维度数据均不能为0，为0时算子输入为空数据，不会执行算子计算。
 * 其中B,S,N参数影响bias、mask占用显存大小，请根据实际内存合理设置参数大小。
 

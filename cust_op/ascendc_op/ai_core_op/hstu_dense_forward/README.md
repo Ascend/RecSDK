@@ -1,8 +1,9 @@
-**说明**
+# **说明**
 
 本算子仅支持NPU调用
 
 # 产品支持情况
+
 | 硬件型号              | 是否支持                  |
 | -------------------- | ------------------------ |
 | Atlas A2训练系列产品  | 是  |
@@ -39,57 +40,48 @@
 # 算子实现原理
 
 1. 计算公式
-
-$$
-HSTU(q, k, v, mask, bias, siluScale) = (Silu(qk_{}^{T} + bias) \times siluScale \times mask)v
-$$
-
+    $$
+    HSTU(q, k, v, mask, bias, siluScale) = (Silu(qk_{}^{T} + bias) \times siluScale \times mask)v
+    $$
 2. 数据格式
-
-输入参数q, k, v数据格式为normal或者jagged。
-* normal格式：shape为[B, S, N, D]的4维数据格式，排布如下图所示：
-
-![alt text](v220/pic/hstu_normal.png)
-
-* jagged格式：shape为[s_b, N, D]的3维数据格式，排布如下图所示：
-
-![alt text](v220/pic/hstu_jagged.png)
-
+    输入参数q, k, v数据格式为normal或者jagged。
+    * normal格式：shape为[B, S, N, D]的4维数据格式，排布如下图所示：
+    ![alt text](v220/pic/hstu_normal.png)
+    * jagged格式：shape为[s_b, N, D]的3维数据格式，排布如下图所示：
+    ![alt text](v220/pic/hstu_jagged.png)
 3. 计算原理
-
-![alt text](v220/pic/hstu_image.png)
-
+    ![alt text](v220/pic/hstu_image.png)
 4. 计算逻辑
 
-```python
-def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np):
-    q = torch.nn.Parameter(torch.Tensor(q_np).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(dataType).npu(), 
-        requires_grad=True)
-    k = torch.nn.Parameter(torch.Tensor(k_np).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(dataType).npu(), 
-        requires_grad=True)
-    v = torch.nn.Parameter(torch.Tensor(v_np).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(dataType).npu(), 
-        requires_grad=True)
-    real_attn_bias = torch.nn.Parameter(torch.Tensor(rel_attn_bias_np).to(dataType).npu(), requires_grad=True)   
-    invalid_attn_mask = torch.Tensor(invalid_attn_mask_np).to(dataType).npu()
-     
-    qk_attn = torch.einsum(
-        "bnhd,bmhd->bhnm",
-        q,
-        k,
-    )
-    qk_attn = qk_attn + rel_attn_bias
+    ```python
+    def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np):
+        q = torch.nn.Parameter(torch.Tensor(q_np).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(dataType).npu(), 
+            requires_grad=True)
+        k = torch.nn.Parameter(torch.Tensor(k_np).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(dataType).npu(), 
+            requires_grad=True)
+        v = torch.nn.Parameter(torch.Tensor(v_np).reshape(batch_size, max_seq_len, num_heads, attention_dim).to(dataType).npu(), 
+            requires_grad=True)
+        real_attn_bias = torch.nn.Parameter(torch.Tensor(rel_attn_bias_np).to(dataType).npu(), requires_grad=True)   
+        invalid_attn_mask = torch.Tensor(invalid_attn_mask_np).to(dataType).npu()
+        
+        qk_attn = torch.einsum(
+            "bnhd,bmhd->bhnm",
+            q,
+            k,
+        )
+        qk_attn = qk_attn + rel_attn_bias
 
-    qk_attn = F.silu(qk_attn) / max_seq_len
-    qk_attn = qk_attn * invalid_attn_mask.unsqueeze(0).unsqueeze(0)
-    attn_output = torch.einsum(
-            "bhnm,bmhd->bnhd",
-            qk_attn,
-            v
-        ).reshape(batch_size, seq_len, num_heads * attention_dim)
+        qk_attn = F.silu(qk_attn) / max_seq_len
+        qk_attn = qk_attn * invalid_attn_mask.unsqueeze(0).unsqueeze(0)
+        attn_output = torch.einsum(
+                "bhnm,bmhd->bnhd",
+                qk_attn,
+                v
+            ).reshape(batch_size, seq_len, num_heads * attention_dim)
 
-    return npu2cpu(attn_output)
+        return npu2cpu(attn_output)
 
-```
+    ```
 
 # 算子输入与输出
 
@@ -179,6 +171,7 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 | attn_output       | 输出    | Tensor[float32/float16/bfloat16] | [B, S, N, D]/<br>[s_b, N, D]    | 同q                                                                                                     | 同q                                                                                                              |
 
 注：
+
 * B,S,N,D四个维度数据均不能为0，为0时算子输入为空数据，不会执行算子计算。
 * 其中B,S,N参数影响bias、mask占用显存大小，请根据实际内存合理设置参数大小。
 

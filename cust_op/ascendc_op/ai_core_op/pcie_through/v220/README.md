@@ -22,6 +22,7 @@
 * 安装Rec SDK 7.0及以上。或参考目录自行编译算子库、pybind库，参考单算子测试用例调用方式
 
 技术限制：
+
 * 对于Rec SDK，当前仅支持DDR模式
 * 使用时确保显存足够，若中途有其他进程抢占卡会导致算子被阻塞，最终超时导致运行失败
 * pcie through在host为arm架构时H2D和D2H性能提升较为明显，X86架构时H2D和D2H性能提升不明显
@@ -33,12 +34,15 @@
 ```shell
 bash run.sh
 ```
+
 若指定 AI Core 类型编译：
 
 ```shell
-bash run.sh ai_core-<soc_version>
+bash run.sh ai_core-{soc_version}
 ```
-> AI处理器的型号<soc_version>请通过如下方式获取:
+
+> AI处理器的型号soc_version请通过如下方式获取:
+>
 > - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
 >
 > 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
@@ -110,7 +114,6 @@ Kernel侧算子实现在目录pcie_through/v220/op_kernel下。
 
 ## 单算子参考设计
 
-
 ### 前置条件
 
 1. 完成算子的编译部署，可参考以下两种方式：
@@ -160,6 +163,7 @@ class WideDeep:
 
 单算子测试：  
 测试脚本目录：cust_op/test/pcie_through_op_test/tf
+
 ```shell
 bash build.sh # 编译算子适配层
 cd ./test
@@ -169,6 +173,7 @@ bash rma_swap_test.sh # 确认服务器开启大页内存后后再运行该脚�
 ```
 
 主要日志：
+
 ```shell
 # 创建pcie_through数据交换通道
 Device x start alloc shm for xxxx

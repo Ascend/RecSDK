@@ -1,7 +1,9 @@
 # 说明
+
 本算子仅支持NPU调用
 
 # 产品支持情况
+
 | 硬件型号           | 是否支持 |
 |----------------|------|
 | Atlas A2训练系列产品 | 是    |
@@ -78,6 +80,7 @@ def rab_time_golden(timestamps_weights: torch.Tensor,
 | bucket_divisor     | 输入    | float     |                             |                                                 |    |
 | rab_time           | 输出    | FP16,FP32 | (num_layers, b, s, 1, s, 1) |                                                 |    |
 | bucket_timestamps  | 输出    | int32     | (b, s, s)                   |                                                 |    |
+
 > 注：rab_time期望返回为(num_layers, b, 2s, 2s)  
 > ONNX调用时需进行rab_time.repeat(1, 1, 1, 2, 1, 2).reshape(num_layers, b, 2s, 2s)操作。  
 > pytorch调用无需额外操作，已经在pytorch适配层完成该操作。
