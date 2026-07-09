@@ -22,6 +22,12 @@ namespace dyn_emb {
 void load_from_pointer_hybrid_ops(void* pointers, void* dst, uint32_t dim, uint32_t num, aclrtStream stream,
                                   uint32_t coreNum, uint32_t oType, uint64_t totalUbSize);
 
+void maskselect_ops(void* flags, uint8_t* inputs, void* outputs, void* num_selected, void* workspace, int64_t num_total,
+                    uint32_t is_uint64, uint32_t select_index, aclrtStream stream, uint32_t max_cores,
+                    uint64_t ub_size);
+
+int64_t GetMaskSelectWorkspaceElems(int64_t num_total, uint32_t max_cores, uint64_t ub_size, bool select_index);
+
 void lookup_backward_v2_launch(void* grad, void* unique_buffer, void* inverse_indices, void* biased_offsets,
                                int32_t launch_dim, int32_t num_slots, int32_t combiner, int32_t total_blocks,
                                int32_t blocks_per_core, int32_t remainder_blocks, uint32_t index_type, bool is_small,
