@@ -1,4 +1,5 @@
 # disetangle_attention算子及样例说明
+
 本算子仅支持NPU调用
 
 ## disetangle_attention算子文件结构
@@ -50,6 +51,7 @@ c) 算子约束说明：
 * 数据类型: fp16
 
 ## 算子逻辑
+
 ```mermaid
 graph TD
     %% ====== 内容到位置路径（c2p） ======
@@ -79,4 +81,5 @@ graph TD
 ```
 
 ## 算子使用说明
+
 请参考:[RecSDK-Torch 自定义算子说明](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)

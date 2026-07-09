@@ -1,4 +1,4 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用
 
@@ -8,7 +8,6 @@
 | -------------------- | ------------------------ |
 | Atlas A2训练系列产品  | 是  |
 | Atlas A3训练系列产品  | 是  |
-
 
 ## hstu_dense_backward_fuxi算子文件结构
 
@@ -25,7 +24,7 @@ hstu_dense_backward_fuxi
 
  算子功能：推荐场景下，使用Hstu-fuxi融合算子实现推荐场景中的注意力机制
 
- ## 算子实现原理
+## 算子实现原理
 
 1. 计算公式：
     $$
@@ -52,19 +51,19 @@ hstu_dense_backward_fuxi
 
 2. 数据格式
 
-其中Q,K,V是jagged格式
+    其中Q,K,V是jagged格式
 
-* jagged格式：s_b,N,D 3维数据格式 (稠密格式 为了节省显存)
+    * jagged格式：s_b,N,D 3维数据格式 (稠密格式 为了节省显存)
 
-jagged格式如下图所示：
-![alt text](hstu_image-3.png)
+    jagged格式如下图所示：
+    ![alt text](hstu_image-3.png)
 
 3. 计算原理
 
-* 输入Q，K，V，Grad是jagged格式, 首先分别进行matmul计算
-* mask和timestampBias/positionBias按照参数决定是否加入计算
-* score和biasGrad的计算中，会除以序列长度S，jagged模式根据不同batch切换
-* 最后score，biasGrad分别和Q/K/V做矩阵乘法得到输出梯度
+    * 输入Q，K，V，Grad是jagged格式, 首先分别进行matmul计算
+    * mask和timestampBias/positionBias按照参数决定是否加入计算
+    * score和biasGrad的计算中，会除以序列长度S，jagged模式根据不同batch切换
+    * 最后score，biasGrad分别和Q/K/V做矩阵乘法得到输出梯度
 
 4. 计算逻辑
 
@@ -197,29 +196,30 @@ def golden_op_exec(grad, q, k, v, bpos, bts, grad_pos, grad_ts, mask, max_seq_le
 
 | 名称 | 输入/输出 | 数据类型 | 数据格式 | 备注 |
 |----|----|----|----|----|
-| grad | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| q | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| k | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| v | 输入| float32/float16/bfloat16 | [s_b, N, D] |
+| grad | 输入| float32/float16/bfloat16 | [s_b, N, D] |  |
+| q | 输入| float32/float16/bfloat16 | [s_b, N, D] |  |
+| k | 输入| float32/float16/bfloat16 | [s_b, N, D] |  |
+| v | 输入| float32/float16/bfloat16 | [s_b, N, D] |  |
 | mask | 可选输入 | float32/float16/bfloat16 | B,N,S,S | S为模型最大的序列长度max_seq_len |
 | bias_position | 可选输入 | float32/float16/bfloat16 | 1,S,S | S为模型最大的序列长度max_seq_len |
 | bias_timestamp | 可选输入 | float32/float16/bfloat16 | B,S,S | S为模型最大的序列长度max_seq_len |
-| grad_bias_position | 输入| float32/float16/bfloat16 | [s_b, N, D] |
-| grad_bias_timestamp | 输入| float32/float16/bfloat16 | [s_b, N, D] |
+| grad_bias_position | 输入| float32/float16/bfloat16 | [s_b, N, D] |  |
+| grad_bias_timestamp | 输入| float32/float16/bfloat16 | [s_b, N, D] |  |
 | layout | 属性 | string | N/A | 当前仅支持"jagged"，“jagged”代表Q,K,V数据格式为s_b,N,D格式 |
 | mask_type | 属性 | int | N/A | 0:使用内置下三角掩码 1:使用内置上三角掩码(未支持) 2:不使用mask(即使mask传值) 3:使用自定义mask(需要输入mask) |
 | max_seq_len | 属性 | int | N/A | 表示模型最大序列长度 |
 | silu_scale | 属性 | float | N/A | 支持用户传入自定义silu_scale, 不传入时默认值为1/max_seq_len|
 | seq_offsets | 可选属性 | list[int64] | N/A | 表示每个序列的偏移，其中第一个序列的偏移一定是0，此选项只对jagged格式下生效，normal格式不生效。|
-| q_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |
-| k_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |
-| v_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |
+| q_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |  |
+| k_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |  |
+| v_grad | 输出 | float32/float16/bfloat16 | [s_b, N, D] |  |
 | position_bias_grad | 输出 | float32/float16/bfloat16 | 1,S,S | S为变长序列中最大的序列长度 |
 | timestamp_bias_grad | 输出 | float32/float16/bfloat16 | B,S,S | S为变长序列中最大的序列长度 |
 | vbpos_grad | 输出 | float32/float16/bfloat16 | [s_b, N, N] | S为变长序列中最大的序列长度 |
 | vbts_grad | 输出 | float32/float16/bfloat16 | [s_b, N, N] | S为变长序列中最大的序列长度 |
 
 参数范围说明：
+
 * s_b：为jagged格式下各batch的实际序列长度之和
 * B: batch_size 表征批处理的大小，当前取值范围[1, 512]。
 * S: seq_lens 表征序列长度，当前取值范围[1, 20480]。

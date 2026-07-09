@@ -19,25 +19,27 @@ C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/deta
 
 1. 上传fused_lazy_adam文件夹到目标环境，并进入当前目录，执行指令对lazy_adam融合算子进行编译和部署。默认编译安装Atlas A2训练系列产品AI Core类型。
 
-```shell
-bash run.sh
-```
+    ```shell
+    bash run.sh
+    ```
 
-若指定 AI Core 类型编译：
+    若指定 AI Core 类型编译：
 
-```shell
-bash run.sh ai_core-<soc_version>
-```
-> AI处理器的型号<soc_version>请通过如下方式获取:
-> - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
->
-> 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
+    ```shell
+    bash run.sh ai_core-{soc_version}
+    ```
 
-注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
+    > AI处理器的型号soc_version请通过如下方式获取:
+    >
+    > - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
+    >
+    > 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
 
-```shell
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-```
+    注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
+
+    ```shell
+    source /usr/local/Ascend/ascend-toolkit/set_env.sh
+    ```
 
 2. 模型脚本中创建lazy_adam优化器并指定使用融合算子实现。代码示例：
 
@@ -53,56 +55,56 @@ sparse_optimizer = create_hash_optimizer(learning_rate=0.001, use_fusion_optim=T
 
 1. 算子分析
 
-a) 算子的主要功能是实现lazy_adam优化器反向更新时m、v、variable三项数据的计算和更新；  
-b) 算子参数说明：
+    a) 算子的主要功能是实现lazy_adam优化器反向更新时m、v、variable三项数据的计算和更新；  
+    b) 算子参数说明：
 
-* gradient: lazy_adam优化器计算时使用的梯度；
-* indices: 参与计算/更新的数据索引；
-* inputM: lazy_adam优化器一阶矩估计；计算结果原地更新；
-* inputV: lazy_adam优化器二阶矩估计；计算结果原地更新；
-* inputVar: embedding表对应的variable数据；计算结果原地更新；
-* lr: 学习率；
-* beta1: 一阶矩估计的指数衰减率；
-* beta2: 二阶矩估计的指数衰减率；
-* epsilon: 极小值；
+    * gradient: lazy_adam优化器计算时使用的梯度；
+    * indices: 参与计算/更新的数据索引；
+    * inputM: lazy_adam优化器一阶矩估计；计算结果原地更新；
+    * inputV: lazy_adam优化器二阶矩估计；计算结果原地更新；
+    * inputVar: embedding表对应的variable数据；计算结果原地更新；
+    * lr: 学习率；
+    * beta1: 一阶矩估计的指数衰减率；
+    * beta2: 二阶矩估计的指数衰减率；
+    * epsilon: 极小值；
 
-c) 算子约束说明：
+    c) 算子约束说明：
 
-* 支持的型号：Atlas A2系列产品;
-* 支持的CANN版本：8.0.RC1及之后版本；
-* 支持的输入数据类型：float32；
-* embedding表的dim值需要是8的倍数；
+    * 支持的型号：Atlas A2系列产品;
+    * 支持的CANN版本：8.0.RC1及之后版本；
+    * 支持的输入数据类型：float32；
+    * embedding表的dim值需要是8的倍数；
 
 2. Host侧算子实现
 
-Host侧算子实现在目录 fused_lazy_adam/v220/op_host下，其中包括：lazy_adam.cpp和
-lazy_adam_tiling.h。
+    Host侧算子实现在目录 fused_lazy_adam/v220/op_host下，其中包括：lazy_adam.cpp和
+    lazy_adam_tiling.h。
 
-a) Tiling实现
+    a) Tiling实现
 
-namespace
-optiling域中的LazyAdamTilingFunc函数，主要实现从context中获取外部入参信息（输入参数指针、shape信息），及校验有效性；  
-并计算kernel侧需要的数据切分相关参数，包括row、loopCount、batch等（详情见tiling文件注释），设置BlockDim，最后通过TilingData传递属性信息。
+    namespace
+    optiling域中的LazyAdamTilingFunc函数，主要实现从context中获取外部入参信息（输入参数指针、shape信息），及校验有效性；  
+    并计算kernel侧需要的数据切分相关参数，包括row、loopCount、batch等（详情见tiling文件注释），设置BlockDim，最后通过TilingData传递属性信息。
 
-b) Shape推导
+    b) Shape推导
 
-因算子计算结果原地更新到输入参数中，namespace ge域中的InferShape和InferDataType函数体为空。
+    因算子计算结果原地更新到输入参数中，namespace ge域中的InferShape和InferDataType函数体为空。
 
-c) 原型注册
+    c) 原型注册
 
-namespace ops域中的LazyAdam类定义了算子原型，并将算子注册到GE。
+    namespace ops域中的LazyAdam类定义了算子原型，并将算子注册到GE。
 
 3. Kernel侧算子实现
 
-Kernel侧算子实现在目录fused_lazy_adam/op_kernel下，其中包括：lazy_adam.cpp。
+    Kernel侧算子实现在目录fused_lazy_adam/op_kernel下，其中包括：lazy_adam.cpp。
 
-a) 核函数的入口：extern "C" __global__ __aicore__ void lazy_adam
+    a) 核函数的入口：extern "C" __global__ __aicore__ void lazy_adam
 
-b) 解析tiling参数：GET_TILING_DATA(tilingData, tiling)从TilingData中获取host侧传入的数据
+    b) 解析tiling参数：GET_TILING_DATA(tilingData, tiling)从TilingData中获取host侧传入的数据
 
-c) Init方法，进行算子运行数据的初始化；
+    c) Init方法，进行算子运行数据的初始化；
 
-d) Process方法，进行数据搬入和计算，并且计算完成后将计算结果数据分别更新到对应入参中；
+    d) Process方法，进行数据搬入和计算，并且计算完成后将计算结果数据分别更新到对应入参中；
 
 ## AclNN单算子测试参考设计
 
@@ -128,23 +130,23 @@ bash run.sh
 
 1.
 
-参考[基于msopgen工具创建算子工程](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0060.html)
-完成算子工程的创建，
-参考[kernel侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0063.html)
-完成kernel侧实现的相关准备，
-参考[host侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0064.html)
-完成host侧实现相关准备。
+    参考[基于msopgen工具创建算子工程](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0060.html)
+    完成算子工程的创建，
+    参考[kernel侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0063.html)
+    完成kernel侧实现的相关准备，
+    参考[host侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0064.html)
+    完成host侧实现相关准备。
 
 2.
 
-参考[算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0068.html)
-完成算子的编译部署，编译部署时需要开启算子的二进制编译功能：修改算子工程中的编译配置项文件CMakePresets.json，将
-ENABLE_BINARY_PACKAGE设置为True。编译部署时可将算子的二进制部署到当前环境，便于后续算子的调用。
+    参考[算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0068.html)
+    完成算子的编译部署，编译部署时需要开启算子的二进制编译功能：修改算子工程中的编译配置项文件CMakePresets.json，将
+    ENABLE_BINARY_PACKAGE设置为True。编译部署时可将算子的二进制部署到当前环境，便于后续算子的调用。
 
 3.
 
-检查API执行需要的头文件和库文件是否自动生成，检查cust_op/ascendc_op/ai_core_op/fused_lazy_adam/v220/fused_lazy_adam/build_out/autogen目录下，是否有
-aclnn_lazy_adam.cpp和aclnn_lazy_adam.h等。
+    检查API执行需要的头文件和库文件是否自动生成，检查cust_op/ascendc_op/ai_core_op/fused_lazy_adam/v220/fused_lazy_adam/build_out/autogen目录下，是否有
+    aclnn_lazy_adam.cpp和aclnn_lazy_adam.h等。
 
 ### LazyAdam融合算子的AclNN调用实现
 
@@ -153,15 +155,15 @@ aclnn_lazy_adam.cpp和aclnn_lazy_adam.h等。
 1. InitResource函数：初始化AscendCL并运行管理资源申请，不用修改
 2. RunLookupOp运行算子：
 
-a) 创建算子输入输出描述CreateOpDesc，OperatorDesc对象定义(inc/operator_desc.h)中设置了算子入参为成员变量，以便后续
-op_runner中使用；
+    a) 创建算子输入输出描述CreateOpDesc，OperatorDesc对象定义(inc/operator_desc.h)中设置了算子入参为成员变量，以便后续
+    op_runner中使用；
 
-b) 创建OpRunner的对象，并依次执行：
+    b) 创建OpRunner的对象，并依次执行：
 
-* opRunner.Init()：申请内存存放执行算子的输入输出数据
-* SetInputData()：加载数据输入bin文件并传输给OpRunner的Buffer供后续算子执行使用
-* opRunner.RunOp()：算子执行，主要流程为：入参数据拷贝，创建Stream，执行Stream，输出数据拷贝，释放Stream资源
-* ProcessOutputData()：算子输出数据处理，并落盘文件，以供后续与golden数据比对
+    * opRunner.Init()：申请内存存放执行算子的输入输出数据
+    * SetInputData()：加载数据输入bin文件并传输给OpRunner的Buffer供后续算子执行使用
+    * opRunner.RunOp()：算子执行，主要流程为：入参数据拷贝，创建Stream，执行Stream，输出数据拷贝，释放Stream资源
+    * ProcessOutputData()：算子输出数据处理，并落盘文件，以供后续与golden数据比对
 
 3. DestroyResource函数：释放内存，不用修改
 

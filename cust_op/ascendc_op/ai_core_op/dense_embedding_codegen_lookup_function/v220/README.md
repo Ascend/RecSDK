@@ -1,14 +1,16 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用。
 
 # 产品支持情况
+
 | 硬件型号              | 是否支持                  |
 | -------------------- | ------------------------ |
 | Atlas A2训练系列产品  | 是  |
 | Atlas A3训练系列产品  | 是  |
 
 # dense_embedding_codegen_lookup_function算子目录层级
+
 ```shell
 -- dense_embedding_codegen_lookup_function
    |-- v220
@@ -20,6 +22,7 @@
 ```
 
 # 功能
+
 算子的主要功能是实现dense_embedding_codegen_lookup_function多表查询。
 
 # 算子实现原理
@@ -38,6 +41,7 @@ def dense_embedding_codegen_lookup_function(dev_weights, weights_offsets, indice
 ```
 
 # 算子输入与输出
+
 |  名称  |  输入/输出  |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |
 |  dev_weights | 输入 | float32 | [total_table_size] | NA | 一维数组,所有表的权重，表的embedding_dim必须为8的整数倍 |

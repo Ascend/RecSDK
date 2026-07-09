@@ -1,14 +1,16 @@
-**说明**
+# 说明
 
 本算子仅支持NPU调用。
 
 # 产品支持情况
+
 | 硬件型号              | 是否支持                  |
 | -------------------- | ------------------------ |
 | Atlas A2训练系列产品  | 是  |
 | Atlas A3训练系列产品  | 是  |
 
 # backward_codegen_adagrad_unweighted_exact算子目录层级
+
 ```shell
 -- backward_codegen_adagrad_unweighted_exact
    |-- v220
@@ -20,6 +22,7 @@
 ```
 
 # 算子输入与输出
+
 | 名称                          |  输入/输出  | 数据类型    |  数据格式  | 范围                       | 说明                                                |
 |-----------------------------|  ---- |---------|  ----  |--------------------------|---------------------------------------------------|
 | grad_output                 | 输入 | float32 | poolingSum/poolingMean: [batch_size, total_D] poolingNone:[len(indices), maxD] | NA                       | 查询向量的反向的梯度                                        |
@@ -69,6 +72,7 @@
 | weights_dev_out             | 输出 | float32 | [total_table_size] | NA                       | 更新后的表的权重                                          |
 
 # 算子实现原理
+
 ## backward_codegen_adagrad_unweighted_exact实现原理
 
 ```python3
@@ -213,7 +217,7 @@ def backward_codegen_adam_unweighted_exact(grad_output,
 
 ```
 
-##  backward_codegen_sgd_unweighted_exact实现原理
+## backward_codegen_sgd_unweighted_exact实现原理
 
 ```python3
 import numpy as np
