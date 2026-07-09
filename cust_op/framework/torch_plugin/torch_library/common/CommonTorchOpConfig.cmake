@@ -30,18 +30,18 @@ execute_process(
     OUTPUT_VARIABLE PYTORCH_VERSION_STR
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-set(PYTORCH_271 "2.7.1")
-string(FIND "${PYTORCH_VERSION_STR}" "${PYTORCH_271}" PYTORCH_271_FIND_RET)
 
 # ABI 宏
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm")
     set(GLIBCXX_ABI 1)
-elseif(PYTORCH_271_FIND_RET GREATER -1)
-        # pytorch 2.7.1版本在x86环境时需要设置ABI=1
+elseif(PYTORCH_VERSION_STR VERSION_GREATER_EQUAL "2.7")
+        # PyTorch大于等于2.7版本在x86环境时需要设置GLIBCXX_ABI=1
         set(GLIBCXX_ABI 1)
 else()
         set(GLIBCXX_ABI 0)
 endif()
+
+message(STATUS "GLIBCXX_ABI is ${GLIBCXX_ABI}")
 
 # 通用include
 include_directories(${PYTORCH_NPU_INSTALL_PATH}/include/third_party/acl/inc)
@@ -49,7 +49,7 @@ include_directories(${PYTORCH_NPU_INSTALL_PATH}/include)
 include_directories(${PYTORCH_INSTALL_PATH}/include)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/distributed)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/api/include)
-include_directories(${ASCEND_DRIVER_PATH}/kernel/libc_sec/include) 
+include_directories(${ASCEND_DRIVER_PATH}/kernel/libc_sec/include)
 
 # 根据 BUILD_VER 判断是否为 A5 芯片，并定义预处理器宏
 if(BUILD_VER STREQUAL "c310")
