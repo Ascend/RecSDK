@@ -63,7 +63,6 @@ Protect the system against Denial of Service (DoS) attacks by implementing IP ad
 
     - Add firewall rules.
 
-        ```bash
         ```shell
         iptables -D INPUT -p tcp -j ${rule_name}
         iptables -F ${rule_name}
@@ -75,7 +74,6 @@ Protect the system against Denial of Service (DoS) attacks by implementing IP ad
 
     - Clear firewall rules.
 
-        ```bash
         ```shell
         iptables -D INPUT -p tcp -j ${rule_name}
         iptables -F ${rule_name}
