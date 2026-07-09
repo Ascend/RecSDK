@@ -1,15 +1,17 @@
-**使用pytorch框架调用方式调用in_linear_silu算子**
+# 使用pytorch框架调用方式调用in_linear_silu算子
 
 该样例基于Pytorch2.6.0、python3.11.0运行
 
-### Pytorch框架对外接口原型
+## Pytorch框架对外接口原型
 
-#### in_linear_silu 接口
+### in_linear_silu 接口
+
 ```python
 torch.ops.mxrec.distance_in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_dict) -> Tensor[]
 ```
 
-#### in_linear_silu_backward 接口
+### in_linear_silu_backward 接口
+
 ```python
 torch.ops.mxrec.in_linear_silu_backward(
     Tensor x, Tensor weight, Tensor? bias,
@@ -18,12 +20,13 @@ torch.ops.mxrec.in_linear_silu_backward(
     int[] attr_dict) -> Tensor[]
 ```
 
-#### in_linear_silu 自动微分接口
+### in_linear_silu 自动微分接口
+
 ```python
 torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_dict) -> Tensor[]
 ```
 
-### 参数说明
+## 参数说明
 
 ### torch.ops.mxrec.distance_in_linear_silu接口
 
@@ -64,6 +67,7 @@ torch.ops.mxrec.in_linear_silu(Tensor x, Tensor weight, Tensor bias, int[] attr_
 ### in_linear_silu 接口范围限制
 
 #### 输入张量维度要求
+
 - **x, weight**: 必须是 **2D** 张量
   - `x`: 格式为 `[m, k]`
     - `m`: 序列长度或批次大小

@@ -1,19 +1,20 @@
-**使用pytorch框架调用方式调用ln_mul算子**
+# **使用pytorch框架调用方式调用ln_mul算子**
 
 # Pytorch框架对外接口原型
 
 ```python
 torch.ops.mxrec.ln_mul(Tensor x, Tensor u, Tensor gamma, Tensor beta) -> Tensor
 ```
+
 # 参数说明
 
-| 名称     | 输入/输出 | 参数类型    | 数据类型          | 数据格式                                  | 范围           | 说明                                                                     |
-|--------|-------|---------|---------------|---------------------------------------|--------------|------------------------------------------------------------------------|
-| x      | 输入    | Tensor  | float32 | [A, R]                          |              |                                                                        |
-| u      | 输入    | Tensor  | float32   |    [A, R]                                 |  |
-| gamma  | 输入    | Tensor | float32           |      [R]                                 |              |                                        |
-| beta   | 输入    | Tensor   | float32         |       [R]                                |              |
-| output | 输出    | Tensor   | float32         |       [A, R]                              |              |
+| 名称     | 输入/输出 | 参数类型 | 数据类型 | 数据格式 | 范围 | 说明 |
+|--------|-------|------|------|------|------|------|
+| x      | 输入    | Tensor | float32 | [A, R] |  |  |
+| u      | 输入    | Tensor | float32 | [A, R] |  |  |
+| gamma  | 输入    | Tensor | float32 | [R] |  |  |
+| beta   | 输入    | Tensor | float32 | [R] |  |  |
+| output | 输出    | Tensor | float32 | [A, R] |  |  |
 
 # 运行算子样例
 

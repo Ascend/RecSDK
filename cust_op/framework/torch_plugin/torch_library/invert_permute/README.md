@@ -12,6 +12,7 @@ torch.ops.mxrec.invert_permute(Tensor permute) -> Tensor
 ```
 
 ### 参数说明
+
 | 名称             | 输入/输出 | 参数类型 |  数据类型  | 数据格式                                       | 范围             | 说明                                          |
 |----------------|-------|  ----  |  ----  |--------------------------------------------|----------------|---------------------------------------------|
 | permute        | 输入    | Tensor | int32/int64 | torch.tensor([value1, value2, value3 ...]) | 长度:[1, 2^31-1) | 仅支持一维输入, 0 <= permute[i] <= length(permute) |
@@ -42,4 +43,5 @@ output = torch.ops.fbgemm.invert_permute(permute)
 
 > **提示**  
 > 上述用例为通用场景执行，更详细精度、多场景测试用例，请参考完整测试文件：  
+>
 > - [`RecSDK/cust_op/test/invert_permute/torch/test_invert_permute.py`](../../../../test/invert_permute/torch/test_invert_permute.py)

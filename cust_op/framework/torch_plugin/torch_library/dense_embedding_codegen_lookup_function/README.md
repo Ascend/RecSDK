@@ -54,9 +54,11 @@ if __name__ == "__main__":
 ## 编译与部署
 
 算子编译与部署请参考 [RecSDK/cust_op/README.md](../../../../README.md) 中 "单算子使用说明" 章节：
+
 - [算子编译](../../../../README.md#算子编译)
 - [算子适配层编译](../../../../README.md#算子适配层编译)
 
 > **提示**
 > 以上示例仅展示基本用法，如需更全面的精度测试与边界用例，请参考完整测试文件：  
+>
 > - [`RecSDK/cust_op/test/dense_embedding_codegen_lookup_function_test/torch/test_dense_embedding_codegen_lookup_function_auto.py`](../../../../test/dense_embedding_codegen_lookup_function_test/torch/test_dense_embedding_codegen_lookup_function_auto.py)

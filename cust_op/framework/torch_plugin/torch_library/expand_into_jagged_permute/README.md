@@ -3,6 +3,7 @@
 本示例在 PyTorch 2.6.0 / Python 3.11.0 环境验证。
 
 ## 示例
+
 ```python
 import sysconfig
 import torch
@@ -46,6 +47,7 @@ if __name__ == "__main__":
 ## 接口说明
 
 ### 函数签名
+
 ```python
 torch.ops.mxrec.expand_into_jagged_permute(
     permute: Tensor,
@@ -63,15 +65,18 @@ torch.ops.fbgemm.expand_into_jagged_permute(
 ```
 
 ### 参数说明
+
 - **permute** (Tensor): 表级别的置换索引，1D张量，数据类型为 INT32 或 INT64
 - **input_offsets** (Tensor): 输入表的累积偏移量，1D张量，长度为 `permute.numel() + 1`，数据类型与 permute 相同
 - **output_offsets** (Tensor): 输出表的累积偏移量，1D张量，长度为 `permute.numel() + 1`，数据类型与 permute 相同
 - **output_size** (SymInt): 输出结果的长度，通常等于 `output_offsets[-1]`
 
 ### 返回值
+
 - **output_permute** (Tensor): 扩展后的置换索引，1D张量，形状为 `[output_size]`，数据类型与输入相同
 
 ### 约束条件
+
 - `permute.numel() == input_offsets.numel() - 1`
 - `permute.numel() == output_offsets.numel() - 1`
 - `permute`、`input_offsets`、`output_offsets` 必须具有相同的数据类型
@@ -79,6 +84,6 @@ torch.ops.fbgemm.expand_into_jagged_permute(
 - `output_size` 必须等于 `output_offsets[-1]`
 
 ## 编译与部署
+
 - 参考 [RecSDK/cust_op/README.md](../../../../README.md) 中"单算子使用说明"的算子编译与适配层编译章节。
 - 完整精度/功能测试可查看 `cust_op/test/expand_into_jagged_permute/torch/test_expand_into_jagged_permute.py`。
-

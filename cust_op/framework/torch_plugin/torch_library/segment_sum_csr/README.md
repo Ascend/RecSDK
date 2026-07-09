@@ -1,10 +1,11 @@
-**使用pytorch框架调用方式调用segment_sum_csr算子**
+# **使用pytorch框架调用方式调用segment_sum_csr算子**
 
 # Pytorch框架对外接口原型
 
 ```python
 torch.ops.mxrec.segment_sum_csr(Tensor csr_seg, Tensor values, int batch_size) -> Tensor
 ```
+
 # 参数说明
 
 | 名称         | 输入/输出 | 数据类型    | 数据格式   | 范围                      | 说明                                                       |
