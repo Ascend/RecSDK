@@ -2,14 +2,20 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples
 index 8a74a62..3ae329b 100644
 --- a/examples/hstu/benchmark/inference_benchmark_2b_random.py
 +++ b/examples/hstu/benchmark/inference_benchmark_2b_random.py
-@@ -40,8 +40,8 @@ from inference_ranking_gr import InferenceRankingGR
+@@ -40,8 +40,14 @@ from inference_ranking_gr import InferenceRankingGR
  from out_compare import compare_npu_and_gpu_out
  import torch_npu
  
 -lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
 -torch.ops.load_library(lib_fbgemm_npu_api_so_path)
 +import sysconfig
-+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
++try:
++    torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
++except Exception as e:
++    import fbgemm_ascend
++    libhstu_npu_api_so=os.getenv("LIBHSTU_NPU_API_SO", default=None)
++    if libhstu_npu_api_so is None:
++        torch.ops.load_library(libhstu_npu_api_so)
  
  from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
  from pt_jagged_dense_convert import dense_to_jagged_wrapper
