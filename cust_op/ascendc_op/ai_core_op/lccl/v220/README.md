@@ -49,6 +49,7 @@ LCAL（Low Latency Collective Acceleration Library）
   - `1`: 开启确定性计算模式，使用AllUssDeterministic算法
   - `other value`: 其他无效值，默认不开启确定性计算
 - **设置方法**:
+
   ```bash
   export LCCL_DETERMINISTIC=1  # 开启确定性计算
   export LCCL_DETERMINISTIC=0  # 关闭确定性计算（默认）
@@ -58,34 +59,36 @@ LCAL（Low Latency Collective Acceleration Library）
 
 1. 上传lccl文件夹到目标环境，并进入当前目录，执行指令对LCCL算子进行编译和部署。默认编译安装Atlas A2训练系列产品AI Core类型。
 
-```shell
-bash run.sh
-```
+    ```shell
+    bash run.sh
+    ```
 
-若指定 AI Core 类型编译：
+    若指定 AI Core 类型编译：
 
-```shell
-bash run.sh ai_core-<soc_version>
-```
-> AI处理器的型号<soc_version>请通过如下方式获取:
-> - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
->
-> 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
+    ```shell
+    bash run.sh ai_core-{soc_version}
+    ```
 
-注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
+    > AI处理器的型号soc_version请通过如下方式获取:
+    >
+    > - 在安装昇腾AI处理器的服务器执行`npu-smi info`命令进行查询，获取`Chip Name`信息。实际配置值为AscendChip Name，例如`Chip Name`取值为`xxxyy`，实际配置值为`Ascendxxxyy`。
+    >
+    > 基于同系列的AI处理器型号创建的算子工程，其基础功能（基于该工程进行算子开发、编译和部署）通用。
 
-```shell
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-```
+    注：需先在环境中设置CANN相关环境变量，再执行算子编译和安装指令。使用默认路径安装CANN时设置环境变量指令如下：
+
+    ```shell
+    source /usr/local/Ascend/ascend-toolkit/set_env.sh
+    ```
 
 2. 在init接口添加参数use_lccl并设置为True。代码示例：
 
-```python
-from mx_rec.util.initialize import init
+    ```python
+    from mx_rec.util.initialize import init
 
-# 详细使用指导请参考Rec SDK用户指南。
-init(use_lccl=True, ...)
-```
+    # 详细使用指导请参考Rec SDK用户指南。
+    init(use_lccl=True, ...)
+    ```
 
 ## 功能介绍
 
@@ -253,7 +256,6 @@ Kernel侧算子实现在目录lccl/v220/op_kernel下，其中包括：gather_all
 
 ## 单算子测试参考设计
 
-
 ### 前置条件
 
 1. 完成算子的编译部署，可参考以下两种方式：
@@ -302,7 +304,9 @@ class WideDeep:
 ```shell
 ./run.sh 8 all2all.py
 ```
+
 主要日志：
+
 ```shell
 # 表示当前已完成的执行步数和耗时
 current steps: ..., time cost(ms): ...
@@ -310,4 +314,5 @@ current steps: ..., time cost(ms): ...
 # 精度测试通过
 all2all precision test pass
 ```
+
 如果期望观察性能，可以调整`stop_steps`参数的值，观察日志中的`time cost`。

@@ -18,8 +18,8 @@ def init(toml_path: str)
 
 **返回值说明<a name="section651195312311"></a>**
 
--   成功：None。
--   失败：抛出异常。
+- 成功：None。
+- 失败：抛出异常。
 
 **使用示例<a name="zh-cn_topic_0000001422098394_section653575124718"></a>**
 
@@ -31,6 +31,7 @@ mxrec.init("toml_path")
 **参考资源<a name="section426664933312"></a>**
 
 初始化配置文件（.toml文件）可参考如下示例进行配置：
+
 ```toml
 [mxrec]
 # Only ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL') are allowed.
@@ -44,7 +45,7 @@ use_ranktable = true
 cm_chief_ip = "127.0.0.1"
 # Used to configure the listening port of the master node.
 cm_chief_port = 60001
-# Used to specify the logical id of the device for collecting cluster information of the server side 
+# Used to specify the logical id of the device for collecting cluster information of the server side
 # within the master node.
 cm_chief_device = 0
 # Used to configure the network card ip used for information exchange between the current devices and the master node.
@@ -70,6 +71,6 @@ local_rank_size = 1
 num_server = 1
 ```
 
->[!NOTE] 说明 
->- `[mxrec]`字段下的内容为必须配置项，其中`[mxrec.cm-node-info]`字段可参考：https://www.hiascend.com/document/detail/zh/canncommercial/850/commlib/hcclug/hcclug_000070.html
-
+>[!NOTE] 说明
+>
+> - `[mxrec]`字段下的内容为必须配置项，其中`[mxrec.cm-node-info]`字段可参考：https://www.hiascend.com/document/detail/zh/canncommercial/850/commlib/hcclug/hcclug_000070.html
