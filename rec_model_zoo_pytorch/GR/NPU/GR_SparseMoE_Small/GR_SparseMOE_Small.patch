@@ -14,7 +14,7 @@ index 8a74a62..3ae329b 100644
 +except Exception as e:
 +    import fbgemm_ascend
 +    libhstu_npu_api_so=os.getenv("LIBHSTU_NPU_API_SO", default=None)
-+    if libhstu_npu_api_so is None:
++    if libhstu_npu_api_so is not None:
 +        torch.ops.load_library(libhstu_npu_api_so)
  
  from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
