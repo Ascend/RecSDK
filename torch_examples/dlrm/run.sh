@@ -28,7 +28,7 @@ export USE_EC=0
 export DO_EC_LOCAL_UNIQUE=0
 
 # 数据集位置，根据实际情况修改
-export PREPROCESSED_DATASET="/path/to/data"
+export PREPROCESSED_DATASET="../../generate_data"
 
 export TOTAL_TRAINING_SAMPLES=4195197692
 export GLOBAL_BATCH_SIZE=16384

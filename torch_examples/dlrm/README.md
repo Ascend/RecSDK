@@ -29,12 +29,32 @@
 # 克隆当前分支
 git clone -b develop_examples_and_tools https://gitcode.com/Ascend/RecSDK.git
 cd RecSDK/torch_examples/dlrm
-# 模型源码适配
+# 克隆开源模型源码并做NPU迁移适配
 git clone -b main https://github.com/facebookresearch/dlrm.git
 cd dlrm && git checkout b631a99
 cp -f ../dlrm_npu.patch ./
 git apply dlrm_npu.patch && cd -
 ```
+
+### FAQ
+
+1. 无法访问GitHub网站导致克隆开源模型源码失败
+
+   处理：无法访问GitHub网站时，可考虑从GitCode镜像仓克隆。将上述指令中的：
+   
+   ```shell
+   git clone -b main https://github.com/facebookresearch/dlrm.git
+   ```
+   
+   替换为如下指令并重新执行：
+
+   ```shell
+   git clone -b main https://gitcode.com/gh_mirrors/dl/dlrm.git
+   ```
+
+2. 容器内执行git指令或Python脚本时报错
+   
+   参考[容器内执行git指令或Python脚本时报错](../README.md#container_git_python_error)处理。
 
 ## 数据集准备
 
@@ -93,7 +113,7 @@ day_23_labels.npy
 
 ```shell
 # 环境参数配置说明（根据实际情况修改）
-export PREPROCESSED_DATASET="/path/to/data"     # 数据集文件路径。必选，需修改为实际数据集文件路径。
+export PREPROCESSED_DATASET="../../generate_data"  # 数据集文件路径。必选，需修改为实际数据集文件路径。
 export WORLD_SIZE=2                             # 运行npu卡数，默认2卡。可选。
 export ASCEND_RT_VISIBLE_DEVICES=0,1            # 可用npu卡编号，与WORLD_SIZE数量保持一致。可选。
 ```

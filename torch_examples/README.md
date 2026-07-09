@@ -72,6 +72,20 @@ source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
 source /usr/local/set_cann_env.sh a2
 ```
 
+### FAQ
+
+1. 容器内执行git指令或Python脚本时报错 <a id="container_git_python_error"></a>
+   
+   报错示例：
+
+        git执行时报错：`error, cannot create async thread: Operation not permitted`
+
+        Python脚本执行时报错：`PyCapsule_Import could not import module "datatime"`
+
+   原因：宿主机Docker版本较低时，和容器内OS存在兼容性问题，容器内无法访问系统底层指令，导致git/Python执行失败。
+
+   处理：升级宿主机Docker版本到20.10.10及以上。或者启动Docker容器时，增加`--security-opt seccomp=unconfined`参数。示例：修改前启动容器指令为`docker run xxx`，修改后为`docker run --security-opt seccomp=unconfined xxx`。
+
 ## 环境可用性验证
 
 ```shell
