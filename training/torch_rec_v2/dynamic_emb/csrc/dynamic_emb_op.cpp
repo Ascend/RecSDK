@@ -56,8 +56,6 @@
 #include "aclrtlaunch_load_from_pointer.h"
 #include "aclrtlaunch_reduce_grad_op.h"
 #include "aclrtlaunch_unique_op.h"
-#include "aclrtlaunch_select_op.h"
-#include "aclrtlaunch_select_index_op.h"
 #include "aclrtlaunch_pooling_embeddings.h"
 #include "aclrtlaunch_pooling_embeddings_simd.h"
 #include "aclrtlaunch_lookup_backward.h"
@@ -924,29 +922,22 @@ static void launch_select_kernel(bool selectIndex, const at::Tensor& flags, cons
         isUInt64 = (inputs->dtype() == torch::kUInt64) ? 1 : 0;
     }
 
-    int32_t maxCores = AclSingleton::GetInstance().GetMaxCores();
-    int32_t stride = CACHE_ALIGN / static_cast<int32_t>(sizeof(int64_t));
-    int32_t isSmall = (numTotal <= static_cast<int64_t>(SMALL_DATA_THRESHOLD)) ? 1 : 0;
-    int32_t elementsPerBlock = isSmall ? MAX_THREADS_PER_BLOCK : ELEMENTS_PER_BLOCK;
-    int32_t totalBlocks = static_cast<int32_t>((numTotal + elementsPerBlock - 1) / elementsPerBlock);
-    int32_t coreNum = std::min(totalBlocks, maxCores);
-    coreNum = std::max(coreNum, static_cast<int32_t>(MIN_CORE_NUM));
-
-    int64_t workspaceElems = numTotal + static_cast<int64_t>(totalBlocks) * stride;
+    uint32_t maxCores = static_cast<uint32_t>(AclSingleton::GetInstance().GetMaxCores());
+    uint64_t ubSize = AclSingleton::GetInstance().GetMixedOpUbSize();
+    int64_t workspaceElems = dyn_emb::GetMaskSelectWorkspaceElems(numTotal, maxCores, ubSize, selectIndex);
     auto workspace = at::empty({workspaceElems}, inputFlags.options().dtype(torch::kInt64));
-
     auto stream = c10_npu::getCurrentNPUStream().stream(true);
 
-    if (selectIndex) {
-        ACLRT_LAUNCH_KERNEL(select_index_op)
-        (coreNum, stream, inputFlags.data_ptr<bool>(), inputOutputs.data_ptr(), inputNumSelected.data_ptr(),
-         workspace.data_ptr(), numTotal, isUInt64, isSmall, totalBlocks);
-    } else {
-        auto inputInputs = inputs->contiguous();
-        ACLRT_LAUNCH_KERNEL(select_op)
-        (coreNum, stream, inputFlags.data_ptr<bool>(), inputInputs.data_ptr(), inputOutputs.data_ptr(),
-         inputNumSelected.data_ptr(), workspace.data_ptr(), numTotal, isUInt64, isSmall, totalBlocks);
+    at::Tensor inputTensor;
+    uint8_t* inputTensorPtr = nullptr;
+    if (!selectIndex) {
+        inputTensor = inputs->contiguous();
+        inputTensorPtr = static_cast<uint8_t*>(inputTensor.data_ptr());
     }
+
+    dyn_emb::maskselect_ops(inputFlags.data_ptr<bool>(), inputTensorPtr, inputOutputs.data_ptr(),
+                            inputNumSelected.data_ptr(), workspace.data_ptr(), numTotal,
+                            static_cast<uint32_t>(isUInt64), selectIndex ? 1U : 0U, stream, maxCores, ubSize);
 }
 
 void select_npu(const at::Tensor& flags, const at::Tensor& inputs, at::Tensor& outputs, at::Tensor& numSelected)
