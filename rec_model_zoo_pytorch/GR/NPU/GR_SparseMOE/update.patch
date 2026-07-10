@@ -1,0 +1,92 @@
+diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples/hstu/benchmark/inference_benchmark_2b_random.py
+index 8a74a62..249f6b9 100644
+--- a/examples/hstu/benchmark/inference_benchmark_2b_random.py
++++ b/examples/hstu/benchmark/inference_benchmark_2b_random.py
+@@ -40,14 +40,19 @@ from inference_ranking_gr import InferenceRankingGR
+ from out_compare import compare_npu_and_gpu_out
+ import torch_npu
+ 
+-lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
+-torch.ops.load_library(lib_fbgemm_npu_api_so_path)
++import fbgemm_ascend
++libhstu_npu_api_so = os.getenv("LIBHSTU_NPU_API_SO", default=None)
++if libhstu_npu_api_so is not None:
++    print("rec_ops使用so的方式加载")
++    torch.ops.load_library(libhstu_npu_api_so)
++else:
++    import rec_ops
+ 
+-from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
+-from pt_jagged_dense_convert import dense_to_jagged_wrapper
++# from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
++# from pt_jagged_dense_convert import dense_to_jagged_wrapper
+ 
+-torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
+-torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
++# torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
++# torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
+ 
+ MODEL_PATH = os.getenv("MODEL_PATH")
+ PERCISE_FLAG = os.getenv("PERCISE_VALIDATE", "0") == "1"
+@@ -77,7 +82,7 @@ torch_npu.npu.aclnn.allow_hf32 = True
+ torch_npu.npu.conv.allow_hf32 = True
+ torch_npu.npu.matmul.allow_hf32 = True
+ 
+-@torch.library.register_fake("mxrec::jagged_to_padded_dense.v1")
++# @torch.library.register_fake("mxrec::jagged_to_padded_dense.v1")
+ def jagged_to_padded_dense_v1_fake(values, offsets, max_lengths, padding_value):
+     """
+     为 mxrec.jagged_to_padded_dense.v1 算子注册伪实现
+diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modules/hstu_block_inference.py
+index 1fccce8..089d224 100644
+--- a/examples/hstu/modules/hstu_block_inference.py
++++ b/examples/hstu/modules/hstu_block_inference.py
+@@ -218,7 +218,7 @@ class HSTUBlockInference(torch.nn.Module):
+         """编译 forward_input 和 forward_output 方法"""
+         # 针对 NPU 设备的优化配置 [2,5](@ref)
+         backend = 'inductor'  # 或者使用 NPU 专用后端
+-
++        torch._dynamo.disallow_in_graph(torch.ops.mxrec.hstu_jagged)
+ 
+         # 编译每个 attention layer 的方法
+         for layer_idx in range(self.config.num_layers):
+diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/modules/paged_hstu_infer_layer.py
+index 7c283e7..4590889 100644
+--- a/examples/hstu/modules/paged_hstu_infer_layer.py
++++ b/examples/hstu/modules/paged_hstu_infer_layer.py
+@@ -566,7 +566,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+     ):
+         pass
+ 
+-    @torch.inference_mode()
++    @torch.no_grad()
+     def forward_naive(
+             self,
+             batch_size: int,
+@@ -671,7 +671,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+ 
+         return layer_output
+ 
+-    @torch.inference_mode()
++    @torch.no_grad()
+     def forward_input(
+             self,
+             batch_size: int,
+@@ -702,7 +702,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+ 
+         return self.uvqk_buffer_[:num_tokens, ...]
+ 
+-    @torch.inference_mode()
++    @torch.no_grad()
+     def forward_output(
+             self,
+             batch_size: int,
+@@ -794,7 +794,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+         self.output_buffer_[:num_tokens, ...] = layer_output
+         return layer_output
+ 
+-    @torch.inference_mode()
++    @torch.no_grad()
+     def forward_moe(
+             self,
+             num_tokens: int,

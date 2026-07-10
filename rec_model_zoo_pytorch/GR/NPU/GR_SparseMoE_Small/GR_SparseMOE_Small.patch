@@ -1,25 +1,29 @@
 diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples/hstu/benchmark/inference_benchmark_2b_random.py
-index 8a74a62..3ae329b 100644
+index 8a74a62..d771cc1 100644
 --- a/examples/hstu/benchmark/inference_benchmark_2b_random.py
 +++ b/examples/hstu/benchmark/inference_benchmark_2b_random.py
-@@ -40,8 +40,14 @@ from inference_ranking_gr import InferenceRankingGR
+@@ -40,14 +40,13 @@ from inference_ranking_gr import InferenceRankingGR
  from out_compare import compare_npu_and_gpu_out
  import torch_npu
  
 -lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
 -torch.ops.load_library(lib_fbgemm_npu_api_so_path)
-+import sysconfig
-+try:
-+    torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-+except Exception as e:
-+    import fbgemm_ascend
-+    libhstu_npu_api_so=os.getenv("LIBHSTU_NPU_API_SO", default=None)
-+    if libhstu_npu_api_so is not None:
-+        torch.ops.load_library(libhstu_npu_api_so)
++import fbgemm_ascend
++libhstu_npu_api_so = os.getenv("LIBHSTU_NPU_API_SO", default = None)
++if libhstu_npu_api_so is not None:
++    torch.ops.load_library(libhstu_npu_api_so)
++else:
++    import rec_ops
  
- from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
- from pt_jagged_dense_convert import dense_to_jagged_wrapper
-@@ -58,7 +58,8 @@ RUN_NUM = 1 if PERCISE_FLAG else int(os.getenv("RUN_NUM"))
+-from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
+-from pt_jagged_dense_convert import dense_to_jagged_wrapper
+-
+-torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
+-torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
+ 
+ MODEL_PATH = os.getenv("MODEL_PATH")
+ PERCISE_FLAG = os.getenv("PERCISE_VALIDATE", "0") == "1"
+@@ -58,7 +57,8 @@ RUN_NUM = 1 if PERCISE_FLAG else int(os.getenv("RUN_NUM"))
  porf_path = os.getenv("PROF_SAVE_PATH")
  USE_GRAPH = int(os.getenv("USE_GRAPH")) == 1
  is_use_gpu_input = int(os.getenv("USE_GPU_INPUT")) == 1
@@ -29,7 +33,16 @@ index 8a74a62..3ae329b 100644
  batch_size = int(os.getenv("BATCH_SIZE", "1"))
  layer_num = int(os.getenv("LAYER_NUM", "1"))
  hidden_dim = int(os.getenv("HIDDEN_DIM", "1"))
-@@ -203,11 +204,11 @@ def run_ranking_gr_inference():
+@@ -77,7 +77,7 @@ torch_npu.npu.aclnn.allow_hf32 = True
+ torch_npu.npu.conv.allow_hf32 = True
+ torch_npu.npu.matmul.allow_hf32 = True
+ 
+-@torch.library.register_fake("mxrec::jagged_to_padded_dense.v1")
++# @torch.library.register_fake("mxrec::jagged_to_padded_dense.v1")
+ def jagged_to_padded_dense_v1_fake(values, offsets, max_lengths, padding_value):
+     """
+     为 mxrec.jagged_to_padded_dense.v1 算子注册伪实现
+@@ -203,11 +203,11 @@ def run_ranking_gr_inference():
  
          if use_random_parm:
              for param in model_predict.parameters():
@@ -44,7 +57,7 @@ index 8a74a62..3ae329b 100644
              cpu_state_dict = torch.load(MODEL_PATH, map_location='cpu')
              model_predict.load_state_dict(cpu_state_dict)
  
-@@ -286,9 +287,10 @@ def run_ranking_gr_inference():
+@@ -286,9 +286,10 @@ def run_ranking_gr_inference():
              result = model_predict.forward(item[0], item[1])
              if is_save_input_and_output:
                  torch.save(result.cpu(), "input_output/npu_output.pt")
@@ -56,7 +69,7 @@ index 8a74a62..3ae329b 100644
          e2e_flag = (os.getenv('USE_E2E', '0') == '1')
          if os.getenv('USE_PROFILING', '0') != '0':
              torch.npu.synchronize()
-@@ -320,47 +322,54 @@ def run_ranking_gr_inference():
+@@ -320,47 +321,54 @@ def run_ranking_gr_inference():
                      model_predict.forward(item[0], item[1])
                      torch.npu.synchronize()
                      prof.step()
@@ -153,7 +166,7 @@ index 8a74a62..3ae329b 100644
  
  
 diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modules/hstu_block_inference.py
-index 1fccce8..2f4a64b 100644
+index 1fccce8..a9c0240 100644
 --- a/examples/hstu/modules/hstu_block_inference.py
 +++ b/examples/hstu/modules/hstu_block_inference.py
 @@ -45,6 +45,7 @@ class HSTUBlockInference(torch.nn.Module):
@@ -164,7 +177,7 @@ index 1fccce8..2f4a64b 100644
  
  
      def forward(
-@@ -77,18 +78,31 @@ class HSTUBlockInference(torch.nn.Module):
+@@ -77,18 +78,32 @@ class HSTUBlockInference(torch.nn.Module):
          use_cudagraph: bool = True,
      ) -> torch.Tensor:
          if self._hstu_graph is None or not use_cudagraph:
@@ -174,6 +187,7 @@ index 1fccce8..2f4a64b 100644
 -                hidden_data = hstu_layer.forward_naive(
 -                    batch_size, num_tokens, hidden_data, jd, seq_len
 +            if os.getenv("USE_COMPILE", "0") == "1" and self._compile_predict is None:
++                torch._dynamo.disallow_in_graph(torch.ops.mxrec.hstu_jagged)
 +                self._compile_predict = torch.compile(
 +                    self.predict_nograph, backend="inductor", dynamic=False
                  )
@@ -202,7 +216,7 @@ index 1fccce8..2f4a64b 100644
      def predict_naive(
          self,
          batch_size: int,
-@@ -111,7 +125,7 @@ class HSTUBlockInference(torch.nn.Module):
+@@ -111,7 +126,7 @@ class HSTUBlockInference(torch.nn.Module):
                  has_interleaved_action=jd.has_interleaved_action,
              )
              hidden_data = hidden_states
@@ -211,7 +225,7 @@ index 1fccce8..2f4a64b 100644
              for hstu_layer in self._attention_layers:
                  hstu_layer.forward_input(
                      batch_size,
-@@ -214,41 +228,40 @@ class HSTUBlockInference(torch.nn.Module):
+@@ -214,41 +229,41 @@ class HSTUBlockInference(torch.nn.Module):
  
              torch_npu.npu.mem_get_info()[0]
  
@@ -220,8 +234,10 @@ index 1fccce8..2f4a64b 100644
          """编译 forward_input 和 forward_output 方法"""
          # 针对 NPU 设备的优化配置 [2,5](@ref)
          backend = 'inductor'  # 或者使用 NPU 专用后端
- 
 -
+-
++        torch._dynamo.disallow_in_graph(torch.ops.mxrec.hstu_jagged)
++        
          # 编译每个 attention layer 的方法
          for layer_idx in range(self.config.num_layers):
              layer = self._attention_layers[layer_idx]
@@ -260,7 +276,7 @@ index 1fccce8..2f4a64b 100644
  
  
      def capture_graph(
-@@ -261,10 +274,6 @@ class HSTUBlockInference(torch.nn.Module):
+@@ -261,10 +276,6 @@ class HSTUBlockInference(torch.nn.Module):
      ):
          torch_npu.npu.mem_get_info()[0]
  
@@ -271,7 +287,7 @@ index 1fccce8..2f4a64b 100644
          seqlen = num_tokens // batch_size
          static_jagged_metadata.seqlen_offsets[: batch_size + 1].copy_(
              torch.arange(
-@@ -291,15 +300,14 @@ class HSTUBlockInference(torch.nn.Module):
+@@ -291,15 +302,14 @@ class HSTUBlockInference(torch.nn.Module):
          )
  
          # Warmup
@@ -295,7 +311,7 @@ index 1fccce8..2f4a64b 100644
          print(f'[DEBUG] start graph capture batchsize:{batch_size} num_tokens:{num_tokens}')
  
          # Create and capture the graph
-@@ -311,7 +319,7 @@ class HSTUBlockInference(torch.nn.Module):
+@@ -311,7 +321,7 @@ class HSTUBlockInference(torch.nn.Module):
          ]
          seq_len = static_jagged_metadata.seqlen_offsets.tolist()
          if os.getenv("USE_COMPILE", "0") == "1":
@@ -304,7 +320,7 @@ index 1fccce8..2f4a64b 100644
              for layer_idx in range(0, num_layers):
                  static_uvqk = self._attention_layers[layer_idx].forward_input(
                      batch_size,
-@@ -326,7 +334,7 @@ class HSTUBlockInference(torch.nn.Module):
+@@ -326,7 +336,7 @@ class HSTUBlockInference(torch.nn.Module):
                      static_jagged_metadata,
                      seq_len,
                  )
@@ -314,7 +330,7 @@ index 1fccce8..2f4a64b 100644
          with torch_npu.npu.graph(graph[0], pool=memory_pool):
              static_uvqk = self._attention_layers[0].forward_input(
 diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/modules/paged_hstu_infer_layer.py
-index 7c283e7..a683fd5 100644
+index 7c283e7..d74c2ea 100644
 --- a/examples/hstu/modules/paged_hstu_infer_layer.py
 +++ b/examples/hstu/modules/paged_hstu_infer_layer.py
 @@ -45,13 +45,14 @@ class SparseMOE(torch.nn.Module):
@@ -425,6 +441,15 @@ index 7c283e7..a683fd5 100644
              self.sparse_moe_linear.load_parm_post_init()
          if self.use_rab:
              self.relative_bias.load_parm_post_init()
+@@ -566,7 +567,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+     ):
+         pass
+ 
+-    @torch.inference_mode()
++    @torch.no_grad()
+     def forward_naive(
+             self,
+             batch_size: int,
 @@ -621,6 +622,8 @@ class PagedHSTUInferLayer(torch.nn.Module):
                      core_num=28
                  )
@@ -458,6 +483,24 @@ index 7c283e7..a683fd5 100644
              layer_output = self.sparse_moe_linear.forward(layer_output) if self.use_moe_op else self.sparse_moe_linear.forward_naive(layer_output)
  
          if self.use_ffn:  # 适用于专家数和选择数相等，简化
+@@ -671,7 +676,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+ 
+         return layer_output
+ 
+-    @torch.inference_mode()
++    @torch.no_grad()
+     def forward_input(
+             self,
+             batch_size: int,
+@@ -702,7 +707,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+ 
+         return self.uvqk_buffer_[:num_tokens, ...]
+ 
+-    @torch.inference_mode()
++    @torch.no_grad()
+     def forward_output(
+             self,
+             batch_size: int,
 @@ -753,10 +758,11 @@ class PagedHSTUInferLayer(torch.nn.Module):
                      mask_type=0,
                      max_seq_len=jd.max_seqlen,
@@ -481,6 +524,15 @@ index 7c283e7..a683fd5 100644
              layer_output = self.sparse_moe_linear.forward(layer_output) if self.use_moe_op else self.sparse_moe_linear.forward_naive(layer_output)
  
          if self.use_ffn:  # 适用于专家数和选择数相等，简化
+@@ -794,7 +800,7 @@ class PagedHSTUInferLayer(torch.nn.Module):
+         self.output_buffer_[:num_tokens, ...] = layer_output
+         return layer_output
+ 
+-    @torch.inference_mode()
++    @torch.no_grad()
+     def forward_moe(
+             self,
+             num_tokens: int,
 @@ -821,7 +827,6 @@ class PagedHSTUInferLayer(torch.nn.Module):
  
          if self.use_rab:
