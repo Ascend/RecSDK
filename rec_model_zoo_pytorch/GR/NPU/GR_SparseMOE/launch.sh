@@ -14,6 +14,9 @@ dos2unix  NPU_GR_SparseMOE.patch  #   转为linux格式，打patch报错执行�
 dos2unix  rab_module.patch  
 git apply NPU_GR_SparseMOE.patch
 git apply rab_module.patch
+cp ../update.patch ./
+dos2unix update.patch
+git apply update.patch
 
 echo "补丁加载成功，可进入examples/hstu执行run_random_2k.sh脚本"
 
