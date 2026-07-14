@@ -331,7 +331,7 @@ WORLD_SIZE=1 RANK=0 python3 main.py
 torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=2 main.py
 ```
 
-预期耗时：约5min。
+预期耗时：1~2min。
 
 预期输出：训练结束后出现`demo done`字样，说明模型训练完成。
 
