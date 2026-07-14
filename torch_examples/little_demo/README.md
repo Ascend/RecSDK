@@ -142,6 +142,6 @@ WORLD_SIZE=1 RANK=0 python main.py
 bash bash.sh
 ```
 
-预期耗时：2~5min。
+预期耗时：1~2min。
 
 预期输出：训练结束后出现`demo done`字样，说明模型训练完成。

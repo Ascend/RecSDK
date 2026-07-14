@@ -73,7 +73,9 @@ git apply dlrm_npu.patch && cd -
     cd generate_data && python3 generate_data.py && cd -
     ```
 
-    生成随机数据集耗时约3~5min，可能随可用CPU资源而变化。
+    生成随机数据集时需要大量使用HOST侧内存，建议可用内存100GB及以上；可用内存不足时会导致数据无法生成。
+
+    生成随机数据集耗时约1~3min，可能随可用CPU资源而变化。
 
 - 官网数据集（Criteo Click Logs数据集）
 
