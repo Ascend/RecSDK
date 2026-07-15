@@ -81,7 +81,7 @@ bias = torch.rand((n,))
 def init_linear_golden(m: torch.nn.Module):
     m.weight.data = weight
     m.bias.data = bias
-linear_uvqk_golden = torch.nn.Linear(128, weight.shape[0], bias=True, devie="cpu", dtype=x.dtype)
+linear_uvqk_golden = torch.nn.Linear(128, weight.shape[0], bias=True, device="cpu", dtype=x.dtype)
 mixed_uvqk = linear_uvqk_golden(x)
 mixed_uvqk = torch.nn.functional.silu(mixed_uvqk)
 (user, value, query, key) = torch.split(mixed_uvqk, split_arg_list, dim=-1,)

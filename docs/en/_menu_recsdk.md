@@ -24,7 +24,7 @@
 
 - [Torch-based Model Development]()
   - [Introduction](./torch/torch_rec_v1/introduction.md)
-  - [Installation Quide](./torch/torch_rec_v1/recsdk_torch_installation_guide.md)
+  - [Installation Guide](./torch/torch_rec_v1/recsdk_torch_installation_guide.md)
   - [Quick Start](./torch/torch_rec_v1/quick_start.md)
   - [Migration and Training](./torch/torch_rec_v1/migration_and_training.md)
   - [API Reference]()

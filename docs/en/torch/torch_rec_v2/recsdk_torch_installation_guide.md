@@ -24,7 +24,7 @@ Before you install the Rec SDK Torch software package, prepare the following env
 |PyTorch Ascend adaptation plugin|2.7.1|Click [this link](https://pytorch-package.obs.cn-north-4.myhuaweicloud.com/pta/Daily/v2.7.1/20260327.4/pytorch_v2.7.1_py311.tar.gz), obtain the `torch_npu-2.7.1*-cp311-*.whl` package according to the device architecture, and install it in the container.|
 
 > [!NOTE]NOTE
->For open-source and third-party software that you integrate, track vulnerabilities and issues in the community and fix them in a timely manner. You can check the [CVE website](https://www.cve.org/) for known vulnerabilities in the corresponding open-source software version, and fix them by upgrading versions or applying patch packages.
+> For open-source and third-party software that you integrate, track vulnerabilities and issues in the community and fix them in a timely manner. You can check the [CVE website](https://www.cve.org/) for known vulnerabilities in the corresponding open-source software version, and fix them by upgrading versions or applying patch packages.
 
 ## Obtaining the Rec SDK Torch Software Package
 
@@ -101,8 +101,8 @@ Refer to this section to obtain the required software package and the correspond
 |--|--|--|
 |Rec SDK|Development kit of the recommendation algorithm framework.|[Link](https://gitcode.com/Ascend/RecSDK/releases)|
 
->[!NOTE]
->The current development kit package for the Rec SDK recommendation framework is built with Python 3.11. Install and use it in the same Python version environment. If you need to install and use it in a different Python version environment, see [README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/dynamic_emb/README.md) to build from source.
+> [!NOTE]
+> The current development kit package for the Rec SDK recommendation framework is built with Python 3.11. Install and use it in the same Python version environment. If you need to install and use it in a different Python version environment, see [README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/dynamic_emb/README.md) to build from source.
 
 **Verifying the Software Digital Signature**
 
@@ -155,11 +155,11 @@ ${image_name} \
 /bin/bash
 ```
 
->[!NOTE]
->Some parameters are as follows:
+> [!NOTE]
+> Some parameters are as follows:
 >
->- `-m 300g` sets the maximum amount of memory that can be used in the container to 300 GB. Adjust it as required.
->- `-e ASCEND_VISIBLE_DEVICES=0-7` mounts NPU devices `device0` to `device7` from the server into the container. Adjust it as required.
+> - `-m 300g` sets the maximum amount of memory that can be used in the container to 300 GB. Adjust it as required.
+> - `-e ASCEND_VISIBLE_DEVICES=0-7` mounts NPU devices `device0` to `device7` from the server into the container. Adjust it as required.
 
 **Installing Rec SDK Torch<a id="section182972951211"></a>**
 

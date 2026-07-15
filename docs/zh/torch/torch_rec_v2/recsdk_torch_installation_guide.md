@@ -23,7 +23,7 @@
 |PyTorch昇腾适配插件|2.7.1|单击[链接](https://pytorch-package.obs.cn-north-4.myhuaweicloud.com/pta/Daily/v2.7.1/20260327.4/pytorch_v2.7.1_py311.tar.gz)，根据设备架构获取torch_npu-2.7.1*-cp311-*.whl软件包并在容器内安装。|
 
 > [!NOTE]须知
->对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以并且不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
+> 对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以并且不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
 
 ## 获取Rec SDK Torch软件包<a name="ZH-CN_TOPIC_0000002336148981"></a>
 
@@ -107,8 +107,8 @@
 |--|--|--|
 |Rec SDK|torch\_rec\_v2-\*.tar.gz|[获取链接](https://gitcode.com/Ascend/RecSDK/releases)|
 
->[!NOTE]说明
->当前提供的Rec SDK推荐算法框架开发套件包基于Python 3.11版本编译，请在相同的Python版本环境下安装使用。若需要在其他Python版本环境下安装使用，请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/dynamic_emb/README.md)进行源码编译。
+> [!NOTE]说明
+> 当前提供的Rec SDK推荐算法框架开发套件包基于Python 3.11版本编译，请在相同的Python版本环境下安装使用。若需要在其他Python版本环境下安装使用，请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/dynamic_emb/README.md)进行源码编译。
 
 **软件数字签名验证<a name="section10830205518487"></a>**
 
@@ -161,11 +161,11 @@ ${image_name} \
 /bin/bash
 ```
 
->[!NOTE]说明
->部分参数说明如下：
+> [!NOTE]说明
+> 部分参数说明如下：
 >
->- -m 300g表示设置容器内可以使用的内存大小上限为300G，可根据实际情况进行配置。
->- -e ASCEND\_VISIBLE\_DEVICES=0-7表示将服务器上编号为device0-device7的NPU设备挂载到容器内。可根据实际情况进行配置。
+> - -m 300g表示设置容器内可以使用的内存大小上限为300G，可根据实际情况进行配置。
+> - -e ASCEND\_VISIBLE\_DEVICES=0-7表示将服务器上编号为device0-device7的NPU设备挂载到容器内。可根据实际情况进行配置。
 
 **安装Rec SDK Torch<a id="section182972951211"></a>**
 

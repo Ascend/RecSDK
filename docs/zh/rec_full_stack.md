@@ -16,30 +16,30 @@ Rec SDK 作为面向互联网市场搜索推荐广告场景的应用使能SDK产
 
 **架构图说明：**
 
-1.硬件层
+1. 硬件层
 
-- 昇腾硬件：包括昇腾A2、A3及950系列，提供底层算力支撑。
+    - 昇腾硬件：包括昇腾A2、A3及950系列，提供底层算力支撑。
 
-2.CANN软件栈
+2. CANN软件栈
 
-- 基础算子：支持Ascend C、CATLASS、Triton等算子开发语言与库。
-- 自动编译优化：提供AutoFuse、Inductor等算子自动融合能力，提升计算效率。
+    - 基础算子：支持 Ascend C、CATLASS、Triton 等算子开发语言与库。
+    - 自动编译优化：提供AutoFuse、Inductor等算子自动融合能力，提升计算效率。
 
-3.AI框架与适配层
+3. AI框架与适配层
 
-- AI框架：兼容PyTorch、TensorFlow业界主流框架。
-- 框架适配：通过PyTorch-Adapter（PT-Adapter）、TensorFlow-Adapter（TF-Adapter）实现模型在昇腾平台的无缝迁移与运行。
+    - AI框架：兼容 PyTorch、TensorFlow 业界主流框架。
+    - 框架适配：通过PyTorch-Adapter（PT-Adapter）、TensorFlow-Adapter（TF-Adapter）实现模型在昇腾平台的无缝迁移与运行。
 
-4.应用层
+4. 应用层
 
-- Rec SDK：面向推荐系统场景，提供torch_rec_v1/v2、tf_rec_v1/v2等推荐框架。
-- 关键加速组件：
-  - HierarchicalKV-ascend：面向推荐系统的高性能key-value存储加速库。
-  - FBGEMM-ascend：高性能矩阵计算加速库。
+    - Rec SDK：面向推荐系统场景，提供torch_rec_v1/v2、tf_rec_v1/v2等推荐框架。
+    - 关键加速组件：
+      - HierarchicalKV-ascend：面向推荐系统的高性能 key-value 存储加速库。
+      - fbgemm-ascend：高性能矩阵计算加速库。
 
-5.开发工具
+5. 开发工具
 
-- MindStudio：提供全流程开发、调试与调优工具链。
+    - MindStudio：提供全流程开发、调试与调优工具链。
 
 ### 产品价值
 
@@ -75,7 +75,7 @@ Rec SDK的功能涉及：
 
 - 推荐场景特有功能。基于Rec SDK的稀疏表方案，Rec SDK提供必备功能，如特征保存和加载、特征准入、特征淘汰等。
 
-- 大规模稀疏表特有功能。支持加速卡内存、主机内存、主机磁盘多级存储、支持多机存储、支持动态扩容。规模可超10TB。
+- 大规模稀疏表特有功能。支持加速卡内存、主机内存、主机磁盘多级存储，支持多机存储，支持动态扩容。规模可超10TB。
 
 Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`、`torch_rec_v2`和`rec_ops`多个内部组件，参见表3：
 
@@ -83,11 +83,11 @@ Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`�
 
 | 组件名称     | 基础框架           | 适配状态 | 框架类型     | 功能描述                                                     |
 | ------------ | ------------------ | -------- | ------------ | ------------------------------------------------------------ |
-| tf_rec_v1    | TensorFlow         | 非全下沉 | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的非全下沉稀疏推荐框架，支持Atlas A2/A3/A5设备。 |
-| tf_rec_v2    | TensorFlow         | 全下沉   | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的全下沉稀疏推荐框架，仅支持Atlas A5设备。 |
-| torch_rec_v1 | PyTorch + TorchRec | 非全下沉 | 稀疏推荐框架 | 基于PyTorch、[TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0)开源软件，适配NPU设备的非全下沉稀疏推荐框架，支持Atlas A2/A3/A5设备。 |
-| torch_rec_v2 | PyTorch + TorchRec | 全下沉   | 稀疏推荐框架 | 基于PyTorch、[DynamicEmb](https://github.com/NVIDIA/recsys-examples/tree/v25.09)、[TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0)开源软件，适配NPU设备的全下沉稀疏推荐框架，仅支持Atlas A5设备。 |
-| rec_ops      | -                  | -        | 算子         | 基于Ascend C开发的推荐场景自定义算子集，支持Atlas A2/A3/A5设备。 |
+| tf_rec_v1    | TensorFlow         | 非全下沉 | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的非全下沉稀疏推荐框架，支持昇腾A2/A3/950系列产品。 |
+| tf_rec_v2    | TensorFlow         | 全下沉   | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的全下沉稀疏推荐框架，仅支持昇腾950系列产品。 |
+| torch_rec_v1 | PyTorch + TorchRec | 非全下沉 | 稀疏推荐框架 | 基于PyTorch、[TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0)开源软件，适配NPU设备的非全下沉稀疏推荐框架，支持昇腾A2/A3/950系列产品。 |
+| torch_rec_v2 | PyTorch + TorchRec | 全下沉   | 稀疏推荐框架 | 基于PyTorch、[DynamicEmb](https://github.com/NVIDIA/recsys-examples/tree/v25.09)、[TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0)开源软件，适配NPU设备的全下沉稀疏推荐框架，仅支持昇腾950系列产品。 |
+| rec_ops      | -                  | -        | 算子         | 基于Ascend C开发的推荐场景自定义算子集，支持昇腾A2/A3/950系列产品。 |
 
 关键术语说明：
 
@@ -105,11 +105,11 @@ Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`�
 
 - PyTorch 生态无缝集成：与 Torch、TorchRec 等组件协同，直接复用 `torch.ops.fbgemm.*` 接口。
 
-- 多芯片自适应：自动探测 Atlas A2/A3/A5 训练系列产品芯片，区分编译目标。
+- 多芯片自适应：自动探测昇腾A2/A3/950训练系列产品芯片，区分编译目标。
 
 #### HierarchicalKV-ascend
 
-[HierarchicalKV-ascend](https://gitcode.com/Ascend/HierarchicalKV-ascend)（下称HKV）是 [开源HierarchicalKV](https://github.com/NVIDIA-Merlin/HierarchicalKV/commit/bbe2ee1858b6e54bccf9106e9f3c2d8c1c5d248c) 在昇腾 NPU 平台上的算子实现，是一个面向推荐系统的高性能key-value存储加速库。 在推荐系统中，HKV提供了大容量、高性能的动态Embedding表的增删改查能力。
+[HierarchicalKV-ascend](https://gitcode.com/Ascend/HierarchicalKV-ascend)（下称HKV）是 [开源HierarchicalKV](https://github.com/NVIDIA-Merlin/HierarchicalKV/commit/bbe2ee1858b6e54bccf9106e9f3c2d8c1c5d248c) 在昇腾 NPU 平台上的算子实现，是一个面向推荐系统的高性能key-value存储加速库。在推荐系统中，HKV提供了大容量、高性能的动态Embedding表的增删改查能力。
 
 核心功能：
 

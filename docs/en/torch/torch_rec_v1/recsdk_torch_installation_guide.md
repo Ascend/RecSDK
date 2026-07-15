@@ -91,7 +91,7 @@ You can install the Rec SDK Torch software package in one of the following three
 
 To view the historical installation records of the Rec SDK Torch software package, see [Viewing Rec SDK Torch Installation and Uninstallation Records](../../torch/torch_rec_v1/common_operations.md).
 
->[!NOTE]
+> [!NOTE]
 > For open-source and third-party software that you integrate, track vulnerabilities and issues in the community and fix them in a timely manner. You can check the [CVE website](https://www.cve.org/) for known vulnerabilities in the corresponding open-source software version, and fix them by upgrading versions or applying patch packages.
 
 ### Container-Based Installation (Host Machine + Container)
@@ -146,10 +146,10 @@ Figure 1 Development environment configuration and training image build inside t
     /bin/bash
     ```
 
-    >[!NOTE]
-    >The following describes some of the parameters:
-    >- `-m 300g` sets the maximum amount of memory that can be used in the container to 300 GB. Adjust it as required.
-    >- `-e ASCEND_VISIBLE_DEVICES=0-7` mounts NPU devices `device0` to `device7` from the server into the container. Adjust it as required.
+    > [!NOTE]
+    > The following describes some of the parameters:
+    > - `-m 300g` sets the maximum amount of memory that can be used in the container to 300 GB. Adjust it as required.
+    > - `-e ASCEND_VISIBLE_DEVICES=0-7` mounts NPU devices `device0` to `device7` from the server into the container. Adjust it as required.
 
     Run the following command to create a container and enter it:
 
@@ -265,8 +265,8 @@ The installation steps for this option are similar to those in [Installing from 
    |----------------------|------------------------------------------|----------------------------------------------------|
    | Rec SDK Torch recommendation framework package| torch_rec_v1-*.tar.gz | [Link](https://gitcode.com/Ascend/RecSDK/releases)|
 
-   >[!NOTE]
-   >The current Rec SDK recommendation framework package is built with Python 3.11. **Install and use it in the same Python version environment.** If you need to use it in another Python version environment, see [Install the Rec SDK Torch recommendation framework package](#source_build_hybrid_torchrec) and build it from source.
+   > [!NOTE]
+   > The current Rec SDK recommendation framework package is built with Python 3.11. **Install and use it in the same Python version environment.** If you need to use it in another Python version environment, see [Install the Rec SDK Torch recommendation framework package](#source_build_hybrid_torchrec) and build it from source.
 
    **Software package hash verification**
 
