@@ -5,8 +5,8 @@
 - Rec SDK TensorFlow supports deployment of a development environment on a physical machine or in a container. You can choose either method based on service requirements.
 - You are advised to install and run the software as a common user.
 
-    >[!NOTE]
-    >To view the installation history of the Rec SDK TensorFlow, see [Viewing Rec SDK TensorFlow Installation and Uninstallation Records](common_operations.md#viewing-rec-sdk-tensorflow-installation-and-uninstallation-records).
+    > [!NOTE]
+    > To view the installation history of the Rec SDK TensorFlow, see [Viewing Rec SDK TensorFlow Installation and Uninstallation Records](common_operations.md#viewing-rec-sdk-tensorflow-installation-and-uninstallation-records).
 
 ## Installation Prerequisites
 
@@ -24,8 +24,8 @@ Before you install the Rec SDK TensorFlow software package, prepare the followin
 |TensorFlow|TensorFlow 1.15.0 and TensorFlow 2.6.5|Obtain the source code from the [TensorFlow](https://github.com/tensorflow/tensorflow) repository. In Arm environments, TensorFlow does not provide the corresponding official wheel package. If you need to use it in Arm environments, you can obtain the Arm TensorFlow wheel package from [this link](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html).<br>[!NOTE]<br>If the wheel package fails to be downloaded, copy the link and open it in a new tab page to complete the download.|
 |Python 3.7.5|Python 3.7.5|Obtain the dependency software package from the [Python official website](https://www.python.org/).|
 
->[!NOTE]
->For open-source and third-party software that you integrate, track vulnerabilities and issues in the community and fix them in a timely manner. You can check the [CVE website](https://www.cve.org/) for known vulnerabilities in the corresponding open-source software version, and fix them by upgrading versions or applying patch packages.
+> [!NOTE]
+> For open-source and third-party software that you integrate, track vulnerabilities and issues in the community and fix them in a timely manner. You can check the [CVE website](https://www.cve.org/) for known vulnerabilities in the corresponding open-source software version, and fix them by upgrading versions or applying patch packages.
 
 ## Obtaining the Rec SDK TensorFlow Software Package
 
@@ -180,10 +180,10 @@ For enterprise users, visit [https://support.huawei.com/enterprise/zh/tool/softw
 
 ### Using a Container to Deploy the Development Environment
 
->[!NOTE]
+> [!NOTE]
 >
->- If you use CentOS for configuration, including the host and the container, the `libstdc++` version must be later than `libstdc++.so.6.0.24`.
->- For security purposes, only non-root users can start and use containers.
+> - If you use CentOS for configuration, including the host and the container, the `libstdc++` version must be later than `libstdc++.so.6.0.24`.
+> - For security purposes, only non-root users can start and use containers.
 
 You can deploy the Rec SDK TensorFlow development environment in a container by following the steps in [Figure 1](#fig2687191413442).
 
@@ -200,8 +200,8 @@ You can deploy the Rec SDK TensorFlow development environment in a container by 
 3. If you need the dynamic expansion feature in the container, see [(Optional) Installing the On-Chip Memory Dynamic Expansion Operator Package](common_operations.md#optional-installing-the-on-chip-memory-dynamic-expansion-operator-package) to build and install the dynamic expansion operator package.
 4. If you need the Hadoop distributed file system, refer to the [Hadoop official documentation](https://hadoop.apache.org/docs/r1.0.4/cn/quickstart.html) for environment deployment and cluster setup. Hadoop 2.7.5 is recommended.
 
-    >[!NOTE]
-    >After you deploy the environment according to the Hadoop official documentation, the owner of the `/usr/local/hadoop-2.7.5/sbin` directory in the environment is 20415, which is a non-root user. That owner can rename and create new files to replace executables in the root user's `PATH` environment variable, which creates a privilege escalation risk.
+    > [!NOTE]
+    > After you deploy the environment according to the Hadoop official documentation, the owner of the `/usr/local/hadoop-2.7.5/sbin` directory in the environment is 20415, which is a non-root user. That owner can rename and create new files to replace executables in the root user's `PATH` environment variable, which creates a privilege escalation risk.
 
 ### Building a Rec SDK TensorFlow Training Image
 
@@ -534,8 +534,8 @@ This section helps you build a Rec SDK TensorFlow training image from an existin
 |HUGE_TLB_ENABLE|Huge page memory.|Optional|Value range: 0 or 1. Default value: 0. Values outside the valid range cause unpredictable behavior. <li>0: Disables this feature. </li><li>1: Enables this feature.</li>|
 |SSD_SAVE_COMPACT_LEVEL|Compression level when data is saved to SSDs.|Optional|Value range: 0 to 2. Default value: 2. <li>0: No compression. </li><li>1: Compresses only files that exceed the threshold. </li><li>2: Compresses all files.</li>|
 
->[!NOTE]
->Rec SDK TensorFlow depends on the `OMPI_COMM_WORLD_SIZE`, `OMPI_COMM_WORLD_LOCAL_SIZE`, and `OMPI_COMM_WORLD_RANK` environment variables in distributed training and inference scenarios started by OpenMPI. OpenMPI launchers inject these environment variables automatically, so you do not need to inject them manually.
+> [!NOTE]
+> Rec SDK TensorFlow depends on the `OMPI_COMM_WORLD_SIZE`, `OMPI_COMM_WORLD_LOCAL_SIZE`, and `OMPI_COMM_WORLD_RANK` environment variables in distributed training and inference scenarios started by OpenMPI. OpenMPI launchers inject these environment variables automatically, so you do not need to inject them manually.
 
 **Table 2** C++ build environment variables
 <a name="table20242918114315"></a>

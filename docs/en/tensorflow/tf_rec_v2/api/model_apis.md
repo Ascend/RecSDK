@@ -36,7 +36,7 @@ def get_embedding_table(
 | min_used_times         | int / None        | Optional  | Feature admission: an ID must appear more times than this value to take effect. Otherwise, querying the table with this ID returns the default embedding value. The value range is [0, 2^31-1].                                 |
 | max_cold_secs          | int / None        | Optional  | Feature eviction: the maximum tolerated idle time (in seconds) for an ID and its embedding since the last access. IDs exceeding this threshold are removed from the embedding hash table during saving. The default value is [0, 2^64-1].|
 
->[!NOTE]
+> [!NOTE]
 >
 > - - Only non-dynamic expansion mode is supported, that is, `device_vocabulary_size` must be greater than 0.
 > - After feature eviction is enabled, saving and loading are not supported.

@@ -1,5 +1,12 @@
 # 版本说明
 
+Rec SDK 26.1.0版本核心要点如下：
+
+- 要点1：适配 Atlas 350 标卡；
+- 要点2：新增动态表淘汰策略（TIMESTAMP/STEP/CUSTOMIZED/LFU）与 HBM+DDR 缓存模式；
+- 要点3：算子补齐，如 split_2d_jagged 等；
+- 要点4：兼容 CANN 9.1.0、Ascend HDK 26.1.0、TorchNPU 26.1.0。
+
 ## 版本配套说明
 
 ### 产品版本信息
@@ -20,9 +27,9 @@
 <td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.3.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a>Release版本</p>
 </td>
 </tr>
-<tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row7259721105019"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.3.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135013"></a>维护周期</p>
+<tr id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_row7259721105020"><th class="firstcol" valign="top" width="25%" id="mcps1.1.3.4.1"><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135014"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135014"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p7260182135014"></a>维护周期</p>
 </th>
-<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.3.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219501"></a>参考<a href="../../README.md#torch_rec_v1-框架维护策略">维护策略</a></p>
+<td class="cellrowborder" valign="top" width="75%" headers="mcps1.1.3.4.1 "><p id="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219502"><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219502"></a><a name="zh-cn_topic_0000001938532254_zh-cn_topic_0000001935094108_p72606219502"></a>参考<a href="../../README.md#torch_rec_v1-框架维护策略">维护策略</a></p>
 </td>
 </tr>
 </tbody>
@@ -44,9 +51,7 @@
 >
 > 软件版本兼容性是指产品软件版本升级时，其他关联软件不需要联动升级或打补丁，仍然可以支持已有功能。
 >
-> Rec SDK Torch（torch_rec_v1）：在升级版本后，需要重新编译torchrec_npu和自定义算子相关包。
->
-> Rec SDK Torch（torch_rec_v2）：在升级版本后，需要重新编译torchrec_npu和自定义算子相关包。
+> Rec SDK Torch（torch_rec_v1/v2）：在升级版本后，需要重新编译torchrec_npu和自定义算子相关包。
 
 **表 2**  Rec SDK与CANN版本兼容
 
@@ -199,7 +204,7 @@
 
 - Rec SDK TensorFlow(tf_rec_v1)：不涉及关键特性变更。
 - Rec SDK Torch(torch_rec_v1)：不涉及关键特性变更。
-- Rec SDK TensorFlow (tf_rec_v2)：不涉及关键特性变更。
+- Rec SDK TensorFlow(tf_rec_v2)：不涉及关键特性变更。
 - Rec SDK Torch(torch_rec_v2)：不涉及关键特性变更。
 
 ### 已解决的问题

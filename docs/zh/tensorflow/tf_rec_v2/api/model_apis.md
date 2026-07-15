@@ -36,7 +36,7 @@ def get_embedding_table(
 | min_used_times         | int / None        | 可选   | 特征准入功能，ID历史出现次数必须超过该值才能生效，否则使用该ID查表返回默认的Embedding值，取值范围[0, 2^31-1]。                                  |
 | max_cold_secs          | int / None        | 可选   | 特征淘汰功能，该值用于表示ID和Embedding自最后一次被访问后，最久能够容忍的未访问时长。超过这个阈值的ID将会在保存时，从存储Embedding的哈希表中删除，取值范围[0, 2^64-1]。 |
 
->[!NOTE] 说明
+> [!NOTE] 说明
 >
 > - 当前仅支持非扩容模式，即`device_vocabulary_size`需大于0。
 > - 开启特征淘汰功能后暂不支持保存与加载。

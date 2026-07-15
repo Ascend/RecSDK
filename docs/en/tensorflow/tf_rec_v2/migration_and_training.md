@@ -8,7 +8,7 @@ Rec SDK TensorFlow provides the `tf.Session` training scenario (currently, the E
 
 - `tf.Session` training scenario: Start model running by creating a new `Session` instance, which returns tensor examples for customized model training.
 
->[!NOTE]
+> [!NOTE]
 >
 > - Rec SDK TensorFlow does not support Keras currently.
 > - Rec SDK TensorFlow currently supports only the migration of model training scripts using TensorFlow native APIs. It does not support third-party frameworks (such as tf_adapter, HugeCTR, and DeepRec).
@@ -85,8 +85,8 @@ For Python files modified in the following steps, add the following header file 
 from npu_bridge.npu_init import *
 ```
 
->[!NOTE]
->After you import the preceding header file, the training script runs on the Ascend AI Processor by default.
+> [!NOTE]
+> After you import the preceding header file, the training script runs on the Ascend AI Processor by default.
 
 **Data Preprocessing<a id="section3602537142311"></a>**
 
@@ -249,8 +249,8 @@ with tf.Session(config=config) as sess:
     sess.run(...)
 ```
 
->[!NOTE]
->If an error occurs during migration and training, see the [FAQ](faq.md) or contact technical support.
+> [!NOTE]
+> If an error occurs during migration and training, see the [FAQ](faq.md) or contact technical support.
 
 ## Distributed Training Script Migration
 
@@ -342,8 +342,8 @@ You must manually implement the broadcast function in the `sess.run` training sc
     distributedOptimizer=npu_distributed_optimizer_wrapper(optimizer) # Use NPU distributed computing to update gradients.
     ```
 
-    >[!NOTE]
-    >The NPUDistributedOptimizer distributed optimizer is compatible in the current version.
+    > [!NOTE]
+    > The NPUDistributedOptimizer distributed optimizer is compatible in the current version.
 
     If the original script uses the TensorFlow API to calculate gradients, such as `grads = tf.gradients(loss, tvars)`, you need to call the `npu_AllReduce` API to perform AllReduce on the gradients after calculation.
 
@@ -460,8 +460,8 @@ python resnet50_ps_strategy.py --job_name=chief --task_index=0
 python resnet50_ps_strategy.py --job_name=evaluator --task_index=0
 ```
 
->[!NOTE]
->For the environment variables required to run the script, see "Single-Device Training Execution" in the *TensorFlow 1.15 Model Porting Guide*.
+> [!NOTE]
+> For the environment variables required to run the script, see "Single-Device Training Execution" in the *TensorFlow 1.15 Model Porting Guide*.
 
 ### Horovod Script Migration
 
@@ -568,8 +568,8 @@ init_sess.run(npu_shutdown)
 init_sess.close()
 ```
 
->[!NOTE]
->The NPUDistributedOptimizer distributed optimizer is compatible in the current version.
+> [!NOTE]
+> The NPUDistributedOptimizer distributed optimizer is compatible in the current version.
 
 ## Precision Tuning
 

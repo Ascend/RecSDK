@@ -587,7 +587,7 @@ You need to adapt the model to be used and can add functional features provided 
 
 > [!NOTE]
 > Functional features can be used in combination. You need to modify and adapt them in the corresponding key steps. To view the calling process of a single functional feature, see [Training Feature Process](appendix.md#training-feature-process).
->Feature eviction and the on-chip memory dynamic expansion mode cannot be enabled at the same time.
+> Feature eviction and the on-chip memory dynamic expansion mode cannot be enabled at the same time.
 
 The key steps are as follows:
 

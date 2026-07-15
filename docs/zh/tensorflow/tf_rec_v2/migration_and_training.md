@@ -8,7 +8,7 @@ Rec SDK TensorFlow提供使用tf.Session训练场景（当前暂不支持Estimat
 
 - tf.Session训练场景。通过新建的Session实例启动模型运行，返回Tensor示例，进行定制化模型训练。
 
->[!NOTE] 说明
+> [!NOTE] 说明
 >
 > - Rec SDK TensorFlow暂时不支持Keras。
 > - Rec SDK TensorFlow目前仅支持使用TensorFlow原生API模型训练脚本迁移，不支持使用第三方框架（tf\_adapter、HugeCTR、DeepRec等）。
@@ -85,8 +85,8 @@ sess.run API属于TensorFlow的低阶API，相对于Estimator来讲，灵活性�
 from npu_bridge.npu_init import *
 ```
 
->[!NOTE] 说明
->引入上述头文件后，训练脚本默认在昇腾AI处理器执行。
+> [!NOTE] 说明
+> 引入上述头文件后，训练脚本默认在昇腾AI处理器执行。
 
 **数据预处理<a id="section3602537142311"></a>**
 
@@ -249,8 +249,8 @@ with tf.Session(config=config) as sess:
     sess.run(...)
 ```
 
->[!NOTE] 说明
->如果在迁移与训练过程中遇到报错，请参考[FAQ](faq.md)进行解决，或者联系技术支持。
+> [!NOTE] 说明
+> 如果在迁移与训练过程中遇到报错，请参考[FAQ](faq.md)进行解决，或者联系技术支持。
 
 ## 分布式训练脚本迁移<a name="ZH-CN_TOPIC_0000001788871148"></a>
 
@@ -343,8 +343,8 @@ sess.run模式的训练脚本需要用户手写实现broadcast功能。具体方
     distributedOptimizer=npu_distributed_optimizer_wrapper(optimizer) # 使用NPU分布式计算，更新梯度
     ```
 
-    >[!NOTE] 说明
-    >NPUDistributedOptimizer分布式优化器在当前版本依然兼容。
+    > [!NOTE] 说明
+    > NPUDistributedOptimizer分布式优化器在当前版本依然兼容。
 
     如果原始脚本使用TensorFlow接口计算梯度，例如`grads = tf.gradients(loss, tvars)`，需要在计算完梯度之后，调用npu\_allreduce接口对梯度进行Allreduce：
 
@@ -460,8 +460,8 @@ python resnet50_ps_strategy.py --job_name=chief --task_index=0
 python resnet50_ps_strategy.py --job_name=evaluator --task_index=0
 ```
 
->[!NOTE] 说明
->脚本运行依赖的环境变量请参考《TensorFlow 1.15模型迁移指南》的“执行单Device训练”章节。
+> [!NOTE] 说明
+> 脚本运行依赖的环境变量请参考《TensorFlow 1.15模型迁移指南》的“执行单Device训练”章节。
 
 ### Horovod脚本迁移<a name="ZH-CN_TOPIC_0000001835790373"></a>
 
@@ -568,8 +568,8 @@ init_sess.run(npu_shutdown)
 init_sess.close()
 ```
 
->[!NOTE] 说明
->NPUDistributedOptimizer分布式优化器在当前版本依然兼容。
+> [!NOTE] 说明
+> NPUDistributedOptimizer分布式优化器在当前版本依然兼容。
 
 ## 精度调优<a name="ZH-CN_TOPIC_0000002210421029"></a>
 

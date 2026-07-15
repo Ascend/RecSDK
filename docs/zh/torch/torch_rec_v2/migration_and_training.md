@@ -31,6 +31,9 @@
 
 接口示例：
 
+> [!NOTE]
+> 本章节提供关键步骤的代码示例，不可以直接拷贝编译运行，仅供参考。
+
 - TorchRec示例：
 
     ```python
@@ -63,7 +66,7 @@
 
         sharding_plan = planner.collective_plan(...)
         ...
-        优化器创建
+        # 优化器创建（此处省略优化器创建代码）
         ...
         pipeline = TrainPipelineSparseDist(test_model, optimizer, device)
         for i in range(20):
@@ -76,6 +79,7 @@
     import torch
     import torch.nn
     import torch.distributed as dist
+    from torchrec import EmbeddingConfig
     from torchrec.distributed.embedding import EmbeddingCollection
     from torchrec.distributed.planner.types import Topology, ShardingType
     from dynamic_emb import (
@@ -166,6 +170,9 @@ Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开�
 
 [Rec SDK Torch Recsys-GR样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr)
 
+> [!NOTE]
+> 本章节提供关键步骤的代码示例，不可以直接拷贝编译运行，仅供参考。
+
 #### 迁移主要修改
 
 ##### 1. 设备管理API修改
@@ -218,9 +225,9 @@ from dynamic_emb import DynamicEmbCheckMode, DynamicEmbInitializerArgs, DynamicE
 
 ##### 4. 算子适配
 
-将CUDA上Triton/Cutlass实现的算子转化为Pytorch原生实现/RecSDK推荐业务算子。算子实现位于`example/hstu/ops`文件夹下。
+将CUDA上Triton/Cutlass实现的算子转化为Pytorch原生实现/Rec SDK Torch推荐业务算子。算子实现位于`example/hstu/ops`文件夹下。
 
-- jagged_to_padded_dense / dense_to_jagged CUDA版本依赖FBGEMM算子，NPU替换为RecSDK业务算子实现
+- jagged_to_padded_dense / dense_to_jagged CUDA版本依赖FBGEMM算子，NPU替换为Rec SDK Torch业务算子实现
 - concat_2D_jagged / split_2D_jagged Triton算子替换为Pytorch实现
 - Position Encoding算子 Triton算子替换为Pytorch实现
 
@@ -416,7 +423,7 @@ echo always > /sys/kernel/mm/transparent_hugepage/enabled
 |环境变量名|含义|可选/必选|说明|
 |--|--|--|--|
 |ARCH|系统架构|必选|aarch64或x86_64|
-|ASCEND_CANN_PACKAGE_PATH ASCEND_HOME_PATH|CANN包实际安装路径。|必选|编译算子所需指定的CANN包实际安装目录。默认为/usr/local/Ascend/ascend-toolkit/latest。|
+|ASCEND_CANN_PACKAGE_PATH|CANN包实际安装路径。|必选|编译算子所需指定的CANN包实际安装目录。默认为/usr/local/Ascend/ascend-toolkit/latest。|
 
 ```bash
 export LD_PRELOAD=${ASCEND_CANN_PACKAGE_PATH}/${ARCH}-linux/lib64/libjemalloc.so
@@ -473,6 +480,9 @@ def bind_memory_to_numa0():
 git clone -b main https://github.com/facebookresearch/dlrm.git
 cd dlrm && git checkout b631a99
 ```
+
+> [!NOTE]
+> 本章节提供关键步骤的代码示例，不可以直接拷贝编译运行，仅供参考。
 
 主要修改内容如下：
 

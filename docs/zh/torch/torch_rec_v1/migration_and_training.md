@@ -8,7 +8,7 @@
 
 **基于开源TorchRec进行迁移<a name="section9248145363514"></a>**
 
-基于已有的TorchRec模型网络，按照接口对应关系进行替换，如[表1](#table16435142101913)所示。
+基于已有的TorchRec模型网络，按照接口对应关系进行替换，如[表 1](#table16435142101913)所示。
 
 **表 1**  接口对应关系
 <a id="table16435142101913"></a>
@@ -132,13 +132,13 @@ Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开�
 
 Rec SDK Torch框架提供了纯显存模式和多级缓存模式，不同模式下稀疏表配置、稀疏表创建等训练相关API会有所区别，详情请参见[多级缓存模式和纯显存模式使用API差异](#api_diff_embcache)。
 
->[!NOTE]
->修改内容中的条件分支含义如下：
+> [!NOTE]
+> 修改内容中的条件分支含义如下：
 >
->- with_hybrid_torchrec：为True时表示使用Rec SDK Torch的纯显存模式。
->- with_embcache：为True时表示使用Rec SDK Torch的多级缓存模式。
+> - with_hybrid_torchrec：为True时表示使用Rec SDK Torch的纯显存模式。
+> - with_embcache：为True时表示使用Rec SDK Torch的多级缓存模式。
 >   - use_ec：为True时表示使用多级缓存的EC（EmbCacheEmbeddingCollection）模式，否则使用EBC（EmbCacheEmbeddingBagCollection）模式。
->- 非上述场景时表示使用TorchRec原生API创建稀疏表和进行模型训练。
+> - 非上述场景时表示使用TorchRec原生API创建稀疏表和进行模型训练。
 
 后续迁移内容为基于开源模型的指定commit版本：
 
@@ -324,7 +324,7 @@ cd dlrm && git checkout b631a99
             )
     ```
 
-    上述代码中，`DLRM_DCN_EC`为新增的EC版本模型定义，该模型定义在新增文件:`dlrm/torchrec_dlrm/ec_dcnv2.py`（应用patch后能看到该文件详细代码）。
+    上述代码中，`DLRM_DCN_EC`为新增的EC版本模型定义，该模型定义在新增文件：`dlrm/torchrec_dlrm/ec_dcnv2.py`（应用patch后能看到该文件详细代码）。
 
 4. 修改分表计划和创建分布式模型
 

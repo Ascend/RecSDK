@@ -42,7 +42,7 @@ Virus scan passed.
 | Rec SDK 26.0.0  | <ul><li>MindSDK 7.3.0 and 7.3.0.x</li></ul>| <ul><li>CANN 8.3.RC1 and patch versions</li><li>CANN 8.5.0 and patch versions</li><li>CANN 9.0.0 and patch versions</li></ul>| <ul><li>Ascend HDK 25.5.0 and patch versions</li><li>Ascend HDK 25.1.RC1 and patch versions</li><li>Ascend HDK 26.0.RC1 and patch versions</li></ul>|
 
 > [!NOTE]NOTE
->Software version compatibility means that when you upgrade the product software version, related software does not need to be upgraded or patched, and existing features remain supported.
+> Software version compatibility means that when you upgrade the product software version, related software does not need to be upgraded or patched, and existing features remain supported.
 
 # Usage Precautions
 
