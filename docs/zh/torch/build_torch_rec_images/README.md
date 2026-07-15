@@ -125,12 +125,12 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 
     | 软件版本                   | 基于Python版本 | 下载链接                                                                                               |
     |------------------------|------------|----------------------------------------------------------------------------------------------------|
-    | PyTorch 2.7.1 (X86)    | 3.11       | https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl       |
-    | PyTorch 2.7.1 (ARM)    | 3.11       | https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl      |
-    | fbgemm_gpu 1.2.0 (X86) | 3.11       | https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl  |
-    | fbgemm_gpu 1.2.0 (ARM) | 3.11       | https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl |
+    | PyTorch 2.7.1 (X86)    | 3.11       | `https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl`       |
+    | PyTorch 2.7.1 (ARM)    | 3.11       | `https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl`      |
+    | fbgemm_gpu 1.2.0 (X86) | 3.11       | `https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl`  |
+    | fbgemm_gpu 1.2.0 (ARM) | 3.11       | `https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl` |
 
-2. 修改安装PyTorch、fbgemm_gpu、torch_npu包安装时的包名
+2. 修改PyTorch、fbgemm_gpu、torch_npu包安装时的包名
 
     | 修改前                        | 修改后                        |
     |----------------------------|----------------------------|

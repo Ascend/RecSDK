@@ -189,7 +189,7 @@
     ```
 
     run.sh脚本会自动设置PYTHONPATH并启动训练。
-    命令行参数 --train 参数指定模型训练， --dump --load 指定模型进行端到端验证，执行训练->保存->加载->推理全过程。
+    命令行参数 --train 指定模型训练， --dump --load 指定模型进行端到端验证，执行训练->保存->加载->推理全过程。
 
     ```bash
     torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=1 main.py --train "$@"

@@ -65,7 +65,7 @@ print(result.cpu())  # tensor([0, 1, 0, 1, 2, 0, 1], dtype=torch.int32)
 ```
 
 > **提示** \
-> 上述用例为通用场景执行，更详细精度、多场景测试用例请参考：
+> 上述用例为通用场景执行，更详细的精度、多场景测试请参考用例：
 >
 > - [`RecSDK/cust_op/test/offsets_range_test/torch/test_offsets_range.py`](../../../../test/offsets_range_test/torch/test_offsets_range.py)
 > - [`RecSDK/cust_op/test/offsets_range_test/torch/special_test_offsets_range.py`](../../../../test/offsets_range_test/torch/special_test_offsets_range.py)

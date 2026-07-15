@@ -244,7 +244,7 @@ class DynamicEmbTableOptions(_ContextOptions):
 |initializer_args|DynamicEmbInitializerArgs|可选| 训练模式下，用于初始化动态嵌入向量的参数。默认为DynamicEmbInitializerArgs实例，参考DynamicEmbInitializerArgs的取值范围。                                                                         |
 |eval_initializer_args|DynamicEmbInitializerArgs|可选| 评估模式下，用于初始化动态嵌入向量的参数。默认为DynamicEmbInitializerArgs实例，仅支持DynamicEmbInitializerMode.CONSTANT。                                                                    |
 |caching|bool|可选| 是否启用缓存模式。仅支持默认值为False，不支持用户自定义。                                                                                                                               |
-|init_capacity|Optional[int]|可选| 单个NPU上表的初始容量，如果未设置，默认为分片后的max_capacity；如果设置将向上取值到2的幂。随着表负载因子(load_fator)不断升高，表容量将通过哈希重排（rehash)机制逐步扩容为原来的2倍，直到达到最大容量（max_capacity)。注：该参数为各进程编号(rank)下单张键值表配置。 |
+|init_capacity|Optional[int]|可选| 单个NPU上表的初始容量，如果未设置，默认为分片后的max_capacity；如果设置将向上取值到2的幂。随着表负载因子(load_factor)不断升高，表容量将通过哈希重排（rehash）机制逐步扩容为原来的2倍，直到达到最大容量（max_capacity）。注：该参数为各进程编号(rank)下单张键值表配置。 |
 |max_load_factor|float|可选| 触发rehash的最大负载因子。默认为0.5，取值范围(0.0,1.0)。                                                                                                                         |
 |score_strategy|DynamicEmbScoreStrategy|可选| 为每一个键分配一个评分，用于淘汰策略。默认为DynamicEmbScoreStrategy.TIMESTAMP。目前暂不支持DynamicEmbScoreStrategy.CUSTOMIZED。                                                             |
 |bucket_capacity|int|可选| HKV中每个桶的容量，默认为128。如果设置，它将向上取整到2的幂。当桶已满时，桶中分数最小的键将被淘汰，其槽位将用于存放新键；桶容量越大，基于分数的淘汰就越准确，但也会导致性能损失。取值范围[16,1024]，用户自行保证内存使用情况。                                       |
