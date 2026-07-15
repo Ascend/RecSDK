@@ -33,6 +33,7 @@ struct CausalMaskPredictor {
     static constexpr uint8_t HAS_CONTEXT = 0x1;
     static constexpr uint8_t HAS_HISTORY = 0x2;
     static constexpr uint8_t HAS_TARGET = 0x4;
+    static constexpr uint32_t DATA_ALIGN_BYTES = 32;
 
     // =========================================================================
     // 1. BlockPredParams — per-block 预测参数 (纯数据)
@@ -146,7 +147,7 @@ struct CausalMaskPredictor {
         {
             if (numTarget <= 0 || targetGroupSize <= 0)
                 return false;
-            auto tbase = (seqlenK - numTarget) / BLOCK_M;
+            auto tbase = (seqlenK - numTarget) / BLOCK_N;
             return (tbase <= kSeqId) && trilMask;
         }
     };
@@ -165,7 +166,7 @@ struct CausalMaskPredictor {
         this->historyMask = diagonal;
 
         this->targetMask = region.NeedTargetMask(this->trilMask);
-        this->needMask = !this->trilMask ? this->contextMask : (this->historyMask || this->targetMask);
+        this->needMask = this->trilMask ? (this->historyMask || this->targetMask) : this->contextMask;
         if (this->contextMask) {
             bp.mask.fusedMaskType |= HAS_CONTEXT;
         }
@@ -181,7 +182,7 @@ struct CausalMaskPredictor {
     // =========================================================================
     // 3b. IsSkip — 上三角且无 context 的块跳过
     // =========================================================================
-    CATLASS_DEVICE bool IsSkip()
+    CATLASS_DEVICE bool IsSkip() const
     {
         return !this->trilMask && !this->contextMask;
     }
@@ -210,6 +211,9 @@ struct CausalMaskPredictor {
             ApplyContextMask(mask, rowCoord, colCoord, mSize, nSize, alignRows, alignCols);
         }
         if (this->params.mask.fusedMaskType & HAS_TARGET) {
+            if (!this->historyMask) {
+                AscendC::Duplicate<Elem>(mask, 0, count);
+            }
             ApplyTargetMask(mask, rowCoord, colCoord, mSize, nSize, alignRows, alignCols);
         }
     }
@@ -277,12 +281,32 @@ private:
     }
 
     // =========================================================================
-    // 4c. ApplyTargetMask — 待开发
+    // 4c. ApplyTargetMask — target region mask
     // =========================================================================
     template <typename Elem>
     CATLASS_DEVICE void ApplyTargetMask(AscendC::LocalTensor<Elem>& mask, int32_t rowCoord, int32_t colCoord,
                                         int32_t mSize, int32_t nSize, uint32_t alignRows, uint32_t alignCols) const
     {
+        int tbaseQ = this->params.geo.seqlenQ - this->params.mask.numTarget;
+        int tbaseK = this->params.geo.seqlenK - this->params.mask.numTarget;
+        int64_t tbaseQInBlk = tbaseQ - rowCoord;
+        int64_t tbaseKInBlk = tbaseK - colCoord;
+        for (int i = 0; i < mSize; i++) {
+            int64_t triNum = (i - tbaseQInBlk) / this->params.mask.targetGroupSize;
+            int64_t triRight = tbaseKInBlk + triNum * this->params.mask.targetGroupSize;
+            if (triNum < 1 || triRight <= 0) {
+                continue;
+            }
+            int64_t validRbound = (triRight >= nSize) ? nSize : triRight;
+            int64_t validLbound = (tbaseKInBlk >= 0) ? tbaseKInBlk : 0;
+            int alignStart = validLbound * sizeof(Elem) / DATA_ALIGN_BYTES * DATA_ALIGN_BYTES / sizeof(Elem);
+            int64_t validWidth = validRbound - alignStart;
+            AscendC::NumericLimits<Elem>::NegativeInfinity(mask[i * alignCols + alignStart], validWidth);
+            if (alignStart != validLbound) {
+                int unalignlen = validLbound - alignStart;
+                AscendC::Duplicate<Elem>(mask[i * alignCols + alignStart], 0, unalignlen);
+            }
+        }
     }
 
     CATLASS_DEVICE bool IsFirst(BlockPredParams& bp) const
