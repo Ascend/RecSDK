@@ -125,4 +125,4 @@ def test_asynchronous_exclusive_cumsum(dtype, device, length, is_mxrec):
     assert torch.equal(result, golden)
 ```
 
-注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例[`RecSDK/cust_op/test/asynchronous_complete_cumsum_test/torch/test_asynchronous_complete_cumsum.py`](../../../../test/asynchronous_complete_cumsum_test/torch/test_asynchronous_complete_cumsum.py)。
+注：上述用例为通用场景执行，更详细的精度、多场景测试请参考用例[`RecSDK/cust_op/test/asynchronous_complete_cumsum_test/torch/test_asynchronous_complete_cumsum.py`](../../../../test/asynchronous_complete_cumsum_test/torch/test_asynchronous_complete_cumsum.py)。

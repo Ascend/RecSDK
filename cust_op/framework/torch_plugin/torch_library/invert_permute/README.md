@@ -44,6 +44,6 @@ output = torch.ops.fbgemm.invert_permute(permute)
 ```
 
 > **提示**
-> 上述用例为通用场景执行，更详细精度、多场景测试用例，请参考完整测试文件：
+> 上述用例为通用场景执行，更详细的精度、多场景测试请参考用例：
 >
 > - [`RecSDK/cust_op/test/invert_permute/torch/test_invert_permute.py`](../../../../test/invert_permute/torch/test_invert_permute.py)

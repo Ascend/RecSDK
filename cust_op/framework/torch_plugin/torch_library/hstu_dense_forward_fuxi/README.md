@@ -160,4 +160,4 @@ class TestHstuJaggedFuxi:
 
 ```
 
-注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense_forward_fuxi/torch/test_hstu_forward_jagged_fuxi.py](../../../../test/hstu_dense_forward_fuxi/torch/test_hstu_forward_jagged_fuxi.py)
+注：上述用例为normal格式简易调用场景，更详细的精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense_forward_fuxi/torch/test_hstu_forward_jagged_fuxi.py](../../../../test/hstu_dense_forward_fuxi/torch/test_hstu_forward_jagged_fuxi.py)

@@ -77,4 +77,4 @@ if __name__ == "__main__":
     segment_sum_npu = get_op(csr_seg.to(DEVICE), values.to(DEVICE), batch_size.item())
 ```
 
-注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例[test_segment_sum_csr.py](../../../../test/segment_sum_csr_test/torch/test_segment_sum_csr.py)。
+注：上述用例为通用场景执行，更详细的精度、多场景测试请参考用例[test_segment_sum_csr.py](../../../../test/segment_sum_csr_test/torch/test_segment_sum_csr.py)。

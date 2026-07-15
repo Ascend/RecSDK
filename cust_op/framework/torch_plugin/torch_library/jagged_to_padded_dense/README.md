@@ -68,7 +68,7 @@ import torch
 
 # 加载NPU自定义算子库
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-# 设置卡号
+# 设置使用卡号
 DEVICE = "npu:0"
 torch_npu.npu.set_device(DEVICE)
 
@@ -99,7 +99,7 @@ import torch_npu
 
 # 加载NPU自定义算子库
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-# 设置用的卡号
+# 设置使用卡号
 DEVICE = "npu:0"
 torch_npu.npu.set_device(DEVICE)
 
@@ -121,4 +121,4 @@ result = torch.ops.fbgemm.jagged_2d_to_dense(
 print("result shape:", result.shape)  # [B, max_sequence_length, D]
 ```
 
-注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例 [test_jagged_to_padded_dense.py](../../../../test/jagged_to_padded_dense_test/torch/test_jagged_to_padded_dense.py)、[test_jagged_2d_to_dense.py](../../../../test/jagged_to_padded_dense_test/torch/test_jagged_2d_to_dense.py)。
+注：上述用例为通用场景执行，更详细的精度、多场景测试请参考用例 [test_jagged_to_padded_dense.py](../../../../test/jagged_to_padded_dense_test/torch/test_jagged_to_padded_dense.py)、[test_jagged_2d_to_dense.py](../../../../test/jagged_to_padded_dense_test/torch/test_jagged_2d_to_dense.py)。

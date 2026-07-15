@@ -79,6 +79,6 @@ split_tensor_a, split_tensor_b = torch.ops.mxrec.split_2d_jagged(concated_tensor
 ```
 
 **提示** \
-上述用例为通用场景执行，更详细精度、多场景测试用例，请参考完整测试文件:
+上述用例为通用场景执行，更详细的精度、多场景测试请参考用例:
 
 [`Rec SDK/cust_op/test/concat_2d_jagged_test/torch/test_concat_2d_jagged_tensor.py`](../../../../test/concat_2d_jagged_test/torch/test_concat_2d_jagged_tensor.py)

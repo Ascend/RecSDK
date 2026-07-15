@@ -229,7 +229,7 @@ export(table_list=table_list)
 
 **功能描述<a name="section123217321652"></a>**
 
-设置是否载入已训练过的模型。
+获取是否载入已训练过的模型。
 
 **函数原型<a name="section8465133218513"></a>**
 

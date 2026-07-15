@@ -13,6 +13,7 @@ Rec SDK Torch 是基于 TorchRec 接口的扩展，Rec SDK Torch 的接口依赖
 >1. 由于 TorchRec 原生接口不在 Rec SDK Torch 的管理范围内，因此将不会对后续接口中涉及到的 TorchRec 原生接口做参数合法性校验，需用户自行保证参数正确性。
 >2. 当前 API 列表是从接口类型维度进行展示，如需从功能特性维度查看 API 使用，请参见[功能特性介绍](../migration_and_training.md#functional_features_description)。
 >3. 部分API参数说明中包含“不支持用户自定义”的描述，表示该参数不支持用户自定义，只能使用默认值，传入非默认值时将抛出异常。
+>4. 相关术语请参见[核心术语](../introduction.md#core_terms)。
 
 ## API 分类概览
 
@@ -41,27 +42,6 @@ Rec SDK Torch 的 API 按接口类型分为以下类别，各文档中带有"（
 6. **[pipeline 接口](pipeline_apis.md)** — 创建训练流水线，串联查表、前向/反向传播
 7. **[多级缓存管理](multilevel_cache_management_apis.md)** / **[准入淘汰管理](access_and_elimination_management_apis.md)** — 进阶功能，按需阅读
 8. **[自定义算子](specialized_operator.md)** — 了解可用的 NPU 加速算子
-
-## 核心术语
-
-| 术语 | 说明 |
-|------|------|
-| 稀疏表（Embedding Table） | 用于存储大规模稀疏特征（如用户 ID、物品 ID）的 Embedding 向量的数据结构。 |
-| embedding_dim | 稀疏表的列数，即每个特征的 Embedding 向量维度，取值范围 [8, 4096] 且需为 8 的倍数。 |
-| num_embeddings | 稀疏表的行数，即最大特征数量，取值范围 [1, 10 亿]。 |
-| Pooling | 将同一特征的多个 Embedding 向量聚合为一个向量的操作，支持 SUM（求和）、MEAN（取平均）、NONE（不做 Pooling）。 |
-| EBC（EmbeddingBagCollection） | 带 Pooling 的稀疏表，查表后自动对同一特征的多条 Embedding 做聚合。纯显存模式使用 HashEmbeddingBagCollection，多级缓存模式使用 EmbCacheEmbeddingBagCollection。 |
-| EC（EmbeddingCollection） | 不带 Pooling 的稀疏表，查表后返回原始 Embedding 列表。多级缓存模式使用 EmbCacheEmbeddingCollection。 |
-| 纯显存模式 | 稀疏表数据全部存放在 NPU 显存中，通过 HybridTrainPipelineSparseDist 进行训练。 |
-| 多级缓存模式 | 稀疏表数据分布在 CPU 内存和 NPU 显存之间，通过 EmbCacheTrainPipelineSparseDist 进行训练，支持更大规模的 Embedding 表。 |
-| row_wise | 按行分表策略，将稀疏表的不同行分配到不同 NPU 卡上。 |
-| data_parallel | 数据并行分表策略，每张 NPU 卡保留完整的稀疏表副本。 |
-| meta 设备 | PyTorch 的虚拟设备类型，用于延迟实际内存分配。在创建稀疏表时指定 "meta" 可先构建模型结构，待 DistributedModelParallel 分表后再实际分配内存。 |
-| 准入（Admit） | 控制新特征 ID 是否被加入到稀疏表中，可通过重复次数阈值或展示/点击分数阈值来过滤低频特征。 |
-| 淘汰（Evict） | 将长时间未访问或分数较低的特征 ID 从稀疏表中移除，以控制表的内存占用。 |
-| JaggedTensor | 持有稀疏 ID 和特征长度的数据结构，每个样本的特征 ID 数量可以不同。 |
-| KeyedJaggedTensor | 在 JaggedTensor 基础上增加特征名称键（key），用于区分不同特征组。 |
-| pipeline | 训练流水线，用于迭代数据集并进行训练。可将训练流程中部分不存在依赖关系的操作并行执行，提高训练效率。 |
 
 ## 接口调用约定
 
