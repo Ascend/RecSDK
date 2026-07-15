@@ -229,4 +229,4 @@ def test_permute_pooled_embs_aligned(types, shapes, is_mxrec):
             assert torch.allclose(gt, pred, atol=1e-4)
 ```
 
-注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例[RecSDK/cust_op/test/permute_pooled_embs/torch/test_permute_pooled_embs.py](../../../../test/permute_pooled_embs/torch/test_permute_pooled_embs.py)。
+注：上述用例为通用场景执行，更详细的精度、多场景测试请参考用例[RecSDK/cust_op/test/permute_pooled_embs/torch/test_permute_pooled_embs.py](../../../../test/permute_pooled_embs/torch/test_permute_pooled_embs.py)。

@@ -66,7 +66,7 @@ print(address_lookup.cpu())
 ```
 
 > **提示**
-> 上述用例为通用场景执行，更详细精度、多场景测试用例，请参考完整测试文件：
+> 上述用例为通用场景执行，更详细的精度、多场景测试请参考用例：
 > [`RecSDK/cust_op/test/init_address_lookup_test/torch/test_init_address_lookup.py`](../../../../test/init_address_lookup_test/torch/test_init_address_lookup.py)
 
 ## 依赖

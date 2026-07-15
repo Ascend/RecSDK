@@ -260,4 +260,4 @@ def test_permute_2D_sparse_data_input1D(types, shapes, enable_permuted_sum, is_m
             assert torch.allclose(gt, pred, atol=1e-5)
 ```
 
-注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例[`RecSDK/cust_op/test/permute2d_sparse_data_test/torch/test_permute2d_sparse_data.py`](../../../../test/permute2d_sparse_data_test/torch/test_permute2d_sparse_data.py)。
+注：上述用例为通用场景执行，更详细的精度、多场景测试请参考用例[`RecSDK/cust_op/test/permute2d_sparse_data_test/torch/test_permute2d_sparse_data.py`](../../../../test/permute2d_sparse_data_test/torch/test_permute2d_sparse_data.py)。

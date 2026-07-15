@@ -210,7 +210,7 @@ This section describes how to use feature admission and eviction for training. I
 **Key Steps**
 
 - In FeatureSpec mode, see [FeatureSpec](./api/class_reference.md#featurespec) for configuration.
-- In automatic graph modification mode, see [Automatic Graph Modification](#Automatic Graph Modification) for configuration.
+- In automatic graph modification mode, see [Automatic Graph Modification](#automatic-graph-modification) for configuration.
 - The `USE_COMBINE_FAAE` environment variable controls whether merged-table statistics are counted.
 - A CPU operator, [`set_threshold`](./api/other_apis.md#import_host_pipeline_ops), lets you change the admission threshold during training.
 

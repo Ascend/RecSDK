@@ -64,4 +64,4 @@ if __name__ == "__main__":
     print("y_op shape", y_op.shape)
 ```
 
-注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例[test_ln_mul.py](../../../../test/ln_mul_test/torch/test_ln_mul.py)。
+注：上述用例为通用场景执行，更详细的精度、多场景测试请参考用例[test_ln_mul.py](../../../../test/ln_mul_test/torch/test_ln_mul.py)。
