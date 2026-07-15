@@ -72,7 +72,7 @@ class Topology:
 |intra_host_bw|float|Optional| When you use an NPU device, only the default value `(600 * 1024 * 1024 * 1024 / 1000)` is supported.|
 |inter_host_bw|float|Optional| When you use an NPU device, only the default value `(12.5 * 1024 * 1024 * 1024 / 1000)` is supported.|
 |bwd_compute_multiplier|float|Optional| When you use an NPU device, only the default value `2` is supported.                               |
-|custom_topology_data|torchrec.distribute.planner.types.CustomTopologyData|Optional| When you use an NPU device, only the default value `None` is supported.                            |
+|custom_topology_data|torchrec.distributed.planner.types.CustomTopologyData|Optional| When you use an NPU device, only the default value `None` is supported.                            |
 |weighted_feature_bwd_compute_multiplier|float|Optional| When you use an NPU device, only the default value `1` is supported.                               |
 |uneven_sharding_perf_multiplier|float|Optional| When you use an NPU device, only the default value `1` is supported.                               |
 

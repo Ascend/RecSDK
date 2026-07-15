@@ -403,7 +403,7 @@ class TestHstuNormalDemo:
 
 ```
 
-注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense/torch/test_hstu_dense_forward.py](../../../../test/hstu_dense/torch/test_hstu_dense_forward.py)
+注：上述用例为normal格式简易调用场景，更详细的精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense/torch/test_hstu_dense_forward.py](../../../../test/hstu_dense/torch/test_hstu_dense_forward.py)
 
 #### hstu_dense_backward接口
 
@@ -494,4 +494,4 @@ class TestHstuNormalDemo:
 
 ```
 
-注：上述用例为normal格式简易调用场景，更详细精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense/torch/test_hstu_dense_backward.py](../../../../test/hstu_dense/torch/test_hstu_dense_backward.py)
+注：上述用例为normal格式简易调用场景，更详细的精度、多场景测试请参考用例[RecSDK/cust_op/test/hstu_dense/torch/test_hstu_dense_backward.py](../../../../test/hstu_dense/torch/test_hstu_dense_backward.py)

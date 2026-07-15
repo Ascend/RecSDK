@@ -99,4 +99,4 @@ def test_dense_to_jagged(dims, types, output_size_type, is_mxrec):
         jagged_embedding = torch.ops.fbgemm.dense_to_jagged(dense_torch, [jagged_id_offset], output_size)[0]
 ```
 
-注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例[`RecSDK/cust_op/test/dense_to_jagged/torch/test_dense_to_jagged.py`](../../../../test/dense_to_jagged/torch/test_dense_to_jagged.py)。
+注：上述用例为通用场景执行，更详细的精度、多场景测试请参考用例[`RecSDK/cust_op/test/dense_to_jagged/torch/test_dense_to_jagged.py`](../../../../test/dense_to_jagged/torch/test_dense_to_jagged.py)。

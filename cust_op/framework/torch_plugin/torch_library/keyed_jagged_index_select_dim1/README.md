@@ -164,4 +164,4 @@ def test_keyed_jagged_index_select_dim1(types, batch_num, batch_size, output_bat
         assert torch.allclose(golden[2], result[2], atol=1e-5)
 ```
 
-注：上述用例为通用场景执行，更详细精度、多场景测试用例请参考用例[`RecSDK/cust_op/test/permute2d_sparse_data_test/torch/test_permute2d_sparse_data.py`](../../../../test/permute2d_sparse_data_test/torch/test_permute2d_sparse_data.py)。
+注：上述用例为通用场景执行，更详细的精度、多场景测试请参考用例[`RecSDK/cust_op/test/permute2d_sparse_data_test/torch/test_permute2d_sparse_data.py`](../../../../test/permute2d_sparse_data_test/torch/test_permute2d_sparse_data.py)。

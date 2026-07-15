@@ -10,7 +10,7 @@
 
 git执行时报错：`error, cannot create async thread: Operation not permitted`。
 
-或者Python脚本执行时报错：`PyCapsule_Import could not import module "datatime"`。
+或者Python脚本执行时报错：`PyCapsule_Import could not import module "datetime"`。
 
 **可能原因**
 
@@ -47,7 +47,7 @@ fbgemm_gpu软件包为TorchRec框架依赖，需安装CPU版本，且需和PyTor
 
 **可能原因**
 
-容器环境中没有python3的可执行文件。
+容器环境中没有`python3`可执行文件。
 
 **解决方案**
 
