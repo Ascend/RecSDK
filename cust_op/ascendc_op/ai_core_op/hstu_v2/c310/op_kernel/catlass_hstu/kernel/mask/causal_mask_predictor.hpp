@@ -40,21 +40,17 @@ struct CausalMaskPredictor {
     // =========================================================================
     struct BlockPredParams {
         // 块几何信息 — 当前 block 在矩阵中的位置
-        struct Geo {
-            uint32_t qSeqId;
-            uint32_t kSeqId;
-            uint32_t seqlenQ;
-            uint32_t seqlenK;
-            uint32_t swizzleDir;
-        } geo;
+        uint32_t qSeqId;
+        uint32_t kSeqId;
+        uint32_t seqlenQ;
+        uint32_t seqlenK;
+        uint32_t swizzleDir;
 
         // Mask 配置 — 分类结果 + runtime 参数
-        struct Mask {
-            uint32_t numContext;
-            uint32_t numTarget;
-            uint32_t targetGroupSize;
-            uint8_t fusedMaskType;  // HAS_CONTEXT | HAS_HISTORY | HAS_TARGET
-        } mask;
+        uint32_t numContext;
+        uint32_t numTarget;
+        uint32_t targetGroupSize;
+        uint8_t fusedMaskType;  // HAS_CONTEXT | HAS_HISTORY | HAS_TARGET
     };
 
     // =========================================================================
@@ -70,23 +66,23 @@ struct CausalMaskPredictor {
         uint32_t sq = tla::get<2>(blockCoord);
         uint32_t sk = tla::get<3>(blockCoord);
 
-        bp.geo.qSeqId = sq;
-        bp.geo.kSeqId = sk;
-        bp.geo.seqlenQ = seqlenQ;
-        bp.geo.seqlenK = seqlenK;
+        bp.qSeqId = sq;
+        bp.kSeqId = sk;
+        bp.seqlenQ = seqlenQ;
+        bp.seqlenK = seqlenK;
         if constexpr (Kernel::IS_CONTEXT_V) {
-            bp.mask.numContext = kernel->gNumContext.GetValue(b);
+            bp.numContext = kernel->gNumContext.GetValue(b);
         } else {
-            bp.mask.numContext = 0;
+            bp.numContext = 0;
         }
         if constexpr (Kernel::IS_TARGET_V) {
-            bp.mask.numTarget = kernel->gNumTarget.GetValue(b);
+            bp.numTarget = kernel->gNumTarget.GetValue(b);
         } else {
-            bp.mask.numTarget = 0;
+            bp.numTarget = 0;
         }
-        bp.mask.targetGroupSize = kernel->targetGroupSize;
-        bp.mask.fusedMaskType = 0;
-        bp.geo.swizzleDir = swizzleDir;
+        bp.targetGroupSize = kernel->targetGroupSize;
+        bp.fusedMaskType = 0;
+        bp.swizzleDir = swizzleDir;
         return bp;
     }
 
@@ -96,59 +92,39 @@ struct CausalMaskPredictor {
     struct MaskRegion {
         const BlockPredParams& p;
 
-        // 构造函数中一次性提取，后续方法直接用，避免重复 p.geo.xxx / p.mask.xxx
-        const uint32_t& qSeqId;
-        const uint32_t& kSeqId;
-        const uint32_t& seqlenK;
-        const uint32_t& seqlenQ;
-        const uint32_t& numContext;
-        const uint32_t& numTarget;
-        const uint32_t& targetGroupSize;
-        const int32_t deltaQK;
+        CATLASS_DEVICE MaskRegion(const BlockPredParams& params) : p(params) {}
 
-        CATLASS_DEVICE MaskRegion(const BlockPredParams& params)
-            : p(params),
-              qSeqId(params.geo.qSeqId),
-              kSeqId(params.geo.kSeqId),
-              seqlenK(params.geo.seqlenK),
-              seqlenQ(params.geo.seqlenQ),
-              numContext(params.mask.numContext),
-              numTarget(params.mask.numTarget),
-              targetGroupSize(params.mask.targetGroupSize),
-              deltaQK(seqlenK - seqlenQ)
+        CATLASS_DEVICE static bool NeedContextMask(const BlockPredParams& p)
         {
-        }
-
-        CATLASS_DEVICE bool NeedContextMask() const
-        {
-            if (numContext <= 0)
+            if (p.numContext <= 0)
                 return false;
-            const uint32_t numBlkQ = CeilDiv(numContext, BLOCK_M);
-            const uint32_t numBlkK = CeilDiv(seqlenK - numTarget, BLOCK_N);
-            return (qSeqId < numBlkQ) && (kSeqId < numBlkK);
+            const uint32_t numBlkQ = CeilDiv(p.numContext, BLOCK_M);
+            const uint32_t numBlkK = CeilDiv(p.seqlenK - p.numTarget, BLOCK_N);
+            return (p.qSeqId < numBlkQ) && (p.kSeqId < numBlkK);
         }
 
-        CATLASS_DEVICE void NeedHistoryMask(bool& belowDig, bool& diagonal) const
+        CATLASS_DEVICE static void NeedHistoryMask(const BlockPredParams& p, bool& belowDig, bool& diagonal)
         {
-            const int qBase = qSeqId * BLOCK_M + deltaQK;
+            const int deltaQK = p.seqlenK - p.seqlenQ;
+            const int qBase = p.qSeqId * BLOCK_M + deltaQK;
             const int rcol = qBase + BLOCK_M - 1;
             const int rblk = rcol / BLOCK_N;
-            belowDig = (kSeqId <= rblk);
+            belowDig = (p.kSeqId <= rblk);
 
             if (!belowDig) {
                 diagonal = false;
                 return;
             }
             const int lblk = qBase / BLOCK_N;
-            diagonal = (kSeqId >= lblk);
+            diagonal = (p.kSeqId >= lblk);
         }
 
-        CATLASS_DEVICE bool NeedTargetMask(bool trilMask) const
+        CATLASS_DEVICE static bool NeedTargetMask(const BlockPredParams& p, bool trilMask)
         {
-            if (numTarget <= 0 || targetGroupSize <= 0)
+            if (p.numTarget <= 0 || p.targetGroupSize <= 0)
                 return false;
-            auto tbase = (seqlenK - numTarget) / BLOCK_N;
-            return (tbase <= kSeqId) && trilMask;
+            auto tbase = (p.seqlenK - p.numTarget) / BLOCK_N;
+            return (tbase <= p.kSeqId) && trilMask;
         }
     };
 
@@ -158,24 +134,30 @@ struct CausalMaskPredictor {
     CATLASS_DEVICE void Classifier(BlockPredParams& bp)
     {
         MaskRegion region(bp);
-        this->contextMask = region.NeedContextMask();
+        const bool contextMask = MaskRegion::NeedContextMask(bp);
 
         bool belowDig, diagonal;
-        region.NeedHistoryMask(belowDig, diagonal);
-        this->trilMask = belowDig;
-        this->historyMask = diagonal;
+        MaskRegion::NeedHistoryMask(bp, belowDig, diagonal);
+        const bool trilMask = belowDig;
+        const bool historyMask = diagonal;
 
-        this->targetMask = region.NeedTargetMask(this->trilMask);
-        this->needMask = this->trilMask ? (this->historyMask || this->targetMask) : this->contextMask;
-        if (this->contextMask) {
-            bp.mask.fusedMaskType |= HAS_CONTEXT;
+        const bool targetMask = MaskRegion::NeedTargetMask(bp, trilMask);
+        const bool needMask = trilMask ? (historyMask || targetMask) : contextMask;
+        if (contextMask) {
+            bp.fusedMaskType |= HAS_CONTEXT;
         }
-        if (this->historyMask) {
-            bp.mask.fusedMaskType |= HAS_HISTORY;
+        if (historyMask) {
+            bp.fusedMaskType |= HAS_HISTORY;
         }
-        if (this->targetMask) {
-            bp.mask.fusedMaskType |= HAS_TARGET;
+        if (targetMask) {
+            bp.fusedMaskType |= HAS_TARGET;
         }
+
+        this->contextMask = contextMask;
+        this->trilMask = trilMask;
+        this->historyMask = historyMask;
+        this->targetMask = targetMask;
+        this->needMask = needMask;
         this->params = bp;
     }
 
@@ -204,13 +186,13 @@ struct CausalMaskPredictor {
         auto count = alignRows * alignCols;
         AscendC::NumericLimits<Elem>::NegativeInfinity(mask, count);
 
-        if (this->params.mask.fusedMaskType & HAS_HISTORY) {
+        if (this->params.fusedMaskType & HAS_HISTORY) {
             ApplyHistoryMask(mask, rowCoord, colCoord, mSize, nSize, alignRows, alignCols);
         }
-        if (this->params.mask.fusedMaskType & HAS_CONTEXT) {
+        if (this->params.fusedMaskType & HAS_CONTEXT) {
             ApplyContextMask(mask, rowCoord, colCoord, mSize, nSize, alignRows, alignCols);
         }
-        if (this->params.mask.fusedMaskType & HAS_TARGET) {
+        if (this->params.fusedMaskType & HAS_TARGET) {
             if (!this->historyMask) {
                 AscendC::Duplicate<Elem>(mask, 0, count);
             }
@@ -222,12 +204,12 @@ struct CausalMaskPredictor {
     {
         this->isFirstQBlock = IsFirst(bp);
         this->isLastQBlock = IsLast(bp);
-        return (bp.geo.swizzleDir == 1) ? this->isFirstQBlock : this->isLastQBlock;
+        return (bp.swizzleDir == 1) ? this->isFirstQBlock : this->isLastQBlock;
     }
 
     CATLASS_DEVICE bool IsInnerLoopLastQBlock(BlockPredParams& bp)
     {
-        return (bp.geo.swizzleDir == 1) ? this->isLastQBlock : this->isFirstQBlock;
+        return (bp.swizzleDir == 1) ? this->isLastQBlock : this->isFirstQBlock;
     }
 
 private:
@@ -238,8 +220,8 @@ private:
     CATLASS_DEVICE void ApplyContextMask(AscendC::LocalTensor<Elem>& mask, int32_t rowCoord, int32_t colCoord,
                                          int32_t mSize, int32_t nSize, uint32_t alignRows, uint32_t alignCols) const
     {
-        auto numCtx = this->params.mask.numContext;
-        auto histKEnd = this->params.geo.seqlenK - this->params.mask.numTarget;
+        auto numCtx = this->params.numContext;
+        auto histKEnd = this->params.seqlenK - this->params.numTarget;
         int validWidth = histKEnd - colCoord;
         if (validWidth > nSize) {
             validWidth = nSize;
@@ -260,7 +242,7 @@ private:
     CATLASS_DEVICE void ApplyHistoryMask(AscendC::LocalTensor<Elem>& mask, int32_t rowCoord, int32_t colCoord,
                                          int32_t mSize, int32_t nSize, uint32_t alignRows, uint32_t alignCols) const
     {
-        int deltaQK = this->params.geo.seqlenK - this->params.geo.seqlenQ;
+        int deltaQK = this->params.seqlenK - this->params.seqlenQ;
         int startMaskWidth = deltaQK + rowCoord - colCoord;
 
         int startMaskRow = 0;
@@ -287,13 +269,13 @@ private:
     CATLASS_DEVICE void ApplyTargetMask(AscendC::LocalTensor<Elem>& mask, int32_t rowCoord, int32_t colCoord,
                                         int32_t mSize, int32_t nSize, uint32_t alignRows, uint32_t alignCols) const
     {
-        int tbaseQ = this->params.geo.seqlenQ - this->params.mask.numTarget;
-        int tbaseK = this->params.geo.seqlenK - this->params.mask.numTarget;
+        int tbaseQ = this->params.seqlenQ - this->params.numTarget;
+        int tbaseK = this->params.seqlenK - this->params.numTarget;
         int64_t tbaseQInBlk = tbaseQ - rowCoord;
         int64_t tbaseKInBlk = tbaseK - colCoord;
         for (int i = 0; i < mSize; i++) {
-            int64_t triNum = (i - tbaseQInBlk) / this->params.mask.targetGroupSize;
-            int64_t triRight = tbaseKInBlk + triNum * this->params.mask.targetGroupSize;
+            int64_t triNum = (i - tbaseQInBlk) / this->params.targetGroupSize;
+            int64_t triRight = tbaseKInBlk + triNum * this->params.targetGroupSize;
             if (triNum < 1 || triRight <= 0) {
                 continue;
             }
@@ -311,17 +293,16 @@ private:
 
     CATLASS_DEVICE bool IsFirst(BlockPredParams& bp) const
     {
-        const uint32_t numBlockForContextMaskK = CeilDiv(bp.geo.seqlenK - bp.mask.numTarget, BLOCK_N);
-        bool kIdNotInContext = (bp.mask.numContext <= 0) || (bp.geo.kSeqId >= numBlockForContextMaskK);
-        const uint32_t deltaBlock = CeilDiv(bp.geo.seqlenK - bp.geo.seqlenQ, BLOCK_N);
-        bool isDiagonal =
-            (bp.geo.kSeqId == bp.geo.qSeqId * 2 + deltaBlock) || (bp.geo.kSeqId == bp.geo.qSeqId * 2 + deltaBlock + 1);
-        return bp.geo.qSeqId == 0 || (isDiagonal && kIdNotInContext);
+        const uint32_t numBlockForContextMaskK = CeilDiv(bp.seqlenK - bp.numTarget, BLOCK_N);
+        bool kIdNotInContext = (bp.numContext <= 0) || (bp.kSeqId >= numBlockForContextMaskK);
+        const uint32_t deltaBlock = CeilDiv(bp.seqlenK - bp.seqlenQ, BLOCK_N);
+        bool isDiagonal = (bp.kSeqId == bp.qSeqId * 2 + deltaBlock) || (bp.kSeqId == bp.qSeqId * 2 + deltaBlock + 1);
+        return bp.qSeqId == 0 || (isDiagonal && kIdNotInContext);
     }
 
     CATLASS_DEVICE bool IsLast(BlockPredParams& bp) const
     {
-        return bp.geo.qSeqId == CeilDiv(bp.geo.seqlenQ, BLOCK_M) - 1;
+        return bp.qSeqId == CeilDiv(bp.seqlenQ, BLOCK_M) - 1;
     }
 
 public:

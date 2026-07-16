@@ -52,8 +52,6 @@ namespace catlass::Epilogue::RegBase {
 
  • @param alpha 注意力分数的缩放系数
 
- • @param scale SiLU 输出缩放因子
-
  • @param count 有效元素数量
 
  • @param repeatTimes 重复次数 (向量化的循环次数)
@@ -71,10 +69,11 @@ namespace catlass::Epilogue::RegBase {
  •              5. 存储梯度结果
 
  */
-template <typename Type, typename AccType, typename GrabType, bool HAS_RAB>
-__simd_vf__ inline void FastSiluGradVf(__ubuf__ AccType* ubSPtr, __ubuf__ Type* ubRabPtr, __ubuf__ Type* ubMaskPtr,
-                                       __ubuf__ Type* ubSiluScorePtr, __ubuf__ GrabType* ubGradPartPtr, AccType alpha,
-                                       AccType scale, uint32_t count, uint32_t repeatTimes, bool needMask)
+template <typename Type, typename AccType, typename GrabType, bool HAS_RAB, bool NEED_MASK>
+__simd_callee__ inline void FastSiluGradVfImpl(__ubuf__ AccType* ubSPtr, __ubuf__ Type* ubRabPtr,
+                                               __ubuf__ Type* ubMaskPtr, __ubuf__ Type* ubSiluScorePtr,
+                                               __ubuf__ GrabType* ubGradPartPtr, AccType alpha, uint32_t count,
+                                               uint32_t repeatTimes)
 {
     constexpr uint32_t oneRepElm = static_cast<uint32_t>(AscendC::GetVecLen() / sizeof(AccType));
 
@@ -91,9 +90,9 @@ __simd_vf__ inline void FastSiluGradVf(__ubuf__ AccType* ubSPtr, __ubuf__ Type* 
     for (uint16_t i = 0; i < repeatTimes; ++i) {
         maskReg = AscendC::MicroAPI::UpdateMask<AccType>(count);
 
-        SiluScore<Type, AccType, HAS_RAB>(ubSPtr + i * oneRepElm, ubRabPtr + i * oneRepElm, ubMaskPtr + i * oneRepElm,
-                                          ubSiluScorePtr + i * oneRepElm, vregA, vregZ, vregT, vregS, vregOnes,
-                                          vregZeros, alpha, maskReg, needMask);
+        SiluScore<Type, AccType, HAS_RAB, NEED_MASK>(ubSPtr + i * oneRepElm, ubRabPtr + i * oneRepElm,
+                                                     ubMaskPtr + i * oneRepElm, ubSiluScorePtr + i * oneRepElm, vregA,
+                                                     vregZ, vregT, vregS, vregOnes, vregZeros, alpha, maskReg);
 
         AscendC::MicroAPI::Sub(vregT, vregOnes, vregZ, maskReg);     // T = 1 - Z
         AscendC::MicroAPI::MulAddDst(vregZ, vregS, vregT, maskReg);  // Z = Z + S * T
@@ -103,6 +102,20 @@ __simd_vf__ inline void FastSiluGradVf(__ubuf__ AccType* ubSPtr, __ubuf__ Type* 
         } else {
             AscendC::MicroAPI::StoreAlign(ubGradPartPtr + i * oneRepElm, vregZ, maskReg);
         }
+    }
+}
+
+template <typename Type, typename AccType, typename GrabType, bool HAS_RAB>
+__simd_vf__ inline void FastSiluGradVf(__ubuf__ AccType* ubSPtr, __ubuf__ Type* ubRabPtr, __ubuf__ Type* ubMaskPtr,
+                                       __ubuf__ Type* ubSiluScorePtr, __ubuf__ GrabType* ubGradPartPtr, AccType alpha,
+                                       uint32_t count, uint32_t repeatTimes, bool needMask)
+{
+    if (needMask) {
+        FastSiluGradVfImpl<Type, AccType, GrabType, HAS_RAB, true>(ubSPtr, ubRabPtr, ubMaskPtr, ubSiluScorePtr,
+                                                                   ubGradPartPtr, alpha, count, repeatTimes);
+    } else {
+        FastSiluGradVfImpl<Type, AccType, GrabType, HAS_RAB, false>(ubSPtr, ubRabPtr, ubMaskPtr, ubSiluScorePtr,
+                                                                    ubGradPartPtr, alpha, count, repeatTimes);
     }
 }
 
