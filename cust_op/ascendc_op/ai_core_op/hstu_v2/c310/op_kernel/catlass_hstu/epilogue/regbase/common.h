@@ -52,6 +52,7 @@ __simd_callee__ inline void CastDownStore(__ubuf__ dstType* dst, AscendC::MicroA
                                           AscendC::MicroAPI::MaskReg& maskReg)
 {
     // float->bfloat16/float16
+    // SAT: 溢出时饱和到 dstType 范围,避免回绕
     static constexpr AscendC::MicroAPI::CastTrait castNativeTrait = {
         AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
         AscendC::RoundMode::CAST_RINT};
