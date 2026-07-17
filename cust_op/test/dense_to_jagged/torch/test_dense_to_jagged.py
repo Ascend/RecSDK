@@ -19,30 +19,36 @@ import logging
 import sysconfig
 
 import pytest
-import fbgemm_gpu
 import numpy as np
-import torch_npu
 import torch
+import fbgemm_gpu  # noqa: F401
+import torch_npu  # noqa: F401
 
 DEVICE = "npu:0"
 logging.getLogger().setLevel(logging.INFO)
 torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
-DENSE_DIM0 = [128, 40, 1000] # 测试不同batch大小
-DENSE_DIM1 = [210, 1024]     # 固定特征维度1
-DENSE_DIM2 = [1, 8, 1536]    # 固定特征维度2
+DENSE_DIM0 = [128, 40, 1000]  # 测试不同batch大小
+DENSE_DIM1 = [210, 1024]  # 固定特征维度1
+DENSE_DIM2 = [1, 8, 1536]  # 固定特征维度2
 DIM_LIST = list(itertools.product(DENSE_DIM0, DENSE_DIM1, DENSE_DIM2))
 
-DENSE_DATATYPE = [torch.float32, torch.int64, torch.bfloat16, torch.float16, torch.int32]  # 增加BF16、FP16和INT32支持
+DENSE_DATATYPE = [
+    torch.float32,
+    torch.int64,
+    torch.bfloat16,
+    torch.float16,
+    torch.int32,
+]  # 增加BF16、FP16和INT32支持
 OFFSET_DATATYPE = [torch.int32, torch.int64]  # 偏移量数据类型
 TYPE_LIST = list(itertools.product(DENSE_DATATYPE, OFFSET_DATATYPE))
 
 # 边界测试用例
 EDGE_CASE_DIMS = [
-    (1, 10, 1),       # 最小batch和特征维度
-    (10, 1, 16),      # 最小序列长度
-    (1, 1, 1),        # 所有维度都最小
-    (256, 500, 32),   # 较大的batch和特征维度
+    (1, 10, 1),  # 最小batch和特征维度
+    (10, 1, 16),  # 最小序列长度
+    (1, 1, 1),  # 所有维度都最小
+    (256, 500, 32),  # 较大的batch和特征维度
 ]
 
 
@@ -120,8 +126,9 @@ def get_result(device, denses, offsets, types, use_output_size=False, is_mxrec=F
 def compare_results(golden_result, npu_result, tolerance=1e-4):
     """比较CPU和NPU的结果"""
     # 检查两个结果的形状是否相同
-    assert golden_result.shape == npu_result.shape, \
+    assert golden_result.shape == npu_result.shape, (
         f"Shape mismatch: golden {golden_result.shape} vs npu {npu_result.shape}"
+    )
 
     # 对所有张量进行数值比较（包括空张量）
     if golden_result.numel() > 0:
@@ -212,23 +219,16 @@ def test_dense_to_jagged(dims, types, use_output_size, is_mxrec):
     # 7. 计算NPU前向传播
     if is_mxrec:
         npu_jagged_for_grad = torch.ops.mxrec.dense_to_jagged(
-            input_dense_npu,
-            [jagged_id_offset.to(DEVICE)],
-            output_size
+            input_dense_npu, [jagged_id_offset.to(DEVICE)], output_size
         )[0]
     else:
         npu_jagged_for_grad = torch.ops.fbgemm.dense_to_jagged(
-            input_dense_npu,
-            [jagged_id_offset.to(DEVICE)],
-            output_size
+            input_dense_npu, [jagged_id_offset.to(DEVICE)], output_size
         )[0]
 
     # 8. 计算NPU python实现前向传播
     npu_py_jagged_for_grad = dense_to_jagged_wrapper(
-        input_dense_npu_py,
-        [jagged_id_offset.to(DEVICE)],
-        is_mxrec,
-        output_size
+        input_dense_npu_py, [jagged_id_offset.to(DEVICE)], is_mxrec, output_size
     )[0]
 
     # 9. 生成随机梯度(与输出形状相同)
@@ -247,7 +247,7 @@ def test_dense_to_jagged(dims, types, use_output_size, is_mxrec):
         npu_py_grad_input.cpu(),
         npu_grad_input.cpu(),
         atol=get_tolerance(types[0]),
-        rtol=get_tolerance(types[0])
+        rtol=get_tolerance(types[0]),
     ), f"NPU python梯度与NPU梯度不匹配\nNPU python梯度:\n{npu_py_grad_input.cpu()}\nNPU梯度:\n{npu_grad_input.cpu()}"
 
 
@@ -320,8 +320,7 @@ def test_dense_to_jagged_forward_npu_fbgemm_call():
     output_size = jagged_id_offset[-1]
 
     # 通过fbgemm调用dense_to_jagged_forward
-    jagged_embedding = torch.ops.fbgemm.dense_to_jagged_forward(
-        dense_torch, [jagged_id_offset], output_size)
+    jagged_embedding = torch.ops.fbgemm.dense_to_jagged_forward(dense_torch, [jagged_id_offset], output_size)
 
     # 验证结果
     assert jagged_embedding is not None
@@ -347,8 +346,7 @@ def test_dense_to_jagged_forward_npu_mxrec_call():
     output_size = jagged_id_offset[-1]
 
     # 通过mxrec调用dense_to_jagged_forward
-    jagged_embedding = torch.ops.mxrec.dense_to_jagged_forward(
-        dense_torch, [jagged_id_offset], output_size)
+    jagged_embedding = torch.ops.mxrec.dense_to_jagged_forward(dense_torch, [jagged_id_offset], output_size)
 
     # 验证结果
     assert jagged_embedding is not None
@@ -374,8 +372,7 @@ def test_dense_to_jagged_forward_npu_int32_dense():
     output_size = jagged_id_offset[-1]
 
     # 通过fbgemm调用dense_to_jagged_forward处理int32类型
-    jagged_embedding = torch.ops.fbgemm.dense_to_jagged_forward(
-        dense_torch, [jagged_id_offset], output_size)
+    jagged_embedding = torch.ops.fbgemm.dense_to_jagged_forward(dense_torch, [jagged_id_offset], output_size)
 
     # 验证结果
     assert jagged_embedding is not None
@@ -402,11 +399,44 @@ def test_dense_to_jagged_npu_fbgemm_call():
     output_size = jagged_id_offset[-1]
 
     # 通过fbgemm调用dense_to_jagged
-    jagged_embedding, offset_list = torch.ops.fbgemm.dense_to_jagged(
-        dense_torch, [jagged_id_offset], output_size)
+    jagged_embedding, offset_list = torch.ops.fbgemm.dense_to_jagged(dense_torch, [jagged_id_offset], output_size)
 
     # 验证结果
     assert jagged_embedding is not None
     assert len(offset_list) == 1
     assert jagged_embedding.shape[0] == output_size
     assert jagged_embedding.shape[1] == dense_dim2
+
+
+# ruff: off
+def test_dense_to_jagged_exceptions():
+    """测试 dense_to_jagged 算子的异常校验"""
+    # pylint: disable=unused-variable,line-too-long
+    # 1. 测试 dense 维度非 3D (例如 2D)
+    dense_2d = torch.randn(10, 8, device=DEVICE)
+    offsets = torch.tensor([0, 5, 10], dtype=torch.int32, device=DEVICE)
+    with pytest.raises(Exception) as ctx:
+        torch.ops.mxrec.dense_to_jagged(dense_2d, [offsets])
+    assert "dense must be 3D" in str(ctx.value)
+
+    # 2. 测试 offsets 列表长度不为 1 (例如为 2)
+    dense_3d = torch.randn(10, 8, 4, device=DEVICE)
+    offsets_2 = [offsets, offsets]
+    with pytest.raises(Exception) as ctx:
+        torch.ops.mxrec.dense_to_jagged(dense_3d, offsets_2)
+    assert "Only single-dimension jagged tensors supported" in str(ctx.value)
+
+    # 3. 测试 offsets 张量维度非 1D (例如 2D)
+    offsets_2d = torch.tensor([[0, 5], [5, 10]], dtype=torch.int32, device=DEVICE)
+    with pytest.raises(Exception) as ctx:
+        torch.ops.mxrec.dense_to_jagged(dense_3d, [offsets_2d])
+    assert "cannot be converted to Scalar" in str(ctx.value)
+
+    # 4. 测试 total_L 不匹配从 offsets 计算的值
+    # 期望的值是 offsets[-1] = 10，这里传入 12
+    with pytest.raises(Exception) as ctx:
+        torch.ops.mxrec.dense_to_jagged(dense_3d, [offsets], total_L=12)
+    assert "does not match the value calculated from offsets" in str(ctx.value)
+
+
+# ruff: on

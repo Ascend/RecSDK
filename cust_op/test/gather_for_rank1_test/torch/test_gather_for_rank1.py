@@ -18,7 +18,8 @@
 import sysconfig
 import pytest
 import torch
-import torch_npu
+import fbgemm_gpu  # noqa: F401
+import torch_npu  # noqa: F401
 import numpy as np
 
 torch.npu.config.allow_internal_format = False
@@ -70,3 +71,27 @@ def test_gather_for_rank1(embedding_dim, index_shape, device):
 
     assert np.allclose(result, result_op, atol=1e-6)
     assert np.allclose(grad, grad_op, atol=1e-5)
+
+
+# ruff: off
+def test_gather_for_rank1_exceptions():
+    """测试 gather_for_rank1 算子的异常校验"""
+    # pylint: disable=unused-variable,line-too-long
+    target_device = "npu:0"
+    x = torch.randn(10, device=target_device)
+    index = torch.tensor([0, 2, 4], dtype=torch.int64, device=target_device)
+
+    # 1. 测试 x 维度非 1D (例如 2D)
+    x_2d = torch.randn(10, 2, device=target_device)
+    with pytest.raises(Exception) as ctx:
+        torch.ops.mxrec.gather_for_rank1(x_2d, index)
+    assert "The x should be 1D" in str(ctx.value)
+
+    # 2. 测试 index 维度非 1D (例如 2D)
+    index_2d = torch.tensor([[0, 2], [2, 4]], dtype=torch.int64, device=target_device)
+    with pytest.raises(Exception) as ctx:
+        torch.ops.mxrec.gather_for_rank1(x, index_2d)
+    assert "The index should be 1D" in str(ctx.value)
+
+
+# ruff: on
