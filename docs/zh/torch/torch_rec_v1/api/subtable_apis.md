@@ -30,9 +30,9 @@ class ShardingEnv:
 
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
-|world_size|int|必选|使用的卡数。取值范围：[1，8]|
-|rank|int|必选|当前的卡号。取值范围：[0，world_size -1]|
-|pg|dist.ProcessGroup|必选|分布式通讯链接。取值范围：只支持backend为hccl和gloo的链接。hccl在PyTorch里面的backend_name为custom。|
+|world_size|int|必选|使用的卡数。取值范围：[1, 8]|
+|rank|int|必选|当前的卡号。取值范围：[0, world_size - 1]|
+|pg|dist.ProcessGroup|必选|分布式通信进程组。取值范围：只支持backend为hccl和gloo的进程组。hccl在PyTorch里面的backend_name为custom。|
 |output_dtensor|bool|可选|仅支持默认值为False，不支持用户自定义。|
 
 **使用示例**
@@ -206,7 +206,7 @@ def get_default_hybrid_sharders(host_env: ShardingEnv) -> List[ModuleSharder[nn.
 
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
-|host_env|ShardingEnv|必选|传入host连接需要的通讯域。host侧通讯域仅支持backend为"gloo"，详细实现请参考当前API使用示例。|
+|host_env|ShardingEnv|必选|传入host连接需要的通信域。host侧通信域仅支持backend为"gloo"，详细实现请参考当前API使用示例。|
 
 **返回值<a name="section06646162266"></a>**
 

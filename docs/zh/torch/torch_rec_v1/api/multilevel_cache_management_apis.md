@@ -10,8 +10,8 @@
 
 ```python
 class InitializerType(Enum):
-    LINEAR ="linear"
-    TRUNCATED_NORMAL ="truncated_normal"
+    LINEAR = "linear"
+    TRUNCATED_NORMAL = "truncated_normal"
     UNIFORM = "uniform"
 ```
 
@@ -70,7 +70,7 @@ class Saver:
 |--|--|--|--|
 |rank|int|可选|当前进程在整个world_size中的rank。当torch分布式环境已初始化时，该参数为可选，此时将使用torch.distributed.get_rank()获取rank；否则该参数为必选。|
 |module|torch.nn.Module|必选|模型对象实例。模型（或子模型）需包含类型为EmbCacheShardedEmbeddingBagCollection/EmbCacheShardedEmbeddingCollection的模型实例，且深度不能超过500。使用多级缓存支持的创表接口/分表接口进行模型创建和模型分片时即满足要求。|
-|path|string|必选|保存/加载路径，长度取值范围：[1,1024]。<div><div>[!NOTICE]</div><div>保存/加载的路径中不能包含软链接和敏感字符（Key、password、privatekey），不能使用特殊路径（如/usr下的路径），且路径的权限不能高于750。</div></div>|
+|path|str|必选|保存/加载路径，长度取值范围：[1,1024]。<br>保存/加载的路径中不能包含软链接和敏感字符（Key、password、privatekey），不能使用特殊路径（如/usr下的路径），且路径的权限不能高于750。|
 |incremental|bool|可选|是否开启增量保存/加载功能。默认为False，表示不开启。增量保存/加载功能适用于pipeline训练模式下生成的增量数据，且需要创建表时在[EmbCacheEmbeddingBagConfig](table_creation_apis.md#embcacheembeddingbagconfig)/[EmbCacheEmbeddingConfig](table_creation_apis.md#embcacheembeddingconfig)配置is_incremental参数为True。|
 
 >[!NOTE]
