@@ -56,9 +56,11 @@ docker run \
 bash run_docker.sh 容器名 镜像名称:镜像版本
 ```
 
-### 刷新容器内环境变量
+### 刷新容器内环境变量<a id="refresh_container_env"></a>
 
-26.1.0-*及之后的镜像中内置了Python虚拟环境，需要刷新环境变量。使用`ll /opt/buildtools/torch_v1_pt2.6.0/bin/activate`指令判断Python虚拟环境是否存在：若回显显示文件详细信息表示存在，若回显包含“No such file or directory”表示不存在。
+26.1.0*及之后版本镜像中内置了Python虚拟环境，需要刷新环境变量。使用`ll /opt/buildtools/torch_v1_pt2.6.0/bin/activate`指令判断Python虚拟环境是否存在：若回显显示文件详细信息表示存在，若回显包含“No such file or directory”表示不存在。
+
+26.0.0*版本镜像内无Python虚拟环境，环境变量已配置好，无需手动刷新。
 
 若Python虚拟环境存在则执行如下命令刷新容器内环境变量：
 
@@ -79,9 +81,9 @@ source /usr/local/set_cann_env.sh a2
 npu-smi info
 ```
 
->[!NOTE]
+> [!NOTE]
 >
-> 前面章节中启动容器指令使用的非特权模式启动，如果有其他容器也挂载了相同NPU卡会导致当前容器NPU内卡不能使用，执行`npu-smi info`时会报错："dcmi model initialized failed, because the device is used. ret is -8020"。
+> 前面章节中启动容器指令使用的非特权模式启动，如果有其他容器也挂载了相同NPU卡会导致当前容器内的 NPU 卡不能使用，执行`npu-smi info`时会报错："dcmi model initialized failed, because the device is used. ret is -8020"。
 >
 > 此时请停止其他容器，确保环境可用。或者**修改容器启动指令**中的ASCEND_VISIBLE_DEVICES参数值，仅挂载可用的NPU卡。ASCEND_VISIBLE_DEVICES参数设置方式参考：`ASCEND_VISIBLE_DEVICES=0,1,2,3`，`ASCEND_VISIBLE_DEVICES=0-1`。
 
@@ -331,14 +333,14 @@ WORLD_SIZE=1 RANK=0 python3 main.py
 torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=2 main.py
 ```
 
-预期耗时：1~2min。
+预期耗时： 1~2 min。
 
 预期输出：训练结束后出现`demo done`字样，说明模型训练完成。
 
 >[!NOTE]
-> 模型训练时会占用6000端口号，若提示端口已被占用，请修改main.py脚本/启动指令（启动多卡时）中的端口号为其他未被占用的端口。
+> 模型训练时会占用 6000 端口号，若提示端口已被占用，请修改main.py脚本/启动指令（启动多卡时）中的端口号为其他未被占用的端口。
 
 ## 进阶开发
 
-1. Rec SDK Torch支持Torch开源推荐模型迁移适配，如需了解开源DLRM（DCNv2）模型迁移Rec SDK Torch可参考[DLRM（DCNv2）模型迁移样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md)。
+1. Rec SDK Torch支持Torch开源推荐模型迁移适配，如需了解开源DLRM（DCNv2）模型迁移至Rec SDK Torch的样例，可参考[DLRM（DCNv2）模型迁移样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md)。
 2. 如需了解Rec SDK Torch其他功能，可参考[Rec SDK Torch API文档](./api/api_description.md)。

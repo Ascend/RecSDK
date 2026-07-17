@@ -78,12 +78,12 @@ def progress(self, dataloader_iter: Iterator[In]) -> Out:
 
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
-|dataloader_iter|Iterator[In]|必选|数据集迭代器。该迭代器返回用于查表和训练的Batch类，详细实现可参考当前API使用示例。|
+|dataloader_iter|Iterator[In]|必选|数据集迭代器。该迭代器返回用于查表和训练的Batch类，详细实现请参考当前API使用示例。|
 
 **返回值说明<a name="section10745722145816"></a>**
 
 - 成功：返回模型的输出。
-- 失败：抛出异常。
+- 失败：抛出StopIteration异常或RuntimeError。
 
 **使用示例<a name="section09971948135814"></a>**
 

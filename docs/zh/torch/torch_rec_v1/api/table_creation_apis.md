@@ -1,5 +1,15 @@
 # 创表接口<a name="ZH-CN_TOPIC_0000002336148893"></a>
 
+Rec SDK Torch提供两类稀疏表配置与创建接口，分别对应纯显存模式和多级缓存模式，并按是否带Pooling划分为EBC与EC两种查表模式。各Config与Collection的对应关系如下表所示。
+
+**表 1**  Config与Collection对应关系
+
+| 模式 | 是否带Pooling | Config配置类 | Collection创建类 |
+|------|------------|-------------|------------------|
+| 纯显存模式 | 是（EBC） | HashEmbeddingBagConfig | HashEmbeddingBagCollection |
+| 多级缓存模式 | 是（EBC） | EmbCacheEmbeddingBagConfig | EmbCacheEmbeddingBagCollection |
+| 多级缓存模式 | 否（EC） | EmbCacheEmbeddingConfig | EmbCacheEmbeddingCollection |
+
 ## HashEmbeddingBagConfig<a name="ZH-CN_TOPIC_0000002336148933"></a>
 
 **功能描述<a name="section634582619155"></a>**
@@ -96,7 +106,7 @@ class HashEmbeddingBagCollection(EmbeddingBagCollectionInterface):
 
 | 参数名         | 类型                                                 | 可选/必选 | 说明                                                                                                                                                                                                                                                                                                      |
 |-------------|----------------------------------------------------|-------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| tables      | List[HashEmbeddingBagConfig \| EmbeddingBagConfig] | 必选    | 稀疏表配置文件列表。列表长度的取值范围：[1, 10000]。<p>参数范围参考HashEmbeddingBagConfig。</p>                                                                                                                                                                                                                                     |
+| tables      | List[HashEmbeddingBagConfig \| EmbeddingBagConfig] | 必选    | 稀疏表配置列表。列表长度的取值范围：[1, 10000]。<p>参数范围参考HashEmbeddingBagConfig。</p>                                                                                                                                                                                                                                     |
 | is_weighted | bool                                               | 可选    | 仅支持默认值为False。                                                                                                                                                                                                                                                                                           |
 | device      | Union[str, torch.device]                                  | 可选    | 稀疏表的设备。默认为torch.device("cpu")。<br>如果为str取值范围：<ul><li>"npu"：npu设备。</li><li>"meta"：meta设备。</li><li>"cpu"：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul><br>如果为torch.device取值范围：<ul><li>torch.device("npu")：npu设备。</li><li>torch.device("meta")：meta设备。</li><li>torch.device("cpu")：cpu设备。cpu设备不支持分布式表，只支持单机表。</li></ul> |
 
@@ -245,7 +255,7 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
 
 | 参数名                     | 类型                                                | 可选/必选 | 说明                                                                                                                                                             |
 |-------------------------|---------------------------------------------------|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| tables                  | List[EmbCacheEmbeddingBagConfig\|EmbeddingBagConfig] | 必选    | 稀疏表配置文件列表。列表长度的取值范围为[1，10000]。                                                                                                                                 |
+| tables                  | List[EmbCacheEmbeddingBagConfig\|EmbeddingBagConfig] | 必选    | 稀疏表配置列表。列表长度的取值范围为[1，10000]。                                                                                                                                 |
 | world_size              | int                                               | 必选    | 分布式训练world_size大小，取值范围为[1，10000]。                                                                                                                              |
 | batch_size              | int                                               | 必选    | 批次大小，取值范围为[1，102400]。                                                                                                                                          |
 | multi_hot_sizes         | List[int]                                         | 必选    | 每个特征的多热编码大小列表，用于计算训练中所需的最小device内存大小。该参数列表的长度必须与tables的列表长度相同，取值范围为[1，10000]；列表中多热编码大小的取值范围为[1，102400]。                                                                               |

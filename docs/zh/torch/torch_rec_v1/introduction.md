@@ -1,12 +1,19 @@
 # 简介<a name="ZH-CN_TOPIC_0000002302229580"></a>
 
+Rec SDK Torch 是基于 PyTorch 和 TorchRec 构建的推荐系统训练框架，依托昇腾 NPU 和 CANN 异构计算架构，为搜索、推荐、广告等场景提供大规模稀疏特征 Embedding 表的高性能分布式训练能力。
+
 ## 核心术语<a id="core_terms"></a>
 
 | 术语 | 说明 |
 |------|------|
+| NPU | Neural Processing Unit，神经网络处理器，昇腾 AI 处理器，用于执行深度学习相关的计算任务。 |
+| CANN | Compute Architecture for Neural Networks，昇腾计算架构，是华为针对昇腾 AI 处理器开发的异构计算架构，为深度学习提供算子库和运行时支持。 |
+| PyTorch | 一个开源的深度学习框架，提供动态计算图、自动微分和丰富的神经网络模块，广泛用于模型训练与推理。 |
+| TorchRec | 基于 PyTorch 的推荐系统库，提供大规模稀疏特征 Embedding 表的分布式训练能力，包括稀疏表、优化器、流水线等核心组件。 |
+| Embedding | 将离散型特征（如用户 ID、物品 ID）映射为低维稠密向量的技术，是推荐系统中表征特征语义的核心方法。 |
 | 稀疏表（Embedding Table） | 用于存储大规模稀疏特征（如用户 ID、物品 ID）的 Embedding 向量的数据结构。 |
-| embedding_dim | 稀疏表的列数，即每个特征的 Embedding 向量维度，取值范围 [8, 4096] 且需为 8 的倍数。 |
-| num_embeddings | 稀疏表的行数，即最大特征数量，取值范围 [1, 10 亿]。 |
+| embedding_dim | 稀疏表的列数，即每个特征的 Embedding 向量维度。 |
+| num_embeddings | 稀疏表的行数，即最大特征数量。 |
 | JaggedTensor | 持有稀疏 ID 和特征长度的数据结构，每个样本的特征 ID 数量可以不同。 |
 | KeyedJaggedTensor | 在 JaggedTensor 基础上增加特征名称键（key），用于区分不同特征组。 |
 | Pooling | 将同一特征的多个 Embedding 向量聚合为一个向量的操作，支持 SUM（求和）、MEAN（取平均）、NONE（不做 Pooling）。 |
@@ -31,7 +38,7 @@ Rec SDK Torch涉及功能如下：
 
 - 推荐场景特有功能
 
-    基于Rec SDK Torch的稀疏表方案，Rec SDK Torch提供推荐的必备功能，如非亲和算子卸载，哈希映射功能等。
+    基于Rec SDK Torch的稀疏表方案，Rec SDK Torch提供推荐的必备功能，如非亲和算子卸载、哈希映射功能等。
 
 - 大规模稀疏表特有功能
 
@@ -57,7 +64,7 @@ Rec SDK Torch为用户提供了哈希映射、Row-wise分表、EC/EBC查表模�
 
 - 流水线查表
 
-    Rec SDK Torch查表任务由通讯、CPU、NPU计算等多个子任务构成。Rec SDK Torch提供了流水线查表方法让子任务之间可以并行以充分发挥硬件算力。
+    Rec SDK Torch查表任务由通信、CPU、NPU计算等多个子任务构成。Rec SDK Torch提供了流水线查表方法让子任务之间可以并行以充分发挥硬件算力。
 
 - 查表融合算子
 
@@ -102,6 +109,6 @@ Rec SDK Torch基于TorchRec、推荐场景主流框架、CANN和各种硬件和�
   </tr>
   <tr>
     <td>ARM</td>
-    <td>OpenEuler版本：22.03</td>
+    <td>openEuler版本：22.03</td>
   </tr>
 </table>
