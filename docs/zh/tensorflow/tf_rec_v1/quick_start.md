@@ -29,6 +29,8 @@ little_demo仅作参考学习，不支持在little_demo上适配用户自己的�
 
 ## 接口调用介绍<a name="ZH-CN_TOPIC_0000001801480550"></a>
 
+本章所列代码片段为Python源码示例，需结合完整项目环境方可运行，单独复制无法正常运行。
+
 ![](../../figures/tf_rec_v1/6-1快速入门.png)
 
 1. 初始化框架。在main.py中调用init接口，传入初始化框架需要的相关参数。相关参数请参见[init](./api/initialization_and_deinitialization_of_the_training_framework.md#init)。
@@ -267,7 +269,7 @@ CM_WORKER_SIZE=8
 
     正常开始执行，打印信息参考如下。
 
-    ```bash
+    ```text
     ip: {host_ip} available.
     The ranktable solution is removed.
     CM_CHIEF_IP={host_ip}
@@ -283,7 +285,7 @@ CM_WORKER_SIZE=8
 
     执行完成，日志信息显示参考如下。
 
-    ```bash
+    ```text
     ASC manager has been destroyed.
     MPI has been destroyed.
     Demo done!
@@ -441,7 +443,7 @@ CM_WORKER_SIZE=8
 
             在main.py顶部import os的下一行添加如下代码：
 
-            ```bash
+            ```python
             # no ranktable时设置CM_WORKER_IP环境变量为当前节点ip，{host_ip}为当前节点ip。
             if not os.getenv("RANK_TABLE_FILE", ""):
                 os.environ['CM_WORKER_IP'] = "{host_ip}"
