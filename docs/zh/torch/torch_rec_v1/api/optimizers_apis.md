@@ -2,9 +2,9 @@
 
 ## apply\_optimizer\_in\_backward（TorchRec）<a name="TOPIC_0000002302229708"></a>
 
->[!NOTICE]
+> [!NOTICE]
 >
->此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
+> 此接口为TorchRec开源接口，非Rec SDK Torch对外接口。此章节介绍使用Rec SDK Torch时调用的TorchRec接口支持的参数范围。
 
 **功能描述<a name="section634582619155"></a>**
 
@@ -203,7 +203,7 @@ class CombinedOptimizer(KeyedOptimizer):
 
 | 参数名    | 类型                                                                              | 可选/必选 | 说明                                                                                                                                                            |
 |--------|---------------------------------------------------------------------------------|-------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| optims | <ul><li>List[KeyedOptimizer]</li><li>List[Tuple[str, KeyedOptimizer]]</li></ul> | 必选    | 需要合并的优化器对象列表，可以为空列表。<br>用户需要自行保证其输入值来源于CombinedOptimizer（TorchRec）或者[DistributedModelParallel（TorchRec）](./subtable_apis.md#distributedmodelparalleltorchrec)的fused_optimizer。 |
+| optims | <ul><li>List[KeyedOptimizer]</li><li>List[Tuple[str, KeyedOptimizer]]</li></ul> | 必选    | 需要合并的优化器对象列表，可以为空列表。<br>用户需要自行保证其输入值来源于CombinedOptimizer（TorchRec）或者[DistributedModelParallel（TorchRec）](./subtable_apis.md#TOPIC_0000002338384297)的fused_optimizer。 |
 
 **返回值说明**
 

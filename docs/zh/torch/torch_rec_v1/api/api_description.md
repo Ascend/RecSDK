@@ -4,16 +4,16 @@
 
 Rec SDK Torch 通过 Python 接口进行应用开发，从代码调用角度上来说所有 Python 侧接口都可以被调用。
 
-本章节仅列出业务提供的对外接口，其余未进行说明的接口用户请勿直接调用。
+本章节仅列出业务提供的对外接口，其余未进行说明的接口，用户请勿直接调用。
 
-Rec SDK Torch 是基于 TorchRec 接口的扩展，Rec SDK Torch 的接口依赖于 TorchRec 提供的类和方法，但是并不能支持 TorchRec 的所有功能。本章节介绍基于 Rec SDK Torch 搭建模型时使用的 TorchRec 接口限制。
+Rec SDK Torch 是基于 TorchRec 接口的扩展，Rec SDK Torch 的接口依赖于 TorchRec 提供的类和方法，但是并不能支持 TorchRec 的所有功能。本章节介绍基于 Rec SDK Torch 搭建模型时对 TorchRec 接口限制。
 
->[!NOTICE]
+> [!NOTICE]
 >
->1. 由于 TorchRec 原生接口不在 Rec SDK Torch 的管理范围内，因此将不会对后续接口中涉及到的 TorchRec 原生接口做参数合法性校验，需用户自行保证参数正确性。
->2. 当前 API 列表是从接口类型维度进行展示，如需从功能特性维度查看 API 使用，请参见[功能特性介绍](../migration_and_training.md#functional_features_description)。
->3. 部分API参数说明中包含“不支持用户自定义”的描述，表示该参数不支持用户自定义，只能使用默认值，传入非默认值时将抛出异常。
->4. 相关术语请参见[核心术语](../introduction.md#core_terms)。
+> 1. 由于 TorchRec 原生接口不在 Rec SDK Torch 的管理范围内，因此将不会对后续接口中涉及到的 TorchRec 原生接口做参数合法性校验，需用户自行保证参数正确性。
+> 2. 当前 API 列表是从接口类型维度进行展示，如需从功能特性维度查看 API 使用，请参见[功能特性介绍](../migration_and_training.md#functional_features_description)。
+> 3. 部分API参数说明中包含“不支持用户自定义”的描述，表示该参数不支持用户自定义，只能使用默认值，传入非默认值时将抛出异常。
+> 4. 相关术语请参见[核心术语](../introduction.md#core_terms)。
 
 ## API 分类概览
 
@@ -23,7 +23,7 @@ Rec SDK Torch 的 API 按接口类型分为以下类别，各文档中带有"（
 |------|------|------|
 | 创表接口 | [table_creation_apis.md](table_creation_apis.md) | 稀疏表的配置与创建，包含纯显存模式和多级缓存模式两类创表方式。 |
 | 数据接口 | [data_apis.md](data_apis.md) | 稀疏数据的表示和封装，用于向稀疏表传入查询 ID 和特征信息。 |
-| 分表接口 | [subtable_apis.md](subtable_apis.md) | 分布式环境下稀疏表的分片策略和执行稀疏表分表。 |
+| 分表接口 | [subtable_apis.md](subtable_apis.md) | 分布式环境下稀疏表的分片策略和分表执行。 |
 | 优化器接口 | [optimizers_apis.md](optimizers_apis.md) | 稀疏表参数的优化器配置，支持梯度累积功能。 |
 | pipeline 接口 | [pipeline_apis.md](pipeline_apis.md) | 训练流水线的创建和执行，支持纯显存和多级缓存两种流水线模式。 |
 | 多级缓存管理 | [multilevel_cache_management_apis.md](multilevel_cache_management_apis.md) | 多级缓存模式下的模型保存/加载及权重初始化类型。 |
