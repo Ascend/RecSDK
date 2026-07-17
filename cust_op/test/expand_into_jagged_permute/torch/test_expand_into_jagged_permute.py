@@ -22,8 +22,8 @@ from dataclasses import dataclass
 
 import pytest
 import torch
-import torch_npu
-import fbgemm_gpu
+import fbgemm_gpu  # noqa: F401
+import torch_npu  # noqa: F401
 import numpy as np
 
 DEVICE = "npu:0"
@@ -34,7 +34,7 @@ def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    if hasattr(torch, 'npu'):
+    if hasattr(torch, "npu"):
         torch.npu.manual_seed_all(seed)
 
 
@@ -44,6 +44,7 @@ set_seed(10000)
 @dataclass
 class TestData:
     """测试数据封装类，用于封装 expand_into_jagged_permute 的测试数据。"""
+
     permute_list: list
     length_per_table: list
     input_offsets: list
@@ -66,10 +67,7 @@ def expand_into_jagged_permute_ref(permute, length):
 
 def _calc_case_seed(num_tables, length_range):
     start, end = length_range
-    seed = (num_tables * 1315423911 +
-            start * 1000003 +
-            end * 16807
-           ) & 0xFFFFFFFF
+    seed = (num_tables * 1315423911 + start * 1000003 + end * 16807) & 0xFFFFFFFF
     return seed
 
 
@@ -90,9 +88,9 @@ def build_test_case(num_tables, length_range):
 
 
 def run_expand_into_jagged_permute(
-        test_data: TestData,
-        is_mxrec: bool,
-        dtype=torch.int32,
+    test_data: TestData,
+    is_mxrec: bool,
+    dtype=torch.int32,
 ):
     permute_tensor = torch.tensor(test_data.permute_list, dtype=dtype)
     input_offsets_tensor = torch.tensor(test_data.input_offsets, dtype=dtype)
@@ -122,9 +120,7 @@ def run_expand_into_jagged_permute(
 
 
 def _call_op_cpu(permute, input_offsets, output_offsets, output_size):
-    result = torch.ops.fbgemm.expand_into_jagged_permute(
-        permute, input_offsets, output_offsets, output_size
-    )
+    result = torch.ops.fbgemm.expand_into_jagged_permute(permute, input_offsets, output_offsets, output_size)
 
     return result
 
@@ -136,13 +132,9 @@ def _call_op_npu(permute, input_offsets, output_offsets, output_size, is_mxrec):
     output_offsets = output_offsets.to(DEVICE)
 
     if is_mxrec:
-        result = torch.ops.mxrec.expand_into_jagged_permute(
-            permute, input_offsets, output_offsets, output_size
-        )
+        result = torch.ops.mxrec.expand_into_jagged_permute(permute, input_offsets, output_offsets, output_size)
     else:
-        result = torch.ops.fbgemm.expand_into_jagged_permute(
-            permute, input_offsets, output_offsets, output_size
-        )
+        result = torch.ops.fbgemm.expand_into_jagged_permute(permute, input_offsets, output_offsets, output_size)
 
     return result.cpu()
 
@@ -169,9 +161,7 @@ IS_MXREC_LIST = [True, False]
 @pytest.mark.parametrize("is_mxrec", IS_MXREC_LIST)
 def test_expand_into_jagged_permute(num_tables, length_range, dtype, is_mxrec):
     """主测试：每张表的长度在 length_range 内随机生成。"""
-    permute_list, length_per_table, input_offsets, output_offsets = build_test_case(
-        num_tables, length_range
-    )
+    permute_list, length_per_table, input_offsets, output_offsets = build_test_case(num_tables, length_range)
 
     test_data = TestData(
         permute_list=permute_list,
@@ -186,7 +176,41 @@ def test_expand_into_jagged_permute(num_tables, length_range, dtype, is_mxrec):
         dtype=dtype,
     )
 
-    assert torch.equal(cpu_result, ref_tensor), \
+    assert torch.equal(cpu_result, ref_tensor), (
         f"CPU result mismatch: num_tables={num_tables}, length_range={length_range}, dtype={dtype}, is_mxrec={is_mxrec}"
-    assert torch.equal(npu_result, ref_tensor), \
+    )
+    assert torch.equal(npu_result, ref_tensor), (
         f"NPU result mismatch: num_tables={num_tables}, length_range={length_range}, dtype={dtype}, is_mxrec={is_mxrec}"
+    )
+
+
+# ruff: off
+def test_expand_into_jagged_permute_exceptions():
+    """测试 expand_into_jagged_permute 算子的异常校验"""
+    # pylint: disable=unused-variable,line-too-long
+    # 默认合法参数规格
+    permute = torch.tensor([1, 0, 2], dtype=torch.int32, device=DEVICE)
+    input_offsets = torch.tensor([0, 5, 10, 15], dtype=torch.int32, device=DEVICE)
+    output_offsets = torch.tensor([0, 5, 10, 15], dtype=torch.int32, device=DEVICE)
+    output_size = 15
+
+    # 1. 测试维度检查（例如 permute 传入 2D 张量）
+    permute_2d = torch.tensor([[1, 0, 2]], dtype=torch.int32, device=DEVICE)
+    with pytest.raises(Exception) as ctx:
+        torch.ops.mxrec.expand_into_jagged_permute(permute_2d, input_offsets, output_offsets, output_size)
+    assert "The permute should be 1D" in str(ctx.value)
+
+    # 2. 测试尺寸匹配（例如 input_offsets 长度不匹配 permute.numel() + 1）
+    input_offsets_err = torch.tensor([0, 5, 10], dtype=torch.int32, device=DEVICE)
+    with pytest.raises(Exception) as ctx:
+        torch.ops.mxrec.expand_into_jagged_permute(permute, input_offsets_err, output_offsets, output_size)
+    assert "must equal input_offsets.numel() - 1" in str(ctx.value)
+
+    # 3. 测试 dtype 校验（例如 permute 为 int64，offsets 为 int32）
+    permute_int64 = permute.to(torch.int64)
+    with pytest.raises(Exception) as ctx:
+        torch.ops.mxrec.expand_into_jagged_permute(permute_int64, input_offsets, output_offsets, output_size)
+    assert "must have the same dtype" in str(ctx.value)
+
+
+# ruff: on
