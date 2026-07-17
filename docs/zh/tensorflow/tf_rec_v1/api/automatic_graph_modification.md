@@ -70,7 +70,7 @@ def input_fn():
     用户自定义Estimator输入函数。
     """
 
-lookup_slicer_hook = LookupSubgraphSlicerHook(op_types=["StringToNumber"] )
+lookup_slicer_hook = LookupSubgraphSlicerHook(op_types=["StringToNumber"])
 modifier_hook = GraphModifierHook(modify_graph=params.modify_graph)
 hooks_list = [lookup_slicer_hook, modifier_hook]
 
