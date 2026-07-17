@@ -2,7 +2,7 @@
 
 ## TensorFlow接口说明<a name="ZH-CN_TOPIC_0000001749081125"></a>
 
-本章节列出Rec SDK TensorFlow基于TensorFlow框架patch修改的接口。更多TensorFlow原生接口信息请参考TensorFlow官网。昇腾AI处理器对TensorFlow API的支持情况详见官方文档：[TensorFlow 1.15](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/API/tfadapter1x/tfmigr1_tfadapi_0131.html)和[TensorFlow 2.6](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/API/tfadapter2x/tfmigr2_tfadapi_0029.html)。
+本章节列出Rec SDK TensorFlow基于TensorFlow框架patch修改的接口。更多TensorFlow原生接口信息请参考[TensorFlow官网](https://www.tensorflow.org/)。昇腾AI处理器对TensorFlow API的支持情况详见官方文档：[TensorFlow 1.15](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/API/tfadapter1x/tfmigr1_tfadapi_0131.html)和[TensorFlow 2.6](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/API/tfadapter2x/tfmigr2_tfadapi_0029.html)。
 
 >[!NOTICE]
 >
@@ -25,7 +25,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 |参数名|类型|可选/必选|说明|
 |--|--|--|--|
 |sess|Session|必选|需要保存模型的Session。|
-|save_path|str|必选|模型保存路径。支持本地文件系统和HDFS文件系统，长度范围为[1, 1024]。<li>使用HDFS路径保存数据时，日志中会打印“hdfsWrite: FSDataOutputStream#write error”的日志，该日志不影响数据保存，可忽略。</li><li>多节点使用HDFS进行训练时，要使用相同的HDFS路径作为保存路径。</li><li>​在使用多卡训练时，save_path不需要传入带卡ID的参数，多卡训练的结果将自动合并保存在save_path中。在后续多卡进行模型加载时，也会自动加载属于本卡的参数。</li>|
+|save_path|str|必选|模型保存路径。支持本地文件系统和HDFS文件系统，长度范围为[1, 1024]。<li>使用HDFS路径保存数据时，日志中会打印“hdfsWrite: FSDataOutputStream#write error”的日志，该日志不影响数据保存，可忽略。</li><li>多节点使用HDFS进行训练时，要使用相同的HDFS路径作为保存路径。</li><li>在使用多卡训练时，save_path不需要传入带卡ID的参数，多卡训练的结果将自动合并保存在save_path中。在后续多卡进行模型加载时，也会自动加载属于本卡的参数。</li>|
 |global_step|int, np.int64|可选|在checkpoint文件名补充训练步数，默认值为None，取值范围为[0, 2147483647]。|
 |latest_filename|str|可选|protocol buffer文件的可选名称，该文件将包含最新checkpoint列表，默认为None。长度范围为[1, 50]。|
 |meta_graph_suffix|str|可选|MetaGraphDef文件的后缀，默认为meta，长度范围为[1, 50]。|
@@ -80,10 +80,10 @@ def restore(self, sess, save_path)
 
 **参数说明<a name="section888634319218"></a>**
 
-|参数名|类型|可选/必选|说明|
-|--|--|--|--|
-|sess|Session|必选|需要导入模型TensorFlow的Session。|
-|save_path|str|必选|<li>模型checkpoint文件的保存路径。</li><li>支持本地文件系统和HDFS文件系统，长度范围为[1,1024]。</li><li>在使用多卡训练加载模型时，多卡save_path可以输入同一加载路径（该路径下保存了多卡训练的结果），各卡会自动加载属于本卡的参数。</li><br>当前加载文件单个大小上限为500G，并发读取可能会引发系统OOM。|
+|参数名|类型|可选/必选| 说明                                                                                                                                                                                      |
+|--|--|--|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|sess|Session|必选| 需要导入模型TensorFlow的Session。                                                                                                                                                               |
+|save_path|str|必选| <li>模型checkpoint文件的保存路径。</li><li>支持本地文件系统和HDFS文件系统，长度范围为[1, 1024]。</li><li>在使用多卡训练加载模型时，多卡save_path可以输入同一加载路径（该路径下保存了多卡训练的结果），各卡会自动加载属于本卡的参数。</li><br>当前加载文件单个大小上限为500G，并发读取可能会引发系统OOM。 |
 
 **返回值说明<a name="section651195312311"></a>**
 

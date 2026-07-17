@@ -4,7 +4,7 @@
 
 本章节指导用户基于Rec SDK TensorFlow为用户提供的little-demo样例，快速理解一个使用tf.Session进行模型训练需要准备的相关文件和关键接口适配。little-demo仅是一个代码示例，并介绍了调用相关接口的逻辑，不包含具体的模型，没有实现具体的功能。
 
-little-demo仅作参考学习，不支持在little-demo上适配用户自己的模型。little-demo存放路径为：[链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/tf_rec_v2_examples/little_demo)。
+little-demo仅作参考学习，不支持在little-demo上适配用户自己的模型。little-demo存放路径为：[little-demo代码仓库](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/tf_rec_v2_examples/little_demo)。
 
 **表 1**  little-demo文件说明
 

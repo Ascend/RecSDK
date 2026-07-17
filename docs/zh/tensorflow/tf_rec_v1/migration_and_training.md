@@ -6,7 +6,7 @@
 
 Rec SDK TensorFlow提供使用tf.Session训练场景和NPUEstimator训练场景两种使用场景。
 
-- tf.Session训练场景。通过新建的Session实例启动模型运行，返回Tensor示例，进行定制化模型训练。
+- tf.Session训练场景。通过新建的Session实例启动模型运行，返回Tensor实例，进行定制化模型训练。
 - NPUEstimator训练场景。基于对机器学习不同阶段的控制的封装，用户无需不断地为新机器学习任务重复编写训练、评估、预测的代码，可以专注于对网络结构的控制。
 
 > [!NOTE]
@@ -61,7 +61,7 @@ Rec SDK TensorFlow提供使用tf.Session训练场景和NPUEstimator训练场景�
 
 **Estimator简介<a name="section12840202717412"></a>**
 
-Estimator API属于TensorFlow的高阶API，在2018年发布的TensorFlow  1.10版本中引入，它可极大简化机器学习的编程过程。Estimator有很多优势，例如：对分布式的良好支持、简化了模型的创建工作、有利于模型开发者之间的代码分享等。
+Estimator API属于TensorFlow的高阶API，在2018年发布的TensorFlow 1.10版本中引入，它可极大简化机器学习的编程过程。Estimator有很多优势，例如：对分布式的良好支持、简化了模型的创建工作、有利于模型开发者之间的代码分享等。
 
 使用Estimator进行训练脚本开发的流程为：
 
@@ -93,7 +93,7 @@ from npu_bridge.npu_init import *
     dataset = dataset.batch(batch_size, drop_remainder=True)
 ```
 
-但需要注意的是：推理时，当最后一次迭代的推理数据量小于batch size时，需要补齐空白数据到batch size，因为有些脚本最后会加个断言，验证结果的数量要和验证数据的数量一致。
+但需要注意的是：推理时，当最后一次迭代的推理数据量小于batch_size时，需要补齐空白数据到batch_size，因为有些脚本最后会加个断言，验证结果的数量要和验证数据的数量一致。
 
 ```python
     assert num_written_lines == num_actual_predict_examples
@@ -672,7 +672,7 @@ with tf.Session(config=config) as sess:
 
     |特性名称|操作步骤|
     |--|--|
-    |动态扩容|片上内存侧动态扩容：<ol><li><a name="li16991598571"></a>获取嵌入表示结果（emb）和映射地址（addr）。<ul><li>使用<b>tf.get_collection("ASCEND_SPARSE_LOOKUP_LOCAL_EMB")</b>接口获取训练用的嵌入表示结果。</li><li>使用<b>tf.get_collection("ASCEND_SPARSE_LOOKUP_ID_OFFSET")</b>接口获取训练用的映射地址。</li></ul></li><li>反向梯度计算。使用<b>tf.gradients(loss, emb)</b>接口对[1](#li16991598571)获取的嵌入表示结果求导，得到梯度（grad）。</li><li>反向稀疏表更新。使用sparse优化器，导入创建的<b>sparse_optimizer.apply_gradients([grad, addr])</b>接口对映射地址对应位置的稀疏表进行更新。</li></ol>|
+    |动态扩容|片上内存侧动态扩容：<ol><li><a name="li16991598571"></a>获取嵌入表示结果（emb）和映射地址（addr）。<ul><li>使用<b>tf.get_collection("ASCEND_SPARSE_LOOKUP_LOCAL_EMB")</b>接口获取训练用的嵌入表示结果。</li><li>使用<b>tf.get_collection("ASCEND_SPARSE_LOOKUP_ID_OFFSET")</b>接口获取训练用的映射地址。</li></ul></li><li>反向梯度计算。使用<b>tf.gradients(loss, emb)</b>接口对获取的嵌入表示结果求导，得到梯度（grad）。</li><li>反向稀疏表更新。使用sparse优化器，导入创建的<b>sparse_optimizer.apply_gradients([grad, addr])</b>接口对映射地址对应位置的稀疏表进行更新。</li></ol>|
     |动态shape|-|
     |自动改图|-|
     |特征准入与淘汰|-|
@@ -727,7 +727,7 @@ Allreduce架构是为了解决PS-workers架构无法线性扩展问题而提出�
 
 **使用的接口<a name="section291012110287"></a>**
 
-在TensorFlow中，一般使用tf.distribute.Strategy进行分布式训练，具体请参考[链接](https://www.tensorflow.org/guide/distributed_training)。而昇腾AI处理器暂不支持上述分布式策略，TF Adapter提供了分布式接口npu\_distributed\_optimizer\_wrapper，对传入的optimizer梯度函数添加NPU的Allreduce操作，最终返回输入的优化器，从而支持单机多卡、多机多卡等组网形式下，各个Device之间计算梯度后执行梯度聚合操作。用户调用该函数后，在生成的训练图中，梯度计算和更新算子之间插入了Allreduce算子节点。
+在TensorFlow中，一般使用tf.distribute.Strategy进行分布式训练，具体请参考[Tensorflow分布式训练指南](https://www.tensorflow.org/guide/distributed_training)。而昇腾AI处理器暂不支持上述分布式策略，TF Adapter提供了分布式接口npu\_distributed\_optimizer\_wrapper，对传入的optimizer梯度函数添加NPU的Allreduce操作，最终返回输入的优化器，从而支持单机多卡、多机多卡等组网形式下，各个Device之间计算梯度后执行梯度聚合操作。用户调用该函数后，在生成的训练图中，梯度计算和更新算子之间插入了Allreduce算子节点。
 
 **图 3**  使用的接口<a name="fig1792101713010"></a>
 ![](../../figures/tf_rec_v1/使用的接口.png "使用的接口")
@@ -802,7 +802,7 @@ Allreduce架构是为了解决PS-workers架构无法线性扩展问题而提出�
 
 **sess.run模式下脚本迁移<a name="section1177815188519"></a>**
 
-Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce功能时，由于NPUEstimator中自动添加了NPUBroadcastGlobalVariablesHook，因此无需手写实现broadcast功能。但sess.run模式的训练脚本还需要用户手写实现broadcast功能。具体方法为：
+sess.run模式的训练脚本需要用户手写实现broadcast功能。具体方法为：
 
 1. 在变量初始化之后，训练之前，通过集合通信接口broadcast进行变量广播，关于broadcast接口的详细介绍请参见《HCCL集合通信库接口参考》。
 
@@ -817,6 +817,7 @@ Estimator模式下，使用npu\_distributed\_optimizer\_wrapper实现Allreduce�
         index: rank_id
         """
         op_list = []
+        outputs = None
         for var in tf.trainable_variables():
             # the input and out tensor of HCOMBroadcast interface are list
             if "float" in var.dtype.name:
@@ -907,13 +908,14 @@ PS-Worker架构下通过环境变量TF\_CONFIG配置集群信息，TF\_CONFIG里
     evaluator_hosts = FLAGS.evaluator_hosts.split(',')
     task_index = FLAGS.task_index
     job_name = FLAGS.job_name
-    flags.DEFINE_string("ps_hosts", '192.168.1.100:2222,192.168.1.200:2222',)
+    flags.DEFINE_string("ps_hosts", '192.168.1.100:2222,192.168.1.200:2222', "Comma-separated list of hostname:port pairs for parameter servers")
     flags.DEFINE_string("worker_hosts",
                         '192.168.1.100:2223,192.168.1.100:2224,192.168.1.100:2225,192.168.1.100:2226,'
                         '192.168.1.100:2227,192.168.1.100:2228,192.168.1.100:2229,192.168.1.100:2230,'
                         '192.168.1.200:2223,192.168.1.200:2224,192.168.1.200:2225,192.168.1.200:2226,'
-                        '192.168.1.200:2227,192.168.1.200:2228,192.168.1.200:2229,192.168.1.200:2230',)
-    flags.DEFINE_string("evaluator_hosts", '192.168.1.100:2231',)
+                        '192.168.1.200:2227,192.168.1.200:2228,192.168.1.200:2229,192.168.1.200:2230',
+                        "Comma-separated list of hostname:port pairs for workers")
+    flags.DEFINE_string("evaluator_hosts", '192.168.1.100:2231', "Comma-separated list of hostname:port pairs for evaluators")
     flags.DEFINE_string("job_name", '', "One of 'ps', 'worker', 'evaluator', chief")
     flags.DEFINE_integer("task_index", 0, "Index of task within the job")
     ```
@@ -928,7 +930,7 @@ PS-Worker架构下通过环境变量TF\_CONFIG配置集群信息，TF\_CONFIG里
 
 **定义ParameterServerStrategy实例<a name="section475154714210"></a>**
 
-为支持PS-Worker架构下的分布式训练，需要先定义tf.distribute.experimental.ParameterServerStrategy实例，该策略的更多细节请参考[链接](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/ParameterServerStrategy)。
+为支持PS-Worker架构下的分布式训练，需要先定义tf.distribute.experimental.ParameterServerStrategy实例，该策略的更多细节请参考[ParameterServerStrategy API文档](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/ParameterServerStrategy)。
 
 ```python
 strategy = tf.distribute.experimental.ParameterServerStrategy()
@@ -1129,9 +1131,9 @@ init_sess.close()
 
 **工具获取<a name="section122751845171916"></a>**
 
-模型获取：[链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/demo/little_demo)
+模型获取：[little_demo模型仓库](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/demo/little_demo)
 
-工具获取：[链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/reference-tools/precrec-python)
+工具获取：[precrec-python工具仓库](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/reference-tools/precrec-python)
 
 **运行Little demo精度看护模式<a name="section209001951182019"></a>**
 
@@ -1163,7 +1165,7 @@ export PRECISION_CHECK=1
 python precision_check.py /home/little_demo/precision_check/20240807_091347 /home/little_demo/precision_check/20240807_101855  //使用precision_check.py比对路径
 ```
 
-precrec-python精度比对工具详细使用说明请参考[链接](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/reference-tools/precrec-python/README.md)。
+precrec-python精度比对工具详细使用说明请参考[precrec-python使用说明](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/reference-tools/precrec-python/README.md)。
 
 ## 精度调优<a name="ZH-CN_TOPIC_0000002210421029"></a>
 
@@ -1391,13 +1393,13 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
 1. 启动PrecisionTool交互命令行：
 
     ```bash
-    python3 ./precision\_tool/cli.py
+    python3 ./precision_tool/cli.py
     ```
 
 2. 进入交互命令行界面（如需退出，可执行Ctrl + c）。
 
     ```bash
-    PrecisionTool \>
+    PrecisionTool >
     ```
 
 3. 执行<b>ac -l \[limit\_num\] \(-c\)</b>命令进行整网精度比对，具体可参考《TensorFlow 1.15模型迁移指南》的“precision\_tool命令参考”章节。
@@ -1532,10 +1534,10 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
     files = glob.glob("dump_data_npy/*")
     files.sort(key = lambda x : int(x.split(".")[4]))
     for i in files:
-          f = np.load(i)
-          if np.isnan(f).any():
-          print(i)
-          break
+        f = np.load(i)
+        if np.isnan(f).any():
+            print(i)
+            break
     ```
 
 #### 问题来源定界<a name="ZH-CN_TOPIC_0000002210421053"></a>

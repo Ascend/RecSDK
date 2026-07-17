@@ -28,7 +28,7 @@ feature_spec_list = FeatureSpec("user_ids", table_name="user_table",
 
 ## GraphModifierHook<a name="ZH-CN_TOPIC_0000001630127057"></a>
 
-自动改图Hook类，仅在[使用Estimator训练](../migration_and_training.md#使用estimator训练)模式下使用，添加后即可开启自动改图功能。
+自动改图Hook类，仅在[使用Estimator训练](../migration_and_training.md#使用Estimator训练)模式下使用，添加后即可开启自动改图功能。
 
 |参数名|类型|**必选/可选**|说明|
 |--|--|--|--|
@@ -42,7 +42,7 @@ from mx_rec.graph.modifier import GraphModifierHook
 
 #定义数据处理函数
 def input_fn():
-     pass
+    pass
 
 est.train(input_fn=lambda: input_fn(), hooks=[GraphModifierHook()])   #est为创建的NPUEstimator对象
 ```
@@ -57,7 +57,7 @@ est.train(input_fn=lambda: input_fn(), hooks=[GraphModifierHook()])   #est为创
 |参数名|类型|**必选/可选**|说明|
 |--|--|--|--|
 |evict_enable|bool|可选|是否开启特征淘汰功能，默认为False。|
-|evict_time_interval|int|可选|淘汰功能触发时间间隔，单位：秒，默认为24 \* 60 \* 60。取值范围：[1, MAXINT32]。|
+|evict_time_interval|int|可选|淘汰功能触发时间间隔，单位：秒，默认为`24 * 60 * 60`。取值范围：[1, MAXINT32]。|
 |evict_step_interval|int|可选|淘汰功能触发步数间隔，单位：步，默认为None。取值范围：[1, MAXINT32]。|
 
 **使用示例<a name="section14589163715471"></a>**
@@ -83,14 +83,14 @@ est.train(input_fn=lambda: input_fn(), hooks=hooks_list)    #est为创建的NPUE
 
 **调用示例<a name="section73615361858"></a>**
 
-|接口|作用|原型|
-|--|--|-|
-|get_instance()|获取ConfigInitializer的全局唯一实例。|from mx_rec.util.initialize import ConfigInitializerConfigInitializer.get_instance()|
-|use_dynamic_expansion|请参见[use_dynamic_expansion](other_apis.md#use_dynamic_expansion)。||
-|get_target_batch()|请参见[get_target_batch](other_apis.md#get_target_batch)。||
-|if_load|请参见[if_load](model_apis.md#if_load)。||
-|get_initializer(is_training)|请参见[get_initializer](automatic_graph_modification.md#get_initializer)。||
-|ascend_global_hashtable_collection()|请参见[ascend_global_hashtable_collection](other_apis.md#ascend_global_hashtable_collection)。||
+|接口|作用| 原型                                                                                   |
+|--|--|--------------------------------------------------------------------------------------|
+|get_instance()|获取ConfigInitializer的全局唯一实例。| from mx_rec.util.initialize import ConfigInitializer<br/>ConfigInitializer.get_instance() |
+|use_dynamic_expansion|请参见[use_dynamic_expansion](other_apis.md#use_dynamic_expansion)。|                                                                                      |
+|get_target_batch()|请参见[get_target_batch](other_apis.md#get_target_batch)。|                                                                                      |
+|if_load|请参见[if_load](model_apis.md#if_load)。|                                                                                      |
+|get_initializer(is_training)|请参见[get_initializer](automatic_graph_modification.md#get_initializer)。|                                                                                      |
+|ascend_global_hashtable_collection()|请参见[ascend_global_hashtable_collection](other_apis.md#ascend_global_hashtable_collection)。|                                                                                      |
 
 ## TrainParamsConfig<a name="ZH-CN_TOPIC_0000002470669008"></a>
 

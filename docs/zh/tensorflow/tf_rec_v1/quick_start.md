@@ -2,14 +2,14 @@
 
 ## 使用前说明<a name="ZH-CN_TOPIC_0000001848119673"></a>
 
-本章节指导用户基于Rec SDK TensorFlow为用户提供的little-demo样例，理解使用一个tf.Session进行模型训练需要准备的相关文件和关键接口适配。little-demo仅是一个代码示例，并介绍了调用相关接口的逻辑，不包含具体的模型，没有实现具体的功能。
+本章节指导用户基于Rec SDK TensorFlow为用户提供的little_demo样例，理解使用一个tf.Session进行模型训练需要准备的相关文件和关键接口适配。little_demo仅是一个代码示例，并介绍了调用相关接口的逻辑，不包含具体的模型，没有实现具体的功能。
 
-little-demo仅作参考学习，不支持在little-demo上适配用户自己的模型。little-demo存放路径为：[链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/demo)。
+little_demo仅作参考学习，不支持在little_demo上适配用户自己的模型。little_demo存放路径为：[little_demo代码仓库](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/demo)。
 
 >[!NOTE]
 >在train\_and\_evaluate场景下不支持多轮eval。
 
-**表 1**  little-demo文件说明
+**表 1**  little_demo文件说明
 
 |文件名|说明|
 |--|--|
@@ -176,7 +176,7 @@ little-demo仅作参考学习，不支持在little-demo上适配用户自己的�
 
 **前提条件<a name="section16252115164"></a>**
 
-使用该方案启动训练任务，需要设置如下环境变量。详细的配置环境变量的方法可参考[little-demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo_estimator/run.sh)；关于环境变量的说明可参见[配置环境变量](./recsdk_tf_installation_guide.md#配置环境变量)。
+使用该方案启动训练任务，需要设置如下环境变量。详细的配置环境变量的方法可参考[little_demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo_estimator/run.sh)；关于环境变量的说明可参见[配置环境变量](./recsdk_tf_installation_guide.md#配置环境变量)。
 
 ```bash
 CM_CHIEF_IP={host_ip}
@@ -275,7 +275,7 @@ CM_WORKER_SIZE=8
     CM_CHIEF_DEVICE=0
     CM_WORKER_IP={host_ip}
     CM_WORKER_SIZE=8
-    ASCEND_VISIBLE_DEVICES=0-8
+    ASCEND_VISIBLE_DEVICES=0-7
     py is main.py
     use horovod to start tasks
     ...
@@ -295,7 +295,7 @@ CM_WORKER_SIZE=8
 
 **前提条件<a name="section148281112515"></a>**
 
-- 设置如下环境变量。详细的配置环境变量的方法可参考[little-demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run.sh)；关于环境变量的说明可参见[配置环境变量](./recsdk_tf_installation_guide.md#配置环境变量)。
+- 设置如下环境变量。详细的配置环境变量的方法可参考[little_demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run.sh)；关于环境变量的说明可参见[配置环境变量](./recsdk_tf_installation_guide.md#配置环境变量)。
 
     ```bash
     CM_CHIEF_IP={host_ip}
@@ -317,6 +317,7 @@ CM_WORKER_SIZE=8
 ![](../../figures/tf_rec_v1/8-3-5-视频解码.png)
 
 1. 双机节点创建并配置容器。
+
     i. 确定节点需要使用的端口号。所有节点都需要用同一未被占用的端口号。可在物理机上执行以下命令，查询端口是否使用。以端口12345为例。
 
         ```bash
@@ -387,6 +388,7 @@ CM_WORKER_SIZE=8
         4. 执行**source \~/.bashrc**使环境变量配置生效。
 
 2. 配置little\_demo模型。
+
     i. 使用以下命令查看8卡芯片的device IP，命令参考如下。
 
         ```bash
@@ -394,7 +396,8 @@ CM_WORKER_SIZE=8
         ```
 
     ii. 配置资源信息。
-        - <a id="li488122614226"></a>ranktable方式启动时，所有节点中均需要“hccl\_json\_16p\_2\_host.json”配置文件，且文件内容一样。“hccl\_json\_16p\_2\_host.json”文件配置样例参考如下。
+
+        - ranktable方式启动时，所有节点中均需要“hccl\_json\_16p\_2\_host.json”配置文件，且文件内容一样。“hccl\_json\_16p\_2\_host.json”文件配置样例参考如下。
 
             示例为双机节点“hccl\_json\_16p\_2\_host.json”配置，主节点的device信息需配置在第一个device中。\{device\_ip\}和\{host\_ip\}需要根据真实环境配置进行替换，rank\_id需要保持升序。
 
@@ -449,7 +452,7 @@ CM_WORKER_SIZE=8
         1. num\_server修改为实际节点数（比如2）。
         2. 删除mpi\_args变量值中的“-mca btl\_tcp\_if\_exclude docker0”字符串。
         3. 将“interface”的值修改为配置当前host ip的网卡名。可通过**ip addr**进行查询。
-        4. 使用ranktable启动方案时，还需修改export RANK\_TABLE\_FILE变量值中的json文件名称，使其与[•ranktable方式启动时，所有节点中均需要...](#li488122614226)中配置的双机的hccl json文件名一致，例如：
+        4. 使用ranktable启动方案时，还需修改export RANK\_TABLE\_FILE变量值中的json文件名称。例如：
 
             将
 
@@ -468,13 +471,15 @@ CM_WORKER_SIZE=8
             在run.sh脚本末尾，将
 
             ```bash
-            xxx --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size}
+            horovodrun --network-interface ${interface} -np ${num_process} \
+            --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size}
             ```
 
             修改为：
 
             ```bash
-            xxx --mpi-args "${mpi_args}" -p 12345 --mpi -H {host_1_ip}:8,{host_2_ip}:8
+            horovodrun --network-interface ${interface} -np ${num_process} \
+            --mpi-args "${mpi_args}" -p 12345 --mpi -H {host_1_ip}:8,{host_2_ip}:8
             ```
 
             >[!NOTE]
@@ -482,6 +487,7 @@ CM_WORKER_SIZE=8
             >- 8：单节点参与训练的device数。
 
 3. 在每个节点上互相设置免密登录。
+
     i. 在每个节点的容器内执行以下命令，设置免密登录。其中\{target\_host\_user\}为对端节点的用户名，\{target\_host\_ip\}为对端节点的IP。
 
         ```bash
@@ -554,7 +560,7 @@ CM_WORKER_SIZE=8
 
 ### Rec SDK TensorFlow执行样例
 
-RecSDK TensorFlow目前已适配以下模型，各模型的具体运行步骤请参考对应文档：
+Rec SDK TensorFlow目前已适配以下模型，各模型的具体运行步骤请参考对应文档：
 
 | 模型                      | 说明                 | 文档链接                                                                                                          |
 | :---------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------ |

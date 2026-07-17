@@ -9,7 +9,7 @@
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
-def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1, host_vocabulary_size=0, ssd_vocabulary_size=0, ssd_data_path=(os.getcwd(),), is_save=True, is_dp=False, init_param=1.0, all2all_gradients_op=All2allGradientsOp.SUM_GRADIENTS.value, enable_merge=False, padding_keys=None, padding_keys_mask=False, padding_keys_len=None, value_dtype=tf.float32, shard_num=1, fusion_optimizer_var=True, hashtable_threshold=0)
+def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1, host_vocabulary_size=0, ssd_vocabulary_size=0, ssd_data_path=(os.getcwd(),), is_save=True, is_dp=False, init_param=1.0, all2all_gradients_op=All2allGradientsOp.SUM_GRADIENTS.value, enable_merge=False, padding_keys=None, padding_keys_mask=False, padding_keys_len=None, value_dtype=tf.float32, shard_num=1, fusion_optimizer_var=True, hashtable_threshold=0):
 ```
 
 **参数说明<a name="section888634319218"></a>**
@@ -59,10 +59,10 @@ def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1
 
     通过返回的稀疏表实例可以访问该实例的两个方法说明如下：
 
-    |方法|功能描述|函数原型|参数说明|返回值说明|
-    |--|--|--|--|--|
-    |size方法|获取稀疏表的大小。|``` def size() ```|无|<li>成功：返回稀疏表的大小。</li><li>失败：抛出异常。</li>|
-    |capacity方法|获取稀疏表的容量。|``` def capacity() ```|无|<li>成功：返回稀疏表的容量。</li><li>失败：抛出异常。</li>|
+    |方法|功能描述| 函数原型                           |参数说明|返回值说明|
+    |--|--|--------------------------------|--|--|
+    |size方法|获取稀疏表的大小。| ``` def size() -> int: ```     |无|<li>成功：返回稀疏表的大小。</li><li>失败：抛出异常。</li>|
+    |capacity方法|获取稀疏表的容量。| ``` def capacity() -> int: ``` |无|<li>成功：返回稀疏表的容量。</li><li>失败：抛出异常。</li>|
 
 - 失败：抛出异常
 
@@ -105,7 +105,7 @@ embedding = sparse_lookup(sparse_hashtable, dense_ids)
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
-def sparse_lookup(hashtable, ids, send_count, is_train=True, name=None, modify_graph=False, batch=None, access_and_evict_config=None, is_grad=True, serving_default_value, **kwargs)
+def sparse_lookup(hashtable, ids, send_count, is_train=True, name=None, modify_graph=False, batch=None, access_and_evict_config=None, is_grad=True, serving_default_value=None, **kwargs):
 ```
 
 **参数说明<a name="section888634319218"></a>**
@@ -168,7 +168,7 @@ embedding = sparse_lookup(sparse_hashtable,
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
-def get_dense_and_sparse_variable()
+def get_dense_and_sparse_variable():
 ```
 
 **返回值说明<a name="section651195312311"></a>**
@@ -235,7 +235,7 @@ export(table_list=table_list)
 
 ```python
 @property
-def if_load(self)
+def if_load(self):
 ```
 
 **返回值说明<a name="section46439326512"></a>**

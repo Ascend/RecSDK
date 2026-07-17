@@ -50,18 +50,18 @@ def create_hash_optimizer(learning_rate, use_locking=False, name="Ftrl", **kwarg
 
 **\*\*kwargs参数说明<a name="section1643017411155"></a>**
 
-|**参数名**|**类型**|**必选/可选**|**说明**|
-|--|--|--|--|
-|learning_rate_power|float|可选|控制训练期间学习率的下降。默认值：-0.5。取值范围：[-2147483647.0, 0.0]。|
-|initial_accumulator_value|float|可选|累积器的初始值。默认值：0.1。取值范围：(0.0, 1.0]。|
-|l1_regularization_strength|float|可选|L1正则化惩罚。默认值：0.0。取值范围：[0.0, 10000.0]。|
-|l2_regularization_strength|float|可选|L2正则化惩罚。默认值：0.0。取值范围：[0.0, 10000.0]。|
-|accum_name|string|可选|保存梯度平方累加器的变量的后缀。默认值：None。长度范围：[1, 255]。|
-|linear_name|string|可选|保存线性梯度累加器的变量的后缀。默认值：None。长度范围：[1, 255]。|
-|l2_shrinkage_regularization_strength|float|可选|L2正则化幅度惩罚。默认值：0.0。取值范围：[0.0, 10000.0]。|
+|**参数名**|**类型**|**必选/可选**| **说明**                                           |
+|--|--|--|--------------------------------------------------|
+|learning_rate_power|float|可选| 控制训练期间学习率的下降。默认值：-0.5。取值范围：[-2147483647.0, 0.0]。 |
+|initial_accumulator_value|float|可选| 累加器的初始值。默认值：0.1。取值范围：(0.0, 1.0]。                 |
+|l1_regularization_strength|float|可选| L1正则化惩罚。默认值：0.0。取值范围：[0.0, 10000.0]。             |
+|l2_regularization_strength|float|可选| L2正则化惩罚。默认值：0.0。取值范围：[0.0, 10000.0]。             |
+|accum_name|string|可选| 保存梯度平方累加器的变量的后缀。默认值：None。长度范围：[1, 255]。          |
+|linear_name|string|可选| 保存线性梯度累加器的变量的后缀。默认值：None。长度范围：[1, 255]。          |
+|l2_shrinkage_regularization_strength|float|可选| L2正则化幅度惩罚。默认值：0.0。取值范围：[0.0, 10000.0]。           |
 
->[!NOTE]
->如果通过kwargs传递其他未说明参数，则Rec SDK TensorFlow内部不会使用到该参数。
+> [!NOTE]
+> 如果通过`kwargs`传递其他未说明参数，则Rec SDK TensorFlow内部不会使用到该参数。
 
 **返回值说明<a name="section55541314104916"></a>**
 
