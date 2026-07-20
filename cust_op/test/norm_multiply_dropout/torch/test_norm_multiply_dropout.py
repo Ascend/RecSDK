@@ -56,14 +56,14 @@ eps = 1e-5
 # (dim0, dim1, eps, dropout_ratio, dtype, weight_and_bias_dim) 组成的列表，weight_and_bias_dim可选
 INVALID_PARAMS = [
     (0, 100, 1e-5, 0.3, torch.bfloat16),  # 不支持的dim0
-    (0, DIM0_MAX + 1, 1e-5, 0.3, torch.bfloat16),  # 不支持的dim0
+    (DIM0_MAX + 1, 100, 1e-5, 0.3, torch.bfloat16),  # 不支持的dim0
     (1, 100, 1e-5, 0.3, torch.bfloat16),  # 不支持的dim1
     (1, 512, 1e-5, -0.2, torch.bfloat16),  # 不支持的dropout_ratio
     (1, 512, 1e-5, 1.3, torch.bfloat16),  # 不支持的dropout_ratio2
     (1, 512, 0.0, 1.3, torch.bfloat16),  # 不支持的eps
     (1, 512, 1e-11, 1.3, torch.bfloat16),  # 不支持的eps3
     (1, 512, 1e-1, 1.3, torch.bfloat16),  # 不支持的eps3
-    (1, 512, 1e-5, 1.3, torch.float64),  # 不支持的dtype
+    (1, 512, 1e-5, 0.3, torch.float64),  # 不支持的dtype
     (1, 512, 1e-5, 0.3, torch.bfloat16, 1024),  # weight bias dim和x dim1不一致
 ]
 
