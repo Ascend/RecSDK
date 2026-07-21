@@ -232,7 +232,7 @@ class TestAliccpHandler(TestHandler):
         super().__init__(params)
         self.spec = spec
 
-    def generate_data(self, batch_size):
+    def generate_data(self, batch_size, seq_len=None):
 
         features = {}
         device = self.params.device
@@ -241,9 +241,12 @@ class TestAliccpHandler(TestHandler):
                 low=0, high=self.spec["vocab_length"][key], size=(batch_size, 1)
             )[:, 0].to(device)
 
+        if seq_len is None:
+            seq_len = self.max_seq_len
+
         for key in self.spec["multi_hot_fields"]:
             features[key] = torch.randint(
-                low=0, high=self.spec["vocab_length"][key], size=(batch_size, 50)
+                low=0, high=self.spec["vocab_length"][key], size=(batch_size, seq_len)
             ).to(device)
 
         for key in self.spec["special_fields"]:
