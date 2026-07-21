@@ -1,40 +1,49 @@
 # HLLM模型说明
 
 ## 主要依赖
+
 **Python:** 3.12
 **Pytorch:** 2.7
 
-
 ## 原代码
+
 https://github.com/bytedance/HLLM.git
 
 ## patch 使用
+
 进入HLLM原项目目录
+
  ```shell
- git checkout 3f4fc3e5
+ git checkout 864f1722
  git apply HLLM.patch
  ```
 
 ## 运行
+
 使用code目录下的运行脚本launch_gpu.sh或launch_npu.sh开始推理
+
  ```shell
  bash launch_npu.sh
  ```
 
 ## 环境准备
+
 运行前，需要先在环境变量设置设备类型(launch脚本中已配置)
 
 GPU:
+
  ```shell
  export DEVICE_TYPE="cuda"
  ```
 
 NPU:
+
  ```shell
  export DEVICE_TYPE="npu"
  ```
 
 ## 关键参数介绍
+
 | 参数名称                 | 参数说明               |
 |----------------------|--------------------|
 | device_type          | 设备类型，cuda或npu      |

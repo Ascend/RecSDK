@@ -1,34 +1,31 @@
-Subject: [PATCH] NPU适配
----
-Index: code/HLLM/HLLM.yaml
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/HLLM/HLLM.yaml b/code/HLLM/HLLM.yaml
---- a/code/HLLM/HLLM.yaml	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/HLLM/HLLM.yaml	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -3,4 +3,8 @@
- item_llm_init: True
- user_pretrain_dir: user_pretrain_dir
- user_llm_init: True
+index 77dc036..963041e 100644
+--- a/code/HLLM/HLLM.yaml
++++ b/code/HLLM/HLLM.yaml
+@@ -1,6 +1,10 @@
+-model: HLLM
+-item_pretrain_dir: item_pretrain_dir # Item and User LLM are initialized by pretrain_dir
+-item_llm_init: True
+-user_pretrain_dir: user_pretrain_dir
+-user_llm_init: True
 -use_ft_flash_attn: True
 \ No newline at end of file
++model: HLLM
++item_pretrain_dir: item_pretrain_dir # Item and User LLM are initialized by pretrain_dir
++item_llm_init: True
++user_pretrain_dir: user_pretrain_dir
++user_llm_init: True
 +use_ft_flash_attn: False
 +device_type: cuda
 +
 +# npu
 +allow_hf32: True
 \ No newline at end of file
-Index: code/REC/model/HLLM/baichuan/modeling_baichuan.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/model/HLLM/baichuan/modeling_baichuan.py b/code/REC/model/HLLM/baichuan/modeling_baichuan.py
---- a/code/REC/model/HLLM/baichuan/modeling_baichuan.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/model/HLLM/baichuan/modeling_baichuan.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -66,7 +66,7 @@
+index 9ddcc61..1a5f267 100644
+--- a/code/REC/model/HLLM/baichuan/modeling_baichuan.py
++++ b/code/REC/model/HLLM/baichuan/modeling_baichuan.py
+@@ -66,7 +66,7 @@ except ImportError as e:
      xformers_swiglu = None
  
  try:
@@ -37,31 +34,28 @@ diff --git a/code/REC/model/HLLM/baichuan/modeling_baichuan.py b/code/REC/model/
  except ImportError as e:
      compute_flash_attention = None
  
-Index: code/REC/model/HLLM/flash_self_attn.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/model/HLLM/flash_self_attn.py b/code/REC/model/HLLM/flash_self_attn.py
---- a/code/REC/model/HLLM/flash_self_attn.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/model/HLLM/flash_self_attn.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -20,7 +20,15 @@
+index 48bd00a..b8e547e 100644
+--- a/code/REC/model/HLLM/flash_self_attn.py
++++ b/code/REC/model/HLLM/flash_self_attn.py
+@@ -20,8 +20,16 @@ from flash_attn.flash_attn_interface import (
      flash_attn_qkvpacked_func,
      flash_attn_varlen_qkvpacked_func,
  )
 +import torch._dynamo as dynamo
  
-+
+ 
 +@dynamo.disable
 +def _to_int(x):
 +    if isinstance(x, torch.Tensor):
 +        return int(x.item())
 +    else:
 +        return int(x)
- 
++
  def flash_self_attention(
      qkv: torch.Tensor,
-@@ -48,7 +56,7 @@
+     causal: bool = False,
+@@ -48,7 +56,7 @@ def flash_self_attention(
          out: (total, H, D) if cu_seqlens is not None and max_seqlen is not None,
              else (B, S, H, D).
      """
@@ -70,7 +64,7 @@ diff --git a/code/REC/model/HLLM/flash_self_attn.py b/code/REC/model/HLLM/flash_
      assert qkv.is_cuda
      unpadded = cu_seqlens is not None
      if unpadded:
-@@ -85,6 +93,10 @@
+@@ -85,6 +93,10 @@ def compute_flash_attention(
      """Modified from https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/models/patching_utils.py"""
      # q, k, v: [bs, seq_len, num_attention_heads, attn_head_size]
      # attention_mask (float): [bs, seq_len]
@@ -81,7 +75,7 @@ diff --git a/code/REC/model/HLLM/flash_self_attn.py b/code/REC/model/HLLM/flash_
      batch_size, max_len = q.size(0), q.size(1)
  
      qkv = torch.stack([q, k, v], dim=2)  # [bs, seq_len, 3, num_attention_heads, attn_head_size]
-@@ -92,7 +104,7 @@
+@@ -92,7 +104,7 @@ def compute_flash_attention(
      if cu_input_lens is not None:
          qkv.squeeze_(0)
          cu_seqlens = F.pad(cu_input_lens.cumsum(dim=0, dtype=torch.int32), (1, 0))
@@ -90,7 +84,7 @@ diff --git a/code/REC/model/HLLM/flash_self_attn.py b/code/REC/model/HLLM/flash_
          out = flash_self_attention(
              qkv,
              causal=causal,
-@@ -115,10 +127,10 @@
+@@ -115,10 +127,10 @@ def compute_flash_attention(
  
          # qkv = torch.cat([qkv[i, starts[i] : ends[i]] for i in range(batch_size)], dim=0)
          qkv = qkv.view(batch_size*max_len, *qkv.size()[2:])
@@ -104,7 +98,7 @@ diff --git a/code/REC/model/HLLM/flash_self_attn.py b/code/REC/model/HLLM/flash_
  
          out = flash_self_attention(
              qkv,
-@@ -126,7 +138,7 @@
+@@ -126,7 +138,7 @@ def compute_flash_attention(
              cu_seqlens=cu_seqlens,
              max_seqlen=max_seqlen,
              training=training,
@@ -113,15 +107,11 @@ diff --git a/code/REC/model/HLLM/flash_self_attn.py b/code/REC/model/HLLM/flash_
          )
          # out: [num_unmasked_tokens, num_attention_heads, attn_head_size]
  
-Index: code/REC/model/HLLM/flash_self_attn_npu.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/model/HLLM/flash_self_attn_npu.py b/code/REC/model/HLLM/flash_self_attn_npu.py
 new file mode 100644
---- /dev/null	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-+++ b/code/REC/model/HLLM/flash_self_attn_npu.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+index 0000000..183edc5
+--- /dev/null
++++ b/code/REC/model/HLLM/flash_self_attn_npu.py
 @@ -0,0 +1,121 @@
 +from typing import Optional
 +
@@ -244,15 +234,11 @@ new file mode 100644
 +        out_rebuilt.index_put_([batch_indices * S + seq_indices], out.view(-1, N * D))
 +
 +        return out_rebuilt.view(batch_size, S, N, D)
-Index: code/REC/model/HLLM/hllm.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
---- a/code/REC/model/HLLM/hllm.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/model/HLLM/hllm.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -34,7 +34,7 @@
+index 932292d..76ba4c5 100644
+--- a/code/REC/model/HLLM/hllm.py
++++ b/code/REC/model/HLLM/hllm.py
+@@ -34,7 +34,7 @@ class HLLM(BaseModel):
      def __init__(self, config, dataload):
          super(HLLM, self).__init__()
          self.logger = getLogger()
@@ -261,7 +247,7 @@ diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
          self.item_pretrain_dir = config['item_pretrain_dir']
          self.user_pretrain_dir = config['user_pretrain_dir']
          self.gradient_checkpointing = config['gradient_checkpointing']
-@@ -91,7 +91,7 @@
+@@ -91,7 +91,7 @@ class HLLM(BaseModel):
              if init:
                  return LlamaForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
              else:
@@ -270,7 +256,7 @@ diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
          elif isinstance(hf_config, transformers.MistralConfig):
              hf_config.use_ft_flash_attn = self.use_ft_flash_attn
              self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for mistral')
-@@ -99,7 +99,7 @@
+@@ -99,7 +99,7 @@ class HLLM(BaseModel):
              if init:
                  return MistralForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
              else:
@@ -279,7 +265,7 @@ diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
          elif isinstance(hf_config, transformers.BertConfig):
              hf_config.use_ft_flash_attn = self.use_ft_flash_attn
              self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for bert')
-@@ -107,7 +107,7 @@
+@@ -107,7 +107,7 @@ class HLLM(BaseModel):
              if init:
                  return BertModel.from_pretrained(pretrain_dir, config=hf_config)
              else:
@@ -288,7 +274,7 @@ diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
          elif getattr(hf_config, "model_type", None) == "baichuan":
              hf_config.use_ft_flash_attn = self.use_ft_flash_attn
              self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for baichuan')
-@@ -115,7 +115,7 @@
+@@ -115,7 +115,7 @@ class HLLM(BaseModel):
              if init:
                  return BaichuanForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
              else:
@@ -297,7 +283,7 @@ diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
          else:
              return AutoModelForCausalLM.from_pretrained(
                  self.local_dir, config=hf_config
-@@ -155,7 +155,7 @@
+@@ -155,7 +155,7 @@ class HLLM(BaseModel):
          inputs_embeds = llm.get_input_embeddings()(input_ids)
          emb_pos = cu_input_lens.cumsum(dim=0, dtype=torch.int32)
          if emb_token_n > 0:
@@ -306,7 +292,7 @@ diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
          model_out = llm(inputs_embeds=inputs_embeds.unsqueeze(0), cu_input_lens=cu_input_lens, position_ids=position_ids.unsqueeze(0))
          model_out = model_out.hidden_states[-1].squeeze(0)
  
-@@ -209,16 +209,26 @@
+@@ -209,16 +209,30 @@ class HLLM(BaseModel):
              model_out[f"nce_top{k}_acc"] = labels.view(-1, 1).eq(indices).any(dim=1).float().mean()
          return model_out
  
@@ -329,6 +315,10 @@ diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
  
 -        user_embedding = self.user_llm(inputs_embeds=pos_embedding, attention_mask=attention_mask).hidden_states[-1]
 -        seq_output = user_embedding[:, -1]
++        if getattr(self, 'dynamic_enabled', False):
++            torch._dynamo.mark_dynamic(pos_embedding, 0)
++            torch._dynamo.mark_dynamic(attention_mask, 0)
++
 +        seq_output = self.get_seq_output(pos_embedding, attention_mask)
          seq_output = seq_output / seq_output.norm(dim=-1, keepdim=True)
 -        item_feature = item_feature / item_feature.norm(dim=-1, keepdim=True)
@@ -336,15 +326,11 @@ diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
  
          return torch.matmul(seq_output, item_feature.t())
  
-Index: code/REC/model/HLLM/hllm_creator.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/model/HLLM/hllm_creator.py b/code/REC/model/HLLM/hllm_creator.py
---- a/code/REC/model/HLLM/hllm_creator.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/model/HLLM/hllm_creator.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -37,7 +37,7 @@
+index 28db911..c392417 100644
+--- a/code/REC/model/HLLM/hllm_creator.py
++++ b/code/REC/model/HLLM/hllm_creator.py
+@@ -37,7 +37,7 @@ class HLLM_Creator(BaseModel):
          self.logger = getLogger()
          self.config = config
          self.user_emb_type = config['user_emb_type']
@@ -353,7 +339,7 @@ diff --git a/code/REC/model/HLLM/hllm_creator.py b/code/REC/model/HLLM/hllm_crea
          self.gradient_checkpointing = config['gradient_checkpointing']
          self.use_ft_flash_attn = config['use_ft_flash_attn']
  
-@@ -173,7 +173,7 @@
+@@ -173,7 +173,7 @@ class HLLM_Creator(BaseModel):
              if init:
                  return LlamaForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
              else:
@@ -362,7 +348,7 @@ diff --git a/code/REC/model/HLLM/hllm_creator.py b/code/REC/model/HLLM/hllm_crea
          elif isinstance(hf_config, transformers.MistralConfig):
              hf_config.use_ft_flash_attn = self.use_ft_flash_attn
              self.logger.info(
-@@ -185,7 +185,7 @@
+@@ -185,7 +185,7 @@ class HLLM_Creator(BaseModel):
                      pretrain_dir, config=hf_config
                  )
              else:
@@ -371,7 +357,7 @@ diff --git a/code/REC/model/HLLM/hllm_creator.py b/code/REC/model/HLLM/hllm_crea
          elif isinstance(hf_config, transformers.BertConfig):
              hf_config.use_ft_flash_attn = self.use_ft_flash_attn
              self.logger.info(
-@@ -195,7 +195,7 @@
+@@ -195,7 +195,7 @@ class HLLM_Creator(BaseModel):
              if init:
                  return BertModel.from_pretrained(pretrain_dir, config=hf_config)
              else:
@@ -380,7 +366,7 @@ diff --git a/code/REC/model/HLLM/hllm_creator.py b/code/REC/model/HLLM/hllm_crea
          elif getattr(hf_config, "model_type", None) == "baichuan":
              hf_config.use_ft_flash_attn = self.use_ft_flash_attn
              self.logger.info(
-@@ -207,7 +207,7 @@
+@@ -207,7 +207,7 @@ class HLLM_Creator(BaseModel):
                      pretrain_dir, config=hf_config
                  )
              else:
@@ -389,15 +375,11 @@ diff --git a/code/REC/model/HLLM/hllm_creator.py b/code/REC/model/HLLM/hllm_crea
          else:
              return AutoModelForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
  
-Index: code/REC/model/HLLM/import_flash_attn.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/model/HLLM/import_flash_attn.py b/code/REC/model/HLLM/import_flash_attn.py
 new file mode 100644
---- /dev/null	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-+++ b/code/REC/model/HLLM/import_flash_attn.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+index 0000000..3c379d0
+--- /dev/null
++++ b/code/REC/model/HLLM/import_flash_attn.py
 @@ -0,0 +1,18 @@
 +import os
 +
@@ -417,15 +399,11 @@ new file mode 100644
 +        return None
 +
 +compute_flash_attention = _load_flash_attention()
-Index: code/REC/model/HLLM/modeling_bert.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/model/HLLM/modeling_bert.py b/code/REC/model/HLLM/modeling_bert.py
---- a/code/REC/model/HLLM/modeling_bert.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/model/HLLM/modeling_bert.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -54,7 +54,7 @@
+index f57147e..75d57a7 100644
+--- a/code/REC/model/HLLM/modeling_bert.py
++++ b/code/REC/model/HLLM/modeling_bert.py
+@@ -54,7 +54,7 @@ from transformers.utils import (
  from transformers.configuration_utils import PretrainedConfig
  
  try:
@@ -434,15 +412,11 @@ diff --git a/code/REC/model/HLLM/modeling_bert.py b/code/REC/model/HLLM/modeling
  except ImportError as e:
      compute_flash_attention = None
  
-Index: code/REC/model/HLLM/modeling_llama.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/model/HLLM/modeling_llama.py b/code/REC/model/HLLM/modeling_llama.py
---- a/code/REC/model/HLLM/modeling_llama.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/model/HLLM/modeling_llama.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -47,7 +47,7 @@
+index 0a15480..7b031c9 100644
+--- a/code/REC/model/HLLM/modeling_llama.py
++++ b/code/REC/model/HLLM/modeling_llama.py
+@@ -47,7 +47,7 @@ from transformers.utils import (
  )
  
  try:
@@ -451,7 +425,7 @@ diff --git a/code/REC/model/HLLM/modeling_llama.py b/code/REC/model/HLLM/modelin
  except ImportError as e:
      compute_flash_attention = None
  
-@@ -345,12 +345,13 @@
+@@ -345,12 +345,13 @@ class LlamaRotaryEmbedding(nn.Module):
  
      def forward(self, x, seq_len=None):
          # x: [bs, num_attention_heads, seq_len, head_size]
@@ -471,7 +445,7 @@ diff --git a/code/REC/model/HLLM/modeling_llama.py b/code/REC/model/HLLM/modelin
  
  
  class LlamaLinearScalingRotaryEmbedding(LlamaRotaryEmbedding):
-@@ -632,7 +633,7 @@
+@@ -632,7 +633,7 @@ class LlamaAttention(nn.Module):
          kv_seq_len = key_states.shape[-2]
          if past_key_value is not None:
              kv_seq_len += past_key_value[0].shape[-2]
@@ -480,15 +454,11 @@ diff --git a/code/REC/model/HLLM/modeling_llama.py b/code/REC/model/HLLM/modelin
          query_states, key_states = apply_rotary_pos_emb(
              query_states, key_states, cos, sin, position_ids
          )
-Index: code/REC/model/HLLM/modeling_mistral.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/model/HLLM/modeling_mistral.py b/code/REC/model/HLLM/modeling_mistral.py
---- a/code/REC/model/HLLM/modeling_mistral.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/model/HLLM/modeling_mistral.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -42,10 +42,9 @@
+index e14281b..2c3d9d0 100644
+--- a/code/REC/model/HLLM/modeling_mistral.py
++++ b/code/REC/model/HLLM/modeling_mistral.py
+@@ -42,10 +42,9 @@ from transformers.utils import (
      replace_return_docstrings,
  )
  from transformers.configuration_utils import PretrainedConfig
@@ -500,15 +470,11 @@ diff --git a/code/REC/model/HLLM/modeling_mistral.py b/code/REC/model/HLLM/model
  except ImportError as e:
      compute_flash_attention = None
  
-Index: code/REC/model/IDNet/llmidrec.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/model/IDNet/llmidrec.py b/code/REC/model/IDNet/llmidrec.py
---- a/code/REC/model/IDNet/llmidrec.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/model/IDNet/llmidrec.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -32,7 +32,7 @@
+index 3bdc13e..2354d82 100644
+--- a/code/REC/model/IDNet/llmidrec.py
++++ b/code/REC/model/IDNet/llmidrec.py
+@@ -32,7 +32,7 @@ class LLMIDRec(BaseModel):
      def __init__(self, config, dataload):
          super(LLMIDRec, self).__init__()
          self.logger = getLogger()
@@ -517,7 +483,7 @@ diff --git a/code/REC/model/IDNet/llmidrec.py b/code/REC/model/IDNet/llmidrec.py
          self.user_pretrain_dir = config['user_pretrain_dir']
          self.gradient_checkpointing = config['gradient_checkpointing']
          self.use_ft_flash_attn = config['use_ft_flash_attn']
-@@ -74,7 +74,7 @@
+@@ -74,7 +74,7 @@ class LLMIDRec(BaseModel):
              if init:
                  return LlamaForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
              else:
@@ -526,7 +492,7 @@ diff --git a/code/REC/model/IDNet/llmidrec.py b/code/REC/model/IDNet/llmidrec.py
          elif isinstance(hf_config, transformers.BertConfig):
              hf_config.use_ft_flash_attn = self.use_ft_flash_attn
              self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for bert')
-@@ -82,7 +82,7 @@
+@@ -82,7 +82,7 @@ class LLMIDRec(BaseModel):
              if init:
                  return BertModel.from_pretrained(pretrain_dir, config=hf_config)
              else:
@@ -535,15 +501,11 @@ diff --git a/code/REC/model/IDNet/llmidrec.py b/code/REC/model/IDNet/llmidrec.py
          else:
              return AutoModelForCausalLM.from_pretrained(
                  self.local_dir, config=hf_config
-Index: code/REC/trainer/trainer.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
---- a/code/REC/trainer/trainer.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/trainer/trainer.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -16,31 +16,58 @@
+index 4dd15d1..838d0cc 100644
+--- a/code/REC/trainer/trainer.py
++++ b/code/REC/trainer/trainer.py
+@@ -16,31 +16,58 @@ import time as t
  import numpy as np
  import torch
  import torch.optim as optim
@@ -568,6 +530,7 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
  
 -import lightning as L
 -from lightning.fabric.strategies import DeepSpeedStrategy, DDPStrategy
+-
  
 +def patch_manual_graph(model):
 +    model.graph = torch.cuda.CUDAGraph()
@@ -576,7 +539,7 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
 +    model.static_attention_mask = None
 +    model.static_outputs = None
 +    orig_func = model.get_seq_output
- 
++
 +    def get_seq_output_graph(pos_embedding, attention_mask):
 +        if not model.graph_prepared:
 +            model.static_pos_embedding = pos_embedding.clone()
@@ -610,7 +573,7 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
          self.optim_args = config['optim_args']
          self.epochs = config['epochs']
          self.eval_step = min(config['eval_step'], self.epochs)
-@@ -51,9 +78,7 @@
+@@ -51,9 +78,7 @@ class Trainer(object):
          self.test_batch_size = config['eval_batch_size']
          self.gpu_available = torch.cuda.is_available() and config['use_gpu']
          self.device = config['device']
@@ -621,7 +584,7 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
          if self.rank == 0:
              self.tensorboard = get_tensorboard(self.logger)
  
-@@ -84,7 +109,7 @@
+@@ -84,7 +109,7 @@ class Trainer(object):
              self._freeze_params(freeze_prefix)
  
          for n, p in self.model.named_parameters():
@@ -630,7 +593,7 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
  
          self.eval_collector = Collector(config)
          self.evaluator = Evaluator(config)
-@@ -164,9 +189,10 @@
+@@ -164,9 +189,10 @@ class Trainer(object):
              optimizer = optim.AdamW([normal_params_dict, high_lr_params_dict])
          elif self.config['optimizer_kwargs']:
              params = self.model.parameters()
@@ -644,7 +607,7 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
          else:
              params = self.model.parameters()
              optimizer = optim.AdamW(params, lr=self.optim_args['learning_rate'], weight_decay=self.optim_args['weight_decay'])
-@@ -195,7 +221,7 @@
+@@ -195,7 +221,7 @@ class Trainer(object):
                  losses = model_out.pop('loss')
              self._check_nan(losses)
              total_loss = total_loss + losses.item()
@@ -653,7 +616,7 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
              grad_norm = self.optimizer.step()
              bwd_time = t.time()
              if self.scheduler_config:
-@@ -243,7 +269,7 @@
+@@ -243,7 +269,7 @@ class Trainer(object):
              'cuda_rng_state': torch.cuda.get_rng_state()
          }
  
@@ -662,7 +625,7 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
          if self.rank == 0 and verbose:
              self.logger.info(set_color('Saving current', 'blue') + f': {self.saved_model_file}')
  
-@@ -316,19 +342,7 @@
+@@ -316,19 +342,7 @@ class Trainer(object):
              warmup_steps = tot_steps * warmup_rate
              self.lr_scheduler = self._build_scheduler(warmup_steps=warmup_steps, tot_steps=tot_steps)
  
@@ -683,7 +646,7 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
  
          if self.config['auto_resume']:
              raise NotImplementedError
-@@ -404,20 +418,103 @@
+@@ -404,20 +418,103 @@ class Trainer(object):
          interaction = self.to_device(user)
          time_seq = self.to_device(time_seq)
          if self.config['model'] == 'HLLM':
@@ -789,7 +752,7 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
          if self.use_text:
              item_data = BatchTextDataset(config, data)
              item_batch_size = config['MAX_ITEM_LIST_LENGTH'] * config['train_batch_size']
-@@ -437,39 +534,31 @@
+@@ -437,39 +534,31 @@ class Trainer(object):
                      self.item_feature = self.item_feature.bfloat16()
          else:
              with torch.no_grad():
@@ -846,7 +809,24 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
              message_output = 'Loading model structure and parameters from {}'.format(checkpoint_file)
              self.logger.info(message_output)
  
-@@ -488,16 +577,132 @@
+@@ -479,6 +568,16 @@ class Trainer(object):
+ 
+             self.tot_item_num = eval_data.dataset.dataload.item_num
+             self.compute_item_feature(self.config, eval_data.dataset.dataload)
++            _shape_list = []
++            _shape_list_str = os.getenv("SHAPE_LIST", "")
++            if _shape_list_str:
++                for _pair in _shape_list_str.split(";"):
++                    _pair = _pair.strip()
++                    if _pair:
++                        _bs_str, _sl_str = _pair.split(",")
++                        _shape_list.append((int(_bs_str.strip()), int(_sl_str.strip())))
++            dynamic_enabled = len(_shape_list) > 1
++            self.model.dynamic_enabled = dynamic_enabled
+             iter_data = (
+                 tqdm(
+                     eval_data,
+@@ -488,16 +587,167 @@ class Trainer(object):
                      file=sys.stdout
                  ) if show_progress and self.rank == 0 else eval_data
              )
@@ -855,15 +835,17 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
 -                start_time = fwd_time
 -                data_time = t.time()
 -                scores, positive_u, positive_i = eval_func(batched_data)
--                fwd_time = t.time()
++            if _shape_list:
++                self.logger.info(f"Shape list: {_shape_list}")
 +
 +            # 处理compile和cudagraph
 +            enable_compile = self.config.get('enable_compile', False)
-+            enable_cudagraph = self.config.get('enable_cudagraph', False)
++            enable_cudagraph = self.config.get('enable_cudagraph', False)       
 +            if enable_compile and enable_cudagraph:
 +                try:
++                    dynamic_arg = None if dynamic_enabled else False
 +                    self.model.get_seq_output = torch.compile(
-+                        self.model.get_seq_output, backend="inductor", dynamic=False, mode="reduce-overhead"
++                        self.model.get_seq_output, backend="inductor", dynamic=dynamic_arg, mode="reduce-overhead"
 +                    )
 +                    self.model.normalize_vectors = torch.compile(self.model.normalize_vectors, backend="inductor")
 +                    self.logger.info("Model compiled with cudagraph")
@@ -871,7 +853,8 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
 +                    self.logger.warning(f"Failed to compile model and running cuda graph: {e}")
 +            elif enable_compile:
 +                try:
-+                    eval_func = torch.compile(eval_func, backend="inductor", dynamic=False)
++                    dynamic_arg = None if dynamic_enabled else False
++                    eval_func = torch.compile(eval_func, backend="inductor", dynamic=dynamic_arg)
 +                    self.logger.info("Model compiled with inductor")
 +                except Exception as e:
 +                    self.logger.warning(f"Failed to compile model: {e}")
@@ -914,27 +897,53 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
 +                except Exception as e:
 +                    self.logger.warning(f"Failed to enable profiler: {e}")
 +                    profiler = None
-+
-+            check_precision_with_gpu = self.config.get('check_precision_with_gpu', False)
-+            gpu_data_path = self.config.get('gpu_data_path', None)
++            
++            if not dynamic_enabled:
++                check_precision_with_gpu = self.config.get('check_precision_with_gpu', False)
++                gpu_data_path = self.config.get('gpu_data_path', None)
++            else:
++                check_precision_with_gpu = False
++                gpu_data_path = None
 +            # Profiling and evaluate loop
 +            with profiler if profiler else torch.autograd.profiler.profile(enabled=False) as prof:
 +                total_steps = wait_steps + warmup_steps + profiler_batch_count + 1 + 100
-+                fwd_time = t.time()
+                 fwd_time = t.time()
 +                e2e_records = []
 +                for batch_idx, batched_data in enumerate(iter_data):
 +                    if gpu_data_path:
 +                        data = torch.load(gpu_data_path, map_location=self.device, weights_only=False)
 +                        batched_data = data["HLLM"]["input"]
 +                        self.logger.info(f"Load input from {gpu_data_path} successfully!")
++                    
++                    if _shape_list:
++                        cur_bs, cur_sl = _shape_list[batch_idx % len(_shape_list)]
++                        user, time_seq, history_index, positive_u, positive_i = batched_data
++
++                        user = user[:cur_bs, -cur_sl:]
++                        time_seq = time_seq[:cur_bs, -cur_sl:]
++                        positive_u = positive_u[:cur_bs]
++                        positive_i = positive_i[:cur_bs]
++                        if history_index is not None:
++                            history_u, history_i = history_index
++                            mask = history_u < cur_bs
++                            history_index = (history_u[mask], history_i[mask])
++
++                        batched_data = (user, time_seq, history_index, positive_u, positive_i)
++
++                        if dynamic_enabled:
++                            torch._dynamo.mark_dynamic(user, 0)  # batch_size
++                            torch._dynamo.mark_dynamic(user, 1)  # seq_len
++
++                        self.logger.info(
++                            f"[iter {batch_idx}] shape=({cur_bs}, {cur_sl}), "
++                            f"tensor_shape={list(user.shape)}"
++                        )
++
 +                    start_time = fwd_time
 +                    data_time = t.time()
 +                    scores, positive_u, positive_i = eval_func(batched_data)
 +                    fwd_time = t.time()
- 
--                if show_progress and self.rank == 0:
--                    iter_data.set_postfix_str(f"data: {data_time-start_time:.3f} fwd: {fwd_time-data_time:.3f}", refresh=False)
--                self.eval_collector.eval_batch_collect(scores, positive_u, positive_i)
++
 +                    if check_precision_with_gpu:
 +                        self.save_input_output(batched_data, scores)
 +
@@ -978,17 +987,22 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
 +                        "avg_latency_ms": round(avg_latency, 6),
 +                        "qps": round(qps, 3),
 +                    }
++                    if _shape_list:
++                        summary["shape_list"] = str(_shape_list)
 +                    summary_path = os.path.join(self.checkpoint_dir, 'e2e_latency_summary.csv')
 +                    pd.DataFrame([summary]).to_csv(summary_path, index=False)
 +                    self.logger.info(f"E2E Latency summary written to {summary_path}")
 +                    self.logger.info(f"E2E latency metrics: {summary}")
 +                except Exception as e:
 +                    self.logger.warning(f"Failed to write e2e latency metrics: {e}")
-+
+ 
+-                if show_progress and self.rank == 0:
+-                    iter_data.set_postfix_str(f"data: {data_time-start_time:.3f} fwd: {fwd_time-data_time:.3f}", refresh=False)
+-                self.eval_collector.eval_batch_collect(scores, positive_u, positive_i)
              num_total_examples = len(eval_data.sampler.dataset)
              struct = self.eval_collector.get_data_struct()
              result = self.evaluator.evaluate(struct)
-@@ -509,3 +714,20 @@
+@@ -509,3 +759,20 @@ class Trainer(object):
              self.wandblogger.log_eval_metrics(result, head='eval')
  
              return result
@@ -1009,16 +1023,12 @@ diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
 +        self.logger.info(f"Saved input and output to {file_path}")
 +
 +
-Index: code/REC/trainer/trainer_npu.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/trainer/trainer_npu.py b/code/REC/trainer/trainer_npu.py
 new file mode 100644
---- /dev/null	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-+++ b/code/REC/trainer/trainer_npu.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -0,0 +1,757 @@
+index 0000000..5b4912f
+--- /dev/null
++++ b/code/REC/trainer/trainer_npu.py
+@@ -0,0 +1,801 @@
 +# Copyright (c) 2024 westlake-repl
 +# Copyright (c) 2024 Bytedance Ltd. and/or its affiliate
 +# SPDX-License-Identifier: MIT
@@ -1592,6 +1602,18 @@ new file mode 100644
 +
 +            self.tot_item_num = eval_data.dataset.dataload.item_num
 +            self.compute_item_feature(self.config, eval_data.dataset.dataload)
++            _shape_list = []
++            _shape_list_str = os.getenv("SHAPE_LIST", "")
++            if _shape_list_str:
++                for _pair in _shape_list_str.split(";"):
++                    _pair = _pair.strip()
++                    if _pair:
++                        _bs_str, _sl_str = _pair.split(",")
++                        _shape_list.append((int(_bs_str.strip()), int(_sl_str.strip())))
++            dynamic_enabled = len(_shape_list) > 1
++            self.model.dynamic_enabled = dynamic_enabled
++            if _shape_list:
++                self.logger.info(f"Shape list: {_shape_list}")
 +            iter_data = (
 +                tqdm(
 +                    eval_data,
@@ -1607,8 +1629,9 @@ new file mode 100644
 +            enable_aclgraph = self.config.get('enable_aclgraph', False)
 +            if enable_compile and enable_aclgraph:
 +                try:
++                    dynamic_arg = None if dynamic_enabled else False
 +                    self.model.get_seq_output = torch.compile(
-+                        self.model.get_seq_output, backend="inductor", dynamic=False, mode="reduce-overhead"
++                        self.model.get_seq_output, backend="inductor", dynamic=dynamic_arg, mode="reduce-overhead"
 +                    )
 +                    self.model.normalize_vectors = torch.compile(self.model.normalize_vectors, backend="inductor")
 +                    self.logger.info("Model compiled with cudagraph")
@@ -1616,7 +1639,7 @@ new file mode 100644
 +                    self.logger.warning(f"Failed to compile model and running aclgraph: {e}")
 +            elif enable_compile:
 +                try:
-+                    eval_func = torch.compile(eval_func, backend="inductor", dynamic=False)
++                    eval_func = torch.compile(eval_func, backend="inductor", dynamic=dynamic_arg)
 +                    self.logger.info("Model compiled with inductor")
 +                except Exception as e:
 +                    self.logger.warning(f"Failed to compile model: {e}")
@@ -1671,8 +1694,12 @@ new file mode 100644
 +                    self.logger.warning(f"Failed to enable profiler: {e}")
 +                    profiler = None
 +
-+            check_precision_with_gpu = self.config.get('check_precision_with_gpu', False)
-+            gpu_data_path = self.config.get('gpu_data_path', None)
++            if not dynamic_enabled:
++                check_precision_with_gpu = self.config.get('check_precision_with_gpu', False)
++                gpu_data_path = self.config.get('gpu_data_path', None)
++            else:
++                check_precision_with_gpu = False
++                gpu_data_path = None
 +            # Profiling and evaluate loop
 +            with profiler if profiler else torch.autograd.profiler.profile(enabled=False) as prof:
 +                total_steps = wait_steps + warmup_steps + profiler_batch_count + 1 + 100
@@ -1683,6 +1710,31 @@ new file mode 100644
 +                        data = torch.load(gpu_data_path, map_location=self.device, weights_only=False)
 +                        batched_data = data["HLLM"]["input"]
 +                        self.logger.info(f"Load input from {gpu_data_path} successfully!")
++
++                    if _shape_list:
++                        cur_bs, cur_sl = _shape_list[batch_idx % len(_shape_list)]
++                        user, time_seq, history_index, positive_u, positive_i = batched_data
++
++                        user = user[:cur_bs, -cur_sl:]
++                        time_seq = time_seq[:cur_bs, -cur_sl:]
++                        positive_u = positive_u[:cur_bs]
++                        positive_i = positive_i[:cur_bs]
++                        if history_index is not None:
++                            history_u, history_i = history_index
++                            mask = history_u < cur_bs
++                            history_index = (history_u[mask], history_i[mask])
++
++                        batched_data = (user, time_seq, history_index, positive_u, positive_i)
++
++                        if dynamic_enabled:
++                            torch._dynamo.mark_dynamic(user, 0)
++                            torch._dynamo.mark_dynamic(user, 1)
++
++                        self.logger.info(
++                            f"[iter {batch_idx}] shape=({cur_bs}, {cur_sl}), "
++                            f"tensor_shape={list(user.shape)}"
++                        )
++
 +                    start_time = fwd_time
 +                    data_time = t.time()
 +                    scores, positive_u, positive_i = eval_func(batched_data)
@@ -1743,6 +1795,8 @@ new file mode 100644
 +                        "avg_latency_ms": round(avg_latency, 6),
 +                        "qps": round(qps, 3),
 +                    }
++                    if _shape_list:
++                        summary["shape_list"] = str(_shape_list)
 +                    summary_path = os.path.join(self.checkpoint_dir, 'e2e_latency_summary.csv')
 +                    pd.DataFrame([summary]).to_csv(summary_path, index=False)
 +                    self.logger.info(f"E2E Latency summary written to {summary_path}")
@@ -1776,14 +1830,10 @@ new file mode 100644
 +        self.logger.info(f"Saving input and output...")
 +        torch.save(data, file_path)
 +        self.logger.info(f"Saved input and output to {file_path}")
-Index: code/REC/utils/__init__.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/utils/__init__.py b/code/REC/utils/__init__.py
---- a/code/REC/utils/__init__.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/utils/__init__.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
+index 1119a5a..1f27685 100644
+--- a/code/REC/utils/__init__.py
++++ b/code/REC/utils/__init__.py
 @@ -1,6 +1,7 @@
  from .logger import init_logger, set_color
  from .utils import get_local_time, ensure_dir, get_model, \
@@ -1793,7 +1843,7 @@ diff --git a/code/REC/utils/__init__.py b/code/REC/utils/__init__.py
  
  from .enum_type import *
  from .argument_list import *
-@@ -10,5 +11,6 @@
+@@ -10,5 +11,6 @@ __all__ = [
      'init_logger', 'get_local_time', 'ensure_dir', 'get_model', 'early_stopping',
      'calculate_valid_score', 'dict2str', 'Enum',  'EvaluatorType', 'InputType',
      'init_seed', 'general_arguments', 'training_arguments', 'evaluation_arguments',
@@ -1801,15 +1851,11 @@ diff --git a/code/REC/utils/__init__.py b/code/REC/utils/__init__.py
 +    'dataset_arguments', 'get_tensorboard', 'set_color', 'get_gpu_usage', 'WandbLogger',
 +    'to_clean_cpu_tensor', 'get_unique_path'
  ]
-Index: code/REC/utils/logger.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/utils/logger.py b/code/REC/utils/logger.py
---- a/code/REC/utils/logger.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/utils/logger.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -65,7 +65,13 @@
+index b074421..9bada27 100644
+--- a/code/REC/utils/logger.py
++++ b/code/REC/utils/logger.py
+@@ -65,7 +65,13 @@ def init_logger(config):
          ensure_dir(dir_name)
          model_name = os.path.join(dir_name, config['model'])
          ensure_dir(model_name)
@@ -1824,15 +1870,11 @@ diff --git a/code/REC/utils/logger.py b/code/REC/utils/logger.py
      logfilename = '{}/{}.log'.format(config['model'], get_local_time())
  
      logfilepath = os.path.join(LOGROOT, logfilename)
-Index: code/REC/utils/utils.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/REC/utils/utils.py b/code/REC/utils/utils.py
---- a/code/REC/utils/utils.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/REC/utils/utils.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -5,10 +5,41 @@
+index 0913f75..710155a 100644
+--- a/code/REC/utils/utils.py
++++ b/code/REC/utils/utils.py
+@@ -5,10 +5,41 @@ import datetime
  import importlib
  import os
  import random
@@ -1874,7 +1916,7 @@ diff --git a/code/REC/utils/utils.py b/code/REC/utils/utils.py
  
  
  def get_local_time():
-@@ -17,7 +48,12 @@
+@@ -17,7 +48,12 @@ def get_local_time():
      Returns:
          str: current time
      """
@@ -1888,7 +1930,7 @@ diff --git a/code/REC/utils/utils.py b/code/REC/utils/utils.py
      cur = datetime.datetime.now()
      cur = cur.strftime('%b-%d-%Y_%H-%M-%S')
  
-@@ -186,8 +222,14 @@
+@@ -186,8 +222,14 @@ def get_gpu_usage(device=None):
      Returns:
          str: it contains the info about reserved memory and total memory of given device.
      """
@@ -1906,20 +1948,18 @@ diff --git a/code/REC/utils/utils.py b/code/REC/utils/utils.py
 +        total = torch.cuda.get_device_properties(device).total_memory / 1024 ** 3
  
      return '{:.2f} G/{:.2f} G'.format(reserved, total)
-Index: code/launch_gpu.sh
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/launch_gpu.sh b/code/launch_gpu.sh
 new file mode 100644
---- /dev/null	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-+++ b/code/launch_gpu.sh	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -0,0 +1,25 @@
+index 0000000..847a8a4
+--- /dev/null
++++ b/code/launch_gpu.sh
+@@ -0,0 +1,27 @@
 +# 设置设备
 +export DEVICE_TYPE="cuda"
 +DEVICE_ID=0
 +export CUDA_VISIBLE_DEVICES=${DEVICE_ID}
++
++export SHAPE_LIST="" # Shape list: "batch_size,seq_len;batch_size,seq_len;..."
 +
 +torchrun run.py \
 +--config_file overall/LLM_deepspeed.yaml HLLM/HLLM.yaml \
@@ -1941,16 +1981,12 @@ new file mode 100644
 +--check_precision_with_gpu False  \
 +--profiler_batch_count 5  \
 +--eval_batch_size 128
-Index: code/launch_npu.sh
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/launch_npu.sh b/code/launch_npu.sh
 new file mode 100644
---- /dev/null	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-+++ b/code/launch_npu.sh	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -0,0 +1,32 @@
+index 0000000..1dd255d
+--- /dev/null
++++ b/code/launch_npu.sh
+@@ -0,0 +1,34 @@
 +# 设置设备
 +export DEVICE_TYPE="npu"
 +DEVICE_ID=0
@@ -1962,6 +1998,8 @@ new file mode 100644
 +
 +# 图模式
 +export ENABLE_ACLGRAPH=1
++
++export SHAPE_LIST="" # Shape list: "batch_size,seq_len;batch_size,seq_len;..."
 +
 +torchrun run.py \
 +--config_file overall/LLM_deepspeed.yaml HLLM/HLLM.yaml \
@@ -1983,15 +2021,11 @@ new file mode 100644
 +--check_precision_with_gpu False  \
 +--profiler_batch_count 5  \
 +--eval_batch_size 128
-Index: code/overall/LLM_deepspeed.yaml
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/overall/LLM_deepspeed.yaml b/code/overall/LLM_deepspeed.yaml
---- a/code/overall/LLM_deepspeed.yaml	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/overall/LLM_deepspeed.yaml	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -35,7 +35,7 @@
+index 7c93499..47fa39b 100644
+--- a/code/overall/LLM_deepspeed.yaml
++++ b/code/overall/LLM_deepspeed.yaml
+@@ -35,7 +35,7 @@ scheduler_args: {
  }
  
  # eval settings
@@ -2000,15 +2034,11 @@ diff --git a/code/overall/LLM_deepspeed.yaml b/code/overall/LLM_deepspeed.yaml
  topk: [5,10,50,200]
  metrics: ['Recall', 'NDCG']
  valid_metric: NDCG@200
-Index: code/run.py
-IDEA additional info:
-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
-<+>UTF-8
-===================================================================
 diff --git a/code/run.py b/code/run.py
---- a/code/run.py	(revision 864f17221c04a2d3082d9a072df00616bc7e6dab)
-+++ b/code/run.py	(revision fb6619e096b7b3a00a88e34f6daff9e000afa55e)
-@@ -15,7 +15,6 @@
+index ccbd2ce..8c9e6a0 100644
+--- a/code/run.py
++++ b/code/run.py
+@@ -15,7 +15,6 @@ import json
  from REC.data import *
  from REC.config import Config
  from REC.utils import init_logger, get_model, init_seed, set_color
@@ -2016,7 +2046,7 @@ diff --git a/code/run.py b/code/run.py
  import torch.distributed as dist
  
  import os
-@@ -24,23 +23,10 @@
+@@ -24,23 +23,10 @@ import argparse
  import torch.distributed as dist
  import torch
  
@@ -2041,7 +2071,7 @@ diff --git a/code/run.py b/code/run.py
  
      # get model and data
      dataload = load_data(config)
-@@ -51,7 +37,12 @@
+@@ -51,7 +37,12 @@ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
      # model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
  
      world_size = torch.distributed.get_world_size()
@@ -2055,7 +2085,7 @@ diff --git a/code/run.py b/code/run.py
  
      logger.info(set_color('\nWorld_Size', 'pink') + f' = {world_size} \n')
      logger.info(config)
-@@ -88,14 +79,36 @@
+@@ -88,14 +79,36 @@ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
          }
  
  
@@ -2074,7 +2104,8 @@ diff --git a/code/run.py b/code/run.py
  
 -    torch.cuda.set_device(local_rank)
 -    dist.init_process_group(backend='nccl')
-+
+ 
+-    run_loop(local_rank=local_rank, config_file=config_file, extra_args=extra_args)
 +def set_device(config):
 +    local_rank = int(os.environ['LOCAL_RANK'], 0)
 +    config['device'] = torch.device(config['device_type'], local_rank)
@@ -2089,8 +2120,7 @@ diff --git a/code/run.py b/code/run.py
 +        torch_npu.npu.set_device(local_rank)
 +        backend = config.get('distributed_backend', 'hccl')
 +        dist.init_process_group(backend)
- 
--    run_loop(local_rank=local_rank, config_file=config_file, extra_args=extra_args)
++
 +
 +if __name__ == '__main__':
 +    config = get_config()

@@ -9,6 +9,7 @@ MODE=test_qps # train/eval/test/test_qps/get_layer_result, test_qps为生成的�
 OPEN_PROFILING=true
 TEST_BATCH_SIZE=(1 16 32 37 64 100 128 192 256)
 export JOB_ID=10085
+export SHAPE_LIST="" # Shape list: "batch_size,seq_len;batch_size,seq_len;..."
 
 if [ $DEVICE == "npu" ]; then
     export ASCEND_DEVICE_ID=${DEVICE_ID}
@@ -37,6 +38,7 @@ for model in ${MODELS[@]}; do
                             --compile=false \
                             --dynamic_batch=false \
                             --test_batch_size=${batch_size} # MODE=test_qps时改这个设置batch_size
+        [ -n "$SHAPE_LIST" ] && break
     done
 done
 

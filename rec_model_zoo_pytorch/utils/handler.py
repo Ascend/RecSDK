@@ -282,6 +282,22 @@ class TestHandler:
         self.batch_size = 1
         self.manual_graph = False
         self.dynamic_range = (1, self.params.test_batch_size)
+        self._shape_list = []
+        _shape_list_str = os.getenv("SHAPE_LIST", "")
+        if _shape_list_str:
+            for _pair in _shape_list_str.split(";"):
+                _pair = _pair.strip()
+                if _pair:
+                    _bs_str, _sl_str = _pair.split(",")
+                    self._shape_list.append((int(_bs_str.strip()), int(_sl_str.strip())))
+        self.dynamic_enabled = len(self._shape_list) > 1
+        self._shape_idx = 0
+        self.max_seq_len = getattr(params, 'max_seq_len', 50)
+
+        import inspect
+        self._gen_supports_seq_len = 'seq_len' in inspect.signature(
+            self.generate_data
+        ).parameters
 
         self.manual_graph = self.is_manual_graph()
         self.graphs = {}
@@ -362,15 +378,36 @@ class TestHandler:
             return random.randint(self.dynamic_range[0], self.dynamic_range[1])
         return self.params.test_batch_size
 
+    def _next_shape(self):
+        if self._shape_list:
+            bs, sl = self._shape_list[self._shape_idx % len(self._shape_list)]
+            self._shape_idx += 1
+            return bs, sl
+        return self.get_batch_size(), self.max_seq_len
+
+    def _gen_features(self, batch_size, seq_len):
+        if self._gen_supports_seq_len:
+            return self.generate_data(batch_size, seq_len=seq_len)
+        return self.generate_data(batch_size)
+
+    def _mark_dynamic_features(self, features):
+        for name, tensor in features.items():
+            if isinstance(tensor, torch.Tensor) and tensor.ndim >= 1:
+                torch._dynamo.mark_dynamic(tensor, 0)  # batch_size
+                if tensor.ndim >= 2:
+                    torch._dynamo.mark_dynamic(tensor, 1)  # seq_len
+
 
     def infer_with_generate_data(self, model):
-        self.batch_size = self.get_batch_size()
+        self._shape_idx = 0
+        self.batch_size, cur_seq_len = self._next_shape()
 
         model.eval()
-        features = self.generate_data(self.dynamic_range[1])
+        features = self._gen_features(self.batch_size, cur_seq_len)
         iteration = 210
         times_range = []
         batches_list = []
+        seq_lens_list = []
         with torch.no_grad():
             # 预热
             if self.params.check_precision:
@@ -385,21 +422,37 @@ class TestHandler:
                     torch.testing.assert_close(tensor1, tensor2, rtol=1e-04, atol=1e-04, equal_nan=True)
 
                 logger.info("Precision check pass!")
-            for _ in range(30):
-                if self.params.dynamic_batch:
-                    self.batch_size = self.get_batch_size()
-                    features = self.generate_data(self.batch_size)
+            for i in range(30):
+                if self._shape_list or self.params.dynamic_batch:
+                    self.batch_size, cur_seq_len = self._next_shape()
+                    features = self._gen_features(self.batch_size, cur_seq_len)
+                if self.dynamic_enabled:
+                    self._mark_dynamic_features(features)
+                if self._shape_list:
+                    logger.info(
+                        f"[warmup {i}] shape=({self.batch_size}, {cur_seq_len})"
+                    )
                 pred = self.model_infer(model, features)
         profiler = Profiler(self.params)
-        bs_str = self.batch_size if not self.params.dynamic_batch else "Dynamic"
+        if self._shape_list:
+            bs_str = "Dynamic" if self.dynamic_enabled else f"Shape_{len(self._shape_list)}"
+        elif self.params.dynamic_batch:
+            bs_str = "Dynamic"
+        else:
+            bs_str = str(self.batch_size)
         profiler.cur_batch_size = bs_str
         profile = profiler.get_profiler()
         with profile as prof:
             with torch.no_grad():
                 for it in range(iteration):
-                    self.batch_size = self.get_batch_size()
-                    if self.params.dynamic_batch:
-                        features = self.generate_data(self.batch_size)
+                    if self._shape_list or self.params.dynamic_batch:
+                        self.batch_size, cur_seq_len = self._next_shape()
+                        features = self._gen_features(self.batch_size, cur_seq_len)
+                        self._mark_dynamic_features(features)
+                    if self._shape_list:
+                        logger.info(
+                            f"[iter {it}] shape=({self.batch_size}, {cur_seq_len})"
+                        )
                     self.synchronize()
                     start_time = time.time()
                     pred = self.model_infer(model, features)
@@ -410,6 +463,7 @@ class TestHandler:
                     if it < profiler.start_iter or it >= profiler.end_iter:
                         cur_range = end_time - start_time
                         batches_list.append(self.batch_size)
+                        seq_lens_list.append(cur_seq_len)
                         times_range.append(cur_range)
 
         report = {"Batch_size": bs_str, "model_name": self.params.model}
@@ -417,6 +471,7 @@ class TestHandler:
             df = pd.DataFrame({
                 'time(s)': times_range,
                 'batch size': batches_list,
+                'seq len': seq_lens_list,
             })
             saved_path = os.path.join(self.params.report_dir, self.params.model)
             if not os.path.exists(saved_path):
@@ -438,6 +493,8 @@ class TestHandler:
         report["P95 Latency"] = p95_latency
         report["P90 Latency"] = p90_latency
         logger.info(report)
+        if self._shape_list:
+            report["shape_list"] = str(self._shape_list)
         if self.params.report_dir:
             saved_path = os.path.join(self.params.report_dir, self.params.model)
             save_json(report, saved_path, f"report_bs{bs_str}.json")
@@ -546,22 +603,27 @@ class ModelHandler:
         self.npu_experimental_config = None
         
     def set_compile_model(self):
+        _shape_list_str = os.getenv("SHAPE_LIST", "")
+        _shape_count = len([p for p in _shape_list_str.split(";") if p.strip()]) if _shape_list_str else 0
+        _dyn_enabled = _shape_count > 1
+        dynamic_arg = None if _dyn_enabled else False
+
         if self.params.compile:
             if self.params.graph and self.params.shape_handle and "npu" in self.params.device:
                 self.shape_options["triton.cudagraphs"] = True
                 self.model = torch.compile(
-                    self.model, backend="inductor", dynamic=False, options=self.shape_options
+                    self.model, backend="inductor", dynamic=dynamic_arg, options=self.shape_options
                 )
             elif self.params.shape_handle and "npu" in self.params.device:
                 self.model = torch.compile(
-                    self.model, backend="inductor", dynamic=False, options=self.shape_options
+                    self.model, backend="inductor", dynamic=dynamic_arg, options=self.shape_options
                 )
             elif self.params.graph:
                 self.model = torch.compile(
-                    self.model, backend="inductor", dynamic=False, mode="reduce-overhead"
+                    self.model, backend="inductor", dynamic=dynamic_arg, mode="reduce-overhead"
                 )
             else:
-                self.model = torch.compile(self.model, backend="inductor", dynamic=False)
+                self.model = torch.compile(self.model, backend="inductor", dynamic=dynamic_arg)
         else:
             self.model = self.model
             if self.params.graph and ("npu" in self.params.device or "cuda" in self.params.device):
