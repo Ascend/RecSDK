@@ -20,7 +20,7 @@ Rec SDK TensorFlow为用户提供了动态扩容、动态shape、自动改图、
 
     流程介绍请参见[片上内存侧动态扩容模式](appendix.md#片上内存侧动态扩容模式)
 
-    可以从[链接](https://gitcode.com/Ascend/RecSDK/tree/develop/cust_op/ascendc_op/ai_core_op/cust_op_by_addr/v220)获取稀疏表的算子样例和Readme。
+    可以从[稀疏表自动扩容算子及样例说明](https://gitcode.com/Ascend/RecSDK/tree/develop/cust_op/ascendc_op/ai_core_op/cust_op_by_addr/v220)获取稀疏表的算子样例和Readme。
 
     >[!NOTE]
     >当开启动态扩容时，请选用动态扩容相关的优化器，如：SGDByAddr、LazyAdamByAddress和AdagradByAddress。
@@ -59,7 +59,7 @@ Rec SDK TensorFlow为用户提供了动态扩容、动态shape、自动改图、
 
 - 定制WarmStart
 
-    在TensorFlow  Estimator模式下，原生的WarmStart选项支持在训练新模型时，从单个模型路径中完成部分或者全部模型参数的加载。该功能提供了更灵活的方式实现模型参数的恢复。WarmStart常用于迁移学习，即在一个任务上训练的模型被用于另一个任务，通过复用模型的某些层或参数来加速新任务的学习过程。Embedding表名目前不支持名称映射。
+    在TensorFlow Estimator模式下，原生的WarmStart选项支持在训练新模型时，从单个模型路径中完成部分或者全部模型参数的加载。该功能提供了更灵活的方式实现模型参数的恢复。WarmStart常用于迁移学习，即在一个任务上训练的模型被用于另一个任务，通过复用模型的某些层或参数来加速新任务的学习过程。Embedding表名目前不支持名称映射。
 
     定制WarmStart功能描述如下：
 
@@ -67,13 +67,13 @@ Rec SDK TensorFlow为用户提供了动态扩容、动态shape、自动改图、
     - 支持多路径的WarmStart。提供支持从多个模型路径中完成部分或者全部模型参数的加载，可支撑多模型迁移学习任务的训练。
 
     >[!NOTE]
-    >当前定制WarmStart仅支持TensorFlow  1.15.0版本下的HBM模式和DDR模式。
+    >当前定制WarmStart仅支持TensorFlow 1.15.0版本下的HBM模式和DDR模式。
 
 - 增量模型保存与加载
 
     此功能是为了支撑流式训练开发，推荐系统在服务的过程中，会不断产生可用于训练CTR模型的日志数据，这些数据也是不断输入给模型。模型每接收一部分数据，就会利用该部分数据训练模型，同时按一定的频率（时间）保存全量或增量模型。
 
-    在这个背景下，将稀疏的参数仅保存增量模型，会极大的降低频繁保存模型带来的额外开销。同时，在训练进程结束后能尽量通过一个最近的全量的模型配合一系列的增量检查点（模型）恢复最近一次训练完成的模型参数，减少重复计算。
+    在这个背景下，将稀疏的参数仅保存增量模型，会极大地降低频繁保存模型带来的额外开销。同时，在训练进程结束后能尽量通过一个最近的全量的模型配合一系列的增量检查点（模型）恢复最近一次训练完成的模型参数，减少重复计算。
 
     >[!NOTE]
     >- 当前模型增量保存与加载仅支持片上内存模式、DDR模式、SSD模式和Estimator模式下的train和predict模式，不支持train\_and\_evaluate；仅支持扩容与非扩容场景。
@@ -83,13 +83,13 @@ Rec SDK TensorFlow为用户提供了动态扩容、动态shape、自动改图、
 
     将对一张稀疏表的多次查询合并为一次查询。
 
-- PCIE through
+- PCIe through
 
-    使用PCIE through流水并行换入换出，以共享内存承载数据交换，提高Host侧和Device侧之间的数据通信吞吐率。
+    使用PCIe through流水并行换入换出，以共享内存承载数据交换，提高Host侧和Device侧之间的数据通信吞吐率。
 
 ## 软件架构<a name="ZH-CN_TOPIC_0000001601745068"></a>
 
-![](../../figures/tf_rec_v1/4-mxRec架构.png)
+![mxRec架构](../../figures/tf_rec_v1/4-mxRec架构.png)
 
 Rec SDK TensorFlow基于推荐场景主流框架、CANN和各种硬件和网络，对于搜索、推荐、广告模型训练的应用场景需求，提供极简易用、高性能API，助力昇腾AI处理器完成搜索、推荐、广告等模型的高效训练。
 
