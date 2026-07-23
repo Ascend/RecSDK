@@ -3,7 +3,7 @@
 - [简介](overview.md)
 - [基于TensorFlow开发模型]()
   - [简介](./tensorflow/tf_rec_v1/introduction.md)
-  - [安装部署](./tensorflow/tf_rec_v1/recsdk_tf_installation_guide.md)
+  - [软件安装](./tensorflow/tf_rec_v1/recsdk_tf_installation_guide.md)
   - [快速入门](./tensorflow/tf_rec_v1/quick_start.md)
   - [迁移与训练](./tensorflow/tf_rec_v1/migration_and_training.md)
   - [API参考]()
@@ -24,7 +24,7 @@
 
 - [基于PyTorch开发模型]()
   - [简介](./torch/torch_rec_v1/introduction.md)
-  - [安装部署](./torch/torch_rec_v1/recsdk_torch_installation_guide.md)
+  - [软件安装](./torch/torch_rec_v1/recsdk_torch_installation_guide.md)
   - [快速入门](./torch/torch_rec_v1/quick_start.md)
   - [迁移与训练](./torch/torch_rec_v1/migration_and_training.md)
   - [API参考]()

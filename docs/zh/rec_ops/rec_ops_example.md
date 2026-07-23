@@ -201,7 +201,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 当前支持两种 PyTorch 版本配套，调用HSTU_V1前向算子前需完成配套软件及算子的安装。详细配套关系如下：
 
-| 版本 | PyTorch | torch-npu |
+| 版本 | PyTorch | TorchNPU |
 |------|---------|-----------|
 | 1 | 2.6.0   | 2.6.0     |
 | 2 | 2.7.1   | 2.7.1     |

@@ -154,7 +154,7 @@
 
     上述镜像中的软件配套版本如下：
 
-    |软件名称|PyTorch|torch_npu|TorchRec|fbgemm_gpu|dynamic_emb|
+    |软件名称|PyTorch|TorchNPU|TorchRec|fbgemm_gpu|dynamic_emb|
     |--|--|--|--|--|--|
     |配套版本|2.7.1|2.7.1|1.2.0+npu|1.2.0|25.09|
 
