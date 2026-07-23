@@ -12,7 +12,7 @@
 
 上述镜像中已包含Rec SDK Torch及相关软件包，其中软件版本如下：
 
-| 软件名称  | PyTorch | torch_npu | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
+| 软件名称  | PyTorch | TorchNPU | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
 |-------|---------|-----------|-----------|------------|-----------------|-------------------|
 | 配套版本 | 2.6.0   | 2.6.0     | 1.1.0+npu | 1.1.0      | 1.1.0           | 1.1.0             |
 

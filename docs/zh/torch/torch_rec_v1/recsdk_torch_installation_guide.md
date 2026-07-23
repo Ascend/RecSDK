@@ -6,7 +6,7 @@
 
 当前Rec SDK Torch支持两种配套版本，后续安装时请安装对应配套版本的软件包。
 
-| 配套版本 | Python | PyTorch | torch\_npu | fbgemm\_gpu | Rec SDK Torch | 备注 |
+| 配套版本 | Python | PyTorch | TorchNPU | fbgemm\_gpu | Rec SDK Torch | 备注 |
 | ---- | ------ | ------- | ---------- | ----------- | ------------- |----|
 | 方案一  | 3.11+  | 2.6.0   | 2.6.0      | 1.1.0+cpu   | 1.1.0         |此方案暂不支持Ascend 950系列产品|
 | 方案二  | 3.11+  | 2.7.1   | 2.7.1      | 1.2.0+cpu   | 1.2.0         ||
@@ -14,7 +14,7 @@
 > [!NOTE]
 >
 > - PyTorch：深度学习训练框架，相关资料请参见[PyTorch文档](https://docs.pytorch.org/docs/stable/index.html)。
-> - torch\_npu：PyTorch框架适配NPU设备的扩展插件，相关资料请参见[torch\_npu](https://gitcode.com/Ascend/pytorch)。
+> - TorchNPU：PyTorch框架适配NPU设备的扩展插件，相关资料请参见[TorchNPU](https://gitcode.com/Ascend/pytorch)。
 > - fbgemm\_gpu：TorchRec框架依赖的加速库，相关资料请参见[fbgemm\_gpu](https://github.com/pytorch/FBGEMM)。
 
 ### 依赖软件说明
@@ -31,7 +31,7 @@
 | **自定义算子层** | 自定义算子相关包        | rec\_ops、fbgemm\_ascend             | 自定义算子实现          |
 | **适配层**    | Torchrec框架适配NPU | torchrec\_npu                       | TorchRec的适配NPU版本 |
 | **依赖层**    | Torchrec依赖      | fbgemm\_gpu                         | TorchRec依赖的底层加速库 |
-| **框架层**    | 训练框架            | PyTorch、torch\_npu                  | 深度学习训练框架         |
+| **框架层**    | 训练框架            | PyTorch、TorchNPU                 | 深度学习训练框架         |
 | **使能层**    | NPU使能           | CANN                                | 提供NPU底层支持        |
 | **宿主机层**   | 宿主机依赖           | NPU固件、驱动、Device配置                   | 硬件层面的基础依赖        |
 
@@ -49,7 +49,7 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 | 依赖名称/操作            | 推荐版本        | 获取方式/安装说明                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CANN软件包            | CANN 9.0.0  | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。                                                                                                                                                                                                                                                                                      |
-| PyTorch和torch\_npu | 2.6.0/2.7.1 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.6.0版本安装：请参见[使用二进制文件进行安装](https://gitcode.com/Ascend/pytorch/blob/v7.3.1-pytorch2.6.0/README.zh.md#%E4%BD%BF%E7%94%A8%E4%BA%8C%E8%BF%9B%E5%88%B6%E6%96%87%E4%BB%B6%E8%BF%9B%E8%A1%8C%E5%AE%89%E8%A3%85)章节安装PyTorch、torch_npu依赖、torch_npu。<br>2.7.1版本安装：请参见[安装PyTorch和PyTorch昇腾适配插件](https://gitcode.com/Ascend/pytorch/blob/v2.7.1/docs/zh/installation_guide/quick_install.md)章节分别安装PyTorch和torch\_npu。请根据PyTorch版本、Python版本、设备架构选择对应的安装指令，Python版本建议使用Python 3.11。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
+| PyTorch和TorchNPU | 2.6.0/2.7.1 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.6.0版本安装：请参见[使用二进制文件进行安装](https://gitcode.com/Ascend/pytorch/blob/v7.3.1-pytorch2.6.0/README.zh.md#%E4%BD%BF%E7%94%A8%E4%BA%8C%E8%BF%9B%E5%88%B6%E6%96%87%E4%BB%B6%E8%BF%9B%E8%A1%8C%E5%AE%89%E8%A3%85)章节安装PyTorch、TorchNPU依赖、TorchNPU。<br>2.7.1版本安装：请参见[安装PyTorch和PyTorch昇腾适配插件](https://gitcode.com/Ascend/pytorch/blob/v2.7.1/docs/zh/installation_guide/quick_install.md)章节分别安装PyTorch和TorchNPU。请根据PyTorch版本、Python版本、设备架构选择对应的安装指令，Python版本建议使用Python 3.11。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
 
 #### 容器内训练加速库依赖<a id="section146113514600"></a>
 
@@ -121,7 +121,7 @@ Rec SDK Torch软件包如下表：
 
    也可手动制作基础训练镜像，请参见[基础镜像构建](../build_torch_rec_images/README.md)里的Dockerfile和README制作镜像。
 
-   制作基础镜像时，会同时安装[容器内训练框架依赖](#容器内训练框架依赖)和[容器内训练加速库依赖](#容器内训练加速库依赖)中的依赖软件（CANN、PyTorch、torch\_npu、fbgemm\_gpu）。后续安装Rec SDK Torch时可跳过`依赖软件安装`步骤。
+   制作基础镜像时，会同时安装[容器内训练框架依赖](#容器内训练框架依赖)和[容器内训练加速库依赖](#容器内训练加速库依赖)中的依赖软件（CANN、PyTorch、TorchNPU、fbgemm\_gpu）。后续安装Rec SDK Torch时可跳过`依赖软件安装`步骤。
 3. 运行容器<a id="ZH-CN_TOPIC_0000002302389300"></a>
 
    创建启动脚本run\_docker.sh，参考如下：
