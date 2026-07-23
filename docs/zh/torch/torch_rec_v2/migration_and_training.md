@@ -10,7 +10,7 @@
 
 迁移与训练中使用的软件配套版本如下所示：
 
-|软件名称|PyTorch|torch_npu|torchrec|fbgemm_gpu|dynamic_emb|
+|软件名称|PyTorch|TorchNPU|torchrec|fbgemm_gpu|dynamic_emb|
 |--|--|--|--|--|--|
 |配套版本|2.7.1|2.7.1|1.2.0+npu|1.2.0|25.09|
 

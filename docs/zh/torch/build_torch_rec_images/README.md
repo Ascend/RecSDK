@@ -14,7 +14,7 @@
 
 当前Rec SDK Torch支持两种版本配套：
 
-| 配套版本  | PyTorch | torch_npu | fbgemm_gpu |
+| 配套版本  | PyTorch | TorchNPU | fbgemm_gpu |
 |-------|---------|-----------|------------|
 | 配套版本1 | 2.6.0   | 2.6.0     | 1.1.0      |
 | 配套版本2 | 2.7.1   | 2.7.1     | 1.2.0      |
@@ -130,7 +130,7 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
     | fbgemm_gpu 1.2.0 (X86) | 3.11       | `https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl`  |
     | fbgemm_gpu 1.2.0 (ARM) | 3.11       | `https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl` |
 
-2. 修改PyTorch、fbgemm_gpu、torch_npu包安装时的包名
+2. 修改PyTorch、fbgemm_gpu、TorchNPU包安装时的包名
 
     | 修改前                        | 修改后                        |
     |----------------------------|----------------------------|
@@ -142,7 +142,7 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
 
 ### 方式二：升级已有镜像中的软件版本
 
-基于当前已有的镜像，升级其中的PyTorch版本，fbgemm_gpu版本，torch_npu版本至PyTorch 2.7.1对应版本。
+基于当前已有的镜像，升级其中的PyTorch版本，fbgemm_gpu版本，TorchNPU版本至PyTorch 2.7.1对应版本。
 
 1. 升级PyTorch版本
 
@@ -156,7 +156,7 @@ bash run_docker.sh 容器名 {镜像名称}:{版本名称}
     pip3 install fbgemm_gpu==1.2.0+cpu -i https://download.pytorch.org/whl/cpu
     ```
 
-3. 升级torch_npu版本
+3. 升级TorchNPU版本
 
     ```shell
     pip3 install torch-npu==2.7.1
