@@ -21,6 +21,24 @@ index 77dc036..963041e 100644
 +# npu
 +allow_hf32: True
 \ No newline at end of file
+diff --git a/code/REC/config/configurator.py b/code/REC/config/configurator.py
+index 5820453..288e0ae 100644
+--- a/code/REC/config/configurator.py
++++ b/code/REC/config/configurator.py
+@@ -147,10 +147,9 @@ class Config(object):
+             return None
+ 
+     def get(self, key, default=None):
+-        res = self[key]
+-        if res is None:
+-            return default
+-        return res
++        if key in self.final_config_dict:
++            return self.final_config_dict[key]
++        return default
+ 
+     def __contains__(self, key):
+         if not isinstance(key, str):
 diff --git a/code/REC/model/HLLM/baichuan/modeling_baichuan.py b/code/REC/model/HLLM/baichuan/modeling_baichuan.py
 index 9ddcc61..1a5f267 100644
 --- a/code/REC/model/HLLM/baichuan/modeling_baichuan.py
@@ -235,7 +253,7 @@ index 0000000..183edc5
 +
 +        return out_rebuilt.view(batch_size, S, N, D)
 diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
-index 932292d..76ba4c5 100644
+index 932292d..2a50430 100644
 --- a/code/REC/model/HLLM/hllm.py
 +++ b/code/REC/model/HLLM/hllm.py
 @@ -34,7 +34,7 @@ class HLLM(BaseModel):
@@ -292,7 +310,7 @@ index 932292d..76ba4c5 100644
          model_out = llm(inputs_embeds=inputs_embeds.unsqueeze(0), cu_input_lens=cu_input_lens, position_ids=position_ids.unsqueeze(0))
          model_out = model_out.hidden_states[-1].squeeze(0)
  
-@@ -209,16 +209,30 @@ class HLLM(BaseModel):
+@@ -209,16 +209,32 @@ class HLLM(BaseModel):
              model_out[f"nce_top{k}_acc"] = labels.view(-1, 1).eq(indices).any(dim=1).float().mean()
          return model_out
  
@@ -315,9 +333,11 @@ index 932292d..76ba4c5 100644
  
 -        user_embedding = self.user_llm(inputs_embeds=pos_embedding, attention_mask=attention_mask).hidden_states[-1]
 -        seq_output = user_embedding[:, -1]
-+        if getattr(self, 'dynamic_enabled', False):
++        if getattr(self, 'enable_dynamic_compile', False) is None:
 +            torch._dynamo.mark_dynamic(pos_embedding, 0)
++            torch._dynamo.mark_dynamic(pos_embedding, 1)
 +            torch._dynamo.mark_dynamic(attention_mask, 0)
++            torch._dynamo.mark_dynamic(attention_mask, 1)
 +
 +        seq_output = self.get_seq_output(pos_embedding, attention_mask)
          seq_output = seq_output / seq_output.norm(dim=-1, keepdim=True)
@@ -502,7 +522,7 @@ index 3bdc13e..2354d82 100644
              return AutoModelForCausalLM.from_pretrained(
                  self.local_dir, config=hf_config
 diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
-index 4dd15d1..838d0cc 100644
+index 4dd15d1..b75fb36 100644
 --- a/code/REC/trainer/trainer.py
 +++ b/code/REC/trainer/trainer.py
 @@ -16,31 +16,58 @@ import time as t
@@ -809,7 +829,7 @@ index 4dd15d1..838d0cc 100644
              message_output = 'Loading model structure and parameters from {}'.format(checkpoint_file)
              self.logger.info(message_output)
  
-@@ -479,6 +568,16 @@ class Trainer(object):
+@@ -479,6 +568,15 @@ class Trainer(object):
  
              self.tot_item_num = eval_data.dataset.dataload.item_num
              self.compute_item_feature(self.config, eval_data.dataset.dataload)
@@ -821,12 +841,11 @@ index 4dd15d1..838d0cc 100644
 +                    if _pair:
 +                        _bs_str, _sl_str = _pair.split(",")
 +                        _shape_list.append((int(_bs_str.strip()), int(_sl_str.strip())))
-+            dynamic_enabled = len(_shape_list) > 1
-+            self.model.dynamic_enabled = dynamic_enabled
++            dynamic_enabled = len(_shape_list) > 0
              iter_data = (
                  tqdm(
                      eval_data,
-@@ -488,16 +587,167 @@ class Trainer(object):
+@@ -488,16 +586,163 @@ class Trainer(object):
                      file=sys.stdout
                  ) if show_progress and self.rank == 0 else eval_data
              )
@@ -840,10 +859,11 @@ index 4dd15d1..838d0cc 100644
 +
 +            # 处理compile和cudagraph
 +            enable_compile = self.config.get('enable_compile', False)
-+            enable_cudagraph = self.config.get('enable_cudagraph', False)       
++            enable_cudagraph = self.config.get('enable_cudagraph', False)
++            dynamic_arg = self.config.get('enable_dynamic_compile', False)
++            self.model.enable_dynamic_compile = dynamic_arg    
 +            if enable_compile and enable_cudagraph:
 +                try:
-+                    dynamic_arg = None if dynamic_enabled else False
 +                    self.model.get_seq_output = torch.compile(
 +                        self.model.get_seq_output, backend="inductor", dynamic=dynamic_arg, mode="reduce-overhead"
 +                    )
@@ -853,7 +873,6 @@ index 4dd15d1..838d0cc 100644
 +                    self.logger.warning(f"Failed to compile model and running cuda graph: {e}")
 +            elif enable_compile:
 +                try:
-+                    dynamic_arg = None if dynamic_enabled else False
 +                    eval_func = torch.compile(eval_func, backend="inductor", dynamic=dynamic_arg)
 +                    self.logger.info("Model compiled with inductor")
 +                except Exception as e:
@@ -930,10 +949,6 @@ index 4dd15d1..838d0cc 100644
 +
 +                        batched_data = (user, time_seq, history_index, positive_u, positive_i)
 +
-+                        if dynamic_enabled:
-+                            torch._dynamo.mark_dynamic(user, 0)  # batch_size
-+                            torch._dynamo.mark_dynamic(user, 1)  # seq_len
-+
 +                        self.logger.info(
 +                            f"[iter {batch_idx}] shape=({cur_bs}, {cur_sl}), "
 +                            f"tensor_shape={list(user.shape)}"
@@ -1002,7 +1017,7 @@ index 4dd15d1..838d0cc 100644
              num_total_examples = len(eval_data.sampler.dataset)
              struct = self.eval_collector.get_data_struct()
              result = self.evaluator.evaluate(struct)
-@@ -509,3 +759,20 @@ class Trainer(object):
+@@ -509,3 +754,20 @@ class Trainer(object):
              self.wandblogger.log_eval_metrics(result, head='eval')
  
              return result
@@ -1025,10 +1040,10 @@ index 4dd15d1..838d0cc 100644
 +
 diff --git a/code/REC/trainer/trainer_npu.py b/code/REC/trainer/trainer_npu.py
 new file mode 100644
-index 0000000..5b4912f
+index 0000000..3902ce0
 --- /dev/null
 +++ b/code/REC/trainer/trainer_npu.py
-@@ -0,0 +1,801 @@
+@@ -0,0 +1,797 @@
 +# Copyright (c) 2024 westlake-repl
 +# Copyright (c) 2024 Bytedance Ltd. and/or its affiliate
 +# SPDX-License-Identifier: MIT
@@ -1610,8 +1625,7 @@ index 0000000..5b4912f
 +                    if _pair:
 +                        _bs_str, _sl_str = _pair.split(",")
 +                        _shape_list.append((int(_bs_str.strip()), int(_sl_str.strip())))
-+            dynamic_enabled = len(_shape_list) > 1
-+            self.model.dynamic_enabled = dynamic_enabled
++            dynamic_enabled = len(_shape_list) > 0
 +            if _shape_list:
 +                self.logger.info(f"Shape list: {_shape_list}")
 +            iter_data = (
@@ -1627,14 +1641,15 @@ index 0000000..5b4912f
 +            # 处理compile和cudagraph
 +            enable_compile = self.config.get('enable_compile', False)
 +            enable_aclgraph = self.config.get('enable_aclgraph', False)
++            dynamic_arg = self.config.get('enable_dynamic_compile', False)
++            self.model.enable_dynamic_compile = dynamic_arg
 +            if enable_compile and enable_aclgraph:
 +                try:
-+                    dynamic_arg = None if dynamic_enabled else False
 +                    self.model.get_seq_output = torch.compile(
 +                        self.model.get_seq_output, backend="inductor", dynamic=dynamic_arg, mode="reduce-overhead"
 +                    )
 +                    self.model.normalize_vectors = torch.compile(self.model.normalize_vectors, backend="inductor")
-+                    self.logger.info("Model compiled with cudagraph")
++                    self.logger.info("Model compiled with aclgraph")
 +                except Exception as e:
 +                    self.logger.warning(f"Failed to compile model and running aclgraph: {e}")
 +            elif enable_compile:
@@ -1725,10 +1740,6 @@ index 0000000..5b4912f
 +                            history_index = (history_u[mask], history_i[mask])
 +
 +                        batched_data = (user, time_seq, history_index, positive_u, positive_i)
-+
-+                        if dynamic_enabled:
-+                            torch._dynamo.mark_dynamic(user, 0)
-+                            torch._dynamo.mark_dynamic(user, 1)
 +
 +                        self.logger.info(
 +                            f"[iter {batch_idx}] shape=({cur_bs}, {cur_sl}), "
@@ -1950,10 +1961,10 @@ index 0913f75..710155a 100644
      return '{:.2f} G/{:.2f} G'.format(reserved, total)
 diff --git a/code/launch_gpu.sh b/code/launch_gpu.sh
 new file mode 100644
-index 0000000..847a8a4
+index 0000000..822a496
 --- /dev/null
 +++ b/code/launch_gpu.sh
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,28 @@
 +# 设置设备
 +export DEVICE_TYPE="cuda"
 +DEVICE_ID=0
@@ -1978,15 +1989,16 @@ index 0000000..847a8a4
 +--enable_profiler True  \
 +--enable_compile True \
 +--enable_cudagraph True \
++--enable_dynamic_compile False \
 +--check_precision_with_gpu False  \
 +--profiler_batch_count 5  \
 +--eval_batch_size 128
 diff --git a/code/launch_npu.sh b/code/launch_npu.sh
 new file mode 100644
-index 0000000..1dd255d
+index 0000000..70042ad
 --- /dev/null
 +++ b/code/launch_npu.sh
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,35 @@
 +# 设置设备
 +export DEVICE_TYPE="npu"
 +DEVICE_ID=0
@@ -2017,7 +2029,8 @@ index 0000000..1dd255d
 +--user_item_cache True  \
 +--enable_profiler True  \
 +--enable_compile True \
-+--enable_cudagraph True \
++--enable_aclgraph True \
++--enable_dynamic_compile False \
 +--check_precision_with_gpu False  \
 +--profiler_batch_count 5  \
 +--eval_batch_size 128

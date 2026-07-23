@@ -188,6 +188,12 @@ def get_argument(argv):
         "--learning_rate", type=float, default=0.001, help="模型学习率大小"
     )
     parser.add_argument("--embedding_size", type=int, default=32, help="embedding大小")
+    parser.add_argument(
+        "--enable_dynamic_compile",
+        type=lambda v: {'true': True, 'false': False, 'none': None}[v.lower()],
+        default=False,
+        help="Dynamic compile mode: False (static), True (full dynamic), None (auto detect)",
+    )
     parser = get_fun_argument(parser)
     parser = get_opt_argument(parser)
 
@@ -290,7 +296,8 @@ class TestHandler:
                 if _pair:
                     _bs_str, _sl_str = _pair.split(",")
                     self._shape_list.append((int(_bs_str.strip()), int(_sl_str.strip())))
-        self.dynamic_enabled = len(self._shape_list) > 1
+        self.dynamic_enabled = len(self._shape_list) > 0
+        self.enable_dynamic_compile = getattr(params, 'enable_dynamic_compile', False)
         self._shape_idx = 0
         self.max_seq_len = getattr(params, 'max_seq_len', 50)
 
@@ -426,7 +433,7 @@ class TestHandler:
                 if self._shape_list or self.params.dynamic_batch:
                     self.batch_size, cur_seq_len = self._next_shape()
                     features = self._gen_features(self.batch_size, cur_seq_len)
-                if self.dynamic_enabled:
+                if self.enable_dynamic_compile is None:
                     self._mark_dynamic_features(features)
                 if self._shape_list:
                     logger.info(
@@ -603,10 +610,7 @@ class ModelHandler:
         self.npu_experimental_config = None
         
     def set_compile_model(self):
-        _shape_list_str = os.getenv("SHAPE_LIST", "")
-        _shape_count = len([p for p in _shape_list_str.split(";") if p.strip()]) if _shape_list_str else 0
-        _dyn_enabled = _shape_count > 1
-        dynamic_arg = None if _dyn_enabled else False
+        dynamic_arg = getattr(self.params, 'enable_dynamic_compile', False)
 
         if self.params.compile:
             if self.params.graph and self.params.shape_handle and "npu" in self.params.device:

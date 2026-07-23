@@ -37,6 +37,7 @@ for model in ${MODELS[@]}; do
                             --graph=false \
                             --compile=false \
                             --dynamic_batch=false \
+                            --enable_dynamic_compile False \
                             --test_batch_size=${batch_size} # MODE=test_qps时改这个设置batch_size
         [ -n "$SHAPE_LIST" ] && break
     done
