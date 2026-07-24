@@ -1,15 +1,17 @@
 /**
-* @file backward_constant.h
-*
-* Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
-* Copyright (c) Meta Platforms, Inc. and affiliates.
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-*/
+ * @file backward_constant.h
+ *
+ * Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ */
 
 #ifndef MXREC_BACKWARD_CONSTANT_H
 #define MXREC_BACKWARD_CONSTANT_H
+
+#include <iostream>
 
 // for FGBGEMM 1.2.0 param index and size.
 namespace optim_param_idx_fbgemm_120 {
@@ -63,6 +65,6 @@ constexpr int64_t BETA2_INDEX = 2;
 // used by Adam.
 constexpr size_t AUX_INT_SIZE = 3;
 constexpr int64_t ITER_INDEX = 1;
-}
+}  // namespace optim_param_idx_fbgemm_120
 
 #endif  // MXREC_BACKWARD_CONSTANT_H

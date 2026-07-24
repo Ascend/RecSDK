@@ -220,11 +220,12 @@ void FeatureFilter::StatisticsKeyCount(const int64_t* featureDataPtr, const int6
         auto count = static_cast<uint64_t>(rawCount);
         auto label = static_cast<uint64_t>(rawLabel);
         auto iter = featureRecordMap_.find(feature);
+        double score = 0.0;
         if (iter != featureRecordMap_.end()) {
             iter->second.count += count;
             iter->second.label += label;
         } else {
-            FeatureRecord featureRecord = {count, label};
+            FeatureRecord featureRecord = {count, label, score};
             featureRecordMap_[feature] = featureRecord;
         }
     }

@@ -14,8 +14,6 @@ find_package(pybind11 REQUIRED)
 
 find_package(Threads REQUIRED)
 
-add_compile_options(-D_GLIBCXX_USE_CXX11_ABI=0)
-
 file(GLOB_RECURSE SOURCES
         ./common/*.cpp
         ./emb_table/*.cpp

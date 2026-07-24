@@ -85,6 +85,7 @@ repos:
           - "-i"
         exclude: ^build/|tests/third_party/
 
+# 本地环境缺失需要跳过配置：export SKIP="clang-tidy, gitleaks-offline-scan"
 # 敏感信息扫描
 # -------------------------- Gitleaks 本地离线二进制扫描 --------------------------
   - repo: local
@@ -99,3 +100,22 @@ repos:
           - --verbose
           - --redact
           - --config=pre-commit/.gitleaks.toml
+
+# clang-tidy
+# -------------------------- clang-tidy 本地离线二进制扫描 --------------------------
+  - repo: local
+    hooks:
+      - id: clang-tidy
+        name: clang-tidy
+        entry: clang-tidy
+        language: system
+        files: ^(training/torch_rec_v1|cust_op/framework/torch_plugin)/.*\.(h|hpp|cpp|cc|cxx|c)$
+        args:
+          - --config-file=.clang-tidy
+          - --quiet
+          - --header-filter=^$
+          - -p=compile_commands.json
+          - --extra-arg=-std=c++17
+          - --extra-arg=-Wno-unused-command-line-argument
+          - --extra-arg=-Wno-ignored-optimization-argument
+        pass_filenames: true

@@ -30,7 +30,7 @@ constexpr uint32_t CONST_2 = 2;
 bool MaskCheck(int64_t maskType, bool maskIsDefine)
 {
     if (maskType < MASK_TYPE_TRIL || maskType > MASK_TYPE_CUSTOM) {
-        printf("maskType expect in [0, 3], but value is %d\n", maskType);
+        printf("maskType expect in [0, 3], but value is %ld\n", maskType);
         return false;
     }
 

@@ -4,6 +4,9 @@
 set(CMAKE_SKIP_RPATH TRUE)
 set(CMAKE_SKIP_BUILD_RPATH TRUE)
 
+# clang-tidy配置文件生成
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # 获取python site-packages路径
 execute_process(
     COMMAND python3 -c "import site; print(site.getsitepackages()[0])"

@@ -9,6 +9,8 @@
 #ifndef COMMON_UTILS_H
 #define COMMON_UTILS_H
 
+#include <ATen/ATen.h>
+
 template <typename T>
 T* GetSafeDataPtr(const at::Tensor& tensor, const char* message)
 {

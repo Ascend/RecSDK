@@ -37,7 +37,7 @@ struct NetHashLockEntry {
     {
         __atomic_store_n(&lock, 0, __ATOMIC_SEQ_CST);
     }
-} __attribute__((packed));
+};
 
 struct alignas(K_ALIGNMENT) NetHashBucket {
     std::atomic<uint64_t> keys[K_KV_NUM_IN_BUCKET]{};

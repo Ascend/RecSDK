@@ -45,8 +45,8 @@ void LocalFileSystem::CreateDir(const string& dirName)
         ss << tmp << '/';
         int ret = mkdir(ss.str().c_str(), dirMode);
         if (ret != 0 && errno != EEXIST) {
-            auto errMsg = Logger::Format("Unable to create directory: {} ret:{} error info: {}.",
-                                         dirName, ret, strerror(errno));
+            auto errMsg =
+                Logger::Format("Unable to create directory: {} ret:{} error info: {}.", dirName, ret, strerror(errno));
             LOG_ERROR(errMsg);
             throw std::runtime_error(errMsg);
         }
@@ -88,8 +88,8 @@ size_t LocalFileSystem::GetFileSize(const string& filePath)
     std::ifstream thisReadFile;
     thisReadFile.open(filePath.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
     if (!thisReadFile.is_open()) {
-        auto errMsg = Logger::Format("Open file:{} to get file size failed, please check whether the file exists.",
-            filePath);
+        auto errMsg =
+            Logger::Format("Open file:{} to get file size failed, please check whether the file exists.", filePath);
         LOG_ERROR(errMsg);
         throw std::runtime_error(errMsg);
     }
@@ -132,7 +132,7 @@ ssize_t LocalFileSystem::Write(const string& filePath, const char* fileContent, 
     return writeBytesNum;
 }
 
-ssize_t LocalFileSystem::Write(const string& filePath, const char* fileContent, size_t dataSize, int fd)
+ssize_t LocalFileSystem::Write(const string& /*filePath*/, const char* fileContent, size_t dataSize, int fd)
 {
     // 文件描述符fd由外部传入，由调用函数进行生命周期管理
     size_t dataCol = dataSize;
@@ -167,8 +167,8 @@ ssize_t LocalFileSystem::Read(const string& filePath, char* fileContent, size_t 
     }
     int fd = open(filePath.c_str(), O_RDONLY);
     if (fd == -1) {
-        auto errMsg = Logger::Format("Failed to open read file, please check whether the file exists, file:{}.",
-            filePath);
+        auto errMsg =
+            Logger::Format("Failed to open read file, please check whether the file exists, file:{}.", filePath);
         LOG_ERROR(errMsg);
         throw std::runtime_error(errMsg);
     }
@@ -286,7 +286,7 @@ void LocalFileSystem::Valid4WriteDir(const string& fileDirPath)
 {
     if (fileDirPath.size() > FILE_PATH_LEN_MAX) {
         auto errMsg = Logger::Format("File dir path length exceed limit, file dir path:{}, len limit:{}.", fileDirPath,
-            FILE_PATH_LEN_MAX);
+                                     FILE_PATH_LEN_MAX);
         throw std::runtime_error(errMsg);
     }
     std::filesystem::path filePathObj(fileDirPath);
@@ -323,8 +323,8 @@ void MxRec::ValidateReadFile(const string& dataDir, size_t datasetSize)
     }
     // validate file size
     if (datasetSize > FILE_MAX_SIZE) {
-        auto errMsg = Logger::Format("The reading file size is invalid, not in range [{}, {}], path:{}.",
-                                     FILE_MIN_SIZE, FILE_MAX_SIZE, dataDir);
+        auto errMsg = Logger::Format("The reading file size is invalid, not in range [{}, {}], path:{}.", FILE_MIN_SIZE,
+                                     FILE_MAX_SIZE, dataDir);
         LOG_ERROR(errMsg);
         throw std::invalid_argument(errMsg);
     }
