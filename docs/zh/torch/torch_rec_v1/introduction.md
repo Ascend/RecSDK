@@ -111,4 +111,9 @@ Rec SDK Torch基于TorchRec、推荐场景主流框架、CANN和各种硬件和�
     <td>ARM</td>
     <td>openEuler版本：22.03</td>
   </tr>
+  <tr>
+    <td>Atlas 800T A3 超节点服务器</td>
+    <td>ARM</td>
+    <td>openEuler版本：22.03</td>
+  </tr>
 </table>
