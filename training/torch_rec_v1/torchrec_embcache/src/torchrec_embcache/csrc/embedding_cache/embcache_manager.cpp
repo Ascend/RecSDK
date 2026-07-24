@@ -25,15 +25,14 @@ using namespace Embcache;
 
 EmbcacheManager::EmbcacheManager(const std::vector<EmbConfig>& embConfigs, bool needAccumulateOffset)
     : embNum_(embConfigs.size()),
-      needAccumulateOffset_(needAccumulateOffset),
-      incrementalKeySets_(embConfigs.size())
+      incrementalKeySets_(embConfigs.size()),
+      needAccumulateOffset_(needAccumulateOffset)
 {
     ConfigGlobalEnv();
     Logger::SetLevel(GlobalEnv::glogStderrthreshold);
     LogGlobalEnv();
     TORCH_CHECK(embConfigs.size() <= MAX_EMB_TABLE_NUM, "The number of embedding tables <= {}", MAX_EMB_TABLE_NUM);
     for (const auto& config : embConfigs) {
-        auto length = config.tableName.size();
         if (config.tableName.size() > TABLE_NAME_LENGTH) {
             LOG_ERROR("The length of table name: {} is greater than {}", config.tableName, TABLE_NAME_LENGTH);
             throw std::runtime_error("the length of table name is invalid.");
@@ -106,13 +105,13 @@ std::vector<int64_t> EmbcacheManager::GetNewOffsetPerKey(const std::vector<int64
     std::vector<int64_t> newOffsetPerKey(embTableIndies_.size() + 1, 0);
     std::vector<int64_t> featureSplitByTable(embTableIndies_.size(), 0);
     for (size_t i = 0; i < featureSplitByTable.size(); ++i) {
-        auto tableIndex = curTableIndices[i];
+        auto tableIndex = static_cast<size_t>(curTableIndices[i]);
         featureSplitByTable[i] = embConfigs_[tableIndex].num_features;
     }
     int64_t start = 0;
     for (size_t i = 0; i < featureSplitByTable.size(); ++i) {
         int64_t end = start + featureSplitByTable[i];
-        TORCH_CHECK(end < offsetPerKey.size(), "end must less than offsetPerKey size");
+        TORCH_CHECK(end < static_cast<int64_t>(offsetPerKey.size()), "end must less than offsetPerKey size");
         newOffsetPerKey[i + 1] = offsetPerKey[end];
         start = end;
     }
@@ -142,8 +141,8 @@ SwapInfo EmbcacheManager::ComputeSwapInfo(const at::Tensor& batchKeys, const std
     std::vector<int64_t> swapinOffs;
     std::vector<int64_t> batchOffs;
     SwapInfo swapInfo;
-    for (int64_t i = 0; i < curTableIndices.size(); i++) {
-        int64_t idx = curTableIndices[i];
+    for (int64_t i = 0; i < static_cast<int64_t>(curTableIndices.size()); i++) {
+        int32_t idx = curTableIndices[i];
         TORCH_CHECK(idx >= 0 && idx < embNum_, "table index {} is out of range [0, {})", idx, embNum_);
         auto startIndex = newOffsetPerKey[i];
         auto endIndex = newOffsetPerKey[i + 1];
@@ -243,8 +242,8 @@ void EmbcacheManager::RecordBatchKeys(const at::Tensor& batchKeys, const std::ve
     TORCH_CHECK(keyPtr != nullptr, "keyPtr should not be nullptr");
     int64_t keyNum = batchKeys.numel();
 
-    for (int64_t i = 0; i < curTableIndices.size(); i++) {
-        int64_t idx = curTableIndices[i];
+    for (int64_t i = 0; i < static_cast<int64_t>(curTableIndices.size()); i++) {
+        int32_t idx = curTableIndices[i];
         TORCH_CHECK(idx >= 0 && idx < embNum_, "table index {} is out of range [0, {})", idx, embNum_);
         auto startIndex = newOffsetPerKey[i];
         auto endIndex = newOffsetPerKey[i + 1];
@@ -316,16 +315,17 @@ SwapinTensor EmbcacheManager::EmbeddingLookup(const std::vector<std::vector<int6
     TORCH_CHECK(curTableIndices.size() == swapinKeys.size(), "tableIndices size must be equal to swapinKeys size");
 
     std::vector<float*> swapinOptimsPtr(optimNum_);
-    for (uint64_t i = 0; i < swapinKeys.size(); i++) {
+    for (uint64_t i = 0; i < static_cast<uint64_t>(swapinKeys.size()); i++) {
         for (int32_t j = 0; j < optimNum_; j++) {
             swapinOptimsPtr[j] = swapinTensor.swapinOptims[j].data_ptr<float>() + jaggedOffsPtr[i];
         }
 
-        int32_t idx = curTableIndices[i];
-        TORCH_CHECK(idx >= 0 && idx < embeddingTables_.size(), "table index {} is out of range [0, {})", idx,
-                    embeddingTables_.size());
-        embeddingTables_[idx]->FindOrInsert(swapinKeys[i], swapinTensor.swapinEmbs.data_ptr<float>() + jaggedOffsPtr[i],
-                                            swapinOptimsPtr);
+        int32_t idx = static_cast<int32_t>(curTableIndices[i]);
+        TORCH_CHECK(idx >= 0 && idx < static_cast<int32_t>(embeddingTables_.size()),
+                    "table index {} is out of range [0, {})", idx, static_cast<int32_t>(embeddingTables_.size()));
+        embeddingTables_[static_cast<size_t>(idx)]->FindOrInsert(
+            swapinKeys[static_cast<size_t>(i)], swapinTensor.swapinEmbs.data_ptr<float>() + jaggedOffsPtr[i],
+            swapinOptimsPtr);
     }
 
     LOG_DEBUG("The embeddingLookupTC(ms): {}", embeddingLookupTC.ElapsedMS());
@@ -365,11 +365,12 @@ void EmbcacheManager::EmbeddingUpdate(const std::vector<std::vector<int64_t>>& s
             swapoutOptimPtrs[j] = swapoutOptims[j].data_ptr<float>() + jaggedOff;
         }
 
-        int32_t idx = curTableIndices[i];
-        TORCH_CHECK(idx >= 0 && idx < embeddingTables_.size(), "table index {} is out of range [0, {})", idx,
-                    embeddingTables_.size());
-        embeddingTables_[idx]->InsertOrAssign(swapoutKeys[i], swapoutEmbsPtr + jaggedOff, swapoutOptimPtrs);
-        jaggedOff += swapoutKeys[i].size() * embConfigs_[idx].embDim;
+        int32_t idx = static_cast<int32_t>(curTableIndices[i]);
+        TORCH_CHECK(idx >= 0 && idx < static_cast<int32_t>(embeddingTables_.size()),
+                    "table index {} is out of range [0, {})", idx, static_cast<int32_t>(embeddingTables_.size()));
+        embeddingTables_[static_cast<size_t>(idx)]->InsertOrAssign(swapoutKeys[static_cast<size_t>(i)],
+                                                                   swapoutEmbsPtr + jaggedOff, swapoutOptimPtrs);
+        jaggedOff += swapoutKeys[static_cast<size_t>(i)].size() * embConfigs_[static_cast<size_t>(idx)].embDim;
     }
 
     LOG_DEBUG("The embeddingUpdateTC(ms): {}", embeddingUpdateTC.ElapsedMS());
@@ -1036,9 +1037,9 @@ void EmbcacheManager::LoadEmbeddingAndOptimizer(const shared_ptr<FileSystem>& fi
     }
 }
 
-void EmbcacheManager::RecordLoadDebugInfo(const vector<int64_t>& keys, const vector<std::vector<float>>& embeddings,
-                                          const vector<std::vector<float>>& momentum1,
-                                          const vector<std::vector<float>>& momentum2,
+void EmbcacheManager::RecordLoadDebugInfo(const vector<int64_t>& keys, const vector<std::vector<float>>& /*embeddings*/,
+                                          const vector<std::vector<float>>& /*momentum1*/,
+                                          const vector<std::vector<float>>& /*momentum2*/,
                                           const TableRankParam& tableParams)
 {
     if (Logger::GetLevel() > Logger::TRACE) {
@@ -1195,7 +1196,7 @@ void EmbcacheManager::RecordTimestamp(const at::Tensor& batchKeys, const std::ve
     TORCH_CHECK(curTableIndices.size() + 1 == newOffsetPerKey.size(),
                 "tableIndices size+1 must be equal to newOffsetPerKey size");
 
-    for (int64_t i = 0; i < curTableIndices.size(); ++i) {
+    for (size_t i = 0; i < curTableIndices.size(); ++i) {
         int32_t idx = curTableIndices[i];
         TORCH_CHECK(idx >= 0 && idx < embNum_, "table index {} is out of range [0, {})", idx, embNum_);
 

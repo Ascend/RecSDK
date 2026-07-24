@@ -29,6 +29,15 @@ cmake -B build -DBUILD_VER="${BUILD_VER}"
 
 cmake --build build -j
 chmod 550 ./build/*.so
+
+# 删除 compile_commands.json 中的 -fabi-version=11 选项并拷贝到 RecSDK 根目录
+if [ -f "./build/compile_commands.json" ]; then
+    sed -i 's/-fabi-version=11 //g' ./build/compile_commands.json
+    script_path=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+    recsdk_root=$(cd "$script_path/../../../../.." && pwd)
+    cp ./build/compile_commands.json "$recsdk_root/"
+fi
+
 # 默认放在python3,site-package目录下
 PACKAGE_PATH=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")
 if [ -d "$PACKAGE_PATH" ]; then

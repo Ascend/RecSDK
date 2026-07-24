@@ -27,7 +27,7 @@ void Restore(const at::Tensor& uniqueIndices, const at::Tensor& uniqueInverse, c
                 "tensor device mismatch");
 
     TORCH_CHECK(hashIndices.numel() == uniqueInverse.numel(), "hashIndices length must equal uniqueInverse length");
-    TORCH_CHECK(uniqueOffset.numel() == offsetsPerTable.size(),
+    TORCH_CHECK(uniqueOffset.numel() == static_cast<int64_t>(offsetsPerTable.size()),
                 "uniqueOffset length must equal offsetsPerTable length");
 
     const int64_t nTables = static_cast<int64_t>(offsetsPerTable.size()) - 1;
@@ -47,12 +47,12 @@ void Restore(const at::Tensor& uniqueIndices, const at::Tensor& uniqueInverse, c
             const int64_t rStart = offsetsPtr[i];
             const int64_t rEnd = offsetsPtr[i + 1];
 
-            TORCH_CHECK(rStart >= 0 && rEnd <= uniqueInverseLen,
-                        "invalid offsetsPerTable[", rStart, ", ", rEnd, ") for table[", uniqueInverseLen, "]");
+            TORCH_CHECK(rStart >= 0 && rEnd <= uniqueInverseLen, "invalid offsetsPerTable[", rStart, ", ", rEnd,
+                        ") for table[", uniqueInverseLen, "]");
             for (int64_t r = rStart; r < rEnd; ++r) {
                 const int64_t globalIdx = uniqueInversePtr[r] + shift;
-                TORCH_CHECK(globalIdx >= 0 && globalIdx < uniqueIndicesLen,
-                            "invalid globalIdx ", globalIdx, " for uniqueIndices[0, ", uniqueIndicesLen, ")");
+                TORCH_CHECK(globalIdx >= 0 && globalIdx < uniqueIndicesLen, "invalid globalIdx ", globalIdx,
+                            " for uniqueIndices[0, ", uniqueIndicesLen, ")");
                 hashIndicesPtr[r] = uniqueIndicesPtr[globalIdx];
             }
         }

@@ -90,6 +90,39 @@ function build_hybrid_torchrec()
     cp requirements.txt dist/
 }
 
+function merge_compile_commands()
+{
+    local file1="${SCRIPT_PATH}/src/build/compile_commands.json"
+    local file2="${TORCHREC_EMBCACHE_PATH}/src/cmake_build/compile_commands.json"
+    local recsdk_root=$(cd "$SCRIPT_PATH/../../.." && pwd)
+    local output="${recsdk_root}/compile_commands.json"
+    local temp_file=$(mktemp)
+
+    echo "[" > "$temp_file"
+
+    if [ -f "$file1" ]; then
+        sed '1d;$d' "$file1" >> "$temp_file"
+    fi
+
+    if [ -f "$file1" ] && [ -f "$file2" ]; then
+        echo "," >> "$temp_file"
+    fi
+
+    if [ -f "$file2" ]; then
+        sed '1d;$d' "$file2" >> "$temp_file"
+    fi
+
+    echo "]" >> "$temp_file"
+
+    mv "$temp_file" "$output"
+
+    local count1=$(if [ -f "$file1" ]; then sed '1d;$d' "$file1" | grep -c '^\s*{' || echo 0; else echo 0; fi)
+    local count2=$(if [ -f "$file2" ]; then sed '1d;$d' "$file2" | grep -c '^\s*{' || echo 0; else echo 0; fi)
+    local total=$((count1 + count2))
+
+    echo "Merged hybrid_torchrec and torchrec_embcache compile_commands to ${output}"
+}
+
 function archive_target_pkg()
 {
     local pt_version=$(get_pytorch_ver)
@@ -110,6 +143,7 @@ function compile_all_pkg()
     build_hybrid_torchrec
     build_torchrec_embcache
     archive_target_pkg
+    merge_compile_commands
 }
 
 # ==============================================================================

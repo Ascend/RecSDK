@@ -44,7 +44,7 @@ public:
     virtual void RemoveEmbedding(const std::vector<int64_t>& keys) = 0;
     virtual void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) = 0;
     virtual void ForEachIncrementalKey(const std::function<void(const int64_t, const float*)>& callback,
-                            const std::unordered_set<int64_t>* incrementalKeys = nullptr) = 0;
+                                       const std::unordered_set<int64_t>* incrementalKeys = nullptr) = 0;
 
 protected:
     EmbConfig config_;
@@ -60,7 +60,7 @@ public:
         std::lock_guard<std::mutex> lk(mtx_);
         auto embDim = config_.embDim;
         auto optimNum = config_.optimNum;
-        if (outOptims.size() != optimNum) {
+        if (outOptims.size() != static_cast<size_t>(optimNum)) {
             LOG_ERROR("outOptims size {} is not equal to optimNum {}", outOptims.size(), optimNum);
             throw std::runtime_error("outOptims size is not equal to optimNum");
         }
@@ -173,8 +173,7 @@ public:
         }
     }
 
-    void ForEachKey(
-        const std::function<void(const int64_t, const float*)>& callback) override
+    void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) override
     {
         std::lock_guard<std::mutex> lk(mtx_);
         if (this->table_.size() > EMB_SIZE_MAX) {
@@ -186,9 +185,8 @@ public:
         }
     }
 
-    void ForEachIncrementalKey(
-        const std::function<void(const int64_t, const float*)>& callback,
-        const std::unordered_set<int64_t>* incrementalKeys = nullptr) override
+    void ForEachIncrementalKey(const std::function<void(const int64_t, const float*)>& callback,
+                               const std::unordered_set<int64_t>* incrementalKeys = nullptr) override
     {
         std::lock_guard<std::mutex> lk(mtx_);
         if (this->table_.size() > EMB_SIZE_MAX) {
@@ -219,7 +217,7 @@ public:
     explicit EmbTableFastHashMap(const EmbConfig& embConfig) : EmbTable(embConfig)
     {
         memPoolPtr_ = std::make_shared<EmbMemoryPool>(embConfig, EmbMemPoolConfigConstants::bufferSize,
-                                                     EmbMemPoolConfigConstants::hostVocabSize);
+                                                      EmbMemPoolConfigConstants::hostVocabSize);
         hostVocabSize_ = EmbMemPoolConfigConstants::hostVocabSize;
 
         fastHashMapPtr_ = std::make_shared<FastHashMap>();
@@ -292,8 +290,8 @@ public:
                             LOG_ERROR("outOptims[0] is nullptr");
                             throw std::runtime_error("outOptims[0] is nullptr");
                         }
-                        rc = memcpy_s(outOptims[0] + i * embDim, size,
-                                      reinterpret_cast<float*>(addrValue) + embDim, size);
+                        rc = memcpy_s(outOptims[0] + i * embDim, size, reinterpret_cast<float*>(addrValue) + embDim,
+                                      size);
                         if (rc != 0) {
                             LOG_ERROR("memcpy_s optim1[{}] to outOptims[0] failed. ret: {}", i, rc);
                             throw std::runtime_error("memcpy_s optim1 to outOptims[0] failed.");
@@ -385,8 +383,7 @@ public:
         }
     }
 
-    void ForEachKey(
-        const std::function<void(const int64_t, const float*)>& callback) override
+    void ForEachKey(const std::function<void(const int64_t, const float*)>& callback) override
     {
         // 全量模式：导出所有 key-value
         auto keyEmbList = this->fastHashMapPtr_->Export();
@@ -399,9 +396,8 @@ public:
         }
     }
 
-    void ForEachIncrementalKey(
-        const std::function<void(const int64_t, const float*)>& callback,
-        const std::unordered_set<int64_t>* incrementalKeys = nullptr) override
+    void ForEachIncrementalKey(const std::function<void(const int64_t, const float*)>& callback,
+                               const std::unordered_set<int64_t>* incrementalKeys = nullptr) override
     {
         // 增量模式：只遍历 incrementalKeys 中存在的 key
         if (incrementalKeys == nullptr) {

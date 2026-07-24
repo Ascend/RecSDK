@@ -38,8 +38,8 @@ at::Tensor hstu_forward_v2_impl_npu(const at::Tensor& q, const at::Tensor& k, co
     auto denseQ = q.contiguous();
     auto denseK = k.contiguous();
     auto denseV = v.contiguous();
-    auto denseBias = c10::value_or_else(rab, [] { return at::Tensor(); });
-    auto maskNpu = c10::value_or_else(mask, [] { return at::Tensor(); });
+    auto denseBias = rab.value_or(at::Tensor());
+    auto maskNpu = mask.value_or(at::Tensor());
 
     if (denseBias.defined()) {
         TORCH_CHECK((denseBias.dim() == 4 && (denseBias.size(1) == denseQ.size(1))), "Error: rab shape mismatch. ");
