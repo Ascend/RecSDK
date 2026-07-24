@@ -160,7 +160,7 @@ print(result)
 
 在dump图文件夹下，会生成若干张pbtxt/pb，其均为在图优化过程中各个阶段执行完后，按顺序生成。例如ge\_onnx\_00000101\_graph\_0\_Build.pbtxt中00000101为这个序号，后面的graph\_0的0代表rank id，在推荐推理场景恒为0。这里的build图对应的就是执行阶段的图，需通过profiling与该图对应的网络结构，分析优化空间。
 
-[msIT工具](https://gitcode.com/Ascend/msit/blob/master/msit/docs/graph/README.md)：dump出GE图，再用工具的msit graph功能，扫描重复结构，重复出现次数多，且占比较大的子结构，可以考虑手写融合pass和融合算子进行优化，其中也有子图抽取功能，比如图太大打不开的场景，可以抽取某块子图打开来分析，推荐使用第三方网络可视化工具：[netron.app](https://netron.app/)。
+[msIT工具](https://gitcode.com/Ascend/msit/blob/master/msit/docs/graph/README.md)：dump出GE图，再用工具的msit graph功能，扫描重复结构，重复出现次数多，且占比较大的子结构，可以考虑手写融合Pass和融合算子进行优化，其中也有子图抽取功能，比如图太大打不开的场景，可以抽取某块子图打开来分析，推荐使用第三方网络可视化工具：[netron.app](https://netron.app/)。
 
 ## 性能优化分析<a name="ZH-CN_TOPIC_0000002380816486"></a>
 
@@ -372,7 +372,7 @@ profiling分析--\>step3：
 
 同时，我们发现这里还有Unique，Where等AICPU算子，
 
-算子需要依赖上层拆图（当前场景拆图逻辑受用户控制，在示例中未处理）。而Where算子，来源于以下这个结构，可以通过自定义PASS消除Where引入的动态结构。
+算子需要依赖上层拆图（当前场景拆图逻辑受用户控制，在示例中未处理）。而Where算子，来源于以下这个结构，可以通过自定义Pass消除Where引入的动态结构。
 
 ![](figures/performance_tuning/zh-cn_image_0000002380656670.png)
 
@@ -400,7 +400,7 @@ profiling分析--\>step3：
 
 **案例一：**
 
-针对TopK算子，如果值为int32/int64类型，则只能在AICPU上执行；但如果值为fp32类型，则有ai vector实现。基于用户实际场景，如果可以满足int32/int64->fp32转换且不损失精度（值<2^24），则可以通过自定义pass将索引为int32（int64处理类似）的TopK转为cast\(int32->fp32\) + TopK\(fp32\) + cast\(fp32->int32\)去执行。
+针对TopK算子，如果值为int32/int64类型，则只能在AICPU上执行；但如果值为fp32类型，则有ai vector实现。基于用户实际场景，如果可以满足int32/int64->fp32转换且不损失精度（值<2^24），则可以通过自定义Pass将索引为int32（int64处理类似）的TopK转为cast\(int32->fp32\) + TopK\(fp32\) + cast\(fp32->int32\)去执行。
 
 **案例二：**
 
@@ -408,7 +408,7 @@ profiling分析--\>step3：
 
 ![](figures/performance_tuning/zh-cn_image_0000002417288229.png)
 
-### 自定义pass<a name="ZH-CN_TOPIC_0000002380816502"></a>
+### 自定义Pass<a name="ZH-CN_TOPIC_0000002380816502"></a>
 
 **具体案例<a name="section424121710210"></a>**
 
@@ -444,7 +444,7 @@ Bmm算子内部本身有广播逻辑，如果周围有算子实现的正好是�
 
 **使用背景<a name="section736814187110"></a>**
 
-针对部分算子的性能问题，如果无法通过PASS，优化周围的计算结构规避时，就需要针对这部分算子进行手动优化。但手写算子，如果要保证其泛化性，往往会需要针对不同shape实现不同tiling分支，代码量非常大。在针对模型优化时，优化时间过长往往不能满足用户需求。所以，如果需要手写自定义算子，最优的策略是基于一些特定网络结构，基于模型上带来的先验知识，去实现针对特定网络结构的优化分支。
+针对部分算子的性能问题，如果无法通过Pass，优化周围的计算结构规避时，就需要针对这部分算子进行手动优化。但手写算子，如果要保证其泛化性，往往会需要针对不同shape实现不同tiling分支，代码量非常大。在针对模型优化时，优化时间过长往往不能满足用户需求。所以，如果需要手写自定义算子，最优的策略是基于一些特定网络结构，基于模型上带来的先验知识，去实现针对特定网络结构的优化分支。
 
 **具体案例<a name="section81292121776"></a>**
 
