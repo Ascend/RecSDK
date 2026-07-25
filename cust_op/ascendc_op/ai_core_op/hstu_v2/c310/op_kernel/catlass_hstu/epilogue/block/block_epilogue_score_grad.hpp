@@ -143,7 +143,7 @@ public:
         auto ubGradRabPartPtr = (__ubuf__ Element*)ubGRabPartTensor[offset].GetPhyAddr();
 
         AscendC::VF_CALL<catlass::Epilogue::RegBase::FastSiluGradVf<Element, ElementAccumulator, Element, HAS_RAB>>(
-            ubSPtr, ubRabPtr, ubMaskPtr, ubProbPtr, ubGradRabPartPtr, alpha, scale, count, repeatTimes, needMask);
+            ubSPtr, ubRabPtr, ubMaskPtr, ubProbPtr, ubGradRabPartPtr, alpha, count, repeatTimes, needMask);
     }
 
     template <class Shape>

@@ -77,13 +77,13 @@ __simd_callee__ inline void Sigmoid(RegType& dst, RegType& src, RegType& ones, R
  • @description 将 RAB (Relative Attention Bias) 加到注意力分数上: dst = src + RAB
 
  */
-template <typename Type, typename AccType, bool HAS_RAB, typename RegType>
+template <typename Type, typename AccType, bool HAS_RAB, bool NEED_MASK, typename RegType>
 __simd_callee__ inline void AddFusedRab(RegType& dst, RegType& src, __ubuf__ Type* ubRabPtr, __ubuf__ Type* ubMaskPtr,
-                                        AccType alpha, AscendC::MicroAPI::MaskReg& maskReg, bool needMask)
+                                        AccType alpha, AscendC::MicroAPI::MaskReg& maskReg)
 {
     RegType vregMask;
     RegType vregRab;
-    if (needMask) {
+    if constexpr (NEED_MASK) {
         if constexpr (!std::is_same<Type, AccType>::value) {
             CastUpLoad<AccType, Type>(vregMask, ubMaskPtr, maskReg);
         } else {
@@ -99,14 +99,17 @@ __simd_callee__ inline void AddFusedRab(RegType& dst, RegType& src, __ubuf__ Typ
         }
     }
 
-    if (needMask) {
+    if constexpr (NEED_MASK) {
         if constexpr (HAS_RAB) {
+            // Case 1: HAS_RAB && NEED_MASK
             AscendC::MicroAPI::Add(src, vregRab, vregMask, maskReg);  // fusedRab = Rab + Mask
             AscendC::MicroAPI::Axpy(dst, src, alpha, maskReg);        // A = A + fusedRab * alpha
         } else {
+            // Case 2: NEED_MASK only
             AscendC::MicroAPI::Axpy(dst, vregMask, alpha, maskReg);  // A = A + Mask * alpha
         }
     } else if constexpr (HAS_RAB) {
+        // Case 3: HAS_RAB only
         AscendC::MicroAPI::Axpy(dst, vregRab, alpha, maskReg);  // A = A + Rab * alpha
     }
 }
@@ -161,15 +164,15 @@ __simd_callee__ inline void AddFusedRab(RegType& dst, RegType& src, __ubuf__ Typ
  •              6. 计算 silu(x) = x * sigmoid(x) 并存储
 
  */
-template <typename Type, typename AccType, bool HAS_RAB, typename RegType>
+template <typename Type, typename AccType, bool HAS_RAB, bool NEED_MASK, typename RegType>
 __simd_callee__ inline void SiluScore(__ubuf__ AccType* ubSPtr, __ubuf__ Type* ubRabPtr, __ubuf__ Type* ubMaskPtr,
                                       __ubuf__ Type* ubSiluScorePtr, RegType& vregA, RegType& vregZ, RegType& vregT,
                                       RegType& vregS, RegType& vregOnes, RegType& vregZeros, AccType alpha,
-                                      AscendC::MicroAPI::MaskReg& maskReg, bool needMask)
+                                      AscendC::MicroAPI::MaskReg& maskReg)
 {
     AscendC::MicroAPI::LoadAlign(vregA, ubSPtr);
     // A = A + (Rab + Mask) * alpha
-    AddFusedRab<Type, AccType, HAS_RAB>(vregA, vregZ, ubRabPtr, ubMaskPtr, alpha, maskReg, needMask);
+    AddFusedRab<Type, AccType, HAS_RAB, NEED_MASK>(vregA, vregZ, ubRabPtr, ubMaskPtr, alpha, maskReg);
 
     Sigmoid(vregZ, vregA, vregOnes, vregZeros, maskReg);  // Z = Sigmoid(A)
 

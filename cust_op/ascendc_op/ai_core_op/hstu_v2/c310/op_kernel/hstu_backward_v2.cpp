@@ -84,8 +84,8 @@ template <bool HAS_RAB, bool IS_LOCAL, bool IS_CAUSAL, bool IS_CONTEXT, bool IS_
           uint32_t BLOCK_K>
 CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR rab, GM_ADDR seqOffsetQ,
                                      GM_ADDR seqOffsetK, GM_ADDR numContext, GM_ADDR numTarget, GM_ADDR qShare,
-                                     GM_ADDR qGrad, GM_ADDR kGrad, GM_ADDR vGrad, GM_ADDR rabGrad, GM_ADDR workSpace,
-                                     GM_ADDR tiling)
+                                     GM_ADDR metadata, GM_ADDR qGrad, GM_ADDR kGrad, GM_ADDR vGrad, GM_ADDR rabGrad,
+                                     GM_ADDR workSpace, GM_ADDR tiling)
 {
     // 设置算子类型为CUBE:VECTOR = 1:2的MIX模式
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -107,6 +107,10 @@ CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR
     static constexpr uint32_t BLOCK_N = tla::get<1>(L1TileShape{});
     using Predictor = PredictorSelector<IS_LOCAL, IS_CAUSAL, IS_ARBITRARY, BLOCK_M, BLOCK_N>;
 
+    // metadata 驱动路径的调度器类型(与设备类型同参: 行轴块=BLOCK_N=Rk, 列轴块=BLOCK_M=Cq)
+    using MetaKBlockScheduler = Catlass::Gemm::Block::MetadataRowBlockScheduler<ElementOffset, BLOCK_N, BLOCK_M>;
+    using MetaQBlockScheduler = Catlass::Gemm::Block::ColumnBlockScheduler<MetaKBlockScheduler, BLOCK_N, BLOCK_M, true>;
+
     // mmad mainloop kernel
     if ASCEND_IS_AIC {
         using BlockMmadQK = typename KernelBuilder::BlockMmadQK;
@@ -115,16 +119,26 @@ CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR
         using BlockMmadKGrad = typename KernelBuilder::BlockMmadKGrad;
         using BlockMmadQGrad = typename KernelBuilder::BlockMmadQGrad;
 
-        using MmadMainLoopKernel =
-            BackwardMmadMainloop<BlockMmadQK, BlockMmadGV, BlockMmadVGrad, BlockMmadKGrad, BlockMmadQGrad,
-                                 QBlockScheduler, KBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL, IS_CONTEXT,
-                                 IS_TARGET, IS_ARBITRARY, Predictor>;
-
-        using MmadMainLoopParams = typename MmadMainLoopKernel::Params;
-
-        MmadMainLoopParams params{grad, q, k, v, seqOffsetQ, seqOffsetK, qShare, numContext, numTarget};
-        MmadMainLoopKernel kernel(tiling);
-        kernel(params);
+        // 运行期择一: 传了 metadata → metadata 驱动;否则 → 旧设备现算(逐字节等价、零回归)
+        if (metadata != nullptr) {
+            using MmadMainLoopKernel =
+                BackwardMmadMainloop<BlockMmadQK, BlockMmadGV, BlockMmadVGrad, BlockMmadKGrad, BlockMmadQGrad,
+                                     MetaQBlockScheduler, MetaKBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL,
+                                     IS_CONTEXT, IS_TARGET, IS_ARBITRARY, Predictor>;
+            typename MmadMainLoopKernel::Params params{grad,       q,      k,          v,         seqOffsetQ,
+                                                       seqOffsetK, qShare, numContext, numTarget, metadata};
+            MmadMainLoopKernel kernel(tiling);
+            kernel(params);
+        } else {
+            using MmadMainLoopKernel =
+                BackwardMmadMainloop<BlockMmadQK, BlockMmadGV, BlockMmadVGrad, BlockMmadKGrad, BlockMmadQGrad,
+                                     QBlockScheduler, KBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL, IS_CONTEXT,
+                                     IS_TARGET, IS_ARBITRARY, Predictor>;
+            typename MmadMainLoopKernel::Params params{grad,       q,      k,          v,         seqOffsetQ,
+                                                       seqOffsetK, qShare, numContext, numTarget, nullptr};
+            MmadMainLoopKernel kernel(tiling);
+            kernel(params);
+        }
     } else {
         // epilogue mainloop kernel
         using BlockEpilogueQK = typename KernelBuilder::BlockEpilogueQK;
@@ -132,16 +146,24 @@ CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR
         using BlockEpilogueKVGrad = typename KernelBuilder::BlockEpilogueKVGrad;
         using BlockEpilogueQGrad = typename KernelBuilder::BlockEpilogueQGrad;
 
-        using EpilogueMainLoopKernel =
-            BackwardEpilogueMainloop<BlockEpilogueQK, BlockEpilogueGV, BlockEpilogueKVGrad, BlockEpilogueQGrad,
-                                     QBlockScheduler, KBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL, IS_CONTEXT,
-                                     IS_TARGET, IS_ARBITRARY, Predictor>;
-
-        using EpilogueMainLoopParams = typename EpilogueMainLoopKernel::Params;
-
-        EpilogueMainLoopParams params{rab,   seqOffsetQ, seqOffsetK, qGrad,      kGrad,
-                                      vGrad, rabGrad,    qShare,     numContext, numTarget};
-        EpilogueMainLoopKernel kernel(tiling);
-        kernel(params);
+        if (metadata != nullptr) {
+            using EpilogueMainLoopKernel =
+                BackwardEpilogueMainloop<BlockEpilogueQK, BlockEpilogueGV, BlockEpilogueKVGrad, BlockEpilogueQGrad,
+                                         MetaQBlockScheduler, MetaKBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL,
+                                         IS_CONTEXT, IS_TARGET, IS_ARBITRARY, Predictor>;
+            typename EpilogueMainLoopKernel::Params params{rab,     seqOffsetQ, seqOffsetK, qGrad,     kGrad,   vGrad,
+                                                           rabGrad, qShare,     numContext, numTarget, metadata};
+            EpilogueMainLoopKernel kernel(tiling);
+            kernel(params);
+        } else {
+            using EpilogueMainLoopKernel =
+                BackwardEpilogueMainloop<BlockEpilogueQK, BlockEpilogueGV, BlockEpilogueKVGrad, BlockEpilogueQGrad,
+                                         QBlockScheduler, KBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL,
+                                         IS_CONTEXT, IS_TARGET, IS_ARBITRARY, Predictor>;
+            typename EpilogueMainLoopKernel::Params params{rab,     seqOffsetQ, seqOffsetK, qGrad,     kGrad,  vGrad,
+                                                           rabGrad, qShare,     numContext, numTarget, nullptr};
+            EpilogueMainLoopKernel kernel(tiling);
+            kernel(params);
+        }
     }
 }

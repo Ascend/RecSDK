@@ -29,6 +29,7 @@ See the License for the specific language governing permissions and
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/layout/layout.hpp"
 #include "../../../catlass_hstu/kernel/mask/predictor_builder.hpp"
+#include "../../../catlass_hstu/gemm/block/metadata_row_block_scheduler.hpp"
 
 namespace Catlass::Kernel {
 
@@ -112,13 +113,15 @@ struct BackwardMmadMainloop {
         GM_ADDR ptrQShare;
         GM_ADDR ptrNumContext;
         GM_ADDR ptrNumTarget;
+        GM_ADDR ptrMetadata;  // 可选: flash_attn_metadata 分核输出;nullptr → 旧设备现算路径
 
         CATLASS_DEVICE
         Params() {}
 
         CATLASS_DEVICE
         Params(GM_ADDR ptrGrad_, GM_ADDR ptrQ_, GM_ADDR ptrK_, GM_ADDR ptrV_, GM_ADDR ptrSeqOffsetQ_,
-               GM_ADDR ptrSeqOffsetK_, GM_ADDR ptrQShare_, GM_ADDR ptrNumContext_, GM_ADDR ptrNumTarget_)
+               GM_ADDR ptrSeqOffsetK_, GM_ADDR ptrQShare_, GM_ADDR ptrNumContext_, GM_ADDR ptrNumTarget_,
+               GM_ADDR ptrMetadata_ = nullptr)
             : ptrGrad(ptrGrad_),
               ptrQ(ptrQ_),
               ptrK(ptrK_),
@@ -127,7 +130,8 @@ struct BackwardMmadMainloop {
               ptrSeqOffsetK(ptrSeqOffsetK_),
               ptrQShare(ptrQShare_),
               ptrNumContext(ptrNumContext_),
-              ptrNumTarget(ptrNumTarget_)
+              ptrNumTarget(ptrNumTarget_),
+              ptrMetadata(ptrMetadata_)
         {
         }
     };
@@ -241,7 +245,10 @@ struct BackwardMmadMainloop {
         blockMmadVGrad.SetDeqScalar(scale);
 
         QBlockScheduler qBlockScheduler(batch, heads, params.ptrSeqOffsetQ);
-        KBlockScheduler kBlockScheduler(batch, heads, params.ptrSeqOffsetK, params.ptrSeqOffsetQ);
+        // 行(K)调度器: 经工厂构造。KBlockScheduler 为 RowBlockScheduler 时忽略 metadata(旧路);
+        // 为 MetadataRowBlockScheduler 时用 metadata 驱动(新路)。构造代码对两种类型统一。
+        KBlockScheduler kBlockScheduler = Gemm::Block::MakeRowScheduler<KBlockScheduler>(
+            batch, heads, params.ptrSeqOffsetK, params.ptrSeqOffsetQ, params.ptrMetadata);
         uint32_t pingPongFlag = 0;
         uint32_t l0bFlag = 0;
 

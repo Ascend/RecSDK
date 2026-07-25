@@ -371,6 +371,9 @@ public:
             .Follow("seq_offset_q", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
         this->Input("q_share").ParamType(OPTIONAL).DataType({ge::DT_FLOAT, ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
+        // 可选: flash_attn_metadata 分核输出(int32,HEAD+FA+FD 布局)。未传 → kernel 收到 nullptr →
+        // 旧设备现算分核(零回归)
+        this->Input("metadata").ParamType(OPTIONAL).DataType({ge::DT_INT32, ge::DT_INT32}).FormatList({ge::FORMAT_ND});
         this->Output("q_grad").ParamType(REQUIRED).Follow("grad", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
         this->Output("k_grad").ParamType(REQUIRED).Follow("grad", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
         this->Output("v_grad").ParamType(REQUIRED).Follow("grad", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
