@@ -196,7 +196,7 @@ def test_backend():
 @pytest.mark.parametrize("has_rab", [True, False])
 @pytest.mark.parametrize("data_type", [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("seed", [123])
-def test_user_case(
+def test_user_case_1(
     test_backend,
     benchmark_record,
     batch_size,
@@ -215,7 +215,60 @@ def test_user_case(
     head_dim_qk, head_dim_v = head_dims
     max_seqlen_q, max_seqlen_k = seq_lens
     config = BenchmarkConfig(
-        test_name="test_user_case",
+        test_name="test_user_case_1",
+        seed=seed,
+        seq_all_equal=True,
+        seq_max_ratio=0.9,
+        batch_size=batch_size,
+        head_num=head_num,
+        head_dim_qk=head_dim_qk,
+        head_dim_v=head_dim_v,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        has_rab=has_rab,
+        data_type=data_type,
+        window_size=window_size,
+        num_context=num_context,
+        num_target=num_target,
+        target_group_size=target_group_size,
+    )
+    _run_benchmark(test_backend, benchmark_record, config)
+
+
+@pytest.mark.parametrize(
+    "batch_size, head_num, seq_lens",
+    [(128, 4, (8186, 8186))],
+)
+@pytest.mark.parametrize(
+    "window_size, num_context, num_target, target_group_size",
+    [
+        ((-1, 0), 6, 256, 1),
+    ],
+)
+@pytest.mark.parametrize("head_dims", [(128, 128)])
+@pytest.mark.parametrize("has_rab", [False])
+@pytest.mark.parametrize("data_type", [torch.bfloat16])
+@pytest.mark.parametrize("seed", [123])
+def test_user_case_2(
+    test_backend,
+    benchmark_record,
+    batch_size,
+    head_num,
+    head_dims,
+    seq_lens,
+    has_rab,
+    data_type,
+    window_size,
+    num_context,
+    num_target,
+    target_group_size,
+    seed,
+):
+    """测试用户用例"""
+    head_dim_qk, head_dim_v = head_dims
+    max_seqlen_q, max_seqlen_k = seq_lens
+    config = BenchmarkConfig(
+        test_name="test_user_case_2",
         seed=seed,
         seq_all_equal=True,
         seq_max_ratio=0.9,

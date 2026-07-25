@@ -34,7 +34,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl
     const c10::optional<at::Tensor>& rab, const c10::optional<at::Tensor>& numContext,
     const c10::optional<at::Tensor>& numTarget, const c10::optional<double>& scale,
     const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha, const int64_t windowSizeLeft,
-    const int64_t windowSizeRight)
+    const int64_t windowSizeRight, const c10::optional<at::Tensor>& metadata)
 {
     hstu_v2::HstuV2ParamChecker(grad, q, k, v, seqOffsetQ, seqOffsetK, maxSeqLenQ, maxSeqLenK, rab, numContext,
                                 numTarget, targetGroupSize, windowSizeLeft, windowSizeRight);
@@ -45,6 +45,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl
         CheckOptionalTensorIsNotNone(numContext) ? numContext.value().to(seqOffsetQ.scalar_type()) : _empty;
     auto acNumTarget =
         CheckOptionalTensorIsNotNone(numTarget) ? numTarget.value().to(seqOffsetQ.scalar_type()) : _empty;
+    // metadata 为可选: 未传/None → 空 tensor → aclnn 视作 null → kernel nullptr → 旧设备现算分核(零回归)
+    auto acMetadata = CheckOptionalTensorIsNotNone(metadata) ? metadata.value().to(at::kInt) : _empty;
 
     // op input
     auto inGrad = grad.contiguous();
@@ -55,6 +57,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl
     auto inNumContext = acNumContext.contiguous();
     auto inNumTarget = acNumTarget.contiguous();
     auto inqShare = at::zeros_like(inQ, at::TensorOptions().dtype(at::kFloat));
+    auto inMetadata = acMetadata.defined() ? acMetadata.contiguous() : _empty;
 
     // op attr
     auto attrTargetGroupSize = targetGroupSize.value_or(1);
@@ -69,10 +72,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl
     auto outVGrad = at::empty_like(inV);
     auto outRabGrad = inRab.defined() ? at::zeros_like(inRab) : at::Tensor();
 
-    // op exec
+    // op exec —— metadata 紧跟 inqShare(与 OpDef 输入顺序一致: ...q_share, metadata),置于所有 attr 之前
     EXEC_NPU_CMD(aclnnHstuBackwardV2, inGrad, inQ, inK, inV, inRab, seqOffsetQ, seqOffsetK, inNumContext, inNumTarget,
-                 inqShare, maxSeqLenQ, maxSeqLenK, attrScale, attrTargetGroupSize, attrAlpha, attrWinLeft, attrWinRight,
-                 outQGrad, outKGrad, outVGrad, outRabGrad);
+                 inqShare, inMetadata, maxSeqLenQ, maxSeqLenK, attrScale, attrTargetGroupSize, attrAlpha, attrWinLeft,
+                 attrWinRight, outQGrad, outKGrad, outVGrad, outRabGrad);
     // op return
     return std::make_tuple(outQGrad, outKGrad, outVGrad, outRabGrad);
 }
@@ -94,7 +97,8 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
           "                   int? target_group_size=1, "
           "                   float? alpha=1.0, "
           "                   int window_size_left=-1, "
-          "                   int window_size_right=-1) -> (Tensor, Tensor, Tensor, Tensor)");
+          "                   int window_size_right=-1, "
+          "                   Tensor? metadata=None) -> (Tensor, Tensor, Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
