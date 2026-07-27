@@ -30,7 +30,6 @@ namespace MxRec {
  */
 class EmbeddingMgmt {
 public:
-
     /**
      * @param[in] rInfo 从python侧传过了的rank信息
      * @param[in] eInfos 从python侧传过了的embedding表信息
@@ -68,9 +67,9 @@ public:
 
     size_t GetMaxOffset(const std::string& name);
 
-    int64_t GetSize(const std::string &name);
+    int64_t GetSize(const std::string& name);
 
-    int64_t GetCapacity(const std::string &name);
+    int64_t GetCapacity(const std::string& name);
 
     unordered_set<int64_t> GetPaddingKeysOffset(const std::string& name);
 
@@ -114,18 +113,18 @@ public:
     void RecoverTrainStatus();
 
     /**
-    * 获取所有表对应的DeviceOffsets，该偏移用于python侧保存embedding时抽取key对应的embedding
-    */
+     * 获取所有表对应的DeviceOffsets，该偏移用于python侧保存embedding时抽取key对应的embedding
+     */
     OffsetMapT GetDeviceOffsets();
 
     /**
-    * 获取所有表对应的LoadOffsets，该偏移用于python侧加载embedding文件对应的行偏移，仅加载本卡key所对应的embedding
-    */
+     * 获取所有表对应的LoadOffsets，该偏移用于python侧加载embedding文件对应的行偏移，仅加载本卡key所对应的embedding
+     */
     OffsetMapT GetLoadOffsets();
 
     /**
-    * 设置某张表的优化器信息
-    */
+     * 设置某张表的优化器信息
+     */
     void SetOptimizerInfo(const string& name, OptimizerInfo& optimizerInfo);
 
     void SetCacheManagerForEmbTable(CacheManager* cacheManager);
@@ -135,18 +134,18 @@ public:
     void SetEmbCacheForEmbTable(const ock::ctr::EmbCacheManagerPtr& embCache);
 
     void SyncLatestEmbedding(int pythonBatchId);
-private:
-
-    EmbeddingMgmt();
 
     EmbeddingMgmt(const EmbeddingMgmt& mgmt) = delete;
-    
+
     EmbeddingMgmt& operator=(const EmbeddingMgmt& other) = delete;
+
+private:
+    EmbeddingMgmt();
 
     std::unordered_map<std::string, std::shared_ptr<EmbeddingTable>> embeddings;
     unique_ptr<ThreadPool> syncThreadPool = nullptr;
 };
 
-}
+}  // namespace MxRec
 
-#endif // MX_REC_EMBEDDING_MGMT_H
+#endif  // MX_REC_EMBEDDING_MGMT_H

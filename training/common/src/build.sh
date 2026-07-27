@@ -29,6 +29,7 @@ else
 fi
 
 cmake -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DPYTHON_PATH="$python_path" \
     -DASCEND_PATH="$ascend_path" \
     -DSECUREC_PATH="$1"/../opensource/securec \

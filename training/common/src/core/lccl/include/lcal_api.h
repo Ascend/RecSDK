@@ -19,9 +19,10 @@
 #include <cstdint>
 #ifdef __cplusplus
 extern "C" {
-#endif // __cplusplus
+#endif  // __cplusplus
 
 using LcalCommPtr = void*;
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define LCAL_UNIQUE_ID_BYTES 128
 struct LcalUniqueId {
     char internal[LCAL_UNIQUE_ID_BYTES];
@@ -43,5 +44,5 @@ int LcclCommDestroy(LcalCommPtr comm);
 
 #ifdef __cplusplus
 }
-#endif // __cplusplus
-#endif // LCCL_LCAL_API_H
+#endif  // __cplusplus
+#endif  // LCCL_LCAL_API_H

@@ -20,43 +20,47 @@ See the License for the specific language governing permissions and
 #include "hdfs_wrapper.h"
 
 namespace MxRec {
-    using namespace std;
+using namespace std;
 
-    class HdfsFileSystem : public FileSystem {
-    public:
-        HdfsFileSystem() {};
+class HdfsFileSystem : public FileSystem {
+public:
+    HdfsFileSystem() {};
 
-        HdfsFileSystem(const HdfsFileSystem&) = delete;
-        HdfsFileSystem& operator=(const HdfsFileSystem&) = delete;
+    HdfsFileSystem(const HdfsFileSystem&) = delete;
+    HdfsFileSystem& operator=(const HdfsFileSystem&) = delete;
 
-        ~HdfsFileSystem() override
-        {
+    ~HdfsFileSystem() override
+    {
+        try {
             hdfs->Disconnect(fs);
+        } catch (std::exception& e) {
+            LOG_WARN("HdfsFileSystem destructor exception: {}.", e.what());
         }
+    }
 
-        void CreateDir(const string& dirName) override;
-        vector<string> ListDir(const string& dirName) override;
-        size_t GetFileSize(const string& filePath) override;
+    void CreateDir(const string& dirName) override;
+    vector<string> ListDir(const string& dirName) override;
+    size_t GetFileSize(const string& filePath) override;
 
-        ssize_t Write(const string& filePath, const char* fileContent, size_t dataSize) override;
-        ssize_t Write(const string& filePath, vector<vector<float>>& fileContent, size_t dataSize) override;
-        void WriteEmbedding(const string& filePath, const int& embeddingSize,
-                            const vector<int64_t>& addressArr, int deviceId) override;
+    ssize_t Write(const string& filePath, const char* fileContent, size_t dataSize) override;
+    ssize_t Write(const string& filePath, vector<vector<float>>& fileContent, size_t dataSize) override;
+    void WriteEmbedding(const string& filePath, const int& embeddingSize, const vector<int64_t>& addressArr,
+                        int deviceId) override;
 
-        ssize_t Read(const string& filePath, char* fileContent, size_t datasetSize) override;
-        ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, int64_t contentOffset,
-                     vector<int64_t> offsetArr, const size_t& embeddingSize) override;
-        void ReadEmbedding(const string& filePath, EmbeddingSizeInfo& embedSizeInfo, int64_t firstAddress, int deviceId,
-                           vector <int64_t> offsetArr) override;
+    ssize_t Read(const string& filePath, char* fileContent, size_t datasetSize) override;
+    ssize_t Read(const string& filePath, vector<vector<float>>& fileContent, int64_t contentOffset,
+                 vector<int64_t> offsetArr, const size_t& embeddingSize) override;
+    void ReadEmbedding(const string& filePath, EmbeddingSizeInfo& embedSizeInfo, int64_t firstAddress, int deviceId,
+                       vector<int64_t> offsetArr) override;
 
-        hdfsFS ConnectHdfs();
+    hdfsFS ConnectHdfs();
 
-        void CheckHdfsReadRet(hdfsFile file, tSize res, size_t expectReadBytes, const string& filePath);
-        static void CheckOpenHdfsFileRet(hdfsFile file, const string& filePath);
+    void CheckHdfsReadRet(hdfsFile file, tSize res, size_t expectReadBytes, const string& filePath);
+    static void CheckOpenHdfsFileRet(hdfsFile file, const string& filePath);
 
-        unique_ptr<HdfsWrapper> hdfs = make_unique<HdfsWrapper>();
-        hdfsFS fs = ConnectHdfs();
-    };
-}
+    unique_ptr<HdfsWrapper> hdfs = make_unique<HdfsWrapper>();
+    hdfsFS fs = ConnectHdfs();
+};
+}  // namespace MxRec
 
-#endif // MX_REC_HDFS_FILE_SYSTEM_H
+#endif  // MX_REC_HDFS_FILE_SYSTEM_H

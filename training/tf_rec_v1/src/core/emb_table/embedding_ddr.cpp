@@ -23,12 +23,11 @@ See the License for the specific language governing permissions and
 
 using namespace MxRec;
 
-EmbeddingDDR::EmbeddingDDR()
-{
-}
+EmbeddingDDR::EmbeddingDDR() {}
 
 EmbeddingDDR::EmbeddingDDR(const EmbInfo& info, const RankInfo& rankInfo, int inSeed)
-    : EmbeddingTable(info, rankInfo, inSeed), deviceId_(rankInfo.deviceId)
+    : EmbeddingTable(info, rankInfo, inSeed),
+      deviceId_(rankInfo.deviceId)
 {
     LOG_INFO("Init DDR table:{}, devVocabSize:{}, hostVocabSize:{}.", name, devVocabSize, hostVocabSize);
 }
@@ -39,13 +38,9 @@ EmbeddingDDR::~EmbeddingDDR()
     embCache_ = nullptr;
 }
 
-void EmbeddingDDR::Key2Offset(std::vector<emb_key_t>& splitKey, int channel)
-{
-}
+void EmbeddingDDR::Key2Offset(std::vector<emb_key_t>& splitKey, int channel) {}
 
-void EmbeddingDDR::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
-{
-}
+void EmbeddingDDR::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel) {}
 
 int64_t EmbeddingDDR::capacity() const
 {
@@ -55,9 +50,7 @@ int64_t EmbeddingDDR::capacity() const
 /// DDR模式下的淘汰：删除映射表、初始化host表、发送dev淘汰位置
 /// \param embName
 /// \param keys
-void EmbeddingDDR::EvictKeys(const vector<emb_key_t>& keys)
-{
-}
+void EmbeddingDDR::EvictKeys(const vector<emb_key_t>& keys) {}
 
 void EmbeddingDDR::Load(const string& savePath, map<string, unordered_set<emb_cache_key_t>>& trainKeySet,
                         const vector<string>& warmStartTables)
@@ -71,7 +64,8 @@ void EmbeddingDDR::Load(const string& savePath, map<string, unordered_set<emb_ca
                 add more condition to handle different cases.
         */
         LOG_INFO("On estimator train-and-eval mode, skip loading since nothing change in host side,"
-                 " current train batchId:{}.", step);
+                 " current train batchId:{}.",
+                 step);
         return;
     }
 
@@ -88,9 +82,9 @@ void EmbeddingDDR::Load(const string& savePath, map<string, unordered_set<emb_ca
 
     auto rc = embCache_->LoadEmbTableInfos(name, keys, embeddings, optimizerSlots);
     if (rc != 0) {
-        auto error = Error(ModuleName::M_OCK_CTR, ErrorType::LOGIC_ERROR,
-                           StringFormat("Invoke embCache_->LoadEmbTableInfos failed, table:%s, error code:%d.",
-                                        name.c_str(), rc));
+        auto error = Error(
+            ModuleName::M_OCK_CTR, ErrorType::LOGIC_ERROR,
+            StringFormat("Invoke embCache_->LoadEmbTableInfos failed, table:%s, error code:%d.", name.c_str(), rc));
         LOG_ERROR(error.ToString());
         throw std::invalid_argument(error.ToString());
     }
@@ -99,15 +93,15 @@ void EmbeddingDDR::Load(const string& savePath, map<string, unordered_set<emb_ca
     // Reset the offsetMapper object to revert to its initialized state after loading
     auto rs = embCache_->ResetOffsetMappers();
     if (rs != 0) {
-        auto error = Error(ModuleName::M_OCK_CTR, ErrorType::LOGIC_ERROR,
-                           StringFormat("Invoke embCache_->ResetOffsetMappers failed, table:%s, error code:%d.",
-                                        name.c_str(), rs));
+        auto error = Error(
+            ModuleName::M_OCK_CTR, ErrorType::LOGIC_ERROR,
+            StringFormat("Invoke embCache_->ResetOffsetMappers failed, table:%s, error code:%d.", name.c_str(), rs));
         LOG_ERROR(error.ToString());
         throw std::invalid_argument(error.ToString());
     }
 }
 
-void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys)
+void EmbeddingDDR::LoadKey(const string& savePath, vector<emb_cache_key_t>& keys)
 {
     stringstream ss;
     ss << savePath << "/" << name << "/key/slice.data";
@@ -119,14 +113,14 @@ void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys
         fileSize = fileSystemPtr_->GetFileSize(ss.str());
     } catch (exception& e) {
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
-                           StringFormat("Open file failed:%s, table:%s, error code:%d",
-                                        ss.str().c_str(), name.c_str(), strerror(errno)));
+                           StringFormat("Open file failed:%s, table:%s, error code:%d", ss.str().c_str(), name.c_str(),
+                                        strerror(errno)));
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
     if (fileSize >= FILE_MAX_SIZE) {
-        string errMsg = StringFormat("Invalid file:%s, size:%d is too big, table:%s.",
-                                     ss.str().c_str(), fileSize, name.c_str());
+        string errMsg =
+            StringFormat("Invalid file:%s, size:%d is too big, table:%s.", ss.str().c_str(), fileSize, name.c_str());
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::INVALID_ARGUMENT, errMsg);
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
@@ -162,7 +156,7 @@ void EmbeddingDDR::LoadKey(const string &savePath, vector<emb_cache_key_t> &keys
     LOG_DEBUG("Load key done, table:{}.", name);
 }
 
-void EmbeddingDDR::LoadEmbedding(const string &savePath, vector<vector<float>> &embeddings)
+void EmbeddingDDR::LoadEmbedding(const string& savePath, vector<vector<float>>& embeddings)
 {
     // must init first
     for (size_t i = 0; i < hostLoadOffset_.size(); i++) {
@@ -191,7 +185,7 @@ void EmbeddingDDR::LoadEmbedding(const string &savePath, vector<vector<float>> &
     LOG_DEBUG("Load embedding done, table:{}, read bytes:{}.", name, res);
 }
 
-void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float>> &optimizerSlots)
+void EmbeddingDDR::LoadOptimizerSlot(const string& savePath, vector<vector<float>>& optimizerSlots)
 {
     if (optimParams_.size() == 0) {
         LOG_DEBUG("Optimizer has no slot data to load, table:{}.", name);
@@ -209,7 +203,7 @@ void EmbeddingDDR::LoadOptimizerSlot(const string &savePath, vector<vector<float
 
     CheckFileSystemPtr();
     int64_t slotIdx = 0;
-    for (const auto &param: optimParams_) {
+    for (const auto& param : optimParams_) {
         stringstream paramStream;
         paramStream << ss.str() << "/" << optimName_ + "_" + param << "/slice.data";
 
@@ -239,6 +233,7 @@ void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId, bool sa
     vector<vector<float>> embeddings;
     vector<vector<float>> optimizerSlots;
 
+    // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores)
     auto step = GetStepFromPath(savePath);
 
     // Wait until SyncLatestEmbedding finish.
@@ -248,9 +243,9 @@ void EmbeddingDDR::Save(const string& savePath, const int pythonBatchId, bool sa
         this_thread::sleep_for(1s);
         ++loopCnt;
         if (loopCnt >= MAX_WAIT_LOOP) {
-            auto error = Error(
-                ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
-                StringFormat("Sync latest embedding timeout {} seconds, table:%s.", MAX_WAIT_LOOP, name.c_str()));
+            auto error =
+                Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
+                      StringFormat("Sync latest embedding timeout {} seconds, table:%s.", MAX_WAIT_LOOP, name.c_str()));
             LOG_ERROR(error.ToString());
             throw std::runtime_error(error.ToString());
         }
@@ -293,9 +288,9 @@ void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId)
     std::vector<std::pair<uint64_t, uint64_t>> koVec;
     int rc = embCache_->ExportDeviceKeyOffsetPairs(name, koVec);
     if (rc != ock::ctr::H_OK) {
-        auto error = Error(ModuleName::M_OCK_CTR, ErrorType::LOGIC_ERROR,
-                           StringFormat("ExportDeviceKeyOffsetPairs failed, table:%s, error code:%d.",
-                                        name.c_str(), rc));
+        auto error =
+            Error(ModuleName::M_OCK_CTR, ErrorType::LOGIC_ERROR,
+                  StringFormat("ExportDeviceKeyOffsetPairs failed, table:%s, error code:%d.", name.c_str(), rc));
         LOG_ERROR(error.ToString());
         throw std::invalid_argument(error.ToString());
     }
@@ -304,8 +299,8 @@ void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId)
         swapOutKeys.push_back(p.first);
     }
 
-    LOG_INFO("Start SyncLatestEmbedding, table:{}, pythonBatchId:{}, total swapOutKeys.size:{}.",
-             name, pythonBatchId, swapOutKeys.size());
+    LOG_INFO("Start SyncLatestEmbedding, table:{}, pythonBatchId:{}, total swapOutKeys.size:{}.", name, pythonBatchId,
+             swapOutKeys.size());
     if (swapOutKeys.empty()) {
         auto size = hdTransfer_->RecvAcl(TransferChannel::SAVE_D2H, TRAIN_CHANNEL_ID, name, 0, -1);
         LOG_INFO("Receive D2H data, table:{}, acl dataset size:{}.", name, size);
@@ -324,8 +319,8 @@ void EmbeddingDDR::SyncLatestEmbedding(const int pythonBatchId)
     BatchSynchronization(pythonBatchId, swapOutKeys);
 
     isSyncFinish_ = true;
-    LOG_INFO("Finish SyncLatestEmbedding, table:{}, pythonBatchId:{}, total swapOutKeys.size:{}.",
-             name, pythonBatchId, swapOutKeys.size());
+    LOG_INFO("Finish SyncLatestEmbedding, table:{}, pythonBatchId:{}, total swapOutKeys.size:{}.", name, pythonBatchId,
+             swapOutKeys.size());
 }
 
 void EmbeddingDDR::EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, float* deviceDataPtr)
@@ -347,12 +342,13 @@ void EmbeddingDDR::EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, f
 #pragma omp parallel for num_threads(MGMT_CPY_THREADS) default(none) \
     shared(swapOutAddrs, info, deviceDataPtr, extEmbeddingSize, memSize)
     for (uint64_t i = 0; i < swapOutAddrs.size(); i++) {
-        int errCode = memcpy_s(swapOutAddrs[i], memSize,
-                               deviceDataPtr + info.swapOutDDRAddrOffs[i] * extEmbeddingSize, memSize);
+        int errCode =
+            memcpy_s(swapOutAddrs[i], memSize, deviceDataPtr + info.swapOutDDRAddrOffs[i] * extEmbeddingSize, memSize);
         if (errCode != 0) {
             auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::MEMORY_ERROR,
                                StringFormat("Invoke memcpy_s failed, table:%s, error code:%d. You can query the "
-                                            "meaning of security function error code.", name.c_str(), errCode));
+                                            "meaning of security function error code.",
+                                            name.c_str(), errCode));
             LOG_ERROR(error.ToString());
             throw std::invalid_argument(error.ToString());
         }
@@ -372,7 +368,7 @@ void EmbeddingDDR::SaveKey(const string& savePath, vector<emb_cache_key_t>& keys
     vector<int64_t> keysCompat(keys.cbegin(), keys.cend());
 
     CheckFileSystemPtr();
-    ssize_t res = fileSystemPtr_->Write(ss.str(), reinterpret_cast<const char *>(keysCompat.data()),
+    ssize_t res = fileSystemPtr_->Write(ss.str(), reinterpret_cast<const char*>(keysCompat.data()),
                                         static_cast<size_t>(keys.size() * sizeof(int64_t)));
     if (res == -1) {
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::IO_ERROR,
@@ -418,7 +414,7 @@ void EmbeddingDDR::SaveOptimizerSlot(const string& savePath, vector<vector<float
     }
 
     size_t slotIdx = 0;
-    for (const auto &slotName: optimParams_) {
+    for (const auto& slotName : optimParams_) {
         stringstream ss;
         ss << savePath << "/" << name << "/" << optimName_ + "_" + slotName << "/";
         MakeDir(ss.str());
@@ -426,7 +422,7 @@ void EmbeddingDDR::SaveOptimizerSlot(const string& savePath, vector<vector<float
 
         CheckFileSystemPtr();
         vector<vector<float>> slotData;
-        for (const auto &data: optimizerSlots) {
+        for (const auto& data : optimizerSlots) {
             vector<float> tmp(data.cbegin() + slotIdx * embSize_, data.cbegin() + (slotIdx + 1) * embSize_);
             slotData.emplace_back(tmp);
         }
@@ -457,7 +453,7 @@ void EmbeddingDDR::SetOptimizerInfo(OptimizerInfo& optimizerInfo)
     optimParams_ = optimizerInfo.optimParams;
 }
 
-void EmbeddingDDR::SetCacheManager(CacheManager *cm)
+void EmbeddingDDR::SetCacheManager(CacheManager* cm)
 {
     LOG_DEBUG("Set CacheManager for table:{}.", name);
     cacheManager_ = cm;
@@ -466,16 +462,16 @@ void EmbeddingDDR::SetCacheManager(CacheManager *cm)
 TableInfo EmbeddingDDR::GetTableInfo()
 {
     TableInfo ti = {
-        .name=name,
-        .hostVocabSize=hostVocabSize,
-        .devVocabSize=devVocabSize,
-        .maxOffset=maxOffset,
-        .keyOffsetMap=keyOffsetMap,
+        .name = name,
+        .hostVocabSize = hostVocabSize,
+        .devVocabSize = devVocabSize,
+        .maxOffset = maxOffset,
+        .keyOffsetMap = keyOffsetMap,
     };
     return ti;
 }
 
-void EmbeddingDDR::SetHDTransfer(HDTransfer *hdTransfer)
+void EmbeddingDDR::SetHDTransfer(HDTransfer* hdTransfer)
 {
     this->hdTransfer_ = hdTransfer;
 }
@@ -516,20 +512,18 @@ void EmbeddingDDR::BatchSynchronization(int pythonBatchId, vector<uint64_t>& swa
     auto onceSyncKeyCnt = static_cast<size_t>(swapOutKeys.size() / syncCnt);
 
     size_t syncKeysRemain = swapOutKeys.size();
+    // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores)
     size_t syncPosCnt = onceSyncKeyCnt;
     size_t syncBatchId = 0;
     for (size_t startIdx = 0; startIdx < swapOutKeys.size(); startIdx += syncPosCnt) {
         syncPosCnt = std::min(syncKeysRemain, onceSyncKeyCnt);
-        vector<uint64_t> swapOutKeysSlice(
-            swapOutKeys.begin() + startIdx,
-            swapOutKeys.begin() + startIdx + syncPosCnt
-        );
+        vector<uint64_t> swapOutKeysSlice(swapOutKeys.begin() + startIdx, swapOutKeys.begin() + startIdx + syncPosCnt);
 
-        LOG_INFO("Start update embedding from device, table:{}, batchId:{}, syncBatchId:{}, syncPosCnt:{}",
-                 name, pythonBatchId, syncBatchId, syncPosCnt);
+        LOG_INFO("Start update embedding from device, table:{}, batchId:{}, syncBatchId:{}, syncPosCnt:{}", name,
+                 pythonBatchId, syncBatchId, syncPosCnt);
         auto size = hdTransfer_->RecvAcl(TransferChannel::SAVE_D2H, TRAIN_CHANNEL_ID, name, 0, -1);
-        LOG_DEBUG("Receive D2H data, table:{}, batchId:{}, syncBatchId:{}, acl dataset size:{}.",
-                  name, pythonBatchId, syncBatchId, size);
+        LOG_DEBUG("Receive D2H data, table:{}, batchId:{}, syncBatchId:{}, acl dataset size:{}.", name, pythonBatchId,
+                  syncBatchId, size);
         auto aclData = acltdtGetDataItem(hdTransfer_->aclDatasets[name][0], 0);
         if (aclData == nullptr) {
             auto error = Error(ModuleName::M_ACL, ErrorType::NULL_PTR,
@@ -557,8 +551,8 @@ void EmbeddingDDR::BatchSynchronization(int pythonBatchId, vector<uint64_t>& swa
         } else {
             EmbeddingUpdateWithSSD(swapOutKeysSlice, ptr);
         }
-        LOG_INFO("Finish update embedding from device, table:{}, batchId:{}, syncBatchId:{}, syncPosCnt:{}",
-                 name, pythonBatchId, syncBatchId, syncPosCnt);
+        LOG_INFO("Finish update embedding from device, table:{}, batchId:{}, syncBatchId:{}, syncPosCnt:{}", name,
+                 pythonBatchId, syncBatchId, syncPosCnt);
         ++syncBatchId;
     }
 #endif

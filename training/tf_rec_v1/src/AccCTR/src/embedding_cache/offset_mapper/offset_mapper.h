@@ -113,7 +113,7 @@ public:
         MapperBase::UnInitialize();
     }
 
-    FkvState Remove(uint64_t key)
+    FkvState Remove(uint64_t key) override
     {
         return MapperBase::Remove(key, [&](uint64_t value) {
             validPos->remove(value);
@@ -241,8 +241,8 @@ public:
         if (swapOutCnt < swapOutNum) {
             std::string errMsg = "Device cache overflow! Max cache size is too small when swap out from device. "
                                  "Please set a grater value for `device_vocabulary_size` parameter "
-                                 "when invoke `create_table` function. Current table:" + info.name +
-                                 ", device_vocabulary_size:" + std::to_string(maxCacheSize);
+                                 "when invoke `create_table` function. Current table:" +
+                                 info.name + ", device_vocabulary_size:" + std::to_string(maxCacheSize);
             ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, errMsg);
             return ock::ctr::H_MAX_CACHESIZE_TOO_SMALL;
         }
@@ -261,8 +261,8 @@ public:
             if (HM_UNLIKELY(swapInPos[i] >= maxCacheSize)) {
                 std::string errMsg = "Device cache overflow! Max cache size is too small when swap in device. "
                                      "Please set a grater value for `device_vocabulary_size` parameter "
-                                     "when invoke `create_table` function. Current table:" + info.name +
-                                     ", device_vocabulary_size:" + std::to_string(maxCacheSize);
+                                     "when invoke `create_table` function. Current table:" +
+                                     info.name + ", device_vocabulary_size:" + std::to_string(maxCacheSize);
                 ock::ExternalLogger::PrintLog(ock::LogLevel::ERROR, errMsg);
                 return ock::ctr::H_MAX_CACHESIZE_TOO_SMALL;
             }
@@ -319,13 +319,13 @@ public:
     }
 
 private:
-    uint64_t maxCacheSize{};            // HBM可容纳embedding条数
-    uint64_t useLength{};               // HBM存储的embedding条数
-    LimitedSet *validPos{};             // HBM中可被换出的位置
-    LimitedSet *evictPos{};             // 淘汰出的位置
-    std::vector<uint64_t> pos2Key;      // HBM中每个位置对应的key
-    std::vector<uint64_t> lastBatchPos; // 上个batch的keys在HBM中占用的pos
-    uint64_t evictSize;                 // evictPos的长度
+    uint64_t maxCacheSize{};             // HBM可容纳embedding条数
+    uint64_t useLength{};                // HBM存储的embedding条数
+    LimitedSet* validPos{};              // HBM中可被换出的位置
+    LimitedSet* evictPos{};              // 淘汰出的位置
+    std::vector<uint64_t> pos2Key;       // HBM中每个位置对应的key
+    std::vector<uint64_t> lastBatchPos;  // 上个batch的keys在HBM中占用的pos
+    uint64_t evictSize;                  // evictPos的长度
     std::unordered_set<uint64_t> paddingKeysOffset;
 };
 

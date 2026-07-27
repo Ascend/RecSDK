@@ -18,15 +18,16 @@ limitations under the License.
 #include "limited_set.h"
 
 #ifndef HM_UNLIKELY
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define HM_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #endif
 
 #ifndef HM_LIKELY
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define HM_LIKELY(x) __builtin_expect(!!(x), 1)
 #endif
 
 namespace EmbCache {
-
 
 enum class FkvState {
     FKV_EXIST,
@@ -61,6 +62,6 @@ constexpr float CONSTANT_VALUE_MIN = -1e9;
 constexpr float INIT_K_MAX = 10000;
 constexpr float INIT_K_MIN = -10000;
 const int INVALID_EMB_SIZE = -1;
-const size_t MEMSET_S_MAX_SIZE = 2LL * 1024 * 1024 * 1024 - 1;
-}
-#endif // MXREC_COMMON_H
+const std::size_t MEMSET_S_MAX_SIZE = 2LL * 1024 * 1024 * 1024 - 1;
+}  // namespace EmbCache
+#endif  // MXREC_COMMON_H

@@ -35,7 +35,12 @@ else
 fi
 
 cd ${BUILD_PATH}
-cmake ${OCK_CTR_PATH} -DCMAKE_INSTALL_PREFIX:STRING=${OUTPUT_PATH}/ock_ctr_common -DCTR_ENV=${CPU_TYPE} -DBUILD_MODE=${BUILD_MODE}
+cmake ${OCK_CTR_PATH} \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+    -DCMAKE_INSTALL_PREFIX:STRING=${OUTPUT_PATH}/ock_ctr_common \
+    -DCTR_ENV=${CPU_TYPE} \
+    -DBUILD_MODE=${BUILD_MODE}
+
 if [ 0 != $? ];then
       echo "Failed to build_src"
       exit 1

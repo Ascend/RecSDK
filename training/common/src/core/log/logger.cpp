@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-
 #include "logger.h"
 
 namespace MxRec {
@@ -42,23 +41,18 @@ const char* Logger::LevelToStr(int logLevel)
         return "INVALID LEVEL";
     }
     static const char* msg[] = {
-        "TRACE",
-        "DEBUG",
-        "INFO",
-        "WARN",
-        "ERROR",
+        "TRACE", "DEBUG", "INFO", "WARN", "ERROR",
     };
     constexpr int levelOffset = 2;
     return msg[logLevel + levelOffset];
 }
 
-void Logger::LogUnpack(std::queue<std::string>& fmt, std::stringstream &ss)
+void Logger::LogUnpack(std::queue<std::string>& fmt, std::stringstream& ss)
 {
     while (!fmt.empty()) {
         ss << fmt.front();
         fmt.pop();
     }
-    return;
 }
 
-}
+}  // namespace MxRec

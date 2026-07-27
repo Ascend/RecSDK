@@ -193,6 +193,7 @@ public:
      * @Param uint32_t refillThreadNum emb内存池自动填充线程数
      * @Return errorCode
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual int CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
                                     const std::vector<InitializerInfo>& initializerInfos,
                                     int64_t invalidKey = DEFAULE_INVALID_KEY,
@@ -219,6 +220,7 @@ public:
      * @Param threadNum: 线程数
      * @Return errorCode
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual int EmbeddingLookupAddrs(const std::string& tableName, const std::vector<uint64_t>& keys,
                                      std::vector<float*>& addrs, uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 
@@ -230,6 +232,7 @@ public:
      * @Param threadNum: 线程数
      * @Return errorCode
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual int EmbeddingUpdate(const std::string& tableName, const std::vector<uint64_t>& keys, float* embAddr,
                                 uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 
@@ -239,6 +242,7 @@ public:
      * @Param keys: 待移除的keys
      * @Return errorCode
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual int EmbeddingRemove(const std::string& tableName, const std::vector<uint64_t>& keys,
                                 uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 

@@ -21,32 +21,32 @@ See the License for the specific language governing permissions and
 
 using namespace MxRec;
 
-EmbeddingTable::EmbeddingTable()
-{
-}
+EmbeddingTable::EmbeddingTable() {}
 
 EmbeddingTable::EmbeddingTable(const EmbInfo& info, const RankInfo& rankInfo, int inSeed)
-    : name(info.name), hostVocabSize(info.hostVocabSize), devVocabSize(info.devVocabSize),
-      ssdVocabSize(info.ssdVocabSize), freeSize_(0), maxOffset(0), isDynamic_(rankInfo.useDynamicExpansion),
-      embSize_(info.embeddingSize), extEmbSize_(info.extEmbeddingSize),
-      embInfo_(info), seed_(inSeed), rankId_(rankInfo.rankId), rankSize_(rankInfo.rankSize)
+    : name(info.name),
+      hostVocabSize(info.hostVocabSize),
+      devVocabSize(info.devVocabSize),
+      ssdVocabSize(info.ssdVocabSize),
+      freeSize_(0),
+      maxOffset(0),
+      isDynamic_(rankInfo.useDynamicExpansion),
+      embSize_(info.embeddingSize),
+      extEmbSize_(info.extEmbeddingSize),
+      embInfo_(info),
+      seed_(inSeed),
+      rankId_(rankInfo.rankId),
+      rankSize_(rankInfo.rankSize)
 {
-    LOG_INFO("Init embedding table:{}, isDynamic:{}, embeddingSize:{}, extEmbeddingSize:{}.",
-             name, isDynamic_, embSize_, extEmbSize_);
+    LOG_INFO("Init embedding table:{}, isDynamic:{}, embeddingSize:{}, extEmbeddingSize:{}.", name, isDynamic_,
+             embSize_, extEmbSize_);
 }
 
-EmbeddingTable::~EmbeddingTable()
-{
-}
+EmbeddingTable::~EmbeddingTable() {}
 
-void EmbeddingTable::Key2Offset(std::vector<emb_key_t>& keys, int channel)
-{
-    return;
-}
+void EmbeddingTable::Key2Offset(std::vector<emb_key_t>& keys, int channel) {}
 
-void EmbeddingTable::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel)
-{
-}
+void EmbeddingTable::Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel) {}
 
 size_t EmbeddingTable::GetMaxOffset() const
 {
@@ -65,7 +65,7 @@ size_t EmbeddingTable::size() const
 
 void EmbeddingTable::EvictKeys(const std::vector<emb_cache_key_t>& keys)
 {
-    std::unique_lock<std::shared_mutex> lock(keyOffsetMutex_); // lock for PROCESS_THREAD
+    std::unique_lock<std::shared_mutex> lock(keyOffsetMutex_);  // lock for PROCESS_THREAD
     size_t keySize = keys.size();
     for (size_t i = 0; i < keySize; i++) {
         emb_key_t key = keys[i];
@@ -74,7 +74,7 @@ void EmbeddingTable::EvictKeys(const std::vector<emb_cache_key_t>& keys)
             continue;
         }
         const auto& iter = keyOffsetMap.find(key);
-        if (iter == keyOffsetMap.end()) { // not found
+        if (iter == keyOffsetMap.end()) {  // not found
             continue;
         }
         keyOffsetMap.erase(iter);
@@ -108,7 +108,7 @@ void EmbeddingTable::EvictInitDeviceEmb()
     vector<Tensor> tmpDataOut;
     Tensor tmpData = Vec2TensorI32(evictDevPos);
     tmpDataOut.emplace_back(tmpData);
-    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, { 1 }));
+    tmpDataOut.emplace_back(Tensor(tensorflow::DT_INT32, {1}));
 
     auto evictLen = tmpDataOut.back().flat<int32>();
     evictLen(0) = static_cast<int>(evictDevPos.size());
@@ -151,13 +151,9 @@ void EmbeddingTable::Save(const string& savePath, const int pythonBatchId, bool 
 {
 }
 
-void EmbeddingTable::BackUpTrainStatus()
-{
-}
+void EmbeddingTable::BackUpTrainStatus() {}
 
-void EmbeddingTable::RecoverTrainStatus()
-{
-}
+void EmbeddingTable::RecoverTrainStatus() {}
 
 void EmbeddingTable::MakeDir(const string& dirName)
 {
@@ -165,18 +161,16 @@ void EmbeddingTable::MakeDir(const string& dirName)
     fileSystemPtr_->CreateDir(dirName);
 }
 
-void EmbeddingTable::SetCacheManager(CacheManager *cacheManager)
-{
-}
+void EmbeddingTable::SetCacheManager(CacheManager* cacheManager) {}
 
 TableInfo EmbeddingTable::GetTableInfo()
 {
     TableInfo ti = {
-        .name=name,
-        .hostVocabSize=hostVocabSize,
-        .devVocabSize=devVocabSize,
-        .maxOffset=maxOffset,
-        .keyOffsetMap=keyOffsetMap,
+        .name = name,
+        .hostVocabSize = hostVocabSize,
+        .devVocabSize = devVocabSize,
+        .maxOffset = maxOffset,
+        .keyOffsetMap = keyOffsetMap,
     };
     return ti;
 }
@@ -186,17 +180,11 @@ vector<int64_t> EmbeddingTable::GetDeviceOffset()
     return vector<int64_t>{};
 }
 
-void EmbeddingTable::SetOptimizerInfo(OptimizerInfo& optimizerInfo)
-{
-}
+void EmbeddingTable::SetOptimizerInfo(OptimizerInfo& optimizerInfo) {}
 
-void EmbeddingTable::SetHDTransfer(HDTransfer *hdTransfer)
-{
-}
+void EmbeddingTable::SetHDTransfer(HDTransfer* hdTransfer) {}
 
-void EmbeddingTable::SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache)
-{
-}
+void EmbeddingTable::SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache) {}
 
 void EmbeddingTable::CheckFileSystemPtr() const
 {
@@ -205,7 +193,8 @@ void EmbeddingTable::CheckFileSystemPtr() const
     }
     auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::NULL_PTR,
                        StringFormat("Failed to obtain the file system pointer,"
-                                    " the file system pointer is null, table:%s.", name.c_str()));
+                                    " the file system pointer is null, table:%s.",
+                                    name.c_str()));
     LOG_ERROR(error.ToString());
     throw std::runtime_error(error.ToString());
 }
@@ -217,8 +206,8 @@ void EmbeddingTable::CheckReadKeyFileSize(const string& fileName, size_t fileSiz
     }
 
     auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR,
-                       StringFormat("Load keys failed, file %s size %d is too big, table:%s.",
-                                    fileName.c_str(), fileSize, name.c_str()));
+                       StringFormat("Load keys failed, file %s size %d is too big, table:%s.", fileName.c_str(),
+                                    fileSize, name.c_str()));
     LOG_ERROR(error.ToString());
     throw std::runtime_error(error.ToString());
 }
@@ -246,8 +235,8 @@ void EmbeddingTable::CheckReadKeyFileBytes(ssize_t readReturnCode, const string&
     }
     if (readReturnCode != fileSize) {
         string errMsg = StringFormat(
-            "Load keys failed. Expected to read %d bytes, but actually read %d bytes to file %s, table:%s.",
-            fileSize, readReturnCode, fileName.c_str(), name.c_str());
+            "Load keys failed. Expected to read %d bytes, but actually read %d bytes to file %s, table:%s.", fileSize,
+            readReturnCode, fileName.c_str(), name.c_str());
         auto error = Error(ModuleName::M_EMB_TABLE, ErrorType::LOGIC_ERROR, errMsg);
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
@@ -271,6 +260,4 @@ void EmbeddingTable::RecordPaddingKeysOffset(int channel, emb_key_t key, int64_t
     }
 }
 
-void EmbeddingTable::SyncLatestEmbedding(int pythonBatchId)
-{
-}
+void EmbeddingTable::SyncLatestEmbedding(int pythonBatchId) {}

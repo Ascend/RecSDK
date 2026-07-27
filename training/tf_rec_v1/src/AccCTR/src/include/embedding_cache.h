@@ -72,7 +72,7 @@ struct ConstantInitializerInfo {
     ConstantInitializerInfo(float constantValue, float initK);
 
     float constantValue = 0;  // 常量值
-    float initK = 1.0;      // 初始化出来的值需乘以initK
+    float initK = 1.0;        // 初始化出来的值需乘以initK
 };
 
 struct NormalInitializerInfo {
@@ -80,9 +80,9 @@ struct NormalInitializerInfo {
 
     NormalInitializerInfo(float mean, float stddev, uint32_t seed, float initK);
 
-    float mean = 0;       // 平均值
-    float stddev = 0;     // 标准差
-    uint32_t seed = 0;    // 随机数种子
+    float mean = 0;     // 平均值
+    float stddev = 0;   // 标准差
+    uint32_t seed = 0;  // 随机数种子
     float initK = 1.0;  // 初始化出来的值需乘以initK
 };
 
@@ -152,8 +152,8 @@ struct InitializerInfo {
     InitializerInfo(std::string& name, uint32_t start, uint32_t len, NormalInitializerInfo normalInitializerInfo);
 
     std::string name = "";  // 初始化器的名称
-    uint32_t start = 0;  // 初始化开始的位置
-    uint32_t len = 0;    // 待初始化的长度
+    uint32_t start = 0;     // 初始化开始的位置
+    uint32_t len = 0;       // 待初始化的长度
     InitializerType initializerType = InitializerType::INVALID;
 
     ConstantInitializerInfo constantInitializerInfo;
@@ -191,6 +191,7 @@ public:
      * @Param uint32_t refillThreadNum emb内存池自动填充线程数
      * @Return errorCode
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual int CreateCacheForTable(const EmbCacheInfo& embCacheInfo,
                                     const std::vector<InitializerInfo>& initializerInfos,
                                     int64_t invalidKey = DEFAULE_INVALID_KEY,
@@ -217,6 +218,7 @@ public:
      * @Param threadNum: 线程数
      * @Return errorCode
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual int EmbeddingLookupAddrs(const std::string& tableName, const std::vector<uint64_t>& keys,
                                      std::vector<float*>& addrs, uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 
@@ -228,6 +230,7 @@ public:
      * @Param threadNum: 线程数
      * @Return errorCode
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual int EmbeddingUpdate(const std::string& tableName, const std::vector<uint64_t>& keys, float* embAddr,
                                 uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 
@@ -237,6 +240,7 @@ public:
      * @Param keys: 待移除的keys
      * @Return errorCode
      */
+    // NOLINTNEXTLINE(google-default-arguments)
     virtual int EmbeddingRemove(const std::string& tableName, const std::vector<uint64_t>& keys,
                                 uint32_t threadNum = DEFAULE_LOOKUP_THREAD_NUM) = 0;
 
