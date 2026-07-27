@@ -30,15 +30,14 @@ void CacheManager::Init(ock::ctr::EmbCacheManagerPtr embCachePtr, vector<EmbInfo
 {
     LOG_INFO("CacheManager Init method begin");
     if (level3Storage == nullptr) {
-        auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
-                           "Attribute:level3Storage is nullptr.");
+        auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR, "Attribute:level3Storage is nullptr.");
         LOG_ERROR(error.ToString());
         throw std::runtime_error(error.ToString());
     }
 
     this->embCache = std::move(embCachePtr);
     for (auto& emb : mgmtEmbInfo) {
-        EmbBaseInfo baseInfo {emb.ssdVocabSize, emb.ssdDataPath, false, emb.extEmbeddingSize};
+        EmbBaseInfo baseInfo{emb.ssdVocabSize, emb.ssdDataPath, false, emb.extEmbeddingSize};
         embBaseInfos.emplace(emb.name, baseInfo);
         preProcessMapper[emb.name].Initialize(emb.name, emb.hostVocabSize, emb.ssdVocabSize);
     }
@@ -66,7 +65,7 @@ void CacheManager::EvictL3StorageEmbedding(const string& embTableName, const vec
     LFUCache& ddrLfu = preProcessMapper[embTableName].lfuCache;
     std::vector<emb_cache_key_t> l3StorageKeysToBeDeleted;
     // 1 删除缓存中记录的key的次数
-    for (auto &key: keys) {
+    for (auto& key : keys) {
         auto it = l3StorageMap.find(key);
         if (it != l3StorageMap.end()) {
             l3StorageMap.erase(it);
@@ -79,9 +78,7 @@ void CacheManager::EvictL3StorageEmbedding(const string& embTableName, const vec
     l3StorageEvictThreads.emplace_back([=]() mutable {
         // 2 删除L3Storage中保存的Emb数据
         std::unique_lock<std::mutex> lk(evictWaitMut);
-        evictWaitCond.wait(lk, [keyStep, this] {
-            return embeddingTaskStep == keyStep;
-        });
+        evictWaitCond.wait(lk, [keyStep, this] { return embeddingTaskStep == keyStep; });
         l3Storage->DeleteEmbeddings(embTableName, l3StorageKeysToBeDeleted);
     });
 }
@@ -133,7 +130,7 @@ CacheManager::~CacheManager()
 /// \param ddrFreqInitMap ddr内key频次数据
 /// \param excludeDdrFreqInitMap 非DDR key频次数据
 /// \param step 加载L3Storage传入步数
-void CacheManager::Load(const std::vector<EmbInfo> &mgmtEmbInfo, int step,
+void CacheManager::Load(const std::vector<EmbInfo>& mgmtEmbInfo, int step,
                         map<string, unordered_set<emb_cache_key_t>>& trainKeySet)
 {
     // 加载L3Storage数据
@@ -144,27 +141,26 @@ void CacheManager::Load(const std::vector<EmbInfo> &mgmtEmbInfo, int step,
         l3Storage->Load(embTableName, embBase.savePath, embBase.maxTableSize, step);
     }
     auto tableKeysVec = l3Storage->ExportTableKey();
-    for (auto &it: tableKeysVec) {
-        auto &embTableName = it.first;
-        auto &keys = it.second;
-        for (auto key: keys) {
+    for (auto& it : tableKeysVec) {
+        auto& embTableName = it.first;
+        auto& keys = it.second;
+        for (auto key : keys) {
             preProcessMapper[embTableName].excludeDDRKeyCountMap[key] = 1;
             trainKeySet[embTableName].insert(key);
         }
     }
-    for (const auto &embInfo: mgmtEmbInfo) {
-        const std::string &tableName = embInfo.name;
+    for (const auto& embInfo : mgmtEmbInfo) {
+        const std::string& tableName = embInfo.name;
         std::vector<char> buffer;
         int rc = embCache->Serialize(tableName, buffer);
         if (rc != 0) {
-            auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
-                               "Serialize failed!");
+            auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR, "Serialize failed!");
             LOG_ERROR(error.ToString());
             throw std::runtime_error(error.ToString());
         }
         uint64_t memSize = sizeof(uint64_t) + embInfo.extEmbeddingSize * sizeof(float);
         for (uint64_t i = 0; i < buffer.size(); i += memSize) {
-            uint64_t key = *reinterpret_cast<uint64_t *>(&buffer[i]);
+            uint64_t key = *reinterpret_cast<uint64_t*>(&buffer[i]);
             preProcessMapper[tableName].lfuCache.Put(key);
         }
     }
@@ -305,7 +301,8 @@ void CacheManager::FetchL3StorageEmb2DDR(string tableName, uint32_t extEmbedding
         if (rc != 0) {
             auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::IO_ERROR,
                                Logger::Format("Invoke memcpy_s failed, rc:{}. You can query the meaning of "
-                                   "security function error code.", to_string(rc)));
+                                              "security function error code.",
+                                              to_string(rc)));
             LOG_ERROR(error.ToString());
             throw std::runtime_error(error.ToString());
         }
@@ -324,7 +321,7 @@ void CacheManager::BackUpTrainStatus()
 
 void CacheManager::RecoverTrainStatus()
 {
-    for (const auto& pair: excludeDDRKeyCountMapBackUp) {
+    for (const auto& pair : excludeDDRKeyCountMapBackUp) {
         auto tableName = pair.first;
 
         std::vector<emb_cache_key_t> ssdKeysBeforeEval;
@@ -358,6 +355,7 @@ void CacheManager::RecoverTrainStatus()
         for (auto& emb : swapOutEmbeddings) {
             swapOutFlattenEmbeddings.insert(swapOutFlattenEmbeddings.cend(), emb.cbegin(), emb.cend());
         }
+        // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores)
         rc = embCache->EmbeddingUpdate(tableName, swapOutKeys, swapOutFlattenEmbeddings.data());
         l3Storage->DeleteEmbeddings(tableName, swapOutKeys);
     }
@@ -388,9 +386,9 @@ void CacheManager::CheckEmbCacheReturnCode(const string& funcName, int retCode)
     if (retCode == 0) {
         return;
     }
-    auto error = Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
-                       Logger::Format("Invoke embCache func:{} failed, error code:{}.",
-                           funcName, std::to_string(retCode)));
+    auto error =
+        Error(ModuleName::M_L3_STORAGE, ErrorType::LOGIC_ERROR,
+              Logger::Format("Invoke embCache func:{} failed, error code:{}.", funcName, std::to_string(retCode)));
     LOG_ERROR(error.ToString());
     throw std::runtime_error(error.ToString());
 }

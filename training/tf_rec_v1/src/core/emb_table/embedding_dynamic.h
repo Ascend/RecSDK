@@ -49,10 +49,9 @@ public:
               const vector<string>& warmStartTables) override;
 
     void Save(const string& savePath, const int pythonBatchId, bool saveDelta,
-            const map<emb_key_t, KeyInfo>& keyInfo) override;
+              const map<emb_key_t, KeyInfo>& keyInfo) override;
 
-GTEST_PRIVATE:
-    constexpr static int BLOCK_EMB_NUM = 100000; // 每次扩容分配10w条
+    GTEST_PRIVATE : constexpr static int BLOCK_EMB_NUM = 100000;  // 每次扩容分配10w条
 
     virtual void RandomInit(void* addr, size_t embNum);
 
@@ -64,7 +63,7 @@ GTEST_PRIVATE:
 
     virtual void SaveEmbAndOptim(const string& savePath);
 
-    virtual void SetOptimizerInfo(OptimizerInfo& optimizerInfo) override;
+    void SetOptimizerInfo(OptimizerInfo& optimizerInfo) override;
 
     virtual void LoadKey(const string& savePath);
 
@@ -90,6 +89,6 @@ GTEST_PRIVATE:
 
     int64_t firstAddress;
 };
-}
+}  // namespace MxRec
 
-#endif // MX_REC_EMBEDDING_DYNAMIC_H
+#endif  // MX_REC_EMBEDDING_DYNAMIC_H

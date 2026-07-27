@@ -43,8 +43,7 @@ void KeyProcess::SetupHotEmbUpdateStep()
 }
 
 bool KeyProcess::Initialize(const RankInfo& rInfo, const vector<EmbInfo>& eInfos,
-                            const vector<ThresholdValue>& thresholdValues,
-                            bool isIncrementalCkpt, bool useLccl)
+                            const vector<ThresholdValue>& thresholdValues, bool isIncrementalCkpt, bool useLccl)
 {
     readySendEosCnt[TRAIN_CHANNEL_ID].store(0);
     readySendEosCnt[EVAL_CHANNEL_ID].store(0);
@@ -323,9 +322,8 @@ void KeyProcess::KeyProcessTask(int channel, int threadId)
     LOG_INFO(KEY_PROCESS "KeyProcessTask exit. rank:{} channelId:{}, threadId:{}", rankInfo.rankId, channel, threadId);
 }
 
-void KeyProcess::HashSplitHelper(const unique_ptr <EmbBatchT>& batch, vector <KeysT>& splitKeys,
-                                 vector <int32_t>& restore, vector <int32_t>& hotPos,
-                                 vector <vector<uint32_t>>& keyCount)
+void KeyProcess::HashSplitHelper(const unique_ptr<EmbBatchT>& batch, vector<KeysT>& splitKeys, vector<int32_t>& restore,
+                                 vector<int32_t>& hotPos, vector<vector<uint32_t>>& keyCount)
 {
     TimeCost uniqueTc;
     // Deduplicate the Key, and model parallel requires bucketing, data parallel does not.
@@ -534,7 +532,7 @@ bool KeyProcess::KeyProcessTaskHelperForDp(unique_ptr<EmbBatchT>& batch, int cha
     return true;
 }
 
-void KeyProcess::PushResultBasedOnMemoryMode(unique_ptr <EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
+void KeyProcess::PushResultBasedOnMemoryMode(unique_ptr<EmbBatchT>& batch, unique_ptr<vector<Tensor>> tensors,
                                              int channel, unique_ptr<vector<Tensor>> keyCountTensors,
                                              std::vector<emb_key_t>& lookupKeys)
 {
@@ -643,7 +641,7 @@ bool KeyProcess::KeyProcessTaskHelper(unique_ptr<EmbBatchT>& batch, int channel,
     tensors->push_back(Vec2TensorI32(hotPos));
 
     if (enableLccl && !rankInfo.useStatic) {
-        vector<float> all2AllRecvShape {};
+        vector<float> all2AllRecvShape{};
         LOG_INFO("Create all2AllRecvShape, uniqueKeyNum:{}.", uniqueKeyNum);
         all2AllRecvShape.resize(uniqueKeyNum, 0);
         tensors->push_back(Vec2TensorI32(all2AllRecvShape));
@@ -1039,8 +1037,8 @@ void KeyProcess::ProcessKeysWithStatic(const unique_ptr<EmbBatchT>& batch, vecto
     }
 }
 
-auto KeyProcess::ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch, int id, vector<KeysT>& splitKeys)
-    -> tuple<KeysT, vector<int>, vector<int>>
+auto KeyProcess::ProcessSplitKeys(const unique_ptr<EmbBatchT>& batch, int id,
+                                  vector<KeysT>& splitKeys) -> tuple<KeysT, vector<int>, vector<int>>
 {
     TimeCost processSplitKeysTC;
     LOG_INFO(KEY_PROCESS "channelId:{} threadId:{} batchId:{}, ProcessSplitKeys start.", batch->channel, id,
@@ -1164,7 +1162,6 @@ void KeyProcess::PaddingAlltoallVC(vector<KeysT>& splitKeys) const
         int paddingSize = ALLTOALLVC_ALIGN - (keys.size() % ALLTOALLVC_ALIGN);
         std::fill_n(std::back_inserter(keys), paddingSize, INVALID_KEY_VALUE);
     }
-    return;
 }
 
 tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>> KeyProcess::HashSplitWithFAAE(
@@ -1215,8 +1212,8 @@ tuple<vector<KeysT>, vector<int32_t>, vector<vector<uint32_t>>> KeyProcess::Hash
     return {splitKeys, restore, keyCount};
 }
 
-tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<vector<uint32_t>>> KeyProcess::HotHashSplit(const
-unique_ptr<EmbBatchT>& batch)
+tuple<vector<KeysT>, vector<int32_t>, vector<int>, vector<vector<uint32_t>>> KeyProcess::HotHashSplit(
+    const unique_ptr<EmbBatchT>& batch)
 {
     emb_key_t* batchData = batch->sample.data();
     size_t miniBs = batch->Size();
@@ -1440,8 +1437,8 @@ T KeyProcess::GetInfo(info_list_t<T>& list, const EmbBaseInfo& info)
     }
     auto topBatch = get<int>(list[info.name][info.channelId].top());
     if (topBatch < info.batchId) {
-        LOG_WARN("Wrong batch id, top:{} getting:{}, channel:{}, may not clear channel.",
-                 topBatch, info.batchId, info.channelId);
+        LOG_WARN("Wrong batch id, top:{} getting:{}, channel:{}, may not clear channel.", topBatch, info.batchId,
+                 info.channelId);
         this_thread::sleep_for(1s);
     }
     if (topBatch != info.batchId) {
@@ -1479,12 +1476,10 @@ vector<uint64_t> KeyProcess::GetUniqueKeys(const EmbBaseInfo& info, bool& isEos)
 
     HybridMgmtBlock* hybridMgmtBlock = Singleton<HybridMgmtBlock>::GetInstance();
     vector<uint64_t> ret;
-    auto startTime = std::chrono::system_clock::now();
     while (true) {
         if (!isRunning) {
             break;
         }
-        auto endTime = std::chrono::system_clock::now();
         // 判断此时的info.batchId id是否已经过期，即通道已经刷新
         if (info.batchId != hybridMgmtBlock->hybridBatchId[info.channelId]) {
             LOG_DEBUG(KEY_PROCESS "Detected that the batch has expired at this time, exiting the loop! {}[{}]:{}",

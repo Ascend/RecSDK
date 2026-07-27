@@ -42,6 +42,7 @@ See the License for the specific language governing permissions and
 #include "common_func/common_func.h"
 
 namespace MxRec {
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define MGMT_CPY_THREADS 4
 #define PROFILING
 using namespace tensorflow;
@@ -281,9 +282,9 @@ std::string VectorToString(const std::vector<T>& vec)
 
     std::stringstream ss;
     ss << "[";
-    for (size_t i = 0; i < maxLen; ++i) { // LCOV_EXCL_BR_LINE
+    for (size_t i = 0; i < maxLen; ++i) {  // LCOV_EXCL_BR_LINE
         ss << vec[i];
-        if (i != vec.size() - 1) { // LCOV_EXCL_BR_LINE
+        if (i != vec.size() - 1) {  // LCOV_EXCL_BR_LINE
             ss << ", ";
         }
     }
@@ -490,7 +491,7 @@ struct CkptData {
     AdmitAndEvictData histRec;
     KeyFreqMemT ddrKeyFreqMaps;
     KeyFreqMemT excludeDDRKeyFreqMaps;
-    bool noFeatAdmitAndEvictData {false};
+    bool noFeatAdmitAndEvictData{false};
 };
 
 struct CkptTransData {
@@ -543,6 +544,7 @@ bool CheckFileExist(const string& filePath);
 void RenameFilePath(const string& filePath, const string& newFilePath);
 }  // end namespace MxRec
 
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define KEY_PROCESS "\033[45m[KeyProcess]\033[0m "
 #ifdef GTEST
 #define GTEST_PRIVATE public

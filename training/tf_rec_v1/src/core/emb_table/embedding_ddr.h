@@ -32,11 +32,11 @@ public:
 
     ~EmbeddingDDR() override;
 
-    virtual void Key2Offset(std::vector<emb_key_t>& splitKey, int channel) override;
+    void Key2Offset(std::vector<emb_key_t>& splitKey, int channel) override;
 
-    virtual void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel) override;
+    void Key2OffsetForDp(std::vector<emb_key_t>& keys, int channel) override;
 
-    virtual int64_t capacity() const override;
+    int64_t capacity() const override;
 
     virtual void EvictKeys(const vector<emb_key_t>& keys);
 
@@ -88,9 +88,10 @@ public:
 
     void RecoverTrainStatus() override;
 
-GTEST_PRIVATE:
+    GTEST_PRIVATE :
 
-    void EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, float* deviceDataPtr);
+        void
+        EmbeddingUpdateWithSSD(const vector<uint64_t>& swapOutKeys, float* deviceDataPtr);
 
     void BatchSynchronization(int pythonBatchId, vector<uint64_t>& swapOutKeys);
 

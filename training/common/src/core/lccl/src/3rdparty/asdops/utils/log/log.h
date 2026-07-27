@@ -23,6 +23,7 @@
 #include <cstring>
 #include <unordered_map>
 
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define ASD_LOG(level) ASD_LOG_##level
 namespace AsdOps {
 struct LogLevel {
@@ -45,7 +46,8 @@ public:
     }
 
     // 重载 << 操作符，用于接收日志内容
-    template <typename T> Log &operator << (const T &msg)
+    template <typename T>
+    Log& operator<<(const T& msg)
     {
         stream << msg;
         return *this;
@@ -58,7 +60,7 @@ public:
             return level;
         }
 
-        const char *env_val = std::getenv("MXREC_LOG_LEVEL");
+        const char* env_val = std::getenv("MXREC_LOG_LEVEL");
         if (env_val == nullptr) {
             level = LogLevel::INFO;
         } else {
@@ -81,10 +83,10 @@ public:
     }
 
     // Function to extract the filename from a path
-    static const char *ExtractFileName(const char *path)
+    static const char* ExtractFileName(const char* path)
     {
         // Find the last '/' or '\\' in the path
-        const char *file = strrchr(path, '/');
+        const char* file = strrchr(path, '/');
         if (!file) {
             file = strrchr(path, '\\');
         }
@@ -93,7 +95,7 @@ public:
     }
 
 private:
-    std::ostringstream stream; // 使用字符串流来缓存输出内容
+    std::ostringstream stream;  // 使用字符串流来缓存输出内容
 };
 
 #define ASD_LOG_TRACE                                          \
@@ -111,5 +113,5 @@ private:
 #define ASD_LOG_ERROR                                          \
     if (AsdOps::LogLevel::ERROR >= AsdOps::Log::GetLogLevel()) \
     AsdOps::Log() << "\033[31mERROR \033[0m" << __FILE__ << ":" << __LINE__ << " "
-}
+}  // namespace AsdOps
 #endif

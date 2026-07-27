@@ -19,7 +19,7 @@ namespace ctr {
 void Dedup::Insert(uint64_t val)
 {
     auto h = static_cast<int32_t>(Hash(val) & bucketCountMask_);
-    Meta<n> *bucket = &table_[h];
+    Meta<n>* bucket = &table_[h];
 
     int8_t count = bucket->count;
 
@@ -55,7 +55,7 @@ void Dedup::Insert(uint64_t val)
 int32_t Dedup::GetReplaceOffsetUnsafe(uint64_t val)
 {
     auto h = static_cast<int32_t>(Hash(val) & bucketCountMask_);
-    Meta<n> *bucket = &table_[h];
+    Meta<n>* bucket = &table_[h];
 
     int8_t totalCount = 0;
     for (int8_t i = 0; i < bucket->count; ++i) {
@@ -73,11 +73,11 @@ int32_t Dedup::GetReplaceOffsetUnsafe(uint64_t val)
 
 void Dedup::InitTable()
 {
-    void *area = aligned_alloc(64, sizeof(Meta<n>) * bucketCount_);
+    void* area = aligned_alloc(64, sizeof(Meta<n>) * bucketCount_);
     if (area == nullptr) {
         throw AllocError();
     } else {
-        table_ = reinterpret_cast<Meta<n> *>(area);
+        table_ = reinterpret_cast<Meta<n>*>(area);
     }
 }
 
@@ -91,12 +91,12 @@ void Dedup::Clear(uint64_t newBucketCountPowerOf2)
         }
         bucketCount_ = newBucketCountPowerOf2;
         bucketCountMask_ = bucketCount_ - 1;
-        table_ = reinterpret_cast<Meta<n> *>(aligned_alloc(K_ALIGNMENT, sizeof(Meta<n>) * bucketCount_));
+        table_ = reinterpret_cast<Meta<n>*>(aligned_alloc(K_ALIGNMENT, sizeof(Meta<n>) * bucketCount_));
         if (table_ == nullptr) {
             throw AllocError();
         }
     }
-    bzero(table_, sizeof(Meta<n>) * bucketCount_);
+    memset(table_, 0, sizeof(Meta<n>) * bucketCount_);
     overflow_.clear();
 }
 
@@ -108,9 +108,8 @@ void Dedup::NewParameter()
         // Time to check the proper size of sharded tables for performance
         // sake.
         uint64_t shardedTableSize = 0;
-        if (std::numeric_limits<uint64_t>::max() / static_cast<uint64_t>(n) /
-        static_cast<uint64_t>(groupCount_) <
-        newBucketCountPowerOf2) {
+        if (std::numeric_limits<uint64_t>::max() / static_cast<uint64_t>(n) / static_cast<uint64_t>(groupCount_) <
+            newBucketCountPowerOf2) {
             shardedTableSize = static_cast<uint64_t>(std::numeric_limits<int>::max());
         } else {
             shardedTableSize = newBucketCountPowerOf2 * n * static_cast<uint64_t>(groupCount_);
@@ -148,7 +147,7 @@ void Dedup::NewParameter()
     stats_.totalOverflowUniques = 0;
 }
 
-int32_t ShardedDedup::GetFillOffset(const std::vector<size_t> &totalUniqueSize, int64_t val, int32_t group)
+int32_t ShardedDedup::GetFillOffset(const std::vector<size_t>& totalUniqueSize, int64_t val, int32_t group)
 {
     if (!conf.usePadding) {
         return dedupShards_[group]->GetReplaceOffsetUnsafe(val);
@@ -157,8 +156,8 @@ int32_t ShardedDedup::GetFillOffset(const std::vector<size_t> &totalUniqueSize, 
     }
 }
 
-void ShardedDedup::GetIndexAndStart(const int32_t *uniqueSizeInBucket, bool usePadding, int shardingNumber, int &start,
-                                    int &index)
+void ShardedDedup::GetIndexAndStart(const int32_t* uniqueSizeInBucket, bool usePadding, int shardingNumber, int& start,
+                                    int& index)
 {
     if (shardingNumber > 0) {
         index += uniqueSizeInBucket[shardingNumber - 1];
@@ -171,7 +170,7 @@ void ShardedDedup::GetIndexAndStart(const int32_t *uniqueSizeInBucket, bool useP
     }
 }
 
-int ShardedDedup::PrintMemCpyLog(int rc, const uint32_t dstSize, const std::string &logMsg) const
+int ShardedDedup::PrintMemCpyLog(int rc, const uint32_t dstSize, const std::string& logMsg) const
 {
     if (rc != 0) {
         std::stringstream ssm;
@@ -183,7 +182,7 @@ int ShardedDedup::PrintMemCpyLog(int rc, const uint32_t dstSize, const std::stri
     }
 }
 
-int ShardedDedup::HandleIdCountFill(std::vector<std::atomic<int32_t>> &idCount, UniqueOutSelf &uniqueOut)
+int ShardedDedup::HandleIdCountFill(std::vector<std::atomic<int32_t>>& idCount, UniqueOutSelf& uniqueOut)
 {
     if (conf.usePadding) {
         uint32_t memSize = idCount.size() * sizeof(int32_t);
@@ -217,14 +216,14 @@ size_t ShardedDedup::CalThreadNum() const
     return threadNum;
 }
 
-bool ShardedDedup::IsPaddingValid(UniqueOutSelf &uniqueOut)
+bool ShardedDedup::IsPaddingValid(UniqueOutSelf& uniqueOut)
 {
     if (conf.outputType == OutputType::ENHANCED && conf.usePadding) {
         for (int i = 0; i < conf.shardingNum; i++) {
             if (conf.paddingSize < uniqueOut.uniqueIdCntInBucket[i]) {
                 std::stringstream ssm;
-                ssm << "paddingSize should not be smaller than uniqueSize, paddingSize " << conf.paddingSize <<
-                    " , uniqueSize " << uniqueOut.uniqueIdCntInBucket[i];
+                ssm << "paddingSize should not be smaller than uniqueSize, paddingSize " << conf.paddingSize
+                    << " , uniqueSize " << uniqueOut.uniqueIdCntInBucket[i];
                 ExternalLogger::PrintLog(LogLevel::ERROR, ssm.str());
                 return false;
             }
@@ -232,5 +231,5 @@ bool ShardedDedup::IsPaddingValid(UniqueOutSelf &uniqueOut)
     }
     return true;
 }
-}
-}
+}  // namespace ctr
+}  // namespace ock

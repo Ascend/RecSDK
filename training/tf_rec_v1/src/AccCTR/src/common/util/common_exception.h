@@ -15,12 +15,15 @@ limitations under the License.
 #ifndef ACCCTR_COMMON_EXCEPTION_H
 #define ACCCTR_COMMON_EXCEPTION_H
 
+#include <exception>
+#include <stdexcept>
+
 namespace ock {
 namespace ctr {
 class CommonException {};
 class AllocError : public std::exception {};
 class NullptrError : public std::exception {};
-}
-}
+}  // namespace ctr
+}  // namespace ock
 
-#endif // ACCCTR_COMMON_EXCEPTION_H
+#endif  // ACCCTR_COMMON_EXCEPTION_H

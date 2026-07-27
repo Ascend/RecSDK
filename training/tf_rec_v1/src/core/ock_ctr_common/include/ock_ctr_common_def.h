@@ -43,7 +43,7 @@ public:
             return -1;
         }
 
-        auto fun = (CTR_CREATE_FACTORY_FUNCTION)dlsym(handle, "CTR_CreateFactory");
+        auto fun = reinterpret_cast<CTR_CREATE_FACTORY_FUNCTION>(dlsym(handle, "CTR_CreateFactory"));
         if (fun == nullptr) {
             std::cout << "Failed to call dlsym to load function 'CTR_CreateFactory', error " << dlerror() << std::endl;
             dlclose(handle);

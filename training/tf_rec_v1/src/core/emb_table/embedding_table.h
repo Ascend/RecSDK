@@ -102,7 +102,7 @@ public:
 
     virtual TableInfo GetTableInfo();
 
-    virtual void SetHDTransfer(HDTransfer *hdTransfer);
+    virtual void SetHDTransfer(HDTransfer* hdTransfer);
 
     virtual void SetEmbCache(ock::ctr::EmbCacheManagerPtr embCache);
 
@@ -110,11 +110,11 @@ public:
 
     unordered_set<int64_t> GetPaddingKeysOffset();
 
-    void CheckReadKeyFileSize(const string& fileName, size_t fileSize) ;
+    void CheckReadKeyFileSize(const string& fileName, size_t fileSize);
 
-    void CheckLoadKeyMallocPtr(const int64_t* mallocPtr, size_t mallocByteSize) ;
+    void CheckLoadKeyMallocPtr(const int64_t* mallocPtr, size_t mallocByteSize);
 
-    void CheckReadKeyFileBytes(ssize_t readReturnCode, const string& fileName, size_t fileSize) ;
+    void CheckReadKeyFileBytes(ssize_t readReturnCode, const string& fileName, size_t fileSize);
 
     void RecordPaddingKeysOffset(int channel, emb_key_t key, int64_t offset);
 
@@ -128,15 +128,15 @@ public:
     absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMap;
     absl::flat_hash_map<emb_key_t, int64_t> keyOffsetMapBackUp;
     unordered_set<int64_t> paddingKeysOffset;
-    std::vector<int64_t> evictDevPos;     // 记录HBM内被淘汰的key
-    std::vector<int64_t> evictHostPos; // 记录Host内淘汰列表
+    std::vector<int64_t> evictDevPos;   // 记录HBM内被淘汰的key
+    std::vector<int64_t> evictHostPos;  // 记录Host内淘汰列表
+
+    EmbeddingTable(const EmbeddingTable&) = delete;
+    EmbeddingTable& operator=(const EmbeddingTable& table) = delete;
 
 #ifdef NDEBUG
 protected:
 #endif
-
-    EmbeddingTable(const EmbeddingTable&) = delete;
-    EmbeddingTable& operator=(const EmbeddingTable& table) = delete;
 
     size_t freeSize_;
     bool isDynamic_;
@@ -150,7 +150,7 @@ protected:
     size_t rankSize_;
     vector<int64_t> loadOffset;
 
-    std::vector<size_t> missingKeysHostPos_; // 用于记录当前batch在host上需要换出的偏移
+    std::vector<size_t> missingKeysHostPos_;  // 用于记录当前batch在host上需要换出的偏移
     CacheManager* cacheManager_;
     bool isSSDEnabled_ = false;
 
@@ -158,6 +158,6 @@ protected:
     mutable std::shared_mutex keyOffsetMutex_;
 };
 
-}
+}  // namespace MxRec
 
-#endif // MX_REC_EMBEDDING_TABLE_H
+#endif  // MX_REC_EMBEDDING_TABLE_H
