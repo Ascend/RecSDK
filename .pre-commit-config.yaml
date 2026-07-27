@@ -109,7 +109,7 @@ repos:
         name: clang-tidy
         entry: clang-tidy
         language: system
-        files: ^(training/torch_rec_v1|cust_op/framework/torch_plugin)/.*\.(h|hpp|cpp|cc|cxx|c)$
+        files: ^(training/torch_rec_v1|cust_op/framework/torch_plugin)/.*\.(h|hpp|cpp|cc|cxx|c)$|^training/torch_rec_v2/dynamic_emb/csrc/(initializer|module_bind|torch_utils)\.cpp$
         args:
           - --config-file=.clang-tidy
           - --quiet
