@@ -629,13 +629,15 @@ torch::Tensor gather_embedding(const torch::Tensor& inputs, const torch::Tensor&
     constexpr uint32_t GATHER_THRESHOLD = 100000;
 
     if (outLen > GATHER_THRESHOLD && indices.scalar_type() == torch::kInt64) {
-        torch::Tensor indicesExpand = indices.unsqueeze(-1).expand({indicesLen, dim});
+        torch::Tensor indicesExpand =
+            indices.unsqueeze(-1).expand({static_cast<int64_t>(indicesLen), static_cast<int64_t>(dim)});
         return torch::gather(inputs, 0, indicesExpand);
     }
 
     auto inType = scalartype_to_datatype(inputs.scalar_type());
     auto indexType = scalartype_to_datatype(indices.scalar_type());
-    torch::Tensor output = torch::empty({indicesLen, dim}, inputs.options());
+    torch::Tensor output =
+        torch::empty({static_cast<int64_t>(indicesLen), static_cast<int64_t>(dim)}, inputs.options());
     void* inData = inputs.contiguous().data_ptr();
     void* indicesData = indices.contiguous().data_ptr();
     void* outData = output.data_ptr();
