@@ -22,13 +22,15 @@ if [ "${check_version}" != "tf_v1" ] && [ "${check_version}" != "tf_v2" ]; then
     exit 1
 fi
 
-SCRIPT_DIR=$(dirname "$(readlink -f "$0")")   # .../RecSDK/build/
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 MxRec_DIR=$(dirname "${SCRIPT_DIR}")
 
+PROJECT_TF_PLUGIN_DIR="${MxRec_DIR}"/cust_op/framework/tf_plugin
 PROJECT_COMMON_DIR="${MxRec_DIR}"/training/common
 PROJECT_TFV1_DIR="${MxRec_DIR}"/training/tf_rec_v1
 PROJECT_TFV2_DIR="${MxRec_DIR}"/training/tf_rec_v2
 acc_ctr_path="${PROJECT_TFV1_DIR}"/src/AccCTR
+tf1_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow_core
 
 function marking_rule() {
     # 禁用规则
@@ -54,7 +56,7 @@ rm -rf build
 bash ./build.sh "${MxRec_DIR}" "Yes"
 
 find ./core ./pybind \( -name "*.cpp" -o -name "*.h" \) -print | \
-    xargs -P4 -I{} sh -c '
+    xargs -P8 -I{} sh -c '
         echo "Check file: '"${PROJECT_COMMON_DIR}"'/src/$1"
         clang-tidy -p=build \
             --extra-arg=-Wno-ignored-optimization-argument \
@@ -74,8 +76,8 @@ if [ "${check_version}" == "tf_v1" ]; then
     bash ./build.sh "release"
 
     find ./src \( -name "*.cpp" -o -name "*.h" \) -print | \
-        xargs -P4 -I{} sh -c '
-            echo "Check file: '"${acc_ctr_path}"'/src/$1"
+        xargs -P8 -I{} sh -c '
+            echo "Check file: '"${acc_ctr_path}"'/$1"
             clang-tidy -p=build \
                 --extra-arg=-Wno-ignored-optimization-argument \
                 --extra-arg=-Wno-unused-command-line-argument \
@@ -83,19 +85,34 @@ if [ "${check_version}" == "tf_v1" ]; then
         ' _ {} | tee tee /tmp/clang_tidy_AccCTR.log
     echo "==================  AccCTR dir check completed ======================"
 
+    # 检查tf_plugin
+    echo "==================  clang-tidy check tf_plugin dir  ======================"
+    cd "${PROJECT_TF_PLUGIN_DIR}"
+    cp "${MxRec_DIR}"/.clang-tidy ./
+    bash build.sh "${tf1_path}" "${MxRec_DIR}"
+
+    find ./src ./include \( -name "*.cpp" -o -name "*.h" \) -print | \
+        xargs -P8 -I{} sh -c '
+            echo "Check file: '"${PROJECT_TF_PLUGIN_DIR}"'/$1"
+            clang-tidy -p=build \
+                --extra-arg=-Wno-ignored-optimization-argument \
+                --extra-arg=-Wno-unused-command-line-argument \
+                "$1" 2>&1
+        ' _ {} | tee tee /tmp/clang_tidy_TfPlugin.log
+    echo "==================  tf_plugin dir check completed ======================"
+
     # 检查tf_rec_v1
     echo "==================  clang-tidy check tf_rec_v1 dir  ======================"
     cd "${PROJECT_TFV1_DIR}"/src/
     cp "${MxRec_DIR}"/.clang-tidy ./
     marking_rule
     rm -rf build
-    tf1_path=$(dirname "$(dirname "$(which python3.7)")")/lib/python3.7/site-packages/tensorflow_core
     bash build.sh "${tf1_path}" "${MxRec_DIR}" "YES"
 
     find ./ \
         \( -path "*/build" -o -path "*/AccCTR" -o -path "*/tests" \) -prune -o \
         \( -name "*.cpp" -o -name "*.h" \) -print | \
-        xargs -P4 -I{} sh -c '
+        xargs -P8 -I{} sh -c '
             echo "Check file: '"${PROJECT_TFV1_DIR}"'/src/$1"
             clang-tidy -p=build \
                 --extra-arg=-Wno-ignored-optimization-argument \
@@ -114,7 +131,7 @@ else
     bash ci/scripts/build_tf1.sh
 
     find ./mxrec/core/host/ \( -name "*.cpp" -o -name "*.h" \) -print | \
-        xargs -P4 -I{} sh -c '
+        xargs -P8 -I{} sh -c '
             echo "Check file: '"${PROJECT_TFV2_DIR}"'/$1"
             clang-tidy -p=build \
                 --extra-arg=-Wno-ignored-optimization-argument \

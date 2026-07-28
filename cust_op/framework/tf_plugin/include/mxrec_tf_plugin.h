@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#ifndef MXREC_TF_PLUGINH
-#define MXREC_TF_PLUGINH
+#ifndef MXREC_TF_PLUGIN_H
+#define MXREC_TF_PLUGIN_H
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
@@ -24,20 +24,19 @@ using OpKernelConstructionPtr = tensorflow::OpKernelConstruction*;
 using OpKernelContextPtr = tensorflow::OpKernelContext*;
 
 namespace MxRecTfPlugin {
-    class CustOps : public tensorflow::OpKernel {
-    public:
-        explicit CustOps(OpKernelConstructionPtr context) : tensorflow::OpKernel(context)
-        {
-        }
+// NOLINTNEXTLINE(cppcoreguidelines-special-member-functions)
+class CustOps : public tensorflow::OpKernel {
+public:
+    explicit CustOps(OpKernelConstructionPtr context) : tensorflow::OpKernel(context) {}
 
-        void Compute(OpKernelContextPtr context) override
-        {
-            std::cout << "context " << context->step_id() << std::endl;
-            std::cout << " Cust opp not installed!!" << std::endl;
-        }
+    void Compute(OpKernelContextPtr context) override
+    {
+        std::cout << "context " << context->step_id() << std::endl;
+        std::cout << " Cust opp not installed!!" << std::endl;
+    }
 
-        ~CustOps() override = default;
-    };
-}
+    ~CustOps() override = default;
+};
+}  // namespace MxRecTfPlugin
 
-#endif // MXREC_TF_PLUGINH
+#endif  // MXREC_TF_PLUGIN_H
