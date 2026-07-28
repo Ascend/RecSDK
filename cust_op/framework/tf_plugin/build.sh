@@ -32,6 +32,7 @@ fi
 mkdir build && cd build || exit 1
 
 cmake -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DTF_PATH="$1" \
     -DOMPI_PATH="$(whereis openmpi)" \
     -DPYTHON_PATH="$python_path" \
