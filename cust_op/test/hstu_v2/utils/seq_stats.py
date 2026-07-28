@@ -28,7 +28,7 @@ class SeqStats:
         seq_offset_q: Union[np.ndarray, List],
         seq_offset_k: Union[np.ndarray, List],
         max_seqlen_q: int,
-        max_seqlen_k: int
+        max_seqlen_k: int,
     ) -> Dict[str, Any]:
         """从 seq_offset 计算序列长度统计信息
 
@@ -48,10 +48,7 @@ class SeqStats:
         return SeqStats._calc_stats(seq_lens_q, seq_lens_k, max_seqlen_q, max_seqlen_k)
 
     @staticmethod
-    def compute_seq_lens(
-        seq_offset_q: Union[np.ndarray, List],
-        seq_offset_k: Union[np.ndarray, List]
-    ) -> tuple:
+    def compute_seq_lens(seq_offset_q: Union[np.ndarray, List], seq_offset_k: Union[np.ndarray, List]) -> tuple:
         """从 seq_offset 恢复 seq_lens
 
         Args:
@@ -67,10 +64,7 @@ class SeqStats:
 
     @staticmethod
     def _calc_stats(
-        seq_lens_q: np.ndarray,
-        seq_lens_k: np.ndarray,
-        max_seqlen_q: int,
-        max_seqlen_k: int
+        seq_lens_q: np.ndarray, seq_lens_k: np.ndarray, max_seqlen_q: int, max_seqlen_k: int
     ) -> Dict[str, Any]:
         """计算序列长度统计信息
 

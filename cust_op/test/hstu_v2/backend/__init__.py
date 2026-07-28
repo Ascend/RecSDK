@@ -31,10 +31,7 @@ class KernelBackend(Enum):
     TRITON = "TRITON"
 
 
-def create_hstu_atten_backend(
-        kernel_backend: KernelBackend,
-        **kwargs
-        ):
+def create_hstu_atten_backend(kernel_backend: KernelBackend, **kwargs):
     if kernel_backend == KernelBackend.ASCEND_NATIVE:
         return AscendNative()
     elif kernel_backend == KernelBackend.PYTORCH_NATIVE:

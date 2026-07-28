@@ -37,7 +37,6 @@ using namespace optiling;
 namespace aicpu {
 uint32_t HstuAttnMetadataCpuKernel::Compute(CpuKernelContext& ctx)
 {
-    KERNEL_LOG_INFO("Do C Test");
     bool success = Prepare(ctx);
     KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Prepare data failed!");
 
