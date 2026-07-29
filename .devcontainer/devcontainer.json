@@ -1,0 +1,35 @@
+{
+    "name": "RecSDK Dev Container",
+    "image": "swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_debian12-x86",
+
+    "workspaceFolder": "/workspace",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+
+    "containerEnv": {
+        "CMAKE_TLS_VERIFY": "0"
+    },
+
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cmake-tools",
+                "ms-python.python",
+                "ms-vscode.cpptools-extension-pack",
+                "twxs.cmake",
+                "eamodio.gitlens"
+            ],
+            "settings": {
+                "cmake.buildDirectory": "${workspaceFolder}/build",
+                "cmake.generator": "Unix Makefiles",
+                "C_Cpp.default.compilerPath": "/usr/bin/gcc",
+                "C_Cpp.default.cStandard": "c11",
+                "C_Cpp.default.cppStandard": "c++17",
+                "editor.formatOnSave": false,
+                "terminal.integrated.defaultProfile.linux": "bash"
+            }
+        }
+    },
+
+    "remoteUser": "root"
+}
