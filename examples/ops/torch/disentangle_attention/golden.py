@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from gendata import TestArgs
 
 
-def gloden_disetangle_bias(op_args: TestArgs):
+def golden_disentangle_bias(op_args: TestArgs):
     att_span = op_args.query_layer.size(-2)
     score = None
     if "c2p" in op_args.pos_att_type:
@@ -52,13 +52,13 @@ def gloden_disetangle_bias(op_args: TestArgs):
     return score * op_args.score_scale
 
 
-def gloden_disetangle_attention(op_args: TestArgs):
+def golden_disentangle_attention(op_args: TestArgs):
 
     attn_weights = torch.matmul(
         op_args.query_layer * op_args.score_scale, op_args.key_layer.permute(0, 1, 3, 2)
     )
 
-    attn_weights = attn_weights + gloden_disetangle_bias(op_args)
+    attn_weights = attn_weights + golden_disentangle_bias(op_args)
 
     attn_weights = attn_weights + op_args.atten_mask
     attn_probs = F.softmax(attn_weights, dim=-1)
