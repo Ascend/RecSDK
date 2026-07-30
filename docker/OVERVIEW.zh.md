@@ -26,9 +26,17 @@ RecSDK的功能涉及：
 镜像标签遵循以下字段组合规范，便于直观区分镜像内包含的软硬件栈版本细节：
 
 - **RecSDK版本**: RecSDK版本号（例如`26.1.0`）
+- **CANN版本**: CANN软件包版本（例如 `cann9.1.0`）
+- **芯片标识**: 目标昇腾芯片平台（`910` 对应 Atlas 800T A2 / a2，`a3` 对应 Atlas 800T A3，`950` 对应昇腾950代际 / a5）
 - **OS版本**: 基础操作系统的代号或版本号（例如 `ubuntu20.04`）
-- **框架标识**: 镜像支持的机器学习框架（例如 `tf` 为TensorFlow环境，或者是 `torch` 为PyTorch环境）
 - **Python版本**: 核心运行的解释器版本（例如 `py3.7`）
+- **框架标识**: 镜像支持的机器学习框架（例如 `tf` 为TensorFlow环境，或者是 `pt` 为PyTorch环境）
+
+> **注意**：同一 Dockerfile 通过 `--build-arg CORE_TYPE=a2/a3/a5` 可构建出不同芯片平台的镜像，构建时请根据目标平台替换 tag 中的芯片标识字段。例如：
+>
+> - `CORE_TYPE=a2` → tag 中使用 `910`
+> - `CORE_TYPE=a3` → tag 中使用 `a3`
+> - `CORE_TYPE=a5` → tag 中使用 `950`
 
 ## Dockerfile 归档路径
 
@@ -38,10 +46,12 @@ RecSDK的功能涉及：
 
 | Tag | Dockerfile |
 |-----|------------|
-|26.1.0-ubuntu20.04-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7)|
-|26.1.0-ubuntu22.04-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu22.04-pt-py3.11)|
-|26.1.0-openEuler22.03-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler22.03-tf-py3.7)|
-|26.1.0-openEuler22.03-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler22.03-pt-py3.11)|
+|26.1.0-cann9.1.0-{chip}-ubuntu20.04-py3.7-tf|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf)|
+|26.1.0-cann9.1.0-{chip}-ubuntu22.04-py3.11-pt|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-ubuntu22.04-py3.11-pt)|
+|26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.7-tf|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.7-tf)|
+|26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.11-pt|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.11-pt)|
+
+> `{chip}` 替换为目标芯片标识：`910`（Atlas 800T A2）、`a3`（Atlas 800T A3）、`950`（昇腾950代际产品）。
 
 ## 快速开始
 
@@ -52,7 +62,7 @@ RecSDK的功能涉及：
 | Docker 版本 | 建议 20.10 及以上，需支持 `--net=host` 网络模式 |
 | 宿主操作系统 | Ubuntu 20.04 / 22.04（x86_64 或 ARM）、openEuler 22.03（x86_64 或 ARM） |
 | 昇腾驱动与固件 | 宿主机需安装 Ascend NPU 驱动及固件，驱动路径默认为 `/usr/local/Ascend/driver` |
-| CANN 版本 | 建议 CANN 9.0.0 及以上（可参照Dockerfile配置下载链接，默认下载9.0.0版本） |
+| CANN 版本 | 建议 CANN 9.1.0 及以上（可参照Dockerfile配置下载链接，默认下载9.1.0版本） |
 | 磁盘空间 | 构建镜像建议预留至少 60 GB 可用空间 |
 | 网络 | 构建过程中需访问外部网络以下载依赖包 |
 
@@ -87,26 +97,27 @@ docker run -it \
 - **PyTorch 镜像（以 ubuntu22.04 为例）**
 
 ```bash
-docker build -t recsdk_pt:26.1.0-ubuntu22.04-pt-py3.11 -f docker/Dockerfile.26.1.0-ubuntu22.04-pt-py3.11 .
+# 构建时通过 --build-arg CORE_TYPE 指定芯片平台，tag 中对应替换 {chip} 为 910/a3/950
+docker build --build-arg CORE_TYPE=a2 -t recsdk_pt:26.1.0-cann9.1.0-910-ubuntu22.04-py3.11-pt -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu22.04-py3.11-pt .
 ```
 
 - **TensorFlow 镜像（以 ubuntu20.04 为例）**
 
 ```bash
-docker build -t recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 -f docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 ```
 
 若您在编译算子或载入框架包时需要强制适配特定核心类型，可以在构建中通过 `CORE_TYPE` 参数显式声明（默认为 `a2`）：
 
-| CORE_TYPE | 适用平台 |
-|-----------|----------|
-| `a2` | Atlas 800T2 训练服务器 |
-| `a3` | Atlas 800T3 超节点服务器 |
-| `a5` | 昇腾950代际产品 |
+| CORE_TYPE | 适用平台 | tag 芯片标识 |
+|-----------|----------|-------------|
+| `a2` | Atlas 800T A2 训练服务器 | `910` |
+| `a3` | Atlas 800T A3 超节点服务器 | `a3` |
+| `a5` | 昇腾950代际产品 | `950` |
 
 ```bash
 # CORE_TYPE可选a2/a3/a5，以下以 TensorFlow 镜像为例，PyTorch 镜像同理
-docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 -f docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 ```
 
 - **openEuler 镜像**
@@ -120,8 +131,8 @@ openEuler 22.03 镜像的构建方式与上述 Ubuntu 示例一致。
 - **如何进行二次开发**:
 
   ```dockerfile
-  # 以recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7镜像为基础镜像，叠加用户软件
-  FROM recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7
+  # 以recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf镜像为基础镜像，叠加用户软件
+  FROM recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf
   RUN apt update -y && \
       apt install ...
   ```
@@ -131,13 +142,9 @@ openEuler 22.03 镜像的构建方式与上述 Ubuntu 示例一致。
   ```bash
   # 激活切换到 TF 1.15.0 的 RecSDK 开发环境
   source /opt/buildtools/tf1_env/bin/activate
-  # 退出当前虚拟环境
-  deactivate
 
   # 激活切换到 TF 2.6.5 的 RecSDK 开发环境
   source /opt/buildtools/tf2_env/bin/activate
-  # 退出当前虚拟环境
-  deactivate
   ```
 
 - **切换 Python 框架环境 (PyTorch 容器)**:
@@ -145,71 +152,25 @@ openEuler 22.03 镜像的构建方式与上述 Ubuntu 示例一致。
   ```bash
   # 激活切换到 torch_rec_v1 PT 2.6.0 的 RecSDK 开发环境
   source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
-  # 退出当前虚拟环境
-  deactivate
 
   # 激活切换到 torch_rec_v1 PT 2.7.1 的 RecSDK 开发环境
   source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
-  # 退出当前虚拟环境
-  deactivate
 
   # 激活切换到 torch_rec_v2 PT 2.7.1 的 RecSDK 开发环境
   source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
-  # 退出当前虚拟环境
-  deactivate
+
+  # 激活切换到 torch_rec_v2 PT 2.10.0 的 RecSDK 开发环境
+  source /opt/buildtools/torch_v2_pt2.10.0/bin/activate
   ```
 
-- **切换 CANN 硬件支持包**:
-
-  借助内置切换脚本，您可以动态调整全局与 CANN 包绑定的环境变量及软链接地址：
-
-  ```bash
-  source /usr/local/set_cann_env.sh a2  # 切换并生效 Atlas 800T2 训练服务器 配套Toolkit及相关环境变量(系统默认状态)
-  source /usr/local/set_cann_env.sh a3  # 切换并生效 Atlas 800T3 超节点服务器 配套Toolkit及相关环境变量
-  source /usr/local/set_cann_env.sh a5  # 切换并生效 Ascend 950 配套Toolkit及相关环境变量
-  ```
-
-- **自行安装或更换 CANN 包**:
-
-  如需升级 CANN 版本或替换现有 CANN 包，请先卸载旧的 CANN 包，再通过 `--install-path` 参数指定对应芯片架构的安装路径安装新包。容器内预置了三套目录：
-
-  | 芯片架构 | 安装路径 | 对应切换命令 |
-  |---------|---------|------------|
-  | A2 (Atlas 800T2) | `/usr/local/Ascend/cann-A2` | `source /usr/local/set_cann_env.sh a2` |
-  | A3 (Atlas 800T3) | `/usr/local/Ascend/cann-A3` | `source /usr/local/set_cann_env.sh a3` |
-  | A5 (Ascend 950)  | `/usr/local/Ascend/cann-A5` | `source /usr/local/set_cann_env.sh a5` |
-
-  安装示例（以下载新版本 toolkit 并替换 A2 为例）：
-
-  ```bash
-  # 0. 下载新版本 CANN toolkit（以实际获取的包名为准）
-  wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-toolkit_9.0.0_linux-x86_64.run
-
-  # 1. 卸载旧的 CANN 包
-  bash /usr/local/Ascend/cann-A2/ascend-toolkit/uninstall.sh --quiet
-  # 或直接删除对应安装目录
-  rm -rf /usr/local/Ascend/cann-A2
-
-  # 2. 重新创建目录并安装新的 CANN toolkit
-  mkdir -p /usr/local/Ascend/cann-A2
-  chmod +x Ascend-cann-toolkit_9.0.0*.run
-  bash Ascend-cann-toolkit_9.0.0*.run --quiet --install --install-path=/usr/local/Ascend/cann-A2
-
-  # 3. 同理，对应的算力 ops 包也需卸载后重新安装到同一目录
-  bash /usr/local/Ascend/cann-A2/opp/scripts/uninstall.sh --quiet
-  chmod +x Ascend-cann-910b-ops*.run
-  bash Ascend-cann-910b-ops*.run --quiet --install --install-path=/usr/local/Ascend/cann-A2
-  ```
-
-  > [!NOTE]
-  > 更换 CANN 包后请使用 `source /usr/local/set_cann_env.sh <a2|a3|a5>` 重新使能对应环境变量，以确保新安装的算子及工具链生效。
+  使用 `deactivate` 退出当前虚拟环境。
 
 ## 支持信息与变更说明
 
 ### 硬件支持信息
 
 - **物理架构自动适配**: 各个版本的 Dockerfile 天然支持宿主机架构鉴别，不仅提供了涵盖 `x86` 及 `ARM` 的硬件处理，更在构建镜像早期借助 `ARCH=$(uname -m)` 识别所处架构系统，根据逻辑分支抓取和装配对应操作系统的 `GCC` 配置、系统动态链接库和框架分发版本（即不同的 `whl` 安装包、`run` 包）。
-- **芯片全兼容部署**: 构建过程规避了仅对单点显卡/算力板卡的局限性。利用预置多版本算力部署方案，将 A2/A3/A5 的相应算力操作栈 (ops 包和 toolkit 包) 一并沉淀安装至镜像底座内，极大提升了容器的分发扩展性与业务泛用能力。
+- **芯片按需构建**: 构建过程通过 `--build-arg CORE_TYPE=a2/a3/a5` 指定目标芯片平台，仅安装对应芯片架构的 CANN toolkit 和 ops 包，避免镜像体积膨胀。
 
 ### 兼容性变更说明
 
@@ -224,8 +185,8 @@ openEuler 22.03 镜像的构建方式与上述 Ubuntu 示例一致。
 
 ```bash
 # 1. 构建镜像
-docker build -t recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 \
-  -f docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf \
+  -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 
 # 2. 启动容器
 docker run -it --name recsdk_test \
@@ -234,26 +195,23 @@ docker run -it --name recsdk_test \
   -e ASCEND_VISIBLE_DEVICES=0-7 \
   -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
   -v /etc/ascend_install.info:/etc/ascend_install.info \
-  recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 /bin/bash
+  recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf /bin/bash
 
-# 3. 配置环境变量
-source /usr/local/set_cann_env.sh a2
-
-# 4. 容器内验证 NPU 可用
+# 3. 容器内验证 NPU 可用
 npu-smi info
 
-# 5. 激活环境并运行 little demo
+# 4. 激活环境并运行 little demo
 source /opt/buildtools/tf1_env/bin/activate
 # 参考下方 little demo 链接运行验证
 ```
 
 ### TensorFlow镜像验证
 
-可参考[little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/README.md)进行little demo验证，验证前可通过[章节 - 二次开发与底层环境切换](#二次开发与底层环境切换)切换容器内CANN包环境与python虚拟环境。
+可参考[little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/README.md)进行little demo验证，验证前可通过[章节 - 二次开发与底层环境切换](#二次开发与底层环境切换)切换容器内python虚拟环境。
 
 ### PyTorch镜像验证
 
-可参考[little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/README.md)进行little demo验证，验证前可通过[章节 - 二次开发与底层环境切换](#二次开发与底层环境切换)切换容器内CANN包环境与python虚拟环境。
+可参考[little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/README.md)进行little demo验证，验证前可通过[章节 - 二次开发与底层环境切换](#二次开发与底层环境切换)切换容器内python虚拟环境。
 
 ## 常见问题与故障排查
 

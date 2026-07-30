@@ -1,0 +1,202 @@
+# RecSDK PyTorch Runtime and Build Image
+# please configure 根据实际情况使用基础镜像
+FROM ubuntu:22.04
+
+WORKDIR /tmp
+
+# 设置非交互式安装
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 0. 配置证书（必须在替换apt源之前安装，否则无法访问新源）
+RUN apt-get update -qq && \
+    apt-get install -y -qq ca-certificates && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# 替换华为apt源
+RUN sed -i 's/archive.ubuntu.com/repo.huaweicloud.com/g' /etc/apt/sources.list && \
+    sed -i 's/security.ubuntu.com/repo.huaweicloud.com/g' /etc/apt/sources.list
+
+# 根据实际情况选择安装需要的依赖，如果一些依赖不需要可以将对应代码去掉或注释；同时，确保下载的依赖的包名与如下代码中的包名一致，
+# 否则在安装对应的依赖时可能出现找不到文件的错误。
+
+# 1.安装编译环境
+RUN apt-get update -qq && \
+    apt-get -y -qq install net-tools make wget zlib1g-dev bzip2 libbz2-dev libssl-dev libncurses5-dev libncursesw5-dev openssh-client \
+    openssh-server libsqlite3-dev libopenmpi-dev libreadline-dev tk-dev libgdbm-dev libpcap-dev liblzma-dev \
+    libffi-dev libhdf5-dev patch pciutils lcov vim dos2unix g++ automake libtool autoconf m4 perl git e2fsprogs unzip ninja-build && \
+    apt-get clean && \
+    rm -rf /var/cache/apt/
+# 注：openssh-server为双机训练样例需要，仅单机训练时可去掉
+
+# 2.编译安装 GCC 11.2.0（下载→编译→清理在同一层）
+# 流程：下载GCC源码 → 下载4个依赖库(gmp/mpfr/mpc/isl) → configure → make → 安装 → 替换系统libstdc++ → 设置默认编译器 → 清理
+RUN wget -q https://mirrors.huaweicloud.com/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz && \
+    tar -zxf gcc-11.2.0.tar.gz && \
+    cd gcc-11.2.0 && \
+    # 下载GCC编译所需的4个数学依赖库
+    wget -q https://mirrors.huaweicloud.com/gnu/gmp/gmp-6.1.0.tar.bz2 && \
+    wget -q https://mirrors.huaweicloud.com/gnu/mpfr/mpfr-3.1.6.tar.bz2 && \
+    wget -q https://mirrors.huaweicloud.com/gnu/mpc/mpc-1.0.3.tar.gz && \
+    wget -q https://gcc.gnu.org/pub/gcc/infrastructure/isl-0.18.tar.bz2 && \
+    # 修复download_prerequisites脚本中tar解压的owner问题（Docker内root用户需要--no-same-owner）
+    sed -i "246s/tar -xf \"\${ar}\"/tar --no-same-owner -xf \"\${ar}\"/" contrib/download_prerequisites && \
+    ./contrib/download_prerequisites && \
+    ./configure --enable-languages=c,c++ --disable-multilib --with-system-zlib --prefix=/usr/local/gcc11.2.0 > /dev/null && \
+    make -j $(nproc) && make install && \
+    # 将新版libstdc++.so.6.0.29复制到系统库目录，确保后续编译的程序能链接到新版C++标准库
+    find /tmp/gcc-11.2.0/ -name libstdc++.so.6.0.29 -exec cp {} /lib64/ \; && \
+    rm -rf /tmp/gcc-11.2.0* && \
+    # 将新编译的GCC设为系统默认编译器
+    update-alternatives --install /usr/bin/gcc gcc /usr/local/gcc11.2.0/bin/gcc 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/local/gcc11.2.0/bin/g++ 100 && \
+    update-alternatives --install /usr/bin/gcov gcov /usr/local/gcc11.2.0/bin/gcov 100 && \
+    update-alternatives --set gcc /usr/local/gcc11.2.0/bin/gcc && \
+    update-alternatives --set g++ /usr/local/gcc11.2.0/bin/g++ && \
+    update-alternatives --set gcov /usr/local/gcc11.2.0/bin/gcov
+
+# 3.安装cmake-3.22.6
+RUN wget -q https://cmake.org/files/v3.22/cmake-3.22.6.tar.gz && \
+    . /etc/profile && gcc -v && tar -zxf /tmp/cmake-3.22.6.tar.gz && \
+    cd cmake-3.22.6 && \
+    ./bootstrap > /dev/null && make -j $(nproc) && make install && \
+    rm -rf /tmp/cmake-3.22.6*
+
+# 4.安装python3.11.0
+RUN wget -q https://mirrors.huaweicloud.com/python/3.11.0/Python-3.11.0.tar.xz && \
+    . /etc/profile && gcc -v && tar -xf /tmp/Python-3.11.0.tar.xz && \
+    cd Python-3.11.0 && \
+    mkdir -p build && cd build && \
+    ../configure --enable-shared --prefix=/usr/local/python3.11.0 > /dev/null && \
+    make -j $(nproc) && make install && \
+    rm -rf /tmp/Python-3.11.0* && \
+    ldconfig
+
+ENV PATH=$PATH:/usr/local/python3.11.0/bin \
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/python3.11.0/lib
+
+RUN ln -sf /usr/local/python3.11.0/bin/python3 /usr/bin/python3 && \
+    ln -sf /usr/local/python3.11.0/bin/python3 /usr/bin/python && \
+    ln -sf /usr/local/python3.11.0/bin/pip3 /usr/bin/pip3 && \
+    ln -sf /usr/local/python3.11.0/bin/pip3 /usr/bin/pip
+
+# 5.设置驱动路径环境变量
+ARG ASCEND_BASE=/usr/local/Ascend
+ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$ASCEND_BASE/driver/lib64/driver:$LD_LIBRARY_PATH
+
+# 6.定义目标核心类型 (a2/a3/a5)，构建时通过 --build-arg CORE_TYPE=a2 指定
+ARG CORE_TYPE=a2
+
+# 7.下载并安装 CANN 安装包（同一层完成下载→安装→清理，根据 CORE_TYPE 只安装一套）
+# 流程：下载toolkit → 根据CORE_TYPE选择ops包 → 安装到默认路径 /usr/local/Ascend → 清理.run文件
+# CORE_TYPE映射：a2→910b-ops, a3→A3-ops, a5→950-ops
+RUN ARCH=$(uname -m) && \
+    TOOLKIT_URL_PREFIX="https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.1.T6" && \
+    TOOLKIT_SUFFIX="9.1.0-beta.3_linux-${ARCH}.run" && \
+    TOOLKIT_URL="${TOOLKIT_URL_PREFIX}/Ascend-cann-toolkit_${TOOLKIT_SUFFIX}" && \
+    wget -q "$TOOLKIT_URL" && \
+    # 根据CORE_TYPE选择对应的ops包
+    case "${CORE_TYPE}" in \
+      a2|A2) \
+        OPS_URL="${TOOLKIT_URL_PREFIX}/Ascend-cann-910b-ops_${TOOLKIT_SUFFIX}" ;; \
+      a3|A3) \
+        OPS_URL="${TOOLKIT_URL_PREFIX}/Ascend-cann-A3-ops_${TOOLKIT_SUFFIX}" ;; \
+      a5|A5) \
+        OPS_URL="${TOOLKIT_URL_PREFIX}/Ascend-cann-950-ops_${TOOLKIT_SUFFIX}" ;; \
+      *) \
+        echo "ERROR: Unknown CORE_TYPE=${CORE_TYPE}, must be a2/a3/a5" ; exit 1 ;; \
+    esac && \
+    wget -q "$OPS_URL" && \
+    # 静默安装toolkit和ops到默认路径 /usr/local/Ascend
+    chmod +x Ascend-cann-toolkit_*.run && \
+    bash Ascend-cann-toolkit_9.1.0*.run --quiet --install && \
+    chmod +x Ascend-cann-*ops*.run && \
+    bash Ascend-cann-*ops*.run --quiet --install && \
+    # 清理安装包
+    rm -f Ascend-cann-*.run
+
+# 8.配置python源
+RUN mkdir -p ~/.pip && touch ~/.pip/pip.conf && \
+    echo "[global]" > ~/.pip/pip.conf && \
+    echo "trusted-host=mirrors.aliyun.com download.pytorch.org download-r2.pytorch.org" >> ~/.pip/pip.conf && \
+    echo "index-url=https://mirrors.aliyun.com/pypi/simple/" >> ~/.pip/pip.conf && \
+    echo "extra-index-url=https://download.pytorch.org/whl/cpu" >> ~/.pip/pip.conf && \
+    echo "timeout=200" >> ~/.pip/pip.conf
+
+# 9.安装系统级 wheel（供 torchrec 编译使用）
+RUN pip3 install --quiet wheel "setuptools<70.0.0"
+
+# 10.下载 RecSDK 包 → 创建 venv → 安装 → 清理（全部在同一层，避免中间层占用空间）
+# 流程：按架构下载4个包 → 创建4个venv(torch_v1_pt2.6.0/torch_v1_pt2.7.1/torch_v2_pt2.7.1/torch_v2_pt2.10.0) → 清理
+# 4个venv分别对应不同PyTorch版本和RecSDK版本组合，fbgemm_ascend和rec_ops安装在pt2.7.1及以上的venv中
+RUN ARCH=$(uname -m) && \
+    # === 1. 按架构下载RecSDK包 ===
+    if [ "$ARCH" = "x86_64" ]; then \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/torch_rec_v1-26.1.0-linux_x86_64.tar.gz && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/torch_rec_v2-26.1.0-linux_x86_64.tar.gz && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.2.0-cp311-cp311-linux_x86_64.whl && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260707.12/rec_ops-2.7.1%2Bx86.64-cp311-cp311-linux_x86_64.whl && \
+        wget -q "https://download-r2.pytorch.org/whl/cpu/fbgemm_gpu-1.5.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" -O fbgemm_gpu-1.5.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.5.0-cp311-cp311-linux_x86_64.whl; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/torch_rec_v1-26.1.0-linux_aarch64.tar.gz && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/torch_rec_v2-26.1.0-linux_aarch64.tar.gz && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.2.0-cp311-cp311-linux_aarch64.whl && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260707.12/rec_ops-2.7.1%2Baarch64-cp311-cp311-linux_aarch64.whl && \
+        wget -q "https://download-r2.pytorch.org/whl/cpu/fbgemm_gpu-1.5.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl" -O fbgemm_gpu-1.5.0+cpu-cp311-cp311-manylinux_2_28_aarch64.whl && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.5.0-cp311-cp311-linux_aarch64.whl; \
+    fi && \
+    # === 2. 创建 torch_v1_pt2.6.0 (PyTorch 2.6.0 + torch_rec_v1) ===
+    python3 -m venv /opt/buildtools/torch_v1_pt2.6.0 && \
+    /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet pip==25.0.1 && \
+    /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
+    /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet torch==2.6.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet torch-npu==2.6.0 && \
+    /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet fbgemm_gpu==1.1.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
+    # === 3. 创建 torch_v1_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
+    python3 -m venv /opt/buildtools/torch_v1_pt2.7.1 && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet pip==25.0.1 && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet torch==2.7.1+cpu --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet torch-npu==2.7.1.post4 && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/fbgemm_ascend-1.2.0*.whl && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/rec_ops*.whl && \
+    # === 4. 创建 torch_v2_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v2 + fbgemm_ascend + rec_ops) ===
+    python3 -m venv /opt/buildtools/torch_v2_pt2.7.1 && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet pip==25.0.1 && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet torch==2.7.1+cpu --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet torch-npu==2.7.1.post4 && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v2*.tar.gz && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/fbgemm_ascend-1.2.0*.whl && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/rec_ops*.whl && \
+    # === 5. 创建 torch_v2_pt2.10.0 (PyTorch 2.10.0 + torchrec 1.5.0 + fbgemm_ascend 1.5.0) ===
+    python3 -m venv /opt/buildtools/torch_v2_pt2.10.0 && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet -U pip && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torch==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torch-npu==2.10.0 && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu-1.5.0*.whl && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_ascend-1.5.0*.whl && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torchrec==1.5.0 && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet click hypothesis pyyaml && \
+    # === 6. 清理pip缓存和所有下载的临时文件 ===
+    rm -rf /root/.cache/pip && \
+    rm -rf /tmp/*
+
+WORKDIR /home
+
+# 设置脚本所需变量值
+ENV ASCEND_SOFTWARE_NAME="RecSDK"
+ENV ASCEND_SOFTWARE_VERSION="26.1.0"
+
+COPY scripts/banner.sh /usr/local/bin/banner.sh
+RUN chmod +x /usr/local/bin/banner.sh
+
+ENTRYPOINT ["/usr/local/bin/banner.sh"]
+CMD ["/bin/bash"]

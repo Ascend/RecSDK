@@ -1,6 +1,6 @@
 # torchrec_npu Docker 镜像
 
-基于 Ubuntu 22.04，预装 CANN 9.0.0 + PyTorch + torch_npu + torchrec 的 NPU 开发镜像。
+基于 Ubuntu 22.04，预装 CANN 9.1.0 + PyTorch + torch_npu + torchrec 的 NPU 开发镜像。
 
 ## 软件栈
 
