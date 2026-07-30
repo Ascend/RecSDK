@@ -9,8 +9,8 @@ pyyaml
 psutil
 pathlib2
 pandas
-grpcio
-grpcio-tools
+grpcio<1.63.0
+grpcio-tools<1.63.0
 scipy
 protobuf
 requests

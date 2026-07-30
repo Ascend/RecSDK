@@ -26,9 +26,17 @@ RecSDK features include:
 Image tags follow the convention below for intuitive identification of the software and hardware stack versions contained within the image:
 
 - **RecSDK version**: RecSDK version number (e.g., `26.1.0`)
+- **CANN version**: CANN package version (e.g., `cann9.1.0`)
+- **Chip identifier**: Target Atlas chip platform (`910` for Atlas 800T A2 / a2, `a3` for Atlas 800T A3, `950` for Atlas 950 / a5)
 - **OS version**: Base operating system codename or version number (e.g., `ubuntu20.04`)
-- **Framework identifier**: The ML framework supported by the image (e.g., `tf` for TensorFlow, or `torch` for PyTorch)
 - **Python version**: The core interpreter version (e.g., `py3.7`)
+- **Framework identifier**: The ML framework supported by the image (e.g., `tf` for TensorFlow, or `pt` for PyTorch)
+
+> **Note**: The same Dockerfile can produce images for different chip platforms via `--build-arg CORE_TYPE=a2/a3/a5`. Replace the chip identifier field in the tag according to the target platform:
+>
+> - `CORE_TYPE=a2` → use `910` in tag
+> - `CORE_TYPE=a3` → use `a3` in tag
+> - `CORE_TYPE=a5` → use `950` in tag
 
 ## Dockerfile Archive Paths
 
@@ -38,10 +46,12 @@ The project currently supports container scenarios divided by underlying framewo
 
 | Tag | Dockerfile |
 |-----|------------|
-|26.1.0-ubuntu20.04-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7)|
-|26.1.0-ubuntu22.04-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu22.04-pt-py3.11)|
-|26.1.0-openEuler22.03-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler22.03-tf-py3.7)|
-|26.1.0-openEuler22.03-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler22.03-pt-py3.11)|
+|26.1.0-cann9.1.0-{chip}-ubuntu20.04-py3.7-tf|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf)|
+|26.1.0-cann9.1.0-{chip}-ubuntu22.04-py3.11-pt|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-ubuntu22.04-py3.11-pt)|
+|26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.7-tf|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.7-tf)|
+|26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.11-pt|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.11-pt)|
+
+> Replace `{chip}` with the target chip identifier: `910` (Atlas 800T A2 / a2), `a3` (Atlas 800T A3), `950` (Atlas 950 / a5).
 
 ## Quick Start
 
@@ -52,7 +62,7 @@ The project currently supports container scenarios divided by underlying framewo
 | Docker Version | 20.10 or higher recommended; must support `--net=host` network mode |
 | Host OS | Ubuntu 20.04 / 22.04 (x86_64 or ARM), openEuler 22.03 (x86_64 or ARM) |
 | Atlas Driver & Firmware | Host must have Atlas NPU driver and firmware installed; default driver path is `/usr/local/Ascend/driver` |
-| CANN Version | CANN 9.0.0 or higher recommended (Dockerfile can be configured with a download URL; defaults to version 9.0.0) |
+| CANN Version | CANN 9.1.0 or higher recommended (Dockerfile can be configured with a download URL; defaults to version 9.1.0) |
 | Disk Space | At least 60 GB of free space recommended for image builds |
 | Network | External network access is required during the build process to download dependency packages |
 
@@ -87,26 +97,27 @@ Developers can locally package and build business images in the current system e
 - **PyTorch Image (using ubuntu22.04 as an example)**
 
 ```bash
-docker build -t recsdk_pt:26.1.0-ubuntu22.04-pt-py3.11 -f docker/Dockerfile.26.1.0-ubuntu22.04-pt-py3.11 .
+# Specify chip platform via --build-arg CORE_TYPE, replace {chip} in tag with 910/a3/950
+docker build --build-arg CORE_TYPE=a2 -t recsdk_pt:26.1.0-cann9.1.0-910-ubuntu22.04-py3.11-pt -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu22.04-py3.11-pt .
 ```
 
 - **TensorFlow Image (using ubuntu20.04 as an example)**
 
 ```bash
-docker build -t recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 -f docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 ```
 
 If you need to target a specific core type when compiling operators or loading framework packages, you can explicitly specify it via the `CORE_TYPE` build argument (default is `a2`):
 
-| CORE_TYPE | Applicable Platform |
-|-----------|---------------------|
-| `a2` | Atlas 800T2 Training Server |
-| `a3` | Atlas 800T3 Super Node Server |
-| `a5` | Atlas 950 Generation |
+| CORE_TYPE | Applicable Platform | Tag Chip Identifier |
+|-----------|---------------------|---------------------|
+| `a2` | Atlas 800T A2 Training Server | `910` |
+| `a3` | Atlas 800T A3 Super Node Server | `a3` |
+| `a5` | Atlas 950 Generation | `950` |
 
 ```bash
 # CORE_TYPE can be a2/a3/a5. The following uses TensorFlow as an example; the same approach applies to PyTorch images.
-docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 -f docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 ```
 
 - **openEuler Images**
@@ -120,8 +131,8 @@ The image provides convenient environment switching scripts for development and 
 - **How to perform secondary development**:
 
   ```dockerfile
-  # Use recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 as the base image and layer user software on top
-  FROM recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7
+  # Use recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf as the base image and overlay user software
+  FROM recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf
   RUN apt update -y && \
       apt install ...
   ```
@@ -131,13 +142,9 @@ The image provides convenient environment switching scripts for development and 
   ```bash
   # Activate the RecSDK development environment for TF 1.15.0
   source /opt/buildtools/tf1_env/bin/activate
-  # Exit the current virtual environment
-  deactivate
 
   # Activate the RecSDK development environment for TF 2.6.5
   source /opt/buildtools/tf2_env/bin/activate
-  # Exit the current virtual environment
-  deactivate
   ```
 
 - **Switch Python framework environment (PyTorch container)**:
@@ -145,71 +152,25 @@ The image provides convenient environment switching scripts for development and 
   ```bash
   # Activate the RecSDK development environment for torch_rec_v1 PT 2.6.0
   source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
-  # Exit the current virtual environment
-  deactivate
 
   # Activate the RecSDK development environment for torch_rec_v1 PT 2.7.1
   source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
-  # Exit the current virtual environment
-  deactivate
 
   # Activate the RecSDK development environment for torch_rec_v2 PT 2.7.1
   source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
-  # Exit the current virtual environment
-  deactivate
+
+  # Activate the RecSDK development environment for torch_rec_v2 PT 2.10.0
+  source /opt/buildtools/torch_v2_pt2.10.0/bin/activate
   ```
 
-- **Switch CANN hardware support packages**:
-
-  Use the built-in switching script to dynamically adjust the environment variables and symlink paths bound to CANN packages:
-
-  ```bash
-  source /usr/local/set_cann_env.sh a2  # Switch to Atlas 800T2 training server toolkit and related env vars (system default)
-  source /usr/local/set_cann_env.sh a3  # Switch to Atlas 800T3 super node server toolkit and related env vars
-  source /usr/local/set_cann_env.sh a5  # Switch to Atlas 950 toolkit and related env vars
-  ```
-
-- **Install or replace CANN packages manually**:
-
-  To upgrade the CANN version or replace existing CANN packages, first uninstall the old packages, then use the `--install-path` parameter to install the new packages to the target architecture directory. The container comes with three pre-configured directories:
-
-  | Architecture | Install Path | Switch Command |
-  |-------------|-------------|----------------|
-  | A2 (Atlas 800T2) | `/usr/local/Ascend/cann-A2` | `source /usr/local/set_cann_env.sh a2` |
-  | A3 (Atlas 800T3) | `/usr/local/Ascend/cann-A3` | `source /usr/local/set_cann_env.sh a3` |
-  | A5 (Ascend 950)  | `/usr/local/Ascend/cann-A5` | `source /usr/local/set_cann_env.sh a5` |
-
-  Example (download a new toolkit version and replace A2):
-
-  ```bash
-  # 0. Download the new CANN toolkit (use the actual package name)
-  wget https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-toolkit_9.0.0_linux-x86_64.run
-
-  # 1. Uninstall the old CANN package
-  bash /usr/local/Ascend/cann-A2/ascend-toolkit/uninstall.sh --quiet
-  # Or directly remove the install directory
-  rm -rf /usr/local/Ascend/cann-A2
-
-  # 2. Re-create the directory and install the new CANN toolkit
-  mkdir -p /usr/local/Ascend/cann-A2
-  chmod +x Ascend-cann-toolkit_9.0.0*.run
-  bash Ascend-cann-toolkit_9.0.0*.run --quiet --install --install-path=/usr/local/Ascend/cann-A2
-
-  # 3. Similarly, uninstall and reinstall the corresponding ops package
-  bash /usr/local/Ascend/cann-A2/opp/scripts/uninstall.sh --quiet
-  chmod +x Ascend-cann-910b-ops*.run
-  bash Ascend-cann-910b-ops*.run --quiet --install --install-path=/usr/local/Ascend/cann-A2
-  ```
-
-  > [!NOTE]
-  > After replacing CANN packages, run `source /usr/local/set_cann_env.sh <a2|a3|a5>` to reload the environment variables and ensure the newly installed operators and toolchain take effect.
+  Use `deactivate` to exit the current virtual environment.
 
 ## Support Information and Changelog
 
 ### Hardware Support Information
 
 - **Automatic physical architecture adaptation**: Dockerfiles across all versions natively support host architecture detection. They not only cover `x86` and `ARM` hardware handling, but also identify the architecture early in the build process via `ARCH=$(uname -m)`, fetching and assembling the corresponding OS-specific `GCC` configuration, system dynamic libraries, and framework distribution versions (i.e., different `whl` packages and `run` packages) based on logical branching.
-- **Full chip compatibility deployment**: The build process avoids limitations tied to a single accelerator card or compute board. By leveraging pre-installed multi-version compute deployment solutions, the corresponding compute operation stacks (ops packages and toolkit packages) for A2/A3/A5 are all deposited and installed into the image base, greatly enhancing the container's distribution scalability and business versatility.
+- **On-demand chip build**: The build process specifies the target chip platform via `--build-arg CORE_TYPE=a2/a3/a5`, installing only the CANN toolkit and ops packages for the corresponding chip architecture, avoiding image bloat.
 
 ### Compatibility Changes
 
@@ -224,8 +185,8 @@ The following uses the TensorFlow image as an example to demonstrate the complet
 
 ```bash
 # 1. Build the image
-docker build -t recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 \
-  -f docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7 .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf \
+  -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 
 # 2. Start the container
 docker run -it --name recsdk_test \
@@ -234,26 +195,23 @@ docker run -it --name recsdk_test \
   -e ASCEND_VISIBLE_DEVICES=0-7 \
   -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
   -v /etc/ascend_install.info:/etc/ascend_install.info \
-  recsdk_tf:26.1.0-ubuntu20.04-tf-py3.7 /bin/bash
+  recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf /bin/bash
 
-# 3. Configure environment variables
-source /usr/local/set_cann_env.sh a2
-
-# 4. Verify NPU availability inside the container
+# 3. Verify NPU availability inside the container
 npu-smi info
 
-# 5. Activate the environment and run the little demo
+# 4. Activate the environment and run the little demo
 source /opt/buildtools/tf1_env/bin/activate
 # Refer to the little demo link below to run verification
 ```
 
 ### TensorFlow Image Verification
 
-Refer to the [little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/README.md) for verification. Before running, switch the CANN environment and Python virtual environment via [Secondary Development and Underlying Environment Switching](#secondary-development-and-underlying-environment-switching).
+Refer to the [little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/README.md) for verification. Before running, switch the Python virtual environment via [Secondary Development and Underlying Environment Switching](#secondary-development-and-underlying-environment-switching).
 
 ### PyTorch Image Verification
 
-Refer to the [little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/README.md) for verification. Before running, switch the CANN environment and Python virtual environment via [Secondary Development and Underlying Environment Switching](#secondary-development-and-underlying-environment-switching).
+Refer to the [little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/README.md) for verification. Before running, switch the Python virtual environment via [Secondary Development and Underlying Environment Switching](#secondary-development-and-underlying-environment-switching).
 
 ## FAQ and Troubleshooting
 

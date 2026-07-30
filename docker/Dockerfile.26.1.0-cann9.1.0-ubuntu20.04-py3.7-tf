@@ -1,0 +1,253 @@
+# RecSDK TensorFlow Runtime and Build Image
+# please configure 根据实际情况使用基础镜像
+FROM ubuntu:20.04
+
+WORKDIR /tmp
+
+# 设置非交互式安装
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 0. 配置证书（必须在替换apt源之前安装，否则无法访问新源）
+RUN apt-get update -qq && \
+    apt-get install -y -qq ca-certificates && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# 替换华为apt源
+RUN sed -i 's/archive.ubuntu.com/repo.huaweicloud.com/g' /etc/apt/sources.list && \
+    sed -i 's/security.ubuntu.com/repo.huaweicloud.com/g' /etc/apt/sources.list
+
+# 根据实际情况选择安装需要的依赖，如果一些依赖不需要可以将对应代码去掉或注释；同时，确保下载的依赖的包名与如下代码中的包名一致，
+# 否则在安装对应的依赖时可能出现找不到文件的错误。
+
+# 1.安装编译环境
+RUN apt-get update -qq && apt-get install -y -qq wget zlib1g-dev bzip2 libbz2-dev libssl-dev libncurses5-dev openssh-client libsqlite3-dev \
+    libreadline-dev tk-dev libgdbm-dev libpcap-dev xz-utils libffi-dev libhdf5-dev patch pciutils lcov vim dos2unix g++ \
+    autoconf automake libtool git net-tools make sudo unzip && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# 2.编译安装 GCC 11.2.0（下载→编译→清理在同一层）
+# 流程：下载GCC源码 → 下载4个依赖库(gmp/mpfr/mpc/isl) → configure → make → 安装 → 替换系统libstdc++ → 清理
+RUN wget -q https://mirrors.huaweicloud.com/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz && \
+    . /etc/profile && \
+    tar -zxf gcc-11.2.0.tar.gz && \
+    cd gcc-11.2.0 && \
+    # 下载GCC编译所需的4个数学依赖库
+    wget -q https://mirrors.huaweicloud.com/gnu/gmp/gmp-6.1.0.tar.bz2 && \
+    wget -q https://mirrors.huaweicloud.com/gnu/mpfr/mpfr-3.1.6.tar.bz2 && \
+    wget -q https://mirrors.huaweicloud.com/gnu/mpc/mpc-1.0.3.tar.gz && \
+    wget -q https://gcc.gnu.org/pub/gcc/infrastructure/isl-0.18.tar.bz2 && \
+    # 修复download_prerequisites脚本中tar解压的owner问题（Docker内root用户需要--no-same-owner）
+    sed -i '246s/tar -xf "${ar}"/tar --no-same-owner -xf "${ar}"/' contrib/download_prerequisites && \
+    ./contrib/download_prerequisites && \
+    ./configure --enable-languages=c,c++ --disable-multilib --with-system-zlib --prefix=/usr/local/gcc11.2.0 > /dev/null && \
+    make -j $(nproc) && make install && cd .. && \
+    # 将新版libstdc++.so.6.0.29复制到系统库目录，确保后续编译的程序能链接到新版C++标准库
+    ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then find gcc-11.2.0/ -name libstdc++.so.6.0.29 -exec cp {} /usr/lib/x86_64-linux-gnu/ \;; else find gcc-11.2.0/ -name libstdc++.so.6.0.29 -exec cp {} /usr/lib/aarch64-linux-gnu/ \;; fi && \
+    rm -rf gcc-11.2.0*
+
+ENV LD_LIBRARY_PATH=/usr/local/gcc11.2.0/lib64:$LD_LIBRARY_PATH \
+    PATH=/usr/local/gcc11.2.0/bin:$PATH
+
+# 3.安装 cmake-3.22.6（下载→编译→清理在同一层）
+RUN wget -q https://cmake.org/files/v3.22/cmake-3.22.6.tar.gz && \
+    . /etc/profile && gcc -v && tar -zxf cmake-3.22.6.tar.gz && \
+    cd cmake-3.22.6 && \
+    ./bootstrap > /dev/null && make -j $(nproc) && make install && cd .. && \
+    rm -rf cmake-3.22.6*
+
+# 4.安装 ucx（下载→编译→清理在同一层）
+RUN wget -q https://github.com/openucx/ucx/archive/master.zip && \
+    . /etc/profile && gcc -v && unzip master.zip && \
+    cd ucx-master && \
+    ./autogen.sh && \
+    ./contrib/configure-release --prefix=/usr/local/ucx > /dev/null && \
+    make && make install && cd .. && \
+    rm -rf ucx-master* master.zip
+
+# 5.安装 openmpi（下载→编译→清理在同一层）
+RUN wget -q https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz && \
+    . /etc/profile && gcc -v && tar -zxf openmpi-4.1.5.tar.gz && \
+    cd openmpi-4.1.5 && \
+    ./configure --enable-orterun-prefix-by-default --prefix=/usr/local/openmpi --with-ucx=/usr/local/ucx CFLAGS="-fPIC" CXXFLAGS="-fPIC" > /dev/null && \
+    make -j $(nproc) && make install && cd .. && \
+    rm -rf openmpi-4.1.5*
+
+# 5.1 将openmpi的库路径永久加入系统动态链接器缓存
+RUN echo "/usr/local/openmpi/lib" > /etc/ld.so.conf.d/openmpi.conf && ldconfig
+
+ENV LD_LIBRARY_PATH=/usr/local/openmpi/lib:$LD_LIBRARY_PATH \
+    PATH=/usr/local/openmpi/bin:$PATH
+
+# 6.安装 python3.7.5（下载→编译→清理在同一层，使用系统 openssl）
+RUN wget -q https://mirrors.huaweicloud.com/python/3.7.5/Python-3.7.5.tar.xz && \
+    tar -xf Python-3.7.5.tar.xz && \
+    cd Python-3.7.5 && \
+    mkdir -p build && cd build && \
+    ../configure --prefix=/usr/local/python3.7.5 \
+    --config-cache \
+    --disable-option-checking \
+    --enable-shared > /dev/null && \
+    make -j $(nproc) && make install && \
+    cd ../../ && rm -rf Python-3.7.5* && \
+    ldconfig
+
+ENV PATH=$PATH:/usr/local/python3.7.5/bin \
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/python3.7.5/lib
+
+RUN [ ! -f /usr/bin/python3 ] || mv /usr/bin/python3 /usr/bin/python3.bak; \
+    ln -sf /usr/local/python3.7.5/bin/python3 /usr/bin/python3 && \
+    ln -sf /usr/local/python3.7.5/bin/python3 /usr/bin/python
+
+# 配置python源
+RUN mkdir -p ~/.pip && touch ~/.pip/pip.conf && \
+    echo "[global]" > ~/.pip/pip.conf && \
+    echo "trusted-host=mirrors.aliyun.com" >> ~/.pip/pip.conf && \
+    echo "index-url=http://mirrors.aliyun.com/pypi/simple/" >> ~/.pip/pip.conf && \
+    echo "timeout=200" >> ~/.pip/pip.conf
+
+# 7.安装 hdf5 和 h5py（下载→编译→清理在同一层）
+RUN wget -q https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.gz && \
+    tar -zxf hdf5-1.10.5.tar.gz && \
+    cd hdf5-1.10.5 && \
+    ./configure --prefix=/usr/local/hdf5 --enable-shared --enable-hl > /dev/null && \
+    make -j $(nproc) && make install && cd .. && rm -rf hdf5-1.10.5*
+
+RUN echo "/usr/local/hdf5/lib" > /etc/ld.so.conf.d/hdf5.conf && ldconfig
+ENV HDF5_DIR=/usr/local/hdf5 \
+PATH=/usr/local/hdf5/bin:$PATH
+
+ENV CPATH=/usr/local/hdf5/include/:/usr/local/hdf5/lib/
+ENV LD_LIBRARY_PATH=/usr/local/hdf5/lib/:$LD_LIBRARY_PATH
+
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        mkdir -p /usr/lib/x86_64-linux-gnu && \
+        ln -s /usr/local/hdf5/lib/libhdf5.so /usr/lib/x86_64-linux-gnu/libhdf5.so && \
+        ln -s /usr/local/hdf5/lib/libhdf5_hl.so /usr/lib/x86_64-linux-gnu/libhdf5_hl.so; \
+    else \
+        mkdir -p /usr/lib/aarch64-linux-gnu && \
+        ln -s /usr/local/hdf5/lib/libhdf5.so /usr/lib/aarch64-linux-gnu/libhdf5.so && \
+        ln -s /usr/local/hdf5/lib/libhdf5_hl.so /usr/lib/aarch64-linux-gnu/libhdf5_hl.so; \
+    fi
+
+# 编译安装 h5py（下载→编译→清理在同一层）
+RUN wget -q https://github.com/h5py/h5py/archive/refs/tags/3.1.0.zip -O h5py-3.1.0.zip && \
+    mkdir -p /tmp/wheels && \
+    pip3.7 install --quiet -U pip && \
+    pip3.7 install --quiet "Cython<3" wheel && \
+    unzip h5py-3.1.0.zip && \
+    cd h5py-3.1.0 && \
+    HDF5_DIR=/usr/local/hdf5 python3.7 setup.py bdist_wheel -v && \
+    cp dist/*.whl /tmp/wheels/ && \
+    pip3.7 install --quiet /tmp/wheels/h5py-3.1.0-*.whl -v && \
+    cd .. && rm -rf h5py-3.1.0*
+
+# 8.设置驱动路径环境变量
+ARG ASCEND_BASE=/usr/local/Ascend
+ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$ASCEND_BASE/driver/lib64/driver:$LD_LIBRARY_PATH
+
+# 9.定义目标核心类型 (a2/a3/a5)，构建时通过 --build-arg CORE_TYPE=a2 指定
+ARG CORE_TYPE=a2
+
+# 10.下载并安装 CANN 安装包（同一层完成下载→安装→清理，根据 CORE_TYPE 只安装一套）
+# 流程：下载toolkit → 根据CORE_TYPE选择ops包 → 安装到默认路径 /usr/local/Ascend → 清理.run文件
+# CORE_TYPE映射：a2→910b-ops, a3→A3-ops, a5→950-ops
+RUN ARCH=$(uname -m) && \
+    TOOLKIT_URL_PREFIX="https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.1.T6" && \
+    TOOLKIT_SUFFIX="9.1.0-beta.3_linux-${ARCH}.run" && \
+    TOOLKIT_URL="${TOOLKIT_URL_PREFIX}/Ascend-cann-toolkit_${TOOLKIT_SUFFIX}" && \
+    wget -q "$TOOLKIT_URL" && \
+    # 根据CORE_TYPE选择对应的ops包
+    case "${CORE_TYPE}" in \
+      a2|A2) \
+        OPS_URL="${TOOLKIT_URL_PREFIX}/Ascend-cann-910b-ops_${TOOLKIT_SUFFIX}" ;; \
+      a3|A3) \
+        OPS_URL="${TOOLKIT_URL_PREFIX}/Ascend-cann-A3-ops_${TOOLKIT_SUFFIX}" ;; \
+      a5|A5) \
+        OPS_URL="${TOOLKIT_URL_PREFIX}/Ascend-cann-950-ops_${TOOLKIT_SUFFIX}" ;; \
+      *) \
+        echo "ERROR: Unknown CORE_TYPE=${CORE_TYPE}, must be a2/a3/a5" ; exit 1 ;; \
+    esac && \
+    wget -q "$OPS_URL" && \
+    # 静默安装toolkit和ops到默认路径 /usr/local/Ascend
+    chmod +x Ascend-cann-toolkit_*.run && \
+    bash Ascend-cann-toolkit_9.1.0*.run --quiet --install && \
+    chmod +x Ascend-cann-*ops*.run && \
+    bash Ascend-cann-*ops*.run --quiet --install && \
+    # 清理安装包
+    rm -f Ascend-cann-*.run
+
+# 11.下载 TF/NPU/RecSDK 包 → 安装 → 清理（全部在同一层，避免中间层占用空间）
+# 流程：按架构下载5个包 → 创建tf1_env venv(TF1.15) → 创建tf2_env venv(TF2.6) → 系统pip安装npu包 → 清理
+# 两个venv分别安装不同版本的TF+NPU包，系统pip也安装npu包供直接使用
+RUN ARCH=$(uname -m) && \
+    # === 1. 按架构下载TF/NPU/RecSDK包 ===
+    if [ "$ARCH" = "x86_64" ]; then \
+        wget -q https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl && \
+        wget -q https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl && \
+        wget -q https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_bridge-1.15.0-py3-none-manylinux2014_x86_64.whl && \
+        wget -q https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_device-2.6.5-py3-none-manylinux2014_x86_64.whl && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/tf_rec_v1-26.1.0-linux_x86_64.tar.gz; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+        wget -q https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl && \
+        wget -q https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/packages/tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl && \
+        wget -q https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl && \
+        wget -q https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/tf_rec_v1-26.1.0-linux_aarch64.tar.gz; \
+    fi && \
+    # === 2. 创建 tf1_env (TF 1.15 + npu_bridge) ===
+    export CC=/usr/local/openmpi/bin/mpicc && \
+    export CXX=/usr/local/openmpi/bin/mpicxx && \
+    python3.7 -m venv /opt/buildtools/tf1_env && \
+    /opt/buildtools/tf1_env/bin/pip install --quiet -U pip && \
+    /opt/buildtools/tf1_env/bin/pip install --quiet /tmp/wheels/h5py-3.1.0-*.whl && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        /opt/buildtools/tf1_env/bin/pip install --quiet tensorflow-1.15.0-cp37-cp37m-manylinux2010_x86_64.whl && \
+        /opt/buildtools/tf1_env/bin/pip install --quiet npu_bridge-1.15.0-py3-none-manylinux2014_x86_64.whl; \
+    else \
+        /opt/buildtools/tf1_env/bin/pip install --quiet tensorflow-1.15.0-cp37-cp37m-manylinux2014_aarch64.whl && \
+        /opt/buildtools/tf1_env/bin/pip install --quiet npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl; \
+    fi && \
+    /opt/buildtools/tf1_env/bin/pip install --quiet tf_slim mpi4py && \
+    # CORE_TYPE传递给RecSDK编译，控制A2/A3/A5的算子编译
+    CORE_TYPE=${CORE_TYPE} /opt/buildtools/tf1_env/bin/pip install --quiet --no-build-isolation /tmp/tf_rec_v1*.tar.gz && \
+    # === 3. 创建 tf2_env (TF 2.6 + npu_device) ===
+    python3.7 -m venv /opt/buildtools/tf2_env && \
+    /opt/buildtools/tf2_env/bin/pip install --quiet -U pip && \
+    /opt/buildtools/tf2_env/bin/pip install --quiet /tmp/wheels/h5py-3.1.0-*.whl && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        /opt/buildtools/tf2_env/bin/pip install --quiet tensorflow-2.6.5-cp37-cp37m-manylinux2010_x86_64.whl && \
+        /opt/buildtools/tf2_env/bin/pip install --quiet npu_device-2.6.5-py3-none-manylinux2014_x86_64.whl; \
+    else \
+        /opt/buildtools/tf2_env/bin/pip install --quiet tensorflow-2.6.5-cp37-cp37m-manylinux2014_aarch64.whl && \
+        /opt/buildtools/tf2_env/bin/pip install --quiet npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl; \
+    fi && \
+    /opt/buildtools/tf2_env/bin/pip install --quiet tf_slim mpi4py && \
+    CORE_TYPE=${CORE_TYPE} /opt/buildtools/tf2_env/bin/pip install --quiet --no-build-isolation /tmp/tf_rec_v1*.tar.gz && \
+    # === 4. 系统pip安装npu包（供非venv环境直接使用）===
+    pip3.7 install --quiet -U pip && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        pip3.7 install --quiet npu_bridge-1.15.0-py3-none-manylinux2014_x86_64.whl --force-reinstall && \
+        pip3.7 install --quiet npu_device-2.6.5-py3-none-manylinux2014_x86_64.whl --force-reinstall; \
+    else \
+        pip3.7 install --quiet npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl --force-reinstall && \
+        pip3.7 install --quiet npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl --force-reinstall; \
+    fi && \
+    pip3.7 install --quiet packaging numpy && \
+    # === 5. 清理pip缓存和所有下载的临时文件 ===
+    rm -rf /root/.cache/pip && \
+    rm -rf /tmp/*
+
+WORKDIR /home
+
+# 设置脚本所需变量值
+ENV ASCEND_SOFTWARE_NAME="RecSDK"
+ENV ASCEND_SOFTWARE_VERSION="26.1.0"
+
+COPY scripts/banner.sh /usr/local/bin/banner.sh
+RUN chmod +x /usr/local/bin/banner.sh
+
+ENTRYPOINT ["/usr/local/bin/banner.sh"]
+CMD ["/bin/bash"]
