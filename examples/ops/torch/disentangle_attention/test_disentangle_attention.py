@@ -24,7 +24,7 @@ import torch
 import torch_npu
 from custom_op import call_custom_op
 from gendata import TestArgs, DataArgs, create_test_data
-from gloden import gloden_disetangle_attention
+from golden import golden_disentangle_attention
 from verify import compare_result
 
 DEVICE = "npu:0"
@@ -93,12 +93,12 @@ def run_test(args: TestArgs, test_cnt: int):
     start_time = time.time()
     torch.npu.synchronize()
     for _ in range(test_cnt):
-        gloden_atten_outputs, gloden_atten_probs, gloden_atten_weights = (
-            gloden_disetangle_attention(args)
+        golden_atten_outputs, golden_atten_probs, golden_atten_weights = (
+            golden_disentangle_attention(args)
         )
     torch.npu.synchronize()
     end_time = time.time()
-    gloden_time_cose = (end_time - start_time) * 1000 / test_cnt
+    golden_time_cose = (end_time - start_time) * 1000 / test_cnt
 
     start_time = time.time()
     torch.npu.synchronize()
@@ -112,9 +112,9 @@ def run_test(args: TestArgs, test_cnt: int):
 
     res1, res2, res3 = compare_result(
         {
-            "atten_weights": gloden_atten_weights,
-            "atten_probs": gloden_atten_probs,
-            "atten_outputs": gloden_atten_outputs,
+            "atten_weights": golden_atten_weights,
+            "atten_probs": golden_atten_probs,
+            "atten_outputs": golden_atten_outputs,
         },
         {
             "atten_weights": result_atten_weights,
@@ -123,7 +123,7 @@ def run_test(args: TestArgs, test_cnt: int):
         },
     )
 
-    return res1, res2, res3, gloden_time_cose, op_time_cose
+    return res1, res2, res3, golden_time_cose, op_time_cose
 
 
 @pytest.mark.parametrize("b", [1, 11, 48])
@@ -144,7 +144,7 @@ def test_main(b, n, s, d, pos_att_type):
         weight_compare_res,
         prob_comapre_res,
         output_compare_res,
-        gloden_time_cose,
+        golden_time_cose,
         op_time_cose,
     ) = run_test(args, test_cnt)
 
@@ -157,7 +157,7 @@ def test_main(b, n, s, d, pos_att_type):
         weight_compare_res,
         prob_comapre_res,
         output_compare_res,
-        gloden_time_cose,
+        golden_time_cose,
         op_time_cose,
     )
 

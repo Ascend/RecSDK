@@ -18,16 +18,16 @@
 import torch
 
 
-def compare_percesion(gloden, result, name: str):
-    expect = gloden[name].cpu()
+def compare_percesion(golden, result, name: str):
+    expect = golden[name].cpu()
     actual = result[name].cpu()
 
     res = torch.allclose(expect, actual, 1e-3, 1e-3)
     return res
 
 
-def compare_result(gloden, result):
-    res1 = compare_percesion(gloden, result, "atten_weights")
-    res2 = compare_percesion(gloden, result, "atten_probs")
-    res3 = compare_percesion(gloden, result, "atten_outputs")
+def compare_result(golden, result):
+    res1 = compare_percesion(golden, result, "atten_weights")
+    res2 = compare_percesion(golden, result, "atten_probs")
+    res3 = compare_percesion(golden, result, "atten_outputs")
     return res1, res2, res3
