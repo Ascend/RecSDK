@@ -34,7 +34,7 @@
 
 | Rec SDK   | CANN版本 | Ascend HDK版本 |TorchNPU版本     |
 | ------------ | ------------- | ------------ | -----------  |
-| 26.1.0       | 9.1.0           | 26.1.0       |  26.1.0     |
+| 26.1.0       | 9.1.0           | <ul><li>Atlas A2/A3系列产品：26.1.0</li><li>Atlas 350系列产品：25.7.RC1</li></ul>       |  26.1.0     |
 
 ## 版本兼容性说明
 
@@ -47,6 +47,8 @@
 > Rec SDK Torch（torch_rec_v1）：在升级版本后，需要重新编译torchrec_npu和自定义算子相关包。
 >
 > Rec SDK Torch（torch_rec_v2）：在升级版本后，需要重新编译torchrec_npu和自定义算子相关包。
+
+### Atlas A2/A3系列产品
 
 **表 2**  Rec SDK与CANN版本兼容
 
@@ -70,8 +72,8 @@
   <tr>
     <td>7.3.0</td>
     <td>Y</td>
-    <td>/</td>
-    <td>/</td>
+    <td>Y</td>
+    <td>Y</td>
   </tr>
   <tr>
     <td>26.0.0</td>
@@ -82,7 +84,7 @@
   <tr>
     <td>26.1.0</td>
     <td>/</td>
-    <td>/</td>
+    <td>Y</td>
     <td>Y</td>
   </tr>
 </tbody>
@@ -110,8 +112,8 @@
   <tr>
     <td>7.3.0</td>
     <td>Y</td>
-    <td>/</td>
-    <td>/</td>
+    <td>Y</td>
+    <td>Y</td>
   </tr>
   <tr>
     <td>26.0.0</td>
@@ -122,7 +124,7 @@
   <tr>
     <td>26.1.0</td>
     <td>/</td>
-    <td>/</td>
+    <td>Y</td>
     <td>Y</td>
   </tr>
 </tbody>
@@ -150,8 +152,8 @@
   <tr>
     <td>7.3.0</td>
     <td>Y</td>
-    <td>/</td>
-    <td>/</td>
+    <td>Y</td>
+    <td>Y</td>
   </tr>
   <tr>
     <td>26.0.0</td>
@@ -162,6 +164,98 @@
   <tr>
     <td>26.1.0</td>
     <td>/</td>
+    <td>Y</td>
+    <td>Y</td>
+  </tr>
+</tbody>
+</table>
+
+### Atlas 350系列产品
+
+**表 5**  Rec SDK与CANN版本兼容
+
+<table style="table-layout: fixed; width: 433px"><colgroup>
+<col style="width: 156px">
+<col style="width: 88px">
+<col style="width: 91px">
+<col style="width: 98px">
+</colgroup>
+<thead>
+  <tr>
+    <th rowspan="2">Rec SDK</th>
+    <th colspan="2">CANN版本</th>
+  </tr>
+  <tr>
+    <th>9.0.0</th>
+    <th>9.1.0</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td>26.0.0</td>
+    <td>Y</td>
+    <td>Y</td>
+  </tr>
+  <tr>
+    <td>26.1.0</td>
+    <td>/</td>
+    <td>Y</td>
+  </tr>
+</tbody>
+</table>
+
+**表 6**  Rec SDK与Ascend HDK版本兼容
+
+<table style="table-layout: fixed; width: 433px"><colgroup>
+<col style="width: 156px">
+<col style="width: 156px">
+<col style="width: 91px">
+<col style="width: 98px">
+</colgroup>
+<thead>
+  <tr>
+    <th rowspan="2">Rec SDK</th>
+    <th colspan="1">Ascend HDK版本</th>
+  </tr>
+  <tr>
+    <th>25.7.RC1</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td>26.0.0</td>
+    <td>Y</td>
+  </tr>
+  <tr>
+    <td>26.1.0</td>
+    <td>Y</td>
+  </tr>
+</tbody>
+</table>
+
+**表 7**  Rec SDK与TorchNPU版本兼容
+
+<table style="table-layout: fixed; width: 433px"><colgroup>
+<col style="width: 156px">
+<col style="width: 88px">
+<col style="width: 91px">
+<col style="width: 98px">
+</colgroup>
+<thead>
+  <tr>
+    <th rowspan="2">Rec SDK</th>
+    <th colspan="2">TorchNPU版本</th>
+  </tr>
+  <tr>
+    <th>26.0.0</th>
+    <th>26.1.0</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td>26.0.0</td>
+    <td>Y</td>
+    <td>Y</td>
+  </tr>
+  <tr>
+    <td>26.1.0</td>
     <td>/</td>
     <td>Y</td>
   </tr>
@@ -178,11 +272,11 @@
 
 |特性名称|特性描述|配套产品型号|
 |--|--|--|
-|Rec SDK TensorFlow(tf_rec_v1)|<ul><li>适配Atlas 350 标卡。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>Atlas 350 标卡|
-|Rec SDK Torch(torch_rec_v1)|<ul><li>适配Atlas 350 标卡。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>Atlas 350 标卡|
-|Rec SDK TensorFlow(tf_rec_v2)|<ul><li>适配Atlas 350 标卡。</li></ul>|Atlas 350 标卡|
-|Rec SDK Torch(torch_rec_v2)|<ul><li>支持动态表淘汰策略：TIMESTAMP、STEP、CUSTOMIZED、LFU</li><li>支持稀疏表缓存模式：HBM+DDR</li><li>支持增量保存功能</li><li>支持EmbeddingBagCollection场景</li><li>支持SGD、ADAM、AdaGrad、RowWiseAdaGrad优化器</li></ul>|Atlas 350 标卡|
-|Rec SDK 算子|<ul><li>生成式推荐模型融合算子补齐，并适配Atlas 350标卡：split_2d_jagged、concat_2d_jagged、norm_multiply_dropout</li><li>Atlas 350标卡算子性能优化：hstu_v2</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>Atlas 350 标卡|
+|Rec SDK TensorFlow(tf_rec_v1)|<ul><li>适配Atlas 350系列产品。</li></ul>|Atlas A2系列产品<br>Atlas A3系列产品<br>Atlas 350系列产品|
+|Rec SDK Torch(torch_rec_v1)|<ul><li>适配Atlas 350系列产品。</li></ul>|Atlas A2系列产品<br>Atlas A3系列产品<br>Atlas 350系列产品|
+|Rec SDK TensorFlow(tf_rec_v2)|<ul><li>适配Atlas 350系列产品。</li></ul>|Atlas 350系列产品|
+|Rec SDK Torch(torch_rec_v2)|<ul><li>支持动态表淘汰策略：TIMESTAMP、STEP、CUSTOMIZED、LFU</li><li>支持稀疏表缓存模式：HBM+DDR</li><li>支持增量保存功能</li><li>支持EmbeddingBagCollection场景</li><li>支持SGD、ADAM、AdaGrad、RowWiseAdaGrad优化器</li></ul>|Atlas 350系列产品|
+|Rec SDK 算子|<ul><li>生成式推荐模型融合算子补齐，并适配Atlas 350系列产品：split_2d_jagged、concat_2d_jagged、norm_multiply_dropout</li><li>Atlas 350系列产品算子性能优化：hstu_v2</li></ul>|Atlas A2系列产品<br>Atlas A3系列产品<br>Atlas 350系列产品|
 
 ### 业务接口变更
 
