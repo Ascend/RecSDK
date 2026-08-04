@@ -83,9 +83,9 @@ npu-smi info
 
 > [!NOTE]
 >
-> 前面章节中启动容器指令使用的非特权模式启动，如果有其他容器也挂载了相同NPU卡会导致当前容器内的 NPU 卡不能使用，执行`npu-smi info`时会报错："dcmi model initialized failed, because the device is used. ret is -8020"。
+> 前面章节中启动容器指令使用的非特权模式启动，可能存在非特权容器NPU资源占用冲突问题。冲突时执行`npu-smi info`会报错：“dcmi model initialized failed, because the device is used. ret is -8020”。
 >
-> 此时请停止其他容器，确保环境可用。或者**修改容器启动指令**中的ASCEND_VISIBLE_DEVICES参数值，仅挂载可用的NPU卡。ASCEND_VISIBLE_DEVICES参数设置方式参考：`ASCEND_VISIBLE_DEVICES=0,1,2,3`，`ASCEND_VISIBLE_DEVICES=0-1`。
+> 处理方案请参见[非特权容器NPU资源占用冲突](../../../../docker/OVERVIEW.zh.md#non_privileged_container_npu_resource_conflict)。
 
 ## 搭建模型
 
