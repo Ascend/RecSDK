@@ -234,6 +234,19 @@ source /opt/buildtools/tf1_env/bin/activate
 2. 检查 `docker run` 是否包含 `-v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro` 和 `-v /etc/ascend_install.info:/etc/ascend_install.info`
 3. 确认 `ASCEND_VISIBLE_DEVICES` 的值在宿主机 NPU 数量范围内
 
+### 非特权容器NPU资源占用冲突<a id="non_privileged_container_npu_resource_conflict"></a>
+
+**现象**：容器内执行 `npu-smi info` 时报错：“dcmi model initialized failed, because the device is used. ret is -8020”。
+
+**原因**：存在多个非特权容器挂载了相同的NPU卡。非特权容器对 NPU 设备的访问采用独占式挂载机制，多个容器挂载了相同的NPU卡时，容器内无法访问NPU设备资源。
+
+**解决**：
+
+先使用`docker stop <container_name>`停止NPU挂载冲突的非特权容器，再使用如下方案修改容器启动指令并重新启动容器。
+
+- 方案1：NPU卡差异挂载。各个非特权容器分别挂载不同的NPU卡，避免资源冲突。可通过**修改容器启动指令**中的ASCEND_VISIBLE_DEVICES参数值并重新创建容器。例如`ASCEND_VISIBLE_DEVICES=0-1`，表示容器仅挂载NPU 0卡和1卡。
+- 方案2：使用特权容器模式启动容器。特权容器可避免设备独占问题，适用于对隔离性要求不高的场景。**该模式下可能存在安全风险，需使用者自行评估**！启动特权容器方式：在容器启动指令中添加`--privileged`参数。例如`docker run xxx`改为`docker run --privileged xxx`。
+
 ### 容器内存不足
 
 **现象**：训练任务 OOM 或运行缓慢。

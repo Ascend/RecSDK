@@ -937,7 +937,7 @@ def train():
 if __name__ == "__main__":
     train()
     # 脚本使用方式：
-    #   1.将脚本写入到main.py文件中，并拷贝RecSDK/training/torch_rec_v1/torchrec_embcache/tests/acc_test/dataset.py到py文件同一目录
+    #   1.将脚本写入到main.py文件中，并拷贝RecSDK/training/torch_rec_v1/torchrec_embcache/tests/acc_test/dataset.py到py文件同一目录。注意此处使用的dataset.py文件和纯显存模式的dataset.py文件存在差异，请注意拷贝正确的文件内容。
     #   2.启动单卡： WORLD_SIZE=1 RANK=0 python3 main.py
     #   3.启动多卡（2卡）： torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=2 main.py
 ```
