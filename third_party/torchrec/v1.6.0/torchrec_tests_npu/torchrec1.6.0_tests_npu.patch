@@ -1,0 +1,816 @@
+diff --git a/torchrec/conftest.py b/torchrec/conftest.py
+new file mode 100644
+index 00000000..156a593d
+--- /dev/null
++++ b/torchrec/conftest.py
+@@ -0,0 +1,21 @@
++#!/usr/bin/env python3
++# -*- coding: utf-8 -*-
++# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#    http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++# ==============================================================================
++
++
++def pytest_sessionstart(session):
++    import fbgemm_ascend
++    print("fbgemm_npu loaded successfully.")
+diff --git a/torchrec/distributed/planner/tests/benchmark.py b/torchrec/distributed/planner/tests/benchmark.py
+index 8468841b..296b162b 100644
+--- a/torchrec/distributed/planner/tests/benchmark.py
++++ b/torchrec/distributed/planner/tests/benchmark.py
+@@ -97,7 +97,7 @@ def build_model_and_enumerator(
+     num_tables: int,
+     embedding_dim: int = 128,
+     local_world_size: int = 8,
+-    compute_device: str = "cuda",
++    compute_device: str = "npu",
+ ) -> Tuple[EmbeddingEnumerator, nn.Module]:
+     """
+     Build an enumerator and model for benchmarking.
+@@ -107,7 +107,7 @@ def build_model_and_enumerator(
+         num_tables: Number of embedding tables in the model
+         embedding_dim: Dimension of each embedding vector
+         local_world_size: Number of devices per node
+-        compute_device: Device type ("cuda" or "cpu")
++        compute_device: Device type ("npu" or "cpu")
+ 
+     Returns:
+         Tuple of (enumerator, model)
+diff --git a/torchrec/distributed/planner/tests/test_constants.py b/torchrec/distributed/planner/tests/test_constants.py
+index 7d21480a..afa713b4 100644
+--- a/torchrec/distributed/planner/tests/test_constants.py
++++ b/torchrec/distributed/planner/tests/test_constants.py
+@@ -22,7 +22,7 @@ from torchrec.distributed.planner.constants import (
+ 
+ class TestKernelBWLookup(unittest.TestCase):
+     def test_uvm_caching_bw(self) -> None:
+-        compute_device: str = "cuda"
++        compute_device: str = "npu"
+         computer_kernel: str = EmbeddingComputeKernel.FUSED_UVM_CACHING.value
+ 
+         caching_ratios: List[float] = [0, 0.25, 0.5, 0.75, 1]
+@@ -49,7 +49,7 @@ class TestKernelBWLookup(unittest.TestCase):
+         self.assertEqual(expected_uvm_caching_bw, uvm_caching_bw)
+ 
+     def test_uvm_caching_bw_with_prefetch_pipeline(self) -> None:
+-        compute_device: str = "cuda"
++        compute_device: str = "npu"
+         computer_kernel: str = EmbeddingComputeKernel.FUSED_UVM_CACHING.value
+         prefetch_pipeline: bool = True
+ 
+diff --git a/torchrec/distributed/planner/tests/test_enumerators.py b/torchrec/distributed/planner/tests/test_enumerators.py
+index 8f963f2a..09194889 100644
+--- a/torchrec/distributed/planner/tests/test_enumerators.py
++++ b/torchrec/distributed/planner/tests/test_enumerators.py
+@@ -454,7 +454,7 @@ class TowerCollectionTWRWSharder(EmbeddingTowerCollectionSharder):
+ 
+ class TestEnumerators(unittest.TestCase):
+     def setUp(self) -> None:
+-        self.compute_device = "cuda"
++        self.compute_device = "npu"
+         self.batch_size = 256
+         self.world_size = 8
+         self.local_world_size = 4
+@@ -872,7 +872,7 @@ class TestEnumerators(unittest.TestCase):
+ 
+         sharder = EmbeddingBagCollectionSharder()
+         allowed_sharding_types = enumerator._filter_sharding_types(
+-            "table_0", sharder.sharding_types("cuda")
++            "table_0", sharder.sharding_types("npu")
+         )
+ 
+         self.assertEqual(
+@@ -901,7 +901,7 @@ class TestEnumerators(unittest.TestCase):
+ 
+         sharder = ManagedCollisionEmbeddingBagCollectionSharder()
+         allowed_sharding_types = enumerator._filter_sharding_types(
+-            "table_0", sharder.sharding_types("cuda")
++            "table_0", sharder.sharding_types("npu")
+         )
+ 
+         self.assertEqual(
+@@ -928,7 +928,7 @@ class TestEnumerators(unittest.TestCase):
+         sharder = ManagedCollisionEmbeddingBagCollectionSharder()
+         with self.assertLogs(level="WARNING"):
+             allowed_sharding_types = enumerator._filter_sharding_types(
+-                "table_0", sharder.sharding_types("cuda")
++                "table_0", sharder.sharding_types("npu")
+             )
+ 
+         self.assertEqual(allowed_sharding_types, [])
+@@ -951,7 +951,7 @@ class TestEnumerators(unittest.TestCase):
+         sharder = EmbeddingBagCollectionSharder()
+         sharding_type = ShardingType.ROW_WISE.value
+         allowed_compute_kernels = enumerator._filter_compute_kernels(
+-            "table_0", sharder.compute_kernels(sharding_type, "cuda"), sharding_type
++            "table_0", sharder.compute_kernels(sharding_type, "npu"), sharding_type
+         )
+ 
+         self.assertEqual(
+@@ -980,7 +980,7 @@ class TestEnumerators(unittest.TestCase):
+         sharder = ManagedCollisionEmbeddingBagCollectionSharder()
+         sharding_type = ShardingType.ROW_WISE.value
+         allowed_compute_kernels = enumerator._filter_compute_kernels(
+-            "table_0", sharder.compute_kernels(sharding_type, "cuda"), sharding_type
++            "table_0", sharder.compute_kernels(sharding_type, "npu"), sharding_type
+         )
+ 
+         self.assertEqual(
+@@ -1008,7 +1008,7 @@ class TestEnumerators(unittest.TestCase):
+         sharding_type = ShardingType.ROW_WISE.value
+         with self.assertLogs(level="WARNING"):
+             allowed_compute_kernels = enumerator._filter_compute_kernels(
+-                "table_0", sharder.compute_kernels(sharding_type, "cuda"), sharding_type
++                "table_0", sharder.compute_kernels(sharding_type, "npu"), sharding_type
+             )
+ 
+         self.assertEqual(allowed_compute_kernels, [])
+@@ -1112,7 +1112,7 @@ class TestEnumerators(unittest.TestCase):
+         self.assertEqual(
+             str(context.exception),
+             "No available sharding type and compute kernel combination after applying user provided constraints for table_1. "
+-            "Module: torchrec.modules.embedding_modules.EmbeddingBagCollection, sharder: CWSharder, compute device: cuda. "
++            "Module: torchrec.modules.embedding_modules.EmbeddingBagCollection, sharder: CWSharder, compute device: npu. "
+             "To debug, search above for warning logs about no available sharding types/compute kernels for table: table_1",
+         )
+ 
+diff --git a/torchrec/distributed/planner/tests/test_partitioners.py b/torchrec/distributed/planner/tests/test_partitioners.py
+index ad26c50a..5c639e64 100644
+--- a/torchrec/distributed/planner/tests/test_partitioners.py
++++ b/torchrec/distributed/planner/tests/test_partitioners.py
+@@ -90,7 +90,7 @@ class HostLevelSharder(EmbeddingBagCollectionSharder):
+ 
+ class TestGreedyPerfPartitioner(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(world_size=2, compute_device=compute_device)
+         tables = [
+             EmbeddingBagConfig(
+@@ -306,7 +306,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+ 
+     def test_tw_balanced_perf_host(self) -> None:
+         self.topology = Topology(
+-            world_size=16, local_world_size=8, compute_device="cuda"
++            world_size=16, local_world_size=8, compute_device="npu"
+         )
+         tables = [
+             EmbeddingBagConfig(
+@@ -372,7 +372,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+             self.assertEqual(devices_allocation[i].perf, expected_perf)
+ 
+     def test_rw_unbalanced_perf_uniform(self) -> None:
+-        self.topology = Topology(world_size=4, compute_device="cuda")
++        self.topology = Topology(world_size=4, compute_device="npu")
+         tables = [
+             EmbeddingBagConfig(
+                 num_embeddings=64,
+@@ -429,7 +429,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+ 
+     def test_twcw_unbalanced_perf_host(self) -> None:
+         self.topology = Topology(
+-            world_size=16, local_world_size=8, compute_device="cuda"
++            world_size=16, local_world_size=8, compute_device="npu"
+         )
+         constraints = {
+             "table_0": ParameterConstraints(min_partition=4 * 2),
+@@ -485,7 +485,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+ 
+     def test_twrw_and_twcw_perf_host(self) -> None:
+         self.topology = Topology(
+-            world_size=16, local_world_size=8, compute_device="cuda"
++            world_size=16, local_world_size=8, compute_device="npu"
+         )
+         constraints = {
+             "table_0": ParameterConstraints(
+@@ -552,7 +552,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+ 
+     def test_twrw_and_twcw_cohost(self) -> None:
+         self.topology = Topology(
+-            world_size=16, local_world_size=8, compute_device="cuda"
++            world_size=16, local_world_size=8, compute_device="npu"
+         )
+         constraints = {
+             "table_0": ParameterConstraints(
+@@ -641,7 +641,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+ 
+     def test_oom(self) -> None:
+         self.topology = Topology(
+-            world_size=2, local_world_size=1, compute_device="cuda"
++            world_size=2, local_world_size=1, compute_device="npu"
+         )
+         constraints = {
+             "table_0": ParameterConstraints(
+@@ -704,7 +704,7 @@ class TestGreedyPerfPartitioner(unittest.TestCase):
+ 
+ class TestMemoryBalancedPartitioner(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(world_size=2, compute_device=compute_device)
+         tables = [
+             EmbeddingBagConfig(
+@@ -829,7 +829,7 @@ class TestMemoryBalancedPartitioner(unittest.TestCase):
+ 
+ class TestBalanceModules(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(world_size=2, compute_device=compute_device)
+         tables = [
+             EmbeddingBagConfig(
+diff --git a/torchrec/distributed/planner/tests/test_perf_models.py b/torchrec/distributed/planner/tests/test_perf_models.py
+index d290b664..bf1801b4 100644
+--- a/torchrec/distributed/planner/tests/test_perf_models.py
++++ b/torchrec/distributed/planner/tests/test_perf_models.py
+@@ -22,7 +22,7 @@ from torchrec.distributed.planner.types import (
+ 
+ class TestPerfModels(unittest.TestCase):
+     def setUp(self) -> None:
+-        self.topology = Topology(world_size=2, compute_device="cuda")
++        self.topology = Topology(world_size=2, compute_device="npu")
+         self.tables = [
+             ShardingOption(
+                 name=MagicMock(),
+diff --git a/torchrec/distributed/planner/tests/test_planners.py b/torchrec/distributed/planner/tests/test_planners.py
+index e1edb8ce..f3252232 100644
+--- a/torchrec/distributed/planner/tests/test_planners.py
++++ b/torchrec/distributed/planner/tests/test_planners.py
+@@ -71,7 +71,7 @@ class TWSharder(EmbeddingBagCollectionSharder):
+ 
+ class TestEmbeddingShardingPlanner(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(
+             world_size=2, hbm_cap=1024 * 1024 * 2, compute_device=compute_device
+         )
+@@ -218,7 +218,7 @@ class TestEmbeddingShardingPlanner(unittest.TestCase):
+ 
+ class TestEmbeddingShardingPlannerWithConstraints(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(
+             world_size=2, hbm_cap=1024 * 1024 * 2, compute_device=compute_device
+         )
+@@ -358,7 +358,7 @@ class TestEmbeddingShardingHashPlannerContextInputs(unittest.TestCase):
+         self.topology = Topology(
+             local_world_size=8,
+             world_size=1,
+-            compute_device="cuda",
++            compute_device="npu",
+         )
+         self.batch_size = 128
+         self.enumerator = EmbeddingEnumerator(
+@@ -418,7 +418,7 @@ class TestEmbeddingShardingHashPlannerContextInputs(unittest.TestCase):
+         different_topology = Topology(
+             local_world_size=8,
+             world_size=2,  # Different world size
+-            compute_device="cuda",
++            compute_device="npu",
+         )
+ 
+         planner2 = EmbeddingShardingPlanner(
+@@ -453,7 +453,7 @@ class AutoSharder(EmbeddingBagCollectionSharder):
+ 
+ class TestAutoPlannerWithScaleupProposer(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(
+             world_size=2,
+             hbm_cap=1024 * 1024 * 2,
+@@ -547,7 +547,7 @@ class TestAutoPlannerWithScaleupProposer(unittest.TestCase):
+             world_size=2,
+             hbm_cap=1024 * 1024 * 1024 * 2,
+             ddr_cap=1024 * 1024 * 1024 * 256,
+-            compute_device="cuda",
++            compute_device="npu",
+         )
+ 
+         planner = EmbeddingShardingPlanner(
+@@ -626,7 +626,7 @@ class TestAutoPlannerWithScaleupProposer(unittest.TestCase):
+             world_size=2,
+             hbm_cap=1024 * 1024 * 1024 * 2,
+             ddr_cap=1024 * 1024 * 1024 * 256,
+-            compute_device="cuda",
++            compute_device="npu",
+         )
+ 
+         planner = EmbeddingShardingPlanner(
+@@ -726,7 +726,7 @@ class TestAutoPlannerWithScaleupProposer(unittest.TestCase):
+             world_size=2,
+             hbm_cap=1024 * 1024 * 1024 * 2,
+             ddr_cap=1024 * 1024 * 1024 * 256,
+-            compute_device="cuda",
++            compute_device="npu",
+         )
+ 
+         planner = EmbeddingShardingPlanner(
+@@ -921,7 +921,7 @@ class MockPlanLoader(PlanLoader):
+ 
+ class TestPlanLoaderIntegration(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(
+             world_size=2, hbm_cap=1024 * 1024 * 2, compute_device=compute_device
+         )
+@@ -1099,7 +1099,7 @@ class TestPlanLoaderIntegration(unittest.TestCase):
+ 
+ class TestExtractPlan(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(
+             world_size=2, hbm_cap=1024 * 1024 * 2, compute_device=compute_device
+         )
+diff --git a/torchrec/distributed/planner/tests/test_proposers.py b/torchrec/distributed/planner/tests/test_proposers.py
+index 8f943128..528e4579 100644
+--- a/torchrec/distributed/planner/tests/test_proposers.py
++++ b/torchrec/distributed/planner/tests/test_proposers.py
+@@ -151,7 +151,7 @@ def make_sharding_option(
+ 
+ class TestProposers(unittest.TestCase):
+     def setUp(self) -> None:
+-        topology = Topology(world_size=2, compute_device="cuda")
++        topology = Topology(world_size=2, compute_device="npu")
+         self.enumerator = EmbeddingEnumerator(topology=topology, batch_size=BATCH_SIZE)
+         self.greedy_proposer = GreedyProposer()
+         self.uniform_proposer = UniformProposer()
+@@ -462,7 +462,7 @@ class TestProposers(unittest.TestCase):
+         proposal = self.dynamic_programming_proposer.propose()
+         GB = 1024 * 1024 * 1024
+         storage_constraint = Topology(
+-            world_size=2, compute_device="cuda", hbm_cap=100 * GB, ddr_cap=1000 * GB
++            world_size=2, compute_device="npu", hbm_cap=100 * GB, ddr_cap=1000 * GB
+         )
+         while proposal:
+             self.dynamic_programming_proposer.feedback(
+@@ -674,7 +674,7 @@ class TestProposers(unittest.TestCase):
+ 
+         GB = 1024 * 1024 * 1024
+         storage_constraint = Topology(
+-            world_size=2, compute_device="cuda", hbm_cap=100 * GB, ddr_cap=1000 * GB
++            world_size=2, compute_device="npu", hbm_cap=100 * GB, ddr_cap=1000 * GB
+         )
+         # Ignoring table_2, the remainder require 224GB if all placed on HBM. We only
+         # have 200GB, so we can't promote both uvm tables. Initial plan needs uses 90GB,
+@@ -857,7 +857,7 @@ class TestProposers(unittest.TestCase):
+ 
+         GB = 1024 * 1024 * 1024
+         storage_constraint = Topology(
+-            world_size=1, compute_device="cuda", hbm_cap=100 * GB, ddr_cap=1000 * GB
++            world_size=1, compute_device="npu", hbm_cap=100 * GB, ddr_cap=1000 * GB
+         )
+         model = TestSparseNN(tables=tables, sparse_device=torch.device("meta"))
+         enumerator = EmbeddingEnumerator(
+diff --git a/torchrec/distributed/planner/tests/test_shard_estimators.py b/torchrec/distributed/planner/tests/test_shard_estimators.py
+index 741819a6..a52718f6 100644
+--- a/torchrec/distributed/planner/tests/test_shard_estimators.py
++++ b/torchrec/distributed/planner/tests/test_shard_estimators.py
+@@ -63,7 +63,7 @@ from torchrec.modules.embedding_configs import (
+ 
+ class TestEmbeddingPerfEstimator(unittest.TestCase):
+     def setUp(self) -> None:
+-        self.topology = Topology(world_size=2, compute_device="cuda")
++        self.topology = Topology(world_size=2, compute_device="npu")
+         self.estimator = EmbeddingPerfEstimatorFactory.create(
+             DEFAULT_PERF_ESTIMATOR, topology=self.topology
+         )
+@@ -76,7 +76,7 @@ class TestEmbeddingPerfEstimator(unittest.TestCase):
+         # Ensure the generalized comms setup is identical if we use BasicComms with defaults.
+         topology2 = Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             generalized_comms_bandwidths=BasicCommsBandwidths(),
+         )
+ 
+@@ -86,7 +86,7 @@ class TestEmbeddingPerfEstimator(unittest.TestCase):
+         # Ensure the generalized comms setup is identical if we pass defaults to bw.
+         topology3 = Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             intra_host_bw=INTRA_NODE_BANDWIDTH,
+             inter_host_bw=CROSS_NODE_BANDWIDTH,
+         )
+@@ -964,7 +964,7 @@ class TestEmbeddingPerfEstimator(unittest.TestCase):
+         ) -> Dict[Tuple[str, str, str], List[float]]:
+             topology = Topology(
+                 world_size=2,
+-                compute_device="cuda",
++                compute_device="npu",
+                 weighted_feature_bwd_compute_multiplier=weighted_feature_bwd_compute_multiplier,
+             )
+             estimator = EmbeddingPerfEstimatorFactory.create(
+@@ -1092,7 +1092,7 @@ class TestEmbeddingPerfEstimatorWithGeneralizedComms(unittest.TestCase):
+         # Testing with non-default invokes BasicCommsBandwidths.
+         self.topology = Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             inter_host_bw=40.0 * 1024**3 / 1000,
+             intra_host_bw=300.0 * 1024**3 / 1000,
+         )
+@@ -1106,7 +1106,7 @@ class TestEmbeddingPerfEstimatorWithGeneralizedComms(unittest.TestCase):
+ 
+         self.topology2 = Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             generalized_comms_bandwidths=BasicCommsBandwidths(
+                 inter_host_bw=40.0 * 1024**3 / 1000,
+                 intra_host_bw=300.0 * 1024**3 / 1000,
+@@ -1447,7 +1447,7 @@ class TestEmbeddingStorageEstimator(unittest.TestCase):
+     def test_pipelined_storage(self, p1: Mock, p2: Mock) -> None:
+         for pipeline_type in list(PipelineType):
+             for run_embedding_at_peak_memory in [False, True]:
+-                topology = Topology(world_size=2, compute_device="cuda")
++                topology = Topology(world_size=2, compute_device="npu")
+                 estimator = EmbeddingStorageEstimator(
+                     topology=topology,
+                     pipeline_type=pipeline_type,
+@@ -1578,7 +1578,7 @@ class TestEmbeddingStorageEstimator(unittest.TestCase):
+                 self.assertEqual(expected_storage, actual_storage)
+ 
+     def test_default_output_sizes(self) -> None:
+-        topology = Topology(world_size=2, compute_device="cuda")
++        topology = Topology(world_size=2, compute_device="npu")
+         constraint_list = [
+             None,
+             {"table_0": ParameterConstraints(output_dtype=DataType.FP32)},
+diff --git a/torchrec/distributed/planner/tests/test_stats.py b/torchrec/distributed/planner/tests/test_stats.py
+index 0b2fd922..9ff4849b 100644
+--- a/torchrec/distributed/planner/tests/test_stats.py
++++ b/torchrec/distributed/planner/tests/test_stats.py
+@@ -47,7 +47,7 @@ class TWvsRWSharder(EmbeddingBagCollectionSharder):
+ 
+ class TestEmbeddingStats(unittest.TestCase):
+     def setUp(self) -> None:
+-        compute_device = "cuda"
++        compute_device = "npu"
+         self.topology = Topology(
+             world_size=2, hbm_cap=1024 * 1024 * 2, compute_device=compute_device
+         )
+diff --git a/torchrec/distributed/planner/tests/test_storage_reservations.py b/torchrec/distributed/planner/tests/test_storage_reservations.py
+index e3c0c4ce..ee13e641 100644
+--- a/torchrec/distributed/planner/tests/test_storage_reservations.py
++++ b/torchrec/distributed/planner/tests/test_storage_reservations.py
+@@ -57,7 +57,7 @@ class TestHeuristicalStorageReservation(unittest.TestCase):
+         heuristical_storage_reservation = HeuristicalStorageReservation(percentage=1)
+         with self.assertRaises(PlannerError) as context:
+             heuristical_storage_reservation.reserve(
+-                topology=Topology(world_size=1, compute_device="cuda"),
++                topology=Topology(world_size=1, compute_device="npu"),
+                 batch_size=1024,
+                 module=model,
+                 sharders=cast(
+@@ -85,7 +85,7 @@ class TestHeuristicalStorageReservation(unittest.TestCase):
+         heuristical_storage_reservation = HeuristicalStorageReservation(percentage=0.0)
+ 
+         heuristical_storage_reservation.reserve(
+-            topology=Topology(world_size=2, compute_device="cuda"),
++            topology=Topology(world_size=2, compute_device="npu"),
+             batch_size=10,
+             module=model,
+             sharders=cast(
+@@ -125,7 +125,7 @@ class TestHeuristicalStorageReservation(unittest.TestCase):
+         heuristical_storage_reservation = HeuristicalStorageReservation(percentage=0.0)
+ 
+         heuristical_storage_reservation.reserve(
+-            topology=Topology(world_size=2, compute_device="cuda"),
++            topology=Topology(world_size=2, compute_device="npu"),
+             batch_size=10,
+             module=model,
+             sharders=cast(
+@@ -165,7 +165,7 @@ class TestHeuristicalStorageReservation(unittest.TestCase):
+         heuristical_storage_reservation = HeuristicalStorageReservation(percentage=0.0)
+ 
+         heuristical_storage_reservation.reserve(
+-            topology=Topology(world_size=2, compute_device="cuda"),
++            topology=Topology(world_size=2, compute_device="npu"),
+             batch_size=10,
+             module=model,
+             sharders=cast(
+@@ -199,7 +199,7 @@ class TestHeuristicalStorageReservation(unittest.TestCase):
+         )
+ 
+         heuristical_storage_reservation.reserve(
+-            topology=Topology(world_size=2, compute_device="cuda"),
++            topology=Topology(world_size=2, compute_device="npu"),
+             batch_size=10,
+             module=model,
+             sharders=cast(
+@@ -228,7 +228,7 @@ class TestGetKjtStorage(unittest.TestCase):
+ 
+         ebc = EmbeddingBagCollection(tables)
+         model = TestModel(shardable_sparse=ebc)
+-        topology = Topology(world_size=2, compute_device="cuda")
++        topology = Topology(world_size=2, compute_device="npu")
+         sharders = cast(
+             List[ModuleSharder[nn.Module]], [EmbeddingBagCollectionSharder()]
+         )
+@@ -322,7 +322,7 @@ class TestGetKjtStorage(unittest.TestCase):
+ 
+         ebc = EmbeddingBagCollection(tables)
+         model = TestModel(shardable_sparse=ebc)
+-        topology = Topology(world_size=2, compute_device="cuda")
++        topology = Topology(world_size=2, compute_device="npu")
+         sharders = cast(
+             List[ModuleSharder[nn.Module]], [EmbeddingBagCollectionSharder()]
+         )
+@@ -352,7 +352,7 @@ class TestGetKjtStorage(unittest.TestCase):
+ 
+         ebc = EmbeddingBagCollection(tables)
+         model = TestModel(shardable_sparse=ebc)
+-        topology = Topology(world_size=2, compute_device="cuda")
++        topology = Topology(world_size=2, compute_device="npu")
+         sharders = cast(
+             List[ModuleSharder[nn.Module]], [EmbeddingBagCollectionSharder()]
+         )
+@@ -392,7 +392,7 @@ class TestFixedPercentageStorageReservation(unittest.TestCase):
+ 
+         ebc = EmbeddingBagCollection(tables)
+         model = TestModel(shardable_sparse=ebc)
+-        topology = Topology(world_size=2, compute_device="cuda")
++        topology = Topology(world_size=2, compute_device="npu")
+         sharders = cast(
+             List[ModuleSharder[nn.Module]], [EmbeddingBagCollectionSharder()]
+         )
+@@ -457,7 +457,7 @@ class TestFixedPercentageStorageReservation(unittest.TestCase):
+         ebc = EmbeddingBagCollection(tables)
+         model = TestModel(shardable_sparse=ebc)
+         topology = Topology(
+-            world_size=2, compute_device="cuda", hbm_cap=10 * 1024 * 1024 * 1024
++            world_size=2, compute_device="npu", hbm_cap=10 * 1024 * 1024 * 1024
+         )
+         sharders = cast(
+             List[ModuleSharder[nn.Module]], [EmbeddingBagCollectionSharder()]
+diff --git a/torchrec/distributed/planner/tests/test_types.py b/torchrec/distributed/planner/tests/test_types.py
+index ee7213c5..e55131c2 100644
+--- a/torchrec/distributed/planner/tests/test_types.py
++++ b/torchrec/distributed/planner/tests/test_types.py
+@@ -239,14 +239,14 @@ class TestTopologyHash(unittest.TestCase):
+         # Create two identical Topology instances
+         topology1 = Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             hbm_cap=1024 * 1024 * 2,
+             local_world_size=2,
+         )
+ 
+         topology2 = Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             hbm_cap=1024 * 1024 * 2,
+             local_world_size=2,
+         )
+@@ -262,14 +262,14 @@ class TestTopologyHash(unittest.TestCase):
+         # Create two different Topology instances
+         topology1 = Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             hbm_cap=1024 * 1024 * 2,
+             local_world_size=2,
+         )
+ 
+         topology2 = Topology(
+             world_size=4,  # Different world_size
+-            compute_device="cuda",
++            compute_device="npu",
+             hbm_cap=1024 * 1024 * 2,
+             local_world_size=2,
+         )
+@@ -300,7 +300,7 @@ class TestParameterConstraintsHash(unittest.TestCase):
+             bounds_check_mode=BoundsCheckMode(1),
+             feature_names=["feature1", "feature2"],
+             output_dtype=DataType.FP32,
+-            device_group="cuda",
++            device_group="npu",
+             key_value_params=KeyValueParams(),
+         )
+ 
+@@ -326,7 +326,7 @@ class TestParameterConstraintsHash(unittest.TestCase):
+             bounds_check_mode=BoundsCheckMode(1),
+             feature_names=["feature1"],
+             output_dtype=DataType.FP32,
+-            device_group="cuda",
++            device_group="npu",
+             key_value_params=KeyValueParams(),
+         )
+ 
+@@ -382,7 +382,7 @@ class TestParameterConstraintsHash(unittest.TestCase):
+             bounds_check_mode=BoundsCheckMode(1),
+             feature_names=["feature1", "feature2"],
+             output_dtype=DataType.FP32,
+-            device_group="cuda",
++            device_group="npu",
+             key_value_params=key_value_params1,
+         )
+ 
+@@ -403,7 +403,7 @@ class TestParameterConstraintsHash(unittest.TestCase):
+             bounds_check_mode=BoundsCheckMode(1),
+             feature_names=["feature1", "feature2"],
+             output_dtype=DataType.FP32,
+-            device_group="cuda",
++            device_group="npu",
+             key_value_params=key_value_params2,
+         )
+ 
+@@ -443,7 +443,7 @@ class TestParameterConstraintsHash(unittest.TestCase):
+             bounds_check_mode=BoundsCheckMode(1),
+             feature_names=["feature1"],
+             output_dtype=DataType.FP32,
+-            device_group="cuda",
++            device_group="npu",
+             key_value_params=key_value_params1,
+         )
+ 
+@@ -497,7 +497,7 @@ def _test_hashing_consistency(
+         topology = Topology(
+             local_world_size=8,
+             world_size=1,
+-            compute_device="cuda",
++            compute_device="npu",
+         )
+         batch_size = 128
+         enumerator = EmbeddingEnumerator(topology=topology, batch_size=batch_size)
+@@ -576,14 +576,14 @@ class TestHashPlannerContextInputsRounding(unittest.TestCase):
+ 
+         topology1 = Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             hbm_cap=hbm_base,
+             local_world_size=2,
+         )
+ 
+         topology2 = Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             hbm_cap=hbm_slightly_different,
+             local_world_size=2,
+         )
+@@ -626,14 +626,14 @@ class TestHashPlannerContextInputsRounding(unittest.TestCase):
+ 
+         topology1 = Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             hbm_cap=hbm_base,
+             local_world_size=2,
+         )
+ 
+         topology2 = Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             hbm_cap=hbm_significantly_different,
+             local_world_size=2,
+         )
+@@ -676,14 +676,14 @@ class TestHashPlannerContextInputsRounding(unittest.TestCase):
+         # Create two topologies with slightly different memory for all devices
+         topology1 = Topology(
+             world_size=4,
+-            compute_device="cuda",
++            compute_device="npu",
+             hbm_cap=1024 * 1024 * 1024,
+             local_world_size=4,
+         )
+ 
+         topology2 = Topology(
+             world_size=4,
+-            compute_device="cuda",
++            compute_device="npu",
+             hbm_cap=1024 * 1024 * 1024 + 500,  # Small difference
+             local_world_size=4,
+         )
+@@ -741,7 +741,7 @@ class TestHashPlannerContextInputsWithConstraints(unittest.TestCase):
+         """Create a standard topology for tests."""
+         return Topology(
+             world_size=2,
+-            compute_device="cuda",
++            compute_device="npu",
+             hbm_cap=1024 * 1024 * 1024,
+             local_world_size=2,
+         )
+@@ -1082,7 +1082,7 @@ class TestConsistentHashingBetweenProcesses(MultiProcessTestBase):
+         self._run_multi_process_test(
+             callable=_test_hashing_consistency,
+             world_size=world_size,
+-            backend="nccl" if torch.cuda.is_available() else "gloo",
++            backend="hccl" if torch.npu.is_available() else "gloo",
+             return_hash_dict=return_hash_dict,
+         )
+         hashes = return_hash_dict.values()
+@@ -1156,10 +1156,10 @@ class TestKernelConfig(unittest.TestCase):
+ 
+         with self.subTest("instantiation_with_hardware_based_bandwidth"):
+             config = KernelConfig(
+-                compute_device="cuda",
++                compute_device="npu",
+                 use_hardware_based_bandwidth=True,
+             )
+-            self.assertEqual(config.compute_device, "cuda")
++            self.assertEqual(config.compute_device, "npu")
+             self.assertTrue(config.use_hardware_based_bandwidth)
+             self.assertIsNone(config.generalized_comms_bandwidths)
+ 
+@@ -1182,7 +1182,7 @@ class TestTopologyFactory(unittest.TestCase):
+         """Test basic topology creation scenarios."""
+         with self.subTest("create_topology_basic"):
+             trainer_config = TrainerConfig(world_size=8, local_world_size=8)
+-            kernel_config = KernelConfig(compute_device="cuda")
++            kernel_config = KernelConfig(compute_device="npu")
+ 
+             topology = TopologyFactory.create_topology(
+                 trainer_config=trainer_config,
+@@ -1191,12 +1191,12 @@ class TestTopologyFactory(unittest.TestCase):
+ 
+             self.assertEqual(topology.world_size, 8)
+             self.assertEqual(topology.local_world_size, 8)
+-            self.assertEqual(topology.compute_device, "cuda")
++            self.assertEqual(topology.compute_device, "npu")
+ 
+         with self.subTest("create_topology_with_hardware_config"):
+             trainer_config = TrainerConfig(world_size=8, local_world_size=8)
+             hardware_config = HardwareConfig(hbm_cap_bytes=80 * 1024**3)
+-            kernel_config = KernelConfig(compute_device="cuda")
++            kernel_config = KernelConfig(compute_device="npu")
+ 
+             topology = TopologyFactory.create_topology(
+                 trainer_config=trainer_config,
+@@ -1317,7 +1317,7 @@ class TestTopologyFactory(unittest.TestCase):
+         with self.subTest("kernel_config_multipliers_applied"):
+             trainer_config = TrainerConfig(world_size=8, local_world_size=8)
+             kernel_config = KernelConfig(
+-                compute_device="cuda",
++                compute_device="npu",
+                 bwd_compute_multiplier=3.0,
+                 weighted_feature_bwd_compute_multiplier=2.5,
+                 uneven_sharding_perf_multiplier=1.5,
+@@ -1343,7 +1343,7 @@ class TestTopologyFactory(unittest.TestCase):
+                 inter_host_bw=100.0,
+             )
+             kernel_config = KernelConfig(
+-                compute_device="cuda",
++                compute_device="npu",
+                 generalized_comms_bandwidths=custom_comms,
+             )
+ 
+@@ -1362,7 +1362,7 @@ class TestTopologyFactory(unittest.TestCase):
+                 intra_host_bw=150.0,
+                 inter_host_bw=75.0,
+             )
+-            kernel_config = KernelConfig(compute_device="cuda")
++            kernel_config = KernelConfig(compute_device="npu")
+ 
+             topology = TopologyFactory.create_topology(
+                 trainer_config=trainer_config,
+diff --git a/torchrec/inference/tests/test_inference.py b/torchrec/inference/tests/test_inference.py
+index f59f9c59..613e8cbe 100644
+--- a/torchrec/inference/tests/test_inference.py
++++ b/torchrec/inference/tests/test_inference.py
+@@ -11,6 +11,7 @@ import unittest
+ from argparse import Namespace
+ from typing import Any, cast, Dict, List
+ 
++import pytest
+ import torch
+ from fbgemm_gpu.split_embedding_configs import SparseType
+ from torchrec import PoolingType
+diff --git a/torchrec/sparse/tests/jagged_tensor_benchmark.py b/torchrec/sparse/tests/jagged_tensor_benchmark.py
+index 138a0269..a24bf376 100644
+--- a/torchrec/sparse/tests/jagged_tensor_benchmark.py
++++ b/torchrec/sparse/tests/jagged_tensor_benchmark.py
+@@ -91,7 +91,7 @@ class RunOptions(BenchFuncConfig):
+     world_size: int = 1
+     num_benchmarks: int = 20
+     num_profiles: int = 10
+-    device_type: str = "cuda"
++    device_type: str = "npu"
+     debug_mode: bool = False
+     profile_dir: str = "."
+ 
+diff --git a/torchrec/sparse/tests/test_jagged_tensor.py b/torchrec/sparse/tests/test_jagged_tensor.py
+index 4e19aa31..77c017aa 100644
+--- a/torchrec/sparse/tests/test_jagged_tensor.py
++++ b/torchrec/sparse/tests/test_jagged_tensor.py
