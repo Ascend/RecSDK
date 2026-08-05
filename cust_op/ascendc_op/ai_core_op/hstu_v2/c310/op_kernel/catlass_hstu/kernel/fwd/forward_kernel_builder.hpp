@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,13 +19,30 @@ See the License for the specific language governing permissions and
 #include "../../../tla_hstu/layout.hpp"
 #include "../../../catlass_hstu/gemm/tile/copy_gm_to_l1_a5.hpp"
 #include "../../../catlass_hstu/gemm/tile/copy_l0c_to_ub_a5.hpp"
-#include "../../../catlass_hstu/gemm/tile/dual_tile_copy.hpp"
 #include "../../../catlass_hstu/gemm/block/block_mmad_qk_infer.hpp"
 #include "../../../catlass_hstu/gemm/block/block_mmad_pv_infer.hpp"
 #include "../../../catlass_hstu/gemm/block/block_scheduler.hpp"
+#include "../../../catlass_hstu/gemm/block/block_scheduler_interleaved.hpp"
 #include "../../../catlass_hstu/epilogue/block/block_epilogue_score_infer.hpp"
 #include "../../../catlass_hstu/epilogue/block/block_epilogue_trans_infer.hpp"
 #include "../../../catlass_hstu/kernel/fwd/forward_kernel_resource.hpp"
+
+// =============================================================================
+// 分核策略切换 (硬编码，重新编译生效)
+//   注释掉 → 原始连续分块 (RowBlockScheduler)
+//   取消注释 → 交替分块 (InterleavedRowBlockScheduler)，提高 L2 Cache 跨核共享率
+// =============================================================================
+#define USE_INTERLEAVED_Q_SCHEDULER
+
+// =============================================================================
+// K/V Cluster 数量：调参开关
+//   数值越大 → L2 冲突越分散，但跨核共享率越低
+//   数值越小 → 共享率越高，但冲突可能增加
+//   可通过编译选项覆盖：-DHSTU_FWD_KV_CLUSTER_NUM=2
+// =============================================================================
+#ifndef HSTU_FWD_KV_CLUSTER_NUM
+#define HSTU_FWD_KV_CLUSTER_NUM 4
+#endif
 
 using namespace Catlass;
 using namespace tla;
@@ -40,13 +57,13 @@ struct TileSelector {
 
 template <class Element>
 struct TileSelector<Element, 128> {
-    using L1TileShape = Shape<Int<128>, Int<640>, Int<128>>;
+    using L1TileShape = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShape = Shape<Int<128>, Int<128>, Int<128>>;
 };
 
 template <class Element>
 struct TileSelector<Element, 256> {
-    using L1TileShape = Shape<Int<64>, Int<640>, Int<256>>;
+    using L1TileShape = Shape<Int<64>, Int<64>, Int<256>>;
     using L0TileShape = Shape<Int<64>, Int<64>, Int<256>>;
 };
 
@@ -81,33 +98,20 @@ struct QKBlockBuilder {
     using ElementK = ElementType;
     using LayoutK = layout::nZ;
     using ElementS = typename Gemm::helper::ElementAccumulatorSelector<ElementQ, ElementK>::ElementAccumulator;
-    using LayoutS = std::conditional_t<(HAS_RAB || HAS_MASK), layout::RowMajor, layout::zN>;
+    using LayoutS = std::conditional_t<HAS_RAB, layout::RowMajor, layout::zN>;
 
     using TileCopyTlaQK =
-        std::conditional_t<(HAS_RAB || HAS_MASK),
+        std::conditional_t<HAS_RAB,
                            Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
                                                              LayoutS, void, Gemm::Tile::CopyL0CToUBMode::RESERVED>,
                            Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
                                                              LayoutS, void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M>>;
 
-    // PV TileCopy types (for Secondary)
-    using ElementP = ElementType;
-    using LayoutP = std::conditional_t<(HAS_RAB || HAS_MASK), layout::RowMajor, layout::zN>;
-    using ElementV = ElementType;
-    using LayoutV = layout::zN;
-    using ElementO = typename Gemm::helper::ElementAccumulatorSelector<ElementP, ElementV>::ElementAccumulator;
-    using LayoutO = layout::RowMajor;
-
-    using TileCopyTlaPV = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutP, ElementV, LayoutV, ElementO,
-                                                            LayoutO, void, Gemm::Tile::CopyL0CToUBMode::RESERVED>;
-
-    using CombinedTileCopy = Gemm::Tile::DualTileCopy<TileCopyTlaQK, TileCopyTlaPV>;
-
     using DispatchPolicy = Gemm::MmadHSTUQK<ArchTag, false, false>;
 
     using MmadTileBuffer = TileBufferType_<BufferTag::QK_MMAD>;
     using BlockMmad = Gemm::Block::BlockMmadTla<DispatchPolicy, L1TileShape, L0TileShape, ElementQ, ElementK, ElementS,
-                                                MmadTileBuffer, CombinedTileCopy>;
+                                                MmadTileBuffer, TileCopyTlaQK>;
 
     using EpilogueTileBuffer = TileBufferType_<BufferTag::SCORE_EPILOGUE>;
     using BlockEpilogue = Epilogue::Block::BlockEpilogueScore<ArchTag, ElementQ, ElementS, EpilogueTileBuffer,
@@ -124,24 +128,8 @@ struct PVBlockBuilder {
     static constexpr bool HAS_RAB = HAS_RAB_;
     static constexpr bool HAS_MASK = HAS_MASK_;
 
-    using ElementQ = ElementType;
-    using LayoutQ = layout::zN;
-    using ElementK = ElementType;
-    using LayoutK = layout::nZ;
-    using ElementS = typename Gemm::helper::ElementAccumulatorSelector<ElementQ, ElementK>::ElementAccumulator;
-    ;
-    using LayoutS = std::conditional_t<(HAS_RAB || HAS_MASK), layout::RowMajor, layout::zN>;
-
-    using TileCopyTlaQK =
-        std::conditional_t<(HAS_RAB || HAS_MASK),
-                           Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
-                                                             LayoutS, void, Gemm::Tile::CopyL0CToUBMode::RESERVED>,
-                           Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementQ, LayoutQ, ElementK, LayoutK, ElementS,
-                                                             LayoutS, void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT>>;
-
-    // PV TileCopy types (for Secondary)
     using ElementP = ElementType;
-    using LayoutP = std::conditional_t<(HAS_RAB || HAS_MASK), layout::RowMajor, layout::zN>;
+    using LayoutP = std::conditional_t<HAS_RAB, layout::RowMajor, layout::zN>;
     using ElementV = ElementType;
     using LayoutV = layout::zN;
     using ElementO = typename Gemm::helper::ElementAccumulatorSelector<ElementP, ElementV>::ElementAccumulator;
@@ -150,15 +138,13 @@ struct PVBlockBuilder {
     using TileCopyTlaPV = Gemm::Tile::PackedTileCopyTlaToUB<ArchTag, ElementP, LayoutP, ElementV, LayoutV, ElementO,
                                                             LayoutO, void, Gemm::Tile::CopyL0CToUBMode::RESERVED>;
 
-    using CombinedTileCopy = Gemm::Tile::DualTileCopy<TileCopyTlaPV, TileCopyTlaQK>;
-
     using DispatchPolicy = Gemm::MmadHSTUPV<ArchTag, false, false>;
 
     using BlockMmad = Gemm::Block::BlockMmadTla<DispatchPolicy, L1TileShape, L0TileShape, ElementP, ElementV, ElementO,
-                                                TileBufferType_<BufferTag::PV_MMAD>, CombinedTileCopy>;
+                                                TileBufferType_<BufferTag::PV_MMAD>, TileCopyTlaPV>;
 
     using BlockEpilogue =
-        Epilogue::Block::BlockEpilogueTransOut<ArchTag, TileBufferType_<BufferTag::TRANS_SV_EPILOGUE>,
+        Epilogue::Block::BlockEpilogueTransOut<ArchTag, TileBufferType_<BufferTag::TRANS_PV_EPILOGUE>,
                                                Epilogue::Block::TransTag::UB_TO_GM, ElementO, ElementV, HAS_RAB>;
 };
 
@@ -171,12 +157,17 @@ struct BlockSchedulerBuilder {
     static constexpr uint32_t BLOCK_M = tla::get<0>(L1TileShape{});
     static constexpr uint32_t BLOCK_N = tla::get<1>(L1TileShape{});
 
+#ifdef USE_INTERLEAVED_Q_SCHEDULER
+    using QBlockScheduler = Gemm::Block::InterleavedRowBlockScheduler<ElementOffset, BLOCK_M, BLOCK_N>;
+#else
     using QBlockScheduler = Gemm::Block::RowBlockScheduler<ElementOffset, BLOCK_M, BLOCK_N>;
-    using KBlockScheduler = Gemm::Block::ColumnBlockScheduler<QBlockScheduler, BLOCK_M, BLOCK_N, true>;
+#endif
+    using KBlockScheduler =
+        Gemm::Block::ColumnBlockScheduler<QBlockScheduler, BLOCK_M, BLOCK_N, false, false, HSTU_FWD_KV_CLUSTER_NUM>;
 };
 
 template <typename KernelConfig_>
-struct ForwardKenrelBuilder {
+struct ForwardKernelBuilder {
     using Config = KernelConfig_;
 
     using ElementType = typename Config::ElementType;
