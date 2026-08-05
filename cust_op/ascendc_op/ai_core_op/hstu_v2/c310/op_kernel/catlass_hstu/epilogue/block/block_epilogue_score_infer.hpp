@@ -38,130 +38,136 @@ public:
     using L0TileShape = L0TileShape_;
 
     static constexpr uint32_t ELEM_PER_BLOCK = Catlass::BYTE_PER_C0 / sizeof(Element);
+    static constexpr uint32_t PROB_STAGES = TileBuffer::STAGES;  // Pipeline depth for prob tensors
 
     static constexpr bool HAS_RAB = HAS_RAB_;
     static constexpr bool HAS_MASK = HAS_MASK_;
+    static constexpr uint32_t SCORE_BUF_CNT = HAS_RAB ? 2 : 3;  // UB score pingpong depth: 3-way in non-RAB
+
+    static constexpr uint32_t RAB_MTE2_V_ID[3] = {EVENT_ID6, EVENT_ID7, EVENT_ID6};
+    static constexpr uint32_t SCORE_MTE3_V_ID[3] = {EVENT_ID6, EVENT_ID7, EVENT_ID6};
 
     static constexpr uint32_t L0_TILE_M = tla::get<0>(L0TileShape{});
     static constexpr uint32_t L0_TILE_N = tla::get<1>(L0TileShape{});
 
     CATLASS_DEVICE
-    BlockEpilogueScore(uint32_t const (&QK_CROSS_EVENT_ID_)[5], uint32_t const (&PV_CROSS_EVENT_ID_)[5],
-                       Arch::Resource<ArchTag>& resource, ElementAccumulator alpha_ = 1.0f,
-                       ElementAccumulator scale_ = 1.0f)
+    BlockEpilogueScore(uint32_t const (&QK_CROSS_EVENT_ID_)[PROB_STAGES],
+                       uint32_t const (&PV_CROSS_EVENT_ID_)[PROB_STAGES], Arch::Resource<ArchTag>& resource,
+                       float alpha_ = 1.0f, float scale_ = 1.0f)
     {
         alpha = alpha_;
         scale = scale_;
-        ubScoreTensor = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::SCORE);
-        ubProbTensor[0] = resource.ubBuf.template GetBufferByByte<ElementAccumulator>(TileBuffer::PROB[0]);
-        ubProbTensor[1] = resource.ubBuf.template GetBufferByByte<ElementAccumulator>(TileBuffer::PROB[1]);
-        ubProbTensor[2] = resource.ubBuf.template GetBufferByByte<ElementAccumulator>(TileBuffer::PROB[2]);
-        ubProbTensor[3] = resource.ubBuf.template GetBufferByByte<ElementAccumulator>(TileBuffer::PROB[3]);
-        ubProbTensor[4] = resource.ubBuf.template GetBufferByByte<ElementAccumulator>(TileBuffer::PROB[4]);
+        ubScoreTensor[0] = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::SCORE[0]);
+        ubScoreTensor[1] = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::SCORE[1]);
+        if constexpr (!HAS_RAB) {
+            ubScoreTensor[2] = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::SCORE[2]);
+        }
+        for (uint32_t i = 0; i < PROB_STAGES; i++) {
+            ubProbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementAccumulator>(TileBuffer::PROB[i]);
+        }
 
         ubRabTensor[0] = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::RAB[0]);
         ubRabTensor[1] = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::RAB[1]);
+        if constexpr (!HAS_RAB) {
+            ubRabTensor[2] = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::RAB[0]);  // dummy, never used
+        }
 
-        dstTensor[0] = resource.l1Buf.template GetBufferByByte<Element>(TileBuffer::DST[0]);
-        dstTensor[1] = resource.l1Buf.template GetBufferByByte<Element>(TileBuffer::DST[1]);
-        dstTensor[2] = resource.l1Buf.template GetBufferByByte<Element>(TileBuffer::DST[2]);
-        dstTensor[3] = resource.l1Buf.template GetBufferByByte<Element>(TileBuffer::DST[3]);
-        dstTensor[4] = resource.l1Buf.template GetBufferByByte<Element>(TileBuffer::DST[4]);
+        for (uint32_t i = 0; i < PROB_STAGES; i++) {
+            dstTensor[i] = resource.l1Buf.template GetBufferByByte<Element>(TileBuffer::DST[i]);
+        }
 
-        QKcubeReady[0] = Arch::CrossCoreFlag(QK_CROSS_EVENT_ID_[0]);
-        QKcubeReady[1] = Arch::CrossCoreFlag(QK_CROSS_EVENT_ID_[1]);
-        QKcubeReady[2] = Arch::CrossCoreFlag(QK_CROSS_EVENT_ID_[2]);
-        QKcubeReady[3] = Arch::CrossCoreFlag(QK_CROSS_EVENT_ID_[3]);
-        QKcubeReady[4] = Arch::CrossCoreFlag(QK_CROSS_EVENT_ID_[4]);
+        for (uint32_t i = 0; i < PROB_STAGES; i++) {
+            QKcubeReady[i] = Arch::CrossCoreFlag(QK_CROSS_EVENT_ID_[i]);
+        }
 
-        PVcubeReady[0] = Arch::CrossCoreFlag(PV_CROSS_EVENT_ID_[0]);
-        PVcubeReady[1] = Arch::CrossCoreFlag(PV_CROSS_EVENT_ID_[1]);
-        PVcubeReady[2] = Arch::CrossCoreFlag(PV_CROSS_EVENT_ID_[2]);
-        PVcubeReady[3] = Arch::CrossCoreFlag(PV_CROSS_EVENT_ID_[3]);
-        PVcubeReady[4] = Arch::CrossCoreFlag(PV_CROSS_EVENT_ID_[4]);
+        for (uint32_t i = 0; i < PROB_STAGES; i++) {
+            PVcubeReady[i] = Arch::CrossCoreFlag(PV_CROSS_EVENT_ID_[i]);
+        }
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(SCORE_MTE3_V_ID[0]);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(SCORE_MTE3_V_ID[1]);
+
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(RAB_MTE2_V_ID[0]);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(RAB_MTE2_V_ID[1]);
     }
 
     template <class TensorSrc, class Coord, class Shape>
-    CATLASS_DEVICE void operator()(TensorSrc& tensorRab, Coord const& coord, Shape const& shape)
+    CATLASS_DEVICE void operator()(TensorSrc& tensorRab, Coord const& coord, Shape const& shape, Coord const& coordNext,
+                                   Shape const& shapeNext, bool hasNext)
     {
-        auto mReal = RoundUp(tla::get<0>(shape), 2) / 2;
+        // SPLIT_M: 每 AIC 的 AIV 子核各处理一半行
+        auto mReal = CeilDiv<TileBuffer::AIV_PER_AIC>(tla::get<0>(shape));
         auto nReal = tla::get<1>(shape);
 
-        auto nLoop = CeilDiv<L0_TILE_N>(nReal);
-
-        auto nTail = nReal - (nLoop - 1) * L0_TILE_N;
-
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-
-        if constexpr (HAS_RAB) {
-            // Copy first K strip: all Q rows × first K tile cols
-            auto firstN = (nLoop == 1) ? nReal : L0_TILE_N;
-            auto firstTileShape = tla::MakeShape(mReal, firstN);
-            CopyRab(tensorRab, coord, firstTileShape, 0);
+        if constexpr (!HAS_RAB) {
+            mReal = CeilDiv<TileBuffer::AIV_PER_AIC>(RoundUp<ELEM_PER_BLOCK>(tla::get<0>(shape)));
+            nReal = RoundUp<ELEM_PER_BLOCK>(nReal);
         }
 
-        for (auto n = 0; n < nLoop; n++) {
-            if constexpr (HAS_RAB) {
-                if (n < nLoop - 1) {
-                    // Preload next K strip: advance seqK coord (dim 3), not seqQ (dim 2)
-                    auto nextN = (n + 1 == nLoop - 1) ? nTail : L0_TILE_N;
-                    auto kOffset = (n + 1) * L0_TILE_N;
-                    auto coordNew = tla::Add(coord, tla::MakeCoord(0, 0, 0, kOffset));
-                    auto nextTileShape = tla::MakeShape(mReal, nextN);
-                    CopyRab(tensorRab, coordNew, nextTileShape, !(n % 2));
-                }
-            }
+        uint32_t slot = UBFlag % PROB_STAGES;
+        AscendC::CrossCoreWaitFlag<0x2, PIPE_V>(QKcubeReady[slot].id);
 
-            auto nSize = (n == nLoop - 1) ? nTail : L0_TILE_N;
-            AscendC::CrossCoreWaitFlag<0x2, PIPE_V>(QKcubeReady[UBFlag % 5].id);
+        ComputeBlock(mReal, nReal, 0, tensorRab, coordNext, shapeNext, hasNext);
+        AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(PVcubeReady[slot].id);
+        UBFlag++;
 
-            ComputeBlock(mReal, nSize, n);
-
-            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(PVcubeReady[n].id);
-            UBFlag++;
-        }
-
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>((nLoop - 1) % 2);
+        rabidx = UBFlag % SCORE_BUF_CNT;
     }
 
-    CATLASS_DEVICE void ComputeBlock(uint32_t mReal, uint32_t nSize, uint32_t blockIdx)
+    template <class TensorSrc, class Coord, class Shape>
+    CATLASS_DEVICE void ComputeBlock(uint32_t mReal, uint32_t nSize, uint32_t blockIdx, TensorSrc& tensorRab,
+                                     Coord const& coordNext, Shape const& shapeNext, bool hasNext)
     {
         auto count = RoundUp<ELEM_PER_BLOCK>(mReal) * RoundUp<ELEM_PER_BLOCK>(nSize);
 
+        if constexpr (!HAS_RAB) {
+            count = RoundUp<8>(mReal) * RoundUp<ELEM_PER_BLOCK>(nSize);
+        }
+
         auto repeatTimes = CeilDiv(count, AscendC::GetVecLen() / sizeof(ElementAccumulator));
 
-        auto ubSPtr = (__ubuf__ Element*)ubScoreTensor.GetPhyAddr();
-        auto ubRabPtr = (__ubuf__ Element*)ubRabTensor[UBFlag % 2].GetPhyAddr();
-        auto ubMaskPtr = (__ubuf__ Element*)ubRabTensor[UBFlag % 2].GetPhyAddr();
-        auto ubProbPtr = (__ubuf__ ElementAccumulator*)ubProbTensor[UBFlag % 5].GetPhyAddr();
+        uint32_t scoreIdx = UBFlag % SCORE_BUF_CNT;
+        uint32_t rabIdx = UBFlag % SCORE_BUF_CNT;  // current tile consumes the buffer prefetched for it
+
+        auto scoreEventId = SCORE_MTE3_V_ID[scoreIdx];
+        auto rabEventId = RAB_MTE2_V_ID[rabIdx];
+
+        auto ubSPtr = (__ubuf__ Element*)ubScoreTensor[scoreIdx].GetPhyAddr();
+        auto ubRabPtr = (__ubuf__ Element*)ubRabTensor[rabIdx].GetPhyAddr();
+        auto ubProbPtr = (__ubuf__ ElementAccumulator*)ubProbTensor[UBFlag % PROB_STAGES].GetPhyAddr();
 
         if constexpr (HAS_RAB) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(blockIdx % 2);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(rabEventId);
         }
 
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(scoreEventId);
 
         AscendC::VF_CALL<catlass::Epilogue::RegBase::FastSiluScoreVf<Element, ElementAccumulator, HAS_RAB, HAS_MASK>>(
-            ubProbPtr, ubRabPtr, ubMaskPtr, ubSPtr, alpha, scale, count, repeatTimes);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            ubProbPtr, ubRabPtr, ubRabPtr, ubSPtr, alpha, scale, count, repeatTimes);
 
-        CopyToDst(mReal, nSize, count, blockIdx % 5);
-
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(scoreEventId);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(scoreEventId);
 
         if constexpr (HAS_RAB) {
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(blockIdx % 2);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(rabEventId);
         }
+
+        if constexpr (HAS_RAB) {
+            if (hasNext) {
+                LoadRab(tensorRab, coordNext, shapeNext, (UBFlag + 1) & 1);
+            }
+        }
+
+        CopyToDst(mReal, nSize, count, UBFlag % PROB_STAGES, scoreIdx);
+
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(scoreEventId);
     }
 
-    CATLASS_DEVICE void CopyToDst(uint32_t mReal, uint32_t nSize, uint32_t count, uint32_t blockIdx)
+    CATLASS_DEVICE void CopyToDst(uint32_t mReal, uint32_t nSize, uint32_t count, uint32_t blockIdx, uint32_t scoreIdx)
     {
         if constexpr (HAS_RAB || HAS_MASK) {
             auto coreId = AscendC::GetSubBlockIdx();
-            auto totalM = mReal * 2;  // SPLIT_M=2, full M dim
+            auto totalM = mReal * 2;
             auto coreRowOffset = coreId * mReal * ELEM_PER_BLOCK;
 
             auto colBlk = CeilDiv<ELEM_PER_BLOCK>(nSize);
@@ -175,49 +181,82 @@ public:
             auto totalMAligned = RoundUp<ELEM_PER_BLOCK>(totalM);
             for (auto i = 0; i < colBlk; i++) {
                 auto dstBase = i * totalMAligned * ELEM_PER_BLOCK + coreRowOffset;
-                AscendC::DataCopy(dstTensor[blockIdx][dstBase], ubScoreTensor[i * ELEM_PER_BLOCK], intriParams);
+                AscendC::DataCopy(dstTensor[blockIdx][dstBase], ubScoreTensor[scoreIdx][i * ELEM_PER_BLOCK],
+                                  intriParams);
             }
+
         } else {
             auto coreId = AscendC::GetSubBlockIdx();
-            auto coreOffset = coreId * mReal * nSize;
-            AscendC::DataCopy(dstTensor[blockIdx][coreOffset], ubScoreTensor, count);
+            auto mRealAligned = RoundUp<ELEM_PER_BLOCK>(mReal);
+            auto numKBlocks = CeilDiv<ELEM_PER_BLOCK>(nSize);
+            auto coreOffset = coreId * mReal * ELEM_PER_BLOCK;
+
+            AscendC::DataCopyParams intriParams;
+            intriParams.blockCount = numKBlocks;
+            intriParams.blockLen = mReal;
+            intriParams.srcStride = 0;
+            intriParams.dstStride = mReal;
+
+            AscendC::DataCopy(dstTensor[blockIdx][coreOffset], ubScoreTensor[scoreIdx], intriParams);
         }
     }
 
     template <class TensorSrc, class Coord, class Shape>
-    CATLASS_DEVICE void CopyRab(TensorSrc& tensorRab, Coord const& coord, Shape const& shape, uint32_t blockIdx)
+    CATLASS_DEVICE void LoadRab(TensorSrc& tensorRab, Coord const& coord, Shape const& shape, int bufIdxOverride = -1)
     {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(blockIdx);
+        if constexpr (!HAS_RAB)
+            return;
+        uint32_t bufIdx = (bufIdxOverride >= 0) ? static_cast<uint32_t>(bufIdxOverride) : rabidx;
+        auto rabEventId = RAB_MTE2_V_ID[bufIdx];
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(rabEventId);
 
-        auto srcOffset = tensorRab.layout()(coord);
+        auto coreId = AscendC::GetSubBlockIdx();
+        auto blockCountTotal = tla::get<0>(shape);
+
+        auto blockLenTotal = tla::get<1>(shape) > L0_TILE_N ? L0_TILE_N : tla::get<1>(shape);
+        auto halfBlockCount = RoundUp(blockCountTotal, 2) / 2;
+
+        auto rabCoord = tla::MakeCoord(tla::get<0>(coord), tla::get<1>(coord), tla::get<3>(coord), tla::get<2>(coord));
+        auto srcOffset = tensorRab.layout()(rabCoord);
 
         AscendC::DataCopyParams intriParams;
         AscendC::DataCopyPadParams padParams;
-        intriParams.blockCount = tla::get<0>(shape);
-        intriParams.blockLen = tla::get<1>(shape) * sizeof(Element);
-        intriParams.srcStride = (tla::get<2>(tensorRab.stride()) - tla::get<1>(shape)) * sizeof(Element);
+
+        // coreId == 0: blockCount = halfBlockCount, offset unchanged
+        // coreId == 1: blockCount = blockCountTotal - halfBlockCount, offset += halfBlockCount * stride
+        intriParams.blockCount = halfBlockCount + coreId * (blockCountTotal - 2 * halfBlockCount);
+        srcOffset += coreId * halfBlockCount * tla::get<2>(tensorRab.stride());
+
+        intriParams.blockLen = blockLenTotal * sizeof(Element);
+        intriParams.srcStride = (tla::get<2>(tensorRab.stride()) - blockLenTotal) * sizeof(Element);
         intriParams.dstStride = 0;
 
-        padParams.isPad = false;
-        AscendC::DataCopyPad(ubRabTensor[blockIdx], tensorRab.data()[srcOffset], intriParams, padParams);
+        if (intriParams.blockCount > 0) {
+            padParams.isPad = false;
+            AscendC::DataCopyPad(ubRabTensor[bufIdx], tensorRab.data()[srcOffset], intriParams, padParams);
+        }
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(blockIdx);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(rabEventId);
+
+        if (bufIdxOverride < 0) {
+            rabidx = !rabidx;
+        }
     }
 
 private:
-    Arch::CrossCoreFlag QKcubeReady[5];
-    Arch::CrossCoreFlag PVcubeReady[5];
+    Arch::CrossCoreFlag QKcubeReady[PROB_STAGES];
+    Arch::CrossCoreFlag PVcubeReady[PROB_STAGES];
 
-    AscendC::LocalTensor<Element> ubScoreTensor;
-    AscendC::LocalTensor<Element> ubRabTensor[2];
-    AscendC::LocalTensor<Element> ubMaskTensor[2];
-    AscendC::LocalTensor<ElementAccumulator> ubProbTensor[5];
-    AscendC::LocalTensor<Element> dstTensor[5];
+    AscendC::LocalTensor<Element> ubScoreTensor[3];
+    AscendC::LocalTensor<Element> ubRabTensor[3];
+    AscendC::LocalTensor<ElementAccumulator> ubProbTensor[PROB_STAGES];
+    AscendC::LocalTensor<Element> dstTensor[PROB_STAGES];
 
-    ElementAccumulator alpha{1.0f};
-    ElementAccumulator scale{1.0f};
+    float alpha{1.0f};
+    float scale{1.0f};
 
     uint32_t UBFlag{0};
+    uint32_t rabidx{0};
 };
 
 }  // namespace Catlass::Epilogue::Block

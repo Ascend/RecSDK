@@ -77,13 +77,13 @@ static bool ParseAttr(gert::TilingContext* context, HstuForwardV2TilingData& til
     OPS_CHECK_PTR_NULL(maxSeqK, false);
 
     const auto* targetGroupSize = attrs->GetAttrPointer<int32_t>(static_cast<size_t>(ATTR_INDEX::TARGET_GROUP_SIZE));
-    OPS_CHECK_PTR_NULL(targetGroupSize, return false);
+    OPS_CHECK_PTR_NULL(targetGroupSize, false);
 
     const auto* scale = attrs->GetAttrPointer<float>(static_cast<size_t>(ATTR_INDEX::SCALE));
     OPS_CHECK_PTR_NULL(scale, false);
 
     const auto* alpha = attrs->GetAttrPointer<float>(static_cast<size_t>(ATTR_INDEX::ALPHA));
-    OPS_CHECK_PTR_NULL(alpha, return false);
+    OPS_CHECK_PTR_NULL(alpha, false);
 
     tilingData.set_maxSeqLenQ(*maxSeqQ);
     tilingData.set_maxSeqLenK(*maxSeqK);
@@ -95,10 +95,7 @@ static bool ParseAttr(gert::TilingContext* context, HstuForwardV2TilingData& til
 
 static bool TilingKeySet(gert::TilingContext* context, HstuForwardV2TilingData& tilingData)
 {
-    const auto* numContext = context->GetInputTensor(static_cast<size_t>(IN_INDEX::NUM_CONTEXT));
-    const auto* numTarget = context->GetInputTensor(static_cast<size_t>(IN_INDEX::NUM_TARGET));
     const auto* rab = context->GetInputTensor(static_cast<size_t>(IN_INDEX::RAB));
-    bool hasMask = (nullptr != numContext && nullptr != numTarget);
     bool hasRab = (nullptr != rab);
 
     auto dimQK = tilingData.get_dimQK();
@@ -109,7 +106,7 @@ static bool TilingKeySet(gert::TilingContext* context, HstuForwardV2TilingData& 
         tilingDim = 256;
     }
 
-    ASCENDC_TPL_SEL_PARAM(context, false, 128);
+    ASCENDC_TPL_SEL_PARAM(context, hasRab, tilingDim);
     return true;
 }
 
@@ -141,10 +138,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OPS_CHECK(!ParseShape(context, tilingData), OPS_LOG_E("", "parse shape failed.\n"), return ge::GRAPH_FAILED);
     OPS_CHECK(!ParseAttr(context, tilingData), OPS_LOG_E("", "parse attr failed.\n"), return ge::GRAPH_FAILED);
     OPS_CHECK(!TilingKeySet(context, tilingData), OPS_LOG_E("", "tiling keyset failed.\n"), return ge::GRAPH_FAILED);
+    ShareMemorySet(context, tilingData);
 
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     size_t coreNum = ascendPlatform.GetCoreNumAic();
     context->SetBlockDim(coreNum);
+
+    OPS_LOG_E_IF_NULL("RawTilingData", context->GetRawTilingData(), return ge::GRAPH_FAILED);
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
     return ge::GRAPH_SUCCESS;

@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,8 +35,8 @@ See the License for the specific language governing permissions and
  * @param q Query 张量
  * @param k Key 张量
  * @param v Value 张量
- * @param attnBias 注意力偏置 (RAB)
  * @param mask 注意力掩码 (可选)
+ * @param attnBias 注意力偏置 (RAB)
  * @param seq_offset_q Query 序列偏移量
  * @param seq_offset_k Key 序列偏移量
  * @param num_context 上下文长度 (可选)
@@ -49,7 +49,7 @@ See the License for the specific language governing permissions and
  *              - AIV (Vector 核): 执行 Epilogue 主循环
  */
 template <bool HAS_RAB, uint32_t BLOCK_K>
-CATLASS_GLOBAL void hstu_forward_v2(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR attnBias, GM_ADDR mask,
+CATLASS_GLOBAL void hstu_forward_v2(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, GM_ADDR attnBias,
                                     GM_ADDR seq_offset_q, GM_ADDR seq_offset_k, GM_ADDR num_context, GM_ADDR num_target,
                                     GM_ADDR attnOutput, GM_ADDR workSpace, GM_ADDR tiling)
 {
@@ -61,12 +61,12 @@ CATLASS_GLOBAL void hstu_forward_v2(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR att
     using Element = DTYPE_Q;
     using ElementOffset = DTYPE_SEQ_OFFSET_Q;
     using KernelConfig = ForwardKernelConfig<Arch::Ascend950, Element, ElementOffset, BLOCK_K, HAS_RAB, HAS_MASK>;
-    using KernelBuilder = ForwardKenrelBuilder<KernelConfig>;
-
-    using QBlockScheduler = typename KernelBuilder::QBlockScheduler;
-    using KBlockScheduler = typename KernelBuilder::KBlockScheduler;
+    using KernelBuilder = ForwardKernelBuilder<KernelConfig>;
 
     if ASCEND_IS_AIC {
+        using QBlockScheduler = typename KernelBuilder::QBlockScheduler;
+        using KBlockScheduler = typename KernelBuilder::KBlockScheduler;
+
         using BlockMmadQK = typename KernelBuilder::BlockMmadQK;
         using BlockMmadPV = typename KernelBuilder::BlockMmadPV;
 
@@ -78,6 +78,9 @@ CATLASS_GLOBAL void hstu_forward_v2(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR att
         MmadMainLoopKernel kernel(tiling);
         kernel(params);
     } else {
+        using QBlockScheduler = typename KernelBuilder::QBlockScheduler;
+        using KBlockScheduler = typename KernelBuilder::KBlockScheduler;
+
         using BlockEpilogueQK = typename KernelBuilder::BlockEpilogueQK;
         using BlockEpiloguePV = typename KernelBuilder::BlockEpiloguePV;
 

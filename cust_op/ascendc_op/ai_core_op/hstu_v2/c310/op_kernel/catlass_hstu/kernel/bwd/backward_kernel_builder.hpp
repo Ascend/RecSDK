@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ struct TileSelector<Element, 128> {                           // 128 max dim
 template <class Element>
 struct TileSelector<Element, 256> {                          // 256 max dim
     using L1TileShape = Shape<Int<128>, Int<64>, Int<256>>;  // 128, 64, 256 L1 tile block
-    using L0TileShape = Shape<Int<64>, Int<64>, Int<256>>;   // 64, 64, 256 L1 tile block
+    using L0TileShape = Shape<Int<64>, Int<64>, Int<256>>;   // 64, 64, 256 L0 tile block
 };
 
 /**
