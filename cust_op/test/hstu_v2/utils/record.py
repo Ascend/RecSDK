@@ -16,8 +16,7 @@
 # ==============================================================================
 import os
 import csv
-from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -48,10 +47,7 @@ class Record:
 
         # 边框样式
         self.border = Border(
-            left=Side(style="thin"),
-            right=Side(style="thin"),
-            top=Side(style="thin"),
-            bottom=Side(style="thin")
+            left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin")
         )
 
         # 定义列头
@@ -66,30 +62,35 @@ class Record:
             "Has RAB",
             "Data Type",
             "Seed",
-            "Overall Pass"
+            "Overall Pass",
         ]
 
-        self.grad_headers = ["DQ", "DK", "DV", "DRAB"]
+        self.grad_headers = ["OUT", "DQ", "DK", "DV", "DRAB"]
 
         # 详细精度数据的列头模板
         self.detail_headers = ["Actual-FP32 Ref", "FP32 Ref", "Actual-Out Ref", "Passed"]
 
         # 序列长度统计的列头
-        self.seq_stat_headers = ["SeqLen Q Mean", "SeqLen Q Max", "SeqLen Q Min",
-                                  "SeqLen K Mean", "SeqLen K Max", "SeqLen K Min"]
+        self.seq_stat_headers = [
+            "SeqLen Q Mean",
+            "SeqLen Q Max",
+            "SeqLen Q Min",
+            "SeqLen K Mean",
+            "SeqLen K Max",
+            "SeqLen K Min",
+        ]
 
         # 初始化表头
         self._init_headers()
 
         self.current_row = 2  # 数据从第2行开始
 
-
     def record(
         self,
         case_name: str,
         params: Dict[str, Any],
         detail: Optional[Dict[str, Any]] = None,
-        seq_stats: Optional[Dict[str, Any]] = None
+        seq_stats: Optional[Dict[str, Any]] = None,
     ):
         """记录单个测试用例结果
 
@@ -245,7 +246,6 @@ class Record:
 
         self.current_row += 1
 
-
     def _check_pass(self, grad_detail: Dict[str, Any]) -> bool:
         """检查单个梯度是否通过验证"""
         # 优先使用 passed 字段
@@ -261,7 +261,6 @@ class Record:
         try_allclose = grad_detail.get("try_allclose", False)
         return (actual_fp32_out_ref <= multiplier * fp32_out_ref) or try_allclose
 
-
     def save(self):
         """保存 Excel 文件"""
         # 确保输出目录存在
@@ -272,15 +271,12 @@ class Record:
         self.workbook.save(self.output_path)
         print(f"Test results saved to: {self.output_path}")
 
-
     def __enter__(self):
         return self
-
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.save()
 
-    
     def _init_headers(self):
         """初始化表头"""
         headers = self.base_headers.copy()
@@ -321,10 +317,21 @@ class BenchmarkRecord:
         """
         self.output_path = output_path
         self.headers = [
-            'batch_size', 'head_num', 'max_seqlen_q', 'max_seqlen_k',
-            'head_dim_qk', 'head_dim_v', 'has_rab', 'data_type', 'seed',
-            'seq_lens_q_mean', 'seq_lens_q_max', 'seq_lens_q_min',
-            'seq_lens_k_mean', 'seq_lens_k_max', 'seq_lens_k_min'
+            'batch_size',
+            'head_num',
+            'max_seqlen_q',
+            'max_seqlen_k',
+            'head_dim_qk',
+            'head_dim_v',
+            'has_rab',
+            'data_type',
+            'seed',
+            'seq_lens_q_mean',
+            'seq_lens_q_max',
+            'seq_lens_q_min',
+            'seq_lens_k_mean',
+            'seq_lens_k_max',
+            'seq_lens_k_min',
         ]
         self.current_row = 0
         # 初始化文件，先写入表头
@@ -334,7 +341,7 @@ class BenchmarkRecord:
         """初始化CSV文件"""
         if os.path.exists(self.output_path):
             os.remove(self.output_path)
-        with open(self.output_path, 'w', newline='') as f:
+        with open(self.output_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(self.headers)
 
@@ -376,22 +383,24 @@ class BenchmarkRecord:
             params.get("head_dim_v"),
             params.get("has_rab"),
             str(params.get("data_type")).replace('torch.', ''),
-            params.get("seed")
+            params.get("seed"),
         ]
         # 添加序列长度统计信息
         if seq_stats:
-            row.extend([
-                seq_stats.get("seq_lens_q_mean"),
-                seq_stats.get("seq_lens_q_max"),
-                seq_stats.get("seq_lens_q_min"),
-                seq_stats.get("seq_lens_k_mean"),
-                seq_stats.get("seq_lens_k_max"),
-                seq_stats.get("seq_lens_k_min")
-            ])
+            row.extend(
+                [
+                    seq_stats.get("seq_lens_q_mean"),
+                    seq_stats.get("seq_lens_q_max"),
+                    seq_stats.get("seq_lens_q_min"),
+                    seq_stats.get("seq_lens_k_mean"),
+                    seq_stats.get("seq_lens_k_max"),
+                    seq_stats.get("seq_lens_k_min"),
+                ]
+            )
         else:
             row.extend([None] * 6)
 
-        with open(self.output_path, 'a', newline='') as f:
+        with open(self.output_path, 'a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(row)
         self.current_row += 1
