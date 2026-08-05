@@ -880,3 +880,944 @@ index 926d918e..a0f5664c 100644
              ddr_cap=512 * 1024**3,
              local_world_size=2,
          )
+@@ -1268,7 +1268,7 @@ class TestHashStabilityAcrossMachines(unittest.TestCase):
+         for ddr in [DDR_A, DDR_B]:
+             topo = Topology(
+                 world_size=2,
+-                compute_device="cuda",
++                compute_device="npu",
+                 hbm_cap=191_503_138_816,
+                 ddr_cap=ddr,
+                 local_world_size=2,
+@@ -1359,10 +1359,10 @@ class TestKernelConfig(unittest.TestCase):
+ 
+         with self.subTest("instantiation_with_hardware_based_bandwidth"):
+             config = KernelConfig(
+-                compute_device="cuda",
++                compute_device="npu",
+                 use_hardware_based_bandwidth=True,
+             )
+-            self.assertEqual(config.compute_device, "cuda")
++            self.assertEqual(config.compute_device, "npu")
+             self.assertTrue(config.use_hardware_based_bandwidth)
+             self.assertIsNone(config.generalized_comms_bandwidths)
+ 
+@@ -1383,20 +1383,20 @@ class TestTopologyCreatedByFactory(unittest.TestCase):
+ 
+     @patch("torchrec.distributed.planner.types.logging")
+     def test_direct_construction_sets_flag_false(self, mock_logging: MagicMock) -> None:
+-        topology = Topology(world_size=2, compute_device="cuda")
++        topology = Topology(world_size=2, compute_device="npu")
+         self.assertFalse(topology._created_by_factory)
+ 
+     @patch("torchrec.distributed.planner.types.logging")
+     def test_direct_construction_logs_warning(self, mock_logging: MagicMock) -> None:
+         mock_logger = MagicMock()
+         mock_logging.getLogger.return_value = mock_logger
+-        Topology(world_size=2, compute_device="cuda")
++        Topology(world_size=2, compute_device="npu")
+         mock_logger.warning.assert_called_once()
+         self.assertIn("TopologyFactory", mock_logger.warning.call_args[0][0])
+ 
+     def test_factory_creation_sets_flag_true(self) -> None:
+         trainer_config = TrainerConfig(world_size=2, local_world_size=2)
+-        kernel_config = KernelConfig(compute_device="cuda")
++        kernel_config = KernelConfig(compute_device="npu")
+         topology = TopologyFactory.create_topology(
+             trainer_config=trainer_config,
+             kernel_config=kernel_config,
+@@ -1410,7 +1410,7 @@ class TestTopologyCreatedByFactory(unittest.TestCase):
+         mock_logger = MagicMock()
+         mock_logging.getLogger.return_value = mock_logger
+         topology = Topology(
+-            world_size=2, compute_device="cuda", created_by_factory=True
++            world_size=2, compute_device="npu", created_by_factory=True
+         )
+         self.assertTrue(topology._created_by_factory)
+         mock_logger.warning.assert_not_called()
+@@ -1423,7 +1423,7 @@ class TestTopologyFactory(unittest.TestCase):
+         """Test basic topology creation scenarios."""
+         with self.subTest("create_topology_basic"):
+             trainer_config = TrainerConfig(world_size=8, local_world_size=8)
+-            kernel_config = KernelConfig(compute_device="cuda")
++            kernel_config = KernelConfig(compute_device="npu")
+ 
+             topology = TopologyFactory.create_topology(
+                 trainer_config=trainer_config,
+@@ -1432,12 +1432,12 @@ class TestTopologyFactory(unittest.TestCase):
+ 
+             self.assertEqual(topology.world_size, 8)
+             self.assertEqual(topology.local_world_size, 8)
+-            self.assertEqual(topology.compute_device, "cuda")
++            self.assertEqual(topology.compute_device, "npu")
+ 
+         with self.subTest("create_topology_with_hardware_config"):
+             trainer_config = TrainerConfig(world_size=8, local_world_size=8)
+             hardware_config = HardwareConfig(hbm_cap_bytes=80 * 1024**3)
+-            kernel_config = KernelConfig(compute_device="cuda")
++            kernel_config = KernelConfig(compute_device="npu")
+ 
+             topology = TopologyFactory.create_topology(
+                 trainer_config=trainer_config,
+@@ -1589,7 +1589,7 @@ class TestTopologyFactory(unittest.TestCase):
+         with self.subTest("kernel_config_multipliers_applied"):
+             trainer_config = TrainerConfig(world_size=8, local_world_size=8)
+             kernel_config = KernelConfig(
+-                compute_device="cuda",
++                compute_device="npu",
+                 bwd_compute_multiplier=3.0,
+                 weighted_feature_bwd_compute_multiplier=2.5,
+                 uneven_sharding_perf_multiplier=1.5,
+@@ -1615,7 +1615,7 @@ class TestTopologyFactory(unittest.TestCase):
+                 inter_host_bw=100.0,
+             )
+             kernel_config = KernelConfig(
+-                compute_device="cuda",
++                compute_device="npu",
+                 generalized_comms_bandwidths=custom_comms,
+             )
+ 
+@@ -1635,7 +1635,7 @@ class TestTopologyFactory(unittest.TestCase):
+                 inter_host_bw=75.0,
+             )
+             kernel_config = KernelConfig(
+-                compute_device="cuda",
++                compute_device="npu",
+                 use_hardware_based_bandwidth=True,
+             )
+ 
+@@ -1657,7 +1657,7 @@ class TestTopologyFactory(unittest.TestCase):
+                 ssd_mem_bw=10.0,
+             )
+             kernel_config = KernelConfig(
+-                compute_device="cuda",
++                compute_device="npu",
+                 use_hardware_based_bandwidth=True,
+             )
+ 
+diff --git a/torchrec/inference/tests/test_inference.py b/torchrec/inference/tests/test_inference.py
+index f59f9c59..613e8cbe 100644
+--- a/torchrec/inference/tests/test_inference.py
++++ b/torchrec/inference/tests/test_inference.py
+@@ -11,6 +11,7 @@ import unittest
+ from argparse import Namespace
+ from typing import Any, cast, Dict, List
+ 
++import pytest
+ import torch
+ from fbgemm_gpu.split_embedding_configs import SparseType
+ from torchrec import PoolingType
+diff --git a/torchrec/sparse/tests/test_jagged_tensor.py b/torchrec/sparse/tests/test_jagged_tensor.py
+index ec455840..9b0cf7dc 100644
+--- a/torchrec/sparse/tests/test_jagged_tensor.py
++++ b/torchrec/sparse/tests/test_jagged_tensor.py
+@@ -302,11 +302,11 @@ class TestJaggedTensor(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_from_dense_device(self) -> None:
+-        device = torch.device("cuda", index=0)
++        device = torch.device("npu", index=0)
+         values = [
+             torch.tensor([1.0], device=device),
+             torch.tensor([7.0, 8.0], device=device),
+@@ -702,16 +702,16 @@ class TestJaggedTensor(unittest.TestCase):
+         torch.testing.assert_close(j.weights(), j2.weights(), rtol=0, atol=0)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_record_stream(self) -> None:
+         j = JaggedTensor(
+             offsets=torch.tensor([0, 2, 2, 3]),
+             values=torch.tensor([0.5, 1.0, 1.5]),
+             weights=torch.tensor([5.0, 10.0, 15.0]),
+-        ).to(torch.device("cuda"))
+-        j.record_stream(torch.cuda.current_stream())
++        ).to(torch.device("npu"))
++        j.record_stream(torch.npu.current_stream())
+ 
+     def test_string_basic(self) -> None:
+         values = torch.Tensor([1.0])
+@@ -1197,8 +1197,8 @@ class TestJaggedTensorTracing(unittest.TestCase):
+         self.assertIsNone(empty_jt.weights_or_none())
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_empty_like_with_device(self) -> None:
+         # Setup: Create a JaggedTensor on CPU
+@@ -1213,24 +1213,24 @@ class TestJaggedTensorTracing(unittest.TestCase):
+         )
+ 
+         # Execute: Create an empty_like JaggedTensor on CUDA device (cross-device)
+-        empty_jt = JaggedTensor.empty_like(jt, device=torch.device("cuda"))
++        empty_jt = JaggedTensor.empty_like(jt, device=torch.device("npu"))
+ 
+         # Assert: Verify the empty JT preserves structure and is on the correct device
+-        self.assertEqual(empty_jt.device().type, "cuda")
++        self.assertEqual(empty_jt.device().type, "npu")
+         self.assertEqual(empty_jt.values().dtype, jt.values().dtype)
+         self.assertEqual(empty_jt.weights().dtype, jt.weights().dtype)
+         # Assert: Verify tensors are allocated on CUDA
+-        self.assertTrue(empty_jt.values().is_cuda)
+-        self.assertTrue(empty_jt.lengths().is_cuda)
+-        self.assertTrue(empty_jt.weights().is_cuda)
++        self.assertTrue(empty_jt.values().is_npu)
++        self.assertTrue(empty_jt.lengths().is_npu)
++        self.assertTrue(empty_jt.weights().is_npu)
+         # Assert: Verify tensor sizes match the original
+         self.assertEqual(empty_jt.values().size(), jt.values().size())
+         self.assertEqual(empty_jt.weights().size(), jt.weights().size())
+         self.assertEqual(empty_jt.lengths().size(), jt.lengths().size())
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_copy_basic(self) -> None:
+         # Setup: Create source JT on CPU and destination JT on CUDA
+@@ -1244,9 +1244,9 @@ class TestJaggedTensorTracing(unittest.TestCase):
+             weights=source_weights,
+         )
+ 
+-        dest_values = torch.zeros(4, device=torch.device("cuda"))
+-        dest_weights = torch.zeros(4, device=torch.device("cuda"))
+-        dest_lengths = torch.zeros(2, dtype=torch.int64, device=torch.device("cuda"))
++        dest_values = torch.zeros(4, device=torch.device("npu"))
++        dest_weights = torch.zeros(4, device=torch.device("npu"))
++        dest_lengths = torch.zeros(2, dtype=torch.int64, device=torch.device("npu"))
+ 
+         dest_jt = JaggedTensor(
+             values=dest_values,
+@@ -1270,13 +1270,13 @@ class TestJaggedTensorTracing(unittest.TestCase):
+         # Verify it returns the same object (in-place operation)
+         self.assertIs(result_jt, dest_jt)
+         # Assert: Verify tensors are on CUDA
+-        self.assertTrue(result_jt.values().is_cuda)
+-        self.assertTrue(result_jt.weights().is_cuda)
+-        self.assertTrue(result_jt.lengths().is_cuda)
++        self.assertTrue(result_jt.values().is_npu)
++        self.assertTrue(result_jt.weights().is_npu)
++        self.assertTrue(result_jt.lengths().is_npu)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_copy_without_weights(self) -> None:
+         # Setup: Create source JT on CPU and destination JT on CUDA without weights
+@@ -1288,8 +1288,8 @@ class TestJaggedTensorTracing(unittest.TestCase):
+             lengths=source_lengths,
+         )
+ 
+-        dest_values = torch.zeros(3, device=torch.device("cuda"))
+-        dest_lengths = torch.zeros(2, dtype=torch.int64, device=torch.device("cuda"))
++        dest_values = torch.zeros(3, device=torch.device("npu"))
++        dest_lengths = torch.zeros(2, dtype=torch.int64, device=torch.device("npu"))
+ 
+         dest_jt = JaggedTensor(
+             values=dest_values,
+@@ -1308,12 +1308,12 @@ class TestJaggedTensorTracing(unittest.TestCase):
+         )
+         self.assertIsNone(result_jt.weights_or_none())
+         # Assert: Verify tensors are on CUDA
+-        self.assertTrue(result_jt.values().is_cuda)
+-        self.assertTrue(result_jt.lengths().is_cuda)
++        self.assertTrue(result_jt.values().is_npu)
++        self.assertTrue(result_jt.lengths().is_npu)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_copy_with_offsets(self) -> None:
+         # Setup: Create source JT on CPU and destination JT on CUDA with offsets
+@@ -1325,8 +1325,8 @@ class TestJaggedTensorTracing(unittest.TestCase):
+             offsets=source_offsets,
+         )
+ 
+-        dest_values = torch.zeros(5, device=torch.device("cuda"))
+-        dest_offsets = torch.zeros(3, dtype=torch.int64, device=torch.device("cuda"))
++        dest_values = torch.zeros(5, device=torch.device("npu"))
++        dest_offsets = torch.zeros(3, dtype=torch.int64, device=torch.device("npu"))
+ 
+         dest_jt = JaggedTensor(
+             values=dest_values,
+@@ -1344,12 +1344,12 @@ class TestJaggedTensorTracing(unittest.TestCase):
+             result_jt.offsets().cpu(), source_offsets, rtol=0, atol=0
+         )
+         # Assert: Verify tensors are on CUDA
+-        self.assertTrue(result_jt.values().is_cuda)
+-        self.assertTrue(result_jt.offsets().is_cuda)
++        self.assertTrue(result_jt.values().is_npu)
++        self.assertTrue(result_jt.offsets().is_npu)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_copy_non_blocking(self) -> None:
+         # Setup: Create source JT on CPU and destination JT on CUDA
+@@ -1361,8 +1361,8 @@ class TestJaggedTensorTracing(unittest.TestCase):
+             lengths=source_lengths,
+         )
+ 
+-        dest_values = torch.zeros(3, device=torch.device("cuda"))
+-        dest_lengths = torch.zeros(1, dtype=torch.int64, device=torch.device("cuda"))
++        dest_values = torch.zeros(3, device=torch.device("npu"))
++        dest_lengths = torch.zeros(1, dtype=torch.int64, device=torch.device("npu"))
+ 
+         dest_jt = JaggedTensor(
+             values=dest_values,
+@@ -1373,7 +1373,7 @@ class TestJaggedTensorTracing(unittest.TestCase):
+         result_jt = dest_jt.copy_(source_jt, non_blocking=True)
+ 
+         # Synchronize to ensure the non-blocking copy completes before checking
+-        torch.cuda.synchronize()
++        torch.npu.synchronize()
+ 
+         # Assert: Verify the copy succeeded
+         torch.testing.assert_close(
+@@ -1383,8 +1383,8 @@ class TestJaggedTensorTracing(unittest.TestCase):
+             result_jt.lengths().cpu(), source_lengths, rtol=0, atol=0
+         )
+         # Assert: Verify tensors are on CUDA
+-        self.assertTrue(result_jt.values().is_cuda)
+-        self.assertTrue(result_jt.lengths().is_cuda)
++        self.assertTrue(result_jt.values().is_npu)
++        self.assertTrue(result_jt.lengths().is_npu)
+ 
+     def test_cuda_tolist_cpu_tensor(self) -> None:
+         tensor = torch.tensor([3, 5, 7, 2])
+@@ -1392,28 +1392,28 @@ class TestJaggedTensorTracing(unittest.TestCase):
+         self.assertEqual(result, [3, 5, 7, 2])
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_cuda_tolist_cuda_tensor(self) -> None:
+-        tensor = torch.tensor([3, 5, 7, 2], device="cuda")
++        tensor = torch.tensor([3, 5, 7, 2], device="npu")
+         result = _safe_tolist(tensor)
+         self.assertEqual(result, [3, 5, 7, 2])
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_cuda_tolist_empty_tensor(self) -> None:
+-        tensor = torch.tensor([], dtype=torch.int64, device="cuda")
++        tensor = torch.tensor([], dtype=torch.int64, device="npu")
+         result = _safe_tolist(tensor)
+         self.assertEqual(result, [])
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_cuda_tolist_single_element(self) -> None:
+-        tensor = torch.tensor([42], device="cuda")
++        tensor = torch.tensor([42], device="npu")
+         result = _safe_tolist(tensor)
+         self.assertEqual(result, [42])
+diff --git a/torchrec/sparse/tests/test_keyed_jagged_tensor.py b/torchrec/sparse/tests/test_keyed_jagged_tensor.py
+index c04a63e0..a9d5e828 100644
+--- a/torchrec/sparse/tests/test_keyed_jagged_tensor.py
++++ b/torchrec/sparse/tests/test_keyed_jagged_tensor.py
+@@ -988,8 +988,8 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_record_stream(self) -> None:
+         j = KeyedJaggedTensor.from_offsets_sync(
+@@ -997,8 +997,8 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+             values=torch.arange(8),
+             weights=torch.arange(8 * 10),
+             keys=["index_0", "index_1"],
+-        ).to(torch.device("cuda"))
+-        j.record_stream(torch.cuda.current_stream())
++        ).to(torch.device("npu"))
++        j.record_stream(torch.npu.current_stream())
+ 
+     def test_equality(self) -> None:
+         values = torch.Tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+@@ -1232,8 +1232,8 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+         self.assertIsNone(empty_kjt._stride_per_key_per_rank)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_empty_like_with_device(self) -> None:
+         # Setup: Create a KJT on CPU
+@@ -1249,26 +1249,26 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+             weights=weights,
+         )
+ 
+-        # Execute: Create an empty_like KJT on CUDA device (cross-device)
+-        empty_kjt = KeyedJaggedTensor.empty_like(kjt, device=torch.device("cuda"))
++        # Execute: Create an empty_like KJT on NPU device (cross-device)
++        empty_kjt = KeyedJaggedTensor.empty_like(kjt, device=torch.device("npu"))
+ 
+         # Assert: Verify the empty KJT preserves structure and is on the correct device
+         self.assertEqual(empty_kjt.keys(), kjt.keys())
+-        self.assertEqual(empty_kjt.device().type, "cuda")
++        self.assertEqual(empty_kjt.device().type, "npu")
+         self.assertEqual(empty_kjt.values().dtype, kjt.values().dtype)
+         self.assertEqual(empty_kjt.weights().dtype, kjt.weights().dtype)
+-        # Assert: Verify tensors are allocated on CUDA
+-        self.assertTrue(empty_kjt.values().is_cuda)
+-        self.assertTrue(empty_kjt.lengths().is_cuda)
+-        self.assertTrue(empty_kjt.weights().is_cuda)
++        # Assert: Verify tensors are allocated on NPU
++        self.assertTrue(empty_kjt.values().is_npu)
++        self.assertTrue(empty_kjt.lengths().is_npu)
++        self.assertTrue(empty_kjt.weights().is_npu)
+         # Assert: Verify tensor sizes match the original
+         self.assertEqual(empty_kjt.values().size(), kjt.values().size())
+         self.assertEqual(empty_kjt.weights().size(), kjt.weights().size())
+         self.assertEqual(empty_kjt.lengths().size(), kjt.lengths().size())
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_empty_like_with_device_and_inverse_indices(self) -> None:
+         # Setup: Create a KJT with inverse_indices on CPU
+@@ -1288,18 +1288,18 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+             inverse_indices=(keys, inverse_indices),
+         )
+ 
+-        # Execute: Create an empty_like KJT on CUDA device (cross-device)
+-        empty_kjt = KeyedJaggedTensor.empty_like(kjt, device=torch.device("cuda"))
++        # Execute: Create an empty_like KJT on NPU device (cross-device)
++        empty_kjt = KeyedJaggedTensor.empty_like(kjt, device=torch.device("npu"))
+ 
+         # Assert: Verify the empty KJT preserves structure and is on the correct device
+         self.assertEqual(empty_kjt.keys(), kjt.keys())
+-        self.assertEqual(empty_kjt.device().type, "cuda")
++        self.assertEqual(empty_kjt.device().type, "npu")
+         self.assertEqual(empty_kjt.values().dtype, kjt.values().dtype)
+         self.assertEqual(empty_kjt.weights().dtype, kjt.weights().dtype)
+-        # Assert: Verify tensors are allocated on CUDA
+-        self.assertTrue(empty_kjt.values().is_cuda)
+-        self.assertTrue(empty_kjt.lengths().is_cuda)
+-        self.assertTrue(empty_kjt.weights().is_cuda)
++        # Assert: Verify tensors are allocated on NPU
++        self.assertTrue(empty_kjt.values().is_npu)
++        self.assertTrue(empty_kjt.lengths().is_npu)
++        self.assertTrue(empty_kjt.weights().is_npu)
+         # Assert: Verify tensor sizes match the original
+         self.assertEqual(empty_kjt.values().size(), kjt.values().size())
+         self.assertEqual(empty_kjt.weights().size(), kjt.weights().size())
+@@ -1308,12 +1308,12 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+         self.assertEqual(
+             empty_kjt.stride_per_key_per_rank(), kjt.stride_per_key_per_rank()
+         )
+-        # Assert: Verify inverse_indices are preserved and on CUDA
++        # Assert: Verify inverse_indices are preserved and on NPU
+         self.assertIsNotNone(empty_kjt.inverse_indices_or_none())
+         empty_inverse_indices = empty_kjt.inverse_indices()
+         kjt_inverse_indices = kjt.inverse_indices()
+         self.assertEqual(empty_inverse_indices[0], kjt_inverse_indices[0])
+-        self.assertTrue(empty_inverse_indices[1].is_cuda)
++        self.assertTrue(empty_inverse_indices[1].is_npu)
+         self.assertEqual(empty_inverse_indices[1].size(), kjt_inverse_indices[1].size())
+ 
+     def test_empty_like_with_stride_per_key_per_rank(self) -> None:
+@@ -1351,8 +1351,8 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_copy_basic(self) -> None:
+         # Setup: Create source KJT on CPU and destination KJT on CUDA
+@@ -1368,9 +1368,9 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+             weights=source_weights,
+         )
+ 
+-        dest_values = torch.zeros(4, device=torch.device("cuda"))
+-        dest_weights = torch.zeros(4, device=torch.device("cuda"))
+-        dest_lengths = torch.zeros(2, dtype=torch.int64, device=torch.device("cuda"))
++        dest_values = torch.zeros(4, device=torch.device("npu"))
++        dest_weights = torch.zeros(4, device=torch.device("npu"))
++        dest_lengths = torch.zeros(2, dtype=torch.int64, device=torch.device("npu"))
+ 
+         dest_kjt = KeyedJaggedTensor(
+             values=dest_values,
+@@ -1379,7 +1379,7 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+             weights=dest_weights,
+         )
+ 
+-        # Execute: Copy source KJT (CPU) to destination KJT (CUDA)
++        # Execute: Copy source KJT (CPU) to destination KJT (NPU)
+         result_kjt = dest_kjt.copy_(source_kjt)
+ 
+         # Assert: Verify the destination KJT has the source values
+@@ -1394,13 +1394,13 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+         )
+         self.assertIs(result_kjt, dest_kjt)
+         # Assert: Verify tensors are on CUDA
+-        self.assertTrue(result_kjt.values().is_cuda)
+-        self.assertTrue(result_kjt.weights().is_cuda)
+-        self.assertTrue(result_kjt.lengths().is_cuda)
++        self.assertTrue(result_kjt.values().is_npu)
++        self.assertTrue(result_kjt.weights().is_npu)
++        self.assertTrue(result_kjt.lengths().is_npu)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_copy_without_weights(self) -> None:
+         # Setup: Create source KJT on CPU and destination KJT on CUDA without weights
+@@ -1414,8 +1414,8 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+             lengths=source_lengths,
+         )
+ 
+-        dest_values = torch.zeros(3, device=torch.device("cuda"))
+-        dest_lengths = torch.zeros(2, dtype=torch.int64, device=torch.device("cuda"))
++        dest_values = torch.zeros(3, device=torch.device("npu"))
++        dest_lengths = torch.zeros(2, dtype=torch.int64, device=torch.device("npu"))
+ 
+         dest_kjt = KeyedJaggedTensor(
+             values=dest_values,
+@@ -1434,12 +1434,12 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+             result_kjt.lengths().cpu(), source_lengths, rtol=0, atol=0
+         )
+         # Assert: Verify tensors are on CUDA
+-        self.assertTrue(result_kjt.values().is_cuda)
+-        self.assertTrue(result_kjt.lengths().is_cuda)
++        self.assertTrue(result_kjt.values().is_npu)
++        self.assertTrue(result_kjt.lengths().is_npu)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_copy_with_offsets(self) -> None:
+         # Setup: Create source KJT on CPU and destination KJT on CUDA with offsets
+@@ -1453,8 +1453,8 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+             offsets=source_offsets,
+         )
+ 
+-        dest_values = torch.zeros(5, device=torch.device("cuda"))
+-        dest_offsets = torch.zeros(3, dtype=torch.int64, device=torch.device("cuda"))
++        dest_values = torch.zeros(5, device=torch.device("npu"))
++        dest_offsets = torch.zeros(3, dtype=torch.int64, device=torch.device("npu"))
+ 
+         dest_kjt = KeyedJaggedTensor(
+             values=dest_values,
+@@ -1472,12 +1472,12 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+         torch.testing.assert_close(
+             result_kjt.offsets().cpu(), source_offsets, rtol=0, atol=0
+         )
+-        self.assertTrue(result_kjt.values().is_cuda)
+-        self.assertTrue(result_kjt.offsets().is_cuda)
++        self.assertTrue(result_kjt.values().is_npu)
++        self.assertTrue(result_kjt.offsets().is_npu)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "CUDA is not available",
++        torch.npu.device_count() <= 0,
++        "NPU is not available",
+     )
+     def test_copy_non_blocking(self) -> None:
+         # Setup: Create source KJT on CPU and destination KJT on CUDA
+@@ -1491,8 +1491,8 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+             lengths=source_lengths,
+         )
+ 
+-        dest_values = torch.zeros(3, device=torch.device("cuda"))
+-        dest_lengths = torch.zeros(1, dtype=torch.int64, device=torch.device("cuda"))
++        dest_values = torch.zeros(3, device=torch.device("npu"))
++        dest_lengths = torch.zeros(1, dtype=torch.int64, device=torch.device("npu"))
+ 
+         dest_kjt = KeyedJaggedTensor(
+             values=dest_values,
+@@ -1511,8 +1511,8 @@ class TestKeyedJaggedTensor(unittest.TestCase):
+             result_kjt.lengths().cpu(), source_lengths, rtol=0, atol=0
+         )
+         # Assert: Verify tensors are on CUDA
+-        self.assertTrue(result_kjt.values().is_cuda)
+-        self.assertTrue(result_kjt.lengths().is_cuda)
++        self.assertTrue(result_kjt.values().is_npu)
++        self.assertTrue(result_kjt.lengths().is_npu)
+ 
+     def test_clear_storage(self) -> None:
+         kjt = KeyedJaggedTensor(
+@@ -1872,10 +1872,10 @@ class TestComputeKJTToJTDict(unittest.TestCase):
+ class TestKeyedJaggedTensorGPU(unittest.TestCase):
+     def setUp(self) -> None:
+         super().setUp()
+-        self.device = torch.cuda.current_device()
++        self.device = torch.npu.current_device()
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_permute(self) -> None:
+@@ -1908,7 +1908,7 @@ class TestKeyedJaggedTensorGPU(unittest.TestCase):
+         self.assertEqual(permuted_jag_tensor.weights_or_none(), None)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_permute_vb(self) -> None:
+@@ -1944,7 +1944,7 @@ class TestKeyedJaggedTensorGPU(unittest.TestCase):
+         self.assertEqual(permuted_jag_tensor.weights_or_none(), None)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_permute_vb_duplicate(self) -> None:
+@@ -2003,7 +2003,7 @@ class TestKeyedJaggedTensorGPU(unittest.TestCase):
+         self.assertEqual(permuted_jag_tensor.weights_or_none(), None)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_permute_duplicates(self) -> None:
+diff --git a/torchrec/sparse/tests/test_keyed_tensor.py b/torchrec/sparse/tests/test_keyed_tensor.py
+index 08e2ab64..0a200ec9 100644
+--- a/torchrec/sparse/tests/test_keyed_tensor.py
++++ b/torchrec/sparse/tests/test_keyed_tensor.py
+@@ -126,7 +126,7 @@ class TestKeyedTensor(unittest.TestCase):
+         )
+ 
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         regroup_func=st.sampled_from(
+             [
+                 KeyedTensor.regroup,
+@@ -140,8 +140,8 @@ class TestKeyedTensor(unittest.TestCase):
+     def test_regroup_kts(
+         self, regroup_func: Callable[..., List[torch.Tensor]], device_str: str
+     ) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+ 
+         kts = build_kts(
+@@ -164,7 +164,7 @@ class TestKeyedTensor(unittest.TestCase):
+                 torch.testing.assert_close(ref, output)
+ 
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         regroup_func=st.sampled_from(
+             [
+                 KeyedTensor.regroup,
+@@ -178,7 +178,7 @@ class TestKeyedTensor(unittest.TestCase):
+     def test_regroup_kts_inference(
+         self, regroup_func: Callable[..., List[torch.Tensor]], device_str: str
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -270,7 +270,7 @@ class TestKeyedTensor(unittest.TestCase):
+         self.assertEqual(kt.size_in_bytes(), expected_size)
+ 
+     @given(
+-        device_str=st.sampled_from(["cpu", "cuda"]),
++        device_str=st.sampled_from(["cpu", "npu"]),
+         regroup_func=st.sampled_from(
+             [
+                 KeyedTensor.regroup,
+@@ -284,7 +284,7 @@ class TestKeyedTensor(unittest.TestCase):
+     def test_regroup_backward(
+         self, regroup_func: Callable[..., List[torch.Tensor]], device_str: str
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -352,7 +352,7 @@ class TestKeyedTensor(unittest.TestCase):
+         )
+ 
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         regroup_func=st.sampled_from(
+             [
+                 KeyedTensor.regroup,
+@@ -365,7 +365,7 @@ class TestKeyedTensor(unittest.TestCase):
+     def test_regroup_scriptable(
+         self, regroup_func: Callable[..., List[torch.Tensor]], device_str: str
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -399,7 +399,7 @@ class TestKeyedTensor(unittest.TestCase):
+                 torch.testing.assert_close(ref, output)
+ 
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         regroup_func=st.sampled_from(
+             [
+                 KeyedTensor.regroup,
+@@ -412,7 +412,7 @@ class TestKeyedTensor(unittest.TestCase):
+     def test_regroup_scriptable_inference(
+         self, regroup_func: Callable[..., List[torch.Tensor]], device_str: str
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -600,11 +600,11 @@ class TestKeyedTensor(unittest.TestCase):
+ 
+ 
+ class TestKeyedTensorRegroupOp(unittest.TestCase):
+-    @given(device_str=st.sampled_from(["cpu", "meta", "cuda"]))
++    @given(device_str=st.sampled_from(["cpu", "meta", "npu"]))
+     @settings(verbosity=Verbosity.verbose, max_examples=5, deadline=None)
+     def test_kt_regroup_arguments(self, device_str: str) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+ 
+         keys = [["f1", "f2"], ["f3", "f4", "f5"], ["f6"]]
+@@ -639,13 +639,13 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+         self.assertEqual(out_lengths, [8, 4, 17, 10])
+ 
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         batch_size=st.sampled_from([16, 128, 1024]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_multi_permute_forward(self, device_str: str, batch_size: int) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+ 
+         keys = [["f1", "f2"], ["f3", "f4", "f5"], ["f6"]]
+@@ -674,7 +674,7 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+                 torch.testing.assert_close(out, ref)
+ 
+     @given(
+-        device_str=st.sampled_from(["meta", "cpu", "cuda"]),
++        device_str=st.sampled_from(["meta", "cpu", "npu"]),
+         dtype=st.sampled_from(
+             [
+                 torch.float,
+@@ -686,8 +686,8 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_multi_permute_dtype(self, device_str: str, dtype: torch.dtype) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+ 
+         batch_size = 4
+@@ -722,7 +722,7 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+         zipped_args=st.sampled_from(
+             [
+                 ("cpu", 32, [[3, 4], [5, 6, 7], [8]]),
+-                ("cuda", 128, [[96, 256], [512, 128, 768], [1024]]),
++                ("npu", 128, [[96, 256], [512, 128, 768], [1024]]),
+             ],
+         ),
+     )
+@@ -731,8 +731,8 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+         self, zipped_args: Tuple[str, int, List[List[int]]]
+     ) -> None:
+         device_str, batch_size, lengths = zipped_args
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+ 
+         keys = [["f1", "f2"], ["f3", "f4", "f5"], ["f6"]]
+@@ -772,14 +772,14 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+             torch.testing.assert_close(val_grad, ref_grad, rtol=1e-05, atol=1e-08)
+ 
+     @given(
+-        device_str=st.sampled_from(["cpu", "cuda"]),
++        device_str=st.sampled_from(["cpu", "npu"]),
+         batch_size=st.sampled_from([16, 1024]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_multi_permute_noncontiguous(
+         self, device_str: str, batch_size: int
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -825,12 +825,12 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+             torch.testing.assert_close(val_grad, ref_grad, rtol=1e-05, atol=1e-08)
+ 
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         batch_size=st.sampled_from([16, 1024]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_kt_regroup_arguments_op(self, device_str: str, batch_size: int) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -873,14 +873,14 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+         self.assertEqual(out_lengths, [8, 4, 17, 10])
+ 
+     @given(
+-        device_str=st.sampled_from(["cpu", "meta", "cuda"]),
++        device_str=st.sampled_from(["cpu", "meta", "npu"]),
+         batch_size=st.sampled_from([16, 1024]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_keyed_tensor_regroup_forward(
+         self, device_str: str, batch_size: int
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -919,14 +919,14 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+                 torch.testing.assert_close(out, ref)
+ 
+     @given(
+-        device_str=st.sampled_from(["cpu", "cuda"]),
++        device_str=st.sampled_from(["cpu", "npu"]),
+         batch_size=st.sampled_from([16, 1024]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_keyed_tensor_regroup_backward(
+         self, device_str: str, batch_size: int
+     ) -> None:
+-        if device_str == "cuda" and not torch.cuda.is_available():
++        if device_str == "npu" and not torch.npu.is_available():
+             return
+         else:
+             device = torch.device(device_str)
+@@ -975,10 +975,10 @@ class TestKeyedTensorRegroupOp(unittest.TestCase):
+ class TestKeyedTensorGPU(unittest.TestCase):
+     def setUp(self) -> None:
+         super().setUp()
+-        self.device = torch.cuda.current_device()
++        self.device = torch.npu.current_device()
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_regroup_backward_skips_and_duplicates(self) -> None:
+@@ -1023,7 +1023,7 @@ class TestKeyedTensorGPU(unittest.TestCase):
+         torch.allclose(actual_kt_1_grad, expected_kt_1_grad)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
++        torch.npu.device_count() <= 0,
+         "Not enough GPUs, this test requires at least one GPUs",
+     )
+     def test_regroup_backward(self) -> None:
+diff --git a/torchrec/sparse/tests/test_tensor_dict.py b/torchrec/sparse/tests/test_tensor_dict.py
+index f596fcc3..da7805dc 100644
+--- a/torchrec/sparse/tests/test_tensor_dict.py
++++ b/torchrec/sparse/tests/test_tensor_dict.py
+@@ -18,11 +18,11 @@ from torchrec.sparse.tensor_dict import maybe_td_to_kjt
+ 
+ 
+ class TestTensorDict(unittest.TestCase):
+-    @given(device_str=st.sampled_from(["cpu", "meta", "cuda"]))
++    @given(device_str=st.sampled_from(["cpu", "meta", "npu"]))
+     @settings(verbosity=Verbosity.verbose, max_examples=5, deadline=None)
+     def test_kjt_input(self, device_str: str) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+         values = torch.tensor([0, 1, 2, 3, 2, 3, 4], device=device)
+         kjt = KeyedJaggedTensor.from_offsets_sync(
+@@ -33,11 +33,11 @@ class TestTensorDict(unittest.TestCase):
+         features = maybe_td_to_kjt(kjt)
+         self.assertEqual(features, kjt)
+ 
+-    @given(device_str=st.sampled_from(["cpu", "meta", "cuda"]))
++    @given(device_str=st.sampled_from(["cpu", "meta", "npu"]))
+     @settings(verbosity=Verbosity.verbose, max_examples=5, deadline=None)
+     def test_td_kjt(self, device_str: str) -> None:
+-        # assumption only fails when using cuda but device == 0.
+-        assume(device_str != "cuda" or torch.cuda.device_count() > 0)
++        # assumption only fails when using npu but device == 0.
++        assume(device_str != "npu" or torch.npu.device_count() > 0)
+         device = torch.device(device_str)
+         values = torch.tensor([0, 1, 2, 3, 2, 3, 4], device=device)
+         lengths = torch.tensor([2, 0, 1, 1, 1, 2], device=device)
