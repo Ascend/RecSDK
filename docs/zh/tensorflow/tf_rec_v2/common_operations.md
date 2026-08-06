@@ -1,24 +1,5 @@
 # 常用操作<a name="zh-cn_topic_0000001630246513"></a>
 
-## （可选）片上内存侧动态扩容算子包安装<a name="zh-cn_topic_0000001630046409"></a>
-
-如需使用片上内存侧动态扩容功能，请参考本步骤编译安装片上内存侧动态扩容算子包。
-
-**操作步骤<a name="section15154203811598"></a>**
-
-1. 执行如下命令，在容器中设置CANN相关环境变量。
-
-    ```bash
-    source /usr/local/Ascend/cann/set_env.sh
-    ```
-
-2. 下载[Rec SDK](https://gitcode.com/Ascend/RecSDK/tree/develop/cust_op)。
-3. 解压压缩包，进入“cust\_op/ascendc\_op/ai\_core\_op/cust\_op\_by\_addr“路径下，参考以下命令编译并安装片上内存侧动态扩容算子包。
-
-    ```bash
-    bash run.sh
-    ```
-
 ## 查看Rec SDK TensorFlow安装与卸载记录<a name="zh-cn_topic_0000001683896117"></a>
 
 Rec SDK TensorFlow为Wheel包格式，安装、卸载日志记录在系统history中。
@@ -71,7 +52,7 @@ if [ -z $USER_IP ]
 then
   USER_IP=`hostname`
 fi
-export HISTTIMEFORMAT="%F %T $USER_IP:`whoami` "    # history命令显示格式：时间、IP、用户名、执行命令 
+export HISTTIMEFORMAT="%F %T $USER_IP:`whoami` "    # history命令显示格式：时间、IP、用户名、执行命令
 PROMPT_COMMAND=' { date "+%Y-%m-%d %T - $(history 1 | { read x cmd; echo "$cmd"; })"; } >> $HISTFILE'    # 实时将history命令写到配置的文件里
 ```
 
