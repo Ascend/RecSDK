@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -182,19 +182,23 @@ __simd_callee__ inline void MulMask(RegType& dst, RegType& src, __ubuf__ Type* u
  */
 template <typename Type, typename AccType, bool HAS_RAB, bool HAS_MASK, typename RegType>
 __simd_callee__ inline void SiluScore(__ubuf__ AccType* ubSPtr, __ubuf__ Type* ubRabPtr, __ubuf__ Type* ubMaskPtr,
-                                      __ubuf__ Type* ubSiluScorePtr, RegType& vregA, RegType& vregZ, RegType& vregT,
-                                      RegType& vregS, RegType& vregOnes, RegType& vregZeros, AccType alpha,
-                                      AccType scale, AscendC::MicroAPI::MaskReg& maskReg)
+                                      __ubuf__ Type* ubSiluScorePtr, RegType& vregA, RegType& vregZ, RegType& vregS,
+                                      RegType& vregOnes, RegType& vregZeros, RegType& vregAlpha, RegType& vregScale,
+                                      AscendC::MicroAPI::MaskReg& maskReg)
 {
     AscendC::MicroAPI::LoadAlign(vregA, ubSPtr);
 
     if constexpr (HAS_RAB) {
-        AddRab<Type, AccType>(vregA, ubRabPtr, alpha, maskReg);  // A = A + Rab * alpha
-    } else {
-        RegType vregAlpha;
-        AscendC::MicroAPI::Duplicate(vregAlpha, alpha);
-        AscendC::MicroAPI::Mul(vregA, vregA, vregAlpha, maskReg);  // A = A * alpha
+        RegType vregRab;
+        if constexpr (!std::is_same<Type, AccType>::value) {
+            CastUpLoad<AccType, Type>(vregRab, ubRabPtr, maskReg);
+        } else {
+            AscendC::MicroAPI::LoadAlign(vregRab, ubRabPtr);
+        }
+        AscendC::MicroAPI::Add(vregA, vregA, vregRab, maskReg);  // A = S + Rab
     }
+
+    AscendC::MicroAPI::Mul(vregA, vregA, vregAlpha, maskReg);  // A = A * alpha
 
     Sigmoid(vregZ, vregA, vregOnes, vregZeros, maskReg);  // Z = Sigmoid(A)
 
@@ -202,13 +206,8 @@ __simd_callee__ inline void SiluScore(__ubuf__ AccType* ubSPtr, __ubuf__ Type* u
         MulMask<Type, AccType>(vregZ, vregZ, ubMaskPtr, maskReg);  // Z = Z * mask
     }
 
-    AscendC::MicroAPI::Mul(vregS, vregZ, vregA, maskReg);  // S = A * Z
-
-    {
-        RegType vregScale;
-        AscendC::MicroAPI::Duplicate(vregScale, scale);
-        AscendC::MicroAPI::Mul(vregS, vregS, vregScale, maskReg);  // S = S * scale
-    }
+    AscendC::MicroAPI::Mul(vregS, vregZ, vregA, maskReg);      // S = A * Z
+    AscendC::MicroAPI::Mul(vregS, vregS, vregScale, maskReg);  // S = S * scale
 
     if constexpr (!std::is_same<Type, AccType>::value) {
         CastDownStore<Type, AccType>(ubSiluScorePtr, vregS, maskReg);
@@ -258,20 +257,25 @@ __simd_vf__ inline void FastSiluScoreVf(__ubuf__ AccType* ubSPtr, __ubuf__ Type*
 
     AscendC::MicroAPI::RegTensor<AccType> vregA;
     AscendC::MicroAPI::RegTensor<AccType> vregZ;
-    AscendC::MicroAPI::RegTensor<AccType> vregT;
     AscendC::MicroAPI::RegTensor<AccType> vregS;
     AscendC::MicroAPI::RegTensor<AccType> vregOnes;
     AscendC::MicroAPI::RegTensor<AccType> vregZeros;
+    AscendC::MicroAPI::RegTensor<AccType> vregAlpha;
+    AscendC::MicroAPI::RegTensor<AccType> vregScale;
     AscendC::MicroAPI::MaskReg maskReg;
 
     AscendC::MicroAPI::Duplicate(vregOnes, 1.0f);
     AscendC::MicroAPI::Duplicate(vregZeros, 0.0f);
-    for (uint16_t i = 0; i < repeatTimes; ++i) {
-        maskReg = AscendC::MicroAPI::UpdateMask<AccType>(count);
+    AscendC::MicroAPI::Duplicate(vregAlpha, alpha);
+    AscendC::MicroAPI::Duplicate(vregScale, scale);
 
+    for (uint16_t i = 0; i < repeatTimes; ++i) {
+        // maskReg 必须在每次迭代前重算：Sigmoid 内 Div 等指令会消费/改写 mask 寄存器，
+        // 循环外只算一次会导致后续迭代 mask 错误（3dba5595 精度回归根因）
+        maskReg = AscendC::MicroAPI::UpdateMask<AccType>(count);
         SiluScore<Type, AccType, HAS_RAB, HAS_MASK>(ubSPtr + i * oneRepElm, ubRabPtr + i * oneRepElm,
                                                     ubMaskPtr + i * oneRepElm, ubSiluScorePtr + i * oneRepElm, vregA,
-                                                    vregZ, vregT, vregS, vregOnes, vregZeros, alpha, scale, maskReg);
+                                                    vregZ, vregS, vregOnes, vregZeros, vregAlpha, vregScale, maskReg);
     }
 }
 

@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,14 +38,8 @@ at::Tensor hstu_forward_v2_impl_npu(const at::Tensor& q, const at::Tensor& k, co
     auto denseQ = q.contiguous();
     auto denseK = k.contiguous();
     auto denseV = v.contiguous();
-    auto denseBias = c10::value_or_else(rab, [] { return at::Tensor(); });
-    auto maskNpu = c10::value_or_else(mask, [] { return at::Tensor(); });
-
-    if (denseBias.defined()) {
-        TORCH_CHECK((denseBias.dim() == 4 && (denseBias.size(1) == denseQ.size(1))), "Error: rab shape mismatch. ");
-        TORCH_CHECK((denseBias.size(0) * denseBias.size(2) == denseQ.size(0)), "Error: rab shape mismatch. ");
-        TORCH_CHECK((denseBias.size(0) * denseBias.size(3) == denseK.size(0)), "Error: rab shape mismatch. ");
-    }
+    auto denseBias = rab.value_or(at::Tensor());
+    auto maskNpu = mask.value_or(at::Tensor());
 
     auto batchsize = acSeqOffset.size(0) - 1;
     auto _zeros = at::zeros({batchsize}, acSeqOffset.options());

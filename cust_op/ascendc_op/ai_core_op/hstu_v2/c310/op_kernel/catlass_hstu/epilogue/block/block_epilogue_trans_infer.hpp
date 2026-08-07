@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -81,21 +81,22 @@ public:
     static constexpr uint32_t ELE_NUM_PER_C0 = Catlass::BYTE_PER_C0 / sizeof(Element);
 
     CATLASS_DEVICE
-    BlockEpilogueTransOut(uint32_t cubeFlag, uint32_t stride, Arch::Resource<ArchTag>& resource)
+    BlockEpilogueTransOut(uint32_t cubeFlag, uint32_t transEventId, Arch::Resource<ArchTag>& resource)
     {
         this->cubeReady = Arch::CrossCoreFlag(cubeFlag);
-        this->stride = stride;
+        this->transEventId = transEventId;
         this->ubTransOut = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::TRANS_OUT);
-        this->ubTransIn = resource.ubBuf.template GetBufferByByte<ElementAccumulator>(TileBuffer::TRANS_IN);
+        for (uint32_t i = 0; i < TileBuffer::TRANS_IN_CNT; i++) {
+            this->ubTransIn[i] = resource.ubBuf.template GetBufferByByte<ElementAccumulator>(TileBuffer::TRANS_IN[i]);
+        }
     }
 
     template <class TensorA>
-    CATLASS_DEVICE void operator()(TensorA& dstTensor)
+    CATLASS_DEVICE void operator()(TensorA& dstTensor, uint32_t transInSlot = 0)
     {
         AscendC::CrossCoreWaitFlag<0x2, PIPE_V>(cubeReady.id);
 
         auto coreId = AscendC::GetSubBlockIdx();
-        auto dstOffset = dstTensor.layout()(dstTensor.coord());
         auto totalRows = tla::get<0>(dstTensor.shape());
         auto rowsCore0 = (totalRows + 1) / 2;  // ceil(totalRows/2)
         auto rowsThisCore = (coreId == 0) ? rowsCore0 : (totalRows / 2);
@@ -116,22 +117,23 @@ public:
         auto rowsPerCoreInUB = paddedRows / 2;
         auto elementsPerCore = rowsPerCoreInUB * cols;
 
-        AscendC::Cast(ubTransOut, ubTransIn, AscendC::RoundMode::CAST_RINT, elementsPerCore);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(transEventId);
 
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        AscendC::Cast(ubTransOut, ubTransIn[transInSlot], AscendC::RoundMode::CAST_RINT, elementsPerCore);
+
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(transEventId);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(transEventId);
 
         AscendC::DataCopy(dstTensor.data()[coreOffset], ubTransOut, intriParams);
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(transEventId);
     }
 
 private:
-    int64_t stride{0};
     Arch::CrossCoreFlag cubeReady;
+    uint32_t transEventId;
 
-    AscendC::LocalTensor<ElementAccumulator> ubTransIn;
+    AscendC::LocalTensor<ElementAccumulator> ubTransIn[TileBuffer::TRANS_IN_CNT];
     AscendC::LocalTensor<Element> ubTransOut;
 };
 
