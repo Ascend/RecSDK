@@ -92,10 +92,10 @@ class TestDataGenerator:
         head_dim_v,
         has_rab,
         data_type,
-        window_size,
-        num_context,
-        num_target,
-        target_group_size,
+        window_size=(-1, -1),
+        num_context=None,
+        num_target=None,
+        target_group_size=None,
     ):
         seq_lens_q, seq_lens_k = self.__gen_sequence(batch_size, max_seqlen_q, max_seqlen_k, num_context, num_target)
 

@@ -62,11 +62,10 @@ class Record:
             "Has RAB",
             "Data Type",
             "Seed",
-            "Is Metadata",
             "Overall Pass",
         ]
 
-        self.grad_headers = ["DQ", "DK", "DV", "DRAB"]
+        self.grad_headers = ["OUT", "DQ", "DK", "DV", "DRAB"]
 
         # 详细精度数据的列头模板
         self.detail_headers = ["Actual-FP32 Ref", "FP32 Ref", "Actual-Out Ref", "Passed"]
@@ -154,9 +153,6 @@ class Record:
         col += 1
 
         self.worksheet.cell(row=self.current_row, column=col, value=params.get("seed"))
-        col += 1
-
-        self.worksheet.cell(row=self.current_row, column=col, value=params.get("is_metadata", False))
         col += 1
 
         # 判断是否通过
@@ -330,7 +326,6 @@ class BenchmarkRecord:
             'has_rab',
             'data_type',
             'seed',
-            'is_metadata',
             'seq_lens_q_mean',
             'seq_lens_q_max',
             'seq_lens_q_min',
@@ -346,7 +341,7 @@ class BenchmarkRecord:
         """初始化CSV文件"""
         if os.path.exists(self.output_path):
             os.remove(self.output_path)
-        with open(self.output_path, 'w', newline='', encoding="utf-8") as f:
+        with open(self.output_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(self.headers)
 
@@ -389,7 +384,6 @@ class BenchmarkRecord:
             params.get("has_rab"),
             str(params.get("data_type")).replace('torch.', ''),
             params.get("seed"),
-            params.get("is_metadata", False),
         ]
         # 添加序列长度统计信息
         if seq_stats:
@@ -406,7 +400,7 @@ class BenchmarkRecord:
         else:
             row.extend([None] * 6)
 
-        with open(self.output_path, 'a', newline='', encoding="utf-8") as f:
+        with open(self.output_path, 'a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(row)
         self.current_row += 1

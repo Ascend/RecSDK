@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,20 +47,16 @@ struct ForwardEpilogueMainloop {
 
     using ArchTag = typename BlockEpilogueQK::ArchTag;
     using ElementQ = typename BlockEpilogueQK::Element;
-    using ElementACC = typename BlockEpilogueQK::ElementAccumulator;
 
     static constexpr uint32_t QK_READY_ID0 = EVENT_ID0;
     static constexpr uint32_t QK_READY_ID1 = EVENT_ID1;
     static constexpr uint32_t QK_READY_ID2 = EVENT_ID2;
-    static constexpr uint32_t QK_READY_ID3 = EVENT_ID3;
-    static constexpr uint32_t QK_READY_ID4 = EVENT_ID4;
-    static constexpr uint32_t PV_READY_ID0 = EVENT_ID5;
-    static constexpr uint32_t PV_READY_ID1 = EVENT_ID6;
-    static constexpr uint32_t PV_READY_ID2 = EVENT_ID7;
-    static constexpr uint32_t PV_READY_ID3 = 8;
-    static constexpr uint32_t PV_READY_ID4 = 9;
+    static constexpr uint32_t PV_READY_ID0 = EVENT_ID3;
+    static constexpr uint32_t PV_READY_ID1 = EVENT_ID4;
+    static constexpr uint32_t PV_READY_ID2 = EVENT_ID5;
 
-    static constexpr uint32_t TRANS_READY_ID = 10;
+    static constexpr uint32_t TRANS_READY_ID = EVENT_ID6;
+    static constexpr uint32_t TRANS_MTE3_ID = EVENT_ID0;
 
     struct Params {
         GM_ADDR ptrRab;
@@ -92,7 +88,6 @@ struct ForwardEpilogueMainloop {
         maxSeqLenQ = tilingData.maxSeqLenQ;
         maxSeqLenK = tilingData.maxSeqLenK;
         totalSeqLenQ = tilingData.totalSeqLenQ;
-        totalSeqLenK = tilingData.totalSeqLenK;
         alpha = tilingData.alpha;
         scale = tilingData.scale;
     }
@@ -116,43 +111,156 @@ struct ForwardEpilogueMainloop {
     }
 
     CATLASS_DEVICE
+    void InitGlobalTensors(const Params& params, AscendC::GlobalTensor<ElementQ>& gRab,
+                           AscendC::GlobalTensor<ElementQ>& gAttnOut)
+    {
+        gRab.SetGlobalBuffer((__gm__ ElementQ*)params.ptrRab);
+        gAttnOut.SetGlobalBuffer((__gm__ ElementQ*)params.ptrAttnOutput);
+        gRab.template SetL2CacheHint<AscendC::CacheRwMode::READ>(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    }
+
+    // ============ main pipeline ============
+
+    // transIn 双缓冲（TRANS_IN_BUFFER_CNT=2 恒成立，两种 tile 配置均可驻留 UB）
+    // QK-lead-1 模式: QK epilogue 立即处理当前 tile，PV epilogue 延迟一个 Q block
+    // 从独立 transIn buffer 排空，避免覆盖
+    static constexpr uint32_t TRANS_IN_CNT = BlockEpiloguePV::TileBuffer::TRANS_IN_CNT;
+
+    // 待排空的 PV 输出描述（延迟一个 Q block 后写入 GM）
+    struct PvDrainInfo {
+        uint32_t qBlockSize = 0;
+        uint32_t seqPos = 0;
+        uint32_t headIdInBlock = 0;
+        uint32_t transInSlot = 0;
+    };
+
+    // 排空上一 Q block 的 PV 输出
+    CATLASS_DEVICE void DrainPv(BlockEpiloguePV& blockEpiloguePV, AscendC::GlobalTensor<ElementQ>& gAttnOut,
+                                PvDrainInfo const& pv)
+    {
+        auto layoutOut =
+            tla::MakeLayout(tla::MakeShape(pv.qBlockSize, dimV), tla::MakeStride((int64_t)heads * dimV, tla::Int<1>{}));
+        auto tAttnOutStrided =
+            tla::MakeTensor(gAttnOut, layoutOut, tla::MakeCoord((int64_t)pv.seqPos, (int64_t)pv.headIdInBlock * dimV),
+                            Arch::PositionGM{});
+        blockEpiloguePV(tAttnOutStrided, pv.transInSlot);
+    }
+
+    // 推进 scheduler 一步并取下一 tile 坐标（RAB 预取 lookahead）
+    // 跨行 next 用局部变量计算，不刷新外层 tAttnOutQ/qBlockSize：
+    // 外层变量须保持当前行值供 save 块使用，行末由 save 块统一刷新（bf3671cf 语义）；
+    // 返回 false 表示遍历结束
+    template <class TensorAttnOut, class TileQ, class CoordNext, class ShapeNext>
+    CATLASS_DEVICE bool NextTile(QBlockScheduler& qBlockScheduler, KBlockScheduler& kBlockScheduler,
+                                 TensorAttnOut const& tensorAttnOut, TileQ& tAttnOutQ, uint32_t& qBlockSize,
+                                 CoordNext& coordNext, ShapeNext& shapeNext)
+    {
+        ++kBlockScheduler;
+        if (!kBlockScheduler.IsValid()) {
+            ++qBlockScheduler;
+            if (!qBlockScheduler.IsValid())
+                return false;
+            kBlockScheduler.Init(qBlockScheduler);
+            auto tAttnOutQNext = qBlockScheduler.GetTile(tensorAttnOut);
+            auto qBlockSizeNext = tla::get<0>(tAttnOutQNext.shape());
+            auto tV = kBlockScheduler.GetTile(tensorAttnOut);
+            auto nextMapping = kBlockScheduler.GetTileMapping(tAttnOutQNext.coord(), tAttnOutQNext.shape());
+            coordNext = tla::get<0>(nextMapping);
+            shapeNext = tla::MakeShape(qBlockSizeNext, tla::get<0>(tV.shape()));
+            return true;
+        }
+        auto tV = kBlockScheduler.GetTile(tensorAttnOut);
+        auto nextMapping = kBlockScheduler.GetTileMapping(tAttnOutQ.coord(), tAttnOutQ.shape());
+        coordNext = tla::get<0>(nextMapping);
+        shapeNext = tla::MakeShape(qBlockSize, tla::get<0>(tV.shape()));
+        return true;
+    }
+
+    template <class TensorRab, class TensorAttnOut>
+    CATLASS_DEVICE void RunPipeline(BlockEpilogueQK& blockEpilogueQK, BlockEpiloguePV& blockEpiloguePV,
+                                    QBlockScheduler& qBlockScheduler, KBlockScheduler& kBlockScheduler,
+                                    TensorRab& tensorRab, TensorAttnOut& tensorAttnOut,
+                                    AscendC::GlobalTensor<ElementQ>& gAttnOut)
+    {
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(TRANS_MTE3_ID);
+
+        auto tQ0 = qBlockScheduler.GetTile(tensorAttnOut);
+        auto tV0 = kBlockScheduler.GetTile(tensorAttnOut);
+        auto mapping0 = kBlockScheduler.GetTileMapping(tQ0.coord(), tQ0.shape());
+        auto coord0 = tla::get<0>(mapping0);
+        auto shape0 = tla::MakeShape(tla::get<0>(tQ0.shape()), tla::get<0>(tV0.shape()));
+        blockEpilogueQK.LoadRab(tensorRab, coord0, shape0);
+
+        auto tAttnOutQ = qBlockScheduler.GetTile(tensorAttnOut);
+        uint32_t qBlockSize = tla::get<0>(tAttnOutQ.shape());
+
+        auto coordNext = coord0;
+        auto shapeNext = shape0;
+        bool hasNext = true;
+        bool hasPv = false;
+        uint32_t transInSlot = 0;
+        PvDrainInfo savedPv;
+
+        while (qBlockScheduler.IsValid()) {
+            while (kBlockScheduler.IsValid()) {
+                bool isFinal = kBlockScheduler.IsLast();
+
+                auto coord = coordNext;
+                auto shape = shapeNext;
+                hasNext = NextTile(qBlockScheduler, kBlockScheduler, tensorAttnOut, tAttnOutQ, qBlockSize, coordNext,
+                                   shapeNext);
+                blockEpilogueQK(tensorRab, coord, shape, coordNext, shapeNext, hasNext);
+
+                if (hasPv) {
+                    DrainPv(blockEpiloguePV, gAttnOut, savedPv);
+                    hasPv = false;
+                }
+
+                if (isFinal) {
+                    auto blockOffset = static_cast<uint32_t>(tla::get<0>(tAttnOutQ.coord()));
+                    savedPv = {qBlockSize, blockOffset / heads, blockOffset % heads, transInSlot};
+                    transInSlot = (transInSlot + 1) % TRANS_IN_CNT;
+                    hasPv = true;
+                    tAttnOutQ = qBlockScheduler.GetTile(tensorAttnOut);
+                    qBlockSize = tla::get<0>(tAttnOutQ.shape());
+                }
+            }
+        }
+
+        if (hasPv) {
+            DrainPv(blockEpiloguePV, gAttnOut, savedPv);
+        }
+    }
+
+    CATLASS_DEVICE
     void operator()(const Params& params)
     {
         AscendC::GlobalTensor<ElementQ> gRab;
-        gRab.SetGlobalBuffer((__gm__ ElementQ*)params.ptrRab);
+        AscendC::GlobalTensor<ElementQ> gAttnOut;
+        InitGlobalTensors(params, gRab, gAttnOut);
 
         auto tensorRab = MakeBNSSTensor(gRab);
-
-        AscendC::GlobalTensor<ElementQ> gAttnOut;
-        gAttnOut.SetGlobalBuffer((__gm__ ElementQ*)params.ptrAttnOutput);
-
         auto tensorAttnOut = MakeTNDTensor(gAttnOut, totalSeqLenQ, dimV);
-
-        BlockEpilogueQK blockEpilogueQK({QK_READY_ID0, QK_READY_ID1, QK_READY_ID2, QK_READY_ID3, QK_READY_ID4},
-                                        {PV_READY_ID0, PV_READY_ID1, PV_READY_ID2, PV_READY_ID3, PV_READY_ID4},
-                                        resource, alpha, scale);
-        BlockEpiloguePV blockEpiloguePV(TRANS_READY_ID, (int64_t)heads * dimQK, resource);
 
         QBlockScheduler qBlockScheduler(batch, heads, params.ptrSeqOffsetQ, params.ptrSeqOffsetK);
         KBlockScheduler kBlockScheduler(batch, heads, params.ptrSeqOffsetK);
-
         qBlockScheduler.Init();
         kBlockScheduler.Init(qBlockScheduler);
+        if (!kBlockScheduler.IsValid() || !qBlockScheduler.IsValid())
+            return;
 
-        for (; qBlockScheduler.IsValid(); ++qBlockScheduler) {
-            kBlockScheduler.Init(qBlockScheduler);
+        BlockEpilogueQK blockEpilogueQK({QK_READY_ID0, QK_READY_ID1, QK_READY_ID2},
+                                        {PV_READY_ID0, PV_READY_ID1, PV_READY_ID2}, resource, alpha, scale);
+        BlockEpiloguePV blockEpiloguePV(TRANS_READY_ID, TRANS_MTE3_ID, resource);
 
-            auto tAttnOutQ = qBlockScheduler.GetTile(tensorAttnOut);
+        RunPipeline(blockEpilogueQK, blockEpiloguePV, qBlockScheduler, kBlockScheduler, tensorRab, tensorAttnOut,
+                    gAttnOut);
 
-            for (; kBlockScheduler.IsValid(); ++kBlockScheduler) {
-                auto tAttnOutV = kBlockScheduler.GetTile(tensorAttnOut);
-                auto mapping = kBlockScheduler.GetTileMapping(tAttnOutQ.coord(), tAttnOutQ.shape());
-                auto coord = tla::get<0>(mapping);
-                auto shape = tla::MakeShape(tla::get<0>(tAttnOutQ.shape()), tla::get<0>(tAttnOutV.shape()));
-                blockEpilogueQK(tensorRab, coord, shape);
-            }
-            blockEpiloguePV(tAttnOutQ);
-        }
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(BlockEpilogueQK::RAB_MTE2_V_ID[0]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(BlockEpilogueQK::RAB_MTE2_V_ID[1]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(TRANS_MTE3_ID);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(BlockEpilogueQK::SCORE_MTE3_V_ID[0]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(BlockEpilogueQK::SCORE_MTE3_V_ID[1]);
     }
 
     Arch::Resource<ArchTag> resource;
@@ -164,7 +272,6 @@ struct ForwardEpilogueMainloop {
     uint32_t maxSeqLenQ{0};
     uint32_t maxSeqLenK{0};
     uint32_t totalSeqLenQ{0};
-    uint32_t totalSeqLenK{0};
     float alpha{0.0f};
     float scale{0.0f};
 };
