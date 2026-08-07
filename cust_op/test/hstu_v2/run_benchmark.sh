@@ -14,9 +14,18 @@
 # limitations under the License.
 # ==============================================================================
 
+# Backward benchmark
 msprof --app="python3 test_backward_op_benchmark.py" --output=./prof
 
 python3 utils/perf_stats.py --input-dir ./prof --target-ops HstuBackwardV2 --output ./benchmark_result.csv
+
+rm -rf ./prof
+rm -f tmp_benchmark.csv
+
+# Forward benchmark
+msprof --app="python3 test_forward_op_benchmark.py" --output=./prof
+
+python3 utils/perf_stats.py --input-dir ./prof --target-ops HstuForwardV2 --output ./benchmark_result_forward.csv
 
 rm -rf ./prof
 rm -f tmp_benchmark.csv
