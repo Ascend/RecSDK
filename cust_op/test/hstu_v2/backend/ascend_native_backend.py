@@ -151,7 +151,41 @@ class Kernel:
 class Validator:
     @staticmethod
     def forward_verify(actual, ref):
-        pass
+        """验证前向传播结果，返回验证结果和详细精度数据
+
+        Args:
+            actual: ascend 算子输出 (output tensor)
+            ref: 参考输出，可为 tensor 或 (output, output_fp32) 元组；元组时取第一个元素作为比较目标
+        """
+        # ref 可能为 (output, output_fp32) 元组（pytorch 后端双精度标杆返回），兼容解包
+        if isinstance(ref, tuple):
+            ref = ref[0]
+
+        data_type = actual.dtype
+
+        # 根据数据类型设置误差容限
+        if data_type == torch.float16:
+            rtol = 1e-3
+            atol = 1e-3
+        elif data_type == torch.bfloat16:
+            rtol = 5e-3
+            atol = 5e-3
+        else:
+            raise ValueError(f"dtype {data_type} not support")
+
+        # 比较实际输出和参考输出
+        passed = torch.allclose(actual, ref, rtol=rtol, atol=atol)
+
+        # 构建详细精度数据
+        detail = {
+            "OUT": {
+                "passed": passed,
+                "max_diff": torch.max(torch.abs(actual - ref)).item(),
+                "mean_diff": torch.mean(torch.abs(actual - ref)).item(),
+            }
+        }
+
+        return passed, detail
 
     @staticmethod
     def backward_verify(actual, ref):
