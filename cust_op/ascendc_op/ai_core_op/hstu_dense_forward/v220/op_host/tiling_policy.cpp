@@ -43,10 +43,10 @@ bool ShapeRange::Check(int64_t val) const
 
 ge::graphStatus TilingPolicy::InferShape(gert::InferShapeContext* context)
 {
-    const gert::Shape *queryShape = context->GetInputShape(INDEX_T::INDEX_0);
+    const gert::Shape* queryShape = context->GetInputShape(INDEX_T::INDEX_0);
     OPS_CHECK_PTR_NULL(queryShape, return ge::GRAPH_FAILED);
 
-    gert::Shape *attenOutputShape = context->GetOutputShape(INDEX_T::INDEX_0);
+    gert::Shape* attenOutputShape = context->GetOutputShape(INDEX_T::INDEX_0);
     OPS_CHECK_PTR_NULL(attenOutputShape, return ge::GRAPH_FAILED);
     *attenOutputShape = *queryShape;
 
@@ -68,10 +68,10 @@ ge::graphStatus TilingPolicy::TilingProcess(gert::TilingContext* context)
 
 bool TilingPolicy::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t headNum, int64_t dim, bool dimAlign)
 {
-    auto dimStep = dimAlign ? 16 : 1; // 16 means align to C0_size 1 means not align
+    auto dimStep = dimAlign ? 16 : 1;  // 16 means align to C0_size 1 means not align
     const ShapeRange SEQ_RANGE(1, 20480, 1, "seq size");
     const ShapeRange BATCH_RANGE(1, MAX_BATCH_SIZE, 1, "batch size");
-    const ShapeRange DIM_RANGE(dimStep, 512, dimStep, "dim size"); // 非对齐情况下dim范围[1,512]
+    const ShapeRange DIM_RANGE(dimStep, 512, dimStep, "dim size");  // 非对齐情况下dim范围[1,512]
     const ShapeRange HEAD_RANGE(1, 16, 1, "head num");
 
     if (!SEQ_RANGE.Check(seqLen)) {
@@ -96,7 +96,7 @@ bool TilingPolicy::GeneralShapeCheck(int64_t batchSize, int64_t seqLen, int64_t 
 bool TilingPolicy::TilingWorkSpace(gert::TilingContext* context)
 {
     auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    size_t *currentWorkspace = context->GetWorkspaceSizes(1);
+    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     OPS_LOG_E_IF_NULL("currentWorkspace", currentWorkspace, return false);
 
     size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
@@ -130,7 +130,7 @@ bool TilingPolicy::TilingCore(gert::TilingContext* context)
 }
 
 #ifdef SUPPORT_950
-void Find4BytesShape(const TilingKeyParam& tilingKeyParam, uint32_t &tilingM, uint32_t &tilingN)
+void Find4BytesShape(const TilingKeyParam& tilingKeyParam, uint32_t& tilingM, uint32_t& tilingN)
 {
     constexpr uint32_t tileMList[] = {32, 64, 64, 128, 128, 256, 128};
     constexpr uint32_t tileNList[] = {32, 64, 1024, 128, 512, 256, 256};
@@ -139,14 +139,12 @@ void Find4BytesShape(const TilingKeyParam& tilingKeyParam, uint32_t &tilingM, ui
     auto maxSeqLenQ = tilingKeyParam.maxSeqLenQ;
     auto maxSeqLenK = tilingKeyParam.maxSeqLenK;
     if (maxSeqLenQ > maxSeqLenK) {
-        idx = (maxSeqLenK >= TILING_1024) ? 5 :
-        (maxSeqLenK >= TILING_64)   ? 3 :
-        (maxSeqLenK >= TILING_32)   ? 1 : 0;
+        idx = (maxSeqLenK >= TILING_1024) ? 5 : (maxSeqLenK >= TILING_64) ? 3 : (maxSeqLenK >= TILING_32) ? 1 : 0;
         tilingM = tileMList[idx];
         tilingN = tileNList[idx];
         return;
     }
-    
+
     for (int i = 0; i < TILING_SIZE; i++) {
         if (maxSeqLenQ <= tileMList[i] && maxSeqLenK <= tileNList[i]) {
             if (tileMList[i] * tileNList[i] < area && maxSeqLenK > tileNList[i] / 2) {
@@ -178,8 +176,7 @@ void Find4BytesShape(const TilingKeyParam& tilingKeyParam, uint32_t &tilingM, ui
     return;
 }
 
-
-void Find2BytesShape(const TilingKeyParam& tilingKeyParam, uint32_t &tilingM, uint32_t &tilingN)
+void Find2BytesShape(const TilingKeyParam& tilingKeyParam, uint32_t& tilingM, uint32_t& tilingN)
 {
     constexpr uint32_t tileMList[] = {32, 64, 64, 128, 128, 256, 128};
     constexpr uint32_t tileNList[] = {32, 64, 1024, 128, 512, 256, 256};
@@ -266,8 +263,50 @@ void Find2BytesShape(const TilingKeyParam& tilingKeyParam, uint32_t &tilingM, ui
     return;
 }
 
-void FindMatchShape(const TilingKeyParam& tilingKeyParam,
-    gert::TilingContext* context, uint32_t &tilingM, uint32_t &tilingN, uint32_t &tilingDim)
+bool IsJagged128x512Applicable(const TilingKeyParam& tilingKeyParam, gert::TilingContext* context)
+{
+    constexpr int64_t VALIDATED_BATCH_SIZE = 1;
+    constexpr int64_t MIN_OPTIMIZED_SEQ_LEN = 1024;
+    constexpr int64_t MAX_OPTIMIZED_SEQ_LEN = 4096;
+    constexpr int64_t MIN_OPTIMIZED_HEAD_NUM = 1;
+    constexpr int64_t MAX_OPTIMIZED_HEAD_NUM = 16;
+
+    const auto* qShapePtr = context->GetInputShape(JAGGED_INPUT_INDEX_T::Q_INDEX);
+    const auto* kShapePtr = context->GetInputShape(JAGGED_INPUT_INDEX_T::K_INDEX);
+    const auto* seqOffsetQShapePtr = context->GetInputShape(JAGGED_INPUT_INDEX_T::SEQ_OFFSET_Q_INDEX);
+    const auto* attrs = context->GetAttrs();
+    if (qShapePtr == nullptr || kShapePtr == nullptr || seqOffsetQShapePtr == nullptr || attrs == nullptr) {
+        return false;
+    }
+
+    const auto* targetGroupSize = attrs->GetAttrPointer<uint32_t>(JAGGED_ATTR_INDEX_T::TARGET_GROUP_SIZE_INDEX);
+    if (targetGroupSize == nullptr) {
+        return false;
+    }
+
+    const auto qShape = qShapePtr->GetStorageShape();
+    const auto kShape = kShapePtr->GetStorageShape();
+    const auto seqOffsetQShape = seqOffsetQShapePtr->GetStorageShape();
+    const int64_t qSeqLen = qShape.GetDim(0);
+    const int64_t kSeqLen = kShape.GetDim(0);
+    const int64_t headNumQ = qShape.GetDim(1);
+    const int64_t headNumK = kShape.GetDim(1);
+    const int64_t batchSize = seqOffsetQShape.GetDim(0) - 1;
+
+    const bool sequenceMatched = batchSize == VALIDATED_BATCH_SIZE && qSeqLen <= kSeqLen &&
+                                 qSeqLen == tilingKeyParam.maxSeqLenQ && kSeqLen == tilingKeyParam.maxSeqLenK &&
+                                 qSeqLen >= MIN_OPTIMIZED_SEQ_LEN && qSeqLen <= MAX_OPTIMIZED_SEQ_LEN &&
+                                 kSeqLen >= MIN_OPTIMIZED_SEQ_LEN && kSeqLen <= MAX_OPTIMIZED_SEQ_LEN;
+    const bool headsMatched =
+        headNumQ == headNumK && headNumQ >= MIN_OPTIMIZED_HEAD_NUM && headNumQ <= MAX_OPTIMIZED_HEAD_NUM;
+    const bool dimensionsMatched = tilingKeyParam.dimQ == TILING_256 && tilingKeyParam.dimV == TILING_256;
+    const bool semanticsMatched = tilingKeyParam.maskType == static_cast<uint32_t>(MASK_TYPE::MASK_TRIL) &&
+                                  !tilingKeyParam.enableBias && !tilingKeyParam.deterministic && *targetGroupSize == 1;
+    return sequenceMatched && headsMatched && dimensionsMatched && semanticsMatched;
+}
+
+void FindMatchShape(const TilingKeyParam& tilingKeyParam, gert::TilingContext* context, uint32_t& tilingM,
+                    uint32_t& tilingN, uint32_t& tilingDim)
 {
     constexpr uint32_t tileKList[] = {64, 128, 256, 512};
 
@@ -277,6 +316,9 @@ void FindMatchShape(const TilingKeyParam& tilingKeyParam,
     ge::DataType qTypeGe = context->GetInputTensor(JAGGED_INPUT_INDEX_T::Q_INDEX)->GetDataType();
     if (qTypeGe == ge::DataType::DT_FLOAT) {
         Find4BytesShape(tilingKeyParam, tilingM, tilingN);
+    } else if (qTypeGe == ge::DataType::DT_BF16 && IsJagged128x512Applicable(tilingKeyParam, context)) {
+        tilingM = TILING_128;
+        tilingN = TILING_512;
     } else if (qTypeGe == ge::DataType::DT_FLOAT16 || qTypeGe == ge::DataType::DT_BF16) {
         Find2BytesShape(tilingKeyParam, tilingM, tilingN);
     }
@@ -284,7 +326,7 @@ void FindMatchShape(const TilingKeyParam& tilingKeyParam,
 }
 
 bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, const TilingKeyParam& tilingKeyParam,
-    uint32_t typeTilingKey)
+                                    uint32_t typeTilingKey)
 {
     bool enableBias = tilingKeyParam.enableBias;
     bool enableDeteministic = tilingKeyParam.deterministic;
@@ -293,7 +335,7 @@ bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, const TilingKe
     uint32_t tilingM = 0;
     uint32_t tilingN = 0;
     uint32_t tilingDim = 0;
-    
+
     ge::DataType qTypeGe = context->GetInputTensor(JAGGED_INPUT_INDEX_T::Q_INDEX)->GetDataType();
     if ((qTypeGe == ge::DataType::DT_FLOAT8_E4M3FN) || (typeTilingKey != (JAGGED_TILING_KEY & 0x3))) {
         tilingDim = MAX_DIM;
@@ -302,30 +344,28 @@ bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, const TilingKe
     } else {
         FindMatchShape(tilingKeyParam, context, tilingM, tilingN, tilingDim);
     }
-    
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias, typeTilingKey,
-                                                  enableDeteministic, tilingM,
-                                                  tilingN, tilingDim);
+
+    const uint64_t tilingKey =
+        GET_TPL_TILING_KEY(maskedType, enableBias, typeTilingKey, enableDeteministic, tilingM, tilingN, tilingDim);
     context->SetTilingKey(tilingKey);
     return true;
 }
 #else
 bool TilingPolicy::TilingKeySetImpl(gert::TilingContext* context, const TilingKeyParam& tilingKeyParam,
-    uint32_t typeTilingKey)
+                                    uint32_t typeTilingKey)
 {
     bool enableBias = tilingKeyParam.enableBias;
     bool enableDeteministic = tilingKeyParam.deterministic;
     uint32_t maskType = tilingKeyParam.maskType;
     uint32_t maskedType = maskType & 0x3;
     // 组合tiling key：
-    
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias,
-                                                  typeTilingKey, enableDeteministic, MAX_TILING_DIM,
-                                                  MAX_TILING_DIM, MAX_DIM);
+
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(maskedType, enableBias, typeTilingKey, enableDeteministic,
+                                                  MAX_TILING_DIM, MAX_TILING_DIM, MAX_DIM);
     context->SetTilingKey(tilingKey);
 
     return true;
 }
 #endif
 
-}
+}  // namespace HstuForward
