@@ -13,14 +13,10 @@
 
 <span style="font-size:14px;">
 
+🔹 **[2026.07.31]**：[Rec SDK 26.1.0 Release 版本发布](https://gitcode.com/Ascend/RecSDK/releases/v26.1.0)<br>
 🔹 **[2026.04.25]**：[Rec SDK 26.0.0 Release 版本发布](https://gitcode.com/Ascend/RecSDK/releases/v26.0.0)<br>
-🔹 **[2026.02.24]**：资料结构整改，更新Roadmap（2026Q1）<br>
 
 </span>
-
-## Roadmap
-
-[Roadmap（2026Q1）](https://gitcode.com/Ascend/RecSDK/issues/1075)
 
 ## ℹ️ 简介
 
@@ -58,7 +54,7 @@ Rec SDK的功能涉及：
 - **全下沉**：指所有计算任务都下沉到NPU上执行
 - **POC状态**：Proof of Concept（概念验证）状态，表示该组件仍处于试验验证阶段，功能可能不完整或不稳定
 
-## 📦 环境部署
+## 📦 安装指南
 
 Rec SDK支持的产品型号如下：
 
@@ -74,7 +70,11 @@ Rec SDK支持的产品型号如下：
 | torch_rec_v1 | [安装指南](./docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md) |
 | torch_rec_v2 | [安装指南](./docs/zh/torch/torch_rec_v2/recsdk_torch_installation_guide.md) |
 
-## 📊 模型适配样例
+## 📘 使用指南
+
+Rec SDK 提供完整的使用与开发文档，帮助您深入了解各组件的架构、调优与使用方法，请参考昇腾社区[推荐开发文档](https://www.hiascend.com/cn/developer/recommendation?tab=tab1)。
+
+**模型适配样例**：
 
 | 模型名称 | 适配框架 | 组件名称 | 代码链接 |
 | --- | --- | --- | --- |
@@ -85,7 +85,15 @@ Rec SDK支持的产品型号如下：
 | mmoe、eta | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/model_zoo/README.md) |
 | GR | PyTorch | torch_rec_v2 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr) |
 
-## 分支维护策略
+## 🗺️ Roadmap
+
+[Roadmap（2026Q3）](https://gitcode.com/Ascend/RecSDK/issues/1280)
+
+[Roadmap（2026Q2）](https://gitcode.com/Ascend/RecSDK/issues/1266)
+
+[Roadmap（2026Q1）](https://gitcode.com/Ascend/RecSDK/issues/1075)
+
+## 🔀 版本维护策略
 
 Rec SDK版本分支的维护阶段如下：
 
@@ -96,7 +104,7 @@ Rec SDK版本分支的维护阶段如下：
 | 维护                |  1年/3.5年 | 常规分支维护1年,长期支持分支维护3.5年。对重大BUG进行修复，不合入新特性，并视BUG的影响发布补丁版本 |
 | 生命周期终止（EOL） | N/A      | 分支不再接受任何修改                             |
 
-## torch_rec_v1 框架维护策略
+### torch_rec_v1 框架维护策略
 
 torch_rec_v1 各版本维护状态如下：
 
@@ -137,6 +145,7 @@ torch_rec_v1 各版本维护状态如下：
 | --- | --- |
 | [创建Issue](https://gitcode.com/Ascend/RecSDK/issues/new) | 提交 Bug、需求或建议 |
 | [社区任务](https://gitcode.com/Ascend/RecSDK/issues/1096) | 查看和认领社区任务 |
+| [会议日历](https://meeting.ascend.osinfra.cn/?sig=sig-RecSDK) | 社区定期例会与活动日程 |
 
 ## 🙏 致谢
 
