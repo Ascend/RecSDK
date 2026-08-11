@@ -288,3 +288,219 @@ def test_split_jagged_tensor_with_prefix(output_shape, input_col, input_dtype, n
     assert torch.allclose(gold_value_b, test_value_b_cpu, rtol=1e-04, atol=1e-04), (
         "golden and result B is not closed for split with nPrefixFromRight"
     )
+
+
+# ============ 异常场景测试用例 ============
+
+
+def _make_valid_inputs():
+    """构造合法的 concat 输入基线"""
+    max_seqlen = 128
+    values_a = torch.ones((8, 32), dtype=torch.float16, device=torch.device(DEVICE))
+    values_b = torch.ones((10, 32), dtype=torch.float16, device=torch.device(DEVICE))
+    offset_a = torch.tensor([0, 3, 8], dtype=torch.int32, device=torch.device(DEVICE))
+    offset_b = torch.tensor([0, 4, 10], dtype=torch.int32, device=torch.device(DEVICE))
+    return max_seqlen, values_a, values_b, offset_a, offset_b
+
+
+def _concat(max_seqlen, values_a, values_b, offset_a, offset_b):
+    """调用 concat_2d_jagged，返回单个拼接结果 tensor"""
+    return torch.ops.mxrec.concat_2d_jagged(max_seqlen, values_a, values_b, offset_a, offset_b)
+
+
+def _split(values, max_seqlen, offset_a, offset_b, n_prefix=0):
+    """调用 split_2d_jagged，签名为 (values, maxSeqlen, offsetA, offsetB, dense_size, nPrefixToRight)"""
+    return torch.ops.mxrec.split_2d_jagged(values, max_seqlen, offset_a, offset_b, 0, n_prefix)
+
+
+def test_concat_values_dim1_mismatch():
+    """values_a 和 values_b 的 dim1 不一致"""
+    max_seqlen, values_a, _, offset_a, offset_b = _make_valid_inputs()
+    values_b_bad = torch.ones((10, 16), dtype=torch.float16, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a, values_b_bad, offset_a, offset_b)
+    assert "values must be the same dimensional" in str(ctx.value)
+
+
+def test_concat_offset_not_1d():
+    """offset_a 不是 1D tensor"""
+    max_seqlen, values_a, values_b, offset_a, offset_b = _make_valid_inputs()
+    offset_a_bad = offset_a.unsqueeze(0)  # [1, 3]
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a, values_b, offset_a_bad, offset_b)
+    assert "offsetA must be a 1-dimensional tensor" in str(ctx.value)
+
+
+def test_concat_offset_length_mismatch():
+    """offset_a 和 offset_b 长度不一致"""
+    max_seqlen, values_a, values_b, offset_a, _ = _make_valid_inputs()
+    offset_b_bad = torch.tensor([0, 5, 10, 10], dtype=torch.int32, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a, values_b, offset_a, offset_b_bad)
+    assert "offsetA and offsetB must have the same length" in str(ctx.value)
+
+
+def test_concat_offset_too_short():
+    """offset 长度 < 2"""
+    max_seqlen, values_a, values_b, _, _ = _make_valid_inputs()
+    offset_bad = torch.tensor([0], dtype=torch.int32, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a, values_b, offset_bad, offset_bad)
+    assert "offset must have length >= 2 and <=" in str(ctx.value)
+
+
+def test_concat_offset_too_long():
+    """offset 长度 > 1024"""
+    max_seqlen, values_a, values_b, _, _ = _make_valid_inputs()
+    offset_bad = torch.arange(0, 1025, dtype=torch.int32, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a, values_b, offset_bad, offset_bad)
+    assert "offset must have length >= 2 and <=" in str(ctx.value)
+
+
+def test_concat_values_shorter_than_offset():
+    """values 长度 < offset 最后一个元素"""
+    max_seqlen, values_a, values_b, offset_a, offset_b = _make_valid_inputs()
+    values_a_bad = values_a[:5]  # 长度 5，但 offset_a[-1] = 8
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a_bad, values_b, offset_a, offset_b)
+    assert "The length of valuesA should be greater than the maximum value of offsetA" in str(ctx.value)
+
+
+def test_concat_values_dtype_int64():
+    """values 使用不支持的 dtype (int64)"""
+    max_seqlen, _, _, offset_a, offset_b = _make_valid_inputs()
+    values_a_bad = torch.ones((8, 32), dtype=torch.int64, device=torch.device(DEVICE))
+    values_b = torch.ones((10, 32), dtype=torch.int64, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a_bad, values_b, offset_a, offset_b)
+    assert "valuesA must have be kFloat or kHalf or kBFloat16 or kInt dtype" in str(ctx.value)
+
+
+def test_concat_values_dtype_float64():
+    """values 使用不支持的 dtype (float64)"""
+    max_seqlen, _, _, offset_a, offset_b = _make_valid_inputs()
+    values_a_bad = torch.ones((8, 32), dtype=torch.float64, device=torch.device(DEVICE))
+    values_b = torch.ones((10, 32), dtype=torch.float64, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a_bad, values_b, offset_a, offset_b)
+    assert "valuesA must have be kFloat or kHalf or kBFloat16 or kInt dtype" in str(ctx.value)
+
+
+def test_concat_values_dtype_mismatch():
+    """values_a 和 values_b 的 dtype 不一致"""
+    max_seqlen, values_a, _, offset_a, offset_b = _make_valid_inputs()
+    values_b_bad = torch.ones((10, 32), dtype=torch.float32, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a, values_b_bad, offset_a, offset_b)
+    assert "values must have same dtype" in str(ctx.value)
+
+
+def _make_valid_split_values():
+    """构造合法的 split 输入：一个 2D values 及配套 offset"""
+    values = torch.ones((18, 32), dtype=torch.float16, device=torch.device(DEVICE))
+    offset_a = torch.tensor([0, 3, 8], dtype=torch.int32, device=torch.device(DEVICE))
+    offset_b = torch.tensor([0, 4, 10], dtype=torch.int32, device=torch.device(DEVICE))
+    return 128, values, offset_a, offset_b
+
+
+def test_split_offset_not_1d():
+    """split 的 offset 不是 1D"""
+    max_seqlen, values, offset_a, offset_b = _make_valid_split_values()
+    offset_a_bad = offset_a.unsqueeze(0)
+    with pytest.raises(Exception) as ctx:
+        _split(values, max_seqlen, offset_a_bad, offset_b)
+    assert "offsetA must be a 1-dimensional tensor" in str(ctx.value)
+
+
+def test_split_offset_length_mismatch():
+    """split 的 offset_a 和 offset_b 长度不一致"""
+    max_seqlen, values, offset_a, offset_b = _make_valid_split_values()
+    offset_b_bad = torch.tensor([0, 10], dtype=torch.int32, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _split(values, max_seqlen, offset_a, offset_b_bad)
+    assert "offsetA and offsetB must have the same length" in str(ctx.value)
+
+
+def test_split_offset_out_of_range():
+    """split 的 offset 长度越界（< 2）"""
+    max_seqlen, values, _, _ = _make_valid_split_values()
+    offset_bad = torch.tensor([0], dtype=torch.int32, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _split(values, max_seqlen, offset_bad, offset_bad)
+    assert "offset must have length >= 2 and <=" in str(ctx.value)
+
+
+def test_split_values_not_2d():
+    """split values 不是 2D"""
+    max_seqlen, values, offset_a, offset_b = _make_valid_split_values()
+    values_bad = values.unsqueeze(0)  # [1, 18, 32]
+    with pytest.raises(Exception) as ctx:
+        _split(values_bad, max_seqlen, offset_a, offset_b)
+    assert "values must be a 2-dimensional tensor" in str(ctx.value)
+
+
+def test_split_nprefix_negative():
+    """split nPrefixToRight < 0"""
+    max_seqlen, values, offset_a, offset_b = _make_valid_split_values()
+    with pytest.raises(Exception) as ctx:
+        _split(values, max_seqlen, offset_a, offset_b, -1)
+    assert "nPrefixToRight must be >= 0" in str(ctx.value)
+
+
+def test_split_values_dtype_not_support():
+    """split values 使用不支持的 dtype"""
+    max_seqlen, _, offset_a, offset_b = _make_valid_split_values()
+    values_bad = torch.ones((18, 32), dtype=torch.int64, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _split(values_bad, max_seqlen, offset_a, offset_b)
+    assert "values must have be kFloat or kHalf or kBFloat16 or kInt dtype" in str(ctx.value)
+
+
+# ---- 补充：B 侧、offset dtype、concat nPrefix 等独立校验分支 ----
+
+
+def test_concat_offsetb_not_1d():
+    """offsetB 不是 1D tensor"""
+    max_seqlen, values_a, values_b, offset_a, offset_b = _make_valid_inputs()
+    offset_b_bad = offset_b.unsqueeze(0)
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a, values_b, offset_a, offset_b_bad)
+    assert "offsetB must be a 1-dimensional tensor" in str(ctx.value)
+
+
+def test_concat_valuesb_shorter_than_offset():
+    """valuesB 长度 < offsetB 最后一个元素"""
+    max_seqlen, values_a, values_b, offset_a, offset_b = _make_valid_inputs()
+    values_b_bad = values_b[:5]  # 长度 5，但 offset_b[-1] = 10
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a, values_b_bad, offset_a, offset_b)
+    assert "The length of valuesB should be greater than the maximum value of offsetB" in str(ctx.value)
+
+
+def test_concat_offset_dtype_not_support():
+    """offset 使用不支持的 dtype (float32)"""
+    max_seqlen, values_a, values_b, _, _ = _make_valid_inputs()
+    offset_bad = torch.tensor([0, 3, 8], dtype=torch.float32, device=torch.device(DEVICE))
+    offset_b = torch.tensor([0, 4, 10], dtype=torch.float32, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _concat(max_seqlen, values_a, values_b, offset_bad, offset_b)
+    assert "offsetA must have be kLong or kInt dtype" in str(ctx.value)
+
+
+def test_concat_nprefix_negative():
+    """concat nPrefixFromRight < 0"""
+    max_seqlen, values_a, values_b, offset_a, offset_b = _make_valid_inputs()
+    with pytest.raises(Exception) as ctx:
+        torch.ops.mxrec.concat_2d_jagged(max_seqlen, values_a, values_b, offset_a, offset_b, False, -1)
+    assert "nPrefixFromRight must be >= 0" in str(ctx.value)
+
+
+def test_split_offset_dtype_not_support():
+    """split offset 使用不支持的 dtype (float32)"""
+    max_seqlen, values, _, _ = _make_valid_split_values()
+    offset_bad = torch.tensor([0, 3, 8], dtype=torch.float32, device=torch.device(DEVICE))
+    offset_b = torch.tensor([0, 4, 10], dtype=torch.float32, device=torch.device(DEVICE))
+    with pytest.raises(Exception) as ctx:
+        _split(values, max_seqlen, offset_bad, offset_b)
+    assert "offsetA must have be kLong or kInt dtype" in str(ctx.value)
