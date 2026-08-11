@@ -23,14 +23,13 @@ Functions in this file are usually used in the tests internally.
 
 # pylint: disable=unexpected-keyword-arg
 # pylint: disable=redefined-outer-name
-import logging
 import copy
-import sysconfig
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
 import torchrec
+import fbgemm_ascend  # noqa: F401
 from torch import nn
 from torchrec.distributed.fbgemm_qcomm_codec import (
     CommType,
@@ -52,18 +51,6 @@ from dynamic_emb.distributed.planner.enumerators import DynamicEmbeddingEnumerat
 from dynamic_emb.distributed.planner.planners import DynamicEmbeddingShardingPlanner
 from dynamic_emb.distributed.planner.types import DynamicEmbParameterConstraints
 from dynamic_emb.distributed.embedding import DynamicEmbeddingCollectionSharder
-
-
-logging.basicConfig(level=logging.NOTSET)
-logger = logging.getLogger(__name__)
-
-# 加载torchrec_npu执行所依赖的fbgemm_npu_api.so库
-try:
-    torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-except FileNotFoundError:
-    logging.warning("libfbgemm_npu_api.so is not exist")
-except Exception as e:
-    logging.warning("libfbgemm_npu_api.so failed to load: %s", e)
 
 
 def generate_sparse_feature(feature_names, num_embeddings_list, local_batch_size, lookup_iter=0):
