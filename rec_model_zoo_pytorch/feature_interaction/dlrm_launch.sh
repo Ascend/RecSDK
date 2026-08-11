@@ -7,6 +7,7 @@ MODE=test_qps # train/eval/test/test_qps, test_qps为生成的虚拟数据
 OPEN_PROFILING=true
 TEST_BATCH_SIZE=(128)
 export JOB_ID=10085
+export SHAPE_LIST=""
 
 if [ $DEVICE == "npu" ]; then
     export ASCEND_DEVICE_ID=${DEVICE_ID}
@@ -34,7 +35,9 @@ for model in ${MODELS[@]}; do
                             --hf32=true \
                             --graph=true \
                             --compile=false \
+                            --enable_dynamic_compile False \
                             --test_batch_size=${batch_size} # MODE=test_qps时改这个设置batch_size
+        [ -n "$SHAPE_LIST" ] && break
     done
 done
 echo "finished!"
