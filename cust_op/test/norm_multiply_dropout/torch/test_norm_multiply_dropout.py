@@ -349,5 +349,129 @@ def test_invalid_params(invalid_params: tuple):
         test_norm_multiply_dropout(config)
 
 
+# 异常场景测试用例
+def _make_valid_tensors(dim0=1024, dim1=512):
+    """构造合法的输入张量基线"""
+    x = torch.randn(dim0, dim1, dtype=torch.float16, device=accelerator_device)
+    u = torch.randn(dim0, dim1, dtype=torch.float16, device=accelerator_device)
+    weight = torch.randn(dim1, dtype=torch.float32, device=accelerator_device)
+    bias = torch.randn(dim1, dtype=torch.float32, device=accelerator_device)
+    return x, u, weight, bias
+
+
+def _run_op(x, u, weight, bias, eps_value=1e-5, dropout_ratio=0.1):
+    """调用 norm_multiply_dropout"""
+    return torch.ops.mxrec.norm_multiply_dropout(x, u, weight, bias, eps_value, dropout_ratio)
+
+
+@pytest.mark.skipif(is_gpu, reason="Exception check is NPU adapter check_params behavior")
+def test_norm_x_not_2d():
+    """x 不是 2D tensor"""
+    x, u, weight, bias = _make_valid_tensors()
+    x_bad = x.unsqueeze(0)  # [1, 1024, 512]
+    with pytest.raises(Exception) as ctx:
+        _run_op(x_bad, u, weight, bias)
+    assert "norm_multiply_dropout input x must be 2D" in str(ctx.value)
+
+
+@pytest.mark.skipif(is_gpu, reason="Exception check is NPU adapter check_params behavior")
+def test_norm_u_not_2d():
+    """u 不是 2D tensor"""
+    x, u, weight, bias = _make_valid_tensors()
+    u_bad = u.unsqueeze(0)  # [1, 1024, 512]
+    with pytest.raises(Exception) as ctx:
+        _run_op(x, u_bad, weight, bias)
+    assert "norm_multiply_dropout input u must be 2D" in str(ctx.value)
+
+
+@pytest.mark.skipif(is_gpu, reason="Exception check is NPU adapter check_params behavior")
+def test_norm_weight_not_1d():
+    """weight 不是 1D tensor"""
+    x, u, weight, bias = _make_valid_tensors()
+    weight_bad = weight.unsqueeze(0)  # [1, 512]
+    with pytest.raises(Exception) as ctx:
+        _run_op(x, u, weight_bad, bias)
+    assert "norm_multiply_dropout input weight must be 1D" in str(ctx.value)
+
+
+@pytest.mark.skipif(is_gpu, reason="Exception check is NPU adapter check_params behavior")
+def test_norm_bias_not_1d():
+    """bias 不是 1D tensor"""
+    x, u, weight, bias = _make_valid_tensors()
+    bias_bad = bias.unsqueeze(0)  # [1, 512]
+    with pytest.raises(Exception) as ctx:
+        _run_op(x, u, weight, bias_bad)
+    assert "norm_multiply_dropout input bias must be 1D" in str(ctx.value)
+
+
+@pytest.mark.skipif(is_gpu, reason="Exception check is NPU adapter check_params behavior")
+def test_norm_x_u_dim0_mismatch():
+    """x 和 u 的 dim0 不一致"""
+    x, u, weight, bias = _make_valid_tensors(dim0=1024)
+    u_bad = torch.randn(512, 512, dtype=torch.float16, device=accelerator_device)
+    with pytest.raises(Exception) as ctx:
+        _run_op(x, u_bad, weight, bias)
+    assert "is not equal to u dim0" in str(ctx.value)
+
+
+@pytest.mark.skipif(is_gpu, reason="Exception check is NPU adapter check_params behavior")
+def test_norm_x_u_dim1_mismatch():
+    """x 和 u 的 dim1 不一致"""
+    x, u, weight, bias = _make_valid_tensors(dim0=1024, dim1=512)
+    u_bad = torch.randn(1024, 1024, dtype=torch.float16, device=accelerator_device)
+    with pytest.raises(Exception) as ctx:
+        _run_op(x, u_bad, weight, bias)
+    assert "is not equal to u dim1" in str(ctx.value)
+
+
+@pytest.mark.skipif(is_gpu, reason="Exception check is NPU adapter check_params behavior")
+def test_norm_weight_bias_dim_mismatch():
+    """weight 和 bias 的维度不一致"""
+    x, u, weight, bias = _make_valid_tensors()
+    bias_bad = torch.randn(256, dtype=torch.float32, device=accelerator_device)
+    with pytest.raises(Exception) as ctx:
+        _run_op(x, u, weight, bias_bad)
+    assert "must be same but not equal" in str(ctx.value)
+
+
+@pytest.mark.skipif(is_gpu, reason="Exception check is NPU adapter check_params behavior")
+def test_norm_dim0_out_of_range():
+    """dim0 超出范围 [1, 1e6]"""
+    x, u, weight, bias = _make_valid_tensors(dim0=int(1e6 + 1))
+    with pytest.raises(Exception) as ctx:
+        _run_op(x, u, weight, bias)
+    assert "x dim0 must in range" in str(ctx.value)
+
+
+@pytest.mark.skipif(is_gpu, reason="Exception check is NPU adapter check_params behavior")
+@pytest.mark.parametrize("bad_dim1", [256, 768, 2048])
+def test_norm_dim1_unsupported(bad_dim1):
+    """dim1 不是 512 或 1024"""
+    x, u, weight, bias = _make_valid_tensors(dim1=bad_dim1)
+    with pytest.raises(Exception) as ctx:
+        _run_op(x, u, weight, bias)
+    assert "x dim1 must equal with" in str(ctx.value)
+
+
+@pytest.mark.skipif(is_gpu, reason="Exception check is NPU adapter check_params behavior")
+@pytest.mark.parametrize("bad_eps", [1e-11, 1e-3])
+def test_norm_eps_out_of_range(bad_eps):
+    """eps 超出范围 [1e-10, 1e-4]"""
+    x, u, weight, bias = _make_valid_tensors()
+    with pytest.raises(Exception) as ctx:
+        _run_op(x, u, weight, bias, eps_value=bad_eps)
+    assert "eps must in range" in str(ctx.value)
+
+
+@pytest.mark.skipif(is_gpu, reason="Exception check is NPU adapter check_params behavior")
+@pytest.mark.parametrize("bad_ratio", [-0.1, 1.1])
+def test_norm_dropout_ratio_out_of_range(bad_ratio):
+    """dropout_ratio 超出范围 [0, 1]"""
+    x, u, weight, bias = _make_valid_tensors()
+    with pytest.raises(Exception) as ctx:
+        _run_op(x, u, weight, bias, dropout_ratio=bad_ratio)
+    assert "dropout_ratio must in range" in str(ctx.value)
+
+
 if __name__ == '__main__':
     pytest.main([__file__, "-sv"])
