@@ -6,13 +6,13 @@
 
 用户可按[快速入门](./quick_start.md)的步骤搭建模型并进行训练。
 
-以下出现的相关接口的参数含义及约束详细可见[接口说明](./api/README.md)。
-
 迁移与训练中使用的软件配套版本如下所示：
 
 |软件名称|PyTorch|TorchNPU|torchrec|fbgemm_gpu|dynamic_emb|
 |--|--|--|--|--|--|
 |配套版本|2.7.1|2.7.1|1.2.0+npu|1.2.0|25.09|
+
+以下出现的相关接口的参数含义及约束详细可见[接口说明](./api/README.md)。
 
 **基于开源TorchRec进行迁移<a name="section9248145363514"></a>**
 
@@ -189,7 +189,7 @@ Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开�
 
 ##### 2. GIN配置参数扩展
 
-扩展 NetworkArgs 类，新增 NPU 适配相关参数，扩展kernel_backend支持。
+扩展NetworkArgs类，新增NPU适配相关参数，扩展kernel_backend支持。
 
 ```python
 # 添加NPU后端支持
@@ -228,8 +228,8 @@ from dynamic_emb import DynamicEmbCheckMode, DynamicEmbInitializerArgs, DynamicE
 将CUDA上Triton/Cutlass实现的算子转化为Pytorch原生实现/Rec SDK Torch推荐业务算子。算子实现位于`example/hstu/ops`文件夹下。
 
 - jagged_to_padded_dense / dense_to_jagged CUDA版本依赖FBGEMM算子，NPU替换为Rec SDK Torch业务算子实现
-- concat_2D_jagged / split_2D_jagged Triton算子替换为Pytorch实现
-- Position Encoding算子 Triton算子替换为Pytorch实现
+- concat_2D_jagged / split_2D_jagged等Triton算子替换为Pytorch实现
+- Position Encoding类Triton算子替换为Pytorch实现
 
 ##### 5. HSTU层适配
 
@@ -280,11 +280,11 @@ class NpuFusedHSTUAttention(HSTUAttention):
                                           ).view(-1, self.num_heads * self.attention_dim)
 ```
 
-#### Recsys-GR 性能调优实例
+#### Recsys-GR性能调优实例
 
 ##### 背景
 
-以非FSDP2模式为例，Recsys-GR 模型在不同架构（x86/ARM）及主频的CPU环境下，端到端训练性能存在显著差距。对比两类硬件环境，device侧设备规格参数相同，核心区别在于CPU架构规格与主频差异，低主频ARM环境性能劣化严重，初步判定存在Host Bound瓶颈。
+以非FSDP2模式为例，Recsys-GR模型在不同架构（x86/ARM）及主频的CPU环境下，端到端训练性能存在显著差距。对比两类硬件环境，device侧设备规格参数相同，核心区别在于CPU架构规格与主频差异，低主频ARM环境性能劣化严重，初步判定存在Host Bound瓶颈。
 
 ##### 分析
 
@@ -333,7 +333,7 @@ if PROFILE_ENABLE:
 
 x86与ARM环境下模型的Free时间占比均超70%，NPU实际计算占比极低。
 
-**核心推论**：性能瓶颈不在 NPU 算力，而在Host侧CPU操作（数据搬运、算子下发、调度等待）。
+**核心推论**：性能瓶颈不在NPU算力，而在Host侧CPU操作（数据搬运、算子下发、调度等待）。
 
 ##### 调优方案
 
@@ -408,7 +408,7 @@ def set_worker_id(self, worker_id: int, num_workers: int) -> None:
 
 ###### 2. 开启大页内存池
 
-Linux 默认4KB内存页会产生大量TLB Miss和缺页中断，大页内存可大幅降低该开销。详见[开启大页内存池](https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0070.html)
+Linux默认4KB内存页会产生大量TLB Miss和缺页中断，大页内存可大幅降低该开销。详见[开启大页内存池](https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0070.html)
 
 在模型run.sh脚本中使能OS开启透明大页内存：
 
@@ -416,9 +416,9 @@ Linux 默认4KB内存页会产生大量TLB Miss和缺页中断，大页内存可
 echo always > /sys/kernel/mm/transparent_hugepage/enabled
 ```
 
-###### 3. jemalloc 内存分配器优化
+###### 3. jemalloc内存分配器优化
 
-使用 CANN 优化版 jemalloc 提升内存分配效率。使用模型run.sh脚本进行加载：
+使用CANN优化版jemalloc提升内存分配效率。使用模型run.sh脚本进行加载：
 
 |环境变量名|含义|可选/必选|说明|
 |--|--|--|--|
@@ -429,7 +429,7 @@ echo always > /sys/kernel/mm/transparent_hugepage/enabled
 export LD_PRELOAD=${ASCEND_CANN_PACKAGE_PATH}/${ARCH}-linux/lib64/libjemalloc.so
 ```
 
-###### 4. 细粒度绑核、NUMA 内存绑定
+###### 4. 细粒度绑核、NUMA内存绑定
 
 原模型脚本粗粒度绑核效果差，需要针对Python主进程、acl_thread做专属绑核，并配置内存亲和性。
 
@@ -439,7 +439,7 @@ export LD_PRELOAD=${ASCEND_CANN_PACKAGE_PATH}/${ARCH}-linux/lib64/libjemalloc.so
 export TASK_QUEUE_ENABLE=2
 ```
 
-单卡 NUMA 内存绑定：
+单卡NUMA内存绑定：
 
 使用NUMA绑定前需分别安装系统级依赖以及python库依赖
 
@@ -484,9 +484,9 @@ cd dlrm && git checkout b631a99
 > [!NOTE]
 > 本章节提供关键步骤的代码示例，不可以直接拷贝编译运行，仅供参考。
 
-主要修改内容如下：
+#### 迁移主要修改
 
-1. 修改分布式后端
+##### 1. 修改分布式后端
 
     增加HCCL分布式后端选项：
 
@@ -504,7 +504,7 @@ cd dlrm && git checkout b631a99
         backend = "gloo"
     ```
 
-2. 修改稀疏表配置
+##### 2. 修改稀疏表配置
 
     使用EC模式的EmbeddingConfig配置稀疏表
 
@@ -525,7 +525,7 @@ cd dlrm && git checkout b631a99
     ]
     ```
 
-3. 配置EmbeddingCollection
+##### 3. 配置EmbeddingCollection
 
     新增EC版本的模型定义`DLRM_DCN_EC`对原模型进行替换，新增模型代码在:`dlrm/torchrec_dlrm/ec_dcnv2.py`下
 
@@ -548,7 +548,7 @@ cd dlrm && git checkout b631a99
         )
     ```
 
-4. 修改分表计划和创建分布式模型
+##### 4. 修改分表计划和创建分布式模型
 
     使用DynamicEmb相关接口替换TorchRec原生接口
 
