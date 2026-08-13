@@ -17,7 +17,13 @@ e.g. 'bash build_ai_core_op.sh A2 false continue' 表示编译A2版本算子，�
 - rebuild_all：是否重新编译已编译成功的算子，默认为true，设置为false后会跳过已编译成功的算子，减少编译时间，选填项
 - error_mode：编译错误处理模式，默认为exit，设置为exit表示在编译过程中遇到错误时立即退出脚本，设置为continue表示在编译过程中遇到错误时记录失败的算子但继续编译剩余算子，选填项
 
-编译后生成的tar包在 RecSDK/cust_op/ascendc_op/output 下，同时会自动安装到系统中
+编译后生成的tar包在 RecSDK/cust_op/ascendc_op/output 下，同时会自动安装到当前环境中。
+
+编译耗时说明（耗时可能随CPU、内存等因素变化）：
+
+- A2/A3：耗时约20~30min
+- A2-TF/310P：耗时约5~10min
+- A5：耗时约40-60min
 
 ## 依赖说明
 
