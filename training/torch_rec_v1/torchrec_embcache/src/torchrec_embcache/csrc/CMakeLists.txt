@@ -1,5 +1,6 @@
 # Python3
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(PYBIND11_FINDPYTHON ON)
 
 find_package(Torch REQUIRED)
 

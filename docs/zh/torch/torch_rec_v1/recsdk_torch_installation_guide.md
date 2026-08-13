@@ -49,7 +49,7 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 | 依赖名称/操作            | 推荐版本        | 获取方式/安装说明                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CANN软件包            | CANN 9.0.0  | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。                                                                                                                                                                                                                                                                                      |
-| PyTorch和TorchNPU | 2.6.0/2.7.1 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.6.0版本安装：请参见[使用二进制文件进行安装](https://gitcode.com/Ascend/pytorch/blob/v7.3.1-pytorch2.6.0/README.zh.md#%E4%BD%BF%E7%94%A8%E4%BA%8C%E8%BF%9B%E5%88%B6%E6%96%87%E4%BB%B6%E8%BF%9B%E8%A1%8C%E5%AE%89%E8%A3%85)章节安装PyTorch、TorchNPU依赖、TorchNPU。<br>2.7.1版本安装：请参见[安装PyTorch和PyTorch昇腾适配插件](https://gitcode.com/Ascend/pytorch/blob/v2.7.1/docs/zh/installation_guide/quick_install.md)章节分别安装PyTorch和TorchNPU。请根据PyTorch版本、Python版本、设备架构选择对应的安装指令，Python版本建议使用Python 3.11。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
+| PyTorch和TorchNPU | 2.6.0/2.7.1 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.6.0版本：请前往[TorchNPU2.6.0下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=168&ids=8e2241c30951478a85bb6f2fc282c568%2C97%2C108%2C1%2C6%2C3%2C)页面进行获取。<br>2.7.1版本：请前往[TorchNPU2.7.1下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=175&ids=89dda9ba9de741349efa03687a487678%2C96%2C108%2C1%2C6%2C177%2C)页面获取。<br>安装时请根据PyTorch版本、Python版本（建议使用Python 3.11）、CPU架构选择对应的安装指令。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
 
 #### 容器内训练加速库依赖<a id="section146113514600"></a>
 
@@ -197,7 +197,7 @@ Rec SDK Torch软件包如下表：
    下载[RecSDK](https://gitcode.com/Ascend/RecSDK)源码，按如下指令进行算子相关包的编译和安装：
 
    > [!NOTE]
-   > 编译脚本 `build_ai_core_op.sh` 的参数需根据实际芯片架构配置，默认以 `A2` 为例。详细说明请参考 [README.md](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)。
+   > 编译脚本 `build_ai_core_op.sh` 的参数需根据实际芯片架构配置，默认以 `A2` 为例。详细参数和更多说明请参考 [算子编译README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)。
 
    ```bash
    # 编译算子前，需使能CANN环境变量。默认路径安装CANN包时，使能CANN环境变量指令如下：
