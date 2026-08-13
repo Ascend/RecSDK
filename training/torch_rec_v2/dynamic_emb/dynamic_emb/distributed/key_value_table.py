@@ -216,12 +216,8 @@ class KeyValueTable(Cache, Storage[DynamicEmbTableOptions, BaseDynamicEmbeddingO
         self._de_emb_dtype = torch_to_dyn_emb(self._emb_dtype)
         self._value_dim = self._emb_dim + optimizer.get_state_dim(self._emb_dim)
         self._initial_optim_state = optimizer.get_initial_optim_states()
-        self.device = 0
-        if torch_npu.npu.is_available():
-            device_idx = torch_npu.npu.current_device()
-            self.device = torch.device(f"npu:{device_idx}")
-        else:
-            self.device = torch.device(f"cpu:{device_idx}")
+        device_idx = torch_npu.npu.current_device()
+        self.device = torch.device(f"npu:{device_idx}")
         self._threads_in_wave = 1024
 
         self._cache_metrics = torch.zeros(10, dtype=torch.long, device="cpu")
