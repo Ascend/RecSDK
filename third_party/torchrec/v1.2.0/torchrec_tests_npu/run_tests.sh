@@ -104,6 +104,7 @@ python3 -m pytest \
     ./torchrec/modules/tests/test_embedding_modules.py \
     ./torchrec/distributed/planner/tests/*.py \
     ./torchrec/inference/tests/test_inference.py \
+    ./torchrec/inference/inference_legacy/tests/test_modules.py \
     --cov=torchrec \
     --cov-report=html:${TEST_REPORT_DIR}/coverage_html_report \
     --cov-report=xml:${TEST_REPORT_DIR}/coverage.xml \
