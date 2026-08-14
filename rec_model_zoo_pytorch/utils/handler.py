@@ -294,8 +294,10 @@ class TestHandler:
             for _pair in _shape_list_str.split(";"):
                 _pair = _pair.strip()
                 if _pair:
-                    _bs_str, _sl_str = _pair.split(",")
-                    self._shape_list.append((int(_bs_str.strip()), int(_sl_str.strip())))
+                    _parts = _pair.split(",")
+                    _bs = int(_parts[0].strip())
+                    _sl = int(_parts[1].strip()) if len(_parts) > 1 else getattr(params, 'max_seq_len', 50)
+                    self._shape_list.append((_bs, _sl))
         self.dynamic_enabled = len(self._shape_list) > 0
         self.enable_dynamic_compile = getattr(params, 'enable_dynamic_compile', False)
         self._shape_idx = 0
@@ -401,13 +403,16 @@ class TestHandler:
         for name, tensor in features.items():
             if isinstance(tensor, torch.Tensor) and tensor.ndim >= 1:
                 torch._dynamo.mark_dynamic(tensor, 0)  # batch_size
-                if tensor.ndim >= 2:
+                if tensor.ndim >= 2 and self._gen_supports_seq_len:
                     torch._dynamo.mark_dynamic(tensor, 1)  # seq_len
 
 
     def infer_with_generate_data(self, model):
         self._shape_idx = 0
-        self.batch_size, cur_seq_len = self._next_shape()
+        if self._shape_list:
+            self.batch_size, cur_seq_len = self._shape_list[0]
+        else:
+            self.batch_size, cur_seq_len = self._next_shape()
 
         model.eval()
         features = self._gen_features(self.batch_size, cur_seq_len)
@@ -436,9 +441,14 @@ class TestHandler:
                 if self.enable_dynamic_compile is None:
                     self._mark_dynamic_features(features)
                 if self._shape_list:
-                    logger.info(
-                        f"[warmup {i}] shape=({self.batch_size}, {cur_seq_len})"
-                    )
+                    if self._gen_supports_seq_len:
+                        logger.info(
+                            f"[warmup {i}] shape=({self.batch_size}, {cur_seq_len})"
+                        )
+                    else:
+                        logger.info(
+                            f"[warmup {i}] shape=({self.batch_size})"
+                        )
                 pred = self.model_infer(model, features)
         profiler = Profiler(self.params)
         if self._shape_list:
@@ -457,9 +467,14 @@ class TestHandler:
                         features = self._gen_features(self.batch_size, cur_seq_len)
                         self._mark_dynamic_features(features)
                     if self._shape_list:
-                        logger.info(
-                            f"[iter {it}] shape=({self.batch_size}, {cur_seq_len})"
-                        )
+                        if self._gen_supports_seq_len:
+                            logger.info(
+                                f"[iter {it}] shape=({self.batch_size}, {cur_seq_len})"
+                            )
+                        else:
+                            logger.info(
+                                f"[iter {it}] shape=({self.batch_size})"
+                            )
                     self.synchronize()
                     start_time = time.time()
                     pred = self.model_infer(model, features)
@@ -475,11 +490,13 @@ class TestHandler:
 
         report = {"Batch_size": bs_str, "model_name": self.params.model}
         if self.params.report_dir:
-            df = pd.DataFrame({
+            data = {
                 'time(s)': times_range,
                 'batch size': batches_list,
-                'seq len': seq_lens_list,
-            })
+            }
+            if self._gen_supports_seq_len:
+                data['seq len'] = seq_lens_list
+            df = pd.DataFrame(data)
             saved_path = os.path.join(self.params.report_dir, self.params.model)
             if not os.path.exists(saved_path):
                 os.makedirs(saved_path)
@@ -500,8 +517,7 @@ class TestHandler:
         report["P95 Latency"] = p95_latency
         report["P90 Latency"] = p90_latency
         logger.info(report)
-        if self._shape_list:
-            report["shape_list"] = str(self._shape_list)
+        
         if self.params.report_dir:
             saved_path = os.path.join(self.params.report_dir, self.params.model)
             save_json(report, saved_path, f"report_bs{bs_str}.json")

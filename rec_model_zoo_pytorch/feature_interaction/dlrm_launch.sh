@@ -7,7 +7,7 @@ MODE=test_qps # train/eval/test/test_qps, test_qps为生成的虚拟数据
 OPEN_PROFILING=true
 TEST_BATCH_SIZE=(128)
 export JOB_ID=10085
-export SHAPE_LIST=""
+export SHAPE_LIST="" # "batch_size1;batch_size2;batch_size3..."
 
 if [ $DEVICE == "npu" ]; then
     export ASCEND_DEVICE_ID=${DEVICE_ID}
