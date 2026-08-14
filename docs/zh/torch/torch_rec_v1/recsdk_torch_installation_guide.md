@@ -119,6 +119,11 @@ Rec SDK Torch软件包如下表：
 
    可直接下载已经制作好的基础训练镜像，请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中的“镜像下载”标签页，下载26.0.0*及之后版本的镜像。
 
+   从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)获取镜像的Docker指令示例如下：
+
+   - 获取x86_64镜像: `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_debian12-x86`
+   - 获取aarch_64镜像: `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_openeuler2203-arm`
+
    也可手动制作基础训练镜像，请参见[基础镜像构建](../build_torch_rec_images/README.md)里的Dockerfile和README制作镜像。
 
    制作基础镜像时，会同时安装[容器内训练框架依赖](#容器内训练框架依赖)和[容器内训练加速库依赖](#容器内训练加速库依赖)中的依赖软件（CANN、PyTorch、TorchNPU、fbgemm\_gpu）。后续安装Rec SDK Torch时可跳过`依赖软件安装`步骤。
@@ -264,10 +269,11 @@ Rec SDK Torch软件包如下表：
 
    **软件包Hash值校验<a name="section10830205518487"></a>**
 
-   为了防止软件包在传递过程中或存储期间被恶意篡改，请在软件包下载之后使用`sha256sum`命令校验Hash值是否和软件包下载页的Hash值一致。可参考如下指令进行验证（file\_name需替换为软件包文件名）：
+   为了防止软件包在传递过程中或存储期间被恶意篡改，请同时下载软件包和软件包对应的`.sha256sum`的文件到同一目录，并执行如下指令进行完整行校验：
 
    ```bash
-   sha256sum file_name
+   # FILE_NAME需替换为软件包文件名
+   sha256sum -c FILE_NAME.sha256sum
    ```
 
    **安装软件包**
