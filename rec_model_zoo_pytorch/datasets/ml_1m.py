@@ -214,15 +214,17 @@ class TestML1MHandler(TestHandler):
     def __init__(self, params):
         super().__init__(params)
 
-    def generate_data(self, batch_size):
+    def generate_data(self, batch_size, seq_len=None):
+        if seq_len is None:
+            seq_len = self.params.maxlen
         features = {}
         device = self.params.device
         features["seq"] = torch.tensor(
-            np.random.randint(0, 3416, (batch_size, self.params.maxlen)), 
+            np.random.randint(0, 3416, (batch_size, seq_len)), 
             dtype=torch.long
         ).to(device)
         features["user_ids"] = torch.tensor(
-            np.random.randint(0, 3416, (batch_size, self.params.maxlen))
+            np.random.randint(0, 3416, (batch_size, seq_len))
         ).to(device)
         features["item_ids"] = torch.tensor(
             np.random.randint(0, 3416, (batch_size, 101))
