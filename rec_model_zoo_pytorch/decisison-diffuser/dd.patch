@@ -71,10 +71,10 @@ index 87445df..0000000
 \ No newline at end of file
 diff --git a/code/analysis/launch.sh b/code/analysis/launch.sh
 new file mode 100644
-index 0000000..f83f6d3
+index 0000000..6cda287
 --- /dev/null
 +++ b/code/analysis/launch.sh
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,42 @@
 +#!/bin/bash
 +export LD_LIBRARY_PATH=/root/.mujoco/mujoco210/bin:$LD_LIBRARY_PATH
 +export PATH=$PATH:/usr/bin/gcc
@@ -86,6 +86,7 @@ index 0000000..f83f6d3
 +WEIGHTS_PATH=${PWD}/../weights   #权重保存和加载的路径
 +
 +n_diffusion_steps=10
++export SHAPE_LIST="" # Shape list: "batch_size,seq_len;batch_size,seq_len;..."
 +
 +if [ $DEVICE == "npu" ]
 +then
@@ -110,6 +111,7 @@ index 0000000..f83f6d3
 +                --hf32=true \
 +                --graph=false \
 +                --compile=false \
++                --enable_dynamic_compile None \
 +                --check_results=false \
 +                --profiling_level=0 \
 +                --bucket=${WEIGHTS_PATH} # 权重路径
@@ -210,10 +212,10 @@ index 0000000..5fe2026
 \ No newline at end of file
 diff --git a/code/analysis/parser.py b/code/analysis/parser.py
 new file mode 100644
-index 0000000..f6e5dcc
+index 0000000..89ab8c2
 --- /dev/null
 +++ b/code/analysis/parser.py
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,90 @@
 +# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 +#
 +# Licensed under the Apache License, Version 2.0 (the "License");
@@ -245,6 +247,12 @@ index 0000000..f6e5dcc
 +    parser.add_argument("--seed", type=int, default=100, help="随机数种子")
 +    parser.add_argument(
 +        "--test_batch_size", type=int, default=10, help="test_qps模式下batch_size大小"
++    )
++    parser.add_argument(
++        "--enable_dynamic_compile",
++        type=lambda v: {"true": True, "false": False, "none": None}[v.lower()],
++        default=False,
++        help="Dynamic compile mode: False (static), True (full dynamic), None (auto detect)",
 +    )
 +    parser.add_argument(
 +        "--device",
@@ -384,7 +392,7 @@ index 42bc734..b53863e 100644
 +        logger.print(f'[ datasets/buffer ] Finalized replay buffer | {self._count} episodes')
 \ No newline at end of file
 diff --git a/code/diffuser/models/diffusion.py b/code/diffuser/models/diffusion.py
-index a1f74ea..7a6244a 100644
+index a1f74ea..44891a2 100644
 --- a/code/diffuser/models/diffusion.py
 +++ b/code/diffuser/models/diffusion.py
 @@ -2,7 +2,6 @@ import numpy as np
@@ -412,7 +420,53 @@ index a1f74ea..7a6244a 100644
  
          model_mean, posterior_variance, posterior_log_variance = self.q_posterior(
                  x_start=x_recon, x_t=x, t=t)
-@@ -260,7 +256,6 @@ class GaussianDiffusion(nn.Module):
+@@ -162,17 +158,19 @@ class GaussianDiffusion(nn.Module):
+ 
+         if return_diffusion: diffusion = [x]
+ 
+-        progress = utils.Progress(self.n_timesteps) if verbose else utils.Silent()
++        progress = utils.Progress(self.n_timesteps) if verbose else None
+         for i in reversed(range(0, self.n_timesteps)):
+             timesteps = torch.full((batch_size,), i, device=device, dtype=torch.long)
+             x = self.p_sample(x, cond, timesteps, returns)
+             x = apply_conditioning(x, cond, self.action_dim)
+ 
+-            progress.update({'t': i})
++            if progress is not None:
++                progress.update({'t': i})
+ 
+             if return_diffusion: diffusion.append(x)
+ 
+-        progress.close()
++        if progress is not None:
++            progress.close()
+ 
+         if return_diffusion:
+             return x, torch.stack(diffusion, dim=1)
+@@ -208,17 +206,19 @@ class GaussianDiffusion(nn.Module):
+ 
+         if return_diffusion: diffusion = [x]
+ 
+-        progress = utils.Progress(self.n_timesteps) if verbose else utils.Silent()
++        progress = utils.Progress(self.n_timesteps) if verbose else None
+         for i in reversed(range(0, self.n_timesteps)):
+             timesteps = torch.full((batch_size,), i, device=device, dtype=torch.long)
+             x = self.grad_p_sample(x, cond, timesteps, returns)
+             x = apply_conditioning(x, cond, self.action_dim)
+ 
+-            progress.update({'t': i})
++            if progress is not None:
++                progress.update({'t': i})
+ 
+             if return_diffusion: diffusion.append(x)
+ 
+-        progress.close()
++        if progress is not None:
++            progress.close()
+ 
+         if return_diffusion:
+             return x, torch.stack(diffusion, dim=1)
+@@ -260,7 +260,6 @@ class GaussianDiffusion(nn.Module):
          x_noisy = apply_conditioning(x_noisy, cond, self.action_dim)
  
          if self.model.calc_energy:
@@ -420,7 +474,7 @@ index a1f74ea..7a6244a 100644
              x_noisy.requires_grad = True
              t = torch.tensor(t, dtype=torch.float, requires_grad=True)
              returns.requires_grad = True
-@@ -271,8 +266,6 @@ class GaussianDiffusion(nn.Module):
+@@ -271,8 +270,6 @@ class GaussianDiffusion(nn.Module):
          if not self.predict_epsilon:
              x_recon = apply_conditioning(x_recon, cond, self.action_dim)
  
@@ -429,7 +483,7 @@ index a1f74ea..7a6244a 100644
          if self.predict_epsilon:
              loss, info = self.loss_fn(x_recon, noise)
          else:
-@@ -403,7 +396,7 @@ class GaussianInvDynDiffusion(nn.Module):
+@@ -403,7 +400,7 @@ class GaussianInvDynDiffusion(nn.Module):
          if self.returns_condition:
              # epsilon could be epsilon or x0 itself
              epsilon_cond = self.model(x, cond, t, returns, use_dropout=False)
@@ -438,7 +492,7 @@ index a1f74ea..7a6244a 100644
              epsilon = epsilon_uncond + self.condition_guidance_w*(epsilon_cond - epsilon_uncond)
          else:
              epsilon = self.model(x, cond, t)
-@@ -413,36 +406,36 @@ class GaussianInvDynDiffusion(nn.Module):
+@@ -413,43 +410,45 @@ class GaussianInvDynDiffusion(nn.Module):
  
          if self.clip_denoised:
              x_recon.clamp_(-1., 1.)
@@ -476,15 +530,27 @@ index a1f74ea..7a6244a 100644
  
          if return_diffusion: diffusion = [x]
  
-         progress = utils.Progress(self.n_timesteps) if verbose else utils.Silent()
+-        progress = utils.Progress(self.n_timesteps) if verbose else utils.Silent()
++        progress = utils.Progress(self.n_timesteps) if verbose else None
          for i in reversed(range(0, self.n_timesteps)):
              timesteps = torch.full((batch_size,), i, device=device, dtype=torch.long)
 -            x = self.p_sample(x, cond, timesteps, returns)
 +            x = self.p_sample(cond, timesteps, x, noise, returns)
              x = apply_conditioning(x, cond, 0)
  
-             progress.update({'t': i})
-@@ -457,7 +450,7 @@ class GaussianInvDynDiffusion(nn.Module):
+-            progress.update({'t': i})
++            if progress is not None:
++                progress.update({'t': i})
+ 
+             if return_diffusion: diffusion.append(x)
+ 
+-        progress.close()
++        if progress is not None:
++            progress.close()
+ 
+         if return_diffusion:
+             return x, torch.stack(diffusion, dim=1)
+@@ -457,7 +456,7 @@ class GaussianInvDynDiffusion(nn.Module):
              return x
  
      @torch.no_grad()
@@ -493,7 +559,7 @@ index a1f74ea..7a6244a 100644
          '''
              conditions : [ (time, state), ... ]
          '''
-@@ -466,7 +459,7 @@ class GaussianInvDynDiffusion(nn.Module):
+@@ -466,7 +465,7 @@ class GaussianInvDynDiffusion(nn.Module):
          horizon = horizon or self.horizon
          shape = (batch_size, horizon, self.observation_dim)
  
@@ -502,7 +568,7 @@ index a1f74ea..7a6244a 100644
      #------------------------------------------ training ------------------------------------------#
  
      def q_sample(self, x_start, t, noise=None):
-@@ -491,8 +484,6 @@ class GaussianInvDynDiffusion(nn.Module):
+@@ -491,8 +490,6 @@ class GaussianInvDynDiffusion(nn.Module):
          if not self.predict_epsilon:
              x_recon = apply_conditioning(x_recon, cond, 0)
  
@@ -511,7 +577,7 @@ index a1f74ea..7a6244a 100644
          if self.predict_epsilon:
              loss, info = self.loss_fn(x_recon, noise)
          else:
-@@ -621,7 +612,6 @@ class ARInvModel(nn.Module):
+@@ -621,7 +618,6 @@ class ARInvModel(nn.Module):
  
  
  class ActionGaussianDiffusion(nn.Module):
@@ -519,7 +585,7 @@ index a1f74ea..7a6244a 100644
      def __init__(self, model, horizon, observation_dim, action_dim, n_timesteps=1000,
          loss_type='l1', clip_denoised=False, predict_epsilon=True,
          action_weight=1.0, loss_discount=1.0, loss_weights=None, returns_condition=False,
-@@ -692,7 +682,6 @@ class ActionGaussianDiffusion(nn.Module):
+@@ -692,7 +688,6 @@ class ActionGaussianDiffusion(nn.Module):
  
      def p_mean_variance(self, x, cond, t, returns=None):
          if self.model.calc_energy:
@@ -527,7 +593,7 @@ index a1f74ea..7a6244a 100644
              x = torch.tensor(x, requires_grad=True)
              t = torch.tensor(t, dtype=torch.float, requires_grad=True)
              returns = torch.tensor(returns, requires_grad=True)
-@@ -710,8 +699,6 @@ class ActionGaussianDiffusion(nn.Module):
+@@ -710,8 +705,6 @@ class ActionGaussianDiffusion(nn.Module):
  
          if self.clip_denoised:
              x_recon.clamp_(-1., 1.)
@@ -536,7 +602,7 @@ index a1f74ea..7a6244a 100644
  
          model_mean, posterior_variance, posterior_log_variance = self.q_posterior(
                  x_start=x_recon, x_t=x, t=t)
-@@ -821,7 +808,6 @@ class ActionGaussianDiffusion(nn.Module):
+@@ -821,7 +814,6 @@ class ActionGaussianDiffusion(nn.Module):
          action_noisy = self.q_sample(x_start=action_start, t=t, noise=noise)
  
          if self.model.calc_energy:
@@ -544,7 +610,7 @@ index a1f74ea..7a6244a 100644
              action_noisy.requires_grad = True
              t = torch.tensor(t, dtype=torch.float, requires_grad=True)
              returns.requires_grad = True
-@@ -829,7 +815,6 @@ class ActionGaussianDiffusion(nn.Module):
+@@ -829,7 +821,6 @@ class ActionGaussianDiffusion(nn.Module):
  
          pred = self.model(action_noisy, state, t, returns)
  
@@ -552,7 +618,7 @@ index a1f74ea..7a6244a 100644
  
          if self.predict_epsilon:
              loss = F.mse_loss(pred, noise)
-@@ -841,7 +826,6 @@ class ActionGaussianDiffusion(nn.Module):
+@@ -841,7 +832,6 @@ class ActionGaussianDiffusion(nn.Module):
      def loss(self, x, cond, returns=None):
          batch_size = len(x)
          t = torch.randint(0, self.n_timesteps, (batch_size,), device=x.device).long()
@@ -560,7 +626,7 @@ index a1f74ea..7a6244a 100644
          x = x[:,0,:]
          cond = x[:,self.action_dim:] # Observation
          x = x[:,:self.action_dim] # Action
-@@ -849,4 +833,3 @@ class ActionGaussianDiffusion(nn.Module):
+@@ -849,4 +839,3 @@ class ActionGaussianDiffusion(nn.Module):
  
      def forward(self, cond, *args, **kwargs):
          return self.conditional_sample(cond=cond, *args, **kwargs)
@@ -701,6 +767,61 @@ index 49cffd5..6d4200b 100644
          for key in sorted(self._dict.keys()):
              val = self._dict[key]
              string += f'    {key}: {val}\n'
+diff --git a/code/diffuser/utils/rendering.py b/code/diffuser/utils/rendering.py
+index 8fd5873..09b771e 100644
+--- a/code/diffuser/utils/rendering.py
++++ b/code/diffuser/utils/rendering.py
+@@ -14,6 +14,7 @@ from .video import save_video, save_videos
+ from ml_logger import logger
+ 
+ from diffuser.datasets.d4rl import load_environment
++from diffuser.environments.mujoco_compat import get_mujoco_data
+ 
+ #-----------------------------------------------------------------------------#
+ #------------------------------- helper structs ------------------------------#
+@@ -80,7 +81,7 @@ class MuJoCoRenderer:
+         return state
+ 
+     def pad_observations(self, observations):
+-        qpos_dim = self.env.sim.data.qpos.size
++        qpos_dim = get_mujoco_data(self.env).qpos.size
+         ## xpos is hidden
+         xvel_dim = qpos_dim - 1
+         xvel = observations[:, xvel_dim]
+@@ -119,9 +120,10 @@ class MuJoCoRenderer:
+         else:
+             state = observation
+ 
+-        qpos_dim = self.env.sim.data.qpos.size
++        data = get_mujoco_data(self.env)
++        qpos_dim = data.qpos.size
+         if not qvel or state.shape[-1] == qpos_dim:
+-            qvel_dim = self.env.sim.data.qvel.size
++            qvel_dim = data.qvel.size
+             state = np.concatenate([state, np.zeros(qvel_dim)])
+ 
+         set_state(self.env, state)
+@@ -245,8 +247,9 @@ class MuJoCoRenderer:
+ #-----------------------------------------------------------------------------#
+ 
+ def set_state(env, state):
+-    qpos_dim = env.sim.data.qpos.size
+-    qvel_dim = env.sim.data.qvel.size
++    data = get_mujoco_data(env)
++    qpos_dim = data.qpos.size
++    qvel_dim = data.qvel.size
+     if not state.size == qpos_dim + qvel_dim:
+         warnings.warn(
+             f'[ utils/rendering ] Expected state of size {qpos_dim + qvel_dim}, '
+@@ -263,7 +266,7 @@ def rollouts_from_state(env, state, actions_l):
+     return rollouts
+ 
+ def rollout_from_state(env, state, actions):
+-    qpos_dim = env.sim.data.qpos.size
++    qpos_dim = get_mujoco_data(env).qpos.size
+     env.set_state(state[:qpos_dim], state[qpos_dim:])
+     observations = [env._get_obs()]
+     for act in actions:
 diff --git a/code/diffuser/utils/setup.py b/code/diffuser/utils/setup.py
 index e251743..5b28cc7 100644
 --- a/code/diffuser/utils/setup.py
@@ -846,10 +967,13 @@ index e251743..5b28cc7 100644
 +            
 \ No newline at end of file
 diff --git a/code/diffuser/utils/training.py b/code/diffuser/utils/training.py
-index e8dcdb4..c26ac0c 100644
+index e8dcdb4..51bb80c 100644
 --- a/code/diffuser/utils/training.py
 +++ b/code/diffuser/utils/training.py
-@@ -3,20 +3,60 @@ import copy
+@@ -1,22 +1,64 @@
+ import os
+ import copy
++import time
  import numpy as np
  import torch
  import einops
@@ -863,6 +987,7 @@ index e8dcdb4..c26ac0c 100644
 -from .cloud import sync_logs
  from ml_logger import logger
 +from diffuser.models.helpers import apply_conditioning
++from scripts.common import Profiler, output_report
 +
  
  def cycle(dl):
@@ -912,7 +1037,7 @@ index e8dcdb4..c26ac0c 100644
  class EMA():
      '''
          empirical moving average
-@@ -92,6 +132,7 @@ class Trainer(object):
+@@ -92,6 +134,7 @@ class Trainer(object):
          self.step = 0
  
          self.device = train_device
@@ -920,7 +1045,7 @@ index e8dcdb4..c26ac0c 100644
  
      def reset_parameters(self):
          self.ema_model.load_state_dict(self.model.state_dict())
-@@ -109,7 +150,7 @@ class Trainer(object):
+@@ -109,7 +152,7 @@ class Trainer(object):
      def train(self, n_train_steps):
  
          timer = Timer()
@@ -929,7 +1054,7 @@ index e8dcdb4..c26ac0c 100644
              for i in range(self.gradient_accumulate_every):
                  batch = next(self.dataloader)
                  batch = batch_to_device(batch, device=self.device)
-@@ -127,12 +168,9 @@ class Trainer(object):
+@@ -127,12 +170,9 @@ class Trainer(object):
                  self.save()
  
              if self.step % self.log_freq == 0:
@@ -945,7 +1070,7 @@ index e8dcdb4..c26ac0c 100644
  
              if self.step == 0 and self.sample_freq:
                  self.render_reference(self.n_reference)
-@@ -157,9 +195,8 @@ class Trainer(object):
+@@ -157,9 +197,8 @@ class Trainer(object):
              'model': self.model.state_dict(),
              'ema': self.ema_model.state_dict()
          }
@@ -956,7 +1081,7 @@ index e8dcdb4..c26ac0c 100644
          if self.save_checkpoints:
              savepath = os.path.join(savepath, f'state_{self.step}.pt')
          else:
-@@ -171,8 +208,7 @@ class Trainer(object):
+@@ -171,8 +210,7 @@ class Trainer(object):
          '''
              loads model and ema from disk
          '''
@@ -966,7 +1091,7 @@ index e8dcdb4..c26ac0c 100644
          data = torch.load(loadpath)
  
          self.step = data['step']
-@@ -184,54 +220,29 @@ class Trainer(object):
+@@ -184,54 +222,29 @@ class Trainer(object):
      #-----------------------------------------------------------------------------#
  
      def render_reference(self, batch_size=10):
@@ -1021,7 +1146,7 @@ index e8dcdb4..c26ac0c 100644
              if self.ema_model.returns_condition:
                  returns = to_device(torch.ones(n_samples, 1), self.device)
              else:
-@@ -244,30 +255,14 @@ class Trainer(object):
+@@ -244,30 +257,14 @@ class Trainer(object):
  
              samples = to_np(samples)
  
@@ -1052,7 +1177,7 @@ index e8dcdb4..c26ac0c 100644
              savepath = os.path.join('images', f'sample-{i}.png')
              self.renderer.composite(savepath, observations)
  
-@@ -277,22 +272,19 @@ class Trainer(object):
+@@ -277,22 +274,19 @@ class Trainer(object):
          '''
          for i in range(batch_size):
  
@@ -1076,7 +1201,7 @@ index e8dcdb4..c26ac0c 100644
              if self.ema_model.model.calc_energy:
                  samples = self.ema_model.grad_conditional_sample(conditions, returns=returns)
              else:
-@@ -300,29 +292,169 @@ class Trainer(object):
+@@ -300,29 +294,323 @@ class Trainer(object):
  
              samples = to_np(samples)
  
@@ -1113,10 +1238,27 @@ index e8dcdb4..c26ac0c 100644
 +    #--------------------------------- handle -----------------------------------#
 +    #-----------------------------------------------------------------------------#
 +    def set_handle(self, params):
++        def as_bool(value):
++            return value if isinstance(value, bool) or value is None else value == "true"
++
 +        self.shape_handle = params["shape_handle"] == "true"
 +        self.compile = params["compile"] == "true"
 +        self.graph = params["graph"] == "true"
 +        self.hf32 = params["hf32"] == "true"
++        self.enable_dynamic_compile = as_bool(params.get("enable_dynamic_compile", False))
++        self.max_seq_len = self.ema_model.horizon
++        self._shape_idx = 0
++        self._shape_list = []
++        shape_list_str = os.getenv("SHAPE_LIST", "").strip()
++        if self.enable_dynamic_compile is None and shape_list_str:
++            for pair in shape_list_str.split(";"):
++                pair = pair.strip()
++                if pair:
++                    bs, seq_len = (int(value.strip()) for value in pair.split(","))
++                    if bs < 1 or seq_len < 2:
++                        raise ValueError("SHAPE_LIST entries must be batch_size >= 1 and seq_len >= 2")
++                    self._shape_list.append((bs, seq_len))
++        self.dynamic_enabled = bool(self._shape_list)
 +        self.graphs = {}
 +        self.manual_graph = False
 +
@@ -1146,6 +1288,69 @@ index e8dcdb4..c26ac0c 100644
 +            color = "cyan"
 +            )
 +
++    def _next_shape(self):
++        if self._shape_list:
++            shape = self._shape_list[self._shape_idx % len(self._shape_list)]
++            self._shape_idx += 1
++            return shape
++        return self.test_batch_size, self.max_seq_len
++
++    def _mark_dynamic_inputs(self, value, mark_seq_len=True):
++
++        # if isinstance(value, torch.Tensor) and value.ndim >= 1:
++        #     torch._dynamo.mark_dynamic(value, 0)
++        #     if mark_seq_len and value.ndim >= 2:
++        #         torch._dynamo.mark_dynamic(value, 1)
++        # elif isinstance(value, dict):
++        #     for key, item in value.items():
++        #         # ``x`` and ``noise`` carry [batch, horizon, ...]. Conditions
++        #         # and returns only have a dynamic batch dimension.
++        #         self._mark_dynamic_inputs(item, mark_seq_len=key in ("x", "noise"))
++        # elif isinstance(value, (list, tuple)):
++        #     for item in value:
++        #         self._mark_dynamic_inputs(item, mark_seq_len=mark_seq_len)
++
++    def _log_input_size(self, phase, index, batch_size, seq_len, inputs):
++        self._current_input_size = tuple(inputs["x"].size())
++        logger.print(
++            f"[ utils/training ] [{phase} {index}] "
++            f"batch_size={batch_size}, seq_len={seq_len}, "
++            f"x.size={self._current_input_size}",
++            color="cyan",
++        )
++
++    def _register_compile_callbacks(self):
++        self._compile_count = 0
++        if not hasattr(torch._dynamo, "on_compile_start"):
++            logger.print(
++                "[ utils/training ] Dynamo compile callbacks are unavailable; "
++                "use TORCH_LOGS=recompiles to inspect compilation",
++                color="cyan",
++            )
++            return
++
++        def on_compile_start(*_args, **_kwargs):
++            self._compile_count += 1
++            logger.print(
++                f"[ utils/training ] [compile {self._compile_count}] start, "
++                f"input_size={getattr(self, '_current_input_size', None)}",
++                color="cyan",
++            )
++
++        def on_compile_end(*_args, **_kwargs):
++            logger.print(
++                f"[ utils/training ] [compile {self._compile_count}] end, "
++                f"input_size={getattr(self, '_current_input_size', None)}",
++                color="cyan",
++            )
++
++        # Keep references because Dynamo stores these process-wide callbacks.
++        self._compile_start_callback = on_compile_start
++        self._compile_end_callback = on_compile_end
++        torch._dynamo.on_compile_start(self._compile_start_callback)
++        if hasattr(torch._dynamo, "on_compile_end"):
++            torch._dynamo.on_compile_end(self._compile_end_callback)
++
 +    def set_hf32(self):
 +        if "npu" in self.device:
 +            import torch_npu
@@ -1171,8 +1376,8 @@ index e8dcdb4..c26ac0c 100644
 +    def is_manual_graph(self):
 +        return not self.compile and self.graph and ("npu" in self.device or "cuda" in self.device)
 +    
-+    def generate_inputs(self, conditions, returns, observation_dim):
-+        shape = (len(conditions[0]), self.ema_model.horizon, self.ema_model.observation_dim)
++    def generate_inputs(self, conditions, returns, observation_dim, seq_len=None):
++        shape = (len(conditions[0]), seq_len or self.ema_model.horizon, self.ema_model.observation_dim)
 +        x = 0.5 * torch.randn(shape, device=self.ema_model.betas.device)
 +        inputs = {
 +            "conditions": conditions,
@@ -1189,7 +1394,13 @@ index e8dcdb4..c26ac0c 100644
 +        observation_dim = inputs["observation_dim"]
 +        x = inputs["x"]
 +        noise = inputs["noise"]
-+        samples = self.ema_model.conditional_sample(conditions, x=x, noise=noise, returns=returns)
++        samples = self.ema_model.conditional_sample(
++            conditions,
++            x=x,
++            noise=noise,
++            returns=returns,
++            verbose=False,
++        )
 +        obs_comb = torch.cat([samples[:, 0, :], samples[:, 1, :]], dim=-1)
 +        obs_comb = obs_comb.reshape(-1, 2 * observation_dim)
 +        action = self.ema_model.inv_model(obs_comb)
@@ -1197,7 +1408,9 @@ index e8dcdb4..c26ac0c 100644
 +
 +    def model_infer(self, inputs):
 +        if self.manual_graph:
-+            return self.model_infer_graph(inputs, self.batch_size)
++            seq_len = inputs["x"].shape[1] if isinstance(inputs.get("x"), torch.Tensor) and inputs["x"].ndim >= 2 else None
++            graph_key = (self.batch_size, seq_len)
++            return self.model_infer_graph(inputs, graph_key)
 +        return self.forward(inputs)
 +
 +    def model_infer_graph(self, inputs, batch_size):
@@ -1240,23 +1453,89 @@ index e8dcdb4..c26ac0c 100644
 +
 +        return self.graphs[batch_size]["static_output"]
 +
++    def infer_with_generate_data(self, observation_dim, params):
++        """Benchmark generated inputs while cycling through SHAPE_LIST."""
++        self._shape_idx = 0
++        self.test_batch_size = params["test_batch_size"]
++        warmup = 30
++        iteration = 210
++        times_range = []
++        batches = []
++        self.ema_model.eval()
++        profiler = Profiler(params)
++        dynamic_marked = False
++        with torch.no_grad():
++            for warmup_idx in range(warmup):
++                batch_size, seq_len = self._next_shape()
++                state = torch.randn(batch_size, self.ema_model.observation_dim,
++                                    device=self.ema_model.betas.device)
++                conditions = {0: state}
++                returns = torch.ones(batch_size, 1, device=state.device)
++                inputs = self.generate_inputs(conditions, returns, observation_dim, seq_len)
++                if self.dynamic_enabled and not dynamic_marked:
++                    self._mark_dynamic_inputs(inputs)
++                    dynamic_marked = True
++                    logger.print(
++                        "[ utils/training ] mark_dynamic: "
++                        "batch_dim=0, seq_len_dim=1, "
++                        f"input_size={tuple(inputs['x'].size())}",
++                        color="cyan",
++                    )
++                self.batch_size = batch_size
++                self._log_input_size(
++                    "warmup", warmup_idx, batch_size, seq_len, inputs
++                )
++                self.model_infer(inputs)
++
++            with profiler.get_profiler() as prof:
++                for it in range(iteration):
++                    batch_size, seq_len = self._next_shape()
++                    state = torch.randn(batch_size, self.ema_model.observation_dim,
++                                        device=self.ema_model.betas.device)
++                    conditions = {0: state}
++                    returns = torch.ones(batch_size, 1, device=state.device)
++                    inputs = self.generate_inputs(conditions, returns, observation_dim, seq_len)
++                    self.batch_size = batch_size
++                    self._log_input_size("iter", it, batch_size, seq_len, inputs)
++                    self.synchronize()
++                    start = time.time()
++                    self.model_infer(inputs)
++                    self.synchronize()
++                    times_range.append(time.time() - start)
++                    batches.append(batch_size)
++                    if hasattr(prof, "step"):
++                        prof.step()
++
++        output_report(
++            times_range,
++            batches,
++            params.get("n_diffusion_steps", 10),
++        )
++
 +    def set_compile_model(self):
++        dynamic_arg = self.enable_dynamic_compile
++        logger.print(
++            f"[ utils/training ] torch.compile: enabled={self.compile}, "
++            f"dynamic={dynamic_arg}, graph={self.graph}",
++            color="cyan",
++        )
 +        if self.compile:
++            self._register_compile_callbacks()
 +            if self.graph and self.shape_handle and "npu" in self.device:
 +                self.shape_options["triton.cudagraphs"] = True
 +                self.forward = torch.compile(
-+                    self.forward, backend="inductor", dynamic=False, options=self.shape_options
++                    self.forward, backend="inductor", dynamic=dynamic_arg, options=self.shape_options
 +                )
 +            elif self.shape_handle and "npu" in self.device:
 +                self.forward = torch.compile(
-+                    self.forward, backend="inductor", dynamic=False, options=self.shape_options
++                    self.forward, backend="inductor", dynamic=dynamic_arg, options=self.shape_options
 +                )
 +            elif self.graph:
 +                self.forward = torch.compile(
-+                    self.forward, backend="inductor", dynamic=False, mode="reduce-overhead"
++                    self.forward, backend="inductor", dynamic=dynamic_arg, mode="reduce-overhead"
 +                )
 +            else:
-+                self.forward = torch.compile(self.forward, backend="inductor", dynamic=False)
++                self.forward = torch.compile(self.forward, backend="inductor", dynamic=dynamic_arg)
 +        else:
 +            self.forward = self.forward
 +            if self.graph and ("npu" in self.device or "cuda" in self.device):
@@ -1404,7 +1683,7 @@ index 0000000..8c73941
 +    )
 diff --git a/code/scripts/common.py b/code/scripts/common.py
 new file mode 100644
-index 0000000..89dfca6
+index 0000000..c9ab3a6
 --- /dev/null
 +++ b/code/scripts/common.py
 @@ -0,0 +1,158 @@
@@ -1431,12 +1710,12 @@ index 0000000..89dfca6
 +from easydict import EasyDict as edict
 +import torch
 +
-+def output_report(times_range, batch_size):
++def output_report(times_range, batch_size, n_diffusion_steps=10):
 +    times_range.sort()
 +    report = { "model_name": "Decision-Diffuser"}
-+    tail_latency = round(times_range[int(len(times_range) * 0.99)] * 1000 /10, 6)
-+    p90_latency = round(times_range[int(len(times_range) * 0.90)] * 1000 / 10, 6)
-+    avg_latency = round(sum(times_range) / len(times_range) * 1000 / 10, 6)
++    tail_latency = round(times_range[int(len(times_range) * 0.99)] * 1000 / n_diffusion_steps, 6)
++    p90_latency = round(times_range[int(len(times_range) * 0.90)] * 1000 / n_diffusion_steps, 6)
++    avg_latency = round(sum(times_range) / len(times_range) * 1000 / n_diffusion_steps, 6)
 +    qps = calculate_qps(times_range, batch_size)
 +
 +    report["QPS"] = qps
@@ -1568,7 +1847,7 @@ index 0000000..89dfca6
 +        return profiler
 \ No newline at end of file
 diff --git a/code/scripts/evaluate_inv_parallel.py b/code/scripts/evaluate_inv_parallel.py
-index a7e019f..d82bee4 100644
+index a7e019f..26ddff6 100644
 --- a/code/scripts/evaluate_inv_parallel.py
 +++ b/code/scripts/evaluate_inv_parallel.py
 @@ -1,48 +1,47 @@
@@ -1702,7 +1981,7 @@ index a7e019f..d82bee4 100644
          train_batch_size=Config.batch_size,
          train_lr=Config.learning_rate,
          gradient_accumulate_every=Config.gradient_accumulate_every,
-@@ -118,43 +112,86 @@ def evaluate(**deps):
+@@ -118,43 +112,92 @@ def evaluate(**deps):
          n_reference=Config.n_reference,
          train_device=Config.device,
      )
@@ -1774,6 +2053,12 @@ index a7e019f..d82bee4 100644
 +    trainer.set_compile_model()
 +    trainer.manual_graph = trainer.is_manual_graph()
 +    trainer.ema_model.eval()
++
++    # Only this explicit pair enables generated-input dynamic-shape benchmarking.
++    # The default (empty SHAPE_LIST + False) keeps the original evaluation path.
++    if trainer.dynamic_enabled:
++        trainer.infer_with_generate_data(observation_dim, deps)
++        return
  
      while sum(dones) <  num_eval:
          obs = dataset.normalizer.normalize(obs, 'observations')
@@ -1806,7 +2091,7 @@ index a7e019f..d82bee4 100644
          if t == 0:
              normed_observations = samples[:, :, :]
              observations = dataset.normalizer.unnormalize(normed_observations, 'observations')
-@@ -162,30 +199,20 @@ def evaluate(**deps):
+@@ -162,30 +205,20 @@ def evaluate(**deps):
              renderer.composite(savepath, observations)
  
          obs_list = []
@@ -1833,7 +2118,7 @@ index a7e019f..d82bee4 100644
          recorded_obs.append(deepcopy(obs[:, None]))
          t += 1
  
-+    output_report(times_range, batch_size)
++    output_report(times_range, batch_size, deps.get("n_diffusion_steps", 10))
 +
      recorded_obs = np.concatenate(recorded_obs, axis=1)
      savepath = os.path.join('images', f'sample-executed.png')
