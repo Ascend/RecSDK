@@ -104,12 +104,15 @@ public:
         auto splitPrevCore = splitNextCore + 1;
         auto splitCoreIdx = totalBlockCnt % coreNum;
 
-        // coreId < splitCoreIdx: blockId = coreId * splitPrevCore, blockEnd = blockId + splitPrevCore
-        // coreId >= splitCoreIdx: blockId = splitCoreIdx * splitPrevCore + (coreId - splitCoreIdx) * splitNextCore
-        auto inFirstGroup = (coreId < splitCoreIdx);
-        auto blockId = inFirstGroup * coreId * splitPrevCore +
-                       (1 - inFirstGroup) * (splitCoreIdx * splitPrevCore + (coreId - splitCoreIdx) * splitNextCore);
-        auto blockEnd = blockId + inFirstGroup * splitPrevCore + (1 - inFirstGroup) * splitNextCore;
+        uint32_t blockEnd = 0;
+        uint32_t blockId = 0;
+        if (coreId < splitCoreIdx) {
+            blockId = coreId * splitPrevCore;
+            blockEnd = blockId + splitPrevCore;
+        } else if (coreId < coreNum) {
+            blockId = splitCoreIdx * splitPrevCore + (coreId - splitCoreIdx) * splitNextCore;
+            blockEnd = blockId + splitNextCore;
+        }
 
         this->batchId = 0;
         this->batchBaseOffset = seqOffsetM.GetValue(0);
@@ -328,8 +331,7 @@ private:
         auto seqOffset = headBlockId * BLOCK_M;
         blockOffset = (batchBaseOffset + seqOffset) * headNum + headId;
         auto remainingSeq = currentSeqLen - seqOffset;
-        auto isTail = (remainingSeq < BLOCK_M);
-        blockSize = BLOCK_M + isTail * (remainingSeq - BLOCK_M);
+        blockSize = (remainingSeq < BLOCK_M) ? remainingSeq : BLOCK_M;
     }
 
     uint32_t blockSize{0};
@@ -408,22 +410,7 @@ public:
         auto headId = tla::get<1>(meta);   // 1 means headId
         rowBlockId = tla::get<2>(meta);    // 2 means rowBlockId
 
-        // 计算当前 AIC 物理核 ID（兼容 AIV sub-block 模式）
-        // 同一核处理不同 Q row 时 coreId 不变，缓存避免重复调用
-        if (!coreInfoCached) {
-            if ASCEND_IS_AIV {
-                coreId = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-            } else {
-                coreId = AscendC::GetBlockIdx();
-            }
-            coreInfoCached = true;
-        }
-
-        if constexpr (PER_CORE_REVERSE) {
-            // 步骤1：按核奇偶固定 K/V 遍历方向，相邻核从两端开始
-            swizzleDir = 1 - (coreId & 1);
-            triggerSwizzle = false;
-        } else if constexpr (USE_SWIZZLE) {
+        if constexpr (USE_SWIZZLE) {
             if (isInitialized && this->batchId == batchId && this->headId == headId) {
                 swizzleDir = 1 - swizzleDir;
                 triggerSwizzle = true;
@@ -440,28 +427,7 @@ public:
         this->blockBaseOffset = gSeqOffset.GetValue(batchId);
         this->seqLens = gSeqOffset.GetValue(batchId + 1) - gSeqOffset.GetValue(batchId);
         this->blockCnt = CeilDiv<BLOCK_N>(seqLens);
-
-        // 步骤2：cluster 化 K/V 起点，同一 cluster 内仍共享完整行
-        if constexpr (KV_CLUSTER_NUM > 1) {
-            // AIC GetBlockIdx() 已是物理核编号；AIV GetBlockIdx()/GetSubBlockNum() 也是物理核编号。
-            // 因此 totalCores 直接取 GetBlockNum()（物理核数），保证 AIC/AIV 的 cluster 划分一致。
-            if (cachedClusterSize == 0) {
-                uint32_t totalCores = AscendC::GetBlockNum();
-                totalCores += (totalCores == 0);
-                cachedClusterSize = (totalCores + KV_CLUSTER_NUM - 1) / KV_CLUSTER_NUM;
-                cachedClusterSize += (cachedClusterSize == 0);
-            }
-            uint32_t clusterId = coreId / cachedClusterSize;
-            auto overflow = (clusterId >= KV_CLUSTER_NUM);
-            clusterId = clusterId + overflow * (KV_CLUSTER_NUM - 1 - clusterId);
-            startBlockId = (blockCnt * clusterId) / KV_CLUSTER_NUM;
-            startBlockId -= (startBlockId >= blockCnt) * startBlockId;
-        } else {
-            startBlockId = 0;
-        }
-
-        this->blockId = static_cast<int32_t>(startBlockId);
-        this->blocksVisited = 0;
+        this->blockId = (swizzleDir == 1) ? 0 : blockCnt - 1;
         Update();
     }
 
@@ -490,31 +456,31 @@ public:
     CATLASS_DEVICE
     bool IsFirst()
     {
-        return blocksVisited == 0;
+        return (swizzleDir == 1) ? blockId == 0 : blockId == (blockCnt - 1);
     }
 
     /**
      ◦ @brief 判断是否是最后一个块
 
-     ◦ @return bool 根据已访问块数判断是否是本行遍历的最后一个块
+     ◦ @return bool 根据遍历方向判断是否是结束块
 
      */
     CATLASS_DEVICE
     bool IsLast()
     {
-        return blocksVisited == blockCnt - 1;
+        return (swizzleDir == 1) ? blockId == (blockCnt - 1) : blockId == 0;
     }
 
     /**
      ◦ @brief 判断块调度是否有效
 
-     ◦ @return bool 根据已访问块数判断是否在有效范围内（支持循环遍历）
+     ◦ @return bool 根据遍历方向判断块 ID 是否在有效范围内
 
      */
     CATLASS_DEVICE
     bool IsValid()
     {
-        return blocksVisited < blockCnt;
+        return !((swizzleDir == 1) ? blockId >= blockCnt : blockId < 0);
     }
 
     CATLASS_DEVICE int32_t GetBlockId() const
@@ -545,29 +511,7 @@ public:
     CATLASS_DEVICE
     ColumnBlockScheduler& operator++()
     {
-        blocksVisited++;
-        if (blocksVisited >= blockCnt) {
-            return *this;
-        }
-
-        if constexpr (USE_SWIZZLE || PER_CORE_REVERSE) {
-            if (swizzleDir == 1) {
-                blockId++;
-                if (blockId >= static_cast<int32_t>(blockCnt)) {
-                    blockId = 0;
-                }
-            } else {
-                blockId--;
-                if (blockId < 0) {
-                    blockId = static_cast<int32_t>(blockCnt) - 1;
-                }
-            }
-        } else {
-            blockId++;
-            if (blockId >= static_cast<int32_t>(blockCnt)) {
-                blockId = 0;
-            }
-        }
+        blockId = (swizzleDir == 1) ? blockId + 1 : blockId - 1;
         Update();
         return *this;
     }
@@ -651,8 +595,7 @@ private:
     CATLASS_DEVICE
     void Update()
     {
-        auto isTail = (blockId == (blockCnt - 1));
-        blockSize = BLOCK_N + isTail * (seqLens - blockId * BLOCK_N - BLOCK_N);
+        blockSize = (blockId == (blockCnt - 1)) ? (seqLens - blockId * BLOCK_N) : BLOCK_N;
         blockOffset = (blockBaseOffset + blockId * BLOCK_N) * headNum;
     }
 
@@ -667,14 +610,9 @@ private:
     int32_t blockId{0};
     uint32_t rowBlockId{0};
     uint32_t blockCnt{0};
-    uint32_t coreId{0};
-    uint32_t startBlockId{0};
-    uint32_t blocksVisited{0};
     bool isInitialized{false};
     bool triggerSwizzle{false};
     uint32_t swizzleDir{1};
-    bool coreInfoCached{false};
-    uint32_t cachedClusterSize{0};
     AscendC::GlobalTensor<ElementOffset> gSeqOffset;
 };
 
