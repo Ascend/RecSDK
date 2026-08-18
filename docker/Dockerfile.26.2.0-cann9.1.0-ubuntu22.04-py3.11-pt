@@ -1,27 +1,36 @@
+# RecSDK PyTorch Runtime and Build Image
 # please configure 根据实际情况使用基础镜像
-# 基础镜像使用 OpenEuler 22.03
-FROM openeuler/openeuler:22.03-lts-sp4
+FROM ubuntu:22.04
+
 WORKDIR /tmp
 
-# 替换 OpenEuler 官方源为华为云镜像（用户可根据需要修改）
-RUN sed -i 's|http://repo.openeuler.org|https://mirrors.huaweicloud.com/openeuler|g' /etc/yum.repos.d/*.repo && \
-    sed -i 's|http://mirrors.openeuler.org|https://mirrors.huaweicloud.com/openeuler|g' /etc/yum.repos.d/*.repo
+# 设置非交互式安装
+ENV DEBIAN_FRONTEND=noninteractive
 
-# 1.安装系统依赖（缓存此层）
-RUN dnf install -y -q ca-certificates && \
-    dnf makecache -q && \
-    dnf -y -q install net-tools make wget unzip zlib-devel bzip2 bzip2-devel openssl-devel \
-    ncurses-devel openssh-clients openssh-server sqlite-devel openmpi-devel \
-    readline-devel tk-devel gdbm-devel libdb-devel xz-devel libffi-devel \
-    hdf5-devel patch pciutils vim findutils util-linux  dos2unix gcc-c++ automake autoconf \
-    m4 perl git e2fsprogs sudo && \
-    dnf clean all && \
-    rm -rf /var/cache/dnf
+# 0. 配置证书（必须在替换apt源之前安装，否则无法访问新源）
+RUN apt-get update -qq && \
+    apt-get install -y -qq ca-certificates && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
+# 替换华为apt源
+RUN sed -i 's/archive.ubuntu.com/repo.huaweicloud.com/g' /etc/apt/sources.list && \
+    sed -i 's/security.ubuntu.com/repo.huaweicloud.com/g' /etc/apt/sources.list
+
+# 根据实际情况选择安装需要的依赖，如果一些依赖不需要可以将对应代码去掉或注释；同时，确保下载的依赖的包名与如下代码中的包名一致，
+# 否则在安装对应的依赖时可能出现找不到文件的错误。
+
+# 1.安装编译环境
+RUN apt-get update -qq && \
+    apt-get -y -qq install net-tools make wget zlib1g-dev bzip2 libbz2-dev libssl-dev libncurses5-dev libncursesw5-dev openssh-client \
+    openssh-server libsqlite3-dev libopenmpi-dev libreadline-dev tk-dev libgdbm-dev libpcap-dev liblzma-dev \
+    libffi-dev libhdf5-dev patch pciutils lcov vim dos2unix g++ automake libtool autoconf m4 perl git e2fsprogs unzip ninja-build && \
+    apt-get clean && \
+    rm -rf /var/cache/apt/
 # 注：openssh-server为双机训练样例需要，仅单机训练时可去掉
-RUN mkdir -p /usr/local/gcc11.2.0
+
 # 2.编译安装 GCC 11.2.0（下载→编译→清理在同一层）
-# 流程：下载GCC源码 → 下载4个依赖库(gmp/mpfr/mpc/isl) → configure → make → 安装 → 替换系统libstdc++ → 清理
+# 流程：下载GCC源码 → 下载4个依赖库(gmp/mpfr/mpc/isl) → configure → make → 安装 → 替换系统libstdc++ → 设置默认编译器 → 清理
 RUN wget -q https://mirrors.huaweicloud.com/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz && \
     tar -zxf gcc-11.2.0.tar.gz && \
     cd gcc-11.2.0 && \
@@ -33,14 +42,18 @@ RUN wget -q https://mirrors.huaweicloud.com/gnu/gcc/gcc-11.2.0/gcc-11.2.0.tar.gz
     # 修复download_prerequisites脚本中tar解压的owner问题（Docker内root用户需要--no-same-owner）
     sed -i "246s/tar -xf \"\${ar}\"/tar --no-same-owner -xf \"\${ar}\"/" contrib/download_prerequisites && \
     ./contrib/download_prerequisites && \
-    ./configure --enable-languages=c,c++ --disable-multilib --with-system-zlib --disable-bootstrap --prefix=/usr/local/gcc11.2.0 > /dev/null && \
+    ./configure --enable-languages=c,c++ --disable-multilib --with-system-zlib --prefix=/usr/local/gcc11.2.0 > /dev/null && \
     make -j $(nproc) && make install && \
     # 将新版libstdc++.so.6.0.29复制到系统库目录，确保后续编译的程序能链接到新版C++标准库
     find /tmp/gcc-11.2.0/ -name libstdc++.so.6.0.29 -exec cp {} /lib64/ \; && \
-    rm -rf /tmp/gcc-11.2.0*
-
-ENV LD_LIBRARY_PATH=/usr/local/gcc11.2.0/lib64:$LD_LIBRARY_PATH \
-    PATH=/usr/local/gcc11.2.0/bin:$PATH
+    rm -rf /tmp/gcc-11.2.0* && \
+    # 将新编译的GCC设为系统默认编译器
+    update-alternatives --install /usr/bin/gcc gcc /usr/local/gcc11.2.0/bin/gcc 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/local/gcc11.2.0/bin/g++ 100 && \
+    update-alternatives --install /usr/bin/gcov gcov /usr/local/gcc11.2.0/bin/gcov 100 && \
+    update-alternatives --set gcc /usr/local/gcc11.2.0/bin/gcc && \
+    update-alternatives --set g++ /usr/local/gcc11.2.0/bin/g++ && \
+    update-alternatives --set gcov /usr/local/gcc11.2.0/bin/gcov
 
 # 3.安装cmake-3.22.6
 RUN wget -q https://cmake.org/files/v3.22/cmake-3.22.6.tar.gz && \
@@ -114,7 +127,7 @@ RUN mkdir -p ~/.pip && touch ~/.pip/pip.conf && \
 RUN pip3 install --quiet wheel "setuptools<70.0.0"
 
 # 10.下载 RecSDK 包 → 创建 venv → 安装 → 清理（全部在同一层，避免中间层占用空间）
-# 流程：按架构下载4个包 → 创建4个venv(torch_v1_pt2.6.0/torch_v1_pt2.7.1/torch_v2_pt2.7.1/torch_v2_pt2.10.0) → 清理
+# 流程：按架构下载4个包 → 创建5个venv(torch_v1_pt2.6.0/torch_v1_pt2.7.1/torch_v1_pt2.10.0/torch_v2_pt2.7.1/torch_v2_pt2.10.0) → 清理
 # 4个venv分别对应不同PyTorch版本和RecSDK版本组合，fbgemm_ascend和rec_ops安装在pt2.7.1及以上的venv中
 RUN ARCH=$(uname -m) && \
     # === 1. 按架构下载RecSDK包 ===
@@ -135,7 +148,8 @@ RUN ARCH=$(uname -m) && \
     else \
         echo "Error: Unsupported architecture '$ARCH'. Only x86_64 and aarch64 are supported." && exit 1; \
     fi && \
-    # === 2. 创建 torch_v1_pt2.6.0 (PyTorch 2.6.0 + torch_rec_v1) ===
+    # === 2. 创建 torch_rec_v1 环境 ===
+    # === 2.1 创建 torch_v1_pt2.6.0 (PyTorch 2.6.0 + torch_rec_v1) ===
     python3 -m venv /opt/buildtools/torch_v1_pt2.6.0 && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
@@ -143,7 +157,7 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet torch-npu==2.6.0 && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet fbgemm_gpu==1.1.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
-    # === 3. 创建 torch_v1_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
+    # === 2.2 创建 torch_v1_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
     python3 -m venv /opt/buildtools/torch_v1_pt2.7.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" && \
@@ -153,7 +167,19 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/fbgemm_ascend-1.2.0*.whl && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/rec_ops*.whl && \
-    # === 4. 创建 torch_v2_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v2 + fbgemm_ascend + rec_ops) ===
+    # === 2.3 创建 torch_v1_pt2.10.0 (PyTorch 2.10.0 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
+    python3 -m venv /opt/buildtools/torch_v1_pt2.10.0 && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet pip==25.0.1 && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torch==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torch-npu==2.10.0 && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu-1.5.0*.whl && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_ascend-1.5.0*.whl && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torchrec==1.5.0 && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet click hypothesis pyyaml && \
+    # === 3. 创建 torch_rec_v2 环境 ===
+    # === 3.1 创建 torch_v2_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v2 + fbgemm_ascend + rec_ops) ===
     python3 -m venv /opt/buildtools/torch_v2_pt2.7.1 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" && \
@@ -163,7 +189,7 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v2*.tar.gz && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/fbgemm_ascend-1.2.0*.whl && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/rec_ops*.whl && \
-    # === 5. 创建 torch_v2_pt2.10.0 (PyTorch 2.10.0 + torchrec 1.5.0 + fbgemm_ascend 1.5.0) ===
+    # === 3.2 创建 torch_v2_pt2.10.0 (PyTorch 2.10.0 + torchrec 1.5.0 + fbgemm_ascend 1.5.0) ===
     python3 -m venv /opt/buildtools/torch_v2_pt2.10.0 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
@@ -174,7 +200,7 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torchrec==1.5.0 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet click hypothesis pyyaml && \
-    # === 6. 清理pip缓存和所有下载的临时文件 ===
+    # === 4. 清理pip缓存和所有下载的临时文件 ===
     rm -rf /root/.cache/pip && \
     rm -rf /tmp/*
 
@@ -182,7 +208,7 @@ WORKDIR /home
 
 # 设置脚本所需变量值
 ENV ASCEND_SOFTWARE_NAME="RecSDK"
-ENV ASCEND_SOFTWARE_VERSION="26.1.0"
+ENV ASCEND_SOFTWARE_VERSION="26.2.0"
 
 COPY scripts/banner.sh /usr/local/bin/banner.sh
 RUN chmod +x /usr/local/bin/banner.sh
