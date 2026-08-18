@@ -21,6 +21,12 @@ elif torch.npu.is_available():
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch-size', type=int, default=32, help='batch size')
+parser.add_argument(
+    "--enable_dynamic_compile",
+    type=lambda v: {'true': True, 'false': False, 'none': None}[v.lower()],
+    default=False,
+    help="Dynamic compile mode: False (static), True (full dynamic), None (auto detect)",
+)
 args = parser.parse_args()
 
 
@@ -53,6 +59,40 @@ def save_tensor(pred, device_name, model_name, inductor_flag):
         os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
         torch.save(tensor_to_save, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_0.pt")
 
+def parse_shape_list():
+    """解析SHAPE_LIST环境变量"""
+    shape_list = []
+    shape_list_str = os.getenv("SHAPE_LIST", "")
+    if shape_list_str:
+        for pair in shape_list_str.split(";"):
+            pair = pair.strip()
+            if pair:
+                parts = pair.split(",")
+                bs = int(parts[0].strip())
+                sl = int(parts[1].strip()) if len(parts) > 1 else 1000
+                shape_list.append((bs, sl))
+    return shape_list
+
+def generate_sim_batch(bs, seq_len, device, item_embedding_dim=512, user_feature_dim=512, num_categories=100):
+    """生成模型的输入数据"""
+    user_behavior_seq = torch.randn(bs, seq_len, item_embedding_dim, device=device)
+    target_item_emb = torch.randn(bs, item_embedding_dim, device=device)
+    behavior_categories = torch.randint(0, num_categories, (bs, seq_len), device=device)
+    # time_intervals 固定 100 维即可（模型内部会按 k=min(100, seq_len) 截断/补齐）
+    time_intervals = torch.randint(0, 100, (bs, 100), device=device)
+    user_features = torch.randn(bs, user_feature_dim, device=device)
+    return user_behavior_seq, target_item_emb, behavior_categories, time_intervals, user_features
+
+
+def mark_sim_dynamic(user_behavior_seq, target_item_emb, behavior_categories, time_intervals, user_features):
+    """标记动态维度"""
+    torch._dynamo.mark_dynamic(user_behavior_seq, 0)
+    torch._dynamo.mark_dynamic(user_behavior_seq, 1)
+    torch._dynamo.mark_dynamic(behavior_categories, 0)
+    torch._dynamo.mark_dynamic(behavior_categories, 1)
+    torch._dynamo.mark_dynamic(target_item_emb, 0)
+    torch._dynamo.mark_dynamic(user_features, 0)
+    torch._dynamo.mark_dynamic(time_intervals, 0)
 
 def generate_training_data(num_samples=2000, seq_len=1000, item_embedding_dim=512, user_feature_dim=512, num_categories=100):
     """生成训练数据"""
@@ -365,6 +405,102 @@ def evaluate_model(model, test_loader, criterion, device):
     
     return avg_loss, accuracy
 
+def evaluate_model_dynamic_shape(model, device, shape_list):
+    """动态 shape 性能测试仅在 SHAPE_LIST 非空时调用，不影响原有的DataLoader推理流程。"""
+    model.eval()
+
+    # 编译（与 evaluate_model 保持一致，只编译一次）
+    if os.environ.get('MODEL_COMPILE_FLAG', "False").upper() == "TRUE":
+        dynamic_arg = args.enable_dynamic_compile
+        if os.environ.get('MODEL_ACLGRAPH_FLAG', "False").upper() == "TRUE":
+            model = torch.compile(model, dynamic=dynamic_arg, backend="inductor", mode="reduce-overhead")
+            logger.info("Inductor Aclgraph MODE YES")
+        else:
+            model = torch.compile(model, dynamic=dynamic_arg, backend="inductor")
+            logger.info("Inductor MODE YES")
+
+    shape_idx = 0
+
+    def next_shape():
+        nonlocal shape_idx
+        bs, sl = shape_list[shape_idx % len(shape_list)]
+        shape_idx += 1
+        return bs, sl
+
+    def run_once(bs, sl):
+        user_behaviors, target_items, behavior_cats, time_ints, user_feats = generate_sim_batch(bs, sl, device)
+        if args.enable_dynamic_compile is None:
+            mark_sim_dynamic(user_behaviors, target_items, behavior_cats, time_ints, user_feats)
+        return model(
+            user_behavior_seq=user_behaviors,
+            target_item_emb=target_items,
+            user_features=user_feats,
+            behavior_categories=behavior_cats,
+            time_intervals=time_ints
+        )
+
+    def sync():
+        if device.type == 'cuda':
+            torch.cuda.synchronize()
+        elif device.type == 'npu':
+            torch.npu.synchronize()
+
+    # 预热
+    with torch.no_grad():
+        for i in range(30):
+            bs, sl = next_shape()
+            logger.info(f"[warmup {i}] shape=({bs}, {sl})")
+            _ = run_once(bs, sl)
+
+    # 计时迭代
+    times_range = []
+    batches_list = []
+    seq_lens_list = []
+    with torch.no_grad():
+        for it in range(210):
+            bs, sl = next_shape()
+            logger.info(f"[iter {it}] shape=({bs}, {sl})")
+            sync()
+            start_time = time.time()
+            _ = run_once(bs, sl)
+            sync()
+            end_time = time.time()
+            times_range.append(end_time - start_time)
+            batches_list.append(bs)
+            seq_lens_list.append(sl)
+
+    times_range.sort()
+    avg_latency = round(sum(times_range) / len(times_range) * 1000, 6)
+    tail_latency = round(times_range[int(len(times_range) * 0.99)] * 1000, 6)
+    p90_latency = round(times_range[int(len(times_range) * 0.90)] * 1000, 6)
+    p999_latency = round(times_range[int(len(times_range) * 0.999)] * 1000, 6)
+    p95_latency = round(times_range[int(len(times_range) * 0.95)] * 1000, 6)
+    qps = int(sum(batches_list) / sum(times_range))
+
+    bs_str = "Dynamic" if len(shape_list) > 1 else str(shape_list[0][0])
+    report = {
+        "Batch_size": bs_str,
+        "model_name": "SIM",
+        "QPS": qps,
+        "AVG Latency": avg_latency,
+        "P99 Latency": tail_latency,
+        "P999 Latency": p999_latency,
+        "P95 Latency": p95_latency,
+        "P90 Latency": p90_latency,
+    }
+    logger.info(report)
+
+
+def create_model(item_embedding_dim, user_feature_dim, hidden_dim, device):
+    return SIMModel(
+        item_embedding_dim=item_embedding_dim,
+        user_feature_dim=user_feature_dim,
+        hidden_dim=hidden_dim,
+        num_heads=8,
+        dropout=0.1,
+        search_type='hard',
+        num_categories=100
+    ).to(device)
 
 def main():
     """主训练函数"""
@@ -381,6 +517,14 @@ def main():
     item_embedding_dim=512
     user_feature_dim=512
     hidden_dim=1024
+
+    # 动态shape模式
+    shape_list = parse_shape_list()
+    if shape_list and os.environ.get('MODEL_MODE', "INFER").upper() == "INFER":
+        model = create_model(item_embedding_dim, user_feature_dim, hidden_dim, device)
+        evaluate_model_dynamic_shape(model, device, shape_list)
+        return
+    
     data = generate_training_data(num_samples=2000, seq_len=1000, item_embedding_dim=item_embedding_dim, user_feature_dim=user_feature_dim, num_categories=100)
     
     # 创建数据集
@@ -402,15 +546,7 @@ def main():
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
     
     # 创建模型实例
-    model = SIMModel(
-        item_embedding_dim=item_embedding_dim,
-        user_feature_dim=user_feature_dim,
-        hidden_dim=hidden_dim,
-        num_heads=8,
-        dropout=0.1,
-        search_type='hard',
-        num_categories=100
-    ).to(device)
+    model = create_model(item_embedding_dim, user_feature_dim, hidden_dim, device)
     
     # 定义优化器和损失函数
     optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)

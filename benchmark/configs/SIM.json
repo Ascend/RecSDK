@@ -11,7 +11,9 @@
         "python",
         "SIM_train.py",
         "--batch-size",
-        "32"
+        "32",
+        "--enable_dynamic_compile",
+        "False"
     ],
     "extra_cmd": []
 }

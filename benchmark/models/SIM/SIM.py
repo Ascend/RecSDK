@@ -108,20 +108,34 @@ class GeneralSearchUnit(nn.Module):
         """
         batch_size, seq_len, embedding_dim = user_behavior_seq.size()
         device = user_behavior_seq.device
+        kk = min(k, seq_len)
+
+        if target_category is None:
+            matched_behaviors = user_behavior_seq[:, :kk, :]
+            matched_indices = torch.arange(kk, device=device).repeat(batch_size, 1)
+            if kk < k:
+                pad_len = k - kk
+                matched_behaviors = torch.cat([
+                    matched_behaviors,
+                    torch.zeros(batch_size, pad_len, embedding_dim, device=device),
+                ], dim=1)
+                matched_indices = torch.cat([
+                    matched_indices,
+                    torch.full((batch_size, pad_len), -1, dtype=matched_indices.dtype, device=device),
+                ], dim=1)
+            top_k_scores = torch.zeros(batch_size, kk, device=device)
+            return matched_behaviors, matched_indices, top_k_scores
 
         matched_behaviors = []
         matched_indices = []
         matched_scores = []
 
         for i in range(batch_size):
-            if target_category is not None:
-                target_cat = target_category[i].item()
-                cat_mask = (behavior_categories[i] == target_cat).nonzero(as_tuple=False).squeeze(-1)
-            else:
-                cat_mask = torch.arange(min(k, seq_len), device=device)
+            target_cat = target_category[i].item()
+            cat_mask = (behavior_categories[i] == target_cat).nonzero(as_tuple=False).squeeze(-1)
 
             if len(cat_mask) == 0:
-                cat_mask = torch.arange(min(k, seq_len), device=device)
+                cat_mask = torch.arange(kk, device=device)
 
             if len(cat_mask) > k:
                 cat_mask = cat_mask[:k]
@@ -139,15 +153,14 @@ class GeneralSearchUnit(nn.Module):
             matched_indices.append(cat_mask)
 
             scores = torch.zeros(seq_len, device=device)
-            if target_category is not None:
-                scores[behavior_categories[i] == target_cat] = 1.0
+            scores[behavior_categories[i] == target_cat] = 1.0
             matched_scores.append(scores)
 
         matched_behaviors = torch.stack(matched_behaviors)
         matched_indices = torch.stack(matched_indices)
         matched_scores = torch.stack(matched_scores)
 
-        top_k_scores, _ = torch.topk(matched_scores, k=min(k, seq_len), dim=-1)
+        top_k_scores, _ = torch.topk(matched_scores, k=kk, dim=-1)
 
         return matched_behaviors, matched_indices, top_k_scores
 
