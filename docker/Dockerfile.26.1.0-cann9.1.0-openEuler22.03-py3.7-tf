@@ -163,6 +163,8 @@ RUN ARCH=$(uname -m) && \
         wget -q https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl && \
         wget -q https://gitcode.com/cann/tensorflow/releases/download/tfa_v0.0.48_9.0.0/npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl && \
         wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/tf_rec_v1-26.1.0-linux_aarch64.tar.gz; \
+    else \
+        echo "Error: Unsupported architecture '$ARCH'. Only x86_64 and aarch64 are supported." && exit 1; \
     fi && \
     # === 2. 创建 tf1_env (TF 1.15 + npu_bridge) ===
     export CC=/usr/lib64/openmpi/bin/mpicc && \

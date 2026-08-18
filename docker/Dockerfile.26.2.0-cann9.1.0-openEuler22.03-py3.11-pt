@@ -114,7 +114,7 @@ RUN mkdir -p ~/.pip && touch ~/.pip/pip.conf && \
 RUN pip3 install --quiet wheel "setuptools<70.0.0"
 
 # 10.下载 RecSDK 包 → 创建 venv → 安装 → 清理（全部在同一层，避免中间层占用空间）
-# 流程：按架构下载4个包 → 创建4个venv(torch_v1_pt2.6.0/torch_v1_pt2.7.1/torch_v2_pt2.7.1/torch_v2_pt2.10.0) → 清理
+# 流程：按架构下载4个包 → 创建5个venv(torch_v1_pt2.6.0/torch_v1_pt2.7.1/torch_v1_pt2.10.0/torch_v2_pt2.7.1/torch_v2_pt2.10.0) → 清理
 # 4个venv分别对应不同PyTorch版本和RecSDK版本组合，fbgemm_ascend和rec_ops安装在pt2.7.1及以上的venv中
 RUN ARCH=$(uname -m) && \
     # === 1. 按架构下载RecSDK包 ===
@@ -135,7 +135,8 @@ RUN ARCH=$(uname -m) && \
     else \
         echo "Error: Unsupported architecture '$ARCH'. Only x86_64 and aarch64 are supported." && exit 1; \
     fi && \
-    # === 2. 创建 torch_v1_pt2.6.0 (PyTorch 2.6.0 + torch_rec_v1) ===
+    # === 2. 创建torch_rec_v1环境
+    # === 2.1 创建 torch_v1_pt2.6.0 (PyTorch 2.6.0 + torch_rec_v1) ===
     python3 -m venv /opt/buildtools/torch_v1_pt2.6.0 && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
@@ -143,7 +144,7 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet torch-npu==2.6.0 && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet fbgemm_gpu==1.1.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
-    # === 3. 创建 torch_v1_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
+    # === 2.2 创建 torch_v1_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
     python3 -m venv /opt/buildtools/torch_v1_pt2.7.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" && \
@@ -153,7 +154,19 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/fbgemm_ascend-1.2.0*.whl && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/rec_ops*.whl && \
-    # === 4. 创建 torch_v2_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v2 + fbgemm_ascend + rec_ops) ===
+    # === 2.3 创建 torch_v1_pt2.10.0 (PyTorch 2.10.0 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
+    python3 -m venv /opt/buildtools/torch_v1_pt2.10.0 && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet pip==25.0.1 && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torch==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torch-npu==2.10.0 && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu-1.5.0*.whl && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_ascend-1.5.0*.whl && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torchrec==1.5.0 && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet click hypothesis pyyaml && \
+    # === 3. 创建torch_rec_v2环境
+    # === 3.1 创建 torch_v2_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v2 + fbgemm_ascend + rec_ops) ===
     python3 -m venv /opt/buildtools/torch_v2_pt2.7.1 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" && \
@@ -163,7 +176,7 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v2*.tar.gz && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/fbgemm_ascend-1.2.0*.whl && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/rec_ops*.whl && \
-    # === 5. 创建 torch_v2_pt2.10.0 (PyTorch 2.10.0 + torchrec 1.5.0 + fbgemm_ascend 1.5.0) ===
+    # === 3.2. 创建 torch_v2_pt2.10.0 (PyTorch 2.10.0 + torchrec 1.5.0 + fbgemm_ascend 1.5.0) ===
     python3 -m venv /opt/buildtools/torch_v2_pt2.10.0 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
@@ -174,7 +187,7 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torchrec==1.5.0 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet click hypothesis pyyaml && \
-    # === 6. 清理pip缓存和所有下载的临时文件 ===
+    # === 4. 清理pip缓存和所有下载的临时文件 ===
     rm -rf /root/.cache/pip && \
     rm -rf /tmp/*
 
@@ -182,7 +195,7 @@ WORKDIR /home
 
 # 设置脚本所需变量值
 ENV ASCEND_SOFTWARE_NAME="RecSDK"
-ENV ASCEND_SOFTWARE_VERSION="26.1.0"
+ENV ASCEND_SOFTWARE_VERSION="26.2.0"
 
 COPY scripts/banner.sh /usr/local/bin/banner.sh
 RUN chmod +x /usr/local/bin/banner.sh
