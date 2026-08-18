@@ -20,7 +20,9 @@ export RECSDK_BUILD_VERS="${RECSDK_BUILD_VERS:-A2,A3,A5}"
 # AscendC 编译串并行开关：
 # - 外部入口（推荐）：SERIAL_BUILD=ON|OFF bash build_whl.sh
 # - 内部变量（兼容）：RECSDK_ASCEND_SERIAL_BUILD=ON|OFF
-# 优先级：SERIAL_BUILD > RECSDK_ASCEND_SERIAL_BUILD > 默认 ON
+# 默认 OFF（不同算子之间并行编译，同名算子跨变体仍串行）；
+# 如需退回旧的全串行行为，使用 SERIAL_BUILD=ON。
+# 优先级：SERIAL_BUILD > RECSDK_ASCEND_SERIAL_BUILD > 默认 OFF
 if [ -n "${SERIAL_BUILD:-}" ]; then
 	case "${SERIAL_BUILD}" in
 		ON|on|On|1|true|TRUE|True|yes|YES|Yes)
@@ -30,12 +32,12 @@ if [ -n "${SERIAL_BUILD:-}" ]; then
 			export RECSDK_ASCEND_SERIAL_BUILD="OFF"
 			;;
 		*)
-			echo "[WARN] Unknown SERIAL_BUILD='${SERIAL_BUILD}', fallback to ON"
-			export RECSDK_ASCEND_SERIAL_BUILD="ON"
+			echo "[WARN] Unknown SERIAL_BUILD='${SERIAL_BUILD}', fallback to OFF"
+			export RECSDK_ASCEND_SERIAL_BUILD="OFF"
 			;;
 	esac
 else
-	export RECSDK_ASCEND_SERIAL_BUILD="${RECSDK_ASCEND_SERIAL_BUILD:-ON}"
+	export RECSDK_ASCEND_SERIAL_BUILD="${RECSDK_ASCEND_SERIAL_BUILD:-OFF}"
 fi
 
 echo "[INFO] RECSDK_BUILD_VERS=${RECSDK_BUILD_VERS}"

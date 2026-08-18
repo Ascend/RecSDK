@@ -611,6 +611,14 @@ install_operator_package() {
         return 1
     fi
 
+    # 外层 CMake 并行构建多个算子时，系统 CANN 目录是共享资源，并发安装会竞态。
+    # whl 打包只依赖 build_out 下的 .run（随后由 extract_custom_opp_runs.sh 用
+    # --install-path 提取到 stage 目录），不需要安装到系统路径，故可跳过。
+    if [ "${RECSDK_OP_SKIP_SYS_INSTALL:-0}" = "1" ]; then
+        echo "Skipping system install of $installer (RECSDK_OP_SKIP_SYS_INSTALL=1)"
+        return 0
+    fi
+
     echo "Installing operator package: $installer"
     bash -- "$installer"
     return $?

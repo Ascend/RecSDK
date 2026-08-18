@@ -50,6 +50,10 @@ if command -v ccache &> /dev/null; then
     export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 fi
 
+# 内部编译并发数：默认 $(nproc) 吃满机器；当外层同时编译多个算子时，可通过
+# RECSDK_OP_BUILD_JOBS=N 限制单算子线程数，避免 CPU/内存过度超订。
+: "${RECSDK_OP_BUILD_JOBS:=$(nproc)}"
+
 cmake -S . -B "$BUILD_DIR" --preset=default
-cmake --build "$BUILD_DIR" --target binary -j$(nproc)
-cmake --build "$BUILD_DIR" --target $target -j$(nproc)
+cmake --build "$BUILD_DIR" --target binary -j${RECSDK_OP_BUILD_JOBS}
+cmake --build "$BUILD_DIR" --target $target -j${RECSDK_OP_BUILD_JOBS}
