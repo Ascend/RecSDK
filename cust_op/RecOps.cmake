@@ -10,9 +10,41 @@ set(ASCENDC_EXTRACT_SCRIPT "${RECSDK_SOURCE_DIR}/scripts/extract_custom_opp_runs
 set(ASCENDC_STAGE_SUBDIRS "")
 set_property(GLOBAL PROPERTY RECSDK_ASCEND_TARGETS "")
 
-# AscendC 默认串行构建（更稳定）；可通过 -DRECSDK_ASCEND_SERIAL_BUILD=OFF 开启并行。
+# AscendC 算子构建串/并行开关。
+#   ON  : 全部算子严格串行（旧行为，最保守）。
+#   OFF : 不同算子之间并行编译（默认）。同名算子跨芯片变体（如 A2/A3 共用 v220
+#         工作目录）仍保持串行，因为它们会读写同一个 run.sh 工作目录。
+# 并行时通过 Ninja job pool 限制同时编译的算子数，避免在小机器上把 CPU/内存打爆；
+# 每个算子内部仍以 -j$(nproc) 编译，保证单个大算子（如 hstu_dense_backward_fuxi/c310）
+# 能吃满核。可通过 -DRECSDK_OP_PARALLEL_JOBS=N 覆盖并发数。
 if(NOT DEFINED RECSDK_ASCEND_SERIAL_BUILD)
-    set(RECSDK_ASCEND_SERIAL_BUILD ON)
+    set(RECSDK_ASCEND_SERIAL_BUILD OFF)
+endif()
+
+if(NOT DEFINED RECSDK_OP_PARALLEL_JOBS)
+    if(RECSDK_ASCEND_SERIAL_BUILD)
+        set(RECSDK_OP_PARALLEL_JOBS 1)
+    else()
+        include(ProcessorCount)
+        ProcessorCount(_recsdk_cpu_count)
+        if(_recsdk_cpu_count EQUAL 0)
+            set(_recsdk_cpu_count 8)
+        endif()
+        # 约每 30 个逻辑核允许一个算子并发（90 核/128G 机器 -> 3）；至少为 1。
+        # 取保守值以平衡收益与内存：单算子内部仍 -j$(nproc) 吃满核，AscendC
+        # 内核编译器较吃内存，并发过高有 OOM 风险。可用 -DRECSDK_OP_PARALLEL_JOBS=N 调高。
+        math(EXPR RECSDK_OP_PARALLEL_JOBS "(${_recsdk_cpu_count} + 29) / 30")
+        if(RECSDK_OP_PARALLEL_JOBS LESS 1)
+            set(RECSDK_OP_PARALLEL_JOBS 1)
+        endif()
+    endif()
+endif()
+# 始终定义 job pool；串行模式并发为 1（再叠加全局依赖链保证顺序），并行模式为 N。
+set_property(GLOBAL APPEND PROPERTY JOB_POOLS recsdk_op_pool=${RECSDK_OP_PARALLEL_JOBS})
+if(RECSDK_ASCEND_SERIAL_BUILD)
+    message(STATUS "RecSDK AscendC ops: SERIAL build (outer_jobs=1 + global dependency chain)")
+else()
+    message(STATUS "RecSDK AscendC ops: PARALLEL build enabled, outer_jobs=${RECSDK_OP_PARALLEL_JOBS} (inner -j=\$(nproc))")
 endif()
 
 # ================================ A5 ops ================================
@@ -148,30 +180,47 @@ function(_recsdk_add_ascendc_op op_name build_ver ai_core stage_dir variant)
         set(run_args ${ai_core})
     endif()
 
+    # 并行模式下，run.sh 默认会把生成的 custom_opp_*.run 安装到共享的系统 CANN
+    # 目录 (/usr/local/Ascend/.../opp/vendors/)，多个算子并发安装会互相竞争。
+    # whl 实际只需要随后 extract_custom_opp_runs.sh 用 --install-path 提取到 stage
+    # 目录的副本，因此这里通过 RECSDK_OP_SKIP_SYS_INSTALL=1 让 install_operator_package
+    # 跳过系统安装。（RECSDK_OP_BUILD_JOBS 若由 CI 环境设置，会经 ninja 继承给
+    # run.sh -> build.sh，用于限制单算子内部 -j 线程数。）
+    if(RECSDK_ASCEND_SERIAL_BUILD)
+        set(_recsdk_run_cmd bash ./run.sh ${run_args})
+    else()
+        set(_recsdk_run_cmd
+            ${CMAKE_COMMAND} -E env RECSDK_OP_SKIP_SYS_INSTALL=1 bash ./run.sh ${run_args})
+    endif()
+
     add_custom_command(
         OUTPUT ${stamp}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${stage_dir}
-        COMMAND bash ./run.sh ${run_args}
+        COMMAND ${_recsdk_run_cmd}
         COMMAND bash ${ASCENDC_EXTRACT_SCRIPT} ${op_name} ${stage_dir}
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}
         WORKING_DIRECTORY ${work_dir}
         DEPENDS ${work_dir}/run.sh ${ASCENDC_EXTRACT_SCRIPT}
         COMMENT "Building AscendC ${op_name} (${variant})"
+        JOB_POOL recsdk_op_pool
+        VERBATIM
+        COMMAND_EXPAND_LISTS
         )
 
     add_custom_target(${target_name} ALL DEPENDS ${stamp})
 
-    # 同名算子在不同芯片变体间会落到同一个 build_ver 目录（例如 A2/A3 都是 v220），
-    # 因此必须始终串行，避免多个 run.sh 同时进入同一工作目录导致竞争。
-    get_property(_prev_target GLOBAL PROPERTY "RECSDK_PREV_${op_name}" SET)
+    # 同一个 (算子, build_ver) 在不同芯片变体间会落到同一个工作目录
+    # （例如 A2/A3 都是 v220），必须串行，避免多个 run.sh 同时读写同一目录。
+    # 注意：A5(c310) 与 A2/A3(v220) 工作目录不同，因此不互相约束，可并行。
+    get_property(_prev_target GLOBAL PROPERTY "RECSDK_PREV_${op_name}_${build_ver}" SET)
     if(_prev_target)
-        get_property(_prev_name GLOBAL PROPERTY "RECSDK_PREV_${op_name}")
+        get_property(_prev_name GLOBAL PROPERTY "RECSDK_PREV_${op_name}_${build_ver}")
         add_dependencies(${target_name} ${_prev_name})
     endif()
-    set_property(GLOBAL PROPERTY "RECSDK_PREV_${op_name}" "${target_name}")
+    set_property(GLOBAL PROPERTY "RECSDK_PREV_${op_name}_${build_ver}" "${target_name}")
 
-    # 全局串行 AscendC 构建：多个 run.sh 会读写共享模板目录，
-    # 并行执行会导致随机失败（日志经常只显示顶层 Error 2）。
+    # 串行模式（RECSDK_ASCEND_SERIAL_BUILD=ON）：把所有算子连成一条依赖链。
+    # 并行模式下由上面的 Ninja job pool (recsdk_op_pool) 控制并发，不再全局串行。
     if(RECSDK_ASCEND_SERIAL_BUILD)
         get_property(_last_target GLOBAL PROPERTY RECSDK_ASCEND_LAST_TARGET SET)
         if(_last_target)

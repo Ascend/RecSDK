@@ -53,8 +53,10 @@ def _build_variants():
 
 
 def _ascend_serial_build():
-    value = os.environ.get("RECSDK_ASCEND_SERIAL_BUILD", "ON").strip().upper()
-    return "OFF" if value in {"0", "OFF", "FALSE", "NO"} else "ON"
+    # 默认并行构建（不同算子之间并行，同名算子跨变体仍串行）。
+    # 可用 RECSDK_ASCEND_SERIAL_BUILD=ON 退回旧的全串行行为。
+    value = os.environ.get("RECSDK_ASCEND_SERIAL_BUILD", "OFF").strip().upper()
+    return "ON" if value in {"1", "ON", "TRUE", "YES"} else "OFF"
 
 
 def _get_cxx11_abi():
