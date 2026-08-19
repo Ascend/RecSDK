@@ -177,6 +177,8 @@
 
 ## CI说明
 
+> 注：CI相关内容涉及多种构建环境且在提交PR时会自动触发，开发者本地执行环境搭建和功能测试时无需关注。
+
 CI检查项目有：
 
 * 编译构建：
@@ -198,17 +200,6 @@ CI检查项目有：
 * 流水线：PR-pipeline_RecSDK
 
 任意一项失败可以通过详情链接查看具体问题。如果是CI自身故障，请[联系committer](https://gitcode.com/Ascend/community/blob/master/MindSDK/sigs/RecSDK/sig-info.yaml)，或通过评论"rebuild"尝试重新构建。
-
-### PreSmoke_torchrec运行说明
-
-创建PR时，`PreSmoke_torchrec`检查会根据PR修改的代码文件运行相关的测试用例。`PreSmoke_torchrec`检查的运行入口为：[run_presmoke.sh](build/run_presmoke.sh)
-
-调用方式如下：
-
-```bash
-cd build
-bash run_presmoke.sh
-```
 
 ## 分支与 Tag 命名规则
 
