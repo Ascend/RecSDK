@@ -436,15 +436,16 @@ index 1a256dd..815c0df 100644
  
              contextual_features: Dict[str, List[int]] = defaultdict(list)
 diff --git a/examples/hstu/distributed/sharding.py b/examples/hstu/distributed/sharding.py
-index b564988..16521f6 100644
+index b564988..2c569dc 100644
 --- a/examples/hstu/distributed/sharding.py
 +++ b/examples/hstu/distributed/sharding.py
-@@ -14,25 +14,16 @@
+@@ -14,25 +14,17 @@
  # limitations under the License.
  
  # pyre-strict
 -from typing import Any, Dict, Tuple, Type, Union
 +from typing import Any, Dict, List, Set, Tuple, Type, Union, Optional
++import os
  
  import torch
 +import torch_npu
@@ -467,7 +468,7 @@ index b564988..16521f6 100644
  from fbgemm_gpu.split_embedding_configs import EmbOptimType, SparseType
  from megatron.core import tensor_parallel
  from megatron.core.distributed import DistributedDataParallel as DDP
-@@ -59,10 +50,118 @@ from torchrec.distributed.fbgemm_qcomm_codec import (
+@@ -59,10 +51,119 @@ from torchrec.distributed.fbgemm_qcomm_codec import (
  from torchrec.distributed.model_parallel import DistributedModelParallel
  from torchrec.distributed.types import ShardedTensor, ShardingEnv
  from torchrec.optim.optimizers import in_backward_optimizer_filter
@@ -486,6 +487,7 @@ index b564988..16521f6 100644
 +    DynamicEmbTableOptions,
 +    DynamicEmbeddingShardingPlanner, 
 +    DynamicEmbeddingCollectionSharder,
++    DynamicEmbeddingBagCollectionSharder,
 +)
  
  DATA_PARALLEL_EMBEDDING_MODULE_NAME = "_data_parallel_embedding_collection"
@@ -586,7 +588,7 @@ index b564988..16521f6 100644
  
  def apply_megatron_ddp(
      model: Union[DistributedModelParallel, torch.nn.Module],
-@@ -89,7 +188,7 @@ def apply_megatron_ddp(
+@@ -89,7 +190,7 @@ def apply_megatron_ddp(
      ddp_config = DistributedDataParallelConfig(
          grad_reduce_in_fp32=True,
          overlap_grad_reduce=False,
@@ -595,23 +597,15 @@ index b564988..16521f6 100644
          check_for_nan_in_grad=False,
          bucket_size=True,
      )
-@@ -260,10 +359,11 @@ def apply_dmp(
-         )
+@@ -139,6 +240,7 @@ def apply_megatron_ddp(
+         bf16=config.bf16,
+         fp16=config.fp16,
+         weight_decay=dense_optimizer_param.weight_decay,
++        use_distributed_optimizer=True,
      )
-     sharders = [
--        DynamicEmbeddingBagCollectionSharder(
--            qcomm_codecs_registry=qcomm_codecs_registry,
--            fused_params=fused_params,
--        ),
-+        # DynamicEmbeddingBagCollectionSharder(
-+        #     qcomm_codecs_registry=qcomm_codecs_registry,
-+        #     fused_params=fused_params,
-+        # ),
-+        # NPU 目前仅支持 DynamicEmbeddingCollectionSharder接口
-         DynamicEmbeddingCollectionSharder(
-             qcomm_codecs_registry=qcomm_codecs_registry,
-             use_index_dedup=True,
-@@ -280,7 +380,6 @@ def apply_dmp(
+     dense_optimizer = get_megatron_optimizer(
+         dense_optimizer_config,
+@@ -280,11 +382,10 @@ def apply_dmp(
      with tensor_parallel.get_cuda_rng_tracker().fork("sharded-embedding-group-seed"):
          model = DistributedModelParallel(
              module=model,
@@ -619,7 +613,12 @@ index b564988..16521f6 100644
              device=device,
              sharders=sharders,
              plan=plan,
-@@ -334,7 +433,7 @@ def make_optimizer_and_shard(
+-            init_data_parallel=False,
++            init_data_parallel=True if os.environ.get("USE_FSDP2", "0").lower() in ("1", "true") else False,
+         )
+ 
+     # Create keyed optimizer
+@@ -334,7 +435,7 @@ def make_optimizer_and_shard(
      pg: torch.distributed.ProcessGroup = None,
  ) -> Tuple[DistributedModelParallel, torch.optim.Optimizer]:
      if device is None:
@@ -628,7 +627,7 @@ index b564988..16521f6 100644
      if pg is None:
          pg = dist.group.WORLD
  
-@@ -351,3 +450,99 @@ def make_optimizer_and_shard(
+@@ -351,3 +452,99 @@ def make_optimizer_and_shard(
      )
  
      return model, dense_optimizer
@@ -1107,10 +1106,10 @@ index e42579e..98fe420 100644
 -        )
 +        ), aux_loss
 diff --git a/examples/hstu/modules/hstu_processor.py b/examples/hstu/modules/hstu_processor.py
-index 8f28c96..ffde828 100644
+index 8f28c96..9507aa7 100644
 --- a/examples/hstu/modules/hstu_processor.py
 +++ b/examples/hstu/modules/hstu_processor.py
-@@ -16,18 +16,25 @@ import itertools
+@@ -16,18 +16,21 @@ import itertools
  from typing import Dict, Optional, Union
  
  import torch
@@ -1133,14 +1132,10 @@ index 8f28c96..ffde828 100644
  from torchrec.sparse.jagged_tensor import JaggedTensor
 -
 +from ops.jagged_tensor_op import concat_2D_jagged_tensors
-+from ops.pt_ops.pt_jagged_tensors import (
-+    pytorch_concat_2D_jagged,
-+    pytorch_split_2D_jagged,
-+)
  
  def hstu_preprocess_embeddings(
      embeddings: Dict[str, JaggedTensor],
-@@ -134,15 +141,20 @@ def hstu_preprocess_embeddings(
+@@ -134,15 +137,20 @@ def hstu_preprocess_embeddings(
          contextual_max_seqlens = [
              batch.feature_to_max_seqlen[name] for name in batch.contextual_feature_names
          ]
@@ -1170,7 +1165,7 @@ index 8f28c96..ffde828 100644
          if contextual_mlp is not None:
              contextual_sequence_embeddings = contextual_mlp(
                  contextual_sequence_embeddings
-@@ -153,14 +165,24 @@ def hstu_preprocess_embeddings(
+@@ -153,15 +161,17 @@ def hstu_preprocess_embeddings(
          contextual_max_seqlen = max(
              len(batch.contextual_feature_names), sum(contextual_max_seqlens)
          )
@@ -1181,28 +1176,21 @@ index 8f28c96..ffde828 100644
 -            [contextual_sequence_embeddings, sequence_embeddings],
 -            [contextual_seqlen_offsets, sequence_embeddings_lengths_offsets],
 -            [contextual_max_seqlen, sequence_max_seqlen],
-+        # (
-+        #     sequence_embeddings,
-+        #     sequence_embeddings_lengths,
-+        # ) = jagged_2D_tensor_concat(
-+        #     [contextual_sequence_embeddings, sequence_embeddings],
-+        #     [contextual_seqlen_offsets, sequence_embeddings_lengths_offsets],
-+        #     [contextual_max_seqlen, sequence_max_seqlen],
-+        # )
-+        # 注释原算子实现，改用 PyTorch/NPU 兼容算子
-+        sequence_embeddings = pytorch_concat_2D_jagged(
-+            values_left = contextual_embeddings,
-+            values_right = sequence_embeddings,
-+            max_len_left = None,
-+            max_len_right = None,
-+            offsets_left = contextual_seqlen_offsets,
-+            offsets_right = sequence_embeddings_lengths_offsets
++        # triton替换为等价npu算子
++        sequence_embeddings = torch.ops.mxrec.concat_2d_jagged(
++            contextual_max_seqlen + sequence_max_seqlen,
++            contextual_embeddings.to(dtype),
++            sequence_embeddings.to(dtype),
++            contextual_seqlen_offsets,
++            sequence_embeddings_lengths_offsets,
          )
-+        sequence_embeddings_lengths = (contextual_seqlen + sequence_embeddings_lengths)        
  
++        sequence_embeddings_lengths = (contextual_seqlen + sequence_embeddings_lengths)        
++
          sequence_embeddings_lengths_offsets = (
              torch.ops.fbgemm.asynchronous_complete_cumsum(sequence_embeddings_lengths)
-@@ -252,7 +274,7 @@ class HSTUBlockPreprocessor(torch.nn.Module):
+         )
+@@ -252,7 +262,7 @@ class HSTUBlockPreprocessor(torch.nn.Module):
              ), "Training config should be HSTUConfig"
              self._dropout_ratio = config.hidden_dropout
  
@@ -1211,7 +1199,7 @@ index 8f28c96..ffde828 100644
      def forward(
          self,
          embeddings: Dict[str, JaggedTensor],
-@@ -274,7 +296,7 @@ class HSTUBlockPreprocessor(torch.nn.Module):
+@@ -274,7 +284,7 @@ class HSTUBlockPreprocessor(torch.nn.Module):
          Returns:
              JaggedData: The preprocessed jagged data, ready for further processing in the HSTU architecture.
          """
@@ -1220,7 +1208,7 @@ index 8f28c96..ffde828 100644
          batch = batch.to(device)
          # Interleaving & concatenation
          jd = hstu_preprocess_embeddings(
-@@ -321,7 +343,7 @@ class HSTUBlockPostprocessor(torch.nn.Module):
+@@ -321,7 +331,7 @@ class HSTUBlockPostprocessor(torch.nn.Module):
          super().__init__()
          self._is_inference = is_inference
  
@@ -1229,50 +1217,44 @@ index 8f28c96..ffde828 100644
      def forward(self, jd: JaggedData) -> JaggedData:
          """
          Postprocess the output from the HSTU architecture.
-@@ -340,20 +362,38 @@ class HSTUBlockPostprocessor(torch.nn.Module):
+@@ -340,20 +350,34 @@ class HSTUBlockPostprocessor(torch.nn.Module):
          if jd.max_num_candidates > 0:
              seqlen_offsets = jd.num_candidates_offsets
              max_seqlen = jd.max_num_candidates
 -            _, sequence_embeddings = triton_split_2D_jagged(
--                jd.values,
 +            # _, sequence_embeddings = triton_split_2D_jagged(
 +            #     jd.values,
 +            #     jd.max_seqlen,
 +            #     offsets_a=jd.seqlen_offsets - jd.num_candidates_offsets,
 +            #     offsets_b=seqlen_offsets,
 +            # )
-+            # 注释原算子实现，改用 PyTorch/NPU 兼容算子
-+            _, sequence_embeddings = pytorch_split_2D_jagged(
++            # 注释原算子实现，改用 NPU 融合算子
++            _, sequence_embeddings = torch.ops.mxrec.split_2d_jagged(
+                 jd.values,
                  jd.max_seqlen,
 -                offsets_a=jd.seqlen_offsets - jd.num_candidates_offsets,
 -                offsets_b=seqlen_offsets,
-+                jd.values,
-+                max_len_left=None,
-+                max_len_right=None,
-+                offsets_left=jd.seqlen_offsets - jd.num_candidates_offsets,
-+                offsets_right=seqlen_offsets,
++                jd.seqlen_offsets - jd.num_candidates_offsets,
++                seqlen_offsets,
              )
          elif jd.contextual_max_seqlen > 0:
              seqlen_offsets = jd.seqlen_offsets - jd.contextual_seqlen_offsets
              max_seqlen = jd.max_seqlen - jd.contextual_max_seqlen
 -            _, sequence_embeddings = triton_split_2D_jagged(
--                jd.values,
 +            # _, sequence_embeddings = triton_split_2D_jagged(
 +            #     jd.values,
 +            #     jd.max_seqlen,
 +            #     offsets_a=jd.contextual_seqlen_offsets,
 +            #     offsets_b=seqlen_offsets,
 +            # )
-+            # 注释原算子实现，改用 PyTorch/NPU 兼容算子
-+            _, sequence_embeddings = pytorch_split_2D_jagged(
++            # 注释原算子实现，改用 NPU 融合算子
++            _, sequence_embeddings = torch.ops.mxrec.split_2d_jagged(
+                 jd.values,
                  jd.max_seqlen,
 -                offsets_a=jd.contextual_seqlen_offsets,
 -                offsets_b=seqlen_offsets,
-+                jd.values,
-+                max_len_left=None,
-+                max_len_right=None,
-+                offsets_left=jd.contextual_seqlen_offsets,
-+                offsets_right=seqlen_offsets,
++                jd.contextual_seqlen_offsets,
++                seqlen_offsets,
              )
          else:
              sequence_embeddings = jd.values
@@ -1950,19 +1932,19 @@ index d8e8d33..dcfd07b 100644
  RankingArgs.prediction_head_arch = [512, 10]
 diff --git a/examples/hstu/movielen_ranking_2B.gin b/examples/hstu/movielen_ranking_2B.gin
 new file mode 100644
-index 0000000..a846b93
+index 0000000..f88aeaf
 --- /dev/null
 +++ b/examples/hstu/movielen_ranking_2B.gin
 @@ -0,0 +1,42 @@
 +# torchrun --nproc_per_node 1 --master_addr localhost --master_port 6000  ./hstu/pretrain_gr_ranking.py --gin-config-file examples/hstu/movielen_ranking.gin 
-+TrainerArgs.train_batch_size = 32
++TrainerArgs.train_batch_size = 40
 +TrainerArgs.eval_batch_size = 128
 +TrainerArgs.eval_interval = 100
 +TrainerArgs.log_interval = 100
 +TrainerArgs.seed = 1234
 +TrainerArgs.max_train_iters = 1000
 +TrainerArgs.profile = False # 关闭原生性能分析
-+TrainerArgs.pipeline_type = "none" # NPU 目前不支持流水线
++TrainerArgs.pipeline_type = "native" # NPU 目前不支持流水线
 +
 +DatasetArgs.dataset_name = 'ml-20m'
 +DatasetArgs.max_sequence_length = 1000
@@ -2566,6 +2548,126 @@ index 0000000..05c410a
 +    values_a = torch.cat(values_a_list, dim=0) if values_a_list else torch.empty(0, D, device=values.device)
 +    values_b = torch.cat(values_b_list, dim=0) if values_b_list else torch.empty(0, D, device=values.device)
 +    return values_a, values_b
+diff --git a/examples/hstu/pipeline/train_pipeline.py b/examples/hstu/pipeline/train_pipeline.py
+index 2af4c57..d01e54c 100644
+--- a/examples/hstu/pipeline/train_pipeline.py
++++ b/examples/hstu/pipeline/train_pipeline.py
+@@ -37,7 +37,26 @@ from typing import (
+     cast,
+ )
+ 
+-import nvtx
++try:
++    import nvtx
++except ImportError:
++    # NPU environments don't have nvtx, provide a no-op fallback
++    class _NvtxNoOp:
++        @staticmethod
++        def annotate(*args, **kwargs):
++            if len(args) > 0:
++                return args[0] if callable(args[0]) else _NvtxContext()
++            return _NvtxContext()
++
++    class _NvtxContext:
++        def __enter__(self):
++            return self
++
++        def __exit__(self, *args):
++            pass
++
++    nvtx = _NvtxNoOp()
++
+ import torch
+ from commons.utils.distributed_utils import collective_assert
+ from distributed.finalize_model_grads import finalize_model_grads
+@@ -133,7 +152,7 @@ class TrainPipelineSparseDist(TrainPipeline[In, Out]):
+         self._execute_all_batches = execute_all_batches
+         self._apply_jit = apply_jit
+ 
+-        if device.type == "cuda":
++        if device.type in ["cuda", "npu"]:
+             # use two data streams to support two concurrent batches
+             # Dynamo does not support cuda stream specification,
+             # this freedom is left for compiler pipelining optimizations.
+@@ -144,18 +163,18 @@ class TrainPipelineSparseDist(TrainPipeline[In, Out]):
+         # pyre-ignore
+         self._stream_context = (
+             torch.get_device_module(self._device).stream
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else torch.cuda.stream
+         )
+ 
+         self._memcpy_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(device).Stream(priority=-1))
+-            if device.type in ["cuda", "mtia"]
++            if device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+         self._data_dist_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(device).Stream(priority=-1))
+-            if device.type in ["cuda", "mtia"]
++            if device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+ 
+@@ -623,12 +642,12 @@ class PrefetchTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
+         self._context = PrefetchTrainPipelineContext(version=0)
+         self._prefetch_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(device).Stream())
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+         self._default_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(self._device).Stream())
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+         self._batch_ip3: Optional[In] = None
+@@ -889,7 +908,7 @@ class JaggedMegatronPrefetchTrainPipelineSparseDist(
+             # bwd => read & write to cache/host
+             # the cache might be in a dangling state that a key is either not in cache or not in host.
+             # thererfore we enforce a sync: prefetch should be finished to avoid race condition.
+-            torch.cuda.current_stream().wait_stream(self._prefetch_stream)
++            torch.get_device_module(self._device).current_stream().wait_stream(self._prefetch_stream)
+             # backward
+             with nvtx.annotate("## backward ##"):
+                 dp_size = parallel_state.get_data_parallel_world_size()
+@@ -944,7 +963,7 @@ class JaggedMegatronTrainNonePipeline:
+         with nvtx.annotate("## loss postprocess ##"):
+             collective_assert(not torch.isnan(losses).any(), "loss has nan value")
+             local_tokens = torch.tensor(
+-                losses.size(0), device=torch.device("cuda", torch.cuda.current_device())
++                losses.size(0), device=self._device
+             ).float()
+             local_loss = torch.cat([torch.sum(losses).view(1), local_tokens.view(1)])
+             reporting_loss = local_loss.clone().detach()
+diff --git a/examples/hstu/pipeline/utils.py b/examples/hstu/pipeline/utils.py
+index 811fae7..5e6d975 100644
+--- a/examples/hstu/pipeline/utils.py
++++ b/examples/hstu/pipeline/utils.py
+@@ -252,8 +252,8 @@ def recursive_record_stream(
+     # pyre-fixme[2]: Parameter `re` must have a type that does not contain `Any`
+     res: Union[torch.Tensor, Pipelineable, Iterable[Any], Dict[Any, Any]],
+     stream: torch.Stream,
+-) -> None:
+-    if isinstance(res, torch.Tensor) and res.device.type in ["cuda", "mtia"]:
++  ) -> None:
++    if isinstance(res, torch.Tensor) and res.device.type in ["cuda", "mtia", "npu"]:
+         res.record_stream(stream)
+     elif isinstance(res, Pipelineable):
+         res.record_stream(stream)
+@@ -334,7 +334,7 @@ class PipelinedPostproc(torch.nn.Module):
+             # pyre-ignore
+             self._stream_context = (
+                 torch.get_device_module(device).stream
+-                if device.type in ["cuda", "mtia"]
++                if device.type in ["cuda", "mtia", "npu"]
+                 else torch.cuda.stream
+             )
+         else:
 diff --git a/examples/hstu/preprocessor.py b/examples/hstu/preprocessor.py
 index b574514..f6d9ad9 100644
 --- a/examples/hstu/preprocessor.py
@@ -2824,7 +2926,7 @@ index d0fc57c..5e2d3f8 100644
  
  @gin.configurable
 diff --git a/examples/hstu/training/training.py b/examples/hstu/training/training.py
-index f975842..c56fb84 100644
+index f975842..143a3da 100644
 --- a/examples/hstu/training/training.py
 +++ b/examples/hstu/training/training.py
 @@ -18,6 +18,7 @@ from typing import Iterator, Optional, Union
@@ -2908,7 +3010,7 @@ index f975842..c56fb84 100644
      pipeline._model.train()
 +
 +    # 通过环境变量控制 NPU Profiler 开关
-+    PROFILE_ENABLE = os.environ.get("NPU_PROFILE", "0").lower() in ("1", "true")
++    PROFILE_ENABLE = os.environ.get("MODEL_PROFILING_FLAG", "0").lower() in ("1", "true")
 +    
 +    # precision flag to save first 100 steps loss to CSV
 +    PRECISION_ENABLE = os.environ.get("PRECISION_FLAG", "0").lower() in ("1", "true")

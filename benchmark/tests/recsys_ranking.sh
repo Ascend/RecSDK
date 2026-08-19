@@ -51,12 +51,6 @@ fi
 export CPU_AFFINITY_CONF=$CPU_AFFINITY_CONF_TMP
 echo "CPU_AFFINITY_CONF="$CPU_AFFINITY_CONF
 
-
-#---------------------------------------------
-# prof related
-#---------------------------------------------
-export NPU_PROFILE=0
-
 #---------------------------------------------
 # train job related
 #---------------------------------------------

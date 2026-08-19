@@ -22,11 +22,6 @@ MEGATRON_DIR=$RECSYS_DIR/../../Megatron-LM/
 export PYTHONPATH=${PYTHONPATH}:${RECSYS_DIR}:${HSTU_DIR}:${MEGATRON_DIR}
 
 #---------------------------------------------
-# prof related
-#---------------------------------------------
-export GPU_PROFILE=1
-
-#---------------------------------------------
 # precision config
 #---------------------------------------------
 export PRECISION_FLAG=0
@@ -41,7 +36,7 @@ config_file=movielen_ranking.gin
 WORLD_SIZE=8
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
-MICRO_BATCH_SIZE=32
+MICRO_BATCH_SIZE=40
 GLOBAL_BATCH_SIZE=$((WORLD_SIZE * MICRO_BATCH_SIZE))
 export CUDA_DEVICE_MAX_CONNECTIONS=2
 export GR_2B=1

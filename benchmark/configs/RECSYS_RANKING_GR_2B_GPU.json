@@ -6,7 +6,7 @@
     "patch_path": "patches/recsys_ranking_gpu.patch",
     "mode": "train",
     "epoch": 50,
-    "profiling_flag": false,
+    "profiling_flag": true,
     "aclgraph_flag": false,
     "data_type": "bfloat16",
     "run_cmd": [
