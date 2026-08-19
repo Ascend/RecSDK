@@ -46,12 +46,6 @@ fi
 export CPU_AFFINITY_CONF=$CPU_AFFINITY_CONF_TMP
 echo "CPU_AFFINITY_CONF="$CPU_AFFINITY_CONF
 
-
-#---------------------------------------------
-# prof related
-#---------------------------------------------
-export NPU_PROFILE=1
-
 #---------------------------------------------
 # precision config
 #---------------------------------------------
@@ -67,7 +61,7 @@ config_file=movielen_ranking_2B.gin
 export WORLD_SIZE=8
 export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 export USE_FSDP2=0
-MICRO_BATCH_SIZE=32
+MICRO_BATCH_SIZE=40
 GLOBAL_BATCH_SIZE=$((WORLD_SIZE * MICRO_BATCH_SIZE))
 export CUDA_DEVICE_MAX_CONNECTIONS=2 # 与mindspeed文档保持一致，默认值为2
 export GR_2B=1

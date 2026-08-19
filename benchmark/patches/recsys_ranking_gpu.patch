@@ -160,7 +160,7 @@ index 1a256dd..815c0df 100644
  
              contextual_features: Dict[str, List[int]] = defaultdict(list)
 diff --git a/examples/hstu/distributed/sharding.py b/examples/hstu/distributed/sharding.py
-index b564988..5e1a22b 100644
+index b564988..b4fbb68 100644
 --- a/examples/hstu/distributed/sharding.py
 +++ b/examples/hstu/distributed/sharding.py
 @@ -89,7 +89,7 @@ def apply_megatron_ddp(
@@ -172,6 +172,14 @@ index b564988..5e1a22b 100644
          check_for_nan_in_grad=False,
          bucket_size=True,
      )
+@@ -139,6 +139,7 @@ def apply_megatron_ddp(
+         bf16=config.bf16,
+         fp16=config.fp16,
+         weight_decay=dense_optimizer_param.weight_decay,
++        use_distributed_optimizer=True,
+     )
+     dense_optimizer = get_megatron_optimizer(
+         dense_optimizer_config,
 diff --git a/examples/hstu/model/ranking_gr.py b/examples/hstu/model/ranking_gr.py
 index 18f7bd4..b93f2a2 100644
 --- a/examples/hstu/model/ranking_gr.py
@@ -696,13 +704,13 @@ index 0000000..e87d5fd
 +    def forward(self, x):
 +        return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
 diff --git a/examples/hstu/movielen_ranking.gin b/examples/hstu/movielen_ranking.gin
-index d8e8d33..7f794db 100644
+index d8e8d33..5c34fa2 100644
 --- a/examples/hstu/movielen_ranking.gin
 +++ b/examples/hstu/movielen_ranking.gin
 @@ -1,24 +1,30 @@
  # torchrun --nproc_per_node 1 --master_addr localhost --master_port 6000  ./hstu/pretrain_gr_ranking.py --gin-config-file examples/hstu/movielen_ranking.gin 
 -TrainerArgs.train_batch_size = 128
-+TrainerArgs.train_batch_size = 32
++TrainerArgs.train_batch_size = 40
  TrainerArgs.eval_batch_size = 128
  TrainerArgs.eval_interval = 100
  TrainerArgs.log_interval = 100
@@ -711,7 +719,7 @@ index d8e8d33..7f794db 100644
 -TrainerArgs.profile = True
 -TrainerArgs.pipeline_type = "prefetch"
 +TrainerArgs.profile = False
-+TrainerArgs.pipeline_type = "none"
++TrainerArgs.pipeline_type = "native"
  
  DatasetArgs.dataset_name = 'ml-20m'
 -DatasetArgs.max_sequence_length = 200
@@ -882,7 +890,7 @@ index d0fc57c..c2324d9 100644
          assert self.dtype_str in [
              "bfloat16",
 diff --git a/examples/hstu/training/training.py b/examples/hstu/training/training.py
-index f975842..b3f6157 100644
+index f975842..a0f8cf1 100644
 --- a/examples/hstu/training/training.py
 +++ b/examples/hstu/training/training.py
 @@ -34,6 +34,37 @@ from pipeline.train_pipeline import (
@@ -936,7 +944,7 @@ index f975842..b3f6157 100644
      start_iter = 0
      pipeline._model.train()
 +    PRECISION_ENABLE = os.environ.get("PRECISION_FLAG", "0").lower() in ("1", "true")
-+    PROFILE_ENABLE = os.environ.get("GPU_PROFILE", "0").lower() in ("1", "true")
++    PROFILE_ENABLE = os.environ.get("MODEL_PROFILING_FLAG", "0").lower() in ("1", "true")
 +    
 +    if PROFILE_ENABLE:
 +        prof = torch.profiler.profile(
