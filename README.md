@@ -34,19 +34,19 @@ Rec SDK的功能涉及：
 
 | 组件名称 | 功能概要 | 文档链接 |
 | --- | --- | --- |
-| tf_rec_v1 | 支持单机单卡、多机多卡分布式训练；提供特征保存和加载、特征准入与淘汰、动态扩容、动态shape、自动改图、Hot_Embedding、定制WarmStart、增量模型保存与加载、一表多查、PCIe through等推荐场景特有功能；支持加速卡内存、主机内存、主机磁盘多级存储，规模可超10TB；提供性能和精度检测工具 | [详细介绍](./docs/zh/tensorflow/tf_rec_v1/introduction.md) |
-| tf_rec_v2 | 支持单机单卡、多机多卡分布式训练；提供稀疏表创建、查询、保存与加载、特征准入与淘汰等推荐场景特有功能；支持大规模稀疏表存储 | [详细介绍](./docs/zh/tensorflow/tf_rec_v2/introduction.md) |
-| torch_rec_v1 | 支持单机单卡、多机多卡分布式训练；提供哈希映射、EBC查表、Row-wise分表、流水查表、查表融合算子等推荐场景特有功能；支持按照Row-wise的分布式稀疏表切分方式 | [详细介绍](./docs/zh/torch/torch_rec_v1/introduction.md) |
-| torch_rec_v2 | 支持单机单卡、多机多卡分布式训练；提供哈希映射、Row-wise分表、稀疏表动态扩容与淘汰、动态稀疏表算子等推荐场景特有功能；基于HKV高性能key-value存储加速库实现动态稀疏表算子 | [详细介绍](./docs/zh/torch/torch_rec_v2/introduction.md) |
+| tf_rec_v1 | 支持单机单卡、多机多卡分布式训练；提供特征保存和加载、特征准入与淘汰、动态扩容、动态shape、自动改图、Hot_Embedding、定制WarmStart、增量模型保存与加载、一表多查、PCIe through等推荐场景特有功能；支持加速卡内存、主机内存、主机磁盘多级存储，规模可超10TB；提供性能和精度检测工具 | [详细介绍](./docs/zh/tensorflow/tf_rec_v1/01_introduction/introduction.md) |
+| tf_rec_v2 | 支持单机单卡、多机多卡分布式训练；提供稀疏表创建、查询、保存与加载、特征准入与淘汰等推荐场景特有功能；支持大规模稀疏表存储 | [详细介绍](./docs/zh/tensorflow/tf_rec_v2/01_introduction/introduction.md) |
+| torch_rec_v1 | 支持单机单卡、多机多卡分布式训练；提供哈希映射、EBC查表、Row-wise分表、流水查表、查表融合算子等推荐场景特有功能；支持按照Row-wise的分布式稀疏表切分方式 | [详细介绍](./docs/zh/torch/torch_rec_v1/01_introduction/introduction.md) |
+| torch_rec_v2 | 支持单机单卡、多机多卡分布式训练；提供哈希映射、Row-wise分表、稀疏表动态扩容与淘汰、动态稀疏表算子等推荐场景特有功能；基于HKV高性能key-value存储加速库实现动态稀疏表算子 | [详细介绍](./docs/zh/torch/torch_rec_v2/01_introduction/introduction.md) |
 
 ## 🚀 快速入门
 
 | 组件名称 | 基础框架 | 适配状态 | 框架类型 | 功能描述 | 文档链接 |
 | --- | --- | --- | --- | --- | --- |
-| tf_rec_v1 | TensorFlow | 非全下沉 | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的非全下沉稀疏推荐框架 | [快速入门](./docs/zh/tensorflow/tf_rec_v1/quick_start.md) |
-| tf_rec_v2 | TensorFlow | 全下沉 | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的全下沉稀疏推荐框架（POC状态） | [快速入门](./docs/zh/tensorflow/tf_rec_v2/quick_start.md) |
-| torch_rec_v1 | PyTorch + TorchRec | 非全下沉 | 稀疏推荐框架 | 基于PyTorch、TorchRec开源软件，适配NPU设备的非全下沉稀疏推荐框架 | [快速入门](./docs/zh/torch/torch_rec_v1/quick_start.md) |
-| torch_rec_v2 | PyTorch + TorchRec | 全下沉 | 稀疏推荐框架 | 基于PyTorch、TorchRec开源软件，适配NPU设备的全下沉稀疏推荐框架（POC状态） | [快速入门](./docs/zh/torch/torch_rec_v2/quick_start.md) |
+| tf_rec_v1 | TensorFlow | 非全下沉 | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的非全下沉稀疏推荐框架 | [快速入门](./docs/zh/tensorflow/tf_rec_v1/03_quick_start/quick_start.md) |
+| tf_rec_v2 | TensorFlow | 全下沉 | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的全下沉稀疏推荐框架（POC状态） | [快速入门](./docs/zh/tensorflow/tf_rec_v2/03_quick_start/quick_start.md) |
+| torch_rec_v1 | PyTorch + TorchRec | 非全下沉 | 稀疏推荐框架 | 基于PyTorch、TorchRec开源软件，适配NPU设备的非全下沉稀疏推荐框架 | [快速入门](./docs/zh/torch/torch_rec_v1/03_quick_start/quick_start.md) |
+| torch_rec_v2 | PyTorch + TorchRec | 全下沉 | 稀疏推荐框架 | 基于PyTorch、TorchRec开源软件，适配NPU设备的全下沉稀疏推荐框架（POC状态） | [快速入门](./docs/zh/torch/torch_rec_v2/03_quick_start/quick_start.md) |
 
 关键术语说明
 
@@ -65,10 +65,10 @@ Rec SDK支持的产品型号如下：
 
 | 组件名称 | 安装指南 |
 | --- | --- |
-| tf_rec_v1 | [安装指南](./docs/zh/tensorflow/tf_rec_v1/recsdk_tf_installation_guide.md) |
-| tf_rec_v2 | [安装指南](./docs/zh/tensorflow/tf_rec_v2/recsdk_tf_installation_guide.md) |
-| torch_rec_v1 | [安装指南](./docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md) |
-| torch_rec_v2 | [安装指南](./docs/zh/torch/torch_rec_v2/recsdk_torch_installation_guide.md) |
+| tf_rec_v1 | [安装指南](./docs/zh/tensorflow/tf_rec_v1/02_tf_installation_guide/recsdk_tf_installation_guide.md) |
+| tf_rec_v2 | [安装指南](./docs/zh/tensorflow/tf_rec_v2/02_tf_installation_guide/recsdk_tf_installation_guide.md) |
+| torch_rec_v1 | [安装指南](./docs/zh/torch/torch_rec_v1/02_torch_installation_guide/recsdk_torch_installation_guide.md) |
+| torch_rec_v2 | [安装指南](./docs/zh/torch/torch_rec_v2/02_torch_installation_guide/recsdk_torch_installation_guide.md) |
 
 ## 📘 使用指南
 
@@ -127,15 +127,15 @@ torch_rec_v1 各版本维护状态如下：
 🔹 《[版本说明](https://gitcode.com/Ascend/RecSDK/releases)》<br>
 🔹 《[许可证声明](LICENSE)》<br>
 🔹 《[文档许可证声明](./docs/LICENSE)》<br>
-🔹 《[免责声明](docs/zh/disclaimer.md)》<br>
+🔹 《[免责声明](docs/zh/others/01_disclaimer.md)》<br>
 🔹 组件相关说明
 
 | 组件名称 | FAQ | 安全加固 |
 | --- | --- | --- |
-| tf_rec_v1 | [FAQ](./docs/zh/tensorflow/tf_rec_v1/faq.md) | [安全加固](./docs/zh/tensorflow/tf_rec_v1/security_hardening.md) |
-| tf_rec_v2 | [FAQ](./docs/zh/tensorflow/tf_rec_v2/faq.md) | [安全加固](./docs/zh/tensorflow/tf_rec_v2/security_hardening.md) |
-| torch_rec_v1 | / | [安全加固](./docs/zh/torch/torch_rec_v1/security_hardening.md) |
-| torch_rec_v2 | / | [安全加固](./docs/zh/torch/torch_rec_v2/security_hardening.md) |
+| tf_rec_v1 | [FAQ](./docs/zh/tensorflow/tf_rec_v1/08_faq/faq.md) | [安全加固](./docs/zh/tensorflow/tf_rec_v1/07_security_hardening/security_hardening.md) |
+| tf_rec_v2 | [FAQ](./docs/zh/tensorflow/tf_rec_v2/08_faq/faq.md) | [安全加固](./docs/zh/tensorflow/tf_rec_v2/07_security_hardening/security_hardening.md) |
+| torch_rec_v1 | / | [安全加固](./docs/zh/torch/torch_rec_v1/07_security_hardening/security_hardening.md) |
+| torch_rec_v2 | / | [安全加固](./docs/zh/torch/torch_rec_v2/07_security_hardening/security_hardening.md) |
 
 ## 🤝 建议与交流
 

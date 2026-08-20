@@ -107,7 +107,7 @@ cust_op/ascendc_op/ai_core_op/
 > - **非全下沉**：指部分计算任务在 NPU 上执行，部分在 CPU 上执行的混合模式，适用于基础推荐场景
 > - **全下沉**：指所有计算任务都下沉到 NPU 上执行，以获得更好的性能，支持高级特性
 > - 各框架组件的具体安装和使用说明，请参见对应文档：
->   - [tf_rec_v1 文档](../tensorflow/tf_rec_v1/recsdk_tf_installation_guide.md)
->   - [tf_rec_v2 文档](../tensorflow/tf_rec_v2/recsdk_tf_installation_guide.md)
->   - [torch_rec_v1 文档](../torch/torch_rec_v1/recsdk_torch_installation_guide.md)
->   - [torch_rec_v2 文档](../torch/torch_rec_v2/recsdk_torch_installation_guide.md)
+>   - [tf_rec_v1 文档](../tensorflow/tf_rec_v1/02_tf_installation_guide/recsdk_tf_installation_guide.md)
+>   - [tf_rec_v2 文档](../tensorflow/tf_rec_v2/02_tf_installation_guide/recsdk_tf_installation_guide.md)
+>   - [torch_rec_v1 文档](../torch/torch_rec_v1/02_torch_installation_guide/recsdk_torch_installation_guide.md)
+>   - [torch_rec_v2 文档](../torch/torch_rec_v2/02_torch_installation_guide/recsdk_torch_installation_guide.md)

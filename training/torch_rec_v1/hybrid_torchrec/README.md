@@ -25,11 +25,11 @@ Python版本要求：Python >= 3.11。
 
 ### 1.环境准备
 
-请参见[Rec SDK文档](../../../docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md#section104919392501)中“制作基础训练镜像”和“启动容器”章节。
+请参见[Rec SDK文档](../../../docs/zh/torch/torch_rec_v1/02_torch_installation_guide/recsdk_torch_installation_guide.md#section104919392501)中“制作基础训练镜像”和“启动容器”章节。
 
 ### 2.软件包安装
 
-请参见[Rec SDK文档](../../../docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md#section182972951211)中“安装Rec SDK Torch”章节。
+请参见[Rec SDK文档](../../../docs/zh/torch/torch_rec_v1/02_torch_installation_guide/recsdk_torch_installation_guide.md#section182972951211)中“安装Rec SDK Torch”章节。
 
 #### 2.1 依赖软件安装
 

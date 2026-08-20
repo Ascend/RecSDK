@@ -127,7 +127,7 @@ Before contributing, sign the [Open Project Contributor License Agreement (CLA)]
 🔹 [Release notes](https://gitcode.com/Ascend/RecSDK/releases)<br>
 🔹 [License](LICENSE)<br>
 🔹 [Document license](./docs/LICENSE)<br>
-🔹 [Disclaimer](docs/zh/disclaimer.md)<br>
+🔹 [Disclaimer](docs/zh/others/01_disclaimer.md)<br>
 🔹 Component-related information
 
 | Component | FAQ | Security hardening |
