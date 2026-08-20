@@ -6,8 +6,10 @@
 .
 ├── build_whl_torchrec1.1.0.sh   # torchrec==1.1.0+npu构建脚本
 ├── build_whl_torchrec1.2.0.sh   # torchrec==1.2.0+npu构建脚本
+├── build_whl_torchrec1.5.0.sh   # torchrec==1.5.0+npu构建脚本
 ├── torchrec1.1.0_npu.patch      # 基于torchrec1.1.0,适配NPU修改后的patch文件
 ├── torchrec1.2.0_npu.patch      # 基于torchrec1.2.0,适配NPU修改后的patch文件
+├── torchrec1.5.0_npu.patch      # 基于torchrec1.5.0,适配NPU修改后的patch文件
 └── README.md                    # 适配说明
 ```
 
@@ -20,6 +22,8 @@
 2.1 基于torchrec v1.1.0版本进行适配。配套开源软件版本：torch 2.6.0, fbgemm_gpu 1.1.0+cpu。
 
 2.2 基于torchrec v1.2.0版本进行适配。配套开源软件版本：torch 2.7.1, fbgemm_gpu 1.2.0+cpu。
+
+2.3 基于torchrec V1.5.0版本进行适配。配套开源软件版本：torch 2.10.0, torch_npu 2.10.0, fbgemm_gpu 1.5.0+cpu。
 
 ## 编译安装
 
@@ -47,6 +51,20 @@ bash build_whl_torchrec1.2.0.sh
 # 安装
 cd torchrec/dist
 pip3 install torchrec-1.2.0+npu-*.whl
+# 安装torchrec依赖。若提示安装expecttest失败，可忽略，该包仅测试场景使用
+pip3 install -r requirements.txt
+```
+
+### 基于torchrec V1.5.0版本
+
+```shell
+# 在当前目录下载源码并编译
+git clone -b release/V1.5.0 https://github.com/pytorch/torchrec.git
+cd torchrec && git checkout 4002d8bc326f2864982a3d11dd4f01c59dce6457 && cd ..
+bash build_whl_torchrec1.5.0.sh
+# 安装
+cd torchrec/dist
+pip3 install torchrec-1.5.0+npu-*.whl
 # 安装torchrec依赖。若提示安装expecttest失败，可忽略，该包仅测试场景使用
 pip3 install -r requirements.txt
 ```
