@@ -203,7 +203,7 @@ class CombinedOptimizer(KeyedOptimizer):
 
 | 参数名    | 类型                                                                              | 可选/必选 | 说明                                                                                                                                                            |
 |--------|---------------------------------------------------------------------------------|-------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| optims | <ul><li>List[KeyedOptimizer]</li><li>List[Tuple[str, KeyedOptimizer]]</li></ul> | 必选    | 需要合并的优化器对象列表，可以为空列表。<br>用户需要自行保证其输入值来源于CombinedOptimizer（TorchRec）或者[DistributedModelParallel（TorchRec）](./subtable_apis.md#TOPIC_0000002338384297)的fused_optimizer。 |
+| optims | <ul><li>List[KeyedOptimizer]</li><li>List[Tuple[str, KeyedOptimizer]]</li></ul> | 必选    | 需要合并的优化器对象列表，可以为空列表。<br>用户需要自行保证其输入值来源于CombinedOptimizer（TorchRec）或者[DistributedModelParallel（TorchRec）](./subtable_apis.md#distributedmodelparalleltorchrec)的fused_optimizer。<br>说明：<ul><li>TorchRec v1.1.0版本仅支持`List[KeyedOptimizer]`类型，不支持`List[Tuple[str, KeyedOptimizer]]`类型。</li><li>TorchRec v1.2.0和v1.5.0版本同时支持`List[KeyedOptimizer]`和`List[Tuple[str, KeyedOptimizer]]`两种类型。</li></ul> |
 
 **返回值说明**
 

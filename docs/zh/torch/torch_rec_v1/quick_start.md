@@ -68,9 +68,6 @@ bash run_docker.sh 容器名 镜像名称:镜像版本
 # 激活 torch_rec_v1 PyTorch 2.6.0 版本Python虚拟环境，该环境内已安装好Rec SDK Torch及相关软件包。
 source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
 # 若使用完成后需退出Python虚拟环境，执行命令： deactivate 即可退出。
-
-# 切换并生效 Atlas A2 系列服务器配套CANN Toolkit及相关环境变量
-source /usr/local/set_cann_env.sh a2
 ```
 
 ### 环境可用性验证

@@ -13,7 +13,7 @@
 **函数原型<a name="section1483104721911"></a>**
 
 ```python
-class JaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
+class torchrec.sparse.jagged_tensor.JaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
     def __init__(
         self,
         values: torch.Tensor,

@@ -156,6 +156,9 @@ The image provides convenient environment switching scripts for development and 
   # Activate the RecSDK development environment for torch_rec_v1 PT 2.7.1
   source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
 
+  # Activate the RecSDK development environment for torch_rec_v1 PT 2.10.0
+  source /opt/buildtools/torch_v1_pt2.10.0/bin/activate
+
   # Activate the RecSDK development environment for torch_rec_v2 PT 2.7.1
   source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
 
