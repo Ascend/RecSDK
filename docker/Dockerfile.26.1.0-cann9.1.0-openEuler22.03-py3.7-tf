@@ -11,7 +11,7 @@ RUN sed -i 's|http://repo.openeuler.org|https://mirrors.huaweicloud.com/openeule
 RUN dnf install -y -q ca-certificates && \
     dnf makecache -q && \
     dnf -y -q install net-tools make wget unzip zlib-devel bzip2 bzip2-devel openssl-devel \
-    ncurses-devel openssh-clients openssh-server sqlite-devel openmpi-devel \
+    ncurses-devel openssh-clients openssh-server sqlite-devel \
     readline-devel tk-devel gdbm-devel libdb-devel xz-devel libffi-devel \
     hdf5-devel patch pciutils vim findutils util-linux  dos2unix gcc-c++ automake autoconf \
     m4 perl git e2fsprogs sudo && \
@@ -104,6 +104,20 @@ RUN wget -q https://github.com/h5py/h5py/archive/refs/tags/3.1.0.zip -O h5py-3.1
     pip3.7 install --quiet /tmp/wheels/h5py-3.1.0-*.whl -v && \
     cd .. && rm -rf h5py-3.1.0*
 
+# 4.2 编译安装 openmpi（与 Ubuntu 镜像保持一致：源码编译到固定前缀 /usr/local/openmpi，避免依赖 dnf openmpi-devel 时 mpicc 路径不固定）
+RUN wget -q https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz && \
+    . /etc/profile && gcc -v && tar -zxf openmpi-4.1.5.tar.gz && \
+    cd openmpi-4.1.5 && \
+    ./configure --enable-orterun-prefix-by-default --prefix=/usr/local/openmpi CFLAGS="-fPIC" CXXFLAGS="-fPIC" > /dev/null && \
+    make -j $(nproc) && make install && cd .. && \
+    rm -rf openmpi-4.1.5*
+
+# 4.3 将openmpi的库路径永久加入系统动态链接器缓存
+RUN echo "/usr/local/openmpi/lib" > /etc/ld.so.conf.d/openmpi.conf && ldconfig
+
+ENV LD_LIBRARY_PATH=/usr/local/openmpi/lib:$LD_LIBRARY_PATH \
+    PATH=/usr/local/openmpi/bin:$PATH
+
 # 5.设置驱动路径环境变量
 ARG ASCEND_BASE=/usr/local/Ascend
 ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$ASCEND_BASE/driver/lib64/driver:$LD_LIBRARY_PATH
@@ -169,8 +183,9 @@ RUN ARCH=$(uname -m) && \
         echo "Error: Unsupported architecture '$ARCH'. Only x86_64 and aarch64 are supported." && exit 1; \
     fi && \
     # === 2. 创建 tf1_env (TF 1.15 + npu_bridge) ===
-    export CC=/usr/lib64/openmpi/bin/mpicc && \
-    export CXX=/usr/lib64/openmpi/bin/mpicxx && \
+    # openmpi 为源码编译安装到固定前缀 /usr/local/openmpi，mpicc/mpicxx 路径确定存在
+    export CC=/usr/local/openmpi/bin/mpicc && \
+    export CXX=/usr/local/openmpi/bin/mpicxx && \
     python3.7 -m venv /opt/buildtools/tf1_env && \
     /opt/buildtools/tf1_env/bin/pip install --quiet -U pip && \
     /opt/buildtools/tf1_env/bin/pip install --quiet /tmp/wheels/h5py-3.1.0-*.whl && \
