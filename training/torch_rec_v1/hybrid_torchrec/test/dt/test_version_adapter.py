@@ -8,17 +8,29 @@
 """适配器层单元测试：直接 import 即可运行。
 
 测试覆盖：
-1. 版本检测：_version 模块
-2. 适配器工厂：根据 _version_diff 自动选择正确实现
-3. 兼容性辅助：_compat 模块的过滤函数
+1. 版本检测：_version 模块（含解析边界、优先级、fallback）
+2. 差异表：_version_diff 模块
+3. 适配器工厂：根据 _version_diff 自动选择正确实现
+4. 兼容性辅助：_adapter_base 的兼容性工具方法
+5. 版本标志与端到端适配器行为
 """
 
+import pytest
 import unittest
 from dataclasses import dataclass
+from importlib import metadata
+from unittest.mock import patch
+from types import SimpleNamespace
+
+import torchrec
 
 from hybrid_torchrec._adapters import _build_methods, adapter
 from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
 from hybrid_torchrec._adapters._version import _torchrec_version_tuple
+from hybrid_torchrec._adapters._version_diff import (
+    check_config_new_item_v120,
+    check_config_new_item_v150,
+)
 
 
 @dataclass
@@ -54,6 +66,112 @@ class TestVersionDetection(unittest.TestCase):
 
     def test_current_adapter_version_matches_detection(self):
         self.assertEqual(adapter.version, _torchrec_version_tuple())
+
+    def test_version_tuple_boundary_cases(self):
+        """测试版本解析的边界情况。"""
+        test_cases = [
+            ("1.2.0", (1, 2, 0)),
+            ("1.5.0+cpu", (1, 5, 0)),
+            ("1.10.0", (1, 10, 0)),
+            ("2.0", (2, 0, 0)),
+            ("1", (1, 0, 0)),
+            ("1.2.3.4", (1, 2, 3)),
+            ("1.x.0", (1, 0, 0)),
+        ]
+        for version_str, expected in test_cases:
+            with patch("hybrid_torchrec._adapters._version._torchrec_version", return_value=version_str):
+                result = _torchrec_version_tuple()
+                self.assertEqual(result, expected, f"Failed for {version_str}")
+
+    def test_version_priority_order(self):
+        """验证版本获取的优先级顺序。"""
+        from hybrid_torchrec._adapters._version import _torchrec_version
+
+        # 优先级: __version__ > version module > version.txt > metadata
+        with patch.object(torchrec, '__version__', '1.5.0'):
+            self.assertEqual(_torchrec_version(), '1.5.0')
+
+        # 测试 fallback 到 metadata（当 __version__ 不存在时）
+        def mock_import(name, *args, **kwargs):
+            if name == 'torchrec.version':
+                raise ImportError()
+            return __import__(name, *args, **kwargs)
+
+        with patch.object(torchrec, '__version__', None):
+            with patch('hybrid_torchrec._adapters._version.metadata.version', return_value='1.2.0'):
+                with patch('builtins.__import__', side_effect=mock_import):
+                    with patch.object(torchrec, '__path__', []):
+                        self.assertEqual(_torchrec_version(), '1.2.0')
+
+    def test_version_txt_fallback(self):
+        """测试通过 version.txt 文件获取版本（优先级第3级）。"""
+        import os
+        import tempfile
+        from pathlib import Path
+
+        from hybrid_torchrec._adapters._version import _torchrec_version
+
+        # 创建临时 version.txt
+        tmpdir = tempfile.mkdtemp()
+        version_txt_path = Path(tmpdir) / "version.txt"
+        version_txt_path.write_text("1.3.0+cpu\n")
+
+        def mock_import(name, *args, **kwargs):
+            if name == 'torchrec.version':
+                raise ImportError()
+            return __import__(name, *args, **kwargs)
+
+        with patch.object(torchrec, '__version__', None):
+            with patch.object(torchrec, '__path__', [tmpdir]):
+                with patch('builtins.__import__', side_effect=mock_import):
+                    result = _torchrec_version()
+                    self.assertEqual(result, "1.3.0+cpu")
+
+        # 清理
+        os.remove(version_txt_path)
+        os.rmdir(tmpdir)
+
+    def test_version_fallback_to_zero(self):
+        """测试所有来源都失败时抛出 RuntimeError。"""
+        from hybrid_torchrec._adapters._version import _torchrec_version
+
+        def mock_import(name, *args, **kwargs):
+            if name == 'torchrec.version':
+                raise ImportError()
+            return __import__(name, *args, **kwargs)
+
+        with patch.object(torchrec, '__version__', None):
+            with patch('hybrid_torchrec._adapters._version.metadata.version') as mock_metadata:
+                mock_metadata.side_effect = metadata.PackageNotFoundError()
+                with patch('builtins.__import__', side_effect=mock_import):
+                    with patch.object(torchrec, '__path__', []):
+                        with self.assertRaises(RuntimeError) as context:
+                            _torchrec_version()
+                        self.assertIn("Can not get torchrec version", str(context.exception))
+
+
+class TestVersionDiffTable(unittest.TestCase):
+    """测试 _version_diff 模块的差异表功能。"""
+
+    def test_version_diffs_format(self):
+        """验证 VERSION_DIFFS 格式正确。"""
+        from hybrid_torchrec._adapters._version_diff import VERSION_DIFFS
+
+        for ver, overrides in VERSION_DIFFS:
+            self.assertIsInstance(ver, tuple)
+            self.assertEqual(len(ver), 3)
+            self.assertIsInstance(overrides, dict)
+            for key, func in overrides.items():
+                self.assertIsInstance(key, str)
+                self.assertTrue(callable(func), f"{key} is not callable")
+
+    def test_version_diffs_sorted(self):
+        """验证 VERSION_DIFFS 按版本号升序排列。"""
+        from hybrid_torchrec._adapters._version_diff import VERSION_DIFFS
+
+        versions = [ver for ver, _ in VERSION_DIFFS]
+        for i in range(len(versions) - 1):
+            self.assertLessEqual(versions[i], versions[i + 1], "VERSION_DIFFS should be sorted by version")
 
 
 class TestBuildMethods(unittest.TestCase):
@@ -143,6 +261,34 @@ class TestAdapterIsCallable(unittest.TestCase):
             "get_kernel_learning_rate",
         ):
             self.assertTrue(hasattr(adapter, name), f"adapter missing method: {name}")
+
+    def test_adapter_has_all_methods(self):
+        """验证适配器暴露所有声明的方法。"""
+        required_methods = [
+            'version',
+            'get_learning_rate',
+            'create_sharding_infos',
+            'build_args_kwargs',
+            'get_output_dtensor',
+            'get_kernel_learning_rate',
+            'get_virtual_table_feature_num_buckets',
+            'make_embedding_table_config',
+            'make_awaitable',
+            'make_kjt_list_splits_awaitable',
+            'filter_rw_sparse_features_dist_kwargs',
+            'embedding_compute_kernel_values',
+        ]
+        for method_name in required_methods:
+            self.assertTrue(hasattr(adapter, method_name), f"adapter missing method: {method_name}")
+
+    def test_adapter_singleton(self):
+        """验证适配器是单例。"""
+        from hybrid_torchrec._adapters import _create_adapter
+
+        adapter1 = adapter
+        adapter2 = _create_adapter()
+        self.assertIs(adapter1, adapter2)
+        self.assertEqual(adapter1.version, adapter2.version)
 
     def test_get_kernel_learning_rate_per_version(self):
         """验证 get_kernel_learning_rate 在 1.1.0/1.2.0+ 上的差异已被差异表正确接管。"""
@@ -396,6 +542,24 @@ class TestCreateShardingInfos(unittest.TestCase):
         a = Adapter110()
         self.assertTrue(callable(a.create_sharding_infos))
 
+    def test_version_150_inherits_120(self):
+        """1.5.0 应继承 1.2.0 的 create_sharding_infos 行为。"""
+        methods = _build_methods((1, 5, 0))
+        self.assertIn("create_sharding_infos", methods)
+
+        fake_instance = type(
+            "FakeInstance", (), {"create_grouped_sharding_infos": lambda self, mod, shard, prefix, fp: {"ver": 1.5}}
+        )()
+
+        class Adapter150(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 5, 0)
+
+        a = type("Adapter150_si", (Adapter150,), methods)()
+        result = a.create_sharding_infos(fake_instance, "module", "sharding", "p", None)
+        self.assertEqual(result, {"ver": 1.5})
+
 
 class TestEmbeddingComputeKernelValues(unittest.TestCase):
     """测试 embedding_compute_kernel_values 安全枚举获取。"""
@@ -449,6 +613,308 @@ class TestMakeKjtListSplitsAwaitable(unittest.TestCase):
             sharding_types=[],
         )
         self.assertIsInstance(obj, KJTListSplitsAwaitable)
+
+
+class TestVersionFlags(unittest.TestCase):
+    """测试向后兼容的版本标志。"""
+
+    def test_version_flags_consistent(self):
+        """验证版本标志与适配器版本一致。"""
+        from hybrid_torchrec import IS_TORCH_REC_120, IS_TORCH_REC_150
+
+        self.assertEqual(IS_TORCH_REC_120, adapter.version == (1, 2, 0))
+        self.assertEqual(IS_TORCH_REC_150, adapter.version == (1, 5, 0))
+
+
+class _FakeAdapterSelf:
+    """模拟适配器 self，提供 check_config_new_item_v120 方法供 v150 委托调用。"""
+
+    def check_config_new_item_v120(self, config) -> None:
+        check_config_new_item_v120(self, config)
+
+
+class TestCheckConfigNewItemV120:
+    """DT测试: v1.2.0 新增配置项检查函数 check_config_new_item_v120。"""
+
+    @staticmethod
+    def test_no_input_dim_attribute():
+        """config 不含 input_dim 属性时不抛异常。"""
+        config = SimpleNamespace()
+        check_config_new_item_v120(None, config)
+
+    @staticmethod
+    def test_input_dim_is_none():
+        """config.input_dim 为 None 时不抛异常。"""
+        config = SimpleNamespace(input_dim=None)
+        check_config_new_item_v120(None, config)
+
+    @staticmethod
+    def test_input_dim_not_none_raises():
+        """config.input_dim 非 None 时抛 ValueError。"""
+        config = SimpleNamespace(input_dim=64)
+        with pytest.raises(ValueError, match="input_dim"):
+            check_config_new_item_v120(None, config)
+
+    @staticmethod
+    def test_input_dim_zero_raises():
+        """config.input_dim 为 0 时仍抛异常（0 is not None）。"""
+        config = SimpleNamespace(input_dim=0)
+        with pytest.raises(ValueError, match="input_dim"):
+            check_config_new_item_v120(None, config)
+
+    @staticmethod
+    def test_error_message_contains_actual_value():
+        """错误消息中包含实际的 input_dim 值。"""
+        config = SimpleNamespace(input_dim=128)
+        with pytest.raises(ValueError, match="128"):
+            check_config_new_item_v120(None, config)
+
+    @staticmethod
+    def test_other_attributes_ignored():
+        """input_dim 合法时，其它属性不影响校验。"""
+        config = SimpleNamespace(
+            input_dim=None,
+            total_num_buckets=100,
+            use_virtual_table=True,
+        )
+        check_config_new_item_v120(None, config)
+
+
+class TestCheckConfigNewItemV150:
+    """DT测试: v1.5.0 新增配置项检查函数 check_config_new_item_v150。"""
+
+    @staticmethod
+    def _make_self():
+        """构造带 check_config_new_item_v120 方法的 mock self。"""
+        return _FakeAdapterSelf()
+
+    @staticmethod
+    def _make_valid_config():
+        """构造所有 v1.5.0 新增字段均为默认值的合法 config。"""
+        return SimpleNamespace(
+            input_dim=None,
+            total_num_buckets=None,
+            use_virtual_table=False,
+            virtual_table_eviction_policy=None,
+            enable_embedding_update=False,
+        )
+
+    @staticmethod
+    def test_all_valid_config():
+        """所有 v1.5.0 新增字段均为默认值时不抛异常。"""
+        check_config_new_item_v150(
+            TestCheckConfigNewItemV150._make_self(), TestCheckConfigNewItemV150._make_valid_config()
+        )
+
+    @staticmethod
+    def test_no_new_attributes():
+        """config 不含任何 v1.5.0 新增属性时不抛异常。"""
+        config = SimpleNamespace()
+        check_config_new_item_v150(TestCheckConfigNewItemV150._make_self(), config)
+
+    @staticmethod
+    def test_total_num_buckets_not_none_raises():
+        """total_num_buckets 非 None 时抛 ValueError。"""
+        config = TestCheckConfigNewItemV150._make_valid_config()
+        config.total_num_buckets = 100
+        with pytest.raises(ValueError, match="total_num_buckets"):
+            check_config_new_item_v150(TestCheckConfigNewItemV150._make_self(), config)
+
+    @staticmethod
+    def test_use_virtual_table_true_raises():
+        """use_virtual_table 为 True 时抛 ValueError。"""
+        config = TestCheckConfigNewItemV150._make_valid_config()
+        config.use_virtual_table = True
+        with pytest.raises(ValueError, match="use_virtual_table"):
+            check_config_new_item_v150(TestCheckConfigNewItemV150._make_self(), config)
+
+    @staticmethod
+    def test_use_virtual_table_false_ok():
+        """use_virtual_table 为 False 时不抛异常。"""
+        config = TestCheckConfigNewItemV150._make_valid_config()
+        config.use_virtual_table = False
+        check_config_new_item_v150(TestCheckConfigNewItemV150._make_self(), config)
+
+    @staticmethod
+    def test_virtual_table_eviction_policy_not_none_raises():
+        """virtual_table_eviction_policy 非 None 时抛 ValueError。"""
+        config = TestCheckConfigNewItemV150._make_valid_config()
+        config.virtual_table_eviction_policy = "LRU"
+        with pytest.raises(ValueError, match="virtual_table_eviction_policy"):
+            check_config_new_item_v150(TestCheckConfigNewItemV150._make_self(), config)
+
+    @staticmethod
+    def test_enable_embedding_update_true_raises():
+        """enable_embedding_update 为 True 时抛 ValueError。"""
+        config = TestCheckConfigNewItemV150._make_valid_config()
+        config.enable_embedding_update = True
+        with pytest.raises(ValueError, match="enable_embedding_update"):
+            check_config_new_item_v150(TestCheckConfigNewItemV150._make_self(), config)
+
+    @staticmethod
+    def test_enable_embedding_update_false_ok():
+        """enable_embedding_update 为 False 时不抛异常。"""
+        config = TestCheckConfigNewItemV150._make_valid_config()
+        config.enable_embedding_update = False
+        check_config_new_item_v150(TestCheckConfigNewItemV150._make_self(), config)
+
+    @staticmethod
+    def test_delegates_to_v120_input_dim_check():
+        """v150 应委托 v120 检查 input_dim 字段。"""
+        config = TestCheckConfigNewItemV150._make_valid_config()
+        config.input_dim = 64
+        with pytest.raises(ValueError, match="input_dim"):
+            check_config_new_item_v150(TestCheckConfigNewItemV150._make_self(), config)
+
+    @staticmethod
+    def test_v120_check_runs_before_v150_checks():
+        """v120 检查应先于 v150 检查执行（input_dim 优先报错）。"""
+        config = TestCheckConfigNewItemV150._make_valid_config()
+        config.input_dim = 64
+        config.total_num_buckets = 100
+        with pytest.raises(ValueError, match="input_dim"):
+            check_config_new_item_v150(TestCheckConfigNewItemV150._make_self(), config)
+
+
+class TestCheckConfigNewItemAdapter:
+    """DT测试: 适配器层 check_embedding_config_new_item 的版本差异注册与调用。"""
+
+    @staticmethod
+    def test_baseline_110_no_op():
+        """1.1.0 基类默认实现不做任何检查。"""
+        methods = _build_methods((1, 1, 0))
+        assert "check_embedding_config_new_item" not in methods
+
+        class Adapter110(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 1, 0)
+
+        a = Adapter110()
+        a.check_embedding_config_new_item(SimpleNamespace(input_dim=64))
+
+    @staticmethod
+    def test_version_120_registers_v120():
+        """1.2.0 差异表注册 check_config_new_item_v120。"""
+        methods = _build_methods((1, 2, 0))
+        assert "check_embedding_config_new_item" in methods
+        assert methods["check_embedding_config_new_item"] is check_config_new_item_v120
+
+    @staticmethod
+    def test_version_120_via_adapter_raises():
+        """1.2.0 适配器对 input_dim 非 None 抛 ValueError。"""
+        methods = _build_methods((1, 2, 0))
+
+        class Adapter120(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 2, 0)
+
+        a = type("Adapter120_cfg", (Adapter120,), methods)()
+        with pytest.raises(ValueError, match="input_dim"):
+            a.check_embedding_config_new_item(SimpleNamespace(input_dim=64))
+
+    @staticmethod
+    def test_version_120_via_adapter_passes():
+        """1.2.0 适配器对 input_dim=None 不抛异常。"""
+        methods = _build_methods((1, 2, 0))
+
+        class Adapter120(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 2, 0)
+
+        a = type("Adapter120_cfg_ok", (Adapter120,), methods)()
+        a.check_embedding_config_new_item(SimpleNamespace(input_dim=None))
+
+    @staticmethod
+    def test_version_150_registers_v150():
+        """1.5.0 差异表注册 check_config_new_item_v150（覆盖 v120）。"""
+        methods = _build_methods((1, 5, 0))
+        assert "check_embedding_config_new_item" in methods
+        assert methods["check_embedding_config_new_item"] is check_config_new_item_v150
+
+    @staticmethod
+    def test_version_150_registers_v120_helper():
+        """1.5.0 差异表同时注册 check_config_new_item_v120，供 v150 委托调用。"""
+        methods = _build_methods((1, 5, 0))
+        assert "check_config_new_item_v120" in methods
+        assert methods["check_config_new_item_v120"] is check_config_new_item_v120
+
+    @staticmethod
+    def test_version_150_via_adapter_raises_for_total_num_buckets():
+        """1.5.0 适配器对 total_num_buckets 非 None 抛 ValueError。
+
+        v150 内部通过 self.check_config_new_item_v120 委托 v120 检查，
+        该方法已由 1.5.0 差异表注册，适配器无需额外提供。
+        """
+        methods = _build_methods((1, 5, 0))
+
+        class Adapter150(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 5, 0)
+
+        a = type("Adapter150_cfg", (Adapter150,), methods)()
+        config = SimpleNamespace(
+            input_dim=None,
+            total_num_buckets=100,
+            use_virtual_table=False,
+            virtual_table_eviction_policy=None,
+            enable_embedding_update=False,
+        )
+        with pytest.raises(ValueError, match="total_num_buckets"):
+            a.check_embedding_config_new_item(config)
+
+    @staticmethod
+    def test_version_150_via_adapter_raises_for_use_virtual_table():
+        """1.5.0 适配器对 use_virtual_table=True 抛 ValueError。"""
+        methods = _build_methods((1, 5, 0))
+
+        class Adapter150(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 5, 0)
+
+        a = type("Adapter150_cfg_vt", (Adapter150,), methods)()
+        config = SimpleNamespace(
+            input_dim=None,
+            total_num_buckets=None,
+            use_virtual_table=True,
+            virtual_table_eviction_policy=None,
+            enable_embedding_update=False,
+        )
+        with pytest.raises(ValueError, match="use_virtual_table"):
+            a.check_embedding_config_new_item(config)
+
+    @staticmethod
+    def test_version_150_via_adapter_all_valid():
+        """1.5.0 适配器对所有字段均为默认值时不抛异常。"""
+        methods = _build_methods((1, 5, 0))
+
+        class Adapter150(TorchRecVersionAdapter):
+            @property
+            def version(self):
+                return (1, 5, 0)
+
+        a = type("Adapter150_cfg_ok", (Adapter150,), methods)()
+        config = SimpleNamespace(
+            input_dim=None,
+            total_num_buckets=None,
+            use_virtual_table=False,
+            virtual_table_eviction_policy=None,
+            enable_embedding_update=False,
+        )
+        a.check_embedding_config_new_item(config)
+
+    @staticmethod
+    def test_higher_version_inherits_v150():
+        """1.6.0 应继承 1.5.0 的 check_config_new_item_v150 及其委托的 v120 助手。"""
+        methods = _build_methods((1, 6, 0))
+        assert "check_embedding_config_new_item" in methods
+        assert methods["check_embedding_config_new_item"] is check_config_new_item_v150
+        assert "check_config_new_item_v120" in methods
+        assert methods["check_config_new_item_v120"] is check_config_new_item_v120
 
 
 if __name__ == "__main__":
