@@ -1,20 +1,20 @@
-From 74e23b4fea64cb26cd5e0857f95b918769438fd6 Mon Sep 17 00:00:00 2001
-From: cann_ly <luyi120@h-partners.com>
-Date: Thu, 18 Jun 2026 11:04:25 +0800
-Subject: [PATCH] patch
+From 6698967488085815e77382675e99f8850c30e3db Mon Sep 17 00:00:00 2001
+From: chenzihao40 <chenzihao40@huawei.com>
+Date: Thu, 20 Aug 2026 17:57:42 +0800
+Subject: [PATCH] npu patch
 
 ---
  .../sequential/autoregressive_losses.py       |  11 +
  .../modeling/sequential/embedding_modules.py  |   7 +-
  .../modeling/sequential/encoder_utils.py      |   4 +
  .../research/modeling/sequential/features.py  |   6 +
- .../research/modeling/sequential/hstu.py      | 230 +++++++++++++++---
+ .../research/modeling/sequential/hstu.py      | 249 +++++++++++++++---
  .../input_features_preprocessors.py           |   6 +-
- .../research/trainer/train.py                 | 194 ++++++++++++++-
- main.py                                       |  27 +-
+ .../research/trainer/train.py                 | 194 +++++++++++++-
+ main.py                                       |  49 +++-
  prefetch_shape.py                             |   5 +
- pt_jagged_dense_convert.py                    |  56 +++++
- 10 files changed, 500 insertions(+), 46 deletions(-)
+ pt_jagged_dense_convert.py                    |  56 ++++
+ 10 files changed, 538 insertions(+), 49 deletions(-)
  create mode 100644 prefetch_shape.py
  create mode 100644 pt_jagged_dense_convert.py
 
@@ -126,7 +126,7 @@ index 70bf80c..c4fbbbc 100644
      historical_ids = row["historical_ids"].to(device)  # [B, N]
      historical_ratings = row["historical_ratings"].to(device)
 diff --git a/generative_recommenders/research/modeling/sequential/hstu.py b/generative_recommenders/research/modeling/sequential/hstu.py
-index 3c89245..84e688d 100644
+index 3c89245..8a573eb 100644
 --- a/generative_recommenders/research/modeling/sequential/hstu.py
 +++ b/generative_recommenders/research/modeling/sequential/hstu.py
 @@ -22,6 +22,8 @@ Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for G
@@ -138,7 +138,7 @@ index 3c89245..84e688d 100644
  from typing import Callable, Dict, List, Optional, Tuple, Union
  
  import torch
-@@ -42,10 +44,145 @@ from generative_recommenders.research.modeling.similarity_module import (
+@@ -42,10 +44,152 @@ from generative_recommenders.research.modeling.similarity_module import (
      SequentialEncoderWithLearnedSimilarityModule,
  )
  from generative_recommenders.research.rails.similarities.module import SimilarityModule
@@ -170,19 +170,26 @@ index 3c89245..84e688d 100644
 +except ValueError:
 +    raise ValueError("ENABLE_RAB environment variable is not a valid integer.")
 +
++try:
++    NPU_FUSED_INDEX_SELECT = bool(int(os.getenv('NPU_FUSED_INDEX_SELECT', 0)))
++except ValueError:
++    raise ValueError("NPU_FUSED_INDEX_SELECT environment variable is not a valid integer.")
 +
-+class EmbedRank1Select(torch.autograd.Function):
++
++class FusedIndexSelect(torch.autograd.Function):
 +    @staticmethod
 +    def forward(ctx, x, index):
-+        result = torch.ops.mexrec.gather_for_rank1(x, index=index)
++        result = torch.index_select(x, dim=0, index=index)
 +        ctx.save_for_backward(x, index)
 +        return result
 +
 +    @staticmethod
 +    def backward(ctx, grad_output):
 +        x, index = ctx.saved_tensors
-+        gradX, gradIndex = torch.ops.mexrec.index_select_for_rank1_backward(grad_output, x, index)
-+        return gradX, gradIndex
++        grad_x, grad_index = torch.ops.mxrec.index_select_for_rank1_backward(
++            grad_output, x, index
++        )
++        return grad_x, grad_index
 +
 +
 +class HSTUAttention(torch.nn.Module):
@@ -285,7 +292,7 @@ index 3c89245..84e688d 100644
  
  class RelativeAttentionBiasModule(torch.nn.Module):
      @abc.abstractmethod
-@@ -131,7 +268,7 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
+@@ -131,15 +275,21 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
          # causal masking. Otherwise [:, :-1] - [:, 1:] works
          bucketed_timestamps = torch.clamp(
              self._bucketization_fn(
@@ -294,7 +301,24 @@ index 3c89245..84e688d 100644
              ),
              min=0,
              max=self._num_buckets,
-@@ -200,26 +337,34 @@ def _hstu_attention_maybe_from_cache(
+         ).detach()
+         rel_pos_bias = t[:, :, r:-r]
+-        rel_ts_bias = torch.index_select(
+-            self._ts_w, dim=0, index=bucketed_timestamps.view(-1)
+-        ).view(B, N, N)
++        rel_ts_bias = None
++        if NPU_ENABLE and NPU_FUSED_INDEX_SELECT:
++            rel_ts_bias = FusedIndexSelect.apply(
++                self._ts_w, bucketed_timestamps.view(-1)
++            ).view(B, N, N)
++        else:
++            rel_ts_bias = torch.index_select(
++                self._ts_w, dim=0, index=bucketed_timestamps.view(-1)
++            ).view(B, N, N)
+         return rel_pos_bias + rel_ts_bias
+ 
+ 
+@@ -200,26 +350,34 @@ def _hstu_attention_maybe_from_cache(
              values=k, offsets=[x_offsets], max_lengths=[n], padding_value=0.0
          )
  
@@ -349,7 +373,7 @@ index 3c89245..84e688d 100644
  
  
  class SequentialTransductionUnitJagged(torch.nn.Module):
-@@ -238,6 +383,7 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -238,6 +396,7 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
          concat_ua: bool = False,
          epsilon: float = 1e-6,
          max_length: Optional[int] = None,
@@ -357,7 +381,7 @@ index 3c89245..84e688d 100644
      ) -> None:
          super().__init__()
          self._embedding_dim: int = embedding_dim
-@@ -252,15 +398,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -252,15 +411,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
          self._normalization: str = normalization
          self._linear_config: str = linear_config
          if self._linear_config == "uvqk":
@@ -381,7 +405,7 @@ index 3c89245..84e688d 100644
          else:
              raise ValueError(f"Unknown linear_config {self._linear_config}")
          self._linear_activation: str = linear_activation
-@@ -340,7 +486,6 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -340,7 +499,6 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
  
          B: int = x_offsets.size(0) - 1
          if self._normalization == "rel_bias" or self._normalization == "hstu_rel_bias":
@@ -389,7 +413,7 @@ index 3c89245..84e688d 100644
              attn_output, padded_q, padded_k = _hstu_attention_maybe_from_cache(
                  num_heads=self._num_heads,
                  attention_dim=self._attention_dim,
-@@ -400,12 +545,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -400,12 +558,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
                  qk_attn = qk_attn + self._rel_attn_bias(all_timestamps)
              qk_attn = F.softmax(qk_attn / math.sqrt(self._attention_dim), dim=-1)
              qk_attn = qk_attn * invalid_attn_mask
@@ -406,7 +430,7 @@ index 3c89245..84e688d 100644
              )[0]
          else:
              raise ValueError(f"Unknown normalization method {self._normalization}")
-@@ -480,7 +628,7 @@ class HSTUJagged(torch.nn.Module):
+@@ -480,7 +641,7 @@ class HSTUJagged(torch.nn.Module):
          cache_states: List[HSTUCacheState] = []
  
          with torch.autocast(
@@ -415,7 +439,7 @@ index 3c89245..84e688d 100644
              enabled=self._autocast_dtype is not None,
              dtype=self._autocast_dtype or torch.float16,
          ):
-@@ -518,8 +666,9 @@ class HSTUJagged(torch.nn.Module):
+@@ -518,8 +679,9 @@ class HSTUJagged(torch.nn.Module):
          Returns:
              x' = f(x), (B, N, D) x float
          """
@@ -426,7 +450,7 @@ index 3c89245..84e688d 100644
  
          jagged_x, cache_states = self.jagged_forward(
              x=x,
-@@ -571,6 +720,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -571,6 +733,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
          enable_relative_attention_bias: bool = True,
          concat_ua: bool = False,
          verbose: bool = True,
@@ -434,7 +458,7 @@ index 3c89245..84e688d 100644
      ) -> None:
          super().__init__(ndp_module=similarity_module)
  
-@@ -589,7 +739,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -589,7 +752,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
          self._linear_activation: str = linear_activation
          self._linear_dropout_rate: float = linear_dropout_rate
          self._attn_dropout_rate: float = attn_dropout_rate
@@ -443,7 +467,7 @@ index 3c89245..84e688d 100644
          self._hstu = HSTUJagged(
              modules=[
                  SequentialTransductionUnitJagged(
-@@ -610,12 +760,13 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -610,12 +773,13 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
                                  torch.log(torch.abs(x).clamp(min=1)) / 0.301
                              ).long(),
                          )
@@ -458,7 +482,7 @@ index 3c89245..84e688d 100644
                  )
                  for _ in range(num_blocks)
              ],
-@@ -636,6 +787,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -636,6 +800,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
              ),
          )
          self._verbose: bool = verbose
@@ -466,7 +490,7 @@ index 3c89245..84e688d 100644
          self.reset_params()
  
      def reset_params(self) -> None:
-@@ -645,7 +797,11 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -645,7 +810,11 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
                      print(f"Skipping init for {name}")
                  continue
              try:
@@ -504,7 +528,7 @@ index a461ab8..226c83e 100644
      def debug_str(self) -> str:
          return f"posi_d{self._dropout_rate}"
 diff --git a/generative_recommenders/research/trainer/train.py b/generative_recommenders/research/trainer/train.py
-index 6d2da5b..3f39de4 100644
+index 6d2da5b..2891245 100644
 --- a/generative_recommenders/research/trainer/train.py
 +++ b/generative_recommenders/research/trainer/train.py
 @@ -24,6 +24,14 @@ from typing import Dict, Optional
@@ -644,7 +668,7 @@ index 6d2da5b..3f39de4 100644
      random.seed(random_seed)
      torch.backends.cuda.matmul.allow_tf32 = enable_tf32
      torch.backends.cudnn.allow_tf32 = enable_tf32
-+    SET_HF32 = os.getenv("MODEL_HF32_FLAG").upper() == "TRUE"
++    SET_HF32 = os.getenv("MODEL_HF32_FLAG", "FALSE").upper() == "TRUE"
 +    if SET_HF32:
 +        set_tf32()
      logging.info(f"cuda.matmul.allow_tf32: {enable_tf32}")
@@ -834,7 +858,7 @@ index 6d2da5b..3f39de4 100644
  
      cleanup()
 diff --git a/main.py b/main.py
-index 445f258..97566a2 100644
+index 445f258..3bb2f7e 100644
 --- a/main.py
 +++ b/main.py
 @@ -29,6 +29,14 @@ import fbgemm_gpu  # noqa: F401, E402
@@ -852,20 +876,24 @@ index 445f258..97566a2 100644
  from absl import app, flags
  from generative_recommenders.research.trainer.train import train_fn
  
-@@ -45,6 +53,8 @@ def delete_flags(FLAGS, keys_to_delete: List[str]) -> None:  # pyre-ignore [2]
+@@ -45,6 +53,11 @@ def delete_flags(FLAGS, keys_to_delete: List[str]) -> None:  # pyre-ignore [2]
  delete_flags(flags.FLAGS, ["gin_config_file", "master_port"])
  flags.DEFINE_string("gin_config_file", None, "Path to the config file.")
  flags.DEFINE_integer("master_port", 12355, "Master port.")
 +flags.DEFINE_integer("batch_size", None, "Override batch size.")
++flags.DEFINE_integer(
++    "max-sequence-length", None, "Override maximum sequence length."
++)
 +flags.DEFINE_integer("skip_step_num", None, "Skip step num.")
  FLAGS = flags.FLAGS  # pyre-ignore [5]
  
  
-@@ -53,22 +63,35 @@ def mp_train_fn(
+@@ -53,22 +66,54 @@ def mp_train_fn(
      world_size: int,
      master_port: int,
      gin_config_file: Optional[str],
 +    override_batch_size: Optional[int],
++    override_max_sequence_length: Optional[int],
 +    skip_step_num: Optional[int],
  ) -> None:
      if gin_config_file is not None:
@@ -876,6 +904,17 @@ index 445f258..97566a2 100644
 +    if override_batch_size is not None:
 +        logging.info(f"Rank {rank}: overriding batch size to {override_batch_size}")
 +        gin.bind_parameter("train_fn.local_batch_size", override_batch_size)
++
++    if override_max_sequence_length is not None:
++        if override_max_sequence_length <= 0:
++            raise ValueError("--max-sequence-length must be a positive integer.")
++        logging.info(
++            f"Rank {rank}: overriding max sequence length to "
++            f"{override_max_sequence_length}"
++        )
++        gin.bind_parameter(
++            "train_fn.max_sequence_length", override_max_sequence_length
++        )
 +
 +    if skip_step_num is not None:
 +        logging.info(f"Rank {rank}: skip step num is {skip_step_num}")
@@ -895,13 +934,20 @@ index 445f258..97566a2 100644
      mp.spawn(
          mp_train_fn,
 -        args=(world_size, FLAGS.master_port, FLAGS.gin_config_file),
-+        args=(world_size, FLAGS.master_port, FLAGS.gin_config_file, FLAGS.batch_size, FLAGS.skip_step_num),
++        args=(
++            world_size,
++            FLAGS.master_port,
++            FLAGS.gin_config_file,
++            FLAGS.batch_size,
++            FLAGS["max-sequence-length"].value,
++            FLAGS.skip_step_num,
++        ),
          nprocs=world_size,
          join=True,
      )
 diff --git a/prefetch_shape.py b/prefetch_shape.py
 new file mode 100644
-index 0000000..b8d3f3a
+index 0000000..87a6c87
 --- /dev/null
 +++ b/prefetch_shape.py
 @@ -0,0 +1,5 @@
@@ -913,7 +959,7 @@ index 0000000..b8d3f3a
 \ No newline at end of file
 diff --git a/pt_jagged_dense_convert.py b/pt_jagged_dense_convert.py
 new file mode 100644
-index 0000000..96b355a
+index 0000000..d6b557c
 --- /dev/null
 +++ b/pt_jagged_dense_convert.py
 @@ -0,0 +1,56 @@
@@ -975,5 +1021,5 @@ index 0000000..96b355a
 +    return DenseToJagged.apply(dense, offsets, total_L)
 \ No newline at end of file
 -- 
-2.53.0.windows.1
+2.52.0.windows.1
 

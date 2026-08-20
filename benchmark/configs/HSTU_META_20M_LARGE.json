@@ -12,6 +12,7 @@
         "env",
         "USE_NPU_HSTU=0",
         "ENABLE_RAB=1",
+        "NPU_FUSED_INDEX_SELECT=0",
         "ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7",
         "PYTORCH_NPU_ALLOC_CONF=expandable_segments:True",
         "python3",
@@ -23,7 +24,9 @@
         "--batch_size",
         "128",
         "--skip_step_num",
-        "2"
+        "2",
+        "--max-sequence-length",
+        "200"
     ],
     "pip_install_self": false,
     "pip_install_requirements": false,
