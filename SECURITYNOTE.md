@@ -6,10 +6,10 @@ Rec SDK组件安全加固请参考以下表格：
 
 | 组件名称 | FAQ | 安全加固 |
 | --- | --- | --- |
-| tf_rec_v1 | [FAQ](./docs/zh/tensorflow/tf_rec_v1/faq.md) | [安全加固](./docs/zh/tensorflow/tf_rec_v1/security_hardening.md) |
-| tf_rec_v2 | [FAQ](./docs/zh/tensorflow/tf_rec_v2/faq.md) | [安全加固](./docs/zh/tensorflow/tf_rec_v2/security_hardening.md) |
-| torch_rec_v1 | / | [安全加固](./docs/zh/torch/torch_rec_v1/security_hardening.md) |
-| torch_rec_v2 | / | [安全加固](./docs/zh/torch/torch_rec_v2/security_hardening.md) |
+| tf_rec_v1 | [FAQ](./docs/zh/tensorflow/tf_rec_v1/08_faq/faq.md) | [安全加固](./docs/zh/tensorflow/tf_rec_v1/07_security_hardening/security_hardening.md) |
+| tf_rec_v2 | [FAQ](./docs/zh/tensorflow/tf_rec_v2/08_faq/faq.md) | [安全加固](./docs/zh/tensorflow/tf_rec_v2/07_security_hardening/security_hardening.md) |
+| torch_rec_v1 | / | [安全加固](./docs/zh/torch/torch_rec_v1/07_security_hardening/security_hardening.md) |
+| torch_rec_v2 | / | [安全加固](./docs/zh/torch/torch_rec_v2/07_security_hardening/security_hardening.md) |
 
 ## 运行用户建议
 
@@ -78,7 +78,7 @@ torch_rec_v1/torch_rec_v2组件使用torch.distributed进行分布式通信，�
 
 ### tf_rec_v2组件通信安全加固
 
-tf_rec_v2组件使用Horovod+MPI进行分布式通信，MPI使用动态端口范围进行通信。组件通信安全加固参考[通信安全加固](<./docs/zh/tensorflow/tf_rec_v2/security_hardening.md#防止MPI全零侦听>)。
+tf_rec_v2组件使用Horovod+MPI进行分布式通信，MPI使用动态端口范围进行通信。组件通信安全加固参考[通信安全加固](<./docs/zh/tensorflow/tf_rec_v2/07_security_hardening/security_hardening.md#防止MPI全零侦听>)。
 
 ## 通信矩阵
 
