@@ -10,20 +10,20 @@ from typing import Optional
 import torch
 from fbgemm_gpu.split_embedding_codegen_lookup_invokers.lookup_adagrad import (
     OptimizerArgs,
-    Momentum,
 )
 
-from hybrid_torchrec import IS_TORCH_REC_120
+from hybrid_torchrec._adapters import adapter
 from hybrid_torchrec.hybrid_lookup_invoke.hybrid_lookup_args import HybridCommonArgs
 
 
+# pylint: disable=duplicate-code
 def invoke(
     common_args: HybridCommonArgs,
     optimizer_args: OptimizerArgs,
     iteration: int = 0,
     apply_global_weight_decay: bool = False,
     prev_iter_dev: Optional[torch.Tensor] = None,
-    gwd_lower_bound: float = 0.0
+    gwd_lower_bound: float = 0.0,
 ) -> torch.Tensor:
     vbe_metadata = common_args.vbe_metadata
 
@@ -63,7 +63,7 @@ def invoke(
         gradient_clipping=optimizer_args.gradient_clipping,
         max_gradient=optimizer_args.max_gradient,
         stochastic_rounding=optimizer_args.stochastic_rounding,  # if optimizer == none
-        learning_rate=common_args.learning_rate if IS_TORCH_REC_120 else optimizer_args.learning_rate,
+        learning_rate=adapter.get_learning_rate(common_args, optimizer_args),
         # prev_iter
         prev_iter_dev=prev_iter_dev,
         # iter
@@ -78,7 +78,7 @@ def invoke(
         # grad_accumulate
         grad_accumulate=common_args.grad_accumulate,
         grad_accumulate_offsets=common_args.grad_accumulate_offsets,
-        table_grad_accumulate_offsets=common_args.table_grad_accumulate_offsets
+        table_grad_accumulate_offsets=common_args.table_grad_accumulate_offsets,
     )
 
 
@@ -88,7 +88,7 @@ def invoke_grad_aggregation(
     iteration: int = 0,
     apply_global_weight_decay: bool = False,
     prev_iter_dev: Optional[torch.Tensor] = None,
-    gwd_lower_bound: float = 0.0
+    gwd_lower_bound: float = 0.0,
 ) -> torch.Tensor:
     vbe_metadata = common_args.vbe_metadata
 
@@ -133,7 +133,7 @@ def invoke_grad_aggregation(
         gradient_clipping=optimizer_args.gradient_clipping,
         max_gradient=optimizer_args.max_gradient,
         stochastic_rounding=optimizer_args.stochastic_rounding,  # if optimizer == none
-        learning_rate=common_args.learning_rate if IS_TORCH_REC_120 else optimizer_args.learning_rate,
+        learning_rate=adapter.get_learning_rate(common_args, optimizer_args),
         # prev_iter
         prev_iter_dev=prev_iter_dev,
         # iter
@@ -149,5 +149,8 @@ def invoke_grad_aggregation(
         grad_accumulate=common_args.grad_accumulate,
         grad_accumulate_offsets=common_args.grad_accumulate_offsets,
         table_grad_accumulate_offsets=common_args.table_grad_accumulate_offsets,
-        table_offsets_multi=common_args.table_offsets_multi
+        table_offsets_multi=common_args.table_offsets_multi,
     )
+
+
+# pylint: enable=duplicate-code

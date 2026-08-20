@@ -11,7 +11,8 @@ from typing import (
     Iterator,
     List,
     Optional,
-    Tuple, Any,
+    Tuple,
+    Any,
 )
 
 import torch
@@ -28,7 +29,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_training_common import is_tor
 from torch import nn, Tensor
 
 import hybrid_torchrec.hybrid_lookup_invoke as invokers
-from hybrid_torchrec import IS_TORCH_REC_120
+from hybrid_torchrec._adapters import adapter
 from hybrid_torchrec.sparse.jagged_tensor_with_looup_helper import (
     KeyedJaggedTensorWithLookHelper,
 )
@@ -123,7 +124,7 @@ class GradientAccumulator(nn.Module):
             self.register_buffer(
                 buffer_name,
                 torch.zeros(shape, device=device, dtype=torch.float32),
-                persistent=False  # 不保存到状态字典
+                persistent=False,  # 不保存到状态字典
             )
         self.total_index_size = [0 for _ in self.buffer_names]
         self.total_index_size_pre = [0 for _ in self.buffer_names]
@@ -147,10 +148,8 @@ class GradientAccumulator(nn.Module):
         with torch.no_grad():
             for buffer_name, buffer in self.named_buffers():
                 self.register_buffer(
-                    buffer_name,
-                    torch.zeros(buffer.numel(), device=self.device, dtype=torch.float32),
-                    persistent=False
-                ) # 需同时重置累积步数计数器
+                    buffer_name, torch.zeros(buffer.numel(), device=self.device, dtype=torch.float32), persistent=False
+                )  # 需同时重置累积步数计数器
 
     def zero_parameters(self):
         self.total_index_size = [0 for _ in self.buffer_names]
@@ -174,12 +173,8 @@ class GradientAccumulator(nn.Module):
             current_buffer_size = self.get_buffer_size(name)
             new_buffer_size = new_shape[name] * buf.element_size()
             if new_buffer_size > current_buffer_size:
-                new_buffer = torch.zeros(
-                    new_shape[name] * RESET_BUFFER,
-                    device=self.device,
-                    dtype=torch.float32
-                )
-                new_buffer[:buf.numel()].copy_(buf)
+                new_buffer = torch.zeros(new_shape[name] * RESET_BUFFER, device=self.device, dtype=torch.float32)
+                new_buffer[: buf.numel()].copy_(buf)
                 self.register_buffer(name, new_buffer, persistent=False)
 
     def store_buffer_shape(self, table_shapes):
@@ -188,7 +183,11 @@ class GradientAccumulator(nn.Module):
             table_shape_dict[self.buffer_names[i]] = shape
         return table_shape_dict
 
-    def get_split_lookup_input(self, values: torch.Tensor, offset_per_key: torch.Tensor, ):
+    def get_split_lookup_input(
+        self,
+        values: torch.Tensor,
+        offset_per_key: torch.Tensor,
+    ):
         len_per_key = (offset_per_key[1:] - offset_per_key[:-1]).tolist()
         split_values = torch.split(values.long(), len_per_key)
         return split_values
@@ -201,15 +200,14 @@ class GradientAccumulator(nn.Module):
                 cur = torch.cat((self.indice_multi_step[i], value))
             self.indice_multi_step[i] = cur
 
-    def do_multi_step_unique(self, ):
+    def do_multi_step_unique(
+        self,
+    ):
         unique_values_list = []
         inverse_indices_list = []
         counts_list = [0]
         for i, table_indices in enumerate(self.indice_multi_step):
-            unique_values, inverse_indices = torch.unique(
-                table_indices,
-                return_inverse=True
-            )
+            unique_values, inverse_indices = torch.unique(table_indices, return_inverse=True)
             unique_values_list.append(unique_values)
             inverse_indices_list.append(inverse_indices)
             counts_list.append(unique_values.shape[0] + counts_list[-1])
@@ -232,19 +230,13 @@ class GradientAccumulator(nn.Module):
         return torch.Tensor(table_offsets)
 
 
-
-
-class HybridSplitTableBatchedEmbeddingBagsCodegen(
-    SplitTableBatchedEmbeddingBagsCodegen
-):
+class HybridSplitTableBatchedEmbeddingBagsCodegen(SplitTableBatchedEmbeddingBagsCodegen):
     def __init__(
         self,
-        embedding_specs: List[
-            Tuple[int, int, EmbeddingLocation, ComputeDevice]
-        ],
+        embedding_specs: List[Tuple[int, int, EmbeddingLocation, ComputeDevice]],
         use_accumulate=False,
         accumulate_step=1,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(embedding_specs, **kwargs)
 
@@ -275,6 +267,13 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         self.use_accumulate = use_accumulate
         self.accumulate_step = accumulate_step
 
+        # Initialize attributes that are set in check_preprocess to avoid pylint W0201
+        self._indices = None
+        self._offsets = None
+        self._vbe_b_offsets = None
+        self._vbe_max_b = None
+        self.lxu_cache_locations = None
+
     def clear_after_accumulate(self, grad):
         # 这里可以调用您的自定义函数
         self.grad_accum.zero_grad()
@@ -294,8 +293,18 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         feature_requires_grad: Optional[Tensor] = None,
         batch_size_per_feature_per_rank: Optional[List[List[int]]] = None,
     ) -> Tensor:
-        (indices, offsets, per_sample_weights, vbe_metadata,) = self.prepare_inputs(
-            indices, offsets, per_sample_weights, batch_size_per_feature_per_rank, force_cast_input_types=True, )
+        (
+            indices,
+            offsets,
+            per_sample_weights,
+            vbe_metadata,
+        ) = self.prepare_inputs(
+            indices,
+            offsets,
+            per_sample_weights,
+            batch_size_per_feature_per_rank,
+            force_cast_input_types=True,
+        )
         # Print input stats if enable (for debugging purpose only)
         self._debug_print_input_stats(indices, offsets, per_sample_weights)
 
@@ -328,9 +337,22 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
                 self.iter[0] += 1
 
         common_args = self.create_common_args(
-            CommonArgsInput(indices, offsets, vbe_metadata, feature_requires_grad, hash_indices, per_sample_weights,
-                            unique_indices, unique_inverse, unique_offset, table_grad_accumulate_offsets,
-                            grad_accumulate, grad_accumulate_offsets, use_optimize))
+            CommonArgsInput(
+                indices,
+                offsets,
+                vbe_metadata,
+                feature_requires_grad,
+                hash_indices,
+                per_sample_weights,
+                unique_indices,
+                unique_inverse,
+                unique_offset,
+                table_grad_accumulate_offsets,
+                grad_accumulate,
+                grad_accumulate_offsets,
+                use_optimize,
+            )
+        )
 
         if not isinstance(self.optimizer, OptimType):
             raise ValueError(f"Invalid OptimType: {self.optimizer}")
@@ -350,12 +372,27 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             table_offsets_multi = table_offsets_multi.to(DEVICE).to(torch.int64)
 
             common_args = self.create_common_args_aggregation(
-                CommonArgsAggregationInput(indices, offsets, vbe_metadata, feature_requires_grad, hash_indices,
-                                           per_sample_weights, unique_indices, unique_inverse, unique_offset,
-                                           table_grad_accumulate_offsets, grad_accumulate, grad_accumulate_offsets,
-                                           use_optimize, table_offsets_multi, indices_multi_step,
-                                           offsets_multi_step, unique_multi_step, unique_offset_multi_step,
-                                           unique_inverse_multi_step)
+                CommonArgsAggregationInput(
+                    indices,
+                    offsets,
+                    vbe_metadata,
+                    feature_requires_grad,
+                    hash_indices,
+                    per_sample_weights,
+                    unique_indices,
+                    unique_inverse,
+                    unique_offset,
+                    table_grad_accumulate_offsets,
+                    grad_accumulate,
+                    grad_accumulate_offsets,
+                    use_optimize,
+                    table_offsets_multi,
+                    indices_multi_step,
+                    offsets_multi_step,
+                    unique_multi_step,
+                    unique_offset_multi_step,
+                    unique_inverse_multi_step,
+                )
             )
             if self.optimizer == OptimType.EXACT_ADAGRAD:
                 result = invokers.lookup_adagrad.invoke_grad_aggregation(
@@ -386,22 +423,26 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             return self._report_io_size_count("fwd_output", result)
 
         if self.optimizer == OptimType.EXACT_ADAGRAD:
-            result = invokers.lookup_adagrad.invoke(
-                common_args, self.optimizer_args, momentum1
-            )
+            result = invokers.lookup_adagrad.invoke(common_args, self.optimizer_args, momentum1)
         elif self.optimizer == OptimType.ADAM:
             result = invokers.lookup_adam.invoke(
-                common_args, self.optimizer_args, momentum1, momentum2, iteration=self.iter[0],
+                common_args,
+                self.optimizer_args,
+                momentum1,
+                momentum2,
+                iteration=self.iter[0],
             )
         elif self.optimizer == OptimType.EXACT_SGD:
             result = invokers.lookup_sgd.invoke(
-                common_args, self.optimizer_args, iteration=self.iter[0],
+                common_args,
+                self.optimizer_args,
+                iteration=self.iter[0],
             )
         else:
             return NotImplemented
         return self._report_io_size_count("fwd_output", result)
 
-
+    # pylint: disable=no-member,access-member-before-definition,attribute-defined-outside-init
     def create_momentum(self):
         momentum1 = invokers.lookup_args.Momentum(
             dev=self.momentum1_dev,
@@ -450,9 +491,9 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             uvm_cache_stats=(
                 self.local_uvm_cache_stats
                 if (
-                        self.gather_uvm_cache_stats
-                        # Unique conflict misses are only collected when using CacheAlgorithm.LRU
-                        and self.cache_algorithm == CacheAlgorithm.LRU
+                    self.gather_uvm_cache_stats
+                    # Unique conflict misses are only collected when using CacheAlgorithm.LRU
+                    and self.cache_algorithm == CacheAlgorithm.LRU
                 )
                 else None
             ),
@@ -461,14 +502,13 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             is_experimental=self.is_experimental,
             use_uniq_cache_locations_bwd=self.use_uniq_cache_locations_bwd,
             use_homogeneous_placements=self.use_homogeneous_placements,
-            learning_rate=self.get_learning_rate() if IS_TORCH_REC_120 else 0.0,
+            learning_rate=adapter.get_kernel_learning_rate(self),
             table_grad_accumulate_offsets=args_input.table_grad_accumulate_offsets,
             grad_accumulate=args_input.grad_accumulate,
             grad_accumulate_offsets=args_input.grad_accumulate_offsets,
-            use_optimize=args_input.use_optimize
+            use_optimize=args_input.use_optimize,
         )
         return common_args
-
 
     def create_common_args_aggregation(self, args_input: CommonArgsAggregationInput):
         common_args = invokers.lookup_args.HybridCommonArgsAggregation(
@@ -499,9 +539,9 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             uvm_cache_stats=(
                 self.local_uvm_cache_stats
                 if (
-                        self.gather_uvm_cache_stats
-                        # Unique conflict misses are only collected when using CacheAlgorithm.LRU
-                        and self.cache_algorithm == CacheAlgorithm.LRU
+                    self.gather_uvm_cache_stats
+                    # Unique conflict misses are only collected when using CacheAlgorithm.LRU
+                    and self.cache_algorithm == CacheAlgorithm.LRU
                 )
                 else None
             ),
@@ -510,7 +550,7 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             is_experimental=self.is_experimental,
             use_uniq_cache_locations_bwd=self.use_uniq_cache_locations_bwd,
             use_homogeneous_placements=self.use_homogeneous_placements,
-            learning_rate=self.get_learning_rate() if IS_TORCH_REC_120 else 0.0,
+            learning_rate=adapter.get_kernel_learning_rate(self),
             table_grad_accumulate_offsets=args_input.table_grad_accumulate_offsets,
             grad_accumulate=args_input.grad_accumulate,
             grad_accumulate_offsets=args_input.grad_accumulate_offsets,
@@ -520,10 +560,9 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             offsets_multi_step=args_input.offsets_multi_step,
             unique_multi_step=args_input.unique_multi_step,
             unique_offset_multi_step=args_input.unique_offset_multi_step,
-            unique_inverse_multi_step=args_input.unique_inverse_multi_step
+            unique_inverse_multi_step=args_input.unique_inverse_multi_step,
         )
         return common_args
-
 
     def check_preprocess(self, indices, offsets, vbe_metadata):
         if not is_torchdynamo_compiling():
@@ -545,9 +584,13 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
             self._prefetch(indices, offsets, vbe_metadata, multipass_prefetch_config=None)
         if len(self.timesteps_prefetched) > 0:
             self.timesteps_prefetched.pop(0)
-        self.lxu_cache_locations = (self.lxu_cache_locations_empty if len(self.lxu_cache_locations_list) == 0
-                                    else self.lxu_cache_locations_list.pop(0))
+        self.lxu_cache_locations = (
+            self.lxu_cache_locations_empty
+            if len(self.lxu_cache_locations_list) == 0
+            else self.lxu_cache_locations_list.pop(0)
+        )
 
+    # pylint: enable=no-member,access-member-before-definition,attribute-defined-outside-init
     def prepare_inputs(
         self,
         indices: Tensor,
@@ -582,14 +625,10 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         """
 
         # Generate VBE metadata
-        vbe_metadata = self._generate_vbe_metadata(
-            offsets, batch_size_per_feature_per_rank
-        )
+        vbe_metadata = self._generate_vbe_metadata(offsets, batch_size_per_feature_per_rank)
 
         # type
-        force_cast_input_types = (
-            indices.dtype != offsets.dtype or force_cast_input_types
-        )
+        force_cast_input_types = indices.dtype != offsets.dtype or force_cast_input_types
 
         if force_cast_input_types:
             # Force casting indices and offsets to long
@@ -603,53 +642,39 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
 
     def scatter_update_embs(self, indices, updates):
         if self.is_mixed_dim:
-            raise ValueError(f"Mixed dimensions are not supported.")
+            raise ValueError("Mixed dimensions are not supported.")
 
-        self.weights_dev.reshape(-1, self.dims[0]).index_put_(
-            [indices], updates.reshape(-1, self.dims[0])
-        )
+        self.weights_dev.reshape(-1, self.dims[0]).index_put_([indices], updates.reshape(-1, self.dims[0]))
 
     def gather_embs(self, indices) -> Tensor:
         if self.is_mixed_dim:
-            raise ValueError(f"Mixed dimensions are not supported.")
+            raise ValueError("Mixed dimensions are not supported.")
 
-        return torch.index_select(
-            self.weights_dev.reshape(-1, self.dims[0]), 0, indices
-        ).reshape(-1)
+        return torch.index_select(self.weights_dev.reshape(-1, self.dims[0]), 0, indices).reshape(-1)
 
     def gather_momentum(self, indices: torch.Tensor) -> Tensor:
         if self.is_mixed_dim:
-            raise ValueError(f"Mixed dimensions are not supported.")
+            raise ValueError("Mixed dimensions are not supported.")
 
         result = []
         if self._optim_num > 0:
-            moment1 = torch.index_select(
-                self.momentum1_dev.reshape(-1, self.dims[0]), 0, indices
-            ).reshape(-1)
+            moment1 = torch.index_select(self.momentum1_dev.reshape(-1, self.dims[0]), 0, indices).reshape(-1)
             result.append(moment1)
 
         if self._optim_num > 1:
-            moment2 = torch.index_select(
-                self.momentum2_dev.reshape(-1, self.dims[0]), 0, indices
-            ).reshape(-1)
+            moment2 = torch.index_select(self.momentum2_dev.reshape(-1, self.dims[0]), 0, indices).reshape(-1)
             result.append(moment2)
 
         return result
 
-    def scatter_update_momentum(
-        self, indices: torch.Tensor, updates: List[torch.Tensor]
-    ):
+    def scatter_update_momentum(self, indices: torch.Tensor, updates: List[torch.Tensor]):
         if self.is_mixed_dim:
-            raise ValueError(f"Mixed dimensions are not supported.")
+            raise ValueError("Mixed dimensions are not supported.")
 
         if self._optim_num > 0:
-            self.momentum1_dev.reshape(-1, self.dims[0]).index_put_(
-                [indices], updates[0].reshape(-1, self.dims[0])
-            )
+            self.momentum1_dev.reshape(-1, self.dims[0]).index_put_([indices], updates[0].reshape(-1, self.dims[0]))
         if self._optim_num > 1:
-            self.momentum2_dev.reshape(-1, self.dims[0]).index_put_(
-                [indices], updates[1].reshape(-1, self.dims[0])
-            )
+            self.momentum2_dev.reshape(-1, self.dims[0]).index_put_([indices], updates[1].reshape(-1, self.dims[0]))
 
     def get_momentum(self) -> List[torch.Tensor]:
         result = []
@@ -660,9 +685,7 @@ class HybridSplitTableBatchedEmbeddingBagsCodegen(
         return result
 
 
-class HybridBatchedFusedEmbeddingBag(
-    BaseBatchedEmbeddingBag[torch.Tensor], FusedOptimizerModule
-):
+class HybridBatchedFusedEmbeddingBag(BaseBatchedEmbeddingBag[torch.Tensor], FusedOptimizerModule):
     def __init__(
         self,
         config: GroupedEmbeddingConfig,
@@ -676,7 +699,7 @@ class HybridBatchedFusedEmbeddingBag(
         compute_devices: List[ComputeDevice] = []
         for table in config.embedding_tables:
             if table.local_cols % 4 != 0:
-                raise ValueError(f"table {table.name} has local_cols={table.local_cols} " "not divisible by 4. ")
+                raise ValueError(f"table {table.name} has local_cols={table.local_cols} not divisible by 4. ")
             if device is not None and device.type == "cuda":
                 compute_devices.append(ComputeDevice.CUDA)
                 managed.append(compute_kernel_to_embedding_location(table.compute_kernel))
@@ -697,15 +720,27 @@ class HybridBatchedFusedEmbeddingBag(
         if "cache_precision" not in fused_params:
             fused_params["cache_precision"] = weights_precision
 
-        self._emb_module: HybridSplitTableBatchedEmbeddingBagsCodegen = (HybridSplitTableBatchedEmbeddingBagsCodegen(
+        self._emb_module: HybridSplitTableBatchedEmbeddingBagsCodegen = HybridSplitTableBatchedEmbeddingBagsCodegen(
             embedding_specs=list(zip(self._local_rows, self._local_cols, managed, compute_devices)),
-            feature_table_map=self._feature_table_map, pooling_mode=self._pooling, weights_precision=weights_precision,
-            device=device, **fused_params, ))
-        self._optim: EmbeddingFusedOptimizer = EmbeddingFusedOptimizer(config, self._emb_module, pg,)
+            feature_table_map=self._feature_table_map,
+            pooling_mode=self._pooling,
+            weights_precision=weights_precision,
+            device=device,
+            **fused_params,
+        )
+        self._optim: EmbeddingFusedOptimizer = EmbeddingFusedOptimizer(
+            config,
+            self._emb_module,
+            pg,
+        )
         self._param_per_table: Dict[str, TableBatchedEmbeddingSlice] = dict(
-            _gen_named_parameters_by_table_fused(emb_module=self._emb_module,
-                                                 table_name_to_count=self.table_name_to_count.copy(),
-                                                 config=self._config, pg=pg, ))
+            _gen_named_parameters_by_table_fused(
+                emb_module=self._emb_module,
+                table_name_to_count=self.table_name_to_count.copy(),
+                config=self._config,
+                pg=pg,
+            )
+        )
         self.init_parameters()
 
     @property
@@ -733,9 +768,7 @@ class HybridBatchedFusedEmbeddingBag(
         weights = features.weights_or_none()
         if weights is not None and not torch.is_floating_point(weights):
             weights = None
-        if features.variable_stride_per_key() and isinstance(
-            self.emb_module, SplitTableBatchedEmbeddingBagsCodegen
-        ):
+        if features.variable_stride_per_key() and isinstance(self.emb_module, SplitTableBatchedEmbeddingBagsCodegen):
             return self.emb_module(
                 indices=features.values().long(),
                 offsets=features.offsets().long(),
@@ -769,9 +802,7 @@ class HybridBatchedFusedEmbeddingBag(
     def named_parameters(
         self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
     ) -> Iterator[Tuple[str, nn.Parameter]]:
-        for name, tensor in self.named_split_embedding_weights(
-            prefix, recurse, remove_duplicate
-        ):
+        for name, tensor in self.named_split_embedding_weights(prefix, recurse, remove_duplicate):
             param = nn.Parameter(tensor)
             param._in_backward_optimizers = [EmptyFusedOptimizer()]
             yield name, param
@@ -783,9 +814,7 @@ class HybridBatchedFusedEmbeddingBag(
         self._emb_module.reset_cache_states()
 
 
-class HybridBatchedFusedEmbedding(
-    BaseBatchedEmbedding[torch.Tensor], FusedOptimizerModule
-):
+class HybridBatchedFusedEmbedding(BaseBatchedEmbedding[torch.Tensor], FusedOptimizerModule):
     def __init__(
         self,
         config: GroupedEmbeddingConfig,
@@ -799,9 +828,7 @@ class HybridBatchedFusedEmbedding(
         for table in config.embedding_tables:
             if device is not None and device.type == "cuda":
                 compute_devices.append(ComputeDevice.CUDA)
-                managed.append(
-                    compute_kernel_to_embedding_location(table.compute_kernel)
-                )
+                managed.append(compute_kernel_to_embedding_location(table.compute_kernel))
             elif device is not None and device.type == "mtia":
                 compute_devices.append(ComputeDevice.MTIA)
                 # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
@@ -809,9 +836,7 @@ class HybridBatchedFusedEmbedding(
                 managed.append(EmbeddingLocation.HOST)
             elif device is not None and device.type == "npu":
                 compute_devices.append(ComputeDevice.NPU)
-                managed.append(
-                    compute_kernel_to_embedding_location(table.compute_kernel)
-                )
+                managed.append(compute_kernel_to_embedding_location(table.compute_kernel))
             else:
                 compute_devices.append(ComputeDevice.CPU)
                 managed.append(EmbeddingLocation.HOST)
@@ -822,18 +847,14 @@ class HybridBatchedFusedEmbedding(
         if "cache_precision" not in fused_params:
             fused_params["cache_precision"] = weights_precision
 
-        self._emb_module: HybridSplitTableBatchedEmbeddingBagsCodegen = (
-            HybridSplitTableBatchedEmbeddingBagsCodegen(
-                embedding_specs=list(
-                    zip(self._local_rows, self._local_cols, managed, compute_devices)
-                ),
-                feature_table_map=self._feature_table_map,
-                pooling_mode=PoolingMode.NONE,
-                weights_precision=weights_precision,
-                device=device,
-                table_names=[t.name for t in config.embedding_tables],
-                **fused_params,
-            )
+        self._emb_module: HybridSplitTableBatchedEmbeddingBagsCodegen = HybridSplitTableBatchedEmbeddingBagsCodegen(
+            embedding_specs=list(zip(self._local_rows, self._local_cols, managed, compute_devices)),
+            feature_table_map=self._feature_table_map,
+            pooling_mode=PoolingMode.NONE,
+            weights_precision=weights_precision,
+            device=device,
+            table_names=[t.name for t in config.embedding_tables],
+            **fused_params,
         )
         self._optim: EmbeddingFusedOptimizer = EmbeddingFusedOptimizer(
             config,
@@ -874,9 +895,7 @@ class HybridBatchedFusedEmbedding(
         weights = features.weights_or_none()
         if weights is not None and not torch.is_floating_point(weights):
             weights = None
-        if features.variable_stride_per_key() and isinstance(
-            self.emb_module, SplitTableBatchedEmbeddingBagsCodegen
-        ):
+        if features.variable_stride_per_key() and isinstance(self.emb_module, SplitTableBatchedEmbeddingBagsCodegen):
             return self.emb_module(
                 indices=features.values().long(),
                 offsets=features.offsets().long(),
@@ -910,9 +929,7 @@ class HybridBatchedFusedEmbedding(
     def named_parameters(
         self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True
     ) -> Iterator[Tuple[str, nn.Parameter]]:
-        for name, tensor in self.named_split_embedding_weights(
-            prefix, recurse, remove_duplicate
-        ):
+        for name, tensor in self.named_split_embedding_weights(prefix, recurse, remove_duplicate):
             # hack before we support optimizer on sharded parameter level
             # can delete after SEA deprecation
             param = nn.Parameter(tensor)

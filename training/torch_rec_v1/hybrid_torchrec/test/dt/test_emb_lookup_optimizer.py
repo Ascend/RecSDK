@@ -14,14 +14,12 @@ import torch
 
 import hybrid_torchrec
 from hybrid_torchrec.hybrid_lookup_invoke.hybrid_lookup_args import HybridCommonArgs, HybridCommonArgsAggregation
-
 from hybrid_torchrec.hybrid_lookup_invoke.hybrid_lookup_adagrad import (
     check_unique_valid,
     invoke,
     invoke_grad_aggregation,
 )
 from fbgemm_gpu.split_embedding_codegen_lookup_invokers.lookup_adagrad import (
-    CommonArgs,
     OptimizerArgs,
     VBEMetadata,
     Momentum,
@@ -55,9 +53,7 @@ class TestHybridOps(unittest.TestCase):
         self.grad_accumulate_offsets = torch.tensor([0, 1, 2, 3, 4, 5, 6], dtype=torch.long)
 
         self.vbe_metadata = VBEMetadata(
-            B_offsets=None,
-            output_offsets_feature_rank=None,
-            B_offsets_rank_per_feature=None
+            B_offsets=None, output_offsets_feature_rank=None, B_offsets_rank_per_feature=None
         )
 
         self.args = HybridCommonArgs(
@@ -95,7 +91,7 @@ class TestHybridOps(unittest.TestCase):
             grad_accumulate=None,
             grad_accumulate_offsets=None,
             use_optimize=True,
-            learning_rate=0.02
+            learning_rate=0.02,
         )
         self.args_aggregation = HybridCommonArgsAggregation(
             placeholder_autograd_tensor=self.placeholder,
@@ -168,7 +164,7 @@ class TestHybridOps(unittest.TestCase):
             "regularization_mode": "l2",
         }
         # fbgemm 1.1.0版本和fbgemm 1.2.0版本参数差异处理
-        if hybrid_torchrec.IS_TORCH_REC_120:
+        if hybrid_torchrec.IS_TORCH_REC_120 or hybrid_torchrec.IS_TORCH_REC_150:
             kw_args["use_rowwise_bias_correction"] = False
         else:
             kw_args["learning_rate"] = 0.01
@@ -179,7 +175,7 @@ class TestHybridOps(unittest.TestCase):
             offsets=torch.tensor([0], dtype=torch.long),
             placements=torch.tensor([0], dtype=torch.long),
             dev=torch.empty(0),
-            uvm=torch.empty(0)
+            uvm=torch.empty(0),
         )
         return optimizer_args, momentum1
 
@@ -227,7 +223,6 @@ class TestHybridOps(unittest.TestCase):
         with pytest.raises((AttributeError, RuntimeError)):
             _ = invoke_grad_aggregation(new_args2, optimizer_args, momentum1)
 
-
     def test_invoke_with_vbe_failed(self):
         optimizer_args, momentum1 = self.create_optimizer_args()
         vbe_metadata = VBEMetadata(
@@ -235,7 +230,7 @@ class TestHybridOps(unittest.TestCase):
             output_offsets_feature_rank=torch.tensor([0, 2, 4], dtype=torch.long),
             B_offsets_rank_per_feature=torch.tensor([[0, 2], [3, 5]], dtype=torch.long),
             max_B=4,
-            output_size=6
+            output_size=6,
         )
         # 测试vbe分支
         new_args = replace(self.args, vbe_metadata=vbe_metadata)
