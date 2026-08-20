@@ -1,35 +1,36 @@
-From 756b2467814d7e8f8651a0f7cae14a0dc5a549c9 Mon Sep 17 00:00:00 2001
+From 3caf29d1283905f7bb64abfbf89a8387d7b70019 Mon Sep 17 00:00:00 2001
 From: chenzihao40 <chenzihao40@huawei.com>
-Date: Thu, 18 Jun 2026 10:36:31 +0800
-Subject: [PATCH] =?UTF-8?q?=E6=89=93=E5=8D=B0=E4=BF=AE=E6=94=B9?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Date: Thu, 20 Aug 2026 16:42:47 +0800
+Subject: [PATCH] npu patch
 
 ---
  rec_model_zoo_pytorch/Onetrans/gr_model.py    |  14 +-
- .../ScalingLaw/main.py                        | 210 +++++++++++++++---
- .../generic/sequential_v2/GR_model.py         |  13 +-
- .../generic/sequential_v2/local_trainer.py    |  15 +-
- .../generic/sequential_v2/transformers.py     |  10 +-
+ .../ScalingLaw/data/concat_dataset.py         |  29 +-
+ .../ScalingLaw/data/data_loader.py            |  24 ++
+ .../ScalingLaw/data/eval.py                   |   2 +
+ .../ScalingLaw/data/reco_dataset.py           |  13 +-
+ .../ScalingLaw/main.py                        | 345 ++++++++++++----
+ .../modeling/generic/initialization.py        |  17 +
+ .../modeling/generic/sequential_v2/DLRM.py    | 391 +++++++++++-------
+ .../generic/sequential_v2/GR_model.py         |  83 ++--
+ .../sequential_v2/embedding_modules.py        |   9 +-
+ .../generic/sequential_v2/local_trainer.py    |  26 +-
+ .../generic/sequential_v2/transformers.py     |  11 +-
  .../generic/utils/almightygosu_utils.py       |  10 +-
- .../ScalingLaw/run.sh                         | 120 ++--------
- .../train_amazon_books_0.2B.ini               |   4 +-
- .../train_amazon_books_0.5B.ini               |   4 +-
- .../sample_configs/train_amazon_books_1B.ini  |   4 +-
- 10 files changed, 247 insertions(+), 157 deletions(-)
+ .../ScalingLaw/modeling/model_registry.py     |   3 -
+ .../ScalingLaw/run.sh                         | 138 ++-----
+ .../train_amazon_books_0.2B.ini               |   9 +-
+ .../train_amazon_books_0.5B.ini               |   9 +-
+ .../sample_configs/train_amazon_books_1B.ini  |   9 +-
+ 18 files changed, 731 insertions(+), 411 deletions(-)
 
 diff --git a/rec_model_zoo_pytorch/Onetrans/gr_model.py b/rec_model_zoo_pytorch/Onetrans/gr_model.py
-index 7c897d13..bff3d712 100644
+index 7c897d132..bff3d7122 100644
 --- a/rec_model_zoo_pytorch/Onetrans/gr_model.py
 +++ b/rec_model_zoo_pytorch/Onetrans/gr_model.py
-@@ -22,20 +22,22 @@ from dataclasses import dataclass
- from typing import Any
- import functools
- 
+@@ -25 +24,0 @@ import functools
 -NPU_ENABLE = os.environ.get('NPU_FLAG', False)
- HAS_ATTN_FUSION_OPS = True
- ENABLE_JAGGED_OPS = True
+@@ -28,5 +27,2 @@ ENABLE_JAGGED_OPS = True
 -if os.environ.get("NPU_FLAG", "True") == "False":
 -    NPU_ENABLE = False
 -    torch.cuda.manual_seed(42)
@@ -37,29 +38,131 @@ index 7c897d13..bff3d712 100644
 -else:
 +NPU_ENABLE=False
 +try:
-     import torch_npu
+@@ -33,0 +30 @@ else:
 +    NPU_ENABLE=True
-     from torch_npu.profiler import profile
-     torch.npu.manual_seed(42)
-     torch.npu.manual_seed_all(42)
-     torch_npu.npu.manual_seed(42)
-     torch_npu.npu.manual_seed_all(42)
+@@ -38,0 +36,5 @@ else:
 +except:
 +    import torch
 +    import grouped_gemm
 +    torch.cuda.manual_seed(42)
 +    torch.cuda.manual_seed_all(42)
- 
- class initializing:
-     def __init__(self, enter_fn: Callable[[], None] = None, exit_fn: Callable[[], None] = None):
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
+index ce52f9d98..c5666391e 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
+@@ -17 +17 @@ class MultiCSVIterator:
+-                 use_column_names=False, use_cols = None, shuffle=False, epoch_num=0) -> None:
++                 use_column_names=False, use_cols = None, shuffle=False, epoch_num=0, global_seed=None) -> None:
+@@ -59 +59,3 @@ class MultiCSVIterator:
+-    
++        self.global_seed = None if global_seed is None else int(global_seed)
++        self.current_chunk_idx = 0
++
+@@ -91,2 +93,11 @@ class MultiCSVIterator:
+-                    random.seed(self.epoch_num)
+-                    random.shuffle(self.shuffled_indices)
++                    if self.global_seed is None:
++                        random.seed(self.epoch_num)
++                        random.shuffle(self.shuffled_indices)
++                    else:
++                        shuffle_seed = (
++                            self.global_seed
++                            + self.epoch_num * 1_000_003
++                            + self.current_file_index * 10_007
++                            + self.current_chunk_idx
++                        )
++                        random.Random(shuffle_seed).shuffle(self.shuffled_indices)
+@@ -93,0 +105 @@ class MultiCSVIterator:
++                self.current_chunk_idx += 1
+@@ -140 +152,2 @@ class RecallDataloader(IterableDataset):
+-            shuffle: bool = False
++            shuffle: bool = False,
++            global_seed=None,
+@@ -183,0 +197,2 @@ class RecallDataloader(IterableDataset):
++        if global_seed is not None:
++            files = sorted(files)
+@@ -228,0 +244 @@ class RecallDataloader(IterableDataset):
++        self.global_seed = None if global_seed is None else int(global_seed)
+@@ -237 +253 @@ class RecallDataloader(IterableDataset):
+-                                                       epoch_num=self.epoch_num)
++                                                       epoch_num=self.epoch_num, global_seed=self.global_seed)
+@@ -495 +510,0 @@ def negative_sampling_mask(data1_supervise, data2_label, rate=0.07):
+-        
+\ No newline at end of file
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
+index 5b9ece253..2a1ba8dfa 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
+@@ -1,0 +2 @@ import os
++import random
+@@ -2,0 +4 @@ import os
++import numpy as np
+@@ -9,0 +12,2 @@ def create_data_loader(
++        global_seed=None,
++        rank: int = 0,
+@@ -21,0 +26,3 @@ def create_data_loader(
++        worker_seed = torch.initial_seed() % (2 ** 32)
++        random.seed(worker_seed)
++        np.random.seed(worker_seed)
+@@ -26,0 +34,5 @@ def create_data_loader(
++    generator = None
++    if global_seed is not None:
++        generator = torch.Generator()
++        generator.manual_seed(int(global_seed) + int(rank))
++
+@@ -33,0 +46 @@ def create_data_loader(
++        generator=generator,
+@@ -53,0 +67,2 @@ def create_data_loader_ep(
++        global_seed=None,
++        rank: int = 0,
+@@ -77,0 +93,3 @@ def create_data_loader_ep(
++        worker_seed = torch.initial_seed() % (2 ** 32)
++        random.seed(worker_seed)
++        np.random.seed(worker_seed)
+@@ -82,0 +101,5 @@ def create_data_loader_ep(
++    generator = None
++    if global_seed is not None:
++        generator = torch.Generator()
++        generator.manual_seed(int(global_seed) + int(rank))
++
+@@ -222,0 +246 @@ def create_data_loader_ep(
++        generator=generator,
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
+index 795451304..94bee80fd 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
+@@ -441,0 +442,2 @@ def gather_all_list(x: list, world_size: int) -> torch.Tensor:
++    if world_size <= 1:
++        return x
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
+index d6e00c990..2dd3190e1 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
+@@ -38 +38,2 @@ def get_reco_dataset(
+-        token_per_item: int = 2
++        token_per_item: int = 2,
++        global_seed=None,
+@@ -71,0 +73 @@ def get_reco_dataset(
++            global_seed=global_seed,
+@@ -90,0 +93 @@ def get_reco_dataset(
++            global_seed=global_seed,
+@@ -114 +117,2 @@ def get_reco_dataset(
+-            shift_id_by=1
++            shift_id_by=1,
++            global_seed=global_seed,
+@@ -137 +141,2 @@ def get_reco_dataset(
+-            shift_id_by=1
++            shift_id_by=1,
++            global_seed=global_seed,
+@@ -160,0 +166 @@ def get_reco_dataset(
++            global_seed=global_seed,
+@@ -182,0 +189 @@ def get_reco_dataset(
++            global_seed=global_seed,
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
-index acb4e3df..59028223 100644
+index acb4e3df6..32be41dc2 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
-@@ -40,14 +40,13 @@ import datetime
- import collections
- from utils.common_utils import get_unique_path, to_clean_cpu_tensor
- 
+@@ -43,6 +43,2 @@ from utils.common_utils import get_unique_path, to_clean_cpu_tensor
 -NPU_ENABLE = True
 -if os.environ.get("NPU_FLAG", "True") == "False":
 -    NPU_ENABLE = False
@@ -68,74 +171,96 @@ index acb4e3df..59028223 100644
 -if NPU_ENABLE:
 +NPU_ENABLE=False
 +try:
-     import torch_npu
+@@ -49,0 +46 @@ if NPU_ENABLE:
 +    NPU_ENABLE=True
-     from torch_npu.profiler import profile
+@@ -50,0 +48,2 @@ if NPU_ENABLE:
 +except:
 +    import torch
- 
- 
- # 初始化传入参数
-@@ -114,16 +113,16 @@ def init_torch_config(local_rank, train_conf):
-     """
-     设置torch配置
-     """
+@@ -80,3 +79,3 @@ def init_ddp_info_params(already_init=False):
+-    rank_id = int(os.environ["RANK"])
+-    local_rank = int(os.environ["LOCAL_RANK"])
+-    world_size = int(os.environ["WORLD_SIZE"])
++    rank_id = int(os.environ.get("RANK", 0))
++    local_rank = int(os.environ.get("LOCAL_RANK", 0))
++    world_size = int(os.environ.get("WORLD_SIZE", 1))
+@@ -86 +85 @@ def init_ddp_info_params(already_init=False):
+-    if not already_init:
++    if not already_init and world_size > 1:
+@@ -100,11 +99,23 @@ def init_ddp_info_params(already_init=False):
+-def init_random_seed(config):
+-    """
+-    设置全局随机数以使训练结果更确定
+-    """
+-    random_seed = config.get('seed_conf', {}).get("global_seed", '1234')
+-    random.seed(random_seed)
+-    np.random.seed(random_seed)
+-    torch.manual_seed(random_seed)
+-    if NPU_ENABLE:
+-        torch_npu.npu.manual_seed(random_seed)
+-        torch_npu.npu.manual_seed_all(random_seed)
++def configure_precision_mode(config):
++    """应用精度模式覆盖，并在确定性模式下固定随机种子。"""
++    train_conf = config.get("train_conf", {})
++    if os.environ.get("ENABLE_PRECISION_MODE", "0") == "1":
++        train_conf["deterministic"] = True
++        train_conf["fixed_init"] = True
++        logging.info("ENABLE_PRECISION_MODE=1: deterministic and fixed_init are enabled.")
++
++    global_seed = int(config.get('seed_conf', {}).get("global_seed", 1234))
++    if train_conf.get("deterministic", False):
++        seed_all = _load_msprobe_seed_all()
++        seed_all(seed=global_seed, mode=True, rm_dropout=True)
++        logging.info("Deterministic mode enabled by msprobe.seed_all with seed %s", global_seed)
++        return global_seed
++    return None
++
++
++def _load_msprobe_seed_all():
++    try:
++        from msprobe.pytorch import seed_all
++    except ImportError as exc:
++        raise RuntimeError("deterministic=True requires msprobe to be installed.") from exc
++    return seed_all
+@@ -117 +128 @@ def init_torch_config(local_rank, train_conf):
 -    use_tf32 = train_conf.get("use_tf32", False)
 +    use_tf32 = os.getenv("MODEL_HF32_FLAG").upper() == "TRUE" if os.getenv("MODEL_HF32_FLAG")!= None else train_conf.get("use_tf32", False)
-     if NPU_ENABLE:
-         torch_npu.npu.set_device(local_rank)
+@@ -120 +131,2 @@ def init_torch_config(local_rank, train_conf):
 -        torch_npu.npu.matmul.allow_hf32=True
 +        torch_npu.npu.matmul.allow_hf32=use_tf32
 +        print(f"NPU: set hf32 is {torch_npu.npu.aclnn.allow_hf32}")
-     else:
-         torch.cuda.set_device(local_rank)
-         torch.backends.cuda.matmul.allow_tf32 = use_tf32
-         torch.backends.cudnn.allow_tf32 = use_tf32
+@@ -125,2 +137,2 @@ def init_torch_config(local_rank, train_conf):
 -    logging.info("cuda.matmul.allow_tf32: %s", use_tf32)
 -    logging.info("cudnn.allow_tf32: %s", use_tf32)
 +        print(f"GPU: set tf32 is {torch.backends.cuda.matmul.allow_tf32}")
- 
- def get_data_loaders(dataset, data_dir, rank, world_size, train_config, model_conf, feature_config, dataloader_config):
-     """
-@@ -169,22 +168,32 @@ def get_optimizer_callback(train_conf) -> Callable[
-     elif optimizer_type == "sgd":
-         return lambda params: torch.optim.SGD(params, lr=learning_rate, weight_decay=weight_decay)
- 
++
+@@ -128 +140,2 @@ def init_torch_config(local_rank, train_conf):
+-def get_data_loaders(dataset, data_dir, rank, world_size, train_config, model_conf, feature_config, dataloader_config):
++def get_data_loaders(dataset, data_dir, rank, world_size, train_config, model_conf, feature_config,
++                     dataloader_config, global_seed=None):
+@@ -133 +146,2 @@ def get_data_loaders(dataset, data_dir, rank, world_size, train_config, model_co
+-        dataset, data_dir, rank, world_size, train_config, model_conf, feature_config, dataloader_config, is_recall=train_config['is_recall']
++        dataset, data_dir, rank, world_size, train_config, model_conf, feature_config, dataloader_config,
++        is_recall=train_config['is_recall'], global_seed=global_seed
+@@ -171,0 +186,6 @@ def get_optimizer_callback(train_conf) -> Callable[
 +def time_wrap_xpu():
 +    if NPU_ENABLE:
 +        torch.npu.synchronize()
 +    else:
 +        torch.cuda.synchronize()
 +    return time.time()
- 
- def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFeatures]],
+@@ -174 +194,2 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
 -               train_conf, export_conf, batch_id, world_size, rank, epoch, device, save_dir):
-+               train_conf, export_conf, batch_id, world_size, rank, epoch, device, save_dir, profiler=None):
-     """
-     训练模型
-     """
-     model.train()
-     train_costs, batch_group = [], train_conf['eval_interval']
++               train_conf, export_conf, batch_id, world_size, rank, epoch, device, save_dir,
++               profiler=None):
+@@ -180 +201 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
 -    last_training_time = time.time()
 +    last_training_time = time_wrap_xpu()
-     use_loss_weighted_grad = train_conf.get("use_loss_weighted_grad", False)
-     is_output_loss_csv_file = train_conf.get("is_output_loss_csv_file", False)
-     step_list, loss_list = [], []
+@@ -183,0 +205 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
 +    train_times = []
- 
-     while True:
+@@ -185,0 +208,2 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
 +        if profiler:
 +            profiler.step()
-         try:
-             loss, _ = exec_cb(batch_id)
-+            loss.backward()
-         except StopIteration:
-             logging.info("finished")
-             break
-@@ -194,14 +203,21 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
-             step_list.append(batch_id)
- 
-         if (batch_id % batch_group) == 0:
+@@ -197,3 +221,7 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
 -            train_cost = time.time() - last_training_time
 -            logging.info("rank %s; batch-stat (train): step %s "
 -                         "(epoch %s in %.2fs): %.6f", rank, batch_id, epoch, train_cost, loss)
@@ -146,41 +271,61 @@ index acb4e3df..59028223 100644
 +                print("Finished train it {} of epoch {}, {:.2f} ms/it, loss {:.6f}".format(
 +                    batch_id, epoch, gt, loss)
 +                )
-             if batch_id > 0:
-                 train_costs.append(train_cost)
+@@ -202 +230 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
 -            last_training_time = time.time()
 +            last_training_time = time_wrap_xpu()
-         batch_id += 1
- 
+@@ -204,0 +233,3 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
 +    if len(train_times) > 1:
 +        train_times.pop(0)
 +
-     if train_costs:
-         logging.info(f"rank {rank} epoch {epoch}; mean cost per step: {mean(train_costs) / batch_group:.2f}s")
-     else:
-@@ -213,7 +229,7 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
- 
-     epoch_loss = avg_eval(torch.tensor([loss]).to(device), world_size=world_size)
- 
+@@ -216 +247 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
 -    return batch_id, epoch_loss
 +    return batch_id, epoch_loss, train_times
- 
- def save_loss_csv_file(loss_list, step_list):
-     """
-@@ -541,8 +557,7 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
-                         float_dtype=None,
-         )
- 
+@@ -264 +295,18 @@ def save_model_state_dict(model, save_dir, export_conf):
+-    torch.save(model.state_dict(), model_path)
++    model_module = getattr(model, "module", model)
++    torch.save(model_module.state_dict(), model_path)
++
++
++def load_model_state_dict(model, model_state_dict):
++    model_keys = model.state_dict().keys()
++    checkpoint_keys = model_state_dict.keys()
++    model_uses_prefix = any(key.startswith("module.") for key in model_keys)
++    checkpoint_uses_prefix = any(key.startswith("module.") for key in checkpoint_keys)
++
++    if checkpoint_uses_prefix and not model_uses_prefix:
++        model_state_dict = {
++            key.removeprefix("module."): value for key, value in model_state_dict.items()
++        }
++    elif model_uses_prefix and not checkpoint_uses_prefix:
++        model_state_dict = {f"module.{key}": value for key, value in model_state_dict.items()}
++
++    model.load_state_dict(model_state_dict, strict=False)
+@@ -544,2 +592 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
 -
 -    profiling_flag = False if int(os.environ.get("PROFILING_FLAG", 0)) == 0 else True
 +    profiling_flag = False if int(os.environ.get("MODEL_PROFILING_FLAG", 0)) == 0 else True
-     enable_compile = False if int(os.environ.get("ENABLE_COMPILE", 0)) == 0 else True
-     enable_graph = False if int(os.environ.get("ENABLE_GRAPH", 0)) == 0 else True
-     check_precision = False if int(os.environ.get("CHECK_PRECISION", 0)) == 0 else True
-@@ -1081,6 +1096,61 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
-         save_iter += 1
-     write_embs(rank, part_iter//10, group_keys_all, save_dir)
- 
+@@ -643 +690,2 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+-                    model.module, eval_seq_features, feature_conf.get('save_score_csv_item_cols', {}),
++                    getattr(model, "module", model), eval_seq_features,
++                    feature_conf.get('save_score_csv_item_cols', {}),
+@@ -654 +702,2 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+-                    torch.distributed.barrier()  # sync time taken
++                    if world_size > 1:
++                        torch.distributed.barrier()
+@@ -964 +1013,2 @@ def save_item_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+-    emb_layer = model.module.embedding_module._item_info_embs[feature_name]
++    model_module = getattr(model, "module", model)
++    emb_layer = model_module.embedding_module._item_info_embs[feature_name]
+@@ -1036 +1086,2 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+-        user_embeddings : torch.Tensor = model.module.encode(
++        model_module = getattr(model, "module", model)
++        user_embeddings : torch.Tensor = model_module.encode(
+@@ -1077 +1128,2 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+-                torch.distributed.barrier()  # sync time taken
++                if world_size > 1:
++                    torch.distributed.barrier()
+@@ -1083,0 +1136,55 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
 +def latency_summary_rank0(latency_list, batch_size, model_name, device_name, inductor_flag):
 +    if latency_list is None or len(latency_list) == 0:
 +        print("No latency data collected, please check sample_statistics_num value effectively collects latency data.")
@@ -195,7 +340,7 @@ index acb4e3df..59028223 100644
 +        p95 = np.percentile(ave_step, 95, method="lower")
 +        p99 = np.percentile(ave_step, 99, method="lower")
 +        p999 = np.percentile(ave_step, 99.9, method="lower")
-+    world_size = int(os.environ["WORLD_SIZE"])
++    world_size = int(os.environ.get("WORLD_SIZE", 1))
 +    QPS = int(1000.0 * batch_size * world_size / avg_time) if avg_time > 0 else 0
 +    e2e_result = {
 +        "Batch_size": batch_size,
@@ -236,13 +381,19 @@ index acb4e3df..59028223 100644
 +        return []
 +    return [item for sub in matrix for item in sub[-n:]]
 +
- def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> None:
-     """
-     训练函数
-@@ -1194,8 +1264,47 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
-         )
-         feed_func = feed_datas_to_exec_callback
- 
+@@ -1097 +1203,0 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+-    init_random_seed(common_config)
+@@ -1125,0 +1232 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
++    global_seed = configure_precision_mode(common_config)
+@@ -1145,3 +1252,4 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+-                                                                    model_conf=model_conf,
+-                                                                    feature_config=feature_conf,
+-                                                                    dataloader_config=data_loader_conf)
++                                                                     model_conf=model_conf,
++                                                                     feature_config=feature_conf,
++                                                                     dataloader_config=data_loader_conf,
++                                                                     global_seed=global_seed)
+@@ -1196,0 +1305,38 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
 +    # profiling
 +    ENABLE_PROFILING = True if os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE" else False
 +    if ENABLE_PROFILING:
@@ -268,7 +419,7 @@ index acb4e3df..59028223 100644
 +                    profiler.ProfilerActivity.NPU if NPU_ENABLE else profiler.ProfilerActivity.CUDA
 +                ],
 +                schedule=profiler.schedule(
-+                    wait=1, warmup=100, active=10, repeat=1, skip_first=1
++                    wait=1, warmup=10, active=10, repeat=1, skip_first=1
 +                ),
 +                on_trace_ready=profiler.tensorboard_trace_handler(profiler_save_path),
 +                record_shapes=True,
@@ -281,39 +432,24 @@ index acb4e3df..59028223 100644
 +        prof.start()
 +
 +    total_train_times = []
-     batch_id = 0
+@@ -1198 +1344,2 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
 -    for epoch in range(train_conf['num_epochs']):
 +    epochs = int(os.environ.get("MODEL_EPOCH")) if os.environ.get("MODEL_EPOCH") is not None else train_conf['num_epochs']
 +    for epoch in range(epochs):
-         train_data_loader.dataset.set_epoch_num(epoch)
-         if train_conf.get('eval_after_each_epoch', False):
-             train_exec_cb, eval_exec_cb = feed_func(exec_cb, train_conf['is_recall'], train_data_loader, eval_data_loader)
-@@ -1212,17 +1321,15 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
-             "rank": rank,
-             "epoch": epoch,
-             "device": device,
+@@ -1215 +1362,2 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
 -            "save_dir": save_dir
 +            "save_dir": save_dir,
 +            "profiler": prof if ENABLE_PROFILING else None,
-         }
+@@ -1217,2 +1365,2 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
 -
 -        batch_id, epoch_loss = train_step(**train_step_para)
 +        batch_id, epoch_loss, train_times = train_step(**train_step_para)
 +        total_train_times += train_times
- 
-         if rank == 0 and writer:
-             logging.info("loss at epoch %s is %s", epoch, epoch_loss)
-             writer.add_scalar("loss/train", epoch_loss, epoch)
+@@ -1223,3 +1370,0 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
 -        
 -        logging.info("saving model state dict")
 -        save_model_state_dict(model=model, save_dir=save_dir, export_conf=export_conf)
- 
-         if train_conf.get('eval_after_each_epoch', False):
-             print(f"start evaluate_step: epoch{epoch}")
-@@ -1244,13 +1351,58 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
-                         filter_invalid_ids=filter_invalid_ids,
-                         writer=writer)
- 
+@@ -1247,3 +1392,6 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
 -    if dataset_name == "ag-rank":
 -        # 保存统计结果
 -        data_target.save_data(rank)
@@ -323,13 +459,10 @@ index acb4e3df..59028223 100644
 +    if int(os.environ.get("SAVE_MODEL_FLAG", 0)) == 1:
 +        logging.info("saving model state dict")
 +        save_model_state_dict(model=model, save_dir=save_dir, export_conf=export_conf)
- 
-     if rank == 0 and writer:    
-         writer.close()
- 
+@@ -1253,0 +1402,42 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
 +    total_train_times_allrank = None
 +    if world_size > 1:
-+        dist.barrier(device_ids=[rank])  # 同步所有rank
++        dist.barrier()  # 同步所有rank
 +        total_train_times_allrank = gather_latency_data(total_train_times, world_size, device)
 +
 +    if rank == 0:
@@ -354,7 +487,7 @@ index acb4e3df..59028223 100644
 +            "ms/step": float(avg_time) if avg_time is not None else "no valid SAMPLE_STATISTICS_NUM",
 +        }
 +        device_name = "NPU" if NPU_ENABLE else "GPU"
-+        inductor_flag = "EAGER"
++        inductor_flag = "INDUCTOR" if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else "EAGER"
 +        model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
 +        output_str = model_detail_info + "_" + str(final_results)
 +        file_path = f"../save_results_{device_name}/precision_result.txt"
@@ -369,17 +502,519 @@ index acb4e3df..59028223 100644
 +        os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
 +        torch.save(final_results, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_ep{epochs}.pt")
 +
- def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already_init=False) -> None:
-     """
-     单独评估函数
+@@ -1261 +1450,0 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+-    init_random_seed(common_config)
+@@ -1282,0 +1472 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
++    global_seed = configure_precision_mode(common_config)
+@@ -1297,3 +1487,4 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+-                                                                    model_conf=model_conf,
+-                                                                    feature_config=feature_conf,
+-                                                                    dataloader_config=data_loader_conf)
++                                                                     model_conf=model_conf,
++                                                                     feature_config=feature_conf,
++                                                                     dataloader_config=data_loader_conf,
++                                                                     global_seed=global_seed)
+@@ -1312 +1503 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+-        model.load_state_dict(model_state_dict, False)
++        load_model_state_dict(model, model_state_dict)
+@@ -1374 +1564,0 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+-    init_random_seed(common_config)
+@@ -1392,0 +1583 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
++    global_seed = configure_precision_mode(common_config)
+@@ -1407,3 +1598,4 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+-                                                                    model_conf=model_conf,
+-                                                                    feature_config=feature_conf,
+-                                                                    dataloader_config=data_loader_conf)
++                                                                     model_conf=model_conf,
++                                                                     feature_config=feature_conf,
++                                                                     dataloader_config=data_loader_conf,
++                                                                     global_seed=global_seed)
+@@ -1420 +1612 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+-        model.load_state_dict(model_state_dict, False)
++        load_model_state_dict(model, model_state_dict)
+@@ -1486 +1678 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+-                              dataloader_conf, data_pth='', is_recall=False):
++                              dataloader_conf, data_pth='', is_recall=False, global_seed=None):
+@@ -1504 +1696,2 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+-        token_per_item=feature_conf.get("token_per_item", 1)
++        token_per_item=feature_conf.get("token_per_item", 1),
++        global_seed=global_seed,
+@@ -1520 +1713,3 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+-            num_workers=num_workers
++            num_workers=num_workers,
++            global_seed=global_seed,
++            rank=rank,
+@@ -1535 +1730,3 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+-            num_workers=num_workers
++            num_workers=num_workers,
++            global_seed=global_seed,
++            rank=rank,
+@@ -1542 +1739,3 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+-            num_workers=num_workers
++            num_workers=num_workers,
++            global_seed=global_seed,
++            rank=rank,
+@@ -1548 +1747,3 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+-            num_workers=num_workers
++            num_workers=num_workers,
++            global_seed=global_seed,
++            rank=rank,
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
+index 585196125..12eb04153 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
+@@ -3,0 +4,17 @@ import torch
++FIXED_WEIGHT_VALUE = 0.01
++
++
++def fixed_init_(name: str, parameter: torch.Tensor) -> None:
++    name_parts = [part.lower() for part in name.split(".")]
++    is_bias = any(
++        part in ("bias", "b")
++        or part.endswith("_bias")
++        or part.endswith("_b")
++        for part in name_parts
++    )
++    if is_bias:
++        torch.nn.init.zeros_(parameter)
++    else:
++        torch.nn.init.constant_(parameter, FIXED_WEIGHT_VALUE)
++
++
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
+index befbf7531..0b21073c8 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
+@@ -3 +2,0 @@ import torch
+-ENABLE_NPU=False
+@@ -6 +4,0 @@ try:
+-    ENABLE_NPU=True
+@@ -8 +6,3 @@ except:
+-    import torch
++    torch_npu = None
++
++try:
+@@ -9,0 +10,2 @@ except:
++except:
++    grouped_gemm = None
+@@ -17 +19 @@ from modeling.generic.sequential_v2.transformers import RMSNormNPU
+-from modeling.generic.initialization import truncated_normal
++from modeling.generic.initialization import FIXED_WEIGHT_VALUE, truncated_normal
+@@ -22,0 +25 @@ import logging
++
+@@ -24,0 +28,72 @@ torch._dynamo.disallow_in_graph(F.one_hot)
++
++def _init_weight_(parameter: torch.Tensor, fixed_init: bool) -> None:
++    if fixed_init:
++        nn.init.constant_(parameter, FIXED_WEIGHT_VALUE)
++    else:
++        nn.init.xavier_normal_(parameter)
++
++
++class NPUGroupedMatmulFunction(torch.autograd.Function):
++    @staticmethod
++    def forward(ctx, x, weight, bias, group_list):
++        ctx.save_for_backward(x, weight, group_list)
++        ctx.has_bias = bias is not None
++        ctx.bias_dtype = bias.dtype if bias is not None else None
++        return torch_npu.npu_grouped_matmul(
++            x=[x],
++            weight=[weight],
++            bias=[bias] if bias is not None else None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=0,
++            group_type=0,
++            output_dtype=x.dtype,
++        )[0]
++
++    @staticmethod
++    def backward(ctx, grad_output):
++        x, weight, group_list = ctx.saved_tensors
++        grad_output = grad_output.contiguous()
++
++        grad_x = torch_npu.npu_grouped_matmul(
++            x=[grad_output],
++            weight=[weight.transpose(1, 2)],
++            bias=None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=0,
++            group_type=0,
++            output_dtype=x.dtype,
++        )[0]
++
++        grad_weight = torch_npu.npu_grouped_matmul(
++            x=[x.transpose(0, 1)],
++            weight=[grad_output],
++            bias=None,
++            group_list=group_list,
++            split_item=3,
++            group_list_type=0,
++            group_type=2,
++            output_dtype=weight.dtype,
++        )[0]
++
++        grad_bias = None
++        if ctx.has_bias:
++            group_sizes = torch.cat(
++                (group_list[:1], group_list[1:] - group_list[:-1])
++            )
++            group_indices = torch.repeat_interleave(
++                torch.arange(weight.size(0), device=group_list.device),
++                group_sizes,
++                output_size=grad_output.size(0),
++            )
++            bias_grad_source = grad_output.to(dtype=ctx.bias_dtype)
++            grad_bias = bias_grad_source.new_zeros(weight.size(0), weight.size(2))
++            grad_bias.index_add_(0, group_indices, bias_grad_source)
++
++        return grad_x, grad_weight, grad_bias, None
++
++
++def npu_grouped_matmul_autograd(x, weight, bias, group_list):
++    return NPUGroupedMatmulFunction.apply(x, weight, bias, group_list)
++
+@@ -153,0 +229 @@ class PerTokenFFN(BaseModel):
++        self._fixed_init = common_hp["train_conf"].get("fixed_init", False)
+@@ -209 +285 @@ class PerTokenFFN(BaseModel):
+-            nn.init.xavier_normal_(self.W[i])
++            _init_weight_(self.W[i], self._fixed_init)
+@@ -213 +289 @@ class PerTokenFFN(BaseModel):
+-            nn.init.xavier_normal_(self.gate_W)
++            _init_weight_(self.gate_W, self._fixed_init)
+@@ -220 +296 @@ class PerTokenFFN(BaseModel):
+-                nn.init.xavier_normal_(self.W[e][i])
++                _init_weight_(self.W[e][i], self._fixed_init)
+@@ -225 +301 @@ class PerTokenFFN(BaseModel):
+-                nn.init.xavier_normal_(self.gate_W[e])
++                _init_weight_(self.gate_W[e], self._fixed_init)
+@@ -247 +323 @@ class PerTokenFFN(BaseModel):
+-                        x_t = torch.index_select(s, 0, idx).to(torch.float16)            # (k, D)
++                        x_t = torch.index_select(s, 0, idx).to(torch.float16)
+@@ -319,0 +396 @@ class SparseMoE(BaseModel):
++        self._fixed_init = common_hp["train_conf"].get("fixed_init", False)
+@@ -340 +417 @@ class SparseMoE(BaseModel):
+-        nn.init.xavier_normal_(self.router.weight)
++        _init_weight_(self.router.weight, self._fixed_init)
+@@ -479,12 +556,16 @@ class SparseMoE_Gemm(BaseModel):
+-        
+-        num_experts_per_token = model_cfg[Const.HP].get("num_experts_per_token")
+-        inner_dim = model_cfg[Const.HP].get("inner_dim")
+-        num_tokens = model_cfg[Const.HP].get("num_tokens")
+-        k = model_cfg[Const.HP].get("k")
+-        num_layers_per_expert = model_cfg[Const.HP].get("num_layers_per_expert")
+-        bias = model_cfg[Const.HP].get("bias")
+-        dropout_p = model_cfg[Const.HP].get("dropout_p")
+-        target_activation_ratio = model_cfg[Const.HP].get("target_activation_ratio")
+-        sparseMOE = model_cfg[Const.HP].get("sparseMOE")
+-        top_k_number = model_cfg[Const.HP].get("top_k_number")
+-        npu_use_fp16 = common_hp["train_conf"].get("npu_use_fp16", False)
++
++        model_hp = model_cfg[Const.HP]
++        train_conf = common_hp["train_conf"]
++        num_experts_per_token = model_hp.get("num_experts_per_token")
++        inner_dim = model_hp.get("inner_dim")
++        num_tokens = model_hp.get("num_tokens")
++        expansion_ratio = model_hp.get("k")
++        num_layers_per_expert = model_hp.get("num_layers_per_expert")
++        bias = model_hp.get("bias")
++        dropout_p = model_hp.get("dropout_p")
++        target_activation_ratio = model_hp.get("target_activation_ratio")
++        sparse_moe = model_hp.get("sparseMOE")
++        top_k_number = model_hp.get("top_k_number")
++        use_npu_custom_grouped_matmul = train_conf.get(
++            "use_npu_custom_grouped_matmul", True
++        )
+@@ -494 +575 @@ class SparseMoE_Gemm(BaseModel):
+-        self.kD = int(round(k * self.D))
++        self.kD = int(round(expansion_ratio * self.D))
+@@ -498 +579 @@ class SparseMoE_Gemm(BaseModel):
+-        self.sparseMOE = sparseMOE
++        self.sparseMOE = sparse_moe
+@@ -500 +580,0 @@ class SparseMoE_Gemm(BaseModel):
+-        D = self.D
+@@ -503,3 +583,3 @@ class SparseMoE_Gemm(BaseModel):
+-        self._npu_use_fp16 = npu_use_fp16
+-        
+-        # Router h(·): shared across positions, maps R^D -> R^{N_e}
++        self.use_npu_custom_grouped_matmul = use_npu_custom_grouped_matmul
++        self._fixed_init = train_conf.get("fixed_init", False)
++
+@@ -507,3 +587,3 @@ class SparseMoE_Gemm(BaseModel):
+-        in_dims = [D] + [self.kD] * (self.num_layers - 1)
+-        out_dims = [self.kD] * (self.num_layers - 1) + [D]
+-        
++        in_dims = [self.D] + [self.kD] * (self.num_layers - 1)
++        out_dims = [self.kD] * (self.num_layers - 1) + [self.D]
++
+@@ -514 +594 @@ class SparseMoE_Gemm(BaseModel):
+-            nn.Parameter(torch.empty(num_tokens * num_experts_per_token, din, dout)) 
++            nn.Parameter(torch.empty(num_tokens * num_experts_per_token, din, dout))
+@@ -519 +599 @@ class SparseMoE_Gemm(BaseModel):
+-                nn.Parameter(torch.empty(num_tokens * num_experts_per_token, dout)) 
++                nn.Parameter(torch.empty(num_tokens * num_experts_per_token, dout))
+@@ -529 +609 @@ class SparseMoE_Gemm(BaseModel):
+-        self.gate_W = nn.Parameter(torch.empty(num_tokens * num_experts_per_token, out_dims[-1], 1)) 
++        self.gate_W = nn.Parameter(torch.empty(num_tokens * num_experts_per_token, out_dims[-1], 1))
+@@ -534 +614 @@ class SparseMoE_Gemm(BaseModel):
+-    
++
+@@ -535,0 +616,2 @@ class SparseMoE_Gemm(BaseModel):
++        if self._fixed_init:
++            nn.init.constant_(self.router.weight, FIXED_WEIGHT_VALUE)
+@@ -537 +619 @@ class SparseMoE_Gemm(BaseModel):
+-            nn.init.xavier_normal_(self.W[i])
++            _init_weight_(self.W[i], self._fixed_init)
+@@ -541 +623 @@ class SparseMoE_Gemm(BaseModel):
+-            nn.init.xavier_normal_(self.gate_W)
++            _init_weight_(self.gate_W, self._fixed_init)
+@@ -544,9 +625,0 @@ class SparseMoE_Gemm(BaseModel):
+-    def cutlas_gemm(self, a, b, bias, group_list):
+-        # [A] @ [B] + [bias]        
+-        matmul_out = grouped_gemm.ops.gmm(a, b, group_list)
+-        return matmul_out
+-    
+-    def forward(self, s: torch.Tensor):
+-        """
+-        Args:
+-            s: (bs, T, D)
+@@ -554,37 +627,59 @@ class SparseMoE_Gemm(BaseModel):
+-        Returns:
+-            v: (bs, T, D)  -- routed mixture of experts output
+-        """
+-        assert s.dim() == 3 and s.size(1) == self.T and s.size(2) == self.D, \
+-            f"expected (bs,{self.T},{self.D}), got {tuple(s.shape)}"
+-        K = self.top_k
+-        bs, T, D = s.shape
+-        output_dim = self.D
+-        x = s.clone()
+-        # Router logits -> ReLU gates (no softmax, no top-k)
+-        # shape: (bs, T, N_e)
+-        with record_function("## gates ##"):
+-            router_logits = self.router(s) ## [bs, T, E]
+-            # Top-k token-wise gating
+-            router_logits = F.softmax(router_logits, dim=-1) # shape: [bs, T, top_k]
+-            topk_gates, topk_indices = torch.topk(router_logits, k=self.top_k, dim=-1) # shape: [bs, T, top_k]
+-            bs, T, top_k = topk_indices.shape
+-            offset = torch.arange(T, device=topk_indices.device).unsqueeze(0).unsqueeze(-1) * self.Ne  # shape: (1, T, 1)
+-            topk_indices_offset = topk_indices + offset  # shape: (bs, T, top_k)
+-            expert_mask = F.one_hot(topk_indices_offset, num_classes=T*self.Ne).sum(dim=2)  # shape: (bs, T, T*Ne)
+-            expert_mask = expert_mask.sum(dim=1) # (b*s, expert_number*T)
+-            expert_mask = expert_mask.permute(1, 0) # (expert_number*T, b*s)
+-            expert_mask = expert_mask.sum(dim=1) # (expert_number*T,)
+-            cuda_group_list = None
+-            if not ENABLE_NPU:
+-                cuda_group_list = expert_mask
+-                cuda_group_list = cuda_group_list.cpu()
+-            group_list = expert_mask.cumsum(dim=0)
+-
+-            router_weights = (topk_gates / topk_gates.sum(dim=-1, keepdim=True)).reshape(-1, 1)
+-            # build dispatch mask: [bs, T, E]
+-            gates = torch.zeros_like(router_logits)
+-            gates.scatter_(dim=-1, index=topk_indices, src=topk_gates)
+-            float_mask = (gates > 0).float().detach()
+-            reg_loss = gates.sum(-1).sum(-1)
+-            # 原生接近于1/2激活的稀疏度
+-            sparsity = float_mask.sum() / (T * self.Ne)
++    def _compute_routing(
++        self, s: torch.Tensor
++    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
++        with record_function("## SparseMoE routing ##"):
++            router_logits = self.router(s)
++            router_probs = F.softmax(router_logits.float(), dim=-1)
++            topk_gates, topk_indices = torch.topk(
++                router_probs, k=self.top_k, dim=-1
++            )
++            router_weights = topk_gates / topk_gates.sum(dim=-1, keepdim=True)
++            reg_loss = topk_gates.sum(dim=-1).sum(dim=-1)
++            sparsity = (
++                (topk_gates > 0).float().detach().sum() / (self.T * self.Ne)
++            )
++        return topk_indices, router_weights, reg_loss, sparsity
++
++    def _build_grouped_layout(
++        self, topk_indices: torch.Tensor
++    ) -> Tuple[torch.Tensor, torch.Tensor]:
++        token_offsets = (
++            torch.arange(self.T, device=topk_indices.device).view(1, self.T, 1)
++            * self.Ne
++        )
++        grouped_expert_indices = (topk_indices + token_offsets).contiguous()
++        assignments_per_token = F.one_hot(
++            grouped_expert_indices, num_classes=self.T * self.Ne
++        ).sum(dim=2)
++        group_sizes = assignments_per_token.sum(dim=1).permute(1, 0).sum(dim=1)
++        return grouped_expert_indices, group_sizes
++
++    def _npu_grouped_gemm(
++        self,
++        inputs: torch.Tensor,
++        weight: torch.Tensor,
++        bias: Optional[torch.Tensor],
++        group_list: torch.Tensor,
++    ) -> torch.Tensor:
++        if self.use_npu_custom_grouped_matmul:
++            return npu_grouped_matmul_autograd(inputs, weight, bias, group_list)
++        return torch_npu.npu_grouped_matmul(
++            x=[inputs],
++            weight=[weight],
++            bias=[bias] if bias is not None else None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=0,
++            group_type=0,
++            output_dtype=inputs.dtype,
++        )[0]
++
++    def _gpu_grouped_gemm(self, inputs, weight, bias, group_sizes):
++        matmul_out = grouped_gemm.ops.gmm(inputs, weight, group_sizes)
++        if bias is not None:
++            device_group_sizes = group_sizes.to(
++                device=bias.device, dtype=torch.long, non_blocking=True
++            )
++            expanded_bias = torch.repeat_interleave(bias, device_group_sizes, dim=0)
++            matmul_out = matmul_out + expanded_bias
++        return matmul_out
+@@ -592,8 +687,52 @@ class SparseMoE_Gemm(BaseModel):
+-        with record_function("## Group Moe ##"):
+-            tokens = s.reshape(bs*T, D)
+-            topk_indices_flat = topk_indices.reshape(bs*T, K)  # [bs*T,k]
+-            if ENABLE_NPU:
+-                expend_x, idx = torch_npu.npu_moe_token_permute(
+-                    tokens=tokens,
+-                    indices=topk_indices_flat,
+-                    num_out_tokens=bs*T*K
++    def _forward_xpu(
++        self,
++        s: torch.Tensor,
++        topk_indices: torch.Tensor,
++        router_weights: torch.Tensor,
++    ) -> torch.Tensor:
++        device_type = s.device.type
++        batch_size, _, hidden_dim = s.shape
++        experts_per_token = topk_indices.size(-1)
++        grouped_expert_indices, group_sizes = self._build_grouped_layout(topk_indices)
++        num_routed_tokens = batch_size * self.T * experts_per_token
++        flat_tokens = s.reshape(batch_size * self.T, hidden_dim)
++        flat_group_indices = grouped_expert_indices.reshape(
++            batch_size * self.T, experts_per_token
++        )
++        profiler_device = "NPU" if device_type == "npu" else "GPU"
++
++        with record_function(f"## {profiler_device} grouped SparseMoE ##"):
++            if device_type == "npu":
++                group_metadata = group_sizes.cumsum(dim=0)
++                grouped_gemm_fn = self._npu_grouped_gemm
++                expanded_inputs, permutation_indices = torch_npu.npu_moe_token_permute(
++                    tokens=flat_tokens,
++                    indices=flat_group_indices,
++                    num_out_tokens=num_routed_tokens,
++                )
++            elif device_type == "cuda":
++                group_metadata = group_sizes.cpu()
++                grouped_gemm_fn = self._gpu_grouped_gemm
++                expanded_inputs, permutation_indices = grouped_gemm.ops.permute(
++                    flat_tokens, flat_group_indices, num_routed_tokens
++                )
++            hidden = expanded_inputs
++            for layer_id in range(self.num_layers):
++                layer_bias = self.b[layer_id] if self.b is not None else None
++                hidden = grouped_gemm_fn(
++                    hidden, self.W[layer_id], layer_bias, group_metadata
++                )
++                if layer_id < self.num_layers - 1:
++                    hidden = self.dropout(F.relu(hidden))
++
++            gate_logits = grouped_gemm_fn(
++                expanded_inputs, self.gate_W, self.gate_b, group_metadata
++            )
++            hidden = hidden * torch.sigmoid(gate_logits)
++            merge_weights = router_weights.reshape(
++                batch_size * self.T, experts_per_token
++            ).to(s.dtype)
++
++            if device_type == "npu":
++                output = torch_npu.npu_moe_token_unpermute(
++                    hidden, permutation_indices, merge_weights
+@@ -602,54 +741,16 @@ class SparseMoE_Gemm(BaseModel):
+-                expend_x, idx = grouped_gemm.ops.permute(tokens, topk_indices_flat, bs*T*K)
+-            h = expend_x #[bs*T*K, D]
+-            # ---  FFN layers using original W/b ---
+-            for l in range(self.num_layers):
+-                with record_function("## PFFN layers ##"):
+-                    # gather W/b for current group_list
+-                    w = [self.W[l]]
+-                    b = [self.b[l]] if self.b else None
+-                    if ENABLE_NPU:
+-                        h = torch_npu.npu_grouped_matmul(
+-                            x=[h],
+-                            weight=w,
+-                            group_list=group_list,
+-                            split_item=2,
+-                            group_list_type=0,
+-                            group_type=0,
+-                            output_dtype=h.dtype
+-                        )[0]
+-                    else:
+-                        h = self.cutlas_gemm(h, self.W[l], self.b[l] if self.b else None, cuda_group_list)
+-                    if l < self.num_layers-1:
+-                        h = F.relu(h)
+-                        h = self.dropout(h)
+-
+-            with record_function("## sigmoid gate ##"):
+-                # ---  Token-wise sigmoid gate ---
+-                gate_W = [self.gate_W]
+-                gate_b = [self.gate_b]
+-                if ENABLE_NPU:
+-                    h_gate = torch_npu.npu_grouped_matmul(
+-                        x=[expend_x],
+-                        weight=gate_W,
+-                        group_list=group_list,
+-                        split_item=2,
+-                        group_list_type=0,
+-                        group_type=0,
+-                        output_dtype=h.dtype
+-                    )[0]
+-                else:
+-                    h_gate = self.cutlas_gemm(expend_x, self.gate_W, self.gate_b, cuda_group_list)
+-                gate_scores = torch.sigmoid(h_gate)
+-            h = h * gate_scores
+-            if ENABLE_NPU:
+-                v = torch_npu.npu_moe_token_unpermute(h, idx, router_weights)
+-            else:
+-                v = grouped_gemm.ops.unpermute(h, idx, router_weights)
+-            v = v.view(bs,T,K,D).sum(dim=2)
+-        if ENABLE_NPU and self._npu_use_fp16:
+-            v = v.to(torch.float16)
+-            s = s.to(torch.float16)
+-        else:
+-            v = v.to(torch.bfloat16)
+-            s = s.to(torch.bfloat16)
+-        return self.ln(s + v), (reg_loss, sparsity)
++                output = grouped_gemm.ops.unpermute(
++                    hidden, permutation_indices, merge_weights
++                )
++        return output.view(batch_size, self.T, hidden_dim)
++
++    def forward(self, s: torch.Tensor):
++        topk_indices, router_weights, reg_loss, sparsity = self._compute_routing(s)
++        auxiliary_outputs = (reg_loss, sparsity)
++
++        if s.device.type not in ("npu", "cuda"):
++            raise RuntimeError(
++                f"SparseMoE_Gemm does not support device type '{s.device.type}'."
++            )
++        moe_output = self._forward_xpu(s, topk_indices, router_weights)
++
++        return self.ln(s + moe_output), auxiliary_outputs
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
-index aab1e849..afee8ce1 100644
+index aab1e849c..90d3ddedb 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
-@@ -21,7 +21,13 @@ from modeling.generic.sequential_v2.features import SequentialFeatures
- from modeling.generic.sequential_v2.utils import get_current_embeddings
- from torch.autograd.profiler import record_function
- import os
+@@ -7,0 +8 @@ import torch
++from modeling.generic.initialization import fixed_init_
+@@ -24 +25,7 @@ import os
 -NPU_FLAG = os.environ.get('NPU_FLAG', False)
 +
 +NPU_FLAG=False
@@ -388,29 +1023,107 @@ index aab1e849..afee8ce1 100644
 +    NPU_FLAG=True
 +except:
 +    import torch
- 
- @ModelRegistry.register(
-     req_subs={"EmbeddingModule", "InputFeaturesPreprocessorModule", "SequentialModule", "AttentionMaskModule",
-@@ -233,7 +239,10 @@ class GR_model(BaseModel):
-                                      predictions=results,
-                                      model_inputs=model_inputs,
-                                      negative_sampler=self.negative_sampler)
+@@ -55,5 +61,0 @@ class GR_model(BaseModel):
+-        self._npu_use_fp16 = common_hp["train_conf"].get("npu_use_fp16", False)
+-        if NPU_FLAG != "False" and self._npu_use_fp16:
+-            self.deep_model.to(torch.float16)
+-        else:
+-            self.deep_model.to(torch.bfloat16)
+@@ -63,0 +66,2 @@ class GR_model(BaseModel):
++        self._deterministic = common_hp["train_conf"].get("deterministic", False)
++        self._fixed_init = common_hp["train_conf"].get("fixed_init", False)
+@@ -80,0 +85,3 @@ class GR_model(BaseModel):
++            if self._fixed_init:
++                fixed_init_(name, params.data)
++                continue
+@@ -115,4 +122,2 @@ class GR_model(BaseModel):
+-        if NPU_FLAG != "False" and self._npu_use_fp16:
+-            past_embeddings = past_embeddings.to(torch.float16)
+-        else:
+-            past_embeddings = past_embeddings.to(torch.bfloat16)
++        deep_model_dtype = next(self.deep_model.parameters()).dtype
++        past_embeddings = past_embeddings.to(deep_model_dtype)
+@@ -209,29 +214,29 @@ class GR_model(BaseModel):
+-        """
+-        生成式推荐大模型前向传播过程
+-        
+-        :param model_inputs: 传入的字典，里面包括商品的特征id序列，用户的特征和其他序列信息。
+-        """
+-        # past_lengths: 序列的有效长度（padding前的历史交互数量）
+-        past_lengths = model_inputs['past_lengths']
+-        # num_rerank: 候选集商品的数量，训练时因为不会传入candidate_前缀的特征，所以训练时这个值是0
+-        num_rerank = model_inputs.get('candidate_' + self.infer_items_key, torch.tensor([[]])).shape[1]
+-        attn_mask = self.attention_mask_module(model_inputs, self._max_sequence_length, num_rerank, num_user_tokens=self.user_feat_num)
+-        seq_embeddings, past_embeddings, all_timestamps, past_lengths_after_input_processor, deep_results = self.generate_input_seqence(model_inputs=model_inputs, num_rerank=num_rerank)
+-        encoded_embeddings = self.generate_user_embeddings(past_lengths=past_lengths_after_input_processor,
+-                                               all_timestamps=all_timestamps,
+-                                               seq_embeddings=seq_embeddings,
+-                                               attn_mask=attn_mask,
+-                                               num_rerank=num_rerank)
+-        results = self.feed_forward_module(encoded_embeddings)
+-        results["raw_output"] = encoded_embeddings
+-        if torch.onnx.is_in_onnx_export() or num_rerank > 0:
+-            return results
+-        else:
+-            past_embeddings = self.embedding_module.get_all_item_id_only_embeddings(model_inputs)
+-            loss = self.loss_module(past_embeddings=past_embeddings,
+-                                     encoded_embeddings=encoded_embeddings,
+-                                     predictions=results,
+-                                     model_inputs=model_inputs,
+-                                     negative_sampler=self.negative_sampler)
 -            aux_loss = torch.sum(deep_results["aux_loss"])
-+            if deep_results["aux_loss"] is None:
-+                aux_loss = torch.tensor(0.0, device=loss.device)
-+            else:
-+                aux_loss = torch.sum(deep_results["aux_loss"])
-             return loss+aux_loss
- 
-     def encode_static_for_compile(self, model_inputs):
+-            return loss+aux_loss
++
++        # 训练分支：只使用 RankMixer / deep_results 进入 loss
++        past_embeddings = self.embedding_module.get_item_embeddings(model_inputs)
++
++        deep_model_dtype = next(self.deep_model.parameters()).dtype
++        past_embeddings = past_embeddings.to(deep_model_dtype)
++
++        deep_results = self.deep_model(
++            past_ids=None,
++            num_rerank=0,
++            model_inputs=model_inputs,
++            user_feature_embs=None,
++            item_feature_embs=past_embeddings,
++        )
++
++        encoded_embeddings = deep_results["deep_outputs"].to(past_embeddings.dtype)
++        predictions = {
++            "raw_output": encoded_embeddings,
++        }
++
++        loss = self.loss_module(
++            past_embeddings=past_embeddings,
++            encoded_embeddings=encoded_embeddings,
++            predictions=predictions,
++            model_inputs=model_inputs,
++            negative_sampler=self.negative_sampler,
++        )
++
++        return loss
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
+index 9015ec53b..585f8d6ca 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
+@@ -9 +9 @@ from modeling.generic.sequential_v2.base_model import BaseModel
+-from modeling.generic.initialization import truncated_normal
++from modeling.generic.initialization import fixed_init_, truncated_normal
+@@ -49,0 +50 @@ class LocalEmbeddingModuleWithSideInfo(EmbeddingModule):
++        self._fixed_init = train_conf.get("fixed_init", False)
+@@ -225,0 +227 @@ class LocalEmbeddingModuleWithSideInfo(EmbeddingModule):
++        not_init_names = [f"_item_info_embs.{text}.weight" for text in self.recall_feat_dict.keys()]
+@@ -227,2 +229,3 @@ class LocalEmbeddingModuleWithSideInfo(EmbeddingModule):
+-            not_init_names = [f"_item_info_embs.{text}.weight" for text in self.recall_feat_dict.keys()]
+-            if ('emb' in name and name not in not_init_names) or (name in not_init_names and (self.use_trained_emb == False or self.is_recall == True)):
++            if self._fixed_init:
++                fixed_init_(name, params)
++            elif ('emb' in name and name not in not_init_names) or (name in not_init_names and (self.use_trained_emb == False or self.is_recall == True)):
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
-index 26a8467a..965fb365 100644
+index 26a8467aa..412713477 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
-@@ -13,13 +13,12 @@ import queue
- from modeling.generic.sequential_v2.GR_model import GR_model
- from modeling.generic.sequential_v2.features import seq_features_from_row_cpu, SequentialFeatures
- 
+@@ -16,6 +16,2 @@ from modeling.generic.sequential_v2.features import seq_features_from_row_cpu, S
 -
 -NPU_ENABLE = True
 -if os.environ.get("NPU_FLAG", "True") == "False":
@@ -419,32 +1132,32 @@ index 26a8467a..965fb365 100644
 -if NPU_ENABLE:
 +NPU_ENABLE=False
 +try:
-     import torch_npu
+@@ -22,0 +19,3 @@ if NPU_ENABLE:
 +    NPU_ENABLE=True
 +except:
 +    import torch
- 
- ASYNC_LOADER_FUNC = None
- 
-@@ -107,6 +106,10 @@ def assemble_model_executable_callback(
- 
-     # 6. 训练模型
-     model = model.to(device)
-+    world_size = int(os.environ["WORLD_SIZE"])
-+    rank = int(os.environ["RANK"])
+@@ -109 +108,13 @@ def assemble_model_executable_callback(
+-    model = model.to(device)
++    model_dtype = torch.float16 if NPU_ENABLE and train_conf.get("npu_use_fp16", False) else torch.bfloat16
++    model = model.to(device=device, dtype=model_dtype)
++    world_size = int(os.environ.get("WORLD_SIZE", 1))
 +    if world_size > 1:
-+        model = DDP(model, device_ids=[rank], find_unused_parameters=True, broadcast_buffers=False)
-     
-     opt = None
-     if optimizer_cb is not None:
++        model = DDP(model, device_ids=[local_rank], find_unused_parameters=True, broadcast_buffers=False)
++
++    use_inductor = os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE'
++    use_graph = os.environ.get('USE_GRAPH', 'False').upper() == 'TRUE'
++    if use_inductor:
++        if use_graph:
++            model = torch.compile(model, backend="inductor", dynamic=False, mode="reduce-overhead")
++        else:
++            model = torch.compile(model, backend="inductor", dynamic=False)
+@@ -173,0 +185 @@ def assemble_model_executable_callback(
++            output.backward()
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
-index 69b6273d..46074fb9 100644
+index 69b6273d5..dad531e86 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
-@@ -12,12 +12,12 @@ from modeling.model_registry import ModelRegistry
- from modeling.generic.utils.constants import Const
- from modeling.generic.sequential_v2 import HAS_ATTN_FUSION_OPS
- 
+@@ -15,5 +15,2 @@ from modeling.generic.sequential_v2 import HAS_ATTN_FUSION_OPS
 -NPU_ENABLE = True
 -if os.environ.get("NPU_FLAG", "True") == "False":
 -    NPU_ENABLE = False
@@ -452,21 +1165,17 @@ index 69b6273d..46074fb9 100644
 -if NPU_ENABLE:
 +NPU_ENABLE=False
 +try:
-     import torch_npu
+@@ -20,0 +18,3 @@ if NPU_ENABLE:
 +    NPU_ENABLE=True
 +except:
 +    import torch
- 
- TransformerCacheState = Const.TransformerCacheState
- 
+@@ -167 +166,0 @@ class Transformer(BaseModel):
+-        logging.info(f'denominator value is {self.qk_attn_denominator_value}')
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
-index 8dde43fc..9e98a7b6 100644
+index 8dde43fce..9e98a7b65 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
-@@ -2,12 +2,12 @@ import functools
- 
- import os
- import torch
+@@ -5,5 +5,2 @@ import torch
 -NPU_ENABLE = True
 -if os.environ.get("NPU_FLAG", "True") == "False":
 -    NPU_ENABLE = False
@@ -474,38 +1183,33 @@ index 8dde43fc..9e98a7b6 100644
 -if NPU_ENABLE:
 +NPU_ENABLE=False
 +try:
-     import torch_npu
+@@ -10,0 +8,3 @@ if NPU_ENABLE:
 +    NPU_ENABLE=True
 +except:
 +    import torch
- 
- try:
-     from torch_npu import gather_for_rank1 as index_select_func
+diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
+index c2ab72d51..16046a4c9 100644
+--- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
++++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
+@@ -56,2 +55,0 @@ class ModelRegistry:
+-            if module_name in ModelRegistry.__module_meta_dict:
+-                logging.info("'%s' already register.", module_name)
+@@ -67 +64,0 @@ class ModelRegistry:
+-            logging.info("'%s' register succeed.", module_name)
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
-index b530d773..219864e4 100644
+index b530d773c..818afd8c9 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
-@@ -1,7 +1,4 @@
- #!/bin/bash
+@@ -2,3 +1,0 @@
 -echo -e "\n--> Generative Recommenders on ROMA environment\n"
 -
 -
- echo -e "Period: ${period}"
- 
- date=${period%-*}
-@@ -12,33 +9,12 @@ echo "site-packages dir: $sitepkgs_dir"
- # 配置CANN相关环境变量（根据环境自行配置）
- # source .../setenv.bash
- 
+@@ -15 +11,0 @@ echo "site-packages dir: $sitepkgs_dir"
 -
- unset ASCEND_CUSTOM_OPP_PATH
- cur_dir=$(dirname $0)
- train_workdir=$(cd $(dirname $0); pwd)
- parent_dir=$(dirname "$train_workdir")
- echo ${train_workdir}
+@@ -21,2 +16,0 @@ echo ${train_workdir}
 -
 -
- file="${sitepkgs_dir}/fbgemm_gpu/split_table_batched_embeddings_ops_training.py"
+@@ -24,18 +17,0 @@ file="${sitepkgs_dir}/fbgemm_gpu/split_table_batched_embeddings_ops_training.py"
 -# 配置device， 先检查是否已经存在 "NPU = 3"
 -if ! grep -q "NPU = 3" "$file"; then
 -    sed -i '/CUDA = 1/a\    NPU = 3' "$file"
@@ -524,53 +1228,36 @@ index b530d773..219864e4 100644
 -    echo "run on npu!!!"
 -    export NPU_FLAG=True
 -fi
- 
- while [[ "$#" -gt 1 ]]; do
-     case $2 in
-@@ -56,104 +32,52 @@ echo "  data_dir=${data_dir:-<unset>}"
- echo "  save_dir=${save_dir:-<unset>}"
- 
- # ===== 设置默认值 =====
+@@ -59,3 +35,3 @@ echo "  save_dir=${save_dir:-<unset>}"
 -: "${config_file:=../sample_configs/train_amazon_books_0.2B.ini}" # 可以修改为不同大小的模型，默认0.2B
 -: "${data_dir:=../../amzn_books.ori}"  # 须手动改为数据集路径
 -: "${save_dir:=$parent_dir/modelfile/}"   # 改为预训练模型对应路径
 +: "${config_file:=../sample_configs/train_amazon_books_1B.ini}" # 可以修改为不同大小的模型
 +: "${data_dir:=../../amzn_books.ori}"                           # 须手动改为数据集路径，默认和SaclingLaw同级的amzn_books.ori下
 +: "${save_dir:=$parent_dir/modelfile/}"                         # 改为预训练模型对应路径
- export LOAD_PRETRAIN_MODEL=0  # 是否加载预训练模型，0不加载，1加载(精度校验时使用)
- 
- # 一级流水
- export TASK_QUEUE_ENABLE=1
- 
+@@ -66,9 +41,0 @@ export TASK_QUEUE_ENABLE=1
 -
- MASTER_HOST="${VC_WORKER_HOSTS:-localhost}"
- MASTER_ADDR="${VC_WORKER_HOSTS%%,*}"
- MASTER_ADDR="${MASTER_ADDR:-localhost}"
- NNODES="${MA_NUM_HOSTS:-1}"
+-
+-MASTER_HOST="${VC_WORKER_HOSTS:-localhost}"
+-MASTER_ADDR="${VC_WORKER_HOSTS%%,*}"
+-MASTER_ADDR="${MASTER_ADDR:-localhost}"
+-NNODES="${MA_NUM_HOSTS:-1}"
 -NGPUS_PER_NODE="${MA_NUM_GPUS:-1}"
- NODE_RANK="${VC_TASK_INDEX:-0}"
- 
- export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+-NODE_RANK="${VC_TASK_INDEX:-0}"
+-
+@@ -76,8 +42,0 @@ export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
 -# export TORCH_DEVICE_BACKEND_AUTOLOAD=0
- MASTER_PORT="12356"
- 
+-MASTER_PORT="12356"
+-
 -VISIBLE_DEVICES=0
 -export ASCEND_RT_VISIBLE_DEVICES=${VISIBLE_DEVICES}
 -export CUDA_VISIBLE_DEVICES=${VISIBLE_DEVICES}
 -
 -export NNODES=${NNODES}
--
- # Define the Python script
- PYTHON_SCRIPT=${train_workdir}/main.py
- PYTHON_ARGS="
-     --config_file=${config_file} \
-     --data_dir=${data_dir} \
-     --save_dir=${save_dir}/modelfile/ \
+@@ -91 +50 @@ PYTHON_ARGS="
 -    --is_train=False \
 +    --is_train=True \
-     --save_user_emb=False \
-     --get_infer_result=False \
-     --tensorboard_log_dir=${save_dir}/ScalingLaw/runs/exp_amzn_all/"
+@@ -95,25 +53,0 @@ PYTHON_ARGS="
 -#按需添加--eval_batch_size=128修改batch size
 -export PYTHONPATH=$(dirname $(realpath $(find ${cur_dir} -name "DLRM.py"))):${PYTHONPATH}
 -
@@ -596,10 +1283,9 @@ index b530d773..219864e4 100644
 -    --overlap-grad-reduce \
 -    --overlap-param-gather \
 -"
- 
+@@ -120,0 +55 @@ MEGA_OPT_ARGS="
 +export PYTHONPATH=$(dirname $(realpath $(find ${cur_dir} -name "DLRM.py"))):${PYTHONPATH}
- echo "$LOCAL_RANK"
- 
+@@ -123,14 +58,9 @@ echo "$LOCAL_RANK"
 -# inductor相关环境变量
 -export ENABLE_COMPILE=0
 -export ENABLE_GRAPH=0
@@ -623,7 +1309,7 @@ index b530d773..219864e4 100644
 +VISIBLE_DEVICES=0,1,2,3,4,5,6,7     # 卡ID, 需要和卡数匹配
 +export ASCEND_RT_VISIBLE_DEVICES=${VISIBLE_DEVICES}
 +export CUDA_VISIBLE_DEVICES=${VISIBLE_DEVICES}
- 
+@@ -138,22 +68,18 @@ export TORCHINDUCTOR_CATLASS_ENABLED_OPS="mm,addmm,bmm,grouped_mm"
 -export PROFILING_FLAG=1
 -if [ "$PYTHON_MEGATRON" = "--open_megatron True" ];then
 -    echo "========启用megatron=========="
@@ -647,6 +1333,16 @@ index b530d773..219864e4 100644
 -         $PYTHON_ARGS 
 -fi
 \ No newline at end of file
++# 多机多卡配置
++MASTER_HOST="${VC_WORKER_HOSTS:-localhost}"
++MASTER_ADDR="${VC_WORKER_HOSTS%%,*}"
++MASTER_ADDR="${MASTER_ADDR:-localhost}"
++NNODES="${MA_NUM_HOSTS:-1}"
++NODE_RANK="${VC_TASK_INDEX:-0}"
++MASTER_PORT="12356"
++export VNODE_CARD_NUM=${NGPUS_PER_NODE}
++export USED_VNODE_CARD_NUM=${NGPUS_PER_NODE}
++
 +echo "========启用torchrec=========="
 +torchrun --nproc_per_node=$NGPUS_PER_NODE \
 +        --nnodes=$NNODES \
@@ -657,71 +1353,59 @@ index b530d773..219864e4 100644
 +        $PYTHON_ARGS
 \ No newline at end of file
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
-index 6a17a885..68c14722 100644
+index 6a17a8859..c203e6605 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
-@@ -56,7 +56,7 @@
-     "dataset_name": "amazon-recall",
-     "local_batch_size": 128,
-     "eval_batch_size": 128,
+@@ -59 +59 @@
 -    "eval_interval": 100,
 +    "eval_interval": 1,
-     "num_epochs": 2,
-     "num_warmup_steps": 0,
-     "use_item_l2_norm": True,
-@@ -70,7 +70,7 @@
-     "use_user_embedding": False,
-     "use_item_emb_mlp": False,
-     "filter_invalid_ids": True,
+@@ -63,0 +64,3 @@
++    "deterministic": False,
++    "fixed_init": False,
++    "use_npu_custom_grouped_matmul": True,
+@@ -73 +76 @@
 -    "eval_after_each_epoch": True
 +    "eval_after_each_epoch": False
-   },
-  "feature_conf": {
-     "date": "20250301", #占位
+@@ -247 +250 @@
+-}
+\ No newline at end of file
++}
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
-index 04c8aa81..5a9a7db4 100644
+index 04c8aa810..0f12be20f 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
-@@ -56,7 +56,7 @@
-     "dataset_name": "amazon-recall",
-     "local_batch_size": 128,
-     "eval_batch_size": 128,
+@@ -59 +59 @@
 -    "eval_interval": 100,
 +    "eval_interval": 1,
-     "num_epochs": 2,
-     "num_warmup_steps": 0,
-     "use_item_l2_norm": True,
-@@ -70,7 +70,7 @@
-     "use_user_embedding": False,
-     "use_item_emb_mlp": False,
-     "filter_invalid_ids": True,
+@@ -63,0 +64,3 @@
++    "deterministic": False,
++    "fixed_init": False,
++    "use_npu_custom_grouped_matmul": True,
+@@ -73 +76 @@
 -    "eval_after_each_epoch": True
 +    "eval_after_each_epoch": False
-   },
-  "feature_conf": {
-     "date": "20250301", #占位
+@@ -247 +250 @@
+-}
+\ No newline at end of file
++}
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
-index d4bb9c3d..c266bc9b 100644
+index d4bb9c3dd..080d53f62 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
-@@ -56,7 +56,7 @@
-     "dataset_name": "amazon-recall",
-     "local_batch_size": 128,
-     "eval_batch_size": 64,
+@@ -59 +59 @@
 -    "eval_interval": 100,
 +    "eval_interval": 1,
-     "num_epochs": 2,
-     "num_warmup_steps": 0,
-     "use_item_l2_norm": True,
-@@ -70,7 +70,7 @@
-     "use_user_embedding": False,
-     "use_item_emb_mlp": False,
-     "filter_invalid_ids": True,
+@@ -63,0 +64,3 @@
++    "deterministic": False,
++    "fixed_init": False,
++    "use_npu_custom_grouped_matmul": True,
+@@ -73 +76 @@
 -    "eval_after_each_epoch": True
 +    "eval_after_each_epoch": False
-   },
-  "feature_conf": {
-     "date": "20250301", #占位
+@@ -247 +250 @@
+-}
+\ No newline at end of file
++}
 -- 
 2.52.0.windows.1
 
