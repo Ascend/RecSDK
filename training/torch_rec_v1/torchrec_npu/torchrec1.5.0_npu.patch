@@ -975,3 +975,284 @@ index f81c9289..a60f6384 100644
 +            "npu": ParameterStorage.HBM,
          }
          return {storage_map[compute_device_type].value: get_tensor_size_bytes(tensor)}
+
+diff --git a/torchrec/distributed/utils.py b/torchrec/distributed/utils.py
+index a05456d0..79284820 100644
+--- a/torchrec/distributed/utils.py
++++ b/torchrec/distributed/utils.py
+@@ -57,6 +57,8 @@ def get_device_type() -> str:
+         device_type = "cuda"
+     elif torch.mtia.is_available():
+         device_type = "mtia"
++    elif hasattr(torch, "npu") and torch.npu.is_available():
++        device_type = "npu"
+     else:
+         device_type = "cpu"
+     return device_type
+@@ -346,6 +348,9 @@ _OPTIMIZER_CLASS_TO_EMB_OPT_TYPE: Dict[Type[torch.optim.Optimizer], EmbOptimType
+     trec_optim.PartialRowWiseAdam: EmbOptimType.PARTIAL_ROWWISE_ADAM,
+     trec_optim.Adagrad: EmbOptimType.EXACT_ADAGRAD,
+     trec_optim.RowWiseAdagrad: EmbOptimType.EXACT_ROWWISE_ADAGRAD,
++    trec_optim.AccumulateAdagrad: EmbOptimType.EXACT_ADAGRAD,
++    trec_optim.AccumulateAdam: EmbOptimType.ADAM,
++    trec_optim.AccumulateSGD: EmbOptimType.EXACT_SGD,
+ }
+
+ # Inverse mapping from EmbOptimType to optimizer class.
+diff --git a/torchrec/modules/embedding_configs.py b/torchrec/modules/embedding_configs.py
+index 62302809..01d17118 100644
+--- a/torchrec/modules/embedding_configs.py
++++ b/torchrec/modules/embedding_configs.py
+@@ -119,6 +119,8 @@ def pooling_type_to_str(pooling_type: PoolingType) -> str:
+         return "sum"
+     elif pooling_type.value == PoolingType.MEAN.value:
+         return "mean"
++    elif pooling_type.value == PoolingType.NONE.value:
++        return "none"
+     else:
+         raise ValueError(f"Unsupported pooling type {pooling_type}")
+
+diff --git a/torchrec/optim/__init__.py b/torchrec/optim/__init__.py
+index 6fb4369a..4559539a 100644
+--- a/torchrec/optim/__init__.py
++++ b/torchrec/optim/__init__.py
+@@ -29,6 +29,9 @@ from torchrec.optim.keyed import (  # noqa
+     OptimizerWrapper,
+ )
+ from torchrec.optim.optimizers import (  # noqa
++    AccumulateAdagrad,
++    AccumulateAdam,
++    AccumulateSGD,
+     Adagrad,
+     Adam,
+     LAMB,
+diff --git a/torchrec/optim/apply_optimizer_in_backward.py b/torchrec/optim/apply_optimizer_in_backward.py
+index 99ba72df..aaa28a78 100644
+--- a/torchrec/optim/apply_optimizer_in_backward.py
++++ b/torchrec/optim/apply_optimizer_in_backward.py
+@@ -12,6 +12,28 @@ from warnings import warn
+
+ import torch
+
++from torchrec.tensor_types import check
++from torchrec.optim.optimizers import (
++    AccumulateAdagrad,
++    AccumulateAdam,
++    AccumulateSGD,
++    Adagrad,
++    Adam,
++    SGD,
++)
++
++SUPPORT_OPTIM_TYPE_LIST = [
++    torch.optim.SGD,
++    torch.optim.Adam,
++    torch.optim.Adagrad,
++    SGD,
++    Adam,
++    Adagrad,
++    AccumulateAdagrad,
++    AccumulateSGD,
++    AccumulateAdam,
++]
++
+
+ def apply_optimizer_in_backward(
+     optimizer_class: Type[torch.optim.Optimizer],
+@@ -52,6 +74,13 @@ def apply_optimizer_in_backward(
+         "This API is deprecated. Please use Pytorch Distributed's _apply_optimizer_in_backward API instead.",
+         DeprecationWarning,
+     )
++    if optimizer_class not in SUPPORT_OPTIM_TYPE_LIST:
++        raise ValueError(f"Expected optimizer_class in [torch.optim.SGD, torch.optim.Adam, torch.optim.Adagrad, \
++                        torchrec.optim.optimizers.SGD, torchrec.optim.optimizers.Adam, torchrec.optim.optimizers.Adagrad,\
++                        torchrec.optim.optimizers.AccumulateAdagrad, torchrec.optim.optimizers.AccumulateSGD, \
++                        torchrec.optim.optimizers.AccumulateAdam],\
++                        but got {optimizer_class}")
++    check(optimizer_kwargs is not None and isinstance(optimizer_kwargs, Dict), "optimizer_kwargs should be Dict")
+     _apply_optimizer_in_backward(
+         optimizer_class=optimizer_class,
+         params=params,
+diff --git a/torchrec/optim/keyed.py b/torchrec/optim/keyed.py
+index 946e66e7..6cfeefa0 100644
+--- a/torchrec/optim/keyed.py
++++ b/torchrec/optim/keyed.py
+@@ -27,6 +27,7 @@ import torch
+ from torch import optim
+ from torch.distributed._shard.sharded_tensor import ShardedTensor
+ from torch.distributed.tensor import DTensor
++from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
+
+ OptimizerFactory = Callable[[List[Union[torch.Tensor, ShardedTensor]]], optim.Optimizer]
+
+@@ -320,6 +321,20 @@ class CombinedOptimizer(KeyedOptimizer):
+     def __init__(
+         self, optims: List[Union[KeyedOptimizer, Tuple[str, KeyedOptimizer]]]
+     ) -> None:
++        check(isinstance(optims, List), "optims should be List")
++        check(
++            len(optims) <= MAX_MODULE_LOOP_TIMES,
++            "optims should be less than or equal to %d" % MAX_MODULE_LOOP_TIMES,
++        )
++        for key_value in optims:
++            check_optim = isinstance(key_value, KeyedOptimizer)
++            check_optim_tuple = (
++                isinstance(key_value, Tuple)
++                and len(key_value) == 2
++                and isinstance(key_value[1], KeyedOptimizer)
++            )
++            check(check_optim or check_optim_tuple, "optims should be list of KeyedOptimizer")
++
+         self.defaults: Dict[str, Any] = {}
+         # Append empty optimizer key if not passed.
+         self._optims: List[Tuple[str, KeyedOptimizer]] = []
+@@ -435,7 +450,12 @@ class KeyedOptimizerWrapper(KeyedOptimizer):
+         params: Mapping[str, Union[torch.Tensor, ShardedTensor]],
+         optim_factory: OptimizerFactory,
+     ) -> None:
++        check(params is not None, "params should not be None")
++        check(optim_factory is not None and callable(optim_factory), "optim_factory should be callable")
++
+         self._optimizer: optim.Optimizer = optim_factory(list(params.values()))
++        check(self._optimizer is not None and isinstance(self._optimizer, optim.Optimizer), "optim_factory should return Optimizer")
++
+         super().__init__(params, self._optimizer.state, self._optimizer.param_groups)
+
+     def zero_grad(self, set_to_none: bool = False) -> None:
+diff --git a/torchrec/optim/optimizers.py b/torchrec/optim/optimizers.py
+index 51ee69a1..6841e4c9 100644
+--- a/torchrec/optim/optimizers.py
++++ b/torchrec/optim/optimizers.py
+@@ -14,6 +14,7 @@ from typing import Iterable, Iterator, Tuple
+ import torch
+ from torch import nn
+ from torch.optim.optimizer import Optimizer
++from torchrec.tensor_types import check
+
+
+ def in_backward_optimizer_filter(
+@@ -29,6 +30,8 @@ def in_backward_optimizer_filter(
+     include(bool): If true, only yields params with in_backward_optimizer. If false, returns the outside set
+         Defaults to include params that are not in_backward (False)
+     """
++    check(named_parameters is not None and isinstance(named_parameters, Iterator), "named_parameters should be Iterator")
++
+     for fqn, param in named_parameters:
+         if hasattr(param, "_in_backward_optimizers") == include:
+             yield fqn, param
+@@ -179,3 +182,33 @@ class Adagrad(Optimizer):
+     # pyre-ignore
+     def step(self, closure=None) -> torch.Tensor:
+         raise NotImplementedError
++
++
++class AccumulateOptimizer:
++    def __init__(self, use_accumulate=False, accumulate_step=1):
++        # check
++        if not isinstance(accumulate_step, int) or accumulate_step <= 0:
++            raise ValueError("accumulate_step must be positive integer")
++        if not isinstance(use_accumulate, bool):
++            raise TypeError("use_accumulate must be bool")
++        # add accumulate flag and step
++        self.use_accumulate = use_accumulate
++        self.accumulate_step = accumulate_step
++
++
++class AccumulateAdagrad(Adagrad, AccumulateOptimizer):
++    def __init__(self, params, use_accumulate=False, accumulate_step=1, **kwargs):
++        AccumulateOptimizer.__init__(self, use_accumulate=use_accumulate, accumulate_step=accumulate_step)
++        Adagrad.__init__(self, params, **kwargs)
++
++
++class AccumulateSGD(SGD, AccumulateOptimizer):
++    def __init__(self, params, use_accumulate=False, accumulate_step=1, **kwargs):
++        AccumulateOptimizer.__init__(self, use_accumulate=use_accumulate, accumulate_step=accumulate_step)
++        SGD.__init__(self, params, **kwargs)
++
++
++class AccumulateAdam(Adam, AccumulateOptimizer):
++    def __init__(self, params, use_accumulate=False, accumulate_step=1, **kwargs):
++        AccumulateOptimizer.__init__(self, use_accumulate=use_accumulate, accumulate_step=accumulate_step)
++        Adam.__init__(self, params, **kwargs)
+diff --git a/torchrec/sparse/jagged_tensor.py b/torchrec/sparse/jagged_tensor.py
+index df73074c..327fd111 100644
+--- a/torchrec/sparse/jagged_tensor.py
++++ b/torchrec/sparse/jagged_tensor.py
+@@ -26,6 +26,7 @@ from torchrec.pt2.checks import (
+     pt2_guard_size_oblivious,
+ )
+ from torchrec.streamable import Pipelineable
++from torchrec.tensor_types import check, MAX_MODULE_LOOP_TIMES
+
+ try:
+     torch.ops.load_library("//deeplearning/fbgemm/fbgemm_gpu:sparse_ops")
+@@ -48,6 +49,9 @@ except OSError:
+
+ logger: logging.Logger = logging.getLogger()
+
++MAX_VALUE = 2**31
++MAX_LENGTH = 10000
++
+
+ def _pin_and_move(tensor: torch.Tensor, device: torch.device) -> torch.Tensor:
+     """
+@@ -78,6 +82,11 @@ def _to_offsets(lengths: torch.Tensor) -> torch.Tensor:
+     return torch.ops.fbgemm.asynchronous_complete_cumsum(lengths)
+
+
++def is_out_range(tensor: torch.Tensor, min_val: int, max_val: int) -> bool:
++    out_of_range = (tensor < min_val) | (tensor > max_val)
++    return out_of_range.any().item()
++
++
+ @torch.jit.script_if_tracing
+ def _batched_lengths_to_offsets(lengths: torch.Tensor) -> torch.Tensor:
+     (f, b) = lengths.shape
+@@ -588,6 +597,10 @@ class JaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
+         lengths: Optional[torch.Tensor] = None,
+         offsets: Optional[torch.Tensor] = None,
+     ) -> None:
++        check(isinstance(values, torch.Tensor), "values should be torch.Tensor")
++        check(lengths is None or isinstance(lengths, torch.Tensor), "lengths should be torch.Tensor")
++        check(weights is None or isinstance(weights, torch.Tensor), "weights should be torch.Tensor")
++        check(offsets is None or isinstance(offsets, torch.Tensor), "offsets should be torch.Tensor")
+
+         self._values: torch.Tensor = values
+         self._weights: Optional[torch.Tensor] = weights
+diff --git a/torchrec/tensor_types.py b/torchrec/tensor_types.py
+index 1ce380c1..4c7d18fe 100644
+--- a/torchrec/tensor_types.py
++++ b/torchrec/tensor_types.py
+@@ -17,6 +17,9 @@ import torch
+ import torch._prims_common as utils
+
+
++MAX_MODULE_LOOP_TIMES = 10000
++
++
+ def down_size(N: int, size: torch.Size) -> Tuple[int, int]:
+     assert size[-1] % N == 0, f"{size} last dim not divisible by {N}"
+     return (*size[:-1], size[-1] // N)
+@@ -174,3 +177,15 @@ class UInt2Tensor(UIntXTensor):
+
+     def __init__(self, elem: torch.Tensor) -> None:
+         super().__init__(UInt2Tensor.N, elem)
++
++
++def check(discriminant, error_msg):
++    if not discriminant:
++        raise ValueError(error_msg)
++
++
++def validate_list_type(param, types):
++    if isinstance(param, list):
++        if all(isinstance(p, types) for p in param):
++            return True
++    return False
+diff --git a/version.txt b/version.txt
+index bc80560f..16eaa17e 100644
+--- a/version.txt
++++ b/version.txt
+@@ -1 +1 @@
+-1.5.0
++1.5.0+npu
