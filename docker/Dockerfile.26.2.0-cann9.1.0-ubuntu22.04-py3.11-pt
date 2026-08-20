@@ -86,6 +86,8 @@ ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$
 
 # 6.定义目标核心类型 (a2/a3/a5)，构建时通过 --build-arg CORE_TYPE=a2 指定
 ARG CORE_TYPE=a2
+# 转成ENV环境变量：所有RUN及子进程(pip→setup.py)均可直接读取，且镜像运行期保留该值
+ENV CORE_TYPE=${CORE_TYPE}
 
 # 7.下载并安装 CANN 安装包（同一层完成下载→安装→清理，根据 CORE_TYPE 只安装一套）
 # 流程：下载toolkit → 根据CORE_TYPE选择ops包 → 安装到默认路径 /usr/local/Ascend → 清理.run文件
@@ -123,12 +125,12 @@ RUN mkdir -p ~/.pip && touch ~/.pip/pip.conf && \
     echo "extra-index-url=https://download.pytorch.org/whl/cpu" >> ~/.pip/pip.conf && \
     echo "timeout=200" >> ~/.pip/pip.conf
 
-# 9.安装系统级 wheel（供 torchrec 编译使用）
-RUN pip3 install --quiet wheel "setuptools<70.0.0"
+# 9.安装系统级 pip(固定25.0.1) 与 wheel（供 torchrec 编译使用）
+RUN pip3 install --quiet pip==25.0.1 wheel "setuptools<70.0.0"
 
 # 10.下载 RecSDK 包 → 创建 venv → 安装 → 清理（全部在同一层，避免中间层占用空间）
-# 流程：按架构下载4个包 → 创建5个venv(torch_v1_pt2.6.0/torch_v1_pt2.7.1/torch_v1_pt2.10.0/torch_v2_pt2.7.1/torch_v2_pt2.10.0) → 清理
-# 4个venv分别对应不同PyTorch版本和RecSDK版本组合，fbgemm_ascend和rec_ops安装在pt2.7.1及以上的venv中
+# 流程：按架构下载7个包 → 创建5个venv(torch_v1_pt2.6.0/torch_v1_pt2.7.1/torch_v1_pt2.10.0/torch_v2_pt2.7.1/torch_v2_pt2.10.0) → 清理
+# 5个venv分别对应不同PyTorch版本和RecSDK版本组合，fbgemm_ascend和rec_ops安装在pt2.7.1及以上的venv中
 RUN ARCH=$(uname -m) && \
     # === 1. 按架构下载RecSDK包 ===
     if [ "$ARCH" = "x86_64" ]; then \
@@ -137,14 +139,16 @@ RUN ARCH=$(uname -m) && \
         wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.2.0-cp311-cp311-linux_x86_64.whl && \
         wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260707.12/rec_ops-2.7.1%2Bx86.64-cp311-cp311-linux_x86_64.whl && \
         wget -q "https://download-r2.pytorch.org/whl/cpu/fbgemm_gpu-1.5.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" -O fbgemm_gpu-1.5.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl && \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.5.0-cp311-cp311-linux_x86_64.whl; \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.5.0-cp311-cp311-linux_x86_64.whl && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.2.0/20260813.11/fbgemm_ascend-1.1.0-cp311-cp311-linux_x86_64.whl; \
     elif [ "$ARCH" = "aarch64" ]; then \
         wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/torch_rec_v1-26.1.0-linux_aarch64.tar.gz && \
         wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/torch_rec_v2-26.1.0-linux_aarch64.tar.gz && \
         wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.2.0-cp311-cp311-linux_aarch64.whl && \
         wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260707.12/rec_ops-2.7.1%2Baarch64-cp311-cp311-linux_aarch64.whl && \
         wget -q "https://download-r2.pytorch.org/whl/cpu/fbgemm_gpu-1.5.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl" -O fbgemm_gpu-1.5.0+cpu-cp311-cp311-manylinux_2_28_aarch64.whl && \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.5.0-cp311-cp311-linux_aarch64.whl; \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.5.0-cp311-cp311-linux_aarch64.whl && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.2.0/20260813.11/fbgemm_ascend-1.1.0-cp311-cp311-linux_aarch64.whl; \
     else \
         echo "Error: Unsupported architecture '$ARCH'. Only x86_64 and aarch64 are supported." && exit 1; \
     fi && \
@@ -156,6 +160,7 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet torch==2.6.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet torch-npu==2.6.0 && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet fbgemm_gpu==1.1.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet /tmp/fbgemm_ascend-1.1.0*.whl && \
     /opt/buildtools/torch_v1_pt2.6.0/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
     # === 2.2 创建 torch_v1_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
     python3 -m venv /opt/buildtools/torch_v1_pt2.7.1 && \
@@ -172,7 +177,15 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torch==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torch-npu==2.10.0 && \
+    # A5(950) 使用每日构建包安装 torch_npu（pip install torch-npu==2.10.0 有兼容问题）
+    if [ "$CORE_TYPE" = "a5" ]; then \
+        wget -q https://pytorch-package.obs.cn-north-4.myhuaweicloud.com/pta/Daily/v2.10.0/20260815.2/pytorch_v2.10.0_py311.tar.gz && \
+        tar -xzf pytorch_v2.10.0_py311.tar.gz && \
+        /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torch_npu-2.10.0.post5.dev20260815-cp311-cp311-manylinux_2_28_${ARCH}.whl && \
+        rm -f pytorch_v2.10.0_py311.tar.gz torch_npu-2.10.0*.whl; \
+    else \
+        /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torch-npu==2.10.0; \
+    fi && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu-1.5.0*.whl && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_ascend-1.5.0*.whl && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torchrec==1.5.0 && \
@@ -194,7 +207,15 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torch==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torch-npu==2.10.0 && \
+    # A5(950) 使用每日构建包安装 torch_npu（pip install torch-npu==2.10.0 有兼容问题）
+    if [ "$CORE_TYPE" = "a5" ]; then \
+        wget -q https://pytorch-package.obs.cn-north-4.myhuaweicloud.com/pta/Daily/v2.10.0/20260815.2/pytorch_v2.10.0_py311.tar.gz && \
+        tar -xzf pytorch_v2.10.0_py311.tar.gz && \
+        /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torch_npu-2.10.0.post5.dev20260815-cp311-cp311-manylinux_2_28_${ARCH}.whl && \
+        rm -f pytorch_v2.10.0_py311.tar.gz torch_npu-2.10.0*.whl; \
+    else \
+        /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torch-npu==2.10.0; \
+    fi && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu-1.5.0*.whl && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_ascend-1.5.0*.whl && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torchrec==1.5.0 && \

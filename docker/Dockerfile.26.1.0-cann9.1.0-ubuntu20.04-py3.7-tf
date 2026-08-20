@@ -150,6 +150,8 @@ ENV LD_LIBRARY_PATH=$ASCEND_BASE/driver/lib64:$ASCEND_BASE/driver/lib64/common:$
 
 # 9.定义目标核心类型 (a2/a3/a5)，构建时通过 --build-arg CORE_TYPE=a2 指定
 ARG CORE_TYPE=a2
+# 转成ENV环境变量：所有RUN及子进程(pip→setup.py)均可直接读取，且镜像运行期保留该值
+ENV CORE_TYPE=${CORE_TYPE}
 
 # 10.下载并安装 CANN 安装包（同一层完成下载→安装→清理，根据 CORE_TYPE 只安装一套）
 # 流程：下载toolkit → 根据CORE_TYPE选择ops包 → 安装到默认路径 /usr/local/Ascend → 清理.run文件
@@ -213,8 +215,12 @@ RUN ARCH=$(uname -m) && \
         /opt/buildtools/tf1_env/bin/pip install --quiet npu_bridge-1.15.0-py3-none-manylinux2014_aarch64.whl; \
     fi && \
     /opt/buildtools/tf1_env/bin/pip install --quiet tf_slim mpi4py && \
-    # CORE_TYPE传递给RecSDK编译，控制A2/A3/A5的算子编译
-    CORE_TYPE=${CORE_TYPE} /opt/buildtools/tf1_env/bin/pip install --quiet --no-build-isolation /tmp/tf_rec_v1*.tar.gz && \
+    # 安装tf_rec_v1前source CANN环境，提供ASCEND_OPP_PATH，保证安装时算子能正常安装
+    . /usr/local/Ascend/ascend-toolkit/set_env.sh && \
+    # CORE_TYPE已由ENV注入环境，setup.py通过os.environ读取，控制A2/A3/A5的算子编译
+    /opt/buildtools/tf1_env/bin/pip install --quiet --no-build-isolation /tmp/tf_rec_v1*.tar.gz && \
+    # setup.py中的horovod安装失败会被静默忽略，需显式安装
+    HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 /opt/buildtools/tf1_env/bin/pip install --quiet horovod==0.22.1 --no-cache-dir && \
     # === 3. 创建 tf2_env (TF 2.6 + npu_device) ===
     python3.7 -m venv /opt/buildtools/tf2_env && \
     /opt/buildtools/tf2_env/bin/pip install --quiet -U pip && \
@@ -227,7 +233,12 @@ RUN ARCH=$(uname -m) && \
         /opt/buildtools/tf2_env/bin/pip install --quiet npu_device-2.6.5-py3-none-manylinux2014_aarch64.whl; \
     fi && \
     /opt/buildtools/tf2_env/bin/pip install --quiet tf_slim mpi4py && \
-    CORE_TYPE=${CORE_TYPE} /opt/buildtools/tf2_env/bin/pip install --quiet --no-build-isolation /tmp/tf_rec_v1*.tar.gz && \
+    # 安装tf_rec_v1前source CANN环境，提供ASCEND_OPP_PATH，保证安装时算子能正常安装
+    . /usr/local/Ascend/ascend-toolkit/set_env.sh && \
+    # CORE_TYPE已由ENV注入环境，setup.py通过os.environ读取，控制A2/A3/A5的算子编译
+    /opt/buildtools/tf2_env/bin/pip install --quiet --no-build-isolation /tmp/tf_rec_v1*.tar.gz && \
+    # setup.py中的horovod安装失败会被静默忽略，需显式安装
+    HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 /opt/buildtools/tf2_env/bin/pip install --quiet horovod==0.22.1 --no-cache-dir && \
     # === 4. 系统pip安装npu包（供非venv环境直接使用）===
     pip3.7 install --quiet -U pip && \
     if [ "$ARCH" = "x86_64" ]; then \
