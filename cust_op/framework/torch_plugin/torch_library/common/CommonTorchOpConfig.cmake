@@ -27,22 +27,17 @@ link_directories(${PYTORCH_INSTALL_PATH}/lib)
 link_directories(${PYTORCH_NPU_INSTALL_PATH}/lib)
 link_directories(${ASCEND_DRIVER_PATH}/lib64/common)
 
-# 获取pytorch版本
+# ABI 宏必须与当前 Python 环境中的 PyTorch 保持一致。
 execute_process(
-    COMMAND python3 -c "import torch; print(torch.__version__)"
-    OUTPUT_VARIABLE PYTORCH_VERSION_STR
+    COMMAND python3 -c "import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))"
+    OUTPUT_VARIABLE GLIBCXX_ABI
     OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE GLIBCXX_ABI_RESULT
 )
-
-# ABI 宏
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm")
-    set(GLIBCXX_ABI 1)
-elseif(PYTORCH_VERSION_STR VERSION_GREATER_EQUAL "2.7")
-        # PyTorch大于等于2.7版本在x86环境时需要设置GLIBCXX_ABI=1
-        set(GLIBCXX_ABI 1)
-else()
-        set(GLIBCXX_ABI 0)
+if(NOT "${GLIBCXX_ABI_RESULT}" STREQUAL "0" OR NOT "${GLIBCXX_ABI}" MATCHES "^[01]$")
+    message(FATAL_ERROR "Failed to get PyTorch _GLIBCXX_USE_CXX11_ABI from current python3.")
 endif()
+message(STATUS "Using PyTorch GLIBCXX_ABI=${GLIBCXX_ABI}")
 
 message(STATUS "GLIBCXX_ABI is ${GLIBCXX_ABI}")
 

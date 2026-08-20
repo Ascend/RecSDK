@@ -13,7 +13,8 @@ Rec SDK Torch 是基于 TorchRec 接口的扩展，Rec SDK Torch 的接口依赖
 > 1. 由于 TorchRec 原生接口不在 Rec SDK Torch 的管理范围内，因此将不会对后续接口中涉及到的 TorchRec 原生接口做参数合法性校验，需用户自行保证参数正确性。
 > 2. 当前 API 列表是从接口类型维度进行展示，如需从功能特性维度查看 API 使用，请参见[功能特性介绍](../migration_and_training.md#functional_features_description)。
 > 3. 部分API参数说明中包含“不支持用户自定义”的描述，表示该参数不支持用户自定义，只能使用默认值，传入非默认值时将抛出异常。
-> 4. 相关术语请参见[核心术语](../introduction.md#core_terms)。
+> 4. 部分API参数说明中包含“仅支持TorchRec v1.2.0版本“等类似说明，表示仅在配套的TorchRec版本中才支持传入该参数。
+> 5. 相关术语请参见[核心术语](../introduction.md#core_terms)。
 
 ## API 分类概览
 

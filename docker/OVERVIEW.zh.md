@@ -156,6 +156,9 @@ openEuler 22.03 镜像的构建方式与上述 Ubuntu 示例一致。
   # 激活切换到 torch_rec_v1 PT 2.7.1 的 RecSDK 开发环境
   source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
 
+  # 激活切换到 torch_rec_v1 PT 2.10.0 的 RecSDK 开发环境
+  source /opt/buildtools/torch_v1_pt2.10.0/bin/activate
+
   # 激活切换到 torch_rec_v2 PT 2.7.1 的 RecSDK 开发环境
   source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
 

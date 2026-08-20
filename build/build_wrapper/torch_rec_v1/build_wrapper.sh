@@ -28,6 +28,7 @@ HYBRID_TORCHREC_DIR="$SCRIPT_BASE_DIR/../../../training/torch_rec_v1/hybrid_torc
 TORCHREC_EMBCACHE_DIR="$SCRIPT_BASE_DIR/../../../training/torch_rec_v1/torchrec_embcache"
 TORCHREC_BUILD_DIR="$SCRIPT_BASE_DIR/../../../training/torch_rec_v1/torchrec_npu/torchrec_1.1.0_build"
 TORCHREC_BUILD_DIR_120="$SCRIPT_BASE_DIR/../../../training/torch_rec_v1/torchrec_npu/torchrec_1.2.0_build"
+TORCHREC_BUILD_DIR_150="$SCRIPT_BASE_DIR/../../../training/torch_rec_v1/torchrec_npu/torchrec_1.5.0_build"
 
 BUILD_DIR="$SCRIPT_BASE_DIR/resources/torch_rec_builder"
 rm -rf $BUILD_DIR && mkdir -p $BUILD_DIR
@@ -68,25 +69,17 @@ echo "Cloning torchrec v1.1.0..."
 cd $TORCHREC_NPU_DIR
 git clone -b release/v1.1.0 https://github.com/pytorch/torchrec.git
 (cd $TORCHREC_NPU_DIR/torchrec && git checkout 2c5f6ee)
-echo "Set CANN environment to a2 for torchrec 1.1.0 compilation..."
-source /usr/local/set_cann_env.sh a2
 (cd $TORCHREC_NPU_DIR && bash build_whl_torchrec1.1.0.sh)
 
-# 找到 torchrec whl 并安装到 pt2.6.0 虚拟环境
+# 判断torchrec npu包是否存在
 TORCHREC_110_WHL=$(find $TORCHREC_NPU_DIR/torchrec/dist -name "torchrec-1.1.0*.whl" | head -n 1)
 if [ -z "$TORCHREC_110_WHL" ]; then
     echo "Error: torchrec-1.1.0 whl not found."
     exit 1
 fi
-echo "Installing torchrec 1.1.0 to pt2.6.0..."
-source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
-pip install $TORCHREC_110_WHL
-deactivate
 
 # 编译 hybrid/embcache (会自动检测 torchrec 版本为 1.1.0)
 echo "Compiling hybrid/embcache with pt2.6.0 (torchrec 1.1.0)..."
-echo "Set CANN environment to a2 for hybrid/embcache compilation..."
-source /usr/local/set_cann_env.sh a2
 source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
 (cd $HYBRID_TORCHREC_DIR && bash build_whl.sh)
 deactivate
@@ -110,25 +103,17 @@ git clone -b release/v1.2.0 https://github.com/pytorch/torchrec.git torchrec_v1.
 
 # 创建软链接让脚本能找到目录
 ln -sf torchrec_v1.2.0 torchrec
-echo "Set CANN environment to a2 for torchrec 1.2.0 compilation..."
-source /usr/local/set_cann_env.sh a2
 (cd $TORCHREC_NPU_DIR && bash build_whl_torchrec1.2.0.sh)
 
-# 找到 torchrec whl 并安装到 pt2.7.1 虚拟环境
+# 判断torchrec npu包是否存在
 TORCHREC_120_WHL=$(find $TORCHREC_NPU_DIR/torchrec/dist -name "torchrec-1.2.0*.whl" | head -n 1)
 if [ -z "$TORCHREC_120_WHL" ]; then
     echo "Error: torchrec-1.2.0 whl not found."
     exit 1
 fi
-echo "Installing torchrec 1.2.0 to pt2.7.1..."
-source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
-pip install $TORCHREC_120_WHL
-deactivate
 
 # 编译 hybrid/embcache (会自动检测 torchrec 版本为 1.2.0)
 echo "Compiling hybrid/embcache with pt2.7.1 (torchrec 1.2.0)..."
-echo "Set CANN environment to a2 for hybrid/embcache compilation..."
-source /usr/local/set_cann_env.sh a2
 source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
 (cd $HYBRID_TORCHREC_DIR && bash build_whl.sh)
 deactivate
@@ -141,6 +126,41 @@ mv $TORCHREC_NPU_DIR/torchrec/dist/*.whl $BUILD_DIR/mindxsdk-torchrec/pt2.7_whl/
 # 清理
 rm -rf $TORCHREC_NPU_DIR/torchrec
 rm -rf $TORCHREC_NPU_DIR/torchrec_v1.2.0
+
+# ========== Part 3: torchrec V1.5.0 + pt2.10.0 虚拟环境 ==========
+echo "===== Part 3: Building torchrec V1.5.0 for pt2.10.0 ====="
+
+rm -rf $TORCHREC_NPU_DIR/torchrec_v1.5.0
+echo "Cloning torchrec V1.5.0..."
+cd $TORCHREC_NPU_DIR
+git clone -b release/V1.5.0 https://github.com/pytorch/torchrec.git torchrec_v1.5.0
+(cd $TORCHREC_NPU_DIR/torchrec_v1.5.0 && git checkout 4002d8bc326f2864982a3d11dd4f01c59dce6457)
+
+# 创建软链接让脚本能找到目录
+ln -sf torchrec_v1.5.0 torchrec
+(cd $TORCHREC_NPU_DIR && bash build_whl_torchrec1.5.0.sh)
+
+# 判断torchrec npu包是否存在
+TORCHREC_150_WHL=$(find $TORCHREC_NPU_DIR/torchrec/dist -name "torchrec-1.5.0*.whl" | head -n 1)
+if [ -z "$TORCHREC_150_WHL" ]; then
+    echo "Error: torchrec-1.5.0 whl not found."
+    exit 1
+fi
+
+# 编译 hybrid/embcache (会自动检测 torchrec 版本为 1.5.0)
+echo "Compiling hybrid/embcache with pt2.10.0 (torchrec V1.5.0)..."
+source /opt/buildtools/torch_v1_pt2.10.0/bin/activate
+(cd $HYBRID_TORCHREC_DIR && bash build_whl.sh)
+deactivate
+
+# 移动产物到临时目录 pt2.10_whl
+mkdir -p $BUILD_DIR/mindxsdk-torchrec/pt2.10_whl
+mv $HYBRID_TORCHREC_DIR/dist/*.whl $BUILD_DIR/mindxsdk-torchrec/pt2.10_whl/ 2>/dev/null || true
+mv $TORCHREC_NPU_DIR/torchrec/dist/*.whl $BUILD_DIR/mindxsdk-torchrec/pt2.10_whl/ 2>/dev/null || true
+
+# 清理
+rm -rf $TORCHREC_NPU_DIR/torchrec
+rm -rf $TORCHREC_NPU_DIR/torchrec_v1.5.0
 
 # 3. 生成统一的 tar.gz 发布包
 echo "Start building..."

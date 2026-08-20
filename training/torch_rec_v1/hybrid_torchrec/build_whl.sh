@@ -2,7 +2,6 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 
 set -e
-
 SCRIPT_PATH=$(cd $(dirname $0); pwd)
 TORCHREC_EMBCACHE_PATH="${SCRIPT_PATH}/../torchrec_embcache"
 
@@ -40,6 +39,7 @@ function get_pytorch_ver()
 {
     local v260="2.6.0"
     local v271="2.7.1"
+    local v2100="2.10.0"
     local ver
     ver=$(python3 -m pip show torch 2>/dev/null | grep -E "^Version:" | awk '{print $2}') || {
         echo "ERROR: failed to get torch version !" >&2
@@ -48,23 +48,19 @@ function get_pytorch_ver()
     case "$ver" in
         *"$v260"*) echo "pytorch${v260}" ;;
         *"$v271"*) echo "pytorch${v271}" ;;
+        *"$v2100"*) echo "pytorch${v2100}" ;;
+        *) echo "ERROR: pytorch version is not supported, only support $v260, $v271 or $v2100." >&2; return 1 ;;
     esac
 }
 
 function get_torchrec_ver()
 {
-    local v110="1.1.0"
-    local v120="1.2.0"
-    local ver
-    ver=$(python3 -m pip show torchrec 2>/dev/null | grep -E "^Version:" | awk '{print $2}')
-    case $? in
-        0) ;;          # 导入成功，继续判断版本
-        *) echo "$v110"; return 0 ;;  # 模块不存在，直接返回 1.1.0
-    esac
-    case "$ver" in
-        *"$v110"*) echo "$v110" ;;
-        *"$v120"*) echo "$v120" ;;
-        *) echo "ERROR: torchrec version is not supported, only support $v110 or $v120." >&2; return 1 ;;
+    # 根据 pytorch 版本匹配对应的 torchrec 版本，不实际依赖torchrec模块（新版本包中torchrec模块被torch-rec-v1模块掩盖了）
+    case "$pt_version" in
+        "pytorch2.6.0")  echo "1.1.0" ;;
+        "pytorch2.7.1")  echo "1.2.0" ;;
+        "pytorch2.10.0") echo "1.5.0" ;;
+        *) echo "ERROR: failed to map torchrec version for ${pt_version}." >&2; return 1 ;;
     esac
 }
 
@@ -125,7 +121,6 @@ function merge_compile_commands()
 
 function archive_target_pkg()
 {
-    local pt_version=$(get_pytorch_ver)
     local package_name="Ascend-mindxsdk-hybrid-torchrec-${torchrec_version}-${pt_version}-linux-${ARCH}.tar.gz"
     if [ -f "${package_name}" ]; then
         rm "${package_name}"
@@ -138,6 +133,7 @@ function compile_all_pkg()
 {
     cd "${SCRIPT_PATH}"
     ARCH=$(uname -m)
+    pt_version=$(get_pytorch_ver)
     torchrec_version=$(get_torchrec_ver)
     export BUILD_VERSION="${torchrec_version}"
     build_hybrid_torchrec
@@ -150,8 +146,8 @@ function compile_all_pkg()
 # 初始化 CCACHE
 # ==============================================================================
 setup_ccache
+
 # 检查是否有pytorch 2.6.0python虚拟环境。若存在则基于每个虚拟环境编译。适用于流水线构建
 [ -e /opt/buildtools/pt260_env/bin/activate ] && source /opt/buildtools/pt260_env/bin/activate && compile_all_pkg && deactivate pt260_env
 
-# 默认构建一次。 在CI环境上是基于python默认环境的 pytorch 2.7.1版本再构建一次包
 compile_all_pkg
