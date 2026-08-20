@@ -1,6 +1,20 @@
 .idea/
-cmake-build-*/
 .vscode/
 .DS_Store
-build/
 __pycache__/
+.trae/
+# 忽略所有build目录
+**/build/*
+# 放行根目录下的build及其子目录
+!build/**
+# 忽略公共的编译/构建目录
+**/cmake_build-*/*
+**/cmake_build/*
+**/*egg-info/*
+# 忽略torch_rec_v1构建临时/结果目录
+**/torchrec_embcache/dist/*
+**/hybrid_torchrec/dist/*
+**/libhybrid_cpp.so
+**/embcache_pybind.so
+**/hybrid_torchrec/version.py
+**/torchrec_embcache/version.py

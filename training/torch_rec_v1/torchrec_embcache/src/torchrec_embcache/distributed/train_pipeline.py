@@ -5,7 +5,7 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-
+# pylint: disable=duplicate-code
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import (
@@ -32,18 +32,17 @@ from hybrid_torchrec.distributed.sharding.sequence_sharding import (
     HybridSequenceShardingContext,
 )
 from hybrid_torchrec.constants import MAX_LOCAL_UNIQUE_PARALLEL_BATCH_NUM
+from hybrid_torchrec._adapters import adapter
 
-from torchrec_embcache import embcache_pybind
+from torchrec_embcache import embcache_pybind  # pylint: disable=no-name-in-module
 from torchrec_embcache.distributed.sharding.rw_sharding import (
     EmbCacheRwSparseFeaturesDistAwaitable,
 )
 
-from torchrec.distributed.train_pipeline import In, Out, _wait_for_batch
 from torchrec.distributed.train_pipeline.utils import (
     In,
     Out,
     PrefetchPipelinedForward,
-    _build_args_kwargs,
     _wait_for_batch,
     TrainPipelineContext,
     PipelinedForward,
@@ -70,9 +69,9 @@ class EmbCacheAwaitableAdapterThreadPoolExecutorSingleton:
 
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
-            cls._instance = super(
-                EmbCacheAwaitableAdapterThreadPoolExecutorSingleton, cls
-            ).__new__(cls, *args, **kwargs)
+            cls._instance = super(EmbCacheAwaitableAdapterThreadPoolExecutorSingleton, cls).__new__(
+                cls, *args, **kwargs
+            )
             cls.executor = ThreadPoolExecutor(1)
         return cls._instance
 
@@ -84,35 +83,26 @@ class AwaitableAdapter(Awaitable):
         def get_awaitable_result(awaitable: Awaitable):
             return awaitable.wait()
 
-        self.future = (
-            EmbCacheAwaitableAdapterThreadPoolExecutorSingleton().executor.submit(
-                get_awaitable_result, awaitable
-            )
+        self.future = EmbCacheAwaitableAdapterThreadPoolExecutorSingleton().executor.submit(
+            get_awaitable_result, awaitable
         )
 
     def _wait_impl(self) -> Any:
         return self.future.result()
 
 
+# pylint: disable=c-extension-no-member
 @dataclass
 class EmbCacheTrainPipelineContext(TrainPipelineContext):
     sparse_features_after_dist: Dict[str, KJTList] = field(default_factory=dict)
     sparse_features_after_post_dist: Dict[str, KJTList] = field(default_factory=dict)
-    sparse_features_after_restore_future: Dict[str, KJTList] = field(
-        default_factory=dict
-    )
-    swap_info_future: Dict[str, embcache_pybind.AsyncSwapInfo] = field(
-        default_factory=dict
-    )
-    record_batch_keys_future: Dict[str, Any] = field(
-        default_factory=dict
-    )
+    sparse_features_after_restore_future: Dict[str, KJTList] = field(default_factory=dict)
+    swap_info_future: Dict[str, embcache_pybind.AsyncSwapInfo] = field(default_factory=dict)
+    record_batch_keys_future: Dict[str, Any] = field(default_factory=dict)
     swap_info: Dict[str, embcache_pybind.SwapInfo] = field(default_factory=dict)
     swapout_embs: Dict[str, torch.Tensor] = field(default_factory=dict)
     swapout_optims: Dict[str, torch.Tensor] = field(default_factory=dict)
-    swapin_tensor_future: Dict[str, embcache_pybind.AsyncSwapinTensor] = field(
-        default_factory=dict
-    )
+    swapin_tensor_future: Dict[str, embcache_pybind.AsyncSwapinTensor] = field(default_factory=dict)
     swapin_embs: Dict[str, torch.Tensor] = field(default_factory=dict)
     swapin_optims: Dict[str, torch.Tensor] = field(default_factory=dict)
     update_future: Dict[str, embcache_pybind.AsyncUpdate] = field(default_factory=dict)
@@ -121,6 +111,9 @@ class EmbCacheTrainPipelineContext(TrainPipelineContext):
     event_swapin_scattered: Optional[torch_npu.npu.Event] = None
     post_input_dist_awaitable: Dict[str, Awaitable] = field(default_factory=dict)
     memcpy_stream: Optional[torch.Stream] = None
+
+
+# pylint: enable=c-extension-no-member
 
 
 class EmbCachePipelinedForward(PipelinedForward):
@@ -143,10 +136,8 @@ class EmbCachePipelinedForward(PipelinedForward):
                 sharding_ctx.sparse_features_recat = None  # 不考虑vbe场景
                 # 因查表前卸载到cpu,查表时要to device.
                 if sharding_ctx.unbucketize_permute_tensor is not None:
-                    sharding_ctx.unbucketize_permute_tensor = (
-                        sharding_ctx.unbucketize_permute_tensor.to(
-                            self._device, non_blocking=True
-                        )
+                    sharding_ctx.unbucketize_permute_tensor = sharding_ctx.unbucketize_permute_tensor.to(
+                        self._device, non_blocking=True
                     )
                     sharding_ctx.unbucketize_permute_tensor.record_stream(cur_stream)
 
@@ -170,15 +161,16 @@ def _start_data_dist(
     for module in pipelined_modules:
         forward = module.forward
         if not isinstance(forward, (PipelinedForward, PrefetchPipelinedForward, EmbCachePipelinedForward)):
-            raise RuntimeError("forward should be in [PipelinedForward," \
-            " PrefetchPipelinedForward, EmbCachePipelinedForward]")
+            raise RuntimeError(
+                "forward should be in [PipelinedForward, PrefetchPipelinedForward, EmbCachePipelinedForward]"
+            )
 
         # Retrieve argument for the input_dist of EBC
         # is_getitem True means this argument could be retrieved by a list
         # False means this argument is getting while getattr
         # and this info was done in the _rewrite_model by tracing the
         # entire model to get the arg_info_list
-        args, kwargs = _build_args_kwargs(batch, forward.args)
+        args, kwargs = adapter.build_args_kwargs(batch, forward.args)
 
         if hasattr(batch, 'click_labels'):
             kwargs['labels'] = batch.click_labels
@@ -189,9 +181,7 @@ def _start_data_dist(
             context.module_contexts_next_batch[forward.name] = module_ctx
         else:
             context.module_contexts[forward.name] = module_ctx
-        context.input_dist_splits_requests[forward.name] = module.input_dist(
-            module_ctx, *args, **kwargs
-        )
+        context.input_dist_splits_requests[forward.name] = module.input_dist(module_ctx, *args, **kwargs)
 
 
 def _fuse_input_dist_splits(context: TrainPipelineContext) -> None:
@@ -201,17 +191,13 @@ def _fuse_input_dist_splits(context: TrainPipelineContext) -> None:
             pg = None
             if isinstance(request, KJTListSplitsAwaitable):
                 for awaitable in request.awaitables:
-                    if isinstance(awaitable, KJTSplitsAllToAllMeta) or isinstance(
-                        awaitable, EmbCacheRwSparseFeaturesDistAwaitable
-                    ):
+                    if isinstance(awaitable, (KJTSplitsAllToAllMeta, EmbCacheRwSparseFeaturesDistAwaitable)):
                         pg = awaitable.pg
                         break
             names_per_pg[pg].append(name)
 
         for name, request in context.input_dist_splits_requests.items():
-            for ind, awaitable in enumerate(
-                context.input_dist_splits_requests[name].awaitables
-            ):
+            for ind, awaitable in enumerate(context.input_dist_splits_requests[name].awaitables):
                 if isinstance(awaitable, EmbCacheRwSparseFeaturesDistAwaitable):
                     context.input_dist_splits_requests[name].awaitables[ind] = (
                         context.input_dist_splits_requests[name].awaitables[ind].wait()
@@ -222,9 +208,7 @@ def _fuse_input_dist_splits(context: TrainPipelineContext) -> None:
                 (
                     names,
                     FusedKJTListSplitsAwaitable(
-                        requests=[
-                            context.input_dist_splits_requests[name] for name in names
-                        ],
+                        requests=[context.input_dist_splits_requests[name] for name in names],
                         contexts=[
                             (
                                 context.module_contexts_next_batch[name]
@@ -253,12 +237,18 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         context_type: Type[EmbCacheTrainPipelineContext] = EmbCacheTrainPipelineContext,
         # keep for backward compatibility
         pipeline_postproc: bool = False,
-        custom_model_fwd: Optional[
-            Callable[[Optional[In]], Tuple[torch.Tensor, Out]]
-        ] = None,
+        custom_model_fwd: Optional[Callable[[Optional[In]], Tuple[torch.Tensor, Out]]] = None,
         custom_model_zero_grad: Optional[Callable] = None,
         custom_model_bwd: Optional[Callable] = None,
     ) -> None:
+        # Initialize attributes to avoid pylint W0201
+        self._pipelined_modules = None
+        self._model = None
+        self._original_forwards = None
+        self._pipelined_postprocs = None
+        self._original_kjt_dist_forwards = None
+        self._model_attached = False
+        self._next_index = 0
         super().__init__(
             model=model,
             optimizer=optimizer,
@@ -274,18 +264,13 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         self._npu_device = npu_device
         self._return_loss = return_loss
         self._global_steps = 0
-        if (
-            evict_step_interval is not None
-            and evict_step_interval < MIN_EVICT_STEP_INTERVAL
-        ):
+        if evict_step_interval is not None and evict_step_interval < MIN_EVICT_STEP_INTERVAL:
             raise ValueError(
                 f"Param error, evict_step_interval must greater or equal than {MIN_EVICT_STEP_INTERVAL},"
                 f" but got {evict_step_interval}."
             )
         self._evict_step_interval = evict_step_interval or 0
-        self._default_stream = torch.get_device_module(
-            self._npu_device
-        ).current_stream()
+        self._default_stream = torch.get_device_module(self._npu_device).current_stream()
         local_unique_parallel_batch_num = os.environ.get("LOCAL_UNIQUE_PARALLEL_BATCH_NUM", "2")
         if not local_unique_parallel_batch_num.isdigit():
             raise ValueError(
@@ -293,13 +278,15 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                 f"but got {local_unique_parallel_batch_num}."
             )
         self.local_unique_parallel_batch_num = int(local_unique_parallel_batch_num)
-        if self.local_unique_parallel_batch_num < 1 or \
-                self.local_unique_parallel_batch_num > MAX_LOCAL_UNIQUE_PARALLEL_BATCH_NUM:
+        if (
+            self.local_unique_parallel_batch_num < 1
+            or self.local_unique_parallel_batch_num > MAX_LOCAL_UNIQUE_PARALLEL_BATCH_NUM
+        ):
             raise ValueError(
                 f"Param error: LOCAL_UNIQUE_PARALLEL_BATCH_NUM must be in [1, {MAX_LOCAL_UNIQUE_PARALLEL_BATCH_NUM}], "
                 f"but got {self.local_unique_parallel_batch_num}."
             )
-        
+
         self._zero_grad = self._optimizer.zero_grad if custom_model_zero_grad is None else custom_model_zero_grad
         self._custom_model_bwd = custom_model_bwd
         self._need_record_batch_keys = False
@@ -340,18 +327,12 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
         # initializes input dist, so we can override input dist forwards
         self.start_sparse_data_dist(batch, context)
         _fuse_input_dist_splits(context)
-        self._original_kjt_dist_forwards = _override_input_dist_forwards(
-            self._pipelined_modules
-        )
+        self._original_kjt_dist_forwards = _override_input_dist_forwards(self._pipelined_modules)
         self._need_record_batch_keys = any(
-            config.is_incremental
-            for module in self._pipelined_modules
-            for config in module.config_list
+            config.is_incremental for module in self._pipelined_modules for config in module.config_list
         )
 
-    def start_sparse_data_dist(
-        self, batch: Optional[In], context: TrainPipelineContext
-    ) -> None:
+    def start_sparse_data_dist(self, batch: Optional[In], context: TrainPipelineContext) -> None:
         """
         Waits for batch to finish getting copied to GPU, then starts the input dist.
         """
@@ -370,10 +351,8 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                 _start_data_dist(self._pipelined_modules, batch, context)
 
                 # Restore context for model fwd
-                for module, context in zip(
-                    self._pipelined_postprocs, original_contexts
-                ):
-                    module.set_context(context)
+                for module, original_context in zip(self._pipelined_postprocs, original_contexts):
+                    module.set_context(original_context)
 
     def wait_sparse_data_dist(self, context: TrainPipelineContext) -> None:
         """
@@ -384,20 +363,14 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
             with self._stream_context(self._data_dist_stream):
                 for names, awaitable in context.fused_splits_awaitables:
                     for name, request in zip(names, awaitable.wait()):
-                        context.input_dist_tensors_requests[name] = AwaitableAdapter(
-                            request
-                        )
+                        context.input_dist_tensors_requests[name] = AwaitableAdapter(request)
         context.input_dist_splits_requests.clear()
         context.fused_splits_awaitables.clear()
 
     def _create_context(self) -> EmbCacheTrainPipelineContext:
         context = self._context_type(index=self._next_index, version=1)
-        context.event_gather_swapouted = torch.get_device_module(
-            self._npu_device
-        ).Event()
-        context.event_swapin_scattered = torch.get_device_module(
-            self._npu_device
-        ).Event()
+        context.event_gather_swapouted = torch.get_device_module(self._npu_device).Event()
+        context.event_swapin_scattered = torch.get_device_module(self._npu_device).Event()
         context.event_can_swapout = torch.get_device_module(self._npu_device).Event()
         context.memcpy_stream = self._memcpy_stream
         self._next_index += 1
@@ -408,17 +381,13 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
             for module in self._pipelined_modules:
                 module_name = module.forward.name
                 sparse_features = context.sparse_features_after_post_dist[module_name]
-                context.swap_info_future[module_name] = module.compute_swap_info_async(
-                    sparse_features
-                )
+                context.swap_info_future[module_name] = module.compute_swap_info_async(sparse_features)
 
     def _record_batch_keys_async(self, context: EmbCacheTrainPipelineContext) -> None:
         for module in self._pipelined_modules:
             module_name = module.forward.name
             sparse_features = context.sparse_features_after_post_dist[module_name]
-            context.record_batch_keys_future[module_name] = module.record_batch_keys_async(
-                sparse_features
-            )
+            context.record_batch_keys_future[module_name] = module.record_batch_keys_async(sparse_features)
 
     def do_post_input_dist(self, context: EmbCacheTrainPipelineContext):
         with record_function("## _post_input_dist ##"):
@@ -436,9 +405,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                         "EmbCacheTrainPipelineSparseDist can't be used for module with no post_input_dist method"
                     )
 
-                post_waitable = module.post_input_dist(
-                    context.module_contexts[name], kjt_list
-                )
+                post_waitable = module.post_input_dist(context.module_contexts[name], kjt_list)
                 context.post_input_dist_awaitable[name] = post_waitable
 
     def do_restore_async(self, context: EmbCacheTrainPipelineContext):
@@ -446,14 +413,12 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
             for module in self._pipelined_modules:
                 module_name = module.forward.name
                 data = context.sparse_features_after_post_dist[module_name]
-                context.sparse_features_after_restore_future[module_name] = (
-                    embcache_pybind.restore_async(
-                        context.swap_info[module_name].batch_offs,
-                        data[0].unique_inverse,
-                        data[0].unique_offset,
-                        data[0].offset_per_key(),
-                        data[0].hash_indices,
-                    )
+                context.sparse_features_after_restore_future[module_name] = embcache_pybind.restore_async(
+                    context.swap_info[module_name].batch_offs,
+                    data[0].unique_inverse,
+                    data[0].unique_offset,
+                    data[0].offset_per_key(),
+                    data[0].hash_indices,
                 )
 
     def wait_and_get_swap_info(self, context: EmbCacheTrainPipelineContext) -> None:
@@ -463,17 +428,14 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                     module_name = module.forward.name
                     swap_info_future = context.swap_info_future.pop(module_name, None)
                     if swap_info_future is None:
-                        logger.info(f"Module {module_name} has no swap info future, "
-                                    f"skip waiting and getting swap info.")
+                        logger.info(
+                            "Module %s has no swap info future, skip waiting and getting swap info.", module_name
+                        )
                         continue
 
                     swap_info = swap_info_future.get()
-                    swap_info.swapout_offs = swap_info.swapout_offs.to(
-                        self._npu_device, non_blocking=True
-                    )
-                    swap_info.swapin_offs = swap_info.swapin_offs.to(
-                        self._npu_device, non_blocking=True
-                    )
+                    swap_info.swapout_offs = swap_info.swapout_offs.to(self._npu_device, non_blocking=True)
+                    swap_info.swapin_offs = swap_info.swapin_offs.to(self._npu_device, non_blocking=True)
                     context.swap_info[module_name] = swap_info
 
     def swap_out(self, context: EmbCacheTrainPipelineContext) -> None:
@@ -488,20 +450,16 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                         continue
                     _stb_eb_codegen = module.get_batched_embedding_kernels()[0][0]
                     self._memcpy_stream.wait_event(context.event_can_swapout)
-                    context.swapout_embs[module_name] = _stb_eb_codegen.gather_embs(
-                        swapout_offs
-                    ).to(self._cpu_device, non_blocking=True)
+                    context.swapout_embs[module_name] = _stb_eb_codegen.gather_embs(swapout_offs).to(
+                        self._cpu_device, non_blocking=True
+                    )
 
                     context.swapout_optims[module_name] = []
                     for momentum in _stb_eb_codegen.gather_momentum(swapout_offs):
-                        context.swapout_optims[module_name].append(
-                            momentum.to(self._cpu_device, non_blocking=True)
-                        )
+                        context.swapout_optims[module_name].append(momentum.to(self._cpu_device, non_blocking=True))
                 context.event_gather_swapouted.record(self._memcpy_stream)
 
-    def host_embedding_update_async(
-        self, context: EmbCacheTrainPipelineContext
-    ) -> None:
+    def host_embedding_update_async(self, context: EmbCacheTrainPipelineContext) -> None:
         with record_function("## _host_embedding_update ##"):
             context.event_gather_swapouted.synchronize()
             for module in self._pipelined_modules:
@@ -525,16 +483,12 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                 if update_future is not None:
                     update_future.get()
 
-    def host_embedding_lookup_async(
-        self, context: EmbCacheTrainPipelineContext
-    ) -> None:
+    def host_embedding_lookup_async(self, context: EmbCacheTrainPipelineContext) -> None:
         with record_function("## host_embedding_lookup_async ##"):
             for module in self._pipelined_modules:
                 module_name = module.forward.name
                 swap_info = context.swap_info[module_name]
-                context.swapin_tensor_future[module_name] = (
-                    module.host_embedding_lookup_async(swap_info)
-                )
+                context.swapin_tensor_future[module_name] = module.host_embedding_lookup_async(swap_info)
 
     def swapin_tensors_to_npu(self, context: EmbCacheTrainPipelineContext) -> None:
         with record_function("## swapin_embs_optims_to_npu ##"):
@@ -542,12 +496,8 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
             with torch_npu.npu.stream(self._memcpy_stream):
                 for module in self._pipelined_modules:
                     module_name = module.forward.name
-                    with record_function(
-                        "## embedding_lookup_async get in initiate_swap_in ##"
-                    ):
-                        swapin_tensors = context.swapin_tensor_future.pop(
-                            module_name
-                        ).get()
+                    with record_function("## embedding_lookup_async get in initiate_swap_in ##"):
+                        swapin_tensors = context.swapin_tensor_future.pop(module_name).get()
                     swapin_offs = context.swap_info[module_name].swapin_offs
                     swapin_offs.record_stream(self._default_stream)
                     if swapin_offs.numel() == 0:
@@ -556,14 +506,10 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                         continue
 
                     # 非阻塞拷贝到NPU设备上，在_memcpy_stream上执行
-                    swapin_embs = swapin_tensors.swapin_embs.to(
-                        self._npu_device, non_blocking=True
-                    )  
+                    swapin_embs = swapin_tensors.swapin_embs.to(self._npu_device, non_blocking=True)
                     swapin_optims = []
                     for optim in swapin_tensors.swapin_optims:
-                        swapin_optims.append(
-                            optim.to(self._npu_device, non_blocking=True)
-                        )  
+                        swapin_optims.append(optim.to(self._npu_device, non_blocking=True))
 
                     swapin_embs.record_stream(self._default_stream)
                     for swapin_optim in swapin_optims:
@@ -587,12 +533,8 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
 
                 _stb_eb_codegen = module.get_batched_embedding_kernels()[0][0]
                 swapin_offs = context.swap_info[module_name].swapin_offs
-                _stb_eb_codegen.scatter_update_embs(
-                    swapin_offs, context.swapin_embs[module_name]
-                )
-                _stb_eb_codegen.scatter_update_momentum(
-                    swapin_offs, context.swapin_optims[module_name]
-                )
+                _stb_eb_codegen.scatter_update_embs(swapin_offs, context.swapin_embs[module_name])
+                _stb_eb_codegen.scatter_update_momentum(swapin_offs, context.swapin_optims[module_name])
 
     def start_compute_swap_info(self, context: EmbCacheTrainPipelineContext):
         with record_function("## start_compute_swap_info ##"):
@@ -600,9 +542,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                 context.input_dist_tensors_requests.keys(),
                 self._pipelined_modules,
             ):
-                context.sparse_features_after_post_dist[name] = (
-                    context.post_input_dist_awaitable[name].wait()
-                )
+                context.sparse_features_after_post_dist[name] = context.post_input_dist_awaitable[name].wait()
                 self._compute_swap_info_async(context)
 
     def wait_record_batch_keys(self, context: EmbCacheTrainPipelineContext):
@@ -698,7 +638,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
                 self._custom_model_bwd(losses=losses, output=output)
             else:
                 torch.sum(losses, dim=0).backward()
-    
+
     def _pre_process(self, dataloader_iter: Iterator[In]):
         if not self._model_attached:
             self.attach(self._model)
@@ -755,10 +695,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
 
         # 处理淘汰信息
         # 因fill_pipeline 内已经执行了2次 get_swap_info, 因此对_evict_step_interval取余时要对global_step+1
-        if (
-            self._evict_step_interval
-            and (self._global_steps + 1) % self._evict_step_interval == 0
-        ):
+        if self._evict_step_interval and (self._global_steps + 1) % self._evict_step_interval == 0:
             with record_function("## feature_evict ##"):
                 self._start_feature_evict()
 
@@ -792,7 +729,7 @@ class EmbCacheTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
 
         self.dequeue_batch()
         return (output, losses) if self._return_loss else output
-    
+
     def wait_pipeline_compute_swapinfo(self):
         if len(self.batches) >= 2:
             self.wait_and_get_swap_info(self.contexts[1])

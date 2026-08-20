@@ -2,16 +2,17 @@
 
 ## 软件介绍
 
-本项目是基于开源项目TorchRec的1.1.0/1.2.0版本开发的embedding多级缓存扩展，助力开发者快速应用TorchRec框架并适配到NPU进行模型训练和推理。
+本项目是基于开源项目TorchRec的1.1.0/1.2.0/1.5.0版本开发的embedding多级缓存扩展，助力开发者快速应用TorchRec框架并适配到NPU进行模型训练和推理。
 
 Python版本要求：Python >= 3.11。
 
-基于PyTorch开源软件版本，支持两种软件版本配套，可根据需要自行选择。
+基于PyTorch开源软件版本，支持以下软件版本配套，可根据需要自行选择。
 
 | 配套版本  | PyTorch | torch_npu | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
 |-------|---------|-----------|-----------|------------|-----------------|-------------------|
 | 方案一 | 2.6.0   | 2.6.0     | 1.1.0+npu | 1.1.0      | 1.1.0           | 1.1.0             |
 | 方案二 | 2.7.1   | 2.7.1     | 1.2.0+npu | 1.2.0      | 1.2.0           | 1.2.0             |
+| 方案三 | 2.10.0  | 2.10.0    | 1.5.0+npu | 1.5.0      | 1.5.0           | 1.5.0             |
 
 ### 1.环境准备
 
@@ -49,6 +50,7 @@ pip3 install -r requirements.txt
 ```shell
 git clone https://gitcode.com/ascend/RecSDK.git
 cd RecSDK/training/torch_rec_v1/torchrec_embcache
+# 可选：设置打包名称中的版本号，默认为1.2.0。设置方式： export BUILD_VERSION=1.2.0
 bash build.sh
 # 如果已安装，请先卸载
 pip3 uninstall -y torchrec_embcache

@@ -5,11 +5,12 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-
+# pylint: disable=duplicate-code
 from typing import Any, Dict, List, Optional
 
 import torch
 
+from hybrid_torchrec._adapters import adapter
 from hybrid_torchrec.modules.ids_process import HashMapBase
 from hybrid_torchrec.distributed.embedding_lookup import HybridGroupedEmbeddingsLookup
 from hybrid_torchrec.distributed.sharding.post_input_dist import (
@@ -59,6 +60,9 @@ class EmbCacheRwSequenceEmbeddingSharding(RwSequenceEmbeddingSharding):
     ) -> BaseSparseFeaturesDist[KeyedJaggedTensor]:
         num_features = self._get_num_features()
         feature_hash_sizes = self._get_feature_hash_sizes()
+        virtual_table_feature_num_buckets, has_uneven_virtual_tables = adapter.get_virtual_table_feature_num_buckets(
+            self
+        )
         return EmbCacheRwSparseFeaturesDist(
             # pyre-fixme[6]: For 1st param expected `ProcessGroup` but got
             #  `Optional[ProcessGroup]`.
@@ -71,6 +75,8 @@ class EmbCacheRwSequenceEmbeddingSharding(RwSequenceEmbeddingSharding):
             need_pos=self._need_pos,
             enable_admit=self._enable_admit,
             is_ec=True,
+            virtual_table_feature_num_buckets=virtual_table_feature_num_buckets,
+            has_uneven_virtual_tables=has_uneven_virtual_tables,
         )
 
     def create_lookup(
@@ -83,15 +89,14 @@ class EmbCacheRwSequenceEmbeddingSharding(RwSequenceEmbeddingSharding):
             grouped_configs=self._grouped_embedding_configs,
             pg=self._pg,
             device=device if device is not None else self._device,
+            env=self._env,
         )
 
     def create_post_input_dist(
         self,
         device: Optional[torch.device] = None,
     ) -> BaseSparseFeaturesDist[KeyedJaggedTensor]:
-        table_names, features_split_by_table_name = get_feature_len_groupby_table_name(
-            self._grouped_embedding_configs
-        )
+        table_names, features_split_by_table_name = get_feature_len_groupby_table_name(self._grouped_embedding_configs)
         hashmaps = [self.table2hashmap[n] for n in table_names]
         feature_processor = UniqueHashFeatureProcess(
             table_names, features_split_by_table_name, hashmaps, self._enable_admit
