@@ -2,6 +2,11 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(PYBIND11_FINDPYTHON ON)
 
+# Force CMake to find Python libraries from the same location as Python interpreter
+# This prevents mixing different Python installations (e.g. conda/env + system)
+set(Python3_FIND_STRATEGY LOCATION)
+
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 find_package(Torch REQUIRED)
 
 # pybind11
@@ -54,6 +59,7 @@ target_link_libraries(embcache_pybind PRIVATE OpenMP::OpenMP_CXX)
 
 target_include_directories(embcache_pybind PRIVATE
         .
+        ${Python3_INCLUDE_DIRS}
 )
 
 message("CMAKE_INSTALL_PREFIX:${CMAKE_INSTALL_PREFIX}")

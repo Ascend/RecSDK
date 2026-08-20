@@ -27,7 +27,13 @@ fi
 
 function prepare_deps()
 {
-    python3 -m pip install pybind11
+    # Check if pybind11 is already installed before installing
+    if python3 -c "import pybind11" 2>/dev/null; then
+        echo "pybind11 already installed, skipping installation."
+    else
+        echo "pybind11 not found, installing..."
+        python3 -m pip install pybind11
+    fi
 
     local securec_dir="${SCRIPT_PATH}/src/3rdparty/securec"
     if [ ! -d "$securec_dir" ]; then

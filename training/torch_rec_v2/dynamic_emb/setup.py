@@ -34,7 +34,7 @@ def modify_version():
     default_version = "v25.09"
 
     init_file = "dynamic_emb/__init__.py"
-    with open(init_file, "r") as file:
+    with open(init_file, "r", encoding="utf-8") as file:
         lines = file.readlines()
         for idx, line in enumerate(lines):
             if "__version__ = " not in line:
@@ -44,7 +44,7 @@ def modify_version():
 
     flag = os.O_WRONLY | os.O_TRUNC
     mode = stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
-    with os.fdopen(os.open(init_file, flag, mode), "w") as out:
+    with os.fdopen(os.open(init_file, flag, mode), "w", encoding="utf-8") as out:
         out.writelines(lines)
     return default_version
 
@@ -53,11 +53,13 @@ def ensure_pybind11():
     """确保pybind11可用"""
     try:
         import pybind11
+
         return pybind11.get_cmake_dir()
     except ImportError:
         logging.info("Installing pybind11...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pybind11"])
         import pybind11
+
         return pybind11.get_cmake_dir()
 
 
@@ -71,14 +73,13 @@ class CMakeBuild(build_ext):
     user_options = build_ext.user_options + [
         ('pybind11-dir=', None, 'Path to pybind11 installation'),
     ]
-    
+
+    pybind11_dir = None
+
     def initialize_options(self):
         super().initialize_options()
         self.pybind11_dir = None
 
-    def finalize_options(self):
-        super().finalize_options()
-    
     def run(self):
         # 确保pybind11可用
         if not self.pybind11_dir:
@@ -92,79 +93,90 @@ class CMakeBuild(build_ext):
             subprocess.check_output([cmake_exe, '--version'])
         except OSError as e:
             raise RuntimeError("CMake must be installed to build the extensions") from e
-        
+
         super().run()
         self.copy_cust_ops_libraries()
-        
+
     def copy_cust_ops_libraries(self):
         """复制自定义算子库到包目录"""
         ext_path = self.get_ext_fullpath('dynamic_emb_extensions')
         package_dir = os.path.dirname(ext_path)
-        
+
         # 查找依赖库
-        lib_patterns = [
-            'libdynamic_emb_op_*.so',
-            'libdynamic_variable_base.so'
-        ]
-        
+        lib_patterns = ['libdynamic_emb_op_*.so', 'libdynamic_variable_base.so']
+
         # 搜索路径
         search_paths = [
             os.path.join(self.build_temp, 'lib'),
         ]
-        
+
         for pattern in lib_patterns:
             for search_path in search_paths:
                 if os.path.exists(search_path):
                     for lib_file in Path(search_path).glob(pattern):
                         if lib_file.is_file():
                             lib_dest_path = os.path.join(package_dir, lib_file.name)
-                            logging.info(f"Copying {lib_file} to {lib_dest_path}")
+                            logging.info("Copying %s to %s", lib_file, lib_dest_path)
                             shutil.copy2(lib_file, lib_dest_path)
-    
+
     def build_extension(self, ext):
         if isinstance(ext, CMakeExtension):
             self.build_cmake_extension(ext)
         else:
             super().build_extension(ext)
-    
+
     def build_cmake_extension(self, ext):
         extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-        
+        cmake_exe = shutil.which("cmake")
+        if cmake_exe is None:
+            raise RuntimeError("CMake must be installed to build the extensions")
+
         # CMake配置参数
         cmake_args = [
             f'-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}',
             f'-DPYTHON_EXECUTABLE={sys.executable}',
             f'-DCMAKE_BUILD_TYPE={"Debug" if self.debug else "Release"}',
             f'-Dpybind11_DIR={self.pybind11_dir}',
-            f'-DCMAKE_PREFIX_PATH={self.pybind11_dir}'
+            f'-DCMAKE_PREFIX_PATH={self.pybind11_dir}',
         ]
-        
+
         # 从环境变量获取配置或使用默认值
         run_mode = os.getenv('RUN_MODE', 'npu')
         soc_version = os.getenv('SOC_VERSION', 'Ascend950PR_9579')
         ascend_cann_path = os.getenv('ASCEND_CANN_PACKAGE_PATH', '/usr/local/Ascend/ascend-toolkit/latest')
         max_compile_threads = os.getenv('MAX_COMPILE_THREADS', '8')
-        
-        cmake_args.extend([
-            f'-DRUN_MODE={run_mode}',
-            f'-DSOC_VERSION={soc_version}',
-            f'-DASCEND_CANN_PACKAGE_PATH={ascend_cann_path}'
-        ])
-        
+
+        cmake_args.extend(
+            [f'-DRUN_MODE={run_mode}', f'-DSOC_VERSION={soc_version}', f'-DASCEND_CANN_PACKAGE_PATH={ascend_cann_path}']
+        )
+
         # 构建目录
         build_temp = self.build_temp
         os.makedirs(build_temp, exist_ok=True)
-        
+
         logging.info("Configuring CMake project...")
-        logging.info(f"CMake args: {cmake_args}")
-        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=build_temp)
-        
+        logging.info("CMake args: %s", cmake_args)
+        subprocess.check_call([cmake_exe, ext.sourcedir] + cmake_args, cwd=build_temp)
+
         logging.info("Building project...")
-        subprocess.check_call(['cmake', '--build', '.', '--parallel', max_compile_threads, '--verbose', '--config',
-                               'Debug' if self.debug else 'Release'], cwd=build_temp)
+        subprocess.check_call(
+            [
+                cmake_exe,
+                '--build',
+                '.',
+                '--parallel',
+                max_compile_threads,
+                '--verbose',
+                '--config',
+                'Debug' if self.debug else 'Release',
+            ],
+            cwd=build_temp,
+        )
+
 
 # 设置依赖
-setup_requires = ['pybind11']
+# 设置依赖 - 移除setup_requires，因为pybind11会在ensure_pybind11()中动态处理
+setup_requires = []
 
 
 class CustomInstall(install):
@@ -172,7 +184,7 @@ class CustomInstall(install):
         super().run()
         # 设置库文件权限
         self.fix_library_permissions()
-    
+
     def fix_library_permissions(self):
         """修复库文件权限"""
         package_dir = self.install_lib
@@ -183,24 +195,27 @@ class CustomInstall(install):
                         file_path = os.path.join(root, file)
                         os.chmod(file_path, 0o755)  # 设置可执行权限
 
- # 编译 so文件
+
+# 编译 so文件
 script_path = os.getcwd()
 common_script = os.path.join(script_path, "./scripts/build.sh")
 os.chmod(common_script, 0o755)
-res = subprocess.run([common_script], shell=False)
+res = subprocess.run([common_script], shell=False, check=False)
 if res.returncode:
     raise RuntimeError("compile so files failed!")
 
 # 安装common
 common_dir = os.path.join(script_path, "../../common")
+python_exe = shutil.which("python3") or sys.executable
 subprocess.run(
     [
-        "python3",
+        python_exe,
         "setup.py",
         "bdist_wheel",
     ],
     cwd=common_dir,
     shell=False,
+    check=False,
 )
 if os.path.exists("rec_sdk_common"):
     shutil.rmtree("rec_sdk_common")
@@ -229,33 +244,25 @@ setup(
     packages=target_packages,
     package_dir=package_dir_mapping,
     ext_modules=[CMakeExtension("dynamic_emb_extensions", "./")],
-    cmdclass={
-        'build_ext': CMakeBuild,
-        'install': CustomInstall
-    },
+    cmdclass={'build_ext': CMakeBuild, 'install': CustomInstall},
     package_data={
         TARGET_PACKAGE_NAME: ['*.so'],  # 主包下的.so
         "rec_sdk_common": ['lib/*.so'],
     },
     include_package_data=True,
-    setup_requires=setup_requires,
     install_requires=['pybind11'],
     zip_safe=False,
 )
 
 if 'bdist_wheel' in sys.argv:
-    move_whl_script = os.path.join(
-        script_path, "./scripts/move_whl_file_2_pkg_dir.sh"
-    )
+    move_whl_script = os.path.join(script_path, "./scripts/move_whl_file_2_pkg_dir.sh")
     os.chmod(move_whl_script, 0o755)
-    res = subprocess.run([move_whl_script], shell=False)
+    res = subprocess.run([move_whl_script], shell=False, check=False)
     if res.returncode:
         raise RuntimeError("move whl file to pkg dir failed!")
 
-    gen_tar_script = os.path.join(
-        script_path, "./scripts/gen_tar_pkg.sh"
-    )
+    gen_tar_script = os.path.join(script_path, "./scripts/gen_tar_pkg.sh")
     os.chmod(gen_tar_script, 0o755)
-    res = subprocess.run([gen_tar_script], shell=False)
+    res = subprocess.run([gen_tar_script], shell=False, check=False)
     if res.returncode:
         raise RuntimeError("gen dynamicemb's tar pkg failed!")
