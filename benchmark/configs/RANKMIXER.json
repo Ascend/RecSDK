@@ -10,6 +10,8 @@
     "aclgraph_flag": false,
     "data_type": "float32",
     "run_cmd": [
+        "env",
+        "ENABLE_PRECISION_MODE=0",
         "bash",
         "-c",
         "cd ./rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/ && bash run.sh"
