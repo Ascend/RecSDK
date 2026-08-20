@@ -1,18 +1,18 @@
-From dd27ed7df5e36d7d2cd5a0759da445a04abe5974 Mon Sep 17 00:00:00 2001
+From 809f3b6f27f5c9b0ca4fd908f7c3b25d0aad2c54 Mon Sep 17 00:00:00 2001
 From: chenzihao40 <chenzihao40@huawei.com>
-Date: Mon, 15 Jun 2026 19:29:02 +0800
-Subject: [PATCH] npu patch
+Date: Wed, 19 Aug 2026 17:21:38 +0800
+Subject: [PATCH] dlrm npu patch
 
 ---
  data_utils.py                          |   4 +-
- dlrm_s_pytorch.py                      | 286 ++++++++++++++++++++-----
- extend_distributed.py                  |  30 ++-
+ dlrm_data_pytorch.py                   | 161 ++++++++--
+ dlrm_s_pytorch.py                      | 400 ++++++++++++++++++-------
+ extend_distributed.py                  |  30 +-
  torchrec_dlrm/data/dlrm_dataloader.py  |  13 +-
- torchrec_dlrm/data/multi_hot_criteo.py |  36 ++--
- torchrec_dlrm/dlrm_main.py             |  43 ++--
+ torchrec_dlrm/data/multi_hot_criteo.py |  36 ++-
+ torchrec_dlrm/dlrm_main.py             |  43 +--
  torchrec_dlrm/multi_hot.py             |  21 +-
- tricks/qr_embedding_bag.py             |  16 +-
- 8 files changed, 311 insertions(+), 138 deletions(-)
+ 8 files changed, 493 insertions(+), 215 deletions(-)
 
 diff --git a/data_utils.py b/data_utils.py
 index a0dbdd2..578f98a 100644
@@ -32,8 +32,328 @@ index a0dbdd2..578f98a 100644
                      )
  
                  # count uniques
+diff --git a/dlrm_data_pytorch.py b/dlrm_data_pytorch.py
+index ba31ed2..d0a7251 100644
+--- a/dlrm_data_pytorch.py
++++ b/dlrm_data_pytorch.py
+@@ -22,6 +22,7 @@ import bisect
+ import collections
+ import sys
+ from collections import deque
++from functools import partial
+ 
+ # others
+ from os import path
+@@ -39,6 +40,9 @@ from numpy import random as ra
+ from torch.utils.data import Dataset, RandomSampler
+ 
+ 
++CriteoBatch = collections.namedtuple("CriteoBatch", ["X_int", "X_cat", "y"])
++
++
+ # Kaggle Display Advertising Challenge Dataset
+ # dataset (str): name of dataset (Kaggle or Terabyte)
+ # randomize (str): determines randomization scheme
+@@ -135,6 +139,7 @@ class CriteoDataset(Dataset):
+             if split == "none" or split == "train":
+                 self.day = 0
+                 self.max_day_range = days if split == "none" else days - 1
++                self._batch_cache_day = None
+             elif split == "test" or split == "val":
+                 self.day = days - 1
+                 num_samples = (
+@@ -220,6 +225,9 @@ class CriteoDataset(Dataset):
+                 X_int[indices] = X_int
+                 X_cat[indices] = X_cat
+                 y[indices] = y
++                self.X_int = X_int
++                self.X_cat = X_cat
++                self.y = y
+ 
+             else:
+                 indices = np.array_split(indices, self.offset_per_file[1:-1])
+@@ -243,20 +251,71 @@ class CriteoDataset(Dataset):
+ 
+                 # create training, validation, and test sets
+                 if split == "train":
+-                    self.X_int = [X_int[i] for i in train_indices]
+-                    self.X_cat = [X_cat[i] for i in train_indices]
+-                    self.y = [y[i] for i in train_indices]
++                    self.X_int = X_int[train_indices]
++                    self.X_cat = X_cat[train_indices]
++                    self.y = y[train_indices]
+                 elif split == "val":
+-                    self.X_int = [X_int[i] for i in val_indices]
+-                    self.X_cat = [X_cat[i] for i in val_indices]
+-                    self.y = [y[i] for i in val_indices]
++                    self.X_int = X_int[val_indices]
++                    self.X_cat = X_cat[val_indices]
++                    self.y = y[val_indices]
+                 elif split == "test":
+-                    self.X_int = [X_int[i] for i in test_indices]
+-                    self.X_cat = [X_cat[i] for i in test_indices]
+-                    self.y = [y[i] for i in test_indices]
++                    self.X_int = X_int[test_indices]
++                    self.X_cat = X_cat[test_indices]
++                    self.y = y[test_indices]
+ 
+             print("Split data according to indices...")
+ 
++    def _load_batch_day(self, day):
++        if self._batch_cache_day == day:
++            return
++        fi = self.npzfile + "_{0}_reordered.npz".format(day)
++        with np.load(fi) as data:
++            self._batch_X_int = data["X_int"]
++            self._batch_X_cat = data["X_cat"]
++            self._batch_y = data["y"]
++        self._batch_cache_day = day
++
++    def __getitems__(self, indices):
++        """Fetch a complete DataLoader batch without per-sample Python calls."""
++        batch_indices = np.asarray(indices, dtype=np.int64)
++
++        if self.memory_map and self.split in ["none", "train"]:
++            day_boundaries = self.offset_per_file[1 : self.max_day_range + 1]
++            batch_days = np.searchsorted(
++                day_boundaries, batch_indices, side="right"
++            )
++            X_int = X_cat = y = None
++            for day in np.unique(batch_days):
++                self._load_batch_day(int(day))
++                positions = np.flatnonzero(batch_days == day)
++                local_indices = batch_indices[positions] - self.offset_per_file[day]
++                if X_int is None:
++                    X_int = np.empty(
++                        (len(batch_indices),) + self._batch_X_int.shape[1:],
++                        dtype=self._batch_X_int.dtype,
++                    )
++                    X_cat = np.empty(
++                        (len(batch_indices),) + self._batch_X_cat.shape[1:],
++                        dtype=self._batch_X_cat.dtype,
++                    )
++                    y = np.empty(
++                        (len(batch_indices),) + self._batch_y.shape[1:],
++                        dtype=self._batch_y.dtype,
++                    )
++                X_int[positions] = self._batch_X_int[local_indices]
++                X_cat[positions] = self._batch_X_cat[local_indices]
++                y[positions] = self._batch_y[local_indices]
++        else:
++            if self.memory_map and self.split == "val":
++                batch_indices = batch_indices + self.test_size
++            X_int = np.asarray(self.X_int[batch_indices])
++            X_cat = np.asarray(self.X_cat[batch_indices])
++            y = np.asarray(self.y[batch_indices])
++
++        if self.max_ind_range > 0:
++            X_cat = X_cat % self.max_ind_range
++        return CriteoBatch(X_int, X_cat, y)
++
+     def __getitem__(self, index):
+         if isinstance(index, slice):
+             return [
+@@ -320,20 +379,29 @@ class CriteoDataset(Dataset):
+             return len(self.y)
+ 
+ 
+-def collate_wrapper_criteo_offset(list_of_tuples):
++def collate_wrapper_criteo_offset(list_of_tuples, defer_dense_preprocess=False):
+     # where each tuple is (X_int, X_cat, y)
+-    transposed_data = list(zip(*list_of_tuples))
+-    X_int = torch.log(torch.tensor(transposed_data[0], dtype=torch.float) + 1)
+-    X_cat = torch.tensor(transposed_data[1], dtype=torch.long)
+-    T = torch.tensor(transposed_data[2], dtype=torch.float32).view(-1, 1)
++    if isinstance(list_of_tuples, CriteoBatch):
++        X_int_np, X_cat_np, T_np = list_of_tuples
++    else:
++        transposed_data = list(zip(*list_of_tuples))
++        X_int_np = np.stack(transposed_data[0])
++        X_cat_np = np.stack(transposed_data[1])
++        T_np = np.asarray(transposed_data[2])
++
++    X_int = torch.from_numpy(np.ascontiguousarray(X_int_np))
++    if not defer_dense_preprocess:
++        X_int = torch.log1p(X_int.float())
++    X_cat = torch.from_numpy(np.ascontiguousarray(X_cat_np)).long()
++    T = torch.from_numpy(np.ascontiguousarray(T_np)).float().view(-1, 1)
+ 
+     batchSize = X_cat.shape[0]
+     featureCnt = X_cat.shape[1]
+ 
+-    lS_i = [X_cat[:, i] for i in range(featureCnt)]
+-    lS_o = [torch.tensor(range(batchSize)) for _ in range(featureCnt)]
++    lS_i = X_cat.transpose(0, 1).contiguous()
++    lS_o = torch.arange(batchSize).expand(featureCnt, -1).contiguous()
+ 
+-    return X_int, torch.stack(lS_o), torch.stack(lS_i), T
++    return X_int, lS_o, lS_i, T
+ 
+ 
+ def ensure_dataset_preprocessed(args, d_path):
+@@ -392,24 +460,41 @@ def offset_to_length_converter(lS_o, lS_i):
+     )
+ 
+ 
+-def collate_wrapper_criteo_length(list_of_tuples):
++def collate_wrapper_criteo_length(list_of_tuples, defer_dense_preprocess=False):
+     # where each tuple is (X_int, X_cat, y)
+-    transposed_data = list(zip(*list_of_tuples))
+-    X_int = torch.log(torch.tensor(transposed_data[0], dtype=torch.float) + 1)
+-    X_cat = torch.tensor(transposed_data[1], dtype=torch.long)
+-    T = torch.tensor(transposed_data[2], dtype=torch.float32).view(-1, 1)
++    if isinstance(list_of_tuples, CriteoBatch):
++        X_int_np, X_cat_np, T_np = list_of_tuples
++    else:
++        transposed_data = list(zip(*list_of_tuples))
++        X_int_np = np.stack(transposed_data[0])
++        X_cat_np = np.stack(transposed_data[1])
++        T_np = np.asarray(transposed_data[2])
++
++    X_int = torch.from_numpy(np.ascontiguousarray(X_int_np))
++    if not defer_dense_preprocess:
++        X_int = torch.log1p(X_int.float())
++    X_cat = torch.from_numpy(np.ascontiguousarray(X_cat_np)).long()
++    T = torch.from_numpy(np.ascontiguousarray(T_np)).float().view(-1, 1)
+ 
+     batchSize = X_cat.shape[0]
+     featureCnt = X_cat.shape[1]
+ 
+-    lS_i = torch.stack([X_cat[:, i] for i in range(featureCnt)])
+-    lS_o = torch.stack([torch.tensor(range(batchSize)) for _ in range(featureCnt)])
++    lS_i = X_cat.transpose(0, 1).contiguous()
++    lS_o = torch.arange(batchSize).expand(featureCnt, -1).contiguous()
+ 
+     lS_l = offset_to_length_converter(lS_o, lS_i)
+ 
+     return X_int, lS_l, lS_i, T
+ 
+ 
++def _data_loader_perf_kwargs(args, num_workers):
++    kwargs = {"pin_memory": bool(getattr(args, "pin_memory", False))}
++    if num_workers > 0:
++        kwargs["prefetch_factor"] = getattr(args, "prefetch_factor", 2)
++        kwargs["persistent_workers"] = getattr(args, "persistent_workers", False)
++    return kwargs
++
++
+ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
+     if args.mlperf_logging and args.memory_map and args.data_set == "terabyte":
+         # more efficient for larger batches
+@@ -431,6 +516,9 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
+                 counts_file=counts_file,
+                 batch_size=args.mini_batch_size,
+                 max_ind_range=args.max_ind_range,
++                defer_dense_preprocess=getattr(
++                    args, "defer_dense_preprocess", False
++                ),
+             )
+ 
+             mlperf_logger.log_event(
+@@ -444,9 +532,9 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
+                 shuffle=False,
+                 num_workers=0,
+                 collate_fn=None,
+-                pin_memory=False,
+                 drop_last=False,
+                 sampler=RandomSampler(train_data) if args.mlperf_bin_shuffle else None,
++                **_data_loader_perf_kwargs(args, 0),
+             )
+ 
+             test_data = data_loader_terabyte.CriteoBinDataset(
+@@ -454,6 +542,9 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
+                 counts_file=counts_file,
+                 batch_size=args.test_mini_batch_size,
+                 max_ind_range=args.max_ind_range,
++                defer_dense_preprocess=getattr(
++                    args, "defer_dense_preprocess", False
++                ),
+             )
+ 
+             mlperf_logger.log_event(
+@@ -467,8 +558,8 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
+                 shuffle=False,
+                 num_workers=0,
+                 collate_fn=None,
+-                pin_memory=False,
+                 drop_last=False,
++                **_data_loader_perf_kwargs(args, 0),
+             )
+         else:
+             data_filename = args.raw_data_file.split("/")[-1]
+@@ -504,6 +595,9 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
+                 batch_size=args.mini_batch_size,
+                 max_ind_range=args.max_ind_range,
+                 split="train",
++                defer_dense_preprocess=getattr(
++                    args, "defer_dense_preprocess", False
++                ),
+             )
+ 
+             test_loader = data_loader_terabyte.DataLoader(
+@@ -513,6 +607,9 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
+                 batch_size=args.test_mini_batch_size,
+                 max_ind_range=args.max_ind_range,
+                 split="test",
++                defer_dense_preprocess=getattr(
++                    args, "defer_dense_preprocess", False
++                ),
+             )
+     else:
+         train_data = CriteoDataset(
+@@ -542,6 +639,10 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
+         collate_wrapper_criteo = collate_wrapper_criteo_offset
+         if offset_to_length_converter:
+             collate_wrapper_criteo = collate_wrapper_criteo_length
++        collate_wrapper_criteo = partial(
++            collate_wrapper_criteo,
++            defer_dense_preprocess=getattr(args, "defer_dense_preprocess", False),
++        )
+ 
+         train_loader = torch.utils.data.DataLoader(
+             train_data,
+@@ -549,8 +650,8 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
+             shuffle=False,
+             num_workers=args.num_workers,
+             collate_fn=collate_wrapper_criteo,
+-            pin_memory=False,
+             drop_last=False,  # True
++            **_data_loader_perf_kwargs(args, args.num_workers),
+         )
+ 
+         test_loader = torch.utils.data.DataLoader(
+@@ -559,8 +660,8 @@ def make_criteo_data_and_loaders(args, offset_to_length_converter=False):
+             shuffle=False,
+             num_workers=args.test_num_workers,
+             collate_fn=collate_wrapper_criteo,
+-            pin_memory=False,
+             drop_last=False,  # True
++            **_data_loader_perf_kwargs(args, args.test_num_workers),
+         )
+ 
+     return train_data, train_loader, test_data, test_loader
+@@ -751,8 +852,8 @@ def make_random_data_and_loader(
+         shuffle=False,
+         num_workers=args.num_workers,
+         collate_fn=collate_wrapper_random,
+-        pin_memory=False,
+         drop_last=False,  # True
++        **_data_loader_perf_kwargs(args, args.num_workers),
+     )
+ 
+     test_loader = torch.utils.data.DataLoader(
+@@ -761,8 +862,8 @@ def make_random_data_and_loader(
+         shuffle=False,
+         num_workers=args.num_workers,
+         collate_fn=collate_wrapper_random,
+-        pin_memory=False,
+         drop_last=False,  # True
++        **_data_loader_perf_kwargs(args, args.num_workers),
+     )
+     return train_data, train_loader, test_data, test_loader
+ 
 diff --git a/dlrm_s_pytorch.py b/dlrm_s_pytorch.py
-index e1b42b7..6f279ca 100644
+index e1b42b7..0cf5605 100644
 --- a/dlrm_s_pytorch.py
 +++ b/dlrm_s_pytorch.py
 @@ -100,6 +100,16 @@ from torch.nn.parameter import Parameter
@@ -53,17 +373,16 @@ index e1b42b7..6f279ca 100644
  # mixed-dimension trick
  from tricks.md_embedding_bag import md_solver, PrEmbeddingBag
  
-@@ -125,10 +135,17 @@ def time_wrap(use_gpu):
+@@ -125,30 +135,36 @@ def time_wrap(use_gpu):
          torch.cuda.synchronize()
      return time.time()
  
-+def time_wrap_xpu(use_xpu):
-+    if use_xpu:
-+        if NPU_ENABLE:
-+            torch.npu.synchronize()
-+        else:
-+            torch.cuda.synchronize()
-+    return time.time()
++def synchronize_device(device):
++    if device.type == "cuda":
++        torch.cuda.synchronize()
++    elif device.type == "npu":
++        torch.npu.synchronize()
++
  
 -def dlrm_wrap(X, lS_o, lS_i, use_gpu, device, ndevices=1):
 +def dlrm_wrap(X, lS_o, lS_i, use_xpu, device, ndevices=1):
@@ -73,16 +392,43 @@ index e1b42b7..6f279ca 100644
              # lS_i can be either a list of tensors or a stacked tensor.
              # Handle each case below:
              if ndevices == 1:
-@@ -145,7 +162,7 @@ def dlrm_wrap(X, lS_o, lS_i, use_gpu, device, ndevices=1):
-         return dlrm(X.to(device), lS_o, lS_i)
+                 lS_i = (
+-                    [S_i.to(device) for S_i in lS_i]
++                    [S_i.to(device, non_blocking=True) for S_i in lS_i]
+                     if isinstance(lS_i, list)
+-                    else lS_i.to(device)
++                    else lS_i.to(device, non_blocking=True)
+                 )
+                 lS_o = (
+-                    [S_o.to(device) for S_o in lS_o]
++                    [S_o.to(device, non_blocking=True) for S_o in lS_o]
+                     if isinstance(lS_o, list)
+-                    else lS_o.to(device)
++                    else lS_o.to(device, non_blocking=True)
+                 )
+-        return dlrm(X.to(device), lS_o, lS_i)
++        return dlrm(X.to(device, non_blocking=use_xpu), lS_o, lS_i)
  
  
 -def loss_fn_wrap(Z, T, use_gpu, device):
 +def loss_fn_wrap(Z, T, use_xpu, device):
      with record_function("DLRM loss compute"):
          if args.loss_function == "mse" or args.loss_function == "bce":
-             return dlrm.loss_fn(Z, T.to(device))
-@@ -274,18 +291,22 @@ class DLRM_Net(nn.Module):
+-            return dlrm.loss_fn(Z, T.to(device))
++            return dlrm.loss_fn(Z, T.to(device, non_blocking=use_xpu))
+         elif args.loss_function == "wbce":
+             loss_ws_ = dlrm.loss_ws[T.data.view(-1).long()].view_as(T).to(device)
+             loss_fn_ = dlrm.loss_fn(Z, T.to(device))
+@@ -163,7 +179,7 @@ def unpack_batch(b):
+         return fbInputBatchFormatter(b, args.data_size)
+     else:
+         # Experiment with unweighted samples
+-        return b[0], b[1], b[2], b[3], torch.ones(b[3].size()), None
++        return b[0], b[1], b[2], b[3], None, None
+ 
+ 
+ class LRPolicyScheduler(_LRScheduler):
+@@ -274,18 +290,9 @@ class DLRM_Net(nn.Module):
                  ).astype(np.float32)
                  EE.embs.weight.data = torch.tensor(W, requires_grad=True)
              else:
@@ -98,26 +444,42 @@ index e1b42b7..6f279ca 100644
 -                # EE.weight.data.copy_(torch.tensor(W))
 -                # approach 3
 -                # EE.weight = Parameter(torch.tensor(W),requires_grad=True)
-+                if use_inductor:
-+                    EE = nn.EmbeddingBag(n, m, mode="sum", sparse=True)
-+                    # initialize embeddings
-+                    W = np.random.uniform(
-+                        low=-np.sqrt(1 / n), high=np.sqrt(1 / n), size=(n, m)
-+                    ).astype(np.float32)
-+                    # approach 1
-+                    EE.weight.data = torch.tensor(W, requires_grad=True)
-+                    # approach 2
-+                    # EE.weight.data.copy_(torch.tensor(W))
-+                    # approach 3
-+                    # EE.weight = Parameter(torch.tensor(W),requires_grad=True)
-+                else:
-+                    # 使用nn.Embedding替代nn.EmbeddingBag
-+                    EE = nn.Embedding(n, m, sparse=True)
-+                    nn.init.uniform_(EE.weight, a=-np.sqrt(1 / n), b=np.sqrt(1 / n))
++                # 使用nn.Embedding替代nn.EmbeddingBag, inductor时sparse只能为False
++                EE = nn.Embedding(n, m, sparse=False if use_inductor else True)
++                nn.init.uniform_(EE.weight, a=-np.sqrt(1 / n), b=np.sqrt(1 / n))
              if weighted_pooling is None:
                  v_W_l.append(None)
              else:
-@@ -450,11 +471,16 @@ class DLRM_Net(nn.Module):
+@@ -314,6 +321,7 @@ class DLRM_Net(nn.Module):
+         md_threshold=200,
+         weighted_pooling=None,
+         loss_function="bce",
++        preprocess_dense=False,
+     ):
+         super(DLRM_Net, self).__init__()
+ 
+@@ -334,6 +342,20 @@ class DLRM_Net(nn.Module):
+             self.sync_dense_params = sync_dense_params
+             self.loss_threshold = loss_threshold
+             self.loss_function = loss_function
++            self.preprocess_dense = preprocess_dense
++            if self.arch_interaction_op == "dot":
++                interaction_offset = 0 if self.arch_interaction_itself else -1
++                interaction_indices = torch.tril_indices(
++                    len(ln_emb) + 1,
++                    len(ln_emb) + 1,
++                    offset=interaction_offset,
++                )
++                self.register_buffer(
++                    "interaction_li", interaction_indices[0], persistent=False
++                )
++                self.register_buffer(
++                    "interaction_lj", interaction_indices[1], persistent=False
++                )
+             if weighted_pooling is not None and weighted_pooling != "fixed":
+                 self.weighted_pooling = "learned"
+             else:
+@@ -450,11 +472,9 @@ class DLRM_Net(nn.Module):
                  ly.append(QV)
              else:
                  E = emb_l[k]
@@ -127,19 +489,46 @@ index e1b42b7..6f279ca 100644
 -                    per_sample_weights=per_sample_weights,
 -                )
 +                V = None
-+                if use_inductor:
-+                    V = E(
-+                        sparse_index_group_batch,
-+                        sparse_offset_group_batch,
-+                        per_sample_weights=per_sample_weights,
-+                    )
-+                else:
-+                    # 使用nn.Embedding替代nn.EmbeddingBag
-+                    V = E(sparse_index_group_batch)
++                # 使用nn.Embedding替代nn.EmbeddingBag
++                V = E(sparse_index_group_batch)
  
                  ly.append(V)
  
-@@ -763,12 +789,14 @@ def inference(
+@@ -491,15 +511,7 @@ class DLRM_Net(nn.Module):
+             # approach 1: all
+             # Zflat = Z.view((batch_size, -1))
+             # approach 2: unique
+-            _, ni, nj = Z.shape
+-            # approach 1: tril_indices
+-            # offset = 0 if self.arch_interaction_itself else -1
+-            # li, lj = torch.tril_indices(ni, nj, offset=offset)
+-            # approach 2: custom
+-            offset = 1 if self.arch_interaction_itself else 0
+-            li = torch.tensor([i for i in range(ni) for j in range(i + offset)])
+-            lj = torch.tensor([j for i in range(nj) for j in range(i + offset)])
+-            Zflat = Z[:, li, lj]
++            Zflat = Z[:, self.interaction_li, self.interaction_lj]
+             # concatenate dense features and interactions
+             R = torch.cat([x] + [Zflat], dim=1)
+         elif self.arch_interaction_op == "cat":
+@@ -515,6 +527,8 @@ class DLRM_Net(nn.Module):
+         return R
+ 
+     def forward(self, dense_x, lS_o, lS_i):
++        if self.preprocess_dense:
++            dense_x = torch.log1p(dense_x.to(torch.float32))
+         if ext_dist.my_size > 1:
+             # multi-node multi-device run
+             return self.distributed_forward(dense_x, lS_o, lS_i)
+@@ -522,7 +536,6 @@ class DLRM_Net(nn.Module):
+             # single device run
+             return self.sequential_forward(dense_x, lS_o, lS_i)
+         else:
+-            # single-node multi-device run
+             return self.parallel_forward(dense_x, lS_o, lS_i)
+ 
+     def distributed_forward(self, dense_x, lS_o, lS_i):
+@@ -763,12 +776,14 @@ def inference(
      best_auc_test,
      test_ld,
      device,
@@ -155,7 +544,7 @@ index e1b42b7..6f279ca 100644
      if args.mlperf_logging:
          scores = []
          targets = []
-@@ -792,7 +820,7 @@ def inference(
+@@ -792,7 +807,7 @@ def inference(
              X_test,
              lS_o_test,
              lS_i_test,
@@ -164,7 +553,7 @@ index e1b42b7..6f279ca 100644
              device,
              ndevices=ndevices,
          )
-@@ -801,6 +829,8 @@ def inference(
+@@ -801,6 +816,8 @@ def inference(
          # tensor is on GPU memory
          if Z_test.is_cuda:
              torch.cuda.synchronize()
@@ -173,7 +562,7 @@ index e1b42b7..6f279ca 100644
          (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
          if ext_dist.my_size > 1:
              Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
-@@ -844,7 +874,6 @@ def inference(
+@@ -844,7 +861,6 @@ def inference(
                  ),
              }
  
@@ -181,7 +570,7 @@ index e1b42b7..6f279ca 100644
          for metric_name, metric_function in metrics.items():
              validation_results[metric_name] = metric_function(targets, scores)
              writer.add_scalar(
-@@ -856,6 +885,7 @@ def inference(
+@@ -856,6 +872,7 @@ def inference(
      else:
          acc_test = test_accu / test_samp
          writer.add_scalar("Test/Acc", acc_test, log_iter)
@@ -189,7 +578,7 @@ index e1b42b7..6f279ca 100644
  
      model_metrics_dict = {
          "nepochs": args.nepochs,
-@@ -896,8 +926,47 @@ def inference(
+@@ -896,8 +913,47 @@ def inference(
              ),
              flush=True,
          )
@@ -237,7 +626,21 @@ index e1b42b7..6f279ca 100644
  
  def run():
      ### parse arguments ###
-@@ -988,6 +1057,10 @@ def run():
+@@ -962,6 +1018,13 @@ def run():
+     parser.add_argument("--num-indices-per-lookup-fixed", type=bool, default=False)
+     parser.add_argument("--num-workers", type=int, default=0)
+     parser.add_argument("--memory-map", action="store_true", default=False)
++    parser.add_argument("--pin-memory", dest="pin_memory", action="store_true")
++    parser.add_argument("--no-pin-memory", dest="pin_memory", action="store_false")
++    parser.add_argument("--prefetch-factor", type=int, default=3)
++    parser.add_argument(
++        "--no-persistent-workers", dest="persistent_workers", action="store_false"
++    )
++    parser.set_defaults(pin_memory=None, persistent_workers=True)
+     # training
+     parser.add_argument("--mini-batch-size", type=int, default=1)
+     parser.add_argument("--nepochs", type=int, default=1)
+@@ -988,6 +1051,10 @@ def run():
      parser.add_argument("--save-onnx", action="store_true", default=False)
      # gpu
      parser.add_argument("--use-gpu", action="store_true", default=False)
@@ -248,7 +651,7 @@ index e1b42b7..6f279ca 100644
      # distributed
      parser.add_argument("--local_rank", type=int, default=-1)
      parser.add_argument("--dist-backend", type=str, default="")
-@@ -1002,6 +1075,8 @@ def run():
+@@ -1002,6 +1069,8 @@ def run():
      parser.add_argument("--enable-profiling", action="store_true", default=False)
      parser.add_argument("--plot-compute-graph", action="store_true", default=False)
      parser.add_argument("--tensor-board-filename", type=str, default="run_kaggle_pt")
@@ -257,7 +660,7 @@ index e1b42b7..6f279ca 100644
      # store/load model
      parser.add_argument("--save-model", type=str, default="")
      parser.add_argument("--load-model", type=str, default="")
-@@ -1026,6 +1101,17 @@ def run():
+@@ -1026,6 +1095,17 @@ def run():
      global writer
      args = parser.parse_args()
  
@@ -265,7 +668,7 @@ index e1b42b7..6f279ca 100644
 +    args.enable_profiling = True if os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE" else args.enable_profiling
 +    args.nepochs = int(os.environ.get("MODEL_EPOCH")) if os.environ.get("MODEL_EPOCH") is not None else args.nepochs
 +    args.use_inductor = "normal" if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else args.use_inductor
-+    SET_HF32 = os.getenv("MODEL_HF32_FLAG").upper() == "TRUE"
++    SET_HF32 = os.getenv("MODEL_HF32_FLAG", "TRUE").upper() == "TRUE"
 +    if SET_HF32:
 +        set_tf32()
 +
@@ -275,7 +678,7 @@ index e1b42b7..6f279ca 100644
      if args.dataset_multiprocessing:
          assert sys.version_info[0] >= 3 and sys.version_info[1] > 7, (
              "The dataset_multiprocessing "
-@@ -1070,10 +1156,10 @@ def run():
+@@ -1070,10 +1150,10 @@ def run():
          args.test_num_workers = args.num_workers
  
      use_gpu = args.use_gpu and torch.cuda.is_available()
@@ -288,7 +691,7 @@ index e1b42b7..6f279ca 100644
          )
  
      if use_gpu:
-@@ -1082,14 +1168,26 @@ def run():
+@@ -1082,14 +1162,31 @@ def run():
          if ext_dist.my_size > 1:
              ngpus = 1
              device = torch.device("cuda", ext_dist.my_local_rank)
@@ -307,25 +710,41 @@ index e1b42b7..6f279ca 100644
 +        else:
 +            ngpus = torch.npu.device_count()
 +            device = torch.device("npu", 0)
-+            print("Using {} NPU(s)...".format(ngpus))
++            print("Using {} NPU(s)...".format(ngpus)) 
      else:
          device = torch.device("cpu")
          print("Using CPU...")
  
 +    use_xpu = use_gpu or use_npu
++    if args.pin_memory is None:
++        args.pin_memory = use_xpu
++    if args.prefetch_factor < 1:
++        parser.error("--prefetch-factor must be at least 1")
++    args.defer_dense_preprocess = args.data_generation == "dataset"
      ### prepare training data ###
      ln_bot = np.fromstring(args.arch_mlp_bot, dtype=int, sep="-")
      # input data
-@@ -1275,7 +1373,7 @@ def run():
+@@ -1275,7 +1372,10 @@ def run():
              print(T.detach().cpu())
  
      global ndevices
 -    ndevices = min(ngpus, args.mini_batch_size, num_fea - 1) if use_gpu else -1
 +    ndevices = min(ngpus, args.mini_batch_size, num_fea - 1) if use_xpu else -1
++
++    if NPU_ENABLE and ext_dist.my_size <= 1 and ndevices >1:
++        sys.exit("NPU in DLRM not currently support nproc_per_node=1 but not use ASCEND_RT_VISIBLE_DEVICES var.")
  
      ### construct the neural network specified above ###
      # WARNING: to obtain exactly the same initialization for
-@@ -1311,7 +1409,7 @@ def run():
+@@ -1302,6 +1402,7 @@ def run():
+         md_threshold=args.md_threshold,
+         weighted_pooling=args.weighted_pooling,
+         loss_function=args.loss_function,
++        preprocess_dense=args.defer_dense_preprocess,
+     )
+ 
+     # test prints
+@@ -1311,7 +1412,7 @@ def run():
              print(param.detach().cpu().numpy())
          # print(dlrm)
  
@@ -334,7 +753,7 @@ index e1b42b7..6f279ca 100644
          # Custom Model-Data Parallel
          # the mlps are replicated and use data parallelism, while
          # the embeddings are distributed and use model parallelism
-@@ -1327,7 +1425,7 @@ def run():
+@@ -1327,7 +1428,7 @@ def run():
  
      # distribute data parallel mlps
      if ext_dist.my_size > 1:
@@ -343,7 +762,7 @@ index e1b42b7..6f279ca 100644
              device_ids = [ext_dist.my_local_rank]
              dlrm.bot_l = ext_dist.DDP(dlrm.bot_l, device_ids=device_ids)
              dlrm.top_l = ext_dist.DDP(dlrm.top_l, device_ids=device_ids)
-@@ -1336,7 +1434,7 @@ def run():
+@@ -1336,7 +1437,7 @@ def run():
              dlrm.top_l = ext_dist.DDP(dlrm.top_l)
  
      if not args.inference_only:
@@ -352,7 +771,7 @@ index e1b42b7..6f279ca 100644
              sys.exit("GPU version of Adagrad is not supported by PyTorch.")
          # specify the optimizer algorithm
          opts = {
-@@ -1376,6 +1474,16 @@ def run():
+@@ -1376,13 +1477,23 @@ def run():
  
      ### main loop ###
  
@@ -369,7 +788,16 @@ index e1b42b7..6f279ca 100644
      # training or inference
      best_acc_test = 0
      best_auc_test = 0
-@@ -1398,13 +1506,13 @@ def run():
+     skip_upto_epoch = 0
+     skip_upto_batch = 0
+-    total_time = 0
+-    total_loss = 0
++    window_start_time = None
++    total_loss = None
+     total_iter = 0
+     total_samp = 0
+ 
+@@ -1398,13 +1509,13 @@ def run():
      # Load model is specified
      if not (args.load_model == ""):
          print("Loading saved model {}".format(args.load_model))
@@ -385,7 +813,7 @@ index e1b42b7..6f279ca 100644
                  # NOTE: when targeting inference on single GPU,
                  # note that the call to .to(device) has already happened
                  ld_model = torch.load(
-@@ -1412,6 +1520,11 @@ def run():
+@@ -1412,6 +1523,11 @@ def run():
                      map_location=torch.device("cuda"),
                      # map_location=lambda storage, loc: storage.cuda(0)
                  )
@@ -397,7 +825,20 @@ index e1b42b7..6f279ca 100644
          else:
              # when targeting inference on CPU
              ld_model = torch.load(args.load_model, map_location=torch.device("cpu"))
-@@ -1509,9 +1622,42 @@ def run():
+@@ -1429,7 +1545,11 @@ def run():
+         if not args.inference_only:
+             optimizer.load_state_dict(ld_model["opt_state_dict"])
+             best_acc_test = ld_acc_test
+-            total_loss = ld_total_loss
++            total_loss = (
++                None
++                if ld_total_loss is None
++                else torch.as_tensor(ld_total_loss, device=device)
++            )
+             skip_upto_epoch = ld_k  # epochs
+             skip_upto_batch = ld_j  # batches
+         else:
+@@ -1509,13 +1629,45 @@ def run():
      tb_file = "./" + args.tensor_board_filename
      writer = SummaryWriter(tb_file)
  
@@ -442,10 +883,20 @@ index e1b42b7..6f279ca 100644
      ) as prof:
          if not args.inference_only:
              k = 0
-@@ -1539,6 +1685,15 @@ def run():
-                     previous_iteration_time = None
+-            total_time_begin = 0
+             while k < args.nepochs:
+                 if args.mlperf_logging:
+                     mlperf_logger.barrier()
+@@ -1535,10 +1687,20 @@ def run():
+                 if k < skip_upto_epoch:
+                     continue
  
-                 for j, inputBatch in enumerate(train_ld):
+-                if args.mlperf_logging:
+-                    previous_iteration_time = None
+-
+-                for j, inputBatch in enumerate(train_ld):
++                train_iter = iter(train_ld)
++                for j in range(len(train_ld)):
 +                    if j == args.stop_step and args.stop_step > 0:
 +                        print(
 +                            "Early stopping at step {} as specified by --stop-step".format(
@@ -453,29 +904,45 @@ index e1b42b7..6f279ca 100644
 +                            )
 +                        )
 +                        break
++                    if nbatches > 0 and j >= nbatches:
++                        break
 +                    if args.enable_profiling:
 +                        prof.step()
++                    inputBatch = next(train_iter)
                      if j == 0 and args.save_onnx:
                          X_onnx, lS_o_onnx, lS_i_onnx, _, _, _ = unpack_batch(inputBatch)
  
-@@ -1548,14 +1703,14 @@ def run():
+@@ -1547,20 +1709,6 @@ def run():
+ 
                      X, lS_o, lS_i, T, W, CBPP = unpack_batch(inputBatch)
  
-                     if args.mlperf_logging:
+-                    if args.mlperf_logging:
 -                        current_time = time_wrap(use_gpu)
-+                        current_time = time_wrap_xpu(use_xpu)
-                         if previous_iteration_time:
-                             iteration_time = current_time - previous_iteration_time
-                         else:
-                             iteration_time = 0
-                         previous_iteration_time = current_time
-                     else:
+-                        if previous_iteration_time:
+-                            iteration_time = current_time - previous_iteration_time
+-                        else:
+-                            iteration_time = 0
+-                        previous_iteration_time = current_time
+-                    else:
 -                        t1 = time_wrap(use_gpu)
-+                        t1 = time_wrap_xpu(use_xpu)
+-
+-                    # early exit if nbatches was set by the user and has been exceeded
+-                    if nbatches > 0 and j >= nbatches:
+-                        break
+-
+                     # Skip the batch if batch size not multiple of total ranks
+                     if ext_dist.my_size > 1 and X.size(0) % ext_dist.my_size != 0:
+                         print(
+@@ -1570,34 +1718,37 @@ def run():
+                         continue
  
-                     # early exit if nbatches was set by the user and has been exceeded
-                     if nbatches > 0 and j >= nbatches:
-@@ -1576,7 +1731,7 @@ def run():
+                     mbs = T.shape[0]  # = args.mini_batch_size except maybe for last
++                    if total_iter == 0 and args.print_time:
++                        synchronize_device(device)
++                        window_start_time = time.perf_counter()
+ 
+                     # forward pass
+                     Z = dlrm_wrap(
                          X,
                          lS_o,
                          lS_i,
@@ -484,24 +951,91 @@ index e1b42b7..6f279ca 100644
                          device,
                          ndevices=ndevices,
                      )
-@@ -1586,7 +1741,7 @@ def run():
-                         W = W[ext_dist.get_my_slice(mbs)]
+ 
+                     if ext_dist.my_size > 1:
+                         T = T[ext_dist.get_my_slice(mbs)]
+-                        W = W[ext_dist.get_my_slice(mbs)]
++                        if W is not None:
++                            W = W[ext_dist.get_my_slice(mbs)]
  
                      # loss
 -                    E = loss_fn_wrap(Z, T, use_gpu, device)
 +                    E = loss_fn_wrap(Z, T, use_xpu, device)
  
-                     # compute loss and accuracy
-                     L = E.detach().cpu().numpy()  # numpy array
-@@ -1623,7 +1778,7 @@ def run():
-                     if args.mlperf_logging:
-                         total_time += iteration_time
-                     else:
--                        t2 = time_wrap(use_gpu)
-+                        t2 = time_wrap_xpu(use_xpu)
-                         total_time += t2 - t1
+-                    # compute loss and accuracy
+-                    L = E.detach().cpu().numpy()  # numpy array
++                    # Keep the loss on the accelerator. It is transferred to the host
++                    # only when the current reporting window is closed.
++                    batch_loss = E.detach() * mbs
+                     # training accuracy is not disabled
+                     # S = Z.detach().cpu().numpy()  # numpy array
+                     # T = T.detach().cpu().numpy()  # numpy array
  
-                     total_loss += L * mbs
+                     # # print("res: ", S)
+ 
+-                    # # print("j, train: BCE ", j, L)
+-
+                     # mbs = T.shape[0]  # = args.mini_batch_size except maybe for last
+                     # A = np.sum((np.round(S, 0) == T).astype(np.uint8))
+ 
+@@ -1608,7 +1759,7 @@ def run():
+                             args.mlperf_logging
+                             and (j + 1) % args.mlperf_grad_accum_iter == 0
+                         ) or not args.mlperf_logging:
+-                            optimizer.zero_grad()
++                            optimizer.zero_grad(set_to_none=True)
+                         # backward pass
+                         E.backward()
+ 
+@@ -1620,19 +1771,18 @@ def run():
+                             optimizer.step()
+                             lr_scheduler.step()
+ 
+-                    if args.mlperf_logging:
+-                        total_time += iteration_time
+-                    else:
+-                        t2 = time_wrap(use_gpu)
+-                        total_time += t2 - t1
+-
+-                    total_loss += L * mbs
++                    total_loss = (
++                        batch_loss if total_loss is None else total_loss + batch_loss
++                    )
+                     total_iter += 1
+                     total_samp += mbs
+ 
+-                    should_print = ((j + 1) % args.print_freq == 0) or (
+-                        j + 1 == nbatches
++                    is_last_batch = (
++                        nbatches > 0 and j + 1 == nbatches
++                    ) or (
++                        nbatches <= 0 and j + 1 == len(train_ld)
+                     )
++                    should_print = ((j + 1) % args.print_freq == 0) or is_last_batch
+                     should_test = (
+                         (args.test_freq > 0)
+                         and (args.data_generation in ["dataset", "random"])
+@@ -1641,11 +1791,16 @@ def run():
+ 
+                     # print time, loss and accuracy
+                     if should_print or should_test:
+-                        gT = 1000.0 * total_time / total_iter if args.print_time else -1
+-                        total_time = 0
++                        if args.print_time:
++                            synchronize_device(device)
++                            elapsed = time.perf_counter() - window_start_time
++                            gT = 1000.0 * elapsed / total_iter
++                        else:
++                            gT = -1
++                        window_start_time = None
+ 
+-                        train_loss = total_loss / total_samp
+-                        total_loss = 0
++                        train_loss = (total_loss / total_samp).item()
++                        total_loss = None
+ 
+                         str_run_type = (
+                             "inference" if args.inference_only else "training"
 @@ -1656,10 +1811,9 @@ def run():
                              wall_time = " ({})".format(time.strftime("%H:%M"))
  
@@ -525,7 +1059,16 @@ index e1b42b7..6f279ca 100644
                      # testing
                      if should_test:
                          epoch_num_float = (j + 1) / len(train_ld) + k + 1
-@@ -1695,7 +1852,7 @@ def run():
+@@ -1683,8 +1840,6 @@ def run():
+                             )
+ 
+                         # don't measure training iter time in a test iteration
+-                        if args.mlperf_logging:
+-                            previous_iteration_time = None
+                         print(
+                             "Testing at - {}/{} of epoch {},".format(j + 1, nbatches, k)
+                         )
+@@ -1695,7 +1850,7 @@ def run():
                              best_auc_test,
                              test_ld,
                              device,
@@ -534,6 +1077,17 @@ index e1b42b7..6f279ca 100644
                              log_iter,
                          )
  
+@@ -1707,7 +1862,9 @@ def run():
+                             model_metrics_dict["epoch"] = k
+                             model_metrics_dict["iter"] = j + 1
+                             model_metrics_dict["train_loss"] = train_loss
+-                            model_metrics_dict["total_loss"] = total_loss
++                            model_metrics_dict["total_loss"] = (
++                                0.0 if total_loss is None else total_loss.item()
++                            )
+                             model_metrics_dict["opt_state_dict"] = (
+                                 optimizer.state_dict()
+                             )
 @@ -1788,22 +1945,12 @@ def run():
                  best_auc_test,
                  test_ld,
@@ -559,7 +1113,7 @@ index e1b42b7..6f279ca 100644
  
      # plot compute graph
      if args.plot_compute_graph:
-@@ -1895,14 +2042,39 @@ def run():
+@@ -1895,14 +2042,37 @@ def run():
              input_names=all_inputs,
              output_names=["pred"],
              dynamic_axes=dynamic_axes,
@@ -570,8 +1124,6 @@ index e1b42b7..6f279ca 100644
          # check the onnx model
          onnx.checker.check_model(dlrm_pytorch_onnx)
 -    total_time_end = time_wrap(use_gpu)
-+    total_time_end = time_wrap_xpu(use_xpu)
-+
 +    if args.sample_statistics_num > 0:
 +        device_name = "NPU" if use_npu else "GPU"
 +        inductor_flag = "inductor" if args.use_inductor != "" else "eager"
@@ -1021,44 +1573,6 @@ index 3633324..2e16a73 100644
          lS_i = lS_i.reshape(-1, batch_size)
          multi_hot_ids_l = []
          for k, (sparse_data_batch_for_table, multi_hot_table) in enumerate(
-diff --git a/tricks/qr_embedding_bag.py b/tricks/qr_embedding_bag.py
-index 0a7bc4f..3ec738c 100644
---- a/tricks/qr_embedding_bag.py
-+++ b/tricks/qr_embedding_bag.py
-@@ -148,9 +148,7 @@ class QREmbeddingBag(nn.Module):
-         self.scale_grad_by_freq = scale_grad_by_freq
- 
-         if self.operation == "add" or self.operation == "mult":
--            assert self.embedding_dim[0] == self.embedding_dim[1], (
--                "Embedding dimensions do not match!"
--            )
-+            assert (self.embedding_dim[0] == self.embedding_dim[1]), "Embedding dimensions do not match!"
- 
-         self.num_embeddings = [
-             int(np.ceil(num_categories / num_collisions)),
-@@ -166,18 +164,14 @@ class QREmbeddingBag(nn.Module):
-             )
-             self.reset_parameters()
-         else:
--            assert list(_weight[0].shape) == [
-+            assert (list(_weight[0].shape) == [
-                 self.num_embeddings[0],
-                 self.embedding_dim[0],
--            ], (
--                "Shape of weight for quotient table does not match num_embeddings and embedding_dim"
--            )
--            assert list(_weight[1].shape) == [
-+            ]), "Shape of weight for quotient table does not match num_embeddings and embedding_dim"
-+            assert (list(_weight[1].shape) == [
-                 self.num_embeddings[1],
-                 self.embedding_dim[1],
--            ], (
--                "Shape of weight for remainder table does not match num_embeddings and embedding_dim"
--            )
-+            ]), "Shape of weight for remainder table does not match num_embeddings and embedding_dim"
-             self.weight_q = Parameter(_weight[0])
-             self.weight_r = Parameter(_weight[1])
-         self.mode = mode
 -- 
 2.52.0.windows.1
 
