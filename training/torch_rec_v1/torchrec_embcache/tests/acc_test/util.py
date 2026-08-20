@@ -7,14 +7,12 @@
 # LICENSE file in the root directory of this source tree.
 import logging
 import sys
-from datetime import datetime
-
-import pytz
+from datetime import datetime, timezone
 
 
 def setup_logging(rank):
     this_time = str(
-        datetime.now(tz=pytz.timezone("PRC")).strftime(
+        datetime.now(tz=timezone.utc).strftime(
             "%m_%d_%H_%M_%S",
         )
     )
@@ -23,9 +21,7 @@ def setup_logging(rank):
         datefmt="%m-%d %H:%M:%S",
     )
     logger = logging.getLogger()
-    file_handler = logging.FileHandler(
-        f"test_rank{rank}_{this_time}.log", encoding="utf-8"
-    )
+    file_handler = logging.FileHandler(f"test_rank{rank}_{this_time}.log", encoding="utf-8")
     file_handler.setFormatter(format_mess)
     logger.addHandler(file_handler)
     logger.setLevel(logging.DEBUG)
@@ -37,8 +33,8 @@ def setup_main_logging():
         format="[MAIN][%(levelname)s][%(asctime)s.%(msecs)03d] %(message)s",
         datefmt="%m-%d %H:%M:%S",
         handlers=[
-            logging.FileHandler(f"test_main_{datetime.now(tz=pytz.timezone('PRC')).strftime('%m_%d_%H_%M_%S')}.log"),
-            logging.StreamHandler(sys.stdout)  # 同时输出到控制台
+            logging.FileHandler(f"test_main_{datetime.now(tz=timezone.utc).strftime('%m_%d_%H_%M_%S')}.log"),
+            logging.StreamHandler(sys.stdout),  # 同时输出到控制台
         ],
-        force=True
+        force=True,
     )

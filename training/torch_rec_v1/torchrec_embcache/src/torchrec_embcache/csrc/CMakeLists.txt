@@ -15,6 +15,15 @@ find_package(pybind11 REQUIRED)
 
 find_package(Threads REQUIRED)
 
+if(NOT DEFINED TORCH_CXX11_ABI)
+    execute_process(
+            COMMAND python3 -c "import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))"
+            OUTPUT_VARIABLE TORCH_CXX11_ABI
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif()
+message(STATUS "TORCH_CXX11_ABI: ${TORCH_CXX11_ABI}")
+
 file(GLOB_RECURSE SOURCES
         ./common/*.cpp
         ./emb_table/*.cpp
@@ -28,6 +37,7 @@ file(GLOB_RECURSE SOURCES
 )
 
 pybind11_add_module(embcache_pybind ${SOURCES})
+target_compile_definitions(embcache_pybind PRIVATE _GLIBCXX_USE_CXX11_ABI=${TORCH_CXX11_ABI})
 
 # 链接 PyTorch 库
 find_library(TORCH_PYTHON_LIBRARY torch_python PATH "${TORCH_INSTALL_PREFIX}/lib")

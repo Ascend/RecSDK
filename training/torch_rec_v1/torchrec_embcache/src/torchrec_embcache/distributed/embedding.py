@@ -5,6 +5,7 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+# pylint: disable=duplicate-code
 from __future__ import annotations
 
 import copy
@@ -32,7 +33,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
     SplitTableBatchedEmbeddingBagsCodegen,
 )
 
-from hybrid_torchrec import IS_TORCH_REC_120
+from hybrid_torchrec._adapters import adapter
 from hybrid_torchrec.constants import MAX_CACHINE_MEM_SIZE
 from hybrid_torchrec.modules.ids_process import IdsMapper
 from hybrid_torchrec.modules.ids_process import HashMapBase
@@ -50,7 +51,7 @@ from hybrid_torchrec.utils import check
 from torchrec_embcache.distributed.configs import (
     EmbCacheEmbeddingConfig,
     check_multi_hot_sizes,
-    check_create_table_params
+    check_create_table_params,
 )
 from torchrec_embcache.distributed.sharding.rw_sequence_sharding import (
     EmbCacheRwSequenceEmbeddingSharding,
@@ -60,7 +61,7 @@ from torchrec_embcache.sparse.jagged_tensor_with_timestamp import (
 )
 from torchrec_embcache.distributed.utils import get_embedding_optim_num
 from torchrec_embcache.distributed.sharding.rw_sharding import EmbCacheRwSparseFeaturesDistAwaitable
-from torchrec_embcache.embcache_pybind import (
+from torchrec_embcache.embcache_pybind import (  # pylint: disable=no-name-in-module
     EmbcacheManager,
     EmbConfig,
     AdmitAndEvictConfig,
@@ -79,13 +80,10 @@ from torchrec.distributed.embedding import (
     pad_vbe_kjt_lengths,
     get_ec_index_dedup,
 )
-if not IS_TORCH_REC_120:
-    from torchrec.distributed.embedding import create_sharding_infos_by_sharding
 from torchrec.distributed.embedding_sharding import (
     EmbeddingSharding,
     EmbeddingShardingInfo,
     EmbeddingShardingContext,
-    KJTListSplitsAwaitable,
 )
 from torchrec.distributed.model_parallel import (
     DistributedDataParallel,
@@ -106,27 +104,18 @@ from torchrec.distributed.utils import (
     add_params_from_parameter_sharding,
     convert_to_fbgemm_types,
     merge_fused_params,
-    optimizer_type_to_emb_opt_type
+    optimizer_type_to_emb_opt_type,
 )
 from torchrec.modules.embedding_modules import (
     EmbeddingCollection,
     EmbeddingCollectionInterface,
-    get_embedding_names_by_table
+    get_embedding_names_by_table,
 )
 from torchrec.optim.fused import FusedOptimizerModule
 from torchrec.optim.keyed import CombinedOptimizer
 from torchrec.sparse.jagged_tensor import KeyedJaggedTensor, JaggedTensor
-from torchrec.distributed.embedding_types import (
-    EmbeddingComputeKernel,
-    KJTList,
-    ShardingType
-)
-from torchrec.modules.embedding_configs import (
-    DataType,
-    EmbeddingConfig,
-    EmbeddingTableConfig,
-    PoolingType
-)
+from torchrec.distributed.embedding_types import EmbeddingComputeKernel, KJTList, ShardingType
+from torchrec.modules.embedding_configs import DataType, EmbeddingConfig, PoolingType
 
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -148,9 +137,7 @@ class ShardingConfig:
 
 def create_embcache_embedding_sharding(
     sharding_config: ShardingConfig,
-) -> EmbeddingSharding[
-    EmbeddingShardingContext, KeyedJaggedTensor, torch.Tensor, torch.Tensor
-]:
+) -> EmbeddingSharding[EmbeddingShardingContext, KeyedJaggedTensor, torch.Tensor, torch.Tensor]:
     if sharding_config.sharding_type == ShardingType.ROW_WISE.value:
         return EmbCacheRwSequenceEmbeddingSharding(
             sharding_config.sharding_infos,
@@ -207,10 +194,12 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
         embedding_optimizer_cls: Type[torch.optim.Optimizer] = torch.optim.Adagrad,
     ) -> None:
         check_multi_hot_sizes(multi_hot_sizes, tables)
-        check(all([isinstance(item, (EmbCacheEmbeddingConfig, EmbeddingConfig)) for item in tables]),
-              "all element type in 'tables' must be EmbCacheEmbeddingConfig or EmbeddingConfig object")
+        check(
+            all(isinstance(item, (EmbCacheEmbeddingConfig, EmbeddingConfig)) for item in tables),
+            "all element type in 'tables' must be EmbCacheEmbeddingConfig or EmbeddingConfig object",
+        )
         check_create_table_params(batch_size, embedding_optimizer_cls, multi_hot_sizes, tables, world_size)
-        
+
         super().__init__(tables, device, need_indices)
         torch._C._log_api_usage_once(f"torchrec.modules.{self.__class__.__name__}")
         self.embeddings: nn.ModuleDict = nn.ModuleDict()
@@ -219,15 +208,11 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
         self._embedding_configs = tables
         self._embedding_dim: int = -1
         self._need_indices: bool = need_indices
-        self._device: torch.device = (
-            device if device is not None else torch.device("cpu")
-        )
+        self._device: torch.device = device if device is not None else torch.device("cpu")
         self._optim_num = get_embedding_optim_num(embedding_optimizer_cls)
         logger.debug("======  _optim_num: %d", self._optim_num)
 
-        evict_step_intervals = set(
-            config.admit_and_evict_config.evict_step_interval for config in tables
-        )
+        evict_step_intervals = set(config.admit_and_evict_config.evict_step_interval for config in tables)
         if len(evict_step_intervals) > 1:
             raise ValueError("all table must have the same evict_step_interval param.")
 
@@ -260,18 +245,14 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
                 raise ValueError(f"Duplicate table name {config.name}")
 
             table_names.add(config.name)
-            self._embedding_dim = (
-                config.embedding_dim if self._embedding_dim < 0 else self._embedding_dim
-            )
+            self._embedding_dim = config.embedding_dim if self._embedding_dim < 0 else self._embedding_dim
             if self._embedding_dim != config.embedding_dim:
                 raise ValueError(
                     "All tables in a EmbeddingCollection are required to have same embedding dimension."
                     + f" Violating case: {config.name}'s embedding_dim {config.embedding_dim} !="
                     + f" {self._embedding_dim}"
                 )
-            self.embeddings[config.name] = EmbCacheHashTable(
-                config=config, device=self.device
-            )
+            self.embeddings[config.name] = EmbCacheHashTable(config=config, device=self.device)
             if config.init_fn is not None:
                 config.init_fn(self.embeddings[config.name].weight)
 
@@ -287,8 +268,11 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
             if isinstance(ori_config, EmbCacheEmbeddingConfig):
                 continue
 
-            emb_cache_config = EmbCacheEmbeddingConfig(embedding_dim=ori_config.embedding_dim,
-                                                       num_embeddings=ori_config.num_embeddings)
+            emb_cache_config = EmbCacheEmbeddingConfig(  # pylint: disable=unexpected-keyword-arg
+                num_embeddings=ori_config.num_embeddings,
+                embedding_dim=ori_config.embedding_dim,
+                name=ori_config.name,
+            )
             emb_cache_config.__dict__.update(ori_config.__dict__)
             tables[i] = emb_cache_config
 
@@ -311,9 +295,7 @@ class EmbCacheEmbeddingCollection(EmbeddingCollection):
             )
         )
         if max_device_mem_for_vectors < min_mem:
-            raise ValueError(
-                f"max_device_mem_for_vectors {max_device_mem_for_vectors} < min_mem:{min_mem}"
-            )
+            raise ValueError(f"max_device_mem_for_vectors {max_device_mem_for_vectors} < min_mem:{min_mem}")
 
         table_num_embeddings = np.trunc(
             np.dot(
@@ -344,16 +326,10 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         # re-init the followings (because we will create self._embedding_shardings,
         # and following variables might depend on it)
         self._module_fqn = module_fqn
-        self._embedding_configs: List[EmbCacheEmbeddingConfig] = (
-            module.embedding_configs()
-        )
-        self._table_names: List[str] = [
-            config.name 
-            for config in self._embedding_configs
-        ]
+        self._embedding_configs: List[EmbCacheEmbeddingConfig] = module.embedding_configs()
+        self._table_names: List[str] = [config.name for config in self._embedding_configs]
         self._table_name_to_config: Dict[str, EmbCacheEmbeddingConfig] = {
-            config.name: config 
-            for config in self._embedding_configs
+            config.name: config for config in self._embedding_configs
         }
         self.module_sharding_plan: EmbeddingModuleShardingPlan = cast(
             EmbeddingModuleShardingPlan,
@@ -363,30 +339,24 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                 if table_name in self._table_names
             },
         )
-        self._output_dtensor: bool = (
-            fused_params.get("output_dtensor", False) if fused_params else False
-        )
+        self._output_dtensor: bool = adapter.get_output_dtensor(npu_env, fused_params)
         self._env = npu_env
         self._use_index_dedup: bool = use_index_dedup or get_ec_index_dedup()
-        create_sharding_params = (module, table_name_to_parameter_sharding, fused_params)
-        if IS_TORCH_REC_120:
-            self.sharding_type_to_sharding_infos = self.create_grouped_sharding_infos(*create_sharding_params)
-        else:
-            # adapt for torchrec 1.1.0
-            self.sharding_type_to_sharding_infos = create_sharding_infos_by_sharding(*create_sharding_params)
+        create_sharding_params = (module, table_name_to_parameter_sharding, "embeddings.", fused_params)
+        self.sharding_type_to_sharding_infos = adapter.create_sharding_infos(self, *create_sharding_params)
         self.table2hashmap: Dict[str, HashMapBase] = self.create_table2hashmap(module)
         self._enable_admit = any(
             hasattr(emb_config, "admit_and_evict_config")
-            and (emb_config.admit_and_evict_config.is_feature_admit_enabled() or \
-                 emb_config.admit_and_evict_config.is_showclick_filter_enabled())
+            and (
+                emb_config.admit_and_evict_config.is_feature_admit_enabled()
+                or emb_config.admit_and_evict_config.is_showclick_filter_enabled()
+            )
             for emb_config in self._embedding_configs
         )
 
         self._sharding_type_to_sharding: Dict[
             str,
-            EmbeddingSharding[
-                SequenceShardingContext, KeyedJaggedTensor, torch.Tensor, torch.Tensor
-            ],
+            EmbeddingSharding[SequenceShardingContext, KeyedJaggedTensor, torch.Tensor, torch.Tensor],
         ] = {
             sharding_type: create_embcache_embedding_sharding(
                 ShardingConfig(
@@ -408,7 +378,13 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         self._device = npu_device
         self._cpu_device = cpu_device
         self._input_dists: List[nn.Module] = []
+        self._write_dists: List[nn.Module] = []
+        self._write_splits: List[int] = []
         self._lookups: List[nn.Module] = []
+        self._updates: List[nn.Module] = []
+        self.enable_embedding_update: bool = any(
+            getattr(config, "enable_embedding_update", False) for config in self._embedding_configs
+        )
         self._create_lookups()
         self._output_dists: List[nn.Module] = []
         self._create_output_dist()
@@ -423,9 +399,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
             for _, m in lookup.named_modules():
                 if isinstance(m, FusedOptimizerModule):
                     # modify param keys to match EmbeddingCollection
-                    params: MutableMapping[
-                        str, TypeUnion[torch.Tensor, ShardedTensor]
-                    ] = {}
+                    params: MutableMapping[str, TypeUnion[torch.Tensor, ShardedTensor]] = {}
                     for param_key, weight in m.fused_optimizer.params.items():
                         params["embeddings." + param_key] = weight
                     m.fused_optimizer.params = params
@@ -454,7 +428,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                     module=lookup,
                     device_ids=(
                         [self._device]
-                        if self._device is not None and self._device.type in {"cuda", "mtia"}
+                        if self._device is not None and self._device.type in {"cuda", "npu", "mtia"}
                         else None
                     ),
                     process_group=npu_env.process_group,
@@ -469,9 +443,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         if module.device not in ["meta", "cpu"] and module.device.type not in ["meta", "cpu"]:
             self.load_state_dict(module.state_dict(), strict=False)
 
-        self._memcpy_stream: Optional[torch_npu.npu.streams.Stream] = (
-            torch_npu.npu.Stream(priority=-1)
-        )
+        self._memcpy_stream: Optional[torch_npu.npu.streams.Stream] = torch_npu.npu.Stream(priority=-1)
         self._embcache_mgr = self._create_embcache_mgr(module.need_accumulate_offset)
         self._set_cache_mgr_for_ids_mapper()
         self._has_uninitialized_post_input_dist: bool = True
@@ -479,10 +451,11 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
 
     @classmethod
     def create_grouped_sharding_infos(
-            cls,
-            module: EmbeddingCollectionInterface,
-            table_name_to_parameter_sharding: Dict[str, ParameterSharding],
-            fused_params: Optional[Dict[str, Any]],
+        cls,
+        module: EmbeddingCollectionInterface,
+        table_name_to_parameter_sharding: Dict[str, ParameterSharding],
+        prefix: str,
+        fused_params: Optional[Dict[str, Any]],
     ) -> Dict[str, List[EmbeddingShardingInfo]]:
         """
         convert ParameterSharding (table_name_to_parameter_sharding: Dict[str, ParameterSharding]) to
@@ -498,24 +471,19 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         state_dict = module.state_dict()
 
         for (
-                config,
-                embedding_names,
+            config,
+            embedding_names,
         ) in zip(module.embedding_configs(), module.embedding_names_by_table()):
             table_name = config.name
             check(
-                table_name in table_name_to_parameter_sharding,
-                f"{table_name} not in table_name_to_parameter_sharding"
+                table_name in table_name_to_parameter_sharding, f"{table_name} not in table_name_to_parameter_sharding"
             )
 
             parameter_sharding = table_name_to_parameter_sharding[table_name]
-            if parameter_sharding.compute_kernel not in [
-                kernel.value for kernel in EmbeddingComputeKernel
-            ]:
-                raise ValueError(
-                    f"Compute kernel not supported {parameter_sharding.compute_kernel}"
-                )
+            if parameter_sharding.compute_kernel not in [kernel.value for kernel in EmbeddingComputeKernel]:
+                raise ValueError(f"Compute kernel not supported {parameter_sharding.compute_kernel}")
 
-            param_name = "embeddings." + config.name + ".weight"
+            param_name = prefix + config.name + ".weight"
             check(param_name in parameter_by_name or param_name in state_dict, "param_name is invalid")
             param = parameter_by_name.get(param_name, state_dict[param_name])
 
@@ -525,25 +493,23 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
             optimizer_params = getattr(param, "_optimizer_kwargs", [{}])
             optimizer_classes = getattr(param, "_optimizer_classes", [None])
 
-            check(len(optimizer_classes) == 1 and len(optimizer_params) == 1,
-                  f"Only support 1 optimizer, given {len(optimizer_classes)}")
+            check(
+                len(optimizer_classes) == 1 and len(optimizer_params) == 1,
+                f"Only support 1 optimizer, given {len(optimizer_classes)}",
+            )
             optimizer_class = optimizer_classes[0]
             optimizer_params = optimizer_params[0]
             if optimizer_class:
-                optimizer_params["optimizer"] = optimizer_type_to_emb_opt_type(
-                    optimizer_class
-                )
+                optimizer_params["optimizer"] = optimizer_type_to_emb_opt_type(optimizer_class)
 
             per_table_fused_params = merge_fused_params(fused_params, optimizer_params)
-            per_table_fused_params = add_params_from_parameter_sharding(
-                per_table_fused_params, parameter_sharding
-            )
+            per_table_fused_params = add_params_from_parameter_sharding(per_table_fused_params, parameter_sharding)
             per_table_fused_params = convert_to_fbgemm_types(per_table_fused_params)
 
             sharding_type_to_sharding_infos[parameter_sharding.sharding_type].append(
                 (
                     EmbeddingShardingInfo(
-                        embedding_config=EmbeddingTableConfig(
+                        embedding_config=adapter.make_embedding_table_config(
                             num_embeddings=config.num_embeddings,
                             embedding_dim=config.embedding_dim,
                             name=config.name,
@@ -555,6 +521,10 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                             embedding_names=embedding_names,
                             weight_init_max=config.weight_init_max,
                             weight_init_min=config.weight_init_min,
+                            total_num_buckets=getattr(config, "total_num_buckets", None),
+                            use_virtual_table=getattr(config, "use_virtual_table", False),
+                            virtual_table_eviction_policy=getattr(config, "virtual_table_eviction_policy", None),
+                            enable_embedding_update=getattr(config, "enable_embedding_update", False),
                         ),
                         param_sharding=parameter_sharding,
                         param=param,
@@ -567,7 +537,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
     @property
     def embcache_mgr(self):
         return self._embcache_mgr
-    
+
     @property
     def config_list(self):
         return self._embedding_configs
@@ -581,6 +551,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
     ) -> LazyAwaitable[Dict[str, JaggedTensor]]:
         awaitables = []
         features_before_all2all_per_sharding: List[KeyedJaggedTensor] = []
+        resize_awaitables = []
         for lookup, out_dist, sharding_ctx, features, sharding_type in zip(
             self._lookups,
             self._output_dists,
@@ -588,50 +559,38 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
             input_feature,
             self._sharding_type_to_sharding,
         ):
-            sharding_ctx.lengths_after_input_dist = features.lengths().view(
-                -1, features.stride()
-            )
+            sharding_ctx.lengths_after_input_dist = features.lengths().view(-1, features.stride())
 
             lookup_ret = lookup(features)
+            if hasattr(lookup, "get_resize_awaitables"):
+                resize_awaitables.extend(lookup.get_resize_awaitables())
             if self._has_enable_feature_admit():
-                lookup_ret = self._reset_embedding_for_not_admitted_ids(
-                    features, lookup, lookup_ret
-                )
+                lookup_ret = self._reset_embedding_for_not_admitted_ids(features, lookup, lookup_ret)
             embedding_dim = self._embedding_dim_for_sharding_type(sharding_type)
 
-            awaitables.append(
-                out_dist(lookup_ret.view(-1, embedding_dim), sharding_ctx)
-            )
+            awaitables.append(out_dist(lookup_ret.view(-1, embedding_dim), sharding_ctx))
 
-            features_before_all2all_per_sharding.append(
-                sharding_ctx.features_before_input_dist
-            )
-        return EmbeddingCollectionAwaitable(
+            features_before_all2all_per_sharding.append(sharding_ctx.features_before_input_dist)
+        return adapter.make_awaitable(
+            EmbeddingCollectionAwaitable,
             awaitables_per_sharding=awaitables,
             features_per_sharding=features_before_all2all_per_sharding,
             embedding_names_per_sharding=self._embedding_names_per_sharding,
             need_indices=self._need_indices,
             features_to_permute_indices=self._features_to_permute_indices,
             ctx=ctx,
+            module_fqn=self._module_fqn,
+            sharding_types=list(self._sharding_type_to_sharding.keys()),
+            resize_awaitables=resize_awaitables,
         )
 
-    def _reset_embedding_for_not_admitted_ids(
-        self, features: KeyedJaggedTensor, lookup, lookup_ret: Tensor
-    ) -> Tensor:
-        emb_dims: List[int] = [
-            emb_table.embedding_dim
-            for emb_table in lookup.grouped_configs[0].embedding_tables
-        ]
-        emb_names: List[str] = [
-            emb_table.name 
-            for emb_table in lookup.grouped_configs[0].embedding_tables
-        ]
+    def _reset_embedding_for_not_admitted_ids(self, features: KeyedJaggedTensor, lookup, lookup_ret: Tensor) -> Tensor:
+        emb_dims: List[int] = [emb_table.embedding_dim for emb_table in lookup.grouped_configs[0].embedding_tables]
+        emb_names: List[str] = [emb_table.name for emb_table in lookup.grouped_configs[0].embedding_tables]
         emb_not_admitted_default_value: List[float] = []
         for emb_name in emb_names:
             emb_not_admitted_default_value.append(
-                self._table_name_to_config[
-                    emb_name
-                ].admit_and_evict_config.not_admitted_default_value
+                self._table_name_to_config[emb_name].admit_and_evict_config.not_admitted_default_value
             )
         features_offset_per_key: List[int] = features.offset_per_key()
         feature_key_num = len(features_offset_per_key) - 1
@@ -645,17 +604,11 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         lookup_ret_by_feature: List[Tensor] = []
         lookup_ret_offset = 0
         for i in range(feature_key_num):
-            lookup_ret_size = emb_dims[i] * (
-                features_offset_per_key[i + 1] - features_offset_per_key[i]
-            )
-            lookup_ret_by_feature.append(
-                lookup_ret[lookup_ret_offset: lookup_ret_offset + lookup_ret_size]
-            )
+            lookup_ret_size = emb_dims[i] * (features_offset_per_key[i + 1] - features_offset_per_key[i])
+            lookup_ret_by_feature.append(lookup_ret[lookup_ret_offset : lookup_ret_offset + lookup_ret_size])
             lookup_ret_offset += lookup_ret_size
         for i in range(feature_key_num):
-            ids_offset_tensor = features.values()[
-                features_offset_per_key[i]: features_offset_per_key[i + 1]
-            ]
+            ids_offset_tensor = features.values()[features_offset_per_key[i] : features_offset_per_key[i + 1]]
             feature_key_offset_musk = ids_offset_tensor == 0
             true_value_num = torch.sum(feature_key_offset_musk).item()
             lookup_ret_with_default = lookup_ret_by_feature[i].view(-1, emb_dims[i])
@@ -672,21 +625,12 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         return lookup_ret
 
     def _has_enable_feature_admit(self):
-        return any(
-            emb_config.admit_and_evict_config.admit_threshold != -1
-            for emb_config in self._embedding_configs
-        )
+        return any(emb_config.admit_and_evict_config.admit_threshold != -1 for emb_config in self._embedding_configs)
 
     def _embedding_dim_for_sharding_type(self, sharding_type: str) -> int:
-        return (
-            self._local_embedding_dim
-            if sharding_type == ShardingType.COLUMN_WISE.value
-            else self._embedding_dim
-        )
+        return self._local_embedding_dim if sharding_type == ShardingType.COLUMN_WISE.value else self._embedding_dim
 
-    def compute_swap_info_async(
-        self, sparse_features_after_dist: KJTList
-    ) -> AsyncSwapInfo:
+    def compute_swap_info_async(self, sparse_features_after_dist: KJTList) -> AsyncSwapInfo:
         if isinstance(sparse_features_after_dist[0], KeyedJaggedTensorWithLookHelper):
             return self._embcache_mgr.compute_swap_info_async(
                 sparse_features_after_dist[0].unique_ids,
@@ -697,10 +641,8 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                 sparse_features_after_dist[0].values(),
                 sparse_features_after_dist[0].offset_per_key(),
             )
- 
-    def record_batch_keys_async(
-        self, sparse_features_after_dist: KJTList
-    ) -> None:
+
+    def record_batch_keys_async(self, sparse_features_after_dist: KJTList) -> None:
         if isinstance(sparse_features_after_dist[0], KeyedJaggedTensorWithLookHelper):
             return self._embcache_mgr.record_batch_keys_async(
                 sparse_features_after_dist[0]._unique_ids,
@@ -718,9 +660,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
         swapout_embs: torch.Tensor,
         swapout_optims: torch.Tensor,
     ) -> None:
-        return self._embcache_mgr.embedding_update_async(
-            swap_info, swapout_embs, swapout_optims
-        )
+        return self._embcache_mgr.embedding_update_async(swap_info, swapout_embs, swapout_optims)
 
     def record_host_emb_update_times(self):
         self._embcache_mgr.record_embedding_update_times()
@@ -768,7 +708,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                 admit_threshold=aaec_py.admit_threshold,
                 not_admitted_default_value=aaec_py.not_admitted_default_value,
                 evict_threshold=aaec_py.evict_threshold,
-                evict_step_interval=aaec_py.evict_step_interval
+                evict_step_interval=aaec_py.evict_step_interval,
             )
 
         return aaec
@@ -794,15 +734,13 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                 local_shard_size = 0
                 rank_str = os.environ.get("LOCAL_RANK", "0")
                 if not rank_str.isdigit():
-                    raise ValueError(
-                        f"Param error, LOCAL_RANK must be a number but got {rank_str}."
-                    )
+                    raise ValueError(f"Param error, LOCAL_RANK must be a number but got {rank_str}.")
                 rank = int(rank_str)
                 for shard_metadata in sharding_info.param_sharding.sharding_spec.shards:
                     # 解析 placement 字符串以获取 rank
                     placement_str = str(shard_metadata.placement)
                     # 尝试提取 rank
-                    rank_part = placement_str.split("/")[0]  # 获取 "rank:N" 部分
+                    rank_part = placement_str.split("/", maxsplit=1)[0]  # 获取 "rank:N" 部分
                     shard_rank = int(rank_part.split(":")[1])  # 获取 N
                     if shard_rank == rank:
                         # 找到了当前 rank 对应的 shard
@@ -811,7 +749,8 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
 
                 emb_configs.append(
                     EmbConfig(
-                        table_name=embedding_config.name, initializer_type=cpp_initializer_type,
+                        table_name=embedding_config.name,
+                        initializer_type=cpp_initializer_type,
                         emb_dim=embedding_config.embedding_dim,
                         optim_num=optim_num,
                         cache_size=local_shard_size,
@@ -821,7 +760,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                         weight_init_stddev=emb_original_config.weight_init_stddev,
                         admit_and_evict_config=self._build_admit_and_evict_config(emb_original_config),
                         num_features=emb_original_config.num_features(),
-                        is_incremental=emb_original_config.is_incremental
+                        is_incremental=emb_original_config.is_incremental,
                     )
                 )
         return EmbcacheManager(emb_configs, need_accumulate_offset)
@@ -833,9 +772,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
             table2hashmap[name] = hashmap
         return table2hashmap
 
-    def post_input_dist(
-        self, ctx: EmbeddingCollectionContext, features: KJTList
-    ) -> PostInputKJTListAwaitable:
+    def post_input_dist(self, ctx: EmbeddingCollectionContext, features: KJTList) -> PostInputKJTListAwaitable:
         """
         feature的顺序按照Dict[str, list[]]  shardType -> [t.feature_name for t in tables]
         """
@@ -879,7 +816,7 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
 
             if self._features_order:
                 if self._features_order_tensor is not None and self._features_order_tensor.device != features.device():
-                    features_order_tensor = self._features_order_tensor.to(features.device()) 
+                    features_order_tensor = self._features_order_tensor.to(features.device())
                 else:
                     features_order_tensor = self._features_order_tensor
 
@@ -895,27 +832,27 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
                 features_by_shards = self._dedup_indices(ctx, features_by_shards)
 
             awaitables = []
-            for input_dist, features in zip(self._input_dists, features_by_shards):
-                shard_context = HybridSequenceShardingContext(
-                    features_before_input_dist=features
-                )
-                awaitables.append(input_dist(features, shard_context, labels))
+            for input_dist, shard_features in zip(self._input_dists, features_by_shards):
+                shard_context = HybridSequenceShardingContext(features_before_input_dist=shard_features)
+                awaitables.append(input_dist(shard_features, shard_context, labels))
 
                 ctx.sharding_contexts.append(shard_context)
             if unpadded_features is not None:
                 self._compute_sequence_vbe_context(ctx, unpadded_features)
-        return KJTListSplitsAwaitable(awaitables, ctx)
+        return adapter.make_kjt_list_splits_awaitable(
+            awaitables=awaitables,
+            ctx=ctx,
+            module_fqn=self._module_fqn,
+            sharding_types=self._features_order,
+        )
 
     def _record_timestamp_data(self, features: KeyedJaggedTensorWithTimestamp):
         # 记录淘汰要用的timestamp数据
         is_evict_enabled = any(
-            emb_config.admit_and_evict_config.is_feature_evict_enabled()
-            for emb_config in self._embedding_configs
+            emb_config.admit_and_evict_config.is_feature_evict_enabled() for emb_config in self._embedding_configs
         )
         if is_evict_enabled and hasattr(features, "_timestamps"):
-            self._embcache_mgr.record_timestamp(
-                features.values(), features.offset_per_key(), features.timestamps
-            )
+            self._embcache_mgr.record_timestamp(features.values(), features.offset_per_key(), features.timestamps)
 
     def forward(self, *args, **kwargs) -> LazyAwaitable[Out]:
         """
@@ -972,11 +909,11 @@ class EmbCacheShardedEmbeddingCollection(ShardedEmbeddingCollection):
             sharding_ctx.sparse_features_recat = None
             # 因查表前卸载到cpu,查表时要to device.
             if sharding_ctx.unbucketize_permute_tensor is not None:
-                sharding_ctx.unbucketize_permute_tensor = (
-                    sharding_ctx.unbucketize_permute_tensor.to(self._device, non_blocking=True)
+                sharding_ctx.unbucketize_permute_tensor = sharding_ctx.unbucketize_permute_tensor.to(
+                    self._device, non_blocking=True
                 )
-            sharding_ctx.features_before_input_dist = (
-                sharding_ctx.features_before_input_dist.to(self._device, non_blocking=True)
+            sharding_ctx.features_before_input_dist = sharding_ctx.features_before_input_dist.to(
+                self._device, non_blocking=True
             )
-        
+
         return self.compute_and_output_dist(ctx, post_dist_input)

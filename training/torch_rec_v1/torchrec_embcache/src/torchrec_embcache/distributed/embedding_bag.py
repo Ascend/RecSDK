@@ -5,6 +5,7 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+# pylint: disable=duplicate-code
 import copy
 from functools import partial
 import os
@@ -21,7 +22,7 @@ from fbgemm_gpu.split_embedding_configs import EmbOptimType
 from fbgemm_gpu.split_table_batched_embeddings_ops_training import (
     SplitTableBatchedEmbeddingBagsCodegen,
 )
-from hybrid_torchrec import IS_TORCH_REC_120
+from hybrid_torchrec._adapters import adapter
 from hybrid_torchrec.distributed.embeddingbag import (
     _apply_mean_pooling,
     _create_mean_pooling_divisor,
@@ -42,13 +43,13 @@ from torchrec_embcache.distributed.configs import (
     EmbCacheEmbeddingBagConfig,
     check_valid_value,
     check_create_table_params,
-    check_multi_hot_sizes
+    check_multi_hot_sizes,
 )
 from torchrec_embcache.distributed.sharding.rw_sharding import (
     EmbCacheRwPooledEmbeddingSharding,
 )
 from torchrec_embcache.distributed.utils import get_embedding_optim_num
-from torchrec_embcache.embcache_pybind import (
+from torchrec_embcache.embcache_pybind import (  # pylint: disable=no-name-in-module
     EmbcacheManager,
     EmbConfig,
     AsyncSwapInfo,
@@ -81,7 +82,6 @@ from torchrec.distributed.embedding_sharding import (
     EmbeddingSharding,
     EmbeddingShardingInfo,
     EmbeddingShardingContext,
-    KJTListSplitsAwaitable,
 )
 from torchrec.distributed.utils import (
     add_params_from_parameter_sharding,
@@ -90,9 +90,7 @@ from torchrec.distributed.utils import (
     optimizer_type_to_emb_opt_type,
 )
 from torchrec.modules.embedding_configs import (
-    DataType,
     EmbeddingBagConfig,
-    EmbeddingTableConfig,
     pooling_type_to_str,
     PoolingType,
 )
@@ -107,8 +105,6 @@ from torchrec.distributed.embeddingbag import (
     EmbeddingBagCollectionContext,
     EmbeddingBagCollectionAwaitable,
 )
-if not IS_TORCH_REC_120:
-    from torchrec.distributed.embeddingbag import create_sharding_infos_by_sharding
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -128,9 +124,7 @@ class ShardingConfig:
 
 def create_embcache_embedding_bag_sharding(
     sharding_config: ShardingConfig,
-) -> EmbeddingSharding[
-    EmbeddingShardingContext, KeyedJaggedTensor, torch.Tensor, torch.Tensor
-]:
+) -> EmbeddingSharding[EmbeddingShardingContext, KeyedJaggedTensor, torch.Tensor, torch.Tensor]:
     if sharding_config.sharding_type == ShardingType.ROW_WISE.value:
         return EmbCacheRwPooledEmbeddingSharding(
             sharding_config.sharding_infos,
@@ -236,15 +230,17 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         tables: List[EmbCacheEmbeddingBagConfig | EmbeddingBagConfig],
         world_size: int,
         batch_size: int,
-        multi_hot_sizes: List[int], 
+        multi_hot_sizes: List[int],
         is_weighted: bool = False,
         need_accumulate_offset: bool = True,
         device: Optional[torch.device] = None,
         embedding_optimizer_cls: Type[torch.optim.Optimizer] = torch.optim.Adagrad,
     ) -> None:
         check_multi_hot_sizes(multi_hot_sizes, tables)
-        check(all([isinstance(item, (EmbCacheEmbeddingBagConfig, EmbeddingBagConfig)) for item in tables]),
-              "all element type in 'tables' must be EmbCacheEmbeddingBagConfig or EmbeddingBagConfig object")
+        check(
+            all(isinstance(item, (EmbCacheEmbeddingBagConfig, EmbeddingBagConfig)) for item in tables),
+            "all element type in 'tables' must be EmbCacheEmbeddingBagConfig or EmbeddingBagConfig object",
+        )
         check_create_table_params(batch_size, embedding_optimizer_cls, multi_hot_sizes, tables, world_size)
         check_valid_value(isinstance(is_weighted, bool) and not is_weighted, "is_weighted must be False")
 
@@ -256,9 +252,7 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
         self._convert_2_cache_embedding_bag_config(tables)
         self._embedding_bag_configs = tables
         self._lengths_per_embedding: List[int] = []
-        self._device: torch.device = (
-            device if device is not None else torch.device("cpu")
-        )
+        self._device: torch.device = device if device is not None else torch.device("cpu")
         self._optim_num = get_embedding_optim_num(embedding_optimizer_cls)
         logger.debug("======  _optim_num: %s", self._optim_num)
 
@@ -285,32 +279,27 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
             if embedding_config.name in table_names:
                 raise ValueError(f"Duplicate table name {embedding_config.name}")
             table_names.add(embedding_config.name)
-            self.embedding_bags[embedding_config.name] = EmbCacheHashTable(
-                config=embedding_config, device=self._device
-            )
+            self.embedding_bags[embedding_config.name] = EmbCacheHashTable(config=embedding_config, device=self._device)
 
             if not embedding_config.feature_names:
                 embedding_config.feature_names = [embedding_config.name]
-            self._lengths_per_embedding.extend(
-                len(embedding_config.feature_names) * [embedding_config.embedding_dim]
-            )
+            self._lengths_per_embedding.extend(len(embedding_config.feature_names) * [embedding_config.embedding_dim])
 
         self._embedding_names: List[str] = [
-            embedding
-            for embeddings in get_embedding_names_by_table(tables)
-            for embedding in embeddings
+            embedding for embeddings in get_embedding_names_by_table(tables) for embedding in embeddings
         ]
         self._feature_names: List[List[str]] = [table.feature_names for table in tables]
         self.reset_parameters()
 
     @staticmethod
-    def _convert_2_cache_embedding_bag_config(tables: List[EmbCacheEmbeddingBagConfig | EmbeddingBagConfig]):
+    def _convert_2_cache_embedding_bag_config(tables: List[EmbCacheEmbeddingBagConfig | EmbeddingBagConfig]):  # pylint: disable=unexpected-keyword-arg
         for i, ori_config in enumerate(tables):
             if isinstance(ori_config, EmbCacheEmbeddingBagConfig):
                 continue
-            emb_cache_config = EmbCacheEmbeddingBagConfig(
-                embedding_dim=ori_config.embedding_dim,
+            emb_cache_config = EmbCacheEmbeddingBagConfig(  # pylint: disable=unexpected-keyword-arg
                 num_embeddings=ori_config.num_embeddings,
+                embedding_dim=ori_config.embedding_dim,
+                name=ori_config.name,
                 feature_names=ori_config.feature_names,
             )
             emb_cache_config.__dict__.update(ori_config.__dict__)
@@ -337,9 +326,7 @@ class EmbCacheEmbeddingBagCollection(EmbeddingBagCollection):
             )
         )
         if max_device_mem_for_vectors < min_mem:
-            raise ValueError(
-                f"max_device_mem_for_vectors {max_device_mem_for_vectors} < min_mem:{min_mem}"
-            )
+            raise ValueError(f"max_device_mem_for_vectors {max_device_mem_for_vectors} < min_mem:{min_mem}")
 
         table_num_embeddings = np.trunc(
             np.dot(
@@ -370,9 +357,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
         self._module_fqn = module_fqn
 
         self.table2hashmap: Dict[str, HashMapBase] = self.create_table2hashmap(module)
-        self._embedding_bag_configs: List[EmbeddingBagConfig] = (
-            module.embedding_bag_configs()
-        )
+        self._embedding_bag_configs: List[EmbeddingBagConfig] = module.embedding_bag_configs()
 
         self._table_names: List[str] = []
         self._pooling_type_to_rs_features: Dict[str, List[str]] = defaultdict(list)
@@ -387,9 +372,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                 ShardingType.TABLE_ROW_WISE.value,
                 ShardingType.ROW_WISE.value,
             ]:
-                self._pooling_type_to_rs_features[config.pooling.value].extend(
-                    config.feature_names
-                )
+                self._pooling_type_to_rs_features[config.pooling.value].extend(config.feature_names)
 
         self.module_sharding_plan: EmbeddingModuleShardingPlan = cast(
             EmbeddingModuleShardingPlan,
@@ -401,17 +384,11 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
         )
         self._env = npu_env
         # output parameters as DTensor in state dict
-        self._output_dtensor: bool = npu_env.output_dtensor
+        self._output_dtensor: bool = adapter.get_output_dtensor(npu_env, fused_params)
 
         create_sharding_params = (module, table_name_to_parameter_sharding, "embedding_bags.", fused_params)
-        if IS_TORCH_REC_120:
-            self.sharding_type_to_sharding_infos = self.create_grouped_sharding_infos(*create_sharding_params)
-        else:
-            # adapt for torchrec 1.1.0
-            self.sharding_type_to_sharding_infos = create_sharding_infos_by_sharding(*create_sharding_params)
-        self._sharding_types: List[str] = list(
-            self.sharding_type_to_sharding_infos.keys()
-        )
+        self.sharding_type_to_sharding_infos = adapter.create_sharding_infos(self, *create_sharding_params)
+        self._sharding_types: List[str] = list(self.sharding_type_to_sharding_infos.keys())
         self._embedding_shardings: List[
             EmbeddingSharding[
                 EmbeddingShardingContext,
@@ -456,6 +433,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
         self._kjt_key_indices: Dict[str, int] = {}
         self._kjt_inverse_order: Optional[torch.Tensor] = None
         self._kt_key_ordering: Optional[torch.Tensor] = None
+        self._kt_key_ordering_cpu: Optional[torch.Tensor] = None
         # to support the FP16 hook
         self._create_output_dist()
         self._dim_per_key_cpu = torch.tensor(self._embedding_dims, device="cpu")
@@ -477,16 +455,13 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                     optims.append(("", tbe_module.fused_optimizer))
         self._optim: CombinedOptimizer = CombinedOptimizer(optims)
 
-        for i, (sharding, lookup) in enumerate(
-            zip(self._embedding_shardings, self._lookups)
-        ):
+        for i, (sharding, lookup) in enumerate(zip(self._embedding_shardings, self._lookups)):
             if isinstance(sharding, DpPooledEmbeddingSharding):
                 self._lookups[i] = DistributedDataParallel(
                     module=lookup,
                     device_ids=(
                         [self._device]
-                        if self._device is not None
-                        and (self._device.type in {"cuda", "mtia"})
+                        if self._device is not None and (self._device.type in {"cuda", "npu", "mtia"})
                         else None
                     ),
                     process_group=npu_env.process_group,
@@ -509,19 +484,17 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
         ]:
             self.load_state_dict(module.state_dict(), strict=False)
 
-        self._memcpy_stream: Optional[torch_npu.npu.streams.Stream] = (
-            torch_npu.npu.Stream(priority=-1)
-        )
+        self._memcpy_stream: Optional[torch_npu.npu.streams.Stream] = torch_npu.npu.Stream(priority=-1)
         self._embcache_mgr = self._create_embcache_mgr(module.need_accumulate_offset)
 
     @classmethod
     def create_grouped_sharding_infos(
-            cls,
-            module: EmbeddingBagCollectionInterface,
-            table_name_to_parameter_sharding: Dict[str, ParameterSharding],
-            prefix: str,
-            fused_params: Optional[Dict[str, Any]],
-            suffix: Optional[str] = "weight",
+        cls,
+        module: EmbeddingBagCollectionInterface,
+        table_name_to_parameter_sharding: Dict[str, ParameterSharding],
+        prefix: str,
+        fused_params: Optional[Dict[str, Any]],
+        suffix: Optional[str] = "weight",
     ) -> Dict[str, List[EmbeddingShardingInfo]]:
         """
         convert ParameterSharding (table_name_to_parameter_sharding: Dict[str, ParameterSharding]) to
@@ -541,9 +514,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                 else:
                     shared_feature[feature_name] = True
 
-        sharding_type_to_sharding_infos: Dict[str, List[EmbeddingShardingInfo]] = (
-            defaultdict(list)
-        )
+        sharding_type_to_sharding_infos: Dict[str, List[EmbeddingShardingInfo]] = defaultdict(list)
 
         # state_dict returns parameter.Tensor, which loses parameter level attributes
         parameter_by_name = dict(module.named_parameters())
@@ -553,16 +524,11 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
         for config in module.embedding_bag_configs():
             table_name = config.name
             check(
-                table_name in table_name_to_parameter_sharding,
-                f"{table_name} not in table_name_to_parameter_sharding"
+                table_name in table_name_to_parameter_sharding, f"{table_name} not in table_name_to_parameter_sharding"
             )
             parameter_sharding = table_name_to_parameter_sharding[table_name]
-            if parameter_sharding.compute_kernel not in [
-                kernel.value for kernel in EmbeddingComputeKernel
-            ]:
-                raise ValueError(
-                    f"Compute kernel not supported {parameter_sharding.compute_kernel}"
-                )
+            if parameter_sharding.compute_kernel not in [kernel.value for kernel in EmbeddingComputeKernel]:
+                raise ValueError(f"Compute kernel not supported {parameter_sharding.compute_kernel}")
             embedding_names: List[str] = []
             for feature_name in config.feature_names:
                 if shared_feature[feature_name]:
@@ -580,25 +546,23 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
             optimizer_params = getattr(param, "_optimizer_kwargs", [{}])
             optimizer_classes = getattr(param, "_optimizer_classes", [None])
 
-            check(len(optimizer_classes) == 1 and len(optimizer_params) == 1,
-                  f"Only support 1 optimizer, given {len(optimizer_classes)} optimizer classes"
-                  f" and {len(optimizer_params)} optimizer kwargs.")
+            check(
+                len(optimizer_classes) == 1 and len(optimizer_params) == 1,
+                f"Only support 1 optimizer, given {len(optimizer_classes)} optimizer classes"
+                f" and {len(optimizer_params)} optimizer kwargs.",
+            )
 
             optimizer_class = optimizer_classes[0]
             optimizer_params = optimizer_params[0]
             if optimizer_class:
-                optimizer_params["optimizer"] = optimizer_type_to_emb_opt_type(
-                    optimizer_class
-                )
+                optimizer_params["optimizer"] = optimizer_type_to_emb_opt_type(optimizer_class)
 
             per_table_fused_params = merge_fused_params(fused_params, optimizer_params)
-            per_table_fused_params = add_params_from_parameter_sharding(
-                per_table_fused_params, parameter_sharding
-            )
+            per_table_fused_params = add_params_from_parameter_sharding(per_table_fused_params, parameter_sharding)
             per_table_fused_params = convert_to_fbgemm_types(per_table_fused_params)
 
             sharding_info = EmbeddingShardingInfo(
-                embedding_config=EmbeddingTableConfig(
+                embedding_config=adapter.make_embedding_table_config(
                     num_embeddings=config.num_embeddings,
                     embedding_dim=config.embedding_dim,
                     name=config.name,
@@ -614,24 +578,26 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                         getattr(config, "num_embeddings_post_pruning", None)
                         # Note: Need to check if attribute exists for BC
                     ),
+                    total_num_buckets=getattr(config, "total_num_buckets", None),
+                    use_virtual_table=getattr(config, "use_virtual_table", False),
+                    virtual_table_eviction_policy=getattr(config, "virtual_table_eviction_policy", None),
+                    enable_embedding_update=getattr(config, "enable_embedding_update", False),
                 ),
                 param_sharding=parameter_sharding,
                 param=param,
                 fused_params=per_table_fused_params,
             )
-            sharding_type_to_sharding_infos[parameter_sharding.sharding_type].append(
-                sharding_info
-            )
+            sharding_type_to_sharding_infos[parameter_sharding.sharding_type].append(sharding_info)
         return sharding_type_to_sharding_infos
 
     @property
     def embcache_mgr(self):
         return self._embcache_mgr
-    
+
     @property
     def config_list(self):
         return self._embedding_bag_configs
-    
+
     def _init_mean_pooling_callback(
         self,
         input_feature_names: List[str],
@@ -639,9 +605,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
     ) -> None:
         # account for shared features
         feature_names: List[str] = [
-            feature_name
-            for sharding in self._embedding_shardings
-            for feature_name in sharding.feature_names()
+            feature_name for sharding in self._embedding_shardings for feature_name in sharding.feature_names()
         ]
 
         for i, key in enumerate(feature_names):
@@ -656,10 +620,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
         self._kt_key_ordering = torch.tensor(keyed_tensor_ordering, device=self._device)
         self._kt_key_ordering_cpu = torch.tensor(keyed_tensor_ordering, device="cpu")
         if inverse_indices:
-            key_to_inverse_index = {
-                name: i
-                for i, name in enumerate(inverse_indices[0])
-            }
+            key_to_inverse_index = {name: i for i, name in enumerate(inverse_indices[0])}
             self._kjt_inverse_order = torch.tensor(
                 [key_to_inverse_index[key] for key in feature_names],
                 device=self._device,
@@ -673,7 +634,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
         return table2hashmap
 
     def input_dist(
-        self, ctx: EmbeddingBagCollectionAwaitable, features: KeyedJaggedTensor
+        self, ctx: EmbeddingBagCollectionContext, features: KeyedJaggedTensor
     ) -> Awaitable[Awaitable[KJTList]]:
         """
         feature的顺序按照Dict[str, list[]]  shardType -> [t.feature_name for t in tables]
@@ -695,31 +656,31 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                     self._features_order_tensor,
                 )
             if self._has_mean_pooling_callback:
-                ctx.divisor = _create_mean_pooling_divisor(MeanPoolingConfig(
-                    lengths=features.lengths(),
-                    stride=features.stride(),
-                    keys=features.keys(),
-                    offsets=features.offsets(),
-                    pooling_type_to_rs_features=self._pooling_type_to_rs_features,
-                    stride_per_key=features.stride_per_key(),
-                    dim_per_key=self._dim_per_key_cpu,
-                    embedding_names=self._embedding_names,
-                    embedding_dims=self._embedding_dims,
-                    variable_batch_per_feature=ctx.variable_batch_per_feature,
-                    kjt_inverse_order=self._kjt_inverse_order,
-                    kjt_key_indices=self._kjt_key_indices,
-                    kt_key_ordering=self._kt_key_ordering_cpu,
-                    inverse_indices=ctx.inverse_indices,
-                    weights=features.weights_or_none(),
-                ))
+                ctx.divisor = _create_mean_pooling_divisor(
+                    MeanPoolingConfig(
+                        lengths=features.lengths(),
+                        stride=features.stride(),
+                        keys=features.keys(),
+                        offsets=features.offsets(),
+                        pooling_type_to_rs_features=self._pooling_type_to_rs_features,
+                        stride_per_key=features.stride_per_key(),
+                        dim_per_key=self._dim_per_key_cpu,
+                        embedding_names=self._embedding_names,
+                        embedding_dims=self._embedding_dims,
+                        variable_batch_per_feature=ctx.variable_batch_per_feature,
+                        kjt_inverse_order=self._kjt_inverse_order,
+                        kjt_key_indices=self._kjt_key_indices,
+                        kt_key_ordering=self._kt_key_ordering_cpu,
+                        inverse_indices=ctx.inverse_indices,
+                        weights=features.weights_or_none(),
+                    )
+                )
 
             features_by_shards = features.split(
                 self._feature_splits,
             )
             awaitables = []
-            for input_dist, features_by_shard in zip(
-                self._input_dists, features_by_shards
-            ):
+            for input_dist, features_by_shard in zip(self._input_dists, features_by_shards):
                 awaitables.append(input_dist(features_by_shard))
                 ctx.sharding_contexts.append(
                     EmbeddingShardingContext(
@@ -727,37 +688,46 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                         variable_batch_per_feature=features_by_shard.variable_stride_per_key(),
                     )
                 )
-            return KJTListSplitsAwaitable(awaitables, ctx)
+            return adapter.make_kjt_list_splits_awaitable(
+                awaitables=awaitables,
+                ctx=ctx,
+                module_fqn=self._module_fqn,
+                sharding_types=self._features_order,
+            )
 
     def compute_and_output_dist(
         self, ctx: EmbeddingBagCollectionContext, input_feat: KJTList
     ) -> LazyAwaitable[KeyedTensor]:
         awaitables = []
+        resize_awaitables = []
         for lookup, out_dist, sharding_ctx, features in zip(
             self._lookups,
             self._output_dists,
             ctx.sharding_contexts,
             input_feat,
         ):
-            awaitables.append(out_dist(lookup(features), sharding_ctx))
+            embs = lookup(features)
+            if hasattr(lookup, "get_resize_awaitables"):
+                resize_awaitables.extend(lookup.get_resize_awaitables())
+            awaitables.append(out_dist(embs, sharding_ctx))
 
-        awaitable = EmbeddingBagCollectionAwaitable(
+        awaitable = adapter.make_awaitable(
+            EmbeddingBagCollectionAwaitable,
             awaitables=awaitables,
             embedding_dims=self._embedding_dims,
             embedding_names=self._embedding_names,
+            module_fqn=self._module_fqn,
+            sharding_types=self._sharding_types,
+            resize_awaitables=resize_awaitables,
         )
 
         # register callback if there are features that need mean pooling
         if self._has_mean_pooling_callback:
-            awaitable.callbacks.append(
-                partial(_apply_mean_pooling, divisor=ctx.divisor)
-            )
+            awaitable.callbacks.append(partial(_apply_mean_pooling, divisor=ctx.divisor))
 
         return awaitable
 
-    def post_input_dist(
-        self, ctx: EmbeddingBagCollectionAwaitable, features: KJTList
-    ) -> PostInputKJTListAwaitable:
+    def post_input_dist(self, ctx: EmbeddingBagCollectionContext, features: KJTList) -> PostInputKJTListAwaitable:
         """
         feature的顺序按照Dict[str, list[]]  shardType -> [t.feature_name for t in tables]
         """
@@ -779,9 +749,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
             else:
                 self._post_input_dists.append(EMPTY_POST_INPUT_DIST)
 
-    def compute_swap_info_async(
-        self, sparse_features_after_dist: KJTList
-    ) -> AsyncSwapInfo:
+    def compute_swap_info_async(self, sparse_features_after_dist: KJTList) -> AsyncSwapInfo:
         if isinstance(sparse_features_after_dist[0], KeyedJaggedTensorWithLookHelper):
             return self._embcache_mgr.compute_swap_info_async(
                 sparse_features_after_dist[0]._unique_ids,
@@ -792,10 +760,8 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                 sparse_features_after_dist[0].values(),
                 sparse_features_after_dist[0].offset_per_key(),
             )
-        
-    def record_batch_keys_async(
-        self, sparse_features_after_dist: KJTList
-    ) -> None:
+
+    def record_batch_keys_async(self, sparse_features_after_dist: KJTList) -> None:
         if isinstance(sparse_features_after_dist[0], KeyedJaggedTensorWithLookHelper):
             return self._embcache_mgr.record_batch_keys_async(
                 sparse_features_after_dist[0]._unique_ids,
@@ -813,9 +779,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
         swapout_embs: torch.Tensor,
         swapout_optims: torch.Tensor,
     ) -> None:
-        return self._embcache_mgr.embedding_update_async(
-            swap_info, swapout_embs, swapout_optims
-        )
+        return self._embcache_mgr.embedding_update_async(swap_info, swapout_embs, swapout_optims)
 
     def record_host_emb_update_times(self):
         self._embcache_mgr.record_embedding_update_times()
@@ -843,42 +807,35 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                 cpp_initializer_type = getattr(CppInitType, emb_original_config.initializer_type.name)
                 if sharding_info.fused_params["optimizer"] == EmbOptimType.EXACT_SGD:
                     optim_num = 0
-                elif (
-                    sharding_info.fused_params["optimizer"]
-                    == EmbOptimType.EXACT_ADAGRAD
-                ):
+                elif sharding_info.fused_params["optimizer"] == EmbOptimType.EXACT_ADAGRAD:
                     optim_num = 1
                 elif sharding_info.fused_params["optimizer"] == EmbOptimType.ADAM:
                     optim_num = 2
                 else:
                     raise NotImplementedError(
-                        f"Getting optimizer states is not supported "
-                        f"for {sharding_info.fused_params['optimizer']}"
+                        f"Getting optimizer states is not supported for {sharding_info.fused_params['optimizer']}"
                     )
 
                 local_shard_size = 0
                 rank_str = os.environ.get("LOCAL_RANK", "0")
                 if not rank_str.isdigit():
-                    raise ValueError(
-                        f"Param error, LOCAL_RANK must be a number but got {rank_str}."
-                    )
+                    raise ValueError(f"Param error, LOCAL_RANK must be a number but got {rank_str}.")
                 rank = int(rank_str)
                 for shard_metadata in sharding_info.param_sharding.sharding_spec.shards:
                     # 解析 placement 字符串以获取 rank
                     placement_str = str(shard_metadata.placement)
                     # 尝试提取 rank
-                    rank_part = placement_str.split("/")[0]  # 获取 "rank:N" 部分
+                    rank_part = placement_str.split("/", 1)[0]  # 获取 "rank:N" 部分
                     shard_rank = int(rank_part.split(":")[1])  # 获取 N
                     if shard_rank == rank:
                         # 找到了当前 rank 对应的 shard
-                        local_shard_size = shard_metadata.shard_sizes[
-                            0
-                        ]  # 获取第一个维度的大小
+                        local_shard_size = shard_metadata.shard_sizes[0]  # 获取第一个维度的大小
                         break
 
                 emb_configs.append(
                     EmbConfig(
-                        table_name=embedding_config.name, initializer_type=cpp_initializer_type,
+                        table_name=embedding_config.name,
+                        initializer_type=cpp_initializer_type,
                         emb_dim=embedding_config.embedding_dim,
                         optim_num=optim_num,
                         cache_size=local_shard_size,
@@ -887,7 +844,7 @@ class EmbCacheShardedEmbeddingBagCollection(ShardedEmbeddingBagCollection):
                         weight_init_mean=emb_original_config.weight_init_mean,
                         weight_init_stddev=emb_original_config.weight_init_stddev,
                         num_features=emb_original_config.num_features(),
-                        is_incremental=emb_original_config.is_incremental
+                        is_incremental=emb_original_config.is_incremental,
                     )
                 )
         return EmbcacheManager(emb_configs, need_accumulate_offset)

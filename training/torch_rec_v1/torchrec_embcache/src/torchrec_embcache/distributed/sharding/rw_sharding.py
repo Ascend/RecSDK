@@ -5,6 +5,7 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+# pylint: disable=duplicate-code
 from concurrent.futures import ThreadPoolExecutor
 import os
 from typing import Any, Dict, List, Optional
@@ -12,6 +13,7 @@ from typing import Any, Dict, List, Optional
 import torch
 import torch.distributed as dist
 
+from hybrid_torchrec._adapters import adapter
 from hybrid_torchrec.distributed.embedding_lookup import (
     HybridGroupedPooledEmbeddingsLookup,
 )
@@ -51,21 +53,15 @@ class EmbCacheInputDistThreadPoolExecutorSingleton:
 
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
-            cls._instance = super(
-                EmbCacheInputDistThreadPoolExecutorSingleton, cls
-            ).__new__(cls, *args, **kwargs)
+            cls._instance = super(EmbCacheInputDistThreadPoolExecutorSingleton, cls).__new__(cls, *args, **kwargs)
             cls.executor = ThreadPoolExecutor(2)
         return cls._instance
 
 
 class EmbCacheRwSparseFeaturesDistAwaitable(Awaitable):
-    def __init__(
-        self, function, module, sparse_feature: KeyedJaggedTensor, context, labels=None
-    ) -> None:
+    def __init__(self, function, module, sparse_feature: KeyedJaggedTensor, context, labels=None) -> None:
         super().__init__()
-        self.future = EmbCacheInputDistThreadPoolExecutorSingleton().executor.submit(
-            function, sparse_feature, labels
-        )
+        self.future = EmbCacheInputDistThreadPoolExecutorSingleton().executor.submit(function, sparse_feature, labels)
         self.pg = module.pg
         self._context = context
 
@@ -90,17 +86,23 @@ class EmbCacheRwSparseFeaturesDist(RwSparseFeaturesDist):
         keep_original_indices: bool = False,
         enable_admit: bool = False,
         is_ec: bool = False,
+        virtual_table_feature_num_buckets: Optional[List[int]] = None,
+        has_uneven_virtual_tables: bool = False,
     ) -> None:
         super().__init__(
-            pg,
-            num_features,
-            feature_hash_sizes,
-            feature_total_num_buckets,
-            device,
-            is_sequence,
-            has_feature_processor,
-            need_pos,
-            keep_original_indices,
+            **adapter.filter_rw_sparse_features_dist_kwargs(
+                pg=pg,
+                num_features=num_features,
+                feature_hash_sizes=feature_hash_sizes,
+                feature_total_num_buckets=feature_total_num_buckets,
+                device=device,
+                is_sequence=is_sequence,
+                has_feature_processor=has_feature_processor,
+                need_pos=need_pos,
+                keep_original_indices=keep_original_indices,
+                virtual_table_feature_num_buckets=virtual_table_feature_num_buckets,
+                has_uneven_virtual_tables=has_uneven_virtual_tables,
+            )
         )
         self.pg = pg
 
@@ -110,11 +112,7 @@ class EmbCacheRwSparseFeaturesDist(RwSparseFeaturesDist):
 
         self._enable_admit = enable_admit
 
-    def _forward_func(
-        self,
-        sparse_features: KeyedJaggedTensor,
-        labels=None
-    ) -> Awaitable[Awaitable[KeyedJaggedTensor]]:
+    def _forward_func(self, sparse_features: KeyedJaggedTensor, labels=None) -> Awaitable[Awaitable[KeyedJaggedTensor]]:
         (
             bucketized_features,
             unbucketize_permute_tensor,
@@ -124,10 +122,9 @@ class EmbCacheRwSparseFeaturesDist(RwSparseFeaturesDist):
             block_sizes=self._feature_block_sizes_tensor,
             output_permute=self._is_sequence,
             bucketize_pos=(
-                self._has_feature_processor
-                if sparse_features.weights_or_none() is None
-                else self._need_pos
+                self._has_feature_processor if sparse_features.weights_or_none() is None else self._need_pos
             ),
+            block_bucketize_row_pos=getattr(self, "kvzch_bucketize_row_pos", None),
             keep_original_indices=self._keep_original_indices,
             do_unique=self._do_unique,
             enable_admit=self._enable_admit,
@@ -139,9 +136,7 @@ class EmbCacheRwSparseFeaturesDist(RwSparseFeaturesDist):
     def forward(
         self, sparse_features: KeyedJaggedTensor, context=None, labels=None
     ) -> Awaitable[Awaitable[KeyedJaggedTensor]]:
-        return EmbCacheRwSparseFeaturesDistAwaitable(
-            self._forward_func, self, sparse_features, context, labels
-        )
+        return EmbCacheRwSparseFeaturesDistAwaitable(self._forward_func, self, sparse_features, context, labels)
 
 
 class EmbCacheRwPooledEmbeddingSharding(RwPooledEmbeddingSharding):
@@ -171,6 +166,9 @@ class EmbCacheRwPooledEmbeddingSharding(RwPooledEmbeddingSharding):
     ) -> BaseSparseFeaturesDist[KeyedJaggedTensor]:
         num_features = self._get_num_features()
         feature_hash_sizes = self._get_feature_hash_sizes()
+        virtual_table_feature_num_buckets, has_uneven_virtual_tables = adapter.get_virtual_table_feature_num_buckets(
+            self
+        )
         return EmbCacheRwSparseFeaturesDist(
             # pyre-fixme[6]: For 1st param expected `ProcessGroup` but got
             #  `Optional[ProcessGroup]`.
@@ -181,6 +179,8 @@ class EmbCacheRwPooledEmbeddingSharding(RwPooledEmbeddingSharding):
             is_sequence=False,
             has_feature_processor=self._has_feature_processor,
             need_pos=self._need_pos,
+            virtual_table_feature_num_buckets=virtual_table_feature_num_buckets,
+            has_uneven_virtual_tables=has_uneven_virtual_tables,
         )
 
     def create_lookup(
@@ -195,18 +195,14 @@ class EmbCacheRwPooledEmbeddingSharding(RwPooledEmbeddingSharding):
             device=device if device is not None else self._device,
             feature_processor=feature_processor,
             sharding_type=ShardingType.ROW_WISE,
+            env=self._env,
         )
 
     def create_post_input_dist(
         self,
         device: Optional[torch.device] = None,
     ) -> BaseSparseFeaturesDist[KeyedJaggedTensor]:
-
-        table_names, features_split_by_table_name = get_feature_len_groupby_table_name(
-            self._grouped_embedding_configs
-        )
+        table_names, features_split_by_table_name = get_feature_len_groupby_table_name(self._grouped_embedding_configs)
         hashmaps = [self.table2hashmap[n] for n in table_names]
-        feature_processor = UniqueHashFeatureProcess(
-            table_names, features_split_by_table_name, hashmaps
-        )
+        feature_processor = UniqueHashFeatureProcess(table_names, features_split_by_table_name, hashmaps)
         return SparseFeaturesPostDist(feature_processor)
