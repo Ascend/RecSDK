@@ -5,19 +5,22 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+# pylint: disable=duplicate-code
+# ruff: noqa: E402
 
 import logging
 import os
 import sys
+from datetime import datetime, timezone
 from typing import List
 from unittest.mock import MagicMock
+
 # 创建模拟的b模块注册到sys.modules
 mock_npu = MagicMock()
 mock_npu.npu = MagicMock()  # 显式定义npu子模块
 sys.modules['torch_npu'] = mock_npu
 
 import pytest
-import pytz
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -37,7 +40,6 @@ from torchrec import (
 from torchrec.distributed.planner import (
     ParameterConstraints,
 )
-from torchrec.distributed.types import ShardingEnv
 from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
 
 LOOP_TIMES = 8
@@ -45,16 +47,13 @@ BATCH_NUM = 32
 WORLD_SIZE = 2
 
 
-def generate_base_config(
-        embedding_dims,
-        num_embeddings,
-        pool_type) -> List[HashEmbeddingBagConfig]:
+def generate_base_config(embedding_dims, num_embeddings, pool_type) -> List[HashEmbeddingBagConfig]:
     test_table_configs: List[HashEmbeddingBagConfig] = []
     for i, (table_dim, num_embedding) in enumerate(zip(embedding_dims, num_embeddings)):
-        config = HashEmbeddingBagConfig(
-            name=f"table{i}",
-            embedding_dim=table_dim,
+        config = HashEmbeddingBagConfig(  # pylint: disable=unexpected-keyword-arg
             num_embeddings=num_embedding,
+            embedding_dim=table_dim,
+            name=f"table{i}",
             feature_names=[f"feat{i}"],
             pooling=pool_type,
             init_fn=weight_init,
@@ -64,10 +63,8 @@ def generate_base_config(
 
 
 def setup_logging(rank):
-    from datetime import datetime
-
     this_time = str(
-        datetime.now(tz=pytz.timezone("PRC")).strftime(
+        datetime.now(tz=timezone.utc).strftime(
             "%m_%d_%H_%M_%S",
         )
     )
@@ -76,9 +73,7 @@ def setup_logging(rank):
         datefmt="%m-%d %H:%M:%S",
     )
     logger = logging.getLogger()
-    file_handler = logging.FileHandler(
-        f"test_rank{rank}_{this_time}.log", encoding="utf-8"
-    )
+    file_handler = logging.FileHandler(f"test_rank{rank}_{this_time}.log", encoding="utf-8")
     file_handler.setFormatter(log_format)
     logger.addHandler(file_handler)
     logger.setLevel(logging.DEBUG)
@@ -93,13 +88,13 @@ def weight_init(param: torch.nn.Parameter):
 
 
 def execute(
-        rank,
-        world_size,
-        table_num,
-        embedding_dims,
-        num_embeddings,
-        pool_type,
-        lockup_len,
+    rank,
+    world_size,
+    table_num,
+    embedding_dims,
+    num_embeddings,
+    pool_type,
+    lockup_len,
 ):
     device = 'cpu'
     sharding_type = 'row_wise'
@@ -121,14 +116,13 @@ def execute(
         num_workers=1,
     )
     test_model = TestModel(rank, world_size, device)
-    golden_results = test_model.cpu_golden_loss(embedding_config,
-                                                golden_dataset_loader)
+    golden_results = test_model.cpu_golden_loss(embedding_config, golden_dataset_loader)
     test_model.test_shard_plan(embedding_config, data_loader, sharding_type)
     for golden in golden_results:
         logging.debug("")
         logging.debug("===========================")
         logging.debug("result test %s", golden)
-        assert tuple(golden.size()) == (10, 224)   # lockup_len, sum(embedding_dims)
+        assert tuple(golden.size()) == (10, 224)  # lockup_len, sum(embedding_dims)
 
 
 class TestModel:
@@ -140,15 +134,12 @@ class TestModel:
         self.setup(rank=rank, world_size=world_size)
 
     @staticmethod
-    def cpu_golden_loss(
-        embedding_config: List[EmbeddingBagConfig],
-        dataloader: DataLoader[Batch]
-    ):
+    def cpu_golden_loss(embedding_config: List[EmbeddingBagConfig], dataloader: DataLoader[Batch]):
         pg = dist.new_group(backend="gloo")
         table_num = len(embedding_config)
         ebc = HashEmbeddingBagCollection(device="cpu", tables=embedding_config)
 
-        num_features = sum([c.num_features() for c in embedding_config])
+        num_features = sum(c.num_features() for c in embedding_config)
         ebc = Model(ebc, num_features)
         model = DDP(ebc, device_ids=None, process_group=pg)
 
@@ -184,10 +175,7 @@ class TestModel:
         dataloader: DataLoader[Batch],
         sharding_type: str,
     ):
-        num_features = sum([c.num_features() for c in embedding_config])
-        rank, world_size = self.rank, self.world_size
-        host_gp = dist.new_group(backend="gloo")
-        host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
+        num_features = sum(c.num_features() for c in embedding_config)
         # Shard
         table_num = len(embedding_config)
         ebc = EmbeddingBagCollection(device="meta", tables=embedding_config)
@@ -199,12 +187,10 @@ class TestModel:
         )
         # sharding_type
         _ = {
-            f"table{i}": ParameterConstraints(
-                sharding_types=[sharding_type], compute_kernels=["fused"]
-            )
+            f"table{i}": ParameterConstraints(sharding_types=[sharding_type], compute_kernels=["fused"])
             for i in range(table_num)
         }
-        
+
 
 @pytest.mark.parametrize("table_num", [3])
 @pytest.mark.parametrize("embedding_dims", [[32, 64, 128]])
@@ -212,11 +198,11 @@ class TestModel:
 @pytest.mark.parametrize("pool_type", [torchrec.PoolingType.MEAN, torchrec.PoolingType.SUM])
 @pytest.mark.parametrize("lockup_len", [10])
 def test_embedding_bag_collection(
-        table_num,
-        embedding_dims,
-        num_embeddings,
-        pool_type,
-        lockup_len,
+    table_num,
+    embedding_dims,
+    num_embeddings,
+    pool_type,
+    lockup_len,
 ):
     mp.spawn(
         execute,

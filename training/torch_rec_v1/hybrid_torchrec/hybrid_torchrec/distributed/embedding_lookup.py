@@ -5,7 +5,7 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import torch
 import torch.distributed as dist
@@ -28,7 +28,8 @@ from torchrec.distributed.embedding_types import (
     GroupedEmbeddingConfig,
     BaseEmbeddingLookup,
 )
-from torchrec.distributed.types import ShardingType
+from torchrec.distributed.types import ShardingType, ShardingEnv
+from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
 
 
 class HybridGroupedPooledEmbeddingsLookup(GroupedPooledEmbeddingsLookup):
@@ -44,6 +45,7 @@ class HybridGroupedPooledEmbeddingsLookup(GroupedPooledEmbeddingsLookup):
         feature_processor: Optional[BaseGroupedFeatureProcessor] = None,
         scale_weight_gradients: bool = True,
         sharding_type: Optional[ShardingType] = None,
+        env: Optional[ShardingEnv] = None,
     ) -> None:
         def _create_lookup(
             config: GroupedEmbeddingConfig,
@@ -68,11 +70,10 @@ class HybridGroupedPooledEmbeddingsLookup(GroupedPooledEmbeddingsLookup):
                     sharding_type=sharding_type,
                 )
             else:
-                raise ValueError(
-                    f"Compute kernel not supported {config.compute_kernel}"
-                )
+                raise ValueError(f"Compute kernel not supported {config.compute_kernel}")
 
         BaseEmbeddingLookup.__init__(self)
+        self._env = env
         self._emb_modules: nn.ModuleList = nn.ModuleList()
         self._need_prefetch = False
         for config in grouped_configs:
@@ -96,11 +97,11 @@ class HybridGroupedPooledEmbeddingsLookup(GroupedPooledEmbeddingsLookup):
         self.grouped_configs = grouped_configs
         self._feature_processor = feature_processor
 
-        self._scale_gradient_factor: int = (
-            dist.get_world_size(pg)
-            if scale_weight_gradients and get_gradient_division()
-            else 1
-        )
+        self._world_size: int = dist.get_world_size(pg) if pg is not None or dist.is_initialized() else 1
+        self._scale_gradient_factor: int = self._world_size if scale_weight_gradients and get_gradient_division() else 1
+        self.optim_state_tracker_fn: Optional[
+            Callable[[KeyedJaggedTensor, torch.Tensor, Optional[nn.Module]], None]
+        ] = None
 
 
 class HybridGroupedEmbeddingsLookup(GroupedEmbeddingsLookup):
@@ -113,15 +114,16 @@ class HybridGroupedEmbeddingsLookup(GroupedEmbeddingsLookup):
         grouped_configs: List[GroupedEmbeddingConfig],
         pg: Optional[dist.ProcessGroup] = None,
         device: Optional[torch.device] = None,
+        env: Optional[ShardingEnv] = None,
     ) -> None:
         def _create_lookup(
             config: GroupedEmbeddingConfig,
         ) -> BaseEmbedding:
             for table in config.embedding_tables:
-                if (
-                    table.compute_kernel == EmbeddingComputeKernel.FUSED_UVM_CACHING
-                    or table.compute_kernel == EmbeddingComputeKernel.KEY_VALUE
-                ):
+                if table.compute_kernel in {
+                    EmbeddingComputeKernel.FUSED_UVM_CACHING,
+                    EmbeddingComputeKernel.KEY_VALUE,
+                }:
                     self._need_prefetch = True
 
             if config.compute_kernel == EmbeddingComputeKernel.DENSE:
@@ -141,11 +143,10 @@ class HybridGroupedEmbeddingsLookup(GroupedEmbeddingsLookup):
                     device=device,
                 )
             else:
-                raise ValueError(
-                    f"Compute kernel not supported {config.compute_kernel}"
-                )
+                raise ValueError(f"Compute kernel not supported {config.compute_kernel}")
 
         BaseEmbeddingLookup.__init__(self)
+        self._env = env
         self._emb_modules: nn.ModuleList = nn.ModuleList()
         self._need_prefetch: bool = False
         for config in grouped_configs:
@@ -167,3 +168,6 @@ class HybridGroupedEmbeddingsLookup(GroupedEmbeddingsLookup):
         )
 
         self.grouped_configs = grouped_configs
+        self.optim_state_tracker_fn: Optional[
+            Callable[[KeyedJaggedTensor, torch.Tensor, Optional[nn.Module]], None]
+        ] = None

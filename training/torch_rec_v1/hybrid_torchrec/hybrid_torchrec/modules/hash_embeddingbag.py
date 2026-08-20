@@ -8,11 +8,12 @@
 from dataclasses import dataclass
 from enum import Enum
 import re
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
 
+from hybrid_torchrec._adapters import adapter
 from hybrid_torchrec.modules.embedding_config import HYBRID_SUPPORT_DEVICE
 from hybrid_torchrec.modules.ids_process import IdsMapper
 from hybrid_torchrec.constants import (
@@ -23,7 +24,6 @@ from hybrid_torchrec.constants import (
 )
 from hybrid_torchrec.utils import check
 from torchrec.modules.embedding_configs import (
-    DataType,
     EmbeddingBagConfig,
     EmbeddingConfig,
     pooling_type_to_str,
@@ -96,18 +96,14 @@ def _check_name_format(name: str, field_name: str = "name") -> None:
     pattern = r"^[a-zA-Z0-9_.]+$"
     if not re.match(pattern, name):
         raise ValueError(
-            f"The {field_name} should only contain alphanumeric characters, "
-            f"underscore and dots, but is '{name}'"
+            f"The {field_name} should only contain alphanumeric characters, underscore and dots, but is '{name}'"
         )
 
 
 def _check_config_type(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
     """校验config是否为HashEmbeddingBagConfig或EmbeddingConfig的实例或子类"""
     if not isinstance(config, (EmbeddingBagConfig, EmbeddingConfig)):
-        raise TypeError(
-            f"config must be an instance of EmbeddingBagConfig or EmbeddingConfig, "
-            f"but got {type(config)}"
-        )
+        raise TypeError(f"config must be an instance of EmbeddingBagConfig or EmbeddingConfig, but got {type(config)}")
 
 
 def _check_embedding_dim(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
@@ -116,10 +112,7 @@ def _check_embedding_dim(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> 
         raise ValueError(
             f"The embedding dim should be a multiple of {EMBEDDINGS_DIM_ALIGNMENT}, but is {config.embedding_dim}"
         )
-    if (
-        config.embedding_dim < EMBEDDINGS_DIM_ALIGNMENT
-        or config.embedding_dim > MAX_EMBEDDINGS_DIM
-    ):
+    if config.embedding_dim < EMBEDDINGS_DIM_ALIGNMENT or config.embedding_dim > MAX_EMBEDDINGS_DIM:
         raise ValueError(
             f"The embedding dim should be in [{EMBEDDINGS_DIM_ALIGNMENT}, "
             f"{MAX_EMBEDDINGS_DIM}], but is {config.embedding_dim}"
@@ -129,9 +122,7 @@ def _check_embedding_dim(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> 
 def _check_num_embeddings(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
     """检查num_embeddings配置"""
     if config.num_embeddings < 1 or config.num_embeddings > MAX_NUM_EMBEDDINGS:
-        raise ValueError(
-            f"The num_embeddings should be in [1, {MAX_NUM_EMBEDDINGS}], but is {config.num_embeddings}"
-        )
+        raise ValueError(f"The num_embeddings should be in [1, {MAX_NUM_EMBEDDINGS}], but is {config.num_embeddings}")
 
 
 def _check_data_type(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
@@ -143,9 +134,7 @@ def _check_data_type(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None
 def _check_feature_names(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
     """检查特征名称配置"""
     if config.feature_names is None or len(config.feature_names) == 0:
-        raise ValueError(
-            f"The feature_names should not be empty, but is {config.feature_names}"
-        )
+        raise ValueError(f"The feature_names should not be empty, but is {config.feature_names}")
 
 
 def _check_name_formats(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
@@ -162,16 +151,12 @@ def _check_weight_init(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> No
     if config.weight_init_min is None or config.weight_init_min == 0.0:
         config.weight_init_min = 0.0
     else:
-        raise ValueError(
-            f"The config.weight_init_min should be None or 0.0, but is {config.weight_init_min}"
-        )
+        raise ValueError(f"The config.weight_init_min should be None or 0.0, but is {config.weight_init_min}")
 
     if config.weight_init_max is None or config.weight_init_max == 1.0:
         config.weight_init_max = 1.0
     else:
-        raise ValueError(
-            f"The config.weight_init_max should be None or 1.0, but is {config.weight_init_max}"
-        )
+        raise ValueError(f"The config.weight_init_max should be None or 1.0, but is {config.weight_init_max}")
 
 
 def _check_other_configs(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
@@ -181,9 +166,7 @@ def _check_other_configs(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> 
             f"The config.num_embeddings_post_pruning should be None, but is {config.num_embeddings_post_pruning}"
         )
     if config.init_fn is not None and not callable(config.init_fn):
-        raise ValueError(
-            f"The config.init_fn should be callable, but is {config.init_fn}"
-        )
+        raise ValueError(f"The config.init_fn should be callable, but is {config.init_fn}")
 
 
 def _check_pooling_type(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> None:
@@ -202,7 +185,7 @@ def _check_pooling_type(config: Union[EmbeddingBagConfig, EmbeddingConfig]) -> N
 def check_embedding_config_valid(config: Union[EmbeddingBagConfig, EmbeddingConfig]):
     # 校验config是否为HashEmbeddingBagConfig或EmbeddingConfig的实例或子类
     _check_config_type(config)
-        
+
     check(
         config.need_pos is False,
         "the attribute 'need_pos' of embedding config only support False value.",
@@ -215,6 +198,7 @@ def check_embedding_config_valid(config: Union[EmbeddingBagConfig, EmbeddingConf
     _check_weight_init(config)
     _check_other_configs(config)
     _check_pooling_type(config)
+    adapter.check_embedding_config_new_item(config)
 
 
 class HashEmbeddingBag(torch.nn.Module):
@@ -230,9 +214,7 @@ class HashEmbeddingBag(torch.nn.Module):
     ):
         return NotImplemented
 
-    def forward(
-        self, input_tensor: torch.Tensor, offsets: Optional[torch.Tensor] = None
-    ):
+    def forward(self, input_tensor: torch.Tensor, offsets: Optional[torch.Tensor] = None):
         return NotImplemented
 
 
@@ -279,12 +261,7 @@ def _check_create_table_params(device, is_weighted, tables):
         f"length of 'tables' must be in range:[1, {MAX_NUM_TABLES}], but got:{len(tables)}",
     )
     check(
-        all(
-            [
-                isinstance(item, (HashEmbeddingBagConfig, EmbeddingBagConfig))
-                for item in tables
-            ]
-        ),
+        all(isinstance(item, (HashEmbeddingBagConfig, EmbeddingBagConfig)) for item in tables),
         "all elements in param 'tables' must be a HashEmbeddingBagConfig or EmbeddingBagConfig object",
     )
     check(
@@ -310,9 +287,7 @@ class HashEmbeddingBagCollection(EmbeddingBagCollectionInterface):
         self.embedding_bags: nn.ModuleDict = nn.ModuleDict()
         self._embedding_bag_configs = tables
         self._lengths_per_embedding: List[int] = []
-        self._device: torch.device = (
-            device if device is not None else torch.device("cpu")
-        )
+        self._device: torch.device = device if device is not None else torch.device("cpu")
         table_names = set()
         for embedding_config in tables:
             check_embedding_config_valid(embedding_config)
@@ -327,14 +302,10 @@ class HashEmbeddingBagCollection(EmbeddingBagCollectionInterface):
 
             if not embedding_config.feature_names:
                 embedding_config.feature_names = [embedding_config.name]
-            self._lengths_per_embedding.extend(
-                len(embedding_config.feature_names) * [embedding_config.embedding_dim]
-            )
+            self._lengths_per_embedding.extend(len(embedding_config.feature_names) * [embedding_config.embedding_dim])
 
         self._embedding_names: List[str] = [
-            embedding
-            for embeddings in get_embedding_names_by_table(tables)
-            for embedding in embeddings
+            embedding for embeddings in get_embedding_names_by_table(tables) for embedding in embeddings
         ]
         self._feature_names: List[List[str]] = [table.feature_names for table in tables]
         self.reset_parameters()
@@ -385,9 +356,7 @@ class HashEmbeddingBagCollection(EmbeddingBagCollectionInterface):
         # Initialize embedding bags weights with init_fn
         for table_config in self._embedding_bag_configs:
             if table_config.init_fn is None:
-                raise AttributeError(
-                    f"The init_fn is None, table name '{table_config.name}'"
-                )
+                raise AttributeError(f"The init_fn is None, table name '{table_config.name}'")
             param = self.embedding_bags[f"{table_config.name}"].weight
             # pyre-ignore
             table_config.init_fn(param)

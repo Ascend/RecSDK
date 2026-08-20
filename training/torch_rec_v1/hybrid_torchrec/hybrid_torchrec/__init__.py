@@ -9,16 +9,19 @@
 import sysconfig
 
 import torch
-import torchrec
 
+from hybrid_torchrec._adapters._version import TORCH_REC_VERSION
 from hybrid_torchrec.modules.hash_embeddingbag import (
     HashEmbeddingBagCollection,
     HashEmbeddingBagConfig,
     HybridHashTable,  # noqa: F401
 )
 
-# check if is torchrec 1.2.0 version
-IS_TORCH_REC_120 = str(torchrec.__version__).startswith("1.2.0")
+# Backward-compatible boolean flags: legacy code may import these names
+# directly. New code should consume the version adapter (see
+# hybrid_torchrec._adapters.adapter) for behavioural differences.
+IS_TORCH_REC_120 = TORCH_REC_VERSION == (1, 2, 0)
+IS_TORCH_REC_150 = TORCH_REC_VERSION == (1, 5, 0)
 
 __all__ = ["HashEmbeddingBagCollection", "HashEmbeddingBagConfig"]
 
