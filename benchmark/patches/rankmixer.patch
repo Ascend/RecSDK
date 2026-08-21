@@ -28,9 +28,11 @@ diff --git a/rec_model_zoo_pytorch/Onetrans/gr_model.py b/rec_model_zoo_pytorch/
 index 7c897d132..bff3d7122 100644
 --- a/rec_model_zoo_pytorch/Onetrans/gr_model.py
 +++ b/rec_model_zoo_pytorch/Onetrans/gr_model.py
-@@ -25 +24,0 @@ import functools
+@@ -24,11 +24,8 @@ import functools
+ 
 -NPU_ENABLE = os.environ.get('NPU_FLAG', False)
-@@ -28,5 +27,2 @@ ENABLE_JAGGED_OPS = True
+ HAS_ATTN_FUSION_OPS = True
+ ENABLE_JAGGED_OPS = True
 -if os.environ.get("NPU_FLAG", "True") == "False":
 -    NPU_ENABLE = False
 -    torch.cuda.manual_seed(42)
@@ -38,27 +40,35 @@ index 7c897d132..bff3d7122 100644
 -else:
 +NPU_ENABLE=False
 +try:
-@@ -33,0 +30 @@ else:
+     import torch_npu
 +    NPU_ENABLE=True
-@@ -38,0 +36,5 @@ else:
+     from torch_npu.profiler import profile
+@@ -38,2 +35,7 @@ else:
+     torch_npu.npu.manual_seed_all(42)
 +except:
 +    import torch
 +    import grouped_gemm
 +    torch.cuda.manual_seed(42)
 +    torch.cuda.manual_seed_all(42)
+ 
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
 index ce52f9d98..c5666391e 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
-@@ -17 +17 @@ class MultiCSVIterator:
+@@ -16,3 +16,3 @@ class MultiCSVIterator:
+                  itemid_column_name='item_id', file_format='csv', split_chunks_by_worker_id=False, chunksize=10000000,
 -                 use_column_names=False, use_cols = None, shuffle=False, epoch_num=0) -> None:
 +                 use_column_names=False, use_cols = None, shuffle=False, epoch_num=0, global_seed=None) -> None:
-@@ -59 +59,3 @@ class MultiCSVIterator:
+         """
+@@ -58,3 +58,5 @@ class MultiCSVIterator:
+         self.epoch_num=epoch_num
 -    
 +        self.global_seed = None if global_seed is None else int(global_seed)
 +        self.current_chunk_idx = 0
 +
-@@ -91,2 +93,11 @@ class MultiCSVIterator:
+     def __iter__(self):
+@@ -90,5 +92,15 @@ class MultiCSVIterator:
+                     self.shuffled_indices = [i for i in range(self.valid_data_size)]
 -                    random.seed(self.epoch_num)
 -                    random.shuffle(self.shuffled_indices)
 +                    if self.global_seed is None:
@@ -72,97 +82,142 @@ index ce52f9d98..c5666391e 100644
 +                            + self.current_chunk_idx
 +                        )
 +                        random.Random(shuffle_seed).shuffle(self.shuffled_indices)
-@@ -93,0 +105 @@ class MultiCSVIterator:
+                     #logging.info(f'print debug self.shuffled_indices || rank {self.rank} || self.epoch_num {self.epoch_num} || indices: {self.shuffled_indices[:20]}')
 +                self.current_chunk_idx += 1
-@@ -140 +152,2 @@ class RecallDataloader(IterableDataset):
+             except StopIteration:
+@@ -139,3 +151,4 @@ class RecallDataloader(IterableDataset):
+             user_id_hex: int = 1,
 -            shuffle: bool = False
 +            shuffle: bool = False,
 +            global_seed=None,
-@@ -183,0 +197,2 @@ class RecallDataloader(IterableDataset):
+     ) -> None:
+@@ -183,2 +196,4 @@ class RecallDataloader(IterableDataset):
+ 
 +        if global_seed is not None:
 +            files = sorted(files)
-@@ -228,0 +244 @@ class RecallDataloader(IterableDataset):
+         self.files = [ratings_file + '/' + f for f in files if f.endswith('.csv')]
+@@ -228,2 +243,3 @@ class RecallDataloader(IterableDataset):
+         self.epoch_num = 0
 +        self.global_seed = None if global_seed is None else int(global_seed)
-@@ -237 +253 @@ class RecallDataloader(IterableDataset):
+ 
+@@ -236,3 +252,3 @@ class RecallDataloader(IterableDataset):
+                                                        split_chunks_by_worker_id=False,shuffle=self.shuffle,
 -                                                       epoch_num=self.epoch_num)
 +                                                       epoch_num=self.epoch_num, global_seed=self.global_seed)
-@@ -495 +510,0 @@ def negative_sampling_mask(data1_supervise, data2_label, rate=0.07):
+ 
+@@ -494,2 +510 @@ def negative_sampling_mask(data1_supervise, data2_label, rate=0.07):
+ 
 -        
 \ No newline at end of file
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
 index 5b9ece253..2a1ba8dfa 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
-@@ -1,0 +2 @@ import os
+@@ -1,3 +1,5 @@
+ import os
 +import random
-@@ -2,0 +4 @@ import os
+ 
 +import numpy as np
-@@ -9,0 +12,2 @@ def create_data_loader(
+ import torch
+@@ -9,2 +11,4 @@ def create_data_loader(
+         num_workers: int = os.cpu_count(),
 +        global_seed=None,
 +        rank: int = 0,
-@@ -21,0 +26,3 @@ def create_data_loader(
+ ) -> torch.utils.data.DataLoader:
+@@ -21,2 +25,5 @@ def create_data_loader(
+     def worker_init_fn(worker_id):
 +        worker_seed = torch.initial_seed() % (2 ** 32)
 +        random.seed(worker_seed)
 +        np.random.seed(worker_seed)
-@@ -26,0 +34,5 @@ def create_data_loader(
+         worker_info = torch.utils.data.get_worker_info()
+@@ -26,2 +33,7 @@ def create_data_loader(
+ 
 +    generator = None
 +    if global_seed is not None:
 +        generator = torch.Generator()
 +        generator.manual_seed(int(global_seed) + int(rank))
 +
-@@ -33,0 +46 @@ def create_data_loader(
+     data_loader = torch.utils.data.DataLoader(
+@@ -33,2 +45,3 @@ def create_data_loader(
+         worker_init_fn=worker_init_fn,
 +        generator=generator,
-@@ -53,0 +67,2 @@ def create_data_loader_ep(
+         drop_last=True
+@@ -53,2 +66,4 @@ def create_data_loader_ep(
+         num_workers: int = os.cpu_count(),
 +        global_seed=None,
 +        rank: int = 0,
-@@ -77,0 +93,3 @@ def create_data_loader_ep(
+ ) -> torch.utils.data.DataLoader:
+@@ -77,2 +92,5 @@ def create_data_loader_ep(
+     def worker_init_fn(worker_id):
 +        worker_seed = torch.initial_seed() % (2 ** 32)
 +        random.seed(worker_seed)
 +        np.random.seed(worker_seed)
-@@ -82,0 +101,5 @@ def create_data_loader_ep(
+         worker_info = torch.utils.data.get_worker_info()
+@@ -82,2 +100,7 @@ def create_data_loader_ep(
+ 
 +    generator = None
 +    if global_seed is not None:
 +        generator = torch.Generator()
 +        generator.manual_seed(int(global_seed) + int(rank))
 +
-@@ -222,0 +246 @@ def create_data_loader_ep(
+     def collect_fn(data):
+@@ -222,2 +245,3 @@ def create_data_loader_ep(
+         worker_init_fn=worker_init_fn,
 +        generator=generator,
+         pin_memory=True,
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
 index 795451304..94bee80fd 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
-@@ -441,0 +442,2 @@ def gather_all_list(x: list, world_size: int) -> torch.Tensor:
+@@ -441,2 +441,4 @@ def avg_eval(x: torch.Tensor, world_size: int) -> float:
+ def gather_all_list(x: list, world_size: int) -> torch.Tensor:
 +    if world_size <= 1:
 +        return x
+     obj_list = [None for _ in range(world_size)]
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
 index d6e00c990..2dd3190e1 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
-@@ -38 +38,2 @@ def get_reco_dataset(
+@@ -37,3 +37,4 @@ def get_reco_dataset(
+         cut_off_time: int = None,        
 -        token_per_item: int = 2
 +        token_per_item: int = 2,
 +        global_seed=None,
-@@ -71,0 +73 @@ def get_reco_dataset(
+ ) -> RecoDataset:
+@@ -71,2 +72,3 @@ def get_reco_dataset(
+             cut_off_train_data=True,
 +            global_seed=global_seed,
-@@ -90,0 +93 @@ def get_reco_dataset(
+         )
+@@ -90,2 +92,3 @@ def get_reco_dataset(
+             cut_off_train_data=True,
 +            global_seed=global_seed,
-@@ -114 +117,2 @@ def get_reco_dataset(
+         )
+@@ -113,3 +116,4 @@ def get_reco_dataset(
+             shuffle=True,
 -            shift_id_by=1
 +            shift_id_by=1,
 +            global_seed=global_seed,
-@@ -137 +141,2 @@ def get_reco_dataset(
+         )
+@@ -136,3 +140,4 @@ def get_reco_dataset(
+             shuffle=True,
 -            shift_id_by=1
 +            shift_id_by=1,
 +            global_seed=global_seed,
-@@ -160,0 +166 @@ def get_reco_dataset(
+         )
+@@ -160,2 +165,3 @@ def get_reco_dataset(
+             shuffle=True,
 +            global_seed=global_seed,
-@@ -182,0 +189 @@ def get_reco_dataset(
+         )
+@@ -182,2 +188,3 @@ def get_reco_dataset(
+             shuffle=True,
 +            global_seed=global_seed,
+         )
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
 index acb4e3df6..32be41dc2 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
-@@ -43,6 +43,2 @@ from utils.common_utils import get_unique_path, to_clean_cpu_tensor
+@@ -42,10 +42,9 @@ from utils.common_utils import get_unique_path, to_clean_cpu_tensor
+ 
 -NPU_ENABLE = True
 -if os.environ.get("NPU_FLAG", "True") == "False":
 -    NPU_ENABLE = False
@@ -171,22 +226,28 @@ index acb4e3df6..32be41dc2 100644
 -if NPU_ENABLE:
 +NPU_ENABLE=False
 +try:
-@@ -49,0 +46 @@ if NPU_ENABLE:
+     import torch_npu
 +    NPU_ENABLE=True
-@@ -50,0 +48,2 @@ if NPU_ENABLE:
+     from torch_npu.profiler import profile
 +except:
 +    import torch
-@@ -80,3 +79,3 @@ def init_ddp_info_params(already_init=False):
+ 
+@@ -79,5 +78,5 @@ def init_ddp_info_params(already_init=False):
+     port = os.getenv("MASTER_PORT")
 -    rank_id = int(os.environ["RANK"])
 -    local_rank = int(os.environ["LOCAL_RANK"])
 -    world_size = int(os.environ["WORLD_SIZE"])
 +    rank_id = int(os.environ.get("RANK", 0))
 +    local_rank = int(os.environ.get("LOCAL_RANK", 0))
 +    world_size = int(os.environ.get("WORLD_SIZE", 1))
-@@ -86 +85 @@ def init_ddp_info_params(already_init=False):
+     node_num = int(os.environ.get("NNODES", 1))
+@@ -85,3 +84,3 @@ def init_ddp_info_params(already_init=False):
+     # initialize the process group
 -    if not already_init:
 +    if not already_init and world_size > 1:
-@@ -100,11 +99,23 @@ def init_ddp_info_params(already_init=False):
+         # initialize the process group
+@@ -99,13 +98,25 @@ def init_ddp_info_params(already_init=False):
+ 
 -def init_random_seed(config):
 -    """
 -    设置全局随机数以使训练结果更确定
@@ -221,46 +282,63 @@ index acb4e3df6..32be41dc2 100644
 +    except ImportError as exc:
 +        raise RuntimeError("deterministic=True requires msprobe to be installed.") from exc
 +    return seed_all
-@@ -117 +128 @@ def init_torch_config(local_rank, train_conf):
+ 
+@@ -116,6 +127,7 @@ def init_torch_config(local_rank, train_conf):
+     """
 -    use_tf32 = train_conf.get("use_tf32", False)
 +    use_tf32 = os.getenv("MODEL_HF32_FLAG").upper() == "TRUE" if os.getenv("MODEL_HF32_FLAG")!= None else train_conf.get("use_tf32", False)
-@@ -120 +131,2 @@ def init_torch_config(local_rank, train_conf):
+     if NPU_ENABLE:
+         torch_npu.npu.set_device(local_rank)
 -        torch_npu.npu.matmul.allow_hf32=True
 +        torch_npu.npu.matmul.allow_hf32=use_tf32
 +        print(f"NPU: set hf32 is {torch_npu.npu.aclnn.allow_hf32}")
-@@ -125,2 +137,2 @@ def init_torch_config(local_rank, train_conf):
+     else:
+@@ -124,6 +136,7 @@ def init_torch_config(local_rank, train_conf):
+         torch.backends.cudnn.allow_tf32 = use_tf32
 -    logging.info("cuda.matmul.allow_tf32: %s", use_tf32)
 -    logging.info("cudnn.allow_tf32: %s", use_tf32)
 +        print(f"GPU: set tf32 is {torch.backends.cuda.matmul.allow_tf32}")
 +
-@@ -128 +140,2 @@ def init_torch_config(local_rank, train_conf):
+ 
 -def get_data_loaders(dataset, data_dir, rank, world_size, train_config, model_conf, feature_config, dataloader_config):
 +def get_data_loaders(dataset, data_dir, rank, world_size, train_config, model_conf, feature_config,
 +                     dataloader_config, global_seed=None):
-@@ -133 +146,2 @@ def get_data_loaders(dataset, data_dir, rank, world_size, train_config, model_co
+     """
+@@ -132,3 +145,4 @@ def get_data_loaders(dataset, data_dir, rank, world_size, train_config, model_co
+     dataset, eval_data_loader, train_data_loader = get_train_eval_dataloader(
 -        dataset, data_dir, rank, world_size, train_config, model_conf, feature_config, dataloader_config, is_recall=train_config['is_recall']
 +        dataset, data_dir, rank, world_size, train_config, model_conf, feature_config, dataloader_config,
 +        is_recall=train_config['is_recall'], global_seed=global_seed
-@@ -171,0 +186,6 @@ def get_optimizer_callback(train_conf) -> Callable[
+     )
+@@ -171,5 +185,12 @@ def get_optimizer_callback(train_conf) -> Callable[
+ 
 +def time_wrap_xpu():
 +    if NPU_ENABLE:
 +        torch.npu.synchronize()
 +    else:
 +        torch.cuda.synchronize()
 +    return time.time()
-@@ -174 +194,2 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+ 
+ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFeatures]],
 -               train_conf, export_conf, batch_id, world_size, rank, epoch, device, save_dir):
 +               train_conf, export_conf, batch_id, world_size, rank, epoch, device, save_dir,
 +               profiler=None):
-@@ -180 +201 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+     """
+@@ -179,3 +200,3 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+     train_costs, batch_group = [], train_conf['eval_interval']
 -    last_training_time = time.time()
 +    last_training_time = time_wrap_xpu()
-@@ -183,0 +205 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+     use_loss_weighted_grad = train_conf.get("use_loss_weighted_grad", False)
+@@ -183,4 +204,7 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+     step_list, loss_list = [], []
 +    train_times = []
-@@ -185,0 +208,2 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+ 
+     while True:
 +        if profiler:
 +            profiler.step()
-@@ -197,3 +221,7 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+         try:
+@@ -196,10 +220,17 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+         if (batch_id % batch_group) == 0:
 -            train_cost = time.time() - last_training_time
 -            logging.info("rank %s; batch-stat (train): step %s "
 -                         "(epoch %s in %.2fs): %.6f", rank, batch_id, epoch, train_cost, loss)
@@ -271,17 +349,23 @@ index acb4e3df6..32be41dc2 100644
 +                print("Finished train it {} of epoch {}, {:.2f} ms/it, loss {:.6f}".format(
 +                    batch_id, epoch, gt, loss)
 +                )
-@@ -202 +230 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+             if batch_id > 0:
+                 train_costs.append(train_cost)
 -            last_training_time = time.time()
 +            last_training_time = time_wrap_xpu()
-@@ -204,0 +233,3 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+         batch_id += 1
+ 
 +    if len(train_times) > 1:
 +        train_times.pop(0)
 +
-@@ -216 +247 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+     if train_costs:
+@@ -215,3 +246,3 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+ 
 -    return batch_id, epoch_loss
 +    return batch_id, epoch_loss, train_times
-@@ -264 +295,18 @@ def save_model_state_dict(model, save_dir, export_conf):
+ 
+@@ -263,3 +294,20 @@ def save_model_state_dict(model, save_dir, export_conf):
+     logging.info("Saving model to %s", model_path)
 -    torch.save(model.state_dict(), model_path)
 +    model_module = getattr(model, "module", model)
 +    torch.save(model_module.state_dict(), model_path)
@@ -301,31 +385,45 @@ index acb4e3df6..32be41dc2 100644
 +        model_state_dict = {f"module.{key}": value for key, value in model_state_dict.items()}
 +
 +    model.load_state_dict(model_state_dict, strict=False)
-@@ -544,2 +592 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+ 
+@@ -543,4 +591,3 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+ 
 -
 -    profiling_flag = False if int(os.environ.get("PROFILING_FLAG", 0)) == 0 else True
 +    profiling_flag = False if int(os.environ.get("MODEL_PROFILING_FLAG", 0)) == 0 else True
-@@ -643 +690,2 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+     enable_compile = False if int(os.environ.get("ENABLE_COMPILE", 0)) == 0 else True
+@@ -642,3 +689,4 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+                 scores, ground_truth, group_keys = process_rank_scores(
 -                    model.module, eval_seq_features, feature_conf.get('save_score_csv_item_cols', {}),
 +                    getattr(model, "module", model), eval_seq_features,
 +                    feature_conf.get('save_score_csv_item_cols', {}),
-@@ -654 +702,2 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+                     feature_conf.get('save_score_csv_user_cols', {}), feature_conf.get('token_per_item', 2)
+@@ -653,3 +701,4 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+                 if (eval_iter % train_conf["eval_interval"]) == 0:
 -                    torch.distributed.barrier()  # sync time taken
 +                    if world_size > 1:
 +                        torch.distributed.barrier()
-@@ -964 +1013,2 @@ def save_item_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+                     cost = time.perf_counter() - last_eval_time
+@@ -963,3 +1012,4 @@ def save_item_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+ 
 -    emb_layer = model.module.embedding_module._item_info_embs[feature_name]
 +    model_module = getattr(model, "module", model)
 +    emb_layer = model_module.embedding_module._item_info_embs[feature_name]
-@@ -1036 +1086,2 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+     all_embeddings: torch.Tensor = emb_layer.weight.detach().to(device).cpu()
+@@ -1035,3 +1085,4 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+         
 -        user_embeddings : torch.Tensor = model.module.encode(
 +        model_module = getattr(model, "module", model)
 +        user_embeddings : torch.Tensor = model_module.encode(
-@@ -1077 +1128,2 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+             past_lengths=seq_features.past_lengths,
+@@ -1076,3 +1127,4 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+                 part_iter += 1
 -                torch.distributed.barrier()  # sync time taken
 +                if world_size > 1:
 +                    torch.distributed.barrier()
-@@ -1083,0 +1136,55 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+                 
+@@ -1083,2 +1135,57 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+ 
 +def latency_summary_rank0(latency_list, batch_size, model_name, device_name, inductor_flag):
 +    if latency_list is None or len(latency_list) == 0:
 +        print("No latency data collected, please check sample_statistics_num value effectively collects latency data.")
@@ -381,11 +479,17 @@ index acb4e3df6..32be41dc2 100644
 +        return []
 +    return [item for sub in matrix for item in sub[-n:]]
 +
-@@ -1097 +1203,0 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> None:
+@@ -1096,3 +1203,2 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+     common_config = config[Const.COMMON_HP]
 -    init_random_seed(common_config)
-@@ -1125,0 +1232 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+     device, rank, local_rank, world_size, node_num = init_ddp_info_params()
+@@ -1125,2 +1231,3 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+     init_torch_config(local_rank, train_conf)
 +    global_seed = configure_precision_mode(common_config)
-@@ -1145,3 +1252,4 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+ 
+@@ -1144,5 +1251,6 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+                                                                     train_config=train_conf,
 -                                                                    model_conf=model_conf,
 -                                                                    feature_config=feature_conf,
 -                                                                    dataloader_config=data_loader_conf)
@@ -393,7 +497,9 @@ index acb4e3df6..32be41dc2 100644
 +                                                                     feature_config=feature_conf,
 +                                                                     dataloader_config=data_loader_conf,
 +                                                                     global_seed=global_seed)
-@@ -1196,0 +1305,38 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+     # 3. 初始化模型
+@@ -1196,4 +1304,43 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+ 
 +    # profiling
 +    ENABLE_PROFILING = True if os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE" else False
 +    if ENABLE_PROFILING:
@@ -432,24 +538,30 @@ index acb4e3df6..32be41dc2 100644
 +        prof.start()
 +
 +    total_train_times = []
-@@ -1198 +1344,2 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+     batch_id = 0
 -    for epoch in range(train_conf['num_epochs']):
 +    epochs = int(os.environ.get("MODEL_EPOCH")) if os.environ.get("MODEL_EPOCH") is not None else train_conf['num_epochs']
 +    for epoch in range(epochs):
-@@ -1215 +1362,2 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+         train_data_loader.dataset.set_epoch_num(epoch)
+@@ -1214,6 +1361,7 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+             "device": device,
 -            "save_dir": save_dir
 +            "save_dir": save_dir,
 +            "profiler": prof if ENABLE_PROFILING else None,
-@@ -1217,2 +1365,2 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+         }
 -
 -        batch_id, epoch_loss = train_step(**train_step_para)
 +        batch_id, epoch_loss, train_times = train_step(**train_step_para)
 +        total_train_times += train_times
-@@ -1223,3 +1370,0 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+ 
+@@ -1222,5 +1370,2 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+             writer.add_scalar("loss/train", epoch_loss, epoch)
 -        
 -        logging.info("saving model state dict")
 -        save_model_state_dict(model=model, save_dir=save_dir, export_conf=export_conf)
-@@ -1247,3 +1392,6 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+ 
+@@ -1246,5 +1391,8 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+ 
 -    if dataset_name == "ag-rank":
 -        # 保存统计结果
 -        data_target.save_data(rank)
@@ -459,7 +571,9 @@ index acb4e3df6..32be41dc2 100644
 +    if int(os.environ.get("SAVE_MODEL_FLAG", 0)) == 1:
 +        logging.info("saving model state dict")
 +        save_model_state_dict(model=model, save_dir=save_dir, export_conf=export_conf)
-@@ -1253,0 +1402,42 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+ 
+@@ -1253,2 +1401,44 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+ 
 +    total_train_times_allrank = None
 +    if world_size > 1:
 +        dist.barrier()  # 同步所有rank
@@ -502,11 +616,17 @@ index acb4e3df6..32be41dc2 100644
 +        os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
 +        torch.save(final_results, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_ep{epochs}.pt")
 +
-@@ -1261 +1450,0 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already_init=False) -> None:
+@@ -1260,3 +1450,2 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+     common_config = config["common_hp"]
 -    init_random_seed(common_config)
-@@ -1282,0 +1472 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+     device, rank, local_rank, world_size, node_num = init_ddp_info_params(already_init)
+@@ -1282,2 +1471,3 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+     init_torch_config(local_rank, train_conf)
 +    global_seed = configure_precision_mode(common_config)
-@@ -1297,3 +1487,4 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+ 
+@@ -1296,5 +1486,6 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+                                                                     train_config=train_conf,
 -                                                                    model_conf=model_conf,
 -                                                                    feature_config=feature_conf,
 -                                                                    dataloader_config=data_loader_conf)
@@ -514,14 +634,22 @@ index acb4e3df6..32be41dc2 100644
 +                                                                     feature_config=feature_conf,
 +                                                                     dataloader_config=data_loader_conf,
 +                                                                     global_seed=global_seed)
-@@ -1312 +1503 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+ 
+@@ -1311,3 +1502,3 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
+         model_state_dict = torch.load(model_path, map_location=device)
 -        model.load_state_dict(model_state_dict, False)
 +        load_model_state_dict(model, model_state_dict)
-@@ -1374 +1564,0 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+         logging.info(f"Loaded pretrain model from {model_path}")
+@@ -1373,3 +1564,2 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+     common_config = config["common_hp"]
 -    init_random_seed(common_config)
-@@ -1392,0 +1583 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+     device, rank, local_rank, world_size, node_num = init_ddp_info_params()
+@@ -1392,2 +1582,3 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+     init_torch_config(local_rank, train_conf)
 +    global_seed = configure_precision_mode(common_config)
-@@ -1407,3 +1598,4 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+ 
+@@ -1406,5 +1597,6 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+                                                                     train_config=train_conf,
 -                                                                    model_conf=model_conf,
 -                                                                    feature_config=feature_conf,
 -                                                                    dataloader_config=data_loader_conf)
@@ -529,41 +657,57 @@ index acb4e3df6..32be41dc2 100644
 +                                                                     feature_config=feature_conf,
 +                                                                     dataloader_config=data_loader_conf,
 +                                                                     global_seed=global_seed)
-@@ -1420 +1612 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+ 
+@@ -1419,3 +1611,3 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+         model_state_dict = torch.load(model_path, map_location=device)
 -        model.load_state_dict(model_state_dict, False)
 +        load_model_state_dict(model, model_state_dict)
-@@ -1486 +1678 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+         logging.info(f"Loaded pretrain model from {model_path}")
+@@ -1485,3 +1677,3 @@ def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period
+ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, model_conf, feature_conf,
 -                              dataloader_conf, data_pth='', is_recall=False):
 +                              dataloader_conf, data_pth='', is_recall=False, global_seed=None):
-@@ -1504 +1696,2 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+     max_sequence_length = model_conf.get("max_sequence_length", 100)
+@@ -1503,3 +1695,4 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+         num_rerank=dataloader_conf.get("num_rerank", 256),
 -        token_per_item=feature_conf.get("token_per_item", 1)
 +        token_per_item=feature_conf.get("token_per_item", 1),
 +        global_seed=global_seed,
-@@ -1520 +1713,3 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+     )
+@@ -1519,3 +1712,5 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+             prefetch_factor=prefetch_factor,
 -            num_workers=num_workers
 +            num_workers=num_workers,
 +            global_seed=global_seed,
 +            rank=rank,
-@@ -1535 +1730,3 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+         )
+@@ -1534,3 +1729,5 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+             prefetch_factor=prefetch_factor,
 -            num_workers=num_workers
 +            num_workers=num_workers,
 +            global_seed=global_seed,
 +            rank=rank,
-@@ -1542 +1739,3 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+         )
+@@ -1541,3 +1738,5 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+             prefetch_factor=prefetch_factor,
 -            num_workers=num_workers
 +            num_workers=num_workers,
 +            global_seed=global_seed,
 +            rank=rank,
-@@ -1548 +1747,3 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+         )
+@@ -1547,3 +1746,5 @@ def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, m
+             prefetch_factor=prefetch_factor,
 -            num_workers=num_workers
 +            num_workers=num_workers,
 +            global_seed=global_seed,
 +            rank=rank,
+         )
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
 index 585196125..12eb04153 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
-@@ -3,0 +4,17 @@ import torch
+@@ -3,2 +3,19 @@ import torch
+ 
 +FIXED_WEIGHT_VALUE = 0.01
 +
 +
@@ -581,28 +725,36 @@ index 585196125..12eb04153 100644
 +        torch.nn.init.constant_(parameter, FIXED_WEIGHT_VALUE)
 +
 +
+ def truncated_normal(x: torch.Tensor, mean: float, std: float) -> torch.Tensor:
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
 index befbf7531..0b21073c8 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
-@@ -3 +2,0 @@ import torch
+@@ -2,9 +2,11 @@ from numpy import add
+ import torch
 -ENABLE_NPU=False
-@@ -6 +4,0 @@ try:
+ try:
+     import torch_npu
 -    ENABLE_NPU=True
-@@ -8 +6,3 @@ except:
+ except:
 -    import torch
 +    torch_npu = None
 +
 +try:
-@@ -9,0 +10,2 @@ except:
+     import grouped_gemm
 +except:
 +    grouped_gemm = None
-@@ -17 +19 @@ from modeling.generic.sequential_v2.transformers import RMSNormNPU
+ 
+@@ -16,3 +18,3 @@ from modeling.generic.sequential_v2.base_model import BaseModel
+ from modeling.generic.sequential_v2.transformers import RMSNormNPU
 -from modeling.generic.initialization import truncated_normal
 +from modeling.generic.initialization import FIXED_WEIGHT_VALUE, truncated_normal
-@@ -22,0 +25 @@ import logging
+ from modeling.model_registry import ModelRegistry
+@@ -22,4 +24,77 @@ from torch.autograd.profiler import record_function
+ import logging
 +
-@@ -24,0 +28,72 @@ torch._dynamo.disallow_in_graph(F.one_hot)
+ torch._dynamo.disallow_in_graph(F.one_hot)
+ 
 +
 +def _init_weight_(parameter: torch.Tensor, fixed_init: bool) -> None:
 +    if fixed_init:
@@ -675,29 +827,47 @@ index befbf7531..0b21073c8 100644
 +def npu_grouped_matmul_autograd(x, weight, bias, group_list):
 +    return NPUGroupedMatmulFunction.apply(x, weight, bias, group_list)
 +
-@@ -153,0 +229 @@ class PerTokenFFN(BaseModel):
+ @ModelRegistry.register(req_subs={"RankMixer"})
+@@ -153,2 +228,3 @@ class PerTokenFFN(BaseModel):
+         self.sparseMOE = sparseMOE
 +        self._fixed_init = common_hp["train_conf"].get("fixed_init", False)
-@@ -209 +285 @@ class PerTokenFFN(BaseModel):
+         self.dropout = nn.Dropout(dropout_p) if dropout_p > 0 else nn.Identity()
+@@ -208,3 +284,3 @@ class PerTokenFFN(BaseModel):
+         for i in range(self.num_layers):
 -            nn.init.xavier_normal_(self.W[i])
 +            _init_weight_(self.W[i], self._fixed_init)
-@@ -213 +289 @@ class PerTokenFFN(BaseModel):
+             if self.b is not None:
+@@ -212,3 +288,3 @@ class PerTokenFFN(BaseModel):
+         if hasattr(self, "gate_W"):
 -            nn.init.xavier_normal_(self.gate_W)
 +            _init_weight_(self.gate_W, self._fixed_init)
-@@ -220 +296 @@ class PerTokenFFN(BaseModel):
+         if hasattr(self, "gate_b"):
+@@ -219,3 +295,3 @@ class PerTokenFFN(BaseModel):
+             for i in range(self.num_layers):
 -                nn.init.xavier_normal_(self.W[e][i])
 +                _init_weight_(self.W[e][i], self._fixed_init)
-@@ -225 +301 @@ class PerTokenFFN(BaseModel):
+                 if self.b is not None:
+@@ -224,3 +300,3 @@ class PerTokenFFN(BaseModel):
+             for e in range(self.num_experts):
 -                nn.init.xavier_normal_(self.gate_W[e])
 +                _init_weight_(self.gate_W[e], self._fixed_init)
-@@ -247 +323 @@ class PerTokenFFN(BaseModel):
+         if hasattr(self, "gate_b"):
+@@ -246,3 +322,3 @@ class PerTokenFFN(BaseModel):
+                         idx = mask.nonzero(as_tuple=False).squeeze(1)  # 激活样本索引
 -                        x_t = torch.index_select(s, 0, idx).to(torch.float16)            # (k, D)
 +                        x_t = torch.index_select(s, 0, idx).to(torch.float16)
-@@ -319,0 +396 @@ class SparseMoE(BaseModel):
+                         for i in range(self.num_layers):
+@@ -319,2 +395,3 @@ class SparseMoE(BaseModel):
+         self.top_k = top_k_number
 +        self._fixed_init = common_hp["train_conf"].get("fixed_init", False)
-@@ -340 +417 @@ class SparseMoE(BaseModel):
+ 
+@@ -339,3 +416,3 @@ class SparseMoE(BaseModel):
+     def reset_parameters(self):
 -        nn.init.xavier_normal_(self.router.weight)
 +        _init_weight_(self.router.weight, self._fixed_init)
-@@ -479,12 +556,16 @@ class SparseMoE_Gemm(BaseModel):
+ 
+@@ -478,14 +555,18 @@ class SparseMoE_Gemm(BaseModel):
+         super().__init__(model_cfg=model_cfg, common_hp=common_hp, model_cls_dict=model_cls_dict)
 -        
 -        num_experts_per_token = model_cfg[Const.HP].get("num_experts_per_token")
 -        inner_dim = model_cfg[Const.HP].get("inner_dim")
@@ -726,50 +896,66 @@ index befbf7531..0b21073c8 100644
 +        use_npu_custom_grouped_matmul = train_conf.get(
 +            "use_npu_custom_grouped_matmul", True
 +        )
-@@ -494 +575 @@ class SparseMoE_Gemm(BaseModel):
+ 
+@@ -493,3 +574,3 @@ class SparseMoE_Gemm(BaseModel):
+         self.T = num_tokens
 -        self.kD = int(round(k * self.D))
 +        self.kD = int(round(expansion_ratio * self.D))
-@@ -498 +579 @@ class SparseMoE_Gemm(BaseModel):
+         self.Ne = num_experts_per_token
+@@ -497,14 +578,13 @@ class SparseMoE_Gemm(BaseModel):
+         self.target_activation_ratio = target_activation_ratio
 -        self.sparseMOE = sparseMOE
 +        self.sparseMOE = sparse_moe
-@@ -500 +580,0 @@ class SparseMoE_Gemm(BaseModel):
+         self.top_k = top_k_number
 -        D = self.D
-@@ -503,3 +583,3 @@ class SparseMoE_Gemm(BaseModel):
+         self.num_layers = num_layers_per_expert
+         self.dropout = nn.Dropout(dropout_p) if dropout_p > 0 else nn.Identity()
 -        self._npu_use_fp16 = npu_use_fp16
 -        
 -        # Router h(·): shared across positions, maps R^D -> R^{N_e}
 +        self.use_npu_custom_grouped_matmul = use_npu_custom_grouped_matmul
 +        self._fixed_init = train_conf.get("fixed_init", False)
 +
-@@ -507,3 +587,3 @@ class SparseMoE_Gemm(BaseModel):
+         self.router = nn.Linear(self.D, self.Ne, bias=False)
 -        in_dims = [D] + [self.kD] * (self.num_layers - 1)
 -        out_dims = [self.kD] * (self.num_layers - 1) + [D]
 -        
 +        in_dims = [self.D] + [self.kD] * (self.num_layers - 1)
 +        out_dims = [self.kD] * (self.num_layers - 1) + [self.D]
 +
-@@ -514 +594 @@ class SparseMoE_Gemm(BaseModel):
+         # -------------------------------------------------------------
+@@ -513,3 +593,3 @@ class SparseMoE_Gemm(BaseModel):
+         self.W = nn.ParameterList([
 -            nn.Parameter(torch.empty(num_tokens * num_experts_per_token, din, dout)) 
 +            nn.Parameter(torch.empty(num_tokens * num_experts_per_token, din, dout))
-@@ -519 +599 @@ class SparseMoE_Gemm(BaseModel):
+             for din, dout in zip(in_dims, out_dims)
+@@ -518,3 +598,3 @@ class SparseMoE_Gemm(BaseModel):
+             self.b = nn.ParameterList([
 -                nn.Parameter(torch.empty(num_tokens * num_experts_per_token, dout)) 
 +                nn.Parameter(torch.empty(num_tokens * num_experts_per_token, dout))
-@@ -529 +609 @@ class SparseMoE_Gemm(BaseModel):
+                 for dout in out_dims
+@@ -528,3 +608,3 @@ class SparseMoE_Gemm(BaseModel):
+         # -------------------------------------------------------------
 -        self.gate_W = nn.Parameter(torch.empty(num_tokens * num_experts_per_token, out_dims[-1], 1)) 
 +        self.gate_W = nn.Parameter(torch.empty(num_tokens * num_experts_per_token, out_dims[-1], 1))
-@@ -534 +614 @@ class SparseMoE_Gemm(BaseModel):
+         self.gate_b = nn.Parameter(torch.empty(num_tokens * num_experts_per_token, 1))
+@@ -533,6 +613,8 @@ class SparseMoE_Gemm(BaseModel):
+         self.reset_parameters()
 -    
 +
-@@ -535,0 +616,2 @@ class SparseMoE_Gemm(BaseModel):
+     def reset_parameters(self):
 +        if self._fixed_init:
 +            nn.init.constant_(self.router.weight, FIXED_WEIGHT_VALUE)
-@@ -537 +619 @@ class SparseMoE_Gemm(BaseModel):
+         for i in range(self.num_layers):
 -            nn.init.xavier_normal_(self.W[i])
 +            _init_weight_(self.W[i], self._fixed_init)
-@@ -541 +623 @@ class SparseMoE_Gemm(BaseModel):
+             if self.b is not None:
+@@ -540,117 +622,136 @@ class SparseMoE_Gemm(BaseModel):
+         if hasattr(self, "gate_W"):
 -            nn.init.xavier_normal_(self.gate_W)
 +            _init_weight_(self.gate_W, self._fixed_init)
-@@ -544,9 +625,0 @@ class SparseMoE_Gemm(BaseModel):
+         if hasattr(self, "gate_b"):
+             nn.init.zeros_(self.gate_b)
 -    def cutlas_gemm(self, a, b, bias, group_list):
 -        # [A] @ [B] + [bias]        
 -        matmul_out = grouped_gemm.ops.gmm(a, b, group_list)
@@ -779,7 +965,7 @@ index befbf7531..0b21073c8 100644
 -        """
 -        Args:
 -            s: (bs, T, D)
-@@ -554,37 +627,59 @@ class SparseMoE_Gemm(BaseModel):
+ 
 -        Returns:
 -            v: (bs, T, D)  -- routed mixture of experts output
 -        """
@@ -876,7 +1062,7 @@ index befbf7531..0b21073c8 100644
 +            expanded_bias = torch.repeat_interleave(bias, device_group_sizes, dim=0)
 +            matmul_out = matmul_out + expanded_bias
 +        return matmul_out
-@@ -592,8 +687,52 @@ class SparseMoE_Gemm(BaseModel):
+ 
 -        with record_function("## Group Moe ##"):
 -            tokens = s.reshape(bs*T, D)
 -            topk_indices_flat = topk_indices.reshape(bs*T, K)  # [bs*T,k]
@@ -937,7 +1123,8 @@ index befbf7531..0b21073c8 100644
 +            if device_type == "npu":
 +                output = torch_npu.npu_moe_token_unpermute(
 +                    hidden, permutation_indices, merge_weights
-@@ -602,54 +741,16 @@ class SparseMoE_Gemm(BaseModel):
+                 )
+             else:
 -                expend_x, idx = grouped_gemm.ops.permute(tokens, topk_indices_flat, bs*T*K)
 -            h = expend_x #[bs*T*K, D]
 -            # ---  FFN layers using original W/b ---
@@ -1008,13 +1195,17 @@ index befbf7531..0b21073c8 100644
 +        moe_output = self._forward_xpu(s, topk_indices, router_weights)
 +
 +        return self.ln(s + moe_output), auxiliary_outputs
+ 
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
 index aab1e849c..90d3ddedb 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
-@@ -7,0 +8 @@ import torch
+@@ -7,2 +7,3 @@ from regex import F
+ import torch
 +from modeling.generic.initialization import fixed_init_
-@@ -24 +25,7 @@ import os
+ from modeling.generic.sequential_v2.attn_mask_modules import AttentionMaskModule
+@@ -23,3 +24,9 @@ from torch.autograd.profiler import record_function
+ import os
 -NPU_FLAG = os.environ.get('NPU_FLAG', False)
 +
 +NPU_FLAG=False
@@ -1023,27 +1214,37 @@ index aab1e849c..90d3ddedb 100644
 +    NPU_FLAG=True
 +except:
 +    import torch
-@@ -55,5 +61,0 @@ class GR_model(BaseModel):
+ 
+@@ -54,7 +61,2 @@ class GR_model(BaseModel):
+         self.deep_model: DLRModule = self.init_sub_model("DLRModule")
 -        self._npu_use_fp16 = common_hp["train_conf"].get("npu_use_fp16", False)
 -        if NPU_FLAG != "False" and self._npu_use_fp16:
 -            self.deep_model.to(torch.float16)
 -        else:
 -            self.deep_model.to(torch.bfloat16)
-@@ -63,0 +66,2 @@ class GR_model(BaseModel):
+         self.attention_mask_module: AttentionMaskModule = self.init_sub_model("AttentionMaskModule")
+@@ -63,2 +65,4 @@ class GR_model(BaseModel):
+         self.loss_module: LossModule = self.init_sub_model("LossModule")
 +        self._deterministic = common_hp["train_conf"].get("deterministic", False)
 +        self._fixed_init = common_hp["train_conf"].get("fixed_init", False)
-@@ -80,0 +85,3 @@ class GR_model(BaseModel):
+         self.reset_params()
+@@ -80,2 +84,5 @@ class GR_model(BaseModel):
+         for name, params in self.named_parameters():
 +            if self._fixed_init:
 +                fixed_init_(name, params.data)
 +                continue
-@@ -115,4 +122,2 @@ class GR_model(BaseModel):
+             if ("sequence_model" in name) or ("embedding_module" in name):
+@@ -114,6 +121,4 @@ class GR_model(BaseModel):
+         past_embeddings, user_feature_embs, candidate_embeddings = self.get_embeddings(model_inputs)
 -        if NPU_FLAG != "False" and self._npu_use_fp16:
 -            past_embeddings = past_embeddings.to(torch.float16)
 -        else:
 -            past_embeddings = past_embeddings.to(torch.bfloat16)
 +        deep_model_dtype = next(self.deep_model.parameters()).dtype
 +        past_embeddings = past_embeddings.to(deep_model_dtype)
-@@ -209,29 +214,29 @@ class GR_model(BaseModel):
+         
+@@ -208,31 +213,31 @@ class GR_model(BaseModel):
+     ) -> torch.Tensor | Dict[str, torch.Tensor]:
 -        """
 -        生成式推荐大模型前向传播过程
 -        
@@ -1102,28 +1303,36 @@ index aab1e849c..90d3ddedb 100644
 +        )
 +
 +        return loss
+ 
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
 index 9015ec53b..585f8d6ca 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
-@@ -9 +9 @@ from modeling.generic.sequential_v2.base_model import BaseModel
+@@ -8,3 +8,3 @@ import pandas as pd
+ from modeling.generic.sequential_v2.base_model import BaseModel
 -from modeling.generic.initialization import truncated_normal
 +from modeling.generic.initialization import fixed_init_, truncated_normal
-@@ -49,0 +50 @@ class LocalEmbeddingModuleWithSideInfo(EmbeddingModule):
+ from modeling.model_registry import ModelRegistry
+@@ -49,2 +49,3 @@ class LocalEmbeddingModuleWithSideInfo(EmbeddingModule):
+         train_conf = common_hp["train_conf"]
 +        self._fixed_init = train_conf.get("fixed_init", False)
-@@ -225,0 +227 @@ class LocalEmbeddingModuleWithSideInfo(EmbeddingModule):
+         self._item_id_name = feat_conf.get("infer_items_key", "sequence_item_ids")
+@@ -225,5 +226,7 @@ class LocalEmbeddingModuleWithSideInfo(EmbeddingModule):
+     def reset_params(self):
 +        not_init_names = [f"_item_info_embs.{text}.weight" for text in self.recall_feat_dict.keys()]
-@@ -227,2 +229,3 @@ class LocalEmbeddingModuleWithSideInfo(EmbeddingModule):
+         for name, params in self.named_parameters():
 -            not_init_names = [f"_item_info_embs.{text}.weight" for text in self.recall_feat_dict.keys()]
 -            if ('emb' in name and name not in not_init_names) or (name in not_init_names and (self.use_trained_emb == False or self.is_recall == True)):
 +            if self._fixed_init:
 +                fixed_init_(name, params)
 +            elif ('emb' in name and name not in not_init_names) or (name in not_init_names and (self.use_trained_emb == False or self.is_recall == True)):
+                 logging.info("Initialize %s as truncated normal: %s params" % (name, params.data.size()))
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
 index 26a8467aa..412713477 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
-@@ -16,6 +16,2 @@ from modeling.generic.sequential_v2.features import seq_features_from_row_cpu, S
+@@ -15,9 +15,8 @@ from modeling.generic.sequential_v2.features import seq_features_from_row_cpu, S
+ 
 -
 -NPU_ENABLE = True
 -if os.environ.get("NPU_FLAG", "True") == "False":
@@ -1132,11 +1341,13 @@ index 26a8467aa..412713477 100644
 -if NPU_ENABLE:
 +NPU_ENABLE=False
 +try:
-@@ -22,0 +19,3 @@ if NPU_ENABLE:
+     import torch_npu
 +    NPU_ENABLE=True
 +except:
 +    import torch
-@@ -109 +108,13 @@ def assemble_model_executable_callback(
+ 
+@@ -108,3 +107,15 @@ def assemble_model_executable_callback(
+     # 6. 训练模型
 -    model = model.to(device)
 +    model_dtype = torch.float16 if NPU_ENABLE and train_conf.get("npu_use_fp16", False) else torch.bfloat16
 +    model = model.to(device=device, dtype=model_dtype)
@@ -1151,13 +1362,17 @@ index 26a8467aa..412713477 100644
 +            model = torch.compile(model, backend="inductor", dynamic=False, mode="reduce-overhead")
 +        else:
 +            model = torch.compile(model, backend="inductor", dynamic=False)
-@@ -173,0 +185 @@ def assemble_model_executable_callback(
+     
+@@ -173,2 +184,3 @@ def assemble_model_executable_callback(
+         if model.training:
 +            output.backward()
+             opt.step()
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
 index 69b6273d5..dad531e86 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
-@@ -15,5 +15,2 @@ from modeling.generic.sequential_v2 import HAS_ATTN_FUSION_OPS
+@@ -14,8 +14,8 @@ from modeling.generic.sequential_v2 import HAS_ATTN_FUSION_OPS
+ 
 -NPU_ENABLE = True
 -if os.environ.get("NPU_FLAG", "True") == "False":
 -    NPU_ENABLE = False
@@ -1165,17 +1380,21 @@ index 69b6273d5..dad531e86 100644
 -if NPU_ENABLE:
 +NPU_ENABLE=False
 +try:
-@@ -20,0 +18,3 @@ if NPU_ENABLE:
+     import torch_npu
 +    NPU_ENABLE=True
 +except:
 +    import torch
-@@ -167 +166,0 @@ class Transformer(BaseModel):
+ 
+@@ -166,3 +166,2 @@ class Transformer(BaseModel):
+             raise ValueError("Unknown string %s", qk_attn_denominator)  
 -        logging.info(f'denominator value is {self.qk_attn_denominator_value}')
+ 
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
 index 8dde43fce..9e98a7b65 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
-@@ -5,5 +5,2 @@ import torch
+@@ -4,8 +4,8 @@ import os
+ import torch
 -NPU_ENABLE = True
 -if os.environ.get("NPU_FLAG", "True") == "False":
 -    NPU_ENABLE = False
@@ -1183,33 +1402,43 @@ index 8dde43fce..9e98a7b65 100644
 -if NPU_ENABLE:
 +NPU_ENABLE=False
 +try:
-@@ -10,0 +8,3 @@ if NPU_ENABLE:
+     import torch_npu
 +    NPU_ENABLE=True
 +except:
 +    import torch
+ 
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
 index c2ab72d51..16046a4c9 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
-@@ -56,2 +55,0 @@ class ModelRegistry:
+@@ -55,4 +55,2 @@ class ModelRegistry:
+             module_name = name if name else cls.__name__
 -            if module_name in ModelRegistry.__module_meta_dict:
 -                logging.info("'%s' already register.", module_name)
-@@ -67 +64,0 @@ class ModelRegistry:
+  
+@@ -66,3 +64,2 @@ class ModelRegistry:
+             ModelRegistry.__module_meta_dict[module_name] = gr_module_meta
 -            logging.info("'%s' register succeed.", module_name)
+             return cls
 diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
 index b530d773c..818afd8c9 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
-@@ -2,3 +1,0 @@
+@@ -1,5 +1,2 @@
+ #!/bin/bash
 -echo -e "\n--> Generative Recommenders on ROMA environment\n"
 -
 -
-@@ -15 +11,0 @@ echo "site-packages dir: $sitepkgs_dir"
+ echo -e "Period: ${period}"
+@@ -14,3 +11,2 @@ echo "site-packages dir: $sitepkgs_dir"
+ 
 -
-@@ -21,2 +16,0 @@ echo ${train_workdir}
+ unset ASCEND_CUSTOM_OPP_PATH
+@@ -20,23 +16,3 @@ parent_dir=$(dirname "$train_workdir")
+ echo ${train_workdir}
 -
 -
-@@ -24,18 +17,0 @@ file="${sitepkgs_dir}/fbgemm_gpu/split_table_batched_embeddings_ops_training.py"
+ file="${sitepkgs_dir}/fbgemm_gpu/split_table_batched_embeddings_ops_training.py"
 -# 配置device， 先检查是否已经存在 "NPU = 3"
 -if ! grep -q "NPU = 3" "$file"; then
 -    sed -i '/CUDA = 1/a\    NPU = 3' "$file"
@@ -1228,14 +1457,18 @@ index b530d773c..818afd8c9 100644
 -    echo "run on npu!!!"
 -    export NPU_FLAG=True
 -fi
-@@ -59,3 +35,3 @@ echo "  save_dir=${save_dir:-<unset>}"
+ 
+@@ -58,5 +34,5 @@ echo "  save_dir=${save_dir:-<unset>}"
+ # ===== 设置默认值 =====
 -: "${config_file:=../sample_configs/train_amazon_books_0.2B.ini}" # 可以修改为不同大小的模型，默认0.2B
 -: "${data_dir:=../../amzn_books.ori}"  # 须手动改为数据集路径
 -: "${save_dir:=$parent_dir/modelfile/}"   # 改为预训练模型对应路径
 +: "${config_file:=../sample_configs/train_amazon_books_1B.ini}" # 可以修改为不同大小的模型
 +: "${data_dir:=../../amzn_books.ori}"                           # 须手动改为数据集路径，默认和SaclingLaw同级的amzn_books.ori下
 +: "${save_dir:=$parent_dir/modelfile/}"                         # 改为预训练模型对应路径
-@@ -66,9 +41,0 @@ export TASK_QUEUE_ENABLE=1
+ export LOAD_PRETRAIN_MODEL=0  # 是否加载预训练模型，0不加载，1加载(精度校验时使用)
+@@ -65,20 +41,3 @@ export LOAD_PRETRAIN_MODEL=0  # 是否加载预训练模型，0不加载，1加
+ export TASK_QUEUE_ENABLE=1
 -
 -
 -MASTER_HOST="${VC_WORKER_HOSTS:-localhost}"
@@ -1245,7 +1478,7 @@ index b530d773c..818afd8c9 100644
 -NGPUS_PER_NODE="${MA_NUM_GPUS:-1}"
 -NODE_RANK="${VC_TASK_INDEX:-0}"
 -
-@@ -76,8 +42,0 @@ export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+ export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
 -# export TORCH_DEVICE_BACKEND_AUTOLOAD=0
 -MASTER_PORT="12356"
 -
@@ -1254,10 +1487,14 @@ index b530d773c..818afd8c9 100644
 -export CUDA_VISIBLE_DEVICES=${VISIBLE_DEVICES}
 -
 -export NNODES=${NNODES}
-@@ -91 +50 @@ PYTHON_ARGS="
+ 
+@@ -90,3 +49,3 @@ PYTHON_ARGS="
+     --save_dir=${save_dir}/modelfile/ \
 -    --is_train=False \
 +    --is_train=True \
-@@ -95,25 +53,0 @@ PYTHON_ARGS="
+     --save_user_emb=False \
+@@ -94,66 +53,33 @@ PYTHON_ARGS="
+     --tensorboard_log_dir=${save_dir}/ScalingLaw/runs/exp_amzn_all/"
 -#按需添加--eval_batch_size=128修改batch size
 -export PYTHONPATH=$(dirname $(realpath $(find ${cur_dir} -name "DLRM.py"))):${PYTHONPATH}
 -
@@ -1283,9 +1520,10 @@ index b530d773c..818afd8c9 100644
 -    --overlap-grad-reduce \
 -    --overlap-param-gather \
 -"
-@@ -120,0 +55 @@ MEGA_OPT_ARGS="
+ 
 +export PYTHONPATH=$(dirname $(realpath $(find ${cur_dir} -name "DLRM.py"))):${PYTHONPATH}
-@@ -123,14 +58,9 @@ echo "$LOCAL_RANK"
+ echo "$LOCAL_RANK"
+ 
 -# inductor相关环境变量
 -export ENABLE_COMPILE=0
 -export ENABLE_GRAPH=0
@@ -1309,7 +1547,7 @@ index b530d773c..818afd8c9 100644
 +VISIBLE_DEVICES=0,1,2,3,4,5,6,7     # 卡ID, 需要和卡数匹配
 +export ASCEND_RT_VISIBLE_DEVICES=${VISIBLE_DEVICES}
 +export CUDA_VISIBLE_DEVICES=${VISIBLE_DEVICES}
-@@ -138,22 +68,18 @@ export TORCHINDUCTOR_CATLASS_ENABLED_OPS="mm,addmm,bmm,grouped_mm"
+ 
 -export PROFILING_FLAG=1
 -if [ "$PYTHON_MEGATRON" = "--open_megatron True" ];then
 -    echo "========启用megatron=========="
@@ -1356,17 +1594,24 @@ diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/samp
 index 6a17a8859..c203e6605 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
-@@ -59 +59 @@
+@@ -58,3 +58,3 @@
+     "eval_batch_size": 128,
 -    "eval_interval": 100,
 +    "eval_interval": 1,
-@@ -63,0 +64,3 @@
+     "num_epochs": 2,
+@@ -63,2 +63,5 @@
+     "use_tf32": True,
 +    "deterministic": False,
 +    "fixed_init": False,
 +    "use_npu_custom_grouped_matmul": True,
-@@ -73 +76 @@
+     "batch_limit": 40, # 跑全量数据的时候为False，debug的时候为了节约时间可以设置为较小的数如300以节约时间，
+@@ -72,3 +75,3 @@
+     "filter_invalid_ids": True,
 -    "eval_after_each_epoch": True
 +    "eval_after_each_epoch": False
-@@ -247 +250 @@
+   },
+@@ -246,2 +249,2 @@
+   }
 -}
 \ No newline at end of file
 +}
@@ -1374,17 +1619,24 @@ diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/samp
 index 04c8aa810..0f12be20f 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
-@@ -59 +59 @@
+@@ -58,3 +58,3 @@
+     "eval_batch_size": 128,
 -    "eval_interval": 100,
 +    "eval_interval": 1,
-@@ -63,0 +64,3 @@
+     "num_epochs": 2,
+@@ -63,2 +63,5 @@
+     "use_tf32": True,
 +    "deterministic": False,
 +    "fixed_init": False,
 +    "use_npu_custom_grouped_matmul": True,
-@@ -73 +76 @@
+     "batch_limit": 40, # 跑全量数据的时候为False，debug的时候为了节约时间可以设置为较小的数如300以节约时间，
+@@ -72,3 +75,3 @@
+     "filter_invalid_ids": True,
 -    "eval_after_each_epoch": True
 +    "eval_after_each_epoch": False
-@@ -247 +250 @@
+   },
+@@ -246,2 +249,2 @@
+   }
 -}
 \ No newline at end of file
 +}
@@ -1392,17 +1644,24 @@ diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/samp
 index d4bb9c3dd..080d53f62 100644
 --- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
 +++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
-@@ -59 +59 @@
+@@ -58,3 +58,3 @@
+     "eval_batch_size": 64,
 -    "eval_interval": 100,
 +    "eval_interval": 1,
-@@ -63,0 +64,3 @@
+     "num_epochs": 2,
+@@ -63,2 +63,5 @@
+     "use_tf32": True,
 +    "deterministic": False,
 +    "fixed_init": False,
 +    "use_npu_custom_grouped_matmul": True,
-@@ -73 +76 @@
+     "batch_limit": 40, # 跑全量数据的时候为False，debug的时候为了节约时间可以设置为较小的数如300以节约时间，
+@@ -72,3 +75,3 @@
+     "filter_invalid_ids": True,
 -    "eval_after_each_epoch": True
 +    "eval_after_each_epoch": False
-@@ -247 +250 @@
+   },
+@@ -246,2 +249,2 @@
+   }
 -}
 \ No newline at end of file
 +}
