@@ -1,8 +1,42 @@
+diff --git a/deepctr_torch/inputs.py b/deepctr_torch/inputs.py
+index 1b5f419..57b73d1 100644
+--- a/deepctr_torch/inputs.py
++++ b/deepctr_torch/inputs.py
+@@ -138,19 +138,23 @@ def combined_dnn_input(sparse_embedding_list, dense_value_list):
+         raise NotImplementedError
+ 
+ 
+-def get_varlen_pooling_list(embedding_dict, features, feature_index, varlen_sparse_feature_columns, device):
++def get_varlen_pooling_list(embedding_dict, features, feature_index, varlen_sparse_feature_columns, device,
++                            pooling_layers=None):
+     varlen_sparse_embedding_list = []
+-    for feat in varlen_sparse_feature_columns:
++    for index, feat in enumerate(varlen_sparse_feature_columns):
+         seq_emb = embedding_dict[feat.name]
++        pooling_layer = pooling_layers[index] if pooling_layers is not None else None
+         if feat.length_name is None:
+             seq_mask = features[:, feature_index[feat.name][0]:feature_index[feat.name][1]].long() != 0
+ 
+-            emb = SequencePoolingLayer(mode=feat.combiner, supports_masking=True, device=device)(
+-                [seq_emb, seq_mask])
++            if pooling_layer is None:
++                pooling_layer = SequencePoolingLayer(mode=feat.combiner, supports_masking=True, device=device)
++            emb = pooling_layer([seq_emb, seq_mask])
+         else:
+             seq_length = features[:, feature_index[feat.length_name][0]:feature_index[feat.length_name][1]].long()
+-            emb = SequencePoolingLayer(mode=feat.combiner, supports_masking=False, device=device)(
+-                [seq_emb, seq_length])
++            if pooling_layer is None:
++                pooling_layer = SequencePoolingLayer(mode=feat.combiner, supports_masking=False, device=device)
++            emb = pooling_layer([seq_emb, seq_length])
+         varlen_sparse_embedding_list.append(emb)
+     return varlen_sparse_embedding_list
+ 
 diff --git a/deepctr_torch/layers/core.py b/deepctr_torch/layers/core.py
-index 717bd7e..275022f 100644
+index 717bd7e..b4194df 100644
 --- a/deepctr_torch/layers/core.py
 +++ b/deepctr_torch/layers/core.py
-@@ -1,9 +1,17 @@
+@@ -1,9 +1,20 @@
  import math
 +import os
  
@@ -12,16 +46,67 @@ index 717bd7e..275022f 100644
  
 +CPU_ENABLE = os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE"
 +GPU_ENABLE = torch.cuda.is_available() and not CPU_ENABLE
-+NPU_ENABLE = not GPU_ENABLE and not CPU_ENABLE
-+
-+if NPU_ENABLE:
++try:
 +    import torch_npu
++    NPU_PACKAGE_AVAILABLE = True
++except ImportError:
++    torch_npu = None
++    NPU_PACKAGE_AVAILABLE = False
++NPU_ENABLE = NPU_PACKAGE_AVAILABLE and not GPU_ENABLE and not CPU_ENABLE
 +
  from .activation import activation_layer
  
  
+diff --git a/deepctr_torch/layers/sequence.py b/deepctr_torch/layers/sequence.py
+index b0026ff..9eeb119 100644
+--- a/deepctr_torch/layers/sequence.py
++++ b/deepctr_torch/layers/sequence.py
+@@ -24,7 +24,7 @@ class SequencePoolingLayer(nn.Module):
+ 
+     """
+ 
+-    def __init__(self, mode='mean', supports_masking=False, device='cpu'):
++    def __init__(self, mode='mean', supports_masking=False, device='cpu', dynamic_shape=False):
+ 
+         super(SequencePoolingLayer, self).__init__()
+         if mode not in ['sum', 'mean', 'max']:
+@@ -32,14 +32,21 @@ class SequencePoolingLayer(nn.Module):
+         self.supports_masking = supports_masking
+         self.mode = mode
+         self.device = device
+-        self.eps = torch.FloatTensor([1e-8]).to(device)
+-        self.to(device)
++        self.dynamic_shape = dynamic_shape
++        if dynamic_shape:
++            self.eps = torch.tensor([1e-8], dtype=torch.float32, device=device)
++        else:
++            self.eps = torch.FloatTensor([1e-8]).to(device)
++            self.to(device)
+ 
+     def _sequence_mask(self, lengths, maxlen=None, dtype=torch.bool):
+         # Returns a mask tensor representing the first N positions of each cell.
+         if maxlen is None:
+             maxlen = lengths.max()
+-        row_vector = torch.arange(0, maxlen, 1).to(lengths.device)
++        if getattr(self, 'dynamic_shape', False):
++            row_vector = torch.arange(0, maxlen, 1, device=lengths.device)
++        else:
++            row_vector = torch.arange(0, maxlen, 1).to(lengths.device)
+         matrix = torch.unsqueeze(lengths, dim=-1)
+         mask = row_vector < matrix
+ 
+@@ -70,7 +77,8 @@ class SequencePoolingLayer(nn.Module):
+         hist = torch.sum(hist, dim=1, keepdim=False)
+ 
+         if self.mode == 'mean':
+-            self.eps = self.eps.to(user_behavior_length.device)
++            if not getattr(self, 'dynamic_shape', False):
++                self.eps = self.eps.to(user_behavior_length.device)
+             hist = torch.div(hist, user_behavior_length.type(torch.float32) + self.eps)
+ 
+         hist = torch.unsqueeze(hist, dim=1)
 diff --git a/deepctr_torch/models/basemodel.py b/deepctr_torch/models/basemodel.py
-index cd36340..9ce8798 100644
+index cd36340..bd34f80 100644
 --- a/deepctr_torch/models/basemodel.py
 +++ b/deepctr_torch/models/basemodel.py
 @@ -15,6 +15,7 @@ import torch
@@ -32,16 +117,26 @@ index cd36340..9ce8798 100644
  from sklearn.metrics import *
  from torch.utils.data import DataLoader
  from tqdm import tqdm
-@@ -30,6 +31,18 @@ from ..layers import PredictionLayer
+@@ -26,10 +27,27 @@ except ImportError:
+ 
+ from ..inputs import build_input_features, SparseFeat, DenseFeat, VarLenSparseFeat, get_varlen_pooling_list, \
+     create_embedding_matrix, varlen_embedding_lookup
+-from ..layers import PredictionLayer
++from ..layers import PredictionLayer, SequencePoolingLayer
  from ..layers.utils import slice_arrays
  from ..callbacks import History
  
 +CPU_ENABLE = os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE"
 +GPU_ENABLE = torch.cuda.is_available() and not CPU_ENABLE
-+NPU_ENABLE = not GPU_ENABLE and not CPU_ENABLE
++try:
++    import torch_npu
++    NPU_PACKAGE_AVAILABLE = True
++except ImportError:
++    torch_npu = None
++    NPU_PACKAGE_AVAILABLE = False
++NPU_ENABLE = NPU_PACKAGE_AVAILABLE and not GPU_ENABLE and not CPU_ENABLE
 +
 +if NPU_ENABLE:
-+    import torch_npu
 +    torch_npu.npu.matmul.allow_hf32 = True
 +    torch_npu.npu.conv.allow_hf32 = True
 +if GPU_ENABLE:
@@ -51,16 +146,83 @@ index cd36340..9ce8798 100644
  
  class Linear(nn.Module):
      def __init__(self, feature_columns, feature_index, init_std=0.0001, device='cpu'):
-@@ -135,7 +148,7 @@ class BaseModel(nn.Module):
+@@ -43,6 +61,7 @@ class Linear(nn.Module):
+ 
+         self.varlen_sparse_feature_columns = list(
+             filter(lambda x: isinstance(x, VarLenSparseFeat), feature_columns)) if len(feature_columns) else []
++        self.dynamic_shape_enabled = False
+ 
+         self.embedding_dict = create_embedding_matrix(feature_columns, init_std, linear=True, sparse=False,
+                                                       device=device)
+@@ -71,12 +90,18 @@ class Linear(nn.Module):
+ 
+         sequence_embed_dict = varlen_embedding_lookup(X, self.embedding_dict, self.feature_index,
+                                                       self.varlen_sparse_feature_columns)
++        dynamic_shape_enabled = getattr(self, 'dynamic_shape_enabled', False)
++        pooling_layers = self.varlen_pooling_layers if dynamic_shape_enabled else None
+         varlen_embedding_list = get_varlen_pooling_list(sequence_embed_dict, X, self.feature_index,
+-                                                        self.varlen_sparse_feature_columns, self.device)
++                                                        self.varlen_sparse_feature_columns, self.device,
++                                                        pooling_layers)
+ 
+         sparse_embedding_list += varlen_embedding_list
+ 
+-        linear_logit = torch.zeros([X.shape[0], 1]).to(self.device)
++        if dynamic_shape_enabled:
++            linear_logit = torch.zeros((X.shape[0], 1), device=X.device)
++        else:
++            linear_logit = torch.zeros([X.shape[0], 1]).to(self.device)
+         if len(sparse_embedding_list) > 0:
+             sparse_embedding_cat = torch.cat(sparse_embedding_list, dim=-1)
+             if sparse_feat_refine_weight is not None:
+@@ -91,6 +116,16 @@ class Linear(nn.Module):
+ 
+         return linear_logit
+ 
++    def enable_dynamic_shape(self):
++        if getattr(self, 'dynamic_shape_enabled', False):
++            return
++        self.varlen_pooling_layers = nn.ModuleList([
++            SequencePoolingLayer(mode=feat.combiner, supports_masking=feat.length_name is None,
++                                 device=self.device, dynamic_shape=True)
++            for feat in self.varlen_sparse_feature_columns
++        ])
++        self.dynamic_shape_enabled = True
++
+ 
+ class BaseModel(nn.Module):
+     def __init__(self, linear_feature_columns, dnn_feature_columns, l2_reg_linear=1e-5, l2_reg_embedding=1e-5,
+@@ -113,6 +148,9 @@ class BaseModel(nn.Module):
+         self.dnn_feature_columns = dnn_feature_columns
+ 
+         self.embedding_dict = create_embedding_matrix(dnn_feature_columns, init_std, sparse=False, device=device)
++        self.varlen_sparse_feature_columns = list(
++            filter(lambda x: isinstance(x, VarLenSparseFeat), dnn_feature_columns)) if len(dnn_feature_columns) else []
++        self.dynamic_shape_enabled = False
+         #         nn.ModuleDict(
+         #             {feat.embedding_name: nn.Embedding(feat.dimension, embedding_size, sparse=True) for feat in
+         #              self.dnn_feature_columns}
+@@ -134,7 +172,18 @@ class BaseModel(nn.Module):
+         self._ckpt_saved_epoch = False  # used for EarlyStopping in tf1.14
          self.history = History()
  
-     def fit(self, x=None, y=None, batch_size=None, epochs=1, verbose=1, initial_epoch=0, validation_split=0.,
--            validation_data=None, shuffle=True, callbacks=None):
-+            validation_data=None, shuffle=False, callbacks=None):
+-    def fit(self, x=None, y=None, batch_size=None, epochs=1, verbose=1, initial_epoch=0, validation_split=0.,
++    def enable_dynamic_shape(self):
++        if getattr(self, 'dynamic_shape_enabled', False):
++            return
++        self.varlen_pooling_layers = nn.ModuleList([
++            SequencePoolingLayer(mode=feat.combiner, supports_masking=feat.length_name is None,
++                                 device=self.device, dynamic_shape=True)
++            for feat in self.varlen_sparse_feature_columns
++        ])
++        self.linear_model.enable_dynamic_shape()
++        self.dynamic_shape_enabled = True
++
++    def fit(self, x=None, y=None, batch_size=None, epochs=None, verbose=1, initial_epoch=0, validation_split=0.,
+             validation_data=None, shuffle=True, callbacks=None):
          """
  
-         :param x: Numpy array of training data (if the model has a single input), or list of Numpy arrays (if the model has multiple inputs).If input layers in the model are named, you can also pass a
-@@ -210,6 +223,15 @@ class BaseModel(nn.Module):
+@@ -210,6 +259,15 @@ class BaseModel(nn.Module):
          else:
              print(self.device)
  
@@ -76,15 +238,16 @@ index cd36340..9ce8798 100644
          train_loader = DataLoader(
              dataset=train_tensor_data, shuffle=shuffle, batch_size=batch_size)
  
-@@ -227,6 +249,7 @@ class BaseModel(nn.Module):
+@@ -227,6 +285,8 @@ class BaseModel(nn.Module):
          callbacks.model.stop_training = False
  
          # Train
-+        epochs = int(os.environ.get("MODEL_EPOCH", "100"))
++        if epochs is None:
++            epochs = int(os.environ.get("MODEL_EPOCH", "1"))
          print("Train on {0} samples, validate on {1} samples, {2} steps per epoch".format(
              len(train_tensor_data), len(val_y), steps_per_epoch))
          for epoch in range(initial_epoch, epochs):
-@@ -239,8 +262,17 @@ class BaseModel(nn.Module):
+@@ -239,8 +299,17 @@ class BaseModel(nn.Module):
              try:
                  with tqdm(enumerate(train_loader), disable=verbose != 1) as t:
                      for _, (x_train, y_train) in t:
@@ -103,7 +266,7 @@ index cd36340..9ce8798 100644
  
                          y_pred = model(x).squeeze()
  
-@@ -299,7 +331,6 @@ class BaseModel(nn.Module):
+@@ -299,7 +368,6 @@ class BaseModel(nn.Module):
                      for name in self.metrics:
                          eval_str += " - " + "val_" + name + \
                                      ": {0: .4f}".format(epoch_logs["val_" + name])
@@ -111,7 +274,7 @@ index cd36340..9ce8798 100644
              callbacks.on_epoch_end(epoch, epoch_logs)
              if self.stop_training:
                  break
-@@ -343,12 +374,138 @@ class BaseModel(nn.Module):
+@@ -343,12 +411,138 @@ class BaseModel(nn.Module):
  
          pred_ans = []
          with torch.no_grad():
@@ -151,8 +314,8 @@ index cd36340..9ce8798 100644
 +                        latency = end_time - start_time
 +                        latency_list.append(latency)
 +
-+                latency_list = latency_list[2:]
-+                avg_time = sum(latency_list) / len(latency_list)
++                latency_list = latency_list[2:] if len(latency_list) > 2 else latency_list
++                avg_time = sum(latency_list) / len(latency_list) if latency_list else 0.0
 +
 +                latency_list.sort()
 +                p90 = 0.0
@@ -166,7 +329,7 @@ index cd36340..9ce8798 100644
 +                    p99 = np.percentile(latency_list, 99, method="lower")
 +                    p999 = np.percentile(latency_list, 99.9, method="lower")
 +
-+                QPS = int(1 / avg_time)
++                QPS = int(1 / avg_time) if avg_time > 0 else 0
 +                e2e_result = {
 +                    "Batch_size": batch_size,
 +                    "model_name": model_name,
@@ -253,8 +416,20 @@ index cd36340..9ce8798 100644
          return np.concatenate(pred_ans).astype("float64")
  
      def input_from_feature_columns(self, X, feature_columns, embedding_dict, support_dense=True):
+@@ -371,8 +565,10 @@ class BaseModel(nn.Module):
+ 
+         sequence_embed_dict = varlen_embedding_lookup(X, self.embedding_dict, self.feature_index,
+                                                       varlen_sparse_feature_columns)
++        pooling_layers = self.varlen_pooling_layers if getattr(self, 'dynamic_shape_enabled', False) else None
+         varlen_sparse_embedding_list = get_varlen_pooling_list(sequence_embed_dict, X, self.feature_index,
+-                                                               varlen_sparse_feature_columns, self.device)
++                                                               varlen_sparse_feature_columns, self.device,
++                                                               pooling_layers)
+ 
+         dense_value_list = [X[:, self.feature_index[feat.name][0]:self.feature_index[feat.name][1]] for feat in
+                             dense_feature_columns]
 diff --git a/tests/models/AFM_test.py b/tests/models/AFM_test.py
-index 420f286..9256d07 100644
+index 420f286..548717c 100644
 --- a/tests/models/AFM_test.py
 +++ b/tests/models/AFM_test.py
 @@ -3,7 +3,7 @@ import pytest
@@ -262,50 +437,42 @@ index 420f286..9256d07 100644
  from deepctr_torch.callbacks import EarlyStopping, ModelCheckpoint
  from deepctr_torch.models import AFM
 -from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device
-+from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device, extend_seed_all
++from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device, run_dynamic_shape_inference
  
  
  @pytest.mark.parametrize(
-@@ -11,6 +11,7 @@ from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device
-     [(True, 3, 0), ]
- )
- def test_AFM(use_attention, sparse_feature_num, dense_feature_num):
-+    extend_seed_all(2025)
-     model_name = 'AFM'
-     sample_size = SAMPLE_SIZE
-     x, y, feature_columns = get_test_data(
-diff --git a/tests/models/AFN_test.py b/tests/models/AFN_test.py
-index b7f9ef0..3f79274 100644
---- a/tests/models/AFN_test.py
-+++ b/tests/models/AFN_test.py
-@@ -1,8 +1,9 @@
- # -*- coding: utf-8 -*-
- import pytest
+@@ -19,6 +19,9 @@ def test_AFM(use_attention, sparse_feature_num, dense_feature_num):
+     model = AFM(linear_feature_columns=feature_columns, dnn_feature_columns=feature_columns,
+                 use_attention=use_attention, afm_dropout=0.5, device=get_device())
  
-+from deepctr_torch.callbacks import EarlyStopping, ModelCheckpoint
- from deepctr_torch.models import AFN
--from tests.utils import get_test_data, SAMPLE_SIZE, check_model, get_device
-+from tests.utils import get_test_data, SAMPLE_SIZE, check_model, get_device, extend_seed_all
- 
- 
- @pytest.mark.parametrize(
-@@ -12,6 +13,7 @@ from tests.utils import get_test_data, SAMPLE_SIZE, check_model, get_device
-      ((32, 16), 0, 3)]
- )
- def test_AFN(afn_dnn_hidden_units, sparse_feature_num, dense_feature_num):
-+    extend_seed_all(2025)
-     model_name = 'AFN'
-     sample_size = SAMPLE_SIZE
-     x, y, feature_columns = get_test_data(
-@@ -21,6 +23,11 @@ def test_AFN(afn_dnn_hidden_units, sparse_feature_num, dense_feature_num):
- 
++    if run_dynamic_shape_inference(model, x, model_name):
++        return
++
      check_model(model, model_name, x, y)
  
-+    early_stopping = EarlyStopping(monitor='val_binary_crossentropy', min_delta=0, verbose=1, patience=0, mode='min')
-+    model_checkpoint = ModelCheckpoint(filepath='model.ckpt', monitor='val_binary_crossentropy', verbose=1,
-+                                       save_best_only=True,
-+                                       save_weights_only=False, mode='max', period=1)
-+    model.fit(x, y, batch_size=64, epochs=3, validation_split=0.5, callbacks=[early_stopping, model_checkpoint])
+     early_stopping = EarlyStopping(monitor='val_binary_crossentropy', min_delta=0, verbose=1, patience=0, mode='min')
+diff --git a/tests/models/AFN_test.py b/tests/models/AFN_test.py
+index b7f9ef0..bdb4745 100644
+--- a/tests/models/AFN_test.py
++++ b/tests/models/AFN_test.py
+@@ -2,7 +2,7 @@
+ import pytest
+ 
+ from deepctr_torch.models import AFN
+-from tests.utils import get_test_data, SAMPLE_SIZE, check_model, get_device
++from tests.utils import get_test_data, SAMPLE_SIZE, check_model, get_device, run_dynamic_shape_inference
+ 
+ 
+ @pytest.mark.parametrize(
+@@ -19,8 +19,10 @@ def test_AFN(afn_dnn_hidden_units, sparse_feature_num, dense_feature_num):
+ 
+     model = AFN(feature_columns, feature_columns, afn_dnn_hidden_units=afn_dnn_hidden_units, device=get_device())
+ 
+-    check_model(model, model_name, x, y)
++    if run_dynamic_shape_inference(model, x, model_name):
++        return
+ 
++    check_model(model, model_name, x, y)
  
  if __name__ == '__main__':
      pass
@@ -352,7 +519,7 @@ index ef5882b..04d9e54 100644
          input_size=3,
          gru_type=gru_type,
 diff --git a/tests/models/DIFM_test.py b/tests/models/DIFM_test.py
-index 0960232..8d38630 100644
+index 0960232..bb8e5b9 100644
 --- a/tests/models/DIFM_test.py
 +++ b/tests/models/DIFM_test.py
 @@ -2,7 +2,7 @@
@@ -360,18 +527,21 @@ index 0960232..8d38630 100644
  
  from deepctr_torch.models import DIFM
 -from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device
-+from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device, extend_seed_all
++from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device, run_dynamic_shape_inference
  
  
  @pytest.mark.parametrize(
-@@ -10,6 +10,7 @@ from ..utils import get_test_data, SAMPLE_SIZE, check_model, get_device
-     [(1, (4,), 2), (2, (4, 4,), 2), (1, (4,), 1)]
- )
- def test_DIFM(att_head_num, dnn_hidden_units, sparse_feature_num):
-+    extend_seed_all(2025)
-     model_name = "DIFM"
-     sample_size = SAMPLE_SIZE
-     x, y, feature_columns = get_test_data(
+@@ -18,6 +18,10 @@ def test_DIFM(att_head_num, dnn_hidden_units, sparse_feature_num):
+     model = DIFM(linear_feature_columns=feature_columns, dnn_feature_columns=feature_columns,
+                     att_head_num=att_head_num,
+                     dnn_hidden_units=dnn_hidden_units, dnn_dropout=0.5, device=get_device())
++
++    if run_dynamic_shape_inference(model, x, model_name):
++        return
++
+     check_model(model, model_name, x, y)
+ 
+ 
 diff --git a/tests/models/FiBiNET_test.py b/tests/models/FiBiNET_test.py
 index 5f25bdf..591e4ee 100644
 --- a/tests/models/FiBiNET_test.py
@@ -523,11 +693,15 @@ index f3341f6..dc4b1fd 100644
      sample_size = SAMPLE_SIZE
      x, y_list, feature_columns = get_mtl_test_data(
 diff --git a/tests/utils.py b/tests/utils.py
-index 28f3010..b955592 100644
+index 28f3010..05a8adc 100644
 --- a/tests/utils.py
 +++ b/tests/utils.py
-@@ -2,10 +2,12 @@
+@@ -1,13 +1,143 @@
+ # -*- coding: utf-8 -*-
  import os
++import time
++import logging
++import sys
  
  import numpy as np
 +import random
@@ -538,8 +712,135 @@ index 28f3010..b955592 100644
 +from pathlib import Path
  
  SAMPLE_SIZE = 64
++logger = logging.getLogger(__name__)
++
++
++def parse_dynamic_shape_list():
++    """Parse SHAPE_LIST as ``batch_size;batch_size`` or ``batch_size,...``."""
++    shape_list = []
++    shape_list_str = os.getenv("SHAPE_LIST", "")
++    for item in shape_list_str.split(";"):
++        item = item.strip()
++        if not item:
++            continue
++        try:
++            shape_list.append(int(item.split(",", 1)[0].strip()))
++        except ValueError as exc:
++            raise ValueError(f"Invalid SHAPE_LIST item: {item!r}") from exc
++    return shape_list
++
++
++def _dynamic_compile_value():
++    value = os.getenv("ENABLE_DYNAMIC_COMPILE", "False").strip().lower()
++    if value in ("true", "false"):
++        return value == "true"
++    if value == "none":
++        return None
++    raise ValueError("ENABLE_DYNAMIC_COMPILE must be True, False, or None")
++
++
++def _model_input_tensor(model, model_input, batch_size):
++    """Build the same flattened feature tensor used by BaseModel.fit/predict."""
++    arrays = []
++    for feature in model.feature_index:
++        value = np.asarray(model_input[feature])
++        if value.ndim == 1:
++            value = np.expand_dims(value, axis=1)
++        indices = np.arange(batch_size) % value.shape[0]
++        arrays.append(value[indices])
++    return torch.from_numpy(np.concatenate(arrays, axis=-1)).float().to(next(model.parameters()).device)
++
++
++def run_dynamic_shape_inference(model, model_input, model_name):
++    """Run a symbolically dynamic batch-shape benchmark when SHAPE_LIST is set.
++
++    Returns True when the dynamic path was selected, otherwise False so callers
++    can retain their original test flow.
++    """
++    shape_list = parse_dynamic_shape_list()
++    if not shape_list or os.getenv("MODEL_MODE", "infer").upper() != "INFER":
++        return False
++
++    base_model = model
++    base_model.enable_dynamic_shape()
++    feature_dim = max(end for _, end in base_model.feature_index.values())
++    model.eval()
++    if not logger.handlers:
++        handler = logging.StreamHandler(sys.stdout)
++        handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
++        logger.addHandler(handler)
++    logger.setLevel(logging.INFO)
++    logger.propagate = False
++    dynamic_compile = _dynamic_compile_value()
++    if os.getenv("MODEL_COMPILE_FLAG", "False").upper() == "TRUE":
++        compile_kwargs = {"dynamic": dynamic_compile, "backend": "inductor"}
++        if os.getenv("MODEL_ACLGRAPH_FLAG", "False").upper() == "TRUE":
++            compile_kwargs["mode"] = "reduce-overhead"
++            model = torch.compile(model, **compile_kwargs)
++            logger.info("Inductor Aclgraph MODE YES")
++        else:
++            model = torch.compile(model, **compile_kwargs)
++            logger.info("Inductor MODE YES")
++
++    def run_once(batch_size):
++        inputs = _model_input_tensor(base_model, model_input, batch_size)
++        if dynamic_compile is None:
++            torch._dynamo.mark_dynamic(inputs, 0)
++        return model(inputs)
++
++    def sync():
++        device_type = next(model.parameters()).device.type
++        if device_type == "cuda":
++            torch.cuda.synchronize()
++        elif device_type == "npu":
++            torch.npu.synchronize()
++
++    shape_index = 0
++
++    def next_shape():
++        nonlocal shape_index
++        batch_size = shape_list[shape_index % len(shape_list)]
++        shape_index += 1
++        return batch_size
++
++    with torch.no_grad():
++        for index in range(30):
++            batch_size = next_shape()
++            logger.info(f"[warmup {index}] shape=({batch_size}, {feature_dim})")
++            _ = run_once(batch_size)
++
++    times_range = []
++    batches_list = []
++    with torch.no_grad():
++        for index in range(210):
++            batch_size = next_shape()
++            logger.info(f"[iter {index}] shape=({batch_size}, {feature_dim})")
++            sync()
++            start_time = time.time()
++            _ = run_once(batch_size)
++            sync()
++            end_time = time.time()
++            times_range.append(end_time - start_time)
++            batches_list.append(batch_size)
++
++    times_range.sort()
++    average = round(sum(times_range) / len(times_range) * 1000, 6)
++    report = {
++        "Batch_size": "Dynamic" if len(set(shape_list)) > 1 else shape_list[0],
++        "model_name": model_name,
++        "QPS": int(sum(batches_list) / sum(times_range)),
++        "AVG Latency": average,
++        "P99 Latency": round(times_range[int(len(times_range) * 0.99)] * 1000, 6),
++        "P999 Latency": round(times_range[int(len(times_range) * 0.999)] * 1000, 6),
++        "P95 Latency": round(times_range[int(len(times_range) * 0.95)] * 1000, 6),
++        "P90 Latency": round(times_range[int(len(times_range) * 0.90)] * 1000, 6),
++    }
++    logger.info(report)
++    return True
  
-@@ -139,6 +141,17 @@ def layer_test(layer_cls, kwargs={}, input_shape=None,
+ 
+ def gen_sequence(dim, max_len, sample_size):
+@@ -139,6 +269,17 @@ def layer_test(layer_cls, kwargs={}, input_shape=None,
      return output
  
  
@@ -557,7 +858,7 @@ index 28f3010..b955592 100644
  def check_model(model, model_name, x, y, check_model_io=True):
      '''
      compile model,train and evaluate it,then save/load weight and model file.
-@@ -156,6 +169,10 @@ def check_model(model, model_name, x, y, check_model_io=True):
+@@ -156,6 +297,10 @@ def check_model(model, model_name, x, y, check_model_io=True):
  
      model.compile('adam', 'binary_crossentropy',
                    metrics=['binary_crossentropy', 'acc'])
@@ -568,7 +869,7 @@ index 28f3010..b955592 100644
      model.fit(x, y, batch_size=100, epochs=1, validation_split=0.5, callbacks=[early_stopping, model_checkpoint])
  
      print(model_name + 'test, train valid pass!')
-@@ -165,15 +182,17 @@ def check_model(model, model_name, x, y, check_model_io=True):
+@@ -165,15 +310,24 @@ def check_model(model, model_name, x, y, check_model_io=True):
      print(model_name + 'test save load weight pass!')
      if check_model_io:
          torch.save(model, model_name + '.h5')
@@ -580,20 +881,26 @@ index 28f3010..b955592 100644
  
 -
  def get_device(use_cuda=True):
--    device = 'cpu'
-+    device = 'npu'
+     device = 'cpu'
      if use_cuda and torch.cuda.is_available():
          print('cuda ready...')
          device = 'cuda:0'
++    elif not os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE":
++        try:
++            import torch_npu  # noqa: F401
++            if hasattr(torch, "npu") and torch.npu.is_available():
++                device = 'npu'
++        except (ImportError, AttributeError, RuntimeError):
++            pass
 +    if os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE":
 +        device = 'cpu'
 +    print(f"run on {device}")
      return device
 diff --git a/tests/utils_mtl.py b/tests/utils_mtl.py
-index 61020cf..6ffcc5d 100644
+index 61020cf..de67a6b 100644
 --- a/tests/utils_mtl.py
 +++ b/tests/utils_mtl.py
-@@ -106,15 +106,18 @@ def check_mtl_model(model, model_name, x, y_list, task_types, check_model_io=Tru
+@@ -106,7 +106,7 @@ def check_mtl_model(model, model_name, x, y_list, task_types, check_model_io=Tru
      print(model_name + 'test save load weight pass!')
      if check_model_io:
          torch.save(model, model_name + '.h5')
@@ -602,14 +909,17 @@ index 61020cf..6ffcc5d 100644
          os.remove(model_name + '.h5')
          print(model_name + 'test save load model pass!')
      print(model_name + 'test pass!')
- 
- 
- def get_device(use_cuda=True):
--    device = 'cpu'
-+    device = 'npu'
+@@ -117,4 +117,14 @@ def get_device(use_cuda=True):
      if use_cuda and torch.cuda.is_available():
          print('cuda ready...')
          device = 'cuda:0'
++    elif not os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE":
++        try:
++            import torch_npu  # noqa: F401
++            if hasattr(torch, "npu") and torch.npu.is_available():
++                device = 'npu'
++        except (ImportError, AttributeError, RuntimeError):
++            pass
 +    if os.environ.get("MODEL_CPU_ONLY", "false").upper() == "TRUE":
 +        device = 'cpu'
 +    print(f"run on {device}")
