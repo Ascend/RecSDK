@@ -81,7 +81,8 @@ def generate_sim_batch(bs, seq_len, device, item_embedding_dim=512, user_feature
     # time_intervals 固定 100 维即可（模型内部会按 k=min(100, seq_len) 截断/补齐）
     time_intervals = torch.randint(0, 100, (bs, 100), device=device)
     user_features = torch.randn(bs, user_feature_dim, device=device)
-    return user_behavior_seq, target_item_emb, behavior_categories, time_intervals, user_features
+    target_ctrs = torch.randint(0, 2, (bs, 1), device=device).float()
+    return user_behavior_seq, target_item_emb, behavior_categories, time_intervals, user_features, target_ctrs
 
 
 def mark_sim_dynamic(user_behavior_seq, target_item_emb, behavior_categories, time_intervals, user_features):
@@ -405,90 +406,211 @@ def evaluate_model(model, test_loader, criterion, device):
     
     return avg_loss, accuracy
 
-def evaluate_model_dynamic_shape(model, device, shape_list):
+def evaluate_model_dynamic_shape(model, device, shape_list, criterion):
     """动态 shape 性能测试仅在 SHAPE_LIST 非空时调用，不影响原有的DataLoader推理流程。"""
     model.eval()
 
-    # 编译（与 evaluate_model 保持一致，只编译一次）
-    if os.environ.get('MODEL_COMPILE_FLAG', "False").upper() == "TRUE":
-        dynamic_arg = args.enable_dynamic_compile
-        if os.environ.get('MODEL_ACLGRAPH_FLAG', "False").upper() == "TRUE":
-            model = torch.compile(model, dynamic=dynamic_arg, backend="inductor", mode="reduce-overhead")
-            logger.info("Inductor Aclgraph MODE YES")
-        else:
-            model = torch.compile(model, dynamic=dynamic_arg, backend="inductor")
-            logger.info("Inductor MODE YES")
-
-    shape_idx = 0
-
-    def next_shape():
-        nonlocal shape_idx
-        bs, sl = shape_list[shape_idx % len(shape_list)]
-        shape_idx += 1
-        return bs, sl
-
-    def run_once(bs, sl):
-        user_behaviors, target_items, behavior_cats, time_ints, user_feats = generate_sim_batch(bs, sl, device)
-        if args.enable_dynamic_compile is None:
-            mark_sim_dynamic(user_behaviors, target_items, behavior_cats, time_ints, user_feats)
-        return model(
-            user_behavior_seq=user_behaviors,
-            target_item_emb=target_items,
-            user_features=user_feats,
-            behavior_categories=behavior_cats,
-            time_intervals=time_ints
-        )
-
-    def sync():
-        if device.type == 'cuda':
-            torch.cuda.synchronize()
-        elif device.type == 'npu':
-            torch.npu.synchronize()
-
-    # 预热
     with torch.no_grad():
-        for i in range(30):
-            bs, sl = next_shape()
-            logger.info(f"[warmup {i}] shape=({bs}, {sl})")
-            _ = run_once(bs, sl)
+        if os.environ.get('MODEL_COMPILE_FLAG', "False").upper() == "TRUE":
+            dynamic_arg = args.enable_dynamic_compile
+            if os.environ.get('MODEL_ACLGRAPH_FLAG', "False").upper() == "TRUE":
+                model = torch.compile(model, dynamic=dynamic_arg, backend="inductor", mode="reduce-overhead")
+                logger.info("Inductor Aclgraph MODE YES")
+            else:
+                model = torch.compile(model, dynamic=dynamic_arg, backend="inductor")
+                logger.info("Inductor MODE YES")
 
-    # 计时迭代
-    times_range = []
-    batches_list = []
-    seq_lens_list = []
-    with torch.no_grad():
-        for it in range(210):
+        shape_idx = 0
+
+        def next_shape():
+            nonlocal shape_idx
+            bs, sl = shape_list[shape_idx % len(shape_list)]
+            shape_idx += 1
+            return bs, sl
+
+        def run_once(bs, sl):
+            user_behaviors, target_items, behavior_cats, time_ints, user_feats, target_ctrs = generate_sim_batch(bs, sl, device)
+            if args.enable_dynamic_compile is None:
+                mark_sim_dynamic(user_behaviors, target_items, behavior_cats, time_ints, user_feats)
+            ctr_predictions, _, _ = model(
+                user_behavior_seq=user_behaviors,
+                target_item_emb=target_items,
+                user_features=user_feats,
+                behavior_categories=behavior_cats,
+                time_intervals=time_ints
+            )
+            return ctr_predictions, target_ctrs
+
+        total_loss = 0.0
+        correct_predictions = 0
+        total_samples = 0
+        iter_num = 210
+        for it in range(iter_num):
             bs, sl = next_shape()
             logger.info(f"[iter {it}] shape=({bs}, {sl})")
-            sync()
+            ctr_predictions, target_ctrs = run_once(bs, sl)
+
+            loss = criterion(ctr_predictions, target_ctrs)
+            total_loss += loss.item()
+            predicted_labels = (ctr_predictions > 0.5).float()
+            correct_predictions += (predicted_labels == target_ctrs).sum().item()
+            total_samples += target_ctrs.size(0)
+
+        inductor_flag = 'inductor' if os.environ.get('MODEL_COMPILE_FLAG', 'False').upper() == 'TRUE' else 'eager'
+        model_name = os.environ.get("MODEL_NAME", "default_name")
+        device_name = device.type
+        model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
+
+        # 统计E2E耗时
+        if os.environ.get('MODEL_E2E_FLAG', "False").upper() == "TRUE":
+            gc.disable()
+            latency_list = []
+            e2e_batches_list = []
+            warmup_steps = 50
+            total_steps = 100
+            # 空跑预热
+            for i in range(warmup_steps):
+                bs, sl = next_shape()
+                _ = run_once(bs, sl)
+            # 正式统计E2E
             start_time = time.time()
-            _ = run_once(bs, sl)
-            sync()
+            for i in range(total_steps):
+                bs, sl = next_shape()
+                step_start_time = time.time()
+                ctr_predictions, target_ctrs = run_once(bs, sl)
+                _ = criterion(ctr_predictions, target_ctrs)
+                step_end_time = time.time()
+                latency = (step_end_time - step_start_time) * 1000
+                latency_list.append(latency)
+                e2e_batches_list.append(bs)
             end_time = time.time()
-            times_range.append(end_time - start_time)
-            batches_list.append(bs)
-            seq_lens_list.append(sl)
+            e2e_time = (end_time - start_time) * 1000
+            e2e_avg_time = round(e2e_time / total_steps, 6)
 
-    times_range.sort()
-    avg_latency = round(sum(times_range) / len(times_range) * 1000, 6)
-    tail_latency = round(times_range[int(len(times_range) * 0.99)] * 1000, 6)
-    p90_latency = round(times_range[int(len(times_range) * 0.90)] * 1000, 6)
-    p999_latency = round(times_range[int(len(times_range) * 0.999)] * 1000, 6)
-    p95_latency = round(times_range[int(len(times_range) * 0.95)] * 1000, 6)
-    qps = int(sum(batches_list) / sum(times_range))
+            latency_list.sort()
+            p90 = 0.0
+            p99 = 0.0
+            p999 = 0.0
 
-    bs_str = "Dynamic" if len(shape_list) > 1 else str(shape_list[0][0])
-    report = {
-        "Batch_size": bs_str,
-        "model_name": "SIM",
-        "QPS": qps,
-        "AVG Latency": avg_latency,
-        "P99 Latency": tail_latency,
-        "P999 Latency": p999_latency,
-        "P95 Latency": p95_latency,
-        "P90 Latency": p90_latency,
-    }
-    logger.info(report)
+            if len(latency_list) > 0:
+                p90_index = min(int(len(latency_list) * 0.9), len(latency_list) - 1)
+                p90 = round(latency_list[p90_index], 6)
+
+                p95_index = min(int(len(latency_list) * 0.95), len(latency_list) - 1)
+                p95 = round(latency_list[p95_index], 6)
+
+                p99_index = min(int(len(latency_list) * 0.99), len(latency_list) - 1)
+                p99 = round(latency_list[p99_index], 6)
+
+                p999_index = min(int(len(latency_list) * 0.999), len(latency_list) - 1)
+                p999 = round(latency_list[p999_index], 6)
+
+            QPS = int(sum(e2e_batches_list) / (e2e_time / 1000))
+
+            E2E_RESULT = {
+                "Batch_size": "Dynamic" if len(shape_list) > 1 else str(shape_list[0][0]),
+                "model_name": "SIM",
+                "QPS": QPS,
+                "AVG Latency": e2e_avg_time,
+                "P999 Latency": p999,
+                "P99 Latency": p99,
+                "P95 Latency": p95,
+                "P90 Latency": p90
+            }
+            logger.info(E2E_RESULT)
+
+            eval_str = "performance: " + model_detail_info + "_" + str(E2E_RESULT)
+            os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
+            with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
+                f.write(eval_str + "\n")
+            logger.info(eval_str)
+
+        # 采集profiling
+        if os.environ.get('MODEL_PROFILING_FLAG', "False").upper() == "TRUE":
+            # 运行step次数
+            steps = 30
+            # 空跑预热
+            for step in range(steps):
+                bs, sl = next_shape()
+                _ = run_once(bs, sl)
+
+            # GPU profiling
+            if torch.cuda.is_available():
+                # 正式采集profiling数据
+                with torch.profiler.profile(
+                    activities=[
+                        torch.profiler.ProfilerActivity.CPU,
+                        torch.profiler.ProfilerActivity.CUDA
+                        ],
+                    # 等待24步，采集第25步，重复1次
+                    schedule=torch.profiler.schedule(
+                        wait=24,
+                        warmup=0,
+                        active=1,
+                        repeat=1
+                    ),
+                    on_trace_ready=torch.profiler.tensorboard_trace_handler(os.path.join("../profiling", model_name)),
+                    record_shapes=True,
+                    profile_memory=False,
+                    with_stack=True
+                    ) as prof:
+                    logger.info("profiling start...")
+                    for step in range(steps):
+                        logger.info(f"profiling steps == {step}")
+                        bs, sl = next_shape()
+                        ctr_predictions, target_ctrs = run_once(bs, sl)
+                        _ = criterion(ctr_predictions, target_ctrs)
+                        prof.step()
+
+            # NPU profiling
+            elif torch.npu.is_available():
+                # 正式采集profiling数据
+                experimental_config = torch_npu.profiler._ExperimentalConfig(
+                    export_type=[
+                        torch_npu.profiler.ExportType.Text
+                        ],
+                    profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
+                    msprof_tx=False,
+                    aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
+                    l2_cache=False,
+                    op_attr=False,
+                    data_simplification=False,
+                    record_op_args=False,
+                    gc_detect_threshold=None
+                    )
+                with torch_npu.profiler.profile(
+                    activities=[
+                        torch_npu.profiler.ProfilerActivity.CPU,
+                        torch_npu.profiler.ProfilerActivity.NPU
+                        ],
+                    # 等待24步，采集第25步，重复1次
+                    schedule=torch_npu.profiler.schedule(
+                        wait=24,
+                        warmup=0,
+                        active=1,
+                        repeat=1
+                    ),
+                    on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
+                        os.path.join("../profiling", model_name),
+                        worker_name=model_detail_info,
+                    ),
+                    record_shapes=True,
+                    profile_memory=False,
+                    with_stack=True,
+                    with_modules=False,
+                    with_flops=False,
+                    experimental_config=experimental_config) as prof:
+                    logger.info("profiling start...")
+                    for step in range(steps):
+                        logger.info(f"profiling steps == {step}")
+                        bs, sl = next_shape()
+                        ctr_predictions, target_ctrs = run_once(bs, sl)
+                        _ = criterion(ctr_predictions, target_ctrs)
+                        prof.step()
+
+        avg_loss = total_loss / iter_num
+        accuracy = correct_predictions / total_samples
+        logger.info(f'测试集损失: {avg_loss:.4f}, 准确率: {accuracy:.4f}')
 
 
 def create_model(item_embedding_dim, user_feature_dim, hidden_dim, device):
@@ -522,7 +644,22 @@ def main():
     shape_list = parse_shape_list()
     if shape_list and os.environ.get('MODEL_MODE', "INFER").upper() == "INFER":
         model = create_model(item_embedding_dim, user_feature_dim, hidden_dim, device)
-        evaluate_model_dynamic_shape(model, device, shape_list)
+        criterion = SIMLoss(search_type='hard')
+        # 精度对比
+        if os.environ.get('MODEL_COMPILE_PRECISION', '0') == '1':
+            origin_model = model
+            model = torch.compile(model, dynamic=args.enable_dynamic_compile, backend="inductor")
+            set_seed(2026)
+            test_loss, test_accuracy = evaluate_model_dynamic_shape(model, device, shape_list, criterion)
+            set_seed(2026)
+            test_loss_ori, test_accuracy_ori = evaluate_model_dynamic_shape(origin_model, device, shape_list, criterion)
+            print(f"{test_loss=}")
+            print(f"{test_loss_ori=}")
+            print(f"{test_accuracy=}")
+            print(f"{test_accuracy_ori=}")
+            print("Inductor MODE YES")
+            return
+        evaluate_model_dynamic_shape(model, device, shape_list, criterion)
         return
     
     data = generate_training_data(num_samples=2000, seq_len=1000, item_embedding_dim=item_embedding_dim, user_feature_dim=user_feature_dim, num_categories=100)
