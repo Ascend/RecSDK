@@ -29,7 +29,12 @@ PATH_PREFIX_MAPS = {
     'training/torch_rec_v1/torchrec_npu': ['torchrec'],
     'training/torch_rec_v1/torchrec_embcache': ['torchrec'],
 }
-PTA_REQUIRED_MODULES = {'hstu'}
+# torchrec 冒烟依赖 libfbgemm_npu_api.so（A2 cust_op torch_plugin），它由
+# PTA_DIR（torch_library/common）的 build_ops.sh 编译并安装到 site-packages。
+# hybrid_torchrec 已不再 import fbgemm_ascend（避免 A5/A2 算子冲突），只能依赖
+# 该 .so 注册 A2 的 split_embedding_codegen_lookup_adagrad_function，故 torchrec
+# 模块必须与 hstu 一样先构建 PTA，否则 NPU 路径算子缺失会 AttributeError。
+PTA_REQUIRED_MODULES = {'hstu', 'torchrec'}
 _ALREADY_BUILT_PTA = False
 _PRESMOKE_DIR = Path(os.environ.get("PRESMOKE_DIR", "")).absolute()
 _PTA_DIR = Path(os.environ.get("PTA_DIR", "")).absolute()
