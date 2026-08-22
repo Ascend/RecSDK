@@ -38,9 +38,17 @@ def install_requirements():
     with open(req_file, 'r', encoding='utf-8') as f:
         reqs = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
 
+    # tensorboard 依赖未限制上界的 grpcio，若单独逐行安装，pip 会把 grpcio 升级到最新版本，
+    # 导致 grpcio 被下载安装两次（先按 grpcio<1.63.0 装上 1.62.x，又被 tensorboard 升到最新版）。
+    # 因此安装 tensorboard 时把 grpcio/grpcio-tools 的约束合并进同一条命令，让 pip 一次解析。
+    grpcio_constraints = [r for r in reqs if r.startswith('grpcio')]
+
     for req in reqs:
         try:
-            cmd = [sys.executable, "-m", "pip", "install"] + shlex.split(req)
+            cmd = [sys.executable, "-m", "pip", "install"]
+            if req == 'tensorboard' and grpcio_constraints:
+                cmd += grpcio_constraints
+            cmd += shlex.split(req)
             subprocess.check_call(cmd)
             print(f"Successfully installed: {req}")
         except subprocess.CalledProcessError:
