@@ -28,9 +28,9 @@ __aicore__ inline void InvokeHstuOpImpl(const PagedArgs& args)
     VectorScoreType vecScore;
 
     HstuPagedForwardKernel<FastConfig, HstuPagedForwardTilingData, MatmulMgmtType, VectorScoreType> op;
-    
-    REGIST_MATMUL_OBJ(&op.pipe_, GetSysWorkSpacePtr(), mmMgmt.qkMatmul_, (TCubeTiling*)nullptr,
-        mmMgmt.svMatmul_, (TCubeTiling*)nullptr);
+
+    REGIST_MATMUL_OBJ(&op.pipe_, GetSysWorkSpacePtr(), mmMgmt.qkMatmul_, (TCubeTiling*)nullptr, mmMgmt.svMatmul_,
+                      (TCubeTiling*)nullptr);
     uint64_t tilingPtr = reinterpret_cast<uint64_t>(args.tiling);
     mmMgmt.qkMatmul_.SetUserDefInfo(tilingPtr);
     mmMgmt.svMatmul_.SetUserDefInfo(tilingPtr);
@@ -38,36 +38,41 @@ __aicore__ inline void InvokeHstuOpImpl(const PagedArgs& args)
     op.Compute(args, &mmMgmt, &vecScore);
 }
 
-template<int maskedType, bool enableBias, int typeTilingKey, bool deterministic,
-         int blockM, int blockN, int blockK>
-__global__ __aicore__ void hstu_paged_forward(GM_ADDR q,
-                                              GM_ADDR k,
-                                              GM_ADDR v,
-                                              GM_ADDR mask,
-                                              GM_ADDR attnBias,
-                                              GM_ADDR seq_offset_q,
-                                              GM_ADDR seq_offset_k,
-                                              GM_ADDR seq_offset_t,
-                                              GM_ADDR kv_cache,
-                                              GM_ADDR page_offsets,
-                                              GM_ADDR page_ids,
-                                              GM_ADDR last_page_len,
-                                              GM_ADDR num_context,
-                                              GM_ADDR num_target,
-                                              GM_ADDR attnOutput,
-                                              GM_ADDR workspace,
+template <int maskedType, bool enableBias, int typeTilingKey, bool deterministic, int blockM, int blockN, int blockK>
+__global__ __aicore__ void hstu_paged_forward(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, GM_ADDR attnBias,
+                                              GM_ADDR seq_offset_q, GM_ADDR seq_offset_k, GM_ADDR seq_offset_t,
+                                              GM_ADDR kv_cache, GM_ADDR page_offsets, GM_ADDR page_ids,
+                                              GM_ADDR last_page_len, GM_ADDR num_context, GM_ADDR num_target,
+                                              GM_ADDR k_cache, GM_ADDR v_cache, GM_ADDR attnOutput, GM_ADDR workspace,
                                               GM_ADDR tiling)
 {
     GET_TILING_DATA(tiling_data, tiling);
     const HstuPagedForwardTilingData* __restrict tilingDataPtr = &tiling_data;
 
-    PagedArgs args{q, k, v, mask, attnBias, seq_offset_q, seq_offset_k,
-                   seq_offset_t, kv_cache, page_offsets, page_ids, last_page_len,
-                   num_context, num_target, attnOutput, workspace, tiling, tilingDataPtr};
+    PagedArgs args{q,
+                   k,
+                   v,
+                   mask,
+                   attnBias,
+                   seq_offset_q,
+                   seq_offset_k,
+                   seq_offset_t,
+                   kv_cache,
+                   page_offsets,
+                   page_ids,
+                   last_page_len,
+                   num_context,
+                   num_target,
+                   k_cache,
+                   v_cache,
+                   attnOutput,
+                   workspace,
+                   tiling,
+                   tilingDataPtr};
 
-    using FastConfig = TraitParams<DTYPE_Q, DTYPE_SEQ_OFFSET_Q, enableBias,
-        deterministic, static_cast<CausalMaskT>(maskedType), blockM, blockN, blockK>;
-    
+    using FastConfig = TraitParams<DTYPE_Q, DTYPE_SEQ_OFFSET_Q, enableBias, deterministic,
+                                   static_cast<CausalMaskT>(maskedType), blockM, blockN, blockK>;
+
     using mmMgmtType = MatmulMgmt<DTYPE_Q, HstuPagedForwardTilingData>;
 
     if constexpr (enableBias) {

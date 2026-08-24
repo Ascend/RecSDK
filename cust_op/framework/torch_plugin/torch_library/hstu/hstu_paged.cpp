@@ -18,17 +18,20 @@ See the License for the specific language governing permissions and
 #include "../common/common_utils.h"
 
 namespace hstu {
-at::Tensor hstu_paged_forward_impl_npu(const at::Tensor& q, const at::Tensor& k, const at::Tensor& v,
-                                       const at::Tensor& kvCache, const c10::optional<at::Tensor>& mask,
-                                       const c10::optional<at::Tensor>& attnBias, const int64_t maskType,
-                                       const int64_t maxSeqLen, const int64_t maxSeqLenK, const double siluScale,
-                                       const at::Tensor& seqOffset, const at::Tensor& seqOffsetK,
-                                       const at::Tensor& seqOffsetT, const at::Tensor& pageOffsets,
-                                       const at::Tensor& pageIds, const at::Tensor& lastPageLen,
-                                       const at::Tensor& numTarget, const int64_t targetGroupSize,
-                                       const c10::optional<double>& alpha, const bool deterministic = false)
+at::Tensor hstu_paged_forward_impl_npu(
+    const at::Tensor& q, const at::Tensor& k, const at::Tensor& v, const c10::optional<at::Tensor>& kvCache,
+    const c10::optional<at::Tensor>& kCache, const c10::optional<at::Tensor>& vCache,
+    const c10::optional<at::Tensor>& mask, const c10::optional<at::Tensor>& attnBias, const int64_t maskType,
+    const int64_t maxSeqLen, const int64_t maxSeqLenK, const double siluScale, const at::Tensor& seqOffset,
+    const at::Tensor& seqOffsetK, const at::Tensor& seqOffsetT, const at::Tensor& pageOffsets,
+    const at::Tensor& pageIds, const at::Tensor& lastPageLen, const at::Tensor& numTarget,
+    const int64_t targetGroupSize, const c10::optional<double>& alpha, const bool deterministic = false)
 {
-    check_tensor_non_empty(kvCache, "kv_cache");
+    const bool hasSplitCache = kCache.has_value() && kCache->defined() && vCache.has_value() && vCache->defined();
+    const bool hasCombinedCache = kvCache.has_value() && kvCache->defined();
+    TORCH_CHECK(!(hasSplitCache && hasCombinedCache),
+                "hstu_paged: kv_cache and k_cache/v_cache cannot be provided at the same time.");
+    TORCH_CHECK(hasSplitCache || hasCombinedCache, "hstu_paged: must provide either kv_cache or k_cache/v_cache.");
     check_tensor_non_empty(pageIds, "page_ids");
     check_tensor_non_empty(lastPageLen, "last_page_len");
     auto acPageOffsets = pageOffsets.to(seqOffset.scalar_type());
@@ -47,9 +50,20 @@ at::Tensor hstu_paged_forward_impl_npu(const at::Tensor& q, const at::Tensor& k,
     auto denseQ = q.contiguous();
     auto denseK = k.contiguous();
     auto denseV = v.contiguous();
-    auto denseKvCache = kvCache.contiguous();
-    auto denseBias = attnBias.value_or(at::Tensor());
-    auto maskNpu = mask.value_or(at::Tensor());
+    at::Tensor denseKvCache;
+    at::Tensor denseKCache;
+    at::Tensor denseVCache;
+    if (hasCombinedCache) {
+        check_tensor_non_empty(kvCache.value(), "kv_cache");
+        denseKvCache = kvCache->contiguous();
+    } else {
+        check_tensor_non_empty(kCache.value(), "k_cache");
+        check_tensor_non_empty(vCache.value(), "v_cache");
+        denseKCache = kCache->contiguous();
+        denseVCache = vCache->contiguous();
+    }
+    auto denseBias = c10::value_or_else(attnBias, [] { return at::Tensor(); });
+    auto maskNpu = c10::value_or_else(mask, [] { return at::Tensor(); });
 
     TORCH_CHECK(MaxSeqLenCheck(maxSeqLen), "maxSeqLen check failed");
     TORCH_CHECK(MaxSeqLenCheck(maxSeqLenK), "maxSeqLenK check failed");
@@ -66,7 +80,8 @@ at::Tensor hstu_paged_forward_impl_npu(const at::Tensor& q, const at::Tensor& k,
 
     EXEC_NPU_CMD(aclnnHstuPagedForward, denseQ, denseK, denseV, maskNpu, denseBias, acSeqOffset, acSeqOffsetK,
                  acSeqOffsetT, denseKvCache, acPageOffsets, acPageIds, acLastPageLen, _numContext, acNumTarget,
-                 maskType, maxSeqLen, maxSeqLenK, realSiluScale, targetGroupSize, realAlpha, deterministic, attnOutput);
+                 denseKCache, denseVCache, maskType, maxSeqLen, maxSeqLenK, realSiluScale, targetGroupSize, realAlpha,
+                 deterministic, attnOutput);
     return attnOutput;
 }
 
@@ -75,7 +90,9 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
     m.def("hstu_paged(Tensor q, "
           "           Tensor k, "
           "           Tensor v, "
-          "           Tensor kv_cache=None, "
+          "           Tensor? kv_cache=None, "
+          "           Tensor? k_cache=None, "
+          "           Tensor? v_cache=None, "
           "           Tensor? mask=None, "
           "           Tensor? attn_bias=None,"
           "           int mask_type=0, "

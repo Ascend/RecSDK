@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-
 #include <cstdint>
 
 #include "register/op_def_registry.h"
@@ -67,23 +66,11 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN})
 #endif
             .FormatList({ge::FORMAT_ND});
-        this->Input("k")
-            .ParamType(REQUIRED)
-            .Follow("q", FollowType::DTYPE)
-            .FormatList({ge::FORMAT_ND});
-        this->Input("v")
-            .ParamType(REQUIRED)
-            .Follow("q", FollowType::DTYPE)
-            .FormatList({ge::FORMAT_ND});
-        this->Input("mask")
-            .ParamType(OPTIONAL)
-            .Follow("q", FollowType::DTYPE)
-            .FormatList({ge::FORMAT_ND});
-        this->Input("attn_bias")
-            .ParamType(OPTIONAL)
-            .Follow("q", FollowType::DTYPE)
-            .FormatList({ge::FORMAT_ND});
-        this->Input("seq_offset_q") // 规避optional类型无法正常生成json文件的问题
+        this->Input("k").ParamType(REQUIRED).Follow("q", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
+        this->Input("v").ParamType(REQUIRED).Follow("q", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
+        this->Input("mask").ParamType(OPTIONAL).Follow("q", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
+        this->Input("attn_bias").ParamType(OPTIONAL).Follow("q", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
+        this->Input("seq_offset_q")  // 规避optional类型无法正常生成json文件的问题
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
@@ -95,10 +82,7 @@ public:
             .ParamType(OPTIONAL)
             .Follow("seq_offset_q", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
-        this->Input("kv_cache")
-            .ParamType(OPTIONAL)
-            .Follow("q", FollowType::DTYPE)
-            .FormatList({ge::FORMAT_ND});
+        this->Input("kv_cache").ParamType(OPTIONAL).Follow("q", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
         this->Input("page_offsets")
             .ParamType(OPTIONAL)
             .Follow("seq_offset_q", FollowType::DTYPE)
@@ -119,6 +103,8 @@ public:
             .ParamType(OPTIONAL)
             .Follow("seq_offset_q", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
+        this->Input("k_cache").ParamType(OPTIONAL).Follow("q", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
+        this->Input("v_cache").ParamType(OPTIONAL).Follow("q", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
         this->Output("attn_output")
             .ParamType(REQUIRED)
 #ifndef SUPPORT_950

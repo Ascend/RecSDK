@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-
 #ifndef TILING_POLICY_DEFINE_H
 #define TILING_POLICY_DEFINE_H
 
@@ -25,76 +24,78 @@ namespace HstuForward {
 #include <cstdint>
 
 namespace INDEX_T {
-    constexpr int INDEX_0 = 0;
-    constexpr int INDEX_1 = 1;
-    constexpr int INDEX_2 = 2;
-    constexpr int INDEX_3 = 3;
-    constexpr int INDEX_4 = 4;
-    constexpr int INDEX_5 = 5;
-}
+constexpr int INDEX_0 = 0;
+constexpr int INDEX_1 = 1;
+constexpr int INDEX_2 = 2;
+constexpr int INDEX_3 = 3;
+constexpr int INDEX_4 = 4;
+constexpr int INDEX_5 = 5;
+}  // namespace INDEX_T
 
 namespace DENSE_INPUT_INDEX_T {
-    constexpr int Q_INDEX = 0;
-    constexpr int K_INDEX = 1;
-    constexpr int V_INDEX = 2;
-    constexpr int MASK_INDEX = 3;
-    constexpr int ATTN_BIAS_INDEX = 4;
-}
+constexpr int Q_INDEX = 0;
+constexpr int K_INDEX = 1;
+constexpr int V_INDEX = 2;
+constexpr int MASK_INDEX = 3;
+constexpr int ATTN_BIAS_INDEX = 4;
+}  // namespace DENSE_INPUT_INDEX_T
 
 namespace DENSE_ATTR_INDEX_T {
-    constexpr int MASKTYPE_INDEX = 0;
-    constexpr int MAX_SEQ_INDEX = 1;
-    constexpr int SILU_SCALE_INDEX = 2;
-}
+constexpr int MASKTYPE_INDEX = 0;
+constexpr int MAX_SEQ_INDEX = 1;
+constexpr int SILU_SCALE_INDEX = 2;
+}  // namespace DENSE_ATTR_INDEX_T
 
 namespace JAGGED_INPUT_INDEX_T {
-    constexpr int Q_INDEX = 0;
-    constexpr int K_INDEX = 1;
-    constexpr int V_INDEX = 2;
-    constexpr int MASK_INDEX = 3;
-    constexpr int ATTN_BIAS_INDEX = 4;
-    constexpr int SEQ_OFFSET_Q_INDEX = 5;
-    constexpr int SEQ_OFFSET_K_INDEX = 6;
-    constexpr int NUM_CONTEXT_INDEX = 7;
-    constexpr int NUM_TARGET_INDEX = 8;
-}
+constexpr int Q_INDEX = 0;
+constexpr int K_INDEX = 1;
+constexpr int V_INDEX = 2;
+constexpr int MASK_INDEX = 3;
+constexpr int ATTN_BIAS_INDEX = 4;
+constexpr int SEQ_OFFSET_Q_INDEX = 5;
+constexpr int SEQ_OFFSET_K_INDEX = 6;
+constexpr int NUM_CONTEXT_INDEX = 7;
+constexpr int NUM_TARGET_INDEX = 8;
+}  // namespace JAGGED_INPUT_INDEX_T
 
 namespace JAGGED_ATTR_INDEX_T {
-    constexpr int MASKTYPE_INDEX = 0;
-    constexpr int MAX_SEQ_Q_INDEX = 1;
-    constexpr int MAX_SEQ_K_INDEX = 2;
-    constexpr int SILU_SCALE_INDEX = 3;
-    constexpr int TARGET_GROUP_SIZE_INDEX = 4;
-    constexpr int ALPHA_INDEX = 5;
-    constexpr int DETERMINISTIC_INDEX = 6;
-}
+constexpr int MASKTYPE_INDEX = 0;
+constexpr int MAX_SEQ_Q_INDEX = 1;
+constexpr int MAX_SEQ_K_INDEX = 2;
+constexpr int SILU_SCALE_INDEX = 3;
+constexpr int TARGET_GROUP_SIZE_INDEX = 4;
+constexpr int ALPHA_INDEX = 5;
+constexpr int DETERMINISTIC_INDEX = 6;
+}  // namespace JAGGED_ATTR_INDEX_T
 
 namespace PAGED_INPUT_INDEX_T {
-    constexpr int Q_INDEX = 0;
-    constexpr int K_INDEX = 1;
-    constexpr int V_INDEX = 2;
-    constexpr int MASK_INDEX = 3;
-    constexpr int ATTN_BIAS_INDEX = 4;
-    constexpr int SEQ_OFFSET_Q_INDEX = 5;
-    constexpr int SEQ_OFFSET_K_INDEX = 6;
-    constexpr int SEQ_OFFSET_T_INDEX = 7;
-    constexpr int KV_CACHE_INDEX = 8;
-    constexpr int PAGE_OFFSETS_INDEX = 9;
-    constexpr int PAGE_IDS_INDEX = 10;
-    constexpr int LAST_PAGE_LEN_INDEX = 11;
-    constexpr int NUM_CONTEXT_INDEX = 12;
-    constexpr int NUM_TARGET_INDEX = 13;
-}
+constexpr int Q_INDEX = 0;
+constexpr int K_INDEX = 1;
+constexpr int V_INDEX = 2;
+constexpr int MASK_INDEX = 3;
+constexpr int ATTN_BIAS_INDEX = 4;
+constexpr int SEQ_OFFSET_Q_INDEX = 5;
+constexpr int SEQ_OFFSET_K_INDEX = 6;
+constexpr int SEQ_OFFSET_T_INDEX = 7;
+constexpr int KV_CACHE_INDEX = 8;
+constexpr int PAGE_OFFSETS_INDEX = 9;
+constexpr int PAGE_IDS_INDEX = 10;
+constexpr int LAST_PAGE_LEN_INDEX = 11;
+constexpr int NUM_CONTEXT_INDEX = 12;
+constexpr int NUM_TARGET_INDEX = 13;
+constexpr int K_CACHE_INDEX = 14;
+constexpr int V_CACHE_INDEX = 15;
+}  // namespace PAGED_INPUT_INDEX_T
 
 namespace PAGED_ATTR_INDEX_T {
-    constexpr int MASKTYPE_INDEX = 0;
-    constexpr int MAX_SEQ_Q_INDEX = 1;
-    constexpr int MAX_SEQ_K_INDEX = 2;
-    constexpr int SILU_SCALE_INDEX = 3;
-    constexpr int TARGET_GROUP_SIZE_INDEX = 4;
-    constexpr int ALPHA_INDEX = 5;
-    constexpr int DETERMINISTIC_INDEX = 6;
-}
+constexpr int MASKTYPE_INDEX = 0;
+constexpr int MAX_SEQ_Q_INDEX = 1;
+constexpr int MAX_SEQ_K_INDEX = 2;
+constexpr int SILU_SCALE_INDEX = 3;
+constexpr int TARGET_GROUP_SIZE_INDEX = 4;
+constexpr int ALPHA_INDEX = 5;
+constexpr int DETERMINISTIC_INDEX = 6;
+}  // namespace PAGED_ATTR_INDEX_T
 
 constexpr int NORMAL_TILING_KEY = 0;
 constexpr int JAGGED_TILING_KEY = 1;
@@ -107,9 +108,9 @@ constexpr int CONTEXT_DIM_NUM = 1;
 constexpr int MAX_AIV_NUM = 72;
 constexpr int MAX_BATCH_SIZE = 2048;
 #ifdef SUPPORT_V200
-    constexpr int BLOCK_HEIGHT = 128;
+constexpr int BLOCK_HEIGHT = 128;
 #else
-    constexpr int BLOCK_HEIGHT = 256;
+constexpr int BLOCK_HEIGHT = 256;
 #endif
 constexpr int VCORE_NUM_IN_ONE_AIC = 2;
 constexpr int COMPUTE_PIPE_NUM = 3;
@@ -141,6 +142,6 @@ enum class MASK_TYPE {
     MATRIX_NONE = 2,
     MATRIX_CUSTOM = 3,
 };
-}
+}  // namespace HstuForward
 
 #endif

@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-
 #ifndef HSTU_JAGGED_FORWARD_TILING_H
 #define HSTU_JAGGED_FORWARD_TILING_H
 
@@ -35,9 +34,9 @@ TILING_DATA_FIELD_DEF(int64_t, vDim);
 TILING_DATA_FIELD_DEF(int64_t, blockHeight);
 
 #ifdef SUPPORT_V200
-    TILING_DATA_FIELD_DEF(int32_t, tmpUbSize);
+TILING_DATA_FIELD_DEF(int32_t, tmpUbSize);
 #else
-    TILING_DATA_FIELD_DEF(int64_t, pageSize);
+TILING_DATA_FIELD_DEF(int64_t, pageSize);
 #endif
 
 TILING_DATA_FIELD_DEF(bool, enableBias);
@@ -51,6 +50,7 @@ TILING_DATA_FIELD_DEF(bool, enableNumTarget);
 TILING_DATA_FIELD_DEF(int64_t, targetGroupSize);
 TILING_DATA_FIELD_DEF(float, alpha);
 TILING_DATA_FIELD_DEF(bool, deterministic);
+TILING_DATA_FIELD_DEF(bool, enableSplitCache);
 
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(HstuPagedForward, HstuPagedForwardTilingData)
