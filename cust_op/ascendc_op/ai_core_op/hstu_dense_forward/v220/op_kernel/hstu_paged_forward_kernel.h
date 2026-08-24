@@ -25,7 +25,7 @@ using namespace AscendC;
 using namespace HstuForward;
 
 namespace HstuPagedForward {
-constexpr int KVUBSIZE = 16384; // 176KB-160KB
+constexpr int KVUBSIZE = 16384;  // 176KB-160KB
 constexpr int64_t CONST_2 = 2;
 
 struct PagedArgs {
@@ -47,12 +47,15 @@ struct PagedArgs {
     // mask
     GM_ADDR numContext;
     GM_ADDR numTarget;
+    // split kv
+    GM_ADDR kCache;
+    GM_ADDR vCache;
 
     GM_ADDR attnOutput;
     GM_ADDR workspace;
     GM_ADDR tiling;
 
-    const HstuPagedForwardTilingData* __restrict tilingDataPtr {nullptr};
+    const HstuPagedForwardTilingData* __restrict tilingDataPtr{nullptr};
 };
 
 template <typename TraitParams, typename TilingDataType, typename MatmulMgmtType, typename VectorScoreType>
@@ -63,7 +66,7 @@ public:
 
     using vecScoreInter = VectorScoreInter<qType, TraitParams::maskType, HstuForward::BlockMaskParams, VectorScoreType>;
 
-    __aicore__ inline HstuPagedForwardKernel() {};
+    __aicore__ inline HstuPagedForwardKernel(){};
 
     __aicore__ inline void Compute(const PagedArgs& args, MatmulMgmtType* mmMgmt, vecScoreInter* vecScore)
     {
@@ -124,10 +127,13 @@ public:
         headRatio_ = args.tilingDataPtr->headRatio;
 
         kvCache_ = args.kvCache;
+        kCache_ = args.kCache;
+        vCache_ = args.vCache;
         pageOffset_ = args.pageOffsets;
         pageIds_ = args.pageIds;
         lastPageLen_ = args.lastPageLen;
         pageSize_ = args.tilingDataPtr->pageSize;
+        enableSplitCache_ = args.tilingDataPtr->enableSplitCache;
 
         // copy kv
         copyHeadNum_ = 1;
@@ -157,8 +163,8 @@ public:
         int64_t oneBlockMidTransElem = BLOCK_HEIGHT_256 * MAX_BLOCK_DIM * TRANS_PIPE_NUM;
         int64_t oneCoreTransMidElem = coreNum * oneBlockMidTransElem;
 
-        int64_t syncOffset = sizeof(uint32_t) / sizeof(qType) * GetBlockNum() *
-                            VCORE_NUM_IN_ONE_AIC * DATA_ALIGN_BYTES / sizeof(int32_t);
+        int64_t syncOffset = sizeof(uint32_t) / sizeof(qType) * GetBlockNum() * VCORE_NUM_IN_ONE_AIC *
+                             DATA_ALIGN_BYTES / sizeof(int32_t);
         int64_t kOffset = (oneCoreMidElem + oneCoreTransMidElem) * sizeof(float) / sizeof(qType) + syncOffset;
         int64_t vOffset = kOffset + oneCoreTransMidElem;
 
@@ -166,17 +172,21 @@ public:
         svResultGt_.SetGlobalBuffer(
             reinterpret_cast<__gm__ float*>(workspace_) + oneCoreMidElem + GetBlockIdx() * oneBlockMidTransElem,
             oneBlockMidTransElem);
-        syncGm_.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int32_t*>(workspace_) + oneCoreMidElem + coreNum * oneBlockMidTransElem);
+        syncGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspace_) + oneCoreMidElem +
+                                coreNum * oneBlockMidTransElem);
 
-        midkGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(workspace_) + kOffset + \
-            GetBlockIdx() * oneBlockMidTransElem, oneBlockMidTransElem);
-        midvGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(workspace_) + vOffset + \
-                GetBlockIdx() * oneBlockMidTransElem, oneBlockMidTransElem);
+        midkGt_.SetGlobalBuffer(
+            reinterpret_cast<__gm__ qType*>(workspace_) + kOffset + GetBlockIdx() * oneBlockMidTransElem,
+            oneBlockMidTransElem);
+        midvGt_.SetGlobalBuffer(
+            reinterpret_cast<__gm__ qType*>(workspace_) + vOffset + GetBlockIdx() * oneBlockMidTransElem,
+            oneBlockMidTransElem);
         pageOffsetGt_.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(pageOffset_), batchSize_ + 1);
         pageIdsGt_.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(pageIds_));
         lastPageLenGt_.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(lastPageLen_), batchSize_ + 1);
         kvCacheGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(kvCache_));
+        kCacheGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(kCache_));
+        vCacheGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(vCache_));
     }
 
     __aicore__ inline void InitPipe()
@@ -194,7 +204,7 @@ public:
         mmMgmt_ = mmMgmt;
         vecScore_ = vecScore;
 
-        VecScoreRabGtInfo<qType> gtInfo = { attnBiasGt_, attnMaskGt_ };
+        VecScoreRabGtInfo<qType> gtInfo = {attnBiasGt_, attnMaskGt_};
         vecScore_->Init(&pipe_, gtInfo, siluScale_, alpha_, TraitParams::blockM, TraitParams::blockN, maxSeqLenK_);
         if constexpr (TraitParams::deterministic) {
             vecScore_->InitSyncGm(syncGm_);
@@ -209,7 +219,7 @@ public:
         seqOffsetsKGt_.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(seqOffsetK_), batchSize_ + 1);
         auto validBatchSize = GetBatchSizeFromJaggedOffset(seqOffsetsQGt_, batchSize_ + 1);
         ASCENDC_ASSERT((validBatchSize > 0 && validBatchSize <= MAX_BATCH_SIZE),
-            "batchSize_ exceed limit of (0, 2048]\n");
+                       "batchSize_ exceed limit of (0, 2048]\n");
 
         const int blockId = GetBlockIdx();
         const uint32_t coreNum = GetBlockNum() * GetTaskRation();
@@ -226,18 +236,18 @@ public:
         int blocks[4] = {0};  // start block id, end block id
         if constexpr (TraitParams::maskType == CausalMaskT::MASK_TRIL) {
             auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_TRIL>(
-                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM,
-                TraitParams::blockN, seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
+                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM, TraitParams::blockN,
+                seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
             taskAssigner.Compute(blocks, blockId);
         } else if constexpr (TraitParams::maskType == CausalMaskT::MASK_CUSTOM) {
             auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_CUSTOM>(
-                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM,
-                TraitParams::blockN, seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
+                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM, TraitParams::blockN,
+                seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
             taskAssigner.Compute(blocks, blockId);
         } else {
             auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_NONE>(
-                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM,
-                TraitParams::blockN, seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
+                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM, TraitParams::blockN,
+                seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
             taskAssigner.Compute(blocks, blockId);
         }
 
@@ -265,7 +275,7 @@ public:
         uint32_t kSeqId = skSeqBlkId_;
         uint32_t kSeqNum = 0;
 
-        scmQKTensor_ =  scm_.template AllocTensor<qType>();
+        scmQKTensor_ = scm_.template AllocTensor<qType>();
         for (auto blkId = sBlkId_; blkId <= eBlkId_; blkId++) {
             kSeqNum = computeTaskInfo_[taskId % COMPUTE_PIPE_NUM].kSeqNum;
 
@@ -275,16 +285,11 @@ public:
             for (; kSeqId < limit; kSeqId++) {
                 auto taskinfo = computeTaskInfo_[taskId % COMPUTE_PIPE_NUM];
                 BlockMaskParams maskinfo = {
-                    taskinfo.qSeqId,
-                    static_cast<uint32_t> (kSeqId),
-                    taskinfo.actualSeqLen,
-                    taskinfo.actualSeqLenK,
-                    BLOCK_HEIGHT_256,
-                    BLOCK_HEIGHT_256,
-                    taskinfo.numContext,
-                    taskinfo.numTarget,
-                    targetGroupSize_,
-                    taskinfo.scale,
+                    taskinfo.qSeqId,       static_cast<uint32_t>(kSeqId),
+                    taskinfo.actualSeqLen, taskinfo.actualSeqLenK,
+                    BLOCK_HEIGHT_256,      BLOCK_HEIGHT_256,
+                    taskinfo.numContext,   taskinfo.numTarget,
+                    targetGroupSize_,      taskinfo.scale,
                 };
                 // 在下三角下跳过运算
                 if (maskinfo.NoComputation(TraitParams::maskType)) {
@@ -300,9 +305,10 @@ public:
                 computeTaskInfo_[currentTaskId].transTaskId = transtaskId % TRANS_PIPE_NUM;
                 computeTaskInfo_[currentTaskId].kSeqId = kSeqId;
                 computeTaskInfo_[currentTaskId].computeBSeqLen =
-                    (kSeqId != (kSeqNum - 1)) ? (BLOCK_HEIGHT_256) :
-                    (computeTaskInfo_[currentTaskId].actualSeqLenK - kSeqId * BLOCK_HEIGHT_256);
-                
+                    (kSeqId != (kSeqNum - 1))
+                        ? (BLOCK_HEIGHT_256)
+                        : (computeTaskInfo_[currentTaskId].actualSeqLenK - kSeqId * BLOCK_HEIGHT_256);
+
                 // fetch kv data
                 FetchKvMayFromCache(currentTaskId);
                 pipe_barrier(PIPE_ALL);
@@ -382,18 +388,18 @@ public:
         if (batchId >= batchSize_) {
             return;
         }
-    
+
         taskId = taskId % COMPUTE_PIPE_NUM;
-    
+
         auto nextBatchSeqOffset = seqOffsetsQGt_.GetValue(batchId + 1);
         auto currentBatchSeqOffset = seqOffsetsQGt_.GetValue(batchId);
-    
+
         auto nextBatchSeqOffsetK = seqOffsetsKGt_.GetValue(batchId + 1);
         auto currentBatchSeqOffsetK = seqOffsetsKGt_.GetValue(batchId);
-    
+
         auto numContext_ = numContextGt_.GetValue(batchId);
         auto numTarget_ = numTargetGt_.GetValue(batchId);
-    
+
         computeTaskInfo_[taskId].seqGlobalOffset = seqGlobalOffset;
         computeTaskInfo_[taskId].batchId = batchId;
         computeTaskInfo_[taskId].actualSeqLen = nextBatchSeqOffset - currentBatchSeqOffset;
@@ -410,22 +416,21 @@ public:
         auto batchInnerOffset = seqGlobalOffset - (computeTaskInfo_[taskId].batchOffset * headNum_);
         computeTaskInfo_[taskId].headId = headId;
         computeTaskInfo_[taskId].qSeqId =
-            (batchInnerOffset - computeTaskInfo_[taskId].headId *
-             computeTaskInfo_[taskId].actualSeqLen) / TraitParams::blockM;
+            (batchInnerOffset - computeTaskInfo_[taskId].headId * computeTaskInfo_[taskId].actualSeqLen) /
+            TraitParams::blockM;
         computeTaskInfo_[taskId].kSeqNum =
             CeilDiv(computeTaskInfo_[taskId].actualSeqLenK, static_cast<uint32_t>(TraitParams::blockN));
         computeTaskInfo_[taskId].qSeqNum =
             CeilDiv(computeTaskInfo_[taskId].actualSeqLen, static_cast<uint32_t>(TraitParams::blockM));
-    
-        computeTaskInfo_[taskId].iOffset =
-            computeTaskInfo_[taskId].batchOffset * headDim_ * headNum_ +
-            computeTaskInfo_[taskId].qSeqId * TraitParams::blockM * headNum_ * headDim_ +
-            computeTaskInfo_[taskId].headId * headDim_;
+
+        computeTaskInfo_[taskId].iOffset = computeTaskInfo_[taskId].batchOffset * headDim_ * headNum_ +
+                                           computeTaskInfo_[taskId].qSeqId * TraitParams::blockM * headNum_ * headDim_ +
+                                           computeTaskInfo_[taskId].headId * headDim_;
         computeTaskInfo_[taskId].oOffset =
             computeTaskInfo_[taskId].batchOffset * headDimV_ * headNum_ +
             computeTaskInfo_[taskId].qSeqId * TraitParams::blockM * headNum_ * headDimV_ +
             computeTaskInfo_[taskId].headId * headDimV_;
-    
+
         if ((computeTaskInfo_[taskId].headSeqLimit - seqGlobalOffset) >= TraitParams::blockM) {
             computeTaskInfo_[taskId].computeASeqLen = TraitParams::blockM;
         } else {
@@ -438,22 +443,22 @@ public:
         if (batchId >= batchSize_) {
             return;
         }
-    
+
         taskId = taskId % COMPUTE_PIPE_NUM;
-        computeTaskInfo_[taskId].actualHistLen = computeTaskInfo_[taskId].actualSeqLenK -
-                                                      numTargetGt_.GetValue(batchId);
-        computeTaskInfo_[taskId].actualNewHistLen = computeTaskInfo_[taskId].actualSeqLen -
-                                                         numTargetGt_.GetValue(batchId);
+        computeTaskInfo_[taskId].actualHistLen =
+            computeTaskInfo_[taskId].actualSeqLenK - numTargetGt_.GetValue(batchId);
+        computeTaskInfo_[taskId].actualNewHistLen =
+            computeTaskInfo_[taskId].actualSeqLen - numTargetGt_.GetValue(batchId);
         computeTaskInfo_[taskId].pageNum = pageOffsetGt_.GetValue(batchId + 1) - pageOffsetGt_.GetValue(batchId);
     }
 
     __aicore__ inline void FetchKvMayFromCache(uint32_t taskId)
     {
-        auto batchId = computeTaskInfo_[taskId].batchId; // 当前seqlen计算的长度
+        auto batchId = computeTaskInfo_[taskId].batchId;  // 当前seqlen计算的长度
         auto computeLen = computeTaskInfo_[taskId].computeBSeqLen;
         auto seqLenStart = computeTaskInfo_[taskId].kSeqId * BLOCK_HEIGHT_256;
         auto seqLenEnd = seqLenStart + computeLen;
-        if (seqLenEnd <= computeTaskInfo_[taskId].actualHistLen) { // 当前计算结尾小于历史序列
+        if (seqLenEnd <= computeTaskInfo_[taskId].actualHistLen) {  // 当前计算结尾小于历史序列
             uint32_t kvPageNum = (computeLen + pageSize_ - 1) / pageSize_;
             int32_t pageSid = seqLenStart / pageSize_ + pageOffsetGt_.GetValue(batchId);
             CopyFromKvCache(pageSid, kvPageNum, taskId);
@@ -463,9 +468,8 @@ public:
             auto diffHistLen = computeTaskInfo_[taskId].actualHistLen - computeTaskInfo_[taskId].actualNewHistLen;
             auto inputkvStart = seqLenStart - diffHistLen;
             uint64_t kvHeadId = computeTaskInfo_[taskId].headId / headRatio_;
-            int64_t offset = computeTaskInfo_[taskId].batchOffset * headDim_ * headNumK_ + \
-                            inputkvStart * headNumK_ * headDim_ + \
-                            kvHeadId * headDim_;
+            int64_t offset = computeTaskInfo_[taskId].batchOffset * headDim_ * headNumK_ +
+                             inputkvStart * headNumK_ * headDim_ + kvHeadId * headDim_;
             CopySeqFromGT(midkGt_[taskOffset], kGt_[offset], computeLen);
             CopySeqFromGT(midvGt_[taskOffset], vGt_[offset], computeLen);
             computeTaskInfo_[taskId].kvOffset = taskOffset;
@@ -476,7 +480,7 @@ public:
             int32_t kvpageNum = (computeTaskInfo_[taskId].actualHistLen - seqLenStart + pageSize_ - 1) / pageSize_;
             int32_t candLen = seqLenStart + computeLen - computeTaskInfo_[taskId].actualHistLen;
             CopyFromKvInputCache(taskId, pageSid, kvpageNum, computeTaskInfo_[taskId].actualHistLen - seqLenStart,
-                candLen);
+                                 candLen);
         }
     }
 
@@ -493,30 +497,29 @@ public:
         uint64_t kvHeadId = headId / headRatio_;
 
         for (uint32_t i = 0; i < pageNum; i++) {
-            int64_t pageIdx = pageIdsGt_.GetValue(pageSid + i); // [page_num, 2, pageSize_, num_head, head_dim]
-            // [pageIdx, 0, pageSize_, headId, head_dim]
-            int64_t offsetK = pageIdx * CONST_2 * pageSize_ * headNumK_ * headDim_ + \
-                            kvHeadId * headDim_;
-            
-            // [pageIdx, 1, pageSize_, headId, head_dim]
-            int64_t offsetV = pageIdx * CONST_2 * pageSize_ * headNumK_ * headDim_ + \
-                            pageSize_ * headNumK_ * headDim_ + \
-                            kvHeadId * headDim_;
+            int64_t pageIdx = pageIdsGt_.GetValue(pageSid + i);
             int64_t dstOffset = taskOffset + pageSize_ * i * headDim_;
+            uint32_t copyLen = (lastPageLen_ > 0 && (i + pageSid) == lastPageIdx) ? lastPageLen_ : pageSize_;
 
-            if (lastPageLen_ > 0 && (i + pageSid) == lastPageIdx) {
-                CopySeqFromGT(midkGt_[dstOffset], kvCacheGt_[offsetK], lastPageLen_);
-                CopySeqFromGT(midvGt_[dstOffset], kvCacheGt_[offsetV], lastPageLen_);
+            if (enableSplitCache_) {
+                // split kv: [page_idx, pageSize_, num_head, head_dim] in separate k_cache / v_cache
+                int64_t offsetKV = pageIdx * pageSize_ * headNumK_ * headDim_ + kvHeadId * headDim_;
+                CopySeqFromGT(midkGt_[dstOffset], kCacheGt_[offsetKV], copyLen);
+                CopySeqFromGT(midvGt_[dstOffset], vCacheGt_[offsetKV], copyLen);
             } else {
-                CopySeqFromGT(midkGt_[dstOffset], kvCacheGt_[offsetK], pageSize_);
-                CopySeqFromGT(midvGt_[dstOffset], kvCacheGt_[offsetV], pageSize_);
+                // combined kv_cache: [page_idx, 2, pageSize_, num_head, head_dim]
+                // [pageIdx, 0, pageSize_, headId, head_dim]
+                int64_t offsetK = pageIdx * CONST_2 * pageSize_ * headNumK_ * headDim_ + kvHeadId * headDim_;
+                // [pageIdx, 1, pageSize_, headId, head_dim]
+                int64_t offsetV = offsetK + pageSize_ * headNumK_ * headDim_;
+                CopySeqFromGT(midkGt_[dstOffset], kvCacheGt_[offsetK], copyLen);
+                CopySeqFromGT(midvGt_[dstOffset], kvCacheGt_[offsetV], copyLen);
             }
         }
         computeTaskInfo_[taskId].kvOffset = taskOffset;
     }
 
-    __aicore__ inline void CopySeqFromGT(const GlobalTensor<qType>& dstGt,
-                                         const GlobalTensor<qType>& srcGt,
+    __aicore__ inline void CopySeqFromGT(const GlobalTensor<qType>& dstGt, const GlobalTensor<qType>& srcGt,
                                          uint32_t count)
     {
         uint16_t blockLen = headDim_ * sizeof(qType) / DATA_ALIGN_BYTES;
@@ -545,17 +548,16 @@ public:
         }
     }
 
-    __aicore__ inline void CopyFromKvInputCache(uint32_t taskId, uint32_t pageSid, uint32_t pageNum,
-        uint32_t cacheLen, uint32_t candLen)
+    __aicore__ inline void CopyFromKvInputCache(uint32_t taskId, uint32_t pageSid, uint32_t pageNum, uint32_t cacheLen,
+                                                uint32_t candLen)
     {
         // copy kv from kv cache
         int64_t taskOffset = taskId * BLOCK_HEIGHT_256 * headDim_;
         CopyFromKvCache(pageSid, pageNum, taskId);
         // copy kv from input 偏移newhistorylen
         uint64_t kvHeadId = computeTaskInfo_[taskId].headId / headRatio_;
-        int64_t offset = computeTaskInfo_[taskId].batchOffset * headDim_ * headNumK_ + \
-        computeTaskInfo_[taskId].actualNewHistLen * headNumK_ * headDim_ + \
-        kvHeadId * headDim_;
+        int64_t offset = computeTaskInfo_[taskId].batchOffset * headDim_ * headNumK_ +
+                         computeTaskInfo_[taskId].actualNewHistLen * headNumK_ * headDim_ + kvHeadId * headDim_;
         CopySeqFromGT(midkGt_[taskOffset + cacheLen * headDim_], kGt_[offset], candLen);
         CopySeqFromGT(midvGt_[taskOffset + cacheLen * headDim_], vGt_[offset], candLen);
 
@@ -592,8 +594,7 @@ public:
             static_cast<uint32_t>(headDim_),
             computeTaskInfo_[taskId].computeBSeqLen,
             copyHeadNum_,
-            isAtomic
-        };
+            isAtomic};
         mmMgmt_->DoSVMatmul(args, attnScoreGt_, midvGt_, svResultGt_);
     }
 
@@ -601,20 +602,18 @@ public:
     {
         int64_t srcOffset = (taskId % COMPUTE_PIPE_NUM) * TraitParams::blockM * TraitParams::blockM;
         int64_t biasOffset = computeTaskInfo_[taskId].batchId * headNum_ * maxSeqLenQ_ * maxSeqLenK_ +
-                            computeTaskInfo_[taskId].headId * maxSeqLenQ_ * maxSeqLenK_ +
-                            computeTaskInfo_[taskId].qSeqId * maxSeqLenK_ * TraitParams::blockM +
-                            computeTaskInfo_[taskId].kSeqId * TraitParams::blockN;
-                            
+                             computeTaskInfo_[taskId].headId * maxSeqLenQ_ * maxSeqLenK_ +
+                             computeTaskInfo_[taskId].qSeqId * maxSeqLenK_ * TraitParams::blockM +
+                             computeTaskInfo_[taskId].kSeqId * TraitParams::blockN;
+
         int64_t maskOffset = biasOffset;
 
-        VecScoreRabParam<HstuForward::BlockMaskParams> vecScoreParam = {
-            srcOffset,
-            biasOffset,
-            maskOffset,
-            computeTaskInfo_[taskId].computeASeqLen,
-            computeTaskInfo_[taskId].computeBSeqLen,
-            maskTaskInfo_[taskId]
-        };
+        VecScoreRabParam<HstuForward::BlockMaskParams> vecScoreParam = {srcOffset,
+                                                                        biasOffset,
+                                                                        maskOffset,
+                                                                        computeTaskInfo_[taskId].computeASeqLen,
+                                                                        computeTaskInfo_[taskId].computeBSeqLen,
+                                                                        maskTaskInfo_[taskId]};
 
         vecScore_->VecScoreImpl(vecScoreParam, attnScoreGt_);
     }
@@ -637,7 +636,7 @@ public:
         int64_t fromOffset = (transTaskId % TRANS_PIPE_NUM) * TraitParams::blockM * TraitParams::blockK;
         int64_t toOffset = transTaskInfo_[transtaskIdModed].oOffset;
         int64_t total = transTaskInfo_[transtaskIdModed].computeASeqLen * headDimV_;
-        
+
         if constexpr (TraitParams::deterministic) {
             if (transTaskInfo_[transtaskIdModed].isEndToTail) {
                 transSVResult_.template TransResult<false>(svResultGt_, attnOutputGt_, fromOffset, toOffset, total);
@@ -647,7 +646,7 @@ public:
         } else {
             transSVResult_.template TransResult<true>(svResultGt_, attnOutputGt_, fromOffset, toOffset, total);
         }
-        
+
         if (transTaskId == 0) {
             NotifypreBlock();
         }
@@ -692,8 +691,7 @@ public:
             uint32_t computeASeqLen = BLOCK_HEIGHT_256;
             uint32_t computeHeadSeq = computeTaskInfo_[taskId].seqGlobalOffset + BLOCK_HEIGHT_256;
             if (computeHeadSeq > computeTaskInfo_[taskId].headSeqLimit) {
-                computeASeqLen = computeTaskInfo_[taskId].headSeqLimit -
-                                computeTaskInfo_[taskId].seqGlobalOffset;
+                computeASeqLen = computeTaskInfo_[taskId].headSeqLimit - computeTaskInfo_[taskId].seqGlobalOffset;
             }
 
             auto batchInnerOffset =
@@ -702,62 +700,60 @@ public:
                 (batchInnerOffset - computeTaskInfo_[taskId].headId * computeTaskInfo_[taskId].actualSeqLen) /
                 BLOCK_HEIGHT_256;
             computeTaskInfo_[taskId].iOffset =
-                computeTaskInfo_[taskId].batchOffset * headDim_ * headNum_ + \
-                computeTaskInfo_[taskId].qSeqId * BLOCK_HEIGHT_256 * headNum_ * headDim_ + \
+                computeTaskInfo_[taskId].batchOffset * headDim_ * headNum_ +
+                computeTaskInfo_[taskId].qSeqId * BLOCK_HEIGHT_256 * headNum_ * headDim_ +
                 computeTaskInfo_[taskId].headId * headDim_;
             computeTaskInfo_[taskId].oOffset =
-                computeTaskInfo_[taskId].batchOffset * headDimV_ * headNum_ + \
-                computeTaskInfo_[taskId].qSeqId * BLOCK_HEIGHT_256 * headNum_ * headDimV_ + \
+                computeTaskInfo_[taskId].batchOffset * headDimV_ * headNum_ +
+                computeTaskInfo_[taskId].qSeqId * BLOCK_HEIGHT_256 * headNum_ * headDimV_ +
                 computeTaskInfo_[taskId].headId * headDimV_;
             computeTaskInfo_[taskId].computeASeqLen = computeASeqLen;
         }
         computeTaskInfo_[taskId].isFirstSeqBlk = 1;
     }
 
-    __aicore__ inline void ComputeTailBlock(uint32_t taskId,
-                                            uint32_t currentTaskId,
-                                            uint32_t preTaskId,
+    __aicore__ inline void ComputeTailBlock(uint32_t taskId, uint32_t currentTaskId, uint32_t preTaskId,
                                             uint32_t transtaskId)
     {
         if (taskId == 0) {
             scm_.template FreeTensor<qType>(scmQKTensor_);
             return;
         }
-    
+
         if (taskId == 1) {
             ComputeVecScore(currentTaskId);
             pipe_barrier(PIPE_ALL);
-    
+
             ComputeSvMatmul(currentTaskId);
             WaitSvMatmul();
             WaitNextBlock(transtaskId - 1);
             TransResult(transtaskId - 1);
             return;
         }
-    
+
         if (transtaskId == 1) {
             ComputeSvMatmul(preTaskId);
             WaitSvMatmul();
-    
+
             ComputeVecScore(currentTaskId);
             pipe_barrier(PIPE_ALL);
-    
+
             ComputeSvMatmul(currentTaskId);
             WaitSvMatmul();
             WaitNextBlock(transtaskId - 1);
             TransResult(transtaskId - 1);
             return;
         }
-    
+
         ComputeSvMatmul(preTaskId);
         WaitSvMatmul();
-    
+
         ComputeVecScore(currentTaskId);
         pipe_barrier(PIPE_ALL);
-    
+
         ComputeSvMatmul(currentTaskId);
         WaitSvMatmul();
-    
+
         TransResult(transtaskId - 2);
         WaitNextBlock(transtaskId - 1);
         TransResult(transtaskId - 1);
@@ -798,6 +794,8 @@ public:
     GM_ADDR tiling_;
 
     GM_ADDR kvCache_;
+    GM_ADDR kCache_;
+    GM_ADDR vCache_;
     GM_ADDR pageOffset_;
     GM_ADDR pageIds_;
     GM_ADDR lastPageLen_;
@@ -826,6 +824,7 @@ public:
     uint64_t headRatio_;
 
     int32_t pageSize_;
+    bool enableSplitCache_;
 
     // Gt
     GlobalTensor<qType> qGt_;
@@ -842,6 +841,8 @@ public:
     GlobalTensor<oType> pageIdsGt_;
     GlobalTensor<oType> lastPageLenGt_;
     GlobalTensor<qType> kvCacheGt_;
+    GlobalTensor<qType> kCacheGt_;
+    GlobalTensor<qType> vCacheGt_;
     GlobalTensor<qType> midkGt_;
     GlobalTensor<qType> midvGt_;
 
@@ -858,17 +859,17 @@ public:
     TQueBind<TPosition::VECIN, TPosition::VECOUT, USE_QUEUE_NUM> queKv_;
     uint32_t kvLtUbSize_ = KVUBSIZE;
 
-    uint32_t sBlkId_ {0};
-    uint32_t eBlkId_ {0};
-    uint32_t skSeqBlkId_ {0};
-    uint32_t ekSeqBlkId_ {0};
-    int32_t splitMode_ {DEFAULT_SPLIT};
+    uint32_t sBlkId_{0};
+    uint32_t eBlkId_{0};
+    uint32_t skSeqBlkId_{0};
+    uint32_t ekSeqBlkId_{0};
+    int32_t splitMode_{DEFAULT_SPLIT};
 
     HstuForward::BlockMaskParams maskTaskInfo_[COMPUTE_PIPE_NUM];
     JaggedTaskArgs computeTaskInfo_[COMPUTE_PIPE_NUM];
     JaggedTaskArgs transTaskInfo_[TRANS_PIPE_NUM];
 };
 
-}
+}  // namespace HstuPagedForward
 
 #endif
