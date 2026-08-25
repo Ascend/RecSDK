@@ -28,10 +28,10 @@
 
 | 层级         | 组件名称            | 依赖项                                 | 说明               |
 | ---------- | --------------- | ----------------------------------- | ---------------- |
-| **应用层**    | Rec SDK Torch   | hybrid\_torchrec、torchrec\_embcache | Rec SDK Torch组件  |
+| **应用层**    | Rec SDK Torch推荐算法框架包 | hybrid\_torchrec、torchrec\_embcache | Rec SDK Torch组件  |
 | **自定义算子层** | 自定义算子相关包        | rec\_ops、fbgemm\_ascend             | 自定义算子实现          |
-| **适配层**    | Torchrec框架适配NPU | torchrec\_npu                       | TorchRec的适配NPU版本 |
-| **依赖层**    | Torchrec依赖      | fbgemm\_gpu                         | TorchRec依赖的底层加速库 |
+| **适配层**    | TorchRec昇腾注册包 | torchrec（NPU适配版）                       | TorchRec的适配NPU版本 |
+| **依赖层**    | TorchRec依赖      | fbgemm\_gpu                         | TorchRec依赖的底层加速库 |
 | **框架层**    | 训练框架            | PyTorch、TorchNPU                 | 深度学习训练框架         |
 | **使能层**    | NPU使能           | CANN                                | 提供NPU底层支持        |
 | **宿主机层**   | 宿主机依赖           | NPU固件、驱动、Device配置                   | 硬件层面的基础依赖        |
@@ -119,7 +119,7 @@ Rec SDK Torch软件包如下表：
    请参见[宿主机依赖](#宿主机依赖)章节完成宿主机环境配置。
 2. 制作基础训练镜像<a id="section104919392501"></a>
 
-   可直接下载已经制作好的基础训练镜像，请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中的“镜像下载”标签页，下载26.0.0*及之后版本的镜像。
+   可直接下载已经制作好的基础训练镜像，请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中的“镜像下载”标签页，下载26.0.0*及之后版本的镜像。26.0.0*及之后版本镜像中已安装Rec SDK Torch及相关依赖，若无需更新可跳过后续“安装Rec SDK Torch软件包”相关步骤。
 
    从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)获取镜像的Docker指令示例如下：
 
@@ -155,11 +155,12 @@ Rec SDK Torch软件包如下表：
    >
    > - -m 300g 表示设置容器内可以使用的内存大小上限为300G，可根据实际情况进行配置。
    > - -e ASCEND\_VISIBLE\_DEVICES=0-7 表示将服务器上编号为device0\~device7的NPU设备挂载到容器内，可根据实际情况进行配置。
+   > - image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.0.0版本的x86镜像的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_debian12-x86`。
 
    执行如下命令新建容器并进入容器内：
 
    ```shell
-   bash run_docker.sh 容器名 镜像名称:镜像版本
+   bash run_docker.sh 容器名 镜像名称
    ```
 
    > \[!NOTE]
@@ -178,7 +179,7 @@ Rec SDK Torch软件包如下表：
 1. 依赖软件安装
 
    请参见[容器内训练框架依赖](#容器内训练框架依赖)和[容器内训练加速库依赖](#容器内训练加速库依赖)完成容器内的依赖软件安装。
-2. 安装TorchRec昇腾注册包
+2. 安装TorchRec昇腾注册包<a id="source_build_torchrec_npu"></a>
 
    TorchRec昇腾注册包是基于TorchRec源码做的NPU设备适配。可通过Rec SDK Torch提供的patch文件和TorchRec源码的固定分支编译出该注册包。
 
@@ -268,7 +269,8 @@ Rec SDK Torch软件包如下表：
 
    > \[!NOTE]
    > 1. 当前提供的Rec SDK一键安装部署软件包基于Python 3.11版本编译，**请在相同的Python版本环境下安装使用**。若需在其他Python版本环境下安装使用，请参见[源码编译 - 安装Rec SDK Torch一键安装部署软件包](#source_build_hybrid_torchrec)进行源码编译。
-   > 2. Rec SDK一键安装部署软件包同时支持PyTorch 2.6.0/2.7.1/2.10.0三个版本，会根据当前环境中的PyTorch版本自动安装配套的软件包。
+   > 2. Rec SDK Torch一键安装部署软件包内包装了TorchRec昇腾注册包（torchrec NPU适配版）和Rec SDK Torch推荐算法框架包（hybrid_torchrec、torchrec_embcache）。使用该包时，torchrec/hybrid_torchrec/torchrec_embcache三个子包无法直接使用pip3指令进行查看，但可直接在Python脚本中进行import使用。
+   > 3. Rec SDK Torch一键安装部署软件包同时支持PyTorch 2.6.0/2.7.1/2.10.0三个版本，安装时会根据当前环境中的PyTorch版本自动安装配套的软件包。
 
    **软件包Hash值校验<a name="section10830205518487"></a>**
 

@@ -24,7 +24,7 @@
 
 ### 2. 编译 RecSDK
 
-默认已安装torch_rec_v1相关软件包，如需源码编译安装，请参考[源码安装章节](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md#%E6%BA%90%E7%A0%81%E5%AE%89%E8%A3%85)。
+默认已安装torch_rec_v1相关软件包，如需源码编译安装，请参考[源码安装章节](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/torch/torch_rec_v1/02_torch_installation_guide/recsdk_torch_installation_guide.md#%E6%BA%90%E7%A0%81%E5%AE%89%E8%A3%85)。
 
 ## 注意事项
 

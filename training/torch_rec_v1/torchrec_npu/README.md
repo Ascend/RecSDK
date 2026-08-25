@@ -23,7 +23,7 @@
 
 2.2 基于torchrec v1.2.0版本进行适配。配套开源软件版本：torch 2.7.1, fbgemm_gpu 1.2.0+cpu。
 
-2.3 基于torchrec V1.5.0版本进行适配。配套开源软件版本：torch 2.10.0, torch_npu 2.10.0, fbgemm_gpu 1.5.0+cpu。
+2.3 基于torchrec V1.5.0版本进行适配。配套开源软件版本：torch 2.10.0, fbgemm_gpu 1.5.0+cpu。
 
 ## 编译安装
 
