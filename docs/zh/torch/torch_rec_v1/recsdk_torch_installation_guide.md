@@ -27,10 +27,10 @@
 
 | 层级         | 组件名称            | 依赖项                                 | 说明               |
 | ---------- | --------------- | ----------------------------------- | ---------------- |
-| **应用层**    | Rec SDK Torch   | hybrid\_torchrec、torchrec\_embcache | Rec SDK Torch组件  |
+| **应用层**    | Rec SDK Torch推荐算法框架包 | hybrid\_torchrec、torchrec\_embcache | Rec SDK Torch组件  |
 | **自定义算子层** | 自定义算子相关包        | rec\_ops、fbgemm\_ascend             | 自定义算子实现          |
-| **适配层**    | Torchrec框架适配NPU | torchrec\_npu                       | TorchRec的适配NPU版本 |
-| **依赖层**    | Torchrec依赖      | fbgemm\_gpu                         | TorchRec依赖的底层加速库 |
+| **适配层**    | TorchRec昇腾注册包 | torchrec（NPU适配版）                       | TorchRec的适配NPU版本 |
+| **依赖层**    | TorchRec依赖      | fbgemm\_gpu                         | TorchRec依赖的底层加速库 |
 | **框架层**    | 训练框架            | PyTorch、TorchNPU                  | 深度学习训练框架         |
 | **使能层**    | NPU使能           | CANN                                | 提供NPU底层支持        |
 | **宿主机层**   | 宿主机依赖           | NPU固件、驱动、Device配置                   | 硬件层面的基础依赖        |
@@ -49,7 +49,7 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 | 依赖名称/操作            | 推荐版本        | 获取方式/安装说明                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CANN软件包            | CANN 9.0.0  | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。                                                                                                                                                                                                                                                                                      |
-| PyTorch和TorchNPU | 2.6.0/2.7.1 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.6.0版本安装：请参见[使用二进制文件进行安装](https://gitcode.com/Ascend/pytorch/blob/v7.3.1-pytorch2.6.0/README.zh.md#%E4%BD%BF%E7%94%A8%E4%BA%8C%E8%BF%9B%E5%88%B6%E6%96%87%E4%BB%B6%E8%BF%9B%E8%A1%8C%E5%AE%89%E8%A3%85)章节安装PyTorch、torch_npu依赖、torch_npu。<br>2.7.1版本安装：请参见[安装PyTorch和PyTorch昇腾适配插件](https://gitcode.com/Ascend/pytorch/blob/v2.7.1/docs/zh/installation_guide/quick_install.md)章节分别安装PyTorch和torch\_npu。请根据PyTorch版本、Python版本、设备架构选择对应的安装指令，Python版本建议使用Python 3.11。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
+| PyTorch和TorchNPU | 2.6.0/2.7.1 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.6.0版本：请前往[TorchNPU2.6.0下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=168&ids=8e2241c30951478a85bb6f2fc282c568%2C97%2C108%2C1%2C6%2C3%2C)页面进行获取。<br>2.7.1版本：请前往[TorchNPU2.7.1下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=175&ids=89dda9ba9de741349efa03687a487678%2C96%2C108%2C1%2C6%2C177%2C)页面获取。<br>安装时请根据PyTorch版本、Python版本（建议使用Python 3.11）、CPU架构选择对应的安装指令。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
 
 #### 容器内训练加速库依赖<a id="section146113514600"></a>
 
@@ -83,10 +83,10 @@ Rec SDK Torch软件包如下表：
   - **推荐使用该方案**。
 - 方案二：源码安装
   - 基于**容器内**安装Rec SDK Torch软件包，默认已配置完成宿主机环境并进入Docker容器内。介绍如何通过源码编译的方式安装Rec SDK Torch软件包。
-  - 若使用的Docker容器镜像不是参考[基础镜像构建](../build_torch_rec_images/README.md)制作，**可能存在cmake、glibc等基础软件版本不兼容**的情况，需自行处理。
+  - 若使用的Docker容器镜像不是参考[基础镜像构建](../../../../docker/OVERVIEW.zh.md#本地构建镜像)制作，**可能存在cmake、glibc等基础软件版本不兼容**的情况，需自行处理。
 - 方案三：离线安装
   - 基于**容器内**安装Rec SDK Torch软件包，默认已配置完成宿主机环境并进入Docker容器内，介绍如何通过下载Release版本的二进制包安装Rec SDK Torch软件包及自定义算子包。
-  - 若使用的Docker容器镜像不是参考[基础镜像构建](../build_torch_rec_images/README.md)制作，**可能存在cmake、glibc等基础软件版本不兼容**的情况，需自行处理。
+  - 若使用的Docker容器镜像不是参考[基础镜像构建](../../../../docker/OVERVIEW.zh.md#本地构建镜像)制作，**可能存在cmake、glibc等基础软件版本不兼容**的情况，需自行处理。
 
 如需查看Rec SDK Torch软件包的历史安装记录，请参见[查看Rec SDK Torch安装与卸载记录](../../torch/torch_rec_v1/common_operations.md)。
 
@@ -119,7 +119,7 @@ Rec SDK Torch软件包如下表：
 
    可直接下载已经制作好的基础训练镜像，请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中的“镜像下载”标签页，下载26.0.0*及之后版本的镜像。
 
-   也可手动制作基础训练镜像，请参见[基础镜像构建](../build_torch_rec_images/README.md)里的Dockerfile和README制作镜像。
+   也可手动制作基础训练镜像，请参见[基础镜像构建](../../../../docker/OVERVIEW.zh.md#本地构建镜像)中“PyTorch 镜像”章节制作镜像。
 
    制作基础镜像时，会同时安装[容器内训练框架依赖](#容器内训练框架依赖)和[容器内训练加速库依赖](#容器内训练加速库依赖)中的依赖软件（CANN、PyTorch、TorchNPU、fbgemm\_gpu）。后续安装Rec SDK Torch时可跳过`依赖软件安装`步骤。
 3. 运行容器<a id="ZH-CN_TOPIC_0000002302389300"></a>
@@ -148,17 +148,18 @@ Rec SDK Torch软件包如下表：
    >
    > - -m 300g 表示设置容器内可以使用的内存大小上限为300G，可根据实际情况进行配置。
    > - -e ASCEND\_VISIBLE\_DEVICES=0-7 表示将服务器上编号为device0\~device7的NPU设备挂载到容器内，可根据实际情况进行配置。
+   > - image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.0.0版本的x86镜像的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_debian12-x86`。
 
    执行如下命令新建容器并进入容器内：
 
    ```shell
-   bash run_docker.sh 容器名 镜像名称:镜像版本
+   bash run_docker.sh 容器名 镜像名称
    ```
 
    > \[!NOTE]
    >
    > 1. 上述指令中Docker容器为前台运行，退出交互后容器将停止。更多Docker容器使用请参见[Docker社区文档](https://docs.docker.com/)。
-   > 2. 若创建容器时，使用的镜像是从昇腾镜像仓库下载，且镜像版本为26.1.0及之后版本，需参考[刷新环境变量](./quick_start.md#refresh_container_env)章节，手动刷新容器内环境变量。
+   > 2. **刷新容器内环境变量**。若创建容器时使用的镜像是从昇腾镜像仓库下载（或参考[基础镜像构建](../../../../docker/OVERVIEW.zh.md#本地构建镜像)手动制作）的26.1.0及之后的镜像版本，进入容器后需参考[刷新环境变量](./quick_start.md#refresh_container_env)章节，手动刷新容器内环境变量。
    > 3. 如需更新容器内依赖软件版本，请参见[容器内训练框架依赖](#容器内训练框架依赖)和[容器内训练加速库依赖](#容器内训练加速库依赖)中的说明，卸载依赖软件后重新安装。
 4. 安装Rec SDK Torch软件包
 
@@ -171,7 +172,7 @@ Rec SDK Torch软件包如下表：
 1. 依赖软件安装
 
    请参见[容器内训练框架依赖](#容器内训练框架依赖)和[容器内训练加速库依赖](#容器内训练加速库依赖)完成容器内的依赖软件安装。
-2. 安装TorchRec昇腾注册包
+2. 安装TorchRec昇腾注册包<a id="source_build_torchrec_npu"></a>
 
    TorchRec昇腾注册包是基于TorchRec源码做的NPU设备适配。可通过Rec SDK Torch提供的patch文件和TorchRec源码的固定分支编译出该注册包。
 
@@ -197,12 +198,11 @@ Rec SDK Torch软件包如下表：
    下载[RecSDK](https://gitcode.com/Ascend/RecSDK)源码，按如下指令进行算子相关包的编译和安装：
 
    > [!NOTE]
-   > 编译脚本 `build_ai_core_op.sh` 的参数需根据实际芯片架构配置，默认以 `A2` 为例。详细说明请参考 [README.md](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)。
+   > 编译脚本 `build_ai_core_op.sh` 的参数需根据实际芯片架构配置，默认以 `A2` 为例。详细参数和更多说明请参考 [README.md](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)。
 
    ```bash
    # 编译算子前，需使能CANN环境变量。默认路径安装CANN包时，使能CANN环境变量指令如下：
    source /usr/local/Ascend/cann/set_env.sh
-   unset ASCEND_CUSTOM_OPP_PATH
 
    # 编译并安装算子包（Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz）。
    cd RecSDK/cust_op/ascendc_op/build
@@ -260,14 +260,17 @@ Rec SDK Torch软件包如下表：
    | Rec SDK Torch一键安装部署软件包 | torch\_rec\_v1-\*.tar.gz | [Release下载页](https://gitcode.com/Ascend/RecSDK/releases) |
 
    > \[!NOTE]
-   > 当前提供的Rec SDK一键安装部署软件包基于Python 3.11版本编译，**请在相同的Python版本环境下安装使用**。若需在其他Python版本环境下安装使用，请参见[源码编译 - 安装Rec SDK Torch一键安装部署软件包](#source_build_hybrid_torchrec)进行源码编译。
+   > 1. 当前提供的Rec SDK一键安装部署软件包基于Python 3.11版本编译，**请在相同的Python版本环境下安装使用**。若需在其他Python版本环境下安装使用，请参见[源码编译-RecSDK推荐算法框架包](#source_build_hybrid_torchrec)和[源码编译-TorchRec昇腾注册包](#source_build_torchrec_npu)进行源码编译。
+   > 2. Rec SDK Torch一键安装部署软件包内包装了TorchRec昇腾注册包（torchrec NPU适配版）和Rec SDK Torch推荐算法框架包（hybrid_torchrec、torchrec_embcache）。使用该包时，torchrec/hybrid_torchrec/torchrec_embcache三个子包无法直接使用pip3指令进行查看，但可直接在Python脚本中进行import使用。
+   > 3. Rec SDK Torch一键安装部署软件包同时支持PyTorch 2.6.0/2.7.1/2.10.0三个版本，安装时会根据当前环境中的PyTorch版本自动安装配套的软件包。
 
    **软件包Hash值校验<a name="section10830205518487"></a>**
 
-   为了防止软件包在传递过程中或存储期间被恶意篡改，请在软件包下载之后使用`sha256sum`命令校验Hash值是否和软件包下载页的Hash值一致。可参考如下指令进行验证（file\_name需替换为软件包文件名）：
+   为了防止软件包在传递过程中或存储期间被恶意篡改，请同时下载软件包和软件包对应的`.sha256sum`的文件到同一目录，并执行如下指令进行完整行校验：
 
    ```bash
-   sha256sum file_name
+   # FILE_NAME需替换为软件包文件名
+   sha256sum -c FILE_NAME.sha256sum
    ```
 
    **安装软件包**
@@ -296,11 +299,14 @@ Rec SDK Torch软件包如下表：
    ```shell
    # 如已安装，请先卸载
    pip3 uninstall -y torch_rec_v1
-   # 安装软件包
-   pip3 install torch_rec_v1-{version}-{arch}.tar.gz
+   # 安装软件包。-v 参数表示显示详细的安装信息。
+   pip3 install torch_rec_v1-{version}-{arch}.tar.gz -v
    ```
 
-   （其中 `{version}` 代表版本号，`{arch}` 代表操作系统架构，请根据实际安装包替换）
+   安装指令中 `{version}` 代表版本号，`{arch}` 代表操作系统架构，请根据实际安装包名称进行替换。
+
+   安装软件包时**会同时安装依赖包，请保持网络通畅**。若网络不通，可能导致安装依赖包时下载超时导致安装失败。首次安装时，视环境中依赖包缺失数量的多少，可能耗时5~10min。
+
 3. 安装自定义算子相关包
 
    参考fbgemm\_ascend的[README](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md)获取fbgemm\_ascend软件包。

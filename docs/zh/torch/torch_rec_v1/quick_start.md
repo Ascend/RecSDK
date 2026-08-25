@@ -49,29 +49,25 @@ docker run \
 - free_devices：检测当前空闲NPU卡号。
 - -m 300g：设置容器内使用内存大小，可根据实际情况进行配置。
 - -e ASCEND_VISIBLE_DEVICES="${free_devices}"：将服务器上空闲的NPU设备挂载到容器内，可根据实际情况进行配置。
+- image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.0.0版本的x86镜像的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_debian12-x86`。
 
 执行如下命令新建容器：
 
 ```shell
-bash run_docker.sh 容器名 镜像名称:镜像版本
+bash run_docker.sh 容器名 镜像名称
 ```
 
 ### 刷新容器内环境变量<a id="refresh_container_env"></a>
 
-26.1.0*及之后版本镜像中内置了Python虚拟环境，需要刷新环境变量。使用`ll /opt/buildtools/torch_v1_pt2.6.0/bin/activate`指令判断Python虚拟环境是否存在：若回显显示文件详细信息表示存在，若回显包含“No such file or directory”表示不存在。
-
-26.0.0*版本镜像内无Python虚拟环境，环境变量已配置好，无需手动刷新。
-
-若Python虚拟环境存在则执行如下命令刷新容器内环境变量：
-
 ```shell
-# 激活 torch_rec_v1 PyTorch 2.6.0 版本Python虚拟环境，该环境内已安装好Rec SDK Torch及相关软件包。
-source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
-# 若使用完成后需退出Python虚拟环境，执行命令： deactivate 即可退出。
-
-# 切换并生效 Atlas A2 系列服务器配套CANN Toolkit及相关环境变量
-source /usr/local/set_cann_env.sh a2
+# 使能CANN环境变量
+source /usr/local/Ascend/cann/set_env.sh
+# Python虚拟环境存在时激活虚拟环境。使用完后若需退出 Python 虚拟环境，执行命令： deactivate 即可退出。
+[ -f /opt/buildtools/torch_v1_pt2.6.0/bin/activate ] && source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
 ```
+
+> [!NOTE]
+> [昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.1.0及之后的镜像中内置了Python虚拟环境，使用前需激活虚拟环境。该虚拟环境中已默认安装好Rec SDK Torch及相关依赖。26.0.0版本镜像无Python虚拟环境。
 
 ### 环境可用性验证
 
