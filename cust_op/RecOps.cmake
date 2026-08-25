@@ -69,6 +69,8 @@ set(RECSDK_CUSTOM_OPS_A5
     relative_attn_bias_time
     reverse_sequence
     token_mixing
+    split_embedding_codegen_forward_unweighted
+    backward_codegen_adagrad_unweighted_exact
 )
 
 # ================================ A3 ops ================================
@@ -93,6 +95,8 @@ set(RECSDK_CUSTOM_OPS_A3
     relative_attn_bias_time
     reverse_sequence
     # token_mixing
+    split_embedding_codegen_forward_unweighted
+    backward_codegen_adagrad_unweighted_exact
 )
 
 # ================================ A2 ops ================================
@@ -117,6 +121,8 @@ set(RECSDK_CUSTOM_OPS_A2
     relative_attn_bias_time
     reverse_sequence
     token_mixing
+    split_embedding_codegen_forward_unweighted
+    backward_codegen_adagrad_unweighted_exact
 )
 
 # ---------------------------------------------------------------------------
@@ -306,6 +312,14 @@ set(RECSDK_ADAPTER_SRCS_A5
     ${RECSDK_TORCH_LIBRARY_DIR}/relative_attn_bias/relative_attn_bias_time.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/reverse_sequence/reverse_sequence.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/token_mixing/token_mixing.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adagrad_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adagrad_unweighted_exact_grad_aggregation.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adam_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adam_unweighted_exact_grad_aggregation.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_rowwise_adagrad_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact_grad_aggregation.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/split_embedding_codegen_forward_unweighted.cpp
 )
 
 set(RECSDK_ADAPTER_SRCS_A3
@@ -323,6 +337,14 @@ set(RECSDK_ADAPTER_SRCS_A3
     ${RECSDK_TORCH_LIBRARY_DIR}/relative_attn_bias/relative_attn_bias_pos.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/relative_attn_bias/relative_attn_bias_time.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/reverse_sequence/reverse_sequence.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adagrad_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adagrad_unweighted_exact_grad_aggregation.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adam_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adam_unweighted_exact_grad_aggregation.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_rowwise_adagrad_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact_grad_aggregation.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/split_embedding_codegen_forward_unweighted.cpp
 )
 
 set(RECSDK_ADAPTER_SRCS_A2
@@ -342,4 +364,12 @@ set(RECSDK_ADAPTER_SRCS_A2
     ${RECSDK_TORCH_LIBRARY_DIR}/relative_attn_bias/relative_attn_bias_time.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/reverse_sequence/reverse_sequence.cpp
     ${RECSDK_TORCH_LIBRARY_DIR}/token_mixing/token_mixing.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adagrad_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adagrad_unweighted_exact_grad_aggregation.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adam_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_adam_unweighted_exact_grad_aggregation.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_rowwise_adagrad_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact_grad_aggregation.cpp
+    ${RECSDK_TORCH_LIBRARY_DIR}/split_embedding_codegen_forward_unweighted/split_embedding_codegen_forward_unweighted.cpp
 )
