@@ -4,7 +4,7 @@ set -e
 # 清理历史缓存
 rm -rf build/
 rm -rf _skbuild/
-rm -rf rec_ops.egg-info/
+rm -rf rec_cust_ops.egg-info/
 rm -rf dist/
 
 # CATLASS 准备逻辑已移除。

@@ -2,15 +2,15 @@
 # RecSDK cust_op: 算子构建 + 适配层编译 + whl 打包
 # ===========================================================================
 cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
-project(rec_ops LANGUAGES CXX)
+project(rec_cust_ops LANGUAGES CXX)
 
 set(RECSDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "Show compile commands" FORCE)
 
 # ---------------------------------------------------------------------------
-# Python 模块文件安装（rec_ops/ 打入 whl 包根目录）
+# Python 模块文件安装（rec_cust_ops/ 打入 whl 包根目录）
 # ---------------------------------------------------------------------------
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/rec_ops/
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/rec_cust_ops/
     DESTINATION .
 )
 
@@ -149,31 +149,31 @@ function(recsdk_add_host_library target_name output_name npu_chip_flag)
     )
 endfunction()
 
-recsdk_add_host_library(rec_ops_py_a5 rec_ops_py_a5 1 ${RECSDK_ADAPTER_SRCS_A5})
-recsdk_add_host_library(rec_ops_py_a3 rec_ops_py_a3 0 ${RECSDK_ADAPTER_SRCS_A3})
-recsdk_add_host_library(rec_ops_py_a2 rec_ops_py_a2 0 ${RECSDK_ADAPTER_SRCS_A2})
+recsdk_add_host_library(rec_cust_ops_py_a5 rec_cust_ops_py_a5 1 ${RECSDK_ADAPTER_SRCS_A5})
+recsdk_add_host_library(rec_cust_ops_py_a3 rec_cust_ops_py_a3 0 ${RECSDK_ADAPTER_SRCS_A3})
+recsdk_add_host_library(rec_cust_ops_py_a2 rec_cust_ops_py_a2 0 ${RECSDK_ADAPTER_SRCS_A2})
 
 # host library 依赖 AscendC 算子编译完成
 foreach(_t ${ASCENDC_TARGETS})
     if(TARGET ${_t})
-        add_dependencies(rec_ops_py_a5 ${_t})
-        add_dependencies(rec_ops_py_a3 ${_t})
-        add_dependencies(rec_ops_py_a2 ${_t})
+        add_dependencies(rec_cust_ops_py_a5 ${_t})
+        add_dependencies(rec_cust_ops_py_a3 ${_t})
+        add_dependencies(rec_cust_ops_py_a2 ${_t})
     endif()
 endforeach()
 
 # ---------------------------------------------------------------------------
 # 安装：将 .so 安装到 Python 包目录
 # ---------------------------------------------------------------------------
-install(TARGETS rec_ops_py_a5
+install(TARGETS rec_cust_ops_py_a5
     LIBRARY DESTINATION .
     RUNTIME DESTINATION .
 )
-install(TARGETS rec_ops_py_a3
+install(TARGETS rec_cust_ops_py_a3
     LIBRARY DESTINATION .
     RUNTIME DESTINATION .
 )
-install(TARGETS rec_ops_py_a2
+install(TARGETS rec_cust_ops_py_a2
     LIBRARY DESTINATION .
     RUNTIME DESTINATION .
 )
@@ -190,6 +190,6 @@ endif()
 # ---------------------------------------------------------------------------
 # 将 env_setup.sh 打入包目录，供用户 source
 # ---------------------------------------------------------------------------
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/rec_ops/env_setup.sh
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/rec_cust_ops/env_setup.sh
     DESTINATION .
 )

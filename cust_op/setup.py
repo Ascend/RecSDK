@@ -98,12 +98,12 @@ def cmake_args():
 
 # 始终构建所有芯片版本 (A5/A3/A2)，运行时根据 SOC 检测选择加载
 skbuild_setup(
-    name="rec_ops",
+    name="rec_cust_ops",
     version=package_version,
     description="RecSDK Custom Operations for Multiple Chips",
-    packages=setuptools.find_packages(where=".", include=["rec_ops", "rec_ops.*"]),
+    packages=setuptools.find_packages(where=".", include=["rec_cust_ops", "rec_cust_ops.*"]),
     cmake_args=cmake_args(),
-    cmake_install_dir="rec_ops",
+    cmake_install_dir="rec_cust_ops",
     include_package_data=True,
     zip_safe=False,
 )
