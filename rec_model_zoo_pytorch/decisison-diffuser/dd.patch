@@ -767,61 +767,6 @@ index 49cffd5..6d4200b 100644
          for key in sorted(self._dict.keys()):
              val = self._dict[key]
              string += f'    {key}: {val}\n'
-diff --git a/code/diffuser/utils/rendering.py b/code/diffuser/utils/rendering.py
-index 8fd5873..09b771e 100644
---- a/code/diffuser/utils/rendering.py
-+++ b/code/diffuser/utils/rendering.py
-@@ -14,6 +14,7 @@ from .video import save_video, save_videos
- from ml_logger import logger
- 
- from diffuser.datasets.d4rl import load_environment
-+from diffuser.environments.mujoco_compat import get_mujoco_data
- 
- #-----------------------------------------------------------------------------#
- #------------------------------- helper structs ------------------------------#
-@@ -80,7 +81,7 @@ class MuJoCoRenderer:
-         return state
- 
-     def pad_observations(self, observations):
--        qpos_dim = self.env.sim.data.qpos.size
-+        qpos_dim = get_mujoco_data(self.env).qpos.size
-         ## xpos is hidden
-         xvel_dim = qpos_dim - 1
-         xvel = observations[:, xvel_dim]
-@@ -119,9 +120,10 @@ class MuJoCoRenderer:
-         else:
-             state = observation
- 
--        qpos_dim = self.env.sim.data.qpos.size
-+        data = get_mujoco_data(self.env)
-+        qpos_dim = data.qpos.size
-         if not qvel or state.shape[-1] == qpos_dim:
--            qvel_dim = self.env.sim.data.qvel.size
-+            qvel_dim = data.qvel.size
-             state = np.concatenate([state, np.zeros(qvel_dim)])
- 
-         set_state(self.env, state)
-@@ -245,8 +247,9 @@ class MuJoCoRenderer:
- #-----------------------------------------------------------------------------#
- 
- def set_state(env, state):
--    qpos_dim = env.sim.data.qpos.size
--    qvel_dim = env.sim.data.qvel.size
-+    data = get_mujoco_data(env)
-+    qpos_dim = data.qpos.size
-+    qvel_dim = data.qvel.size
-     if not state.size == qpos_dim + qvel_dim:
-         warnings.warn(
-             f'[ utils/rendering ] Expected state of size {qpos_dim + qvel_dim}, '
-@@ -263,7 +266,7 @@ def rollouts_from_state(env, state, actions_l):
-     return rollouts
- 
- def rollout_from_state(env, state, actions):
--    qpos_dim = env.sim.data.qpos.size
-+    qpos_dim = get_mujoco_data(env).qpos.size
-     env.set_state(state[:qpos_dim], state[qpos_dim:])
-     observations = [env._get_obs()]
-     for act in actions:
 diff --git a/code/diffuser/utils/setup.py b/code/diffuser/utils/setup.py
 index e251743..5b28cc7 100644
 --- a/code/diffuser/utils/setup.py
@@ -1296,6 +1241,7 @@ index e8dcdb4..51bb80c 100644
 +        return self.test_batch_size, self.max_seq_len
 +
 +    def _mark_dynamic_inputs(self, value, mark_seq_len=True):
++        pass
 +
 +        # if isinstance(value, torch.Tensor) and value.ndim >= 1:
 +        #     torch._dynamo.mark_dynamic(value, 0)
