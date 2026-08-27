@@ -249,9 +249,10 @@ self._linear_uvqk = torch.nn.Linear(
 ).apply(init_mlp_weights_optional_bias)
 ```
 
-- 新增`NpuFusedHSTUAttention`适配`torch.ops.mxrec.hstu_jagged`算子
+- 新增`NpuFusedHSTUAttention`适配`ops_rec.ascendc.attention.hstu_jagged`算子
 
 ```python
+import ops_rec
 class NpuFusedHSTUAttention(HSTUAttention):
     def forward(self,
                 tq: torch.Tensor,  # (T, d)
@@ -264,20 +265,20 @@ class NpuFusedHSTUAttention(HSTUAttention):
                 num_contextuals: Optional[Union[int, torch.Tensor]] = None,
                 ) -> torch.Tensor:  # T, d
 
-        return torch.ops.mxrec.hstu_jagged(tq.view(-1, self.num_heads, self.attention_dim),
-                                          tk.view(-1, self.num_heads, self.attention_dim),
-                                          tv.view(-1, self.num_heads, self.attention_dim),
-                                          None,
-                                          None,
-                                          0,  # 0默认为下三角，跟TorchHSTUAttention的mask实现不一致
-                                          max_seqlen,
-                                          1.0 / max_seqlen,
-                                          offsets.long(),
-                                          num_contextuals,
-                                          num_candidates,
-                                          target_group_size,
-                                          1.0 / (self.attention_dim**0.5),
-                                          ).view(-1, self.num_heads * self.attention_dim)
+        return ops_rec.ascendc.attention.hstu_jagged(tq.view(-1, self.num_heads, self.attention_dim),
+                                                     tk.view(-1, self.num_heads, self.attention_dim),
+                                                     tv.view(-1, self.num_heads, self.attention_dim),
+                                                     None,
+                                                     None,
+                                                     0,  # 0默认为下三角，跟TorchHSTUAttention的mask实现不一致
+                                                     max_seqlen,
+                                                     1.0 / max_seqlen,
+                                                     offsets,
+                                                     num_contextuals,
+                                                     num_candidates,
+                                                     target_group_size,
+                                                     1.0 / (self.attention_dim**0.5),
+                                                     ).view(-1, self.num_heads * self.attention_dim)
 ```
 
 #### Recsys-GR性能调优实例
