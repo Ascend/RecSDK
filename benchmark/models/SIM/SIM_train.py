@@ -611,6 +611,8 @@ def evaluate_model_dynamic_shape(model, device, shape_list, criterion):
         avg_loss = total_loss / iter_num
         accuracy = correct_predictions / total_samples
         logger.info(f'测试集损失: {avg_loss:.4f}, 准确率: {accuracy:.4f}')
+    
+    return avg_loss, accuracy
 
 
 def create_model(item_embedding_dim, user_feature_dim, hidden_dim, device):
