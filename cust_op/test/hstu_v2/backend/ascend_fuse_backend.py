@@ -96,7 +96,20 @@ class Kernel:
         return metadata
 
     def backward(
-        self, grad, q, k, v, rab, mask, window_size, num_context, num_target, target_group_size, metadata=None
+        self,
+        grad,
+        q,
+        k,
+        v,
+        rab=None,
+        mask=None,
+        window_size=(-1, -1),
+        num_context=None,
+        num_target=None,
+        target_group_size=None,
+        metadata=None,
+        arbitrary_func=None,
+        sparse_info=None,
     ):
         grad_npu = grad.to("npu")
         q_npu = q.to("npu")
@@ -116,7 +129,10 @@ class Kernel:
             num_context = torch.Tensor([num_context for _ in range(batch_size)]).to("npu").to(torch.int32)
         if num_target is not None:
             num_target = torch.Tensor([num_target for _ in range(batch_size)]).to("npu").to(torch.int32)
-
+        if arbitrary_func is not None:
+            arbitrary_func = arbitrary_func.to("npu").to(torch.int32)
+        if sparse_info is not None:
+            sparse_info = [sp.to("npu").to(torch.int32) for sp in sparse_info]
         q_grad, k_grad, v_grad, rab_grad = torch.ops.mxrec.hstu_backward_v2(
             grad_npu,
             q_npu,
@@ -135,6 +151,8 @@ class Kernel:
             window_size[0],
             window_size[1],
             metadata,
+            arbitrary_func,
+            sparse_info,
         )
 
         torch.npu.synchronize()

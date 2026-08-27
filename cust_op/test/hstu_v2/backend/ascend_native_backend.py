@@ -104,7 +104,7 @@ class Kernel:
         qk = qk.float()
         gv = gv.float()
 
-        if mask:
+        if mask is not None:
             mask = mask.to("npu")
             mask = mask.float()
 
@@ -118,7 +118,7 @@ class Kernel:
         qkb = qkb * self.alpha
         real_silu_scale = 1 / self.max_seqlen_q if self.scale == 0.0 else self.scale
 
-        if mask:
+        if mask is not None:
             score = F.silu(qkb) * real_silu_scale * mask
         else:
             score = F.silu(qkb) * real_silu_scale
@@ -126,7 +126,7 @@ class Kernel:
         score = score.to(data_type)
         v_grad_dens = torch.matmul(score.permute(0, 1, 3, 2), grad_dens.permute(0, 2, 1, 3)).permute(0, 2, 1, 3)
 
-        if mask:
+        if mask is not None:
             rab_grad = gv * real_silu_scale * mask * F.sigmoid(qkb) * (1 + qkb * (1 - F.sigmoid(qkb)))
         else:
             rab_grad = gv * real_silu_scale * F.sigmoid(qkb) * (1 + qkb * (1 - F.sigmoid(qkb)))
