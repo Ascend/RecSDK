@@ -21,6 +21,8 @@ import numpy as np
 import torch
 import torch_npu
 
+from .mask import create_causal_mask
+
 
 class TestDataGenerator:
     def __init__(self, seed, seq_all_equal, seq_max_ratio=1):
@@ -28,47 +30,6 @@ class TestDataGenerator:
         self.seq_all_equal = seq_all_equal
         self.seq_max_ratio = seq_max_ratio
         self.__init_seed()
-
-    @staticmethod
-    def create_target_mask(num_target: int, target_group_size: int) -> torch.Tensor:
-        row_indices = torch.arange(num_target).view(-1, 1)
-        col_indices = torch.arange(num_target).view(1, -1)
-
-        block_row = row_indices // target_group_size
-        block_col = col_indices // target_group_size
-
-        mask = (block_row == block_col).int()
-        tril = torch.tril(torch.ones(num_target, num_target), diagonal=0).int()
-        return tril & mask
-
-    @staticmethod
-    def _check_int_valid(num: int):
-        if not isinstance(num, int):
-            return False
-        if num <= 0:
-            return False
-        return True
-
-    @staticmethod
-    def create_causal_mask(
-        seqlen_q: int,
-        seqlen_k: int = None,
-        num_context: int = None,
-        num_target: int = None,
-        target_group_size: int = None,
-    ) -> torch.Tensor:
-        if seqlen_k is None:
-            seqlen_k = seqlen_q
-        # causal mask
-        mask = torch.tril(torch.ones(seqlen_q, seqlen_k), diagonal=(seqlen_k - seqlen_q))
-        # context mask
-        if TestDataGenerator._check_int_valid(num_context):
-            num_target = 0 if num_target is None else num_target
-            mask[:num_context, : seqlen_k - num_target] = 1
-        # target mask
-        if TestDataGenerator._check_int_valid(target_group_size) and TestDataGenerator._check_int_valid(num_target):
-            mask[-num_target:, -num_target:] = TestDataGenerator.create_target_mask(num_target, target_group_size)
-        return mask
 
     @staticmethod
     def __gen_random_sequence(batch_size, max_seqlen_q, max_seqlen_k, num_context, num_target):
@@ -118,7 +79,7 @@ class TestDataGenerator:
         if window_size == (-1, 0):
             mask = torch.zeros(batch_size, head_num, max_seqlen_q, max_seqlen_k)
             for sample_id, (seq_len_q, seq_len_k) in enumerate(zip(seq_lens_q, seq_lens_k)):
-                mask_tensor = self.create_causal_mask(seq_len_q, seq_len_k, num_context, num_target, target_group_size)
+                mask_tensor = create_causal_mask(seq_len_q, seq_len_k, num_context, num_target, target_group_size)
                 mask[sample_id, :, :seq_len_q, :seq_len_k] = mask_tensor
             mask = mask.to(data_type)
         elif window_size == (-1, -1):

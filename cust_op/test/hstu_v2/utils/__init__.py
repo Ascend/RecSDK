@@ -21,11 +21,16 @@ import warnings
 from .data import TestDataGenerator
 from .record import Record, BenchmarkRecord
 from .seq_stats import SeqStats
+from .mask import create_causal_mask, create_q2k_sparse_info, create_k2q_sparse_info, create_batch_arbitrary_mask
 
 __all__ = [
     "Record",
     "BenchmarkRecord",
     "SeqStats",
+    "create_causal_mask",
+    "create_q2k_sparse_info",
+    "create_k2q_sparse_info",
+    "create_batch_arbitrary_mask",
 ]
 
 DEFAULT_HSTU_CUSTOM_OPP_PATH = "/usr/local/Ascend/ascend-toolkit/latest/opp/vendors/hstu_attn_metadata_transformer"
@@ -55,3 +60,23 @@ def ensure_hstu_custom_opp_path():
             RuntimeWarning,
             stacklevel=2,
         )
+
+
+def get_block_q_kv(dim_qk, dim_v, mode="fwd"):
+    """
+    根据 dimQK / dimV 返回 (BLOCK_M, BLOCK_N)。
+
+    Args:
+        dim_qk: dimQK
+        dim_v:  dimV (fwd) 或 dimGV (bwd)
+        mode:   "fwd" 或 "bwd"
+    Returns:
+        (BLOCK_M, BLOCK_N)
+    """
+    if mode == "fwd":
+        tile_k = 128
+        table = {128: (128, 640), 256: (64, 640)}
+    else:
+        tile_k = 256 if (dim_qk > 128 or dim_v > 128) else 128
+        table = {128: (256, 128), 256: (128, 64)}
+    return table[tile_k]
