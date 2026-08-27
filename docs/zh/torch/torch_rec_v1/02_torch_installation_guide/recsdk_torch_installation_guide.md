@@ -119,7 +119,7 @@ Rec SDK Torch软件包如下表：
    请参见[宿主机依赖](#宿主机依赖)章节完成宿主机环境配置。
 2. 制作基础训练镜像<a id="section104919392501"></a>
 
-   可直接下载已经制作好的基础训练镜像，请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中的“镜像下载”标签页，下载26.0.0*及之后版本的镜像。26.0.0*及之后版本镜像中已安装Rec SDK Torch及相关依赖，若无需更新可跳过后续“安装Rec SDK Torch软件包”相关步骤。
+   可直接下载已经制作好的基础训练镜像，请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中的“镜像下载”标签页，下载**26.0.0及之后版本**的镜像。26.0.0及之后版本镜像中已安装Rec SDK Torch及相关依赖，若无需更新可跳过后续“安装Rec SDK Torch软件包”、“源码安装”和“离线安装”章节，直接执行“安装验证”章节。
 
    从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)获取镜像的Docker指令示例如下：
 
