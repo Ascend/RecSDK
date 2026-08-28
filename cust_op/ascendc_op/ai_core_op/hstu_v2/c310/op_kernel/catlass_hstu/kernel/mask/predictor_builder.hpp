@@ -27,6 +27,7 @@ See the License for the specific language governing permissions and
 
 #include "no_mask_predictor.hpp"
 #include "causal_mask_predictor.hpp"
+#include "arbitrary_mask_predictor.hpp"
 
 namespace Catlass::Kernel::Mask {
 
@@ -37,41 +38,61 @@ enum class PredictorType : uint32_t {
     NOMASK = 0,     // 无 mask
     CAUSAL = 1,     // causal / context / target
     LOCAL = 2,      // local attention 滑动窗口 (预留)
-    ARBITRARY = 3,  // arbitrary mask (预留)
+    ARBITRARY = 3,  // arbitrary mask (sparse info 驱动, 见 arbitrary_mask.md)
 };
+
+// =============================================================================
+// sparse_info 公共常量 — arbitrary mask 路径 TensorList 索引
+// =============================================================================
+// sparse_info 以 Dynamic/TensorList 形式传入,共 6 个 int32 tensor,顺序固定为:
+//   mask_cnt, mask_offset, mask_idx, full_cnt, full_offset, full_idx
+// (mask_offset / full_offset 为对应 cnt 的前缀和)
+// 每对 (cnt, offset, idx) 描述一类 block 的稀疏索引:
+//   - cnt:    每个 Q_block 需关注的 K_block 数量
+//   - offset: cnt 的前缀和,用于定位 idx 起始位置 (长度 = #Q_block + 1)
+//   - idx:    具体需关注的 K_block 编号,扁平存储
+// block 类型: mask(需写 mask)、full(无需 mask)、empty(跳过,不计入 sparse info)
 
 // =============================================================================
 // GetPredictorType — 5 布尔值 → PredictorType 枚举
 // =============================================================================
 template <bool IS_LOCAL, bool IS_CAUSAL, bool IS_ARBITRARY>
 struct GetPredictorType {
-    static constexpr PredictorType value = (IS_CAUSAL) ? PredictorType::CAUSAL : PredictorType::NOMASK;
+    static constexpr PredictorType value = (IS_ARBITRARY) ? PredictorType::ARBITRARY
+                                           : (IS_CAUSAL)  ? PredictorType::CAUSAL
+                                                          : PredictorType::NOMASK;
 };
 
 // =============================================================================
 // PredictorByType — PredictorType 枚举 → 具体 Predictor 类
 // =============================================================================
-template <PredictorType Type, uint32_t BLOCK_M, uint32_t BLOCK_N>
+template <PredictorType Type, uint32_t BLOCK_M, uint32_t BLOCK_N, typename ElementOffset, bool IS_FWD>
 struct PredictorByType {
     // 未特化: 编译期报错
     static_assert(Type != Type, "Unknown PredictorType — missing specialization");
 };
 
-template <uint32_t BLOCK_M, uint32_t BLOCK_N>
-struct PredictorByType<PredictorType::NOMASK, BLOCK_M, BLOCK_N> {
+template <uint32_t BLOCK_M, uint32_t BLOCK_N, typename ElementOffset, bool IS_FWD>
+struct PredictorByType<PredictorType::NOMASK, BLOCK_M, BLOCK_N, ElementOffset, IS_FWD> {
     using Predictor = NoMaskPredictor<BLOCK_M, BLOCK_N>;
 };
 
-template <uint32_t BLOCK_M, uint32_t BLOCK_N>
-struct PredictorByType<PredictorType::CAUSAL, BLOCK_M, BLOCK_N> {
-    using Predictor = CausalMaskPredictor<BLOCK_M, BLOCK_N>;
+template <uint32_t BLOCK_M, uint32_t BLOCK_N, typename ElementOffset, bool IS_FWD>
+struct PredictorByType<PredictorType::CAUSAL, BLOCK_M, BLOCK_N, ElementOffset, IS_FWD> {
+    using Predictor = CausalMaskPredictor<BLOCK_M, BLOCK_N, ElementOffset>;
+};
+
+template <uint32_t BLOCK_M, uint32_t BLOCK_N, typename ElementOffset, bool IS_FWD>
+struct PredictorByType<PredictorType::ARBITRARY, BLOCK_M, BLOCK_N, ElementOffset, IS_FWD> {
+    using Predictor = ArbitraryMaskPredictor<BLOCK_M, BLOCK_N, IS_FWD>;
 };
 
 // =============================================================================
 // PredictorSelector — 一步到位: 布尔 → 具体类 (alias template)
 // =============================================================================
-template <bool IS_LOCAL, bool IS_CAUSAL, bool IS_ARBITRARY, uint32_t BLOCK_M, uint32_t BLOCK_N>
-using PredictorSelector =
-    typename PredictorByType<GetPredictorType<IS_LOCAL, IS_CAUSAL, IS_ARBITRARY>::value, BLOCK_M, BLOCK_N>::Predictor;
+template <bool IS_LOCAL, bool IS_CAUSAL, bool IS_ARBITRARY, uint32_t BLOCK_M, uint32_t BLOCK_N,
+          typename ElementOffset = int32_t, bool IS_FWD = true>
+using PredictorSelector = typename PredictorByType<GetPredictorType<IS_LOCAL, IS_CAUSAL, IS_ARBITRARY>::value, BLOCK_M,
+                                                   BLOCK_N, ElementOffset, IS_FWD>::Predictor;
 
 }  // namespace Catlass::Kernel::Mask

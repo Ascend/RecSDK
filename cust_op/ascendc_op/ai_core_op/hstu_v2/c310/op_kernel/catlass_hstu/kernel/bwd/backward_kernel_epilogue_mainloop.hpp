@@ -25,7 +25,7 @@ See the License for the specific language governing permissions and
  */
 
 #pragma once
-
+#include "kernel_operator_list_tensor_intf.h"
 #include "catlass/detail/macros.hpp"
 #include "catlass/arch/cross_core_sync.hpp"
 #include "catlass/gemm/gemm_type.hpp"
@@ -107,7 +107,9 @@ struct BackwardEpilogueMainloop {
         GM_ADDR ptrQShare;
         GM_ADDR ptrNumContext;
         GM_ADDR ptrNumTarget;
-        GM_ADDR ptrMetadata;  // 可选: flash_attn_metadata 分核输出;nullptr → 旧设备现算路径
+        GM_ADDR ptrMetadata;       // 可选: flash_attn_metadata 分核输出;nullptr → 旧设备现算路径
+        GM_ADDR ptrArbitraryFunc;  // 可选: arbitrary func [B, N, MAX_S, 2*groups], int32
+        GM_ADDR ptrSparseInfo;     // 可选: sparse info (TensorList), 6 个 int32 tensor
 
         CATLASS_DEVICE
         Params() {}
@@ -115,7 +117,8 @@ struct BackwardEpilogueMainloop {
         CATLASS_DEVICE
         Params(GM_ADDR ptrRab_, GM_ADDR ptrSeqOffsetQ_, GM_ADDR ptrSeqOffsetK_, GM_ADDR ptrQGrad_, GM_ADDR ptrKGrad_,
                GM_ADDR ptrVGrad_, GM_ADDR ptrRabGrad_, GM_ADDR ptrQShare_, GM_ADDR ptrNumContext_,
-               GM_ADDR ptrNumTarget_, GM_ADDR ptrMetadata_ = nullptr)
+               GM_ADDR ptrNumTarget_, GM_ADDR ptrMetadata_ = nullptr, GM_ADDR ptrArbitraryFunc_ = nullptr,
+               GM_ADDR ptrSparseInfo_ = nullptr)
             : ptrRab(ptrRab_),
               ptrSeqOffsetQ(ptrSeqOffsetQ_),
               ptrSeqOffsetK(ptrSeqOffsetK_),
@@ -126,7 +129,9 @@ struct BackwardEpilogueMainloop {
               ptrQShare(ptrQShare_),
               ptrNumContext(ptrNumContext_),
               ptrNumTarget(ptrNumTarget_),
-              ptrMetadata(ptrMetadata_)
+              ptrMetadata(ptrMetadata_),
+              ptrArbitraryFunc(ptrArbitraryFunc_),
+              ptrSparseInfo(ptrSparseInfo_)
         {
         }
     };
@@ -134,6 +139,7 @@ struct BackwardEpilogueMainloop {
     CATLASS_DEVICE
     BackwardEpilogueMainloop(GM_ADDR ptrTiling_)
     {
+        ptrTiling = ptrTiling_;
         GET_TILING_DATA(tilingData, ptrTiling_);
         batch = tilingData.batch;
         heads = tilingData.heads;
@@ -143,7 +149,6 @@ struct BackwardEpilogueMainloop {
         maxSeqLenK = tilingData.maxSeqLenK;
         totalSeqLenQ = tilingData.totalSeqLenQ;
         totalSeqLenK = tilingData.totalSeqLenK;
-        targetGroupSize = tilingData.targetGroupSize;
         alpha = tilingData.alpha;
         scale = tilingData.scale;
     }
@@ -205,13 +210,6 @@ struct BackwardEpilogueMainloop {
         gRabGrad.SetGlobalBuffer((__gm__ ElementG*)params.ptrRabGrad);
 
         gRab.template SetL2CacheHint<AscendC::CacheRwMode::READ>(AscendC::CacheMode::CACHE_MODE_DISABLE);
-
-        if constexpr (IS_CONTEXT) {
-            gNumContext.SetGlobalBuffer((__gm__ ElementOffset*)params.ptrNumContext);
-        }
-        if constexpr (IS_TARGET) {
-            gNumTarget.SetGlobalBuffer((__gm__ ElementOffset*)params.ptrNumTarget);
-        }
     }
 
     template <typename ElementT>
@@ -264,6 +262,7 @@ struct BackwardEpilogueMainloop {
 
         kBlockScheduler.Init();
         Predictor predictor;
+        predictor.Construct(this, params);
         for (; kBlockScheduler.IsValid(); ++kBlockScheduler) {
             auto tVg = kBlockScheduler.GetTile(tensorVGrad);
             auto tKg = kBlockScheduler.GetTile(tensorKGrad);
@@ -355,9 +354,6 @@ struct BackwardEpilogueMainloop {
 
     Arch::Resource<ArchTag> resource;
 
-    AscendC::GlobalTensor<ElementOffset> gNumContext;
-    AscendC::GlobalTensor<ElementOffset> gNumTarget;
-
     uint32_t batch{0};
     uint32_t heads{0};
     uint32_t dimQK{0};
@@ -366,9 +362,10 @@ struct BackwardEpilogueMainloop {
     uint32_t maxSeqLenK{0};
     uint32_t totalSeqLenQ{0};
     uint32_t totalSeqLenK{0};
-    int32_t targetGroupSize{0};
     ElementACC alpha{0.0f};
     ElementACC scale{0.0f};
+
+    GM_ADDR ptrTiling{nullptr};
 };
 
 }  // namespace Catlass::Kernel
