@@ -78,6 +78,8 @@ class Rundt():
                     )
                 self._shape_list.append((batch_size, seq_len))
         self.dynamic_enabled = bool(self._shape_list)
+        self._dynamic_batch = len({batch_size for batch_size, _ in self._shape_list}) > 1
+        self._dynamic_seq_len = len({seq_len for _, seq_len in self._shape_list}) > 1
 
     def _next_shape(self):
         shape = self._shape_list[self._shape_idx % len(self._shape_list)]
@@ -99,22 +101,49 @@ class Rundt():
             ),
         )
 
-    def _mark_dynamic_inputs(self, value, mark_seq_len=False):
+    def _mark_dynamic_inputs(
+        self, value, mark_batch=False, mark_seq_len=False, field_name=None
+    ):
         if isinstance(value, torch.Tensor) and value.ndim >= 1:
-            torch._dynamo.mark_dynamic(value, 0)
-            if mark_seq_len and value.ndim >= 2:
+            if mark_batch:
+                torch._dynamo.mark_dynamic(value, 0)
+            if (
+                mark_seq_len
+                and field_name in {
+                    "states",
+                    "actions",
+                    "rewards",
+                    "returns_to_go",
+                    "timesteps",
+                    "attention_mask",
+                }
+                and value.ndim >= 2
+            ):
                 torch._dynamo.mark_dynamic(value, 1)
         elif isinstance(value, dict):
-            for item in value.values():
-                self._mark_dynamic_inputs(item, mark_seq_len=mark_seq_len)
+            for name, item in value.items():
+                self._mark_dynamic_inputs(
+                    item,
+                    mark_batch=mark_batch,
+                    mark_seq_len=mark_seq_len,
+                    field_name=name,
+                )
         elif is_dataclass(value) and not isinstance(value, type):
             for field in fields(value):
                 self._mark_dynamic_inputs(
-                    getattr(value, field.name), mark_seq_len=mark_seq_len
+                    getattr(value, field.name),
+                    mark_batch=mark_batch,
+                    mark_seq_len=mark_seq_len,
+                    field_name=field.name,
                 )
         elif isinstance(value, (list, tuple)):
             for item in value:
-                self._mark_dynamic_inputs(item, mark_seq_len=mark_seq_len)
+                self._mark_dynamic_inputs(
+                    item,
+                    mark_batch=mark_batch,
+                    mark_seq_len=mark_seq_len,
+                    field_name=field_name,
+                )
 
     def _register_compile_callbacks(self):
         def on_compile_start(*_args, **_kwargs):
@@ -135,27 +164,70 @@ class Rundt():
         iteration_count = max(self.step_num, len(self._shape_list))
         times_range = []
         batches_list = []
+        profiler = Profiler(self.params)
+        profiler.cur_batch_size = "Dynamic"
 
         with torch.no_grad():
+            # Compiling exactly at the fixed context boundary can make some
+            # backends specialize the causal-mask slice to k. Seed dynamic
+            # compilation with a shorter listed sequence when necessary.
+            if (
+                self._dynamic_seq_len
+                and self._shape_list[0][1] == self.params.k
+            ):
+                seed_shape = next(
+                    (
+                        shape
+                        for shape in self._shape_list
+                        if shape[1] < self.params.k
+                    ),
+                    None,
+                )
+                if seed_shape is not None:
+                    seed_inputs = self._generate_inputs(*seed_shape)
+                    self._mark_dynamic_inputs(
+                        seed_inputs,
+                        mark_batch=self._dynamic_batch,
+                        mark_seq_len=self._dynamic_seq_len,
+                    )
+                    self._dynamic_marked = True
+                    logger.info(
+                        f"[compile seed] shape=({seed_shape[0]}, {seed_shape[1]})"
+                    )
+                    self.model(seed_inputs)
+
             for index in range(warmup_count):
                 batch_size, seq_len = self._next_shape()
                 inputs = self._generate_inputs(batch_size, seq_len)
                 if not self._dynamic_marked:
-                    self._mark_dynamic_inputs(inputs, mark_seq_len=True)
+                    self._mark_dynamic_inputs(
+                        inputs,
+                        mark_batch=self._dynamic_batch,
+                        mark_seq_len=self._dynamic_seq_len,
+                    )
+                    logger.info(
+                        "Dynamic dimensions: "
+                        f"batch={self._dynamic_batch}, seq_len={self._dynamic_seq_len}"
+                    )
                     self._dynamic_marked = True
                 logger.info(f"[warmup {index}] shape=({batch_size}, {seq_len})")
                 self.model(inputs)
 
-            for index in range(iteration_count):
-                batch_size, seq_len = self._next_shape()
-                inputs = self._generate_inputs(batch_size, seq_len)
-                logger.info(f"[iter {index}] shape=({batch_size}, {seq_len})")
-                self.model.synchronize()
-                start_time = time.time()
-                self.model(inputs)
-                self.model.synchronize()
-                times_range.append(time.time() - start_time)
-                batches_list.append(batch_size)
+            # Keep compilation and warmup outside profiling. The existing
+            # profiler schedule is applied only to steady-state iterations.
+            with profiler.get_profiler() as prof:
+                for index in range(iteration_count):
+                    batch_size, seq_len = self._next_shape()
+                    inputs = self._generate_inputs(batch_size, seq_len)
+                    logger.info(f"[iter {index}] shape=({batch_size}, {seq_len})")
+                    self.model.synchronize()
+                    start_time = time.time()
+                    self.model(inputs)
+                    self.model.synchronize()
+                    times_range.append(time.time() - start_time)
+                    batches_list.append(batch_size)
+                    if self.params.profiling_mode and hasattr(prof, "step"):
+                        prof.step()
 
         output_report(
             times_range,

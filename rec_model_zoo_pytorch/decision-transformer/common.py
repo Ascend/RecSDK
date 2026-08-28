@@ -337,6 +337,7 @@ class Profiler:
             self.params.profiling_path, self.params.model, 
             f"{self.params.mode}_bs{self.cur_batch_size}_graph{self.graph}_compile{self.compile}_{time_str}"
         )
+        self.profiling_output_dir = profiling_output_dir
         remove_directory_if_exists(profiling_output_dir)
         if "npu" in self.params.device and self.params.profiling_mode:
             profiler = self.get_npu_profiler(profiling_output_dir)
