@@ -28,7 +28,7 @@ See the License for the specific language governing permissions and
 
 namespace Catlass::Kernel::Mask {
 
-template <uint32_t BLOCK_M, uint32_t BLOCK_N>
+template <uint32_t BLOCK_M, uint32_t BLOCK_N, typename ElementOffset>
 struct CausalMaskPredictor {
     static constexpr uint8_t HAS_CONTEXT = 0x1;
     static constexpr uint8_t HAS_HISTORY = 0x2;
@@ -54,11 +54,30 @@ struct CausalMaskPredictor {
     };
 
     // =========================================================================
-    // 2. MakeBlockPredParams — static, 从 coord + kernel 构造参数
+    // 1.5. Construct — mainloop 侧 predictor 初始化
+    //   从 params 注入 gNumContext / gNumTarget GlobalTensor 引用。
+    //   与 Arbitrary/NoMask predictor 同构签名, mainloop 可统一调用
+    //   predictor.Construct(this, params) 而无需 if constexpr 分支。
+    // =========================================================================
+    template <typename Kernel>
+    CATLASS_DEVICE void Construct(Kernel* kernel, const typename Kernel::Params& params)
+    {
+        GET_TILING_DATA_MEMBER(HstuBackwardV2TilingData, targetGroupSize, targetGroupSizeVal, kernel->ptrTiling);
+        this->targetGroupSize = targetGroupSizeVal;
+        if constexpr (Kernel::IS_CONTEXT_V) {
+            gNumContext.SetGlobalBuffer((__gm__ ElementOffset*)params.ptrNumContext);
+        }
+        if constexpr (Kernel::IS_TARGET_V) {
+            gNumTarget.SetGlobalBuffer((__gm__ ElementOffset*)params.ptrNumTarget);
+        }
+    }
+
+    // =========================================================================
+    // 2. MakeBlockPredParams — 从 coord + kernel 构造参数
     // =========================================================================
     template <typename Kernel, typename Coord>
-    CATLASS_DEVICE static BlockPredParams MakeBlockPredParams(Coord blockCoord, Kernel* kernel, uint32_t seqlenQ,
-                                                              uint32_t seqlenK, uint32_t swizzleDir)
+    CATLASS_DEVICE BlockPredParams MakeBlockPredParams(Coord blockCoord, Kernel* kernel, uint32_t seqlenQ,
+                                                       uint32_t seqlenK, uint32_t swizzleDir)
     {
         BlockPredParams bp;
 
@@ -71,16 +90,16 @@ struct CausalMaskPredictor {
         bp.seqlenQ = seqlenQ;
         bp.seqlenK = seqlenK;
         if constexpr (Kernel::IS_CONTEXT_V) {
-            bp.numContext = kernel->gNumContext.GetValue(b);
+            bp.numContext = this->gNumContext.GetValue(b);
         } else {
             bp.numContext = 0;
         }
         if constexpr (Kernel::IS_TARGET_V) {
-            bp.numTarget = kernel->gNumTarget.GetValue(b);
+            bp.numTarget = this->gNumTarget.GetValue(b);
         } else {
             bp.numTarget = 0;
         }
-        bp.targetGroupSize = kernel->targetGroupSize;
+        bp.targetGroupSize = this->targetGroupSize;
         bp.fusedMaskType = 0;
         bp.swizzleDir = swizzleDir;
         return bp;
@@ -315,6 +334,13 @@ public:
     bool trilMask = false;
     bool isFirstQBlock = false;
     bool isLastQBlock = false;
+
+    // mask 专用 GlobalTensor (由 Construct 从 params 注入)
+    AscendC::GlobalTensor<ElementOffset> gNumContext;
+    AscendC::GlobalTensor<ElementOffset> gNumTarget;
+
+    // mask 专用标量 (由 Construct 从 tiling 注入): target 分组大小
+    int32_t targetGroupSize{0};
 };
 
 }  // namespace Catlass::Kernel::Mask

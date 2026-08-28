@@ -84,8 +84,8 @@ template <bool HAS_RAB, bool IS_LOCAL, bool IS_CAUSAL, bool IS_CONTEXT, bool IS_
           uint32_t BLOCK_K>
 CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR rab, GM_ADDR seqOffsetQ,
                                      GM_ADDR seqOffsetK, GM_ADDR numContext, GM_ADDR numTarget, GM_ADDR qShare,
-                                     GM_ADDR metadata, GM_ADDR qGrad, GM_ADDR kGrad, GM_ADDR vGrad, GM_ADDR rabGrad,
-                                     GM_ADDR workSpace, GM_ADDR tiling)
+                                     GM_ADDR metadata, GM_ADDR arbitraryFunc, GM_ADDR sparseInfo, GM_ADDR qGrad,
+                                     GM_ADDR kGrad, GM_ADDR vGrad, GM_ADDR rabGrad, GM_ADDR workSpace, GM_ADDR tiling)
 {
     // 设置算子类型为CUBE:VECTOR = 1:2的MIX模式
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -105,7 +105,8 @@ CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR
     using L1TileShape = typename KernelConfig::L1TileShape;
     static constexpr uint32_t BLOCK_M = tla::get<0>(L1TileShape{});
     static constexpr uint32_t BLOCK_N = tla::get<1>(L1TileShape{});
-    using Predictor = PredictorSelector<IS_LOCAL, IS_CAUSAL, IS_ARBITRARY, BLOCK_M, BLOCK_N>;
+    using Predictor = PredictorSelector<IS_LOCAL, IS_CAUSAL, IS_ARBITRARY, BLOCK_M, BLOCK_N, ElementOffset,
+                                        /*IS_FWD=*/false>;
 
     // metadata 驱动路径的调度器类型(与设备类型同参: 行轴块=BLOCK_N=Rk, 列轴块=BLOCK_M=Cq)
     using MetaKBlockScheduler = Catlass::Gemm::Block::MetadataRowBlockScheduler<ElementOffset, BLOCK_N, BLOCK_M>;
@@ -125,8 +126,9 @@ CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR
                 BackwardMmadMainloop<BlockMmadQK, BlockMmadGV, BlockMmadVGrad, BlockMmadKGrad, BlockMmadQGrad,
                                      MetaQBlockScheduler, MetaKBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL,
                                      IS_CONTEXT, IS_TARGET, IS_ARBITRARY, Predictor>;
-            typename MmadMainLoopKernel::Params params{grad,       q,      k,          v,         seqOffsetQ,
-                                                       seqOffsetK, qShare, numContext, numTarget, metadata};
+            typename MmadMainLoopKernel::Params params{grad,          q,         k,          v,         seqOffsetQ,
+                                                       seqOffsetK,    qShare,    numContext, numTarget, metadata,
+                                                       arbitraryFunc, sparseInfo};
             MmadMainLoopKernel kernel(tiling);
             kernel(params);
         } else {
@@ -134,8 +136,9 @@ CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR
                 BackwardMmadMainloop<BlockMmadQK, BlockMmadGV, BlockMmadVGrad, BlockMmadKGrad, BlockMmadQGrad,
                                      QBlockScheduler, KBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL, IS_CONTEXT,
                                      IS_TARGET, IS_ARBITRARY, Predictor>;
-            typename MmadMainLoopKernel::Params params{grad,       q,      k,          v,         seqOffsetQ,
-                                                       seqOffsetK, qShare, numContext, numTarget, nullptr};
+            typename MmadMainLoopKernel::Params params{grad,          q,         k,          v,         seqOffsetQ,
+                                                       seqOffsetK,    qShare,    numContext, numTarget, nullptr,
+                                                       arbitraryFunc, sparseInfo};
             MmadMainLoopKernel kernel(tiling);
             kernel(params);
         }
@@ -151,8 +154,9 @@ CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR
                 BackwardEpilogueMainloop<BlockEpilogueQK, BlockEpilogueGV, BlockEpilogueKVGrad, BlockEpilogueQGrad,
                                          MetaQBlockScheduler, MetaKBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL,
                                          IS_CONTEXT, IS_TARGET, IS_ARBITRARY, Predictor>;
-            typename EpilogueMainLoopKernel::Params params{rab,     seqOffsetQ, seqOffsetK, qGrad,     kGrad,   vGrad,
-                                                           rabGrad, qShare,     numContext, numTarget, metadata};
+            typename EpilogueMainLoopKernel::Params params{rab,      seqOffsetQ,    seqOffsetK, qGrad,      kGrad,
+                                                           vGrad,    rabGrad,       qShare,     numContext, numTarget,
+                                                           metadata, arbitraryFunc, sparseInfo};
             EpilogueMainLoopKernel kernel(tiling);
             kernel(params);
         } else {
@@ -160,8 +164,9 @@ CATLASS_GLOBAL void hstu_backward_v2(GM_ADDR grad, GM_ADDR q, GM_ADDR k, GM_ADDR
                 BackwardEpilogueMainloop<BlockEpilogueQK, BlockEpilogueGV, BlockEpilogueKVGrad, BlockEpilogueQGrad,
                                          QBlockScheduler, KBlockScheduler, ElementOffset, IS_LOCAL, IS_CAUSAL,
                                          IS_CONTEXT, IS_TARGET, IS_ARBITRARY, Predictor>;
-            typename EpilogueMainLoopKernel::Params params{rab,     seqOffsetQ, seqOffsetK, qGrad,     kGrad,  vGrad,
-                                                           rabGrad, qShare,     numContext, numTarget, nullptr};
+            typename EpilogueMainLoopKernel::Params params{rab,     seqOffsetQ,    seqOffsetK, qGrad,      kGrad,
+                                                           vGrad,   rabGrad,       qShare,     numContext, numTarget,
+                                                           nullptr, arbitraryFunc, sparseInfo};
             EpilogueMainLoopKernel kernel(tiling);
             kernel(params);
         }

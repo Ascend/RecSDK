@@ -41,6 +41,15 @@ struct NoMaskPredictor {
     };
 
     // =========================================================================
+    // 1.5. Construct — mainloop 侧 predictor 初始化 (nomask 无需初始化)
+    //   与 Arbitrary/Causal predictor 同构签名, mainloop 可统一调用
+    // =========================================================================
+    template <typename Kernel>
+    CATLASS_DEVICE void Construct(Kernel* kernel, const typename Kernel::Params& params)
+    {
+    }
+
+    // =========================================================================
     // 2. MakeBlockPredParams — static, 从 coord + kernel 构造参数
     // =========================================================================
     template <typename Kernel, typename Coord>

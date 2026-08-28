@@ -132,15 +132,35 @@ static bool TilingKeySet(gert::TilingContext* context, HstuBackwardV2TilingData&
     const auto* numContext = context->GetInputTensor(static_cast<size_t>(IN_INDEX::NUM_CONTEXT));
     const auto* numTarget = context->GetInputTensor(static_cast<size_t>(IN_INDEX::NUM_TARGET));
     const auto* rab = context->GetInputTensor(static_cast<size_t>(IN_INDEX::RAB));
+    const auto* arbitraryFunc = context->GetInputTensor(static_cast<size_t>(IN_INDEX::ARBITRARY_FUNC));
     auto winLeft = tilingData.get_windowSizeLeft();
     auto winRight = tilingData.get_windowSizeRight();
 
     bool isCausal = (winLeft == -1 && winRight == 0);
     bool isContext = (nullptr != numContext);
     bool isTarget = (nullptr != numTarget);
-    // 暂不支持Local mask\Arbitrary mask
+    // 暂不支持Local mask
     bool isLocal = false;
-    bool isArbitrary = false;
+    // arbitrary mask: 当传入 arbitrary_func(及 sparse_info)时启用
+    bool isArbitrary = (nullptr != arbitraryFunc);
+
+    // arbitrary_func 形状 [B, N, MAX_S, 2*groups]: groups = 末维 / 2; 非 arbitrary 路径置 0
+    uint32_t groups = 0;
+    if (isArbitrary) {
+        const auto& afShape = arbitraryFunc->GetStorageShape();
+        const auto afLastDim = afShape.GetDim(afShape.GetDimNum() - 1);
+        groups = static_cast<uint32_t>(afLastDim / 2);
+        OPS_CHECK(groups <= 0, OPS_LOG_E("", "invalid arbitrary func, last dim must be > 0.\n"), return false);
+        constexpr int SPARSE_INFO_TNUM = 6;
+        for (auto i = 0; i < SPARSE_INFO_TNUM; i++) {
+            auto tensor = context->GetDynamicInputTensor(static_cast<size_t>(IN_INDEX::SPARSE_INFO), i);
+            if (tensor == nullptr) {
+                OPS_LOG_E("", "sparse info [%d] is nullptr.\n", i);
+                return false;
+            }
+        }
+    }
+    tilingData.set_groups(groups);
 
     bool hasRab = (nullptr != rab);
 
@@ -374,6 +394,20 @@ public:
         // 可选: flash_attn_metadata 分核输出(int32,HEAD+FA+FD 布局)。未传 → kernel 收到 nullptr →
         // 旧设备现算分核(零回归)
         this->Input("metadata").ParamType(OPTIONAL).DataType({ge::DT_INT32, ge::DT_INT32}).FormatList({ge::FORMAT_ND});
+        // 可选: arbitrary func,压缩 attention mask 的连续段表示 [B, N, MAX_S, 2*groups],int32。
+        // 未传 → 非 arbitrary 路径;传入时 TilingKey 置 IS_ARBITRARY=1
+        this->Input("arbitrary_func")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND});
+        // 可选: sparse info (Dynamic/TensorList),6 个 int32 tensor:
+        // mask_cnt/mask_offset/mask_idx/full_cnt/full_offset/full_idx
+        // 与 arbitrary_func 配合使用,描述 block 级稀疏索引
+        this->Input("sparse_info")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_INT32, ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("q_grad").ParamType(REQUIRED).Follow("grad", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
         this->Output("k_grad").ParamType(REQUIRED).Follow("grad", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
         this->Output("v_grad").ParamType(REQUIRED).Follow("grad", FollowType::DTYPE).FormatList({ge::FORMAT_ND});

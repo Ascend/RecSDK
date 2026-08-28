@@ -34,7 +34,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl
     const c10::optional<at::Tensor>& rab, const c10::optional<at::Tensor>& numContext,
     const c10::optional<at::Tensor>& numTarget, const c10::optional<double>& scale,
     const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha, const int64_t windowSizeLeft,
-    const int64_t windowSizeRight, const c10::optional<at::Tensor>& metadata)
+    const int64_t windowSizeRight, const c10::optional<at::Tensor>& metadata,
+    const c10::optional<at::Tensor>& arbitraryFunc, const c10::optional<tensor_list>& sparseInfo)
 {
     hstu_v2::HstuV2ParamChecker(grad, q, k, v, seqOffsetQ, seqOffsetK, maxSeqLenQ, maxSeqLenK, rab, numContext,
                                 numTarget, targetGroupSize, windowSizeLeft, windowSizeRight);
@@ -47,6 +48,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl
         CheckOptionalTensorIsNotNone(numTarget) ? numTarget.value().to(seqOffsetQ.scalar_type()) : _empty;
     // metadata 为可选: 未传/None → 空 tensor → aclnn 视作 null → kernel nullptr → 旧设备现算分核(零回归)
     auto acMetadata = CheckOptionalTensorIsNotNone(metadata) ? metadata.value().to(at::kInt) : _empty;
+    // arbitrary_func 为可选: 未传/None → 空 tensor → kernel nullptr → 非 arbitrary 路径(IS_ARBITRARY=0)
+    auto acArbitraryFunc =
+        CheckOptionalTensorIsNotNone(arbitraryFunc) ? arbitraryFunc.value().to(at::kInt).contiguous() : _empty;
 
     // op input
     auto inGrad = grad.contiguous();
@@ -58,6 +62,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl
     auto inNumTarget = acNumTarget.contiguous();
     auto inqShare = at::zeros_like(inQ, at::TensorOptions().dtype(at::kFloat));
     auto inMetadata = acMetadata.defined() ? acMetadata.contiguous() : _empty;
+    auto inArbitraryFunc = acArbitraryFunc;
+
+    tensor_list _empty_tensor_ls = tensor_list{at::empty({0}, at::kInt)};
+    tensor_list inSparseInfoVec = sparseInfo.value_or(_empty_tensor_ls);
+    at::TensorList inSparseInfo = at::TensorList(inSparseInfoVec);
 
     // op attr
     auto attrTargetGroupSize = targetGroupSize.value_or(1);
@@ -74,8 +83,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> hstu_backward_v2_impl
 
     // op exec —— metadata 紧跟 inqShare(与 OpDef 输入顺序一致: ...q_share, metadata),置于所有 attr 之前
     EXEC_NPU_CMD(aclnnHstuBackwardV2, inGrad, inQ, inK, inV, inRab, seqOffsetQ, seqOffsetK, inNumContext, inNumTarget,
-                 inqShare, inMetadata, maxSeqLenQ, maxSeqLenK, attrScale, attrTargetGroupSize, attrAlpha, attrWinLeft,
-                 attrWinRight, outQGrad, outKGrad, outVGrad, outRabGrad);
+                 inqShare, inMetadata, inArbitraryFunc, inSparseInfo, maxSeqLenQ, maxSeqLenK, attrScale,
+                 attrTargetGroupSize, attrAlpha, attrWinLeft, attrWinRight, outQGrad, outKGrad, outVGrad, outRabGrad);
     // op return
     return std::make_tuple(outQGrad, outKGrad, outVGrad, outRabGrad);
 }
@@ -98,7 +107,10 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
           "                   float? alpha=1.0, "
           "                   int window_size_left=-1, "
           "                   int window_size_right=-1, "
-          "                   Tensor? metadata=None) -> (Tensor, Tensor, Tensor, Tensor)");
+          "                   Tensor? metadata=None, "
+          "                   Tensor? arbitrary_func=None, "
+          "                   Tensor[]? sparse_info=None) "
+          " -> (Tensor, Tensor, Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)

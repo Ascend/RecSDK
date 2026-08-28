@@ -45,6 +45,13 @@ enum class DIM_INDEX : uint32_t {
  * - SEQ_OFFSET_K: Key/Value 的序列偏移量
  * - NUM_CONTEXT: 上下文序列长度
  * - NUM_TARGET: 目标序列长度
+ * - Q_SHARE: Q 共享数据
+ * - METADATA: 可选 flash_attn_metadata 分核输出(int32);未传 → 旧设备现算分核
+ * - ARBITRARY_FUNC: 可选 arbitrary func,压缩 attention mask 的连续段表示,
+ *                   形状 [B, N, MAX_S, 2*groups],int32;未传 → 非 arbitrary 路径
+ * - SPARSE_INFO: 可选 sparse info (Dynamic/TensorList),共 6 个 int32 tensor:
+ *                mask_cnt/mask_offset/mask_idx/full_cnt/full_offset/full_idx;
+ *                未传 → 非 arbitrary 路径
  */
 enum class IN_INDEX : uint32_t {
     GRAD = 0,
@@ -57,7 +64,9 @@ enum class IN_INDEX : uint32_t {
     NUM_CONTEXT,
     NUM_TARGET,
     Q_SHARE,
-    METADATA  // 可选: flash_attn_metadata 分核输出(int32);未传 → 旧设备现算分核
+    METADATA,        // 可选: flash_attn_metadata 分核输出(int32);未传 → 旧设备现算分核
+    ARBITRARY_FUNC,  // 可选: arbitrary func, [B, N, MAX_S, 2*groups], int32
+    SPARSE_INFO      // 可选: sparse info (Dynamic/TensorList), 6 个 int32 tensor
 };
 
 /**

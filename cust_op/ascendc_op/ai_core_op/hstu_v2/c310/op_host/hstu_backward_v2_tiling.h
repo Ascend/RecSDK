@@ -56,6 +56,7 @@ TILING_DATA_FIELD_DEF(float, alpha);              ///< 注意力分数的缩放�
 TILING_DATA_FIELD_DEF(float, scale);              ///< 缩放因子
 TILING_DATA_FIELD_DEF(int32_t, windowSizeLeft);   ///< 注意力窗口左侧宽度（语义：-1 无限）
 TILING_DATA_FIELD_DEF(int32_t, windowSizeRight);  ///< 注意力窗口右侧宽度（语义：-1 无限，0 因果）
+TILING_DATA_FIELD_DEF(uint32_t, groups);  ///< arbitrary_func 连续段组数 (af 末维 / 2); 非 arbitrary 路径为 0
 END_TILING_DATA_DEF;
 
 /**
