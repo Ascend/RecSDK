@@ -30,7 +30,7 @@ python3 run_decision_transformer.py  --device ${DEVICE} \
                                     --profiling_path=./profiling \
                                     --batch_size=128 \
                                     --learning_rate=0.001 \
-                                    --step_num=1 \
+                                    --step_num=210 \
                                     --hf32=true \
                                     --graph=false \
                                     --compile=false \
