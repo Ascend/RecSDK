@@ -25,7 +25,8 @@ at::Tensor hstu_forward_v2_impl_npu(const at::Tensor& q, const at::Tensor& k, co
                                     const at::Tensor& seqOffset, const c10::optional<at::Tensor>& seqOffsetK,
                                     const c10::optional<at::Tensor>& numContext,
                                     const c10::optional<at::Tensor>& numTarget,
-                                    const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha)
+                                    const c10::optional<int64_t>& targetGroupSize, const c10::optional<double>& alpha,
+                                    const c10::optional<at::Tensor>& metadata)
 {
     TORCH_CHECK(q.dim() == CONST_3, "The q should be 3D in jagged layout");
 
@@ -47,6 +48,8 @@ at::Tensor hstu_forward_v2_impl_npu(const at::Tensor& q, const at::Tensor& k, co
     auto acNumTarget = numTarget.has_value() ? numTarget.value().to(acSeqOffset.scalar_type()) : _zeros;
     auto acTargetGroupSize = targetGroupSize.value_or(0);
     double realAlpha = alpha.value_or(1.0);
+    // metadata 为可选: 未传/None → 空 tensor → aclnn 视作 null → kernel nullptr → 旧设备现算分核(零回归)
+    auto acMetadata = CheckOptionalTensorIsNotNone(metadata) ? metadata.value().to(at::kInt) : at::Tensor();
 
     bool use_fp8 = (q.scalar_type() == at::kFloat8_e4m3fn);
     at::ScalarType output_dtype = use_fp8 ? at::kHalf : denseQ.scalar_type();
@@ -60,10 +63,12 @@ at::Tensor hstu_forward_v2_impl_npu(const at::Tensor& q, const at::Tensor& k, co
     auto siluScale = siluScale_.value_or(0.0);
     double realSiluScale = (siluScale == 0.0) ? 1.0f / static_cast<double>(maxSeqLenQ) : siluScale;
     auto realmaxSeqLenK = maxSeqLenK.value_or(maxSeqLenQ);
+    auto inMetadata = acMetadata.defined() ? acMetadata.contiguous() : at::Tensor();
 
+    // op exec —— metadata 紧跟 num_target(与 OpDef 输入顺序一致: ...num_target, metadata),置于所有 attr 之前
     EXEC_NPU_CMD(aclnnHstuForwardV2, denseQ, denseK, denseV, maskNpu, denseBias, acSeqOffset, acSeqOffsetK,
-                 acNumContext, acNumTarget, maxSeqLenQ, realmaxSeqLenK, realSiluScale, acTargetGroupSize, realAlpha,
-                 attnOutput);
+                 acNumContext, acNumTarget, inMetadata, maxSeqLenQ, realmaxSeqLenK, realSiluScale, acTargetGroupSize,
+                 realAlpha, attnOutput);
     return attnOutput;
 }
 
@@ -83,7 +88,8 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
           "            Tensor? num_context, "
           "            Tensor? num_target, "
           "            int? target_group_size, "
-          "            float? alpha) -> Tensor");
+          "            float? alpha, "
+          "            Tensor? metadata=None) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)

@@ -76,6 +76,7 @@ class TestRunner:
         has_rab: bool,
         data_type: torch.dtype,
         window_size: [Tuple[int, int]],
+        is_metadata: bool,
         num_context: Optional[int] = None,
         num_target: Optional[int] = None,
         target_group_size: Optional[int] = 1,
@@ -113,9 +114,11 @@ class TestRunner:
             self.backend, alpha, scale, has_rab, max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k
         )
 
-        # 运行计算
+        metadata = kernel.create_forward_metadata(q, v) if is_metadata else None
+
+        # metadata 仅预生成一次；循环只测 HSTU forward 本身。
         for _ in range(ACTIVE):
-            kernel.forward(q, k, v, rab, mask)
+            kernel.forward(q, k, v, rab, mask, metadata)
 
         # 验证结果，返回 (passed, detail, seq_stats)
         return seq_stats
@@ -136,40 +139,44 @@ def benchmark_record():
 
 def _run_benchmark(test_backend, test_record, config: BenchmarkConfig):
     runner = TestRunner(test_backend)
-    data_generator = create_data_generator(
-        config.seed, seq_all_equal=config.seq_all_equal, seq_max_ratio=config.seq_max_ratio
-    )
+    for is_metadata in (False, True):
+        # 两个分支使用相同 seed 和 shape，保证性能数据可直接对比。
+        data_generator = create_data_generator(
+            config.seed, seq_all_equal=config.seq_all_equal, seq_max_ratio=config.seq_max_ratio
+        )
 
-    # 运行测试获取序列长度统计
-    seq_stats = runner.run_case(
-        data_generator,
-        config.batch_size,
-        config.head_num,
-        config.head_dim_qk,
-        config.head_dim_v,
-        config.max_seqlen_q,
-        config.max_seqlen_k,
-        config.has_rab,
-        config.data_type,
-        config.window_size,
-        config.num_context,
-        config.num_target,
-        config.target_group_size,
-    )
+        # 运行测试获取序列长度统计
+        seq_stats = runner.run_case(
+            data_generator,
+            config.batch_size,
+            config.head_num,
+            config.head_dim_qk,
+            config.head_dim_v,
+            config.max_seqlen_q,
+            config.max_seqlen_k,
+            config.has_rab,
+            config.data_type,
+            config.window_size,
+            is_metadata,
+            config.num_context,
+            config.num_target,
+            config.target_group_size,
+        )
 
-    # 记录测试用例输入和序列统计
-    params = {
-        "batch_size": config.batch_size,
-        "head_num": config.head_num,
-        "head_dim_qk": config.head_dim_qk,
-        "head_dim_v": config.head_dim_v,
-        "max_seqlen_q": config.max_seqlen_q,
-        "max_seqlen_k": config.max_seqlen_k,
-        "has_rab": config.has_rab,
-        "data_type": str(config.data_type),
-        "seed": config.seed,
-    }
-    test_record.record(params, seq_stats)
+        # 记录测试用例输入和序列统计
+        params = {
+            "batch_size": config.batch_size,
+            "head_num": config.head_num,
+            "head_dim_qk": config.head_dim_qk,
+            "head_dim_v": config.head_dim_v,
+            "max_seqlen_q": config.max_seqlen_q,
+            "max_seqlen_k": config.max_seqlen_k,
+            "has_rab": config.has_rab,
+            "data_type": str(config.data_type),
+            "seed": config.seed,
+            "is_metadata": is_metadata,
+        }
+        test_record.record(params, seq_stats)
 
 
 @pytest.fixture(scope="function")

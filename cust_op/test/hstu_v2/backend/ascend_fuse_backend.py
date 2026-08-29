@@ -31,7 +31,7 @@ class Kernel:
         self.seq_offset_q = seq_offset_q
         self.seq_offset_k = seq_offset_k
 
-    def forward(self, q, k, v, rab, mask):
+    def forward(self, q, k, v, rab, mask, metadata=None):
         q_npu = q.to("npu")
         k_npu = k.to("npu")
         v_npu = v.to("npu")
@@ -62,9 +62,39 @@ class Kernel:
             num_target,
             target_group_size,
             self.alpha,
+            metadata,
         )
         torch.npu.synchronize()
         return output.cpu()
+
+    def create_forward_metadata(self, q, v):
+        """调用 hstu_attn_metadata，为 HSTU forward 的 Q 行调度生成 metadata。"""
+        seq_offset_q = torch.as_tensor(self.seq_offset_q, dtype=torch.int32, device="npu")
+        seq_offset_k = torch.as_tensor(self.seq_offset_k, dtype=torch.int32, device="npu")
+        batch_size = seq_offset_q.numel() - 1
+        head_num = q.shape[1]
+        head_dim = max(q.shape[-1], v.shape[-1])
+
+        metadata = torch.ops.mxrec.hstu_attn_metadata(
+            seq_offset_q,
+            seq_offset_k,
+            None,
+            None,
+            batch_size,
+            self.max_seqlen_q,
+            self.max_seqlen_k,
+            head_num,
+            head_num,
+            head_dim,
+            0,
+            -1,
+            -1,
+            "TND",
+            "TND",
+            "TND",
+        )
+        torch.npu.synchronize()
+        return metadata
 
     def create_backward_metadata(self, q, v):
         """调用 hstu_attn_metadata，为 HSTU backward 的 K 行调度生成 metadata。"""
