@@ -78,11 +78,11 @@ Rec SDK provides comprehensive usage and development documentation to help you u
 
 | Model | Framework | Component | Code link |
 | --- | --- | --- | --- |
-| DIN | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/din) |
+| DIN | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/din) |
 | DLRM(DCNv2) | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_examples/dlrm) |
-| GR | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/gr/gr_meta) |
-| GR | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/gr_nv) |
-| MMOE, ETA | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/model_zoo/README.md) |
+| GR | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/gr/gr_meta) |
+| GR | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/gr_nv) |
+| MMOE, ETA | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch_examples_benchmark/develop/model_zoo/README.md) |
 | GR | PyTorch | torch_rec_v2 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr) |
 
 ## 🗺️ Roadmap

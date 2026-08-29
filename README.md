@@ -78,11 +78,11 @@ Rec SDK 提供完整的使用与开发文档，帮助您深入了解各组件的
 
 | 模型名称 | 适配框架 | 组件名称 | 代码链接 |
 | --- | --- | --- | --- |
-| DIN | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/din) |
+| DIN | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/din) |
 | DLRM(DCNv2) | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_examples/dlrm) |
-| GR | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/gr/gr_meta) |
-| GR | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/gr_nv) |
-| mmoe、eta | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch2.6.0_examples_benchmark/develop/model_zoo/README.md) |
+| GR | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/gr/gr_meta) |
+| GR | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/gr_nv) |
+| mmoe、eta | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch_examples_benchmark/develop/model_zoo/README.md) |
 | GR | PyTorch | torch_rec_v2 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr) |
 
 ## 🗺️ Roadmap
@@ -110,8 +110,9 @@ torch_rec_v1 各版本维护状态如下：
 
 | **torch_rec_v1版本** | **维护策略** | **当前状态** | **发布时间**   | **后续状态**             | **EOL日期** |
 | --- | --- | --- | --- | --- | --- |
-| 1.1.0 |常规分支 | 维护态 | 2025年7月23日 | 预计 2026年9月30日后进入无维护状态 | 2026年9月30日 |
-| 1.2.0 |常规分支 | 维护态 | 2026年1月04日 | 维护中 |  |
+| 1.1.0 |常规分支 | 维护态 | 2025年7月23日 | EOL | 2027年6月30日 |
+| 1.2.0 |常规分支 | 开发态 | 2026年1月04日 | 维护态 |  |
+| 1.5.0 |常规分支 | 开发态 | 预计2026年10月25日 | 维护态 |  |
 
 ## 🛠️ 贡献指南
 

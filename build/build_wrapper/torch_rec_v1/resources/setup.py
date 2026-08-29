@@ -48,9 +48,7 @@ is_building = any(arg in sys.argv for arg in ['install', 'bdist_wheel', 'build',
 if is_building:
     # 检测PyTorch版本
     torch_version = detect_pt_version()
-    if torch_version.startswith("2.6."):
-        whl_dir = "mindxsdk-torchrec/pt2.6_whl"
-    elif torch_version.startswith("2.7."):
+    if torch_version.startswith("2.7."):
         whl_dir = "mindxsdk-torchrec/pt2.7_whl"
     elif torch_version.startswith("2.10."):
         whl_dir = "mindxsdk-torchrec/pt2.10_whl"
