@@ -8,9 +8,8 @@
 
 | 配套版本 | Python | PyTorch | TorchNPU | fbgemm\_gpu | Rec SDK Torch | 备注 |
 | ---- | ------ | ------- | ---------- | ----------- | ------------- |----|
-| 方案一  | 3.11+  | 2.6.0+cpu   | 2.6.0      | 1.1.0+cpu   | 1.1.0         |此方案暂不支持Ascend 950系列产品|
-| 方案二  | 3.11+  | 2.7.1+cpu   | 2.7.1      | 1.2.0+cpu   | 1.2.0         ||
-| 方案三  | 3.11+  | 2.10.0+cpu   | 2.10.0      | 1.5.0+cpu   | 1.5.0         ||
+| 方案一  | 3.11+  | 2.7.1+cpu   | 2.7.1      | 1.2.0+cpu   | 1.2.0         ||
+| 方案二  | 3.11+  | 2.10.0+cpu   | 2.10.0      | 1.5.0+cpu   | 1.5.0         ||
 
 > [!NOTE]
 >
@@ -204,27 +203,24 @@ Rec SDK Torch软件包如下表：
 
    下载[RecSDK](https://gitcode.com/Ascend/RecSDK)源码，按如下指令进行算子相关包的编译和安装：
 
-   > [!NOTE]
-   > 编译脚本 `build_ai_core_op.sh` 的参数需根据实际芯片架构配置，默认以 `A2` 为例。详细参数和更多说明请参考 [算子编译README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)。
-
    ```bash
-   # 编译算子前，需使能CANN环境变量。默认路径安装CANN包时，使能CANN环境变量指令如下：
+   # 编译算子前，若未配置CANN环境变量则使用如下指令进行配置
    source /usr/local/Ascend/cann/set_env.sh
-   unset ASCEND_CUSTOM_OPP_PATH
 
    # 编译并安装算子包（Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz）。
    cd RecSDK/cust_op/ascendc_op/build
    bash build_ai_core_op.sh A2
-
-   # 可选：若仅需安装部分算子，可在其他容器内编译，并将build/output/recsdk_ops路径下所需算子包拷贝到当前环境，参考如下指令安装：
-   # bash mxrec_opp_split_embedding_codegen_forward_unweighted.run
 
    # 安装算子适配层（libfbgemm_npu_api.so）
    cd ../../framework/torch_plugin/torch_library/common/
    bash build_ops.sh
    ```
 
-   安装算子run包的参数如[表1](#table14435173717221)所示。
+   > [!NOTE]
+   > 1. 算子编译安装脚本 `build_ai_core_op.sh` 的参数需根据实际芯片架构配置，默认以 `A2` 为例。详细参数和更多说明请参考 [算子编译README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)。
+   > 2. 安装算子后，/usr/local/Ascend/cann/opp/vendors/目录下会生成split\_embedding\_codegen\_forward\_unweighted、backward\_codegen\_adagrad\_unweighted\_exact、asynchronous\_complete\_cumsum、permute2d\_sparse\_data等文件夹。如果没有相关文件夹，请使用**unset ASCEND\_CUSTOM\_OPP\_PATH**取消环境变量后重新安装算子。
+
+   算子编译安装脚本执行完后，会在`RecSDK/cust_op/ascendc_op/output/`目录下生成`Ascend-recsdk-npu-ops-*-linux-*.tar.gz`压缩包，其中包含多个算子run包和算子适配层文件，可拷贝到其他相同架构、设备类型环境下进行安装和使用。安装算子run包指令示例（名称改为实际算子run包名称）：`bash mxrec_opp_split_embedding_codegen_forward_unweighted.run`。安装算子run包的更多参数如[表1](#table14435173717221)所示。
 
    **表 1**  参数说明 <a id="table14435173717221"></a>
 
@@ -240,10 +236,6 @@ Rec SDK Torch软件包如下表：
    | --extract=\<path>      | 直接解压到目标目录，通常与--noexec配合使用，仅解压文件而不运行脚本。 |
    | --tar arg1 \[arg2 ...] | 通过**tar**命令访问压缩包内容。                    |
    | --install-path         | 安装到指定目录路径。                             |
-
-   > \[!NOTE]
-   >
-   > 安装算子后，/usr/local/Ascend/cann/opp/vendors/目录下会生成split\_embedding\_codegen\_forward\_unweighted、backward\_codegen\_adagrad\_unweighted\_exact、asynchronous\_complete\_cumsum、permute2d\_sparse\_data等文件夹。如果没有相关文件夹，请使用**unset ASCEND\_CUSTOM\_OPP\_PATH**取消环境变量后重新安装算子。
 
 ### 离线安装
 

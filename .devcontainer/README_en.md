@@ -24,7 +24,7 @@ Open the repository in VS Code, press `F1` → **Dev Containers: Reopen in Conta
 
 ### 2. Build RecSDK
 
-The torch_rec_v1 packages are pre-installed by default. For source build and installation, refer to the [Source Installation Guide](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md#%E6%BA%90%E7%A0%81%E5%AE%89%E8%A3%85).
+The torch_rec_v1 packages are pre-installed by default. For source build and installation, refer to the [Source Installation Guide](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/en/torch/torch_rec_v1/recsdk_torch_installation_guide.md#installing-from-source).
 
 ## Notes
 
