@@ -272,11 +272,10 @@ git checkout core_r0.14.0
 
 ### 运行依赖
 
-- RecSDK自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
+- 本模型依赖以下fbgemm算子。若需在昇腾NPU环境部署运行，请先安装适配包fbgemm_ascend，安装及使用说明请参考官方[README](https://gitcode.com/Ascend/fbgemm-ascend/blob/v1.5.0/README.md)。
   - asynchronous\_complete\_cumsum
   - dense\_to\_jagged
   - jagged\_to\_padded\_dense
-- RecSDK自定义算子适配层安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)中算子适配层编译章节。
 
 ### 准备数据集
 
