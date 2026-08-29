@@ -15,7 +15,7 @@
 
 # 运行环境准备
 
-参考[RecSDK-Torch 模型样例运行环境说明](../torch2.6.0_examples_benchmark/develop/README.md)
+参考[RecSDK-Torch 模型样例运行环境说明](../torch_examples_benchmark/develop/README.md)
 
 # 必要依赖安装
 
