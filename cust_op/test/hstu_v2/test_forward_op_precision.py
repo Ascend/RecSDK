@@ -108,6 +108,7 @@ class TestRunner:
         has_rab: bool,
         data_type: torch.dtype,
         window_size: Tuple[int, int] = (-1, -1),
+        is_metadata: bool = False,
         num_context: Optional[int] = None,
         num_target: Optional[int] = None,
         target_group_size: Optional[int] = None,
@@ -149,7 +150,8 @@ class TestRunner:
         )
 
         # 运行计算
-        actual = kernel.forward(q, k, v, rab, mask)
+        metadata = kernel.create_forward_metadata(q, v) if is_metadata else None
+        actual = kernel.forward(q, k, v, rab, mask, metadata)
         expected = ref_kernel.forward(q, k, v, rab, mask)
 
         # 验证结果，返回 (passed, detail, seq_stats)
@@ -158,40 +160,44 @@ class TestRunner:
 
 def _run_test_case(params: TestCaseParams):
     runner = TestRunner(params.test_backends)
-    data_generator = create_data_generator(
-        params.seed, seq_all_equal=params.seq_all_equal, seq_max_ratio=params.seq_max_ratio
-    )
+    for is_metadata in (False, True):
+        # 两个分支使用相同 seed 和 shape，确保输入数据完全一致。
+        data_generator = create_data_generator(
+            params.seed, seq_all_equal=params.seq_all_equal, seq_max_ratio=params.seq_max_ratio
+        )
 
-    (passed, detail), seq_stats = runner.run_case(
-        data_generator,
-        params.batch_size,
-        params.head_num,
-        params.head_dim_qk,
-        params.head_dim_v,
-        params.max_seqlen_q,
-        params.max_seqlen_k,
-        params.has_rab,
-        params.data_type,
-        params.window_size,
-        params.num_context,
-        params.num_target,
-        params.target_group_size,
-    )
+        (passed, detail), seq_stats = runner.run_case(
+            data_generator,
+            params.batch_size,
+            params.head_num,
+            params.head_dim_qk,
+            params.head_dim_v,
+            params.max_seqlen_q,
+            params.max_seqlen_k,
+            params.has_rab,
+            params.data_type,
+            params.window_size,
+            is_metadata,
+            params.num_context,
+            params.num_target,
+            params.target_group_size,
+        )
 
-    record_params = {
-        "batch_size": params.batch_size,
-        "head_num": params.head_num,
-        "head_dim_qk": params.head_dim_qk,
-        "head_dim_v": params.head_dim_v,
-        "max_seqlen_q": params.max_seqlen_q,
-        "max_seqlen_k": params.max_seqlen_k,
-        "has_rab": params.has_rab,
-        "data_type": str(params.data_type),
-        "seed": params.seed,
-    }
-    params.test_record.record(params.test_name, record_params, detail, seq_stats)
+        record_params = {
+            "batch_size": params.batch_size,
+            "head_num": params.head_num,
+            "head_dim_qk": params.head_dim_qk,
+            "head_dim_v": params.head_dim_v,
+            "max_seqlen_q": params.max_seqlen_q,
+            "max_seqlen_k": params.max_seqlen_k,
+            "has_rab": params.has_rab,
+            "data_type": str(params.data_type),
+            "seed": params.seed,
+            "is_metadata": is_metadata,
+        }
+        params.test_record.record(params.test_name, record_params, detail, seq_stats)
 
-    assert passed, f"Test case failed: detail={detail}"
+        assert passed, f"Test case failed: is_metadata={is_metadata}, detail={detail}"
 
 
 @pytest.fixture(scope="function", name="test_backends")

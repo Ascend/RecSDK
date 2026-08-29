@@ -32,7 +32,8 @@ enum class IN_INDEX : uint32_t {
     SEQ_OFFSET_Q,
     SEQ_OFFSET_K,
     NUM_CONTEXT,
-    NUM_TARGET
+    NUM_TARGET,
+    METADATA  // 可选: flash_attn_metadata 分核输出(int32);未传 → 旧设备现算分核
 };
 
 enum class OUT_INDEX : uint32_t {

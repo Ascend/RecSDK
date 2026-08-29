@@ -26,6 +26,7 @@ See the License for the specific language governing permissions and
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/gemm_coord.hpp"
 #include "catlass/layout/layout.hpp"
+#include "../../../catlass_hstu/gemm/block/metadata_row_block_scheduler.hpp"
 
 namespace Catlass::Kernel {
 
@@ -83,15 +84,18 @@ struct ForwardMmadMainloop {
         GM_ADDR ptrV;
         GM_ADDR ptrSeqOffsetQ;
         GM_ADDR ptrSeqOffsetK;
+        GM_ADDR ptrMetadata;  // 可选: flash_attn_metadata 分核输出;nullptr → 旧设备现算路径
 
         CATLASS_DEVICE Params() {}
         CATLASS_DEVICE
-        Params(GM_ADDR ptrQ_, GM_ADDR ptrK_, GM_ADDR ptrV_, GM_ADDR ptrSeqOffsetQ_, GM_ADDR ptrSeqOffsetK_)
+        Params(GM_ADDR ptrQ_, GM_ADDR ptrK_, GM_ADDR ptrV_, GM_ADDR ptrSeqOffsetQ_, GM_ADDR ptrSeqOffsetK_,
+               GM_ADDR ptrMetadata_ = nullptr)
             : ptrQ(ptrQ_),
               ptrK(ptrK_),
               ptrV(ptrV_),
               ptrSeqOffsetQ(ptrSeqOffsetQ_),
-              ptrSeqOffsetK(ptrSeqOffsetK_)
+              ptrSeqOffsetK(ptrSeqOffsetK_),
+              ptrMetadata(ptrMetadata_)
         {
         }
     };
@@ -228,8 +232,10 @@ struct ForwardMmadMainloop {
             }
 
             // Advance + rotate
+            // 推进 Q 的前提是 Q 仍有效: Q 耗尽后不再 ++(已耗尽的行调度器 ++ 会下溢),
+            // 直接进入排水计数; K 耗尽且 Q 有效时才切到下一 Q 行。
             ++kBlockScheduler;
-            if (!kBlockScheduler.IsValid()) {
+            if (!kBlockScheduler.IsValid() && qBlockScheduler.IsValid()) {
                 ++qBlockScheduler;
                 if (qBlockScheduler.IsValid())
                     kBlockScheduler.Init(qBlockScheduler);
@@ -263,7 +269,10 @@ struct ForwardMmadMainloop {
         BlockMmadPV blockMmadPV(resource, heads, dimV, V_L1_EVENT_ID, {PV_READY_ID0, PV_READY_ID1, PV_READY_ID2},
                                 L0_HANDOFF_ID1, EVENT_PV_L0C_FIX_ID, TRANS_READY_ID);
 
-        QBlockScheduler qBlockScheduler(batch, heads, params.ptrSeqOffsetQ, params.ptrSeqOffsetK);
+        // 行(Q)调度器: 经工厂构造。QBlockScheduler 为 RowBlockScheduler/InterleavedRowBlockScheduler 时
+        // 忽略 metadata(旧路);为 MetadataRowBlockScheduler 时用 metadata 驱动(新路)。构造代码对两种类型统一。
+        QBlockScheduler qBlockScheduler = Gemm::Block::MakeRowScheduler<QBlockScheduler>(
+            batch, heads, params.ptrSeqOffsetQ, params.ptrSeqOffsetK, params.ptrMetadata);
         KBlockScheduler kBlockScheduler(batch, heads, params.ptrSeqOffsetK);
         qBlockScheduler.Init();
         kBlockScheduler.Init(qBlockScheduler);

@@ -26,6 +26,7 @@ See the License for the specific language governing permissions and
 #include "catlass/arch/cross_core_sync.hpp"
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/layout/layout.hpp"
+#include "../../../catlass_hstu/gemm/block/metadata_row_block_scheduler.hpp"
 
 namespace Catlass::Kernel {
 
@@ -63,16 +64,19 @@ struct ForwardEpilogueMainloop {
         GM_ADDR ptrSeqOffsetQ;
         GM_ADDR ptrSeqOffsetK;
         GM_ADDR ptrAttnOutput;
+        GM_ADDR ptrMetadata;  // 可选: flash_attn_metadata 分核输出;nullptr → 旧设备现算路径
 
         CATLASS_DEVICE
         Params() {}
 
         CATLASS_DEVICE
-        Params(GM_ADDR ptrRab_, GM_ADDR ptrSeqOffsetQ_, GM_ADDR ptrSeqOffsetK_, GM_ADDR ptrAttnOutput_)
+        Params(GM_ADDR ptrRab_, GM_ADDR ptrSeqOffsetQ_, GM_ADDR ptrSeqOffsetK_, GM_ADDR ptrAttnOutput_,
+               GM_ADDR ptrMetadata_ = nullptr)
             : ptrRab(ptrRab_),
               ptrSeqOffsetQ(ptrSeqOffsetQ_),
               ptrSeqOffsetK(ptrSeqOffsetK_),
-              ptrAttnOutput(ptrAttnOutput_)
+              ptrAttnOutput(ptrAttnOutput_),
+              ptrMetadata(ptrMetadata_)
         {
         }
     };
@@ -242,7 +246,10 @@ struct ForwardEpilogueMainloop {
         auto tensorRab = MakeBNSSTensor(gRab);
         auto tensorAttnOut = MakeTNDTensor(gAttnOut, totalSeqLenQ, dimV);
 
-        QBlockScheduler qBlockScheduler(batch, heads, params.ptrSeqOffsetQ, params.ptrSeqOffsetK);
+        // 行(Q)调度器: 经工厂构造,对 RowBlockScheduler / InterleavedRowBlockScheduler /
+        // MetadataRowBlockScheduler 统一(见 mmad mainloop 注释)。
+        QBlockScheduler qBlockScheduler = Gemm::Block::MakeRowScheduler<QBlockScheduler>(
+            batch, heads, params.ptrSeqOffsetQ, params.ptrSeqOffsetK, params.ptrMetadata);
         KBlockScheduler kBlockScheduler(batch, heads, params.ptrSeqOffsetK);
         qBlockScheduler.Init();
         kBlockScheduler.Init(qBlockScheduler);

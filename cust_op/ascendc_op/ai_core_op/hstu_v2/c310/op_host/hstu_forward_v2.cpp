@@ -201,6 +201,9 @@ public:
             .ParamType(OPTIONAL)
             .Follow("seq_offset_q", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
+        // 可选: flash_attn_metadata 分核输出(int32,HEAD+FA+FD 布局)。未传 → kernel 收到 nullptr →
+        // 旧设备现算分核(零回归)
+        this->Input("metadata").ParamType(OPTIONAL).DataType({ge::DT_INT32, ge::DT_INT32}).FormatList({ge::FORMAT_ND});
         this->Output("attn_output").ParamType(REQUIRED).Follow("q", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
 
         this->Attr("max_seqlen_q").Int();

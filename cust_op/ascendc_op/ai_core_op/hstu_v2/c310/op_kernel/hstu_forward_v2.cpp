@@ -41,6 +41,7 @@ See the License for the specific language governing permissions and
  * @param seq_offset_k Key 序列偏移量
  * @param num_context 上下文长度 (可选)
  * @param num_target 目标长度 (可选)
+ * @param metadata flash_attn_metadata 分核输出 (可选, 未传 → 旧设备现算分核)
  * @param attnOutput 输出: 注意力输出
  * @param workSpace 工作空间
  * @param tiling Tiling 数据
@@ -51,7 +52,7 @@ See the License for the specific language governing permissions and
 template <bool HAS_RAB, uint32_t BLOCK_K>
 CATLASS_GLOBAL void hstu_forward_v2(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mask, GM_ADDR attnBias,
                                     GM_ADDR seq_offset_q, GM_ADDR seq_offset_k, GM_ADDR num_context, GM_ADDR num_target,
-                                    GM_ADDR attnOutput, GM_ADDR workSpace, GM_ADDR tiling)
+                                    GM_ADDR metadata, GM_ADDR attnOutput, GM_ADDR workSpace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
@@ -63,6 +64,14 @@ CATLASS_GLOBAL void hstu_forward_v2(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mas
     using KernelConfig = ForwardKernelConfig<Arch::Ascend950, Element, ElementOffset, BLOCK_K, HAS_RAB, HAS_MASK>;
     using KernelBuilder = ForwardKernelBuilder<KernelConfig>;
 
+    using L1TileShape = typename KernelConfig::L1TileShape;
+    static constexpr uint32_t BLOCK_M = tla::get<0>(L1TileShape{});
+    static constexpr uint32_t BLOCK_N = tla::get<1>(L1TileShape{});
+
+    // metadata 驱动路径的调度器类型(与设备类型同参: 行轴块=BLOCK_M=Cq, 列轴块=BLOCK_N=Rk)
+    using MetaQBlockScheduler = Catlass::Gemm::Block::MetadataRowBlockScheduler<ElementOffset, BLOCK_M, BLOCK_N>;
+    using MetaKBlockScheduler = Catlass::Gemm::Block::ColumnBlockScheduler<MetaQBlockScheduler, BLOCK_M, BLOCK_N, true>;
+
     if ASCEND_IS_AIC {
         using QBlockScheduler = typename KernelBuilder::QBlockScheduler;
         using KBlockScheduler = typename KernelBuilder::KBlockScheduler;
@@ -70,13 +79,19 @@ CATLASS_GLOBAL void hstu_forward_v2(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mas
         using BlockMmadQK = typename KernelBuilder::BlockMmadQK;
         using BlockMmadPV = typename KernelBuilder::BlockMmadPV;
 
-        using MmadMainLoopKernel = ForwardMmadMainloop<BlockMmadQK, BlockMmadPV, QBlockScheduler, KBlockScheduler>;
-
-        using MmadMainLoopParams = typename MmadMainLoopKernel::Params;
-
-        MmadMainLoopParams params{q, k, v, seq_offset_q, seq_offset_k};
-        MmadMainLoopKernel kernel(tiling);
-        kernel(params);
+        // 运行期择一: 传了 metadata → metadata 驱动;否则 → 旧设备现算(逐字节等价、零回归)
+        if (metadata != nullptr) {
+            using MmadMainLoopKernel =
+                ForwardMmadMainloop<BlockMmadQK, BlockMmadPV, MetaQBlockScheduler, MetaKBlockScheduler>;
+            typename MmadMainLoopKernel::Params params{q, k, v, seq_offset_q, seq_offset_k, metadata};
+            MmadMainLoopKernel kernel(tiling);
+            kernel(params);
+        } else {
+            using MmadMainLoopKernel = ForwardMmadMainloop<BlockMmadQK, BlockMmadPV, QBlockScheduler, KBlockScheduler>;
+            typename MmadMainLoopKernel::Params params{q, k, v, seq_offset_q, seq_offset_k, nullptr};
+            MmadMainLoopKernel kernel(tiling);
+            kernel(params);
+        }
     } else {
         using QBlockScheduler = typename KernelBuilder::QBlockScheduler;
         using KBlockScheduler = typename KernelBuilder::KBlockScheduler;
@@ -84,13 +99,18 @@ CATLASS_GLOBAL void hstu_forward_v2(GM_ADDR q, GM_ADDR k, GM_ADDR v, GM_ADDR mas
         using BlockEpilogueQK = typename KernelBuilder::BlockEpilogueQK;
         using BlockEpiloguePV = typename KernelBuilder::BlockEpiloguePV;
 
-        using EpilogueMainLoopKernel =
-            ForwardEpilogueMainloop<BlockEpilogueQK, BlockEpiloguePV, QBlockScheduler, KBlockScheduler>;
-
-        using EpilogueMainLoopParams = typename EpilogueMainLoopKernel::Params;
-
-        EpilogueMainLoopParams params{attnBias, seq_offset_q, seq_offset_k, attnOutput};
-        EpilogueMainLoopKernel kernel(tiling);
-        kernel(params);
+        if (metadata != nullptr) {
+            using EpilogueMainLoopKernel =
+                ForwardEpilogueMainloop<BlockEpilogueQK, BlockEpiloguePV, MetaQBlockScheduler, MetaKBlockScheduler>;
+            typename EpilogueMainLoopKernel::Params params{attnBias, seq_offset_q, seq_offset_k, attnOutput, metadata};
+            EpilogueMainLoopKernel kernel(tiling);
+            kernel(params);
+        } else {
+            using EpilogueMainLoopKernel =
+                ForwardEpilogueMainloop<BlockEpilogueQK, BlockEpiloguePV, QBlockScheduler, KBlockScheduler>;
+            typename EpilogueMainLoopKernel::Params params{attnBias, seq_offset_q, seq_offset_k, attnOutput, nullptr};
+            EpilogueMainLoopKernel kernel(tiling);
+            kernel(params);
+        }
     }
 }
