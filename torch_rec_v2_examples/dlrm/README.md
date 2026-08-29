@@ -15,7 +15,7 @@
 
 ## 运行环境准备
 
-请参考：[模型样例运行环境说明](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/torch/torch_rec_v2/recsdk_torch_installation_guide.md)
+请参考：[模型样例运行环境说明](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/torch/torch_rec_v2/02_torch_installation_guide/recsdk_torch_installation_guide.md)
 
 ## dlrm源码适配
 

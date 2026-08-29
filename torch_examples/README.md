@@ -12,7 +12,9 @@
 
 | 软件名称  | PyTorch | torch_npu | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
 |-------|---------|-----------|-----------|------------|-----------------|-------------------|
-| 配套版本 | 2.6.0   | 2.6.0     | 1.1.0+npu | 1.1.0      | 1.1.0           | 1.1.0             |
+| 配套版本 | 2.7.1   | 2.7.1     | 1.2.0+npu | 1.2.0+cpu      | 1.2.0           | 1.2.0             |
+
+注：在26.1.0及之后版本的镜像中，hybrid_torchrec、torchrec_embcache、torchrec三个包作为子包统一被torch-rec-v1软件包包装，此时无法直接使用pip3查看3个子包信息，但可直接在Python脚本中进行import使用。
 
 ## 启动容器
 
@@ -48,6 +50,7 @@ docker run \
 - -m 300g：设置容器内使用内存大小，可根据实际情况进行配置。
 - -e ASCEND_VISIBLE_DEVICES="${free_devices}"：将服务器上空闲的NPU设备挂载到容器内，可根据实际情况进行配置。
 - -v /xx:/xx:ro 表示以只读的方式将宿主机目录挂载到容器内。driver目录建议挂载，源码编译时可能使用到，其余目录可按需挂载。
+- image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.0.0版本的x86镜像的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_debian12-x86`。
 
 执行如下命令新建容器：
 
@@ -55,22 +58,17 @@ docker run \
 bash run_docker.sh 容器名 镜像名称
 ```
 
-注：镜像名称参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.0.0版本的x86镜像的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_debian12-x86`。
-
 ### 刷新容器内环境变量
 
-26.1.0及之后的镜像中内置了Python虚拟环境，需要刷新环境变量。使用`ls -l /opt/buildtools/torch_v1_pt2.6.0/bin/activate`指令判断Python虚拟环境是否存在：若回显包含文件详细属性表示存在，若回显包含“No such file or directory”表示不存在。
-
-若Python虚拟环境存在则执行如下命令刷新容器内环境变量：
-
 ```shell
-# 激活 torch_rec_v1 PyTorch 2.6.0 版本Python虚拟环境，该环境内已安装好Rec SDK Torch及相关软件包。
-source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
-# 使用完成后，若需退出 Python 虚拟环境，执行命令： deactivate 即可退出。
-
-# 切换并生效 Atlas A2 系列服务器配套CANN Toolkit及相关环境变量
-source /usr/local/set_cann_env.sh a2
+# 配置CANN环境变量
+source /usr/local/Ascend/cann/set_env.sh
+# Python虚拟环境存在时激活虚拟环境。使用完后若需退出 Python 虚拟环境，执行命令： deactivate 即可退出。
+[ -f /opt/buildtools/torch_v1_pt2.7.1/bin/activate ] && source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
 ```
+
+> [!NOTE]
+> [昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.1.0及之后的镜像中内置了Python虚拟环境，使用前需激活虚拟环境。该虚拟环境中已默认安装好Rec SDK Torch及相关依赖。
 
 ### FAQ
 
@@ -120,7 +118,7 @@ bash bash.sh
 
 ## 安装依赖（可选）
 
-说明：容器中已经安装好torchrec、hybrid_torchrec、torchrec_embcache及算子等依赖。如需重新安装依赖需确保网络通畅。
+说明：从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)获取的基础镜像中已经安装好torchrec、hybrid_torchrec、torchrec_embcache及算子等依赖。如需重新安装依赖需确保网络通畅。
 
 ### 1. 安装TorchRec昇腾注册包
 
@@ -128,7 +126,7 @@ TorchRec昇腾注册包为基于torchrec开源代码固定分支，进行NPU设�
 
 ### 2. 安装Rec SDK Torch训练框架包
 
-请参见[源码编译](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/torch/torch_rec_v1/recsdk_torch_installation_guide.md#source_build_hybrid_torchrec)章节进行编译安装。
+请参见[源码编译](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/torch/torch_rec_v1/02_torch_installation_guide/recsdk_torch_installation_guide.md#source_build_hybrid_torchrec)章节进行编译安装。
 
 不建议使用Rec SDK的release包进行安装，有可能会导致版本不匹配问题。
 
