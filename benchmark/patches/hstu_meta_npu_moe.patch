@@ -1,0 +1,663 @@
+diff --git a/configs/ml-1m/hstu-7B.gin b/configs/ml-1m/hstu-7B.gin
+new file mode 100644
+index 0000000000000000000000000000000000000000..65b9873377e2bc59a5286d956c8087d0a16d77d4
+--- /dev/null
++++ b/configs/ml-1m/hstu-7B.gin
+@@ -0,0 +1,46 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# Frozen config, validated on 04/11/2024.
++# Based on HSTU results (w/ identical configurations as a SotA Transformer baseline) in
++# Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations (https://arxiv.org/abs/2402.17152).
++#
++# Run this as:
++# mkdir -p logs/ml-1m-l200/
++# CUDA_VISIBLE_DEVICES=0 python3 main.py --gin_config_file=configs/ml-1m/hstu-sampled-softmax-n128-final.gin --master_port=12345 2>&1 | tee logs/ml-1m-l200/hstu-sampled-softmax-n128-final.log
++
++train_fn.dataset_name = "ml-1m"
++train_fn.max_sequence_length = 200
++train_fn.local_batch_size = 1
++
++train_fn.main_module = "HSTU"
++train_fn.main_module_bf16 = True
++train_fn.dropout_rate = 0.2
++train_fn.user_embedding_norm = "l2_norm"
++train_fn.num_epochs = 101
++train_fn.item_embedding_dim = 4096
++
++hstu_encoder.num_blocks = 8
++hstu_encoder.num_heads = 16
++hstu_encoder.dqk = 256
++hstu_encoder.dv = 256
++hstu_encoder.linear_dropout_rate = 0.2
++
++train_fn.learning_rate = 1e-3
++train_fn.weight_decay = 0
++train_fn.num_warmup_steps = 0
++
++train_fn.interaction_module_type = "DotProduct"
++train_fn.top_k_method = "MIPSBruteForceTopK"
++
++train_fn.loss_module = "SampledSoftmaxLoss"
++train_fn.num_negatives = 128
++
++train_fn.sampling_strategy = "local"
++train_fn.temperature = 0.05
++train_fn.item_l2_norm = True
++train_fn.l2_norm_eps = 1e-6
++
++train_fn.enable_tf32 = True
++
++create_data_loader.prefetch_factor = 128
++create_data_loader.num_workers = 8
+diff --git a/generative_recommenders/modules/moe_layer.py b/generative_recommenders/modules/moe_layer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7ef1465de2ddc67d71bd9481c50c38a3714318aa
+--- /dev/null
++++ b/generative_recommenders/modules/moe_layer.py
+@@ -0,0 +1,165 @@
++import torch
++import torch.nn.functional as F
++
++ENABLE_NPU=True
++try:
++    import torch_npu
++except ImportError as exc:
++    ENABLE_NPU = False
++    print(f"In GPU environment. Importing grouped_gemm ops.")
++    from grouped_gemm import ops
++
++class NPUGroupedMatmulFunction(torch.autograd.Function):
++    @staticmethod
++    def forward(ctx, x, weight, group_list):
++        weight_transposed = weight.transpose(-1, -2)
++        ctx.save_for_backward(x, weight_transposed, group_list)
++        return torch_npu.npu_grouped_matmul(
++            x=[x],
++            weight=[weight_transposed],
++            bias=None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=1,
++            group_type=0,
++            output_dtype=x.dtype,
++        )[0]
++
++    @staticmethod
++    def backward(ctx, grad_output):
++        x, weight_transposed, group_list = ctx.saved_tensors
++        grad_output = grad_output.contiguous()
++        grad_x = torch_npu.npu_grouped_matmul(
++            x=[grad_output],
++            weight=[weight_transposed.transpose(-1, -2)],
++            bias=None,
++            group_list=group_list,
++            split_item=2,
++            group_list_type=1,
++            group_type=0,
++            output_dtype=x.dtype,
++        )[0]
++        grad_weight = torch_npu.npu_grouped_matmul(
++            x=[x.transpose(0, 1)],
++            weight=[grad_output],
++            bias=None,
++            group_list=group_list,
++            split_item=3,
++            group_list_type=1,
++            group_type=2,
++            output_dtype=weight_transposed.dtype,
++        )[0]
++
++        grad_weight = grad_weight.transpose(-1, -2)
++        return grad_x, grad_weight, None
++
++class MOERouter(torch.nn.Module):
++    def __init__(self, emb_dim, expert_number, top_k_number, aux_loss_weight=0.01):
++        super().__init__()
++        self.gate = torch.nn.Linear(emb_dim, expert_number)
++        self.expert_number = expert_number
++        self.top_k = top_k_number
++        self.aux_loss_weight = aux_loss_weight  # 辅助损失权重，可以根据需要调整
++
++    def forward(self, hidden_states):
++        # 计算路由logits
++        router_logits = F.softmax(self.gate(hidden_states),dim=-1)  # shape is (b * s, dim)
++
++        # 计算topk的专家的输出
++        router_weights, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)  # shape都是 (b * s, top_k)
++
++        # 专家权重归一化
++        router_weights = router_weights / router_weights.sum(dim=-1, keepdim=True)
++
++        # 计算辅助损失
++        aux_loss = self.compute_aux_loss(router_logits, router_weights, selected_experts)
++
++        # 生成专家掩码
++        expert_mask = F.one_hot(selected_experts,num_classes=self.expert_number).to(torch.int32)  # shape是 (b * s, top_k, expert_number)
++        group_list = expert_mask.sum(dim=1).permute(1, 0).sum(dim=1)
++        expert_mask = expert_mask.permute(2, 1, 0)  # (expert_number, top_k, b * s)
++
++        return router_weights, expert_mask, selected_experts, group_list, aux_loss
++
++    def compute_aux_loss(self, router_logits, topk_weights, topk_indices):
++        num_experts = router_logits.size(-1)
++
++        # top-k索引转为 one-hot编码
++        topk_mask = F.one_hot(topk_indices, num_classes=num_experts).to(torch.float32)  # shape is (b * s, top_k, num_experts)
++
++        # 计算每个token分给每个专家的权重
++        expert_weights = (topk_mask * topk_weights.unsqueeze(-1)).sum(dim=1)  # shape is (b * s, num_experts)
++
++        f_i = expert_weights.mean(dim=0)  # 每个专家的平均权重
++        P_i = router_logits.mean(dim=0)  # 每个专家的平均路由概率
++
++        aux_loss = num_experts * torch.sum(f_i.detach() * P_i)  # 辅助损失计算公式
++
++        return aux_loss * self.aux_loss_weight
++
++class SparseMOE(torch.nn.Module):
++    def __init__(
++            self,
++            emb_dim,
++            expert_number,
++            top_k,
++            hidden_size,
++            aux_loss_weight=0.01,
++        ):
++        super().__init__()
++
++        self.expert_number = expert_number
++        self.top_k = top_k
++        self.router = MOERouter(emb_dim, expert_number, top_k, aux_loss_weight)
++        self.cw1 = torch.nn.Parameter(torch.empty((expert_number, hidden_size, emb_dim)))
++        self.cw2 = torch.nn.Parameter(torch.empty((expert_number, emb_dim, hidden_size)))
++        self.cw3 = torch.nn.Parameter(torch.empty((expert_number, hidden_size, emb_dim)))
++        self.init_weights()
++
++    def init_weights(self):
++        for param in [self.cw1, self.cw2, self.cw3]:
++            torch.nn.init.xavier_uniform_(param)
++
++    def _npu_grouped_gemm(self, x, weight, group_list):
++        return NPUGroupedMatmulFunction.apply(x, weight, group_list)
++
++    def compute_ffn_with_grouped_gemm(self, x, cw1, cw2, cw3, group_list):
++        if ENABLE_NPU:
++            w1_out = self._npu_grouped_gemm(x, cw1, group_list)
++            w3_out = self._npu_grouped_gemm(x, cw3, group_list)
++        else:
++            group_list_cpu =group_list.cpu()
++            w1_out = ops.gmm(x, cw1, group_list_cpu, trans_b=True)
++            w3_out = ops.gmm(x, cw3, group_list_cpu, trans_b=True)
++
++        gate = F.silu(w1_out)
++        combined = gate * w3_out
++
++        if ENABLE_NPU:
++            w2_out = self._npu_grouped_gemm(combined, cw2, group_list)
++        else:
++            w2_out = ops.gmm(combined, cw2, group_list_cpu, trans_b=True)
++
++        return w2_out
++
++    def forward(self, x):
++        seq_len, hidden_dim = x.size()
++        hidden_states = x.view(-1, hidden_dim)
++
++        router_weights, expert_mask, selected_experts, group_list, aux_loss = self.router(hidden_states)
++
++        if ENABLE_NPU:
++            expend_x, idx = torch_npu.npu_moe_token_permute(
++                tokens=x,
++                indices=selected_experts,
++                num_out_tokens=seq_len * self.top_k,
++            )
++        else:
++            expend_x, idx = ops.permute(x, selected_experts)
++
++        expand_permuted_rows = self.compute_ffn_with_grouped_gemm(expend_x, self.cw1, self.cw2, self.cw3, group_list)
++
++        if ENABLE_NPU:
++            return torch_npu.npu_moe_token_unpermute(expand_permuted_rows, idx, router_weights), aux_loss
++        else:
++            return ops.unpermute(expand_permuted_rows, idx, router_weights), aux_loss
+diff --git a/generative_recommenders/research/data/eval.py b/generative_recommenders/research/data/eval.py
+index 16026e5c7e25d7b43ad6f845bbb39b61ab536fdd..c7714b3b1dde6d217d164eb1c6e6a32943dd0cf0 100644
+--- a/generative_recommenders/research/data/eval.py
++++ b/generative_recommenders/research/data/eval.py
+@@ -104,7 +104,7 @@ def eval_metrics_v2_from_tensors(
+ 
+     # computes ro- part exactly once.
+     # pyre-fixme[29]: `Union[Tensor, Module]` is not a function.
+-    shared_input_embeddings = model.encode(
++    shared_input_embeddings, aux_loss = model.encode(
+         past_lengths=seq_features.past_lengths,
+         past_ids=seq_features.past_ids,
+         # pyre-fixme[29]: `Union[Tensor, Module]` is not a function.
+diff --git a/generative_recommenders/research/modeling/sequential/autoregressive_losses.py b/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
+index 0d037d67ba4ee4f490a67e3afbbd552f5028ed23..31addd04139de845d2262825fc0c1433f2df4be0 100644
+--- a/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
++++ b/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
+@@ -31,8 +31,7 @@ except ImportError:
+     NPU_ENABLE = False
+ 
+ if NPU_ENABLE:
+-    from pt_jagged_dense_convert import dense_to_jagged_wrapper
+-    torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
++    import fbgemm_ascend  # noqa: F401
+ 
+ 
+ class NegativesSampler(torch.nn.Module):
+diff --git a/generative_recommenders/research/modeling/sequential/hstu.py b/generative_recommenders/research/modeling/sequential/hstu.py
+index 8a573eb0c30e6094cb9e5b7d73f18d98d6efae75..2e035e3cbe7fa191a7271016888e197185ccfef4 100644
+--- a/generative_recommenders/research/modeling/sequential/hstu.py
++++ b/generative_recommenders/research/modeling/sequential/hstu.py
+@@ -45,6 +45,7 @@ from generative_recommenders.research.modeling.similarity_module import (
+ )
+ from generative_recommenders.research.rails.similarities.module import SimilarityModule
+ import prefetch_shape
++from generative_recommenders.modules.moe_layer import SparseMOE
+ 
+ TIMESTAMPS_KEY = "timestamps"
+ 
+@@ -55,16 +56,22 @@ try:
+ except ImportError:
+     NPU_ENABLE = False
+ 
++try:
++    ENABLE_J2D_REPLACE_J2PD = bool(
++        int(os.getenv("ENABLE_J2D_REPLACE_J2PD", "0"))
++    )
++except ValueError as exc:
++    raise ValueError(
++        "ENABLE_J2D_REPLACE_J2PD environment variable is not a valid integer."
++    ) from exc
++
+ if NPU_ENABLE:
+-    try:
+-        torch.ops.load_library(os.getenv('LIB_FBGEMM_NPU_API_SO_PATH'))
+-    except FileNotFoundError as e:
+-        logging.warning(f'libfbgemm_npu_api.so is not exit')
+-    except Exception as e:
+-        logging.warning(f'libfbgemm_npu_api.so failed to load: {e}')
++    import fbgemm_ascend  # noqa: F401
++
++    if ENABLE_J2D_REPLACE_J2PD:
++        from pt_jagged_dense_convert import jagged_2d_to_dense_wrapper
+ 
+-    from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
+-    torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
++        torch.ops.fbgemm.jagged_to_padded_dense = jagged_2d_to_dense_wrapper
+ 
+ try:
+     ENABLE_RELATIVE_ATTENTION_BIAS = bool(int(os.getenv('ENABLE_RAB', 1)))
+@@ -76,6 +83,25 @@ try:
+ except ValueError:
+     raise ValueError("NPU_FUSED_INDEX_SELECT environment variable is not a valid integer.")
+ 
++try:
++    ENABLE_MOE = bool(int(os.getenv('ENABLE_MOE', 0)))
++except ValueError:
++    raise ValueError("ENABLE_MOE environment variable is not a valid integer.")
++
++if ENABLE_MOE:
++    try:
++        moe_expert_num = int(os.getenv('MOE_EXPERT_NUM', 4))
++        moe_top_k = int(os.getenv('MOE_TOP_K', 2))
++        moe_hidden_size = int(os.getenv('MOE_HIDDEN_SIZE', 128))
++        moe_aux_loss_weight = float(os.getenv('MOE_AUX_LOSS_WEIGHT', 0.01))
++    except ValueError:
++        raise ValueError("MOE values are not valid.")
++else:
++    moe_expert_num: int = 4
++    moe_top_k: int = 2
++    moe_hidden_size: int = 128
++    moe_aux_loss_weight: float = 0.01
++
+ 
+ class FusedIndexSelect(torch.autograd.Function):
+     @staticmethod
+@@ -431,6 +457,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+         torch.nn.init.xavier_uniform_(self._o.weight)
+         self._eps: float = epsilon
+ 
++        # moe module
++        if ENABLE_MOE:
++            self.moe_layer = SparseMOE(
++                emb_dim=self._embedding_dim,
++                expert_number=moe_expert_num,
++                top_k=moe_top_k,
++                hidden_size=moe_hidden_size,
++                aux_loss_weight=moe_aux_loss_weight)
++
+     def _norm_input(self, x: torch.Tensor) -> torch.Tensor:
+         return F.layer_norm(x, normalized_shape=[self._embedding_dim], eps=self._eps)
+ 
+@@ -576,6 +611,11 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+             if delta_x_offsets is None
+             else attn_output[delta_x_offsets[0], :]
+         )
++
++        # moe module
++        if ENABLE_MOE:
++            attn_output, aux_loss = self.moe_layer(attn_output)
++
+         if self._concat_ua:
+             a = self._norm_attn_output(attn_output)
+             o_input = torch.cat([u, a, u * a], dim=-1)
+@@ -601,7 +641,7 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+         if return_cache_states and delta_x_offsets is None:
+             v = v.contiguous()
+ 
+-        return new_outputs, (v, padded_q, padded_k, new_outputs)
++        return new_outputs, (v, padded_q, padded_k, new_outputs), aux_loss if ENABLE_MOE else 0.0
+ 
+ 
+ class HSTUJagged(torch.nn.Module):
+@@ -640,13 +680,14 @@ class HSTUJagged(torch.nn.Module):
+         """
+         cache_states: List[HSTUCacheState] = []
+ 
++        aux_loss = 0.0
+         with torch.autocast(
+             "npu" if NPU_ENABLE else "cuda",
+             enabled=self._autocast_dtype is not None,
+             dtype=self._autocast_dtype or torch.float16,
+         ):
+             for i, layer in enumerate(self._attention_layers):
+-                x, cache_states_i = layer(
++                x, cache_states_i, layer_aux_loss = layer(
+                     x=x,
+                     x_offsets=x_offsets,
+                     all_timestamps=all_timestamps,
+@@ -655,10 +696,11 @@ class HSTUJagged(torch.nn.Module):
+                     cache=cache[i] if cache is not None else None,
+                     return_cache_states=return_cache_states,
+                 )
++                aux_loss += layer_aux_loss
+                 if return_cache_states:
+                     cache_states.append(cache_states_i)
+-
+-        return x, cache_states
++        aux_loss = aux_loss / len(self._attention_layers)
++        return x, cache_states, aux_loss
+ 
+     def forward(
+         self,
+@@ -683,7 +725,7 @@ class HSTUJagged(torch.nn.Module):
+         if len(x.size()) == 3:
+             x = torch.ops.fbgemm.dense_to_jagged(x, [x_offsets], prefetch_offset_shape)[0]
+ 
+-        jagged_x, cache_states = self.jagged_forward(
++        jagged_x, cache_states, aux_loss = self.jagged_forward(
+             x=x,
+             x_offsets=x_offsets,
+             all_timestamps=all_timestamps,
+@@ -698,7 +740,7 @@ class HSTUJagged(torch.nn.Module):
+             max_lengths=[invalid_attn_mask.size(1)],
+             padding_value=0.0,
+         )
+-        return y, cache_states
++        return y, cache_states, aux_loss
+ 
+ 
+ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -861,7 +903,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+         )
+ 
+         float_dtype = user_embeddings.dtype
+-        user_embeddings, cached_states = self._hstu(
++        user_embeddings, cached_states, aux_loss = self._hstu(
+             x=user_embeddings,
+             x_offsets=torch.ops.fbgemm.asynchronous_complete_cumsum(past_lengths),
+             all_timestamps=(
+@@ -874,7 +916,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+             cache=cache,
+             return_cache_states=return_cache_states,
+         )
+-        return self._output_postproc(user_embeddings), cached_states
++        return self._output_postproc(user_embeddings), cached_states, aux_loss
+ 
+     def forward(
+         self,
+@@ -898,13 +940,13 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+         Returns:
+             encoded_embeddings of [B, N, D].
+         """
+-        encoded_embeddings, _ = self.generate_user_embeddings(
++        encoded_embeddings, _, aux_loss = self.generate_user_embeddings(
+             past_lengths=past_lengths,
+             past_ids=past_ids,
+             past_embeddings=past_embeddings,
+             past_payloads=past_payloads,
+         )
+-        return encoded_embeddings
++        return encoded_embeddings, aux_loss
+ 
+     def _encode(
+         self,
+@@ -927,7 +969,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+         Returns:
+             (B, D) x float, representing embeddings for the current state.
+         """
+-        encoded_seq_embeddings, cache_states = self.generate_user_embeddings(
++        encoded_seq_embeddings, cache_states, aux_loss = self.generate_user_embeddings(
+             past_lengths=past_lengths,
+             past_ids=past_ids,
+             past_embeddings=past_embeddings,
+@@ -940,9 +982,9 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+             lengths=past_lengths, encoded_embeddings=encoded_seq_embeddings
+         )
+         if return_cache_states:
+-            return current_embeddings, cache_states
++            return current_embeddings, cache_states, aux_loss
+         else:
+-            return current_embeddings
++            return current_embeddings, aux_loss
+ 
+     def encode(
+         self,
+@@ -953,7 +995,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+         delta_x_offsets: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+         cache: Optional[List[HSTUCacheState]] = None,
+         return_cache_states: bool = False,
+-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[HSTUCacheState]]]:
++    ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[HSTUCacheState]], torch.Tensor]:
+         """
+         Runs encoder to obtain the current hidden states.
+ 
+diff --git a/generative_recommenders/research/trainer/train.py b/generative_recommenders/research/trainer/train.py
+index 2891245c4ddd00c749044f14793000374f32c2fd..7ad170863a0b6072ea5bda843f553baf7203fbd4 100644
+--- a/generative_recommenders/research/trainer/train.py
++++ b/generative_recommenders/research/trainer/train.py
+@@ -102,7 +102,6 @@ def get_weighted_loss(
+         weighted_loss = weighted_loss + cur_weighted_loss
+     return weighted_loss
+ 
+-
+ def gather_latency_data(local_data, world_size, device):
+     """
+     收集各 rank 的 latency 数据，返回 list[list[float]]
+@@ -217,6 +216,10 @@ def train_fn(
+     precision_mode: bool = False,
+     skip_step_num: int = 4,
+ ) -> None:
++    enable_inductor = (
++        os.environ.get("MODEL_COMPILE_FLAG", "FALSE").upper() == "TRUE"
++    )
++
+     # to enable more deterministic results.
+     if precision_mode:
+         shuffle = False
+@@ -313,6 +316,29 @@ def train_fn(
+         verbose=True,
+         precision_mode=precision_mode,
+     )
++
++    dense_params = sum(
++        param.numel()
++        for name, param in model.named_parameters()
++        if "_embedding_module" not in name
++    )
++    total_params = sum(param.numel() for param in model.parameters())
++    print(
++        f"====== 模型总参数量: {total_params} , "
++        f"as {total_params / (10**9):.3f} B ======"
++    )
++    print(
++        f"====== 模型参数量（不含embedding collection）: {dense_params} , "
++        f"as {dense_params / (10**9):.3f} B ======"
++    )
++    embedding_params = total_params - dense_params
++    print(
++        f"====== embedding: {embedding_params} , "
++        f"as {embedding_params / (10**9):.3f} B ======"
++    )
++    for name, param in model.named_parameters():
++        print(f"{name}: 形状={param.shape}, 参数量={param.numel()}, 类型={param.dtype}")
++
+     model_debug_str = model.debug_str()
+ 
+     # loss
+@@ -369,6 +395,9 @@ def train_fn(
+     ar_loss = ar_loss.to(device)
+     negatives_sampler = negatives_sampler.to(device)
+     model = DDP(model, device_ids=[rank], broadcast_buffers=False)
++    if enable_inductor:
++        logging.info("Compiling HSTU with torch.compile backend=inductor")
++        model = torch.compile(model, backend="inductor", dynamic=False)
+ 
+     # TODO: wrap in create_optimizer.
+     opt = torch.optim.AdamW(
+@@ -500,7 +529,7 @@ def train_fn(
+ 
+             opt.zero_grad()
+             input_embeddings = model.module.get_item_embeddings(seq_features.past_ids)
+-            seq_embeddings = model(
++            seq_embeddings, aux_loss_moe = model(
+                 past_lengths=seq_features.past_lengths,
+                 past_ids=seq_features.past_ids,
+                 past_embeddings=input_embeddings,
+@@ -535,6 +564,7 @@ def train_fn(
+ 
+             main_loss = loss.detach().clone()
+             loss = get_weighted_loss(loss, aux_losses, weights=loss_weights or {})
++            loss += aux_loss_moe
+ 
+             time_diff = time.time() - start_time
+             print(f"epoch: {epoch}, step: [{batch_id} / {len(train_data_loader)}], loss = {loss}, time = {time_diff}")
+@@ -669,7 +699,7 @@ def train_fn(
+     garther_avg_loss = gather_avg_loss(loss, world_size, device)
+ 
+     if rank == 0:
+-        inductor_flag = 'eager'
++        inductor_flag = "inductor" if enable_inductor else "eager"
+         device_name = "npu" if NPU_ENABLE else "cuda"
+         avg_time = latency_summary(gathered_latency, local_batch_size, dataset_name + "_" + main_module, device_name, inductor_flag)    # 保存e2e耗时
+         final_results = {
+diff --git a/main.py b/main.py
+index 3bb2f7e6f9ad6b48a1646f93de1bc60153cc06c6..4ffc23e6cd7943e33a7d8b4d83592e58adbb2125 100644
+--- a/main.py
++++ b/main.py
+@@ -25,7 +25,6 @@ from typing import List, Optional
+ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"  # Hide excessive tensorflow debug messages
+ import sys
+ 
+-import fbgemm_gpu  # noqa: F401, E402
+ import gin
+ import torch
+ import torch.multiprocessing as mp
+@@ -37,6 +36,11 @@ try:
+ except ImportError:
+     NPU_ENABLE = False
+ 
++if NPU_ENABLE:
++    import fbgemm_ascend  # noqa: F401, E402
++else:
++    import fbgemm_gpu  # noqa: F401, E402
++
+ from absl import app, flags
+ from generative_recommenders.research.trainer.train import train_fn
+ 
+diff --git a/pt_jagged_dense_convert.py b/pt_jagged_dense_convert.py
+index d6b557cb3b9f7fdcbf023106a747a93f1fd3dfdb..db6437d7b0ea67faec4a94649fb4512138e827bf 100644
+--- a/pt_jagged_dense_convert.py
++++ b/pt_jagged_dense_convert.py
+@@ -1,56 +1,20 @@
+-#!/usr/bin/env python3
+-# -*- coding: utf-8 -*-
+-# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
+-
+-import torch
+-
+-
+-def jagged_to_padded_dense(values, offsets, max_lengths, padding_value):
+-    return torch.ops.mxrec.jagged_to_padded_dense(
+-        values=values,
+-        offsets=offsets,
+-        max_lengths=max(max_lengths),
+-        padding_value=padding_value,
+-    )
+-
+-def dense_to_jagged(dense, offsets, total_L=None):
+-    if total_L is None:
+-        total_L = offsets[0][-1].item()
+-    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense, offsets, total_L)
+-    return out0, out1
+-
+-
+-class JaggedToPaddedDense(torch.autograd.Function):
+-    @staticmethod
+-    def forward(ctx, values, offsets, max_lengths, padding_value):
+-        ctx.save_for_backward(*offsets)
+-        ctx.total_L = values.shape[0]
+-        return jagged_to_padded_dense(values, offsets, max_lengths, padding_value)
+-
+-    @staticmethod
+-    def backward(ctx, grad_output):
+-        offsets = list(ctx.saved_tensors)
+-        total_L = ctx.total_L
+-        grad_values, _ = dense_to_jagged(grad_output, offsets, total_L)
+-        return grad_values, None, None, None
+-
+-class DenseToJagged(torch.autograd.Function):
+-    @staticmethod
+-    def forward(ctx, dense, offsets, total_L=None):
+-        ctx.save_for_backward(*offsets)
+-        out0, out1 = dense_to_jagged(dense, offsets, total_L)
+-        ctx.dense_shape = dense.shape
+-        return out0, out1
+-
+-    @staticmethod
+-    def backward(ctx, grad_out0, grad_out1):
+-        offsets = list(ctx.saved_tensors)
+-        max_len = ctx.dense_shape[1]
+-        grad_dense = jagged_to_padded_dense(grad_out0, offsets, [max_len], 0.0)
+-        return grad_dense, None, None
+-
+-def jagged_to_padded_dense_wrapper(values, offsets, max_lengths, padding_value):
+-    return JaggedToPaddedDense.apply(values, offsets, max_lengths, padding_value)
+-
+-def dense_to_jagged_wrapper(dense, offsets, total_L=None):
+-    return DenseToJagged.apply(dense, offsets, total_L)
+\ No newline at end of file
++#!/usr/bin/env python3
++# -*- coding: utf-8 -*-
++# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
++
++from typing import Sequence
++
++import torch
++
++
++def jagged_2d_to_dense_wrapper(
++    values: torch.Tensor,
++    offsets: Sequence[torch.Tensor],
++    max_lengths: Sequence[int],
++    padding_value: float = 0.0,
++) -> torch.Tensor:
++    return torch.ops.fbgemm.jagged_2d_to_dense(
++        values=values,
++        offsets=offsets[0],
++        max_sequence_length=max_lengths[0],
++    )

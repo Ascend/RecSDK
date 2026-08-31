@@ -74,6 +74,7 @@ python run.py xxx.json --eager
 |HSTU_META_1M_LARGE|[HSTU_META_1M_LARGE.json](configs/HSTU_META_1M_LARGE.json)|
 |HSTU_META_20M|[HSTU_META_20M.json](configs/HSTU_META_20M.json)|
 |HSTU_META_20M_LARGE|[HSTU_META_20M_LARGE.json](configs/HSTU_META_20M_LARGE.json)|
+|HSTU_META_7B|[HSTU_META_7B.json](configs/HSTU_META_7B.json)|
 |IFM|[IFM.json](configs/IFM.json)|
 |MIND|[MIND.json](configs/MIND.json)|
 |MMOE|[MMOE.json](configs/MMOE.json)|
