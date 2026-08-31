@@ -1,19 +1,3 @@
-From 809f3b6f27f5c9b0ca4fd908f7c3b25d0aad2c54 Mon Sep 17 00:00:00 2001
-From: chenzihao40 <chenzihao40@huawei.com>
-Date: Wed, 19 Aug 2026 17:21:38 +0800
-Subject: [PATCH] dlrm npu patch
-
----
- data_utils.py                          |   4 +-
- dlrm_data_pytorch.py                   | 161 ++++++++--
- dlrm_s_pytorch.py                      | 400 ++++++++++++++++++-------
- extend_distributed.py                  |  30 +-
- torchrec_dlrm/data/dlrm_dataloader.py  |  13 +-
- torchrec_dlrm/data/multi_hot_criteo.py |  36 ++-
- torchrec_dlrm/dlrm_main.py             |  43 +--
- torchrec_dlrm/multi_hot.py             |  21 +-
- 8 files changed, 493 insertions(+), 215 deletions(-)
-
 diff --git a/data_utils.py b/data_utils.py
 index a0dbdd2..578f98a 100644
 --- a/data_utils.py
@@ -353,7 +337,7 @@ index ba31ed2..d0a7251 100644
      return train_data, train_loader, test_data, test_loader
  
 diff --git a/dlrm_s_pytorch.py b/dlrm_s_pytorch.py
-index e1b42b7..0cf5605 100644
+index e1b42b7..0f51778 100644
 --- a/dlrm_s_pytorch.py
 +++ b/dlrm_s_pytorch.py
 @@ -100,6 +100,16 @@ from torch.nn.parameter import Parameter
@@ -444,25 +428,27 @@ index e1b42b7..0cf5605 100644
 -                # EE.weight.data.copy_(torch.tensor(W))
 -                # approach 3
 -                # EE.weight = Parameter(torch.tensor(W),requires_grad=True)
-+                # 使用nn.Embedding替代nn.EmbeddingBag, inductor时sparse只能为False
-+                EE = nn.Embedding(n, m, sparse=False if use_inductor else True)
++                # 使用nn.Embedding替代nn.EmbeddingBag，梯度是否稀疏由参数控制。
++                EE = nn.Embedding(n, m, sparse=self.use_emb_sparse)
 +                nn.init.uniform_(EE.weight, a=-np.sqrt(1 / n), b=np.sqrt(1 / n))
              if weighted_pooling is None:
                  v_W_l.append(None)
              else:
-@@ -314,6 +321,7 @@ class DLRM_Net(nn.Module):
+@@ -314,6 +321,8 @@ class DLRM_Net(nn.Module):
          md_threshold=200,
          weighted_pooling=None,
          loss_function="bce",
 +        preprocess_dense=False,
++        use_emb_sparse=False,
      ):
          super(DLRM_Net, self).__init__()
  
-@@ -334,6 +342,20 @@ class DLRM_Net(nn.Module):
+@@ -334,6 +343,21 @@ class DLRM_Net(nn.Module):
              self.sync_dense_params = sync_dense_params
              self.loss_threshold = loss_threshold
              self.loss_function = loss_function
 +            self.preprocess_dense = preprocess_dense
++            self.use_emb_sparse = use_emb_sparse
 +            if self.arch_interaction_op == "dot":
 +                interaction_offset = 0 if self.arch_interaction_itself else -1
 +                interaction_indices = torch.tril_indices(
@@ -479,7 +465,7 @@ index e1b42b7..0cf5605 100644
              if weighted_pooling is not None and weighted_pooling != "fixed":
                  self.weighted_pooling = "learned"
              else:
-@@ -450,11 +472,9 @@ class DLRM_Net(nn.Module):
+@@ -450,11 +474,9 @@ class DLRM_Net(nn.Module):
                  ly.append(QV)
              else:
                  E = emb_l[k]
@@ -494,7 +480,7 @@ index e1b42b7..0cf5605 100644
  
                  ly.append(V)
  
-@@ -491,15 +511,7 @@ class DLRM_Net(nn.Module):
+@@ -491,15 +513,7 @@ class DLRM_Net(nn.Module):
              # approach 1: all
              # Zflat = Z.view((batch_size, -1))
              # approach 2: unique
@@ -511,7 +497,7 @@ index e1b42b7..0cf5605 100644
              # concatenate dense features and interactions
              R = torch.cat([x] + [Zflat], dim=1)
          elif self.arch_interaction_op == "cat":
-@@ -515,6 +527,8 @@ class DLRM_Net(nn.Module):
+@@ -515,6 +529,8 @@ class DLRM_Net(nn.Module):
          return R
  
      def forward(self, dense_x, lS_o, lS_i):
@@ -520,7 +506,7 @@ index e1b42b7..0cf5605 100644
          if ext_dist.my_size > 1:
              # multi-node multi-device run
              return self.distributed_forward(dense_x, lS_o, lS_i)
-@@ -522,7 +536,6 @@ class DLRM_Net(nn.Module):
+@@ -522,7 +538,6 @@ class DLRM_Net(nn.Module):
              # single device run
              return self.sequential_forward(dense_x, lS_o, lS_i)
          else:
@@ -528,7 +514,7 @@ index e1b42b7..0cf5605 100644
              return self.parallel_forward(dense_x, lS_o, lS_i)
  
      def distributed_forward(self, dense_x, lS_o, lS_i):
-@@ -763,12 +776,14 @@ def inference(
+@@ -763,12 +778,14 @@ def inference(
      best_auc_test,
      test_ld,
      device,
@@ -544,7 +530,7 @@ index e1b42b7..0cf5605 100644
      if args.mlperf_logging:
          scores = []
          targets = []
-@@ -792,7 +807,7 @@ def inference(
+@@ -792,7 +809,7 @@ def inference(
              X_test,
              lS_o_test,
              lS_i_test,
@@ -553,7 +539,7 @@ index e1b42b7..0cf5605 100644
              device,
              ndevices=ndevices,
          )
-@@ -801,6 +816,8 @@ def inference(
+@@ -801,6 +818,8 @@ def inference(
          # tensor is on GPU memory
          if Z_test.is_cuda:
              torch.cuda.synchronize()
@@ -562,7 +548,7 @@ index e1b42b7..0cf5605 100644
          (_, batch_split_lengths) = ext_dist.get_split_lengths(X_test.size(0))
          if ext_dist.my_size > 1:
              Z_test = ext_dist.all_gather(Z_test, batch_split_lengths)
-@@ -844,7 +861,6 @@ def inference(
+@@ -844,7 +863,6 @@ def inference(
                  ),
              }
  
@@ -570,7 +556,7 @@ index e1b42b7..0cf5605 100644
          for metric_name, metric_function in metrics.items():
              validation_results[metric_name] = metric_function(targets, scores)
              writer.add_scalar(
-@@ -856,6 +872,7 @@ def inference(
+@@ -856,6 +874,7 @@ def inference(
      else:
          acc_test = test_accu / test_samp
          writer.add_scalar("Test/Acc", acc_test, log_iter)
@@ -578,7 +564,7 @@ index e1b42b7..0cf5605 100644
  
      model_metrics_dict = {
          "nepochs": args.nepochs,
-@@ -896,8 +913,47 @@ def inference(
+@@ -896,8 +915,47 @@ def inference(
              ),
              flush=True,
          )
@@ -626,7 +612,7 @@ index e1b42b7..0cf5605 100644
  
  def run():
      ### parse arguments ###
-@@ -962,6 +1018,13 @@ def run():
+@@ -962,6 +1020,13 @@ def run():
      parser.add_argument("--num-indices-per-lookup-fixed", type=bool, default=False)
      parser.add_argument("--num-workers", type=int, default=0)
      parser.add_argument("--memory-map", action="store_true", default=False)
@@ -640,7 +626,7 @@ index e1b42b7..0cf5605 100644
      # training
      parser.add_argument("--mini-batch-size", type=int, default=1)
      parser.add_argument("--nepochs", type=int, default=1)
-@@ -988,6 +1051,10 @@ def run():
+@@ -988,6 +1053,18 @@ def run():
      parser.add_argument("--save-onnx", action="store_true", default=False)
      # gpu
      parser.add_argument("--use-gpu", action="store_true", default=False)
@@ -648,10 +634,18 @@ index e1b42b7..0cf5605 100644
 +    parser.add_argument("--use-npu", action="store_true", default=False)
 +    # inductor
 +    parser.add_argument("--use-inductor", type=str, default="")
++    parser.add_argument(
++        "--no-use-emb-sparse",
++        "--no_use_emb_sparse",
++        dest="use_emb_sparse",
++        action="store_false",
++        default=os.getenv("USE_EMB_SPARSE", "TRUE").upper() == "TRUE",
++        help="Disable sparse gradients for embedding weights (or set USE_EMB_SPARSE=FALSE).",
++    )
      # distributed
      parser.add_argument("--local_rank", type=int, default=-1)
      parser.add_argument("--dist-backend", type=str, default="")
-@@ -1002,6 +1069,8 @@ def run():
+@@ -1002,6 +1079,8 @@ def run():
      parser.add_argument("--enable-profiling", action="store_true", default=False)
      parser.add_argument("--plot-compute-graph", action="store_true", default=False)
      parser.add_argument("--tensor-board-filename", type=str, default="run_kaggle_pt")
@@ -660,7 +654,7 @@ index e1b42b7..0cf5605 100644
      # store/load model
      parser.add_argument("--save-model", type=str, default="")
      parser.add_argument("--load-model", type=str, default="")
-@@ -1026,6 +1095,17 @@ def run():
+@@ -1026,6 +1105,19 @@ def run():
      global writer
      args = parser.parse_args()
  
@@ -674,11 +668,13 @@ index e1b42b7..0cf5605 100644
 +
 +    global use_inductor
 +    use_inductor = args.use_inductor
++    if use_inductor and args.use_emb_sparse:
++        parser.error("--no-use-emb-sparse is required with --use-inductor")
 +
      if args.dataset_multiprocessing:
          assert sys.version_info[0] >= 3 and sys.version_info[1] > 7, (
              "The dataset_multiprocessing "
-@@ -1070,10 +1150,10 @@ def run():
+@@ -1070,10 +1162,10 @@ def run():
          args.test_num_workers = args.num_workers
  
      use_gpu = args.use_gpu and torch.cuda.is_available()
@@ -691,7 +687,7 @@ index e1b42b7..0cf5605 100644
          )
  
      if use_gpu:
-@@ -1082,14 +1162,31 @@ def run():
+@@ -1082,14 +1174,31 @@ def run():
          if ext_dist.my_size > 1:
              ngpus = 1
              device = torch.device("cuda", ext_dist.my_local_rank)
@@ -724,7 +720,7 @@ index e1b42b7..0cf5605 100644
      ### prepare training data ###
      ln_bot = np.fromstring(args.arch_mlp_bot, dtype=int, sep="-")
      # input data
-@@ -1275,7 +1372,10 @@ def run():
+@@ -1275,7 +1384,10 @@ def run():
              print(T.detach().cpu())
  
      global ndevices
@@ -736,15 +732,16 @@ index e1b42b7..0cf5605 100644
  
      ### construct the neural network specified above ###
      # WARNING: to obtain exactly the same initialization for
-@@ -1302,6 +1402,7 @@ def run():
+@@ -1302,6 +1414,8 @@ def run():
          md_threshold=args.md_threshold,
          weighted_pooling=args.weighted_pooling,
          loss_function=args.loss_function,
 +        preprocess_dense=args.defer_dense_preprocess,
++        use_emb_sparse=args.use_emb_sparse,
      )
  
      # test prints
-@@ -1311,7 +1412,7 @@ def run():
+@@ -1311,7 +1425,7 @@ def run():
              print(param.detach().cpu().numpy())
          # print(dlrm)
  
@@ -753,7 +750,7 @@ index e1b42b7..0cf5605 100644
          # Custom Model-Data Parallel
          # the mlps are replicated and use data parallelism, while
          # the embeddings are distributed and use model parallelism
-@@ -1327,7 +1428,7 @@ def run():
+@@ -1327,7 +1441,7 @@ def run():
  
      # distribute data parallel mlps
      if ext_dist.my_size > 1:
@@ -762,7 +759,7 @@ index e1b42b7..0cf5605 100644
              device_ids = [ext_dist.my_local_rank]
              dlrm.bot_l = ext_dist.DDP(dlrm.bot_l, device_ids=device_ids)
              dlrm.top_l = ext_dist.DDP(dlrm.top_l, device_ids=device_ids)
-@@ -1336,7 +1437,7 @@ def run():
+@@ -1336,7 +1450,7 @@ def run():
              dlrm.top_l = ext_dist.DDP(dlrm.top_l)
  
      if not args.inference_only:
@@ -771,7 +768,7 @@ index e1b42b7..0cf5605 100644
              sys.exit("GPU version of Adagrad is not supported by PyTorch.")
          # specify the optimizer algorithm
          opts = {
-@@ -1376,13 +1477,23 @@ def run():
+@@ -1376,13 +1490,23 @@ def run():
  
      ### main loop ###
  
@@ -797,7 +794,7 @@ index e1b42b7..0cf5605 100644
      total_iter = 0
      total_samp = 0
  
-@@ -1398,13 +1509,13 @@ def run():
+@@ -1398,13 +1522,13 @@ def run():
      # Load model is specified
      if not (args.load_model == ""):
          print("Loading saved model {}".format(args.load_model))
@@ -813,7 +810,7 @@ index e1b42b7..0cf5605 100644
                  # NOTE: when targeting inference on single GPU,
                  # note that the call to .to(device) has already happened
                  ld_model = torch.load(
-@@ -1412,6 +1523,11 @@ def run():
+@@ -1412,6 +1536,11 @@ def run():
                      map_location=torch.device("cuda"),
                      # map_location=lambda storage, loc: storage.cuda(0)
                  )
@@ -825,7 +822,7 @@ index e1b42b7..0cf5605 100644
          else:
              # when targeting inference on CPU
              ld_model = torch.load(args.load_model, map_location=torch.device("cpu"))
-@@ -1429,7 +1545,11 @@ def run():
+@@ -1429,7 +1558,11 @@ def run():
          if not args.inference_only:
              optimizer.load_state_dict(ld_model["opt_state_dict"])
              best_acc_test = ld_acc_test
@@ -838,7 +835,7 @@ index e1b42b7..0cf5605 100644
              skip_upto_epoch = ld_k  # epochs
              skip_upto_batch = ld_j  # batches
          else:
-@@ -1509,13 +1629,45 @@ def run():
+@@ -1509,13 +1642,45 @@ def run():
      tb_file = "./" + args.tensor_board_filename
      writer = SummaryWriter(tb_file)
  
@@ -887,7 +884,7 @@ index e1b42b7..0cf5605 100644
              while k < args.nepochs:
                  if args.mlperf_logging:
                      mlperf_logger.barrier()
-@@ -1535,10 +1687,20 @@ def run():
+@@ -1535,10 +1700,20 @@ def run():
                  if k < skip_upto_epoch:
                      continue
  
@@ -912,7 +909,7 @@ index e1b42b7..0cf5605 100644
                      if j == 0 and args.save_onnx:
                          X_onnx, lS_o_onnx, lS_i_onnx, _, _, _ = unpack_batch(inputBatch)
  
-@@ -1547,20 +1709,6 @@ def run():
+@@ -1547,20 +1722,6 @@ def run():
  
                      X, lS_o, lS_i, T, W, CBPP = unpack_batch(inputBatch)
  
@@ -933,7 +930,7 @@ index e1b42b7..0cf5605 100644
                      # Skip the batch if batch size not multiple of total ranks
                      if ext_dist.my_size > 1 and X.size(0) % ext_dist.my_size != 0:
                          print(
-@@ -1570,34 +1718,37 @@ def run():
+@@ -1570,34 +1731,37 @@ def run():
                          continue
  
                      mbs = T.shape[0]  # = args.mini_batch_size except maybe for last
@@ -978,7 +975,7 @@ index e1b42b7..0cf5605 100644
                      # mbs = T.shape[0]  # = args.mini_batch_size except maybe for last
                      # A = np.sum((np.round(S, 0) == T).astype(np.uint8))
  
-@@ -1608,7 +1759,7 @@ def run():
+@@ -1608,7 +1772,7 @@ def run():
                              args.mlperf_logging
                              and (j + 1) % args.mlperf_grad_accum_iter == 0
                          ) or not args.mlperf_logging:
@@ -987,7 +984,7 @@ index e1b42b7..0cf5605 100644
                          # backward pass
                          E.backward()
  
-@@ -1620,19 +1771,18 @@ def run():
+@@ -1620,19 +1784,18 @@ def run():
                              optimizer.step()
                              lr_scheduler.step()
  
@@ -1015,7 +1012,7 @@ index e1b42b7..0cf5605 100644
                      should_test = (
                          (args.test_freq > 0)
                          and (args.data_generation in ["dataset", "random"])
-@@ -1641,11 +1791,16 @@ def run():
+@@ -1641,11 +1804,16 @@ def run():
  
                      # print time, loss and accuracy
                      if should_print or should_test:
@@ -1036,7 +1033,7 @@ index e1b42b7..0cf5605 100644
  
                          str_run_type = (
                              "inference" if args.inference_only else "training"
-@@ -1656,10 +1811,9 @@ def run():
+@@ -1656,10 +1824,9 @@ def run():
                              wall_time = " ({})".format(time.strftime("%H:%M"))
  
                          print(
@@ -1049,7 +1046,7 @@ index e1b42b7..0cf5605 100644
                              + wall_time,
                              flush=True,
                          )
-@@ -1670,6 +1824,9 @@ def run():
+@@ -1670,6 +1837,9 @@ def run():
                          total_iter = 0
                          total_samp = 0
  
@@ -1059,7 +1056,7 @@ index e1b42b7..0cf5605 100644
                      # testing
                      if should_test:
                          epoch_num_float = (j + 1) / len(train_ld) + k + 1
-@@ -1683,8 +1840,6 @@ def run():
+@@ -1683,8 +1853,6 @@ def run():
                              )
  
                          # don't measure training iter time in a test iteration
@@ -1068,7 +1065,7 @@ index e1b42b7..0cf5605 100644
                          print(
                              "Testing at - {}/{} of epoch {},".format(j + 1, nbatches, k)
                          )
-@@ -1695,7 +1850,7 @@ def run():
+@@ -1695,7 +1863,7 @@ def run():
                              best_auc_test,
                              test_ld,
                              device,
@@ -1077,7 +1074,7 @@ index e1b42b7..0cf5605 100644
                              log_iter,
                          )
  
-@@ -1707,7 +1862,9 @@ def run():
+@@ -1707,7 +1875,9 @@ def run():
                              model_metrics_dict["epoch"] = k
                              model_metrics_dict["iter"] = j + 1
                              model_metrics_dict["train_loss"] = train_loss
@@ -1088,7 +1085,7 @@ index e1b42b7..0cf5605 100644
                              model_metrics_dict["opt_state_dict"] = (
                                  optimizer.state_dict()
                              )
-@@ -1788,22 +1945,12 @@ def run():
+@@ -1788,22 +1958,12 @@ def run():
                  best_auc_test,
                  test_ld,
                  device,
@@ -1113,7 +1110,7 @@ index e1b42b7..0cf5605 100644
  
      # plot compute graph
      if args.plot_compute_graph:
-@@ -1895,14 +2042,37 @@ def run():
+@@ -1895,14 +2055,37 @@ def run():
              input_names=all_inputs,
              output_names=["pred"],
              dynamic_axes=dynamic_axes,
@@ -1573,6 +1570,3 @@ index 3633324..2e16a73 100644
          lS_i = lS_i.reshape(-1, batch_size)
          multi_hot_ids_l = []
          for k, (sparse_data_batch_for_table, multi_hot_table) in enumerate(
--- 
-2.52.0.windows.1
-

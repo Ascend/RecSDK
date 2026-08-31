@@ -1,0 +1,39 @@
+diff --git a/behavior_and_multi_task/run_eta.sh b/behavior_and_multi_task/run_eta.sh
+index cc2a8d1..287e9ed 100644
+--- a/behavior_and_multi_task/run_eta.sh
++++ b/behavior_and_multi_task/run_eta.sh
+@@ -12,7 +12,6 @@ DEVICE_ID=${DEVICE_ID:-0}
+ IFS=',' read -r -a DEVICE_IDS <<< "${DEVICE_ID}"
+ NPROC_PER_NODE=${NPROC_PER_NODE:-${#DEVICE_IDS[@]}}
+ NNODES=${NNODES:-1}
+-OPEN_PROFILING=${OPEN_PROFILING:-true}
+ PREPROCESSED_DATASET=${PREPROCESSED_DATASET:-"${SCRIPT_DIR}/data_process/aliccp_out"}
+ MODEL_DIR=${MODEL_DIR:-"${SCRIPT_DIR}/checkpoint"}
+ LOAD_CHECKPOINT=${LOAD_CHECKPOINT:-false}
+@@ -20,7 +19,5 @@ SAVE_CHECKPOINT=${SAVE_CHECKPOINT:-false}
+ REPORT_DIR=${REPORT_DIR:-"${SCRIPT_DIR}/reports"}
+ PROFILING_PATH=${PROFILING_PATH:-"${SCRIPT_DIR}/profiling"}
+ MODE=${MODE:-train}
+-NUM_EPOCHS=${NUM_EPOCHS:-1}
+-BATCH_SIZE=${BATCH_SIZE:-4096}
+ LEARNING_RATE=${LEARNING_RATE:-0.001}
+ MODEL=${MODEL:-eta}
+@@ -55,15 +52,15 @@ torchrun \
+   --load_checkpoint="${LOAD_CHECKPOINT}" \
+   --save_checkpoint="${SAVE_CHECKPOINT}" \
+   --report_dir="${REPORT_DIR}" \
+-  --profiling_mode="${OPEN_PROFILING}" \
++  --profiling_mode="${MODEL_PROFILING_FLAG,,}" \
+   --profiling_path="${PROFILING_PATH}" \
+-  --num_epochs="${NUM_EPOCHS}" \
++  --num_epochs="${MODEL_EPOCH}" \
+   --batch_size="${BATCH_SIZE}" \
+   --learning_rate="${LEARNING_RATE}" \
+   --embedding_size=32 \
+   --hf32=true \
+   --graph=false \
+-  --compile=false \
++  --compile="${MODEL_COMPILE_FLAG,,}" \
+   --dynamic_batch=false \
+   --train_stop_step="${TRAIN_STOP_STEP}" \
+   --val_stop_step="${VAL_STOP_STEP}" \
