@@ -190,6 +190,8 @@ MMOE模型运行前需访问 <https://tianchi.aliyun.com/dataset/74690> 下载al
 
 GPU运行前，需要将DLRM_META.json的`--use-npu`选项替换为`--use-gpu`选项
 
+DLRM_META启用Inductor模式时，需要在DLRM_META.json的`run_cmd`中添加`--no-use-emb-sparse`选项，以禁用Embedding稀疏梯度。
+
 ## HSTU\_META 模型
 
 ### 运行依赖

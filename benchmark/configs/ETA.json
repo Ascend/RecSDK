@@ -1,0 +1,27 @@
+{
+    "name": "ETA",
+    "url": "https://github.com/majibai38-boop/rec-models.git",
+    "model_name": "eta",
+    "commit_id": "27987395c7c99f892d894dac5894aa0786164a52",
+    "patch_path": "patches/eta.patch",
+    "mode": "train",
+    "epoch": 1,
+    "profiling_flag": false,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "env",
+        "DEVICE=npu",
+        "DEVICE_ID=0",
+        "MODE=train",
+        "BATCH_SIZE=4096",
+        "TRAIN_STOP_STEP=200",
+        "VAL_STOP_STEP=1",
+        "PREPROCESSED_DATASET=../../../dataset/eta/aliccp_out",
+        "bash",
+        "behavior_and_multi_task/run_eta.sh"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": []
+}

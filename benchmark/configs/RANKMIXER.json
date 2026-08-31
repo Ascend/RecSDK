@@ -5,13 +5,15 @@
     "commit_id": "97a61056fca443c3246f1838404cfded5122151b",
     "patch_path": "patches/rankmixer.patch",
     "mode": "train",
-    "epoch": 50,
+    "epoch": 2,
     "profiling_flag": false,
     "aclgraph_flag": false,
-    "data_type": "float32",
+    "data_type": "bfloat16",
     "run_cmd": [
         "env",
         "ENABLE_PRECISION_MODE=0",
+        "DEVICE_ID=0,1,2,3,4,5,6,7",
+        "BATCH_SIZE=128",
         "bash",
         "-c",
         "cd ./rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/ && bash run.sh"
