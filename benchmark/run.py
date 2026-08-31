@@ -36,7 +36,11 @@ def read_config(config_path: Path) -> dict:
 
 
 def download_and_install(
-    config: dict, repo_url: str, target_dir: Path, commit_id: str, patch_path: str
+    config: dict,
+    repo_url: str,
+    target_dir: Path,
+    commit_id: str,
+    patch_path: Union[str, List[str]],
 ) -> bool:
     if target_dir.exists():
         logger.info(f"Target directory already exists: {target_dir}")
@@ -68,9 +72,11 @@ def download_and_install(
 
     # Check and apply patch
     if patch_path:
-        patch_file = Path.absolute(Path(patch_path))
-        if not apply_patch(patch_file, target_dir):
-            return False
+        patch_paths = [patch_path] if isinstance(patch_path, str) else patch_path
+        for path in patch_paths:
+            patch_file = Path.absolute(Path(path))
+            if not apply_patch(patch_file, target_dir):
+                return False
     else:
         logger.info("No patch path specified, skipping patch step.")
 

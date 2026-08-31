@@ -1,0 +1,45 @@
+{
+    "name": "HSTU_META_7B",
+    "url": "https://github.com/meta-recsys/generative-recommenders.git",
+    "model_name": "hstu_meta_7b",
+    "commit_id": "d5e2dfe1e547d92146fedef50b2bfc4bf6a6712d",
+    "patch_path": [
+        "patches/hstu_meta_npu.patch",
+        "patches/hstu_meta_npu_moe.patch"
+    ],
+    "mode": "train",
+    "epoch": 1,
+    "profiling_flag": false,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "env",
+        "ENABLE_J2D_REPLACE_J2PD=1",
+        "ENABLE_MOE=1",
+        "MOE_EXPERT_NUM=4",
+        "MOE_TOP_K=4",
+        "MOE_HIDDEN_SIZE=16384",
+        "USE_NPU_HSTU=0",
+        "ENABLE_RAB=0",
+        "ASCEND_RT_VISIBLE_DEVICES=0",
+        "CUDA_VISIBLE_DEVICES=0",
+        "PYTORCH_NPU_ALLOC_CONF=expandable_segments:True",
+        "STOP_STEP=200",
+        "python3",
+        "main.py",
+        "--gin_config_file",
+        "configs/ml-1m/hstu-7B.gin",
+        "--master_port",
+        "32345",
+        "--batch_size",
+        "1",
+        "--skip_step_num",
+        "10"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "mkdir -p tmp/",
+        "python3 preprocess_public_data.py"
+    ]
+}
