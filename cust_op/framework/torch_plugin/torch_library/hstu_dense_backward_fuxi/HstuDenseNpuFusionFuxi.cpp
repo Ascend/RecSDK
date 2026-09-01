@@ -33,7 +33,7 @@ bool HstuBackMaskCheck(int64_t maskType)
     }
 
     if (maskType == MASK_TYPE_TRIU) {
-        printf("maskType current not support triu now, pls use custome mask\n");
+        printf("maskType current not support triu now, pls use custom mask\n");
         return false;
     }
 

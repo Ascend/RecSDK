@@ -1,7 +1,7 @@
 # pylint: disable=too-many-lines
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -547,7 +547,7 @@ class TestHstuJaggedDemo:
         t = self._make_valid_npu_inputs()
         with pytest.raises(Exception) as ctx:
             self._call_op(t, mask=None, mask_type=MaskType.CUSTOM)
-        assert "use custom mask must have valide mask tensor" in str(ctx.value)
+        assert "use custom mask must have valid mask tensor" in str(ctx.value)
 
     def test_jagged_mask_type_out_of_range(self):
         """mask_type 超出 [0, 3]，触发 MaskCheck"""

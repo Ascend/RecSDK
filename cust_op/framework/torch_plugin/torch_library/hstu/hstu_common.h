@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,18 +58,17 @@ inline bool MaskCheck(int64_t maskType, bool maskIsDefine)
 {
     TORCH_CHECK(MASK_TYPE_TRIL <= maskType && maskType <= MASK_TYPE_CUSTOM, "maskType expect in [0, 3], but value is ",
                 maskType);
-    TORCH_CHECK(maskType != MASK_TYPE_TRIU, "maskType current not support triu now, pls use custome mask");
-    TORCH_CHECK(!(maskType == MASK_TYPE_CUSTOM && !maskIsDefine), "use custome mask must have valide mask tensor");
+    TORCH_CHECK(maskType != MASK_TYPE_TRIU, "maskType current not support triu now, pls use custom mask");
+    TORCH_CHECK(!(maskType == MASK_TYPE_CUSTOM && !maskIsDefine), "use custom mask must have valid mask tensor");
     return true;
 }
-
 
 inline bool MaxSeqLenCheck(int64_t maxSeqLen)
 {
-    TORCH_CHECK(maxSeqLen >= MIN_SEQ_LEN && maxSeqLen <= MAX_SEQ_LEN,
-                "maxSeqLen expect in [1, 20480], but value is ", maxSeqLen);
+    TORCH_CHECK(maxSeqLen >= MIN_SEQ_LEN && maxSeqLen <= MAX_SEQ_LEN, "maxSeqLen expect in [1, 20480], but value is ",
+                maxSeqLen);
     return true;
 }
 
-}
+}  // namespace hstu
 #endif  // HSTU_COMMON_H
