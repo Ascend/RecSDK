@@ -10,13 +10,21 @@
 ```shell
 cust_op
 ├── ascendc_op
-│   ├── ai_core_op   # 算子功能实现
-│   └── build        # 算子编译
+│   ├── ai_core_op   # AscendC 算子功能实现
+│   ├── build        # 算子编译
+│   ├── config       # 芯片型号归一化配置（transform.json）
+│   └── scripts      # 算子构建辅助脚本
 ├── framework
-│   └── torch_plugin # 算子适配层实现
+│   ├── torch_plugin # Torch 算子适配层实现
+│   └── tf_plugin    # TensorFlow 算子适配层实现
+├── rec_cust_ops     # rec_cust_ops Python 包（import 入口，加载适配层 .so 并注册 OPP 路径）
+├── tf_cpu_op        # TF CPU 算子
+├── scripts          # whl 打包辅助脚本（custom_opp 提取等）
 ├── test             # 算子测试用例
-└── third_party      # 第三方依赖库
-    └── catlass      # CATLASS源码目录
+├── build_whl.sh     # 统一构建入口（算子编译 + 适配层 + whl 打包）
+├── setup.py         # pip 构建配置
+├── CMakeLists.txt   # CMake 构建入口
+└── RecOps.cmake     # AscendC 算子编译规则（新增算子只需改此文件）
 ```
 
 ## Ascend C参考设计
@@ -27,12 +35,97 @@ cust_op
 
 当前支持两种软件版本配套：PyTorch 2.6.0和PyTorch2.7.1。调用算子前需完成配套软件的安装和所需算子的安装。详细配套关系如下：
 
-| 配套版本  | PyTorch | torch-npu | torchrec  | fbgemm_gpu | hybrid_torchrec |
+| 配套版本  | PyTorch | TorchNPU | torchrec  | fbgemm_gpu | hybrid_torchrec |
 |-------|---------|-----------|-----------|------------|-----------------|
-| 配套版本1 | 2.6.0   | 2.6.0     | 1.1.0+npu | 1.1.0      | 1.1.0           |
-| 配套版本2 | 2.7.1   | 2.7.1     | 1.2.0+npu | 1.2.0      | 1.2.0           |
+| 配套版本1 | 2.7.1+cpu   | 2.7.1    | 1.2.0+npu | 1.2.0+cpu | 1.2.0         |
+| 配套版本2 | 2.10.0+cpu  | 2.10.0   | 1.5.0+npu | 1.5.0+cpu | 1.5.0         |
 
-**后续说明以PyTorch 2.6.0配套版本为例进行说明。**
+## 编译自定义算子
+
+在26.1.0及之前版本，torch_rec_v1框架中采用编译算子 + 算子适配层（libfbgemm_npu_api.so）的方式使用自定义算子。
+
+在26.2.0及之后版本，torch_rec_v1框架中采用导入rec_cust_ops + [fbgemm_ascend](https://gitcode.com/Ascend/fbgemm-ascend)的方式使用自定义算子。
+
+### 26.2.0及之后版本算子编译<a id="build_recsdk_cust_ops"></a>
+
+26.2.0及之后版本的算子包包含rec_cust_ops和fbgemm_ascend两个包。fbgemm_ascend可直接从[fbgemm_ascend Release](https://gitcode.com/Ascend/fbgemm-ascend/releases)获取（fbgemm_ascend版本和PyTorch配套关系参考fbgemm_gpu版本即可），再通过如下指令进行安装。
+
+```bash
+pip3 uninstall -y fbgemm_ascend
+pip3 install fbgemm_ascend-*-cp311-cp311-linux_*.whl
+```
+
+本章节主要介绍rec_cust_ops的编译和安装。通过 `build_whl.sh` 脚本可一键完成rec_cust_ops包的算子编译、torch_plugin适配层（.so）编译和 whl打包，产物统一输出到`dist/`目录。打包完成后，安装`dist/`目录下的whl包，即可通过`import rec_cust_ops`的方式导入自定义算子。torch_rec_v1框架包（hybrid_torchrec/torchrec_embcache）已默认导入fbgemm_ascend、rec_cust_ops模块。
+
+rec_cust_ops包中包含的算子列表可参考 [RecOps.cmake](RecOps.cmake)文件中RECSDK_CUSTOM_OPS_A2/RECSDK_CUSTOM_OPS_A3/RECSDK_CUSTOM_OPS_A5变量定义。
+
+#### 前置条件
+
+```bash
+# 配置 CANN 环境变量
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+# 拉取三方模块（部分算子依赖 CATLASS）
+git submodule update --init --recursive
+```
+
+#### 基础使用
+
+脚本无需任何必选参数，全部环境变量均有默认值，直接执行即可按默认配置（全芯片变体、算子间并行编译）构建出统一whl包。
+
+```bash
+cd RecSDK/cust_op
+bash build_whl.sh
+```
+
+编译完成后，进入dist目录，安装rec_cust_ops*.whl包：
+
+```bash
+pip3 uninstall -y rec_cust_ops
+pip3 install rec_cust_ops*.whl
+```
+
+#### 详细入参（环境变量）
+
+| 环境变量 | 说明 | 默认值 | 示例 |
+|---|---|---|---|
+| `RECSDK_BUILD_VERS` | AscendC算子编译的芯片变体范围，逗号分隔。受所在环境中CANN平台信息限制，只能编译CANN支持的芯片。注意：torch_plugin 适配层 .so始终编译全部变体（A5/A3/A2），不受此变量影响 | `A2,A3,A5` | `RECSDK_BUILD_VERS=A2,A3 bash build_whl.sh` |
+| `SERIAL_BUILD` | 算子编译串/并行开关。取 `ON/1/true/yes` 为串行（旧行为，最保守），取 `OFF/0/false/no` 为并行（不同算子之间并行编译，同名算子跨变体仍串行）；其他值告警并回退为OFF | 未设置时为OFF，即开启并行编译 | `SERIAL_BUILD=ON bash build_whl.sh` |
+| `RECSDK_ASCEND_SERIAL_BUILD` | 串/并行开关的内部兼容变量，优先级低于 `SERIAL_BUILD` | 未设置时为OFF | 一般无需直接使用 |
+
+优先级：`SERIAL_BUILD` > `RECSDK_ASCEND_SERIAL_BUILD` > 默认 OFF。
+
+#### 典型场景
+
+```bash
+# 默认全量构建（A2/A3/A5，并行编译）
+bash build_whl.sh
+
+# 在 A2 机器上构建全量包
+RECSDK_BUILD_VERS=A2,A3 bash build_whl.sh
+
+# 小内存机器退回全串行编译，避免 OOM
+SERIAL_BUILD=ON bash build_whl.sh
+```
+
+### 26.1.0及之前版本算子编译
+
+下载[RecSDK](https://gitcode.com/Ascend/RecSDK)源码，按如下指令进行算子相关包的编译和安装：
+
+```bash
+# 编译算子前，若未配置CANN环境变量则使用如下指令进行配置
+source /usr/local/Ascend/cann/set_env.sh
+
+# 编译并安装算子包（Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz）。
+cd RecSDK/cust_op/ascendc_op/build
+git submodule update --init --recursive  # 拉取三方模块
+bash build_ai_core_op.sh A2
+
+# 安装算子适配层（libfbgemm_npu_api.so）
+cd ../../framework/torch_plugin/torch_library/common/
+bash build_ops.sh
+```
+
+算子编译安装脚本 `build_ai_core_op.sh` 的参数需根据实际芯片架构配置，默认以 `A2` 为例。详细参数和更多说明请参考 [算子编译README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)。
 
 ## 单算子使用说明
 
