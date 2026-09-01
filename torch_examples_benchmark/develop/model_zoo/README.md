@@ -6,7 +6,9 @@
 
 参考[README](../../develop/README.md)
 
-说明:如果只执行mmoe和eta模型样例，可以忽略torchrec,hybrid_torchrec以及算子等依赖的安装。
+说明：如果只执行mmoe和eta模型样例，可以忽略torchrec、hybrid_torchrec以及算子等依赖的安装。
+
+建议容器内可用内存300GB左右，否则加载数据集时可能因内存不足导致训练任务异常结束。
 
 ## 模型运行
 
@@ -21,7 +23,7 @@ pip3 install -r requirements.txt
 ### 数据集准备
 
 1. MMOE模型和ETA模型均以公开的点击与转化预估数据集作为基础数据集。
-2. 对于[Ali-CPP](https://tianchi.aliyun.com/dataset/408)数据集，我们提供完整的预处理流程。
+2. 对于[Ali-CCP](https://tianchi.aliyun.com/dataset/408)数据集，我们提供完整的预处理流程。
    
     下载以上链接数据集sample_test.tar.gz和sample_train.tar.gz（2个压缩包共约8.9GB）至当前路径下的aliccp目录。
     

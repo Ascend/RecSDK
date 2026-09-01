@@ -13,17 +13,19 @@
 
 ## 版本配套说明
 
-本模型迁移依赖特定版本的CANN、PyTorch、驱动和固件，源码编译需使用指定版本的Python、GCC、CMake等工具，仅支持昇腾平台（Atlas 800T A2），软件环境以Rec SDK Torch提供的基础镜像环境为准。
+本模型迁移依赖特定版本的CANN、PyTorch、驱动和固件，源码编译需使用指定版本的Python、GCC、CMake等工具，仅支持昇腾平台（Atlas 800T A2），基础软件版本以Rec SDK Torch提供的基础镜像环境为准，主要配套软件版本如下：
 
-| 软件名称  | PyTorch | torch_npu | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
+| 软件名称  | PyTorch | TorchNPU | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
 |-------|---------|-----------|-----------|------------|-----------------|-------------------|
-| 配套版本 | 2.7.1   | 2.7.1     | 1.2.0+npu | 1.2.0+cpu      | 1.2.0           | 1.2.0             |
+| 配套版本 | 2.7.1+cpu   | 2.7.1     | 1.2.0+npu | 1.2.0+cpu      | 1.2.0           | 1.2.0             |
 
 注：在26.1.0及之后版本的镜像中，hybrid_torchrec、torchrec_embcache、torchrec三个包作为子包统一被torch-rec-v1软件包包装，此时无法直接使用pip3查看3个子包信息，但可直接在Python脚本中进行import使用。
 
 ## 基础镜像
 
 基础镜像请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中“镜像下载”页面，下载最新版本的RecSDK-Torch镜像。
+
+注：当前基础镜像中提供的软件版本为PyTorch 2.6.0配套，请在**启动容器**后参见[升级PyTorch 2.7.1版本配套](#升级pytorch-271版本配套)进行软件版本升级。
 
 ## 启动容器
 
@@ -98,25 +100,62 @@ pip3 install torchrec_embcache-*-py3-none-linux*.whl
 
 ### 3. 安装自定义算子相关包
 
+#### 3.1 安装fbgemm_ascend
+
+从[fbgemm_ascend](https://gitcode.com/Ascend/fbgemm-ascend/releases)获取最新v1.2.0版本（配套PyTorch 2.7.1）的fbgemm_ascend算子whl包并参考如下指令安装：
+
+```bash
+pip3 uninstall -y fbgemm_ascend
+pip3 install fbgemm_ascend-*.whl
+```
+
+#### 3.2 安装rec_cust_ops
+
 下载[RecSDK](https://gitcode.com/Ascend/RecSDK)源码，按如下指令进行算子相关包的编译和安装：
 
 ```bash
-# 编译算子前，需使能CANN环境变量。默认路径安装CANN包时，使能CANN环境变量指令如下：
+# 配置CANN环境变量
 source /usr/local/Ascend/cann/set_env.sh
-unset ASCEND_CUSTOM_OPP_PATH
 
-# 编译并安装算子包（Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz）。
-cd RecSDK
+# 编译并安装rec_cust_ops算子包
+cd RecSDK/cust_op
 git submodule update --init --recursive 
-cd cust_op/ascendc_op/build
-bash build_ai_core_op.sh A2
-
-# 可选：若仅需安装部分算子，可在其他容器内编译，并将build/output/recsdk_ops路径下所需算子包拷贝到当前环境，参考如下指令安装：
-# bash mxrec_opp_split_embedding_codegen_forward_unweighted.run
-
-# 安装算子适配层（libfbgemm_npu_api.so）
-cd ../../framework/torch_plugin/torch_library/common/
-bash build_ops.sh
+bash build_whl.sh
+cd dist
+pip3 uninstall -y rec_cust_ops
+pip3 install rec_cust_ops*.whl
 ```
 
-注意：执行完"安装算子适配层"步骤后，融合算子的依赖包libfbgemm_npu_api.so会生成在同目录下的build文件夹下，并自动拷贝到python默认的site-package目录。也可以将该so包拷贝到指定的目录，在后续模型运行时会配置该文件的路径。
+rec_cust_ops算子包更多编译安装说明请参见[rec_cust_ops编译安装](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md#build_recsdk_cust_ops)。
+
+## 附录
+
+### 升级PyTorch 2.7.1版本配套
+
+1. 升级PyTorch，TorchNPU，fbgemm_gpu
+
+    卸载已安装的包：
+
+    ```bash
+    pip3 uninstall -y fbgemm_gpu torch_npu torch
+    ```
+
+    安装PyTorch和TorchNPU：请参见[PyTroch框架下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=175&ids=89dda9ba9de741349efa03687a487678%2C96%2C108%2C1%2C6%2C177%2C)进行安装。
+
+    安装fbgemm_gpu:
+
+    ```bash
+    pip3 install fbgemm_gpu==1.2.0+cpu -i https://download.pytorch.org/whl/cpu 
+    ```
+
+    注：若安装fbgemm_gpu时出现SSL验证失败，可在安装指令末尾添加` --trusted-host download-r2.pytorch.org `进行临时规避。
+
+2. 升级RecSDK相关包
+    
+    卸载已安装的包：
+
+    ```bash
+    pip3 uninstall -y torchrec_embcache hybrid_torchrec torchrec
+    ```
+
+    参考[安装依赖](#安装依赖)章节进行源码编译。

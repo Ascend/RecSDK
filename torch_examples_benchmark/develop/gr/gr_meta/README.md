@@ -39,7 +39,7 @@ cp ../gr_npu.patch ./ && git apply gr_npu.patch
 pip3 install -r requirements.txt
 ```
 
-说明:本模型样例是迁移NPU适配，并在pytorch框架下2.6.0配套版本运行，已忽略nvidia和tensorflow相关安装包,并调整部分配套依赖包版本。
+说明:本模型样例是迁移NPU适配，并在PyTorch框架下2.7.1配套版本运行，已忽略nvidia和tensorflow相关安装包，并调整部分配套依赖包版本。
 
 ## 数据集准备
 
