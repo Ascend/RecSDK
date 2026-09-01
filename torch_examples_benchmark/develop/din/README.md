@@ -24,8 +24,6 @@
 
 请参考：[模型样例运行环境说明](../README.md)
 
-建议使用Debian 12或更高版本OS作为运行环境。已验证operEuler 22.03环境下安装的protoc版本较低，无法编译proto文件。
-
 ## DIN源码适配
 
 将DIN(Deep Interest Network)模型迁移到NPU上并适配NPU算子，代码修改部分已经编写在`din_npu.patch`中，载入命令如下：
@@ -37,22 +35,20 @@ cd TorchEasyRec && git checkout 9ffe1f09d336d3a5cdb5bb6970aa8cc8bc648b2e
 cp ../din_npu.patch ./ && git apply din_npu.patch
 ```
 
-将代码仓中`.proto`定义文件编译为python代码。
-
-先安装Protocl Buffers编译器，如基于Debian 12系统参考命令:
+安装Protocl Buffers编译器，如基于Debian 12系统参考命令:
 
 ```bash
 apt-get install protobuf-compiler
 ```
 
-安装Protocl Buffers编译器后，执行以下命令编译`.proto`文件：
+> Protocl Buffers版本（可通过`protoc --version`查看版本）需要>=3.19；若默认安装的版本低于3.19，请手动卸载已安装的版本（Debian 12卸载命令参考：`apt-get remove protobuf-compiler`），再参考[FAQ](#faq)手动安装Protocl Buffers 3.19版本。
+
+安装Protocl Buffers编译器后，执行以下命令将代码仓中`*.proto`文件编译为python代码：
 
 ```bash
 protoc --proto_path=./ --python_out=./ tzrec/protos/*.proto
 protoc --proto_path=./ --python_out=./ tzrec/protos/models/*.proto
 ```
-
-说明：protoc版本需要>=3.19，如默认安装的版本过低，请手动升级安装。
 
 ### 安装依赖
 
@@ -90,9 +86,17 @@ tar xf taobao_data_train.tar.gz -C data
 tar xf taobao_data_eval.tar.gz -C data
 ```
 
+若在使用wget指令获取软件包时出现SSLError可在wget指令末尾加上` --no-check-certificate `参数进行临时规避。
+
 ## 模型运行
 
-修改run.sh 脚本,然后执行。
+拷贝run.sh脚本：
+
+```bash
+cp ../run.sh ./
+```
+
+根据实际情况修改run.sh，修改后`bash run.sh`启动模型:
 
 ```shell
 export LIB_FBGEMM_NPU_API_SO_PATH="/path/to/libfbgemm_npu_api.so"      # 根据实际情况修改
@@ -106,6 +110,8 @@ torchrun --master_addr=localhost --master_port=32555 \
          --model_dir experiments/multi_tower_din_taobao_local
 ```
 
+run.sh脚本中torchrun指令后部分参数说明：
+
 –pipeline_config_path: 训练用的配置文件
 
 –train_input_path: 训练数据的输入路径
@@ -115,3 +121,18 @@ torchrun --master_addr=localhost --master_port=32555 \
 –model_dir: 模型训练目录
 
 ## FAQ
+
+1. 手动安装Protocl Buffers 3.19版本
+
+参考如下指令进行安装：
+
+```bash
+cd /tmp
+wget https://github.com/protocolbuffers/protobuf/releases/download/v3.19.6/protobuf-all-3.19.6.tar.gz --no-check-certificate
+tar -xzf protobuf-all-3.19.6.tar.gz
+cd protobuf-3.19.6
+./configure --prefix=/usr/local
+make -j$(nproc)
+make install
+ldconfig
+```

@@ -29,21 +29,14 @@ pip3 install gin-config
 ```shell
 git clone https://github.com/NVIDIA/recsys-examples.git
 cd recsys-examples && git checkout v25.05
-cp -f ../gr_nv2npu.patch ./ && git apply gr_nv2npu.patch
+cp -f ../gr_nv2npu.patch ./ && git apply gr_nv2npu.patch &&& cd -
 ```
 
 ## 模型运行
 
-### 拷贝run.sh到hstu目录
-   
-```shell
-cp ../run.sh ./examples/hstu/
-cd ./examples/hstu
-```
-
 ### 安装 MindSpeed 和 Megatron-LM
 
-请参考[链接](https://gitcode.com/Ascend/MindSpeed/tree/core_r0.8.0)进行安装。
+请在README同层级目录，参考[链接](https://gitcode.com/Ascend/MindSpeed/tree/core_r0.8.0)进行MindSpeed 和 Megatron-LM的安装。
 
 在gr_nv目录下载Mindspeed文件夹和Megatron-LM文件夹
 
@@ -52,23 +45,30 @@ cd ./examples/hstu
    |-- Mindspeed
    |-- Megatron-LM
    |-- recsys-examples
+```
 
+### 拷贝run.sh到hstu目录并进入hstu目录
+
+进入run.sh脚本所在目录，再执行如下指令：
+
+```shell
+cp run.sh ./recsys-examples/examples/hstu/
+cd recsys-examples/examples/hstu/
 ```
 
 ### 准备数据集
 
-请参考[链接](https://github.com/NVIDIA/recsys-examples/blob/v25.05/examples/hstu/README.md#dataset-preprocessing)准备数据集，示例为ml-20m数据集。
+请参考[链接](https://github.com/NVIDIA/recsys-examples/blob/v25.05/examples/hstu/README.md#dataset-preprocessing)准备数据集，数据集名称选择kuairand-pure。如下示例为kuairand-pure数据集处理后的文件结构。
 
 ```shell
--- tm_data
+-- tmp_data
    |-- KuaiRand-Pure
       |-- LICENSE                               # LICENSE
       |-- data                                  # 数据
       |-- load_data_pure.py                     # 加载文件
-
 ```
 
-tm_data放置在recsys-examples/examples/hstu路径下。
+注：tmp_data放置在recsys-examples/examples/hstu路径下。
 
 ### 执行命令
 
