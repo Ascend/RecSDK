@@ -98,7 +98,7 @@ source /etc/profile
 
 declare -A OP_PLUGIN_MAP=(
   ["asynchronous_complete_cumsum"]="asynchronous_complete_cumsum"
-  ["backward_codegen_adagrad_unweighted_exact"]="split_embedding_codegen_forward_unweighted"
+  ["recops_backward_codegen_adagrad_unweighted_exact"]="split_embedding_codegen_forward_unweighted"
   ["block_bucketize_sparse_features"]="block_bucketize_sparse_features"
   ["concat_jagged_tensor"]="concat_2d_jagged"
   ["concat_jagged_tensor_grad"]="concat_2d_jagged"
@@ -130,7 +130,7 @@ declare -A OP_PLUGIN_MAP=(
   ["relative_attn_bias_time"]="relative_attn_bias"
   ["reverse_sequence"]="reverse_sequence"
   ["segment_sum_csr"]="segment_sum_csr"
-  ["split_embedding_codegen_forward_unweighted"]="split_embedding_codegen_forward_unweighted"
+  ["recops_split_embedding_codegen_forward_unweighted"]="split_embedding_codegen_forward_unweighted"
   ["token_mixing"]="token_mixing"
   ["select_dim1_to_permute"]="keyed_jagged_index_select_dim1"
 )
@@ -149,8 +149,8 @@ dense_to_jagged
 jagged_to_padded_dense
 permute_pooled_embs
 permute2d_sparse_data
-split_embedding_codegen_forward_unweighted
-backward_codegen_adagrad_unweighted_exact
+recops_split_embedding_codegen_forward_unweighted
+recops_backward_codegen_adagrad_unweighted_exact
 hstu_dense_forward_fuxi
 hstu_dense_backward_fuxi
 disentangle_attention

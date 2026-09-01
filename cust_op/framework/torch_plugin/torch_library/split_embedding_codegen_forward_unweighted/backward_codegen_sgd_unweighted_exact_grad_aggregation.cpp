@@ -133,7 +133,7 @@ public:
         TORCH_CHECK(!indice_weights, "indice_weights is unsupported.");
         static auto embedding_codegen_forward_op =
             torch::Dispatcher::singleton()
-                .findSchemaOrThrow("fbgemm::split_embedding_codegen_forward_unweighted_cuda", "")
+                .findSchemaOrThrow("mxrec::split_embedding_codegen_forward_unweighted_cuda", "")
                 .typed<decltype(split_embedding_codegen_forward_unweighted_cuda)>();
 
         return {embedding_codegen_forward_op.call(
@@ -196,8 +196,8 @@ public:
 
         static auto embedding_codegen_unweighted_backward_op =
             torch::Dispatcher::singleton()
-                .findSchemaOrThrow(
-                    "fbgemm::split_embedding_backward_codegen_sgd_unweighted_exact_cuda_grad_aggregation", "")
+                .findSchemaOrThrow("mxrec::split_embedding_backward_codegen_sgd_unweighted_exact_cuda_grad_aggregation",
+                                   "")
                 .typed<decltype(split_embedding_backward_codegen_sgd_unweighted_exact_cuda_grad_aggregation)>();
 
         const auto grad_dev_weights = embedding_codegen_unweighted_backward_op.call(
@@ -331,14 +331,15 @@ at::Tensor split_embedding_backward_codegen_sgd_unweighted_exact_npu_grad_aggreg
 
     const int iter = 0;
     const float beta = 0;
+    const double eps = 0;
 
-    EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_output, dev_weights, uvm_weights, lxu_cache_weights,
-                 weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
+    EXEC_NPU_CMD(aclnnRecopsBackwardCodegenAdagradUnweightedExact, grad_output, dev_weights, uvm_weights,
+                 lxu_cache_weights, weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
                  lxu_cache_locations, _unused, _unused, _unused, _unused, _unused, _unused, _unused, _unused,
                  hash_indices, unique_ids, unique_offsets, unique_inverse, offset_per_key, t_max_D,
                  total_hash_size_bits, pooling_mode, BT_block_size, max_segment_length_per_warp, stochastic_rounding,
                  info_B_num_bits, info_B_mask_int64, use_uniq_cache_locations, use_homogeneous_placements, optim_type,
-                 beta, learning_rate, beta, beta, iter, use_optimize, output, _unused, _unused, dev_weights);
+                 eps, learning_rate, beta, beta, iter, use_optimize, output, _unused, _unused, dev_weights);
 
     Tensor unique_offsets_size = unique_offsets * t_max_D * output.element_size();
     Tensor grad_accumulate_offsets_size = grad_accumulate_offsets * output.element_size();
@@ -367,21 +368,21 @@ at::Tensor split_embedding_backward_codegen_sgd_unweighted_exact_npu_grad_aggreg
     const auto _unused_last = at::Tensor();
 
     bool use_optimize_last_step = true;
-    EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_last_step, dev_weights, uvm_weights,
+    EXEC_NPU_CMD(aclnnRecopsBackwardCodegenAdagradUnweightedExact, grad_last_step, dev_weights, uvm_weights,
                  lxu_cache_weights, weights_placements, weights_offsets, D_offsets, hash_size_cumsum,
                  indices_multi_step, offsets_multi_step, lxu_cache_locations, _unused_last, _unused_last, _unused_last,
                  _unused_last, _unused_last, _unused_last, _unused_last, _unused_last, hash_indices, unique_multi_step,
                  unique_offset_multi_step, unique_inverse_multi_step, table_offsets_multi, t_max_D_last,
                  total_hash_size_bits, pooling_mode, BT_block_size, max_segment_length_per_warp, stochastic_rounding,
                  info_B_num_bits, info_B_mask_int64, use_uniq_cache_locations, use_homogeneous_placements,
-                 optim_type_last, beta, learning_rate, beta, beta, iter, use_optimize_last_step, output_last,
+                 optim_type_last, eps, learning_rate, beta, beta, iter, use_optimize_last_step, output_last,
                  _unused_last, _unused_last, dev_weights);
     return at::Tensor();
 }
 
 };  // namespace fbgemm_npu_lookups
 
-TORCH_LIBRARY_FRAGMENT(fbgemm, m)
+TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
     m.def("split_embedding_codegen_lookup_sgd_function_grad_aggregation("
           "    Tensor placeholder_autograd_tensor, "
@@ -445,7 +446,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
                            TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_sgd_function_grad_aggregation)));
 }
 
-TORCH_LIBRARY_FRAGMENT(fbgemm, m)
+TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
     m.def("split_embedding_backward_codegen_sgd_unweighted_exact_cuda_grad_aggregation("
           "    Tensor grad_output, "

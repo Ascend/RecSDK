@@ -4,13 +4,14 @@
 
 import logging
 import random
-import sysconfig
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import List
 
 import pytest
 import torch
-import torch.nn as nn
+from torch import nn
+from torch.optim import Adagrad, SGD, SparseAdam
 from fbgemm_gpu.split_embedding_configs import EmbOptimType
 from fbgemm_gpu.split_table_batched_embeddings_ops_common import (
     EmbeddingLocation,
@@ -18,17 +19,13 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_common import (
 )
 from fbgemm_gpu.split_table_batched_embeddings_ops_training import SplitTableBatchedEmbeddingBagsCodegen
 from hybrid_torchrec.distributed.batched_embedding_kernel import HybridSplitTableBatchedEmbeddingBagsCodegen
-from torch.optim import Adam, Adagrad, SGD, SparseAdam
-from torchrec.optim.rowwise_adagrad import RowWiseAdagrad
+from torchrec.optim.rowwise_adagrad import RowWiseAdagrad  # pylint: disable=no-name-in-module
 
-import torchrec
-from torchrec import JaggedTensor, KeyedJaggedTensor, PoolingType, ComputeDevice
+from torchrec import JaggedTensor, PoolingType, ComputeDevice  # pylint: disable=no-name-in-module
 
 logging.getLogger().setLevel(logging.INFO)
 DEVICEID = "npu:0"
 EPOCH = 1
-
-torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 TORCH_POOLING_MODE_TO_FBGEMM = {
     PoolingType.SUM: PoolingMode.SUM,
@@ -95,15 +92,15 @@ class TestModel(torch.nn.Module):
             self.name2table[config.name] = collection(
                 num_embeddings=config.num_embeddings,
                 embedding_dim=config.embedding_dim,
-                sparse=False if params.optim in (SGD, RowWiseAdagrad) else True,
+                sparse=params.optim not in (SGD, RowWiseAdagrad),
                 device=torch.device("cpu"),
-                **kwargs
+                **kwargs,
             )
             self.name2table[config.name].weight.data.copy_(weights[ind])
 
     def forward(self, jt_lst):
         output: List[torch.Tensor] = []
-        if (self.mode == PoolingType.NONE):
+        if self.mode == PoolingType.NONE:
             for ind, tid in enumerate(self.feature_map):
                 output.append(self.name2table[self.table_names[tid]](jt_lst[ind].values()))
             output = torch.concat(output, dim=0)
@@ -131,15 +128,11 @@ def construct_collection_configs(weights, params):
     weights_offset = 0
     for table_id, (num_embeddings, embedding_dim) in enumerate(params.tables):
         table_name = f"t_{table_id}"
-        table_configs = table_config_type(
-            name=table_name,
-            embedding_dim=embedding_dim,
-            num_embeddings=num_embeddings
-        )
+        table_configs = table_config_type(name=table_name, embedding_dim=embedding_dim, num_embeddings=num_embeddings)
 
         # 将一维的weights整理成多张二位的embedding表
         table_size = num_embeddings * embedding_dim
-        table_weights = weights[weights_offset:weights_offset + table_size]
+        table_weights = weights[weights_offset : weights_offset + table_size]
         table_weights = table_weights.reshape(num_embeddings, embedding_dim)
 
         table_configs_list.append(table_configs)
@@ -160,7 +153,7 @@ def lookup_cpu(jt_lst, weights, params):
         # forward
         output = model(jt_lst[i])
         # 将多个表的查询结果合并
-        loss = torch.sum(output ** 2 / 2)
+        loss = torch.sum(output**2 / 2)
 
         # backward
         optimizer.zero_grad()
@@ -200,24 +193,24 @@ def lookup_npu(indices, offsets, weights, jt_lst, params):
     for i in range(EPOCH):
         indice = indices[i].to(DEVICEID)
         offset = offsets[i].to(DEVICEID)
-        if params.unique:   
+        kwargs = {}
+        if params.unique:
             unique_indices, unique_inverse, unique_offset = generate_unique(jt_lst[i], params.feature_map)
             unique_indices = torch.cat(unique_indices).to(DEVICEID).to(torch.int64)
             unique_inverse = torch.cat(unique_inverse).to(DEVICEID).to(torch.int64)
             unique_offset = torch.Tensor(unique_offset).to(DEVICEID).to(torch.int64)
             kwargs = dict(unique_indices=unique_indices, unique_offset=unique_offset, unique_inverse=unique_inverse)
         output = tbe(indice, offset, **kwargs)
-        loss = torch.sum(output ** 2 / 2)
+        loss = torch.sum(output**2 / 2)
         loss.backward()
     return output, tbe.weights_dev
 
 
 def create_data(params):
-    total_size = sum([num_embeddings * embedding_dim for (num_embeddings, embedding_dim) in params.tables])
+    total_size = sum(num_embeddings * embedding_dim for (num_embeddings, embedding_dim) in params.tables)
     indices_tests = []
     offsets_tests = []
     jt_lsts = []
-    kjts = []
     for _ in range(EPOCH):
         indices_test = []
         offsets_test = []
@@ -238,8 +231,8 @@ def create_data(params):
 
         indices_tests.append(indices_test)
         offsets_tests.append(offsets_test)
-        jt_lsts.append(jt_lst) 
-        
+        jt_lsts.append(jt_lst)
+
     weights_test = torch.randn(total_size).to(torch.float32)
 
     return indices_tests, offsets_tests, weights_test, jt_lsts
@@ -296,10 +289,9 @@ def execute(params):
     indices_test, offsets_test, weights_test, jt_lst = create_data(params)
 
     lookup_golden, weights_golden = lookup_cpu(jt_lst, weights_test, params)
-    lookup_npu_result, weights_npu_result = lookup_npu(indices_test, offsets_test, weights_test, jt_lst,
-                                                       params)
+    lookup_npu_result, weights_npu_result = lookup_npu(indices_test, offsets_test, weights_test, jt_lst, params)
 
-    total_size = sum([num_embeddings * embedding_dim for (num_embeddings, embedding_dim) in params.tables])
+    total_size = sum(num_embeddings * embedding_dim for (num_embeddings, embedding_dim) in params.tables)
     lookup_npu_result = lookup_npu_result.detach().cpu()
     weights_npu_result = weights_npu_result.detach().cpu()
 

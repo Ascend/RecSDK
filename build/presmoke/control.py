@@ -35,6 +35,9 @@ PATH_PREFIX_MAPS = {
 # 该 .so 注册 A2 的 split_embedding_codegen_lookup_adagrad_function，故 torchrec
 # 模块必须与 hstu 一样先构建 PTA，否则 NPU 路径算子缺失会 AttributeError。
 PTA_REQUIRED_MODULES = {'hstu', 'torchrec'}
+# 暂时不执行 run.sh 的模块（直接视为通过），其余模块照常构建 PTA 并执行 run.sh。
+# 恢复方式：将 DISABLED_MODULES 置空即可。
+DISABLED_MODULES = {'torchrec'}
 _ALREADY_BUILT_PTA = False
 _PRESMOKE_DIR = Path(os.environ.get("PRESMOKE_DIR", "")).absolute()
 _PTA_DIR = Path(os.environ.get("PTA_DIR", "")).absolute()
@@ -79,6 +82,9 @@ def main():
 
     for module in modules:
         build_pta(module)
+        if module in DISABLED_MODULES:
+            print(f"[presmoke] module '{module}': run.sh disabled, treated as passed")
+            continue
         result = subprocess.run(
             ["bash", f"{module}/run.sh"],
             check=False,

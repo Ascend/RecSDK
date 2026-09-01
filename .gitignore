@@ -18,3 +18,19 @@ __pycache__/
 **/embcache_pybind.so
 **/hybrid_torchrec/version.py
 **/torchrec_embcache/version.py
+
+# 忽略 autogen 生成的嵌套算子目录 (ai_core_op/<op>/<arch>/<op>/，含 CMakeLists.txt 的算子工程)
+# 源码结构为 ai_core_op/<op>/<arch>/{op_host,op_kernel,README.md,run.sh,<op>.json}
+# autogen 会在 <arch>/ 下再套一层 <op>/ 生成完整算子工程，不纳入版本控制
+cust_op/ascendc_op/ai_core_op/*/c310/*/CMakeLists.txt
+cust_op/ascendc_op/ai_core_op/*/v220/*/CMakeLists.txt
+cust_op/ascendc_op/ai_core_op/*/c310/*/op_host/
+cust_op/ascendc_op/ai_core_op/*/v220/*/op_host/
+cust_op/ascendc_op/ai_core_op/*/c310/*/op_kernel/
+cust_op/ascendc_op/ai_core_op/*/v220/*/op_kernel/
+cust_op/ascendc_op/ai_core_op/*/c310/*/framework/
+cust_op/ascendc_op/ai_core_op/*/v220/*/framework/
+cust_op/ascendc_op/ai_core_op/*/c310/*/build.sh
+cust_op/ascendc_op/ai_core_op/*/v220/*/build.sh
+cust_op/ascendc_op/ai_core_op/*/c310/*/CMakePresets.json
+cust_op/ascendc_op/ai_core_op/*/v220/*/CMakePresets.json

@@ -69,11 +69,13 @@ set(RECSDK_CUSTOM_OPS_A5
     relative_attn_bias_time
     reverse_sequence
     token_mixing
-    split_embedding_codegen_forward_unweighted
-    backward_codegen_adagrad_unweighted_exact
+    recops_split_embedding_codegen_forward_unweighted
+    recops_backward_codegen_adagrad_unweighted_exact
 )
 
 # ================================ A3 ops ================================
+# 注：与主仓 develop 对齐，A3(ai_core-Ascend910_93) 默认放开全部算子；
+# 仅 multislice_concat / token_mixing 在主仓即未编（保留注释）。
 set(RECSDK_CUSTOM_OPS_A3
     concat_jagged_tensor
     concat_jagged_tensor_grad
@@ -95,8 +97,8 @@ set(RECSDK_CUSTOM_OPS_A3
     relative_attn_bias_time
     reverse_sequence
     # token_mixing
-    split_embedding_codegen_forward_unweighted
-    backward_codegen_adagrad_unweighted_exact
+    recops_split_embedding_codegen_forward_unweighted
+    recops_backward_codegen_adagrad_unweighted_exact
 )
 
 # ================================ A2 ops ================================
@@ -121,8 +123,8 @@ set(RECSDK_CUSTOM_OPS_A2
     relative_attn_bias_time
     reverse_sequence
     token_mixing
-    split_embedding_codegen_forward_unweighted
-    backward_codegen_adagrad_unweighted_exact
+    recops_split_embedding_codegen_forward_unweighted
+    recops_backward_codegen_adagrad_unweighted_exact
 )
 
 # ---------------------------------------------------------------------------

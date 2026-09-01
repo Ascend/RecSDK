@@ -95,6 +95,9 @@ disable = [
     "wrong-import-order",
     "wrong-import-position",
     "import-error",
+
+    # 跨文件重复代码结构（hybrid_lookup_invoke 各 optimizer 文件结构相似属设计意图）
+    "duplicate-code",
 ]
 
 # ==============================================

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pylint: disable=duplicate-code
 # Copyright (c) Huawei Platforms, Inc. and affiliates.
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
@@ -103,7 +104,7 @@ def invoke(
         else:
             return output
 
-    return torch.ops.fbgemm.split_embedding_codegen_lookup_adagrad_function(
+    return torch.ops.mxrec.split_embedding_codegen_lookup_adagrad_function(
         # common_args
         placeholder_autograd_tensor=common_args.placeholder_autograd_tensor,
         dev_weights=common_args.dev_weights,
@@ -252,7 +253,7 @@ def invoke_grad_aggregation(
         else:
             return output
 
-    result = torch.ops.fbgemm.split_embedding_codegen_lookup_adagrad_function_grad_aggregation(
+    result = torch.ops.mxrec.split_embedding_codegen_lookup_adagrad_function_grad_aggregation(
         # common_args
         placeholder_autograd_tensor=common_args.placeholder_autograd_tensor,
         dev_weights=common_args.dev_weights,

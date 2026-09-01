@@ -149,7 +149,7 @@ public:
         TORCH_CHECK(!indice_weights, "indice_weights is unsupported.");
         static auto embedding_codegen_forward_op =
             torch::Dispatcher::singleton()
-                .findSchemaOrThrow("fbgemm::split_embedding_codegen_forward_unweighted_cuda", "")
+                .findSchemaOrThrow("mxrec::split_embedding_codegen_forward_unweighted_cuda", "")
                 .typed<decltype(split_embedding_codegen_forward_unweighted_cuda)>();
 
         return {embedding_codegen_forward_op.call(
@@ -227,7 +227,7 @@ public:
         static auto embedding_codegen_unweighted_backward_op =
             torch::Dispatcher::singleton()
                 .findSchemaOrThrow(
-                    "fbgemm::split_embedding_backward_codegen_adam_unweighted_exact_cuda_grad_aggregation", "")
+                    "mxrec::split_embedding_backward_codegen_adam_unweighted_exact_cuda_grad_aggregation", "")
                 .typed<decltype(split_embedding_backward_codegen_adam_unweighted_exact_cuda_grad_aggregation)>();
 
         const auto grad_dev_weights = embedding_codegen_unweighted_backward_op.call(
@@ -376,8 +376,8 @@ at::Tensor split_embedding_backward_codegen_adam_unweighted_exact_npu_grad_aggre
     auto output = at::empty({totalEmbed}, dev_weights.options().dtype(at::kFloat));
 
     int optim_type = static_cast<int>(OptimizerType::ADAM);
-    EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_output, dev_weights, uvm_weights, lxu_cache_weights,
-                 weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
+    EXEC_NPU_CMD(aclnnRecopsBackwardCodegenAdagradUnweightedExact, grad_output, dev_weights, uvm_weights,
+                 lxu_cache_weights, weights_placements, weights_offsets, D_offsets, hash_size_cumsum, indices, offsets,
                  lxu_cache_locations, momentum1_dev, momentum1_uvm, momentum1_placements, momentum1_offsets,
                  momentum2_dev, momentum2_uvm, momentum2_placements, momentum2_offsets, hash_indices, unique_ids,
                  unique_offsets, unique_inverse, offset_per_key, t_max_D, total_hash_size_bits, pooling_mode,
@@ -410,7 +410,7 @@ at::Tensor split_embedding_backward_codegen_adam_unweighted_exact_npu_grad_aggre
     int optim_type_last = static_cast<int>(OptimizerType::ADAM);
     bool use_optimize_last_step = true;
 
-    EXEC_NPU_CMD(aclnnBackwardCodegenAdagradUnweightedExact, grad_last_step, dev_weights, uvm_weights,
+    EXEC_NPU_CMD(aclnnRecopsBackwardCodegenAdagradUnweightedExact, grad_last_step, dev_weights, uvm_weights,
                  lxu_cache_weights, weights_placements, weights_offsets, D_offsets, hash_size_cumsum,
                  indices_multi_step, offsets_multi_step, lxu_cache_locations, momentum1_dev, momentum1_uvm,
                  momentum1_placements, momentum1_offsets, momentum2_dev, momentum2_uvm, momentum2_placements,
@@ -423,7 +423,7 @@ at::Tensor split_embedding_backward_codegen_adam_unweighted_exact_npu_grad_aggre
 }
 };  // namespace fbgemm_npu_lookups
 
-TORCH_LIBRARY_FRAGMENT(fbgemm, m)
+TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
     m.def("split_embedding_codegen_lookup_adam_function_grad_aggregation("
           "    Tensor placeholder_autograd_tensor, "
@@ -487,7 +487,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
                         TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_lookup_adam_function_grad_aggregation)));
 }
 
-TORCH_LIBRARY_FRAGMENT(fbgemm, m)
+TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
     m.def("split_embedding_backward_codegen_adam_unweighted_exact_cuda_grad_aggregation("
           "    Tensor grad_output, "
