@@ -6,10 +6,6 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-import sysconfig
-
-import torch
-
 from hybrid_torchrec._adapters._version import TORCH_REC_VERSION
 from hybrid_torchrec.modules.hash_embeddingbag import (
     HashEmbeddingBagCollection,
@@ -25,18 +21,30 @@ IS_TORCH_REC_150 = TORCH_REC_VERSION == (1, 5, 0)
 
 __all__ = ["HashEmbeddingBagCollection", "HashEmbeddingBagConfig"]
 
-# Do NOT import fbgemm_ascend here: it ships a conflicting
-# split_embedding_codegen_lookup_adagrad_function (A5 impl) under torch.ops.fbgemm,
-# which collides with the A2-correct NPU kernels from libfbgemm_npu_api.so.
-# Load the A2 cust_op torch_plugin directly; fbgemm_gpu is already pulled in by
-# torchrec when needed. If the A2 NPU lib cannot be loaded, fail loudly instead
-# of silently ignoring the error so the missing-operator root cause is obvious.
+# Load the NPU operator implementations.
+# - rec_cust_ops (cust_op torch_plugin) provides the mxrec-namespace lookup/backward adapters
+#   and registers its A2 OPP vendors (some WITHOUT aclnn wrappers).
+# - fbgemm_ascend provides the torch.ops.fbgemm NPU dispatch (incl. the
+#   split_embedding_codegen_lookup_*_function_pt2 ops that need PrivateUse1, the
+#   missing of which caused "weights[0] must be a CUDA tensor") and its A2 OPP vendors
+#   (WITH aclnn wrappers).
+# IMPORTANT: both packages prepend their own OPP vendors to ASCEND_CUSTOM_OPP_PATH on
+# import, so the LAST imported package wins name collisions. fbgemm_ascend must be
+# imported AFTER rec_cust_ops, otherwise rec_cust_ops' aclnn-less split_embedding_codegen_forward_*
+# vendor shadows fbgemm_ascend's aclnn-backed one and the NPU kernel segfaults.
 try:
-    torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
+    import rec_cust_ops  # noqa: F401  — cust_op torch_plugin (mxrec-namespace adapters) + ASCEND_CUSTOM_OPP_PATH
 except Exception as e:  # nosec B110
     raise ImportError(
-        "Failed to load A2 NPU lib libfbgemm_npu_api.so from "
-        f"{sysconfig.get_path('purelib')}: {e}. Note: this path requires the "
-        "cust_op A2 NPU plugin to be installed; fbgemm_ascend is intentionally "
-        "not imported here to avoid the A5/A2 TORCH_LIBRARY conflict."
+        "Failed to import rec_cust_ops (cust_op torch_plugin). It provides the mxrec-namespace "
+        "lookup/backward adapters and sets ASCEND_CUSTOM_OPP_PATH."
+    ) from e
+
+
+try:
+    import fbgemm_ascend  # noqa: F401
+except Exception as e:  # nosec B110
+    raise ImportError(
+        "Failed to import fbgemm_ascend (NPU operator package). "
+        "split_embedding_codegen_lookup_*_function_pt2 needs its PrivateUse1 dispatch."
     ) from e

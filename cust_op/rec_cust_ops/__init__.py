@@ -90,31 +90,21 @@ def _setup_custom_opp_path():
         return
 
     variant = _select_opp_variant()
-    variant_root = os.path.join(custom_opp_path, variant)
+    vendors_dir = os.path.join(custom_opp_path, variant, "vendors")
+    if not os.path.isdir(vendors_dir):
+        return
 
     new_paths = []
-    # 添加 variant 级目录
-    if os.path.isdir(variant_root):
-        vendors_dir = os.path.join(variant_root, "vendors")
-        if os.path.isdir(vendors_dir):
-            try:
-                for name in os.listdir(vendors_dir):
-                    vendor_path = os.path.join(vendors_dir, name)
-                    if os.path.isdir(vendor_path):
-                        new_paths.append(vendor_path)
-            except Exception as e:
-                logging.error("rec_cust_ops: failed to scan vendors dir: %s", e)
-        new_paths.append(variant_root)
-
-    # 同时保留所有芯片目录（兼容老方式）
-    if not new_paths:
-        for chip_dir_name in os.listdir(custom_opp_path):
-            chip_dir = os.path.join(custom_opp_path, chip_dir_name)
-            if os.path.isdir(chip_dir):
-                new_paths.append(chip_dir)
+    try:
+        for name in os.listdir(vendors_dir):
+            vendor_path = os.path.join(vendors_dir, name)
+            if os.path.isdir(vendor_path) and os.path.isdir(os.path.join(vendor_path, "op_api")):
+                new_paths.append(vendor_path)
+    except Exception as e:
+        logging.error("rec_cust_ops: failed to scan vendors dir: %s", e)
 
     existing = os.environ.get("ASCEND_CUSTOM_OPP_PATH", "")
-    old_parts = [p for p in existing.split(os.pathsep) if p and not p.startswith(custom_opp_path)]
+    old_parts = [p for p in existing.split(os.pathsep) if p and not p.startswith(vendors_dir)]
     merged = new_paths + old_parts
 
     # 去重同时保持顺序
@@ -127,9 +117,10 @@ def _setup_custom_opp_path():
 
     os.environ["ASCEND_CUSTOM_OPP_PATH"] = os.pathsep.join(deduped)
     logging.info(
-        "rec_cust_ops: ASCEND_CUSTOM_OPP_PATH=%s (variant=%s)",
+        "rec_cust_ops: ASCEND_CUSTOM_OPP_PATH=%s (variant=%s, %d vendors)",
         os.environ["ASCEND_CUSTOM_OPP_PATH"],
         variant,
+        len(new_paths),
     )
 
 
@@ -173,25 +164,34 @@ def _load_library(no_throw=False):
 
     lib_names = _candidate_lib_names(variant)
 
+    host_loaded = False
     for search_dir in search_dirs:
         for filename in lib_names:
             lib_path = os.path.join(search_dir, filename)
             if os.path.isfile(lib_path):
                 try:
                     torch.ops.load_library(lib_path)
-                    logging.info("rec_cust_ops: loaded '%s'", lib_path)
-                    return
+                    logging.info("rec_cust_ops: loaded host lib '%s'", lib_path)
+                    host_loaded = True
                 except Exception as e:
                     logging.error("rec_cust_ops: could not load '%s': %s", lib_path, e)
                     if not no_throw:
                         raise
+                break
+        if host_loaded:
+            break
 
-    # 如果找不到 host library，仅设置 OPP 路径（兼容无 torch_plugin 的情况）
-    msg = "rec_cust_ops: host library not found (variant=%s, dirs=%s)" % (variant, search_dirs)
-    if no_throw:
+    # aclnn op_api 库（libcust_opapi.so）不再手动 dlopen。统一通过 ASCEND_CUSTOM_OPP_PATH
+    # 由 CANN runtime 在首次算子调用时自动扫描加载（GetCustLibPath 已支持读取该变量）。
+    # 这样既符合 CANN 自定义算子部署规范，也避免与 runtime 加载冲突。
+
+    if not host_loaded:
+        # 如果找不到 host library，仅设置 OPP 路径（兼容无 torch_plugin 的情况）
+        msg = "rec_cust_ops: host library not found (variant=%s, dirs=%s)" % (variant, search_dirs)
+        if no_throw:
+            logging.warning(msg)
+            return
         logging.warning(msg)
-        return
-    logging.warning(msg)
 
 
 # ========================================================================

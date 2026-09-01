@@ -11,6 +11,11 @@
 #define PYTORCH_NPU_HELPER_HPP_
 
 #include <iostream>
+#include <fstream>
+#include <filesystem>
+#include <sstream>
+#include <string>
+#include <string_view>
 #include "pytorch_npu_const.h"
 
 constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::NumOptions) + 1] = {
@@ -49,27 +54,25 @@ inline void* GetOpApiLibHandler(const char* libName)
     return handler;
 }
 
-inline std::vector<std::string> GetCustLibPath()
+// 从 <root>/vendors/config.ini 读取 load_priority，收集各 vendor 的 op_api/lib 路径。
+// <root> 既可以是 ASCEND_OPP_PATH（单值 opp 根），也可以是 ASCEND_CUSTOM_OPP_PATH
+// 中的某一项（指向含 vendors/ 的自定义算子目录）。
+inline void CollectVendorLibPaths(const std::string& root, std::vector<std::string>& paths)
 {
-    char* ascendOppPath = std::getenv("ASCEND_OPP_PATH");
-    if (ascendOppPath == nullptr) {
-        ASCEND_LOGW("ASCEND_OPP_PATH is not set.");
-        return std::vector<std::string>();
-    }
-    std::string vendorPath = std::string(ascendOppPath) + "/vendors";
+    std::string vendorPath = root + "/vendors";
     std::string vendorConfigFile = vendorPath + "/config.ini";
 
-    if (vendorConfigFile.empty()) {
-        ASCEND_LOGW("config.ini is not exists.");
-        return std::vector<std::string>();
-    }
-
     if (!std::filesystem::exists(vendorConfigFile)) {
-        ASCEND_LOGW("config.ini is not exists.");
-        return std::vector<std::string>();
+        ASCEND_LOGW("config.ini is not exists under %s.", vendorPath.c_str());
+        return;
     }
 
     std::ifstream ifs(vendorConfigFile);
+    if (!ifs.is_open()) {
+        ASCEND_LOGW("open config.ini failed: %s.", vendorConfigFile.c_str());
+        return;
+    }
+
     std::string line;
     while (std::getline(ifs, line)) {
         if (line.find("load_priority") == 0) {
@@ -81,13 +84,57 @@ inline std::vector<std::string> GetCustLibPath()
     line.erase(0, head.length());
 
     // split line by ','
-    std::vector<std::string> paths;
     size_t pos = 0;
     while ((pos = line.find(',')) != std::string::npos) {
         paths.push_back(vendorPath + "/" + line.substr(0, pos) + "/op_api/lib");
         line.erase(0, pos + 1);
     }
     paths.push_back(vendorPath + "/" + line + "/op_api/lib");
+}
+
+inline std::vector<std::string> GetCustLibPath()
+{
+    std::vector<std::string> paths;
+
+    // 1) 标准 opp 路径（系统已安装算子）
+    char* ascendOppPath = std::getenv("ASCEND_OPP_PATH");
+    if (ascendOppPath != nullptr && ascendOppPath[0] != '\0') {
+        CollectVendorLibPaths(std::string(ascendOppPath), paths);
+    } else {
+        ASCEND_LOGW("ASCEND_OPP_PATH is not set.");
+    }
+
+    // 2) 自定义 opp 路径（多个目录用 ':' 分隔）。
+    //    每个目录可能是：
+    //    a) 直接 vendor 目录（含 op_api/lib/libcust_opapi.so），与 fbgemm_ascend 部署一致；
+    //    b) 含 vendors/ 的自定义算子根目录（<root>/vendors/config.ini 描述 load_priority）。
+    char* customOppPath = std::getenv("ASCEND_CUSTOM_OPP_PATH");
+    if (customOppPath != nullptr && customOppPath[0] != '\0') {
+        std::string_view csv(customOppPath);
+        size_t start = 0;
+        while (start <= csv.size()) {
+            size_t end = csv.find(':', start);
+            if (end == std::string_view::npos) {
+                end = csv.size();
+            }
+            std::string item(csv.substr(start, end - start));
+            if (!item.empty()) {
+                // (a) 直接 vendor 目录：op_api/lib 下存在 libcust_opapi.so
+                std::string directLib = item + "/op_api/lib";
+                if (std::filesystem::exists(directLib)) {
+                    paths.push_back(directLib);
+                } else {
+                    // (b) 含 vendors/ 的父目录，按 config.ini 解析
+                    CollectVendorLibPaths(item, paths);
+                }
+            }
+            if (end == csv.size()) {
+                break;
+            }
+            start = end + 1;
+        }
+    }
+
     return paths;
 }
 
