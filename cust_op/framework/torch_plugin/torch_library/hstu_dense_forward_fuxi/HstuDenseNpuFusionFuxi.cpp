@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2025. Huawei Technologies Co., Ltd. All rights reserved.
+ * Copyright (C) 2025-2026. Huawei Technologies Co., Ltd. All rights reserved.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -35,12 +35,12 @@ bool MaskCheck(int64_t maskType, bool maskIsDefine)
     }
 
     if (maskType == MASK_TYPE_TRIU) {
-        printf("maskType current not support triu now, pls use custome mask\n");
+        printf("maskType current not support triu now, pls use custom mask\n");
         return false;
     }
 
     if (maskType == MASK_TYPE_CUSTOM && !maskIsDefine) {
-        printf("use custome mask must have valide mask tensor \n");
+        printf("use custom mask must have valid mask tensor \n");
         return false;
     }
     return true;
