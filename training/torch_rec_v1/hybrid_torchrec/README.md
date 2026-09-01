@@ -3,22 +3,22 @@
 
 ## 软件介绍
 
-本项目是基于开源项目TorchRec的1.1.0/1.2.0/1.5.0版本开发的hybrid hash表，助力开发者快速应用TorchRec框架并适配到NPU进行模型训练和推理。
+本项目是基于开源项目TorchRec的1.2.0/1.5.0版本开发的hybrid hash表，助力开发者快速应用TorchRec框架并适配到NPU进行模型训练和推理。
 
 Python版本要求：Python >= 3.11。
 
 基于PyTorch开源软件版本，支持两种软件版本配套，可根据需要自行选择。
 
-| 配套版本  | PyTorch | torch_npu | torchrec  | fbgemm_gpu | hybrid_torchrec |
+| 配套版本  | PyTorch | TorchNPU | torchrec  | fbgemm_gpu | hybrid_torchrec |
 |-------|---------|-----------|-----------|------------|-----------------|
-| 方案一 | 2.7.1   | 2.7.1+cpu     | 1.2.0+npu | 1.2.0+cpu      | 1.2.0           |
-| 方案二 | 2.10.0  | 2.10.0+cpu    | 1.5.0+npu | 1.5.0+cpu      | 1.5.0           |
+| 方案一 | 2.7.1+cpu   | 2.7.1     | 1.2.0+npu | 1.2.0+cpu      | 1.2.0           |
+| 方案二 | 2.10.0+cpu  | 2.10.0    | 1.5.0+npu | 1.5.0+cpu      | 1.5.0           |
 
 说明：
 
-1. torch_npu是Ascend Extension for PyTorch插件，使昇腾NPU可以适配PyTorch框架。相关文档和**下载/安装**请参见[Ascend文档](https://www.hiascend.com/developer/software/ai-frameworks/pytorch)。
+1. TorchNPU是Ascend Extension for PyTorch插件，使昇腾NPU可以适配PyTorch框架。相关文档和**下载/安装**请参见[Ascend文档](https://www.hiascend.com/developer/software/ai-frameworks/pytorch)。
 
-2. torchrec 1.1.0+npu/1.2.0+npu/1.5.0+npu为基于开源TorchRec框架适配NPU后的包。相关文档请参见[README](../torchrec_npu/README.md)。
+2. torchrec 1.2.0+npu/1.5.0+npu为基于开源TorchRec框架适配NPU后的包。相关文档请参见[README](../torchrec_npu/README.md)。
 
 ## 使用方法
 
@@ -33,9 +33,8 @@ Python版本要求：Python >= 3.11。
 #### 2.1 依赖软件安装
 
 - PyTorch： 容器内已包含torch软件包，若torch软件包版本不满足配套需求，可进行软件升级。升级PyTorch版本为2.7.1指令示例：`pip3 install torch==2.7.1+cpu -i https://download.pytorch.org/whl/cpu`
-- torch_npu: 参考[Ascend文档](https://www.hiascend.com/developer/software/ai-frameworks/pytorch)，根据配套版本和环境架构下载软件包并解压安装。
+- TorchNPU: 参考[Ascend文档](https://www.hiascend.com/developer/software/ai-frameworks/pytorch)，根据配套版本和环境架构下载软件包并解压安装。
 - fbgemm_gpu:
-  - 1.1.0+cpu版本： `pip3 install fbgemm_gpu==1.1.0+cpu -i https://download.pytorch.org/whl/cpu`
   - 1.2.0+cpu版本： `pip3 install fbgemm_gpu==1.2.0+cpu -i https://download.pytorch.org/whl/cpu`
   - 1.5.0+cpu版本： `pip3 install fbgemm_gpu==1.5.0+cpu -i https://download.pytorch.org/whl/cpu`
 - torchrec npu适配版本：

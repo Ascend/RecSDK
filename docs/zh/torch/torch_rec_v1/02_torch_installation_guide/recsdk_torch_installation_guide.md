@@ -6,16 +6,18 @@
 
 当前Rec SDK Torch支持两种配套版本，后续安装时请安装对应配套版本的软件包。
 
-| 配套版本 | Python | PyTorch | TorchNPU | fbgemm\_gpu | Rec SDK Torch | 备注 |
-| ---- | ------ | ------- | ---------- | ----------- | ------------- |----|
-| 方案一  | 3.11+  | 2.7.1+cpu   | 2.7.1      | 1.2.0+cpu   | 1.2.0         ||
-| 方案二  | 3.11+  | 2.10.0+cpu   | 2.10.0      | 1.5.0+cpu   | 1.5.0         ||
+| 配套版本 | Python | PyTorch    | TorchNPU | fbgemm\_gpu | fbgemm\_ascend | rec\_cust\_ops | Rec SDK Torch |
+| ---- | ------ | ---------- | -------- | ----------- | :------------- | :----------- | ------------- |
+| 方案一  | 3.11+  | 2.7.1+cpu  | 2.7.1    | 1.2.0+cpu   | 1.2.0          | 2.7.1       | 1.2.0         |
+| 方案二  | 3.11+  | 2.10.0+cpu | 2.10.0   | 1.5.0+cpu   | 1.5.0           | 2.10.0     | 1.5.0         |
 
 > [!NOTE]
 >
 > - PyTorch：深度学习训练框架，相关资料请参见[PyTorch文档](https://docs.pytorch.org/docs/stable/index.html)。
 > - TorchNPU：PyTorch框架适配NPU设备的扩展插件，相关资料请参见[TorchNPU](https://gitcode.com/Ascend/pytorch)。
 > - fbgemm\_gpu：TorchRec框架依赖的加速库，相关资料请参见[fbgemm\_gpu](https://github.com/pytorch/FBGEMM)。
+> - fbgemm\_ascend：Ascend平台上的加速库，相关资料请参见[fbgemm\_ascend](https://gitcode.com/Ascend/fbgemm-ascend)。
+> - rec\_cust\_ops：Ascend平台上的Rec SDK Torch自定义算子库，相关资料请参见[rec\_cust\_ops](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)。
 
 ### 依赖软件说明
 
@@ -28,7 +30,7 @@
 | 层级         | 组件名称            | 依赖项                                 | 说明               |
 | ---------- | --------------- | ----------------------------------- | ---------------- |
 | **应用层**    | Rec SDK Torch推荐算法框架包 | hybrid\_torchrec、torchrec\_embcache | Rec SDK Torch组件  |
-| **自定义算子层** | 自定义算子相关包        | rec\_ops、fbgemm\_ascend             | 自定义算子实现          |
+| **自定义算子层** | 自定义算子相关包        | rec_cust_ops、fbgemm\_ascend             | 自定义算子实现          |
 | **适配层**    | TorchRec昇腾注册包 | torchrec（NPU适配版）                       | TorchRec的适配NPU版本 |
 | **依赖层**    | TorchRec依赖      | fbgemm\_gpu                         | TorchRec依赖的底层加速库 |
 | **框架层**    | 训练框架            | PyTorch、TorchNPU                 | 深度学习训练框架         |
@@ -49,7 +51,7 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 | 依赖名称/操作            | 推荐版本        | 获取方式/安装说明                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CANN软件包            | CANN 9.0.0  | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。                                                                                                                                                                                                                                                                                      |
-| PyTorch和TorchNPU | 2.6.0/2.7.1/2.10.0 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.6.0版本：请前往[TorchNPU2.6.0下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=168&ids=8e2241c30951478a85bb6f2fc282c568%2C97%2C108%2C1%2C6%2C3%2C)页面进行获取。<br>2.7.1/2.10.0版本：请前往[TorchNPU2.7.1/2.10.0下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=175&ids=89dda9ba9de741349efa03687a487678%2C96%2C108%2C1%2C6%2C177%2C)页面获取。<br>安装时请根据PyTorch版本、Python版本（建议使用Python 3.11）、CPU架构选择对应的安装指令。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
+| PyTorch和TorchNPU | 2.7.1/2.10.0 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.7.1/2.10.0版本：请前往[TorchNPU2.7.1/2.10.0下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=175&ids=89dda9ba9de741349efa03687a487678%2C96%2C108%2C1%2C6%2C177%2C)页面获取。<br>安装时请根据PyTorch版本、Python版本（建议使用Python 3.11）、CPU架构选择对应的安装指令。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
 
 #### 容器内训练加速库依赖<a id="section146113514600"></a>
 
@@ -61,7 +63,6 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 
 | 软件版本      | 安装指令                                                                         |
 | --------- | ---------------------------------------------------------------------------- |
-| 1.1.0+cpu | `pip3 install fbgemm_gpu==1.1.0+cpu -i https://download.pytorch.org/whl/cpu` |
 | 1.2.0+cpu | `pip3 install fbgemm_gpu==1.2.0+cpu -i https://download.pytorch.org/whl/cpu` |
 | 1.5.0+cpu | `pip3 install fbgemm_gpu==1.5.0+cpu -i https://download.pytorch.org/whl/cpu` |
 
@@ -72,7 +73,7 @@ Rec SDK Torch软件包如下表：
 | 名称                       | 说明                                       |
 | ------------------------ | ---------------------------------------- |
 | torch\_rec\_v1-\*.tar.gz | Rec SDK Torch一键安装部署软件包（已包含TorchRec昇腾注册包） |
-| rec\_ops                 | 自定义算子包                                   |
+| rec_cust_ops                 | Rec SDK Torch自定义算子包及PyTorch框架适配层                       |
 | fbgemm\_ascend           | fbgemm自定义算子包及PyTorch框架适配层                |
 
 ## 安装Rec SDK Torch<a id="section182972951211"></a>
@@ -201,41 +202,35 @@ Rec SDK Torch软件包如下表：
 
 4. 安装自定义算子相关包<a id="install_custom_op"></a>
 
-   下载[RecSDK](https://gitcode.com/Ascend/RecSDK)源码，按如下指令进行算子相关包的编译和安装：
+   a）**安装fbgemm_ascend算子包**
+   
+   fbgemm_ascend为Rec SDK Torch的三方依赖，可直接从[fbgemm_ascend Release](https://gitcode.com/Ascend/fbgemm-ascend/releases)获取（fbgemm_ascend版本和PyTorch配套关系参考fbgemm_gpu版本即可），再按照如下指令进行安装。
 
    ```bash
-   # 编译算子前，若未配置CANN环境变量则使用如下指令进行配置
-   source /usr/local/Ascend/cann/set_env.sh
-
-   # 编译并安装算子包（Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz）。
-   cd RecSDK/cust_op/ascendc_op/build
-   bash build_ai_core_op.sh A2
-
-   # 安装算子适配层（libfbgemm_npu_api.so）
-   cd ../../framework/torch_plugin/torch_library/common/
-   bash build_ops.sh
+   pip3 uninstall -y fbgemm_ascend
+   pip3 install fbgemm_ascend-*-cp311-cp311-linux_*.whl
    ```
 
-   > [!NOTE]
-   > 1. 算子编译安装脚本 `build_ai_core_op.sh` 的参数需根据实际芯片架构配置，默认以 `A2` 为例。详细参数和更多说明请参考 [算子编译README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/ascendc_op/build/README.md)。
-   > 2. 安装算子后，/usr/local/Ascend/cann/opp/vendors/目录下会生成split\_embedding\_codegen\_forward\_unweighted、backward\_codegen\_adagrad\_unweighted\_exact、asynchronous\_complete\_cumsum、permute2d\_sparse\_data等文件夹。如果没有相关文件夹，请使用**unset ASCEND\_CUSTOM\_OPP\_PATH**取消环境变量后重新安装算子。
+   更多fbgemm_ascemd说明可参考[fbgemm\_ascend README](https://gitcode.com/Ascend/fbgemm-ascend)。
 
-   算子编译安装脚本执行完后，会在`RecSDK/cust_op/ascendc_op/output/`目录下生成`Ascend-recsdk-npu-ops-*-linux-*.tar.gz`压缩包，其中包含多个算子run包和算子适配层文件，可拷贝到其他相同架构、设备类型环境下进行安装和使用。安装算子run包指令示例（名称改为实际算子run包名称）：`bash mxrec_opp_split_embedding_codegen_forward_unweighted.run`。安装算子run包的更多参数如[表1](#table14435173717221)所示。
+   b）**安装rec_cust_ops算子包**
 
-   **表 1**  参数说明 <a id="table14435173717221"></a>
+   下载[RecSDK](https://gitcode.com/Ascend/RecSDK)源码，再按照如下指令进行算子相关包的编译和安装。
 
-   | 输入参数                   | 说明                                     |
-   | ---------------------- | -------------------------------------- |
-   | --help \| -h           | 查询帮助信息。                                |
-   | --info                 | 查询安装包的信息。                              |
-   | --list                 | 查询安装包的文件列表。                            |
-   | --check                | 查询压缩包完整性。                              |
-   | --quiet                | 静默安装方式。                                |
-   | --nox11                | 不启动xterm终端。                            |
-   | --noexec               | 不执行嵌入的安装脚本。                            |
-   | --extract=\<path>      | 直接解压到目标目录，通常与--noexec配合使用，仅解压文件而不运行脚本。 |
-   | --tar arg1 \[arg2 ...] | 通过**tar**命令访问压缩包内容。                    |
-   | --install-path         | 安装到指定目录路径。                             |
+   ```bash
+   # 配置CANN 环境变量
+   source /usr/local/Ascend/ascend-toolkit/set_env.sh
+   # 拉取三方模块（部分算子依赖 CATLASS）
+   git submodule update --init --recursive
+   # 编译算子包
+   cd RecSDK/cust_op
+   bash build_whl.sh
+   # 安装算子包
+   pip3 uninstall -y rec_cust_ops
+   pip3 install rec_cust_ops*.whl
+   ```
+
+   更多rec_cust_ops算子包编译安装说明请参见[rec_cust_ops编译安装](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md#build_recsdk_cust_ops)。
 
 ### 离线安装
 
@@ -262,7 +257,7 @@ Rec SDK Torch软件包如下表：
    > \[!NOTE]
    > 1. 当前提供的Rec SDK一键安装部署软件包基于Python 3.11版本编译，**请在相同的Python版本环境下安装使用**。若需在其他Python版本环境下安装使用，请参见[源码编译 - 安装Rec SDK Torch一键安装部署软件包](#source_build_hybrid_torchrec)进行源码编译。
    > 2. Rec SDK Torch一键安装部署软件包内包装了TorchRec昇腾注册包（torchrec NPU适配版）和Rec SDK Torch推荐算法框架包（hybrid_torchrec、torchrec_embcache）。使用该包时，torchrec/hybrid_torchrec/torchrec_embcache三个子包无法直接使用pip3指令进行查看，但可直接在Python脚本中进行import使用。
-   > 3. Rec SDK Torch一键安装部署软件包同时支持PyTorch 2.6.0/2.7.1/2.10.0三个版本，安装时会根据当前环境中的PyTorch版本自动安装配套的软件包。
+   > 3. Rec SDK Torch一键安装部署软件包同时支持PyTorch 2.7.1、2.10.0版本，安装时会根据当前环境中的PyTorch版本自动安装配套的软件包。
 
    **软件包Hash值校验<a name="section10830205518487"></a>**
 
@@ -311,13 +306,13 @@ Rec SDK Torch软件包如下表：
 
    参考fbgemm\_ascend的[README](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md)获取fbgemm\_ascend软件包。
 
-   rec\_ops自定义算子包参考[Release下载页](https://gitcode.com/Ascend/RecSDK/releases)获取。
+   rec_cust_ops自定义算子包参考[Release下载页](https://gitcode.com/Ascend/RecSDK/releases)获取。
 
    ```shell
    # 安装框架依赖算子包 fbgemm_ascend
    pip3 install fbgemm_ascend-*.whl
-   # 安装自定义算子包 rec_ops
-   pip3 install rec_ops*.whl
+   # 安装自定义算子包 rec_cust_ops
+   pip3 install rec_cust_ops*.whl
    ```
 
 ## 安装验证
@@ -410,7 +405,7 @@ else
 fi
 
 # 基于Release版本安装方式卸载
-pip3 uninstall rec_ops -y
+pip3 uninstall rec_cust_ops -y
 pip3 uninstall fbgemm_ascend -y
 ```
 
