@@ -113,10 +113,10 @@ index e612629..bda0de2 100644
                          dense_inputs,
                          sparse_inputs,
 diff --git a/torchrec_dlrm/dlrm_main.py b/torchrec_dlrm/dlrm_main.py
-index a3d98b6..8517a62 100644
+index a3d98b6..b69c1f9 100644
 --- a/torchrec_dlrm/dlrm_main.py
 +++ b/torchrec_dlrm/dlrm_main.py
-@@ -4,20 +4,27 @@
+@@ -4,20 +4,28 @@
  # This source code is licensed under the MIT license found in the
  # LICENSE file in the root directory of this source tree.
  
@@ -126,7 +126,6 @@ index a3d98b6..8517a62 100644
  import os
  import sys
 +import time
-+import sysconfig
  from dataclasses import dataclass, field
  from enum import Enum
  from typing import Iterator, List, Optional
@@ -140,12 +139,14 @@ index a3d98b6..8517a62 100644
 -from torchrec import EmbeddingBagCollection
 +
 +import torch_npu
++import fbgemm_ascend
++
 +
 +from torchrec import EmbeddingBagCollection, EmbeddingCollection, EmbeddingConfig
  from torchrec.datasets.criteo import DEFAULT_CAT_NAMES, DEFAULT_INT_NAMES
  from torchrec.distributed import TrainPipelineSparseDist
  from torchrec.distributed.comm import get_local_size
-@@ -25,7 +32,7 @@ from torchrec.distributed.model_parallel import (
+@@ -25,7 +33,7 @@ from torchrec.distributed.model_parallel import (
      DistributedModelParallel,
      get_default_sharders,
  )
@@ -154,7 +155,7 @@ index a3d98b6..8517a62 100644
  from torchrec.distributed.planner.storage_reservations import (
      HeuristicalStorageReservation,
  )
-@@ -34,7 +41,14 @@ from torchrec.modules.embedding_configs import EmbeddingBagConfig
+@@ -34,7 +42,14 @@ from torchrec.modules.embedding_configs import EmbeddingBagConfig
  from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
  from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizerWrapper
  from torchrec.optim.optimizers import in_backward_optimizer_filter
@@ -170,20 +171,12 @@ index a3d98b6..8517a62 100644
  
  # OSS import
  try:
-@@ -60,8 +74,31 @@ try:
+@@ -60,8 +75,24 @@ try:
  except ImportError:
      pass
  
 -TRAIN_PIPELINE_STAGES = 3  # Number of stages in TrainPipelineSparseDist.
--
-+try:
-+    torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-+except FileNotFoundError as e:
-+    logging.warning(f"libfbgemm_npu_api.so is not exist")
-+except Exception as e:
-+    logging.warning(f"libfbgemm_npu_api.so failed to load: {e}")
-+
-+
+ 
 +def get_env_int(env_name, default_value):
 +    env_value = os.getenv(env_name)
 +    if env_value is None:
@@ -204,7 +197,7 @@ index a3d98b6..8517a62 100644
  
  class InteractionType(Enum):
      ORIGINAL = "original"
-@@ -332,9 +369,13 @@ def _evaluate(
+@@ -332,9 +363,13 @@ def _evaluate(
      pipeline._model.eval()
      device = pipeline._device
  
@@ -220,7 +213,7 @@ index a3d98b6..8517a62 100644
  
      is_rank_zero = dist.get_rank() == 0
      if is_rank_zero:
-@@ -360,28 +401,44 @@ def _evaluate(
+@@ -360,28 +395,44 @@ def _evaluate(
      dist.reduce(num_samples, 0, op=dist.ReduceOp.SUM)
  
      if is_rank_zero:
@@ -279,7 +272,7 @@ index a3d98b6..8517a62 100644
      """
      Trains model for 1 epoch. Helper function for train_val_test.
  
-@@ -399,9 +456,21 @@ def _train(
+@@ -399,9 +450,21 @@ def _train(
      Returns:
          None.
      """
@@ -302,7 +295,7 @@ index a3d98b6..8517a62 100644
  
      is_rank_zero = dist.get_rank() == 0
      if is_rank_zero:
-@@ -418,19 +487,44 @@ def _train(
+@@ -418,19 +481,44 @@ def _train(
          if validation_freq
          else limit_train_batches if limit_train_batches else len(train_dataloader)
      )
@@ -349,7 +342,7 @@ index a3d98b6..8517a62 100644
                  start_it = it
                  break
  
-@@ -438,22 +532,25 @@ def _train(
+@@ -438,22 +526,25 @@ def _train(
              _evaluate(limit_val_batches, pipeline, val_dataloader, "val")
              pipeline._model.train()
  
@@ -382,7 +375,7 @@ index a3d98b6..8517a62 100644
  ) -> TrainValTestResults:
      """
      Train/validation/test loop.
-@@ -471,29 +568,50 @@ def train_val_test(
+@@ -471,29 +562,50 @@ def train_val_test(
      Returns:
          TrainValTestResults.
      """
@@ -447,7 +440,7 @@ index a3d98b6..8517a62 100644
      return results
  
  
-@@ -520,41 +638,71 @@ def main(argv: List[str]) -> None:
+@@ -520,41 +632,71 @@ def main(argv: List[str]) -> None:
          except (ValueError, AttributeError):
              pass
  
@@ -543,7 +536,7 @@ index a3d98b6..8517a62 100644
      dist.init_process_group(backend=backend)
  
      if args.num_embeddings_per_feature is not None:
-@@ -575,26 +723,67 @@ def main(argv: List[str]) -> None:
+@@ -575,26 +717,67 @@ def main(argv: List[str]) -> None:
      val_dataloader = get_dataloader(args, backend, "val")
      test_dataloader = get_dataloader(args, backend, "test")
  
@@ -625,7 +618,7 @@ index a3d98b6..8517a62 100644
                  tables=eb_configs, device=torch.device("meta")
              ),
              dense_in_features=len(DEFAULT_INT_NAMES),
-@@ -603,20 +792,71 @@ def main(argv: List[str]) -> None:
+@@ -603,20 +786,71 @@ def main(argv: List[str]) -> None:
              dense_device=device,
          )
      elif args.interaction_type == InteractionType.DCN:
@@ -709,7 +702,7 @@ index a3d98b6..8517a62 100644
                  tables=eb_configs, device=torch.device("meta")
              ),
              dense_in_features=len(DEFAULT_INT_NAMES),
-@@ -631,15 +871,12 @@ def main(argv: List[str]) -> None:
+@@ -631,15 +865,12 @@ def main(argv: List[str]) -> None:
              "Unknown interaction option set. Should be original, dcn, or projection."
          )
  
@@ -728,7 +721,7 @@ index a3d98b6..8517a62 100644
      optimizer_kwargs = {"lr": args.learning_rate}
      if args.adagrad:
          optimizer_kwargs["eps"] = args.eps
-@@ -648,39 +885,81 @@ def main(argv: List[str]) -> None:
+@@ -648,39 +879,81 @@ def main(argv: List[str]) -> None:
          train_model.model.sparse_arch.parameters(),
          optimizer_kwargs,
      )
@@ -820,7 +813,7 @@ index a3d98b6..8517a62 100644
  
      dense_optimizer = KeyedOptimizerWrapper(
          dict(in_backward_optimizer_filter(model.named_parameters())),
-@@ -705,19 +984,29 @@ def main(argv: List[str]) -> None:
+@@ -705,19 +978,29 @@ def main(argv: List[str]) -> None:
          )
          val_dataloader = RestartableMap(multihot.convert_to_multi_hot, val_dataloader)
          test_dataloader = RestartableMap(multihot.convert_to_multi_hot, test_dataloader)
