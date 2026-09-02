@@ -20,6 +20,10 @@
 
 请参考：[模型样例运行环境说明](../../README.md)
 
+### 安装NPU算子包
+
+本样例依赖`fbgemm_ascend`和`rec_cust_ops`两个NPU算子包，安装方法请参考[安装自定义算子相关包](../../README.md#3-安装自定义算子相关包)。
+
 ## GR源码适配
 
 将 Generative Recommendations 模型迁移到NPU上并适配NPU融合HSTU算子，代码修改部分已经编写在`gr_npu.patch`中，载入命令如下：
@@ -63,7 +67,6 @@ cp ../run.sh ./
 ```shell
 export USE_NPU_HSTU=1                                                                 # 是否使用hstu算子加速
 export ENABLE_RAB=0                                                                   # 是否带RAB
-export LIB_FBGEMM_NPU_API_SO_PATH="/path/to/libfbgemm_npu_api.so"                     # 根据实际情况修改
 export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3                                              # 根据实际情况修改
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 python3 main.py --gin_config_file=configs/ml-1m/hstu-sampled-softmax-n128-large-final.gin --master_port=12345 | tee temp.log

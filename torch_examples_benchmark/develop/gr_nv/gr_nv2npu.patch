@@ -1863,7 +1863,7 @@ index 0000000..2215235
 +
 +
 +def jagged_to_padded_dense(values, offsets, max_lengths, padding_value) -> torch.Tensor:
-+    return torch.ops.mxrec.jagged_to_padded_dense(
++    return torch.ops.fbgemm.jagged_to_padded_dense(
 +        values=values.to(torch.float32),
 +        offsets=offsets,
 +        max_lengths=max(max_lengths),
@@ -1875,7 +1875,7 @@ index 0000000..2215235
 +    if total_L is None:
 +        total_L = offsets[0][-1].item()
 +
-+    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense.to(torch.float32), offsets, total_L)
++    out0, out1 = torch.ops.fbgemm.dense_to_jagged(dense.to(torch.float32), offsets, total_L)
 +    return out0.to(torch.bfloat16), out1
 +
 +
@@ -2387,7 +2387,7 @@ index 1715109..1385aaa 100644
  from commons.utils.logging import print_rank_0
  from configs import RankingConfig
  from distributed.sharding import make_optimizer_and_shard
-@@ -34,15 +37,20 @@ from utils import (
+@@ -34,15 +37,21 @@ from utils import (
      OptimizerArgs,
      TensorModelParallelArgs,
      TrainerArgs,
@@ -2404,13 +2404,14 @@ index 1715109..1385aaa 100644
 +from megatron.training.arguments import parse_args, validate_args
 +from megatron.training.yaml_arguments import validate_yaml
 +from megatron.training.global_vars import set_global_variables
-+import hybrid_torchrec  # for load fbgemm_npu_api.so
++import fbgemm_ascend
++import rec_cust_ops
 +
 +from ops.pt_ops.pt_jagged_dense_convert import jagged_to_padded_dense_wrapper, dense_to_jagged_wrapper
  
  
  @gin.configurable
-@@ -64,21 +72,7 @@ class RankingArgs:
+@@ -64,21 +73,7 @@ class RankingArgs:
                  "gelu",
              ], "prediction_head_act_type should be in ['relu', 'gelu']"
  
@@ -2433,7 +2434,7 @@ index 1715109..1385aaa 100644
      ranking_args = RankingArgs()
  
      return RankingConfig(
-@@ -93,50 +87,78 @@ def create_ranking_config() -> RankingConfig:
+@@ -93,50 +88,78 @@ def create_ranking_config() -> RankingConfig:
          eval_metrics=ranking_args.eval_metrics,
      )
  
@@ -2445,8 +2446,8 @@ index 1715109..1385aaa 100644
  
  def main():
 +    # 接口适配
-+    torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
-+    torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
++
++
 +
 +    args = parse_args(extra_init_args, True)
 +    if args.yaml_cfg is not None:

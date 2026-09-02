@@ -21,23 +21,23 @@ index 7ffc7ef..b63c0df 100644
  
  train_fn.learning_rate = 1e-3
 diff --git a/generative_recommenders/modeling/sequential/autoregressive_losses.py b/generative_recommenders/modeling/sequential/autoregressive_losses.py
-index f42ae6e..e7ea181 100644
+index f42ae6e..f58550f 100644
 --- a/generative_recommenders/modeling/sequential/autoregressive_losses.py
 +++ b/generative_recommenders/modeling/sequential/autoregressive_losses.py
-@@ -22,9 +22,11 @@ import torch
+@@ -22,10 +22,11 @@ import torch
  import torch.nn.functional as F
  
  from generative_recommenders.rails.similarities.module import SimilarityModule
 -
 +import prefetch_shape
  from torch.utils.checkpoint import checkpoint
-+from pt_jagged_dense_convert import dense_to_jagged_wrapper
  
-+torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
  
++
  class NegativesSampler(torch.nn.Module):
      def __init__(self, l2_norm: bool, l2_norm_eps: float) -> None:
-@@ -444,12 +446,14 @@ class BCELossWithRatings(AutoregressiveLoss):
+         super().__init__()
+@@ -444,12 +445,14 @@ class BCELossWithRatings(AutoregressiveLoss):
          Returns:
            (1), loss for the current engaged sequence.
          """
@@ -53,7 +53,7 @@ index f42ae6e..e7ea181 100644
              )[0]
              .squeeze(1)
              .long()
-@@ -457,21 +461,26 @@ class BCELossWithRatings(AutoregressiveLoss):
+@@ -457,21 +460,26 @@ class BCELossWithRatings(AutoregressiveLoss):
          jagged_supervision_weights = torch.ops.fbgemm.dense_to_jagged(
              supervision_weights.unsqueeze(-1),
              [jagged_id_offsets],
@@ -167,7 +167,7 @@ index 70bf80c..a65b43c 100644
      historical_ids = row["historical_ids"].to(device)  # [B, N]
      historical_ratings = row["historical_ratings"].to(device)
 diff --git a/generative_recommenders/modeling/sequential/hstu.py b/generative_recommenders/modeling/sequential/hstu.py
-index 7bae34d..deb8c5c 100644
+index 7bae34d..b198324 100644
 --- a/generative_recommenders/modeling/sequential/hstu.py
 +++ b/generative_recommenders/modeling/sequential/hstu.py
 @@ -19,7 +19,11 @@ Implements HSTU (Hierarchical Sequential Transduction Unit) in
@@ -183,23 +183,16 @@ index 7bae34d..deb8c5c 100644
  import abc
  import math
  from typing import Callable, Dict, List, Optional, Tuple, Union
-@@ -41,10 +45,62 @@ from generative_recommenders.modeling.similarity_module import (
-     SequentialEncoderWithLearnedSimilarityModule,
+@@ -42,9 +46,55 @@ from generative_recommenders.modeling.similarity_module import (
  )
  from generative_recommenders.rails.similarities.module import SimilarityModule
-+import prefetch_shape
-+from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
  
-+torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
++import prefetch_shape
  
  TIMESTAMPS_KEY = "timestamps"
  
-+try:
-+    torch.ops.load_library(os.getenv('LIB_FBGEMM_NPU_API_SO_PATH'))
-+except FileNotFoundError as e:
-+    logging.warning(f"libfbgemm_npu_api.so is not exist")
-+except Exception as e:
-+    logging.warning(f"libfbgemm_npu_api.so failed to load: {e}")
++import fbgemm_ascend
++import rec_cust_ops
 +
 +try:
 +    ENABLE_RELATIVE_ATTENTION_BIAS = bool(int(os.getenv('ENABLE_RAB', 0)))
@@ -246,7 +239,7 @@ index 7bae34d..deb8c5c 100644
  
  class RelativeAttentionBiasModule(torch.nn.Module):
      @abc.abstractmethod
-@@ -106,6 +162,7 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
+@@ -106,6 +156,7 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
          self._bucketization_fn: Callable[[torch.Tensor], torch.Tensor] = (
              bucketization_fn
          )
@@ -254,7 +247,7 @@ index 7bae34d..deb8c5c 100644
  
      def forward(
          self,
-@@ -130,15 +187,13 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
+@@ -130,15 +181,13 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
          # causal masking. Otherwise [:, :-1] - [:, 1:] works
          bucketed_timestamps = torch.clamp(
              self._bucketization_fn(
@@ -272,7 +265,7 @@ index 7bae34d..deb8c5c 100644
          return rel_pos_bias + rel_ts_bias
  
  
-@@ -199,26 +254,43 @@ def _hstu_attention_maybe_from_cache(
+@@ -199,26 +248,43 @@ def _hstu_attention_maybe_from_cache(
              values=k, offsets=[x_offsets], max_lengths=[n], padding_value=0.0
          )
  
@@ -336,7 +329,7 @@ index 7bae34d..deb8c5c 100644
  
  
  class SequentialTransductionUnitJagged(torch.nn.Module):
-@@ -237,6 +309,7 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -237,6 +303,7 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
          concat_ua: bool = False,
          epsilon: float = 1e-6,
          max_length: Optional[int] = None,
@@ -344,7 +337,7 @@ index 7bae34d..deb8c5c 100644
      ) -> None:
          super().__init__()
          self._embedding_dim: int = embedding_dim
-@@ -251,15 +324,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -251,15 +318,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
          self._normalization: str = normalization
          self._linear_config: str = linear_config
          if self._linear_config == "uvqk":
@@ -368,7 +361,7 @@ index 7bae34d..deb8c5c 100644
          else:
              raise ValueError(f"Unknown linear_config {self._linear_config}")
          self._linear_activation: str = linear_activation
-@@ -339,7 +412,6 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -339,7 +406,6 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
  
          B: int = x_offsets.size(0) - 1
          if self._normalization == "rel_bias" or self._normalization == "hstu_rel_bias":
@@ -376,7 +369,7 @@ index 7bae34d..deb8c5c 100644
              attn_output, padded_q, padded_k = _hstu_attention_maybe_from_cache(
                  num_heads=self._num_heads,
                  attention_dim=self._attention_dim,
-@@ -399,12 +471,16 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -399,12 +465,16 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
                  qk_attn = qk_attn + self._rel_attn_bias(all_timestamps)
              qk_attn = F.softmax(qk_attn / math.sqrt(self._attention_dim), dim=-1)
              qk_attn = qk_attn * invalid_attn_mask
@@ -394,7 +387,7 @@ index 7bae34d..deb8c5c 100644
              )[0]
          else:
              raise ValueError(f"Unknown normalization method {self._normalization}")
-@@ -479,7 +555,7 @@ class HSTUJagged(torch.nn.Module):
+@@ -479,7 +549,7 @@ class HSTUJagged(torch.nn.Module):
          cache_states: List[HSTUCacheState] = []
  
          with torch.autocast(
@@ -403,7 +396,7 @@ index 7bae34d..deb8c5c 100644
              enabled=self._autocast_dtype is not None,
              dtype=self._autocast_dtype or torch.float16,
          ):
-@@ -517,8 +593,11 @@ class HSTUJagged(torch.nn.Module):
+@@ -517,8 +587,11 @@ class HSTUJagged(torch.nn.Module):
          Returns:
              x' = f(x), (B, N, D) x float
          """
@@ -416,7 +409,7 @@ index 7bae34d..deb8c5c 100644
  
          jagged_x, cache_states = self.jagged_forward(
              x=x,
-@@ -570,6 +649,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -570,6 +643,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
          enable_relative_attention_bias: bool = True,
          concat_ua: bool = False,
          verbose: bool = True,
@@ -424,7 +417,7 @@ index 7bae34d..deb8c5c 100644
      ) -> None:
          super().__init__(ndp_module=similarity_module)
  
-@@ -588,7 +668,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -588,7 +662,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
          self._linear_activation: str = linear_activation
          self._linear_dropout_rate: float = linear_dropout_rate
          self._attn_dropout_rate: float = attn_dropout_rate
@@ -433,7 +426,7 @@ index 7bae34d..deb8c5c 100644
          self._hstu = HSTUJagged(
              modules=[
                  SequentialTransductionUnitJagged(
-@@ -609,12 +689,13 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -609,12 +683,13 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
                                  torch.log(torch.abs(x).clamp(min=1)) / 0.301
                              ).long(),
                          )
@@ -448,7 +441,7 @@ index 7bae34d..deb8c5c 100644
                  )
                  for _ in range(num_blocks)
              ],
-@@ -635,6 +716,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -635,6 +710,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
              ),
          )
          self._verbose: bool = verbose
@@ -456,7 +449,7 @@ index 7bae34d..deb8c5c 100644
          self.reset_params()
  
      def reset_params(self) -> None:
-@@ -644,7 +726,11 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -644,7 +720,11 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
                      print(f"Skipping init for {name}")
                  continue
              try:
@@ -684,7 +677,7 @@ index 78b44a1..bfbb2c2 100644
          args=(world_size, FLAGS.master_port, FLAGS.gin_config_file),
 diff --git a/prefetch_shape.py b/prefetch_shape.py
 new file mode 100644
-index 0000000..b8d3f3a
+index 0000000..e5a0d9b
 --- /dev/null
 +++ b/prefetch_shape.py
 @@ -0,0 +1,5 @@
@@ -693,7 +686,6 @@ index 0000000..b8d3f3a
 +# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 +
 +args = {"offset": 0}
-\ No newline at end of file
 diff --git a/preprocess_public_data.py b/preprocess_public_data.py
 index c722cf5..4414c11 100644
 --- a/preprocess_public_data.py
@@ -710,68 +702,6 @@ index c722cf5..4414c11 100644
  
  
  if __name__ == "__main__":
-diff --git a/pt_jagged_dense_convert.py b/pt_jagged_dense_convert.py
-new file mode 100644
-index 0000000..d06dd60
---- /dev/null
-+++ b/pt_jagged_dense_convert.py
-@@ -0,0 +1,56 @@
-+#!/usr/bin/env python3
-+# -*- coding: utf-8 -*-
-+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
-+
-+import torch
-+
-+
-+def jagged_to_padded_dense(values, offsets, max_lengths, padding_value):
-+    return torch.ops.mxrec.jagged_to_padded_dense(
-+        values=values.to(torch.float32),
-+        offsets=offsets,
-+        max_lengths=max(max_lengths),
-+        padding_value=padding_value,
-+    ).to(torch.bfloat16)
-+
-+def dense_to_jagged(dense, offsets, total_L=None):
-+    if total_L is None:
-+        total_L = offsets[0][-1].item()
-+    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense.to(torch.float32), offsets, total_L)
-+    return out0.to(torch.bfloat16), out1
-+
-+
-+class JaggedToPaddedDense(torch.autograd.Function):
-+    @staticmethod
-+    def forward(ctx, values, offsets, max_lengths, padding_value):
-+        ctx.save_for_backward(*offsets)
-+        ctx.total_L = values.shape[0]
-+        return jagged_to_padded_dense(values, offsets, max_lengths, padding_value)
-+
-+    @staticmethod
-+    def backward(ctx, grad_output):
-+        offsets = list(ctx.saved_tensors)
-+        total_L = ctx.total_L
-+        grad_values, _ = dense_to_jagged(grad_output, offsets, total_L)
-+        return grad_values, None, None, None
-+
-+class DenseToJagged(torch.autograd.Function):
-+    @staticmethod
-+    def forward(ctx, dense, offsets, total_L=None):
-+        ctx.save_for_backward(*offsets)
-+        out0, out1 = dense_to_jagged(dense,offsets, total_L)
-+        ctx.dense_shape = dense.shape
-+        return out0, out1
-+
-+    @staticmethod
-+    def backward(ctx, grad_out0, grad_out1):
-+        offsets = list(ctx.saved_tensors)
-+        max_len = ctx.dense_shape[1]
-+        grad_dense = jagged_to_padded_dense(grad_out0, offsets, [max_len], 0.0)
-+        return grad_dense, None, None
-+
-+def jagged_to_padded_dense_wrapper(values, offsets, max_lengths, padding_value):
-+    return JaggedToPaddedDense.apply(values, offsets, max_lengths, padding_value)
-+
-+def dense_to_jagged_wrapper(dense, offsets, total_L=None):
-+    return DenseToJagged.apply(dense, offsets, total_L)
 diff --git a/requirements.txt b/requirements.txt
 index ff4d54a..3be2e52 100644
 --- a/requirements.txt

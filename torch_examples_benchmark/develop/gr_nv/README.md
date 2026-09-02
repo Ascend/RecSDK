@@ -22,6 +22,10 @@
 pip3 install gin-config
 ```
 
+### 安装NPU算子包
+
+本样例依赖`fbgemm_ascend`和`rec_cust_ops`两个NPU算子包，安装方法请参考[安装自定义算子相关包](../README.md#3-安装自定义算子相关包)。
+
 ## 模型库源码适配
 
 进入当前目录，下载官方模型代码后，并使用patch文件进行修改。
@@ -29,27 +33,33 @@ pip3 install gin-config
 ```shell
 git clone https://github.com/NVIDIA/recsys-examples.git
 cd recsys-examples && git checkout v25.05
-cp -f ../gr_nv2npu.patch ./ && git apply gr_nv2npu.patch &&& cd -
+cp -f ../gr_nv2npu.patch ./ && git apply gr_nv2npu.patch && cd -
 ```
 
 ## 模型运行
 
-### 安装 MindSpeed 和 Megatron-LM
+### 安装MindSpeed和Megatron-LM
 
 请在README同层级目录，参考[链接](https://gitcode.com/Ascend/MindSpeed/tree/core_r0.8.0)进行MindSpeed 和 Megatron-LM的安装。
 
-在gr_nv目录下载Mindspeed文件夹和Megatron-LM文件夹
+安装后gr_nv目录下文件结构如下：
 
 ```shell
 -- gr_nv
    |-- Mindspeed
+   |-- Mindspeed
+   |-- Megatron-LM
    |-- Megatron-LM
    |-- recsys-examples
+   |-- recsys-examples
+   |-- gr_nv2npu.patch
+   |-- README.md
+   |-- run.sh
 ```
 
 ### 拷贝run.sh到hstu目录并进入hstu目录
 
-进入run.sh脚本所在目录，再执行如下指令：
+进入README同层级目录，再执行如下指令：
 
 ```shell
 cp run.sh ./recsys-examples/examples/hstu/
@@ -72,9 +82,12 @@ cd recsys-examples/examples/hstu/
 
 ### 执行命令
 
-修改run.sh的MEGATRON_DIR和MINDSPEED_DIR，修改WORLD_SIZE和ASCEND_RT_VISIBLE_DEVICE为实际使用卡数和卡号。
+若前面步骤中安装的MindSpeed和Megatron-LM不在gr_nv/目录下，则需将run.sh中的MINDSPEED_DIR/MEGATRON_DIR的值替换为实际MindSpeed/Megatron-LM所在路径。
 
 修改后，执行如下命令运行模型：
+run.sh中的WORLD_SIZE和ASCEND_RT_VISIBLE_DEVICE为实际使用卡数和卡号，可根据实际情况修改。
+
+执行如下命令运行模型：
 
 ```shell
 bash run.sh

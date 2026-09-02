@@ -24,6 +24,10 @@
 
 请参考：[模型样例运行环境说明](../README.md)
 
+### 安装NPU算子包
+
+本样例依赖`fbgemm_ascend`和`rec_cust_ops`两个NPU算子包，安装方法请参考[安装自定义算子相关包](../README.md#3-安装自定义算子相关包)。
+
 ## DIN源码适配
 
 将DIN(Deep Interest Network)模型迁移到NPU上并适配NPU算子，代码修改部分已经编写在`din_npu.patch`中，载入命令如下：
@@ -99,8 +103,6 @@ cp ../run.sh ./
 根据实际情况修改run.sh，修改后`bash run.sh`启动模型:
 
 ```shell
-export LIB_FBGEMM_NPU_API_SO_PATH="/path/to/libfbgemm_npu_api.so"      # 根据实际情况修改
-
 torchrun --master_addr=localhost --master_port=32555 \
          --nnodes=1 --nproc-per-node=2 --node_rank=0 \
          -m tzrec.train_eval \
