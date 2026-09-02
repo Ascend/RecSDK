@@ -28,34 +28,18 @@ diff --git a/tzrec/main.py b/tzrec/main.py
 index 9a3b7ad..c21d52a 100644
 --- a/tzrec/main.py
 +++ b/tzrec/main.py
-@@ -12,6 +12,7 @@
- import copy
- import itertools
- import json
-+import logging
- import os
- import shutil
- from collections import OrderedDict
-@@ -88,6 +89,18 @@ from tzrec.utils.plan_util import create_planner, get_default_sharders
+@@ -88,6 +88,10 @@ from tzrec.utils.plan_util import create_planner, get_default_sharders
  from tzrec.utils.state_dict_util import fix_mch_state, init_parameters
  from tzrec.version import __version__ as tzrec_version
  
 +import torch_npu
-+
-+
-+lib_fbgemm_npu_api_so_path = os.getenv("LIB_FBGEMM_NPU_API_SO_PATH")
-+
-+try:
-+    torch.ops.load_library(lib_fbgemm_npu_api_so_path)
-+except FileNotFoundError as e:
-+    logging.error(f"libfbgemm_npu_api.so is not exist")
-+except Exception as e:
-+    logging.error(f"libfbgemm_npu_api.so failed to load: {e}")
++import fbgemm_ascend
++import rec_cust_ops
 +
  
  def init_process_group() -> Tuple[torch.device, str]:
      """Init process_group, device, rank, backend."""
-@@ -96,6 +109,10 @@ def init_process_group() -> Tuple[torch.device, str]:
+@@ -96,6 +100,10 @@ def init_process_group() -> Tuple[torch.device, str]:
          device: torch.device = torch.device(f"cuda:{rank}")
          backend = "nccl"
          torch.cuda.set_device(device)
@@ -66,7 +50,7 @@ index 9a3b7ad..c21d52a 100644
      else:
          device: torch.device = torch.device("cpu")
          backend = "gloo"
-@@ -705,6 +722,7 @@ def train_and_evaluate(
+@@ -705,6 +713,7 @@ def train_and_evaluate(
  
      model = DistributedModelParallel(
          module=model,

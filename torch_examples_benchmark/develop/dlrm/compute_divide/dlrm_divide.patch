@@ -116,7 +116,7 @@ diff --git a/torchrec_dlrm/dlrm_main.py b/torchrec_dlrm/dlrm_main.py
 index a3d98b6..62cc459 100644
 --- a/torchrec_dlrm/dlrm_main.py
 +++ b/torchrec_dlrm/dlrm_main.py
-@@ -4,20 +4,28 @@
+@@ -4,20 +4,27 @@
  # This source code is licensed under the MIT license found in the
  # LICENSE file in the root directory of this source tree.
  
@@ -127,7 +127,6 @@ index a3d98b6..62cc459 100644
 +import shutil
  import sys
 +import time
-+import sysconfig
  from dataclasses import dataclass, field
  from enum import Enum
  from typing import Iterator, List, Optional
@@ -146,7 +145,7 @@ index a3d98b6..62cc459 100644
  from torchrec.datasets.criteo import DEFAULT_CAT_NAMES, DEFAULT_INT_NAMES
  from torchrec.distributed import TrainPipelineSparseDist
  from torchrec.distributed.comm import get_local_size
-@@ -25,7 +33,7 @@ from torchrec.distributed.model_parallel import (
+@@ -25,7 +32,7 @@ from torchrec.distributed.model_parallel import (
      DistributedModelParallel,
      get_default_sharders,
  )
@@ -155,7 +154,7 @@ index a3d98b6..62cc459 100644
  from torchrec.distributed.planner.storage_reservations import (
      HeuristicalStorageReservation,
  )
-@@ -34,7 +42,17 @@ from torchrec.modules.embedding_configs import EmbeddingBagConfig
+@@ -34,7 +41,17 @@ from torchrec.modules.embedding_configs import EmbeddingBagConfig
  from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
  from torchrec.optim.keyed import CombinedOptimizer, KeyedOptimizerWrapper
  from torchrec.optim.optimizers import in_backward_optimizer_filter
@@ -174,17 +173,13 @@ index a3d98b6..62cc459 100644
  
  # OSS import
  try:
-@@ -60,7 +78,22 @@ try:
+@@ -60,7 +77,18 @@ try:
  except ImportError:
      pass
  
 -TRAIN_PIPELINE_STAGES = 3  # Number of stages in TrainPipelineSparseDist.
-+try:
-+    torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
-+except FileNotFoundError as e:
-+    logging.warning(f"libfbgemm_npu_api.so is not exist")
-+except Exception as e:
-+    logging.warning(f"libfbgemm_npu_api.so failed to load: {e}")
++import fbgemm_ascend
++import rec_cust_ops
 +
 +with_torchrec = os.getenv('WITH_TORCHREC', 'False').strip().lower() in {'true', '1', 'yes'}
 +with_hybrid_torchrec = os.getenv('WITH_HYBRID_TORCHREC', 'False').strip().lower() in {'true', '1', 'yes'}
@@ -198,7 +193,7 @@ index a3d98b6..62cc459 100644
  
  
  class InteractionType(Enum):
-@@ -329,12 +362,12 @@ def _evaluate(
+@@ -329,12 +357,12 @@ def _evaluate(
      Returns:
          float: auroc result
      """
@@ -213,7 +208,7 @@ index a3d98b6..62cc459 100644
  
      is_rank_zero = dist.get_rank() == 0
      if is_rank_zero:
-@@ -349,6 +382,7 @@ def _evaluate(
+@@ -349,6 +377,7 @@ def _evaluate(
              try:
                  _loss, logits, labels = pipeline.progress(iterator)
                  preds = torch.sigmoid(logits)
@@ -221,7 +216,7 @@ index a3d98b6..62cc459 100644
                  auroc(preds, labels)
                  if is_rank_zero:
                      pbar.update(1)
-@@ -360,28 +394,44 @@ def _evaluate(
+@@ -360,28 +389,44 @@ def _evaluate(
      dist.reduce(num_samples, 0, op=dist.ReduceOp.SUM)
  
      if is_rank_zero:
@@ -280,7 +275,7 @@ index a3d98b6..62cc459 100644
      """
      Trains model for 1 epoch. Helper function for train_val_test.
  
-@@ -399,6 +449,15 @@ def _train(
+@@ -399,6 +444,15 @@ def _train(
      Returns:
          None.
      """
@@ -296,7 +291,7 @@ index a3d98b6..62cc459 100644
      pipeline._model.train()
  
      iterator = itertools.islice(iter(train_dataloader), limit_train_batches)
-@@ -418,19 +477,21 @@ def _train(
+@@ -418,19 +472,21 @@ def _train(
          if validation_freq
          else limit_train_batches if limit_train_batches else len(train_dataloader)
      )
@@ -320,7 +315,7 @@ index a3d98b6..62cc459 100644
                  start_it = it
                  break
  
-@@ -438,22 +499,22 @@ def _train(
+@@ -438,22 +494,22 @@ def _train(
              _evaluate(limit_val_batches, pipeline, val_dataloader, "val")
              pipeline._model.train()
  
@@ -350,7 +345,7 @@ index a3d98b6..62cc459 100644
  ) -> TrainValTestResults:
      """
      Train/validation/test loop.
-@@ -471,32 +532,282 @@ def train_val_test(
+@@ -471,32 +527,282 @@ def train_val_test(
      Returns:
          TrainValTestResults.
      """
@@ -651,7 +646,7 @@ index a3d98b6..62cc459 100644
  def main(argv: List[str]) -> None:
      """
      Trains, validates, and tests a Deep Learning Recommendation Model (DLRM)
-@@ -520,41 +831,76 @@ def main(argv: List[str]) -> None:
+@@ -520,41 +826,76 @@ def main(argv: List[str]) -> None:
          except (ValueError, AttributeError):
              pass
  
@@ -753,7 +748,7 @@ index a3d98b6..62cc459 100644
      dist.init_process_group(backend=backend)
  
      if args.num_embeddings_per_feature is not None:
-@@ -571,30 +917,75 @@ def main(argv: List[str]) -> None:
+@@ -571,30 +912,75 @@ def main(argv: List[str]) -> None:
              if getattr(args, attr) is None:
                  setattr(args, attr, 10)
  
@@ -843,7 +838,7 @@ index a3d98b6..62cc459 100644
                  tables=eb_configs, device=torch.device("meta")
              ),
              dense_in_features=len(DEFAULT_INT_NAMES),
-@@ -603,20 +994,71 @@ def main(argv: List[str]) -> None:
+@@ -603,20 +989,71 @@ def main(argv: List[str]) -> None:
              dense_device=device,
          )
      elif args.interaction_type == InteractionType.DCN:
@@ -927,7 +922,7 @@ index a3d98b6..62cc459 100644
                  tables=eb_configs, device=torch.device("meta")
              ),
              dense_in_features=len(DEFAULT_INT_NAMES),
-@@ -631,15 +1073,12 @@ def main(argv: List[str]) -> None:
+@@ -631,15 +1068,12 @@ def main(argv: List[str]) -> None:
              "Unknown interaction option set. Should be original, dcn, or projection."
          )
  
@@ -946,7 +941,7 @@ index a3d98b6..62cc459 100644
      optimizer_kwargs = {"lr": args.learning_rate}
      if args.adagrad:
          optimizer_kwargs["eps"] = args.eps
-@@ -648,39 +1087,84 @@ def main(argv: List[str]) -> None:
+@@ -648,39 +1082,84 @@ def main(argv: List[str]) -> None:
          train_model.model.sparse_arch.parameters(),
          optimizer_kwargs,
      )
@@ -1042,7 +1037,7 @@ index a3d98b6..62cc459 100644
  
      dense_optimizer = KeyedOptimizerWrapper(
          dict(in_backward_optimizer_filter(model.named_parameters())),
-@@ -705,23 +1189,34 @@ def main(argv: List[str]) -> None:
+@@ -705,23 +1184,34 @@ def main(argv: List[str]) -> None:
          )
          val_dataloader = RestartableMap(multihot.convert_to_multi_hot, val_dataloader)
          test_dataloader = RestartableMap(multihot.convert_to_multi_hot, test_dataloader)
