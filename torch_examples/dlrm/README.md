@@ -21,6 +21,10 @@
 
 请参考[模型样例运行环境说明](../README.md)中“基础镜像”和“启动容器”章节，下载镜像并启动容器。
 
+### 安装NPU算子包
+
+本样例依赖`fbgemm_ascend`和`rec_cust_ops`两个NPU算子包，安装方式请参考[模型样例运行环境说明](../README.md)中“安装依赖（可选）”章节。
+
 ## dlrm源码适配
 
 克隆当前分支代码，进入**RecSDK/torch_examples/dlrm目录**，下载开源模型代码，并应用patch文件，将开源模型从TorchRec开源框架迁移到基于昇腾NPU的Rec SDK Torch框架。
