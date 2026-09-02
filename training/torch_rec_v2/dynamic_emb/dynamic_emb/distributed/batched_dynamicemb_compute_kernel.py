@@ -122,8 +122,9 @@ def get_state_dict(
                 tensor_properties=deepcopy(embedding_table.global_metadata.tensor_properties),
             )
             key_to_global_metadata[key] = global_metadata
-
-            key_to_local_shards[key].append(Shard(param, local_metadatas[pg.rank()]))
+            local_metadata = local_metadatas[pg.rank()]
+            local_metadata.placement._device = param.device  # 多机环境下设备设置
+            key_to_local_shards[key].append(Shard(param, local_metadata))
         else:
             destination[key] = param
 
