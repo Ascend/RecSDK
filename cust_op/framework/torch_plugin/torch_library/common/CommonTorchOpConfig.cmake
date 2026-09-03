@@ -42,8 +42,8 @@ message(STATUS "Using PyTorch GLIBCXX_ABI=${GLIBCXX_ABI}")
 message(STATUS "GLIBCXX_ABI is ${GLIBCXX_ABI}")
 
 # 通用include
-include_directories(${PYTORCH_NPU_INSTALL_PATH}/include/third_party/acl/inc)
 include_directories(${PYTORCH_NPU_INSTALL_PATH}/include)
+include_directories(${PYTORCH_NPU_INSTALL_PATH}/include/third_party/acl/inc)
 include_directories(${PYTORCH_INSTALL_PATH}/include)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/distributed)
 include_directories(${PYTORCH_INSTALL_PATH}/include/torch/csrc/api/include)
