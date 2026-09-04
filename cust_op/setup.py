@@ -16,7 +16,6 @@
 
 import os
 import sys
-import platform
 import setuptools
 import torch
 
@@ -26,16 +25,8 @@ except ImportError:
     print("scikit-build is required to build from source.")
     raise
 
-arch = platform.machine().lower()
-if arch in ["aarch64", "arm64"]:
-    arch_suffix = "aarch64"
-elif arch in ["x86_64", "amd64"]:
-    arch_suffix = "x86_64"
-else:
-    arch_suffix = f"{arch}"
-
 _torch_ver = torch.__version__.split("+")[0]
-package_version = f"{_torch_ver}+{arch_suffix}"
+package_version = _torch_ver
 
 
 def _get_torch_prefix():
