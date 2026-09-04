@@ -27,14 +27,14 @@ RecSDK的功能涉及：
 
 - **RecSDK版本**: RecSDK版本号（例如`26.1.0`）
 - **CANN版本**: CANN软件包版本（例如 `cann9.1.0`）
-- **芯片标识**: 目标昇腾芯片平台（`910` 对应 Atlas 800T A2 / a2，`a3` 对应 Atlas 800T A3，`950` 对应昇腾950代际 / a5）
+- **芯片标识**: 目标昇腾芯片平台（`910b` 对应 Atlas 800T A2 / a2，`a3` 对应 Atlas 800T A3，`950` 对应昇腾950代际 / a5）
 - **OS版本**: 基础操作系统的代号或版本号（例如 `ubuntu20.04`）
 - **Python版本**: 核心运行的解释器版本（例如 `py3.7`）
 - **框架标识**: 镜像支持的机器学习框架（例如 `tf` 为TensorFlow环境，或者是 `pt` 为PyTorch环境）
 
 > **注意**：同一 Dockerfile 通过 `--build-arg CORE_TYPE=a2/a3/a5` 可构建出不同芯片平台的镜像，构建时请根据目标平台替换 tag 中的芯片标识字段。例如：
 >
-> - `CORE_TYPE=a2` → tag 中使用 `910`
+> - `CORE_TYPE=a2` → tag 中使用 `910b`
 > - `CORE_TYPE=a3` → tag 中使用 `a3`
 > - `CORE_TYPE=a5` → tag 中使用 `950`
 
@@ -51,7 +51,7 @@ RecSDK的功能涉及：
 |26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.7-tf|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.7-tf)|
 |26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.11-pt|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.11-pt)|
 
-> `{chip}` 替换为目标芯片标识：`910`（Atlas 800T A2）、`a3`（Atlas 800T A3）、`950`（昇腾950代际产品）。
+> `{chip}` 替换为目标芯片标识：`910b`（Atlas 800T A2）、`a3`（Atlas 800T A3）、`950`（昇腾950代际产品）。历史版本所有Tag请参考[Support Tags](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/supported_tags.md)。
 
 ## 快速开始
 
@@ -97,27 +97,27 @@ docker run -it \
 - **PyTorch 镜像（以 ubuntu22.04 为例）**
 
 ```bash
-# 构建时通过 --build-arg CORE_TYPE 指定芯片平台，tag 中对应替换 {chip} 为 910/a3/950
-docker build --build-arg CORE_TYPE=a2 -t recsdk_pt:26.1.0-cann9.1.0-910-ubuntu22.04-py3.11-pt -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu22.04-py3.11-pt .
+# 构建时通过 --build-arg CORE_TYPE 指定芯片平台，tag 中对应替换 {chip} 为 910b/a3/950
+docker build --build-arg CORE_TYPE=a2 -t recsdk_pt:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11-pt -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu22.04-py3.11-pt .
 ```
 
 - **TensorFlow 镜像（以 ubuntu20.04 为例）**
 
 ```bash
-docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 ```
 
 若您在编译算子或载入框架包时需要强制适配特定核心类型，可以在构建中通过 `CORE_TYPE` 参数显式声明（默认为 `a2`）：
 
 | CORE_TYPE | 适用平台 | tag 芯片标识 |
 |-----------|----------|-------------|
-| `a2` | Atlas 800T A2 训练服务器 | `910` |
+| `a2` | Atlas 800T A2 训练服务器 | `910b` |
 | `a3` | Atlas 800T A3 超节点服务器 | `a3` |
 | `a5` | 昇腾950代际产品 | `950` |
 
 ```bash
 # CORE_TYPE可选a2/a3/a5，以下以 TensorFlow 镜像为例，PyTorch 镜像同理
-docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 ```
 
 - **openEuler 镜像**
@@ -131,8 +131,8 @@ openEuler 22.03 镜像的构建方式与上述 Ubuntu 示例一致。
 - **如何进行二次开发**:
 
   ```dockerfile
-  # 以recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf镜像为基础镜像，叠加用户软件
-  FROM recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf
+  # 以recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf镜像为基础镜像，叠加用户软件
+  FROM recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf
   RUN apt update -y && \
       apt install ...
   ```
@@ -150,13 +150,13 @@ openEuler 22.03 镜像的构建方式与上述 Ubuntu 示例一致。
 - **切换 Python 框架环境 (PyTorch 容器)**:
 
   ```bash
-  # 激活切换到 torch_rec_v1 PT 2.6.0 的 RecSDK 开发环境
+  # 激活切换到 torch_rec_v1 PT 2.6.0 的 RecSDK 开发环境（仅26.1.0版本镜像支持）
   source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
 
   # 激活切换到 torch_rec_v1 PT 2.7.1 的 RecSDK 开发环境
   source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
 
-  # 激活切换到 torch_rec_v1 PT 2.10.0 的 RecSDK 开发环境
+  # 激活切换到 torch_rec_v1 PT 2.10.0 的 RecSDK 开发环境（仅26.2.0及之后版本镜像支持）
   source /opt/buildtools/torch_v1_pt2.10.0/bin/activate
 
   # 激活切换到 torch_rec_v2 PT 2.7.1 的 RecSDK 开发环境
@@ -188,7 +188,7 @@ openEuler 22.03 镜像的构建方式与上述 Ubuntu 示例一致。
 
 ```bash
 # 1. 构建镜像
-docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf \
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf \
   -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 
 # 2. 启动容器
@@ -198,7 +198,7 @@ docker run -it --name recsdk_test \
   -e ASCEND_VISIBLE_DEVICES=0-7 \
   -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
   -v /etc/ascend_install.info:/etc/ascend_install.info \
-  recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf /bin/bash
+  recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf /bin/bash
 
 # 3. 容器内验证 NPU 可用
 npu-smi info

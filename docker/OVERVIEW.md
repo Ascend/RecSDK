@@ -27,14 +27,14 @@ Image tags follow the convention below for intuitive identification of the softw
 
 - **RecSDK version**: RecSDK version number (e.g., `26.1.0`)
 - **CANN version**: CANN package version (e.g., `cann9.1.0`)
-- **Chip identifier**: Target Atlas chip platform (`910` for Atlas 800T A2 / a2, `a3` for Atlas 800T A3, `950` for Atlas 950 / a5)
+- **Chip identifier**: Target Atlas chip platform (`910b` for Atlas 800T A2 / a2, `a3` for Atlas 800T A3, `950` for Atlas 950 / a5)
 - **OS version**: Base operating system codename or version number (e.g., `ubuntu20.04`)
 - **Python version**: The core interpreter version (e.g., `py3.7`)
 - **Framework identifier**: The ML framework supported by the image (e.g., `tf` for TensorFlow, or `pt` for PyTorch)
 
 > **Note**: The same Dockerfile can produce images for different chip platforms via `--build-arg CORE_TYPE=a2/a3/a5`. Replace the chip identifier field in the tag according to the target platform:
 >
-> - `CORE_TYPE=a2` → use `910` in tag
+> - `CORE_TYPE=a2` → use `910b` in tag
 > - `CORE_TYPE=a3` → use `a3` in tag
 > - `CORE_TYPE=a5` → use `950` in tag
 
@@ -51,7 +51,7 @@ The project currently supports container scenarios divided by underlying framewo
 |26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.7-tf|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.7-tf)|
 |26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.11-pt|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.11-pt)|
 
-> Replace `{chip}` with the target chip identifier: `910` (Atlas 800T A2 / a2), `a3` (Atlas 800T A3), `950` (Atlas 950 / a5).
+> Replace `{chip}` with the target chip identifier: `910b` (Atlas 800T A2 / a2), `a3` (Atlas 800T A3), `950` (Atlas 950 / a5). For all Tags of historical versions, please refer to [Support Tags](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/supported_tags.md).
 
 ## Quick Start
 
@@ -97,27 +97,27 @@ Developers can locally package and build business images in the current system e
 - **PyTorch Image (using ubuntu22.04 as an example)**
 
 ```bash
-# Specify chip platform via --build-arg CORE_TYPE, replace {chip} in tag with 910/a3/950
-docker build --build-arg CORE_TYPE=a2 -t recsdk_pt:26.1.0-cann9.1.0-910-ubuntu22.04-py3.11-pt -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu22.04-py3.11-pt .
+# Specify chip platform via --build-arg CORE_TYPE, replace {chip} in tag with 910b/a3/950
+docker build --build-arg CORE_TYPE=a2 -t recsdk_pt:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11-pt -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu22.04-py3.11-pt .
 ```
 
 - **TensorFlow Image (using ubuntu20.04 as an example)**
 
 ```bash
-docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 ```
 
 If you need to target a specific core type when compiling operators or loading framework packages, you can explicitly specify it via the `CORE_TYPE` build argument (default is `a2`):
 
 | CORE_TYPE | Applicable Platform | Tag Chip Identifier |
 |-----------|---------------------|---------------------|
-| `a2` | Atlas 800T A2 Training Server | `910` |
+| `a2` | Atlas 800T A2 Training Server | `910b` |
 | `a3` | Atlas 800T A3 Super Node Server | `a3` |
 | `a5` | Atlas 950 Generation | `950` |
 
 ```bash
 # CORE_TYPE can be a2/a3/a5. The following uses TensorFlow as an example; the same approach applies to PyTorch images.
-docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 ```
 
 - **openEuler Images**
@@ -131,8 +131,8 @@ The image provides convenient environment switching scripts for development and 
 - **How to perform secondary development**:
 
   ```dockerfile
-  # Use recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf as the base image and overlay user software
-  FROM recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf
+  # Use recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf as the base image and overlay user software
+  FROM recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf
   RUN apt update -y && \
       apt install ...
   ```
@@ -150,13 +150,13 @@ The image provides convenient environment switching scripts for development and 
 - **Switch Python framework environment (PyTorch container)**:
 
   ```bash
-  # Activate the RecSDK development environment for torch_rec_v1 PT 2.6.0
+  # Activate the RecSDK development environment for torch_rec_v1 PT 2.6.0 (Only 26.1.0 version image support)
   source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
 
   # Activate the RecSDK development environment for torch_rec_v1 PT 2.7.1
   source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
 
-  # Activate the RecSDK development environment for torch_rec_v1 PT 2.10.0
+  # Activate the RecSDK development environment for torch_rec_v1 PT 2.10.0 (Only images of version 26.2.0 and later are supported)
   source /opt/buildtools/torch_v1_pt2.10.0/bin/activate
 
   # Activate the RecSDK development environment for torch_rec_v2 PT 2.7.1
@@ -188,7 +188,7 @@ The following uses the TensorFlow image as an example to demonstrate the complet
 
 ```bash
 # 1. Build the image
-docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf \
+docker build --build-arg CORE_TYPE=a2 -t recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf \
   -f docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf .
 
 # 2. Start the container
@@ -198,7 +198,7 @@ docker run -it --name recsdk_test \
   -e ASCEND_VISIBLE_DEVICES=0-7 \
   -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
   -v /etc/ascend_install.info:/etc/ascend_install.info \
-  recsdk_tf:26.1.0-cann9.1.0-910-ubuntu20.04-py3.7-tf /bin/bash
+  recsdk_tf:26.1.0-cann9.1.0-910b-ubuntu20.04-py3.7-tf /bin/bash
 
 # 3. Verify NPU availability inside the container
 npu-smi info
