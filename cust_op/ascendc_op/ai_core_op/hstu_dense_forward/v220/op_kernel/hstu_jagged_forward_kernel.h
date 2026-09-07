@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ struct JaggedArgs {
     GM_ADDR workspace;
     GM_ADDR tiling;
 
-    const HstuJaggedForwardTilingData* __restrict tilingDataPtr {nullptr};
+    const HstuJaggedForwardTilingData* __restrict tilingDataPtr{nullptr};
 };
 
 template <typename TraitParams, typename TilingDataType, typename MatmulMgmtType, typename VectorScoreType>
@@ -54,7 +54,7 @@ public:
 
     using vecScoreInter = VectorScoreInter<qType, TraitParams::maskType, HstuForward::BlockMaskParams, VectorScoreType>;
 
-    __aicore__ inline HstuJaggedForwardKernel() {};
+    __aicore__ inline HstuJaggedForwardKernel(){};
 
     __aicore__ inline void Compute(const JaggedArgs& args, MatmulMgmtType* mmMgmt, vecScoreInter* vecScore)
     {
@@ -141,14 +141,14 @@ public:
 
         int64_t oneBlockMidTransElem = BLOCK_HEIGHT_256 * MAX_BLOCK_DIM * TRANS_PIPE_NUM;
         int64_t oneCoreTransMidElem = coreNum * oneBlockMidTransElem;
-        int64_t kvOffset = oneCoreMidElem + oneCoreTransMidElem * 3; // svResultGt_ midkGt midvGt
+        int64_t kvOffset = oneCoreMidElem + oneCoreTransMidElem * 3;  // svResultGt_ midkGt midvGt
 
         attnScoreGt_.SetGlobalBuffer(reinterpret_cast<__gm__ qType*>(workspace_) + GetBlockIdx() * oneBlockMidElem);
         svResultGt_.SetGlobalBuffer(
-        reinterpret_cast<__gm__ float*>(workspace_) + oneCoreMidElem + GetBlockIdx() * oneBlockMidTransElem,
+            reinterpret_cast<__gm__ float*>(workspace_) + oneCoreMidElem + GetBlockIdx() * oneBlockMidTransElem,
             oneBlockMidTransElem);
-        syncGm_.SetGlobalBuffer(
-            reinterpret_cast<__gm__ int32_t*>(workspace_) + oneCoreMidElem + coreNum * oneBlockMidTransElem);
+        syncGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(workspace_) + oneCoreMidElem +
+                                coreNum * oneBlockMidTransElem);
     }
 
     __aicore__ inline void InitPipe()
@@ -163,7 +163,7 @@ public:
         mmMgmt_ = mmMgmt;
         vecScore_ = vecScore;
 
-        VecScoreRabGtInfo<qType> gtInfo = { attnBiasGt_, attnMaskGt_ };
+        VecScoreRabGtInfo<qType> gtInfo = {attnBiasGt_, attnMaskGt_};
         vecScore_->Init(&pipe_, gtInfo, siluScale_, alpha_, TraitParams::blockM, TraitParams::blockN, maxSeqLenK_);
 
         if constexpr (TraitParams::deterministic) {
@@ -179,7 +179,7 @@ public:
         seqOffsetsKGt_.SetGlobalBuffer(reinterpret_cast<__gm__ oType*>(seqOffsetK_), batchSize_ + 1);
         auto validBatchSize = GetBatchSizeFromJaggedOffset(seqOffsetsQGt_, batchSize_ + 1);
         ASCENDC_ASSERT((validBatchSize > 0 && validBatchSize <= MAX_BATCH_SIZE),
-            "batchSize_ exceed limit of (0, 2048]\n");
+                       "batchSize_ exceed limit of (0, 2048]\n");
 
         const int blockId = GetBlockIdx();
         const uint32_t coreNum = GetBlockNum() * GetTaskRation();
@@ -196,18 +196,18 @@ public:
         int blocks[4] = {0};  // start block id, end block id
         if constexpr (TraitParams::maskType == CausalMaskT::MASK_TRIL) {
             auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_TRIL>(
-                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM,
-                TraitParams::blockN, seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
+                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM, TraitParams::blockN,
+                seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
             taskAssigner.Compute(blocks, blockId);
         } else if constexpr (TraitParams::maskType == CausalMaskT::MASK_CUSTOM) {
             auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_CUSTOM>(
-                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM,
-                TraitParams::blockN, seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
+                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM, TraitParams::blockN,
+                seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
             taskAssigner.Compute(blocks, blockId);
         } else {
             auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_NONE>(
-                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM,
-                TraitParams::blockN, seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
+                coreNum, batchSize_, headNum_, targetGroupSize_, TraitParams::blockM, TraitParams::blockN,
+                seqOffsetsQGt_, seqOffsetsKGt_, numContextGt_, numTargetGt_, splitMode_);
             taskAssigner.Compute(blocks, blockId);
         }
 
@@ -235,32 +235,48 @@ public:
         uint32_t kSeqId = skSeqBlkId_;
         uint32_t kSeqNum = 0;
 
-        scmQKTensor_ =  scm_.template AllocTensor<qType>();
+        scmQKTensor_ = scm_.template AllocTensor<qType>();
         for (auto blkId = sBlkId_; blkId <= eBlkId_; blkId++) {
             kSeqNum = computeTaskInfo_[taskId % COMPUTE_PIPE_NUM].kSeqNum;
             auto limit = (blkId == eBlkId_) ? ekSeqBlkId_ : kSeqNum;
             uint32_t isStartFromZero = (kSeqId == 0);
             uint32_t isEndToTail = false;
+
             for (; kSeqId < limit; kSeqId++) {
                 auto taskinfo = computeTaskInfo_[taskId % COMPUTE_PIPE_NUM];
-                HstuForward::BlockMaskParams maskinfo = {
-                    taskinfo.qSeqId,
-                    kSeqId,
-                    taskinfo.actualSeqLen,
-                    taskinfo.actualSeqLenK,
-                    TraitParams::blockM,
-                    TraitParams::blockN,
-                    taskinfo.numContext,
-                    taskinfo.numTarget,
-                    targetGroupSize_,
-                    taskinfo.scale
-                };
+                HstuForward::BlockMaskParams maskinfo = {taskinfo.qSeqId,       kSeqId,
+                                                         taskinfo.actualSeqLen, taskinfo.actualSeqLenK,
+                                                         TraitParams::blockM,   TraitParams::blockN,
+                                                         taskinfo.numContext,   taskinfo.numTarget,
+                                                         targetGroupSize_,      taskinfo.scale};
+
+                const int64_t qBlockBegin = static_cast<int64_t>(taskinfo.qSeqId) * TraitParams::blockM;
+                const int64_t kBlockBegin = static_cast<int64_t>(kSeqId) * TraitParams::blockN;
+                const int64_t kBlockEnd = kBlockBegin + TraitParams::blockN;
+                const int64_t targetQBegin = taskinfo.actualSeqLen - taskinfo.numTarget;
+                const int64_t targetKBegin = taskinfo.actualSeqLenK - taskinfo.numTarget;
+
+                // 跳过 target mask 三角形下方完全无效的 K block；边界 block 仍交给 mask 处理。
+                // target 白区仅由 MASK_TRIL 的内核 mask 保证恒为 0；CUSTOM mask 的值由外部输入决定，不能跳过。
+                if (TraitParams::maskType == CausalMaskT::MASK_TRIL) {
+                    if (taskinfo.numTarget > 0 && targetGroupSize_ > 0 && qBlockBegin >= targetQBegin &&
+                        kBlockBegin >= targetKBegin) {
+                        const int64_t targetGroupIndex = (qBlockBegin - targetQBegin) / targetGroupSize_;
+                        if (targetGroupIndex > 0) {
+                            const int64_t targetGroupLimit = targetKBegin + targetGroupIndex * targetGroupSize_;
+                            if (kBlockEnd <= targetGroupLimit) {
+                                continue;
+                            }
+                        }
+                    }
+                }
+
                 // 在下三角下跳过运算
                 if (maskinfo.NoComputation(TraitParams::maskType)) {
                     isEndToTail = true;
                     break;
                 }
-                
+
                 currentTaskId = taskId % COMPUTE_PIPE_NUM;
                 preTaskId = (taskId + COMPUTE_PIPE_NUM - 1) % COMPUTE_PIPE_NUM;
                 prePreTaskId = (taskId + COMPUTE_PIPE_NUM - 2) % COMPUTE_PIPE_NUM;
@@ -329,9 +345,7 @@ public:
         ComputeTailBlock(taskId, currentTaskId, preTaskId, transtaskId);
     }
 
-    __aicore__ inline void ComputeTailBlock(uint32_t taskId,
-                                            uint32_t currentTaskId,
-                                            uint32_t preTaskId,
+    __aicore__ inline void ComputeTailBlock(uint32_t taskId, uint32_t currentTaskId, uint32_t preTaskId,
                                             uint32_t transtaskId)
     {
         if (taskId == 0) {
@@ -405,18 +419,18 @@ public:
         if (batchId >= batchSize_) {
             return;
         }
-    
+
         taskId = taskId % COMPUTE_PIPE_NUM;
-    
+
         auto nextBatchSeqOffset = seqOffsetsQGt_.GetValue(batchId + 1);
         auto currentBatchSeqOffset = seqOffsetsQGt_.GetValue(batchId);
-    
+
         auto nextBatchSeqOffsetK = seqOffsetsKGt_.GetValue(batchId + 1);
         auto currentBatchSeqOffsetK = seqOffsetsKGt_.GetValue(batchId);
-    
+
         auto numContext = numContextGt_.GetValue(batchId);
         auto numTarget = numTargetGt_.GetValue(batchId);
-    
+
         computeTaskInfo_[taskId].seqGlobalOffset = seqGlobalOffset;
         computeTaskInfo_[taskId].batchId = batchId;
         computeTaskInfo_[taskId].actualSeqLen = nextBatchSeqOffset - currentBatchSeqOffset;
@@ -433,22 +447,21 @@ public:
         auto batchInnerOffset = seqGlobalOffset - (computeTaskInfo_[taskId].batchOffset * headNum_);
         computeTaskInfo_[taskId].headId = headId;
         computeTaskInfo_[taskId].qSeqId =
-            (batchInnerOffset - computeTaskInfo_[taskId].headId *
-             computeTaskInfo_[taskId].actualSeqLen) / TraitParams::blockM;
+            (batchInnerOffset - computeTaskInfo_[taskId].headId * computeTaskInfo_[taskId].actualSeqLen) /
+            TraitParams::blockM;
         computeTaskInfo_[taskId].kSeqNum =
             CeilDiv(computeTaskInfo_[taskId].actualSeqLenK, static_cast<uint32_t>(TraitParams::blockN));
         computeTaskInfo_[taskId].qSeqNum =
             CeilDiv(computeTaskInfo_[taskId].actualSeqLen, static_cast<uint32_t>(TraitParams::blockM));
-    
-        computeTaskInfo_[taskId].iOffset =
-            computeTaskInfo_[taskId].batchOffset * headDim_ * headNum_ +
-            computeTaskInfo_[taskId].qSeqId * TraitParams::blockM * headNum_ * headDim_ +
-            computeTaskInfo_[taskId].headId * headDim_;
+
+        computeTaskInfo_[taskId].iOffset = computeTaskInfo_[taskId].batchOffset * headDim_ * headNum_ +
+                                           computeTaskInfo_[taskId].qSeqId * TraitParams::blockM * headNum_ * headDim_ +
+                                           computeTaskInfo_[taskId].headId * headDim_;
         computeTaskInfo_[taskId].oOffset =
             computeTaskInfo_[taskId].batchOffset * headDimV_ * headNum_ +
             computeTaskInfo_[taskId].qSeqId * TraitParams::blockM * headNum_ * headDimV_ +
             computeTaskInfo_[taskId].headId * headDimV_;
-    
+
         if ((computeTaskInfo_[taskId].headSeqLimit - seqGlobalOffset) >= TraitParams::blockM) {
             computeTaskInfo_[taskId].computeASeqLen = TraitParams::blockM;
         } else {
@@ -458,15 +471,13 @@ public:
 
     __aicore__ inline void ComputeQkMatmul(uint32_t taskId)
     {
-        MatmulArgs args = {
-            .leftOffset = computeTaskInfo_[taskId].iOffset,
-            .rightOffset = computeTaskInfo_[taskId].kOffset,
-            .outOffset = (taskId % COMPUTE_PIPE_NUM) * TraitParams::blockM * TraitParams::blockM,
-            .m = computeTaskInfo_[taskId].computeASeqLen,
-            .n = computeTaskInfo_[taskId].computeBSeqLen,
-            .k = static_cast<uint32_t>(headDim_),
-            .headNum = copyHeadNum_
-        };
+        MatmulArgs args = {.leftOffset = computeTaskInfo_[taskId].iOffset,
+                           .rightOffset = computeTaskInfo_[taskId].kOffset,
+                           .outOffset = (taskId % COMPUTE_PIPE_NUM) * TraitParams::blockM * TraitParams::blockM,
+                           .m = computeTaskInfo_[taskId].computeASeqLen,
+                           .n = computeTaskInfo_[taskId].computeBSeqLen,
+                           .k = static_cast<uint32_t>(headDim_),
+                           .headNum = copyHeadNum_};
         if (computeTaskInfo_[taskId].isFirstSeqBlk) {
             mmMgmt_->template DoQKMatmul<true>(args, qGt_, kGt_, attnScoreGt_);
         } else {
@@ -477,17 +488,15 @@ public:
     __aicore__ inline void ComputeSvMatmul(uint32_t taskId)
     {
         uint8_t isAtomic = (computeTaskInfo_[taskId].isFirstSeqBlk) ? 0 : 1;
-        MatmulArgs args = {
-            .leftOffset = (taskId % COMPUTE_PIPE_NUM) * TraitParams::blockM * TraitParams::blockN,
-            .rightOffset = computeTaskInfo_[taskId].vOffset,
-            .outOffset =
-                (computeTaskInfo_[taskId].transTaskId % TRANS_PIPE_NUM) * TraitParams::blockM * TraitParams::blockK,
-            .m = computeTaskInfo_[taskId].computeASeqLen,
-            .n = static_cast<uint32_t>(headDimV_),
-            .k = computeTaskInfo_[taskId].computeBSeqLen,
-            .headNum = copyHeadNum_,
-            .isAtomicAdd = isAtomic
-        };
+        MatmulArgs args = {.leftOffset = (taskId % COMPUTE_PIPE_NUM) * TraitParams::blockM * TraitParams::blockN,
+                           .rightOffset = computeTaskInfo_[taskId].vOffset,
+                           .outOffset = (computeTaskInfo_[taskId].transTaskId % TRANS_PIPE_NUM) * TraitParams::blockM *
+                                        TraitParams::blockK,
+                           .m = computeTaskInfo_[taskId].computeASeqLen,
+                           .n = static_cast<uint32_t>(headDimV_),
+                           .k = computeTaskInfo_[taskId].computeBSeqLen,
+                           .headNum = copyHeadNum_,
+                           .isAtomicAdd = isAtomic};
 
         mmMgmt_->DoSVMatmul(args, attnScoreGt_, vGt_, svResultGt_);
     }
@@ -496,20 +505,18 @@ public:
     {
         int64_t srcOffset = (taskId % COMPUTE_PIPE_NUM) * TraitParams::blockM * TraitParams::blockM;
         int64_t biasOffset = computeTaskInfo_[taskId].batchId * headNum_ * maxSeqLenQ_ * maxSeqLenK_ +
-                         computeTaskInfo_[taskId].headId * maxSeqLenQ_ * maxSeqLenK_ +
-                         computeTaskInfo_[taskId].qSeqId * maxSeqLenK_ * TraitParams::blockM +
-                         computeTaskInfo_[taskId].kSeqId * TraitParams::blockN;
-                         
+                             computeTaskInfo_[taskId].headId * maxSeqLenQ_ * maxSeqLenK_ +
+                             computeTaskInfo_[taskId].qSeqId * maxSeqLenK_ * TraitParams::blockM +
+                             computeTaskInfo_[taskId].kSeqId * TraitParams::blockN;
+
         int64_t maskOffset = biasOffset;
 
-        VecScoreRabParam<HstuForward::BlockMaskParams> vecScoreParam = {
-            .srcOffset = srcOffset,
-            .biasOffset = biasOffset,
-            .maskOffset = maskOffset,
-            .m = computeTaskInfo_[taskId].computeASeqLen,
-            .n = computeTaskInfo_[taskId].computeBSeqLen,
-            .maskinfo = maskTaskInfo_[taskId]
-        };
+        VecScoreRabParam<HstuForward::BlockMaskParams> vecScoreParam = {.srcOffset = srcOffset,
+                                                                        .biasOffset = biasOffset,
+                                                                        .maskOffset = maskOffset,
+                                                                        .m = computeTaskInfo_[taskId].computeASeqLen,
+                                                                        .n = computeTaskInfo_[taskId].computeBSeqLen,
+                                                                        .maskinfo = maskTaskInfo_[taskId]};
 
         vecScore_->VecScoreImpl(vecScoreParam, attnScoreGt_);
     }
@@ -540,7 +547,7 @@ public:
         } else {
             transSVResult_.template TransResult<true>(svResultGt_, attnOutputGt_, fromOffset, toOffset, total);
         }
-        
+
         if (transTaskId == 0) {
             NotifypreBlock();
         }
@@ -684,11 +691,11 @@ public:
 
     LocalTensor<qType> scmQKTensor_;
 
-    uint32_t sBlkId_ {0};
-    uint32_t eBlkId_ {0};
-    uint32_t skSeqBlkId_ {0};
-    uint32_t ekSeqBlkId_ {0};
-    int32_t splitMode_ {DEFAULT_SPLIT};
+    uint32_t sBlkId_{0};
+    uint32_t eBlkId_{0};
+    uint32_t skSeqBlkId_{0};
+    uint32_t ekSeqBlkId_{0};
+    int32_t splitMode_{DEFAULT_SPLIT};
 
     HstuForward::BlockMaskParams maskTaskInfo_[COMPUTE_PIPE_NUM];
     JaggedTaskArgs computeTaskInfo_[COMPUTE_PIPE_NUM];

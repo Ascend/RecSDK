@@ -29,9 +29,10 @@ public:
     using qType = typename TraitParams::qType;
     using oType = typename TraitParams::oType;
 #ifdef SUPPORT_950
-    __aicore__ inline HstuDenseForwardJaggedKernel(int vecPerProcess =
-                                                       (std::is_same_v<qType, fp8_e4m3fn_t> ? 32 : 48))
-        : HstuDenseForwardKernelPattenBsnd<TraitParams, TilingDataType>(vecPerProcess) {}
+    __aicore__ inline HstuDenseForwardJaggedKernel(int vecPerProcess = (std::is_same_v<qType, fp8_e4m3fn_t> ? 32 : 48))
+        : HstuDenseForwardKernelPattenBsnd<TraitParams, TilingDataType>(vecPerProcess)
+    {
+    }
 #else
     __aicore__ inline HstuDenseForwardJaggedKernel() {}
 #endif
@@ -39,7 +40,7 @@ public:
     __aicore__ inline void Compute();
 
     __aicore__ inline void Init(const Args& args, const HstuJaggedForwardTilingData* __restrict tilingDataPtr,
-        TPipe* pipePtr);
+                                TPipe* pipePtr);
 
     __aicore__ inline void InitArgs(const Args& args, const HstuJaggedForwardTilingData* __restrict tilingDataPtr);
 
@@ -109,8 +110,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
 
 template <typename TraitParams, typename TilingDataType>
 __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>::Init(
-    const Args& args, const HstuJaggedForwardTilingData* __restrict tilingDataPtr,
-    TPipe* pipePtr)
+    const Args& args, const HstuJaggedForwardTilingData* __restrict tilingDataPtr, TPipe* pipePtr)
 {
     InitArgs(args, tilingDataPtr);
     this->InitPipe(pipePtr);
@@ -163,8 +163,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
 }
 
 template <typename TraitParams, typename TilingDataType>
-__aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>::ComputeSvMatmul(
-    uint32_t taskId)
+__aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>::ComputeSvMatmul(uint32_t taskId)
 {
     int isAtomic = 1;
     if (computeTaskInfo[taskId].isFirstSeqBlk) {
@@ -181,12 +180,14 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
 {
     if (computeTaskInfo[taskId].isFirstSeqBlk) {
         this->template DoQkMatmulImpl<true>(computeTaskInfo[taskId].iOffset, computeTaskInfo[taskId].kOffset, taskId,
-            computeTaskInfo[taskId].computeASeqLen, computeTaskInfo[taskId].computeBSeqLen, this->headDim,
-            computeTaskInfo[taskId].bufferIdx);
+                                            computeTaskInfo[taskId].computeASeqLen,
+                                            computeTaskInfo[taskId].computeBSeqLen, this->headDim,
+                                            computeTaskInfo[taskId].bufferIdx);
     } else {
         this->template DoQkMatmulImpl<false>(computeTaskInfo[taskId].iOffset, computeTaskInfo[taskId].kOffset, taskId,
-            computeTaskInfo[taskId].computeASeqLen, computeTaskInfo[taskId].computeBSeqLen, this->headDim,
-            computeTaskInfo[taskId].bufferIdx);
+                                             computeTaskInfo[taskId].computeASeqLen,
+                                             computeTaskInfo[taskId].computeBSeqLen, this->headDim,
+                                             computeTaskInfo[taskId].bufferIdx);
     }
 }
 
@@ -197,7 +198,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
                          computeTaskInfo[taskId].headId * this->maxSeqLenQ * this->maxSeqLenK +
                          computeTaskInfo[taskId].qSeqId * this->maxSeqLenK * TraitParams::blockM +
                          computeTaskInfo[taskId].kSeqId * TraitParams::blockN;
-                         
+
     int64_t maskOffset = biasOffset;
 
     this->template VecScoreImpl<BlockMaskParams>(taskId, biasOffset, maskOffset, computeTaskInfo[taskId].scale,
@@ -207,8 +208,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
 }
 
 template <typename TraitParams, typename TilingDataType>
-__aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>::TransResult(
-    uint32_t transtaskId)
+__aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>::TransResult(uint32_t transtaskId)
 {
     uint32_t transtaskIdModed = transtaskId % TRANS_PIPE_NUM;
     if constexpr (TraitParams::deterministic) {
@@ -223,7 +223,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
         this->template DoTransSvImpl<true>(transtaskId, transTaskInfo[transtaskIdModed].oOffset,
                                            transTaskInfo[transtaskIdModed].computeASeqLen);
     }
-    
+
     if (transtaskId == 0) {
         NotifypreBlock();
     }
@@ -269,7 +269,7 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
     uint32_t kSeqId = this->skSeqBlkId;
     uint32_t kSeqNum = 0;
 
-    this->scmQKTensor =  this->qkL1In.template AllocTensor<qType>();
+    this->scmQKTensor = this->qkL1In.template AllocTensor<qType>();
     for (auto blkId = this->sBlkId; blkId <= this->eBlkId; blkId++) {
         kSeqNum = computeTaskInfo[taskId % COMPUTE_PIPE_NUM].kSeqNum;
         auto limit = (blkId == this->eBlkId) ? this->ekSeqBlkId : kSeqNum;
@@ -277,24 +277,39 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
         uint32_t isEndToTail = false;
         for (; kSeqId < limit; kSeqId++) {
             auto taskinfo = this->computeTaskInfo[taskId % COMPUTE_PIPE_NUM];
-            BlockMaskParams maskinfo = {
-                taskinfo.qSeqId,
-                kSeqId,
-                taskinfo.actualSeqLen,
-                taskinfo.actualSeqLenK,
-                TraitParams::blockM,
-                TraitParams::blockN,
-                taskinfo.numContext,
-                taskinfo.numTarget,
-                this->targetGroupSize,
-                taskinfo.scale
-            };
+            BlockMaskParams maskinfo = {taskinfo.qSeqId,       kSeqId,
+                                        taskinfo.actualSeqLen, taskinfo.actualSeqLenK,
+                                        TraitParams::blockM,   TraitParams::blockN,
+                                        taskinfo.numContext,   taskinfo.numTarget,
+                                        this->targetGroupSize, taskinfo.scale};
+
+            const int64_t qBlockBegin = static_cast<int64_t>(taskinfo.qSeqId) * TraitParams::blockM;
+            const int64_t kBlockBegin = static_cast<int64_t>(kSeqId) * TraitParams::blockN;
+            const int64_t kBlockEnd = kBlockBegin + TraitParams::blockN;
+            const int64_t targetQBegin = taskinfo.actualSeqLen - taskinfo.numTarget;
+            const int64_t targetKBegin = taskinfo.actualSeqLenK - taskinfo.numTarget;
+
+            // 跳过 target mask 三角形下方完全无效的 K block；边界 block 仍交给 mask 处理。
+            // target 白区仅由 MASK_TRIL 的内核 mask 保证恒为 0；CUSTOM mask 的值由外部输入决定，不能跳过。
+            if (TraitParams::maskType == CausalMaskT::MASK_TRIL) {
+                if (taskinfo.numTarget > 0 && this->targetGroupSize > 0 && qBlockBegin >= targetQBegin &&
+                    kBlockBegin >= targetKBegin) {
+                    const int64_t targetGroupIndex = (qBlockBegin - targetQBegin) / this->targetGroupSize;
+                    if (targetGroupIndex > 0) {
+                        const int64_t targetGroupLimit = targetKBegin + targetGroupIndex * this->targetGroupSize;
+                        if (kBlockEnd <= targetGroupLimit) {
+                            continue;
+                        }
+                    }
+                }
+            }
+
             // 在下三角下跳过运算
             if (maskinfo.NoComputation(TraitParams::maskType)) {
                 isEndToTail = true;
                 break;
             }
-            
+
             currentTaskId = taskId % COMPUTE_PIPE_NUM;
             preTaskId = (taskId + COMPUTE_PIPE_NUM - 1) % COMPUTE_PIPE_NUM;
             prePreTaskId = (taskId + COMPUTE_PIPE_NUM - 2) % COMPUTE_PIPE_NUM;
@@ -405,8 +420,10 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
 }
 
 template <typename TraitParams, typename TilingDataType>
-__aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>::FillTaskInfo(
-    uint32_t batchId, uint32_t headId, int64_t seqGlobalOffset, uint32_t taskId)
+__aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>::FillTaskInfo(uint32_t batchId,
+                                                                                               uint32_t headId,
+                                                                                               int64_t seqGlobalOffset,
+                                                                                               uint32_t taskId)
 {
     if (batchId >= this->batchSize) {
         return;
@@ -439,8 +456,8 @@ __aicore__ inline void HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>
     auto batchInnerOffset = seqGlobalOffset - (computeTaskInfo[taskId].batchOffset * this->headNum);
     computeTaskInfo[taskId].headId = headId;
     computeTaskInfo[taskId].qSeqId =
-        (batchInnerOffset - computeTaskInfo[taskId].headId *
-         computeTaskInfo[taskId].actualSeqLen) / TraitParams::blockM;
+        (batchInnerOffset - computeTaskInfo[taskId].headId * computeTaskInfo[taskId].actualSeqLen) /
+        TraitParams::blockM;
     computeTaskInfo[taskId].kSeqNum =
         CeilDiv(computeTaskInfo[taskId].actualSeqLenK, static_cast<uint32_t>(TraitParams::blockN));
     computeTaskInfo[taskId].qSeqNum =
@@ -564,21 +581,21 @@ __aicore__ inline int HstuDenseForwardJaggedKernel<TraitParams, TilingDataType>:
     int blocks[4] = {0};  // start block id, end block id
     if constexpr (TraitParams::maskType == CausalMaskT::MASK_TRIL) {
         auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_TRIL>(
-            coreNum, this->batchSize, this->headNum, this->targetGroupSize, TraitParams::blockM,
-            TraitParams::blockN, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
+            coreNum, this->batchSize, this->headNum, this->targetGroupSize, TraitParams::blockM, TraitParams::blockN,
+            seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
         taskAssigner.Compute(blocks, blockId);
     } else if constexpr (TraitParams::maskType == CausalMaskT::MASK_CUSTOM) {
         auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_CUSTOM>(
-            coreNum, this->batchSize, this->headNum, this->targetGroupSize, TraitParams::blockM,
-            TraitParams::blockN, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
+            coreNum, this->batchSize, this->headNum, this->targetGroupSize, TraitParams::blockM, TraitParams::blockN,
+            seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
         taskAssigner.Compute(blocks, blockId);
     } else {
         auto taskAssigner = BlockTaskAssign<oType, CausalMaskT::MASK_NONE>(
-            coreNum, this->batchSize, this->headNum, this->targetGroupSize, TraitParams::blockM,
-            TraitParams::blockN, seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
+            coreNum, this->batchSize, this->headNum, this->targetGroupSize, TraitParams::blockM, TraitParams::blockN,
+            seqOffsetsQGt, seqOffsetsKGt, numContextGt, numTargetGt, this->splitMode);
         taskAssigner.Compute(blocks, blockId);
     }
-    
+
     this->L2CacheHintCfg(this->splitMode);
 
     this->skSeqBlkId = blocks[0];

@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -291,6 +291,28 @@ public:
                     taskinfo.numContext,   taskinfo.numTarget,
                     targetGroupSize_,      taskinfo.scale,
                 };
+
+                const int64_t qBlockBegin = static_cast<int64_t>(taskinfo.qSeqId) * TraitParams::blockM;
+                const int64_t kBlockBegin = static_cast<int64_t>(kSeqId) * TraitParams::blockN;
+                const int64_t kBlockEnd = kBlockBegin + TraitParams::blockN;
+                const int64_t targetQBegin = taskinfo.actualSeqLen - taskinfo.numTarget;
+                const int64_t targetKBegin = taskinfo.actualSeqLenK - taskinfo.numTarget;
+
+                // 跳过 target mask 三角形下方完全无效的 K block；边界 block 仍交给 mask 处理。
+                // target 白区仅由 MASK_TRIL 的内核 mask 保证恒为 0；CUSTOM mask 的值由外部输入决定，不能跳过。
+                if (TraitParams::maskType == CausalMaskT::MASK_TRIL) {
+                    if (taskinfo.numTarget > 0 && targetGroupSize_ > 0 && qBlockBegin >= targetQBegin &&
+                        kBlockBegin >= targetKBegin) {
+                        const int64_t targetGroupIndex = (qBlockBegin - targetQBegin) / targetGroupSize_;
+                        if (targetGroupIndex > 0) {
+                            const int64_t targetGroupLimit = targetKBegin + targetGroupIndex * targetGroupSize_;
+                            if (kBlockEnd <= targetGroupLimit) {
+                                continue;
+                            }
+                        }
+                    }
+                }
+
                 // 在下三角下跳过运算
                 if (maskinfo.NoComputation(TraitParams::maskType)) {
                     isEndToTail = true;
