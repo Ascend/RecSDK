@@ -468,6 +468,28 @@ __aicore__ inline void HstuDenseForwardPagedKernel<TraitParams, TilingDataType>:
                                         this->blockHeight,     this->blockHeight,
                                         taskinfo.numContext,   taskinfo.numTarget,
                                         this->targetGroupSize, taskinfo.scale};
+
+            const int64_t qBlockBegin = static_cast<int64_t>(taskinfo.qSeqId) * this->blockHeight;
+            const int64_t kBlockBegin = static_cast<int64_t>(kSeqId) * this->blockHeight;
+            const int64_t kBlockEnd = kBlockBegin + this->blockHeight;
+            const int64_t targetQBegin = taskinfo.actualSeqLen - taskinfo.numTarget;
+            const int64_t targetKBegin = taskinfo.actualSeqLenK - taskinfo.numTarget;
+
+            // target 白区仅由 MASK_TRIL 的内核 mask 保证恒为 0；CUSTOM mask 的值由外部输入决定，不能跳过。
+            // 跳过 target mask 三角形下方完全无效的 K block；边界 block 仍交给 mask 处理。
+            if (TraitParams::maskType == CausalMaskT::MASK_TRIL) {
+                if (taskinfo.numTarget > 0 && this->targetGroupSize > 0 && qBlockBegin >= targetQBegin &&
+                    kBlockBegin >= targetKBegin) {
+                    const int64_t targetGroupIndex = (qBlockBegin - targetQBegin) / this->targetGroupSize;
+                    if (targetGroupIndex > 0) {
+                        const int64_t targetGroupLimit = targetKBegin + targetGroupIndex * this->targetGroupSize;
+                        if (kBlockEnd <= targetGroupLimit) {
+                            continue;
+                        }
+                    }
+                }
+            }
+
             // 在下三角下跳过运算
             if (maskinfo.NoComputation(TraitParams::maskType)) {
                 isEndToTail = true;
