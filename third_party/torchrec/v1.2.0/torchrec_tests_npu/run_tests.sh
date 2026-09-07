@@ -102,6 +102,7 @@ HTML_REPORT="test_reports/test_results_${TIMESTAMP}.html"
 python3 -m pytest \
     ./torchrec/sparse/tests/*.py \
     ./torchrec/modules/tests/test_embedding_modules.py \
+    ./torchrec/modules/tests/test_itep_embedding_modules.py \
     ./torchrec/distributed/planner/tests/*.py \
     ./torchrec/inference/tests/test_inference.py \
     ./torchrec/inference/inference_legacy/tests/test_modules.py \

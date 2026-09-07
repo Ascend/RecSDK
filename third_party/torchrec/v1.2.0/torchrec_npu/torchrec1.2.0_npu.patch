@@ -1786,3 +1786,16 @@ index 26aaba0e..d370c8ed 100644
 @@ -1 +1 @@
 -1.2.0
 +1.2.0+npu
+diff --git a/torchrec/distributed/sharding/rw_sharding.py b/torchrec/distributed/sharding/rw_sharding.py
+index b62609da..5d2930ba 100644
+--- a/torchrec/distributed/sharding/rw_sharding.py
++++ b/torchrec/distributed/sharding/rw_sharding.py
+@@ -333,7 +333,7 @@ class RwSparseFeaturesDist(BaseSparseFeaturesDist[KeyedJaggedTensor]):
+             self.register_buffer(
+                 "_feature_total_num_blocks_tensor",
+                 torch.tensor(
+-                    [feature_total_num_buckets],
++                    feature_total_num_buckets,
+                     device=device,
+                     dtype=torch.int64,
+                 ),

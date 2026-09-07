@@ -851,3 +851,91 @@ index 2b4e9786..f9855838 100644
  
          # pyre-fixme[16]: Item `Tensor` of `Tensor | Module` has no attribute `sparse`.
          sharded_qebc = sharded_model._module.sparse.ebc
+diff --git a/torchrec/modules/tests/test_itep_embedding_modules.py b/torchrec/modules/tests/test_itep_embedding_modules.py
+index 3e9bc080..8f82d8db 100644
+--- a/torchrec/modules/tests/test_itep_embedding_modules.py
++++ b/torchrec/modules/tests/test_itep_embedding_modules.py
+@@ -73,7 +73,7 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+                 embedding_bag_config1,
+                 embedding_bag_config2,
+             ],
+-            device=torch.device("cuda"),
++            device=torch.device("npu"),
+         )
+ 
+         # Create a mock object for tbe lookups
+@@ -94,7 +94,7 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+         keys = []
+         values = []
+         lengths = []
+-        cuda_device = torch.device("cuda")
++        cuda_device = torch.device("npu")
+ 
+         # Input KJT uses unpruned hash size (same as sigrid hash), and feature names
+         for key, unpruned_hash_size in feature_name_to_unpruned_hash_sizes.items():
+@@ -191,8 +191,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignores
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Skip when not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Skip when not enough NPUs available",
+     )
+     def test_init_itep_module(self) -> None:
+         itep_module = GenericITEPModule(
+@@ -228,8 +228,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignores
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Skip when not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Skip when not enough NPUs available",
+     )
+     def test_init_itep_module_without_pruned_table(self) -> None:
+         itep_module = GenericITEPModule(
+@@ -244,8 +244,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignores
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Skip when not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Skip when not enough NPUs available",
+     )
+     def test_train_forward(self) -> None:
+         itep_module = GenericITEPModule(
+@@ -269,8 +269,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignores
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Skip when not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Skip when not enough NPUs available",
+     )
+     def test_train_forward_vbe(self) -> None:
+         itep_module = GenericITEPModule(
+@@ -294,8 +294,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignores
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Skip when not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Skip when not enough NPUs available",
+     )
+     # Mock out reset_weight_momentum to count calls
+     @patch(f"{MOCK_NS}.GenericITEPModule.reset_weight_momentum")
+@@ -328,8 +328,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignores
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Skip when not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Skip when not enough NPUs available",
+     )
+     # Mock out reset_weight_momentum to count calls
+     @patch(f"{MOCK_NS}.GenericITEPModule.reset_weight_momentum")
