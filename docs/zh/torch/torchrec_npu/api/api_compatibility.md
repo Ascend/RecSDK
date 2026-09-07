@@ -11,6 +11,11 @@
 - API“是否支持”为“否”、“限制与说明”为“-”，说明在昇腾NPU上暂不支持此API。
 - 部分API为特定TorchRec版本新增API，“限制与说明”中会标注引入该API的TorchRec版本，未标注版本的API在v1.2.0及以上版本均支持。
 
+torchrec_npu框架总体约束如下：
+
+- SSD和UVM场景不支持。
+- split/dense查表算子仅支持部分场景（weighted/unweighted+codegen+SGD/Adagrad/Adam/RowWiseAdagrad优化器）。
+
 ### Data Types
 
 #### torchrec.sparse.jagged_tensor.JaggedTensor
@@ -240,16 +245,16 @@
 | API名称                                                      | 是否支持 | 限制与说明               |
 | ------------------------------------------------------------ | -------- | ------------------------ |
 | torchrec.distributed.model_parallel.DistributedModelParallel | 是       | 仅支持FUSED+ROW_WISE场景 |
-| DistributedModelParallel.copy                                | 否       | -                        |
+| DistributedModelParallel.copy                                | 是       | -                        |
 | DistributedModelParallel.forward                             | 是       | -                        |
-| DistributedModelParallel.get_delta_tracker                   | 否       | v1.5.0版本新增           |
+| DistributedModelParallel.get_delta_tracker                   | 是       | v1.5.0版本新增           |
 | DistributedModelParallel.init_data_parallel                  | 是       | -                        |
-| DistributedModelParallel.init_torchrec_delta_tracker         | 否       | v1.5.0版本新增           |
+| DistributedModelParallel.init_torchrec_delta_tracker         | 是       | v1.5.0版本新增           |
 | DistributedModelParallel.load_state_dict                     | 是       | -                        |
 | DistributedModelParallel.module                              | 是       | -                        |
 | DistributedModelParallel.named_buffers                       | 是       | -                        |
 | DistributedModelParallel.named_parameters                    | 是       | -                        |
-| DistributedModelParallel.reshard                             | 否       | v1.5.0版本新增           |
+| DistributedModelParallel.reshard                             | 是       | v1.5.0版本新增           |
 | DistributedModelParallel.state_dict                          | 是       | -                        |
 | DistributedModelParallel.write                               | 否       | v1.6.0版本新增           |
 
@@ -265,4 +270,4 @@
 
 | API名称                                      | 是否支持 | 限制与说明 |
 | -------------------------------------------- | -------- | ---------- |
-| torchrec.inference.modules.shard_quant_model | 否       | -          |
+| torchrec.inference.modules.shard_quant_model | 是       | -          |
