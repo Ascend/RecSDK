@@ -53,7 +53,7 @@ index 29258f6f..ab36dc52 100644
 +import torchrec.distributed  # noqa
  import torchrec.quant  # noqa
 diff --git a/torchrec/distributed/batched_embedding_kernel.py b/torchrec/distributed/batched_embedding_kernel.py
-index e0316ef2..d7e4fcf1 100644
+index e0316ef2..464dde00 100644
 --- a/torchrec/distributed/batched_embedding_kernel.py
 +++ b/torchrec/distributed/batched_embedding_kernel.py
 @@ -29,6 +29,9 @@ from typing import (
@@ -63,7 +63,7 @@ index e0316ef2..d7e4fcf1 100644
 +import uuid
 +from itertools import accumulate
 +from math import log2
-
+ 
  import torch
  import torch.distributed as dist
 @@ -54,6 +57,7 @@ from fbgemm_gpu.tbe.ssd import ASSOC, SSDTableBatchedEmbeddingBags
@@ -74,10 +74,28 @@ index e0316ef2..d7e4fcf1 100644
  from torch import nn
  from torch.autograd.profiler import record_function
  from torch.distributed._tensor import DTensor, Replicate, Shard as DTensorShard
+@@ -124,7 +128,7 @@ class ReduceScatterResizeAwaitable(LazyAwaitable[torch.Tensor]):
+     def __init__(
+         self,
+         async_work: Optional[dist.Work],
+-        async_event: Optional[torch.cuda.Event],
++        async_event: Optional[torch.npu.Event],
+         shard_buf: torch.Tensor,
+         resize_callback: Callable[[], None],
+     ) -> None:
+@@ -151,7 +155,7 @@ class ReduceScatterResizeAwaitable(LazyAwaitable[torch.Tensor]):
+             return self._shard_buf
+ 
+         if self._async_event is not None:
+-            torch.cuda.current_stream().wait_event(self._async_event)
++            torch.npu.current_stream().wait_event(self._async_event)
+         if self._async_work is not None:
+             self._async_work.wait()
+ 
 @@ -161,6 +165,136 @@ class ReduceScatterResizeAwaitable(LazyAwaitable[torch.Tensor]):
          return self._shard_buf
-
-
+ 
+ 
 +def custom_init(
 +        self,
 +        embedding_specs: List[Tuple[int, int]],  # tuple of (rows, dims)
@@ -223,6 +241,40 @@ index e0316ef2..d7e4fcf1 100644
              else:
                  compute_devices.append(ComputeDevice.CPU)
                  managed.append(EmbeddingLocation.HOST)
+@@ -2567,11 +2706,11 @@ class ShardedBatchedFusedEmbedding(BatchedFusedEmbedding):
+         self._shard_buf_nbytes: int = 0
+         self._shard_buf: Optional[torch.Tensor] = None
+ 
+-        self._async_stream: torch.cuda.Stream = torch.cuda.Stream(
++        self._async_stream: torch.npu.Stream = torch.npu.Stream(
+             device=self._emb_module.weights_dev.device
+         )
+         self._async_work: Optional[dist.Work] = None
+-        self._async_event: Optional[torch.cuda.Event] = None
++        self._async_event: Optional[torch.npu.Event] = None
+         self._rs_awaitable: Optional[ReduceScatterResizeAwaitable] = None
+ 
+         self.register_full_backward_pre_hook(
+@@ -2658,8 +2797,8 @@ class ShardedBatchedFusedEmbedding(BatchedFusedEmbedding):
+ 
+     def forward(self, features: KeyedJaggedTensor) -> torch.Tensor:
+         embs = super().forward(features)
+-        self._async_stream.wait_stream(torch.cuda.current_stream())
+-        with torch.cuda.stream(self._async_stream):
++        self._async_stream.wait_stream(torch.npu.current_stream())
++        with torch.npu.stream(self._async_stream):
+             self._rs_awaitable = self._reduce_scatter_weights_async()
+         return embs
+ 
+@@ -2716,7 +2855,7 @@ class ShardedBatchedFusedEmbedding(BatchedFusedEmbedding):
+                     async_op=True,
+                 )
+ 
+-            self._async_event = torch.cuda.Event(enable_timing=False, blocking=False)
++            self._async_event = torch.npu.Event(enable_timing=False, blocking=False)
+             # pyre-ignore[16]
+             self._async_event.record(self._async_stream)
+ 
 @@ -2751,7 +2890,7 @@ class BatchedDenseEmbedding(BaseBatchedEmbedding[torch.Tensor]):
          use_cpu: bool = (
              device is None
@@ -244,6 +296,40 @@ index e0316ef2..d7e4fcf1 100644
              else:
                  compute_devices.append(ComputeDevice.CPU)
                  managed.append(EmbeddingLocation.HOST)
+@@ -3679,11 +3823,11 @@ class ShardedBatchedFusedEmbeddingBag(BatchedFusedEmbeddingBag):
+         self._shard_buf_nbytes: int = 0
+         self._shard_buf: Optional[torch.Tensor] = None
+ 
+-        self._async_stream: torch.cuda.Stream = torch.cuda.Stream(
++        self._async_stream: torch.npu.Stream = torch.npu.Stream(
+             device=self._emb_module.weights_dev.device
+         )
+         self._async_work: Optional[dist.Work] = None
+-        self._async_event: Optional[torch.cuda.Event] = None
++        self._async_event: Optional[torch.npu.Event] = None
+         self._rs_awaitable: Optional[ReduceScatterResizeAwaitable] = None
+ 
+         self.register_full_backward_pre_hook(
+@@ -3771,8 +3915,8 @@ class ShardedBatchedFusedEmbeddingBag(BatchedFusedEmbeddingBag):
+ 
+     def forward(self, features: KeyedJaggedTensor) -> torch.Tensor:
+         embs = super().forward(features)
+-        self._async_stream.wait_stream(torch.cuda.current_stream())
+-        with torch.cuda.stream(self._async_stream):
++        self._async_stream.wait_stream(torch.npu.current_stream())
++        with torch.npu.stream(self._async_stream):
+             self._rs_awaitable = self._reduce_scatter_weights_async()
+         return embs
+ 
+@@ -3829,7 +3973,7 @@ class ShardedBatchedFusedEmbeddingBag(BatchedFusedEmbeddingBag):
+                     async_op=True,
+                 )
+ 
+-            self._async_event = torch.cuda.Event(enable_timing=False, blocking=False)
++            self._async_event = torch.npu.Event(enable_timing=False, blocking=False)
+             # pyre-ignore[16]
+             self._async_event.record(self._async_stream)
+ 
 @@ -3865,7 +4009,7 @@ class BatchedDenseEmbeddingBag(BaseBatchedEmbeddingBag[torch.Tensor]):
          use_cpu: bool = (
              device is None
@@ -1488,3 +1574,16 @@ index bc80560f..16eaa17e 100644
 @@ -1 +1 @@
 -1.5.0
 +1.5.0+npu
+diff --git a/torchrec/distributed/sharding/rw_sharding.py b/torchrec/distributed/sharding/rw_sharding.py
+index b78fc28f..aed6ad8f 100644
+--- a/torchrec/distributed/sharding/rw_sharding.py
++++ b/torchrec/distributed/sharding/rw_sharding.py
+@@ -419,7 +419,7 @@ class RwSparseFeaturesDist(BaseSparseFeaturesDist[KeyedJaggedTensor]):
+             self.register_buffer(
+                 "_feature_total_num_blocks_tensor",
+                 torch.tensor(
+-                    [feature_total_num_buckets],
++                    feature_total_num_buckets,
+                     device=device,
+                     dtype=torch.int64,
+                 ),

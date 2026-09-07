@@ -1320,3 +1320,198 @@ index 2b4e9786..f9855838 100644
  
          # pyre-fixme[16]: Item `Tensor` of `Tensor | Module` has no attribute `sparse`.
          sharded_qebc = sharded_model._module.sparse.ebc
+diff --git a/torchrec/modules/tests/test_itep_embedding_modules.py b/torchrec/modules/tests/test_itep_embedding_modules.py
+index e9575f07..ff0ff73f 100644
+--- a/torchrec/modules/tests/test_itep_embedding_modules.py
++++ b/torchrec/modules/tests/test_itep_embedding_modules.py
+@@ -73,7 +73,7 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+                 embedding_bag_config1,
+                 embedding_bag_config2,
+             ],
+-            device=torch.device("cuda"),
++            device=torch.device("npu"),
+         )
+ 
+         # Create a mock object for tbe lookups
+@@ -94,7 +94,7 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+         keys = []
+         values = []
+         lengths = []
+-        cuda_device = torch.device("cuda")
++        cuda_device = torch.device("npu")
+ 
+         # Input KJT uses unpruned hash size (same as sigrid hash), and feature names
+         for key, unpruned_hash_size in feature_name_to_unpruned_hash_sizes.items():
+@@ -191,8 +191,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     def test_init_itep_module(self) -> None:
+         itep_module = GenericITEPModule(
+@@ -228,8 +228,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     def test_init_itep_module_without_pruned_table(self) -> None:
+         itep_module = GenericITEPModule(
+@@ -244,8 +244,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     def test_train_forward(self) -> None:
+         itep_module = GenericITEPModule(
+@@ -269,8 +269,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     def test_train_forward_vbe(self) -> None:
+         itep_module = GenericITEPModule(
+@@ -294,8 +294,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     # Mock out reset_weight_momentum to count calls
+     @patch(f"{MOCK_NS}.GenericITEPModule.reset_weight_momentum")
+@@ -328,8 +328,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     # Mock out reset_weight_momentum to count calls
+     @patch(f"{MOCK_NS}.GenericITEPModule.reset_weight_momentum")
+@@ -364,8 +364,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     def test_iter_increment_per_forward(self) -> None:
+         """Test that the iteration counter increments correctly with each forward pass."""
+@@ -396,8 +396,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     def test_iter_passed_as_int_to_itep_module(self) -> None:
+         """Test that iter is passed as integer to the ITEP module."""
+@@ -439,8 +439,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     def test_blank_line_formatting_preserved(self) -> None:
+         """Test that the code formatting with blank lines is preserved."""
+@@ -471,8 +471,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     def test_iter_boundary_values_with_pruning_logic(self) -> None:
+         """Test iter behavior at boundary values that affect pruning decisions."""
+@@ -519,12 +519,16 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     def test_error_handling_invalid_iter_tensor_values_cuda_disabled_in_oss_compatibility(
+         self,
+     ) -> None:
++        if torch.npu.is_available():
++                self.skipTest(
++                    "NPU operators do not support outlier processing in this way."
++                )
+         """Test behavior with invalid iter tensor values."""
+         itep_module = GenericITEPModule(
+             table_name_to_unpruned_hash_sizes=self._table_name_to_unpruned_hash_sizes,
+@@ -568,8 +572,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     def test_iter_consistency_across_training_steps(self) -> None:
+         """Test that iter remains consistent and increments properly across training steps."""
+@@ -627,8 +631,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     def test_performance_iter_conversion_overhead(self) -> None:
+         """Test that iter tensor to int conversion doesn't introduce significant overhead."""
+@@ -681,8 +685,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     def test_iter_type_conversion_edge_cases(self) -> None:
+         """Test edge cases for iter tensor to int conversion."""
+@@ -745,8 +749,8 @@ class TestITEPEmbeddingBagCollection(unittest.TestCase):
+ 
+     # pyre-ignore[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 1,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() < 1,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     def test_concurrent_forward_passes_iter_safety(self) -> None:
+         """Test that iter handling is safe under simulated concurrent conditions."""
