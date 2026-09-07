@@ -257,6 +257,10 @@ struct BackwardEpilogueMainloop {
         QBlockScheduler qBlockScheduler(batch, heads, params.ptrSeqOffsetQ);
         KBlockScheduler kBlockScheduler(batch, heads, params.ptrSeqOffsetK, params.ptrSeqOffsetQ);
 
+        if constexpr (IS_TARGET) {
+            kBlockScheduler.EnableTargetWorkload(params.ptrNumContext, params.ptrNumTarget, targetGroupSize,
+                                                 IS_CONTEXT);
+        }
         kBlockScheduler.Init();
         Predictor predictor;
         for (; kBlockScheduler.IsValid(); ++kBlockScheduler) {

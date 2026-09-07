@@ -245,6 +245,10 @@ struct BackwardMmadMainloop {
         uint32_t pingPongFlag = 0;
         uint32_t l0bFlag = 0;
 
+        if constexpr (IS_TARGET) {
+            kBlockScheduler.EnableTargetWorkload(params.ptrNumContext, params.ptrNumTarget, targetGroupSize,
+                                                 IS_CONTEXT);
+        }
         kBlockScheduler.Init();
         Predictor predictor;
         for (; kBlockScheduler.IsValid(); ++kBlockScheduler) {
