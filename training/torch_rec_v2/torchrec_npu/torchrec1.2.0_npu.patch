@@ -549,7 +549,7 @@ index 52909970..fad9df2d 100644
      )
 
 diff --git a/torchrec/distributed/planner/types.py b/torchrec/distributed/planner/types.py
-index b2a72503..352a7cd3 100644
+index b2a72503..10452bbc 100644
 --- a/torchrec/distributed/planner/types.py
 +++ b/torchrec/distributed/planner/types.py
 @@ -38,8 +38,9 @@ from torchrec.distributed.types import (
@@ -572,7 +572,7 @@ index b2a72503..352a7cd3 100644
 +        check(compute_device == "npu", "compute_device should be npu")
 +        check(hbm_cap is None, "hbm_cap should be None")
 +        check(ddr_cap is None, "ddr_cap should be None")
-+        check(local_world_size is None, "local_world_size should be None")
++        check(local_world_size is None or isinstance(local_world_size, int), "local_world_size should be None or int")
 +        check(hbm_mem_bw == HBM_MEM_BW, f"hbm_mem_bw should be {HBM_MEM_BW}")
 +        check(ddr_mem_bw == DDR_MEM_BW, f"ddr_mem_bw should be {DDR_MEM_BW}")
 +        check(hbm_to_ddr_mem_bw == HBM_TO_DDR_MEM_BW, f"hbm_to_ddr_mem_bw should be {HBM_TO_DDR_MEM_BW}")
