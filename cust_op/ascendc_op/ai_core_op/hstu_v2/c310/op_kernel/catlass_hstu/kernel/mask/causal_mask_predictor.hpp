@@ -26,6 +26,8 @@ See the License for the specific language governing permissions and
 
 #pragma once
 
+#include "../../detail/target_block_range.hpp"
+
 namespace Catlass::Kernel::Mask {
 
 template <uint32_t BLOCK_M, uint32_t BLOCK_N>
@@ -103,6 +105,13 @@ struct CausalMaskPredictor {
             return (p.qSeqId < numBlkQ) && (p.kSeqId < numBlkK);
         }
 
+        CATLASS_DEVICE static bool IsOutOfRange(const BlockPredParams& p)
+        {
+            const uint64_t qBlockBegin = static_cast<uint64_t>(p.qSeqId) * BLOCK_M;
+            const uint64_t kBlockBegin = static_cast<uint64_t>(p.kSeqId) * BLOCK_N;
+            return qBlockBegin >= p.seqlenQ || kBlockBegin >= p.seqlenK;
+        }
+
         CATLASS_DEVICE static void NeedHistoryMask(const BlockPredParams& p, bool& belowDig, bool& diagonal)
         {
             const int deltaQK = p.seqlenK - p.seqlenQ;
@@ -125,6 +134,17 @@ struct CausalMaskPredictor {
                 return false;
             auto tbase = (p.seqlenK - p.numTarget) / BLOCK_N;
             return (tbase <= p.kSeqId) && trilMask;
+        }
+
+        CATLASS_DEVICE static uint32_t GetTargetQBlockEnd(const BlockPredParams& p)
+        {
+            return Catlass::Detail::GetTargetQBlockEnd<BLOCK_M, BLOCK_N>(p.kSeqId, p.seqlenQ, p.seqlenK, p.numTarget,
+                                                                         p.numContext, p.targetGroupSize);
+        }
+
+        CATLASS_DEVICE static bool IsTargetSkip(const BlockPredParams& p)
+        {
+            return p.qSeqId >= GetTargetQBlockEnd(p);
         }
     };
 
@@ -166,7 +186,8 @@ struct CausalMaskPredictor {
     // =========================================================================
     CATLASS_DEVICE bool IsSkip() const
     {
-        return !this->trilMask && !this->contextMask;
+        return MaskRegion::IsOutOfRange(this->params) || (!this->trilMask && !this->contextMask) ||
+               MaskRegion::IsTargetSkip(this->params);
     }
 
     // =========================================================================
@@ -302,7 +323,8 @@ private:
 
     CATLASS_DEVICE bool IsLast(BlockPredParams& bp) const
     {
-        return bp.qSeqId == CeilDiv(bp.seqlenQ, BLOCK_M) - 1;
+        const uint32_t qBlockEnd = MaskRegion::GetTargetQBlockEnd(bp);
+        return qBlockEnd > 0 && bp.qSeqId == qBlockEnd - 1;
     }
 
 public:
