@@ -119,12 +119,12 @@ Rec SDK Torch软件包如下表：
    请参见[宿主机依赖](#宿主机依赖)章节完成宿主机环境配置。
 2. 制作基础训练镜像<a id="section104919392501"></a>
 
-   可直接下载已经制作好的基础训练镜像，请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中的“镜像下载”标签页，下载**26.0.0及之后版本**的镜像。26.0.0及之后版本镜像中已安装Rec SDK Torch及相关依赖，若无需更新可跳过后续“安装Rec SDK Torch软件包”、“源码安装”和“离线安装”章节，直接执行“安装验证”章节。
+   可直接下载已经制作好的基础训练镜像，请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088)中的“镜像下载”标签页，下载**26.1.0及之后版本**的镜像。26.1.0及之后版本镜像中已安装Rec SDK Torch及相关依赖，若无需更新可跳过后续“安装Rec SDK Torch软件包”、“源码安装”和“离线安装”章节，直接执行“安装验证”章节。
 
-   从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)获取镜像的Docker指令示例如下：
+   从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088)获取镜像的Docker指令示例如下：
 
-   - 获取x86_64镜像: `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_debian12-x86`
-   - 获取aarch_64镜像: `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_openeuler2203-arm`
+   - 获取Ubuntu镜像: `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/recsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11-pt`
+   - 获取openEuler镜像: `docker pull swr.cn-south-1.myhuaweicloud.com/ascendhub/recsdk:26.1.0-cann9.1.0-910b-openeuler22.03-py3.11-pt`
 
    也可手动制作基础训练镜像，请参见[基础镜像构建](../../../../../docker/OVERVIEW.zh.md#本地构建镜像)中“PyTorch 镜像”章节制作镜像。
 
@@ -155,7 +155,7 @@ Rec SDK Torch软件包如下表：
    >
    > - -m 300g 表示设置容器内可以使用的内存大小上限为300G，可根据实际情况进行配置。
    > - -e ASCEND\_VISIBLE\_DEVICES=0-7 表示将服务器上编号为device0\~device7的NPU设备挂载到容器内，可根据实际情况进行配置。
-   > - image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.0.0版本的x86镜像的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_debian12-x86`。
+   > - image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088)中26.1.0版本适用于Atlas 800T A2的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/recsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11-pt`。
 
    执行如下命令新建容器并进入容器内：
 
@@ -203,7 +203,7 @@ Rec SDK Torch软件包如下表：
 4. 安装自定义算子相关包<a id="install_custom_op"></a>
 
    a）**安装fbgemm_ascend算子包**
-   
+
    fbgemm_ascend为Rec SDK Torch的三方依赖，可直接从[fbgemm_ascend Release](https://gitcode.com/Ascend/fbgemm-ascend/releases)获取（fbgemm_ascend版本和PyTorch配套关系参考fbgemm_gpu版本即可），再按照如下指令进行安装。
 
    ```bash
