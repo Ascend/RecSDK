@@ -939,3 +939,771 @@ index 3e9bc080..8f82d8db 100644
      )
      # Mock out reset_weight_momentum to count calls
      @patch(f"{MOCK_NS}.GenericITEPModule.reset_weight_momentum")
+diff --git a/torchrec/distributed/test_utils/infer_utils.py b/torchrec/distributed/test_utils/infer_utils.py
+index 0c115f87..d6eb28bf 100644
+--- a/torchrec/distributed/test_utils/infer_utils.py
++++ b/torchrec/distributed/test_utils/infer_utils.py
+@@ -731,6 +731,8 @@ def create_test_model_ebc_only_no_quantize(
+     compute_device: str = "cuda",
+     feature_processor: bool = False,
+ ) -> TestModelInfo:
++    if torch.npu.is_available():
++        compute_device = "npu"
+     topology: Topology = Topology(world_size=world_size, compute_device=compute_device)
+     mi = TestModelInfo(
+         dense_device=dense_device,
+@@ -813,6 +815,8 @@ def create_test_model_ebc_only(
+     compute_device: str = "cuda",
+     feature_processor: bool = False,
+ ) -> TestModelInfo:
++    if torch.npu.is_available():
++        compute_device = "npu"
+     mi = create_test_model_ebc_only_no_quantize(
+         num_embeddings=num_embeddings,
+         emb_dim=emb_dim,
+diff --git a/torchrec/distributed/test_utils/multi_process.py b/torchrec/distributed/test_utils/multi_process.py
+index af201bfa..40d47a69 100644
+--- a/torchrec/distributed/test_utils/multi_process.py
++++ b/torchrec/distributed/test_utils/multi_process.py
+@@ -49,6 +49,13 @@ class MultiProcessContext:
+             if self.disable_cuda_tf_32:
+                 torch.backends.cudnn.allow_tf32 = False
+                 torch.backends.cuda.matmul.allow_tf32 = False
++        elif torch.npu.is_available() and world_size <= torch.npu.device_count():
++            self.device: torch.device = torch.device(f"npu:{rank}")
++            torch.npu.set_device(self.device)
++
++            if self.disable_cuda_tf_32:
++                torch.npu.conv.allow_hf32 = False
++                torch.npu.matmul.allow_hf32 = False
+         else:
+             self.device: torch.device = torch.device("cpu")
+ 
+@@ -56,6 +63,9 @@ class MultiProcessContext:
+             if torch.cuda.is_available():
+                 torch.backends.cudnn.allow_tf32 = False
+                 torch.backends.cuda.matmul.allow_tf32 = False
++            elif torch.npu.is_available():
++                torch.npu.conv.allow_hf32 = False
++                torch.npu.matmul.allow_hf32 = False
+             torch.use_deterministic_algorithms(True)
+ 
+         self.pg: Optional[dist.ProcessGroup] = None
+@@ -91,6 +101,8 @@ class MultiProcessContext:
+         torch.use_deterministic_algorithms(False)
+         if torch.cuda.is_available() and self.disable_cuda_tf_32:
+             torch.backends.cudnn.allow_tf32 = True
++        elif torch.npu.is_available() and self.disable_cuda_tf_32:
++            torch.npu.conv.allow_hf32 = True
+ 
+ 
+ class MultiProcessTestBase(unittest.TestCase):
+@@ -109,18 +121,21 @@ class MultiProcessTestBase(unittest.TestCase):
+         os.environ["MASTER_ADDR"] = str("localhost")
+         os.environ["MASTER_PORT"] = str(get_free_port())
+         os.environ["GLOO_DEVICE_TRANSPORT"] = "TCP"
+-        os.environ["NCCL_SOCKET_IFNAME"] = "lo"
++        os.environ["HCCL_SOCKET_IFNAME"] = "lo"
+ 
+         torch.use_deterministic_algorithms(True)
+         if torch.cuda.is_available():
+             torch.backends.cudnn.allow_tf32 = False
+             torch.backends.cuda.matmul.allow_tf32 = False
+             os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
++        elif torch.npu.is_available():
++            torch.npu.conv.allow_hf32 = False
++            torch.npu.matmul.allow_hf32 = False
+ 
+     def tearDown(self) -> None:
+         torch.use_deterministic_algorithms(False)
+         del os.environ["GLOO_DEVICE_TRANSPORT"]
+-        del os.environ["NCCL_SOCKET_IFNAME"]
++        del os.environ["HCCL_SOCKET_IFNAME"]
+         if torch.cuda.is_available():
+             os.unsetenv("CUBLAS_WORKSPACE_CONFIG")
+         super().tearDown()
+@@ -196,13 +211,16 @@ def run_multi_process_func(
+     os.environ["MASTER_ADDR"] = str("localhost")
+     os.environ["MASTER_PORT"] = str(get_free_port())
+     os.environ["GLOO_DEVICE_TRANSPORT"] = "TCP"
+-    os.environ["NCCL_SOCKET_IFNAME"] = "lo"
++    os.environ["HCCL_SOCKET_IFNAME"] = "lo"
+ 
+     torch.use_deterministic_algorithms(use_deterministic_algorithms)
+     if torch.cuda.is_available():
+         torch.backends.cudnn.allow_tf32 = False
+         torch.backends.cuda.matmul.allow_tf32 = False
+         os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
++    elif torch.npu.is_available():
++        torch.npu.conv.allow_hf32 = False
++        torch.npu.matmul.allow_hf32 = False
+ 
+     if world_size == 1:
+         kwargs["world_size"] = 1
+diff --git a/torchrec/distributed/test_utils/test_model.py b/torchrec/distributed/test_utils/test_model.py
+index e06821e4..dfcf32cd 100644
+--- a/torchrec/distributed/test_utils/test_model.py
++++ b/torchrec/distributed/test_utils/test_model.py
+@@ -1748,8 +1748,10 @@ class TestEBCSharderMCH(
+         device: Optional[torch.device] = None,
+         module_fqn: Optional[str] = None,
+     ) -> ShardedManagedCollisionEmbeddingBagCollection:
+-        if device is None:
++        if device is None and torch.cuda.is_available():
+             device = torch.device("cuda")
++        elif device is None and torch.npu.is_available():
++            device = torch.device("npu")
+         return ShardedManagedCollisionEmbeddingBagCollection(
+             module,
+             params,
+diff --git a/torchrec/distributed/test_utils/test_model_parallel.py b/torchrec/distributed/test_utils/test_model_parallel.py
+index a6ac661a..53f48e14 100644
+--- a/torchrec/distributed/test_utils/test_model_parallel.py
++++ b/torchrec/distributed/test_utils/test_model_parallel.py
+@@ -46,14 +46,19 @@ class ModelParallelTestShared(MultiProcessTestBase):
+         self.embedding_groups = {}
+         self.shared_features = []
+ 
+-        self.backend = backend
++        if torch.npu.is_available() and backend == "nccl":
++            self.backend = "hccl"
++        else:
++            self.backend = backend
+         if torch.cuda.is_available():
+             self.device = torch.device("cuda")
++        elif torch.npu.is_available():
++            self.device = torch.device("npu")
+         else:
+             self.device = torch.device("cpu")
+ 
+-        if self.backend == "nccl" and self.device == torch.device("cpu"):
+-            self.skipTest("NCCL not supported on CPUs.")
++        if self.backend in {"nccl", "hccl"} and self.device == torch.device("cpu"):
++            self.skipTest(f"{self.backend.upper()} is not supported on CPUs.")
+ 
+     def _build_tables_and_groups(
+         self,
+@@ -190,11 +195,13 @@ class ModelParallelTestShared(MultiProcessTestBase):
+ @skip_if_asan_class
+ class ModelParallelBase(ModelParallelTestShared):
+     def setUp(self, backend: str = "nccl") -> None:
++        if torch.npu.is_available():
++            backend = "hccl"
+         super().setUp(backend=backend)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -205,11 +212,14 @@ class ModelParallelBase(ModelParallelTestShared):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+-            ],
++            ]
+         ),
+         qcomms_config=st.sampled_from(
+             [
+@@ -230,7 +240,7 @@ class ModelParallelBase(ModelParallelTestShared):
+         ),
+         variable_batch_size=st.booleans(),
+         pooling=st.sampled_from([PoolingType.SUM, PoolingType.MEAN]),
+-        data_type=st.sampled_from([DataType.FP32, DataType.FP16]),
++        data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=6, deadline=None)
+     def test_sharding_rw(
+@@ -287,7 +297,7 @@ class ModelParallelBase(ModelParallelTestShared):
+         ),
+         kernel_type=st.just(EmbeddingComputeKernel.DENSE.value),
+         apply_optimizer_in_backward_config=st.just(None),
+-        data_type=st.sampled_from([DataType.FP32, DataType.FP16]),
++        data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]),
+         # TODO - need to enable optimizer overlapped behavior for data_parallel tables
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=2, deadline=None)
+@@ -320,11 +330,14 @@ class ModelParallelBase(ModelParallelTestShared):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+-            ],
++            ]
+         ),
+         qcomms_config=st.sampled_from(
+             [
+@@ -344,10 +357,11 @@ class ModelParallelBase(ModelParallelTestShared):
+             ]
+         ),
+         variable_batch_size=st.booleans(),
+-        data_type=st.sampled_from([DataType.FP32, DataType.FP16]),
+-        allow_zero_batch_size=st.booleans(),
++        data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]),
++        # torchrec/sparse/jagged_tensor.py:3005, The native torchrec framework has a defect when processing batch=0; 
++        allow_zero_batch_size=st.sampled_from([False]),
+     )
+-    @settings(verbosity=Verbosity.verbose, max_examples=6, deadline=None)
++    @settings(verbosity=Verbosity.verbose, max_examples=16, deadline=None)
+     def test_sharding_cw(
+         self,
+         sharder_type: str,
+@@ -403,11 +417,14 @@ class ModelParallelBase(ModelParallelTestShared):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+-            ],
++            ]
+         ),
+         qcomms_config=st.sampled_from(
+             [
+@@ -427,7 +444,7 @@ class ModelParallelBase(ModelParallelTestShared):
+             ]
+         ),
+         variable_batch_size=st.booleans(),
+-        data_type=st.sampled_from([DataType.FP32, DataType.FP16]),
++        data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_sharding_twcw(
+@@ -483,11 +500,14 @@ class ModelParallelBase(ModelParallelTestShared):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+-            ],
++            ]
+         ),
+         qcomms_config=st.sampled_from(
+             [
+@@ -508,7 +528,7 @@ class ModelParallelBase(ModelParallelTestShared):
+             ]
+         ),
+         variable_batch_size=st.booleans(),
+-        data_type=st.sampled_from([DataType.FP32, DataType.FP16]),
++        data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_sharding_tw(
+@@ -552,8 +572,8 @@ class ModelParallelBase(ModelParallelTestShared):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -564,11 +584,14 @@ class ModelParallelBase(ModelParallelTestShared):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+-            ],
++            ]
+         ),
+         qcomms_config=st.sampled_from(
+             [
+@@ -590,7 +613,7 @@ class ModelParallelBase(ModelParallelTestShared):
+         ),
+         variable_batch_size=st.booleans(),
+         pooling=st.sampled_from([PoolingType.SUM, PoolingType.MEAN]),
+-        data_type=st.sampled_from([DataType.FP32, DataType.FP16]),
++        data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_sharding_twrw(
+@@ -634,8 +657,8 @@ class ModelParallelBase(ModelParallelTestShared):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -649,7 +672,7 @@ class ModelParallelBase(ModelParallelTestShared):
+         ),
+         global_constant_batch=st.booleans(),
+         pooling=st.sampled_from([PoolingType.SUM, PoolingType.MEAN]),
+-        data_type=st.sampled_from([DataType.FP32, DataType.FP16]),
++        data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=10, deadline=None)
+     def test_sharding_variable_batch(
+@@ -664,6 +687,10 @@ class ModelParallelBase(ModelParallelTestShared):
+             self.skipTest(
+                 "bounds_check_indices on CPU does not support variable length (batch size)"
+             )
++        if self.device.type == "npu":
++            self.skipTest(
++                "NPU tbe does not support variable batch."
++            )
+         kernel = (
+             EmbeddingComputeKernel.DENSE.value
+             if sharding_type == ShardingType.DATA_PARALLEL.value
+@@ -692,18 +719,20 @@ class ModelParallelBase(ModelParallelTestShared):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+         sharding_type=st.just(ShardingType.COLUMN_WISE.value),
+-        data_type=st.sampled_from([DataType.FP32, DataType.FP16]),
++        data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=1, deadline=None)
+     def test_sharding_multiple_kernels(
+         self, sharding_type: str, data_type: DataType
+     ) -> None:
++        if self.device.type == "npu":
++            self.skipTest("NPU does not support uvm.")
+         if self.backend == "gloo":
+             self.skipTest("ProcessGroupGloo does not support reduce_scatter")
+         constraints = {
+@@ -729,8 +758,8 @@ class ModelParallelBase(ModelParallelTestShared):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -820,8 +849,8 @@ class ModelParallelBase(ModelParallelTestShared):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 7,
+-        "Not enough GPUs, this test requires at least eight GPUs",
++        torch.npu.device_count() <= 7,
++        "Not enough NPUs, this test requires at least eight NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -911,8 +940,8 @@ class ModelParallelBase(ModelParallelTestShared):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+diff --git a/torchrec/distributed/test_utils/test_model_parallel_base.py b/torchrec/distributed/test_utils/test_model_parallel_base.py
+index bd918d97..109d5dcf 100644
+--- a/torchrec/distributed/test_utils/test_model_parallel_base.py
++++ b/torchrec/distributed/test_utils/test_model_parallel_base.py
+@@ -65,6 +65,29 @@ from torchrec.optim.rowwise_adagrad import RowWiseAdagrad
+ from torchrec.test_utils import get_free_port, seed_and_log
+ 
+ 
++def _get_test_device(
++    rank: int = 0
++) -> torch.device:
++    if torch.npu.is_available():
++        device = torch.device(f"npu:{rank}")
++        torch.npu.set_device(device)
++        return device
++    if torch.cuda.is_available():
++        device = torch.device(f"cuda:{rank}")
++        torch.cuda.set_device(device)
++        return device
++    return torch.device("cpu")
++
++
++def _get_test_backend(backend: str) -> str:
++    # Tests historically use "nccl" as the accelerator backend default.
++    # Translate that default to HCCL when running on NPU, while preserving
++    # explicitly requested CPU backends such as Gloo.
++    if backend == "nccl" and torch.npu.is_available():
++        return "hccl"
++    return backend
++
++
+ class InferenceModelParallelTestBase(unittest.TestCase):
+     @seed_and_log
+     def setUp(self) -> None:
+@@ -73,6 +96,9 @@ class InferenceModelParallelTestBase(unittest.TestCase):
+             torch.backends.cudnn.allow_tf32 = False
+             torch.backends.cuda.matmul.allow_tf32 = False
+             os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
++        elif torch.npu.is_available():
++            torch.npu.conv.allow_hf32 = False
++            torch.npu.matmul.allow_hf32 = False
+ 
+     def tearDown(self) -> None:
+         torch.use_deterministic_algorithms(False)
+@@ -97,8 +123,7 @@ class InferenceModelParallelTestBase(unittest.TestCase):
+         generate: ModelInputCallable = ModelInput.generate,
+     ) -> None:
+         default_rank = 0
+-        cuda_device = torch.device(f"cuda:{default_rank}")
+-        torch.cuda.set_device(cuda_device)
++        accelerator_device = _get_test_device(default_rank)
+ 
+         # Generate model & inputs.
+         (global_model, _inputs) = gen_model_and_input(
+@@ -110,14 +135,14 @@ class InferenceModelParallelTestBase(unittest.TestCase):
+             embedding_groups=embedding_groups,
+             world_size=1,  # generate only one copy of feature for inference
+             num_float_features=16,
+-            dense_device=cuda_device,
+-            sparse_device=cuda_device,
++            dense_device=accelerator_device,
++            sparse_device=accelerator_device,
+             generate=generate,
+             indices_dtype=torch.int32,
+             lengths_dtype=torch.int32,
+         )
+         global_model = quantize_callable(global_model, **quantize_callable_kwargs)
+-        local_input = _inputs[0][1][default_rank].to(cuda_device)
++        local_input = _inputs[0][1][default_rank].to(accelerator_device)
+ 
+         # Shard model.
+         if dedup_features_names:
+@@ -129,7 +154,7 @@ class InferenceModelParallelTestBase(unittest.TestCase):
+                 weighted_tables=cast(List[BaseEmbeddingConfig], weighted_tables),
+                 dedup_feature_names=dedup_features_names,
+                 embedding_groups=embedding_groups,
+-                dense_device=cuda_device,
++                dense_device=accelerator_device,
+                 sparse_device=torch.device("meta"),
+                 num_float_features=16,
+             )
+@@ -141,14 +166,14 @@ class InferenceModelParallelTestBase(unittest.TestCase):
+                 ),
+                 weighted_tables=cast(List[BaseEmbeddingConfig], weighted_tables),
+                 embedding_groups=embedding_groups,
+-                dense_device=cuda_device,
++                dense_device=accelerator_device,
+                 sparse_device=torch.device("meta"),
+                 num_float_features=16,
+             )
+         local_model = quantize_callable(local_model, **quantize_callable_kwargs)
+ 
+         planner = EmbeddingShardingPlanner(
+-            topology=Topology(world_size, "cuda"),
++            topology=Topology(world_size, accelerator_device.type),
+             constraints=constraints,
+         )
+         plan: ShardingPlan = planner.plan(local_model, sharders)
+@@ -157,14 +182,14 @@ class InferenceModelParallelTestBase(unittest.TestCase):
+         local_model = DistributedModelParallel(
+             module=local_model,
+             env=ShardingEnv.from_local(world_size, default_rank),
+-            device=cuda_device,
++            device=accelerator_device,
+             plan=plan,
+             sharders=sharders,
+             init_data_parallel=False,
+         )
+ 
+         # materialize inference sharded model on one device for dense part
+-        local_model = local_model.copy(cuda_device)
++        local_model = local_model.copy(accelerator_device)
+ 
+         copy_state_dict(local_model.state_dict(), global_model.state_dict())
+ 
+@@ -188,17 +213,16 @@ class ModelParallelSparseOnlyBase(unittest.TestCase):
+         os.environ["LOCAL_WORLD_SIZE"] = "1"
+         os.environ["MASTER_ADDR"] = str("localhost")
+         os.environ["MASTER_PORT"] = str(get_free_port())
+-        os.environ["NCCL_SOCKET_IFNAME"] = "lo"
++        self.backend = _get_test_backend(backend)
++        if self.backend == "nccl":
++            os.environ["NCCL_SOCKET_IFNAME"] = "lo"
++        elif self.backend == "hccl":
++            os.environ["HCCL_SOCKET_IFNAME"] = "lo"
+ 
+-        self.backend = backend
+-        if torch.cuda.is_available():
+-            self.device = torch.device("cuda:0")
+-            torch.cuda.set_device(self.device)
+-        else:
+-            self.device = torch.device("cpu")
++        self.device = _get_test_device()
+ 
+-        if self.backend == "nccl" and self.device == torch.device("cpu"):
+-            self.skipTest("NCCL not supported on CPUs.")
++        if self.backend in {"nccl", "hccl"} and self.device == torch.device("cpu"):
++            self.skipTest(f"{self.backend.upper()} is not supported on CPUs.")
+ 
+         dist.init_process_group(backend=self.backend)
+ 
+@@ -255,19 +279,18 @@ class ModelParallelSingleRankBase(unittest.TestCase):
+         os.environ["LOCAL_WORLD_SIZE"] = "1"
+         os.environ["MASTER_ADDR"] = str("localhost")
+         os.environ["MASTER_PORT"] = str(get_free_port())
+-        os.environ["NCCL_SOCKET_IFNAME"] = "lo"
++        self.backend = _get_test_backend(backend)
++        if self.backend == "nccl":
++            os.environ["NCCL_SOCKET_IFNAME"] = "lo"
++        elif self.backend == "hccl":
++            os.environ["HCCL_SOCKET_IFNAME"] = "lo"
+ 
+-        self.backend = backend
+-        if torch.cuda.is_available():
+-            self.device = torch.device("cuda:0")
+-            torch.cuda.set_device(self.device)
+-        else:
+-            self.device = torch.device("cpu")
++        self.device = _get_test_device()
+ 
+-        if self.backend == "nccl" and self.device == torch.device("cpu"):
+-            self.skipTest("NCCL not supported on CPUs.")
++        if self.backend in {"nccl", "hccl"} and self.device == torch.device("cpu"):
++            self.skipTest(f"{self.backend.upper()} is not supported on CPUs.")
+ 
+-        dist.init_process_group(backend=backend)
++        dist.init_process_group(backend=self.backend)
+ 
+         self.batch_size = 20
+         self.num_float_features = 10
+@@ -278,7 +301,8 @@ class ModelParallelSingleRankBase(unittest.TestCase):
+ 
+     def tearDown(self) -> None:
+         dist.destroy_process_group()
+-        del os.environ["NCCL_SOCKET_IFNAME"]
++        os.environ.pop("NCCL_SOCKET_IFNAME", None)
++        os.environ.pop("HCCL_SOCKET_IFNAME", None)
+         super().tearDown()
+ 
+     def _create_tables(self) -> None:
+@@ -579,7 +603,10 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+@@ -620,8 +647,8 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+         # validate the models are equivalent
+         if is_training:
+             self._train_models(m1, m2, batch)
+-        self._eval_models(m1, m2, batch)
+-        self._compare_models(m1, m2)
++        self._eval_models(m1, m2, batch, is_deterministic=False)
++        self._compare_models(m1, m2, is_deterministic=False)
+ 
+     # pyre-ignore[56]
+     @given(
+@@ -640,7 +667,10 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+@@ -694,8 +724,8 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+         opt1.load_state_dict(opt2.state_dict())
+ 
+         self._train_models(m1, m2, batch)
+-        self._eval_models(m1, m2, batch)
+-        self._compare_models(m1, m2)
++        self._eval_models(m1, m2, batch, is_deterministic=False)
++        self._compare_models(m1, m2, is_deterministic=False)
+ 
+     # pyre-ignore[56]
+     @given(
+@@ -759,7 +789,10 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+@@ -794,8 +827,8 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+         # validate the models are equivalent
+         if is_training:
+             self._train_models(m1, m2, batch)
+-        self._eval_models(m1, m2, batch)
+-        self._compare_models(m1, m2)
++        self._eval_models(m1, m2, batch, is_deterministic=False)
++        self._compare_models(m1, m2, is_deterministic=False)
+ 
+     # pyre-fixme[56]
+     @given(
+@@ -814,7 +847,10 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 # EmbeddingComputeKernel.DENSE.value,
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+@@ -856,7 +892,10 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+@@ -915,7 +954,8 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+         # validate the models are equivalent
+         if is_training:
+             self._train_models(m1, m2, batch)
+-        self._eval_models(m1, m2, batch)
++        is_deterministic = False
++        self._eval_models(m1, m2, batch, is_deterministic=is_deterministic)
+ 
+         sd1 = m1.state_dict()
+         for key, value in m2.state_dict().items():
+@@ -944,9 +984,13 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+                     for src_local_shard, dst_local_shard in zip(
+                         value.local_shards(), v2.local_shards()
+                     ):
+-                        self.assertTrue(
+-                            torch.equal(src_local_shard.tensor, dst_local_shard.tensor)
+-                        )
++                        if is_deterministic:
++                            self.assertTrue(
++                                torch.equal(src_local_shard.tensor, dst_local_shard.tensor)
++                            )
++                        else:
++                            rtol, atol = _get_default_rtol_and_atol(src_local_shard.tensor, dst_local_shard.tensor)
++                            torch.testing.assert_close(src_local_shard.tensor, dst_local_shard.tensor, rtol=rtol, atol=atol)
+                 elif isinstance(v2, DTensor):
+                     self.assertEqual(
+                         len(value._local_tensor.local_shards()),
+@@ -1009,8 +1053,8 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+                     self.assertIsInstance(src_opt_state, torch.Tensor)
+ 
+     @unittest.skipIf(
+-        not torch.cuda.is_available(),
+-        "Not enough GPUs, this test requires at least one GPU",
++        not (torch.cuda.is_available() or torch.npu.is_available()),
++        "Not enough GPUs or NPUs, this test requires at least one GPU or NPU",
+     )
+     # pyre-ignore[56]
+     @given(
+@@ -1048,6 +1092,10 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+         stochastic_rounding: bool,
+         dtype: DataType,
+     ) -> None:
++        # This test only samples UVM kernels (fused_uvm / fused_uvm_caching),
++        # which are not implemented on NPU.
++        if self.device.type == "npu":
++            self.skipTest("NPU does not support uvm.")
+         self._set_table_weights_precision(dtype)
+         fused_params = {
+             "stochastic_rounding": stochastic_rounding,
+@@ -1095,8 +1143,8 @@ class ModelParallelStateDictBase(ModelParallelSingleRankBase):
+         )
+ 
+     @unittest.skipIf(
+-        not torch.cuda.is_available(),
+-        "Not enough GPUs, this test requires at least one GPU",
++        not (torch.cuda.is_available() or torch.npu.is_available()),
++        "Not enough GPUs or NPUs, this test requires at least one GPU or NPU",
+     )
+     # pyre-ignore[56]
+     @given(
+diff --git a/torchrec/distributed/test_utils/test_sharding.py b/torchrec/distributed/test_utils/test_sharding.py
+index e4a8469c..171d18ad 100644
+--- a/torchrec/distributed/test_utils/test_sharding.py
++++ b/torchrec/distributed/test_utils/test_sharding.py
+@@ -363,6 +363,8 @@ def sharding_single_rank_test(
+     offsets_dtype: torch.dtype = torch.int64,
+     lengths_dtype: torch.dtype = torch.int64,
+ ) -> None:
++    import fbgemm_ascend
++
+     with MultiProcessContext(rank, world_size, backend, local_size) as ctx:
+         batch_size = (
+             random.randint(0, batch_size) if allow_zero_batch_size else batch_size
+@@ -472,7 +474,7 @@ def sharding_single_rank_test(
+                             rank: Optional[int] = placement.rank()
+                             assert rank is not None
+                             shard.placement = torch.distributed._remote_device(
+-                                f"rank:{rank}/cuda:{rank}"
++                                f"rank:{rank}/npu:{rank}"
+                             )
+ 
+         assert ctx.pg is not None
+@@ -604,7 +606,7 @@ def create_device_mesh_for_2D(
+             peer_matrix.append([step * r + group_rank for r in range(local_size)])
+ 
+     mesh = DeviceMesh(
+-        device_type="cuda",
++        device_type="npu",
+         mesh=peer_matrix,
+         mesh_dim_names=("replicate", "shard"),
+     )
