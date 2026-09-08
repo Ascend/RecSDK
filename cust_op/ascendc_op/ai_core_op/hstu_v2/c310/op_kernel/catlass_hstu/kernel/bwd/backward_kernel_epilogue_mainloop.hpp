@@ -79,6 +79,7 @@ struct BackwardEpilogueMainloop {
     static constexpr uint32_t GRAB_READY_ID = 3;
     static constexpr uint32_t TRANS_READY_ID = 4;
     static constexpr uint32_t Q_TRANS_READY_ID = 5;
+    static constexpr uint32_t TRANS_UB_FREE_ID = 7;
 
     static constexpr bool IS_LOCAL_V = IS_LOCAL;
     static constexpr bool IS_CAUSAL_V = IS_CAUSAL;
@@ -251,12 +252,15 @@ struct BackwardEpilogueMainloop {
 
         BlockEpilogueQK blockEpilogueQK(alpha, scale, QK_READY_ID, PROB_READY_ID, resource);
         BlockEpilogueGV blockEpilogueGV(GV_READY_ID, GRAB_READY_ID, resource);
-        BlockEpilogueKGrad blockEpilogueKGrad(TRANS_READY_ID, (int64_t)heads * dimQK, resource);
-        BlockEpilogueVGrad blockEpilogueVGrad(TRANS_READY_ID, (int64_t)heads * dimGV, resource);
+        BlockEpilogueKGrad blockEpilogueKGrad(TRANS_READY_ID, TRANS_UB_FREE_ID, (int64_t)heads * dimQK, resource);
+        BlockEpilogueVGrad blockEpilogueVGrad(TRANS_READY_ID, TRANS_UB_FREE_ID, (int64_t)heads * dimGV, resource);
 
         QBlockScheduler qBlockScheduler(batch, heads, params.ptrSeqOffsetQ);
         KBlockScheduler kBlockScheduler(batch, heads, params.ptrSeqOffsetK, params.ptrSeqOffsetQ);
-
+        // Seed one free-buffer token per AIV so the first FixPipe does not wait
+        // for a UB->GM copy that has not happened yet.
+        Arch::CrossCoreFlag transUbFree{TRANS_UB_FREE_ID};
+        AscendC::CrossCoreSetFlag<0x4, PIPE_MTE3>(transUbFree.id);
         if constexpr (IS_TARGET) {
             kBlockScheduler.EnableTargetWorkload(params.ptrNumContext, params.ptrNumTarget, targetGroupSize,
                                                  IS_CONTEXT);

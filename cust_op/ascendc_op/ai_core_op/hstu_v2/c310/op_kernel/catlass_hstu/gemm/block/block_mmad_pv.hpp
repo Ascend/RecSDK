@@ -65,13 +65,14 @@ namespace Catlass::Gemm::Block {
  •              支持子核绑定 (BIND_SUB_CORE) 可将计算绑定到特定子核
 
  */
-template <class ArchTag_, bool PAGED_CACHE_FLAG_, bool ENABLE_UNIT_FLAG_, bool SUB_CORE_ID_,
-          bool ENABLE_SCALAR_QUANT_, class L1TileShape_, class L0TileShape_, class ElementA_, class ElementB_, 
-          class ElementC_, class TileBuffer_, class TileCopy_, class TileMmad_>
+template <class ArchTag_, bool PAGED_CACHE_FLAG_, bool ENABLE_UNIT_FLAG_, bool SUB_CORE_ID_, bool ENABLE_SCALAR_QUANT_,
+          class L1TileShape_, class L0TileShape_, class ElementA_, class ElementB_, class ElementC_, class TileBuffer_,
+          class TileCopy_, class TileMmad_>
 struct BlockMmadTla<MmadHSTUPV<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, SUB_CORE_ID_, ENABLE_SCALAR_QUANT_>,
                     L1TileShape_, L0TileShape_, ElementA_, ElementB_, ElementC_, TileBuffer_, TileCopy_, TileMmad_> {
 public:
-    using DispatchPolicy = MmadHSTUPV<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, SUB_CORE_ID_, ENABLE_SCALAR_QUANT_>;
+    using DispatchPolicy =
+        MmadHSTUPV<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, SUB_CORE_ID_, ENABLE_SCALAR_QUANT_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using L1TileShape = L1TileShape_;
     using L0TileShape = L0TileShape_;
@@ -121,7 +122,7 @@ public:
 
      */
     CATLASS_DEVICE
-    BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t vecFlag, uint32_t cubeFlag,
+    BlockMmadTla(Arch::Resource<ArchTag>& resource, uint32_t vecFlag, uint32_t cubeFlag, uint32_t ubFreeFlag,
                  uint32_t const (&L1B_EVENT_ID_)[2])
     {
         for (auto i = 0; i < STAGES; i++) {
@@ -139,6 +140,9 @@ public:
         }
 
         cubeReady = Arch::CrossCoreFlag(cubeFlag);
+        // mode 4 uses an offset flag ID on AIC to select the destination AIV.
+        // The AIV side always signals the base ubFreeFlag in its own namespace.
+        ubFree = Arch::CrossCoreFlag(SUB_CORE_ID * AscendC::SYNC_FLAG_ID_MAX + ubFreeFlag);
 
         L1B_EVENT_ID[0] = L1B_EVENT_ID_[0];  // q or grad
         L1B_EVENT_ID[1] = L1B_EVENT_ID_[1];  // q or grad
@@ -173,9 +177,12 @@ public:
 
      */
     template <class TensorDst, class TensorSrc, class TileCopy>
-    CATLASS_DEVICE void TriggerFlushToDst(TensorDst &dst, TensorSrc &src, bool isFlush, TileCopy &tileCopy)
+    CATLASS_DEVICE void TriggerFlushToDst(TensorDst& dst, TensorSrc& src, bool isFlush, TileCopy& tileCopy)
     {
         if (isFlush) {
+            // Do not overwrite the destination UB until its previous UB->GM copy
+            // has completed. The initial token is seeded once by each AIV.
+            AscendC::CrossCoreWaitFlag<0x4, PIPE_FIX>(ubFree.id);
             if constexpr (ENABLE_SCALAR_QUANT) {
                 tileCopy(dst, src, 0, deqScalar, SUB_CORE_ID);
             } else {
@@ -219,7 +226,7 @@ public:
 
      */
     CATLASS_DEVICE
-    void operator()(GemmCoord &blockShape, uint32_t &pingPongFlag, uint32_t &l0bFlag, bool isInit = false,
+    void operator()(GemmCoord& blockShape, uint32_t& pingPongFlag, uint32_t& l0bFlag, bool isInit = false,
                     bool isFlush = false)
     {
         uint32_t mReal = blockShape.m();
@@ -266,7 +273,7 @@ public:
             tileMmad(tensorL0c, tensorL0a, tensorL0b, nReal, kReal, mSize, isInit, 0);
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(pingPongFlag);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(pingPongFlag);
-            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0bFlag + 2); // 2 means pingPong
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0bFlag + 2);  // 2 means pingPong
 
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(pingPongFlag);
             if (isLast) {
@@ -274,8 +281,8 @@ public:
             }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(pingPongFlag);
 
-            pingPongFlag = (pingPongFlag + 1) % 2; // 2 means pingPong
-            l0bFlag = (l0bFlag + 1) % 2;  // 2 means pingPong
+            pingPongFlag = (pingPongFlag + 1) % 2;  // 2 means pingPong
+            l0bFlag = (l0bFlag + 1) % 2;            // 2 means pingPong
             isInit = false;
         }
     }
@@ -283,6 +290,7 @@ public:
 protected:
     Arch::CrossCoreFlag vecReady[STAGES];
     Arch::CrossCoreFlag cubeReady;
+    Arch::CrossCoreFlag ubFree;
 
     AscendC::LocalTensor<ElementA> l1ATensor[STAGES];
     AscendC::LocalTensor<ElementA> l0ATensor[STAGES];
@@ -300,4 +308,4 @@ protected:
     ElementAccumulator deqScalar{0.0f};
 };
 
-}
+}  // namespace Catlass::Gemm::Block

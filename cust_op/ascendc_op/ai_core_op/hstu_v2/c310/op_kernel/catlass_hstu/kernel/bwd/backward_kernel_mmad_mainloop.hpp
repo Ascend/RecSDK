@@ -101,6 +101,7 @@ struct BackwardMmadMainloop {
     static constexpr uint32_t V_TRANS_READY_ID = TRANS_READY_ID;
     static constexpr uint32_t K_TRANS_READY_ID = AscendC::SYNC_FLAG_ID_MAX + V_TRANS_READY_ID;
     static constexpr uint32_t Q_TRANS_READY_ID = 5;
+    static constexpr uint32_t TRANS_UB_FREE_ID = 7;  // Trans完成搬运 的事件 ID
 
     struct Params {
         GM_ADDR ptrGrad;
@@ -232,8 +233,10 @@ struct BackwardMmadMainloop {
 
         BlockMmadQK blockMmadQK(resource, heads, dimQK, QK_READY_ID, EVENT_K_ID, {EVENT_Q0_ID, EVENT_Q1_ID});
         BlockMmadGV blockMmadGV(resource, heads, dimGV, GV_READY_ID, EVENT_V_ID, {EVENT_GRAD0_ID, EVENT_GRAD1_ID});
-        BlockMmadVGrad blockMmadVGrad(resource, PROB_READY_ID, V_TRANS_READY_ID, {EVENT_GRAD0_ID, EVENT_GRAD1_ID});
-        BlockMmadKGrad blockMmadKGrad(resource, GRAB_READY_ID, K_TRANS_READY_ID, {EVENT_Q0_ID, EVENT_Q1_ID});
+        BlockMmadVGrad blockMmadVGrad(resource, PROB_READY_ID, V_TRANS_READY_ID, TRANS_UB_FREE_ID,
+                                      {EVENT_GRAD0_ID, EVENT_GRAD1_ID});
+        BlockMmadKGrad blockMmadKGrad(resource, GRAB_READY_ID, K_TRANS_READY_ID, TRANS_UB_FREE_ID,
+                                      {EVENT_Q0_ID, EVENT_Q1_ID});
         BlockMmadQGrad blockMmadQGrad(resource);
 
         blockMmadQK.SetDeqScalar(alpha);
