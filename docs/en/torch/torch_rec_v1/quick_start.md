@@ -132,7 +132,7 @@ Model training depends on a container environment. You can quickly start the con
 
 1. Obtain an existing container image and start the container.
 
-    See the **Image Download** tab page [this link](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5). Obtain the latest prebuilt running image. Start the container and enter the container by referring to **Image Overview** > **Container Startup Commands**.
+    See the **Image Download** tab page [this link](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088). Obtain the latest prebuilt running image. Start the container and enter the container by referring to **Image Overview** > **Container Startup Commands**.
 
 2. Start model training.
 

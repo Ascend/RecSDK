@@ -8,7 +8,7 @@
 
 ### 基础镜像准备
 
-请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中“镜像下载”页签，**根据环境架构**获取已经制作好的**最新运行镜像**（26.0.0*及之后版本）。
+请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088)中“镜像下载”页签，**根据环境架构**获取已经制作好的**最新运行镜像**（26.1.0*及之后版本）。
 
 上述镜像中已包含Rec SDK Torch及相关软件包，其中软件版本如下：
 
@@ -49,7 +49,7 @@ docker run \
 - free_devices：检测当前空闲NPU卡号。
 - -m 300g：设置容器内使用内存大小，可根据实际情况进行配置。
 - -e ASCEND_VISIBLE_DEVICES="${free_devices}"：将服务器上空闲的NPU设备挂载到容器内，可根据实际情况进行配置。
-- image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.0.0版本的x86镜像的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_debian12-x86`。
+- image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088)中26.1.0版本适用于Atlas 800T A2的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/recsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11-pt`。
 
 执行如下命令新建容器：
 
@@ -67,7 +67,7 @@ source /usr/local/Ascend/cann/set_env.sh
 ```
 
 > [!NOTE]
-> [昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.1.0及之后的镜像中内置了Python虚拟环境，使用前需激活虚拟环境。该虚拟环境中已默认安装好Rec SDK Torch及相关依赖。26.0.0版本镜像无Python虚拟环境。
+> [昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088)中26.1.0及之后的镜像中内置了Python虚拟环境，使用前需激活虚拟环境。该虚拟环境中已默认安装好Rec SDK Torch及相关依赖。26.0.0版本镜像无Python虚拟环境。
 
 ### 环境可用性验证
 
