@@ -1,0 +1,158 @@
+diff --git a/code/HLLM/HLLM.yaml b/code/HLLM/HLLM.yaml
+index 77dc036..1869e2f 100644
+--- a/code/HLLM/HLLM.yaml
++++ b/code/HLLM/HLLM.yaml
+@@ -1,6 +1,6 @@
+ model: HLLM
+-item_pretrain_dir: item_pretrain_dir # Item and User LLM are initialized by pretrain_dir
++item_pretrain_dir: ../pretrain/TinyLlama # Item and User LLM are initialized by pretrain_dir
+ item_llm_init: True
+-user_pretrain_dir: user_pretrain_dir
++user_pretrain_dir: ../pretrain/TinyLlama
+ user_llm_init: True
+ use_ft_flash_attn: True
+\ No newline at end of file
+diff --git a/code/REC/data/dataload.py b/code/REC/data/dataload.py
+index 344380b..5215a0c 100644
+--- a/code/REC/data/dataload.py
++++ b/code/REC/data/dataload.py
+@@ -235,7 +235,7 @@ class Data:
+     def sort(self, by, ascending=True):
+ 
+         if isinstance(self.inter_feat, pd.DataFrame):
+-            self.inter_feat.sort_values(by=by, ascending=ascending, inplace=True)
++            self.inter_feat.sort_values(by=by, ascending=ascending, inplace=True, kind='mergesort')
+ 
+         else:
+             if isinstance(by, str):
+diff --git a/code/REC/data/dataset/trainset.py b/code/REC/data/dataset/trainset.py
+index 79168c5..b3ed2c8 100644
+--- a/code/REC/data/dataset/trainset.py
++++ b/code/REC/data/dataset/trainset.py
+@@ -36,7 +36,7 @@ class SEQTrainDataset(Dataset):
+ 
+         self.max_seq_length = config['MAX_ITEM_LIST_LENGTH']+1
+         self.device = config['device']
+-        self.random_sample = True if config['loss'] and config['loss'] == 'nce' else False
++        self.random_sample = False
+         self.num_negatives = config['num_negatives']
+         if self.num_negatives:
+             self.num_negatives = math.ceil(self.num_negatives / dist.get_world_size() / config['train_batch_size'])
+@@ -46,10 +46,7 @@ class SEQTrainDataset(Dataset):
+         return self.length
+ 
+     def _neg_sample(self, item_set):
+-        item = random.randint(1, self.item_num - 1)
+-        while item in item_set:
+-            item = random.randint(1, self.item_num - 1)
+-        return item
++        return 10
+ 
+     def _padding_sequence(self, sequence, max_length, random_sample=False):
+         pad_len = max_length - len(sequence)
+@@ -114,7 +111,7 @@ class TextSEQTrainDataset(Dataset):
+         self.item_prompt = config['item_prompt']
+         self.item_emb_token_n = config['item_emb_token_n']
+         self.num_negatives = config['num_negatives']
+-        self.random_sample = True if config['loss'] and config['loss'] == 'nce' else False
++        self.random_sample = False
+         if self.num_negatives:
+             self.num_negatives = math.ceil(self.num_negatives / dist.get_world_size() / config['train_batch_size'])  # for llm only
+         logger.info(f"Use random sample {self.random_sample} for mask id")
+@@ -133,10 +130,7 @@ class TextSEQTrainDataset(Dataset):
+         logger.info(f"Text Item num: {len(self.env)}")
+ 
+     def _neg_sample(self, item_set):
+-        item = random.randint(1, self.item_num - 1)
+-        while item in item_set:
+-            item = random.randint(1, self.item_num - 1)
+-        return item
++        return 10
+ 
+     def _padding_sequence(self, sequence, max_length, random_sample=False):
+         pad_len = max_length - len(sequence)
+diff --git a/code/REC/data/utils.py b/code/REC/data/utils.py
+index 249c130..f546986 100644
+--- a/code/REC/data/utils.py
++++ b/code/REC/data/utils.py
+@@ -56,7 +56,7 @@ def bulid_dataloader(config, dataload):
+         train_collate_fn = None
+ 
+     train_data = train_set_class(config, dataload)
+-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_data)
++    train_sampler = torch.utils.data.distributed.DistributedSampler(train_data, shuffle=False)
+     logger = getLogger()
+     logger.info(
+         set_color('[Training]: ', 'pink') + set_color('train_batch_size', 'cyan') + ' = ' +
+diff --git a/code/REC/trainer/trainer.py b/code/REC/trainer/trainer.py
+index 4dd15d1..92d5e0e 100644
+--- a/code/REC/trainer/trainer.py
++++ b/code/REC/trainer/trainer.py
+@@ -196,7 +196,9 @@ class Trainer(object):
+             self._check_nan(losses)
+             total_loss = total_loss + losses.item()
+             self.lite.backward(losses)
+-            grad_norm = self.optimizer.step()
++            if self.clip_grad_norm:
++                grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
++            self.optimizer.step()
+             bwd_time = t.time()
+             if self.scheduler_config:
+                 self.lr_scheduler.step()
+diff --git a/code/REC/utils/utils.py b/code/REC/utils/utils.py
+index 0913f75..0a83c01 100644
+--- a/code/REC/utils/utils.py
++++ b/code/REC/utils/utils.py
+@@ -146,6 +146,7 @@ def init_seed(seed, reproducibility):
+     if reproducibility:
+         torch.backends.cudnn.benchmark = False
+         torch.backends.cudnn.deterministic = True
++        torch.backends.cuda.matmul.allow_tf32 = False
+     else:
+         torch.backends.cudnn.benchmark = True
+         torch.backends.cudnn.deterministic = False
+diff --git a/code/overall/LLM_deepspeed.yaml b/code/overall/LLM_deepspeed.yaml
+index 7c93499..cf1eeea 100644
+--- a/code/overall/LLM_deepspeed.yaml
++++ b/code/overall/LLM_deepspeed.yaml
+@@ -8,14 +8,14 @@ show_progress: True
+ 
+ log_wandb: False
+ wandb_project: 'REC'
+-MAX_ITEM_LIST_LENGTH: 50
+-MAX_TEXT_LENGTH: 64
++MAX_ITEM_LIST_LENGTH: 10
++MAX_TEXT_LENGTH: 256
+ 
+-data_path: ../dataset/                       # dataset path
+-dataset: Pixel200K                        # dataset name
++data_path: ../dataset/                    # dataset path
++dataset: amazon_books                     # dataset name
+ 
+-text_path: text_path # Use absolute path
+-text_keys: ['title', 'tag', 'description']
++text_path: ../information/               # Use absolute path
++text_keys: ['title', 'description']
+ 
+ item_prompt: 'Compress the following sentence into embedding: '
+ item_emb_token_n: 1
+@@ -23,8 +23,8 @@ item_emb_token_n: 1
+ loss: nce
+ 
+ # training settings
+-epochs: 10
+-train_batch_size: 8
++epochs: 1
++train_batch_size: 1
+ optim_args: {
+   learning_rate: 1e-4,
+   weight_decay: 0.01
+@@ -43,6 +43,5 @@ metric_decimal_place: 7
+ eval_step: 1
+ stopping_step: 5
+ 
+-strategy: deepspeed
+-precision: bf16-mixed
++# precision: bf16-mixed
+ stage: 2
+\ No newline at end of file
