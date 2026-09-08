@@ -1,0 +1,20 @@
+{
+    "name": "HLLM",
+    "url": "https://github.com/bytedance/HLLM.git",
+    "commit_id_for_A5": "864f1722",
+    "patch_path_for_A5": "patches/hllm_npu.patch",
+    "A5_flag": true,
+    "mode": "hllm",
+    "epoch": 1,
+    "profiling_flag": false,
+    "aclgraph_flag": false,
+    "data_type": "float32",
+    "run_cmd": [
+        "bash",
+        "-c",
+        "cp ../hllm/launch_npu.sh code/ && cd code/ && bash launch_npu.sh"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": true,
+    "extra_cmd": []
+}

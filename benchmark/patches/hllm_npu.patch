@@ -1,0 +1,782 @@
+diff --git a/code/HLLM/HLLM.yaml b/code/HLLM/HLLM.yaml
+index 77dc036..bf0f175 100644
+--- a/code/HLLM/HLLM.yaml
++++ b/code/HLLM/HLLM.yaml
+@@ -1,6 +1,6 @@
+ model: HLLM
+-item_pretrain_dir: item_pretrain_dir # Item and User LLM are initialized by pretrain_dir
++item_pretrain_dir: ../../../dataset/hllm/pretrain/TinyLlama # Item and User LLM are initialized by pretrain_dir
+ item_llm_init: True
+-user_pretrain_dir: user_pretrain_dir
++user_pretrain_dir: ../../../dataset/hllm/pretrain/TinyLlama
+ user_llm_init: True
+ use_ft_flash_attn: True
+\ No newline at end of file
+diff --git a/code/REC/data/dataload.py b/code/REC/data/dataload.py
+index 344380b..3040422 100644
+--- a/code/REC/data/dataload.py
++++ b/code/REC/data/dataload.py
+@@ -235,7 +235,10 @@ class Data:
+     def sort(self, by, ascending=True):
+ 
+         if isinstance(self.inter_feat, pd.DataFrame):
+-            self.inter_feat.sort_values(by=by, ascending=ascending, inplace=True)
++            if self.config['precision_mode_enabled']:
++                self.inter_feat.sort_values(by=by, ascending=ascending, inplace=True, kind='mergesort') # 排序更加稳定，显存更高。
++            else:
++                self.inter_feat.sort_values(by=by, ascending=ascending, inplace=True)
+ 
+         else:
+             if isinstance(by, str):
+diff --git a/code/REC/data/dataset/collate_fn.py b/code/REC/data/dataset/collate_fn.py
+index 91f4a91..80cbd93 100644
+--- a/code/REC/data/dataset/collate_fn.py
++++ b/code/REC/data/dataset/collate_fn.py
+@@ -7,6 +7,9 @@
+ # available at https://choosealicense.com/licenses/mit/.
+ #
+ # This modified file is released under the same license.
++import warnings
++warnings.filterwarnings("ignore", message="An output with one or more elements was resized")
++warnings.filterwarnings("ignore", message="TypedStorage is deprecated")
+ 
+ import torch
+ import numpy as np
+diff --git a/code/REC/data/dataset/trainset.py b/code/REC/data/dataset/trainset.py
+index 79168c5..a636c07 100644
+--- a/code/REC/data/dataset/trainset.py
++++ b/code/REC/data/dataset/trainset.py
+@@ -36,7 +36,7 @@ class SEQTrainDataset(Dataset):
+ 
+         self.max_seq_length = config['MAX_ITEM_LIST_LENGTH']+1
+         self.device = config['device']
+-        self.random_sample = True if config['loss'] and config['loss'] == 'nce' else False
++        self.random_sample = True if config['loss'] and config['loss'] == 'nce' and (not config['precision_mode_enabled']) else False
+         self.num_negatives = config['num_negatives']
+         if self.num_negatives:
+             self.num_negatives = math.ceil(self.num_negatives / dist.get_world_size() / config['train_batch_size'])
+@@ -46,6 +46,8 @@ class SEQTrainDataset(Dataset):
+         return self.length
+ 
+     def _neg_sample(self, item_set):
++        if self.config['precision_mode_enabled']:
++            return 10 # [PRECISION-ALIGN]
+         item = random.randint(1, self.item_num - 1)
+         while item in item_set:
+             item = random.randint(1, self.item_num - 1)
+@@ -114,7 +116,7 @@ class TextSEQTrainDataset(Dataset):
+         self.item_prompt = config['item_prompt']
+         self.item_emb_token_n = config['item_emb_token_n']
+         self.num_negatives = config['num_negatives']
+-        self.random_sample = True if config['loss'] and config['loss'] == 'nce' else False
++        self.random_sample = True if config['loss'] and config['loss'] == 'nce' and (not config['precision_mode_enabled']) else False
+         if self.num_negatives:
+             self.num_negatives = math.ceil(self.num_negatives / dist.get_world_size() / config['train_batch_size'])  # for llm only
+         logger.info(f"Use random sample {self.random_sample} for mask id")
+@@ -133,6 +135,8 @@ class TextSEQTrainDataset(Dataset):
+         logger.info(f"Text Item num: {len(self.env)}")
+ 
+     def _neg_sample(self, item_set):
++        if self.config['precision_mode_enabled']:
++            return 10 # [PRECISION-ALIGN]
+         item = random.randint(1, self.item_num - 1)
+         while item in item_set:
+             item = random.randint(1, self.item_num - 1)
+diff --git a/code/REC/data/utils.py b/code/REC/data/utils.py
+index 249c130..1f2be24 100644
+--- a/code/REC/data/utils.py
++++ b/code/REC/data/utils.py
+@@ -56,7 +56,8 @@ def bulid_dataloader(config, dataload):
+         train_collate_fn = None
+ 
+     train_data = train_set_class(config, dataload)
+-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_data)
++    train_shuffle = False if config['precision_mode_enabled'] else True  # [PRECISION-ALIGN] deterministic order
++    train_sampler = torch.utils.data.distributed.DistributedSampler(train_data, shuffle=train_shuffle)
+     logger = getLogger()
+     logger.info(
+         set_color('[Training]: ', 'pink') + set_color('train_batch_size', 'cyan') + ' = ' +
+diff --git a/code/REC/model/HLLM/flash_self_attn.py b/code/REC/model/HLLM/flash_self_attn.py
+index 48bd00a..8239cba 100644
+--- a/code/REC/model/HLLM/flash_self_attn.py
++++ b/code/REC/model/HLLM/flash_self_attn.py
+@@ -1,77 +1,39 @@
+-# Copyright (c) 2024 Bytedance Ltd. and/or its affiliate
+-#
+-# Licensed under the Apache License, Version 2.0 (the "License");
+-# you may not use this file except in compliance with the License.
+-# You may obtain a copy of the License at
+-#
+-#    http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS,
+-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-# See the License for the specific language governing permissions and
+-# limitations under the License.
+-
+ from typing import Optional
+-
+ import torch
++import torch_npu
++import torch._dynamo as dynamo
+ import torch.nn.functional as F
+-from flash_attn.flash_attn_interface import (
+-    flash_attn_qkvpacked_func,
+-    flash_attn_varlen_qkvpacked_func,
+-)
+ 
+ 
+-def flash_self_attention(
+-    qkv: torch.Tensor,
+-    causal: bool = False,
+-    cu_seqlens: Optional[torch.Tensor] = None,
+-    max_seqlen: Optional[int] = None,
+-    softmax_scale: Optional[float] = None,
+-    attention_dropout: float = 0.0,
+-    training: bool = False,
+-):
+-    """Implements the multihead softmax attention.
+-    Modified from https://github.com/Dao-AILab/flash-attention/blob/v2.0.4/flash_attn/modules/mha.py#L35-L84
+-    Arguments
+-    ---------
+-        qkv: The tensor containing the query, key, and value.
+-            If cu_seqlens is None and max_seqlen is None, then qkv has shape (B, S, 3, H, D).
+-            If cu_seqlens is not None and max_seqlen is not None, then qkv has shape
+-            (total, 3, H, D), where total is the sum of the sequence lengths in the batch.
+-        causal: if passed, will override self.causal
+-        cu_seqlens: (batch_size + 1,), dtype torch.int32. The cumulative sequence lengths
+-            of the sequences in the batch, used to index into qkv.
+-        max_seqlen: int. Maximum sequence length in the batch.
+-    Returns:
+-    --------
+-        out: (total, H, D) if cu_seqlens is not None and max_seqlen is not None,
+-            else (B, S, H, D).
++def preprocess_varlen(cu_input_lens: torch.Tensor):
++    """在 decoder layer 循环前预处理 varlen 参数。
++    返回(cu_seqlens_array, max_seqlen)
+     """
+-    assert qkv.dtype in [torch.float16, torch.bfloat16]
+-    assert qkv.is_cuda
+-    unpadded = cu_seqlens is not None
+-    if unpadded:
+-        assert cu_seqlens.dtype == torch.int32
+-        assert max_seqlen is not None
+-        assert isinstance(max_seqlen, int)
+-        return flash_attn_varlen_qkvpacked_func(
+-            qkv,
+-            cu_seqlens,
+-            max_seqlen,
+-            attention_dropout if training else 0.0,
+-            softmax_scale=softmax_scale,
+-            causal=causal,
+-        )
+-    else:
+-        return flash_attn_qkvpacked_func(
+-            qkv,
+-            attention_dropout if training else 0.0,
+-            softmax_scale=softmax_scale,
+-            causal=causal,
+-        )
++    cu_seqlens = cu_input_lens.cumsum(dim=0, dtype=torch.int32)
++    cu_seqlens_array = cu_seqlens.cpu().numpy().tolist()
++    max_seqlen = cu_input_lens.max().item()
++    return  cu_seqlens_array, max_seqlen
++
+ 
++def preprocess_mask(attention_mask: torch.Tensor):
++    """在 decoder layer 循环前预处理 mask 参数。
++    返回（starts, ends, cu_seqlens_array, max_seqlen）
++    """
++    # [bsz, 1, tgt_seq_len, src_seq_len] -> [bsz, seq_len]
++    attention_mask = attention_mask[:, 0, -1].contiguous()
++    cur_mask = attention_mask >= 0
++    csums = cur_mask.cumsum(dim=1, dtype=torch.int32)
++    ends = csums.argmax(dim=1) + 1
++    starts = ends - csums.max(dim=1).values
++    seqlens = ends - starts
++
++    cu_seqlens = seqlens.cumsum(dim=0, dtype=torch.int32)
++    cu_seqlens_array = cu_seqlens.cpu().numpy().tolist()
++    max_seqlen = seqlens.max().item()
++    return starts, ends, cu_seqlens_array, max_seqlen
+ 
++
++@dynamo.disable
+ def compute_flash_attention(
+     q: torch.Tensor,
+     k: torch.Tensor,
+@@ -81,64 +43,96 @@ def compute_flash_attention(
+     causal: bool = True,
+     training: bool = False,
+     attention_dropout: float = 0.0,
++    cu_seqlens_array: Optional[torch.Tensor] = None,
++    max_seqlen: Optional[int] = None,
++    starts: Optional[torch.Tensor] = None,
++    ends: Optional[torch.Tensor] = None,
+ ):
+     """Modified from https://github.com/LAION-AI/Open-Assistant/blob/main/model/model_training/models/patching_utils.py"""
+     # q, k, v: [bs, seq_len, num_attention_heads, attn_head_size]
+     # attention_mask (float): [bs, seq_len]
+     batch_size, max_len = q.size(0), q.size(1)
+-
+-    qkv = torch.stack([q, k, v], dim=2)  # [bs, seq_len, 3, num_attention_heads, attn_head_size]
++    # Ensure q/k/v are in supported dtype for flash attention
++    if q.dtype not in (torch.float16, torch.bfloat16):
++        q = q.to(torch.bfloat16)
++        k = k.to(torch.bfloat16)
++        v = v.to(torch.bfloat16)
++    softmax_scale = 1 / (q.shape[-1] ** 0.5)
+ 
+     if cu_input_lens is not None:
+-        qkv.squeeze_(0)
+-        cu_seqlens = F.pad(cu_input_lens.cumsum(dim=0, dtype=torch.int32), (1, 0))
+-        max_seqlen = cu_input_lens.max().item()
+-        out = flash_self_attention(
+-            qkv,
+-            causal=causal,
+-            cu_seqlens=cu_seqlens,
+-            max_seqlen=max_seqlen,
+-            training=training,
+-            attention_dropout=attention_dropout,
+-        )
+-        return out
++        # varlen 路径：输入是压紧后的 (total, 3, N, D)
++        N = q.shape[2]
++        causal_mask = torch.triu(torch.ones(max_seqlen, max_seqlen, device=q.device, dtype=torch.bool), diagonal=1) if causal else None
++        return torch_npu.npu_fusion_attention_v2(
++            query=q.squeeze(0),
++            key=k.squeeze(0),
++            value=v.squeeze(0),
++            head_num=N,
++            input_layout="TND",
++            softmax_layout="TND",
++            scale=softmax_scale,
++            actual_seq_qlen=cu_seqlens_array,
++            actual_seq_kvlen=cu_seqlens_array,
++            sparse_mode=0,
++            atten_mask=causal_mask,
++            pre_tokens=max_seqlen,
++            next_tokens=0,
++        )[0]
++
+     elif attention_mask is None:
+-        return flash_self_attention(qkv, causal=causal, training=training, attention_dropout=attention_dropout)
++        # 无 mask，直接走 packed 路径
++        S = q.shape[1]
++        N = q.shape[2]
++        causal_mask = torch.triu(torch.ones(S, S, device=q.device, dtype=torch.bool), diagonal=1) if causal else None
++        return torch_npu.npu_fusion_attention_v2(
++            query=q,
++            key=k,
++            value=v,
++            input_layout="BSND",
++            head_num=N,
++            scale=softmax_scale,
++            sparse_mode=0,
++            atten_mask=causal_mask,
++            pre_tokens=S,
++            next_tokens=0,
++        )[0]
++
+     else:
+-        # Limitation: non-contiguous attention mask will not be handled correctly
+-        # model will be able to pay attention between the first and last non-masked token, i.e. left- and right-side padding is supported.
++        causal_tri = torch.triu(torch.ones(2048, 2048, dtype=torch.bool, device=q.device), diagonal=1)
++        # mask 路径：根据有效区间压紧后再调用 varlen kernel
++        # 注意：非连续 mask 会被按首末有效 token 处理；支持左右 padding
++        qkv = torch.stack([q, k, v], dim=2)
+         cur_mask = attention_mask >= 0
+-        csums = cur_mask.cumsum(dim=1, dtype=torch.int32)
+-        ends = csums.argmax(dim=1) + 1
+-        starts = ends - csums.max(dim=1).values
+-        seqlens = ends - starts
+ 
+-        # qkv = torch.cat([qkv[i, starts[i] : ends[i]] for i in range(batch_size)], dim=0)
+-        qkv = qkv.view(batch_size*max_len, *qkv.size()[2:])
+-        cur_mask = cur_mask.flatten().nonzero().squeeze()
+-        qkv = qkv[cur_mask]
+-        cu_seqlens = F.pad(seqlens.cumsum(dim=0, dtype=torch.int32), (1, 0))
+-        max_seqlen = seqlens.max().item()
++        qkv = qkv.view(batch_size * max_len, *qkv.size()[2:])
++        cur_mask_idx = cur_mask.flatten().nonzero().squeeze()
++        qkv = torch.index_select(qkv, dim=0, index=cur_mask_idx)
++
++        N = qkv.shape[-2]
++        out = torch_npu.npu_fusion_attention_v2(
++            query=qkv[:, 0, :, :],
++            key=qkv[:, 1, :, :],
++            value=qkv[:, 2, :, :],
++            input_layout="TND",
++            softmax_layout="TND",
++            head_num=N,
++            scale=softmax_scale,
++            actual_seq_qlen=cu_seqlens_array,
++            actual_seq_kvlen=cu_seqlens_array,
++            sparse_mode=3,
++            atten_mask=causal_tri if causal else None,
++            pre_tokens=max_seqlen,
++            next_tokens=0,
++        )[0]
+ 
+-        out = flash_self_attention(
+-            qkv,
+-            causal=causal,
+-            cu_seqlens=cu_seqlens,
+-            max_seqlen=max_seqlen,
+-            training=training,
+-            attention_dropout=attention_dropout
+-        )
+-        # out: [num_unmasked_tokens, num_attention_heads, attn_head_size]
++        cu_seqlens_pad = F.pad(torch.tensor(cu_seqlens_array), (1, 0))
+ 
+-        seqs = [out[start:end] for start, end in zip(cu_seqlens[:-1], cu_seqlens[1:])]
+-        # stack and pad sequences together
+         padded_seqs = [
+             F.pad(
+-                seqs[i],
+-                (0, 0) * (seqs[i].dim() - 1) + (starts[i], max_len - ends[i]),
++                out[cu_seqlens_pad[i]:cu_seqlens_pad[i + 1]],
++                (0, 0) * (out.dim() - 1) + (starts[i], max_len - ends[i]),
+                 value=0.0,
+             )
+             for i in range(batch_size)
+         ]
+-        out = torch.stack(padded_seqs)
+-        return out
++        return torch.stack(padded_seqs)
+diff --git a/code/REC/model/HLLM/hllm.py b/code/REC/model/HLLM/hllm.py
+index 932292d..44d065f 100644
+--- a/code/REC/model/HLLM/hllm.py
++++ b/code/REC/model/HLLM/hllm.py
+@@ -28,12 +28,24 @@ from REC.model.HLLM.modeling_bert import BertModel
+ from REC.model.HLLM.baichuan.modeling_baichuan import BaichuanForCausalLM
+ 
+ 
++def move_model_to_device(model):
++    """将模型迁移到可用的设备（CUDA > NPU > CPU）"""
++    if torch.cuda.is_available():
++        return model.cuda()
++    try:
++        import torch_npu
++        return model.npu()
++    except ImportError:
++        return model
++
++
+ class HLLM(BaseModel):
+     input_type = InputType.SEQ
+ 
+     def __init__(self, config, dataload):
+         super(HLLM, self).__init__()
+         self.logger = getLogger()
++        self.config = config
+ 
+         self.item_pretrain_dir = config['item_pretrain_dir']
+         self.user_pretrain_dir = config['user_pretrain_dir']
+@@ -91,7 +103,10 @@ class HLLM(BaseModel):
+             if init:
+                 return LlamaForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return LlamaForCausalLM(config=hf_config).cuda()
++                model = LlamaForCausalLM(config=hf_config)
++                # Support both CUDA and NPU devices
++                return move_model_to_device(model)
++
+         elif isinstance(hf_config, transformers.MistralConfig):
+             hf_config.use_ft_flash_attn = self.use_ft_flash_attn
+             self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for mistral')
+@@ -99,7 +114,8 @@ class HLLM(BaseModel):
+             if init:
+                 return MistralForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return MistralForCausalLM(config=hf_config).cuda()
++                model = MistralForCausalLM(config=hf_config)
++                return move_model_to_device(model)
+         elif isinstance(hf_config, transformers.BertConfig):
+             hf_config.use_ft_flash_attn = self.use_ft_flash_attn
+             self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for bert')
+@@ -107,7 +123,8 @@ class HLLM(BaseModel):
+             if init:
+                 return BertModel.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return BertModel(config=hf_config).cuda()
++                model = BertModel(config=hf_config)
++                return move_model_to_device(model)
+         elif getattr(hf_config, "model_type", None) == "baichuan":
+             hf_config.use_ft_flash_attn = self.use_ft_flash_attn
+             self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for baichuan')
+@@ -115,7 +132,8 @@ class HLLM(BaseModel):
+             if init:
+                 return BaichuanForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return BaichuanForCausalLM(config=hf_config).cuda()
++                model = BaichuanForCausalLM(config=hf_config)
++                return move_model_to_device(model)
+         else:
+             return AutoModelForCausalLM.from_pretrained(
+                 self.local_dir, config=hf_config
+diff --git a/code/REC/model/HLLM/modeling_llama.py b/code/REC/model/HLLM/modeling_llama.py
+index 0a15480..5b1fc82 100644
+--- a/code/REC/model/HLLM/modeling_llama.py
++++ b/code/REC/model/HLLM/modeling_llama.py
+@@ -47,7 +47,7 @@ from transformers.utils import (
+ )
+ 
+ try:
+-    from .flash_self_attn import compute_flash_attention
++    from .flash_self_attn import compute_flash_attention, preprocess_varlen, preprocess_mask
+ except ImportError as e:
+     compute_flash_attention = None
+ 
+@@ -583,6 +583,10 @@ class LlamaAttention(nn.Module):
+         past_key_value: Optional[Tuple[torch.Tensor]] = None,
+         output_attentions: bool = False,
+         use_cache: bool = False,
++        cu_seqlens_array: Optional[list] = None,
++        max_seqlen: Optional[int] = None,
++        starts: Optional[torch.Tensor] = None,
++        ends: Optional[torch.Tensor] = None,
+     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+         bsz, q_len, _ = hidden_states.size()
+ 
+@@ -700,6 +704,10 @@ class LlamaAttention(nn.Module):
+                 cu_input_lens,
+                 True,
+                 self.training,
++                cu_seqlens_array=cu_seqlens_array,
++                max_seqlen=max_seqlen,
++                starts=starts,
++                ends=ends,
+             )
+             attn_output = attn_output.to(out_dtype)
+             attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+@@ -746,6 +754,10 @@ class LlamaDecoderLayer(nn.Module):
+         past_key_value: Optional[Tuple[torch.Tensor]] = None,
+         output_attentions: Optional[bool] = False,
+         use_cache: Optional[bool] = False,
++        cu_seqlens_array: Optional[list] = None,
++        max_seqlen: Optional[int] = None,
++        starts: Optional[torch.Tensor] = None,
++        ends: Optional[torch.Tensor] = None,
+     ) -> Tuple[
+         torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]
+     ]:
+@@ -775,6 +787,10 @@ class LlamaDecoderLayer(nn.Module):
+             past_key_value=past_key_value,
+             output_attentions=output_attentions,
+             use_cache=use_cache,
++            cu_seqlens_array=cu_seqlens_array,
++            max_seqlen=max_seqlen,
++            starts=starts,
++            ends=ends,
+         )
+         hidden_states = residual + hidden_states
+ 
+@@ -1048,6 +1064,17 @@ class LlamaModel(LlamaPreTrainedModel):
+ 
+         hidden_states = inputs_embeds
+ 
++        # 预处理 flash attention 参数在所有 decoder layer 循环外，每层复用
++        _cu_seqlens_array = None
++        _max_seqlen = None
++        _starts = None
++        _ends = None
++
++        if cu_input_lens is not None:
++            _cu_seqlens_array, _max_seqlen = preprocess_varlen(cu_input_lens)
++        elif attention_mask is not None and self.config.use_ft_flash_attn:
++            _starts, _ends, _cu_seqlens_array, _max_seqlen = preprocess_mask(attention_mask)
++
+         if self.gradient_checkpointing and self.training:
+             if use_cache:
+                 logger.warning_once(
+@@ -1094,6 +1121,10 @@ class LlamaModel(LlamaPreTrainedModel):
+                     output_attentions=output_attentions,
+                     cu_input_lens=cu_input_lens,
+                     use_cache=use_cache,
++                    cu_seqlens_array=_cu_seqlens_array,
++                    max_seqlen=_max_seqlen,
++                    starts=_starts,
++                    ends=_ends,
+                 )
+ 
+             hidden_states = layer_outputs[0]
+diff --git a/code/REC/model/HLLM/modeling_mistral.py b/code/REC/model/HLLM/modeling_mistral.py
+index e14281b..24a61f3 100644
+--- a/code/REC/model/HLLM/modeling_mistral.py
++++ b/code/REC/model/HLLM/modeling_mistral.py
+@@ -42,7 +42,6 @@ from transformers.utils import (
+     replace_return_docstrings,
+ )
+ from transformers.configuration_utils import PretrainedConfig
+-from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa
+ 
+ try:
+     from .flash_self_attn import compute_flash_attention
+diff --git a/code/REC/model/IDNet/llmidrec.py b/code/REC/model/IDNet/llmidrec.py
+index 3bdc13e..e25cfd3 100644
+--- a/code/REC/model/IDNet/llmidrec.py
++++ b/code/REC/model/IDNet/llmidrec.py
+@@ -74,7 +74,12 @@ class LLMIDRec(BaseModel):
+             if init:
+                 return LlamaForCausalLM.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return LlamaForCausalLM(config=hf_config).bfloat16()
++                model = LlamaForCausalLM(config=hf_config).bfloat16()
++                # Use appropriate device based on availability
++                if hasattr(torch, 'npu') and torch.npu.is_available():
++                    return model.npu()
++                else:
++                    return model.cuda()
+         elif isinstance(hf_config, transformers.BertConfig):
+             hf_config.use_ft_flash_attn = self.use_ft_flash_attn
+             self.logger.info(f'Using flash attention {hf_config.use_ft_flash_attn} for bert')
+@@ -82,7 +87,12 @@ class LLMIDRec(BaseModel):
+             if init:
+                 return BertModel.from_pretrained(pretrain_dir, config=hf_config)
+             else:
+-                return BertModel(config=hf_config).bfloat16()
++                model = BertModel(config=hf_config).bfloat16()
++                # Use appropriate device based on availability
++                if hasattr(torch, 'npu') and torch.npu.is_available():
++                    return model.npu()
++                else:
++                    return model.cuda()
+         else:
+             return AutoModelForCausalLM.from_pretrained(
+                 self.local_dir, config=hf_config
+diff --git a/code/REC/trainer/__init__.py b/code/REC/trainer/__init__.py
+index c495d7b..6ed984f 100644
+--- a/code/REC/trainer/__init__.py
++++ b/code/REC/trainer/__init__.py
+@@ -1,4 +1,4 @@
+-from .trainer import *
++# from .trainer import *
+ 
+ 
+ __all__ = ['Trainer']
+diff --git a/code/REC/utils/logger.py b/code/REC/utils/logger.py
+index b074421..ed9ae6f 100644
+--- a/code/REC/utils/logger.py
++++ b/code/REC/utils/logger.py
+@@ -16,7 +16,18 @@ log_colors_config = {
+     'ERROR': 'red',
+     'CRITICAL': 'red',
+ }
+-
++import torch.distributed as dist
++from datetime import datetime
++
++def get_local_time():
++    # 只有 PG 初始化且多卡时才 barrier；否则直接跳过
++    if dist.is_available() and dist.is_initialized():
++        try:
++            if dist.get_world_size() > 1:
++                dist.barrier()
++        except Exception as e:
++            print(f"[WARN] get_local_time barrier skipped: {e}")
++    return datetime.now().strftime('%b-%d-%Y_%H-%M-%S')
+ 
+ class RemoveColorFilter(logging.Filter):
+ 
+@@ -65,7 +76,12 @@ def init_logger(config):
+         ensure_dir(dir_name)
+         model_name = os.path.join(dir_name, config['model'])
+         ensure_dir(model_name)
+-    torch.distributed.barrier()
++    if dist.is_available() and dist.is_initialized():
++        try:
++            if dist.get_world_size() > 1:
++                dist.barrier()
++        except Exception as e:
++            print(f"[WARN] logger barrier skipped: {e}")
+     logfilename = '{}/{}.log'.format(config['model'], get_local_time())
+ 
+     logfilepath = os.path.join(LOGROOT, logfilename)
+diff --git a/code/overall/LLM_deepspeed_npu.yaml b/code/overall/LLM_deepspeed_npu.yaml
+new file mode 100644
+index 0000000..19da79c
+--- /dev/null
++++ b/code/overall/LLM_deepspeed_npu.yaml
+@@ -0,0 +1,57 @@
++# general
++seed: 2020
++state: INFO
++use_text: True
++reproducibility: True
++checkpoint_dir: 'saved'
++show_progress: True
++
++log_wandb: False
++wandb_project: 'REC'
++MAX_ITEM_LIST_LENGTH: 10
++MAX_TEXT_LENGTH: 256
++
++data_path: ../../../dataset/hllm/dataset/   # dataset path
++dataset: amazon_books                      # dataset name
++
++text_path: ../../../dataset/hllm/information/                # Use absolute path
++text_keys: ['title', 'description']
++
++item_prompt: 'Compress the following sentence into embedding: '
++item_emb_token_n: 1
++
++loss: nce
++
++# training settings
++epochs: 1
++train_batch_size: 1
++optim_args: {
++  learning_rate: 1e-4,
++  weight_decay: 0.01
++}
++scheduler_args: {
++  type: cosine,
++  warmup: 0.1
++}
++
++# eval settings
++eval_batch_size: 256
++topk: [5,10,50,200]
++metrics: ['Recall', 'NDCG']
++valid_metric: NDCG@200
++metric_decimal_place: 7
++eval_step: 0
++stopping_step: 5
++
++# NPU specific settings
++use_npu: True
++use_gpu: False
++device_type: 'npu'
++stage: 2
++
++# NPU distributed settings
++distributed_backend: 'hccl'
++
++# precision mode settings
++precision_mode_enabled: False
++
+diff --git a/code/run.py b/code/run.py
+index ccbd2ce..fd21bbd 100644
+--- a/code/run.py
++++ b/code/run.py
+@@ -15,7 +15,7 @@ import json
+ from REC.data import *
+ from REC.config import Config
+ from REC.utils import init_logger, get_model, init_seed, set_color
+-from REC.trainer import Trainer
++from REC.trainer.trainer_npu import TrainerNPU
+ import torch.distributed as dist
+ 
+ import os
+@@ -24,12 +24,18 @@ import argparse
+ import torch.distributed as dist
+ import torch
+ 
++
+ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
+ 
+     # configurations initialization
+     config = Config(config_file_list=config_file)
+ 
+-    device = torch.device("cuda", local_rank)
++    use_npu = config.get('use_npu', False)
++    if use_npu:
++        import torch_npu
++        device = torch.device("npu", local_rank)
++    else:
++        device = torch.device("cuda", local_rank)
+     config['device'] = device
+     config.parse_extra_args(extra_args)
+ 
+@@ -51,7 +57,7 @@ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
+     # model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
+ 
+     world_size = torch.distributed.get_world_size()
+-    trainer = Trainer(config, model)
++    trainer = TrainerNPU(config, model)
+ 
+     logger.info(set_color('\nWorld_Size', 'pink') + f' = {world_size} \n')
+     logger.info(config)
+@@ -74,17 +80,12 @@ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
+         )
+         logger.info(f'Trianing Ended' + set_color('best valid ', 'yellow') + f': {best_valid_result}')
+ 
+-        # model evaluation
+-        test_result = trainer.evaluate(test_loader, load_best_model=saved, show_progress=config['show_progress'])
+-
+-        logger.info(set_color('best valid ', 'yellow') + f': {best_valid_result}')
+-        logger.info(set_color('test result', 'yellow') + f': {test_result}')
++        # model evaluation 推理流程暂不用
+ 
+         return {
+             'best_valid_score': best_valid_score,
+             'valid_score_bigger': config['valid_metric_bigger'],
+             'best_valid_result': best_valid_result,
+-            'test_result': test_result
+         }
+ 
+ 
+@@ -92,10 +93,28 @@ if __name__ == '__main__':
+     parser = argparse.ArgumentParser()
+     parser.add_argument("--config_file", nargs='+', type=str)
+     args, extra_args = parser.parse_known_args()
+-    local_rank = int(os.environ['LOCAL_RANK'])
+     config_file = args.config_file
+ 
+-    torch.cuda.set_device(local_rank)
+-    dist.init_process_group(backend='nccl')
++    local_rank = int(os.environ.get('LOCAL_RANK', '0'))  # 兼容没设置时
++
++    config_temp = Config(config_file_list=config_file)
++    use_npu = config_temp.get('use_npu', False)
++    use_precision = config_temp.get('precision_mode_enabled', False)
++
++    if use_npu:
++        import torch_npu
++        # 精度模式下需要关掉hf32
++        if not use_precision:
++            torch_npu.npu.aclnn.allow_hf32 = True
++            torch_npu.npu.conv.allow_hf32 = True
++            torch_npu.npu.matmul.allow_hf32 = True
++
++        torch.npu.set_device(local_rank)
++        backend = config_temp.get('distributed_backend', 'hccl')
++        # 明确超时，避免隐性卡死
++        dist.init_process_group(backend=backend, device_id=torch.device(f'npu:{local_rank}'))
++    else:
++        torch.cuda.set_device(local_rank)
++        dist.init_process_group(backend='nccl')
+ 
+     run_loop(local_rank=local_rank, config_file=config_file, extra_args=extra_args)
+diff --git a/requirements.txt b/requirements.txt
+index 4281489..b054b3a 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -3,17 +3,10 @@ pandas==2.2.2
+ colorama==0.4.6
+ torch_geometric==2.5.3
+ accelerate==0.30.1
+-numpy==1.26.4
+-wandb==0.17.7
+-colorlog==6.8.2
+-deepspeed==0.14.2
+-lightning==2.4.0
+-pytz==2020.5
+-PyYAML==6.0.1
+-tensorboardX==2.6.2.2
+-tensorflow_cpu==2.12.0
+-tqdm==4.66.4
+-transformers==4.51.0
+-fbgemm_gpu==0.5.0
+-flash_attn==2.5.9.post1
+-sentencepiece==0.2.0
+\ No newline at end of file
++numpy==2.2.0
++colorlog==6.12.0
++pytz==2025.2
++PyYAML==6.0.3
++tensorboardX==2.6.4
++tqdm==4.67.3
++transformers==4.41.1
