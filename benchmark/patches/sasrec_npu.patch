@@ -903,7 +903,7 @@ index 6d2da5b..8bbba6c 100644
 +
      cleanup()
 diff --git a/main.py b/main.py
-index 445f258..38b20d3 100644
+index 445f258..9d8a06c 100644
 --- a/main.py
 +++ b/main.py
 @@ -21,9 +21,48 @@ Main entry point for model training. Please refer to README.md for usage instruc
@@ -974,7 +974,7 @@ index 445f258..38b20d3 100644
  FLAGS = flags.FLAGS  # pyre-ignore [5]
  
  
-@@ -63,7 +104,18 @@ def mp_train_fn(
+@@ -63,7 +104,17 @@ def mp_train_fn(
  
  
  def _main(argv) -> None:  # pyre-ignore [2]
@@ -984,12 +984,11 @@ index 445f258..38b20d3 100644
 +    else:
 +        os.environ["CUDA_VISIBLE_DEVICES"] = FLAGS.device_id
 +
-+    world_size = torch_npu.npu.device_count() if NPU_ENABLE else torch.cuda.device_count()
++    device_ids = [int(x.strip()) for x in FLAGS.device_id.split(",")]
++    world_size = len(device_ids)
 +    if NPU_ENABLE:
-+        logging.info(f"torch_npu.npu.device_count(): {torch_npu.npu.device_count()}")
 +        logging.info(f"ASCEND_RT_VISIBLE_DEVICES: {os.environ.get('ASCEND_RT_VISIBLE_DEVICES', 'Not set')}")
 +    elif torch.cuda.is_available():
-+        logging.info(f"torch.cuda.device_count(): {torch.cuda.device_count()}")
 +        logging.info(f"CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'Not set')}")
  
      mp.set_start_method("forkserver")
