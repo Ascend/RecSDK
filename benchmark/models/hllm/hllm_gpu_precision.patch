@@ -112,7 +112,7 @@ index 0913f75..0a83c01 100644
          torch.backends.cudnn.benchmark = True
          torch.backends.cudnn.deterministic = False
 diff --git a/code/overall/LLM_deepspeed.yaml b/code/overall/LLM_deepspeed.yaml
-index 7c93499..cf1eeea 100644
+index 7c93499..77af164 100644
 --- a/code/overall/LLM_deepspeed.yaml
 +++ b/code/overall/LLM_deepspeed.yaml
 @@ -8,14 +8,14 @@ show_progress: True
@@ -148,7 +148,7 @@ index 7c93499..cf1eeea 100644
    learning_rate: 1e-4,
    weight_decay: 0.01
 @@ -43,6 +43,5 @@ metric_decimal_place: 7
- eval_step: 1
+ eval_step: 1 
  stopping_step: 5
  
 -strategy: deepspeed
