@@ -5866,3 +5866,665 @@ index c806ab89..293bd75c 100644
                  else "gloo"
              ),
              sharder=sharder,
+diff --git a/torchrec/distributed/tests/test_quant_model_parallel.py b/torchrec/distributed/tests/test_quant_model_parallel.py
+index 131b9d3d..c465d0c6 100644
+--- a/torchrec/distributed/tests/test_quant_model_parallel.py
++++ b/torchrec/distributed/tests/test_quant_model_parallel.py
+@@ -140,8 +140,8 @@ class QuantModelParallelModelCopyTest(unittest.TestCase):
+                 self._recursive_device_check(child, child_copy, device, device_copy)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -169,8 +169,8 @@ class QuantModelParallelModelCopyTest(unittest.TestCase):
+             quant_state_dict_split_scale_bias,
+         ) = sharding_type_qsplitscalebias
+ 
+-        device = torch.device("cuda:0")
+-        device_1 = torch.device("cuda:1")
++        device = torch.device("npu:0")
++        device_1 = torch.device("npu:1")
+         model = TestSparseNN(
+             tables=self.tables,
+             weighted_tables=self.weighted_tables,
+@@ -203,8 +203,8 @@ class QuantModelParallelModelCopyTest(unittest.TestCase):
+         self._recursive_device_check(dmp.module, dmp_1.module, device, device_1)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -227,12 +227,16 @@ class QuantModelParallelModelCopyTest(unittest.TestCase):
+     def test_quant_pred_state_dict(
+         self, output_type: torch.dtype, sharding_type_qsplitscalebias: Tuple[str, bool]
+     ) -> None:
++        if torch.npu.is_available():
++                self.skipTest(
++                    "The driver does not support the creation of IPC events. Skip this test case."
++                )
+         (
+             sharding_type,
+             quant_state_dict_split_scale_bias,
+         ) = sharding_type_qsplitscalebias
+ 
+-        device = torch.device("cuda:0")
++        device = torch.device("npu:0")
+ 
+         model = TestSparseNN(
+             tables=self.tables,
+@@ -297,8 +301,8 @@ class QuantModelParallelModelCopyTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -321,13 +325,17 @@ class QuantModelParallelModelCopyTest(unittest.TestCase):
+     def test_quant_pred_shard(
+         self, output_type: torch.dtype, sharding_type_qsplitscalebias: Tuple[str, bool]
+     ) -> None:
++        if torch.npu.is_available():
++                self.skipTest(
++                    "The driver does not support the creation of IPC events. Skip this test case."
++                )
+         (
+             sharding_type,
+             quant_state_dict_split_scale_bias,
+         ) = sharding_type_qsplitscalebias
+ 
+-        device = torch.device("cuda:0")
+-        device_1 = torch.device("cuda:1")
++        device = torch.device("npu:0")
++        device_1 = torch.device("npu:1")
+         model = TestSparseNN(
+             tables=self.tables,
+             weighted_tables=self.weighted_tables,
+@@ -380,12 +388,12 @@ class QuantModelParallelModelCopyTest(unittest.TestCase):
+ 
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_copy_mixin(self) -> None:
+-        device = torch.device("cuda:0")
+-        device_1 = torch.device("cuda:1")
++        device = torch.device("npu:0")
++        device_1 = torch.device("npu:1")
+         model = TestSparseNN(
+             tables=self.tables,
+             weighted_tables=self.weighted_tables,
+@@ -446,8 +454,8 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+         ]
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 0,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -483,7 +491,7 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+             quant_state_dict_split_scale_bias,
+         ) = sharding_type_qsplitscalebias
+ 
+-        device = torch.device("cuda:0")
++        device = torch.device("npu:0")
+         sparse_device = torch.device("meta")
+         model = TestSparseNN(
+             tables=self.tables,
+@@ -508,7 +516,7 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+                 ),
+             )
+         ]
+-        topology = Topology(world_size=1, compute_device="cuda")
++        topology = Topology(world_size=1, compute_device="npu")
+         plan = EmbeddingShardingPlanner(
+             topology=topology,
+             batch_size=10,
+@@ -522,7 +530,7 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+             ),
+         ).plan(quant_model, sharders)
+ 
+-        sharding_device_type = "cuda"
++        sharding_device_type = "npu"
+         dmp = DistributedModelParallel(
+             quant_model,
+             plan=plan,
+@@ -551,8 +559,8 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 0,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -574,7 +582,7 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+             quant_state_dict_split_scale_bias,
+         ) = sharding_type_qsplitscalebias
+ 
+-        device = torch.device("cuda:0")
++        device = torch.device("npu:0")
+         model = TestSparseNN(
+             tables=self.tables,
+             weighted_tables=self.weighted_tables,
+@@ -597,7 +605,7 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+                 ),
+             )
+         ]
+-        topology = Topology(world_size=1, compute_device="cuda")
++        topology = Topology(world_size=1, compute_device="npu")
+         plan = EmbeddingShardingPlanner(
+             topology=topology,
+             batch_size=10,
+@@ -614,7 +622,7 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+         dmp = DistributedModelParallel(
+             quant_model,
+             plan=plan,
+-            device=torch.device("cuda"),
++            device=torch.device("npu"),
+             env=ShardingEnv.from_local(world_size=1, rank=0),
+             init_data_parallel=False,
+             init_parameters=False,
+@@ -635,8 +643,8 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 0,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -658,7 +666,7 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+             quant_state_dict_split_scale_bias,
+         ) = sharding_type_qsplitscalebias
+ 
+-        device = torch.device("cuda:0")
++        device = torch.device("npu:0")
+         sparse_device = torch.device("meta")
+         model = TestSparseNN(
+             tables=self.tables,
+@@ -681,7 +689,7 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+                 ),
+             )
+         ]
+-        topology = Topology(world_size=1, compute_device="cuda")
++        topology = Topology(world_size=1, compute_device="npu")
+         plan = EmbeddingShardingPlanner(
+             topology=topology,
+             batch_size=10,
+@@ -698,7 +706,7 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+         dmp = DistributedModelParallel(
+             quant_model,
+             plan=plan,
+-            device=torch.device("cuda"),
++            device=torch.device("npu"),
+             env=ShardingEnv.from_local(world_size=1, rank=0),
+             init_data_parallel=False,
+             init_parameters=True,
+@@ -723,8 +731,8 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 0,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -746,7 +754,7 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+             quant_state_dict_split_scale_bias,
+         ) = sharding_type_qsplitscalebias
+ 
+-        device = torch.device("cuda:0")
++        device = torch.device("npu:0")
+         model = TestSparseNN(
+             tables=self.tables,
+             weighted_tables=self.weighted_tables,
+@@ -771,7 +779,7 @@ class QuantModelParallelModelSharderTest(unittest.TestCase):
+                 ),
+             )
+         ]
+-        topology = Topology(world_size=1, compute_device="cuda")
++        topology = Topology(world_size=1, compute_device="npu")
+         with self.assertRaises(AssertionError):
+             EmbeddingShardingPlanner(
+                 topology=topology,
+diff --git a/torchrec/distributed/tests/test_quant_pruning.py b/torchrec/distributed/tests/test_quant_pruning.py
+index 86ce6704..ae1011e8 100644
+--- a/torchrec/distributed/tests/test_quant_pruning.py
++++ b/torchrec/distributed/tests/test_quant_pruning.py
+@@ -113,13 +113,13 @@ class QuantPruneTest(unittest.TestCase):
+ 
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_qebc_pruned_tw(self) -> None:
+         batch_size: int = 4
+         world_size = 2
+-        local_device = torch.device("cuda:0")
++        local_device = torch.device("npu:0")
+ 
+         num_embedding = 100
+         emb_dim = 64
+@@ -149,13 +149,13 @@ class QuantPruneTest(unittest.TestCase):
+             [
+                 (
+                     (0, 0, table_specs[0][2], table_specs[0][1]),
+-                    "rank:0/cuda:0",
++                    "rank:0/npu:0",
+                 ),
+             ],
+             [
+                 (
+                     (0, 0, table_specs[1][2], table_specs[1][1]),
+-                    "rank:1/cuda:1",
++                    "rank:1/npu:1",
+                 ),
+             ],
+         ]
+@@ -201,13 +201,13 @@ class QuantPruneTest(unittest.TestCase):
+ 
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_qebc_pruned_tw_one_ebc(self) -> None:
+         batch_size: int = 1
+         world_size: int = 2
+-        local_device = torch.device("cuda:0")
++        local_device = torch.device("npu:0")
+         num_embedding = 200
+         emb_dim = 10
+         sharding_type = ShardingType.TABLE_WISE
+@@ -223,8 +223,8 @@ class QuantPruneTest(unittest.TestCase):
+ 
+         kjt = KeyedJaggedTensor.from_lengths_sync(
+             keys=["feature_0"],
+-            values=torch.tensor([0, 1, 2], dtype=torch.int32).cuda(),
+-            lengths=torch.tensor([1, 1, 1], dtype=torch.int32).cuda(),
++            values=torch.tensor([0, 1, 2], dtype=torch.int32).npu(),
++            lengths=torch.tensor([1, 1, 1], dtype=torch.int32).npu(),
+             weights=None,
+         )
+ 
+@@ -237,13 +237,13 @@ class QuantPruneTest(unittest.TestCase):
+ 
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_qebc_pruned_cw(self) -> None:
+         batch_size: int = 4
+         world_size = 2
+-        local_device = torch.device("cuda:0")
++        local_device = torch.device("npu:0")
+ 
+         num_embedding = 200
+         emb_dim = 512
+@@ -271,19 +271,19 @@ class QuantPruneTest(unittest.TestCase):
+             [
+                 (
+                     (0, 0, table_specs[0][2], table_specs[0][1] // 4),
+-                    "rank:0/cuda:0",
++                    "rank:0/npu:0",
+                 ),
+                 (
+                     (0, 128, table_specs[0][2], table_specs[0][1] // 4),
+-                    "rank:1/cuda:1",
++                    "rank:1/npu:1",
+                 ),
+                 (
+                     (0, 256, table_specs[0][2], table_specs[0][1] // 4),
+-                    "rank:0/cuda:0",
++                    "rank:0/npu:0",
+                 ),
+                 (
+                     (0, 384, table_specs[0][2], table_specs[0][1] // 4),
+-                    "rank:1/cuda:1",
++                    "rank:1/npu:1",
+                 ),
+             ],
+         ]
+@@ -325,13 +325,13 @@ class QuantPruneTest(unittest.TestCase):
+ 
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_qebc_pruned_cw_one_ebc(self) -> None:
+         batch_size: int = 1
+         world_size: int = 2
+-        local_device = torch.device("cuda:0")
++        local_device = torch.device("npu:0")
+         num_embedding = 200
+         emb_dim = 512
+         sharding_type = ShardingType.COLUMN_WISE
+@@ -347,8 +347,8 @@ class QuantPruneTest(unittest.TestCase):
+ 
+         kjt = KeyedJaggedTensor.from_lengths_sync(
+             keys=["feature_0"],
+-            values=torch.tensor([0, 1, 2, 59, 60, 99], dtype=torch.int32).cuda(),
+-            lengths=torch.tensor([1, 1, 1, 1, 1, 1], dtype=torch.int32).cuda(),
++            values=torch.tensor([0, 1, 2, 59, 60, 99], dtype=torch.int32).npu(),
++            lengths=torch.tensor([1, 1, 1, 1, 1, 1], dtype=torch.int32).npu(),
+             weights=None,
+         )
+ 
+@@ -361,13 +361,13 @@ class QuantPruneTest(unittest.TestCase):
+ 
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_fpqebc_pruned_tw_one_fpebc(self) -> None:
+         batch_size: int = 1
+         world_size: int = 2
+-        local_device = torch.device("cuda:0")
++        local_device = torch.device("npu:0")
+         num_embedding = 200
+         emb_dim = 512
+         sharding_type = ShardingType.COLUMN_WISE
+@@ -384,8 +384,8 @@ class QuantPruneTest(unittest.TestCase):
+ 
+         kjt = KeyedJaggedTensor.from_lengths_sync(
+             keys=["feature_0"],
+-            values=torch.tensor([0, 1, 2, 59, 60, 99], dtype=torch.int32).cuda(),
+-            lengths=torch.tensor([1, 1, 1, 1, 1, 1], dtype=torch.int32).cuda(),
++            values=torch.tensor([0, 1, 2, 59, 60, 99], dtype=torch.int32).npu(),
++            lengths=torch.tensor([1, 1, 1, 1, 1, 1], dtype=torch.int32).npu(),
+             weights=None,
+         )
+ 
+diff --git a/torchrec/distributed/tests/test_quant_sequence_model_parallel.py b/torchrec/distributed/tests/test_quant_sequence_model_parallel.py
+index 7ee9fca0..81e2f452 100644
+--- a/torchrec/distributed/tests/test_quant_sequence_model_parallel.py
++++ b/torchrec/distributed/tests/test_quant_sequence_model_parallel.py
+@@ -78,8 +78,8 @@ class TestQuantECSharder(QuantEmbeddingCollectionSharder):
+ @skip_if_asan_class
+ class QuantSequenceModelParallelTest(InferenceModelParallelTestBase):
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -102,6 +102,10 @@ class QuantSequenceModelParallelTest(InferenceModelParallelTestBase):
+         kernel_type: str,
+         quant_state_dict_split_scale_bias: bool,
+     ) -> None:
++        if torch.npu.is_available():
++                self.skipTest(
++                    "The driver does not support the creation of IPC events. Skip this test case."
++                )
+         self._test_sharding(
+             sharders=[
+                 TestQuantECSharder(
+@@ -109,7 +113,7 @@ class QuantSequenceModelParallelTest(InferenceModelParallelTestBase):
+                     kernel_type=kernel_type,
+                 )
+             ],
+-            backend="nccl",
++            backend="hccl",
+             quant_state_dict_split_scale_bias=quant_state_dict_split_scale_bias,
+         )
+ 
+@@ -154,8 +158,8 @@ class QuantSequenceModelParallelTest(InferenceModelParallelTestBase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -171,7 +175,11 @@ class QuantSequenceModelParallelTest(InferenceModelParallelTestBase):
+     def test_quant_pred_shard(
+         self, output_type: torch.dtype, quant_state_dict_split_scale_bias: bool
+     ) -> None:
+-        device = torch.device("cuda:0")
++        if torch.npu.is_available():
++                self.skipTest(
++                    "The driver does not support the creation of IPC events. Skip this test case."
++                )
++        device = torch.device("npu:0")
+ 
+         # wrap in sequential because _quantize only applies to submodules...
+         model = nn.Sequential(EmbeddingCollection(tables=self.tables, device=device))
+@@ -209,12 +217,14 @@ class QuantSequenceModelParallelTest(InferenceModelParallelTestBase):
+ 
+     # pyre-fixme[56]
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_sharded_quant_kv_zch(self) -> None:
+-        device = torch.device("cuda:0")
++        device = torch.device("npu:0")
+         num_features = 4
++        if device.type == "npu":
++                self.skipTest("NPU not implement DramKVEmbeddingInferenceWrapper custom class")
+ 
+         tables = [
+             EmbeddingConfig(
+diff --git a/torchrec/distributed/tests/test_sequence_model_parallel.py b/torchrec/distributed/tests/test_sequence_model_parallel.py
+index 4b38f706..3fa7304d 100644
+--- a/torchrec/distributed/tests/test_sequence_model_parallel.py
++++ b/torchrec/distributed/tests/test_sequence_model_parallel.py
+@@ -36,8 +36,8 @@ from torchrec.test_utils import skip_if_asan_class
+ @skip_if_asan_class
+ class SequenceModelParallelTest(MultiProcessTestBase):
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -90,15 +90,15 @@ class SequenceModelParallelTest(MultiProcessTestBase):
+                     qcomms_config=qcomms_config,
+                 )
+             ],
+-            backend="nccl",
++            backend="hccl",
+             qcomms_config=qcomms_config,
+             apply_optimizer_in_backward_config=apply_optimizer_in_backward_config,
+             variable_batch_size=variable_batch_size,
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -124,13 +124,13 @@ class SequenceModelParallelTest(MultiProcessTestBase):
+                     kernel_type=kernel_type,
+                 )
+             ],
+-            backend="nccl",
++            backend="hccl",
+             apply_optimizer_in_backward_config=apply_optimizer_in_backward_config,
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -183,15 +183,15 @@ class SequenceModelParallelTest(MultiProcessTestBase):
+                     qcomms_config=qcomms_config,
+                 )
+             ],
+-            backend="nccl",
++            backend="hccl",
+             qcomms_config=qcomms_config,
+             apply_optimizer_in_backward_config=apply_optimizer_in_backward_config,
+             variable_batch_size=variable_batch_size,
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -234,7 +234,7 @@ class SequenceModelParallelTest(MultiProcessTestBase):
+                     kernel_type=kernel_type,
+                 )
+             ],
+-            backend="nccl",
++            backend="hccl",
+             constraints={
+                 table.name: ParameterConstraints(min_partition=8)
+                 for table in self.tables
+@@ -244,8 +244,8 @@ class SequenceModelParallelTest(MultiProcessTestBase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -264,6 +264,8 @@ class SequenceModelParallelTest(MultiProcessTestBase):
+         sharding_type: str,
+         index_dedup: bool,
+     ) -> None:
++        if torch.npu.is_available():
++            self.skipTest("NPU tbe does not support variable batch.")
+         self._test_sharding(
+             sharders=[
+                 TestEmbeddingCollectionSharder(
+@@ -272,7 +274,7 @@ class SequenceModelParallelTest(MultiProcessTestBase):
+                     use_index_dedup=index_dedup,
+                 )
+             ],
+-            backend="nccl",
++            backend="hccl",
+             constraints={
+                 table.name: ParameterConstraints(min_partition=4)
+                 for table in self.tables
+@@ -282,8 +284,8 @@ class SequenceModelParallelTest(MultiProcessTestBase):
+ 
+     # pyre-fixme[56]
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     def test_sharding_empty_rank(self) -> None:
+         table = self.tables[0]
+@@ -301,7 +303,7 @@ class SequenceModelParallelTest(MultiProcessTestBase):
+                 )
+             ],
+             optim=EmbOptimType.EXACT_SGD,
+-            backend="nccl",
++            backend="hccl",
+             variable_batch_size=True,
+         )
+ 
+@@ -388,8 +390,8 @@ class DedupIndicesWeightAccumulationTest(unittest.TestCase):
+ 
+     # pyre-fixme[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        not torch.cuda.is_available(),
+-        "Not enough GPUs, this test requires at least one GPU",
++        not torch.npu.is_available(),
++        "Not enough NPUs, this test requires at least one GPU",
+     )
+     def test_dedup_indices_weight_accumulation_disabled_in_oss_compatibility(
+         self,
+@@ -399,7 +401,7 @@ class DedupIndicesWeightAccumulationTest(unittest.TestCase):
+         with the new scatter_add_along_first_dim implementation.
+         """
+         # Setup: Create a minimal ShardedEmbeddingCollection for testing
+-        device = torch.device("cuda:0")
++        device = torch.device("npu:0")
+ 
+         # Create a mock ShardedEmbeddingCollection with minimal setup
+         class MockShardedEmbeddingCollection:
+diff --git a/torchrec/distributed/tests/test_sequence_model_parallel_hierarchical.py b/torchrec/distributed/tests/test_sequence_model_parallel_hierarchical.py
+index 2aaab977..2a25c08e 100644
+--- a/torchrec/distributed/tests/test_sequence_model_parallel_hierarchical.py
++++ b/torchrec/distributed/tests/test_sequence_model_parallel_hierarchical.py
+@@ -38,12 +38,12 @@ class SequenceModelParallelHierarchicalTest(MultiProcessTestBase):
+     Testing hierarchical sharding types.
+ 
+     NOTE:
+-        Requires at least 4 GPUs to test.
++        Requires at least 4 NPUs to test.
+     """
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     # pyre-ignore [56]
+     @given(
+@@ -84,7 +84,7 @@ class SequenceModelParallelHierarchicalTest(MultiProcessTestBase):
+                     SharderType.EMBEDDING_TOWER.value, sharding_type, kernel_type
+                 )
+             ],
+-            backend="nccl",
++            backend="hccl",
+             world_size=4,
+             local_size=2,
+             model_class=TestSequenceTowerSparseNN,
