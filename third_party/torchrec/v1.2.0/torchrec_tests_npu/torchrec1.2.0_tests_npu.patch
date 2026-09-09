@@ -1707,3 +1707,996 @@ index e4a8469c..171d18ad 100644
          mesh=peer_matrix,
          mesh_dim_names=("replicate", "shard"),
      )
+diff --git a/torchrec/distributed/tests/collective_utils_test.py b/torchrec/distributed/tests/collective_utils_test.py
+index 2d49093a..6d62ea78 100644
+--- a/torchrec/distributed/tests/collective_utils_test.py
++++ b/torchrec/distributed/tests/collective_utils_test.py
+@@ -29,12 +29,12 @@ class CollectiveUtilsTest(unittest.TestCase):
+         os.environ["MASTER_ADDR"] = str(MASTER_ADDR)
+         os.environ["MASTER_PORT"] = str(get_free_port())
+         os.environ["GLOO_DEVICE_TRANSPORT"] = "TCP"
+-        os.environ["NCCL_SOCKET_IFNAME"] = "lo"
++        os.environ["HCCL_SOCKET_IFNAME"] = "lo"
+         self.WORLD_SIZE = 2
+ 
+     def tearDown(self) -> None:
+         del os.environ["GLOO_DEVICE_TRANSPORT"]
+-        del os.environ["NCCL_SOCKET_IFNAME"]
++        del os.environ["HCCL_SOCKET_IFNAME"]
+         super().tearDown()
+ 
+     def _run_multi_process_test(
+diff --git a/torchrec/distributed/tests/test_2d_sharding.py b/torchrec/distributed/tests/test_2d_sharding.py
+index 6af13a4a..9ccb4a59 100644
+--- a/torchrec/distributed/tests/test_2d_sharding.py
++++ b/torchrec/distributed/tests/test_2d_sharding.py
+@@ -44,11 +44,13 @@ class TestEmbeddingBagCollection2DParallel(ModelParallelTestShared):
+     WORLD_SIZE_2D = 4
+ 
+     def setUp(self, backend: str = "nccl") -> None:
++        if torch.npu.is_available():
++            backend = "hccl"
+         super().setUp(backend=backend)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 7,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 7,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -58,11 +60,14 @@ class TestEmbeddingBagCollection2DParallel(ModelParallelTestShared):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+-            ],
++            ]
+         ),
+         qcomms_config=st.sampled_from(
+             [
+@@ -139,8 +144,8 @@ class TestEmbeddingBagCollection2DParallel(ModelParallelTestShared):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 7,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 7,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -150,7 +155,10 @@ class TestEmbeddingBagCollection2DParallel(ModelParallelTestShared):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+@@ -232,8 +240,8 @@ class TestEmbeddingBagCollection2DParallel(ModelParallelTestShared):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 7,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 7,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -243,7 +251,10 @@ class TestEmbeddingBagCollection2DParallel(ModelParallelTestShared):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+@@ -347,8 +358,8 @@ class TestEmbeddingBagCollection2DParallel(ModelParallelTestShared):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 7,
+-        "Not enough GPUs, this test requires at least eight GPUs",
++        torch.npu.device_count() <= 7,
++        "Not enough NPUs, this test requires at least eight NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -358,7 +369,10 @@ class TestEmbeddingBagCollection2DParallel(ModelParallelTestShared):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+@@ -436,8 +450,8 @@ class TestEmbeddingBagCollection2DParallel(ModelParallelTestShared):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 7,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 7,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -447,7 +461,10 @@ class TestEmbeddingBagCollection2DParallel(ModelParallelTestShared):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+@@ -580,8 +597,8 @@ class TestEmbeddingCollection2DParallel(MultiProcessTestBase):
+         }
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 7,
+-        "Not enough GPUs, this test requires at least eight GPUs",
++        torch.npu.device_count() <= 7,
++        "Not enough NPUs, this test requires at least eight NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -636,15 +653,15 @@ class TestEmbeddingCollection2DParallel(MultiProcessTestBase):
+                     qcomms_config=qcomms_config,
+                 )
+             ],
+-            backend="nccl",
++            backend="hccl",
+             qcomms_config=qcomms_config,
+             apply_optimizer_in_backward_config=apply_optimizer_in_backward_config,
+             variable_batch_size=variable_batch_size,
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 7,
+-        "Not enough GPUs, this test requires at least eight GPUs",
++        torch.npu.device_count() <= 7,
++        "Not enough NPUs, this test requires at least eight NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -699,7 +716,7 @@ class TestEmbeddingCollection2DParallel(MultiProcessTestBase):
+                     qcomms_config=qcomms_config,
+                 )
+             ],
+-            backend="nccl",
++            backend="hccl",
+             qcomms_config=qcomms_config,
+             constraints={
+                 table.name: ParameterConstraints(min_partition=4)
+@@ -710,8 +727,8 @@ class TestEmbeddingCollection2DParallel(MultiProcessTestBase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 7,
+-        "Not enough GPUs, this test requires at least eight GPUs",
++        torch.npu.device_count() <= 7,
++        "Not enough NPUs, this test requires at least eight NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -766,7 +783,7 @@ class TestEmbeddingCollection2DParallel(MultiProcessTestBase):
+                     qcomms_config=qcomms_config,
+                 )
+             ],
+-            backend="nccl",
++            backend="hccl",
+             qcomms_config=qcomms_config,
+             constraints={
+                 table.name: ParameterConstraints(min_partition=2)
+diff --git a/torchrec/distributed/tests/test_apply_optim_per_param.py b/torchrec/distributed/tests/test_apply_optim_per_param.py
+index ec388ab9..91587cdf 100644
+--- a/torchrec/distributed/tests/test_apply_optim_per_param.py
++++ b/torchrec/distributed/tests/test_apply_optim_per_param.py
+@@ -60,6 +60,8 @@ def _test_sharding(
+     constraints: Optional[Dict[str, ParameterConstraints]] = None,
+     local_size: Optional[int] = None,
+ ) -> None:
++    import fbgemm_ascend
++
+     trec_dist.comm_ops.set_gradient_division(False)
+     with MultiProcessContext(rank, world_size, backend, local_size) as ctx:
+         kjt_input_per_rank = [kjt.to(ctx.device) for kjt in kjt_input_per_rank]
+@@ -191,8 +193,8 @@ class TestEmbeddingBagCollectionSharder(EmbeddingBagCollectionSharder):
+ @skip_if_asan_class
+ class ShardedEmbeddingBagCollectionApplyOptimPerParamTest(MultiProcessTestBase):
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -275,7 +277,7 @@ class ShardedEmbeddingBagCollectionApplyOptimPerParamTest(MultiProcessTestBase):
+             },
+             kjt_input_per_rank=kjt_input_per_rank,
+             sharder=TestEmbeddingBagCollectionSharder(sharding_type=sharding_type),
+-            backend="nccl",
++            backend="hccl",
+         )
+ 
+ 
+@@ -290,6 +292,8 @@ def _test_sharding_ec(
+     constraints: Optional[Dict[str, ParameterConstraints]] = None,
+     local_size: Optional[int] = None,
+ ) -> None:
++    import fbgemm_ascend
++
+     trec_dist.comm_ops.set_gradient_division(False)
+     with MultiProcessContext(rank, world_size, backend, local_size) as ctx:
+         kjt_input_per_rank = [kjt.to(ctx.device) for kjt in kjt_input_per_rank]
+@@ -409,8 +413,8 @@ class TestEmbeddingCollectionSharder(EmbeddingCollectionSharder):
+ @skip_if_asan_class
+ class ShardedEmbeddingCollectionApplyOptimPerParamTest(MultiProcessTestBase):
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -493,5 +497,5 @@ class ShardedEmbeddingCollectionApplyOptimPerParamTest(MultiProcessTestBase):
+             },
+             kjt_input_per_rank=kjt_input_per_rank,
+             sharder=TestEmbeddingCollectionSharder(sharding_type=sharding_type),
+-            backend="nccl",
++            backend="hccl",
+         )
+diff --git a/torchrec/distributed/tests/test_apply_optimizer_to_dense_tbe.py b/torchrec/distributed/tests/test_apply_optimizer_to_dense_tbe.py
+index 3f4b468d..36e4bfb8 100644
+--- a/torchrec/distributed/tests/test_apply_optimizer_to_dense_tbe.py
++++ b/torchrec/distributed/tests/test_apply_optimizer_to_dense_tbe.py
+@@ -53,8 +53,8 @@ class ApplyOptmizerDenseTBETest(ModelParallelSingleRankBase):
+         ]
+ 
+     @unittest.skipIf(
+-        not torch.cuda.is_available(),
+-        "Not enough GPUs, this test requires at least one GPU",
++        not torch.npu.is_available(),
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     # pyre-ignore[56]
+     @given(
+diff --git a/torchrec/distributed/tests/test_cache_prefetch.py b/torchrec/distributed/tests/test_cache_prefetch.py
+index e309f29c..5da20042 100644
+--- a/torchrec/distributed/tests/test_cache_prefetch.py
++++ b/torchrec/distributed/tests/test_cache_prefetch.py
+@@ -43,9 +43,14 @@ class ShardedEmbeddingModuleCachePrefetchTest(unittest.TestCase):
+         os.environ["MASTER_ADDR"] = str("localhost")
+         os.environ["MASTER_PORT"] = str(get_free_port())
+         self.backend = "nccl"
++        if torch.npu.is_available():
++            self.backend = "hccl"
+         if torch.cuda.is_available():
+             self.device = torch.device("cuda:0")
+             torch.cuda.set_device(self.device)
++        elif torch.npu.is_available():
++            self.device = torch.device("npu:0")
++            torch.npu.set_device(self.device)
+         else:
+             self.device = torch.device("cpu")
+ 
+@@ -75,8 +80,8 @@ class ShardedEmbeddingModuleCachePrefetchTest(unittest.TestCase):
+         return num_unique_misses
+ 
+     @unittest.skipIf(
+-        not torch.cuda.is_available(),
+-        "Not enough GPUs, this test requires at least one GPU",
++        not torch.npu.is_available(),
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     # pyre-ignore[56]
+     @given(
+@@ -170,8 +175,8 @@ class ShardedEmbeddingModuleCachePrefetchTest(unittest.TestCase):
+         self.assertEqual(self.get_cache_unique_misses(emb_module), 3)
+ 
+     @unittest.skipIf(
+-        not torch.cuda.is_available(),
+-        "Not enough GPUs, this test requires at least one GPU",
++        not torch.npu.is_available(),
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     # pyre-ignore[56]
+     @given(
+diff --git a/torchrec/distributed/tests/test_comm.py b/torchrec/distributed/tests/test_comm.py
+index d110e974..c3b74458 100644
+--- a/torchrec/distributed/tests/test_comm.py
++++ b/torchrec/distributed/tests/test_comm.py
+@@ -166,12 +166,12 @@ class TestAllToAll(unittest.TestCase):
+         os.environ["MASTER_ADDR"] = str("localhost")
+         os.environ["MASTER_PORT"] = str(get_free_port())
+         os.environ["GLOO_DEVICE_TRANSPORT"] = "TCP"
+-        os.environ["NCCL_SOCKET_IFNAME"] = "lo"
++        os.environ["HCCL_SOCKET_IFNAME"] = "lo"
+         self.WORLD_SIZE = 2
+ 
+     def tearDown(self) -> None:
+         del os.environ["GLOO_DEVICE_TRANSPORT"]
+-        del os.environ["NCCL_SOCKET_IFNAME"]
++        del os.environ["HCCL_SOCKET_IFNAME"]
+         super().tearDown()
+ 
+     def _run_multi_process_test(
+@@ -221,8 +221,8 @@ class TestAllToAll(unittest.TestCase):
+             dist.init_process_group(rank=rank, world_size=world_size, backend=backend)
+             pg = GroupMember.WORLD
+ 
+-        device = torch.device(f"cuda:{rank}")
+-        torch.cuda.set_device(device)
++        device = torch.device(f"npu:{rank}")
++        torch.npu.set_device(device)
+ 
+         ranks = 2
+         tables_mp = [[0], [1, 2]]
+@@ -290,9 +290,9 @@ class TestAllToAll(unittest.TestCase):
+             device,
+             compile_config,
+             rank,
+-            forward_recat_tensor=seq_all2all_forward_recat_tensor.cuda(),
+-            backward_recat_tensor=seq_all2all_backward_recat_tensor.cuda(),
+-            lengths_after_sparse_data_all2all=lengths_after_sparse_data_all2all.cuda(),
++            forward_recat_tensor=seq_all2all_forward_recat_tensor.npu(),
++            backward_recat_tensor=seq_all2all_backward_recat_tensor.npu(),
++            lengths_after_sparse_data_all2all=lengths_after_sparse_data_all2all.npu(),
+             input_splits=input_splits[rank],
+             output_splits=output_splits[rank],
+             group=pg if specify_pg else None,
+@@ -300,7 +300,7 @@ class TestAllToAll(unittest.TestCase):
+         dist.destroy_process_group()
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 2, "Need at least two ranks to run this test"
++        torch.npu.device_count() < 2, "Need at least two ranks to run this test"
+     )
+     # pyre-ignore
+     @given(
+@@ -315,7 +315,7 @@ class TestAllToAll(unittest.TestCase):
+     ) -> None:
+         self._run_multi_process_test(
+             world_size=self.WORLD_SIZE,
+-            backend="nccl",
++            backend="hccl",
+             # pyre-ignore [6]
+             callable=self._test_alltoall_sequence,
+             compile_config=_CompileConfig(),
+@@ -338,8 +338,8 @@ class TestAllToAll(unittest.TestCase):
+             dist.init_process_group(rank=rank, world_size=world_size, backend=backend)
+             pg = GroupMember.WORLD
+ 
+-        device = torch.device(f"cuda:{rank}")
+-        torch.cuda.set_device(device)
++        device = torch.device(f"npu:{rank}")
++        torch.npu.set_device(device)
+ 
+         pg = dist.distributed_c10d._get_default_group()
+ 
+@@ -378,7 +378,7 @@ class TestAllToAll(unittest.TestCase):
+         dist.destroy_process_group()
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 2, "Need at least two ranks to run this test"
++        torch.npu.device_count() < 2, "Need at least two ranks to run this test"
+     )
+     # pyre-ignore
+     @given(
+@@ -395,7 +395,7 @@ class TestAllToAll(unittest.TestCase):
+     ) -> None:
+         self._run_multi_process_test(
+             world_size=self.WORLD_SIZE,
+-            backend="nccl",
++            backend="hccl",
+             # pyre-ignore [6]
+             callable=self._test_alltoall_pooled,
+             compile_config=_CompileConfig(
+@@ -420,8 +420,8 @@ class TestAllToAll(unittest.TestCase):
+             dist.init_process_group(rank=rank, world_size=world_size, backend=backend)
+             pg = GroupMember.WORLD
+ 
+-        device = torch.device(f"cuda:{rank}")
+-        torch.cuda.set_device(device)
++        device = torch.device(f"npu:{rank}")
++        torch.npu.set_device(device)
+ 
+         pg = dist.distributed_c10d._get_default_group()
+ 
+@@ -454,7 +454,7 @@ class TestAllToAll(unittest.TestCase):
+         dist.destroy_process_group()
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 2, "Need at least two ranks to run this test"
++        torch.npu.device_count() < 2, "Need at least two ranks to run this test"
+     )
+     # pyre-ignore
+     @given(
+@@ -471,7 +471,7 @@ class TestAllToAll(unittest.TestCase):
+     ) -> None:
+         self._run_multi_process_test(
+             world_size=self.WORLD_SIZE,
+-            backend="nccl",
++            backend="hccl",
+             # pyre-ignore [6]
+             callable=self._test_reduce_scatter_pooled,
+             compile_config=_CompileConfig(
+@@ -496,8 +496,8 @@ class TestAllToAll(unittest.TestCase):
+             dist.init_process_group(rank=rank, world_size=world_size, backend=backend)
+             pg = GroupMember.WORLD
+ 
+-        device = torch.device(f"cuda:{rank}")
+-        torch.cuda.set_device(device)
++        device = torch.device(f"npu:{rank}")
++        torch.npu.set_device(device)
+ 
+         pg = dist.distributed_c10d._get_default_group()
+ 
+@@ -525,7 +525,7 @@ class TestAllToAll(unittest.TestCase):
+         dist.destroy_process_group()
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 2, "Need at least two ranks to run this test"
++        torch.npu.device_count() < 2, "Need at least two ranks to run this test"
+     )
+     # pyre-ignore
+     @given(
+@@ -542,7 +542,7 @@ class TestAllToAll(unittest.TestCase):
+     ) -> None:
+         self._run_multi_process_test(
+             world_size=self.WORLD_SIZE,
+-            backend="nccl",
++            backend="hccl",
+             # pyre-ignore [6]
+             callable=self._test_reduce_scatter_v_pooled,
+             compile_config=_CompileConfig(
+@@ -567,8 +567,8 @@ class TestAllToAll(unittest.TestCase):
+             dist.init_process_group(rank=rank, world_size=world_size, backend=backend)
+             pg = GroupMember.WORLD
+ 
+-        device = torch.device(f"cuda:{rank}")
+-        torch.cuda.set_device(device)
++        device = torch.device(f"npu:{rank}")
++        torch.npu.set_device(device)
+ 
+         pg = dist.distributed_c10d._get_default_group()
+ 
+@@ -602,7 +602,7 @@ class TestAllToAll(unittest.TestCase):
+         dist.destroy_process_group()
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 2, "Need at least two ranks to run this test"
++        torch.npu.device_count() < 2, "Need at least two ranks to run this test"
+     )
+     # pyre-ignore
+     @given(
+@@ -619,7 +619,7 @@ class TestAllToAll(unittest.TestCase):
+     ) -> None:
+         self._run_multi_process_test(
+             world_size=self.WORLD_SIZE,
+-            backend="nccl",
++            backend="hccl",
+             # pyre-ignore [6]
+             callable=self._test_reduce_scatter_v_per_feature_pooled,
+             compile_config=_CompileConfig(
+@@ -644,8 +644,8 @@ class TestAllToAll(unittest.TestCase):
+             dist.init_process_group(rank=rank, world_size=world_size, backend=backend)
+             pg = GroupMember.WORLD
+ 
+-        device = torch.device(f"cuda:{rank}")
+-        torch.cuda.set_device(device)
++        device = torch.device(f"npu:{rank}")
++        torch.npu.set_device(device)
+ 
+         pg = dist.distributed_c10d._get_default_group()
+ 
+@@ -663,7 +663,7 @@ class TestAllToAll(unittest.TestCase):
+         dist.destroy_process_group()
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() < 2, "Need at least two ranks to run this test"
++        torch.npu.device_count() < 2, "Need at least two ranks to run this test"
+     )
+     # pyre-ignore
+     @given(
+@@ -680,7 +680,7 @@ class TestAllToAll(unittest.TestCase):
+     ) -> None:
+         self._run_multi_process_test(
+             world_size=self.WORLD_SIZE,
+-            backend="nccl",
++            backend="hccl",
+             # pyre-ignore [6]
+             callable=self._test_all_gather_base_pooled,
+             compile_config=_CompileConfig(
+diff --git a/torchrec/distributed/tests/test_dist_data.py b/torchrec/distributed/tests/test_dist_data.py
+index 38c30f47..ed9d3472 100644
+--- a/torchrec/distributed/tests/test_dist_data.py
++++ b/torchrec/distributed/tests/test_dist_data.py
+@@ -311,8 +311,10 @@ class KJTAllToAllTest(MultiProcessTestBase):
+         backend: str,
+         splits: List[int],
+     ) -> None:
++        import fbgemm_ascend
++
+         dist.init_process_group(rank=rank, world_size=world_size, backend=backend)
+-        device = torch.device(f"cuda:{rank}")
++        device = torch.device(f"npu:{rank}")
+         if backend == "gloo":
+             device = torch.device("cpu")
+         _input = _input.to(device=device)
+@@ -328,12 +330,12 @@ class KJTAllToAllTest(MultiProcessTestBase):
+         dist.destroy_process_group()
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+-        backend=st.sampled_from(["nccl"]),
++        backend=st.sampled_from(["hccl"]),
+         B=st.integers(min_value=1, max_value=2),
+         features=st.integers(min_value=3, max_value=4),
+         is_weighted=st.booleans(),
+@@ -383,12 +385,12 @@ class KJTAllToAllTest(MultiProcessTestBase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+-        backend=st.sampled_from(["nccl"]),
++        backend=st.sampled_from(["hccl"]),
+         B=st.integers(min_value=1, max_value=2),
+         features=st.integers(min_value=3, max_value=4),
+         is_weighted=st.booleans(),
+@@ -456,12 +458,13 @@ class PooledEmbeddingsAllToAllTest(MultiProcessTestBase):
+         batch_size_per_rank: List[int],
+         qcomms_config: Optional[QCommsConfig] = None,
+     ) -> None:
++        import fbgemm_ascend
+         dist.init_process_group(rank=rank, world_size=world_size, backend=backend)
+         pg = dist.group.WORLD
+         if backend == "gloo":
+             device = torch.device("cpu")
+         else:
+-            device = torch.device(f"cuda:{rank}")
++            device = torch.device(f"npu:{rank}")
+         _input = _input.to(device=device)
+         output = output.to(device=device)
+ 
+@@ -503,13 +506,13 @@ class PooledEmbeddingsAllToAllTest(MultiProcessTestBase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+         # backend=st.sampled_from(["gloo", "nccl"]),
+-        backend=st.sampled_from(["nccl"]),
++        backend=st.sampled_from(["hccl"]),
+         B=st.integers(min_value=2, max_value=3),
+         features=st.integers(min_value=3, max_value=4),
+         is_reversed=st.booleans(),
+@@ -605,9 +608,11 @@ class PooledEmbeddingsReduceScatterTest(MultiProcessTestBase):
+         expected_output: torch.Tensor,
+         qcomms_config: Optional[QCommsConfig] = None,
+     ) -> None:
+-        dist.init_process_group(rank=rank, world_size=2, backend="nccl")
++        import fbgemm_ascend
++
++        dist.init_process_group(rank=rank, world_size=2, backend="hccl")
+         pg = dist.group.WORLD
+-        input = input.cuda(rank)
++        input = input.npu(rank)
+         input.requires_grad = True
+ 
+         codecs = get_qcomm_codecs(qcomms_config)
+@@ -617,7 +622,7 @@ class PooledEmbeddingsReduceScatterTest(MultiProcessTestBase):
+             #  `Optional[_distributed_c10d.ProcessGroup]`.
+             pg,
+             codecs=codecs,
+-        ).cuda(rank)
++        ).npu(rank)
+         actual_output = rs(input).wait()
+         s = torch.sum(actual_output)
+         s.backward()
+@@ -639,8 +644,8 @@ class PooledEmbeddingsReduceScatterTest(MultiProcessTestBase):
+             )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-ignore
+     @given(
+@@ -727,9 +732,11 @@ class PooledEmbeddingsReduceScatterVTest(MultiProcessTestBase):
+         expected_output: torch.Tensor,
+         qcomms_config: Optional[QCommsConfig] = None,
+     ) -> None:
+-        dist.init_process_group(rank=rank, world_size=2, backend="nccl")
++        import fbgemm_ascend
++
++        dist.init_process_group(rank=rank, world_size=2, backend="hccl")
+         pg = dist.group.WORLD
+-        input = input.cuda(rank)
++        input = input.npu(rank)
+         input.requires_grad = True
+ 
+         codecs = get_qcomm_codecs(qcomms_config)
+@@ -739,7 +746,7 @@ class PooledEmbeddingsReduceScatterVTest(MultiProcessTestBase):
+             #  `Optional[_distributed_c10d.ProcessGroup]`.
+             pg,
+             codecs=codecs,
+-        ).cuda(rank)
++        ).npu(rank)
+         actual_output = rs(input, input_splits=input_splits).wait()
+         s = torch.sum(actual_output)
+         s.backward()
+@@ -761,8 +768,8 @@ class PooledEmbeddingsReduceScatterVTest(MultiProcessTestBase):
+             )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-ignore
+     @given(
+@@ -866,13 +873,15 @@ class PooledEmbeddingsAllGatherTest(MultiProcessTestBase):
+         input: torch.Tensor,
+         expected_output: torch.Tensor,
+     ) -> None:
+-        dist.init_process_group(rank=rank, world_size=2, backend="nccl")
++        import fbgemm_ascend
++
++        dist.init_process_group(rank=rank, world_size=2, backend="hccl")
+         pg = dist.group.WORLD
+-        input = input.cuda(rank)
++        input = input.npu(rank)
+         input.requires_grad = True
+         # pyre-fixme[6]: For 1st param expected `ProcessGroup` but got
+         #  `Optional[_distributed_c10d.ProcessGroup]`.
+-        ag = PooledEmbeddingsAllGather(pg).cuda(rank)
++        ag = PooledEmbeddingsAllGather(pg).npu(rank)
+         actual_output = ag(input).wait()
+         s = torch.sum(actual_output)
+         s.backward()
+@@ -880,8 +889,8 @@ class PooledEmbeddingsAllGatherTest(MultiProcessTestBase):
+ 
+     # pyre-fixme[56]
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     def test_pooled_embedding_all_gather(self) -> None:
+         world_size = 2
+@@ -983,9 +992,11 @@ class SeqEmbeddingsAllToAllTest(MultiProcessTestBase):
+         batch_size_per_rank: List[int],
+         qcomms_config: Optional[QCommsConfig] = None,
+     ) -> None:
+-        dist.init_process_group(rank=rank, world_size=world_size, backend="nccl")
++        import fbgemm_ascend
++
++        dist.init_process_group(rank=rank, world_size=world_size, backend="hccl")
+         pg = dist.group.WORLD
+-        device = torch.device(f"cuda:{rank}")
++        device = torch.device(f"npu:{rank}")
+         _input = _input.to(device=device)
+         output = output.to(device=device)
+         lengths_after_sdd_a2a = lengths_after_sdd_a2a.to(device=device)
+@@ -1038,8 +1049,8 @@ class SeqEmbeddingsAllToAllTest(MultiProcessTestBase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -1183,12 +1194,14 @@ class VariableBatchPooledEmbeddingsAllToAllTest(MultiProcessTestBase):
+         batch_size_per_feature_pre_a2a: List[int],
+         qcomms_config: Optional[QCommsConfig] = None,
+     ) -> None:
++        import fbgemm_ascend
++
+         dist.init_process_group(rank=rank, world_size=world_size, backend=backend)
+         pg = dist.group.WORLD
+         if backend == "gloo":
+             device = torch.device("cpu")
+         else:
+-            device = torch.device(f"cuda:{rank}")
++            device = torch.device(f"npu:{rank}")
+         _input = _input.to(device=device)
+         output = output.to(device=device)
+ 
+@@ -1230,12 +1243,12 @@ class VariableBatchPooledEmbeddingsAllToAllTest(MultiProcessTestBase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+-        backend=st.sampled_from(["nccl"]),
++        backend=st.sampled_from(["hccl"]),
+         features=st.integers(min_value=3, max_value=4),
+         B=st.integers(min_value=2, max_value=3),
+         is_reversed=st.booleans(),
+@@ -1427,7 +1440,9 @@ class TestJaggedTensorAllToAll(MultiProcessTestBase):
+         rank: int,
+         world_size: int,
+     ) -> None:
+-        backend = "nccl"
++        import fbgemm_ascend
++
++        backend = "hccl"
+         with MultiProcessContext(
+             rank, world_size, backend, local_size=world_size
+         ) as ctx:
+@@ -1496,8 +1511,8 @@ class TestJaggedTensorAllToAll(MultiProcessTestBase):
+ 
+     # pyre-fixme[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     def test_jt_all_to_all(
+         self,
+diff --git a/torchrec/distributed/tests/test_dynamic_sharding.py b/torchrec/distributed/tests/test_dynamic_sharding.py
+index 63da24ba..50fc133f 100644
+--- a/torchrec/distributed/tests/test_dynamic_sharding.py
++++ b/torchrec/distributed/tests/test_dynamic_sharding.py
+@@ -333,7 +333,7 @@ class MultiRankDynamicShardingTest(MultiProcessTestBase):
+             per_param_sharding=per_param_sharding,
+             local_size=world_size,
+             world_size=world_size,
+-            device_type="cuda" if torch.cuda.is_available() else "cpu",
++            device_type = "npu" if torch.npu.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"),
+         )
+ 
+         new_module_sharding_plan = construct_module_sharding_plan(
+@@ -342,12 +342,12 @@ class MultiRankDynamicShardingTest(MultiProcessTestBase):
+             per_param_sharding=new_per_param_sharding,
+             local_size=world_size,
+             world_size=world_size,
+-            device_type="cuda" if torch.cuda.is_available() else "cpu",
++            device_type = "npu" if torch.npu.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"),
+         )
+ 
+         # Row-wise not supported on gloo
+         if (
+-            not torch.cuda.is_available()
++            not (torch.cuda.is_available() or torch.npu.is_available())
+             and new_module_sharding_plan["table_0"].sharding_type
+             == ShardingType.ROW_WISE.value
+         ):
+@@ -378,18 +378,18 @@ class MultiRankDynamicShardingTest(MultiProcessTestBase):
+             tables=embedding_bag_config,
+             initial_state_dict=initial_state_dict,
+             kjt_input_per_rank=kjt_input_per_rank,
+-            backend="nccl" if torch.cuda.is_available() else "gloo",
++            backend="hccl" if torch.npu.is_available() else ("nccl" if torch.cuda.is_available() else "gloo"),
+             module_sharding_plan=module_sharding_plan,
+             new_module_sharding_plan=new_module_sharding_plan,
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     @given(  # pyre-ignore
+         num_tables=st.sampled_from([2, 3, 4]),
+-        data_type=st.sampled_from([DataType.FP32, DataType.FP16]),
++        data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]),
+         world_size=st.sampled_from([2, 4]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=8, deadline=None)
+@@ -428,12 +428,12 @@ class MultiRankDynamicShardingTest(MultiProcessTestBase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     @given(  # pyre-ignore
+         num_tables=st.sampled_from([2, 3, 4]),
+-        data_type=st.sampled_from([DataType.FP32, DataType.FP16]),
++        data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]),
+         world_size=st.sampled_from([3, 4]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=8, deadline=None)
+diff --git a/torchrec/distributed/tests/test_fbgemm_qcomm_codec.py b/torchrec/distributed/tests/test_fbgemm_qcomm_codec.py
+index b4aa290b..5aff5bf0 100644
+--- a/torchrec/distributed/tests/test_fbgemm_qcomm_codec.py
++++ b/torchrec/distributed/tests/test_fbgemm_qcomm_codec.py
+@@ -62,11 +62,11 @@ class QuantizationCommCodecTest(unittest.TestCase):
+ 
+         if (
+             comm_precision == CommType.FP8
+-            and torch.cuda.device_count() != 0
++            and torch.npu.device_count() != 0
+             and row_dim > 0
+         ):
+             cur_row_dim = row_dim
+-            input_tensor = input_tensor.view(-1).cuda()
++            input_tensor = input_tensor.view(-1).npu()
+ 
+         quant_codec = get_qcomm_codecs(
+             QCommsConfig(
+diff --git a/torchrec/distributed/tests/test_fp_embeddingbag.py b/torchrec/distributed/tests/test_fp_embeddingbag.py
+index 13077691..f1c04b2f 100644
+--- a/torchrec/distributed/tests/test_fp_embeddingbag.py
++++ b/torchrec/distributed/tests/test_fp_embeddingbag.py
+@@ -78,7 +78,7 @@ def get_unsharded_and_sharded_module(
+         },
+         local_size=ctx.local_size,
+         world_size=ctx.world_size,
+-        device_type="cuda" if torch.cuda.is_available() else "cpu",
++        device_type="npu" if torch.npu.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"),
+         sharder=sharder,
+     )
+ 
+@@ -127,6 +127,7 @@ def _test_sharding(  # noqa C901
+     use_dmp: bool = False,
+     use_fp_collection: bool = False,
+ ) -> None:
++    import fbgemm_ascend
+ 
+     with MultiProcessContext(rank, world_size, backend, local_size) as ctx:
+         trec_dist.comm_ops.set_gradient_division(set_gradient_division)
+@@ -197,6 +198,8 @@ def _test_sharding_from_meta(  # noqa C901
+     local_size: Optional[int] = None,
+     use_fp_collection: bool = False,
+ ) -> None:
++    import fbgemm_ascend
++
+     with MultiProcessContext(rank, world_size, backend, local_size) as ctx:
+         sparse_arch, sharded_sparse_arch = get_unsharded_and_sharded_module(
+             tables,
+@@ -218,8 +221,8 @@ def _test_sharding_from_meta(  # noqa C901
+ @skip_if_asan_class
+ class ShardedEmbeddingBagCollectionParallelTest(MultiProcessTestBase):
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=4, deadline=None)
+     # pyre-ignore
+@@ -251,6 +254,8 @@ class ShardedEmbeddingBagCollectionParallelTest(MultiProcessTestBase):
+             backend=(
+                 "nccl"
+                 if (torch.cuda.is_available() and torch.cuda.device_count() >= 2)
++                else "hccl"
++                if (torch.npu.is_available() and torch.npu.device_count() >= 2)
+                 else "gloo"
+             ),
+             set_gradient_division=set_gradient_division,
+@@ -259,12 +264,12 @@ class ShardedEmbeddingBagCollectionParallelTest(MultiProcessTestBase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=2, deadline=None)
+     # pyre-ignore
+-    @given(use_fp_collection=st.booleans(), backend=st.sampled_from(["nccl", "gloo"]))
++    @given(use_fp_collection=st.booleans(), backend=st.sampled_from(["hccl", "gloo"]))
+     def test_sharding_fp_ebc_from_meta(
+         self, use_fp_collection: bool, backend: str
+     ) -> None:
+diff --git a/torchrec/distributed/tests/test_fp_embeddingbag_single_rank.py b/torchrec/distributed/tests/test_fp_embeddingbag_single_rank.py
+index 85932a0d..bac2d37e 100644
+--- a/torchrec/distributed/tests/test_fp_embeddingbag_single_rank.py
++++ b/torchrec/distributed/tests/test_fp_embeddingbag_single_rank.py
+@@ -30,6 +30,8 @@ from torchrec.modules.embedding_configs import DataType
+ 
+ class FPModelParallelStateDictTest(ModelParallelSingleRankBase):
+     def setUp(self, backend: str = "nccl") -> None:
++        if torch.npu.is_available():
++            backend = "hccl"
+         super().setUp(backend=backend)
+ 
+         self.use_fp_collection = True
+@@ -51,8 +53,8 @@ class FPModelParallelStateDictTest(ModelParallelSingleRankBase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 0,
+-        "Not enough GPUs, this test requires at least one GPU",
++        torch.npu.device_count() <= 0,
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     # pyre-ignore[56]
+     @given(
+@@ -64,7 +66,10 @@ class FPModelParallelStateDictTest(ModelParallelSingleRankBase):
+             ]
+         ),
+         kernel_type=st.sampled_from(
+-            [
++            # NPU does not support uvm.
++            [EmbeddingComputeKernel.FUSED.value]
++            if torch.npu.is_available()
++            else [
+                 EmbeddingComputeKernel.FUSED.value,
+                 EmbeddingComputeKernel.FUSED_UVM_CACHING.value,
+                 EmbeddingComputeKernel.FUSED_UVM.value,
+@@ -106,8 +111,8 @@ class FPModelParallelStateDictTest(ModelParallelSingleRankBase):
+         self._compare_models(m1, m2)
+ 
+     @unittest.skipIf(
+-        not torch.cuda.is_available(),
+-        "Not enough GPUs, this test requires at least one GPU",
++        not torch.npu.is_available(),
++        "Not enough NPUs, this test requires at least one NPU",
+     )
+     # pyre-ignore[56]
+     @given(
+@@ -137,6 +142,8 @@ class FPModelParallelStateDictTest(ModelParallelSingleRankBase):
+         stochastic_rounding: bool,
+         dtype: DataType,
+     ) -> None:
++        if self.device.type == "npu":
++            self.skipTest("NPU does not support uvm.")
+         self._set_table_weights_precision(dtype)
+         fused_params = {
+             "stochastic_rounding": stochastic_rounding,
