@@ -1578,7 +1578,6 @@ void dynamic_emb_adamW_with_pointer(const torch::Tensor& grads, const torch::Ten
 {
     int32_t in_length = grads.numel();
     if (in_length == 0) {
-        LOG_ERROR("dynamic_emb_adamW_with_pointer: in_length is zero!");
         return;
     }
     const uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
@@ -1636,7 +1635,6 @@ void dynamic_emb_adamW_with_pointer_hybrid(const torch::Tensor& grads, const tor
 {
     int32_t in_length = grads.numel();
     if (in_length == 0) {
-        LOG_ERROR("dynamic_emb_adamW_with_pointer_hybrid: in_length is zero!");
         return;
     }
     const uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
@@ -1815,7 +1813,6 @@ void dynamic_emb_adamW_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase> 
 {
     int32_t in_length = grads.numel();
     if (n == 0 || in_length == 0) {
-        LOG_ERROR("n or in_length is zero!");
         return;
     }
     at::Tensor founds =
@@ -1987,7 +1984,6 @@ void dynamic_emb_adamW_fused(const torch::Tensor& grads, const torch::Tensor& va
 {
     int32_t in_length = grads.numel();
     if (in_length == 0) {
-        LOG_ERROR("dynamic_emb_adamW_fused: in_length is zero!");
         return;
     }
     const uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
@@ -2042,7 +2038,6 @@ void dynamic_emb_adamW_fused_hybrid(const torch::Tensor& grads, const torch::Ten
 {
     int32_t in_length = grads.numel();
     if (in_length == 0) {
-        LOG_ERROR("dynamic_emb_adamW_fused_hybrid: in_length is zero!");
         return;
     }
     const uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
@@ -2206,7 +2201,6 @@ void dynamic_emb_sgd_with_pointer(const torch::Tensor& grads, const torch::Tenso
 {
     int32_t in_length = grads.numel();
     if (in_length == 0) {
-        LOG_ERROR("dynamic_emb_sgd_with_pointer: in_length is zero!");
         return;
     }
     const uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
@@ -2251,7 +2245,6 @@ void dynamic_emb_sgd_with_pointer_hybrid(const torch::Tensor& grads, const torch
 {
     int32_t in_length = grads.numel();
     if (in_length == 0) {
-        LOG_ERROR("dynamic_emb_sgd_with_pointer_hybrid: in_length is zero!");
         return;
     }
     const uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
@@ -2285,7 +2278,6 @@ void dynamic_emb_sgd_with_table(std::shared_ptr<dyn_emb::DynamicVariableBase> ht
 {
     int32_t in_length = grads.numel();
     if (n == 0 || in_length == 0) {
-        LOG_ERROR("n or in_length is zero!");
         return;
     }
     at::Tensor founds =
@@ -2337,7 +2329,6 @@ void dynamic_emb_sgd_fused(const torch::Tensor& grads, const torch::Tensor& valu
 {
     int32_t in_length = grads.numel();
     if (in_length == 0) {
-        LOG_ERROR("dynamic_emb_sgd_fused: in_length is zero!");
         return;
     }
     const uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
@@ -2381,7 +2372,6 @@ void dynamic_emb_sgd_fused_hybrid(const torch::Tensor& grads, const torch::Tenso
 {
     int32_t in_length = grads.numel();
     if (in_length == 0) {
-        LOG_ERROR("dynamic_emb_sgd_fused_hybrid: in_length is zero!");
         return;
     }
     const uint32_t grad_dim = static_cast<uint32_t>(grads.size(1));
