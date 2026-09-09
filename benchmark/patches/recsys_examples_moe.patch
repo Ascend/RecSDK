@@ -1042,30 +1042,264 @@ index 0d5e133..4742047 100644
      dim_size = list(input_.size())
      tensor_list = []
 diff --git a/examples/commons/pipeline/train_pipeline.py b/examples/commons/pipeline/train_pipeline.py
-index 26bbb15..c859059 100644
+index 26bbb15..7937e75 100644
 --- a/examples/commons/pipeline/train_pipeline.py
 +++ b/examples/commons/pipeline/train_pipeline.py
-@@ -908,9 +908,8 @@ class JaggedMegatronTrainNonePipeline:
+@@ -39,6 +39,7 @@ from typing import (
+ 
+ import nvtx
+ import torch
++from commons.utils.device import ENABLE_NPU
+ from commons.distributed.batch_shuffler import (
+     BaseTaskBalancedBatchShuffler,
+     IdentityBalancedBatchShuffler,
+@@ -149,18 +150,18 @@ class TrainPipelineSparseDist(TrainPipeline[In, Out]):
+         # pyre-ignore
+         self._stream_context = (
+             torch.get_device_module(self._device).stream
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else torch.cuda.stream
+         )
+ 
+         self._memcpy_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(device).Stream(priority=-1))
+-            if device.type in ["cuda", "mtia"]
++            if device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+         self._data_dist_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(device).Stream(priority=-1))
+-            if device.type in ["cuda", "mtia"]
++            if device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+ 
+@@ -582,12 +583,12 @@ class PrefetchTrainPipelineSparseDist(TrainPipelineSparseDist[In, Out]):
+         self._context = PrefetchTrainPipelineContext(version=0)
+         self._prefetch_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(device).Stream())
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+         self._default_stream: Optional[torch.Stream] = (
+             (torch.get_device_module(self._device).Stream())
+-            if self._device.type in ["cuda", "mtia"]
++            if self._device.type in ["cuda", "mtia", "npu"]
+             else None
+         )
+         self._batch_ip3: Optional[In] = None
+@@ -851,7 +852,9 @@ class JaggedMegatronPrefetchTrainPipelineSparseDist(
+             # bwd => read & write to cache/host
+             # the cache might be in a dangling state that a key is either not in cache or not in host.
+             # thererfore we enforce a sync: prefetch should be finished to avoid race condition.
+-            torch.cuda.current_stream().wait_stream(self._prefetch_stream)
++            torch.get_device_module(self._device).current_stream().wait_stream(
++                self._prefetch_stream
++            )
+             # backward
+             with nvtx.annotate("## backward ##"):
+                 dp_size = parallel_state.get_data_parallel_world_size()
+@@ -908,17 +911,17 @@ class JaggedMegatronTrainNonePipeline:
              if hasattr(self._model.module, "zero_grad_buffer"):
                  self._model.module.zero_grad_buffer()
              self._optimizer.zero_grad()
 -
 -        # H2D and shuffle
 -        batch = self._copy_batch_to_gpu_and_shuffle(dataloader_iter)
-+        with nvtx.annotate("## H2D ##"):
-+            batch = next(dataloader_iter).to(self._device)
++        if ENABLE_NPU:
++            with nvtx.annotate("## H2D ##"):
++                batch = next(dataloader_iter).to(self._device)
++        else:
++            batch = self._copy_batch_to_gpu_and_shuffle(dataloader_iter)
          with nvtx.annotate("## forward ##"):
              losses, output = self._model(batch)
  
+         with nvtx.annotate("## loss postprocess ##"):
+             collective_assert(not torch.isnan(losses).any(), "loss has nan value")
+-            local_tokens = torch.tensor(
+-                losses.size(0), device=torch.device("cuda", torch.cuda.current_device())
+-            ).float()
++            local_tokens = torch.tensor(losses.size(0), device=self._device).float()
+             local_loss = torch.cat([torch.sum(losses).view(1), local_tokens.view(1)])
+             reporting_loss = local_loss.clone().detach()
+             # [allreduced_sum_loss, allreduced_sum_tokens]
+diff --git a/examples/commons/pipeline/utils.py b/examples/commons/pipeline/utils.py
+index aee2299..f4674b3 100644
+--- a/examples/commons/pipeline/utils.py
++++ b/examples/commons/pipeline/utils.py
+@@ -253,7 +253,7 @@ def recursive_record_stream(
+     res: Union[torch.Tensor, Pipelineable, Iterable[Any], Dict[Any, Any]],
+     stream: torch.Stream,
+ ) -> None:
+-    if isinstance(res, torch.Tensor) and res.device.type in ["cuda", "mtia"]:
++    if isinstance(res, torch.Tensor) and res.device.type in ["cuda", "mtia", "npu"]:
+         res.record_stream(stream)
+     elif isinstance(res, Pipelineable):
+         res.record_stream(stream)
+@@ -334,7 +334,7 @@ class PipelinedPostproc(torch.nn.Module):
+             # pyre-ignore
+             self._stream_context = (
+                 torch.get_device_module(device).stream
+-                if device.type in ["cuda", "mtia"]
++                if device.type in ["cuda", "mtia", "npu"]
+                 else torch.cuda.stream
+             )
+         else:
+diff --git a/examples/commons/utils/clear_tensor_data.py b/examples/commons/utils/clear_tensor_data.py
+index 7453913..e8b8738 100644
+--- a/examples/commons/utils/clear_tensor_data.py
++++ b/examples/commons/utils/clear_tensor_data.py
+@@ -2,12 +2,13 @@ import functools
+ from typing import Optional, Tuple
+ 
+ import torch
++from commons.utils.device import get_device
+ 
+ 
+ @functools.lru_cache(maxsize=None)
+ def _empty_tensor() -> torch.Tensor:
+     """Get tensor with no entries and no data"""
+-    return torch.Tensor().cuda()
++    return torch.empty(0, device=get_device())
+ 
+ 
+ def _resize_storage(t: torch.Tensor) -> None:
+diff --git a/examples/commons/utils/device.py b/examples/commons/utils/device.py
+new file mode 100644
+index 0000000..22a8f8a
+--- /dev/null
++++ b/examples/commons/utils/device.py
+@@ -0,0 +1,119 @@
++# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++# SPDX-License-Identifier: Apache-2.0
++
++import os
++from contextlib import nullcontext
++from typing import Any, ContextManager, Optional, Tuple
++
++import torch
++import torch.distributed as dist
++
++
++def _env_flag(name: str, default: bool = False) -> bool:
++    value = os.environ.get(name)
++    if value is None:
++        return default
++    return value.strip().lower() in {"1", "true", "yes", "on"}
++
++
++ENABLE_NPU = True
++try:
++    import torch_npu  # type: ignore[import-not-found]
++except ImportError as exc:
++    ENABLE_NPU = False
++    print(f"In GPU environment.")
++if not ENABLE_NPU:
++    torch_npu = None  # type: ignore[assignment]
++
++
++def accelerator() -> Any:
++    if ENABLE_NPU:
++        return torch_npu.npu
++    return torch.cuda
++
++
++def device_type() -> str:
++    if ENABLE_NPU:
++        return "npu"
++    if torch.cuda.is_available():
++        return "cuda"
++    return "cpu"
++
++
++def current_device() -> int:
++    if device_type() == "cpu":
++        return 0
++    return accelerator().current_device()
++
++
++def get_device(index: Optional[int] = None) -> torch.device:
++    kind = device_type()
++    if kind == "cpu":
++        return torch.device("cpu")
++    return torch.device(kind, current_device() if index is None else index)
++
++
++def distributed_backend() -> str:
++    if ENABLE_NPU:
++        return "hccl"
++    if torch.cuda.is_available():
++        return "nccl"
++    return "gloo"
++
++
++def set_device(device: torch.device) -> None:
++    if device.type != "cpu":
++        accelerator().set_device(device)
++
++
++def barrier(group: Optional[dist.ProcessGroup] = None) -> None:
++    if not dist.is_available() or not dist.is_initialized():
++        return
++    if device_type() == "cpu":
++        dist.barrier(group=group)
++    else:
++        dist.barrier(group=group, device_ids=[current_device()])
++
++
++def empty_cache() -> None:
++    if device_type() != "cpu":
++        accelerator().empty_cache()
++
++
++def mem_get_info() -> Tuple[int, int]:
++    if device_type() == "cpu":
++        return 0, 0
++    return accelerator().mem_get_info()
++
++
++def new_stream() -> Optional[Any]:
++    if device_type() == "cpu":
++        return None
++    return accelerator().Stream()
++
++
++def stream_context(stream: Optional[Any]) -> ContextManager[Any]:
++    if stream is None:
++        return nullcontext()
++    return accelerator().stream(stream)
++
++
++def wait_stream(stream: Optional[Any]) -> None:
++    if stream is not None:
++        accelerator().current_stream().wait_stream(stream)
++
++
++def synchronize() -> None:
++    if device_type() != "cpu":
++        accelerator().synchronize()
++
++
++def manual_seed(seed: int) -> None:
++    if device_type() == "cpu":
++        return
++    accelerator().manual_seed(seed)
++    accelerator().manual_seed_all(seed)
++
++
++def device_name() -> str:
++    return "NPU" if ENABLE_NPU else ("GPU" if torch.cuda.is_available() else "CPU")
 diff --git a/examples/commons/utils/distributed_utils.py b/examples/commons/utils/distributed_utils.py
-index a0349eb..5b2a45c 100644
+index a0349eb..f2c529e 100644
 --- a/examples/commons/utils/distributed_utils.py
 +++ b/examples/commons/utils/distributed_utils.py
-@@ -15,15 +15,18 @@
+@@ -15,19 +15,17 @@
  from typing import Optional
  
  import torch
-+import torch_npu
++from commons.utils.device import barrier, get_device
  
  
  def collective_assert(
@@ -1075,41 +1309,230 @@ index a0349eb..5b2a45c 100644
 -    Assert that all ranks have the same flag.
 -    """
 -    flag_tensor = torch.tensor(flag, dtype=torch.bool).cuda()
-+    if torch.cuda.is_available():
-+        flag_tensor = torch.tensor(flag, dtype=torch.bool).cuda()
-+    elif torch_npu.npu.is_available():
-+        flag_tensor = torch.tensor(flag, dtype=torch.bool).npu()
-+    else:
-+        raise ValueError("No GPU or NPU available")
++    flag_tensor = torch.tensor(flag, dtype=torch.bool, device=get_device())
      torch.distributed.all_reduce(
          flag_tensor, op=torch.distributed.ReduceOp.MIN, group=group
      )
+-    torch.distributed.barrier(group=group, device_ids=[torch.cuda.current_device()])
++    barrier(group)
+     assert flag_tensor.item(), err_msg
+ 
+ 
+@@ -40,11 +38,11 @@ def collective_any(
+     Check if any rank has a true value in the tensor.
+     """
+ 
+-    flag_tensor = torch.tensor(torch.any(tensor), dtype=torch.bool).cuda()
++    flag_tensor = torch.any(tensor).to(device=get_device(), dtype=torch.bool)
+     torch.distributed.all_reduce(
+         flag_tensor, op=torch.distributed.ReduceOp.MAX, group=group
+     )
+-    torch.distributed.barrier(group=group, device_ids=[torch.cuda.current_device()])
++    barrier(group)
+     return flag_tensor.item()
+ 
+ 
+@@ -57,11 +55,11 @@ def collective_all(
+     Check if all ranks have a true value in the tensor.
+     """
+ 
+-    flag_tensor = torch.tensor(torch.all(tensor), dtype=torch.bool).cuda()
++    flag_tensor = torch.all(tensor).to(device=get_device(), dtype=torch.bool)
+     torch.distributed.all_reduce(
+         flag_tensor, op=torch.distributed.ReduceOp.MIN, group=group
+     )
+-    torch.distributed.barrier(group=group, device_ids=[torch.cuda.current_device()])
++    barrier(group)
+     return flag_tensor.item()
+ 
+ 
+@@ -74,11 +72,11 @@ def any_and_collective_all(
+     Check if all ranks meets the any condition and all condition.
+     """
+ 
+-    flag_tensor = torch.tensor(torch.any(tensor), dtype=torch.bool).cuda()
++    flag_tensor = torch.any(tensor).to(device=get_device(), dtype=torch.bool)
+     torch.distributed.all_reduce(
+         flag_tensor, op=torch.distributed.ReduceOp.MIN, group=group
+     )
+-    torch.distributed.barrier(group=group, device_ids=[torch.cuda.current_device()])
++    barrier(group)
+     return flag_tensor.item()
+ 
+ 
+@@ -91,11 +89,11 @@ def all_and_collective_any(
+     Check if all ranks meets the any condition and all condition.
+     """
+ 
+-    flag_tensor = torch.tensor(torch.all(tensor), dtype=torch.bool).cuda()
++    flag_tensor = torch.all(tensor).to(device=get_device(), dtype=torch.bool)
+     torch.distributed.all_reduce(
+         flag_tensor, op=torch.distributed.ReduceOp.MAX, group=group
+     )
+-    torch.distributed.barrier(group=group, device_ids=[torch.cuda.current_device()])
++    barrier(group)
+     return flag_tensor.item()
+ 
+ 
+diff --git a/examples/commons/utils/gpu_timer.py b/examples/commons/utils/gpu_timer.py
+index 4c7ae02..36ab962 100644
+--- a/examples/commons/utils/gpu_timer.py
++++ b/examples/commons/utils/gpu_timer.py
+@@ -13,63 +13,95 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ import statistics
++import time
+ from collections import defaultdict
+ 
+-import torch
++from commons.utils.device import accelerator, barrier, device_type, synchronize
+ 
+ 
+ class GPUTimer:
+     def __init__(self):
+-        self.start_event = torch.cuda.Event(enable_timing=True)
+-        self.end_event = torch.cuda.Event(enable_timing=True)
++        self._use_events = device_type() != "cpu"
++        if self._use_events:
++            self.start_event = accelerator().Event(enable_timing=True)
++            self.end_event = accelerator().Event(enable_timing=True)
++        else:
++            self.start_event = 0.0
++            self.end_event = 0.0
+ 
+     def start(self):
+-        self.start_event.record()
++        if self._use_events:
++            self.start_event.record()
++        else:
++            self.start_event = time.perf_counter()
+ 
+     def stop(self):
+-        self.end_event.record()
++        if self._use_events:
++            self.end_event.record()
++        else:
++            self.end_event = time.perf_counter()
+ 
+     def elapsed_time(self):
+         """
+         return in ms
+         """
+         self.dist_sync()
+-        torch.cuda.synchronize()
+-        return self.start_event.elapsed_time(self.end_event)
++        synchronize()
++        if self._use_events:
++            return self.start_event.elapsed_time(self.end_event)
++        return (self.end_event - self.start_event) * 1000
+ 
+     def dist_sync(self):
+-        torch.distributed.barrier(device_ids=[torch.cuda.current_device()])
++        barrier()
+ 
+ 
+ class IGPUTimer(GPUTimer):
+     def __init__(self, max_iters=1):
++        self._use_events = device_type() != "cpu"
+         self._max_iters = max_iters
+ 
+-        self.start_events = [
+-            torch.cuda.Event(enable_timing=True) for i in range(max_iters)
+-        ]
+-        self.end_events = [
+-            torch.cuda.Event(enable_timing=True) for i in range(max_iters)
+-        ]
++        if self._use_events:
++            self.start_events = [
++                accelerator().Event(enable_timing=True) for _ in range(max_iters)
++            ]
++            self.end_events = [
++                accelerator().Event(enable_timing=True) for _ in range(max_iters)
++            ]
++        else:
++            self.start_events = [0.0] * max_iters
++            self.end_events = [0.0] * max_iters
+ 
+         self._recorded_start_events = defaultdict()
+         self._recorded_end_events = defaultdict()
+ 
+     def start(self, ith=0):
+-        self.start_events[ith].record()
++        if self._use_events:
++            self.start_events[ith].record()
++        else:
++            self.start_events[ith] = time.perf_counter()
+         self._recorded_start_events[ith] = True
+ 
+     def stop(self, ith=0):
+-        self.end_events[ith].record()
++        if self._use_events:
++            self.end_events[ith].record()
++        else:
++            self.end_events[ith] = time.perf_counter()
+         self._recorded_end_events[ith] = True
+ 
+     def elapsed_time(self, reduction="mean"):
+         self.dist_sync()
+-        torch.cuda.synchronize()
++        synchronize()
+         times = []
+         for idx in self._recorded_start_events.keys():
+             assert idx in self._recorded_end_events, "end_event is not recorded "
+-            times.append(self.start_events[idx].elapsed_time(self.end_events[idx]))
++            if self._use_events:
++                times.append(
++                    self.start_events[idx].elapsed_time(self.end_events[idx])
++                )
++            else:
++                times.append(
++                    (self.end_events[idx] - self.start_events[idx]) * 1000
++                )
+ 
+         self._recorded_start_events.clear()
+         self._recorded_end_events.clear()
+@@ -89,4 +121,4 @@ class IGPUTimer(GPUTimer):
+         self._recorded_end_events.clear()
+ 
+     def dist_sync(self):
+-        torch.distributed.barrier(device_ids=[torch.cuda.current_device()])
++        barrier()
 diff --git a/examples/commons/utils/initialize.py b/examples/commons/utils/initialize.py
-index 92c9cdb..21db5f5 100644
+index 92c9cdb..ac3368d 100644
 --- a/examples/commons/utils/initialize.py
 +++ b/examples/commons/utils/initialize.py
-@@ -16,6 +16,7 @@ import gc
+@@ -16,6 +16,16 @@ import gc
  import os
  
  import torch
-+import torch_npu
++from commons.utils.device import (
++    ENABLE_NPU,
++    barrier,
++    device_type,
++    distributed_backend,
++    empty_cache,
++    get_device,
++    manual_seed,
++    set_device,
++)
  
  try:
      from megatron.core import parallel_state, tensor_parallel
-@@ -33,9 +34,9 @@ def initialize_single_rank():
+@@ -33,9 +43,9 @@ def initialize_single_rank():
          return
      torch.set_printoptions(precision=6, sci_mode=False)
      rank = 0
 -    device: torch.device = torch.device(f"cuda:{rank}")
 -    backend = "nccl"
 -    torch.cuda.set_device(device)
-+    device: torch.device = torch.device(f"npu:{rank}")
-+    backend = "hccl"
-+    torch_npu.npu.set_device(device)
++    device = get_device(rank)
++    backend = distributed_backend()
++    set_device(device)
      torch.distributed.init_process_group(
          backend=backend, init_method="tcp://127.0.0.1:12345", rank=rank, world_size=1
      )
-@@ -44,26 +45,25 @@ def initialize_single_rank():
+@@ -44,26 +54,30 @@ def initialize_single_rank():
  def initialize_distributed():
      if torch.distributed.is_initialized():
          return
@@ -1119,9 +1542,9 @@ index 92c9cdb..21db5f5 100644
 -    device: torch.device = torch.device(f"cuda:{rank}")
 -    backend = "nccl"
 -    torch.cuda.set_device(device)
-+    device: torch.device = torch.device(f"npu:{rank}")
-+    backend = "hccl"
-+    torch_npu.npu.set_device(device)
++    device = get_device(rank)
++    backend = distributed_backend()
++    set_device(device)
      torch.distributed.init_process_group(backend=backend)
  
  
@@ -1129,71 +1552,142 @@ index 92c9cdb..21db5f5 100644
      if parallel_state.model_parallel_is_initialized():
          return
 -    torch.distributed.barrier(device_ids=[torch.cuda.current_device()])
++    barrier()
++    mp_kwargs = {}
++    if ENABLE_NPU:
++        mp_kwargs["create_gloo_process_groups"] = False
      parallel_state.initialize_model_parallel(
          tensor_model_parallel_size,
++        **mp_kwargs,
      )
 -    torch.distributed.barrier(device_ids=[torch.cuda.current_device()])
-+    torch.distributed.barrier(device_ids=[torch_npu.npu.current_device()])
++    barrier()
  
  
  def destroy_global_state():
 -    torch.distributed.barrier(device_ids=[torch.cuda.current_device()])
-+    torch.distributed.barrier(device_ids=[torch_npu.npu.current_device()])
++    barrier()
  
      # TODO, find the reason why destroying pg hit nccl error when tpsize > 1
      if parallel_state.model_parallel_is_initialized():
-@@ -75,7 +75,7 @@ def destroy_global_state():
+@@ -75,7 +89,7 @@ def destroy_global_state():
                  group=parallel_state.get_data_parallel_group(with_context_parallel=True)
              )
          parallel_state.destroy_model_parallel()
 -    torch.cuda.empty_cache()
-+    torch_npu.npu.empty_cache()
++    empty_cache()
      gc.collect()
  
  
-@@ -106,8 +106,10 @@ def set_random_seed(seed_):
+@@ -106,8 +120,9 @@ def set_random_seed(seed_):
          random.seed(seed)
          np.random.seed(seed)
          torch.manual_seed(seed)
 -        if torch.cuda.device_count() > 0:
-+        if torch_npu.npu.device_count() > 0:
++        if device_type() != "cpu":
              tensor_parallel.model_parallel_cuda_manual_seed(seed)
-+            torch_npu.npu.manual_seed(seed)
-+            torch_npu.npu.manual_seed_all(seed)
++            manual_seed(seed)
  
              # We must maintain an rng state for torchrec, because with different world size, the state evolution differ
              # guarantee randomness across DPxTPxCPxPP for embedding-group
 diff --git a/examples/commons/utils/nvtx_op.py b/examples/commons/utils/nvtx_op.py
-index 7c3e43a..b47721b 100644
+index 7c3e43a..b4c861a 100644
 --- a/examples/commons/utils/nvtx_op.py
 +++ b/examples/commons/utils/nvtx_op.py
-@@ -112,12 +112,10 @@ class _NvtxRangePush(torch.autograd.Function):
+@@ -16,22 +16,37 @@
+ from functools import partial, wraps
+ 
+ import torch
++from commons.utils.device import ENABLE_NPU
++
++
++def _nvtx_enabled() -> bool:
++    return not ENABLE_NPU and torch.cuda.is_available()
++
++
++def _range_push(msg: str) -> None:
++    if _nvtx_enabled():
++        torch.cuda.nvtx.range_push(msg)
++
++
++def _range_pop() -> None:
++    if _nvtx_enabled():
++        torch.cuda.nvtx.range_pop()
+ 
+ 
+ def forward_nvtx_push_hook(module, input, msg=""):
+-    torch.cuda.nvtx.range_push(msg)
++    _range_push(msg)
+ 
+ 
+ def forward_nvtx_pop_hook(module, input, output):
+-    torch.cuda.nvtx.range_pop()
++    _range_pop()
+ 
+ 
+ def backward_nvtx_push_hook(module, grad_output, msg=""):
+-    torch.cuda.nvtx.range_push(msg)
++    _range_push(msg)
+ 
+ 
+ def backward_nvtx_pop_hook(module, grad_input, grad_output):
+-    torch.cuda.nvtx.range_pop()
++    _range_pop()
+ 
+ 
+ def register_nvtx_for_module(module: torch.nn.Module, msg=""):
+@@ -112,12 +127,12 @@ class _NvtxRangePush(torch.autograd.Function):
      @staticmethod
      def forward(ctx, input, msg="None"):
          ctx.msg = msg
 -        torch.cuda.nvtx.range_push(msg)
++        _range_push(msg)
          return input
  
      @staticmethod
      def backward(ctx, grad_in):
 -        torch.cuda.nvtx.range_pop()
++        _range_pop()
          return grad_in, None
  
  
-@@ -125,13 +123,11 @@ class _NvtxRangePop(torch.autograd.Function):
+@@ -125,13 +140,13 @@ class _NvtxRangePop(torch.autograd.Function):
      @staticmethod
      def forward(ctx, input, msg="None"):
          ctx.msg = msg
 -        torch.cuda.nvtx.range_pop()
++        _range_pop()
          return input
  
      @staticmethod
      def backward(ctx, grad_in):
          msg = ctx.msg
 -        torch.cuda.nvtx.range_push(msg)
++        _range_push(msg)
          return grad_in, None
  
  
+@@ -159,9 +174,9 @@ def output_nvtx_hook(nvtx_tag, backward=True, hook_key_or_attr_name="data"):
+     def decorator_forward_only(module):
+         @wraps(module)
+         def forward(*args, **kwags):
+-            torch.cuda.nvtx.range_push(nvtx_tag)
++            _range_push(nvtx_tag)
+             output = module(*args, **kwags)
+-            torch.cuda.nvtx.range_pop()
++            _range_pop()
+             return output
+ 
+         return forward
+@@ -169,6 +184,8 @@ def output_nvtx_hook(nvtx_tag, backward=True, hook_key_or_attr_name="data"):
+     def decorator_nvtx(module_or_func):
+         @wraps(module_or_func)
+         def wrapper(*args, **kwargs):
++            if not _nvtx_enabled():
++                return module_or_func(*args, **kwargs)
+             _placeholder = torch.empty(1, device="cuda").requires_grad_()
+             hook_r = NvtxRangePush(_placeholder, nvtx_tag + " forward")
+             output = module_or_func(*args, **kwargs)
 diff --git a/examples/hstu/configs/hstu_config.py b/examples/hstu/configs/hstu_config.py
 index 0ad39e9..2b80271 100644
 --- a/examples/hstu/configs/hstu_config.py
