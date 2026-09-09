@@ -5032,3 +5032,812 @@ index 26ca8c55..1195cb0e 100644
          self._set_table_weights_precision(dtype)
          fused_params = {
              "stochastic_rounding": stochastic_rounding,
+diff --git a/torchrec/distributed/tests/test_sharding_plan.py b/torchrec/distributed/tests/test_sharding_plan.py
+index 5dc18885..0d0b618d 100644
+--- a/torchrec/distributed/tests/test_sharding_plan.py
++++ b/torchrec/distributed/tests/test_sharding_plan.py
+@@ -84,6 +84,8 @@ def _test_sharding(
+     module_sharding_plan: EmbeddingModuleShardingPlan,
+     local_size: Optional[int] = None,
+ ) -> None:
++    import fbgemm_ascend
++
+     trec_dist.comm_ops.set_gradient_division(False)
+     with MultiProcessContext(rank, world_size, backend, local_size) as ctx:
+         kjt_input_per_rank = [kjt.to(ctx.device) for kjt in kjt_input_per_rank]
+@@ -146,7 +148,7 @@ class ConstructParameterShardingAndShardTest(MultiProcessTestBase):
+                 },
+             ]
+         ),
+-        data_type=st.sampled_from([DataType.FP32, DataType.FP16]),
++        data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=8, deadline=None)
+     def test_parameter_sharding_ebc(
+@@ -203,12 +205,12 @@ class ConstructParameterShardingAndShardTest(MultiProcessTestBase):
+             per_param_sharding=per_param_sharding,
+             local_size=WORLD_SIZE,
+             world_size=WORLD_SIZE,
+-            device_type="cuda" if torch.cuda.is_available() else "cpu",
++            device_type="npu" if torch.npu.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"),
+         )
+ 
+         # Row-wise not supported on gloo
+         if (
+-            not torch.cuda.is_available()
++            not (torch.npu.is_available() or torch.cuda.is_available())
+             and module_sharding_plan["table_0"].sharding_type
+             == ShardingType.ROW_WISE.value
+         ):
+@@ -239,14 +241,14 @@ class ConstructParameterShardingAndShardTest(MultiProcessTestBase):
+                 ),
+             },
+             kjt_input_per_rank=kjt_input_per_rank,
+-            backend="nccl" if torch.cuda.is_available() else "gloo",
++            backend="hccl" if torch.npu.is_available() else ("nccl" if torch.cuda.is_available() else "gloo"),
+             module_sharding_plan=module_sharding_plan,
+         )
+ 
+ 
+ class ConstructParameterShardingTest(unittest.TestCase):
+     # pyre-fixme[56]
+-    @given(data_type=st.sampled_from([DataType.FP32, DataType.FP16]))
++    @given(data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]))
+     @settings(verbosity=Verbosity.verbose, max_examples=8, deadline=None)
+     def test_construct_module_sharding_plan(self, data_type: DataType) -> None:
+ 
+@@ -310,7 +312,7 @@ class ConstructParameterShardingTest(unittest.TestCase):
+                         ShardMetadata(
+                             shard_offsets=[0, 0],
+                             shard_sizes=[1024, 256],
+-                            placement="rank:1/cuda:1",
++                            placement="rank:1/npu:1",
+                         )
+                     ]
+                 ),
+@@ -357,162 +359,162 @@ class ConstructParameterShardingTest(unittest.TestCase):
+                         ShardMetadata(
+                             shard_offsets=[0, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:0/cuda:0",
++                            placement="rank:0/npu:0",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[32, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:1/cuda:1",
++                            placement="rank:1/npu:1",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[64, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:2/cuda:2",
++                            placement="rank:2/npu:2",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[96, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:3/cuda:3",
++                            placement="rank:3/npu:3",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[128, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:4/cuda:4",
++                            placement="rank:4/npu:4",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[160, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:5/cuda:5",
++                            placement="rank:5/npu:5",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[192, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:6/cuda:6",
++                            placement="rank:6/npu:6",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[224, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:7/cuda:7",
++                            placement="rank:7/npu:7",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[256, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:8/cuda:0",
++                            placement="rank:8/npu:0",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[288, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:9/cuda:1",
++                            placement="rank:9/npu:1",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[320, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:10/cuda:2",
++                            placement="rank:10/npu:2",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[352, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:11/cuda:3",
++                            placement="rank:11/npu:3",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[384, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:12/cuda:4",
++                            placement="rank:12/npu:4",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[416, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:13/cuda:5",
++                            placement="rank:13/npu:5",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[448, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:14/cuda:6",
++                            placement="rank:14/npu:6",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[480, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:15/cuda:7",
++                            placement="rank:15/npu:7",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[512, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:16/cuda:0",
++                            placement="rank:16/npu:0",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[544, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:17/cuda:1",
++                            placement="rank:17/npu:1",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[576, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:18/cuda:2",
++                            placement="rank:18/npu:2",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[608, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:19/cuda:3",
++                            placement="rank:19/npu:3",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[640, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:20/cuda:4",
++                            placement="rank:20/npu:4",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[672, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:21/cuda:5",
++                            placement="rank:21/npu:5",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[704, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:22/cuda:6",
++                            placement="rank:22/npu:6",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[736, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:23/cuda:7",
++                            placement="rank:23/npu:7",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[768, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:24/cuda:0",
++                            placement="rank:24/npu:0",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[800, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:25/cuda:1",
++                            placement="rank:25/npu:1",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[832, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:26/cuda:2",
++                            placement="rank:26/npu:2",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[864, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:27/cuda:3",
++                            placement="rank:27/npu:3",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[896, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:28/cuda:4",
++                            placement="rank:28/npu:4",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[928, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:29/cuda:5",
++                            placement="rank:29/npu:5",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[960, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:30/cuda:6",
++                            placement="rank:30/npu:6",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[992, 0],
+                             shard_sizes=[32, 256],
+-                            placement="rank:31/cuda:7",
++                            placement="rank:31/npu:7",
+                         ),
+                     ]
+                 ),
+@@ -526,12 +528,12 @@ class ConstructParameterShardingTest(unittest.TestCase):
+                         ShardMetadata(
+                             shard_offsets=[0, 0],
+                             shard_sizes=[1024, 128],
+-                            placement="rank:8/cuda:0",
++                            placement="rank:8/npu:0",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[0, 128],
+                             shard_sizes=[1024, 128],
+-                            placement="rank:9/cuda:1",
++                            placement="rank:9/npu:1",
+                         ),
+                     ]
+                 ),
+@@ -545,42 +547,42 @@ class ConstructParameterShardingTest(unittest.TestCase):
+                         ShardMetadata(
+                             shard_offsets=[0, 0],
+                             shard_sizes=[128, 256],
+-                            placement="rank:24/cuda:0",
++                            placement="rank:24/npu:0",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[128, 0],
+                             shard_sizes=[128, 256],
+-                            placement="rank:25/cuda:1",
++                            placement="rank:25/npu:1",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[256, 0],
+                             shard_sizes=[128, 256],
+-                            placement="rank:26/cuda:2",
++                            placement="rank:26/npu:2",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[384, 0],
+                             shard_sizes=[128, 256],
+-                            placement="rank:27/cuda:3",
++                            placement="rank:27/npu:3",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[512, 0],
+                             shard_sizes=[128, 256],
+-                            placement="rank:28/cuda:4",
++                            placement="rank:28/npu:4",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[640, 0],
+                             shard_sizes=[128, 256],
+-                            placement="rank:29/cuda:5",
++                            placement="rank:29/npu:5",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[768, 0],
+                             shard_sizes=[128, 256],
+-                            placement="rank:30/cuda:6",
++                            placement="rank:30/npu:6",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[896, 0],
+                             shard_sizes=[128, 256],
+-                            placement="rank:31/cuda:7",
++                            placement="rank:31/npu:7",
+                         ),
+                     ]
+                 ),
+@@ -594,82 +596,82 @@ class ConstructParameterShardingTest(unittest.TestCase):
+                         ShardMetadata(
+                             shard_offsets=[0, 0],
+                             shard_sizes=[128, 128],
+-                            placement="rank:0/cuda:0",
++                            placement="rank:0/npu:0",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[128, 0],
+                             shard_sizes=[128, 128],
+-                            placement="rank:1/cuda:1",
++                            placement="rank:1/npu:1",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[256, 0],
+                             shard_sizes=[128, 128],
+-                            placement="rank:2/cuda:2",
++                            placement="rank:2/npu:2",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[384, 0],
+                             shard_sizes=[128, 128],
+-                            placement="rank:3/cuda:3",
++                            placement="rank:3/npu:3",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[512, 0],
+                             shard_sizes=[128, 128],
+-                            placement="rank:4/cuda:4",
++                            placement="rank:4/npu:4",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[640, 0],
+                             shard_sizes=[128, 128],
+-                            placement="rank:5/cuda:5",
++                            placement="rank:5/npu:5",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[768, 0],
+                             shard_sizes=[128, 128],
+-                            placement="rank:6/cuda:6",
++                            placement="rank:6/npu:6",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[896, 0],
+                             shard_sizes=[128, 128],
+-                            placement="rank:7/cuda:7",
++                            placement="rank:7/npu:7",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[0, 128],
+                             shard_sizes=[128, 128],
+-                            placement="rank:8/cuda:0",
++                            placement="rank:8/npu:0",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[128, 128],
+                             shard_sizes=[128, 128],
+-                            placement="rank:9/cuda:1",
++                            placement="rank:9/npu:1",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[256, 128],
+                             shard_sizes=[128, 128],
+-                            placement="rank:10/cuda:2",
++                            placement="rank:10/npu:2",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[384, 128],
+                             shard_sizes=[128, 128],
+-                            placement="rank:11/cuda:3",
++                            placement="rank:11/npu:3",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[512, 128],
+                             shard_sizes=[128, 128],
+-                            placement="rank:12/cuda:4",
++                            placement="rank:12/npu:4",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[640, 128],
+                             shard_sizes=[128, 128],
+-                            placement="rank:13/cuda:5",
++                            placement="rank:13/npu:5",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[768, 128],
+                             shard_sizes=[128, 128],
+-                            placement="rank:14/cuda:6",
++                            placement="rank:14/npu:6",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[896, 128],
+                             shard_sizes=[128, 128],
+-                            placement="rank:15/cuda:7",
++                            placement="rank:15/npu:7",
+                         ),
+                     ]
+                 ),
+@@ -688,12 +690,12 @@ class ConstructParameterShardingTest(unittest.TestCase):
+             },
+             local_size=8,
+             world_size=32,
+-            device_type="cuda",
++            device_type="npu",
+         )
+         self.assertDictEqual(expected, module_sharding_plan)
+ 
+     # pyre-fixme[56]
+-    @given(data_type=st.sampled_from([DataType.FP32, DataType.FP16]))
++    @given(data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]))
+     @settings(verbosity=Verbosity.verbose, max_examples=8, deadline=None)
+     def test_table_wise_set_device(self, data_type: DataType) -> None:
+ 
+@@ -715,7 +717,7 @@ class ConstructParameterShardingTest(unittest.TestCase):
+             },
+             local_size=2,
+             world_size=2,
+-            device_type="cuda",
++            device_type="npu",
+         )
+ 
+         # Make sure per_param_sharding setting override the default device_type
+@@ -737,7 +739,7 @@ class ConstructParameterShardingTest(unittest.TestCase):
+         )
+ 
+     # pyre-fixme[56]
+-    @given(data_type=st.sampled_from([DataType.FP32, DataType.FP16]))
++    @given(data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]))
+     @settings(verbosity=Verbosity.verbose, max_examples=8, deadline=None)
+     def test_row_wise_set_heterogenous_device(self, data_type: DataType) -> None:
+ 
+@@ -757,7 +759,7 @@ class ConstructParameterShardingTest(unittest.TestCase):
+                 "table_0": row_wise(
+                     sizes_placement=(
+                         [2048, 1024, 1024],
+-                        ["cpu", "cuda", "cuda"],
++                        ["cpu", "npu", "npu"],
+                     )
+                 ),
+                 "table_1": row_wise(
+@@ -766,7 +768,7 @@ class ConstructParameterShardingTest(unittest.TestCase):
+             },
+             local_size=1,
+             world_size=2,
+-            device_type="cuda",
++            device_type="npu",
+         )
+ 
+         # Make sure per_param_sharding setting override the default device_type
+@@ -791,7 +793,7 @@ class ConstructParameterShardingTest(unittest.TestCase):
+             )
+             self.assertEqual(
+                 device_table_0_shard_i.device().type,
+-                "cuda",
++                "npu",
+             )
+             # first rank is assigned to cpu so index = rank - 1
+             self.assertEqual(
+@@ -817,7 +819,7 @@ class ConstructParameterShardingTest(unittest.TestCase):
+             )
+ 
+     # pyre-fixme[56]
+-    @given(data_type=st.sampled_from([DataType.FP32, DataType.FP16]))
++    @given(data_type=st.sampled_from([DataType.FP32] if torch.npu.is_available() else [DataType.FP32, DataType.FP16]))
+     @settings(verbosity=Verbosity.verbose, max_examples=8, deadline=None)
+     def test_column_wise(self, data_type: DataType) -> None:
+ 
+@@ -839,7 +841,7 @@ class ConstructParameterShardingTest(unittest.TestCase):
+             },
+             local_size=2,
+             world_size=2,
+-            device_type="cuda",
++            device_type="npu",
+         )
+         expected = {
+             "table_0": ParameterSharding(
+@@ -851,12 +853,12 @@ class ConstructParameterShardingTest(unittest.TestCase):
+                         ShardMetadata(
+                             shard_offsets=[0, 0],
+                             shard_sizes=[4096, 32],
+-                            placement="rank:0/cuda:0",
++                            placement="rank:0/npu:0",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[0, 32],
+                             shard_sizes=[4096, 32],
+-                            placement="rank:1/cuda:1",
++                            placement="rank:1/npu:1",
+                         ),
+                     ]
+                 ),
+@@ -870,12 +872,12 @@ class ConstructParameterShardingTest(unittest.TestCase):
+                         ShardMetadata(
+                             shard_offsets=[0, 0],
+                             shard_sizes=[4096, 32],
+-                            placement="rank:0/cuda:0",
++                            placement="rank:0/npu:0",
+                         ),
+                         ShardMetadata(
+                             shard_offsets=[0, 32],
+                             shard_sizes=[4096, 32],
+-                            placement="rank:1/cuda:1",
++                            placement="rank:1/npu:1",
+                         ),
+                     ]
+                 ),
+@@ -899,7 +901,7 @@ class ShardingPlanTest(unittest.TestCase):
+                                     ShardMetadata(
+                                         shard_offsets=[0, 0],
+                                         shard_sizes=[4096, 32],
+-                                        placement="rank:0/cuda:0",
++                                        placement="rank:0/npu:0",
+                                     ),
+                                 ]
+                             ),
+@@ -913,12 +915,12 @@ class ShardingPlanTest(unittest.TestCase):
+                                     ShardMetadata(
+                                         shard_offsets=[0, 0],
+                                         shard_sizes=[2048, 32],
+-                                        placement="rank:0/cuda:0",
++                                        placement="rank:0/npu:0",
+                                     ),
+                                     ShardMetadata(
+                                         shard_offsets=[2048, 0],
+                                         shard_sizes=[2048, 32],
+-                                        placement="rank:0/cuda:1",
++                                        placement="rank:0/npu:1",
+                                     ),
+                                 ]
+                             ),
+@@ -934,11 +936,11 @@ class ShardingPlanTest(unittest.TestCase):
+ user_id  | table_wise    | dense          | [0]
+ movie_id | row_wise      | dense          | [0, 1]
+ 
+- param   | shard offsets | shard sizes |   placement
+--------- | ------------- | ----------- | -------------
+-user_id  | [0, 0]        | [4096, 32]  | rank:0/cuda:0
+-movie_id | [0, 0]        | [2048, 32]  | rank:0/cuda:0
+-movie_id | [2048, 0]     | [2048, 32]  | rank:0/cuda:1
++ param   | shard offsets | shard sizes |  placement
++-------- | ------------- | ----------- | ------------
++user_id  | [0, 0]        | [4096, 32]  | rank:0/npu:0
++movie_id | [0, 0]        | [2048, 32]  | rank:0/npu:0
++movie_id | [2048, 0]     | [2048, 32]  | rank:0/npu:1
+ """
+         self.maxDiff = None
+         for i in range(len(expected.splitlines())):
+diff --git a/torchrec/distributed/tests/test_shards_wrapper.py b/torchrec/distributed/tests/test_shards_wrapper.py
+index 7199552d..b8690efd 100644
+--- a/torchrec/distributed/tests/test_shards_wrapper.py
++++ b/torchrec/distributed/tests/test_shards_wrapper.py
+@@ -29,9 +29,11 @@ def all_gather_into_tensor(
+     local_size: Optional[int] = None,
+     async_op: bool = False,
+ ) -> None:
++    import fbgemm_ascend
++
+     with MultiProcessContext(rank, world_size, backend, local_size) as ctx:
+         local_shards_wrapper = shards_wrapper[ctx.rank]
+-        output_tensor = torch.empty((8, 5), device=torch.device(f"cuda:{ctx.rank}"))
++        output_tensor = torch.empty((8, 5), device=torch.device(f"npu:{ctx.rank}"))
+         res = dist.all_gather_into_tensor(
+             output_tensor, local_shards_wrapper, group=ctx.pg, async_op=async_op
+         )
+@@ -52,10 +54,12 @@ def all_gather(
+     local_size: Optional[int] = None,
+     async_op: bool = False,
+ ) -> None:
++    import fbgemm_ascend
++
+     with MultiProcessContext(rank, world_size, backend, local_size) as ctx:
+         local_shards_wrapper = shards_wrapper[ctx.rank]
+         tensor_list = [
+-            torch.zeros((4, 5), dtype=torch.float32, device=f"cuda:{rank}")
++            torch.zeros((4, 5), dtype=torch.float32, device=f"npu:{rank}")
+             for _ in range(2)
+         ]
+         res = dist.distributed_c10d.all_gather(
+@@ -102,15 +106,15 @@ class LocalShardsWrapperDistributedTest(MultiProcessTestBase):
+ 
+     # pyre-ignore[56]
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     @unittest.skip("Need to fix circular import errors with Torch")
+     def test_shards_wrapper_all_gather_into_tensor(self) -> None:
+         world_size = 2
+-        backend = "nccl"
+-        shards_0 = [torch.rand((4, 5), device=torch.device("cuda:0"))]
+-        shards_1 = [torch.rand((4, 5), device=torch.device("cuda:1"))]
++        backend = "hccl"
++        shards_0 = [torch.rand((4, 5), device=torch.device("npu:0"))]
++        shards_1 = [torch.rand((4, 5), device=torch.device("npu:1"))]
+         expected_result = torch.cat(
+             [torch.cat(shards_0, dim=0).cpu(), torch.cat(shards_1, dim=0).cpu()], dim=0
+         )
+@@ -133,15 +137,15 @@ class LocalShardsWrapperDistributedTest(MultiProcessTestBase):
+ 
+     # pyre-ignore[56]
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     @unittest.skip("Need to fix circular import errors with Torch")
+     def test_shards_wrapper_all_gather(self) -> None:
+         world_size = 2
+-        backend = "nccl"
+-        shards_0 = [torch.rand((4, 5), device=torch.device("cuda:0"))]
+-        shards_1 = [torch.zeros((4, 5), device=torch.device("cuda:1"))]
++        backend = "hccl"
++        shards_0 = [torch.rand((4, 5), device=torch.device("npu:0"))]
++        shards_1 = [torch.zeros((4, 5), device=torch.device("npu:1"))]
+         expected_result = [shards_0[0], shards_1[0]]
+         offsets = [(0, 0)]
+ 
+@@ -162,15 +166,15 @@ class LocalShardsWrapperDistributedTest(MultiProcessTestBase):
+ 
+     # pyre-ignore[56]
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     @unittest.skip("Need to fix circular import errors with Torch")
+     def test_shards_wrapper_all_gather_object(self) -> None:
+         world_size = 2
+-        backend = "nccl"
+-        shards_0 = [torch.rand((4, 5), device=torch.device("cuda:0"))]
+-        shards_1 = [torch.zeros((4, 5), device=torch.device("cuda:1"))]
++        backend = "hccl"
++        shards_0 = [torch.rand((4, 5), device=torch.device("npu:0"))]
++        shards_1 = [torch.zeros((4, 5), device=torch.device("npu:1"))]
+         expected_result = [shards_0[0], shards_1[0]]
+         offsets = [(0, 0)]
+ 
+diff --git a/torchrec/distributed/tests/test_tensor_pool.py b/torchrec/distributed/tests/test_tensor_pool.py
+index 24aeb030..f4d79405 100644
+--- a/torchrec/distributed/tests/test_tensor_pool.py
++++ b/torchrec/distributed/tests/test_tensor_pool.py
+@@ -31,10 +31,11 @@ class TestShardedTensorPool(MultiProcessTestBase):
+     def _test_sharded_tensor_pool(
+         rank: int, world_size: int, enable_uvm: bool = False
+     ) -> None:
++        import fbgemm_ascend
+ 
+         pool_size = 5
+         dim = 4
+-        backend = "nccl"
++        backend = "hccl"
+         dtype = torch.float32
+         sharding_plan = ObjectPoolShardingPlan(
+             sharding_type=ObjectPoolShardingType.ROW_WISE
+@@ -118,12 +119,13 @@ class TestShardedTensorPool(MultiProcessTestBase):
+                 )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-ignore
+     @given(
+-        enable_uvm=st.booleans(),
++        # NPU does not support uvm.
++        enable_uvm=st.sampled_from([False]) if torch.npu.is_available() else st.booleans(),
+     )
+     @settings(deadline=None)
+     def test_sharded_tensor_pool(self, enable_uvm: bool) -> None:
+@@ -139,10 +141,11 @@ class TestShardedTensorPool(MultiProcessTestBase):
+         rank: int,
+         world_size: int,
+     ) -> None:
++        import fbgemm_ascend
+ 
+         pool_size = 5
+         dim = 3
+-        backend = "nccl"
++        backend = "hccl"
+         dtype = torch.float32
+         sharding_plan = ObjectPoolShardingPlan(
+             sharding_type=ObjectPoolShardingType.ROW_WISE
+@@ -200,8 +203,8 @@ class TestShardedTensorPool(MultiProcessTestBase):
+ 
+     # pyre-fixme[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     def test_sharded_tensor_pool_conflict_update(
+         self,
+diff --git a/torchrec/distributed/tests/test_tensor_pool_rw_sharding.py b/torchrec/distributed/tests/test_tensor_pool_rw_sharding.py
+index 0a6992c0..83b98b92 100644
+--- a/torchrec/distributed/tests/test_tensor_pool_rw_sharding.py
++++ b/torchrec/distributed/tests/test_tensor_pool_rw_sharding.py
+@@ -25,7 +25,9 @@ class TestTensorPoolRwSharding(MultiProcessTestBase):
+         rank: int,
+         world_size: int,
+     ) -> None:
+-        backend = "nccl"
++        import fbgemm_ascend
++
++        backend = "hccl"
+         dtype = torch.float32
+         with MultiProcessContext(
+             rank, world_size, backend, local_size=world_size
+@@ -87,7 +89,9 @@ class TestTensorPoolRwSharding(MultiProcessTestBase):
+         rank: int,
+         world_size: int,
+     ) -> None:
+-        backend = "nccl"
++        import fbgemm_ascend
++
++        backend = "hccl"
+         dtype = torch.float32
+         with MultiProcessContext(
+             rank, world_size, backend, local_size=world_size
+@@ -181,8 +185,8 @@ class TestTensorPoolRwSharding(MultiProcessTestBase):
+ 
+     # pyre-fixme[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     def test_update(
+         self,
+@@ -192,8 +196,8 @@ class TestTensorPoolRwSharding(MultiProcessTestBase):
+ 
+     # pyre-fixme[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     def test_lookup(
+         self,
+diff --git a/torchrec/distributed/tests/test_utils.py b/torchrec/distributed/tests/test_utils.py
+index bdffcf7a..83f2db85 100644
+--- a/torchrec/distributed/tests/test_utils.py
++++ b/torchrec/distributed/tests/test_utils.py
+@@ -249,6 +249,23 @@ def block_bucketize_ref(
+                 else None
+             ),
+         )
++    elif device == "npu":
++        return KeyedJaggedTensor(
++            keys=expected_keys,
++            lengths=torch.tensor(
++                translated_lengths, dtype=keyed_jagged_tensor.lengths().dtype
++            )
++            .view(-1)
++            .npu(),
++            values=torch.tensor(
++                translated_indices, dtype=keyed_jagged_tensor.values().dtype
++            ).npu(),
++            weights=(
++                torch.tensor(translated_weights).float().npu()
++                if weights_list
++                else None
++            ),
++        )
+     else:
+         return KeyedJaggedTensor(
+             keys=expected_keys,
+@@ -272,7 +289,7 @@ class KJTBucketizeTest(unittest.TestCase):
+         batch_size=st.integers(1, 15),
+         variable_bucket_pos=st.booleans(),
+         device=st.sampled_from(
+-            ["cpu"] + (["cuda"] if torch.cuda.device_count() > 0 else [])
++            ["cpu"] + (["npu"] if torch.npu.device_count() > 0 else [])
+         ),
+     )
+     @settings(verbosity=Verbosity.verbose, max_examples=50, deadline=None)
