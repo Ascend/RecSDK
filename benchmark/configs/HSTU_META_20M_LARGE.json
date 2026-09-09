@@ -30,6 +30,8 @@
     ],
     "pip_install_self": false,
     "pip_install_requirements": false,
-    "extra_cmd": ["mkdir -p tmp/","python3 preprocess_public_data.py"],
+    "extra_cmd": [
+        "bash -c 'mkdir -p tmp/ && if [ -n \"$(find ../../dataset/hstu_meta -mindepth 1 -print -quit 2>/dev/null)\" ]; then cp -a ../../dataset/hstu_meta/. tmp/; else python3 preprocess_public_data.py; fi'"
+    ],
     "lib_fbgemm_npu_api_so_path" : "/usr/local/python3.11.0/lib/python3.11/site-packages/libfbgemm_npu_api.so" 
 }

@@ -2048,7 +2048,7 @@ index 7c93499..47fa39b 100644
  metrics: ['Recall', 'NDCG']
  valid_metric: NDCG@200
 diff --git a/code/run.py b/code/run.py
-index ccbd2ce..8c9e6a0 100644
+index ccbd2ce..451c4c0 100644
 --- a/code/run.py
 +++ b/code/run.py
 @@ -15,7 +15,6 @@ import json
@@ -2059,9 +2059,13 @@ index ccbd2ce..8c9e6a0 100644
  import torch.distributed as dist
  
  import os
-@@ -24,23 +23,10 @@ import argparse
+@@ -23,24 +22,14 @@ import numpy as np
+ import argparse
  import torch.distributed as dist
  import torch
++if os.environ.get('TORCHINDUCTOR_CPP_WRAPPER') == '1':
++    import torch._inductor
++    torch._inductor.config.triton.autotune_at_compile_time = False
  
 -def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
 -
@@ -2084,7 +2088,7 @@ index ccbd2ce..8c9e6a0 100644
  
      # get model and data
      dataload = load_data(config)
-@@ -51,7 +37,12 @@ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
+@@ -51,7 +40,12 @@ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
      # model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
  
      world_size = torch.distributed.get_world_size()
@@ -2098,7 +2102,7 @@ index ccbd2ce..8c9e6a0 100644
  
      logger.info(set_color('\nWorld_Size', 'pink') + f' = {world_size} \n')
      logger.info(config)
-@@ -88,14 +79,36 @@ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
+@@ -88,14 +82,36 @@ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
          }
  
  

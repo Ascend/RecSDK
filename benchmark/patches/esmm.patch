@@ -1,0 +1,46 @@
+diff --git a/behavior_and_multi_task/run_esmm.sh b/behavior_and_multi_task/run_esmm.sh
+index 7900974..e6419b9 100644
+--- a/behavior_and_multi_task/run_esmm.sh
++++ b/behavior_and_multi_task/run_esmm.sh
+@@ -14,7 +14,7 @@ DEVICE_ID=${DEVICE_ID:-0}
+ IFS=',' read -r -a DEVICE_IDS <<< "${DEVICE_ID}"
+ NPROC_PER_NODE=${NPROC_PER_NODE:-${#DEVICE_IDS[@]}}
+ NNODES=${NNODES:-1}
+-OPEN_PROFILING=${OPEN_PROFILING:-false}
++OPEN_PROFILING=${MODEL_PROFILING_FLAG:-${OPEN_PROFILING:-false}}
+ PREPROCESSED_DATASET=${PREPROCESSED_DATASET:-"${SCRIPT_DIR}/data_process/aliccp_out"}
+ MODEL_DIR=${MODEL_DIR:-"${SCRIPT_DIR}/checkpoint"}
+ LOAD_CHECKPOINT=${LOAD_CHECKPOINT:-false}
+@@ -23,8 +23,8 @@ REPORT_DIR=${REPORT_DIR:-"${SCRIPT_DIR}/reports"}
+ RESULTS_DIR=${RESULTS_DIR:-}
+ PROFILING_PATH=${PROFILING_PATH:-"${SCRIPT_DIR}/profiling"}
+ MODE=${MODE:-train}
+-NUM_EPOCHS=${NUM_EPOCHS:-1}
+-BATCH_SIZE=${BATCH_SIZE:-4096}
++NUM_EPOCHS=${MODEL_EPOCH:-${NUM_EPOCHS:-1}}
++BATCH_SIZE=${BS:-${BATCH_SIZE:-4096}}
+ MODEL_TYPE=${MODEL_TYPE:-float32}
+ MODEL=${MODEL:-esmm_torchrec_dmp}
+ if [ "${MODEL}" = "esmm_torchrec_dmp" ]; then
+@@ -37,9 +37,9 @@ TORCHREC_SHARDING_STRATEGY=${TORCHREC_SHARDING_STRATEGY:-row_wise}
+ TORCHREC_ROW_WISE_MIN_ROWS=${TORCHREC_ROW_WISE_MIN_ROWS:-100000}
+ TORCHREC_KJT_DTYPE=${TORCHREC_KJT_DTYPE:-int32}
+ LEARNING_RATE=${LEARNING_RATE:-0.001}
+-EMBEDDING_SIZE=${EMBEDDING_SIZE:-32}
++EMBEDDING_SIZE=${DIM:-${EMBEDDING_SIZE:-32}}
+ HIDDEN_DIMS=${HIDDEN_DIMS:-256,128}
+ DROPOUT=${DROPOUT:-0.0}
+-TRAIN_STOP_STEP=${TRAIN_STOP_STEP:--1}
+-VAL_STOP_STEP=${VAL_STOP_STEP:--1}
++TRAIN_STOP_STEP=${TRAIN_STEP:-${TRAIN_STOP_STEP:--1}}
++VAL_STOP_STEP=${EVAL_STEP:-${VAL_STOP_STEP:--1}}
+ export JOB_ID="${JOB_ID:-10086}"
+@@ -82,7 +82,7 @@ torchrun \
+   --save_checkpoint="${SAVE_CHECKPOINT}" \
+   --report_dir="${REPORT_DIR}" \
+   --results_dir="${RESULTS_DIR}" \
+-  --profiling_mode="${OPEN_PROFILING}" \
++  --profiling_mode="${OPEN_PROFILING,,}" \
+   --profiling_path="${PROFILING_PATH}" \
+   --num_epochs="${NUM_EPOCHS}" \
+   --batch_size="${BATCH_SIZE}" \

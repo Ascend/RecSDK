@@ -646,7 +646,7 @@ index 6d2da5b..2891245 100644
  @gin.configurable
  def train_fn(
      rank: int,
-@@ -128,11 +214,27 @@ def train_fn(
+@@ -128,11 +214,29 @@ def train_fn(
      l2_norm_eps: float = 1e-6,
      enable_tf32: bool = False,
      random_seed: int = 42,
@@ -665,6 +665,8 @@ index 6d2da5b..2891245 100644
 +        torch_npu.npu.set_compile_mode(jit_compile=False)
 +        torch_npu.npu.matmul.allow_tf32 = True
 +        torch_npu.npu.conv.allow_tf32 = True
++    else:
++        torch.cuda.set_device(rank)
      random.seed(random_seed)
      torch.backends.cuda.matmul.allow_tf32 = enable_tf32
      torch.backends.cudnn.allow_tf32 = enable_tf32

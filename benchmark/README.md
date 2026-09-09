@@ -67,6 +67,8 @@ python run.py xxx.json --eager
 |DSSM|[DSSM.json](configs/DSSM.json)|
 |EDCN|[EDCN.json](configs/EDCN.json)|
 |ESMM|[ESMM.json](configs/ESMM.json)|
+|ESMM_TRAIN|[ESMM_TRAIN.json](configs/ESMM_TRAIN.json)|
+|ETA|[ETA.json](configs/ETA.json)|
 |EulerNet|[EulerNet.json](configs/EulerNet.json)|
 |FiBiNET|[FiBiNET.json](configs/FiBiNET.json)|
 |GRU4Rec|[GRU4Rec.json](configs/GRU4Rec.json)|
@@ -173,6 +175,14 @@ yolov5模型需手动下载权重文件。<https://gitcode.com/open-source-toolk
 
 MMOE模型运行前需访问 <https://tianchi.aliyun.com/dataset/74690> 下载aliexpress\_NL\_datasets.zip数据集，
 并将数据集放到**与本README.md同级的data目录**下。
+
+## ETA 与 ESMM\_TRAIN 模型
+
+ETA和ESMM\_TRAIN使用共用预处理后的[Ali-CCP数据集](https://tianchi.aliyun.com/dataset/408)，默认从`benchmark/dataset/aliccp_out`读取。
+
+ETA通过`MODEL_TYPE`控制模型数据类型（默认`float32`,可选`bfloat16`），通过`EMB_TYPE`控制Embedding数据类型（默认`model`，即跟随模型数据类型）。ESMM\_TRAIN默认配置为`BS=32`、`DIM=8`、`TRAIN_STEP=10240`和`EVAL_STEP=1`。
+
+两个配置均使用训练框架收集的全部有效`train_times`统计性能。`RESULTS_DIR`使用rec-models默认值，ETA和ESMM\_TRAIN的结果分别保存到`benchmark/models/eta/save_results_NPU`和`benchmark/models/esmm/save_results_NPU`。
 
 ## DLRM\_META 模型
 
