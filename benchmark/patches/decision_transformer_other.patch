@@ -1,0 +1,742 @@
+diff --git a/main.py b/main.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..18a251751c54a40f393589efe05a4b244bd7621b
+--- /dev/null
++++ b/main.py
+@@ -0,0 +1,527 @@
++# -- coding: utf-8 --
++# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++# http://www.apache.org/licenses/LICENSE-2.0
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++# ==============================================================================
++
++from __future__ import annotations
++
++import random
++from typing import Any, Dict
++
++import os
++import numpy as np
++import torch
++from torch.utils.data import (
++    DataLoader,
++    DistributedSampler,
++    SequentialSampler,
++    WeightedRandomSampler,
++)
++
++from data import ReplayBuffer, TPTrajectoryWindowSampler
++from model import (
++    AttentionConfig,
++    DecisionTransformer,
++    DecisionTransformerBatch,
++    DecisionTransformerConfig,
++    DecisionTransformerInput,
++    decision_transformer_apply_fsdp2,
++    decision_transformer_apply_tp,
++)
++from utils import (
++    get_profiler,
++    init_distribute,
++    load_normalize_dict,
++    parse_args,
++    resolve_device,
++    save_normalize_dict,
++)
++
++
++def _build_replay_buffer(
++    config: DecisionTransformerConfig,
++    extra: Dict[str, Any],
++) -> ReplayBuffer:
++    data_path = str(extra.get("data_dir", ""))
++    if not data_path:
++        raise ValueError("invalid data path: path is empty")
++    return ReplayBuffer(
++        state_dim=config.state_dim,
++        act_dim=config.act_dim,
++        data_path=data_path,
++        config=config,
++        extra=extra,
++        max_eplen=config.max_ep_len,
++        return_scale=config.scale,
++        context_len=config.max_length,
++    )
++
++
++def _restore_or_save_normalization(
++    replay_buffer: ReplayBuffer,
++    config: DecisionTransformerConfig,
++    *,
++    resume: bool,
++) -> None:
++    if resume:
++        normalize_dict = load_normalize_dict(config.modelsave_dir)
++        replay_buffer.state_mean = normalize_dict["state_mean"]
++        replay_buffer.state_std = normalize_dict["state_std"]
++        return
++
++    if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
++        save_normalize_dict(
++            {
++                "state_mean": replay_buffer.state_mean,
++                "state_std": replay_buffer.state_std,
++            },
++            config.modelsave_dir,
++        )
++
++
++def _build_model(
++    replay_buffer: ReplayBuffer,
++    config: DecisionTransformerConfig,
++) -> DecisionTransformer:
++    model = DecisionTransformer(
++        state_mean=replay_buffer.state_mean,
++        state_std=replay_buffer.state_std,
++        config=config,
++    ).to(config.device)
++
++    if config.hf32:
++        model.set_hf32()
++    return model
++
++
++def _apply_parallelism(
++    model: DecisionTransformer,
++    extra: Dict[str, Any],
++) -> DecisionTransformer:
++    if extra.get("use_fsdp2", False):
++        return decision_transformer_apply_fsdp2(
++            model=model,
++            mesh=None,
++            use_bf16=bool(extra.get("use_bf16", True)),
++        )
++
++    tp_mesh = extra.get("tp_mesh")
++    if tp_mesh is not None:
++        return decision_transformer_apply_tp(model=model, tp_mesh=tp_mesh)
++    return model
++
++
++def _build_train_dataloader(
++    replay_buffer: ReplayBuffer,
++    extra: Dict[str, Any],
++) -> DataLoader:
++    step_num = int(extra.get("step_num", 100))
++    batch_size = int(extra.get("batch_size", 128))
++    num_samples = step_num * batch_size
++
++    if extra.get("use_tp", False):
++        sampler = TPTrajectoryWindowSampler(
++            replay_buffer,
++            seed=int(extra.get("manual_seed", 42)),
++            num_samples=num_samples,
++            weights=replay_buffer.p_sampler,
++        )
++    else:
++        sampler = WeightedRandomSampler(
++            replay_buffer.p_sampler,
++            num_samples=num_samples,
++            replacement=True,
++        )
++    return DataLoader(
++        replay_buffer,
++        sampler=sampler,
++        batch_size=batch_size,
++        pin_memory=True,
++    )
++
++
++def _to_training_batch(
++    batch: Any,
++    device: torch.device,
++) -> DecisionTransformerBatch:
++    states, actions, rewards, _dones, rtg, timesteps, attention_mask = batch
++    return DecisionTransformerBatch(
++        states=states.to(device=device, non_blocking=True),
++        actions=actions.to(device=device, non_blocking=True),
++        rewards=rewards.to(device=device, non_blocking=True),
++        rtg=rtg.to(device=device, non_blocking=True),
++        timesteps=timesteps.to(device=device, non_blocking=True),
++        attention_mask=attention_mask.to(device=device, non_blocking=True),
++    )
++
++
++def _synchronize(device: torch.device) -> None:
++    if device.type == "cuda":
++        torch.cuda.synchronize()
++    elif device.type == "npu":
++        torch.npu.synchronize()
++
++
++def _evaluate_model(
++    model: DecisionTransformer,
++    replay_buffer: ReplayBuffer,
++    config: DecisionTransformerConfig,
++    extra: Dict[str, Any],
++    *,
++    print_result: bool = True,
++) -> float:
++    """Evaluate a constructed model without reloading its checkpoint."""
++
++    distributed = torch.distributed.is_initialized()
++    rank = torch.distributed.get_rank() if distributed else 0
++    world_size = torch.distributed.get_world_size() if distributed else 1
++    use_tp = bool(extra.get("use_tp", False))
++    eval_seed = int(extra.get("eval_seed", 0))
++
++    if not use_tp:
++        python_rng_state = random.getstate()
++        numpy_rng_state = np.random.get_state()
++        random.seed(eval_seed + rank)
++        np.random.seed(eval_seed + rank)
++
++    was_training = model.training
++    model.eval()
++    try:
++        if use_tp:
++            sampler = TPTrajectoryWindowSampler(
++                replay_buffer,
++                seed=int(extra.get("manual_seed", 42)),
++            )
++        elif distributed:
++            sampler = DistributedSampler(
++                replay_buffer,
++                num_replicas=world_size,
++                rank=rank,
++                shuffle=False,
++                drop_last=False,
++                seed=eval_seed,
++            )
++            sampler.set_epoch(0)
++        else:
++            sampler = SequentialSampler(replay_buffer)
++
++        dataloader = DataLoader(
++            replay_buffer,
++            sampler=sampler,
++            batch_size=int(extra.get("batch_size", 128)),
++            pin_memory=True,
++        )
++        squared_error = torch.zeros((), dtype=torch.float32, device=config.device)
++        action_count = torch.zeros((), dtype=torch.float32, device=config.device)
++        local_sample_offset = 0
++
++        with torch.no_grad():
++            for batch in dataloader:
++                (
++                    states,
++                    actions,
++                    rewards,
++                    _dones,
++                    rtg,
++                    timesteps,
++                    attention_mask,
++                ) = batch
++                states = states.to(device=config.device, non_blocking=True)
++                actions = actions.to(device=config.device, non_blocking=True)
++                rewards = rewards.to(device=config.device, non_blocking=True)
++                rtg = rtg.to(device=config.device, non_blocking=True)
++                timesteps = timesteps.to(device=config.device, non_blocking=True)
++                attention_mask = attention_mask.to(
++                    device=config.device,
++                    non_blocking=True,
++                )
++                with model.tp_autocast():
++                    _, action_preds, _, _ = model(
++                        DecisionTransformerInput(
++                            states=states,
++                            actions=actions,
++                            rewards=rewards,
++                            returns_to_go=rtg[:, : states.shape[1]],
++                            timesteps=timesteps,
++                            attention_mask=attention_mask,
++                        )
++                    )
++
++                valid_actions = (
++                    attention_mask.bool().unsqueeze(-1).expand_as(action_preds)
++                )
++                if distributed and not use_tp:
++                    batch_samples = states.shape[0]
++                    local_positions = torch.arange(
++                        local_sample_offset,
++                        local_sample_offset + batch_samples,
++                        device=config.device,
++                    )
++                    real_samples = rank + local_positions * world_size < len(
++                        replay_buffer
++                    )
++                    valid_actions = valid_actions & real_samples[:, None, None]
++                    local_sample_offset += batch_samples
++
++                action_error = (action_preds.float() - actions.float()).square()
++                squared_error += action_error.masked_select(valid_actions).sum()
++                action_count += valid_actions.sum().to(dtype=torch.float32)
++
++        if distributed:
++            torch.distributed.all_reduce(
++                squared_error, op=torch.distributed.ReduceOp.SUM
++            )
++            torch.distributed.all_reduce(
++                action_count, op=torch.distributed.ReduceOp.SUM
++            )
++
++        if action_count.item() == 0:
++            raise RuntimeError("evaluation dataset does not contain any valid actions")
++        action_mse = (squared_error / action_count).item()
++        if print_result and rank == 0:
++            print(f"Evaluation action MSE: {action_mse:.8f}")
++        return action_mse
++    finally:
++        if not use_tp:
++            random.setstate(python_rng_state)
++            np.random.set_state(numpy_rng_state)
++        if was_training:
++            model.train()
++
++
++def train(config: DecisionTransformerConfig, extra: Dict[str, Any]) -> None:
++    replay_buffer = _build_replay_buffer(config, extra)
++    resume = bool(extra.get("resume", False))
++    _restore_or_save_normalization(
++        replay_buffer,
++        config,
++        resume=resume,
++    )
++
++    rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
++    if rank == 0:
++        print("Replay buffer size: ", len(replay_buffer.trajectories))
++
++    model = _apply_parallelism(_build_model(replay_buffer, config), extra)
++    dataloader = _build_train_dataloader(replay_buffer, extra)
++
++    model.create_optimizer()
++    if resume:
++        model.load_net(load_optimizer=True)
++    if model.compile_enable and model.tensor_parallel:
++        model.compile_()
++
++    if model.optimizer is None or model.scheduler is None:
++        raise RuntimeError(
++            "create optimizer after applying model parallelism and before training"
++        )
++
++    model.train()
++    num_epochs = int(extra.get("num_epochs", 1))
++    batch_size = int(extra.get("batch_size", 128))
++    total_epoch_time = 0.0
++    total_processed_samples = 0
++
++    _profiling_output = os.environ.get("PROFILER_OUT_DIR", "profiler.data")
++    profiling = get_profiler(config.device, _profiling_output)
++    with profiling as prof:
++        for epoch in range(1, num_epochs + 1):
++            epoch_loss_sum = torch.zeros((), dtype=torch.float32, device=config.device)
++            epoch_step_count = torch.zeros(
++                (), dtype=torch.float32, device=config.device
++            )
++
++            import time
++            _start_time = time.perf_counter()
++            for batch in dataloader:
++                loss = model.step(_to_training_batch(batch, config.device))
++                epoch_loss_sum += loss.detach().float()
++                epoch_step_count += 1
++                _synchronize(config.device)
++                prof.step()
++            _cost_time = time.perf_counter() - _start_time
++
++            if torch.distributed.is_initialized():
++                torch.distributed.all_reduce(
++                    epoch_loss_sum,
++                    op=torch.distributed.ReduceOp.SUM,
++                )
++                torch.distributed.all_reduce(
++                    epoch_step_count,
++                    op=torch.distributed.ReduceOp.SUM,
++                )
++            if epoch_step_count.item() == 0:
++                raise RuntimeError("training dataloader did not produce any batches")
++
++            train_loss = (epoch_loss_sum / epoch_step_count).item()
++            eval_action_mse = _evaluate_model(
++                model,
++                replay_buffer,
++                config,
++                extra,
++                print_result=False,
++            )
++
++            epoch_processed_samples = int(epoch_step_count.item() * batch_size)
++            total_processed_samples += epoch_processed_samples
++            total_epoch_time += _cost_time
++            epoch_throughput = (
++                epoch_processed_samples / _cost_time if _cost_time > 0 else 0.0
++            )
++
++            if rank == 0:
++                learning_rate = model.optimizer.param_groups[0]["lr"]
++                message = {
++                    "Epoch": epoch/num_epochs,
++                    "train_loss": train_loss,
++                    "eval_action_mse": eval_action_mse,
++                    "lr": f"{learning_rate:.8f}",
++                    "global_step": model.global_step,
++                    "batches": int(epoch_step_count.item()),
++                    "samples": epoch_processed_samples,
++                    "throughput": f"{epoch_throughput:.2f} samples/s",
++                    "elapsed_time": f"{_cost_time:.2f}s"
++                }
++                print(message)
++
++    if rank == 0:
++        average_epoch_time = total_epoch_time / num_epochs if num_epochs > 0 else 0.0
++        overall_throughput = (
++            total_processed_samples / total_epoch_time if total_epoch_time > 0 else 0.0
++        )
++        message = {
++            "epochs": num_epochs,
++            "total_samples": {total_processed_samples},
++            "avg_epoch_time": f"{average_epoch_time:.2f}s",
++            "overall_throughput": f"{overall_throughput:.2f} samples/s",
++            "final_global_step": model.global_step,
++        }
++        print("Training summary: ", message)
++
++    model.save_net()
++
++
++def evaluate(config: DecisionTransformerConfig, extra: Dict[str, Any]) -> float:
++    replay_buffer = _build_replay_buffer(config, extra)
++    normalize_dict = load_normalize_dict(config.modelsave_dir)
++    expected_shape = (config.state_dim,)
++    for name in ("state_mean", "state_std"):
++        if normalize_dict[name].shape != expected_shape:
++            raise ValueError(
++                f"{name} shape must be {expected_shape}, got {normalize_dict[name].shape}"
++            )
++        if not np.isfinite(normalize_dict[name]).all():
++            raise ValueError(f"{name} contains non-finite values")
++    if np.any(normalize_dict["state_std"] <= 0):
++        raise ValueError("state_std must contain only positive values")
++
++    replay_buffer.state_mean = normalize_dict["state_mean"]
++    replay_buffer.state_std = normalize_dict["state_std"]
++    model = _apply_parallelism(_build_model(replay_buffer, config), extra)
++    model.load_net(load_optimizer=False)
++    if model.compile_enable and model.tensor_parallel:
++        model.compile_()
++    return _evaluate_model(model, replay_buffer, config, extra)
++
++
++def main() -> None:
++    extra_config: Dict[str, Any] = {
++        "data_dir": "./data/training_data_all-rlData.csv",
++        "model": "dt",
++        "mode": "mixed_train_eval",
++        "modelsave_dir": "./checkpoints/",
++        "batch_size": 128,
++        "embedding_size": 16,
++        "field_size": 39,
++        "extra_fields": 0,
++        "step_num": 100,
++        "num_epochs": 200,
++    }
++    extra_config.update(vars(parse_args()))
++
++    torch.manual_seed(int(extra_config.get("manual_seed", 42)))
++    use_fsdp2 = bool(extra_config.get("use_fsdp2", False))
++    use_tp = int(extra_config.get("tp_size", 1)) > 1
++    if use_fsdp2 and use_tp:
++        raise RuntimeError("FSDP2 and TP cannot be enabled together yet")
++
++    distributed = use_fsdp2 or use_tp
++    if distributed:
++        rank, world_size, device, tp_mesh = init_distribute(
++            extra_config,
++            use_tp=use_tp,
++        )
++        tp_size = int(extra_config.get("tp_size", 1))
++        if use_tp and tp_size != world_size:
++            raise RuntimeError(
++                "pure TP requires world_size to equal tp_size: "
++                f"{world_size} != {tp_size}"
++            )
++    else:
++        rank, world_size = 0, 1
++        device = resolve_device()
++        tp_mesh = None
++
++    extra_config["tp_mesh"] = tp_mesh
++    extra_config["use_fsdp2"] = use_fsdp2
++    extra_config["use_tp"] = use_tp
++
++    modelsave_dir = str(extra_config.get("modelsave_dir", ""))
++    if not modelsave_dir:
++        raise ValueError("model save directory is empty")
++
++    try:
++        hidden_size = 2048
++        max_length = 64
++        attention_config = AttentionConfig(
++            d_model=hidden_size,
++            d_hidden=4096,
++            n_head=16,
++            n_layer=8,
++            activation_function="relu",
++            attention_backend=str(extra_config.get("attention_backend", "eager")),
++            n_ctx=3 * max_length,
++            n_position=96,
++        )
++        config = DecisionTransformerConfig(
++            length_times=3,
++            state_dim=16,
++            act_dim=1,
++            scale=2000.0,
++            target_return=4,
++            device=device,
++            modelsave_dir=modelsave_dir,
++            hf32=False,
++            use_bf16=bool(extra_config.get("use_bf16", True)),
++            compile=bool(extra_config.get("compile", False)),
++            graph=False,
++            shape_handle=False,
++            learning_rate=1e-4,
++            use_distribution=distributed,
++            rank=rank,
++            world_size=world_size,
++            attention_config=attention_config,
++        )
++
++        mode = str(extra_config.get("mode", "mixed_train_eval"))
++        if mode == "train":
++            train(config, extra_config)
++        elif mode == "eval":
++            _ = evaluate(config, extra_config)
++        else:
++            raise ValueError(f"unsupported running mode {mode}")
++    finally:
++        if torch.distributed.is_initialized():
++            torch.distributed.destroy_process_group()
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/utils.py b/utils.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..691b4011bd04c546ab11c44ff88d7f377d332d3e
+--- /dev/null
++++ b/utils.py
+@@ -0,0 +1,203 @@
++# -- coding: utf-8 --
++# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++# http://www.apache.org/licenses/LICENSE-2.0
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++# ==============================================================================
++
++from __future__ import annotations
++
++import os
++import pickle
++from typing import Any, Dict
++
++import argparse
++import numpy as np
++import torch
++from torch.distributed.device_mesh import DeviceMesh
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser()
++    parser.add_argument(
++        "--use-fsdp2", action=argparse.BooleanOptionalAction, default=False
++    )
++    parser.add_argument(
++        "--tp-size", type=int, default=1
++    )
++    parser.add_argument(
++        "--manual-seed",
++        "--manual_seed",
++        dest="manual_seed",
++        type=int,
++        default=42,
++    )
++    parser.add_argument(
++        "--use-bf16", action=argparse.BooleanOptionalAction, default=True
++    )
++    parser.add_argument(
++        "--attention-backend",
++        choices=("eager", "sdpa", "ascend"),
++        default="eager",
++    )
++    parser.add_argument(
++        "--resume", action=argparse.BooleanOptionalAction, default=False
++    )
++    parser.add_argument(
++        "--mode",
++        choices=("train", "eval"),
++        default="train",
++    )
++    parser.add_argument(
++        "--compile", action=argparse.BooleanOptionalAction, default=False
++    )
++    parser.add_argument("--data-dir", default="./data/training_data_all-rlData.csv")
++    parser.add_argument("--modelsave-dir", default="./checkpoints/")
++    parser.add_argument("--batch-size", type=int, default=128)
++    args = parser.parse_args()
++    return args
++
++
++def resolve_device() -> torch.device:
++    try:
++        import torch_npu  # type: ignore
++
++        if torch_npu.npu.is_available():
++            return torch.device("npu")
++    except Exception:
++        pass
++    if not torch.cuda.is_available():
++        raise RuntimeError("NPU and CUDA: do not support both.")
++    return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
++
++
++def save_normalize_dict(normalize_dict: Dict[str, Any], save_dir: str) -> None:
++    os.makedirs(save_dir, exist_ok=True)
++    save_path = os.path.join(save_dir, "normalize_dict.pkl")
++    with open(save_path, "wb") as file:
++        pickle.dump(normalize_dict, file)
++
++
++def load_normalize_dict(save_dir: str) -> Dict[str, np.ndarray]:
++    load_path = os.path.join(save_dir, "normalize_dict.pkl")
++    if not os.path.isfile(load_path):
++        raise FileNotFoundError(f"normalization file does not exist: {load_path}")
++    with open(load_path, "rb") as file:
++        normalize_dict = pickle.load(file)
++    if "state_mean" not in normalize_dict or "state_std" not in normalize_dict:
++        raise ValueError(f"invalid normalization file: {load_path}")
++    return {
++        "state_mean": np.asarray(normalize_dict["state_mean"], dtype=np.float32),
++        "state_std": np.asarray(normalize_dict["state_std"], dtype=np.float32),
++    }
++
++
++def get_profiler(device: torch.device, output_dir: str):
++    if device.type == "cuda":
++        return torch.profiler.profile(
++            activities=[
++                torch.profiler.ProfilerActivity.CPU,
++                torch.profiler.ProfilerActivity.CUDA,
++            ],
++            schedule=torch.profiler.schedule(
++                wait=0, warmup=5, active=10, repeat=1, skip_first=10
++            ),
++            on_trace_ready=torch.profiler.tensorboard_trace_handler(
++                dir_name=output_dir
++            ),
++            record_shapes=True,
++            with_stack=True,
++            profile_memory=False,
++            with_modules=False,
++            with_flops=False,
++        )
++    try:
++        import torch_npu  # type: ignore
++
++        if device.type == "npu":
++            return torch_npu.profiler.profile(
++                activities=[
++                    torch_npu.profiler.ProfilerActivity.CPU,
++                    torch_npu.profiler.ProfilerActivity.NPU,
++                ],
++                schedule=torch_npu.profiler.schedule(
++                    wait=0, warmup=5, active=10, repeat=1, skip_first=10
++                ),
++                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
++                    dir_name=output_dir
++                ),
++                record_shapes=True,
++                with_stack=True,
++                profile_memory=False,
++                with_modules=False,
++                with_flops=False,
++                experimental_config=torch_npu.profiler._ExperimentalConfig(
++                    export_type=[torch_npu.profiler.ExportType.Text],
++                    aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
++                    profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
++                    l2_cache=False,
++                ),
++            )
++    except Exception:
++        pass
++
++    return torch.profiler.profile(
++        activities=[torch.profiler.ProfilerActivity.CPU],
++        schedule=torch.profiler.schedule(
++            wait=0, warmup=5, active=10, repeat=1, skip_first=10
++        ),
++        on_trace_ready=torch.profiler.tensorboard_trace_handler(dir_name=output_dir),
++        record_shapes=True,
++        with_stack=True,
++        profile_memory=False,
++        with_modules=False,
++        with_flops=False,
++    )
++
++
++def init_distribute(
++    extra_config: Dict[str, Any],
++    use_tp: bool = False,
++) -> tuple[int, int, torch.device, DeviceMesh | None]:
++    del extra_config
++    try:
++        local_rank = int(os.environ["LOCAL_RANK"])
++        if torch.cuda.is_available():
++            torch.cuda.set_device(local_rank)
++            if not torch.distributed.is_initialized():
++                torch.distributed.init_process_group(backend="nccl")
++            device = torch.device("cuda", local_rank)
++        else:
++            import torch_npu  # type: ignore
++
++            if torch_npu.npu.is_available():
++                torch_npu.npu.set_device(local_rank)
++                if not torch.distributed.is_initialized():
++                    torch.distributed.init_process_group(backend="hccl")
++                device = torch.device("npu", local_rank)
++            else:
++                raise RuntimeError("neither CUDA nor NPU is available")
++    except Exception as exc:
++        raise RuntimeError("initialize distributed runtime failed") from exc
++
++    rank = torch.distributed.get_rank()
++    world_size = torch.distributed.get_world_size()
++
++    if use_tp:
++        from torch.distributed.device_mesh import init_device_mesh
++
++        tp_mesh = init_device_mesh(
++            device.type,
++            mesh_shape=(world_size,),
++            mesh_dim_names=("tp",),
++        )
++    else:
++        tp_mesh = None
++
++    return rank, world_size, device, tp_mesh
