@@ -2700,3 +2700,868 @@ index 85932a0d..bac2d37e 100644
          self._set_table_weights_precision(dtype)
          fused_params = {
              "stochastic_rounding": stochastic_rounding,
+diff --git a/torchrec/distributed/tests/test_fx_jit.py b/torchrec/distributed/tests/test_fx_jit.py
+index e89d6701..409cac02 100644
+--- a/torchrec/distributed/tests/test_fx_jit.py
++++ b/torchrec/distributed/tests/test_fx_jit.py
+@@ -69,7 +69,7 @@ class ModelTraceScriptTest(unittest.TestCase):
+     def _set_up_qebc(
+         self, sharding_type: str, quant_state_dict_split_scale_bias: bool
+     ) -> TestModelInfo:
+-        local_device = torch.device("cuda:0")
++        local_device = torch.device("npu:0")
+         model_info = TestModelInfo(
+             sparse_device=local_device,
+             dense_device=local_device,
+@@ -130,7 +130,7 @@ class ModelTraceScriptTest(unittest.TestCase):
+     def _set_up_qec(
+         self, sharding_type: str, quant_state_dict_split_scale_bias: bool
+     ) -> TestModelInfo:
+-        local_device = torch.device("cuda:0")
++        local_device = torch.device("npu:0")
+         model_info = TestModelInfo(
+             sparse_device=local_device,
+             dense_device=local_device,
+@@ -237,7 +237,7 @@ class ModelTraceScriptTest(unittest.TestCase):
+         # pyre-ignore
+     ) -> Tuple[torch.nn.Module, torch.nn.Module, List[Tuple]]:
+         model_info = self._set_up_qebc(sharding_type, quant_state_dict_split_scale_bias)
+-        topology = Topology(world_size=world_size, compute_device="cuda")
++        topology = Topology(world_size=world_size, compute_device="npu")
+         plan = EmbeddingShardingPlanner(
+             topology=topology,
+             batch_size=10,
+@@ -285,7 +285,7 @@ class ModelTraceScriptTest(unittest.TestCase):
+         model_info = self._set_up_qec(sharding_type, quant_state_dict_split_scale_bias)
+ 
+         if sharding_enabled:
+-            topology = Topology(world_size=world_size, compute_device="cuda")
++            topology = Topology(world_size=world_size, compute_device="npu")
+             plan = EmbeddingShardingPlanner(
+                 topology=topology,
+                 batch_size=10,
+@@ -453,10 +453,14 @@ class ModelTraceScriptTest(unittest.TestCase):
+ 
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_fxtrace_jitscript(self) -> None:
++        if torch.npu.is_available():
++                self.skipTest(
++                    "The driver does not support the creation of IPC events. Skip this test case."
++                )
+         for non_sharded_model, model, inputs, test_type in self._models_with_inputs(
+             world_size=2,
+         ):
+diff --git a/torchrec/distributed/tests/test_infer_hetero_shardings.py b/torchrec/distributed/tests/test_infer_hetero_shardings.py
+index ed3e8288..86320425 100755
+--- a/torchrec/distributed/tests/test_infer_hetero_shardings.py
++++ b/torchrec/distributed/tests/test_infer_hetero_shardings.py
+@@ -35,8 +35,8 @@ from torchrec.modules.embedding_modules import EmbeddingBagCollection
+ 
+ class InferHeteroShardingsTest(unittest.TestCase):
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+@@ -79,10 +79,10 @@ class InferHeteroShardingsTest(unittest.TestCase):
+             per_param_sharding={
+                 "table_0": row_wise(([20, 10, 100], "cpu")),
+                 "table_1": table_wise(
+-                    rank=0, device="cuda", compute_kernel=compute_kernel
++                    rank=0, device="npu", compute_kernel=compute_kernel
+                 ),
+                 "table_2": table_wise(
+-                    rank=1, device="cuda", compute_kernel=compute_kernel
++                    rank=1, device="npu", compute_kernel=compute_kernel
+                 ),
+             },
+             # pyre-ignore
+@@ -96,7 +96,7 @@ class InferHeteroShardingsTest(unittest.TestCase):
+                 3,
+                 0,
+             ),
+-            "cuda": ShardingEnv.from_local(
++            "npu": ShardingEnv.from_local(
+                 2,
+                 0,
+             ),
+@@ -147,8 +147,8 @@ class InferHeteroShardingsTest(unittest.TestCase):
+ 
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs available",
+     )
+     def test_sharder_different_world_sizes_for_qebc(self) -> None:
+         num_embeddings = 10
+@@ -186,10 +186,10 @@ class InferHeteroShardingsTest(unittest.TestCase):
+             per_param_sharding={
+                 "table_0": row_wise(([20, 10, 100], "cpu")),
+                 "table_1": table_wise(
+-                    rank=0, device="cuda", compute_kernel=compute_kernel
++                    rank=0, device="npu", compute_kernel=compute_kernel
+                 ),
+                 "table_2": table_wise(
+-                    rank=1, device="cuda", compute_kernel=compute_kernel
++                    rank=1, device="npu", compute_kernel=compute_kernel
+                 ),
+             },
+             # pyre-ignore
+@@ -203,7 +203,7 @@ class InferHeteroShardingsTest(unittest.TestCase):
+                 3,
+                 0,
+             ),
+-            "cuda": ShardingEnv.from_local(
++            "npu": ShardingEnv.from_local(
+                 2,
+                 0,
+             ),
+@@ -268,15 +268,15 @@ class InferHeteroShardingsTest(unittest.TestCase):
+         )
+         sharder = QuantEmbeddingCollectionSharder()
+         topo_cpu = Topology(world_size=3, compute_device="cpu")
+-        topo_gpu = Topology(world_size=2, compute_device="cuda")
++        topo_npu = Topology(world_size=2, compute_device="npu")
+         topo_groups = {
+             "cpu": topo_cpu,
+-            "cuda": topo_gpu,
++            "npu": topo_npu,
+         }
+         constraints = {
+             "table_0": ParameterConstraints(device_group="cpu"),
+-            "table_1": ParameterConstraints(device_group="cuda"),
+-            "table_2": ParameterConstraints(device_group="cuda"),
++            "table_1": ParameterConstraints(device_group="npu"),
++            "table_2": ParameterConstraints(device_group="npu"),
+         }
+         planner = HeteroEmbeddingShardingPlanner(
+             topology_groups=topo_groups, constraints=constraints
+@@ -301,12 +301,12 @@ class InferHeteroShardingsTest(unittest.TestCase):
+             .sharding_spec.shards[0]
+             .placement.device()
+             .type,
+-            "cuda",
++            "npu",
+         )
+         self.assertTrue(
+             module_plan.plan["_module_kjt_input.0"]["table_2"]
+             .sharding_spec.shards[0]
+             .placement.device()
+             .type,
+-            "cuda",
++            "npu",
+         )
+diff --git a/torchrec/distributed/tests/test_infer_shardings.py b/torchrec/distributed/tests/test_infer_shardings.py
+index c3954071..4c15eee2 100755
+--- a/torchrec/distributed/tests/test_infer_shardings.py
++++ b/torchrec/distributed/tests/test_infer_shardings.py
+@@ -144,13 +144,13 @@ class InferShardingsTest(unittest.TestCase):
+         set_propogate_device(True)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device_type=st.sampled_from(["cuda", "cpu"]),
++        device_type=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_tw(self, weight_dtype: torch.dtype, device_type: str) -> None:
+@@ -212,13 +212,13 @@ class InferShardingsTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8]),
+-        device_type=st.sampled_from(["cuda"]),
++        device_type=st.sampled_from(["npu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_tw_ebc_full_rank_weighted_ebc_with_empty_rank(
+@@ -288,13 +288,13 @@ class InferShardingsTest(unittest.TestCase):
+         assert_close(sharded_output, gm_script_output)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device_type=st.sampled_from(["cuda", "cpu"]),
++        device_type=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_rw(self, weight_dtype: torch.dtype, device_type: str) -> None:
+@@ -358,14 +358,14 @@ class InferShardingsTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]Pyre was not able to infer the type of argument `hypothesis.strategies.booleans()` to decorator factory `hypothesis.given`.
+     @given(
+         test_permute=st.booleans(),
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device_type=st.sampled_from(["cuda", "cpu"]),
++        device_type=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_cw(
+@@ -471,15 +471,15 @@ class InferShardingsTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]Pyre was not able to infer the type of argument `hypothesis.strategies.booleans()` to decorator factory `hypothesis.given`.
+     @given(
+         emb_dim=st.sampled_from([192, 128]),
+         test_permute=st.booleans(),
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device_type=st.sampled_from(["cuda", "cpu"]),
++        device_type=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_cw_with_smaller_emb_dim(
+@@ -563,13 +563,13 @@ class InferShardingsTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device_type=st.sampled_from(["cuda", "cpu"]),
++        device_type=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_cw_multiple_tables_with_permute(
+@@ -676,13 +676,13 @@ class InferShardingsTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device_type=st.sampled_from(["cuda", "cpu"]),
++        device_type=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_cw_irregular_shard_placement(
+@@ -795,15 +795,15 @@ class InferShardingsTest(unittest.TestCase):
+         assert_close(sharded_output, gm_script_output)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         device_type_weight_dtype=st.sampled_from(
+             [
+-                ("cuda", torch.qint8),
+-                ("cuda", torch.quint4x2),
++                ("npu", torch.qint8),
++                ("npu", torch.quint4x2),
+                 # ("cpu", torch.qint8), column sharding is currently not supported in CPU inference sharding
+                 # ("cpu", torch.quint4x2),
+             ]
+@@ -919,13 +919,13 @@ class InferShardingsTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device_type=st.sampled_from(["cuda", "cpu"]),
++        device_type=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_tw_sequence(self, weight_dtype: torch.dtype, device_type: str) -> None:
+@@ -1032,15 +1032,15 @@ class InferShardingsTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         device_type_weight_dtype=st.sampled_from(
+             [
+-                ("cuda", torch.qint8),
+-                ("cuda", torch.quint4x2),
++                ("npu", torch.qint8),
++                ("npu", torch.quint4x2),
+                 ("cpu", torch.qint8),
+                 ("cpu", torch.quint4x2),
+             ]
+@@ -1150,13 +1150,13 @@ class InferShardingsTest(unittest.TestCase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device=st.sampled_from(["cuda", "cpu"]),
++        device=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_rw_sequence_uneven(self, weight_dtype: torch.dtype, device: str) -> None:
+@@ -1165,7 +1165,7 @@ class InferShardingsTest(unittest.TestCase):
+         world_size = 4
+         local_size = 4
+         batch_size = 4
+-        local_device = torch.device("cuda:0" if device == "cuda" else device)
++        local_device = torch.device("npu:0" if device == "npu" else device)
+ 
+         topology: Topology = Topology(world_size=world_size, compute_device=device)
+         mi = TestModelInfo(
+@@ -1351,13 +1351,13 @@ class InferShardingsTest(unittest.TestCase):
+             assert device in path_device[1]
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device_type=st.sampled_from(["cuda", "cpu"]),
++        device_type=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_mix_tw_rw_sequence(
+@@ -1463,13 +1463,13 @@ class InferShardingsTest(unittest.TestCase):
+         assert_close(sharded_output, gm_script_output)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device_type=st.sampled_from(["cuda", "cpu"]),
++        device_type=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_mix_tw_rw_sequence_missing_feature_on_rank(
+@@ -1574,8 +1574,8 @@ class InferShardingsTest(unittest.TestCase):
+         assert_close(sharded_output, gm_script_output)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 2,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 2,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]Pyre was not able to infer the type of argument `hypothesis.strategies.booleans()` to decorator factory `hypothesis.given`.
+     @given(
+@@ -1586,7 +1586,7 @@ class InferShardingsTest(unittest.TestCase):
+                 (500, 256, 128, 128),
+             ]
+         ),
+-        device=st.sampled_from(["cuda", "cpu"]),
++        device=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_rw_uneven_sharding(
+@@ -1601,7 +1601,7 @@ class InferShardingsTest(unittest.TestCase):
+         local_size = 3
+         world_size = 3
+         batch_size = 4
+-        local_device = torch.device("cuda:0" if device == "cuda" else device)
++        local_device = torch.device("npu:0" if device == "npu" else device)
+         mi = create_test_model(
+             num_embeddings,
+             emb_dim,
+@@ -1677,13 +1677,13 @@ class InferShardingsTest(unittest.TestCase):
+         assert_close(sharded_output, gm_script_output)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]Pyre was not able to infer the type of argument `hypothesis.strategies.booleans()` to decorator factory `hypothesis.given`.
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device=st.sampled_from(["cuda", "cpu"]),
++        device=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_rw_uneven_sharding_mutiple_table(
+@@ -1696,7 +1696,7 @@ class InferShardingsTest(unittest.TestCase):
+         local_size = 4
+         world_size = 4
+         batch_size = 1
+-        local_device = torch.device("cuda:0" if device == "cuda" else device)
++        local_device = torch.device("npu:0" if device == "npu" else device)
+         mi = create_test_model(
+             num_embeddings,
+             emb_dim,
+@@ -1835,13 +1835,13 @@ class InferShardingsTest(unittest.TestCase):
+         assert_close(sharded_output, gm_script_output)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs available",
+     )
+     # pyre-fixme[56]Pyre was not able to infer the type of argument `hypothesis.strategies.booleans()` to decorator factory `hypothesis.given`.
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8, torch.quint4x2]),
+-        device=st.sampled_from(["cuda", "cpu"]),
++        device=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=4, deadline=None)
+     def test_mix_sharding_mutiple_table(
+@@ -1854,7 +1854,7 @@ class InferShardingsTest(unittest.TestCase):
+         local_size = 4
+         world_size = 4
+         batch_size = 1
+-        local_device = torch.device("cuda:0" if device == "cuda" else device)
++        local_device = torch.device("npu:0" if device == "npu" else device)
+         mi = create_test_model(
+             num_embeddings,
+             emb_dim,
+@@ -1915,13 +1915,13 @@ class InferShardingsTest(unittest.TestCase):
+         assert_close(sharded_output, gm_script_output)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8]),
+-        device_type=st.sampled_from(["cuda", "cpu"]),
++        device_type=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=1, deadline=None)
+     def test_sharded_quant_fp_ebc_tw(
+@@ -2089,13 +2089,13 @@ class InferShardingsTest(unittest.TestCase):
+         assert_close(sharded_output, gm_script_output)
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+         weight_dtype=st.sampled_from([torch.qint8]),
+-        device_type=st.sampled_from(["cpu", "cuda"]),
++        device_type=st.sampled_from(["cpu", "npu"]),
+     )
+     @settings(max_examples=2, deadline=None)
+     def test_sharded_quant_mc_ec_rw(
+@@ -2245,12 +2245,12 @@ class InferShardingsTest(unittest.TestCase):
+         assert_close(sharded_output[0], gm_script_output[0])
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     # pyre-ignore
+     @given(
+-        compute_device=st.sampled_from(["cuda", "cpu"]),
++        compute_device=st.sampled_from(["npu", "cpu"]),
+     )
+     @settings(max_examples=2, deadline=None)
+     def test_sharded_quant_fp_ebc_tw_meta(self, compute_device: str) -> None:
+diff --git a/torchrec/distributed/tests/test_infer_utils.py b/torchrec/distributed/tests/test_infer_utils.py
+index 0fb37487..5fccea66 100644
+--- a/torchrec/distributed/tests/test_infer_utils.py
++++ b/torchrec/distributed/tests/test_infer_utils.py
+@@ -13,6 +13,7 @@ import unittest
+ from typing import cast
+ 
+ import torch
++from fbgemm_gpu.split_table_batched_embeddings_ops_training import EmbeddingLocation
+ 
+ from torchrec.distributed.embedding_types import EmbeddingComputeKernel, ModuleSharder
+ from torchrec.distributed.infer_utils import (
+@@ -47,11 +48,11 @@ from torchrec.modules.embedding_modules import (
+ class UtilsTest(unittest.TestCase):
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_get_tbe_specs_from_sqebc(self) -> None:
+-        device = torch.device("cuda:0")
++        device = torch.device("npu:0")
+ 
+         num_features = 3
+ 
+@@ -116,21 +117,22 @@ class UtilsTest(unittest.TestCase):
+ 
+         specs = get_tbe_specs_from_sharded_module(sharded_model)
+ 
++        excepted_location = str(EmbeddingLocation.DEVICE)
+         expected_specs = [
+-            ("table_1", 40, 20, "int8", "EmbeddingLocation.DEVICE"),
+-            ("table_2", 60, 30, "int8", "EmbeddingLocation.DEVICE"),
+-            ("table_0", 20, 10, "int8", "EmbeddingLocation.DEVICE"),
++            ("table_1", 40, 20, "int8", excepted_location),
++            ("table_2", 60, 30, "int8", excepted_location),
++            ("table_0", 20, 10, "int8", excepted_location),
+         ]
+ 
+         self.assertEqual(specs, expected_specs)
+ 
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_get_tbe_specs_from_sqec(self) -> None:
+-        device = torch.device("cuda:0")
++        device = torch.device("npu:0")
+ 
+         num_features = 3
+ 
+@@ -195,21 +197,22 @@ class UtilsTest(unittest.TestCase):
+ 
+         specs = get_tbe_specs_from_sharded_module(sharded_model)
+ 
++        excepted_location = str(EmbeddingLocation.DEVICE)
+         expected_specs = [
+-            ("table_1", 40, 10, "int8", "EmbeddingLocation.DEVICE"),
+-            ("table_2", 60, 10, "int8", "EmbeddingLocation.DEVICE"),
+-            ("table_0", 20, 10, "int8", "EmbeddingLocation.DEVICE"),
++            ("table_1", 40, 10, "int8", excepted_location),
++            ("table_2", 60, 10, "int8", excepted_location),
++            ("table_0", 20, 10, "int8", excepted_location),
+         ]
+ 
+         self.assertEqual(specs, expected_specs)
+ 
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_get_all_torchrec_modules_for_single_module(self) -> None:
+-        device = torch.device("cuda:0")
++        device = torch.device("npu:0")
+ 
+         num_features = 2
+ 
+@@ -286,11 +289,11 @@ class UtilsTest(unittest.TestCase):
+ 
+     # pyre-ignore
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs available",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs available",
+     )
+     def test_get_all_torchrec_modules_for_test_SparseNN_model(self) -> None:
+-        local_device = torch.device("cuda:0")
++        local_device = torch.device("npu:0")
+         model_info = TestModelInfo(
+             sparse_device=local_device,
+             dense_device=local_device,
+diff --git a/torchrec/distributed/tests/test_init_parameters.py b/torchrec/distributed/tests/test_init_parameters.py
+index 515c45a3..59524746 100644
+--- a/torchrec/distributed/tests/test_init_parameters.py
++++ b/torchrec/distributed/tests/test_init_parameters.py
+@@ -138,8 +138,8 @@ def _select_sharding_type(sharding_type: str) -> ParameterShardingGenerator:
+ @skip_if_asan_class
+ class ParameterInitializationTest(MultiProcessTestBase):
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -155,12 +155,12 @@ class ParameterInitializationTest(MultiProcessTestBase):
+     @settings(verbosity=Verbosity.verbose, deadline=None)
+     def test_initialize_parameters_ec(self, sharding_type: str) -> None:
+         world_size = 2
+-        backend = "nccl"
++        backend = "hccl"
+         table_name = "free_parameters"
+ 
+-        # Initialize embedding table on non-meta device, in this case cuda:0
++        # Initialize embedding table on non-meta device, in this case npu:0
+         embedding_tables = EmbeddingCollection(
+-            device=torch.device("cuda:0"),
++            device=torch.device("npu:0"),
+             tables=[
+                 EmbeddingConfig(
+                     name=table_name,
+@@ -188,8 +188,8 @@ class ParameterInitializationTest(MultiProcessTestBase):
+         )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 1,
+-        "Not enough GPUs, this test requires at least two GPUs",
++        torch.npu.device_count() <= 1,
++        "Not enough NPUs, this test requires at least two NPUs",
+     )
+     # pyre-fixme[56]
+     @given(
+@@ -205,12 +205,12 @@ class ParameterInitializationTest(MultiProcessTestBase):
+     @settings(verbosity=Verbosity.verbose, deadline=None)
+     def test_initialize_parameters_ebc(self, sharding_type: str) -> None:
+         world_size = 2
+-        backend = "nccl"
++        backend = "hccl"
+         table_name = "free_parameters"
+ 
+-        # Initialize embedding bag on non-meta device, in this case cuda:0
++        # Initialize embedding bag on non-meta device, in this case npu:0
+         embedding_tables = EmbeddingBagCollection(
+-            device=torch.device("cuda:0"),
++            device=torch.device("npu:0"),
+             tables=[
+                 EmbeddingBagConfig(
+                     name=table_name,
+diff --git a/torchrec/distributed/tests/test_keyed_jagged_tensor_pool.py b/torchrec/distributed/tests/test_keyed_jagged_tensor_pool.py
+index d5a41c76..2f621dc6 100644
+--- a/torchrec/distributed/tests/test_keyed_jagged_tensor_pool.py
++++ b/torchrec/distributed/tests/test_keyed_jagged_tensor_pool.py
+@@ -49,6 +49,8 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+         input_per_rank: List[torch.Tensor],
+         enable_uvm: bool = False,
+     ) -> None:
++        import fbgemm_ascend
++
+         with MultiProcessContext(
+             rank, world_size, backend, local_size=world_size
+         ) as ctx:
+@@ -154,12 +156,14 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+             )
+ 
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     # pyre-ignore
+     @given(
+-        enable_uvm=st.booleans(),
++        # UVM is unsupported; therefore, the enable_uvm=True scenario is untested.
++        # TODO: restore st.booleans() once NPU supports UVM caching.
++        enable_uvm=st.sampled_from([False]),
+         values_dtype=st.sampled_from([torch.int32, torch.int64]),
+     )
+     @settings(max_examples=4, deadline=None)
+@@ -184,7 +188,7 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+             sharding_plan=ObjectPoolShardingPlan(
+                 sharding_type=ObjectPoolShardingType.ROW_WISE
+             ),
+-            backend="nccl",
++            backend="hccl",
+             enable_uvm=enable_uvm,
+         )
+ 
+@@ -200,6 +204,8 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+         sharding_plan: ObjectPoolShardingPlan,
+         input_per_rank: List[torch.Tensor],
+     ) -> None:
++        import fbgemm_ascend
++
+         with MultiProcessContext(
+             rank, world_size, backend, local_size=world_size
+         ) as ctx:
+@@ -294,8 +300,8 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+ 
+     # pyre-fixme[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     def test_input_permute(
+         self,
+@@ -318,7 +324,7 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+             sharding_plan=ObjectPoolShardingPlan(
+                 sharding_type=ObjectPoolShardingType.ROW_WISE
+             ),
+-            backend="nccl",
++            backend="hccl",
+         )
+ 
+     @staticmethod
+@@ -333,6 +339,8 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+         sharding_plan: ObjectPoolShardingPlan,
+         input_per_rank: List[torch.Tensor],
+     ) -> None:
++        import fbgemm_ascend
++
+         with MultiProcessContext(
+             rank, world_size, backend, local_size=world_size
+         ) as ctx:
+@@ -428,8 +436,8 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+ 
+     # pyre-fixme[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     def test_sharded_KJT_pool_input_conflict(
+         self,
+@@ -452,7 +460,7 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+             sharding_plan=ObjectPoolShardingPlan(
+                 sharding_type=ObjectPoolShardingType.ROW_WISE
+             ),
+-            backend="nccl",
++            backend="hccl",
+         )
+ 
+     @staticmethod
+@@ -467,6 +475,8 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+         sharding_plan: ObjectPoolShardingPlan,
+         input_per_rank: List[torch.Tensor],
+     ) -> None:
++        import fbgemm_ascend
++
+         with MultiProcessContext(
+             rank, world_size, backend, local_size=world_size
+         ) as ctx:
+@@ -558,8 +568,8 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+ 
+     # pyre-fixme[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     def test_sharded_KJT_pool_input_empty(self) -> None:
+         input_per_rank = [
+@@ -578,7 +588,7 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+             sharding_plan=ObjectPoolShardingPlan(
+                 sharding_type=ObjectPoolShardingType.ROW_WISE
+             ),
+-            backend="nccl",
++            backend="hccl",
+         )
+ 
+     @staticmethod
+@@ -593,6 +603,8 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+         is_weighted: bool,
+         sharding_plan: ObjectPoolShardingPlan,
+     ) -> None:
++        import fbgemm_ascend
++
+         with MultiProcessContext(
+             rank, world_size, backend, local_size=local_world_size
+         ) as ctx:
+@@ -719,8 +731,8 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+ 
+     # pyre-fixme[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     def test_sharded_keyed_jagged_tensor_pool_replicated_rw(
+         self,
+@@ -738,19 +750,19 @@ class TestShardedKeyedJaggedTensorPool(MultiProcessTestBase):
+             sharding_plan=ObjectPoolShardingPlan(
+                 sharding_type=ObjectPoolShardingType.REPLICATED_ROW_WISE
+             ),
+-            backend="nccl",
++            backend="hccl",
+         )
+ 
+     # pyre-fixme[56]: Pyre was not able to infer the type of argument
+     @unittest.skipIf(
+-        torch.cuda.device_count() <= 3,
+-        "Not enough GPUs, this test requires at least four GPUs",
++        torch.npu.device_count() <= 3,
++        "Not enough NPUs, this test requires at least four NPUs",
+     )
+     def test_sharded_kjt_pool_inference(self) -> None:
+         world_size = 2
+         pool_size = 4
+         device = torch.device("cpu")
+-        cuda_device = torch.device("cuda:0")
++        cuda_device = torch.device("npu:0")
+ 
+         # init global state is
+         # 4         8
