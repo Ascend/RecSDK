@@ -106,6 +106,39 @@ python3 -m pytest \
     ./torchrec/distributed/planner/tests/*.py \
     ./torchrec/inference/tests/test_inference.py \
     ./torchrec/inference/inference_legacy/tests/test_modules.py \
+    ./torchrec/distributed/tests/collective_utils_test.py \
+    ./torchrec/distributed/tests/test_apply_optim_per_param.py \
+    ./torchrec/distributed/tests/test_apply_optimizer_to_dense_tbe.py \
+    ./torchrec/distributed/tests/test_awaitable.py \
+    ./torchrec/distributed/tests/test_dynamic_sharding.py \
+    ./torchrec/distributed/tests/test_emb_dim_bucketer.py \
+    ./torchrec/distributed/tests/test_embedding_sharding.py \
+    ./torchrec/distributed/tests/test_embedding_types.py \
+    ./torchrec/distributed/tests/test_fp_embeddingbag_single_rank.py \
+    ./torchrec/distributed/tests/test_fp_embeddingbag.py \
+    ./torchrec/distributed/tests/test_fx_jit.py \
+    ./torchrec/distributed/tests/test_infer_hetero_shardings.py \
+    ./torchrec/distributed/tests/test_infer_utils.py \
+    ./torchrec/distributed/tests/test_init_parameters.py \
+    ./torchrec/distributed/tests/test_lazy_awaitable.py \
+    ./torchrec/distributed/tests/test_mc_embedding.py \
+    ./torchrec/distributed/tests/test_mc_embeddingbag.py \
+    ./torchrec/distributed/tests/test_model_parallel_hierarchical.py \
+    ./torchrec/distributed/tests/test_model_parallel_nccl_single_rank.py::ModelParallelStateDictTestNccl \
+    ./torchrec/distributed/tests/test_model_parallel_nccl_single_rank.py::ModelParallelSparseOnlyTestNccl \
+    ./torchrec/distributed/tests/test_model_parallel_nccl.py::ModelParallelTestNccl \
+    ./torchrec/distributed/tests/test_pt2_multiprocess.py \
+    ./torchrec/distributed/tests/test_qcomms_embedding_modules.py \
+    ./torchrec/distributed/tests/test_quant_model_parallel.py \
+    ./torchrec/distributed/tests/test_quant_sequence_model_parallel.py \
+    ./torchrec/distributed/tests/test_sequence_model_parallel_hierarchical.py \
+    ./torchrec/distributed/tests/test_sequence_model_parallel_single_rank.py \
+    ./torchrec/distributed/tests/test_sequence_model_parallel.py \
+    ./torchrec/distributed/tests/test_sharding_plan.py \
+    ./torchrec/distributed/tests/test_shards_wrapper.py \
+    ./torchrec/distributed/tests/test_tensor_pool_rw_sharding.py \
+    ./torchrec/distributed/tests/test_tensor_pool.py \
+    ./torchrec/distributed/tests/test_utils.py \
     --cov=torchrec \
     --cov-report=html:${TEST_REPORT_DIR}/coverage_html_report \
     --cov-report=xml:${TEST_REPORT_DIR}/coverage.xml \
