@@ -1,0 +1,510 @@
+diff --git a/model/__init__.py b/model/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..459061f6291d60112eb24b9b102727c7a95d8bdf
+--- /dev/null
++++ b/model/__init__.py
+@@ -0,0 +1,26 @@
++from .components import AttentionConfig, Block, CausalSelfAttention, FeedForward
++from .decision_transformer import (
++    DecisionTransformer,
++    DecisionTransformerBatch,
++    DecisionTransformerConfig,
++    DecisionTransformerInput,
++)
++from .parallel import (
++    decision_transformer_apply_fsdp2,
++    decision_transformer_apply_tp,
++    tensor_parallel_clip_grad_norm_,
++)
++
++__all__ = [
++    "AttentionConfig",
++    "Block",
++    "CausalSelfAttention",
++    "DecisionTransformer",
++    "DecisionTransformerBatch",
++    "DecisionTransformerConfig",
++    "DecisionTransformerInput",
++    "FeedForward",
++    "decision_transformer_apply_fsdp2",
++    "decision_transformer_apply_tp",
++    "tensor_parallel_clip_grad_norm_",
++]
+diff --git a/model/components.py b/model/components.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..aeb691b45806ed4c6f0a7c561e31bb13c45b605f
+--- /dev/null
++++ b/model/components.py
+@@ -0,0 +1,266 @@
++# -- coding: utf-8 --
++# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++# http://www.apache.org/licenses/LICENSE-2.0
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++# ==============================================================================
++
++from __future__ import annotations
++
++import math
++import torch
++import torch.nn.functional as F
++from dataclasses import dataclass
++
++
++@dataclass
++class AttentionConfig:
++    d_model: int = 1024
++    d_hidden: int = 4096
++    n_head: int = 1
++    attn_dropout: float = 0.1
++    resid_dropout: float = 0.1
++    n_ctx: int = 1024
++    n_layer: int = 8
++    activation_function: str = "relu"
++    attention_backend: str = "eager"
++    n_position: int = 1024
++
++    def __post_init__(self) -> None:
++        if self.d_model % self.n_head != 0:
++            raise ValueError(
++                f"d_model ({self.d_model}) must be divisible by n_head ({self.n_head})"
++            )
++        self.attention_backend = self.attention_backend.lower()
++        supported_backends = {"eager", "sdpa", "ascend"}
++        if self.attention_backend not in supported_backends:
++            raise ValueError(
++                f"unsupported attention_backend {self.attention_backend!r}; "
++                f"expected one of {sorted(supported_backends)}"
++            )
++
++
++def _create_activation(name: str) -> torch.nn.Module:
++    activations = {
++        "relu": torch.nn.ReLU,
++        "gelu": torch.nn.GELU,
++        "silu": torch.nn.SiLU,
++    }
++    normalized_name = name.lower()
++    if normalized_name not in activations:
++        raise ValueError(
++            f"unsupported activation_function {name!r}; "
++            f"expected one of {sorted(activations)}"
++        )
++    return activations[normalized_name]()
++
++
++class CausalSelfAttention(torch.nn.Module):
++    def __init__(self, config: AttentionConfig) -> None:
++        super().__init__()
++        self.n_head = config.n_head
++        self.d_model = config.d_model
++        self.n_ctx = config.n_ctx
++        self.attention_backend = config.attention_backend
++        if self.d_model % self.n_head != 0:
++            raise ValueError(
++                f"d_model {self.d_model} is not divisable by n_head {self.n_head}"
++            )
++        self.d_head = self.d_model // self.n_head
++
++        self.qkv = torch.nn.Linear(self.d_model, 3 * self.d_model)
++        self.attn_dropout = torch.nn.Dropout(config.attn_dropout)
++        self.resid_dropout = torch.nn.Dropout(config.resid_dropout)
++        self.proj = torch.nn.Linear(self.d_model, self.d_model)
++
++        self.register_buffer(
++            "bias",
++            torch.tril(torch.ones(self.n_ctx, self.n_ctx)).view(
++                1, 1, self.n_ctx, self.n_ctx
++            ),
++        )
++
++    def _eager_attention(
++        self,
++        q: torch.Tensor,
++        k: torch.Tensor,
++        v: torch.Tensor,
++        mask: torch.Tensor | None,
++    ) -> torch.Tensor:
++        seq_len = q.shape[-2]
++        attn = q @ k.transpose(-2, -1)
++        attn = attn * (1.0 / math.sqrt(self.d_head))
++
++        causal_mask = self.bias[:, :, :seq_len, :seq_len]
++        mask_value = torch.finfo(attn.dtype).min
++        attn = attn.masked_fill(causal_mask == 0, mask_value)
++
++        if mask is not None:
++            key_mask = mask[:, None, None, :]
++            attn = attn.masked_fill(key_mask == 0, mask_value)
++
++        attn = F.softmax(attn, dim=-1)
++        if mask is not None:
++            query_mask = mask[:, None, :, None].to(dtype=attn.dtype)
++            attn = attn * query_mask
++        return self.attn_dropout(attn) @ v
++
++    def _sdpa_attention(
++        self,
++        q: torch.Tensor,
++        k: torch.Tensor,
++        v: torch.Tensor,
++        mask: torch.Tensor | None,
++    ) -> torch.Tensor:
++        seq_len = q.shape[-2]
++        dropout_p = self.attn_dropout.p if self.training else 0.0
++
++        if mask is None:
++            return F.scaled_dot_product_attention(
++                q,
++                k,
++                v,
++                dropout_p=dropout_p,
++                is_causal=True,
++                scale=1.0 / math.sqrt(self.d_head),
++            )
++
++        causal_mask = self.bias[:, :, :seq_len, :seq_len].bool()
++        key_mask = mask[:, None, None, :].bool()
++        output = F.scaled_dot_product_attention(
++            q,
++            k,
++            v,
++            attn_mask=causal_mask & key_mask,
++            dropout_p=dropout_p,
++            is_causal=False,
++            scale=1.0 / math.sqrt(self.d_head),
++        )
++        query_mask = mask[:, None, :, None].to(dtype=output.dtype)
++        return output * query_mask
++
++    def _ascend_attention(
++        self,
++        q: torch.Tensor,
++        k: torch.Tensor,
++        v: torch.Tensor,
++        mask: torch.Tensor | None,
++    ) -> torch.Tensor:
++        if q.device.type != "npu":
++            raise RuntimeError(
++                "attention_backend='ascend' requires tensors on an NPU device"
++            )
++        if q.dtype not in (torch.float16, torch.bfloat16):
++            raise RuntimeError(
++                "Ascend fused attention requires float16 or bfloat16 inputs; "
++                "enable --use-bf16 for TP"
++            )
++
++        try:
++            import torch_npu  # type: ignore
++        except ImportError as error:
++            raise RuntimeError(
++                "attention_backend='ascend' requires torch_npu"
++            ) from error
++
++        seq_len = q.shape[-2]
++        local_n_head = q.shape[1]
++        causal_mask = ~self.bias[:, :, :seq_len, :seq_len].bool()
++        if mask is not None:
++            key_mask = ~mask[:, None, None, :].bool()
++            causal_mask = causal_mask | key_mask
++
++        keep_prob = 1.0 - self.attn_dropout.p if self.training else 1.0
++        output = torch_npu.npu_fusion_attention(
++            q,
++            k,
++            v,
++            local_n_head,
++            "BNSD",
++            atten_mask=causal_mask,
++            scale=1.0 / math.sqrt(self.d_head),
++            keep_prob=keep_prob,
++            sparse_mode=0,
++        )[0]
++        if mask is not None:
++            query_mask = mask[:, None, :, None].to(dtype=output.dtype)
++            output = output * query_mask
++        return output
++
++    def forward(
++        self, x: torch.Tensor, mask: torch.Tensor | None = None
++    ) -> torch.Tensor:
++        batch_size, seq_len, d_model = x.shape
++        if d_model % self.n_head != 0:
++            raise ValueError("WRONG: input d_model % n_head != 0.")
++        qkv = self.qkv(x)
++        local_qkv_width = qkv.shape[-1]
++        head_qkv_width = 3 * self.d_head
++        if local_qkv_width % head_qkv_width != 0:
++            raise RuntimeError(
++                "local QKV width must contain complete attention heads: "
++                f"{local_qkv_width} % {head_qkv_width} != 0"
++            )
++        local_n_head = local_qkv_width // head_qkv_width
++        local_width = local_n_head * self.d_head
++
++        # [B, S, N, 3, D] -> [3, B, N, S, D]. Keeping Q/K/V contiguous
++        # prevents fused attention backends from falling back because of strides.
++        # QKV rows are laid out as [n_head, 3, d_head, d_model].
++        # This head-interleaved layout lets ColwiseParallel give each rank complete local Q/K/V heads.
++        qkv: torch.Tensor = qkv.view(
++            batch_size, seq_len, local_n_head, 3, self.d_head
++        ).permute(3, 0, 2, 1, 4).contiguous()
++        q, k, v = qkv.unbind(dim=0)
++
++        if self.attention_backend == "eager":
++            x = self._eager_attention(q, k, v, mask)
++        elif self.attention_backend == "sdpa":
++            x = self._sdpa_attention(q, k, v, mask)
++        else:
++            x = self._ascend_attention(q, k, v, mask)
++
++        x = x.transpose(1, 2).contiguous().view(batch_size, seq_len, local_width)
++        x = self.resid_dropout(self.proj(x))
++        return x
++
++
++class FeedForward(torch.nn.Module):
++    def __init__(self, config: AttentionConfig) -> None:
++        super().__init__()
++        self.fc1 = torch.nn.Linear(config.d_model, config.d_hidden)
++        self.activation = _create_activation(config.activation_function)
++        self.fc2 = torch.nn.Linear(config.d_hidden, config.d_model)
++        self.dropout = torch.nn.Dropout(config.resid_dropout)
++
++    def forward(self, x: torch.Tensor) -> torch.Tensor:
++        return self.dropout(self.fc2(self.activation(self.fc1(x))))
++
++
++class Block(torch.nn.Module):
++    def __init__(self, config: AttentionConfig) -> None:
++        """Pre-LayerNorm Transformer Block"""
++        super().__init__()
++        self.d_model = config.d_model
++        self.d_hidden = config.d_hidden
++
++        self.attn = CausalSelfAttention(config=config)
++        self.mlp = FeedForward(config=config)
++
++    def forward(self, x: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
++        residual = x
++        x = torch.nn.functional.layer_norm(x, (self.d_model,))
++        attn_output = self.attn(x, attention_mask)
++
++        x = residual + attn_output
++        residual = x
++        x = torch.nn.functional.layer_norm(x, (self.d_model,))
++        mlp_output = self.mlp(x)
++
++        return residual + mlp_output
+diff --git a/model/parallel.py b/model/parallel.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..791bf4a57dccd776fc73170adeda17168ec35407
+--- /dev/null
++++ b/model/parallel.py
+@@ -0,0 +1,200 @@
++# -- coding: utf-8 --
++# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++# http://www.apache.org/licenses/LICENSE-2.0
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++# ==============================================================================
++
++from __future__ import annotations
++
++import math
++from typing import Any, TYPE_CHECKING
++
++import torch
++from torch.distributed import is_initialized
++from torch.distributed.device_mesh import DeviceMesh
++from torch.distributed.fsdp import (
++    FSDPModule,
++    MixedPrecisionPolicy,
++    fully_shard,
++)
++from torch.distributed.tensor.parallel import (
++    ColwiseParallel,
++    RowwiseParallel,
++    parallelize_module,
++)
++
++if TYPE_CHECKING:
++    from .decision_transformer import DecisionTransformer
++
++def decision_transformer_apply_ddp(
++    
++) -> Any:
++    pass
++
++def decision_transformer_apply_fsdp2(
++    model: DecisionTransformer,
++    *,
++    mesh: Any = None,
++    use_bf16: bool = False,
++) -> Any:
++    if not is_initialized():
++        raise RuntimeError(
++            "torch.distributed must be initialized before applying FSDP2"
++        )
++
++    if isinstance(model, FSDPModule):
++        return model
++    if model.optimizer is not None or model.scheduler is not None:
++        raise RuntimeError("apply FSDP2 before create_optimizer()")
++
++    mp_policy = MixedPrecisionPolicy(
++        param_dtype=torch.bfloat16 if use_bf16 else None,
++        reduce_dtype=torch.float32 if use_bf16 else None,
++        cast_forward_inputs=True,
++    )
++    fsdp_kwargs = {"mesh": mesh, "mp_policy": mp_policy}
++
++    for block in model.transformer:
++        fully_shard(block, **fsdp_kwargs)
++    fully_shard(model, **fsdp_kwargs)
++    return model
++
++
++def decision_transformer_apply_tp(
++    model: DecisionTransformer,
++    *,
++    tp_mesh: DeviceMesh,
++) -> DecisionTransformer:
++    tp_size = tp_mesh.size()
++    config = model.block_config
++
++    if config.d_model % tp_size != 0:
++        raise ValueError(f"d_model {config.d_model} must be divisible by tp_size {tp_size}")
++    if config.d_hidden % tp_size != 0:
++        raise ValueError(f"d_hidden {config.d_hidden} must be divisible by tp_size {tp_size}")
++    if config.n_head % tp_size != 0:
++        raise ValueError(f"n_head {config.n_head} must be divisible by tp_size {tp_size}")
++
++    if model.optimizer is not None:
++        raise RuntimeError(
++            "Tensor parallelism must be configured before optimizer creation; "
++            "please apply TP before instantiating the optimizer."
++        )
++
++    for block in model.transformer:
++        parallelize_module(
++            block,
++            tp_mesh,
++            {
++                "attn.qkv": ColwiseParallel(),
++                "attn.proj": RowwiseParallel(),
++                "mlp.fc1": ColwiseParallel(),
++                "mlp.fc2": RowwiseParallel(),
++            },
++        )
++    model.tensor_parallel = True
++    model.tp_mesh = tp_mesh
++    return model
++
++
++@torch.no_grad()
++def tensor_parallel_clip_grad_norm_(
++    parameters: Any,
++    max_norm: float,  # 保证所有梯度 <= max_norm
++    tp_mesh: DeviceMesh,
++    norm_type: float = 2.0,
++    error_if_nonfinite: bool = False,
++) -> torch.Tensor:
++    """Clip a mixed replicated-Tensor/sharded-DTensor TP model by global norm."""
++
++    from torch.distributed.tensor import DTensor
++
++    if tp_mesh.ndim != 1:
++        raise ValueError(
++            f"TP gradient clipping requires a 1-D mesh, got {tp_mesh.ndim}-D"
++        )
++
++    parameters = list(parameters)
++    gradients = [parameter.grad for parameter in parameters if parameter.grad is not None]
++    if not gradients:
++        return torch.tensor(0.0)
++
++    max_norm = float(max_norm)
++    norm_type = float(norm_type)
++    if max_norm < 0:
++        raise ValueError(f"max_norm must be non-negative, got {max_norm}")
++    if norm_type <= 0:
++        raise ValueError(f"norm_type must be positive, got {norm_type}")
++
++    first_gradient = gradients[0]
++    first_local_gradient = (
++        first_gradient.to_local()
++        if isinstance(first_gradient, DTensor)
++        else first_gradient
++    )
++    accumulator_device = first_local_gradient.device
++
++    replicated_norm = torch.zeros((), dtype=torch.float32, device=accumulator_device)
++    sharded_norm = torch.zeros((), dtype=torch.float32, device=accumulator_device)
++    infinity_norm = math.isinf(norm_type)
++
++    local_gradients = []
++    for gradient in gradients:
++        is_sharded = False
++        if isinstance(gradient, DTensor):
++            if gradient.device_mesh != tp_mesh:
++                raise ValueError("gradient DTensor uses a different device mesh")
++            if any(placement.is_partial() for placement in gradient.placements):
++                raise RuntimeError(
++                    "TP gradient clipping does not accept Partial DTensor gradients"
++                )
++            is_sharded = any(placement.is_shard() for placement in gradient.placements)
++            local_gradient = gradient.to_local()
++        else:
++            local_gradient = gradient
++
++        local_gradients.append(local_gradient)
++        gradient_float = local_gradient.detach().float()
++        if infinity_norm:
++            contribution = gradient_float.abs().max()
++            if is_sharded:
++                sharded_norm = torch.maximum(sharded_norm, contribution)
++            else:
++                replicated_norm = torch.maximum(replicated_norm, contribution)
++        else:
++            contribution = gradient_float.abs().pow(norm_type).sum()
++            if is_sharded:
++                sharded_norm += contribution
++            else:
++                replicated_norm += contribution
++
++    reduce_op = (
++        torch.distributed.ReduceOp.MAX
++        if infinity_norm
++        else torch.distributed.ReduceOp.SUM
++    )
++    torch.distributed.all_reduce(sharded_norm, op=reduce_op, group=tp_mesh.get_group())
++
++    if infinity_norm:
++        total_norm = torch.maximum(replicated_norm, sharded_norm)
++    else:
++        total_norm = (replicated_norm + sharded_norm).pow(1.0 / norm_type)
++
++    if error_if_nonfinite and not torch.isfinite(total_norm):
++        raise RuntimeError(
++            f"the total gradient norm is non-finite: {total_norm.item()}"
++        )
++
++    clip_coefficient = max_norm / (total_norm + 1e-6)
++    clip_coefficient = clip_coefficient.clamp(max=1.0)
++    for local_gradient in local_gradients:
++        local_gradient.mul_(clip_coefficient.to(device=local_gradient.device))
++
++    return total_norm
