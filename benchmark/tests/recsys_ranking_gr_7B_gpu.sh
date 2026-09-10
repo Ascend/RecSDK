@@ -16,48 +16,13 @@
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 export HCCL_BUFFSIZE=128
-export MULTI_STREAM_MEMORY_RUSE=2
 
 RECSYS_DIR=$(realpath ../)
 HSTU_DIR=$RECSYS_DIR/hstu
 # 根据实际情况设置python引用路径
 MEGATRON_DIR=$RECSYS_DIR/../../Megatron-LM/
 MINDSPEED_DIR=$RECSYS_DIR/../../MindSpeed/
-export PYTHONPATH=${PYTHONPATH}:${RECSYS_DIR}:${HSTU_DIR}:${MEGATRON_DIR}:${MINDSPEED_DIR}
-
-#---------------------------------------------
-# speedup
-#---------------------------------------------
-export TASK_QUEUE_ENABLE=2
-
-# 根据实际情况修改
-export NNODES=1
-export NODE_RANK=0
-export MASTER_ADDR=127.0.0.1  # 需要修改为节点的真实ip
-export MASTER_PORT=6000
-NPROC_PER_NODE=8
-export WORLD_SIZE=$(($NPROC_PER_NODE * $NNODES))
-export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-
-# cpu-binding
-NPU_NUM=${NPROC_PER_NODE}
-CPU_CORES=$(nproc --all)
-if [ "$NPU_NUM" -eq 0 ]; then
-  echo "NPU_NUM is 0, exit"
-  exit 1
-fi
-CORES_PER_NPU=$((CPU_CORES / NPU_NUM))
-CPU_AFFINITY_CONF_TMP=1
-if [ "$NPU_NUM" -gt 0 ]; then
-  for (( i=0; i<NPU_NUM; i++)); do
-    start_core=$(( i * CORES_PER_NPU))
-    end_core=$((start_core + CORES_PER_NPU -1))
-    CPU_AFFINITY_CONF_TMP+=",npu${i}:${start_core}-${end_core}"
-  done
-fi
-export CPU_AFFINITY_CONF=$CPU_AFFINITY_CONF_TMP
-echo "CPU_AFFINITY_CONF="$CPU_AFFINITY_CONF
-
+export PYTHONPATH=${PYTHONPATH}:${RECSYS_DIR}:${HSTU_DIR}:${MEGATRON_DIR}
 
 #---------------------------------------------
 # prof related
@@ -70,7 +35,12 @@ export MODEL_PROFILING_FLAG=0
 py_file=./training/pretrain_gr_ranking.py
 config_file=./training/configs_extra/ranking_gr_7B.gin
 
+# 根据实际情况修改
+export WORLD_SIZE=8
+export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+
 export USE_FSDP2=1
+export FSDP2_CONFIG_PATH=${PWD}/configs/7B_gpu_fsdp2_config.yaml
 MICRO_BATCH_SIZE=12
 GLOBAL_BATCH_SIZE=$((WORLD_SIZE * MICRO_BATCH_SIZE))
 export CUDA_DEVICE_MAX_CONNECTIONS=8
@@ -81,7 +51,7 @@ GPT_ARGS="
   --seq-length 200 \
   --max-position-embeddings 200 \
   --use-torch-fsdp2 \
-  --fsdp2-config-path ${HSTU_DIR}/configs/7B_fsdp2_config.yaml \
+  --fsdp2-config-path ${HSTU_DIR}/configs/7B_gpu_fsdp2_config.yaml \
   --no-gradient-accumulation-fusion \
   --untie-embeddings-and-output-weights \
   --micro-batch-size ${MICRO_BATCH_SIZE} \
@@ -89,11 +59,9 @@ GPT_ARGS="
   "
 
 torchrun \
-    --nnodes=${NNODES} \
-    --node_rank=${NODE_RANK} \
-    --nproc_per_node ${NPROC_PER_NODE} \
-    --master_addr=${MASTER_ADDR} \
-    --master_port=${MASTER_PORT} \
+    --nproc_per_node ${WORLD_SIZE} \
+    --master_addr localhost \
+    --master_port 6000 \
     ${py_file} \
     --gin-config-file ${config_file} \
     ${GPT_ARGS} \
