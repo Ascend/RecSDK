@@ -25,7 +25,6 @@
 
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import fields
 from inspect import signature
 from typing import Any, Dict, List, Optional, Tuple, Type
 
@@ -110,13 +109,18 @@ class TorchRecVersionAdapter(ABC):
                     virtual_table_eviction_policy, enable_embedding_update
         - 未来版本新增字段自动兼容
         """
-        supported = {f.name for f in fields(EmbeddingTableConfig)}
-        unsupported = set(kwargs.keys()) - supported
-        if unsupported:
-            logger.debug(
-                "make_embedding_table_config: unsupported parameters %s are ignored",
-                sorted(unsupported),
-            )
+        if EmbeddingTableConfig not in _TYPE_PARAMS_CACHE:
+            _TYPE_PARAMS_CACHE[EmbeddingTableConfig] = set(signature(EmbeddingTableConfig.__init__).parameters) - {
+                "self"
+            }
+        supported = _TYPE_PARAMS_CACHE[EmbeddingTableConfig]
+        if logger.isEnabledFor(logging.DEBUG):
+            unsupported = set(kwargs) - supported
+            if unsupported:
+                logger.debug(
+                    "make_embedding_table_config: unsupported parameters %s are ignored",
+                    sorted(unsupported),
+                )
         return EmbeddingTableConfig(**{k: v for k, v in kwargs.items() if k in supported})
 
     @staticmethod
@@ -130,13 +134,14 @@ class TorchRecVersionAdapter(ABC):
         if awaitable_type not in _TYPE_PARAMS_CACHE:
             _TYPE_PARAMS_CACHE[awaitable_type] = set(signature(awaitable_type.__init__).parameters) - {"self"}
         supported = _TYPE_PARAMS_CACHE[awaitable_type]
-        unsupported = set(kwargs.keys()) - supported
-        if unsupported:
-            logger.debug(
-                "make_awaitable(%s): unsupported parameters %s are ignored",
-                awaitable_type.__name__,
-                sorted(unsupported),
-            )
+        if logger.isEnabledFor(logging.DEBUG):
+            unsupported = set(kwargs) - supported
+            if unsupported:
+                logger.debug(
+                    "make_awaitable(%s): unsupported parameters %s are ignored",
+                    awaitable_type.__name__,
+                    sorted(unsupported),
+                )
         return awaitable_type(**{k: v for k, v in kwargs.items() if k in supported})
 
     def make_kjt_list_splits_awaitable(
@@ -171,12 +176,13 @@ class TorchRecVersionAdapter(ABC):
                 "self"
             }
         supported = _TYPE_PARAMS_CACHE[RwSparseFeaturesDist]
-        unsupported = set(kwargs.keys()) - supported
-        if unsupported:
-            logger.debug(
-                "filter_rw_sparse_features_dist_kwargs: unsupported parameters %s are ignored",
-                sorted(unsupported),
-            )
+        if logger.isEnabledFor(logging.DEBUG):
+            unsupported = set(kwargs) - supported
+            if unsupported:
+                logger.debug(
+                    "filter_rw_sparse_features_dist_kwargs: unsupported parameters %s are ignored",
+                    sorted(unsupported),
+                )
         return {k: v for k, v in kwargs.items() if k in supported}
 
     @staticmethod

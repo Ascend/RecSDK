@@ -116,8 +116,8 @@ RUN mkdir -p ~/.pip && touch ~/.pip/pip.conf && \
 RUN pip3 install --quiet pip==25.0.1 wheel "setuptools<70.0.0"
 
 # 10.下载 RecSDK 包 → 创建 venv → 安装 → 清理（全部在同一层，避免中间层占用空间）
-# 流程：按架构下载7个包 → 创建5个venv(torch_v1_pt2.6.0/torch_v1_pt2.7.1/torch_v1_pt2.10.0/torch_v2_pt2.7.1/torch_v2_pt2.10.0) → 清理
-# 5个venv分别对应不同PyTorch版本和RecSDK版本组合，fbgemm_ascend和rec_ops安装在pt2.7.1及以上的venv中
+# 流程：按架构下载7个包 → 创建4个venv(torch_v1_pt2.7.1/torch_v1_pt2.10.0/torch_v2_pt2.7.1/torch_v2_pt2.10.0) → 清理
+# 4个venv分别对应不同PyTorch版本和RecSDK版本组合，fbgemm_ascend和rec_ops安装在pt2.7.1及以上的venv中
 RUN ARCH=$(uname -m) && \
     # === 1. 按架构下载RecSDK包 ===
     if [ "$ARCH" = "x86_64" ]; then \

@@ -45,15 +45,7 @@ echo "Copied: _setup_common.py"
 
 # 1. 准备开源依赖 (opensource)
 OPENSOURCE_DIR="../../../../../opensource"
-if [ ! -d "$OPENSOURCE_DIR" ]; then
-    echo "Downloading opensource dependencies to $OPENSOURCE_DIR ..."
-    mkdir -p "$OPENSOURCE_DIR"
-    wget -q https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip -O "$OPENSOURCE_DIR/pybind11-2.10.3.zip" || { echo "Error: Failed to download pybind11-2.10.3.zip"; exit 1; }
-    wget -q https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip -O "$OPENSOURCE_DIR/huaweicloud-sdk-c-obs-3.23.9.zip" || { echo "Error: Failed to download huaweicloud-sdk-c-obs-3.23.9.zip"; exit 1; }
-    echo "Successfully downloaded opensource dependencies."
-else
-    echo "Opensource dependencies found in $OPENSOURCE_DIR."
-fi
+echo "torch_rec_v1 doesn't need to download dependencies. Skip this step."
 
 # 2. 编译 SDK Python 包
 echo "Start compiling TorchRec SDK..."
