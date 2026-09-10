@@ -884,7 +884,7 @@ index e1b42b7..0f51778 100644
              while k < args.nepochs:
                  if args.mlperf_logging:
                      mlperf_logger.barrier()
-@@ -1535,10 +1700,20 @@ def run():
+@@ -1535,10 +1700,21 @@ def run():
                  if k < skip_upto_epoch:
                      continue
  
@@ -904,12 +904,13 @@ index e1b42b7..0f51778 100644
 +                    if nbatches > 0 and j >= nbatches:
 +                        break
 +                    if args.enable_profiling:
++                        synchronize_device(device)
 +                        prof.step()
 +                    inputBatch = next(train_iter)
                      if j == 0 and args.save_onnx:
                          X_onnx, lS_o_onnx, lS_i_onnx, _, _, _ = unpack_batch(inputBatch)
  
-@@ -1547,20 +1722,6 @@ def run():
+@@ -1547,20 +1723,6 @@ def run():
  
                      X, lS_o, lS_i, T, W, CBPP = unpack_batch(inputBatch)
  
@@ -930,7 +931,7 @@ index e1b42b7..0f51778 100644
                      # Skip the batch if batch size not multiple of total ranks
                      if ext_dist.my_size > 1 and X.size(0) % ext_dist.my_size != 0:
                          print(
-@@ -1570,34 +1731,37 @@ def run():
+@@ -1570,34 +1732,37 @@ def run():
                          continue
  
                      mbs = T.shape[0]  # = args.mini_batch_size except maybe for last
@@ -975,7 +976,7 @@ index e1b42b7..0f51778 100644
                      # mbs = T.shape[0]  # = args.mini_batch_size except maybe for last
                      # A = np.sum((np.round(S, 0) == T).astype(np.uint8))
  
-@@ -1608,7 +1772,7 @@ def run():
+@@ -1608,7 +1773,7 @@ def run():
                              args.mlperf_logging
                              and (j + 1) % args.mlperf_grad_accum_iter == 0
                          ) or not args.mlperf_logging:
@@ -984,7 +985,7 @@ index e1b42b7..0f51778 100644
                          # backward pass
                          E.backward()
  
-@@ -1620,19 +1784,18 @@ def run():
+@@ -1620,19 +1785,18 @@ def run():
                              optimizer.step()
                              lr_scheduler.step()
  
@@ -1012,7 +1013,7 @@ index e1b42b7..0f51778 100644
                      should_test = (
                          (args.test_freq > 0)
                          and (args.data_generation in ["dataset", "random"])
-@@ -1641,11 +1804,16 @@ def run():
+@@ -1641,11 +1805,16 @@ def run():
  
                      # print time, loss and accuracy
                      if should_print or should_test:
@@ -1033,7 +1034,7 @@ index e1b42b7..0f51778 100644
  
                          str_run_type = (
                              "inference" if args.inference_only else "training"
-@@ -1656,10 +1824,9 @@ def run():
+@@ -1656,10 +1825,9 @@ def run():
                              wall_time = " ({})".format(time.strftime("%H:%M"))
  
                          print(
@@ -1046,7 +1047,7 @@ index e1b42b7..0f51778 100644
                              + wall_time,
                              flush=True,
                          )
-@@ -1670,6 +1837,9 @@ def run():
+@@ -1670,6 +1838,9 @@ def run():
                          total_iter = 0
                          total_samp = 0
  
@@ -1056,7 +1057,7 @@ index e1b42b7..0f51778 100644
                      # testing
                      if should_test:
                          epoch_num_float = (j + 1) / len(train_ld) + k + 1
-@@ -1683,8 +1853,6 @@ def run():
+@@ -1683,8 +1854,6 @@ def run():
                              )
  
                          # don't measure training iter time in a test iteration
@@ -1065,7 +1066,7 @@ index e1b42b7..0f51778 100644
                          print(
                              "Testing at - {}/{} of epoch {},".format(j + 1, nbatches, k)
                          )
-@@ -1695,7 +1863,7 @@ def run():
+@@ -1695,7 +1864,7 @@ def run():
                              best_auc_test,
                              test_ld,
                              device,
@@ -1074,7 +1075,7 @@ index e1b42b7..0f51778 100644
                              log_iter,
                          )
  
-@@ -1707,7 +1875,9 @@ def run():
+@@ -1707,7 +1876,9 @@ def run():
                              model_metrics_dict["epoch"] = k
                              model_metrics_dict["iter"] = j + 1
                              model_metrics_dict["train_loss"] = train_loss
@@ -1085,7 +1086,7 @@ index e1b42b7..0f51778 100644
                              model_metrics_dict["opt_state_dict"] = (
                                  optimizer.state_dict()
                              )
-@@ -1788,22 +1958,12 @@ def run():
+@@ -1788,22 +1959,12 @@ def run():
                  best_auc_test,
                  test_ld,
                  device,
@@ -1110,7 +1111,7 @@ index e1b42b7..0f51778 100644
  
      # plot compute graph
      if args.plot_compute_graph:
-@@ -1895,14 +2055,37 @@ def run():
+@@ -1895,14 +2056,37 @@ def run():
              input_names=all_inputs,
              output_names=["pred"],
              dynamic_axes=dynamic_axes,
