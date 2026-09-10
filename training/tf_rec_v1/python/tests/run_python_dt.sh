@@ -39,8 +39,14 @@ cp -f "$TOP_PATH"/training/common/src/build/pybind/*.so ./libasc
 cp -f "$TOP_PATH"/cust_op/framework/tf_plugin/build/src/*.so ./libasc
 cd -
 
+# Make the pure-Python packages importable without a pre-installed wheel.
+# mx_rec ships as tf_rec_v1/python and rec_sdk_common as common/python (see their
+# setup.py which copies "python" to the package name), so alias them in-tree.
+ln -sfn python "$TOP_PATH"/training/tf_rec_v1/mx_rec
+ln -sfn python "$TOP_PATH"/training/common/rec_sdk_common
+
 # set environment variable
-export PYTHONPATH="${TOP_PATH}"/training/tf_rec_v1/src/libasc:"${TOP_PATH}":$PYTHONPATH
+export PYTHONPATH="${TOP_PATH}"/training/tf_rec_v1:"${TOP_PATH}"/training/common:"${TOP_PATH}"/training/tf_rec_v1/src/libasc:"${TOP_PATH}":$PYTHONPATH
 export LD_LIBRARY_PATH="${TOP_PATH}"/training/tf_rec_v1/src/libasc:/usr/local/lib:$LD_LIBRARY_PATH
 
 rm -rf result
@@ -64,5 +70,7 @@ echo "*************************************  End  Rec SDK LLT Test *************
 echo "LLT running take: $(expr "${end}" - "${start}") seconds"
 
 rm -rf "$TOP_PATH"/training/tf_rec_v1/src/libasc
+rm -f "$TOP_PATH"/training/tf_rec_v1/mx_rec
+rm -f "$TOP_PATH"/training/common/rec_sdk_common
 
 exit "${ret}"

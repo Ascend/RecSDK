@@ -89,6 +89,23 @@ function compile_securec()
     fi
 }
 
+# Wrapper for parallel compile so we can capture PID and exit code.
+# Args: <log-tag> <bash command...>
+function _parallel_compile()
+{
+    local tag="$1"; shift
+    local log="/tmp/build_tf1_${tag}_$$.log"
+    echo "=== [$tag] start (pid=$$) ==="
+    "$@" >"$log" 2>&1
+    local rc=$?
+    echo "=== [$tag] done rc=$rc log=$log ==="
+    if [ $rc -ne 0 ]; then
+        echo "---- [$tag] tail of log ----"
+        tail -n 50 "$log" || true
+    fi
+    return $rc
+}
+
 function compile_recsdk_tf_npu_ops_tf_plugin_so_file()
 {
   cd "${cust_op_tf_plugin_path}"
@@ -149,13 +166,32 @@ function collect_so_file()
 # start to build Rec SDK
 echo "----------------          compile     securec           ----------------"
 compile_securec
-echo "----------------          compile common so files       ----------------"
-compile_common_so_file
-echo "----------------          compile     AccCTR            ----------------"
-compile_acc_ctr_so_file
-echo "----------------          compile MxRec so files        ----------------"
-compile_recsdk_tf_npu_ops_tf_plugin_so_file "${tf1_path}"
-compile_tf_rec_v1_so_file "${tf1_path}"
+
+# Run the 4 independent C++ module builds in parallel.
+echo "----------------          compile C++ modules in parallel ----------------"
+T_PAR_START=$(date +%s)
+_parallel_compile common    compile_common_so_file &
+PID_COMMON=$!
+_parallel_compile accctr    compile_acc_ctr_so_file &
+PID_ACCTR=$!
+_parallel_compile tfplugin  compile_recsdk_tf_npu_ops_tf_plugin_so_file "${tf1_path}" &
+PID_PLUGIN=$!
+_parallel_compile tfrec     compile_tf_rec_v1_so_file "${tf1_path}" &
+PID_TFREC=$!
+
+# Wait for all 4 and capture exit codes; first non-zero aborts the pipeline.
+RC_COMMON=0; RC_ACCTR=0; RC_PLUGIN=0; RC_TFREC=0
+wait $PID_COMMON || RC_COMMON=$?
+wait $PID_ACCTR  || RC_ACCTR=$?
+wait $PID_PLUGIN || RC_PLUGIN=$?
+wait $PID_TFREC  || RC_TFREC=$?
+T_PAR_END=$(date +%s)
+echo "---------------- parallel C++ builds done in $((T_PAR_END - T_PAR_START))s ----------------"
+echo "  common=$RC_COMMON accctr=$RC_ACCTR tfplugin=$RC_PLUGIN tfrec=$RC_TFREC"
+if [ $RC_COMMON -ne 0 ] || [ $RC_ACCTR -ne 0 ] || [ $RC_PLUGIN -ne 0 ] || [ $RC_TFREC -ne 0 ]; then
+    echo "ERROR: one or more parallel builds failed"
+    exit 1
+fi
 echo "---------------- collect so files and mv them to libasc ----------------"
 collect_so_file
 echo "----------------        compile MxRec success!!!!       ----------------"

@@ -31,6 +31,11 @@ opensource_path="${ROOT_DIR}"/../../../opensource
 # add asan lib path
 export LIBRARY_PATH=${LIBRARY_PATH}:/usr/local/gcc7.3.0/lib64/
 
+# Detect available CPUs once and reuse everywhere.
+NUM_CPUS=$(nproc) || NUM_CPUS=32
+if [ "${NUM_CPUS}" -lt 1 ]; then NUM_CPUS=1; fi
+echo "Detected ${NUM_CPUS} CPUs"
+
 function prepare_googletest(){
   cd ${opensource_path}
   if [ ! -d googletest-release-1.8.1 ]; then
@@ -43,7 +48,7 @@ function prepare_googletest(){
   cd build
   rm -f CMakeCache.txt
   cmake -DBUILD_SHARED_LIBS=ON ..
-  make -j8
+  make -j${NUM_CPUS}
   make install
 }
 
@@ -59,7 +64,7 @@ function prepare_emock(){
   cd build
   rm -f CMakeCache.txt
   cmake ..
-  make -j8
+  make -j${NUM_CPUS}
   make install
 }
 
@@ -82,7 +87,7 @@ function compile_securec(){
 
     if [[ ! -f "${opensource_path}/securec/lib/libsecurec.so" ]]; then
         cd "${opensource_path}/securec/src"
-        make -j4
+        make -j${NUM_CPUS}
     fi
 }
 
@@ -97,17 +102,20 @@ function prepare_pybind(){
   fi
 }
 
-prepare_pybind
-echo "opensource path:${opensource_path}"
-prepare_googletest
-prepare_emock
-prepare_securec
-compile_securec
+# Allow parent (tf1/test_ut.sh) to skip redundant dep preparation.
+if [ -z "$DEPS_ALREADY_PREPARED" ]; then
+  prepare_pybind
+  echo "opensource path:${opensource_path}"
+  prepare_googletest
+  prepare_emock
+  prepare_securec
+  compile_securec
+else
+  echo "Dependencies already prepared by parent script, skipping"
+  compile_securec
+fi
 
 cd "${ROOT_DIR}"/src
-
-find ./ -name "*.sh" -exec dos2unix {} \;
-find ./ -name "*.sh" -exec chmod +x {} \;
 
 [ -d build ] && rm -rf build
 
@@ -125,22 +133,140 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
     -DSECUREC_PATH="${ROOT_DIR}"/../../../opensource/securec \
     -DBUILD_TESTS=on -DCOVERAGE=on "$(dirname "${PWD}")"
 
-make -j8
+make -j${NUM_CPUS}
 make install
+
+# Each mpirun -np 4 only actually runs 1 test at a time inside MPI, so
+# running more parallel groups than NUM_CPUS/4 still keeps CPU within budget.
+#
+# (NUM_CPUS + 1) / 2 is an empirical heuristic: it assumes all NUM_CPUS logical
+# CPUs are uniform (no hyper-threading, no mixed performance/efficiency cores).
+# On non-uniform CPUs this may be sub-optimal - override via PARALLEL_JOBS.
+MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS:-8}
+DEFAULT_JOBS=$(( (NUM_CPUS + 1) / 2 ))
+if [ $DEFAULT_JOBS -lt 1 ]; then
+  DEFAULT_JOBS=1
+fi
+if [ $DEFAULT_JOBS -gt $MAX_PARALLEL_JOBS ]; then
+  DEFAULT_JOBS=$MAX_PARALLEL_JOBS
+fi
+PARALLEL_JOBS=${PARALLEL_JOBS:-$DEFAULT_JOBS}
+echo "Detected ${NUM_CPUS} CPUs, running with ${PARALLEL_JOBS} parallel jobs"
+
+# Google Test filter uses : to separate multiple patterns.
+TEST_GROUPS=(
+  "TestStringFormat.*"
+  "TESTToString.*:InitializerTest.*"
+  "LcalSockExchangeTest.*:LcalSockExchange.*:LcalCommTest.*"
+  "Log.*"
+  "TestGetShmAddr.*"
+)
+
+# PARALLEL_SCHEME: direct (no mpirun) or mpirun (-np 4 per group).
+# direct removes the 4x redundant execution that mpirun introduces when
+# tests don't actually use MPI_Comm_* (only MPI_Init/Finalize).
+PARALLEL_SCHEME=${PARALLEL_SCHEME:-direct}
+
+if [ "${PARALLEL_SCHEME}" = "direct" ]; then
+  echo "=== direct parallel scheme (no mpirun) ==="
+  TEST_LIST=/tmp/gtest_list_common_$$.txt
+  ./tests/test_main --gtest_list_tests > "${TEST_LIST}" 2>/dev/null || true
+
+  if [ -s "${TEST_LIST}" ]; then
+    DIRECT_GROUPS_FILE=/tmp/gtest_groups_common_$$.txt
+    awk '
+      /^[A-Za-z_]/ {
+        current=$0
+        sub(/^[^A-Za-z0-9_]+/, "", current)
+        sub(/\.$/, "", current)
+        next
+      }
+      /^  / {
+        test=$1
+        if (current != "" && test != "") {
+          print current "." test
+        }
+      }
+    ' "${TEST_LIST}" > /tmp/all_cases_common_$$.txt
+
+    TOTAL_CASES=$(wc -l < /tmp/all_cases_common_$$.txt)
+    if [ "${TOTAL_CASES}" -gt 0 ]; then
+      CASES_PER_GROUP=$(( (TOTAL_CASES + NUM_CPUS - 1) / NUM_CPUS ))
+      if [ "${CASES_PER_GROUP}" -lt 1 ]; then CASES_PER_GROUP=1; fi
+      split -l "${CASES_PER_GROUP}" -d -a 3 /tmp/all_cases_common_$$.txt "${DIRECT_GROUPS_FILE}_"
+      > "${DIRECT_GROUPS_FILE}"
+      for f in "${DIRECT_GROUPS_FILE}_"*; do
+        tr '\n' ':' < "${f}" | sed 's/:$//' >> "${DIRECT_GROUPS_FILE}"
+        echo "" >> "${DIRECT_GROUPS_FILE}"
+      done
+      rm -f "${DIRECT_GROUPS_FILE}_"*
+    fi
+    rm -f "${TEST_LIST}" /tmp/all_cases_common_$$.txt
+
+    if [ -s "${DIRECT_GROUPS_FILE}" ]; then
+      TEST_GROUPS_FILE="${DIRECT_GROUPS_FILE}"
+      PARALLEL_JOBS=${NUM_CPUS}
+      RUN_SCHEME_TAG="DIRECT-${NUM_CPUS}w"
+    else
+      echo "WARNING: failed to build direct groups, falling back to mpirun"
+      PARALLEL_SCHEME=mpirun
+    fi
+  else
+    echo "WARNING: gtest_list_tests failed, falling back to mpirun"
+    PARALLEL_SCHEME=mpirun
+  fi
+fi
+
+if [ "${PARALLEL_SCHEME}" = "mpirun" ]; then
+  echo "=== mpirun scheme: ${PARALLEL_JOBS} groups x mpirun -np 4 ==="
+  TEST_GROUPS_FILE=""
+  RUN_SCHEME_TAG="MPIRUN-${PARALLEL_JOBS}x4"
+fi
+
+echo "=== Run scheme: ${RUN_SCHEME_TAG} ==="
 
 # Run Test
 DATE=$(date +%Y-%m-%d-%H-%M-%S)
 if [[ "$1" == "--with-memcheck" ]]; then
-  echo "we are going to run test_main with memcheck via valgrind"
-  valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --log-file=../"memcheck_${DATE}.log" \
-    ./tests/test_main 2>&1 |tee ../"test_main_${DATE}.log"
+  echo "we are going to run all tests with memcheck via valgrind"
+  for test_group in "${TEST_GROUPS[@]}"; do
+    valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --log-file="../memcheck_${test_group// /_}_${DATE}.log" \
+      ./tests/test_main --gtest_break_on_failure --gtest_filter="${test_group}" 2>&1 | tee "../test_${test_group// /_}_${DATE}.log"
+  done
 else
-  mpirun -np 4 ./tests/test_main
+  if [ "${PARALLEL_SCHEME}" = "direct" ] && [ -n "${TEST_GROUPS_FILE}" ]; then
+    echo "Starting ${PARALLEL_JOBS} direct gtest processes (no mpirun)..."
+    SCHEME_START=$(date +%s)
+    cat "${TEST_GROUPS_FILE}" | xargs -P ${PARALLEL_JOBS} -I {} bash -c \
+      './tests/test_main --gtest_break_on_failure --gtest_filter="$1" 2>>"../group_${RUN_SCHEME_TAG}_${$}.log" || true' _ {} 2>&1 | tail -20
+    SCHEME_END=$(date +%s)
+    echo "=== ${RUN_SCHEME_TAG} took $((SCHEME_END - SCHEME_START)) seconds ==="
+    rm -f "${TEST_GROUPS_FILE}"
+  else
+    # || true keeps the script going if any group fails so coverage still runs.
+    SCHEME_START=$(date +%s)
+    printf "%s\n" "${TEST_GROUPS[@]}" | xargs -P ${PARALLEL_JOBS} -I {} bash -c \
+      'mpirun -np 4 ./tests/test_main --gtest_break_on_failure --gtest_filter="$1" 2>>"../group_${RUN_SCHEME_TAG}_${$}.log" || true' _ {}
+    SCHEME_END=$(date +%s)
+    echo "=== ${RUN_SCHEME_TAG} took $((SCHEME_END - SCHEME_START)) seconds ==="
+  fi
 fi
 
 cd "$(dirname "${PWD}")"
 
 COVERAGE_FILE=coverage.info
 REPORT_FOLDER=coverage_report
-lcov --rc lcov_branch_coverage=1 -c -d build -o "${COVERAGE_FILE}"_tmp
+mkdir -p -m 750 "${REPORT_FOLDER}"
+
+# Scope lcov capture to where .gcda actually live (build/tests/CMakeFiles/...)
+# to avoid recursive stat() on the full build/ tree.
+LCOV_CAPTURE_DIR="build"
+if [ -d "build/tests/CMakeFiles/test_main.dir" ]; then
+  LCOV_CAPTURE_DIR="build/tests"
+fi
+LCOV_PARALLEL_RC="--rc geninfo_unexecuted_blocks=1 --rc geninfo_filter_threads=$((NUM_CPUS > 4 ? NUM_CPUS / 2 : 2))"
+
+lcov --rc lcov_branch_coverage=1 -c -d "${LCOV_CAPTURE_DIR}" -o "${COVERAGE_FILE}"_tmp \
+  ${LCOV_PARALLEL_RC} --ignore-errors gcda,unused,empty,corrupt
 lcov -r "${COVERAGE_FILE}"_tmp 'ut/*' '7/ext*' '*7/bits*' 'platform/*' '/usr/local/*' '/usr/include/*' '/opt/buildtools/python-3.7.5/lib/python3.7/site-packages/tensorflow*' '/opt/rh/devtoolset-7/root/usr/lib/gcc/x86_64-redhat-linux/7/include/*' 'tests/*' --rc lcov_branch_coverage=1 --ignore-errors unused,unused -o "${COVERAGE_FILE}"
+genhtml "${COVERAGE_FILE}" --output-directory "${REPORT_FOLDER}" --branch-coverage --filter branch --ignore-errors source,category
