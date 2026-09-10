@@ -850,8 +850,10 @@ public:
                                                                     GetNumTarget(batchId),
                                                                     this->targetGroupSize,
                                                                     1};
+                // 跳过无需计算的 block：NoComputation（无需 mask）或 IsTargetEmptyBlock（下三角 target 空白区被挖空）
                 if (IfMask(maskType, MaskType::MASK_TRIL) &&
-                    this->blockMaskParams[taskId % COMPUTE_PIPE_NUM].NoComputation()) {
+                    (this->blockMaskParams[taskId % COMPUTE_PIPE_NUM].NoComputation() ||
+                     this->blockMaskParams[taskId % COMPUTE_PIPE_NUM].IsTargetEmptyBlock())) {
                     continue;
                 }
 
@@ -913,8 +915,10 @@ public:
                                                                     GetNumTarget(batchId),
                                                                     this->targetGroupSize,
                                                                     1};
+                // 跳过无需计算的 block：NoComputation（无需 mask）或 IsTargetEmptyBlock（下三角 target 空白区被挖空）
                 if (IfMask(maskType, MaskType::MASK_TRIL) &&
-                    this->blockMaskParams[taskId % COMPUTE_PIPE_NUM].NoComputation()) {
+                    (this->blockMaskParams[taskId % COMPUTE_PIPE_NUM].NoComputation() ||
+                     this->blockMaskParams[taskId % COMPUTE_PIPE_NUM].IsTargetEmptyBlock())) {
                     continue;
                 }
 
@@ -1105,12 +1109,12 @@ public:
                    matmul::MatmulCallBackFunc<nullptr, CopyKGradA1<qType>, CopyVGradB1<qType>>>
         kGradMatmul;
 
-    matmul::Matmul<matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true,
-                   LayoutMode::NONE, false, TPosition::VECOUT>,
-                   matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
-                   matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
-                   matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>, CFG_NORM,
-                   matmul::MatmulCallBackFunc<nullptr, nullptr, CopyVGradB1<qType>>>
+    matmul::Matmul<
+        matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, true, LayoutMode::NONE, false, TPosition::VECOUT>,
+        matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType, false>,
+        matmul::MatmulType<TPosition::GM, CubeFormat::ND, float, false>,
+        matmul::MatmulType<TPosition::GM, CubeFormat::ND, qType>, CFG_NORM,
+        matmul::MatmulCallBackFunc<nullptr, nullptr, CopyVGradB1<qType>>>
         vGradMatmul;
 };
 }  // namespace HstuDenseBackward

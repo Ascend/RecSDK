@@ -34,7 +34,7 @@ enum class CausalMaskT {
     MASK_TRIL = 0,  // 下三角
     MASK_TRIU,      // 上三角
     MASK_NONE,      // 不使能mask
-    MASK_CUSTOM    // 用户自定义mask
+    MASK_CUSTOM     // 用户自定义mask
 };
 
 struct BlockMaskParams {
@@ -71,6 +71,30 @@ struct BlockMaskParams {
         return !NeedCausalMask(false) && !NeedContextMask();
     }
 
+    // 判断该 block 是否整体落在下三角 causal 下 target group 左上角的空白矩形内。
+    // 这些位置被 GenTargetMask 挖空（恒为掩码值 0），backward 中对应梯度贡献为 0，整 block 可安全跳过。
+    // 坐标从头计数（qSeqId/kSeqId 起点=0），q/k 的 target 起点分别在 seqlenQ-numTarget / seqlenK-numTarget。
+    __aicore__ inline bool IsTargetEmptyBlock()
+    {
+        if (numTarget > 0 && targetGroupSize > 0) {
+            const int64_t tbaseQ = static_cast<int64_t>(seqlenQ) - numTarget;
+            const int64_t tbaseK = static_cast<int64_t>(seqlenK) - numTarget;
+            const int64_t blkTop = static_cast<int64_t>(qSeqId) * blockHeight;
+            const int64_t blkLeft = static_cast<int64_t>(kSeqId) * blockHeight;
+            if (blkTop >= tbaseQ && blkLeft >= tbaseK) {
+                const int64_t triNum = (blkTop - tbaseQ) / targetGroupSize;
+                if (triNum > 0) {
+                    const int64_t triRight = tbaseK + triNum * targetGroupSize;
+                    const int64_t blkRight = (static_cast<int64_t>(kSeqId) + 1) * blockHeight;
+                    if (blkRight <= triRight) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     __aicore__ inline void GetFlippedBlk(int64_t* result)
     {
         // 以top到bottom为轴进行翻折，判断翻折后的block是否有计算量 用于填0逻辑
@@ -91,8 +115,8 @@ struct BlockMaskParams {
         }
         const uint32_t numBlockForContextMaskQ = CeilDiv(numContext, blockHeight);
         const uint32_t numBlockForContextMaskK = CeilDiv(seqlenK - numTarget, blockHeight);
-        bool needCtxMask = (numContext > 0) && (qSeqIdFlipped < numBlockForContextMaskQ) &&
-               (kSeqIdFlipped < numBlockForContextMaskK);
+        bool needCtxMask =
+            (numContext > 0) && (qSeqIdFlipped < numBlockForContextMaskQ) && (kSeqIdFlipped < numBlockForContextMaskK);
 
         const uint32_t top = GetTop(seqlenQ, seqlenK, blockHeight);
         bool needCasMask = (kSeqIdFlipped < qSeqIdFlipped + top);
@@ -103,8 +127,7 @@ struct BlockMaskParams {
     {
         const uint32_t numBlockForContextMaskQ = CeilDiv(numContext, blockHeight);
         const uint32_t numBlockForContextMaskK = CeilDiv(seqlenK - numTarget, blockHeight);
-        return (numContext > 0) && (qSeqId < numBlockForContextMaskQ) &&
-               (kSeqId < numBlockForContextMaskK);
+        return (numContext > 0) && (qSeqId < numBlockForContextMaskQ) && (kSeqId < numBlockForContextMaskK);
     }
 
     __aicore__ inline bool NeedCausalMask(bool diagonal = true)
@@ -209,7 +232,7 @@ public:
     {
         return needMask;
     }
-    
+
 private:
     uint32_t qSeqId;
     uint32_t kSeqId;
