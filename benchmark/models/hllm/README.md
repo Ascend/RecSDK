@@ -51,7 +51,7 @@
 
 ## 模型运行
 
-在benchmark目录下执行以下命令模型启动
+在benchmark目录下执行以下命令启动模型
 
 ```shell
 python3 run.py HLLM.json --eager
@@ -109,7 +109,7 @@ NNODES=2                    # 双机
 1.npu侧，修改/code/overall/LLM_deepspeed_npu.yaml中参数配置。
 
 ```shell
-precision_mode_enabled: True  # 默认为False，精度对其模式下修改为True。
+precision_mode_enabled: True  # 默认为False，精度对齐模式下修改为True。
 ```
 
 2.gpu侧，下载官方模型代码后，并使用hllm_gpu_precision.patch文件进行修改。
