@@ -1688,6 +1688,132 @@ index 7c3e43a..b4c861a 100644
              _placeholder = torch.empty(1, device="cuda").requires_grad_()
              hook_r = NvtxRangePush(_placeholder, nvtx_tag + " forward")
              output = module_or_func(*args, **kwargs)
+diff --git a/examples/hstu/configs/7B_fsdp2_config.yaml b/examples/hstu/configs/7B_fsdp2_config.yaml
+new file mode 100644
+index 0000000..fde27ae
+--- /dev/null
++++ b/examples/hstu/configs/7B_fsdp2_config.yaml
+@@ -0,0 +1,36 @@
++# FSDP2 Configuration for GR Model
++# Based on: https://mindspeed-mm.readthedocs.io/zh-cn/latest/config/fsdp2%E9%85%8D%E7%BD%AE.html#fsdp2-config
++
++# Sharding configuration
++sharding_size: Null  # Use all available processes for sharding
++
++# Reshard parameters after forward pass
++# 设置为true时，会在每个forward pass后reshard参数，这会引入额外的通信成本，建议在参数量较大时开启
++reshard_after_forward: true
++
++# Mixed precision settings
++param_dtype: "bf16"  # Parameter data type
++reduce_dtype: "bf16"  # Gradient reduction data type
++output_dtype: "bf16" # Output data type
++cast_forward_inputs: true # Cast forward inputs to param_dtype
++
++# CPU offloading settings
++offload_to_cpu: false  # Disable CPU offloading for better performance
++pin_memory: true       # Only effective if offload_to_cpu is true
++
++# Prefetch settings
++num_to_forward_prefetch: 1
++
++# Modules to wrap with FSDP2
++# 只包装HSTUBlock模块
++sub_modules_to_wrap:
++  - "modules.hstu_block.HSTUBlock"
++  - "modules.native_hstu_layer.HSTULayer"
++
++# 根据提供的模型结构，忽略除HSTUBlock之外的所有网络层
++ignored_modules:
++  # 自定义模块
++  - "modules.multi_task_loss_module.MultiTaskLossModule"
++  - "modules.metrics.metric_modules.MultiClassificationTaskMetric"
++  - "dynamic_emb.distributed.embedding.ShardedDynamicEmbeddingCollection"
++  - "modules.mlp.MLP"
+diff --git a/examples/hstu/configs/7B_gpu_fsdp2_config.yaml b/examples/hstu/configs/7B_gpu_fsdp2_config.yaml
+new file mode 100644
+index 0000000..d5986c1
+--- /dev/null
++++ b/examples/hstu/configs/7B_gpu_fsdp2_config.yaml
+@@ -0,0 +1,36 @@
++# FSDP2 Configuration for GR Model
++# Based on: https://mindspeed-mm.readthedocs.io/zh-cn/latest/config/fsdp2%E9%85%8D%E7%BD%AE.html#fsdp2-config
++
++# Sharding configuration
++sharding_size: Null  # Use all available processes for sharding
++
++# Reshard parameters after forward pass
++# 设置为true时，会在每个forward pass后reshard参数，这会引入额外的通信成本，建议在参数量较大时开启
++reshard_after_forward: true
++
++# Mixed precision settings
++param_dtype: "bf16"  # Parameter data type
++reduce_dtype: "bf16"  # Gradient reduction data type
++output_dtype: "bf16" # Output data type
++cast_forward_inputs: true # Cast forward inputs to param_dtype
++
++# CPU offloading settings
++offload_to_cpu: false  # Disable CPU offloading for better performance
++pin_memory: true       # Only effective if offload_to_cpu is true
++
++# Prefetch settings
++num_to_forward_prefetch: 1
++
++# Modules to wrap with FSDP2
++# 只包装HSTUBlock模块
++sub_modules_to_wrap:
++  - "modules.hstu_block.HSTUBlock"
++  - "modules.native_hstu_layer.HSTULayer"
++
++# 根据提供的模型结构，忽略除HSTUBlock之外的所有网络层
++ignored_modules:
++  # 自定义模块
++  - "modules.multi_task_loss_module.MultiTaskLossModule"
++  - "modules.metrics.metric_modules.MultiClassificationTaskMetric"
++  - "dynamicemb.shard.embedding.ShardedDynamicEmbeddingCollection"
++  - "modules.mlp.MLP"
+diff --git a/examples/hstu/configs/fsdp2_config.yaml b/examples/hstu/configs/fsdp2_config.yaml
+new file mode 100644
+index 0000000..1cac3ca
+--- /dev/null
++++ b/examples/hstu/configs/fsdp2_config.yaml
+@@ -0,0 +1,36 @@
++# FSDP2 Configuration for GR Model
++# Based on: https://mindspeed-mm.readthedocs.io/zh-cn/latest/config/fsdp2%E9%85%8D%E7%BD%AE.html#fsdp2-config
++
++# Sharding configuration
++sharding_size: Null  # Use all available processes for sharding
++
++# Reshard parameters after forward pass
++# 设置为true时，会在每个forward pass后reshard参数，这会引入额外的通信成本，建议在参数量较大时开启
++reshard_after_forward: false
++
++# Mixed precision settings
++param_dtype: "bf16"  # Parameter data type
++reduce_dtype: "bf16"  # Gradient reduction data type
++output_dtype: "bf16" # Output data type
++cast_forward_inputs: true # Cast forward inputs to param_dtype
++
++# CPU offloading settings
++offload_to_cpu: false  # Disable CPU offloading for better performance
++pin_memory: true       # Only effective if offload_to_cpu is true
++
++# Prefetch settings
++num_to_forward_prefetch: 1
++
++# Modules to wrap with FSDP2
++# 只包装HSTUBlock模块
++sub_modules_to_wrap:
++  - "modules.hstu_block.HSTUBlock"
++  - "modules.native_hstu_layer.HSTULayer"
++
++# 根据提供的模型结构，忽略除HSTUBlock之外的所有网络层
++ignored_modules:
++  # 自定义模块
++  - "modules.multi_task_loss_module.MultiTaskLossModule"
++  - "modules.metrics.metric_modules.MultiClassificationTaskMetric"
++  - "dynamic_emb.distributed.embedding.ShardedDynamicEmbeddingCollection"
++  - "modules.mlp.MLP"
 diff --git a/examples/hstu/configs/hstu_config.py b/examples/hstu/configs/hstu_config.py
 index 0ad39e9..2b80271 100644
 --- a/examples/hstu/configs/hstu_config.py
@@ -1801,14 +1927,14 @@ index 0ad39e9..2b80271 100644
 +        ffn_hidden_dropout=ffn_hidden_dropout,
      )
 diff --git a/examples/hstu/model/ranking_gr.py b/examples/hstu/model/ranking_gr.py
-index f289e92..face578 100644
+index f289e92..e5e8f8c 100644
 --- a/examples/hstu/model/ranking_gr.py
 +++ b/examples/hstu/model/ranking_gr.py
 @@ -15,6 +15,7 @@
  from typing import Any, Dict, Tuple
  
  import torch
-+import torch_npu
++from commons.utils.device import get_device
  from commons.datasets.hstu_batch import HSTUBatch
  from commons.distributed.dmp_to_tp import (
      dmp_batch_to_tp,
@@ -1817,7 +1943,7 @@ index f289e92..face578 100644
          super().__init__()
          self._tp_size = parallel_state.get_tensor_model_parallel_world_size()
 -        self._device = torch.device("cuda", torch.cuda.current_device())
-+        self._device = torch.device("npu", torch_npu.npu.current_device())
++        self._device = get_device()
          self._hstu_config = hstu_config
          self._task_config = task_config
  
@@ -1841,7 +1967,7 @@ index f289e92..face578 100644
              jagged_item_logit,
              seqlen_after_preprocessor,
              labels,
-+            aux_loss
++            aux_loss,
          ) = self.get_logit_and_labels(batch)
          losses = self._loss_module(jagged_item_logit.float(), labels)
 +        losses = losses + aux_loss # 将aux loss加到总loss上
@@ -1849,98 +1975,98 @@ index f289e92..face578 100644
              losses.detach(),
              jagged_item_logit.detach(),
 diff --git a/examples/hstu/model/retrieval_gr.py b/examples/hstu/model/retrieval_gr.py
-index 3dea49b..b284879 100644
+index 3dea49b..ace6469 100644
 --- a/examples/hstu/model/retrieval_gr.py
 +++ b/examples/hstu/model/retrieval_gr.py
 @@ -15,6 +15,7 @@
  from typing import Any, Tuple
  
  import torch
-+import torch_npu
++from commons.utils.device import ENABLE_NPU, get_device
  from commons.datasets.hstu_batch import HSTUBatch
  from commons.modules.embedding import ShardedEmbedding
  from commons.ops.length_to_offsets import length_to_complete_offsets
-@@ -31,6 +32,10 @@ from modules.output_postprocessors import L2NormEmbeddingPostprocessor
+@@ -31,6 +32,28 @@ from modules.output_postprocessors import L2NormEmbeddingPostprocessor
  from modules.sampled_softmax_loss import SampledSoftmaxLoss
  from modules.similarity.dot_product import DotProductSimilarity
  
-+from ops.pt_ops.pt_jagged_tensors import (
-+    pytorch_concat_2D_jagged,
-+    pytorch_split_2D_jagged
-+)
++if ENABLE_NPU:
++    from ops.pt_ops.pt_jagged_tensors import pytorch_split_2D_jagged
++else:
++    from commons.ops.triton_ops.triton_jagged import triton_split_2D_jagged
++
++
++def _split_2d_jagged(values, max_seqlen, offsets_left, offsets_right):
++    if ENABLE_NPU:
++        return pytorch_split_2D_jagged(
++            max_seqlen,
++            values,
++            max_len_left=None,
++            max_len_right=None,
++            offsets_left=offsets_left,
++            offsets_right=offsets_right,
++        )
++    return triton_split_2D_jagged(
++        values,
++        max_seqlen,
++        offsets_a=offsets_left,
++        offsets_b=offsets_right,
++    )
  
  class RetrievalGR(BaseModel):
      """
-@@ -53,7 +58,7 @@ class RetrievalGR(BaseModel):
+@@ -53,7 +76,7 @@ class RetrievalGR(BaseModel):
          assert (
              self._tp_size == 1
          ), "RetrievalGR does not support tensor model parallel, because of the sampled softmax loss and evaluation"
 -        self._device = torch.device("cuda", torch.cuda.current_device())
-+        self._device = torch.device("npu", torch_npu.npu.current_device())
++        self._device = get_device()
          self._hstu_config = hstu_config
          self._task_config = task_config
  
-@@ -133,24 +138,30 @@ class RetrievalGR(BaseModel):
+@@ -133,24 +156,24 @@ class RetrievalGR(BaseModel):
          shift_pred_item_seqlen_offsets = length_to_complete_offsets(
              torch.clamp(pred_item_seqlen - 1, min=0)
          )
 -        first_n_pred_item_embeddings, _ = triton_split_2D_jagged(
--            pred_item_embeddings,
-+        first_n_pred_item_embeddings, _ = pytorch_split_2D_jagged(
++        first_n_pred_item_embeddings, _ = _split_2d_jagged(
+             pred_item_embeddings,
              pred_item_max_seqlen,
 -            offsets_a=shift_pred_item_seqlen_offsets,
 -            offsets_b=pred_item_seqlen_offsets - shift_pred_item_seqlen_offsets,
-+            pred_item_embeddings,
-+            max_len_left = None,
-+            max_len_right = None,
-+            offsets_left=shift_pred_item_seqlen_offsets,
-+            offsets_right=pred_item_seqlen_offsets - shift_pred_item_seqlen_offsets,
++            shift_pred_item_seqlen_offsets,
++            pred_item_seqlen_offsets - shift_pred_item_seqlen_offsets,
          )
  
 -        _, last_n_supervision_item_embeddings = triton_split_2D_jagged(
--            supervision_item_embeddings,
-+        _, last_n_supervision_item_embeddings = pytorch_split_2D_jagged(
++        _, last_n_supervision_item_embeddings = _split_2d_jagged(
+             supervision_item_embeddings,
              pred_item_max_seqlen,
 -            offsets_a=pred_item_seqlen_offsets - shift_pred_item_seqlen_offsets,
 -            offsets_b=shift_pred_item_seqlen_offsets,
-+            supervision_item_embeddings,
-+            max_len_left = None,
-+            max_len_right = None,
-+            offsets_left=pred_item_seqlen_offsets - shift_pred_item_seqlen_offsets,
-+            offsets_right=shift_pred_item_seqlen_offsets,
++            pred_item_seqlen_offsets - shift_pred_item_seqlen_offsets,
++            shift_pred_item_seqlen_offsets,
          )
 -        _, last_n_supervision_item_ids = triton_split_2D_jagged(
--            supervision_item_ids.view(-1, 1),
-+        _, last_n_supervision_item_ids = pytorch_split_2D_jagged(
++        _, last_n_supervision_item_ids = _split_2d_jagged(
+             supervision_item_ids.view(-1, 1),
              pred_item_max_seqlen,
 -            offsets_a=pred_item_seqlen_offsets - shift_pred_item_seqlen_offsets,
 -            offsets_b=shift_pred_item_seqlen_offsets,
-+            supervision_item_ids.view(-1, 1),
-+            max_len_left = None,
-+            max_len_right = None,
-+            offsets_left=pred_item_seqlen_offsets - shift_pred_item_seqlen_offsets,
-+            offsets_right=shift_pred_item_seqlen_offsets,
++            pred_item_seqlen_offsets - shift_pred_item_seqlen_offsets,
++            shift_pred_item_seqlen_offsets,
          )
          return (
              first_n_pred_item_embeddings.view(-1, self._embedding_dim),
-@@ -159,7 +170,7 @@ class RetrievalGR(BaseModel):
-             last_n_supervision_item_embeddings.view(-1, self._embedding_dim),
-         )
- 
--    @output_nvtx_hook(nvtx_tag="RetrievalModel", backward=False)
-+    # @output_nvtx_hook(nvtx_tag="RetrievalModel", backward=False)
-     def forward(  # type: ignore[override]
-         self,
-         batch: HSTUBatch,
 diff --git a/examples/hstu/modules/fused_hstu_layer.py b/examples/hstu/modules/fused_hstu_layer.py
-index 1c341f6..b73a7f1 100644
+index 1c341f6..bdcdb86 100644
 --- a/examples/hstu/modules/fused_hstu_layer.py
 +++ b/examples/hstu/modules/fused_hstu_layer.py
 @@ -13,6 +13,7 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  import torch
-+import torch_npu
++from commons.utils.device import current_device
  from commons.utils.nvtx_op import output_nvtx_hook, register_setter_and_getter_for_nvtx
  from configs import HSTUConfig
  from configs.hstu_config import HSTULayerType
@@ -1949,7 +2075,7 @@ index 1c341f6..b73a7f1 100644
  
          self._residual = config.residual
 -        device = torch.cuda.current_device()
-+        device = torch_npu.npu.current_device()
++        device = current_device()
          if config.learnable_input_layernorm:
              self._input_layernorm_weight = torch.nn.Parameter(
                  torch.ones(self._embedding_dim, device=device)
@@ -1970,23 +2096,63 @@ index 1c341f6..b73a7f1 100644
          input = jd.values
          output = fused_hstu_op(
 diff --git a/examples/hstu/modules/hstu_attention.py b/examples/hstu/modules/hstu_attention.py
-index 4257956..ba47353 100644
+index 4257956..80e2337 100644
 --- a/examples/hstu/modules/hstu_attention.py
 +++ b/examples/hstu/modules/hstu_attention.py
-@@ -16,9 +16,11 @@ import abc
+@@ -13,12 +13,52 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ import abc
++import inspect
  from typing import Optional, Union
  
  import torch
--from commons.utils.nvtx_op import output_nvtx_hook
-+# from commons.utils.nvtx_op import output_nvtx_hook
++from commons.utils.device import ENABLE_NPU
+ from commons.utils.nvtx_op import output_nvtx_hook
  from configs import KernelBackend
  
-+torch.npu.config.allow_internal_format = False
++if ENABLE_NPU:
++    torch.npu.config.allow_internal_format = False
++
++
++def _supports_keyword_argument(func, argument_name: str) -> Optional[bool]:
++    try:
++        parameters = tuple(inspect.signature(func).parameters.values())
++    except (TypeError, ValueError):
++        return None
++    if any(
++        parameter.name == argument_name
++        and parameter.kind != inspect.Parameter.POSITIONAL_ONLY
++        for parameter in parameters
++    ):
++        return True
++    if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters):
++        return None
++    return False
++
++
++def _call_hstu_attn_varlen_func(
++    func,
++    kwargs,
++    scaling_seqlen: int,
++    supports_scaling_seqlen: Optional[bool],
++):
++    if supports_scaling_seqlen is False:
++        return func(**kwargs), False
++
++    kwargs["scaling_seqlen"] = scaling_seqlen
++    try:
++        return func(**kwargs), True
++    except TypeError as error:
++        if supports_scaling_seqlen is not None or "scaling_seqlen" not in str(error):
++            raise
++        kwargs.pop("scaling_seqlen")
++        return func(**kwargs), False
 +
  
  class HSTUAttention(torch.nn.Module):
      """
-@@ -137,6 +139,78 @@ class TorchHSTUAttention(HSTUAttention):
+@@ -137,6 +177,79 @@ class TorchHSTUAttention(HSTUAttention):
          ).view(-1, self.num_heads * self.linear_dim)
  
  
@@ -2023,6 +2189,7 @@ index 4257956..ba47353 100644
 +                tv: torch.Tensor,  # (T, d)
 +                offsets: torch.Tensor,  # (batch_size, 1)
 +                max_seqlen: int,
++                scaling_seqlen: int = -1,
 +                target_group_size: int = 1,  # target == candidates
 +                num_candidates: Optional[torch.Tensor] = None,
 +                num_contextuals: Optional[Union[int, torch.Tensor]] = None,
@@ -2065,30 +2232,88 @@ index 4257956..ba47353 100644
  class TritonHSTUAttention(HSTUAttention):
      """
      Triton-based HUST implementation.
-@@ -250,7 +324,7 @@ class FusedHSTUAttention(HSTUAttention):
-             self.linear_dim == self.attention_dim
-         ), "only support linear_dim and attention_dim"
+@@ -242,6 +355,9 @@ class FusedHSTUAttention(HSTUAttention):
+         from hstu_attn import hstu_attn_varlen_func
  
--    @output_nvtx_hook(nvtx_tag="FusedHSTUAttn")
-+    # @output_nvtx_hook(nvtx_tag="FusedHSTUAttn")
-     def forward(
-         self,
-         tq: torch.Tensor,  # (T, d)
-@@ -345,7 +419,7 @@ class FusedHSTUAttentionHopper(HSTUAttention):
-             self.linear_dim == self.attention_dim
-         ), "only support linear_dim and attention_dim"
+         self._hstu_attn_varlen_func = hstu_attn_varlen_func
++        self._supports_scaling_seqlen = _supports_keyword_argument(
++            hstu_attn_varlen_func, "scaling_seqlen"
++        )
+         self.num_heads = num_heads
+         self.attention_dim = attention_dim
+         self.linear_dim = linear_dim
+@@ -294,7 +410,7 @@ class FusedHSTUAttention(HSTUAttention):
+                 .contiguous()
+             )
  
--    @output_nvtx_hook(nvtx_tag="FusedHSTUAttnHopper")
-+    # @output_nvtx_hook(nvtx_tag="FusedHSTUAttnHopper")
-     def forward(
-         self,
-         tq: torch.Tensor,  # (T, d)
-@@ -431,7 +505,14 @@ def create_hstu_attention(
+-        return self._hstu_attn_varlen_func(
++        attn_kwargs = dict(
+             q=tq.view(-1, self.num_heads, self.attention_dim),
+             k=tk.view(-1, self.num_heads, self.attention_dim),
+             v=tv.view(-1, self.num_heads, self.linear_dim),
+@@ -310,8 +426,14 @@ class FusedHSTUAttention(HSTUAttention):
+             window_size=(-1, 0) if self.is_causal else (-1, -1),
+             rab=None,
+             alpha=1.0 / (self.attention_dim**0.5),
+-            scaling_seqlen=scaling_seqlen,
+-        ).view(-1, self.num_heads * self.linear_dim)
++        )
++        output, self._supports_scaling_seqlen = _call_hstu_attn_varlen_func(
++            self._hstu_attn_varlen_func,
++            attn_kwargs,
++            scaling_seqlen,
++            self._supports_scaling_seqlen,
++        )
++        return output.view(-1, self.num_heads * self.linear_dim)
+ 
+ 
+ # TODO, support packed qkv attention
+@@ -337,6 +459,9 @@ class FusedHSTUAttentionHopper(HSTUAttention):
+         from hopper.hstu_attn_interface import hstu_attn_varlen_func
+ 
+         self._hstu_attn_varlen_func = hstu_attn_varlen_func
++        self._supports_scaling_seqlen = _supports_keyword_argument(
++            hstu_attn_varlen_func, "scaling_seqlen"
++        )
+         self.num_heads = num_heads
+         self.attention_dim = attention_dim
+         self.linear_dim = linear_dim
+@@ -388,7 +513,7 @@ class FusedHSTUAttentionHopper(HSTUAttention):
+                 .expand(offsets.size(0) - 1)
+                 .contiguous()
+             )
+-        return self._hstu_attn_varlen_func(
++        attn_kwargs = dict(
+             q=tq.view(-1, self.num_heads, self.attention_dim),
+             k=tk.view(-1, self.num_heads, self.attention_dim),
+             v=tv.view(-1, self.num_heads, self.linear_dim),
+@@ -404,8 +529,14 @@ class FusedHSTUAttentionHopper(HSTUAttention):
+             window_size=(-1, 0) if self.is_causal else (-1, -1),
+             rab=None,
+             alpha=1.0 / (self.attention_dim**0.5),
+-            scaling_seqlen=scaling_seqlen,
+-        ).view(-1, self.num_heads * self.linear_dim)
++        )
++        output, self._supports_scaling_seqlen = _call_hstu_attn_varlen_func(
++            self._hstu_attn_varlen_func,
++            attn_kwargs,
++            scaling_seqlen,
++            self._supports_scaling_seqlen,
++        )
++        return output.view(-1, self.num_heads * self.linear_dim)
+ 
+ 
+ def create_hstu_attention(
+@@ -431,7 +562,18 @@ def create_hstu_attention(
      Raises:
          ValueError: If the kernel backend is not supported.
      """
 -    if kernel_backend == KernelBackend.CUTLASS:
 +    if kernel_backend == KernelBackend.NPU_FUSED:
++        if not ENABLE_NPU:
++            raise ValueError(
++                "The npu_fused kernel backend requires ENABLE_NPU=1."
++            )
 +        return NpuFusedHSTUAttention(
 +            num_heads,
 +            attention_dim,
@@ -2100,26 +2325,67 @@ index 4257956..ba47353 100644
          sm_minor_version = torch.cuda.get_device_properties(0).minor
          if sm_major_version == 9 and sm_minor_version == 0:
 diff --git a/examples/hstu/modules/hstu_block.py b/examples/hstu/modules/hstu_block.py
-index 754c089..b5f7f10 100644
+index 754c089..0260f8f 100644
 --- a/examples/hstu/modules/hstu_block.py
 +++ b/examples/hstu/modules/hstu_block.py
-@@ -52,7 +52,7 @@ class HSTUBlock(MegatronModule):
-             [HSTULayerImpl(config) for l in range(self.config.num_layers)]
+@@ -4,16 +4,19 @@ from typing import Dict, Tuple
+ 
+ import torch
+ from commons.datasets.hstu_batch import HSTUBatch
++from commons.utils.device import ENABLE_NPU
+ from commons.utils.nvtx_op import output_nvtx_hook
+ from configs.hstu_config import HSTUConfig, HSTULayerType
+ from megatron.core.transformer.module import MegatronModule
+-from modules.debug.debug_hstu_layer import HSTULayer as DebugHSTULayer
+-from modules.fused_hstu_layer import FusedHSTULayer
+ from modules.hstu_processor import HSTUBlockPostprocessor, HSTUBlockPreprocessor
+ from modules.jagged_data import JaggedData
+ from modules.native_hstu_layer import HSTULayer as NativeHSTULayer
+ from torchrec.sparse.jagged_tensor import JaggedTensor
+ 
++if not ENABLE_NPU:
++    from modules.debug.debug_hstu_layer import HSTULayer as DebugHSTULayer
++    from modules.fused_hstu_layer import FusedHSTULayer
++
+ 
+ class HSTUBlock(MegatronModule):
+     """
+@@ -41,13 +44,18 @@ class HSTUBlock(MegatronModule):
+             is_inference=False, sequence_parallel=config.sequence_parallel
          )
  
--    @output_nvtx_hook(nvtx_tag="HSTUBlock", hook_key_or_attr_name="values")
-+    # @output_nvtx_hook(nvtx_tag="HSTUBlock", hook_key_or_attr_name="values")
-     def forward(
-         self,
-         embeddings: Dict[str, JaggedTensor],
-@@ -80,10 +80,13 @@ class HSTUBlock(MegatronModule):
+-        HSTULayerImpl = (
+-            FusedHSTULayer
+-            if config.hstu_layer_type == HSTULayerType.FUSED
+-            else DebugHSTULayer
+-            if config.hstu_layer_type == HSTULayerType.DEBUG
+-            else NativeHSTULayer
+-        )
++        if ENABLE_NPU:
++            if config.hstu_layer_type != HSTULayerType.NATIVE:
++                raise ValueError("NPU execution only supports the native HSTU layer.")
++            HSTULayerImpl = NativeHSTULayer
++        else:
++            HSTULayerImpl = (
++                FusedHSTULayer
++                if config.hstu_layer_type == HSTULayerType.FUSED
++                else DebugHSTULayer
++                if config.hstu_layer_type == HSTULayerType.DEBUG
++                else NativeHSTULayer
++            )
+         self._attention_layers = torch.nn.ModuleList(
+             [HSTULayerImpl(config) for l in range(self.config.num_layers)]
+         )
+@@ -80,10 +88,15 @@ class HSTUBlock(MegatronModule):
              if jd.num_candidates is not None
              else torch.zeros_like(seqlen_after_preprocessor)
          )
 +        aux_loss = torch.tensor(0.0, device=jd.values.device, dtype=self._training_dtype)
          for hstu_layer in self._attention_layers:
 -            jd = hstu_layer(jd)
-+            jd, layer_aux_loss = hstu_layer(jd)
++            # fsdp2会通过判断训练数据是否带有梯度来判断是否需要进行梯度聚合
++            # 当前仅支持对tensor、union、dict数据类型进行解析，不支持JaggedTensor,额外传入jd.values
++            jd, x, layer_aux_loss = hstu_layer(jd, jd.values)
 +            aux_loss += layer_aux_loss
 +        aux_loss = aux_loss / len(self._attention_layers)  # 平均每层的aux loss
          return self._postprocessor(jd), (
