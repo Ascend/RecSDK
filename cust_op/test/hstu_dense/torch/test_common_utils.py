@@ -56,7 +56,7 @@ def set_seed(seed):
 
 def allclose(tensor: torch.Tensor, other: torch.Tensor, atol: float, ratio: float) -> bool:
     assert tensor.shape == other.shape
-    diff = (torch.abs(tensor - other) > atol)
+    diff = torch.abs(tensor - other) > atol
     diff_count = torch.sum(diff).tolist()
     return (diff_count / tensor.numel()) < ratio
 
@@ -76,22 +76,33 @@ def hstu_close_double(actual, out_ref, fp32_ref, try_allclose: bool = False, mul
     right_abs_max = (out_ref - fp32_ref).abs().max().item()
     mid_max = (out_ref - actual).abs().max().item()
 
-    if left_abs_max > multiplier * right_abs_max:
-        print("left_abs_max=", left_abs_max)
-        print("right_abs_max=", right_abs_max)
-        print("actual-out_ref=", mid_max)
-        print(
-            f"[HSTU_CLOSE] assert fail: diff abs max: {left_abs_max:.6f}, threshold: {multiplier * right_abs_max:.6f},"
-            f" multiplier: {multiplier}"
+    # 参考误差(right_abs_max)下限：极小 shape（如 max_seq_len=1 / head_dim_qk 极小 / GQA）下，
+    # 参与计算的数据点极少，right_abs_max 会趋近 0，导致判定阈值 multiplier*right_abs_max 趋近 0，
+    # 从而把算子自身的 fp16/bf16 固有误差误判为不匹配（随机失败）。
+    # 故按 fp32_ref 的量级给 right_abs_max 设一个不低于 fp16/bf16 分辨率的下限。
+    scale = max(1.0, fp32_ref.abs().max().item())
+    right_abs_max_eff = max(right_abs_max, 1e-3 * scale)
+    threshold = multiplier * right_abs_max_eff
+
+    if left_abs_max > threshold:
+        logging.info("left_abs_max=%s", left_abs_max)
+        logging.info("right_abs_max=%s", right_abs_max)
+        logging.info("right_abs_max_eff=%s", right_abs_max_eff)
+        logging.info("actual-out_ref=%s", mid_max)
+        logging.info(
+            "[HSTU_CLOSE] assert fail: diff abs max: %.6f, threshold: %.6f, multiplier: %s",
+            left_abs_max,
+            threshold,
+            multiplier,
         )
-    return (left_abs_max <= multiplier * right_abs_max) or (try_allclose)
+    return (left_abs_max <= threshold) or (try_allclose)
 
 
 def jagged_to_dense(jagged_tensor, seq_lens, head_nums, attn_dim):
     need_pad_seq = []
     offset = 0
     for seq_len in seq_lens:
-        src_tensor = jagged_tensor[offset: offset + seq_len, :, :].reshape(seq_len, head_nums, attn_dim)
+        src_tensor = jagged_tensor[offset : offset + seq_len, :, :].reshape(seq_len, head_nums, attn_dim)
         need_pad_seq.append(src_tensor)
         offset = offset + seq_len
 
@@ -106,7 +117,7 @@ def dense_to_jagged(q, dense_tensor, seq_lens):
 
     offset = 0
     for batch_id, seq_len in enumerate(seq_lens):
-        tensor[offset: offset + seq_len, :, :] = dense_tensor[batch_id, 0: seq_len, :, :]
+        tensor[offset : offset + seq_len, :, :] = dense_tensor[batch_id, 0:seq_len, :, :]
         offset = offset + seq_len
 
     return tensor
@@ -115,17 +126,17 @@ def dense_to_jagged(q, dense_tensor, seq_lens):
 def show_diff(golden: torch.Tensor, result: torch.Tensor, atol: float):
     if golden is None or result is None:
         return
-    diff = (torch.abs(golden - result) > atol)
+    diff = torch.abs(golden - result) > atol
 
     cnt = 0
     last_offset = last_head = -1
-    for (offset, head, dim) in torch.nonzero(diff):
+    for offset, head, dim in torch.nonzero(diff):
         if offset == last_offset and head == last_head:
             continue
         last_offset, last_head, cnt = offset, head, cnt + 1
-        logging.info(f"===== ({offset, head, dim}) =====")
-        logging.info(golden[offset, head, dim: dim + 16])
-        logging.info(result[offset, head, dim: dim + 16])
+        logging.info("===== (%s, %s, %s) =====", offset, head, dim)
+        logging.info("%s", golden[offset, head, dim : dim + 16])
+        logging.info("%s", result[offset, head, dim : dim + 16])
         if cnt >= 5:
             break
 

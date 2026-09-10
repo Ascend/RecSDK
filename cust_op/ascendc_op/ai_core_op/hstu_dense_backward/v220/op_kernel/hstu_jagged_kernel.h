@@ -621,8 +621,12 @@ public:
                         targetGroupSize_,
                         1};
 
+                    // 跳过无需计算的 block：NoComputation（无需 mask）或 IsTargetEmptyBlock（下三角 target
+                    // 空白区被挖空） jagged 的 blockMaskParams_ 已含 per-batch 的
+                    // curSeqLenQ/curSeqLenK，IsTargetEmptyBlock 直接生效
                     BlockMaskParams& maskinfo = this->blockMaskParams_[taskId % COMPUTE_PIPE_NUM];
-                    if (maskType_ == MaskType::MASK_TRIL && maskinfo.NoComputation()) {
+                    if (maskType_ == MaskType::MASK_TRIL &&
+                        (maskinfo.NoComputation() || maskinfo.IsTargetEmptyBlock())) {
                         continue;
                     }
 

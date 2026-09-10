@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=duplicate-code
 import pytest
 import torch
 import torch.nn.functional as F
@@ -35,15 +36,20 @@ def jagged_data_gen(
     num_context=None,
     num_target=None,
     target_group_size=None,
+    fixed_seq_len=None,
 ):
     min_seq_len = 1
     if num_context is not None:
         min_seq_len += num_context
     if num_target is not None:
         min_seq_len += num_target
-    seq_lens_q = torch.randint(min_seq_len, max_seq_len + 1, (batch_size,), dtype=torch.int32)
-    seq_lens_k = torch.randint(min_seq_len, max_seq_len + 1, (batch_size,), dtype=torch.int32)
-    seq_lens_q = torch.where(seq_lens_k < seq_lens_q, seq_lens_k, seq_lens_q)
+    if fixed_seq_len is None:
+        seq_lens_q = torch.randint(min_seq_len, max_seq_len + 1, (batch_size,), dtype=torch.int32)
+        seq_lens_k = torch.randint(min_seq_len, max_seq_len + 1, (batch_size,), dtype=torch.int32)
+        seq_lens_q = torch.where(seq_lens_k < seq_lens_q, seq_lens_k, seq_lens_q)
+    else:
+        seq_lens_q = torch.full((batch_size,), fixed_seq_len, dtype=torch.int32)
+        seq_lens_k = torch.full((batch_size,), fixed_seq_len, dtype=torch.int32)
 
     seq_offset_q = torch.concat((torch.zeros((1,), dtype=torch.int32), torch.cumsum(seq_lens_q, axis=0))).numpy()
     seq_offset_k = torch.concat((torch.zeros((1,), dtype=torch.int32), torch.cumsum(seq_lens_k, axis=0))).numpy()
@@ -285,6 +291,7 @@ class TestHstuJaggedDemo:
         num_target=None,
         target_group_size=None,
         alpha=1.0,
+        fixed_seq_len=None,
     ):
         grad, q, k, v, bias, mask, max_seq_len, seq_offset_q, seq_offset_k = jagged_data_gen(
             batch_size,
@@ -298,6 +305,7 @@ class TestHstuJaggedDemo:
             num_context,
             num_target,
             target_group_size,
+            fixed_seq_len,
         )
 
         q_grad, k_grad, v_grad, attn_bias_grad = self.custom_op_exec(
@@ -399,6 +407,25 @@ class TestHstuJaggedDemo:
             num_target,
             target_group_size,
             alpha,
+        )
+
+    def test_hstu_dens_jagged_target_empty_block(self):
+        self.execute(
+            batch_size=1,
+            max_seq_len=2048,
+            head_num_q=4,
+            head_num_k=4,
+            head_dim_qk=128,
+            head_dim_v=128,
+            mask_type=MaskType.TRIL,
+            silu_scale=0.0,
+            enable_bias=False,
+            data_type=torch.float16,
+            num_context=0,
+            num_target=1024,
+            target_group_size=1,
+            alpha=0.5,
+            fixed_seq_len=2048,
         )
 
     # batch_size泛化测试
