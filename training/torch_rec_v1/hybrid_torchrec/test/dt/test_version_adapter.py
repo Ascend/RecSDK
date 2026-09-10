@@ -24,13 +24,21 @@ from types import SimpleNamespace
 
 import torchrec
 
-from hybrid_torchrec._adapters import _build_methods, adapter
-from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
-from hybrid_torchrec._adapters._version import _torchrec_version_tuple
-from hybrid_torchrec._adapters._version_diff import (
-    check_config_new_item_v120,
-    check_config_new_item_v150,
-)
+try:
+    from hybrid_torchrec._adapters import _build_methods, adapter
+    from hybrid_torchrec._adapters._adapter_base import TorchRecVersionAdapter
+    from hybrid_torchrec._adapters._version import _torchrec_version_tuple
+    from hybrid_torchrec._adapters._version_diff import (
+        check_config_new_item_v120,
+        check_config_new_item_v150,
+    )
+
+    _HAS_ADAPTERS = True
+except ImportError:
+    _HAS_ADAPTERS = False
+
+# hybrid_torchrec._adapters 模块不存在时，跳过本文件所有测试。兼容26.1.0版本镜像。
+pytestmark = pytest.mark.skipif(not _HAS_ADAPTERS, reason="hybrid_torchrec._adapters 模块不存在，跳过适配器测试")
 
 
 @dataclass

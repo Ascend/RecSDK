@@ -14,7 +14,7 @@
 
 | 软件名称  | PyTorch | TorchNPU | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
 |-------|---------|-----------|-----------|------------|-----------------|-------------------|
-| 配套版本 | 2.6.0   | 2.6.0     | 1.1.0+npu | 1.1.0      | 1.1.0           | 1.1.0             |
+| 配套版本 | 2.7.1+cpu | 2.7.1 | 1.2.0+npu | 1.2.0+cpu   | 1.2.0           | 1.2.0             |
 
 ### 启动容器
 
@@ -63,7 +63,7 @@ bash run_docker.sh 容器名 镜像名称
 # 使能CANN环境变量
 source /usr/local/Ascend/cann/set_env.sh
 # Python虚拟环境存在时激活虚拟环境。使用完后若需退出 Python 虚拟环境，执行命令： deactivate 即可退出。
-[ -f /opt/buildtools/torch_v1_pt2.6.0/bin/activate ] && source /opt/buildtools/torch_v1_pt2.6.0/bin/activate
+[ -f /opt/buildtools/torch_v1_pt2.7.1/bin/activate ] && source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
 ```
 
 > [!NOTE]

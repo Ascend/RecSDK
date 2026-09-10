@@ -43,14 +43,14 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 
 | 依赖名称/操作               | 推荐版本                     | 获取方式/安装说明                                                                                                                                                                                                                                                            |
 | --------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 昇腾硬件产品驱动          | Ascend HDK 26.0.RC1及补丁版本 | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾NPU驱动，并配置环境变量。         |
+| 昇腾硬件产品驱动          | Ascend HDK 26.1.0及补丁版本 | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾NPU驱动，并配置环境变量。         |
 | Ascend Docker Runtime | MindCluster 7.3.0        | 若宿主机未安装Docker，请参见[Docker社区或官网](https://docs.docker.com/engine/install/)先安装Docker。请参见《MindCluster 集群调度用户指南》的“安装 > [安装部署](https://www.hiascend.com/document/detail/zh/mindcluster/730/clustersched/dlug/dlug_installation_009.html)”章节下载和安装`Ascend Docker Runtime`软件包。 |
 
 #### 容器内训练框架依赖
 
 | 依赖名称/操作            | 推荐版本        | 获取方式/安装说明                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CANN软件包            | CANN 9.0.0  | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。                                                                                                                                                                                                                                                                                      |
+| CANN软件包            | CANN 9.1.0  | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。                                                                                                                                                                                                                                                                                      |
 | PyTorch和TorchNPU | 2.7.1/2.10.0 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.7.1/2.10.0版本：请前往[TorchNPU2.7.1/2.10.0下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=175&ids=89dda9ba9de741349efa03687a487678%2C96%2C108%2C1%2C6%2C177%2C)页面获取。<br>安装时请根据PyTorch版本、Python版本（建议使用Python 3.11）、CPU架构选择对应的安装指令。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
 
 #### 容器内训练加速库依赖<a id="section146113514600"></a>
@@ -75,6 +75,8 @@ Rec SDK Torch软件包如下表：
 | torch\_rec\_v1-\*.tar.gz | Rec SDK Torch一键安装部署软件包（已包含TorchRec昇腾注册包） |
 | rec_cust_ops                 | Rec SDK Torch自定义算子包及PyTorch框架适配层                       |
 | fbgemm\_ascend           | fbgemm自定义算子包及PyTorch框架适配层                |
+
+> rec_cust_ops和fbgemm_ascend算子包使用时会自动探测NPU芯片版本并加载对应芯片版本的算子包，自动探测失败时默认加载昇腾950PR/DT系列产品的算子包。此时若用户需要加载其他NPU芯片版本的算子包（即当前环境非昇腾950PR/DT系列产品），可通过设置环境变量`SOC_VERSION`来指定，示例：`export SOC_VERSION=Ascend910B`。`SOC_VERSION`环境变量取值参考[配置环境变量](#配置环境变量)。
 
 ## 安装Rec SDK Torch<a id="section182972951211"></a>
 
@@ -202,16 +204,11 @@ Rec SDK Torch软件包如下表：
 
 4. 安装自定义算子相关包<a id="install_custom_op"></a>
 
+   **自定义算子包源码编译耗时较长，建议优先参考[离线安装自定义算子包]**(#install_custom_op_by_download)章节安装算子包。若有修改对应算子代码，再参考本章节后续内容进行源码编译安装。
+
    a）**安装fbgemm_ascend算子包**
 
-   fbgemm_ascend为Rec SDK Torch的三方依赖，可直接从[fbgemm_ascend Release](https://gitcode.com/Ascend/fbgemm-ascend/releases)获取（fbgemm_ascend版本和PyTorch配套关系参考fbgemm_gpu版本即可），再按照如下指令进行安装。
-
-   ```bash
-   pip3 uninstall -y fbgemm_ascend
-   pip3 install fbgemm_ascend-*-cp311-cp311-linux_*.whl
-   ```
-
-   更多fbgemm_ascemd说明可参考[fbgemm\_ascend README](https://gitcode.com/Ascend/fbgemm-ascend)。
+   fbgemm_ascend为Rec SDK Torch的三方依赖，请参见[fbgemm\_ascend编译](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md#源码编译与安装)进行源码编译和安装。
 
    b）**安装rec_cust_ops算子包**
 
@@ -224,13 +221,13 @@ Rec SDK Torch软件包如下表：
    git submodule update --init --recursive
    # 编译算子包
    cd RecSDK/cust_op
-   bash build_whl.sh
+   RECSDK_BUILD_VERS=A2 bash build_whl.sh
    # 安装算子包
    pip3 uninstall -y rec_cust_ops
    pip3 install rec_cust_ops*.whl
    ```
 
-   更多rec_cust_ops算子包编译安装说明请参见[rec_cust_ops编译安装](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md#build_recsdk_cust_ops)。
+   rec_cust_ops算子包默认编译A2场景，更多编译安装说明请参见[rec_cust_ops编译安装](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md#build_recsdk_cust_ops)。
 
 ### 离线安装
 
@@ -302,16 +299,27 @@ Rec SDK Torch软件包如下表：
 
    安装软件包时**会同时安装依赖包，请保持网络通畅**。若网络不通，可能导致安装依赖包时下载超时导致安装失败。首次安装时，视环境中依赖包缺失数量的多少，可能耗时5~10min。
 
-3. 安装自定义算子相关包
+3. 安装自定义算子相关包<a id="install_custom_op_by_download"></a>
 
-   参考fbgemm\_ascend的[README](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md)获取fbgemm\_ascend软件包。
+   请先根据[配套版本](#section146113514599)确定所选择的方案（方案一/方案二），并在容器内执行 `uname -m` 确认系统架构，再从下表下载对应的fbgemm_ascend与rec_cust_ops软件包并参考后续指令进行安装。
 
-   rec_cust_ops自定义算子包参考[Release下载页](https://gitcode.com/Ascend/RecSDK/releases)获取。
+   | 配套版本 | 架构 | fbgemm_ascend下载链接 | rec_cust_ops下载链接 | 备注 |
+   | -------- | ---- | ---------------------- | --------------------- | ---- |
+   | 方案一 | x86_64 | [fbgemm_ascend-1.2.0-cp311-cp311-linux_x86_64.whl](https://gitcode.com/Ascend/fbgemm-ascend/releases/download/v26.1.0-1.2.0/fbgemm_ascend-1.2.0-cp311-cp311-linux_x86_64.whl) | [rec_cust_ops-2.7.1-cp311-cp311-linux_x86_64.whl](https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0-beta.1/rec_cust_ops-2.7.1-cp311-cp311-linux_x86_64.whl) | 配套 PyTorch 2.7.1 / fbgemm_gpu 1.2.0 |
+   | 方案一 | aarch64 | [fbgemm_ascend-1.2.0-cp311-cp311-linux_aarch64.whl](https://gitcode.com/Ascend/fbgemm-ascend/releases/download/v26.1.0-1.2.0/fbgemm_ascend-1.2.0-cp311-cp311-linux_aarch64.whl) | [rec_cust_ops-2.7.1-cp311-cp311-linux_aarch64.whl](https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0-beta.1/rec_cust_ops-2.7.1-cp311-cp311-linux_aarch64.whl) | 配套 PyTorch 2.7.1 / fbgemm_gpu 1.2.0 |
+   | 方案二 | x86_64 | [fbgemm_ascend-1.5.0-cp311-cp311-linux_x86_64.whl](https://gitcode.com/Ascend/fbgemm-ascend/releases/download/v26.1.0-1.5.0/fbgemm_ascend-1.5.0-cp311-cp311-linux_x86_64.whl) | [rec_cust_ops-2.10.0-cp311-cp311-linux_x86_64.whl](https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0-beta.1/rec_cust_ops-2.10.0-cp311-cp311-linux_x86_64.whl) | 配套 PyTorch 2.10.0 / fbgemm_gpu 1.5.0 |
+   | 方案二 | aarch64 | [fbgemm_ascend-1.5.0-cp311-cp311-linux_aarch64.whl](https://gitcode.com/Ascend/fbgemm-ascend/releases/download/v26.1.0-1.5.0/fbgemm_ascend-1.5.0-cp311-cp311-linux_aarch64.whl) | [rec_cust_ops-2.10.0-cp311-cp311-linux_aarch64.whl](https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0-beta.1/rec_cust_ops-2.10.0-cp311-cp311-linux_aarch64.whl) | 配套 PyTorch 2.10.0 / fbgemm_gpu 1.5.0 |
+
+   > - 上述算子包均为基于Python 3.11版本编译，**请在相同的Python版本环境下安装使用**。若需在其他Python版本环境下安装使用，请参见[fbgemm\_ascend编译](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md#源码编译与安装)和[rec\_cust\_ops编译](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md#build_recsdk_cust_ops)进行源码编译。
+
+   将下载的软件包传入容器（方式参见上一步），执行如下指令进行安装：
 
    ```shell
-   # 安装框架依赖算子包 fbgemm_ascend
+   # 卸载已安装的算子包
+   pip3 unisntall -y fbgemm_ascend rec_cust_ops
+   # 安装fbgemm_ascend算子包
    pip3 install fbgemm_ascend-*.whl
-   # 安装自定义算子包 rec_cust_ops
+   # 安装rec_cust_ops算子包
    pip3 install rec_cust_ops*.whl
    ```
 
@@ -319,21 +327,27 @@ Rec SDK Torch软件包如下表：
 
 可通过执行已有用例/模型验证Rec SDK Torch是否安装成功。
 
-**单卡验证**
+**UT验证**
+
+下载RecSDK仓库源码后，进入`RecSDK/training/torch_rec_v1/hybrid_torchrec/test/dt`目录，执行`bash test_all.sh`进行验证。
+
+**模型单卡验证**
 
 请参见[快速入门](../03_quick_start/quick_start.md#搭建模型)中“搭建模型”、“启动模型训练”章节，进行模型搭建及启动单卡训练。
 
-**多卡验证**
+**模型多卡验证**
 
 请参见[快速入门](../03_quick_start/quick_start.md#搭建模型)中“搭建模型”、“启动模型训练”章节，进行模型搭建及启动多卡训练。
 
-**框架用例验证**
+**框架ST用例验证（可选）**
+
+> 框架ST用例为构建多个小模型进行验证，包括模型构建、数据集生成，耗时较长（30min+），可根据需要进行验证。
 
 hybrid\_torchrec用例列表和运行方式请参见[README](../../../../../training/torch_rec_v1/hybrid_torchrec/test/st/README.md)。
 
 torchrec\_embcache用例列表和运行方式请参见[README](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/README.md)。
 
-用例执行后，若显示`xx passed`且没有`xx failed`则说明用例执行通过，Rec SDK Torch安装成功。
+ST用例执行后，若显示`xx passed`且没有`xx failed`则说明用例执行通过。
 
 ## 配置环境变量<a name="ZH-CN_TOPIC_0000002336268805"></a>
 
@@ -361,6 +375,7 @@ Rec SDK Torch环境变量的说明如[表1](#table126401659163820)所示。
 | LOCAL\_UNIQUE\_PARALLEL\_BATCH\_NUM | EmbCacheTrainPipelineSparseDist中Local unique并行处理批次数 | 可选    | 整数，默认为2，取值范围：\[1, 24]。                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ENABLE\_PARALLEL\_GLOBAL\_UNIQUE    | 是否启用并行Global Unique处理                               | 可选    | 字符串，1表示启用，其他值表示不启用。默认为0，表示不启用。                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | GLOG\_stderrthreshold               | 设置多级缓存C++模块的日志级别。                                   | 可选    | 整数，默认为1（WARN）。取值范围：<ul><li>-2：TRACE</li><li>-1：DEBUG</li><li>0：INFO</li><li>1：WARN</li><li>2：ERROR</li></ul>                                                                                                                                                                                                                                                                                                                                                   |
+| SOC_VERSION               | fbgemm_ascend和rec_cust_ops算子包加载时会自动探测环境上的NPU芯片版本并加载对应芯片版本的算子，自动探测失败时可通过设置该环境变量值来指定加载对应芯片版本的算子。                                   | 可选    | 字符串，无默认值。无固定取值范围，设置值时可参考：<ul><li>Ascend910B：设置算子包加载昇腾A2系列产品算子</li><li>Ascend910_93：设置算子包加载昇腾A3系列产品算子</li><li>Ascend950：设置算子包加载昇腾950PR/DT系列产品算子</li><li>其他值：设置算子包加载昇腾950PR/DT系列产品算子</li></ul>                                                                                                                                                                                                                                                                                                                                                   |
 
 ## 卸载<a name="ZH-CN_TOPIC_0000002302389376"></a>
 

@@ -68,3 +68,11 @@ pip3 install torchrec-1.5.0+npu-*.whl
 # 安装TorchRec依赖。若提示安装expecttest失败，可忽略，该包仅测试场景使用
 pip3 install -r requirements.txt
 ```
+
+## FAQ
+
+### 无法访问github仓库时下载TorchRec源码
+
+问题现象：因网络问题无法访问github网站，导致无法下载TorchRec源码。
+
+处理：可以从gitcode网站中的TorchRec镜像仓库下载源码。将前面章节指令中的`https://github.com/pytorch/torchrec.git`替换为`https://gitcode.com/gh_mirrors/to/torchrec.git`，再执行相关指令。

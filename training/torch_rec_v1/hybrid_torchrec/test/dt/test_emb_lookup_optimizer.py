@@ -163,8 +163,8 @@ class TestHybridOps(unittest.TestCase):
             "lower_bound": None,
             "regularization_mode": "l2",
         }
-        # fbgemm 1.1.0版本和fbgemm 1.2.0版本参数差异处理
-        if hybrid_torchrec.IS_TORCH_REC_120 or hybrid_torchrec.IS_TORCH_REC_150:
+        # 兼容旧版本hybrid_torchrec无IS_TORCH_REC_150属性的情况（缺失时视为False）
+        if hybrid_torchrec.IS_TORCH_REC_120 or getattr(hybrid_torchrec, "IS_TORCH_REC_150", False):
             kw_args["use_rowwise_bias_correction"] = False
         else:
             kw_args["learning_rate"] = 0.01
