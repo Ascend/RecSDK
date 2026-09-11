@@ -21,7 +21,7 @@ See the License for the specific language governing permissions and
 #include <cstdint>
 #include <type_traits>
 
-#include "kernel_log.h"
+#include "basic_api/kernel_common.h"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "hstu_common_const.h"
@@ -34,7 +34,7 @@ enum class CausalMaskT {
     MASK_TRIL = 0,  // 下三角
     MASK_TRIU,      // 上三角
     MASK_NONE,      // 不使能mask
-    MASK_CUSTOM    // 用户自定义mask
+    MASK_CUSTOM     // 用户自定义mask
 };
 
 struct BlockMaskParams {
@@ -91,8 +91,8 @@ struct BlockMaskParams {
         }
         const uint32_t numBlockForContextMaskQ = CeilDiv(numContext, blockHeight);
         const uint32_t numBlockForContextMaskK = CeilDiv(seqlenK - numTarget, blockHeight);
-        bool needCtxMask = (numContext > 0) && (qSeqIdFlipped < numBlockForContextMaskQ) &&
-               (kSeqIdFlipped < numBlockForContextMaskK);
+        bool needCtxMask =
+            (numContext > 0) && (qSeqIdFlipped < numBlockForContextMaskQ) && (kSeqIdFlipped < numBlockForContextMaskK);
 
         const uint32_t top = GetTop(seqlenQ, seqlenK, blockHeight);
         bool needCasMask = (kSeqIdFlipped < qSeqIdFlipped + top);
@@ -103,8 +103,7 @@ struct BlockMaskParams {
     {
         const uint32_t numBlockForContextMaskQ = CeilDiv(numContext, blockHeight);
         const uint32_t numBlockForContextMaskK = CeilDiv(seqlenK - numTarget, blockHeight);
-        return (numContext > 0) && (qSeqId < numBlockForContextMaskQ) &&
-               (kSeqId < numBlockForContextMaskK);
+        return (numContext > 0) && (qSeqId < numBlockForContextMaskQ) && (kSeqId < numBlockForContextMaskK);
     }
 
     __aicore__ inline bool NeedCausalMask(bool diagonal = true)
@@ -209,7 +208,7 @@ public:
     {
         return needMask;
     }
-    
+
 private:
     uint32_t qSeqId;
     uint32_t kSeqId;
