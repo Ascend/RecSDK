@@ -18,7 +18,7 @@ See the License for the specific language governing permissions and
 #include <unistd.h>
 #include <cstdint>
 
-#include "kernel_log.h"
+#include "basic_api/kernel_common.h"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 
@@ -32,12 +32,8 @@ using namespace AscendC;
 namespace InLinearSiluBackward {
 class BlockTaskAssign {
 public:
-    __aicore__ inline BlockTaskAssign(uint32_t coreNum,
-                                     int64_t blockM,
-                                     int64_t blockK,
-                                     int64_t seqLen,
-                                     int64_t hiddenSize,
-                                     int64_t dim)
+    __aicore__ inline BlockTaskAssign(uint32_t coreNum, int64_t blockM, int64_t blockK, int64_t seqLen,
+                                      int64_t hiddenSize, int64_t dim)
     {
         this->coreNum = coreNum;
         this->blockM = blockM;
@@ -46,8 +42,8 @@ public:
         this->hiddenSize = hiddenSize;
         this->dim = dim;
     }
-    
-    __aicore__ inline void SplitCoreFast(int (&result)[2], int coreId) // 按行分
+
+    __aicore__ inline void SplitCoreFast(int (&result)[2], int coreId)  // 按行分
     {
         int64_t totalTaskNum = (this->seqLen + this->blockM - 1) / this->blockM;
         uint32_t usedCoreNum = (this->coreNum > totalTaskNum) ? totalTaskNum : this->coreNum;
@@ -58,14 +54,14 @@ public:
             result[0] = splitPrevCoreProcNum * coreId;
             result[1] = result[0] + splitPrevCoreProcNum;
         } else if (coreId < usedCoreNum) {
-            result[0] = splitPrevCoreProcNum * splitCoreIdx +
-                      (coreId - splitCoreIdx) * splitNextCoreProcNum;
+            result[0] = splitPrevCoreProcNum * splitCoreIdx + (coreId - splitCoreIdx) * splitNextCoreProcNum;
             result[1] = result[0] + splitNextCoreProcNum;
         } else {
             result[0] = 0;
             result[1] = 0;
         }
     }
+
 private:
     uint32_t coreNum;
     int64_t blockM;
@@ -74,5 +70,5 @@ private:
     int64_t hiddenSize;
     int64_t dim;
 };
-}
+}  // namespace InLinearSiluBackward
 #endif

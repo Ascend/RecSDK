@@ -22,7 +22,7 @@ See the License for the specific language governing permissions and
 #include <type_traits>
 #include <tuple>
 
-#include "kernel_log.h"
+#include "basic_api/kernel_common.h"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "hstu_common_const.h"
@@ -45,16 +45,8 @@ struct BlockMaskParams {
 
     __aicore__ inline BlockMaskParams() {}
 
-    __aicore__ inline BlockMaskParams(int64_t qId,
-                                      int64_t kId,
-                                      int64_t qLen,
-                                      int64_t kLen,
-                                      int64_t blockM,
-                                      int64_t blockN,
-                                      int64_t nContext,
-                                      int64_t nTarget,
-                                      int64_t groupSize,
-                                      float val)
+    __aicore__ inline BlockMaskParams(int64_t qId, int64_t kId, int64_t qLen, int64_t kLen, int64_t blockM,
+                                      int64_t blockN, int64_t nContext, int64_t nTarget, int64_t groupSize, float val)
         : qSeqId(qId),
           kSeqId(kId),
           qSeqLen(qLen),
@@ -64,7 +56,9 @@ struct BlockMaskParams {
           numContext(nContext),
           numTarget(nTarget),
           targetGroupSize(groupSize),
-          value(val) {}
+          value(val)
+    {
+    }
 
     __aicore__ inline bool NoComputation(CausalMaskT maskType)
     {
@@ -78,8 +72,7 @@ struct BlockMaskParams {
     {
         const uint32_t numBlockForContextMaskQ = CeilDiv(numContext, blockM);
         const uint32_t numBlockForContextMaskK = CeilDiv(kSeqLen - numTarget, blockN);
-        return (numContext > 0) && (qSeqId < numBlockForContextMaskQ) &&
-               (kSeqId < numBlockForContextMaskK);
+        return (numContext > 0) && (qSeqId < numBlockForContextMaskQ) && (kSeqId < numBlockForContextMaskK);
     }
 
     __aicore__ inline bool NeedCausalMask(bool diagonal = true)
@@ -115,7 +108,7 @@ struct BlockMaskParams {
         return diagonal || tar;
     }
 
-    template<typename T>
+    template <typename T>
     __aicore__ inline bool AboveDiag(T* point)
     {
         const int deltaQK = kSeqLen - qSeqLen;
@@ -267,15 +260,9 @@ private:
     }
 };
 
-template<typename qType, CausalMaskT maskType>
-__aicore__ inline void DoCausalMask(
-    LocalTensor<qType>& inMaskLt,
-    int64_t maskOffset,
-    int64_t maskLens,
-    int64_t maskStride,
-    int64_t repeatTimes,
-    qType value
-)
+template <typename qType, CausalMaskT maskType>
+__aicore__ inline void DoCausalMask(LocalTensor<qType>& inMaskLt, int64_t maskOffset, int64_t maskLens,
+                                    int64_t maskStride, int64_t repeatTimes, qType value)
 {
     if constexpr (maskType == CausalMaskT::MASK_TRIL) {
         Duplicate<qType>(inMaskLt, 0, maskLens);

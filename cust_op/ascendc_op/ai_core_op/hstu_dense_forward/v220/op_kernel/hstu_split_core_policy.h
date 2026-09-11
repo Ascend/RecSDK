@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-
 #ifndef HSTU_SPLIT_CORE_POLICY_H
 #define HSTU_SPLIT_CORE_POLICY_H
 
 #include <unistd.h>
 #include <cstdint>
 
-#include "kernel_log.h"
+#include "basic_api/kernel_common.h"
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "hstu_common_const.h"
@@ -32,17 +31,10 @@ namespace HstuForward {
 template <typename oType, CausalMaskT maskType>
 class BlockTaskAssign {
 public:
-    __aicore__ inline BlockTaskAssign(uint32_t coreNum,
-                                      int64_t batchSize,
-                                      int64_t headNum,
-                                      int64_t tgsize,
-                                      int64_t blockM,
-                                      int64_t blockN,
-                                      GlobalTensor<oType>& seqOffsetsQGt,
-                                      GlobalTensor<oType>& seqOffsetsKGt,
-                                      GlobalTensor<oType>& numContextGt,
-                                      GlobalTensor<oType>& numTargetGt,
-                                      int splitMode)
+    __aicore__ inline BlockTaskAssign(uint32_t coreNum, int64_t batchSize, int64_t headNum, int64_t tgsize,
+                                      int64_t blockM, int64_t blockN, GlobalTensor<oType>& seqOffsetsQGt,
+                                      GlobalTensor<oType>& seqOffsetsKGt, GlobalTensor<oType>& numContextGt,
+                                      GlobalTensor<oType>& numTargetGt, int splitMode)
     {
         this->coreNum = coreNum;
         this->batchSize = batchSize;
@@ -57,7 +49,7 @@ public:
         this->bxn = batchSize * headNum;
         this->splitMode = splitMode;
     }
-    
+
     __aicore__ inline void SplitCoreFast(int (&result)[4], int coreId)
     {
         uint32_t totalTaskNum = 0;
@@ -110,11 +102,11 @@ public:
             uint32_t seqTaskNum = ComputeSeqTaskNum(isDeltaQK, seqLenQ, seqLenK, numBlkQ, numBlkK, numCtx, numTg);
             totalTaskNum += headNum * seqTaskNum;
         }
-        uint32_t usedCoreNum = (this->coreNum > totalTaskNum)? totalTaskNum : this->coreNum;
+        uint32_t usedCoreNum = (this->coreNum > totalTaskNum) ? totalTaskNum : this->coreNum;
         uint32_t splitNextCoreProcNum = totalTaskNum / usedCoreNum;
         uint32_t splitPrevCoreProcNum = splitNextCoreProcNum + 1;
         uint32_t splitCoreIdx = totalTaskNum % usedCoreNum;
-        
+
         if (coreId < splitCoreIdx) {
             result[0] = coreId * splitPrevCoreProcNum;
             result[1] = result[0] + splitPrevCoreProcNum;
@@ -143,14 +135,14 @@ public:
             bool isDeltaQK = DeltaQK != 0;
             uint32_t innerSeqTaskNum = ComputeSeqTaskNum(isDeltaQK, seqLenQ, seqLenK, numBlkQ, numBlkK, numCtx, numTg);
             if (signSBlk && totalTaskNum + innerSeqTaskNum * headNum >= result[0]) {
-                LocateQKseqId(result[2], result[0], isDeltaQK, seqLenQ, seqLenK,
-                    numBlkQ, numBlkK, numCtx, numTg, totalTaskNum, innerSeqTaskNum);
+                LocateQKseqId(result[2], result[0], isDeltaQK, seqLenQ, seqLenK, numBlkQ, numBlkK, numCtx, numTg,
+                              totalTaskNum, innerSeqTaskNum);
                 result[2] += totalTaskBlock;
                 signSBlk = false;
             }
             if (totalTaskNum + innerSeqTaskNum * headNum >= result[1]) {
-                LocateQKseqId(result[3], result[1], isDeltaQK, seqLenQ, seqLenK,
-                    numBlkQ, numBlkK, numCtx, numTg, totalTaskNum, innerSeqTaskNum);
+                LocateQKseqId(result[3], result[1], isDeltaQK, seqLenQ, seqLenK, numBlkQ, numBlkK, numCtx, numTg,
+                              totalTaskNum, innerSeqTaskNum);
                 result[3] += totalTaskBlock;
                 break;
             }
@@ -169,13 +161,14 @@ public:
     }
 
 private:
-    __aicore__ inline uint32_t ComputeSeqTaskBlockNum(bool isDeltaQK, int64_t seqLenQ, int64_t seqLenK,
-                             int64_t numBlkQ, int64_t numBlkK, int64_t numCtx, int64_t numTg, uint32_t seqTaskNum)
+    __aicore__ inline uint32_t ComputeSeqTaskBlockNum(bool isDeltaQK, int64_t seqLenQ, int64_t seqLenK, int64_t numBlkQ,
+                                                      int64_t numBlkK, int64_t numCtx, int64_t numTg,
+                                                      uint32_t seqTaskNum)
     {
         if constexpr (maskType != CausalMaskT::MASK_TRIL) {
             return seqTaskNum / numBlkK;
         }
-        
+
         int64_t sum = 0;
         int64_t numBlkidx = 0;
         int64_t numCtxCol = min(numBlkQ, CeilDiv(numCtx, blockM));
@@ -197,13 +190,13 @@ private:
         return numBlkQ - 1;
     }
 
-    __aicore__ inline uint32_t ComputeSeqTaskNum(bool isDeltaQK, int64_t seqLenQ, int64_t seqLenK,
-                                                int64_t numBlkQ, int64_t numBlkK, int64_t numCtx, int64_t numTg)
+    __aicore__ inline uint32_t ComputeSeqTaskNum(bool isDeltaQK, int64_t seqLenQ, int64_t seqLenK, int64_t numBlkQ,
+                                                 int64_t numBlkK, int64_t numCtx, int64_t numTg)
     {
         if constexpr (maskType != CausalMaskT::MASK_TRIL) {
             return numBlkQ * numBlkK;
         }
-        
+
         int64_t numCtxCol = min(numBlkQ, CeilDiv(numCtx, blockM));
         int64_t numCtxRow = CeilDiv(seqLenK - numTg, blockN);
         uint32_t seqTaskNum = numCtxRow * numCtxCol;
@@ -214,19 +207,19 @@ private:
         }
 
         if (numBlkidx == numBlkQ - 1) {
-            seqTaskNum += CeilDiv(seqLenK, blockN); // 处理最后一行，可能存在缺角
+            seqTaskNum += CeilDiv(seqLenK, blockN);  // 处理最后一行，可能存在缺角
         }
-        
+
         return seqTaskNum;
     }
 
-    __aicore__ inline void LocateQKseqId(int32_t &QseqId, int32_t &KseqId, bool isDeltaQK, int64_t seqLenQ,
-        int64_t seqLenK, int64_t numBlkQ, int64_t numBlkK, int64_t numCtx,
-        int64_t numTg, uint32_t totalTaskNum, uint32_t innerSeqTaskNum)
+    __aicore__ inline void LocateQKseqId(int32_t& QseqId, int32_t& KseqId, bool isDeltaQK, int64_t seqLenQ,
+                                         int64_t seqLenK, int64_t numBlkQ, int64_t numBlkK, int64_t numCtx,
+                                         int64_t numTg, uint32_t totalTaskNum, uint32_t innerSeqTaskNum)
     {
-        QseqId = ComputeSeqTaskBlockNum(isDeltaQK, seqLenQ, seqLenK, numBlkQ,
-            numBlkK, numCtx, numTg, (KseqId - totalTaskNum) % innerSeqTaskNum) +
-            (KseqId - totalTaskNum) / innerSeqTaskNum * numBlkQ;
+        QseqId = ComputeSeqTaskBlockNum(isDeltaQK, seqLenQ, seqLenK, numBlkQ, numBlkK, numCtx, numTg,
+                                        (KseqId - totalTaskNum) % innerSeqTaskNum) +
+                 (KseqId - totalTaskNum) / innerSeqTaskNum * numBlkQ;
         KseqId = (KseqId - totalTaskNum) % innerSeqTaskNum;
         if constexpr (maskType != CausalMaskT::MASK_TRIL) {
             KseqId %= numBlkK;
@@ -256,5 +249,5 @@ private:
     GlobalTensor<oType> numContextGt;
     GlobalTensor<oType> numTargetGt;
 };
-}  // namespace HstuDenseForward
+}  // namespace HstuForward
 #endif

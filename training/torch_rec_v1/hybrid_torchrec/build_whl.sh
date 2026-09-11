@@ -147,7 +147,4 @@ function compile_all_pkg()
 # ==============================================================================
 setup_ccache
 
-# 检查是否有pytorch 2.6.0python虚拟环境。若存在则基于每个虚拟环境编译。适用于流水线构建
-[ -e /opt/buildtools/pt260_env/bin/activate ] && source /opt/buildtools/pt260_env/bin/activate && compile_all_pkg && deactivate pt260_env
-
 compile_all_pkg
