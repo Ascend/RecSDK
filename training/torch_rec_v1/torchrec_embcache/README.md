@@ -59,6 +59,14 @@ pip3 install ./dist/torchrec_embcache-*.whl
 
 ### 3 运行测试
 
+**UT用例**
+
+进入`RecSDK/training/torch_rec_v1/torchrec_embcache/tests/dt`目录，执行`pytest .`进行验证。
+
+**ST用例（可选）**
+
+> 框架ST用例为构建多个小模型进行验证，包括模型构建、数据集生成，耗时较长，可根据需要进行验证。
+
 请参见[torchrec_embcache测试套件](tests/acc_test/README.md)。
 
 ## 相关网站

@@ -24,7 +24,10 @@ from setuptools.command.install import install
 
 import _setup_common
 
-SDK_VERSION = os.environ.get("RECSDK_VERSION", "26.1.0")
+try:
+    from _version import SDK_VERSION
+except ImportError:
+    SDK_VERSION = os.environ.get("RECSDK_VERSION", "26.2.0")
 
 custom_build_py = _setup_common.make_custom_build_py("_torchrec_merged_src", chmod_so=True)
 

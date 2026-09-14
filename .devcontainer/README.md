@@ -6,15 +6,15 @@
 
 | 软件          | 版本          |
 | ------------- | ------------- |
-| 基础镜像      | Debian 12     |
-| PyTorch       | 2.6.0         |
+| 基础镜像       | ubuntu22.04   |
+| PyTorch       | 2.7.1         |
 | Python        | 3.11.0        |
-| fbgemm-gpu    | 1.1.0         |
+| fbgemm-gpu    | 1.2.0         |
 | GCC           | 11.2.0        |
 | CMake         | 3.22.6        |
-| CANN          | 9.0.0-beta.2  |
-| torch_npu     | 7.1.0         |
-| RecSDK-torch  | 26.0.0        |
+| CANN          | 9.1.0         |
+| torch_npu     | 2.7.1         |
+| RecSDK-torch  | 26.1.0        |
 
 ## 快速开始
 
@@ -22,7 +22,16 @@
 
 使用 VS Code 打开本仓目录，按 `F1` → **Dev Containers: Reopen in Container**，等待镜像拉取完成。
 
-### 2. 编译 RecSDK
+### 2. 刷新环境变量
+
+```shell
+# 配置CANN环境变量
+source /usr/local/Ascend/cann/set_env.sh
+# Python虚拟环境存在时激活虚拟环境。使用完后若需退出Python虚拟环境，执行命令： deactivate 即可退出。
+[ -f /opt/buildtools/torch_v1_pt2.7.1/bin/activate ] && source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
+```
+
+### 3. 编译RecSDK
 
 默认已安装torch_rec_v1相关软件包，如需源码编译安装，请参考[源码安装章节](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/torch/torch_rec_v1/02_torch_installation_guide/recsdk_torch_installation_guide.md#%E6%BA%90%E7%A0%81%E5%AE%89%E8%A3%85)。
 
