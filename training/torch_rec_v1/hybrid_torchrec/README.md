@@ -73,6 +73,14 @@ pip3 install torchrec_embcache-*-py3-none-linux*.whl
 
 ### 3 运行测试
 
+**UT用例**
+
+进入`RecSDK/training/torch_rec_v1/hybrid_torchrec/test/dt`目录，执行`bash test_all.sh`进行验证。
+
+**ST用例（可选）**
+
+> 框架ST用例为构建多个小模型进行验证，包括模型构建、数据集生成，耗时较长，可根据需要进行验证。
+
 请参见[hybrid_torchrec测试套件](./test/st/README.md)。
 
 ## 相关网站

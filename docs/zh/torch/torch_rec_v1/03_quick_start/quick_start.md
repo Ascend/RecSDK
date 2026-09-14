@@ -60,9 +60,9 @@ bash run_docker.sh 容器名 镜像名称
 ### 刷新容器内环境变量<a id="refresh_container_env"></a>
 
 ```shell
-# 使能CANN环境变量
+# 配置CANN环境变量
 source /usr/local/Ascend/cann/set_env.sh
-# Python虚拟环境存在时激活虚拟环境。使用完后若需退出 Python 虚拟环境，执行命令： deactivate 即可退出。
+# Python虚拟环境存在时激活虚拟环境。使用完后若需退出Python虚拟环境，执行命令： deactivate 即可退出。
 [ -f /opt/buildtools/torch_v1_pt2.7.1/bin/activate ] && source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
 ```
 

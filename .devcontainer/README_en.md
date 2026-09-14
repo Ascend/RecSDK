@@ -6,15 +6,15 @@ This directory contains the VS Code Dev Container configuration for building and
 
 | Software      | Version       |
 | ------------- | ------------- |
-| Base Image    | Debian 12     |
-| PyTorch       | 2.6.0         |
+| Base Image    | ubuntu22.04   |
+| PyTorch       | 2.7.1         |
 | Python        | 3.11.0        |
-| fbgemm-gpu    | 1.1.0         |
+| fbgemm-gpu    | 1.2.0         |
 | GCC           | 11.2.0        |
 | CMake         | 3.22.6        |
-| CANN          | 9.0.0-beta.2  |
-| torch_npu     | 7.1.0         |
-| RecSDK-torch  | 26.0.0        |
+| CANN          | 9.1.0         |
+| torch_npu     | 2.7.1         |
+| RecSDK-torch  | 26.1.0        |
 
 ## Quick Start
 
@@ -22,7 +22,16 @@ This directory contains the VS Code Dev Container configuration for building and
 
 Open the repository in VS Code, press `F1` → **Dev Containers: Reopen in Container**, and wait for the image to be pulled.
 
-### 2. Build RecSDK
+### 2. Set Up Environment Variables
+
+```shell
+# Set CANN environment variables
+source /usr/local/Ascend/cann/set_env.sh
+# Activate the Python virtual environment if it exists. To deactivate it later, run: deactivate
+[ -f /opt/buildtools/torch_v1_pt2.7.1/bin/activate ] && source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
+```
+
+### 3. Build RecSDK
 
 The torch_rec_v1 packages are pre-installed by default. For source build and installation, refer to the [Source Installation Guide](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/en/torch/torch_rec_v1/recsdk_torch_installation_guide.md#installing-from-source).
 

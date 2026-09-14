@@ -63,7 +63,7 @@ rec_cust_ops包中包含的算子列表可参考 [RecOps.cmake](RecOps.cmake)文
 
 ```bash
 # 配置 CANN 环境变量
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
+source /usr/local/Ascend/cann/set_env.sh
 # 拉取三方模块（部分算子依赖 CATLASS）
 git submodule update --init --recursive
 ```
@@ -194,9 +194,10 @@ torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
 
 ## 算子测试用例
 
-完成算子及其算子适配层准备后，可通过算子用例验证。进入指定算子的测试用例目录(cust_op/test/目录下/torch)，执行如下命令运行测试用例：
+完成算子及其算子适配层准备后，可通过算子用例验证。进入指定算子的测试用例目录(cust_op/test/算子名称/torch)，执行如下命令运行测试用例：
 
 ```bash
+# your_script.py 替换为对应算子测试脚本
 python3 -m pytest -x your_script.py
 ```
 

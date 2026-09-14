@@ -16,7 +16,9 @@
 
 set -e
 
-SDK_VERSION="26.1.0"
+# 从统一版本工具加载 SDK 版本号
+source "$(cd "$(dirname "$0")/.." && pwd)/_version_utils.sh"
+SDK_VERSION="$(get_sdk_version)"
 export RECSDK_VERSION="$SDK_VERSION"
 # 保存脚本所在目录的绝对路径
 SCRIPT_BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -40,6 +42,9 @@ for file in {"setup.py","MANIFEST.in","requirements.txt"}; do
 done
 cp ../../_setup_common.py "$BUILD_DIR/" || { echo "Error: Cannot find _setup_common.py"; exit 1; }
 echo "Copied: _setup_common.py"
+
+# 生成版本文件，供 pip install 时 setup.py 读取（不依赖环境变量）
+echo "SDK_VERSION = \"${SDK_VERSION}\"" > "$BUILD_DIR/_version.py"
 
 # 1. 准备开源依赖 (opensource)
 OPENSOURCE_DIR="../../../../../opensource"
