@@ -558,10 +558,10 @@ index c495d7b..6ed984f 100644
  __all__ = ['Trainer']
 diff --git a/code/REC/trainer/trainer_npu.py b/code/REC/trainer/trainer_npu.py
 new file mode 100644
-index 0000000..23d12d0
+index 0000000..9a45411
 --- /dev/null
 +++ b/code/REC/trainer/trainer_npu.py
-@@ -0,0 +1,801 @@
+@@ -0,0 +1,791 @@
 +# Copyright 2026. Huawei Technologies Co.,Ltd. All rights reserved.
 +# Copyright (c) 2024 westlake-repl
 +# Copyright (c) 2024 Bytedance Ltd. and/or its affiliate
@@ -829,33 +829,23 @@ index 0000000..23d12d0
 +            optimizer = optim.AdamW(params, lr=self.optim_args['learning_rate'], weight_decay=self.optim_args['weight_decay'])
 +        return optimizer
 +
-+    def latency_summary_rank0(self, latency_list, epoch_idx):
++    def latency_summary_rank0(self, latency_list, epoch_idx, last_loss):
 +        # 将时延从秒转换为毫秒
 +        latency_list_ms = [lat * 1000 for lat in latency_list]
 +
-+        ave_step = np.array(latency_list)
++        ave_step = np.array(latency_list_ms)
 +        avg_time = float(sum(ave_step) / len(ave_step))
-+        ave_step.sort()
-+        QPS = round(1 / avg_time , 6)
-+
-+        if len(ave_step) > 0:
-+            p90 = float(np.percentile(ave_step, 90, method="lower"))
-+            p95 = float(np.percentile(ave_step, 95, method="lower"))
-+            p99 = float(np.percentile(ave_step, 99, method="lower"))
-+            p999 = float(np.percentile(ave_step, 99.9, method="lower"))
 +
 +        e2e_result = {
-+            "Batch_size": self.config['train_batch_size'],
-+            "model_name": "HLLM",
-+            "QPS": QPS,
-+            "AVG Latency": round(avg_time, 6),
-+            "P999 Latency": round(p999, 6),
-+            "P99 Latency": round(p99, 6),
-+            "P95 Latency": round(p95, 6),
-+            "P90 Latency": round(p90, 6),
++            "dataset_name": self.config['dataset'],
++            "batch_size": self.config['train_batch_size'],
++            "epoch": epoch_idx,
++            "step": len(ave_step),
++            "final_loss": round(last_loss.item(), 6),
++            "ms/step": round(avg_time, 3)
 +        }
 +
-+        self.logger.info(f"epoch [{epoch_idx:>3}] training latency result: {e2e_result}")
++        self.logger.info(f"The final result: npu_HLLM_eager_{e2e_result}")
 +
 +    def _train_epoch(self, train_data, epoch_idx, show_progress=False):
 +        self.model.train()
@@ -919,7 +909,7 @@ index 0000000..23d12d0
 +
 +        sample_statistics_num = int(self.config["sample_statistics_num"])
 +        if sample_statistics_num > 0 and sample_statistics_num < step and self.rank == 0:
-+            self.latency_summary_rank0(train_times[self.config["sample_statistics_num"]:], epoch_idx)
++            self.latency_summary_rank0(train_times[-self.config["sample_statistics_num"]:], epoch_idx, losses)
 +
 +        return total_loss
 +
