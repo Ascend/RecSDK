@@ -997,3 +997,1001 @@
 +    def _ascend_attention(
 +        self,
 +        q: torch.Tensor,
++        k: torch.Tensor,
++        v: torch.Tensor,
++        mask: torch.Tensor | None,
++    ) -> torch.Tensor:
++        if q.device.type != "npu":
++            raise RuntimeError(
++                "attention_backend='ascend' requires tensors on an NPU device"
++            )
++        if q.dtype not in (torch.float16, torch.bfloat16):
++            raise RuntimeError(
++                "Ascend fused attention requires float16 or bfloat16 inputs; "
++                "enable --use-bf16 for TP"
++            )
++
++        try:
++            import torch_npu  # type: ignore
++        except ImportError as error:
++            raise RuntimeError(
++                "attention_backend='ascend' requires torch_npu"
++            ) from error
++
++        seq_len = q.shape[-2]
++        local_n_head = q.shape[1]
++        causal_mask = ~self.bias[:, :, :seq_len, :seq_len].bool()
++        if mask is not None:
++            key_mask = ~mask[:, None, None, :].bool()
++            causal_mask = causal_mask | key_mask
++
++        keep_prob = 1.0 - self.attn_dropout.p if self.training else 1.0
++        output = torch_npu.npu_fusion_attention(
++            q,
++            k,
++            v,
++            local_n_head,
++            "BNSD",
++            atten_mask=causal_mask,
++            scale=1.0 / math.sqrt(self.d_head),
++            keep_prob=keep_prob,
++            sparse_mode=0,
++        )[0]
++        if mask is not None:
++            query_mask = mask[:, None, :, None].to(dtype=output.dtype)
++            output = output * query_mask
++        return output
++
++    def forward(
++        self, x: torch.Tensor, mask: torch.Tensor | None = None
++    ) -> torch.Tensor:
++        batch_size, seq_len, d_model = x.shape
++        if d_model % self.n_head != 0:
++            raise ValueError("WRONG: input d_model % n_head != 0.")
++        qkv = self.qkv(x)
++        local_qkv_width = qkv.shape[-1]
++        head_qkv_width = 3 * self.d_head
++        if local_qkv_width % head_qkv_width != 0:
++            raise RuntimeError(
++                "local QKV width must contain complete attention heads: "
++                f"{local_qkv_width} % {head_qkv_width} != 0"
++            )
++        local_n_head = local_qkv_width // head_qkv_width
++        local_width = local_n_head * self.d_head
++
++        qkv: torch.Tensor = qkv.view(
++            batch_size, seq_len, local_n_head, 3, self.d_head
++        ).permute(3, 0, 2, 1, 4).contiguous()
++        q, k, v = qkv.unbind(dim=0)
++
++        if self.attention_backend == "eager":
++            x = self._eager_attention(q, k, v, mask)
++        elif self.attention_backend == "sdpa":
++            x = self._sdpa_attention(q, k, v, mask)
++        else:
++            x = self._ascend_attention(q, k, v, mask)
++
++        x = x.transpose(1, 2).contiguous().view(batch_size, seq_len, local_width)
++        x = self.resid_dropout(self.proj(x))
++        return x
++
++
++class FeedForward(torch.nn.Module):
++    def __init__(self, config: AttentionConfig) -> None:
++        super().__init__()
++        self.fc1 = torch.nn.Linear(config.d_model, config.d_hidden)
++        self.activation = _create_activation(config.activation_function)
++        self.fc2 = torch.nn.Linear(config.d_hidden, config.d_model)
++        self.dropout = torch.nn.Dropout(config.resid_dropout)
++
++    def forward(self, x: torch.Tensor) -> torch.Tensor:
++        return self.dropout(self.fc2(self.activation(self.fc1(x))))
++
++
++class Block(torch.nn.Module):
++    def __init__(self, config: AttentionConfig) -> None:
++        """Pre-LayerNorm Transformer Block"""
++
++        super().__init__()
++        self.d_model = config.d_model
++        self.d_hidden = config.d_hidden
++
++        self.attn = CausalSelfAttention(config=config)
++        self.mlp = FeedForward(config=config)
++
++    def forward(self, x: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
++        residual = x
++        x = torch.nn.functional.layer_norm(x, (self.d_model,))
++        attn_output = self.attn(x, attention_mask)
++
++        x = residual + attn_output
++        residual = x
++        x = torch.nn.functional.layer_norm(x, (self.d_model,))
++        mlp_output = self.mlp(x)
++
++        return residual + mlp_output
+--- /dev/null	2026-09-15 17:30:24
++++ ./model/decision_transformer.py	2026-09-15 17:08:24
+@@ -0,0 +1,580 @@
++from __future__ import annotations
++
++import os
++import torch
++import torch.nn.functional as F
++from contextlib import nullcontext
++from typing import Dict, Any, NamedTuple
++from dataclasses import dataclass
++
++from .components import AttentionConfig, Block
++
++
++@dataclass
++class DecisionTransformerConfig:
++    device: torch.device
++    state_dim: int
++    act_dim: int
++    attention_config: AttentionConfig
++    scale: float
++    target_return: Any
++    length_times: Any
++
++    hf32: bool
++    compile: bool
++    graph: bool
++    shape_handle: bool
++
++    modelsave_dir: str
++
++    learning_rate: float
++
++    use_distribution: bool
++    rank: int
++    world_size: int
++    use_bf16: bool = True
++
++    def __post_init__(self) -> None:
++        if self.length_times != 3:
++            raise ValueError(
++                "length_times must be 3 for return/state/action token interleaving"
++            )
++        if self.attention_config.n_ctx % self.length_times != 0:
++            raise ValueError(
++                "attention_config.n_ctx must be divisible by length_times: "
++                f"{self.attention_config.n_ctx} % {self.length_times} != 0"
++            )
++
++    @property
++    def hidden_size(self) -> int:
++        return self.attention_config.d_model
++
++    @property
++    def max_length(self) -> int:
++        return self.attention_config.n_ctx // self.length_times
++
++    @property
++    def max_ep_len(self) -> int:
++        return self.attention_config.n_position
++
++
++class DecisionTransformerInput(NamedTuple):
++    """FSDP-friendly container for floating-point forward inputs.
++
++    FSDP recursively visits standard tuple containers when applying
++    ``MixedPrecisionPolicy.cast_forward_inputs``. Using a ``NamedTuple``
++    keeps attribute access while allowing states/actions/rewards/RTG to be
++    cast to the mixed-precision parameter dtype before ``forward`` runs.
++    """
++
++    states: torch.Tensor
++    actions: torch.Tensor
++    rewards: torch.Tensor
++    returns_to_go: torch.Tensor
++    timesteps: torch.Tensor
++    attention_mask: torch.Tensor | None
++
++
++@dataclass
++class DecisionTransformerBatch:
++    states: torch.Tensor
++    actions: torch.Tensor
++    rewards: torch.Tensor
++    rtg: torch.Tensor
++    timesteps: Any
++    attention_mask: torch.Tensor
++
++    def to_decision_transformer_input(self) -> DecisionTransformerInput:
++        if self.rtg.shape[1] < self.states.shape[1]:
++            raise RuntimeError(f"WRONG: {self.rtg.shape[1]} < {self.states.shape[1]}")
++        return DecisionTransformerInput(
++            states=self.states,
++            actions=self.actions,
++            rewards=self.rewards,
++            returns_to_go=self.rtg[:, : self.states.shape[1]],
++            timesteps=self.timesteps,
++            attention_mask=self.attention_mask,
++        )
++
++
++def _masked_mse(
++    predictions: torch.Tensor,
++    targets: torch.Tensor,
++    valid_mask: torch.Tensor,
++) -> torch.Tensor:
++    """Compute masked MSE with FP32 arithmetic on every accelerator.
++
++    Selecting valid elements avoids multiplying errors by a zero/one mask, and
++    ``F.mse_loss`` leaves the reduction and normalization to one native loss
++    operator instead of a device-dependent chain of sum/multiply/divide ops.
++    """
++    if predictions.shape != targets.shape:
++        raise ValueError(
++            "prediction and target shapes mismatch: "
++            f"{predictions.shape} != {targets.shape}"
++        )
++    if predictions.shape[:-1] != valid_mask.shape:
++        raise ValueError(
++            "mask shape must match [B, T]: "
++            f"{valid_mask.shape} != {predictions.shape[:-1]}"
++        )
++
++    element_mask = valid_mask.to(dtype=torch.bool).unsqueeze(-1).expand_as(predictions)
++    valid_predictions = predictions.float().masked_select(element_mask)
++    valid_targets = targets.float().masked_select(element_mask)
++
++    if valid_predictions.numel() == 0:
++        # Keep the zero connected to predictions so backward() remains valid.
++        return predictions.float().reshape(-1)[:0].sum()
++
++    return F.mse_loss(valid_predictions, valid_targets, reduction="mean")
++
++
++class DecisionTransformer(torch.nn.Module):
++    def __init__(
++        self,
++        state_mean: Any,
++        state_std: Any,
++        config: DecisionTransformerConfig,
++        action_tanh: bool = False,
++    ) -> None:
++        super(DecisionTransformer, self).__init__()
++        self.rank = config.rank
++        self.world_size = config.world_size
++        self.distributed = config.use_distribution
++
++        self.params = config
++        self.device = config.device
++        self.state_dim = config.state_dim
++        self.act_dim = config.act_dim
++        self.max_length = config.max_length
++        self.max_ep_len = config.max_ep_len
++        self.scale = config.scale
++        self.target_return = config.target_return
++        self.length_times = config.length_times
++        self.hidden_size = config.hidden_size
++
++        self.hf32 = config.hf32
++        self.use_bf16 = config.use_bf16
++        self.compile_enable = bool(config.compile)
++        self.graph = config.graph
++        self.shape_handle = config.shape_handle
++        self.graphs = {}
++
++        self.action_tanh = action_tanh
++
++        state_mean_tensor = (
++            state_mean.to(self.device)
++            if isinstance(state_mean, torch.Tensor)
++            else torch.tensor(state_mean, dtype=torch.float32, device=self.device)
++        )
++
++        state_std_tensor = (
++            state_std.to(self.device)
++            if isinstance(state_std, torch.Tensor)
++            else torch.tensor(state_std, dtype=torch.float32, device=self.device)
++        )
++        self.register_buffer("state_mean", state_mean_tensor)
++        self.register_buffer("state_std", state_std_tensor)
++
++        self.warmup_steps = 10
++        self.weight_decay = 1e-4
++        self.learning_rate = config.learning_rate
++        self.save_path = config.modelsave_dir
++
++        self.block_config = config.attention_config
++
++        self._init_model()
++
++    def _init_model(self) -> None:
++        self.transformer = torch.nn.ModuleList(
++            [Block(self.block_config) for _ in range(self.block_config.n_layer)]
++        )
++        self.embd_timestep = torch.nn.Embedding(self.max_ep_len, self.hidden_size)
++
++        self.embd_return = torch.nn.Linear(1, self.hidden_size)
++        self.embd_reward = torch.nn.Linear(1, self.hidden_size)
++        self.embd_state = torch.nn.Linear(self.state_dim, self.hidden_size)
++        self.embd_action = torch.nn.Linear(self.act_dim, self.hidden_size)
++
++        self.predict_state = torch.nn.Linear(self.hidden_size, self.state_dim)
++        self.predict_action = torch.nn.Sequential(
++            *(
++                [torch.nn.Linear(self.hidden_size, self.act_dim)]
++                + ([torch.nn.Tanh()] if self.action_tanh else [])
++            )
++        )
++        self.predict_return = torch.nn.Linear(self.hidden_size, 1)
++
++        self.optimizer = None
++        self.scheduler = None
++        self.global_step = 0
++        self.tensor_parallel = False
++        self.tp_mesh = None
++
++        self.to(self.device)
++        self._init_eval()
++
++    def tp_autocast(self) -> Any:
++        if not self.tensor_parallel or not self.use_bf16:
++            return nullcontext()
++        return torch.autocast(
++            device_type=self.device.type,
++            dtype=torch.bfloat16,
++        )
++
++    def _init_eval(self) -> None:
++        self.eval_states = None
++        self.eval_actions = torch.zeros(
++            (0, self.act_dim), dtype=torch.float32, device=self.device
++        )
++        self.eval_rewards = torch.zeros(0, dtype=torch.float32, device=self.device)
++        self.eval_target_return = None
++        self.eval_timesteps = torch.zeros((1, 1), dtype=torch.long, device=self.device)
++        self.eval_episode_return, self.eval_episode_length = 0, 0
++
++    def compile_(self) -> None:
++        if self.device.type == "npu":
++            import torchair  # type: ignore
++
++            compiler_config = torchair.CompilerConfig()
++            backend = torchair.get_npu_backend(compiler_config=compiler_config)
++        else:
++            backend = "inductor"
++
++        self.compile(
++            backend=backend,
++            dynamic=False,
++            fullgraph=False,
++        )
++
++    def create_optimizer(self) -> None:
++        if self.optimizer is not None or self.scheduler is not None:
++            raise RuntimeError("optimizer and scheduler have already been created")
++
++        if self.tensor_parallel:
++            from torch.distributed.tensor import DTensor
++
++            tensor_parameters = []
++            dtensor_parameters = []
++            for parameter in self.parameters():
++                if not parameter.requires_grad:
++                    continue
++
++                if isinstance(parameter, DTensor):
++                    dtensor_parameters.append(parameter)
++                else:
++                    tensor_parameters.append(parameter)
++
++            parameter_groups = []
++            if tensor_parameters:
++                parameter_groups.append(
++                    {
++                        "params": tensor_parameters,
++                        "foreach": True,
++                        "fused": False,
++                        "tp_parameter_type": "tensor",
++                    }
++                )
++
++            if dtensor_parameters:
++                parameter_groups.append(
++                    {
++                        "params": dtensor_parameters,
++                        "foreach": True,
++                        "fused": False,
++                        "tp_parameter_type": "dtensor",
++                    }
++                )
++
++            self.optimizer = torch.optim.AdamW(
++                parameter_groups,
++                lr=self.learning_rate,
++                weight_decay=self.weight_decay,
++            )
++        else:
++            self.optimizer = torch.optim.AdamW(
++                self.parameters(),
++                lr=self.learning_rate,
++                weight_decay=self.weight_decay,
++            )
++        self.scheduler = torch.optim.lr_scheduler.LambdaLR(
++            self.optimizer,
++            lambda steps: min((steps + 1) / self.warmup_steps, 1),
++        )
++
++    def _enforce_tp_optimizer_mode(self) -> None:
++        if not self.tensor_parallel or self.optimizer is None:
++            return
++
++        from torch.distributed.tensor import DTensor
++
++        for param_group in self.optimizer.param_groups:
++            parameter_types = {isinstance(parameter, DTensor) for parameter in param_group["params"]}
++            if len(parameter_types) > 1:
++                raise RuntimeError(
++                    "a TP optimizer parameter group cannot mix Tensor and DTensor"
++                )
++
++            param_group["foreach"] = True
++            param_group["fused"] = False
++
++    def forward(self, input: DecisionTransformerInput) -> Any:
++        states = input.states
++        actions = input.actions
++        rewards = input.rewards
++        returns_to_go = input.returns_to_go
++        timesteps = input.timesteps
++        attention_mask = input.attention_mask
++
++        batch_size, seq_length, _ = states.shape
++        attention_mask = (
++            attention_mask
++            if attention_mask is not None
++            else torch.ones(
++                (batch_size, seq_length), dtype=torch.long, device=states.device
++            )
++        )
++        if timesteps.dtype != torch.long:
++            timesteps = timesteps.long()
++        timesteps = timesteps.clamp(0, self.max_ep_len - 1)
++
++        time_embeddings = self.embd_timestep(timesteps)
++        state_embeddings = self.embd_state(states) + time_embeddings
++        action_embeddings = self.embd_action(actions) + time_embeddings
++        returns_embeddings = self.embd_return(returns_to_go) + time_embeddings
++        rewards_embeddings = self.embd_reward(rewards) + time_embeddings
++        del rewards_embeddings
++
++        stacked_inputs = torch.cat(
++            (returns_embeddings, state_embeddings, action_embeddings), dim=-1
++        )
++        stacked_inputs = stacked_inputs.reshape(
++            batch_size, 3 * seq_length, self.hidden_size
++        ).contiguous()
++        stacked_inputs = torch.nn.functional.layer_norm(stacked_inputs, (self.hidden_size,))
++        stacked_attention_mask = (
++            attention_mask.unsqueeze(-1)
++            .expand(-1, -1, 3)
++            .reshape(batch_size, 3 * seq_length)
++        )
++
++        x = stacked_inputs
++        for block in self.transformer:
++            x = block(x, stacked_attention_mask)
++        x = x.view(batch_size, seq_length, 3, self.hidden_size).permute(0, 2, 1, 3)
++
++        return_preds = self.predict_return(x[:, 2])
++        state_preds = self.predict_state(x[:, 2])
++        action_preds = self.predict_action(x[:, 1])
++        dummy = torch.empty(0, device=states.device)
++
++        return [state_preds, action_preds, return_preds, dummy]
++
++    def set_hf32(self) -> None:
++        if self.device.type == "cuda":
++            torch.backends.cuda.matmul.allow_tf32 = self.hf32
++            torch.backends.cudnn.allow_tf32 = self.hf32
++        try:
++            import torch_npu  # type: ignore
++
++            if self.device.type == "npu":
++                torch_npu.npu.aclnn.allow_hf32 = self.hf32
++                torch_npu.npu.conv.allow_hf32 = self.hf32
++                torch_npu.npu.matmul.allow_hf32 = self.hf32
++        except Exception:
++            pass
++
++    def save_net(self) -> None:
++        os.makedirs(self.save_path, exist_ok=True)
++        if self.distributed:
++            if not torch.distributed.is_initialized():
++                raise RuntimeError(
++                    "distributed checkpoint requires an initialized process group"
++                )
++            import torch.distributed.checkpoint as dcp
++            from torch.distributed.checkpoint.state_dict import (
++                get_model_state_dict,
++                get_state_dict,
++            )
++
++            checkpoint: Dict[str, Any] = {
++                "global_step": torch.tensor(self.global_step, dtype=torch.int64)
++            }
++            if self.optimizer is None:
++                checkpoint["model"] = get_model_state_dict(self)
++            else:
++                model_state, optimizer_state = get_state_dict(self, self.optimizer)
++                checkpoint["model"] = model_state
++                checkpoint["optimizer"] = optimizer_state
++                if self.scheduler is not None:
++                    checkpoint["scheduler"] = self.scheduler.state_dict()
++
++            dcp.save(
++                checkpoint,
++                checkpoint_id=os.path.join(self.save_path, "decision_transformer_dcp"),
++                no_dist=True,
++            )
++            return
++
++        file_path = os.path.join(self.save_path, "decision_transformer.pt")
++        checkpoint = {
++            "model": self.state_dict(),
++            "global_step": self.global_step,
++        }
++        if self.optimizer is not None:
++            checkpoint["optimizer"] = self.optimizer.state_dict()
++        if self.scheduler is not None:
++            checkpoint["scheduler"] = self.scheduler.state_dict()
++        torch.save(checkpoint, file_path)
++
++    def load_net(self, *, load_optimizer: bool = False) -> None:
++        dcp_path = os.path.join(self.save_path, "decision_transformer_dcp")
++        if self.distributed or os.path.isdir(dcp_path):
++            if not os.path.isdir(dcp_path):
++                raise FileNotFoundError(
++                    f"distributed checkpoint does not exist: {dcp_path}"
++                )
++
++            import torch.distributed.checkpoint as dcp
++            from torch.distributed.checkpoint import DefaultLoadPlanner
++            from torch.distributed.checkpoint.state_dict import (
++                get_model_state_dict,
++                get_optimizer_state_dict,
++                set_model_state_dict,
++                set_optimizer_state_dict,
++            )
++
++            checkpoint: Dict[str, Any] = {
++                "model": get_model_state_dict(self),
++                "global_step": torch.tensor(0, dtype=torch.int64),
++            }
++            dcp.load(
++                checkpoint,
++                checkpoint_id=dcp_path,
++                no_dist=not torch.distributed.is_initialized(),
++            )
++            set_model_state_dict(self, checkpoint["model"])
++            self.global_step = int(checkpoint["global_step"].item())
++
++            if load_optimizer:
++                if self.optimizer is None:
++                    raise RuntimeError(
++                        "create optimizer before loading optimizer state"
++                    )
++                optimizer_checkpoint: Dict[str, Any] = {
++                    "optimizer": get_optimizer_state_dict(self, self.optimizer),
++                }
++                if self.scheduler is not None:
++                    optimizer_checkpoint["scheduler"] = self.scheduler.state_dict()
++                # AdamW creates state lazily. Parameters that have not received
++                # gradients may therefore be absent from a valid checkpoint.
++                dcp.load(
++                    optimizer_checkpoint,
++                    checkpoint_id=dcp_path,
++                    no_dist=not torch.distributed.is_initialized(),
++                    planner=DefaultLoadPlanner(allow_partial_load=True),
++                )
++                set_optimizer_state_dict(
++                    self,
++                    self.optimizer,
++                    optimizer_checkpoint["optimizer"],
++                )
++                self._enforce_tp_optimizer_mode()
++                if self.scheduler is not None and "scheduler" in optimizer_checkpoint:
++                    self.scheduler.load_state_dict(optimizer_checkpoint["scheduler"])
++            return
++
++        model_path = os.path.join(self.save_path, "decision_transformer.pt")
++        checkpoint = torch.load(model_path, map_location=self.device)
++        # Backward compatibility with the previous model-only state dict.
++        if "model" not in checkpoint:
++            incompatible = self.load_state_dict(checkpoint, strict=False)
++            allowed_missing = {"state_mean", "state_std"}
++            unexpected_missing = set(incompatible.missing_keys) - allowed_missing
++            if unexpected_missing or incompatible.unexpected_keys:
++                raise RuntimeError(
++                    "incompatible legacy checkpoint: "
++                    f"missing={sorted(unexpected_missing)}, "
++                    f"unexpected={incompatible.unexpected_keys}"
++                )
++            return
++
++        self.load_state_dict(checkpoint["model"])
++        self.global_step = int(checkpoint.get("global_step", 0))
++        if load_optimizer:
++            if self.optimizer is None:
++                raise RuntimeError("create optimizer before loading optimizer state")
++            if "optimizer" in checkpoint:
++                self.optimizer.load_state_dict(checkpoint["optimizer"])
++                self._enforce_tp_optimizer_mode()
++            if self.scheduler is not None and "scheduler" in checkpoint:
++                self.scheduler.load_state_dict(checkpoint["scheduler"])
++
++    def step(
++        self,
++        batch: DecisionTransformerBatch,
++        state_preds: torch.Tensor | None = None,
++        action_preds: torch.Tensor | None = None,
++        return_preds: torch.Tensor | None = None,
++        reward_preds: torch.Tensor | None = None,
++    ) -> Any:
++        state_target = batch.states
++        action_target = batch.actions
++        rtg_target = batch.rtg
++
++        predictions_provided = [state_preds, action_preds, return_preds]
++        all_preds_given = all(pred is not None for pred in predictions_provided)
++        # TP does not have an FSDP mixed-precision policy, so its forward
++        # explicitly enters BF16 autocast. Loss, backward and optimizer remain
++        # outside autocast so MSE arithmetic is consistently FP32 on GPU/NPU.
++        with self.tp_autocast():
++            if not all_preds_given:
++                state_preds, action_preds, return_preds, reward_preds = self(
++                    batch.to_decision_transformer_input()
++                )
++        del reward_preds
++
++        valid_mask = batch.attention_mask > 0
++        action_loss = _masked_mse(action_preds, action_target, valid_mask)
++
++        has_next_timestep_mask = valid_mask[:, :-1] & valid_mask[:, 1:]
++        state_loss = _masked_mse(
++            state_preds[:, :-1],
++            state_target[:, 1:],
++            has_next_timestep_mask,
++        )
++
++        return_loss = _masked_mse(
++            return_preds[:, :-1],
++            rtg_target[:, 1 : return_preds.shape[1]],
++            has_next_timestep_mask,
++        )
++
++        loss = action_loss + state_loss + return_loss
++        if os.getenv("P_TEST", "0") == "1":
++            print(
++                f"step: {self.global_step} | "
++                f"action_loss: {action_loss}"
++            )
++
++        self.optimizer.zero_grad()
++        loss.backward()
++        if self.tensor_parallel:
++            if self.tp_mesh is None:
++                raise RuntimeError("TP gradient clipping requires a TP device mesh")
++            # Local import avoids a module-import cycle: parallel.py only needs
++            # DecisionTransformer for annotations and parallelization helpers.
++            from .parallel import tensor_parallel_clip_grad_norm_
++
++            tensor_parallel_clip_grad_norm_(
++                self.parameters(), max_norm=0.25, tp_mesh=self.tp_mesh
++            )
++        else:
++            torch.nn.utils.clip_grad_norm_(
++                self.parameters(), 0.25, error_if_nonfinite=True, foreach=False
++            )
++        self.optimizer.step()
++        self.scheduler.step()
++        self.global_step += 1
++        return loss
+--- /dev/null	2026-09-15 17:30:24
++++ ./model/parallel.py	2026-09-15 17:08:24
+@@ -0,0 +1,187 @@
++from __future__ import annotations
++
++import math
++from typing import Any, TYPE_CHECKING
++
++import torch
++from torch.distributed import is_initialized
++from torch.distributed.device_mesh import DeviceMesh
++from torch.distributed.fsdp import (
++    FSDPModule,
++    MixedPrecisionPolicy,
++    fully_shard,
++)
++from torch.distributed.tensor.parallel import (
++    ColwiseParallel,
++    RowwiseParallel,
++    parallelize_module,
++)
++
++if TYPE_CHECKING:
++    from .decision_transformer import DecisionTransformer
++
++def decision_transformer_apply_ddp(
++    
++) -> Any:
++    pass
++
++def decision_transformer_apply_fsdp2(
++    model: DecisionTransformer,
++    *,
++    mesh: Any = None,
++    use_bf16: bool = False,
++) -> Any:
++    if not is_initialized():
++        raise RuntimeError(
++            "torch.distributed must be initialized before applying FSDP2"
++        )
++
++    if isinstance(model, FSDPModule):
++        return model
++    if model.optimizer is not None or model.scheduler is not None:
++        raise RuntimeError("apply FSDP2 before create_optimizer()")
++
++    mp_policy = MixedPrecisionPolicy(
++        param_dtype=torch.bfloat16 if use_bf16 else None,
++        reduce_dtype=torch.float32 if use_bf16 else None,
++        cast_forward_inputs=True,
++    )
++    fsdp_kwargs = {"mesh": mesh, "mp_policy": mp_policy}
++
++    for block in model.transformer:
++        fully_shard(block, **fsdp_kwargs)
++    fully_shard(model, **fsdp_kwargs)
++    return model
++
++
++def decision_transformer_apply_tp(
++    model: DecisionTransformer,
++    *,
++    tp_mesh: DeviceMesh,
++) -> DecisionTransformer:
++    tp_size = tp_mesh.size()
++    config = model.block_config
++
++    if config.d_model % tp_size != 0:
++        raise ValueError(f"d_model {config.d_model} must be divisible by tp_size {tp_size}")
++    if config.d_hidden % tp_size != 0:
++        raise ValueError(f"d_hidden {config.d_hidden} must be divisible by tp_size {tp_size}")
++    if config.n_head % tp_size != 0:
++        raise ValueError(f"n_head {config.n_head} must be divisible by tp_size {tp_size}")
++
++    if model.optimizer is not None:
++        raise RuntimeError(
++            "Tensor parallelism must be configured before optimizer creation; "
++            "please apply TP before instantiating the optimizer."
++        )
++
++    for block in model.transformer:
++        parallelize_module(
++            block,
++            tp_mesh,
++            {
++                "attn.qkv": ColwiseParallel(),
++                "attn.proj": RowwiseParallel(),
++                "mlp.fc1": ColwiseParallel(),
++                "mlp.fc2": RowwiseParallel(),
++            },
++        )
++    model.tensor_parallel = True
++    model.tp_mesh = tp_mesh
++    return model
++
++
++@torch.no_grad()
++def tensor_parallel_clip_grad_norm_(
++    parameters: Any,
++    max_norm: float,
++    tp_mesh: DeviceMesh,
++    norm_type: float = 2.0,
++    error_if_nonfinite: bool = False,
++) -> torch.Tensor:
++    """Clip a mixed replicated-Tensor/sharded-DTensor TP model by global norm."""
++
++    from torch.distributed.tensor import DTensor
++
++    if tp_mesh.ndim != 1:
++        raise ValueError(
++            f"TP gradient clipping requires a 1-D mesh, got {tp_mesh.ndim}-D"
++        )
++
++    parameters = list(parameters)
++    gradients = [parameter.grad for parameter in parameters if parameter.grad is not None]
++    if not gradients:
++        return torch.tensor(0.0)
++
++    max_norm = float(max_norm)
++    norm_type = float(norm_type)
++    if max_norm < 0:
++        raise ValueError(f"max_norm must be non-negative, got {max_norm}")
++    if norm_type <= 0:
++        raise ValueError(f"norm_type must be positive, got {norm_type}")
++
++    first_gradient = gradients[0]
++    first_local_gradient = (
++        first_gradient.to_local()
++        if isinstance(first_gradient, DTensor)
++        else first_gradient
++    )
++    accumulator_device = first_local_gradient.device
++
++    replicated_norm = torch.zeros((), dtype=torch.float32, device=accumulator_device)
++    sharded_norm = torch.zeros((), dtype=torch.float32, device=accumulator_device)
++    infinity_norm = math.isinf(norm_type)
++
++    local_gradients = []
++    for gradient in gradients:
++        is_sharded = False
++        if isinstance(gradient, DTensor):
++            if gradient.device_mesh != tp_mesh:
++                raise ValueError("gradient DTensor uses a different device mesh")
++            if any(placement.is_partial() for placement in gradient.placements):
++                raise RuntimeError(
++                    "TP gradient clipping does not accept Partial DTensor gradients"
++                )
++            is_sharded = any(placement.is_shard() for placement in gradient.placements)
++            local_gradient = gradient.to_local()
++        else:
++            local_gradient = gradient
++
++        local_gradients.append(local_gradient)
++        gradient_float = local_gradient.detach().float()
++        if infinity_norm:
++            contribution = gradient_float.abs().max()
++            if is_sharded:
++                sharded_norm = torch.maximum(sharded_norm, contribution)
++            else:
++                replicated_norm = torch.maximum(replicated_norm, contribution)
++        else:
++            contribution = gradient_float.abs().pow(norm_type).sum()
++            if is_sharded:
++                sharded_norm += contribution
++            else:
++                replicated_norm += contribution
++
++    reduce_op = (
++        torch.distributed.ReduceOp.MAX
++        if infinity_norm
++        else torch.distributed.ReduceOp.SUM
++    )
++    torch.distributed.all_reduce(sharded_norm, op=reduce_op, group=tp_mesh.get_group())
++
++    if infinity_norm:
++        total_norm = torch.maximum(replicated_norm, sharded_norm)
++    else:
++        total_norm = (replicated_norm + sharded_norm).pow(1.0 / norm_type)
++
++    if error_if_nonfinite and not torch.isfinite(total_norm):
++        raise RuntimeError(
++            f"the total gradient norm is non-finite: {total_norm.item()}"
++        )
++
++    clip_coefficient = max_norm / (total_norm + 1e-6)
++    clip_coefficient = clip_coefficient.clamp(max=1.0)
++    for local_gradient in local_gradients:
++        local_gradient.mul_(clip_coefficient.to(device=local_gradient.device))
++
++    return total_norm
+--- /dev/null	2026-09-15 17:30:24
++++ ./scripts/multi_node_env.sh	2026-09-15 17:08:24
+@@ -0,0 +1,22 @@
++export HCCL_SOCKET_FAMILY=AF_INET
++export GLOO_SOCKET_FAMILY=AF_INET
++export HCCL_DEBUG=INFO
++
++# 修改成实际使用的环境上的网卡
++export HCCL_SOCKET_IFNAME=enp35s0f2
++# 如果设置 HCCL_IF_IP 优先使用 IP
++# export HCCL_IF_IP=xxx.xxx.xxx.xxx
++
++export HCCL_CONNECT_TIMEOUT=120
++
++export HCCL_BUFFERSIZE=2048
++
++export HCCL_PRINT_TIMEING=1
++
++# 实际使用的 NODE 数量
++export NNODES=1
++# 当前 NODE 的排序
++export NODE_RANK=0
++# 多机环境中的主节点 IP 和 Port
++export MASTER_ADDR=127.0.0.1
++export MASTER_PORT=29500
+--- /dev/null	2026-09-15 17:30:24
++++ ./scripts/run_fsdp2.sh	2026-09-15 17:27:45
+@@ -0,0 +1,171 @@
++#!/usr/bin/env bash
++
++set -Eeuo pipefail
++
++# Single-node, multi-NPU FSDP2 launcher.
++#
++# Examples:
++#   bash scripts/run_fsdp2.sh
++#   NPROC_PER_NODE=4 BATCH_SIZE=4 bash scripts/run_fsdp2.sh
++#   RESUME=1 MODEL_DIR=./outputs/checkpoints/fsdp2 bash scripts/run_fsdp2.sh
++#   USE_BF16=0 MASTER_PORT=29600 bash scripts/run_fsdp2.sh
++
++# Both launchers live in scripts/, while run.py and runtime directories live
++# at the repository root.
++SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
++
++export P_TEST=${P_TEST:-"0"}
++if [[ "${P_TEST}" == "1" ]]; then
++    export CLOSE_MATMUL_K_SHIFT=1
++    export ATB_MATMUL_SHUFFLE_K_ENABLE=0
++    export HCCL_DETERMINISTIC="true"
++    export VLLM_ENABLE_V1_MULTIPROCESSING=0
++    export FLAGS_npu_storage_format=0
++    export TORCH_NPU_USE_COMPATIBLE_IMPL=1
++fi
++
++# Source the Ascend environment only when an explicit script is provided.
++# If single-NPU training already works in the current shell, this is unnecessary.
++if [[ -n "${ASCEND_ENV_SCRIPT:-}" ]]; then
++    if [[ ! -f "${ASCEND_ENV_SCRIPT}" ]]; then
++        echo "ASCEND_ENV_SCRIPT does not exist: ${ASCEND_ENV_SCRIPT}" >&2
++        exit 1
++    fi
++    # shellcheck disable=SC1090
++    source "${ASCEND_ENV_SCRIPT}"
++fi
++
++NPROC_PER_NODE="${NPROC_PER_NODE:-8}"
++VISIBLE_DEVICES=${VISIBLE_DEVICES:-"0,1,2,3,4,5,6,7"}
++export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-$VISIBLE_DEVICES}
++export ASCEND_RT_VISIBLE_DEVICES=${ASCEND_RT_VISIBLE_DEVICES:-$VISIBLE_DEVICES}
++
++BATCH_SIZE="${BATCH_SIZE:-512}"
++MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
++MASTER_PORT="${MASTER_PORT:-29500}"
++USE_BF16="${USE_BF16:-1}"
++ATTENTION_BACKEND="${ATTENTION_BACKEND:-eager}"
++RESUME="${RESUME:-0}"
++OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
++
++OUTPUT_DIR="${OUTPUT_DIR:-${SCRIPT_DIR}/outputs}"
++[[ "${OUTPUT_DIR}" = /* ]] || OUTPUT_DIR="${SCRIPT_DIR}/${OUTPUT_DIR}"
++
++DATA_DIR="${DATA_DIR:-${SCRIPT_DIR}/data/training_data_all-rlData.csv}"
++MODEL_DIR="${MODEL_DIR:-${OUTPUT_DIR}/checkpoints/fsdp2}"
++LOG_DIR="${LOG_DIR:-${OUTPUT_DIR}/logs/fsdp2/$(date +%Y%m%d_%H%M%S)}"
++PROFILER_OUT_DIR="${PROFILER_OUT_DIR:-${OUTPUT_DIR}/profiler/fsdp2}"
++
++# Interpret user-provided relative paths from the repository directory, not
++# from whichever directory happened to invoke this script.
++[[ "${DATA_DIR}" = /* ]] || DATA_DIR="${SCRIPT_DIR}/${DATA_DIR}"
++[[ "${MODEL_DIR}" = /* ]] || MODEL_DIR="${SCRIPT_DIR}/${MODEL_DIR}"
++[[ "${LOG_DIR}" = /* ]] || LOG_DIR="${SCRIPT_DIR}/${LOG_DIR}"
++[[ "${PROFILER_OUT_DIR}" = /* ]] || PROFILER_OUT_DIR="${SCRIPT_DIR}/${PROFILER_OUT_DIR}"
++
++if ! command -v torchrun >/dev/null 2>&1; then
++    echo "torchrun was not found in PATH" >&2
++    exit 1
++fi
++if [[ ! "${NPROC_PER_NODE}" =~ ^[1-9][0-9]*$ ]]; then
++    echo "NPROC_PER_NODE must be a positive integer, got: ${NPROC_PER_NODE}" >&2
++    exit 1
++fi
++if [[ ! "${BATCH_SIZE}" =~ ^[1-9][0-9]*$ ]]; then
++    echo "BATCH_SIZE must be a positive integer, got: ${BATCH_SIZE}" >&2
++    exit 1
++fi
++if [[ ! "${MASTER_PORT}" =~ ^[0-9]+$ ]] || (( MASTER_PORT < 1 || MASTER_PORT > 65535 )); then
++    echo "MASTER_PORT must be in [1, 65535], got: ${MASTER_PORT}" >&2
++    exit 1
++fi
++if [[ "${USE_BF16}" != "0" && "${USE_BF16}" != "1" ]]; then
++    echo "USE_BF16 must be 0 or 1, got: ${USE_BF16}" >&2
++    exit 1
