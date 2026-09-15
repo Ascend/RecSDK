@@ -72,11 +72,11 @@ Rec SDK Torch软件包如下表：
 
 | 名称                       | 说明                                       |
 | ------------------------ | ---------------------------------------- |
-| torch\_rec\_v1-\*.tar.gz | Rec SDK Torch一键安装部署软件包（已包含TorchRec昇腾注册包） |
-| rec_cust_ops                 | Rec SDK Torch自定义算子包及PyTorch框架适配层                       |
+| torch\_rec\_v1-\*.tar.gz | Rec SDK Torch一键安装部署软件包，同时包含Rec SDK Torch推荐算法框架包和TorchRec昇腾注册包 |
+| rec_cust_ops             | Rec SDK Torch自定义算子包及PyTorch框架适配层                       |
 | fbgemm\_ascend           | fbgemm自定义算子包及PyTorch框架适配层                |
 
-> rec_cust_ops和fbgemm_ascend算子包使用时会自动探测NPU芯片版本并加载对应芯片版本的算子包，自动探测失败时默认加载昇腾950PR/DT系列产品的算子包。此时若用户需要加载其他NPU芯片版本的算子包（即当前环境非昇腾950PR/DT系列产品），可通过设置环境变量`SOC_VERSION`来指定，示例：`export SOC_VERSION=Ascend910B`。`SOC_VERSION`环境变量取值参考[配置环境变量](#配置环境变量)。
+> rec_cust_ops和fbgemm_ascend算子包使用时会通过`npu-smi info`指令自动探测NPU芯片版本并加载对应芯片版本的算子包。自动探测失败时默认加载昇腾950PR/DT系列产品的算子包。此时若当前环境非昇腾950PR/DT系列产品，可通过设置环境变量`SOC_VERSION`来指定NPU芯片版本。示例：`export SOC_VERSION=Ascend910B`。`SOC_VERSION`环境变量取值参考[配置环境变量](#配置环境变量)。
 
 ## 安装Rec SDK Torch<a id="section182972951211"></a>
 
@@ -244,9 +244,6 @@ Rec SDK Torch软件包如下表：
 
    请参考本章获取所需软件包和对应的数字签名文件，下载本软件即表示您同意[华为企业业务最终用户许可协议（EULA）](https://e.huawei.com/cn/about/eula)的条款和条件。
 
-   > \[!NOTE]
-   > 当前Release软件包为Rec SDK whl包，一键安装部署软件包待资源下载中心上线后更新。
-
    | 组件名称                   | 软件包                      | 获取链接                                               |
    | ---------------------- | ------------------------ | -------------------------------------------------- |
    | Rec SDK Torch一键安装部署软件包 | torch\_rec\_v1-\*.tar.gz | [Release下载页](https://gitcode.com/Ascend/RecSDK/releases) |
@@ -310,7 +307,7 @@ Rec SDK Torch软件包如下表：
    | 方案二 | x86_64 | [fbgemm_ascend-1.5.0-cp311-cp311-linux_x86_64.whl](https://gitcode.com/Ascend/fbgemm-ascend/releases/download/v26.1.0-1.5.0/fbgemm_ascend-1.5.0-cp311-cp311-linux_x86_64.whl) | [rec_cust_ops-2.10.0-cp311-cp311-linux_x86_64.whl](https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0-beta.1/rec_cust_ops-2.10.0-cp311-cp311-linux_x86_64.whl) | 配套 PyTorch 2.10.0 / fbgemm_gpu 1.5.0 |
    | 方案二 | aarch64 | [fbgemm_ascend-1.5.0-cp311-cp311-linux_aarch64.whl](https://gitcode.com/Ascend/fbgemm-ascend/releases/download/v26.1.0-1.5.0/fbgemm_ascend-1.5.0-cp311-cp311-linux_aarch64.whl) | [rec_cust_ops-2.10.0-cp311-cp311-linux_aarch64.whl](https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0-beta.1/rec_cust_ops-2.10.0-cp311-cp311-linux_aarch64.whl) | 配套 PyTorch 2.10.0 / fbgemm_gpu 1.5.0 |
 
-   > - 上述算子包均为基于Python 3.11版本编译，**请在相同的Python版本环境下安装使用**。若需在其他Python版本环境下安装使用，请参见[fbgemm\_ascend编译](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md#源码编译与安装)和[rec\_cust\_ops编译](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md#build_recsdk_cust_ops)进行源码编译。
+   > 上述算子包均为基于Python 3.11版本编译，**请在相同的Python版本环境下安装使用**。若需在其他Python版本环境下安装使用，请参见[fbgemm\_ascend编译](https://gitcode.com/Ascend/fbgemm-ascend/blob/main/README.md#源码编译与安装)和[rec\_cust\_ops编译](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md#build_recsdk_cust_ops)进行源码编译。
 
    将下载的软件包传入容器（方式参见上一步），执行如下指令进行安装：
 
