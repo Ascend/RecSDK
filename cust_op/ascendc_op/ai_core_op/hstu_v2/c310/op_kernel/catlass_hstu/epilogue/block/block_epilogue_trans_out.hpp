@@ -67,9 +67,10 @@ public:
     static constexpr uint32_t ELE_NUM_PER_C0 = Catlass::BYTE_PER_C0 / sizeof(Element);
 
     CATLASS_DEVICE
-    BlockEpilogueTransOut(uint32_t cubeFlag, uint32_t stride, Arch::Resource<ArchTag>& resource)
+    BlockEpilogueTransOut(uint32_t cubeFlag, uint32_t ubFreeFlag, uint32_t stride, Arch::Resource<ArchTag>& resource)
     {
         this->cubeReady = Arch::CrossCoreFlag(cubeFlag);
+        this->ubFree = Arch::CrossCoreFlag(ubFreeFlag);
         this->stride = stride;
         this->ubTransOut = resource.ubBuf.template GetBufferByByte<Element>(TileBuffer::TRANS_OUT);
     }
@@ -90,11 +91,15 @@ public:
         intriParams.dstStride = (stride - cols) / ELE_NUM_PER_C0;
 
         AscendC::DataCopy(dstTensor.data()[dstOffset], ubTransOut, intriParams);
+        // PIPE_MTE3 ordering guarantees that the UB can only be reused after
+        // the asynchronous UB->GM copy above has completed.
+        AscendC::CrossCoreSetFlag<0x4, PIPE_MTE3>(ubFree.id);
     }
 
 private:
     int64_t stride{0};
     Arch::CrossCoreFlag cubeReady;
+    Arch::CrossCoreFlag ubFree;
 
     AscendC::LocalTensor<Element> ubTransOut;
 };
