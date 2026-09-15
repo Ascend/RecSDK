@@ -30,6 +30,7 @@ See the License for the specific language governing permissions and
 #include "catlass/detail/alignment.hpp"
 #include "catlass/gemm_coord.hpp"
 #include "catlass/matrix_coord.hpp"
+#include "../../detail/target_block_range.hpp"
 
 namespace Catlass::Gemm::Block {
 
@@ -76,6 +77,18 @@ public:
 
         this->seqOffsetM.SetGlobalBuffer((__gm__ ElementOffset*)seqOffsetM);
         this->seqOffsetN.SetGlobalBuffer((__gm__ ElementOffset*)seqOffsetN);
+    }
+
+    CATLASS_DEVICE
+    void EnableTargetWorkload(GM_ADDR numContext, GM_ADDR numTarget, uint32_t targetGroupSize, bool hasContext)
+    {
+        useTargetWorkload = true;
+        this->targetGroupSize = targetGroupSize;
+        this->hasContext = hasContext;
+        this->numTarget.SetGlobalBuffer((__gm__ ElementOffset*)numTarget);
+        if (hasContext) {
+            this->numContext.SetGlobalBuffer((__gm__ ElementOffset*)numContext);
+        }
     }
 
     /**
@@ -210,6 +223,104 @@ public:
         }
     }
 
+    CATLASS_DEVICE
+    uint32_t GetTargetQBlockEnd(uint32_t kBlockId, uint32_t seqLenM, uint32_t seqLenN, uint32_t targetNum,
+                                uint32_t contextNum)
+    {
+        return Catlass::Detail::GetTargetQBlockEnd<BLOCK_N, BLOCK_M>(kBlockId, seqLenN, seqLenM, targetNum,
+                                                                     hasContext ? contextNum : 0, targetGroupSize);
+    }
+
+    CATLASS_DEVICE
+    uint32_t GetKBlockWorkload(uint32_t kBlockId, uint32_t seqLenM, uint32_t seqLenN, uint32_t targetNum,
+                               uint32_t contextNum)
+    {
+        const uint32_t qBlockEnd = GetTargetQBlockEnd(kBlockId, seqLenM, seqLenN, targetNum, contextNum);
+        const int64_t qkOffset = static_cast<int64_t>(seqLenM) - seqLenN;
+        const int64_t firstCausalQElement =
+            static_cast<int64_t>(kBlockId) * BLOCK_M - qkOffset - (static_cast<int64_t>(BLOCK_N) - 1);
+        uint32_t qBlockBegin = 0;
+        if (firstCausalQElement > 0) {
+            qBlockBegin = static_cast<uint32_t>((firstCausalQElement + BLOCK_N - 1) / BLOCK_N);
+        }
+
+        uint32_t workload = qBlockEnd > qBlockBegin ? qBlockEnd - qBlockBegin : 0;
+        if (hasContext) {
+            const uint32_t historyKBlocks = CeilDiv<BLOCK_M>(seqLenM - targetNum);
+            if (kBlockId < historyKBlocks) {
+                const uint32_t contextQBlocks = CeilDiv<BLOCK_N>(contextNum);
+                workload += contextQBlocks < qBlockBegin ? contextQBlocks : qBlockBegin;
+            }
+        }
+        return workload;
+    }
+
+    CATLASS_DEVICE
+    uint64_t GetTotalTargetWorkload()
+    {
+        uint64_t total = 0;
+        for (uint32_t b = 0; b < batchSize; ++b) {
+            const uint32_t seqLenM = seqOffsetM.GetValue(b + 1) - seqOffsetM.GetValue(b);
+            const uint32_t seqLenN = seqOffsetN.GetValue(b + 1) - seqOffsetN.GetValue(b);
+            const uint32_t targetNum = numTarget.GetValue(b);
+            const uint32_t contextNum = hasContext ? numContext.GetValue(b) : 0;
+            const uint32_t kBlockCnt = CeilDiv<BLOCK_M>(seqLenM);
+            for (uint32_t k = 0; k < kBlockCnt; ++k) {
+                total += static_cast<uint64_t>(GetKBlockWorkload(k, seqLenM, seqLenN, targetNum, contextNum)) * headNum;
+            }
+        }
+        return total;
+    }
+
+    CATLASS_DEVICE
+    void TargetWorkloadSplitCore(uint32_t coreId, uint32_t coreNum)
+    {
+        if (coreNum == 0) {
+            blockCnt = 0;
+            return;
+        }
+        uint64_t remainingWorkload = GetTotalTargetWorkload();
+        uint64_t currentCoreWorkload = 0;
+        uint32_t currentCore = 0;
+        uint32_t coreStartBlockId = 0;
+        uint32_t blockIdx = 0;
+        for (uint32_t b = 0; b < batchSize; ++b) {
+            const uint32_t seqLenM = seqOffsetM.GetValue(b + 1) - seqOffsetM.GetValue(b);
+            const uint32_t seqLenN = seqOffsetN.GetValue(b + 1) - seqOffsetN.GetValue(b);
+            const uint32_t targetNum = numTarget.GetValue(b);
+            const uint32_t contextNum = hasContext ? numContext.GetValue(b) : 0;
+            const uint32_t kBlockCnt = CeilDiv<BLOCK_M>(seqLenM);
+            for (uint32_t h = 0; h < headNum; ++h) {
+                for (uint32_t k = 0; k < kBlockCnt; ++k) {
+                    currentCoreWorkload += GetKBlockWorkload(k, seqLenM, seqLenN, targetNum, contextNum);
+                    blockIdx++;
+                    const uint64_t remainingCores = coreNum - currentCore;
+                    const uint64_t workloadLimit = remainingCores == 0
+                                                       ? remainingWorkload
+                                                       : (remainingWorkload + remainingCores - 1) / remainingCores;
+                    if (currentCoreWorkload >= workloadLimit && currentCore < coreNum - 1) {
+                        if (coreId == currentCore) {
+                            blockCnt = blockIdx - coreStartBlockId;
+                            InitBlock(coreStartBlockId);
+                            return;
+                        }
+                        remainingWorkload -= currentCoreWorkload;
+                        currentCoreWorkload = 0;
+                        coreStartBlockId = blockIdx;
+                        currentCore++;
+                    }
+                }
+            }
+        }
+        if (coreId == currentCore) {
+            blockCnt = blockIdx - coreStartBlockId;
+            InitBlock(coreStartBlockId);
+            return;
+        }
+        blockCnt = 0;
+        batchId = batchSize;
+    }
+
     /**
      ◦ @brief 初始化调度器
 
@@ -226,9 +337,10 @@ public:
             coreId = AscendC::GetBlockIdx();
         }
         uint32_t coreNum = AscendC::GetBlockNum();
-        // uint32_t coreNum = 1;
 
-        if (this->batchSize == 1) {
+        if (useTargetWorkload) {
+            TargetWorkloadSplitCore(coreId, coreNum);
+        } else if (this->batchSize == 1) {
             FastSplitCore(coreId, coreNum);
         } else {
             PersistentSplitCore(coreId, coreNum);
@@ -246,7 +358,7 @@ public:
     CATLASS_DEVICE
     bool IsLast()
     {
-        return (this->blockCnt == 1);
+        return this->blockCnt == 1;
     }
 
     /**
@@ -345,6 +457,11 @@ private:
     uint32_t headBlockCnt{0};
     uint32_t currentSeqLen{0};
     uint32_t blockCnt{0};
+    bool useTargetWorkload{false};
+    bool hasContext{false};
+    uint32_t targetGroupSize{0};
+    AscendC::GlobalTensor<ElementOffset> numContext;
+    AscendC::GlobalTensor<ElementOffset> numTarget;
     AscendC::GlobalTensor<ElementOffset> seqOffsetM;
     AscendC::GlobalTensor<ElementOffset> seqOffsetN;
 };
