@@ -1,0 +1,999 @@
+--- /dev/null	2026-09-15 17:30:24
++++ ./data/__init__.py	2026-09-15 17:08:24
+@@ -0,0 +1,3 @@
++from .mod import ReplayBuffer, TPTrajectoryWindowSampler
++
++__all__ = ["ReplayBuffer", "TPTrajectoryWindowSampler"]
+--- /dev/null	2026-09-15 17:30:24
++++ ./data/mod.py	2026-09-15 17:08:24
+@@ -0,0 +1,257 @@
++from __future__ import annotations
++
++import ast
++import random
++
++import torch
++import pandas as pd
++import numpy as np
++from typing import Any, Dict, Iterator, TYPE_CHECKING
++from torch.utils.data import Dataset, Sampler
++
++if TYPE_CHECKING:
++    from model import DecisionTransformerConfig
++
++
++class ReplayBuffer(Dataset):
++    def __init__(
++        self,
++        state_dim: int,
++        act_dim: int,
++        data_path: str,
++        config: DecisionTransformerConfig,
++        extra: Dict[str, Any],
++        max_eplen: int = 24,
++        return_scale: float = 2_000.0,
++        context_len: int = 20,
++    ) -> None:
++        super(ReplayBuffer, self).__init__()
++
++        self.max_ep_len = max_eplen
++        self.scale = return_scale
++
++        self.state_dim = state_dim
++        self.act_dim = act_dim
++        if self.act_dim != 1:
++            raise ValueError(
++                f"expect act_dim == 1, but got act_dim = {self.act_dim}"
++            )
++
++        self.context_len = context_len
++        training_data = pd.read_csv(data_path)
++
++        def safe_literal_eval(val: Any) -> Any:
++            if pd.isna(val):
++                return val
++            try:
++                return ast.literal_eval(val)
++            except (ValueError, SyntaxError):
++                return val
++
++        training_data["state"] = training_data["state"].apply(safe_literal_eval)
++        training_data["next_state"] = training_data["next_state"].apply(
++            safe_literal_eval
++        )
++        self.trajectories = training_data
++
++        self.states, self.rewards, self.actions = [], [], []
++        self.returns, self.traj_lens, self.dones = [], [], []
++        _state, _reward, _action, _dones = [], [], [], []
++        for _, row in self.trajectories.iterrows():
++            _state.append(row["state"])
++            _reward.append(row["reward"])
++            _action.append(row["action"])
++            _dones.append(row["done"])
++            if row["done"]:
++                # 单步 Episode 被丢弃
++                if len(_state) != 1:
++                    self.states.append(np.array(_state))
++                    self.rewards.append(np.expand_dims(np.array(_reward), axis=1))
++                    self.actions.append(
++                        np.expand_dims(np.array(_action), axis=1)
++                    )  # TODO 可能生成错误的 [T,1,A]
++                    self.returns.append(sum(_reward))
++                    self.traj_lens.append(len(_state))
++                    self.dones.append(np.array(_dones))
++                _state, _reward, _action, _dones = [], [], [], []
++        self.traj_lens, self.returns = np.array(self.traj_lens), np.array(self.returns)
++
++        tmp_states = np.concatenate(self.states, axis=0)
++        self.state_mean, self.state_std = (
++            np.mean(tmp_states, axis=0),
++            np.std(tmp_states, axis=0) + 1e-6,
++        )
++
++        self.trajectories = []
++        for i, state in enumerate(self.states):
++            self.trajectories.append(
++                {
++                    "observations": state,
++                    "actions": self.actions[i],
++                    "rewards": self.rewards[i],
++                    "dones": self.dones[i],
++                }
++            )
++
++        num_timesteps = max(sum(self.traj_lens), 1)
++        sorted_inds = np.argsort(self.returns, kind="stable")
++
++        num_trajectories = 1
++        timesteps = self.traj_lens[sorted_inds[-1]]
++        ind = len(self.trajectories) - 2
++        while (
++            ind >= 0 and timesteps + self.traj_lens[sorted_inds[ind]] <= num_timesteps
++        ):
++            timesteps += self.traj_lens[sorted_inds[ind]]
++            num_trajectories += 1
++            ind -= 1
++        self.sorted_inds = sorted_inds[-num_trajectories:]
++        self.p_sampler = self.traj_lens[self.sorted_inds] / sum(
++            self.traj_lens[self.sorted_inds]
++        )
++
++    def discount_cumsum(self, x: Any, gamma: float = 1.0) -> Any:
++        discount_cumsum = np.zeros_like(x)
++        discount_cumsum[-1] = x[-1]
++        for t in reversed(range(x.shape[0] - 1)):
++            discount_cumsum[t] = x[t] + gamma * discount_cumsum[t + 1]
++        return discount_cumsum
++
++    def __getitem__(self, index: int | tuple[int, int]) -> Any:
++        if isinstance(index, tuple):
++            trajectory_index, start_t = index
++        else:
++            trajectory_index = index
++            start_t = None
++
++        traj = self.trajectories[int(self.sorted_inds[trajectory_index])]
++        if start_t is None:
++            start_t = random.randint(0, traj["rewards"].shape[0] - 1)
++        elif not 0 <= start_t < traj["rewards"].shape[0]:
++            raise IndexError(
++                f"start_t {start_t} is outside trajectory length "
++                f"{traj['rewards'].shape[0]}"
++            )
++
++        import os
++        if os.getenv("P_TEST", "0") == "1":
++            start_t = 0
++
++        s = traj["observations"][start_t : start_t + self.context_len]
++        a = traj["actions"][start_t : start_t + self.context_len]
++        r = traj["rewards"][start_t : start_t + self.context_len].reshape(-1, 1)
++        d = (
++            traj["terminals"][start_t : start_t + self.context_len]
++            if "terminals" in traj
++            else traj["dones"][start_t : start_t + self.context_len]
++        )
++
++        timesteps = np.arange(start_t, start_t + s.shape[0])
++        timesteps[timesteps >= self.max_ep_len] = self.max_ep_len - 1  # padding cutoff
++        rtg = self.discount_cumsum(traj["rewards"][start_t:], gamma=1.0)[
++            : s.shape[0] + 1
++        ].reshape(-1, 1)
++        if rtg.shape[0] <= s.shape[0]:
++            rtg = np.concatenate([rtg, np.zeros((1, 1))], axis=0)
++
++        tlen = s.shape[0]
++        s = np.concatenate(
++            [np.zeros((self.context_len - tlen, self.state_dim)), s], axis=0
++        )
++        s = (s - self.state_mean) / self.state_std
++        a = np.concatenate(
++            [np.ones((self.context_len - tlen, self.act_dim)) * -10.0, a], axis=0
++        )
++        r = np.concatenate([np.zeros((self.context_len - tlen, 1)), r], axis=0)
++        r = r / self.scale
++        d = np.concatenate([np.ones((self.context_len - tlen)) * 2, d], axis=0)
++        rtg = (
++            np.concatenate([np.zeros((self.context_len - tlen, 1)), rtg], axis=0)
++            / self.scale
++        )
++        timesteps = np.concatenate(
++            [np.zeros((self.context_len - tlen)), timesteps], axis=0
++        )
++        mask = np.concatenate(
++            [np.zeros((self.context_len - tlen)), np.ones((tlen))], axis=0
++        )
++
++        # Dataset workers and default_collate must stay on CPU. The complete
++        # batch is transferred to the current rank's device in the training or
++        # evaluation loop, avoiding one device copy per field per sample and
++        # avoiding device-side default_collate stacks.
++        s = torch.from_numpy(np.ascontiguousarray(s, dtype=np.float32))
++        a = torch.from_numpy(np.ascontiguousarray(a, dtype=np.float32))
++        r = torch.from_numpy(np.ascontiguousarray(r, dtype=np.float32))
++        d = torch.from_numpy(np.ascontiguousarray(d, dtype=np.int64))
++        rtg = torch.from_numpy(np.ascontiguousarray(rtg, dtype=np.float32))
++        timesteps = torch.from_numpy(
++            np.ascontiguousarray(timesteps, dtype=np.int64)
++        )
++        mask = torch.from_numpy(np.ascontiguousarray(mask, dtype=np.bool_))
++
++        return s, a, r, d, rtg, timesteps, mask
++
++    def __len__(self) -> int:
++        return len(self.sorted_inds)
++
++
++class TPTrajectoryWindowSampler(Sampler[tuple[int, int]]):
++    """Generate identical trajectory/window pairs on every rank in a TP group."""
++
++    def __init__(
++        self,
++        replay_buffer: ReplayBuffer,
++        *,
++        seed: int,
++        num_samples: int | None = None,
++        weights: Any = None,
++    ) -> None:
++        self.replay_buffer = replay_buffer
++        self.num_samples = len(replay_buffer) if num_samples is None else num_samples
++        if self.num_samples < 0:
++            raise ValueError("num_samples must be non-negative")
++
++        self.weights = (
++            None
++            if weights is None
++            else torch.as_tensor(weights, dtype=torch.double, device="cpu")
++        )
++        if self.weights is not None and self.weights.numel() != len(replay_buffer):
++            raise ValueError(
++                "weights length must match replay buffer length: "
++                f"{self.weights.numel()} != {len(replay_buffer)}"
++            )
++
++        # This generator is deliberately independent of model/dropout RNG state.
++        # Every TP rank constructs it with the same seed and advances it identically.
++        self.generator = torch.Generator(device="cpu")
++        self.generator.manual_seed(seed)
++
++    def __iter__(self) -> Iterator[tuple[int, int]]:
++        if self.weights is None:
++            trajectory_indices = range(len(self.replay_buffer))
++        else:
++            trajectory_indices = torch.multinomial(
++                self.weights,
++                self.num_samples,
++                replacement=True,
++                generator=self.generator,
++            ).tolist()
++
++        for trajectory_index in trajectory_indices:
++            trajectory = self.replay_buffer.trajectories[
++                int(self.replay_buffer.sorted_inds[trajectory_index])
++            ]
++            trajectory_length = int(trajectory["rewards"].shape[0])
++            start_t = int(
++                torch.randint(
++                    trajectory_length,
++                    (1,),
++                    generator=self.generator,
++                ).item()
++            )
++            yield int(trajectory_index), start_t
++
++    def __len__(self) -> int:
++        return self.num_samples
+--- /dev/null	2026-09-15 17:30:24
++++ ./main.py	2026-09-15 17:19:40
+@@ -0,0 +1,560 @@
++from __future__ import annotations
++
++import random
++from typing import Any, Dict
++
++import os
++import numpy as np
++import torch
++from torch.utils.data import (
++    DataLoader,
++    DistributedSampler,
++    SequentialSampler,
++    WeightedRandomSampler,
++)
++
++from data import ReplayBuffer, TPTrajectoryWindowSampler
++from model import (
++    AttentionConfig,
++    DecisionTransformer,
++    DecisionTransformerBatch,
++    DecisionTransformerConfig,
++    DecisionTransformerInput,
++    decision_transformer_apply_fsdp2,
++    decision_transformer_apply_tp,
++)
++from utils import (
++    get_profiler,
++    init_distribute,
++    load_normalize_dict,
++    parse_args,
++    resolve_device,
++    save_normalize_dict,
++)
++
++
++def _build_replay_buffer(
++    config: DecisionTransformerConfig,
++    extra: Dict[str, Any],
++) -> ReplayBuffer:
++    data_path = str(extra.get("data_dir", ""))
++    if not data_path:
++        raise ValueError("invalid data path: path is empty")
++    return ReplayBuffer(
++        state_dim=config.state_dim,
++        act_dim=config.act_dim,
++        data_path=data_path,
++        config=config,
++        extra=extra,
++        max_eplen=config.max_ep_len,
++        return_scale=config.scale,
++        context_len=config.max_length,
++    )
++
++
++def _restore_or_save_normalization(
++    replay_buffer: ReplayBuffer,
++    config: DecisionTransformerConfig,
++    *,
++    resume: bool,
++) -> None:
++    if resume:
++        normalize_dict = load_normalize_dict(config.modelsave_dir)
++        replay_buffer.state_mean = normalize_dict["state_mean"]
++        replay_buffer.state_std = normalize_dict["state_std"]
++        return
++
++    if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
++        save_normalize_dict(
++            {
++                "state_mean": replay_buffer.state_mean,
++                "state_std": replay_buffer.state_std,
++            },
++            config.modelsave_dir,
++        )
++
++@torch.no_grad()
++def init_weights(m):
++    if type(m) == torch.nn.Linear or type(m) == torch.nn.Embedding:
++        torch.nn.init.constant_(m.weight, 0.00001)
++        if hasattr(m, "bias") and m.bias is not None:
++            torch.nn.init.constant_(m.bias, 0.00001)
++
++def _build_model(
++    replay_buffer: ReplayBuffer,
++    config: DecisionTransformerConfig,
++) -> DecisionTransformer:
++    model = DecisionTransformer(
++        state_mean=replay_buffer.state_mean,
++        state_std=replay_buffer.state_std,
++        config=config,
++    ).to(config.device)
++
++    if os.getenv("P_TEST", "0") == "1":
++        model.apply(init_weights)
++
++    if config.hf32:
++        model.set_hf32()
++    return model
++
++
++def _apply_parallelism(
++    model: DecisionTransformer,
++    extra: Dict[str, Any],
++) -> DecisionTransformer:
++    if extra.get("use_fsdp2", False):
++        return decision_transformer_apply_fsdp2(
++            model=model,
++            mesh=None,
++            use_bf16=bool(extra.get("use_bf16", True)),
++        )
++
++    tp_mesh = extra.get("tp_mesh")
++    if tp_mesh is not None:
++        return decision_transformer_apply_tp(model=model, tp_mesh=tp_mesh)
++    return model
++
++
++def _build_train_dataloader(
++    replay_buffer: ReplayBuffer,
++    extra: Dict[str, Any],
++) -> DataLoader:
++    step_num = int(extra.get("step_num", 100))
++    batch_size = int(extra.get("batch_size", 128))
++    num_samples = step_num * batch_size
++
++    if extra.get("use_tp", False):
++        sampler = TPTrajectoryWindowSampler(
++            replay_buffer,
++            seed=int(extra.get("manual_seed", 42)),
++            num_samples=num_samples,
++            weights=replay_buffer.p_sampler,
++        )
++    else:
++        sampler = WeightedRandomSampler(
++            replay_buffer.p_sampler,
++            num_samples=num_samples,
++            replacement=True,
++        )
++
++    if os.getenv("P_TEST", "0") == "1":
++        return DataLoader(
++            replay_buffer,
++            shuffle=False,
++            batch_size=batch_size,
++            pin_memory=True,
++        )
++
++    return DataLoader(
++        replay_buffer,
++        sampler=sampler,
++        batch_size=batch_size,
++        pin_memory=True,
++    )
++
++
++def _to_training_batch(
++    batch: Any,
++    device: torch.device,
++) -> DecisionTransformerBatch:
++    states, actions, rewards, _dones, rtg, timesteps, attention_mask = batch
++    return DecisionTransformerBatch(
++        states=states.to(device=device, non_blocking=True),
++        actions=actions.to(device=device, non_blocking=True),
++        rewards=rewards.to(device=device, non_blocking=True),
++        rtg=rtg.to(device=device, non_blocking=True),
++        timesteps=timesteps.to(device=device, non_blocking=True),
++        attention_mask=attention_mask.to(device=device, non_blocking=True),
++    )
++
++
++def _synchronize(device: torch.device) -> None:
++    if device.type == "cuda":
++        torch.cuda.synchronize()
++    elif device.type == "npu":
++        torch.npu.synchronize()
++
++
++def _evaluate_model(
++    model: DecisionTransformer,
++    replay_buffer: ReplayBuffer,
++    config: DecisionTransformerConfig,
++    extra: Dict[str, Any],
++    *,
++    print_result: bool = True,
++) -> float:
++    """Evaluate a constructed model without reloading its checkpoint."""
++
++    distributed = torch.distributed.is_initialized()
++    rank = torch.distributed.get_rank() if distributed else 0
++    world_size = torch.distributed.get_world_size() if distributed else 1
++    use_tp = bool(extra.get("use_tp", False))
++    eval_seed = int(extra.get("eval_seed", 0))
++
++    if not use_tp:
++        python_rng_state = random.getstate()
++        numpy_rng_state = np.random.get_state()
++        random.seed(eval_seed + rank)
++        np.random.seed(eval_seed + rank)
++
++    was_training = model.training
++    model.eval()
++    try:
++        if use_tp:
++            sampler = TPTrajectoryWindowSampler(
++                replay_buffer,
++                seed=int(extra.get("manual_seed", 42)),
++            )
++        elif distributed:
++            sampler = DistributedSampler(
++                replay_buffer,
++                num_replicas=world_size,
++                rank=rank,
++                shuffle=False,
++                drop_last=False,
++                seed=eval_seed,
++            )
++            sampler.set_epoch(0)
++        else:
++            sampler = SequentialSampler(replay_buffer)
++
++        dataloader = DataLoader(
++            replay_buffer,
++            sampler=sampler,
++            batch_size=int(extra.get("batch_size", 128)),
++            pin_memory=True,
++        )
++        squared_error = torch.zeros((), dtype=torch.float32, device=config.device)
++        action_count = torch.zeros((), dtype=torch.float32, device=config.device)
++        local_sample_offset = 0
++
++        with torch.no_grad():
++            for batch in dataloader:
++                (
++                    states,
++                    actions,
++                    rewards,
++                    _dones,
++                    rtg,
++                    timesteps,
++                    attention_mask,
++                ) = batch
++                states = states.to(device=config.device, non_blocking=True)
++                actions = actions.to(device=config.device, non_blocking=True)
++                rewards = rewards.to(device=config.device, non_blocking=True)
++                rtg = rtg.to(device=config.device, non_blocking=True)
++                timesteps = timesteps.to(device=config.device, non_blocking=True)
++                attention_mask = attention_mask.to(
++                    device=config.device,
++                    non_blocking=True,
++                )
++                with model.tp_autocast():
++                    _, action_preds, _, _ = model(
++                        DecisionTransformerInput(
++                            states=states,
++                            actions=actions,
++                            rewards=rewards,
++                            returns_to_go=rtg[:, : states.shape[1]],
++                            timesteps=timesteps,
++                            attention_mask=attention_mask,
++                        )
++                    )
++
++                valid_actions = (
++                    attention_mask.bool().unsqueeze(-1).expand_as(action_preds)
++                )
++                if distributed and not use_tp:
++                    batch_samples = states.shape[0]
++                    local_positions = torch.arange(
++                        local_sample_offset,
++                        local_sample_offset + batch_samples,
++                        device=config.device,
++                    )
++                    real_samples = rank + local_positions * world_size < len(
++                        replay_buffer
++                    )
++                    valid_actions = valid_actions & real_samples[:, None, None]
++                    local_sample_offset += batch_samples
++
++                action_error = (action_preds.float() - actions.float()).square()
++                squared_error += action_error.masked_select(valid_actions).sum()
++                action_count += valid_actions.sum().to(dtype=torch.float32)
++
++        if distributed:
++            torch.distributed.all_reduce(
++                squared_error, op=torch.distributed.ReduceOp.SUM
++            )
++            torch.distributed.all_reduce(
++                action_count, op=torch.distributed.ReduceOp.SUM
++            )
++
++        if action_count.item() == 0:
++            raise RuntimeError("evaluation dataset does not contain any valid actions")
++        action_mse = (squared_error / action_count).item()
++        if print_result and rank == 0:
++            print(f"Evaluation action MSE: {action_mse:.8f}")
++        return action_mse
++    finally:
++        if not use_tp:
++            random.setstate(python_rng_state)
++            np.random.set_state(numpy_rng_state)
++        if was_training:
++            model.train()
++
++
++def train(config: DecisionTransformerConfig, extra: Dict[str, Any]) -> None:
++    if os.getenv("P_TEST", "0") == "1":
++        from msprobe.pytorch import seed_all
++        seed_all(42, mode=True, rm_dropout=True)
++
++    replay_buffer = _build_replay_buffer(config, extra)
++    resume = bool(extra.get("resume", False))
++    _restore_or_save_normalization(
++        replay_buffer,
++        config,
++        resume=resume,
++    )
++
++    rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
++    if rank == 0:
++        print("Replay buffer size: ", len(replay_buffer.trajectories))
++
++    model = _apply_parallelism(_build_model(replay_buffer, config), extra)
++    dataloader = _build_train_dataloader(replay_buffer, extra)
++
++    model.create_optimizer()
++    if resume:
++        model.load_net(load_optimizer=True)
++    if model.compile_enable and model.tensor_parallel:
++        model.compile_()
++
++    if model.optimizer is None or model.scheduler is None:
++        raise RuntimeError(
++            "create optimizer after applying model parallelism and before training"
++        )
++
++    model.train()
++    num_epochs = int(extra.get("num_epochs", 1))
++    batch_size = int(extra.get("batch_size", 128))
++    total_epoch_time = 0.0
++    total_processed_samples = 0
++    total_step_time = 0.0
++    measured_step_count = 0
++    final_loss = 0.0
++
++    _profiling_output = os.environ.get("PROFILER_OUT_DIR", "profiler.data")
++    profiling = get_profiler(config.device, _profiling_output)
++    with profiling as prof:
++        for epoch in range(1, num_epochs + 1):
++            epoch_loss_sum = torch.zeros((), dtype=torch.float32, device=config.device)
++            epoch_step_count = torch.zeros(
++                (), dtype=torch.float32, device=config.device
++            )
++
++            import time
++            _start_time = time.perf_counter()
++            for batch in dataloader:
++                step_start_time = time.perf_counter()
++                loss = model.step(_to_training_batch(batch, config.device))
++                epoch_loss_sum += loss.detach().float()
++                epoch_step_count += 1
++                _synchronize(config.device)
++                step_time = time.perf_counter() - step_start_time
++                if model.global_step > 1:
++                    total_step_time += step_time
++                    measured_step_count += 1
++                prof.step()
++            _cost_time = time.perf_counter() - _start_time
++
++            if torch.distributed.is_initialized():
++                torch.distributed.all_reduce(
++                    epoch_loss_sum,
++                    op=torch.distributed.ReduceOp.SUM,
++                )
++                torch.distributed.all_reduce(
++                    epoch_step_count,
++                    op=torch.distributed.ReduceOp.SUM,
++                )
++            if epoch_step_count.item() == 0:
++                raise RuntimeError("training dataloader did not produce any batches")
++
++            train_loss = (epoch_loss_sum / epoch_step_count).item()
++            final_loss = train_loss
++            eval_action_mse = _evaluate_model(
++                model,
++                replay_buffer,
++                config,
++                extra,
++                print_result=False,
++            )
++
++            epoch_processed_samples = int(epoch_step_count.item() * batch_size)
++            total_processed_samples += epoch_processed_samples
++            total_epoch_time += _cost_time
++            epoch_throughput = (
++                epoch_processed_samples / _cost_time if _cost_time > 0 else 0.0
++            )
++
++            if rank == 0:
++                learning_rate = model.optimizer.param_groups[0]["lr"]
++                epoch_info = {
++                    "epoch": f"{epoch}/{num_epochs}",
++                    "train_loss": train_loss,
++                    "eval_action_mse": eval_action_mse,
++                    "lr": learning_rate,
++                    "global_step": model.global_step,
++                    "batches": int(epoch_step_count.item()),
++                    "samples": epoch_processed_samples,
++                    "throughput": epoch_throughput,
++                    "elapsed_time": _cost_time,
++                }
++                print(epoch_info)
++
++    if rank == 0:
++        ms_step = (
++            total_step_time / measured_step_count * 1000
++            if measured_step_count > 0
++            else 0.0
++        )
++        final_result = {
++            "dataset_name": "training_data",
++            "bach_size": batch_size,
++            "epoch": num_epochs,
++            "step": model.global_step,
++            "final_loss": final_loss,
++            "ms_step": ms_step,
++        }
++        print(f"The Final Result: {final_result}")
++
++        average_epoch_time = total_epoch_time / num_epochs if num_epochs > 0 else 0.0
++        overall_throughput = (
++            total_processed_samples / total_epoch_time if total_epoch_time > 0 else 0.0
++        )
++        training_summary = {
++            "epochs": num_epochs,
++            "total_samples": total_processed_samples,
++            "avg_epoch_time": average_epoch_time,
++            "overall_throughput": overall_throughput,
++            "final_global_step": model.global_step,
++        }
++        print(training_summary)
++
++    model.save_net()
++
++
++def evaluate(config: DecisionTransformerConfig, extra: Dict[str, Any]) -> float:
++    replay_buffer = _build_replay_buffer(config, extra)
++    normalize_dict = load_normalize_dict(config.modelsave_dir)
++    expected_shape = (config.state_dim,)
++    for name in ("state_mean", "state_std"):
++        if normalize_dict[name].shape != expected_shape:
++            raise ValueError(
++                f"{name} shape must be {expected_shape}, got {normalize_dict[name].shape}"
++            )
++        if not np.isfinite(normalize_dict[name]).all():
++            raise ValueError(f"{name} contains non-finite values")
++    if np.any(normalize_dict["state_std"] <= 0):
++        raise ValueError("state_std must contain only positive values")
++
++    replay_buffer.state_mean = normalize_dict["state_mean"]
++    replay_buffer.state_std = normalize_dict["state_std"]
++    model = _apply_parallelism(_build_model(replay_buffer, config), extra)
++    model.load_net(load_optimizer=False)
++    if model.compile_enable and model.tensor_parallel:
++        model.compile_()
++    return _evaluate_model(model, replay_buffer, config, extra)
++
++
++def main() -> None:
++    extra_config: Dict[str, Any] = {
++        "data_dir": "./data/training_data_all-rlData.csv",
++        "model": "dt",
++        "mode": "mixed_train_eval",
++        "modelsave_dir": "./checkpoints/",
++        "batch_size": 128,
++        "embedding_size": 16,
++        "field_size": 39,
++        "extra_fields": 0,
++        "step_num": 100,
++        "num_epochs": 200,
++    }
++    extra_config.update(vars(parse_args()))
++
++    torch.manual_seed(int(extra_config.get("manual_seed", 42)))
++    use_fsdp2 = bool(extra_config.get("use_fsdp2", False))
++    use_tp = int(extra_config.get("tp_size", 1)) > 1
++    if use_fsdp2 and use_tp:
++        raise RuntimeError("FSDP2 and TP cannot be enabled together yet")
++
++    distributed = use_fsdp2 or use_tp
++    if distributed:
++        rank, world_size, device, tp_mesh = init_distribute(
++            extra_config,
++            use_tp=use_tp,
++        )
++        tp_size = int(extra_config.get("tp_size", 1))
++        if use_tp and tp_size != world_size:
++            raise RuntimeError(
++                "pure TP requires world_size to equal tp_size: "
++                f"{world_size} != {tp_size}"
++            )
++    else:
++        rank, world_size = 0, 1
++        device = resolve_device()
++        tp_mesh = None
++
++    extra_config["tp_mesh"] = tp_mesh
++    extra_config["use_fsdp2"] = use_fsdp2
++    extra_config["use_tp"] = use_tp
++
++    modelsave_dir = str(extra_config.get("modelsave_dir", ""))
++    if not modelsave_dir:
++        raise ValueError("model save directory is empty")
++
++    try:
++        hidden_size = 2048
++        max_length = 64
++        attention_config = AttentionConfig(
++            d_model=hidden_size,
++            d_hidden=4096,
++            n_head=16,
++            n_layer=8,
++            activation_function="relu",
++            attention_backend=str(extra_config.get("attention_backend", "eager")),
++            n_ctx=3 * max_length,
++            n_position=96,
++        )
++        config = DecisionTransformerConfig(
++            length_times=3,
++            state_dim=16,
++            act_dim=1,
++            scale=2000.0,
++            target_return=4,
++            device=device,
++            modelsave_dir=modelsave_dir,
++            hf32=False,
++            use_bf16=bool(extra_config.get("use_bf16", True)),
++            compile=bool(extra_config.get("compile", False)),
++            graph=False,
++            shape_handle=False,
++            learning_rate=1e-4,
++            use_distribution=distributed,
++            rank=rank,
++            world_size=world_size,
++            attention_config=attention_config,
++        )
++
++        mode = str(extra_config.get("mode", "mixed_train_eval"))
++        if mode == "train":
++            train(config, extra_config)
++        elif mode == "eval":
++            _ = evaluate(config, extra_config)
++        else:
++            raise ValueError(f"unsupported running mode {mode}")
++    finally:
++        if torch.distributed.is_initialized():
++            torch.distributed.destroy_process_group()
++
++
++if __name__ == "__main__":
++    main()
+--- /dev/null	2026-09-15 17:30:24
++++ ./model/__init__.py	2026-09-15 17:08:24
+@@ -0,0 +1,26 @@
++from .components import AttentionConfig, Block, CausalSelfAttention, FeedForward
++from .decision_transformer import (
++    DecisionTransformer,
++    DecisionTransformerBatch,
++    DecisionTransformerConfig,
++    DecisionTransformerInput,
++)
++from .parallel import (
++    decision_transformer_apply_fsdp2,
++    decision_transformer_apply_tp,
++    tensor_parallel_clip_grad_norm_,
++)
++
++__all__ = [
++    "AttentionConfig",
++    "Block",
++    "CausalSelfAttention",
++    "DecisionTransformer",
++    "DecisionTransformerBatch",
++    "DecisionTransformerConfig",
++    "DecisionTransformerInput",
++    "FeedForward",
++    "decision_transformer_apply_fsdp2",
++    "decision_transformer_apply_tp",
++    "tensor_parallel_clip_grad_norm_",
++]
+--- /dev/null	2026-09-15 17:30:24
++++ ./model/components.py	2026-09-15 17:08:24
+@@ -0,0 +1,251 @@
++from __future__ import annotations
++
++import math
++import torch
++import torch.nn.functional as F
++from dataclasses import dataclass
++
++
++@dataclass
++class AttentionConfig:
++    d_model: int = 1024
++    d_hidden: int = 4096
++    n_head: int = 1
++    attn_dropout: float = 0.1
++    resid_dropout: float = 0.1
++    n_ctx: int = 1024
++    n_layer: int = 8
++    activation_function: str = "relu"
++    attention_backend: str = "eager"
++    n_position: int = 1024
++
++    def __post_init__(self) -> None:
++        if self.d_model % self.n_head != 0:
++            raise ValueError(
++                f"d_model ({self.d_model}) must be divisible by n_head ({self.n_head})"
++            )
++        self.attention_backend = self.attention_backend.lower()
++        supported_backends = {"eager", "sdpa", "ascend"}
++        if self.attention_backend not in supported_backends:
++            raise ValueError(
++                f"unsupported attention_backend {self.attention_backend!r}; "
++                f"expected one of {sorted(supported_backends)}"
++            )
++
++
++def _create_activation(name: str) -> torch.nn.Module:
++    activations = {
++        "relu": torch.nn.ReLU,
++        "gelu": torch.nn.GELU,
++        "silu": torch.nn.SiLU,
++    }
++    normalized_name = name.lower()
++    if normalized_name not in activations:
++        raise ValueError(
++            f"unsupported activation_function {name!r}; "
++            f"expected one of {sorted(activations)}"
++        )
++    return activations[normalized_name]()
++
++
++class CausalSelfAttention(torch.nn.Module):
++    def __init__(self, config: AttentionConfig) -> None:
++        super().__init__()
++        self.n_head = config.n_head
++        self.d_model = config.d_model
++        self.n_ctx = config.n_ctx
++        self.attention_backend = config.attention_backend
++        if self.d_model % self.n_head != 0:
++            raise ValueError(
++                f"d_model {self.d_model} is not divisable by n_head {self.n_head}"
++            )
++        self.d_head = self.d_model // self.n_head
++
++        self.qkv = torch.nn.Linear(self.d_model, 3 * self.d_model)
++        self.attn_dropout = torch.nn.Dropout(config.attn_dropout)
++        self.resid_dropout = torch.nn.Dropout(config.resid_dropout)
++
++        self.register_buffer(
++            "bias",
++            torch.tril(torch.ones(self.n_ctx, self.n_ctx)).view(
++                1, 1, self.n_ctx, self.n_ctx
++            ),
++        )
++
++        self.proj = torch.nn.Linear(self.d_model, self.d_model)
++
++    def _eager_attention(
++        self,
++        q: torch.Tensor,
++        k: torch.Tensor,
++        v: torch.Tensor,
++        mask: torch.Tensor | None,
++    ) -> torch.Tensor:
++        seq_len = q.shape[-2]
++        attn = q @ k.transpose(-2, -1)
++        attn = attn * (1.0 / math.sqrt(self.d_head))
++
++        causal_mask = self.bias[:, :, :seq_len, :seq_len]
++        mask_value = torch.finfo(attn.dtype).min
++        attn = attn.masked_fill(causal_mask == 0, mask_value)
++
++        if mask is not None:
++            key_mask = mask[:, None, None, :]
++            attn = attn.masked_fill(key_mask == 0, mask_value)
++
++        attn = F.softmax(attn, dim=-1)
++        if mask is not None:
++            query_mask = mask[:, None, :, None].to(dtype=attn.dtype)
++            attn = attn * query_mask
++        return self.attn_dropout(attn) @ v
++
++    def _sdpa_attention(
++        self,
++        q: torch.Tensor,
++        k: torch.Tensor,
++        v: torch.Tensor,
++        mask: torch.Tensor | None,
++    ) -> torch.Tensor:
++        seq_len = q.shape[-2]
++        dropout_p = self.attn_dropout.p if self.training else 0.0
++
++        if mask is None:
++            return F.scaled_dot_product_attention(
++                q,
++                k,
++                v,
++                dropout_p=dropout_p,
++                is_causal=True,
++                scale=1.0 / math.sqrt(self.d_head),
++            )
++
++        causal_mask = self.bias[:, :, :seq_len, :seq_len].bool()
++        key_mask = mask[:, None, None, :].bool()
++        output = F.scaled_dot_product_attention(
++            q,
++            k,
++            v,
++            attn_mask=causal_mask & key_mask,
++            dropout_p=dropout_p,
++            is_causal=False,
++            scale=1.0 / math.sqrt(self.d_head),
++        )
++        query_mask = mask[:, None, :, None].to(dtype=output.dtype)
++        return output * query_mask
++
++    def _ascend_attention(
++        self,
++        q: torch.Tensor,
