@@ -1,0 +1,30 @@
+{
+    "name": "DECISION_TRANSFORMER",
+    "url": "https://github.com/kzl/decision-transformer.git",
+    "model_name": "decision_transformer",
+    "commit_id": "e2d82e68f330c00f763507b3b01d774740bee53f",
+    "patch_path": "patches/decision_transformer.patch",
+    "mode": "train",
+    "epoch": 200,
+    "profiling_flag": true,
+    "aclgraph_flag": false,
+    "data_type": "bfloat16",
+    "run_cmd": [
+        "env",
+        "NPROC_PER_NODE=8",
+        "VISIBLE_DEVICES=0,1,2,3,4,5,6,7",
+        "BATCH_SIZE=512",
+        "NNODES=1",
+        "NODE_RANK=0",
+        "MASTER_ADDR=127.0.0.1",
+        "MASTER_PORT=29500",
+        "P_TEST=0",
+        "DATA_DIR=../../../dataset/decision_transformer/training_data_all-rlData.csv",
+        "OUTPUT_DIR=./outputs",
+        "bash",
+        "scripts/run_fsdp2.sh"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": []
+}

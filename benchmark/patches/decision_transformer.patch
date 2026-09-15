@@ -1995,3 +1995,466 @@
 +if [[ "${USE_BF16}" != "0" && "${USE_BF16}" != "1" ]]; then
 +    echo "USE_BF16 must be 0 or 1, got: ${USE_BF16}" >&2
 +    exit 1
++fi
++if [[ "${ATTENTION_BACKEND}" != "eager" && "${ATTENTION_BACKEND}" != "sdpa" && "${ATTENTION_BACKEND}" != "ascend" ]]; then
++    echo "ATTENTION_BACKEND must be eager, sdpa, or ascend, got: ${ATTENTION_BACKEND}" >&2
++    exit 1
++fi
++if [[ "${ATTENTION_BACKEND}" == "ascend" && "${USE_BF16}" != "1" ]]; then
++    echo "ATTENTION_BACKEND=ascend requires USE_BF16=1" >&2
++    exit 1
++fi
++if [[ "${RESUME}" != "0" && "${RESUME}" != "1" ]]; then
++    echo "RESUME must be 0 or 1, got: ${RESUME}" >&2
++    exit 1
++fi
++if [[ ! -f "${DATA_DIR}" ]]; then
++    echo "Training dataset does not exist: ${DATA_DIR}" >&2
++    exit 1
++fi
++
++if [[ "${RESUME}" == "1" ]]; then
++    if [[ ! -d "${MODEL_DIR}/decision_transformer_dcp" ]]; then
++        echo "FSDP2 checkpoint does not exist: ${MODEL_DIR}/decision_transformer_dcp" >&2
++        exit 1
++    fi
++    if [[ ! -f "${MODEL_DIR}/normalize_dict.pkl" ]]; then
++        echo "Normalization state does not exist: ${MODEL_DIR}/normalize_dict.pkl" >&2
++        exit 1
++    fi
++fi
++
++mkdir -p "${MODEL_DIR}" "${LOG_DIR}" "${PROFILER_OUT_DIR}"
++
++export OMP_NUM_THREADS
++export PYTHONUNBUFFERED=1
++export PYTHONPATH="${SCRIPT_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
++export PROFILER_OUT_DIR
++
++TRAIN_ARGS=(
++    --use-fsdp2
++    --attention-backend "${ATTENTION_BACKEND}"
++    --mode train
++    --data-dir "${DATA_DIR}"
++    --modelsave-dir "${MODEL_DIR}"
++    --batch-size "${BATCH_SIZE}"
++)
++
++if [[ "${USE_BF16}" == "1" ]]; then
++    TRAIN_ARGS+=(--use-bf16)
++else
++    TRAIN_ARGS+=(--no-use-bf16)
++fi
++
++if [[ "${RESUME}" == "1" ]]; then
++    TRAIN_ARGS+=(--resume)
++fi
++
++NNODES="${NNODES:-1}"
++NODE_RANK="${NODE_RANK:-0}"
++
++GLOBAL_BATCH_SIZE=$((NPROC_PER_NODE * BATCH_SIZE))
++echo "Starting single-node FSDP2 training"
++echo "  NPU processes : ${NPROC_PER_NODE}"
++echo "  Batch per NPU : ${BATCH_SIZE}"
++echo "  Global batch  : ${GLOBAL_BATCH_SIZE}"
++echo "  Attention     : ${ATTENTION_BACKEND}"
++echo "  BF16          : ${USE_BF16}"
++echo "  Resume        : ${RESUME}"
++echo "  Output root   : ${OUTPUT_DIR}"
++echo "  Dataset       : ${DATA_DIR}"
++echo "  Checkpoint    : ${MODEL_DIR}"
++echo "  Logs          : ${LOG_DIR}"
++echo "  Profiler      : ${PROFILER_OUT_DIR}"
++echo "  Rendezvous    : ${MASTER_ADDR}:${MASTER_PORT}"
++
++cd "${SCRIPT_DIR}"
++
++exec torchrun \
++    --nnodes="${NNODES}" \
++    --nproc-per-node="${NPROC_PER_NODE}" \
++    --node-rank="${NODE_RANK}" \
++    --master-addr="${MASTER_ADDR}" \
++    --master-port="${MASTER_PORT}" \
++    --max-restarts=0 \
++    --log-dir="${LOG_DIR}" \
++    --tee=3 \
++    "${SCRIPT_DIR}/main.py" \
++    "${TRAIN_ARGS[@]}" \
++    "$@"
+--- /dev/null	2026-09-15 17:30:24
++++ ./scripts/run_tp.sh	2026-09-15 17:08:24
+@@ -0,0 +1,181 @@
++#!/usr/bin/env bash
++
++set -Eeuo pipefail
++
++# Single-node tensor-parallel launcher.
++#
++# Examples:
++#   bash scripts/run_tp.sh
++#   NPROC_PER_NODE=4 VISIBLE_DEVICES=0,1,2,3 BATCH_SIZE=4 bash scripts/run_tp.sh
++#   MANUAL_SEED=7 MASTER_PORT=29600 bash scripts/run_tp.sh
++#   RESUME=1 MODEL_DIR=./outputs/checkpoints/tp bash scripts/run_tp.sh
++
++# Both launchers live in scripts/, while run.py and runtime directories live
++# at the repository root.
++SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
++
++# Source the Ascend environment only when an explicit script is provided.
++# If single-NPU training already works in the current shell, this is unnecessary.
++if [[ -n "${ASCEND_ENV_SCRIPT:-}" ]]; then
++    if [[ ! -f "${ASCEND_ENV_SCRIPT}" ]]; then
++        echo "ASCEND_ENV_SCRIPT does not exist: ${ASCEND_ENV_SCRIPT}" >&2
++        exit 1
++    fi
++    # shellcheck disable=SC1090
++    source "${ASCEND_ENV_SCRIPT}"
++fi
++
++NPROC_PER_NODE="${NPROC_PER_NODE:-8}"
++TP_SIZE="${TP_SIZE:-${NPROC_PER_NODE}}"
++VISIBLE_DEVICES=${VISIBLE_DEVICES:-"0,1,2,3,4,5,6,7"}
++export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-$VISIBLE_DEVICES}
++export ASCEND_RT_VISIBLE_DEVICES=${ASCEND_RT_VISIBLE_DEVICES:-$VISIBLE_DEVICES}
++
++BATCH_SIZE="${BATCH_SIZE:-8}"
++MANUAL_SEED="${MANUAL_SEED:-42}"
++MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
++MASTER_PORT="${MASTER_PORT:-29500}"
++RESUME="${RESUME:-0}"
++OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
++COMPILE="${COMPILE:-0}"
++USE_BF16="${USE_BF16:-1}"
++ATTENTION_BACKEND="${ATTENTION_BACKEND:-eager}"
++
++if [[ "${COMPILE}" != "0" && "${COMPILE}" != "1" ]]; then
++    echo "COMPILE must be 0 or 1, got: ${COMPILE}" >&2
++    exit 1
++fi
++if [[ "${USE_BF16}" != "0" && "${USE_BF16}" != "1" ]]; then
++    echo "USE_BF16 must be 0 or 1, got: ${USE_BF16}" >&2
++    exit 1
++fi
++if [[ "${ATTENTION_BACKEND}" != "eager" && "${ATTENTION_BACKEND}" != "sdpa" && "${ATTENTION_BACKEND}" != "ascend" ]]; then
++    echo "ATTENTION_BACKEND must be eager, sdpa, or ascend, got: ${ATTENTION_BACKEND}" >&2
++    exit 1
++fi
++
++OUTPUT_DIR="${OUTPUT_DIR:-${SCRIPT_DIR}/outputs}"
++[[ "${OUTPUT_DIR}" = /* ]] || OUTPUT_DIR="${SCRIPT_DIR}/${OUTPUT_DIR}"
++
++DATA_DIR="${DATA_DIR:-${SCRIPT_DIR}/data/training_data_all-rlData.csv}"
++MODEL_DIR="${MODEL_DIR:-${OUTPUT_DIR}/checkpoints/tp}"
++LOG_DIR="${LOG_DIR:-${OUTPUT_DIR}/logs/tp/$(date +%Y%m%d_%H%M%S)}"
++PROFILER_OUT_DIR="${PROFILER_OUT_DIR:-${OUTPUT_DIR}/profiler/tp}"
++
++# Interpret user-provided relative paths from the repository directory, not
++# from whichever directory happened to invoke this script.
++[[ "${DATA_DIR}" = /* ]] || DATA_DIR="${SCRIPT_DIR}/${DATA_DIR}"
++[[ "${MODEL_DIR}" = /* ]] || MODEL_DIR="${SCRIPT_DIR}/${MODEL_DIR}"
++[[ "${LOG_DIR}" = /* ]] || LOG_DIR="${SCRIPT_DIR}/${LOG_DIR}"
++[[ "${PROFILER_OUT_DIR}" = /* ]] || PROFILER_OUT_DIR="${SCRIPT_DIR}/${PROFILER_OUT_DIR}"
++
++if ! command -v torchrun >/dev/null 2>&1; then
++    echo "torchrun was not found in PATH" >&2
++    exit 1
++fi
++if [[ ! "${NPROC_PER_NODE}" =~ ^[1-9][0-9]*$ ]]; then
++    echo "NPROC_PER_NODE must be a positive integer, got: ${NPROC_PER_NODE}" >&2
++    exit 1
++fi
++if [[ ! "${TP_SIZE}" =~ ^[1-9][0-9]*$ ]]; then
++    echo "TP_SIZE must be a positive integer, got: ${TP_SIZE}" >&2
++    exit 1
++fi
++if [[ "${TP_SIZE}" != "${NPROC_PER_NODE}" ]]; then
++    echo "Pure TP requires TP_SIZE to equal NPROC_PER_NODE: ${TP_SIZE} != ${NPROC_PER_NODE}" >&2
++    exit 1
++fi
++if [[ ! "${BATCH_SIZE}" =~ ^[1-9][0-9]*$ ]]; then
++    echo "BATCH_SIZE must be a positive integer, got: ${BATCH_SIZE}" >&2
++    exit 1
++fi
++if [[ ! "${MANUAL_SEED}" =~ ^-?[0-9]+$ ]]; then
++    echo "MANUAL_SEED must be an integer, got: ${MANUAL_SEED}" >&2
++    exit 1
++fi
++if [[ ! "${MASTER_PORT}" =~ ^[0-9]+$ ]] || (( MASTER_PORT < 1 || MASTER_PORT > 65535 )); then
++    echo "MASTER_PORT must be in [1, 65535], got: ${MASTER_PORT}" >&2
++    exit 1
++fi
++if [[ "${RESUME}" != "0" && "${RESUME}" != "1" ]]; then
++    echo "RESUME must be 0 or 1, got: ${RESUME}" >&2
++    exit 1
++fi
++if [[ ! -f "${DATA_DIR}" ]]; then
++    echo "Training dataset does not exist: ${DATA_DIR}" >&2
++    exit 1
++fi
++
++if [[ "${RESUME}" == "1" ]]; then
++    if [[ ! -d "${MODEL_DIR}/decision_transformer_dcp" ]]; then
++        echo "TP checkpoint does not exist: ${MODEL_DIR}/decision_transformer_dcp" >&2
++        exit 1
++    fi
++    if [[ ! -f "${MODEL_DIR}/normalize_dict.pkl" ]]; then
++        echo "Normalization state does not exist: ${MODEL_DIR}/normalize_dict.pkl" >&2
++        exit 1
++    fi
++fi
++
++mkdir -p "${MODEL_DIR}" "${LOG_DIR}" "${PROFILER_OUT_DIR}"
++
++export OMP_NUM_THREADS
++export PYTHONUNBUFFERED=1
++export PYTHONPATH="${SCRIPT_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
++export PROFILER_OUT_DIR
++
++TRAIN_ARGS=(
++    --no-use-fsdp2
++    --tp-size "${TP_SIZE}"
++    --manual-seed "${MANUAL_SEED}"
++    --attention-backend "${ATTENTION_BACKEND}"
++    --mode train
++    --data-dir "${DATA_DIR}"
++    --modelsave-dir "${MODEL_DIR}"
++    --batch-size "${BATCH_SIZE}"
++)
++
++if [[ "${USE_BF16}" == "1" ]]; then
++    TRAIN_ARGS+=(--use-bf16)
++else
++    TRAIN_ARGS+=(--no-use-bf16)
++fi
++
++if [[ "${COMPILE}" == "1" ]]; then
++    TRAIN_ARGS+=(--compile)
++else
++    TRAIN_ARGS+=(--no-compile)
++fi
++
++if [[ "${RESUME}" == "1" ]]; then
++    TRAIN_ARGS+=(--resume)
++fi
++
++echo "Starting single-node tensor-parallel training"
++echo "  TP processes   : ${NPROC_PER_NODE}"
++echo "  TP size        : ${TP_SIZE}"
++echo "  Shared batch   : ${BATCH_SIZE}"
++echo "  Manual seed    : ${MANUAL_SEED}"
++echo "  Attention      : ${ATTENTION_BACKEND}"
++echo "  BF16           : ${USE_BF16}"
++echo "  Resume         : ${RESUME}"
++echo "  Output root    : ${OUTPUT_DIR}"
++echo "  Dataset        : ${DATA_DIR}"
++echo "  Checkpoint     : ${MODEL_DIR}"
++echo "  Logs           : ${LOG_DIR}"
++echo "  Profiler       : ${PROFILER_OUT_DIR}"
++echo "  Rendezvous     : ${MASTER_ADDR}:${MASTER_PORT}"
++
++cd "${SCRIPT_DIR}"
++
++exec torchrun \
++    --nnodes=1 \
++    --nproc-per-node="${NPROC_PER_NODE}" \
++    --master-addr="${MASTER_ADDR}" \
++    --master-port="${MASTER_PORT}" \
++    --max-restarts=0 \
++    --log-dir="${LOG_DIR}" \
++    --tee=3 \
++    "${SCRIPT_DIR}/main.py" \
++    "$@" \
++    "${TRAIN_ARGS[@]}"
+--- /dev/null	2026-09-15 17:30:24
++++ ./utils.py	2026-09-15 17:08:24
+@@ -0,0 +1,189 @@
++from __future__ import annotations
++
++import os
++import pickle
++from typing import Any, Dict
++
++import argparse
++import numpy as np
++import torch
++from torch.distributed.device_mesh import DeviceMesh
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser()
++    parser.add_argument(
++        "--use-fsdp2", action=argparse.BooleanOptionalAction, default=False
++    )
++    parser.add_argument(
++        "--tp-size", type=int, default=1
++    )
++    parser.add_argument(
++        "--manual-seed",
++        "--manual_seed",
++        dest="manual_seed",
++        type=int,
++        default=42,
++    )
++    parser.add_argument(
++        "--use-bf16", action=argparse.BooleanOptionalAction, default=True
++    )
++    parser.add_argument(
++        "--attention-backend",
++        choices=("eager", "sdpa", "ascend"),
++        default="eager",
++    )
++    parser.add_argument(
++        "--resume", action=argparse.BooleanOptionalAction, default=False
++    )
++    parser.add_argument(
++        "--mode",
++        choices=("train", "eval"),
++        default="train",
++    )
++    parser.add_argument(
++        "--compile", action=argparse.BooleanOptionalAction, default=False
++    )
++    parser.add_argument("--data-dir", default="./data/training_data_all-rlData.csv")
++    parser.add_argument("--modelsave-dir", default="./checkpoints/")
++    parser.add_argument("--batch-size", type=int, default=128)
++    args = parser.parse_args()
++    return args
++
++
++def resolve_device() -> torch.device:
++    try:
++        import torch_npu  # type: ignore
++
++        if torch_npu.npu.is_available():
++            return torch.device("npu")
++    except Exception:
++        pass
++    if not torch.cuda.is_available():
++        raise RuntimeError("NPU and CUDA: do not support both.")
++    return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
++
++
++def save_normalize_dict(normalize_dict: Dict[str, Any], save_dir: str) -> None:
++    os.makedirs(save_dir, exist_ok=True)
++    save_path = os.path.join(save_dir, "normalize_dict.pkl")
++    with open(save_path, "wb") as file:
++        pickle.dump(normalize_dict, file)
++
++
++def load_normalize_dict(save_dir: str) -> Dict[str, np.ndarray]:
++    load_path = os.path.join(save_dir, "normalize_dict.pkl")
++    if not os.path.isfile(load_path):
++        raise FileNotFoundError(f"normalization file does not exist: {load_path}")
++    with open(load_path, "rb") as file:
++        normalize_dict = pickle.load(file)
++    if "state_mean" not in normalize_dict or "state_std" not in normalize_dict:
++        raise ValueError(f"invalid normalization file: {load_path}")
++    return {
++        "state_mean": np.asarray(normalize_dict["state_mean"], dtype=np.float32),
++        "state_std": np.asarray(normalize_dict["state_std"], dtype=np.float32),
++    }
++
++
++def get_profiler(device: torch.device, output_dir: str):
++    if device.type == "cuda":
++        return torch.profiler.profile(
++            activities=[
++                torch.profiler.ProfilerActivity.CPU,
++                torch.profiler.ProfilerActivity.CUDA,
++            ],
++            schedule=torch.profiler.schedule(
++                wait=0, warmup=5, active=10, repeat=1, skip_first=10
++            ),
++            on_trace_ready=torch.profiler.tensorboard_trace_handler(
++                dir_name=output_dir
++            ),
++            record_shapes=True,
++            with_stack=True,
++            profile_memory=False,
++            with_modules=False,
++            with_flops=False,
++        )
++    try:
++        import torch_npu  # type: ignore
++
++        if device.type == "npu":
++            return torch_npu.profiler.profile(
++                activities=[
++                    torch_npu.profiler.ProfilerActivity.CPU,
++                    torch_npu.profiler.ProfilerActivity.NPU,
++                ],
++                schedule=torch_npu.profiler.schedule(
++                    wait=0, warmup=5, active=10, repeat=1, skip_first=10
++                ),
++                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
++                    dir_name=output_dir
++                ),
++                record_shapes=True,
++                with_stack=True,
++                profile_memory=False,
++                with_modules=False,
++                with_flops=False,
++                experimental_config=torch_npu.profiler._ExperimentalConfig(
++                    export_type=[torch_npu.profiler.ExportType.Text],
++                    aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
++                    profiler_level=torch_npu.profiler.ProfilerLevel.Level0,
++                    l2_cache=False,
++                ),
++            )
++    except Exception:
++        pass
++    return torch.profiler.profile(
++        activities=[torch.profiler.ProfilerActivity.CPU],
++        schedule=torch.profiler.schedule(
++            wait=0, warmup=5, active=10, repeat=1, skip_first=10
++        ),
++        on_trace_ready=torch.profiler.tensorboard_trace_handler(dir_name=output_dir),
++        record_shapes=True,
++        with_stack=True,
++        profile_memory=False,
++        with_modules=False,
++        with_flops=False,
++    )
++
++
++def init_distribute(
++    extra_config: Dict[str, Any],
++    use_tp: bool = False,
++) -> tuple[int, int, torch.device, DeviceMesh | None]:
++    del extra_config
++    try:
++        local_rank = int(os.environ["LOCAL_RANK"])
++        if torch.cuda.is_available():
++            torch.cuda.set_device(local_rank)
++            if not torch.distributed.is_initialized():
++                torch.distributed.init_process_group(backend="nccl")
++            device = torch.device("cuda", local_rank)
++        else:
++            import torch_npu  # type: ignore
++
++            if torch_npu.npu.is_available():
++                torch_npu.npu.set_device(local_rank)
++                if not torch.distributed.is_initialized():
++                    torch.distributed.init_process_group(backend="hccl")
++                device = torch.device("npu", local_rank)
++            else:
++                raise RuntimeError("neither CUDA nor NPU is available")
++    except Exception as exc:
++        raise RuntimeError("initialize distributed runtime failed") from exc
++
++    rank = torch.distributed.get_rank()
++    world_size = torch.distributed.get_world_size()
++
++    if use_tp:
++        from torch.distributed.device_mesh import init_device_mesh
++
++        tp_mesh = init_device_mesh(
++            device.type,
++            mesh_shape=(world_size,),
++            mesh_dim_names=("tp",),
++        )
++    else:
++        tp_mesh = None
++
++    return rank, world_size, device, tp_mesh
