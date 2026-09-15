@@ -14,6 +14,7 @@
     "data_type": "float32",
     "run_cmd": [
         "env",
+        "ENABLE_PRECISION_MODE=0",
         "ENABLE_J2D_REPLACE_J2PD=1",
         "ENABLE_MOE=1",
         "MOE_EXPERT_NUM=4",
@@ -33,6 +34,8 @@
         "32345",
         "--batch_size",
         "1",
+        "--eval_every_n",
+        "50",
         "--skip_step_num",
         "10"
     ],

@@ -478,7 +478,7 @@ index 2891245c4ddd00c749044f14793000374f32c2fd..7ad170863a0b6072ea5bda843f553baf
  def gather_latency_data(local_data, world_size, device):
      """
      收集各 rank 的 latency 数据，返回 list[list[float]]
-@@ -217,6 +216,10 @@ def train_fn(
+@@ -218,6 +217,10 @@ def train_fn(
      precision_mode: bool = False,
      skip_step_num: int = 4,
  ) -> None:
@@ -486,9 +486,9 @@ index 2891245c4ddd00c749044f14793000374f32c2fd..7ad170863a0b6072ea5bda843f553baf
 +        os.environ.get("MODEL_COMPILE_FLAG", "FALSE").upper() == "TRUE"
 +    )
 +
-     # to enable more deterministic results.
-     if precision_mode:
-         shuffle = False
+     stop_step = int(os.getenv("STOP_STEP", "0"))
+     stop_training = False
+     ndcg_10 = ndcg_50 = hr_10 = hr_50 = mrr = float("nan")
 @@ -313,6 +316,29 @@ def train_fn(
          verbose=True,
          precision_mode=precision_mode,

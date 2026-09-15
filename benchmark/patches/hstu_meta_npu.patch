@@ -292,7 +292,32 @@ index 3c89245..8a573eb 100644
  
  class RelativeAttentionBiasModule(torch.nn.Module):
      @abc.abstractmethod
-@@ -131,15 +275,21 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
+@@ -93,4 +237,5 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
+         max_seq_len: int,
+         num_buckets: int,
+         bucketization_fn: Callable[[torch.Tensor], torch.Tensor],
++        precision_mode: bool = False,
+     ) -> None:
+@@ -99,8 +244,16 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
+         self._max_seq_len: int = max_seq_len
++        ts_w = torch.empty(num_buckets + 1)
++        pos_w = torch.empty(2 * max_seq_len - 1)
++        if precision_mode:
++            ts_w.zero_()
++            pos_w.zero_()
++        else:
++            ts_w.normal_(mean=0, std=0.02)
++            pos_w.normal_(mean=0, std=0.02)
+         self._ts_w = torch.nn.Parameter(
+-            torch.empty(num_buckets + 1).normal_(mean=0, std=0.02),
++            ts_w,
+         )
+         self._pos_w = torch.nn.Parameter(
+-            torch.empty(2 * max_seq_len - 1).normal_(mean=0, std=0.02),
++            pos_w,
+         )
+         self._num_buckets: int = num_buckets
+@@ -131,15 +284,21 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
          # causal masking. Otherwise [:, :-1] - [:, 1:] works
          bucketed_timestamps = torch.clamp(
              self._bucketization_fn(
@@ -400,7 +425,7 @@ index 3c89245..8a573eb 100644
 +                    + attention_dim * num_heads * 2,
 +                )
              )
-+            _param = _param.normal_(mean=0, std=0.02) if not precision_mode else _param.fill(0.01)
++            _param = _param.normal_(mean=0, std=0.02) if not precision_mode else _param.fill_(0.01)
 +            self._uvqk: torch.nn.Parameter = torch.nn.Parameter(_param,)
          else:
              raise ValueError(f"Unknown linear_config {self._linear_config}")
@@ -467,9 +492,10 @@ index 3c89245..8a573eb 100644
          self._hstu = HSTUJagged(
              modules=[
                  SequentialTransductionUnitJagged(
-@@ -610,12 +773,13 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -610,12 +782,14 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
                                  torch.log(torch.abs(x).clamp(min=1)) / 0.301
                              ).long(),
++                            precision_mode=precision_mode,
                          )
 -                        if enable_relative_attention_bias
 +                        if ENABLE_RELATIVE_ATTENTION_BIAS
@@ -646,13 +672,25 @@ index 6d2da5b..2891245 100644
  @gin.configurable
  def train_fn(
      rank: int,
-@@ -128,11 +214,29 @@ def train_fn(
+@@ -118,6 +204,7 @@ def train_fn(
+     weight_decay: float = 1e-3,
+     top_k_method: str = "MIPSBruteForceTopK",
+     eval_interval: int = 100,
++    eval_every_n: int = 1,
+     full_eval_every_n: int = 1,
+     save_ckpt_every_n: int = 1000,
+     partial_eval_num_iters: int = 32,
+@@ -128,11 +215,37 @@ def train_fn(
      l2_norm_eps: float = 1e-6,
      enable_tf32: bool = False,
      random_seed: int = 42,
 +    precision_mode: bool = False,
 +    skip_step_num: int = 4,
  ) -> None:
++    stop_step = int(os.getenv("STOP_STEP", "0"))
++    stop_training = False
++    ndcg_10 = ndcg_50 = hr_10 = hr_50 = mrr = float("nan")
++
      # to enable more deterministic results.
 +    if precision_mode:
 +        shuffle = False
@@ -668,6 +706,10 @@ index 6d2da5b..2891245 100644
 +    else:
 +        torch.cuda.set_device(rank)
      random.seed(random_seed)
++    if precision_mode:
++        from msprobe.pytorch import seed_all
++
++        seed_all(seed=random_seed, mode=True, rm_dropout=True)
      torch.backends.cuda.matmul.allow_tf32 = enable_tf32
      torch.backends.cudnn.allow_tf32 = enable_tf32
 +    SET_HF32 = os.getenv("MODEL_HF32_FLAG", "FALSE").upper() == "TRUE"
@@ -676,7 +718,7 @@ index 6d2da5b..2891245 100644
      logging.info(f"cuda.matmul.allow_tf32: {enable_tf32}")
      logging.info(f"cudnn.allow_tf32: {enable_tf32}")
      logging.info(f"Training model on rank {rank}.")
-@@ -150,7 +252,7 @@ def train_fn(
+@@ -150,7 +261,7 @@ def train_fn(
          batch_size=local_batch_size,
          world_size=world_size,
          rank=rank,
@@ -685,7 +727,7 @@ index 6d2da5b..2891245 100644
          drop_last=world_size > 1,
      )
      eval_data_sampler, eval_data_loader = create_data_loader(
-@@ -158,7 +260,7 @@ def train_fn(
+@@ -158,7 +269,7 @@ def train_fn(
          batch_size=eval_batch_size,
          world_size=world_size,
          rank=rank,
@@ -694,7 +736,7 @@ index 6d2da5b..2891245 100644
          drop_last=world_size > 1,
      )
  
-@@ -167,6 +269,7 @@ def train_fn(
+@@ -167,6 +278,7 @@ def train_fn(
          embedding_module: EmbeddingModule = LocalEmbeddingModule(
              num_items=dataset.max_item_id,
              item_embedding_dim=item_embedding_dim,
@@ -702,7 +744,7 @@ index 6d2da5b..2891245 100644
          )
      else:
          raise ValueError(f"Unknown embedding_module_type {embedding_module_type}")
-@@ -196,6 +299,7 @@ def train_fn(
+@@ -196,6 +308,7 @@ def train_fn(
          max_sequence_len=dataset.max_sequence_length + gr_output_length + 1,
          embedding_dim=item_embedding_dim,
          dropout_rate=dropout_rate,
@@ -710,7 +752,7 @@ index 6d2da5b..2891245 100644
      )
  
      model = get_sequential_encoder(
-@@ -207,6 +311,7 @@ def train_fn(
+@@ -207,6 +320,7 @@ def train_fn(
          input_preproc_module=input_preproc_module,
          output_postproc_module=output_postproc_module,
          verbose=True,
@@ -718,7 +760,7 @@ index 6d2da5b..2891245 100644
      )
      model_debug_str = model.debug_str()
  
-@@ -258,6 +363,8 @@ def train_fn(
+@@ -258,6 +372,8 @@ def train_fn(
      device = rank
      if main_module_bf16:
          model = model.to(torch.bfloat16)
@@ -727,7 +769,7 @@ index 6d2da5b..2891245 100644
      model = model.to(device)
      ar_loss = ar_loss.to(device)
      negatives_sampler = negatives_sampler.to(device)
-@@ -294,17 +401,51 @@ def train_fn(
+@@ -294,17 +410,52 @@ def train_fn(
          logging.info(f"Rank {rank}: disabling summary writer")
  
      last_training_time = time.time()
@@ -769,7 +811,8 @@ index 6d2da5b..2891245 100644
      epoch = 0
 -    for epoch in range(num_epochs):
 +    latency_list = []
-+    for epoch in range(int(os.environ.get("MODEL_EPOCH", num_epochs))):
++    total_epochs = int(os.environ.get("MODEL_EPOCH", num_epochs))
++    for epoch in range(total_epochs):
          if train_data_sampler is not None:
              train_data_sampler.set_epoch(epoch)
          if eval_data_sampler is not None:
@@ -781,7 +824,7 @@ index 6d2da5b..2891245 100644
              seq_features, target_ids, target_ratings = movielens_seq_features_from_row(
                  row,
                  device=device,
-@@ -313,6 +454,7 @@ def train_fn(
+@@ -313,6 +464,7 @@ def train_fn(
  
              if (batch_id % eval_interval) == 0:
                  model.eval()
@@ -789,7 +832,7 @@ index 6d2da5b..2891245 100644
  
                  eval_state = get_eval_state(
                      model=model.module,
-@@ -394,6 +536,12 @@ def train_fn(
+@@ -394,6 +546,12 @@ def train_fn(
              main_loss = loss.detach().clone()
              loss = get_weighted_loss(loss, aux_losses, weights=loss_weights or {})
  
@@ -802,15 +845,42 @@ index 6d2da5b..2891245 100644
              if rank == 0:
                  assert writer is not None
                  writer.add_scalar("losses/ar_loss", loss, batch_id)
-@@ -424,6 +572,7 @@ def train_fn(
+@@ -424,6 +582,11 @@ def train_fn(
              opt.step()
  
              batch_id += 1
++            if stop_step > 0 and batch_id >= stop_step:
++                logging.info("Reached STOP_STEP=%s; stopping training.", stop_step)
++                stop_training = True
++                break
 +        latency_list.pop()
  
          def is_full_eval(epoch: int) -> bool:
              return (epoch % full_eval_every_n) == 0
-@@ -515,7 +664,40 @@ def train_fn(
+@@ -431,3 +594,22 @@ def train_fn(
++        if stop_training:
++            break
++
++        if ((epoch + 1) % eval_every_n) != 0 and epoch != total_epochs - 1:
++            logging.info(
++                f"Skipping epoch {epoch} eval; evaluation runs every "
++                f"{eval_every_n} epochs."
++            )
++            if rank == 0 and epoch > 0 and (epoch % save_ckpt_every_n) == 0:
++                torch.save(
++                    {
++                        "epoch": epoch,
++                        "model_state_dict": model.state_dict(),
++                        "optimizer_state_dict": opt.state_dict(),
++                    },
++                    f"./ckpts/{model_desc}_ep{epoch}",
++                )
++            continue
++
+         # eval per epoch
+         eval_dict_all = None
+         eval_start_time = time.time()
+@@ -515,7 +697,41 @@ def train_fn(
          )
          last_training_time = time.time()
  
@@ -829,14 +899,15 @@ index 6d2da5b..2891245 100644
 +            'step': batch_id,
 +            'final_loss': garther_avg_loss,
 +            "ms/step": float(avg_time) * 1000,
-+            'metrics': {
++        }
++        if not stop_training:
++            final_results['metrics'] = {
 +                'NDCG@10': float(ndcg_10),
 +                'NDCG@50': float(ndcg_50),
 +                'HR@10': float(hr_10),
 +                'HR@50': float(hr_50),
 +                'MRR': float(mrr)
 +            }
-+        }
 +
 +        model_detail_info = device_name + "_" + main_module + "_" + inductor_flag
 +        output_str = model_detail_info + "_" + str(final_results)
@@ -851,7 +922,7 @@ index 6d2da5b..2891245 100644
          if writer is not None:
              writer.flush()
              writer.close()
-@@ -528,5 +710,7 @@ def train_fn(
+@@ -528,5 +744,7 @@ def train_fn(
              },
              f"./ckpts/{model_desc}_ep{epoch}",
          )
@@ -878,7 +949,7 @@ index 445f258..3bb2f7e 100644
  from absl import app, flags
  from generative_recommenders.research.trainer.train import train_fn
  
-@@ -45,6 +53,11 @@ def delete_flags(FLAGS, keys_to_delete: List[str]) -> None:  # pyre-ignore [2]
+@@ -45,6 +53,12 @@ def delete_flags(FLAGS, keys_to_delete: List[str]) -> None:  # pyre-ignore [2]
  delete_flags(flags.FLAGS, ["gin_config_file", "master_port"])
  flags.DEFINE_string("gin_config_file", None, "Path to the config file.")
  flags.DEFINE_integer("master_port", 12355, "Master port.")
@@ -887,16 +958,18 @@ index 445f258..3bb2f7e 100644
 +    "max-sequence-length", None, "Override maximum sequence length."
 +)
 +flags.DEFINE_integer("skip_step_num", None, "Skip step num.")
++flags.DEFINE_integer("eval_every_n", None, "Override evaluation interval.")
  FLAGS = flags.FLAGS  # pyre-ignore [5]
  
  
-@@ -53,22 +66,54 @@ def mp_train_fn(
+@@ -53,22 +67,69 @@ def mp_train_fn(
      world_size: int,
      master_port: int,
      gin_config_file: Optional[str],
 +    override_batch_size: Optional[int],
 +    override_max_sequence_length: Optional[int],
 +    skip_step_num: Optional[int],
++    eval_every_n: Optional[int],
  ) -> None:
      if gin_config_file is not None:
          # Hack as absl doesn't support flag parsing inside multiprocessing.
@@ -922,6 +995,19 @@ index 445f258..3bb2f7e 100644
 +        logging.info(f"Rank {rank}: skip step num is {skip_step_num}")
 +        gin.bind_parameter("train_fn.skip_step_num", skip_step_num)
 +
++    if eval_every_n is not None:
++        if eval_every_n <= 0:
++            raise ValueError("--eval_every_n must be a positive integer.")
++        logging.info(f"Rank {rank}: overriding evaluation interval to {eval_every_n}")
++        gin.bind_parameter("train_fn.eval_every_n", eval_every_n)
++
++    enable_precision_mode = bool(int(os.getenv("ENABLE_PRECISION_MODE", "0")))
++    if enable_precision_mode:
++        logging.info(f"Rank {rank}: enabling precision mode and disabling dropout")
++        gin.bind_parameter("train_fn.precision_mode", True)
++        gin.bind_parameter("train_fn.dropout_rate", 0.0)
++        gin.bind_parameter("hstu_encoder.linear_dropout_rate", 0.0)
++
      train_fn(rank, world_size, master_port)
  
  
@@ -943,6 +1029,7 @@ index 445f258..3bb2f7e 100644
 +            FLAGS.batch_size,
 +            FLAGS["max-sequence-length"].value,
 +            FLAGS.skip_step_num,
++            FLAGS.eval_every_n,
 +        ),
          nprocs=world_size,
          join=True,

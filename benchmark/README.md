@@ -105,6 +105,34 @@ python run.py xxx.json --eager
 |wukong|[wukong.json](configs/wukong.json)|
 |xDeepFM|[xDeepFM.json](configs/xDeepFM.json)|
 
+## HSTU 模型说明
+
+### 精度模式依赖
+
+HSTU 模型开启精度模式（将对应配置文件中的 `ENABLE_PRECISION_MODE` 设置为 `1`）时，会调用 msProbe 提供的 `seed_all` 接口，并关闭训练过程中的 dropout，以降低随机性对精度比对的影响。使用该模式前，需要在运行模型的 Python 环境中额外安装 msProbe：
+
+同时开启 RAB（`ENABLE_RAB=1`）和精度模式时，为保证确定性，RAB 中的 `index_select` 会采用固定顺序执行，因此训练速度相比非精度模式会有所下降。
+
+```shell
+pip install mindstudio-probe
+```
+
+安装完成后，可执行 `pip show mindstudio-probe` 检查是否安装成功。其他安装方式及版本配套信息请参考 [msProbe 工具安装指南](https://gitcode.com/Ascend/msprobe/blob/26.0.0/docs/zh/msprobe_install_guide.md)。
+
+### 设备配置
+
+运行 HSTU 模型前，应根据实际设备类型修改对应配置文件 `run_cmd` 中的设备可见性环境变量：
+
+- NPU 环境修改 `ASCEND_RT_VISIBLE_DEVICES`。
+- GPU 环境修改 `CUDA_VISIBLE_DEVICES`。
+
+例如，单卡运行时将对应变量设置为 `0`，8 卡运行时设置为 `0,1,2,3,4,5,6,7`。HSTU 配置文件同时保留了这两个变量，实际运行时只需修改与当前设备对应的变量；不要使用 `CUDA_VISIBLE_DEVICES` 配置 NPU，也不要使用 `ASCEND_RT_VISIBLE_DEVICES` 配置 GPU。
+
+### 训练控制参数
+
+- `--eval_every_n N`：每隔 `N` 个 epoch 执行一次 epoch 评估，`N` 必须为正整数；当前 HSTU 配置默认设为 `50`，并且训练的最后一个 epoch 仍会执行评估。
+- `STOP_STEP=N`：训练达到 `N` 个 step 后提前停止，设置为 `0` 时关闭；当前 `HSTU_META_7B.json` 默认设为 `200`。提前停止时不执行 epoch 评估，也不输出 `metrics` 字段。
+
 # 性能指标
 
 模型正常运行后，会在models目录下生成性能相关文件，目录为./models/save\_results\_{device\_name}/performance\_result.txt,其中{device\_name}为运行设备名称，如npu、cuda、cpu,文件内容为模型的性能指标，如推理时间、qps等。
