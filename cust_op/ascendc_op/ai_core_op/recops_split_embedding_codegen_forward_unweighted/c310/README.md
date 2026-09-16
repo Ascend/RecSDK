@@ -6,7 +6,7 @@
 
 | 硬件型号           | 是否支持                  |
 |----------------| ------------------------ |
-| Atlas A5训练系列产品 | 是  |
+| Ascend 950PR&950DT系列产品 | 是  |
 
 # recops_split_embedding_codegen_forward_unweighted算子目录层级
 

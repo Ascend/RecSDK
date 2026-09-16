@@ -26,7 +26,7 @@ norm_multiply_dropout(Tensor x, Tensor u, Tensor weight, Tensor bias, float eps,
 >
 > 1 输入tensor值域：[-1, 1)，且tensor数据需要是连续的（contiguous）。使用PyTorch自动求导时，输入tensor还需设置requires_grad为True。
 >
-> 2 **Atlas A5训练系列产品不支持输入x的float32数据类型。**
+> 2 **Ascend 950PR&950DT系列产品不支持输入x的float32数据类型。**
 
 ## 算子运行样例
 

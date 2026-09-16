@@ -2,7 +2,7 @@
 
 Rec SDK 26.1.0版本核心要点如下：
 
-- 要点1：适配 Atlas 350 标卡；
+- 要点1：适配 Ascend 950PR&950DT系列产品；
 - 要点2：新增动态表淘汰策略（TIMESTAMP/STEP/CUSTOMIZED/LFU）与 HBM+DDR 缓存模式；
 - 要点3：算子补齐，如 split_2d_jagged 等；
 - 要点4：兼容 CANN 9.1.0、Ascend HDK 26.1.0、TorchNPU 26.1.0。
@@ -183,11 +183,11 @@ Rec SDK 26.1.0版本核心要点如下：
 
 |特性名称|特性描述|配套产品型号|
 |--|--|--|
-|Rec SDK TensorFlow(tf_rec_v1)|<ul><li>适配Atlas 350 标卡。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>Atlas 350 标卡|
-|Rec SDK Torch(torch_rec_v1)|<ul><li>适配Atlas 350 标卡。</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>Atlas 350 标卡|
-|Rec SDK TensorFlow(tf_rec_v2)|<ul><li>适配Atlas 350 标卡。</li></ul>|Atlas 350 标卡|
-|Rec SDK Torch(torch_rec_v2)|<ul><li>支持动态表淘汰策略：TIMESTAMP、STEP、CUSTOMIZED、LFU</li><li>支持稀疏表缓存模式：HBM+DDR</li><li>支持增量保存功能</li><li>支持EmbeddingBagCollection场景</li><li>支持SGD、ADAM、AdaGrad、RowWiseAdaGrad优化器</li></ul>|Atlas 350 标卡|
-|Rec SDK 算子|<ul><li>生成式推荐模型融合算子补齐，并适配Atlas 350标卡：split_2d_jagged、concat_2d_jagged、norm_multiply_dropout</li><li>Atlas 350标卡算子性能优化：hstu_v2</li></ul>|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框<br>Atlas 800T A3 超节点服务器<br>Atlas 350 标卡|
+|Rec SDK TensorFlow(tf_rec_v1)|<ul><li>适配Ascend 950PR&950DT系列产品。</li></ul>|Atlas A2训练系列产品<br>Atlas A3训练系列产品<br>Ascend 950PR&950DT系列产品|
+|Rec SDK Torch(torch_rec_v1)|<ul><li>适配Ascend 950PR&950DT系列产品。</li></ul>|Atlas A2训练系列产品<br>Atlas A3训练系列产品<br>Ascend 950PR&950DT系列产品|
+|Rec SDK TensorFlow(tf_rec_v2)|<ul><li>适配Ascend 950PR&950DT系列产品。</li></ul>|Ascend 950PR&950DT系列产品|
+|Rec SDK Torch(torch_rec_v2)|<ul><li>支持动态表淘汰策略：TIMESTAMP、STEP、CUSTOMIZED、LFU</li><li>支持稀疏表缓存模式：HBM+DDR</li><li>支持增量保存功能</li><li>支持EmbeddingBagCollection场景</li><li>支持SGD、ADAM、AdaGrad、RowWiseAdaGrad优化器</li></ul>|Ascend 950PR&950DT系列产品|
+|Rec SDK 算子|<ul><li>生成式推荐模型融合算子补齐，并适配Ascend 950PR&950DT系列产品：split_2d_jagged、concat_2d_jagged、norm_multiply_dropout</li><li>Ascend 950PR&950DT系列产品算子性能优化：hstu_v2</li></ul>|Atlas A2训练系列产品<br>Atlas A3训练系列产品<br>Ascend 950PR&950DT系列产品|
 
 ### 业务接口变更
 

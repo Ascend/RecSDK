@@ -55,7 +55,7 @@ ops_recsys/
 
 ✅ 算子按推荐领域组织：attention / embedding / sequence / activation / mixing / communication / optimizer
 ✅ 算子模板统一：每个算子包含 CMakeLists.txt + op_api/ + op_host/ + op_kernel/ + op_graph/ + tests/ + README.md
-✅ 芯片命名规范：使用 AtlasA2 / AtlasA3 / Atlas950（对应 A2 / A3 / 950）
+✅ 芯片命名规范：使用 AtlasA2 / AtlasA3 / Atlas950（对应 Atlas A2系列产品 / Atlas A3系列产品 / Ascend 950PR&950DT系列产品）
 ✅ 测试完整：包含完整的 ST/UT 测试
 ✅ 生态适配完整：eager 模式适配 (torch_plugin) + inductor 模式适配 (torch_inductor) + triton 算子适配
 ✅ 使用案例丰富：每个算子提供场景使用说明，指导客户在不同场景下的使用
@@ -64,21 +64,21 @@ ops_recsys/
 
 芯片按代际隔离，支持两种方式灵活选择：
 
-- **文件隔离**：两个芯片的代码完全无法复用时使用，参考 Catlass A2/950 方案
+- **文件隔离**：两个芯片的代码完全无法复用时使用，参考 Catlass A2/Ascend 950PR&950DT系列产品方案
 - **宏隔离**：文件中存在部分可复用、部分不可复用的逻辑且无法抽取时使用，参考 CANN 部分算子方案
 
 | 芯片代号 | 芯片名称 |
 |---------|---------|
-| A2 | Atlas A2 |
-| A3 | Atlas A3 |
-| 950 | Atlas 950 |
+| A2 | AtlasA2 |
+| A3 | AtlasA3 |
+| 950 | Atlas950 |
 
 ## 算子迁移范围
 
 | 算子名 | 归属领域 | 算子说明 |
 |-------|---------|---------|
-| Hstu_v1 | Attention | 基于 AscendC 版本，支持 A2/A3/950，后续不再演进 |
-| Hstu_v2 | Attention | 基于 Catlass 版本，支持 950 及后续版本 |
+| Hstu_v1 | Attention | 基于 AscendC 版本，支持Atlas A2系列产品/Atlas A3系列产品/Ascend 950PR&950DT系列产品，后续不再演进 |
+| Hstu_v2 | Attention | 基于 Catlass 版本，支持Ascend 950PR&950DT系列产品及后续版本 |
 | Fa_Infer_with_arbitrary_func | Attention | FA 在生成式推荐领域支持任意 mask |
 | In_mul | Activation | — |
 | In_linear_silu | Activation | — |

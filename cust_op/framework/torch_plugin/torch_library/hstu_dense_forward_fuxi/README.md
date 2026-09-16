@@ -14,7 +14,7 @@ torch.ops.mxrec.hstu_fuxi(Tensor q, Tensor k, Tensor v, Tensor? timestampBias=No
 
 ## torch.ops.mxrec.hstu_fuxi接口
 
-### Atlas A2/A3训练产品
+### Atlas A2训练系列产品、Atlas A3训练系列产品
 
 |  名称  |  输入/输出  | 参数类型 |  数据类型  |  数据格式  |  范围  |  说明  |
 |  ---- |  ---- |  ----  |  ----  |  ----  |  ----  |  ----  |

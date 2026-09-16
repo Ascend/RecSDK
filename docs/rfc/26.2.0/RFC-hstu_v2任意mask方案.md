@@ -2,7 +2,7 @@
 
 ## 业务背景
 
-HSTU_V2 是推荐领域 Attention 的核心算子（基于 Catlass，支持 Atlas 950 及后续版本）。在生成式推荐场景下需要支持**任意 Mask**，即不同客户、不同模型架构使用完全不同的 Attention Mask 模式。
+HSTU_V2 是推荐领域 Attention 的核心算子（基于 Catlass，支持 Ascend 950PR&950DT系列产品及后续版本）。在生成式推荐场景下需要支持**任意 Mask**，即不同客户、不同模型架构使用完全不同的 Attention Mask 模式。
 
 任意 Mask 给 Attention 算子带来两个核心挑战：
 

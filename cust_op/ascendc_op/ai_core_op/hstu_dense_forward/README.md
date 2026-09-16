@@ -6,24 +6,24 @@
 
 | 硬件型号              | 是否支持                  |
 | -------------------- | ------------------------ |
-| Atlas A2训练系列产品  | 是  |
-| Atlas A3训练系列产品  | 是  |
-| Atlas 推理系列产品    | 是  |
+| Atlas A2系列产品  | 是  |
+| Atlas A3系列产品  | 是  |
+| Ascend 950PR&950DT系列产品 | 是  |
 
 # hstu_dense_forward算子文件结构
 
 ```shell
 -- hstu_dense_forward
    |-- c310
-      |-- op_kernel  # hstu_dense_forward算子A5的Kernel侧实现
-      |-- run.sh    # hstu_dense_forward算子A5安装脚本
+      |-- op_kernel  # hstu_dense_forward算子Ascend 950PR&950DT系列产品的Kernel侧实现
+      |-- run.sh    # hstu_dense_forward算子Ascend 950PR&950DT系列产品安装脚本
    |-- onnx_plugin   # hstu_dense_forward支持onnx模型转换
    |-- v220
       |-- op_host    # hstu_dense_forward算子Host侧实现
       |-- op_kernel  # hstu_dense_forward算子Kernel侧实现
       |-- pic        # 算子实现原理图
       |-- hstu_dense_forward.json    # 算子原型配置
-      |-- run.sh     # hstu_dense_forward算子A2/A3安装脚本
+      |-- run.sh     # hstu_dense_forward算子Atlas A2系列产品、Atlas A3系列产品安装脚本
    |-- README.md  # hstu_dense_forward算子说明文档
 ```
 
@@ -35,7 +35,7 @@
 
 **dim不等支持**：本算子支持qk的head_dim与v_dim不相等的场景。
 
-**FP8支持**：本算子仅在A5上支持data_type为fp8_e4m3fn的qkv输入，算子输出为float16。
+**FP8支持**：本算子仅在Ascend 950PR&950DT系列产品上支持data_type为fp8_e4m3fn的qkv输入，算子输出为float16。
 
 # 算子实现原理
 
@@ -95,7 +95,7 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 
 # 算子输入与输出
 
-## Atlas A2/A3训练产品
+## Atlas A2训练系列产品、Atlas A3训练系列产品
 
 | 名称                | 输入/输出 | 数据类型                             | 数据格式                                 | 范围                                                                                                     | 说明                                                                                                              |
 |-------------------|-------|----------------------------------|--------------------------------------|--------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
@@ -124,7 +124,7 @@ def hstu_dense_forward(q_np, k_np, v_np, rel_attn_bias_np, invalid_attn_mask_np)
 | deterministic     | 输入    | bool                             | NA                                   | { "true", "false" }                                                                                               | 确定性计算开关，默认为"false"                                                                                                |
 | attn_output       | 输出    | Tensor[float32/float16/bfloat16] | [B, S, N_q, D_v]/<br>[s_b, N_q, D_v] | 同v                                                                                                     | 同v                                                                                                              |
 
-## Atlas A5训练产品
+## Ascend 950PR&950DT系列产品
 
 | 名称                | 输入/输出 | 数据类型                                        | 数据格式                                 | 范围                                                                                                     | 说明                                                                                                              |
 |-------------------|-------|---------------------------------------------|--------------------------------------|--------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|

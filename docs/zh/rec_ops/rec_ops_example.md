@@ -4,7 +4,7 @@
 
 ### RecOps 是什么
 
-RecOps 是 Rec SDK 基于 Ascend C 开发的推荐场景自定义算子集，为各框架组件（tf_rec_v1、tf_rec_v2、torch_rec_v1、torch_rec_v2）提供基础算子能力，支持 Atlas A2/A3/A5 设备。
+RecOps 是 Rec SDK 基于 Ascend C 开发的推荐场景自定义算子集，为各框架组件（tf_rec_v1、tf_rec_v2、torch_rec_v1、torch_rec_v2）提供基础算子能力，支持 Atlas A2训练系列产品/Atlas A3训练系列产品/Ascend 950PR&950DT系列产品设备。
 
 **核心定位：**
 
@@ -32,7 +32,7 @@ RecOps 是 Rec SDK 基于 Ascend C 开发的推荐场景自定义算子集，为
       <th></th>
       <th>特性点</th>
       <th>功能点</th>
-      <th>ASCEND HSTU_V1 (Atlas A2/A3 Ascend950PR/DT)</th>
+      <th>ASCEND HSTU_V1 (Atlas A2训练系列产品/Atlas A3训练系列产品 Ascend 950PR&950DT系列产品)</th>
       <th>NV HSTU_V3 (hopper, Ada, Ampere)<br>Releases/v25.11/7492d4b</th>
       <th>特性描述</th>
     </tr>
@@ -143,19 +143,19 @@ $$
 ```shell
 -- hstu_dense_forward
    |-- c310
-      |-- op_kernel                # hstu_dense_forward算子A5的Kernel侧实现
-      |-- run.sh                   # hstu_dense_forward算子A5安装脚本
+      |-- op_kernel                # hstu_dense_forward算子Ascend 950PR&950DT系列产品的Kernel侧实现
+      |-- run.sh                   # hstu_dense_forward算子Ascend 950PR&950DT系列产品安装脚本
    |-- onnx_plugin                 # hstu_dense_forward支持onnx模型转换
    |-- v220
       |-- op_host                  # hstu_dense_forward算子Host侧实现
       |-- op_kernel                # hstu_dense_forward算子Kernel侧实现
       |-- pic                      # 算子实现原理图
       |-- hstu_dense_forward.json  # 算子原型配置
-      |-- run.sh                   # hstu_dense_forward算子A2/A3安装脚本
+      |-- run.sh                   # hstu_dense_forward算子Atlas A2系列产品、Atlas A3系列产品安装脚本
    |-- README.md                   # hstu_dense_forward算子说明文档
 ```
 
-### hstu_dense_forward 输入与输出（Atlas A5 训练系列产品）
+### hstu_dense_forward 输入与输出（Ascend 950PR&950DT系列产品）
 
 | 名称                | 输入/输出 | 数据类型                                        | 数据格式                                 | 范围                                                                                                     | 说明                                                                                                              |
 |-------------------|-------|---------------------------------------------|--------------------------------------|--------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
@@ -180,9 +180,9 @@ $$
 
 | 硬件型号 | 是否支持 |
 |---------|---------|
-| Atlas A2 训练系列产品 | 是 |
-| Atlas A3 训练系列产品 | 是 |
-| Atlas A5 训练系列产品 | 是 |
+| Atlas A2训练系列产品 | 是 |
+| Atlas A3训练系列产品 | 是 |
+| Ascend 950PR&950DT系列产品 | 是 |
 | Atlas 推理系列产品 | 是 |
 
 #### 软件依赖
@@ -217,7 +217,7 @@ cd RecSDK
 
 #### 算子编译
 
-进入HSTU_V1前向算子的功能实现目录(cust_op/ascendc_op/ai_core_op/hstu_dense_forward, A5在c310下, A2/A3在v220下)，执行指令对算子进行编译和部署，默认编译安装Atlas A2训练系列产品AI Core类型。
+进入HSTU_V1前向算子的功能实现目录(cust_op/ascendc_op/ai_core_op/hstu_dense_forward, Ascend 950PR&950DT系列产品在c310下, Atlas A2系列产品、Atlas A3系列产品在v220下)，执行指令对算子进行编译和部署，默认编译安装Atlas A2训练系列产品AI Core类型。
 
 若指定 AI Core 类型编译：
 
