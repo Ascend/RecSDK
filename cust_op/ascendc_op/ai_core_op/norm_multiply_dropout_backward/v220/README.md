@@ -8,7 +8,7 @@
 |----------------|------|
 | Atlas A2训练系列产品 | 是    |
 | Atlas A3训练系列产品 | 是    |
-| Atlas A5训练系列产品 | 是    |
+| Ascend 950PR&950DT系列产品 | 是    |
 
 # norm_multiply_dropout_backward算子目录层级
 
@@ -62,7 +62,7 @@ norm_multiply_dropout_backward
 >
 > 1 输入tensor值域：[-1, 1)，且tensor数据需要是连续的（contiguous）。
 >
-> 2 **Atlas A5训练系列产品不支持输入x的float32数据类型。**
+> 2 **Ascend 950PR&950DT系列产品不支持输入x的float32数据类型。**
 >
 > 3 入参中除d_out外，其他参数均为前向计算时的入参/输出，基于PyTorch自动求导框架保存给反向计算使用。
 

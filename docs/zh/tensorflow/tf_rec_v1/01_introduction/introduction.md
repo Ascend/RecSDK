@@ -108,5 +108,5 @@ Rec SDK TensorFlow基于推荐场景主流框架、CANN和各种硬件和网络�
 
 |产品型号|产品架构|操作系统版本|
 |--|--|--|
-|Atlas 800T A2 训练服务器<br>Atlas 200T A2 Box16 异构子框|<li>ARM</li><li>x86_64</li>|<li>CentOS版本：7.6</li><li>OpenEuler版本：22.03</li><li>Ubuntu版本：20.04</li>|
-|Atlas 900 A3 SuperPoD 超节点|ARM|OpenEuler版本：22.03|
+|Atlas A2训练系列产品|<li>ARM</li><li>x86_64</li>|<li>CentOS版本：7.6</li><li>OpenEuler版本：22.03</li><li>Ubuntu版本：20.04</li>|
+|Atlas A3训练系列产品|ARM|OpenEuler版本：22.03|

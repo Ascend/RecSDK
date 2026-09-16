@@ -113,7 +113,7 @@ If you need to target a specific core type when compiling operators or loading f
 |-----------|---------------------|---------------------|
 | `a2` | Atlas 800T A2 Training Server | `910b` |
 | `a3` | Atlas 800T A3 Super Node Server | `a3` |
-| `a5` | Atlas 950 Generation | `950` |
+| `a5` | Ascend 950PR&950DT Series Products | `950` |
 
 ```bash
 # CORE_TYPE can be a2/a3/a5. The following uses TensorFlow as an example; the same approach applies to PyTorch images.

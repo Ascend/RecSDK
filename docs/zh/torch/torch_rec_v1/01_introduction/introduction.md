@@ -103,7 +103,7 @@ Rec SDK Torch基于TorchRec、推荐场景主流框架、CANN和各种硬件和�
     <th>操作系统版本</th>
   </tr>
   <tr>
-    <td rowspan="2"><p>Atlas 800T A2 训练服务器</p><p>Atlas 200T A2 Box16 异构子框</p></td>
+    <td rowspan="2"><p>Atlas A2训练系列产品</p></td>
     <td>x86_64</td>
     <td>Debian版本：12<br>CentOS版本：7.6</td>
   </tr>
@@ -112,7 +112,16 @@ Rec SDK Torch基于TorchRec、推荐场景主流框架、CANN和各种硬件和�
     <td>openEuler版本：22.03</td>
   </tr>
   <tr>
-    <td>Atlas 800T A3 超节点服务器</td>
+    <td>Atlas A3训练系列产品</td>
+    <td>ARM</td>
+    <td>openEuler版本：22.03</td>
+  </tr>
+  <tr>
+    <td rowspan="2"><p>Ascend 950PR&950DT系列产品</p></td>
+    <td>x86_64</td>
+    <td>Debian版本：12<br>Ubuntu版本：22.04</td>
+  </tr>
+  <tr>
     <td>ARM</td>
     <td>openEuler版本：22.03</td>
   </tr>

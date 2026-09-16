@@ -19,7 +19,7 @@ e.g. 'bash build_ai_core_op.sh A2 false continue' 表示编译A2版本算子，�
 
 编译后生成的tar包在 RecSDK/cust_op/ascendc_op/output 下，同时会自动安装到当前环境中。
 
-编译耗时说明（耗时可能随CPU、内存等因素变化）：
+不同编译版本参数下编译耗时说明（耗时可能随CPU、内存等因素变化）：
 
 - A2/A3：耗时约20~30min
 - A2-TF/310P：耗时约5~10min

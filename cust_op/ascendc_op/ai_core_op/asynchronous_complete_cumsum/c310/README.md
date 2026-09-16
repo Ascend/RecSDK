@@ -6,7 +6,7 @@
 
 | 硬件型号              | 是否支持 |
 | --------------------- | -------- |
-| Atlas A5训练系列产品  | 是       |
+| Ascend 950PR&950DT系列产品  | 是       |
 
 ## AsynchronousCompleteCumsum算子文件结构
 
@@ -33,13 +33,13 @@
 
 1. 上传asynchronous_complete_cumsum文件夹到目标环境，并进入当前目录，执行指令对asynchronous_complete_cumsum算子进行编译和部署
 
-默认编译安装Atlas A5训练系列产品AI Core类型：
+默认编译安装Ascend 950PR&950DT系列产品AI Core类型：
 
 ```shell
 bash run.sh
 ```
 
-指定 AI Core 类型编译，目前此版本支持Atlas A5系列产品：
+指定 AI Core 类型编译，目前此版本支持Ascend 950PR&950DT系列产品：
 
 ```shell
 bash run.sh ai_core-<soc_version>
@@ -84,7 +84,7 @@ d) 算法特点：
 
 e) 算子约束说明：
 
-- 支持的型号：Atlas A5系列产品;
+- 支持的型号：Ascend 950PR&950DT系列产品;
 - 支持的CANN版本：8.3.RC1及之后版本；
 - 支持的输入数据类型：int32；int64
 - 输入的数据只支持1维。

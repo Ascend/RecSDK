@@ -179,7 +179,7 @@ check_feature_gate_key
 
 1. 验收方式：基于社区测试用例进行验证。
 2. 性能要求：本提案仅适配功能，无性能要求。
-3. 验收硬件：950DT or 950PR。
+3. 验收硬件：Ascend 950PR&950DT系列产品。
 
 ## 3.4 安全隐私与DFX设计
 
@@ -216,7 +216,7 @@ check_feature_gate_key
 
 | 类别     | 具体内容                                                     |
 | -------- | ------------------------------------------------------------ |
-| 硬件环境 | 950DT or 950PR                                               |
+| 硬件环境 | Ascend 950PR&950DT系列产品                                               |
 | 软件环境 | - Torch 2.11.0，TorchRec 1.6.0，FBGEMM-GPU 1.6.0，torch_npu 2.11.0 (beta)<br />- Torch 2.12.0，TorchRec 1.7.0，FBGEMM-GPU 1.7.0，torch_npu 2.12.0 (beta)<br />注：TorchRec 1.5.0 存量功能在上述环境功能正常 |
 
 **开发约束**：参考"开发环境设计"。

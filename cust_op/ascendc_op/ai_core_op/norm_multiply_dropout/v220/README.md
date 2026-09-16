@@ -8,7 +8,7 @@
 |----------------|------|
 | Atlas A2训练系列产品 | 是    |
 | Atlas A3训练系列产品 | 是    |
-| Atlas A5训练系列产品 | 是    |
+| Ascend 950PR&950DT系列产品 | 是    |
 
 # norm_multiply_dropout算子目录层级
 
@@ -106,7 +106,7 @@ y = norm_multiply_dropout_pt(x_pt, u_pt, w_pt, b_pt, eps, dropout_ratio)
 >
 > 1 输入tensor值域：[-1, 1)，且tensor数据需要是连续的（contiguous）。
 >
-> 2 **Atlas A5训练系列产品不支持输入x的float32数据类型。**
+> 2 **Ascend 950PR&950DT系列产品不支持输入x的float32数据类型。**
 
 # 算子编译部署
 

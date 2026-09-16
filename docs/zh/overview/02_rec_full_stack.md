@@ -18,7 +18,7 @@ Rec SDK 作为面向互联网市场搜索推荐广告场景的应用使能SDK产
 
 1. 硬件层
 
-    - 昇腾硬件：包括昇腾A2、A3及950系列，提供底层算力支撑。
+    - 昇腾硬件：包括Atlas A2训练系列产品、Atlas A3训练系列产品及Ascend 950PR&950DT系列产品，提供底层算力支撑。
 
 2. CANN软件栈
 
@@ -83,11 +83,11 @@ Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`�
 
 | 组件名称     | 基础框架           | 适配状态 | 框架类型     | 功能描述                                                     |
 | ------------ | ------------------ | -------- | ------------ | ------------------------------------------------------------ |
-| tf_rec_v1    | TensorFlow         | 非全下沉 | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的非全下沉稀疏推荐框架，支持昇腾A2/A3/950系列产品。 |
-| tf_rec_v2    | TensorFlow         | 全下沉   | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的全下沉稀疏推荐框架，仅支持昇腾950系列产品。 |
-| torch_rec_v1 | PyTorch + TorchRec | 非全下沉 | 稀疏推荐框架 | 基于PyTorch、[TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0)开源软件，适配NPU设备的非全下沉稀疏推荐框架，支持昇腾A2/A3/950系列产品。 |
-| torch_rec_v2 | PyTorch + TorchRec | 全下沉   | 稀疏推荐框架 | 基于PyTorch、[DynamicEmb](https://github.com/NVIDIA/recsys-examples/tree/v25.09)、[TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0)开源软件，适配NPU设备的全下沉稀疏推荐框架，仅支持昇腾950系列产品。 |
-| rec_ops      | -                  | -        | 算子         | 基于Ascend C开发的推荐场景自定义算子集，支持昇腾A2/A3/950系列产品。 |
+| tf_rec_v1    | TensorFlow         | 非全下沉 | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的非全下沉稀疏推荐框架，支持Atlas A2训练系列产品/Atlas A3训练系列产品/Ascend 950PR&950DT系列产品。 |
+| tf_rec_v2    | TensorFlow         | 全下沉   | 稀疏推荐框架 | 基于TensorFlow，适配NPU设备的全下沉稀疏推荐框架，仅支持Ascend 950PR&950DT系列产品。 |
+| torch_rec_v1 | PyTorch + TorchRec | 非全下沉 | 稀疏推荐框架 | 基于PyTorch、[TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0)开源软件，适配NPU设备的非全下沉稀疏推荐框架，支持Atlas A2训练系列产品/Atlas A3训练系列产品/Ascend 950PR&950DT系列产品。 |
+| torch_rec_v2 | PyTorch + TorchRec | 全下沉   | 稀疏推荐框架 | 基于PyTorch、[DynamicEmb](https://github.com/NVIDIA/recsys-examples/tree/v25.09)、[TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0)开源软件，适配NPU设备的全下沉稀疏推荐框架，仅支持Ascend 950PR&950DT系列产品。 |
+| rec_ops      | -                  | -        | 算子         | 基于Ascend C开发的推荐场景自定义算子集，支持Atlas A2训练系列产品/Atlas A3训练系列产品/Ascend 950PR&950DT系列产品。 |
 
 关键术语说明：
 
@@ -105,7 +105,7 @@ Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`�
 
 - PyTorch 生态无缝集成：与 Torch、TorchRec 等组件协同，直接复用 `torch.ops.fbgemm.*` 接口。
 
-- 多芯片自适应：自动探测昇腾A2/A3/950训练系列产品芯片，区分编译目标。
+- 多芯片自适应：自动探测Atlas A2训练系列产品/Atlas A3训练系列产品/Ascend 950PR&950DT系列产品芯片，区分编译目标。
 
 #### HierarchicalKV-ascend
 

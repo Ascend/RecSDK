@@ -58,10 +58,9 @@ Key terminology:
 
 The following product models are supported by Rec SDK:
 
-- Atlas 200T A2 Box16
-- Atlas 800T A2 training server
-- Atlas 900 A3 SuperPoD
-- Ascend 950 series products
+- Atlas A2 Train Series
+- Atlas A3 Train Series
+- Ascend 950PR&950DT Series
 
 | Component | Installation Guide |
 | --- | --- |

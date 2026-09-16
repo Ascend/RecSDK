@@ -6,9 +6,8 @@
 
 | 硬件型号              | 是否支持                  |
 | -------------------- | ------------------------ |
-| Atlas A2训练系列产品  | 是  |
-| Atlas A3训练系列产品  | 是  |
-| Atlas 推理系列产品    | 是  |
+| Atlas A2系列产品  | 是  |
+| Atlas A3系列产品  | 是  |
 
 ## hstu_dense_forward_fuxi算子文件结构
 
@@ -108,7 +107,7 @@ def hstu_fuxi(q, k, v, ts_bias, pos_bias, mask, mask_type, max_seq_len, silu_sca
 
 ## 算子输入与输出
 
-### Atlas A2/A3 训练系列产品
+### Atlas A2训练系列产品、Atlas A3训练系列产品
 
 | 名称 | 输入/输出 | 数据类型 | 数据格式 | 范围 | 备注 |
 |----|----|----|----|----| ---- |
