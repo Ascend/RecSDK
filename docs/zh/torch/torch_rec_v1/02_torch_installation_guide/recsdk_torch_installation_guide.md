@@ -53,6 +53,13 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 | CANN软件包            | CANN 9.1.0  | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。                                                                                                                                                                                                                                                                                      |
 | PyTorch和TorchNPU | 2.7.1/2.10.0 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.7.1/2.10.0版本：请前往[TorchNPU2.7.1/2.10.0下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=175&ids=89dda9ba9de741349efa03687a487678%2C96%2C108%2C1%2C6%2C177%2C)页面获取。<br>安装时请根据PyTorch版本、Python版本（建议使用Python 3.11）、CPU架构选择对应的安装指令。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
 
+> [!NOTE]
+> 安装Rec SDK Torch前，建议先将pip升级到25.0.1版本，避免因pip版本过旧导致依赖安装失败。可使用如下命令升级pip：
+>
+> ```bash
+> pip3 install pip==25.0.1
+> ```
+
 #### 容器内训练加速库依赖<a id="section146113514600"></a>
 
 原生TorchRec框架依赖fbgemm\_gpu库。基于NPU环境运行时，需安装fbgemm\_gpu库的CPU版本。

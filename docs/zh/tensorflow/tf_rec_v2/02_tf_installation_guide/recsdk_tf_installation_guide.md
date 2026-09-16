@@ -25,6 +25,12 @@
 
 >[!NOTE] 须知
 >对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以但不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
+>
+>安装Rec SDK TensorFlow前，建议先将pip升级到最新版本，避免因pip版本过旧导致依赖安装失败。可使用如下命令升级pip：
+>
+>```bash
+>pip3 install -U pip
+>```
 
 ## 获取Rec SDK TensorFlow软件包<a name="zh-cn_topic_0000001630127085"></a>
 
