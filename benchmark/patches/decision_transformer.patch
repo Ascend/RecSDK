@@ -266,9 +266,10 @@
 +        return self.num_samples
 --- /dev/null	2026-09-15 17:30:24
 +++ ./main.py	2026-09-15 17:19:40
-@@ -0,0 +1,560 @@
+@@ -0,0 +1,625 @@
 +from __future__ import annotations
 +
++import contextlib
 +import random
 +from typing import Any, Dict
 +
@@ -610,9 +611,15 @@
 +    total_step_time = 0.0
 +    measured_step_count = 0
 +    final_loss = 0.0
++    final_eval_action_mse = 0.0
 +
 +    _profiling_output = os.environ.get("PROFILER_OUT_DIR", "profiler.data")
-+    profiling = get_profiler(config.device, _profiling_output)
++    profiling_flag = os.getenv("MODEL_PROFILING_FLAG", "False").strip().lower()
++    profiling = (
++        get_profiler(config.device, _profiling_output)
++        if profiling_flag in {"1", "true", "yes", "on"}
++        else contextlib.nullcontext()
++    )
 +    with profiling as prof:
 +        for epoch in range(1, num_epochs + 1):
 +            epoch_loss_sum = torch.zeros((), dtype=torch.float32, device=config.device)
@@ -632,7 +639,8 @@
 +                if model.global_step > 1:
 +                    total_step_time += step_time
 +                    measured_step_count += 1
-+                prof.step()
++                if prof is not None:
++                    prof.step()
 +            _cost_time = time.perf_counter() - _start_time
 +
 +            if torch.distributed.is_initialized():
@@ -656,6 +664,7 @@
 +                extra,
 +                print_result=False,
 +            )
++            final_eval_action_mse = eval_action_mse
 +
 +            epoch_processed_samples = int(epoch_step_count.item() * batch_size)
 +            total_processed_samples += epoch_processed_samples
@@ -685,15 +694,71 @@
 +            if measured_step_count > 0
 +            else 0.0
 +        )
++        dataset_name = os.path.splitext(
++            os.path.basename(str(extra.get("data_dir", "training_data")))
++        )[0]
++        device_name = config.device.type.upper()
++        model_name = os.getenv(
++            "MODEL_NAME", str(extra.get("model", "decision_transformer"))
++        ).upper()
++        attention_backend = str(
++            extra.get("attention_backend", "eager")
++        ).lower()
 +        final_result = {
-+            "dataset_name": "training_data",
-+            "bach_size": batch_size,
++            "dataset_name": dataset_name,
++            "batch_size": batch_size,
 +            "epoch": num_epochs,
 +            "step": model.global_step,
 +            "final_loss": final_loss,
-+            "ms_step": ms_step,
++            "ms/step": ms_step,
++            "metrics": {
++                "eval_action_mse": final_eval_action_mse,
++            },
 +        }
-+        print(f"The Final Result: {final_result}")
++        model_detail_info = f"{device_name}_{model_name}_{attention_backend}"
++        output_str = f"{model_detail_info}_{final_result}"
++        print(f"The Final Result: {output_str}")
++
++        results_dir = os.path.join("..", f"save_results_{device_name}")
++        os.makedirs(results_dir, exist_ok=True)
++        with open(
++            os.path.join(results_dir, "precision_result.txt"),
++            "a",
++            encoding="utf-8",
++        ) as result_file:
++            result_file.write(output_str + "\n")
++
++        effective_batch_size = (
++            batch_size if model.tensor_parallel else batch_size * config.world_size
++        )
++        performance_result = {
++            "Batch_size": batch_size,
++            "model_name": model_name,
++            "QPS": int(effective_batch_size * 1000.0 / ms_step) if ms_step > 0 else 0,
++            "AVG Latency": ms_step,
++        }
++        performance_output_str = (
++            f"performance: {model_detail_info}_{performance_result}"
++        )
++        with open(
++            os.path.join(results_dir, "performance_result.txt"),
++            "a",
++            encoding="utf-8",
++        ) as result_file:
++            result_file.write(performance_output_str + "\n")
++        print(performance_output_str)
++
++        precision_artifact = dict(final_result)
++        precision_artifact.pop("ms/step", None)
++        model_results_dir = os.path.join(results_dir, model_name)
++        os.makedirs(model_results_dir, exist_ok=True)
++        torch.save(
++            precision_artifact,
++            os.path.join(
++                model_results_dir,
++                f"predictions_{model_name}_{attention_backend}_{model.global_step}.pt",
++            ),
++        )
 +
 +        average_epoch_time = total_epoch_time / num_epochs if num_epochs > 0 else 0.0
 +        overall_throughput = (
@@ -745,7 +810,7 @@
 +        "field_size": 39,
 +        "extra_fields": 0,
 +        "step_num": 100,
-+        "num_epochs": 200,
++        "num_epochs": int(os.getenv("MODEL_EPOCH", "200")),
 +    }
 +    extra_config.update(vars(parse_args()))
 +

@@ -6,7 +6,7 @@
     "patch_path": "patches/decision_transformer.patch",
     "mode": "train",
     "epoch": 200,
-    "profiling_flag": true,
+    "profiling_flag": false,
     "aclgraph_flag": false,
     "data_type": "bfloat16",
     "run_cmd": [
