@@ -91,6 +91,11 @@ public:
         this->meta.SetGlobalBuffer((__gm__ int32_t*)metadata);
     }
 
+    // 与 RowBlockScheduler 保持统一接口；metadata 已给出每核区间，无需在设备侧重新按 Target 分核。
+    // Target mask 和 block 跳过仍由 Predictor 处理。
+    CATLASS_DEVICE
+    void EnableTargetWorkload(GM_ADDR, GM_ADDR, uint32_t, bool) {}
+
     /**
      * @brief 初始化: 读 HEAD、定位本核首个非空 section,加载首段行块区间。
      */

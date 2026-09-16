@@ -62,12 +62,11 @@ namespace Catlass::Gemm::Block {
  •              支持多阶段流水线，包含 L1/L0 拷贝和 Cube/Vector 混合计算
 
  */
-template <class ArchTag_, bool PAGED_CACHE_FLAG_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SCALAR_QUANT_,
-          class L1TileShape_, class L0TileShape_, class ElementA_, class ElementB_, class ElementC_,
-          class TileBuffer_, class TileCopy_, class TileMmad_>
-struct BlockMmadTla<MmadHSTUQK<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, ENABLE_SCALAR_QUANT_>,
-                    L1TileShape_, L0TileShape_, ElementA_, ElementB_, ElementC_,
-                    TileBuffer_, TileCopy_, TileMmad_> {
+template <class ArchTag_, bool PAGED_CACHE_FLAG_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SCALAR_QUANT_, class L1TileShape_,
+          class L0TileShape_, class ElementA_, class ElementB_, class ElementC_, class TileBuffer_, class TileCopy_,
+          class TileMmad_>
+struct BlockMmadTla<MmadHSTUQK<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, ENABLE_SCALAR_QUANT_>, L1TileShape_,
+                    L0TileShape_, ElementA_, ElementB_, ElementC_, TileBuffer_, TileCopy_, TileMmad_> {
 public:
     using DispatchPolicy = MmadHSTUQK<ArchTag_, PAGED_CACHE_FLAG_, ENABLE_UNIT_FLAG_, ENABLE_SCALAR_QUANT_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
@@ -108,7 +107,7 @@ public:
     // 提取 CopyGmToL1A 和 CopyL0CToDst 的通用模板
     template <class TensorSrc>
     using CopyGmToL1A_T = Gemm::Tile::TileCopyTNDTla<ArchTag, TensorSrc, typename TileCopy_::TensorL1A>;
-    
+
     template <class TensorDst>
     using CopyL0CToDst_T = typename TileCopy_::template CopyL0CToDst<TensorDst>;
 
@@ -122,7 +121,8 @@ public:
      ◦ @description 根据给定的形状返回 CopyL0CToDst 实例
 
      */
-    CATLASS_DEVICE auto GetCopyL0CToDst() {
+    CATLASS_DEVICE auto GetCopyL0CToDst()
+    {
         auto dstLayout = tla::MakeLayout<ElementA, LayoutTagDST>(0, 0);
         auto tensorC = tla::MakeTensor(dstTensor, dstLayout, Arch::PositionUB{});
         return CopyL0CToDst_T<decltype(tensorC)>{};
@@ -137,7 +137,8 @@ public:
 
      */
     template <class TensorA>
-    CATLASS_DEVICE auto GetCopyGmToL1A() {
+    CATLASS_DEVICE auto GetCopyGmToL1A()
+    {
         return CopyGmToL1A_T<TensorA>{};
     }
 
@@ -150,7 +151,7 @@ public:
 
      */
     CATLASS_DEVICE
-    void InitBuffer(Arch::Resource<ArchTag> &resource)
+    void InitBuffer(Arch::Resource<ArchTag>& resource)
     {
         l1BTensor = resource.l1Buf.template GetBufferByByte<ElementB>(TileBuffer::L1B);
         for (auto i = 0; i < STAGES; i++) {
@@ -181,7 +182,7 @@ public:
 
      */
     CATLASS_DEVICE
-    BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t headNum, uint32_t headDim, uint32_t cubeFlag,
+    BlockMmadTla(Arch::Resource<ArchTag>& resource, uint32_t headNum, uint32_t headDim, uint32_t cubeFlag,
                  uint32_t L1B_EVENT_ID_, uint32_t const (&L1A_EVENT_ID_)[2])
     {
         InitBuffer(resource);
@@ -215,7 +216,7 @@ public:
 
      */
     template <class TensorSrc>
-    CATLASS_DEVICE void AcquireTensor(TensorSrc &src)
+    CATLASS_DEVICE void AcquireTensor(TensorSrc& src)
     {
         using TileCopy = Gemm::Tile::TileCopyTNDTla<ArchTag, TensorSrc, typename TileCopy_::TensorL1B>;
         TileCopy tileCopy;
@@ -260,9 +261,12 @@ public:
 
      ◦ @param l0bFlag L0 B 缓冲区标志
 
-     ◦ @param triggerSwizzle 是否触发 Swizzle 优化
+     ◦ @param triggerSwizzle L1 最终复用命中标志，由 L1BlockReuseCache::Probe().canReuse 传入；为 true 时跳过 GM ->
+     L1
 
-     ◦ @description 执行完整的 Q * K^T 矩阵乘法，包含以下步骤:
+ ◦ @param l1ReuseSlot Q/Grad block 在每个 L1 stage buffer 内的子槽位，生产者与消费者必须使用同一 slot
+ ◦
+     @description 执行完整的 Q * K^T 矩阵乘法，包含以下步骤:
 
      ◦              1. 等待 L1 B 数据就绪
 
@@ -282,8 +286,8 @@ public:
 
      */
     template <class TensorA, class TensorB>
-    CATLASS_DEVICE void operator()(TensorA &tensorA, TensorB &tensorB, uint32_t &pingPongFlag, uint32_t &l0bFlag,
-                                   bool triggerSwizzle)
+    CATLASS_DEVICE void operator()(TensorA& tensorA, TensorB& tensorB, uint32_t& pingPongFlag, uint32_t& l0bFlag,
+                                   bool triggerSwizzle, uint32_t l1ReuseSlot = 0)
     {
         uint32_t mReal = tla::get<0>(tensorA.shape());
         uint32_t nReal = tla::get<0>(tensorB.shape());
@@ -314,8 +318,14 @@ public:
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(pingPongFlag);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(L1A_EVENT_ID[m % STAGES]);
             auto l1aLayout = tla::MakeLayout<ElementA, LayoutTagL1A>(mSize, kReal);
-            auto tensorL1a = tla::MakeTensor(l1ATensor[m % STAGES], l1aLayout, coord, Arch::PositionL1{});
-            if (!triggerSwizzle) {copyGmToL1A(tensorL1a, tensorATile, mSize, kReal, stride);}
+            // 在原有 L0_TILE_M * L0_TILE_K 的单个 stage buffer 中打包多个窄维 Q/Grad block。
+            auto l1SlotOffset = l1ReuseSlot * L0_TILE_M * kReal;
+            auto l1aSlot = l1ATensor[m % STAGES][l1SlotOffset];
+            auto tensorL1a = tla::MakeTensor(l1aSlot, l1aLayout, coord, Arch::PositionL1{});
+            // triggerSwizzle 是 cache 计算出的最终 canReuse；命中时保留 slot 中的数据并跳过 GM -> L1。
+            if (!triggerSwizzle) {
+                copyGmToL1A(tensorL1a, tensorATile, mSize, kReal, stride);
+            }
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(pingPongFlag);
 
             // copy l1a -> l0a
@@ -376,4 +386,4 @@ protected:
 
     ElementAccumulator deqScalar{0.0f};
 };
-}
+}  // namespace Catlass::Gemm::Block

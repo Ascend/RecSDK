@@ -527,6 +527,9 @@ public:
         auto headId = tla::get<1>(meta);   // 1 means headId
         rowBlockId = tla::get<2>(meta);    // 2 means rowBlockId
 
+        triggerSwizzle = false;
+        swizzlePosition = 0;
+
         if constexpr (USE_SWIZZLE) {
             if (isInitialized && this->batchId == batchId && this->headId == headId) {
                 swizzleDir = 1 - swizzleDir;
@@ -549,19 +552,29 @@ public:
     }
 
     /**
-     ◦ @brief 获取是否触发 Swizzle
+     ◦ @brief 获取当前遍历是否发生 Swizzle 折返
 
-     ◦ @return bool 是否触发 Swizzle
-
-     ◦ @description 返回 triggerSwizzle 标志并将其复位，用于通知上层是否需要切换数据布局
+     ◦ @return bool 当前遍历是否与同一
+     * batch/head 的上一次遍历方向相反
 
      */
     CATLASS_DEVICE
-    bool GetTriggerSwizzle()
+    bool GetTriggerSwizzle() const
     {
-        auto result = triggerSwizzle;
-        triggerSwizzle = false;
-        return result;
+        return triggerSwizzle;
+    }
+
+    /**
+     ◦ @brief 获取当前 block 在本轮 Swizzle 遍历中的位置
+
+     ◦ @return uint32_t 从 0
+     * 开始的遍历位置，该值不是 blockId
+
+     */
+    CATLASS_DEVICE
+    uint32_t GetSwizzlePosition() const
+    {
+        return swizzlePosition;
     }
 
     /**
@@ -628,6 +641,7 @@ public:
     CATLASS_DEVICE
     ColumnBlockScheduler& operator++()
     {
+        ++swizzlePosition;
         blockId = (swizzleDir == 1) ? blockId + 1 : blockId - 1;
         Update();
         return *this;
@@ -728,7 +742,10 @@ private:
     uint32_t rowBlockId{0};
     uint32_t blockCnt{0};
     bool isInitialized{false};
+    // 当前遍历是否相对同一 batch/head 的上一次遍历发生折返；为 true 时才允许尝试复用 L1 数据。
     bool triggerSwizzle{false};
+    // 当前 block 在本轮遍历中的序号；Init() 时清零，operator++() 时递增。
+    uint32_t swizzlePosition{0};
     uint32_t swizzleDir{1};
     AscendC::GlobalTensor<ElementOffset> gSeqOffset;
 };
