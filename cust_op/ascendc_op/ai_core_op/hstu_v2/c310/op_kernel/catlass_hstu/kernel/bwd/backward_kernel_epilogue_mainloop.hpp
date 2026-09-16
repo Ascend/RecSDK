@@ -150,6 +150,7 @@ struct BackwardEpilogueMainloop {
         maxSeqLenK = tilingData.maxSeqLenK;
         totalSeqLenQ = tilingData.totalSeqLenQ;
         totalSeqLenK = tilingData.totalSeqLenK;
+        targetGroupSize = tilingData.targetGroupSize;
         alpha = tilingData.alpha;
         scale = tilingData.scale;
     }
@@ -371,6 +372,7 @@ struct BackwardEpilogueMainloop {
     uint32_t maxSeqLenK{0};
     uint32_t totalSeqLenQ{0};
     uint32_t totalSeqLenK{0};
+    uint32_t targetGroupSize{0};  // Target 分核使用的分组大小，与 Predictor 使用相同的 tiling 值。
     ElementACC alpha{0.0f};
     ElementACC scale{0.0f};
 

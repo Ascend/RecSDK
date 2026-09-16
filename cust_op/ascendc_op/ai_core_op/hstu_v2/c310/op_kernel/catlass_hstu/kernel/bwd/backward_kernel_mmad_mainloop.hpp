@@ -29,6 +29,7 @@ See the License for the specific language governing permissions and
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/layout/layout.hpp"
 #include "../../../catlass_hstu/kernel/mask/predictor_builder.hpp"
+#include "../../../catlass_hstu/gemm/block/l1_block_reuse_cache.hpp"
 #include "../../../catlass_hstu/gemm/block/metadata_row_block_scheduler.hpp"
 
 namespace Catlass::Kernel {
@@ -67,12 +68,17 @@ struct BackwardMmadMainloop {
     using QBlockScheduler = QBlockScheduler_;
     using KBlockScheduler = KBlockScheduler_;
     using L1TileShape = typename BlockMmadQK::L1TileShape;
+    using L0TileShape = typename BlockMmadQK::L0TileShape;
     using ArchTag = typename BlockMmadQK::ArchTag;
     using ElementQ = typename BlockMmadQK::ElementA;
     using ElementK = typename BlockMmadQK::ElementB;
     using ElementG = typename BlockMmadGV::ElementA;
     using ElementV = typename BlockMmadGV::ElementB;
     using ElementACC = typename BlockMmadGV::ElementAccumulator;
+
+    static constexpr uint32_t MIN_REUSE_DIM = 32;
+    static constexpr uint32_t L0_TILE_K = tla::get<2>(L0TileShape{});
+    static constexpr uint32_t MAX_L1_REUSE_BLOCKS = L0_TILE_K / MIN_REUSE_DIM;
 
     static constexpr uint32_t EVENT_V_ID = EVENT_ID0;
     static constexpr uint32_t EVENT_GRAD0_ID = EVENT_ID1;
@@ -154,6 +160,7 @@ struct BackwardMmadMainloop {
         maxSeqLenK = tilingData.maxSeqLenK;
         totalSeqLenQ = tilingData.totalSeqLenQ;
         totalSeqLenK = tilingData.totalSeqLenK;
+        targetGroupSize = tilingData.targetGroupSize;
         alpha = tilingData.alpha;
         scale = tilingData.scale;
     }
@@ -217,6 +224,12 @@ struct BackwardMmadMainloop {
     }
 
     CATLASS_DEVICE
+    uint32_t GetL1ReuseBlockCount(uint32_t dim) const
+    {
+        return (dim == 32 || dim == 64) ? L0_TILE_K / dim : 1;
+    }
+
+    CATLASS_DEVICE
     void operator()(const Params& params)
     {
         PipeEventGuard pipeEventGuard;
@@ -261,7 +274,16 @@ struct BackwardMmadMainloop {
         kBlockScheduler.Init();
         Predictor predictor;
         predictor.Construct(this, params);
+        using L1ReuseCache = Gemm::Block::L1BlockReuseCache<MAX_L1_REUSE_BLOCKS>;
+        L1ReuseCache qReuseCache(GetL1ReuseBlockCount(dimQK));
+        L1ReuseCache gradReuseCache(GetL1ReuseBlockCount(dimGV));
         for (; kBlockScheduler.IsValid(); ++kBlockScheduler) {
+            auto kMeta = kBlockScheduler.GetMeta();
+            auto batchId = static_cast<uint32_t>(tla::get<0>(kMeta));
+            auto headId = static_cast<uint32_t>(tla::get<1>(kMeta));
+            qReuseCache.UpdateContext(batchId, headId);
+            gradReuseCache.UpdateContext(batchId, headId);
+
             auto tK = kBlockScheduler.GetTile(tensorK);
             auto tV = kBlockScheduler.GetTile(tensorV);
             blockMmadQK.AcquireTensor(tK);
@@ -279,23 +301,30 @@ struct BackwardMmadMainloop {
                     predictor.MakeBlockPredParams(blockCoord, this, qBlockScheduler.GetSeqLens(),
                                                   kBlockScheduler.GetCurrentSeqLen(), qBlockScheduler.GetSwizzleDir());
                 predictor.Classifier(blockPredParams);
-                auto triggerSwizzle = qBlockScheduler.GetTriggerSwizzle();
+                // 跳过的 block 不需要查询 cache；for 循环仍会更新 Scheduler 的遍历位置。
                 if (predictor.IsSkip()) {
                     continue;
                 }
+                auto qBlockId = qBlockScheduler.GetBlockId();
+                auto triggerSwizzle = qBlockScheduler.GetTriggerSwizzle();
+                auto swizzlePosition = qBlockScheduler.GetSwizzlePosition();
+                auto qReuse = qReuseCache.Probe(qBlockId, triggerSwizzle, swizzlePosition);
+                auto gradReuse = gradReuseCache.Probe(qBlockId, triggerSwizzle, swizzlePosition);
                 auto tQ = qBlockScheduler.GetTile(tensorQ);
-                blockMmadQK(tQ, tK, pingPongFlag, l0bFlag, triggerSwizzle);
+                blockMmadQK(tQ, tK, pingPongFlag, l0bFlag, qReuse.canReuse, qReuse.slot);
+                qReuseCache.Commit(qReuse.slot, qBlockId);
 
                 auto tG = qBlockScheduler.GetTile(tensorGrad);
-                blockMmadGV(tG, tV, pingPongFlag, l0bFlag, triggerSwizzle);
+                blockMmadGV(tG, tV, pingPongFlag, l0bFlag, gradReuse.canReuse, gradReuse.slot);
+                gradReuseCache.Commit(gradReuse.slot, qBlockId);
 
                 GemmCoord blockQActualShape(tla::get<0>(tQ.shape()), tla::get<0>(tK.shape()), dimQK);
                 GemmCoord blockGActualShape(tla::get<0>(tQ.shape()), tla::get<0>(tK.shape()), dimGV);
 
                 auto isFirstQBlock = predictor.IsInnerLoopFirstQBlock(blockPredParams);
                 auto isLastQBlock = predictor.IsInnerLoopLastQBlock(blockPredParams);
-                blockMmadVGrad(blockGActualShape, pingPongFlag, l0bFlag, isFirstQBlock, isLastQBlock);
-                blockMmadKGrad(blockQActualShape, pingPongFlag, l0bFlag, isFirstQBlock, isLastQBlock);
+                blockMmadVGrad(blockGActualShape, pingPongFlag, l0bFlag, isFirstQBlock, isLastQBlock, gradReuse.slot);
+                blockMmadKGrad(blockQActualShape, pingPongFlag, l0bFlag, isFirstQBlock, isLastQBlock, qReuse.slot);
 
                 auto tQS = qBlockScheduler.GetShareTile(tensorQShare, totalSeqLenQ);
                 blockMmadQGrad(tQS, blockQActualShape, pingPongFlag, l0bFlag);
@@ -318,11 +347,11 @@ struct BackwardMmadMainloop {
     uint32_t maxSeqLenK{0};
     uint32_t totalSeqLenQ{0};
     uint32_t totalSeqLenK{0};
+    uint32_t targetGroupSize{0};  // Target 分核使用的分组大小，与 Predictor 使用相同的 tiling 值。
     ElementACC alpha{0.0f};
     ElementACC scale{0.0f};
 
-    // tiling 数据地址: mainloop 仅保留通用标量, mask 专用标量 (targetGroupSize/groups)
-    // 由各 Predictor 在 Construct 中从此地址自行解析
+    // Predictor 在 Construct 中从此地址解析 mask 参数；Mainloop 保留分核需要的 targetGroupSize。
     GM_ADDR ptrTiling{nullptr};
 };
 

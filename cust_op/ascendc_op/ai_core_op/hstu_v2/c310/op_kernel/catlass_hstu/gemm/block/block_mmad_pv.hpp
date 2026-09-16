@@ -208,7 +208,10 @@ public:
 
      ◦ @param isFlush 是否刷新结果到目标
 
-     ◦ @description 执行 P * V 矩阵乘法，包含以下步骤:
+     ◦ @param l1ReuseSlot Q/Grad block 在每个 L1 stage buffer
+     内的子槽位，必须与 QK/GV 写入的 slot 一致
+ ◦ @description 执行 P * V
+     矩阵乘法，包含以下步骤:
 
      ◦              1. 等待 Vector 核数据就绪
 
@@ -227,7 +230,7 @@ public:
      */
     CATLASS_DEVICE
     void operator()(GemmCoord& blockShape, uint32_t& pingPongFlag, uint32_t& l0bFlag, bool isInit = false,
-                    bool isFlush = false)
+                    bool isFlush = false, uint32_t l1ReuseSlot = 0)
     {
         uint32_t mReal = blockShape.m();
         uint32_t nReal = blockShape.n();
@@ -252,7 +255,10 @@ public:
 
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0bFlag + 2);  // 2 means pingPong
             auto l1bLayout = tla::MakeLayout<ElementB, LayoutTagL1B>(mSize, kReal);
-            auto tensorL1b = tla::MakeTensor(l1BTensor[m % STAGES], l1bLayout, coord, Arch::PositionL1{});
+            // 从 QK/GV 生产者写入的同一个 slot 读取 Q/Grad。
+            auto l1SlotOffset = l1ReuseSlot * L0_TILE_M * kReal;
+            auto l1bSlot = l1BTensor[m % STAGES][l1SlotOffset];
+            auto tensorL1b = tla::MakeTensor(l1bSlot, l1bLayout, coord, Arch::PositionL1{});
             auto l0bLayout = tla::MakeLayout<ElementB, LayoutTagL0B>(mSize, kReal);
             auto tensorL0b = tla::MakeTensor(l0BTensor[l0bFlag], l0bLayout, coord, Arch::PositionL0B{});
             copyL1ToL0B(tensorL0b, tensorL1b);
