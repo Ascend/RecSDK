@@ -44,6 +44,9 @@ def download_and_install(
 ) -> bool:
     if target_dir.exists():
         logger.info(f"Target directory already exists: {target_dir}")
+        if not run_extra_cmd(config, target_dir):
+            logger.error("Extra commands failed!")
+            return False
         return True
 
     logger.info(f"Cloning repository: {repo_url}")
@@ -171,39 +174,56 @@ def install_depend(config: dict, target_dir: Path) -> bool:
             subprocess.run(
                 ["pip", "install", "-e", "."], cwd=str(target_dir), check=True
             )
-        if config.get("extra_cmd"):
-            if TORCHEASYREC_NAME in str(target_dir):
-                import glob
-
-                proto_base = target_dir / "tzrec" / "protos"
-                proto_files = list(proto_base.glob("*.proto"))
-                if proto_files:
-                    cmd = [
-                        "protoc",
-                        f"--proto_path={target_dir}",
-                        f"--python_out={target_dir}",
-                    ] + [str(f) for f in proto_files]
-                    logger.info(f"Running: {' '.join(cmd)}")
-                    subprocess.run(cmd, check=True)
-
-                proto_models = list((proto_base / "models").glob("*.proto"))
-                if proto_models:
-                    cmd = [
-                        "protoc",
-                        f"--proto_path={target_dir}",
-                        f"--python_out={target_dir}",
-                    ] + [str(f) for f in proto_models]
-                    logger.info(f"Running: {' '.join(cmd)}")
-                    subprocess.run(cmd, check=True)
-            else:
-                cmds = config.get("extra_cmd")
-                for cmd in cmds:
-                    if cmd == "":
-                        continue
-                    logger.info(f"Executing extra command: {cmd}")
-                    subprocess.run(safe_split_command(cmd), cwd=str(target_dir), check=True)
+        if not run_extra_cmd(config, target_dir):
+            return False
     except subprocess.CalledProcessError as e:
         logger.error(f"pip failed, error message:\n{e.stderr}")
+        return False
+    except Exception as e:
+        logger.error(f"Unknown error: {e}")
+        return False
+    return True
+
+
+def run_extra_cmd(config: dict, target_dir: Path) -> bool:
+    try:
+        if not config.get("extra_cmd"):
+            return True
+        if TORCHEASYREC_NAME in str(target_dir):
+            proto_base = target_dir / "tzrec" / "protos"
+            proto_files = list(proto_base.glob("*.proto"))
+            if proto_files:
+                cmd = [
+                    "protoc",
+                    f"--proto_path={target_dir}",
+                    f"--python_out={target_dir}",
+                ] + [str(f) for f in proto_files]
+                logger.info(f"Running: {' '.join(cmd)}")
+                subprocess.run(cmd, check=True)
+
+            proto_models = list((proto_base / "models").glob("*.proto"))
+            if proto_models:
+                cmd = [
+                    "protoc",
+                    f"--proto_path={target_dir}",
+                    f"--python_out={target_dir}",
+                ] + [str(f) for f in proto_models]
+                logger.info(f"Running: {' '.join(cmd)}")
+                subprocess.run(cmd, check=True)
+        else:
+            cmds = config.get("extra_cmd")
+            for cmd in cmds:
+                if cmd == "":
+                    continue
+                logger.info(f"Executing extra command: {cmd}")
+                subprocess.run(safe_split_command(cmd), cwd=str(target_dir), check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(
+            "extra command failed: %s, return code: %s, stderr: %s",
+            e.cmd,
+            e.returncode,
+            e.stderr or "",
+        )
         return False
     except Exception as e:
         logger.error(f"Unknown error: {e}")
@@ -222,6 +242,8 @@ def set_env(config: dict, args: argparse.Namespace):
     else:
         os.environ["MODEL_COMPILE_FLAG"] = "True"
     os.environ["MODEL_ACLGRAPH_FLAG"] = str(config.get("aclgraph_flag"))
+    os.environ["ENABLE_COMPILE"] = "1" if config.get("enable_compile", False) else "0"
+    os.environ["ENABLE_GRAPH"] = "1" if config.get("enable_graph", False) else "0"
     os.environ["MODEL_DATA_TYPE"] = config.get("data_type")
     os.environ["MODEL_NAME"] = config.get("name")
     os.environ["MODEL_E2E_FLAG"] = str(config.get("e2e_flag"))
