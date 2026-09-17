@@ -89,6 +89,7 @@ python run.py xxx.json --eager
 |PLE|[PLE.json](configs/PLE.json)|
 |PNN|[PNN.json](configs/PNN.json)|
 |RANKMIXER|[RANKMIXER.json](configs/RANKMIXER.json)|
+|TOKENMIXER_LARGE|[TOKENMIXER_LARGE.json](configs/TOKENMIXER_LARGE.json)|
 |RECSYS_RANKING|[RECSYS_RANKING.json](configs/RECSYS_RANKING.json)|
 |RECSYS_RANKING_GR_2B|[RECSYS_RANKING_GR_2B.json](configs/RECSYS_RANKING_GR_2B.json)|
 |RECSYS_RANKING_GR_7B|[RECSYS_RANKING_GR_7B.json](configs/RECSYS_RANKING_GR_7B.json)|
