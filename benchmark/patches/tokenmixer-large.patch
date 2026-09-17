@@ -1,0 +1,929 @@
+diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
+index 5b9ece25..fc6991e1 100644
+--- a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
++++ b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
+@@ -4,82 +4,67 @@ import torch
+ 
+-def create_data_loader(
+-        dataset: torch.utils.data.Dataset,
+-        batch_size: int,
+-        prefetch_factor: int = 128,
+-        num_workers: int = os.cpu_count(),
+-) -> torch.utils.data.DataLoader:
+-    """
+-    创建一个数据加载器(DataLoader), 用于批量加载数据集。
+ 
+-    :param dataset: 要加载的数据集。
+-    :param batch_size: 每个批次的样本数量。
+-    :param prefetch_factor: 预取因子，用于控制预取的数据量。
+-    :param num_workers: 加载数据时使用的子进程数量, 默认为CPU核心数。
+-    :return: 一个配置好的DataLoader对象。
+-    """
++def _is_npu_run() -> bool:
++    return os.environ.get("NPU_FLAG", "True") != "False"
+ 
+-    def worker_init_fn(worker_id):
+-        worker_info = torch.utils.data.get_worker_info()
+-        ds = worker_info.dataset
+-        ds.files = ds.files[worker_id::worker_info.num_workers]
+-        ds.init_multi_csv_iterator()
+ 
+-    data_loader = torch.utils.data.DataLoader(
+-        dataset,
+-        batch_size=batch_size,
+-        shuffle=False,
+-        num_workers=num_workers,
+-        prefetch_factor=prefetch_factor,
+-        worker_init_fn=worker_init_fn,
+-        drop_last=True
+-    )
++def _split_files_by_worker(worker_id):
++    worker_info = torch.utils.data.get_worker_info()
++    ds = worker_info.dataset
++    ds.files = ds.files[worker_id::worker_info.num_workers]
++    ds.init_multi_csv_iterator()
+ 
+-    return data_loader
+ 
++def _base_loader_kwargs(num_workers, prefetch_factor, pin_memory=False, persistent_workers=False):
++    num_workers = max(0, int(num_workers))
++    kwargs = {
++        "num_workers": num_workers,
++        "drop_last": True,
++    }
++    if num_workers > 0:
++        kwargs["prefetch_factor"] = prefetch_factor
++        kwargs["worker_init_fn"] = _split_files_by_worker
++        kwargs["persistent_workers"] = bool(persistent_workers)
++        if _is_npu_run():
++            start_method = os.environ.get("NPU_DATALOADER_START_METHOD", "spawn").strip()
++            if start_method and start_method.lower() != "default":
++                kwargs["multiprocessing_context"] = start_method
++    if pin_memory:
++        kwargs["pin_memory"] = (not _is_npu_run()) or os.environ.get("NPU_DATALOADER_PIN_MEMORY", "0") in ("1", "true", "True")
++    return kwargs
+ 
+-def create_data_loader_ep(
+-        dataset: torch.utils.data.Dataset,
+-        batch_size: int,
+-        item_feature_columns,
+-        user_feature_columns,
+-        max_output_length=0,
+-        itemid_column_name='item_id',
+-        infer_ratings_key='ratings',
+-        infer_timestamps_key='timestamps',
+-        multi_value_prefix='pref_',
+-        include_loss_weights: bool = False,
+-        include_candidate_items: bool = False,
+-        prefetch_factor: int = 128,
+-        num_workers: int = os.cpu_count(),
+-) -> torch.utils.data.DataLoader:
+-    """
+-    创建一个数据加载器(DataLoader), 用于批量加载数据集。
+ 
+-    :param dataset: 要加载的数据集。
+-    :param batch_size: 每个批次的样本数量。
+-    :param item_feature_columns: 商品特征信息。
+-    :param user_feature_columns: 用户特征信息。
+-    :param max_output_length: 最大输出长度。
+-    :param itemid_column_name: 项目ID列名, 默认为'item_id'。
+-    :param infer_ratings_key: 项目rating列名, 默认为'ratings'。
+-    :param infer_timestamps_key: 项目timestamp列名, 默认为'timestamps'。
+-    :param multi_value_prefix: 用户关联商品特征的特征前缀。
+-    :param include_loss_weights: 是否包含loss权重。
+-    :param include_candidate_items: 是否包含候选特征，评估阶段为True。
+-    :param prefetch_factor: 预取因子，用于控制预取的数据量。
+-    :param num_workers: 加载数据时使用的子进程数量, 默认为CPU核心数。
+-    :return: 一个配置好的DataLoader对象。
+-    """
+-    from modeling.generic.sequential_v2.features import SequentialFeatures
+-    from torchrec import KeyedJaggedTensor, JaggedTensor
+-    from modeling.generic.sequential_v2.torchrec_trainer import Batch
++class _SequentialEPCollator:
++    def __init__(
++            self,
++            item_feature_columns,
++            user_feature_columns,
++            max_output_length=0,
++            itemid_column_name='item_id',
++            infer_ratings_key='ratings',
++            infer_timestamps_key='timestamps',
++            multi_value_prefix='pref_',
++            include_loss_weights=False,
++            include_candidate_items=False,
++    ):
++        self.item_feature_columns = item_feature_columns
++        self.user_feature_columns = user_feature_columns
++        self.max_output_length = max_output_length
++        self.itemid_column_name = itemid_column_name
++        self.infer_ratings_key = infer_ratings_key
++        self.infer_timestamps_key = infer_timestamps_key
++        self.multi_value_prefix = multi_value_prefix
++        self.include_loss_weights = include_loss_weights
++        self.include_candidate_items = include_candidate_items
+ 
+-    def worker_init_fn(worker_id):
+-        worker_info = torch.utils.data.get_worker_info()
+-        ds: DatasetMusicV1 = worker_info.dataset
+-        ds.files = ds.files[worker_id::worker_info.num_workers]
+-        ds.init_multi_csv_iterator()
++    def __call__(self, data):
++        from modeling.generic.sequential_v2.features import SequentialFeatures
++        from torchrec import KeyedJaggedTensor, JaggedTensor
++        from modeling.generic.sequential_v2.torchrec_trainer import Batch
+ 
+-    def collect_fn(data):
+         uids, past_lengths, past_payloads = [], [], {}
++        max_output_length = self.max_output_length
++        itemid_column_name = self.itemid_column_name
++        infer_ratings_key = self.infer_ratings_key
++        infer_timestamps_key = self.infer_timestamps_key
++
+         for row in data:
+@@ -103,3 +88,3 @@ def create_data_loader_ep(
+ 
+-            for feat_name, feat_cfg in item_feature_columns.items():
++            for feat_name, feat_cfg in self.item_feature_columns.items():
+                 feat_ids = row[feat_name]
+@@ -112,3 +97,3 @@ def create_data_loader_ep(
+ 
+-            for feat_name, feat_cfg in user_feature_columns.items():
++            for feat_name, feat_cfg in self.user_feature_columns.items():
+                 feat_ids = row[feat_name]
+@@ -116,3 +101,3 @@ def create_data_loader_ep(
+ 
+-            if include_loss_weights:
++            if self.include_loss_weights:
+                 labels = row['labels']
+@@ -131,4 +116,4 @@ def create_data_loader_ep(
+ 
+-            if include_candidate_items:
+-                for feat_name, feat_cfg in item_feature_columns.items():
++            if self.include_candidate_items:
++                for feat_name, feat_cfg in self.item_feature_columns.items():
+                     candidate_feat_name = 'candidate_' + feat_name
+@@ -150,4 +135,4 @@ def create_data_loader_ep(
+         item_kjt_dict = {}
+-        if include_candidate_items:
+-            for feat_name, feat_cfg in item_feature_columns.items():
++        if self.include_candidate_items:
++            for feat_name, feat_cfg in self.item_feature_columns.items():
+                 if feat_cfg.get("enabled", True):
+@@ -161,3 +146,3 @@ def create_data_loader_ep(
+         else:
+-            for feat_name, feat_cfg in item_feature_columns.items():
++            for feat_name, feat_cfg in self.item_feature_columns.items():
+                 if feat_cfg.get("enabled", True):
+@@ -167,5 +152,5 @@ def create_data_loader_ep(
+                     item_kjt_dict[feat_name] = jagged_tensor
+-        
++
+         user_kjt_dict, user_asso_pref_feature_names = {}, {}
+-        for feat_name, feat_cfg in user_feature_columns.items():
++        for feat_name, feat_cfg in self.user_feature_columns.items():
+             if feat_cfg.get("enabled", True):
+@@ -179,3 +164,3 @@ def create_data_loader_ep(
+                     cfg_asso_name = feat_cfg.get("associated", None)
+-                    associated_name = feat_name.replace(multi_value_prefix, "") if cfg_asso_name is None else cfg_asso_name
++                    associated_name = feat_name.replace(self.multi_value_prefix, "") if cfg_asso_name is None else cfg_asso_name
+                     if associated_name in item_kjt_dict:
+@@ -193,3 +178,3 @@ def create_data_loader_ep(
+             shared_item_kjt_dicts.setdefault(kjt_key, {})[asso_name] = jagged_tensor
+-            
++
+         if shared_item_kjt_dicts:
+@@ -211,4 +196,75 @@ def create_data_loader_ep(
+         )
+-        batch = Batch(features)
+-        return batch
++        return Batch(features)
++
++
++def create_data_loader(
++        dataset: torch.utils.data.Dataset,
++        batch_size: int,
++        prefetch_factor: int = 128,
++        num_workers: int = os.cpu_count(),
++) -> torch.utils.data.DataLoader:
++    """
++    创建一个数据加载器(DataLoader), 用于批量加载数据集。
++
++    :param dataset: 要加载的数据集。
++    :param batch_size: 每个批次的样本数量。
++    :param prefetch_factor: 预取因子，用于控制预取的数据量。
++    :param num_workers: 加载数据时使用的子进程数量, 默认为CPU核心数。
++    :return: 一个配置好的DataLoader对象。
++    """
++
++    data_loader = torch.utils.data.DataLoader(
++        dataset,
++        batch_size=batch_size,
++        shuffle=False,
++        **_base_loader_kwargs(num_workers, prefetch_factor)
++    )
++
++    return data_loader
++
++
++def create_data_loader_ep(
++        dataset: torch.utils.data.Dataset,
++        batch_size: int,
++        item_feature_columns,
++        user_feature_columns,
++        max_output_length=0,
++        itemid_column_name='item_id',
++        infer_ratings_key='ratings',
++        infer_timestamps_key='timestamps',
++        multi_value_prefix='pref_',
++        include_loss_weights: bool = False,
++        include_candidate_items: bool = False,
++        prefetch_factor: int = 128,
++        num_workers: int = os.cpu_count(),
++) -> torch.utils.data.DataLoader:
++    """
++    创建一个数据加载器(DataLoader), 用于批量加载数据集。
++
++    :param dataset: 要加载的数据集。
++    :param batch_size: 每个批次的样本数量。
++    :param item_feature_columns: 商品特征信息。
++    :param user_feature_columns: 用户特征信息。
++    :param max_output_length: 最大输出长度。
++    :param itemid_column_name: 项目ID列名, 默认为'item_id'。
++    :param infer_ratings_key: 项目rating列名, 默认为'ratings'。
++    :param infer_timestamps_key: 项目timestamp列名, 默认为'timestamps'。
++    :param multi_value_prefix: 用户关联商品特征的特征前缀。
++    :param include_loss_weights: 是否包含loss权重。
++    :param include_candidate_items: 是否包含候选特征，评估阶段为True。
++    :param prefetch_factor: 预取因子，用于控制预取的数据量。
++    :param num_workers: 加载数据时使用的子进程数量, 默认为CPU核心数。
++    :return: 一个配置好的DataLoader对象。
++    """
++    collect_fn = _SequentialEPCollator(
++        item_feature_columns=item_feature_columns,
++        user_feature_columns=user_feature_columns,
++        max_output_length=max_output_length,
++        itemid_column_name=itemid_column_name,
++        infer_ratings_key=infer_ratings_key,
++        infer_timestamps_key=infer_timestamps_key,
++        multi_value_prefix=multi_value_prefix,
++        include_loss_weights=include_loss_weights,
++        include_candidate_items=include_candidate_items,
++    )
+ 
+@@ -219,9 +275,3 @@ def create_data_loader_ep(
+         shuffle=False,
+-        num_workers=num_workers,
+-        prefetch_factor=prefetch_factor,
+-        worker_init_fn=worker_init_fn,
+-        pin_memory=True,
+-        persistent_workers=True,
+-        # pin_memory_device="npu",
+-        drop_last=True
++        **_base_loader_kwargs(num_workers, prefetch_factor, pin_memory=True, persistent_workers=True)
+     )
+diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
+index acb4e3df..6f9ae23b 100644
+--- a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
++++ b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
+@@ -171,5 +171,11 @@ def get_optimizer_callback(train_conf) -> Callable[
+ 
++def time_wrap_xpu():
++    if NPU_ENABLE:
++        torch.npu.synchronize()
++    else:
++        torch.cuda.synchronize()
++    return time.time()
+ 
+ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFeatures]],
+-               train_conf, export_conf, batch_id, world_size, rank, epoch, device, save_dir):
++               train_conf, export_conf, batch_id, world_size, rank, epoch, device, save_dir, profiler=None):
+     """
+@@ -179,10 +185,18 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+     train_costs, batch_group = [], train_conf['eval_interval']
+-    last_training_time = time.time()
++    last_training_time = time_wrap_xpu()
+     use_loss_weighted_grad = train_conf.get("use_loss_weighted_grad", False)
+     is_output_loss_csv_file = train_conf.get("is_output_loss_csv_file", False)
++    record_training_metrics = train_conf.get("record_training_metrics", True)
+     step_list, loss_list = [], []
++    step_metric_records = []
++    train_times = []
++    last_loss = None
+ 
+     while True:
++        if profiler:
++            profiler.step()
+         try:
+             loss, _ = exec_cb(batch_id)
++            last_loss = loss
++            loss.backward()
+         except StopIteration:
+@@ -196,10 +210,32 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+         if (batch_id % batch_group) == 0:
+-            train_cost = time.time() - last_training_time
+-            logging.info("rank %s; batch-stat (train): step %s "
+-                         "(epoch %s in %.2fs): %.6f", rank, batch_id, epoch, train_cost, loss)
++            train_cost = time_wrap_xpu() - last_training_time
++            gt = 1000.0 * train_cost / batch_group
++            train_times.append(gt)
++            loss_value = loss.detach().float().cpu().item()
++            if rank == 0:
++                print("Finished train it {} of epoch {}, {:.2f} ms/it, loss {:.6f}".format(
++                    batch_id, epoch, gt, loss)
++                )
++            if record_training_metrics:
++                samples_per_second = (
++                    float(train_conf.get("local_batch_size", 1)) * float(world_size) * 1000.0 / float(gt)
++                    if gt > 0
++                    else None
++                )
++                step_metric_records.append({
++                    "epoch": int(epoch),
++                    "step": int(batch_id),
++                    "loss": float(loss_value),
++                    "ms_per_step": float(gt),
++                    "samples_per_second": samples_per_second,
++                    "world_size": int(world_size),
++                })
+             if batch_id > 0:
+                 train_costs.append(train_cost)
+-            last_training_time = time.time()
++            last_training_time = time_wrap_xpu()
+         batch_id += 1
+ 
++    if len(train_times) > 1:
++        train_times.pop(0)
++
+     if train_costs:
+@@ -213,5 +249,7 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
+ 
+-    epoch_loss = avg_eval(torch.tensor([loss]).to(device), world_size=world_size)
++    if last_loss is None:
++        last_loss = torch.zeros((), device=device)
++    epoch_loss = avg_eval(torch.tensor([last_loss.detach().float().cpu().item()]).to(device), world_size=world_size)
+ 
+-    return batch_id, epoch_loss
++    return batch_id, epoch_loss, train_times, step_metric_records
+ 
+@@ -251,2 +289,115 @@ def save_loss_csv_file(loss_list, step_list):
+ 
++def _metrics_dir(save_dir: str) -> str:
++    metrics_dir = os.path.join(save_dir, "modelfile", "run_metrics")
++    os.makedirs(metrics_dir, exist_ok=True)
++    return metrics_dir
++
++
++def _json_default(value):
++    if torch.is_tensor(value):
++        if value.numel() == 1:
++            return value.detach().cpu().item()
++        return value.detach().cpu().tolist()
++    if isinstance(value, np.generic):
++        return value.item()
++    return str(value)
++
++
++def _metric_to_float(value):
++    if value is None:
++        return None
++    if torch.is_tensor(value):
++        if value.numel() == 0:
++            return None
++        return float(value.detach().float().cpu().item())
++    if isinstance(value, np.generic):
++        return float(value.item())
++    return float(value)
++
++
++def _write_metrics_artifacts(save_dir: str, step_records, epoch_records) -> None:
++    metrics_dir = _metrics_dir(save_dir)
++    loss_curve_path = os.path.join(metrics_dir, "loss_curve.csv")
++    epoch_metrics_path = os.path.join(metrics_dir, "epoch_metrics.csv")
++    summary_path = os.path.join(metrics_dir, "metrics_summary.json")
++    figure_path = os.path.join(metrics_dir, "loss_auc_curve.png")
++
++    if step_records:
++        pd.DataFrame(step_records).sort_values(["epoch", "step"]).to_csv(loss_curve_path, index=False)
++    if epoch_records:
++        pd.DataFrame(epoch_records).sort_values("epoch").to_csv(epoch_metrics_path, index=False)
++
++    final_epoch = epoch_records[-1] if epoch_records else {}
++    last_step = step_records[-1] if step_records else {}
++    valid_qps = [
++        _metric_to_float(record.get("samples_per_second"))
++        for record in step_records
++        if _metric_to_float(record.get("samples_per_second")) is not None
++    ]
++    summary = {
++        "loss_curve_csv": loss_curve_path,
++        "epoch_metrics_csv": epoch_metrics_path if epoch_records else None,
++        "figure_png": figure_path,
++        "num_loss_points": len(step_records),
++        "num_eval_points": len(epoch_records),
++        "final": final_epoch,
++        "last_step": last_step,
++        "avg_samples_per_second": float(np.mean(valid_qps)) if valid_qps else None,
++        "last_samples_per_second": valid_qps[-1] if valid_qps else None,
++        "auc_available": any(record.get("auc") is not None for record in epoch_records),
++        "loss_decreased": (
++            bool(step_records and step_records[-1]["loss"] < step_records[0]["loss"])
++            if len(step_records) >= 2
++            else None
++        ),
++    }
++    with open(summary_path, "w", encoding="utf-8") as f:
++        json.dump(summary, f, indent=2, ensure_ascii=False, default=_json_default)
++
++    if step_records:
++        try:
++            import matplotlib
++            matplotlib.use("Agg")
++            import matplotlib.pyplot as plt
++
++            fig, ax_loss = plt.subplots(figsize=(10, 5))
++            loss_df = pd.DataFrame(step_records).sort_values("step")
++            ax_loss.plot(loss_df["step"], loss_df["loss"], label="train loss", color="#2563eb")
++            ax_loss.set_xlabel("step")
++            ax_loss.set_ylabel("train loss")
++            ax_loss.grid(True, alpha=0.25)
++
++            metric_df = pd.DataFrame(epoch_records) if epoch_records else pd.DataFrame()
++            if not metric_df.empty and "auc" in metric_df and metric_df["auc"].notna().any():
++                ax_auc = ax_loss.twinx()
++                ax_auc.plot(metric_df["step"], metric_df["auc"], label="eval AUC", color="#dc2626", marker="o")
++                ax_auc.set_ylabel("eval AUC")
++                lines, labels = ax_loss.get_legend_handles_labels()
++                lines2, labels2 = ax_auc.get_legend_handles_labels()
++                ax_loss.legend(lines + lines2, labels + labels2, loc="best")
++            else:
++                ax_loss.legend(loc="best")
++            fig.tight_layout()
++            fig.savefig(figure_path, dpi=150)
++            plt.close(fig)
++        except Exception as e:
++            logging.warning("Skip metrics figure because matplotlib plotting failed: %s", e)
++
++    logging.info("Saved training metric artifacts under %s", metrics_dir)
++
++
++def _safe_roc_auc(ground_truth, scores):
++    if not ground_truth or not scores:
++        return None
++    labels = np.asarray(ground_truth)
++    if np.unique(labels).size < 2:
++        logging.warning("Skip AUC because eval labels contain only one class.")
++        return None
++    try:
++        return float(roc_auc_score(labels, np.asarray(scores)))
++    except Exception as e:
++        logging.warning("Skip AUC because roc_auc_score failed: %s", e)
++        return None
++
++
+ def save_model_state_dict(model, save_dir, export_conf):
+@@ -543,4 +694,3 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+ 
+-
+-    profiling_flag = False if int(os.environ.get("PROFILING_FLAG", 0)) == 0 else True
++    profiling_flag = False if int(os.environ.get("MODEL_PROFILING_FLAG", 0)) == 0 else True
+     enable_compile = False if int(os.environ.get("ENABLE_COMPILE", 0)) == 0 else True
+@@ -585,3 +735,3 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+             )
+-            profiler_save_path = "./profiling/1B_gemm_rankmixer_wight_graph"
++            profiler_save_path = "./profiling/1B_gemm_tokenmixer_large_graph"
+             prof = torch_npu.profiler.profile(
+@@ -738,3 +888,3 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+         'Batch_size': user_max_batch_size,
+-        'model_name': 'RankMixer',
++        'model_name': 'TokenMixerLarge',
+         'config_file': FLAGS.config_file,
+@@ -742,18 +892,21 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+ 
+-    time_arr = time_arr[-e2e_average_nums:]
+-    time_arr.sort()
+-    p999_latency = round(time_arr[int(len(time_arr) * 0.999)] * 1000, 6)
+-    p99_latency = round(time_arr[int(len(time_arr) * 0.99)] * 1000, 6)
+-    p95_latency = round(time_arr[int(len(time_arr) * 0.95)] * 1000, 6)
+-    p90_latency = round(time_arr[int(len(time_arr) * 0.90)] * 1000, 6)
+-    avg_latency = round(sum(time_arr) / len(time_arr) * 1000, 6)
+-    qps = int(1000.0 * user_max_batch_size / avg_latency)
+-
+-    report["QPS"] = qps
+-    report["AVG Latency"] = avg_latency
+-    report["P999 Latency"] = p999_latency
+-    report["P99 Latency"] = p99_latency
+-    report["P95 Latency"] = p95_latency
+-    report["P90 Latency"] = p90_latency
+-    print(report)
++    if time_arr:
++        time_arr = time_arr[-e2e_average_nums:]
++        time_arr.sort()
++        p999_latency = round(time_arr[int(len(time_arr) * 0.999)] * 1000, 6)
++        p99_latency = round(time_arr[int(len(time_arr) * 0.99)] * 1000, 6)
++        p95_latency = round(time_arr[int(len(time_arr) * 0.95)] * 1000, 6)
++        p90_latency = round(time_arr[int(len(time_arr) * 0.90)] * 1000, 6)
++        avg_latency = round(sum(time_arr) / len(time_arr) * 1000, 6)
++        qps = int(1000.0 * user_max_batch_size / avg_latency)
++
++        report["QPS"] = qps
++        report["AVG Latency"] = avg_latency
++        report["P999 Latency"] = p999_latency
++        report["P99 Latency"] = p99_latency
++        report["P95 Latency"] = p95_latency
++        report["P90 Latency"] = p90_latency
++        print(report)
++    else:
++        logging.info("No E2E latency samples collected in this eval path.")
+ 
+@@ -782,2 +935,19 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+ 
++        recall_metrics = {
++            "auc": None,
++            "auc_available": False,
++            "ndcg@10": _metric_to_float(ndcg_10),
++            "ndcg@50": _metric_to_float(ndcg_50),
++            "ndcg@100": _metric_to_float(ndcg_100),
++            "ndcg@200": _metric_to_float(ndcg_200),
++            "hr@10": _metric_to_float(hr_10),
++            "hr@50": _metric_to_float(hr_50),
++            "hr@100": _metric_to_float(hr_100),
++            "hr@200": _metric_to_float(hr_200),
++            "hr@500": _metric_to_float(hr_500),
++            "hr@1000": _metric_to_float(hr_1000),
++            "hr@2000": _metric_to_float(hr_2000),
++            "mrr": _metric_to_float(mrr),
++        }
++
+         if rank == 0 and writer:
+@@ -804,3 +974,3 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+ 
+-        return
++        return recall_metrics
+ 
+@@ -867,2 +1037,8 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+         calculator.calculate(metrics_path)
++        auc_value = _safe_roc_auc(ground_truth_all, scores_all)
++        if auc_value is not None and writer:
++            writer.add_scalar("eval_epoch/auc", auc_value, epoch)
++        logging.info("eval AUC at epoch %s is %s", epoch, auc_value)
++    else:
++        auc_value = None
+ 
+@@ -881,3 +1057,6 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
+             len(scores_all), rank, sum(ground_truth_all), len(ground_truth_all) - sum(ground_truth_all))
+-    return
++    return {
++        "auc": auc_value,
++        "auc_available": auc_value is not None,
++    }
+ 
+@@ -908,3 +1087,3 @@ def save_torch_data(input, output, layer_data=None, filename="infer_result",
+         total_infer_result = {
+-            "rankmixer": {
++            "tokenmixer_large": {
+                 "type": "model",
+@@ -1083,2 +1262,56 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
+ 
++def latency_summary_rank0(latency_list, batch_size, model_name, device_name, inductor_flag):
++    if latency_list is None or len(latency_list) == 0:
++        print("No latency data collected, please check sample_statistics_num value effectively collects latency data.")
++        return None
++
++    ave_step = np.array(latency_list)
++    avg_time = sum(ave_step) / len(ave_step)
++    ave_step.sort()
++
++    if len(ave_step) > 0:
++        p90 = np.percentile(ave_step, 90, method="lower")
++        p95 = np.percentile(ave_step, 95, method="lower")
++        p99 = np.percentile(ave_step, 99, method="lower")
++        p999 = np.percentile(ave_step, 99.9, method="lower")
++    QPS = int(batch_size*1000.0/avg_time)     # batch_size * world_size * 10 / avg_time
++    e2e_result = {
++        "Batch_size": batch_size,
++        "model_name": model_name,
++        "QPS": QPS,
++        "AVG Latency": avg_time,
++        "P999 Latency": p999,
++        "P99 Latency": p99,
++        "P95 Latency": p95,
++        "P90 Latency": p90,
++    }
++
++    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
++    print(f"The final performance result: {output_str}")
++
++    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
++        f.write(output_str + "\n")
++    return avg_time
++
++def gather_latency_data(local_data, world_size, device):
++    """
++    收集各 rank 的 latency 数据，返回 list[list[float]]
++    """
++    if world_size <= 1:
++        return [local_data]
++    local_tensor = torch.tensor(local_data, dtype=torch.float32, device=device)
++
++    # all_gather 自动同步
++    gathered = [torch.zeros_like(local_tensor) for _ in range(world_size)]
++    dist.all_gather(gathered, local_tensor)
++
++    return [g.cpu().tolist() for g in gathered]
++
++def flattn_last_n(maxtrix, n):
++    if n <= 0:
++        return []
++    return [item for sub in maxtrix for item in sub[-n:]]
++
+ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> None:
+@@ -1196,4 +1429,45 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+ 
++    # profiling
++    ENABLE_PROFILING = True if os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE" else False
++    if ENABLE_PROFILING:
++        if NPU_ENABLE:
++            profiler = torch_npu.profiler
++            experimental_config = torch_npu.profiler._ExperimentalConfig(
++                    export_type=[torch_npu.profiler.ExportType.Text],
++                    aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
++                    profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++                    l2_cache=False,
++                    op_attr=False,
++                    data_simplification=False,
++                    record_op_args=False,
++                    gc_detect_threshold=None
++                )
++        else:
++            profiler = torch.profiler
++            experimental_config = None
++        profiler_save_path = "./profiling"
++        prof = profiler.profile(
++            activities=[
++                    profiler.ProfilerActivity.CPU,
++                    profiler.ProfilerActivity.NPU if NPU_ENABLE else profiler.ProfilerActivity.CUDA
++                ],
++                schedule=profiler.schedule(
++                    wait=1, warmup=100, active=10, repeat=1, skip_first=1
++                ),
++                on_trace_ready=profiler.tensorboard_trace_handler(profiler_save_path),
++                record_shapes=True,
++                with_stack=False,
++                profile_memory=False,
++                with_modules=False,
++                with_flops=False,
++                experimental_config=experimental_config,
++        )
++        prof.start()
++
++    total_train_times = []
+     batch_id = 0
+-    for epoch in range(train_conf['num_epochs']):
++    loss_metric_records = []
++    epoch_metric_records = []
++    epochs = int(os.environ.get("MODEL_EPOCH")) if os.environ.get("MODEL_EPOCH") is not None else train_conf['epochs']
++    for epoch in range(epochs):
+         train_data_loader.dataset.set_epoch_num(epoch)
+@@ -1214,13 +1488,21 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+             "device": device,
+-            "save_dir": save_dir
++            "save_dir": save_dir,
++            "profiler": prof if ENABLE_PROFILING else None,
+         }
+-
+-        batch_id, epoch_loss = train_step(**train_step_para)
++        batch_id, epoch_loss, train_times, step_metric_records = train_step(**train_step_para)
++        total_train_times += train_times
++        if rank == 0:
++            loss_metric_records.extend(step_metric_records)
++            epoch_record = {
++                "epoch": int(epoch),
++                "step": int(batch_id),
++                "train_loss": float(epoch_loss.detach().float().cpu().item() if torch.is_tensor(epoch_loss) else epoch_loss),
++                "auc": None,
++                "auc_available": False,
++            }
+ 
+         if rank == 0 and writer:
+-            logging.info("loss at epoch %s is %s", epoch, epoch_loss)
+-            writer.add_scalar("loss/train", epoch_loss, epoch)
+-        
+-        logging.info("saving model state dict")
+-        save_model_state_dict(model=model, save_dir=save_dir, export_conf=export_conf)
++            epoch_loss_value = float(epoch_loss.detach().float().cpu().item() if torch.is_tensor(epoch_loss) else epoch_loss)
++            logging.info("loss at epoch %s is %s", epoch, epoch_loss_value)
++            writer.add_scalar("loss/train", epoch_loss_value, epoch)
+ 
+@@ -1228,3 +1510,3 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+             print(f"start evaluate_step: epoch{epoch}")
+-            evaluate_step(model=model,
++            eval_metrics = evaluate_step(model=model,
+                         exec_cb=eval_exec_cb,
+@@ -1245,6 +1527,15 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+                         writer=writer)
++            if rank == 0 and eval_metrics:
++                epoch_record.update(eval_metrics)
+ 
+-    if dataset_name == "ag-rank":
+-        # 保存统计结果
+-        data_target.save_data(rank)
++        if rank == 0 and train_conf.get("record_training_metrics", True):
++            epoch_metric_records.append(epoch_record)
++            _write_metrics_artifacts(save_dir, loss_metric_records, epoch_metric_records)
++
++    if ENABLE_PROFILING:
++        prof.stop()
++
++    if int(os.environ.get("SAVE_MODEL_FLAG", 0)) == 1:
++        logging.info("saving model state dict")
++        save_model_state_dict(model=model, save_dir=save_dir, export_conf=export_conf)
+ 
+@@ -1253,2 +1544,48 @@ def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> Non
+ 
++    total_train_times_allrank = None
++    if world_size > 1:
++        dist.barrier(device_ids=[rank])  # 同步所有rank
++        total_train_times_allrank = gather_latency_data(total_train_times, world_size, device)
++
++    if rank == 0:
++        model_name = "TokenMixerLarge"
++        avg_time = None
++        if int(os.environ.get("SAMPLE_STATISTICS_NUM", 0)) > 0:
++            sample_statistics_num = int(os.environ.get("SAMPLE_STATISTICS_NUM"))
++            if total_train_times_allrank is not None:
++                total_train_times = flattn_last_n(total_train_times_allrank, sample_statistics_num)
++            avg_time = latency_summary_rank0(total_train_times[sample_statistics_num:], train_conf.get("local_batch_size"), model_name,
++                    "NPU" if NPU_ENABLE else "GPU", "eager")
++
++        final_results = {
++            'dataset_name': "amazon-book",
++            'batch_size': train_conf.get("local_batch_size"),
++            'epoch': epochs,
++            'step': batch_id,
++            'final_loss': epoch_loss.cpu().tolist(),
++            'auc': epoch_metric_records[-1].get("auc") if epoch_metric_records else None,
++            'auc_available': epoch_metric_records[-1].get("auc_available", False) if epoch_metric_records else False,
++            "ms/step": float(avg_time) if avg_time is not None else "no valid SAMPLE_STATISTICS_NUM",
++            "train_qps": (
++                float(train_conf.get("local_batch_size")) * float(world_size) * 1000.0 / float(avg_time)
++                if avg_time is not None and float(avg_time) > 0
++                else None
++            ),
++        }
++        device_name = "NPU" if NPU_ENABLE else "GPU"
++        inductor_flag = "EAGER"
++        model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++        output_str = model_detail_info + "_" + str(final_results)
++        file_path = f"../save_results_{device_name}/precision_result.txt"
++        dir_path = os.path.dirname(file_path)
++        if dir_path:
++            os.makedirs(dir_path, exist_ok=True)
++        print(f"The Final Result: {output_str}")
++        with open(file_path, "a", encoding="utf-8") as f:
++            f.write(output_str + "\n")
++
++        del final_results["ms/step"]
++        os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
++        torch.save(final_results, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_ep{epochs}.pt")
++
+ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already_init=False) -> None:
+diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
+index befbf753..93215c3f 100644
+--- a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
++++ b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
+@@ -24,3 +24,3 @@ torch._dynamo.disallow_in_graph(F.one_hot)
+ 
+-@ModelRegistry.register(req_subs={"RankMixer"})
++@ModelRegistry.register(req_subs={"TokenMixerLarge"})
+ class DLRModule(BaseModel):
+@@ -47,2 +47,3 @@ class DLRModule(BaseModel):
+         init_dlrm_sparsity = 0.0
++        init_aux_loss = 0.0
+         for dlrm_module in self.dlrm_modules:
+@@ -51,2 +52,5 @@ class DLRModule(BaseModel):
+             dlrm_output, dlrm_loss, dlrm_sparsity = dlrm_result["deep_outputs"], dlrm_result["deep_loss"], dlrm_result["deep_sparsity"]
++            dlrm_aux_loss = dlrm_result.get("aux_loss", None)
++            if dlrm_aux_loss is None:
++                dlrm_aux_loss = torch.zeros_like(dlrm_loss) if torch.is_tensor(dlrm_loss) else 0.0
+             if init_dlrm_result is None:
+@@ -56,2 +60,3 @@ class DLRModule(BaseModel):
+                 init_dlrm_sparsity = dlrm_sparsity
++                init_aux_loss = dlrm_aux_loss
+             else:
+@@ -61,6 +66,7 @@ class DLRModule(BaseModel):
+                 init_dlrm_sparsity = init_dlrm_sparsity + dlrm_sparsity
+-        return {"deep_outputs": init_dlrm_output, "deep_loss": init_dlrm_loss, "deep_sparsity": init_dlrm_sparsity, "aux_loss": None}
++                init_aux_loss = init_aux_loss + dlrm_aux_loss
++        return {"deep_outputs": init_dlrm_output, "deep_loss": init_dlrm_loss, "deep_sparsity": init_dlrm_sparsity, "aux_loss": init_aux_loss}
+ 
+ @ModelRegistry.register()
+-class RankMixingInput(BaseModel):
++class LegacyTokenMixingInput(BaseModel):
+     def __init__(self, model_cfg: Dict, common_hp: Dict, model_cls_dict: Dict):
+@@ -94,3 +100,3 @@ class TokenMixing(BaseModel):
+         """
+-        RankMixer中的TokenMixing模块,
++        Legacy TokenMixer token mixing module.
+         对应原论文公式2,3,4,5
+@@ -658,3 +664,3 @@ class SparseMoE_Gemm(BaseModel):
+ @ModelRegistry.register(req_subs={"TokenMixing", "SparseMoE"})    
+-class RankMixerBlock(BaseModel):
++class LegacyTokenMixerBlock(BaseModel):
+     def __init__(self, model_cfg: Dict, common_hp: Dict, model_cls_dict: Dict):
+@@ -702,6 +708,6 @@ class RankMixerBlock(BaseModel):
+ 
+-@ModelRegistry.register(req_subs={"RankMixingInput", "RankMixerBlock"})
+-class RankMixer(BaseModel):
++@ModelRegistry.register(req_subs={"LegacyTokenMixingInput", "LegacyTokenMixerBlock"})
++class LegacyTokenMixer(BaseModel):
+     """
+-    根据论文复现RankMixer模型。
++    Legacy TokenMixer 1.x compatibility module.
+     """
+@@ -737,3 +743,3 @@ class RankMixer(BaseModel):
+         
+-        self.model_cfg[Const.SUB_MODELS]["RankMixingInput"][Const.HP] = {"dim_per_token": dim_per_token,
++        self.model_cfg[Const.SUB_MODELS]["LegacyTokenMixingInput"][Const.HP] = {"dim_per_token": dim_per_token,
+                                                                         "x_dim": all_dim,
+@@ -741,5 +747,5 @@ class RankMixer(BaseModel):
+                                                                         "k_multiplier": k_multiplier}
+-        self.input_model = self.init_sub_model("RankMixingInput")
++        self.input_model = self.init_sub_model("LegacyTokenMixingInput")
+         
+-        self.model_cfg[Const.SUB_MODELS]["RankMixerBlock"][Const.HP] = {"dim_per_token": dim_per_token,
++        self.model_cfg[Const.SUB_MODELS]["LegacyTokenMixerBlock"][Const.HP] = {"dim_per_token": dim_per_token,
+                                                                         "all_dim": all_dim,
+@@ -757,3 +763,3 @@ class RankMixer(BaseModel):
+         self.rm_blocks = nn.Sequential(*[
+-                    self.init_sub_model("RankMixerBlock") 
++                    self.init_sub_model("LegacyTokenMixerBlock") 
+                     for _ in range(n_layers)
+@@ -817,2 +823,2 @@ class NoDLRM(BaseModel):
+         device = user_feature_embs.device
+-        return {"deep_outputs": torch.zeros((B, N, D), device=device), "deep_loss": 0.0, "deep_sparsity": 0.0}
+\ No newline at end of file
++        return {"deep_outputs": torch.zeros((B, N, D), device=device), "deep_loss": 0.0, "deep_sparsity": 0.0}
+diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
+index aab1e849..cecc6797 100644
+--- a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
++++ b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
+@@ -15,3 +15,4 @@ from modeling.generic.sequential_v2.output_postprocessors import OutputPostproce
+ from modeling.generic.sequential_v2.prediction_modules import FeedForwardModule
+-from modeling.generic.sequential_v2.DLRM import DLRModule, RankMixer
++from modeling.generic.sequential_v2.DLRM import DLRModule
++from modeling.generic.sequential_v2.tokenmixer_large import TokenMixerLarge
+ from modeling.generic.sequential_v2.transformers import SequentialModule, TransformerCache, TransformerCacheState
+@@ -235,3 +236,6 @@ class GR_model(BaseModel):
+                                      negative_sampler=self.negative_sampler)
+-            aux_loss = torch.sum(deep_results["aux_loss"])
++            if deep_results["aux_loss"] is None:
++                aux_loss = torch.tensor(0.0, device=loss.device)
++            else:
++                aux_loss = torch.sum(deep_results["aux_loss"])
+             return loss+aux_loss
+@@ -303,2 +307,2 @@ class GRModelEp(GR_model):
+                                                 num_rerank=num_rerank,
+-                                                x_offsets=x_offsets)
+\ No newline at end of file
++                                                x_offsets=x_offsets)
+diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
+index 69b6273d..d3bf8b98 100644
+--- a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
++++ b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
+@@ -98,2 +98,16 @@ class RMSNormNPU(torch.nn.Module):
+ 
++    def add_and_norm(self, residual: torch.Tensor, x: torch.Tensor):
++        if NPU_ENABLE and x.device.type == "npu":
++            output, _, residual_sum = torch_npu.npu_add_rms_norm(
++                residual,
++                x,
++                self.weight,
++                self.eps,
++            )
++            return residual_sum, output
++
++        residual_sum = residual + x
++        output = self.cuda_rms_norm(residual_sum, self.weight, epsilon=self.eps)[0]
++        return residual_sum, output
++
+     def forward(self, x, residual: Optional[torch.Tensor] = None):
+@@ -103,3 +117,3 @@ class RMSNormNPU(torch.nn.Module):
+             else:
+-                y, _, x = torch_npu.npu_add_rms_norm(residual, x, self.weight, self.eps)
++                _, y = self.add_and_norm(residual, x)
+             return y
+@@ -109,4 +123,3 @@ class RMSNormNPU(torch.nn.Module):
+             else:
+-                # y, _, x = self.gpu_add_rms_norm(residual, x, self.weight, self.eps)
+-                y = self.gpu_add_rms_norm(residual, x, self.weight, self.eps)
++                _, y = self.add_and_norm(residual, x)
+             return y
+@@ -833,2 +846,2 @@ class TransformerInner(torch.nn.Module):
+ 
+-        return x, cache_states
+\ No newline at end of file
++        return x, cache_states
+diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
+index b530d773..a34f6ebb 100644
