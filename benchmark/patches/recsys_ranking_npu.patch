@@ -943,7 +943,7 @@ diff --git a/examples/hstu/modules/hstu_attention.py b/examples/hstu/modules/hst
 index d8af93b..64bbbc4 100644
 --- a/examples/hstu/modules/hstu_attention.py
 +++ b/examples/hstu/modules/hstu_attention.py
-@@ -13,12 +13,15 @@
+@@ -13,12 +13,16 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  import abc
@@ -951,6 +951,7 @@ index d8af93b..64bbbc4 100644
 +from typing import Optional, Union, List
  
  import torch
++import ops_rec
 -from commons.utils.nvtx_op import output_nvtx_hook
 +# from commons.utils.nvtx_op import output_nvtx_hook
  from configs import KernelBackend
@@ -961,7 +962,7 @@ index d8af93b..64bbbc4 100644
  
  class HSTUAttention(torch.nn.Module):
      """
-@@ -133,6 +136,75 @@ class TorchHSTUAttention(HSTUAttention):
+@@ -133,6 +136,136 @@ class TorchHSTUAttention(HSTUAttention):
          ).view(-1, self.num_heads * self.linear_dim)
  
  
@@ -1018,20 +1019,81 @@ index d8af93b..64bbbc4 100644
 +            torch.Tensor: Output tensor of shape (T, d).
 +        """
 +
-+        return torch.ops.mxrec.hstu_jagged(tq.view(-1, self.num_heads, self.attention_dim),
-+                                          tk.view(-1, self.num_heads, self.attention_dim),
-+                                          tv.view(-1, self.num_heads, self.attention_dim),
-+                                          None,
-+                                          None,
-+                                          0,  # 0默认为下三角，跟TorchHSTUAttention的mask实现不一致
-+                                          max_seqlen,
-+                                          1.0 / max_seqlen,
-+                                          offsets,
-+                                          num_contextuals,
-+                                          num_candidates,
-+                                          target_group_size,
-+                                          1.0 / (self.attention_dim**0.5),
-+                                          ).view(-1, self.num_heads * self.attention_dim)
++        return NpuHSTUFunction.apply(
++            tq, tk, tv, offsets, max_seqlen,
++            target_group_size, num_candidates, num_contextuals,
++            self.num_heads, self.attention_dim,
++        ).view(-1, self.num_heads * self.attention_dim)
++
++
++class NpuHSTUFunction(torch.autograd.Function):
++    """HSTU 融合算子训练封装：前向 hstu_v1(hstu_jagged) / 反向 hstu_v2(hstu_backward_v2)。"""
++
++    @staticmethod
++    def forward(ctx, tq, tk, tv, offsets, max_seqlen, target_group_size,
++                num_candidates, num_contextuals, num_heads, attention_dim):
++        ctx.save_for_backward(tq, tk, tv, offsets)
++        ctx.max_seqlen = int(max_seqlen)
++        ctx.target_group_size = int(target_group_size)
++        ctx.num_heads = num_heads
++        ctx.attention_dim = attention_dim
++        ctx.num_candidates = num_candidates
++        ctx.num_contextuals = num_contextuals
++
++        return ops_rec.ascendc.attention.hstu_jagged(
++            tq.view(-1, num_heads, attention_dim),
++            tk.view(-1, num_heads, attention_dim),
++            tv.view(-1, num_heads, attention_dim),
++            mask=None,
++            attn_bias=None,
++            mask_type=0,  # 0 默认为下三角，与 TorchHSTUAttention 的 mask 实现不一致
++            max_seq_len=max_seqlen,
++            silu_scale=1.0 / max_seqlen,
++            seq_offset=offsets,
++            num_context=num_contextuals,
++            num_target=num_candidates,
++            target_group_size=target_group_size,
++        )
++
++    @staticmethod
++    def backward(ctx, grad_output):
++        tq, tk, tv, offsets = ctx.saved_tensors
++        num_candidates = ctx.num_candidates
++        num_contextuals = ctx.num_contextuals
++        grad = grad_output.view(-1, ctx.num_heads, ctx.attention_dim)
++        q = tq.view(-1, ctx.num_heads, ctx.attention_dim)
++        k = tk.view(-1, ctx.num_heads, ctx.attention_dim)
++        v = tv.view(-1, ctx.num_heads, ctx.attention_dim)
++        dq, dk, dv, _rab_grad = ops_rec.ascendc.attention.hstu_backward_v2(
++            grad,
++            q,
++            k,
++            v,
++            ctx.max_seqlen,
++            ctx.max_seqlen,  # 前向 equal 语义：max_seqlen_q == max_seqlen_k
++            offsets,
++            offsets,  # seq_offset_q == seq_offset_k
++            None,  # rab
++            num_contextuals,
++            num_candidates,
++            0.0,  # scale：0.0 表示按 1/max_seqlen_q 计算，与前向 silu_scale 一致
++            ctx.target_group_size,
++            1.0,  # alpha：前向未传 alpha，等价于 1.0
++            -1,   # window_size_left：向左无限延伸
++            0,    # window_size_right：0 表示因果掩码，对应前向 mask_type=0
++        )
++        return (
++            dq.view_as(tq),
++            dk.view_as(tk),
++            dv.view_as(tv),
++            None,  # offsets
++            None,  # max_seqlen
++            None,  # target_group_size
++            None,  # num_candidates
++            None,  # num_contextuals
++            None,  # num_heads
++            None,  # attention_dim
++        )
 +
 +
  class TritonHSTUAttention(HSTUAttention):
@@ -2695,7 +2757,7 @@ index b574514..f6d9ad9 100644
  
  if __name__ == "__main__":
 diff --git a/examples/hstu/pretrain_gr_ranking.py b/examples/hstu/pretrain_gr_ranking.py
-index 446ce12..2626c37 100644
+index 446ce12..d5d1ca5 100644
 --- a/examples/hstu/pretrain_gr_ranking.py
 +++ b/examples/hstu/pretrain_gr_ranking.py
 @@ -13,7 +13,8 @@
@@ -2708,13 +2770,16 @@ index 446ce12..2626c37 100644
  # Ignore all FutureWarnings
  warnings.filterwarnings("ignore", category=FutureWarning)
  warnings.filterwarnings("ignore", category=SyntaxWarning)
-@@ -25,9 +26,13 @@ from typing import List, Tuple, cast
+@@ -25,9 +26,16 @@ from typing import List, Tuple, cast
  import commons.utils.initialize as init
  import gin
  import torch  # pylint: disable-unused-import
 +import torch_npu
-+# 导入 NPU 自定义算子库
-+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
++
++import ops_rec
++import rec_cust_ops
++import fbgemm_ascend
++
 +import mindspeed.megatron_adaptor
  from commons.utils.logger import print_rank_0
  from configs import RankingConfig
@@ -2723,7 +2788,7 @@ index 446ce12..2626c37 100644
  from megatron.core import parallel_state
  from model import get_ranking_model
  from modules.metrics import get_multi_event_metric_module
-@@ -38,6 +43,8 @@ from pipeline.train_pipeline import (
+@@ -38,6 +46,8 @@ from pipeline.train_pipeline import (
  )
  from training import (
      NetworkArgs,
@@ -2732,7 +2797,7 @@ index 446ce12..2626c37 100644
      OptimizerArgs,
      TensorModelParallelArgs,
      TrainerArgs,
-@@ -51,6 +58,10 @@ from training import (
+@@ -51,6 +61,10 @@ from training import (
      maybe_load_ckpts,
      train_with_pipeline,
  )
@@ -2743,7 +2808,7 @@ index 446ce12..2626c37 100644
  
  
  @gin.configurable
-@@ -73,20 +84,7 @@ class RankingArgs:
+@@ -73,20 +87,7 @@ class RankingArgs:
              ], "prediction_head_act_type should be in ['relu', 'gelu']"
  
  
@@ -2765,7 +2830,7 @@ index 446ce12..2626c37 100644
      ranking_args = RankingArgs()
  
      return RankingConfig(
-@@ -100,21 +98,57 @@ def create_ranking_config() -> RankingConfig:
+@@ -100,21 +101,57 @@ def create_ranking_config() -> RankingConfig:
          eval_metrics=ranking_args.eval_metrics,
      )
  
@@ -2825,7 +2890,7 @@ index 446ce12..2626c37 100644
      dynamic_options_dict = create_dynamic_optitons_dict(
          embedding_args,
          network_args.hidden_size,
-@@ -125,14 +159,29 @@ def main():
+@@ -125,14 +162,29 @@ def main():
      )
  
      optimizer_param = create_optimizer_params(optimizer_args)
@@ -2863,7 +2928,7 @@ index 446ce12..2626c37 100644
  
      stateful_metric_module = get_multi_event_metric_module(
          num_classes=task_config.prediction_head_arch[-1],
-@@ -146,7 +195,7 @@ def main():
+@@ -146,7 +198,7 @@ def main():
      train_dataloader, test_dataloader = get_data_loader(
          "ranking", dataset_args, trainer_args, task_config.num_tasks
      )
@@ -2872,7 +2937,7 @@ index 446ce12..2626c37 100644
      print_rank_0(
          f"model initialization done, start training. Free cuda memory: {free_memory / (1024 ** 2):.2f} MB"
      )
-@@ -161,13 +210,13 @@ def main():
+@@ -161,13 +213,13 @@ def main():
          pipeline = pipeline_factory(
              model_train,
              dense_optimizer,
