@@ -57,7 +57,8 @@ def set_seed():
 
 def main(params, config: Config):
     mg_session_config = tf.compat.v1.ConfigProto(allow_soft_placement=True, log_device_placement=False)
-    # Atlas A2/A3和Ascend950PR/DT间算子精度优化策略不同，本模型调参基于Atlas A2/A3，若使用Ascend950PR/DT推荐开启原精度
+    # Atlas A2系列产品、Atlas A3系列产品和Ascend 950PR&950DT系列产品间算子精度优化策略不同，
+    # 本模型调参基于Atlas A2系列产品、Atlas A3系列产品，若使用Ascend 950PR&950DT系列产品推荐开启原精度
     if KEEP_ORIGIN_DTYPE:
         run_precision_mode = 'must_keep_origin_dtype'
         run_modify_mixlist = None
