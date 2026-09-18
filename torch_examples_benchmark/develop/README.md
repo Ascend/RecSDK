@@ -13,7 +13,7 @@
 
 ## 版本配套说明
 
-本模型迁移依赖特定版本的CANN、PyTorch、驱动和固件，源码编译需使用指定版本的Python、GCC、CMake等工具，仅支持昇腾平台（Atlas 800T A2），基础软件版本以Rec SDK Torch提供的基础镜像环境为准，主要配套软件版本如下：
+本模型迁移依赖特定版本的CANN、PyTorch、驱动和固件，源码编译需使用指定版本的Python、GCC、CMake等工具，仅支持昇腾平台（Atlas A2训练系列产品），基础软件版本以Rec SDK Torch提供的基础镜像环境为准，主要配套软件版本如下：
 
 | 软件名称  | PyTorch | TorchNPU | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
 |-------|---------|-----------|-----------|------------|-----------------|-------------------|
