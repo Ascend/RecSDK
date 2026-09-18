@@ -20,7 +20,7 @@
 
 1. 将 `gen_position_ids_reverse_v2/c310`（或工程内等价路径）上传到目标环境，在包含 `run.sh` 的目录下编译与部署。
 
-默认编译安装 Atlas A5 训练系列产品（`AI_CORE_PROFILE=c310` 对应 ascend950）：
+默认编译安装Ascend 950PR&950DT系列产品（`AI_CORE_PROFILE=c310` 对应 ascend950）：
 
 ```shell
 bash run.sh
@@ -53,7 +53,7 @@ c) **属性**：`batchSize`（必填，**int32/int64**），须与 `seqlen` 第 
 d) **输出**：`position_ids`，int32，一维，逻辑长度等于 `seqlen_offsets[batchSize]`（与对 `seqlen` 求和一致，数据合法时等价）。  
 e) **约束简述**：
 
-* 机型：Atlas A5（ascend950）等与本工程 `op_host` 中 `AddConfig` 一致的产品；
+* 机型：Ascend 950PR&950DT系列产品等与本工程 `op_host` 中 `AddConfig` 一致的产品；
 * CANN：建议 8.3.RC1 及之后版本（CANN 9.x 上 `InferShape` 中 `gert::Tensor::GetData` 需使用模板形式 `GetData<int32_t>()`）；
 * `interleaved_action` / `with_ctx` 仅在 PyTorch 适配层侧拦截，本算子 IR 不包含这两项。
 
