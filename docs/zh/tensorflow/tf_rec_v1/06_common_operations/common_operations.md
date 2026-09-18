@@ -13,7 +13,7 @@
     ```
 
 2. 下载[Rec SDK](https://gitcode.com/Ascend/RecSDK/tree/develop/cust_op)。
-3. 解压压缩包，进入“cust\_op/ascendc\_op/ai\_core\_op/cust\_op\_by\_addr“路径。Atlas A2系列产品、Atlas A3系列产品进入v220目录、Ascend 950PR&950DT系列产品进入c310目录，参考以下命令编译并安装片上内存侧动态扩容算子包。
+3. 解压压缩包，进入“cust\_op/ascendc\_op/ai\_core\_op/cust\_op\_by\_addr“路径。Atlas A2训练系列产品、Atlas A3训练系列产品、Atlas 推理系列产品进入v220目录；Ascend 950PR&950DT系列产品进入c310目录，参考以下命令编译并安装片上内存侧动态扩容算子包。
 
     ```bash
     bash run.sh

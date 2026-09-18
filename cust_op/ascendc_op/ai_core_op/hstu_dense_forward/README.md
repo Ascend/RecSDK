@@ -6,9 +6,10 @@
 
 | 硬件型号              | 是否支持                  |
 | -------------------- | ------------------------ |
-| Atlas A2系列产品  | 是  |
-| Atlas A3系列产品  | 是  |
+| Atlas A2训练系列产品  | 是  |
+| Atlas A3训练系列产品  | 是  |
 | Ascend 950PR&950DT系列产品 | 是  |
+| Atlas 推理系列产品  | 是  |
 
 # hstu_dense_forward算子文件结构
 
@@ -23,7 +24,7 @@
       |-- op_kernel  # hstu_dense_forward算子Kernel侧实现
       |-- pic        # 算子实现原理图
       |-- hstu_dense_forward.json    # 算子原型配置
-      |-- run.sh     # hstu_dense_forward算子Atlas A2系列产品、Atlas A3系列产品安装脚本
+      |-- run.sh     # hstu_dense_forward算子Atlas A2训练系列产品、Atlas A3训练系列产品安装脚本
    |-- README.md  # hstu_dense_forward算子说明文档
 ```
 

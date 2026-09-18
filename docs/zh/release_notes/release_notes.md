@@ -2,7 +2,7 @@
 
 Rec SDK 26.1.0版本核心要点如下：
 
-- 要点1：适配 Ascend 950PR&950DT系列产品；
+- 要点1：适配Ascend 950PR&950DT系列产品；
 - 要点2：新增动态表淘汰策略（TIMESTAMP/STEP/CUSTOMIZED/LFU）与 HBM+DDR 缓存模式；
 - 要点3：算子补齐，如 split_2d_jagged 等；
 - 要点4：兼容 CANN 9.1.0、Ascend HDK 26.1.0、TorchNPU 26.1.0。

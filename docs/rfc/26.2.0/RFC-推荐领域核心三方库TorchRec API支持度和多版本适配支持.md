@@ -278,7 +278,7 @@ output = ebc(kjt)
 
 **参考资料链接：**
 
-1. TorchRec 官方文档：[https://pytorch.org/torchrec/](https://pytorch.org/torchrec/)
+1. TorchRec 官方文档：[https://pytorch.org/torchrec/](https://meta-pytorch.org/torchrec/)
 2. RecSDK 开源仓库：[https://gitcode.com/Ascend/RecSDK](https://gitcode.com/Ascend/RecSDK)
 3. Issue #1112：[https://gitcode.com/Ascend/RecSDK/issues/1112](https://gitcode.com/Ascend/RecSDK/issues/1112)
 
