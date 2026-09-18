@@ -4,7 +4,6 @@ cd recsys-examples && git checkout 0626593
 #打补丁
 cp ../../GR_Base/NPU_GR.patch ./
 dos2unix  NPU_GR.patch  #   转为linux格式，打patch报错执行这个
-sed -i 's/[ \t]*$//' NPU_GR.patch
 git apply NPU_GR.patch
 echo "基础补丁加载成功"
 cp ../../GR_SparseMOE/NPU_GR_SparseMOE.patch ./
