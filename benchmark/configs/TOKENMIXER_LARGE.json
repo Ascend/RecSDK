@@ -1,0 +1,24 @@
+{
+    "name": "TOKENMIXER_LARGE",
+    "url": "https://gitcode.com/Ascend/RecSDK.git",
+    "model_name": "tokenmixer-large",
+    "commit_id": "97a61056fca443c3246f1838404cfded5122151b",
+    "patch_path": "patches/tokenmixer-large.patch",
+    "mode": "train",
+    "epoch": 10,
+    "profiling_flag": true,
+    "aclgraph_flag": true,
+    "enable_compile": true,
+    "enable_graph": true,
+    "data_type": "float32",
+    "run_cmd": [
+        "bash",
+        "-c",
+        "cd ./rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/ && bash run.sh --config_file=../sample_configs/train_amazon_books_4B.ini"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "bash -c 'set -e; d=\"./rec_model_zoo_pytorch/tokenmixer-large/amzn_books.ori\"; src=\"../../../datasets\"; if [ -L \"$d\" ]; then rm -f \"$d\"; elif [ -e \"$d\" ] && [ ! -d \"$d\" ]; then rm -f \"$d\"; fi; mkdir -p \"$d\"; if ! compgen -G \"$d/*.csv\" > /dev/null; then if [ ! -d \"$src\" ]; then echo \"ERROR: dataset source missing: $src\" >&2; exit 1; fi; cp -r \"$src\"/. \"$d\"; fi; if ! compgen -G \"$d/*.csv\" > /dev/null; then echo \"ERROR: no CSV files under $d\" >&2; exit 1; fi'"
+    ]
+}
