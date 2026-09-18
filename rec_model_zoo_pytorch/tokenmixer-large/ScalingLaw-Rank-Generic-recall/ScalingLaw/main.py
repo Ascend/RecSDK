@@ -9,18 +9,15 @@ import time
 from math import sqrt
 from statistics import mean
 from typing import Any, Callable, Dict, Tuple, Iterable, Union
-
 import numpy as np
 import pandas as pd
 import torch
-
 import torch.distributed as dist
 from absl import app, flags
 from sklearn.metrics import roc_auc_score
 from torch import optim
 from modeling.model_registry import ModelRegistry
 from modeling.model_initializer import ModelInitializer
-
 from const_global import data_target
 from data.data_loader import create_data_loader
 from data.eval import process_rank_scores, gather_all_list, avg_eval, MetricsCalculator
@@ -40,21 +37,16 @@ import datetime
 import collections
 from utils.common_utils import get_unique_path, to_clean_cpu_tensor
 logger = logging.getLogger(__name__)
-
 NPU_ENABLE = True
 if os.environ.get("NPU_FLAG", "True") == "False":
     NPU_ENABLE = False
     print("model run on GPU!!!")
-
 if NPU_ENABLE:
     import torch_npu
     from torch_npu.profiler import profile
-
-
 # 初始化传入参数
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-
 flags.DEFINE_string("config_file", None, "Path to the config file.")
 flags.DEFINE_integer("master_port", 12355, "Master port.")
 flags.DEFINE_string("data_dir", None, "Path to data.")
@@ -67,15 +59,12 @@ flags.DEFINE_boolean("is_train", True, "If the model is training or testing.")
 flags.DEFINE_boolean("save_user_emb", True, "If the model is used for saving user emb")
 flags.DEFINE_boolean("get_infer_result", False, "If save the input and output data for precision alignment.")
 flags.DEFINE_integer("eval_batch_size",None,"Override eval_batch_size in config file")
-
 FLAGS = flags.FLAGS
-
 
 def init_ddp_info_params(already_init=False):
     """
     初始化加速器参数
     """
-
     addr = os.getenv("MASTER_ADDR")
     port = os.getenv("MASTER_PORT")
     rank_id = int(os.environ["RANK"])
@@ -97,7 +86,6 @@ def init_ddp_info_params(already_init=False):
     else:
         return f"cuda:{local_rank}", rank_id, local_rank, world_size, node_num
 
-
 def init_random_seed(config):
     """
     设置全局随机数以使训练结果更确定
@@ -109,7 +97,6 @@ def init_random_seed(config):
     if NPU_ENABLE:
         torch_npu.npu.manual_seed(random_seed)
         torch_npu.npu.manual_seed_all(random_seed)
-
 
 def init_torch_config(local_rank, train_conf):
     """
@@ -135,7 +122,6 @@ def get_data_loaders(dataset, data_dir, rank, world_size, train_config, model_co
     )
     return dataset, eval_data_loader, train_data_loader
 
-
 def get_optimizer(train_conf, model, learning_rate):
     """
     获取优化器和损失函数
@@ -152,17 +138,14 @@ def get_optimizer(train_conf, model, learning_rate):
         raise ValueError("Unknown optimizer_type %s" % optimizer_type)
     return opt_dict[optimizer_type.strip().lower()]
 
-
 def get_optimizer_callback(train_conf) -> Callable[
     [Union[Iterable[torch.Tensor], Iterable[Dict[str, Any]]]], optim.Optimizer]:
     optimizer_type = train_conf["optimizer_type"].strip().lower()
     if optimizer_type not in ("adamw", "adam", "sgd"):
         raise ValueError("Unknown optimizer_type %s" % optimizer_type)
-
     beta = tuple(train_conf["beta"])
     learning_rate = train_conf["learning_rate"]
     weight_decay = train_conf["weight_decay"]
-
     if optimizer_type == "adamw":
         return lambda params: torch.optim.AdamW(params, lr=learning_rate, betas=beta, weight_decay=weight_decay)
     elif optimizer_type == "adam":
@@ -192,7 +175,6 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
     step_metric_records = []
     train_times = []
     last_loss = None
-
     while True:
         if profiler:
             profiler.step()
@@ -203,11 +185,9 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
         except StopIteration:
             logging.info("finished")
             break
-
         if is_output_loss_csv_file:
             loss_list.append(loss.detach().cpu().item())
             step_list.append(batch_id)
-
         if (batch_id % batch_group) == 0:
             train_cost = time_wrap_xpu() - last_training_time
             gt = 1000.0 * train_cost / batch_group
@@ -238,7 +218,6 @@ def train_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFea
 
     if len(train_times) > 1:
         train_times.pop(0)
-
     if train_costs:
         logging.info(f"rank {rank} epoch {epoch}; mean cost per step: {mean(train_costs) / batch_group:.2f}s")
     else:
@@ -541,13 +520,10 @@ def save_model(model,
         export_pctr_gt_ctr = np.mean(y_score_eval_all)
         export_auc = roc_auc_score(y_true_eval_all, y_score_eval_all)
         logging.info("export auc is %s", export_auc)
-
     with open("%s/%s/pth_input" % (save_dir, export_conf["save_dir_name"]), 'wb') as fp:
         pickle.dump(input_all, fp, protocol=pickle.HIGHEST_PROTOCOL)
-
     with open("%s/%s/pth_output" % (save_dir, export_conf["save_dir_name"]), 'wb') as fp:
         pickle.dump(output_all, fp, protocol=pickle.HIGHEST_PROTOCOL)
-
     uid_csv = input_all["uid"].tolist()
     need_export_csv = export_conf.get("need_export_csv", False)
     if need_export_csv:
@@ -555,14 +531,12 @@ def save_model(model,
         with open("%s/%s/result.csv" % (save_dir, export_conf["save_dir_name"]), 'wb') as fp:
             export_csv.to_csv(fp, index=False)
 
-
 def save_feature_map(export_conf, save_dir, feature_map_dir_or_path, feature_map=None):
 
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
     if not os.path.exists("%s/%s.config" % (save_dir, export_conf["save_dir_name"])):
         os.mkdir("%s/%s.config" % (save_dir, export_conf["save_dir_name"]))
-    
     if feature_map is not None:
         feature_dict = feature_map
     else:
@@ -599,9 +573,7 @@ def save_profiler_to_execl(prof, folder_name):
             'CUDA Memory Self (B)': event.self_device_memory_usage,  # <-- 修正
             'Number of Calls': event.count,
         })
-
     df = pd.DataFrame(profiler_data)
-
     # 5. (可选) 对数据进行排序，方便分析
     # 按 CUDA 总时间降序排列
     df_sorted = df.sort_values(by='CUDA Time Total (us)', ascending=False)
@@ -610,7 +582,6 @@ def save_profiler_to_execl(prof, folder_name):
     time_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     output_excel_path = os.path.join(folder_name, f'{time_str}_profiler_results.xlsx')
     df_sorted.to_excel(output_excel_path, index=False)
-
 
 def save_e2e_to_execl(e2e_data, folder_name):
     time_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -646,7 +617,6 @@ def patch_graph(model):
                     model.static_model_inputs[k].copy_(model_inputs[k])
         model.graph.replay()
         return model.static_outputs
-    
     model.encode_static = encode_graph
 
 def get_hook(name, captured_data, module):
@@ -680,14 +650,12 @@ def save_torch_data(input, output, layer_data=None, filename="infer_result",
                 "output": to_clean_cpu_tensor(output),
             }
         }
-
         logging.info(f"\n--- saving data... ---")
         os.makedirs(layer_result_dir, exist_ok=True)
         result_path = os.path.join(layer_result_dir, filename)
         result_path = get_unique_path(result_path)
         torch.save(total_infer_result, result_path)
         logging.info(f"\n--- infer output data saved to: {result_path} ---")
-
         if layer_data is not None:
             filename_layer = filename + "layer"
             result_path_layer = os.path.join(layer_result_dir, filename_layer)
@@ -746,7 +714,6 @@ def save_item_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
         emb = [','.join([str(d) for d in t]) for t in emb]
         group_keys_all['original_value'].append(original_value)
         group_keys_all['embedding'].append(emb)
-
     save_path = os.path.join(save_dir, "modelfile")
     os.makedirs(save_path, exist_ok=True)
 
@@ -766,12 +733,10 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
     """
     model.eval()
     logging.info(f"Generating user embeddings for rank ... {rank}")
-
     group_keys_all = {
         'uid': [],
         'embeddings' : []
     }
-
     save_iter, part_iter = 0, 0
     last_eval_time = time.perf_counter()
 
@@ -848,3 +813,179 @@ def save_user_embs(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequentia
         del model_input
         save_iter += 1
     write_embs(rank, part_iter//10, group_keys_all, save_dir)
+
+
+def latency_summary_rank0(latency_list, batch_size, model_name, device_name, inductor_flag):
+    if latency_list is None or len(latency_list) == 0:
+        print("No latency data collected, please check sample_statistics_num value effectively collects latency data.")
+        return None
+
+    ave_step = np.array(latency_list)
+    avg_time = sum(ave_step) / len(ave_step)
+    ave_step.sort()
+
+    if len(ave_step) > 0:
+        p90 = np.percentile(ave_step, 90, method="lower")
+        p95 = np.percentile(ave_step, 95, method="lower")
+        p99 = np.percentile(ave_step, 99, method="lower")
+        p999 = np.percentile(ave_step, 99.9, method="lower")
+    QPS = int(batch_size*1000.0/avg_time)     # batch_size * world_size * 10 / avg_time
+    e2e_result = {
+        "Batch_size": batch_size,
+        "model_name": model_name,
+        "QPS": QPS,
+        "AVG Latency": avg_time,
+        "P999 Latency": p999,
+        "P99 Latency": p99,
+        "P95 Latency": p95,
+        "P90 Latency": p90,
+    }
+
+    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
+    output_str = "performance: " + model_detail_info + "_" + str(e2e_result)
+    print(f"The final performance result: {output_str}")
+
+    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
+    with open(f"../save_results_{device_name}/performance_result.txt", "a", encoding="utf-8") as f:
+        f.write(output_str + "\n")
+    return avg_time
+
+def gather_latency_data(local_data, world_size, device):
+    """
+    收集各 rank 的 latency 数据，返回 list[list[float]]
+    """
+    if world_size <= 1:
+        return [local_data]
+    local_tensor = torch.tensor(local_data, dtype=torch.float32, device=device)
+    # all_gather 自动同步
+    gathered = [torch.zeros_like(local_tensor) for _ in range(world_size)]
+    dist.all_gather(gathered, local_tensor)
+    return [g.cpu().tolist() for g in gathered]
+
+def flattn_last_n(maxtrix, n):
+    if n <= 0:
+        return []
+    return [item for sub in maxtrix for item in sub[-n:]]
+
+def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already_init=False) -> None:
+    """
+    单独评估函数
+    """
+    # 1. 初始化随机数、加速器，配置文件
+    # 1.1 这一部分可以通用
+    common_config = config["common_hp"]
+    init_random_seed(common_config)
+    device, rank, local_rank, world_size, node_num = init_ddp_info_params(already_init)
+
+    train_conf = common_config['train_conf']
+    feature_conf = common_config['feature_conf']
+    if FLAGS.eval_batch_size is not None:
+        train_conf['eval_batch_size'] = FLAGS.eval_batch_size
+    learning_rate = train_conf['learning_rate']
+    lr_scaling = train_conf['lr_scaling']
+    export_conf = common_config['export_conf']
+    data_loader_conf = common_config['data_loader_conf']
+    model_conf = common_config['model_conf']
+    dataset_name = data_loader_conf["dataset_name"]
+    feature_conf["period"] = period
+    train_conf['learning_rate'] = init_learning_rate(learning_rate, lr_scaling, world_size)
+    filter_invalid_ids = train_conf.get('filter_invalid_ids', False)
+    logging.info(f'debug filter invalid ids {filter_invalid_ids}')
+    
+    logging.info("Testing model on rank %s (local rank: %s); device: %s; world_size: %s;",
+                 rank, local_rank, device, world_size)
+
+    init_torch_config(local_rank, train_conf)
+
+    # 1.2 这一部分根据业务数据格式，需要用特定的方式编辑feat_conf和model_conf
+
+    feature_conf, model_conf, feature_map = refine_feat_and_model_conf(dataset=dataset_name,
+                                                                       feature_conf=feature_conf,
+                                                                       model_conf=model_conf,
+                                                                       feature_map_dir_or_path=feature_map_dir_or_path,
+                                                                       model_cfg=config[Const.MODEL_CFG])
+    # 2. 初始化数据集
+    dataset, eval_data_loader, _ = get_data_loaders(dataset=dataset_name,
+                                                                    data_dir=data_dir,
+                                                                    rank=rank,
+                                                                    world_size=world_size,
+                                                                    train_config=train_conf,
+                                                                    model_conf=model_conf,
+                                                                    feature_config=feature_conf,
+                                                                    dataloader_config=data_loader_conf)
+
+    ModelRegistry.register_all_modules(modul_dir=os.path.abspath(os.path.join(os.path.dirname(__file__), "modeling/generic/sequential_v2")))
+    model = ModelInitializer.init(gr_module_cfg=config)
+    if hasattr(model, 'negative_sampler') and hasattr(model.negative_sampler, 'set_all_item_ids') and train_conf.get('filter_invalid_ids', False):
+        model.negative_sampler.set_all_item_ids(dataset.all_item_ids)
+
+    # 6.加载模型(精度对齐)
+    load_pretrain_model = False if int(os.environ.get("LOAD_PRETRAIN_MODEL", "0")) == 0 else True
+    if load_pretrain_model:
+        model_file_name = "model_hstu.pth"
+        model_path = os.path.join(save_dir, export_conf["save_dir_name"], model_file_name)
+        model_state_dict = torch.load(model_path, map_location=device)
+        model.load_state_dict(model_state_dict, False)
+        logging.info(f"Loaded pretrain model from {model_path}")
+
+    total_params = sum(p.numel() for p in model.parameters()) / 1e6
+    logging.info(f"Total number of parameters: {total_params:.2f}M")
+    total_params = sum(p.numel() for x, p in model.named_parameters() if '_emb' not in x) / 1e6
+    logging.info(f"The number of parameters (exl. emb): {total_params:.2f}M")
+
+    if model_conf.get("root_model_type") == "GRModelEp":
+        from modeling.generic.sequential_v2.torchrec_trainer import (assemble_model_executable_callback_ep,
+                                                                  feed_datas_to_exec_callback_ep)
+        model, exec_cb = assemble_model_executable_callback_ep(
+            model,
+            None,
+            world_size,
+            node_num,
+            device,
+            train_conf,
+            feature_conf,
+        )
+        feed_func = feed_datas_to_exec_callback_ep
+    else:
+        model, exec_cb = assemble_model_executable_callback(
+            model,
+            None,
+            local_rank,
+            device,
+            train_conf,
+            feature_conf,
+        )
+        feed_func = feed_datas_to_exec_callback
+
+    _, eval_exec_cb = feed_func(exec_cb, train_conf['is_recall'], None, eval_data_loader)
+
+    if dataset_name == "ag-rank":
+        # 保存统计结果
+        data_target.save_data(rank)
+    # 6. 测试模型
+    try:
+        evaluate_step(
+            model=model,
+            exec_cb=eval_exec_cb,
+            feature_conf=feature_conf,
+            feature_map=feature_map,
+            train_conf=train_conf,
+            save_dir=save_dir,
+            feature_map_dir_or_path=feature_map_dir_or_path,
+            export_conf=export_conf,
+            world_size=world_size,
+            rank=rank,
+            save_after_eval=True,
+            device=device,
+            dataset=dataset_name,
+            all_item_ids=dataset.all_item_ids,
+            filter_invalid_ids=filter_invalid_ids,
+        )
+    except Exception as e:
+        logger.exception("evaluate_step failed: %s", e)
+        raise
+    try:
+        save_model_state_dict(model, save_dir, export_conf)
+    except Exception as e:
+        logger.exception("save_model_state_dict failed: %s", e)
+        raise
