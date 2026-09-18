@@ -55,7 +55,7 @@ sparse_optimizer = create_hash_optimizer(learning_rate=0.001, use_fusion_optim=T
 
 1. 算子分析
 
-   a) 算子的主要功能是实现lazy_adam优化器反向更新时m、v、variable三项数据的计算和更新；  
+   a) 算子的主要功能是实现lazy_adam优化器反向更新时m、v、variable三项数据的计算和更新；
    b) 算子参数说明：
 
       * gradient: lazy_adam优化器计算时使用的梯度；
@@ -70,7 +70,7 @@ sparse_optimizer = create_hash_optimizer(learning_rate=0.001, use_fusion_optim=T
 
    c) 算子约束说明：
 
-      * 支持的型号：Atlas A2系列产品;
+      * 支持的型号：Atlas A2训练系列产品、Atlas A3训练系列产品、Ascend 950PR&950DT系列产品；
       * 支持的CANN版本：8.0.RC1及之后版本；
       * 支持的输入数据类型：float32；
       * embedding表的dim值需要是8的倍数；
@@ -83,7 +83,7 @@ sparse_optimizer = create_hash_optimizer(learning_rate=0.001, use_fusion_optim=T
    a) Tiling实现
 
    namespace
-   optiling域中的LazyAdamTilingFunc函数，主要实现从context中获取外部入参信息（输入参数指针、shape信息），及校验有效性；  
+   optiling域中的LazyAdamTilingFunc函数，主要实现从context中获取外部入参信息（输入参数指针、shape信息），及校验有效性；
    并计算kernel侧需要的数据切分相关参数，包括row、loopCount、batch等（详情见tiling文件注释），设置BlockDim，最后通过TilingData传递属性信息。
 
    b) Shape推导

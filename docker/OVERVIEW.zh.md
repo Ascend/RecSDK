@@ -27,7 +27,7 @@ RecSDK的功能涉及：
 
 - **RecSDK版本**: RecSDK版本号（例如`26.1.0`）
 - **CANN版本**: CANN软件包版本（例如 `cann9.1.0`）
-- **芯片标识**: 目标昇腾芯片平台（`910b` 对应 Atlas 800T A2 / a2，`a3` 对应 Atlas 800T A3，`950` 对应Ascend 950PR&950DT系列产品 / a5）
+- **芯片标识**: 目标昇腾芯片平台（`910b` 对应Atlas A2训练系列产品 / a2，`a3` 对应Atlas A3训练系列产品，`950` 对应Ascend 950PR&950DT系列产品 / a5）
 - **OS版本**: 基础操作系统的代号或版本号（例如 `ubuntu20.04`）
 - **Python版本**: 核心运行的解释器版本（例如 `py3.7`）
 - **框架标识**: 镜像支持的机器学习框架（例如 `tf` 为TensorFlow环境，或者是 `pt` 为PyTorch环境）
@@ -51,7 +51,7 @@ RecSDK的功能涉及：
 |26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.7-tf|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.7-tf)|
 |26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.11-pt|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.11-pt)|
 
-> `{chip}` 替换为目标芯片标识：`910b`（Atlas 800T A2）、`a3`（Atlas 800T A3）、`950`（Ascend 950PR&950DT系列产品）。历史版本所有Tag请参考[Support Tags](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/supported_tags.md)。
+> `{chip}` 替换为目标芯片标识：`910b`（Atlas A2训练系列产品）、`a3`（Atlas A3训练系列产品）、`950`（Ascend 950PR&950DT系列产品）。历史版本所有Tag请参考[Support Tags](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/supported_tags.md)。
 
 ## 快速开始
 

@@ -27,7 +27,7 @@ Image tags follow the convention below for intuitive identification of the softw
 
 - **RecSDK version**: RecSDK version number (e.g., `26.1.0`)
 - **CANN version**: CANN package version (e.g., `cann9.1.0`)
-- **Chip identifier**: Target Atlas chip platform (`910b` for Atlas 800T A2 / a2, `a3` for Atlas 800T A3, `950` for Atlas 950 / a5)
+- **Chip identifier**: Target Atlas chip platform (`910b` for Atlas A2 Train Series / a2, `a3` for Atlas A3 Train Series, `950` for Atlas 950 / a5)
 - **OS version**: Base operating system codename or version number (e.g., `ubuntu20.04`)
 - **Python version**: The core interpreter version (e.g., `py3.7`)
 - **Framework identifier**: The ML framework supported by the image (e.g., `tf` for TensorFlow, or `pt` for PyTorch)
@@ -51,7 +51,7 @@ The project currently supports container scenarios divided by underlying framewo
 |26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.7-tf|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.7-tf)|
 |26.1.0-cann9.1.0-{chip}-openEuler22.03-py3.11-pt|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.11-pt)|
 
-> Replace `{chip}` with the target chip identifier: `910b` (Atlas 800T A2 / a2), `a3` (Atlas 800T A3), `950` (Atlas 950 / a5). For all Tags of historical versions, please refer to [Support Tags](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/supported_tags.md).
+> Replace `{chip}` with the target chip identifier: `910b` (Atlas A2 Train Series / a2), `a3` (Atlas A3 Train Series), `950` (Ascend 950PR&950DT Train Series / a5). For all Tags of historical versions, please refer to [Support Tags](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/supported_tags.md).
 
 ## Quick Start
 
@@ -111,8 +111,8 @@ If you need to target a specific core type when compiling operators or loading f
 
 | CORE_TYPE | Applicable Platform | Tag Chip Identifier |
 |-----------|---------------------|---------------------|
-| `a2` | Atlas 800T A2 Training Server | `910b` |
-| `a3` | Atlas 800T A3 Super Node Server | `a3` |
+| `a2` | Atlas A2 Train Series Training Server | `910b` |
+| `a3` | Atlas A3 Train Series Super Node Server | `a3` |
 | `a5` | Ascend 950PR&950DT Series Products | `950` |
 
 ```bash
