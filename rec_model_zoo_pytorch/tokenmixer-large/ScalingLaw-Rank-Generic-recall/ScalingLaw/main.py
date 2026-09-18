@@ -868,15 +868,9 @@ def flattn_last_n(maxtrix, n):
     return [item for sub in maxtrix for item in sub[-n:]]
 
 def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already_init=False) -> None:
-    """
-    单独评估函数
-    """
-    # 1. 初始化随机数、加速器，配置文件
-    # 1.1 这一部分可以通用
     common_config = config["common_hp"]
     init_random_seed(common_config)
     device, rank, local_rank, world_size, node_num = init_ddp_info_params(already_init)
-
     train_conf = common_config['train_conf']
     feature_conf = common_config['feature_conf']
     if FLAGS.eval_batch_size is not None:
@@ -891,20 +885,14 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
     train_conf['learning_rate'] = init_learning_rate(learning_rate, lr_scaling, world_size)
     filter_invalid_ids = train_conf.get('filter_invalid_ids', False)
     logging.info(f'debug filter invalid ids {filter_invalid_ids}')
-    
     logging.info("Testing model on rank %s (local rank: %s); device: %s; world_size: %s;",
                  rank, local_rank, device, world_size)
-
     init_torch_config(local_rank, train_conf)
-
-    # 1.2 这一部分根据业务数据格式，需要用特定的方式编辑feat_conf和model_conf
-
     feature_conf, model_conf, feature_map = refine_feat_and_model_conf(dataset=dataset_name,
                                                                        feature_conf=feature_conf,
                                                                        model_conf=model_conf,
                                                                        feature_map_dir_or_path=feature_map_dir_or_path,
                                                                        model_cfg=config[Const.MODEL_CFG])
-    # 2. 初始化数据集
     dataset, eval_data_loader, _ = get_data_loaders(dataset=dataset_name,
                                                                     data_dir=data_dir,
                                                                     rank=rank,
@@ -913,13 +901,10 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
                                                                     model_conf=model_conf,
                                                                     feature_config=feature_conf,
                                                                     dataloader_config=data_loader_conf)
-
     ModelRegistry.register_all_modules(modul_dir=os.path.abspath(os.path.join(os.path.dirname(__file__), "modeling/generic/sequential_v2")))
     model = ModelInitializer.init(gr_module_cfg=config)
     if hasattr(model, 'negative_sampler') and hasattr(model.negative_sampler, 'set_all_item_ids') and train_conf.get('filter_invalid_ids', False):
         model.negative_sampler.set_all_item_ids(dataset.all_item_ids)
-
-    # 6.加载模型(精度对齐)
     load_pretrain_model = False if int(os.environ.get("LOAD_PRETRAIN_MODEL", "0")) == 0 else True
     if load_pretrain_model:
         model_file_name = "model_hstu.pth"
@@ -932,7 +917,6 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
     logging.info(f"Total number of parameters: {total_params:.2f}M")
     total_params = sum(p.numel() for x, p in model.named_parameters() if '_emb' not in x) / 1e6
     logging.info(f"The number of parameters (exl. emb): {total_params:.2f}M")
-
     if model_conf.get("root_model_type") == "GRModelEp":
         from modeling.generic.sequential_v2.torchrec_trainer import (assemble_model_executable_callback_ep,
                                                                   feed_datas_to_exec_callback_ep)
@@ -956,13 +940,9 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
             feature_conf,
         )
         feed_func = feed_datas_to_exec_callback
-
     _, eval_exec_cb = feed_func(exec_cb, train_conf['is_recall'], None, eval_data_loader)
-
     if dataset_name == "ag-rank":
-        # 保存统计结果
         data_target.save_data(rank)
-    # 6. 测试模型
     try:
         evaluate_step(
             model=model,
@@ -989,3 +969,807 @@ def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already
     except Exception as e:
         logger.exception("save_model_state_dict failed: %s", e)
         raise
+def save_user_emb_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> None:
+    common_config = config["common_hp"]
+    init_random_seed(common_config)
+    device, rank, local_rank, world_size, node_num = init_ddp_info_params()
+    train_conf = common_config['train_conf']
+    feature_conf = common_config['feature_conf']
+    learning_rate = train_conf['learning_rate']
+    lr_scaling = train_conf['lr_scaling']
+    export_conf = common_config['export_conf']
+    data_loader_conf = common_config['data_loader_conf']
+    model_conf = common_config['model_conf']
+    dataset_name = data_loader_conf["dataset_name"]
+    feature_conf["period"] = period
+    date=feature_conf["period"].split('-')[0]
+    train_conf['learning_rate'] = init_learning_rate(learning_rate, lr_scaling, world_size)
+    logging.info("Testing model on rank %s (local rank: %s); device: %s; world_size: %s;",
+                 rank, local_rank, device, world_size)
+    init_torch_config(local_rank, train_conf)
+    feature_conf, model_conf, feature_map = refine_feat_and_model_conf(dataset=dataset_name,
+                                                                       feature_conf=feature_conf,
+                                                                       model_conf=model_conf,
+                                                                       feature_map_dir_or_path=feature_map_dir_or_path,
+                                                                       model_cfg=config[Const.MODEL_CFG])
+    dataset, eval_data_loader, _ = get_data_loaders(dataset=dataset_name,
+                                                                    data_dir=data_dir,
+                                                                    rank=rank,
+                                                                    world_size=world_size,
+                                                                    train_config=train_conf,
+                                                                    model_conf=model_conf,
+                                                                    feature_config=feature_conf,
+                                                                    dataloader_config=data_loader_conf)
+    ModelRegistry.register_all_modules(modul_dir=os.path.abspath(os.path.join(os.path.dirname(__file__), "modeling/generic/sequential_v2")))
+    model = ModelInitializer.init(gr_module_cfg=config)
+    load_pretrain_model = False if int(os.environ.get("LOAD_PRETRAIN_MODEL", "0")) == 0 else True
+    if load_pretrain_model:
+        model_file_name = "model_hstu.pth"
+        model_path = os.path.join(save_dir, export_conf["save_dir_name"], model_file_name)
+        model_state_dict = torch.load(model_path, map_location=device)
+        model.load_state_dict(model_state_dict, False)
+        logging.info(f"Loaded pretrain model from {model_path}")
+    if model_conf.get("root_model_type") == "GRModelEp":
+        from modeling.generic.sequential_v2.torchrec_trainer import (assemble_model_executable_callback_ep,
+                                                                  feed_datas_to_exec_callback_ep)
+        model, exec_cb = assemble_model_executable_callback_ep(
+            model,
+            None,
+            world_size,
+            node_num,
+            device,
+            train_conf,
+            feature_conf,
+        )
+        feed_func = feed_datas_to_exec_callback_ep
+    else:
+        model, exec_cb = assemble_model_executable_callback(
+            model,
+            None,
+            local_rank,
+            device,
+            train_conf,
+            feature_conf,
+        )
+        feed_func = feed_datas_to_exec_callback
+    _, eval_exec_cb = feed_func(exec_cb, train_conf['is_recall'], None, eval_data_loader)
+    if dataset_name == "ag-rank":
+        data_target.save_data(rank)
+    save_user_embs(model=model,
+        exec_cb=eval_exec_cb,
+        feature_conf=feature_conf,
+        feature_map=feature_map,
+        train_conf=train_conf,
+        save_dir=save_dir,
+        feature_map_dir_or_path=feature_map_dir_or_path,
+        export_conf=export_conf,
+        world_size=world_size,
+        rank=rank,
+        save_after_eval=True,
+        device=device,
+        dataset=dataset_name,
+        all_item_ids = dataset.all_item_ids)
+    save_item_embs(model=model,
+        exec_cb=eval_exec_cb,
+        feature_conf=feature_conf,
+        feature_map=feature_map,
+        feature_name=feature_conf.get("infer_item_keys","item_id"),
+        feature_map_path=feature_map,
+        train_conf=train_conf,
+        save_dir=save_dir,
+        feature_map_dir_or_path=feature_map_dir_or_path,
+        export_conf=export_conf,
+        world_size=world_size,
+        rank=rank,
+        save_after_eval=True,
+        device=device,
+        dataset=dataset_name,
+        all_item_ids = dataset.all_item_ids)   
+def get_train_eval_dataloader(dataset, data_dir, rank, world_size, train_conf, model_conf, feature_conf,
+                              dataloader_conf, data_pth='', is_recall=False):
+    max_sequence_length = model_conf.get("max_sequence_length", 100)
+    local_batch_size = train_conf.get("local_batch_size", 256)
+    eval_batch_size = train_conf.get("eval_batch_size", 256)
+    gr_output_length = train_conf.get("gr_output_length", 0)
+    prefetch_factor = dataloader_conf['prefetch_factor']
+    num_workers = dataloader_conf['num_workers']
+    dataset = get_reco_dataset(
+        dataset=dataset,
+        data_dir=data_dir,
+        pth=data_pth,
+        rank=rank,
+        world_size=world_size,
+        max_sequence_length=max_sequence_length,
+        chronological=True,
+        feature_conf=feature_conf,
+        num_rerank=dataloader_conf.get("num_rerank", 256),
+        token_per_item=feature_conf.get("token_per_item", 1)
+    )
+    if model_conf.get("root_model_type") == "GRModelEp":
+        from data.data_loader import create_data_loader_ep
+        train_data_loader = create_data_loader_ep(
+            dataset.train_dataset,
+            batch_size=local_batch_size,
+            item_feature_columns=feature_conf['item_feature_columns'],
+            user_feature_columns=feature_conf['user_feature_columns'],
+            max_output_length=gr_output_length,
+            itemid_column_name=feature_conf['infer_items_key'],
+            infer_ratings_key=feature_conf['infer_ratings_key'],
+            infer_timestamps_key=feature_conf['infer_timestamps_key'],
+            multi_value_prefix=feature_conf.get('multi_value_prefix', "pref_"),
+            include_loss_weights=True,
+            prefetch_factor=prefetch_factor,
+            num_workers=num_workers
+        )
+        eval_data_loader = create_data_loader_ep(
+            dataset.eval_dataset,
+            batch_size=eval_batch_size,
+            item_feature_columns=feature_conf['item_feature_columns'],
+            user_feature_columns=feature_conf['user_feature_columns'],
+            max_output_length=gr_output_length + 1 if not is_recall else gr_output_length,
+            itemid_column_name=feature_conf['infer_items_key'],
+            infer_ratings_key=feature_conf['infer_ratings_key'],
+            infer_timestamps_key=feature_conf['infer_timestamps_key'],
+            multi_value_prefix=feature_conf.get('multi_value_prefix', "pref_"),
+            include_loss_weights=True,
+            include_candidate_items=True,
+            prefetch_factor=prefetch_factor,
+            num_workers=num_workers
+        )
+    else:
+        train_data_loader = create_data_loader(
+            dataset.train_dataset,
+            batch_size=local_batch_size,
+            prefetch_factor=prefetch_factor,
+            num_workers=num_workers
+        )
+        eval_data_loader = create_data_loader(
+            dataset.eval_dataset,
+            batch_size=eval_batch_size,
+            prefetch_factor=prefetch_factor,
+            num_workers=num_workers
+        )
+    return dataset, eval_data_loader, train_data_loader
+def init_learning_rate(learning_rate, lr_scaling, world_size):
+    lr_scaling = lr_scaling.strip().lower()
+    if lr_scaling == "linear":
+        learning_rate *= world_size
+    elif lr_scaling == "sqrt":
+        learning_rate *= sqrt(world_size)
+    else:
+        raise ValueError("'%s' is not a supported scaling strategy for the learning rate." % lr_scaling)
+    return learning_rate
+def main_torchrun(argv):
+    if FLAGS.config_file is None:
+        raise ValueError("you have to assign the train config file")
+    config = get_config(FLAGS.config_file)
+    if FLAGS.is_train:
+        train_fn(config, 
+                 FLAGS.data_dir, 
+                 FLAGS.save_dir,
+                 FLAGS.feature_map_dir,
+                 str(FLAGS.period))
+    elif FLAGS.save_user_emb:
+        save_user_emb_fn(config, 
+                FLAGS.data_dir, 
+                FLAGS.save_dir,
+                FLAGS.feature_map_dir,
+                str(FLAGS.period))
+    else:
+        eval_fn(config, 
+                FLAGS.data_dir, 
+                FLAGS.save_dir,
+                FLAGS.feature_map_dir,
+                str(FLAGS.period))
+def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, SequentialFeatures]],
+                  feature_conf, feature_map, train_conf, save_dir, feature_map_dir_or_path,
+                  export_conf, world_size, rank, save_after_eval, device, dataset, all_item_ids, filter_invalid_ids=False, epoch=0, writer=None):
+    model.eval()
+    logging.info("rank %s starting evaluation...", rank)
+    save_score_csv_item_cols = feature_conf.get('save_score_csv_item_cols', {})
+    save_score_csv_user_cols = feature_conf.get('save_score_csv_user_cols', {})
+    scores_all, ground_truth_all, eval_weights_all = [], [], []
+    group_keys_all = {
+        'uid': []
+    }
+    for key in save_score_csv_item_cols:
+        group_keys_all[key] = []
+    for key in save_score_csv_user_cols:
+        group_keys_all[key] = []
+    eval_iter = 0
+    last_eval_time = time.perf_counter()
+    is_input_copied = 0
+    model_input_export_list = []
+    if train_conf["is_recall"] == True:
+        top_k_method = "MIPSBruteForceTopK"
+        eval_dict_all = None
+        eval_state = get_eval_state(
+                        model=model,
+                        all_item_ids=all_item_ids,
+                        negatives_sampler=model.negative_sampler,
+                        top_k_module_fn=lambda item_embeddings, item_ids: get_top_k_module(
+                            top_k_method=top_k_method,
+                            model=model,
+                            item_embeddings=item_embeddings,
+                            item_ids=item_ids,
+                        ),
+                        device=device,
+                        float_dtype=None,
+        )
+    profiling_flag = False if int(os.environ.get("MODEL_PROFILING_FLAG", 0)) == 0 else True
+    enable_compile = False if int(os.environ.get("ENABLE_COMPILE", 0)) == 0 else True
+    enable_graph = False if int(os.environ.get("ENABLE_GRAPH", 0)) == 0 else True
+    check_precision = False if int(os.environ.get("CHECK_PRECISION", 0)) == 0 else True
+    enable_sync_loader = False if int(os.environ.get("ENABLE_SYNC_LOADER", 0)) == 0 else True
+    if check_precision:
+        eager_model = copy.deepcopy(model)
+    if enable_compile and enable_graph:
+        logging.info("enable compile and graph.")
+        if NPU_ENABLE and enable_sync_loader:
+            model.encode_static_for_compile = torch.compile(model.encode_static_for_compile, backend="inductor", dynamic=False)
+            patch_graph(model)
+        else:
+            model.encode = torch.compile(model.encode, backend="inductor", dynamic=False, mode="reduce-overhead")
+    elif enable_compile:
+        logging.info("enable compile.")
+        model.encode = torch.compile(model.encode, backend="inductor", dynamic=False)
+    elif enable_graph:
+        if NPU_ENABLE and enable_sync_loader:
+            logging.info("enable npu graph.")
+            patch_graph(model)
+    profiler_save_path = None
+    if profiling_flag:
+        if NPU_ENABLE:
+            print("start NPU profiling!!!")
+            experimental_config = torch_npu.profiler._ExperimentalConfig(
+                export_type=[
+                    torch_npu.profiler.ExportType.Text
+                    ],
+                profiler_level=torch_npu.profiler.ProfilerLevel.Level1, # level1 leve2影响小shape算子性能，<3us的算子
+                mstx=False,    # 原参数名称msprof_tx改名为mstx，新版本依旧兼容原参数名
+                aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
+                l2_cache=False,
+                op_attr=False,
+                data_simplification=False,
+                record_op_args=False,
+                gc_detect_threshold=None
+            )
+            profiler_save_path = "./profiling/1B_gemm_tokenmixer_large_graph"
+            prof = torch_npu.profiler.profile(
+                activities=[
+                    torch_npu.profiler.ProfilerActivity.CPU,
+                    torch_npu.profiler.ProfilerActivity.NPU
+                    ],
+                schedule=torch_npu.profiler.schedule(wait=1, active=10, warmup=3, repeat=1, skip_first=1),    # 与prof.step()配套使用
+                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profiler_save_path),
+                record_shapes=True,
+                profile_memory=False,
+                with_stack=False,
+                with_modules=False,
+                with_flops=False,
+                experimental_config=experimental_config)
+            prof.start()
+        else:
+            profiler_save_path = os.path.join("gpu_profiling", 'profiling')
+            profiler_config = {
+                'activities': [
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.CUDA,
+                ],
+                'schedule': torch.profiler.schedule(
+                    wait=1, # 建议从 1 开始
+                    warmup=3,
+                    active=10,
+                    repeat=1
+                ),
+                'on_trace_ready': torch.profiler.tensorboard_trace_handler(
+                    dir_name=profiler_save_path,
+                    worker_name='worker0'
+                ),
+                'record_shapes': True,
+                'profile_memory': False,
+                'with_stack': False,
+            }
+            prof = torch.profiler.profile(**profiler_config)
+            prof.start()
+    batch_limit = train_conf.get("batch_limit", 0)
+    e2e_average_nums = train_conf.get("e2e_average_nums", 20)
+    e2e_data = {"E2E":[]}
+    if FLAGS.get_infer_result:
+        round_cnt = 0
+        layer_data = collections.OrderedDict()
+    time_arr = []
+    with torch.no_grad():
+        while True:
+            try:
+                scores, eval_seq_features = exec_cb(eval_iter)
+            except StopIteration:
+                logging.info("finished")
+                break
+            if enable_sync_loader and eval_iter >= batch_limit:
+                break
+            if not train_conf['is_recall']:
+                # 评估函数由于不同业务要求不同，故需要不同业务各自实现。
+                scores, ground_truth, group_keys = process_rank_scores(
+                    model.module, eval_seq_features, feature_conf.get('save_score_csv_item_cols', {}),
+                    feature_conf.get('save_score_csv_user_cols', {}), feature_conf.get('token_per_item', 2)
+                )
+                scores_all.extend(scores.view(-1).detach().cpu().tolist())
+                ground_truth_all.extend(ground_truth.view(-1).detach().cpu().tolist())
+                for key in group_keys_all.keys():
+                    items = group_keys.get(key, torch.tensor([]))
+                    group_keys_all[key].extend(items.detach().view(-1).cpu().tolist())
+                if (eval_iter % train_conf["eval_interval"]) == 0:
+                    torch.distributed.barrier()  # sync time taken
+                    cost = time.perf_counter() - last_eval_time
+                    logging.info(
+                        f"rank {rank}; batch-stat (eval): step {eval_iter} (EVAL in {cost:.2f}s)")
+                    last_eval_time = time.perf_counter()
+                export_num_batch = export_conf.get("export_num_batch", 1)
+                if is_input_copied < export_num_batch:
+                    model_input_export = copy.deepcopy(model_input)
+                    model_input_export_list.append(model_input_export)
+                    is_input_copied += 1
+                del scores
+                del ground_truth
+                del group_keys
+            else:
+                B, N = eval_seq_features.past_ids.size()
+                flattened_offsets = (
+                        (eval_seq_features.past_lengths - 1)
+                        + torch.arange(
+                            start=0, end=B, step=1, dtype=eval_seq_features.past_lengths.dtype, device=eval_seq_features.past_lengths.device
+                        ) * N
+                )
+                target_ids = eval_seq_features.past_ids.view(-1)[flattened_offsets].reshape(B, 1)
+                pid = eval_seq_features.past_ids.view(-1)
+                pid[flattened_offsets] = 0
+                eval_seq_features.past_ids = pid.reshape(B, -1)
+                eval_seq_features.past_lengths = eval_seq_features.past_lengths - 1
+                model_input = eval_seq_features.past_payloads
+                model_input['past_ids'] = eval_seq_features.past_ids
+                model_input['past_lengths'] = eval_seq_features.past_lengths
+                start = time.time()
+                if check_precision:
+                    print(f"check precision between eager and inductor model.")
+                    eager_emb_output = eval_metrics_v2_from_tensors(
+                        eval_state, eager_model, model_input, eval_seq_features, target_ids,
+                        target_ratings=None,
+                        user_max_batch_size=train_conf["eval_batch_size"],
+                        dtype=None,
+                        filter_invalid_ids=filter_invalid_ids,
+                    )
+                    inductor_emb_output = eval_metrics_v2_from_tensors(
+                        eval_state, model, model_input, eval_seq_features, target_ids,
+                        target_ratings=None,
+                        user_max_batch_size=train_conf["eval_batch_size"],
+                        dtype=None,
+                        filter_invalid_ids=filter_invalid_ids,
+                    )
+                    torch.testing.assert_close(eager_emb_output["deep_outputs"], inductor_emb_output["deep_outputs"],
+                                            equal_nan=True)
+                eval_dict = eval_metrics_v2_from_tensors(
+                            eval_state, model, model_input, eval_seq_features, target_ids,
+                            target_ratings=None,
+                            user_max_batch_size=train_conf["eval_batch_size"],
+                            dtype=None,
+                            filter_invalid_ids=filter_invalid_ids,
+                )
+                if FLAGS.get_infer_result:
+                    if round_cnt == 0:
+                        register_forward_output_hook(model, layer_data)
+                    round_cnt += 1
+                    if round_cnt == 15:
+                        print("------try to save--------")
+                        save_torch_data(model_input, eval_dict,layer_data)
+                end = time.time()
+                print(f"E2E time: {end - start}")
+                e2e_data['E2E'].append(end-start)
+                time_arr.append(end-start)
+                if NPU_ENABLE:
+                    torch.npu.synchronize()
+                else:
+                    torch.cuda.synchronize()
+                if profiling_flag:
+                    prof.step()
+                eval_dict_all = {}
+            eval_iter += 1
+    print("收集端到端时间")
+    user_max_batch_size = train_conf["eval_batch_size"]
+    report = {
+        'Batch_size': user_max_batch_size,
+        'model_name': 'TokenMixerLarge',
+        'config_file': FLAGS.config_file,
+        }
+    if time_arr:
+        time_arr = time_arr[-e2e_average_nums:]
+        time_arr.sort()
+        p999_latency = round(time_arr[int(len(time_arr) * 0.999)] * 1000, 6)
+        p99_latency = round(time_arr[int(len(time_arr) * 0.99)] * 1000, 6)
+        p95_latency = round(time_arr[int(len(time_arr) * 0.95)] * 1000, 6)
+        p90_latency = round(time_arr[int(len(time_arr) * 0.90)] * 1000, 6)
+        avg_latency = round(sum(time_arr) / len(time_arr) * 1000, 6)
+        qps = int(1000.0 * user_max_batch_size / avg_latency)
+        report["QPS"] = qps
+        report["AVG Latency"] = avg_latency
+        report["P999 Latency"] = p999_latency
+        report["P99 Latency"] = p99_latency
+        report["P95 Latency"] = p95_latency
+        report["P90 Latency"] = p90_latency
+        print(report)
+    else:
+        logging.info("No E2E latency samples collected in this eval path.")
+    if profiling_flag:
+        save_profiler_to_execl(prof, profiler_save_path)
+        prof.stop()
+    if not profiling_flag:
+        if profiler_save_path:
+            save_e2e_to_execl(e2e_data, profiler_save_path)
+    if train_conf["is_recall"]:
+        for k, v in eval_dict_all.items():
+            eval_dict_all[k] = torch.cat(v, dim=-1)
+        ndcg_10 = _avg(eval_dict_all.get("ndcg@10"), world_size=world_size)
+        ndcg_50 = _avg(eval_dict_all.get("ndcg@50"), world_size=world_size)
+        ndcg_100 = _avg(eval_dict_all.get("ndcg@100"), world_size=world_size)
+        ndcg_200 = _avg(eval_dict_all.get("ndcg@200"), world_size=world_size)
+        hr_10 = _avg(eval_dict_all.get("hr@10"), world_size=world_size)
+        hr_50 = _avg(eval_dict_all.get("hr@50"), world_size=world_size)
+        hr_100 = _avg(eval_dict_all.get("hr@100"), world_size=world_size)
+        hr_200 = _avg(eval_dict_all.get("hr@200"), world_size=world_size)
+        hr_500 = _avg(eval_dict_all.get("hr@500"), world_size=world_size)
+        hr_1000 = _avg(eval_dict_all.get("hr@1000"), world_size=world_size)
+        hr_2000 = _avg(eval_dict_all.get("hr@2000"), world_size=world_size)
+        mrr = _avg(eval_dict_all.get("mrr"), world_size=world_size)
+        recall_metrics = {
+            "auc": None,
+            "auc_available": False,
+            "ndcg@10": _metric_to_float(ndcg_10),
+            "ndcg@50": _metric_to_float(ndcg_50),
+            "ndcg@100": _metric_to_float(ndcg_100),
+            "ndcg@200": _metric_to_float(ndcg_200),
+            "hr@10": _metric_to_float(hr_10),
+            "hr@50": _metric_to_float(hr_50),
+            "hr@100": _metric_to_float(hr_100),
+            "hr@200": _metric_to_float(hr_200),
+            "hr@500": _metric_to_float(hr_500),
+            "hr@1000": _metric_to_float(hr_1000),
+            "hr@2000": _metric_to_float(hr_2000),
+            "mrr": _metric_to_float(mrr),
+        }
+        if rank == 0 and writer:
+            logging.info(f"model debug_str :\n"
+                        f"rank {rank}: recall: "
+                        f"NDCG@10 {ndcg_10:.4f}, NDCG@50 {ndcg_50:.4f}, NDCG@100 {ndcg_100:.4f}, NDCG@200 {ndcg_200:.4f}, "
+                        f"HR@10 {hr_10:.4f}, HR@50 {hr_50:.4f}, HR@100 {hr_100:.4f}, HR@200 {hr_200:.4f}, HR@500 {hr_500:.4f}, HR@1000 {hr_1000:.4f}, HR@2000 {hr_2000:.4f}, "
+                        f"MRR {mrr:.4f}")   
+            writer.add_scalar("eval_epoch/ndcg@10", ndcg_10, epoch)
+            writer.add_scalar("eval_epoch/ndcg@50", ndcg_50, epoch)
+            writer.add_scalar("eval_epoch/ndcg@100", ndcg_100, epoch)
+            writer.add_scalar("eval_epoch/ndcg@200", ndcg_200, epoch)
+            writer.add_scalar("eval_epoch/hr@10", hr_10, epoch)
+            writer.add_scalar("eval_epoch/hr@50", hr_50, epoch)
+            writer.add_scalar("eval_epoch/hr@100", hr_100, epoch)
+            writer.add_scalar("eval_epoch/hr@200", hr_200, epoch)
+            writer.add_scalar("eval_epoch/hr@500", hr_500, epoch)
+            writer.add_scalar("eval_epoch/hr@1000", hr_1000, epoch)
+            writer.add_scalar("eval_epoch/hr@2000", hr_2000, epoch)
+            writer.add_scalar("eval_epoch/mrr", mrr, epoch)
+        return recall_metrics
+    if NPU_ENABLE:
+        torch_npu.npu.empty_cache()
+    else:
+        torch.cuda.empty_cache()
+    logging.info("rank %s start gather...", rank)
+    ground_truth_all = gather_all_list(ground_truth_all, world_size=world_size)
+    scores_all = gather_all_list(scores_all, world_size=world_size)
+    if dataset == "ag-rank":
+        sampled_indices = []
+        ratio = train_conf.get('eval_ng_ratio', 0.2)
+        if ratio < 1:
+            sampled_indices = [
+                i
+                for i, gt in enumerate(ground_truth_all)
+                if gt == 1 or (gt == 0 and random.random() < ratio)
+            ]
+            ground_truth_all = [
+                ground_truth_all[i]
+                for i in sampled_indices
+            ]
+            scores_all = [
+                scores_all[i]
+                for i in sampled_indices
+            ]
+        for key in group_keys_all.keys():
+            value_list = gather_all_list(group_keys_all[key], world_size=world_size)
+            if sampled_indices:
+                value_list = [value_list[i] for i in sampled_indices]
+            group_keys_all[key] = value_list
+    else:
+        for key in group_keys_all.keys():
+            group_keys_all[key] = gather_all_list(group_keys_all[key], world_size=world_size)
+    logging.info("rank %s start gather...", rank)
+    ground_truth_all = gather_all_list(ground_truth_all, world_size=world_size)
+    scores_all = gather_all_list(scores_all, world_size=world_size)
+    for key in group_keys_all.keys():
+        group_keys_all[key] = gather_all_list(group_keys_all[key], world_size=world_size)
+    logging.info(
+        'Number of samples in eval dataset: %s, rank %s, number of positive samples %s, '
+        'number of negative samples %s',
+        len(scores_all), rank, sum(ground_truth_all), len(ground_truth_all) - sum(ground_truth_all))
+    if is_input_copied == 0:
+        logging.error("No input sample can be saved because all the candidates are zero.")
+    save_result_to_local = feature_conf.get("save_result_to_local", True)
+    if rank == 0:
+        save_path = "%s/modelfile" % save_dir
+        if not os.path.exists(save_path):
+            os.makedirs(save_path, exist_ok=True)
+        logging.info("Test data count: %d", len(ground_truth_all))
+        metrics_file_name = "metrics_report.csv"
+        metrics_path = os.path.join(save_path, metrics_file_name)
+        if save_result_to_local:
+            logging.info("Saving metrics to %s", metrics_path)
+        eval_df = pd.DataFrame({
+            **group_keys_all,
+            'ground_truth': ground_truth_all,
+            'scores': scores_all,
+        })
+        calculator = MetricsCalculator(eval_df, feature_map, feature_conf.get('metric_list', []),
+                                       feature_conf.get('group_metric_cols_values', []),
+                                       feature_conf.get('bias_evaluation_conf', []), save_result_to_local)
+        calculator.calculate(metrics_path)
+        auc_value = _safe_roc_auc(ground_truth_all, scores_all)
+        if auc_value is not None and writer:
+            writer.add_scalar("eval_epoch/auc", auc_value, epoch)
+        logging.info("eval AUC at epoch %s is %s", epoch, auc_value)
+    else:
+        auc_value = None
+    if rank == 0 and save_after_eval:
+        save_dir_export = save_dir
+        if not os.path.exists(save_dir_export):
+            os.mkdir(save_dir_export)
+        save_model(model, save_dir_export, model_input_export_list, export_conf,
+                feature_conf, feature_map_dir_or_path, feature_conf["cut_off_time"], device, feature_map, train_conf["is_recall"])
+    if not train_conf["is_recall"]:
+        logging.info(
+            'Number of samples in eval dataset: %s, rank %s, number of positive samples %s, '
+            'number of negative samples %s',
+            len(scores_all), rank, sum(ground_truth_all), len(ground_truth_all) - sum(ground_truth_all))
+    return {
+        "auc": auc_value,
+        "auc_available": auc_value is not None,
+    }
+
+def train_fn(config, data_dir, save_dir, feature_map_dir_or_path, period) -> None:
+    global dataset_name
+    common_config = config[Const.COMMON_HP]
+    init_random_seed(common_config)
+    device, rank, local_rank, world_size, node_num = init_ddp_info_params()
+    if rank == 0 and FLAGS.tensorboard_log_dir:
+        writer = SummaryWriter(log_dir=FLAGS.tensorboard_log_dir)
+        logging.info(f"Rank {rank}: writing logs to {FLAGS.tensorboard_log_dir}")
+    else:
+        writer = None
+        logging.info(f"Rank {rank}: disabling summary writer")
+    train_conf = common_config['train_conf']
+    feature_conf = common_config['feature_conf']
+    learning_rate = train_conf['learning_rate']
+    lr_scaling = train_conf['lr_scaling']
+    export_conf = common_config['export_conf']
+    data_loader_conf = common_config['data_loader_conf']
+    model_conf = common_config['model_conf']
+    dataset_name = data_loader_conf["dataset_name"]
+    feature_conf["period"] = period
+    train_conf['learning_rate'] = init_learning_rate(learning_rate, lr_scaling, world_size)
+    filter_invalid_ids = train_conf.get('filter_invalid_ids', False)
+    if dataset_name == "ag-rank":
+        data_target.set_path(rootdir=save_dir, filename = "analysis.csv")
+    gr_output_length = train_conf.get("gr_output_length", 0)
+    logging.info("Training model on rank %s (local rank: %s); device: %s; world_size: %s;",
+                 rank, local_rank, device, world_size)
+    init_torch_config(local_rank, train_conf)
+    feature_conf, model_conf, feature_map = refine_feat_and_model_conf(dataset=dataset_name,
+                                                                       feature_conf=feature_conf,
+                                                                       model_conf=model_conf,
+                                                                       feature_map_dir_or_path=feature_map_dir_or_path,
+                                                                       model_cfg=config[Const.MODEL_CFG])
+    if rank == 0:
+        save_feature_map(export_conf=export_conf,
+                         save_dir=save_dir,
+                         feature_map_dir_or_path=feature_map_dir_or_path,
+                         feature_map=feature_map)
+    dataset, eval_data_loader, train_data_loader = get_data_loaders(dataset=dataset_name,
+                                                                    data_dir=data_dir,
+                                                                    rank=rank,
+                                                                    world_size=world_size,
+                                                                    train_config=train_conf,
+                                                                    model_conf=model_conf,
+                                                                    feature_config=feature_conf,
+                                                                    dataloader_config=data_loader_conf)
+    ModelRegistry.register_all_modules(modul_dir=os.path.abspath(os.path.join(os.path.dirname(__file__), "modeling/generic/sequential_v2")))
+    model = ModelInitializer.init(gr_module_cfg=config) 
+    if hasattr(model, 'negative_sampler') and hasattr(model.negative_sampler, 'set_all_item_ids') and train_conf.get('filter_invalid_ids', False):
+        model.negative_sampler.set_all_item_ids(dataset.all_item_ids)
+    total_params = sum(p.numel() for p in model.parameters()) / 1e6
+    logging.info(f"Total number of parameters: {total_params:.2f}M")
+    total_params = sum(p.numel() for x, p in model.named_parameters() if '_emb' not in x) / 1e6
+    logging.info(f"The number of parameters (exl. emb): {total_params:.2f}M")
+    opt_cb = get_optimizer_callback(train_conf)
+    if dataset_name == "ag-rank":
+        find_unused_parameters = True
+    else:   
+        find_unused_parameters = False
+    if model_conf.get("root_model_type") == "GRModelEp":
+        from modeling.generic.sequential_v2.torchrec_trainer import (assemble_model_executable_callback_ep,
+                                                                  feed_datas_to_exec_callback_ep)
+        model, exec_cb = assemble_model_executable_callback_ep(
+            model,
+            opt_cb,
+            world_size,
+            node_num,
+            device,
+            train_conf,
+            feature_conf,
+        )
+        feed_func = feed_datas_to_exec_callback_ep
+    else:
+        model, exec_cb = assemble_model_executable_callback(
+            model,
+            opt_cb,
+            local_rank,
+            device,
+            train_conf,
+            feature_conf,
+            find_unused_parameters,
+        )
+        feed_func = feed_datas_to_exec_callback
+    ENABLE_PROFILING = True if os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE" else False
+    if ENABLE_PROFILING:
+        if NPU_ENABLE:
+            profiler = torch_npu.profiler
+            experimental_config = torch_npu.profiler._ExperimentalConfig(
+                    export_type=[torch_npu.profiler.ExportType.Text],
+                    aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
+                    profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
+                    l2_cache=False,
+                    op_attr=False,
+                    data_simplification=False,
+                    record_op_args=False,
+                    gc_detect_threshold=None
+                )
+        else:
+            profiler = torch.profiler
+            experimental_config = None
+        profiler_save_path = "./profiling"
+        prof = profiler.profile(
+            activities=[
+                    profiler.ProfilerActivity.CPU,
+                    profiler.ProfilerActivity.NPU if NPU_ENABLE else profiler.ProfilerActivity.CUDA
+                ],
+                schedule=profiler.schedule(
+                    wait=1, warmup=100, active=10, repeat=1, skip_first=1
+                ),
+                on_trace_ready=profiler.tensorboard_trace_handler(profiler_save_path),
+                record_shapes=True,
+                with_stack=False,
+                profile_memory=False,
+                with_modules=False,
+                with_flops=False,
+                experimental_config=experimental_config,
+        )
+        prof.start()
+    total_train_times = []
+    batch_id = 0
+    loss_metric_records = []
+    epoch_metric_records = []
+    epochs = int(os.environ.get("MODEL_EPOCH")) if os.environ.get("MODEL_EPOCH") is not None else train_conf['epochs']
+    for epoch in range(epochs):
+        train_data_loader.dataset.set_epoch_num(epoch)
+        if train_conf.get('eval_after_each_epoch', False):
+            train_exec_cb, eval_exec_cb = feed_func(exec_cb, train_conf['is_recall'], train_data_loader, eval_data_loader)
+        else:
+            train_exec_cb, eval_exec_cb = feed_func(exec_cb, train_conf['is_recall'], train_data_loader, None)
+        train_step_para = {
+            "model": model,
+            "exec_cb": train_exec_cb,
+            "train_conf": train_conf,
+            "export_conf": export_conf,
+            "batch_id": batch_id,
+            "world_size": world_size,
+            "rank": rank,
+            "epoch": epoch,
+            "device": device,
+            "save_dir": save_dir,
+            "profiler": prof if ENABLE_PROFILING else None,
+        }
+        batch_id, epoch_loss, train_times, step_metric_records = train_step(**train_step_para)
+        total_train_times += train_times
+        if rank == 0:
+            loss_metric_records.extend(step_metric_records)
+            epoch_record = {
+                "epoch": int(epoch),
+                "step": int(batch_id),
+                "train_loss": float(epoch_loss.detach().float().cpu().item() if torch.is_tensor(epoch_loss) else epoch_loss),
+                "auc": None,
+                "auc_available": False,
+            }
+
+        if rank == 0 and writer:
+            epoch_loss_value = float(epoch_loss.detach().float().cpu().item() if torch.is_tensor(epoch_loss) else epoch_loss)
+            logging.info("loss at epoch %s is %s", epoch, epoch_loss_value)
+            writer.add_scalar("loss/train", epoch_loss_value, epoch)
+
+        if train_conf.get('eval_after_each_epoch', False):
+            print(f"start evaluate_step: epoch{epoch}")
+            eval_metrics = evaluate_step(model=model,
+                        exec_cb=eval_exec_cb,
+                        feature_conf=feature_conf,
+                        feature_map=feature_map,
+                        train_conf=train_conf,
+                        save_dir=save_dir,
+                        feature_map_dir_or_path=feature_map_dir_or_path,
+                        export_conf=export_conf,
+                        world_size=world_size,
+                        rank=rank,
+                        save_after_eval=True,
+                        device=device,
+                        dataset=dataset_name,
+                        all_item_ids=dataset.all_item_ids,
+                        epoch=epoch,
+                        filter_invalid_ids=filter_invalid_ids,
+                        writer=writer)
+            if rank == 0 and eval_metrics:
+                epoch_record.update(eval_metrics)
+        if rank == 0 and train_conf.get("record_training_metrics", True):
+            epoch_metric_records.append(epoch_record)
+            _write_metrics_artifacts(save_dir, loss_metric_records, epoch_metric_records)
+    if ENABLE_PROFILING:
+        prof.stop()
+    if int(os.environ.get("SAVE_MODEL_FLAG", 0)) == 1:
+        logging.info("saving model state dict")
+        save_model_state_dict(model=model, save_dir=save_dir, export_conf=export_conf)
+    if rank == 0 and writer:    
+        writer.close()
+    total_train_times_allrank = None
+    if world_size > 1:
+        dist.barrier(device_ids=[rank])  # 同步所有rank
+        total_train_times_allrank = gather_latency_data(total_train_times, world_size, device)
+    if rank == 0:
+        model_name = "TokenMixerLarge"
+        avg_time = None
+        if int(os.environ.get("SAMPLE_STATISTICS_NUM", 0)) > 0:
+            sample_statistics_num = int(os.environ.get("SAMPLE_STATISTICS_NUM"))
+            if total_train_times_allrank is not None:
+                total_train_times = flattn_last_n(total_train_times_allrank, sample_statistics_num)
+            avg_time = latency_summary_rank0(total_train_times[sample_statistics_num:], train_conf.get("local_batch_size"), model_name,
+                    "NPU" if NPU_ENABLE else "GPU", "eager")
+        final_results = {
+            'dataset_name': "amazon-book",
+            'batch_size': train_conf.get("local_batch_size"),
+            'epoch': epochs,
+            'step': batch_id,
+            'final_loss': epoch_loss.cpu().tolist(),
+            'auc': epoch_metric_records[-1].get("auc") if epoch_metric_records else None,
+            'auc_available': epoch_metric_records[-1].get("auc_available", False) if epoch_metric_records else False,
+            "ms/step": float(avg_time) if avg_time is not None else "no valid SAMPLE_STATISTICS_NUM",
+            "train_qps": (
+                float(train_conf.get("local_batch_size")) * float(world_size) * 1000.0 / float(avg_time)
+                if avg_time is not None and float(avg_time) > 0
+                else None
+            ),
+        }
+        device_name = "NPU" if NPU_ENABLE else "GPU"
+        inductor_flag = "EAGER"
+        model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
+        output_str = model_detail_info + "_" + str(final_results)
+        file_path = f"../save_results_{device_name}/precision_result.txt"
+        dir_path = os.path.dirname(file_path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
+        print(f"The Final Result: {output_str}")
+        with open(file_path, "a", encoding="utf-8") as f:
+            f.write(output_str + "\n")
+        del final_results["ms/step"]
+        os.makedirs(f"../save_results_{device_name}/{model_name}", exist_ok=True)
+        torch.save(final_results, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_ep{epochs}.pt")
+if __name__ == "__main__":
+    app.run(main_torchrun)
